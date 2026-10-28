@@ -208,3 +208,26 @@ func TestForegroundSubagentTitleFallbackAndUnknownTab(t *testing.T) {
 		}
 	}
 }
+
+// tl1209: the dispatch description must ride the lifecycle event into the
+// foreground view — same-profile children ("ask") are otherwise ten
+// indistinguishable rows.
+func TestForegroundSubagentViewCarriesDescription(t *testing.T) {
+	app, tab := foregroundApp(t)
+
+	tab.sink.RecordSubagentLifecycle(event.SubagentLifecycleInfo{
+		Phase: "child_created", Ref: "sa_desc", Skill: "ask",
+		Description: "核对凭据读取链", StartUnixMs: 1700000000000,
+	})
+
+	views := app.RunningSubagents()
+	if len(views) != 1 {
+		t.Fatalf("views = %d, want 1", len(views))
+	}
+	if views[0].Description != "核对凭据读取链" {
+		t.Fatalf("description = %q, want the dispatch line", views[0].Description)
+	}
+	if views[0].Name != "ask" {
+		t.Fatalf("name = %q, want the skill name kept as fallback", views[0].Name)
+	}
+}

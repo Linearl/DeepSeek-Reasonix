@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 
 	"reasonix/internal/ablation"
 	"reasonix/internal/checkpoint"
@@ -176,6 +177,17 @@ type TaskTool struct {
 	// send_message unregistered, publishes no handles, and drains nothing.
 	mailboxes *subagentmailbox.Hub
 
+	// fgRuns is the per-tool registry of running FOREGROUND (synchronous)
+	// sub-agent cancels, keyed by transcript ref (tl1209). A foreground child
+	// blocks inside the parent turn on the parent's ctx, which only the whole
+	// turn's stop can cancel — this registry gives each run its own
+	// context.WithCancel derived from that ctx so the desktop terminate button
+	// can stop one child without tearing down the turn. Background children
+	// never register here: their cancel channel is the jobs manager (Kill →
+	// jobCtx), the same run-level ctx-cancel shape.
+	fgRunsMu sync.Mutex
+	fgRuns   map[string]context.CancelFunc
+
 	// mutationObserver is shared with spawned sub-agents for checkpoint capture.
 	mutationObserver *checkpoint.MutationObserver
 	// recoveryGate is the shared Auto Guard boundary for
@@ -308,6 +320,59 @@ func (t *TaskTool) Scheduler() *SubagentScheduler {
 		return nil
 	}
 	return t.scheduler
+}
+
+// registerForegroundRun arms the per-ref cancel for one foreground sub-agent
+// run (tl1209). Empty refs (ephemeral runs) are not addressable and stay
+// unregistered; a ref re-entry overwrites the previous cancel, which matches
+// the store's per-ref lease (a ref cannot run twice concurrently).
+func (t *TaskTool) registerForegroundRun(ref string, cancel context.CancelFunc) {
+	if t == nil || ref == "" || cancel == nil {
+		return
+	}
+	t.fgRunsMu.Lock()
+	if t.fgRuns == nil {
+		t.fgRuns = make(map[string]context.CancelFunc)
+	}
+	t.fgRuns[ref] = cancel
+	t.fgRunsMu.Unlock()
+}
+
+// unregisterForegroundRun disarms the per-ref cancel and releases the derived
+// context. Idempotent: double calls (explicit + defer) stay safe via the map.
+func (t *TaskTool) unregisterForegroundRun(ref string) {
+	if t == nil || ref == "" {
+		return
+	}
+	t.fgRunsMu.Lock()
+	cancel, ok := t.fgRuns[ref]
+	delete(t.fgRuns, ref)
+	t.fgRunsMu.Unlock()
+	if ok {
+		cancel()
+	}
+}
+
+// CancelSubagentRun cancels ONE running foreground (synchronous) sub-agent by
+// transcript ref (tl1209): the child unwinds through the same cancelled
+// outcome path a background job's Kill uses (SaveOutcome(cancelled) +
+// child_cancelled lifecycle + cancelled tool result), while the parent turn
+// keeps running. Background children are not reachable here — they cancel
+// through the jobs manager, which is the existing async terminate channel.
+// Reports whether a live foreground run was armed for the ref.
+func (t *TaskTool) CancelSubagentRun(ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if t == nil || ref == "" {
+		return false
+	}
+	t.fgRunsMu.Lock()
+	cancel, ok := t.fgRuns[ref]
+	t.fgRunsMu.Unlock()
+	if !ok {
+		return false
+	}
+	cancel()
+	return true
 }
 
 // WithProfileLookup enables task/fleet profile= resolution from the Skill store.
@@ -736,7 +801,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	modelRef, effortRef := spec.Worker.Model, spec.Worker.Effort
 	usageModelRef := t.usageModelRef(modelRef, effortRef)
 	parentID, parentSink, _, _ := CallContext(ctx)
-	run, err := t.prepareTranscriptRunWithPrompt(ctx, subReg, modelRef, effortRef, spec.Context.parentSession(ctx), parentID, spec.Context.ContinueFrom, spec.Context.ForkFrom, spec.Worker.SystemPrompt, spec.Worker.Kind, spec.Worker.Name)
+	run, err := t.prepareTranscriptRunWithPrompt(ctx, subReg, modelRef, effortRef, spec.Context.parentSession(ctx), parentID, spec.Context.ContinueFrom, spec.Context.ForkFrom, spec.Worker.SystemPrompt, spec.Worker.Kind, spec.Worker.Name, spec.Task.Description)
 	if err != nil {
 		return "", err
 	}
@@ -824,7 +889,18 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	defer run.Release()
 	ctx = WithSubagentClaimID(ctx, claimID)
 	emitSubagentLifecycle(parentSink, "child_running", parentID, spec.Worker.Name, usageModelRef, effortRef, run, nil, BackgroundOwnedLifecycle(ctx))
-	answer, err := runSession(ctx, trk.wrap(), false)
+	// tl1209: the child runs on a cancel derived from the turn ctx and armed in
+	// the per-ref registry, so a single foreground sub-agent can be terminated
+	// (CancelSubagentRun) without cancelling the whole turn. The unregister's
+	// trailing cancel releases the derived context on every exit path.
+	runCtx := ctx
+	if run.Ref != "" {
+		var runCancel context.CancelFunc
+		runCtx, runCancel = context.WithCancel(ctx)
+		t.registerForegroundRun(run.Ref, runCancel)
+		defer t.unregisterForegroundRun(run.Ref)
+	}
+	answer, err := runSession(runCtx, trk.wrap(), false)
 	if err != nil {
 		result, runErr := t.resolveAmbiguousSubagentFailure(ctx, run, spec.Task.Objective, usageModelRef, parentSink, err)
 		phase, outcome := terminalSubagentLifecycle(runErr)
@@ -952,7 +1028,7 @@ func (t *TaskTool) bashCanEnforceWriteRoots() bool {
 	return false
 }
 
-func (t *TaskTool) prepareTranscriptRunWithPrompt(ctx context.Context, subReg *tool.Registry, modelRef, effortRef, parentSession, parentID, continueFrom, legacyForkFrom, systemPrompt, kind, name string) (*SubagentRun, error) {
+func (t *TaskTool) prepareTranscriptRunWithPrompt(ctx context.Context, subReg *tool.Registry, modelRef, effortRef, parentSession, parentID, continueFrom, legacyForkFrom, systemPrompt, kind, name, description string) (*SubagentRun, error) {
 	continueFrom = strings.TrimSpace(continueFrom)
 	legacyForkFrom = strings.TrimSpace(legacyForkFrom)
 	parentSession = strings.TrimSpace(parentSession)
@@ -981,6 +1057,7 @@ func (t *TaskTool) prepareTranscriptRunWithPrompt(ctx context.Context, subReg *t
 	spec := SubagentSpec{
 		Kind:             kind,
 		Name:             name,
+		Description:      description,
 		WorkspaceRoot:    t.workspaceRoot,
 		ParentSession:    parentSession,
 		ParentToolCallID: parentID,

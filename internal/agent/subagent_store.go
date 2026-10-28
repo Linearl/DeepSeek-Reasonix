@@ -43,6 +43,12 @@ type SubagentMeta struct {
 	ErrorCode        string         `json:"errorCode,omitempty"`
 	Kind             string         `json:"kind"` // task | skill
 	Name             string         `json:"name"`
+	// Description is the human-readable dispatch line (task 工具的 description
+	// 入参, tl1209). Display-only: panels prefer it over Name so same-profile
+	// runs are distinguishable. Deliberately NOT part of the continuation
+	// identity — validateMeta never compares it, so a continue_from with a
+	// different description is still accepted.
+	Description      string         `json:"description,omitempty"`
 	WorkspaceRoot    string         `json:"workspaceRoot"`
 	ParentSession    string         `json:"parentSession,omitempty"`
 	ParentToolCallID string         `json:"parentToolCallId,omitempty"`
@@ -81,6 +87,10 @@ func isSubagentMetaDecodeError(err error) bool {
 type SubagentSpec struct {
 	Kind             string
 	Name             string
+	// Description is the display-only dispatch line (tl1209). It lands on the
+	// sidecar meta but stays outside the continuation identity — see
+	// SubagentMeta.Description.
+	Description      string
 	WorkspaceRoot    string
 	ParentSession    string
 	ParentToolCallID string

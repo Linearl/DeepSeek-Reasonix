@@ -2194,6 +2194,10 @@ export interface SubagentArtifactView {
   outcome?: string;
   kind?: string; // "task" | "skill"
   name?: string;
+  // tl1209: dispatch line the parent model passed with the call. Panels
+  // prefer it over name — same-profile records ("ask", "task") are
+  // otherwise indistinguishable.
+  description?: string;
   model?: string;
   parentSession?: string;
   hasTranscript: boolean; // false = meta survived without its jsonl; not openable
@@ -2244,6 +2248,9 @@ export interface ForegroundSubagentView {
   title?: string; // owning tab display title; empty when the tab is unknown
   ref: string;
   name?: string; // skill/worker name; the row falls back to the ref
+  // tl1209: dispatch line the parent model passed with the call; panels
+  // prefer it over name for the same reason as SubagentArtifactView.
+  description?: string;
   startedAt: number; // unix milliseconds
   parentToolCallId?: string; // dispatch-batch key shared by one parallel call (task 667; capsule UI ignores it)
 }

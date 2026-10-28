@@ -29343,11 +29343,23 @@ button.statusbar__mcp:focus-visible {
   border-top: 1px solid var(--border-soft);
 }
 
+/* tl1209: a running row may carry its own terminate button beside the row
+   body — the wrap becomes a flex row so the body keeps filling and the
+   button hugs the trailing edge. Wraps without the button are unchanged
+   (a lone flex child with flex:1 renders exactly like width:100%); the
+   expanded detail wraps onto its own full-width line. */
+.subagents-panel__row-wrap {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
 .subagents-panel__row {
   display: flex;
   align-items: center;
   gap: 7px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 7px 9px;
   background: transparent;
   border: 0;
@@ -29355,6 +29367,29 @@ button.statusbar__mcp:focus-visible {
   text-align: left;
   font-size: var(--text-xs);
   color: var(--fg);
+}
+
+.subagents-panel__terminate {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  border: 0;
+  border-left: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.subagents-panel__terminate:hover {
+  background: var(--bg-soft);
+  color: var(--danger, var(--fg-dim));
+}
+
+.subagents-panel__terminate:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .subagents-panel__row:hover {
@@ -29402,6 +29437,10 @@ button.statusbar__mcp:focus-visible {
 }
 
 .subagents-panel__detail {
+  /* tl1209: inside the flexed row-wrap the expanded detail takes its own
+     full-width line below the row body. */
+  flex: 1 1 100%;
+  min-width: 0;
   padding: 0 9px 8px 29px;
 }
 

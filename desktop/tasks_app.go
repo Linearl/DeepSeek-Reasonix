@@ -73,6 +73,28 @@ func cancelJobForController(ctrl control.SessionAPI, jobID string) (bool, error)
 	return canceller.CancelJob(jobID), nil
 }
 
+// CancelSubagentForTab terminates one running foreground (synchronous)
+// sub-agent by transcript ref, without relying on whatever tab happens to be
+// active when the asynchronous frontend call completes (tl1209). The child
+// unwinds through the same cancelled-outcome path a background job's Kill
+// uses; the turn itself keeps running. Background jobs are NOT reachable here
+// — they keep stopping through CancelJobForTab (jobs.Kill).
+func (a *App) CancelSubagentForTab(tabID, ref string) (bool, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return false, fmt.Errorf("subagent ref is required")
+	}
+	ctrl := a.ctrlForRuntimeTabID(tabID)
+	if ctrl == nil {
+		return false, nil
+	}
+	canceller, ok := ctrl.(interface{ CancelSubagent(string) bool })
+	if !ok {
+		return false, fmt.Errorf("subagent cancellation is unavailable")
+	}
+	return canceller.CancelSubagent(ref), nil
+}
+
 func (a *App) jobsForCtrl(ctrl control.SessionAPI, out []JobView) []JobView {
 	if ctrl == nil {
 		return out

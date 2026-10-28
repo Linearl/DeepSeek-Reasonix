@@ -1307,6 +1307,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   CancelJob(jobID: string): Promise<boolean>;
   CancelJobForTab(tabID: string, jobID: string): Promise<boolean>;
   CancelJobsForTab(tabID: string, jobIDs: string[]): Promise<JobCancelBatchView>;
+  // tl1209: terminate ONE running foreground (synchronous) sub-agent by
+  // transcript ref; the child unwinds with a cancelled outcome while the turn
+  // keeps running. Background jobs keep stopping through CancelJobForTab.
+  CancelSubagentForTab(tabID: string, ref: string): Promise<boolean>;
   ActiveWorkForTab(tabID: string): Promise<ActiveWorkView>;
   BackgroundRuntimes(): Promise<BackgroundRuntimeView[]>;
   // Task 557: running foreground (synchronous) sub-agents across all tabs and
@@ -5366,6 +5370,9 @@ function makeMockApp(): AppBindings {
         },
         async CancelJobsForTab(_tabID, jobIDs) {
           return { cancelled: [], notRunning: [...jobIDs] };
+        },
+        async CancelSubagentForTab() {
+          return false; // browser dev mock has no live sub-agent runs
         },
         async ActiveWorkForTab() {
           return { running: false, pendingPrompt: false, cancellable: false, jobs: [] };

@@ -693,6 +693,7 @@ export function Composer({
   capsuleSubagents,
   onCapsuleCancelJob,
   onCapsuleCancelRuntimeJob,
+  onCapsuleCancelSubagent,
   capsuleSessionPath,
   onCapsuleListSubagents,
   onCapsuleReadSubagent,
@@ -862,12 +863,15 @@ export function Composer({
   capsuleJobs?: readonly JobView[];
   capsuleRuntimes?: readonly BackgroundRuntimeView[];
   // Task 557: running foreground (synchronous) sub-agents — the third
-  // running-work source. Rows are not individually stoppable (a foreground
-  // child ends with its parent turn; the composer stop covers it), so no
-  // cancel chain is wired for them.
+  // running-work source. Since tl1209 each row is individually stoppable
+  // through onCapsuleCancelSubagent (per-child run cancel; the turn keeps
+  // running); without it the rows render without a stop button, exactly the
+  // pre-1209 behavior.
   capsuleSubagents?: readonly import("../lib/types").ForegroundSubagentView[];
   onCapsuleCancelJob?: (jobID: string) => Promise<boolean>;
   onCapsuleCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
+  // tl1209: per-child terminate chain for the foreground sub-agent rows.
+  onCapsuleCancelSubagent?: (tabId: string, ref: string) => Promise<boolean>;
   capsuleSessionPath?: string;
   // Stable wrappers over the read-only subagent Wails surface (task 447).
   onCapsuleListSubagents?: (sessionPath: string) => Promise<import("../lib/types").SubagentArtifactView[]>;
@@ -5960,6 +5964,7 @@ export function Composer({
                   subagents={capsuleSubagents}
                   onCancelJob={onCapsuleCancelJob}
                   onCancelRuntimeJob={onCapsuleCancelRuntimeJob}
+                  onCancelSubagent={onCapsuleCancelSubagent}
                   sessionPath={capsuleSessionPath}
                   onListSubagents={onCapsuleListSubagents}
                   onReadSubagent={onCapsuleReadSubagent}

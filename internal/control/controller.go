@@ -6785,6 +6785,18 @@ func (c *Controller) CancelJob(id string) bool {
 	return c.jobs.KillForSession(c.parentSessionID(), id)
 }
 
+// CancelSubagent terminates one running foreground (synchronous) sub-agent by
+// transcript ref (tl1209). The child unwinds through the same cancelled-outcome
+// path a background job's Kill uses, while the turn itself keeps running — the
+// parent model receives the cancelled subagent result and decides what next.
+// Reports whether a live foreground run was terminated.
+func (c *Controller) CancelSubagent(ref string) bool {
+	if c == nil || c.executor == nil {
+		return false
+	}
+	return c.executor.CancelSubagentRun(ref)
+}
+
 // WorkspaceLeaseState reports the process-local held and waiting lease scope.
 // Canonical keys are used only for matching another local controller and are
 // never copied into user-facing payloads.

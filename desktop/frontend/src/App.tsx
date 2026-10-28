@@ -2312,6 +2312,20 @@ export default function App() {
       return false;
     }
   }, [refreshBackgroundRuntimes, showToast]);
+  // tl1209: terminate ONE foreground (synchronous) sub-agent by ref — the
+  // per-child bridge next to the per-job ones. The child ends with a
+  // cancelled outcome; the turn keeps running, so only the running-work
+  // snapshot needs a refresh.
+  const cancelSubagent = useCallback(async (tabId: string, ref: string): Promise<boolean> => {
+    try {
+      const cancelled = await app.CancelSubagentForTab(tabId, ref);
+      await refreshBackgroundRuntimes();
+      return cancelled;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), "error");
+      return false;
+    }
+  }, [refreshBackgroundRuntimes, showToast]);
   // Shift+Tab toggles only the collaboration axis; Ctrl/Cmd+Y toggles YOLO on the
   // tool-permission axis while preserving the Ask/Auto base mode.
   const cycleMode = useCallback(() => {
@@ -6411,6 +6425,7 @@ export default function App() {
               capsuleSubagents={foregroundSubagents.map((entry) => (entry.tabId === activeTabId ? { ...entry, tabId: "", title: "" } : entry))}
               onCapsuleCancelJob={cancelJob}
               onCapsuleCancelRuntimeJob={cancelRuntimeJob}
+              onCapsuleCancelSubagent={cancelSubagent}
               capsuleSessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}
               onCapsuleListSubagents={capsuleListSubagents}
               onCapsuleReadSubagent={capsuleReadSubagent}
@@ -6698,6 +6713,10 @@ export default function App() {
                         showToast(t("composer.capsuleHistoryFailed"), "error");
                       });
                     }}
+                    /* tl1209: 运行中行的单子代理终止 —— 与胶囊面板同一 cancelSubagent
+                       桥（App CancelSubagentForTab）。子代理以 cancelled 结局收束，
+                       主对话继续；ref 缺失（临时运行）的行不出按钮。 */
+                    onTerminateSubagent={(ref) => cancelSubagent(activeTabId ?? "", ref)}
                   />
                 </Suspense>
               ) : effectiveRightDockMode === "remote" ? (

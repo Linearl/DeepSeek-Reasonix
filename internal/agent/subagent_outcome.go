@@ -226,6 +226,10 @@ func emitSubagentLifecycle(sink event.Sink, phase, parentToolCallID, skillName, 
 	info := event.SubagentLifecycleInfo{
 		Phase: phase, Ref: run.Ref, ParentToolCallID: parentToolCallID,
 		Skill: skillName, Model: model, Effort: effort, Background: background,
+		// tl1209: the dispatch description rides the run's own sidecar meta, so
+		// every emit site (task, fleet, boot-wired skills) carries it without a
+		// signature change. Empty for records prepared before this field.
+		Description: run.Meta.Description,
 	}
 	if !run.Meta.CreatedAt.IsZero() {
 		info.StartUnixMs = run.Meta.CreatedAt.UnixMilli()

@@ -318,7 +318,7 @@ section("mergeCapsuleWork：前台子代理并入运行列表（557 第三路数
   eq(merged.length, 4, "前台子代理条目并入且不挤掉 job 条目");
   const own = merged.find((entry) => entry.job.id === "sa_own");
   ok(own !== undefined && own.tabId === "" && own.origin === "", "自身子代理行 tabId 空、无来源标签");
-  eq(own?.job.kind, "subagent", "子代理行 kind 为 subagent（据此免停止按钮）");
+  eq(own?.job.kind, "subagent", "子代理行 kind 为 subagent（tl1209 起据此走单子代理终止链）");
   eq(own?.job.label, "调研子代理", "行标题取子代理名");
   eq(own?.job.startedAt, subs[0].startedAt, "行起始时间来自生命周期 StartUnixMs");
   const foreign = merged.find((entry) => entry.job.id === "sa_foreign");
@@ -327,6 +327,19 @@ section("mergeCapsuleWork：前台子代理并入运行列表（557 第三路数
   const split = splitCapsuleEntries(merged);
   eq(split.agents.length, 3, "子代理行归智能体节（非 bash）");
   eq(mergeCapsuleWork([], [], "x", [subagent()]).length, 1, "仅子代理时也有条目");
+}
+
+section("mergeCapsuleWork：tl1209 派单描述优先于 profile 名（ask 派十个也能分清）");
+{
+  const subs = [
+    subagent({ ref: "sa_d1", name: "ask", description: "核对凭据文件的读取链" }),
+    subagent({ ref: "sa_d2", name: "ask", description: "" }),
+  ];
+  const merged = mergeCapsuleWork([], [], "未知任务", subs);
+  const d1 = merged.find((entry) => entry.job.id === "sa_d1");
+  eq(d1?.job.label, "核对凭据文件的读取链", "有派单描述时行标题取描述");
+  const d2 = merged.find((entry) => entry.job.id === "sa_d2");
+  eq(d2?.job.label, "ask", "无描述回退 profile 名（再回退 ref），不渲染裸空");
 }
 
 section("mergeCapsuleWork：子代理 ref 与 job id 相撞时防御性去重（557 双源断言前端侧）");
@@ -982,6 +995,18 @@ section("任务 558 限高：列表内部滚动 CSS 契约（空态走 .capsule-
   ok((listBlock?.[0] ?? "").includes("overflow-y: auto"), "超出部分列表内部滚动");
   const source = readFileSync(resolve(here, "../components/CapsulePanel.tsx"), "utf8");
   ok(source.includes('className="capsule-panel__empty"'), "空数据走空态分支，不渲染限高列表（无怪异大空块）");
+}
+
+section("tl1209 源级契约：前台子代理行走单子代理终止链（不落 job 取消链）");
+{
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(resolve(here, "../components/CapsulePanel.tsx"), "utf8");
+  // 行为链（渲染+点击+ref 传递）由 subagent-panel-dock 断言闭合（同一 App 注
+  // 入桥）；这里锁 capsule 侧的承重契约：subagent kind 的停止绝不 fall through
+  // 到 jobs 管理器——取消 job id 什么也停不掉。
+  ok(source.includes('if (entry.job.kind === "subagent") {'), "stop() 对子代理行走独立分支");
+  ok(source.includes("onCancelSubagent(entry.tabId, entry.job.id)"), "子代理终止按 (tabId, ref) 走注入的单子代理桥");
+  ok(source.includes("? Boolean(onCancelSubagent)"), "子代理行停止按钮以桥 prop 存在为渲染前提（无桥逐字节回到 pre-1209）");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

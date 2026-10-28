@@ -824,6 +824,8 @@ func formatSubagentUsageLine(s SubagentUsageSummary) string {
 
 // finish flushes pending previews, emits the single terminal status, and — if
 // the tracker owns its merger — closes it. ctxErr non-nil maps to cancelled,
+// a typed cancelled outcome maps to cancelled (tl1209: a foreground child
+// stopped through its own run-level cancel while the parent ctx stays live),
 // a typed partial outcome maps to partial, other errors to failed, and success
 // to completed. Idempotent: late events and repeated calls are ignored.
 func (t *subagentProgressTracker) finish(ctxErr, runErr error) {
@@ -839,8 +841,13 @@ func (t *subagentProgressTracker) finish(ctxErr, runErr error) {
 	} else if runErr != nil {
 		phase = subagentPhaseFailed
 		var subErr *SubagentRunError
-		if errors.As(runErr, &subErr) && subErr.Outcome.Status == SubagentOutcomePartial {
-			phase = subagentPhasePartial
+		if errors.As(runErr, &subErr) {
+			switch subErr.Outcome.Status {
+			case SubagentOutcomeCancelled:
+				phase = subagentPhaseCancelled
+			case SubagentOutcomePartial:
+				phase = subagentPhasePartial
+			}
 		}
 	}
 	durationMs := t.merger.clock.Now().Sub(t.started).Milliseconds()

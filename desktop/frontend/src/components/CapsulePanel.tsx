@@ -125,7 +125,9 @@ export function mergeCapsuleWork(
       job: {
         id: subagent.ref,
         kind: "subagent",
-        label: subagent.name || subagent.ref,
+        // tl1209: prefer the dispatch description over the profile/skill name
+        // — a session's ten "ask" children must read as ten different rows.
+        label: subagent.description || subagent.name || subagent.ref,
         status: "running",
         startedAt: subagent.startedAt,
       },
@@ -280,6 +282,7 @@ export function CapsuleIndicator({
   subagents = [],
   onCancelJob,
   onCancelRuntimeJob,
+  onCancelSubagent,
   sessionPath,
   onListSubagents,
   onReadSubagent,
@@ -296,8 +299,9 @@ export function CapsuleIndicator({
   // Task 557: running foreground (synchronous) sub-agents (App.RunningSubagents)
   // — they block inside the parent turn and never register as jobs, so the two
   // job-based sources above cannot see them. Own-tab rows arrive with tabId "";
-  // foreign rows carry their tab and render the tab title as origin. No stop
-  // chain: a foreground child ends with its parent turn (composer stop).
+  // foreign rows carry their tab and render the tab title as origin. Since
+  // tl1209 they are stoppable through the per-child cancel bridge (below);
+  // before that they had no stop chain and ended only with the parent turn.
   subagents?: readonly ForegroundSubagentView[];
   // Existing stop chain (App.CancelJobForTab -> Controller.CancelJob ->
   // jobs.KillForSession); shared with the status-bar jobs chip. Stops rows
@@ -306,6 +310,12 @@ export function CapsuleIndicator({
   // Per-tab stop chain (App.CancelJobForTab(tabId, jobId)) for rows that
   // belong to another visible or detached runtime (task 440 stop wiring).
   onCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
+  // tl1209: per-child terminate chain (App.CancelSubagentForTab(tabId, ref) ->
+  // Controller.CancelSubagent -> TaskTool run-level ctx cancel) for the
+  // foreground sub-agent rows. The child unwinds with a cancelled outcome
+  // while the turn keeps running; without the bridge the rows render without
+  // a stop button, byte-for-byte the pre-1209 behavior.
+  onCancelSubagent?: (tabId: string, ref: string) => Promise<boolean>;
   // Active tab's session path; owner filter for the ended sub-agents
   // directory. Empty (no bound session) simply yields an empty directory.
   sessionPath?: string;
@@ -440,6 +450,23 @@ export function CapsuleIndicator({
 
   const stop = async (entry: CapsuleWorkEntry) => {
     const key = `${entry.tabId}:${entry.job.id}`;
+    // tl1209: foreground sub-agent rows route through the per-child terminate
+    // chain — cancelling the job id would hit the jobs manager and stop
+    // nothing, so the subagent kind never falls through to the job chains.
+    if (entry.job.kind === "subagent") {
+      if (!onCancelSubagent || stopping.has(key)) return;
+      setStopping((current) => new Set(current).add(key));
+      try {
+        await onCancelSubagent(entry.tabId, entry.job.id);
+      } finally {
+        setStopping((current) => {
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
+      return;
+    }
     // Route by origin: active-snapshot rows go through the shared cancel
     // chain; foreign-runtime rows must go through the per-tab chain —
     // cancelling a foreign job id on the active controller would silently
@@ -516,10 +543,15 @@ export function CapsuleIndicator({
           // A foreign-runtime row can only stop through the per-tab chain; if
           // App didn't wire it, the button renders disabled rather than lying
           // (cancelling a foreign id on the active controller stops nothing).
-          // Task 557: foreground sub-agent rows are never stoppable — there is
-          // no per-child cancel; the child ends with its parent turn, whose
-          // stop the composer already owns.
-          const canStop = entry.job.kind !== "subagent" && (entry.tabId ? Boolean(onCancelRuntimeJob) : Boolean(onCancelJob));
+          // tl1209: foreground sub-agent rows stop through the per-child
+          // cancel bridge — the same terminate semantics a background job's
+          // stop button has, so the no-longer-true 557 "never stoppable"
+          // rule is retired. Without the bridge the button stays hidden
+          // (byte-for-byte the pre-1209 rows).
+          const isSubagent = entry.job.kind === "subagent";
+          const canStop = isSubagent
+            ? Boolean(onCancelSubagent)
+            : (entry.tabId ? Boolean(onCancelRuntimeJob) : Boolean(onCancelJob));
           return (
             <div className="capsule-panel__row" key={`${entry.tabId}:${entry.job.id}`} data-capsule-job-id={entry.job.id} data-capsule-job-kind={entry.job.kind} data-capsule-job-tab={entry.tabId}>
               <span className="capsule-panel__row-icon" aria-hidden="true">
@@ -577,14 +609,16 @@ export function CapsuleIndicator({
           type="button"
           className="capsule-panel__row-main"
           disabled={!view.hasTranscript}
-          title={view.hasTranscript ? view.name || view.ref : t("composer.capsuleNotOpenable")}
+          title={view.hasTranscript ? view.description || view.name || view.ref : t("composer.capsuleNotOpenable")}
           onClick={() => openEnded(view)}
         >
           <span className="capsule-panel__row-icon" aria-hidden="true">
             {view.kind === "skill" ? <Sparkles size={14} /> : <Bot size={14} />}
           </span>
           <span className="capsule-panel__copy">
-            <strong>{view.name || view.kind || view.ref}</strong>
+            {/* tl1209: description-first so ten ended "ask" records read as
+                ten distinct dispatches. */}
+            <strong>{view.description || view.name || view.kind || view.ref}</strong>
             <small>{metaBits.join(" · ")}</small>
           </span>
           {view.outcome && <span className="capsule-panel__outcome">{view.outcome}</span>}
@@ -613,20 +647,20 @@ export function CapsuleIndicator({
   // ended rows; the detail composer does the sending.
   const runningArtifactRows = runningArtifacts.map((view) => (
     <div className="capsule-panel__row capsule-panel__row--ended" key={view.ref} data-capsule-running-id={view.ref}>
-      <button
-        type="button"
-        className="capsule-panel__row-main"
-        disabled={!view.hasTranscript}
-        title={view.hasTranscript ? view.name || view.ref : t("composer.capsuleNotOpenable")}
-        onClick={() => openEnded(view)}
-      >
-        <span className="capsule-panel__row-icon" aria-hidden="true">
-          {view.kind === "skill" ? <Sparkles size={14} /> : <Bot size={14} />}
-        </span>
-        <span className="capsule-panel__copy">
-          <strong>{view.name || view.kind || view.ref}</strong>
-          <small>{[t("subagent.phase.running"), view.model, capsuleTimeLabel(view.createdAt)].filter(Boolean).join(" · ")}</small>
-        </span>
+        <button
+          type="button"
+          className="capsule-panel__row-main"
+          disabled={!view.hasTranscript}
+          title={view.hasTranscript ? view.description || view.name || view.ref : t("composer.capsuleNotOpenable")}
+          onClick={() => openEnded(view)}
+        >
+          <span className="capsule-panel__row-icon" aria-hidden="true">
+            {view.kind === "skill" ? <Sparkles size={14} /> : <Bot size={14} />}
+          </span>
+          <span className="capsule-panel__copy">
+            <strong>{view.description || view.name || view.kind || view.ref}</strong>
+            <small>{[t("subagent.phase.running"), view.model, capsuleTimeLabel(view.createdAt)].filter(Boolean).join(" · ")}</small>
+          </span>
         {view.pendingMail > 0 && (
           <span className="capsule-panel__mail-badge" title={t("composer.capsuleMailPending", { n: view.pendingMail })}>
             {t("composer.capsuleMailPending", { n: view.pendingMail })}
@@ -669,7 +703,7 @@ export function CapsuleIndicator({
                   <ArrowLeft size={13} aria-hidden="true" />
                   {t("composer.capsuleBack")}
                 </button>
-                <strong className="capsule-panel__detail-title">{selected.name || selected.ref}</strong>
+                <strong className="capsule-panel__detail-title">{selected.description || selected.name || selected.ref}</strong>
               </header>
               {onSendMessage && sessionPath && (
                 <CapsuleMailComposer sessionPath={sessionPath} target={selected} onSendMessage={onSendMessage} />
