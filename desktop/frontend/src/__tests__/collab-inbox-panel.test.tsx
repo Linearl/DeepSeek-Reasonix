@@ -529,6 +529,76 @@ assert.equal(
 await act(async () => tl1226Root.unmount());
 tl1226Host.remove();
 
+// ── tl1226b ①：新信到达角标即涨（后端投递 CollabMailChanged 事件 → 角标重查）──
+// tl1226 钉了挂载/开合/写广播三条刷新时机；这里钉第四条：后端投递观察者发的
+// CollabMailChanged 运行时事件到达 → hook 即时重查 CountUnreadCollabMail——
+// 新信不必等任何面板交互即涨角标（不引轮询；Go 侧契约见
+// desktop/collab_mail_arrival_test.go）。harness 默认无 window.runtime，这里
+// 装一个捕获 EventsOn 订阅的假运行时来驱动事件。
+{
+  let arrivedUnread = 2;
+  let arrivedCountCalls = 0;
+  const runtimeHandlers = new Map<string, Array<(payload?: unknown) => void>>();
+  (dom.window as unknown as { runtime: unknown }).runtime = {
+    EventsOn: (name: string, cb: (payload?: unknown) => void) => {
+      const list = runtimeHandlers.get(name) ?? [];
+      list.push(cb);
+      runtimeHandlers.set(name, list);
+      return () => {
+        runtimeHandlers.set(name, (runtimeHandlers.get(name) ?? []).filter((fn) => fn !== cb));
+      };
+    },
+  };
+  (dom.window as unknown as { go: unknown }).go = { main: { App: {} } };
+  const arrivedBindings: CollabInboxBindings = {
+    ...bindings,
+    async CountUnreadCollabMail() {
+      arrivedCountCalls += 1;
+      return arrivedUnread;
+    },
+  };
+  function ArrivedBadgeProbe() {
+    const n = useCollabInboxUnreadCount(arrivedBindings);
+    return <span className="badge-probe-arrived">{n}</span>;
+  }
+  const arrivedHost = document.createElement("div");
+  document.body.appendChild(arrivedHost);
+  const arrivedRoot = createRoot(arrivedHost);
+  await act(async () => {
+    arrivedRoot.render(<ArrivedBadgeProbe />);
+  });
+  assert.equal(document.querySelector(".badge-probe-arrived")!.textContent, "2", "tl1226b: badge mounts at 2 unread");
+  const callsBeforeArrival = arrivedCountCalls;
+  arrivedUnread = 3;
+  await act(async () => {
+    for (const fn of runtimeHandlers.get("CollabMailChanged") ?? []) fn({ id: "m_new", from: "sc_a", to: "sc_b" });
+  });
+  assert.equal(
+    arrivedCountCalls > callsBeforeArrival,
+    true,
+    "tl1226b: a CollabMailChanged runtime event re-queries the unread count",
+  );
+  assert.equal(
+    document.querySelector(".badge-probe-arrived")!.textContent,
+    "3",
+    "tl1226b: the badge rises on mail arrival without any user interaction",
+  );
+  // 卸载即注销订阅：此后事件不再触发重查（不泄漏监听器）。
+  await act(async () => {
+    arrivedRoot.unmount();
+  });
+  const callsAfterUnmount = arrivedCountCalls;
+  await act(async () => {
+    for (const fn of runtimeHandlers.get("CollabMailChanged") ?? []) fn({ id: "m_new2" });
+  });
+  assert.equal(
+    arrivedCountCalls,
+    callsAfterUnmount,
+    "tl1226b: after unmount the runtime-event subscription is gone (no re-query)",
+  );
+  arrivedHost.remove();
+}
+
 await act(async () => root.unmount());
 dom.window.close();
 console.log("collab inbox panel checks passed");

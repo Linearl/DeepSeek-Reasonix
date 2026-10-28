@@ -23,6 +23,7 @@ import { collabTitleFor, rememberCollabContactNames, shortContactId } from "../l
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
 import { groupForProject, loadProjectGroupAssign, loadProjectGroups } from "../lib/projectGroups";
+import { onCollabMailChanged as onCollabMailChangedRuntime } from "../lib/inboxEvents";
 import { acquireOverlayOrder } from "../lib/stackingOrder";
 
 export type CollabMailEntry = {
@@ -234,10 +235,13 @@ export function onCollabMailChanged(cb: () => void): () => void {
 /**
  * 任务 320 遗留 #1：图标行收件箱按钮的未读徽标数 —— 未读（收件方 seen 游标
  * 未覆盖）且未消除的统一表条目数，与面板默认视图的「待处理」口径一致。
- * 刷新时机（派单钦定 + tl1226 补口）：挂载时 + 面板每次开/合切换时 + 面板内
- * 任一写操作成功广播时 —— 打开路径会应用保留期（可能清理旧信），关闭路径
- * 紧随刚发生的已读/消除，写广播让「全部已读」等面板内动作不必等开/合即清
- * 角标；不做轮询。网关不可达时保留上次数值（与面板 refresh 的容错同款）。
+ * 刷新时机（派单钦定 + tl1226 补口 + tl1226b 补口）：挂载时 + 面板每次开/合
+ * 切换时 + 面板内任一写操作成功广播时 + 后端投递 CollabMailChanged 事件到达
+ * 时（tl1226b ①「新信到达角标即涨」：投递侧观察者经 Wails 事件通知，不引轮
+ * 询）——打开路径会应用保留期（可能清理旧信），关闭路径紧随刚发生的已读/消
+ * 除，写广播让「全部已读」等面板内动作不必等开/合即清角标，投递广播让新信
+ * 不必等任何面板交互即涨角标。网关不可达时保留上次数值（与面板 refresh 的
+ * 容错同款）。
  */
 export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): number {
   const b: CollabInboxBindings = bindings ?? app;
@@ -257,7 +261,8 @@ export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): numbe
     refresh();
     const offOpen = onCollabInboxOpenChange(refresh);
     const offChanged = onCollabMailChanged(refresh);
-    return () => { alive = false; offOpen(); offChanged(); };
+    const offArrived = onCollabMailChangedRuntime(refresh);
+    return () => { alive = false; offOpen(); offChanged(); offArrived(); };
   }, [b]);
   return count;
 }
