@@ -169,6 +169,11 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"editEvidenceRelaxed": func(c *Config, on bool) error { return c.SetExperimentalEditEvidenceRelaxed(on) },
 	"multiEditInjection":  func(c *Config, on bool) error { return c.SetExperimentalMultiEditInjection(on) },
 	"capabilityGroups":    func(c *Config, on bool) error { return c.SetExperimentalCapabilityGroups(on) },
+	// tl-1218：multi_edit 三条增强（可选档，默认关，重启生效）——普通布尔
+	// 主开关，批量面无护栏冲突。
+	"multiEditErrorDetail":    func(c *Config, on bool) error { return c.SetExperimentalMultiEditErrorDetail(on) },
+	"multiEditEvidenceNarrow": func(c *Config, on bool) error { return c.SetExperimentalMultiEditEvidenceNarrow(on) },
+	"multiEditSkipFailed":     func(c *Config, on bool) error { return c.SetExperimentalMultiEditSkipFailed(on) },
 }
 
 // labBulkExcluded 范围内但明确不进批量的特性：id → 原因码。

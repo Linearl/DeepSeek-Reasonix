@@ -546,6 +546,11 @@ type SettingsView struct {
 	// false; 铁律 2). Task 815: settings-view mirror for the unified
 	// registration window.
 	ExperimentalEditEvidenceRelaxed bool `json:"experimentalEditEvidenceRelaxed"`
+	// tl-1218: the three multi_edit enhancement switches, 工具优化 family
+	// members (all default false; restart to apply).
+	ExperimentalMultiEditErrorDetail    bool `json:"experimentalMultiEditErrorDetail"`
+	ExperimentalMultiEditEvidenceNarrow bool `json:"experimentalMultiEditEvidenceNarrow"`
+	ExperimentalMultiEditSkipFailed     bool `json:"experimentalMultiEditSkipFailed"`
 	// ExperimentalLifecycleNoiseGate is the task-377 crash-report noise
 	// triage; the gate is read once at startup diagnostics, restart to apply.
 	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
@@ -911,6 +916,11 @@ type DesktopStartupSettingsView struct {
 	// false; 铁律 2). Task 815: settings-view mirror for the unified
 	// registration window.
 	ExperimentalEditEvidenceRelaxed bool `json:"experimentalEditEvidenceRelaxed"`
+	// tl-1218: the three multi_edit enhancement switches, 工具优化 family
+	// members (all default false; restart to apply).
+	ExperimentalMultiEditErrorDetail    bool `json:"experimentalMultiEditErrorDetail"`
+	ExperimentalMultiEditEvidenceNarrow bool `json:"experimentalMultiEditEvidenceNarrow"`
+	ExperimentalMultiEditSkipFailed     bool `json:"experimentalMultiEditSkipFailed"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
@@ -1749,6 +1759,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalMultiEditInjection = cfg.Agent.ExperimentalMultiEditInjection
 		// Task 789: relaxed edit evidence gate readback (task 815 registration window).
 		view.ExperimentalEditEvidenceRelaxed = cfg.Agent.ExperimentalEditEvidenceRelaxed
+		// tl-1218: three multi_edit enhancement switch readbacks.
+		view.ExperimentalMultiEditErrorDetail = cfg.Agent.ExperimentalMultiEditErrorDetail
+		view.ExperimentalMultiEditEvidenceNarrow = cfg.Agent.ExperimentalMultiEditEvidenceNarrow
+		view.ExperimentalMultiEditSkipFailed = cfg.Agent.ExperimentalMultiEditSkipFailed
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Agent.ExperimentalDream
 		// 任务 1069：模型提前结束判定器续轮提醒 readback（stalled_intent_nudge）。
@@ -2034,6 +2048,10 @@ func (a *App) Settings() SettingsView {
 		ExperimentalMultiEditInjection: cfg.Agent.ExperimentalMultiEditInjection,
 		// Task 789: relaxed edit evidence gate readback (task 815 registration window).
 		ExperimentalEditEvidenceRelaxed: cfg.Agent.ExperimentalEditEvidenceRelaxed,
+		// tl-1218: three multi_edit enhancement switch readbacks.
+		ExperimentalMultiEditErrorDetail:    cfg.Agent.ExperimentalMultiEditErrorDetail,
+		ExperimentalMultiEditEvidenceNarrow: cfg.Agent.ExperimentalMultiEditEvidenceNarrow,
+		ExperimentalMultiEditSkipFailed:     cfg.Agent.ExperimentalMultiEditSkipFailed,
 		ExperimentalTraceAsState:        cfg.Agent.TraceAsState,
 		ExperimentalDream:               cfg.Agent.ExperimentalDream,
 		// 任务 1069：模型提前结束判定器续轮提醒 readback。

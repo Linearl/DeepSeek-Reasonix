@@ -445,6 +445,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "optional" },
           { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },
           { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional" },
+          // tl-1218：multi_edit 三条增强（各自独立开关，默认关重启生效）。
+          { id: "multiEditErrorDetail", labelKey: "settings.multiEditErrorDetail", tier: "optional" },
+          { id: "multiEditEvidenceNarrow", labelKey: "settings.multiEditEvidenceNarrow", tier: "optional" },
+          { id: "multiEditSkipFailed", labelKey: "settings.multiEditSkipFailed", tier: "optional" },
         ] },
       ],
     },

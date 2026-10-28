@@ -708,6 +708,32 @@ func (a *App) SetExperimentalEditEvidenceRelaxed(enabled bool) error {
 	})
 }
 
+// SetExperimentalMultiEditErrorDetail toggles the tl-1218 ① evidence
+// error-detail enhancement (ships off; restart to apply — the switch is read
+// once per boot snapshot).
+func (a *App) SetExperimentalMultiEditErrorDetail(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalMultiEditErrorDetail(enabled)
+	})
+}
+
+// SetExperimentalMultiEditEvidenceNarrow toggles the tl-1218 ② evidence-gate
+// narrow mode (ships off; restart to apply).
+func (a *App) SetExperimentalMultiEditEvidenceNarrow(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalMultiEditEvidenceNarrow(enabled)
+	})
+}
+
+// SetExperimentalMultiEditSkipFailed toggles the tl-1218 ③ multi_edit
+// skip-failed mode (ships off; restart to apply — the tool surface is
+// composed per session).
+func (a *App) SetExperimentalMultiEditSkipFailed(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalMultiEditSkipFailed(enabled)
+	})
+}
+
 // SetExperimentalOpenCodeGoUsage toggles the task-163 usage card (ships off;
 // the frontend gate issues no usage query while it is off).
 func (a *App) SetExperimentalOpenCodeGoUsage(enabled bool) error {

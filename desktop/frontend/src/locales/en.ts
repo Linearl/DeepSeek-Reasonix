@@ -2632,6 +2632,20 @@ export const en = {
 "settings.editEvidenceRelaxed.on": "On",
 "settings.editEvidenceRelaxed.off": "Off",
 "settings.editEvidenceRelaxedHint": "Relax edit_file read-evidence checks: same-turn reads count as valid evidence, and stale evidence no longer blocks bash writes in the same directory (downgraded to a warning). Default off — off matches strict behavior exactly (task 789). Effective timing: the switch is fixed at startup; changing it requires an app restart to take effect.",
+  // tl-1218: the three multi_edit enhancements (tool-optimization card members;
+  // default off, restart to apply).
+  "settings.multiEditErrorDetail": "multi_edit error detail",
+  "settings.multiEditErrorDetail.on": "On",
+  "settings.multiEditErrorDetail.off": "Off",
+  "settings.multiEditErrorDetailHint": "Evidence-class blocks (missing/stale read evidence) attach the current on-disk content of the missing or mismatched lines, so the model can retry against the real text in one step (caps: 5 lines per file, 200 chars per line, 2KB total). Default off — off never includes file content in a block message (byte-identical to the baseline). Effective timing: the switch is fixed at startup; changing it requires an app restart to take effect.",
+  "settings.multiEditEvidenceNarrow": "multi_edit evidence-gate narrowing",
+  "settings.multiEditEvidenceNarrow.on": "On",
+  "settings.multiEditEvidenceNarrow.off": "Off",
+  "settings.multiEditEvidenceNarrowHint": "While a read-evidence requirement is outstanding, only writes whose paths involve that file stay blocked; unrelated calls (cross-session messaging etc.) pass instead of riding the collective block. Shell commands are judged by static write-path analysis (unanalyzable ones stay blocked); file tools by their declared path. Default off — off keeps the existing collective block. Effective timing: the switch is fixed at startup; changing it requires an app restart to take effect.",
+  "settings.multiEditSkipFailed": "multi_edit skip failed edits",
+  "settings.multiEditSkipFailed.on": "On",
+  "settings.multiEditSkipFailed.off": "Off",
+  "settings.multiEditSkipFailedHint": "One failed edit inside a multi_edit batch no longer aborts the call: the step is skipped, later steps still run, and the final response reports every edit (index + applied/failed + reason); an all-failed batch still errors and leaves the file untouched. Default off — off keeps the atomic semantics: any failure aborts the batch and the file stays as it was. Effective timing: the switch is fixed at startup; changing it requires an app restart to take effect.",
   "settings.toolOptimizations.risk": "Risk note: the gate linkage is a behavior change (read-evidence waiver) and is not battle-tested yet. If you see a wrong pass or a wrong block, switch this off first to roll back, then report the issue.",
   // Task 971: persistent top-of-page warning for the tool-optimization hub (rev2 final wording).
   "settings.toolOptHub": "Tool optimization (tool-list switches)",

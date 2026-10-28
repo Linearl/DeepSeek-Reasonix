@@ -2669,6 +2669,10 @@ export interface DesktopStartupSettingsView {
   experimentalMultiEditInjection?: boolean | null;
   /** Task 789: relaxed edit evidence gate (工具优化 companion); ships off; restart to apply. Task 815: settings-page entry. */
   experimentalEditEvidenceRelaxed?: boolean;
+  /** tl-1218: multi_edit 三条增强（①错误详情增强 ②证据门连坐收窄 ③跳过失败项模式；工具优化卡成员行；全部默认关，重启生效）。 */
+  experimentalMultiEditErrorDetail?: boolean;
+  experimentalMultiEditEvidenceNarrow?: boolean;
+  experimentalMultiEditSkipFailed?: boolean;
   /** Task 377: lifecycle noise triage (crash-pending residue); boot snapshot; restart to apply. */
   experimentalLifecycleNoiseGate?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */

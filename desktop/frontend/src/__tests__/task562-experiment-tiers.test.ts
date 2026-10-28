@@ -123,15 +123,19 @@ console.log("\ntask 562 lab three-tier badges");
   // tl 1165：smoothScrollFollow（流式滚动平滑跟随，DSH ScrollFollow 同款四条
   // 防线，默认关）按可选档入表——可选 39→40、总数 77→78（Go 侧同步 67→68）。
   // tl 1174：jsonlZstd（冷会话 transcript zstd 归档，可选，默认关）补登——
-  // 可选 40→41（总数 77→78；Go 侧渲染表已随件登记）。unstable 13→12 为
-  // 基线校正（表内实际 12 项，13 系过时期望，2026-10-28 合并线核对六基线
-  // 一致后修正）。总数 78 恰与旧期望同值系巧合（旧期望把 13 个 unstable
-  // 虚计所致）。
-  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 41 && counts.unstable === 12 && counts.retired === 1,
-    `register counts are 4 稳定/20/41/12/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 78, `register holds exactly 78 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 41 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/20/41/12/1");
+  // 可选 +1（Go 侧渲染表已随件登记）。unstable 13→12 为基线校正（表内
+  // 实际 12 项，13 系过时期望，2026-10-28 合并线核对六基线一致后修正）。
+  // tl-1218：multi_edit 三条增强（multiEditErrorDetail / multiEditEvidenceNarrow /
+  // multiEditSkipFailed，toolOptimizations 聚合页成员行）按可选档入表——
+  // 可选 +3（Go 侧同步 69→72）。
+  // 合并线并集解回调（2026-10-28）：主线 jsonlZstd 补登（58c19737d，
+  // optional）× 1218 三新增 ⇒ 并集态 4/20/44/12/1 = 81 项（zcode 预警的
+  // 「81/13」中 13 系误算——jsonlZstd 非 unstable，已按实值钉 12）。
+  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 44 && counts.unstable === 12 && counts.retired === 1,
+    `register counts are 4 稳定/20/44/12/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 81, `register holds exactly 81 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/20/44/12/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -194,11 +198,15 @@ console.log("\ntask 562 lab three-tier badges");
   // 口径计入 Go-only config-only 豁免（后续设置页入口补前端注册时两侧转共享，
   // 此处同步收回）。
   // tl 1165：smoothScrollFollow 入表（两侧共享）——Go registry 68→69。
-  ok(Object.keys(goTiers).length === 69, `Go registry parses to 69 entries (got ${Object.keys(goTiers).length})`);
+  // tl-1218：multi_edit 三条增强入表（两侧共享，工具优化聚合页成员行）——
+  // Go registry 69→72。
+  ok(Object.keys(goTiers).length === 72, `Go registry parses to 72 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
   const feOnly = feIds.filter((id) => !goIds.includes(id));
+  // 并集解回调（2026-10-28）：jsonlZstd 前端已随 58c19737d 注册 ⇒ Go-only
+  // 收回 3 条（去 jsonlZstd）。
   ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "networkRetryBudget", "sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
   // tl 1132：startupLoading（「启动与加载」纯前端容器 id，Go 渲染表无条目，
@@ -238,7 +246,8 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 1070：smartAutomation 卡补 standardContinuation 成员行——44→45。
   // tl 1132：startupLoading 卡补 startupSplash 成员行——45→46。
   // tl 1165：viewLayout 卡补 smoothScrollFollow 成员行——46→47。
-  ok(members.length === 47, `merged cards carry 47 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl-1218：toolOptimizations 卡补 multi_edit 三条增强成员行——47→50。
+  ok(members.length === 50, `merged cards carry 50 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -255,7 +264,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 1070：standardContinuation 叠加入表 → 74。
   // tl 1132：startupSplash + startupLoading 叠加入表 → 77。
   // tl 1165：smoothScrollFollow 叠加入表 → 78。
-  ok(covered.size === 78, "rail entries cover all 78 features");
+  // tl-1218：multi_edit 三条增强叠加入表 → 80（基线 77 口径 +3）；
+  // 并集解回调（58c19737d jsonlZstd 已计入主线 78 口径）→ 78+3=81。
+  ok(covered.size === 81, "rail entries cover all 81 features");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含

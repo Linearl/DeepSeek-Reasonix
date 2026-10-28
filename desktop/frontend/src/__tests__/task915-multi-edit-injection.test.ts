@@ -40,8 +40,9 @@ console.log("\ntask 915 multi_edit injection (extras channel + panel-layer defau
   // 任务 943：extras 门改读 MultiEditInjectionEnabled（注入键缺省回落族键）。
   ok(boot.includes(`if cfg.MultiEditInjectionEnabled() {
 		extras = append(extras, "multi_edit")`), "providerSurfaceExtras appends multi_edit behind MultiEditInjectionEnabled (task-943 split)");
-  // readBack 面仍走族键（addBuiltins 参数）。
-  ok(boot.includes(`fileWriteReceipt, cfg.ToolOptimizationsEnabled())`), "addBuiltins readBack flag still resolves through the family helper");
+  // readBack 面仍走族键（addBuiltins 参数；tl-1218 ③ 在其后追加
+  // multi_edit 跳过失败项参数，readBack 位置与语义不变）。
+  ok(boot.includes(`fileWriteReceipt, cfg.ToolOptimizationsEnabled(), cfg.MultiEditSkipFailedEnabled())`), "addBuiltins readBack flag still resolves through the family helper");
   const extrasTest = readRepo("internal/boot/provider_surface_extras_test.go");
   ok(extrasTest.includes("TestProviderSurfaceExtrasCarryMultiEditWithToolOptimizations"), "extras gate has its own two-state pin");
   ok(extrasTest.includes("TestBootRequestCarriesMultiEditWhenFamilyLit"), "real-build capture pins tools + readBack schema");

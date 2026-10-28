@@ -170,6 +170,11 @@ export interface SettingsView {
   // Task 789: relaxed edit evidence gate (工具优化 companion; ships off;
   // restart to apply). Task 815: settings-page entry for the registration window.
   experimentalEditEvidenceRelaxed?: boolean;
+  // tl-1218: multi_edit 三条增强（①错误详情增强 ②证据门连坐收窄 ③跳过
+  // 失败项模式；工具优化卡成员行；全部默认关，重启生效）。
+  experimentalMultiEditErrorDetail?: boolean;
+  experimentalMultiEditEvidenceNarrow?: boolean;
+  experimentalMultiEditSkipFailed?: boolean;
   // Task 377: crash-report lifecycle noise triage (boot snapshot; restart to apply).
   experimentalLifecycleNoiseGate?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
