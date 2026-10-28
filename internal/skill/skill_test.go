@@ -1037,14 +1037,27 @@ func TestManualInvocationSkillExcludedFromIndex(t *testing.T) {
 	}
 }
 
-func TestApplyIndexTruncates(t *testing.T) {
+// tl1224 阶段二（全量注入）：the former 4000-rune catalog cap is retired — an
+// oversized catalog renders EVERY enabled skill line instead of silently
+// cutting rows past the cap (the same capability-visibility failure the
+// directory block's 64KB cap had).
+func TestApplyIndexRendersEverySkillPastOldCap(t *testing.T) {
 	var skills []Skill
 	for range 200 {
 		skills = append(skills, Skill{Name: "skill" + strings.Repeat("x", 20), Description: strings.Repeat("d", 50)})
 	}
 	out := ApplyIndex("BASE", skills)
-	if !strings.Contains(out, "truncated") {
-		t.Error("oversized index should be truncated")
+	if strings.Contains(out, "truncated") {
+		t.Error("truncation marker returned; the tl1224 phase-2 uncap regressed")
+	}
+	for i := range 200 {
+		want := "- skill" + strings.Repeat("x", 20)
+		if !strings.Contains(out, want) {
+			t.Fatalf("skill line %d missing from the catalog", i)
+		}
+	}
+	if got := strings.Count(out, "\n- "); got != 200 {
+		t.Fatalf("catalog rendered %d skill lines, want all 200", got)
 	}
 }
 
