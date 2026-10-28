@@ -208,12 +208,22 @@ ok(treeSource.includes("setGroups((current) => reorderProjectGroups(current, dra
   "dropping a group commits through reorderProjectGroups (persisted order)");
 ok(treeSource.includes('draggable={projectDragEnabled}'), "the group row is draggable outside search (same gate as project rows)");
 
-// ── 验收 ⑤：项目行拖拽与分组拖拽互不干扰 ────────────────────────────────────
-console.log("\n827-⑤ the two drags never interfere");
+// ── 验收 ⑤：分组拖拽与项目拖拽各走各的通道 ──────────────────────────────────
+// tl 1199 根修后契约升级：项目拖拽不再被分组行拒收——落到分组头 = 移入该分组
+// （走右键「移动到分组」同一条 handleMoveToGroup 落盘链）；互不干扰收窄为
+// 「互不串通道」：分组重排只认分组 MIME，项目移组只认项目专用 MIME，
+// text/plain（与会话拖拽共用）永不作为判别依据。
+console.log("\n827-⑤ the two drags never interfere (tl 1199: a project drop on a header = move)");
 
-// 分组拖拽门卫：只有分组拖拽（dragGroupId 置位）能让分组行成为 drop 目标
-ok(treeSource.includes("if (!dragGroupId || dragGroupId === group.id) return;"),
-  "a group row ignores any drag that is not a group drag (project drags keep flowing to project rows)");
+// 分组拖拽门卫（tl 1199 后形态）：dragover 分支化——分组拖拽独占重排分支，
+// 同组悬停照旧拒绝。
+ok(treeSource.includes("if (dragGroupId) {\n                  if (dragGroupId === group.id) return;"),
+  "a group drag keeps its exclusive reorder branch (same-group hover still rejected)");
+// 项目拖拽落分组头：Global 假项目与同组悬停不落。
+ok(treeSource.includes("if (!dragProjectRoot || dragProjectRoot === GLOBAL_PROJECT_ORDER_KEY) return;"),
+  "a project drag may land on a group header (tl 1199); the Global pseudo-project never does");
+ok(treeSource.includes("if ((groupForProjectRoot(dragProjectRoot)?.id ?? null) === group.id) return;"),
+  "hovering the project's own group never becomes a landing target");
 // 项目拖拽门卫（既有源码）：项目行 dragover 在 dragProjectRoot 为空时直接返回
 ok(treeSource.includes("if (!draggableProject || !dragProjectRoot || dragProjectRoot === projectDragKey) return;"),
   "a project row ignores any drag that is not a project drag (group drags never set dragProjectRoot)");
@@ -226,12 +236,19 @@ ok(treeSource.includes("if (!draggableProject || !dragProjectRoot || dragProject
   ok(!dragStartBody.includes("setDragProjectRoot") && !dragStartBody.includes('setData("text/plain"'),
     "the group dragstart never touches the project drag channel");
 }
-// 分组 drop 只认分组 MIME 兜底，不认 text/plain（项目行的兜底通道）
+// 分组头 drop 双分支：项目分支只认项目专用 MIME（text/plain 不作判别），
+// 分组重排分支只认分组 MIME 兜底。
 {
-  const drop = treeSource.slice(treeSource.indexOf("onDrop={(event) => {\n                event.preventDefault();\n                const draggedId = dragGroupId"));
+  const drop = treeSource.slice(treeSource.indexOf("onDrop={(event) => {\n                // tl 1199 ②"));
   const dropBody = drop.slice(0, drop.indexOf("onDragEnd"));
-  ok(dropBody.includes("getData(PROJECT_GROUP_DRAG_TYPE)") && !dropBody.includes('getData("text/plain")'),
-    "the group drop reads only the group MIME (never the project row's text/plain fallback)");
+  ok(dropBody.includes("getData(PROJECT_ROW_DRAG_TYPE)"),
+    "the header drop reads the project drag's dedicated MIME (never a bare text/plain fallback)");
+  ok(!dropBody.includes('getData("text/plain")'),
+    "the group-header drop never reads text/plain (topic drags share that channel)");
+  ok(dropBody.includes("handleMoveToGroup(droppedProjectRoot, group.id)"),
+    "the project branch commits through the same move-to-group chain as the row menu");
+  ok(dropBody.includes("getData(PROJECT_GROUP_DRAG_TYPE)"),
+    "the group-reorder branch still reads only the group MIME");
 }
 
 process.stdout.write(`\n827 four optimizations: ${passed} passed, ${failed} failed\n`);
