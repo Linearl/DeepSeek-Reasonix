@@ -936,6 +936,10 @@ func (s *MailStore) Deliver(ctx context.Context, msg MailMessage) (MailMessage, 
 	if err := appendJSONL(s.inboxPath(msg.To), msg); err != nil {
 		return MailMessage{}, err
 	}
+	// tl1226 遗留①（新信到达角标即涨）：新行落盘成功即广播一次投递事件。
+	// 去重重发（上方 dedupeResend 提前返回）不落新行，不会走到这里——未读数
+	// 没变的投递不广播。观察者异步执行，投递路径不被拖住。
+	notifyMailDelivered(s.root, msg)
 	return msg, nil
 }
 
