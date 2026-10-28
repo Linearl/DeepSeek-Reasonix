@@ -854,7 +854,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		return nil, err
 	}
 	bootTime.mark("provider")
+	// tl1229: prompt-stage internal segments (pure timing + one log line at
+	// the stage close; no behavior or prompt-content change).
+	promptSegs := newPromptSegments()
 	shell := sandbox.ResolveShell(cfg.Tools.Shell.Prefer, cfg.Tools.Shell.Path, stderr)
+	promptSegs.mark("shell")
 
 	sysPrompt, err := cfg.ResolveSystemPromptForRoot(root)
 	if err != nil {
@@ -888,6 +892,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 	}
 	sysPrompt += "\n\n" + sessioncontext.PolicyBlock()
+	promptSegs.mark("base_prompt")
 	sessionContextStatic := sessioncontext.Sections{Workspace: currentWorkspacePromptLine(root)}
 	// Execution modes no longer exist. Host obligations are fact-driven and
 	// never rewrite the cache-stable system prefix or tool schemas.
@@ -908,6 +913,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		sessionContextStatic.Environment = envSection
 	}
 	sessionContextStatic.Environment = appendOfflineEnvironmentNote(sessionContextStatic.Environment, cfg.Environment.Offline)
+	promptSegs.mark("env_probes")
 
 	// Stable memory policy and REASONIX.md / AGENTS.md standing instructions
 	// enter the system prompt. Pinned facts and the background index remain in
@@ -915,6 +921,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if _, err := memory.StoreFor(config.MemoryUserDir(), root).MigrateV2(); err != nil {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Memory metadata migration did not complete.", Detail: err.Error()})
 	}
+	promptSegs.mark("memory_migrate")
 	// Record activation: pinned on facts that only pin through the legacy
 	// default, so the pinned budget and /memory act on explicit choices.
 	// Injection is unchanged; each rewrite keeps a rollback revision, and the
@@ -923,14 +930,18 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if _, err := memory.StoreFor(config.MemoryUserDir(), root).MaterializeLegacyPinned(); err != nil {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Legacy pinned-memory materialization did not complete.", Detail: err.Error()})
 	}
+	promptSegs.mark("memory_pinned")
 	mem := memory.Load(memory.Options{CWD: root, UserDir: config.MemoryUserDir()})
+	promptSegs.mark("memory_load")
 	projectChecks := instruction.ExtractHostChecks(mem.Docs)
+	promptSegs.mark("host_checks")
 	// sysPromptBase is the assembled prefix up to (but not including) the memory
 	// region: base prompt + core policies + workspace + environment. A
 	// post-compaction memory reload reuses it so only the # Memory region is
 	// regenerated from the latest on-disk memory.
 	sysPromptBase := sysPrompt
 	sysPrompt = memory.Compose(sysPrompt, mem)
+	promptSegs.mark("memory_compose")
 
 	implicitSkillInvocation := cfg.ImplicitSkillInvocationEnabled()
 	// Skills: rediscovery skipped on no-op/interceptor/UI rebuilds when
@@ -968,6 +979,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			sysPrompt += "\n\n" + skill.InvocationPolicyBlock()
 		}
 	}
+	promptSegs.mark("skills")
 	if sessionCollabEnabled(cfg) {
 		// Name the directory in the prompt itself, in the words the user is
 		// likely to say. Tool schemas alone do not teach the model that
@@ -976,7 +988,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// tool" even with the tools registered.
 		sysPrompt += "\n\n" + sessionCollabIndexBlock()
 	}
+	promptSegs.mark("collab_block")
 	sysPrompt = config.ApplyOfficialDeepSeekV4ProPersona(sysPrompt, entry)
+	promptSegs.mark("persona")
+	// tl1229: one greppable line for the prompt stage's internal segments —
+	// the before-data the 1193 family optimizes against. Emitted before the
+	// stage-close mark so "prompt" stays the whole-window number.
+	slog.Info("boot: prompt segments", "summary", promptSegs.summary())
 	bootTime.mark("prompt")
 
 	// memoryReload regenerates only the memory (# Memory) region of the system
