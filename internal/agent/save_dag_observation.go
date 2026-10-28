@@ -21,6 +21,9 @@ package agent
 //     归档态日志在内存里解头部窗口分类，绝不写盘（测试钉住）。
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -204,6 +207,13 @@ func classifyPlainEventLogHead(plain string) (sessionEventLogClass, int64) {
 // classifyArchivedEventLogHead decodes the archive's self-describing header
 // line and the bounded head window of the payload in memory. Read-only: no
 // materialization, no temp files — the archive stays exactly where it is.
+//
+// The header line and the schema probe share ONE bufio owned here. The shared
+// readZstArchiveHeader helper cannot be used for this: its internal bufio is
+// discarded on return and its read-ahead (up to 64KiB) may swallow the very
+// bytes the probe needs next — measured 2026-10-28 on a production-shaped
+// archive (65385 bytes lost), which misclassified a DAG archive as foreign.
+// Keeping the buffer alive keeps every read-ahead byte readable by the probe.
 func classifyArchivedEventLogHead(sessionPath string) (sessionEventLogClass, int64) {
 	zst := sessionEventLogZstPathFor(sessionPath)
 	if zst == "" {
@@ -219,11 +229,16 @@ func classifyArchivedEventLogHead(sessionPath string) (sessionEventLogClass, int
 		return eventLogClassForeign, 0
 	}
 	defer release()
-	header, err := readSessionEventZstHeader(dec.IOReadCloser())
-	if err != nil {
+	buffered := bufio.NewReaderSize(dec.IOReadCloser(), sessionEventZstHeaderMax)
+	line, err := buffered.ReadBytes('\n')
+	if err != nil || len(line) > sessionEventZstHeaderMax {
 		return eventLogClassForeign, 0
 	}
-	schemaVersion, eventType, ok := probeSessionEventHeader(dec.IOReadCloser())
+	var header sessionEventZstHeader
+	if err := json.Unmarshal(bytes.TrimSuffix(line, []byte{'\n'}), &header); err != nil || header.Kind != sessionEventZstKind {
+		return eventLogClassForeign, 0
+	}
+	schemaVersion, eventType, ok := probeSessionEventHeader(buffered)
 	if !ok {
 		return eventLogClassForeign, header.PlainBytes
 	}

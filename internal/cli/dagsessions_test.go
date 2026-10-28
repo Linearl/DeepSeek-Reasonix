@@ -105,8 +105,10 @@ func TestRenderDagSessionsText(t *testing.T) {
 	if line == "" {
 		t.Fatalf("text output missing the retirement counter line:\n%s", text)
 	}
-	// dag1 (plain) + dag2 (archived-only) = 2.
-	if !strings.HasSuffix(strings.TrimSpace(line), "2") {
+	// dag1 (plain) + dag2 (archived-only) = 2; the count is the first numeric
+	// field after the label ("dag (probe.dag hit) <count> <- ...").
+	fields := strings.Fields(line)
+	if len(fields) < 4 || fields[3] != "2" {
 		t.Fatalf("dag count wrong in line %q:\n%s", line, text)
 	}
 	if !strings.Contains(text, "archived-only (zst)") || !strings.Contains(text, "dag archived-only") {

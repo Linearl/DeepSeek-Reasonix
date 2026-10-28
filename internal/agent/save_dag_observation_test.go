@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -19,62 +20,65 @@ import (
 // 与小日志都不得移动；计数②只读分类，归档态会话普查后必须仍是归档态。
 
 // TestNilCacheLargeLogReplayCounter pins counter ①: the save-chain full
-// replay census fires exactly once for a cold (graph-cache-empty) save whose
-// replayed log exceeds the 32MiB first-paint threshold, and never for warm
-// (extended) saves or small logs.
+// replay census fires exactly once for a cold (graph-cache-empty) graph
+// acquisition whose replayed log exceeds the 32MiB first-paint threshold, and
+// never for warm (extended) acquisitions or small logs. It drives
+// dagStateForSave directly over a hand-appended DAG log — the observation
+// point itself — instead of the full save pipeline, whose extra 33MiB passes
+// would dominate the runtime without adding coverage.
 func TestNilCacheLargeLogReplayCounter(t *testing.T) {
 	t.Cleanup(func() {
 		SetSessionGraphCacheCapacity(sessionGraphCacheCapacityDefault)
 		resetGraphCacheForTest()
 	})
-	t.Setenv(SessionLogSchemaEnv, "v2")
+	base := time.Date(2026, 1, 8, 10, 0, 0, 0, time.UTC)
+	entries := []sessionDAGEntry{{Type: sessionDAGTypeLog, Generation: 1, At: base}}
+	big := strings.Repeat("tl1220-nilcache-payload-", 1<<20) // ~24MiB
+	entries = append(entries,
+		dagMessageEntry(t, SessionMainHead, "", "t1", dagMsg(provider.RoleUser, big, "q1"), base),
+		dagMessageEntry(t, SessionMainHead, "q1", "t1", dagMsg(provider.RoleAssistant, big, "a1"), base),
+	)
 	path := dagTestSession(t)
-	s := dagSavedSession(t, path, "q1", "a1") // small DAG log
+	dagAppend(t, path, entries...)
+	if info, err := os.Stat(store.SessionEventLog(path)); err != nil || info.Size() <= sessionTranscriptTailThresholdBytes {
+		t.Fatalf("fixture log must exceed the 32MiB threshold: size=%d err=%v", info.Size(), err)
+	}
+	s := NewSession("sys") // s.head.state is nil: the process cache is the only graph source
 
-	// Cold start, small log: nil_cache fires but stays under the threshold.
+	// Cold start over a >32MiB log: nil_cache + full replay — count exactly 1.
 	resetGraphCacheForTest()
 	before := SessionDAGNilCacheLargeReplays()
-	s.Add(provider_user("small"))
-	if err := s.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	if got := SessionDAGNilCacheLargeReplays() - before; got != 0 {
-		t.Fatalf("small nil_cache replay moved the counter by %d, want 0", got)
-	}
-
-	// Grow the log past 32MiB. This save itself is an extended cache hit, so
-	// the counter must stay put even though the log is now large.
-	s.Add(provider_user(strings.Repeat("x", 33<<20)))
-	if err := s.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	if got := SessionDAGNilCacheLargeReplays() - before; got != 0 {
-		t.Fatalf("extended save over a large log moved the counter by %d, want 0", got)
-	}
-
-	// Cold start again: the first save now pays a nil_cache full replay of a
-	// >32MiB log — the exact combination tl1173 §五 quantifies. Count 1.
-	resetGraphCacheForTest()
-	s.Add(provider_user("first save after cold start"))
-	if err := s.Save(path); err != nil {
+	if _, err := s.dagStateForSave(context.Background(), path, base); err != nil {
 		t.Fatal(err)
 	}
 	if got := SessionDAGNilCacheLargeReplays() - before; got != 1 {
 		t.Fatalf("cold nil_cache large replay moved the counter by %d, want 1", got)
 	}
 
-	// The next save finds the cache repopulated (extended) — no double count.
-	s.Add(provider_user("warm again"))
-	if err := s.Save(path); err != nil {
+	// Warm acquisition (the first call re-populated the process cache):
+	// extended, no count.
+	if _, err := s.dagStateForSave(context.Background(), path, base); err != nil {
 		t.Fatal(err)
 	}
 	if got := SessionDAGNilCacheLargeReplays() - before; got != 1 {
-		t.Fatalf("warm save moved the counter by %d beyond the cold hit, want 0", got-1)
+		t.Fatalf("warm acquisition moved the counter by %d beyond the cold hit, want 0", got-1)
 	}
-}
 
-func provider_user(content string) provider.Message {
-	return provider.Message{Role: provider.RoleUser, Content: content}
+	// A small log never counts, even cold: rebuild under the threshold.
+	smallPath := dagTestSession(t)
+	smallEntries := []sessionDAGEntry{{Type: sessionDAGTypeLog, Generation: 1, At: base}}
+	smallEntries = append(smallEntries,
+		dagMessageEntry(t, SessionMainHead, "", "t1", dagMsg(provider.RoleUser, "q", "sq1"), base),
+	)
+	dagAppend(t, smallPath, smallEntries...)
+	sSmall := NewSession("sys")
+	resetGraphCacheForTest()
+	if _, err := sSmall.dagStateForSave(context.Background(), smallPath, base); err != nil {
+		t.Fatal(err)
+	}
+	if got := SessionDAGNilCacheLargeReplays() - before; got != 1 {
+		t.Fatalf("cold nil_cache small-log replay moved the counter by %d, want 0", got-1)
+	}
 }
 
 // TestCensusStoredDAGSessions pins counter ②: the census counts each session
