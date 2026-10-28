@@ -3617,62 +3617,6 @@ func (a *App) SetAskRoundLimit(limit int) error {
 	})
 }
 
-// SetDesktopAutopilotGuardInterval sets how often (in minutes) an autopilot
-// session's guard task fires (task 326). Existing guards are re-pointed in
-// place — never recreated — so widening the dial cannot grow a second guard
-// for the same session.
-func (a *App) SetDesktopAutopilotGuardInterval(minutes int) error {
-	if minutes < 1 || minutes > 1440 {
-		return fmt.Errorf("autopilot guard interval must be between 1 and 1440 minutes, got %d", minutes)
-	}
-	if err := a.applyConfigOnly(func(c *config.Config) error {
-		c.Desktop.AutopilotGuardInterval = minutes
-		return nil
-	}); err != nil {
-		return err
-	}
-	a.resyncAutopilotGuardInterval(minutes)
-	return nil
-}
-
-// SetDesktopAutopilotGuardAutocreate toggles the task-547 sub-option: whether
-// an autopilot session auto-creates its guard task (task 326). Off — the
-// default — means autopilot never creates a guard; guards a previous version
-// already created are disabled immediately and the sweep keeps them disabled,
-// so an upgrade converges to the new setting instead of leaving the feature
-// running (the panel keeps the disabled row; deleting the conversation
-// deletes it). Turning it back on revives the same task in place — the
-// idempotent singleton grows no second guard.
-func (a *App) SetDesktopAutopilotGuardAutocreate(enabled bool) error {
-	if err := a.applyConfigOnly(func(c *config.Config) error {
-		return c.SetExperimentalAutopilotGuardAutocreate(enabled)
-	}); err != nil {
-		return err
-	}
-	if a.heartbeat != nil {
-		// Same immediacy as the interval dial: one reconcile right away, so
-		// flipping the switch does not wait up to a tick to take effect.
-		a.heartbeat.ReconcileAutopilotGuards()
-	}
-	return nil
-}
-
-// SetDesktopAutopilotGuardQuiescent picks what happens to a guard after the
-// session it watches has been quiet with no new work: disable (self-disable,
-// re-enableable), standby (stay armed), or destroy (delete the task).
-func (a *App) SetDesktopAutopilotGuardQuiescent(policy string) error {
-	policy = strings.TrimSpace(policy)
-	switch policy {
-	case "disable", "standby", "destroy":
-	default:
-		return fmt.Errorf("autopilot guard quiescent policy %q is invalid; use \"disable\", \"standby\", or \"destroy\"", policy)
-	}
-	return a.applyConfigOnly(func(c *config.Config) error {
-		c.Desktop.AutopilotGuardQuiescent = policy
-		return nil
-	})
-}
-
 // SetDefaultSubagentPolicy updates the global default sub-agent delegation tier
 // for newly-created desktop sessions (light|balanced|aggressive).
 func (a *App) SetDefaultSubagentPolicy(policy string) error {
