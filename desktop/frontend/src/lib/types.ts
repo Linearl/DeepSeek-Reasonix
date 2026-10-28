@@ -2188,6 +2188,9 @@ export interface JobView {
   id: string;
   kind: string; // "bash" | "task"
   label: string;
+  // tl1033: untruncated source text behind label (a bash job's full command).
+  // The capsule hover card prefers it and falls back to label when absent.
+  detail?: string;
   status: string; // "running"
   startedAt: number; // unix milliseconds
   tps?: number; // sub-agent streaming rate in tok/s (#9521 popover heartbeat); omitted when unknown

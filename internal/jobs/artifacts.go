@@ -39,6 +39,11 @@ type artifactMeta struct {
 	ID                      string                    `json:"id"`
 	Kind                    string                    `json:"kind"`
 	Label                   string                    `json:"label,omitempty"`
+	// Detail carries the untruncated source text behind Label (tl1033) so a
+	// recovered job's hover card keeps the full command. Older metas lack the
+	// key and restore with "" — panels fall back to Label. Machine-facing
+	// ArtifactView stays content-free and must NOT gain this field.
+	Detail                  string                    `json:"detail,omitempty"`
 	SessionID               string                    `json:"sessionId,omitempty"`
 	OwnerID                 string                    `json:"ownerId,omitempty"`
 	Status                  Status                    `json:"status"`

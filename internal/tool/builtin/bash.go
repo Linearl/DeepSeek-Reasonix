@@ -278,7 +278,11 @@ func (b bash) ExecuteDetailed(ctx context.Context, args json.RawMessage) (tool.D
 		releaseLease = false
 		// The job runs under the manager's session context (no foreground timeout), so it
 		// survives this turn; its combined output streams to the job buffer.
-		job := jm.StartForSession(jobs.SessionFromContext(ctx), "bash", commandPreview(p.Command), func(jobCtx context.Context, out io.Writer) (string, error) {
+		// tl1033: the label stays the 48-rune commandPreview (status bar sized),
+		// but the job also carries the FULL command as Detail so the capsule
+		// hover card can wrap it — the panel's truncation complaint was this
+		// preview being all the frontend ever received.
+		job := jm.StartForSessionDetail(jobs.SessionFromContext(ctx), "bash", commandPreview(p.Command), strings.TrimSpace(p.Command), func(jobCtx context.Context, out io.Writer) (string, error) {
 			if jobLease != nil {
 				defer jobLease.Release()
 			}

@@ -252,6 +252,12 @@ async function clickTrigger(waitMs = 10) {
   });
 }
 
+// 任务1033: React 的 onMouseEnter 委托自 mouseover（relatedTarget=null 表示
+// 指针自元素外进入）——与 tooltip-wrap-command 测试同一 dispatch 口径。
+function hoverTrigger(el: Element) {
+  el.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true, relatedTarget: null }));
+}
+
 // --- pure: formatCapsuleElapsed ---
 
 section("formatCapsuleElapsed");
@@ -1007,6 +1013,55 @@ section("tl1209 源级契约：前台子代理行走单子代理终止链（不�
   ok(source.includes('if (entry.job.kind === "subagent") {'), "stop() 对子代理行走独立分支");
   ok(source.includes("onCancelSubagent(entry.tabId, entry.job.id)"), "子代理终止按 (tabId, ref) 走注入的单子代理桥");
   ok(source.includes("? Boolean(onCancelSubagent)"), "子代理行停止按钮以桥 prop 存在为渲染前提（无桥逐字节回到 pre-1209）");
+}
+
+section("任务1033 hover 全文：bash 行 hover 卡读 job.detail 全文，行内文本保持预览");
+{
+  listResult = Promise.resolve([]);
+  const fullCommand = Array.from({ length: 10 }, () => "npm run build --silent && node scripts/check-bundle-budget.mjs").join(" && ");
+  const preview = "npm run build --silent && node scripts/check-b…";
+  ok(fullCommand.length >= 500, `fixture 达到 500 字符门槛（${fullCommand.length}）`);
+  ok(fullCommand.length > preview.length, "detail 全文长于行内预览（预览不再解释 hover 上限）");
+  await renderIndicator({
+    jobs: [
+      job({ id: "bash-detail", kind: "bash", label: preview, detail: fullCommand }),
+      job({ id: "bash-plain", kind: "bash", label: "短命令 echo hi" }),
+    ],
+    sessionPath: "s.jsonl",
+  });
+  await clickTrigger(30);
+  const detailRow = document.querySelector('[data-capsule-job-id="bash-detail"]');
+  ok(detailRow !== null, "带 detail 的 bash 行渲染");
+  eq(detailRow?.querySelector(".capsule-panel__copy strong")?.textContent, preview, "行内文本仍是 48 字级预览（显示面不变）");
+  const detailTrigger = detailRow?.querySelector(".tooltip-trigger");
+  ok(detailTrigger !== null, "行标题包在 tooltip-trigger 里");
+  await act(async () => {
+    hoverTrigger(detailTrigger!);
+    await flush(240);
+  });
+  let card = document.querySelector('[role="tooltip"]');
+  ok(card !== null, "hover 卡渲染（portal 到 body）");
+  eq(card?.querySelector(".tooltip__text")?.textContent, fullCommand, "hover 卡展示 detail 全文（500+ 字符完整可读）");
+  eq(card?.querySelector(".tooltip__foot"), null, "未超 30 行无截断脚注");
+  ok(detailTrigger?.getAttribute("aria-describedby") === card?.id, "aria-describedby 指向卡片（读屏可取全文）");
+
+  // 回退：Go 侧未带 detail 的 job（task 类、tl1033 之前的恢复 meta）hover 退回 label。
+  // 先让第一张卡收起（interactive 模式离开触发器有 200ms 宽限），再 hover 下一行。
+  await act(async () => {
+    detailTrigger!.dispatchEvent(new dom.window.MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    await flush(300);
+  });
+  eq(document.querySelector('[role="tooltip"]'), null, "离开触发器后第一张卡收起");
+  const plainRow = document.querySelector('[data-capsule-job-id="bash-plain"]');
+  const plainTrigger = plainRow?.querySelector(".tooltip-trigger");
+  ok(plainTrigger !== null, "无 detail 行同样有 tooltip-trigger");
+  await act(async () => {
+    hoverTrigger(plainTrigger!);
+    await flush(240);
+  });
+  card = document.querySelector('[role="tooltip"]');
+  eq(card?.querySelector(".tooltip__text")?.textContent ?? card?.textContent, "短命令 echo hi", "无 detail 时 hover 回退 label，不落空");
+  await cleanup();
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

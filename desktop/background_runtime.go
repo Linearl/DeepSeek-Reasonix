@@ -67,7 +67,7 @@ func activeWorkForController(ctrl control.SessionAPI) ActiveWorkView {
 			continue
 		}
 		view.Jobs = append(view.Jobs, JobView{
-			ID: job.ID, Kind: job.Kind, Label: job.Label,
+			ID: job.ID, Kind: job.Kind, Label: job.Label, Detail: job.Detail,
 			Status: job.Status, StartedAt: job.StartedAt,
 		})
 	}
@@ -108,6 +108,7 @@ func (a *App) remoteActiveWorkForTab(tabID string) (ActiveWorkView, error) {
 			ID        string `json:"id"`
 			Kind      string `json:"kind"`
 			Label     string `json:"label"`
+			Detail    string `json:"detail"`
 			Status    string `json:"status"`
 			StartedAt int64  `json:"startedAt"`
 		} `json:"jobs"`
@@ -120,7 +121,7 @@ func (a *App) remoteActiveWorkForTab(tabID string) (ActiveWorkView, error) {
 	view.Cancellable = status.Cancellable || status.Running || status.PendingPrompt || status.BackgroundJobs > 0 || len(status.Jobs) > 0
 	for _, job := range status.Jobs {
 		view.Jobs = append(view.Jobs, JobView{
-			ID: job.ID, Kind: job.Kind, Label: job.Label,
+			ID: job.ID, Kind: job.Kind, Label: job.Label, Detail: job.Detail,
 			Status: job.Status, StartedAt: job.StartedAt,
 		})
 	}
