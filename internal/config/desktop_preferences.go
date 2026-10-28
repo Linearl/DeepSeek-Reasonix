@@ -452,23 +452,6 @@ type DesktopConfig struct {
 	// 语义相反，不可照抄。有效值 0 或 2~100；1 非法（具名拒绝不静默 clamp）。
 	AskRoundLimit int `toml:"ask_round_limit"`
 
-	// ExperimentalAutopilotGuardAutocreate is the task-547 sub-option of the
-	// autopilot experiment feature (user ruling 2026-10-06, 铁律 2 default
-	// off): when on, an autopilot session keeps the auto-created guard task of
-	// task 326. Off — the default — means autopilot never creates a guard:
-	// the off semantics are "do not create", never "create then disable", and
-	// guards a previous version already created converge to off (disabled) at
-	// the next sweep. Turning it back on revives the same task in place.
-	ExperimentalAutopilotGuardAutocreate bool `toml:"experimental_autopilot_guard_autocreate"`
-	// AutopilotGuardInterval is the autopilot guard task's default run interval
-	// in minutes (task 326). 0 = autopilotGuardDefaultIntervalMinutes. Changing
-	// it re-points the interval of guards that already exist instead of
-	// recreating them, so a session never grows a second guard.
-	AutopilotGuardInterval int `toml:"autopilot_guard_interval"`
-	// AutopilotGuardQuiescent picks what happens to the guard when the session
-	// it watches has been quiet with no new work (task 326):
-	// disable (default) | standby | destroy.
-	AutopilotGuardQuiescent string `toml:"autopilot_guard_quiescent"`
 	// ExperimentalAutopilotBatchContext is the task-394 batch-round context
 	// dial (铁律 2 default off): "" / "off" injects nothing — every round
 	// opens byte-for-byte as before; "minimal" makes an unattended (autopilot)

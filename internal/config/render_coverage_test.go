@@ -23,11 +23,6 @@ var desktopRenderOmissions = map[string]string{
 	"autopilot":                "rendered together with its bound, only when configured",
 	"autopilot_max_runtime":    "rendered with the autopilot flag",
 	"autopilot_approval_grace": "rendered with the autopilot flag",
-	// Pre-existing red on main-v2-stable (task 326 landed these keys rendered
-	// inside the autopilot block without an omission entry): both render only
-	// once the guard interval/policy leaves the default.
-	"autopilot_guard_interval":  "task 326: rendered inside the autopilot guard block, only when the interval leaves the default",
-	"autopilot_guard_quiescent": "task 326: rendered inside the autopilot guard block, only when the self-close policy is set",
 	// Task 477: rendered inside the autopilot block only once the sub-option
 	// leaves its default (switch off, wait 0 = built-in 15s).
 	"experimental_autopilot_ask_timeout": "task 477: rendered inside the autopilot block, only when the sub-option is configured",
@@ -38,17 +33,13 @@ var desktopRenderOmissions = map[string]string{
 	// 任务 1084：五个高风险授权 checkbox 与 ask 轮次上限——rendered inside the
 	// autopilot block only when non-default（默认全不勾 + 默认 3 落盘为空，
 	// 出厂五类全要问的保守姿态 = config 不含这些键）。
-	"authorize_outbound_send":       "task 1084: rendered inside the autopilot block, only when the 对外发送 authorization checkbox is checked",
+	"authorize_outbound_send":         "task 1084: rendered inside the autopilot block, only when the 对外发送 authorization checkbox is checked",
 	"authorize_data_migration_delete": "task 1084: rendered inside the autopilot block, only when the 数据迁移与删除 authorization checkbox is checked",
-	"authorize_destructive_change":  "task 1084: rendered inside the autopilot block, only when the 破坏性变更 authorization checkbox is checked",
-	"authorize_new_tech_route":      "task 1084: rendered inside the autopilot block, only when the 新技术路线选择 authorization checkbox is checked",
-	"authorize_paid_quota_alloc":    "task 1084: rendered inside the autopilot block, only when the 付费额度分配 authorization checkbox is checked",
-	"experimental_ask_round_limit":  "task 1084: rendered inside the autopilot block, only when the ask-round-limit sub-option is on",
-	"ask_round_limit":               "task 1084: rendered inside the autopilot block, only when the round limit leaves the default 3; 0 = unlimited",
-	// Task 547: rendered inside the autopilot block only while the opt-in is
-	// on; off/absent = autopilot never creates guard tasks (byte-identical
-	// config for a user who never touched the switch).
-	"experimental_autopilot_guard_autocreate": "task 547: rendered inside the autopilot block, only when the guard auto-creation opt-in is on",
+	"authorize_destructive_change":    "task 1084: rendered inside the autopilot block, only when the 破坏性变更 authorization checkbox is checked",
+	"authorize_new_tech_route":        "task 1084: rendered inside the autopilot block, only when the 新技术路线选择 authorization checkbox is checked",
+	"authorize_paid_quota_alloc":      "task 1084: rendered inside the autopilot block, only when the 付费额度分配 authorization checkbox is checked",
+	"experimental_ask_round_limit":    "task 1084: rendered inside the autopilot block, only when the ask-round-limit sub-option is on",
+	"ask_round_limit":                 "task 1084: rendered inside the autopilot block, only when the round limit leaves the default 3; 0 = unlimited",
 	// Task 394: rendered inside the autopilot block only once the dial leaves
 	// its default; off/absent = no injection and a byte-identical config. The
 	// plan path renders only while set.

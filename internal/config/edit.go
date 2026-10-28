@@ -817,54 +817,6 @@ func (c *Config) AutopilotProxyScopeLevel() string {
 	}
 }
 
-// AutopilotGuardDefaultIntervalMinutes is the guard task's run interval when
-// desktop.autopilot_guard_interval is unset or non-positive (task 326).
-const AutopilotGuardDefaultIntervalMinutes = 30
-
-// AutopilotGuardIntervalMinutes returns the guard interval in minutes. 0 and
-// negative values read as the default so an untouched config keeps a sane
-// cadence instead of an "every second" guard.
-func (c *Config) AutopilotGuardIntervalMinutes() int {
-	if c == nil || c.Desktop.AutopilotGuardInterval <= 0 {
-		return AutopilotGuardDefaultIntervalMinutes
-	}
-	return c.Desktop.AutopilotGuardInterval
-}
-
-// AutopilotGuardQuiescentPolicy returns the normalized self-close policy
-// (task 326): disable (default) | standby | destroy. Empty and unknown values
-// read as "disable" — a guard must never linger unbounded by a typo.
-func (c *Config) AutopilotGuardQuiescentPolicy() string {
-	if c == nil {
-		return "disable"
-	}
-	switch c.Desktop.AutopilotGuardQuiescent {
-	case "standby", "destroy":
-		return c.Desktop.AutopilotGuardQuiescent
-	default:
-		return "disable"
-	}
-}
-
-// AutopilotGuardAutocreateEnabled reports whether autopilot may auto-create
-// its guard task at all (task 547 sub-option of the autopilot experiment
-// feature). Off — the default, and the read for a nil config — fails closed:
-// no config means no guard creation, matching the "do not create" off
-// semantics rather than "create then disable".
-func (c *Config) AutopilotGuardAutocreateEnabled() bool {
-	return c != nil && c.Desktop.ExperimentalAutopilotGuardAutocreate
-}
-
-// SetExperimentalAutopilotGuardAutocreate toggles the task-547 guard
-// auto-creation sub-option. The flag alone gates creation; convergence of
-// guards a previous version already created is the sweep's job (desktop
-// side), so the off state keeps the config file byte-identical to never
-// having touched the switch.
-func (c *Config) SetExperimentalAutopilotGuardAutocreate(enabled bool) error {
-	c.Desktop.ExperimentalAutopilotGuardAutocreate = enabled
-	return nil
-}
-
 // AutopilotBatchContextLevel returns the normalized task-394 batch-context
 // injection level: "" for off (the default, and the read for a nil config or
 // any unrecognized value — a typo must never silently turn injection on),
