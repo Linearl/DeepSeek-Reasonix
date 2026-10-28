@@ -5824,6 +5824,8 @@ export const en = {
   "collabGroup.chat.atPopTitle": "Pick someone to mention (up/down to move, Enter to pick)",
   "collabGroup.chat.mentionHint": "View the related direct chains",
   "collabGroup.chat.leave": "Leave group",
+  "collabGroup.chat.dissolve": "Dissolve group",
+  "collabGroup.chat.dissolveConfirm": "Click again to dissolve — members and messages will be deleted",
   "settings.collabInbox": "Mail Center",
   "settings.collabInboxHint": "Mail history query, five-bucket views and retention (task 320)",
   "settings.collabInbox.open": "Open Mail Center",

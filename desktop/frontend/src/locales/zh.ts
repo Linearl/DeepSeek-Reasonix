@@ -5808,6 +5808,8 @@ export const zh: Record<DictKey, string> = {
   "collabGroup.chat.atPopTitle": "选择要 @ 的参与者（↑↓ 选择，Enter 确认）",
   "collabGroup.chat.mentionHint": "查看相关对话链",
   "collabGroup.chat.leave": "退群",
+  "collabGroup.chat.dissolve": "解散群聊",
+  "collabGroup.chat.dissolveConfirm": "再点一次确认解散（成员与消息全部删除，不可恢复）",
   "settings.collabInbox": "信件中心",
   "settings.collabInboxHint": "历史信件查询、五桶聚合与保留期（任务 320）",
   "settings.collabInbox.open": "打开信件中心",

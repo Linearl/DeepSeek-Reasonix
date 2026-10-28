@@ -64,6 +64,20 @@ func (a *App) ChannelLeaveHuman(ref string) error {
 	return store.Leave(ref, collabchannel.HumanLocal)
 }
 
+// ChannelDissolveForHuman destroys the channel outright (tl1217) — owner-only
+// via Store.Dissolve. This is the owner's missing exit: Leave refuses the
+// owner, so before this port a human-founded group could neither grow (invite
+// breakage, tl1216) nor die. The frontend gates it behind an explicit
+// double-click confirmation; the port itself stays honest about permission.
+func (a *App) ChannelDissolveForHuman(ref string) error {
+	store, err := collabchannel.Open(config.SessionCollabMailDir())
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	return store.Dissolve(ref, collabchannel.HumanLocal)
+}
+
 // ChannelSendFromHuman publishes one message as human:local through the SAME
 // Publish path the agent tools use (风暴治理/小时上限对人类发言同样生效) and
 // kicks the background drain.

@@ -5804,6 +5804,8 @@ export const zhTW: Record<DictKey, string> = {
   "collabGroup.chat.atPopTitle": "選擇要 @ 的參與者（↑↓ 選擇，Enter 確認）",
   "collabGroup.chat.mentionHint": "查看相關對話鏈",
   "collabGroup.chat.leave": "退群",
+  "collabGroup.chat.dissolve": "解散群聊",
+  "collabGroup.chat.dissolveConfirm": "再點一次確認解散（成員與訊息全部刪除，不可復原）",
   "settings.collabInbox": "信件中心",
   "settings.collabInboxHint": "歷史信件查詢、五桶聚合與保留期（任務 320）",
   "settings.collabInbox.open": "打開信件中心",

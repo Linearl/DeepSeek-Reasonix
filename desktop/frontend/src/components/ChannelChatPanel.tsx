@@ -52,6 +52,8 @@ export type ChannelChatBindings = {
   ChannelMessagesForHuman(ref: string, sinceMs: number, limit: number): Promise<{ channel: CollabChannelView; messages: CollabChannelMessageView[] }>;
   ChannelCreateForHuman(name: string, topic: string, hourlyLimit: number): Promise<CollabChannelView>;
   ChannelLeaveHuman(ref: string): Promise<void>;
+  /** tl1217: 解散群聊（仅 human 群主；硬删成员/消息，前端两击确认防误触）。 */
+  ChannelDissolveForHuman(ref: string): Promise<void>;
   ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
@@ -135,6 +137,8 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   const [menu, setMenu] = useState<{ messageId: string; sender: string; x: number; y: number } | null>(null);
   // 任务 856 ⑤：副管理员操作（详情抽屉成员行）。
   const [deputyBusy, setDeputyBusy] = useState(false);
+  // tl1217：解散确认态（两击确认的第一击武装，第二击执行）。
+  const [dissolveArmed, setDissolveArmed] = useState(false);
   // 任务 856 ⑥：@ 选人浮层（↑↓ 选择 / Enter 确认 / Esc 关闭）。
   const [atOpen, setAtOpen] = useState(false);
   const [atIndex, setAtIndex] = useState(0);
@@ -295,6 +299,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     setDetailOpen(false);
     setInviteOpen(false);
     setAtOpen(false);
+    setDissolveArmed(false); // 切群解除解散确认（防跨群误带武装态）
     void refresh();
   }, [refresh]);
 
@@ -305,6 +310,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     setDetailOpen(false);
     setInviteOpen(false);
     setAtOpen(false);
+    setDissolveArmed(false);
   }, []);
 
   const send = useCallback(async () => {
@@ -359,6 +365,27 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
       setActionError(String(err));
     }
   }, [b, closeChannel, refresh]);
+
+  // tl1217：解散群聊（群主专用出口——退群被后端拒绝，此前既不能邀人也不能
+  // 销毁）。两击确认防误触：第一击只武装确认态，第二击才发口；切群/关详情
+  // 即解除武装。成功后关详情回到群列表（群已不存在）。
+  const dissolve = useCallback(async () => {
+    const ref = openIdRef.current;
+    if (!ref) return;
+    if (!dissolveArmed) {
+      setDissolveArmed(true);
+      return;
+    }
+    setDissolveArmed(false);
+    setActionError(null);
+    try {
+      await b.ChannelDissolveForHuman(ref);
+      closeChannel();
+      await refresh();
+    } catch (err) {
+      setActionError(String(err));
+    }
+  }, [b, closeChannel, refresh, dissolveArmed]);
 
   const removeMember = useCallback(async (contactId: string) => {
     const ref = openIdRef.current;
@@ -873,6 +900,17 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
             <button type="button" className="btn btn--secondary btn--small" onClick={() => void leave()}>
               {t("collabGroup.chat.leave")}
             </button>
+            {/* tl1217：解散群聊——群主专用出口（后端 Dissolve owner-only），
+                两击确认防误触；第一击换通用危险钮色示警+确认文案，第二击执行。 */}
+            {iAmOwner && hasOwner && (
+              <button
+                type="button"
+                className={`btn btn--small ${dissolveArmed ? "btn--danger" : "btn--secondary"}`}
+                onClick={() => void dissolve()}
+              >
+                {dissolveArmed ? t("collabGroup.chat.dissolveConfirm") : t("collabGroup.chat.dissolve")}
+              </button>
+            )}
           </div>
         </div>
       )}

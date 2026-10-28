@@ -1879,6 +1879,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ChannelCreateForHuman(name: string, topic: string, hourlyLimit: number): Promise<CollabChannelView>;
   ChannelJoinHuman(ref: string): Promise<CollabChannelView>;
   ChannelLeaveHuman(ref: string): Promise<void>;
+  /** tl1217: 解散群聊（仅 human 群主；硬删成员/消息，前端两击确认防误触）。 */
+  ChannelDissolveForHuman(ref: string): Promise<void>;
   ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
@@ -6788,6 +6790,9 @@ function makeMockApp(): AppBindings {
       throw new Error("channel storage is unavailable in the dev shell");
     },
     async ChannelLeaveHuman(_ref: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelDissolveForHuman(_ref: string) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
     async ChannelSendFromHuman(_ref: string, _body: string) {
