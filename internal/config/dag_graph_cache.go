@@ -50,13 +50,20 @@ func (c *Config) SetDagGraphCacheCapacity(capacity int) error {
 // Task 499 (2026-10-05): byte ceilings for the replayed-graph cache. The
 // count cap (above) bounds entries, not bytes — the 10-05 reading showed the
 // cached set reaching multi-GB because one entry can be a 700 MB+ graph.
-// Defaults: 2048 MiB total, 1024 MiB per entry — sized so the known-worst
-// real session (728 MB log, task 196) keeps full cache service while the
-// closed-session retained set is bounded at 2 GiB worst case. Ranges are
-// 16..65536 MiB; 0 in the file means "use the built-in default".
+// tl1228 (2026-10-28, user-approved P0): defaults drop from 2048/1024 MiB to
+// 64/64 MiB. The tl1223 heap profile attributed 397 MB (64% of inuse) to the
+// applyMessage chain — replayed payloads retained by this cache across opens
+// — and capped the phase-1 acceptance at ≤150 MB. Accounted bytes track the
+// replayed log size and the resident footprint sits above it, so 64 MiB of
+// accounting holds the retained set under the acceptance line with headroom.
+// Sessions whose logs exceed the entry ceiling lose cache service and pay a
+// full replay on their next save under the save-path lock — the known trade
+// (tl1223 P1-2, task 196 family), bounded by the two logs measured above the
+// line (149 MB / 55 MB). Ranges are 16..65536 MiB; 0 in the file means "use
+// the built-in default".
 const (
-	DagGraphCacheMaxMBDefault      int64 = 2048
-	DagGraphCacheEntryMaxMBDefault int64 = 1024
+	DagGraphCacheMaxMBDefault      int64 = 64
+	DagGraphCacheEntryMaxMBDefault int64 = 64
 	DagGraphCacheMaxMBMin          int64 = 16
 	DagGraphCacheMaxMBMax          int64 = 65536
 )

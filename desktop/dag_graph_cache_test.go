@@ -55,7 +55,8 @@ func TestSetDagGraphCacheCapacityWritesAndPushes(t *testing.T) {
 // both byte-ceiling setters persist their config keys AND the agent cache
 // reflects the pushed ceilings with no restart (keys: dag_graph_cache_max_mb /
 // dag_graph_cache_entry_max_mb, type int, MiB, 0 in the file = built-in
-// 2048/1024; range 16..65536 refused outside by the config layer).
+// 64/64 since tl1228 (was 2048/1024 in the task-499 era); range 16..65536
+// refused outside by the config layer).
 func TestSetDagGraphCacheByteCapsWritesAndPushes(t *testing.T) {
 	t.Setenv("REASONIX_HOME", t.TempDir())
 	t.Cleanup(func() {
