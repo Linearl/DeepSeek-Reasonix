@@ -172,6 +172,11 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 		// Task 227 phase 1: aggregate per-tool call/error counters from the
 		// session sidecars (observe only, counters never carry arguments).
 		return runToolStats(rest)
+	case "dag-sessions":
+		// tl-1220 counter ②: stored-DAG-session census (probe.dag hits over
+		// the whole session library) — the tl1173 §4.3 retirement counter.
+		// Read-only query, same shape as tool-stats.
+		return runDagSessions(rest)
 	case "export-transcript":
 		// 任务 229 G6: normalized JSONL export with LoadSession as the single
 		// transcript parser — external consumers stop maintaining their own.

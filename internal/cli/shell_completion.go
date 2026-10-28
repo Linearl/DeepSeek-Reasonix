@@ -144,6 +144,7 @@ func cliCompletionRootSpec() cliCompletionSpec {
 			help,
 		}),
 		completionSpec("tool-stats", []cliCompletionFlag{completionFlag("--json", cliCompletionNoValue), help}),
+		completionSpec("dag-sessions", []cliCompletionFlag{completionFlag("--json", cliCompletionNoValue), help}),
 		completionSpec("export-transcript", []cliCompletionFlag{
 			// 任务 229 G6: single-source transcript export for scripts.
 			completionFlag("--session", cliCompletionPathValue),
