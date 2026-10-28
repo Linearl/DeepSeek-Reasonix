@@ -599,12 +599,33 @@ func (s Store) pinnedGuidance() []Memory {
 	return out
 }
 
-// pinnedGuidanceForProject removes pinned guidance shadowed by an equivalent
+// pinnedGuidanceForProjectFrom is pinnedGuidanceForProject over a pool the
+// caller already read (tl1193: Load reads the store once and feeds every
+// consumer — standing guidance, the provider index, the recall pool — instead
+// of paying three full directory scans per boot). Filtering and ordering
+// mirror pinnedGuidance exactly so both paths stay interchangeable.
+func (s Store) pinnedGuidanceForProjectFrom(all []Memory) []Memory {
+	guidance := make([]Memory, 0, len(all))
+	for _, m := range all {
+		if ResolveActivation(m) != ActivationPinned || strings.TrimSpace(m.Body) == "" {
+			continue
+		}
+		guidance = append(guidance, m)
+	}
+	sort.Slice(guidance, func(i, j int) bool {
+		if !guidance[i].UpdatedAt.Equal(guidance[j].UpdatedAt) {
+			return guidance[i].UpdatedAt.After(guidance[j].UpdatedAt)
+		}
+		return guidance[i].Name < guidance[j].Name
+	})
+	return s.suppressShadowedGuidance(guidance)
+}
+
+// suppressShadowedGuidance drops pinned guidance shadowed by an equivalent
 // project fact before the stable session prefix is built. This makes the
 // documented project-over-global rule deterministic on the first turn instead
 // of depending on whether automatic recall happens to match the request.
-func (s Store) pinnedGuidanceForProject() []Memory {
-	guidance := s.pinnedGuidance()
+func (s Store) suppressShadowedGuidance(guidance []Memory) []Memory {
 	if len(guidance) == 0 || s.Dir == "" {
 		return guidance
 	}
@@ -641,6 +662,13 @@ func (s Store) pinnedGuidanceForProject() []Memory {
 		}
 	}
 	return out
+}
+
+// pinnedGuidanceForProject is the self-reading variant, kept for callers that
+// hold no pool listing (write-path budget checks, management surfaces). Load
+// uses pinnedGuidanceForProjectFrom so boot pays one directory scan, not three.
+func (s Store) pinnedGuidanceForProject() []Memory {
+	return s.suppressShadowedGuidance(s.pinnedGuidance())
 }
 
 // ListArchived returns archived memories parsed from .archive/, newest first.

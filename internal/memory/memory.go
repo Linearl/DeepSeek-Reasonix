@@ -60,11 +60,17 @@ func Load(opts Options) *Set {
 			InstructionDiagnostics: resolved.Diagnostics}
 	}
 	store := StoreFor(opts.UserDir, cwd)
+	// tl1193: read the store once. Standing guidance, the provider index, and
+	// (lazily) the recall pool all derive from this single listing — Load used
+	// to pay one scan inside pinnedGuidance, one ListAll for the shadow rule,
+	// and one ListAll for the index, and the memory_load segment was the boot
+	// prompt stage's largest suspect (859ms, tl1229 baseline).
+	all := store.ListAll()
 	return &Set{
 		Docs:                   resolved.Documents,
-		PinnedGuidance:         store.pinnedGuidanceForProject(),
+		PinnedGuidance:         store.pinnedGuidanceForProjectFrom(all),
 		Store:                  store,
-		Index:                  store.Index(),
+		Index:                  store.IndexFrom(all),
 		CWD:                    cwd,
 		UserDir:                opts.UserDir,
 		InstructionDiagnostics: resolved.Diagnostics,
