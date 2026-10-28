@@ -68,14 +68,12 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
     'labLabel("messageMerge", t("settings.collabInboxMerge"))',
   ];
   const bare = [
-    // autopilot 附属行（抽查清单：ask 超时提帧/超时秒数、守护检查间隔…）
+    // autopilot 附属行（抽查清单：ask 超时提帧/超时秒数…）
     'label={t("settings.autopilotMaxRuntime")}',
     'label={t("settings.autopilotApprovalGrace")}',
     'label={t("settings.autopilotAskTimeout")}',
     'label={t("settings.autopilotAskWaitSeconds")}',
     'label={t("settings.autopilotAskAutoContinue")}',
-    'label={t("settings.autopilotGuardAutocreate")}',
-    'label={t("settings.autopilotGuardInterval")}',
     // 多开关特性的兄弟开关行
     'label={t("settings.perfMonitor")}',
     'label={t("settings.researchBudget")}',
@@ -121,7 +119,6 @@ for (const locale of ["zh", "en", "zh-TW"]) {
   const stripped = [
     "settings.autopilotAskTimeout",
     "settings.autopilotAskAutoContinue",
-    "settings.autopilotGuardAutocreate",
     "settings.perfMonitor.heapHigh",
     "settings.sessionStorage.v4",
     "settings.preapproveManagedPaths",
