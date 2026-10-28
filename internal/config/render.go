@@ -393,28 +393,13 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// together. Writing the flag without the limit used to lose both: this renderer
 		// writes a fixed set of keys, so an unlisted one was dropped and the settings
 		// switch flipped straight back to off.
-		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue || c.Desktop.ExperimentalAutopilotGuardAutocreate || c.AutopilotBatchContextLevel() != "" || strings.TrimSpace(c.Desktop.AutopilotBatchPlan) != "" || c.Desktop.AuthorizeOutboundSend || c.Desktop.AuthorizeDataMigrationDelete || c.Desktop.AuthorizeDestructiveChange || c.Desktop.AuthorizeNewTechRoute || c.Desktop.AuthorizePaidQuotaAlloc || c.Desktop.ExperimentalAskRoundLimit || c.Desktop.AskRoundLimit != 0 {
+		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue || c.AutopilotBatchContextLevel() != "" || strings.TrimSpace(c.Desktop.AutopilotBatchPlan) != "" || c.Desktop.AuthorizeOutboundSend || c.Desktop.AuthorizeDataMigrationDelete || c.Desktop.AuthorizeDestructiveChange || c.Desktop.AuthorizeNewTechRoute || c.Desktop.AuthorizePaidQuotaAlloc || c.Desktop.ExperimentalAskRoundLimit || c.Desktop.AskRoundLimit != 0 {
 			fmt.Fprintf(&b, "autopilot = %v   # desktop: start new sessions unattended (requires autopilot_max_runtime)\n", c.Desktop.Autopilot)
 			if runtime := strings.TrimSpace(c.Desktop.AutopilotMaxRuntime); runtime != "" {
 				fmt.Fprintf(&b, "autopilot_max_runtime = %q   # desktop: wall-clock bound for an unattended run, e.g. 8h\n", runtime)
 			}
 			if grace := strings.TrimSpace(c.Desktop.AutopilotApprovalGrace); grace != "" {
 				fmt.Fprintf(&b, "autopilot_approval_grace = %q   # desktop: wait for a human this long before the reviewer decides\n", grace)
-			}
-			// Task 547: guard auto-creation is an opt-in sub-option (default
-			// off). Off writes nothing — an absent key reads as off, so the
-			// config of a user who never touched the switch stays byte-identical.
-			if c.Desktop.ExperimentalAutopilotGuardAutocreate {
-				fmt.Fprintf(&b, "experimental_autopilot_guard_autocreate = %v   # desktop: autopilot auto-creates its guard task (task 326); off = never create, guards a previous version left behind are disabled at the next sweep (task 547)\n", c.Desktop.ExperimentalAutopilotGuardAutocreate)
-			}
-			// Task 326: both guard dials live in the same fixed-key block for the
-			// same reason — an unlisted key is dropped on save and the switch the
-			// user just set flips straight back to its default.
-			if c.Desktop.AutopilotGuardInterval != 0 {
-				fmt.Fprintf(&b, "autopilot_guard_interval = %d   # desktop: autopilot guard task interval in minutes; 0/absent = default (task 326)\n", c.Desktop.AutopilotGuardInterval)
-			}
-			if policy := strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent); policy != "" {
-				fmt.Fprintf(&b, "autopilot_guard_quiescent = %q   # desktop: guard self-close policy once the watched session goes quiet: disable | standby | destroy (task 326)\n", policy)
 			}
 			// Task 477: the ask-timeout sub-option rides the same block — the
 			// switch is opt-in (default off) and the seconds dial is only

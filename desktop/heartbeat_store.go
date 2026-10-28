@@ -114,6 +114,55 @@ func (e *HeartbeatEngine) adoptExternalEditsLocked() {
 	e.prunePendingTopicsLocked(e.tasks)
 }
 
+// sweepLegacyAutopilotGuardTasks removes heartbeat tasks left behind by the
+// retired tl-547 autopilot auto-guard (ids prefixed "autoguard-", tl 1211).
+// With the mechanism gone such a task would keep firing on its old cadence
+// with no sweep, no panel entry and no owner session. Idempotent by
+// construction: a task table without the prefix costs one read and no write,
+// and the flag flip means later loads produce no side effects. Hand-created
+// guard tasks (guard-* and plain random ids) never carry the prefix and are
+// never touched.
+func (e *HeartbeatEngine) sweepLegacyAutopilotGuardTasks() {
+	snapshot, err := e.readConfigSnapshot()
+	if err != nil {
+		// Same fail-open posture as adoptExternalEditsLocked (任务 823 ②):
+		// log and retry on the next tick instead of dropping the sweep.
+		log.Printf("[heartbeat] legacy autoguard sweep skipped, config read failed: %v", err)
+		return
+	}
+	legacy := 0
+	for _, t := range snapshot.cfg.Tasks {
+		if strings.HasPrefix(t.ID, "autoguard-") {
+			legacy++
+		}
+	}
+	if legacy == 0 {
+		e.mu.Lock()
+		e.legacyGuardSwept = true
+		e.mu.Unlock()
+		return
+	}
+	if err := e.mutateTasks("legacy-autoguard-sweep", func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
+		out := make([]HeartbeatTask, 0, len(tasks))
+		changed := false
+		for _, t := range tasks {
+			if strings.HasPrefix(t.ID, "autoguard-") {
+				changed = true
+				continue
+			}
+			out = append(out, t)
+		}
+		return out, changed, nil
+	}); err != nil {
+		log.Printf("[heartbeat] legacy autoguard sweep failed: %v (will retry next tick)", err)
+		return
+	}
+	e.mu.Lock()
+	e.legacyGuardSwept = true
+	e.mu.Unlock()
+	slog.Info(fmt.Sprintf("旧版 autopilot 自动守护机制已移除，已清理 %d 个遗留任务", legacy))
+}
+
 // saveTasks writes tasks to disk atomically. The default writer tag covers
 // test seeding and any caller that has no richer identity; production paths
 // pass their own (task 941).
@@ -238,6 +287,65 @@ func (e *HeartbeatEngine) writeTasks(tasks []HeartbeatTask, expected heartbeatCo
 		"rev_to", revision,
 		"changes", heartbeatConfigChangeSummary(current.cfg.Tasks, tasks))
 	return nil
+}
+
+// mutateTasks runs one CAS-protected edit of the whole task list (migrated
+// here from the removed tl-547 autopilot guard, tl 1211). Every engine-side
+// task-table rewrite that is not a panel save goes through it so they share
+// the conflict retry and the in-memory/disk snapshot bookkeeping the panel's
+// saves rely on — a write that skipped recordConfigSnapshotLocked would make
+// the next panel save report a phantom conflict. writer names the caller
+// (task 941) and is stamped into every config write and conflict-retry log
+// line this edit produces.
+func (e *HeartbeatEngine) mutateTasks(writer string, mutate func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error)) error {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		expected, err := e.readConfigSnapshot()
+		if err != nil {
+			return err
+		}
+		if expected.exists && expected.cfg.SchemaVersion > heartbeatSchemaVersion {
+			return fmt.Errorf("heartbeat config schemaVersion %d is newer than this binary supports (%d); upgrade Reasonix before editing", expected.cfg.SchemaVersion, heartbeatSchemaVersion)
+		}
+		// The closure may reslice (a deletion shrinks the list), so the header
+		// it returns is the one that gets persisted — a reslice inside the
+		// closure would otherwise be invisible to this caller.
+		tasks, changed, err := mutate(append([]HeartbeatTask(nil), expected.cfg.Tasks...))
+		if err != nil {
+			return err
+		}
+		if !changed {
+			return nil
+		}
+		if err := e.writeTasks(tasks, expected, true, writer); err != nil {
+			if errors.Is(err, ErrHeartbeatConfigConflict) {
+				// Task 941: a silent CAS retry hides exactly the storm this
+				// task exists to diagnose — every steal is now one log line.
+				slog.Warn("heartbeat config CAS conflict, retrying",
+					"writer", writer, "attempt", attempt)
+				lastErr = err
+				continue
+			}
+			return err
+		}
+		latest, err := e.readConfigSnapshot()
+		if err != nil {
+			return err
+		}
+		e.recordConfigSnapshotLocked(latest)
+		e.tasks = latest.cfg.Tasks
+		e.prunePendingTopicsLocked(e.tasks)
+		return nil
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return ErrHeartbeatConfigConflict
 }
 
 // heartbeatConfigChangeSummary condenses one full-table save into a log-sized
@@ -407,19 +515,12 @@ func mergeHeartbeatRunUpdates(tasks []HeartbeatTask, updates map[string]Heartbea
 		if tasks[i].MaxRuns > 0 && update.RunsUsed >= tasks[i].MaxRuns && !update.Enabled {
 			tasks[i].Enabled = false
 		}
-		// Task 326: IdleStreak is engine-owned run state too. Without it the
-		// guard's self-close strike would reset to whatever the (possibly
-		// stale) disk snapshot carried, so three consecutive quiet checks could
-		// never add up. The update is rebuilt from the freshest config on every
+		// IdleStreak is engine-owned run state: without this merge the streak
+		// would reset to whatever the (possibly stale) disk snapshot carried,
+		// so task 244 B1's idle-terminate could never count consecutive idle
+		// runs. The update is rebuilt from the freshest config on every
 		// trigger, so it is the authoritative value.
 		tasks[i].IdleStreak = update.IdleStreak
-		// Task 326: a guard the runtime just self-closed must not be
-		// resurrected by the enabled flag the disk snapshot still carries —
-		// the same failure mode as task 327's terminal disable, except this
-		// task carries no run budget to lean on.
-		if isAutopilotGuardTask(tasks[i]) && !update.Enabled {
-			tasks[i].Enabled = false
-		}
 	}
 }
 

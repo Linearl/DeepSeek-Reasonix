@@ -54,47 +54,9 @@ func TestAutopilotUnsetStaysOutOfTheConfig(t *testing.T) {
 		"\nautopilot = ",
 		"autopilot_max_runtime",
 		"autopilot_approval_grace",
-		"autopilot_guard_interval",
-		"autopilot_guard_quiescent",
 	} {
 		if strings.Contains(out, key) {
 			t.Fatalf("untouched config should not write the autopilot key %q\n---\n%s", key, out)
-		}
-	}
-}
-
-// Task 326: both guard dials live in the autopilot block of the renderer. A key
-// the fixed-key-set renderer does not emit is dropped on save, which is exactly
-// how the autopilot switch used to flip straight back to off — so the dials are
-// pinned here rather than discovered in production.
-func TestAutopilotGuardDialsRoundTripThroughRender(t *testing.T) {
-	c := &Config{}
-	c.Desktop.AutopilotGuardInterval = 7
-	c.Desktop.AutopilotGuardQuiescent = "destroy"
-
-	out := RenderTOMLForScope(c, RenderScopeUser)
-	for _, want := range []string{
-		"autopilot_guard_interval = 7",
-		`autopilot_guard_quiescent = "destroy"`,
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("rendered user config is missing %q\n---\n%s", want, out)
-		}
-	}
-
-	// The defaults read back through the accessors, not through raw field
-	// inspection, so an empty dial keeps its documented meaning.
-	empty := &Config{}
-	if got := empty.AutopilotGuardIntervalMinutes(); got != AutopilotGuardDefaultIntervalMinutes {
-		t.Fatalf("default guard interval = %d, want %d", got, AutopilotGuardDefaultIntervalMinutes)
-	}
-	if got := empty.AutopilotGuardQuiescentPolicy(); got != "disable" {
-		t.Fatalf("default self-close policy = %q, want disable", got)
-	}
-	for _, raw := range []string{"disable", "standby", "destroy"} {
-		empty.Desktop.AutopilotGuardQuiescent = raw
-		if got := empty.AutopilotGuardQuiescentPolicy(); got != raw {
-			t.Fatalf("policy %q read back as %q", raw, got)
 		}
 	}
 }
@@ -140,41 +102,5 @@ func TestAutopilotAskTimeoutUnsetStaysOutOfTheConfig(t *testing.T) {
 		if strings.Contains(out, key) {
 			t.Fatalf("untouched config should not write the ask-timeout key %q\n---\n%s", key, out)
 		}
-	}
-}
-
-// Task 547: guard auto-creation is an opt-in sub-option riding the same
-// fixed-key autopilot block. On writes its key; off — the default — writes
-// nothing, so a config untouched in this respect stays byte-identical.
-func TestAutopilotGuardAutocreateRoundTripsThroughRender(t *testing.T) {
-	c := &Config{}
-	c.Desktop.ExperimentalAutopilotGuardAutocreate = true
-	out := RenderTOMLForScope(c, RenderScopeUser)
-	if !strings.Contains(out, "experimental_autopilot_guard_autocreate = true") {
-		t.Fatalf("rendered user config is missing the guard auto-create opt-in\n---\n%s", out)
-	}
-	if !c.AutopilotGuardAutocreateEnabled() {
-		t.Fatal("an explicit on must read back on")
-	}
-
-	// Off — the default — must keep the key out of the file entirely, and a
-	// nil config fails closed to "never create".
-	off := &Config{}
-	if off.AutopilotGuardAutocreateEnabled() {
-		t.Fatal("the default must read as off (never create)")
-	}
-	var nilCfg *Config
-	if nilCfg.AutopilotGuardAutocreateEnabled() {
-		t.Fatal("a nil config must fail closed to off")
-	}
-	out = RenderTOMLForScope(off, RenderScopeUser)
-	if strings.Contains(out, "experimental_autopilot_guard_autocreate") {
-		t.Fatalf("an untouched config must not write the guard auto-create key\n---\n%s", out)
-	}
-	if err := off.SetExperimentalAutopilotGuardAutocreate(false); err != nil {
-		t.Fatalf("setter must accept off: %v", err)
-	}
-	if off.Desktop.ExperimentalAutopilotGuardAutocreate {
-		t.Fatal("setter must store off as off")
 	}
 }

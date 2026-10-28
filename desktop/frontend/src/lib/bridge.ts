@@ -1508,12 +1508,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetAuthorizePaidQuotaAlloc(enabled: boolean): Promise<void>;
   SetExperimentalAskRoundLimit(enabled: boolean): Promise<void>;
   SetAskRoundLimit(limit: number): Promise<void>;
-  // Task 326: autopilot guard task dials — interval in minutes, and the
-  // self-close policy applied once the watched session goes quiet. Task 547
-  // gates both behind the auto-creation opt-in (off = never create).
-  SetDesktopAutopilotGuardAutocreate(enabled: boolean): Promise<void>;
-  SetDesktopAutopilotGuardInterval(minutes: number): Promise<void>;
-  SetDesktopAutopilotGuardQuiescent(policy: string): Promise<void>;
   // Task 81: the Settings switch for the restart-and-update action. Same preference the
   // restart_update tool's set_target+execute path reads, so one enables both.
   SetExperimentalRestartUpdate(enabled: boolean): Promise<void>;
@@ -3210,9 +3204,6 @@ function makeMockApp(): AppBindings {
     authorizePaidQuotaAlloc: false,
     experimentalAskRoundLimit: false,
     askRoundLimit: 3,
-    experimentalAutopilotGuardAutocreate: false,
-    autopilotGuardInterval: 30,
-    autopilotGuardQuiescent: "disable",
     visionModel: "",
     webSearchModel: "auto",
     webSearchModels: ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"],
@@ -6839,21 +6830,6 @@ function makeMockApp(): AppBindings {
         throw new Error(`ask_round_limit must be 0 (unlimited) or 2..100, got ${limit}`);
       }
       settings.askRoundLimit = Math.trunc(limit);
-    },
-    async SetDesktopAutopilotGuardAutocreate(enabled: boolean) {
-      settings.experimentalAutopilotGuardAutocreate = enabled;
-    },
-    async SetDesktopAutopilotGuardInterval(minutes: number) {
-      if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
-        throw new Error(`autopilot guard interval must be between 1 and 1440 minutes, got ${minutes}`);
-      }
-      settings.autopilotGuardInterval = Math.trunc(minutes);
-    },
-    async SetDesktopAutopilotGuardQuiescent(policy: string) {
-      if (policy !== "disable" && policy !== "standby" && policy !== "destroy") {
-        throw new Error(`autopilot guard quiescent policy ${policy} is invalid`);
-      }
-      settings.autopilotGuardQuiescent = policy;
     },
     async SetDefaultAutoRecoveryCheckpoint(_enabled: boolean) {
       // Legacy no-op; Auto Guard is always built into Auto.

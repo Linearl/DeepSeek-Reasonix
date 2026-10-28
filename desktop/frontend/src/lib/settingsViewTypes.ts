@@ -31,12 +31,6 @@ export interface SettingsView {
   /** Task 1084: ask 轮次上限实验开关 + 数值（0=无限制，有效 0 或 2..100）。 */
   experimentalAskRoundLimit?: boolean;
   askRoundLimit?: number;
-  /** Task 547: whether autopilot auto-creates its guard task at all (default off; off = never create). */
-  experimentalAutopilotGuardAutocreate?: boolean;
-  /** Task 326: the autopilot guard task's run interval, in minutes (effective value). */
-  autopilotGuardInterval?: number;
-  /** Task 326: what happens to the guard once the watched session goes quiet. */
-  autopilotGuardQuiescent?: string;
   // Task 81: exposes the restart-and-update action. Same preference the restart_update tool's set_target+execute path reads.
   experimentalRestartUpdate?: boolean;
   // Task 670: fork first-launch notice switch, resolved (nil-means-on; default on per user ruling).
