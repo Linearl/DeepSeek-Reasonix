@@ -97,6 +97,7 @@ func Test1019PanelHeadsCacheAvoidsReplay(t *testing.T) {
 // 超出面板预算时不做全量重放，降级返回且快速结束——大会话不再把设置页挂在
 // 重放上；ListRecoveryChains 保留该会话行并带 Degraded 标记。
 func Test1019PanelHeadsBudgetDegradesOversizeLog(t *testing.T) {
+	t.Setenv("REASONIX_SESSION_LOG", "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	isolateDesktopUserDirs(t)
 	resetPanelHeadsScanForTest(t)
 	shrinkPanelHeadsBudgetForTest(t, 1) // 任何 events 日志都超预算
@@ -140,6 +141,7 @@ func Test1019PanelHeadsBudgetDegradesOversizeLog(t *testing.T) {
 // 路径（ListSessionVersionGroups）在目录里有大 gap 会话时仍然零重放——只读
 // meta 副车，绝不给面板缓存添重放条目。
 func Test1019VersionGroupsListStaysZeroReplay(t *testing.T) {
+	t.Setenv("REASONIX_SESSION_LOG", "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	isolateDesktopUserDirs(t)
 	resetPanelHeadsScanForTest(t)
 	dir := desktopSessionDir(globalWorkspaceRoot())
