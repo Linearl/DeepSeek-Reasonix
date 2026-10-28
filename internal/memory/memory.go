@@ -196,10 +196,18 @@ func (s *Set) BackgroundDataBlock() string {
 	}
 	var b strings.Builder
 	if len(s.PinnedGuidance) > 0 {
-		b.WriteString("### Pinned preferences and feedback\n")
-		for _, m := range s.PinnedGuidance {
-			fmt.Fprintf(&b, "\n#### %s (%s/%s)\n\n%s\n", displayTitle(m.Title, m.Name),
-				NormalizeFactScope(string(m.Scope)), NormalizeType(string(m.Type)), strings.TrimSpace(m.Body))
+		if pinnedIndexMode() {
+			// Plan E (tl1193): the standing tier carries one index line per
+			// pinned fact; bodies are recalled on demand instead (see
+			// recallMemories, which keeps pinned facts in the pool in this
+			// mode). Default off renders the legacy full-body form unchanged.
+			b.WriteString(pinnedIndexBlock(s.PinnedGuidance))
+		} else {
+			b.WriteString("### Pinned preferences and feedback\n")
+			for _, m := range s.PinnedGuidance {
+				fmt.Fprintf(&b, "\n#### %s (%s/%s)\n\n%s\n", displayTitle(m.Title, m.Name),
+					NormalizeFactScope(string(m.Scope)), NormalizeType(string(m.Type)), strings.TrimSpace(m.Body))
+			}
 		}
 	}
 	if idx := strings.TrimSpace(s.Index); idx != "" {

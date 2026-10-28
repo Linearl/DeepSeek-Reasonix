@@ -142,8 +142,19 @@ func inheritOnUpdate(m Memory, existing Memory, clearExpiry bool) Memory {
 }
 
 // validateSave runs the cross-fact invariants once identity, scope, and
-// inheritance are resolved: the pinned budget and subject uniqueness.
+// inheritance are resolved: the pinned budget (or its plan-E count-quota
+// successor) and subject uniqueness.
 func (s Store) validateSave(m Memory) error {
+	if pinnedIndexMode() {
+		// Plan E (tl1193): bodies are off the standing prefix, so body runes
+		// no longer cost the session anything and the 1500-rune budget retires
+		// in this mode; growth is bounded by entry count instead. Default off
+		// keeps the 1192 ratchet repair byte-for-byte.
+		if err := s.validatePinnedIndexQuota(m); err != nil {
+			return err
+		}
+		return s.validateSubjectKey(m)
+	}
 	if err := s.validatePinnedBudget(m); err != nil {
 		return err
 	}
