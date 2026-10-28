@@ -1643,6 +1643,18 @@ type Options struct {
 	// by default (铁律 2); off keeps every gate verdict byte-identical to the
 	// pre-789 baseline. Fixed for the run; never enters provider bytes.
 	EditEvidenceRelaxed bool
+	// MultiEditErrorDetail lights the tl-1218 ① evidence error-detail face:
+	// evidence-class blocks append the current on-disk content of the
+	// missing/mismatched lines (bounded: ≤5 lines, ≤200 chars each, ≤2KB
+	// total). Off by default (铁律 2); off keeps every blocked message
+	// byte-identical to the pre-1218 baseline. Fixed for the run.
+	MultiEditErrorDetail bool
+	// MultiEditEvidenceNarrow lights the tl-1218 ② evidence-gate narrow mode:
+	// an outstanding write-evidence requirement only blocks write-class
+	// operations whose paths involve that file; unrelated calls (cross-session
+	// messaging etc.) pass. Off by default (铁律 2); off keeps the collective
+	// block byte-identical to the pre-1218 baseline. Fixed for the run.
+	MultiEditEvidenceNarrow bool
 }
 
 // New constructs an Agent. MaxSteps <= 0 means no cap — the run loop continues
@@ -1738,6 +1750,8 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			readCoordinatorShadow:      !opts.ReadPipeline.LegacyCoordinator,
 			legacyImplicitFullReads:    opts.ReadPipeline.LegacyImplicitFullReads,
 			editEvidenceRelaxed:        opts.EditEvidenceRelaxed,
+			multiEditErrorDetail:       opts.MultiEditErrorDetail,
+			multiEditEvidenceNarrow:    opts.MultiEditEvidenceNarrow,
 		},
 		sess: sessionRuntime{
 			conversation: session,

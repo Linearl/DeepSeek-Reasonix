@@ -181,6 +181,12 @@ func (a *Agent) applyMutationDependencyBarrier(plan *toolCallPlan) (toolOutcome,
 	if cause.evidenceOnly && a.independentEvidenceWriter(plan.call) {
 		return toolOutcome{}, false
 	}
+	// tl-1218 ② narrow mode: an evidence-only barrier stops at the calls whose
+	// provable write scope involves an outstanding requirement's file;
+	// unrelated calls pass. Off (default) keeps the collective block.
+	if cause.evidenceOnly && a.evidenceNarrowCascadePass(plan.call) {
+		return toolOutcome{}, false
+	}
 	verification := plan.evidenceName == "bash" && evidence.IsVerificationCommand(bashCommandFromArgs(plan.evidenceArgs))
 	if !plan.effects.StateMutation && !verification {
 		return toolOutcome{}, false

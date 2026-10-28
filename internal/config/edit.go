@@ -1318,6 +1318,32 @@ func (c *Config) SetExperimentalEditEvidenceRelaxed(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalMultiEditErrorDetail toggles the tl-1218 ① evidence
+// error-detail enhancement. Ships off: the zero value keeps every evidence
+// block message byte-identical to the pre-1218 baseline. Restart to apply —
+// the switch is read once per boot snapshot.
+func (c *Config) SetExperimentalMultiEditErrorDetail(enabled bool) error {
+	c.Agent.ExperimentalMultiEditErrorDetail = enabled
+	return nil
+}
+
+// SetExperimentalMultiEditEvidenceNarrow toggles the tl-1218 ② evidence-gate
+// narrow mode. Ships off: the zero value keeps the collective block
+// byte-identical to the pre-1218 baseline. Restart to apply.
+func (c *Config) SetExperimentalMultiEditEvidenceNarrow(enabled bool) error {
+	c.Agent.ExperimentalMultiEditEvidenceNarrow = enabled
+	return nil
+}
+
+// SetExperimentalMultiEditSkipFailed toggles the tl-1218 ③ multi_edit
+// skip-failed mode. Ships off: the zero value keeps the atomic
+// all-or-nothing semantics verbatim. Restart to apply — the tool surface is
+// composed per session.
+func (c *Config) SetExperimentalMultiEditSkipFailed(enabled bool) error {
+	c.Agent.ExperimentalMultiEditSkipFailed = enabled
+	return nil
+}
+
 // SetExperimentalOpenCodeGoUsage toggles the task-163 usage card. Ships off:
 // the zero value keeps the settings page and network behavior unchanged.
 func (c *Config) SetExperimentalOpenCodeGoUsage(enabled bool) error {

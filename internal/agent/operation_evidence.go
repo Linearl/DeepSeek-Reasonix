@@ -291,6 +291,114 @@ func (a *Agent) currentFileHashes(ctx context.Context, path string) ([]string, b
 
 const readEvidencePageLines = 2000
 
+// Evidence error-detail bounds (tl-1218 ①). The appended current-content
+// sample is hard-bounded so a blocked message can never grow unbounded: at
+// most 5 lines per file, 200 bytes per line (bytes, the conservative reading
+// of the ≤200-char cap), 2KB total, and ranges deeper than 4000 lines keep
+// the plain message instead of paying a huge read for a decoration.
+const (
+	evidenceDetailMaxLines      = 5
+	evidenceDetailMaxLineBytes  = 200
+	evidenceDetailMaxTotalBytes = 2048
+	evidenceDetailMaxReadLines  = 4000
+	evidenceDetailPageLines     = 500
+)
+
+// evidenceLineDetail renders the current on-disk content of the missing or
+// mismatched lines (tl-1218 ①, experimental_multi_edit_error_detail). The
+// file goes through the real read_file so encoding and overlay routing match
+// what a model would have seen — the same channel currentFileHashes uses.
+// Best effort: any read failure returns "" and the caller keeps the baseline
+// message (which never includes source text).
+func (a *Agent) evidenceLineDetail(ctx context.Context, check evidenceCheck) string {
+	if a == nil || !a.multiEditErrorDetail || check.Path == "" || len(check.Missing) == 0 {
+		return ""
+	}
+	if a.svc.tools == nil {
+		return ""
+	}
+	reader, ok := a.svc.tools.Get("read_file")
+	if !ok {
+		return ""
+	}
+	// Wanted line indexes (0-based), deduplicated, in file order, capped at
+	// the per-file line bound.
+	var wanted []int
+	inWanted := map[int]bool{}
+	for _, r := range check.Missing {
+		for line := r.Start; line < r.End && len(wanted) < evidenceDetailMaxLines; line++ {
+			if line < 0 || inWanted[line] {
+				continue
+			}
+			inWanted[line] = true
+			wanted = append(wanted, line)
+		}
+		if len(wanted) >= evidenceDetailMaxLines {
+			break
+		}
+	}
+	if len(wanted) == 0 {
+		return ""
+	}
+	text := map[int]string{}
+	got := map[int]bool{}
+	remaining := len(wanted)
+	offset := 0
+	for remaining > 0 && offset < evidenceDetailMaxReadLines {
+		args, err := json.Marshal(map[string]any{"path": check.Path, "offset": offset, "limit": evidenceDetailPageLines})
+		if err != nil {
+			return ""
+		}
+		out, err := reader.Execute(ctx, args)
+		if err != nil {
+			return ""
+		}
+		window, ok := tool.ParseReadWindow(out)
+		if !ok {
+			return ""
+		}
+		for i, line := range window.Lines {
+			idx := offset + i
+			if inWanted[idx] && !got[idx] {
+				text[idx] = line
+				got[idx] = true
+				remaining--
+			}
+		}
+		trailer := tool.ParseReadTrailer(out)
+		if !trailer.HasMore {
+			break
+		}
+		if trailer.NextOffset <= offset {
+			return ""
+		}
+		offset = trailer.NextOffset
+	}
+	var b strings.Builder
+	total := 0
+	count := 0
+	for _, idx := range wanted {
+		if !got[idx] {
+			continue
+		}
+		line := text[idx]
+		if len(line) > evidenceDetailMaxLineBytes {
+			line = line[:evidenceDetailMaxLineBytes-3] + "..."
+		}
+		row := fmt.Sprintf("  L%d: %s\n", idx+1, line)
+		if count >= evidenceDetailMaxLines || total+len(row) > evidenceDetailMaxTotalBytes {
+			break
+		}
+		b.WriteString(row)
+		total += len(row)
+		count++
+	}
+	if count == 0 {
+		return ""
+	}
+	return "current content of the missing lines (read from disk just now):\n" + strings.TrimRight(b.String(), "\n")
+}
+
 func hashLine(line string) string {
 	sum := sha256.Sum256([]byte(line))
 	return hex.EncodeToString(sum[:])
@@ -358,7 +466,7 @@ func (a *Agent) applyEvidenceGates(ctx context.Context, plan *toolCallPlan) (too
 	switch {
 	case check.NativeError != nil:
 		a.recordRepeatFailure(call, resolved, check.NativeError)
-		return a.blockedEvidenceOutcome(check, call), true
+		return a.blockedEvidenceOutcome(ctx, check, call), true
 	case check.Satisfied:
 		plan.expectedWriteSource = check.Target
 		return toolOutcome{}, false
@@ -366,7 +474,7 @@ func (a *Agent) applyEvidenceGates(ctx context.Context, plan *toolCallPlan) (too
 		return a.blockUndeclaredWriter(ctx, plan, call, resolved, boundary)
 	}
 	a.turn.evidenceBlocked.record(check, call, boundary)
-	return a.blockedEvidenceOutcome(check, call), true
+	return a.blockedEvidenceOutcome(ctx, check, call), true
 }
 
 // blockUndeclaredWriter keeps a writer that cannot name what it changes from
@@ -381,6 +489,15 @@ func (a *Agent) blockUndeclaredWriter(ctx context.Context, plan *toolCallPlan, c
 	outstanding := a.outstandingReadEvidence(ctx, boundary)
 	if (call.Name == "bash" || call.Name == "shell") && !toolHooksMayMutateWorkspace(a.svc.hooks) {
 		outstanding = a.narrowToDeclaredShellWrites(call, outstanding)
+	}
+	// tl-1218 ② narrow mode: an outstanding requirement only blocks calls
+	// whose provable write scope involves that file. An unrelated call
+	// (cross-session messaging etc.) passes instead of riding the collective
+	// block. Off (default) keeps the baseline narrowing above, byte-identical.
+	if a.multiEditEvidenceNarrow && len(outstanding) > 0 {
+		if touches, known := a.evidenceCallScope(call, outstanding); known && !touches {
+			return toolOutcome{}, false
+		}
 	}
 	if len(outstanding) == 0 || plan.readOnly {
 		return toolOutcome{}, false
@@ -436,6 +553,86 @@ func evidencePathsOverlap(left, right string) bool {
 	li, le := os.Stat(l)
 	ri, re := os.Stat(r)
 	return le == nil && re == nil && os.SameFile(li, ri)
+}
+
+// evidenceCallScope classifies one call against the outstanding requirement
+// paths for the tl-1218 ② narrow mode:
+//
+//	known=true,  touches=false → provably unrelated, passes
+//	known=true,  touches=true  → involves an outstanding file, stays blocked
+//	known=false                → scope unprovable (unanalyzable shell, failed
+//	                             declaration), keeps the collective block
+//
+// Scope proof: shell commands go through shellsafe.StaticWritePaths (an
+// unanalyzable command is unprovable); writers implementing
+// tool.EvidenceDeclarer name their exact target; every other call (cross-
+// session messaging, unknown MCP tools, read-only helpers) is classified as
+// unrelated — the outstanding requirement protects one file's evidence, and
+// the evidence gate still re-verifies the actual write against current
+// content whenever that file is written again.
+func (a *Agent) evidenceCallScope(call provider.ToolCall, outstanding []string) (touches, known bool) {
+	if a == nil || a.svc.tools == nil {
+		return false, false
+	}
+	name := call.Name
+	if name == "bash" || name == "shell" {
+		var args struct {
+			Command string `json:"command"`
+		}
+		if json.Unmarshal([]byte(call.Arguments), &args) != nil {
+			return false, false
+		}
+		paths, analyzable := shellsafe.StaticWritePaths(args.Command)
+		if !analyzable {
+			return false, false
+		}
+		return pathsOverlapAny(a.writeWorkspaceRoot, paths, outstanding), true
+	}
+	resolved, _, ambiguous := a.svc.tools.ResolveCall(name)
+	if resolved == nil || len(ambiguous) > 0 {
+		return false, false
+	}
+	declarer, ok := resolved.(tool.EvidenceDeclarer)
+	if !ok {
+		return false, true
+	}
+	info, err := declarer.DeclareEvidenceTarget(context.Background(), json.RawMessage(call.Arguments))
+	if err != nil || info.Path == "" {
+		return false, false
+	}
+	return pathsOverlapAny(a.writeWorkspaceRoot, []string{info.Path}, outstanding), true
+}
+
+// pathsOverlapAny reports whether any candidate path overlaps any outstanding
+// requirement path (shell candidates resolve against the workspace root first,
+// matching narrowToDeclaredShellWrites).
+func pathsOverlapAny(workspaceRoot string, candidates, outstanding []string) bool {
+	for _, candidate := range candidates {
+		resolved := resolveMaybeRelative(workspaceRoot, candidate)
+		for _, path := range outstanding {
+			if evidencePathsOverlap(resolved, path) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// evidenceNarrowCascadePass reports whether the tl-1218 ② narrow mode lets
+// this call through the evidence-only mutation barrier: only writes whose
+// provable scope involves an outstanding requirement's file stay blocked.
+// The switch off (default) always returns false — the baseline collective
+// block stands byte-identical.
+func (a *Agent) evidenceNarrowCascadePass(call provider.ToolCall) bool {
+	if a == nil || !a.multiEditEvidenceNarrow {
+		return false
+	}
+	outstanding := a.turn.evidenceBlocked.snapshot()
+	if len(outstanding) == 0 {
+		return true
+	}
+	touches, known := a.evidenceCallScope(call, outstanding)
+	return known && !touches
 }
 
 // recordRebuildAuthorization captures the files an AllowRebuild instruction
@@ -494,7 +691,7 @@ func (a *Agent) preflightEvidenceBatch(ctx context.Context, calls []provider.Too
 			continue
 		}
 		a.turn.evidenceBlocked.record(check, call, boundary)
-		blocked[i] = a.blockedEvidenceOutcome(check, call)
+		blocked[i] = a.blockedEvidenceOutcome(ctx, check, call)
 	}
 	return blocked
 }
@@ -502,7 +699,10 @@ func (a *Agent) preflightEvidenceBatch(ctx context.Context, calls []provider.Too
 // blockedEvidenceOutcome renders one rejection. The operation ID is derived
 // from what the call targets, not from the provider's per-round call ID, so
 // the same rejected edit is recognizable when the model sends it again.
-func (a *Agent) blockedEvidenceOutcome(check evidenceCheck, call provider.ToolCall) toolOutcome {
+// tl-1218 ①: with the error-detail switch lit, the message additionally
+// carries the current on-disk content of the missing/mismatched lines
+// (bounded — see evidenceLineDetail); off keeps the copy byte-identical.
+func (a *Agent) blockedEvidenceOutcome(ctx context.Context, check evidenceCheck, call provider.ToolCall) toolOutcome {
 	code := tool.WriteEvidenceMissing
 	if check.Reason == "stale_or_partial_evidence" {
 		code = tool.WriteEvidenceStale
@@ -520,6 +720,9 @@ func (a *Agent) blockedEvidenceOutcome(check evidenceCheck, call provider.ToolCa
 	msg := describeEvidence(check, call.Name)
 	if check.NativeError != nil {
 		msg = "error: " + check.NativeError.Error()
+	}
+	if detail := a.evidenceLineDetail(ctx, check); detail != "" {
+		msg += "\n" + detail
 	}
 	if recovery := d.ModelFacing(); recovery != "" {
 		msg += "\n" + recovery

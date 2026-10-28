@@ -28,6 +28,14 @@ func (a *Agent) markDependencySkipped(calls []provider.ToolCall, outcomes []tool
 		if cause != nil && cause.evidenceOnly && a.independentEvidenceWriter(calls[j]) {
 			continue
 		}
+		// tl-1218 ② narrow mode: an evidence-only barrier skips only the calls
+		// whose provable write scope involves an outstanding requirement's
+		// file; unrelated calls pass. Kept in lockstep with
+		// applyMutationDependencyBarrier so a statically-skippable call and the
+		// same call re-checked at execution time never diverge.
+		if cause != nil && cause.evidenceOnly && a.evidenceNarrowCascadePass(calls[j]) {
+			continue
+		}
 		isVerification := calls[j].Name == "bash" && evidence.IsVerificationCommand(bashCommandFromArgs(json.RawMessage(calls[j].Arguments)))
 		msg := cause.message()
 		var ex *tool.ShellExecution

@@ -78,6 +78,14 @@ type agentConfig struct {
 	// Options.EditEvidenceRelaxed. Off (the default) keeps every evidence-gate
 	// verdict byte-identical to the pre-789 baseline.
 	editEvidenceRelaxed bool
+	// multiEditErrorDetail is the tl-1218 ① evidence error-detail face; see
+	// Options.MultiEditErrorDetail. Off (the default) keeps every blocked
+	// message byte-identical to the pre-1218 baseline.
+	multiEditErrorDetail bool
+	// multiEditEvidenceNarrow is the tl-1218 ② evidence-gate narrow mode; see
+	// Options.MultiEditEvidenceNarrow. Off (the default) keeps the collective
+	// block byte-identical to the pre-1218 baseline.
+	multiEditEvidenceNarrow bool
 	// decisionExtract is the task-801 decision-pattern extraction config; see
 	// Options.DecisionExtract. Zero value = off: every hook checks Enabled
 	// first, so a disabled config keeps compact/turn paths byte-identical.

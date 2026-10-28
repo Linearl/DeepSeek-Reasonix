@@ -764,6 +764,32 @@ func (c *Config) EditEvidenceRelaxedEnabled() bool {
 	return c != nil && c.Agent.ExperimentalEditEvidenceRelaxed
 }
 
+// MultiEditErrorDetailEnabled reports whether the tl-1218 ① evidence
+// error-detail enhancement is lit (evidence-class blocks append the current
+// content of the missing/mismatched lines, bounded). Plain default-false
+// bool: zero value (and a nil config) keeps every blocked message
+// byte-identical to the pre-1218 baseline.
+func (c *Config) MultiEditErrorDetailEnabled() bool {
+	return c != nil && c.Agent.ExperimentalMultiEditErrorDetail
+}
+
+// MultiEditEvidenceNarrowEnabled reports whether the tl-1218 ② evidence-gate
+// narrow mode is lit (an outstanding write-evidence requirement only blocks
+// writes whose paths involve that file). Plain default-false bool: zero value
+// (and a nil config) keeps the collective block byte-identical to the
+// pre-1218 baseline.
+func (c *Config) MultiEditEvidenceNarrowEnabled() bool {
+	return c != nil && c.Agent.ExperimentalMultiEditEvidenceNarrow
+}
+
+// MultiEditSkipFailedEnabled reports whether the tl-1218 ③ multi_edit
+// skip-failed mode is lit (one failed edit no longer aborts the batch; the
+// final response reports each edit). Plain default-false bool: zero value
+// (and a nil config) keeps the atomic semantics verbatim.
+func (c *Config) MultiEditSkipFailedEnabled() bool {
+	return c != nil && c.Agent.ExperimentalMultiEditSkipFailed
+}
+
 // NormalizeCLIUpdateChannel returns the only public native CLI update channel.
 // The input remains accepted so older preview configurations keep loading.
 func NormalizeCLIUpdateChannel(_ string) string {
@@ -1946,6 +1972,31 @@ type AgentConfig struct {
 	// the lab-registry tier entry and the settings-page entry land in the
 	// unified registration window.
 	ExperimentalEditEvidenceRelaxed bool `toml:"experimental_edit_evidence_relaxed"`
+	// ExperimentalMultiEditErrorDetail is the tl-1218 ① evidence error-detail
+	// enhancement ("工具优化" family member): on, an evidence-class block
+	// (WRITE_EVIDENCE_MISSING / WRITE_EVIDENCE_STALE) appends the CURRENT
+	// on-disk content of the missing/mismatched lines to the interception
+	// message, so the model can retry against the real text in one step.
+	// Bounded: ≤5 lines per file, ≤200 chars per line, ≤2KB total. Off
+	// (default, 铁律 2): the message stays byte-identical to the pre-1218
+	// baseline (it never includes source text — see describeEvidence). Fixed
+	// per boot snapshot; never enters provider bytes.
+	ExperimentalMultiEditErrorDetail bool `toml:"experimental_multi_edit_error_detail"`
+	// ExperimentalMultiEditEvidenceNarrow is the tl-1218 ② evidence-gate
+	// narrow mode ("工具优化" family member): on, an outstanding write-evidence
+	// requirement only blocks write-class operations whose paths involve that
+	// file — unrelated calls (cross-session messaging etc.) pass instead of
+	// riding the collective block. Off (default, 铁律 2): the existing
+	// collective-punishment cascade stays byte-identical.
+	ExperimentalMultiEditEvidenceNarrow bool `toml:"experimental_multi_edit_evidence_narrow"`
+	// ExperimentalMultiEditSkipFailed is the tl-1218 ③ multi_edit
+	// skip-failed mode ("工具优化" family member): on, one failed edit inside a
+	// multi_edit batch no longer aborts the whole call — the failed step is
+	// skipped, later steps still run, and the final response reports every
+	// edit (index + applied/failed + reason). Off (default, 铁律 2): the
+	// atomic all-or-nothing semantics stay verbatim (any failure leaves the
+	// file untouched).
+	ExperimentalMultiEditSkipFailed bool `toml:"experimental_multi_edit_skip_failed"`
 	// DagGraphCacheCapacity bounds the process-wide replayed-graph cache that
 	// saves reuse across Session instances (task 196fix2). 0 keeps the
 	// built-in default (3); the reader clamps outside 1..16 and the setter

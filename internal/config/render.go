@@ -902,6 +902,13 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// lab tier entry and the settings-page entry land in the unified
 	// registration window (labNonFeatureKeys exemption carries the reason).
 	fmt.Fprintf(&b, "experimental_edit_evidence_relaxed = %v   # task 789: relaxed edit evidence gate — a read completed earlier in the same provider batch counts as edit evidence, and an outstanding read requirement no longer hard-blocks bash/shell writes (warning only); off keeps the gate byte-identical (restart to apply)\n", c.Agent.ExperimentalEditEvidenceRelaxed)
+	// tl-1218: the three multi_edit enhancement switches render explicitly —
+	// omit-on-off would silently spring a saved-on switch back off on the next
+	// render (81/123 lost-save lesson). All three are "工具优化" family members
+	// (default off, restart to apply).
+	fmt.Fprintf(&b, "experimental_multi_edit_error_detail = %v   # tl-1218 ①: evidence-class blocks append the current on-disk content of the missing/mismatched lines (≤5 lines, ≤200 chars each, ≤2KB total); off keeps the message byte-identical (restart to apply)\n", c.Agent.ExperimentalMultiEditErrorDetail)
+	fmt.Fprintf(&b, "experimental_multi_edit_evidence_narrow = %v   # tl-1218 ②: an outstanding write-evidence requirement only blocks writes whose paths involve that file (unrelated calls such as cross-session messaging pass); off keeps the collective block (restart to apply)\n", c.Agent.ExperimentalMultiEditEvidenceNarrow)
+	fmt.Fprintf(&b, "experimental_multi_edit_skip_failed = %v   # tl-1218 ③: one failed multi_edit edit no longer aborts the batch — skip, continue, and report every edit (index + applied/failed + reason); off keeps the atomic all-or-nothing semantics verbatim (restart to apply)\n", c.Agent.ExperimentalMultiEditSkipFailed)
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 
