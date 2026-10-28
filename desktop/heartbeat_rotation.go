@@ -246,11 +246,11 @@ func rotationMarkerPath(topicID string) string {
 // ── Eligibility, grouping, verdicts ─────────────────────────────────────────
 
 // heartbeatRotationEligibleTask reports whether a task's bound conversation is
-// one this mechanism may rotate. Fresh-per-run tasks cannot accumulate; guard
-// tasks are task 326's property; goal mode would fight a handoff instruction;
-// a disabled task never wakes anything.
+// one this mechanism may rotate. Fresh-per-run tasks cannot accumulate;
+// goal mode would fight a handoff instruction; a disabled task never wakes
+// anything.
 func heartbeatRotationEligibleTask(t HeartbeatTask) bool {
-	if !t.Enabled || t.GoalMode || isAutopilotGuardTask(t) {
+	if !t.Enabled || t.GoalMode {
 		return false
 	}
 	return !heartbeatFreshConversationMode(t)
