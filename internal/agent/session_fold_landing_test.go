@@ -62,6 +62,7 @@ func bigMessageIDFor(i int) string {
 // CompactSessionFile 真实把日志折回视图量级（≈ 视图 11MiB / 链 100MB 的
 // 123MB→~11MiB 形态在可控 fixture 上的等价物）。
 func TestFoldLandingPredictsViewLandingForRetireableHeads(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: fold-landing 预测读回经已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	foldLandingDeepBranchSessionAt(t, path, "", 3)
 
@@ -110,6 +111,7 @@ func TestFoldLandingPredictsViewLandingForRetireableHeads(t *testing.T) {
 // 保守保留，幸存集=全体 live 头，落地=链 union（同一表达式测量，必须精确
 // 相等），估计如实拒绝，重写实测不删字节（空转归零的依据）。
 func TestFoldLandingKeepsChainUnionWhenHeadsNotRetireable(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: fold-landing 预测读回经已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	foldLandingDeepBranchSessionAt(t, path, "tl1186-foreign-host", 3)
 

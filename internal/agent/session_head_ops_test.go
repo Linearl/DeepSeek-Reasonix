@@ -9,6 +9,7 @@ import (
 )
 
 func TestForkHeadStartsANewHeadAndKeepsTheOldChain(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: head ops 读回经已删读面（ListSessionHeads 垫片恒空）；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1", "q2", "a2")
