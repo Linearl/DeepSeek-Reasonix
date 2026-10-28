@@ -132,8 +132,8 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"tableWrap":           func(c *Config, on bool) error { return c.SetExperimentalTableWrap(on) },
 	"sendTargetSelect":    func(c *Config, on bool) error { return c.SetExperimentalSendTargetSelect(on) },
 	// tl 1165：流式滚动平滑跟随（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
-	"smoothScrollFollow":  func(c *Config, on bool) error { return c.SetExperimentalSmoothScrollFollow(on) },
-	"draftRewrite":        func(c *Config, on bool) error { return c.SetExperimentalDraftRewrite(on) },
+	"smoothScrollFollow": func(c *Config, on bool) error { return c.SetExperimentalSmoothScrollFollow(on) },
+	"draftRewrite":       func(c *Config, on bool) error { return c.SetExperimentalDraftRewrite(on) },
 	// tl 1132：启动遮罩（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
 	"startupSplash": func(c *Config, on bool) error { return c.SetExperimentalStartupSplash(on) },
 	// 任务 1056：网络重试预算分级（[network.retry_budget] 总开关；family 子键
@@ -154,8 +154,8 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"standardContinuation": func(c *Config, on bool) error { return c.SetStandardContinuation(on) },
 	// tl 1105：中断自动续轮（默认关；outcome_unknown 中断→一次宿主续轮）。
 	"interruptedAutoResume": func(c *Config, on bool) error { return c.SetInterruptedAutoResume(on) },
-	"safetyCostControl":    func(c *Config, on bool) error { return c.SetExperimentalSafetyCostControl(on) },
-	"stalledIntentNudge":   func(c *Config, on bool) error { return c.SetStalledIntentNudge(on) },
+	"safetyCostControl":     func(c *Config, on bool) error { return c.SetExperimentalSafetyCostControl(on) },
+	"stalledIntentNudge":    func(c *Config, on bool) error { return c.SetStalledIntentNudge(on) },
 	// ── infra / storage ──
 	"runtimeReuse":        func(c *Config, on bool) error { return c.SetExperimentalRuntimeReuse(on) },
 	"orphanHandling":      func(c *Config, on bool) error { return c.SetExperimentalOrphanHandling(on) },

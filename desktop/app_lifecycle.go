@@ -291,6 +291,9 @@ func (a *App) startupStartBackgroundLoops() {
 	// 零行为）。884 修复后 fold-no-shrink WARN 与死会话（无 save 无旋转）的
 	// 自动出口。
 	a.startEventsIdleSweepLoop()
+	// tl-1174：冷会话主转录 zstd 归档的空闲 sweep（开关每 tick 现读；OFF
+	// 零行为——不压、不建归档，会话文件与引入前逐字节一致）。
+	a.startTranscriptZstdSweepLoop()
 	// Task 308-O4: release detached/idle runtimes (gate: env minutes, default off).
 	a.startDetachedIdleReleaseLoop()
 	// Task 485 P1: release self-held orphan session leases (leaked-handle

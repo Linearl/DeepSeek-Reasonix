@@ -41,13 +41,13 @@ const (
 	// experimental_jsonl_zstd（默认关）守压缩的「写」面——物化解压不随开关，
 	// 关态下已存在的归档必须照常可开。
 	SessionTranscriptZstSuffix = SessionTranscriptSuffix + ".zst"
-	SessionTurnEventLogSuffix     = ".turns.jsonl"
-	SessionConflictLogSuffix      = ".conflicts.jsonl"
+	SessionTurnEventLogSuffix  = ".turns.jsonl"
+	SessionConflictLogSuffix   = ".conflicts.jsonl"
 	// SessionRepairLogSuffix 是会话自愈修复记录（任务 1011：<stem>.repairlog.jsonl）。
 	// 它属于会话侧车：分类侧不得自行拼写该后缀，删除会话时必须一并清掉。
-	SessionRepairLogSuffix        = ".repairlog.jsonl"
-	SessionEventIndexSuffix       = ".event-index.json"
-	SessionDisplayIndexSuffix     = ".display-index.json"
+	SessionRepairLogSuffix    = ".repairlog.jsonl"
+	SessionEventIndexSuffix   = ".event-index.json"
+	SessionDisplayIndexSuffix = ".display-index.json"
 	// SessionMetaFileSuffix is the full classification tail of SessionMeta
 	// (which appends ".meta" to the whole transcript path, historical layout).
 	SessionMetaFileSuffix  = SessionTranscriptSuffix + ".meta"
@@ -165,6 +165,14 @@ func IsSessionTranscriptZstName(name string) bool {
 	name = strings.TrimSpace(name)
 	return strings.HasSuffix(name, SessionTranscriptZstSuffix) &&
 		!strings.HasSuffix(name, SessionEventLogZstSuffix)
+}
+
+// SessionTranscriptPlainName strips the archive tail from a discovered
+// transcript-archive name ("<id>.jsonl.zst" -> "<id>.jsonl") so every consumer
+// (load, meta/lease sidecars, deletion) works on the canonical plain spelling.
+// Anything that is not an archive name reports unchanged.
+func SessionTranscriptPlainName(zstName string) string {
+	return strings.TrimSuffix(zstName, SessionTranscriptZstSuffix)
 }
 
 // SessionEventLogDamaged is the salvage sidecar for event-log bytes that tail

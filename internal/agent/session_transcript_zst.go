@@ -45,7 +45,7 @@ import (
 // （codex MAX_CONCURRENT_COMPRESSION_JOBS=2，我们经桌面空闲 sweep 单 goroutine
 // 且每 pass 限流，等价更保守）。
 
-// sessionTranscriptColdAfter 是冷判定阈值：转录 mtime 距今超过该时长视为冷。
+// SessionTranscriptColdAfter 是冷判定阈值：转录 mtime 距今超过该时长视为冷。
 //
 // 取 14 天的依据（用户要求常量+论证）：
 //   - 太小（<7 天）：周会话在「压缩⇄物化」间来回横跳——每次打开都付一次解压
@@ -56,12 +56,12 @@ import (
 //   - codex rollout 先例取 7 天（MIN_ROLLOUT_AGE），但其 rollout 是一次性落盘
 //     文件（无「打开即物化」语义）；我们的会话打开频率更高，取 2× 先例值
 //     降低横跳面，同时 392 会话的主存量大头（数月前的会话）不受影响。
-const sessionTranscriptColdAfter = 14 * 24 * time.Hour
+const SessionTranscriptColdAfter = 14 * 24 * time.Hour
 
-// sessionTranscriptZstCompressFloor is the smallest transcript worth archiving:
+// SessionTranscriptZstCompressFloor is the smallest transcript worth archiving:
 // the sweep only offers cold candidates above this size. 小于该值的转录压缩
 // 收益接近零（归档头+帧开销吃掉大半），却要付一轮重命名+删除的文件系统噪声。
-const sessionTranscriptZstCompressFloor = 1 << 20 // 1 MiB
+const SessionTranscriptZstCompressFloor = 1 << 20 // 1 MiB
 
 // sessionTranscriptZstKind is the self-describing archive kind marker.
 const sessionTranscriptZstKind = "reasonix-session-transcript-zst"
@@ -221,12 +221,12 @@ func compressSessionTranscriptZstLocked(plain, zst string, now time.Time, reason
 	}
 	// 冷度双保险：调用方判冷之后 mtime 又前移（会话恰好被碰了）⇒ 拒绝。
 	// 热会话绝不压缩（红线 1）。
-	if age := now.Sub(info.ModTime()); age < sessionTranscriptColdAfter {
-		return info.Size(), info.Size(), fmt.Errorf("session transcript not cold (age %s < %s)", age.Round(time.Second), sessionTranscriptColdAfter)
+	if age := now.Sub(info.ModTime()); age < SessionTranscriptColdAfter {
+		return info.Size(), info.Size(), fmt.Errorf("session transcript not cold (age %s < %s)", age.Round(time.Second), SessionTranscriptColdAfter)
 	}
 	before = info.Size()
-	if before < sessionTranscriptZstCompressFloor {
-		return before, before, fmt.Errorf("session transcript under compress floor (%d < %d bytes)", before, int64(sessionTranscriptZstCompressFloor))
+	if before < SessionTranscriptZstCompressFloor {
+		return before, before, fmt.Errorf("session transcript under compress floor (%d < %d bytes)", before, int64(SessionTranscriptZstCompressFloor))
 	}
 	src, err := os.Open(plain)
 	if err != nil {
