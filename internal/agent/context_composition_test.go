@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"reasonix/internal/provider"
+	"reasonix/internal/sessioncontext"
 )
 
 // coldTextTokens pins the cold ~4-bytes-per-token fallback (no session
@@ -92,5 +93,54 @@ func TestContextCompositionTotalMatchesGaugeHeadline(t *testing.T) {
 	}
 	if comp.TotalTokens != gauge {
 		t.Fatalf("composition total = %d, want the gauge headline %d (缺口5: 分项和必须等于主读数)", comp.TotalTokens, gauge)
+	}
+}
+
+// tl1224 阶段二验收（三段式统计归属）：<session-context> 信封拆为跨会话记忆/
+// 目录/运行时快照三桶（信封帧归运行时），<memory-recall> 尾部单列召回桶，
+// 历史消息只收普通对话内容；Σ全部分项仍等于 TotalTokens（缺口5 不变量）。
+func TestComputeContextCompositionAttributesEnvelopeAndRecall(t *testing.T) {
+	snapshot := sessioncontext.Build(sessioncontext.Sections{
+		Environment:       strings.Repeat("e", 200),
+		Workspace:         strings.Repeat("w", 100),
+		SkillsCatalog:     strings.Repeat("c", 160),
+		CapabilityCatalog: strings.Repeat("p", 240),
+		BackgroundMemory:  strings.Repeat("m", 400),
+	})
+	recall := "<memory-recall>\n" + strings.Repeat("f", 200) + "\n</memory-recall>"
+	history := strings.Repeat("q", 120)
+	messages := []provider.Message{
+		{Role: provider.RoleUser, Content: snapshot.Content},
+		{Role: provider.RoleUser, Content: history + "\n\n" + recall},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("a", 80)},
+	}
+
+	comp := computeContextComposition(messages, nil, coldTextTokens)
+
+	if got, want := comp.StandingMemoryTokens, coldTextTokens(strings.Repeat("m", 400)); got != want {
+		t.Fatalf("standing memory attribution = %d, want %d (BackgroundMemory section)", got, want)
+	}
+	if got, want := comp.CatalogTokens, coldTextTokens(strings.Repeat("c", 160)+strings.Repeat("p", 240)); got != want {
+		t.Fatalf("catalog attribution = %d, want %d (skills + capability catalog sections)", got, want)
+	}
+	if got, want := comp.RuntimeTokens, coldTextTokens(strings.Repeat("e", 200)+strings.Repeat("w", 100)); got < want {
+		t.Fatalf("runtime attribution = %d, want >= %d (environment + workspace, frame adds more)", got, want)
+	}
+	if got, want := comp.RecallTokens, coldTextTokens(recall); got != want {
+		t.Fatalf("recall attribution = %d, want %d (<memory-recall> tail)", got, want)
+	}
+	if got, want := comp.MessageTokens, coldTextTokens(history+"\n\n")+coldTextTokens(strings.Repeat("a", 80)); got != want {
+		t.Fatalf("history attribution = %d, want %d (plain user text + assistant; recall stripped)", got, want)
+	}
+	// Σ全部分项 = TotalTokens（tl1224 拆分后口径不变的验收读数）。
+	if got, want := comp.TotalTokens, comp.SystemPromptTokens+comp.BuiltinToolTokens+comp.SkillTokens+comp.McpToolTokens+comp.MessageTokens+comp.StandingMemoryTokens+comp.CatalogTokens+comp.RuntimeTokens+comp.RecallTokens+comp.ImageTokens; got != want {
+		t.Fatalf("total = %d, want the sum of every segment including the tl1224 detail fields (%d)", got, want)
+	}
+	// 无信封无召回的会话不产生任何幽灵细分行（旧宿主/纯对话前端全零）。
+	plain := computeContextComposition([]provider.Message{
+		{Role: provider.RoleUser, Content: strings.Repeat("u", 100)},
+	}, nil, coldTextTokens)
+	if plain.StandingMemoryTokens != 0 || plain.CatalogTokens != 0 || plain.RuntimeTokens != 0 || plain.RecallTokens != 0 {
+		t.Fatalf("plain conversation must leave every detail field at zero: %+v", plain)
 	}
 }

@@ -208,15 +208,17 @@ type Controller struct {
 	pinnedContextLoader     PinnedContextLoader
 	sessionContextStatic    sessioncontext.Sections
 	capabilityDirectory     func() (string, capability.DirectoryStats)
-	// directoryTruncationDropped dedupes the over-budget truncation warning
-	// (task 969): it stores the last observed drop count so a persistent
-	// overflow logs once per distinct count instead of once per turn.
-	directoryTruncationDropped atomic.Int64
-	// directoryPressureWarned latches the near-cap collision warning (task
+	// directoryPressureWarned latches the over-warning-line log warn (task
 	// 1224): one warn per climb past the warn thresholds, reset when the
 	// catalog shrinks back under them so the next climb warns again.
 	directoryPressureWarned atomic.Bool
-	sessionDir                 string
+	// contextDirectoryBytes records the last rendered capability directory
+	// block's byte size (tl1224 阶段二): the quantity whose 64KB hard cap was
+	// retired, now the warning line the composer gauge's over-line visual
+	// state compares against. Zero before the first render or when the
+	// model-facing discovery gate hides the directory.
+	contextDirectoryBytes atomic.Int64
+	sessionDir              string
 	// sessionV4 mirrors transcripts into the experimental v4 store when set.
 	sessionV4 *SessionV4Bridge
 	commands  atomic.Pointer[[]command.Command]
@@ -5898,6 +5900,18 @@ func (c *Controller) ContextComposition() agent.ContextComposition {
 		return agent.ContextComposition{}
 	}
 	return c.executor.ContextComposition()
+}
+
+// ContextDirectoryBytes reports the last rendered capability directory block's
+// byte size (tl1224 阶段二): the standing injection whose 64KB hard cap was
+// retired, now the warning line the gauge's over-line visual compares against.
+// Zero means "not rendered yet" or "hidden by the discovery gate" — the gauge
+// stays quiet in both cases.
+func (c *Controller) ContextDirectoryBytes() int {
+	if c == nil {
+		return 0
+	}
+	return int(c.contextDirectoryBytes.Load())
 }
 
 // CompactRatio returns the auto-compaction threshold as a fraction of the window

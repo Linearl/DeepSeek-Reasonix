@@ -8265,6 +8265,19 @@ type ContextCompositionInfo struct {
 	MessageTokens      int `json:"messageTokens"`
 	ImageTokens        int `json:"imageTokens"` // 任务1040: resolution-derived image price bucket
 	TotalTokens        int `json:"totalTokens"`
+	// tl1224 阶段二三段式明细（协议三大段的子项归属；旧宿主省略=0）：
+	// StandingMemoryTokens=跨会话记忆索引（session-context BackgroundMemory），
+	// CatalogTokens=技能目录+能力目录，RuntimeTokens=环境/工作区快照+信封帧，
+	// RecallTokens=每轮召回尾部。四者从 MessageTokens 拆出单列，Σ仍=TotalTokens。
+	StandingMemoryTokens int `json:"standingMemoryTokens,omitempty"`
+	CatalogTokens        int `json:"catalogTokens,omitempty"`
+	RuntimeTokens        int `json:"runtimeTokens,omitempty"`
+	RecallTokens         int `json:"recallTokens,omitempty"`
+	// DirectoryBytes is the last rendered capability directory block's byte
+	// size — the standing injection whose 64KB hard cap tl1224 阶段二 retired;
+	// the gauge compares it against the 64KB warning line for the over-line
+	// visual state. Zero = not rendered yet / hidden by the discovery gate.
+	DirectoryBytes int `json:"directoryBytes,omitempty"`
 }
 
 type ChangedFileInfo struct {
@@ -8364,13 +8377,18 @@ func (a *App) ContextPanel(tabID string) ContextPanelInfo {
 		comp := ctrl.ContextComposition()
 		if comp.TotalTokens > 0 {
 			info.Composition = &ContextCompositionInfo{
-				SystemPromptTokens: comp.SystemPromptTokens,
-				BuiltinToolTokens:  comp.BuiltinToolTokens,
-				SkillTokens:        comp.SkillTokens,
-				McpToolTokens:      comp.McpToolTokens,
-				MessageTokens:      comp.MessageTokens,
-				ImageTokens:        comp.ImageTokens,
-				TotalTokens:        comp.TotalTokens,
+				SystemPromptTokens:   comp.SystemPromptTokens,
+				BuiltinToolTokens:    comp.BuiltinToolTokens,
+				SkillTokens:          comp.SkillTokens,
+				McpToolTokens:        comp.McpToolTokens,
+				MessageTokens:        comp.MessageTokens,
+				ImageTokens:          comp.ImageTokens,
+				TotalTokens:          comp.TotalTokens,
+				StandingMemoryTokens: comp.StandingMemoryTokens,
+				CatalogTokens:        comp.CatalogTokens,
+				RuntimeTokens:        comp.RuntimeTokens,
+				RecallTokens:         comp.RecallTokens,
+				DirectoryBytes:       ctrl.ContextDirectoryBytes(),
 			}
 		}
 	}

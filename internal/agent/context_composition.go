@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"reasonix/internal/provider"
+	"reasonix/internal/sessioncontext"
 )
 
 // Task 442 — context composition segments for the composer gauge popup.
@@ -21,6 +22,14 @@ import (
 // so those tool results form the skill segment. Everything that is not a
 // system message, a tool schema, or a skill tool result — user prompts,
 // assistant output, ordinary tool results — is the message segment.
+//
+// tl1224 阶段二（协议三段式明细）：四个细分字段把 MessageTokens 里「看不见的
+// 大头」拆出来单列。核实结论（阶段二实施第一步）：常驻记忆索引、技能/能力
+// 目录、环境/工作区快照都随 <session-context> 信封走 host 生成的 user 消息
+// （缓存安全设计，不进 system prompt）；每轮召回走最新 user 消息尾部的
+// <memory-recall> 块——此前全部埋在 MessageTokens（94.8% 的「消息」行）里，
+// 面板无单列。实现上四字段从 MessageTokens 拆出（兄弟分项，非嵌套子集），
+// TotalTokens = Σ全部分项，口径不变。
 type ContextComposition struct {
 	// SystemPromptTokens covers every system-role message in the visible view
 	// (the base prompt plus host/extension system content).
@@ -33,8 +42,10 @@ type ContextComposition struct {
 	SkillTokens int `json:"skillTokens"`
 	// McpToolTokens is the JSON schema cost of mcp__-prefixed tools.
 	McpToolTokens int `json:"mcpToolTokens"`
-	// MessageTokens is everything else: user/assistant content (reasoning
-	// bodies and tool-call arguments included) plus ordinary tool results.
+	// MessageTokens is the conversation history: user/assistant content
+	// (reasoning bodies and tool-call arguments included) plus ordinary tool
+	// results — everything in the messages that the four detail fields below
+	// do not attribute.
 	MessageTokens int `json:"messageTokens"`
 	// ImageTokens is the resolution-derived price of every provider-visible
 	// image in the live view (任务1040): the headline gauge (ContextUsedTokens)
@@ -42,9 +53,29 @@ type ContextComposition struct {
 	// otherwise a screenshot session showed images in the headline and an
 	// all-"消息" bar, and the two readouts could never be reconciled.
 	ImageTokens int `json:"imageTokens"`
-	// TotalTokens is the sum of the segments above — the composition's own
-	// total, now the same caliber as the calibrated gauge number (任务1025).
+	// TotalTokens is the sum of every segment above including the four tl1224
+	// detail fields (they are carved OUT of MessageTokens, not nested inside
+	// it) — the composition's own total, the same caliber as the calibrated
+	// gauge number (任务1025).
 	TotalTokens int `json:"totalTokens"`
+	// StandingMemoryTokens is the 跨会话记忆 attribution: the background
+	// memory block (pinned guidance + the standing index) carried by
+	// <session-context> envelopes in the visible view (envelopes ride
+	// host-generated user messages, not the system prompt); zero on sessions
+	// without standing memory. The gauge's detail view lists it under the
+	// System prompt section (用户定稿：跨会话记忆归属 System prompt 段) so the
+	// governance bulk stays visible.
+	StandingMemoryTokens int `json:"standingMemoryTokens,omitempty"`
+	// CatalogTokens is the skills catalog + capability directory carried by
+	// <session-context> envelopes (the tl1224 全量注入 block).
+	CatalogTokens int `json:"catalogTokens,omitempty"`
+	// RuntimeTokens is the environment/workspace runtime snapshot plus the
+	// envelope frame (tag, preamble, digest) of every <session-context> in the
+	// view.
+	RuntimeTokens int `json:"runtimeTokens,omitempty"`
+	// RecallTokens is the per-turn <memory-recall> tail attached to real user
+	// messages (cache-safe design: recall never rewrites the prefix).
+	RecallTokens int `json:"recallTokens,omitempty"`
 }
 
 // skillToolNames mirrors the routing list in usecapability.resolveSkillCall:
@@ -92,24 +123,39 @@ func (a *Agent) ContextComposition() ContextComposition {
 // scaleCompSegments scales the content segments (not images, whose resolution
 // price is already exact) so their sum equals the gauge headline total. The
 // framing-byte remainder is absorbed proportionally by the largest segments,
-// keeping Σsegments = TotalTokens = 主读数 by construction.
+// keeping Σsegments = TotalTokens = 主读数 by construction. The tl1224 detail
+// fields scale by the same factor so every attribution keeps its share; the
+// truncation remainder still lands in MessageTokens.
 func scaleCompSegments(comp *ContextComposition, target int) {
-	contentTotal := comp.SystemPromptTokens + comp.BuiltinToolTokens + comp.SkillTokens + comp.McpToolTokens + comp.MessageTokens
+	contentTotal := comp.SystemPromptTokens + comp.BuiltinToolTokens + comp.SkillTokens + comp.McpToolTokens + comp.MessageTokens +
+		comp.StandingMemoryTokens + comp.CatalogTokens + comp.RuntimeTokens + comp.RecallTokens
 	if contentTotal <= 0 || comp.ImageTokens >= target {
 		comp.TotalTokens = target
 		return
 	}
 	scale := float64(target-comp.ImageTokens) / float64(contentTotal)
-	comp.SystemPromptTokens = int(float64(comp.SystemPromptTokens) * scale)
-	comp.BuiltinToolTokens = int(float64(comp.BuiltinToolTokens) * scale)
-	comp.SkillTokens = int(float64(comp.SkillTokens) * scale)
-	comp.McpToolTokens = int(float64(comp.McpToolTokens) * scale)
-	comp.MessageTokens = int(float64(comp.MessageTokens) * scale)
+	scaleInt := func(v int) int { return int(float64(v) * scale) }
+	comp.SystemPromptTokens = scaleInt(comp.SystemPromptTokens)
+	comp.BuiltinToolTokens = scaleInt(comp.BuiltinToolTokens)
+	comp.SkillTokens = scaleInt(comp.SkillTokens)
+	comp.McpToolTokens = scaleInt(comp.McpToolTokens)
+	comp.MessageTokens = scaleInt(comp.MessageTokens)
+	comp.StandingMemoryTokens = scaleInt(comp.StandingMemoryTokens)
+	comp.CatalogTokens = scaleInt(comp.CatalogTokens)
+	comp.RuntimeTokens = scaleInt(comp.RuntimeTokens)
+	comp.RecallTokens = scaleInt(comp.RecallTokens)
 	// Absorb float-truncation remainder into the largest content bucket so
 	// Σsegments = TotalTokens exactly (缺口5: 分项和必须等于主读数).
-	remainder := (target - comp.ImageTokens) - (comp.SystemPromptTokens + comp.BuiltinToolTokens + comp.SkillTokens + comp.McpToolTokens + comp.MessageTokens)
+	remainder := (target - comp.ImageTokens) - comp.contentSum()
 	comp.MessageTokens += remainder
-	comp.TotalTokens = comp.SystemPromptTokens + comp.BuiltinToolTokens + comp.SkillTokens + comp.McpToolTokens + comp.MessageTokens + comp.ImageTokens
+	comp.TotalTokens = comp.contentSum() + comp.ImageTokens
+}
+
+// contentSum is the mutable part of the Σsegments identity: every segment
+// except the exact-resolution ImageTokens.
+func (c *ContextComposition) contentSum() int {
+	return c.SystemPromptTokens + c.BuiltinToolTokens + c.SkillTokens + c.McpToolTokens + c.MessageTokens +
+		c.StandingMemoryTokens + c.CatalogTokens + c.RuntimeTokens + c.RecallTokens
 }
 
 // computeContextComposition is the pure measurement core, split from the
@@ -137,9 +183,34 @@ func computeContextComposition(messages []provider.Message, schemas []provider.T
 		case msg.Role == provider.RoleTool && skillToolNames[msg.Name]:
 			comp.SkillTokens += textTokens(msg.Content)
 		default:
-			comp.MessageTokens += textTokens(msg.Content) + textTokens(msg.ReasoningContent)
-			for _, call := range msg.ToolCalls {
-				comp.MessageTokens += textTokens(call.Arguments)
+			content := msg.Content
+			// tl1224 阶段二: the per-turn recall tail rides the real user
+			// message; pull the <memory-recall> spans out first so 历史消息 and
+			// 每轮召回 get honest numbers.
+			if spans := memoryRecallSpans(content); len(spans) > 0 {
+				for _, span := range spans {
+					comp.RecallTokens += textTokens(span)
+				}
+				content = stripMemoryRecallSpans(content)
+			}
+			// tl1224 阶段二: <session-context> envelopes (host-generated user
+			// messages) split into 跨会话记忆 / 目录 / 运行时快照; the envelope
+			// frame (tag, preamble, digest lines) rides with the runtime
+			// bucket. History keeps only plain conversation content.
+			if snapshot, ok := sessioncontext.Parse(content); ok {
+				sections := snapshot.Sections
+				comp.StandingMemoryTokens += textTokens(sections.BackgroundMemory)
+				comp.CatalogTokens += textTokens(sections.SkillsCatalog) + textTokens(sections.CapabilityCatalog)
+				frame := len(content) - len(sections.Environment) - len(sections.Workspace) - len(sections.SkillsCatalog) - len(sections.CapabilityCatalog) - len(sections.BackgroundMemory)
+				if frame < 0 {
+					frame = 0
+				}
+				comp.RuntimeTokens += textTokens(sections.Environment) + textTokens(sections.Workspace) + textTokens(strings.Repeat(" ", frame))
+			} else {
+				comp.MessageTokens += textTokens(content) + textTokens(msg.ReasoningContent)
+				for _, call := range msg.ToolCalls {
+					comp.MessageTokens += textTokens(call.Arguments)
+				}
 			}
 		}
 	}
@@ -154,6 +225,47 @@ func computeContextComposition(messages []provider.Message, schemas []provider.T
 			comp.BuiltinToolTokens += textTokens(string(b))
 		}
 	}
-	comp.TotalTokens = comp.SystemPromptTokens + comp.BuiltinToolTokens + comp.SkillTokens + comp.McpToolTokens + comp.MessageTokens + comp.ImageTokens
+	comp.TotalTokens = comp.contentSum() + comp.ImageTokens
 	return comp
+}
+
+// memoryRecallSpans returns every complete <memory-recall>…</memory-recall>
+// block in content (tl1224 阶段二). The wrapper is the stable contract written
+// by memory.buildRecallBlock; anything malformed stays in the history bucket.
+func memoryRecallSpans(content string) []string {
+	const open = "<memory-recall>"
+	const close = "</memory-recall>"
+	var spans []string
+	for {
+		start := strings.Index(content, open)
+		if start < 0 {
+			return spans
+		}
+		end := strings.Index(content[start:], close)
+		if end < 0 {
+			return spans
+		}
+		stop := start + end + len(close)
+		spans = append(spans, content[start:stop])
+		content = content[stop:]
+	}
+}
+
+// stripMemoryRecallSpans removes complete recall blocks; the joining newlines
+// the tail format leaves behind stay in the history bucket (a few bytes).
+func stripMemoryRecallSpans(content string) string {
+	const open = "<memory-recall>"
+	const close = "</memory-recall>"
+	for {
+		start := strings.Index(content, open)
+		if start < 0 {
+			return content
+		}
+		end := strings.Index(content[start:], close)
+		if end < 0 {
+			return content
+		}
+		stop := start + end + len(close)
+		content = content[:start] + content[stop:]
+	}
 }
