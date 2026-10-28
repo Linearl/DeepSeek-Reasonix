@@ -747,6 +747,14 @@ func (a *App) SetExperimentalHomePointer(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalHomePointer(enabled) })
 }
 
+// SetExperimentalJsonlZstd toggles the tl-1174 cold-session transcript zstd
+// archive lab card (storage group, optional tier). Ships off (铁律 2); the
+// idle sweep reads the saved switch per tick, so the flip applies without a
+// restart.
+func (a *App) SetExperimentalJsonlZstd(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalJsonlZstd(enabled) })
+}
+
 // SetExperimentalPathRules toggles structured path-scope evaluation (task 134).
 func (a *App) SetExperimentalPathRules(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPathRules(enabled) })

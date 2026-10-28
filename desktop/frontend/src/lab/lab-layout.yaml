@@ -392,7 +392,7 @@ groups:
             labelKey: settings.lifecycleNoiseGate
             tier: unstable
 
-  # ── 存储（3 项；任务 775：闲置释放/内存上限两参数卡迁入）────────────
+  # ── 存储（4 项；任务 775：闲置释放/内存上限两参数卡迁入；tl-1174 增冷压缩）──
   - key: storage
     labelKey: settings.labGroup.storage
     entries:
@@ -412,6 +412,14 @@ groups:
         labelKey: settings.homePointer
         tier: unstable
         onKeys: [homePointer]
+      # tl-1174：冷会话主转录整文件 zstd 压缩（可选档，默认关）。热会话保持
+      # 明文；冷会话整文件压缩为 .jsonl.zst；冷读透明解压；恢复活跃时物化回
+      # 明文。开关关=会话文件与引入前逐字节一致（铁律 2）。空闲 sweep 每 tick
+      # 现读开关（921 先例），保存即生效免重启。
+      - id: jsonlZstd
+        labelKey: settings.jsonlZstd
+        tier: optional
+        onKeys: [experimentalJsonlZstd]
       # 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡。
       # 无开关纯字段卡（分钟；0=从不释放）；字段绑定在 src/lab/labParamFields.ts
       # （值语义收拢在代码，yaml 只描述结构与引用——724 硬约束同构延伸）。

@@ -1445,6 +1445,19 @@ func (c *Config) SetExperimentalHomePointer(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalJsonlZstd toggles the tl-1174 cold-session transcript zstd
+// archive. It ships off (铁律 2): off = no sweep pass ever compresses, and no
+// archive file is ever created — session files stay byte-for-byte identical
+// to a build without the feature. The sweep reads the saved switch per tick
+// (task 921 precedent), so a flip applies on the next tick without a restart.
+// Already-archived sessions keep opening normally while off: transparent
+// materialization is deliberately switch-independent (an archive written
+// while the switch was on must stay readable after it is turned off).
+func (c *Config) SetExperimentalJsonlZstd(enabled bool) error {
+	c.Desktop.ExperimentalJsonlZstd = enabled
+	return nil
+}
+
 // SetACPListenPort records the resident ACP listener's loopback port (task
 // 790). 0 keeps the 8790 default; the value is read once at desktop boot.
 func (c *Config) SetACPListenPort(port int) error {

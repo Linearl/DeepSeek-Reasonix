@@ -562,6 +562,9 @@ type SettingsView struct {
 	ExperimentalTraceAsState       bool `json:"experimentalTraceAsState"`
 	// Task 846: change-data-home lab switch; gates the wizard's write path.
 	ExperimentalHomePointer bool `json:"experimentalHomePointer"`
+	// tl-1174: cold-session transcript zstd archive lab switch (storage group,
+	// optional tier, default off).
+	ExperimentalJsonlZstd bool `json:"experimentalJsonlZstd"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
 	MaxCachedTabs int `json:"maxCachedTabs"`
 	// Task 347: effective replayed-graph cache LRU capacity (task 196fix2
@@ -2121,6 +2124,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalLifecycleNoiseGate:  cfg.Desktop.ExperimentalLifecycleNoiseGate,
 		ExperimentalPathRules:           cfg.Desktop.ExperimentalPathRules,
 		ExperimentalHomePointer:         cfg.Desktop.ExperimentalHomePointer,
+		ExperimentalJsonlZstd:           cfg.Desktop.ExperimentalJsonlZstd,
 		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,
 		DagGraphCacheCapacity:           config.DagGraphCacheCapacity(cfg),
 		HistoryBodyBudgetMb:             cfg.Desktop.HistoryBodyBudgetMb,
