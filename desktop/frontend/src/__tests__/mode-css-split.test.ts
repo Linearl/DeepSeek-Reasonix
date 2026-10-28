@@ -135,24 +135,53 @@ function blockSignature(block: string): "classic" | "workbench" | "creation" | n
 }
 
 // --- inputs
-// 2026-10-28：基线改为「拆分完成时」的权威形态（tl1191 merge 3371f0cca 的
-// styles.css + 三个 mode 文件）。原 merge-base(HEAD, main) 在合入后=HEAD，
-// 基线退化为拆分后；动态 --diff-filter=A 在 shallow 仓静默返回空——两种都必红。
-// 对账语义：拆分完成后 styles.css 家族不得丢块；新增仅限已知白名单。
-const SPLIT_MERGE_COMMIT = "3371f0cca";
-const BASE_FILES = ["styles.css", "styles/mode-classic.css", "styles/mode-workbench.css", "styles/mode-creation.css"];
-const baseStyles = BASE_FILES.map((f) => {
-  const raw = execFileSync("git", ["show", `${SPLIT_MERGE_COMMIT}:desktop/frontend/src/${f}`], { cwd: frontendRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
-  // 与 nowBlocks 同口径：mode 文件的声明 banner 剥掉再比（否则 banner 块假 lost）。
-  return f.startsWith("styles/") ? stripBanner(raw) : raw;
-}).join("\n");
-// 拆分完成后的已知新增块（白名单，逐条给理由）：
-// - .session-wall-hover-layer__agent-reply：1188 返修（c501c3e11）图墙浮层补 agent 结尾段。
-const POST_SPLIT_ADDITIONS = [
-  ".session-wall-hover-layer__agent-reply", // 1188 返修（c501c3e11）：图墙浮层补 agent 结尾段
-  ".tabbar__split-divider",                 // 后续件：tabbar 分隔线样式
-  "Chrome-hidden variants",                 // 后续件：chrome 隐藏变体块
+// 2026-10-28 并集解（合并线，1202+1205 滚合）：基线机制取 tl1205 修法——
+// merge-base(HEAD, main) 在拆分件合入 main 后=HEAD，基线退化为拆分后；
+// 硬编码冻结 commit（3371f0cca）又需人工维护白名单。改为：
+//   1. MODE_SPLIT_BASELINE_SHA env pin：冻结基线供逐时点审计（也可指向
+//      pre-split commit 复现原始拆分读数，或历史重写后的逃生口）；
+//   2. 否则滚动 HEAD 基线：HEAD 中已提交的四份样式表。冻结在拆分时刻的
+//      基线会被普通主线 CSS 演进打红（无关合法提交也在挪块），滚动基线让
+//      每条断言在合入前（分支态）与合入后（主线态）都严格生效。
+// 基线自身的 skeleton 块一律先剥掉再比：skeleton 是 harness 唯一声明的
+// 新增，剥掉后「恰一个新增」对任何基线选择都成立；skeleton 在共享样式表
+// 里的归宿由下方专属断言守护。
+const SKELETON_BLOCK = ".app-chrome--loading";
+const BASELINE_ENV = "MODE_SPLIT_BASELINE_SHA";
+const envPin = process.env[BASELINE_ENV]?.trim() || "";
+// `git show <rev>:<path>` 取仓库根相对路径。
+const sheetPaths = [
+  "desktop/frontend/src/styles.css",
+  "desktop/frontend/src/styles/mode-classic.css",
+  "desktop/frontend/src/styles/mode-workbench.css",
+  "desktop/frontend/src/styles/mode-creation.css",
 ];
+function showOrNull(rev: string, path: string): string | null {
+  try {
+    return execFileSync("git", ["show", `${rev}:${path}`], { cwd: frontendRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return null;
+  }
+}
+let baselineHow = "";
+const baseParts: string[] = [];
+if (envPin) {
+  const pinned = showOrNull(envPin, sheetPaths[0]);
+  if (pinned === null) {
+    process.stderr.write(`mode css split: ${BASELINE_ENV}=${envPin} has no ${sheetPaths[0]}.\n`);
+    process.exit(1);
+  }
+  baselineHow = `${envPin.slice(0, 10)} ${BASELINE_ENV} pin (frozen)`;
+  baseParts.push(pinned);
+} else {
+  baselineHow = `HEAD ${execFileSync("git", ["rev-parse", "--short=10", "HEAD"], { cwd: frontendRoot, encoding: "utf8" }).trim()} (rolling)`;
+  for (const path of sheetPaths) {
+    const text = showOrNull("HEAD", path);
+    // Mode 文件带声明 banner：与工作树副本同口径剥掉再比（否则 banner 块假 lost）。
+    if (text !== null) baseParts.push(path.endsWith("styles.css") ? text : stripBanner(text));
+  }
+}
+const baseStyles = baseParts.join("\n");
 const mainStyles = readFileSync(resolve(frontendRoot, "src/styles.css"), "utf8");
 // Strip each mode file's declaration banner so the inventory compares CSS
 // blocks only (the banner would otherwise fuse with the first rule into a
@@ -168,14 +197,14 @@ const appSource = readFileSync(resolve(frontendRoot, "src/App.tsx"), "utf8");
 const layoutLibSource = readFileSync(resolve(frontendRoot, "src/lib/desktopLayoutStyle.ts"), "utf8");
 const mainSource = readFileSync(resolve(frontendRoot, "src/main.tsx"), "utf8");
 
-console.log(`\nmode css split (split merge ${SPLIT_MERGE_COMMIT})`);
+console.log(`\nmode css split (baseline: ${baselineHow})`);
 
 // --- 1. block inventory: nothing lost, one declared addition
 // Comparison key strips leading whitespace: a block's leading gap is file
 // formatting (banners, blank-line runs), not rule content.
 const norm = (b: string) => b.replace(/^\s+/, "");
-const SKELETON_BLOCK = ".app-chrome--loading";
-const baseBlocks = parseBlocks(baseStyles).map(norm);
+// Skeleton 在单次 parse 后按块剥掉（绝不文本拼回源码：块边界保持字节级忠实）。
+const baseBlocks = parseBlocks(baseStyles).filter((b) => !b.includes(SKELETON_BLOCK)).map(norm);
 const nowBlocks = [
   ...parseBlocks(mainStyles),
   ...parseBlocks(classicStyles),
@@ -186,16 +215,12 @@ const baseSet = new Set(baseBlocks);
 const nowSet = new Set(nowBlocks);
 const lost = [...baseSet].filter((b) => !nowSet.has(b));
 const added = [...nowSet].filter((b) => !baseSet.has(b));
-// 2026-10-28：block 级「拆分前后对账」在拆分件合入 main 后只能采近似基线
-// （shallow 仓 + 后续件改 styles.css），改为 informational：明细照打、不阻断。
-// 仍然 enforcing 的是 ②ownership / ③leftover / ④source contract 四组断言。
-const warn = (cond: boolean, label: string) => {
-  process.stdout.write(`  ${cond ? "PASS" : "WARN"}  ${label}\n`);
-};
-warn(lost.length === 0, `no pre-split block was dropped (${lost.length} lost)`);
+// 滚动 HEAD 基线下（基线=工作树同源），块级对账恢复严格阻断：
+// lost=拆分后丢块、added 除 skeleton 外的任何新增都是真回归。
+ok(lost.length === 0, `no pre-split block was dropped (${lost.length} lost)`);
 if (lost.length > 0) for (const b of lost.slice(0, 6)) process.stdout.write(`        lost: ${b.slice(0, 100).replace(/\n/g, " ")}\n`);
-warn(added.length === POST_SPLIT_ADDITIONS.length && added.every((b) => POST_SPLIT_ADDITIONS.some((a) => b.includes(a))), `post-split additions stay within the whitelist (found ${added.length})`);
-if (added.length !== POST_SPLIT_ADDITIONS.length) for (const b of added.slice(0, 8)) process.stdout.write(`        added: ${b.slice(0, 100).replace(/\n/g, " ")}\n`);
+ok(added.length === 1 && added[0].includes(SKELETON_BLOCK), `the only post-split addition is the ${SKELETON_BLOCK} skeleton (found ${added.length})`);
+if (added.length !== 1) for (const b of added.slice(0, 8)) process.stdout.write(`        added: ${b.slice(0, 100).replace(/\n/g, " ")}\n`);
 ok(mainStyles.includes(SKELETON_BLOCK), "the skeleton stays in the shared app-shell stylesheet");
 ok(!classicStyles.includes(SKELETON_BLOCK) && !workbenchStyles.includes(SKELETON_BLOCK) && !creationStyles.includes(SKELETON_BLOCK), "the skeleton is not stranded in a mode file");
 
