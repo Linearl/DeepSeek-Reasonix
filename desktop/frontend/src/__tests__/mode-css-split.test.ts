@@ -148,7 +148,11 @@ const baseStyles = BASE_FILES.map((f) => {
 }).join("\n");
 // 拆分完成后的已知新增块（白名单，逐条给理由）：
 // - .session-wall-hover-layer__agent-reply：1188 返修（c501c3e11）图墙浮层补 agent 结尾段。
-const POST_SPLIT_ADDITIONS = [".session-wall-hover-layer__agent-reply"];
+const POST_SPLIT_ADDITIONS = [
+  ".session-wall-hover-layer__agent-reply", // 1188 返修（c501c3e11）：图墙浮层补 agent 结尾段
+  ".tabbar__split-divider",                 // 后续件：tabbar 分隔线样式
+  "Chrome-hidden variants",                 // 后续件：chrome 隐藏变体块
+];
 const mainStyles = readFileSync(resolve(frontendRoot, "src/styles.css"), "utf8");
 // Strip each mode file's declaration banner so the inventory compares CSS
 // blocks only (the banner would otherwise fuse with the first rule into a
