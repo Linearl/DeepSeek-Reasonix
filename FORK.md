@@ -217,6 +217,19 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 
 **参考**：discussion #10269 主贴（xiaokay2099）+ 本 fork 作者评论（Linearl：双通道 / 实验开关 / 双写 / 并行写与路径审批痛点）。
 
+## 工具面生效通道边界（2026-10-25，tl-1195 前置核实沉淀）
+
+**一句话：provider-visible 工具集只在 boot 期定格；运行期让工具面变化的唯一权威通道是新会话 / 重建运行时（重启）。压缩边界不刷新工具面；MCP / 插件的增删启停全部实时生效，且根本不触碰 provider 面。**
+
+事实链（锚点核对于 `0f21c811a`，行号漂移以符号名为准）：
+
+1. **provider 面一次定格**：boot 期 `applyUnifiedProviderToolSurface` → `Registry.SetProviderVisibleTools`（`internal/boot/boot.go:3016/3151`，全仓非测试唯一调用点）；运行期无任何代码再改 allowlist。`Agent.SetTools`（`internal/agent/agent.go:739`）语义就绪（下一请求生效）但全仓零调用者。
+2. **MCP / 插件不占 provider 面**：内置 + MCP + 插件工具全部注册进 registry 供 `use_capability` 单点分发，provider 面只见核心工具 + use_capability。MCP server 增删 / 按会话启停 / 重连 / 服务端动态 `tools/list_changed` 均**实时生效**（registry 层换 adapter + 分发权撤授），不需要 reload，也不改变 provider schema——`internal/agent/mcp_dynamic_tools_test.go:144` 显式断言动态刷新前后 provider schema 字节不变。
+3. **改 provider 面的唯一来源 = 设置开关**（工具优化聚合页族：multi_edit 直注 / restart_update / 能力组披露 / readBack 等），生效通道按设计就是「启动时定格，改开关需重建运行时（重启）生效」（各开关 hint 原文），与本文件「新特性开发规范」第 2 条（banner + 一键重启）一致。
+4. **压缩边界不刷新工具面是现状语义，不是缺陷**：`TestCompactionDoesNotTearToolSurface`（`compact_tool_surface_atomicity_971_test.go:97`，971 断言②）钉死「压缩 pass 前后可见集与 schemaRev 逐位不变」。压缩点刷新工具面的完整方案（压缩边界钩子 + pendingToolRebuild + admission 入口兑现 + 动态守卫测试）已按 tl-1195 前置核实评估为**暂缓**：运行期无真实换面场景（见 2/3），机制成本与「低频设置开关免一次重启」的问题轻重错配，且竞品（主流 agent 会话）工具面一律会话定格 + 重启生效，无一做压缩边界换面。将来若出现真实的运行期换面场景，先重启该评估，勿凭空零散接线。
+
+⚠️ **已知文案债（勿在无关任务里顺手处理）**：工具优化聚合页三语文案（`settings.toolOptHub.effect/.pending/.warning`）承诺「/compact 即可生效（三生效点含压缩边界）」，后端未实现该快捷通道——用户照做不会报错，但当前对话工具表不变，需重启（或新会话）才生效。修法二选一（改文案 / 补实现）由需求线另立任务裁定；改文案需连带改 `task971-tool-opt-hub.test.ts` 的逐字断言。
+
 ## Release 与安装
 
 - fork 仓库自行出 release 包，走正常安装流程覆盖官方安装。
