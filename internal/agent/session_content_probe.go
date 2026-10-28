@@ -63,29 +63,46 @@ var sessionContentSnapshotProbe func(sessionPath string) (hasContent, ok bool)
 // LoadSession(path).HasContent(). It never materializes message bodies, so a
 // multi-hundred-MB session costs a byte scan instead of a full decode.
 func SessionHasConversationContent(sessionPath string) bool {
+	has, err := ProbeSessionConversationContent(sessionPath)
+	return err == nil && has
+}
+
+// ProbeSessionConversationContent is SessionHasConversationContent with the
+// refusal surfaced: err is non-nil exactly where LoadSession would have
+// returned an error (missing transcript, future schema, replay refusal,
+// undecodable body), so a caller that must treat "undecodable" differently
+// from "decodes to no content" can. Callers:
+//   - sessionFileHasConversationContent maps err to false (its LoadSession
+//     error contract predates the probe);
+//   - runtimeSessionTranscriptBlank maps err to "not blank" (conservative
+//     row retention, its own documented contract).
+//
+// Both mappings are byte-for-byte the pre-probe behavior of their LoadSession
+// call site; the split exists so one primitive serves both without either
+// caller changing direction on undecodable input.
+func ProbeSessionConversationContent(sessionPath string) (hasContent bool, err error) {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
-		return false
+		return false, nil
 	}
 	// The transcript itself may be archived at rest (tl1174); mirror
 	// loadSessionTranscript's materialization short-circuit before any read.
 	if _, err := ensureSessionTranscriptPlain(sessionPath); err != nil {
-		return false
+		return false, err
 	}
 	limits := limitsForSessionLog(sessionPath, defaultSessionReplayLimits)
 	if sessionContentSnapshotProbe != nil {
 		if has, ok := sessionContentSnapshotProbe(sessionPath); ok {
-			return has
+			return has, nil
 		}
 	}
 	probe, err := probeSessionEventLogWithLimits(sessionPath, limits)
 	if err != nil {
-		return false
+		return false, err
 	}
 	if probe.futureSchema {
-		// A newer writer owns the log: LoadSession refuses with an error and
-		// every caller reads that as no-content. Same verdict here.
-		return false
+		// A newer writer owns the log: LoadSession refuses with an error.
+		return false, errProbeFutureSchema(sessionPath)
 	}
 	logPath := store.SessionEventLog(sessionPath)
 	if probe.dag {
@@ -95,6 +112,19 @@ func SessionHasConversationContent(sessionPath string) bool {
 		return probeEventLogHasConversationContent(logPath, limits)
 	}
 	return probeJSONLHasConversationContent(sessionPath)
+}
+
+// errProbeFutureSchema mirrors the loadSessionTranscript refusal for a log a
+// newer schema owns.
+func errProbeFutureSchema(sessionPath string) error {
+	return errors.New("session content probe: " + sessionPath + " uses a newer log schema")
+}
+
+// errProbeReplayLimit mirrors the refusal shape the replay produces for a log
+// this build cannot safely decode (budget/cap/structural). Callers translate
+// it the same way they translate a LoadSession error.
+func errProbeReplayLimit(logPath string) error {
+	return errors.New("session content probe: " + logPath + " exceeds safe replay limits")
 }
 
 // probeRoleMessage is the role-only shadow of provider.Message: decoding into
@@ -252,18 +282,18 @@ func (st *probeDAGState) chainHasConversationContent(headID string) bool {
 // same budget, same entry-level stop rules, and the same torn-line rule as
 // resumePastTornLine (a bad line is a hole — skip it and keep reading the
 // complete entries behind it), none of the payload materialization.
-func probeDAGHasConversationContent(logPath string, limits sessionReplayLimits) bool {
+func probeDAGHasConversationContent(logPath string, limits sessionReplayLimits) (bool, error) {
 	f, err := os.Open(logPath)
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return false
+		return false, err
 	}
 	if info.Size() > limits.maxBytes {
-		return false
+		return false, errProbeReplayLimit(logPath)
 	}
 	st := newProbeDAGState()
 	// maxBytes+1 mirrors the replay's LimitedReader budget trick: only a log
@@ -274,7 +304,7 @@ func probeDAGHasConversationContent(logPath string, limits sessionReplayLimits) 
 		line, err := readProbeLine(reader)
 		if err != nil {
 			if errors.Is(err, errProbeBudgetExceeded) {
-				return false
+				return false, errProbeReplayLimit(logPath)
 			}
 			break // EOF: answer from what was scanned
 		}
@@ -287,10 +317,10 @@ func probeDAGHasConversationContent(logPath string, limits sessionReplayLimits) 
 			continue // torn line: a hole; the replay continues behind it
 		}
 		if e.SchemaVersion != sessionDAGSchemaVersion {
-			return false
+			return false, errProbeReplayLimit(logPath) // mid-log schema switch: the replay hard-errors
 		}
 		if st.records >= limits.maxRecords || len(st.nodes) >= limits.maxMessages {
-			return false
+			return false, errProbeReplayLimit(logPath)
 		}
 		st.records++
 		// Entry-order proxy for the replay's byte offsets: only comparisons
@@ -300,7 +330,9 @@ func probeDAGHasConversationContent(logPath string, limits sessionReplayLimits) 
 		switch e.Type {
 		case sessionDAGTypeMessage:
 			if e.ID == "" || len(e.Msgs) != 1 {
-				return false // decodeOne's ok=false: the replay stops damaged, callers read that as no-content
+				// decodeOne's ok=false: the replay stops damaged (a SUCCESS
+				// carrying a prefix), so the prefix answer stands, no error.
+				return st.chainHasConversationContent(st.selectedHead()), nil
 			}
 			if _, dup := st.nodes[e.ID]; dup {
 				continue // duplicate: the replay warns and skips
@@ -314,7 +346,7 @@ func probeDAGHasConversationContent(logPath string, limits sessionReplayLimits) 
 				continue // the replay ignores patches for unknown targets
 			}
 			if len(e.Msgs) != 1 {
-				return false
+				return st.chainHasConversationContent(st.selectedHead()), nil // damaged stop, prefix answer
 			}
 			if st.patchRoles == nil {
 				st.patchRoles = map[string]provider.Role{}
@@ -331,7 +363,9 @@ func probeDAGHasConversationContent(logPath string, limits sessionReplayLimits) 
 			}
 		case sessionDAGTypeFork:
 			if e.NewHead == "" {
-				return false // the only undecodable head marker
+				// The only undecodable head marker: damaged stop with the
+				// prefix answer, exactly like the replay.
+				return st.chainHasConversationContent(st.selectedHead()), nil
 			}
 			if _, exists := st.heads[e.NewHead]; exists {
 				continue
@@ -357,10 +391,10 @@ func probeDAGHasConversationContent(logPath string, limits sessionReplayLimits) 
 			// role the content walk can see (system rides on the head, not the
 			// node map; HasContent skips system messages anywhere).
 		default:
-			return false // unsupported entry type: the replay hard-errors
+			return false, errProbeReplayLimit(logPath) // unsupported entry type: the replay hard-errors
 		}
 	}
-	return st.chainHasConversationContent(st.selectedHead())
+	return st.chainHasConversationContent(st.selectedHead()), nil
 }
 
 // probeEventRecord is the role-only shadow of sessionEventWireRecord.
@@ -376,18 +410,18 @@ type probeEventRecord struct {
 // damaged rule as the real replay, which stops at a bad line and keeps its
 // prefix). Budget and cap refusals read as no-content, matching the desktop
 // callers' treatment of a failed load.
-func probeEventLogHasConversationContent(logPath string, limits sessionReplayLimits) bool {
+func probeEventLogHasConversationContent(logPath string, limits sessionReplayLimits) (bool, error) {
 	f, err := os.Open(logPath)
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return false
+		return false, err
 	}
 	if info.Size() > limits.maxBytes {
-		return false
+		return false, errProbeReplayLimit(logPath)
 	}
 	var roles []provider.Role
 	records := 0
@@ -396,9 +430,9 @@ func probeEventLogHasConversationContent(logPath string, limits sessionReplayLim
 		line, err := readProbeLine(reader)
 		if err != nil {
 			if errors.Is(err, errProbeBudgetExceeded) {
-				return false
+				return false, errProbeReplayLimit(logPath)
 			}
-			return rolesHaveConversationContent(roles)
+			return rolesHaveConversationContent(roles), nil
 		}
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
@@ -408,13 +442,13 @@ func probeEventLogHasConversationContent(logPath string, limits sessionReplayLim
 		if err := json.Unmarshal(line, &rec); err != nil {
 			// The schema-1 replay stops damaged at a bad line and keeps the
 			// prefix — same verdict here.
-			return rolesHaveConversationContent(roles)
+			return rolesHaveConversationContent(roles), nil
 		}
 		if rec.SchemaVersion != sessionEventSchemaVersion {
-			return false
+			return false, errProbeReplayLimit(logPath)
 		}
 		if records >= limits.maxRecords || len(roles)+len(rec.Messages) > limits.maxMessages {
-			return false
+			return false, errProbeReplayLimit(logPath)
 		}
 		records++
 		switch rec.Type {
@@ -425,33 +459,38 @@ func probeEventLogHasConversationContent(logPath string, limits sessionReplayLim
 			}
 		case sessionEventTypeAppend:
 			if rec.MessageIndex != len(roles) {
-				return rolesHaveConversationContent(roles)
+				return rolesHaveConversationContent(roles), nil // damaged stop, prefix answer
 			}
 			for _, m := range rec.Messages {
 				roles = append(roles, m.Role)
 			}
 		default:
-			return false
+			return false, errProbeReplayLimit(logPath) // unknown record type: the replay hard-errors
 		}
 	}
 }
 
 // probeJSONLHasConversationContent scans a legacy .jsonl checkpoint one message
 // per line, roles only — the bounded shadow of loadSessionMessagesFromJSONL.
-func probeJSONLHasConversationContent(sessionPath string) bool {
+func probeJSONLHasConversationContent(sessionPath string) (bool, error) {
 	f, err := os.Open(sessionPath)
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer f.Close()
 	dec := json.NewDecoder(f)
 	for {
 		var m probeRoleMessage
 		if err := dec.Decode(&m); err != nil {
-			return false // EOF or undecodable: LoadSession would error or read empty; callers read that as no-content
+			if errors.Is(err, io.EOF) {
+				return false, nil
+			}
+			// Undecodable checkpoint: loadSessionMessagesFromJSONL errors and
+			// LoadSession surfaces it — same refusal here.
+			return false, errProbeReplayLimit(sessionPath)
 		}
 		if m.Role != "" && m.Role != provider.RoleSystem {
-			return true
+			return true, nil
 		}
 	}
 }
