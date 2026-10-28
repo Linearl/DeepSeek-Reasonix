@@ -37,6 +37,10 @@ function snapshot(tag: string, items: Item[], live: { id?: string; reasoning?: s
   process.stdout.write(`  [dom  ${tag}] header=${header ? "yes" : "no"} headerText=${(header?.textContent ?? "").slice(0, 40)} liveStatus=${liveStatus() ? "yes" : "no"} liveStatusText=${(liveStatus()?.textContent ?? "").slice(0, 60)}\n`);
 }
 
+function textOf(selector: string): string {
+  return harness.container.querySelector<HTMLElement>(selector)?.textContent ?? "";
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 console.log("\ntl 1212: 三分辨探针（concise 动态行复发）");
@@ -89,9 +93,13 @@ try {
     ok(liveStatus() !== null, "S2 恢复重连（有快照+空指针挂）：状态行出现（1160 已修面）");
   }
 
-  // ── S3 恢复重连·快照不在 + 指针空挂（嫌疑①「另一触发路径」，预期红）──
+  // ── S3 恢复重连·快照不在 + 指针空挂（嫌疑①「另一触发路径」根因钉死）──
   // 中断发生在第一段思考尚未落盘（streamDeltaOnly：delta 只进 live 缓冲），
-  // 恢复后指针重新挂上但缓冲被清空——displayItems 无任何思考腿可回退。
+  // 恢复后指针重新挂上但缓冲被清空。修复契约分两层：
+  //   a) partition 层：空缓冲指针挂的 assistant 保留在 processItems（思考腿
+  //      锚点不再丢失）——纯函数断言；
+  //   b) 渲染层：本段无任何可显示内容（无工具/无快照）时行模型不建折叠头，
+  //      这是 1141 之前即有的基线（空段无折叠），非本家族回归面——如实断言。
   {
     const items: Item[] = [
       user(),
@@ -102,10 +110,17 @@ try {
     await sleep(700);
     await harness.flush();
     snapshot("S3 恢复无快照", items, live, { dom: liveStatus() !== null });
-    ok(liveStatus() !== null, "S3 恢复重连（无快照+空指针挂）：状态行出现");
+    const rows = await harness.loadModule<typeof import("../lib/transcriptRows")>("/src/lib/transcriptRows.ts");
+    const models = rows.buildTurnModels(items, { id: live.id, hasAnswerText: false, hasReasoning: false, reasoningComplete: false }, true, false);
+    const processFirst = models[0]?.segments[0]?.processItems ?? [];
+    ok(processFirst.some((it) => it.kind === "assistant" && it.id === "a1"),
+      "S3a partition 锚点：空缓冲指针挂的思考腿保留在 processItems");
+    ok(harness.container.querySelector("button.reasoning__head") === null,
+      "S3b 无内容段不建折叠头（1141 前行模型基线，非回归面）");
   }
 
-  // ── S4 S3 + running 工具（动作腿应单腿撑起，预期绿=动作行在思考行无源）──
+  // ── S4 无快照+running 工具（用户报告现场：时长行在而思考行消失）──
+  // 修复后思考腿以纯标签（无摘要文本）保住存在性，首 delta 到达即切实文本。
   {
     const items: Item[] = [
       user(),
@@ -117,7 +132,43 @@ try {
     await sleep(700);
     await harness.flush();
     snapshot("S4 无快照+工具", items, live, { dom: liveStatus() !== null });
-    ok(liveStatus() !== null, "S4 无快照+running 工具：动作腿撑起状态行");
+    ok(liveStatus() !== null, "S4a 无快照+running 工具：状态行出现");
+    ok(textOf(".turn-collapse__live-thinking").length > 0,
+      "S4b 思考腿以纯标签存在（思考进行中暂无文本）");
+    ok(textOf("button.turn-collapse__live-summary") === "",
+      "S4c 无文本时不渲染空摘要");
+  }
+
+  // ── S4x 答案流期防误报：指针挂着、正文已流、思考未完标志缺失 → 不得显示思考腿 ──
+  {
+    const items: Item[] = [
+      user(),
+      { kind: "assistant", id: "a1", text: "", reasoning: "", streaming: true },
+      { kind: "tool", id: "t1", name: "grep", args: '{"pattern":"p"}', readOnly: true, status: "running" },
+    ];
+    const live = { id: "a1", text: "回答正文流式中", reasoning: "", reasoningComplete: false };
+    await harness.render(items, { running: true, geometrySessionKey: "tl1212-s4x", live });
+    await sleep(700);
+    await harness.flush();
+    snapshot("S4x 答案流期", items, live, { dom: liveStatus() !== null });
+    ok(textOf(".turn-collapse__live-thinking") === "",
+      "S4x 正文已流时不显示思考标签（防误报）");
+  }
+
+  // ── S4y 思考完成期防误报：reasoningComplete=true 且缓冲空 → 不得显示思考腿 ──
+  {
+    const items: Item[] = [
+      user(),
+      { kind: "assistant", id: "a1", text: "", reasoning: "", streaming: true },
+      { kind: "tool", id: "t1", name: "grep", args: '{"pattern":"p"}', readOnly: true, status: "running" },
+    ];
+    const live = { id: "a1", text: "", reasoning: "", reasoningComplete: true };
+    await harness.render(items, { running: true, geometrySessionKey: "tl1212-s4y", live });
+    await sleep(700);
+    await harness.flush();
+    snapshot("S4y 思考完成期", items, live, { dom: liveStatus() !== null });
+    ok(textOf(".turn-collapse__live-thinking") === "",
+      "S4y 思考已完（reasoningComplete）不显示思考标签（防误报）");
   }
 
   // ── S5 收起后（嫌疑②，预期绿）：857 收起意图激活 + 新流式思考带内容 ──
@@ -138,6 +189,8 @@ try {
   }
 
   // ── S6 指针未命中 + 无快照（S3 变体：恢复后指针挂到未落 item 的新 id）──
+  // 指针不在本段 assistant 上时不能断定「思考进行中」——不显示纯标签腿
+  // （防误报负例）；无内容段无折叠头同 S3b 基线。
   {
     const items: Item[] = [
       user(),
@@ -148,7 +201,8 @@ try {
     await sleep(700);
     await harness.flush();
     snapshot("S6 指针未命中无快照", items, live, { dom: liveStatus() !== null });
-    ok(liveStatus() !== null, "S6 指针未命中+无快照：状态行出现");
+    ok(harness.container.querySelector("button.reasoning__head") === null,
+      "S6 指针未挂本段：不显示思考标签（防误报负例；无内容段无折叠头同 S3b）");
   }
 
   // ── S7 三层链一致性（嫌疑③，预期绿）：快照缺字段回落镜像 concise 生效 ──
