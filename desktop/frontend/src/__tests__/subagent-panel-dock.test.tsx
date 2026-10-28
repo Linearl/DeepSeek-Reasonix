@@ -298,6 +298,20 @@ console.log("\nsubagent panel dock (task 495)");
   const runningOnly = mergeEndedSubagentRecords(base, [view({ ref: "sub-run2", status: "running" })]);
   eq(runningOnly.ended.length, 1, "merge: running-only views leave the ended list unchanged");
 
+  // tl1209: the dispatch description wins over the sidecar name — ten ended
+  // "ask" records must read as ten distinct dispatches; a record without one
+  // keeps the name fallback (never a bare empty title).
+  const descMerged = mergeEndedSubagentRecords(buildSubagentDirectory([]), [
+    view({ ref: "sub-d1", status: "completed", name: "ask", description: "核对凭据文件的读取链", createdAt: 10_000, updatedAt: 11_000 }),
+    view({ ref: "sub-d2", status: "completed", name: "ask", createdAt: 9_000, updatedAt: 9_500 }),
+  ]);
+  eq(descMerged.ended.find((entry) => entry.ref === "sub-d1")?.item.subject, "核对凭据文件的读取链",
+    "tl1209: persisted row title prefers the dispatch description");
+  eq(descMerged.ended.find((entry) => entry.ref === "sub-d1")?.item.name, "核对凭据文件的读取链",
+    "tl1209: row name follows the description so rowTitle resolves without a fallback chain");
+  eq(descMerged.ended.find((entry) => entry.ref === "sub-d2")?.item.name, "ask",
+    "tl1209: no description keeps the profile-name fallback (never bare)");
+
   // Tab label: the ended count rides the entry label.
   eq(subagentsTabLabel("子代理", 0), "子代理", "tab label: zero ended keeps the bare label");
   eq(subagentsTabLabel("Subagents", 12), "Subagents · 12", "tab label: ended count joins the label");

@@ -318,7 +318,7 @@ section("mergeCapsuleWork：前台子代理并入运行列表（557 第三路数
   eq(merged.length, 4, "前台子代理条目并入且不挤掉 job 条目");
   const own = merged.find((entry) => entry.job.id === "sa_own");
   ok(own !== undefined && own.tabId === "" && own.origin === "", "自身子代理行 tabId 空、无来源标签");
-  eq(own?.job.kind, "subagent", "子代理行 kind 为 subagent（据此免停止按钮）");
+  eq(own?.job.kind, "subagent", "子代理行 kind 为 subagent（tl1209 起据此走单子代理终止链）");
   eq(own?.job.label, "调研子代理", "行标题取子代理名");
   eq(own?.job.startedAt, subs[0].startedAt, "行起始时间来自生命周期 StartUnixMs");
   const foreign = merged.find((entry) => entry.job.id === "sa_foreign");
@@ -327,6 +327,19 @@ section("mergeCapsuleWork：前台子代理并入运行列表（557 第三路数
   const split = splitCapsuleEntries(merged);
   eq(split.agents.length, 3, "子代理行归智能体节（非 bash）");
   eq(mergeCapsuleWork([], [], "x", [subagent()]).length, 1, "仅子代理时也有条目");
+}
+
+section("mergeCapsuleWork：tl1209 派单描述优先于 profile 名（ask 派十个也能分清）");
+{
+  const subs = [
+    subagent({ ref: "sa_d1", name: "ask", description: "核对凭据文件的读取链" }),
+    subagent({ ref: "sa_d2", name: "ask", description: "" }),
+  ];
+  const merged = mergeCapsuleWork([], [], "未知任务", subs);
+  const d1 = merged.find((entry) => entry.job.id === "sa_d1");
+  eq(d1?.job.label, "核对凭据文件的读取链", "有派单描述时行标题取描述");
+  const d2 = merged.find((entry) => entry.job.id === "sa_d2");
+  eq(d2?.job.label, "ask", "无描述回退 profile 名（再回退 ref），不渲染裸空");
 }
 
 section("mergeCapsuleWork：子代理 ref 与 job id 相撞时防御性去重（557 双源断言前端侧）");
