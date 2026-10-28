@@ -4721,6 +4721,18 @@ a[href] {
   word-break: break-word;
   white-space: pre-wrap;
 }
+/* 任务 tl1235：↪ 图标强制内联——气泡是 inline-flex + flex-wrap（1136 为附件
+   分层引入），而 flex 行打包按 item **未收缩**的 hypothetical size 判断：
+   正文一长，.steer-line__text 以整段 max-content 宽被打包到第二行，↪ 图标
+   独占首行吞掉一行纵向空间（用户 20261028 双截图实证的偶发现象——短文本
+   同行内联、长文本独占，非渲染时序问题）。flex-basis 0 使 text 的打包尺寸
+   恒为 0，任何文本长度、任何渲染路径（首次注入/重放/重入副本共用本类）都
+   打包进 icon 所在首行，图标永不独占一行；短文本时容器仍 fit-content 收缩，
+   视觉不变。限定 .steer-line__bubble 内——展开态卡片（.steer-line__expanded，
+   column 容器）里的同名类不吃这条规则。 */
+.steer-line__bubble .steer-line__text {
+  flex: 1 1 0;
+}
 /* 任务1066: 引导块内附件（图片缩略图）与复制按钮——复用 .msg-attachment 形态
    （与用户消息 MessageAttachments 同一份实现）。
    任务1091: 附件区块对齐用户消息 .msg-attachments——并排横排（flex-wrap，
