@@ -9330,8 +9330,14 @@ body > .mermaid-diagram--fullscreen {
    空间）。触发器压到 composer 控件高度、胶囊圆角与 modebar 同风格；当前档沿用
    modebar 的模式色系（auto 绿 / yolo 红 / autopilot 橙）做边框与文字点缀，
    高权限态一眼可辨（zcode 同思路：图标/文字承载风险级别）。 */
+/* 任务 tl1233：固定宽——min-width 抬到与 max-width 同值（168px，按最宽项
+   Autopilot 预留）。此前 min 116/max 168 之间随选中项内容宽浮动（外层是
+   flex:0 0 auto 的收缩项），ask/auto/yolo ↔ Autopilot 切换时下拉宽度跳变；
+   恒定 168px 后切换零跳变。min 必须落在外层容器——内层触发器若设 min-width
+   会被 SettingsSelect.css 的 `:root .settings-select { min-width: 0 }` 按
+   特异性压掉。 */
 .composer-meta__control--approval--select {
-  min-width: 116px;
+  min-width: 168px;
   max-width: 168px;
   flex: 0 0 auto;
 }
