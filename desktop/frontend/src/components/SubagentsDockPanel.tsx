@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FoldHorizontal,
   LoaderCircle,
+  Square,
   UnfoldHorizontal,
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
@@ -103,20 +104,39 @@ function entryStartedClock(entry: SubagentDirectoryEntry): string {
 
 /** One folded row (requirement 495 ①: ended subagents default to the row
  *  state); clicking expands the inline detail — or, under the 507 plan-A
- *  switch, asks the panel to open the read-only detail view. */
+ *  switch, asks the panel to open the read-only detail view.
+ *  tl1209: a running row may carry its own terminate button next to the row
+ *  body — same per-child cancel the capsule's running rows use; ended rows
+ *  never do. */
 const DirectoryRow = memo(function DirectoryRow({
   entry,
   onSelect,
+  onTerminate,
 }: {
   entry: SubagentDirectoryEntry;
   onSelect?: () => void;
+  /** tl1209: per-child terminate bridge for RUNNING rows (App
+   *  CancelSubagentForTab). Absent (or ended) keeps the row byte-for-byte. */
+  onTerminate?: (ref: string) => Promise<boolean>;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [terminating, setTerminating] = useState(false);
   const title = rowTitle(entry);
   const summary = entry.item.summary || entry.item.error || "";
   const durationSeconds = entryDurationSeconds(entry);
   const startedClock = entryStartedClock(entry);
+  const ref = entry.ref;
+  const canTerminate = Boolean(onTerminate && ref && entry.running);
+  const terminate = async () => {
+    if (!onTerminate || !ref || terminating) return;
+    setTerminating(true);
+    try {
+      await onTerminate(ref);
+    } finally {
+      setTerminating(false);
+    }
+  };
   const handleClick = () => {
     if (onSelect) {
       onSelect();
@@ -141,6 +161,19 @@ const DirectoryRow = memo(function DirectoryRow({
         <span className="subagents-panel__row-status">{t(statusLabelKey(entry))}</span>
         <ChevronRight size={12} aria-hidden="true" className="subagents-panel__chevron" />
       </button>
+      {canTerminate && (
+        <button
+          type="button"
+          className="subagents-panel__terminate"
+          data-subagent-terminate={ref}
+          disabled={terminating}
+          aria-label={`${t("status.jobStop")} ${title}`}
+          title={`${t("status.jobStop")} ${title}`}
+          onClick={() => void terminate()}
+        >
+          <Square size={10} fill="currentColor" aria-hidden="true" />
+        </button>
+      )}
       {open && (
         <div className="subagents-panel__detail">
           {summary ? <p className="subagents-panel__detail-summary">{summary}</p> : null}
@@ -329,6 +362,7 @@ export function SubagentsDockPanel({
   onReadSubagent,
   onListPersisted,
   onOpenInMain,
+  onTerminateSubagent,
 }: {
   directory: SubagentDirectory;
   /** Task 507 plan-A gate: row clicks open the read-only detail view. */
@@ -347,13 +381,18 @@ export function SubagentsDockPanel({
    *  view stays off and rows render the preview blocks. */
   onReadSubagent?: (sessionPath: string, ref: string) => Promise<HistoryMessage[]>;
   /** 任务495 剩余项: the persisted ended directory (desktop
-   *  ListSubagentsByParent — the sidecar records survive restart, compaction
-   *  and archived outputs). Merged into the ended section; without it the
-   *  panel stays the transcript-only projection (the 备用视图 passes nothing,
-   *  byte-for-byte the 495 body there). */
+   * ListSubagentsByParent — the sidecar records survive restart, compaction
+   * and archived outputs). Merged into the ended section; without it the
+   * panel stays the transcript-only projection (the 备用视图 passes nothing,
+   * byte-for-byte the 495 body there). */
   onListPersisted?: (sessionPath: string) => Promise<SubagentArtifactView[]>;
   /** tl1109: 「在主区打开」出口（App 注入现有 ReadOnly tab 路径）。 */
   onOpenInMain?: (entry: SubagentDirectoryEntry) => void;
+  /** tl1209: per-child terminate bridge for RUNNING rows (App
+   * CancelSubagentForTab → Controller.CancelSubagent). The child unwinds with
+   * a cancelled outcome while the turn keeps running. Without it the rows
+   * render without the terminate button, byte-for-byte the pre-1209 panel. */
+  onTerminateSubagent?: (ref: string) => Promise<boolean>;
 }) {
   const t = useT();
   // Task 495 ④: reveal the ended list 20 rows at a time (zcode's PAGE_SIZE).
@@ -454,7 +493,7 @@ export function SubagentsDockPanel({
             ) : (
               <ul className="subagents-panel__list">
                 {directory.running.map((entry) => (
-                  <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} />
+                  <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} onTerminate={onTerminateSubagent} />
                 ))}
               </ul>
             )}
@@ -514,6 +553,7 @@ export function SubagentsDockPanel({
                 key={entry.item.id}
                 entry={entry}
                 onSelect={detailEnabled ? () => setSelectedId(entry.item.id) : undefined}
+                onTerminate={onTerminateSubagent}
               />
             ))}
           </ul>

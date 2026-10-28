@@ -98,13 +98,18 @@ function persistedDirectoryEntry(view: SubagentArtifactView): SubagentDirectoryE
   const item: SubagentDirectoryItem = {
     kind: "tool",
     id: `persisted:${view.ref}`,
-    name: view.name || view.kind || "task",
+    // tl1209: description-first — the persisted sidecar's Name is the
+    // profile/skill name ("ask", "task"), which makes every row read the
+    // same; the dispatch description is what tells them apart. A record
+    // without one keeps the old fallback chain (name → kind → "task"), so
+    // nothing ever renders bare.
+    name: view.description || view.name || view.kind || "task",
     args: "",
     readOnly: true,
     status,
     startedAt: view.createdAt || undefined,
     durationMs: view.updatedAt && view.createdAt ? Math.max(0, view.updatedAt - view.createdAt) : undefined,
-    subject: view.name || undefined,
+    subject: view.description || view.name || undefined,
     summary: view.outcome || undefined,
   };
   return { item, running: false, status, ref: view.ref };
