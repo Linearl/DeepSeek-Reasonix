@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,46 @@ func TestBackgroundBashWaitAndOutput(t *testing.T) {
 	}
 	if !strings.Contains(bo, "hello") {
 		t.Errorf("bash_output = %q, want hello", bo)
+	}
+}
+
+// 任务1033: a background bash job must carry the FULL command as Detail (the
+// capsule hover card's wrap source) while Label stays the 48-rune preview the
+// status bar renders. Before Detail existed the preview was all the frontend
+// ever received, so hover could never show the complete command.
+func TestBackgroundBashCarriesFullCommandDetail(t *testing.T) {
+	m := jobs.NewManager(event.Discard)
+	defer m.Close()
+	ctx := jobs.WithManager(context.Background(), m)
+
+	command := strings.Repeat("npm run build --silent && node scripts/check-bundle-budget.mjs && ", 8) + "echo done"
+	if len([]rune(command)) <= 48 {
+		t.Fatalf("fixture shorter than the preview cap: %d", len([]rune(command)))
+	}
+	payload, err := json.Marshal(map[string]any{"command": command, "run_in_background": true})
+	if err != nil {
+		t.Fatalf("marshal args: %v", err)
+	}
+	start, err := bash{}.Execute(ctx, payload)
+	if err != nil {
+		t.Fatalf("bash background: %v", err)
+	}
+	if !strings.Contains(start, "Started background job") {
+		t.Fatalf("unexpected start message: %q", start)
+	}
+	running := m.Running()
+	if len(running) != 1 {
+		t.Fatalf("want 1 running job, got %d", len(running))
+	}
+	view := running[0]
+	if view.Detail != command {
+		t.Fatalf("View.Detail = %q, want the full %d-char command", view.Detail, len(command))
+	}
+	if view.Label == command || !strings.HasSuffix(view.Label, "…") {
+		t.Fatalf("View.Label = %q, want the 48-rune preview with the ellipsis suffix", view.Label)
+	}
+	if _, err := (waitJob{}).Execute(ctx, []byte(`{"job_ids":["`+view.ID+`"]}`)); err != nil {
+		t.Fatalf("wait: %v", err)
 	}
 }
 
