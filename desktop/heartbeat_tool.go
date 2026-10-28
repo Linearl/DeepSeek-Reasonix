@@ -3,12 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"strings"
 	"time"
 
-	"reasonix/internal/event"
 	"reasonix/internal/tool/builtin"
 )
 
@@ -84,20 +82,6 @@ func heartbeatTaskToView(t HeartbeatTask, now time.Time) builtin.HeartbeatTaskVi
 
 func (a heartbeatManagerAdapter) UpsertTask(req builtin.HeartbeatUpsertRequest) (builtin.HeartbeatUpsertResult, error) {
 	e := a.engine
-	// Task 1062 recursion guard, judged before any state is touched (and
-	// before e.mu, so the lock order stays a.mu-free here): a session running
-	// IN autopilot may not create NEW scheduled tasks — each new layer could
-	// itself end up in autopilot and spawn the next (守护再开 autopilot 再建守
-	// 护…). The refusal carries the way out to the model; the panel notice
-	// keeps the exemption from ever being silent (拍板：notice 必须 panel 面
-	// 可见). Updates to existing tasks and every non-autopilot caller are
-	// untouched (验收3：非 autopilot 上下文创建守护对话行为不变).
-	if tabID, exempt := e.app.autopilotGuardCreateExempt(req); exempt {
-		log.Printf("[autopilot-guard] heartbeat task creation exempted from autopilot session (task 1062) tab=%s", tabID)
-		e.app.noticeCodeForCallerTab(tabID, event.LevelWarn, NoticeCodeAutopilotGuardCreateExempt,
-			"autopilot 运行中，守护对话自动创建已豁免：autopilot 会话不能新建定时（守护）任务，避免递归叠加守护层（task 1062）。请让用户在心跳面板创建，或改用 talk_to_session/板面汇报。")
-		return builtin.HeartbeatUpsertResult{}, fmt.Errorf("refused: a session running in autopilot may not create scheduled (heartbeat) tasks — a running autopilot layer must not spawn a guardian layer on top of itself (recursion guard, task 1062); ask the user to create it from the desktop heartbeat panel, or report back via talk_to_session / your final report instead")
-	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	expected, err := e.readConfigSnapshot()

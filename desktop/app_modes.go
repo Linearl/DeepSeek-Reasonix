@@ -263,8 +263,6 @@ func (a *App) SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMod
 	// with a non-yolo approval posture turns autopilot off instead (same
 	// fail-closed direction as SetToolApprovalModeForTab).
 	autopilotClosed := closeAutopilotForOffYolo(tab, toolApprovalMode)
-	// Task 326: same symmetric cleanup as the approval-switch path below.
-	guardTopic := strings.TrimSpace(tab.TopicID)
 	if goal != "" {
 		tab.goal = goal
 		tab.mode = tabModeFromAxes(false, toolApprovalMode == control.ToolApprovalYolo)
@@ -280,7 +278,6 @@ func (a *App) SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMod
 
 	if autopilotClosed {
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
-		a.clearAutopilotGuard(guardTopic)
 	}
 	if ctrl != nil {
 		ctrl.SetPlanMode(tabModeHasPlan(mode))
@@ -319,15 +316,9 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace
 	autopilotAskEnabled, autopilotAskWait := tab.autopilotAskTimeoutEnabled, tab.autopilotAskWait
 	var autopilotAskAutoContinue bool
-	// Task 326: remember the guard's owner identity and whether autopilot was on
-	// before this switch, so the guard is ensured/disabled right after the lock
-	// is released (the engine takes its own locks).
+	// Remember whether autopilot was on before this switch so the [tab-mode]
+	// switch log carries the before/after edge (task 806).
 	wasAutopilot := tab.autopilot
-	guardOwner := autopilotGuardOwner{
-		TopicID:       strings.TrimSpace(tab.TopicID),
-		Scope:         tab.Scope,
-		WorkspaceRoot: tab.WorkspaceRoot,
-	}
 	// Task 325 legacy refusal flag: the tier switch no longer refuses (task 465
 	// auto-satisfies), so this stays false on the composer path; the field
 	// remains in the X4 判据锚 log line for schema stability.
@@ -394,21 +385,12 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	slog.Info("[tab-mode] collaboration mode switch", "tab", tabIDForSave, "mode", mode,
 		"autopilot_pre", wasAutopilot, "autopilot_post", autopilotOn, "approval_post", tab.toolApprovalMode)
 	a.mu.Unlock()
-	a.applyCollabModeEffects(tab, tabIDForSave, ctrl, plan, goal, autopilotOn, wasAutopilot, autopilotRefused, assumedYolo, guardOwner)
+	a.applyCollabModeEffects(tab, tabIDForSave, ctrl, plan, goal, autopilotOn, autopilotRefused, assumedYolo)
 }
 
-// applyCollabModeEffects fires the post-lock autopilot guard edges, the
-// user-visible notices, and the controller posture apply for a
-// collaboration-mode switch. Callers have released a.mu.
-func (a *App) applyCollabModeEffects(tab *WorkspaceTab, tabIDForSave string, ctrl control.SessionAPI, plan bool, goal string, autopilotOn, wasAutopilot, autopilotRefused, assumedYolo bool, guardOwner autopilotGuardOwner) {
-	// Task 326: only the real edges fire — autopilot off→on creates the guard
-	// (idempotent, keyed by topic), on→off clears it. Task 465 dim-2 switches
-	// seed autopilotOn from the tab, so they are no-ops here by construction.
-	if autopilotOn && !wasAutopilot {
-		a.ensureAutopilotGuard(guardOwner)
-	} else if !autopilotOn && wasAutopilot && guardOwner.TopicID != "" {
-		a.clearAutopilotGuard(guardOwner.TopicID)
-	}
+// applyCollabModeEffects fires the user-visible notices and the controller
+// posture apply for a collaboration-mode switch. Callers have released a.mu.
+func (a *App) applyCollabModeEffects(tab *WorkspaceTab, tabIDForSave string, ctrl control.SessionAPI, plan bool, goal string, autopilotOn, autopilotRefused, assumedYolo bool) {
 	if autopilotRefused {
 		// Task 325: the refusal tells the user exactly which switch to flip.
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotRequiresYolo, autopilotRequiresYoloText)
@@ -687,15 +669,9 @@ func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelec
 	}
 	ctrl := tab.Ctrl
 	tabIDForSave := tab.ID
-	guardTopic := strings.TrimSpace(tab.TopicID)
 	a.mu.Unlock()
 	if autopilotClosed && !tierYoloLeave {
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
-	}
-	if autopilotClosed {
-		// Task 326: symmetric cleanup — once autopilot is off there is no
-		// session left for the guard to watch.
-		a.clearAutopilotGuard(guardTopic)
 	}
 	drained := applyTabToolApprovalModeToController(ctrl, mode)
 	a.mu.Lock()
