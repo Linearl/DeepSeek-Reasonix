@@ -167,12 +167,18 @@ func IsSessionTranscriptZstName(name string) bool {
 		!strings.HasSuffix(name, SessionEventLogZstSuffix)
 }
 
+// zstArchiveTail is the generic zstd archive tail both archive forms share
+// (<id>.events.jsonl.zst, tl 1172; <id>.jsonl.zst, tl 1174).
+const zstArchiveTail = ".zst"
+
 // SessionTranscriptPlainName strips the archive tail from a discovered
 // transcript-archive name ("<id>.jsonl.zst" -> "<id>.jsonl") so every consumer
 // (load, meta/lease sidecars, deletion) works on the canonical plain spelling.
-// Anything that is not an archive name reports unchanged.
+// Only the ".zst" tail comes off — the ".jsonl" part of the full archive
+// suffix is the transcript identity and must survive the strip. Anything that
+// is not an archive name reports unchanged.
 func SessionTranscriptPlainName(zstName string) string {
-	return strings.TrimSuffix(zstName, SessionTranscriptZstSuffix)
+	return strings.TrimSuffix(zstName, zstArchiveTail)
 }
 
 // SessionEventLogDamaged is the salvage sidecar for event-log bytes that tail
