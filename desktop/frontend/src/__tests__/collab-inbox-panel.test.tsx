@@ -599,6 +599,178 @@ tl1226Host.remove();
   arrivedHost.remove();
 }
 
+// ── tl1230：信件列表懒加载（首屏 20 条 + 滚动近底增量加载）─────────────────
+// 用户钦定方案：首屏只加载 20 条（治「信件读取中…」长时间不出数据），滚动
+// 接近底部再增量。后端 List 天然支持任意 limit（Go 侧零改动），这里的接缝职
+// 责：①首屏请求 limit=20 且只渲染 20 行；②近底滚动逐页 +20；③Truncated 翻
+// 假后滚动不再放页。jsdom 无布局度量，滚动用显式钉 scrollTop/clientHeight/
+// scrollHeight 后派发冒泡 scroll 事件驱动（嵌入形态面板本体即滚动容器）。
+{
+  const pagedFixture = Array.from({ length: 45 }, (_, i) =>
+    entry({ id: `m_page_${i}`, preview: `paged mail ${i}` }),
+  );
+  const pagedLimits: number[] = [];
+  const pagedBindings: CollabInboxBindings = {
+    ...bindings,
+    async ListCollabMail(bucket, from, to, state, limit, includeDismissed, order) {
+      pagedLimits.push(limit);
+      const size = Math.min(limit, pagedFixture.length);
+      return {
+        revision: "10.0.0",
+        settings: { retention: "7d" },
+        total: pagedFixture.length,
+        returned: size,
+        truncated: size < pagedFixture.length,
+        entries: pagedFixture.slice(0, size),
+      };
+    },
+  };
+  const pagedHost = document.createElement("div");
+  document.body.appendChild(pagedHost);
+  const pagedRoot = createRoot(pagedHost);
+  await act(async () => {
+    pagedRoot.render(
+      <LocaleProvider>
+        <CollabInboxPanel bindings={pagedBindings} directory={directory} embedded />
+      </LocaleProvider>,
+    );
+  });
+  const pagedPanel = pagedHost.querySelector(".collab-inbox-panel");
+  assert.ok(pagedPanel, "tl1230: the paged panel renders");
+  assert.deepEqual(pagedLimits, [20], "tl1230: the first screen fetches exactly limit=20");
+  assert.equal(
+    pagedPanel!.querySelectorAll(".collab-inbox-panel__row").length,
+    20,
+    "tl1230: only the first 20 entries render on the first screen",
+  );
+
+  // 滚动近底 → 增量 +20。jsdom 的度量全为 0（自动续载效应按 clientHeight=0
+  // 恒惰性），这里显式钉出「距底 0px」的布局态再派发滚动（600+400 = 距底，
+  // 过 64px 近底阈值）。
+  const pinMetric = (el: HTMLElement, prop: string, value: number) =>
+    Object.defineProperty(el, prop, { configurable: true, value });
+  const scrollPanel = pagedPanel as HTMLElement;
+  pinMetric(scrollPanel, "scrollTop", 600);
+  pinMetric(scrollPanel, "clientHeight", 400);
+  pinMetric(scrollPanel, "scrollHeight", 1000);
+  await act(async () => {
+    scrollPanel.dispatchEvent(new dom.window.Event("scroll", { bubbles: true }));
+  });
+  assert.deepEqual(pagedLimits, [20, 40], "tl1230: scrolling near the bottom fetches the next page");
+  assert.equal(
+    pagedPanel!.querySelectorAll(".collab-inbox-panel__row").length,
+    40,
+    "tl1230: 40 entries render after one page growth",
+  );
+
+  await act(async () => {
+    scrollPanel.dispatchEvent(new dom.window.Event("scroll", { bubbles: true }));
+  });
+  assert.deepEqual(pagedLimits, [20, 40, 60], "tl1230: the second scroll loads the tail page");
+  assert.equal(
+    pagedPanel!.querySelectorAll(".collab-inbox-panel__row").length,
+    45,
+    "tl1230: all 45 entries render once fully loaded",
+  );
+
+  // Truncated 翻假：继续滚动不得再放页（后端已无更多，空拉 = 白读）。
+  const callsWhenComplete = pagedLimits.length;
+  await act(async () => {
+    scrollPanel.dispatchEvent(new dom.window.Event("scroll", { bubbles: true }));
+  });
+  assert.equal(
+    pagedLimits.length,
+    callsWhenComplete,
+    "tl1230: scrolling after truncation cleared stops fetching",
+  );
+  await act(async () => {
+    pagedRoot.unmount();
+  });
+  pagedHost.remove();
+}
+
+// tl1230 × tl1226 交叉回归：懒加载后「全部已读」必须仍是全量口径——截断态
+// （27 封未读只加载了 20 封）下点「全部已读」，先取一页全量再汇总未读 id，
+// 不得只清已加载页（否则角标残留 7，tl1226 的用户实测场景复发）。
+{
+  const unreadMany = Array.from({ length: 27 }, (_, i) =>
+    entry({ id: `m_unread_${i}`, preview: `unread mail ${i}` }),
+  );
+  let fullFetchLimit = 0;
+  const truncatedBindings: CollabInboxBindings = {
+    ...bindings,
+    async ListCollabMail(bucket, from, to, state, limit, includeDismissed, order) {
+      if (limit >= 500) {
+        fullFetchLimit = limit;
+        return {
+          revision: "11.0.0",
+          settings: { retention: "7d" },
+          total: unreadMany.length,
+          returned: unreadMany.length,
+          truncated: false,
+          entries: unreadMany,
+        };
+      }
+      const size = Math.min(limit, unreadMany.length);
+      return {
+        revision: "11.0.0",
+        settings: { retention: "7d" },
+        total: unreadMany.length,
+        returned: size,
+        truncated: size < unreadMany.length,
+        entries: unreadMany.slice(0, size),
+      };
+    },
+    async MarkCollabMailRead(ids) {
+      calls.push({ name: "MarkCollabMailRead", args: [ids] });
+      const readIds = new Set(ids);
+      const entries = unreadMany.map((e) => (readIds.has(e.id) ? { ...e, read: true } : e));
+      return {
+        revision: "12.0.0",
+        settings: { retention: "7d" },
+        total: entries.length,
+        returned: entries.length,
+        truncated: false,
+        entries,
+      };
+    },
+  };
+  const truncHost = document.createElement("div");
+  document.body.appendChild(truncHost);
+  const truncRoot = createRoot(truncHost);
+  await act(async () => {
+    truncRoot.render(
+      <LocaleProvider>
+        <CollabInboxPanel bindings={truncatedBindings} directory={directory} embedded />
+      </LocaleProvider>,
+    );
+  });
+  const truncPanel = truncHost.querySelector(".collab-inbox-panel");
+  assert.ok(truncPanel, "tl1230: the truncated 27-unread panel renders");
+  assert.equal(
+    truncPanel!.querySelectorAll(".collab-inbox-panel__row").length,
+    20,
+    "tl1230: the 27-unread list starts at the 20-entry first screen",
+  );
+  const markAllBtn = Array.from(truncPanel!.querySelectorAll<HTMLButtonElement>("button"))
+    .find((b) => b.textContent === "Mark all read");
+  assert.ok(markAllBtn, "tl1230: the mark-all-read button shows while truncated");
+  await act(async () => {
+    markAllBtn!.click();
+  });
+  assert.equal(fullFetchLimit, 500, "tl1230: mark-all-read fetches a full page while truncated");
+  const truncReadCall = calls.filter((c) => c.name === "MarkCollabMailRead").pop();
+  assert.equal(
+    Array.isArray(truncReadCall?.args[0]) && (truncReadCall!.args[0] as string[]).length,
+    27,
+    "tl1230: mark-all-read covers ALL 27 unread entries, not just the loaded 20",
+  );
+  await act(async () => {
+    truncRoot.unmount();
+  });
+  truncHost.remove();
+}
+
 await act(async () => root.unmount());
 dom.window.close();
 console.log("collab inbox panel checks passed");
