@@ -9,11 +9,21 @@ import (
 
 const (
 	// DirectoryMaxBytes caps the standing L1 capability directory rendered into
-	// session context (task 969). The renderer counts bytes and truncates at a
-	// row boundary past the cap so the block cannot silently grow with the
-	// skill/tool population; callers surface DirectoryStats.Truncated as the
-	// over-limit warning.
-	DirectoryMaxBytes = 20 * 1024
+	// session context (task 969; raised 20KB→64KB by task 1224 phase 1 — 401
+	// entries at ~122B/row ≈ 49KB meant the old cap hid 233 of 401 rows from
+	// the model). The renderer counts bytes and truncates at a row boundary
+	// past the cap so the block cannot silently grow with the skill/tool
+	// population; callers surface DirectoryStats.Truncated as the over-limit
+	// warning and DirectoryStats.NearCap as the pre-truncation pressure signal.
+	DirectoryMaxBytes = 64 * 1024
+	// DirectoryWarnBytes and DirectoryWarnRows are the near-cap pressure
+	// thresholds behind DirectoryStats.NearCap (task 1224 phase 1): crossing
+	// either warns while rows are still fully visible, before the hard cap
+	// starts dropping them. 60KB leaves ~11KB (≈90 rows) of headroom above
+	// today's ~49KB watermark — lower would fire on day one; 500 rows matches
+	// that watermark on the count axis (500 × ~122B ≈ 61KB).
+	DirectoryWarnBytes = 60 * 1024
+	DirectoryWarnRows  = 500
 	// DirectorySummaryBytes is the per-row skill summary budget. Tightened from
 	// 120B to 100B by user decision (2026-10-17, batch 40 dispatch).
 	DirectorySummaryBytes = 100
@@ -28,12 +38,18 @@ type DirectoryOptions struct {
 }
 
 // DirectoryStats is the content-free render report for one directory block:
-// the mechanical byte counter behind the 20KB ratchet.
+// the mechanical byte counter behind the directory budget ratchet.
 type DirectoryStats struct {
 	Bytes     int
 	Rows      int
 	Dropped   int
 	Truncated bool
+	// NearCap is the collision warning signal (task 1224 phase 1): the block
+	// crossed DirectoryWarnBytes or the wanted row count (rendered + dropped)
+	// crossed DirectoryWarnRows, so the hard cap is within reach. It is true
+	// on the way to truncation, giving callers a warning window before any
+	// row is actually hidden.
+	NearCap bool
 }
 
 // DirectoryBlock renders the standing L1 directory (task 969): one row per
@@ -73,6 +89,7 @@ func DirectoryBlock(catalog Catalog, opts DirectoryOptions) (string, DirectorySt
 	if len(rows) == 0 {
 		return "", stats
 	}
+	stats.NearCap = stats.Bytes >= DirectoryWarnBytes || stats.Rows+stats.Dropped >= DirectoryWarnRows
 	stats.Bytes += len("```\n\n```\n")
 	block := "```\n" + strings.Join(rows, "\n") + "\n```"
 	if truncating {
