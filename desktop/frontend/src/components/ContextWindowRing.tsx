@@ -10,7 +10,7 @@ import { appendRateBand, rateBandLabel } from "../lib/costRateBand";
 import type { BalanceInfo, ContextInfo, ContextPanelInfo } from "../lib/types";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { contextWindowStatus, formatCacheHitRate } from "../lib/contextPanelUtils";
-import { compositionSegments, isOpencodeGoProvider, requestContextOverview } from "../lib/contextGaugePopup";
+import { compositionSegments, compositionThreeSections, isOpencodeGoProvider, requestContextOverview } from "../lib/contextGaugePopup";
 import {
   OPENCODE_GO_OFFICIAL_BASE,
   OPENCODE_GO_WINDOW_KEYS,
@@ -18,6 +18,15 @@ import {
   usageNoteText,
   type OpenCodeGoUsageResult,
 } from "../lib/opencodeGoUsage";
+
+// tl1224 阶段二：明细视图勾选状态按 tabId 会话内保持（切走再切回不丢；
+// 不跨应用重启持久化——显示偏好不值得进存储）。模块级 Map 即可：组件随
+// tab 卸载重建，Map 与应用同生命周期。
+const detailViewByTab = new Map<string, boolean>();
+
+// tl1224 阶段二：能力目录注入的 64KB 警告线（与 Go 侧
+// capability.DirectoryWarnBytes 同源的字面量；字节口径，非 token）。
+const DIRECTORY_WARN_BYTES = 64 * 1024;
 
 interface ContextWindowRingProps {
   turnMetrics?: { elapsed: string; tokens: string | null; tps: string | null };
@@ -137,6 +146,21 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   // Task 442: the segmented bar reads the host's composition; absent when the
   // host predates the accessor, and then the whole block hides.
   const segments = compositionSegments(info?.composition);
+  // tl1224 阶段二：协议三大段明细视图——勾选「明细」才启用；默认视图（平铺
+  // 四项）零改动。目录块超 64KB 警告线时圆环与浮层着警告色（被动可见，无
+  // 弹窗、无档位、无闩锁）。
+  const [detailView, setDetailView] = useState(() => (tabId ? detailViewByTab.get(tabId) === true : false));
+  useEffect(() => {
+    setDetailView(tabId ? detailViewByTab.get(tabId) === true : false);
+  }, [tabId]);
+  const toggleDetailView = useCallback((checked: boolean) => {
+    if (tabId) detailViewByTab.set(tabId, checked);
+    setDetailView(checked);
+  }, [tabId]);
+  const sections = detailView ? compositionThreeSections(info?.composition) : [];
+  const directoryBytes = info?.composition?.directoryBytes ?? 0;
+  const overInjectLine = directoryBytes > DIRECTORY_WARN_BYTES;
+  const injectPct = windowTokens > 0 ? Math.min(100, (DIRECTORY_WARN_BYTES / windowTokens) * 100) : 0;
 
   useEffect(() => () => {
     requestSeq.current += 1;
@@ -209,7 +233,7 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
       <button
         ref={triggerRef}
         type="button"
-        className={`context-ring${open ? " context-ring--open" : ""} context-ring--${status.tone}`}
+        className={`context-ring${open ? " context-ring--open" : ""} context-ring--${status.tone}${overInjectLine ? " context-ring--overinject" : ""}`}
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}
         onFocus={onEnter}
@@ -245,7 +269,7 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
           if (enterTimer.current != null) clearTimeout(enterTimer.current);
           setOpen(false);
         }}
-        className={`context-ring-popover context-ring-popover--${status.tone} composer-menu-surface`}
+        className={`context-ring-popover context-ring-popover--${status.tone}${overInjectLine ? " context-ring-popover--overinject" : ""} composer-menu-surface`}
         align="end"
         placement="auto"
       >
@@ -265,13 +289,66 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
               <span className="context-ring-popover__fill" style={{ width: `${usagePct}%` }} />
               <span className="context-ring-popover__mark context-ring-popover__mark--compact" style={{ left: `${compactPct}%` }} title={t("context.windowCompactThresholdTitle")} />
               <span className="context-ring-popover__mark context-ring-popover__mark--attention" style={{ left: `30%` }} />
+              {/* tl1224 阶段二：64K 注入警告线刻度——复用距压缩刻度的视觉语言；
+                  目录块字节（非 token）与 64KB 警告线比较，超线时圆环变色。 */}
+              {directoryBytes > 0 && (
+                <span
+                  className={`context-ring-popover__mark context-ring-popover__mark--inject${overInjectLine ? " context-ring-popover__mark--inject-over" : ""}`}
+                  style={{ left: `${injectPct}%` }}
+                  title={t("context.injectMarkTitle", { size: fmtCompact(directoryBytes), line: "64k" })}
+                />
+              )}
             </div>
           </div>
-          {/* Task 442: composition segments — a separate block below the
-              capacity fill, never mixed into it (the capacity bar answers
-              "how full", this one answers "what is in there"). */}
-          {segments.length > 0 && (
+          {/* tl1224 阶段二：明细开关（小号，位于色条上方，勾选状态会话内保持）。
+              US-A：默认视图（未勾选）= 现状平铺四项零改动；US-B：勾选后切协议
+              三大段（横线分割+彩色子项）。无构成数据时整块连同开关一起隐藏。 */}
+          {(segments.length > 0 || sections.length > 0) && (
             <div className="context-composition" role="group" aria-label={t("context.compositionTitle")}>
+              <label className="context-composition__detail-toggle" title={t("context.detailToggleTitle")}>
+                <input
+                  type="checkbox"
+                  className="context-composition__detail-checkbox"
+                  data-testid="composition-detail-toggle"
+                  checked={detailView}
+                  onChange={(event) => toggleDetailView(event.currentTarget.checked)}
+                />
+                <span>{t("context.detailToggle")}</span>
+              </label>
+              {detailView ? (
+                <div className="context-composition__sections" data-testid="composition-sections">
+                  <div className="context-composition__bar" aria-hidden="true">
+                    {sections.map((section) => (
+                      <span
+                        key={section.key}
+                        className={`context-composition__seg context-composition__seg--section-${section.key}`}
+                        style={{ width: `${section.share}%` }}
+                      />
+                    ))}
+                  </div>
+                  {sections.map((section) => (
+                    <div className="context-composition__section" key={section.key}>
+                      <div className="context-composition__section-head">
+                        <span className={`context-composition__dot context-composition__dot--section-${section.key}`} aria-hidden="true" />
+                        <span className="context-composition__section-name">{t(section.labelKey)}</span>
+                        <span className="context-composition__tokens">{fmtCompact(section.tokens)}</span>
+                        <span className="context-composition__share">{section.share.toFixed(1)}%</span>
+                      </div>
+                      <ul className="context-composition__section-items">
+                        {section.items.map((item) => (
+                          <li className="context-composition__section-item" key={item.key}>
+                            <span className={`context-composition__dot context-composition__dot--item-${item.key}`} aria-hidden="true" />
+                            <span className="context-composition__label">{t(item.labelKey)}</span>
+                            <span className="context-composition__tokens">{fmtCompact(item.tokens)}</span>
+                            <span className="context-composition__share">{item.share.toFixed(1)}%</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
               <div className="context-composition__bar" aria-hidden="true">
                 {segments.map((seg) => (
                   <span
@@ -291,6 +368,8 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
                   </li>
                 ))}
               </ul>
+                </>
+              )}
             </div>
           )}
           <div className="context-ring-popover__rows">
