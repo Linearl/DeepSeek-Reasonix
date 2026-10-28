@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Check } from "lucide-react";
 
 export type ContextMenuPoint = {
   left: number;
@@ -18,6 +19,11 @@ export type ContextMenuItem =
       disabled?: boolean;
       danger?: boolean;
       variant?: "section";
+      // tl 1103: "open with ▸" marks the currently preferred opener with a
+      // check (read-only display; the sidebar entry never writes the
+      // preference — mirroring ExternalOpener's menuitemradio row). Undefined
+      // keeps the plain menuitem role; set it (true/false) to opt in.
+      checked?: boolean;
       onSelect: () => void;
     }
   | {
@@ -308,9 +314,10 @@ export function ContextMenu({
       <button
         key={item.key}
         type="button"
-        role="menuitem"
+        role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+        aria-checked={item.checked === undefined ? undefined : item.checked}
         disabled={item.disabled}
-        className={`context-menu__item${nested ? " context-menu__item--nested" : ""}${item.danger ? " context-menu__item--danger" : ""}${item.variant ? ` context-menu__item--${item.variant}` : ""}`}
+        className={`context-menu__item${nested ? " context-menu__item--nested" : ""}${item.danger ? " context-menu__item--danger" : ""}${item.variant ? ` context-menu__item--${item.variant}` : ""}${item.checked ? " context-menu__item--checked" : ""}`}
         onMouseEnter={nested ? undefined : scheduleFlyoutClose}
         onClick={(event) => {
           event.stopPropagation();
@@ -327,6 +334,7 @@ export function ContextMenu({
         {item.icon}
         <span>{item.label}</span>
         {item.shortcut && <span className="context-menu__shortcut">{item.shortcut}</span>}
+        {item.checked && <Check className="context-menu__check" size={13} aria-hidden="true" />}
       </button>
     );
   };

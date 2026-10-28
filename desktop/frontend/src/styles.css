@@ -28790,6 +28790,18 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
 }
 
+/* tl 1103: "open with ▸" marks the currently preferred opener — same pattern
+   as the topicbar more-menu check (accent, pushed to the row end). */
+.context-menu__item--checked {
+  color: var(--fg);
+}
+
+.context-menu__check {
+  margin-left: auto;
+  color: var(--accent);
+  pointer-events: none;
+}
+
 /* Task 720: submenu rows carry the expand chevron; the first label span keeps
    flex:1, so the arrow only needs to stop growing and sit at the row end. */
 .context-menu__item--submenu > .context-menu__submenu-arrow {

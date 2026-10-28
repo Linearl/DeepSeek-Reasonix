@@ -1821,7 +1821,9 @@ export function ProjectTree({
         }] : []),
         // tl 1103 新增「打开方式 ▸」：复用 ExternalOpener 的发现列表（挂载时
         // 拉取一次）；目标路径 = 该会话的工作区，点击经 OpenLocalPathInExternalOpener
-        // 调起（既有桥，偏好不回写——与 split-button 主键语义一致）。
+        // 调起（既有桥，偏好不回写——与 split-button 主键语义一致）。当前偏好项
+        // 打 ✓（无偏好时跟 ExternalOpener 的 selected 口径落到第一项），只展示
+        // 不落盘。
         ...(!node.remoteSession && workspaceForOpen && (externalOpeners?.openers.length ?? 0) > 0 ? [{
           type: "submenu" as const,
           key: "open-with",
@@ -1831,6 +1833,8 @@ export function ProjectTree({
             key: `open:${opener.id}`,
             icon: <OpenerIcon opener={opener} />,
             label: opener.name,
+            // ExternalOpener 的 selected 口径：偏好项，无偏好落到第一项。
+            checked: opener.id === (externalOpeners?.preferred || externalOpeners?.openers[0]?.id),
             onSelect: () => {
               void app.OpenLocalPathInExternalOpener(workspaceForOpen, opener.id).catch((err) => {
                 showToast(t("externalOpener.failed", { name: opener.name, error: err instanceof Error ? err.message : String(err) }), "error");

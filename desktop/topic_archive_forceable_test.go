@@ -18,8 +18,13 @@ func TestTrashTopicMarksForceableFailures(t *testing.T) {
 	forceable := []error{
 		errTopicHasActiveWork,
 		errSessionBusyElsewhere,
+		// tl 1201 zombie leftover (dead holder pid) joined the forceable
+		// family — a crashed Reasonix process cannot be closed by hand, so
+		// the force path is the only way out; the marker must cover it.
+		errSessionBusyZombie,
 		agent.ErrSessionLeaseHeld,
 		fmt.Errorf("wrapped: %w", errTopicHasActiveWork),
+		fmt.Errorf("wrapped: %w", errSessionBusyZombie),
 		// The file-lock sentinel arrives already rewritten by
 		// friendlySessionFileError into errSessionBusyElsewhere.
 		friendlySessionFileError(agent.ErrSessionFileLockHeld),

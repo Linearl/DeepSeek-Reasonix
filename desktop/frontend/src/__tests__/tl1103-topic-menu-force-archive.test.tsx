@@ -229,6 +229,15 @@ ok(treeSource.includes("void app.ExternalOpeners()"), "open-with: discovers via 
 ok(treeSource.includes("app.OpenLocalPathInExternalOpener(workspaceForOpen, opener.id)"), "open-with: launches via the existing OpenLocalPathInExternalOpener bridge");
 ok(treeSource.includes("externalOpener.failed"), "open-with: launch failure shows the existing opener error toast");
 ok(treeSource.includes("const workspaceForOpen = openRequest?.workspaceRoot ?? node.root ?? \"\""), "open-with target = the session's own workspace root");
+// 打开方式「当前项 ✓」（验收：当前项 ✓）：checked 行 = ExternalOpener 的 selected
+// 口径（偏好项，无偏好落第一项），只展示不落盘；ContextMenu 侧以 menuitemradio
+// + Check 图标渲染（同 topicbar more-menu 的 check 视觉口径）。
+ok(treeSource.includes("checked: opener.id === (externalOpeners?.preferred || externalOpeners?.openers[0]?.id)"), "open-with marks the current opener (preferred, falling back to the first — ExternalOpener's selected semantics)");
+const contextMenuSource = readFileSync(resolve(frontendRoot, "src/components/ContextMenu.tsx"), "utf8");
+ok(contextMenuSource.includes("checked?: boolean"), "ContextMenu items accept a checked flag");
+ok(contextMenuSource.includes('role={item.checked === undefined ? "menuitem" : "menuitemradio"}'), "checked rows opt into menuitemradio + aria-checked");
+ok(contextMenuSource.includes("context-menu__check"), "checked rows render the Check glyph");
+ok(readFileSync(resolve(frontendRoot, "src/styles.css"), "utf8").includes(".context-menu__check"), "the check glyph carries its own style");
 
 // trash 项确认链：ConfirmAction 二次确认 → trashTopicForceableAny → TrashTopicForce
 ok(treeSource.includes("const trashTopicForceableAny"), "trash menu wires the forceable entry");
@@ -239,6 +248,41 @@ ok(treeSource.includes("await trashTopicForceAny(topicId);"), "confirm: routes i
 ok(treeSource.includes("void trashTopicForceableAny(topicId)"), "the trash item's second click runs the forceable entry");
 ok(/key: "trash",[\s\S]*?danger: true/.test(menuSlice), "trash keeps the danger styling (the only danger row left in the topic menu)");
 ok(!/key: "forceArchive"/.test(treeSource), "no second danger row (force) remains");
+
+// 一级项数与全量键账（验收：一级 ≤10 + 17 功能每项可触达）。菜单源码里所有
+// `key:` 值构成一个封闭账本：任何新增一级行、或把二级叶误提到一级，都会撞红。
+// 账本口径（顶层功能行 9 = 置顶（条件项，key 由三元表达式给出，不入正则捕获）/
+// 重命名 / AI 重命名 / 已读 / 分组 ▸ / 复制 ▸ / 打开方式 ▸ / 编辑职责 / 移到回收站，
+// 3 条分隔线不计行数；捕获集另含复制 ▸ 的 3 个二级叶与打开方式 ▸ 的模板键）。
+// 17 功能账：置顶① 重命名② AI重命名③ 已读④ 移动到分组⑤ 移出分组⑥（⑤⑥由
+// organizationItems 承载、行为回归由 organization-races 钉）复制路径⑦ 日志⑧
+// 会话ID⑨ 打开方式×5⑩-⑪⑫⑬⑭（同一发现列表派生）编辑职责⑮ 回收站⑯
+// 强制归档（二次确认可触达）⑰——上方断言逐项覆盖。
+const menuKeys = [...menuSlice.matchAll(/key: ("[^"]+"|`[^`]+`)/g)].map((match) => match[1]);
+eq(new Set(menuKeys).size, menuKeys.length, "no duplicate keys in the topic menu ledger");
+// default sort keeps double-quoted keys ahead of the backtick template key.
+eq(menuKeys.slice().sort(), [
+  '"aiRename"',
+  '"copy-info"',
+  '"copy-log-path"',
+  '"copy-session-id"',
+  '"copy-session-path"',
+  '"ctx-sep-copy"',
+  '"ctx-sep-group"',
+  '"ctx-sep-trash"',
+  '"editPurpose"',
+  '"grouping"',
+  '"markAllRead"',
+  '"open-with"',
+  '"rename"',
+  '"trash"',
+  "`open:${opener.id}`",
+], "the topic menu's closed key ledger (a new level-1 row or a wrongly promoted leaf breaks this)");
+// 顶层功能行 = 双引号键 − 3 条分隔线 − 复制 ▸ 的 3 个二级叶，再加条件项置顶行。
+const nestedLeafKeys = new Set(['"copy-session-path"', '"copy-log-path"', '"copy-session-id"']);
+const topLevelRows = menuKeys.filter((key) => key.startsWith('"') && !key.includes("sep-") && !nestedLeafKeys.has(key)).length + 1;
+ok(topLevelRows <= 10, `acceptance: level-1 stays within 10 rows (got ${topLevelRows})`);
+eq(topLevelRows, 9, "acceptance: level-1 functional rows = 9 exactly (the spec table)");
 
 // App 装配：logDirectory prop 注入
 ok(appSource.includes("logDirectory={topicbarLogDirectory}"), "App wires the assembly-layer log directory into ProjectTree");
@@ -254,7 +298,10 @@ console.log("\ntl1103 ⑤ backend marking surface (source pin)");
 
 const goArchiveSource = readFileSync(resolve(desktopRoot, "topic_archive.go"), "utf8");
 ok(goArchiveSource.includes('topicArchiveForceablePrefix = "reasonix_error:topic_archive_forceable: "'), "TrashTopic marks forceable failures with the stable machine prefix");
-ok(goArchiveSource.includes("errors.Is(err, errTopicHasActiveWork) || errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, agent.ErrSessionLeaseHeld)"), "exactly the force-clearable family is marked (active-work gate + lease-busy)");
+// tl 1201 extended the family with the zombie classification (dead holder pid):
+// a crashed Reasonix process cannot be closed by hand, so force is the repair.
+// Pin stays verbatim so any future family change forces a conscious update.
+ok(goArchiveSource.includes("errors.Is(err, errTopicHasActiveWork) || errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, errSessionBusyZombie) || errors.Is(err, agent.ErrSessionLeaseHeld)"), "exactly the force-clearable family is marked (active-work gate + lease-busy + zombie + lease-held)");
 ok(goArchiveSource.includes("func (e *topicArchiveForceableError) Unwrap() error { return e.cause }"), "the marked error keeps its chain so Go tests' errors.Is keep passing");
 ok(/func \(a \*App\) TrashTopic\(topicID string\) error \{\s*\n\treturn markTopicArchiveForceable\(friendlySessionFileError/.test(goArchiveSource), "TrashTopic wraps through the marker");
 ok(/func \(a \*App\) TrashTopicForce\(topicID string\) error \{\s*\n\treturn friendlySessionFileError/.test(goArchiveSource), "TrashTopicForce itself stays unmarked (it is already the fallback)");
