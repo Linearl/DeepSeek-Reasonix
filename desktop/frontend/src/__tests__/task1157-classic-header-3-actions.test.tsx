@@ -155,10 +155,12 @@ ok(zh.includes('"projectTree.createProject": "新建项目"') && en.includes('"p
   "the create-project top-level entry copy exists in all three locales");
 ok(zh.includes('"projectTree.createBlankProject": "新建空白项目"') && zh.includes('"projectTree.useExistingFolder": "使用现有文件夹"'),
   "second-level copy (blank project / existing folder) keeps its keys and values in zh");
-ok(zh.includes('"projectTree.createMenu": "新建"') && zh.includes('"projectTree.filterMenu": "筛选"') && zh.includes('"projectTree.filterColorCount": "{count} 个颜色"')
-  && en.includes('"projectTree.createMenu": "New"') && en.includes('"projectTree.filterMenu": "Filter"') && en.includes('"projectTree.filterColorCount": "{count} color(s)"')
-  && zhTW.includes('"projectTree.createMenu": "新增"') && zhTW.includes('"projectTree.filterMenu": "篩選"') && zhTW.includes('"projectTree.filterColorCount": "{count} 個顏色"'),
-  "the new trigger labels exist in all three locales (createMenu / filterMenu / filterColorCount)");
+// tl1170: the trigger label key filterMenu retired (→ filterAndSort); the
+// locale assertions below cover the surviving trigger labels only.
+ok(zh.includes('"projectTree.createMenu": "新建"') && zh.includes('"projectTree.filterColorCount": "{count} 个颜色"')
+  && en.includes('"projectTree.createMenu": "New"') && en.includes('"projectTree.filterColorCount": "{count} color(s)"')
+  && zhTW.includes('"projectTree.createMenu": "新增"') && zhTW.includes('"projectTree.filterColorCount": "{count} 個顏色"'),
+  "the trigger labels exist in all three locales (createMenu / filterColorCount; filterMenu retired by tl1170)");
 
 process.stdout.write(`\n1157 classic header 5→3: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

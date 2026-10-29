@@ -2988,7 +2988,9 @@ export function ProjectTree({
     timeFilter !== "all" ? timeFilterDisplayLabel : "",
     colorFilter.length > 0 ? t("projectTree.filterColorCount", { count: colorFilter.length }) : "",
   ].filter(Boolean).join(" · ");
-  const classicFilterLabel = classicFilterActive ? classicFilterSummary : t("projectTree.filterMenu");
+  // tl1170: the panel is now "filter & sort" (clear / sort / time / colour), so
+  // the idle hover title names the whole panel instead of just 「筛选」.
+  const classicFilterLabel = classicFilterActive ? classicFilterSummary : t("projectTree.filterAndSort");
   const renderClassicFilterControl = () => (
     <Tooltip
       label={classicFilterLabel}
@@ -3012,7 +3014,7 @@ export function ProjectTree({
           {classicFilterActive && <span className="project-tree__filter-badge" aria-hidden="true" />}
         </button>
         {filterMenuOpen && (
-          <div className="project-tree__time-filter-menu project-tree__filter-panel" role="menu" aria-label={t("projectTree.filterMenu")} onKeyDown={moveMenuFocus}>
+          <div className="project-tree__time-filter-menu project-tree__filter-panel" role="menu" aria-label={t("projectTree.filterAndSort")} onKeyDown={moveMenuFocus}>
             <div className="project-tree__time-filter-title">{t("projectTree.timeFilter")}</div>
             <button
               type="button"

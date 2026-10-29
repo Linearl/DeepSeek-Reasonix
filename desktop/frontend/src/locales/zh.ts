@@ -1899,7 +1899,6 @@ export const zh: Record<DictKey, string> = {
   "projectTree.restoreCollapsedTooltip": "恢复上次展开",
   "projectTree.timeFilter": "按时间筛选",
   "projectTree.filterAndSort": "筛选与排序",
-  "projectTree.filterMenu": "筛选",
   "projectTree.filterColorCount": "{count} 个颜色",
   "projectTree.showMoreTopics": "展开显示 (+{n})",
   "projectTree.showFewerTopics": "折叠显示",

@@ -4285,7 +4285,6 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.restoreCollapsedTooltip": "恢復上次展開",
   "projectTree.timeFilter": "按時間篩選",
   "projectTree.filterAndSort": "篩選與排序",
-  "projectTree.filterMenu": "篩選",
   "projectTree.filterColorCount": "{count} 個顏色",
   "projectTree.showMoreTopics": "展開顯示 (+{n})",
   "projectTree.showFewerTopics": "折疊顯示",

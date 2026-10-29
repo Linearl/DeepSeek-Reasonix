@@ -1903,7 +1903,6 @@ export const en = {
   "projectTree.restoreCollapsedTooltip": "Restore previous view",
   "projectTree.timeFilter": "Filter by time",
   "projectTree.filterAndSort": "Filter & sort",
-  "projectTree.filterMenu": "Filter",
   "projectTree.filterColorCount": "{count} color(s)",
   "projectTree.showMoreTopics": "Show more (+{n})",
   "projectTree.showFewerTopics": "Show fewer",
