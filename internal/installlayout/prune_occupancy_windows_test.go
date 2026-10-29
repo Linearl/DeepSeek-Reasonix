@@ -140,3 +140,35 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return body
 }
+
+func TestRetainPreviousVersionsKeepsOccupiedTree(t *testing.T) {
+	root := t.TempDir()
+	versionsDir := filepath.Join(root, VersionsDirName)
+	// Three trees: active v1.38.2, recent-old v1.38.1 (stays), aged v1.38.0
+	// (would be GC'd — but a live instance runs from it, so it must stay).
+	for _, v := range []string{"v1.38.0", "v1.38.1", "v1.38.2"} {
+		if err := os.MkdirAll(filepath.Join(versionsDir, v), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ptr := CurrentPointer{SchemaVersion: CurrentSchemaVersion, ActiveVersion: "v1.38.2", ActiveDir: VersionDirRelative("v1.38.2")}
+	if err := os.WriteFile(filepath.Join(root, CurrentFileName), mustJSON(t, ptr), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aged := "v1.38.0"
+	spawnTreeInstance(t, versionsDir, aged)
+	oldTime := time.Now().Add(-30 * 24 * time.Hour)
+	if err := os.Chtimes(filepath.Join(versionsDir, aged), oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RetainPreviousVersions(root, 7*24*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(versionsDir, aged)); err != nil {
+		t.Fatalf("occupied aged tree must be kept: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(versionsDir, "v1.38.1")); err != nil {
+		t.Fatalf("recent previous tree must be kept: %v", err)
+	}
+}

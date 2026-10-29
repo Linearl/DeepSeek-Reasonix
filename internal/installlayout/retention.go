@@ -101,9 +101,10 @@ func EnforceVersionRetention(installRoot string) RetentionReport {
 	return report
 }
 
-// retainedOccupiedDescriptions renders the retained trees for the one-line
-// retention log ("v1 (pid 1,2; round 1/3)").
-func retainedOccupiedDescriptions(retained []OccupiedVersion) []string {
+// DescribeRetained renders the retained trees for one-line log fields
+// ("v1 (pid 1,2; round 1/3)"); consumers (desktop retention log, future
+// surfaces) share the exact wording.
+func DescribeRetained(retained []OccupiedVersion) []string {
 	if len(retained) == 0 {
 		return nil
 	}
@@ -112,6 +113,11 @@ func retainedOccupiedDescriptions(retained []OccupiedVersion) []string {
 		out = append(out, occ.Describe())
 	}
 	return out
+}
+
+// retainedOccupiedDescriptions is the internal alias for the retention log.
+func retainedOccupiedDescriptions(retained []OccupiedVersion) []string {
+	return DescribeRetained(retained)
 }
 
 // CleanupStaleQuarantinedNodes removes quarantined update-backup nodes under
