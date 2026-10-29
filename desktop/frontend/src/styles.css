@@ -38942,25 +38942,40 @@ button.statusbar__mcp:focus-visible {
   opacity: 0.7;
 }
 
-/* Task 50: long-press a group header to reorder it inside its project. Plain rgba
-   overlays rather than theme tokens so the affordance reads the same under every
-   accent without adding to the token contract. */
+/* Task 50: long-press a group header to reorder it inside its project.
+   tl 1260: the source dim follows the project side's dragging weight
+   (.project-tree__folder--dragging / __pgroup-main--dragging both 0.55) so a
+   session-group drag reads the same as a project drag. */
 .project-tree__group-main--dragging {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: grabbing;
 }
 
-.project-tree__group-main--reorder-target {
-  background: rgba(127, 127, 127, 0.16);
-  box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.5);
+/* tl 1260: the session-group placement hints (pointer-machine drags; the
+   sibling --reorder-target covers both before/after zones, the --nest-target
+   the into zone) join the tl 1225 accent paradigm: 2px accent inset treatment
+   on the hovered header, same colour family and weight as the project side's
+   drop-into ring. The old neutral-gray washes read as "no hint" next to the
+   project side's accent bars. The doubled-class selector (0,2,0, later in
+   this file) is load-bearing: during a pointer drag the pointer rests on the
+   hovered header, so `.project-tree__group-main:hover` (0,2,0, above) always
+   co-applies — at the plain (0,1,0) specificity the hint's background was
+   silently replaced by the 8% hover wash, one of the two mechanisms behind
+   the "no feedback at all" report (tl1225b set the doubled-class precedent
+   against the theme layer; this one beats the sibling hover rule). */
+.project-tree__group-main.project-tree__group-main--reorder-target {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* Task 892-B: the INTO band of a group drop (drop on the row = join the
    group's subtree) paints stronger than the sibling-reorder bands, so the
-   two plain-drop meanings are distinguishable mid-drag. */
-.project-tree__group-main--nest-target {
-  background: color-mix(in srgb, var(--fg) 16%, transparent);
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fg) 75%, transparent);
+   two plain-drop meanings are distinguishable mid-drag. tl 1260: accent twin
+   of the project side's --pgroup-main--drop-into (accent 16% wash + 2px ring
+   at 55%), doubled-class for the same hover-beat reason. */
+.project-tree__group-main.project-tree__group-main--nest-target {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* Task 169: desktop drag affordance for group reordering. The grip sits at the
