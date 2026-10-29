@@ -4,6 +4,8 @@ package sandbox
 
 import (
 	"os"
+	"os/exec"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -81,4 +83,56 @@ func TestShellInventoryRealMachineProbe1257(t *testing.T) {
 	ShellCapabilitiesForView("", "")
 	rebuiltWarm := time.Since(start)
 	t.Logf("PROBE1257 rebuilt-warm-read=%s", rebuiltWarm)
+
+	// ⑦ 噪声归因：热态下同一展示面读链 ×10，报 min/max。min 为机制真值
+	// （全缓存命中应为 µs-ms 级）；max-min 差即本机调度/争用墙钟噪声，
+	// 对应生产 desktop.log 里 ⑦ 块恒 265–1108ms 的波动。
+	var minRead, maxRead time.Duration = 0, 0
+	for range 10 {
+		start = time.Now()
+		ResolveShellForView("", "", nil)
+		ShellCapabilitiesForView("", "")
+		GitCapabilityForView("", "")
+		d := time.Since(start)
+		if minRead == 0 || d < minRead {
+			minRead = d
+		}
+		if d > maxRead {
+			maxRead = d
+		}
+	}
+	t.Logf("PROBE1257 warmview-10x min=%s max=%s (min=mechanism truth, max-min=host contention noise)", minRead, maxRead)
+
+	// ⑧ 三连读分解：哪个成员承担热成本。exec.LookPath 独立计量——决策表
+	// 每次调用现跑 LookPath（不进快照缓存），若它是热成本大头，则是快照
+	// 缓存漏了一项发现数据。
+	start = time.Now()
+	ResolveShellForView("", "", nil)
+	resolveOnly := time.Since(start)
+	start = time.Now()
+	ShellCapabilitiesForView("", "")
+	capsOnly := time.Since(start)
+	start = time.Now()
+	GitCapabilityForView("", "")
+	gitOnly := time.Since(start)
+	start = time.Now()
+	_, err := exec.LookPath("bash")
+	lookPathErr := err
+	lookPathOnly := time.Since(start)
+	t.Logf("PROBE1257 warm-split resolve=%s caps=%s git=%s lookpath-bash(err=%v)=%s", resolveOnly, capsOnly, gitOnly, lookPathErr, lookPathOnly)
+
+	// ⑨ 全热微诊断：⑧ 已把 lookup/probe 缓存打满，第二次 resolve 应为 µs。
+	// 分步计量 lookup("bash") 与 probe(命中路径)，定位残留成本成员。
+	ResolveShellForView("", "", nil)
+	start = time.Now()
+	ResolveShellForView("", "", nil)
+	secondResolve := time.Since(start)
+	snap := defaultShellInventory.snapshotOpts(runtime.GOOS, "", "", true)
+	start = time.Now()
+	bashPath, _ := snap.lookup("bash")
+	lookupOnly := time.Since(start)
+	start = time.Now()
+	snap.probe(bashPath)
+	probeOnly := time.Since(start)
+	t.Logf("PROBE1257 warm-second resolve=%s lookup-bash=%s probe(%s)=%s", secondResolve, lookupOnly, bashPath, probeOnly)
 }

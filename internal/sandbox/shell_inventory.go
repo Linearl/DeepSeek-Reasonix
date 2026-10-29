@@ -75,6 +75,33 @@ type shellSnapshot struct {
 	probeFunc    func(string) bool
 	probeMu      sync.Mutex
 	probeCache   map[string]bool
+	// tl1257: LookPath 结果与 probe 结果同类——快照发现数据，按名缓存。
+	// 决策表每次 resolveShell 调用都会现跑 exec.LookPath（PATH 全目录 stat
+	// 扫描），真机实测单次 ~90-300ms 且永不缓存，是设置页 ⑦ 块与每次
+	// bash 会话解析的隐形税。
+	lookMu    sync.Mutex
+	lookCache map[string]lookPathResult
+}
+
+type lookPathResult struct {
+	path string
+	err  error
+}
+
+// lookup returns the memoized LookPath result for name, walking PATH once per
+// (snapshot, name) pair instead of once per resolveShell call.
+func (s *shellSnapshot) lookup(name string) (string, error) {
+	s.lookMu.Lock()
+	defer s.lookMu.Unlock()
+	if s.lookCache == nil {
+		s.lookCache = map[string]lookPathResult{}
+	}
+	if r, ok := s.lookCache[name]; ok {
+		return r.path, r.err
+	}
+	path, err := s.lookPath(name)
+	s.lookCache[name] = lookPathResult{path: path, err: err}
+	return path, err
 }
 
 func (s *shellSnapshot) probe(path string) bool {
@@ -234,6 +261,11 @@ func buildShellSnapshot(goos, prefer, configPath string) *shellSnapshot {
 	} else {
 		snap.caps = unixShellCapabilities(snap)
 	}
+	// tl1257: git 发现并入 build 轮。此前是快照上的懒计算（gitOnce），首个
+	// 询问 git 的读者要同步付整轮 git 探测（真机 0.15–1.2s）——stale-ok 读
+	// 免掉了 shell 重建却仍会卡在 git 上。并入后成本归构建轮（后台 SWR 或
+	// 显式重检测，本就秒级段），读侧 gitOnce.Do 变纯命中。
+	snap.gitOnce.Do(func() { snap.git = discoverGitCapability(snap) })
 	return snap
 }
 
@@ -459,7 +491,7 @@ func windowsShellCapabilities(snap *shellSnapshot) []ShellCapability {
 		}
 	}
 	if !gitBash.Available {
-		if path, err := snap.lookPath("bash"); err == nil {
+		if path, err := snap.lookup("bash"); err == nil {
 			acceptCandidate(path, ShellSourcePath)
 		}
 	}
@@ -497,7 +529,7 @@ func windowsPowerShellCapability(snap *shellSnapshot, id string, names []string,
 		}
 	}
 	for _, name := range names {
-		if p, err := snap.lookPath(name); err == nil {
+		if p, err := snap.lookup(name); err == nil {
 			cap.Available = true
 			cap.Path = p
 			cap.Source = ShellSourcePath
