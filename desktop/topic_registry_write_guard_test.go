@@ -34,6 +34,7 @@ var topicRegistryWriteAllowlist = map[string][]string{
 		"func registerTopic(",              // 收点一（前置插入 + pinUpdate 分派）
 		"func registerTopicPrependMutator", // 收点一变更体（原 prependTopicsInProjectsFileOpts）
 		"func registerTopicPinMutator",     // 收点一变更体（原 SetTopicPinned 变更）
+		"func convergeGlobalRegistration(", // tl1262 收点一的跨 scope 收敛半体：project 登记同事务清 global 侧注册（唯一归属写侧落地），仅由 registerTopicPrependMutator 调用
 		"func unregisterTopic(",            // 收点二
 		"func unregisterTopicMutator",      // 收点二变更体（原 removeTopicFromProjectsFile）
 		"func reorderTopicOrder(",          // 保序重排收口（置换，见置换性质验证）
