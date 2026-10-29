@@ -1,7 +1,9 @@
 // Run: tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/tl1149-group-menus.test.tsx
 //
 // tl 1149 验收逐条钉（项目栏右键菜单重组四条，用户 20261025 反馈）:
-//   ① 单条会话右键「已读」（markRead 新键），分组/项目分组右键保留「全部已读」；
+//   ① 单条会话右键「标为已读」（markRead 键；tl 1149 初版为「已读」，主会话
+//     20261029 派单定稿「标为已读」——动作动词短语更准确），分组/项目分组
+//     右键保留「全部已读」；
 //   ② 分组节点右键 N 条「移到 X 子层/顶层」平铺收进「分组移动 ▸」二级（一级
 //     项数不再随分组数线性变长）；移动语义不变（仍是 nestGroup 的 display-only
 //     层级移动，回归由 group-hierarchy/multilevel-drag 既有测试钉）；
@@ -48,7 +50,7 @@ const stylesSource = readFileSync(resolve(frontendRoot, "src/styles.css"), "utf8
 console.log("\ntl1149 ① mark-read wording");
 
 const topicMenuSlice = treeSource.slice(treeSource.indexOf("const topicMenuItems: ContextMenuItem[]"), treeSource.indexOf("if (!isSessionNode && editingTopic === topicId)"));
-ok(topicMenuSlice.includes('label: t("projectTree.markRead")'), "the single-session menu row reads 「已读」 (projectTree.markRead)");
+ok(topicMenuSlice.includes('label: t("projectTree.markRead")'), "the single-session menu row reads 「标为已读」 (projectTree.markRead)");
 ok(!topicMenuSlice.includes('t("projectTree.markAllRead")'), "the single-session menu no longer uses markAllRead");
 ok(orgSource.includes('label: t("projectTree.markAllRead")'), "the GROUP header menu keeps 「全部已读」 (whole-group semantics)");
 ok(treeSource.includes('label: t("projectTree.markAllRead")'), "the project-folder subtree menu keeps 「全部已读」 (whole-subtree semantics)");
@@ -56,9 +58,9 @@ ok(treeSource.includes('label: t("projectTree.markAllRead")'), "the project-fold
 const zh = (await import("../locales/zh")).zh as unknown as Record<string, string>;
 const en = (await import("../locales/en")).en as unknown as Record<string, string>;
 const zhTw = (await import("../locales/zh-TW")).zhTW as unknown as Record<string, string>;
-eq(zh["projectTree.markRead"], "已读", "zh markRead = 已读");
-eq(en["projectTree.markRead"], "Mark read", "en markRead = Mark read");
-eq(zhTw["projectTree.markRead"], "已讀", "zh-TW markRead = 已讀");
+eq(zh["projectTree.markRead"], "标为已读", "zh markRead = 标为已读");
+eq(en["projectTree.markRead"], "Mark as read", "en markRead = Mark as read");
+eq(zhTw["projectTree.markRead"], "標為已讀", "zh-TW markRead = 標為已讀");
 eq(zh["projectTree.markAllRead"], "全部已读", "zh keeps markAllRead for the group menus");
 
 // ── ② 「分组移动 ▸」二级（会话分组头菜单） ────────────────────────────────────

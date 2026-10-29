@@ -183,7 +183,7 @@ console.log("\ntl1103 ③ menu structure (source pins)");
 const treeSource = readFileSync(resolve(frontendRoot, "src/components/ProjectTree.tsx"), "utf8");
 const appSource = readFileSync(resolve(frontendRoot, "src/App.tsx"), "utf8");
 
-// 一级 key 顺序 = 3.1 规格表：置顶 / 重命名 / AI 重命名 / 已读 ── 分组 ▸ ── 复制 ▸ /
+// 一级 key 顺序 = 3.1 规格表：置顶 / 重命名 / AI 重命名 / 标为已读 ── 分组 ▸ ── 复制 ▸ /
 // 打开方式 ▸ / 编辑职责 ── 移到回收站。pin 是 classic 变体条件项。
 function assertOrdered(haystack: string, needles: Array<[string, string]>, label: string) {
   let cursor = 0;
@@ -252,9 +252,9 @@ ok(!/key: "forceArchive"/.test(treeSource), "no second danger row (force) remain
 // 一级项数与全量键账（验收：一级 ≤10 + 17 功能每项可触达）。菜单源码里所有
 // `key:` 值构成一个封闭账本：任何新增一级行、或把二级叶误提到一级，都会撞红。
 // 账本口径（顶层功能行 9 = 置顶（条件项，key 由三元表达式给出，不入正则捕获）/
-// 重命名 / AI 重命名 / 已读 / 分组 ▸ / 复制 ▸ / 打开方式 ▸ / 编辑职责 / 移到回收站，
+// 重命名 / AI 重命名 / 标为已读 / 分组 ▸ / 复制 ▸ / 打开方式 ▸ / 编辑职责 / 移到回收站，
 // 3 条分隔线不计行数；捕获集另含复制 ▸ 的 3 个二级叶与打开方式 ▸ 的模板键）。
-// 17 功能账：置顶① 重命名② AI重命名③ 已读④ 移动到分组⑤ 移出分组⑥（⑤⑥由
+// 17 功能账：置顶① 重命名② AI重命名③ 标为已读④ 移动到分组⑤ 移出分组⑥（⑤⑥由
 // organizationItems 承载、行为回归由 organization-races 钉）复制路径⑦ 日志⑧
 // 会话ID⑨ 打开方式×5⑩-⑪⑫⑬⑭（同一发现列表派生）编辑职责⑮ 回收站⑯
 // 强制归档（二次确认可触达）⑰——上方断言逐项覆盖。

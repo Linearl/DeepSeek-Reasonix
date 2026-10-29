@@ -1788,7 +1788,7 @@ export const zh: Record<DictKey, string> = {
   "projectTree.aiRenameDone": "已重命名为“{title}”",
   "projectTree.newGroup": "新建项目分组",
   "projectTree.markAllRead": "全部已读",
-  "projectTree.markRead": "已读",
+  "projectTree.markRead": "标为已读",
   "projectTree.copyInfo": "复制",
   "projectTree.openWith": "打开方式",
   "projectTree.groupMove": "分组移动",
