@@ -32,7 +32,7 @@ func discoverGitCapability(snap *shellSnapshot) ExecutableCapability {
 		return result
 	}
 	for _, name := range []string{"git", "git.exe"} {
-		if path, err := snap.lookPath(name); err == nil && usable(path) {
+		if path, err := snap.lookup(name); err == nil && usable(path) {
 			capability.Available = true
 			capability.Path = path
 			capability.Source = ShellSourcePath
@@ -42,7 +42,7 @@ func discoverGitCapability(snap *shellSnapshot) ExecutableCapability {
 
 	if snap.goos == "windows" {
 		var bashPaths []string
-		if path, err := snap.lookPath("bash"); err == nil {
+		if path, err := snap.lookup("bash"); err == nil {
 			bashPaths = append(bashPaths, path)
 		}
 		bashPaths = append(bashPaths, snap.bashCands...)

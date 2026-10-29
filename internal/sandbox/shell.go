@@ -66,7 +66,17 @@ type Shell struct {
 // inventory snapshot, so repeated calls share one probe pass for 30 seconds.
 func ResolveShell(prefer, path string, warn io.Writer) Shell {
 	snap := defaultShellInventory.snapshot(runtime.GOOS, prefer, path)
-	return resolveShell(prefer, path, warn, snap.goos, snap.lookPath, snap.exists, snap.bashCands, snap.psCands, snap.probe, snap.isWSL)
+	return resolveShell(prefer, path, warn, snap.goos, snap.lookup, snap.exists, snap.bashCands, snap.psCands, snap.probe, snap.isWSL)
+}
+
+// ResolveShellForView is the informational-surface variant of ResolveShell
+// (desktop settings "resolved shell" display): it shares the decision table
+// but reads the inventory with the stale-while-revalidate contract, so a
+// TTL-expired entry serves the stale snapshot instead of blocking on a fresh
+// discovery pass. Execution paths must keep using ResolveShell.
+func ResolveShellForView(prefer, path string, warn io.Writer) Shell {
+	snap := defaultShellInventory.snapshotOpts(runtime.GOOS, prefer, path, true)
+	return resolveShell(prefer, path, warn, snap.goos, snap.lookup, snap.exists, snap.bashCands, snap.psCands, snap.probe, snap.isWSL)
 }
 
 // resolveShell is ResolveShell with its environment lookups injected — including

@@ -75,6 +75,33 @@ type shellSnapshot struct {
 	probeFunc    func(string) bool
 	probeMu      sync.Mutex
 	probeCache   map[string]bool
+	// tl1257: LookPath 结果与 probe 结果同类——快照发现数据，按名缓存。
+	// 决策表每次 resolveShell 调用都会现跑 exec.LookPath（PATH 全目录 stat
+	// 扫描），真机实测单次 ~90-300ms 且永不缓存，是设置页 ⑦ 块与每次
+	// bash 会话解析的隐形税。
+	lookMu    sync.Mutex
+	lookCache map[string]lookPathResult
+}
+
+type lookPathResult struct {
+	path string
+	err  error
+}
+
+// lookup returns the memoized LookPath result for name, walking PATH once per
+// (snapshot, name) pair instead of once per resolveShell call.
+func (s *shellSnapshot) lookup(name string) (string, error) {
+	s.lookMu.Lock()
+	defer s.lookMu.Unlock()
+	if s.lookCache == nil {
+		s.lookCache = map[string]lookPathResult{}
+	}
+	if r, ok := s.lookCache[name]; ok {
+		return r.path, r.err
+	}
+	path, err := s.lookPath(name)
+	s.lookCache[name] = lookPathResult{path: path, err: err}
+	return path, err
 }
 
 func (s *shellSnapshot) probe(path string) bool {
@@ -132,13 +159,53 @@ func (inv *shellInventory) invalidate() {
 // Concurrent callers coalesce onto the in-flight build (singleflight): the
 // first caller builds, the rest wait and then re-check the cache.
 func (inv *shellInventory) snapshot(goos, prefer, configPath string) *shellSnapshot {
+	return inv.snapshotOpts(goos, prefer, configPath, false)
+}
+
+// snapshotOpts is snapshot with a staleness contract knob. staleOk is for
+// informational surfaces only (desktop settings capability report): on a
+// TTL-expired entry it serves the stale snapshot immediately and kicks a
+// singleflight rebuild in the background, so opening the surface never blocks
+// on shell discovery subprocess probes (tl1257: the expired synchronous read
+// measured 7.9s on the developer machine — production view_build 9-14.1s).
+// A key change (config preference/path edited) still rebuilds synchronously
+// under both knobs: the cache contract refuses to serve candidates attributed
+// to the wrong shell kind. invalidate() keeps its semantics: an explicit
+// re-detect clears the entry, so the next read rebuilds synchronously.
+func (inv *shellInventory) snapshotOpts(goos, prefer, configPath string, staleOk bool) *shellSnapshot {
 	key := shellInventoryKey(goos, prefer, configPath)
 	for {
 		inv.mu.Lock()
-		if inv.current != nil && inv.current.key == key && time.Since(inv.current.builtAt) < shellInventoryTTL {
-			snap := inv.current
-			inv.mu.Unlock()
-			return snap
+		if inv.current != nil && inv.current.key == key {
+			if time.Since(inv.current.builtAt) < shellInventoryTTL {
+				snap := inv.current
+				inv.mu.Unlock()
+				return snap
+			}
+			if staleOk {
+				stale := inv.current
+				// One background rebuild serves every stale-ok reader until it
+				// publishes; generation check keeps an invalidate() during the
+				// refresh from republishing a discarded result.
+				if inv.refreshing == nil {
+					done := make(chan struct{})
+					inv.refreshing = done
+					generation := inv.generation
+					go func() {
+						snap := inv.build(goos, prefer, configPath)
+						inv.mu.Lock()
+						inFlight := inv.refreshing
+						inv.refreshing = nil
+						if inv.generation == generation {
+							inv.current = snap
+						}
+						close(inFlight)
+						inv.mu.Unlock()
+					}()
+				}
+				inv.mu.Unlock()
+				return stale
+			}
 		}
 		if inv.refreshing != nil {
 			wait := inv.refreshing
@@ -194,6 +261,11 @@ func buildShellSnapshot(goos, prefer, configPath string) *shellSnapshot {
 	} else {
 		snap.caps = unixShellCapabilities(snap)
 	}
+	// tl1257: git 发现并入 build 轮。此前是快照上的懒计算（gitOnce），首个
+	// 询问 git 的读者要同步付整轮 git 探测（真机 0.15–1.2s）——stale-ok 读
+	// 免掉了 shell 重建却仍会卡在 git 上。并入后成本归构建轮（后台 SWR 或
+	// 显式重检测，本就秒级段），读侧 gitOnce.Do 变纯命中。
+	snap.gitOnce.Do(func() { snap.git = discoverGitCapability(snap) })
 	return snap
 }
 
@@ -202,6 +274,19 @@ func buildShellSnapshot(goos, prefer, configPath string) *shellSnapshot {
 // because a retained PowerShell path must never become an auto-detected Bash.
 func ShellCapabilitiesForConfig(prefer, configPath string) []ShellCapability {
 	snap := defaultShellInventory.snapshot(runtime.GOOS, prefer, configPath)
+	out := make([]ShellCapability, len(snap.caps))
+	copy(out, snap.caps)
+	return out
+}
+
+// ShellCapabilitiesForView is the informational-surface variant of
+// ShellCapabilitiesForConfig (desktop settings / lab capability report): on a
+// TTL-expired entry it returns the stale inventory immediately while a
+// background rebuild runs, so opening the settings surface never blocks on
+// discovery subprocess probes. The explicit re-detect action still forces a
+// fresh synchronous pass through InvalidateShellInventory.
+func ShellCapabilitiesForView(prefer, configPath string) []ShellCapability {
+	snap := defaultShellInventory.snapshotOpts(runtime.GOOS, prefer, configPath, true)
 	out := make([]ShellCapability, len(snap.caps))
 	copy(out, snap.caps)
 	return out
@@ -226,6 +311,15 @@ func ShellCapabilities() []ShellCapability {
 // as the root for Git-for-Windows discovery.
 func GitCapabilityForConfig(prefer, configPath string) ExecutableCapability {
 	snap := defaultShellInventory.snapshot(runtime.GOOS, prefer, configPath)
+	snap.gitOnce.Do(func() { snap.git = discoverGitCapability(snap) })
+	return snap.git
+}
+
+// GitCapabilityForView is the informational-surface variant of
+// GitCapabilityForConfig with the same stale-while-revalidate contract as
+// ShellCapabilitiesForView (desktop settings / lab capability report only).
+func GitCapabilityForView(prefer, configPath string) ExecutableCapability {
+	snap := defaultShellInventory.snapshotOpts(runtime.GOOS, prefer, configPath, true)
 	snap.gitOnce.Do(func() { snap.git = discoverGitCapability(snap) })
 	return snap.git
 }
@@ -397,7 +491,7 @@ func windowsShellCapabilities(snap *shellSnapshot) []ShellCapability {
 		}
 	}
 	if !gitBash.Available {
-		if path, err := snap.lookPath("bash"); err == nil {
+		if path, err := snap.lookup("bash"); err == nil {
 			acceptCandidate(path, ShellSourcePath)
 		}
 	}
@@ -435,7 +529,7 @@ func windowsPowerShellCapability(snap *shellSnapshot, id string, names []string,
 		}
 	}
 	for _, name := range names {
-		if p, err := snap.lookPath(name); err == nil {
+		if p, err := snap.lookup(name); err == nil {
 			cap.Available = true
 			cap.Path = p
 			cap.Source = ShellSourcePath
