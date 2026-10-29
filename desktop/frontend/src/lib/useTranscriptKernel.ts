@@ -299,20 +299,6 @@ export function useTranscriptKernel({
     writer.attach(element, kernel.generation);
   }, [kernel, writer]);
 
-  // Task 267 (R3): the scroll container's own height can change while the
-  // footer stays fixed (decision-footer internal scroll, split-pane drags,
-  // terminal open/close) — the footer-only ResizeObserver never sees those,
-  // so a tail view silently loses the bottom gap. Watch the container itself
-  // and re-arm the guarded subsidy; scheduleTailSync declines unless the
-  // view still owns the tail, so a reader is never yanked downward.
-  useLayoutEffect(() => {
-    const element = scrollElement;
-    if (!element || typeof ResizeObserver !== "function") return;
-    return observeTranscriptGeometry(kernel, element, () => undefined, () => {
-      kernel.scheduleTailSync();
-    });
-  }, [kernel, scrollElement]);
-
   const settleGeometry = useCallback(function settleGeometry(beforePaint = false) {
     if (!beforePaint && geometryWork.current?.generation === kernel.generation) return;
     geometryWork.current?.cancel();
@@ -415,6 +401,35 @@ export function useTranscriptKernel({
     refresh();
     return transaction;
   }, [kernel, refresh]);
+
+  // Task 267 (R3) + tl 1243: watch the scroll container itself. Two reaction
+  // classes, branched on WHAT changed (tl 1243 classifies the ResizeObserver
+  // delivery):
+  //   height-only (footer drift, split-pane drags, terminal open/close,
+  //   decision-footer internal scroll) — the guarded tail subsidy only;
+  //   scheduleTailSync declines unless the view still owns the tail, so a
+  //   reader is never yanked downward.
+  //   WIDTH change (sidebar hover expand/collapse, dock toggle, window
+  //   resize) — every line rewraps, so the content under BOTH intents moves:
+  //   a tail view must re-pin the bottom and a reader must have its block
+  //   anchor re-applied, or the viewport shows different content after the
+  //   reflow ("sidebar toggle scrolls the page"). This is the exact
+  //   structural compensation the footerHeight path already runs
+  //   (beginStructural("composer-resize") + commitViewportGeometry), not a
+  //   new mechanism; the kernel's anchor-drift gate still bounds it.
+  useLayoutEffect(() => {
+    const element = scrollElement;
+    if (!element || typeof ResizeObserver !== "function") return;
+    return observeTranscriptGeometry(kernel, element, () => undefined, (change) => {
+      if (change?.widthChanged === true) {
+        beginStructural("composer-resize");
+        commitViewportGeometry();
+        return;
+      }
+      // Height-only (and unclassified) deliveries keep the 267 R3 semantics.
+      kernel.scheduleTailSync();
+    });
+  }, [kernel, scrollElement, beginStructural, commitViewportGeometry]);
 
   const beginGesture = useCallback((owner: "selection" | "native" = "native") => {
     const current = snapshot();
