@@ -1338,7 +1338,11 @@ func TestDecideOutcome(t *testing.T) {
 		{"exit2-nonblocking-warns", PostToolUse, "", SpawnResult{ExitCode: 2}, DecisionWarn},
 		{"permission-exit2-warns", PermissionRequest, "", SpawnResult{ExitCode: 2}, DecisionWarn},
 		{"other-nonzero-warns", PreToolUse, "", SpawnResult{ExitCode: 1}, DecisionWarn},
-		{"timeout-blocking", UserPromptSubmit, "", SpawnResult{TimedOut: true}, DecisionBlock},
+		// tl-1245: UserPromptSubmit is observation-only — a hook must never be
+		// able to drop the user's submission, so a timeout (or exit 2) warns
+		// instead of blocking.
+		{"userpromptsubmit-timeout-warns", UserPromptSubmit, "", SpawnResult{TimedOut: true}, DecisionWarn},
+		{"userpromptsubmit-exit2-warns", UserPromptSubmit, "", SpawnResult{ExitCode: 2}, DecisionWarn},
 		{"permission-timeout-warns", PermissionRequest, "", SpawnResult{TimedOut: true}, DecisionWarn},
 		{"timeout-nonblocking", Stop, "", SpawnResult{TimedOut: true}, DecisionWarn},
 		{"spawn-error", PreToolUse, "", SpawnResult{SpawnErr: os.ErrNotExist}, DecisionError},
@@ -1550,15 +1554,73 @@ func TestRunClaudePermissionRequestJSONAllow(t *testing.T) {
 	}
 }
 
-func TestRunHonorsUserPromptSubmitTopLevelDeny(t *testing.T) {
+// tl-1245: the UserPromptSubmit domain is observation-only. A Claude-style
+// top-level decision:"block" used to convert into a blocking outcome and drop
+// the user's submission (the route_guard incident: a global hook's block
+// banner aborted the turn before it started). It must surface as a warning
+// carrying the reason while the turn proceeds.
+func TestRunUserPromptSubmitJSONBlockDowngradesToWarning(t *testing.T) {
 	hooks := []ResolvedHook{
 		{HookConfig: HookConfig{Command: "guard", PayloadFormat: "claude"}, Event: UserPromptSubmit},
 	}
 	denyJSON := `{"decision":"block","reason":"prompt contains a secret"}`
 	rep := Run(context.Background(), Payload{Event: UserPromptSubmit}, hooks,
 		func(_ context.Context, in SpawnInput) SpawnResult { return SpawnResult{ExitCode: 0, Stdout: denyJSON} })
-	if !rep.Blocked {
-		t.Fatal("exit-0 UserPromptSubmit hook with a top-level decision:block should block")
+	if rep.Blocked {
+		t.Fatal("a UserPromptSubmit block decision must never drop the user's submission")
+	}
+	if len(rep.Outcomes) != 1 {
+		t.Fatalf("expected 1 outcome, got %d", len(rep.Outcomes))
+	}
+	if rep.Outcomes[0].Decision != DecisionWarn {
+		t.Errorf("Decision = %s, want warn (block downgraded, reason still surfaced)", rep.Outcomes[0].Decision)
+	}
+	if rep.Outcomes[0].Stdout != "prompt contains a secret" {
+		t.Errorf("block reason must survive as the surfaced stdout, got %q", rep.Outcomes[0].Stdout)
+	}
+}
+
+// tl-1245 repro (the route_guard incident, native path): a global
+// UserPromptSubmit hook exiting 2 with a warning banner used to set
+// report.Blocked, which made PromptSubmit abort the turn — the user's message
+// was silently dropped. Exit 2 must warn instead; the banner text stays
+// visible and the turn proceeds.
+func TestRunUserPromptSubmitExit2WarnsInsteadOfBlocking(t *testing.T) {
+	hooks := []ResolvedHook{
+		{HookConfig: HookConfig{Command: "route_guard.bat"}, Event: UserPromptSubmit},
+	}
+	rep := Run(context.Background(), Payload{Event: UserPromptSubmit}, hooks,
+		func(_ context.Context, in SpawnInput) SpawnResult {
+			return SpawnResult{ExitCode: 2, Stdout: "[route_guard] capability-route warning"}
+		})
+	if rep.Blocked {
+		t.Fatal("exit 2 on UserPromptSubmit must never drop the user's submission")
+	}
+	if len(rep.Outcomes) != 1 {
+		t.Fatalf("expected 1 outcome, got %d", len(rep.Outcomes))
+	}
+	if rep.Outcomes[0].Decision != DecisionWarn {
+		t.Errorf("Decision = %s, want warn", rep.Outcomes[0].Decision)
+	}
+	if rep.Outcomes[0].Stdout != "[route_guard] capability-route warning" {
+		t.Errorf("warning banner must stay visible, got %q", rep.Outcomes[0].Stdout)
+	}
+}
+
+// tl-1245: a timed-out UserPromptSubmit hook used to block the same way an
+// exit 2 did. A slow observation hook must not be able to drop the user's
+// submission either.
+func TestRunUserPromptSubmitTimeoutWarnsInsteadOfBlocking(t *testing.T) {
+	hooks := []ResolvedHook{
+		{HookConfig: HookConfig{Command: "slow-guard"}, Event: UserPromptSubmit},
+	}
+	rep := Run(context.Background(), Payload{Event: UserPromptSubmit}, hooks,
+		func(_ context.Context, in SpawnInput) SpawnResult { return SpawnResult{TimedOut: true} })
+	if rep.Blocked {
+		t.Fatal("a timed-out UserPromptSubmit hook must never drop the user's submission")
+	}
+	if len(rep.Outcomes) != 1 || rep.Outcomes[0].Decision != DecisionWarn {
+		t.Fatalf("timeout on UserPromptSubmit = %+v, want a single warn outcome", rep.Outcomes)
 	}
 }
 
