@@ -54,23 +54,23 @@ runas: inline
 - 过时 worktree：回收语义（列清单→确认→`git worktree remove`+prune；junction 先删）
 - push GitHub（显式路径提交）→ 守护心跳停止目标核对
 
-## 通信纪律（双通道：bus 优先 + doc-mailbox 保底，20261001 用户拍板）
+## 通信纪律（双通道：总线优先 + doc-mailbox 保底，20261001 用户拍板；20261029 终态收敛 servepool 单一形态）
 
-- **bus 优先**：机器层实时通道（serve 8787 长驻+MCP collab 工具+注入）——通信默认走 bus
-- **doc-mailbox 留言板=保底**：bus 故障/未连接时的 fallback + 人可读稳态层——不废弃
+- **总线优先**：机器层实时通道（servepool 18789 网关 `/mcp`+MCP collab 工具+注入）——通信默认走总线
+- **doc-mailbox 留言板=保底**：总线故障/未连接时的 fallback + 人可读稳态层——不废弃
 - 心跳总线化已落地（bus5）：心跳 prompt 总线优先+文件回落
 
-### bus 实时通道（20261001 实装，MCP 协议层 e2e 验证）
+### 总线实时通道（20261001 实装；20261029 起 servepool 18789 单一入口，tl-1048）
 
-- **端点**：`reasonix serve --addr 127.0.0.1:8787`（bus_mcp `/mcp`，streamableHTTP+SSE）——长驻方案：用户级启动文件夹 vbs（登录自启）或 zcode 侧 shell 托管
+- **端点**：`http://127.0.0.1:18789/mcp`（servepool 网关顶层挂载 busmcp，tl 1182；streamableHTTP+SSE）——桌面常驻即网关，无需独立长驻；per-serve 路由 `/p/<serve-id>/mcp` 由网关代理（注入 serve token）仍可用。旧 `reasonix serve --addr 127.0.0.1:8787` 独立 serve 与登录自启 vbs 已随 tl-1048 退役（8787 沦为内部细节）
 - **工具**：collab_inbox_read/collab_send/collab_task_create/collab_task_update（spawn_roles 空则无 spawn=fail-closed）
 - **MCP 客户端要点**（curl 探针实测沉淀）：①initialize 带 `Accept: application/json, text/event-stream` 拿 `Mcp-Session-Id` 响应头；②必须发 `notifications/initialized` 且 **sleep ≥1s** 等状态机推进（否则 tools/call 报「invalid during session initialization」）；③响应是 SSE 流（`event: message`+`data: {}`）——剥壳取 data 行
-- **鉴权**：Bearer token+X-Zcode-Role 头（enroll 写两侧）；无 token=401 即路由可达证明
+- **鉴权**：总线路径（`/mcp`、`/bus/events`）由 busmcp 逐角色 Bearer token 自鉴权（enroll 写两侧，X-Zcode-Role 头；无 token=401 fail-closed）；网关其余路径走 gateway bearer token——两层分立，网关 token 对总线路径无意义
 
 ### doc-mailbox 协议要点（v1.1）
 - 三硬规则：append-only 物理末尾追加 / 时间戳单调 / 游标=物理 EOF（文件块数增长判新）
 - 类型：DISPATCH/QUESTION/INFO/DONE+HUMAN 优先；裁决结果必须落留言板（防守护/对方信息差）
-- bus 上线后：bus=机器层实时通道，留言板=稳态+fallback（bus 故障降级写留言板）
+- 总线在线时：总线=机器层实时通道，留言板=稳态+fallback（总线故障降级写留言板）
 
 ## 首例（权威参考）
 - 夜间批 20261001：十五件零跳过（安全批 5+432+430+bus 系 5+425+420+421），全程留言板通信，报告 `docs/report/zcode交付/`
