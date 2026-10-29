@@ -4,6 +4,7 @@ import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
 import { useConfirmDialog } from "./ConfirmDialog";
+import { useToast } from "../lib/toast";
 import { isTopicNode, projectTreeGroupActiveCount, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
 import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
@@ -179,6 +180,11 @@ export interface ProjectTreeOrganizationController {
    * sessions are only unfiled. Falls back to the CAS dissolve without the
    * A-slice binding. */
   deleteGroupExecute(key: string, groupID: string, cascade: boolean): Promise<void>;
+  /** tl1246: re-pull the topic pages after a batch TrashTopic — trashed
+   * sessions must leave the tree in the same stroke the group shell is
+   * removed, or they re-render as ungrouped rows and the deletion reads as
+   * "did nothing" from the user's seat. */
+  refreshTopicPages(): Promise<void>;
   canDropTopicInto(key: string): boolean;
   dropTopicInto(key: string, groupID: string): void;
   /** moveTopicToGroup files a topic into an existing group from the topic
@@ -560,6 +566,18 @@ export function useProjectTreeOrganization({
       }
       loadGroups(key, true);
     },
+    async refreshTopicPages() {
+      // Same reload pair the direct ReorderTopics write settles with (981
+      // event-flow family): pages re-pull, then the owner of onTopicsChanged
+      // gets its chance to react. A rejected page load must not fail the
+      // group deletion that already committed.
+      try {
+        await refresh();
+      } catch (error) {
+        reportFrontendLog("project-groups", "topic page reload after group deletion failed", `error=${String(error)}`);
+      }
+      await Promise.resolve(onTopicsChanged?.()).catch(() => undefined);
+    },
     nestGroup(key, childID, parentID) {
       // Task 350: hierarchy is display organization — the roster helpers only
       // rewrite the `parent` pointer, never ids or membership.
@@ -604,6 +622,8 @@ export function ProjectTreeGroupRows({
 }) {
   const [menuGroup, setMenuGroup] = useState<string | null>(null);
   const [menuPoint, setMenuPoint] = useState<ContextMenuPoint | null>(null);
+  // tl1246: 批量回收失败必须有可见出口——toast 是全应用既有错误通道。
+  const { showToast } = useToast();
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   // Task 892-B: 「新建子分组」inline composer — the group id whose child-create
   // input is open (same inline pattern as rename; 827 form on the other tree).
@@ -1042,30 +1062,51 @@ export function ProjectTreeGroupRows({
                   // Destructive variant of dissolve (task 17 S3): every session goes
                   // to the recycle path first - never a hard delete - and one
                   // failure must not strand the remaining sessions.
+                  // tl1246 根因：确认不能走 app.ConfirmAction —— Windows 端 Wails
+                  // MessageDialog 忽略 Buttons 数组（destructive 落 MB_OK 单按钮），
+                  // 返回通用值 "Ok"，而后端按「返回值==本地化按钮文案」判定恒
+                  // false，整条链在确认处静默折返（实测「点了没效果」）。改用本
+                  // 组件已有的应用内确认对话框（与上方解散流程同一载体、同 danger）。
                   void (async () => {
                     const members = (group.topicIds ?? []).slice();
                     if (members.length > 0) {
-                      const confirmed = await app.ConfirmAction({
+                      const confirmed = await confirmDelete({
                         title: t("projectTree.deleteGroupSessions"),
-                        message: t("projectTree.deleteGroupSessionsConfirm", { count: String(members.length) }),
-                        detail: t("projectTree.deleteGroupSessionsDetail"),
+                        message: <>
+                          <p>{t("projectTree.deleteGroupSessionsConfirm", { count: String(members.length) })}</p>
+                          <p>{t("projectTree.deleteGroupSessionsDetail")}</p>
+                        </>,
                         confirmLabel: t("projectTree.deleteGroupSessions"),
                         cancelLabel: t("common.cancel"),
-                        destructive: true,
+                        tone: "danger",
                       });
                       if (!confirmed) return;
+                      const failures: { topicID: string; error: unknown }[] = [];
                       for (const topicID of members) {
                         try {
                           await app.TrashTopic(topicID);
                         } catch (error) {
-                          console.warn("trash topic failed", topicID, error);
+                          // tl1246：失败不再吞进 console——收集后在 toast 可见，
+                          // 且任一失败就不拆分组壳（半态防线：会话没清完，分组
+                          // 留着让用户能看到残余并重试）。
+                          failures.push({ topicID, error });
                         }
+                      }
+                      if (failures.length > 0) {
+                        const first = failures[0]!;
+                        const firstMessage = first.error instanceof Error ? first.error.message : String(first.error);
+                        showToast(t("projectTree.deleteGroupSessionsFailed", { count: String(failures.length), error: firstMessage }), "error", { durationMs: 6000 });
+                        reportFrontendLog("project-groups", "delete group with sessions: some sessions failed to trash", `group=${group.id} failed=${failures.length}/${members.length} first=${firstMessage}`, "error");
+                        return;
                       }
                     }
                     // Task 892-B: route the shell removal through the A-slice too
                     // (children promote, cascade=false); without the binding this
                     // lands on the same CAS filter the old dissolveGroup used.
                     await organization.deleteGroupExecute(key, group.id, false);
+                    // tl1246：会话已入回收站，主题页必须回拉——否则被删会话以
+                    // 未分组身份继续挂在树上，读作「分组没了、会话还在」。
+                    await organization.refreshTopicPages();
                   })();
                 } },
               ],
