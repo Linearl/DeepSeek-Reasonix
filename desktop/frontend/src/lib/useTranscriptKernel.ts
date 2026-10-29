@@ -384,10 +384,9 @@ export function useTranscriptKernel({
     // verdict itself stays inside the kernel (single authority); the snapshot
     // shape is structurally the viewport geometry triple it asks for.
     const geometry = snapshot();
-    const landed = kernel.restoreLanding(element ? (key) => blockTop(element, key) : undefined, geometry);
+    const landed = kernel.restoreLanding(element ? (key) => blockTop(element, key) : undefined, geometry ?? undefined);
     refresh();
     return landed;
-    refresh();
   }, [kernel, refresh, snapshot]);
 
   const beginAnchorRestore = useCallback((anchor?: LogicalAnchor) => {
