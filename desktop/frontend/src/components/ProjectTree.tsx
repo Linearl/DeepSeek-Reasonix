@@ -328,7 +328,6 @@ export function ProjectTree({
   // Fork (#9221): project colour filter. Only colourable project nodes carry a
   // colour, so the filter prunes the project itself rather than its topics.
   const [colorFilter, setColorFilter] = useState<ProjectColorKey[]>([]);
-  const [colorFilterMenuOpen, setColorFilterMenuOpen] = useState(false);
   // tl1170: 时间/颜色两区默认折叠；展开态写穿 localStorage，重挂载（含刷新）读回。
   const [filterPanelExpanded, setFilterPanelExpanded] = useState<FilterPanelSections>(readFilterPanelExpanded);
   const toggleFilterPanelSection = (section: keyof FilterPanelSections) => {
