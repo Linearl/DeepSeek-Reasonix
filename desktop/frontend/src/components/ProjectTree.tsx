@@ -1094,6 +1094,12 @@ export function ProjectTree({
   // message is a ReactNode, so the cascade checkbox rides inside the dialog
   // (same pattern as the session-group flow in ProjectTreeOrganization).
   const projectGroupDeleteDialog = useConfirmDialog();
+  // tl1249: the force-archive second confirm (TrashTopic lease-busy failure →
+  // force) rides the same in-app carrier as every destructive confirm since
+  // tl1246 — native app.ConfirmAction is a dead button on Windows (the Wails
+  // MessageDialog ignores the Buttons array, so the localized-label comparison
+  // can never pass).
+  const forceArchiveDialog = useConfirmDialog();
   const dissolveProjectGroup = useCallback((group: ProjectGroup) => {
     void (async () => {
       setGroupMenuId(null);
@@ -1135,13 +1141,19 @@ export function ProjectTree({
         await refreshProjectGroups();
         return;
       }
-      const confirmed = await app.ConfirmAction({
+      // tl1249：无 catalog 的老 bindings 回退分支与主路径同一死按钮根因
+      // （Windows 端 app.ConfirmAction 返回通用 "Ok" 与本地化文案比对恒
+      // false）——回退同样走应用内确认对话框，与上方 catalog 提案分支共用
+      // 同一 useConfirmDialog 实例（同一时刻只可能有一条分支在确认）。
+      const confirmed = await projectGroupDeleteDialog.confirm({
         title: t("projectGroup.delete"),
-        message: t("projectGroup.deleteConfirm", { title: group.title }),
-        detail: t("projectGroup.deleteDetail"),
+        message: <>
+          <p>{t("projectGroup.deleteConfirm", { title: group.title })}</p>
+          <p>{t("projectGroup.deleteDetail")}</p>
+        </>,
         confirmLabel: t("projectGroup.delete"),
         cancelLabel: t("common.cancel"),
-        destructive: true,
+        tone: "danger",
       });
       if (!confirmed) return;
       const res = deleteProjectGroup(groups, assign, group.id);
@@ -1278,14 +1290,18 @@ export function ProjectTree({
   const trashTopicForceableAny = (topicId: string) => remoteSessionActions.remove(topicId, () =>
     trashTopic(topicId, async (error) => {
       if (!isTopicArchiveForceableError(error)) return false;
-      const confirmed = await app.ConfirmAction({
+      // tl1249 根因：确认不能走 app.ConfirmAction —— Windows 端 Wails
+      // MessageDialog 忽略 Buttons 数组（destructive 落 MB_OK 单按钮），
+      // 返回通用值 "Ok"，与本地化按钮文案比对恒 false，二次确认在 Windows
+      // 上是不可通行的死路（lease 卡住的会话无法强制回收=功能缺陷）。改走
+      // 应用内确认对话框（tl1246 同载体，danger tone）。
+      const confirmed = await forceArchiveDialog.confirm({
         title: t("history.moveToTrash"),
         message: t("projectTree.forceArchiveConfirm", { reason: topicArchiveForceableReason(error) }),
-        detail: "",
         confirmLabel: t("projectTree.forceArchiveTopic"),
         cancelLabel: t("common.cancel"),
-        destructive: true,
-      }).catch(() => false);
+        tone: "danger",
+      });
       if (!confirmed) return true;
       await trashTopicForceAny(topicId);
       return true;
@@ -3502,6 +3518,8 @@ export function ProjectTree({
       {/* Task 892-B ⑤: project-group delete proposal dialog (portal targets
           body; the element just has to mount in the component owning the hook). */}
       {projectGroupDeleteDialog.dialog}
+      {/* tl1249: the force-archive second confirm dialog — same carrier rule. */}
+      {forceArchiveDialog.dialog}
       <NewGroupPanel open={newGroupOpen} onClose={() => setNewGroupOpen(false)} onConfirm={handleAddGroup} />
       {/* Task 881 ①: blank-area right-click — the create-group door that works
           with zero projects and zero groups on screen. */}
