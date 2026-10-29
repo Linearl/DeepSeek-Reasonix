@@ -57,18 +57,19 @@ const emptyState = treeSource.slice(
   treeSource.indexOf("const hasTreeRows ="),
 );
 
-// ── 验收 ①：classic 头部恰好 3 个一级操作按钮 ───────────────────────────────
-console.log("\n1157-① classic header has exactly 3 action buttons");
+// ── 验收 ①：classic 头部恰好 4 个一级操作按钮（tl1254 收回批量管理开关） ────
+console.log("\n1157-① classic header has exactly 4 action buttons");
 
-// 3 个一级按钮 = 筛选控件调用（其函数体内 1 个触发按钮）+ 折叠 1 个字面 button +
-// ProjectTreeHeaderAddControl 内部 1 个（新建下拉触发按钮）；面板/菜单内的按钮
-// 都不在头部行。
-ok(count(headerBody, "<button") === 1 && count(headerBody, "<ProjectTreeHeaderAddControl") === 1 && count(headerBody, "renderClassicFilterControl(mode)") === 1,
-  "the classic header mounts exactly 3 header buttons (filter control + collapse + create control)");
+// 4 个一级按钮 = 筛选控件调用（其函数体内 1 个触发按钮）+ 折叠 1 个字面 button +
+// 批量管理开关 1 个字面 button（tl1254：1240 头部入口在 1222 重写滚合中丢失，
+// 在共享头部单处收回）+ ProjectTreeHeaderAddControl 内部 1 个（新建下拉触发
+// 按钮）；面板/菜单内的按钮都不在头部行。
+ok(count(headerBody, "<button") === 2 && count(headerBody, "<ProjectTreeHeaderAddControl") === 1 && count(headerBody, "renderClassicFilterControl(mode)") === 1,
+  "the classic header mounts exactly 4 header buttons (filter control + collapse + batch toggle + create control)");
 ok(!headerBody.includes('t("projectGroup.createNew")'),
   "no standalone create-group entry remains in the classic header (aria/label gone)");
-ok(headerBody.includes("renderClassicFilterControl(mode)") && headerBody.includes("toggleCollapsedView") && headerBody.includes("classicCreateItems"),
-  "the 3 buttons are: merged filter control, collapse toggle, create dropdown");
+ok(headerBody.includes("renderClassicFilterControl(mode)") && headerBody.includes("toggleCollapsedView") && headerBody.includes("classicCreateItems") && headerBody.includes("toggleBatchMode"),
+  "the 4 buttons are: merged filter control, collapse toggle, batch toggle, create dropdown");
 
 // ── 验收 ②：筛选下拉面板（两组控件 + 即时生效 + 徽标 + 摘要 + 清除） ────────
 console.log("\n1157-② merged filter panel");
@@ -135,8 +136,8 @@ ok(!headerBody.includes('{mode === "workbench" ? ('),
   "the header has a single shared body (no workbench/classic ternary)");
 ok(treeSource.includes('{renderProjectHeader("workbench")}') && treeSource.includes('{renderProjectHeader("classic")}'),
   "both layouts mount the same shared header");
-ok(count(headerBody, "<button") === 1 && count(headerBody, "<ProjectTreeHeaderAddControl") === 1 && headerBody.includes("renderClassicFilterControl(mode)"),
-  "the shared header mounts exactly 3 controls (filter panel + collapse + create dropdown)");
+ok(count(headerBody, "<button") === 2 && count(headerBody, "<ProjectTreeHeaderAddControl") === 1 && headerBody.includes("renderClassicFilterControl(mode)"),
+  "the shared header mounts exactly 4 controls (filter panel + collapse + batch toggle + create dropdown)");
 ok(headerBody.includes("project-tree__collapse-all") && headerBody.includes("<ListRestart size={14} />") && headerBody.includes("<ListCollapse size={14} />"),
   "the collapse toggle uses the classic ListCollapse/ListRestart button form");
 
