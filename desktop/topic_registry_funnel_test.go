@@ -89,8 +89,14 @@ func TestUnregisterTopicScopedNoTombstone(t *testing.T) {
 	if err := registerTopic("global", "", topicRegisterOpts{}, topicID); err != nil {
 		t.Fatalf("register global: %v", err)
 	}
-	if err := registerTopic("project", projectRoot, topicRegisterOpts{ensureProject: true}, topicID); err != nil {
-		t.Fatalf("register project: %v", err)
+	// tl1262 起 project 登记会在写口收敛 global 侧注册，双行前置改由测试
+	// 直写（守卫只扫生产文件），让本测试继续只钉 scoped 清理语义：只摘自
+	// 己 scope，其它 scope 注册保留，不产生墓碑。
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		f.Projects = append(f.Projects, desktopProject{Root: projectRoot, Topics: []string{topicID}})
+		return true, nil
+	}); err != nil {
+		t.Fatalf("seed project registration: %v", err)
 	}
 
 	if err := unregisterTopic(topicID, topicUnregisterOpts{
