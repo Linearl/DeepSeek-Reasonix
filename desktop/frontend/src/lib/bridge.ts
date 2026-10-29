@@ -37,6 +37,8 @@ import { makeMockMCPAppBindings, type MCPAppBindings } from "./mcpAppBridge";
 import { makeMockPinnedContextBindings, type PinnedContextBindings } from "./pinnedContextBridge";
 import { createDesktopPreferencesMock } from "./desktopPreferencesMock";
 import type {
+  BatchMoveToGroupResult,
+  BatchTopicArchiveResult,
   TurnChanges,
   TurnFileChange,
   RemoteHostView,
@@ -2100,6 +2102,15 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RenameTopic(topicID: string, title: string): Promise<void>;
   DeleteTopic(topicID: string): Promise<void>;
   TrashTopic(topicID: string): Promise<void>;
+  /** tl1240: batch archive — the whole selection in one call so the backend
+   * takes its mutation gates once. Per-topic failures are isolated in items;
+   * a fully-busy gate declines the whole batch with the same busy error the
+   * single-topic path uses. */
+  BatchTrashTopics(topicIDs: string[]): Promise<BatchTopicArchiveResult>;
+  /** tl1240: batch move-to-group — ONE read-modify-write of the groups file
+   * (N single-topic CAS calls would race each other). Same task-170 semantics
+   * per topic: leave every other group, join the target. */
+  BatchMoveToGroup(scope: string, workspaceRoot: string, topicIDs: string[], groupID: string, groupTitle: string): Promise<BatchMoveToGroupResult>;
   SetTopicPinned(topicID: string, pinned: boolean): Promise<void>;
   ContextPanel(tabID: string): Promise<ContextPanelInfo>;
   // New native-feel bindings (added with the desktop native-feel plan).
@@ -7835,6 +7846,30 @@ function makeMockApp(): AppBindings {
     },
     async TrashTopic(topicID: string) {
       deleteMockTopic(topicID);
+    },
+    // tl1240: browser mock — same shape as the Go endpoint, no gating.
+    async BatchTrashTopics(topicIDs: string[]) {
+      const items = topicIDs.map((topicID) => {
+        const known = findMockTopic(topicID) != null;
+        if (known) deleteMockTopic(topicID);
+        return { topicId: topicID, ok: known, ...(known ? {} : { error: "topic not found" }) };
+      });
+      return {
+        items,
+        succeeded: items.filter((item) => item.ok).length,
+        failed: items.filter((item) => !item.ok).length,
+        totalMs: 0,
+      };
+    },
+    async BatchMoveToGroup(_scope: string, _workspaceRoot: string, topicIDs: string[], groupID: string, groupTitle: string) {
+      const id = groupID || `collab-${groupTitle.toLowerCase()}`;
+      const items = topicIDs.map((topicID) => ({ topicId: topicID, ok: true }));
+      return {
+        items,
+        succeeded: items.length,
+        failed: 0,
+        group: { id, title: groupTitle || id, topicIds: [...topicIDs] },
+      };
     },
     async SetTopicPinned(topicID: string, pinned: boolean) {
       setMockTopicPinned(topicID, pinned);

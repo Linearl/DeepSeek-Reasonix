@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Archive, ArrowDown, CheckCheck, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
+import { Archive, ArrowDown, CheckCheck, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, FileJson, FileText, ListCollapse, ListRestart, ListChecks, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -14,12 +14,15 @@ import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkb
 export * from "../lib/projectTreeTopic";
 import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeBodyState, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
 export * from "../lib/projectTreePresentation";
-import type { ExternalOpenersView, ProjectNode, ProjectTreeChangedV2, SessionCatalogStatus } from "../lib/types";
+import type { ExternalOpenersView, ProjectNode, ProjectTreeChangedV2, SessionCatalogStatus, SessionGroup } from "../lib/types";
 import { topicActivityTime } from "../lib/session";
 import { useT, type Translator } from "../lib/i18n";
 import { requestTopicVersions } from "../lib/sessionRecoveryVersionHostBridge";
 import { PROJECT_COLOR_OPTIONS, projectColorValue, type ProjectColorKey, type ProjectColorOption } from "../lib/projectColors";
 import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, projectTreeWithoutTopics, isTopicArchiveForceableError, reloadProjectTreeTopics, topicArchiveForceableReason, useProjectTreeArchiveController, type ProjectTreeRefresh, type ProjectTreeRefreshOptions } from "../lib/projectTreeArchive";
+// tl1240: sidebar batch manage mode (multi-select → one-call batch archive/move).
+import { batchEntryForNode, batchSelectionAfterArchive, collectBatchTopics, singleBatchTarget, summarizeBatchMove, summarizeBatchTopicArchive, type BatchReportState, type BatchTopicEntry } from "../lib/projectTreeBatch";
+import { ProjectTreeBatchBar } from "./ProjectTreeBatchBar";
 import { topicShortcutLabel, type TopicShortcutEntry } from "../lib/topicShortcuts";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { Tooltip } from "./Tooltip";
@@ -265,6 +268,14 @@ export function ProjectTree({
   const treeRef = useRef<ProjectNode[]>([]);
   const latestRevisionRef = useRef(0);
   const [organizationRevision, setOrganizationRevision] = useState(0);
+  // tl1240: sidebar batch manage mode. Selection is a plain Set of topic ids;
+  // the two actions each go out as ONE bridge call (BatchTrashTopics /
+  // BatchMoveToGroup) and the backend's per-topic outcomes drive the report
+  // strip (N/M + failure list + running/blocked skips).
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchReport, setBatchReport] = useState<BatchReportState | null>(null);
   const topicRevisionRef = useRef<Record<string, number>>({});
   const topicCompletePageRef = useRef<Record<string, { signature: string; revision: number }>>({});
   const [catalogStatus, setCatalogStatus] = useState<SessionCatalogStatus>({
@@ -1574,6 +1585,82 @@ export function ProjectTree({
 
   const organization = useProjectTreeOrganization({ tree, refresh, onTopicsChanged, organizationRevision });
 
+  // ── tl1240: batch manage mode ─────────────────────────────────────────────
+  // Selectable universe = the topics visible in the current (filtered) tree.
+  // Recomputed on render: O(nodes), same order as the tree render itself, and
+  // the roster/mode states it reads change per render anyway.
+  const batchTopics: BatchTopicEntry[] = collectBatchTopics(visibleTree);
+  const batchSelectedEntries = batchTopics.filter((entry) => batchSelected.has(entry.topicId));
+  const batchTarget = singleBatchTarget(batchSelectedEntries);
+  const batchMoveGroups = batchTarget
+    ? organization.groupsForKey(batchTarget.scope === "global" ? "global|" : `project|${batchTarget.workspaceRoot}`)
+    : null;
+  const toggleBatchMode = useCallback(() => {
+    setBatchMode((on) => {
+      if (on) {
+        // Leaving the mode resets the whole batch surface — a stale selection
+        // or an old report must not survive into the next session of it.
+        setBatchSelected(new Set());
+        setBatchReport(null);
+      }
+      return !on;
+    });
+  }, []);
+  const toggleBatchTopic = useCallback((topicId: string) => {
+    setBatchSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(topicId)) next.delete(topicId);
+      else next.add(topicId);
+      return next;
+    });
+  }, []);
+  const runBatchArchive = async () => {
+    if (batchBusy || batchSelectedEntries.length === 0) return;
+    setBatchBusy(true);
+    setBatchReport(null);
+    const titles = new Map(batchSelectedEntries.map((entry) => [entry.topicId, entry.title]));
+    try {
+      const result = await app.BatchTrashTopics(batchSelectedEntries.map((entry) => entry.topicId));
+      // The whole batch only declines on the busy gate — that surfaces as the
+      // raw backend message, same as the single-topic path's toast.
+      const summary = summarizeBatchTopicArchive(result, titles);
+      setBatchReport({ kind: "archive", done: summary.succeeded, total: summary.total, skipped: summary.skipped, failures: summary.failures });
+      // Succeeded topics leave the selection; failed/skipped stay for a
+      // one-click corrected retry.
+      setBatchSelected((previous) => batchSelectionAfterArchive(previous, result));
+      for (const item of result.items ?? []) {
+        if (item.ok) setTree((current) => projectTreeWithoutTopic(current, item.topicId));
+      }
+      await refresh({ reloadAllTopics: true });
+      await onTopicsChanged?.();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+  const runBatchMove = async (group: SessionGroup) => {
+    if (batchBusy || !batchTarget || batchSelectedEntries.length === 0) return;
+    setBatchBusy(true);
+    setBatchReport(null);
+    const titles = new Map(batchSelectedEntries.map((entry) => [entry.topicId, entry.title]));
+    const { scope, workspaceRoot } = batchTarget;
+    try {
+      const result = await app.BatchMoveToGroup(scope, workspaceRoot, batchSelectedEntries.map((entry) => entry.topicId), group.id, group.title);
+      const summary = summarizeBatchMove(result, titles);
+      setBatchReport({ kind: "move", done: summary.succeeded, total: summary.total, skipped: 0, failures: summary.failures });
+      // The write landed server-side: bump the organization revision so every
+      // roster force-reloads from the persisted groups file (same door the
+      // metadata events use).
+      setOrganizationRevision((n) => n + 1);
+      await onTopicsChanged?.();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
   const clearProjectDrag = useCallback(() => {
     setDragProjectRoot(null);
     setDropProject(null);
@@ -1708,6 +1795,10 @@ export function ProjectTree({
       const rowPurpose = node.sessionPath ? cachedSessionPurpose(node.sessionPath) ?? "" : "";
       const titleWithPurpose = rowPurpose ? `${title}\n${rowPurpose}` : title;
       const topicMenuOpen = menuNodeKey === key;
+      // tl1240: in batch mode eligible topic rows trade the open-on-click for
+      // checkbox selection; standalone session rows and remote rows stay out
+      // (the batch endpoints are topic-scoped).
+      const batchEntry = batchMode ? batchEntryForNode(node) : null;
       const pinned = Boolean(node.pinned);
       const pinLabel = t(pinned ? "projectTree.unpinTopic" : "projectTree.pinTopic");
       const openTopicMenu = (event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>) => {
@@ -1728,6 +1819,24 @@ export function ProjectTree({
       // 二次确认走 force（trashTopicForceableAny）；其他失败照常报错。远端会话
       // 无本地路径/工作区，复制 ▸ 打开方式 ▸ 两项不渲染。
       const organizationItems = organization.topicMenuItems(node, t);
+      // tl1240: the batch-mode right-click menu is deliberately slim — the
+      // single-row operations (rename/pin/copy/…) make no sense for a
+      // multi-select gesture. Two selection commands, nothing else.
+      const batchRowMenuItems: ContextMenuItem[] = [
+        {
+          key: "batch-select-all",
+          icon: <CheckCheck size={13} />,
+          label: t("projectTree.batchSelectAll"),
+          onSelect: () => setBatchSelected(new Set(batchTopics.map((entry) => entry.topicId))),
+        },
+        {
+          key: "batch-clear",
+          icon: <XCircle size={13} />,
+          label: t("projectTree.batchClearSelection"),
+          disabled: batchSelected.size === 0,
+          onSelect: () => setBatchSelected(new Set()),
+        },
+      ];
       const workspaceForOpen = openRequest?.workspaceRoot ?? node.root ?? "";
       const copyToClipboard = (value: string) => {
         void writeClipboardText(value)
@@ -1904,10 +2013,10 @@ export function ProjectTree({
           sessionPath: openRequest.sessionPath,
         });
       }
-      const topicDrag = organization.topicRow(node, section === "pinned" || isSessionNode || Boolean(query || menuNodeKey || editingTopic || dragProjectRoot || creatingProject));
+      const topicDrag = organization.topicRow(node, section === "pinned" || isSessionNode || Boolean(query || menuNodeKey || editingTopic || dragProjectRoot || creatingProject) || Boolean(batchEntry));
       const row = (
         <div
-          className={`project-tree__topic${scopeClass}${isSessionNode ? " project-tree__topic--session" : ""}${active ? " project-tree__topic--active" : ""}${node.running ? " project-tree__topic--running" : ""}${status ? ` project-tree__topic--status-${status}` : ""}${unread ? " project-tree__topic--unread" : ""}${!isSessionNode && pinned ? " project-tree__topic--pinned" : ""}${topicMenuOpen ? " project-tree__topic--menu-open" : ""}${topicDrag.className}${sideTimeVisible && (timeLabel || showStatusInSide || showWaitingPill) ? " project-tree__topic--with-side" : metaFull ? " project-tree__topic--has-meta" : ""}${imSource ? " project-tree__topic--im-source" : ""}${shortcutIndex > 0 ? " project-tree__topic--show-shortcut" : ""}`}
+          className={`project-tree__topic${scopeClass}${isSessionNode ? " project-tree__topic--session" : ""}${active ? " project-tree__topic--active" : ""}${node.running ? " project-tree__topic--running" : ""}${status ? ` project-tree__topic--status-${status}` : ""}${unread ? " project-tree__topic--unread" : ""}${!isSessionNode && pinned ? " project-tree__topic--pinned" : ""}${topicMenuOpen ? " project-tree__topic--menu-open" : ""}${batchEntry ? ` project-tree__topic--batch${batchSelected.has(batchEntry.topicId) ? " project-tree__topic--batch-selected" : ""}` : ""}${topicDrag.className}${sideTimeVisible && (timeLabel || showStatusInSide || showWaitingPill) ? " project-tree__topic--with-side" : metaFull ? " project-tree__topic--has-meta" : ""}${imSource ? " project-tree__topic--im-source" : ""}${shortcutIndex > 0 ? " project-tree__topic--show-shortcut" : ""}`}
           style={accentStyle}
           {...topicDrag.props}
           onContextMenu={openTopicMenu}
@@ -1919,13 +2028,33 @@ export function ProjectTree({
           onMouseLeave={classicTopics ? cancelHoverCard : undefined}
           onMouseDown={classicTopics ? cancelHoverCard : undefined}
         >
+          {/* tl1240: batch-mode row checkbox (task 856 ② paradigm). */}
+          {batchEntry && (
+            <label className="project-tree__topic-check">
+              <input
+                type="checkbox"
+                checked={batchSelected.has(batchEntry.topicId)}
+                disabled={batchBusy}
+                aria-label={t("projectTree.batchManage")}
+                onChange={() => toggleBatchTopic(batchEntry.topicId)}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </label>
+          )}
           <button
             type="button"
             className="project-tree__topic-main"
+            aria-pressed={batchEntry ? batchSelected.has(batchEntry.topicId) : undefined}
             title={classicTopics ? undefined : titleWithPurpose}
             aria-label={classicTopics ? titleWithPurpose : undefined}
             style={{ paddingLeft: 14 + depth * 16 }}
             onClick={() => {
+              // tl1240: in batch mode the row click IS the selection toggle —
+              // opening a topic mid-multi-select would yank the surface away.
+              if (batchEntry) {
+                toggleBatchTopic(batchEntry.topicId);
+                return;
+              }
               const remote = node.remoteSession ?? remoteSessionActions.resolve(topicId);
               if (!openRequest && !remote) return;
               const nextClick = { rowKey: key, canRename: !isSessionNode };
@@ -2030,7 +2159,8 @@ export function ProjectTree({
             )}
           </button>
           {unread && <span className="project-tree__topic-unread-dot" aria-hidden="true" />}
-          {projectTreeShouldRenderTopicActions(isSessionNode, variant, unread) && !(node.remoteSession && !node.remoteSession.name) && (
+          {/* tl1240: hover actions yield to the checkbox in batch mode. */}
+          {!batchEntry && projectTreeShouldRenderTopicActions(isSessionNode, variant, unread) && !(node.remoteSession && !node.remoteSession.name) && (
             <span
               className="project-tree__topic-actions"
               aria-label={t("projectTree.topicActions")}
@@ -2073,7 +2203,7 @@ export function ProjectTree({
             <ProjectTreeSessionArchiveMenu
               open={topicMenuOpen} point={menuPoint} sessionPath={sessionPath} blocked={archiveBlocked || topicTrashing} busy={sessionTrashing} confirmed={confirmArchiveTarget === archiveTargetKey}
               onConfirm={() => setConfirmArchiveTarget(archiveTargetKey)} onTrash={() => { setConfirmArchiveTarget(null); void trashSession(sessionPath); }} onClose={closeMenu} />
-          ) : <ContextMenu open={topicMenuOpen} point={menuPoint} items={topicMenuItems} minWidth={178} ariaLabel={t("projectTree.topicActions")} onClose={closeMenu} />}
+          ) : <ContextMenu open={topicMenuOpen} point={menuPoint} items={batchEntry ? batchRowMenuItems : topicMenuItems} minWidth={178} ariaLabel={t("projectTree.topicActions")} onClose={closeMenu} />}
           {shortcutIndex > 0 && (
             <span className="project-tree__topic-shortcut" aria-hidden="true">
               {topicShortcutLabel(shortcutIndex, shortcutPlatform)}
@@ -3145,6 +3275,20 @@ export function ProjectTree({
                 <FolderInput size={15} aria-hidden="true" />
               </button>
             </Tooltip>
+            {/* tl1240: batch manage toggle — the mode swaps row clicks for
+                checkbox selection and mounts the batch action bar. Off by
+                default; the normal sidebar surface is unchanged. */}
+            <Tooltip label={t(batchMode ? "projectTree.batchManageExit" : "projectTree.batchManage")} className="project-tree__header-action-slot">
+              <button
+                type="button"
+                className={`project-tree__header-icon-btn${batchMode ? " project-tree__header-icon-btn--active" : ""}`}
+                aria-label={t(batchMode ? "projectTree.batchManageExit" : "projectTree.batchManage")}
+                aria-pressed={batchMode}
+                onClick={toggleBatchMode}
+              >
+                <ListChecks size={15} aria-hidden="true" />
+              </button>
+            </Tooltip>
             <span className="project-tree__header-menu-wrap">
               <Tooltip label={t("projectTree.moreActions")} className="project-tree__header-action-slot">
                 <button
@@ -3208,6 +3352,18 @@ export function ProjectTree({
                 onClick={toggleCollapsedView}
               >
                 {canRestoreCollapsedView ? <ListRestart size={14} /> : <ListCollapse size={14} />}
+              </button>
+            </Tooltip>
+            {/* tl1240: batch manage toggle — workbench/classic parity (881 ②). */}
+            <Tooltip label={t(batchMode ? "projectTree.batchManageExit" : "projectTree.batchManage")} className="project-tree__header-action-slot">
+              <button
+                type="button"
+                className={`project-tree__header-icon-btn${batchMode ? " project-tree__header-icon-btn--active" : ""}`}
+                aria-label={t(batchMode ? "projectTree.batchManageExit" : "projectTree.batchManage")}
+                aria-pressed={batchMode}
+                onClick={toggleBatchMode}
+              >
+                <ListChecks size={14} aria-hidden="true" />
               </button>
             </Tooltip>
             {/* tl1157: the standalone create-group button is folded into this
@@ -3646,6 +3802,22 @@ export function ProjectTree({
           )}
         </div>,
         document.body,
+      )}
+      {/* tl1240: the batch action bar — mounted only while batch manage mode is
+          on, so the default sidebar surface carries zero new chrome. */}
+      {batchMode && (
+        <ProjectTreeBatchBar
+          selectedCount={batchSelected.size}
+          busy={batchBusy}
+          report={batchReport}
+          moveGroups={batchTarget ? batchMoveGroups : null}
+          mixedScope={batchSelected.size > 0 && !batchTarget}
+          onArchive={() => void runBatchArchive()}
+          onMoveToGroup={(group) => void runBatchMove(group)}
+          onClearSelection={() => setBatchSelected(new Set())}
+          onExit={toggleBatchMode}
+          onDismissReport={() => setBatchReport(null)}
+        />
       )}
       {blankProjectFlow}
       {remoteConnectFlow}

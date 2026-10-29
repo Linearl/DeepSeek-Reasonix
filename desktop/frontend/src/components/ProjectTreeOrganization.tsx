@@ -148,6 +148,10 @@ export interface ProjectTreeOrganizationController {
    * back to the CAS roster append with the `parent` field set. */
   createSubGroup(folder: ProjectNode, parentID: string, title: string): void;
   groupsFor(folder: ProjectNode): SessionGroup[];
+  /** tl1240: roster by organization key ("global|" / "project|<root>") — the
+   * batch move bar reads the target folder's groups without synthesizing a
+   * folder node. Same map groupsFor reads. */
+  groupsForKey(key: string): SessionGroup[];
   groupCollapsed(key: string, id: string): boolean;
   toggleGroup(key: string, id: string): void;
   renameGroup(key: string, id: string, title: string): void;
@@ -497,6 +501,7 @@ export function useProjectTreeOrganization({
       mutateGroups(key, (groups) => [...groups, { id: groupID, title, parent: parentID, topicIds: [] }]);
     },
     groupsFor(folder) { return groupsByKey[projectTreeOrganizationKey(folder)] ?? []; },
+    groupsForKey(key) { return groupsByKey[key] ?? []; },
     groupCollapsed(key, id) { return collapsedGroups.has(`${key}|${id}`); },
     toggleGroup(key, id) {
       setCollapsedGroups((current) => {

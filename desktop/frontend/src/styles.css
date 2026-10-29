@@ -41751,4 +41751,75 @@ button.statusbar__mcp:focus-visible {
   font-size: 11px;
   font-weight: 600;
   color: var(--fg-faint);
+/* ─── tl1240：侧栏批量管理态（多选 checkbox + 批量操作条 + 结果报告）───────
+   范式=信件批量条（任务 856 ②）。默认零挂载：仅批量管理态渲染。 */
+.project-tree__batchbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+  flex: none;
+}
+.project-tree__batchbar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.project-tree__batchbar-count {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-right: auto;
+}
+.project-tree__batchbar-report {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+  color: var(--text-muted, inherit);
+}
+.project-tree__batchbar-report-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.project-tree__batchbar-report-line--skipped {
+  color: var(--text-muted, inherit);
+}
+.project-tree__batchbar-report-line--failed {
+  color: var(--danger, #d64545);
+}
+.project-tree__batchbar-report-item {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-tree__batchbar-report-dismiss {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 4px;
+}
+.project-tree__topic-check {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  align-self: center;
+  margin-left: 6px;
+  cursor: pointer;
+}
+.project-tree__topic-check input {
+  accent-color: var(--accent, currentColor);
+}
+.project-tree__topic--batch-selected .project-tree__topic-main {
+  opacity: 0.72;
 }

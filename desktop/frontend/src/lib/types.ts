@@ -1,4 +1,5 @@
 import type { QuickCommandEntry } from "./settingsViewTypes";
+import type { SessionGroup } from "./sessionCatalogTypes";
 import type { ProviderCatalog } from "./providerCatalogTypes";
 export type { SettingsView } from "./settingsViewTypes";
 export type { ProviderProtocolEndpoint, ProviderCatalog, ProviderPresetView } from "./providerCatalogTypes";
@@ -673,6 +674,43 @@ export interface TerminalWorkspaceView {
   reason?: string;
   sessions: TerminalSessionView[];
   shells: TerminalShellView[];
+}
+
+// tl1240: batch topic archive wire types — mirrors of the Go JSON shapes in
+// desktop/topic_archive_batch.go (BatchTrashTopics) and
+// desktop/project_tree_organization.go (BatchMoveToGroup). One bridge call per
+// batch; per-topic outcomes ride back in `items` so the UI can build the
+// N/M progress + failure list without a second round trip.
+export interface BatchTopicArchiveItem {
+  topicId: string;
+  ok: boolean;
+  /** true = the failure is from the family TrashTopicForce can clear
+   * (active-work gate, session-lease busy) — the batch UI shows these as
+   * "running/blocked, skipped" rather than plain failures. */
+  forceable?: boolean;
+  error?: string;
+}
+
+export interface BatchTopicArchiveResult {
+  items: BatchTopicArchiveItem[];
+  succeeded: number;
+  failed: number;
+  totalMs: number;
+}
+
+export interface BatchMoveToGroupItem {
+  topicId: string;
+  ok: boolean;
+  /** true = the topic was already only in the target group; nothing written. */
+  alreadyFiled?: boolean;
+  error?: string;
+}
+
+export interface BatchMoveToGroupResult {
+  items: BatchMoveToGroupItem[];
+  succeeded: number;
+  failed: number;
+  group: SessionGroup;
 }
 
 export interface ProjectNode extends RemoteProjectNodeFields {
