@@ -583,6 +583,10 @@ type SettingsView struct {
 	DecisionPatternFilePath      string `json:"decisionPatternFilePath"`
 	DecisionPatternThreshold     int    `json:"decisionPatternThreshold"`
 	DecisionPatternAutoApprove   bool   `json:"decisionPatternAutoApprove"`
+	// tl1193b: plan-E pinned standing-tier index mode readback. Boot snapshot —
+	// boot resolves the saved switch into the memory gate before the first
+	// Load, so the desktop flip writes config and applies on restart.
+	ExperimentalPinnedIndex bool `json:"experimentalPinnedIndex"`
 	// 任务 1024: composer 草稿优化（改写按钮）lab switch readback. Boot snapshot;
 	// the settings save re-applies it, so a flip shows without a restart.
 	ExperimentalDraftRewrite bool `json:"experimentalDraftRewrite"`
@@ -2061,6 +2065,8 @@ func (a *App) Settings() SettingsView {
 		DecisionPatternFilePath:      decisionPatternPathForView(cfg),
 		DecisionPatternThreshold:     cfg.Agent.DecisionPatternThreshold,
 		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
+		// tl1193b: plan-E pinned index mode readback.
+		ExperimentalPinnedIndex: cfg.Agent.ExperimentalPinnedIndex,
 		// 任务 1024: composer 草稿优化（改写按钮）lab switch readback.
 		ExperimentalDraftRewrite: cfg.Agent.ExperimentalDraftRewrite,
 		// 任务 1070: Standard 流续跑总闸 readback.

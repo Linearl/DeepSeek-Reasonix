@@ -30,6 +30,11 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.SafetyEventWaitRecheck = boolPtr(true)
 	orig.Agent.ExperimentalSubagentPolicy = boolPtr(true) // M4 (*bool, nil means on)
 
+	// memory-context（记忆/上下文）
+	// tl1193b：pinned 常驻层索引化（未稳定档）。memory-context 组第 1 项——
+	// 本断言缺席 ⇒ 渲染表漏键 ⇒ 下一次设置保存把开关静默翻回默认（81/123 教训）。
+	orig.Agent.ExperimentalPinnedIndex = true // pinnedIndex
+
 	// efficiency（提效）
 	orig.Agent.ExperimentalCompactionParallel = boolPtr(true) // M3 (*bool, nil means on)
 	orig.Agent.ExperimentalContextBudget = boolPtr(true)      // M3
@@ -174,6 +179,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_runtime_reuse = true",
 		"experimental_full_access = true",
 		"experimental_subagent_policy = true",
+		// tl1193b：pinned 索引化开关键无条件渲染（fixed-key-set rule）。
+		"experimental_pinned_index = true",
 		"experimental_compaction_parallel = true",
 		"experimental_context_budget = true",
 		"experimental_research_budget = true",
@@ -225,6 +232,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	}
 	for name, ok := range map[string]bool{
 		"agent.experimental_session_collab":          got.Agent.ExperimentalSessionCollab,
+		"agent.experimental_pinned_index":            got.Agent.ExperimentalPinnedIndex, // tl1193b：memory-context 组往返
 		"agent.experimental_full_access":             got.Agent.ExperimentalFullAccess,
 		"agent.experimental_dream":                   got.Agent.ExperimentalDream,
 		"agent.experimental_safety_cost_control":     got.Agent.ExperimentalSafetyCostControl,

@@ -1809,6 +1809,22 @@ type AgentConfig struct {
 	// heartbeat writes decision-patterns.md (task 801 修订六). Off by default:
 	// the default posture reports the patterns and waits for the user.
 	DecisionPatternAutoApprove bool `toml:"decision_pattern_auto_approve"`
+	// ExperimentalPinnedIndex is the tl1193 plan-E lab switch: the standing
+	// pinned tier renders one self-sufficient index line per pinned fact
+	// (title + memory-tool reference + scope/type + description capped at 150
+	// runes) and bodies leave the standing prefix for on-demand recall. Ships
+	// OFF (铁律 2): the zero value keeps the legacy full-body injection
+	// byte-for-byte — the pinned budget (1192 ratchet), the recall pool's
+	// pinned exclusion and every write-path invariant stay on the pre-1193
+	// shape. Unstable tier (实验室「记忆与上下文」组): the mode swaps the
+	// standing-tier contract, so it restarts to apply — boot resolves the
+	// saved switch into the memory package gate once before the first Load
+	// (capabilityGroups boot-snapshot precedent); the desktop flip writes
+	// config only. Formerly the env channel
+	// REASONIX_EXPERIMENT_TL1193_PINNED_INDEX (pinned_index.go), retired when
+	// this field landed — no compat shim: the env var was a merge-line
+	// evaluation gate that never shipped in a release build.
+	ExperimentalPinnedIndex bool `toml:"experimental_pinned_index"`
 	// ExperimentalDraftRewrite (任务 1024 草稿优化) enables the composer's
 	// rewrite button: the auxiliary model rewrites the user's draft into a
 	// structured, unambiguous version that fills the input box — never sent
