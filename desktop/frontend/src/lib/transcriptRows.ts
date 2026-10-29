@@ -118,6 +118,22 @@ export function partitionTurnItems(items: readonly Item[], live: TranscriptLiveF
       continue;
     }
     const hasReasoning = Boolean(item.reasoning || (live.id === item.id && live.hasReasoning));
+    // tl 1212: live 指针挂在流式 assistant 上而缓冲为空（恢复/重连/采样回滚
+    // 清缓冲后、首 delta 前）时，该项此前被整体跳过——本段思考腿失去锚点，
+    // 1160 家族的空窗现场（时长行照走而思考行消失）由此而来。保留为 process
+    // 材料：displayItems 仍按 reasoning 非空过滤（正文渲染零变化），但
+    // ProcessFoldHeader 能凭 processItems 识别「思考进行中暂无文本」，以纯
+    // 标签腿保住动态行的存在性。缓冲有内容或正文已流时走下方既有路径。
+    if (
+      live.id === item.id
+      && !hasReasoning
+      && item.text.trim() === ""
+      && !live.hasAnswerText
+      && live.reasoningComplete !== true
+    ) {
+      pushProcess(item);
+      continue;
+    }
     if (assistantHasVisibleAnswer(item, live)) {
       if (hasReasoning) pushProcess(assistantReasoningOnly(item));
       current.outsideItems.push(item);

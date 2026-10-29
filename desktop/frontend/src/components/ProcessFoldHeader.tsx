@@ -129,7 +129,22 @@ export function ProcessFoldHeader({
     const subject = tool.subject || subjectOf(tool.name, tool.args);
     return clampLine(subject ? `${base} · ${subject}` : base);
   }, [conciseLive, displayItems, t]);
-  const showLiveStatus = conciseLive && Boolean(liveActionText || throttledReasoning);
+  // tl 1212: 思考腿第三态——「思考进行中但暂无任何文本」。1160 修复覆盖了快照
+  // 存在时的空缓冲指针挂；本腿覆盖快照也不在的窗口（恢复/重连/采样回滚清缓冲
+  // 后、首 delta 前）：live 指针挂在本段流式 assistant 上、缓冲与落盘皆空。
+  // 没有文本可摘，但「时长行照走而思考行消失」正是用户报告的现场——显示纯标
+  // 签腿（无摘要），首 delta 到达即切回实文本。指针未挂到本段 assistant（挂
+  // 到未落 item 的新 id）或思考已完/正文已流时不显示。
+  const thinkingPending = useMemo(() => {
+    if (!conciseLive || !live?.id || live.reasoningComplete) return false;
+    if ((live.text ?? "") !== "" || (live.reasoning ?? "") !== "") return false;
+    for (let index = segment.processItems.length - 1; index >= 0; index -= 1) {
+      const item = segment.processItems[index];
+      if (item.kind === "assistant") return item.id === live.id;
+    }
+    return false;
+  }, [conciseLive, live?.id, live?.reasoning, live?.text, live?.reasoningComplete, segment.processItems]);
+  const showLiveStatus = conciseLive && Boolean(liveActionText || throttledReasoning || thinkingPending);
   return (
     <div className={`turn-collapse${open ? " turn-collapse--open" : ""}`} data-kind="reasoning" data-entrance={displayItems[0]?.id || undefined}>
       <button
@@ -144,16 +159,18 @@ export function ProcessFoldHeader({
       {showLiveStatus && (
         <div className="turn-collapse__live-status" data-live-status="">
           {liveActionText && <span className="turn-collapse__live-action">{liveActionText}</span>}
-          {throttledReasoning && (
+          {(throttledReasoning || thinkingPending) && (
             <>
               <span className="turn-collapse__live-thinking">{t("transcript.liveThinking")}</span>
-              <ReasoningSummary
-                text={throttledReasoning}
-                streaming
-                maxChars={160}
-                onOpen={onToggle}
-                className="turn-collapse__live-summary"
-              />
+              {throttledReasoning && (
+                <ReasoningSummary
+                  text={throttledReasoning}
+                  streaming
+                  maxChars={160}
+                  onOpen={onToggle}
+                  className="turn-collapse__live-summary"
+                />
+              )}
             </>
           )}
         </div>
