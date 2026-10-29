@@ -30,10 +30,15 @@ import (
 // directory name and doubles as the activeVersion string (see
 // installlayout.ValidateVersionName). ModTimeUnix is the version tree's last
 // modification time, surfaced as a human hint for "when this was published".
+// Occupied/OccupiedPIDs (task 1259) flag trees a live process still executes
+// from, so the picker (and any future consumer of the binding) can mark the
+// versions that must not be deleted or pruned under a running instance.
 type InstalledVersion struct {
-	Version     string `json:"version"`
-	Active      bool   `json:"active"`
-	ModTimeUnix int64  `json:"modTimeUnix"`
+	Version      string `json:"version"`
+	Active       bool   `json:"active"`
+	ModTimeUnix  int64  `json:"modTimeUnix"`
+	Occupied     bool   `json:"occupied"`
+	OccupiedPIDs []int  `json:"occupiedPIDs,omitempty"`
 }
 
 // relaunchHooks let tests intercept the process-lifecycle side effects
@@ -49,22 +54,18 @@ var (
 	// process runs from ("" when none); a hook so tests can simulate a
 	// versioned layout without copying the test binary into one.
 	versionSwitchRunningVersion = runningVersionName
+	// Task 1259 seams for the pre-switch instance sweep (scan/confirm/close),
+	// same interception pattern as the relaunch hooks above.
+	versionSwitchOtherInstances     = scanOtherVersionInstances
+	versionSwitchConfirmClose       = confirmCloseOtherInstances
+	versionSwitchCloseOtherInstance = gracefulCloseOtherInstance
 )
 
-// runningVersionName walks up from this executable: when it lives in
-// <installRoot>/versions/<name>, that name is the running version. Deleting
-// the tree a live process executes from is refused even if current.json has
-// already been moved elsewhere (a switch relaunches, it does not reload).
+// runningVersionName reports the version tree this process executes from
+// ("" on flat layouts); the attribution logic lives in installlayout so the
+// prune's self-skip and the switch/delete guards read the same source.
 func runningVersionName() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	dir := filepath.Dir(exe)
-	if filepath.Base(filepath.Dir(dir)) != installlayout.VersionsDirName {
-		return ""
-	}
-	return filepath.Base(dir)
+	return installlayout.RunningVersionName()
 }
 
 // resolveVersionedInstallRoot returns the install root for the running binary
@@ -127,6 +128,14 @@ func (a *App) ListInstalledVersions() ([]InstalledVersion, error) {
 		return nil, fmt.Errorf("restart: read versions directory: %w", err)
 	}
 	out := make([]InstalledVersion, 0, len(entries))
+	// Task 1259: one process enumeration serves the whole listing; trees a
+	// live process still executes from carry the occupied annotation.
+	occupancy := make(map[string][]int)
+	if procs := installlayout.ProbeVersionOccupancy(installRoot, ""); len(procs) > 0 {
+		for _, p := range procs {
+			occupancy[p.Version] = append(occupancy[p.Version], p.PID)
+		}
+	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -139,7 +148,12 @@ func (a *App) ListInstalledVersions() ([]InstalledVersion, error) {
 		if statErr == nil {
 			mod = info.ModTime().Unix()
 		}
-		out = append(out, InstalledVersion{Version: entry.Name(), Active: entry.Name() == active, ModTimeUnix: mod})
+		item := InstalledVersion{Version: entry.Name(), Active: entry.Name() == active, ModTimeUnix: mod}
+		if pids, occupied := occupancy[entry.Name()]; occupied {
+			item.Occupied = true
+			item.OccupiedPIDs = pids
+		}
+		out = append(out, item)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Version > out[j].Version })
 	return out, nil
@@ -195,6 +209,33 @@ func (a *App) switchToVersionExempt(version, callerSession string) (string, erro
 	versionDir := filepath.Join(installRoot, installlayout.VersionDirRelative(version))
 	if info, statErr := os.Stat(filepath.Join(versionDir, installlayout.DesktopBinaryName())); statErr != nil || info.IsDir() {
 		return "", fmt.Errorf("restart: %s has no %s; refusing to point the install at an incomplete version tree", version, installlayout.DesktopBinaryName())
+	}
+
+	// Task 1259 layer 2 (治面): before any side effect, find every other
+	// Reasonix instance running from this install's version trees and put the
+	// user in charge — switching makes them all old-version runners, and the
+	// incident showed those become ghosts the pruning side must then protect.
+	// Confirmed instances close gracefully (window-close request; never a
+	// force kill); ones that refuse are reported for manual handling and the
+	// informed switch proceeds regardless.
+	if others := versionSwitchOtherInstances(installRoot, version); len(others) > 0 {
+		slog.Info("restart: other instances detected before version switch",
+			"target", version, "instances", occupiedProcessDescriptions(others))
+		if versionSwitchConfirmClose(a, others, version) {
+			var survivors []installlayout.OccupiedProcess
+			for _, p := range others {
+				if versionSwitchCloseOtherInstance(p.PID) {
+					slog.Info("restart: closed other instance", "pid", p.PID, "version", p.Version)
+				} else {
+					survivors = append(survivors, p)
+				}
+			}
+			if len(survivors) > 0 {
+				slog.Warn("restart: instances did not close gracefully; manual close required",
+					"instances", occupiedProcessDescriptions(survivors))
+				a.informUnclosedInstances(survivors)
+			}
+		}
 	}
 
 	// Task 450 (plan A): the same grace-and-cancel window as the publish path —
@@ -291,6 +332,18 @@ func (a *App) DeleteInstalledVersion(version string) error {
 		return fmt.Errorf("restart: version %s is not installed: %w", version, statErr)
 	} else if !info.IsDir() {
 		return fmt.Errorf("restart: %s is not a version directory; refusing to delete", version)
+	}
+	// Task 1259: the same blind spot the prune closes applies to the manual
+	// single delete — deleting a tree a live process executes from creates a
+	// ghost (live pid, exe gone). Refuse with the pid so the user knows what
+	// to close. (Suspected entries surface the same way: keep the tree until
+	// the ambiguity resolves.)
+	if occ := installlayout.ProbeVersionOccupancy(installRoot, version); len(occ) > 0 {
+		pids := make([]string, 0, len(occ))
+		for _, p := range occ {
+			pids = append(pids, fmt.Sprintf("%d", p.PID))
+		}
+		return fmt.Errorf("restart: %s is still running (pid %s); close the instance first — deleting it now would leave a process without its files", version, strings.Join(pids, ", "))
 	}
 	slog.Info("restart: deleting installed version", "version", version, "dir", versionDir)
 	if err := os.RemoveAll(versionDir); err != nil {

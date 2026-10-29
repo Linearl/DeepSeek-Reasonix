@@ -56,6 +56,10 @@ func (a *App) enforceInstallRetention() {
 			"prunedTrees", report.PrunedTrees,
 			"replacedShells", report.RemovedReplaced,
 			"stagingScratch", report.RemovedStaging,
-			"quarantinedNodes", report.RemovedQuarantined)
+			"quarantinedNodes", report.RemovedQuarantined,
+			// Task 1259: trees kept because a live instance runs from them —
+			// surfaced here so a persistent occupied tree stays visible in the
+			// startup log (the escalated ones already warned inside the pass).
+			"retainedOccupied", installlayout.DescribeRetained(report.RetainedOccupied))
 	}
 }
