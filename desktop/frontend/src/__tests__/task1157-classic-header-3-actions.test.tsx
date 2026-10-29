@@ -8,7 +8,8 @@
 //   ③ 新建下拉一级恰三项：新建项目（二级 = 新建空白项目 + 使用现有文件夹）/ 新建项目分组 /
 //     远程连接；原 5 按钮覆盖的 8 个动作零丢失。
 //   ④ 空态兜底：项目列表为空时可见「新建项目分组」文字链（不占头部图标位）。
-//   ⑤ workbench 布局零变化。
+//   ⑤ workbench 布局零变化。（tl1222 起本条被取代：用户验收要求 workbench 头部
+//     对齐 classic 同一形态，旧 6 图标行退场——见 ⑥，classic 断言 ①-④ 不变。）
 //
 // UI 结构以源码断言钉住（同 task 881/827/383 先例）；三语文案断言 key 存在 + 值逐字 + 孤词零命中。
 
@@ -37,18 +38,15 @@ const zh = readFileSync(resolve(dir, "../locales/zh.ts"), "utf8");
 const zhTW = readFileSync(resolve(dir, "../locales/zh-TW.ts"), "utf8");
 const en = readFileSync(resolve(dir, "../locales/en.ts"), "utf8");
 
-// classic 分支 = 从筛选控件调用到分支收尾；workbench 分支 = mode 判断到 classic 分支开头。
-const classicBranch = treeSource.slice(
-  treeSource.indexOf('{renderClassicFilterControl()}'),
-  treeSource.indexOf("          </>\n        )}"),
-);
-const workbenchBranch = treeSource.slice(
-  treeSource.indexOf('{mode === "workbench" ? ('),
-  treeSource.indexOf('{renderClassicFilterControl()}'),
+// tl1222：classic 头部 = 共享 renderProjectHeader 本体（workbench 已对齐同一形态，
+// 无独立 classic 分支）；筛选面板 = classicFilterActive 起到 renderProjectHeader 止。
+const headerBody = treeSource.slice(
+  treeSource.indexOf('const renderProjectHeader = (mode: "classic" | "workbench") => ('),
+  treeSource.indexOf("// Project rows render under their group heading"),
 );
 const createItems = treeSource.slice(
   treeSource.indexOf("const classicCreateItems"),
-  treeSource.indexOf("const workbenchHeaderAddItems"),
+  treeSource.indexOf("const timeFilterDisplayLabel"),
 );
 const filterPanel = treeSource.slice(
   treeSource.indexOf("const classicFilterActive = timeFilter !== \"all\""),
@@ -65,11 +63,11 @@ console.log("\n1157-① classic header has exactly 3 action buttons");
 // 3 个一级按钮 = 筛选控件调用（其函数体内 1 个触发按钮）+ 折叠 1 个字面 button +
 // ProjectTreeHeaderAddControl 内部 1 个（新建下拉触发按钮）；面板/菜单内的按钮
 // 都不在头部行。
-ok(count(classicBranch, "<button") === 1 && count(classicBranch, "<ProjectTreeHeaderAddControl") === 1 && count(classicBranch, "renderClassicFilterControl()") === 1,
-  "the classic branch mounts exactly 3 header buttons (filter control + collapse + create control)");
-ok(!classicBranch.includes('t("projectGroup.createNew")'),
+ok(count(headerBody, "<button") === 1 && count(headerBody, "<ProjectTreeHeaderAddControl") === 1 && count(headerBody, "renderClassicFilterControl(mode)") === 1,
+  "the classic header mounts exactly 3 header buttons (filter control + collapse + create control)");
+ok(!headerBody.includes('t("projectGroup.createNew")'),
   "no standalone create-group entry remains in the classic header (aria/label gone)");
-ok(classicBranch.includes("renderClassicFilterControl()") && classicBranch.includes("toggleCollapsedView") && classicBranch.includes("classicCreateItems"),
+ok(headerBody.includes("renderClassicFilterControl(mode)") && headerBody.includes("toggleCollapsedView") && headerBody.includes("classicCreateItems"),
   "the 3 buttons are: merged filter control, collapse toggle, create dropdown");
 
 // ── 验收 ②：筛选下拉面板（两组控件 + 即时生效 + 徽标 + 摘要 + 清除） ────────
@@ -113,7 +111,7 @@ console.log("\n1157-④ all 8 legacy actions reachable");
 
 ok(filterPanel.includes("onTimeFilterChange"), "① time filter reachable in the panel");
 ok(filterPanel.includes("setColorFilter"), "② colour filter reachable in the panel");
-ok(classicBranch.includes("onClick={toggleCollapsedView}") && classicBranch.includes("canRestoreCollapsedView ? <ListRestart size={14} /> : <ListCollapse size={14} />"),
+ok(headerBody.includes("onClick={toggleCollapsedView}") && headerBody.includes("canRestoreCollapsedView ? <ListRestart size={14} /> : <ListCollapse size={14} />"),
   "③④ collapse/restore double-state toggle unchanged");
 ok(createItems.includes("openBlankProjectFlow()"), "⑤ blank project reachable (create ▸ new project)");
 ok(createItems.includes("handleAddProject()"), "⑥ existing folder reachable (create ▸ new project)");
@@ -128,17 +126,34 @@ ok(emptyState.includes('className="project-tree__empty-secondary"') && emptyStat
 ok(!emptyState.includes("project-tree__header-actions"),
   "the empty-state entry stays out of the header icon row");
 
-// ── 验收 ⑥：workbench 零变化 ───────────────────────────────────────────────
-console.log("\n1157-⑥ workbench layout untouched");
+// ── 验收 ⑥：workbench 与 classic 同形态（tl1222 对齐，取代原「workbench 零变化」） ──
+console.log("\n1157-⑥ workbench header aligned to the classic form (tl1222)");
 
-ok(workbenchBranch.includes('renderTimeFilterControl("workbench")') && workbenchBranch.includes('renderColorFilterControl("workbench")'),
-  "workbench keeps its separate time and colour filter buttons");
-ok(workbenchBranch.includes('aria-label={t("projectGroup.createNew")}') && workbenchBranch.includes("<FolderInput size={15}"),
-  "workbench keeps its direct create-group button");
-ok(workbenchBranch.includes("<MoreHorizontal") && workbenchBranch.includes("<FolderPlus size={16}") && workbenchBranch.includes("<Maximize2") && workbenchBranch.includes("<Minimize2"),
-  "workbench keeps more / add / collapse buttons (6-button header unchanged)");
-ok(count(workbenchBranch, "classicCreateItems") === 0,
-  "workbench does not consume the classic create items");
+// 头部唯一共享形态：renderProjectHeader 无 mode 三元分支，两布局同一 JSX。
+ok(!headerBody.includes('{mode === "workbench" ? ('),
+  "the header has a single shared body (no workbench/classic ternary)");
+ok(treeSource.includes('{renderProjectHeader("workbench")}') && treeSource.includes('{renderProjectHeader("classic")}'),
+  "both layouts mount the same shared header");
+ok(count(headerBody, "<button") === 1 && count(headerBody, "<ProjectTreeHeaderAddControl") === 1 && headerBody.includes("renderClassicFilterControl(mode)"),
+  "the shared header mounts exactly 3 controls (filter panel + collapse + create dropdown)");
+ok(headerBody.includes("project-tree__collapse-all") && headerBody.includes("<ListRestart size={14} />") && headerBody.includes("<ListCollapse size={14} />"),
+  "the collapse toggle uses the classic ListCollapse/ListRestart button form");
+
+// 旧 6 图标行全部退场（文件内零残留）
+ok(count(treeSource, "renderTimeFilterControl") === 0 && count(treeSource, "renderColorFilterControl") === 0,
+  "the separate time/colour filter renderers are gone");
+ok(count(treeSource, "workbenchHeaderMoreItems") === 0 && count(treeSource, "workbenchHeaderAddItems") === 0,
+  "the more/add menu item builders are gone");
+ok(!treeSource.includes("<Maximize2") && !treeSource.includes("<Minimize2") && !treeSource.includes("<FolderInput size={15}"),
+  "the old collapse/create-group icon buttons are gone");
+ok(!treeSource.includes("project-tree__header-icon-btn--filter"),
+  "the old workbench filter icon-button class is gone");
+
+// workbench 组织方式入口随迁筛选面板（workbench-only 分区）；新建下拉两布局共用。
+ok(filterPanel.includes('mode === "workbench" && (') && filterPanel.includes('setWorkbenchOrganizeMode("project")') && filterPanel.includes('setWorkbenchOrganizeMode("recent")') && filterPanel.includes('setWorkbenchOrganizeMode("time")'),
+  "the organize section moved into the merged filter panel (workbench-only)");
+ok(headerBody.includes("items={classicCreateItems}"),
+  "workbench consumes the classic create items (one dropdown for both layouts)");
 
 // ── 验收 ⑦：三语文案（key 不动、值逐字、孤词零命中） ───────────────────────
 console.log("\n1157-⑦ three-language copy");

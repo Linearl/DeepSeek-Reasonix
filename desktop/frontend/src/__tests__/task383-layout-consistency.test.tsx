@@ -33,8 +33,9 @@ const goConfigSrc = readFileSync(fileURLToPath(new URL("../../../../internal/con
 const locale = (name: string) => readFileSync(fileURLToPath(new URL(`../locales/${name}.ts`, import.meta.url)), "utf8");
 const locales = { zh: locale("zh"), "zh-TW": locale("zh-TW"), en: locale("en") };
 
-// ── Verdict #2: project-group entry reaches workbench (menu) and creation
-// (classic-form header); classic keeps its FolderInput header button ─────────
+// ── Verdict #2: project-group entry reaches both layouts via the shared
+// create dropdown (tl1157 classic fold; tl1222 aligned the workbench header
+// onto the same form, retiring the direct FolderInput header button) ─────────
 {
   const { projectTreeHeaderAddItems } = await import("../components/ProjectTreeAddControls");
 
@@ -61,11 +62,12 @@ const locales = { zh: locale("zh"), "zh-TW": locale("zh-TW"), en: locale("en") }
   ok(!classicItems.some((item) => item.key === "new-project-group"), "#2 classic add menu unchanged (no group item; classic uses its header FolderInput button)");
   ok(!classicItems.some((item) => item.key === "blank-project"), "#1 classic add menu stays without a blank-project entry (verdict: do NOT port)");
 
-  // ProjectTree wiring: workbench menu items pass groupLabel + onGroup; the
-  // classic header keeps the FolderInput button; creation rides the classic
-  // header branch; one NewGroupPanel handles the confirm for every variant.
-  ok(/groupLabel: t\("projectGroup\.createNew"\), onGroup: \(\) => setNewGroupOpen\(true\)/.test(projectTreeSrc), "#2 ProjectTree workbench add items wire projectGroup.createNew → setNewGroupOpen");
-  ok(/aria-label=\{t\("projectGroup\.createNew"\)\}/.test(projectTreeSrc) && /<FolderInput size=\{14\} \/>/.test(projectTreeSrc), "#2 classic header keeps the FolderInput new-group button");
+  // ProjectTree wiring: since tl1157 the group entry is a top-level item of
+  // the create dropdown; since tl1222 the workbench header consumes the SAME
+  // dropdown (the direct FolderInput header button is retired in both
+  // layouts); one NewGroupPanel handles the confirm for every variant.
+  ok(/key: "new-project-group", icon: <FolderInput size=\{13\} \/>, label: t\("projectGroup\.createNew"\), onSelect: \(\) => \{ closeMenu\(\); setNewGroupOpen\(true\); \}/.test(projectTreeSrc), "#2 ProjectTree create dropdown wires projectGroup.createNew → setNewGroupOpen");
+  ok(/items=\{classicCreateItems\}/.test(projectTreeSrc) && !/aria-label=\{t\("projectGroup\.createNew"\)\}/.test(projectTreeSrc), "#2 both headers share the create dropdown; no direct group button remains in any layout");
   ok(/compactTopics \? (\()?\s*\{?\s*renderProjectHeader\("workbench"\)/.test(projectTreeSrc.replace(/\n/g, " ")) || /renderProjectHeader\("workbench"\)/.test(projectTreeSrc), "#2 header branches exist for both modes");
   ok(/<NewGroupPanel open=\{newGroupOpen\} onClose=\{\(\) => setNewGroupOpen\(false\)\} onConfirm=\{handleAddGroup\} \/>/.test(projectTreeSrc), "#2 single NewGroupPanel confirms into handleAddGroup (variant-independent)");
   for (const [name, src] of Object.entries(locales)) {
