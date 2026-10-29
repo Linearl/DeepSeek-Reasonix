@@ -170,8 +170,11 @@ func (r *Runner) PermissionRequest(ctx context.Context, name, subject string, ar
 	}
 }
 
-// PromptSubmit fires before a turn starts. block=true aborts the turn; message
-// is the reason.
+// PromptSubmit fires before a turn starts. Since tl-1245 the UserPromptSubmit
+// domain is observation-only: no hook can block the submission (block
+// decisions downgrade to warnings surfaced via notify), so block is always
+// false today — the return is kept for the gating call sites' interface
+// stability. message is the surfaced hook output, if any.
 func (r *Runner) PromptSubmit(ctx context.Context, prompt string, turn int) (block bool, message string) {
 	if !r.Enabled() {
 		return false, ""

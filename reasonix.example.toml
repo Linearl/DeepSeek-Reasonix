@@ -174,7 +174,8 @@ stalled_warning_seconds = 900   # heads-up once per background job after this ma
 # PermissionRequest / UserPromptSubmit / Stop). They are NOT configured here — put them in
 # settings.json: <Reasonix home>/settings.json (global, always on) and
 # <project>/.reasonix/settings.json (project, loaded automatically).
-# Exit 0 = pass, exit 2 = block (PreToolUse / UserPromptSubmit only). Example
+# Exit 0 = pass, exit 2 = block (PreToolUse only; UserPromptSubmit hooks are
+# observation-only — they can warn, never drop the user's submission). Example
 # <Reasonix home>/settings.json:
 #   { "hooks": {
 #       "PreToolUse":  [ { "match": "bash", "command": "my-guard.sh" } ],

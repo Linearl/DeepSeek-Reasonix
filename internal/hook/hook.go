@@ -75,15 +75,23 @@ var Events = []Event{
 }
 
 // IsBlocking reports whether a non-zero/exit-2 (or timed-out) hook on this event
-// can block the loop. Only the gating events qualify. (PreCompact does not block;
-// it only contributes guidance via stdout.) This governs native Reasonix hooks;
-// see claudePermissionBlocking for the Claude-imported PermissionRequest case.
-func IsBlocking(e Event) bool { return e == PreToolUse || e == UserPromptSubmit }
+// can block the loop. Only the gating events qualify: PreToolUse gates tool
+// calls; PreCompact does not block (it only contributes guidance via stdout).
+// UserPromptSubmit used to gate too, until tl-1245: a global route_guard hook
+// that exited 2 with a warning banner silently dropped the user's submitted
+// prompt before the turn started. Block semantics must only gate tool/output
+// faces — never the user's own input — so UserPromptSubmit is observation-only
+// now: non-pass outcomes surface as warnings and the turn proceeds. The same
+// rule downgrades Claude-style JSON "block" decisions in Run (see
+// claudeJSONDeny). This governs native Reasonix hooks; see
+// claudePermissionBlocking for the Claude-imported PermissionRequest case.
+func IsBlocking(e Event) bool { return e == PreToolUse }
 
 // claudePermissionBlocking reports whether exit code 2 (or a timeout) on h
 // aborts the action even though PermissionRequest is not one of Reasonix's own
-// blocking events (docs/DESKTOP_HOOKS.md: "只有 PreToolUse 和 UserPromptSubmit
-// 是阻塞型事件"). Claude's own PermissionRequest contract denies the permission
+// blocking events (tl-1245 narrowed those to PreToolUse alone: UserPromptSubmit
+// is observation-only so a hook can never drop the user's submission).
+// Claude's own PermissionRequest contract denies the permission
 // on exit 2 the same way PreToolUse does (https://code.claude.com/docs/en/hooks),
 // so an imported Claude hook (PayloadFormat "claude") honors that instead of
 // silently downgrading to a notification.
@@ -1045,7 +1053,10 @@ func decideOutcome(h ResolvedHook, r SpawnResult) Decision {
 // "block this dangerous command" hook silently no-ops whenever the script
 // signals deny via JSON instead of exit code 2. UserPromptSubmit uses a
 // top-level decision:"block" instead of PreToolUse/PermissionRequest's
-// hookSpecificOutput shape; ParseOutput handles both.
+// hookSpecificOutput shape; ParseOutput handles both. On UserPromptSubmit the
+// converted block is downgraded to a warning in Run (tl-1245: a hook must
+// never drop the user's submission) — the deny shape is only recognized so
+// the reason surfaces; on PreToolUse/PermissionRequest it blocks as before.
 func claudeJSONDeny(event Event, stdout string) (bool, string) {
 	if event != PreToolUse && event != PermissionRequest && event != UserPromptSubmit {
 		return false, ""
@@ -1194,6 +1205,16 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 			} else if claudeJSONAllow(event, r.Stdout) {
 				report.Allowed = true
 			}
+		}
+		// tl-1245: a hook on a non-gating event must never surface a Block.
+		// The Claude JSON conversion above would otherwise let a
+		// UserPromptSubmit hook drop the user's submission; downgrade it to a
+		// warning so the reason still reaches the user (handle notifies it)
+		// while the turn proceeds. Gating events keep their block: decideOutcome
+		// only returns Block when IsBlocking(event) or claudePermissionBlocking
+		// holds, and both make this condition false.
+		if decision == DecisionBlock && !IsBlocking(event) && !claudePermissionBlocking(h) {
+			decision = DecisionWarn
 		}
 		report.Outcomes = append(report.Outcomes, Outcome{
 			Hook:      h,
