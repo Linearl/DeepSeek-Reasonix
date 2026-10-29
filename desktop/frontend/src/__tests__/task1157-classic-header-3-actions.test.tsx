@@ -75,8 +75,9 @@ ok(classicBranch.includes("renderClassicFilterControl()") && classicBranch.inclu
 // ── 验收 ②：筛选下拉面板（两组控件 + 即时生效 + 徽标 + 摘要 + 清除） ────────
 console.log("\n1157-② merged filter panel");
 
-ok(filterPanel.includes('t("projectTree.timeFilter")}') && filterPanel.includes('t("projectTree.filterByColor")}</div>'),
-  "the panel hosts both the time-range and the project-colour sections");
+// tl1170: both sections remain in the panel, now behind collapsible toggles.
+ok(filterPanel.includes('toggleFilterPanelSection("time")') && filterPanel.includes('toggleFilterPanelSection("color")'),
+  "the panel hosts both the time-range and the project-colour sections (collapsible toggles, tl1170)");
 ok(filterPanel.includes('onTimeFilterChange(value); setFilterMenuOpen(false); }}') && filterPanel.includes("setColorFilter((current) =>"),
   "time and colour options apply immediately in their onClick (no apply button)");
 ok(filterPanel.includes("project-tree__filter-badge") && filterPanel.includes("classicFilterActive &&"),
