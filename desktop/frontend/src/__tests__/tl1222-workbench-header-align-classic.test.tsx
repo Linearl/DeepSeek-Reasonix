@@ -59,8 +59,11 @@ ok(headerBody.length > 0 && !headerBody.includes('{mode === "workbench" ? ('),
   "renderProjectHeader has one shared body — no workbench/classic ternary");
 ok(treeSource.includes('{renderProjectHeader("workbench")}') && treeSource.includes('{renderProjectHeader("classic")}'),
   "workbench and classic mount the very same header renderer");
-ok(count(headerBody, "renderClassicFilterControl(mode)") === 1 && count(headerBody, "<ProjectTreeHeaderAddControl") === 1 && count(headerBody, "<button") === 1,
-  "the shared header mounts exactly 3 controls: merged filter / collapse / create dropdown");
+// tl1254: the header grew one control — the batch manage toggle restored from
+// tl1240 (its two pre-1222 header buttons were lost in the merge). The pin
+// moves from 3 to 4 controls; the shared-body / no-ternary intent is unchanged.
+ok(count(headerBody, "renderClassicFilterControl(mode)") === 1 && count(headerBody, "<ProjectTreeHeaderAddControl") === 1 && count(headerBody, "<button") === 2,
+  "the shared header mounts exactly 4 controls: merged filter / collapse / batch toggle / create dropdown");
 ok(headerBody.includes("project-tree__collapse-all") && headerBody.includes('aria-pressed={canRestoreCollapsedView}') && headerBody.includes("<ListRestart size={14} />") && headerBody.includes("<ListCollapse size={14} />"),
   "the collapse toggle is the classic button form (ListCollapse/ListRestart + aria-pressed)");
 ok(headerBody.includes('label={t("projectTree.createMenu")}') && headerBody.includes("items={classicCreateItems}"),

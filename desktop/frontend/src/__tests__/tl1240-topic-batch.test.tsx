@@ -11,7 +11,7 @@
 //   ③ 桥接契约（行为）：AppBindings 面 BatchTrashTopics/BatchMoveToGroup
 //     存在（浏览器 mock 行为：逐项删除/返回 all-ok 结果）；
 //   ④ ProjectTree 集成（源码钉）：头部开关（workbench+classic 双处、
-//     aria-pressed）、行点击在批量态切换选择、ContextMenu 分支
+//     aria-pressed、调用点≥1——tl1254 教训钉防 merge 再丢）、行点击在批量态切换选择、ContextMenu 分支
 //     batchEntry ? 精简菜单 : 完整菜单、hover 动作批量态隐藏、拖拽批量态
 //     禁用、批量条仅在批量态挂载、操作走 app.BatchTrashTopics /
 //     app.BatchMoveToGroup、移动成功后 setOrganizationRevision 强制 roster
@@ -292,6 +292,10 @@ console.log("\ntl1240 ④ ProjectTree integration (source pins)");
 const treeSrc = readFileSync(resolve(srcRoot, "components/ProjectTree.tsx"), "utf8");
 ok((treeSrc.match(/batchManage(Exit)?["']/g) ?? []).length >= 4, "header toggle renders in both workbench and classic headers");
 ok(treeSrc.includes("aria-pressed={batchMode}"), "header toggle carries aria-pressed");
+// tl1254 教训钉：1240fe 有 2 处 onClick=toggleBatchMode，滚合后 main 零处=功能
+// 不可达（「任务 done≠已实现」三查之一：调用点计数）。入口至少 1 处接线，
+// 少于 1 即红——merge 再丢入口立刻被抓。
+ok((treeSrc.match(/onClick=\{toggleBatchMode\}/g) ?? []).length >= 1, "batch toggle has at least one onClick call site (tl1254: a merge must never drop the entry again)");
 ok(treeSrc.includes("items={batchEntry ? batchRowMenuItems : topicMenuItems}"), "context menu branches to the slim batch menu in batch mode");
 ok(treeSrc.includes("if (batchEntry) {\n                toggleBatchTopic(batchEntry.topicId);"), "row click toggles the selection in batch mode (no topic open)");
 ok(treeSrc.includes("!batchEntry && projectTreeShouldRenderTopicActions"), "hover actions hidden for batch-mode rows");
