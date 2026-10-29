@@ -41751,6 +41751,7 @@ button.statusbar__mcp:focus-visible {
   font-size: 11px;
   font-weight: 600;
   color: var(--fg-faint);
+}
 /* ─── tl1240：侧栏批量管理态（多选 checkbox + 批量操作条 + 结果报告）───────
    范式=信件批量条（任务 856 ②）。默认零挂载：仅批量管理态渲染。 */
 .project-tree__batchbar {
