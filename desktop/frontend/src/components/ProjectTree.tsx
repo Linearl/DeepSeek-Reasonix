@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Pin, MoreHorizontal, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
+import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, FileJson, FileText, ListChecks, ListCollapse, ListRestart, MessageSquare, Pin, MoreHorizontal, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -3034,6 +3034,26 @@ export function ProjectTree({
             onClick={toggleCollapsedView}
           >
             {canRestoreCollapsedView ? <ListRestart size={14} /> : <ListCollapse size={14} />}
+          </button>
+        </Tooltip>
+        {/* tl1240/tl1254: batch manage toggle — the mode swaps row clicks for
+            checkbox selection and mounts the batch action bar. Off by default;
+            the normal sidebar surface is unchanged. This is the single shared
+            site in the tl1222 unified header, so one button serves both
+            layouts (the merge that rolled 1240fe forward lost both of its
+            header buttons here — the feature was unreachable). Class reuses
+            the header-action-btn form (bordered chip in classic, borderless
+            restyle in workbench) so the active state rides the existing
+            --active accent rule; no new CSS. */}
+        <Tooltip label={t(batchMode ? "projectTree.batchManageExit" : "projectTree.batchManage")} className="project-tree__header-action-slot">
+          <button
+            type="button"
+            className={`project-tree__header-action-btn${batchMode ? " project-tree__header-action-btn--active" : ""}`}
+            aria-label={t(batchMode ? "projectTree.batchManageExit" : "projectTree.batchManage")}
+            aria-pressed={batchMode}
+            onClick={toggleBatchMode}
+          >
+            <ListChecks size={14} aria-hidden="true" />
           </button>
         </Tooltip>
         <ProjectTreeHeaderAddControl
