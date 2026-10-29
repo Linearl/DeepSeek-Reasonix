@@ -427,6 +427,27 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     setDetail({ entry, full: null });
     setDetailOrder(acquireOverlayOrder());
     setDetailError(null);
+    // tl1238 ②：点开查看即已读——详情弹窗打开的瞬间结算该信的已读游标
+    //（复用既有 MarkCollabMailRead 写口：后端推进 seen 游标、回读新快照），
+    // 并广播 mail-changed 令未读角标即时重查。用户实测「点开看完、面板关了
+    // 角标仍挂 27 封」的根因 = 查看路径从不推进游标（此前唯一已读口是工具条
+    // 「全部已读」），角标计数与用户的已读认知长期不对账。邮件客户端标准范式
+    // （打开即已读）：读到哪封结算哪封，未读态仍逐信有意义，批量口保持不变。
+    // 已读条目不再发写（零多余往返）；失败保留快照并留痕（与 act 同款容错，
+    // 不阻塞全文读取）；ReadCollabMail 的只读契约不动（结算走写口，不在读口
+    // 搭车）。后端零改动。
+    if (!entry.read) {
+      void b.MarkCollabMailRead([entry.id])
+        .then((next) => {
+          setSnapshot(next);
+          // 写回读是后端默认页（tl1230 同款水位对齐，防越滚越少）。
+          setPageSize((size) => Math.max(size, next.returned));
+          notifyCollabMailChanged();
+        })
+        .catch((err) => {
+          reportFrontendLog("collab-inbox", "read-on-view failed", `id=${entry.id} err=${String(err)}`, "warn");
+        });
+    }
     if (typeof read !== "function") {
       // 向前兼容缝：无全文口 → 弹窗展示预览行（不空白、不崩）。
       setDetailLoading(false);
