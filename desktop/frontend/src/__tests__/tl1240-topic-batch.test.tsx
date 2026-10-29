@@ -16,7 +16,7 @@
 //     禁用、批量条仅在批量态挂载、操作走 app.BatchTrashTopics /
 //     app.BatchMoveToGroup、移动成功后 setOrganizationRevision 强制 roster
 //     重拉、默认视图零改动（!batchMode 才渲染旧路径全部保持）；
-//   ⑤ 三语 locale：15 键 zh/en/zh-TW 齐备 + 占位符一致 + 无死键
+//   ⑤ 三语 locale：16 键 zh/en/zh-TW 齐备 + 占位符一致 + 无死键
 //     （batchBusy 已删——错误文案走后端原文，与单题路径同口径）。
 
 import { readFileSync } from "node:fs";
@@ -196,6 +196,21 @@ ok(enabledButtons.some((button) => button.textContent?.includes("Archive")), "ar
 ok(!bar.buttons.find((button) => button.textContent?.includes("Move to group"))?.disabled, "move button enabled with groups available");
 ok(bar.html.includes("Archived 2/4"), "N/M progress line rendered");
 ok(bar.html.includes("Running or busy — skipped 2"), "turn-running skip line rendered");
+ok(bar.html.includes("Close other Reasonix windows or wait for running sessions"), "tl1258 skip hint line renders with the exits (close window / restart clears locks / per-topic force)");
+const noSkipBar = mountBar({
+  selectedCount: 1,
+  busy: false,
+  report: { kind: "archive" as const, done: 1, total: 1, skipped: 0, failures: [{ topicId: "f2", title: "F2", reason: "disk full", skipped: false }] },
+  moveGroups: null,
+  mixedScope: false,
+  onArchive: () => clicks.push("archive"),
+  onMoveToGroup: () => clicks.push("move"),
+  onClearSelection: () => clicks.push("clear"),
+  onExit: () => clicks.push("exit"),
+  onDismissReport: () => clicks.push("dismiss"),
+});
+ok(!noSkipBar.html.includes("Close other Reasonix windows or wait for running sessions"), "tl1258 skip hint hidden when nothing was skipped");
+noSkipBar.unmount();
 ok(bar.html.includes("1 failed"), "failure count line rendered");
 ok(bar.html.includes("Failer: disk full"), "failure item line renders title and reason");
 bar.buttons.find((button) => button.getAttribute("aria-label") === "Dismiss report")?.click();
@@ -329,6 +344,7 @@ const BATCH_KEYS = [
   "projectTree.batchSelectAll",
   "projectTree.batchClearSelection",
   "projectTree.batchSkippedRunning",
+  "projectTree.batchSkippedHint",
   "projectTree.batchFailedItems",
   "projectTree.batchItemLine",
   "projectTree.batchReportDismiss",

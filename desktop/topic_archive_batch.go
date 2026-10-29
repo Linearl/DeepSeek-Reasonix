@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"reasonix/internal/agent"
 )
 
 // tl1240: batch topic archive endpoint. The UI multi-select (batch manage mode)
@@ -181,6 +183,17 @@ func (a *App) BatchTrashTopics(topicIDs []string) (desktopBatchTopicArchiveResul
 }
 
 func batchTopicArchiveFailureItem(topicID string, err error) desktopBatchTopicArchiveItem {
+	// tl1258: the lease-busy family gets the complete per-topic reason (holder
+	// classification, pid, acquire time, next step) — the bare sentinel text
+	// gave every busy topic the same "in use" line with nothing to act on.
+	// This must run BEFORE friendlySessionFileError: the wrapped lease error's
+	// Unwrap chain contains agent.ErrSessionLeaseHeld, which that rewriter
+	// would collapse into the generic sentinel and drop the holder info.
+	// Active-work refusals keep their own message below: it already names the
+	// next step ("wait for the session to finish…").
+	if errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, errSessionBusyZombie) || errors.Is(err, agent.ErrSessionLeaseHeld) {
+		return desktopBatchTopicArchiveItem{TopicID: topicID, Forceable: true, Error: sessionLeaseBusyDetail(err)}
+	}
 	marked := markTopicArchiveForceable(friendlySessionFileError(err))
 	item := desktopBatchTopicArchiveItem{TopicID: topicID}
 	var forceable *topicArchiveForceableError

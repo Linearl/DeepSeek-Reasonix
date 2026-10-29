@@ -167,8 +167,11 @@ func sessionTelemetryPath(sessionPath string) string {
 
 // errSessionBusyElsewhere is the sanitized error surfaced when a destructive
 // session operation is blocked by a live owner. It intentionally carries no
-// writer id, hostname, or path.
-var errSessionBusyElsewhere = errors.New("session is in use by another Reasonix window or process")
+// writer id, hostname, or path. tl1258: the bare "in use" sentence failed the
+// UX bar — the closing clause names the next step (close the other window /
+// quit the other instance, then retry) so surfaces that show only the
+// sentinel text still land an actionable message.
+var errSessionBusyElsewhere = errors.New("this session is in use by another Reasonix window or process — close that window (or quit the other Reasonix instance), then retry")
 
 // errSessionBusyZombie is the tl 1201 classification for a refusal whose
 // recorded holder pid is DEAD: no window exists to close, so the old
@@ -176,6 +179,58 @@ var errSessionBusyElsewhere = errors.New("session is in use by another Reasonix 
 // window loop. The actionable repair is the restart that reaps the crashed
 // holder. Still sanitized (no path).
 var errSessionBusyZombie = errors.New("this session was left locked by a crashed Reasonix process — restart Reasonix to clear it, then retry")
+
+// sessionLeaseHeldBusyError wraps a lease-held refusal so the tl1201 sentinel
+// classification (zombie vs live holder) keeps flowing through errors.Is
+// while the original *agent.SessionLeaseError stays reachable for the detail
+// renderer (tl1258: the batch failure list shows holder pid, acquire time,
+// and the matching next step instead of one bare "in use" line per topic).
+type sessionLeaseHeldBusyError struct{ cause error }
+
+func (e *sessionLeaseHeldBusyError) Error() string {
+	return sessionLeaseBusyClassification(e.cause).Error()
+}
+
+// Unwrap exposes both faces: the classified sentinel (sentinel comparisons
+// across the desktop codebase keep working) and the original lease error
+// (errors.As(*agent.SessionLeaseError) keeps working for detail rendering).
+func (e *sessionLeaseHeldBusyError) Unwrap() []error {
+	return []error{sessionLeaseBusyClassification(e.cause), e.cause}
+}
+
+// sessionLeaseBusyDetail renders the complete human-facing reason for a
+// lease-held refusal: who holds the session (this instance / another live
+// window with pid and acquire time / a crashed leftover) plus the matching
+// next step. Sanitized like the sentinels — pid and wall-clock only, never a
+// hostname or path. The holder branches mirror control.SessionLeaseHintFor
+// (tl1201) so the desktop UI speaks the same semantics; refusals without
+// usable lease info degrade to the upgraded errSessionBusyElsewhere text.
+func sessionLeaseBusyDetail(err error) string {
+	var leaseErr *agent.SessionLeaseError
+	if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil && leaseErr.Info.PID > 0 {
+		info := leaseErr.Info
+		since := desktopLeaseSinceSuffix(info)
+		if info.PID == os.Getpid() {
+			return fmt.Sprintf("this session is held by another runtime of this Reasonix instance (pid %d%s) — wait for its work to finish or restart Reasonix, then retry", info.PID, since)
+		}
+		if !agent.ProcessAlive(info.PID) {
+			return fmt.Sprintf("this session was left locked by a crashed Reasonix process (pid %d%s) — restart Reasonix to clear the leftover lock, then retry", info.PID, since)
+		}
+		return fmt.Sprintf("this session is in use by another Reasonix window or process (pid %d%s) — close that window or quit the other Reasonix instance, then retry", info.PID, since)
+	}
+	return errSessionBusyElsewhere.Error()
+}
+
+// desktopLeaseSinceSuffix renders ", since HH:MM" for a usable acquire time
+// (same shape as control.leaseAcquiredSinceSuffix; local copy because that
+// one is unexported and the desktop module must not grow a control dependency
+// it does not already have).
+func desktopLeaseSinceSuffix(info *agent.SessionLeaseInfo) string {
+	if info == nil || info.AcquiredAt.IsZero() {
+		return ""
+	}
+	return ", since " + info.AcquiredAt.Local().Format("15:04")
+}
 
 // sessionLeaseBusyClassification maps a lease-held refusal onto the sanitized
 // busy error. A holder pid that is alive (or unknown) is real mutual
@@ -203,7 +258,21 @@ func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard,
 	})
 	if err != nil {
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
-			return nil, sessionLeaseBusyClassification(err)
+			// tl1258: the wrapper renders the same tl1201 sentinel text but
+			// keeps the original lease error reachable (Unwrap), so the batch
+			// failure renderer can read holder pid/acquire time from it. The
+			// holder pid also lands in the log (task 272 G4 precedent: a
+			// refusal reaches the UI and the log) so a user retry leaves a
+			// traceable holder record even after the toast/report is gone.
+			// Logged values carry pid/classification only — never the path.
+			var leaseErr *agent.SessionLeaseError
+			if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil && leaseErr.Info.PID > 0 {
+				slog.Info("desktop: session removal guard refused by lease holder",
+					"holder_pid", leaseErr.Info.PID, "self_held", leaseErr.Info.PID == os.Getpid())
+			} else {
+				slog.Info("desktop: session removal guard refused by lease holder", "holder_pid", 0)
+			}
+			return nil, &sessionLeaseHeldBusyError{cause: err}
 		}
 		return nil, err
 	}

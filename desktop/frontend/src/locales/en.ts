@@ -5578,6 +5578,7 @@ export const en = {
   "projectTree.batchSelectAll": "Select all visible sessions",
   "projectTree.batchClearSelection": "Clear selection",
   "projectTree.batchSkippedRunning": "Running or busy — skipped {n}",
+  "projectTree.batchSkippedHint": "Close other Reasonix windows or wait for running sessions, then retry; if it still fails, restarting Reasonix clears leftover locks; force-archive a single topic from its context menu",
   "projectTree.batchFailedItems": "{n} failed",
   "projectTree.batchItemLine": "{title}: {reason}",
   "projectTree.batchReportDismiss": "Dismiss report",

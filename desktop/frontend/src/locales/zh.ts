@@ -5564,6 +5564,7 @@ export const zh: Record<DictKey, string> = {
   "projectTree.batchSelectAll": "全选可见会话",
   "projectTree.batchClearSelection": "清空选择",
   "projectTree.batchSkippedRunning": "运行中或被占用，已跳过 {n} 项",
+  "projectTree.batchSkippedHint": "关闭其他 Reasonix 窗口或等待会话结束后重试；若仍失败，重启 Reasonix 可清理残留锁；单个会话可在右键菜单强制归档",
   "projectTree.batchFailedItems": "失败 {n} 项",
   "projectTree.batchItemLine": "{title}：{reason}",
   "projectTree.batchReportDismiss": "关闭报告",
