@@ -184,7 +184,18 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
     if (leaveTimer.current != null) clearTimeout(leaveTimer.current);
   }, []);
 
+  // tl1239③: 勾选「明细」会让浮层内容高度变化（平铺↔三段式），AnchoredPopover
+  // 自动重定位可能把浮层从指针下方移开——浏览器对静止指针补发 mouseleave，
+  // 面板被误关、必须重新 hover。勾选交互（按下/按键）后短暂忽略 mouseleave
+  // 关闭；之后真移出时的下一次 mouseleave 照常关闭。勾选状态本身按 tabId
+  // 保持（tl1224 既有机制，此处只治「被误关」）。
+  const detailToggleGuardUntil = useRef(0);
+  const guardDetailToggle = useCallback(() => {
+    detailToggleGuardUntil.current = Date.now() + 400;
+  }, []);
+
   const onPopoverLeave = useCallback(() => {
+    if (Date.now() < detailToggleGuardUntil.current) return;
     setOpen(false);
   }, []);
 
@@ -290,6 +301,8 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
               <label
                 className="context-composition__detail-toggle context-composition__detail-toggle--header"
                 title={t("context.detailToggleTitle")}
+                onMouseDown={guardDetailToggle}
+                onKeyDown={guardDetailToggle}
               >
                 <input
                   type="checkbox"
