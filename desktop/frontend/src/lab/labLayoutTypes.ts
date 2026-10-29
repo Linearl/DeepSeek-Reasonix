@@ -72,9 +72,12 @@ export interface LabLayoutData {
   groups: LabLayoutGroup[];
 }
 
-/** All group keys the resolver accepts (unknown group key ⇒ fallback). */
+/** All group keys the resolver accepts (unknown group key ⇒ fallback).
+ * tl1193b 增 memory-context（记忆/上下文）——pinned 常驻层索引化卡落位
+ * （992 后 tool-opt 并入 infra，其键仍在词表内，此处不动）。 */
 export const LAB_GROUP_KEYS = [
   "automation",
+  "memory-context",
   "efficiency",
   "ui",
   "observability",

@@ -50,6 +50,9 @@ export type TierFeatureId =
   // loopStreakNote 与 standalone eventWaitRecheck 三个表A id → 一个 id）。
   | "safetyCostControl"
   | "subagentPolicy"
+  // tl1193b: plan-E pinned standing-tier index mode (实验室「记忆与上下文」
+  // 新组首卡；未稳定档，默认关——关时常驻注入与引入前逐字节一致)。
+  | "pinnedIndex"
   | "budgetControl"
   | "compressOpt"
   | "messageMerge"
@@ -199,6 +202,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   stalledIntentNudge: "optional",
   safetyCostControl: "optional",
   subagentPolicy: "unstable",
+  // ── memory-context（记忆/上下文，1 项；tl1193b 增 pinnedIndex）──────
+  // tl1193b: pinned 常驻层索引化——镜像 Go 渲染表 LabTierUnstable（562 门禁
+  // 双侧一致）。boot 快照消费，重启生效。
+  pinnedIndex: "unstable",
   // ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl；────
   //    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
   optimisticParallel: "recommended",
@@ -432,12 +439,14 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 可选 +3（Go 渲染表同步 69→72）。⚠️ 本段计数经 2026-10-28 合并线并集解
  * 回调：基线 8552b0abf 上 zcode 落 77+3=80（unstable 12），滚合后主线已有
  * jsonlZstd 补登（58c19737d，optional 非 unstable）⇒ 并集态 81 项/可选 44/
- * 未稳定 12（zcode 预警的「81/13」中 13 系误算，已按实值修正）。 */
+ * 未稳定 12（zcode 预警的「81/13」中 13 系误算，已按实值修正）。
+ * tl1193b：pinnedIndex（pinned 常驻层索引化，实验室新「记忆与上下文」组首卡）
+ * 按未稳定档入表——未稳定 12→13、总数 81→82（Go 渲染表同步 72→73）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 20,
   optional: 44,
-  unstable: 12,
+  unstable: 13,
   retired: 1,
 };
 

@@ -131,11 +131,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 合并线并集解回调（2026-10-28）：主线 jsonlZstd 补登（58c19737d，
   // optional）× 1218 三新增 ⇒ 并集态 4/20/44/12/1 = 81 项（zcode 预警的
   // 「81/13」中 13 系误算——jsonlZstd 非 unstable，已按实值钉 12）。
-  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 44 && counts.unstable === 12 && counts.retired === 1,
-    `register counts are 4 稳定/20/44/12/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 81, `register holds exactly 81 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/20/44/12/1");
+  // tl1193b：pinnedIndex（pinned 常驻层索引化，实验室新「记忆与上下文」组
+  // 首卡）按未稳定档入表——未稳定 12→13、总数 81→82（Go 侧同步 72→73）。
+  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 44 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 4 稳定/20/44/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 82, `register holds exactly 82 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/20/44/13/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -199,8 +201,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 此处同步收回）。
   // tl 1165：smoothScrollFollow 入表（两侧共享）——Go registry 68→69。
   // tl-1218：multi_edit 三条增强入表（两侧共享，工具优化聚合页成员行）——
-  // Go registry 69→72。
-  ok(Object.keys(goTiers).length === 72, `Go registry parses to 72 entries (got ${Object.keys(goTiers).length})`);
+  // Go registry 69→72。tl1193b：pinnedIndex 入表（两侧共享，记忆与上下文组
+  // 新组首卡）——Go registry 72→73。
+  ok(Object.keys(goTiers).length === 73, `Go registry parses to 73 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -266,7 +269,8 @@ console.log("\ntask 562 lab three-tier badges");
   // tl 1165：smoothScrollFollow 叠加入表 → 78。
   // tl-1218：multi_edit 三条增强叠加入表 → 80（基线 77 口径 +3）；
   // 并集解回调（58c19737d jsonlZstd 已计入主线 78 口径）→ 78+3=81。
-  ok(covered.size === 81, "rail entries cover all 81 features");
+  // tl1193b：pinnedIndex 独立 rail 入口计入（记忆与上下文新组）→ 82。
+  ok(covered.size === 82, "rail entries cover all 82 features");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含

@@ -130,6 +130,8 @@ export const LAB_LIGHT_KEYS = {
   homePointer: (s: SettingsView) => Boolean(s.experimentalHomePointer),
   /** tl-1174 冷压缩灯：实验开关开即亮（空闲 sweep 读活开关，免重启）。 */
   experimentalJsonlZstd: (s: SettingsView) => Boolean(s.experimentalJsonlZstd),
+  /** tl1193b 索引化灯：实验开关开即亮（boot 快照消费，重启生效）。 */
+  experimentalPinnedIndex: (s: SettingsView) => Boolean(s.experimentalPinnedIndex),
 } as const;
 
 /** The validation whitelist: every id a layout document may reference. */

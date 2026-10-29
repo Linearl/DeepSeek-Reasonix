@@ -1719,6 +1719,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetStalledIntentNudge(enabled: boolean): Promise<void>;
   // Task 801: decision-pattern extraction + solidification (experimental).
   SetExperimentalDecisionPatterns(enabled: boolean): Promise<void>;
+  // tl1193b: plan-E pinned standing-tier index mode (experimental; boot
+  // resolves the saved switch, so a flip applies on restart).
+  SetExperimentalPinnedIndex(enabled: boolean): Promise<void>;
   // Task 801: solidified decision-patterns file location (empty = default
   // global-workspace/docs/decision-patterns.md; must be a .md path).
   SetDecisionPatternFilePath(path: string): Promise<void>;
@@ -6620,6 +6623,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalDream() {},
     async SetStalledIntentNudge() {},
     async SetExperimentalDecisionPatterns() {},
+    async SetExperimentalPinnedIndex() {},
     async SetDecisionPatternFilePath() {},
     async SetDecisionPatternThreshold() {},
     async SetDecisionPatternAutoApprove() {},
