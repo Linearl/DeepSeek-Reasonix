@@ -10,7 +10,9 @@
 //     分组」不在一级（收进「分组 ▸」二级，行为回归由 organization-races 既有
 //     测试钉）；「强制归档」一级项删除；复制 ▸ 三项取值 = 会话路径/日志路径/
 //     会话 ID；打开方式 ▸ 走 ExternalOpeners 发现 + OpenLocalPathInExternalOpener；
-//     trash 项确认后走 trashTopicForceableAny（ConfirmAction 二次确认链）；
+//     trash 项确认后走 trashTopicForceableAny（应用内确认对话框二次确认链，
+//     tl1249：确认载体从 app.ConfirmAction 迁 useConfirmDialog——后者在
+//     Windows 上是死按钮）；
 //   ④ 心跳不受影响（源码钉）：heartbeat.go 的 TrashTopicForce 自动调用点在场；
 //   ⑤ 后端编码面（源码钉）：TrashTopic 标记 forceable 家族、错误链 errors.Is
 //     保持（行为由 desktop/topic_archive_forceable_test.go 钉）；
@@ -239,7 +241,7 @@ ok(contextMenuSource.includes('role={item.checked === undefined ? "menuitem" : "
 ok(contextMenuSource.includes("context-menu__check"), "checked rows render the Check glyph");
 ok(readFileSync(resolve(frontendRoot, "src/styles.css"), "utf8").includes(".context-menu__check"), "the check glyph carries its own style");
 
-// trash 项确认链：ConfirmAction 二次确认 → trashTopicForceableAny → TrashTopicForce
+// trash 项确认链：应用内确认对话框二次确认（tl1249 迁 useConfirmDialog）→ trashTopicForceableAny → TrashTopicForce
 ok(treeSource.includes("const trashTopicForceableAny"), "trash menu wires the forceable entry");
 ok(treeSource.includes('message: t("projectTree.forceArchiveConfirm", { reason: topicArchiveForceableReason(error) })'), "confirm message carries the failure reason ({reason})");
 ok(treeSource.includes("if (!isTopicArchiveForceableError(error)) return false;"), "only backend-marked failures may raise the force confirm");
