@@ -260,7 +260,18 @@ func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard,
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
 			// tl1258: the wrapper renders the same tl1201 sentinel text but
 			// keeps the original lease error reachable (Unwrap), so the batch
-			// failure renderer can read holder pid/acquire time from it.
+			// failure renderer can read holder pid/acquire time from it. The
+			// holder pid also lands in the log (task 272 G4 precedent: a
+			// refusal reaches the UI and the log) so a user retry leaves a
+			// traceable holder record even after the toast/report is gone.
+			// Logged values carry pid/classification only — never the path.
+			var leaseErr *agent.SessionLeaseError
+			if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil && leaseErr.Info.PID > 0 {
+				slog.Info("desktop: session removal guard refused by lease holder",
+					"holder_pid", leaseErr.Info.PID, "self_held", leaseErr.Info.PID == os.Getpid())
+			} else {
+				slog.Info("desktop: session removal guard refused by lease holder", "holder_pid", 0)
+			}
 			return nil, &sessionLeaseHeldBusyError{cause: err}
 		}
 		return nil, err
