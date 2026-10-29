@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Archive, ArrowDown, CheckCheck, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
+import { Archive, CheckCheck, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Pin, MoreHorizontal, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -60,7 +60,7 @@ import {
 import { NewGroupPanel } from "./NewGroupPanel";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { loadReadActivityStore, markReadKeysRead, persistReadActivity, readActivityEquals, readActivityKeysInScope, readActivityKeysInSubtree, READ_ACTIVITY_CHANGED_EVENT } from "../lib/readActivity";
-import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction, projectTreeHeaderAddItems } from "./ProjectTreeAddControls";
+import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction } from "./ProjectTreeAddControls";
 import { activeRemoteProjectAncestorKeys, buildRemoteProjectMenuItems, useRemoteRuntimeTree, openRemoteSessionNode, remoteProjectKey, remoteServeBadgeState, renameRemoteProjectTitle, RemoteProjectEmptyState, useRemoteProjectGroups, useRemoteSessionActions } from "./ProjectTreeRemoteGroups";
 import type { ProjectTreeProps } from "./ProjectTreeProps";
 import { reportFrontendLog } from "../lib/frontendLog";
@@ -70,7 +70,9 @@ function projectNodeKey(node: ProjectNode, depth: number): string {
   return node.key || `${node.kind}-${node.root ?? ""}-${node.topicId ?? ""}-${node.sessionPath ?? ""}-${depth}`;
 }
 
-type WorkbenchHeaderMenu = "more" | "add" | null;
+// tl1222: the header's "more" menu is gone — the workbench header collapsed
+// onto the classic 3-control form and only the create dropdown remains.
+type WorkbenchHeaderMenu = "add" | null;
 
 // Task 827 ④: a dedicated drag MIME type for project-group reorder drags. It
 // is what keeps the group drag and the project-row drag from ever interfering
@@ -200,15 +202,6 @@ function colorMenuLabel(label: string, color?: string, active = false) {
   );
 }
 
-function menuLabelWithCheck(label: string, checked: boolean) {
-  return (
-    <span className="context-menu__label-with-check">
-      <span className="context-menu__label-text">{label}</span>
-      {checked && <Check className="context-menu__check" size={13} aria-hidden="true" />}
-    </span>
-  );
-}
-
 function revealLabelKey(platform: string): "projectTree.revealInFinder" | "projectTree.revealInExplorer" | "projectTree.revealInFileManager" {
   if (platform === "darwin") return "projectTree.revealInFinder";
   if (platform === "windows") return "projectTree.revealInExplorer";
@@ -316,8 +309,6 @@ export function ProjectTree({
   const [readBaselineAt] = useState(loadReadActivityBaselineAt);
   const filterRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
-  const colorFilterRef = useRef<HTMLDivElement>(null);
-  const colorFilterTriggerRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const topicIndexRef = useRef(0);
   const visibleTopicsCollectorRef = useRef<TopicShortcutEntry[]>([]);
@@ -325,7 +316,6 @@ export function ProjectTree({
   // Fork (#9221): project colour filter. Only colourable project nodes carry a
   // colour, so the filter prunes the project itself rather than its topics.
   const [colorFilter, setColorFilter] = useState<ProjectColorKey[]>([]);
-  const [colorFilterMenuOpen, setColorFilterMenuOpen] = useState(false);
   const [showAllTopics, setShowAllTopics] = useState<Set<string>>(new Set());
   const [hoverCard, setHoverCard] = useState<{ key: string; card: ProjectTreeTopicHoverCard; left: number; top: number; sessionPath: string } | null>(null);
   const [aiRenamingTopic, setAiRenamingTopic] = useState<string | null>(null);
@@ -1143,7 +1133,9 @@ export function ProjectTree({
   }, [groups, assign, t, projectGroupsFromCatalog, projectGroupDeleteDialog, refreshProjectGroups]);
 
   const collapseToggleLabel = t(canRestoreCollapsedView ? "projectTree.restoreCollapsedTooltip" : "projectTree.collapseAllTooltip");
-  const workbenchCollapseToggleLabel = t(canRestoreCollapsedView ? "projectTree.restoreCollapsedWorkbench" : "projectTree.collapseAllWorkbench");
+  // tl1222: the workbench header shares the classic collapse toggle, so the
+  // dedicated workbench labels (collapseAllWorkbench / restoreCollapsedWorkbench)
+  // are retired along with their locale keys.
 
   const toggleCollapsedView = useCallback(() => {
     if (searchActive || folderKeys.length === 0) return;
@@ -2635,89 +2627,11 @@ export function ProjectTree({
     );
   };
 
-  const workbenchHeaderMoreItems: ContextMenuItem[] = [
-    {
-      key: "archive-all",
-      icon: <Archive size={13} />,
-      label: t("projectTree.archiveAllConversations"),
-      disabled: true,
-      onSelect: () => {},
-    },
-    { type: "separator", key: "organize-separator" },
-    {
-      key: "organize-heading",
-      icon: <Folder size={13} />,
-      label: t("projectTree.organizeSidebar"),
-      disabled: true,
-      variant: "section",
-      onSelect: () => {},
-    },
-    {
-      key: "organize-project",
-      icon: <Folder size={13} />,
-      label: menuLabelWithCheck(t("projectTree.organizeByProject"), workbenchOrganizeMode === "project"),
-      onSelect: () => {
-        setWorkbenchOrganizeMode("project");
-        closeMenu();
-      },
-    },
-    {
-      key: "organize-recent",
-      icon: <Folder size={13} />,
-      label: menuLabelWithCheck(t("projectTree.organizeRecentProjects"), workbenchOrganizeMode === "recent"),
-      onSelect: () => {
-        setWorkbenchOrganizeMode("recent");
-        closeMenu();
-      },
-    },
-    {
-      key: "organize-time",
-      icon: <Clock size={13} />,
-      label: menuLabelWithCheck(t("projectTree.organizeByTime"), workbenchOrganizeMode === "time"),
-      onSelect: () => {
-        setWorkbenchOrganizeMode("time");
-        closeMenu();
-      },
-    },
-    {
-      key: "move-section-down",
-      icon: <ArrowDown size={13} />,
-      label: t("projectTree.moveSectionDown"),
-      disabled: true,
-      onSelect: () => {},
-    },
-    { type: "separator", key: "sort-separator" },
-    {
-      key: "sort-heading",
-      icon: <Clock size={13} />,
-      label: t("projectTree.sortCriteria"),
-      disabled: true,
-      variant: "section",
-      onSelect: () => {},
-    },
-    {
-      key: "sort-created",
-      icon: <Clock size={13} />,
-      label: menuLabelWithCheck(t("projectTree.sortByCreatedAt"), workbenchSortMode === "created"),
-      onSelect: () => {
-        selectWorkbenchSortMode("created");
-      },
-    },
-    {
-      key: "sort-updated",
-      icon: <Pencil size={13} />,
-      label: menuLabelWithCheck(t("projectTree.sortByUpdatedAt"), workbenchSortMode === "updated"),
-      onSelect: () => {
-        selectWorkbenchSortMode("updated");
-      },
-    },
-  ];
-
-  const addItemCallbacks = {
-    onBlank: () => { closeMenu(); openBlankProjectFlow(); },
-    onLocal: () => { closeMenu(); void handleAddProject(); },
-    onRemote: () => { closeMenu(); openRemoteConnectFlow(); },
-  };
+  // tl1222: the workbench header's "more" menu (archive-all placeholder,
+  // organize section, move-section-down placeholder, sort section) is retired —
+  // organize moves into the merged filter panel (workbench-only section, see
+  // renderClassicFilterControl) and sort already lived there in classic; the
+  // two disabled placeholders were dead entries carrying no capability.
   // tl1157: the classic header folds creation down to one dropdown with
   // exactly three top-level entries (user-approved shape A). "New project"
   // expands a second level holding the two creation flows (blank project /
@@ -2725,6 +2639,7 @@ export function ProjectTree({
   // shared 827 NewGroupPanel and "remote connection" the shared wizard. The
   // standalone header create-group button is gone — the blank-area right-click
   // (881 ①) and the empty-state link (this task) keep the group entry visible.
+  // Since tl1222 the workbench header consumes the same items.
   const classicCreateItems: ContextMenuItem[] = [
     {
       type: "submenu",
@@ -2739,13 +2654,7 @@ export function ProjectTree({
     { key: "new-project-group", icon: <FolderInput size={13} />, label: t("projectGroup.createNew"), onSelect: () => { closeMenu(); setNewGroupOpen(true); } },
     { key: "remote-connection", icon: <Server size={13} />, label: t("projectTree.remoteConnection"), onSelect: () => { closeMenu(); openRemoteConnectFlow(); } },
   ];
-  const workbenchHeaderAddItems = projectTreeHeaderAddItems({
-    blankLabel: t("projectTree.createBlankProject"), localLabel: t("projectTree.useExistingFolder"), remoteLabel: t("projectTree.remoteConnection"),
-    groupLabel: t("projectGroup.createNew"), onGroup: () => setNewGroupOpen(true),
-    disabled: addingProject, ...addItemCallbacks,
-  });
 
-  const timeFilterBadge = timeFilter !== "all" ? (timeFilter === "1d" ? "24h" : timeFilter) : "";
   const timeFilterDisplayLabel = timeFilter === "all" ? t("projectTree.timeFilterAll")
     : timeFilter === "10" ? t("projectTree.timeFilter10")
     : timeFilter === "20" ? t("projectTree.timeFilter20")
@@ -2753,227 +2662,7 @@ export function ProjectTree({
     : timeFilter === "3h" ? t("projectTree.timeFilter3h")
     : timeFilter === "5h" ? t("projectTree.timeFilter5h")
     : t("projectTree.timeFilter1d");
-  const renderTimeFilterControl = (mode: "classic" | "workbench") => {
-    const workbench = mode === "workbench";
-    const active = timeFilter !== "all";
-    // tl1157: classic now renders renderClassicFilterControl instead — the
-    // sort-criteria section moved into that panel. This function is therefore
-    // workbench-only at runtime (the mode param and classic branches stay so
-    // the workbench path is untouched); its label used to cover sorting for
-    // that reason.
-    const filterOnlyLabel = variant === "classic" ? t("projectTree.filterAndSort") : t("projectTree.timeFilter");
-    const controlLabel = workbench ? `${t("projectTree.timeFilter")}: ${timeFilterDisplayLabel}` : filterOnlyLabel;
-    const buttonClassName = workbench
-      ? `project-tree__header-icon-btn project-tree__header-icon-btn--filter${active ? " project-tree__header-icon-btn--active" : ""}`
-      : `project-tree__header-action-btn${active ? " project-tree__header-action-btn--active" : ""}`;
-    return (
-      <Tooltip
-        label={controlLabel}
-        className={`project-tree__action-slot project-tree__header-action-slot project-tree__header-action-slot--filter${workbench ? " project-tree__header-action-slot--workbench-filter" : ""}`}
-      >
-        <div ref={filterRef} className="project-tree__time-filter">
-          <button
-            ref={filterTriggerRef}
-            type="button"
-            className={buttonClassName}
-            aria-label={controlLabel}
-            aria-haspopup="menu"
-            aria-expanded={filterMenuOpen}
-            onClick={() => {
-              setWorkbenchHeaderMenu(null);
-              setMenuPoint(null);
-              setFilterMenuOpen(!filterMenuOpen);
-            }}
-          >
-            <Clock size={workbench ? 15 : 14} aria-hidden="true" />
-            {timeFilterBadge && (
-              <span className="project-tree__time-filter-label">
-                {timeFilterBadge}
-              </span>
-            )}
-          </button>
-          {filterMenuOpen && (
-            <div className="project-tree__time-filter-menu" role="menu" aria-label={filterOnlyLabel} onKeyDown={moveMenuFocus}>
-              <button
-                type="button"
-                className={`project-tree__time-filter-opt${timeFilter === "all" ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { onTimeFilterChange("all"); setFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t("projectTree.timeFilterAll")}
-              </button>
-              <div className="project-tree__time-filter-sep" role="separator" />
-              <button
-                type="button"
-                className={`project-tree__time-filter-opt${timeFilter === "10" ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { onTimeFilterChange("10"); setFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t("projectTree.timeFilter10")}
-              </button>
-              <button
-                type="button"
-                className={`project-tree__time-filter-opt${timeFilter === "20" ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { onTimeFilterChange("20"); setFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t("projectTree.timeFilter20")}
-              </button>
-              <div className="project-tree__time-filter-sep" role="separator" />
-              <button
-                type="button"
-                className={`project-tree__time-filter-opt${timeFilter === "1h" ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { onTimeFilterChange("1h"); setFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t("projectTree.timeFilter1h")}
-              </button>
-              <button
-                type="button"
-                className={`project-tree__time-filter-opt${timeFilter === "3h" ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { onTimeFilterChange("3h"); setFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t("projectTree.timeFilter3h")}
-              </button>
-              <button
-                type="button"
-                className={`project-tree__time-filter-opt${timeFilter === "5h" ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { onTimeFilterChange("5h"); setFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t("projectTree.timeFilter5h")}
-              </button>
-              <button
-                type="button"
-                className={`project-tree__time-filter-opt${timeFilter === "1d" ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { onTimeFilterChange("1d"); setFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t("projectTree.timeFilter1d")}
-              </button>
-              {variant === "classic" && (
-                <>
-                  <div className="project-tree__time-filter-sep" role="separator" />
-                  <div className="project-tree__time-filter-title">{t("projectTree.sortCriteria")}</div>
-                  <button
-                    type="button"
-                    className={`project-tree__time-filter-opt${workbenchSortMode === "updated" ? " project-tree__time-filter-opt--on" : ""}`}
-                    onClick={() => selectWorkbenchSortMode("updated")}
-                    role="menuitem"
-                  >
-                    {t("projectTree.sortByUpdatedAt")}
-                  </button>
-                  <button
-                    type="button"
-                    className={`project-tree__time-filter-opt${workbenchSortMode === "created" ? " project-tree__time-filter-opt--on" : ""}`}
-                    onClick={() => selectWorkbenchSortMode("created")}
-                    role="menuitem"
-                  >
-                    {t("projectTree.sortByCreatedAt")}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </Tooltip>
-    );
-  };
-
   const colorFilterActive = colorFilter.length > 0;
-  // The button shows swatches rather than the filter's keys: the keys are storage
-  // identifiers ("red", "amber"), and rendering one turned the icon into an English
-  // word the user never chose. Swatches also survive multi-select, where one label
-  // cannot name the set - the count is carried by the tooltip instead.
-  const colorFilterSwatches = colorFilter
-    .map((key) => PROJECT_COLOR_OPTIONS.find((option) => option.key === key))
-    .filter((option): option is (typeof PROJECT_COLOR_OPTIONS)[number] => Boolean(option));
-  const renderColorFilterControl = (mode: "classic" | "workbench") => {
-    const buttonClassName = colorFilterActive
-      ? "project-tree__action-btn project-tree__action-btn--active"
-      : "project-tree__action-btn";
-    return (
-      <Tooltip
-        label={
-          colorFilterActive
-            ? `${t("projectTree.filterByColor")} · ${colorFilterSwatches.length}`
-            : t("projectTree.filterByColor")
-        }
-        className="project-tree__action-slot project-tree__action-slot--color-filter"
-      >
-        <div ref={colorFilterRef} className="project-tree__color-filter">
-          <button
-            ref={colorFilterTriggerRef}
-            type="button"
-            className={buttonClassName}
-            aria-label={t("projectTree.filterByColor")}
-            aria-haspopup="menu"
-            aria-expanded={colorFilterMenuOpen}
-            onClick={() => {
-              setWorkbenchHeaderMenu(null);
-              setMenuPoint(null);
-              setFilterMenuOpen(false);
-              setColorFilterMenuOpen(!colorFilterMenuOpen);
-            }}
-          >
-            <SwatchBook size={mode === "workbench" ? 15 : 14} aria-hidden="true" />
-            {colorFilterActive && (
-              <span className="project-tree__color-filter-dots" aria-hidden="true">
-                {colorFilterSwatches.slice(0, 3).map((option) => (
-                  <span
-                    key={option.key}
-                    className="project-tree__color-swatch project-tree__color-filter-dot"
-                    style={{ background: option.value }}
-                  />
-                ))}
-              </span>
-            )}
-          </button>
-          {colorFilterMenuOpen && (
-            <div className="project-tree__time-filter-menu" role="menu" aria-label={t("projectTree.filterByColor")} onKeyDown={moveMenuFocus}>
-              <button
-                type="button"
-                className={`project-tree__time-filter-opt${!colorFilterActive ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { setColorFilter([]); setColorFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t("projectTree.filterByColorAll")}
-              </button>
-              {PROJECT_COLOR_OPTIONS
-                .filter((option): option is ProjectColorOption & { key: Exclude<ProjectColorKey, ""> } => Boolean(option.key))
-                .map((option) => {
-                  const on = colorFilter.includes(option.key);
-                  return (
-                    <button
-                      type="button"
-                      key={option.key}
-                      className={`project-tree__color-opt${on ? " project-tree__color-opt--on" : ""}`}
-                      onClick={() => {
-                        // Toggle instead of replace, and keep the menu open: picking a
-                        // second colour used to drop the first and close the menu, which
-                        // made multi-select impossible in practice.
-                        setColorFilter((current) =>
-                          current.includes(option.key)
-                            ? current.filter((key) => key !== option.key)
-                            : [...current, option.key],
-                        );
-                      }}
-                      role="menuitem"
-                    >
-                      <span className="project-tree__color-swatch" style={{ background: option.value }} aria-hidden="true" />
-                      {t(`projectTree.color.${option.key}`)}
-                      {on && <Check className="project-tree__color-check" size={13} aria-hidden="true" />}
-                    </button>
-                  );
-                })}
-            </div>
-          )}
-        </div>
-      </Tooltip>
-    );
-  };
-
   // tl1157: the classic header's two filter buttons (time + colour) fold into
   // one dropdown panel — user-approved shape A (three header buttons total).
   // Every change applies immediately (no apply button): time options close the
@@ -2989,7 +2678,12 @@ export function ProjectTree({
     colorFilter.length > 0 ? t("projectTree.filterColorCount", { count: colorFilter.length }) : "",
   ].filter(Boolean).join(" · ");
   const classicFilterLabel = classicFilterActive ? classicFilterSummary : t("projectTree.filterMenu");
-  const renderClassicFilterControl = () => (
+  // tl1222: the merged filter panel is now the single header filter control for
+  // BOTH layouts — the workbench header dropped its separate time/colour icon
+  // buttons and renders this same control. The `mode` param only gates the
+  // workbench-only organize section (classic has no organize modes and its
+  // rendered panel is byte-identical to the tl1157 shape).
+  const renderClassicFilterControl = (mode: "classic" | "workbench") => (
     <Tooltip
       label={classicFilterLabel}
       className="project-tree__action-slot project-tree__header-action-slot project-tree__header-action-slot--filter"
@@ -3087,6 +2781,40 @@ export function ProjectTree({
             >
               {t("projectTree.sortByCreatedAt")}
             </button>
+            {mode === "workbench" && (
+              <>
+                {/* tl1222: the workbench organize section moved here from the
+                    retired header "more" menu — same panel, same immediate-
+                    apply contract. Classic (mode !== "workbench") renders
+                    without it, exactly as in tl1157. */}
+                <div className="project-tree__time-filter-sep" role="separator" />
+                <div className="project-tree__time-filter-title">{t("projectTree.organizeSidebar")}</div>
+                <button
+                  type="button"
+                  className={`project-tree__time-filter-opt${workbenchOrganizeMode === "project" ? " project-tree__time-filter-opt--on" : ""}`}
+                  onClick={() => setWorkbenchOrganizeMode("project")}
+                  role="menuitem"
+                >
+                  {t("projectTree.organizeByProject")}
+                </button>
+                <button
+                  type="button"
+                  className={`project-tree__time-filter-opt${workbenchOrganizeMode === "recent" ? " project-tree__time-filter-opt--on" : ""}`}
+                  onClick={() => setWorkbenchOrganizeMode("recent")}
+                  role="menuitem"
+                >
+                  {t("projectTree.organizeRecentProjects")}
+                </button>
+                <button
+                  type="button"
+                  className={`project-tree__time-filter-opt${workbenchOrganizeMode === "time" ? " project-tree__time-filter-opt--on" : ""}`}
+                  onClick={() => setWorkbenchOrganizeMode("time")}
+                  role="menuitem"
+                >
+                  {t("projectTree.organizeByTime")}
+                </button>
+              </>
+            )}
             <div className="project-tree__time-filter-sep" role="separator" />
             <button
               type="button"
@@ -3108,6 +2836,15 @@ export function ProjectTree({
   );
 
 
+  // tl1222: the workbench header collapses onto the classic 3-control form
+  // (user's install-acceptance feedback: "workbench's left project bar should
+  // align with classic — its top is still a row of icons"). Both layouts now
+  // render the SAME header: merged filter panel / collapse toggle / create
+  // dropdown. `mode` only gates the organize section inside the filter panel.
+  // Pre-tl1222 workbench header (6 icon buttons: time filter, colour filter,
+  // collapse, create-group, more-menu, add-menu) is fully retired — every
+  // live entry survives: filters+sort in the panel, organize in the panel
+  // (workbench-only), creation via the dropdown, collapse toggle unchanged.
   const renderProjectHeader = (mode: "classic" | "workbench") => (
     <div className="project-tree__header">
       <span className="project-tree__header-title">
@@ -3115,111 +2852,24 @@ export function ProjectTree({
         {t("projectTree.workspaceTitle")}
       </span>
       <span className="project-tree__header-actions">
-        {mode === "workbench" ? (
-          <>
-            {renderTimeFilterControl("workbench")}
-            {renderColorFilterControl("workbench")}
-            <Tooltip label={workbenchCollapseToggleLabel} className="project-tree__header-action-slot">
-              <button
-                type="button"
-                className="project-tree__header-icon-btn"
-                aria-label={workbenchCollapseToggleLabel}
-                disabled={!canToggleCollapsedView}
-                onClick={toggleCollapsedView}
-              >
-                {canRestoreCollapsedView ? <Maximize2 size={15} aria-hidden="true" /> : <Minimize2 size={15} aria-hidden="true" />}
-              </button>
-            </Tooltip>
-            {/* Task 881 ②: a dedicated create-group button in the workbench
-                header — before this the only header door was one item inside
-                the add menu, which the user never found. Classic already had a
-                direct button (f90030), so this is parity, not a new pattern;
-                FolderInput matches the classic button and the group icon. */}
-            <Tooltip label={t("projectGroup.createNew")} className="project-tree__header-action-slot">
-              <button
-                type="button"
-                className="project-tree__header-icon-btn"
-                aria-label={t("projectGroup.createNew")}
-                onClick={() => setNewGroupOpen(true)}
-              >
-                <FolderInput size={15} aria-hidden="true" />
-              </button>
-            </Tooltip>
-            <span className="project-tree__header-menu-wrap">
-              <Tooltip label={t("projectTree.moreActions")} className="project-tree__header-action-slot">
-                <button
-                  type="button"
-                  className={`project-tree__header-icon-btn${workbenchHeaderMenu === "more" ? " project-tree__header-icon-btn--active" : ""}`}
-                  aria-label={t("projectTree.moreActions")}
-                  aria-haspopup="menu"
-                  aria-expanded={workbenchHeaderMenu === "more"}
-                  onClick={(event) => {
-                    openWorkbenchHeaderMenu(event, "more");
-                  }}
-                >
-                  <MoreHorizontal size={16} aria-hidden="true" />
-                </button>
-              </Tooltip>
-              <ContextMenu
-                open={workbenchHeaderMenu === "more"}
-                point={menuPoint}
-                items={workbenchHeaderMoreItems}
-                minWidth={222}
-                ariaLabel={t("projectTree.moreActions")}
-                onClose={closeMenu}
-              />
-            </span>
-            <span className="project-tree__header-menu-wrap">
-              <Tooltip label={t("projectTree.addProjectTooltip")} className="project-tree__header-action-slot">
-                <button
-                  type="button"
-                  className={`project-tree__header-icon-btn${workbenchHeaderMenu === "add" ? " project-tree__header-icon-btn--active" : ""}`}
-                  aria-label={t("projectTree.addProjectTooltip")}
-                  aria-haspopup="menu"
-                  aria-expanded={workbenchHeaderMenu === "add"}
-                  disabled={addingProject}
-                  onClick={(event) => {
-                    openWorkbenchHeaderMenu(event, "add");
-                  }}
-                >
-                  <FolderPlus size={16} aria-hidden="true" />
-                </button>
-              </Tooltip>
-              <ContextMenu
-                open={workbenchHeaderMenu === "add"}
-                point={menuPoint}
-                items={workbenchHeaderAddItems}
-                minWidth={206}
-                ariaLabel={t("projectTree.addProjectTooltip")}
-                onClose={closeMenu}
-              />
-            </span>
-          </>
-        ) : (
-          <>
-            {renderClassicFilterControl()}
-            <Tooltip label={collapseToggleLabel} className="project-tree__action-slot project-tree__header-action-slot project-tree__action-slot--collapse">
-              <button
-                type="button"
-                className={`project-tree__collapse-all${canRestoreCollapsedView ? " project-tree__collapse-all--restore" : ""}`}
-                aria-label={collapseToggleLabel}
-                aria-pressed={canRestoreCollapsedView}
-                disabled={!canToggleCollapsedView}
-                onClick={toggleCollapsedView}
-              >
-                {canRestoreCollapsedView ? <ListRestart size={14} /> : <ListCollapse size={14} />}
-              </button>
-            </Tooltip>
-            {/* tl1157: the standalone create-group button is folded into this
-                create dropdown (top-level entry "new project group"); the
-                tooltip moves from "add project" to the broader "new". */}
-            <ProjectTreeHeaderAddControl
-              open={workbenchHeaderMenu === "add"} point={menuPoint} items={classicCreateItems}
-              label={t("projectTree.createMenu")} disabled={addingProject}
-              onOpen={(event) => openWorkbenchHeaderMenu(event, "add")} onClose={closeMenu}
-            />
-          </>
-        )}
+        {renderClassicFilterControl(mode)}
+        <Tooltip label={collapseToggleLabel} className="project-tree__action-slot project-tree__header-action-slot project-tree__action-slot--collapse">
+          <button
+            type="button"
+            className={`project-tree__collapse-all${canRestoreCollapsedView ? " project-tree__collapse-all--restore" : ""}`}
+            aria-label={collapseToggleLabel}
+            aria-pressed={canRestoreCollapsedView}
+            disabled={!canToggleCollapsedView}
+            onClick={toggleCollapsedView}
+          >
+            {canRestoreCollapsedView ? <ListRestart size={14} /> : <ListCollapse size={14} />}
+          </button>
+        </Tooltip>
+        <ProjectTreeHeaderAddControl
+          open={workbenchHeaderMenu === "add"} point={menuPoint} items={classicCreateItems}
+          label={t("projectTree.createMenu")} disabled={addingProject}
+          onOpen={(event) => openWorkbenchHeaderMenu(event, "add")} onClose={closeMenu}
+        />
       </span>
     </div>
   );
