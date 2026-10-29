@@ -1898,7 +1898,7 @@ export const en = {
   "projectTree.collapseAllTooltip": "Collapse all projects",
   "projectTree.restoreCollapsedTooltip": "Restore previous view",
   "projectTree.timeFilter": "Filter by time",
-  "projectTree.filterMenu": "Filter",
+  "projectTree.filterAndSort": "Filter & sort",
   "projectTree.filterColorCount": "{count} color(s)",
   "projectTree.showMoreTopics": "Show more (+{n})",
   "projectTree.showFewerTopics": "Show fewer",

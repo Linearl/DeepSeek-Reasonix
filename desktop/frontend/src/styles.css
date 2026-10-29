@@ -39335,6 +39335,38 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
 }
 
+/* tl1170: collapsible time/colour section headers inside the filter panel.
+   Default collapsed (chevron points right); the section title row is itself
+   the toggle. Theme tokens only, mirrors the quiet title row styling. */
+.project-tree__filter-section-toggle {
+  --wails-draggable: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 3px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 10px;
+  white-space: nowrap;
+  user-select: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.project-tree__filter-section-toggle:hover {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+
+.project-tree__filter-section-toggle svg {
+  flex: none;
+}
+
 /* Each candidate chain's own preview text - the last thing that branch said. Numbers
    tell you which chain is longest; the preview tells you which one you want. */
 .rc-chain__preview {

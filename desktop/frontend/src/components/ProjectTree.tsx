@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Archive, CheckCheck, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Pin, MoreHorizontal, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
+import { Archive, ArrowDown, Check, CheckCheck, ChevronDown, ChevronRight, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -24,6 +24,7 @@ import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, p
 import { batchEntryForNode, batchSelectionAfterArchive, collectBatchTopics, singleBatchTarget, summarizeBatchMove, summarizeBatchTopicArchive, type BatchReportState, type BatchTopicEntry } from "../lib/projectTreeBatch";
 import { ProjectTreeBatchBar } from "./ProjectTreeBatchBar";
 import { topicShortcutLabel, type TopicShortcutEntry } from "../lib/topicShortcuts";
+import { readFilterPanelExpanded, writeFilterPanelExpanded, type FilterPanelSections } from "../lib/projectTreeFilterPanel";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { Tooltip } from "./Tooltip";
 import { WorktreeBadge } from "./WorktreeBadge";
@@ -327,6 +328,14 @@ export function ProjectTree({
   // Fork (#9221): project colour filter. Only colourable project nodes carry a
   // colour, so the filter prunes the project itself rather than its topics.
   const [colorFilter, setColorFilter] = useState<ProjectColorKey[]>([]);
+  const [colorFilterMenuOpen, setColorFilterMenuOpen] = useState(false);
+  // tl1170: 时间/颜色两区默认折叠；展开态写穿 localStorage，重挂载（含刷新）读回。
+  const [filterPanelExpanded, setFilterPanelExpanded] = useState<FilterPanelSections>(readFilterPanelExpanded);
+  const toggleFilterPanelSection = (section: keyof FilterPanelSections) => {
+    const next = { ...filterPanelExpanded, [section]: !filterPanelExpanded[section] };
+    setFilterPanelExpanded(next);
+    writeFilterPanelExpanded(next);
+  };
   const [showAllTopics, setShowAllTopics] = useState<Set<string>>(new Set());
   const [hoverCard, setHoverCard] = useState<{ key: string; card: ProjectTreeTopicHoverCard; left: number; top: number; sessionPath: string } | null>(null);
   const [aiRenamingTopic, setAiRenamingTopic] = useState<string | null>(null);
@@ -2797,17 +2806,23 @@ export function ProjectTree({
   // one dropdown panel — user-approved shape A (three header buttons total).
   // Every change applies immediately (no apply button): time options close the
   // panel (one-shot choice), colour toggles stay open (multi-select), and the
-  // footer "clear filters" resets both at once. The trigger carries a dot
+  // top "clear filters" resets both at once. The trigger carries a dot
   // badge while any filter is active; the tooltip then spells out the summary.
   // The sort section moves here from the old time menu: arrangeClassicProject-
   // Tree still sorts by workbenchSortMode, so dropping it would have removed
   // the classic layout's only sorting door.
+  // tl1170: section order is clear ▸ sort ▸ time ▸ colour (user-approved);
+  // the previously trailing clear action leads the panel instead. The time and
+  // colour sections collapse by default and their expansion is remembered via
+  // localStorage (projectTree:filterPanelExpanded).
   const classicFilterActive = timeFilter !== "all" || colorFilter.length > 0;
   const classicFilterSummary = [
     timeFilter !== "all" ? timeFilterDisplayLabel : "",
     colorFilter.length > 0 ? t("projectTree.filterColorCount", { count: colorFilter.length }) : "",
   ].filter(Boolean).join(" · ");
-  const classicFilterLabel = classicFilterActive ? classicFilterSummary : t("projectTree.filterMenu");
+  // tl1170: the panel is now "filter & sort" (clear / sort / time / colour), so
+  // the idle hover title names the whole panel instead of just 「筛选」.
+  const classicFilterLabel = classicFilterActive ? classicFilterSummary : t("projectTree.filterAndSort");
   // tl1222: the merged filter panel is now the single header filter control for
   // BOTH layouts — the workbench header dropped its separate time/colour icon
   // buttons and renders this same control. The `mode` param only gates the
@@ -2836,63 +2851,20 @@ export function ProjectTree({
           {classicFilterActive && <span className="project-tree__filter-badge" aria-hidden="true" />}
         </button>
         {filterMenuOpen && (
-          <div className="project-tree__time-filter-menu project-tree__filter-panel" role="menu" aria-label={t("projectTree.filterMenu")} onKeyDown={moveMenuFocus}>
-            <div className="project-tree__time-filter-title">{t("projectTree.timeFilter")}</div>
+          <div className="project-tree__time-filter-menu project-tree__filter-panel" role="menu" aria-label={t("projectTree.filterAndSort")} onKeyDown={moveMenuFocus}>
             <button
               type="button"
-              className={`project-tree__time-filter-opt${timeFilter === "all" ? " project-tree__time-filter-opt--on" : ""}`}
-              onClick={() => { onTimeFilterChange("all"); setFilterMenuOpen(false); }}
+              className="project-tree__time-filter-opt project-tree__filter-clear"
+              disabled={!classicFilterActive}
+              onClick={() => {
+                onTimeFilterChange("all");
+                setColorFilter([]);
+                setFilterMenuOpen(false);
+              }}
               role="menuitem"
             >
-              {t("projectTree.timeFilterAll")}
+              {t("projectTree.clearTimeFilter")}
             </button>
-            {(["10", "20", "1h", "3h", "5h", "1d"] as const).map((value) => (
-              <button
-                type="button"
-                key={value}
-                className={`project-tree__time-filter-opt${timeFilter === value ? " project-tree__time-filter-opt--on" : ""}`}
-                onClick={() => { onTimeFilterChange(value); setFilterMenuOpen(false); }}
-                role="menuitem"
-              >
-                {t(`projectTree.timeFilter${value}`)}
-              </button>
-            ))}
-            <div className="project-tree__time-filter-sep" role="separator" />
-            <div className="project-tree__time-filter-title">{t("projectTree.filterByColor")}</div>
-            <button
-              type="button"
-              className={`project-tree__time-filter-opt${!colorFilterActive ? " project-tree__time-filter-opt--on" : ""}`}
-              onClick={() => { setColorFilter([]); }}
-              role="menuitem"
-            >
-              {t("projectTree.filterByColorAll")}
-            </button>
-            {PROJECT_COLOR_OPTIONS
-              .filter((option): option is ProjectColorOption & { key: Exclude<ProjectColorKey, ""> } => Boolean(option.key))
-              .map((option) => {
-                const on = colorFilter.includes(option.key);
-                return (
-                  <button
-                    type="button"
-                    key={option.key}
-                    className={`project-tree__color-opt${on ? " project-tree__color-opt--on" : ""}`}
-                    onClick={() => {
-                      // Toggle, and keep the panel open — same contract as the
-                      // standalone colour menu this panel absorbs.
-                      setColorFilter((current) =>
-                        current.includes(option.key)
-                          ? current.filter((key) => key !== option.key)
-                          : [...current, option.key],
-                      );
-                    }}
-                    role="menuitem"
-                  >
-                    <span className="project-tree__color-swatch" style={{ background: option.value }} aria-hidden="true" />
-                    {t(`projectTree.color.${option.key}`)}
-                    {on && <Check className="project-tree__color-check" size={13} aria-hidden="true" />}
-                  </button>
-                );
-              })}
             <div className="project-tree__time-filter-sep" role="separator" />
             <div className="project-tree__time-filter-title">{t("projectTree.sortCriteria")}</div>
             <button
@@ -2946,19 +2918,89 @@ export function ProjectTree({
               </>
             )}
             <div className="project-tree__time-filter-sep" role="separator" />
+            {/* tl1170: 时间/颜色两区默认折叠，标题即展开开关（chevron 随态）。 */}
             <button
               type="button"
-              className="project-tree__time-filter-opt project-tree__filter-clear"
-              disabled={!classicFilterActive}
-              onClick={() => {
-                onTimeFilterChange("all");
-                setColorFilter([]);
-                setFilterMenuOpen(false);
-              }}
+              className="project-tree__filter-section-toggle"
+              aria-expanded={filterPanelExpanded.time}
+              onClick={() => toggleFilterPanelSection("time")}
               role="menuitem"
             >
-              {t("projectTree.clearTimeFilter")}
+              {filterPanelExpanded.time ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
+              {t("projectTree.timeFilter")}
             </button>
+            {filterPanelExpanded.time && (
+              <>
+                <button
+                  type="button"
+                  className={`project-tree__time-filter-opt${timeFilter === "all" ? " project-tree__time-filter-opt--on" : ""}`}
+                  onClick={() => { onTimeFilterChange("all"); setFilterMenuOpen(false); }}
+                  role="menuitem"
+                >
+                  {t("projectTree.timeFilterAll")}
+                </button>
+                {(["10", "20", "1h", "3h", "5h", "1d"] as const).map((value) => (
+                  <button
+                    type="button"
+                    key={value}
+                    className={`project-tree__time-filter-opt${timeFilter === value ? " project-tree__time-filter-opt--on" : ""}`}
+                    onClick={() => { onTimeFilterChange(value); setFilterMenuOpen(false); }}
+                    role="menuitem"
+                  >
+                    {t(`projectTree.timeFilter${value}`)}
+                  </button>
+                ))}
+              </>
+            )}
+            <div className="project-tree__time-filter-sep" role="separator" />
+            <button
+              type="button"
+              className="project-tree__filter-section-toggle"
+              aria-expanded={filterPanelExpanded.color}
+              onClick={() => toggleFilterPanelSection("color")}
+              role="menuitem"
+            >
+              {filterPanelExpanded.color ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
+              {t("projectTree.filterByColor")}
+            </button>
+            {filterPanelExpanded.color && (
+              <>
+                <button
+                  type="button"
+                  className={`project-tree__time-filter-opt${!colorFilterActive ? " project-tree__time-filter-opt--on" : ""}`}
+                  onClick={() => { setColorFilter([]); }}
+                  role="menuitem"
+                >
+                  {t("projectTree.filterByColorAll")}
+                </button>
+                {PROJECT_COLOR_OPTIONS
+                  .filter((option): option is ProjectColorOption & { key: Exclude<ProjectColorKey, ""> } => Boolean(option.key))
+                  .map((option) => {
+                    const on = colorFilter.includes(option.key);
+                    return (
+                      <button
+                        type="button"
+                        key={option.key}
+                        className={`project-tree__color-opt${on ? " project-tree__color-opt--on" : ""}`}
+                        onClick={() => {
+                          // Toggle, and keep the panel open — same contract as the
+                          // standalone colour menu this panel absorbs.
+                          setColorFilter((current) =>
+                            current.includes(option.key)
+                              ? current.filter((key) => key !== option.key)
+                              : [...current, option.key],
+                          );
+                        }}
+                        role="menuitem"
+                      >
+                        <span className="project-tree__color-swatch" style={{ background: option.value }} aria-hidden="true" />
+                        {t(`projectTree.color.${option.key}`)}
+                        {on && <Check className="project-tree__color-check" size={13} aria-hidden="true" />}
+                      </button>
+                    );
+                  })}
+              </>
+            )}
           </div>
         )}
       </div>
