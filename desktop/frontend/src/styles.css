@@ -28177,25 +28177,20 @@ button.statusbar__mcp:focus-visible {
   opacity: 0.55;
 }
 
-.project-tree__folder--drop-before::before,
-.project-tree__folder--drop-after::after {
-  content: "";
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
-  pointer-events: none;
+/* tl 1225: the project-row placement hint reuses the topic row's mechanism
+   (.project-tree__topic--drop-*): an inset 2px accent bar on the edge nearest
+   the insertion point. The old outset hairlines (::before/::after at
+   top/bottom: -2px) painted OUTSIDE the row box, where the per-row
+   `contain: layout` stacking context lets the neighbouring wrapper paint over
+   them and the scroll container clips them on the first/last row — the target
+   feedback the user compared against topic drags never read as a hint.
+   Inset bars live inside the row: they can neither be covered nor clipped. */
+.project-tree__folder--drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
-.project-tree__folder--drop-before::before {
-  top: -2px;
-}
-
-.project-tree__folder--drop-after::after {
-  bottom: -2px;
+.project-tree__folder--drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .project-tree__folder--editing {
@@ -38245,36 +38240,29 @@ button.statusbar__mcp:focus-visible {
   transform: rotate(90deg);
 }
 /* Task 827 ④: drag visuals for the group reorder — a dimmed source row and a
-   drop indicator line before/after the target, mirroring the project-row
-   drop affordance. */
+   drop indicator on the target edge (tl 1225: the topic/project-row inset
+   bar, not the retired outset hairline). */
 .project-tree__pgroup-main--dragging {
   opacity: 0.55;
   cursor: grabbing;
 }
-.project-tree__pgroup-main--drop-before::before,
-.project-tree__pgroup-main--drop-after::after {
-  content: "";
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
-  pointer-events: none;
+/* tl 1225: same inset-bar mechanism as the project rows (and the topic rows
+   both mirror) — the group reorder hint used to be an outset hairline outside
+   the row box with the same covering/clipping hazards. */
+.project-tree__pgroup-main--drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
 }
-.project-tree__pgroup-main--drop-before::before {
-  top: -2px;
-}
-.project-tree__pgroup-main--drop-after::after {
-  bottom: -2px;
+.project-tree__pgroup-main--drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 /* tl 1199 ②: a project drag hovering a group header paints this row-level
    landing highlight (unlike the reorder bands above, the whole row lights up:
-   the drop means "into this group", mirroring the session-side nest-target). */
+   the drop means "into this group", mirroring the session-side nest-target).
+   tl 1225: the ring follows the session-side nest-target weight (2px) so the
+   "into" feedback reads the same on both tree sides. */
 .project-tree__pgroup-main--drop-into {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .project-tree__pgroup-main--dragging {
   cursor: grabbing;
