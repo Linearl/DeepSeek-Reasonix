@@ -38413,7 +38413,16 @@ button.statusbar__mcp:focus-visible {
 }
 
 /* Question search panel (#9218): restored after auto-merge dropped the block.
-   Token migration: --fg-muted → --fg-faint (retired token). */
+   Token migration: --fg-muted → --fg-faint (retired token).
+   tl1244: the panel anchors 8px below .transcript-shell's top (the shell sits
+   under the topbar and above the composer), so a viewport-relative cap
+   (min(70vh, 520px)) ignored the topbar offset and the real composer height —
+   on short windows / tall composers the panel's bottom slid under the input
+   bar, hiding the lowest history cards. Percentage max-height on an absolutely
+   positioned element resolves against the containing block (.transcript-shell,
+   position:relative; height:100% chain bounded by the viewport), so
+   calc(100% - 16px) keeps the whole panel inside the shell: 8px gap above and
+   8px above the composer. The 520px cap is unchanged for tall windows. */
 .question-search-panel {
   position: absolute;
   top: 8px;
@@ -38421,7 +38430,7 @@ button.statusbar__mcp:focus-visible {
   transform: translateX(-50%);
   z-index: var(--z-popover);
   width: min(460px, calc(100% - 48px));
-  max-height: min(70vh, 520px);
+  max-height: min(520px, calc(100% - 16px));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -38431,6 +38440,9 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
 }
 .question-search__header {
+  /* tl1244: keep the search box fixed — the results area below is the only
+     flexible part, so a tight max-height must never compress the input. */
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -38508,6 +38520,8 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-md);
 }
 .question-search__foot {
+  /* tl1244: fixed footer row — only .question-search__results flexes. */
+  flex: none;
   padding: 6px 12px;
   border-top: 1px solid var(--border);
   color: var(--fg-faint);
