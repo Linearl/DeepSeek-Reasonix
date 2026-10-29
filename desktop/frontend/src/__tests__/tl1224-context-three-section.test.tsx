@@ -26,6 +26,12 @@ import { compositionThreeSections } from "../lib/contextGaugePopup";
 let passed = 0;
 let failed = 0;
 
+// 上一块的 React root：installDom 时先卸载（tl1239 同款隔离）——旧 root 的
+// portal/监听器若跨 installDom 存活，pending 渲染会被 React 全局调度器在新
+// document 上重新落位（portal 重挂新 body、outside-click 监听重挂新
+// document），旧浮层闯入新块的 querySelector 视野并被误判关闭。
+let activeRoot: ReturnType<typeof createRoot> | null = null;
+
 function ok(value: boolean, label: string) {
   if (value) {
     process.stdout.write(`  PASS  ${label}\n`);
@@ -56,6 +62,12 @@ class TestResizeObserver {
 }
 
 function installDom() {
+  try {
+    activeRoot?.unmount();
+  } catch {
+    // root 已随旧 DOM 失效——忽略，继续重建环境。
+  }
+  activeRoot = null;
   // tl1239: ContextPanel 在 queryCoalesce 白名单里，模块级 inflight 跨块存活
   // ——前一块的 200ms 共享答案会漏进下一块（load 相关抖动的根因：主线程被
   // 渲染阻塞时 forget 定时器迟到，下一块的点击命中上一块的缓存答案，新 mock
@@ -142,6 +154,7 @@ async function renderRing(props: Partial<Parameters<typeof ContextWindowRing>[0]
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("missing root");
   const root = createRoot(rootEl);
+  activeRoot = root;
   const currentProps: Parameters<typeof ContextWindowRing>[0] = {
     enabled: true,
     tabId: "tab-tl1224",
