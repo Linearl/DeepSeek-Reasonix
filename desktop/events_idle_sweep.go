@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -10,6 +11,8 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/secrets"
+	"reasonix/internal/store"
+	"reasonix/internal/turnevent"
 )
 
 // 任务 921：存量超限 events 会话的空闲期兜底清（884 遗留①）——auto 模式下空闲期
@@ -52,6 +55,13 @@ type eventsIdleSweepSlim struct {
 	// （agent.TrimSessionOversizeToolResults）。注入以便测试驱动。
 	Compress func(path string) (int64, int64, error)
 	Trim     func(path string) (int64, int64, int, error)
+	// CompactLedger 是 tl 1172 剩余部分的 checkpoint 截断（turnevent.
+	// CompactSessionLedgerWith，<id>.turns.jsonl 的 idle checkpoint 截断）。
+	// 与 events.jsonl 的 L1/L2/L3 正交：fold 判的是主事件日志的折叠收益，
+	// turn ledger 的断点在投影 ack 供给（ack 只在 desktop 重建投影时发出，
+	// 冷存量/弃用会话永远等不到，cutoff 停死），两者互不替代。注入以便测试
+	// 驱动；nil = 关（slim.Enabled=false 时不注入，pass 行为与引入前一致）。
+	CompactLedger func(path string) (int64, int64, error)
 }
 
 // eventsIdleSweepConfig is the effective knob set for one tick: the sweep
@@ -178,6 +188,7 @@ var eventsIdleSweepSkipReasons = []string{
 	"auto rotation off", "under limit", "fold would not shrink",
 	"session busy", "parked: awaiting regrowth or new activity",
 	"slim: foreign lease busy", "slim: compress failed (will retry)",
+	"slim: ledger parked (awaiting regrowth)", "slim: ledger compact failed (will retry)",
 }
 
 // runEventsIdleSweepPass runs one sweep pass over pre-collected candidates:
@@ -223,7 +234,7 @@ var eventsIdleSweepSkipReasons = []string{
 //
 // busyStreak 由调用方（loop）持有、本 pass 就地更新：连续 busy 计数，任何
 // 成功动作或转闲即清零。
-func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSweepConfig, park map[string]eventsIdleSweepPark, retire func(path string) ([]string, error), compact func(path string) (int64, int64, error), slim eventsIdleSweepSlim, busyStreak map[string]int) []eventsIdleSweepResult {
+func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSweepConfig, park map[string]eventsIdleSweepPark, retire func(path string) ([]string, error), compact func(path string) (int64, int64, error), slim eventsIdleSweepSlim, busyStreak map[string]int, ledgerPark map[string]int64) []eventsIdleSweepResult {
 	sorted := append([]eventsIdleSweepCandidate(nil), cands...)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		return sorted[i].EventsBytes > sorted[j].EventsBytes
@@ -353,6 +364,44 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 		}
 		results = append(results, res)
 	}
+	// tl 1172 剩余部分：turn ledger 的 checkpoint 截断（fold-vs-截断的选择
+	// 语义——两动作正交，超限会话两样都做）。独立第二遍而不是塞进主循环的
+	// continue 网：ledger 截断不占 rewrites 预算（几 MB 级读+一次性原子写，
+	// 与百 MB 级 events.jsonl 重写不同量级），且对 busy 一律不碰——turnevent
+	// 无进程间文件锁，本进程 tab 的 controller 实例与外部 lease 的运行时都
+	// 可能持有写入侧，原子替换会让在写实例与盘上脱节。park 门与 L1/L2 同一
+	// 语义（落地尺寸 +10% 增长才允许再截；新活动自然推高 turns.jsonl 尺寸，
+	// 无需单独 activity 维度）。
+	if slim.CompactLedger != nil && ledgerPark != nil {
+		for _, c := range sorted {
+			over := agent.EventsLogAboveThreshold(c.EventsBytes, c.LiveBytes, knobs.factor, knobs.capMB)
+			if !over || c.Busy {
+				continue
+			}
+			size := statFileSize(store.SessionTurnEventLog(c.Path))
+			if size <= 0 {
+				continue
+			}
+			if pk, ok := ledgerPark[c.Path]; ok && float64(size) < float64(pk)*eventsIdleSweepParkRegrow {
+				skips["slim: ledger parked (awaiting regrowth)"]++
+				continue
+			}
+			before, after, err := slim.CompactLedger(c.Path)
+			if err != nil {
+				skips["slim: ledger compact failed (will retry)"]++
+				slog.Warn("desktop: events idle sweep ledger checkpoint compact failed (will retry next tick)",
+					"path", c.Path, "bytes", size, "err", secrets.RedactError(err))
+				continue
+			}
+			if len(ledgerPark) > eventsIdleSweepParkMax {
+				clear(ledgerPark)
+			}
+			ledgerPark[c.Path] = after
+			slog.Info("desktop: events idle sweep checkpoint-compacted turn ledger",
+				"path", c.Path, "bytesBefore", before, "bytesAfter", after,
+				"freedBytes", before-after)
+		}
+	}
 	// Task 1073 P0-2: one INFO per pass with every skip reason bucketed, so
 	// "why was this session never swept" is answerable from the log alone
 	// (the cooking-20260804-085122 investigation was blocked precisely because
@@ -431,13 +480,16 @@ type eventsIdleSweepLoop struct {
 	// busyStreak 记录每个会话连续 busy 的 tick 数（tl 1172 busy 维护窗口）。
 	// 持锁纪律与 park 相同：只在 tick 内的 pass 前后触碰。
 	busyStreak map[string]int
+	// ledgerPark 记录每个会话 turn ledger checkpoint 截断的落地尺寸
+	// （tl 1172 剩余部分）。持锁纪律与 park 相同。
+	ledgerPark map[string]int64
 }
 
 // startEventsIdleSweepLoop boots the unconditioned ticker: the lab switch is
 // read live on every tick, so OFF costs one config read and never touches a
 // session, while switching auto on applies without a restart.
 func (a *App) startEventsIdleSweepLoop() {
-	l := &eventsIdleSweepLoop{a: a, park: make(map[string]eventsIdleSweepPark), busyStreak: make(map[string]int)}
+	l := &eventsIdleSweepLoop{a: a, park: make(map[string]eventsIdleSweepPark), busyStreak: make(map[string]int), ledgerPark: make(map[string]int64)}
 	a.goSafe("eventsIdleSweepLoop", l.run)
 }
 
@@ -528,6 +580,9 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 	if len(l.busyStreak) > eventsIdleSweepParkMax {
 		l.busyStreak = make(map[string]int)
 	}
+	if len(l.ledgerPark) > eventsIdleSweepParkMax {
+		l.ledgerPark = make(map[string]int64)
+	}
 	// tl 1172 三级降级接线：开关关态 Compress/Trim 不注入、Enabled=false，
 	// pass 行为与引入前逐字节一致（铁律 2）。
 	slim := eventsIdleSweepSlim{
@@ -536,9 +591,29 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 		Compress: agent.CompressSessionEventLogZst,
 		Trim:     agent.TrimSessionOversizeToolResults,
 	}
+	if knobs.slim {
+		// tl 1172 剩余部分：turn ledger 的 checkpoint 截断与 L2/L3 同受
+		// experimental_events_slim_oversize 开关管（同一实验档，回板口径
+		// 一致）。证据=planner display sidecar 的 per-turn 投影记录：display
+		// 里有的 turn 视为投影消费义务已解除（ack 的盘上等价物），display
+		// 缺席的第一个 pending turn 挡住其后全部（前缀语义，红线）。
+		slim.CompactLedger = func(path string) (int64, int64, error) {
+			displays := loadSessionPlannerDisplays(filepath.Dir(path))
+			proven := make(map[string]struct{}, len(displays[filepath.Base(path)]))
+			for _, turn := range displays[filepath.Base(path)] {
+				if turn.TurnID != "" {
+					proven[turn.TurnID] = struct{}{}
+				}
+			}
+			return turnevent.CompactSessionLedgerWith(path, agent.BranchID(path), func(turnID string) bool {
+				_, ok := proven[turnID]
+				return ok
+			})
+		}
+	}
 	results := runEventsIdleSweepPass(cands, knobs, l.park,
 		func(path string) ([]string, error) { return agent.RetireStaleConcurrentHeadsNow(path, time.Now()) },
-		agent.CompactSessionFile, slim, l.busyStreak)
+		agent.CompactSessionFile, slim, l.busyStreak, l.ledgerPark)
 	l.mu.Unlock()
 	compacted, skipped := 0, 0
 	for _, res := range results {
