@@ -863,12 +863,6 @@
     "desktop/worktree_project_opener.go": {
       "essay": 13
     },
-    "desktop/zcode_task_bus.go": {
-      "essay": 33
-    },
-    "desktop/zcode_task_bus_test.go": {
-      "essay": 1
-    },
     "internal/acp/dispatch.go": {
       "essay": 4
     },

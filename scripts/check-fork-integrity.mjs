@@ -145,15 +145,10 @@ const CHECKS = [
   { feature: "任务461-P16 发射队列积压告警（一次拥塞一报）", file: "desktop/tabs.go", patterns: ["runtimeEventLagWarnThreshold", "runtime event lagged in the webview emit queue"] },
   { feature: "任务461-P16 前端收据+挂载打点（ask received / card mounted）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["reportAskPanelReceipt", "describeAskReceipt", "ask received"] },
   { feature: "任务461-P16 AskCard 挂载打点", file: "desktop/frontend/src/components/AskCard.tsx", patterns: ["ask card mounted"] },
-  // 任务439（zcode 任务总线内置化）：开关与内嵌宿主都是 fork 侧新面，
-  // 上游没有对应物；逐文件登记，merge 丢锚点即 fail loudly。
-  { feature: "任务439 实验开关 experimental_zcode_task_bus（铁律2默认关）", file: "internal/config/desktop_preferences.go", patterns: ["ExperimentalZcodeTaskBus", "experimental_zcode_task_bus"] },
-  { feature: "任务439 config 渲染表+设置器（81/123 丢存规则）", file: "internal/config/render.go", patterns: ["experimental_zcode_task_bus = %v"] },
-  { feature: "任务439 内嵌 bus 宿主（开=8787 挂载，关=零行为）", file: "desktop/zcode_task_bus.go", patterns: ["startZcodeTaskBus", "closeZcodeTaskBus", "ZcodeTaskBusStatus", "POST /mcp", "POST /bus/events"] },
-  { feature: "任务439 桌面启动/关闭接线", file: "desktop/app_lifecycle.go", patterns: ["a.startZcodeTaskBus(cfg)"] },
-  { feature: "任务439 关停接线", file: "desktop/shutdown.go", patterns: ["a.closeZcodeTaskBus()"] },
-  { feature: "任务439 前端实验室卡+状态/角色可视化", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["selected === \"zcodeTaskBus\"", "app.SetExperimentalZcodeTaskBus(on)", "app.ZcodeTaskBusStatus()"] },
-  { feature: "任务439 前端契约测试", file: "desktop/frontend/src/__tests__/settings-zcode-task-bus.test.ts", patterns: ["lab rail hosts the zcodeTaskBus entry", "flag-off path returns before any network work"] },
+  // 任务439（zcode 任务总线内置化）门禁锚点已随 tl-1048 退役同批移除
+  //（2026-10-26 合入 c215a0c4e 删实现，本表 7 条 439 项漏清致门禁预存红，
+  // tl-1048 补差量清除）；总线终态=servepool 18789 网关挂 /mcp（tl 1182），
+  // busmcp 面的锚点由 internal/servepool/gateway_bus_test.go 把守，不在本表。
   { feature: "任务461-P11 读路径降级直读+共享锁短预算", file: "internal/collabinbox/collabinbox.go", patterns: ["lockRead", "readLockWaitTimeout", "Degraded"] },
   { feature: "任务511 History 锁繁忙降级（Warn+Degraded 贯穿到快照）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["degraded history read (lock busy)", "last_holder", "wait_ms"] },
   { feature: "任务511 快照降级传递（mail 锁繁忙 ≠ 暂无信件）", file: "internal/collabinbox/collabinbox.go", patterns: ["idx.degraded"] },

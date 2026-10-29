@@ -71,9 +71,6 @@ lab_flags:
   viewLayout:
     switch: experimentalSplitView
     tier: optional
-  zcodeTaskBus:
-    switch: experimentalZcodeTaskBus
-    tier: optional
   collabGroupView:
     switch: experimentalCollabGroupView
     tier: unstable
