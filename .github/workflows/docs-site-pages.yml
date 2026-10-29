@@ -36,10 +36,12 @@ jobs:
           node-version: '22'
       - name: Build docs site
         working-directory: docs-site
-        # DOCS_BASE_URL 与前端 docsSite.ts 的占位 URL 对齐；Pages 启用后若
-        # 实际路径不同，改这里 + 前端常量两处。
+        # DOCS_BASE_URL 与前端 docsSite.ts 的 URL 常量对齐（tl1253b：Pages 已
+        # 上线，站点根为 /DeepSeek-Reasonix/，此前误写作 docs-site/ 子段致
+        # 构建产物内绝对路径 stylesheet 404）；若实际路径再变，改这里 + 前端
+        # 常量两处。
         env:
-          DOCS_BASE_URL: /DeepSeek-Reasonix/docs-site/
+          DOCS_BASE_URL: /DeepSeek-Reasonix/
         run: node scripts/build.mjs
       - uses: actions/upload-pages-artifact@v5
         with:
