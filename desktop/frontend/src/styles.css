@@ -34648,6 +34648,12 @@ button.statusbar__mcp:focus-visible {
 .context-composition__detail-toggle:hover {
   color: var(--fg-dim);
 }
+/* tl1239①: 明细开关移居头部行右端空白处（用户验收反馈：原「色条上方独立
+ * 行」不顺手）——margin-left:auto 右对齐，flex:0 0 auto 不被标题挤压。 */
+.context-composition__detail-toggle--header {
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
+}
 .context-composition__detail-checkbox {
   flex: 0 0 auto;
   width: 11px;
