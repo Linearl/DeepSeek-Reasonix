@@ -686,6 +686,13 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 		SessionPath: sessionPath,
 		Title:       agent.SessionDirectoryTitle(sessionPath),
 	}
+	// tl-1144: registry topics this delete may need to converge once the trash
+	// lands — witnesses must be read BEFORE the artifacts move (the branch meta
+	// sidecar, plus the tab binding the impact probe finds below).
+	convTopics := map[string]bool{}
+	if id := branchMetaTopicWitness(sessionPath); id != "" {
+		convTopics[id] = true
+	}
 	a.mu.Lock()
 	for _, tab := range a.tabs {
 		if tab == nil || tab.Ctrl == nil {
@@ -698,6 +705,9 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 		if status := tab.Ctrl.RuntimeStatus(); status.Running {
 			impact.HasTurn = true
 			impact.TurnInFlight = true
+		}
+		if id := strings.TrimSpace(tab.TopicID); id != "" {
+			convTopics[id] = true
 		}
 		break
 	}
@@ -718,9 +728,19 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 	// desktop Delete (app.go:deleteSession). Without this the removal guard
 	// sees a lease we hold and refuses with "in use by another Reasonix window"
 	// — and the impact report never comes back. The helper also handles the
-	// teardown timeout and finishDestroyHandles (audit §T2-a).
-	if err := a.releaseSessionRuntimeForDelete(dir, sessionPath); err != nil {
+	// teardown timeout and finishDestroyHandles (audit §T2-a); the afterTrash
+	// hook rides its delayed branch so the tl-1144 topic-registry convergence
+	// lands exactly when the file really leaves. When the trash already
+	// happened here, converge directly (locks are released by then — the
+	// convergence takes its own).
+	delayed, err := a.releaseSessionRuntimeForDelete(dir, sessionPath, func() {
+		a.convergeTopicsAfterSessionTrash(convTopics)
+	})
+	if err != nil {
 		return impact, agent.DeleteSessionResult{}, err
+	}
+	if !delayed {
+		a.convergeTopicsAfterSessionTrash(convTopics)
 	}
 
 	a.removeSessionCatalogPath(sessionPath, "session_deleted")
@@ -741,7 +761,13 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 // marker, and that marker is what suppresses background-job notifications for
 // the session. Leaving it set means a session restored from trash has its
 // future progress events permanently swallowed (audit §T2-a).
-func (a *App) releaseSessionRuntimeForDelete(dir, sessionPath string) error {
+//
+// afterTrash (nil allowed) runs when the trash actually landed: inline on the
+// sync path is NOT this function's job (the caller converges after the locks
+// release), but the delayed-trash goroutine owns it — the caller has no other
+// way to run something at that moment. Returns delayed=true when the trash was
+// handed to the goroutine, so the caller skips its inline convergence.
+func (a *App) releaseSessionRuntimeForDelete(dir, sessionPath string, afterTrash func()) (delayed bool, err error) {
 	release := a.lockRuntimeMutation("delete-collab-session")
 	defer release()
 	a.sessionRemovalMu.Lock()
@@ -749,7 +775,7 @@ func (a *App) releaseSessionRuntimeForDelete(dir, sessionPath string) error {
 	removed, _ := a.removeSessionRuntimeBindings(dir, sessionPath)
 	if err := a.prepareRemovedSessionRuntimes(removed); err != nil {
 		a.closeRemainingRemovedSessionRuntimesAdmissionHeld(removed, map[control.SessionAPI]bool{})
-		return err
+		return false, err
 	}
 	destroys := a.destroyHandlesForSession(dir, sessionPath, removed)
 	timedOut := waitDestroyHandles(destroys)
@@ -760,20 +786,20 @@ func (a *App) releaseSessionRuntimeForDelete(dir, sessionPath string) error {
 		// pending and let the same delayed trash the desktop uses finish it.
 		if err := agent.MarkCleanupPending(sessionPath, "delete"); err != nil {
 			a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, map[control.SessionAPI]bool{})
-			return err
+			return false, err
 		}
 		key := filepath.Base(sessionPath)
-		go delayedDesktopSessionTrash(dir, sessionPath, key, destroys)
-		return nil
+		go delayedDesktopSessionTrash(dir, sessionPath, key, destroys, afterTrash)
+		return true, nil
 	}
-	err := trashSessionArtifacts(dir, sessionPath, filepath.Base(sessionPath))
+	err = trashSessionArtifacts(dir, sessionPath, filepath.Base(sessionPath))
 	finishDestroyHandles(destroys)
 	if err != nil {
 		a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, map[control.SessionAPI]bool{})
-		return err
+		return false, err
 	}
 	a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, map[control.SessionAPI]bool{})
-	return nil
+	return false, nil
 }
 
 // applyPendingPurposes stamps purpose + contact_id onto sessions whose topic
