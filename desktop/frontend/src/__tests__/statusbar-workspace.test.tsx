@@ -374,5 +374,86 @@ console.log("\nstatus bar workspace");
   dom.window.close();
 }
 
+// tl1250: the status bar jobs popover hover card reads job.detail (the
+// untruncated tl1033 parallel channel) and falls back to label without one —
+// same wrap-mode card the capsule indicator ships. Inline text keeps the short
+// display label.
+{
+  const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
+    pretendToBeVisual: true,
+    url: "http://localhost/",
+  });
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  globalThis.window = dom.window as unknown as Window & typeof globalThis;
+  globalThis.document = dom.window.document;
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+  globalThis.Node = dom.window.Node;
+  globalThis.HTMLElement = dom.window.HTMLElement;
+  globalThis.HTMLButtonElement = dom.window.HTMLButtonElement;
+  globalThis.Event = dom.window.Event;
+  globalThis.MouseEvent = dom.window.MouseEvent;
+  globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+  globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }),
+  });
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const fullCommand = Array.from({ length: 10 }, () => "npm run build --silent && node scripts/check-bundle-budget.mjs").join(" && ");
+  const preview = "npm run build --silent && node scripts/check-b…";
+  ok(fullCommand.length >= 500, `tl1250 fixture reaches the 500-char bar (${fullCommand.length})`);
+
+  const rootEl = document.getElementById("root")!;
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(
+      <LocaleProvider>
+        <StatusBar
+          context={{ used: 0, window: 0, sessionTokens: 0 }}
+          running={false}
+          jobs={[
+            { id: "bash-detail", kind: "bash", label: preview, detail: fullCommand, status: "running", startedAt: 1 },
+            { id: "bash-plain", kind: "bash", label: "short echo hi", status: "running", startedAt: 1 },
+          ]}
+        />
+      </LocaleProvider>,
+    );
+  });
+  const jobsButton = rootEl.querySelector<HTMLButtonElement>(".statusbar__jobs-trigger");
+  await act(async () => { jobsButton?.click(); });
+  const rows = Array.from(document.body.querySelectorAll<HTMLElement>(".jobs-popover__job"));
+  ok(rows.length === 2, "tl1250 both popover rows render");
+
+  const detailRow = rows[0]!;
+  ok(detailRow.querySelector(".jobs-popover__copy strong")?.textContent === preview, "tl1250 inline text stays the short display label");
+  const detailTrigger = detailRow.querySelector(".tooltip-trigger");
+  ok(detailTrigger !== null, "tl1250 row title is wrapped in a tooltip-trigger");
+  await act(async () => {
+    detailTrigger!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true, relatedTarget: null }));
+    await wait(240);
+  });
+  const card = document.querySelector('[role="tooltip"]');
+  ok(card !== null, "tl1250 hover card renders (portal to body)");
+  ok(card?.querySelector(".tooltip__text")?.textContent === fullCommand, "tl1250 hover card shows job.detail full text");
+  ok(detailTrigger?.getAttribute("aria-describedby") === card?.id, "tl1250 aria-describedby points at the card");
+
+  await act(async () => {
+    detailTrigger!.dispatchEvent(new dom.window.MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    await wait(300);
+  });
+  const plainTrigger = rows[1]?.querySelector(".tooltip-trigger");
+  ok(plainTrigger !== null, "tl1250 label-only row also has a tooltip-trigger");
+  await act(async () => {
+    plainTrigger!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true, relatedTarget: null }));
+    await wait(240);
+  });
+  const fallbackCard = document.querySelector('[role="tooltip"]');
+  ok(fallbackCard?.querySelector(".tooltip__text")?.textContent === "short echo hi", "tl1250 without detail hover falls back to label");
+
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
