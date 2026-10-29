@@ -41725,3 +41725,16 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   justify-content: center;
 }
+
+/* tl1216: 邀请候选按层级分组展示（section 容器 + 分组头「层级 · 数量」）。 */
+.channel-chat__invitegroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.channel-chat__invitegrouphead {
+  padding: 4px 4px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-faint);
+}
