@@ -34,8 +34,9 @@ func TestRegisterTopicFunnelRegistersAndSyncsIndex(t *testing.T) {
 		t.Fatalf("register project: %v", err)
 	}
 	owner, ok = topicRegistryOwnerOf(topicID)
-	// 唯一归属：跨 scope 重复（遗留形态）时索引裁决判 project（global 侧
-	// 是 1074 家族影子）；文件层仍双行（读侧消费唯一索引后不再放大）。
+	// 唯一归属：tl1262 起 project 登记在写口同事务收敛 global 侧注册
+	// （「遗留重复判 project」的裁决落到持久真相源，1074 家族影子不再落
+	// 盘）；索引层继续由唯一归属 map 结构保证一 id 一行。
 	if !ok || owner.Scope != topicregistry.ScopeProject || !sameProjectRoot(owner.Root, projectRoot) {
 		t.Fatalf("index owner = %+v ok=%v, want project %q (unique ownership)", owner, ok, projectRoot)
 	}
@@ -88,8 +89,14 @@ func TestUnregisterTopicScopedNoTombstone(t *testing.T) {
 	if err := registerTopic("global", "", topicRegisterOpts{}, topicID); err != nil {
 		t.Fatalf("register global: %v", err)
 	}
-	if err := registerTopic("project", projectRoot, topicRegisterOpts{ensureProject: true}, topicID); err != nil {
-		t.Fatalf("register project: %v", err)
+	// tl1262 起 project 登记会在写口收敛 global 侧注册，双行前置改由测试
+	// 直写（守卫只扫生产文件），让本测试继续只钉 scoped 清理语义：只摘自
+	// 己 scope，其它 scope 注册保留，不产生墓碑。
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		f.Projects = append(f.Projects, desktopProject{Root: projectRoot, Topics: []string{topicID}})
+		return true, nil
+	}); err != nil {
+		t.Fatalf("seed project registration: %v", err)
 	}
 
 	if err := unregisterTopic(topicID, topicUnregisterOpts{

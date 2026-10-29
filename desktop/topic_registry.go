@@ -6,7 +6,9 @@ package main
 // 各自 PinnedTopics / DeletedTopics 墓碑 / 分组成员）的全部**成员变更**只从
 // 两个收点过：
 //
-//	registerTopic   —— 登记/更新（新增、复活墓碑、批量补登、置顶翻转）
+//	registerTopic   —— 登记/更新（新增、复活墓碑、批量补登、置顶翻转）；
+//	                   tl1262 起 project 登记同事务收敛 global 侧注册
+//	                   （唯一归属写侧落地，遗留重复判 project 的既有裁决）
 //	unregisterTopic —— 注销（删除清扫、空壳清理；墓碑可选题）
 //
 // 既有散布写口（新建会话补登 / fork 补登 / 迁移批量补登 / deleteTopic /
@@ -220,28 +222,67 @@ func registerTopicPrependMutator(f *desktopProjectFile, workspaceRoot string, to
 		f.GlobalTopics = next
 		return true, nil
 	}
+	// tl1262: project 登记收敛 global 侧注册（同事务、同收点）。注册层此前
+	// 只加不删：一个已在 globalTopics 的 topic 被登记进项目（754 打开链路的
+	// 绑定 scope 纠正、自动化按项目根补登等）后就同时挂在两个 scope 的注册
+	// 列表里——desktop-projects.json 侧 Global 区与项目区各渲染一行（用户
+	// 实测双截图），catalog 投影同题双行（SyncMetadata 原样喂两份）。归属
+	// 裁决规则沿用注册唯一索引重建的既有语义（遗留重复判 project，
+	// registryShellRefs 同款），把裁决落到写口，让持久真相源自己收敛。
+	globalConverged := convergeGlobalRegistration(f, live)
 	for i, p := range f.Projects {
 		if !sameProjectRoot(p.Root, workspaceRoot) {
 			continue
 		}
 		next := uniqueStrings(append(append([]string(nil), live...), p.Topics...))
 		if sameStringList(next, p.Topics) {
-			return changed, nil
+			// 项目侧已登记也可能仍需收敛 global 侧残留（既有双注册存量），
+			// 不能提前返回 false 吞掉收敛写。
+			return changed || globalConverged, nil
 		}
 		f.Projects[i].Topics = next
 		return true, nil
 	}
 	if !opt.ensureProject {
-		return changed, nil
+		return changed || globalConverged, nil
 	}
 	// Defensive: the loop above already checked every project with
 	// sameProjectRoot, so this is normally unreachable. It stays as a second
 	// guard because the append is the only place a new root enters the file.
 	if projectRootExists(f, workspaceRoot) {
-		return changed, nil
+		return changed || globalConverged, nil
 	}
 	f.Projects = append(f.Projects, desktopProject{Root: workspaceRoot, Topics: live})
 	return true, nil
+}
+
+// convergeGlobalRegistration removes the given topic ids from every global
+// registration surface (topics list, pinned list, group members). It is the
+// tl1262 half of the unique-ownership write contract: registering a topic
+// under a project makes the project its only registration scope. The reverse
+// direction is deliberately untouched — a global registration never strips a
+// project owner (heartbeat/自动化登记不得抢走项目归属；project wins 已经是
+// 注册唯一索引重建与 registryShellRefs 的既有裁决). Tombstoned ids are not
+// stripped here: respectTombstones callers never put them into `live`, and
+// stripping them would be a second, unrequested mutation.
+func convergeGlobalRegistration(f *desktopProjectFile, topicIDs []string) bool {
+	changed := false
+	for _, topicID := range topicIDs {
+		if next := removeString(f.GlobalTopics, topicID); !sameStringList(next, f.GlobalTopics) {
+			f.GlobalTopics = next
+			changed = true
+		}
+		if next := removeString(f.GlobalPinnedTopics, topicID); !sameStringList(next, f.GlobalPinnedTopics) {
+			f.GlobalPinnedTopics = next
+			changed = true
+		}
+		if next, removed := groupsWithoutTopic(f.GlobalGroups, topicID); removed {
+			f.GlobalGroups = next
+			f.GlobalGroupsRevision++
+			changed = true
+		}
+	}
+	return changed
 }
 
 // registerTopicPinMutator 原 SetTopicPinned 变更体（语义逐行保留）：
