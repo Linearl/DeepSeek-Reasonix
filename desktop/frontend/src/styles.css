@@ -9354,6 +9354,22 @@ body > .mermaid-diagram--fullscreen {
   flex: 0 0 auto;
 }
 
+/* 任务 tl1237：收起态触发器同宽——tl1233 只钉了外层容器，触发器自身仍随
+   文案浮动（用户 20261029 05:3x 实测）：`:root .settings-select` 的
+   width:100% 依赖包含块定宽，而外层是 flex-basis:auto 的内容自适应 flex
+   item，百分比宽在主尺寸不定时回落为 auto，触发器退回内容宽——YOLO/ask
+   等短文案收起态比 Autopilot 窄，与展开态 168px 菜单跳变。修法定宽直落
+   触发器：width 是独立属性，不受上注 `:root .settings-select { min-width:
+   0 }` 的特异性压制（min-width 才会被压）；选择器挂外层容器类并带 `:root`
+   前缀（特异性 0,3,0 稳压组件基类 0,2,0），不依赖懒加载样式的注入顺序，
+   且只命中本下拉，不波及设置页其他 SettingsSelect 实例。168px 与外层
+   min=max、展开态菜单宽（菜单取触发器实际渲染宽）三处同值，收起/展开零
+   跳变，最宽项 Autopilot 不撑开（文字超宽由 settings-select__value 的
+   ellipsis 兜底）。 */
+:root .composer-meta__control--approval--select .settings-select {
+  width: 168px;
+}
+
 .composer-approval-select {
   --wails-draggable: no-drag;
   height: var(--composer-control-height);
