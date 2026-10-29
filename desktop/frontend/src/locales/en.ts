@@ -1821,6 +1821,7 @@ export const en = {
   "projectTree.archiveConversation": "Archive conversation",
   "projectTree.renameProject": "Rename display name",
   "projectTree.relocateProject": "Change project folder…",
+  "projectTree.projectManage": "Project management",
   "projectTree.manageVersions": "Manage session versions",
   "projectTree.projectAlreadyInGroup": "Project is already in group \"{title}\"",
   "projectTree.renameProjectWorkbench": "Rename project",

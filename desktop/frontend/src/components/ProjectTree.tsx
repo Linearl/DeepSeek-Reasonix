@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Pin, MoreHorizontal, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
+import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Pin, MoreHorizontal, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server, Settings2 } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
@@ -2422,43 +2422,57 @@ export function ProjectTree({
       ...(scope === "project"
         ? [
             {
-              // tl 1200 ①:「移动到分组」已上移至颜色区之前；尾段保留低频
-              // 管理项（relocate/versions/remove），序见任务回执清单。
-              key: "relocate-project",
-              icon: <FolderOpen size={13} />,
-              label: t("projectTree.relocateProject"),
-              onSelect: () => {
-                void relocateProject(projectPath ?? node.root);
-                closeMenu();
-              },
-            },
-            {
-              key: "topic-versions",
-              icon: <GitBranch size={13} />,
-              label: t("projectTree.manageVersions"),
-              onSelect: () => {
-                // Fixed entry point for version management. A transient notification
-                // used to be the only way in, so missing it left no route back to the
-                // dialog that holds the recovery branches and the merge action.
-                requestTopicVersions({
-                  scope,
-                  workspaceRoot: projectPath ?? node.root,
-                  topicId: node.topicId ?? "",
-                  path: node.sessionPath,
-                });
-                closeMenu();
-              },
-            },
-            { type: "separator" as const, key: "remove-separator" },
-            {
-              key: "remove",
-              icon: <XCircle size={13} />,
-              label: confirmRemoveProject === key ? t("projectTree.confirmRemoveProject") : t("projectTree.removeProject"),
-              danger: true,
-              onSelect: () => {
-                if (confirmRemoveProject === key) void removeProject(projectPath);
-                else setConfirmRemoveProject(key);
-              },
+              // tl 1200 ①:「移动到分组」已上移至颜色区之前。
+              // tl 1252（用户已拍板）：尾段低频管理项收拢为一级「项目管理 ▸」
+              // submenu（tl 1168 浮动二级面板基建，与「颜色 ▸」同形态）——
+              // relocate/versions/remove 三叶 key、落盘链、confirm 双击语义、
+              // danger 标注原样保留（零功能丢失）；仅层级下沉，不再占一级三行。
+              // 注意：1168 面板叶子点选即整链关闭，remove 的首次点击（武装确
+              // 认态）随之关菜单，重开菜单见确认文案再点执行——比一级形态多
+              // 一次重开，属收拢的预期代价（误触更难直达破坏项，更安全）。
+              type: "submenu" as const,
+              key: "project-manage",
+              icon: <Settings2 size={13} />,
+              label: t("projectTree.projectManage"),
+              items: [
+                {
+                  key: "relocate-project",
+                  icon: <FolderOpen size={13} />,
+                  label: t("projectTree.relocateProject"),
+                  onSelect: () => {
+                    void relocateProject(projectPath ?? node.root);
+                    closeMenu();
+                  },
+                },
+                {
+                  key: "topic-versions",
+                  icon: <GitBranch size={13} />,
+                  label: t("projectTree.manageVersions"),
+                  onSelect: () => {
+                    // Fixed entry point for version management. A transient notification
+                    // used to be the only way in, so missing it left no route back to the
+                    // dialog that holds the recovery branches and the merge action.
+                    requestTopicVersions({
+                      scope,
+                      workspaceRoot: projectPath ?? node.root,
+                      topicId: node.topicId ?? "",
+                      path: node.sessionPath,
+                    });
+                    closeMenu();
+                  },
+                },
+                { type: "separator" as const, key: "remove-separator" },
+                {
+                  key: "remove",
+                  icon: <XCircle size={13} />,
+                  label: confirmRemoveProject === key ? t("projectTree.confirmRemoveProject") : t("projectTree.removeProject"),
+                  danger: true,
+                  onSelect: () => {
+                    if (confirmRemoveProject === key) void removeProject(projectPath);
+                    else setConfirmRemoveProject(key);
+                  },
+                },
+              ],
             },
           ]
         : []),
@@ -2529,41 +2543,52 @@ export function ProjectTree({
               items: projectGroupMoveItems(projectPath ?? node.root),
             },
             {
-              key: "relocate-project",
-              icon: <FolderOpen size={13} />,
-              label: t("projectTree.relocateProject"),
-              onSelect: () => {
-                void relocateProject(projectPath ?? node.root);
-                closeMenu();
-              },
-            },
-            {
-              key: "topic-versions",
-              icon: <GitBranch size={13} />,
-              label: t("projectTree.manageVersions"),
-              onSelect: () => {
-                // Fixed entry point for version management. A transient notification
-                // used to be the only way in, so missing it left no route back to the
-                // dialog that holds the recovery branches and the merge action.
-                requestTopicVersions({
-                  scope,
-                  workspaceRoot: projectPath ?? node.root,
-                  topicId: node.topicId ?? "",
-                  path: node.sessionPath,
-                });
-                closeMenu();
-              },
-            },
-            { type: "separator" as const, key: "remove-separator" },
-            {
-              key: "remove",
-              icon: <XCircle size={13} />,
-              label: confirmRemoveProject === key ? t("projectTree.confirmRemoveProjectShort") : t("projectTree.removeProjectShort"),
-              danger: true,
-              onSelect: () => {
-                if (confirmRemoveProject === key) void removeProject(projectPath);
-                else setConfirmRemoveProject(key);
-              },
+              // tl 1252：workbench 变体与 classic 同步收拢——relocate/versions/
+              // remove 三叶沉入「项目管理 ▸」submenu（同 key、同落盘链、同
+              // confirm/danger 语义；remove 短文案键保持 workbench 专属）。
+              type: "submenu" as const,
+              key: "project-manage",
+              icon: <Settings2 size={13} />,
+              label: t("projectTree.projectManage"),
+              items: [
+                {
+                  key: "relocate-project",
+                  icon: <FolderOpen size={13} />,
+                  label: t("projectTree.relocateProject"),
+                  onSelect: () => {
+                    void relocateProject(projectPath ?? node.root);
+                    closeMenu();
+                  },
+                },
+                {
+                  key: "topic-versions",
+                  icon: <GitBranch size={13} />,
+                  label: t("projectTree.manageVersions"),
+                  onSelect: () => {
+                    // Fixed entry point for version management. A transient notification
+                    // used to be the only way in, so missing it left no route back to the
+                    // dialog that holds the recovery branches and the merge action.
+                    requestTopicVersions({
+                      scope,
+                      workspaceRoot: projectPath ?? node.root,
+                      topicId: node.topicId ?? "",
+                      path: node.sessionPath,
+                    });
+                    closeMenu();
+                  },
+                },
+                { type: "separator" as const, key: "remove-separator" },
+                {
+                  key: "remove",
+                  icon: <XCircle size={13} />,
+                  label: confirmRemoveProject === key ? t("projectTree.confirmRemoveProjectShort") : t("projectTree.removeProjectShort"),
+                  danger: true,
+                  onSelect: () => {
+                    if (confirmRemoveProject === key) void removeProject(projectPath);
+                    else setConfirmRemoveProject(key);
+                  },
+                },
+              ],
             },
           ]
         : []),

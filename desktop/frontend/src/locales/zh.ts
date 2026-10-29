@@ -1817,6 +1817,7 @@ export const zh: Record<DictKey, string> = {
   "projectTree.archiveConversation": "归档对话",
   "projectTree.renameProject": "修改显示名称",
   "projectTree.relocateProject": "更改项目文件夹的位置…",
+  "projectTree.projectManage": "项目管理",
   "projectTree.manageVersions": "会话版本与副本管理",
   "projectTree.projectAlreadyInGroup": "项目已在分组「{title}」中",
   "projectTree.renameProjectWorkbench": "重命名项目",
