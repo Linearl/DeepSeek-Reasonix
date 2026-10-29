@@ -37,6 +37,9 @@ const SECTIONS = [
   { slug: "features", label: "功能", navOrder: 2, blurb: "会话、工作区、扩展、实验室等核心能力。" },
   { slug: "reference", label: "参考", navOrder: 3, blurb: "配置项、命令、工具清单的查表式参考。" },
   { slug: "troubleshooting", label: "疑难排查", navOrder: 4, blurb: "日志位置、常见报错、诊断入口。" },
+  // 任务 1263：两个根级单页（rootPage 指向根目录 md，不生成目录落地页）。
+  { slug: "changelog", label: "更新日志", navOrder: 5, blurb: "版本时间线：正式 Release 与内部包分开标注。", rootPage: "changelog.md" },
+  { slug: "about", label: "关于", navOrder: 6, blurb: "上游问题、开发方法论、fork 取舍、版本规则与路线图。", rootPage: "about.md" },
 ];
 
 // ── Markdown → HTML（够用子集）────────────────────────────────────────────
@@ -45,7 +48,13 @@ function escapeHtml(s) {
 }
 
 function inline(text) {
-  let out = escapeHtml(text);
+  // 任务 1263：白名单 HTML 透传。文档作者只写这几类装饰元素（徽章/编号
+  // chip/版本标注），escape 之前先摘出占位保护，其余一律转义——不放开
+  // 任意 HTML，避免把静态文档站变成注入面。
+  const rawFragments = [];
+  const allowed = /<(?:span|div|section) class="(?:badge|fnum|vtag)[^"]*"[^>]*>|<\/(?:span|div|section)>/g;
+  let src = String(text).replace(allowed, (m) => { rawFragments.push(m); return `\u0002${rawFragments.length - 1}\u0002`; });
+  let out = escapeHtml(src);
   // 行内代码先摘出来保护，避免被下面的规则误伤。
   const codeSpans = [];
   out = out.replace(/`([^`]+)`/g, (_, c) => { codeSpans.push(c); return `\u0000${codeSpans.length - 1}\u0000`; });
@@ -58,6 +67,8 @@ function inline(text) {
     return `<a href="${href}"${rel}>${label}</a>`;
   });
   out = out.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codeSpans[Number(i)]}</code>`);
+  // 还原白名单 HTML 片段
+  out = out.replace(/\u0002(\d+)\u0002/g, (_, i) => rawFragments[Number(i)]);
   return out;
 }
 
@@ -71,6 +82,15 @@ function markdownToHtml(md) {
 
   while (i < lines.length) {
     const line = lines[i];
+
+    // 块级白名单 HTML（任务 1263：时间线容器）——整行匹配的
+    // <div class="timeline"> / <section ...> / 闭合标签原样输出，不进段落。
+    if (/^\s*<(?:div class="timeline"|\/div|section[^>]*|\/section)>\s*$/.test(line)) {
+      closeList();
+      out.push(line.trim());
+      i += 1;
+      continue;
+    }
 
     // 代码块
     if (/^```/.test(line)) {
@@ -255,6 +275,26 @@ function build() {
 
     // 每个目录：落地页（列出该目录全部文章）+ 每篇文章一个页面
   for (const section of SECTIONS) {
+    // 根级单页（任务 1263）：md 在 docs-site/ 根，输出 dist/<slug>/index.html。
+    if (section.rootPage) {
+      const p = join(root, section.rootPage);
+      if (existsSync(p)) {
+        const { meta, body } = parseFrontMatter(readFileSync(p, "utf8"));
+        const title = meta.title || firstH1(body) || section.label;
+        pages.push({
+          out: join(dist, section.slug, "index.html"),
+          html: layout({
+            title,
+            description: meta.desc || section.blurb,
+            activeSlug: section.slug,
+            body: `<article class="prose">${markdownToHtml(body)}</article>`,
+            breadcrumb: `<a href="${SITE.baseUrl}">首页</a> / ${escapeHtml(section.label)}`,
+          }),
+        });
+      }
+      continue;
+    }
+
     const sectionDir = join(root, section.slug);
     const files = walkMarkdown(sectionDir);
     const items = files.map((file) => {
