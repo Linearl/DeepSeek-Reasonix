@@ -51,14 +51,35 @@ export function observeTranscriptGeometry(
       notify(classified.change);
     });
   },
+  options?: {
+    /** tl 1255: deliver matching changes synchronously instead of deferring
+     * them to the next paint frame. ResizeObserver callbacks run AFTER layout
+     * and BEFORE paint, so a synchronous commit compensates the very reflow
+     * that triggered the delivery — the browser never paints the shifted
+     * position. The default (deferred) delivery suits changes whose reaction
+     * is cosmetic (the 267 R3 tail subsidy); a width rewrap during the
+     * sidebar's 0.16s grid-column transition repaints EVERY frame, and a
+     * 1-2 frame-late correction is exactly the visible jump tl 1255 removes. */
+    deliverSync?: (change?: TranscriptGeometryChange) => boolean;
+  },
 ): () => void {
   const generation = kernel.generation;
   let disposed = false;
   let cancelFrame: (() => void) | null = null;
   const current = () => !disposed && generation === kernel.generation;
   const observer = createObserver((change) => {
-    if (!current() || cancelFrame) return;
+    if (!current()) return;
     before();
+    // tl 1255: a synchronously delivered change must not be dropped by a
+    // pending deferred commit — the two cannot conflict (the sync commit runs
+    // inside this rendering frame; the deferred one flushes at the next rAF
+    // and re-reads the geometry it finds, so the kernel's transaction
+    // dedupe + fresh-geometry re-read keep both idempotent).
+    if (options?.deliverSync?.(change)) {
+      commit(change);
+      return;
+    }
+    if (cancelFrame) return;
     cancelFrame = kernel.afterCurrentGenerationPaint(() => {
       cancelFrame = null;
       if (current()) commit(change);
