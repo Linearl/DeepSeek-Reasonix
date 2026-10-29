@@ -746,6 +746,16 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                               >
                                 <Play size={14} strokeWidth={1.9} />
                               </button>
+                              {/* tl 1248：行内直达暂停/恢复——与左侧状态图标同一 toggle 语义，
+                                  暂停后本按钮切换为恢复（图标+文案），详情页右上角入口保留。 */}
+                              <button
+                                className="worktree-node__action-btn"
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); void handleToggle(task); }}
+                                title={task.enabled ? t("heartbeat.btnPause") : t("heartbeat.btnResume")}
+                              >
+                                {task.enabled ? <CirclePause size={14} strokeWidth={1.9} /> : <CirclePlaySolid size={14} />}
+                              </button>
                               <button
                                 className="worktree-node__action-btn"
                                 type="button"
@@ -855,6 +865,16 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                                     title={t("heartbeat.runNow")}
                                   >
                                     <Play size={14} strokeWidth={1.9} />
+                                  </button>
+                                  {/* tl 1248：行内直达暂停/恢复——与左侧状态图标同一 toggle 语义，
+                                      暂停后本按钮切换为恢复（图标+文案），详情页右上角入口保留。 */}
+                                  <button
+                                    className="worktree-node__action-btn"
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); void handleToggle(task); }}
+                                    title={task.enabled ? t("heartbeat.btnPause") : t("heartbeat.btnResume")}
+                                  >
+                                    {task.enabled ? <CirclePause size={14} strokeWidth={1.9} /> : <CirclePlaySolid size={14} />}
                                   </button>
                                   <button
                                     className="worktree-node__action-btn"
