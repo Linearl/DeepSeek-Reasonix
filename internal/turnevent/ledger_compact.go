@@ -103,3 +103,55 @@ func (l *Ledger) shrinkThroughPastNonTerminal(through uint64) uint64 {
 	}
 	return shrunk
 }
+
+// CompactSessionLedgerWith is the idle-maintenance entry the desktop sweep
+// calls for sessions it can prove quiet. It opens the ledger fresh (no
+// in-process instance may hold the file), walks the unacknowledged terminal
+// turns in sequence order, and compacts through the LONGEST PREFIX the proof
+// callback confirms: the first unproven pending turn holds everything after
+// it on disk, exactly like the ack-only discipline it supplements. Turns the
+// ledger already holds acks (or a committed-through) for never reach the
+// callback — the cutoff loop honors them on its own.
+//
+// The callback receives each pending turn's TurnID and answers from durable
+// evidence only (desktop: the display sidecar carries a recorded projection
+// for that turn). Returns the log size before and after the compaction; both
+// are zero when the ledger was not openable, and equal when nothing new was
+// confirmed (idempotent re-runs land here).
+func CompactSessionLedgerWith(sessionPath, sessionID string, proven func(turnID string) bool) (int64, int64, error) {
+	if sessionPath == "" || proven == nil {
+		return 0, 0, nil
+	}
+	l, err := Open(sessionPath, sessionID)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() { _ = l.Close() }()
+	through := l.confirmedPrefixLocked(proven)
+	return l.CompactIdleThrough(through)
+}
+
+// confirmedPrefixLocked returns the highest terminal sequence through which
+// every pending (unacknowledged, uncommitted) turn has been proven projected.
+// Caller holds l.mu.
+func (l *Ledger) confirmedPrefixLocked(proven func(turnID string) bool) uint64 {
+	through := uint64(0)
+	seen := make(map[string]bool)
+	for _, rec := range l.records {
+		if rec.TurnID == "" || !rec.Status.Terminal() {
+			continue
+		}
+		if seen[rec.TurnID] {
+			continue // a later record of an already-judged turn
+		}
+		seen[rec.TurnID] = true
+		if rec.Sequence <= l.projectionCommittedThrough || l.projectionAcks[rec.TurnID] >= rec.Sequence {
+			continue // already covered by the ledger's own discipline
+		}
+		if !proven(rec.TurnID) {
+			break // the first unproven pending turn holds the rest back
+		}
+		through = rec.Sequence
+	}
+	return through
+}

@@ -95,6 +95,64 @@ func TestLedgerCompactIdleThroughAdvancesPastMissingAcks(t *testing.T) {
 	}
 }
 
+// TestCompactSessionLedgerWithProvesOnlyTheConfirmedPrefix drives the
+// sweep-facing entry: the proof callback confirms the first two pending turns
+// and withholds the third, so the compaction must stop exactly there and a
+// rerun with full proof truncates the rest.
+func TestCompactSessionLedgerWithProvesOnlyTheConfirmedPrefix(t *testing.T) {
+	path := testSessionPath(t)
+	l := openTestLedger(t, path, "session")
+	l.RequireProjectionAck(true)
+	runThreeUnackedTurns(t, l)
+	turnIDs, err := l.EventsAfter(0)
+	if err != nil {
+		t.Fatalf("EventsAfter: %v", err)
+	}
+	confirmed := map[string]bool{}
+	for i, rec := range turnIDs {
+		if rec.Status.Terminal() && i < 4 { // the first two turns' terminal records
+			confirmed[rec.TurnID] = true
+		}
+	}
+	if err := l.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	proved := 0
+	before, after, err := CompactSessionLedgerWith(path, "session", func(turnID string) bool {
+		proved++
+		return confirmed[turnID]
+	})
+	if err != nil {
+		t.Fatalf("CompactSessionLedgerWith: %v", err)
+	}
+	if proved != 3 {
+		t.Fatalf("proof callback consulted %d times, want 3 (two confirmations plus the refusal that stops the walk)", proved)
+	}
+	if after <= 0 {
+		t.Fatalf("compaction lost the log: before=%d after=%d", before, after)
+	}
+	data, err := os.ReadFile(store.SessionTurnEventLog(path))
+	if err != nil {
+		t.Fatalf("read ledger: %v", err)
+	}
+	if !bytes.Contains(data, []byte(`"recordType":"checkpoint"`)) {
+		t.Fatalf("compacted ledger lost its checkpoint: %s", data)
+	}
+
+	// Full proof: rerun confirms the remaining turn and the tail goes too.
+	before2, after2, err := CompactSessionLedgerWith(path, "session", func(string) bool { return true })
+	if err != nil {
+		t.Fatalf("full-proof rerun: %v", err)
+	}
+	if after2 >= before2 {
+		t.Fatalf("full-proof rerun did not truncate the tail: before=%d after=%d", before2, after2)
+	}
+	if before3, after3, err := CompactSessionLedgerWith(path, "session", func(string) bool { return false }); err != nil || after3 != after2 || before3 != after2 {
+		t.Fatalf("idempotent rerun = (%d,%d,%v), want (x,%d,nil)", before3, after3, err, after2)
+	}
+}
+
 func TestLedgerCompactIdleThroughKeepsUnconfirmedTurnsBelowThrough(t *testing.T) {
 	path := testSessionPath(t)
 	l := openTestLedger(t, path, "session")
