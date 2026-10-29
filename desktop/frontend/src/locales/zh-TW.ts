@@ -5560,6 +5560,7 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.batchSelectAll": "全選可見會話",
   "projectTree.batchClearSelection": "清空選擇",
   "projectTree.batchSkippedRunning": "執行中或被佔用，已跳過 {n} 項",
+  "projectTree.batchSkippedHint": "關閉其他 Reasonix 視窗或等待會話結束後重試；若仍失敗，重啟 Reasonix 可清理殘留鎖；單個會話可在右鍵選單強制歸檔",
   "projectTree.batchFailedItems": "失敗 {n} 項",
   "projectTree.batchItemLine": "{title}：{reason}",
   "projectTree.batchReportDismiss": "關閉報告",

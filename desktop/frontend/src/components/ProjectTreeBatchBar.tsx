@@ -110,10 +110,19 @@ export function ProjectTreeBatchBar({
             </button>
           </span>
           {report.skipped > 0 && (
-            <span className="project-tree__batchbar-report-line project-tree__batchbar-report-line--skipped">
-              <Check size={12} aria-hidden="true" />
-              {t("projectTree.batchSkippedRunning", { n: report.skipped })}
-            </span>
+            <>
+              <span className="project-tree__batchbar-report-line project-tree__batchbar-report-line--skipped">
+                <Check size={12} aria-hidden="true" />
+                {t("projectTree.batchSkippedRunning", { n: report.skipped })}
+              </span>
+              {/* tl1258: the skip row alone left the user with a count and no
+                  way out — the hint names the three exits (close the other
+                  window / restart to clear leftover locks / per-topic force
+                  archive) that match the backend's holder classification. */}
+              <span className="project-tree__batchbar-report-line project-tree__batchbar-report-line--skipped project-tree__batchbar-report-hint">
+                {t("projectTree.batchSkippedHint")}
+              </span>
+            </>
           )}
           {report.failures.length > 0 && (
             <span className="project-tree__batchbar-report-line project-tree__batchbar-report-line--failed">
