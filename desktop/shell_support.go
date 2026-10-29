@@ -153,7 +153,12 @@ func (a *App) sandboxViewFor(cfg *config.Config, ctrl control.SessionAPI, writeR
 	if shell == "" {
 		shell = "auto"
 	}
-	resolved := sandbox.ResolveShell(cfg.Tools.Shell.Prefer, cfg.Tools.Shell.Path, nil)
+	// tl1257: 设置面板三个 shell 读数全部走 ForView（stale-while-revalidate）
+	// ——此前 TTL 过期后这里的同步整轮发现（bash/git 探测子进程）真机实测
+	// 7.9s，直接堵死设置/实验室页打开（desktop.log view_build 9-14.1s）。
+	// 展示语义不变：数据仍是最近一轮发现的结果；显式「重新检测」仍走
+	// InvalidateShellInventory 同步重建。
+	resolved := sandbox.ResolveShellForView(cfg.Tools.Shell.Prefer, cfg.Tools.Shell.Path, nil)
 	bound := resolved
 	if ctrl != nil {
 		if sh := ctrl.BoundShell(); sh.Path != "" {
@@ -197,7 +202,8 @@ func sandboxEffectiveShellView(sh sandbox.Shell) string {
 }
 
 func gitCapabilityView(prefer, configPath string) *ShellCapabilityView {
-	capability := sandbox.GitCapabilityForConfig(prefer, configPath)
+	// tl1257: 展示面走 stale-while-revalidate 读（见 sandboxViewFor 注释）。
+	capability := sandbox.GitCapabilityForView(prefer, configPath)
 	return &ShellCapabilityView{
 		ID: capability.ID, Available: capability.Available, Path: capability.Path,
 		Source: capability.Source, Reason: capability.Reason,
@@ -208,7 +214,8 @@ func gitCapabilityView(prefer, configPath string) *ShellCapabilityView {
 // settings surface. The slice is never nil so the Wails binding always
 // encodes a JSON array, not null.
 func sandboxCapabilityViews(prefer, configPath string) []ShellCapabilityView {
-	caps := sandbox.ShellCapabilitiesForConfig(prefer, configPath)
+	// tl1257: 展示面走 stale-while-revalidate 读（见 sandboxViewFor 注释）。
+	caps := sandbox.ShellCapabilitiesForView(prefer, configPath)
 	out := make([]ShellCapabilityView, 0, len(caps))
 	for _, cap := range caps {
 		out = append(out, ShellCapabilityView{

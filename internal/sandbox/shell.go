@@ -69,6 +69,16 @@ func ResolveShell(prefer, path string, warn io.Writer) Shell {
 	return resolveShell(prefer, path, warn, snap.goos, snap.lookPath, snap.exists, snap.bashCands, snap.psCands, snap.probe, snap.isWSL)
 }
 
+// ResolveShellForView is the informational-surface variant of ResolveShell
+// (desktop settings "resolved shell" display): it shares the decision table
+// but reads the inventory with the stale-while-revalidate contract, so a
+// TTL-expired entry serves the stale snapshot instead of blocking on a fresh
+// discovery pass. Execution paths must keep using ResolveShell.
+func ResolveShellForView(prefer, path string, warn io.Writer) Shell {
+	snap := defaultShellInventory.snapshotOpts(runtime.GOOS, prefer, path, true)
+	return resolveShell(prefer, path, warn, snap.goos, snap.lookPath, snap.exists, snap.bashCands, snap.psCands, snap.probe, snap.isWSL)
+}
+
 // resolveShell is ResolveShell with its environment lookups injected — including
 // the Git-for-Windows bash candidates, which derive from %ProgramFiles% and so
 // are empty off Windows — so the decision table is deterministically testable on

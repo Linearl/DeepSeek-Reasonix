@@ -56,4 +56,29 @@ func TestShellInventoryRealMachineProbe1257(t *testing.T) {
 	ShellCapabilitiesForConfig("", "")
 	expiredSync := time.Since(start)
 	t.Logf("PROBE1257 expired-sync-read=%s (pre-fix settings-open path)", expiredSync)
+
+	// ⑤ TTL 过期后的 stale-ok 读（修复后设置页路径）：同样过期状态，
+	// ForView 读必须立即返回旧快照、后台重建，不阻塞。
+	time.Sleep(shellInventoryTTL + 500*time.Millisecond)
+	start = time.Now()
+	ShellCapabilitiesForView("", "")
+	staleOkRead := time.Since(start)
+	t.Logf("PROBE1257 expired-staleok-read=%s (post-fix settings-open path)", staleOkRead)
+
+	// ⑥ 同一过期窗口内的完整展示面读链（= sandboxViewFor 等价序列：
+	// ResolveShellForView + ForView 能力 + ForView git），给设置页打开
+	// 总耗时里 shell 段的改后占比。
+	start = time.Now()
+	ResolveShellForView("", "", nil)
+	ShellCapabilitiesForView("", "")
+	GitCapabilityForView("", "")
+	fullViewRead := time.Since(start)
+	t.Logf("PROBE1257 expired-fullview-read=%s (sandboxViewFor equivalent, post-fix)", fullViewRead)
+
+	// 给后台重建一点时间落盘，再读确认最终一致（新快照已发布）。
+	time.Sleep(3 * time.Second)
+	start = time.Now()
+	ShellCapabilitiesForView("", "")
+	rebuiltWarm := time.Since(start)
+	t.Logf("PROBE1257 rebuilt-warm-read=%s", rebuiltWarm)
 }

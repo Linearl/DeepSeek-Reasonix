@@ -55,8 +55,10 @@ func (a *App) defaultSettingsView() SettingsView {
 		ProviderKinds:   nonNil(provider.Kinds()),
 		Permissions:     PermissionsView{Mode: "ask", Allow: []string{}, Ask: []string{}, Deny: []string{}},
 		Sandbox: SandboxView{Bash: defaults.BashMode(), AllowWrite: []string{}, EffectiveWriteRoots: []string{}, Shell: "auto",
-			EffectiveShell:      sandboxEffectiveShellView(sandbox.ResolveShell("", "", nil)),
-			ResolvedShell:       sandboxEffectiveShellView(sandbox.ResolveShell("", "", nil)),
+			// tl1257: 兜底视图同属设置展示面，shell 读数走 ForView（stale-ok），
+			// 避免 config 加载失败分支再叠加一次同步 shell 发现阻塞。
+			EffectiveShell:      sandboxEffectiveShellView(sandbox.ResolveShellForView("", "", nil)),
+			ResolvedShell:       sandboxEffectiveShellView(sandbox.ResolveShellForView("", "", nil)),
 			ShellCapabilities:   sandboxCapabilityViews("", ""),
 			GitCapability:       gitCapabilityView("", ""),
 			ShellInstallAction:  shellInstallActionViewForGOOS(runtime.GOOS),
