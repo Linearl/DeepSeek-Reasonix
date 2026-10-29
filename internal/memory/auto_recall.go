@@ -334,10 +334,12 @@ func recallMemories(all []Memory) []Memory {
 	project := make([]Memory, 0, len(all))
 	global := make([]Memory, 0, len(all))
 	for _, memory := range all {
-		// Pinned bodies already ride session-context; recalling them again
-		// would duplicate. Relevant facts of every scope and type stay in the
-		// retrieval pool.
-		if ResolveActivation(memory) == ActivationPinned {
+		// Default (plan E off): pinned bodies already ride session-context;
+		// recalling them again would duplicate. Plan E on (tl1193): bodies no
+		// longer ride the prefix, so the recall pool IS their on-demand
+		// channel and pinned facts stay in. Relevant facts of every scope and
+		// type always stay in the retrieval pool.
+		if !pinnedIndexMode() && ResolveActivation(memory) == ActivationPinned {
 			continue
 		}
 		if NormalizeFactScope(string(memory.Scope)) == FactScopeProject {

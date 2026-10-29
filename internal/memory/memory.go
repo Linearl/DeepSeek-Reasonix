@@ -60,11 +60,17 @@ func Load(opts Options) *Set {
 			InstructionDiagnostics: resolved.Diagnostics}
 	}
 	store := StoreFor(opts.UserDir, cwd)
+	// tl1193: read the store once. Standing guidance, the provider index, and
+	// (lazily) the recall pool all derive from this single listing — Load used
+	// to pay one scan inside pinnedGuidance, one ListAll for the shadow rule,
+	// and one ListAll for the index, and the memory_load segment was the boot
+	// prompt stage's largest suspect (859ms, tl1229 baseline).
+	all := store.ListAll()
 	return &Set{
 		Docs:                   resolved.Documents,
-		PinnedGuidance:         store.pinnedGuidanceForProject(),
+		PinnedGuidance:         store.pinnedGuidanceForProjectFrom(all),
 		Store:                  store,
-		Index:                  store.Index(),
+		Index:                  store.IndexFrom(all),
 		CWD:                    cwd,
 		UserDir:                opts.UserDir,
 		InstructionDiagnostics: resolved.Diagnostics,
@@ -84,7 +90,11 @@ func (s *Set) recallIndex() *RecallIndex {
 	s.recallMu.Lock()
 	defer s.recallMu.Unlock()
 	if !s.recallBuilt {
-		s.recall = BuildRecallIndex(s.Store)
+		// tl1193: behind the per-snapshot lazy build sits a process-resident
+		// index keyed by the store's stat fingerprint, so snapshot swaps that
+		// leave the pool's files unchanged reuse the already-built index
+		// instead of re-reading and re-tokenizing the pool per swap.
+		s.recall = recallIndexFor(s.Store)
 		s.recallBuilt = true
 	}
 	return s.recall
@@ -196,10 +206,18 @@ func (s *Set) BackgroundDataBlock() string {
 	}
 	var b strings.Builder
 	if len(s.PinnedGuidance) > 0 {
-		b.WriteString("### Pinned preferences and feedback\n")
-		for _, m := range s.PinnedGuidance {
-			fmt.Fprintf(&b, "\n#### %s (%s/%s)\n\n%s\n", displayTitle(m.Title, m.Name),
-				NormalizeFactScope(string(m.Scope)), NormalizeType(string(m.Type)), strings.TrimSpace(m.Body))
+		if pinnedIndexMode() {
+			// Plan E (tl1193): the standing tier carries one index line per
+			// pinned fact; bodies are recalled on demand instead (see
+			// recallMemories, which keeps pinned facts in the pool in this
+			// mode). Default off renders the legacy full-body form unchanged.
+			b.WriteString(pinnedIndexBlock(s.PinnedGuidance))
+		} else {
+			b.WriteString("### Pinned preferences and feedback\n")
+			for _, m := range s.PinnedGuidance {
+				fmt.Fprintf(&b, "\n#### %s (%s/%s)\n\n%s\n", displayTitle(m.Title, m.Name),
+					NormalizeFactScope(string(m.Scope)), NormalizeType(string(m.Type)), strings.TrimSpace(m.Body))
+			}
 		}
 	}
 	if idx := strings.TrimSpace(s.Index); idx != "" {

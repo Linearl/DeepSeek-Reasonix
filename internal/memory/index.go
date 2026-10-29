@@ -14,7 +14,15 @@ import (
 // agrees with the project-over-global rule recall enforces (#7995). The
 // per-directory MEMORY.md files keep their unqualified format.
 func (s Store) Index() string {
-	memories := s.ListAll()
+	return s.IndexFrom(s.ListAll())
+}
+
+// IndexFrom renders the same index over a pool the caller already read
+// (tl1193: Load derives guidance, index, and recall from one listing).
+// IndexFrom takes ownership of the slice's ordering: callers must not rely on
+// `all` keeping its input order after the call.
+func (s Store) IndexFrom(all []Memory) string {
+	memories := all
 	if len(memories) == 0 {
 		return ""
 	}
