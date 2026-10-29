@@ -95,11 +95,6 @@ class FakeResizeObserver {
 const writes: TranscriptScrollWriteRecord[] = [];
 (window as unknown as { __REASONIX_TRANSCRIPT_SCROLL_WRITE__?: (write: TranscriptScrollWriteRecord) => void })
   .__REASONIX_TRANSCRIPT_SCROLL_WRITE__ = (write) => writes.push(write);
-const kernelEvents: Array<{ outcome: string; owner?: string; intent: string }> = [];
-(window as unknown as { __REASONIX_TRANSCRIPT_SCROLL_DIAGNOSTIC__?: (type: string, fields: Record<string, unknown>) => void })
-  .__REASONIX_TRANSCRIPT_SCROLL_DIAGNOSTIC__ = (type, fields) => {
-    if (type === "kernel") kernelEvents.push({ outcome: String(fields.outcome), owner: fields.owner as string | undefined, intent: String(fields.intent) });
-  };
 
 // ── 滚动容器几何 stub（挂在 React 创建的真实 div 上，tl 1187 同款）────────
 type BlockGeom = { top: number; height: number };
@@ -302,16 +297,11 @@ process.stdout.write("\n[tl 1243] sidebar expand/collapse keeps the viewport bot
 
   // 收起：回到原布局，blk-b 回到 top 1000 → 补偿写 1200。
   writes.length = 0;
-  kernelEvents.length = 0;
   geom.clientW = 800;
   geom.blocks = ORIGINAL_BLOCKS;
   geom.height = 4000;
   geom.top = Math.min(geom.top, bottomOf());
   await fireRewrap(800, geom.client);
-  if (writes.find((write) => write.owner === "composer-resize") == null) {
-    process.stdout.write(`  DEBUG B collapse: kernelEvents=${JSON.stringify(kernelEvents)}\n`);
-    process.stdout.write(`  DEBUG B collapse: anchor=${JSON.stringify(handle!.kernel.anchor)} intent=${handle!.kernel.intent} top=${geom.top}\n`);
-  }
   const collapseWrite = writes.find((write) => write.owner === "composer-resize");
   ok(collapseWrite != null, "B round 2: collapse compensation ran");
   eq(collapseWrite?.requestedOffset, 1200, "B round 2: write = restored block top 1000 + offset 200");
