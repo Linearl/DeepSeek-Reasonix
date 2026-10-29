@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Archive, ArrowDown, Check, CheckCheck, ChevronDown, ChevronRight, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
+import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Pin, MoreHorizontal, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
