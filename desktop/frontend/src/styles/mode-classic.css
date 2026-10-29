@@ -724,24 +724,22 @@
   opacity: 0.58;
 }
 
-.tabbar__tab--drop-before::before,
-.tabbar__tab--drop-after::after {
-  content: "";
-  position: absolute;
-  top: 7px;
-  bottom: 7px;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+/* tl 1225b: same tl1225 inset bar mechanism for the classic tab strip's
+   left/right insertion hints (horizontal strip → vertical bars on the nearest
+   inside edge). Two specificity branches: the plain class covers the default
+   layer; the `:root[data-theme-style] .app-chrome--tabs` branch (0,4,0)
+   out-ranks `:root[data-theme-style] .tabbar__tab { box-shadow: none }` and
+   the themed `--active` shadow (both 0,3,0) — without it the themed layers
+   would swallow the hint. Class names and the drop state chain are untouched
+   (hint layer = CSS only). */
+.tabbar__tab--drop-before,
+:root[data-theme-style] .app-chrome--tabs .tabbar__tab--drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.tabbar__tab--drop-before::before {
-  left: 0;
-}
-
-.tabbar__tab--drop-after::after {
-  right: 0;
+.tabbar__tab--drop-after,
+:root[data-theme-style] .app-chrome--tabs .tabbar__tab--drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
 }
 
 .tabbar__status {
