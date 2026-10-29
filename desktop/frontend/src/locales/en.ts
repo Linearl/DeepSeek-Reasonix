@@ -1808,6 +1808,7 @@ export const en = {
   "projectTree.deleteGroupSessions": "Delete group and its sessions",
   "projectTree.deleteGroupSessionsConfirm": "This deletes {count} session(s) in this group and removes the group itself.",
   "projectTree.deleteGroupSessionsDetail": "Sessions go to the recycle path, so a mistake is still recoverable.",
+  "projectTree.deleteGroupSessionsFailed": "{count} session(s) could not be moved to the recycle bin; the group was kept. First reason: {error}",
   "projectTree.deleteGroupPlanIntro": "Dissolve group \"{title}\"?",
   "projectTree.deleteGroupPlanUnfiled": "{count} session(s) return to ungrouped.",
   "projectTree.deleteGroupPlanPromote": "{count} sub-group(s) will move to the top level: {titles}",
