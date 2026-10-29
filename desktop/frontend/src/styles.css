@@ -19697,26 +19697,19 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev));
 }
 
-.status-bar-item-row--drop-before::before,
-.status-bar-item-row--drop-after::after {
-  content: "";
-  position: absolute;
-  left: 28px;
-  right: 14px;
-  z-index: var(--z-local-raised);
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent), 0 3px 8px color-mix(in srgb, var(--accent) 24%, transparent);
-  pointer-events: none;
+/* tl 1225b: the status-bar row placement hint reuses the tl1225 inset bar
+   mechanism (same as .project-tree__topic--drop-* / folder / pgroup): an
+   inset 2px accent bar on the edge nearest the insertion point. The old
+   outset hairline pseudo-elements (top/bottom: -5px) painted OUTSIDE the row
+   box, where neighbouring wrappers cover them — the unified inset bar lives
+   inside the row and always reads. Class names, drag states and the reorder
+   write chain are untouched (hint layer = CSS only). */
+.status-bar-item-row--drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
-.status-bar-item-row--drop-before::before {
-  top: -5px;
-}
-
-.status-bar-item-row--drop-after::after {
-  bottom: -5px;
+.status-bar-item-row--drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .status-bar-item-row__drag {
@@ -29680,23 +29673,16 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
 }
 
-.side-dock-tab--drop-before::before,
-.side-dock-tab--drop-after::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--accent);
+/* tl 1225b: same tl1225 inset bar mechanism for the side-dock tab strip's
+   left/right insertion hints (horizontal strip → vertical bars on the nearest
+   inside edge). The old outset hairlines (left/right: -2px) were painted
+   outside the tab box and could be covered by neighbouring tabs. */
+.side-dock-tab--drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.side-dock-tab--drop-before::before {
-  left: -2px;
-}
-
-.side-dock-tab--drop-after::after {
-  right: -2px;
+.side-dock-tab--drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
 }
 
 .side-dock-tab__close {
