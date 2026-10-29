@@ -247,12 +247,20 @@ func (a *App) deleteSession(path string) error {
 	if err := validateSessionTrashTarget(dir, sessionPath, key); err != nil {
 		return err
 	}
+	// tl-1144: collect the registry topics this delete may need to converge
+	// once the trash lands. Witnesses must be read BEFORE the artifacts move —
+	// the branch meta here, the torn-down tab bindings inside the closure.
+	convTopics := map[string]bool{}
+	if id := branchMetaTopicWitness(sessionPath); id != "" {
+		convTopics[id] = true
+	}
 	var fallback fallbackRuntimeTarget
 	if err := func() error {
 		defer a.lockRuntimeMutation("delete-session")()
 		a.sessionRemovalMu.Lock()
 		defer a.sessionRemovalMu.Unlock()
 		removed, nextFallback := a.removeSessionRuntimeBindings(dir, sessionPath)
+		topicWitnessesFromRuntimeBindings(convTopics, removed)
 		fallback = nextFallback
 		if err := a.prepareRemovedSessionRuntimes(removed); err != nil {
 			a.closeRemainingRemovedSessionRuntimesAdmissionHeld(removed, map[control.SessionAPI]bool{})
@@ -267,7 +275,11 @@ func (a *App) deleteSession(path string) error {
 				a.closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(removed, closedRemoved)
 				return err
 			}
-			go delayedDesktopSessionTrash(dir, sessionPath, key, destroys)
+			go delayedDesktopSessionTrash(dir, sessionPath, key, destroys, func() {
+				// tl-1144: the trash lands later — converge the topic registry
+				// when it does (the witnesses set is final by then).
+				a.convergeTopicsAfterSessionTrash(convTopics)
+			})
 		} else {
 			err = trashSessionArtifacts(dir, sessionPath, key)
 			finishDestroyHandles(destroys)
@@ -297,6 +309,13 @@ func (a *App) deleteSession(path string) error {
 			return err
 		}
 	}
+	// tl-1144: a topic whose last session file just left must not linger in the
+	// tree as a shell (the same deleteTopic convergence the topic-archive path
+	// already runs). No-op for every topic that still holds a session, is still
+	// tab-referenced, or was never registered. The delayed-trash branch
+	// converges inside its goroutine instead — the file is still on disk here,
+	// so this call is a harmless guard-protected no-op there.
+	a.convergeTopicsAfterSessionTrash(convTopics)
 	a.removeSessionCatalogPath(sessionPath, "session_deleted")
 	a.emitProjectTreeChangedForSessionDirs(dir)
 	a.invalidatePromptHistoryCache()
@@ -470,12 +489,21 @@ func delayedDesktopSessionCleanup(path string, destroys []control.SessionDestroy
 	finishDestroyHandles(destroys)
 }
 
-func delayedDesktopSessionTrash(dir, sessionPath, key string, destroys []control.SessionDestroyHandle) {
+// delayedDesktopSessionTrash is the teardown-timeout completion of a session
+// delete: it waits for the runtime teardown to settle, trashes the artifacts,
+// then runs afterTrash (nil allowed — tl-1144 topic-registry convergence rides
+// this hook so the delayed branch converges exactly when the file really
+// leaves). Running afterTrash even on a failed trash is safe by contract: the
+// convergence re-checks every guard (files, tabs, registration) itself.
+func delayedDesktopSessionTrash(dir, sessionPath, key string, destroys []control.SessionDestroyHandle, afterTrash func()) {
 	waitAllDestroyHandles(destroys)
 	if err := trashSessionArtifacts(dir, sessionPath, key); err != nil {
 		slog.Warn("desktop: delayed session trash failed", "path", sessionPath, "err", err)
 	}
 	finishDestroyHandles(destroys)
+	if afterTrash != nil {
+		afterTrash()
+	}
 }
 
 func (a *App) closeRemovedSessionRuntimes(removed []removedSessionRuntime) {
