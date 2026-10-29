@@ -3494,17 +3494,18 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               语义不变，仅落点迁卡）。 */}
           {selected === "toolOptimizations" && (
             /* 任务 971：工具优化聚合页——工具表相关开关单页管理。
-               顶部常驻 rev2 警告（定稿原文）+ 三生效点机制说明 + 四配套；
-               下方 readBack / multi_edit 直注 / restart_update 三开关 + 证据门
-               成员行 + session_hub 预留键位。任务 603 readBack 语义不变；任务
-               943 两开关独立语义保持（合并入页不回并，各持各键各 setter）。 */
+               顶部常驻警告（tl1251 修订稿：生效点=新会话/重启）+ 两生效点机制
+               说明 + 四配套；下方 readBack / multi_edit 直注 / restart_update
+               三开关 + 证据门成员行 + session_hub 预留键位。任务 603 readBack
+               语义不变；任务 943 两开关独立语义保持（合并入页不回并，各持各键
+               各 setter）。 */
             <>
-            {/* 任务 971：顶部常驻警告（rev2 定稿全文，双向语义保留）。 */}
+            {/* 任务 971：顶部常驻警告（tl1251 修订稿，双向语义保留）。 */}
             <div className="banner banner--warning" role="alert" data-testid="tool-opt-hub-warning">
               {t("settings.toolOptHub.warning")}
             </div>
-            {/* 任务 971：三生效点机制说明 + 四配套（pending 态/compact 立即生效/
-                换装 notice/纯 schema 范围）。 */}
+            {/* 任务 971：两生效点机制说明 + 四配套（pending 态/换装 notice/
+                纯 schema 范围；tl1251：压缩不是生效点，勿再承诺 /compact）。 */}
             <p className="approval-mode-hint">{t("settings.toolOptHub.effect")}</p>
             <p className="approval-mode-hint">{t("settings.toolOptHub.pending")}</p>
             <p className="approval-mode-hint">{t("settings.toolOptHub.notice")}</p>
