@@ -246,7 +246,7 @@ function build() {
     out: join(dist, "index.html"),
     html: layout({
       title: null,
-      description: SITE.tagline,
+      description: indexParsed.meta.desc || SITE.tagline,
       activeSlug: null,
       body: `<article class="prose">${markdownToHtml(indexParsed.body)}</article>`,
       breadcrumb: null,
