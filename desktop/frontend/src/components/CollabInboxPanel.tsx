@@ -783,6 +783,29 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
 
   const rows: CollabMailEntry[] = snapshot?.entries ?? [];
 
+  // tl1238 ①：多选态「全选」入口的第二落位——列表头部主控复选框。batchbar 的
+  // 全选按钮挂在滚动内容最底部，懒加载长列表（tl1230 首屏 20 条）下它沉在折叠
+  // 线以下，用户实测即「多选模式没有全选按钮」（tl1238 ①：入口在 DOM 里但
+  // 看不见 = 可见性缺陷，不是控件缺失）。头部主控框随列表首行渲染、进多选态
+  // 即可见，CSS sticky 常驻滚动可见区；batchbar 同步 sticky 底部。两处读写同
+  // 一 selected 状态，不造第二份选择真相源。
+  const selectionKeys: string[] =
+    view === "chains"
+      ? (chains?.chains ?? []).map((chain) => chain.threadId)
+      : rows.map((entry) => entry.id);
+  const allSelected = selectionKeys.length > 0 && selectionKeys.every((key) => selected.has(key));
+  const toggleAllSelected = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const key of selectionKeys) next.delete(key);
+      } else {
+        for (const key of selectionKeys) next.add(key);
+      }
+      return next;
+    });
+  };
+
   // 任务587（失败态与空态分离）：四个展示位互斥——
   //   失败+无数据 → 显式错误块（含重试）；失败+有旧数据 → 旧数据照常渲染 +
   //   顶部细条提示「上次刷新失败」；读取中 → 「读取中」；健康空 → 「暂无信件」。
@@ -995,6 +1018,20 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
       </div>
 
       <div className="collab-inbox-panel__rows">
+        {/* tl1238 ①：多选态列表头部主控「全选」复选框——勾=全选当前视图，
+            再点=清空当前视图选择；与 batchbar 的全选按钮同一 selected 状态。
+            list 视图选 entry.id、chains 视图选 threadId，与行首复选框口径一致。 */}
+        {multi && selectionKeys.length > 0 && (
+          <label className="collab-inbox-panel__checkall">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              disabled={busy}
+              onChange={toggleAllSelected}
+            />
+            <span>{t("collabInbox.selectAll")}</span>
+          </label>
+        )}
         {/* 任务587：读取失败但有旧数据 → 旧数据优先（可用性>新鲜度），顶部细条
             如实声明「显示的不是最新结果」，附重试。 */}
         {loadError && !viewEmpty && (

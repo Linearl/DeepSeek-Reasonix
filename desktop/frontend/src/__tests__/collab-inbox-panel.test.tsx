@@ -11,6 +11,9 @@
 // onChange never fires in this environment.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
@@ -769,6 +772,117 @@ tl1226Host.remove();
     truncRoot.unmount();
   });
   truncHost.remove();
+}
+
+// ── tl1238 ①：多选态「全选」入口在列表头部可见可达 ──────────────────────────
+// 用户实测「多选模式没有全选按钮」：batchbar 全选按钮在 DOM 里但挂在滚动内容
+// 最底部，懒加载长列表下沉到折叠线以下 = 可见性缺陷。修复 = 列表头部主控复选
+// 框（sticky 常驻）+ batchbar sticky 底部；两处同一 selected 状态。这里的接缝
+// 职责：①头部主控框随多选态渲染且文案同「全选」键；②勾=全选当前视图、再点
+// =清空当前视图；③与行首复选框/batchbar 计数联动；④sticky 两条 CSS 落盘
+// （980 ② 的 styles.css 断言先例）。
+{
+  const msEntries = [
+    entry({ id: "ms_a", preview: "multi a" }),
+    entry({ id: "ms_b", preview: "multi b" }),
+    entry({ id: "ms_c", preview: "multi c" }),
+  ];
+  const msBindings: CollabInboxBindings = {
+    ...bindings,
+    async ListCollabMail() {
+      return {
+        revision: "13.0.0",
+        settings: { retention: "7d" },
+        total: msEntries.length,
+        returned: msEntries.length,
+        truncated: false,
+        entries: msEntries,
+      };
+    },
+  };
+  const msHost = document.createElement("div");
+  document.body.appendChild(msHost);
+  const msRoot = createRoot(msHost);
+  await act(async () => {
+    msRoot.render(
+      <LocaleProvider>
+        <CollabInboxPanel bindings={msBindings} directory={directory} embedded />
+      </LocaleProvider>,
+    );
+  });
+  const msPanel = msHost.querySelector(".collab-inbox-panel");
+  assert.ok(msPanel, "tl1238: the multi-select panel renders");
+  assert.equal(
+    msPanel!.querySelector(".collab-inbox-panel__checkall"),
+    null,
+    "tl1238: no header select-all renders before multi mode is on",
+  );
+  await act(async () => {
+    Array.from(msPanel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__toolbar button"))
+      .find((b) => b.textContent === "Multi-select")!
+      .click();
+  });
+  const checkall = msPanel!.querySelector<HTMLElement>(".collab-inbox-panel__checkall");
+  assert.ok(checkall, "tl1238: the list-header master select-all renders in multi mode");
+  assert.equal(
+    checkall!.querySelector("span")?.textContent,
+    "Select all",
+    "tl1238: the header control carries the same 全选 label as the batchbar button",
+  );
+  const msCheckboxes = () => msPanel!.querySelectorAll<HTMLInputElement>(".collab-inbox-panel__check input");
+  assert.equal(msCheckboxes().length, 3, "tl1238: the three rows grow their checkboxes");
+  const headerBox = () => checkall!.querySelector<HTMLInputElement>("input")!;
+  assert.equal(headerBox().checked, false, "tl1238: the header checkbox starts unchecked at 0 selected");
+  await act(async () => {
+    headerBox().click();
+  });
+  assert.equal(
+    Array.from(msCheckboxes()).every((c) => c.checked),
+    true,
+    "tl1238: ticking the header checkbox selects every row",
+  );
+  assert.match(
+    msPanel!.querySelector(".collab-inbox-panel__batchbar")!.textContent ?? "",
+    /3 selected/,
+    "tl1238: the batchbar count follows the header select-all",
+  );
+  // 取消一行 → 头部主控框回到未勾（部分选中≠全选）；再勾头部 → 恢复全选。
+  await act(async () => {
+    msCheckboxes()[0].click();
+  });
+  assert.equal(headerBox().checked, false, "tl1238: unchecking one row unchecks the header master");
+  assert.match(
+    msPanel!.querySelector(".collab-inbox-panel__batchbar")!.textContent ?? "",
+    /2 selected/,
+    "tl1238: the batchbar count drops with the row uncheck",
+  );
+  await act(async () => {
+    headerBox().click();
+  });
+  assert.equal(
+    Array.from(msCheckboxes()).every((c) => c.checked),
+    true,
+    "tl1238: re-ticking the header master re-selects every row",
+  );
+  // sticky 两条 CSS 落盘（可见性修复的本体：头部框钉顶、batchbar 钉底）。
+  {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+    const checkallRule = styles.slice(
+      styles.indexOf(".collab-inbox-panel__checkall {"),
+      styles.indexOf("}", styles.indexOf(".collab-inbox-panel__checkall {")),
+    );
+    assert.match(checkallRule, /position:\s*sticky/, "tl1238: the header master sticks to the visible top (was the invisible-select-all defect)");
+    const batchbarRule = styles.slice(
+      styles.indexOf(".collab-inbox-panel__batchbar {"),
+      styles.indexOf("}", styles.indexOf(".collab-inbox-panel__batchbar {")),
+    );
+    assert.match(batchbarRule, /position:\s*sticky/, "tl1238: the batchbar sticks to the visible bottom");
+  }
+  await act(async () => {
+    msRoot.unmount();
+  });
+  msHost.remove();
 }
 
 await act(async () => root.unmount());
