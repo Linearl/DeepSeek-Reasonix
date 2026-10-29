@@ -491,6 +491,10 @@ assert.equal(Array.from(inviteBox!.querySelectorAll("button")).some((b) => b.tex
 const firstCandidate = inviteBox!.querySelector("input[type=checkbox]")! as HTMLInputElement;
 await act(async () => { firstCandidate.click(); });
 assert.ok(firstCandidate.checked, "a candidate can be checked");
+// tl1242：面板内点击（卡片空白处=候选容器本身）不得误关——只有卡片外部才关。
+const boxBlank = inviteBox!.querySelector(".channel-chat__invitecandidates")! as HTMLElement;
+await act(async () => { boxBlank.click(); });
+assert.ok(chat().querySelector(".channel-chat__invitebox"), "clicking inside the invite box (blank area) keeps it open (tl1242 面板内点击不误关)");
 document.body.click();
 await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 assert.equal(chat().querySelector(".channel-chat__invitebox"), null, "clicking outside dismisses the invite box");
@@ -501,6 +505,23 @@ await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); 
 const inviteBoxRe = chat().querySelector(".channel-chat__invitebox")!;
 const reChecked = (inviteBoxRe.querySelector("input[type=checkbox]")! as HTMLInputElement).checked;
 assert.ok(reChecked, "the pick survives the outside-dismiss (重开不丢)");
+
+// tl1242：点卡片外部「真实空白表面」（详情标题条）也能关闭——不止 document.body。
+await act(async () => { (chat().querySelector(".channel-chat__detailtitle")! as HTMLElement).click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__invitebox"), null, "clicking a real outside surface dismisses the invite box (tl1242 点卡片外部空白)");
+// tl1242：mousedown 通道（CollabHubPanel/topicbar export 的 house 形态）——
+// 外部按下即关，覆盖拖拽起始等 click 不派发的边缘路径。
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Add sessions")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.ok(chat().querySelector(".channel-chat__invitebox"), "the invite box reopens for the mousedown check");
+await act(async () => {
+  (chat().querySelector(".channel-chat__detailtitle")! as HTMLElement).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__invitebox"), null, "a mousedown outside dismisses the invite box (tl1242 mousedown 通道)");
 
 // 邮箱哨兵：全程没有任何信件中心读口调用（去重口径 b）。
 assert.equal(calls.some((c) => /Mail|Inbox/i.test(c.name)), false, "the chat never touches the mail center");

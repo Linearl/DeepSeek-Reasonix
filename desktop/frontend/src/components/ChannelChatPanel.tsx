@@ -280,15 +280,28 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   useEffect(() => cancelDirectoryRetry, [cancelDirectoryRetry]);
 
   // 任务 856 ⑥：邀请框点外部区域自动关闭（捕获阶段拦截内部点击；勾选保留）。
+  // tl1242：补 mousedown 通道，对齐既有面板 house 形态（CollabHubPanel/
+  // topicbar export 同款 mousedown+closest 守卫）——拖拽起始等路径 click 可能
+  // 不派发，mousedown 先行兜底，让「点卡片外部空白稳定关闭」；卡片内部点击
+  // 仍被 closest 豁免（勾选/检索不受影响）。双通道重复置 false 幂等无副作用。
   useEffect(() => {
     if (!inviteOpen) return;
-    const onDocClick = (event: MouseEvent) => {
+    const isOutside = (event: MouseEvent) => {
       const target = event.target as Element | null;
-      if (target?.closest(".channel-chat__invitebox")) return;
-      setInviteOpen(false);
+      return !target?.closest(".channel-chat__invitebox");
     };
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (isOutside(event)) setInviteOpen(false);
+    };
+    const onDocClick = (event: MouseEvent) => {
+      if (isOutside(event)) setInviteOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown, true);
     document.addEventListener("click", onDocClick, true);
-    return () => document.removeEventListener("click", onDocClick, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("click", onDocClick, true);
+    };
   }, [inviteOpen]);
 
   const openChannel = useCallback((id: string) => {
