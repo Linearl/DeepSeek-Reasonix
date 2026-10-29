@@ -65,7 +65,7 @@ func TestPruneVersionTreesKeepsNewestNPlusCurrent(t *testing.T) {
 	versions := []string{"v1.38.0", "v1.38.1", "v1.38.2", "v1.38.3", "v1.38.3-20260928-1000", "v1.38.3-20260929-1100", "v1.38.3-20260930-1200"}
 	root := writePruneFixture(t, versions, "v1.38.0") // current points at the OLDEST
 
-	pruned, err := PruneVersionTrees(root, 5)
+	pruned, retained, err := PruneVersionTrees(root, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +75,9 @@ func TestPruneVersionTreesKeepsNewestNPlusCurrent(t *testing.T) {
 	wantPruned := []string{"v1.38.1"}
 	if strings.Join(pruned, ",") != strings.Join(wantPruned, ",") {
 		t.Fatalf("pruned=%v want %v (beyond keep, minus current, deletion order)", pruned, wantPruned)
+	}
+	if len(retained) != 0 {
+		t.Fatalf("no tree may be retained as occupied in a clean fixture, got %v", retained)
 	}
 	got := remainingVersions(t, root)
 	wantLeft := []string{"v1.38.0", "v1.38.2", "v1.38.3", "v1.38.3-20260928-1000", "v1.38.3-20260929-1100", "v1.38.3-20260930-1200"}
@@ -96,12 +99,15 @@ func TestPruneVersionTreesCurrentAmongKept(t *testing.T) {
 	versions := []string{"v1.37.0", "v1.38.0", "v1.38.1", "v1.38.2", "v1.38.3", "v1.38.3-20261001-0900"}
 	root := writePruneFixture(t, versions, "v1.38.3-20261001-0900")
 
-	pruned, err := PruneVersionTrees(root, 5)
+	pruned, retained, err := PruneVersionTrees(root, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(pruned) != 1 || pruned[0] != "v1.37.0" {
 		t.Fatalf("pruned=%v want exactly the single oldest tree", pruned)
+	}
+	if len(retained) != 0 {
+		t.Fatalf("no tree may be retained as occupied in a clean fixture, got %v", retained)
 	}
 	got := remainingVersions(t, root)
 	if len(got) != 5 {
@@ -116,12 +122,15 @@ func TestPruneVersionTreesWithoutPointer(t *testing.T) {
 	versions := []string{"v1.38.0", "v1.38.1", "v1.38.2"}
 	root := writePruneFixture(t, versions, "")
 
-	pruned, err := PruneVersionTrees(root, 1)
+	pruned, retained, err := PruneVersionTrees(root, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(pruned, ",") != "v1.38.1,v1.38.0" {
 		t.Fatalf("pruned=%v want the two oldest (deletion order)", pruned)
+	}
+	if len(retained) != 0 {
+		t.Fatalf("no tree may be retained as occupied in a clean fixture, got %v", retained)
 	}
 	if got := remainingVersions(t, root); strings.Join(got, ",") != "v1.38.2" {
 		t.Fatalf("remaining=%v want only the newest", got)
@@ -132,13 +141,13 @@ func TestPruneVersionTreesWithoutPointer(t *testing.T) {
 // programming error and must refuse loudly instead of nuking versions/.
 func TestPruneVersionTreesKeepEdges(t *testing.T) {
 	root := writePruneFixture(t, []string{"v1.38.0", "v1.38.1"}, "v1.38.0")
-	if pruned, err := PruneVersionTrees(root, 0); err != nil || len(pruned) != 1 {
-		t.Fatalf("keep=0 must prune all but current, got pruned=%v err=%v", pruned, err)
+	if pruned, retained, err := PruneVersionTrees(root, 0); err != nil || len(pruned) != 1 || len(retained) != 0 {
+		t.Fatalf("keep=0 must prune all but current, got pruned=%v retained=%v err=%v", pruned, retained, err)
 	}
 	if got := remainingVersions(t, root); strings.Join(got, ",") != "v1.38.0" {
 		t.Fatalf("remaining=%v want only the current tree", got)
 	}
-	if _, err := PruneVersionTrees(root, -1); err == nil || !strings.Contains(err.Error(), "keep must be >= 0") {
+	if _, _, err := PruneVersionTrees(root, -1); err == nil || !strings.Contains(err.Error(), "keep must be >= 0") {
 		t.Fatalf("negative keep must error, got %v", err)
 	}
 }
@@ -147,8 +156,8 @@ func TestPruneVersionTreesKeepEdges(t *testing.T) {
 // the post-build prune must never turn a flat checkout into a failed build.
 func TestPruneVersionTreesMissingVersionsDir(t *testing.T) {
 	root := t.TempDir()
-	pruned, err := PruneVersionTrees(root, 5)
-	if err != nil || pruned != nil {
-		t.Fatalf("missing versions/ must be a no-op, got pruned=%v err=%v", pruned, err)
+	pruned, retained, err := PruneVersionTrees(root, 5)
+	if err != nil || pruned != nil || retained != nil {
+		t.Fatalf("missing versions/ must be a no-op, got pruned=%v retained=%v err=%v", pruned, retained, err)
 	}
 }
