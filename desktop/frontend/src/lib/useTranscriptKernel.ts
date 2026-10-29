@@ -267,7 +267,22 @@ export function useTranscriptKernel({
     coverageRef.current = true;
     pointerGestureRef.current = 0;
     writer.freeze(false);
+    // tl 1241: capture the switch-away side of the verdict BEFORE replaceSurface
+    // consumes it — kernel state still belongs to the outgoing surface here, so
+    // atBottom/intent are exactly what bottomBySession is about to record.
+    const swapFrom = { surface: kernel.surface, atBottom: kernel.atBottom, intent: kernel.intent };
     const restored = kernel.replaceSurface(sessionKey);
+    // tl 1241: one surface-swap event per switch carrying the verdict triplet
+    // the restore consumes — the stale-snapshot family (tl 1219 §1) becomes
+    // reproducible from the exported trace instead of static inference.
+    recordTranscriptScrollDiagnostic("surface-swap", {
+      surface: sessionKey,
+      surfaceFrom: swapFrom.surface || undefined,
+      atBottomFrom: swapFrom.surface ? swapFrom.atBottom : undefined,
+      intentFrom: swapFrom.surface ? swapFrom.intent : undefined,
+      bottomBySession: kernel.peekBottomSnapshot(sessionKey),
+      restoredAnchorKind: restored.anchor.kind,
+    });
     writer.attach(scrollRef.current, restored.generation);
     // tl 1204: the restore protocol has ONE synchronous landing site and it is
     // the kernel's own authority (chain a of two). The 1187 inline tail-sync
@@ -364,9 +379,15 @@ export function useTranscriptKernel({
   // kernel's single rAF retry with a visible diagnostic when it exhausts.
   const restoreLanding = useCallback(() => {
     const element = scrollRef.current;
-    kernel.restoreLanding(element ? (key) => blockTop(element, key) : undefined);
+    // tl 1241: hand the authority the CURRENT geometry so a measured-at-bottom
+    // viewport can demote a stale block snapshot to the tail (leak A). The
+    // verdict itself stays inside the kernel (single authority); the snapshot
+    // shape is structurally the viewport geometry triple it asks for.
+    const geometry = snapshot();
+    const landed = kernel.restoreLanding(element ? (key) => blockTop(element, key) : undefined, geometry ?? undefined);
     refresh();
-  }, [kernel, refresh]);
+    return landed;
+  }, [kernel, refresh, snapshot]);
 
   const beginAnchorRestore = useCallback((anchor?: LogicalAnchor) => {
     const restoreAnchor = anchor ?? kernel.anchor;

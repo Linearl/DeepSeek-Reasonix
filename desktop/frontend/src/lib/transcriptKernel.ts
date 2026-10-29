@@ -207,6 +207,15 @@ export class TranscriptKernel {
   get geometryRevision(): number { return this.geometryVersion; }
   get intent(): ViewportIntent { return this.intentValue; }
   get anchor(): LogicalAnchor { return this.anchorValue; }
+  // tl 1241: read-only diagnostic access to the conditional snapshot itself.
+  // It is deliberately NOT the measured verdict (that is isViewportAtBottom) —
+  // the gap between the two is exactly the stale-snapshot family this ticket
+  // instruments and fixes.
+  get atBottom(): boolean { return this.atBottomValue; }
+  get surface(): string { return this.session; }
+  /** tl 1241: the bottom verdict captured when `session` was switched away
+   * from (the replaceSurface restore input), or undefined if it never was. */
+  peekBottomSnapshot(session: string): boolean | undefined { return this.bottomBySession.get(session); }
   get safeMode(): boolean { return this.safeModeValue; }
   get userGestureActive(): boolean { return this.userGesture; }
   get nativeGestureLeaseActive(): boolean { return this.nativeGestureTimer !== null; }
@@ -343,8 +352,27 @@ export class TranscriptKernel {
    * the DOM is mounted by then). Callers — the replaceSurface effect and the
    * hydrate-complete frame — must not re-derive tail/block semantics; asking
    * this method IS the protocol. Returns whether the position was applied
-   * synchronously. */
-  restoreLanding(blockTop?: (blockKey: string) => number | undefined): boolean {
+   * synchronously.
+   *
+   * tl 1241: `measuredViewport` (when supplied) is CURRENT evidence and beats
+   * the anchor snapshot: the snapshot family is conditional (a programmatic
+   * bottom write never passes the gesture gate in observeNativeScroll), so the
+   * verdict stored at switch-away time can say "reader" while the viewport is
+   * measurably at the bottom. A viewport that IS at the bottom lands on the
+   * tail. This is a measured demotion, not a bottom force: a reader parked
+   * mid-transcript measures false and keeps its block landing (1196 forms 2/3
+   * stay protected), and no measurement means pre-1241 behavior byte for byte. */
+  restoreLanding(
+    blockTop?: (blockKey: string) => number | undefined,
+    measuredViewport?: { scrollTop: number; scrollHeight: number; clientHeight: number },
+  ): boolean {
+    if (measuredViewport && this.anchorValue.kind !== "tail" && this.isViewportAtBottom(measuredViewport)) {
+      this.anchorValue = { kind: "tail" };
+      this.intentValue = "tail";
+      this.atBottomValue = true;
+      this.anchors.set(this.session, this.anchorValue);
+      this.surfaceRestoreKey = null;
+    }
     if (this.anchorValue.kind === "block") {
       const transaction = this.begin("restore", this.anchorValue);
       if (!transaction) return false;
