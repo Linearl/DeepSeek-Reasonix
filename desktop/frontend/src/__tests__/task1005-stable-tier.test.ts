@@ -56,7 +56,7 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // 75，合并态实测真值一并收口）。tl 1132：startupSplash（可选）+
   // startupLoading（纯前端容器，同 tabManagement 豁免）叠加入表——
   // 可选 37→39、总数 75→77。
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 39 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 21 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
     "LAB_TIER_COUNTS pins 4 稳定/20 推荐/39 可选/13 未稳定/1 退役 (tl 1132 步进)");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),

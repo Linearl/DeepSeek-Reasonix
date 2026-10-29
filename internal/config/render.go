@@ -164,7 +164,7 @@ var labFeatureTiers = []labFeatureTier{
 	{"draftPersistence", LabTierOptional, []string{"experimental_composer_draft"}},
 	{"selectionActions", LabTierOptional, []string{"experimental_selection_actions"}},
 	{"questionSearch", LabTierRecommended, []string{"experimental_question_search"}},
-	{"opencodeGoUsage", LabTierUnstable, []string{"experimental_opencode_go_usage"}},
+	{"opencodeGoUsage", LabTierRecommended, []string{"experimental_opencode_go_usage"}},
 	{"feedback", LabTierOptional, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键
 	// 任务 1024：composer 草稿优化（改写按钮）。展示类开关按 550 口径定档
 	// 可选——关闭时不渲染按钮、composer 布局零变化（铁律 2，默认关）。

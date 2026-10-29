@@ -357,7 +357,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           onKeys: ["experimentalOpenCodeGoUsage"],
           members: [
             { id: "glmPlanUsage", labelKey: "settings.glmPlanUsage", tier: "recommended" },
-            { id: "opencodeGoUsage", labelKey: "settings.opencodeGoUsage", tier: "unstable" },
+            { id: "opencodeGoUsage", labelKey: "settings.opencodeGoUsage", tier: "recommended" },
           ],
         },
         // tl 1097：日志管理——kind:param 参数卡（无开关）。两个 segment 档位

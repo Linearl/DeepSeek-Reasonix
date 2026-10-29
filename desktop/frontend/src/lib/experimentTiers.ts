@@ -254,7 +254,7 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   draftPersistence: "optional",
   selectionActions: "optional",
   questionSearch: "recommended",
-  opencodeGoUsage: "unstable",
+  opencodeGoUsage: "recommended",
   feedback: "optional",
   // 任务 621：tabModeTint（任务 504 标签模式色调）在 Go labFeatureTiers 一直
   // 有档（unstable），但前端注册表漏收——实验室页渲染却无徽章，621 验收
@@ -444,9 +444,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 按未稳定档入表——未稳定 12→13、总数 81→82（Go 渲染表同步 72→73）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
-  recommended: 20,
+  recommended: 21,
   optional: 44,
-  unstable: 13,
+  unstable: 12,
   retired: 1,
 };
 

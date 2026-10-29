@@ -133,11 +133,11 @@ console.log("\ntask 562 lab three-tier badges");
   // 「81/13」中 13 系误算——jsonlZstd 非 unstable，已按实值钉 12）。
   // tl1193b：pinnedIndex（pinned 常驻层索引化，实验室新「记忆与上下文」组
   // 首卡）按未稳定档入表——未稳定 12→13、总数 81→82（Go 侧同步 72→73）。
-  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 44 && counts.unstable === 13 && counts.retired === 1,
+  ok(counts.stable === 4 && counts.recommended === 21 && counts.optional === 44 && counts.unstable === 12 && counts.retired === 1,
     `register counts are 4 稳定/20/44/13/1 (got ${JSON.stringify(counts)})`);
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 82, `register holds exactly 82 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/20/44/13/1");
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 21 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/21/44/12/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -327,9 +327,9 @@ console.log("\ntask 562 lab three-tier badges");
     `smartAutomation: all-optional members aggregate to 可选 (got ${JSON.stringify(railTiersForDefault("smartAutomation"))})`);
   ok(JSON.stringify(railTiersForDefault("interactionPresentation")) === JSON.stringify(["recommended", "optional"]) && agg("interactionPresentation") === "recommended",
     `interactionPresentation: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("interactionPresentation"))})`);
-  // 任务 783：用量监测卡——GLM Plan 用量（推荐）+ OpenCode Go 用量（未稳定）
+  // 任务 783：用量监测卡——GLM Plan 用量（推荐）+ OpenCode Go 用量（20261030 用户裁升推荐）
   // 聚合出单枚推荐徽章。
-  ok(JSON.stringify(railTiersForDefault("usageMonitoring")) === JSON.stringify(["recommended", "unstable"]) && agg("usageMonitoring") === "recommended",
+  ok(JSON.stringify(railTiersForDefault("usageMonitoring")) === JSON.stringify(["recommended"]) && agg("usageMonitoring") === "recommended",
     `usageMonitoring: input [推荐,未稳定] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("usageMonitoring"))} → ${String(agg("usageMonitoring"))})`);
   // 已退役垫底：合成布局钉「已退役」永不顶掉更强档位（默认布局已无 retired
   // 成员卡——722 点2 移除；此规则由合成数据守护，防止未来回填时翻转）。
