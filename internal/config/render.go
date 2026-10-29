@@ -83,6 +83,12 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 722：三个细粒度子开关（条件渲染，nil=跟随总开关不落盘）同归本卡。
 	{"safetyCostControl", LabTierOptional, []string{"experimental_safety_cost_control", "safety_idle_terminate", "safety_loop_streak_note", "safety_event_wait_recheck", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
 	{"subagentPolicy", LabTierUnstable, []string{"experimental_subagent_policy"}},
+	// ── memory-context（记忆/上下文，1 项；tl1193b 增 pinnedIndex）──────
+	// tl-1193b：pinned 常驻层索引化（plan E，环境变量通道退役后落 config 实
+	// 验段+实验室卡）。档位=未稳定——开启即换掉常驻层的注入契约（body 退
+	// 出常驻转按需召回、预算换成条数上限），默认关=常驻注入与引入前逐字节
+	// 一致（铁律 2）。boot 快照消费（capabilityGroups 先例），重启生效。
+	{"pinnedIndex", LabTierUnstable, []string{"experimental_pinned_index"}},
 	// ── efficiency（提效，11 项；任务 517 B3 并入 safetyCostControl；────
 	//    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
 	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write", "experimental_bash_heavy_guard"}}, // bash_heavy_guard 为 task 575 家族子键（815 补实验室入口：optimistic-parallel 卡成员行）
@@ -841,6 +847,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "decision_pattern_file_path = %q   # task 801: solidified decision-patterns file (empty = default global-workspace/docs path; backups and injection follow it)\n", decisionPatternFile)
 	fmt.Fprintf(&b, "decision_pattern_threshold = %d   # task 801: new decision memories needed before the heartbeat consolidation runs (0 = default 5)\n", c.Agent.DecisionPatternThreshold)
 	fmt.Fprintf(&b, "decision_pattern_auto_approve = %v   # task 801: skip the human approval gate before the heartbeat writes decision-patterns.md (default off = report and wait)\n", c.Agent.DecisionPatternAutoApprove)
+	// tl1193b：pinned 常驻层索引化总闸。显式渲染——omit-on-off 会在下一次
+	// 渲染时把已保存的开关静默弹回（81/123 丢档教训）。boot 快照消费，重启
+	// 生效；关=常驻层 body 全量注入与引入前逐字节一致。
+	fmt.Fprintf(&b, "experimental_pinned_index = %v   # tl1193 plan E: standing pinned tier renders index lines, bodies go on-demand recall (off = legacy full-body injection byte-for-byte)\n", c.Agent.ExperimentalPinnedIndex)
 	// 任务 1024：composer 草稿优化（改写按钮）。显式渲染——同 81/123 丢档教训。
 	fmt.Fprintf(&b, "experimental_draft_rewrite = %v   # task 1024: composer rewrite button (auxiliary model rewrites the draft in place; off = no button, layout unchanged)\n", c.Agent.ExperimentalDraftRewrite)
 	// 任务 953/955：能力组披露面+组目录卡（Entry.Group 渲染 + 组卡 + route 推组、

@@ -931,6 +931,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Legacy pinned-memory materialization did not complete.", Detail: err.Error()})
 	}
 	promptSegs.mark("memory_pinned")
+	// tl1193b: resolve the plan-E pinned-index lab switch (agent
+	// experimental_pinned_index) into the memory package gate once before the
+	// first Load — capabilityGroups boot-snapshot precedent, restart to apply.
+	// Default off keeps the legacy full-body pinned injection byte-for-byte.
+	memory.SetPinnedIndexMode(cfg.Agent.ExperimentalPinnedIndex)
 	mem := memory.Load(memory.Options{CWD: root, UserDir: config.MemoryUserDir()})
 	promptSegs.mark("memory_load")
 	projectChecks := instruction.ExtractHostChecks(mem.Docs)

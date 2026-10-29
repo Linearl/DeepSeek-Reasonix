@@ -202,6 +202,9 @@ export interface SettingsView {
   stalledIntentNudge?: boolean;
   // Task 801: decision-pattern extraction + solidification (default off).
   experimentalDecisionPatterns?: boolean;
+  /** tl1193b: plan-E pinned standing-tier index mode (memory-context group,
+   * unstable tier, default off, restart to apply). */
+  experimentalPinnedIndex?: boolean;
   // Task 801: resolved solidified decision-patterns file path (empty config
   // value renders as the default global-workspace/docs path).
   decisionPatternFilePath?: string;

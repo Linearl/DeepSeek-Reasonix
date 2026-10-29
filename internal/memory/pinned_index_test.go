@@ -16,6 +16,16 @@ import (
 //  3. body is recallable on demand (on) — recall pool is the body's channel
 //  4. legacy store migrates with zero data changes (files stay the truth)
 
+// setPinnedIndexForTest flips the plan-E gate for one test and restores the
+// default (off) at cleanup — the t.Setenv successor after the env channel
+// retired in favor of the config lab switch (tl1193b). Not for use with
+// parallel tests, mirroring t.Setenv semantics.
+func setPinnedIndexForTest(t *testing.T, on bool) {
+	t.Helper()
+	SetPinnedIndexMode(on)
+	t.Cleanup(func() { SetPinnedIndexMode(false) })
+}
+
 // savePinned lands a pinned fact through the normal save path.
 func savePinned(t *testing.T, store Store, name, description, body string) {
 	t.Helper()
@@ -51,7 +61,7 @@ func TestPinnedIndexModeStandingTierForm(t *testing.T) {
 	}
 
 	// Switch ON: index lines stand, bodies do not.
-	t.Setenv("REASONIX_EXPERIMENT_TL1193_PINNED_INDEX", "1")
+	setPinnedIndexForTest(t, true)
 	block := load().BackgroundDataBlock()
 	for _, want := range []string{
 		"### Pinned preferences and feedback",
@@ -71,10 +81,10 @@ func TestPinnedIndexModeStandingTierForm(t *testing.T) {
 		}
 	}
 
-	// Switch OFF (explicit override — t.Setenv registers on the parent and
-	// subtests inherit its value): legacy full-body form, no index wording.
+	// Switch OFF (explicit override — the gate is process-wide and subtests
+	// inherit the parent's value): legacy full-body form, no index wording.
 	t.Run("off keeps legacy body form", func(t *testing.T) {
-		t.Setenv("REASONIX_EXPERIMENT_TL1193_PINNED_INDEX", "")
+		setPinnedIndexForTest(t, false)
 		block := load().BackgroundDataBlock()
 		for _, want := range []string{"PINNED_ALPHA_BODY_UNIQUE", "PINNED_BETA_BODY_UNIQUE"} {
 			if !strings.Contains(block, want) {
@@ -105,7 +115,7 @@ func TestPinnedIndexLineTruncatesDescription(t *testing.T) {
 // 3. On-demand recall: with the mode on, the pinned body left the standing
 // prefix and must come back through AutoRecall — the pool is its channel.
 func TestPinnedIndexModeBodyRecallable(t *testing.T) {
-	t.Setenv("REASONIX_EXPERIMENT_TL1193_PINNED_INDEX", "1")
+	setPinnedIndexForTest(t, true)
 	store, user, proj := pinnedIndexTestStore(t)
 	savePinned(t, store, "deploy-token", "deploy token guidance",
 		"Rotate the ZEBRA-QUANTUM-9X credential before every release.")
@@ -131,7 +141,7 @@ func TestPinnedIndexModeBodyRecallable(t *testing.T) {
 // unchanged, renders its index line, keeps the full body readable, and stays
 // recallable. No migration script touches the files.
 func TestPinnedIndexModeLegacyStoreZeroMigration(t *testing.T) {
-	t.Setenv("REASONIX_EXPERIMENT_TL1193_PINNED_INDEX", "1")
+	setPinnedIndexForTest(t, true)
 	raw, err := os.ReadFile(filepath.Join(testdataDir, "user-work-profile-rev1.md"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
@@ -174,7 +184,7 @@ func TestPinnedIndexModeLegacyStoreZeroMigration(t *testing.T) {
 // rejected with an actionable ledger; replacing an already-pinned fact always
 // passes; off state keeps the 1192 body budget on the same fixture.
 func TestPinnedIndexQuotaRejectsNetGrowthOnly(t *testing.T) {
-	t.Setenv("REASONIX_EXPERIMENT_TL1193_PINNED_INDEX", "1")
+	setPinnedIndexForTest(t, true)
 	store, _, _ := pinnedIndexTestStore(t)
 	for i := 0; i < PinnedIndexMaxEntries; i++ {
 		savePinned(t, store, fmt.Sprintf("quota-fact-%02d", i), "quota filler", "body")
@@ -201,11 +211,11 @@ func TestPinnedIndexQuotaRejectsNetGrowthOnly(t *testing.T) {
 		t.Fatalf("replacement must pass: %v", err)
 	}
 
-	// Off state (explicit env override — subtests inherit the parent's
-	// t.Setenv), same fixture: the 13th small pin is governed by the body
+	// Off state (explicit gate override — subtests inherit the parent's
+	// value), same fixture: the 13th small pin is governed by the body
 	// budget, not the count — legacy behavior intact.
 	t.Run("off keeps body budget semantics", func(t *testing.T) {
-		t.Setenv("REASONIX_EXPERIMENT_TL1193_PINNED_INDEX", "")
+		setPinnedIndexForTest(t, false)
 		off, _, _ := pinnedIndexTestStore(t)
 		for i := 0; i < PinnedIndexMaxEntries; i++ {
 			savePinned(t, off, fmt.Sprintf("quota-fact-%02d", i), "quota filler", "body")
@@ -220,7 +230,7 @@ func TestPinnedIndexQuotaRejectsNetGrowthOnly(t *testing.T) {
 // Determinism: the same snapshot renders byte-identical index blocks (cache
 // prefix stability, mirroring the legacy form's pin in memory_test.go).
 func TestPinnedIndexBlockDeterministic(t *testing.T) {
-	t.Setenv("REASONIX_EXPERIMENT_TL1193_PINNED_INDEX", "1")
+	setPinnedIndexForTest(t, true)
 	store, user, proj := pinnedIndexTestStore(t)
 	savePinned(t, store, "alpha-rule", "alpha standing description", "A")
 	savePinned(t, store, "beta-rule", "beta standing description", "B")

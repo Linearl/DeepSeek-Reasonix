@@ -3,17 +3,21 @@
 // — the symptom was the budget, the root cause was the tier carrying full
 // bodies. Plan E moves the standing tier to one self-sufficient index line per
 // pinned fact (zcode MEMORY.md pattern, code-verified 2026-10-27) and turns
-// bodies into an on-demand recall channel. Gated behind
-// REASONIX_EXPERIMENT_TL1193_PINNED_INDEX (default off = bodies keep riding
-// session-context byte-for-byte unchanged). No data migration: fact files
-// stay the single source of truth, and the recall pool picks bodies up by
-// simply not excluding pinned facts while the mode is on.
+// bodies into an on-demand recall channel. Gated behind the
+// experimental_pinned_index config lab switch (tl1193b: the former env channel
+// REASONIX_EXPERIMENT_TL1193_PINNED_INDEX retired — it was a merge-line
+// evaluation gate, never shipped in a release build; boot resolves the saved
+// switch into the package gate below once before the first Load, so the mode
+// applies on restart). Default off = bodies keep riding session-context
+// byte-for-byte unchanged. No data migration: fact files stay the single
+// source of truth, and the recall pool picks bodies up by simply not excluding
+// pinned facts while the mode is on.
 package memory
 
 import (
 	"fmt"
-	"os"
 	"strings"
+	"sync/atomic"
 	"unicode/utf8"
 )
 
@@ -32,11 +36,24 @@ const PinnedIndexMaxEntries = 12
 // soft truncation cannot lose information — it only bounds the standing cost.
 const PinnedIndexDescriptionRunes = 150
 
+// pinnedIndexModeFlag is the package-level plan-E gate (tl1193b: config lab
+// switch experimental_pinned_index, boot-resolved — capabilityGroups
+// boot-snapshot precedent). Zero value = off, so a process that never runs
+// boot keeps the legacy full-body injection byte-for-byte.
+var pinnedIndexModeFlag atomic.Bool
+
+// SetPinnedIndexMode sets the plan-E gate. Boot calls it once with the saved
+// config value before the first Load; tests call it directly (t.Cleanup
+// restores false). Read per call through pinnedIndexMode, so flips are seen
+// immediately by render/save/recall alike.
+func SetPinnedIndexMode(on bool) { pinnedIndexModeFlag.Store(on) }
+
 // pinnedIndexMode reports whether plan E is on. Read per call (not cached at
-// init) so tests can flip it with t.Setenv, mirroring the
-// REASONIX_EXPERIMENT_NO_MEMORY pattern in Load.
+// init) so a boot-time resolve (or a test flip) applies to every consumer —
+// render, write-path quota and recall pool — without restart within the
+// process.
 func pinnedIndexMode() bool {
-	return os.Getenv("REASONIX_EXPERIMENT_TL1193_PINNED_INDEX") == "1"
+	return pinnedIndexModeFlag.Load()
 }
 
 // pinnedIndexBlock renders the standing tier in index form: one line per

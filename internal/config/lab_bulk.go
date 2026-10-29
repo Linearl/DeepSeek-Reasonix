@@ -156,6 +156,12 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"interruptedAutoResume": func(c *Config, on bool) error { return c.SetInterruptedAutoResume(on) },
 	"safetyCostControl":     func(c *Config, on bool) error { return c.SetExperimentalSafetyCostControl(on) },
 	"stalledIntentNudge":    func(c *Config, on bool) error { return c.SetStalledIntentNudge(on) },
+	// ── memory-context（记忆/上下文）──
+	// tl-1193b：pinned 常驻层索引化（未稳定档，默认关）。批量开=允许 plan E
+	// 的索引行形态+按需召回随重启生效——关态逐字节一致（铁律 2），写入面
+	// 预算/召回不变式随态切换自洽，批量面无护栏冲突（重启生效类开关同
+	// capabilityGroups 口径）。
+	"pinnedIndex": func(c *Config, on bool) error { return c.SetExperimentalPinnedIndex(on) },
 	// ── infra / storage ──
 	"runtimeReuse":        func(c *Config, on bool) error { return c.SetExperimentalRuntimeReuse(on) },
 	"orphanHandling":      func(c *Config, on bool) error { return c.SetExperimentalOrphanHandling(on) },

@@ -822,6 +822,14 @@ func (a *App) SetExperimentalDecisionPatterns(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDecisionPatterns(enabled) })
 }
 
+// SetExperimentalPinnedIndex toggles the tl1193 plan-E lab card (记忆与上下文
+// group, unstable tier). Ships off (铁律 2). Boot resolves the saved switch
+// into the memory package gate before the first Load, so the flip applies on
+// restart; off keeps the legacy full-body pinned injection byte-for-byte.
+func (a *App) SetExperimentalPinnedIndex(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPinnedIndex(enabled) })
+}
+
 // SetStalledIntentNudge toggles the task-1069 stalled-intent nudge lab switch
 // (模型提前结束判定器续轮提醒). Applies on restart (boot snapshot), like every
 // boot-resolved switch.

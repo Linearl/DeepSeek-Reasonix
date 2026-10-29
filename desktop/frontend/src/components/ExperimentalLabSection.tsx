@@ -2016,6 +2016,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
+          {selected === "pinnedIndex" && (
+            /* tl1193b: plan-E pinned standing-tier index mode. Memory-context
+               group, unstable tier, default off; boot resolves the saved
+               switch into the memory gate before the first Load, so a flip
+               applies on restart. Off = legacy full-body injection unchanged. */
+            <SettingsField label={labLabel("pinnedIndex", t("settings.pinnedIndex"))} hint={t("settings.pinnedIndex.hint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalPinnedIndex) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalPinnedIndex(on))}
+                  >
+                    {t(on ? "settings.pinnedIndex.on" : "settings.pinnedIndex.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
           {selected === "pathRules" && (
             /* Task 564: retired (task 551 paradigm, UI side) — the structured
                path-scope evaluation never wired into the runtime (zero

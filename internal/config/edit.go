@@ -1528,6 +1528,17 @@ func (c *Config) SetExperimentalDecisionPatterns(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalPinnedIndex toggles the tl1193 plan-E lab switch (pinned
+// standing tier renders index lines, bodies go on-demand recall). Ships off
+// (铁律 2): off = legacy full-body injection byte-for-byte. Boot resolves the
+// saved switch into the memory package gate once before the first Load
+// (capabilityGroups boot-snapshot precedent), so a flip applies on restart;
+// the memory side keeps its pre-1193 budget/recall invariants while off.
+func (c *Config) SetExperimentalPinnedIndex(enabled bool) error {
+	c.Agent.ExperimentalPinnedIndex = enabled
+	return nil
+}
+
 // SetStalledIntentNudge toggles the task-1069 stalled-intent nudge lab switch
 // (模型提前结束判定器续轮提醒). Key semantics unchanged from task 117's
 // hand-written `stalled_intent_nudge = true`: the agent reads the boot

@@ -54,18 +54,20 @@ console.log("\ntask 561 lab regroup + merged cards");
 // ① group structure（任务 722/724 修订；任务 992 工具优化并入 infra 后
 //    7 组——本 pin 2026-10-19 随 1005 窗口补同步，992 合组时漏跟）：
 //    组受控词表在 labLayoutTypes，组序/组键/组标签键全部来自布局文档
-//    （yaml 与内置默认一致）。
+//    （yaml 与内置默认一致）。tl1193b：增「记忆与上下文」组（automation
+//    之后、efficiency 之前，pinnedIndex 卡落位）——7 组 → 8 组。
 {
   const yaml = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
   const keys = [
-    "automation", "efficiency", "ui", "observability", "dev-debug", "storage", "infra",
+    "automation", "memory-context", "efficiency", "ui", "observability", "dev-debug", "storage", "infra",
   ];
   const yamlOrder = keys.map((k) => yaml.indexOf(`key: ${k}`));
   ok(yamlOrder.every((i) => i >= 0) && [...yamlOrder].sort((a, b) => a - b).every((v, i) => v === yamlOrder[i]),
-    "lab-layout.yaml carries the 7 groups in the audit-table order (rail order)");
+    "lab-layout.yaml carries the 8 groups in the audit-table order (rail order)");
   for (const [key, labelKey] of [
     ["automation", "settings.labGroup.automation"],
+    ["memory-context", "settings.labGroup.memoryContext"],
     ["dev-debug", "settings.labGroup.devDebug"],
   ] as const) {
     const block = yaml.slice(yaml.indexOf(`key: ${key}`));
@@ -112,7 +114,10 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 直接导入布局数据模块数真数据（比源码正则稳）。
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
-  ok(defEntries.length === 35, `default layout carries exactly 35 rail entries (got ${defEntries.length})`);
+  // tl1174：jsonlZstd 入存储组时本 pin 漏跟（基线 f3c268b7f 实跑 36/存储 5，
+  // pin 钉 35/存储 4 = 预存红）；tl1193b：记忆与上下文新组 + pinnedIndex 卡
+  // → 总数 37（实值钉，同步顺带收掉 1174 欠账）。
+  ok(defEntries.length === 37, `default layout carries exactly 37 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -137,10 +142,13 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 「启动与加载」合并卡入 ui 组 → ui 10→11。两件各自动了 562/704/1005/722
   // 镜像 pin 而 561 census 漏跟（本 pin 2026-10-25 随 tl1156 补同步）
   // → 组分布 4/6/11/3/1/4/7=36。tl-1048：zcodeTaskBus 退役出 infra
-  // → infra 7→6，总数 36→35。
-  ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 11 &&
-     groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 4 && groups["infra"] === 6,
-    `group counts are 4/6/11/3/1/4/6 (got ${JSON.stringify(groups)})`);
+  // → infra 7→6，总数 36→35。tl1174：jsonlZstd 入存储组，storage 4→5、
+  // 总数 36（本 pin 漏跟=基线预存红）。tl1193b：记忆与上下文新组
+  // （pinnedIndex 卡，automation 之后、efficiency 之前）→ 组分布
+  // 4/1/6/11/3/1/5/6，总数 37（实值钉）。
+  ok(groups["automation"] === 4 && groups["memory-context"] === 1 && groups["efficiency"] === 6 && groups["ui"] === 11 &&
+     groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 5 && groups["infra"] === 6,
+    `group counts are 4/1/6/11/3/1/5/6 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。

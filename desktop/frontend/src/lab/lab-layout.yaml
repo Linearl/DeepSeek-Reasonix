@@ -37,6 +37,9 @@
 #       traceAsState+outputStyle 三散条并「交互与呈现」卡
 #       （interactionPresentation）；ui 组 renderArtifact 并入「视图布局」
 #       （viewLayout）卡成员行。
+#   tl1193b 新增「记忆与上下文」组（automation 之后、efficiency 之前）：
+#       pinnedIndex 卡（plan E pinned 常驻层索引化，未稳定档，默认关，
+#       boot 快照重启生效）。
 
 version: 1
 groups:
@@ -100,6 +103,19 @@ groups:
           - id: standardContinuation
             labelKey: settings.standardContinuation
             tier: optional
+
+  # ── 记忆与上下文（1 项；tl1193b 增 pinnedIndex 卡——pinned 常驻层索引化）──
+  - key: memory-context
+    labelKey: settings.labGroup.memoryContext
+    entries:
+      # tl1193b：pinned 常驻层索引化（plan E，原环境变量通道退役后落 config
+      # 实验段）。未稳定档，默认关=常驻层 body 全量注入与引入前逐字节一致
+      # （铁律 2）；开启后常驻层一行一条索引，body 转按需召回。boot 快照
+      # 消费（capabilityGroups 先例），重启生效。
+      - id: pinnedIndex
+        labelKey: settings.pinnedIndex
+        tier: unstable
+        onKeys: [experimentalPinnedIndex]
 
   # ── 提效（6 项；任务 722：安全/成本控制卡迁入本组；任务 961 三散条并交互与呈现卡）──
   - key: efficiency

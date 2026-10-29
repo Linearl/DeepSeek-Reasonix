@@ -101,6 +101,9 @@ export type ExperimentFeatureId =
   | "homePointer"
   // tl-1174: cold-session transcript zstd archive card (storage group; optional, default off).
   | "jsonlZstd"
+  // tl1193b: plan-E pinned standing-tier index mode card (memory-context
+  // group; unstable, default off, restart to apply).
+  | "pinnedIndex"
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
   // 任务 943：族拆两卡——本 id 收窄为 readBack 面；multi_edit 直注独立卡。
   // 任务 971：扩为聚合页——readBack + multi_edit 直注 + restart_update 三开关
@@ -169,6 +172,8 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "homePointer",
   // tl-1174: cold-session transcript zstd archive pane (storage group).
   "jsonlZstd",
+  // tl1193b: pinned index mode pane (memory-context group).
+  "pinnedIndex",
   "runtimeReuse",
   "acpListen",
   "pathRules",
