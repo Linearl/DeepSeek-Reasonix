@@ -1,8 +1,8 @@
 // Run: npx tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/docs-site-entry.test.ts
 // 任务 1102 验收（命令面板「产品文档」→ 静态站跳转）：
 //  ① URL 形状：docsSite.DOCS_SITE_BASE_URL 是 https 开头、以 / 结尾的绝对地址，
-//     且当前为 Pages 启用前的占位（指向仓库 docs-site 目录）——回填改常量后
-//     这里同步改断言，防止「以为回填了其实没有」；
+//     且已回填为 Pages 正式地址（tl1253b；改常量时这里同步改断言，防止
+//     「以为改了其实没有」）；
 //  ② 打开动作：openProductDocs() 走 Wails 的 BrowserOpenURL（系统默认浏览器，
 //     不在 webview 内导航），参数恰为常量本身（mock 断言调用参数）；
 //  ③ 非阻塞：openProductDocs 同步返回（无 Promise、无 await 面），满足
@@ -24,12 +24,12 @@ function ok(value: boolean, label: string) {
 
 console.log("\ntask 1102 product-docs entry");
 
-// ① URL 形状 + 占位语义。
+// ① URL 形状 + Pages 正式地址语义（精确匹配，防常量被意外改回占位/漂移）。
 ok(DOCS_SITE_BASE_URL.startsWith("https://"), "docs base URL is https");
 ok(DOCS_SITE_BASE_URL.endsWith("/"), "docs base URL ends with a slash");
 ok(
-  DOCS_SITE_BASE_URL.includes("docs-site"),
-  "docs base URL still points at the docs-site placeholder (update this assert when the Pages URL is backfilled)",
+  DOCS_SITE_BASE_URL === "https://linearl.github.io/DeepSeek-Reasonix/",
+  "docs base URL is the live Pages site root (update this assert when the Pages URL changes)",
 );
 
 // ② 打开动作：window.runtime.BrowserOpenURL 恰好收到常量本身。
