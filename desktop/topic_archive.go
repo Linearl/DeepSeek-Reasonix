@@ -175,10 +175,13 @@ func (a *App) trashTopic(topicID string, force bool) (retErr error) {
 }
 
 // commitTopicArchive runs the single-topic archive: it takes the two global
-// mutation gates, scans the trash targets, then hands off to
-// commitTopicArchiveTargets for phases 3-12. tl1240 splits the gates/scan from
-// the per-topic core so the batch endpoint (topic_archive_batch.go) can hold
-// the gates once and share one target scan across the whole batch.
+// mutation gates, applies the active-work gate, scans the trash targets, then
+// hands off to commitTopicArchiveTargets for the remaining phases. tl1240
+// splits the gates/checks/scan from the per-topic core so the batch endpoint
+// (topic_archive_batch.go) can hold the gates once and share one disk scan
+// across the whole batch. Phase order matters: the active-work gate must reject
+// before the scan's runtime-tabs merge touches live tab controllers (a
+// readOnly/pending tab may not implement the full session API).
 func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force bool) (fallbackRuntimeTarget, []string, error) {
 	trace.phase = "runtime_lock"
 	releaseRuntime, ok := a.tryLockRuntimeMutation("trash-topic")
@@ -191,6 +194,10 @@ func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force
 		return fallbackRuntimeTarget{}, nil, errTopicArchiveBusy
 	}
 	defer a.sessionRemovalMu.Unlock()
+	trace.phase = "active_work_check"
+	if !force && a.topicHasActiveRuntimeWork(topicID) {
+		return fallbackRuntimeTarget{}, nil, errTopicHasActiveWork
+	}
 	trace.phase = "target_scan"
 	targets, err := a.topicTrashTargets(topicID)
 	if err != nil {
@@ -199,17 +206,14 @@ func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force
 	return a.commitTopicArchiveTargets(topicID, targets, trace, force)
 }
 
-// commitTopicArchiveTargets runs phases 3-12 of the topic archive assuming both
-// global mutation gates (runtime rebuild/admission + sessionRemovalMu) are
-// already held by the caller. targets comes from the caller's target scan; a
+// commitTopicArchiveTargets runs the post-scan phases of the topic archive
+// assuming both global mutation gates (runtime rebuild/admission +
+// sessionRemovalMu) are already held by the caller and the topic has already
+// passed its active-work gate. targets comes from the caller's target scan; a
 // nil/empty slice behaves like the single path with no matches. force is only
 // set by the single-topic force entry point — the batch endpoint is regular
 // archive only, so a topic that needs force stays a per-topic action.
 func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarget, trace *topicArchiveTrace, force bool) (fallbackRuntimeTarget, []string, error) {
-	trace.phase = "active_work_check"
-	if !force && a.topicHasActiveRuntimeWork(topicID) {
-		return fallbackRuntimeTarget{}, nil, errTopicHasActiveWork
-	}
 	trace.phase = "force_reclaim_self_lease"
 	if force {
 		a.reclaimTopicSelfLeasesLocked(topicID, targets)
@@ -328,15 +332,23 @@ type topicTrashTarget struct {
 }
 
 func (a *App) topicTrashTargets(topicID string) ([]topicTrashTarget, error) {
-	return a.topicTrashTargetsFromIndexes(topicID, topicSessionIndexForDir)
+	targets, err := a.topicTrashTargetsFromDirIndexes(topicID, topicSessionIndexForDir)
+	if err != nil {
+		return nil, err
+	}
+	return a.appendTopicRuntimeTrashTargets(topicID, targets)
 }
 
-// topicTrashTargetsFromIndexes resolves a topic's trash targets using the given
-// per-directory index getter. The single-topic path passes
+// topicTrashTargetsFromDirIndexes resolves a topic's on-disk trash targets
+// using the given per-directory index getter. The single-topic path passes
 // topicSessionIndexForDir directly (index built per dir, cached by signature as
 // before); the batch path passes a memoized getter so the whole batch pays one
-// disk pass per directory instead of one per topic (tl1240).
-func (a *App) topicTrashTargetsFromIndexes(topicID string, dirIndex func(dir string) (topicSessionDirIndex, error)) ([]topicTrashTarget, error) {
+// disk pass per directory instead of one per topic (tl1240). Runtime tab
+// bindings are NOT consulted here — the caller layers
+// appendTopicRuntimeTrashTargets after its active-work gate, because the
+// runtime merge dereferences live tab controllers that a gated-off topic must
+// never touch.
+func (a *App) topicTrashTargetsFromDirIndexes(topicID string, dirIndex func(dir string) (topicSessionDirIndex, error)) ([]topicTrashTarget, error) {
 	topicID = strings.TrimSpace(topicID)
 	var targets []topicTrashTarget
 	seen := map[string]bool{}
@@ -369,6 +381,32 @@ func (a *App) topicTrashTargetsFromIndexes(topicID string, dirIndex func(dir str
 			}
 		}
 	}
+	return targets, nil
+}
+
+// appendTopicRuntimeTrashTargets merges the topic's live tab bindings into the
+// target set. It reads App state, so callers hold the global mutation gates.
+func (a *App) appendTopicRuntimeTrashTargets(topicID string, targets []topicTrashTarget) ([]topicTrashTarget, error) {
+	topicID = strings.TrimSpace(topicID)
+	seen := map[string]bool{}
+	for _, target := range targets {
+		seen[target.dir+"\x00"+target.sessionPath] = true
+	}
+	addTarget := func(dir, path string) ([]topicTrashTarget, error) {
+		sessionPath, key, err := validateSessionPath(dir, path)
+		if err != nil {
+			return targets, err
+		}
+		id := dir + "\x00" + sessionPath
+		if seen[id] {
+			return targets, nil
+		}
+		seen[id] = true
+		if err := validateSessionTrashTarget(dir, sessionPath, key); err != nil {
+			return targets, err
+		}
+		return append(targets, topicTrashTarget{dir: dir, sessionPath: sessionPath, key: key}), nil
+	}
 	a.mu.RLock()
 	var runtimeTargets []struct{ dir, path string }
 	for _, tab := range a.runtimeTabsLocked() {
@@ -384,9 +422,11 @@ func (a *App) topicTrashTargetsFromIndexes(topicID string, dirIndex func(dir str
 		}
 	}
 	a.mu.RUnlock()
+	var err error
 	for _, target := range runtimeTargets {
-		if err := addTarget(target.dir, target.path); err != nil {
-			return nil, err
+		targets, err = addTarget(target.dir, target.path)
+		if err != nil {
+			return targets, err
 		}
 	}
 	return targets, nil

@@ -49,9 +49,8 @@ func (a *App) BatchTrashTopics(topicIDs []string) (desktopBatchTopicArchiveResul
 	result := desktopBatchTopicArchiveResult{Items: make([]desktopBatchTopicArchiveItem, 0, len(ordered))}
 	trace := topicArchiveTrace{phase: "start"}
 	defer func() {
-		result.TotalMs = time.Since(started).Milliseconds()
 		slog.Debug("desktop: batch topic archive timing", "phase", trace.phase,
-			"total_ms", result.TotalMs, "requested", len(ordered),
+			"total_ms", time.Since(started).Milliseconds(), "requested", len(ordered),
 			"succeeded", result.Succeeded, "failed", result.Failed,
 			"target_count", trace.targetCount, "runtime_count", trace.runtimeCount)
 	}()
@@ -66,12 +65,35 @@ func (a *App) BatchTrashTopics(topicIDs []string) (desktopBatchTopicArchiveResul
 		return result, errTopicArchiveBusy
 	}
 	defer a.sessionRemovalMu.Unlock()
-	// Merged target scan: one pass over the session directories for all topics.
+	// Per-topic active-work gate FIRST, before any scan: the runtime part of
+	// the scan dereferences live tab controllers, and a gated-off topic must
+	// never be touched (same phase order as the single-topic path).
+	trace.phase = "active_work_check"
+	survivors := make([]string, 0, len(ordered))
+	for _, topicID := range ordered {
+		if a.topicHasActiveRuntimeWork(topicID) {
+			result.Failed++
+			result.Items = append(result.Items, batchTopicArchiveFailureItem(topicID, errTopicHasActiveWork))
+			continue
+		}
+		survivors = append(survivors, topicID)
+	}
+	if len(survivors) == 0 {
+		return result, nil
+	}
+	// Merged target scan: one pass over the session directories for all
+	// surviving topics; runtime tab bindings merge per topic afterwards.
 	trace.phase = "target_scan"
 	index := memoizedTopicSessionDirIndex()
-	targetsByTopic := make(map[string][]topicTrashTarget, len(ordered))
-	for _, topicID := range ordered {
-		targets, err := a.topicTrashTargetsFromIndexes(topicID, index)
+	targetsByTopic := make(map[string][]topicTrashTarget, len(survivors))
+	for _, topicID := range survivors {
+		targets, err := a.topicTrashTargetsFromDirIndexes(topicID, index)
+		if err != nil {
+			result.Failed++
+			result.Items = append(result.Items, batchTopicArchiveFailureItem(topicID, err))
+			continue
+		}
+		targets, err = a.appendTopicRuntimeTrashTargets(topicID, targets)
 		if err != nil {
 			result.Failed++
 			result.Items = append(result.Items, batchTopicArchiveFailureItem(topicID, err))
@@ -81,9 +103,14 @@ func (a *App) BatchTrashTopics(topicIDs []string) (desktopBatchTopicArchiveResul
 	}
 	batchChangedDirs := map[string]bool{}
 	var batchFallback fallbackRuntimeTarget
-	for _, topicID := range ordered {
+	for _, topicID := range survivors {
 		item := desktopBatchTopicArchiveItem{TopicID: topicID}
-		targets := targetsByTopic[topicID]
+		// Topics already reported as failed by the active-work gate or the
+		// scan have no entry here — their failure item is already appended.
+		targets, ok := targetsByTopic[topicID]
+		if !ok {
+			continue
+		}
 		topicTrace := topicArchiveTrace{phase: "start"}
 		fallback, changedDirs, err := a.commitTopicArchiveTargets(topicID, targets, &topicTrace, false)
 		trace.targetCount += topicTrace.targetCount
@@ -149,6 +176,7 @@ func (a *App) BatchTrashTopics(topicIDs []string) (desktopBatchTopicArchiveResul
 	} else {
 		a.emitProjectTreeMetadataChanged()
 	}
+	result.TotalMs = time.Since(started).Milliseconds()
 	return result, nil
 }
 
@@ -189,12 +217,21 @@ func normalizedBatchTopicIDs(topicIDs []string) []string {
 // each directory's topic index at most once per call. The batch endpoint uses
 // it so N topics × M directories costs M index builds instead of N×M.
 func memoizedTopicSessionDirIndex() func(dir string) (topicSessionDirIndex, error) {
+	return memoizedTopicSessionDirIndexWith(topicSessionIndexForDir)
+}
+
+// memoizedTopicSessionDirIndexWith memoizes an arbitrary per-directory index
+// builder; the injectable builder exists so tests can count real index builds.
+// Note the cache is keyed by the raw dir string: knownSessionDirs may list the
+// same directory twice under different registration keys, and each distinct
+// string gets its own entry (mirroring the per-call behavior it wraps).
+func memoizedTopicSessionDirIndexWith(build func(dir string) (topicSessionDirIndex, error)) func(dir string) (topicSessionDirIndex, error) {
 	cache := map[string]topicSessionDirIndex{}
 	return func(dir string) (topicSessionDirIndex, error) {
 		if index, ok := cache[dir]; ok {
 			return index, nil
 		}
-		index, err := topicSessionIndexForDir(dir)
+		index, err := build(dir)
 		if err != nil {
 			return topicSessionDirIndex{}, err
 		}
