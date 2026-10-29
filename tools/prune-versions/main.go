@@ -9,8 +9,11 @@
 //
 //	go run ./tools/prune-versions -root <installRoot> -keep 5
 //
-// Deleted version names are printed one per line ("pruned: <name>"); a no-op
-// run prints nothing and exits 0.
+// Deleted version names are printed one per line ("pruned: <name>"); trees a
+// live process still executes from are kept and reported ("kept-running:",
+// task 1259), escalating to an explicit user-action line once the same tree
+// has been occupied for installlayout.OccupiedEscalateAfterRounds consecutive
+// runs. A no-op run prints nothing and exits 0.
 package main
 
 import (
@@ -29,12 +32,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, "prune-versions: -root is required")
 		os.Exit(2)
 	}
-	pruned, err := installlayout.PruneVersionTrees(*root, *keep)
+	pruned, retained, err := installlayout.PruneVersionTrees(*root, *keep)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "prune-versions: %v\n", err)
 		os.Exit(1)
 	}
 	for _, name := range pruned {
 		fmt.Printf("pruned: %s\n", name)
+	}
+	for _, occ := range retained {
+		fmt.Printf("kept-running: %s\n", occ.Describe())
+		if occ.Escalated {
+			fmt.Printf("needs-user-action: %s has been occupied for %d consecutive prune rounds (pid %v); %s\n",
+				occ.Version, occ.Rounds, occ.PIDs, installlayout.OccupiedEscalateHint)
+		}
 	}
 }

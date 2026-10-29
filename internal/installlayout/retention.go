@@ -43,16 +43,21 @@ const RetentionKeepHistory = 3
 // RetentionReport names what one retention pass removed, for the log line and
 // the tests.
 type RetentionReport struct {
-	PrunedTrees        []string // version directories removed (over the keep rule)
-	RemovedReplaced    []string // *.replaced-<nonce> backup shells removed
-	RemovedStaging     []string // .staging-* scratch directories removed
-	RemovedQuarantined []string // quarantined update-backup nodes removed
+	PrunedTrees        []string          // version directories removed (over the keep rule)
+	RemovedReplaced    []string          // *.replaced-<nonce> backup shells removed
+	RemovedStaging     []string          // .staging-* scratch directories removed
+	RemovedQuarantined []string          // quarantined update-backup nodes removed
+	RetainedOccupied   []OccupiedVersion // trees kept because a running process still occupies them (task 1259)
 }
 
-// Empty reports whether the pass removed nothing.
+// Empty reports whether the pass removed nothing. Retained-occupied trees are
+// deliberately not "removed anything", but they are not empty either: the
+// consumer (desktop retention log) must log them so a persistent ghost-risk
+// instance stays visible.
 func (r RetentionReport) Empty() bool {
 	return len(r.PrunedTrees) == 0 && len(r.RemovedReplaced) == 0 &&
-		len(r.RemovedStaging) == 0 && len(r.RemovedQuarantined) == 0
+		len(r.RemovedStaging) == 0 && len(r.RemovedQuarantined) == 0 &&
+		len(r.RetainedOccupied) == 0
 }
 
 // EnforceVersionRetention applies the 任务835 rule to one install root:
@@ -61,13 +66,18 @@ func (r RetentionReport) Empty() bool {
 // directories, quarantined update backups) is removed. Staging payloads,
 // current.json, and the active tree are never touched. A missing versions/
 // directory is not an error. Best-effort by design: every sub-pass logs its
-// own failure and the pass reports what it removed so far.
+// own failure and the pass reports what it removed so far. Task 1259: trees a
+// live process still executes from are skipped and reported in
+// RetainedOccupied (escalated trees additionally warn with the user-action
+// hint), so the update chain can no longer create ghost processes.
 func EnforceVersionRetention(installRoot string) RetentionReport {
 	report := RetentionReport{}
-	if pruned, err := PruneVersionTrees(installRoot, RetentionKeepHistory); err != nil {
+	if pruned, retained, err := PruneVersionTrees(installRoot, RetentionKeepHistory); err != nil {
 		slog.Warn("installlayout: retention prune", "err", err)
+		report.RetainedOccupied = retained
 	} else {
 		report.PrunedTrees = pruned
+		report.RetainedOccupied = retained
 	}
 	replacedBefore := listReplacedShellNames(installRoot)
 	if err := CleanupStaleReplacedVersions(installRoot, retentionStaleAge); err != nil {
@@ -85,9 +95,29 @@ func EnforceVersionRetention(installRoot string) RetentionReport {
 			"prunedTrees", report.PrunedTrees,
 			"replacedShells", report.RemovedReplaced,
 			"stagingScratch", report.RemovedStaging,
-			"quarantinedNodes", report.RemovedQuarantined)
+			"quarantinedNodes", report.RemovedQuarantined,
+			"retainedOccupied", retainedOccupiedDescriptions(report.RetainedOccupied))
 	}
 	return report
+}
+
+// DescribeRetained renders the retained trees for one-line log fields
+// ("v1 (pid 1,2; round 1/3)"); consumers (desktop retention log, future
+// surfaces) share the exact wording.
+func DescribeRetained(retained []OccupiedVersion) []string {
+	if len(retained) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(retained))
+	for _, occ := range retained {
+		out = append(out, occ.Describe())
+	}
+	return out
+}
+
+// retainedOccupiedDescriptions is the internal alias for the retention log.
+func retainedOccupiedDescriptions(retained []OccupiedVersion) []string {
+	return DescribeRetained(retained)
 }
 
 // CleanupStaleQuarantinedNodes removes quarantined update-backup nodes under

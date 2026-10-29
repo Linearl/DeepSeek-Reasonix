@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -557,8 +558,26 @@ func RetainPreviousVersions(installRoot string, keep time.Duration) error {
 		}
 	}
 	cutoff := time.Now().Add(-keep)
+	// Task 1259: this is the same delete-a-version-tree mechanism the prune
+	// rule guards, so it gets the same occupancy skip (skip + log, no ledger
+	// — the signed-recovery chain runs rarely and PruneVersionTrees carries
+	// the cross-pass escalation state).
+	attributed, suspectPids := probeProcessAttribution(versionsRoot)
+	occupiedByName := make(map[string][]int, len(attributed))
+	for _, p := range attributed {
+		occupiedByName[p.Version] = append(occupiedByName[p.Version], p.PID)
+	}
 	for _, p := range previous {
 		if newest != nil && p.name == newest.name && !p.mod.Before(cutoff) {
+			continue
+		}
+		if pids, occupied := occupiedByName[p.name]; occupied {
+			slog.Warn("installlayout: signed-recovery retention kept occupied tree", "version", p.name, "pids", pids)
+			continue
+		}
+		if len(suspectPids) > 0 && treeHasDesktopBinary(filepath.Join(versionsRoot, p.name)) {
+			slog.Warn("installlayout: signed-recovery retention kept tree with unattributable desktop instance",
+				"version", p.name, "pids", suspectPids)
 			continue
 		}
 		_ = os.RemoveAll(filepath.Join(versionsRoot, p.name))
