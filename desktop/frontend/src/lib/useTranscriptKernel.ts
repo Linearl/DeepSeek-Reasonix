@@ -402,9 +402,9 @@ export function useTranscriptKernel({
     return transaction;
   }, [kernel, refresh]);
 
-  // Task 267 (R3) + tl 1243: watch the scroll container itself. Two reaction
-  // classes, branched on WHAT changed (tl 1243 classifies the ResizeObserver
-  // delivery):
+  // Task 267 (R3) + tl 1243 + tl 1255: watch the scroll container itself. Two
+  // reaction classes, branched on WHAT changed (tl 1243 classifies the
+  // ResizeObserver delivery):
   //   height-only (footer drift, split-pane drags, terminal open/close,
   //   decision-footer internal scroll) — the guarded tail subsidy only;
   //   scheduleTailSync declines unless the view still owns the tail, so a
@@ -417,18 +417,39 @@ export function useTranscriptKernel({
   //   structural compensation the footerHeight path already runs
   //   (beginStructural("composer-resize") + commitViewportGeometry), not a
   //   new mechanism; the kernel's anchor-drift gate still bounds it.
+  //
+  //   tl 1255: the real-world width trigger is a TRANSITION — the sidebar
+  //   rides `.layout { transition: grid-template-columns 0.16s ease }`, so
+  //   the scroller rewraps EVERY frame for ~10 frames and a delivery arrives
+  //   per frame. The 1243 wiring deferred the commit twice (observer rAF +
+  //   settleGeometry's geometryWork rAF), so the correction landed 1-2 paints
+  //   after the reflow it compensates — every animation frame painted the
+  //   shifted position first, which is the jump users still saw with 1243's
+  //   green suite (its harness flushed all frames before asserting). A
+  //   ResizeObserver delivery runs after layout and BEFORE paint, so the
+  //   width branch now commits synchronously (commitViewportGeometry's
+  //   existing beforePaint path) and the write lands in the same frame's
+  //   paint — zero uncompensated frames, final position exact. Height-only
+  //   deliveries keep the deferred 267 R3 semantics byte-for-byte.
   useLayoutEffect(() => {
     const element = scrollElement;
     if (!element || typeof ResizeObserver !== "function") return;
     return observeTranscriptGeometry(kernel, element, () => undefined, (change) => {
       if (change?.widthChanged === true) {
+        // The delivery itself proves this frame's layout moved; an earlier
+        // same-frame read (a settle committed at the rAF phase, or the
+        // previous delivery in this transition) is stale, and the browser's
+        // scroll anchoring/clamping can drive its cached scrollTop and the
+        // delivery-time truth far enough apart to poison the 753 drift gate.
+        // Drop the per-frame merge cache so the commit reads live facts.
+        frameSnapshot = null;
         beginStructural("composer-resize");
-        commitViewportGeometry();
+        commitViewportGeometry(undefined, true);
         return;
       }
       // Height-only (and unclassified) deliveries keep the 267 R3 semantics.
       kernel.scheduleTailSync();
-    });
+    }, undefined, { deliverSync: (change) => change?.widthChanged === true });
   }, [kernel, scrollElement, beginStructural, commitViewportGeometry]);
 
   const beginGesture = useCallback((owner: "selection" | "native" = "native") => {
