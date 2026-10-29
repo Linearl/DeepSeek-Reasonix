@@ -1792,7 +1792,7 @@ export const en = {
   "projectTree.aiRenameDone": "Renamed to “{title}”",
   "projectTree.newGroup": "New project group",
   "projectTree.markAllRead": "Mark all read",
-  "projectTree.markRead": "Mark read",
+  "projectTree.markRead": "Mark as read",
   "projectTree.copyInfo": "Copy",
   "projectTree.openWith": "Open with",
   "projectTree.groupMove": "Group move",

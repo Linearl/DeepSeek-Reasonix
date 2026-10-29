@@ -1867,9 +1867,10 @@ export function ProjectTree({
           disabled: aiRenamingTopic !== null || Boolean(node.remoteSession),
           onSelect: () => void aiRenameSession(topicId),
         },
-        // wt-zcode-288：会话行右键「已读」（tl 1149：单条会话语境不再叫「全部已读」；
-        // 分组右键的同名操作作用于整个分组，保留原名）——当前上下文 = 该会话所属
-        // 工作区（project scope 即同一工作区；Global 会话即整个 Global 区）。
+        // wt-zcode-288：会话行右键「标为已读」（tl 1149：单条会话语境不再叫
+        // 「全部已读」；分组右键的同名操作作用于整个分组，保留原名）——当前
+        // 上下文 = 该会话所属工作区（project scope 即同一工作区；Global 会话
+        // 即整个 Global 区）。
         ...(openRequest
           ? [{
               key: "markAllRead",
