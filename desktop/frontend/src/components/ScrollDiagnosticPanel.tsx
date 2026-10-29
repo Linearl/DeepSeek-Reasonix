@@ -70,7 +70,20 @@ const COPY: Record<Locale, DiagnosticCopy> = {
   },
 };
 
-function diagnosticSample(element: HTMLElement | null, totalRows: number): Record<string, unknown> | null {
+// tl 1241: the kernel verdict triplet the sampler folds into every sample —
+// the conditional snapshot values, deliberately distinct from the measured
+// `atBottom` verdict below (their divergence IS the stale-snapshot family).
+export type ScrollKernelDiagnosticState = {
+  atBottom: boolean;
+  intent: "tail" | "reader";
+  bottomSnapshot: boolean | undefined;
+};
+
+function diagnosticSample(
+  element: HTMLElement | null,
+  totalRows: number,
+  kernelState: ScrollKernelDiagnosticState | null,
+): Record<string, unknown> | null {
   if (!element) return null;
   const viewport = element.getBoundingClientRect();
   let firstVisibleIndex: number | undefined;
@@ -98,23 +111,33 @@ function diagnosticSample(element: HTMLElement | null, totalRows: number): Recor
     // tl 1204: the verdict threshold is the kernel's single constant.
     atBottom: bottomDistance <= TRANSCRIPT_BOTTOM_THRESHOLD_PX,
     scrollable: element.scrollHeight - element.clientHeight > 4,
+    // tl 1241: kernel verdict triplet (whitelisted in the diagnostics schema).
+    kernelAtBottom: kernelState?.atBottom,
+    kernelIntent: kernelState?.intent,
+    bottomBySession: kernelState?.bottomSnapshot,
   };
 }
 
 export default function ScrollDiagnosticPanel({
   scrollElement,
   totalRows,
+  kernelState,
 }: {
   scrollElement: HTMLElement | null;
   totalRows: number;
+  /** tl 1241: read-only access to the transcript kernel's verdict triplet for
+   * the sampler. Absent keeps the samples kernel-free (pre-1241 shape). */
+  kernelState?: () => ScrollKernelDiagnosticState | null;
 }) {
   const { locale, t } = useI18n();
   const copy = COPY[locale];
   const { showToast } = useToast();
   const scrollElementRef = useRef(scrollElement);
   const totalRowsRef = useRef(totalRows);
+  const kernelStateRef = useRef(kernelState);
   scrollElementRef.current = scrollElement;
   totalRowsRef.current = totalRows;
+  kernelStateRef.current = kernelState;
   const [snapshot, setSnapshot] = useState<TranscriptScrollDiagnosticSnapshot>(() => transcriptScrollDiagnostics.getSnapshot());
   const [exporting, setExporting] = useState(false);
 
@@ -127,7 +150,11 @@ export default function ScrollDiagnosticPanel({
   }, [refresh, snapshot.status]);
 
   const start = useCallback(() => {
-    transcriptScrollDiagnostics.start(() => diagnosticSample(scrollElementRef.current, totalRowsRef.current));
+    transcriptScrollDiagnostics.start(() => diagnosticSample(
+      scrollElementRef.current,
+      totalRowsRef.current,
+      kernelStateRef.current?.() ?? null,
+    ));
   }, []);
 
   const exportTrace = useCallback(async () => {

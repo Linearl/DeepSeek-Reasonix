@@ -26,7 +26,10 @@ export type TranscriptScrollDiagnosticEventType =
   | "scroll-state"
   | "blank-check"
   | "blank-reset"
-  | "recovery";
+  | "recovery"
+  // tl 1241: one event per surface switch, carrying the kernel triplet the
+  // replaceSurface verdict consumes (the stale-snapshot family evidence).
+  | "surface-swap";
 
 export type TranscriptScrollDiagnosticEvent = {
   t: number;
@@ -98,6 +101,20 @@ export type TranscriptScrollDiagnosticEvent = {
   substantial?: boolean;
   tailCommand?: boolean;
   transient?: boolean;
+  // tl 1241: the kernel verdict triplet around a surface switch / sample.
+  // atBottomFrom = the conditional snapshot the switch-away wrote into
+  // bottomBySession (stale by construction — leak A); bottomBySession = the
+  // value the switch-back verdict reads; kernelAtBottom = the live snapshot at
+  // sample time. These are NOT the measured geometry verdict (atBottom) — the
+  // gap between them is the instrumented failure family.
+  atBottomFrom?: boolean;
+  bottomBySession?: boolean;
+  kernelAtBottom?: boolean;
+  intentFrom?: "tail" | "reader";
+  kernelIntent?: "tail" | "reader";
+  restoredAnchorKind?: "tail" | "block";
+  surface?: string;
+  surfaceFrom?: string;
   sources?: Array<"footer-resize" | "row-measure" | "data-change" | "viewport-resize" | "fold-change" | "typography-change" | "items-rendered">;
 };
 
@@ -157,6 +174,7 @@ type RecorderOptions = {
 const EVENT_TYPES = new Set<TranscriptScrollDiagnosticEventType>([
   "start", "stop", "mark", "sample", "wheel", "scroll", "scroll-write",
   "items-rendered", "list-height", "row-measure", "geometry-contract-violation", "geometry-revision", "scroll-anomaly", "reader-transaction", "scroll-state", "blank-check", "blank-reset", "recovery",
+  "surface-swap",
 ]);
 const MODES = new Set(["tail-follow", "manual", "native-thumb", "user-resize", "selection", "restoring", "unknown"]);
 const OWNERS = new Set(["tail-follow", "jump", "rewind", "jump-bottom", "custom-scrollbar", "selection-edge-scroll", "recovery", "reader-stability", "anchor-compensation", "block-window-prepend", "other"]);
@@ -190,7 +208,13 @@ const NUMBER_FIELDS = [
   "settleFrame", "offBottomFrames", "stagnantFrames", "relativeError",
   "sequence", "generation", "ownershipEpoch", "geometryRevision", "transactionId", "footerHeight", "viewport", "mounted", "total", "reverseDisplacement", "extentDelta", "stableFrames", "direction",
 ] as const;
-const BOOLEAN_FIELDS = ["atBottom", "scrollable", "blank", "readerIntent", "canClaimTail", "substantial", "tailCommand", "transient"] as const;
+const BOOLEAN_FIELDS = ["atBottom", "scrollable", "blank", "readerIntent", "canClaimTail", "substantial", "tailCommand", "transient", "atBottomFrom", "bottomBySession", "kernelAtBottom"] as const;
+// tl 1241: surface keys are `tab:<id>:<reveal>` / session keys — a bounded
+// identifier charset, kept strict so a malformed key can never smuggle prose
+// into the trace.
+const SURFACE_KEY_PATTERN = /^[A-Za-z0-9:_.\-]{0,160}$/;
+const VIEWPORT_INTENTS = new Set(["tail", "reader"]);
+const ANCHOR_KINDS = new Set(["tail", "block"]);
 const GEOMETRY_SOURCES = new Set(["footer-resize", "row-measure", "data-change", "viewport-resize", "fold-change", "typography-change", "items-rendered"]);
 
 function finiteNumber(value: unknown): number | undefined {
@@ -235,6 +259,13 @@ function sanitizeEvent(
   if (typeof input.reason === "string") event.reason = (REASONS.has(input.reason) ? input.reason : "other") as TranscriptScrollDiagnosticEvent["reason"];
   if (typeof input.rejectedReason === "string" && /^[a-z0-9-]{1,64}$/.test(input.rejectedReason)) event.rejectedReason = input.rejectedReason;
   if (typeof input.result === "string" && /^[a-z0-9-]{1,64}$/.test(input.result)) event.result = input.result;
+  // tl 1241: surface-swap identity + verdict fields (whitelist or silently
+  // dropped — the same rule every other field here follows).
+  if (typeof input.surface === "string" && SURFACE_KEY_PATTERN.test(input.surface)) event.surface = input.surface;
+  if (typeof input.surfaceFrom === "string" && SURFACE_KEY_PATTERN.test(input.surfaceFrom)) event.surfaceFrom = input.surfaceFrom;
+  if (typeof input.intentFrom === "string" && VIEWPORT_INTENTS.has(input.intentFrom)) event.intentFrom = input.intentFrom as TranscriptScrollDiagnosticEvent["intentFrom"];
+  if (typeof input.kernelIntent === "string" && VIEWPORT_INTENTS.has(input.kernelIntent)) event.kernelIntent = input.kernelIntent as TranscriptScrollDiagnosticEvent["kernelIntent"];
+  if (typeof input.restoredAnchorKind === "string" && ANCHOR_KINDS.has(input.restoredAnchorKind)) event.restoredAnchorKind = input.restoredAnchorKind as TranscriptScrollDiagnosticEvent["restoredAnchorKind"];
   if (Array.isArray(input.sources)) {
     const sources = input.sources.filter((value): value is NonNullable<TranscriptScrollDiagnosticEvent["sources"]>[number] => (
       typeof value === "string" && GEOMETRY_SOURCES.has(value)
