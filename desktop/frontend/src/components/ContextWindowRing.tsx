@@ -359,7 +359,14 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
                         {section.items.map((item) => (
                           <li className="context-composition__section-item" key={item.key}>
                             <span className={`context-composition__dot context-composition__dot--item-${item.key}`} aria-hidden="true" />
-                            <span className="context-composition__label">{t(item.labelKey)}</span>
+                            {/* tl1239④: 跨会话记忆行挂内容源解释（用户读成「跨会话
+                                消息」；Go 侧归属确为 BackgroundDataBlock 记忆索引）。 */}
+                            <span
+                              className="context-composition__label"
+                              title={item.titleKey ? t(item.titleKey) : undefined}
+                            >
+                              {t(item.labelKey)}
+                            </span>
                             <span className="context-composition__tokens">{fmtCompact(item.tokens)}</span>
                             <span className="context-composition__share">{item.share.toFixed(1)}%</span>
                           </li>
