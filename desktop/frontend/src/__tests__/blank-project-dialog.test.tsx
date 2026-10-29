@@ -95,9 +95,9 @@ const addControlsSource = readFileSync(resolve(here, "../components/ProjectTreeA
 const flowSource = readFileSync(resolve(here, "../components/BlankProjectFlow.tsx"), "utf8");
 const creationSource = readFileSync(resolve(here, "../components/useProjectCreation.tsx"), "utf8");
 ok(
-  /onBlank: \(\) => \{ closeMenu\(\); openBlankProjectFlow\(\); \}/.test(treeSource) &&
+  /onSelect: \(\) => \{ closeMenu\(\); openBlankProjectFlow\(\); \}/.test(treeSource) &&
     /key: "blank-project"[\s\S]*onSelect: onBlank/.test(addControlsSource),
-  "workbench menu starts the blank-project flow",
+  "create dropdown starts the blank-project flow (classic + tl1222 workbench share it)",
 );
 ok(/CreateBlankProject\(draft\.parentDirectory, projectName\)/.test(flowSource), "the dialog delegates atomic directory creation to Go");
 ok(/await onOpenProject\(createdPath\)/.test(flowSource), "the new directory reuses workspace navigation and registration");

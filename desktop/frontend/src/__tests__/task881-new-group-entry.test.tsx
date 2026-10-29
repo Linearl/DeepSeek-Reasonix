@@ -4,10 +4,10 @@
 //   ① 树空白区右键菜单有「新建分组」，且不依赖任何已有分组/项目行：
 //      handler 对拥有自己菜单的行（topic/folder/group-main）做 closest 排除，
 //      其余目标（含空列表/空状态）一律可开菜单。
-//   ② 顶部工具栏入口：workbench 直选按钮 onClick 直开 NewGroupPanel
-//      （setNewGroupOpen(true)）；classic 侧 tl1157 起由「新建」下拉一级项
-//      承载——两者与 827 既有建组流程同一条路径（复用非重写：唯一 onConfirm
-//      仍是 handleAddGroup）。
+//   ② 顶部工具栏入口：「新建」下拉一级项 onClick 直开 NewGroupPanel
+//      （setNewGroupOpen(true)；tl1157 classic 收进下拉，tl1222 workbench
+//      对齐同一形态后两布局共用）；与 827 既有建组流程同一条路径（复用非重写：
+//      唯一 onConfirm 仍是 handleAddGroup）。
 //
 // UI 结构以源码断言钉住（同 task 827/383 先例）；三语文案断言 locale 键值齐备。
 
@@ -64,32 +64,23 @@ ok(treeSource.includes("open={blankMenuPoint !== null}") && treeSource.includes(
 
 // ── 验收 ②：顶部工具栏入口 ─────────────────────────────────────────────────
 // tl1157 演进：classic 头部的独立建组按钮收进「新建」下拉（一级项
-// new-project-group → 同一 NewGroupPanel），头部仅 workbench 保留直选按钮；
-// 881 的本条断言随之从「两头部各一直选按钮」改为「workbench 直选按钮 +
-// classic 下拉直达同一面板」，③ 段两个 locale key 断言保持原样。
-console.log("\n881-② toolbar direct buttons");
+// new-project-group → 同一 NewGroupPanel）；tl1222 进一步把 workbench 头部
+// 对齐到同一三控件形态——两布局都不再有直选建组按钮，统一走「新建」下拉。
+// ③ 段两个 locale key 断言保持原样。
+console.log("\n881-② toolbar entry (shared create dropdown)");
 
-// workbench 直选按钮独占（tl1157 后 classic 头部不再有独立建组按钮）
-ok(count(treeSource, 'aria-label={t("projectGroup.createNew")}') === 1,
-  "the workbench header keeps its direct create-group button (classic's standalone button folded into the create menu by task 1157)");
+// 两布局头部均无直选建组按钮（classic 由 tl1157 收进下拉，workbench 由 tl1222 对齐）
+ok(count(treeSource, 'aria-label={t("projectGroup.createNew")}') === 0,
+  "no header layout keeps a direct create-group button (classic folded by 1157, workbench aligned by tl1222)");
 
-// classic 新建下拉含「新建项目分组」一级项，点击直开 NewGroupPanel
+// 共享头部挂「新建」下拉；下拉一级「新建项目分组」点击直开 NewGroupPanel
 {
-  const classicBranch = treeSource.slice(treeSource.indexOf('{renderClassicFilterControl()}'), treeSource.indexOf("          </>\n        )}"));
-  ok(classicBranch.includes('label={t("projectTree.createMenu")}') && classicBranch.includes("items={classicCreateItems}"),
-    "the classic header hosts the create dropdown (task 1157), not a standalone group button");
-  const itemsSlice = treeSource.slice(treeSource.indexOf("const classicCreateItems"), treeSource.indexOf("const workbenchHeaderAddItems"));
+  const headerBody = treeSource.slice(treeSource.indexOf('const renderProjectHeader = (mode: "classic" | "workbench") => ('), treeSource.indexOf("// Project rows render under their group heading"));
+  ok(headerBody.includes('label={t("projectTree.createMenu")}') && headerBody.includes("items={classicCreateItems}"),
+    "the shared header hosts the create dropdown (1157 / tl1222), not a standalone group button");
+  const itemsSlice = treeSource.slice(treeSource.indexOf("const classicCreateItems"), treeSource.indexOf("const timeFilterDisplayLabel"));
   ok(itemsSlice.includes('key: "new-project-group"') && itemsSlice.includes('label: t("projectGroup.createNew")') && itemsSlice.includes("setNewGroupOpen(true)"),
     "the create dropdown's top-level group entry opens the shared NewGroupPanel (setNewGroupOpen), not a parallel flow");
-}
-
-// workbench 头部按钮：renderProjectHeader 内 mode === "workbench" 分支、onClick 直开 NewGroupPanel
-{
-  const workbenchBranch = treeSource.slice(treeSource.indexOf('{mode === "workbench" ? ('), treeSource.indexOf('{renderClassicFilterControl()}'));
-  ok(workbenchBranch.includes("onClick={() => setNewGroupOpen(true)}"),
-    "the workbench header button opens NewGroupPanel directly (one click, no menu)");
-  ok(workbenchBranch.includes("<FolderInput size={15}"),
-    "the workbench group button uses the FolderInput icon (consistent with the classic group button)");
 }
 
 // 建组流程复用：唯一 onConfirm 仍是 handleAddGroup，NewGroupPanel 只挂一处

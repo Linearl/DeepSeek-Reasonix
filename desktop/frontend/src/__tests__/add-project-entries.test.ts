@@ -29,11 +29,12 @@ const locales = ["en", "zh", "zh-TW"].map((name) =>
   readFileSync(resolve(here, `../locales/${name}.ts`), "utf8"),
 );
 
-// Workbench "+" menu: three items, remote opens the wizard flow.
+// Shared create dropdown (tl1157 classic fold; tl1222 aligned the workbench
+// header onto the same dropdown): three entries, remote opens the wizard flow.
 ok(
-  /onRemote: \(\) => \{ closeMenu\(\); openRemoteConnectFlow\(\); \}/.test(treeSource) &&
+  /onSelect: \(\) => \{ closeMenu\(\); openRemoteConnectFlow\(\); \}/.test(treeSource) &&
     /key: "remote-connection"[\s\S]*?onSelect: onRemote/.test(addControlsSource),
-  "workbench + menu offers the remote connection item wired to the wizard flow",
+  "the create dropdown offers the remote connection item wired to the wizard flow (classic + tl1222 workbench)",
 );
 ok(
   /key: "blank-project"[\s\S]*?key: "open-local-folder"[\s\S]*?key: "remote-connection"/.test(addControlsSource),
