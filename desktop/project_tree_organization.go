@@ -878,7 +878,7 @@ func (a *App) BatchMoveToGroup(scope, workspaceRoot string, topicIDs []string, g
 		if !changed {
 			// Every topic is already only in the target group: nothing to write.
 			result.Group = moved
-			return result, nil
+			return finalizeBatchMoveResult(result), nil
 		}
 		saved, err := a.SaveSessionGroupsVersioned(scope, workspaceRoot, snapshot.Revision, groups)
 		if err != nil {
@@ -886,7 +886,7 @@ func (a *App) BatchMoveToGroup(scope, workspaceRoot string, topicIDs []string, g
 		}
 		if saved.Applied {
 			result.Group = moved
-			return result, nil
+			return finalizeBatchMoveResult(result), nil
 		}
 		// Revision moved underneath us: reset per-topic flags and recompute
 		// against the fresh snapshot on the next attempt.
@@ -895,6 +895,19 @@ func (a *App) BatchMoveToGroup(scope, workspaceRoot string, topicIDs []string, g
 		}
 	}
 	return result, fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
+}
+
+// finalizeBatchMoveResult recomputes the batch counters from the per-topic
+// outcomes right before a successful return.
+func finalizeBatchMoveResult(result desktopBatchMoveToGroupResult) desktopBatchMoveToGroupResult {
+	for _, item := range result.Items {
+		if item.OK {
+			result.Succeeded++
+		} else {
+			result.Failed++
+		}
+	}
+	return result
 }
 
 // groupContainsTopic reports whether a group lists the topic.
