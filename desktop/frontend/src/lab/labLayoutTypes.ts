@@ -73,17 +73,18 @@ export interface LabLayoutData {
 }
 
 /** All group keys the resolver accepts (unknown group key ⇒ fallback).
- * tl1193b 增 memory-context（记忆/上下文）——pinned 常驻层索引化卡落位
- * （992 后 tool-opt 并入 infra，其键仍在词表内，此处不动）。 */
+ * tl1193b 增 memory-context（记忆/上下文）——pinned 常驻层索引化卡落位；
+ * tl1256 调序：memory-context 移 infra 之后（用户 20261029 令，rail 序即
+ * 词表序）（992 后 tool-opt 并入 infra，其键仍在词表内，此处不动）。 */
 export const LAB_GROUP_KEYS = [
   "automation",
-  "memory-context",
   "efficiency",
   "ui",
   "observability",
   "dev-debug",
   "storage",
   "infra",
+  "memory-context",
   "tool-opt",
 ] as const;
 

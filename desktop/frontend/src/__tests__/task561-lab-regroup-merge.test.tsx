@@ -54,13 +54,14 @@ console.log("\ntask 561 lab regroup + merged cards");
 // ① group structure（任务 722/724 修订；任务 992 工具优化并入 infra 后
 //    7 组——本 pin 2026-10-19 随 1005 窗口补同步，992 合组时漏跟）：
 //    组受控词表在 labLayoutTypes，组序/组键/组标签键全部来自布局文档
-//    （yaml 与内置默认一致）。tl1193b：增「记忆与上下文」组（automation
-//    之后、efficiency 之前，pinnedIndex 卡落位）——7 组 → 8 组。
+//    （yaml 与内置默认一致）。tl1193b：增「记忆与上下文」组（pinnedIndex
+//    卡落位）——7 组 → 8 组；tl1256 调序：memory-context 移 infra 之后
+//    （原 automation 后 efficiency 前，用户 20261029 令）。
 {
   const yaml = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
   const keys = [
-    "automation", "memory-context", "efficiency", "ui", "observability", "dev-debug", "storage", "infra",
+    "automation", "efficiency", "ui", "observability", "dev-debug", "storage", "infra", "memory-context",
   ];
   const yamlOrder = keys.map((k) => yaml.indexOf(`key: ${k}`));
   ok(yamlOrder.every((i) => i >= 0) && [...yamlOrder].sort((a, b) => a - b).every((v, i) => v === yamlOrder[i]),
@@ -144,11 +145,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   // → 组分布 4/6/11/3/1/4/7=36。tl-1048：zcodeTaskBus 退役出 infra
   // → infra 7→6，总数 36→35。tl1174：jsonlZstd 入存储组，storage 4→5、
   // 总数 36（本 pin 漏跟=基线预存红）。tl1193b：记忆与上下文新组
-  // （pinnedIndex 卡，automation 之后、efficiency 之前）→ 组分布
-  // 4/1/6/11/3/1/5/6，总数 37（实值钉）。
-  ok(groups["automation"] === 4 && groups["memory-context"] === 1 && groups["efficiency"] === 6 && groups["ui"] === 11 &&
-     groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 5 && groups["infra"] === 6,
-    `group counts are 4/1/6/11/3/1/5/6 (got ${JSON.stringify(groups)})`);
+  // （pinnedIndex 卡）→ 总数 37（实值钉）；tl1256 调序：memory-context
+  // 移 infra 之后（组分布序随 rail 序，各组成员数不变）→ 4/6/11/3/1/5/6/1。
+  ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 11 &&
+     groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 5 && groups["infra"] === 6 &&
+     groups["memory-context"] === 1,
+    `group counts are 4/6/11/3/1/5/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。

@@ -30,9 +30,10 @@
 //       traceAsState+outputStyle 三散条并「交互与呈现」卡
 //       （interactionPresentation）；ui 组 renderArtifact 并入「视图布局」
 //       （viewLayout）卡成员行。
-//   tl1193b 新增「记忆与上下文」组（automation 之后、efficiency 之前，
-//       实验室第 8 活跃组）：pinnedIndex 卡（plan E pinned 常驻层索引化，
-//       未稳定档，默认关，boot 快照重启生效）。
+//   tl1193b 新增「记忆与上下文」组（实验室第 8 活跃组）：pinnedIndex 卡
+//       （plan E pinned 常驻层索引化，未稳定档，默认关，boot 快照重启生效）。
+//   tl1256 调序：「记忆与上下文」组移基础设施组之后（原 automation 后
+//       efficiency 前，用户 20261029 令；yaml 同步移动）。
 
 import type { DictKey } from "../locales/en";
 import type { LabTier, TierFeatureId } from "../lib/experimentTiers";
@@ -115,21 +116,6 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 一致（普通对话永不自动续跑）；开启后仍有界上限与各边界排除。
             { id: "standardContinuation", labelKey: "settings.standardContinuation", tier: "optional" },
           ],
-        },
-      ],
-    },
-    {
-      // tl1193b：记忆与上下文组（实验室第 8 活跃组）——pinned 常驻层索引化
-      // 卡落位（plan E，未稳定档，默认关，boot 快照重启生效）。与 automation
-      // 组的记忆整理族（dream/decisionPatterns）相邻成域。
-      key: "memory-context",
-      labelKey: "settings.labGroup.memoryContext",
-      entries: [
-        {
-          id: "pinnedIndex",
-          labelKey: "settings.pinnedIndex",
-          tier: "unstable",
-          onKeys: ["experimentalPinnedIndex"],
         },
       ],
     },
@@ -468,6 +454,22 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           { id: "multiEditEvidenceNarrow", labelKey: "settings.multiEditEvidenceNarrow", tier: "optional" },
           { id: "multiEditSkipFailed", labelKey: "settings.multiEditSkipFailed", tier: "optional" },
         ] },
+      ],
+    },
+    {
+      // tl1193b：记忆与上下文组（实验室第 8 活跃组）——pinned 常驻层索引化
+      // 卡落位（plan E，未稳定档，默认关，boot 快照重启生效）。tl1256 调序：
+      // 基础设施组之后（原 automation 后 efficiency 前，用户 20261029 令，
+      // yaml 同步移动）。
+      key: "memory-context",
+      labelKey: "settings.labGroup.memoryContext",
+      entries: [
+        {
+          id: "pinnedIndex",
+          labelKey: "settings.pinnedIndex",
+          tier: "unstable",
+          onKeys: ["experimentalPinnedIndex"],
+        },
       ],
     },
   ],
