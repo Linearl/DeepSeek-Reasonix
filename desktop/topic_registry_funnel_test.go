@@ -34,8 +34,9 @@ func TestRegisterTopicFunnelRegistersAndSyncsIndex(t *testing.T) {
 		t.Fatalf("register project: %v", err)
 	}
 	owner, ok = topicRegistryOwnerOf(topicID)
-	// 唯一归属：跨 scope 重复（遗留形态）时索引裁决判 project（global 侧
-	// 是 1074 家族影子）；文件层仍双行（读侧消费唯一索引后不再放大）。
+	// 唯一归属：tl1262 起 project 登记在写口同事务收敛 global 侧注册
+	// （「遗留重复判 project」的裁决落到持久真相源，1074 家族影子不再落
+	// 盘）；索引层继续由唯一归属 map 结构保证一 id 一行。
 	if !ok || owner.Scope != topicregistry.ScopeProject || !sameProjectRoot(owner.Root, projectRoot) {
 		t.Fatalf("index owner = %+v ok=%v, want project %q (unique ownership)", owner, ok, projectRoot)
 	}
