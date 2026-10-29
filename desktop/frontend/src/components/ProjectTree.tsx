@@ -2978,11 +2978,13 @@ export function ProjectTree({
   // one dropdown panel — user-approved shape A (three header buttons total).
   // Every change applies immediately (no apply button): time options close the
   // panel (one-shot choice), colour toggles stay open (multi-select), and the
-  // footer "clear filters" resets both at once. The trigger carries a dot
+  // top "clear filters" resets both at once. The trigger carries a dot
   // badge while any filter is active; the tooltip then spells out the summary.
   // The sort section moves here from the old time menu: arrangeClassicProject-
   // Tree still sorts by workbenchSortMode, so dropping it would have removed
   // the classic layout's only sorting door.
+  // tl1170: section order is clear ▸ sort ▸ time ▸ colour (user-approved);
+  // the previously trailing clear action leads the panel instead.
   const classicFilterActive = timeFilter !== "all" || colorFilter.length > 0;
   const classicFilterSummary = [
     timeFilter !== "all" ? timeFilterDisplayLabel : "",
@@ -3015,6 +3017,38 @@ export function ProjectTree({
         </button>
         {filterMenuOpen && (
           <div className="project-tree__time-filter-menu project-tree__filter-panel" role="menu" aria-label={t("projectTree.filterAndSort")} onKeyDown={moveMenuFocus}>
+            <button
+              type="button"
+              className="project-tree__time-filter-opt project-tree__filter-clear"
+              disabled={!classicFilterActive}
+              onClick={() => {
+                onTimeFilterChange("all");
+                setColorFilter([]);
+                setFilterMenuOpen(false);
+              }}
+              role="menuitem"
+            >
+              {t("projectTree.clearTimeFilter")}
+            </button>
+            <div className="project-tree__time-filter-sep" role="separator" />
+            <div className="project-tree__time-filter-title">{t("projectTree.sortCriteria")}</div>
+            <button
+              type="button"
+              className={`project-tree__time-filter-opt${workbenchSortMode === "updated" ? " project-tree__time-filter-opt--on" : ""}`}
+              onClick={() => selectWorkbenchSortMode("updated")}
+              role="menuitem"
+            >
+              {t("projectTree.sortByUpdatedAt")}
+            </button>
+            <button
+              type="button"
+              className={`project-tree__time-filter-opt${workbenchSortMode === "created" ? " project-tree__time-filter-opt--on" : ""}`}
+              onClick={() => selectWorkbenchSortMode("created")}
+              role="menuitem"
+            >
+              {t("projectTree.sortByCreatedAt")}
+            </button>
+            <div className="project-tree__time-filter-sep" role="separator" />
             <div className="project-tree__time-filter-title">{t("projectTree.timeFilter")}</div>
             <button
               type="button"
@@ -3071,38 +3105,6 @@ export function ProjectTree({
                   </button>
                 );
               })}
-            <div className="project-tree__time-filter-sep" role="separator" />
-            <div className="project-tree__time-filter-title">{t("projectTree.sortCriteria")}</div>
-            <button
-              type="button"
-              className={`project-tree__time-filter-opt${workbenchSortMode === "updated" ? " project-tree__time-filter-opt--on" : ""}`}
-              onClick={() => selectWorkbenchSortMode("updated")}
-              role="menuitem"
-            >
-              {t("projectTree.sortByUpdatedAt")}
-            </button>
-            <button
-              type="button"
-              className={`project-tree__time-filter-opt${workbenchSortMode === "created" ? " project-tree__time-filter-opt--on" : ""}`}
-              onClick={() => selectWorkbenchSortMode("created")}
-              role="menuitem"
-            >
-              {t("projectTree.sortByCreatedAt")}
-            </button>
-            <div className="project-tree__time-filter-sep" role="separator" />
-            <button
-              type="button"
-              className="project-tree__time-filter-opt project-tree__filter-clear"
-              disabled={!classicFilterActive}
-              onClick={() => {
-                onTimeFilterChange("all");
-                setColorFilter([]);
-                setFilterMenuOpen(false);
-              }}
-              role="menuitem"
-            >
-              {t("projectTree.clearTimeFilter")}
-            </button>
           </div>
         )}
       </div>
