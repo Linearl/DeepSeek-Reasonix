@@ -21,8 +21,8 @@ import type { DictKey } from "../locales/en";
 
 const LAB_TIER_VALUES: ReadonlySet<string> = new Set<string>(LAB_TIER_ORDER);
 const REGISTER_IDS: ReadonlySet<string> = new Set(Object.keys(EXPERIMENT_FEATURE_TIERS));
-/** 任务 775 — 合法 entry kind（缺省 = "feature"）。 */
-const LAB_ENTRY_KINDS: ReadonlySet<string> = new Set(["feature", "param"]);
+/** 任务 775 — 合法 entry kind（缺省 = "feature"）；tl1227 增 "action"。 */
+const LAB_ENTRY_KINDS: ReadonlySet<string> = new Set(["feature", "param", "action"]);
 /** 任务 775 — 合法参数字段形态（四类；与注册表绑定逐字段核对一致性）。 */
 const LAB_PARAM_INPUTS: ReadonlySet<string> = new Set(["number", "text", "segment", "checkbox"]);
 
@@ -110,6 +110,8 @@ function validateLayout(root: unknown, opts: ResolveLabLayoutOptions, warnings: 
         kind = rawEntry.kind as LabLayoutEntry["kind"];
       }
       const isParam = (kind ?? "feature") === "param";
+      // tl1227 — 动作卡：无开关、无字段、无折叠成员，pane 内部自带动作按钮。
+      const isAction = (kind ?? "feature") === "action";
 
       let tier: LabTier | undefined;
       if (rawEntry.tier != null) {
@@ -130,8 +132,9 @@ function validateLayout(root: unknown, opts: ResolveLabLayoutOptions, warnings: 
       let members: LabLayoutData["groups"][number]["entries"][number]["members"];
       const rawMembers = rawEntry.members;
       if (rawMembers != null) {
-        // 任务 775 — 参数卡不折叠成员（折叠面是 fields）。
+        // 任务 775 — 参数卡不折叠成员（折叠面是 fields）；tl1227 — 动作卡同理。
         if (isParam) fail(warnings, `entry "${id}".members is not valid on kind=param entries`);
+        if (isAction) fail(warnings, `entry "${id}".members is not valid on kind=action entries`);
         if (!Array.isArray(rawMembers)) fail(warnings, `entry "${id}".members must be a list`);
         members = rawMembers.map((rawMember, mi) => {
           if (!isPlainObject(rawMember)) fail(warnings, `entry "${id}" members[${mi}] must be a mapping`);

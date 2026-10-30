@@ -50,7 +50,7 @@ import type { LabGroupKey, LabLayoutData } from "./labLayoutTypes";
 interface StrictLabLayoutEntry {
   id: string;
   labelKey: DictKey;
-  kind?: "param";
+  kind?: "param" | "action";
   tier?: LabTier;
   onKeys: LabLightKey[];
   members?: Array<{ id: TierFeatureId; labelKey: DictKey; tier: LabTier }>;
@@ -406,6 +406,16 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.jsonlZstd",
           tier: "optional",
           onKeys: ["experimentalJsonlZstd"],
+        },
+        // tl1227：DAG 日志迁移动作卡（kind: action 首例）——无开关无字段，
+        // pane 内是扫描 + 执行两个动作；与 yaml 同构同值（yaml 损坏回退时
+        // 本条目不能丢，722 兜底约束）。
+        {
+          id: "dagMigration",
+          labelKey: "settings.dagMigration",
+          kind: "action",
+          tier: "optional",
+          onKeys: [],
         },
         // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
         // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
