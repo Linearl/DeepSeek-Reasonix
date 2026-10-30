@@ -2,20 +2,24 @@
 //
 // tl 1260 验收钉（会话分组拖拽 drop 提示补齐：1225 漏面——项目分组有提示，
 // Global 区会话分组（1.常用/2.不常用 类）拖拽无虚影无放置指示）:
-//   ① 视觉统一：会话分组头（.project-tree__group-main--reorder-target /
-//      --nest-target）加入 tl1225 accent 范式——2px accent inset 环 + accent
-//      底光，nest（落入子树）比 reorder（同级前后插）强一档（Task 892-B 契约
-//      保留）；源行拖拽变暗权重对齐项目侧 0.55。
+//   ① 视觉统一：会话分组头加入 tl1225 accent 范式；源行拖拽变暗权重对齐
+//      项目侧 0.55。
 //   ② 特异性是载荷：双写类选择器 (0,2,0) 压过同文件靠前的
 //      .project-tree__group-main:hover (0,2,0)——pointer 拖拽期间指针必然悬停
 //      在目标头上，单类 (0,1,0) 的旧背景被 8% hover 底色静默替换（=「看着没
 //      提示」的机制之一）；tl1225b 双写先例同款手法。
-//   ③ 外置细线清零（本域回归钉）：group-main 提示类不允许回到画在行框外的
-//      伪元素细线（contain/滚动裁剪同款隐患，tl1225 已在项目侧清零）。
-//   ④ 状态链与落盘语义零改动：className 组装点、hover 三分带、dropGroup →
-//      placeGroup 纯函数链原样（提示层只动 CSS，不碰 TSX/落盘）。
-//   ⑤ 机器绘类（jsdom，本域首次覆盖）：拖拽中目标头按 hover 三分带正确绘制
-//      reorder/nest 两类，释放后清零且 reorder 照常落盘。
+//   ③ 状态链与落盘语义：className 组装点、hover 带判定、dropGroup →
+//      placeGroup 纯函数链（提示层不干扰提交链）。
+//   ④ 机器绘类（jsdom）：拖拽中目标头按 hover 带正确绘制提示，释放后清零
+//      且落盘照常。
+//
+// tl 1267 返修演进（用户否决 1260 的 zone 盲类现状后标准化）：三分带升级为
+// 业界四分位（VS Code ListViewTargetSector，25/50/25，展开分组例外——展开项
+// 无 after，下带归 into）；before/after 从 zone 盲的 reorder-target 环洗拆为
+// 各自的 2px accent 插入线（--drop-before/--drop-after）；新增拖到自己/子孙
+// 的 blocked 防呆。本文件随新契约演进：插入线的完整契约钉在
+// tl1267-quadrisector-drop-hints.test.tsx，这里保留 hover-beat 双写、nest
+// 容器高亮、源行变暗、灰退场与落盘链的哨兵。
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -64,17 +68,14 @@ const NEST_RING = REORDER_RING;
 
 console.log("\ntl1260 ① session-group hints join the tl1225 accent paradigm (CSS contract)");
 
-// ── ① CSS 契约：双写选择器 + accent 2px inset 环 + nest 强一档 ────────────────
+// ── ① CSS 契约：双写选择器 + nest 容器高亮 + 插入线双标识（1267 演进） ────────
 {
-  const reorder = ruleBody(".project-tree__group-main.project-tree__group-main--reorder-target");
+  // tl 1267: the zone-blind reorder ring/wash retired — before/after are now
+  // the separate 2px accent insertion lines (contract pinned in tl1267).
   const nest = ruleBody(".project-tree__group-main.project-tree__group-main--nest-target");
   ok(
-    reorder.includes(REORDER_RING),
-    "the sibling-reorder hint carries the 2px accent inset ring (tl1225 weight)",
-  );
-  ok(
-    reorder.includes("background: color-mix(in srgb, var(--accent) 8%, transparent);"),
-    "the sibling-reorder hint carries a light accent landing wash",
+    !css.includes("project-tree__group-main--reorder-target"),
+    "the zone-blind reorder-target class stays retired (TL1267 two-treatment paradigm)",
   );
   ok(
     nest.includes(NEST_RING) && nest.includes("background: color-mix(in srgb, var(--accent) 16%, transparent);"),
@@ -91,8 +92,10 @@ console.log("\ntl1260 ① session-group hints join the tl1225 accent paradigm (C
   );
   // ② 特异性载荷：单类形式必须已被双写形式替换（否则 hover 底色继续吞背景）。
   ok(
-    !css.includes("\n.project-tree__group-main--reorder-target {")
-      && !css.includes("\n.project-tree__group-main--nest-target {"),
+    !css.includes("\n.project-tree__group-main--nest-target {")
+      && !css.includes("\n.project-tree__group-main--drop-before {")
+      && !css.includes("\n.project-tree__group-main--drop-after {")
+      && !css.includes("\n.project-tree__group-main--drop-blocked {"),
     "the plain (0,1,0) target selectors are gone — the hover-beat doubled form is the only definition",
   );
 }
@@ -121,23 +124,27 @@ console.log("\ntl1260 ① session-group hints join the tl1225 accent paradigm (C
 
 console.log("\ntl1260 ④ state chain and write semantics untouched (hint layer = CSS only)");
 
-// ── ④ 类名组装点 / hover 三分带 / 落盘链原样（TSX 零改动自证） ────────────────
+// ── ④ 类名组装点 / hover 四分位 / 落盘链（1267 新契约） ──────────────────────
 {
   ok(
-    org.includes('groupDropTarget.zone === "into" ? " project-tree__group-main--nest-target" : " project-tree__group-main--reorder-target"'),
-    "the className assembly still maps the into zone to nest-target and before/after to reorder-target",
+    org.includes("groupDropHintClass(group.id)"),
+    "the className assembly routes the hovered header through the four-state hint helper",
   );
   ok(
-    org.includes("zone = rel < 1 / 3 ? \"before\" : rel > 2 / 3 ? \"after\" : \"into\";"),
-    "the hover third-band zone logic is untouched",
+    org.includes('zone = rel < 1 / 4 ? "before" : rel >= 3 / 4 && organization.groupCollapsed(key, id) ? "after" : "into";'),
+    "the hover band is the quadrisector with the collapsed gate on the after band (tl1267)",
   );
   ok(
     org.includes("organization.dropGroup(key, from, to, zone)"),
     "the release commit still runs the dropGroup chain with the hovered zone",
   );
   ok(
-    org.includes("import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from \"../lib/sessionGroupTree\";"),
-    "the pure placeGroup/nestGroup helpers are wired unchanged (落盘语义零改动)",
+    org.includes("import { canNestUnder, childGroups, descendantGroupIDs, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from \"../lib/sessionGroupTree\";"),
+    "the pure placeGroup/nestGroup helpers are wired (落盘语义零改动; descendantGroupIDs feeds the tl1267 block guard)",
+  );
+  ok(
+    org.includes('zone: "blocked"') && org.includes("descendantGroupIDs(groups, draggingGroup).includes(id)"),
+    "the self/subtree hover is blocked before it can ever reach the commit chain (tl1267 防呆)",
   );
 }
 
@@ -274,16 +281,17 @@ console.log("\ntl1260 ⑤ the pointer machine paints the target hints (jsdom)");
   measureHeader(headerOf(1));
 
   ok(
-    !headerOf(1).className.includes("--reorder-target") && !headerOf(1).className.includes("--nest-target"),
+    !headerOf(1).className.includes("--drop-before") && !headerOf(1).className.includes("--nest-target")
+      && !headerOf(1).className.includes("--drop-blocked"),
     "no target hint paints while nothing is being dragged",
   );
 
-  // 按住 A（鼠标路径立即入机）→ 悬停 B 上三分带（before → 同级插入）。
+  // 按住 A（鼠标路径立即入机）→ 悬停 B 上 25%（before → 插入其上方的插入线）。
   await pointerOn(titleSpanOf(0), "pointerdown");
   await pointerOn(headerOf(1), "pointermove", 105);
   ok(
-    headerOf(1).className.includes("project-tree__group-main--reorder-target"),
-    "hovering the top third paints the sibling-reorder hint on the target header",
+    headerOf(1).className.includes("project-tree__group-main--drop-before"),
+    "hovering the top quarter paints the before insertion line on the target header",
   );
   ok(
     !headerOf(1).className.includes("project-tree__group-main--nest-target"),
@@ -294,28 +302,28 @@ console.log("\ntl1260 ⑤ the pointer machine paints the target hints (jsdom)");
     "the source header dims while the drag is in motion",
   );
 
-  // 中三分带（into → 落入子树）。
+  // 中 50%（into → 落入子树的容器高亮）。
   await pointerOn(headerOf(1), "pointermove", 115);
   ok(
     headerOf(1).className.includes("project-tree__group-main--nest-target")
-      && !headerOf(1).className.includes("project-tree__group-main--reorder-target"),
-    "hovering the middle third swaps the hint to the into treatment",
+      && !headerOf(1).className.includes("project-tree__group-main--drop-before"),
+    "hovering the middle half swaps the hint to the container treatment",
   );
 
-  // 下三分带（after → 同级插入回归）。
+  // 下 25%，B 展开 → 展开项无 after（Atlassian 规则，tl1267）→ 容器高亮保持。
   await pointerOn(headerOf(1), "pointermove", 125);
   ok(
-    headerOf(1).className.includes("project-tree__group-main--reorder-target")
-      && !headerOf(1).className.includes("project-tree__group-main--nest-target"),
-    "hovering the bottom third returns the hint to the sibling treatment",
+    headerOf(1).className.includes("project-tree__group-main--nest-target")
+      && !headerOf(1).className.includes("--drop-after"),
+    "hovering the bottom quarter of an EXPANDED group keeps the container hint (no after band)",
   );
 
-  // 释放：提示清零，reorder 照常落盘（提示层不干扰提交链）。
+  // 释放：提示清零，落盘照常（提示层不干扰提交链）。
   await releasePointer();
   await waitFor("CAS save", () => saves.length === 1);
   eq(saves[0].map((group) => group.id), ["g-b", "g-a"], "the release still lands the reorder through the CAS chain");
   ok(
-    !headerOf(0).className.includes("--dragging") && !headerOf(1).className.includes("--reorder-target")
+    !headerOf(0).className.includes("--dragging") && !headerOf(1).className.includes("--drop-before")
       && !headerOf(1).className.includes("--nest-target"),
     "all drag hints clear on release",
   );

@@ -3,9 +3,10 @@
 // tl 1225 验收钉（侧栏拖拽放置提示统一：分组/项目拖拽目标与对话拖拽手感一致）:
 //   ① 视觉机制统一：项目行（.project-tree__folder--drop-*）与项目分组头
 //      （.project-tree__pgroup-main--drop-*）的放置指示改用对话行同款
-//      inset 实心条（.project-tree__topic--drop-* 机制）；旧的外置伪元素
-//      细线（画在行框外 top/bottom: -2px）清零——它会被相邻行 wrapper 的
-//      contain:layout stacking context 盖住、被滚动容器在首末行裁剪。
+//      inset 实心条；旧的外置伪元素细线（画在行框外 top/bottom: -2px）清零
+//      ——它会被相邻行 wrapper 的 contain:layout stacking context 盖住、被
+//      滚动容器在首末行裁剪。（tl 1267：对话行参照自身已演进为 accent 插入
+//      线，项目侧 inset 条范式保持不变。）
 //   ② 「落入分组」高亮（pgroup-main--drop-into）描边对齐会话侧 nest-target
 //      的 2px 强度。
 //   ③ 状态链与落盘语义零改动：dropProject/dropGroup/projectDropInto 三个
@@ -45,10 +46,14 @@ console.log("\ntl1225 ① project row hint = topic-row inset bar mechanism");
 
 // ── ① 项目行：inset 实心条（与 .project-tree__topic--drop-* 同机制） ──────────
 {
+  // tl 1267 返修演进：topic 参照机制从 currentColor inset 条升级为 accent
+  // 插入线（::after 车道 + --project-tree-drop-inset 缩进起笔，完整契约钉在
+  // tl1267-quadrisector-drop-hints.test.tsx）；项目侧（folder/pgroup）保留
+  // inset 条范式不变，下面的断言钉的仍是项目行自己。
   ok(
-    ruleBody(".project-tree__topic--drop-before").includes("box-shadow: inset 0 2px 0 currentColor;")
-      && ruleBody(".project-tree__topic--drop-after").includes("box-shadow: inset 0 -2px 0 currentColor;"),
-    "the reused topic-row mechanism is intact (inset bars, source of truth)",
+    !css.includes("box-shadow: inset 0 2px 0 currentColor;")
+      && ruleBody(".project-tree__topic.project-tree__topic--drop-before::after").includes("top: 0;"),
+    "the topic reference evolved to the tl1267 accent insertion line (old currentColor bar retired)",
   );
   ok(
     ruleBody(".project-tree__folder--drop-before").includes("box-shadow: inset 0 2px 0 var(--accent);"),
