@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, lazy, Suspense, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, lazy, Suspense, type CSSProperties, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
 import { CheckCheck, Eraser, FolderMinus, FolderPlus, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
@@ -7,7 +7,7 @@ import { useConfirmDialog } from "./ConfirmDialog";
 import { useToast } from "../lib/toast";
 import { isTopicNode, projectTreeGroupActiveCount, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
-import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
+import { canNestUnder, childGroups, descendantGroupIDs, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import type { DeleteGroupsPlan, ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
@@ -638,7 +638,29 @@ export function ProjectTreeGroupRows({
   // header's drag handle — long-press stays for touch, the handle is the desktop
   // affordance (a 350ms invisible press is undiscoverable with a mouse).
   const [draggingGroup, setDraggingGroup] = useState<string | null>(null);
-  const [groupDropTarget, setGroupDropTarget] = useState<{ id: string; zone: GroupDropZone } | null>(null);
+  // tl 1267: the placement hint state. `zone` extends GroupDropZone with
+  // "blocked" — a hover over the dragged group itself or one of its own
+  // descendants paints the not-allowed cursor and never commits.
+  const [groupDropTarget, setGroupDropTarget] = useState<{ id: string; zone: GroupDropZone | "blocked" } | null>(null);
+  // tl 1267: the HTML5-machine twin (a dragged SESSION hovering a group
+  // header). The drop is always "into" on that machine, so the hint is the
+  // same container treatment the pointer machine's into zone paints.
+  const [topicHoverGroup, setTopicHoverGroup] = useState<string | null>(null);
+  // Same clear points the hook's own topic drag uses (dragend / drop / blur):
+  // without this, the id left over from the previous drag would light its old
+  // target the instant the next session drag starts, before any real hover.
+  useEffect(() => {
+    if (!topicHoverGroup) return;
+    const clear = () => setTopicHoverGroup(null);
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("dragend", clear);
+      window.removeEventListener("drop", clear);
+      window.removeEventListener("blur", clear);
+    };
+  }, [topicHoverGroup]);
   const groupDragRef = useRef<{ from: string | null; to: string | null; zone: GroupDropZone; moved: boolean }>({ from: null, to: null, zone: "after", moved: false });
   const groupPressTimerRef = useRef<number | null>(null);
   const groupSuppressClickRef = useRef(false);
@@ -718,19 +740,34 @@ export function ProjectTreeGroupRows({
     // A press released before the long-press fired is an ordinary click.
     if (!draggingGroup) groupDragRef.current = { from: null, to: null, zone: "after", moved: false };
   };
-  // Task 892-B: the hover zone decides what a plain drop MEANS — the pointer
-  // band within the target header (top third = sibling before, middle third =
-  // into the group, bottom third = sibling after). A header with no measurable
+  // Task 892-B: the hover zone decides what a plain drop MEANS.
+  // tl 1267: the bands follow the industry quadrisector (VS Code
+  // ListViewTargetSector / Atlassian pragmatic-dnd / React Aria DropIndicator,
+  // 三源一致) — top 25% = sibling before, middle 50% = into the group, bottom
+  // 25% = sibling after. One exception, the Atlassian rule for expanded
+  // containers: an EXPANDED group has no "after" — its bottom band is also
+  // "into", because an insertion line under an expanded header would read as
+  // "before its first child". A COLLAPSED group keeps the after band (nothing
+  // renders below it, the line is unambiguous). A header with no measurable
   // box (jsdom / pre-layout) falls back to "after", which keeps the task-50
   // flat-reorder contract intact for every legacy drop.
+  // tl 1267 防呆: hovering the dragged group itself or one of its own
+  // descendants is a BLOCKED hover — the hint paints not-allowed and the
+  // pointer target is reset to the source, so the release cannot commit
+  // (placeGroup would no-op anyway; this keeps the FEEDBACK honest too).
   const hoverGroup = (id: string, clientY?: number, target?: Element | null) => {
     if (!draggingGroup) return;
+    if (id === draggingGroup || descendantGroupIDs(groups, draggingGroup).includes(id)) {
+      groupDragRef.current = { ...groupDragRef.current, to: groupDragRef.current.from, zone: "after", moved: true };
+      setGroupDropTarget((current) => current && current.id === id && current.zone === "blocked" ? current : { id, zone: "blocked" });
+      return;
+    }
     let zone: GroupDropZone = "after";
     if (typeof clientY === "number" && target) {
       const rect = target.getBoundingClientRect();
       if (rect.height > 0) {
         const rel = (clientY - rect.top) / rect.height;
-        zone = rel < 1 / 3 ? "before" : rel > 2 / 3 ? "after" : "into";
+        zone = rel < 1 / 4 ? "before" : rel >= 3 / 4 && organization.groupCollapsed(key, id) ? "after" : "into";
       }
     }
     const prev = groupDragRef.current;
@@ -743,6 +780,19 @@ export function ProjectTreeGroupRows({
     // Pointermove fires continuously within a header; keep the drop paint to
     // renders where the (id, zone) pair actually changed.
     setGroupDropTarget((current) => (current && current.id === id && current.zone === zone ? current : { id, zone }));
+  };
+
+  // tl 1267: the className for the hovered header. The blocked hint paints on
+  // the source row too (the cursor must say not-allowed wherever the drop
+  // would be refused, including the drag's own origin); the placement hints
+  // still stay off the source row.
+  const groupDropHintClass = (id: string): string => {
+    const target = groupDropTarget;
+    if (!target || target.id !== id) return "";
+    if (target.zone === "blocked") return " project-tree__group-main--drop-blocked";
+    if (id === draggingGroup) return "";
+    if (target.zone === "into") return " project-tree__group-main--nest-target";
+    return target.zone === "before" ? " project-tree__group-main--drop-before" : " project-tree__group-main--drop-after";
   };
 
   const commitRename = (id: string) => {
@@ -834,7 +884,12 @@ export function ProjectTreeGroupRows({
           // (the pointer left the source row), not the machine state — with
           // the mouse press now entering the machine instantly, gating on
           // `moved` keeps a plain click from flashing the dim/affordance.
-          className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}${groupDropTarget && groupDropTarget.id === group.id && groupDropTarget.id !== draggingGroup ? (groupDropTarget.zone === "into" ? " project-tree__group-main--nest-target" : " project-tree__group-main--reorder-target") : ""}${draggingGroup === group.id && groupDragRef.current.moved ? " project-tree__group-main--dragging" : ""}`}
+          // tl 1267: the placement hint comes from groupDropHintClass — the
+          // quadrisector paints drop-before/drop-after insertion lines, the
+          // into band and an HTML5 session-hover both paint the nest-target
+          // container treatment, and a hover over self/subtree paints the
+          // blocked cursor hint.
+          className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}${groupDropHintClass(group.id)}${canDrop && topicHoverGroup === group.id ? " project-tree__group-main--nest-target" : ""}${draggingGroup === group.id && groupDragRef.current.moved ? " project-tree__group-main--dragging" : ""}`}
           // Task 313: the group header used to ride the children depth (the
           // caller passes folder depth + 1), sitting 22px right of the project
           // folder row. Rewriting to the folder row's own formula —
@@ -843,7 +898,9 @@ export function ProjectTreeGroupRows({
           // with, so the project tree and expanded children do not move.
           // Task 892: a nested group rides one extra 16px step PER LEVEL
           // (arbitrary depth replaced task-350's single `nested` step).
-          style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16 }}
+          // tl 1267: the same value feeds --project-tree-drop-inset so the
+          // insertion lines start at the row's own hierarchy indent.
+          style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16, "--project-tree-drop-inset": `${8 + (depth - 1) * 16 + level * 16}px` } as CSSProperties}
           title={group.title}
           onClick={() => {
             // A press that became a drag already did its work on release; the click it
@@ -880,13 +937,23 @@ export function ProjectTreeGroupRows({
             setMenuGroup(group.id);
             setMenuPoint(contextMenuPointFromEvent(event));
           }}
+          // tl 1267: an HTML5 session drag hovering the header paints the
+          // nest-target container treatment (the drop is always "into" on
+          // this machine). relatedTarget guards the leave so crossing into
+          // the header's own children (chevron/count spans) does not flicker.
           onDragOver={(event) => {
             if (!canDrop) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
+            setTopicHoverGroup((current) => current === group.id ? current : group.id);
+          }}
+          onDragLeave={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+            setTopicHoverGroup((current) => current === group.id ? null : current);
           }}
           onDrop={(event) => {
             event.preventDefault();
+            setTopicHoverGroup(null);
             if (canDrop) organization.dropTopicInto(key, group.id);
           }}
         >
