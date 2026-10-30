@@ -6,12 +6,66 @@
 
 **两类版本的区别**：标 <span class="vtag vtag-release">正式 Release</span> 的是发布到 GitHub Releases 的版本，可从 Release 页直接下载安装；标 <span class="vtag vtag-internal">内部包</span> 的是持续集成的开发快照，未经发布流程，仅供内部验证与升级链路使用。本 fork 的开发节奏是每个工作日可能出多个内部包，正式 Release 按里程碑单独发布。
 
-**统计**：10-12 起共 29 个开发包（正式 Release 1 个、内部包 28 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
+**统计**：10-12 起共 33 个开发包（正式 Release 1 个、内部包 32 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
 
 <div class="timeline">
 
+<details class="day-group" open>
+<summary>2026-10-31 <span class="gcount">· 2 个包</span></summary>
+
+<div class="inner">
 <section>
-### v1.38.3-20261030-0139 <span class="vtag vtag-internal">内部包</span>
+#### v1.38.3-20261031-0054 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">0054 构建</p>
+
+- 本版是 **DAG 迁移产品化**：实验室存储组新增「DAG 日志迁移」动作卡——扫描/迁移两按钮+两步确认+实时进度；正在使用的会话自动跳过，应用运行时迁移自动拒绝防冲突，历史修复快照不碰。迁移工具同步增强（进度反馈/逐条结果/异常处理）。
+
+</section>
+
+<section>
+#### v1.38.3-20261031-0012 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">0012 构建</p>
+
+- **「!!」不再误触发终端**（1274）：后端四处入口统一拦截，`!!` 开头优先走快捷指令，未匹配则作为普通消息发送；桌面/TUI 提示符同步修正。
+- **重启假「运行中」残影防线**（1266b）：重启后查无执行体的 tab 自动标「已断开」徽章，继续输入会提示重新打开而非静默塞进死执行体（双边锚防误杀新会话）。
+- **21 个 builtin 工具安全收编**（1276）：路径/URL 处理统一到安全净化入口+门禁测试，CodeQL 假警报从源头消除。
+- **会话树拖拽双标识**（1267）：条目间显示插入线、分组容器显示高亮。
+
+</section>
+</div>
+</details>
+
+<details class="day-group">
+<summary>2026-10-30 <span class="gcount">· 3 个包</span></summary>
+
+<div class="inner">
+<section>
+#### v1.38.3-20261030-1932 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">1932 构建</p>
+
+- **主题背景消失根治**（1277）：拆分器否定选择器误判致 classic/workbench 聊天页背景空白——从基线补齐 69 块到共享层。
+- **活跃状态行分行**（1269）：思考腿与执行腿并行各占一行。
+- **设置页外链全量切 fork 仓库**：更新日志/下载/问题四链+版本详情。
+- **模式下拉收窄**（1261）：148→132px；**文档站三轮**：changelog 补全+功能页重组+skills 来源标注。
+
+</section>
+
+<section>
+#### v1.38.3-20261030-0827 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">0827 构建</p>
+
+- **侧栏交互四件**：批量管理开关回归（1254）/贴底跳返修（1255）/会话分组拖拽提示（1260）/模式下拉定宽回调（1261）。
+- **实验室两件**：打开慢根治——shell inventory 过期同步阻塞改异步（1257）；「记忆与上下文」组落位调整（1256）。
+- **会话泄露 Global 根治**（1262）：ai-passport 赤途系列双显收敛。**文档站 v2 整体改版上线**。
+
+</section>
+
+<section>
+#### v1.38.3-20261030-0139 <span class="vtag vtag-internal">内部包</span>
 
 <p class="tl-date">0139 构建</p>
 
