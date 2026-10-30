@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"testing"
@@ -239,6 +240,9 @@ func TestTL1281MemoryBaselineReading(t *testing.T) {
 	settle := func() runtime.MemStats {
 		runtime.GC()
 		runtime.GC()
+		// Double GC alone leaves the previous leg's freed spans in HeapInuse;
+		// the scavenge returns them so each leg measures its own retention.
+		debug.FreeOSMemory()
 		var ms runtime.MemStats
 		runtime.ReadMemStats(&ms)
 		return ms
@@ -265,9 +269,17 @@ func TestTL1281MemoryBaselineReading(t *testing.T) {
 		}
 		retainedFull = append(retainedFull, msgs)
 	}
+	// Liveness, not scope, decides collectability: without KeepAlive the
+	// compiler treats retainedFull as dead after its last use and settle()'s
+	// GC frees the very decode state this leg must hold (measured: 72MB of
+	// retained content read back as a 4.8MB HeapInuse). A straight-line call
+	// AFTER the reading — a defer would pin the leg until function exit and
+	// bleed it into the after leg (measured: after leg read 340MB vs the
+	// windows' ~57MB because the before leg was still pinned).
 	ms := settle()
-	beforeProfile := writeProfile("tl1281-before.pprof")
 	beforeHeap := float64(ms.HeapInuse) / (1 << 20)
+	runtime.KeepAlive(retainedFull)
+	beforeProfile := writeProfile("tl1281-before.pprof")
 
 	// Free the before-leg retention so the after leg measures its own state.
 	retainedFull = nil
@@ -286,8 +298,9 @@ func TestTL1281MemoryBaselineReading(t *testing.T) {
 		retainedTail = append(retainedTail, sess.Snapshot())
 	}
 	ms = settle()
-	afterProfile := writeProfile("tl1281-after.pprof")
 	afterHeap := float64(ms.HeapInuse) / (1 << 20)
+	runtime.KeepAlive(retainedTail)
+	afterProfile := writeProfile("tl1281-after.pprof")
 	retainedTail = nil
 
 	t.Logf("TL1281 leg=before_full_decode sessions=%d fixture_mb=%d heap_inuse=%.1fMB profile=%s",
