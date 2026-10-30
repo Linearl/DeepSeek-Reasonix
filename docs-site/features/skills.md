@@ -1,4 +1,4 @@
-<!--meta title="内置 skill 介绍" desc="随安装包内置的 19 个 skill：装完即有，按需触发。" -->
+<!--meta title="内置 skill 介绍" desc="随安装包内置的 19 个 skill：装完即有，按需触发。" navOrder=4 -->
 
 # 内置 skill 介绍
 

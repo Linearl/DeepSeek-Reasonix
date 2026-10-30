@@ -1,6 +1,6 @@
-<!--meta title=功能总览 desc=Reasonix 核心能力地图：会话、上下文工程、权限沙箱、检查点、扩展、多端。 -->
+<!--meta title="上游特性（Reasonix 本身）" desc="Reasonix 上游自带的核心能力地图：会话、上下文工程、权限沙箱、检查点、扩展、多端——与 fork 无关、官方也有的能力。" navOrder=1 -->
 
-# 功能总览
+# 上游特性（Reasonix 本身）
 
 Reasonix 是「可以一直开着跑的编码 Agent」：配置驱动、多模型可组合、插件驱动，内核无硬编码模型。这里是核心能力地图。
 
@@ -15,7 +15,7 @@ Reasonix 是「可以一直开着跑的编码 Agent」：配置驱动、多模�
 - 多标签会话、转录/轨迹双视图。**命令面板（`Ctrl+K`）经 fork 大幅增强**——搜索并打开任意会话、面板与特性入口，是全应用最快的导航方式，建议熟练使用。
 - 会话分支（`/branch`）、切换（`/switch`）、重命名、导出（Markdown / JSON / PDF / 图片）。
 - 长会话历史搜索与按需加载更早记录。
-- 输入框草稿跨重启不丢（fork 增强，见 [fork 特性](fork-highlights.html)）。
+- 输入框草稿跨重启不丢（fork 增强，见 [fork 特性](key-features.html)）。
 
 ## 上下文工程
 
@@ -54,5 +54,5 @@ Reasonix 是「可以一直开着跑的编码 Agent」：配置驱动、多模�
 
 ## 下一步
 
-- [本 fork 独有特性](fork-highlights.html)
+- [fork 特性（四维度+完整清单）](key-features.html)
 - [配置项参考](../reference/config.html)

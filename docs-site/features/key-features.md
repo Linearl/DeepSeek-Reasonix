@@ -1,4 +1,4 @@
-<!--meta title="关键特性详介" desc="按效率、易用性、稳定性、性能四大方面，讲最值得先知道的能力。" -->
+<!--meta title="fork 特性" desc="fork 相对上游的全部改动：按效率、易用性、稳定性、性能四大方面组织，精选展开讲；更多增强见页末折叠区。" navOrder=2 -->
 
 # 关键特性详介
 
@@ -93,8 +93,76 @@ fork 的存储策略是 **v3 为长期推荐档**；v4 可用但 v3 侧记录会
 
 桌面版内存基线从 2~4GB 降到 **700~800MB**（v4 快照 payload 有界化 + transcript 几何哈希缓存）；大会话切换从 71.7 秒降到 **3 秒级别**，切模型/档位从 10 秒以上降到 3 秒级别。治理过程与实测数据见[更新日志](changelog.html)各版本条目。
 
+
+## 更多 fork 增强（完整清单）
+
+以上四方面挑重点讲；下面是**按主题分组的完整清单**（含未展开细讲的能力），默认折叠，点标题展开，或用按钮一键全部展开/折叠。
+
+<p><button type="button" class="acc-toggle" onclick="(function(b){var ds=document.querySelectorAll('details.acc');var open=ds.length&&!(ds[0].open);ds.forEach(function(d){d.open=open});b.textContent=open?'全部折叠':'全部展开';})(this)">全部展开</button></p>
+
+<details class="acc">
+<summary><strong>桌面 UI</strong>（5 项）</summary>
+
+| 能力 | 入口 |
+| --- | --- |
+| 项目分组（折叠状态跨重启保持，编号 <span class="fnum">901</span>） | 项目树头部「新建分组」；项目右键「移动到分组」 |
+| 项目颜色筛选与排序（多选，编号 <span class="fnum">902</span>） | 项目树头部调色板按钮 |
+| 搜索历史提问并跳转（编号 <span class="fnum">416</span>） | 会话内搜索 |
+| 输入框草稿持久化（草稿/粘贴块/附件路径跨重启不丢，编号 <span class="fnum">426</span>） | 自动生效 |
+| 快捷指令（常用文本片段一键插入，上限 50 条，编号 <span class="fnum">311</span>） | 输入框「+」→ 快捷指令；管理在设置 → 通用 |
+
+</details>
+
+<details class="acc">
+<summary><strong>服务端与远程</strong>（2 项）</summary>
+
+| 能力 | 入口 |
+| --- | --- |
+| 本地服务器 / 远程网关：把桌面端项目暴露给局域网 / Tailscale 客户端（编号 <span class="fnum">805</span>） | 设置 → 集成与连接 → 本地服务 |
+| 独立 CLI 网关（NAS / systemd 部署） | 见仓库 docs/ |
+
+</details>
+
+<details class="acc">
+<summary><strong>存储与恢复</strong>（2 项）</summary>
+
+| 能力 | 入口 |
+| --- | --- |
+| 合并恢复副本：列出带 recovery 副本的工作阶段（主线/总计/共有/独有/孤立计数），可预览分支、查看尾部消息、勾选合并（编号 <span class="fnum">903</span>） | 设置 → 存储与路径 → 工作阶段版本与副本 |
+| 重启并更新（实验特性）：本地构建一键发布并自动重启 | 设置 → 实验特性打开后状态栏出现按钮 |
+
+</details>
+
+<details class="acc">
+<summary><strong>Agent 与上下文</strong>（3 项）</summary>
+
+| 能力 | 说明 |
+| --- | --- |
+| 只读研究预算加倍（编号 <span class="fnum">906</span>） | 只读调研触发软预算收敛后，extend_research_budget 把轮次预算 10→20→40→80 |
+| 每轮上下文预算行（编号 <span class="fnum">302</span>） | 每轮注入占用（如 41k/128k (32%)），临近压缩阈值时提示写关键决策进项目文档 |
+| 计划任务模型覆盖（编号 <span class="fnum">904</span>） | 侧边栏「自动化」中每条心跳任务可单独指定 provider / 模型 |
+
+</details>
+
+<details class="acc">
+<summary><strong>权限</strong>（1 项）</summary>
+
+| 能力 | 入口 |
+| --- | --- |
+| 已授权写目录面板：会话级授权可视化管理 + 全局公共写目录（跨项目永久生效，子目录自动覆盖，编号 <span class="fnum">905</span>） | 设置 → 权限 → 已授权写目录 |
+
+</details>
+
+<details class="acc">
+<summary><strong>稳定性约定</strong></summary>
+
+- 只测 Windows 桌面版（win-amd64-desktop + 经典布局），其他目标未经验证。
+- 稳定版本：1.31.4 – 1.34 与 1.38.3；1.38.1 已知不稳定。
+- 上游处于大重构或发版混乱期时不追更新，停留当前基线。
+
+</details>
+
 ## 下一步
 
 - [全部特性一览表](feature-index.html)（81 项索引）
 - [内置 skill 介绍](skills.html)
-- [本 fork 独有特性](fork-highlights.html)

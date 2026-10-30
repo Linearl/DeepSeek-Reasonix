@@ -308,12 +308,21 @@ function build() {
       const rel = relative(sectionDir, file).split(sep).join("/");
       const urlBase = rel.replace(/\.md$/, "");
       const title = meta.title || firstH1(body) || urlBase;
-      return { title, desc: meta.desc || "", body, url: `${SITE.baseUrl}${section.slug}/${urlBase}.html`, out: join(dist, section.slug, `${urlBase}.html`) };
+      return { title, desc: meta.desc || "", navOrder: Number(meta.navOrder || 0), body, url: `${SITE.baseUrl}${section.slug}/${urlBase}.html`, out: join(dist, section.slug, `${urlBase}.html`) };
     });
 
     // 目录落地页
+    // tl 1271: meta.navOrder 控制落地页条目顺序（升序；无值/0 排后按文件名），
+    // 功能页四条目的用户指定顺序（上游特性/fork 特性/一览表/内置 skill）靠它。
+    const landingItems = [...items].sort((a, b) => {
+      const na = a.navOrder || 0;
+      const nb = b.navOrder || 0;
+      if (na && nb && na !== nb) return na - nb;
+      if (na !== nb) return na ? -1 : 1;
+      return a.title.localeCompare(b.title, "zh-Hans-CN");
+    });
     let listing = `<h1>${section.label}</h1><p class="lede">${section.blurb}</p><ul class="page-list">`;
-    for (const it of items) {
+    for (const it of landingItems) {
       listing += `<li><a href="${it.url}">${escapeHtml(it.title)}</a>${it.desc ? `<p>${escapeHtml(it.desc)}</p>` : ""}</li>`;
     }
     listing += "</ul>";
