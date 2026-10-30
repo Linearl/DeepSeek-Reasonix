@@ -24,30 +24,65 @@ func TestFoldWouldNotShrinkWarnRateLimited(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
 	defer slog.SetDefault(prev)
 
-	// 任务 1073 P1-a 之后，over-cap 折叠只要求省 ≥10%：触发 fold-would-not-
-	// shrink WARN 需 content > log×0.9（折后 ≈content 省不到 10%）且不触发
-	// factor 分支（content×16 < log）。取 content=200KiB，log 基线 205KiB：
-	//   2097152B ⇒ 97.5% 省 2.5% <10% ⇒ WARN（首见）；
-	//   +3% = 2160066B ⇒ 97.2% ⇒ 仍 WARN，但冷却期抑制；
-	//   +11.1% = 2329935B ⇒ 90.1% ⇒ 越过重警增长线（1.10），re-warn。
+	// tl 1285 之后，fold-would-not-shrink WARN 只在「实测地板」处出现：预估
+	// 不达标先放行 probe（真实折叠，无 WARN），由调用方回报实测收益，连续两次
+	// 实测省 <10% 才证明地板。WARN 的尺寸 regime 限频契约不变（710）：
+	// content=2100000 > log×0.9 恒不达标、不触发 factor 分支（content×16）。
+	// 取 content=2100000，log 基线 2MiB=2097152B（> cap 1MiB）：
+	//   地板首证 @2097152B ⇒ WARN（首见）；
+	//   +3% = 2160066B ⇒ 仍地板（未过 regime 线），限频抑制；
+	//   +11.1% = 2329935B ⇒ 越过 regime 线（1.10）重新起跑，两次实测无收益
+	//   再证地板 ⇒ 越过重警增长线，re-warn。
 	const content int64 = 2100000
 	path := "t710-fold-warn.events.jsonl"
 	const logSize int64 = 2 << 20 // 2MiB > cap 1MiB
 
-	sessionEventLogOversized(path, logSize, content)           // first sighting: WARN
-	sessionEventLogOversized(path, logSize, content)           // same regime: suppressed
-	sessionEventLogOversized(path, logSize*103/100, content)   // +3% growth: suppressed
-	sessionEventLogOversized(path, logSize*1111/1000, content) // >10% growth: re-warn
+	// 预估阶段：两次 probe 放行 + 两次实测无收益，全程无 WARN。
+	if !sessionEventLogOversized(path, logSize, content) {
+		t.Fatal("unproven estimate must authorize the probe fold")
+	}
+	noteSessionFoldOutcome(path, logSize, logSize)
+	if !sessionEventLogOversized(path, logSize, content) {
+		t.Fatal("one measured no-gain must keep the probe authorized")
+	}
+	noteSessionFoldOutcome(path, logSize, logSize)
+	if got := strings.Count(buf.String(), "fold would not shrink it"); got != 0 {
+		t.Fatalf("estimate-only sightings must not warn; count = %d", got)
+	}
+
+	// 地板首证：WARN（首见）。
+	sessionEventLogOversized(path, logSize, content) // floor: WARN
+	// 同 regime 再判：仍地板，WARN 冷却期抑制。
+	sessionEventLogOversized(path, logSize*103/100, content) // +3%: suppressed
+	if got := strings.Count(buf.String(), "fold would not shrink it"); got != 1 {
+		t.Fatalf("fold WARN count = %d, want 1 (floor first sighting only); log=%s", got, buf.String())
+	}
+
+	// +11.1%：regime 线（1.10）与重警增长线同时越过，整梯重新起跑，
+	// 两次实测无收益再证地板 ⇒ re-warn。
+	regrown := logSize * 1111 / 1000
+	sessionEventLogOversized(path, regrown, content) // regime expiry: probe again
+	noteSessionFoldOutcome(path, regrown, regrown)
+	sessionEventLogOversized(path, regrown, content) // second probe
+	noteSessionFoldOutcome(path, regrown, regrown)
+	sessionEventLogOversized(path, regrown, content) // floor again: re-warn
 
 	if got := strings.Count(buf.String(), "fold would not shrink it"); got != 2 {
-		t.Fatalf("fold WARN count = %d, want 2 (first sighting + >10%% growth); log=%s", got, buf.String())
+		t.Fatalf("fold WARN count = %d, want 2 (floor proof + >10%% growth re-warn); log=%s", got, buf.String())
 	}
 	if !strings.Contains(buf.String(), "remedy=") {
 		t.Fatalf("fold WARN must carry the remediation attr; log=%s", buf.String())
 	}
 
 	// A different session path warns independently of the first one's regime.
-	sessionEventLogOversized("t710-fold-warn-2.events.jsonl", logSize, content)
+	path2 := "t710-fold-warn-2.events.jsonl"
+	if !sessionEventLogOversized(path2, logSize, content) {
+		t.Fatal("second path probe must authorize")
+	}
+	noteSessionFoldOutcome(path2, logSize, logSize)
+	sessionEventLogOversized(path2, logSize, content)
+	noteSessionFoldOutcome(path2, logSize, logSize)
+	sessionEventLogOversized(path2, logSize, content)
 	if got := strings.Count(buf.String(), "fold would not shrink it"); got != 3 {
 		t.Fatalf("second path must warn independently; count = %d, want 3", got)
 	}

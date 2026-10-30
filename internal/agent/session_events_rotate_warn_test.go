@@ -79,30 +79,40 @@ func TestWarnRotateSkipOnceCooldownPerPath(t *testing.T) {
 	}
 }
 
-// 会话保存路径的整链验证：auto 模式 cap 之下 fold 不回本的日志，
-// sessionEventLogOversized 返回 false 且 WARN 走限频——三次判定只有一条日志；
-// off 模式文案独立冷却，各自首警必发。
+// 会话保存路径的整链验证：auto 模式 cap 之下 fold 不回本的日志先放行 probe
+// （真实折叠，tl 1285），连续两次实测无收益证明地板后才返回 false，且 WARN
+// 走限频——三次地板判定只有一条日志；off 模式文案独立冷却，各自首警必发。
 func TestSessionEventLogOversizedFoldNoShrinkWarnsOnce(t *testing.T) {
 	resetRotateWarnMemo(t)
+	resetEventsRotation(t)
 	buf := captureSlogForRotateWarn(t)
 	t.Cleanup(func() { SetEventsAutoRotation("manual", 4, 0) })
 	SetEventsAutoRotation("auto", 4, 50)
 
-	// 任务 1073 P1-a 之后 over-cap 折叠只要求省 ≥10%：content/log > 0.9 才是
-	// 「折不回本」。取 logSize 100MB（> cap 50MB）、content 95MB → 95% 省 5% <10%。
+	// content/log > 0.9 才是「预估折不回本」。取 logSize 100MB（> cap 50MB）、
+	// content 95MB → 95% 省 5% <10%。tl 1285：预估不再是判词——先两次放行
+	// probe，实测回报无收益后地板才成立。
 	const path = `C:\p\sessions\whale.events.jsonl`
 	const logSize = int64(100) << 20
 	const content = int64(95) << 20
+	if !sessionEventLogOversized(path, logSize, content) {
+		t.Fatal("unproven estimate must authorize the probe fold, not exempt the log")
+	}
+	noteSessionFoldOutcome(path, logSize, logSize)
+	if !sessionEventLogOversized(path, logSize, content) {
+		t.Fatal("one measured no-gain must keep the probe authorized")
+	}
+	noteSessionFoldOutcome(path, logSize, logSize)
 	for i := 0; i < 3; i++ {
 		if sessionEventLogOversized(path, logSize, content) {
-			t.Fatal("fold-no-shrink log must not rotate (gate returns false)")
+			t.Fatal("measured fold floor must not rotate (gate returns false)")
 		}
 	}
 	if got := strings.Count(buf.String(), "fold would not shrink it"); got != 1 {
-		t.Fatalf("fold-no-shrink warn count = %d, want exactly 1 across 3 saves", got)
+		t.Fatalf("fold-no-shrink warn count = %d, want exactly 1 across the floor sightings", got)
 	}
 	// 同路径换 off 模式文案：键不同，首警独立必发（off 文案的判定走 4x 因子，
-	// 250MB log / 60MB content 超因子——off 分支与 P1-a 的 auto cap 分支无关，
+	// 250MB log / 60MB content 超因子——off 分支与 auto cap 分支无关，
 	// 这里用 60MB content 走纯因子判据）。
 	SetEventsAutoRotation("off", 4, 0)
 	sessionEventLogOversized(path, int64(250)<<20, int64(60)<<20)

@@ -163,11 +163,22 @@ const foldProbeMaxStrikes = 2
 // plaintext size when the archive last ran). Bounded like
 // foldNoShrinkWarn.lastSize: sessions are few, and on overflow the whole state
 // resets (cost: at most one extra probe round), never an unbounded map.
+//
+// 键口径：gate 的两个调用方形态不同——schema-1 传会话路径（save.go），DAG 传
+// 已解析日志路径（sessionDAGLogOversized 的 st.path），而 save 尾部的地板归档
+// 拿的是会话路径。三个入口统一在 foldProbeKey 归一成日志路径，同一会话在
+// probe 记账与归档兜底之间才不会各记一本账。
 var foldProbeMemo struct {
 	mu         sync.Mutex
 	regime     map[string]int64
 	strikes    map[string]int
 	archivedAt map[string]int64
+}
+
+// foldProbeKey normalizes either caller shape (session path or resolved event
+// log path) into the one key the ladder books state under. Pure string ops.
+func foldProbeKey(path string) string {
+	return sessionEventLogPlainPath(path)
 }
 
 // foldProbeFloorReached reports whether the measured fold floor is proven for
@@ -180,16 +191,17 @@ func foldProbeFloorReached(path string, logSize int64) bool {
 	if path == "" || logSize <= 0 {
 		return false
 	}
+	key := foldProbeKey(path)
 	foldProbeMemo.mu.Lock()
 	defer foldProbeMemo.mu.Unlock()
-	base, seen := foldProbeMemo.regime[path]
+	base, seen := foldProbeMemo.regime[key]
 	if !seen || logSize >= int64(float64(base)*foldNoShrinkReWarnGrowth) {
-		foldProbeMemo.regime[path] = logSize
-		delete(foldProbeMemo.strikes, path)
-		delete(foldProbeMemo.archivedAt, path)
+		foldProbeMemo.regime[key] = logSize
+		delete(foldProbeMemo.strikes, key)
+		delete(foldProbeMemo.archivedAt, key)
 		return false
 	}
-	return foldProbeMemo.strikes[path] >= foldProbeMaxStrikes
+	return foldProbeMemo.strikes[key] >= foldProbeMaxStrikes
 }
 
 // noteSessionFoldOutcome records the MEASURED result of a maintenance fold the
@@ -204,17 +216,18 @@ func noteSessionFoldOutcome(path string, before, after int64) {
 	if path == "" || before <= 0 {
 		return
 	}
+	key := foldProbeKey(path)
 	foldProbeMemo.mu.Lock()
 	defer foldProbeMemo.mu.Unlock()
-	if base, seen := foldProbeMemo.regime[path]; !seen || before > base {
-		foldProbeMemo.regime[path] = before
+	if base, seen := foldProbeMemo.regime[key]; !seen || before > base {
+		foldProbeMemo.regime[key] = before
 	}
 	if EventsFoldProfitable(before, after) {
-		foldProbeMemo.strikes[path] = 0
-		delete(foldProbeMemo.archivedAt, path)
+		foldProbeMemo.strikes[key] = 0
+		delete(foldProbeMemo.archivedAt, key)
 		return
 	}
-	foldProbeMemo.strikes[path]++
+	foldProbeMemo.strikes[key]++
 }
 
 // foldProbeFloorArchiveDue reports whether the floor archive may run now: the
@@ -222,9 +235,10 @@ func noteSessionFoldOutcome(path string, before, after int64) {
 // session pays the archive (and the next save's materialization) once per
 // regime, not once per save.
 func foldProbeFloorArchiveDue(path string, logSize int64) bool {
+	key := foldProbeKey(path)
 	foldProbeMemo.mu.Lock()
 	defer foldProbeMemo.mu.Unlock()
-	at, ran := foldProbeMemo.archivedAt[path]
+	at, ran := foldProbeMemo.archivedAt[key]
 	return !ran || at <= 0 || logSize >= int64(float64(at)*foldNoShrinkReWarnGrowth)
 }
 
@@ -232,9 +246,10 @@ func foldProbeFloorArchiveDue(path string, logSize int64) bool {
 // it acted on. Only called after a successful archive; a failed attempt stays
 // unlatched so the next save retries.
 func foldProbeNoteFloorArchived(path string, plainSize int64) {
+	key := foldProbeKey(path)
 	foldProbeMemo.mu.Lock()
 	defer foldProbeMemo.mu.Unlock()
-	foldProbeMemo.archivedAt[path] = plainSize
+	foldProbeMemo.archivedAt[key] = plainSize
 }
 
 // resetFoldProbeMemoForTest clears the package-global ladder state (the same
