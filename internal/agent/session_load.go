@@ -47,6 +47,13 @@ type sessionLoadResult struct {
 // nil_cache+oversize replays.
 const sessionTranscriptTailThresholdBytes = int64(32 << 20)
 
+// SessionTailThresholdBytes reports the large-log first-paint threshold. The
+// desktop cold-read gate (tl1281) shares it so "large enough to window" and
+// "large enough to skip full cold decodes" stay one decision.
+func SessionTailThresholdBytes() int64 {
+	return sessionTranscriptTailThresholdBytes
+}
+
 // loadSessionMessages returns the session transcript, preferring the event log
 // when the native layer owns it and it holds at least one decodable record.
 // Foreign files squatting the log path (legacy import leftovers) are ignored
