@@ -17,7 +17,8 @@ type Phase = "idle" | "scanning" | "confirming" | "running" | "done";
 
 const DAG_MIGRATION_PROGRESS_EVENT = "dag-migration:progress";
 
-function humanBytes(bytes: number): string {
+/** tl1287⑤：备份清理卡复用同一读数格式（单源，不另抄一份）。 */
+export function humanBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return "0 B";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
   let value = bytes;

@@ -3,6 +3,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { SessionEventsPanel, type RotationMode } from "./SessionEventsPanel";
 import { SessionMigrationSection } from "./SessionMigrationSection";
 import { DagMigrationSection } from "./DagMigrationSection";
+import { DagBackupCleanupSection } from "./DagBackupCleanupSection";
 import { PerfMemorySection } from "./PerfMemorySection";
 import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from "../lib/dockTabs";
 import { useRemoteStore } from "../store/remote";
@@ -1223,6 +1224,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     事件进度 + 逐会话读数原样保留；不再有任何实验室侧开关或
                     rail 入口。 */}
                 <DagMigrationSection t={t} busy={busy} apply={apply} />
+                {/* tl1287⑤：迁移备份清理——check 归零 + 保留最近一份，其余
+                    时间倒序删；确认弹层逐行列出将删文件与体量。 */}
+                <DagBackupCleanupSection t={t} busy={busy} />
               </SettingsField>
               <SettingsField label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 {/* The backend normalizes the stored mode to off|manual|auto
