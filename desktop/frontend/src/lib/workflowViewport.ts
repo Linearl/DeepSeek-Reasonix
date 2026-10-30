@@ -16,3 +16,28 @@ export const WORKFLOW_PAN_SLOP_PX = 8;
 export function exceedsPanSlop(dx: number, dy: number): boolean {
   return Math.hypot(dx, dy) > WORKFLOW_PAN_SLOP_PX;
 }
+
+// ── 缩放（tl933 需求③）：Ctrl+滚轮以光标为锚，范围 25%~300% ─────────
+
+export const WORKFLOW_ZOOM_MIN = 0.25;
+export const WORKFLOW_ZOOM_MAX = 3;
+export const WORKFLOW_ZOOM_DEFAULT = 1;
+
+/** 缩放钳制：越界拉回 [25%, 300%]，非有限值回默认。 */
+export function clampZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return WORKFLOW_ZOOM_DEFAULT;
+  return Math.min(WORKFLOW_ZOOM_MAX, Math.max(WORKFLOW_ZOOM_MIN, zoom));
+}
+
+/** 滚轮 delta → 乘法缩放因子（Chrome 式：向下滚 = 缩小）。行/页模式按
+ * 16px/100px 折算成像素 delta。指数步进让手感在任何倍率下均匀。 */
+export function zoomFactorFromWheel(deltaY: number, deltaMode?: number): number {
+  const unit = deltaMode === 1 ? 16 : deltaMode === 2 ? 100 : 1;
+  return Math.exp(-deltaY * unit * 0.0015);
+}
+
+/** 锚点缩放（滚动容器模型）：缩放前后让锚点下的内容点纹丝不动。
+ * 内容点 = scroll + anchor；缩放后 scroll' = 内容点×ratio − anchor。 */
+export function anchoredScroll(scroll: number, ratio: number, anchor: number): number {
+  return (scroll + anchor) * ratio - anchor;
+}

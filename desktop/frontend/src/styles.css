@@ -14924,6 +14924,10 @@ button.statusbar__mcp:focus-visible {
 .wf-panel__canvas {
   position: relative;
 }
+/* tl933 缩放：frame 撑出缩放后的真实滚动范围，画布本体 transform 缩放。 */
+.wf-panel__canvas-frame {
+  position: relative;
+}
 .wf-panel__edges {
   position: absolute;
   inset: 0;

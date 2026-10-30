@@ -13,7 +13,17 @@ import { createRoot, type Root } from "react-dom/client";
 import assert from "node:assert/strict";
 import { WorkflowPanel } from "../components/WorkflowPanel";
 import { LocaleProvider } from "../lib/i18n";
-import { WORKFLOW_PAN_LONG_PRESS_MS, WORKFLOW_PAN_SLOP_PX, exceedsPanSlop } from "../lib/workflowViewport";
+import {
+  anchoredScroll,
+  clampZoom,
+  exceedsPanSlop,
+  WORKFLOW_PAN_LONG_PRESS_MS,
+  WORKFLOW_PAN_SLOP_PX,
+  WORKFLOW_ZOOM_DEFAULT,
+  WORKFLOW_ZOOM_MAX,
+  WORKFLOW_ZOOM_MIN,
+  zoomFactorFromWheel,
+} from "../lib/workflowViewport";
 
 let passed = 0;
 let failed = 0;
@@ -34,6 +44,20 @@ console.log("\ntl933 workflow viewport: pan + anchored zoom + persistence");
   ok(exceedsPanSlop(WORKFLOW_PAN_SLOP_PX + 1, 0) === true, "movement beyond the slop radius cancels the gesture");
   ok(exceedsPanSlop(3, 4) === false, "movement within the slop radius keeps the gesture armed");
   ok(exceedsPanSlop(0, 0) === false, "no movement never trips the slop");
+}
+
+// ── ③ 纯函数面：缩放数学 ────────────────────────────────────────────
+{
+  eq(clampZoom(0.1), WORKFLOW_ZOOM_MIN, "zoom below 25% clamps to the floor");
+  eq(clampZoom(9), WORKFLOW_ZOOM_MAX, "zoom above 300% clamps to the ceiling");
+  eq(clampZoom(Number.NaN), WORKFLOW_ZOOM_DEFAULT, "non-finite zoom falls back to the default");
+  ok(zoomFactorFromWheel(-100, 0) > 1, "wheel up zooms in (factor above 1)");
+  ok(zoomFactorFromWheel(100, 0) < 1, "wheel down zooms out (factor below 1)");
+  ok(zoomFactorFromWheel(-1, 1) === zoomFactorFromWheel(-16, 0), "line deltaMode converts to pixel deltas");
+  // 锚点保持：锚点下的内容点缩放前后是同一个点。
+  const contentPoint = 40 + 130;
+  const ratio = 1.5;
+  eq(anchoredScroll(40, ratio, 130) + 130, contentPoint * ratio, "the content point under the cursor stays put after zoom");
 }
 
 // ── JSDOM 挂载 harness ──────────────────────────────────────────────
@@ -64,6 +88,18 @@ interface PointerInit {
 function firePointer(el: Element, type: string, init: PointerInit) {
   const evt = new window.Event(type, { bubbles: true, cancelable: true });
   Object.assign(evt, init);
+  el.dispatchEvent(evt);
+}
+
+interface WheelInit {
+  clientX: number;
+  clientY: number;
+  deltaY: number;
+  deltaMode?: number;
+  ctrlKey?: boolean;
+}
+function fireWheel(el: Element, init: WheelInit) {
+  const evt = new window.WheelEvent("wheel", { bubbles: true, cancelable: true, ...init });
   el.dispatchEvent(evt);
 }
 
@@ -163,7 +199,56 @@ const holdMs = WORKFLOW_PAN_LONG_PRESS_MS + 120;
   await act(async () => { root.unmount(); });
 }
 
-// ── ③ 缩放（commit 3 接续）──────────────────────────────────────────
+// ── ③ 缩放：Ctrl+滚轮以光标为锚（Chrome 式），25%~300% ──────────────
+{
+  globalThis.WheelEvent = dom.window.WheelEvent;
+  const { root, view } = await mountPanel();
+  const canvas = view.querySelector<HTMLElement>(".wf-panel__canvas");
+  const frame = view.querySelector<HTMLElement>(".wf-panel__canvas-frame");
+  if (!canvas || !frame) throw new Error("canvas/frame did not render");
+
+  // 基线：zoom=1，transform 无缩放。
+  eq(canvas.style.transform, "scale(1)", "canvas starts unscaled");
+
+  // Ctrl+上滚 @ (130,90)：以光标为锚放大，锚点下内容点不动。
+  view.scrollLeft = 40;
+  view.scrollTop = 30;
+  const expectedNext = clampZoom(WORKFLOW_ZOOM_DEFAULT * zoomFactorFromWheel(-100, 0));
+  await act(async () => {
+    fireWheel(view, { clientX: 130, clientY: 90, deltaY: -100, ctrlKey: true });
+  });
+  const ratio = expectedNext / WORKFLOW_ZOOM_DEFAULT;
+  eq(canvas.style.transform, `scale(${expectedNext})`, "ctrl+wheel scales the canvas by the wheel factor");
+  eq(view.scrollLeft, anchoredScroll(40, ratio, 130), "zoom keeps the content point under the cursor anchored (x)");
+  eq(view.scrollTop, anchoredScroll(30, ratio, 90), "zoom keeps the content point under the cursor anchored (y)");
+  const frameW = Number.parseFloat(frame.style.width);
+  const canvasW = Number.parseFloat(canvas.style.width);
+  ok(Math.abs(frameW / canvasW - expectedNext) < 1e-9, "the frame tracks the scaled size (real scrollable range)");
+
+  // 无 Ctrl 不接管：普通滚轮保持原生滚动（缩放不变）。
+  await act(async () => {
+    fireWheel(view, { clientX: 130, clientY: 90, deltaY: -100 });
+  });
+  eq(canvas.style.transform, `scale(${expectedNext})`, "plain wheel (no ctrl) never zooms — native scroll stays");
+
+  // 边界：连滚 40 次放大顶到 300%，再连滚 80 次缩小落回 25%。
+  for (let i = 0; i < 40; i += 1) {
+    await act(async () => {
+      fireWheel(view, { clientX: 10, clientY: 10, deltaY: -120, ctrlKey: true });
+    });
+  }
+  eq(canvas.style.transform, `scale(${WORKFLOW_ZOOM_MAX})`, "zoom caps at 300% after repeated zoom-in");
+  for (let i = 0; i < 80; i += 1) {
+    await act(async () => {
+      fireWheel(view, { clientX: 10, clientY: 10, deltaY: 120, ctrlKey: true });
+    });
+  }
+  eq(canvas.style.transform, `scale(${WORKFLOW_ZOOM_MIN})`, "zoom floors at 25% after repeated zoom-out");
+  ok(Number.isFinite(view.scrollLeft) && Number.isFinite(view.scrollTop), "anchored scrolling stays finite at both bounds");
+
+  await act(async () => { root.unmount(); });
+}
+
 // ── ④ 持久化（commit 4 接续）────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failed} failed`);

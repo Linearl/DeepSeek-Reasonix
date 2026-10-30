@@ -11,7 +11,7 @@
 // 门控：整个组件只在 labFlag "workflowPanel" 开启时被 App 懒加载挂载（铁律 2）。
 // 事件源：WorkflowRunStore（可插拔；685 落地前用 fixture 演示脚本 playFixtureRun）。
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GitBranch, Play, RotateCcw, Square, X } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { DictKey } from "../locales/en";
@@ -26,7 +26,14 @@ import {
   type WorkflowRunStore,
   type WorkflowRunState,
 } from "../lib/workflowEvents";
-import { WORKFLOW_PAN_LONG_PRESS_MS, exceedsPanSlop } from "../lib/workflowViewport";
+import {
+  anchoredScroll,
+  clampZoom,
+  exceedsPanSlop,
+  WORKFLOW_PAN_LONG_PRESS_MS,
+  WORKFLOW_ZOOM_DEFAULT,
+  zoomFactorFromWheel,
+} from "../lib/workflowViewport";
 
 const NODE_STATE_CLASS: Record<WorkflowNodeState, string> = {
   queued: "wf-node--queued",
@@ -268,6 +275,46 @@ export function WorkflowPanel({
 
   useEffect(() => cancelPanGesture, [cancelPanGesture]);
 
+  // ── 缩放（tl933 需求③）：Ctrl+滚轮以光标位置为锚（参照 Chrome），范围
+  // 25%~300%。画布经 transform: scale 缩放，外层 frame 撑出真实滚动范围；
+  // 锚点保持 = 缩放后把「锚点下的内容点」拨回锚点（anchoredScroll）。
+  // React 合成 wheel 是被动监听，preventDefault 无效——这里挂原生非被动监听，
+  // 既拦下 webview 整页缩放，也不接管无 Ctrl 的普通滚轮（原生滚动保留）。
+  const [zoom, setZoom] = useState(WORKFLOW_ZOOM_DEFAULT);
+  const pendingScrollRef = useRef<{ x?: number; y?: number } | null>(null);
+
+  useEffect(() => {
+    const container = viewRef.current;
+    if (!container) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return; // 无 Ctrl 不接管：普通滚轮保持原生滚动
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const factor = zoomFactorFromWheel(e.deltaY, e.deltaMode);
+      const next = clampZoom(zoom * factor);
+      if (next === zoom) return; // 已在 25%/300% 边界，滚动无副作用
+      const ratio = next / zoom;
+      pendingScrollRef.current = {
+        x: anchoredScroll(container.scrollLeft, ratio, e.clientX - rect.left),
+        y: anchoredScroll(container.scrollTop, ratio, e.clientY - rect.top),
+      };
+      setZoom(next);
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [zoom]);
+
+  // 缩放提交后 frame 尺寸已变，浏览器可能把预落值钳掉——布局期补投锚点滚动。
+  useLayoutEffect(() => {
+    const pending = pendingScrollRef.current;
+    if (!pending) return;
+    pendingScrollRef.current = null;
+    const container = viewRef.current;
+    if (!container) return;
+    if (pending.x !== undefined) container.scrollLeft = pending.x;
+    if (pending.y !== undefined) container.scrollTop = pending.y;
+  }, [zoom]);
+
   if (!mounted) return null;
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
@@ -365,7 +412,11 @@ export function WorkflowPanel({
             onPointerUp={onViewPointerUp}
             onPointerCancel={onViewPointerUp}
           >
-            <div className="wf-panel__canvas" style={{ width: layout.width, height: layout.height }}>
+            <div className="wf-panel__canvas-frame" style={{ width: layout.width * zoom, height: layout.height * zoom }}>
+              <div
+                className="wf-panel__canvas"
+                style={{ width: layout.width, height: layout.height, transform: `scale(${zoom})`, transformOrigin: "0 0" }}
+              >
               <svg className="wf-panel__edges" width={layout.width} height={layout.height} aria-hidden="true">
                 {layout.edges.map((edge) => {
                   const targetState = snapshot.nodes[edge.to]?.state ?? "queued";
@@ -412,6 +463,7 @@ export function WorkflowPanel({
                   </button>
                 );
               })}
+              </div>
             </div>
           </div>
           {selected && <NodeDetailPane node={selected} run={snapshot.nodes[selected.id] ?? { state: "queued" }} />}
