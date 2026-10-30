@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"reasonix/internal/i18n"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/tool"
 )
 
 // collectSink returns a Sink that collects events and a channel that receives
@@ -132,6 +134,81 @@ func TestSubmit_BangNotFirstChar(t *testing.T) {
 	trimmed := strings.TrimSpace(input)
 	if strings.HasPrefix(trimmed, "!") {
 		t.Error("trimmed input should not start with !")
+	}
+}
+
+// tl1274: "!!" at the head is the desktop quick-command picker trigger
+// (task 593), not a shell command. The old shell branch stripped a single "!"
+// and executed the remainder (!!ls → RunShell("!ls")). The line must take the
+// normal-turn path instead: no ToolDispatch of any kind, and the turn loop
+// actually runs (TurnDone arrives from the nil-provider error).
+func TestSubmit_DoubleBangDoesNotRunShell(t *testing.T) {
+	for _, input := range []string{"!!ls", "  !!ls"} {
+		ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
+		sink, done, events := collectSink()
+		ctrl := New(Options{Runner: ag, Executor: ag, Sink: sink})
+
+		ctrl.Submit(input)
+		waitForDone(t, done)
+
+		for i := range *events {
+			if (*events)[i].Kind == event.ToolDispatch {
+				t.Fatalf("%q took the shell branch: ToolDispatch %q at event %d", input, (*events)[i].Tool.Name, i)
+			}
+		}
+	}
+}
+
+// tl1274: the single-! shell shortcut keeps working, including with leading
+// whitespace — the shell gate trims, and so does the composer's shell-mode
+// display (trimStart). The "!!" exemption is a carve-out, not a rewrite.
+func TestSubmit_SingleBangWithLeadingWhitespaceStillRunsShell(t *testing.T) {
+	ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
+	sink, done, events := collectSink()
+	ctrl := New(Options{Runner: ag, Executor: ag, Sink: sink})
+
+	ctrl.Submit("  !echo tl1274")
+	waitForDone(t, done)
+
+	for i := range *events {
+		if (*events)[i].Kind == event.ToolDispatch {
+			return // shell branch taken — the shortcut survived
+		}
+	}
+	t.Fatalf("leading-whitespace !echo dispatched no tool; events: %d", len(*events))
+}
+
+// tl1274: over HTTP the "!!" line is a normal turn too — the shell rejection
+// only covers the single-! shortcut, so no "shell commands are unavailable"
+// notice may appear and no tool may dispatch.
+func TestSubmitHTTP_DoubleBangIsAdmittedTurn(t *testing.T) {
+	ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
+	sink, done, events := collectSink()
+	ctrl := New(Options{Runner: ag, Executor: ag, Sink: sink})
+
+	ctrl.submitHTTP("!!ls", "")
+	waitForDone(t, done)
+
+	for i := range *events {
+		e := (*events)[i]
+		if e.Kind == event.ToolDispatch {
+			t.Fatalf("!!ls took the shell branch over HTTP: ToolDispatch %q at event %d", e.Tool.Name, i)
+		}
+		if e.Kind == event.Notice && strings.Contains(e.Text, "shell commands are unavailable") {
+			t.Fatalf("!!ls must not be rejected as shell over HTTP: notice %q", e.Text)
+		}
+	}
+}
+
+// tl1274: isNonTurnHTTPInput gates the structured-output format. "!!" is
+// admitted as a turn, so a format attached to it must be kept; the single-!
+// shell rejection stays non-turn.
+func TestIsNonTurnHTTPInput_DoubleBangKeepsFormat(t *testing.T) {
+	if isNonTurnHTTPInput("!!ls") {
+		t.Error("!!ls is admitted as a normal turn; a format attached to it must be kept")
+	}
+	if !isNonTurnHTTPInput("!ls") {
+		t.Error("!ls is rejected shell input; a format attached to it must be dropped")
 	}
 }
 
