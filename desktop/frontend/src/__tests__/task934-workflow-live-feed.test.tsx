@@ -88,7 +88,7 @@ console.log("\ntask 934 workflow live feed: 真事件接面板 + fixture 降为�
     endedAt: 5000,
     nodes: [
       { nodeId: "plan", nodeType: "subagent", state: "completed", changedAt: 1100 },
-      { nodeId: "gate-tests", nodeType: "gate", state: "gate_passed", round: 2, detail: "exit 0", changedAt: 1200 },
+      { nodeId: "gate-tests", nodeType: "gate", state: "gate_passed", round: 2, detail: "exit 0", changedAt: 1200, nodeStartedAt: 1150 },
       { nodeId: "confirm", nodeType: "confirm", state: "unconfirmed", detail: "not reproduced", changedAt: 1300 },
       { nodeId: "phantom", nodeType: "phase", state: "failed", changedAt: 1400 },
     ],
@@ -103,6 +103,8 @@ console.log("\ntask 934 workflow live feed: 真事件接面板 + fixture 降为�
   ok(snap.nodes.confirm?.state === "unconfirmed", "unconfirmed survives the projection (yellow)");
   ok(snap.nodes.phantom?.state === "failed", "failed maps to failed (red)");
   ok(snap.nodes["gate-tests"]?.changedAt === 1200, "changedAt carried for per-node timing");
+  ok(snap.nodes["gate-tests"]?.detail?.durationMs === 50, "terminal node duration = changedAt - running start (934 块③指标面)");
+  ok(snap.nodes.plan?.detail?.durationMs === undefined, "non-timed nodes carry no synthetic duration");
 
   ok(liveRunStateToPanelState("running") === "running", "running stays running");
   ok(liveRunStateToPanelState("completed") === "completed", "completed stays completed");

@@ -49,6 +49,8 @@ export interface WireRunNode {
   round?: number;
   detail?: string;
   changedAt?: number;
+  /** 本轮 running 起点（unix ms；缺省 = 未见 running，如排队即跳过）。 */
+  nodeStartedAt?: number;
 }
 
 /** 一次运行的完整 wire 快照（desktop workflowRunWire 镜像）。 */

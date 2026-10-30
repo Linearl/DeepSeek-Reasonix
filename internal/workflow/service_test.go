@@ -206,6 +206,17 @@ func TestServiceRunStatusAndEvents(t *testing.T) {
 	if !gateSeen {
 		t.Fatalf("gate node must report gate_passed: %+v", run.Nodes)
 	}
+	// 块③指标面：终态节点带本轮 running 起点，耗时 = changedAt - startedAt。
+	snaps := svc.Snapshot()
+	var gateSnap *RunNodeSnapshot
+	for i := range snaps[0].Nodes {
+		if snaps[0].Nodes[i].NodeType == "gate" {
+			gateSnap = &snaps[0].Nodes[i]
+		}
+	}
+	if gateSnap == nil || gateSnap.StartedAt.IsZero() || gateSnap.ChangedAt.Before(gateSnap.StartedAt) {
+		t.Fatalf("gate node must carry running start before its terminal stamp: %+v", gateSnap)
+	}
 }
 
 func TestServiceRunWithoutSubstrateFailsReadable(t *testing.T) {

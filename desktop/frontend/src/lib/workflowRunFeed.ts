@@ -11,7 +11,7 @@
 
 import type { WorkflowDag, WorkflowDagNode } from "./workflowDag";
 import type { WorkflowNodeState, WireWorkflowRun, WireRunNode, WireRunDag, WorkflowRunLiveState } from "./workflowTypes";
-import type { WorkflowRunSnapshot, WorkflowRunState, WorkflowNodeState as PanelNodeState } from "./workflowEvents";
+import type { WorkflowRunSnapshot, WorkflowRunState, WorkflowNodeDetail, WorkflowNodeState as PanelNodeState } from "./workflowEvents";
 import { app } from "./bridge";
 
 export type {
@@ -123,13 +123,15 @@ function ingestNodeEventInternal(event: { runId: string; nodeId: string; state: 
   if (idx < 0) return; // 未知运行：等下一次全量快照补齐（前向兼容）
   const run = state.runs[idx];
   const prevNode = run.nodes.find((n) => n.nodeId === event.nodeId);
+  const changedAt = event.at ?? Date.now();
   const node: WireRunNode = {
     nodeId: event.nodeId,
     nodeType: prevNode?.nodeType ?? "",
     state: event.state,
     round: event.round ?? prevNode?.round,
     detail: event.detail ?? prevNode?.detail,
-    changedAt: event.at ?? Date.now(),
+    changedAt,
+    nodeStartedAt: event.state === "running" ? changedAt : prevNode?.nodeStartedAt,
   };
   const others = run.nodes.filter((n) => n.nodeId !== event.nodeId);
   const next: WireWorkflowRun = { ...run, nodes: [...others, node] };
@@ -186,15 +188,23 @@ export function liveRunStateToPanelState(state: WorkflowRunLiveState): WorkflowR
   }
 }
 
-/** 一次真运行 → 面板运行快照（节点六态投影 + 诊断文本下钻）。 */
+/** 终态节点：changedAt - 本轮 running 起点 = 单节点耗时（934 块③指标面）。 */
+const TERMINAL_WIRE_STATES = new Set<string>(["completed", "gate_passed", "unconfirmed", "failed"]);
+
+/** 一次真运行 → 面板运行快照（节点六态投影 + 诊断文本 + 单节点耗时下钻）。 */
 export function liveRunSnapshot(run: WireWorkflowRun): WorkflowRunSnapshot {
   const nodes: Record<string, PanelNodeRun> = {};
   for (const n of run.nodes) {
     const state = SIX_TO_PANEL_STATE[n.state] ?? "queued";
+    let detail: WorkflowNodeDetail | undefined = n.detail ? { diagnostic: n.detail } : undefined;
+    if (n.nodeStartedAt && n.changedAt && TERMINAL_WIRE_STATES.has(n.state)) {
+      const durationMs = Math.max(0, n.changedAt - n.nodeStartedAt);
+      detail = { ...detail, durationMs };
+    }
     nodes[n.nodeId] = {
       state,
       changedAt: n.changedAt,
-      detail: n.detail ? { diagnostic: n.detail } : undefined,
+      detail,
     };
   }
   return {

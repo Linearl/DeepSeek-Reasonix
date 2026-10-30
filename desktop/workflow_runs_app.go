@@ -54,6 +54,9 @@ type workflowRunNodeWire struct {
 	Round     int    `json:"round,omitempty"`
 	Detail    string `json:"detail,omitempty"`
 	ChangedAt int64  `json:"changedAt,omitempty"` // unix ms
+	// NodeStartedAt 是本轮 running 起点（unix ms；0 = 未见 running）。
+	// 终态节点 changedAt - nodeStartedAt 即单节点耗时（934 块③指标面）。
+	NodeStartedAt int64 `json:"nodeStartedAt,omitempty"`
 }
 
 // workflowRunWire 是一次运行的完整 wire 快照。
@@ -135,14 +138,18 @@ func workflowRunsWire() []workflowRunWire {
 			wire.EndedAt = s.EndedAt.UnixMilli()
 		}
 		for _, n := range s.Nodes {
-			wire.Nodes = append(wire.Nodes, workflowRunNodeWire{
+			node := workflowRunNodeWire{
 				NodeID:    n.ID,
 				NodeType:  n.NodeType,
 				State:     string(n.State),
 				Round:     n.Round,
 				Detail:    n.Detail,
 				ChangedAt: n.ChangedAt.UnixMilli(),
-			})
+			}
+			if !n.StartedAt.IsZero() {
+				node.NodeStartedAt = n.StartedAt.UnixMilli()
+			}
+			wire.Nodes = append(wire.Nodes, node)
 		}
 		out = append(out, wire)
 	}

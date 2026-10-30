@@ -61,6 +61,10 @@ type nodeRecord struct {
 	round     int
 	detail    string
 	changedAt time.Time
+	// startedAt 是本轮 running 的起点（重入 running 即刷新，门重试轮次
+	// 各自计起点）；终态事件到达时与 changedAt 相减即单节点耗时（任务 934
+	// 块③指标面）。
+	startedAt time.Time
 }
 
 // RunnerSource 按「调用方会话分支号」解析该会话的子代理基底。boot 注册；
@@ -280,6 +284,8 @@ type RunNodeSnapshot struct {
 	Round     int
 	Detail    string
 	ChangedAt time.Time
+	// StartedAt 是本轮 running 起点（零值 = 未见 running，如排队即跳过）。
+	StartedAt time.Time
 }
 
 // RunSnapshot 是一次运行的锁外快照（desktop hub 组装面板 wire 用）。
@@ -326,6 +332,7 @@ func (s *Service) Snapshot() []RunSnapshot {
 				Round:     nr.round,
 				Detail:    nr.detail,
 				ChangedAt: nr.changedAt,
+				StartedAt: nr.startedAt,
 			})
 		}
 		rec.mu.Unlock()
@@ -404,6 +411,9 @@ func (s *Service) recordNode(runID string, info event.WorkflowNodeInfo) {
 		nr = &nodeRecord{nodeType: info.NodeType}
 		rec.nodes[info.NodeID] = nr
 		rec.order = append(rec.order, info.NodeID)
+	}
+	if info.State == event.WorkflowNodeRunning && nr.state != event.WorkflowNodeRunning {
+		nr.startedAt = now
 	}
 	nr.state = info.State
 	nr.round = info.Round
