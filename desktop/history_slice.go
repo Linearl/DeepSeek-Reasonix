@@ -910,12 +910,15 @@ func (a *App) coldHistorySliceRead(sessionDir, sessionPath string, req HistorySl
 		// on the cold path. The page serves from the anchor scan instead
 		// (constant memory; content may lag the last save cycle until the tab
 		// builds and the live path corrects it) — the 836 trade (bounded fast
-		// first paint over full-replay stall) extended to sealed schema-2. When
-		// even the scan fails, the read defers with an error: the click build
-		// owns the real read, and no background job may pay the full decode.
+		// first paint over full-replay stall) extended to sealed schema-2. The
+		// scan result from the cold-scan phase above is REUSED (a second full
+		// pass over a 100MB-class transcript is exactly the waste this gate
+		// exists to prevent). When the scan already failed, the read defers
+		// with an error: the click build owns the real read, and no background
+		// job may pay the full decode.
 		if historyColdDecodeOversize(sessionPath) {
-			if scannedAnchor, anchorErr := agent.ScanSessionDisplayIndex(sessionPath); anchorErr == nil && scannedAnchor != nil {
-				src := coldHistorySliceSource(sessionPath, scannedAnchor)
+			if scanErr == nil && scanned != nil {
+				src := coldHistorySliceSource(sessionPath, scanned)
 				src.trace = tr
 				var plannerTurns []plannerDisplayTurn
 				tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
