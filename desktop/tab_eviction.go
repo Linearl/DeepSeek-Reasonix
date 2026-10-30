@@ -35,9 +35,12 @@ const historyTabEvictionDebounce = 10 * time.Second
 
 // kickTabEviction schedules an async eviction check for the tab that just lost
 // the foreground. Safe to call for tabs that cannot be evicted — the gate
-// re-verifies everything after the debounce.
+// re-verifies everything after the debounce. Armed only on the Wails runtime
+// (a.ctx non-nil), the same convention as startHistoryIdlePrefetch /
+// startHistoryIndexMigration: a test-constructed App never spawns background
+// goroutines that would reach back into a stale App after the test returns.
 func (a *App) kickTabEviction(tabID string) {
-	if tabID == "" {
+	if tabID == "" || a.ctx == nil {
 		return
 	}
 	a.mu.RLock()
