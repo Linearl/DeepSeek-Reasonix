@@ -159,10 +159,11 @@ func EventsAutoRotationSnapshot() (mode string, factor float64, capMB int64) {
 const foldProbeMaxStrikes = 2
 
 // foldProbeMemo carries the per-path probe ladder state: the size regime base,
-// the consecutive measured no-gain count, and the floor-archive latch (the
-// plaintext size when the archive last ran). Bounded like
-// foldNoShrinkWarn.lastSize: sessions are few, and on overflow the whole state
-// resets (cost: at most one extra probe round), never an unbounded map.
+// the consecutive measured no-gain count, the floor-archive latch (the
+// plaintext size when the archive last ran), and the per-save floor verdict
+// the gate hands to the save tail. Bounded like foldNoShrinkWarn.lastSize:
+// sessions are few, and on overflow the whole state resets (cost: at most one
+// extra probe round), never an unbounded map.
 //
 // 键口径：gate 的两个调用方形态不同——schema-1 传会话路径（save.go），DAG 传
 // 已解析日志路径（sessionDAGLogOversized 的 st.path），而 save 尾部的地板归档
@@ -173,6 +174,7 @@ var foldProbeMemo struct {
 	regime     map[string]int64
 	strikes    map[string]int
 	archivedAt map[string]int64
+	floorSeen  map[string]bool
 }
 
 // foldProbeKey normalizes either caller shape (session path or resolved event
@@ -199,9 +201,37 @@ func foldProbeFloorReached(path string, logSize int64) bool {
 		foldProbeMemo.regime[key] = logSize
 		delete(foldProbeMemo.strikes, key)
 		delete(foldProbeMemo.archivedAt, key)
+		delete(foldProbeMemo.floorSeen, key)
 		return false
 	}
 	return foldProbeMemo.strikes[key] >= foldProbeMaxStrikes
+}
+
+// foldProbeNoteFloorSeen records the gate's floor verdict for THIS save. The
+// save tail consumes it instead of re-deriving the floor from the post-write
+// size: a schema-1 floor save appends a full replace record (the log roughly
+// doubles after the gate judged), and re-deriving at the tail would read the
+// doubled size as a regime change and silently drop the fallback (the e2e
+// regression TestFoldFloorFallbackThroughRealSave pins exactly this).
+func foldProbeNoteFloorSeen(path string) {
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	foldProbeMemo.floorSeen[key] = true
+}
+
+// foldProbeTakeFloorSeen consumes the per-save floor verdict: true means the
+// gate just measured the fold floor for this session and the tail may act on
+// it. Consumed even when the archive then fails — the next floor save re-arms
+// it (self-healing), and a stale verdict must not archive a session whose
+// shape changed meanwhile.
+func foldProbeTakeFloorSeen(path string) bool {
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	seen := foldProbeMemo.floorSeen[key]
+	delete(foldProbeMemo.floorSeen, key)
+	return seen
 }
 
 // noteSessionFoldOutcome records the MEASURED result of a maintenance fold the
@@ -225,6 +255,7 @@ func noteSessionFoldOutcome(path string, before, after int64) {
 	if EventsFoldProfitable(before, after) {
 		foldProbeMemo.strikes[key] = 0
 		delete(foldProbeMemo.archivedAt, key)
+		delete(foldProbeMemo.floorSeen, key)
 		return
 	}
 	foldProbeMemo.strikes[key]++
@@ -260,4 +291,5 @@ func resetFoldProbeMemoForTest() {
 	foldProbeMemo.regime = map[string]int64{}
 	foldProbeMemo.strikes = map[string]int{}
 	foldProbeMemo.archivedAt = map[string]int64{}
+	foldProbeMemo.floorSeen = map[string]bool{}
 }

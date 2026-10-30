@@ -453,6 +453,11 @@ func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 			//     "left in place" exemption (pinned forever; 107.3MB WARN
 			//     incident 20261026, replay-cost harm tl1279/tl1284) is gone.
 			if foldProbeFloorReached(path, logSize) {
+				// Hand this save's floor verdict to the save tail: the lossless
+				// floor archive consumes it there, decoupled from the post-write
+				// log size (a schema-1 floor save appends a full replace record
+				// and roughly doubles the log after this judgment).
+				foldProbeNoteFloorSeen(path)
 				warnFoldWouldNotShrink(path, logSize, contentBytes, cfg.capMB)
 				return false
 			}

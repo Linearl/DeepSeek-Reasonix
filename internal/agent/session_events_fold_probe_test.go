@@ -10,11 +10,14 @@ package agent
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"reasonix/internal/provider"
 )
 
 const (
@@ -185,8 +188,12 @@ func TestFoldFloorArchiveFallbackQuantifiedShrink(t *testing.T) {
 		t.Fatalf("stat fixture: %v", err)
 	}
 
-	// 实测地板：两次真实无收益（与 save 路径同协议）。
+	// 实测地板：两次真实无收益（与 save 路径同协议），再由 gate 判一次地板
+	// （floorSeen 置位——save 尾部消费的是这份判定，不是保存后尺寸的重推）。
 	driveNoGainProbes(t, sessionPath, before.Size(), 2)
+	if sessionEventLogOversized(sessionPath, before.Size(), before.Size()) {
+		t.Fatal("measured floor must skip the fold")
+	}
 
 	// save 尾部兜底：归档落地，明文退场，体积真实下降。
 	(&Session{}).maybeFloorArchiveEventLog(sessionPath)
@@ -207,13 +214,23 @@ func TestFoldFloorArchiveFallbackQuantifiedShrink(t *testing.T) {
 		t.Fatalf("fallback must log the quantified before/after: %q", out)
 	}
 
-	// 每 regime 一次：物化回来后同尺寸再触发不得重压（archivedAt 闩）。
+	// 每 regime 一次：物化回来后同尺寸再触发不得重压（floorSeen 已被消费 +
+	// archivedAt 闩双保险）。
 	if _, err := ensureSessionEventLogPlain(sessionPath); err != nil {
 		t.Fatalf("materialize: %v", err)
 	}
 	mi, err := os.Stat(plain)
 	if err != nil {
 		t.Fatalf("stat materialized: %v", err)
+	}
+	// 先无判定（floorSeen 未置位）：不得动。
+	(&Session{}).maybeFloorArchiveEventLog(sessionPath)
+	if _, err := os.Stat(plain); err != nil {
+		t.Fatalf("tail without a floor verdict must not archive: %v", err)
+	}
+	// 再有判定但同尺寸（archivedAt 闩）：仍不得重压。
+	if sessionEventLogOversized(sessionPath, mi.Size(), mi.Size()) {
+		t.Fatal("floor must persist within the regime")
 	}
 	(&Session{}).maybeFloorArchiveEventLog(sessionPath)
 	if _, err := os.Stat(plain); err != nil {
@@ -223,7 +240,8 @@ func TestFoldFloorArchiveFallbackQuantifiedShrink(t *testing.T) {
 		t.Fatalf("materialized size must equal the archived plain_bytes: %d vs %d", mi.Size(), before.Size())
 	}
 
-	// regime 再武装：涨 ~11% ⇒ 闩与连败清零，重新攒两次实测无收益后再压。
+	// regime 再武装：涨 ~11% ⇒ 闩与连败清零，重新攒两次实测无收益、gate 再判
+	// 地板（floorSeen 置位）后可再压。
 	grown := mi.Size() * 111 / 100
 	f, err := os.OpenFile(plain, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
@@ -240,6 +258,9 @@ func TestFoldFloorArchiveFallbackQuantifiedShrink(t *testing.T) {
 		t.Fatalf("close regrowth: %v", err)
 	}
 	driveNoGainProbes(t, sessionPath, grown, 2)
+	if sessionEventLogOversized(sessionPath, grown, grown) {
+		t.Fatal("re-proven floor must skip the fold")
+	}
 	(&Session{}).maybeFloorArchiveEventLog(sessionPath)
 	if _, err := os.Stat(plain); !os.IsNotExist(err) {
 		t.Fatalf("re-armed regime must archive again, stat err=%v", err)
@@ -265,5 +286,69 @@ func TestFoldProbeKeyNormalizesCallerShapes(t *testing.T) {
 	}
 	if sessionEventLogOversized(sessionPath, probeWhaleLog, probeWhaleContent) {
 		t.Fatal("gate on the session-path shape must honor the floor booked by the log-path shape")
+	}
+}
+
+// 端到端：真实 save 路径上的整链——两次 Rewrite 触发 probe 折叠（实测无收益
+// 入账），第三次 Rewrite 走实测地板（gate false），save 尾部归档兜底开火，
+// 明文退场、归档可物化。这是 20261026 事故形态（大会话每次保存反复 WARN）
+// 在修复后的直证。
+func TestFoldFloorFallbackThroughRealSave(t *testing.T) {
+	resetEventsRotation(t)
+	resetFoldProbeMemoForTest()
+	resetRotateWarnMemo(t)
+	SetEventsAutoRotation("auto", 16, 1)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tl1285e2e.jsonl")
+	s := NewSession("sys")
+	big := strings.Repeat("tl1285 e2e floor fixture payload ", 180_000) // ~6MB
+	s.Add(provider.Message{Role: provider.RoleUser, Content: big})
+	s.Add(provider.Message{Role: provider.RoleAssistant, Content: "ack"})
+	if err := s.Save(path); err != nil {
+		t.Fatalf("initial save: %v", err)
+	}
+	plain := SessionEventLogPath(path)
+	info, err := os.Stat(plain)
+	if err != nil {
+		t.Fatalf("log after initial save: %v", err)
+	}
+	if info.Size() <= 4<<20 {
+		t.Fatalf("fixture too small to pass the cap and compress floor: %d", info.Size())
+	}
+
+	// 两次历史改写：gate 放行 probe，compact 落地 ≈content ⇒ 实测无收益入账。
+	for i := 0; i < 2; i++ {
+		msgs := append([]provider.Message(nil), s.Messages...)
+		msgs[len(msgs)-1].Content = fmt.Sprintf("bump %d", i)
+		s.Rewrite(msgs, "tl1285-e2e")
+		if err := s.SaveRewrite(path); err != nil {
+			t.Fatalf("rewrite save %d: %v", i, err)
+		}
+	}
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	strikes := foldProbeMemo.strikes[key]
+	foldProbeMemo.mu.Unlock()
+	if strikes != 2 {
+		t.Fatalf("two real probe folds must book two strikes, got %d", strikes)
+	}
+
+	// 第三次改写：实测地板（gate false）+ save 尾部归档兜底。
+	msgs := append([]provider.Message(nil), s.Messages...)
+	msgs[len(msgs)-1].Content = "final bump"
+	s.Rewrite(msgs, "tl1285-e2e")
+	if err := s.SaveRewrite(path); err != nil {
+		t.Fatalf("floor save: %v", err)
+	}
+	if _, err := os.Stat(plain); !os.IsNotExist(err) {
+		t.Fatalf("floor fallback must archive the plaintext through the real save path, stat err=%v", err)
+	}
+	if _, err := os.Stat(sessionEventLogZstPathFor(path)); err != nil {
+		t.Fatalf("archive missing after the real-save floor fallback: %v", err)
+	}
+	// 无损可逆：物化回来内容完整（头校验 + 尺寸强校验在原语内）。
+	if _, err := ensureSessionEventLogPlain(path); err != nil {
+		t.Fatalf("materialize after fallback: %v", err)
 	}
 }

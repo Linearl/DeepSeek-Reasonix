@@ -50,7 +50,11 @@ func (s *Session) maybeFloorArchiveEventLog(path string) {
 	if logSize <= cfg.capMB<<20 || logSize < sessionEventZstCompressFloor {
 		return
 	}
-	if !foldProbeFloorReached(path, logSize) || !foldProbeFloorArchiveDue(path, logSize) {
+	// Consume the gate's per-save floor verdict (not a re-derivation from the
+	// post-write size): a schema-1 floor save appends a full replace record and
+	// roughly doubles the log after the gate judged — re-deriving here would
+	// misread that jump as a regime change and drop the fallback.
+	if !foldProbeTakeFloorSeen(path) || !foldProbeFloorArchiveDue(path, logSize) {
 		return
 	}
 	before, after, err := compressSessionEventLogZstLocked(plain, sessionEventLogZstPathFor(path), "tl1285-fold-floor-fallback")
