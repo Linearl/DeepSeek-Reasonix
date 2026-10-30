@@ -19,17 +19,27 @@ import (
 // project sessions 目录、archive），桌面侧一切「这个会话还存在吗」的判断与它
 // 同一语义：路径指向的文件在盘上 = 实体在；查无 = 断开。不另立真相源。
 //
-// 查无（文件被删/清理待执行/来自已销毁旧实例且从未落盘）时：
+// 语义边界（为什么不能对「文件查无」一刀切）：本进程新建的会话在首轮发送
+// 落盘前文件也不存在——对它误报断开会拦掉每一段新对话的第一条消息。因此
+// 「查无」判定必须带来源：
+//   - 重启恢复的 tab：restorePersistedTabs 在还原布局时对声明路径做一次
+//     存在性判定并写入 tab.restoredSessionMissing（那是唯一知道「这条路径
+//     来自上一进程、文件该在而不在」的时刻），此后联合实时 Stat 生效；
+//   - 清理待执行（IsCleanupPending，延迟删除标记在案）：任何 tab 即时生效，
+//     与恢复/名册面（IsVisibleSession）同口径；
+//   - 其余（含新建 tab）：不判查无。
+// 实体重新出现（撤销删除、网络盘恢复）时实时 Stat 翻假，投影自愈。
+//
+// 查无（命中上述判定）时：
 //   - 方向②：tab 不得再对 running/待确认/后台作业 投绿点残影（tabMeta 投影）；
 //   - 方向①：重启恢复的骨架 tab 直接以「已断开」可见态示人，而不是装作
-//     一切正常的 starting（tabMeta 投影；点击后的重建路径保持任务 619 惰性
-//     契约不变——本轮只修 UI 真相，不改重建语义）；
-//   - 方向③：「继续/发送」受理链前置校验实体存在，查无时返回明确报错，
-//     而不是让 ErrTurnRunning 降级把消息排进已死执行体的队列。
+//     一切正常的 starting（tabMeta/Meta 投影；点击后的重建路径保持任务 619
+//     惰性契约不变——本轮只修 UI 真相，不改重建语义）；
+//   - 方向③：「继续/发送」受理链前置校验，查无返回明确报错，而不是让
+//     ErrTurnRunning 降级把消息排进已死执行体的队列。
 //
 // 全部为读取型判定：不改任何 tab/runtime 注册表状态（持久化、唤醒、收件箱
-// 语义不动），实体重新出现（网络盘恢复、用户撤销删除）时投影在下次
-// ListTabs 刷新自愈。
+// 语义不动）。
 
 // errSessionDisconnected 是查无会话实体的哨兵错误：受理链原样透传给前端。
 // 前端降级器只认「turn already running」，本错误走普通发送失败面
@@ -46,18 +56,12 @@ const sessionDisconnectedUserMessage = "会话已断开，请重新打开：该�
 const sessionMissingRuntimeIssueCode = "session_missing"
 
 // sessionEntityExists 报告会话实体（.jsonl）是否仍在盘上——与 contact
-// directory 的枚举对象同一文件集。语义边界：
-//   - 空路径 = 尚未落盘的新会话（首轮发送前），视为存在——没有实体可断，
-//     不得对新建会话误报断开；
-//   - 清理待执行（IsCleanupPending，延迟删除标记在案）= 实体正在被删除，
-//     恢复/名册面（IsVisibleSession）已把它当不可见，这里同口径按查无。
+// directory 的枚举对象同一文件集。空路径 = 尚未绑定会话路径，视为存在
+// （没有实体可断）。
 func sessionEntityExists(sessionPath string) bool {
 	path := strings.TrimSpace(sessionPath)
 	if path == "" {
 		return true
-	}
-	if agent.IsCleanupPending(path) {
-		return false
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -66,10 +70,42 @@ func sessionEntityExists(sessionPath string) bool {
 	return !info.IsDir()
 }
 
-// tabSessionEntityMissing 判定一个 tab 声称延续的会话实体是否查无。只对
-// 声明过会话路径的 tab 生效（新会话骨架没有实体可查）。
-func tabSessionEntityMissing(sessionPath string) bool {
-	return strings.TrimSpace(sessionPath) != "" && !sessionEntityExists(sessionPath)
+// tabSessionDisconnected 判定一个 tab 是否处于「会话实体查无」断开态。调用方
+// 需持有 App.mu（读 tab.restoredSessionMissing 与 currentSessionPath）或已
+// 确认 tab 不再变更。判定口径见文件头注释：
+//   - 清理待执行即时生效（删除进行中的会话没有「继续」可言）；
+//   - 恢复时标记的 tab 再联合实时 Stat——文件回来了就自愈，不给新建会话误报。
+func tabSessionDisconnected(tab *WorkspaceTab) bool {
+	if tab == nil {
+		return false
+	}
+	path := strings.TrimSpace(tab.currentSessionPath())
+	if path == "" {
+		return false
+	}
+	if agent.IsCleanupPending(path) {
+		return true
+	}
+	if !tab.restoredSessionMissing {
+		return false
+	}
+	return !sessionEntityExists(path)
+}
+
+// tabSessionDisconnectedForPath 是无 tab 上下文的纯路径变体，供恢复时点
+// （restorePersistedTabs）在 SessionPath 刚写入、tab 尚未发布前做同口径判定。
+func tabSessionDisconnectedForPath(sessionPath string, restored bool) bool {
+	path := strings.TrimSpace(sessionPath)
+	if path == "" {
+		return false
+	}
+	if agent.IsCleanupPending(path) {
+		return true
+	}
+	if !restored {
+		return false
+	}
+	return !sessionEntityExists(path)
 }
 
 // sessionMissingRuntimeIssue 构造「已断开」issue 视图。retryable=false：
@@ -82,21 +118,20 @@ func sessionMissingRuntimeIssue() *SessionRuntimeIssue {
 	}
 }
 
-// sessionEntityAdmissionErrForTab 是受理链的前置实体校验（方向③）：tab 的
-// 当前会话路径查无实体时返回断开哨兵错误。调用方已把 tab 解析出来（与
-// tabIsReadOnly / workspaceRuntimeAdmissionErr 同一批前置检查）；路径在锁内
-// 取快照，Stat 在锁外做（元数据操作，不持 App.mu 做 I/O）。控制器不存在或
-// 只读 tab 不在此拦——它们各自已有更精确的既有报错（workspaceNotReady /
-// readOnly），本守卫只负责「控制器活着但实体没了」与「骨架声称延续的实体
-// 没了」这两种查无。
+// sessionEntityAdmissionErrForTab 是受理链的前置实体校验（方向③）：tab 处于
+// 断开态时返回断开哨兵错误。调用方已把 tab 解析出来（与 tabIsReadOnly /
+// workspaceRuntimeAdmissionErr 同一批前置检查）；本检查排在其前，保证查无
+// 提交先拿到断开文案而不是工作区未就绪/已在运行中的静默降级。控制器不存在
+// 或只读 tab 不在此拦——它们各自已有更精确的既有报错（workspaceNotReady /
+// readOnly），本守卫只负责「实体查无」这一种断开。
 func (a *App) sessionEntityAdmissionErrForTab(tab *WorkspaceTab) error {
 	if tab == nil {
 		return nil
 	}
 	a.mu.RLock()
-	sessionPath := tab.currentSessionPath()
+	disconnected := tabSessionDisconnected(tab)
 	a.mu.RUnlock()
-	if tabSessionEntityMissing(sessionPath) {
+	if disconnected {
 		return errSessionDisconnected
 	}
 	return nil

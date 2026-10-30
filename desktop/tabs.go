@@ -69,31 +69,37 @@ type pendingDisplayWrite struct {
 // memory, permissions) scoped to a workspace root, so multiple projects and
 // topics can be active concurrently without interfering.
 type WorkspaceTab struct {
-	ID                  string                   // stable random id
-	Scope               string                   // "project" | "global"
-	WorkspaceRoot       string                   // project root dir (empty for global)
-	SharedHostKey       string                   // opaque key for the shared plugin host (set by buildTabController)
-	TopicID             string                   // topic within the project
-	TopicTitle          string                   // display title
-	topicTitleSource    string                   // auto or manual; controls localization at API boundaries
-	SessionPath         string                   // exact .jsonl file this tab continues
-	SessionGeneration   uint64                   // bumps on session rotation (clear/new); frontend hydrate identity
-	ReadOnly            bool                     // true for external channel transcripts opened for browsing
-	Takeover            struct{ Spectator bool } // handoff state grouped by its cross-runtime lifetime
-	Ctrl                control.SessionAPI       // nil while booting / on error
-	Label               string                   // model label (for the tab badge)
-	Ready               bool                     // true once boot.Build completes
-	StartupErr          string                   // build error, surfaced to the frontend
-	StartupErrLeaseHeld bool                     // true when StartupErr can be retried after a session lease releases
-	modelApplication    tabModelApplicationState // guarded by App.mu; never persisted
-	runtimeID           string                   // process-local SessionRuntime registry identity
-	sessionLease        *agent.SessionLease
-	sessionLeaseMu      sync.Mutex
-	takeoverWatchStop   chan struct{}
-	sessionLeaseKey     atomic.Pointer[string] // lock-free mirror; updated with sessionLease under sessionLeaseMu
-	sink                *tabEventSink          // routes events with this tab's ID
-	buildCancel         context.CancelFunc     // cancels in-flight boot for tabs removed before Ready
-	buildGeneration     uint64                 // identifies the current in-flight build
+	ID                string // stable random id
+	Scope             string // "project" | "global"
+	WorkspaceRoot     string // project root dir (empty for global)
+	SharedHostKey     string // opaque key for the shared plugin host (set by buildTabController)
+	TopicID           string // topic within the project
+	TopicTitle        string // display title
+	topicTitleSource  string // auto or manual; controls localization at API boundaries
+	SessionPath       string // exact .jsonl file this tab continues
+	SessionGeneration uint64 // bumps on session rotation (clear/new); frontend hydrate identity
+	// restoredSessionMissing (tl 1266) 记录「恢复时点实体查无」：restorePersistedTabs
+	// 在还原持久化 tab 布局时对 entry.SessionPath 做一次存在性判定。这是唯一能
+	// 安全区分「重启后恢复的旧会话（文件该在而不在）」与「本进程新建会话（文件
+	// 尚未首轮落盘）」的时刻——新建 tab 不带标记，其首发消息不会被断开守卫误拦。
+	// 只与实时 Stat 联合生效（见 tabSessionDisconnected）：实体重新出现即自愈。
+	restoredSessionMissing bool
+	ReadOnly               bool                     // true for external channel transcripts opened for browsing
+	Takeover               struct{ Spectator bool } // handoff state grouped by its cross-runtime lifetime
+	Ctrl                   control.SessionAPI       // nil while booting / on error
+	Label                  string                   // model label (for the tab badge)
+	Ready                  bool                     // true once boot.Build completes
+	StartupErr             string                   // build error, surfaced to the frontend
+	StartupErrLeaseHeld    bool                     // true when StartupErr can be retried after a session lease releases
+	modelApplication       tabModelApplicationState // guarded by App.mu; never persisted
+	runtimeID              string                   // process-local SessionRuntime registry identity
+	sessionLease           *agent.SessionLease
+	sessionLeaseMu         sync.Mutex
+	takeoverWatchStop      chan struct{}
+	sessionLeaseKey        atomic.Pointer[string] // lock-free mirror; updated with sessionLease under sessionLeaseMu
+	sink                   *tabEventSink          // routes events with this tab's ID
+	buildCancel            context.CancelFunc     // cancels in-flight boot for tabs removed before Ready
+	buildGeneration        uint64                 // identifies the current in-flight build
 	// buildDone is closed exactly once when the build that owns buildDoneGen
 	// terminates (success, failure, or superseded abandon). Topic-activation
 	// completions wait on it to learn that the controller build finished
@@ -2382,13 +2388,15 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 	if tab.Ctrl != nil {
 		status := tab.Ctrl.RuntimeStatus()
 		claimsWork := status.Running || status.PendingPrompt || status.BackgroundJobs > 0
-		// tl 1266 方向②: 控制器声称有活跃工作，但它声称服务的会话实体已不在
-		// 盘上（与 contact directory 同一文件语义）。继续投 running 就是
+		// tl 1266 方向②: 控制器声称有活跃工作，但它声称服务的会话实体已查无
+		// （恢复时标记的旧会话文件不在了，或删除进行中）。继续投 running 就是
 		// 20261030 事故截图里的残影：实体已随旧进程销毁的 tab 还挂着绿点和
 		// 已工作计数。这里投影为断开：活动标志全清、不可取消，runtime 视图
 		// 挂 session_missing issue 由前端渲染「已断开」。只改投影不改注册表，
 		// 持久化与唤醒语义不动；实体重新出现时下一次 ListTabs 自愈。
-		if claimsWork && tabSessionEntityMissing(sessionPath) {
+		// 断开判定的口径（恢复标记×实时 Stat 联合、清理待执行即时生效）见
+		// tabSessionDisconnected——不带恢复标记的新建会话首发落盘前不会被误判。
+		if tabSessionDisconnected(tab) {
 			m.Running = false
 			m.PendingPrompt = false
 			m.BackgroundJobs = 0
@@ -2415,7 +2423,7 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 			m.TurnEventSeq = status.TurnEventSeq
 			m.TurnReplayAfter = status.ReplayAfterSeq
 		}
-	} else if tabSessionEntityMissing(sessionPath) {
+	} else if tabSessionDisconnected(tab) {
 		// tl 1266 方向①: 重启恢复的骨架 tab 声称延续的实体已查无——它永远
 		// 重站不回那段对话，不能再以普通「未加载/starting」示人。保持任务 619
 		// 的惰性契约（点击仍触发构建），但投影挂上 session_missing issue、
