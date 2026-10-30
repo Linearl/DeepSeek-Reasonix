@@ -7952,7 +7952,7 @@ function UpdatesSection({
         label={t("changelog.title")}
         hint={t("changelog.subtitle")}
       >
-        <button className="btn btn--small" onClick={() => void openExternal("https://reasonix.io/changelog/")}>
+        <button className="btn btn--small" onClick={() => void openExternal("https://linearl.github.io/DeepSeek-Reasonix/changelog/")}>
           {t("changelog.openWeb")}
           <ExternalLink size={14} aria-hidden="true" />
         </button>
@@ -7965,14 +7965,14 @@ function UpdatesSection({
         <div className="settings-inline-controls">
           <button
             className="btn btn--small"
-            onClick={() => void openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues/new/choose")}
+            onClick={() => void openExternal("https://github.com/Linearl/DeepSeek-Reasonix/issues/new/choose")}
           >
             {t("feedback.submitIssue")}
             <ExternalLink size={14} aria-hidden="true" />
           </button>
           <button
             className="btn btn--small"
-            onClick={() => void openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues")}
+            onClick={() => void openExternal("https://github.com/Linearl/DeepSeek-Reasonix/issues")}
           >
             {t("feedback.viewIssues")}
             <ExternalLink size={14} aria-hidden="true" />

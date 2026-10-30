@@ -7473,7 +7473,7 @@ function makeMockApp(): AppBindings {
     async AbandonPendingUpdate() {},
     async OpenDownloadPage() {
       if (typeof window !== "undefined") {
-        window.open("https://reasonix.io/?download=desktop#start", "_blank", "noopener");
+        window.open("https://github.com/Linearl/DeepSeek-Reasonix/releases", "_blank", "noopener");
       }
     },
     async OpenUserConfigPath() {},

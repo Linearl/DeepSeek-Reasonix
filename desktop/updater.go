@@ -45,8 +45,8 @@ import (
 const (
 	r2Base                     = "https://dl.reasonix.io"
 	releaseGatewayBase         = "https://crash.reasonix.io/v1/desktop/releases"
-	downloadPageURL            = "https://reasonix.io/#start"
-	manifestDownloadPageURL    = "https://reasonix.io/?download=desktop#start"
+	downloadPageURL            = "https://github.com/Linearl/DeepSeek-Reasonix/releases"
+	manifestDownloadPageURL    = "https://github.com/Linearl/DeepSeek-Reasonix/releases"
 	httpTimeout                = 15 * time.Second
 	manifestEndpointTimeout    = 5 * time.Second
 	maxDesktopReleaseAssetSize = int64(1 << 30)
