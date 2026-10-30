@@ -98,7 +98,10 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, bind
     <div className="notice-line__text">
       {calls.map((call, index) => <div key={dismissKey(call, index)}>
         <div className="tool-recovery-panel__record-head">
-          <p>{call.identity.canonical_tool} · {t("toolRecovery.unknown")}</p>
+          {/* tl1278（只读/写分级）：只读调用（read_only 来自中断记录，与工具
+              登记表同源）不再挂「结果未知」警示——只读中断无外部副作用，文案
+              直接说「可安全忽略」；写类保持原警示与忽略按钮不动。 */}
+          <p>{call.identity.canonical_tool} · {call.read_only ? t("toolRecovery.readonlyInterrupted") : t("toolRecovery.unknown")}</p>
           {/* 1068①②：按钮本体复用全局 .btn--ghost.btn--small（591 圆角描边族，
               与协作中心「关闭」同族）；挂位在记录行右侧——折叠态（本行在折叠
               块外层 details 未展开时不可见）指的是记录详情 details 未展开时该

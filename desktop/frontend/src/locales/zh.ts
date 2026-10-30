@@ -7,6 +7,7 @@ import type { DictKey } from "./en";
 export const zh: Record<DictKey, string> = {
   "toolRecovery.title": "中断的工具调用记录",
   "toolRecovery.unknown": "结果未知（已记录）",
+  "toolRecovery.readonlyInterrupted": "只读调用 · 中断（无副作用，可安全忽略）",
   "toolRecovery.details": "查看操作详情",
   "toolRecovery.dismiss": "忽略",
   "toolRecovery.dismissAll": "忽略（全部）",
