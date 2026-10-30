@@ -52,7 +52,7 @@ function inline(text) {
   // chip/版本标注），escape 之前先摘出占位保护，其余一律转义——不放开
   // 任意 HTML，避免把静态文档站变成注入面。
   const rawFragments = [];
-  const allowed = /<(?:span|div|section) class="(?:badge|fnum|vtag)[^"]*"[^>]*>|<\/(?:span|div|section)>/g;
+  const allowed = /<(?:span|div|section|details|summary|p) class="(?:badge|fnum|vtag|tl-date)[^"]*"[^>]*>|<(?:details|summary)(?:\s[^>]*)?>|<\/(?:span|div|section|details|summary|p)>/g;
   let src = String(text).replace(allowed, (m) => { rawFragments.push(m); return `\u0002${rawFragments.length - 1}\u0002`; });
   let out = escapeHtml(src);
   // 行内代码先摘出来保护，避免被下面的规则误伤。
@@ -83,9 +83,14 @@ function markdownToHtml(md) {
   while (i < lines.length) {
     const line = lines[i];
 
-    // 块级白名单 HTML（任务 1263：时间线容器）——整行匹配的
-    // <div class="timeline"> / <section ...> / 闭合标签原样输出，不进段落。
-    if (/^\s*<(?:div class="timeline"|\/div|section[^>]*|\/section)>\s*$/.test(line)) {
+    // 块级白名单 HTML（任务 1263：时间线容器 + 日期分组折叠）——整行匹配的
+    // <div class="timeline|inner"> / <section ...> / <details>/<summary> /
+    // <p class="tl-date"> / 闭合标签原样输出，不进段落（否则会被 <p> 包裹或
+    // 被上一行吞掉，导致 section 计数缺失与嵌套 p）。
+    // summary 允许带内容（如 <summary>日期 <span class="gcount">· N 个包</span></summary>）。
+    if (/^\s*<(?:div class="(?:timeline|inner)"|\/div|section[^>]*|\/section|details[^>]*|\/details|\/summary)>\s*$/.test(line)
+      || /^\s*<summary[^>]*>[\s\S]*<\/summary>\s*$/.test(line)
+      || /^\s*<p class="tl-date">[^<]*<\/p>\s*$/.test(line)) {
       closeList();
       out.push(line.trim());
       i += 1;

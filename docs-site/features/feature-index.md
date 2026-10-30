@@ -1,8 +1,8 @@
-<!--meta title="全部特性一览表" desc="fork 全部特性的编号、档位与所在分组；编号规则与徽章三档说明。" -->
+<!--meta title="全部特性一览表" desc="fork 全部特性的编号、档位与所在分组；编号规则与徽章四档说明。" -->
 
 # 全部特性一览表
 
-本表是 fork 全部特性的编号索引：**81 项**实验特性（骨架来自实验室设置页的真实组织方式）+ 非实验室的 fork 增强（见各段说明）。编号一经分配不再变更，特性退役后编号保留不复用。
+本表是 fork 全部特性的编号索引：**81 项**实验特性（骨架来自实验室设置页的真实组织方式），另加已释放到实验室面板之外的 fork 增强（9xx 段）。编号一经分配不再变更，特性退役后编号保留不复用。
 
 ## 编号规则
 
@@ -18,14 +18,16 @@
 | 6xx | 开发调试 | 601-602 | CDP 端口、噪音分诊 |
 | 7xx | 存储 | 701-706 | 存储版本、归档、闲置释放、内存上限 |
 | 8xx | 基础设施 | 801-812 | 运行时复用、工具优化、路径规则等 |
+| 9xx | 已释放增强 | 901- | 已移出实验室面板、成为正式能力的 fork 增强 |
 
-## 徽章三档
+## 徽章四档
 
 初标依据 = 实验室设置页当前的档位分类；档位会随打磨进度调整，以本表与应用内实验室面板为准。
 
-| 徽章 | 含义 | 数量 |
+| 徽章 | 含义 | 本表数量 |
 | --- | --- | --- |
-| <span class="badge badge-recommended">推荐</span> | 已打磨可用，建议开启 | 24 |
+| <span class="badge badge-stable">已转正</span> | 已释放到实验室面板之外的正式能力 | 4（+9xx 段） |
+| <span class="badge badge-recommended">推荐</span> | 已打磨可用，建议开启 | 20 |
 | <span class="badge badge-optional">可选</span> | 按需开启，默认关闭 | 45 |
 | <span class="badge badge-unstable">未稳定</span> | 仍在打磨，行为可能变化 | 12 |
 
@@ -35,10 +37,10 @@
 
 | 编号 | 特性 | 徽章 | 实验室位置 |
 | --- | --- | --- | --- |
-| <span class="fnum">101</span> | 自动驾驶 | <span class="badge badge-recommended">推荐</span> | 实验特性 |
+| <span class="fnum">101</span> | 自动驾驶 | <span class="badge badge-stable">已转正</span> | 实验特性 |
 | <span class="fnum">102</span> | 自动折叠跨会话消息 | <span class="badge badge-optional">可选</span> | 实验特性 · 子项 |
-| <span class="fnum">103</span> | 跨会话协作 | <span class="badge badge-recommended">推荐</span> | 实验特性 |
-| <span class="fnum">104</span> | 完全访问（yolo） | <span class="badge badge-recommended">推荐</span> | 实验特性 |
+| <span class="fnum">103</span> | 跨会话协作 | <span class="badge badge-stable">已转正</span> | 实验特性 |
+| <span class="fnum">104</span> | 完全访问（yolo） | <span class="badge badge-stable">已转正</span> | 实验特性 |
 | <span class="fnum">105</span> | 梦境整理 | <span class="badge badge-optional">可选</span> | 实验特性 · 子项 |
 | <span class="fnum">106</span> | 决策模式提取 | <span class="badge badge-optional">可选</span> | 实验特性 · 子项 |
 | <span class="fnum">107</span> | 心跳任务后台化 | <span class="badge badge-optional">可选</span> | 实验特性 · 子项 |
@@ -139,7 +141,7 @@
 
 | 编号 | 特性 | 徽章 | 实验室位置 |
 | --- | --- | --- | --- |
-| <span class="fnum">801</span> | 运行时复用池（task 363A） | <span class="badge badge-recommended">推荐</span> | 实验特性 |
+| <span class="fnum">801</span> | 运行时复用池（task 363A） | <span class="badge badge-stable">已转正</span> | 实验特性 |
 | <span class="fnum">802</span> | ACP 常驻监听 | <span class="badge badge-unstable">未稳定</span> | 实验特性 |
 | <span class="fnum">803</span> | 路径规则 | <span class="badge badge-unstable">未稳定</span> | 实验特性 |
 | <span class="fnum">804</span> | 孤儿资源回收清理 | <span class="badge badge-recommended">推荐</span> | 实验特性 |
