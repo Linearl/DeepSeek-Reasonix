@@ -158,9 +158,15 @@ export function ProcessFoldHeader({
       </button>
       {showLiveStatus && (
         <div className="turn-collapse__live-status" data-live-status="">
-          {liveActionText && <span className="turn-collapse__live-action">{liveActionText}</span>}
+          {/* tl 1269: 思考腿与执行腿分两行——并行时（bash 跑着+思考流式中）挤一行
+              会互相截断（用户 20261030 现场截图）。每腿独立一行，单腿时视觉不变。 */}
+          {liveActionText && (
+            <div className="turn-collapse__live-row">
+              <span className="turn-collapse__live-action">{liveActionText}</span>
+            </div>
+          )}
           {(throttledReasoning || thinkingPending) && (
-            <>
+            <div className="turn-collapse__live-row">
               <span className="turn-collapse__live-thinking">{t("transcript.liveThinking")}</span>
               {throttledReasoning && (
                 <ReasoningSummary
@@ -171,7 +177,7 @@ export function ProcessFoldHeader({
                   className="turn-collapse__live-summary"
                 />
               )}
-            </>
+            </div>
           )}
         </div>
       )}
