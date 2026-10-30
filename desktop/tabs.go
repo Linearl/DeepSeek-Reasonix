@@ -2381,19 +2381,51 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 	}
 	if tab.Ctrl != nil {
 		status := tab.Ctrl.RuntimeStatus()
-		m.Running = status.Running || status.PendingPrompt || status.BackgroundJobs > 0
-		m.PendingPrompt = status.PendingPrompt
-		m.BackgroundJobs = status.BackgroundJobs
-		m.CancelRequested = status.CancelRequested
-		m.StopLevel = status.StopLevel
-		if status.StopDeadlineUnix != 0 {
-			m.StopDeadlineUnix = status.StopDeadlineUnix
+		claimsWork := status.Running || status.PendingPrompt || status.BackgroundJobs > 0
+		// tl 1266 方向②: 控制器声称有活跃工作，但它声称服务的会话实体已不在
+		// 盘上（与 contact directory 同一文件语义）。继续投 running 就是
+		// 20261030 事故截图里的残影：实体已随旧进程销毁的 tab 还挂着绿点和
+		// 已工作计数。这里投影为断开：活动标志全清、不可取消，runtime 视图
+		// 挂 session_missing issue 由前端渲染「已断开」。只改投影不改注册表，
+		// 持久化与唤醒语义不动；实体重新出现时下一次 ListTabs 自愈。
+		if claimsWork && tabSessionEntityMissing(sessionPath) {
+			m.Running = false
+			m.PendingPrompt = false
+			m.BackgroundJobs = 0
+			m.CancelRequested = false
+			m.Cancellable = false
+			m.Ready = false
+			m.Runtime = SessionRuntimeView{
+				Phase: sessionRuntimeFailed,
+				Epoch: runtimeView.Epoch,
+				Issue: sessionMissingRuntimeIssue(),
+			}
+		} else {
+			m.Running = claimsWork
+			m.PendingPrompt = status.PendingPrompt
+			m.BackgroundJobs = status.BackgroundJobs
+			m.CancelRequested = status.CancelRequested
+			m.StopLevel = status.StopLevel
+			if status.StopDeadlineUnix != 0 {
+				m.StopDeadlineUnix = status.StopDeadlineUnix
+			}
+			m.Cancellable = status.Cancellable
+			m.TurnID = status.TurnID
+			m.TurnStatus = string(status.Status)
+			m.TurnEventSeq = status.TurnEventSeq
+			m.TurnReplayAfter = status.ReplayAfterSeq
 		}
-		m.Cancellable = status.Cancellable
-		m.TurnID = status.TurnID
-		m.TurnStatus = string(status.Status)
-		m.TurnEventSeq = status.TurnEventSeq
-		m.TurnReplayAfter = status.ReplayAfterSeq
+	} else if tabSessionEntityMissing(sessionPath) {
+		// tl 1266 方向①: 重启恢复的骨架 tab 声称延续的实体已查无——它永远
+		// 重站不回那段对话，不能再以普通「未加载/starting」示人。保持任务 619
+		// 的惰性契约（点击仍触发构建），但投影挂上 session_missing issue、
+		// 相位置为 failed：标签条渲染「已断开」，提交前置校验给出断开文案。
+		// 读取型投影：注册表状态不动，实体回来即自愈。
+		m.Runtime = SessionRuntimeView{
+			Phase: sessionRuntimeFailed,
+			Epoch: runtimeView.Epoch,
+			Issue: sessionMissingRuntimeIssue(),
+		}
 	}
 	if a.botBridge != nil {
 		m.RemoteControlled = a.botBridge.remoteControlledTabs()[tab.ID]
