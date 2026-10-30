@@ -57,7 +57,14 @@ type Session struct {
 	// only the trailing window of a very large log (LoadSessionTail). Such a
 	// Session is safe to display and must never be written: every save is a full
 	// rewrite, so saveObserved upgrades it to the complete transcript first.
-	tailTruncated   bool
+	tailTruncated bool
+	// tailWindowLen records how many of Messages were the decoded first-paint
+	// window at load time (tl1281). Messages beyond this index are turns
+	// appended after hydration; upgradeTruncatedTranscriptForWrite merges them
+	// onto the reloaded full transcript instead of dropping them (tl1227 had
+	// made truncation unreachable, so the pre-existing upgrade replaced
+	// Messages outright and never faced an appended turn).
+	tailWindowLen   int
 	eventLogDamaged bool
 	// rawMessages preserves the pre-normalization transcript when the load-time
 	// repairs changed it (normalizedDirty). It is only meaningful on a freshly
@@ -502,6 +509,7 @@ func (s *Session) CloneWithMessages(msgs []provider.Message) *Session {
 		normalizedDirty:         s.normalizedDirty,
 		eventLogDamaged:         s.eventLogDamaged,
 		tailTruncated:           s.tailTruncated,
+		tailWindowLen:           s.tailWindowLen,
 		rawMessages:             append([]provider.Message(nil), s.rawMessages...),
 		pendingContentReasons:   append([]string(nil), s.pendingContentReasons...),
 	}
@@ -534,6 +542,7 @@ func (s *Session) CloneWithMessagesIfCompatible(msgs []provider.Message) (*Sessi
 		normalizedDirty:         s.normalizedDirty,
 		eventLogDamaged:         s.eventLogDamaged,
 		tailTruncated:           s.tailTruncated,
+		tailWindowLen:           s.tailWindowLen,
 		rawMessages:             append([]provider.Message(nil), s.rawMessages...),
 		pendingContentReasons:   append([]string(nil), s.pendingContentReasons...),
 	}, true

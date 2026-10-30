@@ -161,11 +161,12 @@ func loadSessionTranscriptMode(ctx context.Context, sessionPath string, limits s
 	}
 	if tail {
 		msgs, truncated, tailErr := loadCheckpointTailWindowContext(ctx, sessionPath, hasher)
-		if tailErr == nil {
+		if tailErr == nil && truncated {
 			return sessionLoadResult{msgs: msgs, tailTruncated: truncated}, nil
 		}
-		// Undecodable or unreadable checkpoint tail: fall through to the full
-		// decode, whose error semantics the tail entry has always carried.
+		// Window refused (checkpoint fits it) or undecodable: fall through to
+		// the full decode, whose error semantics the tail entry has always
+		// carried. Small sessions keep byte-identical full loads this way.
 	}
 	msgs, err := loadSessionMessagesFromJSONLContext(ctx, sessionPath, hasher)
 	return sessionLoadResult{msgs: msgs}, err
