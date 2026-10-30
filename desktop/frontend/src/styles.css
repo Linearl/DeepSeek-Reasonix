@@ -9349,10 +9349,12 @@ body > .mermaid-diagram--fullscreen {
    会被 SettingsSelect.css 的 `:root .settings-select { min-width: 0 }` 按
    特异性压掉。 */
 /* 任务 tl1261：同宽值 168px → 148px 回调——用户 20261030 实测「等宽了，
-   但是有点过于宽了」。两态同宽约束不变，仅整体收窄。 */
+   但是有点过于宽了」。两态同宽约束不变，仅整体收窄。
+   任务 tl1261 返修二轮（20261030 用户验收）：148px 仍嫌宽浪费空间 → 132px
+   （最宽项 Autopilot+勾选标+内边距实测余量 ~16px，菜单项不截断）。 */
 .composer-meta__control--approval--select {
-  min-width: 148px;
-  max-width: 148px;
+  min-width: 132px;
+  max-width: 132px;
   flex: 0 0 auto;
 }
 
@@ -9368,16 +9370,16 @@ body > .mermaid-diagram--fullscreen {
    min=max、展开态菜单宽（菜单取触发器实际渲染宽）三处同值，收起/展开零
    跳变，最宽项 Autopilot 不撑开（文字超宽由 settings-select__value 的
    ellipsis 兜底）。 */
-/* 任务 tl1261：同宽值 168px → 148px 回调（用户嫌宽），定宽机制不变。 */
+/* 任务 tl1261：同宽值 168px → 148px → 132px（返修二轮 20261030 用户验收），定宽机制不变。 */
 :root .composer-meta__control--approval--select .settings-select {
-  width: 148px;
+  width: 132px;
 }
 
 .composer-approval-select {
   --wails-draggable: no-drag;
   height: var(--composer-control-height);
   min-height: var(--composer-control-height);
-  max-width: 148px;
+  max-width: 132px;
   padding: 0 8px 0 10px;
   gap: 6px;
   border-radius: var(--radius-pill);
