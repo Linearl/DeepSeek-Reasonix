@@ -502,6 +502,7 @@ export const RichComposerInput = forwardRef<RichComposerInputHandle, {
   onPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
   onCompositionStart: () => void;
   onCompositionEnd: () => void;
+  onBlur?: () => void;
 }>(({
   text,
   invocations,
@@ -515,6 +516,7 @@ export const RichComposerInput = forwardRef<RichComposerInputHandle, {
   onPaste,
   onCompositionStart,
   onCompositionEnd,
+  onBlur,
 }, ref) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const pendingSelectionRef = useRef<PendingSelection>(null);
@@ -930,6 +932,7 @@ export const RichComposerInput = forwardRef<RichComposerInputHandle, {
       onKeyUp={reportSelection}
       onClick={reportSelection}
       onFocus={reportSelection}
+      onBlur={onBlur}
       onContextMenu={onContextMenu}
       onPaste={onPaste}
     >
