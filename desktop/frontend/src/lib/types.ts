@@ -552,7 +552,9 @@ export interface WireWorkspaceChanged {
 export type SessionRuntimePhase = "starting" | "ready" | "lease_blocked" | "failed" | "closing";
 
 export interface SessionRuntimeIssue {
-  code: "session_lease_held" | "startup_failed";
+  // tl 1266: "session_missing" = 会话实体（.jsonl）查无（被删/清理待执行/
+  // 来自已销毁旧实例），tab 投影为「已断开」而非 running 残影。
+  code: "session_lease_held" | "startup_failed" | "session_missing";
   message: string;
   retryable: boolean;
   holderPid?: number;

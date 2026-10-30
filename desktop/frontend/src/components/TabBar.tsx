@@ -558,7 +558,12 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
           // here so spinner and「待确认」can never coexist, and the hover title
           // names the waiting state with the same wording the tree pill uses.
           const waitingConfirmation = Boolean(tab.pendingPrompt);
-          const runningMarker = tab.running && !waitingConfirmation;
+          // tl 1266: backend 已把实体查无（session_missing）的 tab 投影为
+          // 非 running + failed issue；这里再防御一层——running 类与断开态
+          // 互斥，徽章/hover title 承接「已断开」文案（含活跃 tab：断开是
+          // 状态真相，不像「未加载」只属于后台骨架）。
+          const sessionMissing = tab.runtime?.issue?.code === "session_missing";
+          const runningMarker = tab.running && !waitingConfirmation && !sessionMissing;
           const stateTitle = [
             runningMarker ? "Running" : "",
             waitingConfirmation ? t("projectTree.status.waitingConfirmation") : "",
@@ -570,6 +575,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
             toolApprovalMode === "auto" ? "Auto approve" : "",
             toolApprovalMode === "yolo" ? "YOLO approval" : "",
             notLoaded ? t("tabBar.notLoaded") : "",
+            sessionMissing ? t("tabBar.disconnected") : "",
           ].filter(Boolean).join(" · ");
           const annotatedTitle = stateTitle ? `${stateTitle} · ${fullTitle}` : fullTitle;
           // 任务 651：background 档按色调阶梯取本签档位；badge/off 档（或
@@ -634,6 +640,10 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
                   must see it at any width. Still yields at tier 3 (84-100px),
                   where the hover title carries it instead. */}
               {notLoaded && compressTier < 3 && <span className="tabbar__mode-badge tabbar__mode-badge--plan">{t("tabBar.notLoaded")}</span>}
+              {/* tl 1266: 实体查无的「已断开」徽章——断开是状态真相，活跃 tab
+                  也显示（事故截图正是活跃 tab 挂残影）；深压缩档（tier 3）由
+                  hover title 承接文案，与未加载徽章同一让位规则。 */}
+              {sessionMissing && compressTier < 3 && <span className="tabbar__mode-badge tabbar__mode-badge--session-missing">{t("tabBar.disconnected")}</span>}
               {tab.isolatedWorktree && <WorktreeBadge size={11} />}
               {badgesVisible && planMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">plan</span>}
               {badgesVisible && goalMode && <span className="tabbar__mode-badge tabbar__mode-badge--goal">goal</span>}

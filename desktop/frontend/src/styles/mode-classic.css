@@ -828,6 +828,14 @@
   background: var(--mode-autopilot-bg);
 }
 
+/* tl 1266：会话实体查无（session_missing）的「已断开」徽章。断开=不可
+   恢复态，用共享层 --danger/--danger-fg token（styles.css 138-139 行，
+   与 --pill-yolo-bg 同源色），不新增主题令牌。 */
+.tabbar__mode-badge--session-missing {
+  color: var(--danger-fg);
+  background: var(--danger);
+}
+
 .tabbar__spacer {
   flex: 1 1 auto;
   min-width: 12px;
