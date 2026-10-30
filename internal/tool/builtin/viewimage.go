@@ -57,7 +57,7 @@ func (v viewImage) ExecuteWithImages(ctx context.Context, args json.RawMessage) 
 	if err := ctx.Err(); err != nil {
 		return "", nil, err
 	}
-	rp := resolveReadablePath(v.workDir, p.Path, v.paths)
+	rp := sanitizeReadPath(v.workDir, p.Path, v.paths)
 	if confineRead(v.forbidRoots, rp.Path) {
 		return "", nil, fmt.Errorf("read %s: file not found", rp.DisplayPath)
 	}

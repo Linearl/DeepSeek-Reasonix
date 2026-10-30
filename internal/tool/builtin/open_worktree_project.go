@@ -78,7 +78,7 @@ func (w openIsolatedWorktreeProject) Execute(ctx context.Context, args json.RawM
 			return "", fmt.Errorf("invalid args: %w", err)
 		}
 	}
-	root := resolveIn(w.workDir, p.WorkspaceRoot)
+	root := sanitizePathArg(w.workDir, p.WorkspaceRoot)
 	managed := strings.TrimSpace(w.managedRoot)
 	if managed == "" {
 		managed = config.DeliveryWorktreeDir()

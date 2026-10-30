@@ -174,7 +174,7 @@ func (r readFile) ObserveModelText(args json.RawMessage, output string) (tool.Mo
 		sum := sha256.Sum256([]byte(line))
 		hashes[i] = hex.EncodeToString(sum[:])
 	}
-	rp := resolveReadablePath(r.workDir, p.Path, r.paths)
+	rp := sanitizeReadPath(r.workDir, p.Path, r.paths)
 	return tool.ModelTextObservation{
 		Path:       rp.Path,
 		StartLine:  window.StartLine,
@@ -193,7 +193,7 @@ func (r readFile) ReadEnvelope(ctx context.Context, args json.RawMessage, output
 	if err != nil {
 		return tool.ReadResultEnvelope{}, false
 	}
-	rp := resolveReadablePath(r.workDir, p.Path, r.paths)
+	rp := sanitizeReadPath(r.workDir, p.Path, r.paths)
 	env := tool.ReadResultEnvelope{
 		ProtocolVersion: tool.ReadResultProtocolVersion,
 		Source:          tool.ReadResultSource{CanonicalPath: rp.Path},
@@ -286,7 +286,7 @@ func (r readFile) Execute(ctx context.Context, args json.RawMessage) (string, er
 	if err != nil {
 		return "", err
 	}
-	rp := resolveReadablePath(r.workDir, p.Path, r.paths)
+	rp := sanitizeReadPath(r.workDir, p.Path, r.paths)
 	p.Path = rp.Path
 	displayPath := rp.DisplayPath
 	if confineRead(r.forbidRoots, p.Path) {

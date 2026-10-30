@@ -44,7 +44,7 @@ func (w createWorktree) Execute(ctx context.Context, args json.RawMessage) (stri
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
-	root := resolveIn(w.workDir, p.WorkspaceRoot)
+	root := sanitizePathArg(w.workDir, p.WorkspaceRoot)
 	managed := w.managedRoot
 	if managed == "" {
 		managed = config.DeliveryWorktreeDir()
@@ -122,7 +122,7 @@ func executeInspectWorktreeMerge(ctx context.Context, workDir, managedRoot strin
 			return "", fmt.Errorf("invalid args: %w", err)
 		}
 	}
-	root := resolveIn(workDir, p.WorkspaceRoot)
+	root := sanitizePathArg(workDir, p.WorkspaceRoot)
 	managed := managedRoot
 	if managed == "" {
 		managed = config.DeliveryWorktreeDir()
@@ -187,7 +187,7 @@ func (w mergeWorktreeBack) Execute(ctx context.Context, args json.RawMessage) (s
 			return "", fmt.Errorf("%s is required; run prepare_worktree_merge first", name)
 		}
 	}
-	root := resolveIn(w.workDir, p.WorkspaceRoot)
+	root := sanitizePathArg(w.workDir, p.WorkspaceRoot)
 	managed := w.managedRoot
 	if managed == "" {
 		managed = config.DeliveryWorktreeDir()

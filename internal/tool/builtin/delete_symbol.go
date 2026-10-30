@@ -78,10 +78,11 @@ func (d deleteSymbol) Execute(ctx context.Context, args json.RawMessage) (string
 	if p.Name == "" {
 		return "", fmt.Errorf("name is required")
 	}
-	p.Path = resolveIn(d.workDir, p.Path)
-	if err := confineWrite(ctx, effectiveWriteRoots(ctx, d.rootSet, d.roots), d.guard, d.managed, p.Path); err != nil {
+	path, err := sanitizeWriteTarget(ctx, d.workDir, p.Path, d.rootSet, d.roots, d.guard, d.managed)
+	if err != nil {
 		return "", err
 	}
+	p.Path = path
 
 	ext := strings.ToLower(filepath.Ext(p.Path))
 	if ext != ".go" {
@@ -124,10 +125,11 @@ func (d deleteSymbol) Preview(ctx context.Context, args json.RawMessage) (diff.C
 	if p.Name == "" {
 		return diff.Change{}, fmt.Errorf("name is required")
 	}
-	p.Path = resolveIn(d.workDir, p.Path)
-	if err := confinePreview(effectiveWriteRoots(ctx, d.rootSet, d.roots), d.guard, d.managed, p.Path); err != nil {
+	path, err := sanitizePreviewTarget(ctx, d.workDir, p.Path, d.rootSet, d.roots, d.guard, d.managed)
+	if err != nil {
 		return diff.Change{}, err
 	}
+	p.Path = path
 
 	ext := strings.ToLower(filepath.Ext(p.Path))
 	if ext != ".go" {

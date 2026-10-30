@@ -27,7 +27,7 @@ func (r readFile) ResolveReadPath(args json.RawMessage) (string, error) {
 	if strings.TrimSpace(p.Path) == "" {
 		return "", fmt.Errorf("path is required")
 	}
-	return resolveReadablePath(r.workDir, p.Path, r.paths).Path, nil
+	return sanitizeReadPath(r.workDir, p.Path, r.paths).Path, nil
 }
 
 func (r readFile) ExecuteRead(ctx context.Context, args json.RawMessage) (string, tool.ReadResultEnvelope, error) {
@@ -35,7 +35,7 @@ func (r readFile) ExecuteRead(ctx context.Context, args json.RawMessage) (string
 	if err != nil {
 		return "", tool.ReadResultEnvelope{}, err
 	}
-	rp := resolveReadablePath(r.workDir, p.Path, r.paths)
+	rp := sanitizeReadPath(r.workDir, p.Path, r.paths)
 	if confineRead(r.forbidRoots, rp.Path) {
 		return "", tool.ReadResultEnvelope{}, &os.PathError{Op: "open", Path: rp.DisplayPath, Err: os.ErrNotExist}
 	}

@@ -54,7 +54,7 @@ func (l listDir) Execute(ctx context.Context, args json.RawMessage) (string, err
 	if p.Path == "" {
 		p.Path = "."
 	}
-	rp := resolveReadablePath(l.workDir, p.Path, l.paths)
+	rp := sanitizeReadPath(l.workDir, p.Path, l.paths)
 	p.Path = rp.Path
 	if confineRead(l.forbidRoots, p.Path) {
 		return "(empty directory)", nil

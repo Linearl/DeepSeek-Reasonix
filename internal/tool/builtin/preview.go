@@ -33,10 +33,11 @@ func (w writeFile) Preview(ctx context.Context, args json.RawMessage) (diff.Chan
 	if p.Path == "" {
 		return diff.Change{}, fmt.Errorf("path is required")
 	}
-	p.Path = resolveIn(w.workDir, p.Path)
-	if err := confinePreview(effectiveWriteRoots(ctx, w.rootSet, w.roots), w.guard, w.managed, p.Path); err != nil {
+	path, err := sanitizePreviewTarget(ctx, w.workDir, p.Path, w.rootSet, w.roots, w.guard, w.managed)
+	if err != nil {
 		return diff.Change{}, err
 	}
+	p.Path = path
 
 	old, kind := "", diff.Create
 	if src, err := readEditSource(ctx, w.overlay, p.Path); err == nil {
@@ -71,10 +72,11 @@ func (e editFile) Preview(ctx context.Context, args json.RawMessage) (diff.Chang
 	if p.LineRange == "" && p.OldString == "" {
 		return diff.Change{}, fmt.Errorf("old_string is required (or use line_range with source_token for a whole-block replace/delete)")
 	}
-	p.Path = resolveIn(e.workDir, p.Path)
-	if err := confinePreview(effectiveWriteRoots(ctx, e.rootSet, e.roots), e.guard, e.managed, p.Path); err != nil {
+	path, err := sanitizePreviewTarget(ctx, e.workDir, p.Path, e.rootSet, e.roots, e.guard, e.managed)
+	if err != nil {
 		return diff.Change{}, err
 	}
+	p.Path = path
 
 	src, err := readEditSource(ctx, e.overlay, p.Path)
 	if err != nil {
@@ -121,10 +123,11 @@ func (m multiEdit) Preview(ctx context.Context, args json.RawMessage) (diff.Chan
 	if len(p.Edits) == 0 {
 		return diff.Change{}, fmt.Errorf("edits must not be empty")
 	}
-	p.Path = resolveIn(m.workDir, p.Path)
-	if err := confinePreview(effectiveWriteRoots(ctx, m.rootSet, m.roots), m.guard, m.managed, p.Path); err != nil {
+	path, err := sanitizePreviewTarget(ctx, m.workDir, p.Path, m.rootSet, m.roots, m.guard, m.managed)
+	if err != nil {
 		return diff.Change{}, err
 	}
+	p.Path = path
 
 	src, err := readEditSource(ctx, m.overlay, p.Path)
 	if err != nil {
