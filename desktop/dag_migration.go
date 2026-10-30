@@ -105,12 +105,16 @@ func (a *App) ScanDagMigration() dagMigrationScanView {
 			continue
 		}
 		_, isActive := active[sessionPath]
+		status := "pending"
+		if isActive {
+			status = "active"
+		}
 		view.Sessions = append(view.Sessions, dagMigrationSessionView{
 			SessionPath: sessionPath,
 			Label:       dagMigrationLabel(sessionPath),
 			LogBytes:    report.LogBytesBefore,
 			Messages:    report.MessageCount,
-			Status:      map[bool]string{true: "active", false: "pending"}[isActive],
+			Status:      status,
 			Active:      isActive,
 		})
 	}
@@ -132,13 +136,14 @@ func (a *App) RunDagMigration() (dagMigrationRunView, error) {
 	if err != nil {
 		return view, err
 	}
-	active := a.dagMigrationActiveSessions()
 	ctx := context.Background()
 
 	for i, sessionPath := range targets {
 		label := dagMigrationLabel(sessionPath)
-		// 先判活跃：本进程持有的会话不能迁（内存态与磁盘会不一致）。
-		if _, isActive := active[sessionPath]; isActive {
+		// 本进程持有的会话不能迁（内存态与磁盘会不一致）。这里**每轮现取**
+		// 而不在循环外用一份快照：整批可能跑几十秒（4 个会话 380MB），期间
+		// 用户开关会话都会改变活跃面，陈旧快照会漏判→误迁正在写的会话。
+		if _, isActive := a.dagMigrationActiveSessions()[sessionPath]; isActive {
 			view.Active++
 			view.Sessions = append(view.Sessions, dagMigrationSessionView{
 				SessionPath: sessionPath, Label: label, Status: "active", Active: true,

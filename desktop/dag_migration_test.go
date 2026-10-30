@@ -23,7 +23,8 @@ func TestDagMigrationIsSnapshot(t *testing.T) {
 		{"proj" + sep + "sessions" + sep + "20261022-074436-collab.events.jsonl", false},
 		// 修复链生成的全量快照目录：任何一段带 .pre-repair- 都算。
 		{"proj" + sep + "sessions" + sep + "20261022-074436-collab.pre-repair-20261030T144135" + sep + "s.jsonl", true},
-		{"pre-repair-x" + sep + "s.jsonl", true},
+		{"pre-repair-notes" + sep + "s.jsonl", false},
+		{"x.pre-repair-20260101T000000" + sep + "s.jsonl", true},
 	}
 	for _, c := range cases {
 		if got := dagMigrationIsSnapshot(c.path); got != c.want {
