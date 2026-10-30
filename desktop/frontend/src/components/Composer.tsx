@@ -4069,7 +4069,11 @@ export function Composer({
   };
 
   const activePastedBlocks = pastedBlocks.filter((block) => text.includes(block.label));
-  const shellModeActive = text.trimStart().startsWith("!");
+  // tl1274: a leading "!!" is the quick-command picker trigger (task 593), not
+  // shell — the backend routes it as a normal turn, so the composer must not
+  // flip into terminal mode ($ caret / shell styling) for it.
+  const trimmedHead = text.trimStart();
+  const shellModeActive = trimmedHead.startsWith("!") && !trimmedHead.startsWith("!!");
 
   const removeWorkspaceReference = (target: WorkspaceReference) => {
     const key = workspaceReferenceKey(target);
