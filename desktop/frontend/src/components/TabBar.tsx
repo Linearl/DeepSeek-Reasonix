@@ -553,6 +553,13 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
             && tab.runtime?.phase === "starting"
             && tab.id !== resolvedActiveTabId
             && tab.id !== splitTabId;
+          // tl 1266: a tab whose session entity is gone from disk (deleted, or
+          // left behind by a previous process instance that never re-seated)
+          // carries the session_missing runtime issue — the strip shows a
+          // distinct「已断开」badge instead of pretending the tab is merely
+          // not-loaded / running. The running marker can never coexist: the
+          // backend clears the activity flags on the same entity-miss fact.
+          const sessionDisconnected = tab.runtime?.issue?.code === "session_missing";
           // 任务 730: a pending-prompt tab is waiting on the user, not running —
           // the strip projection already skips it; the marker classes re-guard
           // here so spinner and「待确认」can never coexist, and the hover title
@@ -569,6 +576,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
             collaborationMode === "autopilot" ? "Autopilot" : "",
             toolApprovalMode === "auto" ? "Auto approve" : "",
             toolApprovalMode === "yolo" ? "YOLO approval" : "",
+            sessionDisconnected ? t("tabBar.disconnected") : "",
             notLoaded ? t("tabBar.notLoaded") : "",
           ].filter(Boolean).join(" · ");
           const annotatedTitle = stateTitle ? `${stateTitle} · ${fullTitle}` : fullTitle;
@@ -633,7 +641,11 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
                   gate (badgesVisible only opens under compression) — the user
                   must see it at any width. Still yields at tier 3 (84-100px),
                   where the hover title carries it instead. */}
-              {notLoaded && compressTier < 3 && <span className="tabbar__mode-badge tabbar__mode-badge--plan">{t("tabBar.notLoaded")}</span>}
+              {/* tl 1266:「已断开」徽章压过「未加载」——实体查无的 tab 不能
+                  同时挂两个状态徽章；断开是更强的可见事实。 */}
+              {sessionDisconnected && compressTier < 3
+                ? <span className="tabbar__mode-badge tabbar__mode-badge--disconnected">{t("tabBar.disconnected")}</span>
+                : notLoaded && compressTier < 3 && <span className="tabbar__mode-badge tabbar__mode-badge--plan">{t("tabBar.notLoaded")}</span>}
               {tab.isolatedWorktree && <WorktreeBadge size={11} />}
               {badgesVisible && planMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">plan</span>}
               {badgesVisible && goalMode && <span className="tabbar__mode-badge tabbar__mode-badge--goal">goal</span>}

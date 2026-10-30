@@ -552,7 +552,9 @@ export interface WireWorkspaceChanged {
 export type SessionRuntimePhase = "starting" | "ready" | "lease_blocked" | "failed" | "closing";
 
 export interface SessionRuntimeIssue {
-  code: "session_lease_held" | "startup_failed";
+  // "session_missing" (tl 1266): the tab claims a session whose on-disk
+  // entity is gone — the tab strip renders the disconnected badge for it.
+  code: "session_lease_held" | "startup_failed" | "session_missing";
   message: string;
   retryable: boolean;
   holderPid?: number;

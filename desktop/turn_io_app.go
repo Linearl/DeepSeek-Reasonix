@@ -117,6 +117,16 @@ func (a *App) submitToTabResult(tabID, input string, fromBridge, classifyManagem
 			return management, nil
 		}
 	}
+	// tl 1266 方向③: 校验会话实体存在再受理。「继续」这类续跑消息此前会撞上
+	// 幽灵 running（RuntimeStatus 谎报 busy）→ ErrTurnRunning → 前端静默降级
+	// 进 durable 队列——用户看到的是「点了没反应」，消息实际塞进了已死执行体
+	// 的队列。实体查无时在这里给出明确报错；它不是 "turn already running"，
+	// 前端按普通发送失败渲染 warn notice，不会落入降级分支。
+	// 管理命令（/reload 等恢复类操作）与只读通道不在此拦：它们各自已有更
+	// 精确的既有报错/恢复路径。
+	if err := a.sessionEntityAdmissionErr(tabID); err != nil {
+		return control.SubmitResult{}, err
+	}
 	admission, ctrl, err := a.beginTabTurn(tabID, !fromBridge, submissionID...)
 	if err != nil {
 		return control.SubmitResult{}, err

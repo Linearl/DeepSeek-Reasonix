@@ -2381,19 +2381,56 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 	}
 	if tab.Ctrl != nil {
 		status := tab.Ctrl.RuntimeStatus()
-		m.Running = status.Running || status.PendingPrompt || status.BackgroundJobs > 0
-		m.PendingPrompt = status.PendingPrompt
-		m.BackgroundJobs = status.BackgroundJobs
-		m.CancelRequested = status.CancelRequested
-		m.StopLevel = status.StopLevel
-		if status.StopDeadlineUnix != 0 {
-			m.StopDeadlineUnix = status.StopDeadlineUnix
+		claimsWork := status.Running || status.PendingPrompt || status.BackgroundJobs > 0
+		// tl 1266 方向②: the controller claims active work, but the session
+		// entity it claims to serve is gone from disk (the same on-disk reality
+		// the agent-side contact directory enumerates). Reporting running here
+		// is the ghost state the 20261030 incident screenshot pinned: green dot
+		// + worked counter on a tab whose runtime died with the previous
+		// process. Project the disconnect instead: no activity flags, no
+		// cancellable, and a session_missing issue the frontend renders as
+		// 「已断开」. Read-only projection — the registry record is untouched,
+		// so persistence and wake flows keep their own semantics, and a
+		// reappeared entity heals the view on the next poll.
+		if claimsWork && tabSessionEntityMissing(sessionPath) {
+			m.Running = false
+			m.PendingPrompt = false
+			m.BackgroundJobs = 0
+			m.CancelRequested = false
+			m.Cancellable = false
+			m.Ready = false
+			m.Runtime = SessionRuntimeView{
+				Phase: sessionRuntimeFailed,
+				Epoch: runtimeView.Epoch,
+				Issue: sessionMissingRuntimeIssue(),
+			}
+		} else {
+			m.Running = claimsWork
+			m.PendingPrompt = status.PendingPrompt
+			m.BackgroundJobs = status.BackgroundJobs
+			m.CancelRequested = status.CancelRequested
+			m.StopLevel = status.StopLevel
+			if status.StopDeadlineUnix != 0 {
+				m.StopDeadlineUnix = status.StopDeadlineUnix
+			}
+			m.Cancellable = status.Cancellable
+			m.TurnID = status.TurnID
+			m.TurnStatus = string(status.Status)
+			m.TurnEventSeq = status.TurnEventSeq
+			m.TurnReplayAfter = status.ReplayAfterSeq
 		}
-		m.Cancellable = status.Cancellable
-		m.TurnID = status.TurnID
-		m.TurnStatus = string(status.Status)
-		m.TurnEventSeq = status.TurnEventSeq
-		m.TurnReplayAfter = status.ReplayAfterSeq
+	} else if tabSessionEntityMissing(sessionPath) {
+		// tl 1266 方向①: a restored skeleton whose persisted session entity is
+		// gone can never be re-seated into that conversation. Keep the lazy
+		// build contract (the click still rebuilds; the build then fails with
+		// the same honest message instead of silently resetting to an empty
+		// session), but stop advertising a plain "starting" tab: the strip
+		// shows the disconnected badge from the projected issue.
+		m.Runtime = SessionRuntimeView{
+			Phase: runtimeView.Phase,
+			Epoch: runtimeView.Epoch,
+			Issue: sessionMissingRuntimeIssue(),
+		}
 	}
 	if a.botBridge != nil {
 		m.RemoteControlled = a.botBridge.remoteControlledTabs()[tab.ID]
@@ -4755,6 +4792,16 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		} else if ok {
 			path = pinnedPath
 			resumeSession = loaded
+			// tl 1266 方向①: a pinned path whose file no longer exists on disk is
+			// not a fresh-start placeholder (that one still has its empty file).
+			// Resuming "nothing" at the gone path silently reset the tab to a
+			// blank conversation while the contact directory had already lost
+			// the entity — the exact 查无 state behind the running-ghost
+			// incident. Fail the build with the explicit disconnect message so
+			// the user reopens the conversation from history instead.
+			if resumeSession == nil && tabSessionEntityMissing(path) {
+				resumeLoadErr = errSessionDisconnected
+			}
 		}
 		if resumeLoadErr == nil && path == "" && tabTopicID != "" {
 			existingPath := a.catalogSessionPathForTopic(tabScope, tabWorkspaceRoot, tabTopicID)
@@ -4763,6 +4810,11 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 					path = existingPath
 					resumeSession = loaded
 				} else {
+					if os.IsNotExist(err) {
+						// Same entity-gone reality via the topic fallback: name
+						// it with the same disconnect message.
+						err = errSessionDisconnected
+					}
 					resumeLoadErr = err
 				}
 			}

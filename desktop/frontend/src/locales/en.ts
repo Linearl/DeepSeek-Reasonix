@@ -96,6 +96,7 @@ export const en = {
   "tabBar.stopAndCloseTab": "Stop tasks and close",
   // Task 619: badge for lazy-restored background tabs
   "tabBar.notLoaded": "Not loaded",
+  "tabBar.disconnected": "Disconnected",
   "composer.splitTargetPrimary": "Send to left pane",
   "composer.splitTargetSecondary": "Send to right pane",
   "composer.splitTargetBoth": "Send to both panes",
