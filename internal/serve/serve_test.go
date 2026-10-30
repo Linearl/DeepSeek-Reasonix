@@ -217,6 +217,34 @@ func TestServeSubmitRejectsShellShortcut(t *testing.T) {
 	}
 }
 
+// tl1274: a leading "!!" is the desktop quick-command picker trigger
+// (task 593), not a shell command — the serve gate must not 403 it; the line
+// is admitted as a normal turn and reaches the runner verbatim.
+func TestServeSubmitAdmitsDoubleBangAsTurn(t *testing.T) {
+	bc := NewBroadcaster()
+	got := make(chan string, 1)
+	ctrl := control.New(control.Options{Runner: fakeRunner{got: got}, Sink: bc})
+	srv := httptest.NewServer(New(ctrl, bc, config.ServeConfig{}).Handler())
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/submit", "application/json", strings.NewReader(`{"input":"!!ls"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("double-bang submit status = %d, want 202 (admitted turn)", resp.StatusCode)
+	}
+	select {
+	case in := <-got:
+		if in != "!!ls" {
+			t.Fatalf("runner input = %q, want the verbatim !!ls line", in)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("runner never received the !!ls turn")
+	}
+}
+
 func TestServeSubmitValidatesFormat(t *testing.T) {
 	bc := NewBroadcaster()
 	got := make(chan string, 1)
