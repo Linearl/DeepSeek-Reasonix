@@ -26,6 +26,7 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/secrets"
 	"reasonix/internal/store"
+	"reasonix/internal/topicregistry"
 	"reasonix/internal/turnevent"
 	"slices"
 	"sort"
@@ -7417,6 +7418,26 @@ func ensureTopicIndexedWithCreatedAt(scope, workspaceRoot, topicID, title, sourc
 	return ensureTopicIndexedState(scope, workspaceRoot, topicID, title, source, createdAt)
 }
 
+// resolveTopicIndexTarget 是 tl1283 的唯一归属改道口：global 补登先问注册
+// 表唯一归属——topic 已注册在某项目时按归属改道 project scope（754 绑定
+// 纠正同款），补登与后续 meta 重钉（restoreSessionTopicIndex）都落归属侧，
+// 而不是把项目会话灌回 Global（tab 修复按 tab.Scope 补登、空壳 meta 按
+// meta.Scope 重钉即本批复发面）。读侧 miss（冷机索引未建）保持原路径；
+// 归属为 global 不改道；反方向（project 调用撞 global 归属）不动——归属
+// 裁决判 project。改道发生时打一条 Info，复发现场可直接归因。
+func resolveTopicIndexTarget(scope, workspaceRoot, topicID string) (string, string) {
+	if strings.TrimSpace(scope) != "global" {
+		return scope, workspaceRoot
+	}
+	if owner, ok := topicRegistryOwnerOf(topicID); ok &&
+		owner.Scope == topicregistry.ScopeProject && strings.TrimSpace(owner.Root) != "" {
+		slog.Info("desktop: global topic index repair retargeted to project owner",
+			"topic", topicID, "root", owner.Root)
+		return "project", owner.Root
+	}
+	return scope, workspaceRoot
+}
+
 func ensureTopicIndexedState(scope, workspaceRoot, topicID, title, source string, createdAt int64) error {
 	topicID = strings.TrimSpace(topicID)
 	if topicID == "" {
@@ -7424,6 +7445,7 @@ func ensureTopicIndexedState(scope, workspaceRoot, topicID, title, source string
 	}
 	topicIndexMu.Lock()
 	defer topicIndexMu.Unlock()
+	scope, workspaceRoot = resolveTopicIndexTarget(scope, workspaceRoot, topicID)
 	if strings.TrimSpace(scope) == "global" {
 		workspaceRoot = ""
 	} else {
@@ -7697,6 +7719,16 @@ func restoreSessionTopicIndex(dir, sessionPath string) error {
 		if workspaceRoot == "" {
 			scope = "global"
 		}
+	}
+	// tl1283: meta 推导出的 global 落点先过唯一归属改道——项目归属的会话
+	// （含 global 目录里的空壳误钉件）按注册表归属重钉 meta + 补登，补登与
+	// 下方 meta 回写共用同一改道结果，杜绝「补登落了项目、meta 又钉回
+	// global」的半程收敛。
+	scope, workspaceRoot = resolveTopicIndexTarget(scope, workspaceRoot, topicID)
+	if scope == "global" {
+		workspaceRoot = ""
+	} else {
+		workspaceRoot = normalizeProjectRoot(workspaceRoot)
 	}
 
 	title := restoredSessionTopicTitle(dir, sessionPath, meta)

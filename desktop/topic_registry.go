@@ -215,6 +215,19 @@ func registerTopicPrependMutator(f *desktopProjectFile, workspaceRoot string, to
 		}
 	}
 	if workspaceRoot == "" {
+		// tl1283: global 登记的写口拦截（唯一归属判 project 的另一半落地）。
+		// 已被任一项目注册的 topic 不得再落 globalTopics——tab 修复链路
+		// （ensureTopicIndexed 按 tab.Scope 补登）、会话 meta 驱动的重钉
+		// （restoreSessionTopicIndex 按 meta.Scope 补登）、心跳 global 任务
+		// 绑定等项目归属会话等生成面此前都会直灌 global 侧，Global 区复发
+		// 列出项目会话（tl1262 收敛后同日复发即此形态）。拦截是静默跳过：
+		// topic 已在其归属位置可见，调用方的「让话题出现在侧栏」目标已满足，
+		// 报错反而触发重试循环。与 tl1262 对称：project 登记清 global 侧，
+		// global 登记不落项目侧、也不剥项目归属。
+		live = filterGlobalRegistrationByProjectOwnership(f, live)
+		if len(live) == 0 {
+			return changed, nil
+		}
 		next := uniqueStrings(append(append([]string(nil), live...), f.GlobalTopics...))
 		if sameStringList(next, f.GlobalTopics) {
 			return changed, nil
@@ -283,6 +296,39 @@ func convergeGlobalRegistration(f *desktopProjectFile, topicIDs []string) bool {
 		}
 	}
 	return changed
+}
+
+// filterGlobalRegistrationByProjectOwnership drops topic ids that are already
+// registered under any project's sidebar list, so a global-scope registration
+// cannot pull them into GlobalTopics. It is the tl1283 half of the
+// unique-ownership write contract: the project is the only registration scope,
+// and an automation repair writing the global side (tab repair re-indexing by
+// tab.Scope, restoreSessionTopicIndex re-pinning by meta.Scope) must not
+// resurrect the Global-section duplicate after a tl1262-style convergence.
+// Tombstoned ids were already removed from the incoming list by the
+// respectTombstones pre-pass, and project-held ids that are ALSO tombstoned
+// cannot happen (registerTopic's project branch clears the tombstone it
+// revives), so no tombstone interaction here. Read from the live in-lock file,
+// not the derived ownership index: the mutator runs under
+// desktopProjectsFileMu, so this sees the exact state the write lands on.
+func filterGlobalRegistrationByProjectOwnership(f *desktopProjectFile, topicIDs []string) []string {
+	if len(topicIDs) == 0 || len(f.Projects) == 0 {
+		return topicIDs
+	}
+	filtered := make([]string, 0, len(topicIDs))
+	for _, topicID := range topicIDs {
+		held := false
+		for _, p := range f.Projects {
+			if containsDesktopString(p.Topics, topicID) || containsDesktopString(p.PinnedTopics, topicID) {
+				held = true
+				break
+			}
+		}
+		if !held {
+			filtered = append(filtered, topicID)
+		}
+	}
+	return filtered
 }
 
 // registerTopicPinMutator 原 SetTopicPinned 变更体（语义逐行保留）：
