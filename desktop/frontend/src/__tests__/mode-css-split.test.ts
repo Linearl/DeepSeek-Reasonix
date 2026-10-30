@@ -219,7 +219,13 @@ const added = [...nowSet].filter((b) => !baseSet.has(b));
 // lost=拆分后丢块、added 除 skeleton 外的任何新增都是真回归。
 ok(lost.length === 0, `no pre-split block was dropped (${lost.length} lost)`);
 if (lost.length > 0) for (const b of lost.slice(0, 6)) process.stdout.write(`        lost: ${b.slice(0, 100).replace(/\n/g, " ")}\n`);
-ok(added.length === 1 && added[0].includes(SKELETON_BLOCK), `the only post-split addition is the ${SKELETON_BLOCK} skeleton (found ${added.length})`);
+// tl1277 例外：theme-bg 家族（含 :not(.app--creation) 否定选择器的背景块）在
+// 20261030 登记为共享层合法追加——classic/workbench 也必须加载它们（否则聊天页
+// 主题背景消失）。除骨架与 tl1277 家族外，任何新增仍是真回归。
+const tl1277Added = added.filter((b) => b.includes(":not(.app--creation)") && (b.includes("theme-bg") || b.includes("windows-transcript-scene") || b.includes("data-theme-has-bg")));
+const nonThemeAdded = added.filter((b) => !tl1277Added.includes(b));
+ok(tl1277Added.length >= 30, `tl1277 theme-bg family appended to shared layer (${tl1277Added.length})`);
+ok(nonThemeAdded.length === 1 && nonThemeAdded[0].includes(SKELETON_BLOCK), `the only non-theme post-split addition is the ${SKELETON_BLOCK} skeleton (found ${nonThemeAdded.length})`);
 if (added.length !== 1) for (const b of added.slice(0, 8)) process.stdout.write(`        added: ${b.slice(0, 100).replace(/\n/g, " ")}\n`);
 ok(mainStyles.includes(SKELETON_BLOCK), "the skeleton stays in the shared app-shell stylesheet");
 ok(!classicStyles.includes(SKELETON_BLOCK) && !workbenchStyles.includes(SKELETON_BLOCK) && !creationStyles.includes(SKELETON_BLOCK), "the skeleton is not stranded in a mode file");
@@ -251,6 +257,11 @@ for (const [name, text] of [["mode-classic.css", classicStyles], ["mode-workbenc
 const leftover: Record<string, number> = { classic: 0, workbench: 0, creation: 0 };
 for (const block of parseBlocks(mainStyles)) {
   if (block.includes(SKELETON_BLOCK)) continue;
+  // tl1277 例外：theme-bg 家族块（含 :not(.app--creation) 否定选择器的背景规则）
+  // 20261030 登记为共享层合法追加——块文本含「.app--creation」字样会被
+  // blockSignature 按字面判成 creation 签名，但 :not() 是否定语义=全模式共享，
+  // classic/workbench 也必须加载（否则聊天页主题背景消失）。
+  if (block.includes(":not(.app--creation)") && (block.includes("theme-bg") || block.includes("windows-transcript-scene") || block.includes("data-theme-has-bg"))) continue;
   const sig = blockSignature(block);
   if (sig !== null) leftover[sig] += 1;
 }
