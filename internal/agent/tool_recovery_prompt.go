@@ -54,7 +54,16 @@ func (a *Agent) pendingInterruptedRecovery() *provider.InterruptedTurnRecovery {
 		if r == nil {
 			r = &provider.InterruptedTurnRecovery{Pending: true}
 		}
-		r.UnknownTools = append(r.UnknownTools, provider.InterruptedToolSummary{ID: record.Identity.CallID, Name: record.Identity.CanonicalTool})
+		// tl1278③④: entries collected from the durable records carry the
+		// read-only grading and the interruption form so the recovery summary
+		// can split「只读可安全重试」from「写类须先查外部状态」and name the
+		// two unknown shapes instead of one blanket「结果未知」.
+		r.UnknownTools = append(r.UnknownTools, provider.InterruptedToolSummary{
+			ID:          record.Identity.CallID,
+			Name:        record.Identity.CanonicalTool,
+			ReadOnly:    record.ReadOnly,
+			OutcomeForm: interruptedUnknownOutcomeForm(record),
+		})
 		seen[record.Identity.CallID] = true
 	}
 	for _, m := range a.Session().Snapshot() {
