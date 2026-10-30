@@ -58,6 +58,22 @@ func (a *App) kickTabEviction(tabID string) {
 // evictIdleTabRuntime releases one backgrounded tab's session runtime when
 // every guard holds. One-shot: a failed gate just drops this round.
 func (a *App) evictIdleTabRuntime(tabID string) {
+	a.evictIdleTabRuntimeUnderBarrier(tabID)
+	// 竞态收口：用户在驱逐执行窗内点回该 tab 时，Ctrl 仍非 nil——SetActiveTab
+	// 的 kickLazyBuild 判 false，不会起构建；驱逐落地后它就是个没人构建的
+	// 骨架。屏障已释放，此处按最新状态补探测重建（ lazyTabNeedsBuildLocked
+	// 复查幂等：已被别的路径构建过即不重复）。
+	a.mu.RLock()
+	tab := a.tabs[tabID]
+	needsBuild := tab != nil && a.activeTabID == tabID && lazyTabNeedsBuildLocked(tab)
+	a.mu.RUnlock()
+	if needsBuild {
+		slog.Info("desktop: rebuilding tab evicted mid-switch", "tab", tabID)
+		a.startTabControllerBuild(tab)
+	}
+}
+
+func (a *App) evictIdleTabRuntimeUnderBarrier(tabID string) {
 	defer a.lockRuntimeMutation("evict-tab")()
 	a.sessionRemovalMu.Lock()
 	defer a.sessionRemovalMu.Unlock()
