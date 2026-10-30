@@ -91,6 +91,14 @@ var capabilityGroups = []capabilityGroup{
 		Example: "heartbeat_task_list",
 	},
 	{
+		Key: "workflow", Title: "工作流编排组",
+		Scenario: "声明式 DAG 工作流的定义、查询、触发与运行状态",
+		Members: []string{
+			"workflow_define", "workflow_list", "workflow_get", "workflow_run", "workflow_status",
+		},
+		Example: "workflow_run",
+	},
+	{
 		Key: "files", Title: "文件操作组",
 		Scenario: "文件移动、区间删除与列目录",
 		Members:  []string{"delete_range", "move_file", "ls"},

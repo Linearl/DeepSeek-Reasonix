@@ -172,6 +172,13 @@ var groupCatalog = []GroupDef{
 		Triggers: []string{"心跳任务", "heartbeat_task"},
 	},
 	{
+		Name:     "workflow",
+		Scenario: "工作流编排：声明式 DAG 的定义/查询/触发/状态（子代理节点+确定性门+独立确认+报告）",
+		Members:  []string{"workflow_define", "workflow_list", "workflow_get", "workflow_run", "workflow_status"},
+		Example:  "workflow_run",
+		Triggers: []string{"工作流", "workflow", "编排", "DAG"},
+	},
+	{
 		Name:     "files",
 		Scenario: "文件操作：删除区间/移动文件/列目录/编辑 notebook",
 		Members:  []string{"delete_range", "move_file", "ls", "notebook_edit"},
