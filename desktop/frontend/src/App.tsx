@@ -4831,7 +4831,8 @@ export default function App() {
   // 统一为同一张会话图墙——跳转标签页预置「仅已打开」过滤（图墙自身加载快照，
   // 不再借道命令面板）；跳转会话维持「面板 + 图墙」堆叠（tl 1101 既有形态）。
   // 实验开关关闭时快捷键不注册（与「跳转会话」条目同一条 lab 门控语义，
-  // 维持 task 505「switch off → never opens」契约）。
+  // 维持 task 505「switch off → never opens」契约）。tl 1275：Ctrl+P 此前
+  // 漏接第 4 参 enabled，与 Ctrl+Shift+T 门控不一致，现对齐全门控。
   useGlobalShortcut("palette.gotoTab", () => {
     setWallPresetOpenOnly(true);
     setSessionWallOpen(true);
@@ -4841,7 +4842,7 @@ export default function App() {
       setWallPresetOpenOnly(false);
       setSessionWallOpen(true);
     });
-  }, [openPalette]);
+  }, [openPalette], sessionWallEnabled);
   useGlobalShortcut("palette.searchQuestions", () => {
     if (!questionSearchEnabled || !activeTabId) return;
     void openPalette().then(() => setQuestionSearchOpen(true));
