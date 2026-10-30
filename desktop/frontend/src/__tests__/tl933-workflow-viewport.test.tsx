@@ -22,6 +22,8 @@ import {
   WORKFLOW_ZOOM_DEFAULT,
   WORKFLOW_ZOOM_MAX,
   WORKFLOW_ZOOM_MIN,
+  loadWorkflowViewportPrefs,
+  saveWorkflowViewportPrefs,
   zoomFactorFromWheel,
 } from "../lib/workflowViewport";
 
@@ -63,6 +65,7 @@ console.log("\ntl933 workflow viewport: pan + anchored zoom + persistence");
 // ── JSDOM 挂载 harness ──────────────────────────────────────────────
 const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
   pretendToBeVisual: true,
+  url: "http://localhost/", // opaque origin 无 localStorage（持久化段需要）
 });
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.window = dom.window as unknown as Window & typeof globalThis;
@@ -103,18 +106,27 @@ function fireWheel(el: Element, init: WheelInit) {
   el.dispatchEvent(evt);
 }
 
-/** jsdom 无布局：把 scrollLeft/Top 换成实例存取器（组件写什么读回什么）。 */
-function stubScroll(el: HTMLElement) {
-  const state = { scrollLeft: 0, scrollTop: 0 };
-  Object.defineProperty(el, "scrollLeft", {
+/** jsdom 无布局：把 scrollLeft/Top 换成原型级存取器（组件写什么读回什么；
+ * 按元素分账，重开面板的新容器同享）。须在挂载前装好。 */
+const scrollStore = new WeakMap<HTMLElement, { left: number; top: number }>();
+function installScrollStub() {
+  Object.defineProperty(dom.window.HTMLElement.prototype, "scrollLeft", {
     configurable: true,
-    get: () => state.scrollLeft,
-    set: (v: number) => { state.scrollLeft = v; },
+    get(this: HTMLElement) { return scrollStore.get(this)?.left ?? 0; },
+    set(this: HTMLElement, v: number) {
+      const s = scrollStore.get(this) ?? { left: 0, top: 0 };
+      s.left = v;
+      scrollStore.set(this, s);
+    },
   });
-  Object.defineProperty(el, "scrollTop", {
+  Object.defineProperty(dom.window.HTMLElement.prototype, "scrollTop", {
     configurable: true,
-    get: () => state.scrollTop,
-    set: (v: number) => { state.scrollTop = v; },
+    get(this: HTMLElement) { return scrollStore.get(this)?.top ?? 0; },
+    set(this: HTMLElement, v: number) {
+      const s = scrollStore.get(this) ?? { left: 0, top: 0 };
+      s.top = v;
+      scrollStore.set(this, s);
+    },
   });
 }
 
@@ -131,11 +143,11 @@ async function mountPanel(): Promise<{ root: Root; view: HTMLElement }> {
   });
   const view = document.querySelector<HTMLElement>(".wf-panel__canvas-scroll");
   if (!view) throw new Error("canvas scroll container did not render");
-  stubScroll(view);
   return { root, view };
 }
 
 const holdMs = WORKFLOW_PAN_LONG_PRESS_MS + 120;
+installScrollStub();
 
 // ── ② 视角拖移：长按空白拖动拨视口 ──────────────────────────────────
 {
@@ -249,7 +261,60 @@ const holdMs = WORKFLOW_PAN_LONG_PRESS_MS + 120;
   await act(async () => { root.unmount(); });
 }
 
-// ── ④ 持久化（commit 4 接续）────────────────────────────────────────
+// ── ④ 持久化：视角+缩放随面板偏好存 localStorage，重开面板恢复 ─────────
+{
+  // 纯函数面：偏好形状校验（sessionWallPrefs 同款降级语义）。
+  window.localStorage.clear();
+  eq(loadWorkflowViewportPrefs().zoom, undefined, "empty storage loads no prefs");
+  window.localStorage.setItem("workflowPanel:viewport:v1", "not-json{");
+  eq(JSON.stringify(loadWorkflowViewportPrefs()), "{}", "malformed JSON degrades to no prefs instead of throwing");
+  window.localStorage.setItem("workflowPanel:viewport:v1", JSON.stringify({ zoom: 9, scrollLeft: "x", scrollTop: {}, extra: 1 }));
+  const weird = loadWorkflowViewportPrefs();
+  eq(weird.zoom, WORKFLOW_ZOOM_MAX, "out-of-range stored zoom clamps on load");
+  eq(weird.scrollLeft, undefined, "non-numeric scrollLeft is dropped");
+  eq(weird.scrollTop, undefined, "non-numeric scrollTop is dropped");
+
+  // 行为面：视角调整 → 防抖落盘 → 重开面板恢复 zoom+scroll。
+  window.localStorage.clear();
+  const first = await mountPanel();
+  const canvas1 = document.querySelector<HTMLElement>(".wf-panel__canvas");
+  if (!canvas1) throw new Error("canvas did not render");
+  first.view.scrollLeft = 120;
+  first.view.scrollTop = 60;
+  const savedZoom = clampZoom(WORKFLOW_ZOOM_DEFAULT * zoomFactorFromWheel(-100, 0));
+  await act(async () => {
+    fireWheel(first.view, { clientX: 20, clientY: 20, deltaY: -100, ctrlKey: true });
+  });
+  eq(canvas1.style.transform, `scale(${savedZoom})`, "viewport adjust before save (zoom applied)");
+  await act(async () => { await sleep(400); }); // 越过 250ms 防抖窗
+  // 缩放锚点调整会重写滚动值（锚 @ (20,20)）——落盘的是调整后的最终视角。
+  const savedX = anchoredScroll(120, savedZoom / WORKFLOW_ZOOM_DEFAULT, 20);
+  const savedY = anchoredScroll(60, savedZoom / WORKFLOW_ZOOM_DEFAULT, 20);
+  const stored = JSON.parse(window.localStorage.getItem("workflowPanel:viewport:v1") ?? "{}") as Record<string, number>;
+  eq(stored.zoom, savedZoom, "debounced save lands the zoom level");
+  eq(stored.scrollLeft, savedX, "debounced save lands the pan offset (x)");
+  eq(stored.scrollTop, savedY, "debounced save lands the pan offset (y)");
+  await act(async () => { first.root.unmount(); });
+
+  // 重开面板：初始缩放与滚动偏移都回到上次离开的样子。
+  const second = await mountPanel();
+  const canvas2 = document.querySelector<HTMLElement>(".wf-panel__canvas");
+  if (!canvas2) throw new Error("canvas did not render after reopen");
+  eq(canvas2.style.transform, `scale(${savedZoom})`, "reopening restores the saved zoom level");
+  eq(second.view.scrollLeft, savedX, "reopening restores the saved pan offset (x)");
+  eq(second.view.scrollTop, savedY, "reopening restores the saved pan offset (y)");
+
+  // 存储损坏：重开不炸、回默认视角。
+  await act(async () => { second.root.unmount(); });
+  window.localStorage.setItem("workflowPanel:viewport:v1", "{{{broken");
+  const third = await mountPanel();
+  const canvas3 = document.querySelector<HTMLElement>(".wf-panel__canvas");
+  if (!canvas3) throw new Error("canvas did not render after corrupt storage");
+  eq(canvas3.style.transform, "scale(1)", "corrupt storage reopens at the default zoom (degraded, not crashed)");
+  eq(third.view.scrollLeft, 0, "corrupt storage reopens at the default pan (degraded, not crashed)");
+  await act(async () => { third.root.unmount(); });
+  window.localStorage.clear();
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exitCode = 1;

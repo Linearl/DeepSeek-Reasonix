@@ -30,6 +30,8 @@ import {
   anchoredScroll,
   clampZoom,
   exceedsPanSlop,
+  loadWorkflowViewportPrefs,
+  saveWorkflowViewportPrefs,
   WORKFLOW_PAN_LONG_PRESS_MS,
   WORKFLOW_ZOOM_DEFAULT,
   zoomFactorFromWheel,
@@ -196,6 +198,13 @@ export function WorkflowPanel({
   // 拨动滚动容器的 scrollLeft/Top——原生滚动边界自动钳制，画布不会丢出视野，
   // 无 Ctrl 滚轮/滚动条等既有能力原样保留。
   const viewRef = useRef<HTMLDivElement | null>(null);
+  // React 卸载时先以 null 调 callback ref（detach）再跑 passive 清理——卸载
+  // 冲盘需要最后一次挂载的容器，所以镜像 ref 只在 attach 时更新。
+  const containerViewRef = useRef<HTMLDivElement | null>(null);
+  const setViewRef = useCallback((el: HTMLDivElement | null) => {
+    viewRef.current = el;
+    if (el) containerViewRef.current = el;
+  }, []);
   const [panning, setPanning] = useState(false);
   const panRef = useRef<{
     pointerId: number;
@@ -280,8 +289,38 @@ export function WorkflowPanel({
   // 锚点保持 = 缩放后把「锚点下的内容点」拨回锚点（anchoredScroll）。
   // React 合成 wheel 是被动监听，preventDefault 无效——这里挂原生非被动监听，
   // 既拦下 webview 整页缩放，也不接管无 Ctrl 的普通滚轮（原生滚动保留）。
-  const [zoom, setZoom] = useState(WORKFLOW_ZOOM_DEFAULT);
+  // ── 持久化（tl933 需求④）：初始缩放取面板偏好；滚动偏移重开时恢复
+  // （restore 效果），任何视口变化防抖落盘，卸载即冲。
+  const [zoom, setZoom] = useState(() => loadWorkflowViewportPrefs().zoom ?? WORKFLOW_ZOOM_DEFAULT);
   const pendingScrollRef = useRef<{ x?: number; y?: number } | null>(null);
+  const zoomRef = useRef(zoom);
+  const saveTimerRef = useRef<number | null>(null);
+
+  const viewportNow = useCallback(() => {
+    const container = containerViewRef.current;
+    return {
+      scrollLeft: container?.scrollLeft ?? 0,
+      scrollTop: container?.scrollTop ?? 0,
+      zoom: zoomRef.current,
+    };
+  }, []);
+
+  const scheduleViewportSave = useCallback(() => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      saveWorkflowViewportPrefs(viewportNow());
+    }, 250);
+  }, [viewportNow]);
+
+  // 重开面板恢复上次视角：滚动偏移写入滚动容器（浏览器按内容范围钳制）。
+  useLayoutEffect(() => {
+    const container = viewRef.current;
+    if (!container) return;
+    const prefs = loadWorkflowViewportPrefs();
+    if (prefs.scrollLeft !== undefined) container.scrollLeft = prefs.scrollLeft;
+    if (prefs.scrollTop !== undefined) container.scrollTop = prefs.scrollTop;
+  }, []);
 
   useEffect(() => {
     const container = viewRef.current;
@@ -314,6 +353,28 @@ export function WorkflowPanel({
     if (pending.x !== undefined) container.scrollLeft = pending.x;
     if (pending.y !== undefined) container.scrollTop = pending.y;
   }, [zoom]);
+
+  // 视口持久化触发面：缩放变化 / 任何滚动（原生滚轮、滚动条、pan）防抖落盘；
+  // 卸载（关面板）即冲，最后 250ms 内的调整也不丢。
+  useEffect(() => {
+    zoomRef.current = zoom;
+    scheduleViewportSave();
+  }, [zoom, scheduleViewportSave]);
+
+  useEffect(() => {
+    const container = viewRef.current;
+    if (!container) return;
+    container.addEventListener("scroll", scheduleViewportSave, { passive: true });
+    return () => container.removeEventListener("scroll", scheduleViewportSave);
+  }, [scheduleViewportSave]);
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+      saveWorkflowViewportPrefs(viewportNow());
+    },
+    [viewportNow],
+  );
 
   if (!mounted) return null;
 
@@ -406,7 +467,7 @@ export function WorkflowPanel({
         <div className="wf-panel__body">
           <div
             className={panning ? "wf-panel__canvas-scroll wf-panel__canvas-scroll--panning" : "wf-panel__canvas-scroll"}
-            ref={viewRef}
+            ref={setViewRef}
             onPointerDown={onViewPointerDown}
             onPointerMove={onViewPointerMove}
             onPointerUp={onViewPointerUp}

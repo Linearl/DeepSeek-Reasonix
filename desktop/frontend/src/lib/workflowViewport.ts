@@ -41,3 +41,45 @@ export function zoomFactorFromWheel(deltaY: number, deltaMode?: number): number 
 export function anchoredScroll(scroll: number, ratio: number, anchor: number): number {
   return (scroll + anchor) * ratio - anchor;
 }
+
+// ── 持久化（tl933 需求④）：视角（滚动偏移）+缩放跨会话随面板偏好存储 ──
+//
+// 机制：纯前端 UI 偏好走 localStorage（sessionWallPrefs / dockTabs 先例），
+// 不进桌面 config 数据面（tl933 纪律：934 接真数据前不动数据面）。形状损坏
+// 一律降级为缺省而不是抛错；配额错误尽力而为忽略。
+
+const WORKFLOW_VIEWPORT_STORAGE_KEY = "workflowPanel:viewport:v1";
+
+export interface WorkflowViewportPrefs {
+  /** 缩放级别（已钳制到 25%~300%）。 */
+  zoom?: number;
+  /** 视口滚动偏移（pan 的落点；重开后由浏览器按内容范围再钳制）。 */
+  scrollLeft?: number;
+  scrollTop?: number;
+}
+
+export function loadWorkflowViewportPrefs(): WorkflowViewportPrefs {
+  try {
+    const raw = window.localStorage.getItem(WORKFLOW_VIEWPORT_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    const src = parsed as Record<string, unknown>;
+    const out: WorkflowViewportPrefs = {};
+    if (typeof src.zoom === "number") out.zoom = clampZoom(src.zoom);
+    if (typeof src.scrollLeft === "number" && Number.isFinite(src.scrollLeft)) out.scrollLeft = src.scrollLeft;
+    if (typeof src.scrollTop === "number" && Number.isFinite(src.scrollTop)) out.scrollTop = src.scrollTop;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function saveWorkflowViewportPrefs(patch: WorkflowViewportPrefs): void {
+  try {
+    const merged = { ...loadWorkflowViewportPrefs(), ...patch };
+    window.localStorage.setItem(WORKFLOW_VIEWPORT_STORAGE_KEY, JSON.stringify(merged));
+  } catch {
+    /* 配额/隐私模式等错误忽略——偏好是尽力而为 */
+  }
+}

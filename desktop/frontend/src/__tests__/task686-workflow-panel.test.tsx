@@ -318,5 +318,19 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   windowShim.window = undefined;
 }
 
+// ── ⑦ 视口交互契约（tl933）：pan/缩放/持久化的源码钉 ─────────────────
+{
+  const vp = read("src/lib/workflowViewport.ts");
+  ok(vp.includes("WORKFLOW_ZOOM_MIN = 0.25") && vp.includes("WORKFLOW_ZOOM_MAX = 3"), "zoom range contract is 25%~300% (tl933)");
+  ok(vp.includes('"workflowPanel:viewport:v1"'), "viewport prefs live under the versioned workflowPanel storage key (localStorage 面板偏好)");
+  ok(vp.includes("export function playFixtureRun") === false, "workflowViewport stays a pure viewport module (demo script keeps living in workflowEvents)");
+  const panelSource = read("src/components/WorkflowPanel.tsx");
+  ok(panelSource.includes("loadWorkflowViewportPrefs()") && panelSource.includes("saveWorkflowViewportPrefs("), "panel restores on open and saves viewport prefs (tl933 需求④)");
+  ok(panelSource.includes("if (!e.ctrlKey) return;"), "wheel zoom is ctrl-gated (plain wheel stays native, tl933 需求③)");
+  ok(panelSource.includes('closest(".wf-node")'), "pan gesture never starts on a node (node interaction wins, tl933 需求②)");
+  const styles = read("src/styles.css");
+  ok(styles.includes(".wf-panel__canvas-scroll--panning") && styles.includes(".wf-panel__canvas-frame"), "panel CSS carries the panning cursor + scaled frame classes (class contract)");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exitCode = 1;
