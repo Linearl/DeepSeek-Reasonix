@@ -303,6 +303,26 @@ func Open(sessionPath, sessionID string) (*Ledger, error) {
 	return l, nil
 }
 
+// LastActivityAt returns the wall-clock millisecond stamp of the last ledger
+// event, falling back to the current turn's start stamp when the in-memory
+// window is empty (compacted or not yet appended). 0 when there is no
+// activity to speak of (no turn ever started). It is the wedged-running
+// liveness probe (tl1288): a running turn whose ledger has been quiet past a
+// threshold has stopped producing events — tool progress, tokens, status
+// changes all append — and no append for a long while means the turn body is
+// wedged, not working.
+func (l *Ledger) LastActivityAt() int64 {
+	if l == nil {
+		return 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if n := len(l.records); n > 0 {
+		return l.records[n-1].CreatedAt
+	}
+	return l.turnStarted
+}
+
 func legacyTranscriptExists(sessionPath string) bool {
 	if sessionPath == "" {
 		return false
@@ -335,6 +355,33 @@ func (l *Ledger) Begin() (string, error) {
 	}
 	l.transcript = transcriptSnapshot{}
 	return id, nil
+}
+
+// AbandonActiveTurn converts the active non-terminal turn into an interrupted
+// one (tl1288): the stall heal abandoned the wedged turn body, and the next
+// Begin must not be refused with "turn is still active". This is the same
+// durable shape the reopen path writes for an orphaned turn at ledger Open
+// (recoverToolEffects), just discovered while the process is still alive.
+// No-op (nil) when there is no active turn or it is already terminal.
+func (l *Ledger) AbandonActiveTurn(reason string) error {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.active == "" || l.terminal {
+		return nil
+	}
+	status := event.TurnInterrupted
+	e := event.Event{Kind: event.TurnDone, TurnID: l.active, Source: "stall_heal", Err: errors.New(reason)}
+	e.Status = status
+	if _, ok, err := l.appendLocked(e, status); err != nil || !ok {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("abandon active turn %s: terminal append rejected", l.active)
+	}
+	return nil
 }
 
 func (l *Ledger) SetRoutingMetadata(runtimeEpoch, submissionID string) {

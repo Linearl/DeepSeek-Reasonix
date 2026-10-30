@@ -26,6 +26,21 @@ const turnInterruptStaleTimeout = 45 * time.Second
 // ticker, because a wedged fan-out produces no further events to hook.
 const FinishingStuckTimeout = 90 * time.Second
 
+// RunningStallQuietTimeout is the tl1288 bound on a RUNNING turn's silence:
+// every sign of life appends to the turn event ledger (tool dispatch/result,
+// tokens, status changes, retries), so a running turn whose ledger has been
+// quiet this long is wedged inside its body — no TurnDone will ever arrive,
+// c.running stays true, and every later observer (TabBar projection, 579
+// bridge) reads a phantom busy state (20261031 01:07-01:18 现场：579 桥开的
+// collab 轮体卡死，sweep 连续 11 分钟 skip:running，tab 挂绿点+已工作计数残
+// 影，实体在盘所以 1266b 不拦). Deliberately far above FinishingStuckTimeout
+// and the 303 interrupt-stale 45s: the false-positive cost is abandoning a
+// genuinely slow foreground tool, so only silence no honest tool run can
+// produce (background jobs keep their own aliveness guard in the heal) may
+// clear the bar. Same trigger discipline as 796: no internal ticker, the
+// desktop idle-turn bridge calls HealStalledRunning from its sweep.
+const RunningStallQuietTimeout = 10 * time.Minute
+
 // admissionResult classifies what runGuarded did with a turn body.
 type admissionResult int
 
@@ -151,6 +166,111 @@ func (c *Controller) HealStuckFinishing(maxAge time.Duration) (healed bool, stal
 	c.refreshRuntimeState(event.Event{})
 	// Same re-arms the normal exit path performs: durable-host consumers get
 	// their dispatch pass; the desktop bridge re-opens on its own next sweep.
+	c.maybeDispatchInbox()
+	c.wakeKickAfterTurnFinished()
+	return true, stalledFor
+}
+
+// RunningQuietFor reports how long the running turn has produced no ledger
+// event (the tl1288 liveness probe). ok=false when no turn is running, the
+// controller is closed, or there is no ledger stamp to read — callers must
+// treat a missing stamp as "cannot judge", never as "quiet forever".
+func (c *Controller) RunningQuietFor(now time.Time) (quiet time.Duration, ok bool) {
+	if c == nil {
+		return 0, false
+	}
+	c.mu.Lock()
+	running, closed := c.running, c.closed
+	c.mu.Unlock()
+	if !running || closed {
+		return 0, false
+	}
+	last := c.turnEventLedger().LastActivityAt()
+	if last <= 0 {
+		return 0, false
+	}
+	quiet = now.Sub(time.UnixMilli(last))
+	if quiet < 0 {
+		quiet = 0
+	}
+	return quiet, true
+}
+
+// HealStalledRunning is the tl1288 unattended-side heal for the fourth
+// 579-family shape: a RUNNING turn whose body wedged (provider stream died
+// mid-tool, executor stuck) never runs finishGuardedTurn, so c.running stays
+// true forever. The 303 self-heal cannot reach it — that check rides
+// admitGuardedTurn and an unattended session has no submitter — and the 579
+// bridge's sweep reads skip:running and moves on, which is exactly the
+// 20261031 production scene (tab green dot + work counter on a transcript
+// with no events for 11+ minutes, entity on disk so 1266b does not engage).
+//
+// The heal fires only on the unambiguous shape — running, gate not rotating,
+// no parked bodies (a live FIFO drain keeps the gate busy legitimately), no
+// in-flight compaction, no background jobs (a running job is the turn's
+// aliveness evidence: foreground tools wait on them routinely), ledger quiet
+// past maxQuiet — and does what the wedged turn's own abandon path would do:
+// cancel the body, bump the generation so its late completion is recognized
+// stale (finishGuardedTurn's 303 stale-completion guard), reopen the gate,
+// notify, and re-arm the durable consumers. The caller re-evaluates on its
+// next sweep tick; this method never opens a turn itself.
+func (c *Controller) HealStalledRunning(maxQuiet time.Duration) (healed bool, stalledFor time.Duration) {
+	if c == nil || maxQuiet <= 0 {
+		return false, 0
+	}
+	now := time.Now()
+	c.mu.Lock()
+	if c.closed || c.rotating || !c.running || len(c.parkedTurns) > 0 {
+		c.mu.Unlock()
+		return false, 0
+	}
+	if c.executor != nil && c.executor.CompactionInFlight() {
+		c.mu.Unlock()
+		return false, 0
+	}
+	path := c.sessionPath
+	if c.jobs != nil && len(c.jobs.RunningForSession(agent.BranchID(path))) > 0 {
+		c.mu.Unlock()
+		return false, 0
+	}
+	last := c.turnEventLedger().LastActivityAt()
+	if last <= 0 {
+		c.mu.Unlock()
+		return false, 0
+	}
+	stalledFor = now.Sub(time.UnixMilli(last))
+	if stalledFor < maxQuiet {
+		c.mu.Unlock()
+		return false, 0
+	}
+	if c.cancel != nil {
+		c.cancel()
+	}
+	// Terminate the ledger's active turn now, while still under c.mu (the
+	// c.mu→ledger.mu order is the only one in this file): otherwise the next
+	// real Submit's Begin is refused with "turn is still active" and the
+	// reopened gate is unusable for exactly the session that needed the heal.
+	if ledger := c.turnEventLedger(); ledger != nil {
+		_ = ledger.AbandonActiveTurn("runtime stall self-heal abandoned the wedged turn (tl1288)")
+	}
+	c.turnGeneration++
+	c.running = false
+	c.finishing = false
+	c.finishingSince = time.Time{}
+	c.canceling = false
+	c.interrupting = false
+	c.interruptRequestedAt = time.Time{}
+	c.interruptDeferred = false
+	c.resetStopEscalationLocked()
+	c.mu.Unlock()
+	slog.Warn("control: running turn wedged past quiet threshold — self-heal abandoned it and reopened the admission gate (tl1288)",
+		"quiet_for", stalledFor.Round(time.Second), "threshold", maxQuiet,
+		"generation", c.turnGeneration,
+		"action", "cancel_wedged_turn_and_rearm_consumers")
+	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
+		Text: "the running turn stopped responding and was reset automatically; you can resend your message"})
+	c.releaseUnownedInboxClaims("heal_stalled_running")
+	c.refreshRuntimeState(event.Event{})
 	c.maybeDispatchInbox()
 	c.wakeKickAfterTurnFinished()
 	return true, stalledFor
