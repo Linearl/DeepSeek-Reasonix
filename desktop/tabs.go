@@ -69,15 +69,24 @@ type pendingDisplayWrite struct {
 // memory, permissions) scoped to a workspace root, so multiple projects and
 // topics can be active concurrently without interfering.
 type WorkspaceTab struct {
-	ID                  string                   // stable random id
-	Scope               string                   // "project" | "global"
-	WorkspaceRoot       string                   // project root dir (empty for global)
-	SharedHostKey       string                   // opaque key for the shared plugin host (set by buildTabController)
-	TopicID             string                   // topic within the project
-	TopicTitle          string                   // display title
-	topicTitleSource    string                   // auto or manual; controls localization at API boundaries
-	SessionPath         string                   // exact .jsonl file this tab continues
-	SessionGeneration   uint64                   // bumps on session rotation (clear/new); frontend hydrate identity
+	ID                string // stable random id
+	Scope             string // "project" | "global"
+	WorkspaceRoot     string // project root dir (empty for global)
+	SharedHostKey     string // opaque key for the shared plugin host (set by buildTabController)
+	TopicID           string // topic within the project
+	TopicTitle        string // display title
+	topicTitleSource  string // auto or manual; controls localization at API boundaries
+	SessionPath       string // exact .jsonl file this tab continues
+	SessionGeneration uint64 // bumps on session rotation (clear/new); frontend hydrate identity
+	// restoredMissingPath (tl 1266) 记录「恢复时点实体查无」的那条声明路径：
+	// restorePersistedTabs 在还原持久化 tab 布局时对 entry.SessionPath 做一次
+	// 存在性判定，查无则存路径本身。这是唯一能安全区分「重启后恢复的旧会话
+	// （文件该在而不在）」与「本进程新建会话（文件尚未首轮落盘）」的时刻——
+	// 新建 tab 不带标记。存路径而非布尔是有意的：标记只对同一路径生效
+	// （sessionRuntimeKey 归一比对），tab 轮换到新会话（/new、clear、rebind、
+	// 换绑历史会话）后自动失活，无需在每个路径变更点清除；实体重新出现则由
+	// 实时 Stat 自愈（见 tabSessionDisconnected）。
+	restoredMissingPath string
 	ReadOnly            bool                     // true for external channel transcripts opened for browsing
 	Takeover            struct{ Spectator bool } // handoff state grouped by its cross-runtime lifetime
 	Ctrl                control.SessionAPI       // nil while booting / on error
@@ -2381,19 +2390,53 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 	}
 	if tab.Ctrl != nil {
 		status := tab.Ctrl.RuntimeStatus()
-		m.Running = status.Running || status.PendingPrompt || status.BackgroundJobs > 0
-		m.PendingPrompt = status.PendingPrompt
-		m.BackgroundJobs = status.BackgroundJobs
-		m.CancelRequested = status.CancelRequested
-		m.StopLevel = status.StopLevel
-		if status.StopDeadlineUnix != 0 {
-			m.StopDeadlineUnix = status.StopDeadlineUnix
+		claimsWork := status.Running || status.PendingPrompt || status.BackgroundJobs > 0
+		// tl 1266 方向②: 控制器声称有活跃工作，但它声称服务的会话实体已查无
+		// （恢复时标记的旧会话文件不在了，或删除进行中）。继续投 running 就是
+		// 20261030 事故截图里的残影：实体已随旧进程销毁的 tab 还挂着绿点和
+		// 已工作计数。这里投影为断开：活动标志全清、不可取消，runtime 视图
+		// 挂 session_missing issue 由前端渲染「已断开」。只改投影不改注册表，
+		// 持久化与唤醒语义不动；实体重新出现时下一次 ListTabs 自愈。
+		// 断开判定的口径（恢复标记×实时 Stat 联合、清理待执行即时生效）见
+		// tabSessionDisconnected——不带恢复标记的新建会话首发落盘前不会被误判。
+		if tabSessionDisconnected(tab) {
+			m.Running = false
+			m.PendingPrompt = false
+			m.BackgroundJobs = 0
+			m.CancelRequested = false
+			m.Cancellable = false
+			m.Ready = false
+			m.Runtime = SessionRuntimeView{
+				Phase: sessionRuntimeFailed,
+				Epoch: runtimeView.Epoch,
+				Issue: sessionMissingRuntimeIssue(),
+			}
+		} else {
+			m.Running = claimsWork
+			m.PendingPrompt = status.PendingPrompt
+			m.BackgroundJobs = status.BackgroundJobs
+			m.CancelRequested = status.CancelRequested
+			m.StopLevel = status.StopLevel
+			if status.StopDeadlineUnix != 0 {
+				m.StopDeadlineUnix = status.StopDeadlineUnix
+			}
+			m.Cancellable = status.Cancellable
+			m.TurnID = status.TurnID
+			m.TurnStatus = string(status.Status)
+			m.TurnEventSeq = status.TurnEventSeq
+			m.TurnReplayAfter = status.ReplayAfterSeq
 		}
-		m.Cancellable = status.Cancellable
-		m.TurnID = status.TurnID
-		m.TurnStatus = string(status.Status)
-		m.TurnEventSeq = status.TurnEventSeq
-		m.TurnReplayAfter = status.ReplayAfterSeq
+	} else if tabSessionDisconnected(tab) {
+		// tl 1266 方向①: 重启恢复的骨架 tab 声称延续的实体已查无——它永远
+		// 重站不回那段对话，不能再以普通「未加载/starting」示人。保持任务 619
+		// 的惰性契约（点击仍触发构建），但投影挂上 session_missing issue、
+		// 相位置为 failed：标签条渲染「已断开」，提交前置校验给出断开文案。
+		// 读取型投影：注册表状态不动，实体回来即自愈。
+		m.Runtime = SessionRuntimeView{
+			Phase: sessionRuntimeFailed,
+			Epoch: runtimeView.Epoch,
+			Issue: sessionMissingRuntimeIssue(),
+		}
 	}
 	if a.botBridge != nil {
 		m.RemoteControlled = a.botBridge.remoteControlledTabs()[tab.ID]

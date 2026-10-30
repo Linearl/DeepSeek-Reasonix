@@ -156,6 +156,14 @@ func (a *App) restorePersistedTabs(ctx context.Context, f desktopTabsFile) []*Wo
 			}
 		}
 		tab.SessionPath = strings.TrimSpace(entry.SessionPath)
+		// tl 1266 方向①：恢复时点实体存在性判定——此刻是唯一知道「这条路径
+		// 来自上一进程，文件该在而不在」的时刻。查无则把那条路径本身记为标记
+		// （只对同一路径生效，轮换自动失活）：该 tab 由 tabMeta/Meta 投影为
+		// 「已断开」可见态，受理链（方向③）据此拒绝提交。本进程新建的 tab
+		// 不经过这里，不带标记，首发消息不受断开守卫影响。
+		if tabSessionDisconnectedForPath(tab.SessionPath, true) {
+			tab.restoredMissingPath = tab.SessionPath
+		}
 		tab.ReadOnly = entry.ReadOnly
 		restoreTabPinnedContext(tab, entry.PinnedFiles)
 		tab.Takeover.Spectator = entry.TakeoverSpectator

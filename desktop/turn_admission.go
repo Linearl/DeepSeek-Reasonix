@@ -84,6 +84,14 @@ func (a *App) beginRuntimeTurn(tabID string, reclaim, detached bool, submissionI
 		if sessionYieldActiveForTab(tab) {
 			return nil, nil, errTabYieldingToTakeover
 		}
+		// tl 1266 方向③: 前置实体校验。tab 声称延续的会话 .jsonl 查无（被删/
+		// 清理待执行/来自已销毁实例）时拒绝受理并给断开文案——在 ErrTurnRunning
+		// 判定之前拦截，消息才不会经降级链排进已死执行体的队列（20261030
+		// 用户实锤：点「继续」两次无反应）。重试循环的每个 continue 都会重新
+		// 解析 tab 并重过本检查。
+		if err := a.sessionEntityAdmissionErrForTab(tab); err != nil {
+			return nil, nil, err
+		}
 		if err := a.workspaceRuntimeAdmissionErr(tab, ctrl); err != nil {
 			return nil, nil, err
 		}

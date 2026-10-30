@@ -255,6 +255,11 @@ func (a *App) MetaForTab(tabID string) Meta {
 	tab := a.tabByIDLocked(tabID)
 	snap := snapshotTabRuntimeLocked(tab)
 	runtimeView := a.sessionRuntimeViewLocked(tab)
+	// tl 1266：会话实体查无（恢复标记×实时 Stat / 清理待执行）时把断开投影进
+	// runtime 视图——前端 runtimeReadyForSubmit 据此拒绝发送并原样抛出断开
+	// 文案（方向③的前端面），下方 Ready 一并翻假。读取型投影，注册表不动，
+	// 实体回来即自愈。
+	disconnected := tabSessionDisconnected(tab)
 	a.mu.RUnlock()
 	if tab == nil {
 		meta := Meta{EventChannel: eventChannel}
@@ -262,6 +267,13 @@ func (a *App) MetaForTab(tabID string) Meta {
 			meta.Remote = &ref
 		}
 		return meta
+	}
+	if disconnected {
+		runtimeView = SessionRuntimeView{
+			Phase: sessionRuntimeFailed,
+			Epoch: runtimeView.Epoch,
+			Issue: sessionMissingRuntimeIssue(),
+		}
 	}
 	cwd := snap.workspaceRoot
 	if cwd == "" {
