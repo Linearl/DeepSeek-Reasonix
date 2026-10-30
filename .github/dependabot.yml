@@ -34,15 +34,18 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # 任务 1270（2026-10-30 用户裁断，沿用 555 workers 先例）：site/ 目录是上游遗留
+  # astro 站（fork 已用 docs-site 替代，不在维护面）——禁用其全部依赖更新
+  # （open-pull-requests-limit: 0 + ignore "*"），已开的 site PR 一并关闭。
+  # 注意：security alerts 由仓库依赖图扫描产生，本配置不能移除已存在的 alerts；
+  # 如需清除现存告警需在 GitHub UI 逐条 dismiss（任务纪律禁止脚本 dismiss）。
   - package-ecosystem: "npm"
     directory: "/site"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
-    groups:
-      npm:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
