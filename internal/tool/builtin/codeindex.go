@@ -92,7 +92,7 @@ func (c codeIndex) Execute(ctx context.Context, args json.RawMessage) (string, e
 		return "", fmt.Errorf("query is required for action=search")
 	}
 
-	root := resolveIn(c.workDir, p.Path)
+	root := sanitizePathArg(c.workDir, p.Path)
 	collectionLimit := p.Limit
 	if p.Action == "outline" && hasCodeSymbolFilter(p) {
 		collectionLimit = 0

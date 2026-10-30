@@ -67,13 +67,12 @@ func (m moveFile) Execute(ctx context.Context, args json.RawMessage) (string, er
 	if p.DestinationPath == "" {
 		return "", fmt.Errorf("destination_path is required")
 	}
-	src := resolveIn(m.workDir, p.SourcePath)
-	dst := resolveIn(m.workDir, p.DestinationPath)
-	roots := effectiveWriteRoots(ctx, m.rootSet, m.roots)
-	if err := confineWrite(ctx, roots, m.guard, m.managed, src); err != nil {
+	src, err := sanitizeWriteTarget(ctx, m.workDir, p.SourcePath, m.rootSet, m.roots, m.guard, m.managed)
+	if err != nil {
 		return "", err
 	}
-	if err := confineWrite(ctx, roots, m.guard, m.managed, dst); err != nil {
+	dst, err := sanitizeWriteTarget(ctx, m.workDir, p.DestinationPath, m.rootSet, m.roots, m.guard, m.managed)
+	if err != nil {
 		return "", err
 	}
 	info, err := os.Stat(src)
@@ -83,7 +82,7 @@ func (m moveFile) Execute(ctx context.Context, args json.RawMessage) (string, er
 	if info.IsDir() {
 		return "", fmt.Errorf("%s is a directory; move_file only moves files", src)
 	}
-	if filepath.Clean(src) == filepath.Clean(dst) {
+	if src == dst { // both sanitized (filepath.Clean'd) by sanitizeWriteTarget
 		return fmt.Sprintf("%s is already at %s; no changes made", src, dst), nil
 	}
 	sameFileDestination := false

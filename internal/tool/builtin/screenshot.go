@@ -52,10 +52,11 @@ func (e screenshotTool) Execute(ctx context.Context, args json.RawMessage) (stri
 	if p.Output == "" {
 		return "", fmt.Errorf("output is required (PNG file path to write)")
 	}
-	p.Output = resolveIn(e.workDir, p.Output)
-	if err := confineWrite(ctx, effectiveWriteRoots(ctx, e.rootSet, e.roots), e.guard, e.managed, p.Output); err != nil {
+	output, err := sanitizeWriteTarget(ctx, e.workDir, p.Output, e.rootSet, e.roots, e.guard, e.managed)
+	if err != nil {
 		return "", err
 	}
+	p.Output = output
 	w, h, title, err := captureWindowScreenshot(p.Output, p.WindowTitle)
 	if err != nil {
 		return "", err

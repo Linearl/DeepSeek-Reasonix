@@ -38,7 +38,7 @@ func declareParentWriteDirs(workDir string, paths ...string) (tool.WriteAccessDe
 		if p == "" {
 			return tool.WriteAccessDeclaration{}, fmt.Errorf("path is required")
 		}
-		resolved := resolveIn(workDir, p)
+		resolved := sanitizePathArg(workDir, p)
 		dir := filepath.Dir(resolved)
 		if dir == "" || dir == "." {
 			continue

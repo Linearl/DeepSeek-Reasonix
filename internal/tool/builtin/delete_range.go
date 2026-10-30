@@ -111,10 +111,11 @@ func (d deleteRange) resolveTarget(ctx context.Context, args json.RawMessage) (d
 		inclusive = *p.Inclusive
 	}
 
-	p.Path = resolveIn(d.workDir, p.Path)
-	if err := confinePreview(effectiveWriteRoots(ctx, d.rootSet, d.roots), d.guard, d.managed, p.Path); err != nil {
+	path, err := sanitizePreviewTarget(ctx, d.workDir, p.Path, d.rootSet, d.roots, d.guard, d.managed)
+	if err != nil {
 		return deleteRangeTarget{}, err
 	}
+	p.Path = path
 
 	src, err := readEditSource(ctx, d.overlay, p.Path)
 	if err != nil {

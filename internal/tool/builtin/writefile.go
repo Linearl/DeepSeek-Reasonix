@@ -64,8 +64,8 @@ func (w writeFile) DeclareEvidenceTarget(ctx context.Context, args json.RawMessa
 	if strings.TrimSpace(p.Path) == "" {
 		return tool.EvidenceTargetInfo{}, fmt.Errorf("path is required")
 	}
-	path := resolveIn(w.workDir, p.Path)
-	if err := confinePreview(effectiveWriteRoots(ctx, w.rootSet, w.roots), w.guard, w.managed, path); err != nil {
+	path, err := sanitizePreviewTarget(ctx, w.workDir, p.Path, w.rootSet, w.roots, w.guard, w.managed)
+	if err != nil {
 		return tool.EvidenceTargetInfo{}, err
 	}
 	src, err := readEditSource(ctx, w.overlay, path)
@@ -103,10 +103,11 @@ func (w writeFile) Execute(ctx context.Context, args json.RawMessage) (string, e
 	if p.Path == "" {
 		return "", fmt.Errorf("path is required")
 	}
-	p.Path = resolveIn(w.workDir, p.Path)
-	if err := confineWrite(ctx, effectiveWriteRoots(ctx, w.rootSet, w.roots), w.guard, w.managed, p.Path); err != nil {
+	path, err := sanitizeWriteTarget(ctx, w.workDir, p.Path, w.rootSet, w.roots, w.guard, w.managed)
+	if err != nil {
 		return "", err
 	}
+	p.Path = path
 	if err := checkOptimisticExpected(ctx, w.overlay, p.Path, p.Expected, "write_file"); err != nil {
 		return "", err
 	}

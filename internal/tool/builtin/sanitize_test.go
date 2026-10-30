@@ -18,7 +18,7 @@ func TestSanitizePathArg(t *testing.T) {
 		}
 	})
 	t.Run("redundant separators collapse", func(t *testing.T) {
-		got := sanitizePathArg(wd, filepath.Join("a", "", "b") + string(filepath.Separator))
+		got := sanitizePathArg(wd, filepath.Join("a", "", "b")+string(filepath.Separator))
 		want := filepath.Join(wd, "a", "b")
 		if got != want {
 			t.Fatalf("sanitizePathArg = %q, want %q", got, want)

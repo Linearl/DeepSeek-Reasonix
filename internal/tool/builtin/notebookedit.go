@@ -89,10 +89,11 @@ func (n notebookEdit) Execute(ctx context.Context, raw json.RawMessage) (string,
 	if err != nil {
 		return "", err
 	}
-	a.Path = resolveIn(n.workDir, a.Path)
-	if err := confineWrite(ctx, effectiveWriteRoots(ctx, n.rootSet, n.roots), n.guard, n.managed, a.Path); err != nil {
+	path, err := sanitizeWriteTarget(ctx, n.workDir, a.Path, n.rootSet, n.roots, n.guard, n.managed)
+	if err != nil {
 		return "", err
 	}
+	a.Path = path
 	if err := checkOptimisticExpected(ctx, n.overlay, a.Path, a.Expected, "notebook_edit"); err != nil {
 		return "", err
 	}
@@ -129,10 +130,11 @@ func (n notebookEdit) Preview(ctx context.Context, raw json.RawMessage) (diff.Ch
 	if err != nil {
 		return diff.Change{}, err
 	}
-	a.Path = resolveIn(n.workDir, a.Path)
-	if err := confinePreview(effectiveWriteRoots(ctx, n.rootSet, n.roots), n.guard, n.managed, a.Path); err != nil {
+	path, err := sanitizePreviewTarget(ctx, n.workDir, a.Path, n.rootSet, n.roots, n.guard, n.managed)
+	if err != nil {
 		return diff.Change{}, err
 	}
+	a.Path = path
 	src, err := readEditSource(ctx, n.overlay, a.Path)
 	if err != nil {
 		return diff.Change{}, fmt.Errorf("read %s: %w", a.Path, err)

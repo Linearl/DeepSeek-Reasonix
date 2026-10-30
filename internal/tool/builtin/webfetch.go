@@ -254,14 +254,14 @@ func (wf webFetch) Execute(ctx context.Context, args json.RawMessage) (string, e
 	if p.URL == "" {
 		return "", fmt.Errorf("url is required")
 	}
-	u, err := url.Parse(p.URL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return "", fmt.Errorf("url must be an absolute http(s) address")
+	u, err := sanitizeFetchURL(p.URL)
+	if err != nil {
+		return "", err
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, webFetchTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, p.URL, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}

@@ -103,7 +103,8 @@ func (m moveFile) DeclareEvidenceTarget(ctx context.Context, args json.RawMessag
 	if p.Source == "" || p.Destination == "" {
 		return tool.EvidenceTargetInfo{}, fmt.Errorf("source_path and destination_path are required")
 	}
-	source, dest := resolveIn(m.workDir, p.Source), resolveIn(m.workDir, p.Destination)
+	source := sanitizePathArg(m.workDir, p.Source)
+	dest := sanitizePathArg(m.workDir, p.Destination)
 	if source == dest {
 		return tool.EvidenceTargetInfo{}, nil
 	}

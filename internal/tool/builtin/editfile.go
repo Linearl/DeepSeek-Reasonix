@@ -84,10 +84,11 @@ func (e editFile) Execute(ctx context.Context, args json.RawMessage) (string, er
 	// task 875 flips the default: an omitted readBack reads back (the value
 	// users actually want in back-to-back edits), readBack:false opts out.
 	useReadBack := e.readBack && (p.ReadBack == nil || *p.ReadBack)
-	p.Path = resolveIn(e.workDir, p.Path)
-	if err := confineWrite(ctx, effectiveWriteRoots(ctx, e.rootSet, e.roots), e.guard, e.managed, p.Path); err != nil {
+	path, err := sanitizeWriteTarget(ctx, e.workDir, p.Path, e.rootSet, e.roots, e.guard, e.managed)
+	if err != nil {
 		return "", err
 	}
+	p.Path = path
 	if err := checkOptimisticExpected(ctx, e.overlay, p.Path, p.Expected, "edit_file"); err != nil {
 		return "", err
 	}

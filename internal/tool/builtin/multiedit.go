@@ -113,10 +113,11 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 	// task 875 flips the default: an omitted readBack reads back (the value
 	// users actually want in back-to-back edits), readBack:false opts out.
 	useReadBack := m.readBack && (p.ReadBack == nil || *p.ReadBack)
-	p.Path = resolveIn(m.workDir, p.Path)
-	if err := confineWrite(ctx, effectiveWriteRoots(ctx, m.rootSet, m.roots), m.guard, m.managed, p.Path); err != nil {
+	path, err := sanitizeWriteTarget(ctx, m.workDir, p.Path, m.rootSet, m.roots, m.guard, m.managed)
+	if err != nil {
 		return "", err
 	}
+	p.Path = path
 	if err := checkOptimisticExpected(ctx, m.overlay, p.Path, p.Expected, "multi_edit"); err != nil {
 		return "", err
 	}

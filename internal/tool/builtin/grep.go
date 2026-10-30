@@ -119,7 +119,7 @@ func (g grepTool) Execute(ctx context.Context, args json.RawMessage) (string, er
 	if p.Path == "" {
 		p.Path = "."
 	}
-	rp := resolveReadablePath(g.workDir, p.Path, g.paths)
+	rp := sanitizeReadPath(g.workDir, p.Path, g.paths)
 	p.Path = rp.Path
 
 	to := grepTimeout(p.TimeoutSeconds)

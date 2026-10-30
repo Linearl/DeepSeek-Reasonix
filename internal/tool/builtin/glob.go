@@ -85,7 +85,7 @@ func (g globTool) Execute(ctx context.Context, args json.RawMessage) (string, er
 	// simple-filename recursive-fallback check below works on the raw input
 	// — not the already-joined absolute path that always contains separators.
 	rawPattern := p.Pattern
-	rp := resolveReadablePath(g.workDir, p.Pattern, g.paths)
+	rp := sanitizeReadPath(g.workDir, p.Pattern, g.paths)
 	p.Pattern = rp.Path
 	p.Pattern = filepath.FromSlash(p.Pattern) // models emit "/" (see Description); WalkDir/Match compare OS-native paths
 	displayPattern := rp.DisplayPath
