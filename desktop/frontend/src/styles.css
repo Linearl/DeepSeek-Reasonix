@@ -42455,3 +42455,133 @@ button.statusbar__mcp:focus-visible {
     transparent 78%
   );
 }
+
+/* ── tl1282: 检索历史下拉（设置面板搜索 + 侧栏树搜索共用）─────────────────
+   挂载点 = 既有检索框 <label> 内部（absolute 锚定框底），聚焦且无查询词时才
+   渲染，默认视图零改动。两个宿主 label 只补 position:relative 作定位锚——
+   静态改相对且无偏移，布局零变化。z 轴走 --z-menu（与时间筛选菜单同层）。 */
+.settings-center__search,
+.project-tree__search {
+  position: relative;
+}
+
+.search-history {
+  --wails-draggable: no-drag;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-menu);
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.search-history__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px 4px;
+}
+
+.search-history__title {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.search-history__clear {
+  padding: 1px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.search-history__clear:hover,
+.search-history__clear:focus-visible {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+}
+
+.search-history__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 264px; /* 10 条 × ~24px 行高 + 头部余量：上限条目不滚动即全见 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.search-history__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 24px;
+  border-radius: var(--radius-sm);
+}
+
+.search-history__row:hover,
+.search-history__row:focus-within {
+  background: var(--bg-elev-2);
+}
+
+.search-history__term {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-history__term:hover,
+.search-history__term:focus-visible {
+  color: var(--fg);
+}
+
+.search-history__term-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-history__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+
+.search-history__remove:hover,
+.search-history__remove:focus-visible {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
