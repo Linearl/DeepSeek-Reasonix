@@ -23,8 +23,9 @@ import (
 // 落盘前文件也不存在——对它误报断开会拦掉每一段新对话的第一条消息。因此
 // 「查无」判定必须带来源：
 //   - 重启恢复的 tab：restorePersistedTabs 在还原布局时对声明路径做一次
-//     存在性判定并写入 tab.restoredSessionMissing（那是唯一知道「这条路径
-//     来自上一进程、文件该在而不在」的时刻），此后联合实时 Stat 生效；
+//     存在性判定，查无则把那条路径记入 tab.restoredMissingPath（那是唯一
+//     知道「这条路径来自上一进程、文件该在而不在」的时刻），此后联合实时
+//     Stat 生效且只对同一路径生效；
 //   - 清理待执行（IsCleanupPending，延迟删除标记在案）：任何 tab 即时生效，
 //     与恢复/名册面（IsVisibleSession）同口径；
 //   - 其余（含新建 tab）：不判查无。
@@ -71,10 +72,12 @@ func sessionEntityExists(sessionPath string) bool {
 }
 
 // tabSessionDisconnected 判定一个 tab 是否处于「会话实体查无」断开态。调用方
-// 需持有 App.mu（读 tab.restoredSessionMissing 与 currentSessionPath）或已
-// 确认 tab 不再变更。判定口径见文件头注释：
+// 需持有 App.mu（读 tab.restoredMissingPath 与 currentSessionPath）或已确认
+// tab 不再变更。判定口径见文件头注释：
 //   - 清理待执行即时生效（删除进行中的会话没有「继续」可言）；
-//   - 恢复时标记的 tab 再联合实时 Stat——文件回来了就自愈，不给新建会话误报。
+//   - 恢复时标记只对同一条路径生效（sessionRuntimeKey 归一比对）——tab 轮换
+//     到新会话后自动失活，不给轮换后尚未落盘的新路径误报；
+//   - 标记命中的路径再联合实时 Stat——文件回来了就自愈。
 func tabSessionDisconnected(tab *WorkspaceTab) bool {
 	if tab == nil {
 		return false
@@ -86,7 +89,8 @@ func tabSessionDisconnected(tab *WorkspaceTab) bool {
 	if agent.IsCleanupPending(path) {
 		return true
 	}
-	if !tab.restoredSessionMissing {
+	if tab.restoredMissingPath == "" ||
+		sessionRuntimeKey(tab.restoredMissingPath) != sessionRuntimeKey(path) {
 		return false
 	}
 	return !sessionEntityExists(path)
@@ -94,6 +98,7 @@ func tabSessionDisconnected(tab *WorkspaceTab) bool {
 
 // tabSessionDisconnectedForPath 是无 tab 上下文的纯路径变体，供恢复时点
 // （restorePersistedTabs）在 SessionPath 刚写入、tab 尚未发布前做同口径判定。
+// restored 表达「这条路径来自上一进程的持久化布局」——只有它才允许判查无。
 func tabSessionDisconnectedForPath(sessionPath string, restored bool) bool {
 	path := strings.TrimSpace(sessionPath)
 	if path == "" {

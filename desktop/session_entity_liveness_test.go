@@ -23,7 +23,8 @@ import (
 //     ErrTurnRunning 的静默降级）。
 // 关键语义边界：「文件查无」不能一刀切——本进程新建会话在首轮落盘前文件也
 // 不存在，误报会拦掉新对话的第一条消息。查无判定必须带恢复时点标记
-// （restoredSessionMissing，见 restorePersistedTabs）或清理待执行标记。
+// （restoredMissingPath，标记查无的那条路径本身，见 restorePersistedTabs）
+// 或清理待执行标记。
 // 全部为读取型投影：无注册表状态变更，实体在盘时旧行为逐字不变（对照组）。
 
 func TestSessionEntityDisconnectedBoundaries(t *testing.T) {
@@ -70,6 +71,27 @@ func TestSessionEntityDisconnectedBoundaries(t *testing.T) {
 	if !tabSessionDisconnectedForPath(path, false) || !tabSessionDisconnectedForPath(path, true) {
 		t.Fatal("cleanup-pending session must count as disconnected regardless of restore mark")
 	}
+
+	// 轮换失活：标记绑定路径本身——tab 轮换到另一条路径后，标记对新路径不
+	// 生效（新路径落盘前的首发消息不受残影判定影响）。
+	app := NewApp()
+	rotated := &WorkspaceTab{
+		ID:                  "tl1266_rotated",
+		SessionPath:         missing,
+		restoredMissingPath: missing,
+	}
+	app.tabs[rotated.ID] = rotated
+	app.mu.RLock()
+	stillDisconnected := tabSessionDisconnected(rotated)
+	rotated.SessionPath = filepath.Join(dir, "fresh-after-new.jsonl")
+	afterRotation := tabSessionDisconnected(rotated)
+	app.mu.RUnlock()
+	if !stillDisconnected {
+		t.Fatal("marked path must count as disconnected while the tab still names it")
+	}
+	if afterRotation {
+		t.Fatal("restore mark must go inert once the tab rotates to another path")
+	}
 }
 
 // 方向②对照组+实验组：控制器真在跑（blockingRunner 挂住）时绿点照常；同一
@@ -89,16 +111,16 @@ func TestTabMetaClearsRunningGhostWhenSessionEntityMissing(t *testing.T) {
 	ctrl := control.New(control.Options{Runner: runner, SessionDir: dir, SessionPath: path, Label: "tl1266 ghost", Sink: sink})
 	defer ctrl.Close()
 	tab := &WorkspaceTab{
-		ID:                     "tl1266_ghost",
-		Scope:                  "global",
-		WorkspaceRoot:          globalTabWorkspaceRoot(),
-		TopicID:                "topic_tl1266_ghost",
-		SessionPath:            path,
-		restoredSessionMissing: true, // 重启恢复标记：生产残影 tab 的来源
-		Ctrl:                   ctrl,
-		Ready:                  true,
-		sink:                   sink,
-		disabledMCP:            map[string]ServerView{},
+		ID:                  "tl1266_ghost",
+		Scope:               "global",
+		WorkspaceRoot:       globalTabWorkspaceRoot(),
+		TopicID:             "topic_tl1266_ghost",
+		SessionPath:         path,
+		restoredMissingPath: path, // 重启恢复标记（查无的那条路径本身）：生产残影 tab 的来源
+		Ctrl:                ctrl,
+		Ready:               true,
+		sink:                sink,
+		disabledMCP:         map[string]ServerView{},
 	}
 	app.tabs[tab.ID] = tab
 	app.tabOrder = []string{tab.ID}
@@ -173,12 +195,12 @@ func TestTabMetaMarksRestoredSkeletonDisconnectedWhenEntityMissing(t *testing.T)
 
 	app := NewApp()
 	tab := &WorkspaceTab{
-		ID:                     "tl1266_skeleton",
-		Scope:                  "global",
-		WorkspaceRoot:          globalTabWorkspaceRoot(),
-		TopicID:                "topic_tl1266_skeleton",
-		SessionPath:            path,
-		restoredSessionMissing: true, // 恢复时点标记（生产由 restorePersistedTabs 写入）
+		ID:                  "tl1266_skeleton",
+		Scope:               "global",
+		WorkspaceRoot:       globalTabWorkspaceRoot(),
+		TopicID:             "topic_tl1266_skeleton",
+		SessionPath:         path,
+		restoredMissingPath: path, // 恢复时点标记（生产由 restorePersistedTabs 写入）
 	}
 	app.tabs[tab.ID] = tab
 	app.tabOrder = []string{tab.ID}
@@ -251,12 +273,12 @@ func TestTurnAdmissionRejectsMissingSessionEntity(t *testing.T) {
 
 	app := NewApp()
 	tab := &WorkspaceTab{
-		ID:                     "tl1266_admission",
-		Scope:                  "global",
-		WorkspaceRoot:          globalTabWorkspaceRoot(),
-		TopicID:                "topic_tl1266_admission",
-		SessionPath:            path,
-		restoredSessionMissing: true, // 重启恢复标记
+		ID:                  "tl1266_admission",
+		Scope:               "global",
+		WorkspaceRoot:       globalTabWorkspaceRoot(),
+		TopicID:             "topic_tl1266_admission",
+		SessionPath:         path,
+		restoredMissingPath: path, // 重启恢复标记
 	}
 	app.tabs[tab.ID] = tab
 	app.tabOrder = []string{tab.ID}

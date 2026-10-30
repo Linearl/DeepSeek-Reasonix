@@ -78,28 +78,31 @@ type WorkspaceTab struct {
 	topicTitleSource  string // auto or manual; controls localization at API boundaries
 	SessionPath       string // exact .jsonl file this tab continues
 	SessionGeneration uint64 // bumps on session rotation (clear/new); frontend hydrate identity
-	// restoredSessionMissing (tl 1266) 记录「恢复时点实体查无」：restorePersistedTabs
-	// 在还原持久化 tab 布局时对 entry.SessionPath 做一次存在性判定。这是唯一能
-	// 安全区分「重启后恢复的旧会话（文件该在而不在）」与「本进程新建会话（文件
-	// 尚未首轮落盘）」的时刻——新建 tab 不带标记，其首发消息不会被断开守卫误拦。
-	// 只与实时 Stat 联合生效（见 tabSessionDisconnected）：实体重新出现即自愈。
-	restoredSessionMissing bool
-	ReadOnly               bool                     // true for external channel transcripts opened for browsing
-	Takeover               struct{ Spectator bool } // handoff state grouped by its cross-runtime lifetime
-	Ctrl                   control.SessionAPI       // nil while booting / on error
-	Label                  string                   // model label (for the tab badge)
-	Ready                  bool                     // true once boot.Build completes
-	StartupErr             string                   // build error, surfaced to the frontend
-	StartupErrLeaseHeld    bool                     // true when StartupErr can be retried after a session lease releases
-	modelApplication       tabModelApplicationState // guarded by App.mu; never persisted
-	runtimeID              string                   // process-local SessionRuntime registry identity
-	sessionLease           *agent.SessionLease
-	sessionLeaseMu         sync.Mutex
-	takeoverWatchStop      chan struct{}
-	sessionLeaseKey        atomic.Pointer[string] // lock-free mirror; updated with sessionLease under sessionLeaseMu
-	sink                   *tabEventSink          // routes events with this tab's ID
-	buildCancel            context.CancelFunc     // cancels in-flight boot for tabs removed before Ready
-	buildGeneration        uint64                 // identifies the current in-flight build
+	// restoredMissingPath (tl 1266) 记录「恢复时点实体查无」的那条声明路径：
+	// restorePersistedTabs 在还原持久化 tab 布局时对 entry.SessionPath 做一次
+	// 存在性判定，查无则存路径本身。这是唯一能安全区分「重启后恢复的旧会话
+	// （文件该在而不在）」与「本进程新建会话（文件尚未首轮落盘）」的时刻——
+	// 新建 tab 不带标记。存路径而非布尔是有意的：标记只对同一路径生效
+	// （sessionRuntimeKey 归一比对），tab 轮换到新会话（/new、clear、rebind、
+	// 换绑历史会话）后自动失活，无需在每个路径变更点清除；实体重新出现则由
+	// 实时 Stat 自愈（见 tabSessionDisconnected）。
+	restoredMissingPath string
+	ReadOnly            bool                     // true for external channel transcripts opened for browsing
+	Takeover            struct{ Spectator bool } // handoff state grouped by its cross-runtime lifetime
+	Ctrl                control.SessionAPI       // nil while booting / on error
+	Label               string                   // model label (for the tab badge)
+	Ready               bool                     // true once boot.Build completes
+	StartupErr          string                   // build error, surfaced to the frontend
+	StartupErrLeaseHeld bool                     // true when StartupErr can be retried after a session lease releases
+	modelApplication    tabModelApplicationState // guarded by App.mu; never persisted
+	runtimeID           string                   // process-local SessionRuntime registry identity
+	sessionLease        *agent.SessionLease
+	sessionLeaseMu      sync.Mutex
+	takeoverWatchStop   chan struct{}
+	sessionLeaseKey     atomic.Pointer[string] // lock-free mirror; updated with sessionLease under sessionLeaseMu
+	sink                *tabEventSink          // routes events with this tab's ID
+	buildCancel         context.CancelFunc     // cancels in-flight boot for tabs removed before Ready
+	buildGeneration     uint64                 // identifies the current in-flight build
 	// buildDone is closed exactly once when the build that owns buildDoneGen
 	// terminates (success, failure, or superseded abandon). Topic-activation
 	// completions wait on it to learn that the controller build finished
