@@ -3011,7 +3011,7 @@ export const en = {
 "settings.sessionStorage.mode.dual_write_read_v3": "dual write, read v3",
 "settings.sessionStorage.mode.dual_write_read_v4": "dual write, read v4",
 "settings.sessionStorage.mode.v4_only": "v4 only",
-"settings.sessionStorage.locked": "Locked to v3: the upstream studio line no longer uses v4/v5, so v3 stays locked for compatibility and the v4/v5 stages can no longer be selected; sessions left on v4 only need the migration below to come back.",
+"settings.sessionStorage.locked": "Locked to v3: the upstream studio line no longer uses v4/v5, so v3 stays locked for compatibility and no v4/v5 stage is offered here; sessions left on v4 only need the migration below to come back.",
 "settings.sessionStorage.stage.v3_only": "Stage: recommended and default. Sessions are stored complete in sessions/; the v4 store is not used.",
 "settings.sessionStorage.stage.dual_write_read_v3": "Stage: shadow-compare. Every save is mirrored into sessions-v4/ in full, but reads still come from sessions/, so a bad v4 write cannot reach the session you are using.",
 "settings.sessionStorage.stage.dual_write_read_v4": "Stage: staged cutover. Reads prefer the v4 copy and fall back to sessions/ when it misses, while sessions/ is still written - a rollback costs nothing.",

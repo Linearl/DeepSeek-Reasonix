@@ -75,6 +75,13 @@ function DailySendLimitInput({ value, disabled, onCommit }: { value: number; dis
 const SESSION_STORAGE_MODES = ["v3_only", "dual_write_read_v3", "dual_write_read_v4", "v4_only"] as const;
 type SessionStorageMode = (typeof SESSION_STORAGE_MODES)[number];
 
+/** tl1287: v4 support is retired — the card offers no v4 option any more, so the
+ *  segmented control renders from this list alone. The full four-mode list above
+ *  stays the parser for the STORED value: a user still parked on a v4 stage keeps
+ *  their own stage/risk lines below (display only; the way back is the v4→v3
+ *  migrator hosted in the same card, which the backend always allows). */
+const SESSION_STORAGE_SELECTABLE_MODES = ["v3_only"] as const satisfies readonly SessionStorageMode[];
+
 /** Narrow a wire value onto the typed mode list (unknown values read as v3). */
 function asSessionStorageMode(value: string | undefined): SessionStorageMode {
   return SESSION_STORAGE_MODES.find((mode) => mode === value) ?? "v3_only";
@@ -1180,24 +1187,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             <>
               <SettingsField label={labLabel("sessionStorage", t("settings.sessionStorage"))} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 <SettingsOptions layout="field" className="set-seg">
-                  {SESSION_STORAGE_MODES.map((mode) => (
-                    // 916: 存储版本锁定 v3 —— v3 是唯一可选档；v4 档位仍按
-                    // storageMode 高亮（带 v4 数据的用户看得见自己在哪档），
-                    // 但不可再切换，下方迁移是唯一的回去路径。
+                  {/* tl1287: v4 退役——卡内不再渲染任何 v4 档按钮（用户拍板
+                      20261031）。仍停在 v4 档的用户由下方 stage/risk 行按已存
+                      档位如实提示，回去路径是同卡的 v4→v3 迁移器（后端对降档
+                      永远放行，点 v3 即降档，916 的「只许逐级升」仅约束升档）。 */}
+                  {SESSION_STORAGE_SELECTABLE_MODES.map((mode) => (
                     <button
                       key={mode}
                       className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
-                      disabled={busy || migrationRunning || mode !== "v3_only"}
+                      disabled={busy || migrationRunning}
                       onClick={() => void apply(async () => {
-                        // Stage skipping is refused by the backend, so the stage
-                        // banner below always describes the mode that is stored.
                         await app.SetSessionStorage(mode);
                       })}
                     >
                       {t(`settings.sessionStorage.mode.${mode}`)}
                       {/* 805: v3 is the fork's long-term recommendation — the
                           same pill the lab tiers use, no new copy or CSS. */}
-                      {mode === "v3_only" ? <TierBadge tier="recommended" translator={t} /> : null}
+                      <TierBadge tier="recommended" translator={t} />
                     </button>
                   ))}
                 </SettingsOptions>

@@ -2357,7 +2357,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.sessionStorage.mode.dual_write_read_v3": "雙寫·讀 v3",
 "settings.sessionStorage.mode.dual_write_read_v4": "雙寫·讀 v4",
 "settings.sessionStorage.mode.v4_only": "僅 v4",
-"settings.sessionStorage.locked": "已鎖定 v3：上游 studio 線已不使用 v4/v5，鎖定 v3 保證相容，v4/v5 檔位不可再選擇；此前停在 v4 檔的工作階段用下方遷移遷回即可。",
+"settings.sessionStorage.locked": "已鎖定 v3：上游 studio 線已不使用 v4/v5，鎖定 v3 保證相容，卡內不再提供 v4/v5 檔位；此前停在 v4 檔的工作階段用下方遷移遷回即可。",
 "settings.sessionStorage.stage.v3_only": "階段：推薦檔，也是預設檔。工作階段完整保存在 sessions/，v4 儲存未啟用。",
 "settings.sessionStorage.stage.dual_write_read_v3": "階段：灰度比對期。每次儲存都把完整轉錄鏡像到 sessions-v4/，但讀取仍走 sessions/，v4 寫入異常影響不到你在用的工作階段。",
 "settings.sessionStorage.stage.dual_write_read_v4": "階段：灰度驗證期。讀取優先使用 v4 副本，未命中回落 sessions/；sessions/ 仍在寫，隨時可回退且代價為零。",

@@ -3000,7 +3000,7 @@ export const zh: Record<DictKey, string> = {
 "settings.sessionStorage.mode.dual_write_read_v3": "双写·读 v3",
 "settings.sessionStorage.mode.dual_write_read_v4": "双写·读 v4",
 "settings.sessionStorage.mode.v4_only": "仅 v4",
-"settings.sessionStorage.locked": "已锁定 v3：上游 studio 线已不使用 v4/v5，锁定 v3 保证兼容，v4/v5 档位不可再选择；此前停在 v4 档的会话用下方迁移迁回即可。",
+"settings.sessionStorage.locked": "已锁定 v3：上游 studio 线已不使用 v4/v5，锁定 v3 保证兼容，卡内不再提供 v4/v5 档位；此前停在 v4 档的会话用下方迁移迁回即可。",
 "settings.sessionStorage.stage.v3_only": "阶段：推荐档，也是默认档。会话完整保存在 sessions/，v4 存储未启用。",
 "settings.sessionStorage.stage.dual_write_read_v3": "阶段：灰度比对期。每次保存都把完整转录镜像到 sessions-v4/，但读取仍走 sessions/，v4 写异常影响不到你在用的会话。",
 "settings.sessionStorage.stage.dual_write_read_v4": "阶段：灰度验证期。读取优先用 v4 副本，未命中回落 sessions/；sessions/ 仍在写，随时可回退且代价为零。",

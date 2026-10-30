@@ -267,10 +267,11 @@ for (const family of families) {
 }
 
 // ② M7 specifics: the storage-mode selector and the rotation panel both live
-//    inside the sessionStore card, each with its own setter.
+//    inside the sessionStore card, each with its own setter. tl1287: the
+//    selector renders from the v3-only selectable list (v4 support retired).
 {
   const card = cardSlice('{selected === "sessionStore" && (', '{selected === "viewLayout" && (');
-  ok(card.includes("SESSION_STORAGE_MODES.map") && card.includes("app.SetSessionStorage(mode)"),
+  ok(card.includes("SESSION_STORAGE_SELECTABLE_MODES.map") && card.includes("app.SetSessionStorage(mode)"),
     "M7 sessionStorage: mode selector saves through SetSessionStorage");
   ok(card.includes("<SessionEventsPanel"),
     "M7 eventsRotation: rotation panel mounts inside the sessionStore card (its setters live in SessionEventsPanel)");
