@@ -236,8 +236,8 @@ export interface SettingsView {
   sessionCollabHopLimit?: number;
   // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
   detachedIdleReleaseMinutes?: number;
-  // Task 308-O3: soft memory limit in MB (0 = unbounded).
-  goMemLimitMB?: number;
+  // tl1286: GC-strategy dial (0 config renders as the effective 100).
+  gcPercent?: number;
   // tl 1097: WARN/ERROR alert-log retention dial (days; 0 = built-in default
   // 7 days; -1 = forever). Full log is unaffected.
   desktopAlertLogRetentionDays?: number;

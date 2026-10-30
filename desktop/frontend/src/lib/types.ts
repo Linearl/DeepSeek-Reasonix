@@ -2767,8 +2767,8 @@ export interface DesktopStartupSettingsView {
   sessionCollabHopLimit?: number; // task 204: cross-session chain ceiling (3..1000, default 5)
   /** Task 308-O4: detached idle runtime release threshold in minutes (0 = never release). */
   detachedIdleReleaseMinutes?: number;
-  /** Task 308-O3: soft memory limit in MB via debug.SetMemoryLimit (0 = unbounded). */
-  goMemLimitMB?: number;
+  /** tl1286: GC-strategy dial (0 config renders as the effective 100; replaces the retired go_mem_limit_mb). */
+  gcPercent?: number;
   /** tl 1097: WARN/ERROR alert-log retention dial (days; 0 = default 7; -1 = forever). */
   desktopAlertLogRetentionDays?: number;
   /** tl 1097: WARN/ERROR alert-log total size ceiling in MB (0 = default 100; -1 = unlimited). */
