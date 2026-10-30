@@ -64,16 +64,56 @@ func sessionMissingRuntimeIssue() *SessionRuntimeIssue {
 	}
 }
 
-// tabSessionEntityMissing 判定一个 tab 是否处于「实体查无」态。只对声明过
+// tabSessionEntityMissing 判定一个路径锚是否处于「实体查无」态。只对声明过
 // 会话路径的 tab 生效（新会话骨架没有实体可查）。
 func tabSessionEntityMissing(sessionPath string) bool {
 	return strings.TrimSpace(sessionPath) != "" && !sessionEntityExists(sessionPath)
 }
 
-// sessionEntityAdmissionErr 是提交链路的前置实体校验（方向③）：tab 的当前
-// 会话路径查无实体时拒绝受理并返回断开文案。控制器不存在/只读 tab 不在此
-// 拦——它们各自已有更精确的既有报错（workspaceNotReadyErr/readOnly），
-// 本守卫只负责「控制器活着但实体没了」这一种查无。
+// tabSessionEntityGone 是 tab 级的实体查无判定（tl 1266 三向防线的统一锚）：
+// tab 的持久化锚路径与控制器的活路径都查无时才算断开。只看其中一边会在
+// 两类既有场景误伤：
+//   - workspace 迁移后的 stale binding（tab 锚在新目录健在、控制器还指着旧
+//     路径）——下一次提交正是自愈重建的触发器，拦下它就砍断了既有的
+//     「提交即修复」契约（app_commands_2 stale-binding 家族钉的场景）；
+//   - 会话轮换/恢复分支切换的瞬窗（旧路径已不在、新文件尚未落盘）。
+func tabSessionEntityGone(tab *WorkspaceTab) bool {
+	if tab == nil {
+		return false
+	}
+	tabPath := strings.TrimSpace(tab.SessionPath)
+	if tabPath != "" && sessionEntityExists(tabPath) {
+		return false
+	}
+	ctrlPath := ""
+	if tab.Ctrl != nil {
+		ctrlPath = strings.TrimSpace(tab.Ctrl.SessionPath())
+		if ctrlPath != "" && sessionEntityExists(ctrlPath) {
+			return false
+		}
+	}
+	return tabSessionEntityMissing(tabPath) || (tabPath == "" && tabSessionEntityMissing(ctrlPath))
+}
+
+// missingPinnedSessionResumeErr 是重建路径（方向①）的判定缝：tab 钉住的会话
+// 路径加载结果「ok 但无可恢复会话」时，区分两种 nil——文件还在的空占位
+// （合法的新会话起点，返回 nil 照旧）与文件已消失的实体查无（返回断开
+// 哨兵，诚实失败而非静默空会话重置）。
+func missingPinnedSessionResumeErr(path string, resumeSession *agent.Session) error {
+	if resumeSession != nil {
+		return nil
+	}
+	if !tabSessionEntityMissing(path) {
+		return nil
+	}
+	return errSessionDisconnected
+}
+
+// sessionEntityAdmissionErr 是提交链路的前置实体校验（方向③）：tab 的会话
+// 实体（持久化锚与控制器活路径都）查无时拒绝受理并返回断开文案。控制器
+// 不存在/只读 tab 不在此拦——它们各自已有更精确的既有报错
+// （workspaceNotReadyErr/readOnly），本守卫只负责「控制器活着但实体没了」
+// 这一种查无；stale-binding 自愈窗口由 tabSessionEntityGone 的双边锚放行。
 func (a *App) sessionEntityAdmissionErr(tabID string) error {
 	a.mu.RLock()
 	tab := a.tabByIDLocked(tabID)
@@ -81,9 +121,9 @@ func (a *App) sessionEntityAdmissionErr(tabID string) error {
 		a.mu.RUnlock()
 		return nil
 	}
-	sessionPath := tab.currentSessionPath()
+	gone := tabSessionEntityGone(tab)
 	a.mu.RUnlock()
-	if tabSessionEntityMissing(sessionPath) {
+	if gone {
 		return errSessionDisconnected
 	}
 	return nil

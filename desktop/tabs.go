@@ -2391,8 +2391,10 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 		// cancellable, and a session_missing issue the frontend renders as
 		// 「已断开」. Read-only projection — the registry record is untouched,
 		// so persistence and wake flows keep their own semantics, and a
-		// reappeared entity heals the view on the next poll.
-		if claimsWork && tabSessionEntityMissing(sessionPath) {
+		// reappeared entity heals the view on the next poll. The dual anchor
+		// (tab persisted path + live controller path) keeps the stale-binding
+		// self-heal window out of scope.
+		if claimsWork && tabSessionEntityGone(tab) {
 			m.Running = false
 			m.PendingPrompt = false
 			m.BackgroundJobs = 0
@@ -2419,7 +2421,7 @@ func (a *App) tabMeta(tab *WorkspaceTab, active bool) TabMeta {
 			m.TurnEventSeq = status.TurnEventSeq
 			m.TurnReplayAfter = status.ReplayAfterSeq
 		}
-	} else if tabSessionEntityMissing(sessionPath) {
+	} else if tabSessionEntityGone(tab) {
 		// tl 1266 方向①: a restored skeleton whose persisted session entity is
 		// gone can never be re-seated into that conversation. Keep the lazy
 		// build contract (the click still rebuilds; the build then fails with
@@ -4798,10 +4800,10 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 			// blank conversation while the contact directory had already lost
 			// the entity — the exact 查无 state behind the running-ghost
 			// incident. Fail the build with the explicit disconnect message so
-			// the user reopens the conversation from history instead.
-			if resumeSession == nil && tabSessionEntityMissing(path) {
-				resumeLoadErr = errSessionDisconnected
-			}
+			// the user reopens the conversation from history instead. The
+			// sentinel is already path-free and user-facing, so the
+			// friendlySessionLoadError rewrite below leaves it verbatim.
+			resumeLoadErr = missingPinnedSessionResumeErr(path, resumeSession)
 		}
 		if resumeLoadErr == nil && path == "" && tabTopicID != "" {
 			existingPath := a.catalogSessionPathForTopic(tabScope, tabWorkspaceRoot, tabTopicID)
