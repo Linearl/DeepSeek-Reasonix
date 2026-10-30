@@ -871,6 +871,12 @@ export interface SessionStorageMigrationPlanView {
   failCount: number;
   totalDeltaMessages: number;
   generatedAt: string;
+  // tl1287④: v5 registry pre-check — the panel warns BEFORE the confirm when
+  // the registry is missing or unreadable (every session then falls back to
+  // the default directory).
+  registryFile?: string;
+  registryFound?: boolean;
+  registryError?: string;
 }
 
 export interface SessionStorageMigrationReportView {
@@ -1713,6 +1719,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   PlanSessionV4Backfill(): Promise<SessionStorageMigrationPlanView>;
   RunSessionV4Backfill(): Promise<SessionStorageMigrationReportView>;
   SessionV5StoreAvailable(): Promise<boolean>;
+  SessionV5StoreLocation(): Promise<string>;
   PlanSessionV5Import(): Promise<SessionStorageMigrationPlanView>;
   RunSessionV5Import(): Promise<SessionStorageMigrationReportView>;
   // tl1227: DAG schema-2 → schema-1 one-shot migration (lab action card,
@@ -6643,8 +6650,9 @@ function makeMockApp(): AppBindings {
       return { kind: "v4-backfill", verified: true, sourceUnmoved: true, backup: {}, appendCount: 0, rebuildCount: 0, skipCount: 0, conflictCount: 0, failCount: 0, touchedFiles: 0, accounting: "mock", losses: [], finishedAt: new Date().toISOString() };
     },
     async SessionV5StoreAvailable() { return false; },
+    async SessionV5StoreLocation() { return ""; },
     async PlanSessionV5Import() {
-      return { kind: "v5-import", sourceRoot: "", v5StoreFound: false, entries: [], skipCount: 0, appendCount: 0, rebuildCount: 0, conflictCount: 0, failCount: 0, totalDeltaMessages: 0, generatedAt: new Date().toISOString() };
+      return { kind: "v5-import", sourceRoot: "", v5StoreFound: false, entries: [], skipCount: 0, appendCount: 0, rebuildCount: 0, conflictCount: 0, failCount: 0, totalDeltaMessages: 0, generatedAt: new Date().toISOString(), registryFound: false };
     },
     async RunSessionV5Import() {
       return { kind: "v5-import", verified: true, sourceUnmoved: true, backup: {}, appendCount: 0, rebuildCount: 0, skipCount: 0, conflictCount: 0, failCount: 0, touchedFiles: 0, accounting: "mock", losses: [], finishedAt: new Date().toISOString() };

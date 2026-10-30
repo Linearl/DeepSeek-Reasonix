@@ -58,8 +58,12 @@ ok(panel.includes("SessionMigrationSection"), "the storage card hosts the migrat
 ok(panel.includes("migrationRunning"), "the panel locks stage buttons with the migration state");
 ok(section.includes("app.PlanSessionV4Backfill"), "v4 backfill plans first (dry-run default)");
 ok(section.includes("app.RunSessionV4Backfill"), "v4 backfill runs on the second click");
-ok(section.includes("app.SessionV5StoreAvailable"), "the v5 entry hides when no v5 store exists");
+// tl1287④: the v5 entry is UNCONDITIONAL now — a missing store shows a hint
+// naming the probed path instead of hiding the button.
+ok(section.includes("app.SessionV5StoreAvailable") && section.includes("app.SessionV5StoreLocation"), "the v5 hint names the probed store path");
+ok(!section.includes("v5Available &&"), "the v5 button is not gated on v5Available (tl1287④)");
 ok(section.includes("app.PlanSessionV5Import") && section.includes("app.RunSessionV5Import"), "the v5 import rides the same confirm flow");
+ok(section.includes("settings.migration.registryBroken") && section.includes("settings.migration.registryMissing"), "the confirm step carries the registry pre-check warning (tl1287④)");
 ok(section.includes("MIGRATION_PROGRESS_EVENT") || section.includes("sessionStorageMigrationProgress"), "progress lines arrive via runtime events");
 
 // 2) The wire carries both the configured and the boot-effective mode.
