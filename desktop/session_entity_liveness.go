@@ -109,11 +109,17 @@ func missingPinnedSessionResumeErr(path string, resumeSession *agent.Session) er
 	return errSessionDisconnected
 }
 
-// sessionEntityAdmissionErr 是提交链路的前置实体校验（方向③）：tab 的会话
-// 实体（持久化锚与控制器活路径都）查无时拒绝受理并返回断开文案。控制器
-// 不存在/只读 tab 不在此拦——它们各自已有更精确的既有报错
-// （workspaceNotReadyErr/readOnly），本守卫只负责「控制器活着但实体没了」
-// 这一种查无；stale-binding 自愈窗口由 tabSessionEntityGone 的双边锚放行。
+// sessionEntityAdmissionErr 是提交链路的前置实体校验（方向③）：控制器谎报
+// busy（running/待确认/后台作业）而会话实体（持久化锚与控制器活路径都）查无
+// 时，拒绝受理并返回断开文案——这正是残影 tab 上「继续」点击撞到的状态：
+// 不拦，ErrTurnRunning 会被前端静默降级进已死执行体的队列。
+//
+// 只对 busy 控制器生效是硬边界：新会话的首条消息发生在实体落盘之前（首轮
+// 自动保存才创建 .jsonl），空闲放行是既有契约——按任意实体查无拦提交会把
+// 每个新会话的第一条消息误判成「会话已断开」（app_memory_context 家族实锤：
+// 空闲拦截令首消息静默被拒、测试端等轮启动的通道永远等不到）。重启后实体
+// 查无的 tab 到不了「空闲+活控制器」态：重建路径已按方向①诚实失败。
+// stale-binding 自愈窗口由 tabSessionEntityGone 的双边锚放行。
 func (a *App) sessionEntityAdmissionErr(tabID string) error {
 	a.mu.RLock()
 	tab := a.tabByIDLocked(tabID)
@@ -121,7 +127,7 @@ func (a *App) sessionEntityAdmissionErr(tabID string) error {
 		a.mu.RUnlock()
 		return nil
 	}
-	gone := tabSessionEntityGone(tab)
+	gone := tab.hasActiveRuntimeWork() && tabSessionEntityGone(tab)
 	a.mu.RUnlock()
 	if gone {
 		return errSessionDisconnected

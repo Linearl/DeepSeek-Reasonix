@@ -277,18 +277,40 @@ func TestSessionEntityGuardPassesStaleBindingWhenTabAnchorExists(t *testing.T) {
 	if m := app.tabMeta(tab, true); m.Runtime.Issue != nil {
 		t.Fatalf("tabMeta must not project a disconnect for the stale-binding window, got %+v", m.Runtime.Issue)
 	}
+}
 
-	// 双锚都查无才是断开：把 tab 锚也删掉后，守卫照常生效。tabMeta 投影是
-	// 残影 scoped 的（只在控制器声明活跃工作时清除虚假 running），空闲 tab
-	// 的用户反馈由提交守卫承担——两层各管各的验收面。
-	if err := os.Remove(anchorPath); err != nil {
-		t.Fatalf("remove anchor: %v", err)
+// 守卫的硬边界（方向③）：空闲控制器 + 尚未落盘的新会话 = 首条消息的合法
+// 起点，必须放行——实体是首轮自动保存才创建的；按任意实体查无拦提交会把
+// 每个新会话的第一条消息误判成「会话已断开」。
+func TestSessionEntityGuardPassesFreshSessionFirstMessage(t *testing.T) {
+	app := newEntityLivenessApp(t)
+	dir := desktopSessionDir(globalTabWorkspaceRoot())
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir sessions: %v", err)
 	}
-	if err := app.sessionEntityAdmissionErr(tab.ID); !errors.Is(err, errSessionDisconnected) {
-		t.Fatalf("guard with both anchors gone err = %v, want errSessionDisconnected", err)
+	freshPath := filepath.Join(dir, "brand-new.jsonl") // never written: first turn creates it
+	ctrl := control.New(control.Options{
+		SessionDir:  dir,
+		SessionPath: freshPath,
+		Label:       "fresh",
+		Sink:        event.Discard,
+	})
+	tab := &WorkspaceTab{
+		ID:          "fresh_session",
+		Scope:       "global",
+		SessionPath: freshPath,
+		Ready:       true,
+		Ctrl:        ctrl,
+		sink:        &tabEventSink{tabID: "fresh_session", app: app},
+		disabledMCP: map[string]ServerView{},
+	}
+	registerEntityLivenessTab(t, app, tab)
+
+	if err := app.sessionEntityAdmissionErr(tab.ID); err != nil {
+		t.Fatalf("guard must pass an idle controller on a never-persisted fresh session, got %v", err)
 	}
 	if m := app.tabMeta(tab, true); m.Runtime.Issue != nil {
-		t.Fatalf("idle tab with both anchors gone must stay ghost-projection-free, got %+v", m.Runtime.Issue)
+		t.Fatalf("fresh-session tabMeta carries issue %+v, want none", m.Runtime.Issue)
 	}
 }
 
