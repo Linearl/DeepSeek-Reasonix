@@ -25,6 +25,9 @@ import { batchEntryForNode, batchSelectionAfterArchive, collectBatchTopics, sing
 import { ProjectTreeBatchBar } from "./ProjectTreeBatchBar";
 import { topicShortcutLabel, type TopicShortcutEntry } from "../lib/topicShortcuts";
 import { readFilterPanelExpanded, writeFilterPanelExpanded, type FilterPanelSections } from "../lib/projectTreeFilterPanel";
+// tl1282: 检索历史（与设置面板搜索共用同一份 LRU 存储/下拉组件）。
+import { clearSearchHistory, readSearchHistory, recordSearchTerm, removeSearchTerm } from "../lib/searchHistory";
+import { SearchHistoryMenu } from "./SearchHistoryMenu";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { Tooltip } from "./Tooltip";
 import { WorktreeBadge } from "./WorktreeBadge";
@@ -290,6 +293,10 @@ export function ProjectTree({
   const [manuallyCollapsed, setManuallyCollapsed] = useState<Set<string>>(new Set());
   const [creatingProject, setCreatingProject] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // tl1282: 检索历史——与设置面板搜索共用一份 LRU（lib/searchHistory，localStorage
+  // 持久化跨重启）。默认收起：仅聚焦且无查询词时展示，默认视图零改动。
+  const [searchHistory, setSearchHistory] = useState<string[]>(readSearchHistory);
+  const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
   const [editingTopic, setEditingTopic] = useState<string | null>(null);
   const [topicDraft, setTopicDraft] = useState("");
   const [menuNodeKey, setMenuNodeKey] = useState<string | null>(null);
@@ -593,6 +600,21 @@ export function ProjectTree({
   }, [manuallyCollapsed]);
 
   const searchVisible = searchExpanded || query.trim().length > 0;
+  const searchHistoryVisible = searchHistoryOpen && query.trim() === "" && searchHistory.length > 0;
+
+  const commitSearchQuery = () => {
+    if (!query.trim()) return;
+    setSearchHistory(recordSearchTerm(query));
+  };
+  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") commitSearchQuery();
+    if (event.key === "Escape") setSearchHistoryOpen(false);
+  };
+  const selectSearchHistoryTerm = (term: string) => {
+    setQuery(term);
+    setSearchHistory(recordSearchTerm(term));
+    setSearchHistoryOpen(false);
+  };
 
   useEffect(() => {
     if (!searchVisible || searchFocusSignal <= 0) return;
@@ -3404,8 +3426,19 @@ export function ProjectTree({
             ref={searchInputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onFocus={() => setSearchHistoryOpen(true)}
+            onBlur={() => setSearchHistoryOpen(false)}
+            onKeyDown={handleSearchKeyDown}
             placeholder={t("projectTree.searchPlaceholder")}
           />
+          {searchHistoryVisible && (
+            <SearchHistoryMenu
+              entries={searchHistory}
+              onSelect={selectSearchHistoryTerm}
+              onRemove={(term) => setSearchHistory(removeSearchTerm(term))}
+              onClear={() => { setSearchHistory(clearSearchHistory()); setSearchHistoryOpen(false); }}
+            />
+          )}
         </label>
       )}
       {visibleCatalogNotice && (
