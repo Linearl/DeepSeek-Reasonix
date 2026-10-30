@@ -17,38 +17,46 @@ import type { SettingsView } from "./types";
 /** 预取结果的有效期：超时未消费即作废，面板自行重新拉取，避免吃到旧快照。 */
 export const SETTINGS_PREFETCH_TTL_MS = 10_000;
 
-// 任务 1098（阶段 1 补打点）：入口点击→首屏可交互的真实起点是「预取发出的
-// 那一刻」（本模块），不是面板挂载后 reload() 才开始计时——否则「点击后
-// 主线程被长任务饿死、面板迟迟挂不上」这段最可疑的空窗会被计时完全漏掉。
-// 因此预取发起时在全局留下一个时间戳，面板挂载/首屏可交互时读取并上报。
-let prefetchStartedAtMs: number | null = null;
-
-/** 预取发起时刻（epoch ms）；未发起过返回 null。 */
-export function peekSettingsPrefetchStartedAt(): number | null {
-  return prefetchStartedAtMs;
+/** 一次可消费的预取：请求本体 + 该请求的发起时刻（epoch ms）。
+ *  tl 1284：startedAt 跟着请求走（原来是一个模块级全局时间戳）——旧实现里
+ *  时间戳只在「发起新预取」时覆写、消费/作废/关面板都不清。desktop.log
+ *  20261030 两例 big dataReadyMs 拆开后是两种机制，本修各占一半：
+ *  ① 23545ms（20:01 例）= 纯伪影：重开面板的 reload 没有活预取（TTL 过期
+ *     现拉），起点却 peek 到 22s 前那次打开的全局时间戳；后端当时仅 316ms。
+ *  ② 17555ms（22:41 例）= 起点正确、消费被饿：lab 切换的预取 0.36s 就回到
+ *     渲染进程，但 promise 解析排在启动期 transcript hydrate 长任务风暴后面
+ *     （同窗 boot leg 完成→109MB 会话 hydrate/reconcile），骨架 359ms 就画
+ *     出来了，内容 17.2s 后才到——这部分是渲染线程调度问题，归启动线处理；
+ *     本修让它「如实计量」：起点=该请求发起时刻，读数不再混入别人的窗口。
+ *  绑到请求本体后，消费方计时与请求对齐，重开不再继承旧起点（①根治，
+ *  ②不再虚增）。 */
+export interface SettingsViewPrefetch {
+  promise: Promise<SettingsView>;
+  startedAt: number;
 }
 
-let cached: { at: number; promise: Promise<SettingsView> } | null = null;
+let cached: { at: number; prefetch: SettingsViewPrefetch } | null = null;
 
 /** 在入口点击的同步帧发出 Settings 请求；TTL 内重复调用复用同一请求。 */
 export function prefetchSettingsView(): void {
   if (cached && Date.now() - cached.at < SETTINGS_PREFETCH_TTL_MS) return;
   const at = Date.now();
-  prefetchStartedAtMs = at;
   const promise = app.Settings();
+  const prefetch: SettingsViewPrefetch = { startedAt: at, promise };
   // 失败即弃：下次点击重新发，不把拒绝态缓存留给面板消费。接管必须静默
   // （不 rethrow）——预取发出后面板可能永远不消费它（用户又点回工作区），
   // rethrow 会制造无人处理的 rejection；面板若已消费同一 promise，由面板
   // 自己的 try/catch 兜底失败态。
   promise.catch(() => {
-    if (cached && cached.promise === promise) cached = null;
+    if (cached && cached.prefetch.promise === promise) cached = null;
   });
-  cached = { at, promise };
+  cached = { at, prefetch };
 }
 
-/** 面板挂载时消费预取；无预取或已超 TTL 返回 null（面板自行 app.Settings()）。 */
-export function takeSettingsViewPrefetch(): Promise<SettingsView> | null {
-  const hit = cached && Date.now() - cached.at < SETTINGS_PREFETCH_TTL_MS ? cached.promise : null;
+/** 面板挂载时消费预取；无预取或已超 TTL 返回 null（面板自行 app.Settings()）。
+ *  消费即取走（缓存清空），startedAt 供消费方把计时起点对齐到这次请求。 */
+export function takeSettingsViewPrefetch(): SettingsViewPrefetch | null {
+  const hit = cached && Date.now() - cached.at < SETTINGS_PREFETCH_TTL_MS ? cached.prefetch : null;
   cached = null;
   return hit;
 }
