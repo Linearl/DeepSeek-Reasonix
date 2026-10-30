@@ -1,6 +1,8 @@
 // 任务 739：设置数据请求「点击即发」通道（lib/settingsPrefetch）的行为契约。
 // 覆盖：点击同步帧发出请求、TTL 内去重、消费即取走、TTL 过期重发、
 // 失败弃缓存、未消费的失败不产生未处理 rejection。
+// tl 1284 新增：startedAt 跟请求本体走——消费方拿到的 startedAt 必须等于
+// 该请求的发起时刻；消费/作废后不留任何可被下次 reload 继承的旧起点。
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
@@ -25,15 +27,23 @@ assert.equal(settingsCalls, 1, "prefetch fires app.Settings in the same synchron
 prefetchSettingsView();
 assert.equal(settingsCalls, 1, "repeat prefetch within TTL reuses the in-flight request");
 
-// 3) 消费即取走：拿到同一 promise，缓存清空；再次消费为 null
+// 3) 消费即取走：拿到同一 promise，缓存清空；再次消费为 null。
+//    tl 1284：startedAt 等于该请求发起时刻（消费方计时起点与请求对齐）。
 const taken = takeSettingsViewPrefetch();
-assert.ok(taken, "take returns the prefetched promise");
-await assert.doesNotReject(async () => { await taken; });
+assert.ok(taken, "take returns the prefetched request");
+assert.equal(typeof taken!.startedAt, "number", "consumed prefetch carries its request start time");
+assert.ok(Math.abs(taken!.startedAt - Date.now()) < 5_000, "startedAt is the fire time, not a stale timestamp");
+await assert.doesNotReject(async () => { await taken!.promise; });
 assert.equal(takeSettingsViewPrefetch(), null, "second take finds no cached prefetch");
 
-// 4) 消费后再预取 = 新请求（面板保存后 reload 不吃旧快照）
+// 4) 消费后再预取 = 新请求（面板保存后 reload 不吃旧快照），且新请求携带
+//    新的 startedAt（tl 1284：面板重开不得继承上一次会话的计时起点）。
+const firstStartedAt = taken!.startedAt;
 prefetchSettingsView();
 assert.equal(settingsCalls, 2, "prefetch after consumption issues a fresh request");
+const taken2 = takeSettingsViewPrefetch();
+assert.ok(taken2, "fresh prefetch is consumable");
+assert.ok(taken2!.startedAt >= firstStartedAt, "fresh prefetch carries its own (non-inherited) startedAt");
 takeSettingsViewPrefetch();
 
 // 5) TTL 过期后预取重发
@@ -72,4 +82,4 @@ await tick();
 assert.deepEqual(unhandled, [], "unconsumed rejected prefetch must not surface as unhandledRejection");
 process.off("unhandledRejection", onUnhandled);
 
-console.log("PASS settings prefetch: sync-frame fire, TTL dedupe, take-once, expiry, failure discard, no unhandled rejection");
+console.log("PASS settings prefetch: sync-frame fire, TTL dedupe, take-once with request-bound startedAt, expiry, failure discard, no unhandled rejection");

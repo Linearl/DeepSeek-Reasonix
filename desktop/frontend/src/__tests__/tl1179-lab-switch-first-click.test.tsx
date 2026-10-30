@@ -10,6 +10,33 @@
 //   --tsconfig tsconfig.tsx-runner.json src/__tests__/tl1179-lab-switch-first-click.test.tsx
 
 import * as React from "react"; // tsconfig exclude 了 __tests__，tsx 对本文件走 classic JSX——必须显式绑定 React
+import { registerHooks } from "node:module";
+
+// tl 1284 补：SettingsPanel import 图带 vite 资源约定（.css / ?raw yaml /
+// ?url 样式常量），tsx-runner 不认——resolve 层就地内联，解开本 harness 的
+// 预存红（ERR_UNKNOWN_FILE_EXTENSION，主仓同 commit 同样红）。只能在 resolve
+// 层做：tsx 的 load 钩子对不转换模块回 source:null，同步外层 load 钩子会在
+// 自己的边界先吃 ERR_INVALID_RETURN_PROPERTY_VALUE。
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier.endsWith(".css")) {
+      return { url: "data:text/javascript,export default {};", shortCircuit: true };
+    }
+    if (specifier.endsWith("?raw")) {
+      const resolved = nextResolve(specifier.slice(0, -"?raw".length), context);
+      const text = readFileSync(fileURLToPath(resolved.url), "utf8");
+      return { url: `data:text/javascript,export default ${encodeURIComponent(JSON.stringify(text))};`, shortCircuit: true };
+    }
+    if (specifier.endsWith("?url")) {
+      const resolved = nextResolve(specifier.slice(0, -"?url".length), context);
+      return { url: `data:text/javascript,export default ${encodeURIComponent(JSON.stringify(resolved.url))};`, shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  },
+});
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
