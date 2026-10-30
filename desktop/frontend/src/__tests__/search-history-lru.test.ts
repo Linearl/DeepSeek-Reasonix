@@ -35,18 +35,23 @@ function eq(actual: unknown, expected: unknown, label: string) {
 }
 
 type StorageStub = { getItem: (k: string) => string | null; setItem: (k: string, v: string) => void; removeItem?: (k: string) => void };
+// Omit 掉 lib.dom 的必选 Storage 声明，桩才能赋回/删除（tsc-test-gate TS2322/2790）。
+type GlobalWithStub = Omit<typeof globalThis, "localStorage"> & { localStorage?: StorageStub | undefined };
 function withStorage<T>(store: Record<string, string>, fn: () => T): T {
   const stub: StorageStub = {
     getItem: (k) => (k in store ? store[k] : null),
     setItem: (k, v) => { store[k] = v; },
   };
-  (globalThis as typeof globalThis & { localStorage?: StorageStub }).localStorage = stub;
-  try { return fn(); } finally { delete (globalThis as typeof globalThis & { localStorage?: StorageStub }).localStorage; }
+  (globalThis as GlobalWithStub).localStorage = stub;
+  try { return fn(); } finally { delete (globalThis as GlobalWithStub).localStorage; }
 }
 
-// ── 纯核 withRecordedTerm ───────────────────────────────────────────────────
+// ── 纯核 withRecordedTerm / normalizeSearchHistory ─────────────────────────
 console.log("\ntl1282 ① record + dedupe-to-top");
 
+eq(normalizeSearchHistory("not-an-array"), [], "normalize: non-array input → empty");
+eq(normalizeSearchHistory(["  mcp ", "mcp", 42, null, "memory"]), ["mcp", "memory"],
+  "normalize: trims, drops non-strings and case-insensitive dups");
 eq(withRecordedTerm([], "mcp"), ["mcp"], "empty history → term recorded");
 eq(withRecordedTerm(["mcp", "memory"], "mcp"), ["mcp", "memory"], "repeat term moves to front (no duplicate)");
 eq(withRecordedTerm(["mcp", "memory"], "MCP"), ["MCP", "memory"], "repeat is case-insensitive; latest spelling wins and leads");
@@ -97,11 +102,11 @@ withStorage({}, () => {
 // localStorage 抛错（配额/隐私模式）：记录不炸，重启自然回退为无历史。
 {
   const throwing: StorageStub = { getItem: () => null, setItem: () => { throw new Error("quota"); } };
-  (globalThis as typeof globalThis & { localStorage?: StorageStub }).localStorage = throwing;
+  (globalThis as GlobalWithStub).localStorage = throwing;
   let threw = false;
   try { recordSearchTerm("mcp"); } catch { threw = true; }
   ok(!threw, "recordSearchTerm survives a throwing storage (best-effort persistence)");
-  (globalThis as typeof globalThis & { localStorage?: StorageStub }).localStorage = undefined;
+  delete (globalThis as GlobalWithStub).localStorage;
 }
 
 // 单条删除 / 一键清空。

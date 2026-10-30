@@ -12,8 +12,9 @@
 // JSDOM 全局就位之后——静态 import 会让 react-dom 在无 window 环境求值，
 // isInputEventSupported 永久 false，受控输入的 onChange 全部失效（2594 排查实录）。
 
-import * as React from "react"; // tsx 对 __tests__ 走 classic JSX——必须显式绑定 React
+// jsx 走 react-jsx 自动运行时（tsconfig.json），无需显式 React 绑定。
 import { JSDOM } from "jsdom";
+import type { SettingsNavigationItem } from "../components/SettingsNavigation";
 
 class TestResizeObserver { observe() {} unobserve() {} disconnect() {} }
 const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
@@ -39,7 +40,6 @@ const { createRoot } = await import("react-dom/client");
 const { LocaleProvider } = await import("../lib/i18n");
 const { SettingsNavigation, SETTINGS_NAV_TABS } = await import("../components/SettingsNavigation");
 const { SEARCH_HISTORY_STORAGE_KEY } = await import("../lib/searchHistory");
-type SettingsNavigationItem = Awaited<typeof import("../components/SettingsNavigation")>["SettingsNavigationItem"];
 
 let passed = 0;
 let failed = 0;
