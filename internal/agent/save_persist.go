@@ -53,17 +53,24 @@ func (s *Session) setPersistedBaselineWithLedger(path string, digest [sha256.Siz
 	if info, err := os.Stat(store.SessionEventLog(path)); err == nil {
 		baselineLogTail = info.Size()
 	}
+	// tl1281: the checkpoint size rides along for the tail-window snapshot
+	// skip. Advisory like logTail — the skip re-verifies it before acting.
+	baselineCheckpointBytes := int64(0)
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		baselineCheckpointBytes = info.Size()
+	}
 	s.mu.Lock()
 	s.persisted = sessionPersistState{
-		path:          canonicalSessionSavePath(path),
-		digest:        digest,
-		version:       version,
-		revision:      revision,
-		revisionKnown: revisionKnown,
-		saveVerified:  saveVerified,
-		cleanLoad:     cleanLoad,
-		logTail:       baselineLogTail,
-		ok:            true,
+		path:            canonicalSessionSavePath(path),
+		digest:          digest,
+		version:         version,
+		revision:        revision,
+		revisionKnown:   revisionKnown,
+		saveVerified:    saveVerified,
+		cleanLoad:       cleanLoad,
+		logTail:         baselineLogTail,
+		checkpointBytes: baselineCheckpointBytes,
+		ok:              true,
 	}
 	if rewriteVersion > s.persistedRewriteVersion {
 		s.persistedRewriteVersion = rewriteVersion

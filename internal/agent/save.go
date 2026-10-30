@@ -137,9 +137,15 @@ type sessionPersistState struct {
 	// The no-op re-checks it (plus the ledger identity) before skipping: a
 	// concurrent writer's append grows the log past this tail, and a save that
 	// is genuinely behind must surface the stale-prefix conflict, not skip.
-	logTail      int64
-	saveVerified bool
-	ok           bool
+	logTail int64
+	// checkpointBytes is the .jsonl checkpoint size observed when the baseline
+	// was recorded (tl1281). The tail-window snapshot skip re-checks it the
+	// same way: a first-paint window decoded from the checkpoint is only a
+	// pure projection of the disk transcript while the checkpoint itself is
+	// byte-stable.
+	checkpointBytes int64
+	saveVerified    bool
+	ok              bool
 }
 
 type sessionSaveMode int
@@ -259,6 +265,12 @@ func (s *Session) SaveSnapshot(path string) error {
 func (s *Session) SaveSnapshotIfPathFree(path string) (attempted bool, err error) {
 	if path == "" {
 		return false, fmt.Errorf("empty session path")
+	}
+	// tl1281: same skip as saveObserved — an unchanged tail-window session's
+	// snapshot has nothing to write, so the upgrade's full reload is pure
+	// decode cost on the tab-switch path.
+	if s.snapshotTailWindowClean(path) {
+		return false, nil
 	}
 	// Advisory probe before the potentially expensive truncated-transcript
 	// upgrade: a busy path means the file is owned by someone else right now,
@@ -1099,6 +1111,48 @@ func (s *Session) snapshotNoOpReason(path string) string {
 // digest + probe entirely (#6607).
 func (s *Session) snapshotUpToDate(path string) bool {
 	return s.snapshotNoOpReason(path) != ""
+}
+
+// snapshotTailWindowClean reports that a first-paint tail-window session is a
+// pure read projection of an unchanged disk transcript (tl1281). The window
+// decoded from the checkpoint is a strict subset of the disk transcript, and
+// the disk state is authoritative and complete — a defensive snapshot of such
+// a session has nothing to write, but the ordinary save path would still pay
+// upgradeTruncatedTranscriptForWrite's FULL reload (a 173MB-class decode) to
+// decide that. The skip's proof mirrors snapshotNoOpReason's re-verification
+// discipline: in-memory unchanged since load (version/rewrite/repair flags),
+// and both transcript source files byte-stable since the baseline was
+// recorded. Any real change (a turn's Add bumps version; any writer grows a
+// file) disarms the skip and the save proceeds through the ordinary upgrade,
+// whose CAS/probe semantics own the conflict surface unchanged.
+//
+// The exposure window is a same-byte-size external rewrite between the checks
+// and the skip — the same class the no-op path already carries — and the next
+// real save still runs the full upgrade and probes for divergence.
+func (s *Session) snapshotTailWindowClean(path string) bool {
+	key := canonicalSessionSavePath(path)
+	s.mu.RLock()
+	if !s.tailTruncated || s.normalizedDirty || s.eventLogDamaged ||
+		!s.persisted.ok || s.persisted.path != key ||
+		s.persisted.version != s.version ||
+		s.rewriteVersion != s.persistedRewriteVersion {
+		s.mu.RUnlock()
+		return false
+	}
+	baseline := s.persisted
+	s.mu.RUnlock()
+	if info, err := os.Stat(store.SessionEventLog(path)); err == nil {
+		if info.Size() != baseline.logTail {
+			return false
+		}
+	} else if baseline.logTail != 0 {
+		// The log vanished or became unreadable since load — not clean.
+		return false
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() || info.Size() != baseline.checkpointBytes {
+		return false
+	}
+	return true
 }
 
 func (s *Session) persistState(path string) sessionPersistState {

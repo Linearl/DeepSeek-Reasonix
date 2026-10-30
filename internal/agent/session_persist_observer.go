@@ -87,6 +87,15 @@ func (s *Session) SaveIfAbsent(path string) error {
 }
 
 func (s *Session) saveObserved(path string, mode sessionSaveMode) error {
+	// tl1281: a defensive snapshot of an unchanged tail-window session writes
+	// nothing — the disk transcript is complete and byte-stable since the
+	// window was decoded. Skipping here avoids paying the truncated-transcript
+	// upgrade below, whose full reload is exactly the decode tl1281 removes
+	// from idle paths. Real changes disarm the skip (version/file checks) and
+	// land in the ordinary upgrade+save.
+	if mode == sessionSaveSnapshot && s.snapshotTailWindowClean(path) {
+		return nil
+	}
 	// A first-paint Session carries only the tail of its transcript. Saves are
 	// full rewrites, so the complete history has to be read back before any of
 	// this can reach disk (task 187). This runs outside the save locks, so the
