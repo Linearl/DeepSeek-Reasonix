@@ -3322,6 +3322,16 @@ func (m chatTUI) runningWorkingLine(cancelRequested, styled bool) string {
 	return working
 }
 
+// tuiShellMode reports whether the composer input should render in shell mode
+// (Shell tag + colored border). Mirrors the controller's shell gate (tl1274):
+// a leading "!!" is the quick-command picker trigger (task 593), not shell —
+// the backend routes it as a normal turn, so the TUI must not show Shell mode
+// for it either.
+func tuiShellMode(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return strings.HasPrefix(trimmed, "!") && !strings.HasPrefix(trimmed, "!!")
+}
+
 func (m chatTUI) View() tea.View {
 	if m.themeSweep != nil {
 		v := tea.NewView(m.themeSweep.render())
@@ -3337,7 +3347,7 @@ func (m chatTUI) View() tea.View {
 	}
 	boxW := max(m.width, 10)
 	hideComposer := m.hideComposer()
-	shellMode := strings.HasPrefix(strings.TrimSpace(m.input.Value()), "!")
+	shellMode := tuiShellMode(m.input.Value())
 	cancelRequested := m.cancelRequested()
 	var box string
 	if !hideComposer {
@@ -3976,7 +3986,7 @@ func (m chatTUI) computeStatusLineCount(width int) int {
 	if m.ctrl == nil {
 		return 3 // two information rows plus their divider
 	}
-	shellMode := strings.HasPrefix(strings.TrimSpace(m.input.Value()), "!")
+	shellMode := tuiShellMode(m.input.Value())
 	cancelRequested := m.cancelRequested()
 
 	// Replicate the first status line (mode tag + state) from View().

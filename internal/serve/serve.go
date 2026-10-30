@@ -928,7 +928,9 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	if body.Action != "" {
 		trimmed = ""
 	}
-	if strings.HasPrefix(trimmed, "!") {
+	// tl1274: "!!" is the quick-command picker trigger (task 593), not shell —
+	// it is admitted as a normal turn, matching the controller's submit paths.
+	if strings.HasPrefix(trimmed, "!") && !strings.HasPrefix(trimmed, "!!") {
 		http.Error(w, "shell commands are unavailable over HTTP", http.StatusForbidden)
 		return
 	}

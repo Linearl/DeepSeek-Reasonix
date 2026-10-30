@@ -1952,7 +1952,9 @@ func isNonTurnHTTPInput(input string) bool {
 	}
 	// "!" shell commands are rejected by submitHTTP before the turn loop
 	// (403 over HTTP); a format attached to them would never be consumed.
-	if strings.HasPrefix(trimmed, "!") {
+	// tl1274: "!!" (quick-command picker trigger, task 593) is admitted as a
+	// normal turn, so a format attached to it must be kept.
+	if strings.HasPrefix(trimmed, "!") && !strings.HasPrefix(trimmed, "!!") {
 		return true
 	}
 	// Slash commands are management verbs (/compact /new /clear /model ...)
@@ -2096,7 +2098,13 @@ func (c *Controller) submit(input, display, editedOriginal string) {
 	if c.applyGoalCommand(trimmed, display) {
 		return
 	}
-	if strings.HasPrefix(trimmed, "!") {
+	// tl1274: "!!" at the head is the desktop quick-command picker trigger
+	// (task 593), not a shell command. When the picker did not consume the
+	// token (no match, picker disabled, or the raw line sent as-is), the text
+	// must reach the model as a normal turn — the shell branch below strips a
+	// single "!" and used to execute the remainder as a shell command
+	// (!!ls → RunShell("!ls")).
+	if strings.HasPrefix(trimmed, "!") && !strings.HasPrefix(trimmed, "!!") {
 		c.RunShell(trimmed[1:])
 		return
 	}
@@ -2120,7 +2128,9 @@ func (c *Controller) submitHTTPWithFormat(input, display, format string) {
 	if c.applyGoalCommand(trimmed, display) {
 		return
 	}
-	if strings.HasPrefix(trimmed, "!") {
+	// tl1274: "!!" is the quick-command picker trigger (task 593), not shell —
+	// it goes through as a normal turn, matching the Submit path.
+	if strings.HasPrefix(trimmed, "!") && !strings.HasPrefix(trimmed, "!!") {
 		c.notice("shell commands are unavailable from this frontend")
 		return
 	}
