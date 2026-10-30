@@ -23,8 +23,9 @@ export interface LabLayoutMember {
   tier: LabTier;
 }
 
-/** 任务 775 — entry 种类：开关卡（默认，兼容现状）或无开关参数卡。 */
-export type LabEntryKind = "feature" | "param";
+/** 任务 775 — entry 种类：开关卡（默认，兼容现状）或无开关参数卡。
+ * tl1227 — 增 action：动作卡（无开关无字段，pane 内是一组动作按钮 + 读数）。 */
+export type LabEntryKind = "feature" | "param" | "action";
 
 /** 任务 775 — 参数字段的输入形态（覆盖现有参数控件四类；值语义收拢在
  * labParamFields 注册表，yaml 只声明展示形态）。 */
@@ -45,7 +46,8 @@ export interface LabLayoutEntry {
   id: string;
   /** i18n key of the rail label (validated against the dictionary). */
   labelKey: DictKey;
-  /** 缺省 = "feature"；"param" = 无开关参数卡（fields 驱动渲染，任务 775）。 */
+  /** 缺省 = "feature"；"param" = 无开关参数卡（fields 驱动渲染，任务 775）；
+   * "action" = 动作卡（无开关无字段，tl1227）。 */
   kind?: LabEntryKind;
   /** Own tier; omitted on merged cards (their badges come from members). */
   tier?: LabTier;

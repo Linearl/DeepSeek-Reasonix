@@ -2,6 +2,7 @@ import { SettingsOptions } from "./SettingsOptions";
 import { SettingsSelect } from "./SettingsSelect";
 import { SessionEventsPanel, type RotationMode } from "./SessionEventsPanel";
 import { SessionMigrationSection } from "./SessionMigrationSection";
+import { DagMigrationSection } from "./DagMigrationSection";
 import { PerfMemorySection } from "./PerfMemorySection";
 import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from "../lib/dockTabs";
 import { useRemoteStore } from "../store/remote";
@@ -257,7 +258,7 @@ const LabRailItem = memo(function LabRailItem({ feature, active, onSelect, trans
     id: ExperimentFeatureId;
     label: string;
     on: boolean;
-    kind: "feature" | "param";
+    kind: "feature" | "param" | "action";
     badgeTier: ReturnType<typeof labEntryBadgeTier>;
   };
   active: boolean;
@@ -268,13 +269,14 @@ const LabRailItem = memo(function LabRailItem({ feature, active, onSelect, trans
     <button
       type="button"
       id={`lab-entry-${feature.id}`}
-      className={`experimental-rail__item${active ? " experimental-rail__item--active" : ""}${feature.on || feature.kind === "param" ? "" : " experimental-rail__item--off"}`}
+      className={`experimental-rail__item${active ? " experimental-rail__item--active" : ""}${feature.on || feature.kind === "param" || feature.kind === "action" ? "" : " experimental-rail__item--off"}`}
       aria-current={active ? "true" : undefined}
       onClick={() => onSelect(feature.id)}
     >
       {/* 任务 775：参数卡无开关——空心态点代替开/关状态点，
-          且不参与 --off 变灰（参数卡不存在「关」态）。 */}
-      <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : feature.kind === "param" ? " experimental-rail__dot--param" : ""}`} aria-hidden="true" />
+          且不参与 --off 变灰（参数卡不存在「关」态）。
+          tl1227：动作卡（action）同语义，复用同一空心态点（零新增 CSS 类）。 */}
+      <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : feature.kind === "param" || feature.kind === "action" ? " experimental-rail__dot--param" : ""}`} aria-hidden="true" />
       <span className="experimental-rail__label">{feature.label}</span>
       {/* 任务 774: the rail row (card head) renders exactly ONE
           aggregated badge — max(own, members) by tier strength;
@@ -824,6 +826,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               档位本身仍走 labParamFields 注册表读写（值语义单源）。 */}
           {selected === "logManagement" && (
             <LogManagementLabPane s={s} busy={busy} apply={apply} />
+          )}
+          {/* tl1227：DAG 日志迁移动作卡（存储组，kind: action 首例）——专用
+              pane：两步确认（扫描→执行）+ 事件进度 + 逐会话读数。动作卡不走
+              通用参数渲染器（无字段），也不走各硬编码开关分支。 */}
+          {selected === "dagMigration" && (
+            <DagMigrationSection t={t} busy={busy} apply={apply} />
           )}
           {selected === "fullAccess" && (
             <>

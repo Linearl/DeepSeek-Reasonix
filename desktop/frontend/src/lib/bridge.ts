@@ -890,6 +890,37 @@ export interface SessionStorageMigrationReportView {
   entries?: SessionStorageMigrationEntryView[];
 }
 
+// tl1227: one schema-2 session as the lab action card sees it. Status is
+// pending / active (open in this app, will be skipped) / migrated / skipped /
+// failed; active never gets a silent retry, it asks the user to close the tab.
+export interface DagMigrationSessionView {
+  sessionPath: string;
+  label: string;
+  logBytes: number;
+  messages: number;
+  status: "pending" | "active" | "migrated" | "skipped" | "failed";
+  detail?: string;
+  active?: boolean;
+}
+
+export interface DagMigrationScanView {
+  sessions: DagMigrationSessionView[];
+  scanned: number;
+  /** Self-heal *.pre-repair-* snapshot trees, deliberately excluded. */
+  backups: number;
+  elapsedMs: number;
+  error?: string;
+}
+
+export interface DagMigrationRunView {
+  sessions: DagMigrationSessionView[];
+  migrated: number;
+  active: number;
+  skipped: number;
+  failed: number;
+  elapsedMs: number;
+}
+
 export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
   /** Task 36 Phase 1: answer an app:takeover-request prompt; false when stale. */
   ResolveTakeoverDecision(marker: string, accept: boolean): Promise<boolean>;
@@ -1684,6 +1715,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SessionV5StoreAvailable(): Promise<boolean>;
   PlanSessionV5Import(): Promise<SessionStorageMigrationPlanView>;
   RunSessionV5Import(): Promise<SessionStorageMigrationReportView>;
+  // tl1227: DAG schema-2 → schema-1 one-shot migration (lab action card,
+  // storage group). Scan is read-only; Run skips sessions this app has open.
+  ScanDagMigration(): Promise<DagMigrationScanView>;
+  RunDagMigration(): Promise<DagMigrationRunView>;
   /**
    * Relaunch the desktop so boot-time settings take effect. Not the same as
    * RestartAndUpdate: this publishes nothing, it only reopens what is on disk.
@@ -6674,6 +6709,8 @@ function makeMockApp(): AppBindings {
     async SetDesktopAlertLogMaxTotalMB() {},
     async AlertLogUsage() { return { bytes: 0, files: 0, dir: "" }; },
     async OpenLogDir() { console.info("mock OpenLogDir"); },
+    async ScanDagMigration() { return { sessions: [], scanned: 0, backups: 0, elapsedMs: 0 }; },
+    async RunDagMigration() { return { sessions: [], migrated: 0, active: 0, skipped: 0, failed: 0, elapsedMs: 0 }; },
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
     async SetSessionCollabReplyNudge() {},
