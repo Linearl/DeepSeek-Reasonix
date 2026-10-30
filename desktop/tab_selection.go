@@ -134,6 +134,11 @@ func (a *App) SetActiveTab(tabID string) error {
 	if kickLazyBuild {
 		a.startTabControllerBuild(next)
 	}
+	// tl1281 切换驱逐：旧活跃 tab 防抖后空闲即释放解码态（oversize 会话才
+	// 驱逐；守卫在 evictIdleTabRuntime 内全量重查）。async——切换路径零延迟。
+	if active != nil && active.ID != tabID {
+		a.kickTabEviction(active.ID)
+	}
 	a.kickDeferredRebuildRetry()
 	// 任务 451 方案 B：切换是预取候选变化的事件（新活跃 tab 让位出候选、
 	// 旧活跃 tab 若无 runtime 则成为冷候选），kick 一轮防抖预取。
