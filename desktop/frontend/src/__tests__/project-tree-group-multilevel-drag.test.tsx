@@ -1,9 +1,10 @@
 // Run: tsx src/__tests__/project-tree-group-multilevel-drag.test.tsx
 //
 // 892-B 验收③：拖拽多层级语义（交互设计拍板并钉死）——
-//   拖到组行「上三分之一/下三分之一」= 与目标同级排序（before/after，
-//   拖拽组换到目标的 parent 层级）；
-//   拖到组行「中间」= 入组尾（成为目标最后一个子组）；
+//   tl 1267 四分位（VS Code ListViewTargetSector）：组行「上 25%/下 25%」=
+//   与目标同级排序（before/after，拖拽组换到目标的 parent 层级）；
+//   after 带仅折叠组存在（展开项无 after——Atlassian 规则，展开组下带归
+//   入组）；组行「中 50%」= 入组尾（成为目标最后一个子组）；
 //   拖进自己的子树 = 环拒绝（placeGroup 原引用返回，零写入）；
 //   Alt+drop 保留 task-350 强制入组语义；
 //   无布局环境（jsdom 零 rect）回退 after —— task-50 扁平重排契约不变。
@@ -178,9 +179,14 @@ async function flush() {
 }
 
 let activeRoot: Root | null = null;
-async function mount(bindings: ProjectTreeOrganizationBindings) {
+// tl 1267: collapsedIDs 预置折叠态（持久化集在 hook 初始化时读一次）——
+// 四分位后 after 带只存在于折叠组（展开项无 after，Atlassian 规则）。
+async function mount(bindings: ProjectTreeOrganizationBindings, collapsedIDs: string[] = []) {
   if (activeRoot) await act(async () => activeRoot!.unmount());
   window.localStorage.clear();
+  if (collapsedIDs.length > 0) {
+    window.localStorage.setItem("projectTree:sessionGroupCollapsed", JSON.stringify(collapsedIDs));
+  }
   const root = createRoot(document.getElementById("root")!);
   activeRoot = root;
   await act(async () => {
@@ -234,15 +240,16 @@ console.log("\n892-B③ 组件 zone 机器");
   activeRoot = null;
 }
 {
-  // 拖 A → hover B 的下带 → 同级 after。
+  // 拖 A → hover 折叠的 B 的下带 → 同级 after（tl 1267 四分位后 after 带仅
+  // 折叠组存在；展开组的下 25% 归 into——插入线会读成其首个子项之前）。
   const saved: Saved = { payloads: [] };
   await mount(casBindings([
     { id: "g-a", title: "A", topicIds: [] },
     { id: "g-b", title: "B", topicIds: [] },
     { id: "g-c", title: "C", topicIds: [] },
-  ], saved));
+  ], saved), ["project|/repo|g-b"]);
   await act(flush);
-  await dragWithBand(0, 1, 80); // 下带 → after
+  await dragWithBand(0, 1, 80); // 下带（折叠组）→ after
   eq(saved.payloads[0]?.map((g) => g.id), ["g-b", "g-a", "g-c"], "下带 = 与目标同级排序（after）");
   eq(saved.payloads[0]?.find((g) => g.id === "g-a")?.parent, undefined, "同级排序不改 parent");
   await act(async () => activeRoot!.unmount());

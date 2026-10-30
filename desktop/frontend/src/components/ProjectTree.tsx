@@ -2015,10 +2015,13 @@ export function ProjectTree({
         });
       }
       const topicDrag = organization.topicRow(node, section === "pinned" || isSessionNode || Boolean(query || menuNodeKey || editingTopic || dragProjectRoot || creatingProject) || Boolean(batchEntry));
+      // tl 1267: --project-tree-drop-inset carries the row's own hierarchy
+      // indent (the same value topic-main pads by) so the drop insertion
+      // lines start at the target level, not at the row's left edge.
       const row = (
         <div
           className={`project-tree__topic${scopeClass}${isSessionNode ? " project-tree__topic--session" : ""}${active ? " project-tree__topic--active" : ""}${node.running ? " project-tree__topic--running" : ""}${status ? ` project-tree__topic--status-${status}` : ""}${unread ? " project-tree__topic--unread" : ""}${!isSessionNode && pinned ? " project-tree__topic--pinned" : ""}${topicMenuOpen ? " project-tree__topic--menu-open" : ""}${batchEntry ? ` project-tree__topic--batch${batchSelected.has(batchEntry.topicId) ? " project-tree__topic--batch-selected" : ""}` : ""}${topicDrag.className}${sideTimeVisible && (timeLabel || showStatusInSide || showWaitingPill) ? " project-tree__topic--with-side" : metaFull ? " project-tree__topic--has-meta" : ""}${imSource ? " project-tree__topic--im-source" : ""}${shortcutIndex > 0 ? " project-tree__topic--show-shortcut" : ""}`}
-          style={accentStyle}
+          style={{ ...accentStyle, "--project-tree-drop-inset": `${14 + depth * 16}px` } as CSSProperties}
           {...topicDrag.props}
           onContextMenu={openTopicMenu}
           onMouseEnter={(event) => {

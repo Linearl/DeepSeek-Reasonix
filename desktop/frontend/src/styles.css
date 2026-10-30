@@ -34136,11 +34136,38 @@ button.statusbar__mcp:focus-visible {
     opacity: 0.72;
   }
 }
-.project-tree__topic--drop-before {
-  box-shadow: inset 0 2px 0 currentColor;
+/* tl 1267: the topic-row drop hints join the same two-treatment paradigm as
+   the session-group headers — a 2px accent insertion line (before = top edge,
+   after = bottom edge) starting at the row's own hierarchy indent via
+   --project-tree-drop-inset (fed inline by ProjectTree.tsx with the same
+   value topic-main pads by). Replaces tl 1225's currentColor inset bars:
+   currentColor read as a text-coloured edge, not a placement indicator, and
+   the full-width bar carried no level information. The lines ride ::after —
+   the row's ::before is the --active marker, and the theme layer restyles
+   that marker at (0,4,0), which would override a same-pseudo drop line
+   whenever an ACTIVE row is the drop target (a top-frequency case). They
+   stay INSIDE the row box (top:0/bottom:0, never negative) per the tl 1225
+   lesson; the row itself is already position:relative. */
+.project-tree__topic.project-tree__topic--drop-before,
+.project-tree__topic.project-tree__topic--drop-after {
+  position: relative;
 }
-.project-tree__topic--drop-after {
-  box-shadow: inset 0 -2px 0 currentColor;
+.project-tree__topic.project-tree__topic--drop-before::after,
+.project-tree__topic.project-tree__topic--drop-after::after {
+  content: "";
+  position: absolute;
+  left: var(--project-tree-drop-inset, 8px);
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.project-tree__topic.project-tree__topic--drop-before::after {
+  top: 0;
+}
+.project-tree__topic.project-tree__topic--drop-after::after {
+  bottom: 0;
 }
 
 @keyframes project-tree-spin {
@@ -38964,31 +38991,65 @@ button.statusbar__mcp:focus-visible {
   cursor: grabbing;
 }
 
-/* tl 1260: the session-group placement hints (pointer-machine drags; the
-   sibling --reorder-target covers both before/after zones, the --nest-target
-   the into zone) join the tl 1225 accent paradigm: 2px accent inset treatment
-   on the hovered header, same colour family and weight as the project side's
-   drop-into ring. The old neutral-gray washes read as "no hint" next to the
-   project side's accent bars. The doubled-class selector (0,2,0, later in
-   this file) is load-bearing: during a pointer drag the pointer rests on the
-   hovered header, so `.project-tree__group-main:hover` (0,2,0, above) always
-   co-applies — at the plain (0,1,0) specificity the hint's background was
-   silently replaced by the 8% hover wash, one of the two mechanisms behind
-   the "no feedback at all" report (tl1225b set the doubled-class precedent
-   against the theme layer; this one beats the sibling hover rule). */
-.project-tree__group-main.project-tree__group-main--reorder-target {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+/* tl 1267: the session-group placement hints follow the industry quadrisector
+   (VS Code ListViewTargetSector / Atlassian pragmatic-dnd / React Aria
+   DropIndicator) with TWO distinct treatments, per the tl 1260 rework verdict:
+   - BETWEEN rows (drop-before / drop-after) = a 2px accent insertion LINE
+     drawn inside the row box at the top/bottom edge, starting at the row's own
+     hierarchy indent (--project-tree-drop-inset is fed inline by the TSX with
+     the same value the header pads by). This replaces tl 1260's zone-blind
+     ring+wash: before and after must be distinguishable mid-drag, and a ring
+     on the whole header reads as "into", not "between".
+   - INTO (nest-target) = the whole-row container treatment (accent wash +
+     2px ring), unchanged from tl 1260 — this is also what an HTML5 session
+     drag paints while hovering a header (its drop is always "into").
+   The doubled-class selector (0,2,0, later in this file) stays load-bearing
+   against `.project-tree__group-main:hover` (tl 1260's hover-beat lesson).
+   The lines are ::before pseudo-elements INSIDE the row box (top:0/bottom:0,
+   never negative offsets) — the tl 1225 lesson: outset hairlines get covered
+   by sibling contain:layout stacking contexts and clipped by the scroll
+   container on the first/last row. */
+.project-tree__group-main.project-tree__group-main--drop-before,
+.project-tree__group-main.project-tree__group-main--drop-after {
+  position: relative;
+}
+.project-tree__group-main.project-tree__group-main--drop-before::before,
+.project-tree__group-main.project-tree__group-main--drop-after::before {
+  content: "";
+  position: absolute;
+  left: var(--project-tree-drop-inset, 8px);
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.project-tree__group-main.project-tree__group-main--drop-before::before {
+  top: 0;
+}
+.project-tree__group-main.project-tree__group-main--drop-after::before {
+  bottom: 0;
 }
 
 /* Task 892-B: the INTO band of a group drop (drop on the row = join the
-   group's subtree) paints stronger than the sibling-reorder bands, so the
-   two plain-drop meanings are distinguishable mid-drag. tl 1260: accent twin
+   group's subtree) paints stronger than the insertion lines, so the two
+   plain-drop meanings are distinguishable mid-drag. tl 1260: accent twin
    of the project side's --pgroup-main--drop-into (accent 16% wash + 2px ring
-   at 55%), doubled-class for the same hover-beat reason. */
+   at 55%), doubled-class for the same hover-beat reason. tl 1267: this is
+   also the HTML5 session-hover treatment (drop is always "into" there). */
 .project-tree__group-main.project-tree__group-main--nest-target {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* tl 1267 防呆: a hover over the dragged group itself or one of its own
+   descendants must read as "cannot drop here" — not-allowed cursor plus a
+   flat gray wash, and the release commits nothing (the TSX never hands a
+   blocked hover to dropGroup). Doubled-class for the same hover-beat reason:
+   the gray must not be replaced by the 8% accent hover wash mid-drag. */
+.project-tree__group-main.project-tree__group-main--drop-blocked {
+  cursor: not-allowed;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 /* Task 169: desktop drag affordance for group reordering. The grip sits at the
