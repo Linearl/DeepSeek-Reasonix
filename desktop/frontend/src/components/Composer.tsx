@@ -1880,15 +1880,16 @@ export function Composer({
     [quickCommands],
   );
 
-  // Task 593: "!!" at the very head of the input summons the quick-command
-  // picker — the same dropdown interaction as "/" but backed by the stored
-  // snippets. Line-head only: the token must start at index 0 of the input,
-  // so any "!!" elsewhere in the text never triggers.
+  // Task 593 + tl 1273: "!!" — or the full-width "！！", so Chinese-IME users
+  // don't have to switch layouts mid-sentence — at the very head of the input
+  // summons the quick-command picker — the same dropdown interaction as "/"
+  // but backed by the stored snippets. Line-head only: the token must start at
+  // index 0 of the input, so any "!!" elsewhere in the text never triggers.
   const activeBangSelection = invocations.length > 0 ? richSelection : plainSelection;
   const quickCommandToken = useMemo(() => {
     if (activeBangSelection.start !== activeBangSelection.end) return null;
     const before = slashText.slice(0, Math.min(activeBangSelection.start, slashText.length));
-    const match = /^!!([^\n]*)$/.exec(before);
+    const match = /^(?:!!|！！)([^\n]*)$/u.exec(before);
     if (!match) return null;
     const newlineAt = slashText.indexOf("\n");
     return {

@@ -6,6 +6,9 @@
 // "!!" elsewhere in the text never triggers — and the "/" / "@" / "#"
 // triggers stay untouched.
 //
+// tl 1273 (A): the full-width "！！" triggers the same way, so Chinese-IME
+// users can summon the list without switching layouts.
+//
 // jsdom note: these suites install the DOM after react-dom has loaded, so
 // React boots with canUseDOM=false and falls back to its keyup-driven
 // change-detection polyfill (same contract as composer-ime.test.tsx). The
@@ -219,6 +222,16 @@ async function main() {
   eq(ta.value, "切换到另一条线", "picking consumes the !! token and inserts the snippet text");
   eq(pickerCount(), 0, "picker closes after the pick");
 
+  // 2b) 全角！！同样触发（中文输入法免切输入法）：打开、过滤、选中消费 ！！ token。
+  await typeText(ta, "！！");
+  eq(pickerCount(), 1, "full-width ！！ at head opens the picker");
+  await typeText(ta, "！！转");
+  const rows2b = quickCommandRows();
+  ok(rows2b.length === 1 && rows2b[0].includes("转线"), "typing after full-width ！！ filters the list");
+  await pressKey(ta, "Enter");
+  eq(ta.value, "切换到另一条线", "picking consumes the full-width ！！ token");
+  eq(pickerCount(), 0, "picker closes after the full-width pick");
+
   // 3) 过滤：!! 后继续输入按标题/正文过滤；Esc 关闭。
   await typeText(ta, "!!转");
   const rows3 = quickCommandRows();
@@ -229,6 +242,8 @@ async function main() {
   // 4) 行头硬约束：正文中任何位置的 !! 不触发；光标离开行首 token 面板关闭。
   await typeText(ta, "前面有正文!!");
   eq(pickerCount(), 0, "!! mid-text never triggers");
+  await typeText(ta, "前面有正文！！");
+  eq(pickerCount(), 0, "full-width ！！ mid-text never triggers");
   await typeText(ta, "!!");
   eq(pickerCount(), 1, "line-head !! triggers again after plain text");
   await act(async () => {
