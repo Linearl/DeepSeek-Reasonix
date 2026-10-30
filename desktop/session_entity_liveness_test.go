@@ -221,25 +221,28 @@ func TestSubmitToMissingSessionEntityRejectedWithFeedback(t *testing.T) {
 	waitNotRunning(t, ctrl)
 }
 
-// 方向①（重建路径判定缝）: pinned 路径「ok 但无可恢复会话」的两种 nil 必须
-// 分流——文件还在的空占位照旧当新会话起点，文件已消失的实体查无返回断开
-// 哨兵（诚实失败），而不是静默把 tab 重置成空会话。
-func TestMissingPinnedSessionResumeErrSplitsPlaceholderFromGone(t *testing.T) {
-	isolateDesktopUserDirs(t)
-	dir := t.TempDir()
-	gone := filepath.Join(dir, "gone.jsonl")
-	if err := missingPinnedSessionResumeErr(gone, nil); !errors.Is(err, errSessionDisconnected) {
-		t.Fatalf("gone pinned path with nothing to resume err = %v, want errSessionDisconnected", err)
+// 方向①（重建路径契约）: pinned 路径查无时重建路径保持既有 pinned 契约
+// （TestBuildTabControllerKeepsMissingPinnedSessionPath 钉死：缺失路径继续
+// 作为空会话起点——/clear 后未落盘即重启的合法空会话不得误判断开）。
+// 本套只钉 tabMeta 骨架投影在点击前给出「已断开」可见态。
+func TestTabMetaSkeletonProjectionDoesNotDependOnBuildFailure(t *testing.T) {
+	app := newEntityLivenessApp(t)
+	dir := desktopSessionDir(globalTabWorkspaceRoot())
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir sessions: %v", err)
 	}
-	alive := writeTopicSessionWithPrompt(t, dir, "placeholder.jsonl", "topic_ph", "PH", "", "ph", time.Now())
-	if err := missingPinnedSessionResumeErr(alive, nil); err != nil {
-		t.Fatalf("existing empty placeholder err = %v, want nil (fresh-start contract unchanged)", err)
+	missingPath := filepath.Join(dir, "gone.jsonl")
+	skeleton := &WorkspaceTab{
+		ID:          "skeleton_contract",
+		Scope:       "global",
+		TopicID:     "topic_skeleton_contract",
+		SessionPath: missingPath,
+		sink:        &tabEventSink{tabID: "skeleton_contract", app: app},
+		disabledMCP: map[string]ServerView{},
 	}
-	if err := missingPinnedSessionResumeErr(gone, &agent.Session{}); err != nil {
-		t.Fatalf("non-nil resume session err = %v, want nil (resume wins)", err)
-	}
-	if err := missingPinnedSessionResumeErr("", nil); err != nil {
-		t.Fatalf("empty path err = %v, want nil (fresh session has no entity to lose)", err)
+	registerEntityLivenessTab(t, app, skeleton)
+	if m := app.tabMeta(skeleton, false); m.Runtime.Issue == nil || m.Runtime.Issue.Code != sessionMissingRuntimeIssueCode {
+		t.Fatalf("skeleton projection issue = %+v, want %q", m.Runtime.Issue, sessionMissingRuntimeIssueCode)
 	}
 }
 

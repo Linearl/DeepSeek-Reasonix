@@ -95,20 +95,6 @@ func tabSessionEntityGone(tab *WorkspaceTab) bool {
 	return tabSessionEntityMissing(tabPath) || (tabPath == "" && tabSessionEntityMissing(ctrlPath))
 }
 
-// missingPinnedSessionResumeErr 是重建路径（方向①）的判定缝：tab 钉住的会话
-// 路径加载结果「ok 但无可恢复会话」时，区分两种 nil——文件还在的空占位
-// （合法的新会话起点，返回 nil 照旧）与文件已消失的实体查无（返回断开
-// 哨兵，诚实失败而非静默空会话重置）。
-func missingPinnedSessionResumeErr(path string, resumeSession *agent.Session) error {
-	if resumeSession != nil {
-		return nil
-	}
-	if !tabSessionEntityMissing(path) {
-		return nil
-	}
-	return errSessionDisconnected
-}
-
 // sessionEntityAdmissionErr 是提交链路的前置实体校验（方向③）：控制器谎报
 // busy（running/待确认/后台作业）而会话实体（持久化锚与控制器活路径都）查无
 // 时，拒绝受理并返回断开文案——这正是残影 tab 上「继续」点击撞到的状态：

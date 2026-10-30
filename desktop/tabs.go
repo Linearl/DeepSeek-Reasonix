@@ -4789,21 +4789,18 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		// Prefer the exact session file persisted for this tab. Topic lookup is a
 		// compatibility fallback for older desktop-tabs.json files that only stored
 		// topicId and could pick the wrong session when one topic had multiple files.
+		// tl 1266: a pinned path whose file is gone stays the empty-session start
+		// (the /clear-then-restart contract pinned by
+		// TestBuildTabControllerKeepsMissingPinnedSessionPath — the new file is
+		// only created by the first save, so "missing" is ambiguous between an
+		// intentionally empty conversation and a deleted one). The tl 1266
+		// disconnect surface lives in the restore-time skeleton projection
+		// (tabMeta) and the busy-controller submit guard instead.
 		if loaded, pinnedPath, ok, loadErr := loadPinnedTabSessionWithPreload(dir, tabSessionPath, loadedSession); loadErr != nil {
 			resumeLoadErr = loadErr
 		} else if ok {
 			path = pinnedPath
 			resumeSession = loaded
-			// tl 1266 方向①: a pinned path whose file no longer exists on disk is
-			// not a fresh-start placeholder (that one still has its empty file).
-			// Resuming "nothing" at the gone path silently reset the tab to a
-			// blank conversation while the contact directory had already lost
-			// the entity — the exact 查无 state behind the running-ghost
-			// incident. Fail the build with the explicit disconnect message so
-			// the user reopens the conversation from history instead. The
-			// sentinel is already path-free and user-facing, so the
-			// friendlySessionLoadError rewrite below leaves it verbatim.
-			resumeLoadErr = missingPinnedSessionResumeErr(path, resumeSession)
 		}
 		if resumeLoadErr == nil && path == "" && tabTopicID != "" {
 			existingPath := a.catalogSessionPathForTopic(tabScope, tabWorkspaceRoot, tabTopicID)
