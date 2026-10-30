@@ -75,7 +75,7 @@ ok(treeSource.includes('if (event.key === "Enter") commitSearchQuery();') && tre
 
 console.log("\ntl1282 tree css/locales contract");
 
-ok(styles.includes(".settings-center__search,\n.project-tree__search {\n  position: relative;") || styles.includes(".settings-center__search,\n.project-tree__search {\n  position: relative;\n}"),
+ok(/\.settings-center__search,\s*\.project-tree__search\s*\{\s*position: relative;/.test(styles),
   "both host labels are absolute anchors (position: relative only, no layout shift)");
 ok(styles.includes(".search-history {") && styles.includes(".search-history__term") && styles.includes(".search-history__remove") && styles.includes(".search-history__clear"),
   "the shared dropdown styles exist in styles.css");
