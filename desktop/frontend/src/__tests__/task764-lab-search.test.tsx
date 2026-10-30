@@ -45,7 +45,9 @@ console.log("\ntask 764 lab search + chips dedup");
 
 // ── ② wiring: query rides the nav click into a lab-entry preselect ─────────
 ok(/onSelect: \(tab: SettingsTab, query\?: string\) => void;/.test(nav), "SettingsNavigation onSelect carries the query (764 signature)");
-ok(nav.includes("onClick={() => onSelect(id, query)}"), "nav item click forwards the current query");
+// tl1282: onClick 展开为多行块（先 commitQuery 记录检索历史，再转发查询词），
+// 764 的转发语义不变，锚点改为按块内两条调用断言。
+ok(nav.includes("commitQuery();") && nav.includes("onSelect(id, query);"), "nav item click forwards the current query");
 ok(panel.includes("const [pendingLabEntry, setPendingLabEntry] = useState<ExperimentFeatureId | null>(null);"), "pending lab entry state exists in SettingsPanel");
 ok(panel.includes("findLabEntryIdByQuery(LAB_LAYOUT_FOR_SEARCH, query, t) as ExperimentFeatureId | null"), "selectTab resolves the query to a lab entry via the shared layout");
 ok(panel.includes("focusEntry={pendingLabEntry}"), "ExperimentalSection receives the focus entry");
