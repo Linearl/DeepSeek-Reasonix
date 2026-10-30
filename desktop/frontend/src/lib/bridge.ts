@@ -162,6 +162,7 @@ import type {
   UpdateInfo,
   UpdateProgress,
   WireEvent,
+  WireWorkflowRun,
   WorkspaceChangeDetailView,
   WorkspaceChangesView,
   WorkspaceRevisions,
@@ -1639,6 +1640,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 686: workflow visualization panel (palette entry opening the DAG flow
   // view; re-applied on settings save, no restart).
   SetExperimentalWorkflowPanel(enabled: boolean): Promise<void>;
+  // 任务 934: workflow runs feed — panel 全量拉取（推送走 "workflow:runs"
+  // 运行时通道）与运行中止。
+  WorkflowRunsSnapshot(): Promise<WireWorkflowRun[]>;
+  WorkflowCancelRun(runId: string): Promise<boolean>;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; call-time gate, next scheduled run applies it).
   SetExperimentalHeartbeatBackground(enabled: boolean): Promise<void>;
@@ -6584,6 +6589,13 @@ function makeMockApp(): AppBindings {
     async SetExperimentalStartupSplash() {},
     async SetStandardContinuation() {},
     async SetExperimentalWorkflowPanel() {},
+    // 任务 934：浏览器 dev mock 无工作流服务，给诚实的空表/不可中止。
+    async WorkflowRunsSnapshot() {
+      return [] as WireWorkflowRun[];
+    },
+    async WorkflowCancelRun() {
+      return false;
+    },
     async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},
     async SetExperimentalCompactionParallel() {},

@@ -23,6 +23,9 @@ export interface WorkflowNodeDetail {
   confirmation?: { confirmed: boolean; evidence: string };
   /** ④ 门命令 + exit code + stderr（gate 节点）。 */
   gate?: { command: string; exitCode?: number; stderr?: string };
+  /** 任务934: 真实运行的引擎诊断短句（exit code / 未复现 / 错误摘要），
+   * fixture 无此段。 */
+  diagnostic?: string;
   durationMs?: number;
   tokens?: number;
 }

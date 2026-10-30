@@ -9,7 +9,9 @@
 // → 最长路径分层 → 同层按 phase 序 + 声明序排序 → 网格坐标。边路径为 SVG
 // path 字符串：前向边用水平贝塞尔，回边从源底部绕行到目标底部。
 
-export type WorkflowNodeKind = "subagent" | "gate" | "join";
+// 任务934: kind 对齐 685 引擎五类顶点（phase 是阶段标记顶点、confirm 是
+// 独立确认子代理）；布局一视同仁，图标面 gate/join 专用、其余 ◈。
+export type WorkflowNodeKind = "subagent" | "gate" | "join" | "phase" | "confirm";
 
 export interface WorkflowDagNode {
   id: string;

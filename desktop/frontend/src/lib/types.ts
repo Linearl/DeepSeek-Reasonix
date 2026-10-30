@@ -521,7 +521,7 @@ export interface WireCompletionSummary {
 
 export type { TurnFileChange, TurnChanges, WireCompletionReceipt } from "./turnResultTypes";
 import type { WireCompletionReceipt } from "./turnResultTypes";
-export type { WorkflowNodeState, WireWorkflowNode } from "./workflowTypes";
+export type { WorkflowNodeState, WireWorkflowNode, WorkflowRunLiveState, WireRunDagNode, WireRunDagEdge, WireRunDag, WireRunNode, WireWorkflowRun } from "./workflowTypes";
 import type { WireWorkflowNode } from "./workflowTypes";
 
 export type WorkspaceWatchState = "active" | "degraded" | "unavailable";
