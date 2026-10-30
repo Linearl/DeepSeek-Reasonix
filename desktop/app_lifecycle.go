@@ -303,10 +303,11 @@ func (a *App) startupStartBackgroundLoops() {
 	// Task 485 P1: release self-held orphan session leases (leaked-handle
 	// backstop -- the lock itself cannot arbitrate a handle this process lost).
 	a.startSessionLeaseLeakSweeper()
-	// Task 308-O3: apply the soft memory limit from config (live-capable via
-	// SetGoMemLimitMB in settings; startup applies the stored value once).
+	// tl1286: apply the GC-strategy dial from config (live-capable via
+	// SetGCPercent in settings; startup applies the stored value once). The
+	// retired 308-O3 soft memory limit is only parsed for the migration hint.
 	if cfg, _, err := a.loadDesktopUserConfigForView(); err == nil {
-		applyGoMemLimit(cfg)
+		applyGCPercent(cfg)
 	}
 	a.heartbeat = newHeartbeatEngine(a)
 	// tl 1059: the create-only explicit topicId binding checks candidates
