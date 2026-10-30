@@ -6002,8 +6002,7 @@ export default function App() {
 
           <UpdateBanner
             enabled={startupUpdateChecksEnabled === true}
-            onShowReleaseNotes={(latest) => {
-              const version = latest.replace(/^(?:desktop-)?v/, "");
+            onShowReleaseNotes={() => {
               void openExternal("https://linearl.github.io/DeepSeek-Reasonix/changelog/");
             }}
           />

@@ -40,8 +40,7 @@ export function useSessionBannerCommands(options: { remote: boolean; reloadConfi
     })();
   });
 
-  const showReleaseNotes = useCommittedCommand((latest: string) => {
-    const version = latest.replace(/^(?:desktop-)?v/, "");
+  const showReleaseNotes = useCommittedCommand(() => {
     void openExternal("https://linearl.github.io/DeepSeek-Reasonix/changelog/");
   });
 
