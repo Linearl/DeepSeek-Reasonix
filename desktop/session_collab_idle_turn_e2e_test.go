@@ -156,6 +156,12 @@ func (e *idleTurnE2E) sweepBridge(b *idleTurnBridge, contactID string, at time.T
 	view.heal = func() (bool, time.Duration) {
 		return ctrl.HealStuckFinishing(idleTurnFinishingStuckTimeout)
 	}
+	// tl1288: the running-turn wedged seam rides the same adapter discipline
+	// as the finishing heal above, so an e2e exercise of the wedged-body shape
+	// goes through the same code path the desktop pump would.
+	view.healStalledRunning = func() (bool, time.Duration) {
+		return ctrl.HealStalledRunning(idleTurnRunningStuckTimeout)
+	}
 	snap := e.ctrl.InboxSnapshot()
 	view.paused = snap.Paused && snap.UserPaused
 	view.autoPaused = snap.Paused && !snap.UserPaused
