@@ -14916,6 +14916,11 @@ button.statusbar__mcp:focus-visible {
   background:
     radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--fg) 7%, transparent) 1px, transparent 0) 0 0 / 22px 22px;
 }
+/* tl933 视口 pan 进行中：抓手光标 + 禁选（长按空白拖动语义）。 */
+.wf-panel__canvas-scroll--panning {
+  cursor: grabbing;
+  user-select: none;
+}
 .wf-panel__canvas {
   position: relative;
 }

@@ -26,6 +26,7 @@ import {
   type WorkflowRunStore,
   type WorkflowRunState,
 } from "../lib/workflowEvents";
+import { WORKFLOW_PAN_LONG_PRESS_MS, exceedsPanSlop } from "../lib/workflowViewport";
 
 const NODE_STATE_CLASS: Record<WorkflowNodeState, string> = {
   queued: "wf-node--queued",
@@ -183,6 +184,90 @@ export function WorkflowPanel({
     [close],
   );
 
+  // ── 视口 pan（tl933 需求②）：长按空白处拖动移动视口；节点自身交互优先，
+  // 指针落在节点上不启动手势（点击/后续节点拖拽都不被劫持）。pan 的实现是
+  // 拨动滚动容器的 scrollLeft/Top——原生滚动边界自动钳制，画布不会丢出视野，
+  // 无 Ctrl 滚轮/滚动条等既有能力原样保留。
+  const viewRef = useRef<HTMLDivElement | null>(null);
+  const [panning, setPanning] = useState(false);
+  const panRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    longPressFired: boolean;
+    timer: number;
+  } | null>(null);
+
+  const cancelPanGesture = useCallback(() => {
+    const gesture = panRef.current;
+    if (gesture) window.clearTimeout(gesture.timer);
+    panRef.current = null;
+    setPanning(false);
+  }, []);
+
+  const onViewPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if ((e.target as Element).closest(".wf-node")) return; // 节点优先：不劫持
+    const container = viewRef.current;
+    if (!container) return;
+    const pointerId = e.pointerId;
+    const timer = window.setTimeout(() => {
+      const gesture = panRef.current;
+      if (!gesture || gesture.pointerId !== pointerId) return;
+      gesture.longPressFired = true;
+      setPanning(true);
+    }, WORKFLOW_PAN_LONG_PRESS_MS);
+    panRef.current = {
+      pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      longPressFired: false,
+      timer,
+    };
+    try {
+      container.setPointerCapture(pointerId);
+    } catch {
+      /* 指针可能已离开；pan 退化为普通拖动即可 */
+    }
+  }, []);
+
+  const onViewPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = panRef.current;
+      if (!gesture || gesture.pointerId !== e.pointerId) return;
+      // 指针位置全程跟踪：长按生效那一刻 pan 从当前指针处起算，无跳变。
+      const deltaX = e.clientX - gesture.lastX;
+      const deltaY = e.clientY - gesture.lastY;
+      gesture.lastX = e.clientX;
+      gesture.lastY = e.clientY;
+      if (!gesture.longPressFired) {
+        // 长按生效前就拖走 = 不是 pan 手势（点按/误触），取消。
+        if (exceedsPanSlop(e.clientX - gesture.startX, e.clientY - gesture.startY)) cancelPanGesture();
+        return;
+      }
+      const container = viewRef.current;
+      if (!container) return;
+      container.scrollLeft -= deltaX;
+      container.scrollTop -= deltaY;
+    },
+    [cancelPanGesture],
+  );
+
+  const onViewPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = panRef.current;
+      if (!gesture || gesture.pointerId !== e.pointerId) return;
+      cancelPanGesture();
+    },
+    [cancelPanGesture],
+  );
+
+  useEffect(() => cancelPanGesture, [cancelPanGesture]);
+
   if (!mounted) return null;
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
@@ -272,7 +357,14 @@ export function WorkflowPanel({
         )}
 
         <div className="wf-panel__body">
-          <div className="wf-panel__canvas-scroll">
+          <div
+            className={panning ? "wf-panel__canvas-scroll wf-panel__canvas-scroll--panning" : "wf-panel__canvas-scroll"}
+            ref={viewRef}
+            onPointerDown={onViewPointerDown}
+            onPointerMove={onViewPointerMove}
+            onPointerUp={onViewPointerUp}
+            onPointerCancel={onViewPointerUp}
+          >
             <div className="wf-panel__canvas" style={{ width: layout.width, height: layout.height }}>
               <svg className="wf-panel__edges" width={layout.width} height={layout.height} aria-hidden="true">
                 {layout.edges.map((edge) => {
