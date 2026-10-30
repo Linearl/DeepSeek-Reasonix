@@ -10,6 +10,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/control"
 	"reasonix/internal/secrets"
 	"reasonix/internal/store"
 	"reasonix/internal/turnevent"
@@ -36,12 +37,15 @@ const (
 	// park 表防御性帽：会话数远小于此；撞帽整体重置（代价只是至多一次
 	// 重复清理），不做逐条淘汰猜测（与 warnRotateSkipOnce 同一纪律）。
 	eventsIdleSweepParkMax = 512
-	// tl 1172 busy 维护窗口：连续 busy 达到该 tick 数（4 tick ≈ 2 小时）后，
-	// 本进程 tab 打开的超限会话获得一次 L2 压缩机会。busy 的两种来源分开
-	// 处理：本进程 tab（lease 是我们自己的，文件锁保证压缩与保存互斥，安全）
-	// 与外部 lease（别的运行时在写，压缩会迫使其下一次保存走整场冲突重放，
-	// 得不偿失 ⇒ 不做，等 lease 空闲的 tick）。
-	eventsIdleSweepBusyWindowTicks = 4
+	// L1 重写「白跑」门槛（tl1285 P0-③）：freed 低于该值的重写计入独立
+	// skip 桶、不计入 compacted 吞吐（20261031 实测一轮 compacted=3 含一个
+	// freed=14 字节的空转），并触发 L1→L2 降级（与 freed≤0 同一处理）。
+	eventsIdleSweepNoGainFloorBytes = 64 << 10
+	// 本进程 tab 会话的「最近活跃」窗口（用户 20261031 01:02 拍板，先取
+	// 10 分钟可后调）：tab 打开 ≠ busy——真在工作（运行中 turn/待答
+	// prompt/后台任务，RuntimeState.ActiveWork）或刚活跃（窗口内）才让路；
+	// 空闲超窗的 tab 会话照常纳入 sweep。
+	eventsIdleSweepTabIdleWindow = 10 * time.Minute
 )
 
 // eventsIdleSweepSlim carries the tl-1172 degradation ladder wiring for one
@@ -119,12 +123,6 @@ type eventsIdleSweepCandidate struct {
 	// sessions where a stale concurrent head can be hiding behind the bytes
 	// the sweep is about to rewrite (task 945).
 	MultiHead bool
-	// TabOpen marks a busy session whose lease is held by THIS process's own
-	// tab (tl 1172): the busy-window slim path may compress it between turns —
-	// the session file lock serializes against the tab's own saves. A busy
-	// session WITHOUT TabOpen is lease-held by another runtime and is never
-	// touched while busy.
-	TabOpen bool
 	// LandingBytes is the tl 1186 fold-landing 口径: where the maintenance
 	// fold's product lands for THIS session (agent.SessionFoldLandingBytes —
 	// the survivor-union after the repair retire CompactSessionFile runs).
@@ -134,6 +132,21 @@ type eventsIdleSweepCandidate struct {
 	// multi-head logs the view is a fraction of the product (11MiB vs ~100MB
 	// 实测), so the estimate promised savings the rotation could not deliver.
 	LandingBytes int64
+}
+
+// eventsIdleSweepReleasableBytes is the quota-ranking 口径 (tl1285 P0-②): how
+// many bytes THIS session can plausibly give back — the log size minus the
+// fold's predicted landing. The old volume-desc ranking fed the 3-rewrite
+// quota to the largest sessions by SIZE, so when the biggest offender was
+// busy (correctly skipped without consuming quota) the budget degraded to
+// "the next three by size", which the 20261031 pass measured at 8.7MB freed
+// while a 177MB floor session waited — a 17x inverted benefit ratio. Ranking
+// by the predicted release puts the budget where the bytes are.
+func eventsIdleSweepReleasableBytes(c eventsIdleSweepCandidate) int64 {
+	if r := c.EventsBytes - foldLandingBytes(c); r > 0 {
+		return r
+	}
+	return 0
 }
 
 // eventsIdleSweepDecision is the whole per-session policy in one testable
@@ -183,34 +196,24 @@ type eventsIdleSweepResult = SessionEventsCompactResult
 // overwhelming majority of the ~130 candidates a tick walks — folding it into
 // one total would drown the rare, actionable reasons (busy/parked/no-gain).
 // tl 1172 adds the two slim-side refusal buckets: foreign-lease busy（不与在写
-// 运行时争抢）与压缩失败（下 tick 重试）。
+// 运行时争抢）与压缩失败（下 tick 重试）。tl 1285 P0-③ adds the no-gain
+// rewrite bucket: a landed rewrite that freed below the floor is IO, not
+// throughput, and must not inflate the compacted count.
 var eventsIdleSweepSkipReasons = []string{
 	"auto rotation off", "under limit", "fold would not shrink",
 	"session busy", "parked: awaiting regrowth or new activity",
+	"compact no gain (below floor)",
 	"slim: foreign lease busy", "slim: compress failed (will retry)",
 	"slim: ledger parked (awaiting regrowth)", "slim: ledger compact failed (will retry)",
 }
 
 // runEventsIdleSweepPass runs one sweep pass over pre-collected candidates:
-// over-limit judgment, decision, then the injected compact action — largest
-// first so the per-pass budget lands on the biggest offenders, capped at
-// eventsIdleSweepMaxPerPass rewrites. Both actions are injected so tests can
-// drive pass behaviour without a live session; the production wiring passes
-// agent.CompactSessionFile and agent.RetireStaleConcurrentHeadsNow.
-//
-// Task 945: a multi-head candidate about to be rewritten retires its stale
-// concurrent heads first — rotation only drops bytes a retired head no longer
-// makes reachable. A retire failure never blocks the rewrite.
-//
-// park updates happen here (success records the landed size; lease-busy and
-// failures leave the park untouched so the next tick retries — same contract
-// as runEventsRepairRounds' skipped/failed rows).
-// runEventsIdleSweepPass runs one sweep pass over pre-collected candidates:
-// over-limit judgment, decision, then the injected compact action — largest
-// first so the per-pass budget lands on the biggest offenders, capped at
-// eventsIdleSweepMaxPerPass rewrites. Both actions are injected so tests can
-// drive pass behaviour without a live session; the production wiring passes
-// agent.CompactSessionFile and agent.RetireStaleConcurrentHeadsNow.
+// over-limit judgment, decision, then the injected compact action — ranked by
+// predicted releasable bytes (tl 1285 P0-②) so the per-pass budget lands
+// where the bytes are, capped at eventsIdleSweepMaxPerPass rewrites. Both
+// actions are injected so tests can drive pass behaviour without a live
+// session; the production wiring passes agent.CompactSessionFile and
+// agent.RetireStaleConcurrentHeadsNow.
 //
 // Task 945: a multi-head candidate about to be rewritten retires its stale
 // concurrent heads first — rotation only drops bytes a retired head no longer
@@ -224,19 +227,25 @@ var eventsIdleSweepSkipReasons = []string{
 // L1 折叠仍是第一级（10% 门槛原样保留——门槛拒绝落在 "fold would not shrink"
 // 跳过，这正是被降级接管的对象）：
 //   - L2 整文件 zstd 归档（agent.CompressSessionEventLogZst，无损可逆）：
-//     空闲会话直接压；本进程 tab 打开的会话连续 busy 满
-//     eventsIdleSweepBusyWindowTicks 后获得一次维护窗口；外部 lease busy
-//     不碰（不与在写运行时争抢）；
+//     空闲会话直接压；外部 lease busy 不碰（不与在写运行时争抢）；
 //   - L3 确定性裁剪（agent.TrimSessionOversizeToolResults，有损、头尾+标记）：
 //     仅当 L2 后归档字节数仍超 slim.CapBytes；
-//   - L1 跑了但没省到字节（freed ≤ 0：sweep 的 live 代理与真实 rotated
-//     content 判断分歧的形态）⇒ 同样降级 L2——任一级真正省到字节即停。
+//   - L1 跑了但没省到字节（freed 低于 eventsIdleSweepNoGainFloorBytes：
+//     sweep 的 live 代理与真实 rotated content 判断分歧的形态，20261031
+//     实测 freed=14 字节白跑）⇒ 同样降级 L2——任一级真正省到字节即停。
 //
-// busyStreak 由调用方（loop）持有、本 pass 就地更新：连续 busy 计数，任何
-// 成功动作或转闲即清零。
-func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSweepConfig, park map[string]eventsIdleSweepPark, retire func(path string) ([]string, error), compact func(path string) (int64, int64, error), slim eventsIdleSweepSlim, busyStreak map[string]int, ledgerPark map[string]int64) []eventsIdleSweepResult {
+// tl 1285（用户 20261031 01:02 口径）移除 busy 维护窗口：busy 判据已改为
+// 「真在工作」（tick 侧，见 eventsIdleSweepBusyFor），本进程 tab 打开不再
+// 整轮否决，busyStreak/4-tick 窗口随之退役——原机制要求连续 2 小时不重启，
+// 而 tab 常开的活跃会话恰恰最常跨重启，实测正是 177MB 未被压的第一位原因
+// （P0-①）。
+func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSweepConfig, park map[string]eventsIdleSweepPark, retire func(path string) ([]string, error), compact func(path string) (int64, int64, error), slim eventsIdleSweepSlim, ledgerPark map[string]int64) []eventsIdleSweepResult {
 	sorted := append([]eventsIdleSweepCandidate(nil), cands...)
 	sort.SliceStable(sorted, func(i, j int) bool {
+		ri, rj := eventsIdleSweepReleasableBytes(sorted[i]), eventsIdleSweepReleasableBytes(sorted[j])
+		if ri != rj {
+			return ri > rj
+		}
 		return sorted[i].EventsBytes > sorted[j].EventsBytes
 	})
 	results := []eventsIdleSweepResult{}
@@ -277,31 +286,12 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 						Error: "parked: awaiting regrowth or new activity"})
 					continue
 				}
-				switch {
-				case c.Busy && !c.TabOpen:
-					// 外部运行时持有 lease：不争抢，等它空闲的 tick。
+				if c.Busy {
+					// 外部运行时持有 lease：不争抢，等它空闲的 tick。（tl1285：
+					// 本进程 tab 不再产生 busy 窗口分支——真在工作时不压，
+					// 空闲超窗即走普通路径。）
 					skips["slim: foreign lease busy"]++
-				case c.Busy && c.TabOpen:
-					if busyStreak != nil {
-						busyStreak[c.Path]++
-					}
-					if busyStreak == nil || busyStreak[c.Path] < eventsIdleSweepBusyWindowTicks {
-						skips[reason]++
-						results = append(results, eventsIdleSweepResult{Path: c.Path, Skipped: true, Error: reason})
-						continue
-					}
-					res, handled := slimAttempt(c, slim, park, "tl1172-L2-busy-window")
-					if handled {
-						if busyStreak != nil {
-							delete(busyStreak, c.Path)
-						}
-						rewrites++
-					} else {
-						skips["slim: compress failed (will retry)"]++
-					}
-					results = append(results, res)
-					continue
-				default:
+				} else {
 					res, handled := slimAttempt(c, slim, park, "tl1172-L2-fold-no-shrink")
 					if handled {
 						rewrites++
@@ -317,10 +307,6 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 				results = append(results, eventsIdleSweepResult{Path: c.Path, Skipped: true, Error: reason})
 			}
 			continue
-		}
-		if !c.Busy && busyStreak != nil {
-			// 转闲：连续 busy 计数清零。
-			delete(busyStreak, c.Path)
 		}
 		res := eventsIdleSweepResult{Path: c.Path}
 		if c.MultiHead && retire != nil {
@@ -349,10 +335,19 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 			slog.Info("desktop: events idle sweep compacted",
 				"path", c.Path, "bytesBefore", before, "bytesAfter", after,
 				"freedBytes", before-after)
+			// tl 1285 P0-③: a rewrite that freed below the floor is IO, not
+			// throughput — park it (it landed), but count it into its own skip
+			// bucket instead of the compacted total.
+			if res.Freed < eventsIdleSweepNoGainFloorBytes {
+				reason := "compact no gain (below floor)"
+				skips[reason]++
+				res.Skipped = true
+				res.Error = reason
+			}
 			// tl 1172: L1 跑了但没省到字节——sweep 的 live 代理判「折叠有收益」
 			// 而真实 rotated content 拒绝旋转的分歧形态（107MB 实证会话）。
-			// 任一级「真正省到字节」即停：L1 无收益 ⇒ 降级 L2。
-			if slim.Enabled && res.Freed <= 0 && overLimit {
+			// 任一级「真正省到字节」即停：L1 无收益（含低于门槛的白跑）⇒ 降级 L2。
+			if slim.Enabled && res.Freed < eventsIdleSweepNoGainFloorBytes && overLimit {
 				slimRes, handled := slimAttempt(c, slim, park, "tl1172-L2-after-no-gain-fold")
 				if handled {
 					rewrites++
@@ -473,13 +468,26 @@ func slimAttempt(c eventsIdleSweepCandidate, slim eventsIdleSweepSlim, park map[
 	return res, true
 }
 
+// eventsIdleSweepBusyFor is the per-candidate busy judgment in one pure
+// function (tl1285, 用户 20261031 01:02 口径): tab 打开 ≠ busy。真在工作
+// （运行中 turn/待答 prompt/后台任务）或刚活跃（eventsIdleSweepTabIdleWindow
+// 内）的本进程 tab 会话让路；空闲超窗的 tab 会话照常纳入 sweep。tabOpen=false
+// 的候选由调用方的外部 lease 检查另行判定。无运行态读取能力（RuntimeState-
+// Reader 断言失败）时保守让路。
+func eventsIdleSweepBusyFor(tabOpen, activeWork bool, lastActivity, now time.Time, stateReadable bool) bool {
+	if !tabOpen {
+		return false
+	}
+	if !stateReadable || activeWork {
+		return true
+	}
+	return now.Sub(lastActivity) < eventsIdleSweepTabIdleWindow
+}
+
 type eventsIdleSweepLoop struct {
 	a    *App
 	mu   sync.Mutex
 	park map[string]eventsIdleSweepPark
-	// busyStreak 记录每个会话连续 busy 的 tick 数（tl 1172 busy 维护窗口）。
-	// 持锁纪律与 park 相同：只在 tick 内的 pass 前后触碰。
-	busyStreak map[string]int
 	// ledgerPark 记录每个会话 turn ledger checkpoint 截断的落地尺寸
 	// （tl 1172 剩余部分）。持锁纪律与 park 相同。
 	ledgerPark map[string]int64
@@ -489,7 +497,7 @@ type eventsIdleSweepLoop struct {
 // read live on every tick, so OFF costs one config read and never touches a
 // session, while switching auto on applies without a restart.
 func (a *App) startEventsIdleSweepLoop() {
-	l := &eventsIdleSweepLoop{a: a, park: make(map[string]eventsIdleSweepPark), busyStreak: make(map[string]int), ledgerPark: make(map[string]int64)}
+	l := &eventsIdleSweepLoop{a: a, park: make(map[string]eventsIdleSweepPark), ledgerPark: make(map[string]int64)}
 	a.goSafe("eventsIdleSweepLoop", l.run)
 }
 
@@ -528,11 +536,19 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 			if eventsBytes <= 0 {
 				continue // nothing on disk to clear
 			}
+			// tl1285（用户 20261031 01:02 口径）：busy = 外部 lease，或本进程
+			// tab 真在工作/刚活跃（eventsIdleSweepBusyFor）。tab 打开而空闲超
+			// 窗的会话纳入 sweep——旧「tab 打开即 busy」正是 177MB 会话拿不到
+			// 压缩窗口的第一位原因（P0-①：跨重启清零的 busyStreak 只是其
+			// 放大器，判据本身改对后 streak 机制整体退役）。
 			busy := false
-			tabOpen := false
 			if _, ctrl := l.a.controllerForSessionPath(info.Path); ctrl != nil {
-				busy = true
-				tabOpen = true
+				activeWork, readable := false, false
+				if rs, ok := ctrl.(control.RuntimeStateReader); ok {
+					readable = true
+					activeWork = rs.RuntimeStateSnapshot().ActiveWork()
+				}
+				busy = eventsIdleSweepBusyFor(true, activeWork, info.LastActivityAt, now, readable)
 			} else if leaseInfo, leaseErr := agent.LoadSessionLeaseInfo(info.Path); leaseErr == nil && leaseInfo != nil {
 				busy = true
 			}
@@ -566,7 +582,6 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 				LastActivityAt: info.LastActivityAt.UnixMilli(),
 				Busy:           busy,
 				MultiHead:      multiHead,
-				TabOpen:        tabOpen,
 			})
 		}
 	}
@@ -576,9 +591,6 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 	l.mu.Lock()
 	if len(l.park) > eventsIdleSweepParkMax {
 		l.park = make(map[string]eventsIdleSweepPark)
-	}
-	if len(l.busyStreak) > eventsIdleSweepParkMax {
-		l.busyStreak = make(map[string]int)
 	}
 	if len(l.ledgerPark) > eventsIdleSweepParkMax {
 		l.ledgerPark = make(map[string]int64)
@@ -613,7 +625,7 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 	}
 	results := runEventsIdleSweepPass(cands, knobs, l.park,
 		func(path string) ([]string, error) { return agent.RetireStaleConcurrentHeadsNow(path, time.Now()) },
-		agent.CompactSessionFile, slim, l.busyStreak, l.ledgerPark)
+		agent.CompactSessionFile, slim, l.ledgerPark)
 	l.mu.Unlock()
 	compacted, skipped := 0, 0
 	for _, res := range results {

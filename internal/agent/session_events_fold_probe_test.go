@@ -351,4 +351,26 @@ func TestFoldFloorFallbackThroughRealSave(t *testing.T) {
 	if _, err := ensureSessionEventLogPlain(path); err != nil {
 		t.Fatalf("materialize after fallback: %v", err)
 	}
+	// 调研报告 §7-1/§7-2（消费方对账）：归档-物化往返后 (a) 头部仍可探为
+	// native、schema 不变（探针不中 ⇒ 掉 checkpoint ⇒ 丢 100 轮以前）；
+	// (b) 重放出的消息序列与保存侧在内存中的转录语义等价。
+	probe, err := probeSessionEventLog(path)
+	if err != nil || !probe.native || probe.schemaVersion != sessionEventSchemaVersion {
+		t.Fatalf("probe must stay native schema-1 after the archive round-trip: probe=%+v err=%v", probe, err)
+	}
+	reloaded, err := LoadSession(path)
+	if err != nil {
+		t.Fatalf("reload after archive round-trip: %v", err)
+	}
+	got := reloaded.Snapshot()
+	want := s.Snapshot()
+	if len(got) != len(want) {
+		t.Fatalf("archive round-trip must preserve the message count: %d vs %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].Role != want[i].Role || got[i].Content != want[i].Content {
+			t.Fatalf("archive round-trip must preserve message %d: got %q/%q want %q/%q",
+				i, got[i].Role, got[i].Content, want[i].Role, want[i].Content)
+		}
+	}
 }

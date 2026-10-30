@@ -102,7 +102,7 @@ func TestEventsIdleSweepPassDeadSessionBackUnderCap(t *testing.T) {
 	park := map[string]eventsIdleSweepPark{}
 	h := &sweepPassHarness{byPath: map[string][2]int64{"dead.jsonl": {104 * mb, 45 * mb}}}
 
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(h.asked) != 1 || h.asked[0] != "dead.jsonl" {
 		t.Fatalf("first pass must compact the dead session exactly once: %v", h.asked)
 	}
@@ -118,7 +118,7 @@ func TestEventsIdleSweepPassDeadSessionBackUnderCap(t *testing.T) {
 	swept := []eventsIdleSweepCandidate{
 		{Path: "dead.jsonl", EventsBytes: 45 * mb, LiveBytes: 40 * mb, LastActivityAt: activity},
 	}
-	runEventsIdleSweepPass(swept, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	runEventsIdleSweepPass(swept, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(h.asked) != 1 {
 		t.Fatalf("parked session must not be re-compactd without regrowth: asked=%v", h.asked)
 	}
@@ -127,7 +127,7 @@ func TestEventsIdleSweepPassDeadSessionBackUnderCap(t *testing.T) {
 	grew := []eventsIdleSweepCandidate{
 		{Path: "dead.jsonl", EventsBytes: 51 * mb, LiveBytes: 40 * mb, LastActivityAt: activity},
 	}
-	runEventsIdleSweepPass(grew, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	runEventsIdleSweepPass(grew, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(h.asked) != 2 {
 		t.Fatalf("10%% regrowth must re-arm the sweep: asked=%v", h.asked)
 	}
@@ -145,7 +145,7 @@ func TestEventsIdleSweepPassTrueOverLimitParksAfterOneRewrite(t *testing.T) {
 	park := map[string]eventsIdleSweepPark{}
 	h := &sweepPassHarness{byPath: map[string][2]int64{"live-over-cap.jsonl": {102 * mb, 65 * mb}}}
 
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(results) != 1 || results[0].Freed != 37*mb {
 		t.Fatalf("one rewrite must free the non-live tail (37MB): %+v", results)
 	}
@@ -153,7 +153,7 @@ func TestEventsIdleSweepPassTrueOverLimitParksAfterOneRewrite(t *testing.T) {
 	swept := []eventsIdleSweepCandidate{
 		{Path: "live-over-cap.jsonl", EventsBytes: 65 * mb, LiveBytes: 64 * mb, LastActivityAt: activity},
 	}
-	runEventsIdleSweepPass(swept, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	runEventsIdleSweepPass(swept, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(h.asked) != 1 {
 		t.Fatalf("still-over-cap session must park after one rewrite: asked=%v", h.asked)
 	}
@@ -173,7 +173,7 @@ func TestEventsIdleSweepPassBudgetLargestFirst(t *testing.T) {
 		})
 		h.byPath[path] = [2]int64{size * mb, (size - 20) * mb}
 	}
-	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(h.asked) != eventsIdleSweepMaxPerPass {
 		t.Fatalf("pass budget must cap rewrites at %d: asked=%v", eventsIdleSweepMaxPerPass, h.asked)
 	}
@@ -203,7 +203,7 @@ func TestEventsIdleSweepPassBusyAndFailureRetry(t *testing.T) {
 		errFor: map[string]error{"raced.jsonl": leaseErr, "broken.jsonl": errors.New("disk full")},
 	}
 
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(h.asked) != 2 {
 		t.Fatalf("busy candidate must never reach compact: asked=%v", h.asked)
 	}
@@ -228,7 +228,7 @@ func TestEventsIdleSweepPassBusyAndFailureRetry(t *testing.T) {
 
 	// 下一趟：两个失败会话都仍在候选里 → 重试（compact 再被问到）。
 	h.errFor = map[string]error{}
-	runEventsIdleSweepPass(cands[1:], sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	runEventsIdleSweepPass(cands[1:], sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(h.asked) != 4 {
 		t.Fatalf("failed attempts must retry on the next pass: asked=%v", h.asked)
 	}
@@ -242,7 +242,7 @@ func TestEventsIdleSweepPassUnderLimitSilent(t *testing.T) {
 		{Path: "small.jsonl", EventsBytes: 20 * mb, LiveBytes: 18 * mb, LastActivityAt: 1},
 	}
 	h := &sweepPassHarness{byPath: map[string][2]int64{}}
-	results := runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, nil, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(h.asked) != 0 || len(results) != 0 {
 		t.Fatalf("under-limit session must be silent: asked=%v results=%+v", h.asked, results)
 	}
@@ -275,7 +275,7 @@ func TestEventsIdleSweepPassRetiresStaleHeadsBeforeCompact(t *testing.T) {
 	}}
 	park := map[string]eventsIdleSweepPark{}
 
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, retire, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, retire, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(retiredAsked) != 2 || retiredAsked[0] != "multi.jsonl" || retiredAsked[1] != "racy.jsonl" {
 		t.Fatalf("only multi-head candidates may cost a retire probe: %v", retiredAsked)
 	}
@@ -300,7 +300,7 @@ func TestEventsIdleSweepPassRetiresStaleHeadsBeforeCompact(t *testing.T) {
 		{Path: "multi.jsonl", EventsBytes: 45 * mb, LiveBytes: 40 * mb, LastActivityAt: activity, MultiHead: true},
 	}
 	retiredAsked = nil
-	runEventsIdleSweepPass(swept, sweepKnobs, park, retire, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	runEventsIdleSweepPass(swept, sweepKnobs, park, retire, h.compact, eventsIdleSweepSlim{}, nil)
 	if len(retiredAsked) != 0 || len(h.asked) != 3 {
 		t.Fatalf("parked session must skip retire and compact alike: retire=%v compact=%v", retiredAsked, h.asked)
 	}
@@ -322,7 +322,7 @@ func TestEventsIdleSweepPassRetireRunsBeforeCompactPerSession(t *testing.T) {
 	cands := []eventsIdleSweepCandidate{
 		{Path: "m.jsonl", EventsBytes: 90 * mb, LiveBytes: 40 * mb, LastActivityAt: 1, MultiHead: true},
 	}
-	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, retire, compact, eventsIdleSweepSlim{}, nil, nil)
+	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, retire, compact, eventsIdleSweepSlim{}, nil)
 	if len(seq) != 2 || seq[0] != "retire:m.jsonl" || seq[1] != "compact:m.jsonl" {
 		t.Fatalf("retire must precede compact within one session: %v", seq)
 	}
@@ -348,7 +348,7 @@ func TestEventsIdleSweepPassSkipsNoGainFold(t *testing.T) {
 		"high-gain.jsonl": {170 * mb, 97 * mb},
 	}}
 	park := map[string]eventsIdleSweepPark{}
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 
 	for _, asked := range h.asked {
 		if asked == "no-gain.jsonl" {
@@ -391,7 +391,7 @@ func TestEventsIdleSweepPassUsesLandingBytesForProfitability(t *testing.T) {
 		"legacy.jsonl":        {100 * mb, 21 * mb},
 	}}
 	park := map[string]eventsIdleSweepPark{}
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil, nil)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
 
 	for _, asked := range h.asked {
 		if asked == "branch-no-shrink.jsonl" {
@@ -421,4 +421,80 @@ func TestFoldLandingBytesFallsBackToViewProxy(t *testing.T) {
 	if got := foldLandingBytes(eventsIdleSweepCandidate{LiveBytes: 5, LandingBytes: 7}); got != 7 {
 		t.Fatalf("a landing measurement must take precedence: got %d", got)
 	}
+}
+
+// tl 1285 P0-②：3 个重写配额按「可释放字节」降序分配，不再按当前体积——
+// 20261031 实测形态：体积最大的 A（100MB）可释放只有 40MB，按体积排序会吃掉
+// 首个配额，而 B/C/D 的可释放量都更大；收益比不能再倒挂。
+func TestEventsIdleSweepQuotaRanksByReleasableBytes(t *testing.T) {
+	const mb = int64(1) << 20
+	cands := []eventsIdleSweepCandidate{
+		{Path: "a-big-little-gain.jsonl", EventsBytes: 100 * mb, LiveBytes: 60 * mb, LastActivityAt: 1}, // rel 40MB
+		{Path: "b-mid-big-gain.jsonl", EventsBytes: 60 * mb, LiveBytes: 5 * mb, LastActivityAt: 1},     // rel 55MB
+		{Path: "c-small-big-gain.jsonl", EventsBytes: 50 * mb, LiveBytes: 5 * mb, LastActivityAt: 1},   // rel 45MB
+		{Path: "d-least.jsonl", EventsBytes: 45 * mb, LiveBytes: 2 * mb, LastActivityAt: 1},            // rel 43MB
+	}
+	h := &sweepPassHarness{byPath: map[string][2]int64{
+		"a-big-little-gain.jsonl": {100 * mb, 60 * mb},
+		"b-mid-big-gain.jsonl":    {60 * mb, 5 * mb},
+		"c-small-big-gain.jsonl":  {50 * mb, 5 * mb},
+		"d-least.jsonl":           {45 * mb, 2 * mb},
+	}}
+	results := runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, nil, h.compact, eventsIdleSweepSlim{}, nil)
+	wantOrder := []string{"b-mid-big-gain.jsonl", "c-small-big-gain.jsonl", "d-least.jsonl"}
+	if len(h.asked) != len(wantOrder) {
+		t.Fatalf("quota=3 must process exactly three candidates: asked=%v", h.asked)
+	}
+	for i, path := range wantOrder {
+		if h.asked[i] != path {
+			t.Fatalf("quota order must follow releasable bytes: asked=%v, want %v", h.asked, wantOrder)
+		}
+	}
+	for _, res := range results {
+		if res.Path == "a-big-little-gain.jsonl" {
+			t.Fatalf("the least-releasable candidate must yield its quota slot: %+v", res)
+		}
+	}
+}
+
+// tl 1285 P0-③：freed 低于门槛的重写是 IO 不是吞吐——计入独立 skip 桶、
+// 不算 actioned 结果；park 照记（已落地，不重跑）；slim 开时降级 L2 收尾。
+func TestEventsIdleSweepNoGainRewriteBucketedNotCounted(t *testing.T) {
+	const mb = int64(1) << 20
+	dead := []eventsIdleSweepCandidate{
+		{Path: "white-run.jsonl", EventsBytes: 60 * mb, LiveBytes: 1 * mb, LastActivityAt: 1},
+	}
+
+	t.Run("slim off: bucketed skip, park kept", func(t *testing.T) {
+		park := map[string]eventsIdleSweepPark{}
+		results := runEventsIdleSweepPass(dead, sweepKnobs, park, nil,
+			func(path string) (int64, int64, error) { return 60 * mb, 60*mb - 14, nil },
+			eventsIdleSweepSlim{}, nil)
+		if len(results) != 1 || !results[0].Skipped || results[0].Error != "compact no gain (below floor)" {
+			t.Fatalf("a freed=14B rewrite must land in the no-gain bucket: %+v", results)
+		}
+		if results[0].Freed != 14 {
+			t.Fatalf("the measured free must stay on the row for triage: %+v", results[0])
+		}
+		if len(park) != 1 {
+			t.Fatalf("the landed size must still park against re-runs: park=%v", park)
+		}
+	})
+
+	t.Run("slim on: degrades to L2 after the no-gain fold", func(t *testing.T) {
+		calls := 0
+		compress := func(path string) (int64, int64, error) {
+			calls++
+			return 60 * mb, 9 * mb, nil
+		}
+		results := runEventsIdleSweepPass(dead, sweepKnobs, map[string]eventsIdleSweepPark{}, nil,
+			func(path string) (int64, int64, error) { return 60 * mb, 60*mb - 14, nil },
+			slimWiring(compress, nil), nil)
+		if calls != 1 {
+			t.Fatalf("the no-gain fold must degrade to the L2 archive, calls=%d", calls)
+		}
+		if len(results) != 1 || results[0].Skipped || results[0].Freed != 51*mb {
+			t.Fatalf("the actioned row must be the L2 landing: %+v", results)
+		}
+	})
 }
