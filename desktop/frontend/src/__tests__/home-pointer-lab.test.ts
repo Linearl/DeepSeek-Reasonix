@@ -12,7 +12,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const read = (rel: string) => readFileSync(resolve(testDir, rel), "utf8");
 
 const labPane = read("../components/HomePointerLabPane.tsx");
-const settingsPanel = read("../components/SettingsPanel.tsx");
+const labPaneRegistry = read("../lab/labPaneRegistry.ts");
 const labLayoutYaml = read("../lab/lab-layout.yaml");
 const labLayoutDefault = read("../lab/labLayoutDefault.ts");
 const labLightKeys = read("../lab/labLightKeys.ts");
@@ -50,7 +50,7 @@ console.log("\nhome pointer lab contract (task 846)");
 ok(experimentTiers.includes('homePointer: "unstable"'), "tier register pins homePointer as unstable (Go render.go parity)");
 ok(labLayoutYaml.includes("id: homePointer") && /id: homePointer[\s\S]{0,120}tier: unstable/.test(labLayoutYaml), "lab-layout.yaml registers the homePointer card (storage group)");
 ok(labLayoutDefault.includes('id: "homePointer"'), "labLayoutDefault safety net registers homePointer");
-ok(settingsPanel.includes('"homePointer"'), "LAB_PANE_IDS whitelist admits homePointer");
+ok(labPaneRegistry.includes('"homePointer"'), "LAB_PANE_IDS whitelist admits homePointer (registry, post-561 host)");
 ok(labLightKeys.includes("homePointer:"), "lab light key predicate registered for homePointer");
 
 // ── 验收 3：六条风险进向导 ──────────────────────────────────

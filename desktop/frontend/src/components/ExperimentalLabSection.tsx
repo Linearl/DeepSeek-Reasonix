@@ -834,12 +834,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           {selected === "logManagement" && (
             <LogManagementLabPane s={s} busy={busy} apply={apply} />
           )}
-          {/* tl1227：DAG 日志迁移动作卡（存储组，kind: action 首例）——专用
-              pane：两步确认（扫描→执行）+ 事件进度 + 逐会话读数。动作卡不走
-              通用参数渲染器（无字段），也不走各硬编码开关分支。 */}
-          {selected === "dagMigration" && (
-            <DagMigrationSection t={t} busy={busy} apply={apply} />
-          )}
+          {/* tl1287：dagMigration 独立 pane 退役——动作卡转正进会话存储卡
+              （sessionStore 分支内），不再占实验室 rail。 */}
           {selected === "fullAccess" && (
             <>
               <SettingsField label={labLabel("fullAccess", t("settings.fullAccess"))} hint={t("settings.fullAccessHint")} icon={<ShieldCheck size={18} />}>
@@ -1222,6 +1218,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 {/* 任务 805: the migration routes (v4 backfill + the 773 v5
                     import) live in the same card, under the stage controls. */}
                 <SessionMigrationSection t={t} onRunningChange={setMigrationRunning} />
+                {/* tl1287③：DAG 迁移卡转正——自实验室 rail 摘除，动作卡改宿主
+                    本卡（一次性收尾：迁完永久无事）。两步确认（扫描→执行）+
+                    事件进度 + 逐会话读数原样保留；不再有任何实验室侧开关或
+                    rail 入口。 */}
+                <DagMigrationSection t={t} busy={busy} apply={apply} />
               </SettingsField>
               <SettingsField label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 {/* The backend normalizes the stored mode to off|manual|auto

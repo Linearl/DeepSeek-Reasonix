@@ -127,10 +127,10 @@ export type ExperimentFeatureId =
   | "usageMonitoring"
   // tl 1132：启动与加载合并卡（界面组）——首项=启动遮罩（DSH 式启动画面），
   // 为 tl 1133 后续启动优化开关预留成员位（742 条目级合并先例）。
-  | "startupLoading"
-  // tl1227：DAG 读兼容退役第二阶段——存量 schema-2 events 日志一次性迁移。
-  // 动作卡（kind: action）：无开关无字段，pane 内是扫描 + 执行两个动作。
-  | "dagMigration";
+  | "startupLoading";
+// tl1287：dagMigration pane 已退役——DAG 迁移动作卡转正进会话存储卡
+// （ExperimentalLabSection 的 sessionStore 分支内 DagMigrationSection），
+// 不再是实验室 rail 卡；id 同步从布局与白名单 Set 摘除。
 
 // 任务 724：pane 白名单——布局文档（yaml/默认）里的 entry.id 必须在此登记
 // （一个 id 一个可点开的卡片分支）；yaml 引用白名单外的 id ⇒ 整份回退默认
@@ -191,8 +191,7 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "goMemLimit",
   // tl 1097：日志管理参数卡（可观测性组）。
   "logManagement",
-  // tl1227：DAG 日志迁移动作卡（存储组）。
-  "dagMigration",
+  // tl1287：dagMigration 已摘除（动作卡转正进会话存储卡，见 union 尾注）。
 ]);
 
 // 任务 764：设置搜索覆盖实验室——rail 用什么布局，搜索词表就用什么布局。
