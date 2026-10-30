@@ -41833,6 +41833,10 @@ button.statusbar__mcp:focus-visible {
 .project-tree__batchbar-report-line--failed {
   color: var(--danger, #d64545);
 }
+.project-tree__batchbar-report-hint {
+  color: var(--text-muted, inherit);
+  font-size: 12px;
+}
 .project-tree__batchbar-report-item {
   display: inline-block;
   max-width: 100%;
