@@ -93,6 +93,15 @@ var bootTimelineObs = &bootTimeline{startedAt: bootTimelineStartedAt}
 
 // bootLegSlotQueueLogMs：slot 等待超过该值才值得一行日志（0930 基线的锁等
 // 4-6.6s 远高于此；阈值只滤掉常态零等待）。
+//
+// tl 1284 判定（20261030 desktop.log 取证，勿再沿本行追设置页慢）：
+// "leg queued for slot waited_ms=8645/12342/16650" 与 settings dataReady
+// 17.5s/23.5s 同窗出现，但两者无数据链依赖——同窗内 "settings view loaded"
+// 仅 176~364ms 且 settings step 各块 lock_wait_ms=0（Go Settings() 不等任何
+// boot leg）。同窗实测为启动恢复期：3 条 leg 排 2 个槽（启动建流节流，见
+// tabs.go startupBootConcurrency 注释），等待有界且只发生在启动窗；放大槽池
+// 会回到任务 405 实测过的 4 路并发 mcp 段 21-38s 互踩，故维持 2 槽。
+// 设置页读数的真伪与前端消费空窗归因见 tl 1284（settingsPrefetch startedAt）。
 const bootLegSlotQueueLogMs = 100
 
 // bootTimelineNoteMark records one main-chain milestone as its process-relative
