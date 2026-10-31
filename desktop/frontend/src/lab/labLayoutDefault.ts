@@ -410,16 +410,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           tier: "optional",
           onKeys: ["experimentalJsonlZstd"],
         },
-        // tl1227：DAG 日志迁移动作卡（kind: action 首例）——无开关无字段，
-        // pane 内是扫描 + 执行两个动作；与 yaml 同构同值（yaml 损坏回退时
-        // 本条目不能丢，722 兜底约束）。
-        {
-          id: "dagMigration",
-          labelKey: "settings.dagMigration",
-          kind: "action",
-          tier: "optional",
-          onKeys: [],
-        },
+        // tl1287：DAG 迁移卡已转正迁出实验室——pane 与扫描/执行动作改宿主
+        // 会话存储卡（sessionStore 分支内，DagMigrationSection），不再占
+        // rail。rail 卡与 pane 白名单随之摘除 id（yaml 同步删除）。
         // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
         // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
         // 任务 781：补 tier——闲置释放=recommended（rail 显推荐徽章）。

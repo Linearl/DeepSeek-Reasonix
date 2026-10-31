@@ -398,6 +398,77 @@ func TestV5ImportRegistryStatusesRouteSkips(t *testing.T) {
 	}
 }
 
+// TestV5ImportDamagedRegistryFallsBackToDefaultTarget is the tl1287 regression
+// for the second mandatory risk: an UNREADABLE registry must not silently
+// reroute sessions by workspace — the plan reports the registry failure and
+// every session falls back to the caller's default target (v5import_plan.go
+// keeps going with no owners; the plan lists every target path so the operator
+// can abort before running). The same run receipt also carries the by-design
+// loss notes (order/pin/archive + provenance), tl1287's first mandatory risk.
+func TestV5ImportDamagedRegistryFallsBackToDefaultTarget(t *testing.T) {
+	fixture := defaultV5Fixture(t)
+	// 截断的 registry：读得见、解不开（ReadV5WorkspaceState 走 decode 错误分支）。
+	fixture.registry = `{"version":3,"generation":7,"workspaces":{"global":{"id":"global"`
+	buildV5Fixture(t, fixture)
+	opts := v5ImportTestOptions(fixture)
+
+	plan, err := PlanV5Import(context.Background(), opts.V5ImportOptions)
+	if err != nil {
+		t.Fatalf("PlanV5Import with a damaged registry must keep going: %v", err)
+	}
+	if plan.RegistryFound {
+		t.Fatal("a damaged registry must not report itself as found")
+	}
+	var registryFailure bool
+	for _, failure := range plan.Failures {
+		if failure.SessionID == "(registry)" {
+			registryFailure = true
+		}
+	}
+	if !registryFailure {
+		t.Fatalf("plan must report the registry failure, got %+v", plan.Failures)
+	}
+	// 归属兜底：project 侧会话（默认 fixture 里是 sess-rev3）也落到默认目标，
+	// 且每条 entry 都带「不在册」原因，让 plan 预览一眼可辨。
+	globalDir := filepath.Join(fixture.treeRoot, "import-target", "global")
+	for _, entry := range plan.Entries {
+		if entry.Status != "import" {
+			continue
+		}
+		if want := filepath.Join(globalDir, entry.SessionID+".jsonl"); entry.TargetPath != want {
+			t.Fatalf("%s fell back to %q, want the default target %q", entry.SessionID, entry.TargetPath, want)
+		}
+		if !strings.Contains(entry.Reason, "not listed in registry") {
+			t.Fatalf("%s should say why it fell back: %q", entry.SessionID, entry.Reason)
+		}
+	}
+
+	report, err := RunV5Import(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("RunV5Import: %v", err)
+	}
+	if !report.Verified {
+		t.Fatalf("fallback run must still verify: %+v", report)
+	}
+	// 风险 (a)：有损面是设计性的，回执必须带着 loss report 而不是留在口口相传。
+	joined := strings.Join(report.Losses, "\n")
+	for _, want := range []string{"order/pin/archive", "provenance"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("loss report must mention %q, got %v", want, report.Losses)
+		}
+	}
+	// registry 失败要跟着回执走（PlanFailures），不能只留在 plan 里。
+	var receiptRegistryFailure bool
+	for _, failure := range report.PlanFailures {
+		if failure.SessionID == "(registry)" {
+			receiptRegistryFailure = true
+		}
+	}
+	if !receiptRegistryFailure {
+		t.Fatalf("run receipt must carry the registry failure, got %+v", report.PlanFailures)
+	}
+}
+
 func TestV5ImportOpenV5StoreRejectsNonV5Roots(t *testing.T) {
 	root := t.TempDir()
 	if _, err := OpenV5Store(filepath.Join(root, "sessions")); err == nil {

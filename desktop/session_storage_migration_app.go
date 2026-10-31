@@ -84,6 +84,13 @@ type SessionStorageMigrationPlanView struct {
 	FailCount          int                                `json:"failCount"`
 	TotalDeltaMessages int                                `json:"totalDeltaMessages"`
 	GeneratedAt        time.Time                          `json:"generatedAt"`
+	// tl1287④: the v5 registry pre-check. The panel shows a warning before the
+	// confirm button when the registry is missing or unreadable — every session
+	// then falls back to the caller's default directory (v5import_plan.go
+	// keeps going with no owners), which the operator must see BEFORE running.
+	RegistryFile  string `json:"registryFile,omitempty"`
+	RegistryFound bool   `json:"registryFound"`
+	RegistryError string `json:"registryError,omitempty"`
 }
 
 // SessionStorageMigrationBackupView records the pre-run backup.
@@ -242,8 +249,9 @@ func v4BackfillReportView(kind string, plan *SessionStorageMigrationPlanView, re
 }
 
 // SessionV5StoreAvailable reports whether an upstream v5 store exists next to
-// the fork's user state directory (the panel hides the import entry when it
-// does not).
+// the fork's user state directory (the panel's hint switches on it; since
+// tl1287 the import entry itself is always rendered — a missing store surfaces
+// as a clear plan error instead of a silently hidden button).
 func (a *App) SessionV5StoreAvailable() bool {
 	dir := defaultV5SourceRoot()
 	if dir == "" {
@@ -251,6 +259,13 @@ func (a *App) SessionV5StoreAvailable() bool {
 	}
 	info, err := os.Stat(dir)
 	return err == nil && info.IsDir()
+}
+
+// SessionV5StoreLocation exposes the probed default v5 source root so the
+// panel's not-found hint can say WHERE it looked (tl1287④ user-tested gap:
+// the button existed but was invisible whenever this directory was absent).
+func (a *App) SessionV5StoreLocation() string {
+	return defaultV5SourceRoot()
 }
 
 // defaultV5SourceRoot is the upstream desktop store location: the sibling
@@ -275,7 +290,10 @@ func (a *App) planSessionV5Import() (*SessionStorageMigrationPlanView, error) {
 		ResolveTarget: desktopV5TargetResolver(),
 	})
 	if err != nil {
-		return nil, err
+		// tl1287④: name the probed path — the user-tested gap was a hidden
+		// button with no way to learn why; a failed plan must say where it
+		// looked before giving up.
+		return nil, fmt.Errorf("session storage: cannot open the upstream v5 store at %s: %w", source, err)
 	}
 	view := &SessionStorageMigrationPlanView{
 		Kind:         "v5-import",
@@ -285,6 +303,17 @@ func (a *App) planSessionV5Import() (*SessionStorageMigrationPlanView, error) {
 		SkipCount:    plan.SkipCount,
 		FailCount:    plan.FailCount,
 		GeneratedAt:  plan.GeneratedAt,
+		RegistryFile: plan.RegistryFile,
+	}
+	if !plan.RegistryFound {
+		for _, failure := range plan.Failures {
+			if failure.SessionID == "(registry)" {
+				view.RegistryError = failure.Reason
+				break
+			}
+		}
+	} else {
+		view.RegistryFound = true
 	}
 	for _, entry := range plan.Entries {
 		delta := entry.MessageCount

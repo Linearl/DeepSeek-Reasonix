@@ -871,6 +871,12 @@ export interface SessionStorageMigrationPlanView {
   failCount: number;
   totalDeltaMessages: number;
   generatedAt: string;
+  // tl1287④: v5 registry pre-check — the panel warns BEFORE the confirm when
+  // the registry is missing or unreadable (every session then falls back to
+  // the default directory).
+  registryFile?: string;
+  registryFound?: boolean;
+  registryError?: string;
 }
 
 export interface SessionStorageMigrationReportView {
@@ -919,6 +925,27 @@ export interface DagMigrationRunView {
   skipped: number;
   failed: number;
   elapsedMs: number;
+}
+
+// tl1287⑤: 迁移备份（*.dagbak-tl1227）清理——plan 只读给清单与体量，run
+// 现算清单执行（不信任 plan 时刻的列表）。
+export interface DagBackupCleanupPlanView {
+  backups: { path: string; bytes: number; modifiedAt: number }[];
+  deletable: { path: string; bytes: number; modifiedAt: number }[];
+  keepPath?: string;
+  keepBytes?: number;
+  deleteBytes: number;
+  /** >0 时清理被拒绝：仍有会话未迁移。 */
+  remainingMigrations: number;
+  error?: string;
+}
+
+export interface DagBackupCleanupRunView {
+  deleted: number;
+  deletedBytes: number;
+  failed: number;
+  keptPath?: string;
+  details?: string[];
 }
 
 export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
@@ -1713,12 +1740,15 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   PlanSessionV4Backfill(): Promise<SessionStorageMigrationPlanView>;
   RunSessionV4Backfill(): Promise<SessionStorageMigrationReportView>;
   SessionV5StoreAvailable(): Promise<boolean>;
+  SessionV5StoreLocation(): Promise<string>;
   PlanSessionV5Import(): Promise<SessionStorageMigrationPlanView>;
   RunSessionV5Import(): Promise<SessionStorageMigrationReportView>;
   // tl1227: DAG schema-2 → schema-1 one-shot migration (lab action card,
   // storage group). Scan is read-only; Run skips sessions this app has open.
   ScanDagMigration(): Promise<DagMigrationScanView>;
   RunDagMigration(): Promise<DagMigrationRunView>;
+  PlanDagBackupCleanup(): Promise<DagBackupCleanupPlanView>;
+  RunDagBackupCleanup(): Promise<DagBackupCleanupRunView>;
   /**
    * Relaunch the desktop so boot-time settings take effect. Not the same as
    * RestartAndUpdate: this publishes nothing, it only reopens what is on disk.
@@ -6644,8 +6674,9 @@ function makeMockApp(): AppBindings {
       return { kind: "v4-backfill", verified: true, sourceUnmoved: true, backup: {}, appendCount: 0, rebuildCount: 0, skipCount: 0, conflictCount: 0, failCount: 0, touchedFiles: 0, accounting: "mock", losses: [], finishedAt: new Date().toISOString() };
     },
     async SessionV5StoreAvailable() { return false; },
+    async SessionV5StoreLocation() { return ""; },
     async PlanSessionV5Import() {
-      return { kind: "v5-import", sourceRoot: "", v5StoreFound: false, entries: [], skipCount: 0, appendCount: 0, rebuildCount: 0, conflictCount: 0, failCount: 0, totalDeltaMessages: 0, generatedAt: new Date().toISOString() };
+      return { kind: "v5-import", sourceRoot: "", v5StoreFound: false, entries: [], skipCount: 0, appendCount: 0, rebuildCount: 0, conflictCount: 0, failCount: 0, totalDeltaMessages: 0, generatedAt: new Date().toISOString(), registryFound: false };
     },
     async RunSessionV5Import() {
       return { kind: "v5-import", verified: true, sourceUnmoved: true, backup: {}, appendCount: 0, rebuildCount: 0, skipCount: 0, conflictCount: 0, failCount: 0, touchedFiles: 0, accounting: "mock", losses: [], finishedAt: new Date().toISOString() };
@@ -6712,6 +6743,8 @@ function makeMockApp(): AppBindings {
     async OpenLogDir() { console.info("mock OpenLogDir"); },
     async ScanDagMigration() { return { sessions: [], scanned: 0, backups: 0, elapsedMs: 0 }; },
     async RunDagMigration() { return { sessions: [], migrated: 0, active: 0, skipped: 0, failed: 0, elapsedMs: 0 }; },
+    async PlanDagBackupCleanup() { return { backups: [], deletable: [], deleteBytes: 0, remainingMigrations: 0 }; },
+    async RunDagBackupCleanup() { return { deleted: 0, deletedBytes: 0, failed: 0 }; },
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
     async SetSessionCollabReplyNudge() {},

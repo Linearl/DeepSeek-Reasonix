@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -308,4 +309,155 @@ func dagMigrationFirstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// ─── tl1287⑤：清理迁移备份 ────────────────────────────────────────────────
+//
+// 迁移把每个 schema-2 会话的原字节整体留在 <log>.dagbak-tl1227，累计体量已
+// 超过被迁移对象本身（用户实测 1,692.8MB）。清理前提两条（缺一不可）：
+//   1. 迁移检查归零——扫描不再发现任何待迁移/使用中的 schema-2 会话；
+//   2. 至少保留最近一份——dagbak 是 schema-2 原件，误清即永远回不到迁移前，
+//      最近一份是最后一份回滚凭据。
+// 其余按时间倒序（从新到旧）删除。plan 与 run 各自独立现算清单：run 不信任
+// plan 时刻的列表（两次点击之间磁盘可能变化），确认弹层展示的将删清单与
+// 体量来自 plan，执行时以 run 现算为准。
+
+// dagMigrationBackupView 是一个 .dagbak-tl1227 备份文件的读数。
+type dagMigrationBackupView struct {
+	Path       string `json:"path"`
+	Bytes      int64  `json:"bytes"`
+	ModifiedAt int64  `json:"modifiedAt"` // unix millis
+}
+
+// dagBackupCleanupPlanView 是「清理迁移备份」的扫描结果（只读，不删任何字节）。
+type dagBackupCleanupPlanView struct {
+	// Backups 是全部备份按时间从新到旧的列表（确认弹层逐行展示）。
+	Backups []dagMigrationBackupView `json:"backups"`
+	// Deletable 是除最近一份外的全部（=执行时将删除的清单）。
+	Deletable   []dagMigrationBackupView `json:"deletable"`
+	KeepPath    string                   `json:"keepPath,omitempty"`
+	KeepBytes   int64                    `json:"keepBytes,omitempty"`
+	DeleteBytes int64                    `json:"deleteBytes"`
+	// RemainingMigrations 是仍未迁移的会话数（待迁移 + 本进程使用中）；
+	// >0 时清理被拒绝，前端展示原因。
+	RemainingMigrations int    `json:"remainingMigrations"`
+	Error               string `json:"error,omitempty"`
+}
+
+// dagBackupCleanupRunView 是一次执行的结果。
+type dagBackupCleanupRunView struct {
+	Deleted      int      `json:"deleted"`
+	DeletedBytes int64    `json:"deletedBytes"`
+	Failed       int      `json:"failed"`
+	KeptPath     string   `json:"keptPath,omitempty"`
+	Details      []string `json:"details,omitempty"`
+}
+
+// dagBackupCleanupScan 收集全部 .dagbak-tl1227（含自愈快照树内的——它们同属
+// 迁移备份、同占体量），按修改时间从新到旧排序。
+func dagBackupCleanupScan(root string) ([]dagMigrationBackupView, error) {
+	var out []dagMigrationBackupView
+	if _, statErr := os.Stat(root); statErr != nil {
+		return nil, statErr
+	}
+	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() || !strings.HasSuffix(path, agent.SessionDAGMigrationBackupSuffix) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil // 消失中的文件不算失败
+		}
+		out = append(out, dagMigrationBackupView{
+			Path:       path,
+			Bytes:      info.Size(),
+			ModifiedAt: info.ModTime().UnixMilli(),
+		})
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ModifiedAt != out[j].ModifiedAt {
+			return out[i].ModifiedAt > out[j].ModifiedAt
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out, nil
+}
+
+// dagBackupRemainingMigrations 复用迁移扫描统计「还剩几个会话没迁完」：
+// 待迁移（pending）+ 本进程使用中（active）都算——它们迁完之前 check 不算
+// 归零，备份都还有用武之地。
+func (a *App) dagBackupRemainingMigrations() int {
+	scan := a.ScanDagMigration()
+	remaining := 0
+	for _, session := range scan.Sessions {
+		if session.Status == "pending" || session.Status == "active" {
+			remaining++
+		}
+	}
+	return remaining
+}
+
+// PlanDagBackupCleanup 是清理前的只读扫描：备份清单、将删清单与体量、
+// 保留哪一份，以及迁移是否已归零。
+func (a *App) PlanDagBackupCleanup() dagBackupCleanupPlanView {
+	view := dagBackupCleanupPlanView{Backups: []dagMigrationBackupView{}, Deletable: []dagMigrationBackupView{}}
+	root := dagMigrationProjectsRoot()
+	backups, err := dagBackupCleanupScan(root)
+	if err != nil {
+		view.Error = err.Error()
+		return view
+	}
+	view.Backups = backups
+	if len(backups) > 0 {
+		view.KeepPath = backups[0].Path
+		view.KeepBytes = backups[0].Bytes
+	}
+	for _, backup := range backups[1:] {
+		view.Deletable = append(view.Deletable, backup)
+		view.DeleteBytes += backup.Bytes
+	}
+	view.RemainingMigrations = a.dagBackupRemainingMigrations()
+	return view
+}
+
+// RunDagBackupCleanup 执行清理：现算清单（不信任 plan 时刻的列表）、复检
+// 迁移归零、与迁移互斥，然后从新到旧删除除最近一份外的全部备份。
+func (a *App) RunDagBackupCleanup() (dagBackupCleanupRunView, error) {
+	if !dagMigrationRunning.CompareAndSwap(false, true) {
+		return dagBackupCleanupRunView{}, fmt.Errorf("dag migration already running")
+	}
+	defer dagMigrationRunning.Store(false)
+
+	view := dagBackupCleanupRunView{}
+	if remaining := a.dagBackupRemainingMigrations(); remaining > 0 {
+		return view, fmt.Errorf("dag backup cleanup: %d session(s) not yet migrated; migrate them first", remaining)
+	}
+	backups, err := dagBackupCleanupScan(dagMigrationProjectsRoot())
+	if err != nil {
+		return view, err
+	}
+	if len(backups) > 0 {
+		view.KeptPath = backups[0].Path
+	}
+	// 从新到旧删（backups 已按时间倒序；[0] 是保留的最近一份）。
+	for _, backup := range backups[1:] {
+		if err := os.Remove(backup.Path); err != nil {
+			view.Failed++
+			view.Details = append(view.Details, fmt.Sprintf("%s: %v", backup.Path, err))
+			continue
+		}
+		view.Deleted++
+		view.DeletedBytes += backup.Bytes
+	}
+	return view, nil
 }

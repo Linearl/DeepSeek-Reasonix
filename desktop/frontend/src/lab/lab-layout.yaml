@@ -397,7 +397,8 @@ groups:
             labelKey: settings.lifecycleNoiseGate
             tier: unstable
 
-  # ── 存储（4 项；任务 775：闲置释放/内存上限两参数卡迁入；tl-1174 增冷压缩）──
+  # ── 存储（5 项；任务 775：闲置释放/内存上限两参数卡迁入；tl-1174 增冷压缩；
+  #    tl1287：DAG 迁移卡转正迁出——改宿主会话存储卡，不再占实验室 rail）──
   - key: storage
     labelKey: settings.labGroup.storage
     entries:
@@ -425,17 +426,6 @@ groups:
         labelKey: settings.jsonlZstd
         tier: optional
         onKeys: [experimentalJsonlZstd]
-      # tl1227：DAG 读兼容退役第二阶段——存量 schema-2 events 日志一次性迁移为
-      # schema-1 平坦日志。动作卡（kind: action，本卡为首例）：无开关无字段，
-      # pane 内是「扫描」+「执行」两个动作与逐会话读数。迁移无损（每会话留
-      # *.dagbak-tl1227 回滚副本并做 roles/digest 逐条校验）；本进程正在使用的
-      # 会话自动跳过，关掉该会话后再点一次即可。自愈快照（*.pre-repair-*）不计
-      # 入：它们是修复的回滚凭据，永远不作为会话加载，改写它有害无益。
-      - id: dagMigration
-        labelKey: settings.dagMigration
-        kind: action
-        tier: optional
-        onKeys: []
       # 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡。
       # 无开关纯字段卡（分钟；0=从不释放）；字段绑定在 src/lab/labParamFields.ts
       # （值语义收拢在代码，yaml 只描述结构与引用——724 硬约束同构延伸）。

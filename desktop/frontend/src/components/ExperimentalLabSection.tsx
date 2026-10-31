@@ -3,6 +3,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { SessionEventsPanel, type RotationMode } from "./SessionEventsPanel";
 import { SessionMigrationSection } from "./SessionMigrationSection";
 import { DagMigrationSection } from "./DagMigrationSection";
+import { DagBackupCleanupSection } from "./DagBackupCleanupSection";
 import { PerfMemorySection } from "./PerfMemorySection";
 import { isDockTabHidden, isLastRenderableVisibleTab, setDockTabHidden } from "../lib/dockTabs";
 import { useRemoteStore } from "../store/remote";
@@ -74,6 +75,13 @@ function DailySendLimitInput({ value, disabled, onCommit }: { value: number; dis
  *  the v3/v4 pair move one stage at a time, never straight from v3 to v4. */
 const SESSION_STORAGE_MODES = ["v3_only", "dual_write_read_v3", "dual_write_read_v4", "v4_only"] as const;
 type SessionStorageMode = (typeof SESSION_STORAGE_MODES)[number];
+
+/** tl1287: v4 support is retired — the card offers no v4 option any more, so the
+ *  segmented control renders from this list alone. The full four-mode list above
+ *  stays the parser for the STORED value: a user still parked on a v4 stage keeps
+ *  their own stage/risk lines below (display only; the way back is the v4→v3
+ *  migrator hosted in the same card, which the backend always allows). */
+const SESSION_STORAGE_SELECTABLE_MODES = ["v3_only"] as const satisfies readonly SessionStorageMode[];
 
 /** Narrow a wire value onto the typed mode list (unknown values read as v3). */
 function asSessionStorageMode(value: string | undefined): SessionStorageMode {
@@ -827,12 +835,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           {selected === "logManagement" && (
             <LogManagementLabPane s={s} busy={busy} apply={apply} />
           )}
-          {/* tl1227：DAG 日志迁移动作卡（存储组，kind: action 首例）——专用
-              pane：两步确认（扫描→执行）+ 事件进度 + 逐会话读数。动作卡不走
-              通用参数渲染器（无字段），也不走各硬编码开关分支。 */}
-          {selected === "dagMigration" && (
-            <DagMigrationSection t={t} busy={busy} apply={apply} />
-          )}
+          {/* tl1287：dagMigration 独立 pane 退役——动作卡转正进会话存储卡
+              （sessionStore 分支内），不再占实验室 rail。 */}
           {selected === "fullAccess" && (
             <>
               <SettingsField label={labLabel("fullAccess", t("settings.fullAccess"))} hint={t("settings.fullAccessHint")} icon={<ShieldCheck size={18} />}>
@@ -1180,24 +1184,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             <>
               <SettingsField label={labLabel("sessionStorage", t("settings.sessionStorage"))} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 <SettingsOptions layout="field" className="set-seg">
-                  {SESSION_STORAGE_MODES.map((mode) => (
-                    // 916: 存储版本锁定 v3 —— v3 是唯一可选档；v4 档位仍按
-                    // storageMode 高亮（带 v4 数据的用户看得见自己在哪档），
-                    // 但不可再切换，下方迁移是唯一的回去路径。
+                  {/* tl1287: v4 退役——卡内不再渲染任何 v4 档按钮（用户拍板
+                      20261031）。仍停在 v4 档的用户由下方 stage/risk 行按已存
+                      档位如实提示，回去路径是同卡的 v4→v3 迁移器（后端对降档
+                      永远放行，点 v3 即降档，916 的「只许逐级升」仅约束升档）。 */}
+                  {SESSION_STORAGE_SELECTABLE_MODES.map((mode) => (
                     <button
                       key={mode}
                       className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
-                      disabled={busy || migrationRunning || mode !== "v3_only"}
+                      disabled={busy || migrationRunning}
                       onClick={() => void apply(async () => {
-                        // Stage skipping is refused by the backend, so the stage
-                        // banner below always describes the mode that is stored.
                         await app.SetSessionStorage(mode);
                       })}
                     >
                       {t(`settings.sessionStorage.mode.${mode}`)}
                       {/* 805: v3 is the fork's long-term recommendation — the
                           same pill the lab tiers use, no new copy or CSS. */}
-                      {mode === "v3_only" ? <TierBadge tier="recommended" translator={t} /> : null}
+                      <TierBadge tier="recommended" translator={t} />
                     </button>
                   ))}
                 </SettingsOptions>
@@ -1216,6 +1219,14 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 {/* 任务 805: the migration routes (v4 backfill + the 773 v5
                     import) live in the same card, under the stage controls. */}
                 <SessionMigrationSection t={t} onRunningChange={setMigrationRunning} />
+                {/* tl1287③：DAG 迁移卡转正——自实验室 rail 摘除，动作卡改宿主
+                    本卡（一次性收尾：迁完永久无事）。两步确认（扫描→执行）+
+                    事件进度 + 逐会话读数原样保留；不再有任何实验室侧开关或
+                    rail 入口。 */}
+                <DagMigrationSection t={t} busy={busy} apply={apply} />
+                {/* tl1287⑤：迁移备份清理——check 归零 + 保留最近一份，其余
+                    时间倒序删；确认弹层逐行列出将删文件与体量。 */}
+                <DagBackupCleanupSection t={t} busy={busy} />
               </SettingsField>
               <SettingsField label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 {/* The backend normalizes the stored mode to off|manual|auto

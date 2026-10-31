@@ -1,4 +1,6 @@
-// tl1227 — DAG 日志迁移动作卡（实验室 → 存储组，kind: action 首例）。
+// tl1227 — DAG 日志迁移动作卡。tl1287③ 起转正：宿主会话存储卡
+// （ExperimentalLabSection 的 sessionStore 分支），不再占实验室 rail、
+// 不受任何实验室开关控制（一次性收尾：迁完永久无事）。
 //
 // 两步确认照 805 SessionMigrationSection 的范式：第一次点「扫描」只读枚举待迁移
 // 会话并列出清单（体积 / 消息数 / 是否正在使用），第二次点「开始迁移」才落盘。
@@ -15,7 +17,8 @@ type Phase = "idle" | "scanning" | "confirming" | "running" | "done";
 
 const DAG_MIGRATION_PROGRESS_EVENT = "dag-migration:progress";
 
-function humanBytes(bytes: number): string {
+/** tl1287⑤：备份清理卡复用同一读数格式（单源，不另抄一份）。 */
+export function humanBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return "0 B";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
   let value = bytes;

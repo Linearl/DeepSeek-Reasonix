@@ -202,13 +202,24 @@ func RunV5Import(ctx context.Context, opts V5ImportRunOptions) (*V5ImportReport,
 			return publish(err)
 		}
 	}
-	if built+plan.SkipCount+plan.FailCount != len(plan.Entries) {
+	// tl1287 回归修复：守恒只对「会话条目」闭合。plan.FailCount 还含非条目
+	// 失败（registry 不可读 / 源文件打不开，它们在 Failures 里、没有 entry），
+	// 直接拿它对账会让每一次带这类失败的 run 都在这里误判翻车并整体回滚——
+	// 与 plan 侧「报错但继续、让操作者决断」的设计自相矛盾。非条目失败照旧
+	// 进 report.FailCount（展示口径）与 PlanFailures（明细）。
+	entryFails := 0
+	for _, entry := range plan.Entries {
+		if entry.Status == "fail" {
+			entryFails++
+		}
+	}
+	if built+plan.SkipCount+entryFails != len(plan.Entries) {
 		return publish(fmt.Errorf("import accounting does not close: %d+%d+%d vs %d enumerated",
-			built, plan.SkipCount, plan.FailCount, len(plan.Entries)))
+			built, plan.SkipCount, entryFails, len(plan.Entries)))
 	}
 	report.Verified = true
-	report.Accounting = fmt.Sprintf("imported=%d skipped=%d failed=%d enumerated=%d publishedFiles=%d",
-		built, plan.SkipCount, plan.FailCount, len(plan.Entries), len(published))
+	report.Accounting = fmt.Sprintf("imported=%d skipped=%d failed=%d enumerated=%d publishedFiles=%d nonEntryFailures=%d",
+		built, plan.SkipCount, entryFails, len(plan.Entries), len(published), plan.FailCount-entryFails)
 	report.FinishedAt = time.Now().UTC()
 	return report, nil
 }

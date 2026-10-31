@@ -6,6 +6,10 @@
 // executes. Progress arrives as runtime events; the receipt doubles as the
 // restore guidance (backup dir + losses). Pure display + calls; the kernels
 // own every safety boundary.
+// tl1287④：v5 入口常驻（此前 v5 店不在默认路径时整颗按钮被藏掉，用户实测
+// 「界面上没有按钮」）；未检出时提示探测路径，plan 失败时错误里带路径。
+// 确认步新增 registry 前置检查警示（tl1287 风险 b：registry 不可读时会话
+// 全部 fallback 到默认目录，必须在执行前看见）。
 
 import { useEffect, useState } from "react";
 import { app, type SessionStorageMigrationPlanView, type SessionStorageMigrationReportView } from "../lib/bridge";
@@ -24,10 +28,12 @@ export function SessionMigrationSection({ t, onRunningChange }: { t: Translator;
   const [error, setError] = useState("");
   const [progressLine, setProgressLine] = useState("");
   const [v5Available, setV5Available] = useState(false);
+  const [v5Location, setV5Location] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void app.SessionV5StoreAvailable().then(setV5Available).catch(() => setV5Available(false));
+    void app.SessionV5StoreLocation().then(setV5Location).catch(() => setV5Location(""));
   }, []);
   useEffect(() => {
     onRunningChange(phase === "running");
@@ -91,15 +97,17 @@ export function SessionMigrationSection({ t, onRunningChange }: { t: Translator;
           <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void open("v4-backfill")}>
             {t("settings.migration.action")}
           </button>
-          {v5Available && (
-            <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void open("v5-import")}>
-              {t("settings.migration.v5Action")}
-            </button>
-          )}
+          {/* tl1287④: 常驻入口——不再被 v5Available 藏掉；店缺失时由 hint
+              说明探测路径，点击扫描失败时错误信息带同一路径。 */}
+          <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void open("v5-import")}>
+            {t("settings.migration.v5Action")}
+          </button>
         </div>
       )}
-      {v5Available && phase === "idle" && (
-        <p className="settings-field__hint-line">{t("settings.migration.v5Hint")}</p>
+      {phase === "idle" && (
+        v5Available
+          ? <p className="settings-field__hint-line">{t("settings.migration.v5Hint")}</p>
+          : <p className="settings-field__hint-line">{t("settings.migration.v5Missing", { dir: v5Location })}</p>
       )}
       {phase === "confirming" && plan && (
         <div data-session-migration-confirm="">
@@ -118,6 +126,13 @@ export function SessionMigrationSection({ t, onRunningChange }: { t: Translator;
               fail: plan.failCount,
             })}
           </p>
+          {/* tl1287④ registry 前置检查：不可读/缺失都要在执行前显眼可见。 */}
+          {plan.kind === "v5-import" && plan.registryError && (
+            <p className="settings-field__hint-line" data-session-migration-registry-error="">{t("settings.migration.registryBroken", { error: plan.registryError })}</p>
+          )}
+          {plan.kind === "v5-import" && !plan.registryError && plan.registryFound === false && (
+            <p className="settings-field__hint-line" data-session-migration-registry-missing="">{t("settings.migration.registryMissing", { file: plan.registryFile ?? "" })}</p>
+          )}
           <p className="settings-field__hint-line">{t("settings.migration.backupNote")}</p>
           <div className="settings-actions">
             <button className="btn btn--small" disabled={busy} onClick={() => void run()}>
