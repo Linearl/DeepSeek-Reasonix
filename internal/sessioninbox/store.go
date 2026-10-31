@@ -225,7 +225,16 @@ func (s *Store) loadOrInitLocked() error {
 	// 真 recovered（StateQueued/Blocked/Uncertain/Running/SteerAccepted→
 	// Uncertain）照旧弹门，868 原行为逐字不退。
 	recovered := 0
+	// tl1288: a RunID change alone is a durable-state transition even when the
+	// scan recovers nothing — skipping the commit leaves the old RunID on
+	// disk, so every later open/pass re-enters this branch and re-emits the
+	// recovery line forever (production: one cross_process_recovery pass every
+	// ~4s for hours, manifest.runId pinned to a process that no longer
+	// exists). Commit the adopted RunID so the pass is once-per-process, not
+	// once-per-tick.
+	runIDChanged := false
 	if man.RunID != "" && man.RunID != s.runID {
+		runIDChanged = true
 		// 任务1094缺陷C：观测补强——先留一份 RunID 变更前的旧值与条目快照，
 		// 供 slog + recovery.jsonl 快照记录「谁把信箱标成 Paused」。
 		oldRunID := man.RunID
@@ -273,7 +282,7 @@ func (s *Store) loadOrInitLocked() error {
 	man.RunID = s.runID
 	s.man = man
 	s.readonly = false
-	if recovered > 0 || migrated {
+	if recovered > 0 || migrated || runIDChanged {
 		return s.commitManifestLocked(man)
 	}
 	// GC orphan blobs without holding callers longer than needed.

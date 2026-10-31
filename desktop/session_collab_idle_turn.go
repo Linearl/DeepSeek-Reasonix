@@ -87,6 +87,17 @@ const idleTurnMaxAttempts = 3
 // conservative against slow-but-alive fan-outs.
 const idleTurnFinishingStuckTimeout = 90 * time.Second
 
+// idleTurnRunningStuckTimeout is the tl1288 running-turn quiet threshold the
+// bridge hands to Controller.HealStalledRunning: a RUNNING turn whose turn
+// event ledger has produced nothing for this long has a wedged body — no
+// TurnDone will ever arrive, the tab projects a phantom busy state (green dot
+// + work counter), and every sweep tick would otherwise read skip:running
+// forever. Mirrors control.RunningStallQuietTimeout (10min — deliberately far
+// above the 90s fan-out bound: the false-positive cost is abandoning a
+// genuinely slow foreground tool, so only silence no honest tool run can
+// produce may clear the bar).
+const idleTurnRunningStuckTimeout = 10 * time.Minute
+
 // idleTurnSweepLogInterval rate-limits the 任务796 sweep observability line
 // per (contact, decision): the pump ticks every 4s and a healthy idle target
 // waiting out its 45s window must not produce one log line per tick.
@@ -152,6 +163,15 @@ type idleTurnTargetView struct {
 	// Tests inject a stub; nil disables the heal and keeps the skip+log
 	// behaviour (observability without action).
 	heal func() (bool, time.Duration)
+	// healStalledRunning clears a wedged RUNNING turn body (tl1288 — the
+	// fourth 579-family shape): running=true held forever because the body
+	// wedged with no TurnDone, so the 303 self-heal (submit-triggered) can
+	// never reach it and every sweep tick reads skip:running — the 20261031
+	// 01:07 scene held that skip for 11+ minutes with the tab projecting a
+	// green dot and a work counter. Production wires
+	// Controller.HealStalledRunning; tests inject a stub; nil keeps the
+	// skip-only behaviour.
+	healStalledRunning func() (bool, time.Duration)
 	// exhausted fires once per stuck item when the 3-strike budget is spent.
 	// Production records a 570 receipt; tests collect. nil keeps log-only.
 	exhausted func(contactID, itemID, collabMsgID, collabMailTo, source string, attempts int, lastErr error)
@@ -232,12 +252,14 @@ const (
 	sweepSkipActiveTab   sweepDecision = "skip:active_tab"
 	sweepSkipRunning     sweepDecision = "skip:running"
 	sweepHealedFinishing sweepDecision = "healed:finishing_only"
-	sweepSkipPausedUser  sweepDecision = "skip:paused_user"
-	sweepSkipNoHead      sweepDecision = "skip:no_queued_head"
-	sweepSkipBudget      sweepDecision = "skip:budget_exhausted"
-	sweepSkipWarming     sweepDecision = "skip:idle_warming"
-	sweepSkipInFlight    sweepDecision = "skip:in_flight"
-	sweepSkipNoRun       sweepDecision = "skip:no_run_seam"
+	// tl1288: a wedged RUNNING turn body healed out of the skip:running shape.
+	sweepHealedRunning  sweepDecision = "healed:stalled_running"
+	sweepSkipPausedUser sweepDecision = "skip:paused_user"
+	sweepSkipNoHead     sweepDecision = "skip:no_queued_head"
+	sweepSkipBudget     sweepDecision = "skip:budget_exhausted"
+	sweepSkipWarming    sweepDecision = "skip:idle_warming"
+	sweepSkipInFlight   sweepDecision = "skip:in_flight"
+	sweepSkipNoRun      sweepDecision = "skip:no_run_seam"
 	// 任务1017 批C: the queue head has held its position past the stranding
 	// threshold — the WARN-level "this line is being silently blocked" trace.
 	sweepWarnHeadStuck sweepDecision = "warn:head_stuck"
@@ -606,6 +628,24 @@ func (b *idleTurnBridge) sweepTargets(targets []idleTurnTargetView, now time.Tim
 				continue
 			}
 		}
+		// tl1288: the fourth 579-family shape before it lands in skip:running —
+		// running=true held by a WEDGED turn body (no finishing window; that is
+		// the 796 shape above). The 303 self-heal only runs on the next submit
+		// and an unattended target has no submitter, so without this probe the
+		// skip holds forever (20261031 01:07: 11+ minutes of skip:running while
+		// the tab projected a phantom busy state). The controller-side check
+		// re-verifies every precondition (parked/compaction/background jobs/
+		// ledger quiet), so a healthy turn — including a long-but-alive
+		// foreground tool — is never abandoned here. No queuedID requirement:
+		// the phantom projection must clear even when nothing is queued.
+		if target.running && !target.finishing && target.healStalledRunning != nil {
+			if healed, stuck := target.healStalledRunning(); healed {
+				b.logSweepDecision(target, sweepHealedRunning, idle, tracked, now)
+				log.Printf("[session-collab] idle-turn bridge: healed stalled-running target for contact %s (no ledger activity for %s, threshold %s; the tab projection re-arms on the next sweep)",
+					target.contactID, stuck.Round(time.Second), idleTurnRunningStuckTimeout)
+				continue
+			}
+		}
 		// 任务709：paused 只指用户显式持有（UserPaused）；自动暂停（重启恢复/
 		// 重开遗留）不算——那种队列走下面的唤醒路径，stale 会话的新投递不再
 		// 静默搁浅。
@@ -819,6 +859,11 @@ func (p *sessionCollabPump) idleTurnTargetViews(live []sessionCollabTarget, fill
 		view.itemsSummary = summarizeInboxItems(snap.Items)
 		view.heal = func() (bool, time.Duration) {
 			return ctrl.HealStuckFinishing(idleTurnFinishingStuckTimeout)
+		}
+		// tl1288: the running-turn body wedged seam — same discipline as the
+		// finishing heal above, for the shape that holds running=true.
+		view.healStalledRunning = func() (bool, time.Duration) {
+			return ctrl.HealStalledRunning(idleTurnRunningStuckTimeout)
 		}
 		for _, item := range snap.Items {
 			if item.State == sessioninbox.StateQueued {

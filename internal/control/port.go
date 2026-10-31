@@ -101,6 +101,13 @@ type TurnControl interface {
 	// skipping the target forever). The bridge sweep calls this with
 	// FinishingStuckTimeout; it returns (healed, wedged-for).
 	HealStuckFinishing(maxAge time.Duration) (healed bool, stalledFor time.Duration)
+	// tl1288: abandon a RUNNING turn whose body wedged (ledger quiet past the
+	// threshold — no TurnDone will ever arrive, so the 303 submit-triggered
+	// self-heal can never reach it). The bridge sweep calls this with
+	// RunningStallQuietTimeout; it returns (healed, quiet-for). Same trigger
+	// discipline as HealStuckFinishing: re-checks every precondition inside,
+	// never opens a turn itself.
+	HealStalledRunning(maxQuiet time.Duration) (healed bool, stalledFor time.Duration)
 	Turn() int
 	History() []provider.Message
 	ToolResult(toolID string) *ToolResultData
