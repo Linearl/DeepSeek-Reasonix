@@ -60,9 +60,11 @@ const inSeconds = (s: number) => now + s * 1000;
 {
   const retry: RecoveryRetry = { attempt: 2, max: 8, recovery: { quota_wait: true, waiting: true, phase: "quota", next_attempt_at: inSeconds(300) } };
   const zhText = recoveryStatusText(makeT("zh"), retry, now);
-  ok(zhText.includes("配额已用完") && zhText.includes("300 秒后自动继续") && zhText.includes("停止"), `zh quota copy: ${zhText}`);
+  // tl1299：{seconds} 改为统一格式化时长标签（300s → zh "5分0秒" / en "5m 0s"），
+  // 裸「300 秒」形态不再出现——长等待（小时级）读数同步人性化。
+  ok(zhText.includes("配额已用完") && zhText.includes("5分0秒后自动继续") && zhText.includes("停止"), `zh quota copy: ${zhText}`);
   const enText = recoveryStatusText(makeT("en"), retry, now);
-  ok(enText.includes("Quota exhausted") && enText.includes("resuming automatically") && enText.includes("300"), `en quota copy: ${enText}`);
+  ok(enText.includes("Quota exhausted") && enText.includes("resuming automatically") && enText.includes("5m 0s"), `en quota copy: ${enText}`);
   const twText = recoveryStatusText(makeT("zhTW"), retry, now);
   ok(twText.includes("配額已用完") && twText.includes("自動繼續"), `zh-TW quota copy: ${twText}`);
 }

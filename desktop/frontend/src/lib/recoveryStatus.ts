@@ -1,3 +1,4 @@
+import { formatDurationLabel } from "./durationFormat";
 import type { Translator } from "./i18n";
 
 export interface RecoveryStatus {
@@ -53,11 +54,13 @@ export function recoveryStatusText(t: Translator, retry: RecoveryRetry, now: num
   // Task 845 lane faces, before the generic budget/wait wording: the quota
   // long-wait names the reset expectation, the 429 queue names the busy
   // state — both keep the cancellable cue so Stop reads as available.
+  // tl1299：等待秒数走统一格式化（配额等待可长达小时级，裸秒不可读），
+  // 三处 {seconds} 均为预格式化时长标签（"45秒"/"2小时3分钟"）。
   if (r?.quota_wait) {
-    return t("status.quotaWaiting", { seconds: recoveryNextAttemptSeconds(r, now) });
+    return t("status.quotaWaiting", { seconds: formatDurationLabel(recoveryNextAttemptSeconds(r, now), t) });
   }
   if (r?.queue) {
-    return t("status.queuing", { seconds: recoveryNextAttemptSeconds(r, now) });
+    return t("status.queuing", { seconds: formatDurationLabel(recoveryNextAttemptSeconds(r, now), t) });
   }
   // In-window frame carrying the budget counts: the "auto-retried N (N/limit)"
   // face the user asked for (372 scope 1).
@@ -66,5 +69,5 @@ export function recoveryStatusText(t: Translator, retry: RecoveryRetry, now: num
   }
   if (!r?.waiting) return t("status.retrying", { attempt: retry.attempt, max: retry.max });
   const phase = t(r.phase === "connect" ? "status.recoveryNetwork" : "status.recoveryProvider");
-  return t("status.recoveryWaiting", { seconds: recoveryNextAttemptSeconds(r, now), phase });
+  return t("status.recoveryWaiting", { seconds: formatDurationLabel(recoveryNextAttemptSeconds(r, now), t), phase });
 }

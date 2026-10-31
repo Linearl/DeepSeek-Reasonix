@@ -5,6 +5,18 @@
 import type { DictKey } from "./en";
 
 export const zhTW: Record<DictKey, string> = {
+  // tl1299：統一時間格式化（lib/durationFormat.ts）。絕對時長按段位取含端單位；
+  // 相對時間按段位降級。段位契約見 durationFormat.ts 模組頭與邊界單測
+  // tl1299-duration-format.test.ts（<1s/59s/60s/3600s/86400s/多天）。
+  "time.duration.seconds": "{s}秒",
+  "time.duration.minutesSeconds": "{m}分{s}秒",
+  "time.duration.hoursMinutesSeconds": "{h}小時{m}分{s}秒",
+  "time.duration.daysHours": "{d}天{h}小時",
+  "time.relative.justNow": "剛剛",
+  "time.relative.secondsAgo": "{s}秒前",
+  "time.relative.minutesAgo": "{m}分鐘前",
+  "time.relative.hoursMinutesAgo": "{h}小時{m}分鐘前",
+  "time.relative.daysAgo": "{d}天前",
   "toolRecovery.title": "中斷的工具呼叫記錄",
   "toolRecovery.unknown": "結果未知（已記錄）",
   "toolRecovery.readonlyInterrupted": "唯讀呼叫 · 中斷（無副作用，可安全忽略）",
@@ -154,7 +166,8 @@ export const zhTW: Record<DictKey, string> = {
   "sessionRecovery.loadingIndex": "正在讀取會話索引…",
   "sessionRecovery.loadingEvents": "正在還原訊息歷史…",
   "sessionRecovery.loadingHint": "大會話首次載入約需 20–30 秒，之後會更快",
-  "sessionRecovery.waitedSeconds": "已等待 {n} 秒",
+  // tl1299：{n} 由 lib/durationFormat 的 formatDurationLabel 預格式化（"1分21秒"）。
+  "sessionRecovery.waitedSeconds": "已等待 {n}",
   "sessionRecovery.retryHistory": "重試載入",
   "sessionRecovery.retryFailed": "恢復失敗，請查看詳情後重試。",
   "sessionRecovery.details": "詳情",
@@ -756,7 +769,8 @@ export const zhTW: Record<DictKey, string> = {
   "composer.queuedStrip": "訊息已排隊，本輪結束後自動發出",
   "composer.queuedPlaceholder": "已排隊——本輪結束後自動發出，可繼續輸入",
   "composer.executingTool": "正在執行：{tool}",
-  "composer.lastEventAgo": "最後事件 {n}s 前",
+  // tl1299：{n} 由 formatRelativeAgeLabel 預格式化（"2小時7分鐘前"/"剛剛"）。
+  "composer.lastEventAgo": "最後事件 {n}",
   "composer.runWaitingApproval": "等待你核准 — {tool}",
   "composer.runWaitingAsk": "等待你回答",
   "composer.runAnnounceRunning": "正在執行",
@@ -919,9 +933,10 @@ export const zhTW: Record<DictKey, string> = {
   "status.tokens": "tokens",
   "status.recoveryNetwork": "網路暫時無法使用",
   "status.recoveryProvider": "服務暫時無法使用",
-  "status.recoveryWaiting": "正在等待供應商恢復（{phase}），{seconds} 秒後重試；可點擊停止。",
-  "status.queuing": "服務繁忙，已排隊等待重試（約 {seconds} 秒後重試）；可點擊停止。",
-  "status.quotaWaiting": "配額已用完，預計 {seconds} 秒後自動繼續；可點擊停止。",
+  // tl1299：三處 {seconds} 由 formatDurationLabel 預格式化（"45秒"/"2小時3分鐘"）。
+  "status.recoveryWaiting": "正在等待供應商恢復（{phase}），{seconds}後重試；可點擊停止。",
+  "status.queuing": "服務繁忙，已排隊等待重試（約 {seconds}後重試）；可點擊停止。",
+  "status.quotaWaiting": "配額已用完，預計 {seconds}後自動繼續；可點擊停止。",
   "status.recoveryWaitTitleNetwork": "正在等待網路恢復",
   "status.recoveryWaitTitleProvider": "正在等待供應商恢復",
   "status.recoveryWaitNext": "{seconds} 秒後重試",
@@ -3455,9 +3470,6 @@ export const zhTW: Record<DictKey, string> = {
   "transcript.workingDuration": "工作中 {duration}",
   "transcript.worked": "已工作",
   "transcript.workedDuration": "已工作 {duration}",
-  "transcript.durationSeconds": "{s} 秒",
-  "transcript.durationMinutes": "{m} 分",
-  "transcript.durationMinutesSeconds": "{m} 分 {s} 秒",
   "transcript.processed": "已處理",
   "transcript.processedDuration": "已處理 {s}s",
   "notice.info": "提示",
@@ -3753,8 +3765,10 @@ export const zhTW: Record<DictKey, string> = {
   "subagent.phase.partial": "部分完成",
   "subagent.phase.failed": "失敗",
   "subagent.phase.cancelled": "已取消",
-  "subagent.phase.elapsed": "{n} 秒",
-  "subagent.activity.ago": "{n} 秒前",
+  // tl1299：{n} 由 formatDurationLabel 預格式化（"2小時7分51秒"）。
+  "subagent.phase.elapsed": "{n}",
+  // tl1299：{n} 由 formatRelativeAgeLabel 預格式化（"12分鐘前"）。
+  "subagent.activity.ago": "{n}",
   "subagent.preview.reasoning": "思考過程",
   "subagent.preview.text": "回答預覽",
   "subagent.preview.notice": "提示",
@@ -3882,8 +3896,6 @@ export const zhTW: Record<DictKey, string> = {
   "context.time": "執行時間",
   "context.sessionTime": "會話耗時",
   "context.turnTime": "本輪耗時",
-  "context.durationSeconds": "{seconds}秒",
-  "context.durationMinutesSeconds": "{minutes}分{seconds}秒",
 
   // 崩潰兜底頁
   "crash.title": "Reasonix 遇到錯誤 —— 可一鍵分析根因，或複製後回饋",

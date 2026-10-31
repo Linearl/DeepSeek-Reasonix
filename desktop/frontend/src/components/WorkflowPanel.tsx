@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GitBranch, Play, RotateCcw, Square, X } from "lucide-react";
 import { useT } from "../lib/i18n";
+import { formatDurationLabel } from "../lib/durationFormat";
 import type { DictKey } from "../locales/en";
 import { useMountTransition } from "../lib/useMountTransition";
 import { reportFrontendLog } from "../lib/frontendLog";
@@ -65,11 +66,11 @@ const RUN_STATE_KEY: Record<WorkflowRunState, DictKey> = {
   stopped: "workflowPanel.run.stopped",
 };
 
-function formatElapsed(ms?: number): string {
+// tl1299：工作流耗时改走统一格式化（≥1h → "H小时M分S秒"，≥1d → "D天H小时"），
+// 替代旧的无小时 "4507m46s" 形态。缺失值的 "—" 兜底保持。
+function formatElapsed(ms: number | undefined, t: ReturnType<typeof useT>): string {
   if (ms === undefined) return "—";
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, "0")}s`;
+  return formatDurationLabel(Math.max(0, Math.round(ms / 1000)), t);
 }
 
 function formatTokens(tokens?: number): string {
@@ -97,7 +98,7 @@ function NodeDetailPane({ node, run }: { node: WorkflowDagNode; run: ReturnType<
     });
   }
   if (detail?.durationMs !== undefined) {
-    rows.push({ label: t("workflowPanel.detail.duration"), value: formatElapsed(detail.durationMs) });
+    rows.push({ label: t("workflowPanel.detail.duration"), value: formatElapsed(detail.durationMs, t) });
   }
   if (detail?.tokens !== undefined) {
     rows.push({ label: t("workflowPanel.detail.tokens"), value: formatTokens(detail.tokens) });
@@ -439,7 +440,7 @@ export function WorkflowPanel({
             <span>
               {t("workflowPanel.progress", { done: String(progress.done), total: String(progress.total) })}
             </span>
-            <span>{t("workflowPanel.elapsed", { value: formatElapsed(progress.elapsedMs) })}</span>
+            <span>{t("workflowPanel.elapsed", { value: formatElapsed(progress.elapsedMs, t) })}</span>
             <span>{t("workflowPanel.tokens", { value: formatTokens(progress.tokens) })}</span>
             {progress.failed > 0 && (
               <span className="wf-panel__stat wf-panel__stat--failed">

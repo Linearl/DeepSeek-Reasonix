@@ -14,6 +14,18 @@ export const en = {
   "toolRecovery.absent": "The tool verified the effect is absent and the previous attempt cannot commit.",
   "toolRecovery.unproven": "Automatic inspection cannot establish the outcome. Check the affected workspace or external service before confirming.",
   "toolRecovery.rejected": "Retry declined. The uncertain effect remains recorded.",
+  // tl1299：统一时间格式化（lib/durationFormat.ts）。绝对时长按段位取含端单位；
+  // 相对时间按段位降级。段位契约见 durationFormat.ts 模块头与边界单测
+  // tl1299-duration-format.test.ts（<1s/59s/60s/3600s/86400s/多天）。
+  "time.duration.seconds": "{s}s",
+  "time.duration.minutesSeconds": "{m}m {s}s",
+  "time.duration.hoursMinutesSeconds": "{h}h {m}m {s}s",
+  "time.duration.daysHours": "{d}d {h}h",
+  "time.relative.justNow": "just now",
+  "time.relative.secondsAgo": "{s}s ago",
+  "time.relative.minutesAgo": "{m}m ago",
+  "time.relative.hoursMinutesAgo": "{h}h {m}m ago",
+  "time.relative.daysAgo": "{d}d ago",
   // shared verbs / chrome
   "common.close": "Close",
   "navigation.surfaceTimeout": "Loading timed out. The overlay was released — retry, view diagnostics, or keep browsing.",
@@ -195,7 +207,8 @@ export const en = {
   "sessionRecovery.loadingIndex": "Reading session index…",
   "sessionRecovery.loadingEvents": "Restoring message history…",
   "sessionRecovery.loadingHint": "Large sessions can take 20–30 seconds on first load; later loads are faster",
-  "sessionRecovery.waitedSeconds": "Waited {n}s",
+  // tl1299: {n} is pre-formatted by lib/durationFormat formatDurationLabel ("1m 21s").
+  "sessionRecovery.waitedSeconds": "Waited {n}",
   "sessionRecovery.retryHistory": "Retry loading",
   "sessionRecovery.retryFailed": "Recovery failed. Check the details and try again.",
   "sessionRecovery.details": "Details",
@@ -1067,7 +1080,8 @@ export const en = {
   "composer.queuedStrip": "Message queued — it will be sent when this turn finishes",
   "composer.queuedPlaceholder": "Queued — sent after this turn; you can keep typing",
   "composer.executingTool": "Running: {tool}",
-  "composer.lastEventAgo": "last event {n}s ago",
+  // tl1299: {n} is pre-formatted by formatRelativeAgeLabel ("2h 7m ago" / "just now").
+  "composer.lastEventAgo": "last event {n}",
   "composer.runWaitingApproval": "Waiting for your approval — {tool}",
   "composer.runWaitingAsk": "Waiting for your answer",
   "composer.runAnnounceRunning": "Reasonix is working",
@@ -1276,9 +1290,10 @@ export const en = {
   "status.tokens": "tokens",
   "status.recoveryNetwork": "network unavailable",
   "status.recoveryProvider": "service unavailable",
-  "status.recoveryWaiting": "Waiting for provider ({phase}); next attempt in {seconds}s. Stop to cancel.",
-  "status.queuing": "Service busy — queued for retry (next attempt in ~{seconds}s). Stop to cancel.",
-  "status.quotaWaiting": "Quota exhausted — resuming automatically in ~{seconds}s. Stop to cancel.",
+  // tl1299: the three {seconds} slots take a formatDurationLabel string ("45s" / "2h 3m").
+  "status.recoveryWaiting": "Waiting for provider ({phase}); next attempt in {seconds}. Stop to cancel.",
+  "status.queuing": "Service busy — queued for retry (next attempt in ~{seconds}). Stop to cancel.",
+  "status.quotaWaiting": "Quota exhausted — resuming automatically in ~{seconds}. Stop to cancel.",
   "status.recoveryWaitTitleNetwork": "Waiting for the network to recover",
   "status.recoveryWaitTitleProvider": "Waiting for the provider to recover",
   "status.recoveryWaitNext": "Next attempt in {seconds}s",
@@ -4923,9 +4938,6 @@ export const en = {
   "transcript.workingDuration": "Working {duration}",
   "transcript.worked": "Worked",
   "transcript.workedDuration": "Worked {duration}",
-  "transcript.durationSeconds": "{s}s",
-  "transcript.durationMinutes": "{m}m",
-  "transcript.durationMinutesSeconds": "{m}m {s}s",
   "transcript.processed": "Processed",
   "transcript.processedDuration": "Processed {s}s",
   "notice.info": "Notice",
@@ -5226,8 +5238,10 @@ export const en = {
   "subagent.phase.partial": "partially complete",
   "subagent.phase.failed": "failed",
   "subagent.phase.cancelled": "cancelled",
-  "subagent.phase.elapsed": "{n}s",
-  "subagent.activity.ago": "{n}s ago",
+  // tl1299: {n} is pre-formatted by formatDurationLabel ("2h 7m 51s").
+  "subagent.phase.elapsed": "{n}",
+  // tl1299: {n} is pre-formatted by formatRelativeAgeLabel ("12m ago").
+  "subagent.activity.ago": "{n}",
   "subagent.preview.reasoning": "Reasoning",
   "subagent.preview.text": "Response preview",
   "subagent.preview.notice": "Notices",
@@ -5428,8 +5442,6 @@ export const en = {
   "context.time": "Runtime",
   "context.sessionTime": "Session time",
   "context.turnTime": "Turn time",
-  "context.durationSeconds": "{seconds}s",
-  "context.durationMinutesSeconds": "{minutes}m {seconds}s",
 
   // crash page (task 674: unusable "Send report" removed; collapse + issue-tracker deep link added)
   "crash.title": "Reasonix hit an error — analyze the root cause, or copy it",

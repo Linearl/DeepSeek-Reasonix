@@ -10,6 +10,7 @@
 // 一约定：仅内存，水合卡无戳也就没有残值）。
 
 import { formatTokens } from "./format";
+import { formatDurationLabel } from "./durationFormat";
 import type { Translator } from "./i18n";
 
 export type CompactionLiveSource = {
@@ -19,13 +20,11 @@ export type CompactionLiveSource = {
   tokensPerSec?: number;
 };
 
-// formatElapsedShort mirrors the composer run-strip's fmtElapsed ("40s" /
-// "1m 30s") so a compacting session reads like a working one. Deliberately
-// not localized — the run-strip's elapsed isn't either.
-function formatElapsedShort(ms: number): string {
-  const s = Math.floor(Math.max(0, ms) / 1000);
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
+// formatElapsedShort mirrors the composer run-strip's fmtElapsed (tl1299 起
+// 两者同走 lib/durationFormat："40s" / "1m 30s" / "1h 2m 3s" / "2d 3h"），
+// 压缩中的会话与运行中的会话读数同款。
+function formatElapsedShort(ms: number, t: Translator): string {
+  return formatDurationLabel(Math.floor(Math.max(0, ms) / 1000), t);
 }
 
 // compactionLiveReadout renders the " · 40s · 12.3K tokens · 45 tokens/s"
@@ -42,7 +41,7 @@ export function compactionLiveReadout(
   if (!item.pending) return "";
   const parts: string[] = [];
   if (item.startedAt && item.startedAt > 0) {
-    parts.push(formatElapsedShort(now - item.startedAt));
+    parts.push(formatElapsedShort(now - item.startedAt, t));
   }
   const tokens = item.tokens ?? 0;
   const tps = item.tokensPerSec ?? 0;

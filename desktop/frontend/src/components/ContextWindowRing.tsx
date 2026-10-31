@@ -6,6 +6,7 @@ import { contextReadoutSource, contextReadoutSourceKey } from "../lib/contextPan
 import { useI18n } from "../lib/i18n";
 import type { DictKey } from "../locales/en";
 import { formatMoneyLocalized } from "../lib/money";
+import { formatDurationLabel } from "../lib/durationFormat";
 import { appendRateBand, rateBandLabel } from "../lib/costRateBand";
 import type { BalanceInfo, ContextInfo, ContextPanelInfo } from "../lib/types";
 import { AnchoredPopover } from "./AnchoredPopover";
@@ -52,13 +53,13 @@ function fmtCompact(n: number): string {
   return String(Math.round(n));
 }
 
+// tl1299：运行时长改走统一格式化（≥1h → "H小时M分S秒"，≥1d → "D天H小时"），
+// 替代旧的无小时形态（长回合曾显示 "4507分46秒"）。ms<=0 的 "-" 兜底保持；
+// 与 ContextPanel 同名函数仅取整口径不同（此处 floor、彼处 round），维持原状。
 function fmtDuration(ms: number, t: ReturnType<typeof useI18n>['t']): string {
   if (ms <= 0) return "-";
   const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes <= 0) return t("context.durationSeconds", { seconds });
-  return t("context.durationMinutesSeconds", { minutes, seconds });
+  return formatDurationLabel(totalSeconds, t);
 }
 
 // Task 442: the quota cards reuse the settings card's window labels — same

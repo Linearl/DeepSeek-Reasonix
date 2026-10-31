@@ -52,7 +52,8 @@ try {
   ] as const) assert.equal(dict["sessionRecovery.loadingEvents"], copy);
   assert.equal(zh["sessionRecovery.loadingHint"], "大会话首次加载约需 20–30 秒，之后会更快");
   assert.equal(zhTW["sessionRecovery.loadingHint"], "大會話首次載入約需 20–30 秒，之後會更快");
-  assert.equal(zh["sessionRecovery.waitedSeconds"], "已等待 {n} 秒");
+  // tl1299：{n} 改为 formatDurationLabel 预格式化时长（"1分21秒"），键值不再带裸「秒」。
+  assert.equal(zh["sessionRecovery.waitedSeconds"], "已等待 {n}");
   // 阶段名→文案键映射（含未知兜底）。
   assert.equal(historyLoadPhaseKey("live-index-load"), "sessionRecovery.loadingIndex");
   assert.equal(historyLoadPhaseKey("cold-eventlog"), "sessionRecovery.loadingEvents");
