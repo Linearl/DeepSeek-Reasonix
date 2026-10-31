@@ -142,6 +142,14 @@ type InterruptedToolSummary struct {
 	Files   []string `json:"files,omitempty"`
 	Added   int      `json:"added,omitempty"`
 	Removed int      `json:"removed,omitempty"`
+	// ReadOnly 是该调用的只读标注（tl1278③）：来自中断记录的 ReadOnly（与
+	// internal/tool 登记表同源），旧格式条目为 false——按写类保守处理。
+	ReadOnly bool `json:"read_only,omitempty"`
+	// OutcomeForm 是 outcome-unknown 条目的两种中断形态标注（tl1278④）：
+	// "returned_unverified" = 调用已结束（结果已产出/已流式）但结果未能确认
+	// 持久化；"no_response" = 调用发出后未返回。空 = 旧格式条目，按最保守的
+	// 「结果未知」处理。
+	OutcomeForm string `json:"outcome_form,omitempty"`
 }
 
 // WriteRecoveryCheck reports a current postcondition, not an execution receipt.

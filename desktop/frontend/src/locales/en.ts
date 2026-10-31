@@ -6,6 +6,7 @@
 export const en = {
   "toolRecovery.title": "Interrupted tool calls (record only)",
   "toolRecovery.unknown": "Outcome unknown (recorded)",
+  "toolRecovery.readonlyInterrupted": "Read-only call · interrupted (no side effects; safe to ignore)",
   "toolRecovery.details": "View action details",
   "toolRecovery.dismiss": "Dismiss",
   "toolRecovery.dismissAll": "Dismiss all",
