@@ -160,6 +160,13 @@ func (tr *subagentOpenTrace) observe(ev event.Event) {
 		// (headers arrived or start failed). First ones win — retries after
 		// the initial attempt are the provider layer's business, not part of
 		// the open window's first-pass shape.
+		//
+		// Race note: on a fast connect the attempt-1 notice can sit in the
+		// turn loop's buffered channel and get drained by the clear-frame
+		// path without ever reaching this sink. The clear frame therefore
+		// back-fills "prepare" (at zero cost) before closing "rtt", so
+		// prepare+rtt always sum to the request window even when the
+		// attempt-1 frame never fires.
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
 		if ev.RetryAttempt >= 1 {
@@ -170,6 +177,15 @@ func (tr *subagentOpenTrace) observe(ev event.Event) {
 			return
 		}
 		if !tr.sawHeaders && tr.sawRequestOut {
+			tr.sawHeaders = true
+			tr.segs.mark("rtt")
+			return
+		}
+		if !tr.sawHeaders && !tr.sawRequestOut {
+			// Fast-connect drain: synthesize the prepare boundary so the
+			// rtt segment still owns the whole request window.
+			tr.sawRequestOut = true
+			tr.segs.markAt("prepare", 0)
 			tr.sawHeaders = true
 			tr.segs.mark("rtt")
 		}

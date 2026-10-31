@@ -111,17 +111,22 @@ func TestSubagentOpenTraceRequestPhases(t *testing.T) {
 	}
 }
 
-func TestSubagentOpenTraceClearFrameWithoutRequestIgnored(t *testing.T) {
+func TestSubagentOpenTraceFastConnectBackfillsPrepare(t *testing.T) {
 	tr := newTestOpenTrace()
-	// A stray clear frame (older emitter shape) must not fabricate an rtt
-	// segment before the request went out.
+	// Fast connect: the turn loop can drain the attempt-1 notice before it
+	// reaches this sink, so the FIRST frame here is the clear frame. The
+	// trace must back-fill prepare (0ms) and still give rtt the request
+	// window — no silent segment loss on the common fast path.
 	tr.observe(event.Event{Kind: event.Connecting, RetryAttempt: 0})
 	tr.observe(event.Event{Kind: event.Text, Text: "answer"})
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	summary := tr.segs.summary()
-	if strings.Contains(summary, "rtt=") {
-		t.Fatalf("rtt fabricated without request-out: %q", summary)
+	if !strings.Contains(summary, "prepare=") || !strings.Contains(summary, "rtt=") {
+		t.Fatalf("fast connect lost prepare/rtt: %q", summary)
+	}
+	if !tr.sawRequestOut || !tr.sawHeaders {
+		t.Fatalf("request-out/headers flags not set: out=%v headers=%v", tr.sawRequestOut, tr.sawHeaders)
 	}
 	if !strings.Contains(summary, "first_out=") {
 		t.Fatalf("first_out missing: %q", summary)
