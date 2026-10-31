@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"reasonix/internal/shellparse"
 	"reasonix/internal/tool"
@@ -691,6 +692,14 @@ type Gate struct {
 	// OnRemember, when set, is invoked with a new allow rule the user chose to
 	// remember (e.g. "Bash(go build)"), so the front-end can persist it.
 	OnRemember func(rule string)
+
+	// mu serializes the always-allow append in Check against every read of the
+	// Policy: the append mutates the Policy.Allow slice header in place, while
+	// Decide/matching copy that header, so an unlocked header write racing a
+	// header read is a data race with undefined results (audit C2②). Readers
+	// outside this package must go through PolicySnapshot, never g.Policy
+	// directly.
+	mu sync.Mutex
 }
 
 // NewGate wires a Policy to an Approver (nil for non-interactive use).
@@ -705,11 +714,7 @@ func (g *Gate) Check(ctx context.Context, toolName string, args json.RawMessage,
 			readOnly = true
 		}
 	}
-	decision := g.Policy.Decide(toolName, readOnly, args)
-	ruleReason := ""
-	if rule, ok := g.Policy.MatchedRule(toolName, decision, args); ok {
-		ruleReason = fmt.Sprintf("Matched permission rule: %s %s", decision, rule)
-	}
+	decision, ruleReason := g.decideWithRuleReason(toolName, readOnly, args)
 	switch decision {
 	case Deny:
 		reason := "denied by permission policy — this tool/command is on the deny list. Do not retry it; choose another approach or stop and explain."
@@ -744,7 +749,12 @@ func (g *Gate) Check(ctx context.Context, toolName string, args json.RawMessage,
 			// Approver path, but any code path that consults Policy.Decide()
 			// directly would miss the rule until the next controller build.
 			if rule, ok := ParseRule(toolName); ok {
+				// Audit C2②: the append is the only runtime write to a shared
+				// Policy; hold the gate lock so concurrent Decide readers
+				// never observe a half-updated Allow slice header.
+				g.mu.Lock()
 				g.Policy.Allow = append(g.Policy.Allow, rule)
+				g.mu.Unlock()
 			}
 		}
 		return true, "", nil
@@ -757,7 +767,34 @@ func (g *Gate) Check(ctx context.Context, toolName string, args json.RawMessage,
 // MCP servers use this narrow view so install-time authorization is not
 // followed by redundant per-call approval prompts.
 func (g *Gate) ExplicitlyDenies(toolName string, args json.RawMessage) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	return g.Policy.ExplicitlyDenies(toolName, args)
+}
+
+// decideWithRuleReason evaluates the policy under the gate lock so the
+// always-allow append cannot race the Allow slice-header read that Decide and
+// MatchedRule perform (audit C2②).
+func (g *Gate) decideWithRuleReason(toolName string, readOnly bool, args json.RawMessage) (Decision, string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	decision := g.Policy.Decide(toolName, readOnly, args)
+	ruleReason := ""
+	if rule, ok := g.Policy.MatchedRule(toolName, decision, args); ok {
+		ruleReason = fmt.Sprintf("Matched permission rule: %s %s", decision, rule)
+	}
+	return decision, ruleReason
+}
+
+// PolicySnapshot returns a consistent copy of the gate's policy for callers
+// that evaluate Policy directly (e.g. approval wrappers deciding before they
+// delegate to Check). Copied under the lock it is immutable in practice: the
+// always-allow append only ever extends Allow beyond the copied length (or
+// reallocates), never rewrites existing elements.
+func (g *Gate) PolicySnapshot() Policy {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.Policy
 }
 
 func (g *Gate) approve(ctx context.Context, toolName, subject string, args json.RawMessage, policyReason string) (bool, bool, string, error) {
