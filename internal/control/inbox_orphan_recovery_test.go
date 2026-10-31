@@ -311,7 +311,7 @@ func TestInboxCompletionKeepsOwnershipWithoutHoldingAdmissionDuringSnapshot(t *t
 	c.inbox.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
-		c.onInboxTurnDone()
+		c.onInboxTurnDone(0)
 		close(done)
 	}()
 	<-beforeSnapshot
@@ -360,7 +360,7 @@ func TestInboxCompletionOwnsItemWithoutHoldingAdmissionDuringDurableAck(t *testi
 	c.inbox.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
-		c.onInboxTurnDone()
+		c.onInboxTurnDone(0)
 		close(done)
 	}()
 	<-beforeAck

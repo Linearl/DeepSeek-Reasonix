@@ -376,7 +376,7 @@ func TestMultiSteerActiveSetAcksAll(t *testing.T) {
 	}
 	c.inbox.mu.Unlock()
 
-	c.onInboxTurnDone()
+	c.onInboxTurnDone(0)
 	if n := len(c.InboxSnapshot().Items); n != 0 {
 		t.Fatalf("want all 3 steers acked/dequeued, still have %d items", n)
 	}
