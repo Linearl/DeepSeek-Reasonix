@@ -54,7 +54,13 @@ export function selectRuntime(session?: RuntimeSession) {
     running: known ? state.running : undefined,
     // 任务510（a 保出口）：cancellable 不再因 unknown 强制 false。unknown 只说明
     // 投影可能过期；停止请求走控制通道，与投影通道分离，过期数据不该锁死安全出口。
-    cancellable: known ? !finishing && state.cancellable && !state.cancelRequested : undefined,
+    // tl1304 ①（根治取消链）：cancelRequested 同样移出否决项——「停止已受理但未
+    // 生效」（canceling 楔死轮体）的现场恰恰是这个否决把停止按钮锁死的现场，
+    // 461-P7 的升级阶梯（L2 强制宽限/L3 force）从此不可达，用户后续每一次按停止
+    // 都在 UI 层被无声吞掉。受理 ≠ 不可取消：Cancel 可重入幂等（cancelTurnLocked
+    // 快进快出 + ctx 天然幂等），连点风暴由 Composer 的 cancelSettling 在途禁用
+    // 兜底。cancelling 的展示语义（kind="cancelling"）保留。
+    cancellable: known ? !finishing && state.cancellable : undefined,
     spinning: !unknown && (kind === "thinking" || kind === "streaming" || kind === "cancelling" || kind === "background_job"),
   };
 }

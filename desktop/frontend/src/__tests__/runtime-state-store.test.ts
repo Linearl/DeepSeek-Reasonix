@@ -49,6 +49,26 @@ store.fail();
   assert.equal(runningUnknown.unknown, true);
   assert.equal(runningUnknown.cancellable, true, "unknown 不把可停状态锁成不可取消");
 }
+// tl1304 ①（根治取消链）：cancelRequested 移出 cancellable 否决项。「停止已受理
+// 但未生效」（canceling 楔死轮体）的现场恰恰是否决把停止按钮锁死的现场——升级
+// 阶梯（461-P7 L2/L3）必须在该现场保持可达。受理 ≠ 不可取消；cancelling 展示
+// 语义（kind）保留；finishing 防误操作否决保留。
+{
+  const session = store.getSnapshot()!.sessions[0];
+  const cancelling = selectRuntime({
+    ...session,
+    state: { ...session.state, phase: "executing", running: true, cancelRequested: true, cancellable: true, backgroundJobs: 0, activity: "" },
+  });
+  assert.equal(cancelling.kind, "cancelling", "cancelling 展示语义保留（tl1304 ①）");
+  assert.equal(cancelling.cancellable, true, "cancelRequested 不再把停止按钮锁死（tl1304 ①）");
+  assert.equal(cancelling.spinning, true, "cancelling 态照旧转圈");
+  const finishingCancelling = selectRuntime({
+    ...session,
+    state: { ...session.state, phase: "finishing", running: false, cancelRequested: true, cancellable: true, backgroundJobs: 0 },
+  });
+  assert.equal(finishingCancelling.kind, "finishing");
+  assert.equal(finishingCancelling.cancellable, false, "finishing 否决保留（防误操作语义不变）");
+}
 assert.equal(store.getSnapshot()!.sessions[0].state.backgroundJobs, 2);
 assert.equal(store.accept({ ...projection(1), epoch: "other" }), "conflict");
 assert.equal(store.accept({ ...projection(1), epoch: "other" }, true), "accepted");
