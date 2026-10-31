@@ -1887,6 +1887,16 @@ func boolLabel(b bool) string {
 }
 
 // Settings returns the current configuration for the Settings panel.
+//
+// tl 1307 治本向前置记录（本 wt 只做了前端自动退避重试，未动本链路）：
+// 「锁压力下优先返回缓存视图」评估为暂不落地——失效面 = 本文件 40 个 Set*
+// 加磁盘侧外部变更（手改 config/credential .env），漏一处即设置页显示旧值，
+// 用户基于错值保存比「慢一点」更糟；且实测锁窗口单段 ≤336ms，前端
+// （frontend/src/lib/settingsLoadRetry.ts）400/1200ms 退避重试已覆盖该量级。
+// 若未来锁窗口量级变化（单段秒级）要重启此方案，前置：①全部 Set* 与外部
+// 变更路径的失效审计（逐项配测试，验收矩阵式）；②缓存命中路径必须可观测
+// （hit/stale 标记，不得吞掉本函数与 stage 打点）；③staleness 设 TTL 上限，
+// 超限宁可慢读。
 func (a *App) Settings() SettingsView {
 	// 任务 739：设置面板此前在这条链路上零日志——「点了设置但一直加载中」时
 	// 无法从 desktop.log 区分「前端没发请求」还是「后端慢」。现在每次读取都
