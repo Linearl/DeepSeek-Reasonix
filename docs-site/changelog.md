@@ -11,9 +11,24 @@
 <div class="timeline">
 
 <details class="day-group" open>
-<summary>2026-10-31 <span class="gcount">· 2 个包</span></summary>
+<summary>2026-10-31 <span class="gcount">· 3 个包</span></summary>
 
 <div class="inner">
+<section>
+#### v1.38.3-20261031-0810 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">0810 构建</p>
+
+- **内存按需解码/驱逐三层落地**（1281，P1 主力）：大会话消息数据不再全量驻留内存，实测大头 `literalStore` 277.6→53.2MB。
+- **events 瘦身根治**（1285）：折叠判据反向缺陷修复——预估不达标不再永久豁免，实测收益判定+无损 zstd 兜底；清扫活跃判定修复+配额按可释放字节排序（最大的日志优先处理）。
+- **实验室键替换**（1286）：「Go 软内存上限」退役（设低触发 GC 风暴），替换为 GC 策略旋钮（热改可回退）；旧配置值安全忽略。
+- **会话存储面板重构**（1287）：v4 档位退役（保留 v4→v3 迁移器）；DAG 迁移卡从实验室转正进存储面板；新增「清理迁移备份」按钮与 v5 会话导入入口。
+- **残影根因修复**（1288）：tab「运行中」残影 wedged-running 根因定位并修复。
+- **全角！！+ 任意行激活**（1273）：快捷指令支持全角 `！！`，任意行行首可触发。
+- **设置页打开提速**（1284）：实验室页数据就绪 17.5s→秒级（boot 排队异步化）。
+
+</section>
+
 <section>
 #### v1.38.3-20261031-0054 <span class="vtag vtag-internal">内部包</span>
 
