@@ -1880,20 +1880,25 @@ export function Composer({
     [quickCommands],
   );
 
-  // Task 593: "!!" at the very head of the input summons the quick-command
-  // picker — the same dropdown interaction as "/" but backed by the stored
-  // snippets. Line-head only: the token must start at index 0 of the input,
-  // so any "!!" elsewhere in the text never triggers.
+  // Task 593 + tl 1273: "!!" — or the full-width "！！", so Chinese-IME users
+  // don't have to switch layouts mid-sentence — at the head of ANY line
+  // summons the quick-command picker — the same dropdown interaction as "/"
+  // but backed by the stored snippets. Line-head only: the token must start
+  // right after a line break (or at index 0 of the input) and the caret must
+  // stay on that line, so a "!!" buried mid-line never triggers.
   const activeBangSelection = invocations.length > 0 ? richSelection : plainSelection;
   const quickCommandToken = useMemo(() => {
     if (activeBangSelection.start !== activeBangSelection.end) return null;
     const before = slashText.slice(0, Math.min(activeBangSelection.start, slashText.length));
-    const match = /^!!([^\n]*)$/.exec(before);
+    const match = /(?:^|\n)(?:!!|！！)([^\n]*)$/u.exec(before);
     if (!match) return null;
-    const newlineAt = slashText.indexOf("\n");
+    // match[0] includes the preceding line break when the token lives on a
+    // later line; strip it to get the token's own start offset.
+    const from = match.index + (match[0].startsWith("\n") ? 1 : 0);
+    const lineEnd = slashText.indexOf("\n", from);
     return {
-      from: 0,
-      to: newlineAt === -1 ? slashText.length : newlineAt,
+      from,
+      to: lineEnd === -1 ? slashText.length : lineEnd,
       query: match[1].trim().toLowerCase(),
     };
   }, [activeBangSelection, slashText]);
@@ -2087,6 +2092,10 @@ export function Composer({
             ? "at"
             : null;
   const menuOpen = menuMode !== null;
+  // Live menu-mode mirror for non-React listeners (the raw textarea blur
+  // handler below, tl 1273 blur-dismiss).
+  const menuModeRef = useRef<typeof menuMode>(null);
+  menuModeRef.current = menuMode;
   useLayoutEffect(() => {
     if (!menuOpen) return;
     const anchor = composerWrapRef.current;
@@ -2108,7 +2117,11 @@ export function Composer({
 
   // Reset highlight + un-dismiss whenever the active query changes.
   useEffect(() => {
-    setActive(0);
+    // tl 1273 disambiguation: the quick-command list opens with NO item
+    // highlighted — an explicit ArrowDown/ArrowUp/hover selection is required
+    // before Enter may consume the token. Every other menu keeps the legacy
+    // first-item highlight.
+    setActive(quickCommandQueryKey === "" ? 0 : -1);
     setDismissed(false);
   }, [slashQueryKey, atRaw, pastChatTokenQuery, quickCommandQueryKey]);
 
@@ -2325,7 +2338,15 @@ export function Composer({
     const ta = taRef.current;
     if (!ta) return;
     const onFocus = () => { composerInputWasFocusedRef.current = true; };
-    const onBlur = () => { composerInputWasFocusedRef.current = false; };
+    const onBlur = () => {
+      composerInputWasFocusedRef.current = false;
+      // tl 1273: blurring the composer dismisses the quick-command popup the
+      // same way Esc does. Raw DOM listener because React's synthetic blur
+      // does not deliver when React boots with canUseDOM=false (the test
+      // harness); menu rows pick on mousedown (focus never leaves the
+      // textarea), so mouse selection is unaffected.
+      if (menuModeRef.current === "quickCommands") setDismissed(true);
+    };
     ta.addEventListener("focus", onFocus);
     ta.addEventListener("blur", onBlur);
     return () => {
@@ -4480,7 +4501,9 @@ export function Composer({
       return;
     }
     const maxIdx = Math.max(0, count - 1);
-    setActive((prev) => (prev > maxIdx ? 0 : prev));
+    // tl 1273: an overflowing quick-command highlight returns to "no
+    // selection" (-1), matching the list's default-unselected contract.
+    setActive((prev) => (prev > maxIdx ? (menuMode === "quickCommands" ? -1 : 0) : prev));
   }, [active, count, menuMode, slashSelectableIndices]);
 
   const removeAtToken = (value: string) => {
@@ -4760,14 +4783,24 @@ export function Composer({
             });
           }
         } else {
-          setActive((i) => (i - 1 + count) % count);
+          // From the no-selection state (-1, tl 1273) ArrowUp jumps to the
+          // last item; otherwise wrap backwards as usual.
+          setActive((i) => (i < 0 ? count - 1 : (i - 1 + count) % count));
         }
         return;
       }
       if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        pickActive();
-        return;
+        if (menuMode === "quickCommands" && active < 0) {
+          // tl 1273 disambiguation: nothing highlighted yet — only an explicit
+          // selection consumes the token. Enter falls through to the normal
+          // send path (the literal text goes out untouched) and Tab to regular
+          // focus movement, so an incidental "!!" at a line head can never
+          // block sending the draft.
+        } else {
+          e.preventDefault();
+          pickActive();
+          return;
+        }
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -5884,6 +5917,11 @@ export function Composer({
                   onKeyDown={onKeyDown}
                   onContextMenu={openInputMenu}
                   onPaste={onPaste}
+                  onBlur={() => {
+                    // tl 1273: same blur-dismiss contract as the plain
+                    // textarea — losing focus closes the quick-command popup.
+                    if (menuMode === "quickCommands") setDismissed(true);
+                  }}
                   onCompositionStart={() => {
                     composingRef.current = true;
                   }}
