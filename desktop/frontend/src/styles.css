@@ -7528,6 +7528,60 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg-soft);
   color: var(--fg);
 }
+/* tl1289: multi-image navigation — prev/next arrows sit mid-height and are
+   hover/focus-shown so they never compete with the image itself. */
+.image-viewer__nav {
+  position: absolute;
+  top: 50%;
+  z-index: var(--z-local-raised);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+.image-viewer__nav--prev {
+  left: 16px;
+}
+.image-viewer__nav--next {
+  right: 16px;
+}
+.image-viewer-backdrop:hover .image-viewer__nav:not(:disabled),
+.image-viewer-backdrop:focus-within .image-viewer__nav:not(:disabled) {
+  opacity: 1;
+  pointer-events: auto;
+}
+.image-viewer__nav:hover:not(:disabled) {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+/* Boundary: at first/last image the arrow stays faintly visible but inert. */
+.image-viewer__nav:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+  cursor: default;
+}
+.image-viewer__counter {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: var(--z-local-raised);
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
 .image-viewer__content {
   display: flex;
   flex-direction: column;

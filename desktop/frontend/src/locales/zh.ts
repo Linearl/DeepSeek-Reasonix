@@ -1180,6 +1180,8 @@ export const zh: Record<DictKey, string> = {
   "imageViewer.clickToPreview": "点击查看大图",
   "imageViewer.closePreview": "关闭预览",
   "imageViewer.title": "图片预览",
+  "imageViewer.prevImage": "上一张",
+  "imageViewer.nextImage": "下一张",
   "composer.attachImageFailed": "图片粘贴失败",
   "composer.attachAudioFailed": "音频附件添加失败",
   "composer.audioTooLarge": "音频文件超过 50 MB 内嵌上限",
