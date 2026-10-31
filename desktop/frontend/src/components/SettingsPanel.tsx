@@ -32,6 +32,7 @@ import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
 import { takeSettingsViewPrefetch, invalidateSettingsViewPrefetch } from "../lib/settingsPrefetch";
+import { settingsLoadRetry } from "../lib/settingsLoadRetry";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
 import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
@@ -235,17 +236,47 @@ export function SettingsPanel({
     const reloadStart = prefetchStart ?? Date.now();
     setLoadingSettings(true);
     setSettingsLoadFailed(false);
+    // tl 1307：实际发出的视图读次数，catch 里的终态打点也要读它，故提到
+    // try 外声明。
+    let attempts = 0;
     try {
-      const [view, application] = await Promise.all([
-        // 任务 739：入口点击时已预发请求（lib/settingsPrefetch），挂载即消费；
-        // 无预取（TTL 过期 / 预取失败已弃）则照旧现拉。tl 1179：预取只服务
-        // 挂载首屏读（显式 preferPrefetch）——写后读（保存/背景/错误读回）
-        // 一律现拉。设置面板内切 tab 会经 openPage 钩子重新填预取缓存（写前
-        // 快照留存 TTL 10s），保存后的读回若吃到它，UI/行为就停在旧态，表现
-        // 为「开关点两次才生效」。
-        prefetch?.promise ?? app.Settings(),
-        Promise.resolve().then(() => app.GetModelSettingsApplication()).catch(() => null),
-      ]);
+      // 应用状态读与视图读并发（原 Promise.all 语义保留：application 读自身
+      // .catch 兜底，永不牵连视图失败态）。
+      const applicationPromise = Promise.resolve().then(() => app.GetModelSettingsApplication()).catch(() => null);
+      // tl 1307：视图读失败 ≠ 终态。锁压力窗口（session save 族长时持锁，
+      // save-path lock waited 高频时段）下单次请求可能拒绝或被多段 stage
+      // slow 叠加拖垮——按 settingsLoadRetry 退避自动重试，重试期间骨架/
+      // 已加载内容原样保留（不置失败态、不清 s），上限内全部失败才落横幅。
+      // 重试一律现拉：预取 promise 已落定，复用只会重放同一失败；tl 739/
+      // 1284 预取语义只作用于首试（attempt 0），不变。
+      let view: Awaited<ReturnType<typeof app.Settings>> | null = null;
+      let lastLoadError: unknown = null;
+      for (; attempts <= settingsLoadRetry.delaysMs.length; attempts += 1) {
+        if (attempts > 0) {
+          await new Promise((r) => setTimeout(r, settingsLoadRetry.delaysMs[attempts - 1]));
+          if (seq !== settingsLoadSeq.current) return null;
+          reportFrontendLog("lab", "settings load retry",
+            `attempt=${attempts + 1} max=${settingsLoadRetry.delaysMs.length + 1} elapsedMs=${Date.now() - reloadStart}`);
+        }
+        try {
+          // 任务 739：入口点击时已预发请求（lib/settingsPrefetch），挂载即消费；
+          // 无预取（TTL 过期 / 预取失败已弃）则照旧现拉。tl 1179：预取只服务
+          // 挂载首屏读（显式 preferPrefetch）——写后读（保存/背景/错误读回）
+          // 一律现拉。设置面板内切 tab 会经 openPage 钩子重新填预取缓存（写前
+          // 快照留存 TTL 10s），保存后的读回若吃到它，UI/行为就停在旧态，表现
+          // 为「开关点两次才生效」。
+          view = attempts === 0 && prefetch ? await prefetch.promise : await app.Settings();
+          break;
+        } catch (e) {
+          lastLoadError = e;
+        }
+      }
+      if (view == null) {
+        // 上限内重试全部失败——这才是终态失败。attempts 此时就是实际尝试
+        // 次数（for 的自增先于条件判定，退出值 = delaysMs.length + 1）。
+        throw lastLoadError ?? new Error("settings view unavailable after retries");
+      }
+      const application = await applicationPromise;
       const next = normalizeSettingsView(view);
       const dataReadyMs = Date.now() - reloadStart;
       // 每次数据就绪都落一条（数据到达耗时），不区分 tab——lab 页本身也走这
@@ -263,7 +294,11 @@ export function SettingsPanel({
       // reason, so a failing app.Settings() left the lab page blank with no
       // trace anywhere ("no log != no event"). Log it until task 304 wires
       // reportFrontendLog into this path.
+      // tl 1307：走到这里 = 自动重试上限内全部失败（终态）。打一条带尝试
+      // 数的 lab 线索——锁压力窗口的真实失败在 desktop.log 侧只有 stage
+      // slow/save-path waited，这条让前端侧的「试了 3 次都不行」可见。
       console.error("[settings] Settings() load failed:", e);
+      reportFrontendLog("lab", "settings load failed", `attempts=${Math.max(attempts, 1)} err=${e instanceof Error ? e.message : String(e)}`, "warn");
       if (seq !== settingsLoadSeq.current) return null;
       setSettingsLoadFailed(true);
       return null;
