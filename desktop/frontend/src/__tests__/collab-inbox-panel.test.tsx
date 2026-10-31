@@ -11,6 +11,9 @@
 // onChange never fires in this environment.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
@@ -769,6 +772,237 @@ tl1226Host.remove();
     truncRoot.unmount();
   });
   truncHost.remove();
+}
+
+// ── tl1238 ①：多选态「全选」入口在列表头部可见可达 ──────────────────────────
+// 用户实测「多选模式没有全选按钮」：batchbar 全选按钮在 DOM 里但挂在滚动内容
+// 最底部，懒加载长列表下沉到折叠线以下 = 可见性缺陷。修复 = 列表头部主控复选
+// 框（sticky 常驻）+ batchbar sticky 底部；两处同一 selected 状态。这里的接缝
+// 职责：①头部主控框随多选态渲染且文案同「全选」键；②勾=全选当前视图、再点
+// =清空当前视图；③与行首复选框/batchbar 计数联动；④sticky 两条 CSS 落盘
+// （980 ② 的 styles.css 断言先例）。
+{
+  const msEntries = [
+    entry({ id: "ms_a", preview: "multi a" }),
+    entry({ id: "ms_b", preview: "multi b" }),
+    entry({ id: "ms_c", preview: "multi c" }),
+  ];
+  const msBindings: CollabInboxBindings = {
+    ...bindings,
+    async ListCollabMail() {
+      return {
+        revision: "13.0.0",
+        settings: { retention: "7d" },
+        total: msEntries.length,
+        returned: msEntries.length,
+        truncated: false,
+        entries: msEntries,
+      };
+    },
+  };
+  const msHost = document.createElement("div");
+  document.body.appendChild(msHost);
+  const msRoot = createRoot(msHost);
+  await act(async () => {
+    msRoot.render(
+      <LocaleProvider>
+        <CollabInboxPanel bindings={msBindings} directory={directory} embedded />
+      </LocaleProvider>,
+    );
+  });
+  const msPanel = msHost.querySelector(".collab-inbox-panel");
+  assert.ok(msPanel, "tl1238: the multi-select panel renders");
+  assert.equal(
+    msPanel!.querySelector(".collab-inbox-panel__checkall"),
+    null,
+    "tl1238: no header select-all renders before multi mode is on",
+  );
+  await act(async () => {
+    Array.from(msPanel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__toolbar button"))
+      .find((b) => b.textContent === "Multi-select")!
+      .click();
+  });
+  const checkall = msPanel!.querySelector<HTMLElement>(".collab-inbox-panel__checkall");
+  assert.ok(checkall, "tl1238: the list-header master select-all renders in multi mode");
+  assert.equal(
+    checkall!.querySelector("span")?.textContent,
+    "Select all",
+    "tl1238: the header control carries the same 全选 label as the batchbar button",
+  );
+  const msCheckboxes = () => msPanel!.querySelectorAll<HTMLInputElement>(".collab-inbox-panel__check input");
+  assert.equal(msCheckboxes().length, 3, "tl1238: the three rows grow their checkboxes");
+  const headerBox = () => checkall!.querySelector<HTMLInputElement>("input")!;
+  assert.equal(headerBox().checked, false, "tl1238: the header checkbox starts unchecked at 0 selected");
+  await act(async () => {
+    headerBox().click();
+  });
+  assert.equal(
+    Array.from(msCheckboxes()).every((c) => c.checked),
+    true,
+    "tl1238: ticking the header checkbox selects every row",
+  );
+  assert.match(
+    msPanel!.querySelector(".collab-inbox-panel__batchbar")!.textContent ?? "",
+    /3 selected/,
+    "tl1238: the batchbar count follows the header select-all",
+  );
+  // 取消一行 → 头部主控框回到未勾（部分选中≠全选）；再勾头部 → 恢复全选。
+  await act(async () => {
+    msCheckboxes()[0].click();
+  });
+  assert.equal(headerBox().checked, false, "tl1238: unchecking one row unchecks the header master");
+  assert.match(
+    msPanel!.querySelector(".collab-inbox-panel__batchbar")!.textContent ?? "",
+    /2 selected/,
+    "tl1238: the batchbar count drops with the row uncheck",
+  );
+  await act(async () => {
+    headerBox().click();
+  });
+  assert.equal(
+    Array.from(msCheckboxes()).every((c) => c.checked),
+    true,
+    "tl1238: re-ticking the header master re-selects every row",
+  );
+  // sticky 两条 CSS 落盘（可见性修复的本体：头部框钉顶、batchbar 钉底）。
+  {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+    const checkallRule = styles.slice(
+      styles.indexOf(".collab-inbox-panel__checkall {"),
+      styles.indexOf("}", styles.indexOf(".collab-inbox-panel__checkall {")),
+    );
+    assert.match(checkallRule, /position:\s*sticky/, "tl1238: the header master sticks to the visible top (was the invisible-select-all defect)");
+    const batchbarRule = styles.slice(
+      styles.indexOf(".collab-inbox-panel__batchbar {"),
+      styles.indexOf("}", styles.indexOf(".collab-inbox-panel__batchbar {")),
+    );
+    assert.match(batchbarRule, /position:\s*sticky/, "tl1238: the batchbar sticks to the visible bottom");
+  }
+  await act(async () => {
+    msRoot.unmount();
+  });
+  msHost.remove();
+}
+
+// ── tl1238 ②：点开查看即已读——角标随查看即时消除，不等面板关闭 ─────────────
+// 用户实测「点开面板看完、关了角标仍挂 27 封（已读状态与角标计数不对账）」：
+// 排查结论 = 角标计数源（CountUnreadCollabMail）与开/合/写/到达四条刷新接线
+// 均健全（既有断言在上文），真正的缺口是查看路径从不推进已读游标——此前唯一
+// 已读口是工具条「全部已读」。修复 = 详情弹窗打开瞬间按信结算（复用既有
+// MarkCollabMailRead 写口 + mail-changed 广播）。接缝职责：①点开未读信 →
+// 该信 id 到达写口、角标即时重查并回落，全程不开合面板；②行已读态翻转；
+// ③点开已读信不再发写（零多余往返）。
+{
+  const rvEntries = [
+    entry({ id: "rv_a", preview: "review a" }),
+    entry({ id: "rv_b", preview: "review b" }),
+    entry({ id: "rv_done", preview: "already read", read: true }),
+  ];
+  const rvReadCalls: string[][] = [];
+  const rvSnapshot = (): CollabMailSnapshot => ({
+    revision: "14.0.0",
+    settings: { retention: "7d" },
+    total: rvEntries.length,
+    returned: rvEntries.length,
+    truncated: false,
+    entries: rvEntries,
+  });
+  const rvBindings: CollabInboxBindings = {
+    ...bindings,
+    async ListCollabMail() {
+      return rvSnapshot();
+    },
+    async ReadCollabMail(id: string) {
+      const e = rvEntries.find((x) => x.id === id)!;
+      return { id, from: e.from, to: e.to, at: e.at, threadId: e.threadId, bucket: e.bucket, preview: e.preview, body: `full body of ${id}` };
+    },
+    async MarkCollabMailRead(ids) {
+      rvReadCalls.push(ids);
+      const hit = new Set(ids);
+      for (const e of rvEntries) {
+        if (hit.has(e.id)) e.read = true;
+      }
+      return rvSnapshot();
+    },
+  };
+  let rvCountCalls = 0;
+  const rvBadgeBindings: CollabInboxBindings = {
+    ...rvBindings,
+    async CountUnreadCollabMail() {
+      rvCountCalls += 1;
+      return rvEntries.filter((e) => !e.read).length;
+    },
+  };
+  function RvBadgeProbe() {
+    const n = useCollabInboxUnreadCount(rvBadgeBindings);
+    return <span className="badge-probe-rv">{n}</span>;
+  }
+  const rvHost = document.createElement("div");
+  document.body.appendChild(rvHost);
+  const rvRoot = createRoot(rvHost);
+  const rvBadgeHost = document.createElement("div");
+  document.body.appendChild(rvBadgeHost);
+  const rvBadgeRoot = createRoot(rvBadgeHost);
+  await act(async () => {
+    rvRoot.render(
+      <LocaleProvider>
+        <CollabInboxPanel bindings={rvBindings} directory={directory} embedded />
+      </LocaleProvider>,
+    );
+    rvBadgeRoot.render(<RvBadgeProbe />);
+  });
+  const rvPanel = rvHost.querySelector(".collab-inbox-panel");
+  assert.ok(rvPanel, "tl1238: the read-on-view panel renders");
+  assert.equal(document.querySelector(".badge-probe-rv")!.textContent, "2", "tl1238: the badge mounts at 2 unread");
+  const rvDetailBtn = (id: string) =>
+    Array.from(rvPanel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__row"))
+      .find((row) => row.querySelector(".collab-inbox-panel__preview")?.textContent === `review ${id.slice(3)}`)
+      ?.querySelector<HTMLButtonElement>(".collab-inbox-panel__rowactions button");
+  const rvRowReadChip = (id: string) =>
+    Array.from(rvPanel!.querySelectorAll(".collab-inbox-panel__row"))
+      .find((row) => row.querySelector(".collab-inbox-panel__preview")?.textContent === `review ${id.slice(3)}`)
+      ?.querySelector(".collab-inbox-panel__read");
+
+  // 点开第一封未读 → 写口收到 [rv_a]、角标即时重查回落 2→1，行翻已读，
+  // 全程无面板开合（「查看即清，不等关面板」的本体断言）。
+  const countBeforeA = rvCountCalls;
+  await act(async () => {
+    rvDetailBtn("rv_a")!.click();
+  });
+  assert.deepEqual(rvReadCalls, [["rv_a"]], "tl1238: opening an unread letter settles exactly that id as read");
+  assert.equal(rvCountCalls > countBeforeA, true, "tl1238: the settlement notifies the badge hook to re-query");
+  assert.equal(document.querySelector(".badge-probe-rv")!.textContent, "1", "tl1238: the badge drops 2→1 the moment the letter is viewed, no close needed");
+  assert.equal(rvRowReadChip("rv_a")!.textContent, "Read", "tl1238: the viewed row flips to the read state in place");
+  // 关掉弹窗再点第二封（弹窗复用同一 openDetail 口）。
+  await act(async () => {
+    document.querySelector(".collab-inbox-detail")!.querySelector<HTMLButtonElement>(".modal__actions button")!.click();
+  });
+  const countBeforeB = rvCountCalls;
+  await act(async () => {
+    rvDetailBtn("rv_b")!.click();
+  });
+  assert.deepEqual(rvReadCalls, [["rv_a"], ["rv_b"]], "tl1238: the second unread letter settles on its own open");
+  assert.equal(document.querySelector(".badge-probe-rv")!.textContent, "0", "tl1238: the badge clears as the last unread letter is viewed");
+  assert.equal(rvCountCalls > countBeforeB, true, "tl1238: each settlement re-queries the badge");
+  // 点开已读信 → 不再发写（零多余往返，角标计数调用也不动）。
+  const countBeforeDone = rvCountCalls;
+  await act(async () => {
+    document.querySelector(".collab-inbox-detail")!.querySelector<HTMLButtonElement>(".modal__actions button")!.click();
+  });
+  const doneBtn = Array.from(rvPanel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__rowactions button"))
+    .find((b) => b.closest(".collab-inbox-panel__row")?.querySelector(".collab-inbox-panel__preview")?.textContent === "already read");
+  await act(async () => {
+    doneBtn!.click();
+  });
+  assert.deepEqual(rvReadCalls, [["rv_a"], ["rv_b"]], "tl1238: opening an already-read letter sends NO extra write");
+  assert.equal(rvCountCalls, countBeforeDone, "tl1238: no write means no badge re-query either");
+  await act(async () => {
+    rvRoot.unmount();
+    rvBadgeRoot.unmount();
+  });
+  rvHost.remove();
+  rvBadgeHost.remove();
 }
 
 await act(async () => root.unmount());

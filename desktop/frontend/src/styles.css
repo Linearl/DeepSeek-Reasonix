@@ -41288,7 +41288,25 @@ button.statusbar__mcp:focus-visible {
   flex: 1;
   min-width: 0;
 }
+/* tl1238 ①：多选态列表头部主控全选框——batchbar 全选按钮沉在懒加载长列表
+   折叠线以下（用户实测「多选模式无全选按钮」），头部主控框 sticky 常驻滚动
+   可见区；batchbar 同步 sticky 底部（删除/取消同益）。 */
+.collab-inbox-panel__checkall {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px 6px;
+  font-size: var(--text-sm);
+  color: var(--text-muted, inherit);
+  background: var(--bg-elevated, var(--bg));
+}
 .collab-inbox-panel__batchbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
