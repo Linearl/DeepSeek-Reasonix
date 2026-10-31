@@ -3,6 +3,7 @@ package responses
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -149,6 +150,93 @@ func TestMissingTerminalEventSurfacesPrematureEOF(t *testing.T) {
 	}
 	if !sawError {
 		t.Fatal("expected premature-EOF error when terminal event is missing")
+	}
+}
+
+// TestUndecodableDataFramesSurfaceInPrematureEOF (tl1321②): a 200-OK gateway
+// error page arriving as undecodable data frames must not die as a bare
+// "clean EOF" — the premature-EOF error carries the payload the gateway sent
+// while keeping the same StreamInterruptPrematureEOF classification.
+func TestUndecodableDataFramesSurfaceInPrematureEOF(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n")
+		_, _ = io.WriteString(w, "data: <html>502 Bad Gateway</html>\n\n")
+		flush(w)
+	}))
+	defer srv.Close()
+
+	p := New(Config{Name: "responses", BaseURL: srv.URL, Model: "model", APIKey: "k"}).(*client)
+	p.idleTimeout = time.Second
+
+	ch, err := p.Stream(context.Background(), provider.Request{
+		Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var sawError bool
+	for chunk := range ch {
+		if chunk.Type == provider.ChunkError {
+			sawError = true
+			if provider.StreamInterruptReason(chunk.Err) != provider.StreamInterruptPrematureEOF {
+				t.Fatalf("reason = %q, want %q (err=%v)",
+					provider.StreamInterruptReason(chunk.Err), provider.StreamInterruptPrematureEOF, chunk.Err)
+			}
+			if !errors.Is(chunk.Err, io.ErrUnexpectedEOF) {
+				t.Fatalf("error chain should still wrap io.ErrUnexpectedEOF, got: %v", chunk.Err)
+			}
+			if !strings.Contains(chunk.Err.Error(), "502 Bad Gateway") {
+				t.Fatalf("error should carry the undecodable gateway payload, got: %v", chunk.Err)
+			}
+			if !strings.Contains(chunk.Err.Error(), "1 undecodable") {
+				t.Fatalf("error should count undecodable frames, got: %v", chunk.Err)
+			}
+		}
+	}
+	if !sawError {
+		t.Fatal("expected premature-EOF error carrying the undecodable payload")
+	}
+}
+
+// TestUndecodableFrameDoesNotFailGoodStream (tl1321② control arm): one
+// undecodable blip followed by a proper terminal event still completes the
+// turn — the trace is only surfaced when the stream really dies.
+func TestUndecodableFrameDoesNotFailGoodStream(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n")
+		_, _ = io.WriteString(w, "data: keep-alive-garbage\n\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n")
+		flush(w)
+	}))
+	defer srv.Close()
+
+	p := New(Config{Name: "responses", BaseURL: srv.URL, Model: "model", APIKey: "k"}).(*client)
+	p.idleTimeout = time.Second
+
+	ch, err := p.Stream(context.Background(), provider.Request{
+		Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var sawDone, sawError bool
+	for chunk := range ch {
+		switch chunk.Type {
+		case provider.ChunkDone:
+			sawDone = true
+		case provider.ChunkError:
+			sawError = true
+			t.Fatalf("recovered stream must not fail on a past undecodable frame: %v", chunk.Err)
+		}
+	}
+	if !sawDone || sawError {
+		t.Fatalf("done=%v error=%v, want clean completion", sawDone, sawError)
 	}
 }
 
