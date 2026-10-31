@@ -5046,7 +5046,8 @@ export function useController() {
   // turn-watchdog 面报 desktop.log 一次；turn 结束/后台切换同样清 stamp
   // （未注入的收尾由 ② 的 unapplied notice 面），后台 tab 不巡检、零打扰。
   useEffect(() => {
-    if (!activeTabId || !activeState.running) {
+    if (!activeTabId) return;
+    if (!activeState.running) {
       steerAcceptedAtByTab.current.delete(activeTabId);
       return;
     }
