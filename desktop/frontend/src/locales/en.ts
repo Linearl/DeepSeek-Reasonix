@@ -1184,6 +1184,8 @@ export const en = {
   "imageViewer.clickToPreview": "Click to preview",
   "imageViewer.closePreview": "Close preview",
   "imageViewer.title": "Image preview",
+  "imageViewer.prevImage": "Previous image",
+  "imageViewer.nextImage": "Next image",
   "composer.attachImageFailed": "Image paste failed",
   "composer.attachAudioFailed": "Audio attach failed",
   "composer.audioTooLarge": "Audio file exceeds the 50 MB inline limit",
