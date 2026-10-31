@@ -15,7 +15,7 @@
 //   demo：fixture 演示脚本 playFixtureRun 保留（933 拍板演示不删）——无真
 //     运行时即 686 原始行为，有真运行时经「演示」按钮切换过去。
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GitBranch, Play, RotateCcw, Square, X } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { DictKey } from "../locales/en";
@@ -38,6 +38,16 @@ import {
   workflowRunFeed,
   type WireWorkflowRun,
 } from "../lib/workflowRunFeed";
+import {
+  anchoredScroll,
+  clampZoom,
+  exceedsPanSlop,
+  loadWorkflowViewportPrefs,
+  saveWorkflowViewportPrefs,
+  WORKFLOW_PAN_LONG_PRESS_MS,
+  WORKFLOW_ZOOM_DEFAULT,
+  zoomFactorFromWheel,
+} from "../lib/workflowViewport";
 
 const NODE_STATE_CLASS: Record<WorkflowNodeState, string> = {
   queued: "wf-node--queued",
@@ -226,6 +236,189 @@ export function WorkflowPanel({
     [close],
   );
 
+  // ── 视口 pan（tl933 需求②）：长按空白处拖动移动视口；节点自身交互优先，
+  // 指针落在节点上不启动手势（点击/后续节点拖拽都不被劫持）。pan 的实现是
+  // 拨动滚动容器的 scrollLeft/Top——原生滚动边界自动钳制，画布不会丢出视野，
+  // 无 Ctrl 滚轮/滚动条等既有能力原样保留。
+  const viewRef = useRef<HTMLDivElement | null>(null);
+  // React 卸载时先以 null 调 callback ref（detach）再跑 passive 清理——卸载
+  // 冲盘需要最后一次挂载的容器，所以镜像 ref 只在 attach 时更新。
+  const containerViewRef = useRef<HTMLDivElement | null>(null);
+  const setViewRef = useCallback((el: HTMLDivElement | null) => {
+    viewRef.current = el;
+    if (el) containerViewRef.current = el;
+  }, []);
+  const [panning, setPanning] = useState(false);
+  const panRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    longPressFired: boolean;
+    timer: number;
+  } | null>(null);
+
+  const cancelPanGesture = useCallback(() => {
+    const gesture = panRef.current;
+    if (gesture) window.clearTimeout(gesture.timer);
+    panRef.current = null;
+    setPanning(false);
+  }, []);
+
+  const onViewPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if ((e.target as Element).closest(".wf-node")) return; // 节点优先：不劫持
+    const container = viewRef.current;
+    if (!container) return;
+    const pointerId = e.pointerId;
+    const timer = window.setTimeout(() => {
+      const gesture = panRef.current;
+      if (!gesture || gesture.pointerId !== pointerId) return;
+      gesture.longPressFired = true;
+      setPanning(true);
+    }, WORKFLOW_PAN_LONG_PRESS_MS);
+    panRef.current = {
+      pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      longPressFired: false,
+      timer,
+    };
+    try {
+      container.setPointerCapture(pointerId);
+    } catch {
+      /* 指针可能已离开；pan 退化为普通拖动即可 */
+    }
+  }, []);
+
+  const onViewPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = panRef.current;
+      if (!gesture || gesture.pointerId !== e.pointerId) return;
+      // 指针位置全程跟踪：长按生效那一刻 pan 从当前指针处起算，无跳变。
+      const deltaX = e.clientX - gesture.lastX;
+      const deltaY = e.clientY - gesture.lastY;
+      gesture.lastX = e.clientX;
+      gesture.lastY = e.clientY;
+      if (!gesture.longPressFired) {
+        // 长按生效前就拖走 = 不是 pan 手势（点按/误触），取消。
+        if (exceedsPanSlop(e.clientX - gesture.startX, e.clientY - gesture.startY)) cancelPanGesture();
+        return;
+      }
+      const container = viewRef.current;
+      if (!container) return;
+      container.scrollLeft -= deltaX;
+      container.scrollTop -= deltaY;
+    },
+    [cancelPanGesture],
+  );
+
+  const onViewPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = panRef.current;
+      if (!gesture || gesture.pointerId !== e.pointerId) return;
+      cancelPanGesture();
+    },
+    [cancelPanGesture],
+  );
+
+  useEffect(() => cancelPanGesture, [cancelPanGesture]);
+
+  // ── 缩放（tl933 需求③）：Ctrl+滚轮以光标位置为锚（参照 Chrome），范围
+  // 25%~300%。画布经 transform: scale 缩放，外层 frame 撑出真实滚动范围；
+  // 锚点保持 = 缩放后把「锚点下的内容点」拨回锚点（anchoredScroll）。
+  // React 合成 wheel 是被动监听，preventDefault 无效——这里挂原生非被动监听，
+  // 既拦下 webview 整页缩放，也不接管无 Ctrl 的普通滚轮（原生滚动保留）。
+  // ── 持久化（tl933 需求④）：初始缩放取面板偏好；滚动偏移重开时恢复
+  // （restore 效果），任何视口变化防抖落盘，卸载即冲。
+  const [zoom, setZoom] = useState(() => loadWorkflowViewportPrefs().zoom ?? WORKFLOW_ZOOM_DEFAULT);
+  const pendingScrollRef = useRef<{ x?: number; y?: number } | null>(null);
+  const zoomRef = useRef(zoom);
+  const saveTimerRef = useRef<number | null>(null);
+
+  const viewportNow = useCallback(() => {
+    const container = containerViewRef.current;
+    return {
+      scrollLeft: container?.scrollLeft ?? 0,
+      scrollTop: container?.scrollTop ?? 0,
+      zoom: zoomRef.current,
+    };
+  }, []);
+
+  const scheduleViewportSave = useCallback(() => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      saveWorkflowViewportPrefs(viewportNow());
+    }, 250);
+  }, [viewportNow]);
+
+  // 重开面板恢复上次视角：滚动偏移写入滚动容器（浏览器按内容范围钳制）。
+  useLayoutEffect(() => {
+    const container = viewRef.current;
+    if (!container) return;
+    const prefs = loadWorkflowViewportPrefs();
+    if (prefs.scrollLeft !== undefined) container.scrollLeft = prefs.scrollLeft;
+    if (prefs.scrollTop !== undefined) container.scrollTop = prefs.scrollTop;
+  }, []);
+
+  useEffect(() => {
+    const container = viewRef.current;
+    if (!container) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return; // 无 Ctrl 不接管：普通滚轮保持原生滚动
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const factor = zoomFactorFromWheel(e.deltaY, e.deltaMode);
+      const next = clampZoom(zoom * factor);
+      if (next === zoom) return; // 已在 25%/300% 边界，滚动无副作用
+      const ratio = next / zoom;
+      pendingScrollRef.current = {
+        x: anchoredScroll(container.scrollLeft, ratio, e.clientX - rect.left),
+        y: anchoredScroll(container.scrollTop, ratio, e.clientY - rect.top),
+      };
+      setZoom(next);
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [zoom]);
+
+  // 缩放提交后 frame 尺寸已变，浏览器可能把预落值钳掉——布局期补投锚点滚动。
+  useLayoutEffect(() => {
+    const pending = pendingScrollRef.current;
+    if (!pending) return;
+    pendingScrollRef.current = null;
+    const container = viewRef.current;
+    if (!container) return;
+    if (pending.x !== undefined) container.scrollLeft = pending.x;
+    if (pending.y !== undefined) container.scrollTop = pending.y;
+  }, [zoom]);
+
+  // 视口持久化触发面：缩放变化 / 任何滚动（原生滚轮、滚动条、pan）防抖落盘；
+  // 卸载（关面板）即冲，最后 250ms 内的调整也不丢。
+  useEffect(() => {
+    zoomRef.current = zoom;
+    scheduleViewportSave();
+  }, [zoom, scheduleViewportSave]);
+
+  useEffect(() => {
+    const container = viewRef.current;
+    if (!container) return;
+    container.addEventListener("scroll", scheduleViewportSave, { passive: true });
+    return () => container.removeEventListener("scroll", scheduleViewportSave);
+  }, [scheduleViewportSave]);
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+      saveWorkflowViewportPrefs(viewportNow());
+    },
+    [viewportNow],
+  );
+
   if (!mounted) return null;
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
@@ -340,8 +533,19 @@ export function WorkflowPanel({
         )}
 
         <div className="wf-panel__body">
-          <div className="wf-panel__canvas-scroll">
-            <div className="wf-panel__canvas" style={{ width: layout.width, height: layout.height }}>
+          <div
+            className={panning ? "wf-panel__canvas-scroll wf-panel__canvas-scroll--panning" : "wf-panel__canvas-scroll"}
+            ref={setViewRef}
+            onPointerDown={onViewPointerDown}
+            onPointerMove={onViewPointerMove}
+            onPointerUp={onViewPointerUp}
+            onPointerCancel={onViewPointerUp}
+          >
+            <div className="wf-panel__canvas-frame" style={{ width: layout.width * zoom, height: layout.height * zoom }}>
+              <div
+                className="wf-panel__canvas"
+                style={{ width: layout.width, height: layout.height, transform: `scale(${zoom})`, transformOrigin: "0 0" }}
+              >
               <svg className="wf-panel__edges" width={layout.width} height={layout.height} aria-hidden="true">
                 {layout.edges.map((edge) => {
                   const targetState = snapshot.nodes[edge.to]?.state ?? "queued";
@@ -388,6 +592,7 @@ export function WorkflowPanel({
                   </button>
                 );
               })}
+              </div>
             </div>
           </div>
           {selected && <NodeDetailPane node={selected} run={snapshot.nodes[selected.id] ?? { state: "queued" }} />}

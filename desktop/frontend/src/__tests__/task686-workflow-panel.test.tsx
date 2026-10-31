@@ -12,6 +12,8 @@
 //     bridge→labFlags→谓词→布局→yaml→SettingsPanel→App→三语）。
 //  ⑤ 与 685 事件契约对齐的挂点：事件类型集合固定（node-state/run-state/
 //     node-detail），未知节点事件不炸（前向兼容）。
+//  ⑥ 演示面板保留自证（tl933，用户拍板）：playFixtureRun 完整跑通 + 可中止
+//     + 面板演示入口源码接线不删。
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -26,6 +28,7 @@ import { insertWorkflowPanelEntry } from "../lib/workflowPanelEntry";
 import {
   applyWorkflowEvent,
   createWorkflowRunStore,
+  playFixtureRun,
   workflowRunProgress,
   type WorkflowEvent,
 } from "../lib/workflowEvents";
@@ -221,10 +224,12 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   ok(layoutDefault.includes('id: "workflowPanel"') && layoutDefault.includes('onKeys: ["experimentalWorkflowPanel"]'), "built-in lab layout carries the card");
   const layoutYaml = read("src/lab/lab-layout.yaml");
   ok(layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalWorkflowPanel]"), "lab-layout.yaml mirrors the card (724 同构)");
-  const settingsPanel = read("src/components/SettingsPanel.tsx");
-  ok(settingsPanel.includes('selected === "workflowPanel"'), "SettingsPanel carries the pane branch");
-  ok(settingsPanel.includes('labLabel("workflowPanel"'), "pane row carries exactly one tier badge (621)");
-  ok(settingsPanel.includes("await app.SetExperimentalWorkflowPanel(on);"), "pane row writes through the bridge setter");
+  // 预存红修复（tl933）：pane 分支已从 SettingsPanel.tsx 迁至实验室卡片面
+  // ExperimentalLabSection.tsx（tl1193b 重构欠账），断言随迁。
+  const labSection = read("src/components/ExperimentalLabSection.tsx");
+  ok(labSection.includes('selected === "workflowPanel"'), "lab section carries the pane branch");
+  ok(labSection.includes('labLabel("workflowPanel"'), "pane row carries exactly one tier badge (621)");
+  ok(labSection.includes("await app.SetExperimentalWorkflowPanel(on);"), "pane row writes through the bridge setter");
   const appTsx = read("src/App.tsx");
   ok(appTsx.includes('labFlagEnabled("workflowPanel")'), "App reads the lab flag");
   ok(appTsx.includes("insertWorkflowPanelEntry("), "App inserts the palette entry through the gated helper");
@@ -274,6 +279,57 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   store.dispatch({ type: "node-state", nodeId: "scan-deps", state: "running", at: 7 });
   const snap = store.getSnapshot();
   ok(states.every((s) => Object.values(snap.nodes).some((n) => n.state === s)), "all five node states are representable in one snapshot");
+}
+
+// ── ⑥ 演示面板保留自证（tl933，用户拍板：fixture 演示脚本不删）────────
+{
+  // 行为面：playFixtureRun 驱动 store 走完整脚本直到 completed，节点逐个点亮。
+  // （playFixtureRun 用 window.setTimeout 计时；tsx-runner 无 DOM，测试自备
+  // 最小 window 垫片，不改产品代码。）
+  const windowShim = globalThis as { window?: { setTimeout: typeof setTimeout; clearTimeout: typeof clearTimeout } };
+  windowShim.window = { setTimeout, clearTimeout };
+  const dag = WORKFLOW_FIXTURE_DAG;
+  const store = createWorkflowRunStore(dag);
+  const cancel = playFixtureRun(store, { stepMs: 8 });
+  const deadline = Date.now() + 5_000;
+  while (store.getSnapshot().runState !== "completed" && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const finalSnap = store.getSnapshot();
+  ok(finalSnap.runState === "completed", "playFixtureRun drives the fixture run to completion (demo preserved)");
+  ok(
+    dag.nodes.every((n) => finalSnap.nodes[n.id]?.state === "done"),
+    "the demo script lights every node to done",
+  );
+  // 中止面：cancel 后脚本停摆（快照冻结，不再推进）。
+  const dag2 = WORKFLOW_FIXTURE_DAG;
+  const store2 = createWorkflowRunStore(dag2);
+  const cancel2 = playFixtureRun(store2, { stepMs: 8 });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  cancel2();
+  const frozen = JSON.stringify(store2.getSnapshot());
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  ok(JSON.stringify(store2.getSnapshot()) === frozen, "cancelling the demo freezes the run (no ghost ticks)");
+
+  // 源码接线面：面板的演示入口仍在（按钮 + 脚本调用），删演示 = 红灯。
+  const panelSource = read("src/components/WorkflowPanel.tsx");
+  ok(panelSource.includes("playFixtureRun(store)"), "WorkflowPanel keeps wiring playFixtureRun (demo entry retained)");
+  ok(panelSource.includes("workflowPanel.action.demo"), "the demo action button stays in the toolbar");
+  windowShim.window = undefined;
+}
+
+// ── ⑦ 视口交互契约（tl933）：pan/缩放/持久化的源码钉 ─────────────────
+{
+  const vp = read("src/lib/workflowViewport.ts");
+  ok(vp.includes("WORKFLOW_ZOOM_MIN = 0.25") && vp.includes("WORKFLOW_ZOOM_MAX = 3"), "zoom range contract is 25%~300% (tl933)");
+  ok(vp.includes('"workflowPanel:viewport:v1"'), "viewport prefs live under the versioned workflowPanel storage key (localStorage 面板偏好)");
+  ok(vp.includes("export function playFixtureRun") === false, "workflowViewport stays a pure viewport module (demo script keeps living in workflowEvents)");
+  const panelSource = read("src/components/WorkflowPanel.tsx");
+  ok(panelSource.includes("loadWorkflowViewportPrefs()") && panelSource.includes("saveWorkflowViewportPrefs("), "panel restores on open and saves viewport prefs (tl933 需求④)");
+  ok(panelSource.includes("if (!e.ctrlKey) return;"), "wheel zoom is ctrl-gated (plain wheel stays native, tl933 需求③)");
+  ok(panelSource.includes('closest(".wf-node")'), "pan gesture never starts on a node (node interaction wins, tl933 需求②)");
+  const styles = read("src/styles.css");
+  ok(styles.includes(".wf-panel__canvas-scroll--panning") && styles.includes(".wf-panel__canvas-frame"), "panel CSS carries the panning cursor + scaled frame classes (class contract)");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
