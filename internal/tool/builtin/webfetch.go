@@ -8,11 +8,13 @@ import (
 	"fmt"
 	stdhtml "html"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -99,20 +101,19 @@ func ssrfGuardedTransport(proxyURL string) *http.Transport {
 				// HTTP CONNECT: dial proxy → send CONNECT with the ORIGINAL
 				// hostname (not a locally-resolved IP) so the proxy handles DNS.
 				// This is essential for users whose local DNS is blocked (GFW).
-				// SSRF protection: IP literals are checked directly; domain names
-				// go through the trusted proxy which resolves them.
+				// SSRF protection (audit-medium#9, plan A): IP literals are
+				// checked directly; hostnames get a best-effort local
+				// resolution before being handed to the trusted proxy.
 				proxyDialer := dialer
 				tr.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 					host, port, err := net.SplitHostPort(addr)
 					if err != nil {
 						return nil, err
 					}
-					// SSRF check on IP literals only — domain names go through
-					// the trusted proxy which resolves them on the remote side.
-					if ip := net.ParseIP(host); ip != nil {
-						if blockedFetchIP(ip) {
-							return nil, fmt.Errorf("refusing to fetch internal address %s (resolves to %s)", host, ip)
-						}
+					// SSRF check on the target BEFORE handing it to the proxy
+					// (best-effort for hostnames — see checkProxyTargetSSRF).
+					if err := checkProxyTargetSSRF(ctx, host); err != nil {
+						return nil, err
 					}
 					// Dial the proxy (proxy address is never an SSRF target — the
 					// user configured it, and it's almost certainly an IP or a
@@ -158,9 +159,9 @@ func ssrfGuardedTransport(proxyURL string) *http.Transport {
 			case "socks5", "socks5h":
 				// Tunnel through SOCKS5. Dial the trusted proxy with a plain
 				// dialer (a proxy on a private/LAN address must not be rejected
-				// by the SSRF guard), then route the target through it. IP-literal
-				// targets are still SSRF-checked; hostnames are resolved by the
-				// proxy — the same boundary as the HTTP CONNECT path above.
+				// by the SSRF guard), then route the target through it. The
+				// target host gets the same best-effort SSRF pre-check as the
+				// HTTP CONNECT path above (audit-medium#9, plan A).
 				var auth *proxy.Auth
 				if pu.User != nil {
 					pass, _ := pu.User.Password()
@@ -174,8 +175,8 @@ func ssrfGuardedTransport(proxyURL string) *http.Transport {
 							if err != nil {
 								return nil, err
 							}
-							if ip := net.ParseIP(host); ip != nil && blockedFetchIP(ip) {
-								return nil, fmt.Errorf("refusing to fetch internal address %s (resolves to %s)", host, ip)
+							if err := checkProxyTargetSSRF(ctx, host); err != nil {
+								return nil, err
 							}
 							return cd.DialContext(ctx, network, addr)
 						}
@@ -188,6 +189,49 @@ func ssrfGuardedTransport(proxyURL string) *http.Transport {
 	return tr
 }
 
+// Transport reuse: ssrfGuardedTransport is built once per proxyURL and cached,
+// so keep-alive connections survive across web_fetch calls. Building a fresh
+// Transport per request (the previous behavior) leaked resources: an idle
+// persistConn back-references its Transport, so every fetch left a socket plus
+// its readLoop/writeLoop goroutines pinned until the peer timed out. Two
+// fallbacks bound the cost of transports that leave the cache (audit-high#2):
+// IdleConnTimeout recycles idle conns on a timer, and eviction calls
+// CloseIdleConnections so a replaced proxy's sockets drop immediately.
+const (
+	webfetchMaxCachedTransports = 8                // FIFO bound: distinct proxy configs are few
+	webfetchIdleConnTimeout     = 90 * time.Second // matches http.DefaultTransport
+)
+
+var (
+	transportCacheMu    sync.Mutex
+	transportCache      = map[string]*http.Transport{}
+	transportCacheOrder []string
+)
+
+// cachedTransport returns the shared SSRF-guarded transport for proxyURL,
+// creating and caching it on first use. When the FIFO bound is exceeded the
+// oldest entry is evicted and its idle connections are closed.
+func cachedTransport(proxyURL string) *http.Transport {
+	transportCacheMu.Lock()
+	defer transportCacheMu.Unlock()
+	if tr, ok := transportCache[proxyURL]; ok {
+		return tr
+	}
+	tr := ssrfGuardedTransport(proxyURL)
+	tr.IdleConnTimeout = webfetchIdleConnTimeout
+	transportCache[proxyURL] = tr
+	transportCacheOrder = append(transportCacheOrder, proxyURL)
+	if len(transportCacheOrder) > webfetchMaxCachedTransports {
+		evicted := transportCacheOrder[0]
+		transportCacheOrder = transportCacheOrder[1:]
+		if old, ok := transportCache[evicted]; ok {
+			old.CloseIdleConnections()
+			delete(transportCache, evicted)
+		}
+	}
+	return tr
+}
+
 type webFetchRoundTripper struct {
 	proxyURLFor func(*http.Request) (string, error)
 }
@@ -197,7 +241,7 @@ func (rt webFetchRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, fmt.Errorf("resolve proxy: %w", err)
 	}
-	return ssrfGuardedTransport(proxyURL).RoundTrip(req)
+	return cachedTransport(proxyURL).RoundTrip(req)
 }
 
 func ssrfGuardedClient(proxyURLFor func(*http.Request) (string, error)) *http.Client {
@@ -227,6 +271,51 @@ func blockedFetchIP(ip net.IP) bool {
 		ip.IsLinkLocalMulticast() ||
 		ip.IsUnspecified() || // 0.0.0.0 / ::
 		cgnatRange.Contains(ip) // 100.64.0.0/10 (incl. Alibaba Cloud metadata)
+}
+
+// webfetchResolveTimeout bounds the best-effort local DNS pre-check in the
+// proxy branches, so a blackholed or censored resolver cannot stall the fetch
+// for the whole request timeout. Var (not const) as a test seam.
+var webfetchResolveTimeout = 2 * time.Second
+
+// webfetchLookupIPAddr is the DNS seam used by checkProxyTargetSSRF; tests
+// swap it to control resolution outcomes.
+var webfetchLookupIPAddr = func(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return net.DefaultResolver.LookupIPAddr(ctx, host)
+}
+
+// checkProxyTargetSSRF vets a CONNECT/SOCKS5 target host before it is handed
+// to the trusted proxy (audit-medium#9). IP literals are checked directly.
+// For hostnames, local resolution is BEST-EFFORT (plan A, deliberate policy):
+// if it succeeds, every resolved IP is checked against the blocklist; if it
+// fails, the fetch is still allowed through the proxy, leaving a slog.Warn so
+// the unchecked path is searchable instead of silent. Local resolution must
+// never be mandatory here: users whose local DNS is censored/blocked (GFW)
+// depend on the proxy resolving remotely, and a hard local lookup would fail
+// every fetch for them. A TOCTOU gap remains by design — the proxy resolves
+// and connects independently — and that residual risk is what the warning
+// marks.
+func checkProxyTargetSSRF(ctx context.Context, host string) error {
+	if ip := net.ParseIP(host); ip != nil {
+		if blockedFetchIP(ip) {
+			return fmt.Errorf("refusing to fetch internal address %s (resolves to %s)", host, ip)
+		}
+		return nil
+	}
+	rctx, cancel := context.WithTimeout(ctx, webfetchResolveTimeout)
+	defer cancel()
+	ips, err := webfetchLookupIPAddr(rctx, host)
+	if err != nil {
+		slog.Warn("web_fetch ssrf pre-check could not resolve host locally; allowing through proxy unchecked",
+			"host", host, "err", err)
+		return nil
+	}
+	for _, ip := range ips {
+		if blockedFetchIP(ip.IP) {
+			return fmt.Errorf("refusing to fetch internal address %s (resolves to %s)", host, ip.IP)
+		}
+	}
+	return nil
 }
 
 func (wf webFetch) proxyURLFor(req *http.Request) (string, error) {
