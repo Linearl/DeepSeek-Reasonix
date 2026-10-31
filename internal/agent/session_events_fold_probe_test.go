@@ -374,3 +374,47 @@ func TestFoldFloorFallbackThroughRealSave(t *testing.T) {
 		}
 	}
 }
+
+// tl1291 回归：fresh process 从未 make 过梯子的四个 map——唯一的 make 在
+// resetFoldProbeMemoForTest，而默认 manual 模式下 gate 不经 probe，首个
+// oversized 保存的尾部 noteSessionFoldOutcome 直接首写 nil map
+// （session_events_rotation.go:253），包59（1.38.3-20261031-0810）打开
+// 大日志会话必崩且崩后 compact 已落盘、revision 未记录，会话损坏。把四
+// map 显式压回 nil 模拟 fresh process，四个加锁写入口都必须自愈。既有用
+// 例全部先 reset（即 make）再驱动，恰好掩盖了该缺口——本用例禁止先 reset。
+func TestFoldProbeLadderSurvivesFreshProcessNilMaps(t *testing.T) {
+	foldProbeMemo.mu.Lock()
+	foldProbeMemo.regime = nil
+	foldProbeMemo.strikes = nil
+	foldProbeMemo.archivedAt = nil
+	foldProbeMemo.floorSeen = nil
+	foldProbeMemo.mu.Unlock()
+	defer resetFoldProbeMemoForTest()
+
+	const path = `C:\p\sessions\tl1291-fresh-nil.jsonl`
+
+	// 保存尾部（manual 模式的首个触点）：panic 即回归。
+	noteSessionFoldOutcome(path, 100, 50)
+	// auto 模式 gate 探针（另一个首触点）。
+	if foldProbeFloorReached(path, 100) {
+		t.Fatal("fresh ladder must not report the floor reached on first probe")
+	}
+	// gate 递交地板判定 + save 尾部消费 + 地板归档闩。
+	foldProbeNoteFloorSeen(path)
+	if !foldProbeTakeFloorSeen(path) {
+		t.Fatal("floorSeen latch lost across lazy init")
+	}
+	foldProbeNoteFloorArchived(path, 50)
+
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	if got := foldProbeMemo.regime[foldProbeKey(path)]; got != 100 {
+		t.Fatalf("regime base not recorded after lazy init: got %d", got)
+	}
+	if got := foldProbeMemo.archivedAt[foldProbeKey(path)]; got != 50 {
+		t.Fatalf("archivedAt latch not recorded after lazy init: got %d", got)
+	}
+	if got := foldProbeMemo.strikes[foldProbeKey(path)]; got != 0 {
+		t.Fatalf("profitable fold must clear strikes: got %d", got)
+	}
+}

@@ -177,6 +177,29 @@ var foldProbeMemo struct {
 	floorSeen  map[string]bool
 }
 
+// ensureFoldProbeMapsLocked lazily materializes the ladder maps. The memo is a
+// package-level struct whose map fields start nil and no production path ever
+// made them — the only make lived in resetFoldProbeMemoForTest, so a fresh
+// process panicked with "assignment to entry in nil map" on its first
+// oversized save (tl1291: package 59 crashed on open for oversized-log
+// sessions, noteSessionFoldOutcome reached before any gate probe under the
+// default manual rotation mode). Every locked write entry goes through here;
+// the caller must hold foldProbeMemo.mu.
+func ensureFoldProbeMapsLocked() {
+	if foldProbeMemo.regime == nil {
+		foldProbeMemo.regime = make(map[string]int64)
+	}
+	if foldProbeMemo.strikes == nil {
+		foldProbeMemo.strikes = make(map[string]int)
+	}
+	if foldProbeMemo.archivedAt == nil {
+		foldProbeMemo.archivedAt = make(map[string]int64)
+	}
+	if foldProbeMemo.floorSeen == nil {
+		foldProbeMemo.floorSeen = make(map[string]bool)
+	}
+}
+
 // foldProbeKey normalizes either caller shape (session path or resolved event
 // log path) into the one key the ladder books state under. Pure string ops.
 func foldProbeKey(path string) string {
@@ -196,6 +219,7 @@ func foldProbeFloorReached(path string, logSize int64) bool {
 	key := foldProbeKey(path)
 	foldProbeMemo.mu.Lock()
 	defer foldProbeMemo.mu.Unlock()
+	ensureFoldProbeMapsLocked()
 	base, seen := foldProbeMemo.regime[key]
 	if !seen || logSize >= int64(float64(base)*foldNoShrinkReWarnGrowth) {
 		foldProbeMemo.regime[key] = logSize
@@ -217,6 +241,7 @@ func foldProbeNoteFloorSeen(path string) {
 	key := foldProbeKey(path)
 	foldProbeMemo.mu.Lock()
 	defer foldProbeMemo.mu.Unlock()
+	ensureFoldProbeMapsLocked()
 	foldProbeMemo.floorSeen[key] = true
 }
 
@@ -249,6 +274,7 @@ func noteSessionFoldOutcome(path string, before, after int64) {
 	key := foldProbeKey(path)
 	foldProbeMemo.mu.Lock()
 	defer foldProbeMemo.mu.Unlock()
+	ensureFoldProbeMapsLocked()
 	if base, seen := foldProbeMemo.regime[key]; !seen || before > base {
 		foldProbeMemo.regime[key] = before
 	}
@@ -280,6 +306,7 @@ func foldProbeNoteFloorArchived(path string, plainSize int64) {
 	key := foldProbeKey(path)
 	foldProbeMemo.mu.Lock()
 	defer foldProbeMemo.mu.Unlock()
+	ensureFoldProbeMapsLocked()
 	foldProbeMemo.archivedAt[key] = plainSize
 }
 
