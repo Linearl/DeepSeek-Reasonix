@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -129,7 +130,11 @@ func materializeSessionTranscriptZst(plain, zst string) error {
 		preserveBrokenZst(zst, setupErr, "transcript")
 		return fmt.Errorf("session transcript archive: create decoder: %w", setupErr)
 	}
-	header, err := readZstArchiveHeader(dec.IOReadCloser(), sessionTranscriptZstKind)
+	// tl1318：头部解析与正文搬运共用同一个 bufio.Reader（纪律与依据同
+	// materializeSessionEventLogZst——预读字节只在 bufio.buf 里，正文绕过
+	// 缓冲直取解码器必丢预读窗口内容）。
+	buffered := bufio.NewReaderSize(dec.IOReadCloser(), 64<<10)
+	header, err := readZstArchiveHeader(buffered, sessionTranscriptZstKind)
 	if err != nil {
 		// Windows 句柄纪律（同 compressSessionEventLogZstLocked）：先放开
 		// 解码器、关掉自己的 src，再挪走坏归档。
@@ -145,7 +150,8 @@ func materializeSessionTranscriptZst(plain, zst string) error {
 		src.Close()
 		return dstErr
 	}
-	_, copyErr := io.Copy(dst, dec.IOReadCloser())
+	// 正文源是上面同一个 buffered：bufio.buf 里的预读字节必须先被消费（tl1318）。
+	_, copyErr := io.Copy(dst, buffered)
 	releaseDec()
 	if copyErr == nil {
 		copyErr = dst.Sync()

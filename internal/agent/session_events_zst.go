@@ -208,7 +208,14 @@ func materializeSessionEventLogZst(plain, zst string) error {
 		preserveBrokenZst(zst, setupErr, "events")
 		return fmt.Errorf("session events archive: create decoder: %w", setupErr)
 	}
-	header, err := readSessionEventZstHeader(dec.IOReadCloser())
+	// tl1318：头部解析与正文搬运共用同一个 bufio.Reader（readZstArchiveHeader
+	// 只消费调用方传入的缓冲，不再自建再丢弃）。头部行会让 bufio 预读（tl1220
+	// 同族 bug：生产形态归档实测预读吞掉 65,385B），这些字节只存在于 bufio.buf
+	// 里、解码位置已越过它们——若回头走 dec.IOReadCloser() 续读正文，预读窗口
+	// 内的字节无处可取，产物必然短于 header.PlainBytes，健康归档会被误改名
+	// .damaged。正确性不得依赖编码器「头行独立成块」的块形巧合。
+	buffered := bufio.NewReaderSize(dec.IOReadCloser(), 64<<10)
+	header, err := readSessionEventZstHeader(buffered)
 	if err != nil {
 		// Windows 句柄纪律（同 compressSessionEventLogZstLocked）：先放开
 		// 解码器、关掉自己的 src，再挪走坏归档——否则 rename 以「正由另一
@@ -225,7 +232,9 @@ func materializeSessionEventLogZst(plain, zst string) error {
 		src.Close()
 		return dstErr
 	}
-	_, copyErr := io.Copy(dst, dec.IOReadCloser())
+	// 正文源是上面同一个 buffered：bufio.buf 里的预读字节必须先于解码器新解
+	// 出的内容被消费（tl1318 修复陷阱之二——绕过 bufio 直取解码器必丢预读）。
+	_, copyErr := io.Copy(dst, buffered)
 	releaseDec()
 	if copyErr == nil {
 		copyErr = dst.Sync()
@@ -265,17 +274,25 @@ func materializeSessionEventLogZst(plain, zst string) error {
 }
 
 // readSessionEventZstHeader consumes the self-describing first line and
-// validates the kind marker.
-func readSessionEventZstHeader(r io.Reader) (sessionEventZstHeader, error) {
-	return readZstArchiveHeader(r, sessionEventZstKind)
+// validates the kind marker. buffered 由调用方持有：读头后同一缓冲继续作为
+// 正文源（tl1318）。
+func readSessionEventZstHeader(buffered *bufio.Reader) (sessionEventZstHeader, error) {
+	return readZstArchiveHeader(buffered, sessionEventZstKind)
 }
 
 // readZstArchiveHeader is the kind-parameterized header reader shared by the
 // tl-1172 events archive and the tl-1174 transcript archive (same self
 // describing first-line shape).
-func readZstArchiveHeader(r io.Reader, wantKind string) (sessionEventZstHeader, error) {
+//
+// tl1318 纪律（tl1220 同族判例：分类器自持 bufio）：本函数只消费调用方传入
+// 的 *bufio.Reader，绝不内部自建——自建缓冲的预读（至多 64KiB）会在函数
+// 返回时随缓冲一起丢弃，而 klauspost v1.20.1 的解码位置已经越过这些字节
+// （Decoder.Read sync 模式按整块短读、async 模式循环填满 p，两种形态下预读
+// 都不会回到解码流里）。调用方必须用同一个缓冲继续读正文，物化才能逐字节
+// 完整。头部行 ≤ sessionEventZstHeaderMax，64KiB 窗口不会把整段正文滞留在
+// 缓冲里付不起内存。
+func readZstArchiveHeader(buffered *bufio.Reader, wantKind string) (sessionEventZstHeader, error) {
 	var header sessionEventZstHeader
-	buffered := bufio.NewReaderSize(r, 64<<10)
 	line, err := buffered.ReadBytes('\n')
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -457,7 +474,10 @@ func validateZstArchiveKind(path string, wantPlain int64, wantKind string) error
 		return decErr
 	}
 	defer dec.Close()
-	header, err := readZstArchiveHeader(dec.IOReadCloser(), wantKind)
+	// tl1318：头部与探测同样共用一个 bufio（同 materialize 的纪律——探测
+	// 续读若绕过缓冲，读到的是预读窗口之后的位置，探针失去代表性）。
+	buffered := bufio.NewReaderSize(dec.IOReadCloser(), 64<<10)
+	header, err := readZstArchiveHeader(buffered, wantKind)
 	if err != nil {
 		return err
 	}
@@ -465,7 +485,7 @@ func validateZstArchiveKind(path string, wantPlain int64, wantKind string) error
 		return fmt.Errorf("header plain_bytes %d != %d", header.PlainBytes, wantPlain)
 	}
 	probe := make([]byte, 64)
-	if _, err := io.ReadFull(dec.IOReadCloser(), probe); err != nil &&
+	if _, err := io.ReadFull(buffered, probe); err != nil &&
 		!errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return err
 	}
