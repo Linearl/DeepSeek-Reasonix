@@ -59,7 +59,7 @@ const tab: TabMeta = {
 type SteerReceipt = { itemId: string; disposition: string; position: number; paused: boolean; error?: string };
 
 // Scenario knobs; every test re-installs the mock and re-mounts a controller.
-let steerExactBehavior: "accept" | "queued" | "throw" = "accept";
+let steerExactBehavior: "accept" | "queued" | "throw" | "notActive" = "accept";
 let steerPlainBehavior: "accept" | "queued" | "throw" = "throw";
 let followupBehavior: "queued" | "throw" = "queued";
 const calls: { name: string; args: unknown[] }[] = [];
@@ -101,6 +101,7 @@ function installBindings() {
         EnqueueInboxSteerForTurn: async (tabId: string, turnId: string, display: string, submit: string, idempotency: string) => {
           record("EnqueueInboxSteerForTurn", [tabId, turnId, display, submit, idempotency]);
           if (steerExactBehavior === "throw") throw new Error("steer channel unavailable");
+          if (steerExactBehavior === "notActive") throw new Error(`turn ${turnId} is not the active turn for tab ${tabId}`);
           const receipt: SteerReceipt = {
             itemId: "item-exact", disposition: steerExactBehavior === "accept" ? "steer_accepted" : "queued_followup", position: 1, paused: false,
           };
@@ -119,6 +120,10 @@ function installBindings() {
           if (followupBehavior === "throw") throw new Error("queue unavailable");
           const receipt: SteerReceipt = { itemId: "item-followup", disposition: "queued_followup", position: 1, paused: false };
           return receipt;
+        },
+        // tl1303: capture desktop.log lines so the refusal reason is assertable.
+        ReportFrontendLog: async (feature: string, level: string, message: string, detail: string) => {
+          record("ReportFrontendLog", [feature, level, message, detail]);
         },
       } as Partial<AppBindings> as AppBindings,
     },
@@ -226,6 +231,48 @@ async function main() {
     ok(state?.items.some((item) => item.kind === "user" && item.text === "兜底消息" && !item.failed) ?? false, "follow-up fallback keeps the bubble delivered");
     eq(state?.items.some((item) => item.kind === "user" && item.failed), false, "follow-up fallback never shows the Send-failed face");
     ok(state?.items.some((item) => item.kind === "notice" && item.text === DEGRADE_NOTICE("queued")) ?? false, "follow-up fallback names the queue destination");
+    root.unmount();
+    await reset();
+  }
+
+  // 3b. tl1303 incident chain: the exact-turn fence rejects with "not the
+  // active turn" (recovery-fork rebind / dead run). The rejection is the "no
+  // injectable live turn" signal: session-level steer must be skipped (a dead
+  // run would accept and never consume it), the durable follow-up queue keeps
+  // the text, the composer shows the queued fact text (never the "joined the
+  // current task" false success), and the refusal reaches desktop.log.
+  {
+    steerExactBehavior = "notActive";
+    steerPlainBehavior = "accept"; // a session-level steer WOULD be accepted — must stay untouched
+    followupBehavior = "queued";
+    const root = await mount();
+    await act(async () => { await controller?.sendToTab("tab-p6", "死 run 期间的引导"); await flushPromises(); });
+    const state = controller?.state;
+    ok(calls.some((c) => c.name === "EnqueueInboxSteerForTurn"), "tl1303: the exact-turn fence is tried first");
+    ok(!calls.some((c) => c.name === "EnqueueInboxSteer"), "tl1303: a not-active-turn rejection never falls back to the session-level steer");
+    ok(calls.some((c) => c.name === "EnqueueInboxFollowup"), "tl1303: a not-active-turn rejection lands in the durable follow-up queue");
+    ok(state?.items.some((item) => item.kind === "notice" && item.text === DEGRADE_NOTICE("queued")) ?? false, "tl1303: the composer shows the queued fact text");
+    eq(state?.items.some((item) => item.kind === "notice" && item.text === DEGRADE_NOTICE("steer")), false, "tl1303: no 'joined the current task' false success");
+    eq(state?.items.some((item) => item.kind === "user" && item.failed), false, "tl1303: the message never shows the Send-failed face");
+    const degradeLine = calls.find((c) => c.name === "ReportFrontendLog" && c.args[2] === "submit degraded to guidance queue");
+    const detail = String(degradeLine?.args[3] ?? "");
+    ok(detail.includes("disposition=queued_followup"), `tl1303: the degrade line records the queued disposition (${detail})`);
+    ok(detail.includes("steer_refused=") && detail.includes("is not the active turn"), `tl1303: the degrade line carries the not-active-turn refusal (${detail})`);
+    root.unmount();
+    await reset();
+    steerPlainBehavior = "throw";
+  }
+
+  // 3c. tl1303: an accepted steer leaves no steer_refused trace (the suffix
+  // only appears when the steer channel actually refused).
+  {
+    steerExactBehavior = "accept";
+    const root = await mount();
+    await act(async () => { await controller?.sendToTab("tab-p6", "正常引导"); await flushPromises(); });
+    const degradeLine = calls.find((c) => c.name === "ReportFrontendLog" && c.args[2] === "submit degraded to guidance queue");
+    const detail = String(degradeLine?.args[3] ?? "");
+    ok(detail.includes("disposition=steer_accepted"), `tl1303: accepted steer logs its disposition (${detail})`);
+    ok(!detail.includes("steer_refused="), "tl1303: an accepted steer carries no refusal suffix");
     root.unmount();
     await reset();
   }

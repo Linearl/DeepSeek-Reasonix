@@ -5034,6 +5034,13 @@ export function useController() {
   // hands the error back to the ordinary Send-failed face (P3's resend).
   // The destination notice (ruling ③) and the authoritative running facts
   // (ruling ②) land through the submit_degraded reducer.
+  // tl1303: an exact-turn rejection ("turn is not the active turn") is the
+  // "no injectable live turn" signal, not a transient failure — the refused
+  // reason is never swallowed: the session-level steer channel is skipped (a
+  // dead or wedged run would accept the steer and never consume it — the
+  // 2026-10-31 incident), the durable follow-up queue keeps the text (the
+  // turn-boundary pump dispatches it when the run exits), the composer shows
+  // the queued fact text, and the refusal lands in desktop.log for 对账.
   const degradeRunningTurnSubmit = useCallback(async (
     tabId: string,
     submissionId: string,
@@ -5059,8 +5066,10 @@ export function useController() {
       steerError = err;
     }
     if (!receipt || receipt.error) {
-      // The steer channel refused too — the durable follow-up queue keeps the
-      // text for automatic delivery at the next turn/idle boundary.
+      // The steer channel refused (tl1303: incl. the exact-turn "not the
+      // active turn" rejection — session-level steer stays skipped so the
+      // text never joins an unconsumable run) — the durable follow-up queue
+      // keeps the text for automatic delivery at the next turn/idle boundary.
       try {
         receipt = await app.EnqueueInboxFollowup(tabId, display, submit, "");
       } catch (followupError) {
@@ -5080,8 +5089,16 @@ export function useController() {
       // 任务1015：非 steer_accepted（降级 durable 队列）→ queued_followup 事实源。
       queued: !steered,
     });
+    // tl1303: the steer channel's refusal reason rides the degrade line, so a
+    // not-active-turn rejection is reconcilable against the eventual outcome
+    // (steer injected / followup dispatched / unapplied) instead of vanishing.
+    const steerRefusal = steerError
+      ? errorMessage(steerError)
+      : receipt?.error
+        ? receipt.error
+        : "";
     reportFrontendLog("send", "submit degraded to guidance queue",
-      `tab=${tabId} submission=${submissionId} disposition=${disposition}`);
+      `tab=${tabId} submission=${submissionId} disposition=${disposition}${steerRefusal ? ` steer_refused=${steerRefusal}` : ""}`);
     return true;
   }, [dispatchTo, t]);
 
