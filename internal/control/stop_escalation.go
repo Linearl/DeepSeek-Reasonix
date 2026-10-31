@@ -72,9 +72,9 @@ func (c *Controller) CancelStop() {
 	}
 	// L1: the ordinary graceful cancel + the no-response fallback timer.
 	c.promptResolveMu.Lock()
-	turnID, cancelled := c.cancelTurnLocked()
+	turnID, cancelled, outcome := c.cancelTurnLocked()
 	c.promptResolveMu.Unlock()
-	c.finishCancel(turnID, cancelled)
+	c.finishCancel(turnID, cancelled, outcome)
 	if cancelled {
 		c.armStopEscalation()
 	}
@@ -87,6 +87,11 @@ func (c *Controller) armStopEscalation() {
 	c.mu.Lock()
 	if c.cancel == nil {
 		c.mu.Unlock()
+		// tl1304 ③: reachable only through race windows (CancelStop checks the
+		// live context first), but a bare return used to skip both the receipt
+		// and the mirror refresh. Say what happened, refresh, leave.
+		c.logNoTurnStopReceipt("arm_stop_escalation", c.noTurnOutcome())
+		c.refreshRuntimeState(event.Event{})
 		return
 	}
 	c.stopLevel = StopLevelNormal
@@ -110,8 +115,17 @@ func (c *Controller) armStopEscalation() {
 // openStopGrace records L2 and starts the force countdown (ruling ②).
 func (c *Controller) openStopGrace() {
 	c.mu.Lock()
-	if c.stopLevel >= StopLevelGrace || c.cancel == nil {
+	if c.stopLevel >= StopLevelGrace {
 		c.mu.Unlock()
+		return
+	}
+	if c.cancel == nil {
+		c.mu.Unlock()
+		// tl1304 ③: the turn ended between the arm and this call (race window
+		// behind CancelStop's live check); a bare return used to leave the
+		// stale armed mirror uncorrected. Coded receipt + refresh instead.
+		c.logNoTurnStopReceipt("open_stop_grace", c.noTurnOutcome())
+		c.refreshRuntimeState(event.Event{})
 		return
 	}
 	c.stopLevel = StopLevelGrace
@@ -141,9 +155,15 @@ func (c *Controller) fireStopForce() {
 	c.mu.Lock()
 	if c.cancel == nil {
 		// The turn ended between the timer tick and the fire; nothing to force.
+		// tl1304 ③: this leg MUTATES state (drops a stale armed level) yet used
+		// to return without a receipt or a mirror refresh — the one no-turn
+		// site whose silence could leave a wrong StopLevel mirrored. Log the
+		// coded receipt, then refresh so the correction publishes.
 		c.stopLevel = StopLevelNone
 		c.stopDeadline = time.Time{}
 		c.mu.Unlock()
+		c.logNoTurnStopReceipt("fire_stop_force", c.noTurnOutcome())
+		c.refreshRuntimeState(event.Event{})
 		return
 	}
 	if c.stopLevel >= StopLevelForce {
@@ -162,9 +182,9 @@ func (c *Controller) fireStopForce() {
 	// The ordinary cancel rides along so every other wait keying off the turn
 	// context unwinds with it.
 	c.promptResolveMu.Lock()
-	turnID, cancelled := c.cancelTurnLocked()
+	turnID, cancelled, outcome := c.cancelTurnLocked()
 	c.promptResolveMu.Unlock()
-	c.finishCancel(turnID, cancelled)
+	c.finishCancel(turnID, cancelled, outcome)
 	c.emitStopEscalationTurnStatus()
 	c.refreshRuntimeState(event.Event{})
 }

@@ -247,9 +247,9 @@ func (c *Controller) maybeAbortPreflightStalledTurn(now time.Time) {
 	c.preflightStallAbort = &preflightStallAbort{generation: generation, cause: *cause, silence: silence}
 	c.mu.Unlock()
 	c.promptResolveMu.Lock()
-	turnID, cancelled := c.cancelTurnLocked()
+	turnID, cancelled, outcome := c.cancelTurnLocked()
 	c.promptResolveMu.Unlock()
-	c.finishCancel(turnID, cancelled)
+	c.finishCancel(turnID, cancelled, outcome)
 }
 
 // takePreflightStallAbort consumes the watchdog marker when the finishing
