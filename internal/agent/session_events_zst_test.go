@@ -1,10 +1,13 @@
 package agent
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -262,4 +265,124 @@ func TestSessionEventsZstCompressIdempotentOnArchived(t *testing.T) {
 	if _, statErr := os.Stat(zst); errors.Is(statErr, os.ErrNotExist) {
 		t.Fatal("archive must survive the idempotent call")
 	}
+}
+
+// —— tl1318 物化通路验收（压缩→物化→字节全等 + 并发物化不互截）——
+
+// zstRoundTripPayload builds a deterministic payload past any compress floor
+// and well beyond the 64KiB bufio read-ahead window. 字节全等断言要求逐字节
+// 可重现：纯确定性拼接，无随机源。
+func zstRoundTripPayload(t *testing.T, minSize int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	line := strings.Repeat("tl1318-roundtrip-payload-", 5) // 125B
+	for seq := 0; buf.Len() < minSize; seq++ {
+		fmt.Fprintf(&buf, "{\"seq\":%d,\"body\":\"%s#%07d\"}\n", seq, line, seq)
+	}
+	return buf.Bytes()
+}
+
+// 验收核心（tl1318）：压缩 → 物化 → 逐字节全等。旧
+// TestSessionEventsZstCompressRoundTripAndAppend 因 tl1227 读面退役 SKIP 后，
+// 「物化不丢字节」这条防线一直空缺（头部 bufio 预读吞正文正是从缺口里长出
+// 来的 bug 家族，tl1220 生产归档实测丢 65,385B）。文件级断言：头部解析与
+// 正文搬运共用同一 bufio 后，物化产物必须与压缩前明文逐字节一致，且归档
+// 走完「改名 .damaged」的误判路径即为本测试红。
+func TestSessionEventLogZstMaterializeByteIdentity(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "rt.events.jsonl")
+	zst := plain + ".zst"
+	payload := zstRoundTripPayload(t, 5<<20) // > 4MiB 地板、≫ 64KiB 预读窗口
+	if err := os.WriteFile(plain, payload, 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	before, after, err := compressSessionEventLogZstLocked(plain, zst, "tl1318-roundtrip")
+	if err != nil {
+		t.Fatalf("compress: %v", err)
+	}
+	if before != int64(len(payload)) {
+		t.Fatalf("compress before = %d, want payload %d", before, len(payload))
+	}
+	if _, statErr := os.Stat(plain); !os.IsNotExist(statErr) {
+		t.Fatalf("plaintext must be archived away, stat err = %v", statErr)
+	}
+	if err := materializeSessionEventLogZst(plain, zst); err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	got, err := os.ReadFile(plain)
+	if err != nil {
+		t.Fatalf("read materialized: %v", err)
+	}
+	if len(got) != len(payload) {
+		t.Fatalf("materialized %d bytes, want %d (delta %d)", len(got), len(payload), len(payload)-len(got))
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("round-trip bytes diverged: payload=%d materialized=%d", len(payload), len(got))
+	}
+	if _, statErr := os.Stat(zst); !os.IsNotExist(statErr) {
+		t.Fatalf("archive must be gone after materialization, stat err = %v", statErr)
+	}
+	t.Logf("round-trip byte identity: payload=%d compressed=%d materialized=%d equal=true", before, after, len(got))
+}
+
+// 验收（并发物化互不截断，tl1318 medium）：N 个并发物化写同一明文目标。
+// 修复前共享固定 tmp 路径 + O_TRUNC（并发互相截断/顶住 rename）；修复后
+// 随机唯一名各写各的。用 8 份同内容归档消除「归档被第一个成功者删掉」的
+// 良性竞态，只钉 tmp 路径唯一性这一件事；终态明文必须与原字节全等、无
+// .materializing 残件。
+func TestSessionEventLogZstMaterializeConcurrentTmpUnique(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "conc.events.jsonl")
+	payload := zstRoundTripPayload(t, 5<<20)
+	if err := os.WriteFile(plain, payload, 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	const workers = 8
+	zsts := make([]string, workers)
+	for i := 0; i < workers; i++ {
+		zsts[i] = filepath.Join(dir, fmt.Sprintf("conc-archive-%d.zst", i))
+		if _, _, err := compressSessionEventLogZstLocked(plain, zsts[i], "tl1318-concurrent"); err != nil {
+			t.Fatalf("compress copy %d: %v", i, err)
+		}
+		if err := os.WriteFile(plain, payload, 0o600); err != nil {
+			t.Fatalf("restore fixture for copy %d: %v", i, err)
+		}
+	}
+	// plain 已被最后一次 restore 放回：物化目标态由并发原子改名互相覆盖，
+	// 任意改名次序下终态内容都必须一致。
+	start := make(chan struct{})
+	errs := make([]error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			errs[i] = materializeSessionEventLogZst(plain, zsts[i])
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent materializer %d: %v", i, err)
+		}
+	}
+	got, err := os.ReadFile(plain)
+	if err != nil {
+		t.Fatalf("read final plaintext: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("final plaintext diverged after %d concurrent materializations: got=%d want=%d", workers, len(got), len(payload))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".materializing") {
+			t.Fatalf("stale materialization temp residue: %s", e.Name())
+		}
+	}
+	t.Logf("concurrent materialize: %d workers, final bytes=%d byte-equal=true, no tmp residue", workers, len(got))
 }
