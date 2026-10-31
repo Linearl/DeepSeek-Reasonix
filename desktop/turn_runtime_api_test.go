@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
 )
@@ -280,5 +281,91 @@ func TestStartTurnForTabRejectsManagementDuringActiveTurn(t *testing.T) {
 	case <-terminal:
 	case <-time.After(5 * time.Second):
 		t.Fatal("turn did not finish after cancellation")
+	}
+}
+
+// tl1304 ②: the stop button's first press must ride the 461-P7 escalation
+// machine (CancelStop), not the bare cancel — a wedged turn that ignores the
+// graceful L1 then gets the automatic grace→force ladder, and every later
+// press (from the same entry or CancelStopForTab) advances the same state.
+// The runner ignores BOTH cancellation contexts (the wedged-tool shape), so
+// the levels only move when presses move them.
+type wedgedTurnRunner struct {
+	started chan struct{}
+	release chan struct{}
+	bodyCtx context.Context
+}
+
+func (r *wedgedTurnRunner) Run(ctx context.Context, _ string) error {
+	r.bodyCtx = ctx
+	r.started <- struct{}{}
+	<-r.release
+	return nil
+}
+
+func TestInterruptTurnForTabDrivesStopEscalationLevels(t *testing.T) {
+	dir := t.TempDir()
+	runner := &wedgedTurnRunner{started: make(chan struct{}, 1), release: make(chan struct{})}
+	sink := &tabEventSink{tabID: "tab", ctx: context.Background()}
+	sink.SetBotSink(event.FuncSink(func(event.Event) {}))
+	ctrl := control.New(control.Options{
+		Runner: runner, Sink: sink, SessionDir: dir,
+		SessionPath: filepath.Join(dir, "session.jsonl"),
+	})
+	t.Cleanup(ctrl.Close)
+	t.Cleanup(func() { close(runner.release) })
+	tab := &WorkspaceTab{ID: "tab", Scope: "global", Ready: true, Ctrl: ctrl, sink: sink}
+	app := &App{tabs: map[string]*WorkspaceTab{tab.ID: tab}, activeTabID: tab.ID}
+	sink.app = app
+
+	if _, err := app.StartTurnForTab(tab.ID, "wedged turn", "submission-1"); err != nil {
+		t.Fatalf("StartTurnForTab: %v", err)
+	}
+	select {
+	case <-runner.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("turn runner did not start")
+	}
+
+	waitStopLevelAtLeast := func(want int, label string) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			if got := ctrl.RuntimeStatus().StopLevel; got >= want {
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		t.Fatalf("%s: stop level = %d, want >= %d", label, ctrl.RuntimeStatus().StopLevel, want)
+	}
+
+	// 1st press: L1 graceful cancel + the 30s 保底 armed. The bare cancel this
+	// entry used before left StopLevel at None forever.
+	if err := app.InterruptTurnForTab(tab.ID, "turn_stale"); err != nil {
+		t.Fatalf("first press: %v", err)
+	}
+	waitStopLevelAtLeast(control.StopLevelNormal, "first press must arm L1 (CancelStop entry)")
+	select {
+	case <-runner.bodyCtx.Done():
+	default:
+		t.Fatal("L1 must cancel the turn context (the graceful half)")
+	}
+
+	// 2nd press through the same entry: L2 force grace with a countdown.
+	if err := app.InterruptTurnForTab(tab.ID, "turn_stale"); err != nil {
+		t.Fatalf("second press: %v", err)
+	}
+	waitStopLevelAtLeast(control.StopLevelGrace, "second press must open the L2 force grace")
+	if st := ctrl.RuntimeStatus(); st.StopDeadlineUnix <= time.Now().Unix() {
+		t.Fatalf("L2 must carry a future countdown deadline, got %d", st.StopDeadlineUnix)
+	}
+
+	// 3rd press through the other surface (CancelStopForTab): same machine → L3.
+	app.CancelStopForTab(tab.ID)
+	waitStopLevelAtLeast(control.StopLevelForce, "third press must fire L3 force")
+	select {
+	case <-agent.StopForceDone(runner.bodyCtx):
+	default:
+		t.Fatal("L3 must fire the executor force signal")
 	}
 }
