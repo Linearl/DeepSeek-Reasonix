@@ -808,19 +808,31 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 	// so a conversation-model switch no longer reads as "destination changed"
 	// and cannot trigger a blind resend of a deterministic 400.
 	modelRefRetried := false
+	// tl1083 §5.2-P1: an expired key on the ARMED compact model must not walk
+	// every fold down the 30s/2m/5m backoff ladder into the prune-only exit
+	// (实例①: mimo key 401 ×3, the fold never lands, the session sits at 3.7M).
+	// authFallbackTried bounds the lane switch to once per pass; the
+	// agent-level compactModelAuthBlocked flag (cleared by the next agent
+	// rebuild, mirroring the destination cache) keeps later passes off the
+	// dead key until the user fixes it. When the conversation destination is
+	// the one that 401'd there is no alternative lane — this branch cannot
+	// fire, and the 任务912 P1-d alert still surfaces the dead key.
+	authFallbackTried := false
 	for attempt := 0; ; attempt++ {
 		attemptRef := a.summaryDestinationRef()
-		// 任务 1010 需求 2: the overflow lane (the one-shot physical recovery
-		// an inadmissible sampling request triggers) may finish on the
-		// fragment/tree-reduce path when the capped single summary still fails
-		// on size — a physically inadmissible request must be able to make
-		// chunked progress instead of parking the turn forever. Steady-state
-		// pressure keeps its 任务822 contract unchanged — one summary plus one
-		// doubled-budget retry, the bounded tail view as the admissible
-		// answer, even when that pressure fold runs with mustFree over the
-		// ceiling. The happy path is unchanged either way: the chunked lane
-		// only starts after the single summary already failed on size.
-		allowChunked := req.allowChunked || trigger == CompactionTriggerOverflow
+		// 任务 1010 需求 2 + tl1083 §5.2: the overflow lane (the one-shot
+		// physical recovery an inadmissible sampling request triggers) and the
+		// pressure lane both may finish on the fragment/tree-reduce path when
+		// the capped single summary still fails on size — a physically
+		// inadmissible request (overflow) and an invalidated projection over a
+		// multi-window canonical (tl1083 实例①: 3.7M/1M) must be able to make
+		// chunked progress instead of parking on a blocked receipt while the
+		// canonical keeps growing ("越大越压不动" loop). The happy path is
+		// unchanged either way: the chunked lane only starts after the single
+		// summary (plus its one doubled-budget retry) already failed on size,
+		// and the maxChunkedSummaryCalls budget bounds the whole run.
+		allowChunked := req.allowChunked ||
+			trigger == CompactionTriggerOverflow || trigger == CompactionTriggerPressure
 		if allowChunked {
 			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 		} else {
@@ -868,6 +880,20 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 					"trigger", trigger, "failed_ref", attemptRef, "current_ref", ref, "err", err)
 				continue
 			}
+		}
+		// tl1083 §5.2-P1: the armed compact model rejected the key — switch the
+		// summary lane to the conversation destination so this fold can land
+		// (§6.2 acceptance: 401 ⇒ fold, not the prune-only loop). The lane may
+		// only fire when the armed model actually served (a resolved task-707
+		// cache); an unresolved arm already serves the conversation model,
+		// whose 401 has no alternative to switch to.
+		if !authFallbackTried && summaryAuthExpired(err) && a.compactModelServingNow() {
+			a.compactModelAuthBlocked.Store(true)
+			authFallbackTried = true
+			slog.Warn("agent: compaction model auth expired — summary lane switched to the conversation destination",
+				"trigger", trigger, "failed_ref", attemptRef,
+				"fallback_ref", a.destinationModelRef(), "err", err)
+			continue
 		}
 		// Task 330: 429 gets its own lane ahead of the generic transient
 		// backoff - wait the window out (Retry-After when the provider states

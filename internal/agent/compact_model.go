@@ -52,6 +52,15 @@ func (a *Agent) compactionDestination() summaryDestination {
 	if ref == "" {
 		return conversation
 	}
+	// tl1083 §5.2: a compact model that rejected the key (401) is blocked for
+	// the agent's lifetime — the summary lane switched to the conversation
+	// destination the moment the rejection was seen (summarizeFold), and
+	// later passes must not re-walk the backoff ladder against the same dead
+	// key. The flag clears on the next agent rebuild, so fixing the key plus
+	// any settings change re-arms the economic model.
+	if a.compactModelAuthBlocked.Load() {
+		return conversation
+	}
 	if cached, ok := a.compactModelDestination.Load().(*summaryDestination); ok && cached != nil {
 		return *cached
 	}
@@ -73,14 +82,16 @@ func (a *Agent) compactionDestination() summaryDestination {
 }
 
 // summaryDestinationRef is the billable ref the NEXT summary request reaches:
-// the armed compact ref when set (whether or not it currently resolves — the
-// usage event follows the destination, and the 任务635 lane compares this ref
-// across attempts so a mid-flight conversation-model switch cannot trick it
-// into blindly resending a deterministic 400 the compact model produced),
-// else the conversation ref. With the switch off this is exactly
-// destinationModelRef(), byte-for-byte the pre-707 lane.
+// the armed compact ref when set and not auth-blocked (whether or not it
+// currently resolves — the usage event follows the destination, and the
+// 任务635 lane compares this ref across attempts so a mid-flight
+// conversation-model switch cannot trick it into blindly resending a
+// deterministic 400 the compact model produced), else the conversation ref.
+// With the switch off this is exactly destinationModelRef(), byte-for-byte
+// the pre-707 lane. The tl1083 auth-block reads here too so every retry-lane
+// comparison stays anchored to the ref that will actually serve.
 func (a *Agent) summaryDestinationRef() string {
-	if ref := strings.TrimSpace(a.compactModel); ref != "" {
+	if ref := strings.TrimSpace(a.compactModel); ref != "" && !a.compactModelAuthBlocked.Load() {
 		return ref
 	}
 	return a.destinationModelRef()
@@ -92,4 +103,17 @@ func (a *Agent) compactModelResolvedForTest() (string, bool) {
 		return cached.ref, true
 	}
 	return "", false
+}
+
+// compactModelServingNow reports whether the armed compact model is the
+// currently-serving summary destination: armed AND already resolved through
+// the task-707 cache. The tl1083 401 lane-switch may only fire on this shape
+// — an unresolved arm already falls back to the conversation destination,
+// whose auth failure has no alternative lane to switch to.
+func (a *Agent) compactModelServingNow() bool {
+	if strings.TrimSpace(a.compactModel) == "" || a.compactModelAuthBlocked.Load() {
+		return false
+	}
+	cached, ok := a.compactModelDestination.Load().(*summaryDestination)
+	return ok && cached != nil
 }
