@@ -39,11 +39,15 @@ export const useEffortApplyingStore = create<EffortApplyingState>((set) => ({
 // The in-flight registry guards the mark side against cross-channel delivery
 // order: the backend emits "effort:applying" early inside the Go call, but a
 // fast-failing call (unknown model, unsupported level) can return before the
-// event reaches the webview. Only marks while the same tab has a switch
-// actually in flight — a late event for a settled switch is ignored, so the
-// transition can never stick. Wails delivers responses and events over one
-// ordered transport, so within one switch the event (mid-call) always lands
-// before the settle clear.
+// event reaches the webview. There is no cross-lane ordering to rely on — the
+// event rides the tab sink's async queue, which cannot be ordered against the
+// call's response (desktop/tabs.go notifyTabEffortApplying; task 1323 corrects
+// the earlier "one ordered transport" claim here). Only marks while the same
+// tab has a switch actually in flight — an event reordered past its settle is
+// dropped, so the transition can never stick; the accepted cost is a missed
+// hint, never a stuck one. Known gap (task 1303 line owns the fix): the
+// runtime:rebuilt backstop (clearEffortApplying) clears only the store, not
+// this registry, so a late event after a backstop-only clear can re-light.
 const inFlight = new Set<string>();
 
 /** Called when a SetEffortForTab call starts (before the await). */
