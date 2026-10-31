@@ -245,6 +245,33 @@ function storeApplying(tabId: string): boolean {
   handleEffortApplyingEvent("tab-backstop");
   clearEffortApplying("tab-backstop");
   ok(!storeApplying("tab-backstop"), "runtime:rebuilt backstop clears the hint");
+
+  // task 1323 pins: responses and tab-sink events share NO ordered transport
+  // — the event can land after the settle clear. The guard then drops it (a
+  // missed hint, never a stuck one); that is the corrected assertion, not an
+  // accident.
+  beginEffortSwitch("tab-reordered");
+  endEffortSwitch("tab-reordered");
+  handleEffortApplyingEvent("tab-reordered");
+  ok(!storeApplying("tab-reordered"), "event reordered past its settle is dropped (no cross-lane ordering)");
+  beginEffortSwitch("tab-dup");
+  handleEffortApplyingEvent("tab-dup");
+  endEffortSwitch("tab-dup");
+  handleEffortApplyingEvent("tab-dup");
+  ok(!storeApplying("tab-dup"), "late duplicate for a settled switch is dropped");
+
+  // KNOWN GAP (task 1303 line owns the fix): the runtime:rebuilt backstop
+  // (clearEffortApplying) clears only the store, not the in-flight registry,
+  // so a late event after a backstop-only clear re-lights the hint with
+  // nothing left to clear it. Flip this assertion when clearEffortApplying
+  // also drops the registry id.
+  beginEffortSwitch("tab-gap");
+  clearEffortApplying("tab-gap");
+  handleEffortApplyingEvent("tab-gap");
+  ok(storeApplying("tab-gap"), "documented gap: late event after backstop-only clear re-lights (task 1303 line)");
+  endEffortSwitch("tab-gap");
+  ok(!storeApplying("tab-gap"), "cleanup after the gap pin leaves no residue");
+
   // Empty/whitespace ids are inert.
   handleEffortApplyingEvent(undefined);
   handleEffortApplyingEvent("  ");

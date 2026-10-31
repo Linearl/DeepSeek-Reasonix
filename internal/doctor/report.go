@@ -109,6 +109,10 @@ type RecoveryLifecycleReport struct {
 	RepeatedEvents            int `json:"repeated_events"`
 	MaxTopicOccurrences       int `json:"max_topic_occurrences"`
 	InvalidRecords            int `json:"invalid_records"`
+	// tl1323: traces for reads that could not complete. Without them a walk
+	// or open failure used to read as an all-zero healthy census.
+	UnreadEntries int `json:"unread_entries"` // walk errors + conflict logs that would not open
+	ScanAborts    int `json:"scan_aborts"`    // scans stopped early (line > 64KiB cap, I/O error)
 }
 
 type SandboxReport struct {
@@ -413,62 +417,84 @@ type recoveryLifecycleRecord struct {
 
 func collectRecoveryLifecycle(dir string) RecoveryLifecycleReport {
 	report := RecoveryLifecycleReport{}
+	// tl1323: walk/open/scan failures used to vanish into bare `return nil`s,
+	// so a half-read tree reported the same all-zero counts as a clean one.
+	// They now land in UnreadEntries / ScanAborts — still aggregate-only
+	// counts, no paths or content.
 	_ = filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil || entry.IsDir() || !strings.HasSuffix(entry.Name(), store.SessionConflictLogSuffix) {
+		if walkErr != nil {
+			report.UnreadEntries++
 			return nil
 		}
-		file, err := os.Open(path)
-		if err != nil {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), store.SessionConflictLogSuffix) {
 			return nil
 		}
-		defer file.Close()
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			var record recoveryLifecycleRecord
-			if err := json.Unmarshal(scanner.Bytes(), &record); err != nil || strings.TrimSpace(record.Outcome) == "" {
-				report.InvalidRecords++
-				continue
-			}
-			report.Events++
-			switch record.Outcome {
-			case "forked_recovery_branch", "forked_file_lock_recovery", "moved_to_stable_recovery":
-				if !record.ExistingRecovery {
-					report.PhysicalVersionsCreated++
-				}
-			case "classified_covered":
-				report.ClassifiedCovered++
-			case "classified_adopted":
-				report.ClassifiedAdopted++
-			case "classified_preferred":
-				report.ClassifiedPreferred++
-			case "classified_diverged":
-				report.ClassifiedDiverged++
-			case "cleanup_moved":
-				report.CleanupMoved++
-			case "cleanup_kept":
-				report.CleanupKept++
-			case "cleanup_skipped_in_use":
-				report.CleanupSkippedInUse++
-			case "cleanup_revalidation_failed":
-				report.CleanupRevalidationFailed++
-			}
-			if record.Outcome == "adopted_newer_disk_transcript" ||
-				record.Outcome == "recovery_not_needed_adopted_disk_transcript" {
-				report.DiskAdoptions++
-			}
-			if record.Outcome == "forked_file_lock_recovery" {
-				report.ShutdownRecoveries++
-			}
-			if record.Repeated || record.Occurrence > 1 {
-				report.RepeatedEvents++
-			}
-			if record.Occurrence > report.MaxTopicOccurrences {
-				report.MaxTopicOccurrences = record.Occurrence
-			}
-		}
+		// countRecoveryLifecycleFile owns the handle: the defer releases it at
+		// this callback's return instead of piling one fd per conflict log
+		// until the whole walk finishes.
+		countRecoveryLifecycleFile(path, &report)
 		return nil
 	})
 	return report
+}
+
+func countRecoveryLifecycleFile(path string, report *RecoveryLifecycleReport) {
+	file, err := os.Open(path)
+	if err != nil {
+		report.UnreadEntries++
+		return
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var record recoveryLifecycleRecord
+		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil || strings.TrimSpace(record.Outcome) == "" {
+			report.InvalidRecords++
+			continue
+		}
+		report.Events++
+		switch record.Outcome {
+		case "forked_recovery_branch", "forked_file_lock_recovery", "moved_to_stable_recovery":
+			if !record.ExistingRecovery {
+				report.PhysicalVersionsCreated++
+			}
+		case "classified_covered":
+			report.ClassifiedCovered++
+		case "classified_adopted":
+			report.ClassifiedAdopted++
+		case "classified_preferred":
+			report.ClassifiedPreferred++
+		case "classified_diverged":
+			report.ClassifiedDiverged++
+		case "cleanup_moved":
+			report.CleanupMoved++
+		case "cleanup_kept":
+			report.CleanupKept++
+		case "cleanup_skipped_in_use":
+			report.CleanupSkippedInUse++
+		case "cleanup_revalidation_failed":
+			report.CleanupRevalidationFailed++
+		}
+		if record.Outcome == "adopted_newer_disk_transcript" ||
+			record.Outcome == "recovery_not_needed_adopted_disk_transcript" {
+			report.DiskAdoptions++
+		}
+		if record.Outcome == "forked_file_lock_recovery" {
+			report.ShutdownRecoveries++
+		}
+		if record.Repeated || record.Occurrence > 1 {
+			report.RepeatedEvents++
+		}
+		if record.Occurrence > report.MaxTopicOccurrences {
+			report.MaxTopicOccurrences = record.Occurrence
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		// A scan that stopped early (line beyond the 64KiB scanner cap, I/O
+		// error) used to truncate the census silently; the partial counts
+		// stay, the abort itself is now visible.
+		report.ScanAborts++
+	}
 }
 
 func pluginTarget(p config.PluginEntry) string {

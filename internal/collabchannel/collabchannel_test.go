@@ -525,3 +525,50 @@ func TestFanoutDeliveredMailCarriesChannelStamp(t *testing.T) {
 		}
 	}
 }
+
+// tl1323 回归钉：取消守卫读失败必须 fail-closed。修前守卫写成
+// `err == nil && (已取消)`，守卫查询一旦出错（busy timeout / 连接错误 /
+// fan-out 行被并发删除 → sql.ErrNoRows）条件为假，直接落投递路径——
+// 无法证明未撤销的内容照发，stats.Cancelled 也不留痕。
+// 这里用 pace 钩子在 drain 中途删掉 sc_b 的 fan-out 行制造守卫读失败：
+// sc_b 一封信都不该收到，GuardUnknown 必须 = 1，sc_a 正常投递不受牵连。
+func TestDrainFanoutFailsClosedWhenCancelGuardReadErrors(t *testing.T) {
+	s, _, _ := newStore(t)
+	if _, err := s.CreateChannel("dev", "", 0, "sc_a", "sc_b"); err != nil {
+		t.Fatal(err)
+	}
+	msg, err := s.Publish("dev", "sc_s", "recall me mid-drain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.FanoutStates("dev")
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("fanout rows before drain: %+v err=%v", rows, err)
+	}
+	fanoutByMember := map[string]string{}
+	for _, r := range rows {
+		fanoutByMember[r.Member] = r.FanoutID
+	}
+
+	s.SetPace(func(int) time.Duration {
+		// drain 途中行被并发删除（硬取消的典型形态）：守卫 SELECT 落空。
+		if _, err := s.db.Exec(`DELETE FROM fanout WHERE message_id = ? AND member = ?`, msg.ID, "sc_b"); err != nil {
+			t.Fatalf("delete sc_b fanout row: %v", err)
+		}
+		return 0
+	})
+	stats, err := s.DrainFanout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Delivered != 1 || stats.GuardUnknown != 1 || stats.Failed != 0 || stats.Cancelled != 0 {
+		t.Fatalf("guard-error drain stats = %+v, want delivered=1 guard_unknown=1", stats)
+	}
+
+	if _, found := s.mail.ParentThread("sc_b", fanoutByMember["sc_b"]); found {
+		t.Fatalf("sc_b must not receive mail whose cancel guard could not be read")
+	}
+	if _, found := s.mail.ParentThread("sc_a", fanoutByMember["sc_a"]); !found {
+		t.Fatalf("sc_a delivery must be unaffected by sc_b's guard failure")
+	}
+}

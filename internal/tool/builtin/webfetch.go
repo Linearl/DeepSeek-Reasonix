@@ -60,6 +60,34 @@ func (webFetch) SnipHint() tool.SnipHint {
 	return tool.SnipHint{Head: 120, Tail: 12, HeadChars: 12000, TailChars: 2000}
 }
 
+// ipResolver is the slice of *net.Resolver the SSRF dial path needs; a test
+// can stub it to pin resolver edge cases without touching the network.
+type ipResolver interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+}
+
+// resolveVettedIPs resolves host and refuses every answer the SSRF blocklist
+// rejects, so the dial paths share one vetting gate.
+// tl1323: a resolver can legitimately return zero addresses with a nil error;
+// indexing ips[0] on that used to panic inside the http.Client dial goroutine
+// (no recover in Execute), piercing through to the turn executor. It is a
+// normal "no addresses" error now.
+func resolveVettedIPs(ctx context.Context, resolver ipResolver, host string) ([]net.IPAddr, error) {
+	ips, err := resolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 {
+		return nil, &net.DNSError{Err: "no addresses returned", Name: host, IsNotFound: true}
+	}
+	for _, ip := range ips {
+		if blockedFetchIP(ip.IP) {
+			return nil, fmt.Errorf("refusing to fetch internal address %s (resolves to %s)", host, ip.IP)
+		}
+	}
+	return ips, nil
+}
+
 // ssrfGuardedTransport refuses to connect to private, link-local, or unspecified
 // addresses — the SSRF surface a prompt-injected fetch would aim at (cloud
 // metadata at 169.254.169.254, RFC1918 internal services). Loopback is allowed:
@@ -77,14 +105,9 @@ func ssrfGuardedTransport(proxyURL string) *http.Transport {
 		if err != nil {
 			return nil, err
 		}
-		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		ips, err := resolveVettedIPs(ctx, net.DefaultResolver, host)
 		if err != nil {
 			return nil, err
-		}
-		for _, ip := range ips {
-			if blockedFetchIP(ip.IP) {
-				return nil, fmt.Errorf("refusing to fetch internal address %s (resolves to %s)", host, ip.IP)
-			}
 		}
 		return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
 	}
