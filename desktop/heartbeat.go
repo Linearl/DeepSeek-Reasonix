@@ -23,11 +23,13 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
 	"reasonix/internal/filelock"
 	"reasonix/internal/secrets"
+	"reasonix/internal/sessioncollab"
 )
 
 // ── Data model ──────────────────────────────────────────────────────────────
@@ -659,6 +661,41 @@ const heartbeatTopicOrigin = "heartbeat"
 // rotation successors keep it). The 755 origin restore keys off it so a user
 // named conversation is never re-filed by inference.
 const heartbeatTitlePrefix = "Heartbeat: "
+
+// countHeartbeatHistorySessions answers tl1305 ④'s "how many of this task's
+// past conversations still sit in the session directories": main transcripts
+// whose branch-meta title is "Heartbeat: <task title>", rotation successors
+// included (their title appends the （轮换 …接任） mark, so the match accepts
+// that boundary — but never a DIFFERENT task whose title merely starts with
+// this one). Trash is excluded (it lives under .trash, not scanned here), and
+// a read error counts nothing rather than guessing. This is a magnitude hint
+// for a disable confirmation, not a billing figure.
+func (a *App) countHeartbeatHistorySessions(taskTitle string) int {
+	prefix := heartbeatTitlePrefix + strings.TrimSpace(taskTitle)
+	count := 0
+	for _, dir := range a.knownSessionDirs() {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !sessioncollab.IsMainTranscript(entry.Name()) {
+				continue
+			}
+			title := agent.SessionDirectoryTitle(filepath.Join(dir, entry.Name()))
+			if len(title) < len(prefix) || !strings.EqualFold(title[:len(prefix)], prefix) {
+				continue
+			}
+			rest := title[len(prefix):]
+			// Boundary: exact title, the rotation-successor mark, or the
+			// retired mark. "Task A" must not count "Task A v2" sessions.
+			if rest == "" || strings.HasPrefix(rest, "（轮换") || strings.HasPrefix(rest, "［已退役") {
+				count++
+			}
+		}
+	}
+	return count
+}
 
 // sessionRepairTopicTitle sanitizes the title the tab-build index repair feeds
 // into the topic registry (task 755). The workspace label is not a
