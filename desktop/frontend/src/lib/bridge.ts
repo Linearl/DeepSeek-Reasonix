@@ -2532,6 +2532,19 @@ export function onRuntimeRebuilt(cb: (tabId?: string, runtimeEpoch?: string) => 
   return () => {};
 }
 
+// onEffortApplying fires when an effort switch took the fallback rebuild path
+// (task 1301): the composer shows the "applying reasoning effort" transition
+// beside the effort control until the SetEffortForTab call settles. The fast
+// paths never emit, so normal sessions never see the transition.
+export function onEffortApplying(cb: (tabId?: string) => void): () => void {
+  if (realApp() && typeof window !== "undefined" && window.runtime) {
+    return window.runtime.EventsOn("effort:applying", (tabId?: unknown) =>
+      cb(typeof tabId === "string" ? tabId : undefined)
+    );
+  }
+  return () => {};
+}
+
 export function onReady(cb: (tabId?: string) => void): () => void {
   if (realApp() && typeof window !== "undefined" && window.runtime) {
     return window.runtime.EventsOn("agent:ready", (tabId?: unknown) => cb(typeof tabId === "string" ? tabId : undefined));

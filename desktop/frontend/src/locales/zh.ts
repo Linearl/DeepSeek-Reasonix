@@ -88,6 +88,8 @@ export const zh: Record<DictKey, string> = {
   "common.loading": "加载中…",
   "composer.readOnlyChannel": "渠道会话只读",
 "composer.blockedDisabled": "当前状态下无法发送",
+  // tl1301：effort 走 fallback 重建在飞（显示在力度控件旁；快速通道不出现）。
+  "composer.effortApplying": "正在应用推理力度…",
   "composer.submitInFlight": "上一条消息仍在受理，请稍候；受理完成后会自动清空输入框",
   "composer.workspaceStarting": "工作区还在启动",
   "app.splashSubtitle": "Agent 工作区",

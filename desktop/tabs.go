@@ -1965,6 +1965,28 @@ func (a *App) notifyTabRuntimeRebuilt(tab *WorkspaceTab) {
 	a.notifyTabRuntimeRebuiltAtEpoch(tab, epoch)
 }
 
+// notifyTabEffortApplying tells the frontend a tab's effort switch took the
+// fallback rebuild path (task 1301): both fast paths declined, so the
+// SetEffortForTab call stays in flight for the whole runtime build. The
+// composer shows the "applying reasoning effort" transition beside the effort
+// control on this event and clears it when the call settles (runtime:rebuilt
+// is the backstop). Same delivery ladder as notifyTabRuntimeRebuilt — tab
+// sink first, App-level emit only when the sink cannot deliver.
+func (a *App) notifyTabEffortApplying(tab *WorkspaceTab) {
+	if tab == nil {
+		return
+	}
+	a.mu.RLock()
+	sink := tab.sink
+	tabID := tab.ID
+	a.mu.RUnlock()
+	if sink != nil && sink.context() != nil {
+		sink.emitRuntimeEvent("effort:applying", tabID)
+		return
+	}
+	a.emitRuntimeEvent("effort:applying", tabID)
+}
+
 // notifyTabRuntimeRebuiltAtEpoch emits the rebuild fence for a transaction
 // that advanced its epoch inside the controller/path/lease commit. Keeping the
 // chosen epoch avoids a second generation bump after publication.

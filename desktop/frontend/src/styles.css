@@ -38779,6 +38779,28 @@ button.statusbar__mcp:focus-visible {
 .composer-choice:focus-visible, .context-ring:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .composer-meta--unified .modelsw { min-width: 0; }
 .composer-meta--unified .composer-effort-control { flex: 0 0 auto; }
+/* tl1301: fallback effort rebuild in flight — inline hint beside the effort
+   control; fast paths never render it. Reuses the global spin keyframes. */
+.composer-effort-applying {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-dim);
+  font-size: calc(12px * var(--font-scale));
+  white-space: nowrap;
+}
+.composer-effort-applying::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-effort-applying::before { animation: none; }
+}
 .composer-meta--unified .composer-meta__control--model { gap: 4px; }
 .composer-meta--unified .context-ring__svg { transform: translateY(1px); }
 :root[data-theme-style] .composer-meta--unified .context-ring,

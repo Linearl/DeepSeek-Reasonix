@@ -9,7 +9,8 @@ import { asArray } from "./array";
 import { createControllerModelCommands } from "./controllerModelCommands";
 import { compactArchivedToolItems } from "./archivedToolItems";
 import { addBreadcrumb } from "./breadcrumbs";
-import { app, onEvent, onReady, onRuntimeRebuilt, onTabMeta, onTabsRestored, onTopicActivation } from "./bridge";
+import { app, onEffortApplying, onEvent, onReady, onRuntimeRebuilt, onTabMeta, onTabsRestored, onTopicActivation } from "./bridge";
+import { clearEffortApplying, handleEffortApplyingEvent } from "../store/effortApplying";
 import { invalidateCache } from "./composerHistory";
 import { formatInboxCancelError } from "./inboxError";
 import { hydrateQueuedGuidanceBubbles, missingQueuedGuidanceBubbles } from "./inboxSurfaceReconcile";
@@ -4826,6 +4827,10 @@ export function useController() {
         invalidateSharedQuery("MetaForTab", [rebuiltTabId]);
         if (runtimeEpoch) runtimeEpochByTabRef.current.set(rebuiltTabId, runtimeEpoch);
         dispatchTo(rebuiltTabId, { type: "controller_rebuilt" });
+        // Task 1301 backstop: the settle clear in setEffortForTab is the
+        // primary off-switch for the applying transition; the rebuild fence
+        // clears again in case that settle was missed.
+        clearEffortApplying(rebuiltTabId);
       } else {
         if (runtimeEpoch) {
           for (const id of Array.from(statesRef.current.keys())) runtimeEpochByTabRef.current.set(id, runtimeEpoch);
@@ -4833,9 +4838,15 @@ export function useController() {
         for (const id of Array.from(statesRef.current.keys())) {
           invalidateSharedQuery("MetaForTab", [id]);
           dispatchTo(id, { type: "controller_rebuilt" });
+          clearEffortApplying(id);
         }
       }
     });
+    // Task 1301: the backend emits effort:applying when an effort switch took
+    // the fallback rebuild path; the composer shows the applying transition
+    // until the SetEffortForTab call settles. Guarded by the in-flight
+    // registry (store), so a late event for a settled switch cannot stick it.
+    const offEffortApplying = onEffortApplying(handleEffortApplyingEvent);
     const offTopicActivation = onTopicActivation(handleTopicActivationEvent);
     // tab:meta carries a full refreshed Meta after the backend's background
     // refresh of the expensive fields (git branch, image-input capability) —
@@ -4899,6 +4910,7 @@ export function useController() {
       off();
       offReady();
       offRebuilt();
+      offEffortApplying();
       offTopicActivation();
       offTabMeta();
       offTabsRestored();
