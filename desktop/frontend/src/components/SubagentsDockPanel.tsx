@@ -13,6 +13,7 @@ import {
   UnfoldHorizontal,
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
+import { formatDurationLabel } from "../lib/durationFormat";
 import { useLayoutStore } from "../store/layout";
 import { Tooltip } from "./Tooltip";
 import { historyMessagesToItems } from "../lib/useController";
@@ -178,7 +179,7 @@ const DirectoryRow = memo(function DirectoryRow({
           {summary ? <p className="subagents-panel__detail-summary">{summary}</p> : null}
           <p className="subagents-panel__detail-meta">
             {startedClock ? <span>{t("subagentPanel.startedAt", { time: startedClock })}</span> : null}
-            {durationSeconds > 0 ? <span>{t("subagent.phase.elapsed", { n: durationSeconds })}</span> : null}
+            {durationSeconds > 0 ? <span>{t("subagent.phase.elapsed", { n: formatDurationLabel(durationSeconds, t) })}</span> : null}
           </p>
         </div>
       )}
@@ -298,7 +299,7 @@ function SubagentDetailView({
       <p className="subagents-panel__detailview-meta">
         <span>{t(statusLabelKey(entry))}</span>
         {startedClock ? <span>{t("subagentPanel.startedAt", { time: startedClock })}</span> : null}
-        {durationSeconds > 0 ? <span>{t("subagent.phase.elapsed", { n: durationSeconds })}</span> : null}
+        {durationSeconds > 0 ? <span>{t("subagent.phase.elapsed", { n: formatDurationLabel(durationSeconds, t) })}</span> : null}
       </p>
       {liveEnabled ? (
         <div

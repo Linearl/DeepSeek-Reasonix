@@ -2,6 +2,7 @@
 // live turn region's status row.
 
 import { useEffect, useState } from "react";
+import { formatDurationLabel } from "./durationFormat";
 import type { useT } from "./i18n";
 
 export function useTick(on: boolean): number {
@@ -91,14 +92,13 @@ export function resolveRunningDurationMs({
   return staticDurationMs + Math.max(0, now - anchoredAt);
 }
 
+// tl1299：折叠头「工作中/工作了」时长改走统一格式化（<1h → "M分S秒"；
+// ≥1h → "H小时M分S秒"；≥1d → "D天H小时"），替代旧的无小时分钟形态
+// （长任务曾显示 "4507分46秒"）。空值/非有限值的 "" 兜底保持在此处。
 export function formatWorkDuration(durationMs: number, t: ReturnType<typeof useT>): string {
   if (!Number.isFinite(durationMs) || durationMs <= 0) return "";
   const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes <= 0) return t("transcript.durationSeconds", { s: totalSeconds });
-  if (seconds <= 0) return t("transcript.durationMinutes", { m: minutes });
-  return t("transcript.durationMinutesSeconds", { m: minutes, s: seconds });
+  return formatDurationLabel(totalSeconds, t);
 }
 
 export function workStatusLabel(durationMs: number, running: boolean, t: ReturnType<typeof useT>): string {

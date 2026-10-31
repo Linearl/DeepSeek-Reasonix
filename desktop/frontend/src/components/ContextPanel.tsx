@@ -7,6 +7,7 @@ import { contextWindowPercentages, capacityPinLayout } from "../lib/contextWindo
 import { useI18n, type Locale, type Translator } from "../lib/i18n";
 import { formatMoneyLocalized } from "../lib/money";
 import { formatTokens, formatOptionalTokens } from "../lib/format";
+import { formatDurationLabel } from "../lib/durationFormat";
 import { appendRateBand, normalizeRateBand, rateBandLabel, type DisplayRateBand } from "../lib/costRateBand";
 import type { BalanceInfo, ContextInfo, ContextPanelInfo, UsageSourceStats, WireUsage } from "../lib/types";
 import { contextSessionCache } from "../lib/contextSessionCache";
@@ -43,13 +44,12 @@ interface ContextPanelProps {
   sessionInfo?: SessionPanelIdentity;
 }
 
+// tl1299：运行时长改走统一格式化（≥1h → "H小时M分S秒"，≥1d → "D天H小时"），
+// 替代旧的无小时形态（长回合曾显示 "4507分46秒"）。ms<=0 的 "-" 兜底保持。
 function fmtDuration(ms: number, t: Translator): string {
   if (ms <= 0) return "-";
   const totalSeconds = Math.max(1, Math.round(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes <= 0) return t("context.durationSeconds", { seconds });
-  return t("context.durationMinutesSeconds", { minutes, seconds });
+  return formatDurationLabel(totalSeconds, t);
 }
 
 interface MetricTokenDisplay {

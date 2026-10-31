@@ -6,6 +6,7 @@ import { ChevronRight, Compass } from "lucide-react";
 import { CodeViewer } from "./CodeViewer";
 import { DiffView } from "./DiffView";
 import { useT } from "../lib/i18n";
+import { formatDurationLabel, formatRelativeAgeLabel } from "../lib/durationFormat";
 import { diffsFor, languageForToolArgs, subjectOf, summarize, summarizeFileDiff } from "../lib/tools";
 import { useShellExpand } from "../lib/shellExpand";
 import { app } from "../lib/bridge";
@@ -76,13 +77,10 @@ function subagentPhaseLabel(t: Translator, phase: SubagentPhase): string {
   }
 }
 
-function formatElapsedSeconds(ms: number): string {
-  return String(Math.max(0, Math.round(ms / 1000)));
-}
-
-function formatRunningElapsed(ms: number): string {
-  const seconds = Number(formatElapsedSeconds(ms));
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+// tl1299：运行中工具卡的裸秒读数改走统一格式化。<60s → "40s"；≥1h →
+// "1h 2m 3s"（旧形态无小时，长任务曾显示 "4507m46s"）。
+function formatRunningElapsed(ms: number, t: Translator): string {
+  return formatDurationLabel(Math.max(0, Math.round(ms / 1000)), t);
 }
 
 /** Lines shown by default in a shell output block before the "show all" button. */
@@ -251,15 +249,15 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
     const id = window.setInterval(() => setNowTick(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [ticking]);
-  const liveElapsed = ticking && !sp && item.startedAt !== undefined ? formatRunningElapsed(nowTick - item.startedAt) : "";
+  const liveElapsed = ticking && !sp && item.startedAt !== undefined ? formatRunningElapsed(nowTick - item.startedAt, t) : "";
   const subagentChip = sp
     ? (() => {
         const label = subagentPhaseLabel(t, sp.phase);
         if (isTerminalSubagentPhase(sp.phase)) {
           const ms = sp.durationMs ?? item.durationMs ?? 0;
-          return `${label} · ${t("subagent.phase.elapsed", { n: formatElapsedSeconds(ms) })}`;
+          return `${label} · ${t("subagent.phase.elapsed", { n: formatDurationLabel(Math.max(0, Math.round(ms / 1000)), t) })}`;
         }
-        return `${label} · ${t("subagent.phase.elapsed", { n: formatElapsedSeconds(nowTick - sp.startedAt) })} · ${t("subagent.activity.ago", { n: formatElapsedSeconds(nowTick - sp.lastActivityAt) })}` +
+        return `${label} · ${t("subagent.phase.elapsed", { n: formatDurationLabel(Math.max(0, Math.round((nowTick - sp.startedAt) / 1000)), t) })} · ${t("subagent.activity.ago", { n: formatRelativeAgeLabel(Math.max(0, Math.round((nowTick - sp.lastActivityAt) / 1000)), t) })}` +
           // TPS heartbeat (#9521): shown only while output is flowing; a zero
           // rate during tool phases is normal and must not read as "stalled".
           // Task 265: the readout itself is behind the lab flag.

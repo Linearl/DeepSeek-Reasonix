@@ -4938,9 +4938,6 @@ export const en = {
   "transcript.workingDuration": "Working {duration}",
   "transcript.worked": "Worked",
   "transcript.workedDuration": "Worked {duration}",
-  "transcript.durationSeconds": "{s}s",
-  "transcript.durationMinutes": "{m}m",
-  "transcript.durationMinutesSeconds": "{m}m {s}s",
   "transcript.processed": "Processed",
   "transcript.processedDuration": "Processed {s}s",
   "notice.info": "Notice",
@@ -5445,8 +5442,6 @@ export const en = {
   "context.time": "Runtime",
   "context.sessionTime": "Session time",
   "context.turnTime": "Turn time",
-  "context.durationSeconds": "{seconds}s",
-  "context.durationMinutesSeconds": "{minutes}m {seconds}s",
 
   // crash page (task 674: unusable "Send report" removed; collapse + issue-tracker deep link added)
   "crash.title": "Reasonix hit an error — analyze the root cause, or copy it",

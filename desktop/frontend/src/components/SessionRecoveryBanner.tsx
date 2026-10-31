@@ -1,6 +1,7 @@
 import { CloudOff, Loader2, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "../lib/i18n";
+import { formatDurationLabel } from "../lib/durationFormat";
 import { historyLoadPhase, historyLoadPhaseKey, sessionLoadNow } from "../lib/sessionLoadPhase";
 import type { SessionAvailability } from "../lib/sessionAvailability";
 
@@ -85,7 +86,7 @@ export function SessionRecoveryBanner({ availability, onRetry, tabId }: {
           : loading ? "sessionRecovery.loadingHint"
           : "sessionRecovery.historyHint")}</span>
         {historyLoading && waitedSeconds >= 10
-          && <span className="session-recovery__wait">{t("sessionRecovery.waitedSeconds", { n: waitedSeconds })}</span>}
+          && <span className="session-recovery__wait">{t("sessionRecovery.waitedSeconds", { n: formatDurationLabel(waitedSeconds, t) })}</span>}
       </div>
       {onRetry && <button type="button" className="btn btn--primary btn--small" disabled={loading} onClick={() => void retry()}>
         {t(loading ? "common.loading" : connection ? "remoteSurface.reconnect" : "sessionRecovery.retryHistory")}

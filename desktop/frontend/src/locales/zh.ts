@@ -4926,9 +4926,6 @@ export const zh: Record<DictKey, string> = {
   "transcript.workingDuration": "工作中 {duration}",
   "transcript.worked": "已工作",
   "transcript.workedDuration": "已工作 {duration}",
-  "transcript.durationSeconds": "{s} 秒",
-  "transcript.durationMinutes": "{m} 分",
-  "transcript.durationMinutesSeconds": "{m} 分 {s} 秒",
   "transcript.processed": "已处理",
   "transcript.processedDuration": "已处理 {s}s",
   "notice.info": "提示",
@@ -5433,8 +5430,6 @@ export const zh: Record<DictKey, string> = {
   "context.time": "运行时间",
   "context.sessionTime": "会话耗时",
   "context.turnTime": "本轮耗时",
-  "context.durationSeconds": "{seconds}秒",
-  "context.durationMinutesSeconds": "{minutes}分{seconds}秒",
 
   // 崩溃兜底页（任务 674：移除不可用的「发送报告」；新增折叠与 issue 区直达）
   "crash.title": "Reasonix 遇到错误 —— 可一键分析根因，或复制后反馈",

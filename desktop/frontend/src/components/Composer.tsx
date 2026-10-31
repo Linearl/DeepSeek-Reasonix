@@ -37,6 +37,7 @@ import { PromptHistoryPicker } from "./PromptHistoryPicker";
 import { SettingsSelect } from "./SettingsSelect";
 import { sessionTurnsLabel } from "../lib/sessionTurnsPresentation";
 import { useI18n, type Translator } from "../lib/i18n";
+import { formatDurationLabel, formatRelativeAgeLabel } from "../lib/durationFormat";
 import { detectShortcutPlatform, formatShortcutCombo, isReservedComposerHistoryShortcut, matchesShortcut, useShortcutComboLabel } from "../lib/keyboardShortcuts";
 import { fallbackCopyText } from "../lib/clipboard";
 import {
@@ -468,10 +469,11 @@ function loadComposerHeight(): number | null {
   return loadOptionalLayoutSize("composerHeight", clampComposerHeight) ?? clampComposerHeight(COMPOSER_DEFAULT_HEIGHT);
 }
 
-function fmtElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
+// tl1299：run-strip 运行时长改走统一格式化（<1h → "Nm SSs"；≥1h → "Hh Mm SSs"；
+// ≥1d → "Dd Hh"），替代旧的无小时 "4507m 46s" 形态。en 风格契约见
+// lib/durationFormat.ts 模块头。
+function fmtElapsed(ms: number, t: Translator): string {
+  return formatDurationLabel(Math.floor(ms / 1000), t);
 }
 
 // --- past:chats hover preview helpers (PR-C2) ---
@@ -5137,7 +5139,7 @@ export function Composer({
           : queuedFollowup
             ? t("composer.queuedStrip")
             : running && !suspendedByDecision
-              ? [currentToolLabel ? t("composer.executingTool", { tool: currentToolLabel }) : turnPhaseLabel, lastTurnEventAt ? (heartbeatSeconds != null ? t("composer.lastEventAgo", { n: heartbeatSeconds }) : "—") : ""].filter(Boolean).join(" · ")
+              ? [currentToolLabel ? t("composer.executingTool", { tool: currentToolLabel }) : turnPhaseLabel, lastTurnEventAt ? (heartbeatSeconds != null ? t("composer.lastEventAgo", { n: formatRelativeAgeLabel(heartbeatSeconds, t) }) : "—") : ""].filter(Boolean).join(" · ")
               : null;
   const runMetrics = turnStartAt && (running || turnDoneAt)
     ? (() => {
@@ -5154,7 +5156,7 @@ export function Composer({
         const modelActiveAt = liveModelActiveAt ?? turnModelActiveAt;
         const modelElapsedMs = Math.max(0, turnModelActiveMs + (modelActiveAt && modelActiveAt > 0 ? Math.max(0, metricsNow - modelActiveAt) : 0));
         const tps = outTok > 0 && modelElapsedMs >= 500 ? Math.round(outTok / (modelElapsedMs / 1000)) : null;
-        return { elapsed: fmtElapsed(elapsedMs), tokens: liveTokens > 0 ? `${formatTokens(liveTokens)} ${t("status.tokens")}` : null, tps: tps !== null ? `${tps} tokens/s` : null };
+        return { elapsed: fmtElapsed(elapsedMs, t), tokens: liveTokens > 0 ? `${formatTokens(liveTokens)} ${t("status.tokens")}` : null, tps: tps !== null ? `${tps} tokens/s` : null };
       })()
     : null;
   const submitEmpty = !text.trim() && attachments.length === 0 && workspaceRefs.length === 0 &&

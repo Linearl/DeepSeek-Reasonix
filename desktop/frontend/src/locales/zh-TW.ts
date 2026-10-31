@@ -3470,9 +3470,6 @@ export const zhTW: Record<DictKey, string> = {
   "transcript.workingDuration": "工作中 {duration}",
   "transcript.worked": "已工作",
   "transcript.workedDuration": "已工作 {duration}",
-  "transcript.durationSeconds": "{s} 秒",
-  "transcript.durationMinutes": "{m} 分",
-  "transcript.durationMinutesSeconds": "{m} 分 {s} 秒",
   "transcript.processed": "已處理",
   "transcript.processedDuration": "已處理 {s}s",
   "notice.info": "提示",
@@ -3899,8 +3896,6 @@ export const zhTW: Record<DictKey, string> = {
   "context.time": "執行時間",
   "context.sessionTime": "會話耗時",
   "context.turnTime": "本輪耗時",
-  "context.durationSeconds": "{seconds}秒",
-  "context.durationMinutesSeconds": "{minutes}分{seconds}秒",
 
   // 崩潰兜底頁
   "crash.title": "Reasonix 遇到錯誤 —— 可一鍵分析根因，或複製後回饋",
