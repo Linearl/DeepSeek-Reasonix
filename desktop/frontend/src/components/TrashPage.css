@@ -1,3 +1,12 @@
+/* tl1306：批量清空/恢复的进度条（x/N 已删）。批次结束随 busy 一起隐藏。 */
+.trash-batch-progress { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+.trash-batch-progress__label { flex: 0 0 auto; font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.trash-batch-progress__track { flex: 1; height: 6px; border-radius: 999px; background: var(--border-soft); overflow: hidden; }
+.trash-batch-progress__fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width 120ms linear; }
+/* tl1306：结果摘要的失败原因明细（会话名: 原因，逐条一行）。 */
+.trash-failure-detail ul { margin: 4px 0 0; padding-left: 18px; }
+.trash-failure-detail li { font-size: 12px; }
+
 .history-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .history-page .history-modal__head { flex: 0 0 auto; }
 .history-page .history-modal__title { display: none; }
