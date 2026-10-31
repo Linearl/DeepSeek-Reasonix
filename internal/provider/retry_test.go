@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -76,6 +78,118 @@ func TestTransientErr(t *testing.T) {
 	}
 	if !transientErr(errors.New("connection reset")) {
 		t.Error("network-ish error should be transient")
+	}
+}
+
+// TestDeterministicConnErr pins the tl1321① classification: certificate
+// verification, NXDOMAIN and proxy-407 failures are deterministic (no retry
+// can fix them) while transient lookalikes (DNS timeout, refused connection,
+// handshake timeout) stay retryable.
+func TestDeterministicConnErr(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"plain error", errors.New("connection reset"), false},
+		{"ctx cancel", context.Canceled, false},
+		// Certificate verification: the tls wrapper since Go 1.20 and the raw
+		// x509 faces, both as they surface through *url.Error from Client.Do.
+		{"tls verify wrapper", &url.Error{Op: "Post", URL: "https://x", Err: &tls.CertificateVerificationError{Err: x509.CertificateInvalidError{Reason: x509.Expired}}}, true},
+		{"unknown authority", &url.Error{Op: "Post", URL: "https://x", Err: x509.UnknownAuthorityError{}}, true},
+		{"hostname mismatch", &url.Error{Op: "Get", URL: "https://x", Err: x509.HostnameError{Host: "x"}}, true},
+		{"system roots", &url.Error{Op: "Get", URL: "https://x", Err: x509.SystemRootsError{Err: errors.New("no roots")}}, true},
+		// DNS: only the definitive "does not exist" verdict is deterministic.
+		{"dns nxdomain", &url.Error{Op: "Post", URL: "https://x", Err: &net.DNSError{Err: "no such host", Name: "x.invalid", IsNotFound: true}}, true},
+		{"dns timeout", &net.DNSError{Err: "i/o timeout", Name: "x", IsTimeout: true, IsTemporary: true}, false},
+		{"conn refused", &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}, false},
+		// Proxy CONNECT rejected: the bare reason phrase net/http returns.
+		{"proxy 407", &url.Error{Op: "Post", URL: "https://x", Err: errors.New("Proxy Authentication Required")}, true},
+		{"proxy 407 lowercase phrase", &url.Error{Op: "Post", URL: "https://x", Err: errors.New("proxy authentication required")}, true},
+	}
+	for _, tc := range cases {
+		if got := deterministicConnErr(tc.err); got != tc.want {
+			t.Errorf("%s: deterministicConnErr = %v, want %v (err=%v)", tc.name, got, tc.want, tc.err)
+		}
+	}
+}
+
+// TestSendWithRetryFailsFastOnDeterministicConnErr (tl1321①): a cert-
+// verification failure must stop after exactly one HTTP request — the old
+// behaviour retried the identical doomed request MaxRetries+1 times and
+// inflated the request-attempt counter to match.
+func TestSendWithRetryFailsFastOnDeterministicConnErr(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+	// A client WITHOUT the server's cert in its trust pool: every attempt
+	// fails the handshake with x509.UnknownAuthorityError.
+	cl := &http.Client{Timeout: 10 * time.Second}
+
+	ctx := WithRequestAttemptCounter(context.Background())
+	retried := false
+	ctx = WithRetryNotify(ctx, func(RetryInfo) { retried = true })
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = SendWithRetry(ctx, cl, SendOptions{Provider: "p"}, func(ctx context.Context) (*http.Request, error) { return req, nil })
+	if err == nil {
+		t.Fatal("expected the untrusted-cert request to fail")
+	}
+	if n := RequestAttemptCount(ctx); n != 1 {
+		t.Errorf("request attempts = %d, want 1 (deterministic error must not retry)", n)
+	}
+	if retried {
+		t.Error("RetryNotify fired for a deterministic error")
+	}
+	var rf *RequestFailure
+	if !errors.As(err, &rf) {
+		t.Fatalf("want *RequestFailure, got %T: %v", err, err)
+	}
+	if !deterministicConnErr(err) {
+		t.Errorf("chain should classify as deterministic: %v", err)
+	}
+}
+
+// TestSendWithRetryTransientStillRetries is the control arm for the tl1321①
+// fix: transient transport errors keep entering the retry loop.
+func TestSendWithRetryTransientStillRetries(t *testing.T) {
+	calls := 0
+	cl := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return nil, &url.Error{Op: "Post", URL: "https://x", Err: errors.New("connection reset by peer")}
+	})}
+	ctx := WithRequestAttemptCounter(WithRetryBudget(context.Background(), RetryBudget{MaxRetries: 2}))
+	_, err := SendWithRetry(ctx, cl, SendOptions{Provider: "p"}, newDummyReq)
+	if err == nil {
+		t.Fatal("expected the transient error to surface after retries")
+	}
+	if calls != 3 {
+		t.Errorf("transient error made %d calls, want 3 (initial + 2 retries)", calls)
+	}
+	if n := RequestAttemptCount(ctx); n != 3 {
+		t.Errorf("request attempts = %d, want 3", n)
+	}
+}
+
+// TestSendWithRetryFailsFastOnProxy407 pins the proxy-CONNECT 407 shape:
+// net/http surfaces the reason phrase as a bare untyped error, and the loop
+// must not retry it.
+func TestSendWithRetryFailsFastOnProxy407(t *testing.T) {
+	calls := 0
+	cl := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return nil, &url.Error{Op: "Post", URL: "https://x", Err: errors.New("Proxy Authentication Required")}
+	})}
+	_, err := SendWithRetry(context.Background(), cl, SendOptions{Provider: "p"}, newDummyReq)
+	if calls != 1 {
+		t.Errorf("proxy 407 retried (%d calls), should fail fast", calls)
+	}
+	var rf *RequestFailure
+	if !errors.As(err, &rf) {
+		t.Fatalf("want *RequestFailure, got %T: %v", err, err)
 	}
 }
 

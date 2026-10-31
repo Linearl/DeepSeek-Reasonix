@@ -390,6 +390,104 @@ func TestReadStream(t *testing.T) {
 	}
 }
 
+// sseFixtureMissingBlockStop is sseFixture minus the tool block's
+// content_block_stop: a compatible-gateway stream that jumps straight from
+// input_json_delta to message_delta/message_stop (审计 tl1321③).
+const sseFixtureMissingBlockStop = `event: message_start
+data: {"type":"message_start","message":{"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":50,"output_tokens":1}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_weather"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"city\":"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"Paris\"}"}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":25}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+// TestReadStreamFlushesToolBlockMissingContentBlockStop (tl1321③): a gateway
+// that omits content_block_stop must not lose the tool call — the finalize
+// path flushes the accumulated block.
+func TestReadStreamFlushesToolBlockMissingContentBlockStop(t *testing.T) {
+	c := &client{name: "anthropic"}
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(sseFixtureMissingBlockStop))}
+	ch := make(chan provider.Chunk)
+	go c.readStream(context.Background(), resp, ch)
+
+	var started, full *provider.ToolCall
+	done := false
+	for ck := range ch {
+		switch ck.Type {
+		case provider.ChunkToolCallStart:
+			started = ck.ToolCall
+		case provider.ChunkToolCall:
+			full = ck.ToolCall
+		case provider.ChunkDone:
+			done = true
+		case provider.ChunkError:
+			t.Fatalf("unexpected error chunk: %v", ck.Err)
+		}
+	}
+	if started == nil || started.ID != "toolu_1" || started.Name != "get_weather" {
+		t.Fatalf("tool start = %+v", started)
+	}
+	if full == nil || full.Arguments != `{"city":"Paris"}` {
+		t.Fatalf("accumulated tool call was not flushed at terminal: %+v", full)
+	}
+	if !done {
+		t.Fatal("expected a done chunk")
+	}
+}
+
+// TestReadStreamFlushesToolBlockOnCleanEOFBetweenDeltas (tl1321③ same
+// mechanism): a stream carrying stop_reason that ends without message_stop and
+// without content_block_stop is a clean terminal for streamScanEndError — the
+// accumulated tool block must be flushed there too, not dropped.
+func TestReadStreamFlushesToolBlockOnCleanEOFBetweenDeltas(t *testing.T) {
+	body := `event: message_start
+data: {"type":"message_start","message":{"usage":{"input_tokens":10}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_2","name":"lookup"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"q\":\"x\"}"}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}
+`
+	c := &client{name: "anthropic"}
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(body))}
+	ch := make(chan provider.Chunk)
+	go c.readStream(context.Background(), resp, ch)
+
+	var full *provider.ToolCall
+	done := false
+	for ck := range ch {
+		switch ck.Type {
+		case provider.ChunkToolCall:
+			full = ck.ToolCall
+		case provider.ChunkDone:
+			done = true
+		case provider.ChunkError:
+			t.Fatalf("clean EOF with stop_reason must not error: %v", ck.Err)
+		}
+	}
+	if full == nil || full.ID != "toolu_2" || full.Arguments != `{"q":"x"}` {
+		t.Fatalf("tool call lost on clean EOF without block stop: %+v", full)
+	}
+	if !done {
+		t.Fatal("expected a done chunk")
+	}
+}
+
 // TestReadStreamIgnoresTransportErrorAfterMessageStop: a complete stream that
 // already received message_stop must finalize successfully even if the
 // connection resets while draining the rest of the body.

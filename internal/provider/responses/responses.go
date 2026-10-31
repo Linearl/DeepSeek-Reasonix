@@ -531,6 +531,11 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 	terminal := false
 	failed := false
 	completedResponseID := ""
+	// 审计 tl1321②: data 帧解码失败不再无痕丢弃——留最后一条坏帧的证据，
+	// 流未达终态就断掉时，报错携带网关真实发来的 payload 而非裸 EOF。
+	undecodableData := ""
+	undecodableErr := error(nil)
+	decodeFailures := 0
 
 	for scanner.Scan() {
 		select {
@@ -542,6 +547,10 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			continue
 		}
 		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" {
+			// A lone empty data field is a legal SSE no-op, not a decode failure.
+			continue
+		}
 		if data == "[DONE]" {
 			if !checkTerminalCalls(ctx, out, nil, calls) {
 				return
@@ -550,7 +559,14 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			break
 		}
 		var event sseEvent
-		if json.Unmarshal([]byte(data), &event) != nil {
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			// 审计 tl1321②: keep the failure — a 200-OK gateway error page
+			// arriving as undecodable frames used to vanish here and the stream
+			// died as a bare "clean EOF". The trace is only reported if the
+			// stream really ends without a terminal event; a stream that
+			// recovers keeps today's behaviour.
+			decodeFailures++
+			undecodableData, undecodableErr = data, err
 			continue
 		}
 		key := fmt.Sprintf("%s:%d", event.ItemID, event.ContentIndex)
@@ -685,7 +701,17 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 	// before a terminal event leaves the attempt uncommitted — including any
 	// complete tool calls already forwarded as speculative output.
 	if !terminal {
-		_ = sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkError, Err: provider.StreamInterrupt(io.ErrUnexpectedEOF, provider.StreamInterruptPrematureEOF)})
+		// 审计 tl1321②: when undecodable frames were seen, the real gateway
+		// payload rides the error instead of being swallowed as a clean EOF.
+		// The premature-EOF reason is unchanged so sampling-recovery semantics
+		// stay exactly as they were.
+		cause := error(io.ErrUnexpectedEOF)
+		if decodeFailures > 0 {
+			cause = fmt.Errorf("%w (%d undecodable data frame(s); last: %v)",
+				io.ErrUnexpectedEOF, decodeFailures,
+				provider.StreamDecodeError(c.name, undecodableData, undecodableErr))
+		}
+		_ = sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkError, Err: provider.StreamInterrupt(cause, provider.StreamInterruptPrematureEOF)})
 		return
 	}
 	if !reasoningSnapshots.emit(ctx, out) {
