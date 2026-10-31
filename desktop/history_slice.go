@@ -906,6 +906,32 @@ func (a *App) coldHistorySliceRead(sessionDir, sessionPath string, req HistorySl
 	// is newer than the compatibility .jsonl anchor, so scanning the anchor
 	// would silently omit the tail even when a display index covers it.
 	if eventInfo, statErr := os.Stat(store.SessionEventLog(sessionPath)); statErr == nil && !eventInfo.IsDir() && eventInfo.Size() > 0 {
+		// tl1281 cold decode gate: an oversize transcript is not full-decoded
+		// on the cold path. The page serves from the anchor scan instead
+		// (constant memory; content may lag the last save cycle until the tab
+		// builds and the live path corrects it) — the 836 trade (bounded fast
+		// first paint over full-replay stall) extended to sealed schema-2. The
+		// scan result from the cold-scan phase above is REUSED (a second full
+		// pass over a 100MB-class transcript is exactly the waste this gate
+		// exists to prevent). When the scan already failed, the read defers
+		// with an error: the click build owns the real read, and no background
+		// job may pay the full decode.
+		if historyColdDecodeOversize(sessionPath) {
+			if scanErr == nil && scanned != nil {
+				src := coldHistorySliceSource(sessionPath, scanned)
+				src.trace = tr
+				var plannerTurns []plannerDisplayTurn
+				tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
+				slice, pageErr := a.pageHistorySliceSource(src, req, resolver, plannerTurns, nil, sessionPath)
+				if pageErr != nil {
+					return emptyHistorySlice(), pageErr
+				}
+				slice.Source = "scan-anchor"
+				tr.markSource(slice.Source)
+				return slice, nil
+			}
+			return emptyHistorySlice(), fmt.Errorf("history cold read deferred: oversize transcript (%d bytes) is not decoded while inactive", historyColdArtifactBytes(sessionPath))
+		}
 		var messages []provider.Message
 		var state agent.PersistedState
 		var repairable bool
@@ -935,6 +961,13 @@ func (a *App) coldHistorySliceRead(sessionDir, sessionPath string, req HistorySl
 	// bytes to obtain the digest before trusting (or republishing) offsets; this
 	// detects same-size external rewrites that a size-only comparison misses.
 	if scanErr != nil {
+		// tl1281 cold decode gate: the scanner already refused this transcript,
+		// so the ordinary fallback (full authoritative decode) is exactly the
+		// decode an oversize session must not pay while inactive. Defer; the
+		// click build owns the read.
+		if historyColdDecodeOversize(sessionPath) {
+			return emptyHistorySlice(), errors.Join(scanErr, fmt.Errorf("history cold read deferred: oversize transcript (%d bytes) is not decoded while inactive", historyColdArtifactBytes(sessionPath)))
+		}
 		// The bounded scanner rejects malformed or exceptionally large single
 		// records before allocating without limit. A legacy transcript still
 		// remains readable through the ordinary authoritative loader, then gets
@@ -1780,6 +1813,11 @@ func (a *App) coldHistoryFieldValue(sessionDir, sessionPath string, msgIndex, su
 	var src *historySliceSource
 	if valid {
 		src = coldHistorySliceSource(absPath, idx)
+	} else if historyColdDecodeOversize(absPath) {
+		// tl1281 cold decode gate: a single field lookup never justifies a
+		// full decode of an oversize transcript. A miss keeps every caller's
+		// fallback semantics (they all degrade gracefully on miss).
+		return "", false, true
 	} else if scanned, scanErr := agent.ScanSessionDisplayIndex(absPath); scanErr == nil && (!identityKnown || scanned.ContentDigest == identity.DigestHex) {
 		if identityKnown {
 			scanned.Revision = identity.Revision

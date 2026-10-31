@@ -58,6 +58,19 @@ func (a *App) kickHistoryReadModelRepair(sessionPath string) {
 	done := make(chan struct{})
 	a.historyIndexRebuilds[key] = done
 	a.historySliceMu.Unlock()
+	// tl1281 cold decode gate: the repair's load is a FULL transcript decode
+	// (plus a full anchor rewrite). An oversize session is never full-decoded
+	// for background self-heal — the tail-window/anchor-scan cold paths stay
+	// bounded, and the repair debt is re-evaluated when the session actually
+	// opens.
+	if historyColdDecodeOversize(sessionPath) {
+		a.historySliceMu.Lock()
+		close(done)
+		delete(a.historyIndexRebuilds, key)
+		a.historySliceMu.Unlock()
+		slog.Debug("desktop: history read-model repair skipped (oversize transcript)", "path", sessionPath)
+		return
+	}
 	a.goSafe("historyReadModelRepair", func() {
 		defer func() {
 			a.historySliceMu.Lock()
@@ -114,6 +127,13 @@ func (a *App) kickColdHistorySelfHeal(sessionPath string, identity agent.Persist
 		if scanErr != nil {
 			slog.Debug("desktop: cold history index scan failed, falling back to read-model repair", "path", sessionPath, "err", scanErr)
 		}
+		// tl1281 cold decode gate: the repair fallback is the second full
+		// decode+rewrite self-heal moves. Oversize transcripts keep the scan
+		// branch (constant memory) and skip the repair.
+		if historyColdDecodeOversize(sessionPath) {
+			slog.Debug("desktop: cold history self-heal repair skipped (oversize transcript)", "path", sessionPath)
+			return
+		}
 		if err := agent.RepairSessionDisplayReadModel(sessionPath); err != nil {
 			slog.Debug("desktop: cold history self-heal repair failed", "path", sessionPath, "err", err)
 		}
@@ -147,6 +167,15 @@ func (a *App) rebuildHistoryIndexForLiveSession(sessionPath string) {
 	}
 	ps, ok := wc.SessionPersistedState()
 	if !ok || !ps.UnchangedSincePersisted {
+		return
+	}
+	// tl1281 cold decode gate: the rebuild replays the authoritative log from
+	// disk even though the live controller already holds the transcript in
+	// memory. For an oversize session that replay is a second full decode
+	// riding a background goroutine — skip it; the live fallback source keeps
+	// serving windows from the in-memory log.
+	if historyColdDecodeOversize(sessionPath) {
+		slog.Debug("desktop: live history read-model rebuild skipped (oversize transcript)", "path", sessionPath)
 		return
 	}
 	if err := agent.RepairSessionDisplayReadModel(sessionPath); err != nil {

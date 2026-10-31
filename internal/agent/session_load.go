@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -46,6 +47,13 @@ type sessionLoadResult struct {
 // nil_cache+oversize replays.
 const sessionTranscriptTailThresholdBytes = int64(32 << 20)
 
+// SessionTailThresholdBytes reports the large-log first-paint threshold. The
+// desktop cold-read gate (tl1281) shares it so "large enough to window" and
+// "large enough to skip full cold decodes" stay one decision.
+func SessionTailThresholdBytes() int64 {
+	return sessionTranscriptTailThresholdBytes
+}
+
 // loadSessionMessages returns the session transcript, preferring the event log
 // when the native layer owns it and it holds at least one decodable record.
 // Foreign files squatting the log path (legacy import leftovers) are ignored
@@ -72,10 +80,35 @@ func loadSessionMessagesWithContext(ctx context.Context, sessionPath string, lim
 	return res.msgs, res.fromEvents, res.damaged, err
 }
 
+// sessionCheckpointTailWindowBytes is the tl1281 first-paint tail window for
+// non-native transcripts. tl1227 retired the schema-2 tail-window read, and
+// since then every tail entry (LoadSessionTail: hydrate resume, 831③ first
+// paint, cold tail window) silently degraded to a FULL checkpoint decode for
+// sealed schema-2 logs — the decode state tl1279 measured as the literalStore
+// baseline's dominant share (313.86MB at 20:27, four open sessions). This
+// constant reintroduces the producer half of the task-187/831③ pair for the
+// checkpoint branch: the .jsonl checkpoint is line-oriented, so the trailing
+// window decodes standalone (no append-chain continuity to preserve) and the
+// Session reports TailTruncated, which re-arms every guard the pair already
+// ships (upgradeTruncatedTranscriptForWrite before writes, snapshot no-op
+// exclusion, save-path graph-cache refusal). Native schema-1 replay is NOT
+// windowed: append records carry message-index continuity against the replayed
+// state, so only a trailing replace could bound it, and a stale replace would
+// silently age the executor's context — that debt stays registered (tl1173).
+const sessionCheckpointTailWindowBytes = int64(20 << 20)
+
 // loadSessionTranscript dispatches on the log schema: a schema-2 log replays
 // the DAG and materializes its selected head, a schema-1 log replays its
 // records, and anything else falls back to the .jsonl checkpoint.
 func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessionReplayLimits, hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
+	return loadSessionTranscriptMode(ctx, sessionPath, limits, hasher, false)
+}
+
+// loadSessionTranscriptMode is the schema dispatcher; tail=true is the
+// first-paint form (loadSessionTranscriptTail). Only the checkpoint fallback
+// is windowed in tail mode — the schema-1 replay keeps its full form for the
+// append-chain reasons documented on sessionCheckpointTailWindowBytes.
+func loadSessionTranscriptMode(ctx context.Context, sessionPath string, limits sessionReplayLimits, hasher *sessionTranscriptHasher, tail bool) (sessionLoadResult, error) {
 	if err := ctx.Err(); err != nil {
 		return sessionLoadResult{}, err
 	}
@@ -126,8 +159,73 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 		msgs, err := loadSessionMessagesFromJSONLContext(ctx, sessionPath, hasher)
 		return sessionLoadResult{msgs: msgs, damaged: true}, err
 	}
+	if tail {
+		msgs, truncated, tailErr := loadCheckpointTailWindowContext(ctx, sessionPath, hasher)
+		if tailErr == nil && truncated {
+			return sessionLoadResult{msgs: msgs, tailTruncated: truncated}, nil
+		}
+		// Window refused (checkpoint fits it) or undecodable: fall through to
+		// the full decode, whose error semantics the tail entry has always
+		// carried. Small sessions keep byte-identical full loads this way.
+	}
 	msgs, err := loadSessionMessagesFromJSONLContext(ctx, sessionPath, hasher)
 	return sessionLoadResult{msgs: msgs}, err
+}
+
+// loadCheckpointTailWindowContext decodes only the trailing
+// sessionCheckpointTailWindowBytes of the .jsonl checkpoint. The checkpoint is
+// one provider.Message per line (writeSessionMessages encodes per message), so
+// the window snaps to the first line boundary inside the read span and every
+// remaining line decodes standalone. truncated=false when the whole checkpoint
+// fit the window (small sessions stay byte-identical to the full load);
+// truncated=true reports the window via sessionLoadResult.tailTruncated, which
+// re-arms the task-187 write-side guards. Any read or decode failure returns an
+// error so the caller falls back to the full decode instead of inventing a
+// shorter transcript.
+func loadCheckpointTailWindowContext(ctx context.Context, sessionPath string, hasher *sessionTranscriptHasher) ([]provider.Message, bool, error) {
+	info, err := os.Stat(sessionPath)
+	if err != nil {
+		return nil, false, err
+	}
+	if info.IsDir() || info.Size() <= sessionCheckpointTailWindowBytes {
+		return nil, false, nil
+	}
+	window := sessionCheckpointTailWindowBytes
+	f, err := os.Open(sessionPath)
+	if err != nil {
+		return nil, false, err
+	}
+	defer f.Close()
+	buf := make([]byte, window)
+	if _, err := f.ReadAt(buf, info.Size()-window); err != nil {
+		return nil, false, err
+	}
+	// Drop the partial first line: ReadAt starts mid-line unless the byte
+	// boundary lands exactly on a newline. The window must only ever decode
+	// whole messages — a truncated JSON value would fail the full decode too,
+	// but here it would silently shrink the transcript.
+	if nl := bytes.IndexByte(buf, '\n'); nl >= 0 {
+		buf = buf[nl+1:]
+	} else {
+		// One line spans the whole window; nothing safely decodable.
+		return nil, false, fmt.Errorf("checkpoint tail window holds no line boundary")
+	}
+	dec := json.NewDecoder(&contextReader{ctx: ctx, reader: bytes.NewReader(buf)})
+	var msgs []provider.Message
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
+		var m provider.Message
+		if err := dec.Decode(&m); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, false, fmt.Errorf("decode checkpoint tail window %s: %w", sessionPath, err)
+		}
+		msgs = append(msgs, hasher.add(m))
+	}
+	return msgs, true, nil
 }
 
 // loadSessionTranscriptTail is the first-paint entry point for a session whose log
@@ -146,7 +244,12 @@ func loadSessionTranscriptTail(ctx context.Context, sessionPath string, limits s
 	if _, err := ensureSessionTranscriptPlain(sessionPath); err != nil {
 		return sessionLoadResult{}, fmt.Errorf("session transcript materialize: %w", err)
 	}
-	return loadSessionTranscript(ctx, sessionPath, limits, hasher)
+	// tl1281: the tail entry is a mode of the shared dispatcher again. Since
+	// tl1227 retired the schema-2 window this entry had silently equaled the
+	// full load; the checkpoint branch windows again (see
+	// sessionCheckpointTailWindowBytes) and reports tailTruncated, re-arming
+	// the task-187 guards (upgrade-before-write, snapshot no-op exclusion).
+	return loadSessionTranscriptMode(ctx, sessionPath, limits, hasher, true)
 }
 
 func loadSessionMessagesFromJSONL(path string, hasher *sessionTranscriptHasher) ([]provider.Message, error) {
