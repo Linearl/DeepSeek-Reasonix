@@ -41294,7 +41294,7 @@ button.statusbar__mcp:focus-visible {
 .collab-inbox-panel__checkall {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--z-app-content);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -41306,7 +41306,7 @@ button.statusbar__mcp:focus-visible {
 .collab-inbox-panel__batchbar {
   position: sticky;
   bottom: 0;
-  z-index: 1;
+  z-index: var(--z-app-content);
   display: flex;
   align-items: center;
   gap: 8px;
