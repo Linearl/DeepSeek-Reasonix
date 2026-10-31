@@ -75,6 +75,9 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	}
 	keyEnv, _ := cfg.Extra["api_key_env"].(string) // for actionable auth errors
 	keySource, _ := cfg.Extra["api_key_source"].(string)
+	// 任务1308: live re-auth hook — nil for custom assemblers, keeps today's
+	// fixed build-time key behaviour.
+	reauthFn, _ := cfg.Extra["reauth"].(func() (string, bool))
 	effort, err := configuredEffort(cfg)
 	if err != nil {
 		return nil, err
@@ -290,6 +293,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		apiKey:          cfg.APIKey,
 		keyEnv:          keyEnv,
 		keySource:       keySource,
+		reauth:          reauthFn,
 		baseURL:         strings.TrimRight(cfg.BaseURL, "/"),
 		chatURL:         chatURL,
 		prefixChatURL:   prefixChatURL,
@@ -378,6 +382,13 @@ type client struct {
 	requestEfforts  []string      // depth levels a request-scoped EffortOverride may take; empty = overrides ignored (task 334, #9866)
 	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
 	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
+	// 任务1308: live credential re-auth. reauth re-reads the credential source
+	// (boot wires config.RefreshProviderCredential); a swap of the build-time
+	// apiKey shares keyMu with its reads so a concurrent send never observes a
+	// torn key, and lastCredCheck throttles the proactive refresh.
+	reauth        func() (string, bool)
+	keyMu         sync.Mutex
+	lastCredCheck time.Time
 	// dropToolMessageName suppresses the message-level `name` key on role=tool
 	// messages. Set only for the official OpenCode Go chat route, whose gateway
 	// 400s that key ("name" is not supported by this endpoint) — the inverse of
@@ -465,9 +476,45 @@ func (c *client) sendOpts() provider.SendOptions {
 		Protocol:            c.identity.Protocol,
 		KeyEnv:              c.keyEnv,
 		KeySource:           c.keySource,
-		KeyPresent:          c.apiKey != "",
+		KeyPresent:          c.currentAPIKey() != "",
 		RetryAuth:           c.authed.Load(),
+		RefreshCredential:   c.maybeRefreshCredential,
 	}
+}
+
+// currentAPIKey returns the request key under the re-auth lock (任务1308):
+// maybeRefreshCredential may swap it between sends.
+func (c *client) currentAPIKey() string {
+	if c == nil {
+		return ""
+	}
+	c.keyMu.Lock()
+	defer c.keyMu.Unlock()
+	return c.apiKey
+}
+
+// maybeRefreshCredential re-reads the credential source (任务1308). force=true
+// is the 401 re-auth path — SendWithRetry forces exactly one re-read per call;
+// force=false is the proactive check, throttled to one source read per
+// CredentialRefreshInterval. Reports whether the key changed, which is the
+// only signal SendWithRetry needs; key material never leaves the client.
+func (c *client) maybeRefreshCredential(force bool) bool {
+	if c == nil || c.reauth == nil {
+		return false
+	}
+	c.keyMu.Lock()
+	defer c.keyMu.Unlock()
+	now := time.Now()
+	if !force && !c.lastCredCheck.IsZero() && now.Sub(c.lastCredCheck) < provider.CredentialRefreshInterval {
+		return false
+	}
+	c.lastCredCheck = now
+	key, ok := c.reauth()
+	if !ok || key == "" || key == c.apiKey {
+		return false
+	}
+	c.apiKey = key
+	return true
 }
 
 func normalizeReasoningProtocol(raw string) string {
@@ -604,7 +651,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
 			return nil, err
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
-		applyAPIKeyHeader(httpReq.Header, c.baseURL, c.apiKey)
+		applyAPIKeyHeader(httpReq.Header, c.baseURL, c.currentAPIKey())
 		httpReq.Header.Set("Accept", "text/event-stream")
 		applyCustomHeaders(httpReq.Header, c.headers)
 		provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)

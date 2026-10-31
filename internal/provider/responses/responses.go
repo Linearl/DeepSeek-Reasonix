@@ -104,6 +104,14 @@ type client struct {
 	idleTimeout                        time.Duration
 	authed                             atomic.Bool
 
+	// 任务1308: live credential re-auth. reauth re-reads the credential source
+	// (boot wires config.RefreshProviderCredential); a swap of the build-time
+	// apiKey shares keyMu with its reads so a concurrent send never observes a
+	// torn key, and lastCredCheck throttles the proactive refresh.
+	reauth        func() (string, bool)
+	keyMu         sync.Mutex
+	lastCredCheck time.Time
+
 	mu                   sync.Mutex
 	lastResponseID       string
 	expectedPrefixDigest string
@@ -162,6 +170,9 @@ func New(cfg Config) provider.Provider {
 		modelInfo.ID = cfg.Model
 	}
 	clientWebSearch, _ := cfg.Extra["client_web_search"].(bool)
+	// 任务1308: live re-auth hook — nil for custom assemblers, keeps today's
+	// fixed build-time key behaviour.
+	reauthFn, _ := cfg.Extra["reauth"].(func() (string, bool))
 	if reject, _ := cfg.Extra["reject_redirects"].(bool); reject {
 		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	}
@@ -175,6 +186,7 @@ func New(cfg Config) provider.Provider {
 		name:            cfg.Name,
 		identity:        provider.RequestIdentity{Provider: cfg.Name, DisplayName: cfg.DisplayName, Protocol: cfg.Protocol},
 		apiKey:          cfg.APIKey, keyEnv: cfg.KeyEnv, keySource: cfg.KeySource,
+		reauth:    reauthFn,
 		reasoning: ReasoningForConfig(provider.Config{BaseURL: cfg.BaseURL, Model: cfg.Model, Extra: cfg.Extra}),
 		baseURL:   baseURL, requestURL: requestURL, model: cfg.Model, effort: cfg.Effort,
 		vendor: vendor, caps: cap, mode: cfg.mode(), sessionCache: sessionCache, search: provider.SearchPolicy{NativeEnabled: cfg.WebSearch, ClientEnabled: clientWebSearch}, maxOutputTokens: maxOutputTokens,
@@ -227,7 +239,42 @@ func nativeToolSearchModel(model string) bool {
 }
 
 func (c *client) sendOpts() provider.SendOptions {
-	return provider.SendOptions{Provider: c.name, ProviderDisplayName: c.identity.DisplayName, Protocol: c.identity.Protocol, KeyEnv: c.keyEnv, KeySource: c.keySource, KeyPresent: c.apiKey != "", RetryAuth: c.authed.Load()}
+	return provider.SendOptions{Provider: c.name, ProviderDisplayName: c.identity.DisplayName, Protocol: c.identity.Protocol, KeyEnv: c.keyEnv, KeySource: c.keySource, KeyPresent: c.currentAPIKey() != "", RetryAuth: c.authed.Load(), RefreshCredential: c.maybeRefreshCredential}
+}
+
+// currentAPIKey returns the request key under the re-auth lock (任务1308):
+// maybeRefreshCredential may swap it between sends.
+func (c *client) currentAPIKey() string {
+	if c == nil {
+		return ""
+	}
+	c.keyMu.Lock()
+	defer c.keyMu.Unlock()
+	return c.apiKey
+}
+
+// maybeRefreshCredential re-reads the credential source (任务1308). force=true
+// is the 401 re-auth path — SendWithRetry forces exactly one re-read per call;
+// force=false is the proactive check, throttled to one source read per
+// CredentialRefreshInterval. Reports whether the key changed, which is the
+// only signal SendWithRetry needs; key material never leaves the client.
+func (c *client) maybeRefreshCredential(force bool) bool {
+	if c == nil || c.reauth == nil {
+		return false
+	}
+	c.keyMu.Lock()
+	defer c.keyMu.Unlock()
+	now := time.Now()
+	if !force && !c.lastCredCheck.IsZero() && now.Sub(c.lastCredCheck) < provider.CredentialRefreshInterval {
+		return false
+	}
+	c.lastCredCheck = now
+	key, ok := c.reauth()
+	if !ok || key == "" || key == c.apiKey {
+		return false
+	}
+	c.apiKey = key
+	return true
 }
 
 // ResetContext drops stateful continuation metadata. Full-input stateless mode
@@ -284,7 +331,7 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		req.Header.Set("Authorization", "Bearer "+c.currentAPIKey())
 		provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
 		if c.caps.sessionCacheHeader && c.sessionCache {
 			req.Header.Set("x-dashscope-session-cache", "enable")
@@ -725,7 +772,7 @@ func authErrorFromResponse(c *client, responseError *sseError) error {
 	if strings.Contains(value, "forbidden") || strings.Contains(value, "permission") {
 		status = http.StatusForbidden
 	}
-	return &provider.AuthError{Provider: c.name, ProviderDisplayName: c.identity.DisplayName, Protocol: c.identity.Protocol, KeyEnv: c.keyEnv, KeySource: c.keySource, Status: status, HasKey: c.apiKey != "", Body: responseError.Message}
+	return &provider.AuthError{Provider: c.name, ProviderDisplayName: c.identity.DisplayName, Protocol: c.identity.Protocol, KeyEnv: c.keyEnv, KeySource: c.keySource, Status: status, HasKey: c.currentAPIKey() != "", Body: responseError.Message}
 }
 
 type sseEvent struct {
