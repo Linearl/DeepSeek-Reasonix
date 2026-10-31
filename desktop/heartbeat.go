@@ -728,6 +728,33 @@ func (a *App) ClearGoalForHeartbeatTopic(topicID string) {
 	}
 }
 
+// pinHeartbeatToolApprovalModeForTab persists the approval tier a heartbeat
+// run just asserted on the tab into the session's branch meta (tl1298). The
+// in-memory tab switch alone dies with the runtime: a reopen, a detached
+// re-promote, or an app restart re-derives the tab mode from the session
+// meta and falls back to ask, re-arming the first-turn approval panel this
+// run just avoided. Missing tabs and ask-tier requests are no-ops (ask is
+// the absent key — persistedToolApprovalMode maps it to ""), so this never
+// stores more than the tab already ran with.
+func (a *App) pinHeartbeatToolApprovalModeForTab(tabID, mode string) {
+	mode = persistedToolApprovalMode(mode)
+	if mode == "" {
+		return
+	}
+	a.mu.RLock()
+	var sessionPath string
+	if tab := a.tabs[tabID]; tab != nil {
+		sessionPath = tab.currentSessionPath()
+	}
+	a.mu.RUnlock()
+	if strings.TrimSpace(sessionPath) == "" {
+		return
+	}
+	if err := pinSessionToolApprovalMode(sessionPath, mode); err != nil {
+		log.Printf("[heartbeat] persist approval mode %q for tab %s: %s", mode, tabID, secrets.RedactError(err))
+	}
+}
+
 // heartbeatRunScope normalizes the scope/root pair one run targets.
 //
 // A builtin root — the global workspace, the session dirs (task 186) — is
@@ -865,6 +892,16 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	mode := normalizeHeartbeatApprovalMode(t.ApprovalMode)
 	t.ApprovalMode = mode
 	e.app.SetToolApprovalModeForTab(tabMeta.ID, mode)
+	// tl1298: fresh-conversation sessions are heartbeat-owned, so persist the
+	// task's tier into the session meta at set time — a later reopen (detached
+	// re-promote, tab rebind, app restart) then births the tab in the task's
+	// mode instead of re-deriving ask from an empty meta field and re-running
+	// this whole fix one turn late. Resume/legacy bindings stay out on
+	// purpose: those conversations are often the user's own (task 437) and
+	// keep the snapshot-on-close persistence semantics.
+	if heartbeatFreshConversationMode(t) {
+		e.app.pinHeartbeatToolApprovalModeForTab(tabMeta.ID, mode)
+	}
 
 	// Per-task model override (#9070): switch the tab onto the task's
 	// provider/model before submitting so one heartbeat task always runs on

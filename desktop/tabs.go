@@ -2670,12 +2670,20 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 
 	if sessionPath == "" {
 		var err error
+		// tl1298: a session minted here runs under the config's new-session
+		// approval default — the same semantic as the other create paths
+		// (createTabEntryWithID, EnsureBlankTab) — instead of the profile's
+		// empty-field ask fallback. Pinning it into the meta before the
+		// profile read below also births the tab in that tier, so a heartbeat
+		// task's first prompt never waits behind an ask panel that its own
+		// later mode switch has to clean up.
+		_, seedApproval, _ := desktopNewSessionDefaults(scope, actualRoot)
 		sessionPath, err = createEmptySessionFile(desktopSessionDir(actualRoot), "")
 		if err != nil {
 			a.mu.Unlock()
 			return TabMeta{}, err
 		}
-		if err := pinNewEmptySessionBranchMeta(sessionPath, scope, actualRoot, topicID, topicTitle); err != nil {
+		if err := pinNewEmptySessionBranchMeta(sessionPath, scope, actualRoot, topicID, topicTitle, seedApproval); err != nil {
 			a.mu.Unlock()
 			return TabMeta{}, err
 		}
@@ -3415,7 +3423,7 @@ func (a *App) ensureBlankTab(scope, workspaceRoot string) (TabMeta, error) {
 			a.mu.Unlock()
 			return TabMeta{}, err
 		}
-		if err := pinNewEmptySessionBranchMeta(prePath, scope, actualRoot, topicID, topicTitle); err != nil {
+		if err := pinNewEmptySessionBranchMeta(prePath, scope, actualRoot, topicID, topicTitle, inheritedToolApprovalMode); err != nil {
 			delete(a.tabs, tabID)
 			a.removeTabOrderLocked(tabID)
 			a.mu.Unlock()
@@ -3469,7 +3477,7 @@ func (a *App) ensureBlankTab(scope, workspaceRoot string) (TabMeta, error) {
 		a.mu.Unlock()
 		return TabMeta{}, err
 	}
-	if err := pinNewEmptySessionBranchMeta(prePath, scope, actualRoot, topicID, topicTitle); err != nil {
+	if err := pinNewEmptySessionBranchMeta(prePath, scope, actualRoot, topicID, topicTitle, inheritedToolApprovalMode); err != nil {
 		delete(a.tabs, tabID)
 		a.removeTabOrderLocked(tabID)
 		a.mu.Unlock()
@@ -3602,8 +3610,8 @@ func createEmptySessionFile(dir, model string) (string, error) {
 	return "", fmt.Errorf("create empty session file: exhausted filename retries")
 }
 
-func pinNewEmptySessionBranchMeta(path, scope, workspaceRoot, topicID, topicTitle string) error {
-	if err := pinSessionBranchMeta(path, scope, workspaceRoot, topicID, topicTitle); err != nil {
+func pinNewEmptySessionBranchMeta(path, scope, workspaceRoot, topicID, topicTitle, toolApprovalMode string) error {
+	if err := pinSessionBranchMeta(path, scope, workspaceRoot, topicID, topicTitle, toolApprovalMode); err != nil {
 		pinErr := fmt.Errorf("pin empty session metadata: %w", err)
 		if cleanupErr := removeDesktopSessionArtifacts(path); cleanupErr != nil {
 			return errors.Join(pinErr, fmt.Errorf("clean up unbound empty session: %w", cleanupErr))
@@ -3615,7 +3623,17 @@ func pinNewEmptySessionBranchMeta(path, scope, workspaceRoot, topicID, topicTitl
 
 // pinSessionBranchMeta stores the workspace scope, root, and topic on a newly
 // created session before a controller can reconcile the tab against it.
-func pinSessionBranchMeta(sessionPath, scope, workspaceRoot, topicID, topicTitle string) error {
+//
+// tl1298: toolApprovalMode (when non-empty) is persisted alongside so the
+// session's meta carries the approval tier the creating tab actually runs
+// under. Without it the next open of this session derives the tab mode from
+// an empty meta field and normalizeToolApprovalMode falls back to ask — the
+// first turn then waits on an approval panel even though the creator (a
+// heartbeat task or an inheriting new-tab) intended yolo/auto. Ask persists
+// as the absent key (persistedToolApprovalMode), keeping the on-disk shape of
+// ask sessions byte-identical to the pre-tl1298 layout; the read path
+// normalizes absent back to ask, so the round-trip is lossless.
+func pinSessionBranchMeta(sessionPath, scope, workspaceRoot, topicID, topicTitle, toolApprovalMode string) error {
 	unlock, err := agent.LockSessionMetaPath(sessionPath)
 	if err != nil {
 		return err
@@ -3639,6 +3657,39 @@ func pinSessionBranchMeta(sessionPath, scope, workspaceRoot, topicID, topicTitle
 	m.WorkspaceRoot = workspaceRoot
 	m.TopicID = topicID
 	m.TopicTitle = topicTitle
+	if mode := persistedToolApprovalMode(toolApprovalMode); mode != "" {
+		m.ToolApprovalMode = mode
+	}
+	return agent.SaveBranchMetaPreserveUpdatedLocked(sessionPath, m)
+}
+
+// pinSessionToolApprovalMode stamps the approval mode into an existing
+// session's branch meta (tl1298). Heartbeat uses it at set time so a
+// fresh-conversation session keeps the task's tier across reopen, detach
+// re-promote, and app restart, instead of re-deriving ask from an empty
+// meta field. Ask resolves to the absent key — a no-op on sessions that
+// never carried one — so this never widens what is stored.
+func pinSessionToolApprovalMode(sessionPath, toolApprovalMode string) error {
+	if strings.TrimSpace(sessionPath) == "" {
+		return nil
+	}
+	mode := persistedToolApprovalMode(toolApprovalMode)
+	if mode == "" {
+		return nil
+	}
+	unlock, err := agent.LockSessionMetaPath(sessionPath)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	m, err := agent.EnsureBranchMetaLocked(sessionPath)
+	if err != nil {
+		return err
+	}
+	if m.ToolApprovalMode == mode {
+		return nil
+	}
+	m.ToolApprovalMode = mode
 	return agent.SaveBranchMetaPreserveUpdatedLocked(sessionPath, m)
 }
 

@@ -513,7 +513,7 @@ func TestTrashTopicFallbackStaysOffCatalogSidebar(t *testing.T) {
 	leftoverB := filepath.Join(dir, "leftover-b.jsonl")
 	for _, path := range []string{leftoverA, leftoverB} {
 		writeZeroByteSession(t, path)
-		if err := pinNewEmptySessionBranchMeta(path, "project", projectRoot, "", defaultTopicTitle); err != nil {
+		if err := pinNewEmptySessionBranchMeta(path, "project", projectRoot, "", defaultTopicTitle, ""); err != nil {
 			t.Fatalf("pin leftover %s: %v", path, err)
 		}
 	}
@@ -523,7 +523,7 @@ func TestTrashTopicFallbackStaysOffCatalogSidebar(t *testing.T) {
 	if err := os.WriteFile(nonzeroPath, []byte(`{"role":"system","content":"identity"}`+"\n"), 0o600); err != nil {
 		t.Fatalf("write non-empty sibling: %v", err)
 	}
-	if err := pinNewEmptySessionBranchMeta(nonzeroPath, "project", projectRoot, "", defaultTopicTitle); err != nil {
+	if err := pinNewEmptySessionBranchMeta(nonzeroPath, "project", projectRoot, "", defaultTopicTitle, ""); err != nil {
 		t.Fatalf("pin non-empty sibling: %v", err)
 	}
 	// Reproduce the real race deterministically: a registration reconcile has
@@ -628,13 +628,13 @@ func TestTransientBlankCleanupPreservesTopicWithSiblingInAnotherGlobalDirectory(
 	ghost := filepath.Join(ghostDir, "ghost.jsonl")
 	sibling := filepath.Join(legacyDir, "sibling.jsonl")
 	writeZeroByteSession(t, ghost)
-	if err := pinNewEmptySessionBranchMeta(ghost, "global", "", topicID, defaultTopicTitle); err != nil {
+	if err := pinNewEmptySessionBranchMeta(ghost, "global", "", topicID, defaultTopicTitle, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(sibling, []byte(`{"role":"user","content":"keep"}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := pinNewEmptySessionBranchMeta(sibling, "global", "", topicID, "Keep"); err != nil {
+	if err := pinNewEmptySessionBranchMeta(sibling, "global", "", topicID, "Keep", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := prependTopicsInProjectsFile("", []string{topicID}, false); err != nil {
@@ -663,7 +663,7 @@ func writeEmptyNamedSession(t *testing.T, dir, name, topicID, topicTitle, worksp
 	t.Helper()
 	path := filepath.Join(dir, name)
 	writeZeroByteSession(t, path)
-	if err := pinNewEmptySessionBranchMeta(path, "project", workspaceRoot, topicID, topicTitle); err != nil {
+	if err := pinNewEmptySessionBranchMeta(path, "project", workspaceRoot, topicID, topicTitle, ""); err != nil {
 		t.Fatalf("pin empty session: %v", err)
 	}
 	return path

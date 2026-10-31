@@ -213,7 +213,7 @@ func TestRestoreSessionTopicIndexHealsGlobalShellTL1283(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create shell session: %v", err)
 	}
-	if err := pinNewEmptySessionBranchMeta(shellPath, "global", "", topicID, title); err != nil {
+	if err := pinNewEmptySessionBranchMeta(shellPath, "global", "", topicID, title, ""); err != nil {
 		t.Fatalf("pin shell meta: %v", err)
 	}
 
