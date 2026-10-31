@@ -245,17 +245,26 @@ func TestRunnerPermissionRequestClaudeDecisions(t *testing.T) {
 
 // Runner.PromptSubmit
 
-func TestRunnerPromptSubmitBlock(t *testing.T) {
+// tl-1245: the UserPromptSubmit domain is observation-only. A native hook
+// exiting 2 with a warning banner (the route_guard incident) used to make
+// PromptSubmit abort the turn and silently drop the user's message; it must
+// warn instead — block stays false and the banner still reaches the user.
+func TestRunnerPromptSubmitNeverBlocks(t *testing.T) {
 	hooks := []ResolvedHook{
 		{HookConfig: HookConfig{Command: "gate"}, Event: UserPromptSubmit},
 	}
 	spawner := func(_ context.Context, in SpawnInput) SpawnResult {
 		return SpawnResult{ExitCode: 2, Stderr: "not allowed"}
 	}
-	r := NewRunner(hooks, "/tmp", spawner, nil)
+	var notified string
+	notify := func(msg string) { notified = msg }
+	r := NewRunner(hooks, "/tmp", spawner, notify)
 	block, _ := r.PromptSubmit(context.Background(), "bad input", 1)
-	if !block {
-		t.Error("exit 2 on UserPromptSubmit should block")
+	if block {
+		t.Error("exit 2 on UserPromptSubmit must not block the submission")
+	}
+	if notified == "" || !strings.Contains(notified, "not allowed") {
+		t.Errorf("warning should still surface via notify, got %q", notified)
 	}
 }
 
@@ -556,8 +565,10 @@ func TestIsBlocking(t *testing.T) {
 	if !IsBlocking(PreToolUse) {
 		t.Error("PreToolUse should be blocking")
 	}
-	if !IsBlocking(UserPromptSubmit) {
-		t.Error("UserPromptSubmit should be blocking")
+	// tl-1245: UserPromptSubmit is observation-only — a hook must never be
+	// able to drop the user's submission.
+	if IsBlocking(UserPromptSubmit) {
+		t.Error("UserPromptSubmit should not be blocking")
 	}
 	if IsBlocking(PostToolUse) {
 		t.Error("PostToolUse should not be blocking")
