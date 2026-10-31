@@ -115,10 +115,25 @@ var errTurnNotRunning = &inboxCodedError{code: "turn_not_running", cause: errors
 // InterruptTurnForTab stops the tab's active work. Stop is a session-level
 // request: a turn id from a stale button still interrupts whatever is running
 // now, because an unstoppable turn is worse than stopping its replacement.
+//
+// tl1304 ②: this is the desktop stop button's real first-press path. It used
+// to call the bare Cancel(), which never armed the 任务461-P7 ④ 保底 timer — a
+// turn that ignored the graceful cancel then sat at L1 forever and the
+// automatic grace→force escalation never came (and the UI-side L2/L3 presses
+// were locked out on top of it by the cancellable veto, tl1304 ①). CancelStop
+// is the single escalation entry — level None → L1 graceful cancel + the 30s
+// no-response fallback timer; Normal with a live turn → L2 force grace;
+// Grace → L3 force — so every press, from any surface, advances the same
+// state machine. Controllers without the escalation half (older builds,
+// fakes) keep the ordinary cancel, the same fallback CancelStopForTab uses.
 func (a *App) InterruptTurnForTab(tabID, turnID string) error {
 	ctrl, err := a.stoppableCtrl(tabID, turnID)
 	if err != nil {
 		return err
+	}
+	if esc, ok := ctrl.(interface{ CancelStop() }); ok {
+		esc.CancelStop()
+		return nil
 	}
 	ctrl.Cancel()
 	return nil
