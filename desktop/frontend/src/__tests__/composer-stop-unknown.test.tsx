@@ -223,6 +223,26 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
+// ⑤b tl1304 ①（根治取消链）：cancelRequested=true（停止已受理但未生效）不再
+// 锁死停止按钮——这正是升级阶梯（461-P7 L2/L3）必须可达的现场；此前 cancellable
+// 被否决成 false，按钮禁用 + handleCancel 早退，用户后续每一次按停止都被无声吞掉。
+// 受理 ≠ 不可取消；连点风暴由 cancelSettling 在途禁用兜底（不入此断言面）。
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced", { cancelRequested: true }));
+  runtimeStateStore.flush();
+  const { root, calls } = await renderComposer({ running: true, tabId: "t510-stop" });
+  ok(stopButton() !== null, "cancelling state keeps the stop button visible");
+  eq(stopButton()?.disabled, false, "cancelRequested=true no longer disables the stop button (tl1304 ①)");
+  await act(async () => {
+    stopButton()?.click();
+    await flushTimers();
+  });
+  eq(calls.cancel, 1, "cancelRequested=true click still fires onCancel (escalation stays reachable)");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
 // ⑥ 全局 failed 不波及本 tab（b 面隔离，UI 级）：任一其他 tab 的同步异常曾经让
 // 全部 composer 一起丢按钮；现在全局失败只留在 store.getFailed 供树图降级。
 {
