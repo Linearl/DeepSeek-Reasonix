@@ -7,8 +7,10 @@ import (
 
 // 任务 1010 需求 2：overflow 救援道的摘要尺寸失败后必须能在分块道上推进，
 // 而不是停在 blocked 收据上永卡（现场：摘要请求 2.1M > 1M 窗，压缩永远
-// 失败冻结循环）。pressure 的任务822 契约（单次摘要+一次加倍重试、有界尾窗
-// 为最终答案）由 TestPressureCompactionDoesNotCallChunkedFold 继续钉住。
+// 失败冻结循环）。tl1083 §5.2 把同一分块道开给了 pressure（尺寸失败后接手，
+// happy path 仍单次摘要）：TestTl1083PressureFoldRescuesThroughChunkedPath
+// 钉救回腿，TestPressurePersistentSizeFailureStaysVisibleAfterChunkedLane
+// 钉「分块道也失败时失败保持可见 + 有界尾窗离场」的安全内核。
 func TestOverflowFoldRescuesThroughChunkedPath(t *testing.T) {
 	prov := &extractStubProvider{failFirst: 1, reply: "digest"}
 	a := agentOverForce(t, prov, foldableSessionOverForce(6))

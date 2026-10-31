@@ -45,8 +45,22 @@ func truncateReadFileOutput(s, toolName, toolCallID string) (string, string) {
 	return head + marker, notice
 }
 
+// snapToRuneBoundary snaps [lo, hi) outward to rune starts and returns that
+// slice. It is total over 0 <= lo <= hi <= len(s): lo == len(s) is the empty
+// tail — the elision shape where cutChars=1 makes tailChars=0 (truncate.go
+// elideOversizedContentsAt, keepHeadTail in agent.go) — and the rune walk must
+// not index s[len(s)]. tl1083 found this panic reachable from the chunked
+// summary lane once pressure folds could enter it (fragment budget / message
+// count below contentElideOversizedDiv); the same shape was already live for
+// manual and overflow chunked runs.
 func snapToRuneBoundary(s string, lo, hi int) string {
-	for lo > 0 && !utf8.RuneStart(s[lo]) {
+	if hi > len(s) {
+		hi = len(s)
+	}
+	if lo > hi {
+		lo = hi
+	}
+	for lo > 0 && lo < len(s) && !utf8.RuneStart(s[lo]) {
 		lo--
 	}
 	for hi < len(s) && !utf8.RuneStart(s[hi]) {

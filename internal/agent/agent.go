@@ -512,6 +512,12 @@ type Agent struct {
 	// successful resolve of Options.CompactModel, nil until then (failed
 	// resolves are not cached — each summary retries the seam).
 	compactModelDestination atomic.Value
+	// compactModelAuthBlocked latches a key rejection on the armed compact
+	// model (tl1083 §5.2): once set, every summary serves from the
+	// conversation destination instead of re-walking the backoff ladder
+	// against a dead key. Cleared by the next agent rebuild — a settings
+	// change, the same lifecycle the destination cache assumes.
+	compactModelAuthBlocked atomic.Bool
 	// subagentPolicyTier mirrors the controller's delegation tier (task 820)
 	// for the end-of-turn delegation metrics; "" until the host sets it,
 	// which is exactly the sub-agent condition — children never get a tier.
