@@ -12,3 +12,55 @@ export interface WireWorkflowNode {
   round?: number;
   detail?: string;
 }
+
+/** 任务934: 运行级状态（服务侧 RunState 的 wire 镜像）。 */
+export type WorkflowRunLiveState = "running" | "completed" | "failed";
+
+/** DAG 节点 wire（WorkflowDagNode 镜像；kind 五类全开）。 */
+export interface WireRunDagNode {
+  id: string;
+  name: string;
+  kind: "subagent" | "gate" | "join" | "phase" | "confirm";
+  phase?: string;
+  instruction?: string;
+  command?: string;
+}
+
+export interface WireRunDagEdge {
+  from: string;
+  to: string;
+  label?: string;
+}
+
+/** 运行所装载定义（面板用它渲染与引擎执行同一张图）。 */
+export interface WireRunDag {
+  id: string;
+  name: string;
+  phases?: string[];
+  nodes: WireRunDagNode[];
+  edges: WireRunDagEdge[];
+}
+
+/** 一个节点的当前态投影（六态契约，见 internal/event/workflow.go）。 */
+export interface WireRunNode {
+  nodeId: string;
+  nodeType: string;
+  state: WorkflowNodeState;
+  round?: number;
+  detail?: string;
+  changedAt?: number;
+  /** 本轮 running 起点（unix ms；缺省 = 未见 running，如排队即跳过）。 */
+  nodeStartedAt?: number;
+}
+
+/** 一次运行的完整 wire 快照（desktop workflowRunWire 镜像）。 */
+export interface WireWorkflowRun {
+  runId: string;
+  workflow: string;
+  state: WorkflowRunLiveState;
+  startedAt?: number;
+  endedAt?: number;
+  error?: string;
+  dag?: WireRunDag;
+  nodes: WireRunNode[];
+}

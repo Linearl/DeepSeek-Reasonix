@@ -72,6 +72,7 @@ import (
 	"reasonix/internal/tool"
 	"reasonix/internal/tool/builtin"
 	"reasonix/internal/tool/sessiontool"
+	"reasonix/internal/workflow"
 	"reasonix/internal/workspacelease"
 )
 
@@ -2387,6 +2388,22 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 	}, sink)
 	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))
+	// 任务 934：工作流管理工具的服务注入（builtin.SetHeartbeatManager 同款
+	// 形态）。定义目录与运行登记是进程级单例（面板与应用全局共享）；子代理
+	// 基底按「调用方会话分支号」惰性解析——桌面新会话的 SessionPath 由
+	// control 层在 boot 后绑定，所以工厂在 workflow_run 执行时才解分支号，
+	// 避免 boot 期空路径误绑。task 工具被消融时工厂不命中，工具给出可读错误。
+	builtin.SetWorkflowService(workflow.Global())
+	workflow.Global().AddRunnerSource(func(sessionID string) (workflow.SubagentRunner, bool) {
+		path := executor.SessionPath()
+		if path == "" || agent.BranchID(path) != sessionID {
+			return nil, false
+		}
+		if taskTool == nil {
+			return nil, false
+		}
+		return workflow.NewTaskSubagentRunner(taskTool), true
+	})
 	// Task 19 / 141–145: multi-session collaboration (contact addressing,
 	// talk_to_session, task cards). Off by default. The Desktop mirror is OR'd in
 	// the same way Trace-as-State is: the settings toggle writes both keys, and a

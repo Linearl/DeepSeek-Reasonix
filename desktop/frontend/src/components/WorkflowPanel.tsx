@@ -9,7 +9,11 @@
 //
 // 形态：独立覆盖层面板（sessionWall 同款 backdrop + 懒加载 chunk），不新增 tab。
 // 门控：整个组件只在 labFlag "workflowPanel" 开启时被 App 懒加载挂载（铁律 2）。
-// 事件源：WorkflowRunStore（可插拔；685 落地前用 fixture 演示脚本 playFixtureRun）。
+// 事件源：任务 934 起双轨——
+//   live：workflowRunFeed 订阅真运行（"workflow:runs" 运行级快照推送 + 全量
+//     拉取合流，workflow_node 节点事件就地点亮），工具条出现运行选择器；
+//   demo：fixture 演示脚本 playFixtureRun 保留（933 拍板演示不删）——无真
+//     运行时即 686 原始行为，有真运行时经「演示」按钮切换过去。
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GitBranch, Play, RotateCcw, Square, X } from "lucide-react";
@@ -26,6 +30,14 @@ import {
   type WorkflowRunStore,
   type WorkflowRunState,
 } from "../lib/workflowEvents";
+import { app } from "../lib/bridge";
+import {
+  liveRunSnapshot,
+  runsNewestFirst,
+  wireDagToPanelDag,
+  workflowRunFeed,
+  type WireWorkflowRun,
+} from "../lib/workflowRunFeed";
 
 const NODE_STATE_CLASS: Record<WorkflowNodeState, string> = {
   queued: "wf-node--queued",
@@ -67,6 +79,7 @@ function NodeDetailPane({ node, run }: { node: WorkflowDagNode; run: ReturnType<
     if (detail.gate.stderr) rows.push({ label: t("workflowPanel.detail.stderr"), value: detail.gate.stderr, mono: true });
   }
   if (detail?.result) rows.push({ label: t("workflowPanel.detail.result"), value: detail.result });
+  if (detail?.diagnostic) rows.push({ label: t("workflowPanel.detail.diagnostic"), value: detail.diagnostic, mono: true });
   if (detail?.confirmation) {
     rows.push({
       label: t("workflowPanel.detail.confirmation"),
@@ -107,12 +120,15 @@ export function WorkflowPanel({
   onClose,
   dag = WORKFLOW_FIXTURE_DAG,
   store: storeProp,
+  runs: runsProp,
 }: {
   open: boolean;
   onClose: () => void;
   dag?: WorkflowDag;
-  /** 外部运行态源（685 真事件接入点）。缺省=面板自持 fixture store。 */
+  /** 外部运行态源（测试注入口）。缺省=面板自持 fixture store。 */
   store?: WorkflowRunStore;
+  /** 任务 934：真运行表（测试注入口）。缺省=workflowRunFeed 单例（拉推合流）。 */
+  runs?: WireWorkflowRun[];
 }) {
   const t = useT();
   const { mounted, status } = useMountTransition(open, 200);
@@ -123,10 +139,30 @@ export function WorkflowPanel({
   // 数据只随本懒加载 chunk 加载，不进 initial 面（686 首版实测教训）。
   const [selfStore] = useState(() => (storeProp ? null : createWorkflowRunStore(dag)));
   const store = storeProp ?? selfStore!;
+  // 任务 934：真运行源。feed 单例首订阅时拉全量 + 订阅推送；runsProp 仅测试注入。
+  const feedRuns = useSyncExternalStore(workflowRunFeed.subscribe, workflowRunFeed.getRuns, workflowRunFeed.getRuns);
+  const liveRuns = useMemo(() => runsNewestFirst(runsProp ?? feedRuns), [runsProp, feedRuns]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
-  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const layout = useMemo(() => layoutWorkflowDag(dag), [dag]);
-  const nodeById = useMemo(() => new Map(dag.nodes.map((n) => [n.id, n])), [dag]);
+  // live 视图解析：demo 播放期间退回 fixture；选中 run 缺席（刚被裁剪）回
+  // 落最近一条。快照与 DAG 都从同一条 wire 运行导出（渲染与引擎执行同图）。
+  const liveView = useMemo(() => {
+    if (demoPlaying || liveRuns.length === 0) return null;
+    const run = (selectedRunId && liveRuns.find((r) => r.runId === selectedRunId)) || liveRuns[0];
+    if (!run.dag) return null;
+    return {
+      run,
+      dag: wireDagToPanelDag(run.dag),
+      snapshot: liveRunSnapshot(run),
+    };
+  }, [demoPlaying, liveRuns, selectedRunId]);
+
+  const storeSnapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const snapshot = liveView ? liveView.snapshot : storeSnapshot;
+  const activeDag = liveView ? liveView.dag : dag;
+
+  const layout = useMemo(() => layoutWorkflowDag(activeDag), [activeDag]);
+  const nodeById = useMemo(() => new Map(activeDag.nodes.map((n) => [n.id, n])), [activeDag]);
 
   const progress = useMemo(() => workflowRunProgress(snapshot), [snapshot]);
 
@@ -138,11 +174,18 @@ export function WorkflowPanel({
 
   const startDemo = useCallback(() => {
     stopDemo();
+    setSelectedRunId(null);
     store.reset(dag);
     stopDemoRef.current = playFixtureRun(store);
     setDemoPlaying(true);
     reportFrontendLog("workflowPanel", "demo replay started", dag.id);
   }, [dag, store, stopDemo]);
+
+  const stopLiveRun = useCallback(() => {
+    if (!liveView) return;
+    void app.WorkflowCancelRun(liveView.run.runId).catch(() => {});
+    reportFrontendLog("workflowPanel", "cancel requested", liveView.run.runId);
+  }, [liveView]);
 
   // Esc 关闭（document 级，焦点漂移也生效）；关闭时停掉演示脚本。
   useEffect(() => {
@@ -186,7 +229,7 @@ export function WorkflowPanel({
   if (!mounted) return null;
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
-  const phases = dag.phases ?? [];
+  const phases = activeDag.phases ?? [];
 
   return (
     <div className="drawer-backdrop wf-panel-backdrop" onPointerDown={onBackdropPointerDown} data-state={status}>
@@ -194,7 +237,7 @@ export function WorkflowPanel({
         <header className="wf-panel__toolbar">
           <div className="wf-panel__title">
             <GitBranch size={15} aria-hidden="true" />
-            <span className="wf-panel__name">{dag.name}</span>
+            <span className="wf-panel__name">{liveView ? liveView.run.workflow : activeDag.name}</span>
             <span className={`wf-panel__runstate wf-panel__runstate--${snapshot.runState}`}>
               {t(RUN_STATE_KEY[snapshot.runState])}
             </span>
@@ -217,7 +260,30 @@ export function WorkflowPanel({
             )}
           </div>
           <div className="wf-panel__actions">
-            {snapshot.runState === "planned" && !demoPlaying && (
+            {liveRuns.length > 0 && !demoPlaying && (
+              <select
+                className="wf-panel__runs"
+                aria-label={t("workflowPanel.runs.picker")}
+                data-testid="wf-run-picker"
+                value={liveView?.run.runId ?? ""}
+                onChange={(e) => setSelectedRunId(e.target.value)}
+              >
+                {liveRuns.map((run) => (
+                  <option key={run.runId} value={run.runId}>
+                    {`${run.workflow} · ${run.runId} · ${t(RUN_STATE_KEY[liveRunStateToPanelRunKey(run.state)])}`}
+                  </option>
+                ))}
+              </select>
+            )}
+            {liveView && liveView.run.state === "running" && (
+              <button type="button" className="wf-panel__action" onClick={stopLiveRun} data-testid="wf-stop-live">
+                <Square size={13} aria-hidden="true" />
+                {t("workflowPanel.action.stop")}
+              </button>
+            )}
+            {/* 演示（933 拍板保留）：fixture 视图 planned 态可播；live 视图下
+                也可切去演示视图，stopDemo 后回到 live。 */}
+            {!demoPlaying && (liveView !== null || snapshot.runState === "planned") && (
               <button type="button" className="wf-panel__action" onClick={startDemo}>
                 <Play size={13} aria-hidden="true" />
                 {t("workflowPanel.action.demo")}
@@ -229,10 +295,12 @@ export function WorkflowPanel({
                 {t("workflowPanel.action.stop")}
               </button>
             )}
-            <button type="button" className="wf-panel__action" onClick={() => store.reset(dag)}>
-              <RotateCcw size={13} aria-hidden="true" />
-              {t("workflowPanel.action.reset")}
-            </button>
+            {!liveView && (
+              <button type="button" className="wf-panel__action" onClick={() => store.reset(dag)}>
+                <RotateCcw size={13} aria-hidden="true" />
+                {t("workflowPanel.action.reset")}
+              </button>
+            )}
             <button type="button" className="wf-panel__action wf-panel__action--close" onClick={close} aria-label={t("common.close")}>
               <X size={14} aria-hidden="true" />
             </button>
@@ -310,7 +378,7 @@ export function WorkflowPanel({
                     onClick={() => setSelectedId((prev) => (prev === node.id ? null : node.id))}
                   >
                     <span className="wf-node__kind" aria-hidden="true">
-                      {node.kind === "gate" ? "⌗" : node.kind === "join" ? "⋈" : "◈"}
+                      {node.kind === "gate" ? "⌗" : node.kind === "join" ? "⋈" : node.kind === "confirm" ? "✓" : "◈"}
                     </span>
                     <span className="wf-node__text">
                       <span className="wf-node__name">{node.name}</span>
@@ -327,4 +395,17 @@ export function WorkflowPanel({
       </section>
     </div>
   );
+}
+
+// liveRunStateToPanelRunKey：选择器选项文案的运行态徽章键（复用 RUN_STATE_KEY
+// 的三态，failed → errored 徽章与主徽章同口径）。
+function liveRunStateToPanelRunKey(state: WireWorkflowRun["state"]): WorkflowRunState {
+  switch (state) {
+    case "running":
+      return "running";
+    case "completed":
+      return "completed";
+    default:
+      return "errored";
+  }
 }

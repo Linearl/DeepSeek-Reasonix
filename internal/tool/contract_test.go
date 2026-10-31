@@ -87,10 +87,17 @@ var acceptsDefaultSnip = map[string]bool{
 	"set_quick_commands":             true, // short structured JSON (list view / one-line ack); generic head/tail split is fine
 	"todo_read":                      true, // small JSON list; generic head/tail split is fine
 	"todo_write":                     true,
-	"view_image":                     true, // visual summary, not a text body a head/tail split would help
-	"update_goal":                    true,
-	"wait":                           true,
-	"write_file":                     true,
+	// 任务 934: workflow_* results are short structured JSON receipts and
+	// status lists; a generic head/tail split never garbles them.
+	"workflow_define": true,
+	"workflow_get":    true,
+	"workflow_list":   true,
+	"workflow_run":    true,
+	"workflow_status": true,
+	"view_image":      true, // visual summary, not a text body a head/tail split would help
+	"update_goal":     true,
+	"wait":            true,
+	"write_file":      true,
 }
 
 func TestEveryBuiltinDeclaresSnipStance(t *testing.T) {

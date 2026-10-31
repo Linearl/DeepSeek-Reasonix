@@ -5,9 +5,10 @@ import (
 	"testing"
 )
 
-// appendixA53 is the task-951 report appendix A list: the 53 L1 tool entries
-// (78 Name() registrations − the 24 L0 tools). The 8-group tagging must cover
-// it exactly — every tool in exactly one group, no phantom members.
+// appendixA53 is the task-951 report appendix A list (53 L1 tool entries,
+// 78 Name() registrations − the 24 L0 tools), extended by task 934 with the
+// five workflow_* management tools. The group tagging must cover it exactly —
+// every tool in exactly one group, no phantom members.
 var appendixA53 = []string{
 	"adopt_session_version", "channel_cancel", "channel_list", "channel_read", "channel_send",
 	"claim_check", "code_index", "create_task_card", "create_worktree", "decision_pattern_solidify",
@@ -19,10 +20,11 @@ var appendixA53 = []string{
 	"prepare_worktree_merge", "qq", "query_collab_mail", "read_collab_status", "rename_session",
 	"rename_topic", "screenshot", "search_sessions", "session_control", "submit_feedback",
 	"subscribe_session", "talk_to_session_sync", "todo_read", "ui_interact", "update_task_card",
-	"web_fetch", "weixin",
+	"web_fetch", "weixin", "workflow_define", "workflow_get", "workflow_list",
+	"workflow_run", "workflow_status",
 }
 
-// TestGroupCoversAppendixA53Exactly pins the 53-tool / 8-group tagging: no
+// TestGroupCoversAppendixA53Exactly pins the 58-tool / 9-group tagging: no
 // missing tool, no duplicate membership, no member outside appendix A.
 func TestGroupCoversAppendixA53Exactly(t *testing.T) {
 	owner := map[string]string{}
@@ -46,8 +48,8 @@ func TestGroupCoversAppendixA53Exactly(t *testing.T) {
 			t.Errorf("group member %q is not in appendix A (phantom member)", member)
 		}
 	}
-	if len(groupCatalog) != 8 {
-		t.Fatalf("want 8 groups, got %d", len(groupCatalog))
+	if len(groupCatalog) != 9 {
+		t.Fatalf("want 9 groups, got %d", len(groupCatalog))
 	}
 }
 
@@ -57,8 +59,8 @@ func TestGroupCoversAppendixA53Exactly(t *testing.T) {
 // is not registered (anti-ghost, 951 #4).
 func TestGroupDirectoryRowsRender(t *testing.T) {
 	rows := BuildGroupEntries(map[string]bool{"rename_session": true})
-	if len(rows) != 8 {
-		t.Fatalf("want 8 group rows, got %d", len(rows))
+	if len(rows) != 9 {
+		t.Fatalf("want 9 group rows, got %d", len(rows))
 	}
 	for _, row := range rows {
 		if row.Kind != KindGroup {

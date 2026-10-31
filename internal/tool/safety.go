@@ -76,6 +76,10 @@ var builtinSafety = map[string]SafetySpec{
 	"update_goal":            {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
 	"view_image":             {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
 	"web_fetch":              {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
+	// 任务 934：工作流目录与运行登记的只读面。
+	"workflow_get":    {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
+	"workflow_list":   {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
+	"workflow_status": {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
 	// 证据台账/顺序敏感：只读但必须独占串行批（原 parallelisableCall
 	// 硬编码 barrier 名单的元数据化）。
 	"bash_output":   {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
@@ -100,6 +104,10 @@ var builtinSafety = map[string]SafetySpec{
 	"screenshot":                     {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	"set_quick_commands":             {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	"ui_interact":                    {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
+	// 任务 934：定义落盘与运行触发（用户状态目录写 + 子代理预算消耗），
+	// 走既有审批面（ReadOnly=false 默认需审批）。
+	"workflow_define": {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
+	"workflow_run":    {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	// 进程/应用生命周期或任意命令面：破坏性，任何分组独占。
 	"bash":           {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
 	"kill_shell":     {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},

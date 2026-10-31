@@ -14862,6 +14862,21 @@ button.statusbar__mcp:focus-visible {
   padding: 4px 10px;
   cursor: pointer;
 }
+/* 任务 934: 真运行选择器（与 action 按钮同高同框，不打断工具条节奏）。 */
+.wf-panel__runs {
+  max-width: 260px;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.wf-panel__runs:hover {
+  color: var(--fg);
+  border-color: var(--border-2, var(--border));
+}
 .wf-panel__action:hover {
   color: var(--fg);
   border-color: var(--border-2, var(--border));

@@ -448,6 +448,19 @@ func SessionCollabMailDir() string {
 	return filepath.Join(dir, "session-chat")
 }
 
+// WorkflowsDir is where agent-defined workflow documents live (one canonical
+// JSON document per workflow, task 934). App-scoped on purpose — the 686
+// visualization panel and the agent tools must see the same catalog from any
+// workspace, mirroring the heartbeat-tasks.json placement. Empty if the user
+// state directory cannot be resolved, in which case persistence is skipped.
+func WorkflowsDir() string {
+	dir := userSupportDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "workflows")
+}
+
 // SessionStoreDir is the experimental v4 session root. Keeping it physically
 // separate prevents older binaries from treating v4 commits as legacy JSONL
 // transcripts.

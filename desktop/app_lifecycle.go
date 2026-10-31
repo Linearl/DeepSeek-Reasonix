@@ -366,6 +366,9 @@ func (a *App) startupStartBackgroundLoops() {
 	// 与泵无关（投递发生在 submit_feedback 调用内），这里只保证「消息丢失也能
 	// 最终一致」。
 	a.startFeedbackBackfillLoop(a.bootContext())
+	// 任务 934：686 面板真数据泵——workflow 服务状态变化合并后推
+	// "workflow:runs" 快照（节点事件本体走 agent:event 既有通道）。
+	a.startWorkflowRunsPump(a.bootContext())
 	// 任务731: the abnormal-stop auto-resume watchdog is purely event-driven
 	// (no ticker): the S1 tap lives in tabEventSink.Emit, the S2 escalation
 	// in the 579 bridge's exhaustion hook.

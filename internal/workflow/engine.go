@@ -91,10 +91,21 @@ type runState struct {
 // ALWAYS returns a non-nil report once anything was emitted — a run that dies
 // mid-graph hands back everything reported so far (point 5 落袋).
 func (e *Engine) Run(ctx context.Context, wf *Workflow) (*WorkflowReport, error) {
+	return e.RunWithID(ctx, wf, "")
+}
+
+// RunWithID is Run with an externally pinned run id (task 934): the run
+// registry must know the id BEFORE the engine emits its first event so the
+// workflow_run tool can hand it to the caller. An empty id falls back to the
+// generated one, making Run's behavior byte-identical to before.
+func (e *Engine) RunWithID(ctx context.Context, wf *Workflow, runID string) (*WorkflowReport, error) {
 	if err := wf.Validate(); err != nil {
 		return nil, err
 	}
 	s := newRunState(e, wf)
+	if runID != "" {
+		s.runID = runID
+	}
 	s.emitAll(event.WorkflowNodeQueued, 0, "")
 	err := s.runAll(ctx)
 	return s.buildReport(err), err
