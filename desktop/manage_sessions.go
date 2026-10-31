@@ -27,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reasonix/internal/agent"
 )
 
 const (
@@ -971,6 +973,62 @@ func (a *App) ManageSessions(action string, args json.RawMessage) (json.RawMessa
 			}
 			return encode(result)
 		}
+	case "archive":
+		// tl1305 ②: the agent face of the desktop Archive button — same
+		// TrashTopic path, same manual-restore trash, same active-work gate.
+		// Proposal-first: without confirm the call only reports what would move
+		// (a disk-level target scan plus the active-work verdict), so a
+		// secretary can tell the user before anything leaves the sidebar.
+		var p struct {
+			TopicID       string `json:"topic_id"`
+			SessionPath   string `json:"session_path"`
+			Scope         string `json:"scope"`
+			WorkspaceRoot string `json:"workspace_root"`
+			Confirm       bool   `json:"confirm"`
+		}
+		if err := json.Unmarshal(args, &p); err != nil {
+			return nil, fmt.Errorf("invalid args: %w", err)
+		}
+		topicID := strings.TrimSpace(p.TopicID)
+		if topicID == "" {
+			return nil, fmt.Errorf("archive needs topic_id — the tool layer resolves it from the session; %q carries none", p.SessionPath)
+		}
+		if !p.Confirm {
+			targets, err := a.topicTrashTargetsFromDirIndexes(topicID, topicSessionIndexForDir)
+			if err != nil {
+				return nil, err
+			}
+			sessions := make([]map[string]string, 0, len(targets))
+			for _, target := range targets {
+				sessions = append(sessions, map[string]string{
+					"sessionPath": target.sessionPath,
+					"title":       agent.SessionDirectoryTitle(target.sessionPath),
+				})
+			}
+			out := map[string]any{
+				"status":   "dry_run",
+				"topicId":  topicID,
+				"sessions": sessions,
+				// Active work refuses the confirm exactly like the desktop
+				// button (errTopicHasActiveWork); reporting it here means the
+				// caller can wait instead of failing the confirm.
+				"activeWork": a.topicHasActiveRuntimeWork(topicID),
+				"note":       "sessions above move to the manual-restore trash (Trash page); re-run with confirm=true to archive",
+			}
+			if len(sessions) == 0 {
+				out["note"] = "no session files found on disk for this topic — confirming removes only the topic metadata (same as the desktop Archive on an empty topic)"
+			}
+			return encode(out)
+		}
+		if err := a.TrashTopic(topicID); err != nil {
+			return nil, err
+		}
+		a.emitManageSessionsWriteChanged()
+		return encode(map[string]any{
+			"status":     "archived",
+			"topicId":    topicID,
+			"restorable": "manual — the sessions sit in the Trash page until restored or purged by the user",
+		})
 	case "rollback":
 		var p struct {
 			OpID string `json:"op_id"`

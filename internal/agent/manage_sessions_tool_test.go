@@ -151,3 +151,54 @@ func TestManageSessionsToolSchemaShape(t *testing.T) {
 		t.Fatal("manage_sessions must not be read-only")
 	}
 }
+
+// tl1305 ②：archive 动作的 agent 侧契约——目标解析成 topic_id 转发、confirm
+// 开关透传；未登记 topic 的会话拒绝并给出替代（delete_session）。
+func TestManageSessionsToolArchiveForwardsTopicID(t *testing.T) {
+	cfg, captured := manageSessionsFixture(t)
+	if _, err := manageSessionsCall(t, cfg, captured, `{"action":"archive","target":"整理目标"}`); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	var fwd struct {
+		TopicID     string `json:"topic_id"`
+		SessionPath string `json:"session_path"`
+		Scope       string `json:"scope"`
+		Confirm     bool   `json:"confirm"`
+	}
+	if err := json.Unmarshal(captured["args"], &fwd); err != nil {
+		t.Fatalf("decode archive args: %v", err)
+	}
+	if fwd.TopicID != "topic-manage" || fwd.Confirm {
+		t.Fatalf("archive forwarded = %#v", fwd)
+	}
+	if fwd.SessionPath == "" {
+		t.Fatalf("archive must forward the session path for the host's impact face")
+	}
+
+	// confirm 透传给宿主（两段式由宿主实现）。
+	if _, err := manageSessionsCall(t, cfg, captured, `{"action":"archive","target":"topic-manage","confirm":true}`); err != nil {
+		t.Fatalf("archive confirm: %v", err)
+	}
+	var confirmed struct {
+		Confirm bool `json:"confirm"`
+	}
+	if err := json.Unmarshal(captured["args"], &confirmed); err != nil {
+		t.Fatal(err)
+	}
+	if !confirmed.Confirm {
+		t.Fatalf("confirm must reach the host verbatim")
+	}
+}
+
+func TestManageSessionsToolArchiveRefusesUnfiledSession(t *testing.T) {
+	dir := t.TempDir()
+	bare := filepath.Join(dir, "bare.jsonl")
+	if err := os.WriteFile(bare, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := SessionCollabConfig{SessionDir: dir, WorkspaceRoot: t.TempDir()}
+	_, err := manageSessionsCall(t, cfg, map[string]json.RawMessage{}, `{"action":"archive","target":"bare"}`)
+	if err == nil || !strings.Contains(err.Error(), "not filed as a topic") || !strings.Contains(err.Error(), "delete_session") {
+		t.Fatalf("unfiled archive error = %v", err)
+	}
+}

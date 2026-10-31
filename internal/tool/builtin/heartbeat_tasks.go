@@ -149,6 +149,13 @@ type HeartbeatSetEnabledResult struct {
 	Revision    uint64 `json:"revision"`
 	NextRunAt   int64  `json:"nextRunAt"`
 	NextRunHint string `json:"nextRunHint,omitempty"`
+	// HistoricSessions (tl1305 ④) rides a DISABLE toggle: how many of the
+	// task's past conversations still sit in the session directories (title
+	// convention "Heartbeat: <task title>", rotation successors included,
+	// trash excluded). An enabling toggle leaves it 0/absent. It is a magnitude
+	// hint for "you are leaving history behind" — the caller pairs it with
+	// delete_session's filter batch to actually clean up.
+	HistoricSessions int `json:"historicSessions,omitempty"`
 }
 
 // HeartbeatManager is the seam the desktop injects. All methods must be safe
@@ -488,7 +495,7 @@ type heartbeatTaskEnable struct{}
 func (heartbeatTaskEnable) Name() string { return "heartbeat_task_enable" }
 
 func (heartbeatTaskEnable) Description() string {
-	return "Enable or disable one scheduled heartbeat task by id. The toggle takes effect immediately in the running scheduler and is persisted. Requires expected_revision from the latest heartbeat_task_list; on mismatch the call fails with the current revision (read again, retry). Use heartbeat_task_upsert for any other field change. " + heartbeatContractDoc
+	return "Enable or disable one scheduled heartbeat task by id. The toggle takes effect immediately in the running scheduler and is persisted. Requires expected_revision from the latest heartbeat_task_list; on mismatch the call fails with the current revision (read again, retry). Disabling also reports historicSessions — how many of the task's past conversations still sit in the session directories (tl1305: pair it with delete_session's title_prefix filter, e.g. \"Heartbeat: \", when the user wants the history gone too; the toggle itself never touches sessions). Use heartbeat_task_upsert for any other field change. " + heartbeatContractDoc
 }
 
 func (heartbeatTaskEnable) Schema() json.RawMessage {

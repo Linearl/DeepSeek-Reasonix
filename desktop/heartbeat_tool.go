@@ -192,15 +192,33 @@ func (a heartbeatManagerAdapter) UpsertTask(req builtin.HeartbeatUpsertRequest) 
 }
 
 func (a heartbeatManagerAdapter) SetEnabled(req builtin.HeartbeatSetEnabledRequest) (builtin.HeartbeatSetEnabledResult, error) {
-	e := a.engine
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	a.engine.mu.Lock()
+	result, taskTitle, err := a.engine.setEnabledLocked(req)
+	a.engine.mu.Unlock()
+	if err != nil {
+		return result, err
+	}
+	// tl1305 ④: a DISABLE answers "how much history am I leaving behind" —
+	// counted OUTSIDE e.mu because it walks session directories on disk (the
+	// scan is a magnitude hint; a run landing mid-count simply means the number
+	// is the pre-run snapshot). Enabling carries no count. app is nil on
+	// hand-seeded test engines — the count is a hint, never worth a panic.
+	if !req.Enabled && a.engine.app != nil {
+		result.HistoricSessions = a.engine.app.countHeartbeatHistorySessions(taskTitle)
+	}
+	return result, nil
+}
+
+// setEnabledLocked is SetEnabled's critical section: CAS-check, flip, persist,
+// re-read — everything that must hold e.mu. The task title travels back out so
+// the caller can run the on-disk history scan after releasing the lock.
+func (e *HeartbeatEngine) setEnabledLocked(req builtin.HeartbeatSetEnabledRequest) (builtin.HeartbeatSetEnabledResult, string, error) {
 	expected, err := e.readConfigSnapshot()
 	if err != nil {
-		return builtin.HeartbeatSetEnabledResult{}, err
+		return builtin.HeartbeatSetEnabledResult{}, "", err
 	}
 	if expected.cfg.Revision != req.ExpectedRevision {
-		return builtin.HeartbeatSetEnabledResult{}, heartbeatRevisionConflict(expected.cfg.Revision)
+		return builtin.HeartbeatSetEnabledResult{}, "", heartbeatRevisionConflict(expected.cfg.Revision)
 	}
 	tasks := append([]HeartbeatTask(nil), expected.cfg.Tasks...)
 	idx := -1
@@ -211,18 +229,18 @@ func (a heartbeatManagerAdapter) SetEnabled(req builtin.HeartbeatSetEnabledReque
 		}
 	}
 	if idx < 0 {
-		return builtin.HeartbeatSetEnabledResult{}, fmt.Errorf("task id %q does not exist — call heartbeat_task_list for current ids", req.ID)
+		return builtin.HeartbeatSetEnabledResult{}, "", fmt.Errorf("task id %q does not exist — call heartbeat_task_list for current ids", req.ID)
 	}
 	tasks[idx].Enabled = req.Enabled
 	if err := e.writeTasks(tasks, expected, true, "agent-set-enabled"); err != nil {
 		if errors.Is(err, ErrHeartbeatConfigConflict) {
-			return builtin.HeartbeatSetEnabledResult{}, heartbeatRevisionConflict(expected.cfg.Revision)
+			return builtin.HeartbeatSetEnabledResult{}, "", heartbeatRevisionConflict(expected.cfg.Revision)
 		}
-		return builtin.HeartbeatSetEnabledResult{}, err
+		return builtin.HeartbeatSetEnabledResult{}, "", err
 	}
 	latest, err := e.readConfigSnapshot()
 	if err != nil {
-		return builtin.HeartbeatSetEnabledResult{}, err
+		return builtin.HeartbeatSetEnabledResult{}, "", err
 	}
 	e.recordConfigSnapshotLocked(latest)
 	e.tasks = latest.cfg.Tasks
@@ -234,7 +252,7 @@ func (a heartbeatManagerAdapter) SetEnabled(req builtin.HeartbeatSetEnabledReque
 		Revision:    latest.cfg.Revision,
 		NextRunAt:   unixMilliOrZero(next),
 		NextRunHint: hint,
-	}, nil
+	}, tasks[idx].Title, nil
 }
 
 func heartbeatRevisionConflict(current uint64) error {

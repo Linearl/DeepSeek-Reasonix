@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -378,5 +379,56 @@ func TestHeartbeatUpsertClearsGoalWhenDisabled(t *testing.T) {
 	fresh := mustList(t, a)
 	if fresh.Tasks[0].GoalMode {
 		t.Fatalf("goalMode not cleared: %+v", fresh.Tasks[0])
+	}
+}
+
+// tl1305 ④：停用心跳任务时报告其历史会话数——标题约定
+// "Heartbeat: <task title>"（含轮换接任后缀），同名前缀的不同任务
+// （"Heartbeat: X v2"）与回收站内的不算；启用方向不带计数。
+func TestHeartbeatDisableReportsHistoricSessions(t *testing.T) {
+	app := newManageSessionsTestApp(t)
+	dir := desktopSessionDir("")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGlobalTopicSession(t, dir, "20261031-080000.000-hb-a.jsonl", "topic-hb-a", "Heartbeat: 巡逻", "yolo")
+	writeGlobalTopicSession(t, dir, "20261031-080001.000-hb-b.jsonl", "topic-hb-b", "Heartbeat: 巡逻", "yolo")
+	writeGlobalTopicSession(t, dir, "20261031-080002.000-hb-rot.jsonl", "topic-hb-rot", "Heartbeat: 巡逻（轮换 20261031 接任）", "yolo")
+	writeGlobalTopicSession(t, dir, "20261031-080003.000-hb-v2.jsonl", "topic-hb-v2", "Heartbeat: 巡逻 v2", "yolo")
+	writeGlobalTopicSession(t, dir, "20261031-080004.000-hb-other.jsonl", "topic-hb-other", "Heartbeat: 别的任务", "yolo")
+
+	if got := app.countHeartbeatHistorySessions("巡逻"); got != 3 {
+		t.Fatalf("count = %d, want 3 (two exact + one rotation successor)", got)
+	}
+	if got := app.countHeartbeatHistorySessions("不存在的任务"); got != 0 {
+		t.Fatalf("unknown task count = %d, want 0", got)
+	}
+
+	engine := newHeartbeatEngine(app)
+	a := heartbeatManagerAdapter{engine: engine}
+	view := mustList(t, a)
+	created, err := a.UpsertTask(builtin.HeartbeatUpsertRequest{
+		Patch: builtin.HeartbeatTaskPatch{
+			Provided: map[string]bool{"title": true, "prompt": true, "interval": true},
+			Title:    "巡逻", Prompt: "walk", Interval: "30m",
+		},
+		ExpectedRevision: view.Revision,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled, err := a.SetEnabled(builtin.HeartbeatSetEnabledRequest{ID: created.TaskID, Enabled: false, ExpectedRevision: created.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !disabled.Enabled == false || disabled.HistoricSessions != 3 {
+		t.Fatalf("disable result = %+v, want historicSessions=3", disabled)
+	}
+	enabled, err := a.SetEnabled(builtin.HeartbeatSetEnabledRequest{ID: created.TaskID, Enabled: true, ExpectedRevision: disabled.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled.HistoricSessions != 0 {
+		t.Fatalf("enable result must not carry a count: %+v", enabled)
 	}
 }

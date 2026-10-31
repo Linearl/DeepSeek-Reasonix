@@ -16,6 +16,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/boot"
+	"reasonix/internal/botruntime"
 	"reasonix/internal/collabinbox"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
@@ -733,14 +734,25 @@ func (a *App) deleteCollabSession(contactID, sessionPath string, dryRun bool) (a
 	// lands exactly when the file really leaves. When the trash already
 	// happened here, converge directly (locks are released by then — the
 	// convergence takes its own).
-	delayed, err := a.releaseSessionRuntimeForDelete(dir, sessionPath, func() {
+	//
+	// tl1305 trash 后 metadata 刷新：afterTrash 同时收口桌面 Delete 尾部的
+	// 另外两步（app_session_delete.go deleteSession）——bot 自动会话映射不清
+	// 会让 bot 消息继续路由向已 trash 的路径；prompt history tape 不重置会
+	// 让下一条 prompt 提议引用已删会话。挂进闭包使 delayed 分支（teardown
+	// 超时、文件稍后才真正离开）也在正确的时刻刷新。
+	afterTrash := func() {
 		a.convergeTopicsAfterSessionTrash(convTopics)
-	})
+		if err := botruntime.ForgetAutoSessionMappingsForPath(sessionPath); err != nil {
+			log.Printf("[desktop] clear auto bot session mapping after trash: %v", err)
+		}
+		a.invalidatePromptHistoryCache()
+	}
+	delayed, err := a.releaseSessionRuntimeForDelete(dir, sessionPath, afterTrash)
 	if err != nil {
 		return impact, agent.DeleteSessionResult{}, err
 	}
 	if !delayed {
-		a.convergeTopicsAfterSessionTrash(convTopics)
+		afterTrash()
 	}
 
 	a.removeSessionCatalogPath(sessionPath, "session_deleted")
