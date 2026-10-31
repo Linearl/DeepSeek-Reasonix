@@ -2,6 +2,8 @@ package boot
 
 import (
 	"net/http"
+	"strings"
+
 	"reasonix/internal/config"
 	"reasonix/internal/netclient"
 	"reasonix/internal/provider"
@@ -98,12 +100,38 @@ func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpe
 	if budget := providerBudgetFromConfig(cfg); budget != nil {
 		extra["retry_budget"] = *budget
 	}
+	// 任务1308: live credential re-auth — the HTTP adapters read this hook and
+	// SendWithRetry calls it on a 401 (once, forced) and proactively per
+	// CredentialRefreshInterval, so a long-lived runtime picks up externally
+	// rotated credentials instead of 401-looping until a rebuild. Entries
+	// without an api_key_env get no hook (auth failures keep their fast-fail).
+	if refresher := providerCredentialRefresher(e); refresher != nil {
+		extra["reauth"] = refresher
+	}
 	return provider.New(e.Kind, provider.Config{
 		HTTPClient: tunnelClient,
 		Name:       e.Name, DisplayName: e.DisplayName, Protocol: e.Kind,
 		BaseURL: e.BaseURL, Model: e.Model, APIKey: e.APIKey(), ModelInfo: modelInfo,
 		Extra: extra,
 	})
+}
+
+// providerCredentialRefresher builds the 任务1308 live re-auth hook for an
+// entry: each call re-reads the global credentials store exactly where config
+// load resolved from, fresh and uncached, so a credential rotated after boot is
+// seen on the next read. Nil for entries without an api_key_env — those keep
+// today's fixed build-time key behaviour.
+func providerCredentialRefresher(e *config.ProviderEntry) func() (string, bool) {
+	if e == nil {
+		return nil
+	}
+	key := strings.TrimSpace(e.APIKeyEnv)
+	if key == "" {
+		return nil
+	}
+	return func() (string, bool) {
+		return config.RefreshProviderCredential(key)
+	}
 }
 
 // providerBudgetFromConfig resolves the task-1056-B retry-budget lab switch to
