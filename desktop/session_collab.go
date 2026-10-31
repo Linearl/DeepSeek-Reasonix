@@ -191,12 +191,22 @@ func (p *sessionCollabPump) loop(stop chan struct{}) {
 		case <-stop:
 			return
 		case <-ticker.C:
-			if !sessionCollabEnabled() {
-				continue
-			}
-			p.drainOnce()
+			p.pumpTick(time.Now())
 		}
 	}
+}
+
+// pumpTick is one pump interval's work, extracted so tests can drive the
+// gating order directly. Order matters (tl1304 ④): the foreground heal pass
+// runs BEFORE the collab gates — the wedged-turn shapes it heals exist in
+// plain non-collab tabs too, so the collab experiment switch must never gate
+// plain-tab self-heal.
+func (p *sessionCollabPump) pumpTick(now time.Time) {
+	p.sweepForegroundTurnHeals(now)
+	if !sessionCollabEnabled() {
+		return
+	}
+	p.drainOnce()
 }
 
 // sessionCollabEnabled reads the live user config. The pump is a no-op while

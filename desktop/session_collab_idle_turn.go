@@ -806,6 +806,74 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 	p.idleTurns.sweepTargets(targets, now)
 }
 
+// foregroundHealer is the heal seam a tab controller must expose for the
+// foreground pass; real *control.Controller satisfies both. Kept as a narrow
+// interface so fakes can record the calls without a live runtime.
+type foregroundHealer interface {
+	HealStuckFinishing(maxAge time.Duration) (healed bool, stalledFor time.Duration)
+	HealStalledRunning(maxQuiet time.Duration) (healed bool, stalledFor time.Duration)
+}
+
+// sweepForegroundTurnHeals is the tl1304 ④ 最小扩面: the 796/1288 heal seams
+// were reachable only through the collab sweep — a plain (non-collab) tab
+// wedged into the same phantom-busy shapes had NO unattended self-heal at all
+// (sweep 只扫 collab targets/dormant，session_collab_idle_turn.go 原 791-821
+// 边界), and even a collab target sitting on the ACTIVE tab was skipped
+// (边界 2 的 continue 在 heal 判定之前). This pass walks every tab-registry
+// surface — active or not, collab or not — and offers the controller the same
+// two heals with the same thresholds (idleTurnFinishingStuckTimeout /
+// idleTurnRunningStuckTimeout). All protective conditions stay inside the
+// heal methods (closed/rotating/parked/compaction/background jobs/ledger
+// quiet): a healthy long turn with fresh ledger activity is never abandoned,
+// a finishing window younger than the threshold is never touched, and the
+// 796 queued-follow-up precondition deliberately does NOT apply here — the
+// phantom projection must clear even when nothing is queued (same rationale
+// as the 1288 seam). Runs on the pump tick BEFORE the collab gates: the
+// shapes it heals are collab-independent. Double coverage with the collab
+// sweep is harmless — both seams are guarded no-ops once healed.
+func (p *sessionCollabPump) sweepForegroundTurnHeals(now time.Time) {
+	type foregroundTarget struct {
+		tabID string
+		ctrl  control.SessionAPI
+	}
+	p.app.mu.RLock()
+	targets := make([]foregroundTarget, 0, len(p.app.tabs))
+	for tabID, tab := range p.app.tabs {
+		if tab == nil || tab.Ctrl == nil {
+			continue
+		}
+		targets = append(targets, foregroundTarget{tabID: tabID, ctrl: tab.Ctrl})
+	}
+	p.app.mu.RUnlock()
+	for _, target := range targets {
+		healer, ok := target.ctrl.(foregroundHealer)
+		if !ok {
+			continue // controller without the heal seams (older builds, fakes)
+		}
+		st := target.ctrl.RuntimeStatus()
+		// 796 shape: finishing-only window held past the threshold (wedged
+		// TurnDone fan-out). The controller re-verifies every precondition.
+		if st.Finishing && st.FinishingSinceUnix != 0 &&
+			now.Sub(time.Unix(st.FinishingSinceUnix, 0)) >= idleTurnFinishingStuckTimeout {
+			if healed, stuck := healer.HealStuckFinishing(idleTurnFinishingStuckTimeout); healed {
+				log.Printf("[idle-turn-sweep] tab=%s healed finishing-only gate (foreground pass, wedged %s >= %s; tl1304 ④)",
+					target.tabID, stuck.Round(time.Second), idleTurnFinishingStuckTimeout)
+			}
+			continue
+		}
+		// 1288 shape: running held by a wedged body (no finishing window).
+		// The controller-side check re-verifies parked/compaction/background
+		// jobs/ledger quiet, so a long-but-alive foreground tool is never
+		// abandoned here.
+		if st.Running && !st.Finishing {
+			if healed, stuck := healer.HealStalledRunning(idleTurnRunningStuckTimeout); healed {
+				log.Printf("[idle-turn-sweep] tab=%s healed stalled-running turn (foreground pass, no ledger activity for %s, threshold %s; tl1304 ④)",
+					target.tabID, stuck.Round(time.Second), idleTurnRunningStuckTimeout)
+			}
+		}
+	}
+}
+
 // idleTurnTargetViews flattens one sweep pass's live collab targets into sweep
 // views. 任务922（886 机制②）: sessionCollabTargets builds visible-tab targets
 // WITHOUT the ctrl field, so the previous unconditional `t.ctrl == nil`
