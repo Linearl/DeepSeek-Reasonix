@@ -268,9 +268,12 @@ type SecretsConfig struct {
 	// `gh`, HTTPS `git push`, and `npm publish`.
 	FilterSubprocessEnv bool `toml:"filter_subprocess_env"`
 	// ProtectSensitiveFiles makes read/list/search tools treat credential
-	// paths (.env, .git-credentials, .netrc, *.pem/*.key/*.p12/*.pfx, ~/.ssh)
-	// as invisible. Default off because hiding the files breaks legitimate
-	// "edit my .env" workflows.
+	// paths as invisible: the dotenv family (.env, .env.local, .env.*),
+	// credential files (.git-credentials, .netrc, .npmrc, .vault-token),
+	// key files (*.pem/*.key/*.p12/*.pfx), and the home credential stores
+	// (~/.ssh, ~/.aws, ~/.docker, ~/.gnupg, ~/.kube, ~/.azure,
+	// ~/.config/gcloud, ~/.config/gh). Default off because hiding the files
+	// breaks legitimate "edit my .env" workflows.
 	ProtectSensitiveFiles bool `toml:"protect_sensitive_files"`
 }
 

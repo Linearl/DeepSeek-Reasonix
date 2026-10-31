@@ -698,3 +698,127 @@ func TestWriteFileYoloFullAccessStateMatrix(t *testing.T) {
 		}
 	})
 }
+
+// Regression pin for audit medium#10 (tl1320②): the credential denylist used
+// to match ".env" by exact name only, so .env.local/.env.production and the
+// tool-convention credential stores (~/.aws/credentials, ~/.npmrc,
+// ~/.docker/config.json, ...) stayed readable while protect_sensitive_files
+// was on. Sensitive-read matching is now pattern-based; each family below
+// cites the tool's own documented default path (see credentialHomeDirs and
+// the sensitiveReadPath comment).
+func TestSensitiveReadPathCoversCredentialFamilies(t *testing.T) {
+	withProtectSensitiveFiles(t, true)
+	dir := t.TempDir()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Fatalf("os.UserHomeDir failed: %v", err)
+	}
+	blocked := []string{
+		// dotenv family: exact ".env" plus the documented environment variants
+		// (.env.local / .env.development / .env.production are the dotenv,
+		// create-react-app, Next.js, Vite conventions)
+		filepath.Join(dir, ".env"),
+		filepath.Join(dir, ".env.local"),
+		filepath.Join(dir, ".env.production"),
+		filepath.Join(dir, ".env.development.local"),
+		// .env.example is refused too: deny-side pattern stays simple
+		// (over-refusal of a template is acceptable, a missed secret is not)
+		filepath.Join(dir, ".env.example"),
+		// credential-named files, matched anywhere a workspace carries them
+		filepath.Join(dir, ".git-credentials"),
+		filepath.Join(dir, ".netrc"),
+		filepath.Join(dir, ".npmrc"),
+		filepath.Join(dir, ".vault-token"),
+		// key suffixes (pre-existing)
+		filepath.Join(dir, "server.pem"),
+		// tool-convention home stores (OpenSSH pre-existing)
+		filepath.Join(home, ".ssh", "id_rsa"),
+		filepath.Join(home, ".aws", "credentials"),
+		filepath.Join(home, ".aws", "config"),
+		filepath.Join(home, ".docker", "config.json"),
+		filepath.Join(home, ".gnupg", "private-keys-v1.d", "ABC123.key"),
+		filepath.Join(home, ".kube", "config"),
+		filepath.Join(home, ".azure", "msal_token_cache.json"),
+		filepath.Join(home, ".npmrc"),
+		filepath.Join(home, ".vault-token"),
+		// nested CLI credential stores at their documented defaults
+		filepath.Join(home, ".config", "gcloud", "application_default_credentials.json"),
+		filepath.Join(home, ".config", "gh", "hosts.yml"),
+	}
+	for _, path := range blocked {
+		if !sensitiveReadPath(path) {
+			t.Errorf("sensitiveReadPath(%q) = false, want true (credential family must be hidden)", path)
+		}
+	}
+
+	// wiring pin: the same families are refused through the confineRead gate
+	// that read/list/grep share (not just the pure helper)
+	for _, path := range []string{
+		filepath.Join(dir, ".env.local"),
+		filepath.Join(dir, ".npmrc"),
+	} {
+		if !confineRead(nil, path) {
+			t.Fatalf("confineRead(nil, %q) = false while protection is on", path)
+		}
+	}
+
+	// negative controls: near-miss names that are not credential paths
+	visible := []string{
+		filepath.Join(dir, ".environ"),
+		filepath.Join(dir, "env.txt"),
+		filepath.Join(dir, "notes.env"),
+		filepath.Join(dir, "config.json"),
+		filepath.Join(home, ".config", "code", "settings.json"),
+		filepath.Join(home, ".config", "gcloudx", "application_default_credentials.json"),
+	}
+	for _, path := range visible {
+		if sensitiveReadPath(path) {
+			t.Errorf("sensitiveReadPath(%q) = true, want false (not a credential path)", path)
+		}
+	}
+}
+
+func TestSensitiveReadPathFamiliesInertWhenUnprotected(t *testing.T) {
+	withProtectSensitiveFiles(t, false)
+	dir := t.TempDir()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Fatalf("os.UserHomeDir failed: %v", err)
+	}
+	for _, path := range []string{
+		filepath.Join(dir, ".env.local"),
+		filepath.Join(dir, ".npmrc"),
+		filepath.Join(home, ".aws", "credentials"),
+	} {
+		if confineRead(nil, path) {
+			t.Fatalf("confineRead(nil, %q) = true with protection off; the denylist must only engage protect_sensitive_files", path)
+		}
+	}
+}
+
+// Pin: the ripgrep glob mirror (sensitiveReadGlobFlags) must cover every
+// sensitiveReadPath family — drift re-opens the leak through directory search.
+func TestSensitiveReadGlobMirrorCoversDenylistFamilies(t *testing.T) {
+	got := sensitiveReadGlobFlags()
+	globs := map[string]bool{}
+	for i := 0; i+1 < len(got); i += 2 {
+		if got[i] != "--glob" {
+			t.Fatalf("sensitiveReadGlobFlags()[%d] = %q, want \"--glob\"", i, got[i])
+		}
+		globs[got[i+1]] = true
+	}
+	required := []string{
+		"!.env", "!.env.*", "!.git-credentials", "!.netrc", "!.npmrc", "!.vault-token",
+		"!*.pem", "!*.key", "!*.p12", "!*.pfx",
+		"!.ssh/**", "!.aws/**", "!.docker/**", "!.gnupg/**", "!.kube/**", "!.azure/**",
+		"!.config/gcloud/**", "!.config/gh/**",
+	}
+	for _, g := range required {
+		if !globs[g] {
+			t.Errorf("sensitiveReadGlobFlags missing %q: grep directory search can leak that credential family", g)
+		}
+	}
+	if len(globs) != len(required) {
+		t.Errorf("sensitiveReadGlobFlags has %d distinct globs, want exactly %d (unreviewed additions drift the mirror)", len(globs), len(required))
+	}
+}
