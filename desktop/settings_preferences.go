@@ -990,23 +990,19 @@ func (a *App) SetDetachedIdleReleaseMinutes(minutes int) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDetachedIdleReleaseMinutes(minutes) })
 }
 
-// SetGoMemLimitMB sets the task-308-O3 soft memory limit (0 = unbounded) and
-// re-applies it to the live runtime immediately: mb>0 installs the limit via
-// debug.SetMemoryLimit, mb==0 clears any previously installed limit. The slog
-// line inside applyGoMemLimit/clearGoMemLimit is the user-visible evidence —
-// the change is never silent.
-func (a *App) SetGoMemLimitMB(mb int) error {
-	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetGoMemLimitMB(mb) }); err != nil {
+// SetGCPercent sets the tl1286 GC-strategy dial and re-applies it to the live
+// runtime immediately: p>0 installs debug.SetGCPercent(p), p==0 reverts to the
+// Go default (100). The slog line inside applyGCPercentLive is the
+// user-visible evidence — the change is never silent, and it is always
+// revertible (setting 100 restores the stock runtime behavior).
+func (a *App) SetGCPercent(p int) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetGCPercent(p) }); err != nil {
 		return err
 	}
-	// Re-read through the same view the startup path uses so the live limit
-	// always matches what a restart would install.
+	// Re-read through the same view the startup path uses so the live
+	// percentage always matches what a restart would install.
 	if cfg, _, err := a.loadDesktopUserConfigForView(); err == nil {
-		if mb > 0 {
-			applyGoMemLimit(cfg)
-		} else {
-			clearGoMemLimit()
-		}
+		applyGCPercentLive(cfg.Agent.GCPercent)
 	}
 	return nil
 }

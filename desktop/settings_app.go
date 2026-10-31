@@ -610,7 +610,8 @@ type SettingsView struct {
 	PerfMonitorHeapHighThresholdMB int `json:"perfMonitorHeapHighThresholdMB"`
 	SessionCollabHopLimit          int `json:"sessionCollabHopLimit"`
 	DetachedIdleReleaseMinutes     int `json:"detachedIdleReleaseMinutes"`
-	GoMemLimitMB                   int `json:"goMemLimitMB"`
+	// tl1286: GC-strategy dial readback (0 config renders as the effective 100).
+	GCPercent int `json:"gcPercent"`
 	// tl 1097: 告警日志（WARN/ERROR）时间/大小档位读数（0 = 内置默认 7 天 /
 	// 100MB；-1 = 永久 / 无限制）。全量日志不受此两项影响。
 	DesktopAlertLogRetentionDays int  `json:"desktopAlertLogRetentionDays"`
@@ -941,8 +942,9 @@ type DesktopStartupSettingsView struct {
 	PerfMonitorHeapHighThresholdMB int `json:"perfMonitorHeapHighThresholdMB"`
 	SessionCollabHopLimit          int `json:"sessionCollabHopLimit"`
 	DetachedIdleReleaseMinutes     int `json:"detachedIdleReleaseMinutes"`
-	// GoMemLimitMB is the task-308-O3 soft memory limit in MB (0 = unbounded).
-	GoMemLimitMB int `json:"goMemLimitMB"`
+	// GCPercent is the tl1286 GC-strategy dial readback (0 config renders as
+	// the effective 100; hot-applied by SetGCPercent).
+	GCPercent int `json:"gcPercent"`
 	// tl 1097: 告警日志（WARN/ERROR）时间/大小档位读数（0 = 内置默认 7 天 /
 	// 100MB；-1 = 永久 / 无限制）。全量日志不受此两项影响。
 	DesktopAlertLogRetentionDays int `json:"desktopAlertLogRetentionDays"`
@@ -1791,7 +1793,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.PerfMonitorHeapHighThresholdMB = perfMonitorHeapHighThresholdForView(cfg)
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
 		view.DetachedIdleReleaseMinutes = cfg.Desktop.DetachedIdleReleaseMinutes
-		view.GoMemLimitMB = cfg.Desktop.GoMemLimitMB
+		view.GCPercent = gcPercentForView(cfg)
 		// tl 1097: 告警日志时间/大小档位 readback（读到的是原始配置值；
 		// 0 = 内置默认，前端据此渲染「7 天 / 100 MB」选中态）。
 		view.DesktopAlertLogRetentionDays = cfg.Desktop.DesktopAlertLogRetentionDays
@@ -2094,7 +2096,7 @@ func (a *App) Settings() SettingsView {
 		PerfMonitorHeapHighThresholdMB: perfMonitorHeapHighThresholdForView(cfg),
 		SessionCollabHopLimit:          cfg.Desktop.SessionCollabHopLimit,
 		DetachedIdleReleaseMinutes:     cfg.Desktop.DetachedIdleReleaseMinutes,
-		GoMemLimitMB:                   cfg.Desktop.GoMemLimitMB,
+		GCPercent:                      gcPercentForView(cfg),
 		// tl 1097: 告警日志时间/大小档位 readback（启动快照）。
 		DesktopAlertLogRetentionDays: cfg.Desktop.DesktopAlertLogRetentionDays,
 		DesktopAlertLogMaxTotalMB:    cfg.Desktop.DesktopAlertLogMaxTotalMB,

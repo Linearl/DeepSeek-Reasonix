@@ -9,6 +9,9 @@
 //  ③ SettingsPanel：两硬编码参数行自跨会话协作卡退役，pane 分派走通用
 //     参数渲染器（已登记走数据，未登记硬编码兜底）；
 //  ④ 三语文案：两参数标签/提示键三语齐全（复用既有键，零新增）。
+//  tl1286 更新：软内存上限卡（goMemLimit，低设即 GC 满跑）退役，换 GC 策略
+//     旋钮卡 gcPercent（debug.SetGCPercent；id/键/setter 同步换，机制断言
+//     不变）。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -52,37 +55,40 @@ const paneIds = new Set<string>();
 
   const storage = LAB_LAYOUT_DEFAULT_DATA.groups.find((g) => g.key === "storage");
   // 任务 846：homePointer 独立卡入存储组（3→4）；815 收口本测试未跟的 pin。
-  ok(storage?.entries.length === 4, "storage group carries sessionStore + homePointer + two param cards");
+  // tl-1174 jsonlZstd 与 tl1227 dagMigration 先后入组（4→6），此计数钉当时未跟——
+  // tl1286 预存红修正：现为 6 项（sessionStore/homePointer/jsonlZstd/dagMigration/
+  // idleReleaseMinutes/gcPercent）。
+  ok(storage?.entries.length === 6, "storage group carries sessionStore + homePointer + jsonlZstd + dagMigration + two param cards");
   const idle = storage?.entries.find((e) => e.id === "idleReleaseMinutes");
-  const mem = storage?.entries.find((e) => e.id === "goMemLimit");
+  const mem = storage?.entries.find((e) => e.id === "gcPercent");
   ok(idle?.kind === "param" && JSON.stringify(idle.fields) === JSON.stringify([{ id: "detachedIdleReleaseMinutes", input: "number" }]),
     "idleReleaseMinutes is a param card with the detachedIdleReleaseMinutes number field");
-  ok(mem?.kind === "param" && JSON.stringify(mem.fields) === JSON.stringify([{ id: "goMemLimitMB", input: "number" }]),
-    "goMemLimit is a param card with the goMemLimitMB number field");
-  ok(idle?.labelKey === "settings.detachedIdleRelease" && mem?.labelKey === "settings.goMemLimit",
+  ok(mem?.kind === "param" && JSON.stringify(mem.fields) === JSON.stringify([{ id: "gcPercent", input: "number" }]),
+    "gcPercent is a param card with the gcPercent number field");
+  ok(idle?.labelKey === "settings.detachedIdleRelease" && mem?.labelKey === "settings.gcPercent",
     "param cards label the existing settings keys (零新增文案)");
   ok(idle && !idle.members?.length && mem && !mem.members?.length,
     "param cards carry no folded members (参数卡无开关无子项)");
   ok(idle && labEntryLightOn(idle, {} as never) === false,
     "param card light reads off (无开关 → 灯常灭，不进组点亮计数)");
-  ok(Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "idleReleaseMinutes")) && Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "goMemLimit")),
+  ok(Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "idleReleaseMinutes")) && Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "gcPercent")),
     "both param cards are addressable through findLabEntry (搜索/rail 同一布局)");
 }
 
 // ── ②b 绑定注册表：值语义收拢在代码 ──
 {
-  ok(LAB_PARAM_FIELD_IDS.has("detachedIdleReleaseMinutes") && LAB_PARAM_FIELD_IDS.has("goMemLimitMB"),
+  ok(LAB_PARAM_FIELD_IDS.has("detachedIdleReleaseMinutes") && LAB_PARAM_FIELD_IDS.has("gcPercent"),
     "registry registers both first-batch field ids");
   ok(LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.input === "number" &&
-     LAB_PARAM_FIELDS.goMemLimitMB.input === "number",
+     LAB_PARAM_FIELDS.gcPercent.input === "number",
     "both bindings are number inputs");
   ok(registry.includes("app.SetDetachedIdleReleaseMinutes(Number(value))") &&
-     registry.includes("app.SetGoMemLimitMB(Number(value))"),
+     registry.includes("app.SetGCPercent(Number(value))"),
     "registry wires the existing app bridge setters (配置键/setter 零变化)");
-  ok(view.includes("detachedIdleReleaseMinutes?: number") && view.includes("goMemLimitMB?: number"),
+  ok(view.includes("detachedIdleReleaseMinutes?: number") && view.includes("gcPercent?: number"),
     "SettingsView carries both read keys");
   ok(registry.includes('hintKey: "settings.detachedIdleReleaseHint"') &&
-     registry.includes('hintKey: "settings.goMemLimitHint"'),
+     registry.includes('hintKey: "settings.gcPercentHint"'),
     "bindings hint through dictionary keys (禁止内联文案)");
 }
 
@@ -91,17 +97,19 @@ const paneIds = new Set<string>();
   const scStart = panel.indexOf('{selected === "sessionCollab" && (');
   const scEnd = panel.indexOf('{selected === "optimisticParallel" && (', scStart);
   const sessionCollabPane = panel.slice(scStart, scEnd);
-  ok(!sessionCollabPane.includes("detachedIdleRelease") && !sessionCollabPane.includes("goMemLimit"),
+  ok(!sessionCollabPane.includes("detachedIdleRelease") && !sessionCollabPane.includes("gcPercent"),
     "the sessionCollab card no longer hosts the two parameter rows");
-  ok(!panel.includes("SetDetachedIdleReleaseMinutes(") && !panel.includes("SetGoMemLimitMB("),
+  ok(!panel.includes("SetDetachedIdleReleaseMinutes(") && !panel.includes("SetGCPercent("),
     "the panel has no direct setter calls left (写入走注册表)");
-  ok(panel.includes('selectedEntry?.kind === "param"') && panel.includes("<LabParamFieldsCard entry={selectedEntry}"),
+  ok(panel.includes('selectedEntry?.kind === "param"') && panel.includes("<LabParamFieldsCard entry={selectedEntry"),
     "the pane dispatch routes param cards to the generic data-driven renderer");
   ok(panel.includes("import { LAB_PARAM_FIELDS } from \"../lab/labParamFields\";"),
     "the panel imports the param binding registry");
-  ok(paneIds.has("idleReleaseMinutes") && paneIds.has("goMemLimit"),
+  ok(paneIds.has("idleReleaseMinutes") && paneIds.has("gcPercent"),
     "both param card ids are in the pane whitelist");
-  ok(panel.includes('| "idleReleaseMinutes"\n  | "goMemLimit"') && panel.includes('| "usageMonitoring";'),
+  // tl1286 预存红修正：tl1227 往 union 尾部追加 "dagMigration" 时分号随行迁移，
+  // 旧钉 '| "usageMonitoring";' 自此失配——改为不含分号的 id 本体验钉。
+  ok(panel.includes('| "idleReleaseMinutes"\n  | "gcPercent"') && panel.includes('| "usageMonitoring"'),
     "both param card ids are in the pane union (783 appends usageMonitoring after them)");
 }
 
@@ -142,7 +150,7 @@ groups:
 {
   for (const locale of ["zh", "en", "zh-TW"]) {
     const dict = readFileSync(`${frontendRoot}/src/locales/${locale}.ts`, "utf8");
-    const keys = ["settings.detachedIdleRelease", "settings.detachedIdleReleaseHint", "settings.goMemLimit", "settings.goMemLimitHint"];
+    const keys = ["settings.detachedIdleRelease", "settings.detachedIdleReleaseHint", "settings.gcPercent", "settings.gcPercentHint"];
     const missing = keys.filter((k) => !dict.includes(`"${k}"`));
     ok(missing.length === 0, `${locale} carries the two param label/hint keys (missing: ${JSON.stringify(missing)})`);
   }

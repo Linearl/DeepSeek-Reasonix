@@ -24,6 +24,9 @@
 //       存储组登记 idleReleaseMinutes / goMemLimit 两张 kind:param 参数卡
 //       （后台会话闲置释放 308-O4 + Go 软内存上限 308-O3），自跨会话协作卡
 //       硬编码行迁出——数据驱动渲染，配置键/setter 零变化。
+//   tl1286 goMemLimit 卡退役换新：软内存上限（308-O3，低设即 GC 满跑）替换
+//       为 GC 策略旋钮 gcPercent 卡（debug.SetGCPercent；0=跟随默认等效
+//       100），id/键/setter 同步换（goMemLimitMB→gcPercent）。
 //   961 条目级收编三处（742/782 合并卡先例，配置键零变化）：
 //       automation 组 dream+decisionPatterns+heartbeatBackground 三散条
 //       并「智能自动化」卡（smartAutomation）；efficiency 组 quickCommands+
@@ -428,15 +431,16 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           onKeys: [],
           fields: [{ id: "detachedIdleReleaseMinutes", input: "number" }],
         },
-        // 任务 775：Go 软内存上限（308-O3）——参数卡（无开关）。
-        // 任务 781：补 tier——软内存上限=optional（rail 显可选徽章）。
+        // tl1286：GC 策略旋钮（替代 308-O3 软内存上限——低设即 GC 满跑）——
+        // 参数卡（无开关；0=跟随默认等效 100，设回 100 即回默认）。
+        // tier 延续 optional（rail 显可选徽章）。
         {
-          id: "goMemLimit",
-          labelKey: "settings.goMemLimit",
+          id: "gcPercent",
+          labelKey: "settings.gcPercent",
           kind: "param",
           tier: "optional",
           onKeys: [],
-          fields: [{ id: "goMemLimitMB", input: "number" }],
+          fields: [{ id: "gcPercent", input: "number" }],
         },
       ],
     },

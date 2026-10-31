@@ -1802,8 +1802,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetSessionCollabHopLimit(limit: number): Promise<void>;
   // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
   SetDetachedIdleReleaseMinutes(minutes: number): Promise<void>;
-  // Task 308-O3: soft memory limit in MB (0 = unbounded).
-  SetGoMemLimitMB(mb: number): Promise<void>;
+  // tl1286: GC-strategy dial (0 = follow the Go default, equivalent to 100;
+  // hot-applied, always revertible by setting 100).
+  SetGCPercent(percent: number): Promise<void>;
   // tl 1097: WARN/ERROR alert-log retention dial (days; 0 = default 7; -1 = forever).
   SetDesktopAlertLogRetentionDays(days: number): Promise<void>;
   // tl 1097: WARN/ERROR alert-log total size ceiling in MB (0 = default 100; -1 = unlimited).
@@ -6704,7 +6705,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalRuntimeReuse() {},
     async SetSessionCollabHopLimit() {},
     async SetDetachedIdleReleaseMinutes() {},
-    async SetGoMemLimitMB() {},
+    async SetGCPercent() {},
     async SetDesktopAlertLogRetentionDays() {},
     async SetDesktopAlertLogMaxTotalMB() {},
     async AlertLogUsage() { return { bytes: 0, files: 0, dir: "" }; },

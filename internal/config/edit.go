@@ -569,17 +569,22 @@ func (c *Config) SetDetachedIdleReleaseMinutes(minutes int) error {
 	return nil
 }
 
-// SetGoMemLimitMB sets the task-308-O3 soft memory limit in MB (0 = unset).
-// Clamped into [0, 65536] — 64 GiB is far past any sane desktop ceiling.
-func (c *Config) SetGoMemLimitMB(mb int) error {
-	if mb < 0 {
-		mb = 0
+// SetGCPercent sets the tl1286 GC-strategy dial (debug.SetGCPercent). 0
+// (default) means "follow the Go default (equivalent to 100)" and leaves the
+// runtime untouched at startup, so a GOGC env override keeps working.
+// Explicit values are clamped into [0, 1000]: below ~10 the collector would
+// run nearly continuously, and above 1000 the dial has no practical meaning
+// for a desktop. Lives in [agent] only — no [desktop] mirror (single source
+// of truth; the retired go_mem_limit mirror is the counter-example tl1286
+// removes).
+func (c *Config) SetGCPercent(p int) error {
+	if p < 0 {
+		p = 0
 	}
-	if mb > 65536 {
-		mb = 65536
+	if p > 1000 {
+		p = 1000
 	}
-	c.Desktop.GoMemLimitMB = mb
-	c.Agent.GoMemLimitMB = mb
+	c.Agent.GCPercent = p
 	return nil
 }
 

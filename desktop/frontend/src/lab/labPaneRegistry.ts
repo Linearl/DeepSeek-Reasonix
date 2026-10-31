@@ -116,7 +116,7 @@ export type ExperimentFeatureId =
   // 任务 775: kind:param 参数卡 id——无硬编码 pane，pane 走通用参数渲染器
   // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
   | "idleReleaseMinutes"
-  | "goMemLimit"
+  | "gcPercent" // tl1286：goMemLimit 卡退役换 GC 策略旋钮卡（pane 语义不变——仍走通用参数渲染器）
   // tl 1097：日志管理参数卡 id（可观测性组）——pane 由专用
   // LogManagementLabPane 承接（含当前占用行 + 打开目录按钮 + 「永久+无限制」
   // 警示行，超出通用参数渲染器覆盖面）；两个 segment 字段仍走 labParamFields
@@ -188,7 +188,8 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   // 硬编码分支）；登记进白名单与 feature 卡同一安全网语义（yaml 引用
   // 白名单外 id ⇒ 整份回退默认）。
   "idleReleaseMinutes",
-  "goMemLimit",
+  // tl1286：GC 策略旋钮参数卡（替代退役的 goMemLimit）。
+  "gcPercent",
   // tl 1097：日志管理参数卡（可观测性组）。
   "logManagement",
   // tl1227：DAG 日志迁移动作卡（存储组）。

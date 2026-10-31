@@ -190,12 +190,15 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 //     批量直写会绕过或直接失败，交单项走既有拒绝路径；
 //   - messageMerge：主开关是三态键 collab_inbox_merge（off|same_sender|all），
 //     「开」没有唯一布尔语义；
-//   - eventsRotation：主开关是三态键 events_auto_rotation（off|manual|…）。
+//   - eventsRotation：主开关是三态键 events_auto_rotation（off|manual|…）；
+//   - opencodeGoUsage：用量监测卡成员行（783 定档 recommended），无批量写入器
+//     ——开关走卡片行内 setter，纯展示侧栏卡的配置面，批量无独立语义。
 var labBulkExcluded = map[string]string{
-	"fullAccess":     LabBulkSkipDangerGate,
-	"autopilot":      LabBulkSkipPrecondition,
-	"messageMerge":   LabBulkSkipNotBool,
-	"eventsRotation": LabBulkSkipNotBool,
+	"fullAccess":      LabBulkSkipDangerGate,
+	"autopilot":       LabBulkSkipPrecondition,
+	"messageMerge":    LabBulkSkipNotBool,
+	"eventsRotation":  LabBulkSkipNotBool,
+	"opencodeGoUsage": LabBulkSkipNoSetter,
 }
 
 // ParseLabBulkScope 校验范围串（未知值报错，前端传参 typo 不静默落空集）。

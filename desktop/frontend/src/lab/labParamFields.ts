@@ -54,14 +54,16 @@ export const LAB_PARAM_FIELDS: Readonly<Record<string, LabParamFieldBinding>> = 
     read: (s) => s.detachedIdleReleaseMinutes ?? 0,
     write: (value) => app.SetDetachedIdleReleaseMinutes(Number(value)),
   },
-  // 任务 308-O3：Go 软内存上限（debug.SetMemoryLimit，MB；0 = 不设限）。首批迁移（775）。
-  goMemLimitMB: {
+  // tl1286：GC 策略旋钮（debug.SetGCPercent；0 = 跟随默认等效 100，设置即
+  // 热改、设回 100 即回默认）。替代退役的 308-O3 软内存上限（低设即 GC 满
+  // 跑——百分比随活跃堆缩放，无固定字节悬崖）。
+  gcPercent: {
     input: "number",
-    hintKey: "settings.goMemLimitHint",
-    min: 0,
-    max: 65536,
-    read: (s) => s.goMemLimitMB ?? 0,
-    write: (value) => app.SetGoMemLimitMB(Number(value)),
+    hintKey: "settings.gcPercentHint",
+    min: 10,
+    max: 1000,
+    read: (s) => s.gcPercent ?? 100,
+    write: (value) => app.SetGCPercent(Number(value)),
   },
   // tl 1097：告警日志保留时间档（只作用于 WARN/ERROR；全量日志不受影响）。
   // 0 = 内置默认 7 天；-1 = 永久。

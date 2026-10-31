@@ -365,7 +365,9 @@ groups:
             tier: recommended
           - id: opencodeGoUsage
             labelKey: settings.opencodeGoUsage
-            tier: unstable
+            # 任务 783 定的 unstable→recommended（「编辑读回 tier 未稳定→推荐」），
+            # 内置默认已翻、本 yaml 漏翻——tl1286 预存红顺手对齐。
+            tier: recommended
       # tl 1097：日志管理——kind:param 参数卡（无开关）。两个 segment 档位
       # （告警日志保留时间 + 空间上限）+ 当前占用行 + 打开日志目录按钮；
       # 全量日志不受此卡影响（固定 25 份 ≈ 2 天）。775 参数卡基建同款。
@@ -445,14 +447,15 @@ groups:
         fields:
           - id: detachedIdleReleaseMinutes
             input: number
-      # 任务 775：Go 软内存上限（308-O3，debug.SetMemoryLimit，MB；0=不设限）
-      # ——参数卡（无开关）。任务 781：补 tier（软内存上限=optional）。
-      - id: goMemLimit
-        labelKey: settings.goMemLimit
+      # tl1286：GC 策略旋钮（debug.SetGCPercent；0=跟随默认等效 100）——参数卡
+      # （无开关），替代 308-O3 软内存上限（实测低设软限制会引发 GC 满跑整机
+      # 卡死，旋钮随活跃堆缩放无悬崖）。字段绑定在 src/lab/labParamFields.ts。
+      - id: gcPercent
+        labelKey: settings.gcPercent
         kind: param
         tier: optional
         fields:
-          - id: goMemLimitMB
+          - id: gcPercent
             input: number
 
   # ── 基础设施（7 项；任务 785：S1 常驻底座开关条目随底座退役移除；

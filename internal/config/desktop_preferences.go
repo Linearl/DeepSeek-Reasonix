@@ -345,8 +345,12 @@ type DesktopConfig struct {
 	// runtime value of task 308-O4 (idle threshold in minutes, 0 = never
 	// release).
 	DetachedIdleReleaseMinutes int `toml:"detached_idle_release_minutes"`
-	// GoMemLimitMB is the settings-view mirror for the [agent] runtime value
-	// of task 308-O3 (soft memory limit in MB, 0 = unbounded).
+	// Deprecated: the settings-view mirror of the task-308-O3 soft memory
+	// limit, retired with the key itself by tl1286 (a soft limit below
+	// steady-state residency drove GC into a full-throttle spin). Kept only so
+	// old configs still decode and the one-shot migration hint can name the
+	// retired value; never rendered, never applied. The replacement knob is
+	// [agent] gc_percent (no mirror — single source of truth).
 	GoMemLimitMB int `toml:"go_mem_limit_mb"`
 	// DesktopAlertLogRetentionDays is the settings-view mirror for the tl-1097
 	// alert-log retention dial (0 = built-in default 7 days; -1 = forever).

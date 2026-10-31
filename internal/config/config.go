@@ -2047,11 +2047,23 @@ type AgentConfig struct {
 	// values are clamped into [0, 10080] on write. The
 	// REASONIX_DETACHED_IDLE_RELEASE_MINUTES env overrides for one process.
 	DetachedIdleReleaseMinutes int `toml:"detached_idle_release_minutes"`
-	// GoMemLimitMB is the task-308-O3 soft memory limit (debug.SetMemoryLimit)
-	// in MB. 0 (default) leaves the Go runtime unbounded — the pre-O3
-	// behaviour; a positive value makes the runtime return memory to the OS
-	// aggressively once the heap crosses the limit (heapSys 3-4GB never
-	// returning was the measured driver). Clamped into [0, 65536] on write.
+	// GCPercent is the tl1286 GC-strategy dial (debug.SetGCPercent): the
+	// percentage of freshly allocated data versus live data that triggers a
+	// collection. 0 (default) follows the Go default (equivalent to 100) and
+	// leaves the runtime untouched, so a GOGC env override keeps working;
+	// lower values reclaim more eagerly (smaller footprint, modest extra CPU —
+	// a percentage scales with the live heap, no fixed-ceiling cliff); higher
+	// values favor throughput. Replaces the retired go_mem_limit_mb soft
+	// limit: a byte ceiling set below steady-state residency drove the
+	// collector into a full-throttle spin (the 20261030 whole-machine hang).
+	// Clamped into [0, 1000] on write; applied live via the settings setter,
+	// at startup otherwise.
+	GCPercent int `toml:"gc_percent"`
+	// Deprecated: GoMemLimitMB (task 308-O3 soft memory limit) was retired by
+	// tl1286 — a limit below steady-state residency makes the collector run
+	// continuously. The field is kept only so old configs still decode and
+	// the one-shot migration hint can name the retired value; it is never
+	// applied and the line disappears from the file on the next save.
 	GoMemLimitMB int `toml:"go_mem_limit_mb"`
 	// DesktopAlertLogRetentionDays is the tl-1097 retention dial for the
 	// WARN/ERROR-only alert log (desktop-alerts.log). 0 (default) = built-in

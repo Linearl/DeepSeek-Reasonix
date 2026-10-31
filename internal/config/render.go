@@ -628,7 +628,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "perf_monitor_heap_high_threshold_mb = %d   # desktop: settings-view mirror of [agent] perf_monitor_heap_high_threshold_mb (task 528; 0 = built-in default 6144)\n", c.Desktop.PerfMonitorHeapHighThresholdMB)
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
 		fmt.Fprintf(&b, "detached_idle_release_minutes = %d   # desktop: settings-view mirror of [agent] detached_idle_release_minutes (task 308-O4; 0 = never release)\n", c.Desktop.DetachedIdleReleaseMinutes)
-		fmt.Fprintf(&b, "go_mem_limit_mb = %d   # desktop: settings-view mirror of [agent] go_mem_limit_mb (task 308-O3; 0 = unbounded)\n", c.Desktop.GoMemLimitMB)
+		// tl1286: the go_mem_limit_mb settings-view mirror line is gone — the
+		// soft-limit key itself is retired. Old configs keep decoding (the
+		// tombstone field survives), but the retired line never renders back.
 		// tl 1097: alert-log retention dials. Unconditional render — omit-on-
 		// default would let a hand-added line vanish on the next save.
 		fmt.Fprintf(&b, "alert_log_retention_days = %d   # desktop: WARN/ERROR alert-log retention in days (0 = default 7, -1 = forever, clamped -1..90)\n", c.Desktop.DesktopAlertLogRetentionDays)
@@ -990,9 +992,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 308-O4: detached idle runtime release threshold. Unconditional
 	// render — omit-on-default would let a hand-added line vanish on the next save.
 	fmt.Fprintf(&b, "detached_idle_release_minutes = %d   # task 308-O4: release a detached session's runtime after this many idle minutes (0 = never, clamped 0..10080; env REASONIX_DETACHED_IDLE_RELEASE_MINUTES overrides)\n", c.Agent.DetachedIdleReleaseMinutes)
-	// Task 308-O3: soft memory limit (debug.SetMemoryLimit). Unconditional
-	// render — omit-on-default would let a hand-added line vanish on the next save.
-	fmt.Fprintf(&b, "go_mem_limit_mb = %d   # task 308-O3: soft memory limit in MB via debug.SetMemoryLimit (0 = unbounded, clamped 0..65536)\n", c.Agent.GoMemLimitMB)
+	// tl1286: GC-strategy dial (debug.SetGCPercent), replacing the retired
+	// 308-O3 soft memory limit. Unconditional render — omit-on-default would
+	// let a hand-added line vanish on the next save.
+	fmt.Fprintf(&b, "gc_percent = %d   # tl1286: GC strategy dial via debug.SetGCPercent (0 = Go default, equivalent to 100; lower = reclaim more eagerly, smaller footprint at a modest CPU cost; higher = favor throughput; clamped 0..1000; hot-applied by the settings setter)\n", c.Agent.GCPercent)
 	// Task 309: mailbox defaults for talk_to_session. Unconditional render —
 	// omit-on-default would let a hand-added line vanish on the next save.
 	fmt.Fprintf(&b, "session_collab_mail_idempotent_default = %v   # task 309: same-content redeliveries dedup onto the original mail (default on)\n", c.Agent.SessionCollabMailIdempotentDefault)
