@@ -6,7 +6,7 @@
 // executes. Progress arrives as runtime events; the receipt doubles as the
 // restore guidance (backup dir + losses). Pure display + calls; the kernels
 // own every safety boundary.
-// tl1287④：v5 入口常驻（此前 v5 店不在默认路径时整颗按钮被藏掉，用户实测
+// tl1287④：v5 入口常驻（此前 v5 存储不在默认路径时整颗按钮被藏掉，用户实测
 // 「界面上没有按钮」）；未检出时提示探测路径，plan 失败时错误里带路径。
 // 确认步新增 registry 前置检查警示（tl1287 风险 b：registry 不可读时会话
 // 全部 fallback 到默认目录，必须在执行前看见）。
@@ -97,7 +97,7 @@ export function SessionMigrationSection({ t, onRunningChange }: { t: Translator;
           <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void open("v4-backfill")}>
             {t("settings.migration.action")}
           </button>
-          {/* tl1287④: 常驻入口——不再被 v5Available 藏掉；店缺失时由 hint
+          {/* tl1287④: 常驻入口——不再被 v5Available 藏掉；存储缺失时由 hint
               说明探测路径，点击扫描失败时错误信息带同一路径。 */}
           <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void open("v5-import")}>
             {t("settings.migration.v5Action")}
