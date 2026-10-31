@@ -31,7 +31,7 @@ import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
-import { takeSettingsViewPrefetch, peekSettingsPrefetchStartedAt, invalidateSettingsViewPrefetch } from "../lib/settingsPrefetch";
+import { takeSettingsViewPrefetch, invalidateSettingsViewPrefetch } from "../lib/settingsPrefetch";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
 import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
@@ -180,6 +180,11 @@ export function SettingsPanel({
   const labLoadReportedAt = useRef<number | null>(null);
   const labFirstPaintPending = useRef(false);
   const labDataReadyMs = useRef(0);
+  // tl 1284：本次 reload 的计时起点（消费到的预取请求的发起时刻，或现拉发起
+  // 时刻）。首屏上报用它——原来是再 peek 一次模块级全局时间戳，那个时间戳在
+  // 消费/作废/关面板后仍留存，面板重开会把上一次点击当起点（20:01 例
+  // dataReadyMs=23545 即此伪影，后端当时仅 316ms）。
+  const labReloadStartRef = useRef<number | null>(null);
   const [pendingScopes, setPendingScopes] = useState<Record<string, number>>({});
   const [err, setErr] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -217,10 +222,16 @@ export function SettingsPanel({
   const reload = useCallback(async (opts?: { preferPrefetch?: boolean }) => {
     const seq = ++settingsLoadSeq.current;
     const applicationSeq = ++modelApplicationSeq.current;
-    // 任务 1098（阶段 1 补打点）：起点优先取预取发起时刻（入口点击），没有
-    // 预取（保存后 reload / TTL 过期）才退化为「本次调用发起」——两者都对应
-    // 用户主观感知的「点了之后多久能看到内容」，不是组件内部的相对时间。
-    const prefetchStart = peekSettingsPrefetchStartedAt();
+    // 任务 1098（阶段 1 补打点）：起点优先取「本次消费到的预取请求」的发起
+    // 时刻（入口点击），没有预取（保存后 reload / TTL 过期）才退化为「本次
+    // 调用发起」——两者都对应用户主观感知的「点了之后多久能看到内容」，不是
+    // 组件内部的相对时间。tl 1284：起点跟请求本体走（take 返回 startedAt），
+    // 不再读模块级全局——旧全局在消费/作废/关面板后不清零，面板重开会继承
+    // 上一次会话的点击时刻（20:01 例 23545ms = 22s 前的旧起点，纯伪影）；
+    // 22:41 例 17555ms 的起点本就正确，慢在 promise 消费被启动期 hydrate
+    // 风暴饿 17.2s——那是渲染调度问题，本修只保证这类读数如实归属。
+    const prefetch = opts?.preferPrefetch ? takeSettingsViewPrefetch() : null;
+    const prefetchStart = prefetch?.startedAt ?? null;
     const reloadStart = prefetchStart ?? Date.now();
     setLoadingSettings(true);
     setSettingsLoadFailed(false);
@@ -232,7 +243,7 @@ export function SettingsPanel({
         // 一律现拉。设置面板内切 tab 会经 openPage 钩子重新填预取缓存（写前
         // 快照留存 TTL 10s），保存后的读回若吃到它，UI/行为就停在旧态，表现
         // 为「开关点两次才生效」。
-        (opts?.preferPrefetch ? takeSettingsViewPrefetch() : null) ?? app.Settings(),
+        prefetch?.promise ?? app.Settings(),
         Promise.resolve().then(() => app.GetModelSettingsApplication()).catch(() => null),
       ]);
       const next = normalizeSettingsView(view);
@@ -242,6 +253,7 @@ export function SettingsPanel({
       reportFrontendLog("lab", "settings data ready", `dataReadyMs=${dataReadyMs} prefetchStart=${prefetchStart != null}`);
       if (seq !== settingsLoadSeq.current) return next;
       labDataReadyMs.current = dataReadyMs;
+      labReloadStartRef.current = reloadStart;
       labFirstPaintPending.current = true;
       setS(next);
       if (application && applicationSeq === modelApplicationSeq.current) setModelApplication(application);
@@ -273,9 +285,10 @@ export function SettingsPanel({
     let cancelled = false;
     const raf = window.requestAnimationFrame(() => {
       if (cancelled) return;
-      const prefetchStart = peekSettingsPrefetchStartedAt();
       const readyAt = Date.now() - labDataReadyMs.current;
-      const firstPaintTotal = Date.now() - (prefetchStart ?? readyAt);
+      // tl 1284：起点用本次 reload 自己的（与 dataReady 同源），不再 peek
+      // 模块级全局——重开面板时旧全局会把上一次点击算进 totalMs。
+      const firstPaintTotal = Date.now() - (labReloadStartRef.current ?? readyAt);
       // 面板页签也带上：默认 general，从 lab 入口直接开则是 experimental。
       reportFrontendLog("lab", "settings first paint", `tab=${tab} totalMs=${firstPaintTotal} dataReadyMs=${labDataReadyMs.current}`);
       labLoadReportedAt.current = Date.now();
