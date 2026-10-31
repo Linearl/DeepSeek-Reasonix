@@ -59,7 +59,7 @@ const tab: TabMeta = {
 type SteerReceipt = { itemId: string; disposition: string; position: number; paused: boolean; error?: string };
 
 // Scenario knobs; every test re-installs the mock and re-mounts a controller.
-let steerExactBehavior: "accept" | "queued" | "throw" = "accept";
+let steerExactBehavior: "accept" | "queued" | "throw" | "notActive" = "accept";
 let steerPlainBehavior: "accept" | "queued" | "throw" = "throw";
 let followupBehavior: "queued" | "throw" = "queued";
 const calls: { name: string; args: unknown[] }[] = [];
@@ -101,6 +101,7 @@ function installBindings() {
         EnqueueInboxSteerForTurn: async (tabId: string, turnId: string, display: string, submit: string, idempotency: string) => {
           record("EnqueueInboxSteerForTurn", [tabId, turnId, display, submit, idempotency]);
           if (steerExactBehavior === "throw") throw new Error("steer channel unavailable");
+          if (steerExactBehavior === "notActive") throw new Error(`turn ${turnId} is not the active turn for tab ${tabId}`);
           const receipt: SteerReceipt = {
             itemId: "item-exact", disposition: steerExactBehavior === "accept" ? "steer_accepted" : "queued_followup", position: 1, paused: false,
           };
@@ -119,6 +120,10 @@ function installBindings() {
           if (followupBehavior === "throw") throw new Error("queue unavailable");
           const receipt: SteerReceipt = { itemId: "item-followup", disposition: "queued_followup", position: 1, paused: false };
           return receipt;
+        },
+        // tl1303: capture desktop.log lines so the refusal reason is assertable.
+        ReportFrontendLog: async (feature: string, level: string, message: string, detail: string) => {
+          record("ReportFrontendLog", [feature, level, message, detail]);
         },
       } as Partial<AppBindings> as AppBindings,
     },
@@ -230,6 +235,48 @@ async function main() {
     await reset();
   }
 
+  // 3b. tl1303 incident chain: the exact-turn fence rejects with "not the
+  // active turn" (recovery-fork rebind / dead run). The rejection is the "no
+  // injectable live turn" signal: session-level steer must be skipped (a dead
+  // run would accept and never consume it), the durable follow-up queue keeps
+  // the text, the composer shows the queued fact text (never the "joined the
+  // current task" false success), and the refusal reaches desktop.log.
+  {
+    steerExactBehavior = "notActive";
+    steerPlainBehavior = "accept"; // a session-level steer WOULD be accepted — must stay untouched
+    followupBehavior = "queued";
+    const root = await mount();
+    await act(async () => { await controller?.sendToTab("tab-p6", "死 run 期间的引导"); await flushPromises(); });
+    const state = controller?.state;
+    ok(calls.some((c) => c.name === "EnqueueInboxSteerForTurn"), "tl1303: the exact-turn fence is tried first");
+    ok(!calls.some((c) => c.name === "EnqueueInboxSteer"), "tl1303: a not-active-turn rejection never falls back to the session-level steer");
+    ok(calls.some((c) => c.name === "EnqueueInboxFollowup"), "tl1303: a not-active-turn rejection lands in the durable follow-up queue");
+    ok(state?.items.some((item) => item.kind === "notice" && item.text === DEGRADE_NOTICE("queued")) ?? false, "tl1303: the composer shows the queued fact text");
+    eq(state?.items.some((item) => item.kind === "notice" && item.text === DEGRADE_NOTICE("steer")), false, "tl1303: no 'joined the current task' false success");
+    eq(state?.items.some((item) => item.kind === "user" && item.failed), false, "tl1303: the message never shows the Send-failed face");
+    const degradeLine = calls.find((c) => c.name === "ReportFrontendLog" && c.args[2] === "submit degraded to guidance queue");
+    const detail = String(degradeLine?.args[3] ?? "");
+    ok(detail.includes("disposition=queued_followup"), `tl1303: the degrade line records the queued disposition (${detail})`);
+    ok(detail.includes("steer_refused=") && detail.includes("is not the active turn"), `tl1303: the degrade line carries the not-active-turn refusal (${detail})`);
+    root.unmount();
+    await reset();
+    steerPlainBehavior = "throw";
+  }
+
+  // 3c. tl1303: an accepted steer leaves no steer_refused trace (the suffix
+  // only appears when the steer channel actually refused).
+  {
+    steerExactBehavior = "accept";
+    const root = await mount();
+    await act(async () => { await controller?.sendToTab("tab-p6", "正常引导"); await flushPromises(); });
+    const degradeLine = calls.find((c) => c.name === "ReportFrontendLog" && c.args[2] === "submit degraded to guidance queue");
+    const detail = String(degradeLine?.args[3] ?? "");
+    ok(detail.includes("disposition=steer_accepted"), `tl1303: accepted steer logs its disposition (${detail})`);
+    ok(!detail.includes("steer_refused="), "tl1303: an accepted steer carries no refusal suffix");
+    root.unmount();
+    await reset();
+  }
+
   // 4. Total enqueue failure → the ordinary Send-failed face stays (P3 resend).
   {
     steerExactBehavior = "throw";
@@ -270,6 +317,73 @@ async function main() {
     ok(state?.items.some((item) => item.kind === "user" && item.failed) ?? false, "a non-turn-running rejection keeps the Send-failed face");
     ok(!calls.some((c) => c.name === "EnqueueInboxSteerForTurn"), "non-turn-running rejections never touch the guidance queue");
     root.unmount();
+  }
+
+  // 6. tl1303 ③ steer_accepted→生效监督（纯观测）: an accepted steer whose
+  // turn stays silent past the supervision window reports ONE turn-watchdog
+  // line; the steer's own injection event, any turn activity, and turn_done
+  // each disarm it; a queued degradation arms nothing.
+  {
+    const originalNow = Date.now;
+    let fakeNow = originalNow();
+    Date.now = () => fakeNow;
+    const tickHandlers: Array<() => void> = [];
+    const originalSetInterval = window.setInterval;
+    const originalClearInterval = window.clearInterval;
+    window.setInterval = ((handler: TimerHandler, delay?: number) => {
+      if (delay === 5000 && typeof handler === "function") tickHandlers.push(handler as () => void);
+      return originalSetInterval(handler, delay);
+    }) as typeof window.setInterval;
+    window.clearInterval = originalClearInterval;
+    const tick = () => { for (const handler of [...tickHandlers]) handler(); };
+    const supervisionLines = () =>
+      calls.filter((c) => c.name === "ReportFrontendLog" && c.args[2] === "steer accepted without tool-round injection or output");
+    try {
+      // 6a. Accepted steer + total silence → exactly one supervision line.
+      steerExactBehavior = "accept";
+      const root = await mount();
+      await act(async () => { await controller?.sendToTab("tab-p6", "被接受的引导"); await flushPromises(); });
+      eq(supervisionLines().length, 0, "tl1303③: no supervision line before the quiet threshold");
+      fakeNow += 35_000;
+      await act(async () => { tick(); await flushPromises(); });
+      const first = supervisionLines();
+      eq(first.length, 1, "tl1303③: silence past the threshold reports exactly one turn-watchdog line");
+      ok(String(first[0]?.args[3] ?? "").includes("quietForMs=35000"), `tl1303③: the line carries quietForMs (${first[0]?.args[3]})`);
+      // One report per acceptance: further silence stays quiet.
+      fakeNow += 60_000;
+      await act(async () => { tick(); await flushPromises(); });
+      eq(supervisionLines().length, 1, "tl1303③: continuing silence does not repeat the report");
+
+      // 6b. The steer's own injection event (or any turn activity) disarms
+      // the next acceptance.
+      await act(async () => { await controller?.sendToTab("tab-p6", "会被注入的引导"); await flushPromises(); });
+      fakeNow += 10_000;
+      await act(async () => {
+        for (const handler of eventHandlers) handler({ kind: "steer", tabId: "tab-p6", turnId: "turn-authoritative", text: "会被注入的引导", itemId: "item-exact" } as WireEvent);
+        for (const handler of eventHandlers) handler({ kind: "tool_dispatch", tabId: "tab-p6", turnId: "turn-authoritative" } as WireEvent);
+        await flushPromises();
+      });
+      fakeNow += 60_000;
+      await act(async () => { tick(); await flushPromises(); });
+      eq(supervisionLines().length, 1, "tl1303③: an injected steer (or turn activity) never reports the supervision line");
+
+      // 6c. turn_done disarms: a queued degradation arms nothing at all.
+      await act(async () => {
+        for (const handler of eventHandlers) handler({ kind: "turn_done", tabId: "tab-p6", turnId: "turn-authoritative" } as WireEvent);
+        await flushPromises();
+      });
+      steerExactBehavior = "queued";
+      await act(async () => { await controller?.sendToTab("tab-p6", "排队的引导无需监督"); await flushPromises(); });
+      fakeNow += 120_000;
+      await act(async () => { tick(); await flushPromises(); });
+      eq(supervisionLines().length, 1, "tl1303③: a queued degradation arms no supervision");
+      root.unmount();
+      await reset();
+    } finally {
+      Date.now = originalNow;
+      window.setInterval = originalSetInterval;
+      steerExactBehavior = "accept";
+    }
   }
 
   process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

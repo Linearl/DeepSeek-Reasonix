@@ -144,6 +144,12 @@ export const SUBAGENT_PROGRESS_NOTICE = "reasonix.subagent.notice";
 // to ordinary tool output on older frontends.
 const SUBAGENT_PROGRESS_PREFIX = "reasonix.subagent.";
 const TURN_ACTIVITY_KINDS = new Set(["turn_started", "text", "reasoning", "message", "tool_dispatch", "tool_progress", "tool_result_preview", "tool_result"]);
+// tl1303 ③: steer_accepted→生效监督（纯观测）的静默阈值与巡检间隔。accepted
+// steer 在死 run 里永远不会被注入——2026-10-31 事故的体感就是「发了没反应」。
+// acceptance 后静默超过阈值（无 steer 注入、无 tool-round、无输出）即由
+// turn-watchdog 面报 desktop.log，让该体感可归因；每次 acceptance 至多一行。
+const STEER_SUPERVISION_QUIET_MS = 30_000;
+const STEER_SUPERVISION_TICK_MS = 5_000;
 const SUBAGENT_PROGRESS_PHASES = new Set(["queued", "running", "reasoning", "responding", "tool", "retrying", "completed", "partial", "failed", "cancelled"]);
 // Tool names that initialize a sub-agent progress card. parallel_tasks/fleet
 // are group cards: they settle when their whole child progress tree is
@@ -2207,6 +2213,13 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     case "read_status":
       return applyReadStatusEvent(s, e);
     case "notice": {
+      // tl1303 防风暴: inside a merged unapplied-steer flush the backend emits
+      // ONE counted user notice plus per-item restore-only signals (their
+      // ItemID drives the durable-inbox uncertain/resendable parking on the
+      // Go side). The restore signal's facts already live in the counted
+      // notice, so it must not render a second warning per item; failing open
+      // keeps older backends' per-item warnings visible.
+      if (e.code === "unapplied_steer" && e.detail === "unapplied_steer:restore-only") return s;
       const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt, e.emittedAt ?? Date.now(), e.suggestion);
       return e.code?.startsWith("stream_interrupted_") ? { ...next, streamInterruptNoticeShown: true } : next;
     }
@@ -3203,6 +3216,11 @@ export function useController() {
   const modelSwitchSuccessVersionByTab = useRef(new Map<string, number>());
   const modelSwitchQueueByTab = useRef(new Map<string, ModelSwitchQueueState>());
   const lastTurnActivityAtByTab = useRef(new Map<string, number>());
+  // tl1303 ③: per-tab acceptance instant of a degraded steer that returned
+  // steer_accepted — arms the pure-observation supervision window (see the
+  // effect near useStaleTurnWatchdog). Cleared by the steer's own injection
+  // event, any turn activity, or turn_done.
+  const steerAcceptedAtByTab = useRef(new Map<string, number>());
   const runtimeEpochByTabRef = useRef(new Map<string, string>());
   const listedSessionIdentityByTabRef = useRef(new Map<string, TabMeta>());
   const appliedComposerProfileByTabRef = useRef(new Map<string, string>());
@@ -4776,6 +4794,11 @@ export function useController() {
       if (!turnEventProjector.acceptLive(targetTabId, e, acceptedEpoch)) return;
       uiPerfTracker.onWireEvent(targetTabId, e.kind);
       if (TURN_ACTIVITY_KINDS.has(e.kind)) lastTurnActivityAtByTab.current.set(targetTabId, Date.now());
+      // tl1303 ③: the steer's own injection event or any turn activity after
+      // an accepted steer answers the supervision — the turn is alive.
+      if ((TURN_ACTIVITY_KINDS.has(e.kind) || e.kind === "steer") && steerAcceptedAtByTab.current.has(targetTabId)) {
+        steerAcceptedAtByTab.current.delete(targetTabId);
+      }
       if (e.kind === "text" || e.kind === "reasoning") {
         if (e.submissionId) dispatchTo(targetTabId, { type: "send_confirmed", submissionId: e.submissionId });
         textBatch.push({ tabId: targetTabId, e });
@@ -4787,6 +4810,9 @@ export function useController() {
         void app.ContextUsageForTab(targetTabId).then((context) => dispatchTo(targetTabId, { type: "context", context })).catch(() => {});
       }
       if (e.kind === "turn_done") {
+        // tl1303 ③: the supervision window closes with the turn; a steer that
+        // never injected is covered by the flush-side unapplied notice (②).
+        steerAcceptedAtByTab.current.delete(targetTabId);
         invalidateSharedQuery("BalanceForTab", [targetTabId]);
         void refreshBalanceForTab(targetTabId);
         app.EffortForTab(targetTabId).then((effort) => dispatchTo(targetTabId, { type: "effort", effort })).catch(() => {});
@@ -5013,6 +5039,31 @@ export function useController() {
     lastTurnActivityAtByTab, reconcile: reconcileStaleTurn,
   });
 
+  // tl1303 ③: steer_accepted→生效监督（纯观测，零行为影响）。2026-10-31 事故：
+  // steer 被一个已死的 run 接受后永远不会注入，用户侧「发了没反应」30 分钟无
+  // 归因。acceptance 后 STEER_SUPERVISION_QUIET_MS 内既无 steer 注入事件也无
+  // 任何 turn 活动（tool-round/输出——两类事件都会在到达时清掉 stamp），由
+  // turn-watchdog 面报 desktop.log 一次；turn 结束/后台切换同样清 stamp
+  // （未注入的收尾由 ② 的 unapplied notice 面），后台 tab 不巡检、零打扰。
+  useEffect(() => {
+    if (!activeTabId || !activeState.running) {
+      steerAcceptedAtByTab.current.delete(activeTabId);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      const acceptedAt = steerAcceptedAtByTab.current.get(activeTabId);
+      if (acceptedAt === undefined) return;
+      const quietForMs = Math.max(0, Date.now() - acceptedAt);
+      if (quietForMs < STEER_SUPERVISION_QUIET_MS) return;
+      // One report per acceptance: the stamp is consumed so a continuing
+      // silence stays with the regular stale-turn watchdog, not this line.
+      steerAcceptedAtByTab.current.delete(activeTabId);
+      reportFrontendLog("turn-watchdog", "steer accepted without tool-round injection or output",
+        `tab=${activeTabId} quietForMs=${quietForMs}`, "warn");
+    }, STEER_SUPERVISION_TICK_MS);
+    return () => { window.clearInterval(timer); };
+  }, [activeTabId, activeState.running]);
+
   const rejectTurnSubmission = useCallback((tabId: string, submissionId: string, error: unknown) => {
     if (statesRef.current.get(tabId)?.pendingSubmissionId !== submissionId) return;
     dispatchTo(tabId, { type: "turn_submit_rejected", submissionId, error: `Send failed: ${errorMessage(error)}` });
@@ -5034,6 +5085,13 @@ export function useController() {
   // hands the error back to the ordinary Send-failed face (P3's resend).
   // The destination notice (ruling ③) and the authoritative running facts
   // (ruling ②) land through the submit_degraded reducer.
+  // tl1303: an exact-turn rejection ("turn is not the active turn") is the
+  // "no injectable live turn" signal, not a transient failure — the refused
+  // reason is never swallowed: the session-level steer channel is skipped (a
+  // dead or wedged run would accept the steer and never consume it — the
+  // 2026-10-31 incident), the durable follow-up queue keeps the text (the
+  // turn-boundary pump dispatches it when the run exits), the composer shows
+  // the queued fact text, and the refusal lands in desktop.log for 对账.
   const degradeRunningTurnSubmit = useCallback(async (
     tabId: string,
     submissionId: string,
@@ -5059,8 +5117,10 @@ export function useController() {
       steerError = err;
     }
     if (!receipt || receipt.error) {
-      // The steer channel refused too — the durable follow-up queue keeps the
-      // text for automatic delivery at the next turn/idle boundary.
+      // The steer channel refused (tl1303: incl. the exact-turn "not the
+      // active turn" rejection — session-level steer stays skipped so the
+      // text never joins an unconsumable run) — the durable follow-up queue
+      // keeps the text for automatic delivery at the next turn/idle boundary.
       try {
         receipt = await app.EnqueueInboxFollowup(tabId, display, submit, "");
       } catch (followupError) {
@@ -5071,6 +5131,10 @@ export function useController() {
     }
     const disposition = receipt?.disposition ?? "";
     const steered = disposition === "steer_accepted";
+    // tl1303 ③: arm the accepted→injection supervision window (pure
+    // observation); a queued degradation is owned by the turn-boundary pump
+    // and needs none.
+    if (steered) steerAcceptedAtByTab.current.set(tabId, Date.now());
     dispatchTo(tabId, {
       type: "submit_degraded",
       submissionId,
@@ -5080,8 +5144,16 @@ export function useController() {
       // 任务1015：非 steer_accepted（降级 durable 队列）→ queued_followup 事实源。
       queued: !steered,
     });
+    // tl1303: the steer channel's refusal reason rides the degrade line, so a
+    // not-active-turn rejection is reconcilable against the eventual outcome
+    // (steer injected / followup dispatched / unapplied) instead of vanishing.
+    const steerRefusal = steerError
+      ? errorMessage(steerError)
+      : receipt?.error
+        ? receipt.error
+        : "";
     reportFrontendLog("send", "submit degraded to guidance queue",
-      `tab=${tabId} submission=${submissionId} disposition=${disposition}`);
+      `tab=${tabId} submission=${submissionId} disposition=${disposition}${steerRefusal ? ` steer_refused=${steerRefusal}` : ""}`);
     return true;
   }, [dispatchTo, t]);
 
