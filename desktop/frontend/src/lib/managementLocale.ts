@@ -23,6 +23,10 @@ const messages = {
   clearDescription: ["将永久删除全部 {n} 条普通会话，包括筛选隐藏的条目。系统恢复数据不在其中。此操作无法撤销。", "將永久刪除全部 {n} 條一般會話，包括篩選隱藏的項目。系統復原資料不在其中。此操作無法復原。", "Permanently delete all {n} ordinary conversations, including filtered-out items. System recovery data is excluded. This cannot be undone."],
   batchResult: ["已删除 {success} 条，{failed} 条未完成。", "已刪除 {success} 條，{failed} 條未完成。", "Deleted {success}; {failed} did not complete."],
   retryFailed: ["仅重试失败项", "僅重試失敗項目", "Retry failed items"],
+  // tl1306：清空/恢复批量的进行中进度（x/N 已删）与失败原因明细标题。
+  clearProgress: ["已删 {done}/{total}", "已刪 {done}/{total}", "Deleted {done}/{total}"],
+  restoreProgress: ["已恢复 {done}/{total}", "已還原 {done}/{total}", "Restored {done}/{total}"],
+  failureDetail: ["失败明细：", "失敗明細：", "Failed items:"],
   saved: ["已保存", "已儲存", "Saved"],
   saving: ["保存中…", "儲存中…", "Saving…"],
   unsaved: ["未保存", "未儲存", "Unsaved"],
