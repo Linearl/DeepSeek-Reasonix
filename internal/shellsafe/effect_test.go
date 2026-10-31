@@ -160,3 +160,92 @@ func TestCommandEffectProjectionsFailClosed(t *testing.T) {
 		t.Fatalf("repository-only projections are inconsistent: %+v", repo)
 	}
 }
+
+// Regression pin for audit medium#8 (tl1320①): uniq's second file operand is
+// its OUTPUT path (`uniq [OPTION]... [INPUT [OUTPUT]]`), so that form must
+// classify as a workspace writer, never as an auto-approvable reader — it was
+// previously returned as knownReader and bypassed the approval gate. less -o
+// and diff --output share the same bypass shape and are pinned here too.
+func TestUniqOutputOperandIsWriter(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+	}{
+		{name: "input and output operands", command: "uniq sorted.txt deduped.txt"},
+		{name: "flags before operands", command: "uniq -c -u sorted.txt deduped.txt"},
+		{name: "attached short value", command: "uniq -f2 sorted.txt deduped.txt"},
+		{name: "separate long value", command: "uniq --skip-fields 1 sorted.txt deduped.txt"},
+		{name: "attached long value", command: "uniq --check-chars=10 sorted.txt deduped.txt"},
+		{name: "stdin placeholder input", command: "uniq - deduped.txt"},
+		{name: "env prefixed", command: "LC_ALL=C uniq sorted.txt deduped.txt"},
+		{name: "less short log file", command: "less -o session.log input.txt"},
+		{name: "less attached short log file", command: "less -osession.log input.txt"},
+		{name: "less force log file", command: "less -O session.log input.txt"},
+		{name: "less long log file attached", command: "less --log-file=session.log input.txt"},
+		{name: "less long log file separate", command: "less --log-file session.log input.txt"},
+		{name: "diff output attached long", command: "diff --output=patch.txt a.txt b.txt"},
+		{name: "diff output separate long", command: "diff --output patch.txt a.txt b.txt"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ClassifyBash(tt.command)
+			if got.Certainty != EffectKnown || got.Writes&WriteWorkspaceContent == 0 {
+				t.Fatalf("ClassifyBash(%q) must be a known workspace writer, got %+v (reason %q)", tt.command, got, got.Reason)
+			}
+			if got.IsPermissionReader() {
+				t.Fatalf("ClassifyBash(%q) must not be a permission reader: approval bypass", tt.command)
+			}
+		})
+	}
+}
+
+func TestUniqReaderFormsStayReaders(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+	}{
+		{name: "input operand only", command: "uniq sorted.txt"},
+		{name: "flags with input only", command: "uniq -c sorted.txt"},
+		{name: "separate short value consumes count", command: "uniq -f 2 sorted.txt"},
+		{name: "separate long value consumes count", command: "uniq --skip-chars 3 sorted.txt"},
+		{name: "stdin placeholders only", command: "uniq - -"},
+		{name: "plain diff operands", command: "diff a.txt b.txt"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ClassifyBash(tt.command)
+			if !got.IsPermissionReader() {
+				t.Fatalf("ClassifyBash(%q) must stay a permission reader, got %+v (reason %q)", tt.command, got, got.Reason)
+			}
+		})
+	}
+}
+
+func TestUniqNamesOutputFileOperandCounting(t *testing.T) {
+	tests := []struct {
+		args []string
+		want bool
+	}{
+		{args: []string{"sorted.txt", "deduped.txt"}, want: true},
+		{args: []string{"-c", "sorted.txt", "deduped.txt"}, want: true},
+		{args: []string{"-f", "2", "sorted.txt", "deduped.txt"}, want: true},
+		{args: []string{"-f", "2", "sorted.txt"}, want: false},
+		{args: []string{"-f2", "sorted.txt"}, want: false},
+		{args: []string{"--skip-fields", "1", "in"}, want: false},
+		{args: []string{"--skip-fields=1", "in"}, want: false},
+		{args: []string{"--check-chars", "10", "in", "out"}, want: true},
+		{args: []string{"-s", "3", "in"}, want: false},
+		{args: []string{"-w", "4", "in", "out"}, want: true},
+		{args: []string{"-", "-"}, want: false},
+		{args: []string{"-", "out"}, want: true},
+		{args: []string{"in", "-"}, want: false},
+		{args: []string{"-f", "2", "-", "out"}, want: true},
+		{args: nil, want: false},
+		{args: []string{"in"}, want: false},
+	}
+	for _, tt := range tests {
+		if got := uniqNamesOutputFile(tt.args); got != tt.want {
+			t.Errorf("uniqNamesOutputFile(%q) = %v, want %v", tt.args, got, tt.want)
+		}
+	}
+}

@@ -156,11 +156,68 @@ func confineRead(forbidRoots []string, target string) bool {
 	return false
 }
 
+// credentialHomeDirs lists home-relative directories that dedicated tools use
+// as their default credential stores. Entries must cite the tool's own
+// documented default path: ".ssh" (OpenSSH keys), ".aws" (AWS CLI shared
+// credentials/config), ".docker" (Docker CLI registry auth in config.json),
+// ".gnupg" (GnuPG private keys), ".kube" (kubectl kubeconfig cluster
+// credentials), ".azure" (Azure CLI MSAL token caches).
+var credentialHomeDirs = []string{
+	".ssh",
+	".aws",
+	".docker",
+	".gnupg",
+	".kube",
+	".azure",
+}
+
+// sensitiveReadGlobFlags mirrors sensitiveReadPath as ripgrep --glob excludes:
+// the grep subprocess cannot call back into confineRead, so the denylist rides
+// along as globs. Bare-name globs match basenames at any depth; directory
+// globs are anchored to the search root (same convention as !.ssh/**).
+// Drift between this and sensitiveReadPath re-opens the leak through
+// directory search — keep both in the same commit and extend the pin test.
+func sensitiveReadGlobFlags() []string {
+	return []string{
+		"--glob", "!.env",
+		"--glob", "!.env.*",
+		"--glob", "!.git-credentials",
+		"--glob", "!.netrc",
+		"--glob", "!.npmrc",
+		"--glob", "!.vault-token",
+		"--glob", "!*.pem",
+		"--glob", "!*.key",
+		"--glob", "!*.p12",
+		"--glob", "!*.pfx",
+		"--glob", "!.ssh/**",
+		"--glob", "!.aws/**",
+		"--glob", "!.docker/**",
+		"--glob", "!.gnupg/**",
+		"--glob", "!.kube/**",
+		"--glob", "!.azure/**",
+		"--glob", "!.config/gcloud/**",
+		"--glob", "!.config/gh/**",
+	}
+}
+
+// sensitiveReadPath is Reasonix's built-in denylist for paths whose contents
+// are credentials by common tool conventions. Name patterns match anywhere
+// (workspaces carry secrets too); the home-rooted stores are matched under the
+// user home, folding case on case-insensitive filesystems. Deny-side only: a
+// false positive merely refuses a read while protect_sensitive_files is on
+// (.env.* templates like .env.example are therefore refused as well —
+// deliberate, keep the pattern simple).
 func sensitiveReadPath(abs string) bool {
 	clean := filepath.Clean(abs)
 	name := strings.ToLower(filepath.Base(clean))
+	// dotenv family: ".env" plus the documented environment variants that
+	// dotenv-based toolchains load automatically (.env.local, .env.development,
+	// .env.production, .env.test, …).
+	if name == ".env" || strings.HasPrefix(name, ".env.") {
+		return true
+	}
 	switch name {
-	case ".env", ".git-credentials", ".netrc":
+	case ".git-credentials", ".netrc", ".npmrc", ".vault-token":
 		return true
 	}
 	for _, ext := range []string{".pem", ".key", ".p12", ".pfx"} {
@@ -170,7 +227,16 @@ func sensitiveReadPath(abs string) bool {
 	}
 	home, err := os.UserHomeDir()
 	if err == nil && home != "" {
-		if withinFold(filepath.Join(home, ".ssh"), clean) {
+		for _, dir := range credentialHomeDirs {
+			if withinFold(filepath.Join(home, dir), clean) {
+				return true
+			}
+		}
+		// Nested CLI credential stores at their documented defaults.
+		if withinFold(filepath.Join(home, ".config", "gcloud"), clean) {
+			return true
+		}
+		if withinFold(filepath.Join(home, ".config", "gh"), clean) {
 			return true
 		}
 	}

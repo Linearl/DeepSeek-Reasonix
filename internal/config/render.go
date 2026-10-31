@@ -1555,7 +1555,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			b.WriteString("# filter_subprocess_env = false   # opt-in; stripping tokens breaks gh, HTTPS git push, npm publish\n")
 		}
 		if c.Secrets.ProtectSensitiveFiles {
-			b.WriteString("protect_sensitive_files = true   # hide .env/.git-credentials/key files/~/.ssh from read tools\n")
+			b.WriteString("protect_sensitive_files = true   # hide .env*/credential files/key files and ~/.ssh,~/.aws,~/.docker,etc from read tools\n")
 		} else {
 			b.WriteString("# protect_sensitive_files = false   # opt-in; hiding credential files can break legitimate edit workflows\n")
 		}

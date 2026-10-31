@@ -220,6 +220,18 @@ func classifyStaticFields(fields []string) CommandEffect {
 			if hasOutputArg(args) {
 				return knownWriter(base, WriteWorkspaceContent, "writes command output")
 			}
+		case "uniq":
+			if uniqNamesOutputFile(args) {
+				return knownWriter(base, WriteWorkspaceContent, "writes command output")
+			}
+		case "less":
+			if hasOutputArg(args) || hasEffectArg(args, "-O", "--log-file", "--LOG-FILE") || hasArgPrefix(args, "-O") {
+				return knownWriter(base, WriteWorkspaceContent, "writes command output")
+			}
+		case "diff":
+			if hasOutputArg(args) {
+				return knownWriter(base, WriteWorkspaceContent, "writes command output")
+			}
 		}
 		return effect
 	}
@@ -743,6 +755,39 @@ func allEffectArgs(args []string, allowed ...string) bool {
 }
 func hasOutputArg(args []string) bool {
 	return hasEffectArg(args, "-o", "--output") || hasArgPrefix(args, "-o")
+}
+
+// uniqNamesOutputFile reports whether a uniq invocation names an output file.
+// POSIX/GNU uniq is `uniq [OPTION]... [INPUT [OUTPUT]]` — the second operand,
+// not any flag, receives the deduplicated output, so an output-operand
+// invocation writes the filesystem even though no flag marks it. -f/-s/-w (and
+// their long spellings) consume a separate value that must not be counted as an
+// operand; "-" occupies its operand slot as the stdin/stdout placeholder but
+// never names a file.
+func uniqNamesOutputFile(args []string) bool {
+	operand := 0
+	output := ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg != "-" && strings.HasPrefix(arg, "-") {
+			if uniqConsumesSeparateValue(arg) {
+				i++
+			}
+			continue
+		}
+		operand++
+		if operand == 2 {
+			output = arg
+		}
+	}
+	return operand >= 2 && output != "-"
+}
+
+func uniqConsumesSeparateValue(arg string) bool {
+	if strings.Contains(arg, "=") {
+		return false
+	}
+	return slices.Contains([]string{"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"}, arg)
 }
 func shortOptionContains(arg string, flag byte) bool {
 	return len(arg) > 1 && arg[0] == '-' && arg[1] != '-' && strings.ContainsRune(arg[1:], rune(flag))

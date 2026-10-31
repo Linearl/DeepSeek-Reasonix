@@ -314,18 +314,7 @@ func (g grepTool) runRipgrep(ctx context.Context, pattern, path string, to time.
 		"--no-heading", "--line-number", "--with-filename", "--color", "never",
 	}
 	if secrets.ProtectSensitiveFiles() {
-		// Mirror sensitiveReadPath for the subprocess: ripgrep cannot call
-		// back into confineRead, so the denylist rides along as glob excludes.
-		args = append(args,
-			"--glob", "!.env",
-			"--glob", "!.git-credentials",
-			"--glob", "!.netrc",
-			"--glob", "!*.pem",
-			"--glob", "!*.key",
-			"--glob", "!*.p12",
-			"--glob", "!*.pfx",
-			"--glob", "!.ssh/**",
-		)
+		args = append(args, sensitiveReadGlobFlags()...)
 	}
 	args = append(args, "--regexp", pattern, "--", path)
 
