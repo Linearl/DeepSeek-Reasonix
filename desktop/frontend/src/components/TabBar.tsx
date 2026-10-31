@@ -639,10 +639,12 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
                   gate (badgesVisible only opens under compression) — the user
                   must see it at any width. Still yields at tier 3 (84-100px),
                   where the hover title carries it instead. */}
-              {notLoaded && compressTier < 3 && <span className="tabbar__mode-badge tabbar__mode-badge--plan">{t("tabBar.notLoaded")}</span>}
+              {notLoaded && !sessionMissing && compressTier < 3 && <span className="tabbar__mode-badge tabbar__mode-badge--plan">{t("tabBar.notLoaded")}</span>}
               {/* tl 1266: 实体查无的「已断开」徽章——断开是状态真相，活跃 tab
                   也显示（事故截图正是活跃 tab 挂残影）；深压缩档（tier 3）由
-                  hover title 承接文案，与未加载徽章同一让位规则。 */}
+                  hover title 承接文案，与未加载徽章同一让位规则。
+                  断开优先于「未加载」：同一槽位只渲染一个徽章——断开是更强的
+                  状态真相（未加载只是还没读入，断开是实体已不存在）。 */}
               {sessionMissing && compressTier < 3 && <span className="tabbar__mode-badge tabbar__mode-badge--session-missing">{t("tabBar.disconnected")}</span>}
               {tab.isolatedWorktree && <WorktreeBadge size={11} />}
               {badgesVisible && planMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">plan</span>}

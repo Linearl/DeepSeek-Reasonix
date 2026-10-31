@@ -46,11 +46,13 @@ ok(
   "TabBar renders the localized disconnected label",
 );
 ok(
-  /sessionDisconnected[^]*?notLoaded[^]*?<span className="tabbar__mode-badge tabbar__mode-badge--disconnected">[\s\S]*?notLoaded[\s\S]*?tabbar__mode-badge--plan/.test(tabBar.replace(/\r/g, "")),
+  // Disconnected wins over notLoaded in the same slot: the notLoaded badge
+  // must be gated off when the session is missing (one badge per slot).
+  /notLoaded && !sessionMissing && compressTier < 3/.test(tabBar.replace(/\r/g, "")),
   "disconnected badge takes precedence over the notLoaded badge in the same slot",
 );
 ok(
-  tabBar.includes("tabbar__mode-badge--disconnected"),
+  tabBar.includes("tabbar__mode-badge--session-missing"),
   "TabBar uses the dedicated disconnected badge class",
 );
 
@@ -67,11 +69,11 @@ ok(zhTW.includes('"tabBar.disconnected": "已斷線"'), "zh-TW locale has tabBar
 
 // ④ Badge style on the --err soft-mix recipe, no new theme token
 ok(
-  classic.includes(".tabbar__mode-badge--disconnected"),
+  classic.includes(".tabbar__mode-badge--session-missing"),
   "mode-classic.css styles the disconnected badge",
 );
 ok(
-  /tabbar__mode-badge--disconnected[\s\S]*?var\(--err\)/.test(classic),
+  /tabbar__mode-badge--session-missing[\s\S]*?var\(--err\)/.test(classic),
   "disconnected badge reuses the shared --err token (no new theme token)",
 );
 
