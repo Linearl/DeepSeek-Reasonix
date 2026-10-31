@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -188,6 +189,49 @@ func ssrfGuardedTransport(proxyURL string) *http.Transport {
 	return tr
 }
 
+// Transport reuse: ssrfGuardedTransport is built once per proxyURL and cached,
+// so keep-alive connections survive across web_fetch calls. Building a fresh
+// Transport per request (the previous behavior) leaked resources: an idle
+// persistConn back-references its Transport, so every fetch left a socket plus
+// its readLoop/writeLoop goroutines pinned until the peer timed out. Two
+// fallbacks bound the cost of transports that leave the cache (audit-high#2):
+// IdleConnTimeout recycles idle conns on a timer, and eviction calls
+// CloseIdleConnections so a replaced proxy's sockets drop immediately.
+const (
+	webfetchMaxCachedTransports = 8                // FIFO bound: distinct proxy configs are few
+	webfetchIdleConnTimeout     = 90 * time.Second // matches http.DefaultTransport
+)
+
+var (
+	transportCacheMu    sync.Mutex
+	transportCache      = map[string]*http.Transport{}
+	transportCacheOrder []string
+)
+
+// cachedTransport returns the shared SSRF-guarded transport for proxyURL,
+// creating and caching it on first use. When the FIFO bound is exceeded the
+// oldest entry is evicted and its idle connections are closed.
+func cachedTransport(proxyURL string) *http.Transport {
+	transportCacheMu.Lock()
+	defer transportCacheMu.Unlock()
+	if tr, ok := transportCache[proxyURL]; ok {
+		return tr
+	}
+	tr := ssrfGuardedTransport(proxyURL)
+	tr.IdleConnTimeout = webfetchIdleConnTimeout
+	transportCache[proxyURL] = tr
+	transportCacheOrder = append(transportCacheOrder, proxyURL)
+	if len(transportCacheOrder) > webfetchMaxCachedTransports {
+		evicted := transportCacheOrder[0]
+		transportCacheOrder = transportCacheOrder[1:]
+		if old, ok := transportCache[evicted]; ok {
+			old.CloseIdleConnections()
+			delete(transportCache, evicted)
+		}
+	}
+	return tr
+}
+
 type webFetchRoundTripper struct {
 	proxyURLFor func(*http.Request) (string, error)
 }
@@ -197,7 +241,7 @@ func (rt webFetchRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, fmt.Errorf("resolve proxy: %w", err)
 	}
-	return ssrfGuardedTransport(proxyURL).RoundTrip(req)
+	return cachedTransport(proxyURL).RoundTrip(req)
 }
 
 func ssrfGuardedClient(proxyURLFor func(*http.Request) (string, error)) *http.Client {
