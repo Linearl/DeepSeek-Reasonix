@@ -6,14 +6,27 @@
 
 **两类版本的区别**：标 <span class="vtag vtag-release">正式 Release</span> 的是发布到 GitHub Releases 的版本，可从 Release 页直接下载安装；标 <span class="vtag vtag-internal">内部包</span> 的是持续集成的开发快照，未经发布流程，仅供内部验证与升级链路使用。本 fork 的开发节奏是每个工作日可能出多个内部包，正式 Release 按里程碑单独发布。
 
-**统计**：10-12 起共 35 个开发包（正式 Release 1 个、内部包 34 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
+**统计**：10-12 起共 36 个开发包（正式 Release 1 个、内部包 35 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
 
 <div class="timeline">
 
 <details class="day-group" open>
-<summary>2026-10-31 <span class="gcount">· 5 个包</span></summary>
+<summary>2026-10-31 <span class="gcount">· 6 个包</span></summary>
 
 <div class="inner">
+<section>
+#### v1.38.3-20261031-1812 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">1812 构建</p>
+
+- **工作流能力组**（934）：内置工作流五件套+引擎与服务；工作流面板接真实运行数据（真运行 DAG 与快照渲染、运行中可中止、引擎诊断下钻）。
+- **工作流面板视角**（933）：面板偏好与画布缩放跨会话持久化。
+- **残影前端断言套件**（1266）：已断开徽章四层钉死；补齐「断开优先于未加载」——同槽位只渲染一个徽章。
+- **项目管理二级菜单**（1252）：项目右键低频管理项收拢进「项目管理 ▸」。
+- **StatusBar 任务弹层悬停全文**（1250）；**工具优化页文案对齐后端**（1251）；**Ctrl+P 图墙门控补齐**（1275）；**压缩超时提示降噪**（1021）；**turn preflight 卡死修复**（1213）；**WebView2 沙箱隔离与启动分段时间点**（1181）。
+
+</section>
+
 <section>
 #### v1.38.3-20261031-1534 <span class="vtag vtag-internal">内部包</span>
 
