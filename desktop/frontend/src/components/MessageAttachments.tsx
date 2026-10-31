@@ -42,8 +42,12 @@ export function MessageAttachments({ attachments, tabId = "" }: {
   const t = useT();
   const ordered = sortDisplayAttachments(attachments);
   const [previews, setPreviews] = useState<Record<string, string>>({});
-  const [viewer, setViewer] = useState({ open: false, url: "", name: "" });
+  // tl1289: the viewer carries the message's resolved image list + start
+  // index so the lightbox can navigate with arrows / ←→ keys.
+  const [viewer, setViewer] = useState<{ open: boolean; images: { url: string; name: string }[]; index: number }>({ open: false, images: [], index: 0 });
   const openViewer = useCallback(async (attachment: DisplayAttachment) => {
+    const imageAttachments = ordered.filter(item => item.kind === "image");
+    const clickedIndex = imageAttachments.findIndex(item => item.path === attachment.path);
     let url = previews[attachment.path];
     if (!url) {
       try {
@@ -51,8 +55,35 @@ export function MessageAttachments({ attachments, tabId = "" }: {
         setPreviews(previous => previous[attachment.path] ? previous : { ...previous, [attachment.path]: url });
       } catch { return; }
     }
-    setViewer({ open: true, url, name: attachment.name });
-  }, [previews, tabId]);
+    // tl1289: resolve sibling image previews in parallel so the lightbox can
+    // switch between all images of the message; failures drop out of the
+    // list instead of blocking the clicked entry.
+    const clickedUrl = url;
+    const entries = await Promise.all(imageAttachments.map(async (item, position) => {
+      if (position === clickedIndex) return { url: clickedUrl, name: item.name };
+      const cached = previews[item.path];
+      if (cached) return { url: cached, name: item.name };
+      try {
+        const siblingUrl = await loadPreview(tabId, item);
+        return { url: siblingUrl, name: item.name };
+      } catch { return null; }
+    }));
+    const resolved = entries.filter((entry): entry is { url: string; name: string } => entry !== null);
+    const resolvedIndex = clickedIndex >= 0
+      ? Math.max(0, entries.slice(0, clickedIndex).filter(entry => entry !== null).length)
+      : 0;
+    // Cache sibling URLs so grid thumbnails and later opens reuse them.
+    setPreviews(previous => {
+      const patch: Record<string, string> = {};
+      for (const [position, entry] of entries.entries()) {
+        if (entry && !previous[imageAttachments[position].path]) {
+          patch[imageAttachments[position].path] = entry.url;
+        }
+      }
+      return Object.keys(patch).length > 0 ? { ...previous, ...patch } : previous;
+    });
+    setViewer({ open: true, images: resolved, index: resolvedIndex });
+  }, [ordered, previews, tabId]);
 
   const previewKey = ordered.filter(item => item.kind === "image" && item.source === "attachment").map(item => item.path).join("\n");
   useEffect(() => {
@@ -99,7 +130,14 @@ export function MessageAttachments({ attachments, tabId = "" }: {
         );
         return image ? <Tooltip key={`${attachment.path}:${index}`} label={t("imageViewer.clickToPreview")} block>{card}</Tooltip> : card;
       })}
-      <ImageViewer open={viewer.open} imageUrl={viewer.url} imageName={viewer.name} onClose={() => setViewer(value => value.open ? { ...value, open: false } : value)} />
+      <ImageViewer
+        open={viewer.open}
+        imageUrl={viewer.images[viewer.index]?.url ?? ""}
+        imageName={viewer.images[viewer.index]?.name}
+        images={viewer.images}
+        initialIndex={viewer.index}
+        onClose={() => setViewer(value => value.open ? { ...value, open: false } : value)}
+      />
     </div>
   );
 }
