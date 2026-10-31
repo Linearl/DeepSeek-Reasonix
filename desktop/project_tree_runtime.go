@@ -165,11 +165,65 @@ func (a *App) attachExistingSessionRuntime(tab *WorkspaceTab, path string, wails
 }
 
 func (a *App) closeTab(tabID string, allowDetach bool) error {
+	replenishScope, replenishRoot := a.replenishScopeForTab(tabID)
 	err := a.closeTabRuntime(tabID, allowDetach)
-	if err == nil {
-		a.emitProjectTreeRuntimeChangedWithLegacy()
+	if err != nil {
+		return err
 	}
-	return err
+	a.emitProjectTreeRuntimeChangedWithLegacy()
+	// tl1290: closing the last tab no longer refuses (see closeTabRuntime);
+	// instead the removal is followed by a fresh blank session tab so the
+	// desktop never ends up with an empty tab strip (browser convention).
+	a.replenishLastTabSurface(replenishScope, replenishRoot)
+	return nil
+}
+
+// replenishScopeForTab captures the scope/workspace root a replacement blank
+// tab should inherit, BEFORE the close removes the binding. A project tab
+// replenishes into the same project; anything else replenishes as a global
+// new-conversation tab. Called without holding a.mu (takes a read lock).
+func (a *App) replenishScopeForTab(tabID string) (string, string) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	tab := a.tabs[tabID]
+	if tab == nil {
+		return "global", ""
+	}
+	if tab.Scope == "project" && strings.TrimSpace(tab.WorkspaceRoot) != "" {
+		return "project", tab.WorkspaceRoot
+	}
+	return "global", ""
+}
+
+// replenishLastTabSurface appends a fresh blank session tab (and activates it)
+// when a close left the desktop with no surface at all — no local tabs and no
+// remote tabs. The reuse/dedup rules of ensureBlankTab apply unchanged: an
+// open blank tab is reused, a previously indexed unused blank topic is
+// recycled, and the runtime starts through the same lazy build path as the
+// sidebar's "new session" button (task 619② contract). Best-effort: on error
+// the sidebar's new-session action remains the recovery path.
+func (a *App) replenishLastTabSurface(scope, workspaceRoot string) {
+	a.mu.RLock()
+	remaining := len(a.tabs)
+	a.mu.RUnlock()
+	if remaining > 0 || a.hasRemoteTabSurface() {
+		return
+	}
+	// singleSurfaceMu serializes surface appends so two concurrent closes of
+	// the final two tabs cannot both observe "zero tabs" and each append a
+	// replacement (acceptance: consecutive closes never pile up empty tabs).
+	a.singleSurfaceMu.Lock()
+	defer a.singleSurfaceMu.Unlock()
+	a.mu.RLock()
+	remaining = len(a.tabs)
+	a.mu.RUnlock()
+	if remaining > 0 || a.hasRemoteTabSurface() {
+		return
+	}
+	if _, err := a.ensureBlankTab(scope, workspaceRoot); err != nil {
+		slog.Warn("desktop: replenishing the last closed tab with a fresh session failed",
+			"scope", scope, "err", err)
+	}
 }
 
 func (a *App) emitProjectTreeChangedEvent() {
