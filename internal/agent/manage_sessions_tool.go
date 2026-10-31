@@ -36,6 +36,7 @@ var manageSessionsActions = []string{
 	"group_create",
 	"group_rename",
 	"group_delete",
+	"archive",
 	"rollback",
 	"op_log",
 }
@@ -54,19 +55,19 @@ type manageSessionsTool struct {
 func (manageSessionsTool) Name() string { return "manage_sessions" }
 
 func (manageSessionsTool) Description() string {
-	return "Organize sessions and their groups with one tool, many actions. Actions: list (groups with nesting/parentId/order + each session's group), rename_session, move_session (a session belongs to one group at a time), reorder_session (order inside a group), group_create/group_rename/group_delete for both group kinds (kind=session sidebar groups, kind=project project-group catalog), op_log (recent operations), rollback (restore one logged operation). Nesting is arbitrary depth; a parent must exist and cycles are rejected. group_delete is proposal-first: call without confirm to get the plan (children are promoted by default, cascade=true deletes the subtree; sessions are unfiled, never deleted), then confirm=true to execute. Writes are metadata-only and safe while sessions run; the sidebar refreshes immediately. Experimental."
+	return "Organize sessions and their groups with one tool, many actions. Actions: list (groups with nesting/parentId/order + each session's group), rename_session, move_session (a session belongs to one group at a time), reorder_session (order inside a group), group_create/group_rename/group_delete for both group kinds (kind=session sidebar groups, kind=project project-group catalog), archive (tl1305: archive a topic the way the desktop Archive button does — its sessions move to the manual-restore trash, the topic leaves the sidebar; proposal-first like group_delete), op_log (recent operations), rollback (restore one logged operation). Nesting is arbitrary depth; a parent must exist and cycles are rejected. group_delete is proposal-first: call without confirm to get the plan (children are promoted by default, cascade=true deletes the subtree; sessions are unfiled, never deleted), then confirm=true to execute. archive is proposal-first too: without confirm it reports the sessions that would move and whether work is active; with confirm=true it runs the desktop archive path (active sessions refuse until their turn finishes). The other writes are metadata-only and safe while sessions run; the sidebar refreshes immediately. Experimental."
 }
 
 func (manageSessionsTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
   "type": "object",
   "properties": {
-    "action": {
-      "type": "string",
-      "enum": ["list", "rename_session", "move_session", "reorder_session", "group_create", "group_rename", "group_delete", "rollback", "op_log"],
-      "description": "Which management operation to run."
-    },
-    "target": {"type": "string", "description": "Session actions: contact_id, topic_id, or exact title of the session."},
+	    "action": {
+	      "type": "string",
+	      "enum": ["list", "rename_session", "move_session", "reorder_session", "group_create", "group_rename", "group_delete", "archive", "rollback", "op_log"],
+	      "description": "Which management operation to run."
+	    },
+	    "target": {"type": "string", "description": "Session actions (incl. archive): contact_id, topic_id, or exact title of the session."},
     "title": {"type": "string", "description": "rename_session/group_create/group_rename: the new display title."},
     "group": {"type": "string", "description": "move_session: target group title; created when missing."},
     "group_id": {"type": "string", "description": "group ops / move_session: group id (authoritative over title when given)."},
@@ -206,6 +207,31 @@ func (t manageSessionsTool) forwardArgs(action string, args json.RawMessage) (js
 			return nil, fmt.Errorf("group_id is required (group_delete)")
 		}
 		return args, nil
+	case "archive":
+		// tl1305: same target resolution as the other session actions, but the
+		// desktop archive path works on the TOPIC, so an unfiled session (no
+		// topic id) is refused with the alternative named — delete_session owns
+		// the single-transcript face.
+		id, err := resolve()
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(id.TopicID) == "" {
+			return nil, fmt.Errorf("session %q is not filed as a topic, so it cannot be archived — archive follows the desktop topic; use delete_session to trash a standalone transcript, or move_session to file it first", p.Target)
+		}
+		var confirm struct {
+			Confirm bool `json:"confirm"`
+		}
+		if err := json.Unmarshal(args, &confirm); err != nil {
+			return nil, fmt.Errorf("invalid args: %w", err)
+		}
+		return marshalManageArgs(map[string]any{
+			"topic_id":       id.TopicID,
+			"session_path":   id.SessionPath,
+			"scope":          firstNonEmpty(p.Scope, id.Scope),
+			"workspace_root": firstNonEmpty(p.Workspace, id.Workspace),
+			"confirm":        confirm.Confirm,
+		})
 	case "rollback":
 		if strings.TrimSpace(p.OpID) == "" {
 			return nil, fmt.Errorf("op_id is required (rollback)")

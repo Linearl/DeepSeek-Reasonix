@@ -606,3 +606,71 @@ func TestManageSessionsListReportsMembershipOrderAndPaths(t *testing.T) {
 		t.Fatalf("group path = %#v", session.GroupPath)
 	}
 }
+
+// tl1305 ②：archive 动作（desktop 侧）——dry-run 只报影响面零写入；
+// confirm 走桌面 TrashTopic 同一路径（manual-restore trash + 活跃工作门）。
+func TestManageSessionsArchiveDryRunReportsOnly(t *testing.T) {
+	app := newManageSessionsTestApp(t)
+	dir := desktopSessionDir("")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := writeGlobalTopicSession(t, dir, "20261031-090000.000-arch-target.jsonl", "topic-arch", "归档目标", "yolo")
+	out := manageDispatch(t, app, "archive", map[string]any{"topic_id": "topic-arch", "session_path": path})
+	var report struct {
+		Status     string `json:"status"`
+		ActiveWork bool   `json:"activeWork"`
+		Sessions   []struct {
+			SessionPath string `json:"sessionPath"`
+			Title       string `json:"title"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(out, &report); err != nil {
+		t.Fatalf("decode dry-run: %v\n%s", err, out)
+	}
+	if report.Status != "dry_run" || report.ActiveWork {
+		t.Fatalf("dry-run shape = %s activeWork=%v", report.Status, report.ActiveWork)
+	}
+	if len(report.Sessions) != 1 || report.Sessions[0].SessionPath != path {
+		t.Fatalf("dry-run sessions = %#v", report.Sessions)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("dry run must not move the session file: %v", err)
+	}
+}
+
+func TestManageSessionsArchiveConfirmTrashesLikeDesktop(t *testing.T) {
+	app := newManageSessionsTestApp(t)
+	dir := desktopSessionDir("")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := writeGlobalTopicSession(t, dir, "20261031-090001.000-arch-go.jsonl", "topic-arch-go", "归档执行", "yolo")
+	out := manageDispatch(t, app, "archive", map[string]any{"topic_id": "topic-arch-go", "session_path": path, "confirm": true})
+	var result struct {
+		Status  string `json:"status"`
+		TopicID string `json:"topicId"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("decode confirm: %v\n%s", err, out)
+	}
+	if result.Status != "archived" || result.TopicID != "topic-arch-go" {
+		t.Fatalf("confirm result = %s topic=%s", result.Status, result.TopicID)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("archived session must leave its active path, stat err = %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, ".trash"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("session must sit in the manual-restore trash: entries=%v err=%v", entries, err)
+	}
+}
+
+// 无 topic_id 的 archive 请求在宿主层也拒绝（agent 层已挡，宿主兜底给可操作错误）。
+func TestManageSessionsArchiveRequiresTopicID(t *testing.T) {
+	app := newManageSessionsTestApp(t)
+	err := manageDispatchErr(t, app, "archive", map[string]any{"session_path": "whatever.jsonl"})
+	if err == nil || !strings.Contains(err.Error(), "topic_id") {
+		t.Fatalf("missing topic_id error = %v", err)
+	}
+}
