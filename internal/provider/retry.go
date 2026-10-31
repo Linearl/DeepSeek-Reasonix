@@ -58,7 +58,26 @@ type SendOptions struct {
 	KeySource           string // human-readable source of KeyEnv, when known
 	KeyPresent          bool   // a non-empty key is being sent — separates "rejected" from "missing"
 	RetryAuth           bool   // the key has authenticated before — retry transient 401s instead of failing fast
+	// RefreshCredential re-reads the credential from its source and swaps the
+	// request key when the source has changed, reporting whether it changed.
+	// 任务1308: a long-lived runtime caches its key at build time while
+	// token-plan credentials keep rotating behind it — the cached state goes
+	// stale and every request 401s until a runtime rebuild re-reads the
+	// credential. force=true is the 401 re-auth path (one forced re-read per
+	// SendWithRetry); force=false is the throttled proactive check SendWithRetry
+	// runs once per call before the first attempt. Nil = no live re-read wired
+	// (custom assemblers) — behaviour stays exactly as before. Key material
+	// never crosses this boundary: the callback owns the swap and only the
+	// changed-bool comes back.
+	RefreshCredential func(force bool) bool
 }
+
+// CredentialRefreshInterval is how long a client trusts its cached credential
+// before SendWithRetry's proactive check re-reads the source (任务1308 ③). A
+// var so tests can shrink it; the value only bounds staleness of the cached
+// copy — a stale window left by a shorter upstream TTL is still caught by the
+// 401 re-auth path.
+var CredentialRefreshInterval = 10 * time.Minute
 
 // RetryBudget (task 1056 方案 B) is the lab-switch-gated retry tuning layer.
 // It rides a context value so SendWithRetry — the single choke point every HTTP
@@ -494,10 +513,13 @@ func readErrorBody(resp *http.Response) []byte {
 // backoff + jitter, honoring Retry-After. A 401/403 becomes *AuthError: it
 // fails fast for a key that has never authenticated (opts.RetryAuth false), but
 // for a previously-good key it backs off and retries up to maxAuthRetries —
-// MiMo and similar gateways return a transient 401 under load. Other non-OK
-// statuses become *APIError. A RetryNotify in ctx fires before each sleep.
-// Retries cover only the header phase — once the body streams, mid-stream
-// failures are not retried (the model has already emitted tokens).
+// MiMo and similar gateways return a transient 401 under load. 任务1308: within
+// that same budget the first 401 also forces ONE RefreshCredential re-read, so
+// a stale cached credential self-heals on the next attempt instead of 401-
+// looping until a runtime rebuild (AuthError.Reauthed marks the terminal face).
+// Other non-OK statuses become *APIError. A RetryNotify in ctx fires before
+// each sleep. Retries cover only the header phase — once the body streams,
+// mid-stream failures are not retried (the model has already emitted tokens).
 //
 // Task 1056 方案 B: when a RetryBudget is attached to ctx (lab switch, default
 // off) this loop additionally enforces a wall-clock cap (RetryBudget.WallClock)
@@ -531,6 +553,14 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 		return &RetryBudgetExhaustedError{Attempts: attempts, Elapsed: time.Since(started), WallClock: budget.WallClock, Cause: lastErr}
 	}
 	started := time.Now()
+	// 任务1308 ③: one throttled proactive credential check per SendWithRetry —
+	// a long-lived session picks up an externally rotated credential on its
+	// next request instead of waiting for a 401. The callback throttles itself
+	// (CredentialRefreshInterval); nil keeps today's behaviour byte-for-byte.
+	if opts.RefreshCredential != nil {
+		opts.RefreshCredential(false)
+	}
+	reauthed := false
 	for attempt := 0; attempt <= limit; attempt++ {
 		if attempt > 0 {
 			delay := backoffDelay(attempt, retryAfter, budget, lastErr)
@@ -591,9 +621,20 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 		}
 
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			authErr := &AuthError{Provider: opts.Provider, ProviderDisplayName: opts.ProviderDisplayName, Protocol: opts.Protocol, KeyEnv: opts.KeyEnv, KeySource: opts.KeySource, Status: resp.StatusCode, HasKey: opts.KeyPresent, Body: strings.TrimSpace(string(msg))}
+			authErr := &AuthError{Provider: opts.Provider, ProviderDisplayName: opts.ProviderDisplayName, Protocol: opts.Protocol, KeyEnv: opts.KeyEnv, KeySource: opts.KeySource, Status: resp.StatusCode, HasKey: opts.KeyPresent, Body: strings.TrimSpace(string(msg)), Reauthed: reauthed}
 			if !ManagedRecovery(ctx) && opts.RetryAuth && authRetries < maxAuthRetries {
 				authRetries++
+				// 任务1308 ①: the cached key may be stale while the credential
+				// source has moved on (token-plan TTL / external rotation).
+				// Force ONE re-read inside the existing auth budget; a changed
+				// key rides this same retry attempt via newReq. Replay safety:
+				// a header-phase 401 means the request was rejected before any
+				// generation, and the changed-key guard means an unchanged
+				// credential never adds an attempt beyond today's budget.
+				if !reauthed && opts.RefreshCredential != nil {
+					reauthed = true
+					opts.RefreshCredential(true)
+				}
 				lastErr = authErr
 				continue
 			}

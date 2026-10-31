@@ -20,6 +20,11 @@ type AuthError struct {
 	Status              int    // the HTTP status (401 or 403)
 	HasKey              bool   // a non-empty key was sent — the server rejected it, vs. no key configured at all
 	Body                string // trimmed response-body snippet, the server's verbatim reason when it gave one
+	// Reauthed marks that the runtime already re-read the credential from its
+	// source during this failure (任务1308 ①) — the rejection is not a stale
+	// cache, so the message points at the source itself instead of implying a
+	// rebuild would help.
+	Reauthed bool
 }
 
 func (e *AuthError) Error() string {
@@ -29,6 +34,10 @@ func (e *AuthError) Error() string {
 	}
 	if e.KeySource != "" {
 		key += " from " + e.KeySource
+	}
+	if e.Reauthed {
+		return fmt.Sprintf("authentication failed for provider %q (HTTP %d): %s is still rejected after the runtime re-read the credential from its source — update it (in .env or your environment) and retry, or run `reasonix setup`",
+			ProviderDisplayLabel(e.Provider, e.ProviderDisplayName, e.Protocol), e.Status, key)
 	}
 	return fmt.Sprintf("authentication failed for provider %q (HTTP %d): %s is invalid or expired — update it (in .env or your environment) and retry, or run `reasonix setup`",
 		ProviderDisplayLabel(e.Provider, e.ProviderDisplayName, e.Protocol), e.Status, key)
