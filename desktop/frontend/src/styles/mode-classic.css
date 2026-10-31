@@ -810,6 +810,16 @@
   background: var(--mode-plan-bg);
 }
 
+/* tl 1266:「已断开」徽章——会话实体查无（session_missing runtime issue）
+   的 tab 状态。复用共享 --err token 的 soft-mix 口径（prompt-shelf__badge
+   --danger 同款配方），不新增主题 token；渲染时压过「未加载」徽章
+   （断开是更强的可见事实）。 */
+.tabbar__mode-badge--disconnected {
+  color: color-mix(in srgb, var(--err) 78%, var(--fg));
+  background: color-mix(in srgb, var(--err) 12%, var(--bg-soft));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--err) 36%, transparent);
+}
+
 .tabbar__mode-badge--goal {
   color: var(--mode-goal-fg);
   background: var(--mode-goal-bg);

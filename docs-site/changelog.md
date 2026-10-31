@@ -6,14 +6,24 @@
 
 **两类版本的区别**：标 <span class="vtag vtag-release">正式 Release</span> 的是发布到 GitHub Releases 的版本，可从 Release 页直接下载安装；标 <span class="vtag vtag-internal">内部包</span> 的是持续集成的开发快照，未经发布流程，仅供内部验证与升级链路使用。本 fork 的开发节奏是每个工作日可能出多个内部包，正式 Release 按里程碑单独发布。
 
-**统计**：10-12 起共 34 个开发包（正式 Release 1 个、内部包 33 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
+**统计**：10-12 起共 35 个开发包（正式 Release 1 个、内部包 34 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
 
 <div class="timeline">
 
 <details class="day-group" open>
-<summary>2026-10-31 <span class="gcount">· 4 个包</span></summary>
+<summary>2026-10-31 <span class="gcount">· 5 个包</span></summary>
 
 <div class="inner">
+<section>
+#### v1.38.3-20261031-1534 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">1534 构建</p>
+
+- **修复：大会话「不再可写/自动续轮熔断」（1292）**：大 events 日志（如 86MB）会话每轮开轮的原子替换被并发读者句柄拒绝（Access is denied）后，旧版三层叠加缺陷——替换重试总窗仅 1.56s 撑不过大文件扫描、账本首败即永久锁死到手动 reopen、续轮反复熔断。修法三层：共享锁类退避窗口拉长 10 倍（→15.6s）＋账本 poison 可自愈（30s 冷却自动清标记重开写入通道）＋admission 失败冷却自动重试。受影响会话升级后无需 reopen，等 30s 回复「继续」即可。
+- **顺带清障**：tl1238 信件批量栏两处裸 z-index 换 `--z-app-content`；tl1282 检索历史下拉阴影硬编码色换 `color-mix(var(--shadow-color))`（视觉等价）——均为滚合带入的 check:z-index / check:class-contract 门禁违例。
+
+</section>
+
 <section>
 #### v1.38.3-20261031-0912 <span class="vtag vtag-internal">内部包</span>
 
