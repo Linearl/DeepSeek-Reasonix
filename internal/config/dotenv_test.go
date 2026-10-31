@@ -921,3 +921,51 @@ func TestLoadDotEnvGlobalCredentialsOverrideEnv(t *testing.T) {
 		t.Errorf("global credentials must win over inherited env: PINNED=%q want from_credentials", got)
 	}
 }
+
+// TestRefreshProviderCredentialSeesRotatedValue locks the 任务1308 re-auth
+// primitive: RefreshProviderCredential must go through the credentials store
+// fresh every call — a value rotated after boot is what the next re-read
+// returns, and a source that stopped serving the key reports not-found instead
+// of the stale boot-time value.
+func TestRefreshProviderCredentialSeesRotatedValue(t *testing.T) {
+	current := "token-at-boot"
+	calls := 0
+	stubStoredCredentialValueForTest(t, func(key string) (string, CredentialSource, bool) {
+		calls++
+		if key != "TL1308_KEY" {
+			return "", CredentialSource{}, false
+		}
+		return current, CredentialSource{Kind: CredentialSourceCredentials, Label: "Reasonix credentials (.env)"}, true
+	})
+
+	value, ok := RefreshProviderCredential(" TL1308_KEY ")
+	if !ok || value != "token-at-boot" {
+		t.Fatalf("first refresh = (%q, %v), want boot value", value, ok)
+	}
+	if calls != 1 {
+		t.Fatalf("store lookups = %d, want 1", calls)
+	}
+
+	// External rotation (e.g. token-plan refresher rewrites .env): the next
+	// refresh must observe the new value, not a cached one.
+	current = "token-rotated"
+	value, ok = RefreshProviderCredential("TL1308_KEY")
+	if !ok || value != "token-rotated" {
+		t.Fatalf("refresh after rotation = (%q, %v), want rotated value", value, ok)
+	}
+
+	// Source cleared the key: not-found, never the stale value.
+	current = ""
+	value, ok = RefreshProviderCredential("TL1308_KEY")
+	if ok || value != "" {
+		t.Fatalf("refresh after clearing = (%q, %v), want not-found", value, ok)
+	}
+
+	// Empty/missing key is a clean no.
+	if _, ok := RefreshProviderCredential(""); ok {
+		t.Fatal("empty key must resolve to not-found")
+	}
+	if _, ok := RefreshProviderCredential("TL1308_UNSET"); ok {
+		t.Fatal("unknown key must resolve to not-found")
+	}
+}

@@ -588,6 +588,22 @@ func ResolveCredentialForRootGlobalFirst(root, key string) CredentialResolution 
 	return NewCredentialResolverForRoot(root).ResolveGlobalFirst(key)
 }
 
+// RefreshProviderCredential re-reads one provider credential from the global
+// credentials store — the same source config load resolves from, but through a
+// fresh uncached resolver, so a value rotated in the store after boot is seen
+// immediately (readDotEnvFile reads from disk every call). 任务1308: this is
+// the live re-auth primitive a long-lived runtime uses to pick up externally
+// refreshed credentials instead of 401-looping on the value it cached at
+// startup. Root-independent: the store value path is global; the root only
+// feeds load-time shadow-source labels, which the caller does not re-derive.
+func RefreshProviderCredential(key string) (string, bool) {
+	res := ResolveCredentialForRootGlobalFirst(".", key)
+	if !res.Set || res.Value == "" {
+		return "", false
+	}
+	return res.Value, true
+}
+
 func resolveCredentialForRootGlobalFirst(root, key string) CredentialResolution {
 	root = resolveRoot(root)
 	res := CredentialResolution{Name: key}

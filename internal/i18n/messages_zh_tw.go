@@ -64,7 +64,7 @@ var ChineseTraditional = Messages{
 	PlannerPlanAwaitingApproval:      "計劃已就緒，未經批准不會開始執行。",
 	PlannerPlanNotApproved:           "計劃未獲批准，未執行任何操作。回覆即可繼續。",
 	PlannerPlanOnly:                  "計劃已就緒；本次請求明確不包含執行。",
-	CredentialExpiredAlert:           "服務商金鑰被拒絕（HTTP 401）：金鑰已失效或過期。請更新 .env（或環境變數）中的金鑰後重試，或執行 `reasonix setup`。",
+	CredentialExpiredAlert:           "服務商金鑰被拒絕（HTTP 401）：金鑰已失效或過期。請更新 .env（或環境變數）中的金鑰後重試，或執行 `reasonix setup`；重選同一模型也會重建執行時並重讀憑證。",
 	SlidingWindowCap:                 "上下文已裁剪：壓縮連續失敗，為保證請求不超出模型視窗，最早的歷史已被丟棄。內容沒有刪除，壓縮恢復後會重新回來。",
 	CapabilityProxyFmt:               "能力代理：%s → %s",
 	ReceiptVerified:                  "沒有未經驗證的部分",

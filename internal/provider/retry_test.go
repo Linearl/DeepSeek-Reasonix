@@ -522,3 +522,121 @@ func TestIndependentRequestAttemptCounter(t *testing.T) {
 		t.Fatalf("auxiliary and main request counts leaked: parent=%d child=%d", RequestAttemptCount(parent), RequestAttemptCount(child))
 	}
 }
+
+// ---- 任务1308: credential re-auth + proactive refresh ----
+
+// TestSendWithRetryRefreshesCredentialOn401 pins the re-auth lane: a previously
+// authenticated key that starts 401ing because the source rotated gets ONE
+// forced re-read inside the existing auth budget, the next attempt rides the
+// fresh key, and the turn succeeds — no runtime rebuild needed.
+func TestSendWithRetryRefreshesCredentialOn401(t *testing.T) {
+	calls := 0
+	var auths []string
+	cl := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		auths = append(auths, r.Header.Get("Authorization"))
+		if calls <= 2 {
+			return statusResp(401, nil), nil
+		}
+		return statusResp(200, nil), nil
+	})}
+	forceRefreshes := 0
+	proactiveRefreshes := 0
+	opts := SendOptions{Provider: "mimo", KeyEnv: "MIMO_API_KEY", KeyPresent: true, RetryAuth: true}
+	opts.RefreshCredential = func(force bool) bool {
+		if force {
+			forceRefreshes++
+			return true // source has a new key; the client swapped it in
+		}
+		proactiveRefreshes++
+		return false
+	}
+	newReq := func(ctx context.Context) (*http.Request, error) {
+		req, err := newDummyReq(ctx)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer current") // caller reads the swapped key
+		return req, nil
+	}
+	resp, err := SendWithRetry(context.Background(), cl, opts, newReq)
+	if err != nil {
+		t.Fatalf("rotated credential should self-heal: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK || calls != 3 {
+		t.Fatalf("status=%d calls=%d, want 200 within the standard auth budget", resp.StatusCode, calls)
+	}
+	if forceRefreshes != 1 {
+		t.Fatalf("forced re-reads = %d, want exactly 1 per SendWithRetry", forceRefreshes)
+	}
+	if proactiveRefreshes != 1 {
+		t.Fatalf("proactive checks = %d, want exactly 1 per SendWithRetry", proactiveRefreshes)
+	}
+	_ = auths // header assertion happens at the client layer (C3); here the budget is the contract
+}
+
+// TestSendWithRetryUnchangedCredentialKeepsAuthBudget pins the idempotency
+// guard: when the re-read yields the same credential, the retry budget stays
+// exactly today's (initial + maxAuthRetries) — no extra replays of a rejected
+// request.
+func TestSendWithRetryUnchangedCredentialKeepsAuthBudget(t *testing.T) {
+	calls := 0
+	cl := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return statusResp(401, nil), nil
+	})}
+	opts := SendOptions{Provider: "mimo", KeyEnv: "MIMO_API_KEY", KeyPresent: true, RetryAuth: true}
+	opts.RefreshCredential = func(bool) bool { return false } // source unchanged
+	_, err := SendWithRetry(context.Background(), cl, opts, newDummyReq)
+	if calls != 1+maxAuthRetries {
+		t.Fatalf("persistent 401 with unchanged credential made %d calls, want %d", calls, 1+maxAuthRetries)
+	}
+	var authErr *AuthError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("want *AuthError, got %v", err)
+	}
+	if !authErr.Reauthed {
+		t.Fatal("terminal AuthError should mark Reauthed: the source was re-read during this failure")
+	}
+	if !strings.Contains(authErr.Error(), "still rejected after the runtime re-read the credential") {
+		t.Fatalf("Reauthed message should say the credential was re-read, got: %s", authErr.Error())
+	}
+}
+
+// TestSendWithRetryNeverAuthedSkipsCredentialRefresh pins the fast-fail face:
+// a key that never authenticated has no stale-cache story, so no forced re-read
+// happens and the error message stays the baseline one.
+func TestSendWithRetryNeverAuthedSkipsCredentialRefresh(t *testing.T) {
+	cl := &http.Client{Transport: rtFunc(func(*http.Request) (*http.Response, error) {
+		return statusResp(401, nil), nil
+	})}
+	forceRefreshes := 0
+	opts := SendOptions{Provider: "deepseek", KeyEnv: "DEEPSEEK_API_KEY", KeyPresent: true, RetryAuth: false}
+	opts.RefreshCredential = func(force bool) bool {
+		if force {
+			forceRefreshes++
+		}
+		return false
+	}
+	_, err := SendWithRetry(context.Background(), cl, opts, newDummyReq)
+	var authErr *AuthError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("want *AuthError, got %v", err)
+	}
+	if forceRefreshes != 0 {
+		t.Fatalf("forced re-reads = %d, want 0 for a never-authed key", forceRefreshes)
+	}
+	if authErr.Reauthed || !strings.Contains(authErr.Error(), "is invalid or expired") {
+		t.Fatalf("baseline message expected, got Reauthed=%v: %s", authErr.Reauthed, authErr.Error())
+	}
+}
+
+// TestAuthErrorMessageBaselineLocked keeps the non-Reauthed face byte-identical
+// to today's copy — agent-side tests and user tooling match on it.
+func TestAuthErrorMessageBaselineLocked(t *testing.T) {
+	e := &AuthError{Provider: "mimo", KeyEnv: "MIMO_API_KEY", KeySource: "Reasonix credentials (.env)", Status: 401, HasKey: true}
+	want := `authentication failed for provider "mimo" (HTTP 401): MIMO_API_KEY from Reasonix credentials (.env) is invalid or expired — update it (in .env or your environment) and retry, or run ` + "`reasonix setup`"
+	if got := e.Error(); got != want {
+		t.Fatalf("baseline message drifted:\n got: %s\nwant: %s", got, want)
+	}
+}
