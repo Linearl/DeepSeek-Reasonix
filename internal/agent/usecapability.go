@@ -269,6 +269,12 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 	if p.healedControlChars {
 		t.noteArgumentSelfHeal(id, "stripped embedded control characters from capability_id before matching")
 	}
+	// tl1310: the argument KEY-NAME sibling of the 975 id cleanup — same
+	// observability discipline (audit counter + WARN log, no model-visible
+	// note: the model cannot act on tokenizer-emitted \r).
+	if p.healedArgumentKeys > 0 {
+		t.noteArgumentSelfHeal(id, fmt.Sprintf("stripped embedded control characters from %d argument key name(s) before schema validation", p.healedArgumentKeys))
+	}
 	base := tool.ResolvedCall{
 		DisplayName:  "use_capability",
 		ProxyAction:  action,
