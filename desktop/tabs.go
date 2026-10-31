@@ -2699,8 +2699,12 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 		// profile read below also births the tab in that tier, so a heartbeat
 		// task's first prompt never waits behind an ask panel that its own
 		// later mode switch has to clean up.
-		_, seedApproval, _ := desktopNewSessionDefaults(scope, actualRoot)
-		sessionPath, err = createEmptySessionFile(desktopSessionDir(actualRoot), "")
+		// tl1323: the model label comes from the same desktopNewSessionDefaults
+		// source as those paths — the file name is a hint only, but every
+		// "new empty session" creator should stamp it identically instead of
+		// this path silently falling back to the generic "-session" name.
+		defaultModel, seedApproval, _ := desktopNewSessionDefaults(scope, actualRoot)
+		sessionPath, err = createEmptySessionFile(desktopSessionDir(actualRoot), defaultModel)
 		if err != nil {
 			a.mu.Unlock()
 			return TabMeta{}, err
