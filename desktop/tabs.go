@@ -3911,7 +3911,9 @@ func (a *App) ReorderTabs(tabIDs []string) error {
 
 // CloseTab removes a visible tab. If the tab's session still has foreground or
 // background work, the controller is detached so closing a view does not destroy
-// the session runtime.
+// the session runtime. Since tl1290 the last visible tab is closable too: when
+// the removal leaves no surface at all, closeTab appends a fresh blank session
+// tab in its place (browser convention) instead of refusing the close.
 func (a *App) CloseTab(tabID string) error {
 	return a.closeTab(tabID, true)
 }
@@ -3930,10 +3932,10 @@ func (a *App) closeTabRuntime(tabID string, allowDetach bool) error {
 		a.mu.Unlock()
 		return fmt.Errorf("tab %q not found", tabID)
 	}
-	if len(a.tabs) <= 1 && !a.hasRemoteTabSurface() {
-		a.mu.Unlock()
-		return fmt.Errorf("cannot close the last tab")
-	}
+	// tl1290: the last visible tab is closable — the closeTab wrapper checks
+	// after a successful close whether the desktop was left with no surface at
+	// all and replenishes a fresh blank session tab in that case, so this core
+	// no longer refuses the last close up front.
 	a.mu.Unlock()
 
 	// Snapshot while the tab binding is still present, but outside a.mu because
@@ -3974,10 +3976,9 @@ func (a *App) closeTabRuntime(tabID string, allowDetach bool) error {
 		}
 		return fmt.Errorf("tab %q changed while closing", tabID)
 	}
-	if len(a.tabs) <= 1 && !a.hasRemoteTabSurface() {
-		a.mu.Unlock()
-		return fmt.Errorf("cannot close the last tab")
-	}
+	// tl1290: no last-tab refusal here either — see the comment at the top of
+	// this function; the replenish decision belongs to closeTab, after the
+	// removal is durable.
 	if !allowDetach && tab.hasActiveRuntimeWork() {
 		a.mu.Unlock()
 		return fmt.Errorf("task still has active work")

@@ -68,6 +68,14 @@ function hierarchyIsDisplayOnlyInactive(all: { id: string }[], target: { ids: st
   const tabBar = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../components/TabBar.tsx"), "utf8");
   ok(tabBar.includes('key: "close-inactive"'), "TabBar context menu offers 关闭非活跃标签页");
   ok(tabBar.includes("selectCloseInactiveIds(tabs, resolvedActiveTabId)"), "the menu entry keys off the ACTIVE tab id");
+  // tl1290: the last tab is closable — the two per-tab close entries must not
+  // be disabled when a single tab remains (the backend replenishes a fresh
+  // session tab after the close). The structural guards on split-view /
+  // close-other / close-inactive stay as they are.
+  const closeCurrentBlock = tabBar.match(/key: "close-current",[\s\S]*?closeTabsFromMenu\(\[menuTabId\]\)/)?.[0] ?? "";
+  ok(closeCurrentBlock.length > 0 && !closeCurrentBlock.includes("disabled"), "close-current stays enabled on the last tab (tl1290)");
+  const stopCloseBlock = tabBar.match(/key: "stop-and-close",[\s\S]*?onTabStopAndClose\(target\)/)?.[0] ?? "";
+  ok(stopCloseBlock.length > 0 && !stopCloseBlock.includes("disabled"), "stop-and-close stays enabled on the last tab (tl1290)");
 }
 function dirnameOf(): string {
   return dirname(fileURLToPath(import.meta.url));

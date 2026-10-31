@@ -400,16 +400,16 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
           onSelect: () => markTabsAllRead(tabs),
         },
         {
+          // tl1290: the last tab is closable — the backend replenishes a fresh
+          // session tab after the close, so no length guard on this item.
           key: "close-current",
           label: t("tabBar.closeTab"),
-          disabled: tabs.length <= 1,
           onSelect: () => closeTabsFromMenu([menuTabId]),
         },
         ...(onTabStopAndClose
           ? [{
               key: "stop-and-close",
               label: t("tabBar.stopAndCloseTab"),
-              disabled: tabs.length <= 1,
               onSelect: () => {
                 const target = menuTabId;
                 closeTabMenu();
