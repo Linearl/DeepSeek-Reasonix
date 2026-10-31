@@ -1216,17 +1216,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   </p>
                 ) : null}
-                {/* 任务 805: the migration routes (v4 backfill + the 773 v5
-                    import) live in the same card, under the stage controls. */}
-                <SessionMigrationSection t={t} onRunningChange={setMigrationRunning} />
-                {/* tl1287③：DAG 迁移卡转正——自实验室 rail 摘除，动作卡改宿主
-                    本卡（一次性收尾：迁完永久无事）。两步确认（扫描→执行）+
-                    事件进度 + 逐会话读数原样保留；不再有任何实验室侧开关或
-                    rail 入口。 */}
-                <DagMigrationSection t={t} busy={busy} apply={apply} />
-                {/* tl1287⑤：迁移备份清理——check 归零 + 保留最近一份，其余
-                    时间倒序删；确认弹层逐行列出将删文件与体量。 */}
-                <DagBackupCleanupSection t={t} busy={busy} />
+                {/* tl1292 返修（用户 20261031 截图「面板看着乱」）：子功能拆两组
+                    LabSectionCard（1099 既有功能族分组卡，纯视觉容器零新机制），
+                    不新增 rail/顶层入口——卡内档位段仍是卡头，工具族各自成卡：
+                    ①从 v4/v5 迁移（805 两路由）；②扫描&清理迁移备份（DAG 迁移
+                    与其备份清理是同一生命周期，tl1287⑤ 的 blocked 文案「先在
+                    上方完成迁移」在同卡内继续成立）。 */}
+                <LabSectionCard title={t("settings.sessionStorage.migrationGroup")}>
+                  {/* 任务 805: the migration routes (v4 backfill + the 773 v5
+                      import) live in the same card, under the stage controls. */}
+                  <SessionMigrationSection t={t} onRunningChange={setMigrationRunning} />
+                </LabSectionCard>
+                <LabSectionCard title={t("settings.sessionStorage.backupGroup")}>
+                  {/* tl1287③：DAG 迁移卡转正——自实验室 rail 摘除，动作卡改宿主
+                      本卡（一次性收尾：迁完永久无事）。两步确认（扫描→执行）+
+                      事件进度 + 逐会话读数原样保留；不再有任何实验室侧开关或
+                      rail 入口。 */}
+                  <DagMigrationSection t={t} busy={busy} apply={apply} />
+                  {/* tl1287⑤：迁移备份清理——check 归零 + 保留最近一份，其余
+                      时间倒序删；确认弹层逐行列出将删文件与体量。 */}
+                  <DagBackupCleanupSection t={t} busy={busy} />
+                </LabSectionCard>
               </SettingsField>
               <SettingsField label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 {/* The backend normalizes the stored mode to off|manual|auto

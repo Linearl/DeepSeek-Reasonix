@@ -19630,6 +19630,14 @@ button.statusbar__mcp:focus-visible {
 .lab-section-card__body > .settings-field:last-child {
   padding-bottom: 0;
 }
+/* tl1292：会话存储卡「扫描&清理迁移备份」子卡内，DAG 迁移与其备份清理是同一
+   生命周期的两步，中间加一道细分隔线分段不断组。走既有 data 钩子选择器
+   （不新增 className，class-contract 零新增），token 同 lab-section-card。 */
+.lab-section-card__body > [data-dag-backup-cleanup] {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
 @media (max-width: 800px) {
   /* 窄屏下 settings-field 栈化（列塌缩），卡片内边距随之收紧，容器宽度
      始终跟随 pane 内容宽度，不溢出不重叠。 */

@@ -3058,6 +3058,9 @@ export const en = {
 "settings.sessionStorage.risk.dual_write_read_v4": "Known risk: when the v4 copy misses content, reads fall back to sessions/, so one session can show two different lengths.",
 "settings.sessionStorage.risk.v4_only": "Known risk: this stage cannot be reached in one step (a dual-write stage must run first); the v3 lag keeps growing, and rolling back means selecting a lower stage, restarting, then running the migration to carry the content back.",
 "settings.sessionStorage.restartPending": "Saved, but it only takes effect after a restart - this process is still on {{mode}}.",
+// tl1292: two sub-function group cards inside the session storage card (LabSectionCard titles).
+"settings.sessionStorage.migrationGroup": "Migrate from v4/v5",
+"settings.sessionStorage.backupGroup": "Scan & clean migration backups",
 "settings.splitViewHint": "Adds a split-view action to the tab context menu: two tabs side by side in one window, each keeping its own transcript, composer and running turn. Experimental, off by default - with it off the menu looks exactly as before.",
 "settings.migration.hint": "Carries what the v4 mirror holds beyond sessions/ back into the v3 store. Affected files are backed up automatically, the plan is previewed first, and re-running is safe.",
 "settings.migration.action": "Migrate the v4 copy back to v3…",

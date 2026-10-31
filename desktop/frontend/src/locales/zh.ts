@@ -3046,6 +3046,9 @@ export const zh: Record<DictKey, string> = {
 "settings.sessionStorage.risk.dual_write_read_v4": "已知风险：v4 副本缺内容时读取会回落 sessions/，同一会话可能看到两种长度。",
 "settings.sessionStorage.risk.v4_only": "已知风险：本档不可一步到达（必须先经过双写档）；v3 记录滞后会持续累积，回退=改选更低档位并重启，再用迁移把内容搬回 v3。",
 "settings.sessionStorage.restartPending": "已保存，重启后生效 —— 本进程目前仍在使用 {{mode}}。",
+// tl1292：会话存储卡内两组子功能卡（LabSectionCard 组标题）。
+"settings.sessionStorage.migrationGroup": "从 v4/v5 迁移",
+"settings.sessionStorage.backupGroup": "扫描&清理迁移备份",
 "settings.splitViewHint": "在标签页右键菜单里加一项「分栏显示」：同一个窗口左右并排两个标签，各自保留自己的转录、输入框与运行状态。实验特性，默认关闭——关闭时右键菜单与现在完全一致。",
 "settings.migration.hint": "把 v4 副本里比 sessions/ 多出的内容搬回 v3。改动文件先自动备份，先预览再写入，可反复运行。",
 "settings.migration.action": "从 v4 副本迁回 v3…",

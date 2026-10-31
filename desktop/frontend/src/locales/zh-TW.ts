@@ -2403,6 +2403,9 @@ export const zhTW: Record<DictKey, string> = {
 "settings.sessionStorage.risk.dual_write_read_v4": "已知風險：v4 副本缺內容時讀取會回落 sessions/，同一工作階段可能看到兩種長度。",
 "settings.sessionStorage.risk.v4_only": "已知風險：本檔不可一步到達（必須先經過雙寫檔）；v3 記錄滯後會持續累積，回退=改選更低檔位並重啟，再用遷移把內容搬回 v3。",
 "settings.sessionStorage.restartPending": "已儲存，重啟後生效 —— 本程序目前仍在使用 {{mode}}。",
+// tl1292：會話儲存卡內兩組子功能卡（LabSectionCard 組標題）。
+"settings.sessionStorage.migrationGroup": "從 v4/v5 遷移",
+"settings.sessionStorage.backupGroup": "掃描&清理遷移備份",
 "settings.splitViewHint": "在分頁右鍵選單加入「分割檢視」：同一視窗左右並排兩個分頁，各自保留自己的轉錄、輸入框與執行狀態。實驗特性，預設關閉——關閉時右鍵選單與現況完全一致。",
 "settings.migration.hint": "把 v4 副本裡比 sessions/ 多的內容搬回 v3。改動檔案先自動備份，先預覽再寫入，可反覆執行。",
 "settings.migration.action": "從 v4 副本遷回 v3…",
