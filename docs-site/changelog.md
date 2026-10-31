@@ -6,14 +6,24 @@
 
 **两类版本的区别**：标 <span class="vtag vtag-release">正式 Release</span> 的是发布到 GitHub Releases 的版本，可从 Release 页直接下载安装；标 <span class="vtag vtag-internal">内部包</span> 的是持续集成的开发快照，未经发布流程，仅供内部验证与升级链路使用。本 fork 的开发节奏是每个工作日可能出多个内部包，正式 Release 按里程碑单独发布。
 
-**统计**：10-12 起共 36 个开发包（正式 Release 1 个、内部包 35 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
+**统计**：10-12 起共 37 个开发包（正式 Release 1 个、内部包 36 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
 
 <div class="timeline">
 
 <details class="day-group" open>
-<summary>2026-10-31 <span class="gcount">· 6 个包</span></summary>
+<summary>2026-10-31 <span class="gcount">· 7 个包</span></summary>
 
 <div class="inner">
+<section>
+#### v1.38.3-20261031-2357 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">2357 构建</p>
+
+- **压缩触发改用真实用量**（1183）；**相对时间人性化**（1299，裸秒展示点统一格式化+67 例单测）；**crash-recovery 保存仲裁回归修复**（1294）；**内容判定对齐 checkpoint 兜底并退役 ~265 行 DAG 死代码**（1295）；**子智能体打开 3s 评估打点与 fast-connect 竞态兜底**（1293）；**心跳 yolo 审批迟到修复**（1298，新建会话即落 tool_approval_mode）；**effort 切换 UI 即时反馈**（1301，「正在应用推理力度…」过渡态）。
+- **深查报告入库**（1083/1302/1303，纯文档）：投影回退全线深查、Global 泄露机制深查、引导消息拒收复发诊断；根治修复件已另立（tl1313 等）。
+
+</section>
+
 <section>
 #### v1.38.3-20261031-1812 <span class="vtag vtag-internal">内部包</span>
 
