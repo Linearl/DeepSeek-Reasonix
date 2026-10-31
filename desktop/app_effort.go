@@ -100,6 +100,15 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	if handled {
 		return nil
 	}
+	// Task 1301: reaching this point = both fast paths declined (a
+	// recovery-forked session keeps its reanchor semantics, or the provider
+	// cannot vary depth per request) and this call will hold for the full
+	// runtime rebuild — seconds on recovery forks, which reads as a frozen
+	// composer. Tell the frontend now so the effort control shows its
+	// "applying" transition; the settling call clears it (runtime:rebuilt is
+	// the backstop). Fast paths never emit, so normal sessions keep their
+	// instant no-feedback behavior.
+	a.notifyTabEffortApplying(tab)
 	prevPath := a.reconciledSessionPathForTab(tab)
 	if prevPath == "" {
 		prevPath = a.currentSessionPathFor(tab)
