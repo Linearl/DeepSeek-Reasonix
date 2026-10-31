@@ -153,6 +153,114 @@ func TestWithdrawnDurableSteerDoesNotEmitUnappliedNotice(t *testing.T) {
 	}
 }
 
+// TestFlushSteerQueueMergesBatchIntoOneCountedNotice pins the tl1303
+// anti-storm contract: a dead run holding several guidance messages surfaces
+// ONE counted user notice (not one warning per message), while every durable
+// entry still emits a restore-only signal so control's inbox sink parks each
+// ItemID as uncertain + resendable instead of acking it consumed.
+func TestFlushSteerQueueMergesBatchIntoOneCountedNotice(t *testing.T) {
+	var notices []event.Event
+	a := New(nil, tool.NewRegistry(), NewSession(""), Options{}, event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Notice && e.Code == event.NoticeCodeUnappliedSteer {
+			notices = append(notices, e)
+		}
+	}))
+	a.steerMu.Lock()
+	a.steerRunActive = true
+	a.steerMu.Unlock()
+	if !a.SteerItem("item-1", func() (SteerPayload, error) { return SteerPayload{Text: "first guidance"}, nil }) {
+		t.Fatal("first active steer should be accepted")
+	}
+	if !a.SteerItem("item-2", func() (SteerPayload, error) { return SteerPayload{Text: "second guidance"}, nil }) {
+		t.Fatal("second active steer should be accepted")
+	}
+	a.flushSteerQueue()
+
+	if len(notices) != 3 {
+		t.Fatalf("batch flush should emit exactly 2 restore-only signals + 1 merged notice, got %d: %+v", len(notices), notices)
+	}
+	var userNotices, restoreOnly []event.Event
+	for _, n := range notices {
+		if n.Detail == unappliedSteerRestoreDetail {
+			restoreOnly = append(restoreOnly, n)
+			continue
+		}
+		userNotices = append(userNotices, n)
+	}
+	if len(userNotices) != 1 || len(restoreOnly) != 2 {
+		t.Fatalf("want 1 user notice + 2 restore-only, got %d user / %d restore-only", len(userNotices), len(restoreOnly))
+	}
+	merged := userNotices[0]
+	if merged.ItemID != "" {
+		t.Fatalf("merged notice must not carry a single ItemID (restore rides the per-item signals), got %q", merged.ItemID)
+	}
+	if merged.Level != event.LevelWarn {
+		t.Fatalf("merged notice level = %v, want warn", merged.Level)
+	}
+	for _, want := range []string{"×2", "first guidance", "second guidance", "not applied"} {
+		if !strings.Contains(merged.Text, want) {
+			t.Fatalf("merged notice text %q missing %q", merged.Text, want)
+		}
+	}
+	byItem := map[string]string{}
+	for _, r := range restoreOnly {
+		if r.Audience != event.NoticeAudienceOperator {
+			t.Fatalf("restore-only notice for %q must be operator-audience (IM bots must stay silent), got %q", r.ItemID, r.Audience)
+		}
+		byItem[r.ItemID] = r.Text
+	}
+	if len(byItem) != 2 || byItem["item-1"] == "" || byItem["item-2"] == "" {
+		t.Fatalf("restore-only signals must wire both durable ItemIDs, got %+v", byItem)
+	}
+
+	// Transcript contract unchanged (#7045): both items archived once each as
+	// LocalOnly steer records, none leaked into the model context.
+	var persisted []string
+	for _, m := range a.Session().Messages {
+		if text, ok := SteerText(m.Content); ok {
+			persisted = append(persisted, text)
+			if !m.LocalOnly {
+				t.Fatalf("archived steer %q must stay LocalOnly", text)
+			}
+		}
+	}
+	if len(persisted) != 2 {
+		t.Fatalf("batch flush should archive both guidances once each, got %v", persisted)
+	}
+	if !a.HasUnappliedSteer() {
+		t.Fatal("batch flush must report unapplied guidance")
+	}
+}
+
+// TestFlushSteerQueueSingleItemKeepsLegacyNotice pins the zero-regression
+// face: a lone unapplied item keeps the pre-tl1303 shape exactly — one
+// user-facing notice, no restore-only marker, ItemID wired for restore.
+func TestFlushSteerQueueSingleItemKeepsLegacyNotice(t *testing.T) {
+	var notices []event.Event
+	a := New(nil, tool.NewRegistry(), NewSession(""), Options{}, event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Notice && e.Code == event.NoticeCodeUnappliedSteer {
+			notices = append(notices, e)
+		}
+	}))
+	a.steerMu.Lock()
+	a.steerRunActive = true
+	a.steerMu.Unlock()
+	if !a.SteerItem("item-solo", func() (SteerPayload, error) { return SteerPayload{Text: "solo guidance"}, nil }) {
+		t.Fatal("active steer should be accepted")
+	}
+	a.flushSteerQueue()
+	if len(notices) != 1 {
+		t.Fatalf("single-item flush should emit exactly one notice, got %d", len(notices))
+	}
+	n := notices[0]
+	if n.ItemID != "item-solo" || n.Detail != "" || n.Audience != event.NoticeAudienceDefault {
+		t.Fatalf("single-item notice = %+v, want legacy shape (ItemID wired, no marker, default audience)", n)
+	}
+	if !strings.Contains(n.Text, "solo guidance") {
+		t.Fatalf("single-item notice text %q missing guidance", n.Text)
+	}
+}
+
 // TestSteerTextSurvivesTurnPreferenceWrapping pins replay: steers are
 // persisted through withTurnPreferences, which prepends transient language
 // blocks (for Chinese text even in auto mode, and for any text under an

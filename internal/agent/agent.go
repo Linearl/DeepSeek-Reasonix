@@ -1220,6 +1220,11 @@ func (a *Agent) closeSteerIntakeIfIdle() bool {
 // replaying it to the model on the next unrelated user turn can execute a stale
 // historical task (#7045). An explicit warning keeps the transcript honest
 // without presenting the text as successfully applied guidance (#6238).
+// tl1303 防风暴: a batch of N unapplied items surfaces as ONE counted
+// user-facing notice; each durable entry additionally emits a restore-only
+// signal (Detail marker, operator audience) so control's inbox sink still
+// parks every ItemID as uncertain + resendable — none of them may ack as
+// consumed when the turn-done acknowledgement runs.
 func (a *Agent) flushSteerQueue() {
 	a.steerMu.Lock()
 	pending := a.steerQueue
@@ -1230,7 +1235,11 @@ func (a *Agent) flushSteerQueue() {
 	}
 	a.steerRunActive = false
 	a.steerMu.Unlock()
-	unapplied := false
+	type droppedSteer struct {
+		text   string
+		itemID string
+	}
+	dropped := make([]droppedSteer, 0, len(pending))
 	for _, e := range pending {
 		text := e.text
 		if e.load != nil {
@@ -1240,11 +1249,39 @@ func (a *Agent) flushSteerQueue() {
 				text = p.Text
 			}
 		}
-		a.RecordUnappliedSteer(text, e.itemID)
-		unapplied = true
+		dropped = append(dropped, droppedSteer{text: text, itemID: e.itemID})
+	}
+	if len(dropped) == 0 {
+		return
+	}
+	// Archive every dropped item first (#7045): per-item LocalOnly records
+	// keep the transcript honest across reloads (history re-renders them).
+	if a != nil && a.sess.conversation != nil {
+		for _, d := range dropped {
+			a.recordUnappliedSteerArchive(d.text)
+		}
+		if len(dropped) == 1 {
+			// Single item: the pre-tl1303 face — one warning carrying the
+			// guidance, ItemID wired straight to the durable-inbox restore.
+			a.emitUnappliedSteerNotice(dropped[0].text, dropped[0].itemID, "")
+		} else {
+			// Batch: per-item restore-only signals keep every durable entry
+			// resendable; ONE counted notice carries the user-facing facts.
+			texts := make([]string, len(dropped))
+			for i, d := range dropped {
+				texts[i] = d.text
+			}
+			for _, d := range dropped {
+				a.emitUnappliedSteerNotice(d.text, d.itemID, unappliedSteerRestoreDetail)
+			}
+			var merged strings.Builder
+			fmt.Fprintf(&merged, "×%d\n", len(dropped))
+			merged.WriteString(strings.Join(texts, "\n"))
+			a.emitUnappliedSteerNotice(merged.String(), "", "")
+		}
 	}
 	a.steerMu.Lock()
-	a.steerUnapplied = unapplied
+	a.steerUnapplied = true
 	a.steerMu.Unlock()
 }
 
@@ -1265,11 +1302,62 @@ func readonlyTurnNotice() string {
 	return "[系统提示] 本轮输入包含只读约束（ForbidMutation 生效）：变更类工具（写入/编辑/投递等）会被拦截。这是用户本轮指令的约束而非故障；如需改动，请在回复中说明，并在用户下一轮不带只读字样的指令下执行。\n\n"
 }
 
+// unappliedSteerRestoreDetail rides the Detail of a per-item unapplied-steer
+// notice inside a merged flush batch (tl1303). The event exists to drive
+// control's durable-inbox restore (uncertain + resendable, via the ItemID) and
+// nothing else: the batch's single counted notice already carries the
+// user-facing facts, so desktop frontends keep restore-only events out of the
+// transcript. Failing open (rendering them) reproduces the pre-tl1303
+// per-item warnings, which is safe — just noisier.
+const unappliedSteerRestoreDetail = "unapplied_steer:restore-only"
+
+// recordUnappliedSteerArchive persists the LocalOnly transcript record for
+// guidance that could not affect its intended in-flight turn (#7045): the
+// orphan-tool sentinel makes older readers drop the record during wire
+// normalization, while current readers use LocalOnly to exclude it before
+// every provider request.
+func (a *Agent) recordUnappliedSteerArchive(text string) {
+	a.sess.conversation.Add(provider.Message{
+		Role:       provider.RoleTool,
+		Content:    a.withTurnPreferences(midTurnSteerMessage(text)),
+		ToolCallID: provider.LocalOnlyToolID,
+		Name:       provider.LocalOnlyToolName,
+		LocalOnly:  true,
+	})
+}
+
+// emitUnappliedSteerNotice warns about guidance that never reached a provider
+// request. itemID correlates the notice with the durable session inbox entry
+// when one exists (control's inbox sink parks that entry as uncertain +
+// resendable); detail carries the restore-only marker for merged batches.
+func (a *Agent) emitUnappliedSteerNotice(text, itemID, detail string) {
+	a.svc.sink.Emit(event.Event{
+		Kind:     event.Notice,
+		Level:    event.LevelWarn,
+		Code:     event.NoticeCodeUnappliedSteer,
+		Text:     UnappliedSteerNotice(text),
+		Detail:   detail,
+		Audience: audienceForDetail(detail),
+		ItemID:   itemID,
+	})
+}
+
+// audienceForDetail keeps restore-only signals away from end-user chat
+// forwarding (the IM bot sink drops operator-audience notices); ordinary
+// notices keep the empty audience and render everywhere.
+func audienceForDetail(detail string) event.NoticeAudience {
+	if detail == unappliedSteerRestoreDetail {
+		return event.NoticeAudienceOperator
+	}
+	return event.NoticeAudienceDefault
+}
+
 // RecordUnappliedSteer stores guidance that could not affect its intended
-// in-flight turn. The orphan-tool sentinel makes older readers drop the record
-// during wire normalization, while current readers use LocalOnly to exclude it
-// before every provider request. itemID correlates the notice with the durable
-// session inbox entry when one exists.
+// in-flight turn and emits the standalone user-facing warning. itemID
+// correlates the notice with the durable session inbox entry when one exists.
+// flushSteerQueue batches its items instead (one counted notice + per-item
+// restore-only signals) so a dead run holding several guidance messages
+// cannot spam one transcript warning per message (tl1303).
 func (a *Agent) RecordUnappliedSteer(text string, itemID ...string) {
 	if a == nil || a.sess.conversation == nil {
 		return
@@ -1278,20 +1366,8 @@ func (a *Agent) RecordUnappliedSteer(text string, itemID ...string) {
 	if len(itemID) > 0 {
 		id = itemID[0]
 	}
-	a.sess.conversation.Add(provider.Message{
-		Role:       provider.RoleTool,
-		Content:    a.withTurnPreferences(midTurnSteerMessage(text)),
-		ToolCallID: provider.LocalOnlyToolID,
-		Name:       provider.LocalOnlyToolName,
-		LocalOnly:  true,
-	})
-	a.svc.sink.Emit(event.Event{
-		Kind:   event.Notice,
-		Level:  event.LevelWarn,
-		Code:   event.NoticeCodeUnappliedSteer,
-		Text:   UnappliedSteerNotice(text),
-		ItemID: id,
-	})
+	a.recordUnappliedSteerArchive(text)
+	a.emitUnappliedSteerNotice(text, id, "")
 }
 
 func (a *Agent) steerQueueLen() int {

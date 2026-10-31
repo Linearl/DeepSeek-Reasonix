@@ -2207,6 +2207,13 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     case "read_status":
       return applyReadStatusEvent(s, e);
     case "notice": {
+      // tl1303 防风暴: inside a merged unapplied-steer flush the backend emits
+      // ONE counted user notice plus per-item restore-only signals (their
+      // ItemID drives the durable-inbox uncertain/resendable parking on the
+      // Go side). The restore signal's facts already live in the counted
+      // notice, so it must not render a second warning per item; failing open
+      // keeps older backends' per-item warnings visible.
+      if (e.code === "unapplied_steer" && e.detail === "unapplied_steer:restore-only") return s;
       const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt, e.emittedAt ?? Date.now(), e.suggestion);
       return e.code?.startsWith("stream_interrupted_") ? { ...next, streamInterruptNoticeShown: true } : next;
     }
