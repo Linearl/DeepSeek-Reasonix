@@ -328,6 +328,11 @@ type FanoutStats struct {
 	Failed    int `json:"failed"`
 	Skipped   int `json:"skipped"`   // already in the member's inbox (crash retry)
 	Cancelled int `json:"cancelled"` // row stopped by a cancel between claim and deliver
+	// GuardUnknown counts members skipped because the cancel guard itself
+	// could not be read (tl1323: busy timeout / connection failure / fan-out
+	// row deleted mid-drain). Fail-closed: never deliver on an unreadable
+	// guard, and leave the trace for after-the-fact attribution.
+	GuardUnknown int `json:"guard_unknown"`
 	// HumanSkipped counts human-member rows settled WITHOUT mailbox delivery
 	// (任务 803 ④: fan-out 对 human 成员跳过邮箱投递只落库 — the human reads
 	// the channel in the UI; a mailbox copy would bury them under agent wake
@@ -984,12 +989,24 @@ func (s *Store) DrainFanout(ctx context.Context) (FanoutStats, error) {
 		// Cancel guard (取消消息): the rows were claimed before the pacing
 		// sleeps, so re-check right before delivering — a cancel that lands
 		// mid-drain still wins.
+		// tl1323: a guard read that ERRORS (SQLite busy timeout, connection
+		// failure, fan-out row deleted mid-drain) used to fall through to
+		// delivery — exactly the one state where revocation cannot be proven,
+		// so the member could still receive cancelled content and
+		// stats.Cancelled stayed silent about it. Fail closed instead: skip the
+		// member, count GuardUnknown for after-the-fact attribution, and leave
+		// the row queued so a later drain re-runs this guard (a transient DB
+		// error only delays the mail; a deleted row has nothing left to retry).
 		var state string
 		var tombstone sql.NullInt64
-		if err := s.db.QueryRow(`SELECT f.state, m.cancelled_at
+		guardErr := s.db.QueryRow(`SELECT f.state, m.cancelled_at
 			FROM fanout f JOIN messages m ON m.id = f.message_id
-			WHERE f.message_id = ? AND f.member = ?`, j.messageID, j.member).Scan(&state, &tombstone); err == nil &&
-			(state != "queued" || (tombstone.Valid && tombstone.Int64 > 0)) {
+			WHERE f.message_id = ? AND f.member = ?`, j.messageID, j.member).Scan(&state, &tombstone)
+		if guardErr != nil {
+			stats.GuardUnknown++
+			continue
+		}
+		if state != "queued" || (tombstone.Valid && tombstone.Int64 > 0) {
 			stats.Cancelled++
 			continue
 		}
