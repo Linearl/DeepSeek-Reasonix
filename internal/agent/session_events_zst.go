@@ -75,35 +75,36 @@ type sessionEventZstHeader struct {
 	Reason        string    `json:"reason,omitempty"`
 }
 
-var (
-	zstDecoderOnce sync.Once
-	zstDecoder     *zstd.Decoder
-)
-
-// sessionEventZstDecoder pools the decode-side reader construction; the
-// decoder itself is concurrency-safe for reads, Reset serializes streams.
-func sessionEventZstDecoder() *zstd.Decoder {
-	zstDecoderOnce.Do(func() {
+// zstDecoderPool 复用解码器构造成本：每次物化/分类借出一个，release 时
+// Reset(nil) 放回。tl1318 并发物化测试实证：旧的进程级单例在并发物化下
+// 互踩——一方 Reset(nil) 放流会把另一方正在读的流置 nil（nil reader deref
+// panic），一方 Reset(src) 换绑也会从他人脚下抽走数据流；物化按设计不加锁
+// （「并发物化互不冲突」契约），必须靠每流独占解码器兑现。Pool 的借出/
+// 归还天然一一配对，即单流独占。
+var zstDecoderPool = sync.Pool{
+	New: func() any {
 		dec, err := zstd.NewReader(nil,
 			zstd.WithDecoderConcurrency(sessionEventZstIOConcurrency),
 			zstd.WithDecoderMaxMemory(uint64(sessionReplayMaxBytesHard)),
 		)
 		if err != nil {
-			return // 非法 option 才会到这；退化路径每次现建。
+			return nil // 非法 option 才会到这；调用侧退化路径每次现建。
 		}
-		zstDecoder = dec
-	})
-	return zstDecoder
+		return dec
+	},
 }
 
-// sessionEventZstStreamDecoder binds a stream to the pooled decoder (or a
-// fresh one when pool construction failed). release 必须**恰好调用一次**：
-// 池化解码器只允许 Reset(nil) 放回流——对它调 Close 会把池子毒死（后续
-// Reset 报 "decoder used after Close"，实测 2026-10-26）；现建解码器才 Close。
+// sessionEventZstStreamDecoder binds a stream to a pooled decoder (or a fresh
+// one when pool construction failed). release 必须**恰好调用一次**：借出的
+// 池化解码器只允许 Reset(nil) 放回——对它调 Close 会毒化复用（后续 Reset
+// 报 "decoder used after Close"，实测 2026-10-26）；现建解码器才 Close。
 func sessionEventZstStreamDecoder(src io.Reader) (dec *zstd.Decoder, release func(), err error) {
-	if pooled := sessionEventZstDecoder(); pooled != nil {
+	if pooled, _ := zstDecoderPool.Get().(*zstd.Decoder); pooled != nil {
 		pooled.Reset(src)
-		return pooled, func() { pooled.Reset(nil) }, nil
+		return pooled, func() {
+			pooled.Reset(nil)
+			zstDecoderPool.Put(pooled)
+		}, nil
 	}
 	fresh, freshErr := zstd.NewReader(src, zstd.WithDecoderConcurrency(sessionEventZstIOConcurrency))
 	if freshErr != nil {
