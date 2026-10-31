@@ -289,8 +289,10 @@ console.log("\n892-B⑤ ProjectTree 接线（递归渲染 / 菜单 / 提案删�
     "挂载时拉取 catalog（含一次性导入路径）");
   ok(treeSource.includes("clearProjectGroupRoster()") && treeSource.includes("pruneProjectGroupAssign(current, new Set(pull.roster.map((group) => group.id)))"),
     "导入后清本地影子 + 赋值按新 roster 收敛");
-  ok(treeSource.includes("await app.ConfirmAction({\n        title: t(\"projectGroup.delete\"),"),
-    "guard: 无 catalog 模式仍走老 ConfirmAction 本地溶解（827 契约）");
+  ok(treeSource.includes("await projectGroupDeleteDialog.confirm({")
+    && treeSource.includes("<p>{t(\"projectGroup.deleteConfirm\", { title: group.title })}</p>")
+    && !treeSource.includes("app.ConfirmAction("),
+    "guard: 无 catalog 模式本地溶解同样走应用内确认对话框（tl1249：老 ConfirmAction 在 Windows 是死按钮，已清除；827 契约保位）");
 }
 
 process.stdout.write(`\nproject-tree-project-group-catalog: ${passed} passed, ${failed} failed\n`);

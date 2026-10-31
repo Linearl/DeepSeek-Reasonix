@@ -200,8 +200,8 @@ ok(treeSource.includes('onContextMenu={(event) => {\n                event.preve
 ok(/label: t\("projectGroup\.rename"\)/.test(treeSource) && /label: t\("projectGroup\.delete"\)/.test(treeSource),
   "the menu offers exactly rename + dissolve (both labels present)");
 ok(/key: "dissolve",[\s\S]{0,200}danger: true/.test(treeSource), "dissolve is marked destructive");
-ok(treeSource.includes("await app.ConfirmAction({\n        title: t(\"projectGroup.delete\"),") && treeSource.includes("destructive: true,"),
-  "dissolve goes through a destructive confirm dialog (mis-click guard)");
+ok(treeSource.includes("await projectGroupDeleteDialog.confirm({") && treeSource.includes('tone: "danger",'),
+  "dissolve goes through a destructive confirm dialog (mis-click guard; tl1249: in-app dialog — the old app.ConfirmAction was a Windows dead button)");
 ok(treeSource.includes("deleteProjectGroup(groups, assign, group.id)") && treeSource.includes("dropProjectGroupCollapsed(current, group.id)"),
   "dissolve removes the shell + clears assignments + drops the stale collapsed marker");
 ok(treeSource.includes("setGroups((current) => reorderProjectGroups(current, draggedId, group.id, position))"),
