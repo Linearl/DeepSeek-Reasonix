@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -403,6 +405,57 @@ func transientErr(err error) bool {
 	return true
 }
 
+// deterministicConnErr reports whether a transport-level error is
+// deterministic — re-sending the identical request cannot change the outcome,
+// so the retry loop must fail fast instead of burning MaxRetries attempts and
+// inflating the request-attempt counter (审计 tl1321①: 证书/DNS/407 曾被判
+// 瞬时重试 10 次). Transient lookalikes stay retryable: a DNS timeout or
+// resolver outage keeps DNSError.IsNotFound false, and a refused connection
+// is a path condition — none of them answer "no" on the merits.
+func deterministicConnErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Certificate verification failures (expired, self-signed, hostname
+	// mismatch, untrusted authority): the next attempt is presented the same
+	// chain. tls.CertificateVerificationError wraps the x509 detail since
+	// Go 1.20; the x509 faces are matched too so older wrap shapes still hit.
+	var verifyErr *tls.CertificateVerificationError
+	if errors.As(err, &verifyErr) {
+		return true
+	}
+	var certInvalid x509.CertificateInvalidError
+	if errors.As(err, &certInvalid) {
+		return true
+	}
+	var unknownAuth x509.UnknownAuthorityError
+	if errors.As(err, &unknownAuth) {
+		return true
+	}
+	var hostnameErr x509.HostnameError
+	if errors.As(err, &hostnameErr) {
+		return true
+	}
+	var systemRoots x509.SystemRootsError
+	if errors.As(err, &systemRoots) {
+		return true
+	}
+	// The name definitively does not exist (NXDOMAIN / no such host).
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+		return true
+	}
+	// Proxy CONNECT rejected: net/http returns the status reason phrase as a
+	// bare untyped error (e.g. "Proxy Authentication Required" for a 407), so
+	// this is a shape match on that documented message, same style as
+	// responseHeaderTimeoutMarker. A plain HTTP (non-CONNECT) 407 arrives as a
+	// response, not an error, and already fails fast via RetryableStatus.
+	if strings.Contains(strings.ToLower(err.Error()), "proxy authentication required") {
+		return true
+	}
+	return false
+}
+
 // IsConnReset reports whether err is a connection-level drop (peer reset,
 // truncated body, closed socket) as opposed to a protocol or caller error. A
 // stream cut this way mid-body can be replayed from scratch, unlike a decode or
@@ -598,7 +651,11 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 		}
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			if !transientErr(err) {
+			// 审计 tl1321①: a deterministic connection-layer failure (cert
+			// verification, NXDOMAIN, proxy 407) never recovers by re-sending —
+			// fail fast so the attempt counter reflects the one real request
+			// instead of MaxRetries+1 doomed dials.
+			if !transientErr(err) || deterministicConnErr(err) {
 				return nil, &RequestFailure{Identity: identity, Operation: "request failed", Err: err}
 			}
 			lastErr = &RequestFailure{Identity: identity, Operation: "request failed", Err: err}
