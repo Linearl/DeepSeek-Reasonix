@@ -31,9 +31,10 @@ type turnEventDurableSink struct{ owner *turnEventSink }
 
 // turnEventState has an independent lock so ledger I/O never holds c.mu.
 type turnEventState struct {
-	mu     sync.RWMutex
-	ledger *turnevent.Ledger
-	err    error
+	mu                   sync.RWMutex
+	ledger               *turnevent.Ledger
+	err                  error
+	lastAdmissionFailure time.Time
 }
 
 func newTurnEventSink(inner event.Sink, c *Controller) *turnEventSink {
@@ -322,8 +323,34 @@ func (c *Controller) turnEventLedgerError() error {
 	return c.turnEvents.err
 }
 
+// turnAdmissionRetryCooldown is how long a failed turn-admission latch stays
+// refused before prepareTurnAdmission gives it one clear-and-retry (tl1292).
+const turnAdmissionRetryCooldown = 30 * time.Second
+
 func (c *Controller) prepareTurnAdmission(body func(context.Context) error) func(context.Context) error {
 	admissionErr := c.turnEventLedgerError()
+	if admissionErr != nil {
+		// tl1292: a transient write failure (a rename denied while a concurrent
+		// reader holds a large session log open) used to latch until a manual
+		// reopen. Once per cooldown window, clear it and let the normal path
+		// re-attempt: the ledger poison is write-path only, so re-opening the
+		// O_APPEND writer is safe, and clearing the cached admission error lets
+		// a cleared condition actually take effect instead of replaying the
+		// same latched error forever.
+		c.turnEvents.mu.RLock()
+		last := c.turnEvents.lastAdmissionFailure
+		c.turnEvents.mu.RUnlock()
+		if time.Since(last) >= turnAdmissionRetryCooldown {
+			if ledger := c.turnEventLedger(); ledger != nil {
+				_ = ledger.ClearTransientPoison()
+			}
+			c.turnEvents.mu.Lock()
+			c.turnEvents.err = nil
+			c.turnEvents.lastAdmissionFailure = time.Now()
+			c.turnEvents.mu.Unlock()
+			admissionErr = nil
+		}
+	}
 	if ledger := c.turnEventLedger(); admissionErr == nil && ledger != nil {
 		if _, err := ledger.Begin(); err != nil {
 			admissionErr = err
@@ -337,6 +364,9 @@ func (c *Controller) prepareTurnAdmission(body func(context.Context) error) func
 		return body
 	}
 	slog.Error("controller: persist turn admission", "err", admissionErr)
+	c.turnEvents.mu.Lock()
+	c.turnEvents.lastAdmissionFailure = time.Now()
+	c.turnEvents.mu.Unlock()
 	return func(context.Context) error { return fmt.Errorf("persist turn admission: %w", admissionErr) }
 }
 

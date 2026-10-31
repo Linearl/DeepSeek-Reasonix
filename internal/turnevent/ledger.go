@@ -630,6 +630,31 @@ func (l *Ledger) poisonLocked(err error) error {
 	return l.unavailableLocked()
 }
 
+// ClearTransientPoison re-opens a ledger whose only failure was a write-path
+// error. Every poisonLocked call site sits on the write path (ensure-writer,
+// write, sync, close — tl1292 audit); parse damage never poisons, because
+// torn tails are truncated into SessionTurnEventLogDamaged at Open instead.
+// So once the underlying condition clears (a concurrent reader holding a
+// session log closed, disk space freed), re-opening the O_APPEND writer is
+// safe and the ledger resumes without a full reopen of the session. A failed
+// re-open keeps the poison refreshed so the next cooldown attempt sees it.
+func (l *Ledger) ClearTransientPoison() error {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.poisoned == nil {
+		return nil
+	}
+	if err := l.ensureWriterLocked(); err != nil {
+		l.poisoned = err
+		return err
+	}
+	l.poisoned = nil
+	return nil
+}
+
 func (l *Ledger) unavailableLocked() error {
 	return fmt.Errorf("%w: %w", ErrTurnLedgerUnavailable, l.poisoned)
 }

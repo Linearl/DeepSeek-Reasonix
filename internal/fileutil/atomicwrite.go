@@ -14,6 +14,14 @@ var (
 	maxReplaceRetries = 12
 	replaceRetryBase  = 20 * time.Millisecond
 
+	// replaceRetrySharingBase is the backoff base for the Windows sharing-lock
+	// class (dest held open without FILE_SHARE_DELETE — Go's os.Open default
+	// on Windows, antivirus, search indexer). A concurrent reader scanning a
+	// multi-MB session log holds that lock for seconds, so this class gets a
+	// stretched window (~15.6s over the 12 attempts, tl1292) while every
+	// other transient failure keeps the original ~1.56s envelope.
+	replaceRetrySharingBase = 200 * time.Millisecond
+
 	// renameFile is a test seam: the two rename failure classes ReplaceFile
 	// distinguishes (transient lock vs cross-device) cannot be provoked
 	// portably on a real filesystem.
@@ -245,7 +253,11 @@ func replaceFile(tmp, dest string, allowCrossDeviceCopy bool) error {
 		if attempt >= maxReplaceRetries || !fileExists(tmp) {
 			return err
 		}
-		time.Sleep(time.Duration(attempt+1) * replaceRetryBase)
+		delay := time.Duration(attempt+1) * replaceRetryBase
+		if renameSharingLocked(err) {
+			delay = time.Duration(attempt+1) * replaceRetrySharingBase
+		}
+		time.Sleep(delay)
 	}
 }
 
