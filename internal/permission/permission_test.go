@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -387,5 +389,84 @@ func TestLegacyLiteralRuleMatchesExactly(t *testing.T) {
 	}
 	if got := p.Decide("bash", false, json.RawMessage(`{"command":"rm secrets.log"}`)); got == Allow {
 		t.Errorf("literal rule wildcard-matched %q — '*' must stay literal", "rm secrets.log")
+	}
+}
+
+// alwaysRememberApprover makes every Ask resolve to allow + remember, so each
+// Check drives the always-allow append path.
+type alwaysRememberApprover struct{}
+
+func (alwaysRememberApprover) Approve(context.Context, string, string, json.RawMessage) (bool, bool, error) {
+	return true, true, nil
+}
+
+// TestGateAlwaysAllowAppendConcurrentStress is the audit-C2② pin: always-allow
+// appends on a shared gate race plain Policy.Decide readers (production:
+// parallel tool calls and subagents consulting one gate while the user picks
+// "always allow" on another). The gate lock must serialize the Allow
+// slice-header write against every read; without it this test trips the race
+// detector under `go test -race` and can observe a torn header as an
+// out-of-range Decision. On hosts without cgo/gcc the lock-order argument in
+// the Gate.mu comment carries the proof; this stress adds execution coverage
+// plus the no-append-lost count assertion.
+func TestGateAlwaysAllowAppendConcurrentStress(t *testing.T) {
+	g := NewGate(New("ask", nil, nil, nil), alwaysRememberApprover{})
+	// The always-allow append lives inside the OnRemember branch of Check; a
+	// nil callback would starve it.
+	g.OnRemember = func(string) {}
+	args := json.RawMessage(`{"command":"go build ./..."}`)
+
+	const writers, readers, iters = 4, 4, 250
+	var wg sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < iters; i++ {
+				// A fresh tool name per iteration: a remembered bare-tool rule
+				// would Allow every later call and starve the append path the
+				// stress exists to hammer.
+				tool := fmt.Sprintf("tool_%d_%d", w, i)
+				if allow, _, err := g.Check(context.Background(), tool, args, false); err != nil || !allow {
+					t.Errorf("writer check %s: allow=%v err=%v", tool, allow, err)
+					return
+				}
+			}
+		}(w)
+	}
+	tools := []string{"bash", "Edit", "read_file"}
+	for r := 0; r < readers; r++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			tool := tools[n%len(tools)]
+			readOnly := tool == "read_file"
+			for i := 0; i < iters*4; i++ {
+				// Direct field read: exactly the access shape the lock must
+				// make safe (approval.go:270 consults via PolicySnapshot).
+				switch g.Policy.Decide(tool, readOnly, args) {
+				case Allow, Ask, Deny:
+				default:
+					t.Errorf("torn decision for %s: %v", tool, g.Policy.Decide(tool, readOnly, args))
+					return
+				}
+				snap := g.PolicySnapshot()
+				if d := snap.Decide(tool, readOnly, args); d != Allow && d != Ask && d != Deny {
+					t.Errorf("snapshot decision for %s: %v", tool, d)
+					return
+				}
+			}
+		}(r)
+	}
+	wg.Wait()
+
+	snap := g.PolicySnapshot()
+	if got := len(snap.Allow); got != writers*iters {
+		t.Fatalf("always-allow rules = %d, want %d (concurrent appends must not be lost)", got, writers*iters)
+	}
+	for _, rule := range snap.Allow {
+		if !strings.HasPrefix(rule.Tool, "tool_") || rule.Subject != "" {
+			t.Fatalf("unexpected remembered rule %+v", rule)
+		}
 	}
 }

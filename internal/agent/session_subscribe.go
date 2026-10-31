@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -659,6 +660,11 @@ func (s *SubscribeService) stuckDetected(rec map[string]any, sub Subscription, n
 	return now.Sub(time.UnixMilli(lastTurnAtMS)) > threshold
 }
 
+// statusStreamSpanReader is the test seam for short-read interleavings (same
+// pattern as channelSpawn): production reads the file directly; tests wrap it
+// to force partial Reads.
+var statusStreamSpanReader = func(f *os.File) io.Reader { return f }
+
 // consumeStatusStream reads only bytes past the cursor (187 rule: never
 // rescan), filters by the subscription target and the whitelist, and advances
 // the cursor so the same event cannot fire twice.
@@ -693,12 +699,20 @@ func consumeStatusStream(path string, sub Subscription, cur *subscribeCursor, wa
 		return nil, nil
 	}
 	buf := make([]byte, size-cur.streamOff)
-	if _, err := f.Read(buf); err != nil && len(buf) == 0 {
+	// Short-read fix (audit C2): the old code ignored Read's n and its empty
+	// check `len(buf) == 0` was always false (buf is sized size-off > 0 here),
+	// so a short read still advanced the cursor straight to EOF and the
+	// unparsed tail was silently dropped. ReadFull loops until the span is
+	// complete; when the stream ends short the cursor advances only by the
+	// bytes actually read, so the tail is re-read on a later tick instead of
+	// being lost.
+	total, rerr := io.ReadFull(statusStreamSpanReader(f), buf)
+	if total == 0 && rerr != nil {
 		return nil, nil
 	}
-	cur.streamOff = size
+	cur.streamOff += int64(total)
 	targetID := sub.ID
-	for _, line := range strings.Split(string(buf), "\n") {
+	for _, line := range strings.Split(string(buf[:total]), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

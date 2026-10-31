@@ -267,7 +267,10 @@ func (g *freshHumanHeadlessGate) Check(ctx context.Context, toolName string, arg
 		return false, "this tool requires fresh human approval and cannot run in a non-interactive session. Use an interactive session or a user-initiated memory command.", nil
 	}
 	if strings.EqualFold(toolName, "bash") && permission.BashSubjectRequiresExplicitApproval(permission.Subject(args)) {
-		if g.gate.Policy.Decide(toolName, readOnly, args) != permission.Allow && !g.dynamicBashBypass {
+		// PolicySnapshot, not the raw field: the gate's always-allow append
+		// mutates Policy.Allow under the gate lock (audit C2②), and a raw
+		// field read would race that header write.
+		if g.gate.PolicySnapshot().Decide(toolName, readOnly, args) != permission.Allow && !g.dynamicBashBypass {
 			return false, "this dynamic shell command requires human approval and cannot run in a non-interactive session. Inline interpreter code (python -c, node -e) is blocked because the host cannot audit it; write the code to a file with write_file and run that file instead (e.g. `python repro.py`), or use read_file/grep for inspection. The user can also switch to an interactive session or YOLO mode.", nil
 		}
 	}
@@ -275,7 +278,7 @@ func (g *freshHumanHeadlessGate) Check(ctx context.Context, toolName string, arg
 }
 
 func (g *freshHumanHeadlessGate) ExplicitlyDenies(toolName string, args json.RawMessage) bool {
-	return g.gate.Policy.ExplicitlyDenies(toolName, args)
+	return g.gate.PolicySnapshot().ExplicitlyDenies(toolName, args)
 }
 
 // preApproved reports whether a tool call can skip the prompt — either the

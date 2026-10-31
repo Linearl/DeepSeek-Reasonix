@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -352,4 +353,95 @@ func TestSubscribeToolActions(t *testing.T) {
 		`{"action":"subscribe","target":"peer","events":["shell_command"]}`)); err == nil {
 		t.Fatal("unknown event kind must be refused through the tool too")
 	}
+}
+
+// oneByteReader hands out at most one byte per underlying Read: the maximal
+// short-read force-feed for the chunked-completion pin below.
+type oneByteReader struct{ r io.Reader }
+
+func (o oneByteReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	return o.r.Read(p[:1])
+}
+
+// TestConsumeStatusStreamShortReadChunked is the audit-C2 regression pin for
+// 循环补读: every underlying Read may return a tiny prefix, but the consume
+// window must still end up fully populated — the old code took a single
+// f.Read and ignored its n, so everything past the first byte parsed as zero
+// garbage and the cursor was advanced past it regardless (events lost). Now
+// the read loops until the span is filled and both events fire in one tick.
+func TestConsumeStatusStreamShortReadChunked(t *testing.T) {
+	kinds, details, cur, size := consumeShortReadFixture(t, func(f *os.File) io.Reader {
+		return oneByteReader{r: f}
+	})
+	if len(kinds) != 2 || details[0] != "one" || details[1] != "two" {
+		t.Fatalf("chunked short read dropped events: kinds=%v details=%v, want [one two]", kinds, details)
+	}
+	if cur.streamOff != int64(size) {
+		t.Fatalf("cursor = %d, want %d (looped read must complete the whole span)", cur.streamOff, size)
+	}
+}
+
+// TestConsumeStatusStreamShortReadEOFTruncated pins the honest-cursor half of
+// the audit-C2 fix: when the stream genuinely ends short of the span (EOF
+// after some bytes), only the bytes actually read may be marked consumed —
+// the tail then fires on the next tick instead of vanishing.
+func TestConsumeStatusStreamShortReadEOFTruncated(t *testing.T) {
+	path, sub, want, data, splitAt := shortReadStreamFixture(t)
+	cur := &subscribeCursor{streamReady: true, streamOff: 0}
+
+	orig := statusStreamSpanReader
+	defer func() { statusStreamSpanReader = orig }()
+	statusStreamSpanReader = func(f *os.File) io.Reader { return io.LimitReader(f, int64(splitAt)) }
+
+	kinds, details := consumeStatusStream(path, sub, cur, want)
+	if len(kinds) != 1 || details[0] != "one" {
+		t.Fatalf("first (truncated) tick: kinds=%v details=%v, want [one]", kinds, details)
+	}
+	if cur.streamOff != int64(splitAt) {
+		t.Fatalf("cursor = %d after truncated read, want %d (only actually-read bytes consumed)", cur.streamOff, splitAt)
+	}
+
+	// Tail recovery: an untruncated tick re-reads from the advanced cursor.
+	statusStreamSpanReader = func(f *os.File) io.Reader { return f }
+	kinds, details = consumeStatusStream(path, sub, cur, want)
+	if len(kinds) != 1 || details[0] != "two" {
+		t.Fatalf("tail tick lost the remainder: kinds=%v details=%v, want [two]", kinds, details)
+	}
+	if cur.streamOff != int64(len(data)) {
+		t.Fatalf("cursor = %d, want %d", cur.streamOff, len(data))
+	}
+}
+
+// shortReadStreamFixture builds a two-event stream file plus an already
+// parked cursor state; splitAt is the offset just past event one's newline.
+func shortReadStreamFixture(t *testing.T) (path string, sub Subscription, want map[string]bool, data []byte, splitAt int) {
+	t.Helper()
+	path = filepath.Join(t.TempDir(), "collab-status.jsonl")
+	b1, err := json.Marshal(CollabStatusEvent{Session: "ct_peer", Event: CollabStatusToolError, Summary: "one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b2, err := json.Marshal(CollabStatusEvent{Session: "ct_peer", Event: CollabStatusToolError, Summary: "two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(append(append([]byte{}, b1...), '\n'), append(b2, '\n')...)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path, Subscription{ID: "ct_peer"}, map[string]bool{CollabStatusToolError: true}, data, len(b1) + 1
+}
+
+func consumeShortReadFixture(t *testing.T, wrap func(f *os.File) io.Reader) (kinds, details []string, cur *subscribeCursor, size int) {
+	t.Helper()
+	path, sub, want, data, _ := shortReadStreamFixture(t)
+	orig := statusStreamSpanReader
+	defer func() { statusStreamSpanReader = orig }()
+	statusStreamSpanReader = wrap
+	cur = &subscribeCursor{streamReady: true, streamOff: 0}
+	kinds, details = consumeStatusStream(path, sub, cur, want)
+	return kinds, details, cur, len(data)
 }
