@@ -137,6 +137,11 @@ func TestCollectRecoveryLifecycleAggregatesWithoutLeakingSessionData(t *testing.
 		report.Recovery.InvalidRecords != 1 {
 		t.Fatalf("recovery lifecycle = %+v", report.Recovery)
 	}
+	// tl1323: a clean tree must not carry failure traces either — the new
+	// counters stay zero so they only ever fire on genuinely unread input.
+	if report.Recovery.UnreadEntries != 0 || report.Recovery.ScanAborts != 0 {
+		t.Fatalf("clean tree must not report unread/aborted: %+v", report.Recovery)
+	}
 	raw, err := json.Marshal(report.Recovery)
 	if err != nil {
 		t.Fatal(err)
@@ -145,6 +150,43 @@ func TestCollectRecoveryLifecycleAggregatesWithoutLeakingSessionData(t *testing.
 		if strings.Contains(string(raw), secret) {
 			t.Fatalf("aggregate recovery diagnostics leaked %q: %s", secret, raw)
 		}
+	}
+}
+
+// tl1323 回归钉：walk/open/scan 失败不再静默——留痕计数必须亮出来，半读的
+// 树不能再冒充全零健康普查。
+//   - 超 64KiB 的行会让 bufio.Scanner 提前停（audit 点名的静默截断）：
+//     已读到的合法记录照常计数，ScanAborts 必须 = 1；
+//   - 打不开的冲突日志（这里直接以不存在路径驱动单文件助手）计 UnreadEntries。
+func TestCollectRecoveryLifecycleTracesUnreadAndAbortedScans(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "truncated-session.conflicts.jsonl")
+	body := `{"outcome":"classified_covered"}` + "\n" + strings.Repeat("x", 128*1024) + "\n" +
+		`{"outcome":"cleanup_moved"}` + "\n"
+	if err := os.WriteFile(logPath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report := collectSessions(dir)
+	if report.Recovery.Events != 1 {
+		t.Fatalf("records before the over-long line must still count, events = %d (%+v)", report.Recovery.Events, report.Recovery)
+	}
+	if report.Recovery.ScanAborts != 1 {
+		t.Fatalf("scan stopped by the 64KiB line must surface, scan_aborts = %d (%+v)", report.Recovery.ScanAborts, report.Recovery)
+	}
+	if report.Recovery.UnreadEntries != 0 {
+		t.Fatalf("the truncated log opened fine, unread_entries = %d (%+v)", report.Recovery.UnreadEntries, report.Recovery)
+	}
+
+	// 后半段记录因扫描中止丢失——这个缺口必须可归因，而不是装作没读过。
+	if report.Recovery.CleanupMoved != 0 {
+		t.Fatalf("record after the abort must not be counted: %+v", report.Recovery)
+	}
+
+	var helperReport RecoveryLifecycleReport
+	countRecoveryLifecycleFile(filepath.Join(dir, "vanished.conflicts.jsonl"), &helperReport)
+	if helperReport.UnreadEntries != 1 {
+		t.Fatalf("unopenable conflict log must count as unread entry: %+v", helperReport)
 	}
 }
 
