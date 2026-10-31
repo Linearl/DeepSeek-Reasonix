@@ -319,6 +319,73 @@ async function main() {
     root.unmount();
   }
 
+  // 6. tl1303 ③ steer_accepted→生效监督（纯观测）: an accepted steer whose
+  // turn stays silent past the supervision window reports ONE turn-watchdog
+  // line; the steer's own injection event, any turn activity, and turn_done
+  // each disarm it; a queued degradation arms nothing.
+  {
+    const originalNow = Date.now;
+    let fakeNow = originalNow();
+    Date.now = () => fakeNow;
+    const tickHandlers: Array<() => void> = [];
+    const originalSetInterval = window.setInterval;
+    const originalClearInterval = window.clearInterval;
+    window.setInterval = ((handler: TimerHandler, delay?: number) => {
+      if (delay === 5000 && typeof handler === "function") tickHandlers.push(handler as () => void);
+      return originalSetInterval(handler, delay);
+    }) as typeof window.setInterval;
+    window.clearInterval = originalClearInterval;
+    const tick = () => { for (const handler of [...tickHandlers]) handler(); };
+    const supervisionLines = () =>
+      calls.filter((c) => c.name === "ReportFrontendLog" && c.args[2] === "steer accepted without tool-round injection or output");
+    try {
+      // 6a. Accepted steer + total silence → exactly one supervision line.
+      steerExactBehavior = "accept";
+      const root = await mount();
+      await act(async () => { await controller?.sendToTab("tab-p6", "被接受的引导"); await flushPromises(); });
+      eq(supervisionLines().length, 0, "tl1303③: no supervision line before the quiet threshold");
+      fakeNow += 35_000;
+      await act(async () => { tick(); await flushPromises(); });
+      const first = supervisionLines();
+      eq(first.length, 1, "tl1303③: silence past the threshold reports exactly one turn-watchdog line");
+      ok(String(first[0]?.args[3] ?? "").includes("quietForMs=35000"), `tl1303③: the line carries quietForMs (${first[0]?.args[3]})`);
+      // One report per acceptance: further silence stays quiet.
+      fakeNow += 60_000;
+      await act(async () => { tick(); await flushPromises(); });
+      eq(supervisionLines().length, 1, "tl1303③: continuing silence does not repeat the report");
+
+      // 6b. The steer's own injection event (or any turn activity) disarms
+      // the next acceptance.
+      await act(async () => { await controller?.sendToTab("tab-p6", "会被注入的引导"); await flushPromises(); });
+      fakeNow += 10_000;
+      await act(async () => {
+        for (const handler of eventHandlers) handler({ kind: "steer", tabId: "tab-p6", turnId: "turn-authoritative", text: "会被注入的引导", itemId: "item-exact" } as WireEvent);
+        for (const handler of eventHandlers) handler({ kind: "tool_dispatch", tabId: "tab-p6", turnId: "turn-authoritative" } as WireEvent);
+        await flushPromises();
+      });
+      fakeNow += 60_000;
+      await act(async () => { tick(); await flushPromises(); });
+      eq(supervisionLines().length, 1, "tl1303③: an injected steer (or turn activity) never reports the supervision line");
+
+      // 6c. turn_done disarms: a queued degradation arms nothing at all.
+      await act(async () => {
+        for (const handler of eventHandlers) handler({ kind: "turn_done", tabId: "tab-p6", turnId: "turn-authoritative" } as WireEvent);
+        await flushPromises();
+      });
+      steerExactBehavior = "queued";
+      await act(async () => { await controller?.sendToTab("tab-p6", "排队的引导无需监督"); await flushPromises(); });
+      fakeNow += 120_000;
+      await act(async () => { tick(); await flushPromises(); });
+      eq(supervisionLines().length, 1, "tl1303③: a queued degradation arms no supervision");
+      root.unmount();
+      await reset();
+    } finally {
+      Date.now = originalNow;
+      window.setInterval = originalSetInterval;
+      steerExactBehavior = "accept";
+    }
+  }
+
   process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
   if (failed > 0) process.exit(1);
   dom.window.close();
