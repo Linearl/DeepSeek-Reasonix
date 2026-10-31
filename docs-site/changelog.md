@@ -6,14 +6,23 @@
 
 **两类版本的区别**：标 <span class="vtag vtag-release">正式 Release</span> 的是发布到 GitHub Releases 的版本，可从 Release 页直接下载安装；标 <span class="vtag vtag-internal">内部包</span> 的是持续集成的开发快照，未经发布流程，仅供内部验证与升级链路使用。本 fork 的开发节奏是每个工作日可能出多个内部包，正式 Release 按里程碑单独发布。
 
-**统计**：10-12 起共 33 个开发包（正式 Release 1 个、内部包 32 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
+**统计**：10-12 起共 34 个开发包（正式 Release 1 个、内部包 33 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
 
 <div class="timeline">
 
 <details class="day-group" open>
-<summary>2026-10-31 <span class="gcount">· 3 个包</span></summary>
+<summary>2026-10-31 <span class="gcount">· 4 个包</span></summary>
 
 <div class="inner">
+<section>
+#### v1.38.3-20261031-0912 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">0912 构建</p>
+
+- **紧急修复（1291）**：包59 打开大 events 日志会话必崩的回归——折叠记账梯四个内部 map 从未初始化，首个超限保存首写空账本即 panic（`assignment to entry in nil map`）；崩点在折叠已落盘、revision 未记录之间，会话随后可能提示 "no longer writable"。修法：账本首次使用时自建（lazy-init）+「不初始化直接跑」回归用例钉死缺口。受影响会话重开 tab 即恢复（写权限重新授予），已实测 fork开发-新10 数据零损坏。
+
+</section>
+
 <section>
 #### v1.38.3-20261031-0810 <span class="vtag vtag-internal">内部包</span>
 
