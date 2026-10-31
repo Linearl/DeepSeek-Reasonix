@@ -1727,6 +1727,10 @@ export const zh: Record<DictKey, string> = {
   "consolidateRecoveryCopies": "合并恢复副本", "consolidateBlocked": "已暂停：恢复副本树分叉（胜者 {winner} 条，主会话 {main} 条）",
   "projectTree.pinnedTitle": "置顶",
   "projectTree.searchPlaceholder": "搜索项目或会话",
+  // tl1282: 检索历史下拉（设置面板搜索 + 侧栏树搜索共用）
+  "searchHistory.title": "最近搜索",
+  "searchHistory.clear": "清空",
+  "searchHistory.remove": "删除该条历史",
   "projectTree.consolidateBlocked": "已暂停：恢复副本树分叉（胜者 {winner} 条，主会话 {main} 条）",
   "projectTree.consolidateNothing": "没有需要合并的恢复副本",
   "projectTree.consolidateForceAction": "强制合并",

@@ -1731,6 +1731,10 @@ export const en = {
   "consolidateRecoveryCopies": "Consolidate recovery copies", "consolidateBlocked": "Paused: recovery-copy tree diverged (winner {winner}, main {main})",
   "projectTree.pinnedTitle": "Pinned",
   "projectTree.searchPlaceholder": "Search projects or sessions",
+  // tl1282: shared search-history dropdown (settings nav search + sidebar tree search)
+  "searchHistory.title": "Recent searches",
+  "searchHistory.clear": "Clear",
+  "searchHistory.remove": "Remove this entry",
   "projectTree.consolidateBlocked": "Paused: recovery-copy tree diverged (winner {winner}, main {main})",
   "projectTree.consolidateNothing": "No recovery copies to consolidate",
   "projectTree.consolidateForceAction": "Force consolidate",

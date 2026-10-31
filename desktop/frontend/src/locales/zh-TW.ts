@@ -1363,6 +1363,10 @@ export const zhTW: Record<DictKey, string> = {
   "consolidateRecoveryCopies": "合併恢復副本", "consolidateBlocked": "已暫停：恢復副本樹分叉（勝者 {winner} 條，主會話 {main} 條）",
   "projectTree.pinnedTitle": "置頂",
   "projectTree.searchPlaceholder": "搜尋專案或會話",
+  // tl1282: 檢索歷史下拉（設定面板搜尋 + 側欄樹搜尋共用）
+  "searchHistory.title": "最近搜尋",
+  "searchHistory.clear": "清空",
+  "searchHistory.remove": "刪除該條歷史",
   "projectTree.consolidateBlocked": "已暫停：恢復副本樹分叉（勝者 {winner} 條，主會話 {main} 條）",
   "projectTree.consolidateNothing": "沒有需要合併的恢復副本",
   "projectTree.consolidateForceAction": "強制合併",

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
   Activity,
   ChartNoAxesColumn,
@@ -26,7 +26,9 @@ import {
   X,
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
+import { clearSearchHistory, readSearchHistory, recordSearchTerm, removeSearchTerm } from "../lib/searchHistory";
 import type { SettingsTab } from "../lib/types";
+import { SearchHistoryMenu } from "./SearchHistoryMenu";
 
 export const SETTINGS_NAV_TABS: SettingsTab[] = [
   "general", "bots", "models", "providers", "model-stats", "mcp", "remote", "localserver",
@@ -72,6 +74,11 @@ export function SettingsNavigation({
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
+  // tl1282: 检索历史——与侧栏「搜索项目或会话」共用一份 LRU（lib/searchHistory，
+  // localStorage 持久化跨重启）。默认收起：仅聚焦且无查询词时展示，默认视图零改动。
+  const [history, setHistory] = useState<string[]>(readSearchHistory);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyVisible = historyOpen && query.trim() === "" && history.length > 0;
   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const filteredGroups = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -89,6 +96,20 @@ export function SettingsNavigation({
     }).filter((group) => group.tabs.length > 0);
   }, [itemById, query, t]);
 
+  const commitQuery = () => {
+    if (!query.trim()) return;
+    setHistory(recordSearchTerm(query));
+  };
+  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") commitQuery();
+    if (event.key === "Escape") setHistoryOpen(false);
+  };
+  const selectHistoryTerm = (term: string) => {
+    setQuery(term);
+    setHistory(recordSearchTerm(term));
+    setHistoryOpen(false);
+  };
+
   return (
     <nav className="settings-center__nav" aria-label={t("settings.title")}>
       <label className="settings-center__search">
@@ -96,6 +117,9 @@ export function SettingsNavigation({
         <input
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
+          onFocus={() => setHistoryOpen(true)}
+          onBlur={() => setHistoryOpen(false)}
+          onKeyDown={handleSearchKeyDown}
           placeholder={t("settings.searchPlaceholder")}
           aria-label={t("settings.searchPlaceholder")}
         />
@@ -103,6 +127,14 @@ export function SettingsNavigation({
           <button type="button" onClick={() => setQuery("")} aria-label={t("settings.searchClear")}>
             <X size={14} aria-hidden="true" />
           </button>
+        )}
+        {historyVisible && (
+          <SearchHistoryMenu
+            entries={history}
+            onSelect={selectHistoryTerm}
+            onRemove={(term) => setHistory(removeSearchTerm(term))}
+            onClear={() => { setHistory(clearSearchHistory()); setHistoryOpen(false); }}
+          />
         )}
       </label>
       <div className="settings-center__navgroups">
@@ -119,7 +151,12 @@ export function SettingsNavigation({
                     className={`settings-center__navitem${activeTab === id ? " settings-center__navitem--active" : ""}`}
                     aria-current={activeTab === id ? "page" : undefined}
                     title={item.meta ? `${item.label} · ${item.meta}` : item.label}
-                    onClick={() => onSelect(id, query)}
+                    onClick={() => {
+                      // tl1282: 带查询词点中导航项 = 一次有效检索（提交点复用任务 764
+                      // 已有的 onSelect(query) 语义，零新增事件）。
+                      commitQuery();
+                      onSelect(id, query);
+                    }}
                   >
                     <span className="settings-center__navitem-main">
                       {settingsTabIcon(id)}
