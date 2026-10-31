@@ -220,8 +220,13 @@ func TestCrashAtRevisionLedgerHealsOnNextSave(t *testing.T) {
 	if meta.ContentDigest == "" {
 		t.Fatal("healed ledger must stamp the current content digest")
 	}
-	if preview, turns, ok := SessionPreviewCached(path); !ok || preview != "first" || turns != 2 {
-		t.Fatalf("healed listing projection = (%q,%d,%v), want (%q,2,true)", preview, turns, ok, "first")
+	// tl 1177 moved the preview to tail-first (newest user turn), so the healed
+	// projection stamps "second" here, not the old head-first "first". The
+	// disk-authority pins above stay untouched: no extra WAL records, the
+	// stale projection died at the interrupted commit, and the healing save
+	// re-certifies the ledger from the on-disk transcript.
+	if preview, turns, ok := SessionPreviewCached(path); !ok || preview != "second" || turns != 2 {
+		t.Fatalf("healed listing projection = (%q,%d,%v), want (%q,2,true)", preview, turns, ok, "second")
 	}
 }
 

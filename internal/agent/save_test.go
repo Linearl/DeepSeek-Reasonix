@@ -1917,8 +1917,14 @@ func TestSaveRecoveryBranchPersistsDivergedSnapshot(t *testing.T) {
 	if info.Path == "" || info.Path == path {
 		t.Fatalf("recovery path = %q, want distinct path", info.Path)
 	}
-	if info.Turns != 2 || info.Preview != "first" {
-		t.Fatalf("recovery preview/turns = %q/%d, want first/2", info.Preview, info.Turns)
+	// tl 1177 moved the preview to tail-first (newest user turn), so the
+	// recovery branch of the diverged local snapshot reports "local second",
+	// not the old head-first "first". The disk-authority pins below stay
+	// untouched: the stale save was rejected, the original tail keeps the
+	// on-disk "disk second" (memory residue never won), and the recovery
+	// branch persists exactly the diverged local snapshot.
+	if info.Turns != 2 || info.Preview != "local second" {
+		t.Fatalf("recovery preview/turns = %q/%d, want local second/2", info.Preview, info.Turns)
 	}
 	recovered, err := LoadSession(info.Path)
 	if err != nil {
