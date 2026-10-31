@@ -213,7 +213,7 @@ func TestEffortReadReconcileMemoSettlesRealBinding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createEmptySessionFile: %v", err)
 	}
-	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_memo", "Memo topic"); err != nil {
+	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_memo", "Memo topic", ""); err != nil {
 		t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
 	}
 	app.mu.Lock()

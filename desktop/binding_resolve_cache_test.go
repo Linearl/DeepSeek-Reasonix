@@ -29,7 +29,7 @@ func newBindingResolveFixture(t *testing.T) (*App, string, string, *atomic.Int32
 	if err != nil {
 		t.Fatalf("createEmptySessionFile: %v", err)
 	}
-	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_691", "Task 691 topic"); err != nil {
+	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_691", "Task 691 topic", ""); err != nil {
 		t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
 	}
 	var walks atomic.Int32
@@ -89,7 +89,7 @@ func TestBindingResolveCacheServesWarmHitAndInvalidates(t *testing.T) {
 
 	// A sidecar rewrite is an input the walk reads (topic/scope truth): the
 	// next resolve re-walks once and reports the new topic.
-	if err := pinSessionBranchMeta(sessionPath, "project", projectRoot, "topic_691_renamed", "Renamed topic"); err != nil {
+	if err := pinSessionBranchMeta(sessionPath, "project", projectRoot, "topic_691_renamed", "Renamed topic", ""); err != nil {
 		t.Fatalf("pinSessionBranchMeta: %v", err)
 	}
 	got, ok := app.resolveSessionBinding(sessionPath)
@@ -227,7 +227,7 @@ func TestReconcileMemoGatesEveryCallerTask691(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createEmptySessionFile: %v", err)
 	}
-	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_691", "Task 691 topic"); err != nil {
+	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_691", "Task 691 topic", ""); err != nil {
 		t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
 	}
 	app.mu.Lock()
@@ -261,7 +261,7 @@ func TestReconcileMemoGatesEveryCallerTask691(t *testing.T) {
 
 	// A sidecar rewrite (topic rename) is an input the reconcile reads: the
 	// next caller re-heals once and the tab follows the new topic.
-	if err := pinSessionBranchMeta(sessionPath, "project", projectRoot, "topic_691_renamed", "Renamed topic"); err != nil {
+	if err := pinSessionBranchMeta(sessionPath, "project", projectRoot, "topic_691_renamed", "Renamed topic", ""); err != nil {
 		t.Fatalf("pinSessionBranchMeta: %v", err)
 	}
 	if _, ok := app.reconcileTabWithPinnedSessionMeta(tab); !ok {
@@ -317,7 +317,7 @@ func TestReconcileMemoServesNoBindingOutcome(t *testing.T) {
 	// The session appears on disk with a real binding: the file-stamp change
 	// busts the memo and the next reconcile heals.
 	projectRoot := t.TempDir()
-	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_ghost", "Ghost topic"); err != nil {
+	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_ghost", "Ghost topic", ""); err != nil {
 		t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
 	}
 	if _, ok := app.reconcileTabWithPinnedSessionMeta(tab); !ok {
@@ -387,7 +387,7 @@ func TestReconcileMemoWarmCallBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createEmptySessionFile: %v", err)
 	}
-	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_691", "Task 691 topic"); err != nil {
+	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_691", "Task 691 topic", ""); err != nil {
 		t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
 	}
 	app.mu.Lock()
@@ -458,7 +458,7 @@ func TestBindingResolveCacheIgnoresTranscriptAppends(t *testing.T) {
 	}
 
 	// Sidecar content is still binding truth: a rewrite re-walks once.
-	if err := pinSessionBranchMeta(sessionPath, "project", t.TempDir(), "topic_1161", "Moved topic"); err != nil {
+	if err := pinSessionBranchMeta(sessionPath, "project", t.TempDir(), "topic_1161", "Moved topic", ""); err != nil {
 		t.Fatalf("pinSessionBranchMeta: %v", err)
 	}
 	got, ok := app.resolveSessionBinding(sessionPath)
@@ -484,7 +484,7 @@ func TestReconcileMemoSurvivesTranscriptAppends(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createEmptySessionFile: %v", err)
 	}
-	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_1161", "Task 1161 topic"); err != nil {
+	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_1161", "Task 1161 topic", ""); err != nil {
 		t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
 	}
 	app.mu.Lock()

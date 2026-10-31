@@ -59,6 +59,7 @@ func TestPinNewEmptySessionBranchMetaStoresBinding(t *testing.T) {
 				tt.workspaceRoot,
 				tt.topicID,
 				tt.topicTitle,
+				"",
 			)
 			if err != nil {
 				t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
@@ -103,6 +104,7 @@ func TestPinnedSessionMetaKeepsProjectBindingOutsideKnownDirectories(t *testing.
 		projectRoot,
 		topicID,
 		topicTitle,
+		"",
 	); err != nil {
 		t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
 	}
@@ -143,7 +145,7 @@ func TestPinSessionBranchMetaReturnsCorruptSidecarError(t *testing.T) {
 		t.Fatalf("write corrupt branch meta: %v", err)
 	}
 
-	if err := pinSessionBranchMeta(sessionPath, "project", t.TempDir(), "topic", "Topic"); err == nil {
+	if err := pinSessionBranchMeta(sessionPath, "project", t.TempDir(), "topic", "Topic", ""); err == nil {
 		t.Fatal("pinSessionBranchMeta error = nil, want corrupt sidecar error")
 	}
 	got, err := os.ReadFile(metaPath)
@@ -169,6 +171,7 @@ func TestPinNewEmptySessionBranchMetaCleansUpRejectedBinding(t *testing.T) {
 		"",
 		"topic",
 		"Topic",
+		"",
 	); err == nil {
 		t.Fatal("pinNewEmptySessionBranchMeta error = nil, want missing project root error")
 	}
@@ -208,7 +211,7 @@ func TestPinSessionBranchMetaPreservesExistingFields(t *testing.T) {
 	}
 
 	projectRoot := t.TempDir()
-	if err := pinSessionBranchMeta(sessionPath, "project", projectRoot, "topic", "Topic"); err != nil {
+	if err := pinSessionBranchMeta(sessionPath, "project", projectRoot, "topic", "Topic", ""); err != nil {
 		t.Fatalf("pinSessionBranchMeta: %v", err)
 	}
 	got, ok, err := agent.LoadBranchMeta(sessionPath)
