@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -226,13 +227,17 @@ func materializeSessionEventLogZst(plain, zst string) error {
 		preserveBrokenZst(zst, err, "events")
 		return fmt.Errorf("session events archive header: %w", err)
 	}
-	tmp := plain + ".materializing"
-	dst, dstErr := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	// tl1318：物化临时文件用随机唯一名（os.CreateTemp，O_EXCL 无截断语义）
+	// ——固定路径 + O_TRUNC 在并发物化下互相截断（实测：一方 rename 时另一
+	// 方还顶着同名 tmp，「cannot find/being used by another process」或产物
+	// 交错损坏）。同目录保证 rename 原子性不跨卷；CreateTemp 默认 0600。
+	dst, dstErr := os.CreateTemp(filepath.Dir(plain), filepath.Base(plain)+".materializing-*")
 	if dstErr != nil {
 		releaseDec()
 		src.Close()
 		return dstErr
 	}
+	tmp := dst.Name()
 	// 正文源是上面同一个 buffered：bufio.buf 里的预读字节必须先于解码器新解
 	// 出的内容被消费（tl1318 修复陷阱之二——绕过 bufio 直取解码器必丢预读）。
 	_, copyErr := io.Copy(dst, buffered)
@@ -262,9 +267,19 @@ func materializeSessionEventLogZst(plain, zst string) error {
 			return mismatch
 		}
 	}
-	if err := os.Rename(tmp, plain); err != nil {
+	// Windows：并发改名同一目标时 MoveFileEx 的「替换已存在目标」不是原子
+	// 互斥的，可能瞬时 Access denied（Unix rename 原子，重试永不触发）。有界
+	// 重试吃掉竞态窗口——与 ensureSessionEventLogPlain 的两轮重试同款纪律。
+	var renameErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if renameErr = os.Rename(tmp, plain); renameErr == nil {
+			break
+		}
+		time.Sleep(time.Duration(attempt+1) * 5 * time.Millisecond)
+	}
+	if renameErr != nil {
 		_ = os.Remove(tmp)
-		return err
+		return renameErr
 	}
 	if err := os.Remove(zst); err != nil && !os.IsNotExist(err) {
 		// 明文已就位，归档清理失败不阻塞读取——并存态明文优先，下次物化清。
