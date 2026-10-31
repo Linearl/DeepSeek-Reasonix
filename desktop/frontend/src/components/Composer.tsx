@@ -609,6 +609,7 @@ export function Composer({
   attachmentInputEnabled = true,
   tabId, turnId,
   effort,
+  effortApplying = false,
   onSend,
   splitTarget = "primary",
   onSplitTargetChange,
@@ -731,6 +732,8 @@ export function Composer({
   attachmentInputEnabled?: boolean;
   tabId?: string; turnId?: string;
   effort?: EffortInfo;
+  /** 任务1301：本 tab 的 effort 切换正走 fallback 重建（在飞）——effort 控件旁渲染「正在应用推理力度…」过渡态并锁定控件；快速通道恒为 false，行为不变。 */
+  effortApplying?: boolean;
   onSend: (displayText: string, submitText?: string, tabId?: string, structured?: StructuredInvocationSubmit) => void | Promise<void>;
   /** Split view (task 70, B): where the composer sends while a split is open. */
   splitTarget?: "primary" | "secondary" | "both";
@@ -6277,9 +6280,11 @@ export function Composer({
                 <ComposerChoice key={`effort-${tabId}`} label={effortLabel(currentEffort)}
                   ariaLabel={`${t("status.effortTitle")}: ${effortLabel(currentEffort)}`}
                   icon={<Brain size={16} />} showChevron
-                  value={currentEffort} disabled={disabled || readOnly || running}
+                  value={currentEffort} disabled={disabled || readOnly || running || effortApplying}
                   onPick={chooseEffortLevel}
                   options={effortLevels.map(level => ({ value: level, label: effortLabel(level) }))} />
+                {/* 任务1301：fallback 重建在飞（recovery-fork 会话实测 ~2.4s）——控件旁过渡态提示，重建完成由 settle/runtime:rebuilt 清除。 */}
+                {effortApplying && <span className="composer-effort-applying" role="status">{t("composer.effortApplying")}</span>}
               </div>}
             </div>
             <div className={`composer-toolbar-send${submitUnavailableHint ? " composer-toolbar-send--unavailable" : ""}`}>

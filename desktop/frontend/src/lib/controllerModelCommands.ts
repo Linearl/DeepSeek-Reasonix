@@ -1,5 +1,6 @@
 import { app } from "./bridge";
 import { emitActiveModelChanged } from "./activeModelChanged";
+import { beginEffortSwitch, endEffortSwitch } from "../store/effortApplying";
 import type { BalanceInfo } from "./types";
 
 type Ref<T> = { current: T };
@@ -81,12 +82,19 @@ export function createControllerModelCommands(ports: Ports) {
 
   const setEffortForTab = async (tabId: string, level: string) => {
     if (!tabId) return;
+    // Task 1301: the in-flight window brackets the backend call. The fallback
+    // rebuild emits "effort:applying" mid-call (marked only inside this
+    // window); when the call settles — applied or failed — the transition
+    // must go, so the clear runs on both exit paths.
+    beginEffortSwitch(tabId);
     try {
       await app.SetEffortForTab(tabId, level);
     } catch (err) {
       const { effortSwitchNoticeText } = await import("./controllerSwitchNotices");
       dispatchTo(tabId, { type: "local_notice", level: "warn", text: effortSwitchNoticeText(err) });
       return;
+    } finally {
+      endEffortSwitch(tabId);
     }
     await refreshMetaForTab(tabId);
   };
