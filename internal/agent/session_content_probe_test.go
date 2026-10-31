@@ -264,10 +264,13 @@ func TestContentProbeSchemaOneLog(t *testing.T) {
 func TestContentProbeSnapshotTierSeam(t *testing.T) {
 	// 两档接缝：第一档（快照）先问，ok=true 直接作答；ok=false 落到第二档
 	// （events light scan）。nil（今日默认态）等于第一档休眠。
+	// tl1295：第二档对 sealed schema-2 残余的回答面是 checkpoint（与
+	// LoadSession 封存兜底同源），fixture 按该现实形态带一个 checkpoint。
 	path := dagTestSession(t)
 	dagCaseLog(t, path,
 		dagMsg(provider.RoleSystem, "sys", ""),
 		dagMsg(provider.RoleUser, "q1", ""))
+	dagWriteCheckpoint(t, path, provider.RoleUser)
 
 	t.Run("dormant by default", func(t *testing.T) {
 		if sessionContentSnapshotProbe != nil {
