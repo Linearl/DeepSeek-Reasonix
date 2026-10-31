@@ -57,6 +57,17 @@ type useCapabilityArgs struct {
 	// never serializes; ResolveCall uses it to keep the heal observable
 	// (audit counter + WARN log, task 798 discipline).
 	healedControlChars bool `json:"-"`
+	// healedArgumentKeys counts argument object key names that
+	// sanitizeArgumentKeys cleaned of embedded control characters at parse
+	// time (tl1310: the 10-31 ai-passport field report had target parameter
+	// "expected_revision" arrive as "expected\r_revision" — the id survived
+	// via the 975 sanitize but the polluted key failed the target schema gate
+	// and dragged the call into a 5+ retry loop). Values are never rewritten,
+	// only key NAMES. It never serializes; ResolveCall uses the count to keep
+	// the heal observable (audit counter + WARN log, task 798 discipline). No
+	// model-visible note: like the 975 id cleanup, the model cannot act on
+	// tokenizer-emitted \r, so a result note would only add noise.
+	healedArgumentKeys int `json:"-"`
 	// controlOnlyID is set when capability_id was present but consisted solely
 	// of control characters, so nothing usable remained after cleaning (task
 	// 975). ResolveCall names this cause instead of the generic missing-id
@@ -357,13 +368,23 @@ func captureSpreadParameters(raw json.RawMessage, args *useCapabilityArgs) {
 		return
 	}
 	extras := make(map[string]json.RawMessage)
+	cleanedKeys := 0
 	for key, value := range envelope {
 		if !capabilityEnvelopeKeys[key] {
-			extras[key] = value
+			// tl1310: an envelope-foreign KEY may carry the same embedded
+			// control characters as the arguments-object keys (the merged
+			// form hits the same target schema gate); clean it at capture so
+			// mergedSpreadArguments dispatches clean keys.
+			cleanKey, stripped := stripControlCharacters(key)
+			if stripped {
+				cleanedKeys++
+			}
+			extras[cleanKey] = value
 		}
 	}
 	if len(extras) > 0 {
 		args.spreadParameters = extras
+		args.healedArgumentKeys += cleanedKeys
 	}
 }
 
@@ -453,19 +474,135 @@ func promoteNestedCapabilityID(raw json.RawMessage) (string, json.RawMessage, bo
 // always applied. The bool reports whether anything was removed so the caller
 // can keep the heal observable instead of silently rewriting model output.
 func sanitizeCapabilityID(id string) (string, bool) {
-	if !hasControlCharacter(id) {
-		return strings.TrimSpace(id), false
+	cleaned, stripped := stripControlCharacters(id)
+	return strings.TrimSpace(cleaned), stripped
+}
+
+// stripControlCharacters removes ASCII control characters (C0 range 0x00-0x1f
+// and DEL 0x7f) from s. Bytes >= 0x80 pass untouched so multi-byte UTF-8 is
+// never reinterpreted. The bool reports whether anything was removed so
+// callers can keep the heal observable instead of silently rewriting model
+// output. Shared by sanitizeCapabilityID (task 975) and the tl1310 argument
+// key-name cleanup.
+func stripControlCharacters(s string) (string, bool) {
+	if !hasControlCharacter(s) {
+		return s, false
 	}
 	var b strings.Builder
-	b.Grow(len(id))
-	for i := 0; i < len(id); i++ {
-		c := id[i]
-		if c < 0x20 || c == 0x7f {
-			continue
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= 0x20 && c != 0x7f {
+			b.WriteByte(c)
 		}
-		b.WriteByte(c)
 	}
-	return strings.TrimSpace(b.String()), true
+	return b.String(), true
+}
+
+// sanitizeArgumentKeys strips control characters from JSON object KEY NAMES at
+// every depth of an action=call arguments value (tl1310: the 10-31 ai-passport
+// field report had "expected_revision" arrive as "expected\r_revision" and
+// fail the target schema gate with a required-field error the model could not
+// diagnose, feeding a 5+ retry loop). Values — including long prompt strings
+// with legitimate \n/\r escapes — are preserved byte-for-byte; only key names
+// are rewritten, and only when a control character is actually present in one.
+// Returns the cleaned raw message and the number of keys rewritten; a count of
+// zero always returns the input byte-identical. Keys that clean to empty are
+// kept (never dropped) so the schema gate still reports the unknown field
+// instead of a misleading missing-required diagnosis.
+func sanitizeArgumentKeys(raw json.RawMessage) (json.RawMessage, int) {
+	if len(raw) == 0 || !argumentKeysHaveControlChars(raw) {
+		return raw, 0
+	}
+	return rebuildArgumentKeys(raw)
+}
+
+// argumentKeysHaveControlChars reports whether any object key at any depth of
+// raw carries an embedded control character. Detection walks the structure
+// without rewriting anything, so a payload whose keys are clean (including one
+// whose values contain legitimate control escapes in long prompt strings)
+// returns false and the caller keeps the input byte-identical.
+func argumentKeysHaveControlChars(raw json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(raw))
+	switch {
+	case strings.HasPrefix(trimmed, "{"):
+		var object map[string]json.RawMessage
+		if json.Unmarshal([]byte(trimmed), &object) != nil {
+			return false
+		}
+		for key, value := range object {
+			if hasControlCharacter(key) || argumentKeysHaveControlChars(value) {
+				return true
+			}
+		}
+	case strings.HasPrefix(trimmed, "["):
+		var array []json.RawMessage
+		if json.Unmarshal([]byte(trimmed), &array) != nil {
+			return false
+		}
+		for _, item := range array {
+			if argumentKeysHaveControlChars(item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// rebuildArgumentKeys re-marshals the object graph replacing every key that
+// carries control characters with its cleaned form. Values travel as
+// json.RawMessage and are never re-encoded, so long prompt strings keep their
+// exact bytes; clean subtrees keep their original bytes too. Key order follows
+// map marshal (sorted) — acceptable because this path only runs on an
+// already-polluted payload where byte identity is off the table. A count of
+// zero with the input returned unchanged means re-marshaling failed; the call
+// then proceeds exactly as before the tolerance existed.
+func rebuildArgumentKeys(raw json.RawMessage) (json.RawMessage, int) {
+	trimmed := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(trimmed, "{") {
+		var object map[string]json.RawMessage
+		if json.Unmarshal([]byte(trimmed), &object) != nil || object == nil {
+			return raw, 0
+		}
+		rebuilt := make(map[string]json.RawMessage, len(object))
+		cleaned := 0
+		for key, value := range object {
+			cleanKey, stripped := stripControlCharacters(key)
+			if stripped {
+				cleaned++
+			}
+			if inner, innerCleaned := rebuildArgumentKeys(value); innerCleaned > 0 {
+				value = inner
+				cleaned += innerCleaned
+			}
+			rebuilt[cleanKey] = value
+		}
+		merged, err := json.Marshal(rebuilt)
+		if err != nil {
+			return raw, 0
+		}
+		return merged, cleaned
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		var array []json.RawMessage
+		if json.Unmarshal([]byte(trimmed), &array) != nil {
+			return raw, 0
+		}
+		rebuilt := make([]json.RawMessage, len(array))
+		cleaned := 0
+		for i, item := range array {
+			rebuilt[i] = item
+			if inner, innerCleaned := rebuildArgumentKeys(item); innerCleaned > 0 {
+				rebuilt[i] = inner
+				cleaned += innerCleaned
+			}
+		}
+		merged, err := json.Marshal(rebuilt)
+		if err != nil {
+			return raw, 0
+		}
+		return merged, cleaned
+	}
+	return raw, 0
 }
 
 // hasControlCharacter reports whether id contains any C0 control character or
@@ -555,6 +692,15 @@ func parseUseCapabilityArgs(raw json.RawMessage) (useCapabilityArgs, string, str
 			} else {
 				args.Arguments = normalized
 			}
+		}
+		// tl1310: strip control characters from argument KEY NAMES after every
+		// tolerance path has settled the final arguments value (normalized
+		// copy, unwrapped double envelope, stringified compact) so all of them
+		// reach the target schema gate with clean keys. Zero-cost: a payload
+		// without dirty keys returns byte-identical.
+		if cleaned, cleanedKeys := sanitizeArgumentKeys(args.Arguments); cleanedKeys > 0 {
+			args.Arguments = cleaned
+			args.healedArgumentKeys += cleanedKeys
 		}
 	}
 	return args, action, id, nil
