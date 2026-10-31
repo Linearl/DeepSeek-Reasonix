@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"reasonix/internal/ablation"
 	"reasonix/internal/checkpoint"
@@ -668,8 +669,18 @@ func (t *TaskTool) Execute(ctx context.Context, args json.RawMessage) (string, e
 
 // buildTaskSpec resolves profile, tools, model/effort, and write claims for a
 // single task/fleet item. forceReadOnly forces the read-only registry.
-func (t *TaskTool) buildTaskSpec(ctx context.Context, prompt, description, profile string, writePaths, tools []string, maxSteps int, model, effort, continueFrom, forkFrom string, background, forceReadOnly bool) (ProfileExecSpec, error) {
-	spec := ProfileExecSpec{
+func (t *TaskTool) buildTaskSpec(ctx context.Context, prompt, description, profile string, writePaths, tools []string, maxSteps int, model, effort, continueFrom, forkFrom string, background, forceReadOnly bool) (spec ProfileExecSpec, err error) {
+	// tl1293: the spec build (profile lookup, claims) sits before the open
+	// window's trace starts, so a slow dispatch needs its own guard line —
+	// same slow-only convention as bootTimelineNoteSlotWait (threshold only
+	// filters the common zero-cost case).
+	specStart := time.Now()
+	defer func() {
+		if d := time.Since(specStart); d > 200*time.Millisecond {
+			slog.Info("subagent: spec build slow", "profile", profile, "elapsed_ms", d.Milliseconds())
+		}
+	}()
+	spec = ProfileExecSpec{
 		Task:    TaskSpec{Objective: prompt, Description: description},
 		Worker:  WorkerSpec{Kind: "task", Name: "task", SystemPrompt: t.sysPrompt},
 		Grant:   CapabilityGrant{CallTools: tools},
@@ -783,6 +794,17 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		spec.Worker.SystemPrompt = t.sysPrompt
 	}
 
+	// tl1293: open-window instrumentation (pure timing, one summary line; see
+	// subagent_open_trace.go). Runs at spec entry so the summary's total covers
+	// registry/transcript/runtime/slot plus the first request phases.
+	openMode := "fg"
+	if spec.Sched.RunInBackground {
+		openMode = "bg"
+	}
+	openTr := newSubagentOpenTrace(openMode)
+	openTr.describe(spec.Worker.Name, "")
+	ctx = withSubagentOpenTrace(ctx, openTr)
+
 	ctx, maxSteps := t.childMaxStepsForSpec(ctx, &spec)
 	childDepth, err := t.nextSubagentDepth(ctx)
 	if err != nil {
@@ -797,6 +819,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	if err != nil {
 		return "", err
 	}
+	openTr.mark("registry")
 
 	modelRef, effortRef := spec.Worker.Model, spec.Worker.Effort
 	usageModelRef := t.usageModelRef(modelRef, effortRef)
@@ -805,10 +828,13 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	if err != nil {
 		return "", err
 	}
+	openTr.describe(spec.Worker.Name, run.Ref)
+	openTr.mark("transcript")
 	prov, pricing, ctxWin, err := t.resolveSubSessionRuntime(modelRef, effortRef)
 	if err != nil {
 		return t.failBeforeSubagentRelease(run, fmt.Errorf("sub-agent profile: %w", err))
 	}
+	openTr.mark("runtime")
 	// 任务616: the mailbox is keyed by this run's own ref. Ephemeral runs
 	// (empty ref) get nil and publish nothing.
 	mailbox := t.mailboxForRun(run)
@@ -853,6 +879,12 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		mutationObserver = t.mutationObserver.CloneForSubagent(recoveryTaskID, turn, backgroundWriter)
 	}
 	runSession := func(runCtx context.Context, sink event.Sink, writerAlreadyRegistered bool) (string, error) {
+		// tl1293: close the dispatch segment (fg≈0ms; bg=job scheduling queue)
+		// and observe the child's event stream until the first content event
+		// emits the summary line; finish() covers error paths without output.
+		openTr.mark("dispatch")
+		defer openTr.finish()
+		sink = openTr.wrapSink(sink)
 		if mutationObserver != nil && backgroundWriter && !writerAlreadyRegistered {
 			turn := mutationObserver.OwnershipTurn()
 			if err := mutationObserver.RegisterWriter(recoveryTaskID, "background_subagent", turn); err != nil {
@@ -885,6 +917,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	if err != nil {
 		return t.failedSubagentResult(run, err)
 	}
+	openTr.mark("slot")
 	defer releaseSlot()
 	defer run.Release()
 	ctx = WithSubagentClaimID(ctx, claimID)
@@ -988,6 +1021,10 @@ func (t *TaskTool) runBackgroundProfileSpec(ctx context.Context, spec ProfileExe
 		releaseSlot, claimID, slotErr := t.acquireSlot(jobCtx, slotReq)
 		if slotErr != nil {
 			return t.failedSubagentResult(run, slotErr)
+		}
+		// tl1293: the background slot wait (queue + admission) closes here.
+		if openTr := subagentOpenTraceFromContext(ctx); openTr != nil {
+			openTr.mark("slot")
 		}
 		defer releaseSlot()
 		jobCtx = WithSubagentClaimID(jobCtx, claimID)
