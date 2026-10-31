@@ -302,6 +302,12 @@ func TestRescueRechecksRevisionUnderLedgerLock(t *testing.T) {
 // only halving folds — the 124MB-in-open-tab incident was this branch refusing
 // a 42% saving because the session could never reach cap, pinning the log
 // forever (save is the only route a busy session gets).
+//
+// tl 1285: an estimate of "<10%" no longer exempts the log on its own. The
+// gate authorizes ONE real probe fold and judges by the caller-reported
+// measurement; only foldProbeMaxStrikes consecutive measured no-gains prove
+// the fold floor, and the skip still leaves the greppable WARN (same grep
+// contract, now a measured verdict instead of an estimate-only one).
 func TestEventsRotationAutoCapFoldsOnlyWhenItShrinks(t *testing.T) {
 	resetEventsRotation(t)
 	var buf bytes.Buffer
@@ -322,17 +328,30 @@ func TestEventsRotationAutoCapFoldsOnlyWhenItShrinks(t *testing.T) {
 	if !gateJudges(1600<<10, content) {
 		t.Fatal("auto cap must fold a >=10% saving rewrite even when it cannot reach cap")
 	}
-	// Over the cap but the fold saves <10% even against the 80%-relaxed line:
-	// leave it, greppable WARN. This is the 73 no-gain sweep shape
-	// (freed ∈ [−217, 0]).
+	// Over the cap but the fold ESTIMATES <10%: the gate authorizes the real
+	// probe fold first (tl 1285 — the 73 no-gain sweep shape, freed ∈ [−217, 0],
+	// is decided by measurement now, not by the estimate).
+	if !gateJudges(1049000, content) {
+		t.Fatal("unproven estimate must authorize the probe fold")
+	}
+	if strings.Contains(buf.String(), "fold would not shrink it") {
+		t.Fatalf("estimate-only sighting must not warn, log=%q", buf.String())
+	}
+	// Two measured no-gains prove the floor: the fold stops, with the greppable
+	// WARN and its session-path attribution.
+	noteSessionFoldOutcome("test.events.jsonl", 1049000, 1049000)
+	if !gateJudges(1049000, content) {
+		t.Fatal("one measured no-gain is not the floor yet")
+	}
+	noteSessionFoldOutcome("test.events.jsonl", 1049000, 1049000)
 	if gateJudges(1049000, content) {
-		t.Fatal("auto cap must not rewrite a log the fold cannot shrink")
+		t.Fatal("measured fold floor must stop the rewrite")
 	}
 	if !strings.Contains(buf.String(), "fold would not shrink it") {
-		t.Fatalf("shrink-guard skip must leave a greppable WARN, log=%q", buf.String())
+		t.Fatalf("floor skip must leave a greppable WARN, log=%q", buf.String())
 	}
 	if !strings.Contains(buf.String(), "path=test.events.jsonl") {
-		t.Fatalf("shrink-guard WARN must attribute the session path, log=%q", buf.String())
+		t.Fatalf("floor WARN must attribute the session path, log=%q", buf.String())
 	}
 	// The factor branch keeps firing regardless of the shrink guard.
 	SetEventsAutoRotation("auto", 2, 0)

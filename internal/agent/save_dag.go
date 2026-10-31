@@ -465,10 +465,17 @@ func (s *Session) maintainDAGLog(ctx context.Context, path string, st *sessionDA
 		slog.Warn("session: log rotation deferred", "path", path, "reason", err)
 		return
 	}
+	rotateBefore := sessionEventLogSize(path)
 	if err := rotateSessionDAG(path, st, now); err != nil {
 		slog.Warn("session: log rotation failed", "path", path, "err", err)
 		return
 	}
+	// tl 1285: report the measured rotation outcome to the fold-probe ladder —
+	// a rotation that really freed ≥10% resets the strike count, a no-gain one
+	// counts toward the measured fold floor. Forced rotations (holes,
+	// redaction, RewriteCompact) report too: a measured no-gain is floor
+	// evidence regardless of which branch authorized the rewrite.
+	noteSessionFoldOutcome(path, rotateBefore, sessionEventLogSize(path))
 	fresh, err := replaySessionDAG(ctx, store.SessionEventLog(path), defaultSessionReplayLimits)
 	if err != nil {
 		slog.Warn("session: replay after rotation failed", "path", path, "err", err)

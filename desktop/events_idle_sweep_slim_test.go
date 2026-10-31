@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"reasonix/internal/store"
 )
@@ -46,7 +47,7 @@ func TestSweepSlimTakesOverFoldNoShrinkIdle(t *testing.T) {
 	cands := []eventsIdleSweepCandidate{
 		{Path: "big.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 97 * slimMB, LastActivityAt: 1},
 	}
-	results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), map[string]int{}, nil)
+	results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), nil)
 	if calls != 1 {
 		t.Fatalf("idle fold-no-shrink session must slim exactly once, calls=%d", calls)
 	}
@@ -70,12 +71,11 @@ func TestSweepSlimParkBlocksSameSizeRecompress(t *testing.T) {
 		return 107 * slimMB, 12 * slimMB, nil
 	}
 	park := map[string]eventsIdleSweepPark{}
-	streak := map[string]int{}
 	cands := []eventsIdleSweepCandidate{
 		{Path: "big.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 97 * slimMB, LastActivityAt: 1},
 	}
 	for tick := 0; tick < 3; tick++ {
-		results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), streak, nil)
+		results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), nil)
 		if tick == 0 {
 			if len(results) != 1 || results[0].Skipped {
 				t.Fatalf("tick 0 must slim, got %+v", results)
@@ -91,58 +91,55 @@ func TestSweepSlimParkBlocksSameSizeRecompress(t *testing.T) {
 	}
 	// 新活动戳解除 park：允许再压。
 	cands[0].LastActivityAt = 2
-	runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), streak, nil)
+	runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), nil)
 	if calls != 2 {
 		t.Fatalf("new activity must re-arm slim, calls=%d", calls)
 	}
 }
 
-// 验收 4：本进程 tab 打开的会话连续 busy 满 eventsIdleSweepBusyWindowTicks
-// 后获得一次维护窗口；外部 lease busy 永不被碰。
-func TestSweepSlimBusyWindow(t *testing.T) {
-	t.Run("own tab gets a window after the streak", func(t *testing.T) {
-		calls := 0
-		compress := func(path string) (int64, int64, error) {
-			calls++
-			return 107 * slimMB, 12 * slimMB, nil
-		}
-		park := map[string]eventsIdleSweepPark{}
-		streak := map[string]int{}
-		cands := []eventsIdleSweepCandidate{
-			{Path: "tab.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 97 * slimMB, LastActivityAt: 1, Busy: true, TabOpen: true},
-		}
-		for tick := 1; tick <= eventsIdleSweepBusyWindowTicks; tick++ {
-			results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), streak, nil)
-			if tick < eventsIdleSweepBusyWindowTicks {
-				if len(results) != 1 || !results[0].Skipped {
-					t.Fatalf("tick %d must wait, got %+v", tick, results)
-				}
-				continue
-			}
-			if len(results) != 1 || results[0].Skipped {
-				t.Fatalf("window tick must slim, got %+v", results)
-			}
-		}
-		if calls != 1 {
-			t.Fatalf("window must fire exactly once, calls=%d", calls)
-		}
-	})
-	t.Run("foreign lease busy is never touched", func(t *testing.T) {
-		calls := 0
-		compress := func(path string) (int64, int64, error) {
-			calls++
-			return 107 * slimMB, 12 * slimMB, nil
-		}
-		cands := []eventsIdleSweepCandidate{
-			{Path: "foreign.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 97 * slimMB, LastActivityAt: 1, Busy: true},
-		}
-		for tick := 0; tick < eventsIdleSweepBusyWindowTicks*2; tick++ {
-			runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, noCompact, slimWiring(compress, nil), map[string]int{}, nil)
-		}
-		if calls != 0 {
-			t.Fatalf("foreign-lease busy sessions must never slim, calls=%d", calls)
-		}
-	})
+// tl1285（用户 20261031 01:02 口径）：busy 判据改为「真在工作」，tab 打开
+// 不再整轮否决，busy 维护窗口（busyStreak/4-tick）退役。本进程 tab 是否
+// busy 由 tick 侧 eventsIdleSweepBusyFor 判定（另测）；pass 层面的契约只有
+// 一条：busy 候选一律让路，永不被 slim/L1 碰。
+func TestSweepSlimBusyNeverTouched(t *testing.T) {
+	calls := 0
+	compress := func(path string) (int64, int64, error) {
+		calls++
+		return 107 * slimMB, 12 * slimMB, nil
+	}
+	cands := []eventsIdleSweepCandidate{
+		{Path: "busy.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 97 * slimMB, LastActivityAt: 1, Busy: true},
+	}
+	for tick := 0; tick < 4; tick++ {
+		runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, noCompact, slimWiring(compress, nil), nil)
+	}
+	if calls != 0 {
+		t.Fatalf("busy sessions must never slim, calls=%d", calls)
+	}
+}
+
+// tl1285 busy 判据纯函数（用户 20261031 01:02 口径）：tab 打开 ≠ busy；
+// 真在工作（ActiveWork）或刚活跃（<10 分钟窗口）才让路；空闲超窗纳入
+// sweep；运行态不可读时保守让路；无 tab 的候选交给外部 lease 检查。
+func TestEventsIdleSweepBusyForTabCriterion(t *testing.T) {
+	now := time.UnixMilli(1790000000000)
+	idle := now.Add(-15 * time.Minute)   // 空闲超窗
+	recent := now.Add(-3 * time.Minute)  // 窗口内刚活跃
+	if !eventsIdleSweepBusyFor(true, true, idle, now, true) {
+		t.Fatal("an actively working tab session must stay busy")
+	}
+	if !eventsIdleSweepBusyFor(true, false, recent, now, true) {
+		t.Fatal("a tab session active within the window must stay busy")
+	}
+	if eventsIdleSweepBusyFor(true, false, idle, now, true) {
+		t.Fatal("a tab session idle past the window must enter the sweep (tab open is not busy)")
+	}
+	if !eventsIdleSweepBusyFor(true, false, idle, now, false) {
+		t.Fatal("unreadable runtime state must conservatively stay busy")
+	}
+	if eventsIdleSweepBusyFor(false, false, recent, now, true) {
+		t.Fatal("no-tab candidates are judged by the caller's external lease check, not here")
+	}
 }
 
 // 验收 5（回归面）：小会话（未超限）与 fold 有收益的会话不进降级——开关开
@@ -157,7 +154,7 @@ func TestSweepSlimBoundaries(t *testing.T) {
 		cands := []eventsIdleSweepCandidate{
 			{Path: "small.jsonl", EventsBytes: 5 * slimMB, LiveBytes: 4 * slimMB, LastActivityAt: 1},
 		}
-		results := runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, noCompact, slimWiring(compress, nil), map[string]int{}, nil)
+		results := runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, noCompact, slimWiring(compress, nil), nil)
 		if calls != 0 || len(results) != 0 {
 			t.Fatalf("under-limit must not slim, calls=%d results=%v", calls, results)
 		}
@@ -177,7 +174,7 @@ func TestSweepSlimBoundaries(t *testing.T) {
 			// events 107MB vs live 10.7MB：sweep 口径折叠有收益（live ≤ 90%）。
 			{Path: "fold.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 107 * slimMB / 10, LastActivityAt: 1},
 		}
-		results := runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, compact, slimWiring(compress, nil), map[string]int{}, nil)
+		results := runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, compact, slimWiring(compress, nil), nil)
 		if compacted != 1 {
 			t.Fatalf("L1 fold must run as today, compacted=%d", compacted)
 		}
@@ -199,7 +196,7 @@ func TestSweepSlimBoundaries(t *testing.T) {
 		cands := []eventsIdleSweepCandidate{
 			{Path: "big.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 97 * slimMB, LastActivityAt: 1},
 		}
-		results := runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, noCompact, off, nil, nil)
+		results := runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, noCompact, off, nil)
 		if calls != 0 {
 			t.Fatalf("switch off must never compress, calls=%d", calls)
 		}
@@ -225,7 +222,7 @@ func TestSweepSlimFollowupAfterNoGainFold(t *testing.T) {
 	cands := []eventsIdleSweepCandidate{
 		{Path: "split.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 107 * slimMB / 10, LastActivityAt: 1},
 	}
-	results := runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, compact, slimWiring(compress, nil), map[string]int{}, nil)
+	results := runEventsIdleSweepPass(cands, slimKnobs(), map[string]eventsIdleSweepPark{}, nil, compact, slimWiring(compress, nil), nil)
 	if compacted != 1 || calls != 1 {
 		t.Fatalf("ladder must run L1 then degrade to L2, compacted=%d calls=%d", compacted, calls)
 	}
@@ -252,7 +249,7 @@ func TestSweepSlimTrimFollowsStillOverCap(t *testing.T) {
 	cands := []eventsIdleSweepCandidate{
 		{Path: "stillbig.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 97 * slimMB, LastActivityAt: 1},
 	}
-	results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, trim), map[string]int{}, nil)
+	results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, trim), nil)
 	if compressCalls != 2 || trimCalls != 1 {
 		t.Fatalf("ladder must compress, trim, re-archive: compress=%d trim=%d", compressCalls, trimCalls)
 	}
@@ -273,7 +270,7 @@ func TestSweepSlimCompressFailureRetries(t *testing.T) {
 		{Path: "fail.jsonl", EventsBytes: 107 * slimMB, LiveBytes: 97 * slimMB, LastActivityAt: 1},
 	}
 	for tick := 0; tick < 2; tick++ {
-		results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), map[string]int{}, nil)
+		results := runEventsIdleSweepPass(cands, slimKnobs(), park, nil, noCompact, slimWiring(compress, nil), nil)
 		if len(results) != 1 || !results[0].Skipped {
 			t.Fatalf("tick %d must record the failure as a skip, got %+v", tick, results)
 		}
@@ -315,7 +312,7 @@ func TestSweepLedgerCompactRunsAlongsideSlimOnOverLimitIdle(t *testing.T) {
 	slim.CompactLedger = compactLedger
 	ledgerPark := map[string]int64{}
 	results := runEventsIdleSweepPass([]eventsIdleSweepCandidate{ledgerSeed(t)}, slimKnobs(),
-		map[string]eventsIdleSweepPark{}, nil, noCompact, slim, map[string]int{}, ledgerPark)
+		map[string]eventsIdleSweepPark{}, nil, noCompact, slim, ledgerPark)
 	if compressCalls != 1 || ledgerCalls != 1 {
 		t.Fatalf("slim=%d ledger=%d, want 1/1 (orthogonal actions on the same over-limit session)", compressCalls, ledgerCalls)
 	}
@@ -337,7 +334,7 @@ func TestSweepLedgerCompactSkipsBusyAndParkedSessions(t *testing.T) {
 	busy := ledgerSeed(t)
 	busy.Busy = true
 	runEventsIdleSweepPass([]eventsIdleSweepCandidate{busy}, slimKnobs(),
-		map[string]eventsIdleSweepPark{}, nil, noCompact, slim, map[string]int{}, map[string]int64{})
+		map[string]eventsIdleSweepPark{}, nil, noCompact, slim, map[string]int64{})
 	if ledgerCalls != 0 {
 		t.Fatalf("busy session ledger must never be touched, calls=%d", ledgerCalls)
 	}
@@ -348,7 +345,7 @@ func TestSweepLedgerCompactSkipsBusyAndParkedSessions(t *testing.T) {
 	ledgerPark := map[string]int64{parked.Path: 1 << 20}
 	calls := ledgerCalls
 	runEventsIdleSweepPass([]eventsIdleSweepCandidate{parked}, slimKnobs(),
-		map[string]eventsIdleSweepPark{}, nil, noCompact, slim, map[string]int{}, ledgerPark)
+		map[string]eventsIdleSweepPark{}, nil, noCompact, slim, ledgerPark)
 	if ledgerCalls != calls {
 		t.Fatalf("parked ledger must not be re-compacted, calls=%d", ledgerCalls)
 	}
@@ -364,7 +361,7 @@ func TestSweepLedgerCompactFailureRetriesWithoutParking(t *testing.T) {
 	ledgerPark := map[string]int64{}
 	for tick := 0; tick < 2; tick++ {
 		runEventsIdleSweepPass([]eventsIdleSweepCandidate{ledgerSeed(t)}, slimKnobs(),
-			map[string]eventsIdleSweepPark{}, nil, noCompact, slim, map[string]int{}, ledgerPark)
+			map[string]eventsIdleSweepPark{}, nil, noCompact, slim, ledgerPark)
 		if len(ledgerPark) != 0 {
 			t.Fatalf("failed ledger compact must not park, ledgerPark=%v", ledgerPark)
 		}
@@ -379,7 +376,7 @@ func TestSweepLedgerCompactOffByDefault(t *testing.T) {
 	ledgerCalls := 0
 	_ = ledgerCalls
 	results := runEventsIdleSweepPass([]eventsIdleSweepCandidate{ledgerSeed(t)}, slimKnobs(),
-		map[string]eventsIdleSweepPark{}, nil, noCompact, eventsIdleSweepSlim{}, map[string]int{}, map[string]int64{})
+		map[string]eventsIdleSweepPark{}, nil, noCompact, eventsIdleSweepSlim{}, map[string]int64{})
 	if ledgerCalls != 0 {
 		t.Fatalf("off switch must never compact the ledger, calls=%d", ledgerCalls)
 	}

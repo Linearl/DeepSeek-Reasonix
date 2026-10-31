@@ -434,23 +434,30 @@ func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 			// fold actually shrinks the log. Over the configured cap but not
 			// over the factor, the folded log (~content) would land at or above
 			// the size it replaced - rewriting it on every save is pure IO.
-			// Leave it with a greppable WARN like off mode; the explicit
-			// slimming entries still force the fold, and the storage inventory
-			// keeps flagging the log as over its cap.
-			if !EventsFoldProfitable(logSize, contentBytes) {
-				// Task 1073 P1-a: the 124MB-in-an-open-tab incident (面板第 1 条
-				// 「使用中」×5.6) is exactly this branch refusing the fold: the
-				// session's LIVE content is already most of the log, so the old
-				// "must land under cap" line could never be met and the log was
-				// pinned forever. The save path is the only route a busy session
-				// ever gets (the idle sweep skips busy), so a fold that saves
-				// ≥10% is accepted HERE even when it cannot reach cap: better a
-				// 124→90MB rewrite than 124MB forever. A fold saving <10% keeps
-				// the no-gain WARN and stays untouched (73 no-gain sweeps proved
-				// that rewrite is pure IO).
-				if EventsFoldProfitable(logSize*8/10, contentBytes) {
-					return true
-				}
+			if EventsFoldProfitable(logSize, contentBytes) {
+				return true
+			}
+			// tl 1285: the estimate saying "<10%" is no longer the verdict.
+			// (a) Probe: authorize the real maintenance fold and judge by the
+			//     caller-reported measurement (noteSessionFoldOutcome) — the
+			//     estimate and the actual product can diverge, and only a
+			//     measurement settles it. The 1073 P1-a inner rescue that used
+			//     to sit here (EventsFoldProfitable(logSize*8/10, ·)) required
+			//     content ≤ 0.72·log inside a content > 0.9·log branch:
+			//     contradictory, provably dead, removed.
+			// (b) Floor: foldProbeMaxStrikes consecutive measured no-gains prove
+			//     the fold floor; only then does this regime skip the fold, with
+			//     the greppable WARN, while the save tail engages the lossless
+			//     zstd floor archive so the on-disk size still comes down. A
+			//     ~10% regrowth re-arms the ladder — the old estimate-only
+			//     "left in place" exemption (pinned forever; 107.3MB WARN
+			//     incident 20261026, replay-cost harm tl1279/tl1284) is gone.
+			if foldProbeFloorReached(path, logSize) {
+				// Hand this save's floor verdict to the save tail: the lossless
+				// floor archive consumes it there, decoupled from the post-write
+				// log size (a schema-1 floor save appends a full replace record
+				// and roughly doubles the log after this judgment).
+				foldProbeNoteFloorSeen(path)
 				warnFoldWouldNotShrink(path, logSize, contentBytes, cfg.capMB)
 				return false
 			}
@@ -545,10 +552,14 @@ func warnFoldWouldNotShrink(path string, logSize, contentBytes, capMB int64) {
 	// The message text up to the closing paren is a grep contract (task 339
 	// rescue tests and on-device log triage key on "fold would not shrink it");
 	// the remediation rides in structured attrs, not in the prefix.
+	// tl 1285: this WARN now fires only at the MEASURED fold floor
+	// (foldProbeMaxStrikes consecutive no-gain probe folds), and the save tail
+	// archives the log losslessly right after — "left in place" is a per-regime
+	// state, never the permanent verdict it used to be.
 	slog.Warn("session: oversized event log left in place (fold would not shrink it)",
 		"path", path, "logSize", logSize, "contentBytes", contentBytes, "capMB", capMB,
-		"reason", "live transcript itself is at least half the log size, so folding history cannot get under the cap",
-		"remedy", "wait for the desktop events idle sweep (auto+cap mode) to force a maintenance rewrite when the session goes idle; or compact/redact the transcript (SaveRewriteCompact path), archive to a new session, or raise events rotation capMB")
+		"reason", "live content is at least nine tenths of the log and measured probe folds freed <10% twice in a row, so folding history cannot get under the cap",
+		"remedy", "the save tail archives this log losslessly (zstd) once per growth regime; or compact/redact the transcript (SaveRewriteCompact path), archive to a new session, or raise events rotation capMB")
 }
 
 // sessionEventReplay is the result of a tolerant event-log replay: the

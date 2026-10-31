@@ -2,6 +2,7 @@ package agent
 
 import (
 	"math"
+	"sync"
 	"sync/atomic"
 )
 
@@ -130,4 +131,165 @@ func EventsFoldProfitable(logSize, contentBytes int64) bool {
 func EventsAutoRotationSnapshot() (mode string, factor float64, capMB int64) {
 	cfg := currentEventsRotation()
 	return cfg.mode, cfg.factor, cfg.capMB
+}
+
+// ─── tl 1285: fold-probe ladder（预估不达标时的实测对账与地板兜底）──────────
+//
+// 缺陷：auto+cap 之下 fold 预估不达标（EventsFoldProfitable==false，折后省
+// 不到 10%）的会话被永久豁免——save 路径每次保存都拒绝折叠并重复 WARN
+// "left in place"，sweep 侧同判据同样跳过，最大的日志（live 内容本身即日志
+// 主体）只涨不缩（20261026 实测 107.3MB WARN 反复；危害 tl1279/tl1284：
+// 184MB 日志每次保存 full replay 4.4s）。1073 P1-a 的内层补救
+// EventsFoldProfitable(logSize*8/10, ·) 位于 content > 0.9·log 的前提分支下，
+// 却要求 content ≤ 0.72·log——自相矛盾，恒假，是死代码，随本修复移除。
+//
+// 修法（任务书方向①+②，全部复用已装机原语）：
+//  ② 预估与实测对账：预估说不缩 ≠ 豁免——放行一次真实折叠（probe），由调用
+//     方在动作后回报实测收益（noteSessionFoldOutcome）。实测省到 ≥10% ⇒ 估计
+//     错了，清零连败继续正常折叠；实测连续 foldProbeMaxStrikes 次低于阈值 ⇒
+//     折叠地板由「测量」而非「估计」证明，本 regime 内才允许不折叠。
+//  ① 地板兜底：地板证明后不得死在 "left in place"——save 尾部（文件锁内）把
+//     日志无损归档（tl1172 L2 zstd 原语，JSONL 实测 5~10×，红线：不删历史、
+//     可逆、自描述），落盘体积真实下降可量化；每 regime 至多一次（archivedAt
+//     闩），有损的 L3 裁剪仍归 desktop sweep 的实验开关管，save 路径不碰。
+//
+// regime 语义与 710 的重警再武装（foldNoShrinkReWarnGrowth=1.10）、921 的
+// park 再武装同一常数：日志较 regime 基准再涨 ≥10% 才整梯重新起跑——豁免
+// 永远是「本 regime 内」而非永久（tl1285 验收①）。
+const foldProbeMaxStrikes = 2
+
+// foldProbeMemo carries the per-path probe ladder state: the size regime base,
+// the consecutive measured no-gain count, the floor-archive latch (the
+// plaintext size when the archive last ran), and the per-save floor verdict
+// the gate hands to the save tail. Bounded like foldNoShrinkWarn.lastSize:
+// sessions are few, and on overflow the whole state resets (cost: at most one
+// extra probe round), never an unbounded map.
+//
+// 键口径：gate 的两个调用方形态不同——schema-1 传会话路径（save.go），DAG 传
+// 已解析日志路径（sessionDAGLogOversized 的 st.path），而 save 尾部的地板归档
+// 拿的是会话路径。三个入口统一在 foldProbeKey 归一成日志路径，同一会话在
+// probe 记账与归档兜底之间才不会各记一本账。
+var foldProbeMemo struct {
+	mu         sync.Mutex
+	regime     map[string]int64
+	strikes    map[string]int
+	archivedAt map[string]int64
+	floorSeen  map[string]bool
+}
+
+// foldProbeKey normalizes either caller shape (session path or resolved event
+// log path) into the one key the ladder books state under. Pure string ops.
+func foldProbeKey(path string) string {
+	return sessionEventLogPlainPath(path)
+}
+
+// foldProbeFloorReached reports whether the measured fold floor is proven for
+// path at the given size: foldProbeMaxStrikes consecutive measured no-gain
+// folds within the current size regime. A regime expires when the log regrows
+// ≥10% past the regime base — the reset side effect lives here so the gate is
+// the single place the ladder re-arms from, and the exemption can never
+// outlive the size shape it was proven on.
+func foldProbeFloorReached(path string, logSize int64) bool {
+	if path == "" || logSize <= 0 {
+		return false
+	}
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	base, seen := foldProbeMemo.regime[key]
+	if !seen || logSize >= int64(float64(base)*foldNoShrinkReWarnGrowth) {
+		foldProbeMemo.regime[key] = logSize
+		delete(foldProbeMemo.strikes, key)
+		delete(foldProbeMemo.archivedAt, key)
+		delete(foldProbeMemo.floorSeen, key)
+		return false
+	}
+	return foldProbeMemo.strikes[key] >= foldProbeMaxStrikes
+}
+
+// foldProbeNoteFloorSeen records the gate's floor verdict for THIS save. The
+// save tail consumes it instead of re-deriving the floor from the post-write
+// size: a schema-1 floor save appends a full replace record (the log roughly
+// doubles after the gate judged), and re-deriving at the tail would read the
+// doubled size as a regime change and silently drop the fallback (the e2e
+// regression TestFoldFloorFallbackThroughRealSave pins exactly this).
+func foldProbeNoteFloorSeen(path string) {
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	foldProbeMemo.floorSeen[key] = true
+}
+
+// foldProbeTakeFloorSeen consumes the per-save floor verdict: true means the
+// gate just measured the fold floor for this session and the tail may act on
+// it. Consumed even when the archive then fails — the next floor save re-arms
+// it (self-healing), and a stale verdict must not archive a session whose
+// shape changed meanwhile.
+func foldProbeTakeFloorSeen(path string) bool {
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	seen := foldProbeMemo.floorSeen[key]
+	delete(foldProbeMemo.floorSeen, key)
+	return seen
+}
+
+// noteSessionFoldOutcome records the MEASURED result of a maintenance fold the
+// gate authorized. Callers that act on sessionEventLogOversized == true by
+// rotating/compacting MUST report the sizes they saw: the ladder trusts
+// measurements, never estimates. A fold that really freed ≥10% clears the
+// strike count and the floor-archive latch (the log just changed shape, the
+// next floor verdict must be re-proven from it); a fold that freed <10% counts
+// one strike. Unlogged outcomes simply leave the ladder where it was — the
+// next probe re-measures.
+func noteSessionFoldOutcome(path string, before, after int64) {
+	if path == "" || before <= 0 {
+		return
+	}
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	if base, seen := foldProbeMemo.regime[key]; !seen || before > base {
+		foldProbeMemo.regime[key] = before
+	}
+	if EventsFoldProfitable(before, after) {
+		foldProbeMemo.strikes[key] = 0
+		delete(foldProbeMemo.archivedAt, key)
+		delete(foldProbeMemo.floorSeen, key)
+		return
+	}
+	foldProbeMemo.strikes[key]++
+}
+
+// foldProbeFloorArchiveDue reports whether the floor archive may run now: the
+// latch re-arms only past the same 10% growth constant, so a busy floor
+// session pays the archive (and the next save's materialization) once per
+// regime, not once per save.
+func foldProbeFloorArchiveDue(path string, logSize int64) bool {
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	at, ran := foldProbeMemo.archivedAt[key]
+	return !ran || at <= 0 || logSize >= int64(float64(at)*foldNoShrinkReWarnGrowth)
+}
+
+// foldProbeNoteFloorArchived latches the floor archive at the plaintext size
+// it acted on. Only called after a successful archive; a failed attempt stays
+// unlatched so the next save retries.
+func foldProbeNoteFloorArchived(path string, plainSize int64) {
+	key := foldProbeKey(path)
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	foldProbeMemo.archivedAt[key] = plainSize
+}
+
+// resetFoldProbeMemoForTest clears the package-global ladder state (the same
+// isolation discipline resetEventsRotation applies to the other memos).
+func resetFoldProbeMemoForTest() {
+	foldProbeMemo.mu.Lock()
+	defer foldProbeMemo.mu.Unlock()
+	foldProbeMemo.regime = map[string]int64{}
+	foldProbeMemo.strikes = map[string]int{}
+	foldProbeMemo.archivedAt = map[string]int64{}
+	foldProbeMemo.floorSeen = map[string]bool{}
 }

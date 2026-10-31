@@ -433,7 +433,20 @@ func sessionArtifactExists(path string) bool {
 	return false
 }
 
+// saveLocked runs the save body and, on success, the tl1285 fold-floor
+// fallback: a log the probe ladder has MEASURED at its fold floor and that is
+// still over the configured cap is archived losslessly here, inside the same
+// file lock, instead of being left in place forever. Inactive saves pay two
+// atomic loads, one stat and one map read.
 func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
+	err := s.saveLockedInner(path, mode)
+	if err == nil {
+		s.maybeFloorArchiveEventLog(path)
+	}
+	return err
+}
+
+func (s *Session) saveLockedInner(path string, mode sessionSaveMode) error {
 	baseRevision := int64(0)
 	// Task 357: millisecond segments for the locked section. The dag path
 	// carries its own line (dag state for save); this one accounts for the
@@ -663,6 +676,10 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 		if err := compactSessionEventLog(path, msgs, digest, baseRevision, reason); err != nil {
 			return err
 		}
+		// tl 1285: the gate's probe ladder trusts measurements, not estimates —
+		// report what the fold actually freed so a probe that really shrank the
+		// log clears the strike count and a no-gain probe counts one.
+		noteSessionFoldOutcome(path, logSize, sessionEventLogSize(path))
 	default:
 		if err := appendSessionReplaceEvent(path, msgs, digest, baseRevision, reason); err != nil {
 			return err
