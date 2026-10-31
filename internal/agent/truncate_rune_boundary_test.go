@@ -15,7 +15,7 @@ import (
 // 的 fixture 即原始现场）。
 func TestSnapToRuneBoundaryTotalOverEmptyTail(t *testing.T) {
 	ascii := strings.Repeat("word ", 400) // the incident's 2000-byte shape
-	multi := strings.Repeat("汉", 300)    // 3-byte runes: boundary snapping matters
+	multi := strings.Repeat("汉", 300)     // 3-byte runes: boundary snapping matters
 
 	cases := []struct {
 		name string
