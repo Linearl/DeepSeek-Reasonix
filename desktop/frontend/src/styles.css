@@ -42531,7 +42531,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--shadow-color) 18%, transparent);
 }
 
 .search-history__head {
