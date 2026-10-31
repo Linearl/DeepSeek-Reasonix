@@ -753,7 +753,13 @@ function JobsStatusBarChip({
                   return (
                     <div className="jobs-popover__job" key={`${runtime.tabId}:${job.id}`}>
                       <span className="jobs-popover__copy">
-                        <strong>{job.label || job.kind}</strong>
+                        {/* tl1250: the status bar jobs popover hover card reads
+                            job.detail (the untruncated full text shipped
+                            alongside the display-sized label since tl1033);
+                            jobs without one fall back to the label. */}
+                        <Tooltip label={job.detail || job.label || job.kind} wrap fill>
+                          <strong>{job.label || job.kind}</strong>
+                        </Tooltip>
                         <small>
                           {job.kind} · {job.status}
                           {open ? ` · ${formatJobElapsed(job.startedAt, now)}` : ""}

@@ -1459,6 +1459,7 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.archiveConversation": "歸檔對話",
   "projectTree.renameProject": "修改顯示名稱",
   "projectTree.relocateProject": "變更專案資料夾位置…",
+  "projectTree.projectManage": "專案管理",
   "projectTree.manageVersions": "工作階段版本與副本管理",
   "projectTree.projectAlreadyInGroup": "專案已在分組「{title}」中",
   "projectTree.renameProjectWorkbench": "重新命名專案",
@@ -1995,11 +1996,12 @@ export const zhTW: Record<DictKey, string> = {
   "settings.multiEditSkipFailed.off": "關閉",
   "settings.multiEditSkipFailedHint": "multi_edit 批次中單個 edit 失敗不再中止整批：跳過該條繼續執行，最終逐條報告各 edit 成功/失敗與原因（含索引）；全部失敗或無可套用項時仍整體報錯、檔案不動。預設關閉——關閉時保持原子語義：任一失敗整批中止、檔案保持原樣。生效時機：開關在啟動時定格，改開關需重啟生效。",
   "settings.toolOptimizations.risk": "風險提示：gate 聯動屬行為變更（讀取豁免），機制尚未長期驗證。若出現誤放行或誤攔截，請先關閉本開關回退，再回報問題。",
-  // 任務 971：工具最佳化聚合頁頂部常駐警告（rev2 定稿全文）。
+  // 任務 971：工具最佳化聚合頁頂部常駐警告（tl1251 修訂稿：生效點=新會話/重啟，
+  // 壓縮不是生效點——後端工具表在會話啟動時固定，/compact 只重建前綴）。
   "settings.toolOptHub": "工具最佳化（工具表開關）",
-  "settings.toolOptHub.warning": "⚠️ 本頁開關影響模型可用的工具清單：①當前對話將於下次壓縮或重啟後生效（新會話立即生效）；②生效時工具清單會實際增減，正在進行的工作若依賴被關閉的工具可能中斷，請避免在任務中途切換。修改後如需立即在當前對話生效，建議執行一次壓縮（/compact）或重啟會話；否則當前對話保持原工具清單——新開的工具不可用、已關的工具仍可被調用。",
-  "settings.toolOptHub.effect": "生效時機（三生效點）：新會話 / 壓縮邊界 / 會話恢復重啟。開關改動寫入配置後，當前對話在下次壓縮或重啟後按新工具表運行；新開會話立即生效。壓縮是唯一前綴必全價重建的時刻，此刻改工具表邊際成本≈0——手動執行一次壓縮（/compact）即可在當前對話免費生效，無需重啟。",
-  "settings.toolOptHub.pending": "生效狀態：改動將在下次壓縮或重啟後於當前對話生效（新會話立即生效）。如需立即生效，可執行一次壓縮（/compact）。",
+  "settings.toolOptHub.warning": "⚠️ 本頁開關影響模型可用的工具清單：①當前對話將於重啟後生效（新會話立即生效）；②生效時工具清單會實際增減，正在進行的工作若依賴被關閉的工具可能中斷，請避免在任務中途切換。修改後如需在當前對話生效，請重啟會話；否則當前對話保持原工具清單——新開的工具不可用、已關的工具仍可被調用。",
+  "settings.toolOptHub.effect": "生效時機（兩生效點）：新會話 / 會話恢復重啟。開關改動寫入配置後，當前對話在重啟後按新工具表運行；新開會話立即生效。壓縮（/compact）只重建對話前綴、不重建工具表——工具表在會話啟動時固定，改動需重啟才進入當前對話。",
+  "settings.toolOptHub.pending": "生效狀態：改動將在重啟後於當前對話生效（新會話立即生效）。",
   "settings.toolOptHub.notice": "換裝通知：工具表按新設定更新後的首個請求會注入一行提示，點名被移除或新增的工具，便於模型與你確認清單已變化。",
   "settings.toolOptHub.scope": "適用範圍：本頁僅收純 schema 影響的開關（只改工具清單本身）；帶執行時狀態的開關按各自語義生效，不在此列。",
   "settings.capabilityGroups": "能力組披露與 session_hub 聚合",

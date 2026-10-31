@@ -1,6 +1,7 @@
 // Run: npx tsx src/__tests__/task971-tool-opt-hub.test.ts
 // 任务 971 acceptance harness (实验室-提效-工具优化聚合页):
-//  ① 聚合页渲染：顶部 rev2 警告定稿原文逐字断言 + 三生效点机制说明 + 四配套
+//  ① 聚合页渲染：顶部警告定稿原文逐字断言（tl1251 修订稿：生效点=新会话/重启，
+//     压缩不是生效点）+ 两生效点机制说明 + 四配套
 //     + 开关全集在页（readBack / 证据门 / multi_edit 直注 / restart_update /
 //     能力组披露真开关——任务 979 替换 971 的 session_hub 预留占位）；
 //  ② 迁移零回归：restartUpdate 自界面组更新反馈卡迁入聚合页——键/setter/档位
@@ -8,7 +9,8 @@
 //     独立卡退役为成员行，键/setter/回落链不变（943 两开关独立语义保持）；
 //  ③ session_hub 真开关（任务 979）：experimental_capability_groups 读写
 //     app.SetExperimentalCapabilityGroups，占位 span 退役；
-//  ④ 三语：toolOptHub 全键在 zh / zh-TW / en 齐备；布局 yaml 与内置默认同构。
+//  ④ 三语：toolOptHub 全键在 zh / zh-TW / en 齐备；布局 yaml 与内置默认同构；
+//     tl1251 文案对齐后端——三语均不再承诺 /compact 即可生效。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,21 +24,24 @@ function ok(value: boolean, label: string) {
 
 const frontendSrc = fileURLToPath(new URL("../", import.meta.url));
 const read = (p: string) => readFileSync(`${frontendSrc}${p}`, "utf8");
+// 任务 1134：ExperimentalSection 搬独立模块 ExperimentalLabSection.tsx（lazy
+// 挂载），源级断言改读 SettingsPanel+ExperimentalLabSection 拼接源——1134
+// 漏改本文件的 repoint 由 tl1251 顺带补上（修复前基点 18 失败的预存红）。
+const panel = read("components/SettingsPanel.tsx") + "\n" + read("components/ExperimentalLabSection.tsx");
 
 console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + migration");
 
-// ① 聚合页渲染 + rev2 警告原文。
+// ① 聚合页渲染 + 警告原文（tl1251 修订稿逐字）。
 {
   const zh = read("locales/zh.ts");
-  // rev2 定稿全文（任务书 note 逐字）——双向语义（关了但没关掉=安全类误导）
-  // 必须保留。
-  const rev2 = "⚠️ 本页开关影响模型可用的工具列表：①当前对话将于下次压缩或重启后生效（新会话立即生效）；②生效时工具列表会实际增减，正在进行的工作若依赖被关闭的工具可能中断，请避免在任务中途切换。修改后如需立即在当前对话生效，建议执行一次压缩（/compact）或重启会话；否则当前对话保持原工具列表——新开的工具不可用、已关的工具仍可被调用。";
-  ok(zh.includes(rev2), "zh locale carries the rev2 warning verbatim");
-  const panel = read("components/SettingsPanel.tsx");
+  // tl1251 修订稿全文——生效点=新会话/重启，压缩不是生效点；双向语义
+  // （关了但没关掉=安全类误导）必须保留。
+  const warningZh = "⚠️ 本页开关影响模型可用的工具列表：①当前对话将于重启后生效（新会话立即生效）；②生效时工具列表会实际增减，正在进行的工作若依赖被关闭的工具可能中断，请避免在任务中途切换。修改后如需在当前对话生效，请重启会话；否则当前对话保持原工具列表——新开的工具不可用、已关的工具仍可被调用。";
+  ok(zh.includes(warningZh), "zh locale carries the tl1251 warning verbatim");
   ok(panel.includes('data-testid="tool-opt-hub-warning"'), "pane renders the persistent top warning banner");
-  ok(panel.includes('t("settings.toolOptHub.warning")'), "banner pulls the rev2 text from the locale key");
-  // 三生效点机制说明 + 四配套。
-  ok(panel.includes('t("settings.toolOptHub.effect")'), "pane explains the three effective points");
+  ok(panel.includes('t("settings.toolOptHub.warning")'), "banner pulls the warning text from the locale key");
+  // 两生效点机制说明 + 四配套。
+  ok(panel.includes('t("settings.toolOptHub.effect")'), "pane explains the two effective points");
   ok(panel.includes('t("settings.toolOptHub.pending")'), "pane states the pending-state hint (配套①)");
   ok(panel.includes('t("settings.toolOptHub.notice")'), "pane documents the swap notice (配套③)");
   ok(panel.includes('t("settings.toolOptHub.scope")'), "pane scopes to pure-schema switches (配套④)");
@@ -52,7 +57,6 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
 
 // ② 迁移零回归。
 {
-  const panel = read("components/SettingsPanel.tsx");
   // restartUpdate 迁出 updateFeedback pane：该 pane 不再含 restartUpdate 行。
   const ufStart = panel.indexOf('{selected === "updateFeedback" && (');
   const ufEnd = panel.indexOf('{selected === "monitoring" && (');
@@ -91,7 +95,6 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
 // ③ session_hub 真开关（任务 979：954/955 已合入，占位替换为真开关——
 //    键 experimental_capability_groups，UI 读写 app.SetExperimentalCapabilityGroups）。
 {
-  const panel = read("components/SettingsPanel.tsx");
   ok(panel.includes("Boolean(s.experimentalCapabilityGroups) === on"),
     "pane switch reads the experimental_capability_groups view field");
   ok(panel.includes('"settings.capabilityGroups.on"') && panel.includes('"settings.capabilityGroups.off"'),
@@ -135,6 +138,44 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
   // restartUpdate 的独立开关归位回 updateFeedback 卡）。
   ok(layoutDefault.includes('id: "multiEditInjection"') && layoutDefault.includes('id: "restartUpdate"'),
     "default layout keeps the switches as distinct member rows (not re-merged)");
+}
+
+// ⑤ tl1251 文案对齐后端：生效点=新会话/重启，压缩不是生效点——三语的
+//    warning/effect/pending 均不得再承诺「执行 /compact 即可生效」，且旧
+//    承诺句逐字退场。
+{
+  // 旧承诺句（tl1251 修订前的原文片段）——三语逐字退场。
+  const retired = [
+    "下次压缩或重启后生效",
+    "执行一次压缩（/compact）或重启会话",
+    "（/compact）即可在当前对话免费生效",
+    "可執行一次壓縮（/compact）",
+    "下次壓縮或重啟後生效",
+    "壓縮邊界",
+    "the next compaction or restart",
+    "run one compaction (/compact)",
+    "the compaction boundary",
+    "no restart needed",
+  ];
+  for (const locale of ["zh", "zh-TW", "en"]) {
+    const src = read(`locales/${locale}.ts`);
+    const warnIdx = src.indexOf('"settings.toolOptHub.warning": "');
+    const scopeIdx = src.indexOf('"settings.toolOptHub.scope": "');
+    ok(warnIdx >= 0 && scopeIdx > warnIdx, `tl1251 ${locale}: warning..scope key span located`);
+    // 三键连续落在 warning..scope 区间内，取该区间核对（避免跨键误配）。
+    const span = src.slice(warnIdx, scopeIdx);
+    const leaked = retired.filter((s) => span.includes(s));
+    ok(leaked.length === 0, `tl1251 ${locale}: retired compaction promises are gone${leaked.length ? ` (leaked: ${leaked.join(" | ")})` : ""}`);
+    // 新口径正锚：重启是唯一生效路径 + 明示压缩只重建前缀。
+    ok(/将于重启后生效|將於重啟後生效|picks the change up on restart/.test(span),
+      `tl1251 ${locale}: warning states restart as the effective point`);
+    ok(/两生效点|兩生效點|two effective points/.test(span),
+      `tl1251 ${locale}: effect explains the two effective points`);
+    ok(/压缩（\/compact）只重建|壓縮（\/compact）只重建|Compaction \(\/compact\) only rebuilds/.test(span),
+      `tl1251 ${locale}: effect clarifies compaction does not rebuild the tool list`);
+    ok(/改动将在重启后|改動將在重啟後|after a restart/.test(span),
+      `tl1251 ${locale}: pending states restart as the effective point`);
+  }
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

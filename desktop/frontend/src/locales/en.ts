@@ -1827,6 +1827,7 @@ export const en = {
   "projectTree.archiveConversation": "Archive conversation",
   "projectTree.renameProject": "Rename display name",
   "projectTree.relocateProject": "Change project folder…",
+  "projectTree.projectManage": "Project management",
   "projectTree.manageVersions": "Manage session versions",
   "projectTree.projectAlreadyInGroup": "Project is already in group \"{title}\"",
   "projectTree.renameProjectWorkbench": "Rename project",
@@ -2649,11 +2650,13 @@ export const en = {
   "settings.multiEditSkipFailed.off": "Off",
   "settings.multiEditSkipFailedHint": "One failed edit inside a multi_edit batch no longer aborts the call: the step is skipped, later steps still run, and the final response reports every edit (index + applied/failed + reason); an all-failed batch still errors and leaves the file untouched. Default off — off keeps the atomic semantics: any failure aborts the batch and the file stays as it was. Effective timing: the switch is fixed at startup; changing it requires an app restart to take effect.",
   "settings.toolOptimizations.risk": "Risk note: the gate linkage is a behavior change (read-evidence waiver) and is not battle-tested yet. If you see a wrong pass or a wrong block, switch this off first to roll back, then report the issue.",
-  // Task 971: persistent top-of-page warning for the tool-optimization hub (rev2 final wording).
+  // Task 971: persistent top-of-page warning for the tool-optimization hub (tl1251
+  // revision: effective points are a new session / a restart — compaction is not
+  // one; the tool list is fixed at session boot, /compact only rebuilds the prefix).
   "settings.toolOptHub": "Tool optimization (tool-list switches)",
-  "settings.toolOptHub.warning": "⚠️ The switches on this page change the tool list the model can see: ①the current conversation picks the change up on the next compaction or restart (a new session picks it up immediately); ②when it lands the tool list really gains or loses entries — work in progress that depends on a tool you just turned off may break, so avoid switching mid-task. To make a change take effect right now in this conversation, run one compaction (/compact) or restart the session; otherwise this conversation keeps its current tool list — newly enabled tools stay unavailable and disabled tools remain callable.",
-  "settings.toolOptHub.effect": "When it applies (three effective points): a new session / the compaction boundary / a session-resume restart. Once a switch change is written to config, the current conversation runs on the new tool list after the next compaction or restart; a new session picks it up immediately. Compaction is the one moment the prefix is rebuilt at full cost anyway, so changing the tool list there costs ≈0 at the margin — run one compaction (/compact) to apply it in this conversation for free, no restart needed.",
-  "settings.toolOptHub.pending": "Effective state: a change takes effect in the current conversation on the next compaction or restart (a new session immediately). To apply it now, run one compaction (/compact).",
+  "settings.toolOptHub.warning": "⚠️ The switches on this page change the tool list the model can see: ①the current conversation picks the change up on restart (a new session picks it up immediately); ②when it lands the tool list really gains or loses entries — work in progress that depends on a tool you just turned off may break, so avoid switching mid-task. To apply a change to this conversation, restart the session; otherwise this conversation keeps its current tool list — newly enabled tools stay unavailable and disabled tools remain callable.",
+  "settings.toolOptHub.effect": "When it applies (two effective points): a new session / a session-resume restart. Once a switch change is written to config, the current conversation runs on the new tool list after a restart; a new session picks it up immediately. Compaction (/compact) only rebuilds the dialogue prefix, not the tool list — the list is fixed when the session boots, so a change needs a restart to reach this conversation.",
+  "settings.toolOptHub.pending": "Effective state: a change takes effect in the current conversation after a restart (a new session immediately).",
   "settings.toolOptHub.notice": "Swap notice: the first request after the tool list is rebuilt from new settings carries a one-line notice naming the removed or added tools, so the model and you can confirm the list changed.",
   "settings.toolOptHub.scope": "Scope: this page only hosts switches with a pure schema effect (they change the tool list itself); switches carrying runtime state take effect under their own semantics and live elsewhere.",
   "settings.capabilityGroups": "Capability groups + session_hub aggregation",
