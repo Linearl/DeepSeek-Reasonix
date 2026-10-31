@@ -124,9 +124,27 @@ type outputBudgetState struct {
 	lastUsage         atomic.Pointer[provider.Usage]
 	activeReqShape    atomic.Pointer[requestCalibrationShape]
 	promptCalibration atomic.Pointer[promptTokenCalibration]
-	contextUsage      atomic.Pointer[contextUsage] // gauge's memoised prompt size
+	contextBaseline   atomic.Pointer[contextBaselineState] // tl 1183: real-usage anchor for the compaction trigger
+	contextUsage      atomic.Pointer[contextUsage]         // gauge's memoised prompt size
 	learned           atomic.Pointer[learnedContextBudget]
 	admission         atomic.Pointer[contextAdmission]
+}
+
+// contextBaselineState pairs one trusted provider prompt measurement (任务
+// 1183) with the request shape it measured. promptTokens is the provider's own
+// full input count for that request — cache-hit plus cache-miss plus tool
+// definitions plus the real image price — and coveredChars is the local
+// character total of exactly that message set, so a later read can price only
+// the delta. Unlike promptCalibration this is written solely from the sampling
+// path (storeLatestRequestUsage): a summary request's calibration shape
+// describes a fold region, not the visible view, and must never become the
+// trigger's baseline.
+type contextBaselineState struct {
+	providerName     string
+	promptTokens     int
+	completionTokens int
+	coveredChars     int64
+	imageTokens      int
 }
 
 // learnedContextBudget is an Agent-local observation of the live provider/model
@@ -202,6 +220,7 @@ type requestCalibrationShape struct {
 func (o *outputBudgetState) reset() {
 	o.lastUsage.Store(nil)
 	o.activeReqShape.Store(nil)
+	o.contextBaseline.Store(nil)
 	o.admission.Store(nil)
 }
 
@@ -235,6 +254,44 @@ func (a *Agent) setPromptTokenCalibrationFromUsage(usage *provider.Usage) {
 		return
 	}
 	a.setPromptTokenCalibrationFromActive(usage.LatestPromptTokens())
+}
+
+// storeContextBaseline records the sampling path's latest trusted measurement
+// as the compaction trigger's real-usage anchor (任务 1183). Same trust
+// contract as the prompt calibration — reconstructed (Estimated) usage never
+// anchors anything — plus one extra gate: the paired request shape must be
+// present, because a baseline without its covered-character total cannot price
+// a later delta. Read back by observedContextTokens.
+func (a *Agent) storeContextBaseline(usage *provider.Usage) {
+	if a == nil || usage == nil || usage.Estimated || usage.Unknown {
+		return
+	}
+	shape := a.sess.output.activeReqShape.Load()
+	if shape == nil || shape.compactChars <= 0 {
+		return
+	}
+	// Latest-attempt fields first (multi-attempt recovery aggregates the
+	// billable fields across attempts; only the Context* pair describes the
+	// request whose shape we cached), falling back to the single-request
+	// legacy fields — same composition as LatestPromptTokens.
+	prompt := usage.ContextPromptTokens
+	if prompt <= 0 {
+		prompt = usage.PromptTokens
+	}
+	if prompt <= 0 {
+		return
+	}
+	completion := usage.ContextCompletionTokens
+	if completion <= 0 {
+		completion = usage.CompletionTokens
+	}
+	a.sess.output.contextBaseline.Store(&contextBaselineState{
+		providerName:     a.requestProviderName(),
+		promptTokens:     prompt,
+		completionTokens: completion,
+		coveredChars:     shape.compactChars,
+		imageTokens:      shape.imageTokens,
+	})
 }
 
 func outputBudgetOf(p provider.Provider) int {
