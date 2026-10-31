@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -676,6 +677,31 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 	goto finalize
 
 finalize:
+	// 审计 tl1321③: compatible gateways may omit content_block_stop and jump
+	// straight from input_json_delta to message_delta/message_stop. A tool_use
+	// block still sitting in `tools` here has fully accumulated arguments that
+	// no one has forwarded — flush it, or the whole tool call is lost. Blocks
+	// that did get their content_block_stop were sent and deleted in the loop,
+	// so nothing is emitted twice. This sits at the label (not inside the
+	// message_stop case) so the stop_reason-bearing clean-EOF path through
+	// streamScanEndError gets the same treatment.
+	if len(tools) > 0 {
+		indexes := make([]int, 0, len(tools))
+		for idx := range tools {
+			indexes = append(indexes, idx)
+		}
+		sort.Ints(indexes)
+		for _, idx := range indexes {
+			tc := tools[idx]
+			if tc == nil {
+				continue
+			}
+			if !send(provider.Chunk{Type: provider.ChunkToolCall, ToolCall: tc}) {
+				return
+			}
+			delete(tools, idx)
+		}
+	}
 	if len(thinking) > 0 {
 		send(provider.Chunk{Type: provider.ChunkReasoning, ReasoningState: provider.ReasoningIncomplete})
 	}
