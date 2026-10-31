@@ -34596,23 +34596,31 @@ button.statusbar__mcp:focus-visible {
   height: 100%;
   min-width: 0;
 }
+/* tl1239②: 分段色条去灰改彩色——原 systemPrompt/other 为灰系、builtinTools
+ * 为主题色混灰，分段之间无区分度；images 段自任务1040 起连配色规则都没有
+ * （截屏会话里整段透明）。全部改用已定义 theme token：蓝(--info)/绿(--ok)/
+ * 琥珀(--warn) 同工具族明暗成对，other 保持灰系（保留给无法归属的差额，
+ * 0% 时隐藏）。段与 legend 点同值。 */
 .context-composition__seg--message {
   background: var(--accent);
 }
+.context-composition__seg--images {
+  background: var(--info);
+}
 .context-composition__seg--builtinTools {
-  background: color-mix(in srgb, var(--accent) 55%, var(--fg-faint));
+  background: var(--ok);
 }
 .context-composition__seg--skills {
   background: var(--warn);
 }
 .context-composition__seg--systemPrompt {
-  background: color-mix(in srgb, var(--fg-faint) 75%, transparent);
+  background: color-mix(in srgb, var(--info) 60%, var(--fg-faint));
 }
 .context-composition__seg--other {
   background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
 }
 .context-composition__seg--mcpTools {
-  background: color-mix(in srgb, var(--accent) 40%, var(--warn));
+  background: color-mix(in srgb, var(--warn) 55%, var(--fg-faint));
 }
 .context-composition__legend {
   display: grid;
@@ -34634,23 +34642,27 @@ button.statusbar__mcp:focus-visible {
   height: 6px;
   border-radius: 2px; /* 833-radius-wl:micro */
 }
+/* tl1239②: legend 点色与段条同值（images 点此前同样缺失）。 */
 .context-composition__dot--message {
   background: var(--accent);
 }
+.context-composition__dot--images {
+  background: var(--info);
+}
 .context-composition__dot--builtinTools {
-  background: color-mix(in srgb, var(--accent) 55%, var(--fg-faint));
+  background: var(--ok);
 }
 .context-composition__dot--skills {
   background: var(--warn);
 }
 .context-composition__dot--systemPrompt {
-  background: color-mix(in srgb, var(--fg-faint) 75%, transparent);
+  background: color-mix(in srgb, var(--info) 60%, var(--fg-faint));
 }
 .context-composition__dot--other {
   background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
 }
 .context-composition__dot--mcpTools {
-  background: color-mix(in srgb, var(--accent) 40%, var(--warn));
+  background: color-mix(in srgb, var(--warn) 55%, var(--fg-faint));
 }
 .context-composition__label {
   min-width: 0;
@@ -34687,6 +34699,12 @@ button.statusbar__mcp:focus-visible {
 }
 .context-composition__detail-toggle:hover {
   color: var(--fg-dim);
+}
+/* tl1239①: 明细开关移居头部行右端空白处（用户验收反馈：原「色条上方独立
+ * 行」不顺手）——margin-left:auto 右对齐，flex:0 0 auto 不被标题挤压。 */
+.context-composition__detail-toggle--header {
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
 }
 .context-composition__detail-checkbox {
   flex: 0 0 auto;
@@ -34736,7 +34754,8 @@ button.statusbar__mcp:focus-visible {
   gap: 5px;
   min-width: 0;
 }
-/* 三段三色：系统提示词 / 工具列表 / 用户消息 */
+/* 三段三色：系统提示词 / 工具列表 / 用户消息（tl1239②: userMessages 段由
+ * 65% 混灰改全饱和 token，三段彼此清晰可辨） */
 .context-composition__seg--section-systemPrompt,
 .context-composition__dot--section-systemPrompt {
   background: var(--accent);
@@ -34747,7 +34766,7 @@ button.statusbar__mcp:focus-visible {
 }
 .context-composition__seg--section-userMessages,
 .context-composition__dot--section-userMessages {
-  background: color-mix(in srgb, var(--ok) 65%, var(--fg-faint));
+  background: var(--ok);
 }
 /* 勾选明细后的彩色子项（段多了主题色不够用的解法） */
 .context-composition__dot--item-systemBase {
@@ -34760,7 +34779,8 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--accent) 55%, var(--fg-faint));
 }
 .context-composition__dot--item-runtime {
-  background: color-mix(in srgb, var(--fg-faint) 75%, transparent);
+  /* tl1239②: 原为纯灰（fg-faint 75%），与「彩色子项」口径不符，改弱蓝。 */
+  background: color-mix(in srgb, var(--info) 45%, var(--fg-faint));
 }
 .context-composition__dot--item-builtinTools {
   background: var(--warn);

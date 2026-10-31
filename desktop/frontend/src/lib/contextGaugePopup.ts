@@ -174,6 +174,13 @@ export type CompositionSectionKey = "systemPrompt" | "tools" | "userMessages";
 export interface CompositionDetailItem {
   key: string;
   labelKey: DictKey;
+  /**
+   * Optional hover explanation (tl1239④): only the 跨会话记忆 row carries one
+   * today — users read the row as conversation history, while the Go side
+   * attributes BackgroundDataBlock here (pinned preferences/feedback entries
+   * plus the background memory fact index; bodies load on demand).
+   */
+  titleKey?: DictKey;
   tokens: number;
   /** Percent of the whole composition, one decimal (matches the flat legend口径). */
   share: number;
@@ -193,10 +200,21 @@ const DETAIL_ITEM_DEFS: ReadonlyArray<{
   key: string;
   labelKey: DictKey;
   section: CompositionSectionKey;
+  titleKey?: DictKey;
   tokens: (c: ContextCompositionInfo) => number;
 }> = [
   { key: "systemBase", labelKey: "context.subitem.systemBase", section: "systemPrompt", tokens: (c) => c.systemPromptTokens },
-  { key: "standingMemory", labelKey: "context.subitem.standingMemory", section: "systemPrompt", tokens: (c) => c.standingMemoryTokens ?? 0 },
+  {
+    key: "standingMemory",
+    labelKey: "context.subitem.standingMemory",
+    // tl1239④: 内容源核实（internal/agent/context_composition.go 202 行 ←
+    // internal/control/session_context.go 22 行 ← internal/memory/memory.go
+    // BackgroundDataBlock）＝钉住偏好/反馈条目 + 后台记忆事实索引，确为记忆
+    // 而非跨会话消息；用户读歧义，挂一句解释 tooltip。
+    titleKey: "context.subitem.standingMemoryTitle",
+    section: "systemPrompt",
+    tokens: (c) => c.standingMemoryTokens ?? 0,
+  },
   { key: "catalog", labelKey: "context.subitem.catalog", section: "systemPrompt", tokens: (c) => c.catalogTokens ?? 0 },
   { key: "runtime", labelKey: "context.subitem.runtime", section: "systemPrompt", tokens: (c) => c.runtimeTokens ?? 0 },
   { key: "builtinTools", labelKey: "context.segment.builtinTools", section: "tools", tokens: (c) => c.builtinToolTokens },
@@ -230,7 +248,9 @@ export function compositionThreeSections(
   for (const def of DETAIL_ITEM_DEFS) {
     const tokens = Math.max(0, def.tokens(composition));
     if (tokens <= 0) continue;
-    itemsBySection.get(def.section)!.push({ key: def.key, labelKey: def.labelKey, tokens, share: 0 });
+    const item: CompositionDetailItem = { key: def.key, labelKey: def.labelKey, tokens, share: 0 };
+    if (def.titleKey) item.titleKey = def.titleKey;
+    itemsBySection.get(def.section)!.push(item);
   }
   const sections: CompositionSection[] = [];
   for (const section of SECTION_ORDER) {

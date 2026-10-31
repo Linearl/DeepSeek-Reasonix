@@ -5353,6 +5353,7 @@ export const zh: Record<DictKey, string> = {
   "context.section.userMessages": "用户消息",
   "context.subitem.systemBase": "基础提示词 + 指令文件",
   "context.subitem.standingMemory": "跨会话记忆",
+  "context.subitem.standingMemoryTitle": "钉住的偏好/反馈条目 + 后台记忆索引（每条记忆一行摘要，正文按需经 memory 工具读取）——是记忆索引而非历史消息记录",
   "context.subitem.catalog": "能力目录",
   "context.subitem.runtime": "运行时快照",
   "context.subitem.history": "历史消息",

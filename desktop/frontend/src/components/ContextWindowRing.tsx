@@ -184,7 +184,18 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
     if (leaveTimer.current != null) clearTimeout(leaveTimer.current);
   }, []);
 
+  // tl1239③: 勾选「明细」会让浮层内容高度变化（平铺↔三段式），AnchoredPopover
+  // 自动重定位可能把浮层从指针下方移开——浏览器对静止指针补发 mouseleave，
+  // 面板被误关、必须重新 hover。勾选交互（按下/按键）后短暂忽略 mouseleave
+  // 关闭；之后真移出时的下一次 mouseleave 照常关闭。勾选状态本身按 tabId
+  // 保持（tl1224 既有机制，此处只治「被误关」）。
+  const detailToggleGuardUntil = useRef(0);
+  const guardDetailToggle = useCallback(() => {
+    detailToggleGuardUntil.current = Date.now() + 400;
+  }, []);
+
   const onPopoverLeave = useCallback(() => {
+    if (Date.now() < detailToggleGuardUntil.current) return;
     setOpen(false);
   }, []);
 
@@ -283,6 +294,26 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
               {readoutSourceLabel}
             </span>
             <span className="context-ring-popover__pct">{rawUsagePct}%</span>
+            {/* tl1239①: 明细开关移到头部行右端空白处（用户验收反馈：色条下方
+                独立行不顺手）。仅在有构成数据时出现（与明细视图同进退）；
+                勾选行为与会话内状态保持逻辑不变。 */}
+            {(segments.length > 0 || sections.length > 0) && (
+              <label
+                className="context-composition__detail-toggle context-composition__detail-toggle--header"
+                title={t("context.detailToggleTitle")}
+                onMouseDown={guardDetailToggle}
+                onKeyDown={guardDetailToggle}
+              >
+                <input
+                  type="checkbox"
+                  className="context-composition__detail-checkbox"
+                  data-testid="composition-detail-toggle"
+                  checked={detailView}
+                  onChange={(event) => toggleDetailView(event.currentTarget.checked)}
+                />
+                <span>{t("context.detailToggle")}</span>
+              </label>
+            )}
           </div>
           <div className="context-ring-popover__gauge">
             <div className="context-ring-popover__bar">
@@ -300,21 +331,11 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
               )}
             </div>
           </div>
-          {/* tl1224 阶段二：明细开关（小号，位于色条上方，勾选状态会话内保持）。
+          {/* tl1224 阶段二：明细开关原置于此（tl1239① 移至头部行右端）。
               US-A：默认视图（未勾选）= 现状平铺四项零改动；US-B：勾选后切协议
-              三大段（横线分割+彩色子项）。无构成数据时整块连同开关一起隐藏。 */}
+              三大段（横线分割+彩色子项）。无构成数据时整块隐藏。 */}
           {(segments.length > 0 || sections.length > 0) && (
             <div className="context-composition" role="group" aria-label={t("context.compositionTitle")}>
-              <label className="context-composition__detail-toggle" title={t("context.detailToggleTitle")}>
-                <input
-                  type="checkbox"
-                  className="context-composition__detail-checkbox"
-                  data-testid="composition-detail-toggle"
-                  checked={detailView}
-                  onChange={(event) => toggleDetailView(event.currentTarget.checked)}
-                />
-                <span>{t("context.detailToggle")}</span>
-              </label>
               {detailView ? (
                 <div className="context-composition__sections" data-testid="composition-sections">
                   <div className="context-composition__bar" aria-hidden="true">
@@ -338,7 +359,14 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
                         {section.items.map((item) => (
                           <li className="context-composition__section-item" key={item.key}>
                             <span className={`context-composition__dot context-composition__dot--item-${item.key}`} aria-hidden="true" />
-                            <span className="context-composition__label">{t(item.labelKey)}</span>
+                            {/* tl1239④: 跨会话记忆行挂内容源解释（用户读成「跨会话
+                                消息」；Go 侧归属确为 BackgroundDataBlock 记忆索引）。 */}
+                            <span
+                              className="context-composition__label"
+                              title={item.titleKey ? t(item.titleKey) : undefined}
+                            >
+                              {t(item.labelKey)}
+                            </span>
                             <span className="context-composition__tokens">{fmtCompact(item.tokens)}</span>
                             <span className="context-composition__share">{item.share.toFixed(1)}%</span>
                           </li>

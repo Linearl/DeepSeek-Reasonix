@@ -19,11 +19,18 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ContextWindowRing } from "../components/ContextWindowRing";
 import { LocaleProvider } from "../lib/i18n";
+import { resetQueryCoalescing } from "../lib/queryCoalesce";
 import type { ContextPanelInfo } from "../lib/types";
 import { compositionThreeSections } from "../lib/contextGaugePopup";
 
 let passed = 0;
 let failed = 0;
+
+// 上一块的 React root：installDom 时先卸载（tl1239 同款隔离）——旧 root 的
+// portal/监听器若跨 installDom 存活，pending 渲染会被 React 全局调度器在新
+// document 上重新落位（portal 重挂新 body、outside-click 监听重挂新
+// document），旧浮层闯入新块的 querySelector 视野并被误判关闭。
+let activeRoot: ReturnType<typeof createRoot> | null = null;
 
 function ok(value: boolean, label: string) {
   if (value) {
@@ -45,6 +52,9 @@ function wait(ms = 0): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// tl1239 探针：US-B 块 mock 的调用计数（over 块若再调用它即数据串窗证据）。
+let usBMockCalls = 0;
+
 class TestResizeObserver {
   observe() {}
   unobserve() {}
@@ -52,6 +62,17 @@ class TestResizeObserver {
 }
 
 function installDom() {
+  try {
+    activeRoot?.unmount();
+  } catch {
+    // root 已随旧 DOM 失效——忽略，继续重建环境。
+  }
+  activeRoot = null;
+  // tl1239: ContextPanel 在 queryCoalesce 白名单里，模块级 inflight 跨块存活
+  // ——前一块的 200ms 共享答案会漏进下一块（load 相关抖动的根因：主线程被
+  // 渲染阻塞时 forget 定时器迟到，下一块的点击命中上一块的缓存答案，新 mock
+  // 根本不被调用）。每块重装 DOM 前先清共享缓存。
+  resetQueryCoalescing();
   const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
     pretendToBeVisual: true,
     url: "http://localhost/",
@@ -133,6 +154,7 @@ async function renderRing(props: Partial<Parameters<typeof ContextWindowRing>[0]
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("missing root");
   const root = createRoot(rootEl);
+  activeRoot = root;
   const currentProps: Parameters<typeof ContextWindowRing>[0] = {
     enabled: true,
     tabId: "tab-tl1224",
@@ -159,6 +181,26 @@ async function openPopover() {
     await wait();
   });
   return trigger;
+}
+
+// tl1239: the two 64K assertions read ring/tick state that lands only after
+// the ContextPanel mock resolves; the fixed two-tick wait raced under machine
+// load (baseline f55602dd8: 4/6 runs failed the same two assertions). Poll
+// with a bounded budget instead of fixed ticks — same assertions, stable wait.
+async function waitForCondition(check: () => boolean, label: string): Promise<void> {
+  await act(async () => {
+    for (let i = 0; i < 250 && !check(); i += 1) await wait(4);
+  });
+  if (!check()) {
+    const ring = document.querySelector(".context-ring");
+    const tick = document.querySelector(".context-ring-popover__mark--inject");
+    throw new Error(
+      `timeout waiting for: ${label}; ring="${(ring as HTMLElement | null)?.className ?? "none"}" ` +
+        `composition=${document.querySelector(".context-composition") != null} ` +
+        `sections=${document.querySelector('[data-testid="composition-sections"]') != null} ` +
+        `tickTitle="${tick?.getAttribute("title") ?? "none"}" usBMockCalls=${usBMockCalls}`,
+    );
+  }
 }
 
 console.log("\ntl1224 phase 2 — protocol three-section detail view");
@@ -212,12 +254,15 @@ console.log("\ntl1224 phase 2 — protocol three-section detail view");
 {
   installDom();
   const composition = tl1224Composition();
-  installContextPanelMock(async (tabId: string) => ({
-    ...baseInfo(),
-    usedTokens: 711200,
-    windowTokens: 1_000_000,
-    composition: tabId === "tab-tl1224" ? composition : undefined,
-  }));
+  installContextPanelMock(async (tabId: string) => {
+    usBMockCalls += 1;
+    return {
+      ...baseInfo(),
+      usedTokens: 711200,
+      windowTokens: 1_000_000,
+      composition: tabId === "tab-tl1224" ? composition : undefined,
+    };
+  });
 
   await renderRing();
   await openPopover();
@@ -269,15 +314,23 @@ console.log("\ntl1224 phase 2 — protocol three-section detail view");
   installDom();
   const over = tl1224Composition();
   over.directoryBytes = 70_000; // > 64KB warn line
-  installContextPanelMock(async () => ({
-    ...baseInfo(),
-    usedTokens: 711200,
-    windowTokens: 1_000_000,
-    composition: over,
-  }));
+  let servedOverCalls = 0;
+  installContextPanelMock(async () => {
+    servedOverCalls += 1;
+    return {
+      ...baseInfo(),
+      usedTokens: 711200,
+      windowTokens: 1_000_000,
+      composition: over,
+    };
+  });
 
   await renderRing();
   await openPopover(); // ContextPanel 异步读数先落，再断言圆环视觉态
+  await waitForCondition(
+    () => (document.querySelector(".context-ring") as HTMLElement | null)?.className.includes("context-ring--overinject") === true,
+    `ring overinject tint (overMockCalls=${servedOverCalls})`,
+  );
   const ring = document.querySelector(".context-ring") as HTMLElement;
   ok(ring.className.includes("context-ring--overinject"), "超 64KB 警告线：圆环着警告色（超线视觉态）");
   const injectTick = document.querySelector(".context-ring-popover__mark--inject");
@@ -300,6 +353,10 @@ console.log("\ntl1224 phase 2 — protocol three-section detail view");
   const ringUnder = document.querySelector(".context-ring") as HTMLElement;
   ok(!ringUnder.className.includes("context-ring--overinject"), "线内目录块不触发超线视觉态");
   await openPopover();
+  await waitForCondition(
+    () => document.querySelector(".context-ring-popover__mark--inject") != null,
+    "inject tick",
+  );
   ok(document.querySelector(".context-ring-popover__mark--inject") != null, "线内时刻度仍显示（被动可见）");
 }
 

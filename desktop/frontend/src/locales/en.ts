@@ -5364,6 +5364,7 @@ export const en = {
   "context.section.userMessages": "User messages",
   "context.subitem.systemBase": "Base prompt + instruction files",
   "context.subitem.standingMemory": "Cross-session memory",
+  "context.subitem.standingMemoryTitle": "Pinned preferences and feedback entries plus the background memory index (one summary line per fact; bodies are read on demand via the memory tool) — a memory index, not a transcript of past sessions",
   "context.subitem.catalog": "Capability catalog",
   "context.subitem.runtime": "Runtime snapshot",
   "context.subitem.history": "History",
