@@ -272,9 +272,8 @@ export function SettingsPanel({
         }
       }
       if (view == null) {
-        // 上限内重试全部失败——这才是终态失败。attempts 已越界（=上限+1），
-        // 读数还原为实际尝试次数。
-        attempts -= 1;
+        // 上限内重试全部失败——这才是终态失败。attempts 此时就是实际尝试
+        // 次数（for 的自增先于条件判定，退出值 = delaysMs.length + 1）。
         throw lastLoadError ?? new Error("settings view unavailable after retries");
       }
       const application = await applicationPromise;
