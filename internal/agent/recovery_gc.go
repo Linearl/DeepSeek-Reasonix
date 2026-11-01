@@ -190,18 +190,97 @@ func storeContentSnapshot(key string, snap SessionContentSnapshot) {
 	contentSnapshotCache.entries[key] = snap
 }
 
+// contentSnapshotRefusals remembers strict loads that failed closed for one
+// exact file version (tl1315). Dirty normalization and a damaged event log are
+// properties of the bytes on disk, not of the moment, yet every directory
+// reconcile asked again: the catalog classifies each recovery branch on every
+// save-triggered scan, and each re-ask re-parsed a 40-55MB transcript while
+// holding its save-path lock (measured 2.0-3.3s per file on the reporting
+// machine, ~25 such files in one directory). A scan that could never prove a
+// single covered copy therefore still ran 75-120s, crossed the 2-minute
+// reconcile budget and flipped the whole catalog to degraded ("正在整理历史 —
+// 失败"), while live savers queued behind those reads.
+//
+// The key extends the content identity with the transcript's and event log's
+// size+mtime, so any write — append, heal, rewrite, archive/materialize —
+// re-evaluates. Transient failures (I/O errors, lock budget exhaustion, a file
+// missing mid-rename) are never remembered. Entries are tiny; the FIFO bound
+// only caps a pathological directory.
+var contentSnapshotRefusals = struct {
+	sync.Mutex
+	order   []string
+	entries map[string]struct{}
+}{entries: map[string]struct{}{}}
+
+const contentSnapshotRefusalLimit = 512
+
+// contentSnapshotLoadHook observes the full strict loads behind
+// LoadSessionContentSnapshot. Tests only; production leaves it nil.
+var contentSnapshotLoadHook func(path string)
+
+func contentSnapshotFileStamp(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "-"
+	}
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+}
+
+func contentSnapshotRefusalKey(key, path string) string {
+	return key + "|" + contentSnapshotFileStamp(path) + "|" + contentSnapshotFileStamp(SessionEventLogPath(path))
+}
+
+func contentSnapshotRefused(key string) bool {
+	contentSnapshotRefusals.Lock()
+	defer contentSnapshotRefusals.Unlock()
+	_, ok := contentSnapshotRefusals.entries[key]
+	return ok
+}
+
+func rememberContentSnapshotRefusal(key string) {
+	contentSnapshotRefusals.Lock()
+	defer contentSnapshotRefusals.Unlock()
+	if _, ok := contentSnapshotRefusals.entries[key]; ok {
+		return
+	}
+	contentSnapshotRefusals.entries[key] = struct{}{}
+	contentSnapshotRefusals.order = append(contentSnapshotRefusals.order, key)
+	for len(contentSnapshotRefusals.order) > contentSnapshotRefusalLimit {
+		oldest := contentSnapshotRefusals.order[0]
+		contentSnapshotRefusals.order = contentSnapshotRefusals.order[1:]
+		delete(contentSnapshotRefusals.entries, oldest)
+	}
+}
+
 // LoadSessionContentSnapshot loads one transcript once for lineage analysis.
 // Dirty normalization and damaged event logs fail closed: neither may prove a
 // canonical branch or authorize cleanup. Successful loads are memoized per
-// file version; failures stay uncached because a file being written can
-// change under us.
+// file version. A fail-closed verdict is remembered for the exact file version
+// it was reached on (see contentSnapshotRefusals); every other failure stays
+// uncached because a file being written can change under us.
 func LoadSessionContentSnapshot(path string) (SessionContentSnapshot, bool) {
 	key := contentSnapshotCacheKey(path)
 	if snap, ok := cachedContentSnapshot(key); ok {
 		return snap, true
 	}
+	refusalKey := contentSnapshotRefusalKey(key, path)
+	if contentSnapshotRefused(refusalKey) {
+		return SessionContentSnapshot{}, false
+	}
+	if contentSnapshotLoadHook != nil {
+		contentSnapshotLoadHook(path)
+	}
 	session, err := LoadSession(path)
-	if err != nil || session == nil || session.normalizedDirty || session.eventLogDamaged {
+	if err != nil || session == nil {
+		return SessionContentSnapshot{}, false
+	}
+	if session.normalizedDirty || session.eventLogDamaged {
+		// Remember only when the version did not move while we read it: a
+		// save that landed between the stamp and the load must not pin its
+		// predecessor's verdict onto the new bytes (or vice versa).
+		if contentSnapshotRefusalKey(contentSnapshotCacheKey(path), path) == refusalKey {
+			rememberContentSnapshotRefusal(refusalKey)
+		}
 		return SessionContentSnapshot{}, false
 	}
 	messages := session.Snapshot()
