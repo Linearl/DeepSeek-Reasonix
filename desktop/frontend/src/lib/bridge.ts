@@ -3936,6 +3936,10 @@ function makeMockApp(): AppBindings {
   let mockTabs: TabMeta[] = benchMock ? [
     // Phase F benchmark scenario: the two heaviest sessions pre-opened, the
     // markdown-heavy one active (cold open renders the 500KiB answer).
+    // tl1332 stale mode: the tabs carry a session path so a switch-back is a
+    // same-session hydrate (preserveCachedHistory → 任务580 freshness gate);
+    // without an identity every open is a replace-surface reload and the
+    // resident-stale branch can never fire in the mock.
     {
       id: "tab_bench_markdown",
       scope: "project",
@@ -3943,6 +3947,7 @@ function makeMockApp(): AppBindings {
       workspaceName: "reasonix",
       workspacePath: "~/projects/reasonix",
       gitBranch: "bench",
+      ...(benchStaleMeta ? { sessionPath: "~/sessions/bench-markdown-46t.jsonl" } : {}),
       topicId: "topic_bench_markdown",
       topicTitle: "bench:markdown-46t",
       projectColor: "purple",
@@ -3963,6 +3968,7 @@ function makeMockApp(): AppBindings {
       workspaceName: "reasonix",
       workspacePath: "~/projects/reasonix",
       gitBranch: "bench",
+      ...(benchStaleMeta ? { sessionPath: "~/sessions/bench-tools-38t.jsonl" } : {}),
       topicId: "topic_bench_tools",
       topicTitle: "bench:tools-38t",
       projectColor: "blue",

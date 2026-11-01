@@ -123,19 +123,39 @@ async function waitForServer(url, timeoutMs = 30_000) {
   }
 }
 
+// Windows resolves `pnpm` through a .cmd shim that Node only spawns via a
+// shell (tl1332: the harness used to die with spawn ENOENT before scenario A).
+// The shell wrapper also hides vite's stdout banner and detaches the child
+// from `kill()`, so readiness is probed on the port and teardown kills the
+// process tree.
+const WIN32 = process.platform === "win32";
+function spawnPnpm(args, options) {
+  return WIN32
+    ? spawn(`pnpm ${args.join(" ")}`, { ...options, shell: true })
+    : spawn("pnpm", args, options);
+}
+function killPreview(child) {
+  if (WIN32) {
+    spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    return;
+  }
+  child.kill();
+}
+
 async function ensureBuild() {
   const distIndex = path.join(frontendDir, "dist", "index.html");
   const force = process.env.REASONIX_BENCH_BUILD === "1";
   if (existsSync(distIndex) && !force) return;
   console.log("[bench] building frontend (vite build)…");
   await new Promise((resolve, reject) => {
-    const child = spawn("pnpm", ["build"], { cwd: frontendDir, stdio: "inherit" });
+    const child = spawnPnpm(["build"], { cwd: frontendDir, stdio: "inherit" });
+    child.on("error", reject);
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`pnpm build exited ${code}`))));
   });
 }
 
 async function startPreview() {
-  const child = spawn("pnpm", ["exec", "vite", "preview", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], {
+  const child = spawnPnpm(["exec", "vite", "preview", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], {
     cwd: frontendDir,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -145,35 +165,35 @@ async function startPreview() {
     stderr += message;
     process.stderr.write(`[preview] ${message}`);
   });
+  // Keep the stdout pipe drained (backpressure would stall the server).
+  child.stdout.on("data", () => {});
   await new Promise((resolve, reject) => {
-    let stdout = "";
-    const timeout = setTimeout(() => {
-      cleanup();
-      child.kill();
-      reject(new Error(`preview server did not announce readiness on port ${PORT}`));
-    }, 30_000);
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.stdout.off("data", onStdout);
-      child.off("exit", onExit);
-    };
-    const onStdout = (chunk) => {
-      stdout += chunk.toString();
-      if (!/\bLocal:\s+http/.test(stdout)) return;
-      cleanup();
-      resolve();
-    };
+    let settled = false;
     const onExit = (code, signal) => {
-      cleanup();
+      if (settled) return;
+      settled = true;
       const detail = stderr.trim();
       reject(new Error(
         `preview server exited before readiness (code ${code ?? "null"}, signal ${signal ?? "none"})${detail ? `: ${detail}` : ""}`,
       ));
     };
-    child.stdout.on("data", onStdout);
     child.once("exit", onExit);
+    waitForServer(`http://127.0.0.1:${PORT}/`, 30_000).then(
+      () => {
+        if (settled) return;
+        settled = true;
+        child.off("exit", onExit);
+        resolve();
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        child.off("exit", onExit);
+        killPreview(child);
+        reject(err);
+      },
+    );
   });
-  await waitForServer(`http://127.0.0.1:${PORT}/`);
   return child;
 }
 
@@ -474,24 +494,71 @@ async function main() {
     // ── Scenario C (tl1332 / tl1083 §5.1 最小档 + §6.4): resident-stale
     // switch-backs — the degraded tail-first-paint + background-fill shape.
     // `staleMeta=1` advances the mock ledger on every meta read (the stand-in
-    // for multi-writer sessions whose fingerprints always move), so every
-    // switch-back to the 3.2k-message tools session is resident-stale and
-    // takes the degraded path, while the ~600-message markdown session stays
-    // under the heavy-page gate and keeps the legacy reload (the in-bench
-    // small-session control). Evidence: hydrate decision labels + fill lines
-    // drained from the frontend log ring, plus the shared long-task collector.
+    // for multi-writer sessions whose fingerprints always move) and gives the
+    // bench tabs a session identity, so a sidebar click on an already-open
+    // topic is a same-session hydrate (preserveCachedHistory → 任务580 gate).
+    // `layout=classic` is required: the single-surface workbench activation
+    // hydrates with reset=true (replace reload, no freshness gate), which is
+    // not the path the production resident-stale decisions come from.
+    // Every switch-back to the 3.2k-message tools session is resident-stale
+    // and takes the degraded path, while the ~600-message markdown session
+    // stays under the heavy-page gate and keeps the legacy reload (the
+    // in-bench small-session control). Evidence: hydrate decision labels +
+    // fill lines drained from the frontend log ring, plus per-switch slices
+    // of the long-task collector (heavy path and control read apart).
     const STALE_SWITCHES = Math.round(numEnv("REASONIX_BENCH_STALE_SWITCHES", 20));
     console.log(`[bench] scenario C: ${STALE_SWITCHES} resident-stale switch-backs (tail-first + background fill)…`);
     const contextC = await browser.newContext();
     const pageC = await contextC.newPage();
     await pageC.addInitScript(COLLECTOR_INIT);
-    await pageC.goto(`${PAGE_URL}&staleMeta=1`, { waitUntil: "domcontentloaded" });
+    await pageC.goto(`${PAGE_URL}&staleMeta=1&layout=classic`, { waitUntil: "domcontentloaded" });
     await pageC.waitForFunction(INTERACTIVE_FN, undefined, { timeout: 30_000, polling: "raf" });
     await pageC.waitForFunction(() => Boolean(window.__reasonixPerf), undefined, { timeout: 10_000 });
+    const drainLines = () => pageC.evaluate(() => (window.__reasonixPerf.drainLog ? window.__reasonixPerf.drainLog() : []));
+    // A heavy switch-back is not over at first paint: the background fill
+    // (chunked history_prepend) is the part of the degraded path that could
+    // still block the main thread, so §6.4 attribution waits for its terminal
+    // log line before moving on. The ring is drained after every switch, so
+    // any terminal fill line seen here belongs to the switch just made.
+    const FILL_TERMINAL = /hydrate tail-first fill (done|unavailable|skipped|paused)/;
+    const waitForFillSettled = () => pageC
+      .waitForFunction(
+        (pattern) => {
+          const log = window.__reasonixPerf.frontendLog ? window.__reasonixPerf.frontendLog() : [];
+          return log.some((line) => new RegExp(pattern).test(line));
+        },
+        FILL_TERMINAL.source,
+        { timeout: 20_000, polling: 100 },
+      )
+      .catch(() => {});
+    // One switch = click→target rendered (latency), then the path-specific
+    // settle (heavy: fill terminal line; control: markdown worker drained),
+    // then 200ms for trailing layout/paint tasks. Long tasks are sliced per
+    // switch so the degraded heavy path and the small-session control are
+    // read apart — the shared collector used to lump cold open, warmup and
+    // the control's legacy reload into the §6.4 cap.
+    const switchAndSettle = async (tab) => {
+      const longTasksBefore = await pageC.evaluate(() => window.__benchMetrics.longTasks.length);
+      const latencyMs = await switchTo(pageC, tab);
+      if (tab === TAB.tools) await waitForFillSettled();
+      else await settleMarkdownWorker(pageC);
+      await pageC.waitForTimeout(200);
+      const longTasksMs = await pageC.evaluate(
+        (from) => window.__benchMetrics.longTasks.slice(from).map((t) => t.duration),
+        longTasksBefore,
+      );
+      const lines = await drainLines();
+      return { latencyMs, longTasksMs, lines };
+    };
     // Warmup: make both sessions LRU-resident and finish on the markdown tab,
     // so every measured switch to tools is a switch-BACK (resident present).
-    for (let i = 0; i < 4; i += 1) await switchTo(pageC, i % 2 === 0 ? TAB.tools : TAB.markdown);
-    const drainLines = () => pageC.evaluate(() => (window.__reasonixPerf.drainLog ? window.__reasonixPerf.drainLog() : []));
+    // Warmup lines are drained untallied and the collector reset afterwards
+    // (mirrors scenario B), so the measured window starts clean.
+    for (let i = 0; i < 4; i += 1) await switchAndSettle(i % 2 === 0 ? TAB.tools : TAB.markdown);
+    await pageC.evaluate(() => {
+      window.__benchMetrics.longTasks.length = 0;
+      window.__benchMetrics.events.length = 0;
+    });
     let tailFirstDecisions = 0;
     let staleLegacyDecisions = 0;
     let fillDone = 0;
@@ -508,52 +575,53 @@ async function main() {
         }
       }
     };
-    tally(await drainLines());
-    const staleLatencies = [];
+    const heavy = { latencies: [], longTasks: [] }; // tools switch-backs: degraded path
+    const control = { latencies: [], longTasks: [] }; // markdown switch-backs: legacy reload, untouched
     for (let i = 0; i < STALE_SWITCHES; i += 1) {
-      staleLatencies.push(await switchTo(pageC, i % 2 === 0 ? TAB.tools : TAB.markdown));
-      tally(await drainLines());
+      const target = i % 2 === 0 ? TAB.tools : TAB.markdown;
+      const bucket = target === TAB.tools ? heavy : control;
+      const { latencyMs, longTasksMs, lines } = await switchAndSettle(target);
+      bucket.latencies.push(latencyMs);
+      bucket.longTasks.push(...longTasksMs);
+      tally(lines);
     }
-    // The last switch's background fill lands after its first paint — give it
-    // the same window the other switches got before reading the counters.
-    await pageC
-      .waitForFunction(
-        (expected) => {
-          const log = window.__reasonixPerf.frontendLog ? window.__reasonixPerf.frontendLog() : [];
-          return log.some((line) => line.includes("hydrate tail-first fill done")) || expected === 0;
-        },
-        STALE_SWITCHES - fillDone,
-        { timeout: 20_000, polling: 200 },
-      )
-      .catch(() => {});
-    await pageC.waitForTimeout(300);
-    tally(await drainLines());
-    const { staleLongTasks } = await pageC.evaluate(() => ({
-      staleLongTasks: window.__benchMetrics.longTasks.map((t) => t.duration),
-    }));
     await contextC.close();
 
-    const staleLongTaskStats = statsOf(staleLongTasks);
-    const staleSwitchStats = statsOf(staleLatencies);
     const degradedSwitches = Math.ceil(STALE_SWITCHES / 2); // tools switches
+    const controlSwitches = STALE_SWITCHES - degradedSwitches;
+    const heavyLongTaskStats = statsOf(heavy.longTasks);
+    const controlLongTaskStats = statsOf(control.longTasks);
+    const heavySwitchStats = statsOf(heavy.latencies);
+    const controlSwitchStats = statsOf(control.latencies);
+    const fillTotalStats = statsOf(fillMsValues);
     report.scenarioC = {
       switches: STALE_SWITCHES,
       degradedSwitches,
-      switchMs: staleSwitchStats,
-      longTasksMs: staleLongTaskStats,
+      controlSwitches,
+      heavy: { switchMs: heavySwitchStats, longTasksMs: heavyLongTaskStats },
+      control: { switchMs: controlSwitchStats, longTasksMs: controlLongTaskStats },
+      longTasksMs: statsOf([...heavy.longTasks, ...control.longTasks]),
       tailFirstDecisions,
       staleLegacyDecisions,
       fillDone,
-      fillTotalMs: statsOf(fillMsValues),
+      fillTotalMs: fillTotalStats,
     };
-    check("C tail-first decision fired on heavy switch-backs", tailFirstDecisions, degradedSwitches, tailFirstDecisions >= degradedSwitches - 1, "");
-    check("C background fill completed on heavy switch-backs", fillDone, degradedSwitches, fillDone >= degradedSwitches - 1, "");
-    check("C long-task max (tl1083 §6.4 hard cap)", staleLongTaskStats.max ?? 0, GATES.longTaskMaxMs, (staleLongTaskStats.max ?? 0) <= GATES.longTaskMaxMs);
-    check("C long-task P95", staleLongTaskStats.p95 ?? 0, GATES.longTaskP95Ms, (staleLongTaskStats.p95 ?? 0) <= GATES.longTaskP95Ms);
-    check("C switch latency P95 (click→target rendered)", staleSwitchStats.p95, GATES.interactiveP95Ms, staleSwitchStats.p95 <= GATES.interactiveP95Ms);
+    const ms = (value) => (value === undefined ? "n/a" : `${value.toFixed(1)}ms`);
+    check("C tail-first decision fired on heavy switch-backs", tailFirstDecisions, degradedSwitches, tailFirstDecisions >= degradedSwitches, "");
+    check("C background fill completed on heavy switch-backs", fillDone, degradedSwitches, fillDone >= degradedSwitches, "");
+    check("C heavy switch-back long-task max (tl1083 §6.4 hard cap)", heavyLongTaskStats.max ?? 0, GATES.longTaskMaxMs, (heavyLongTaskStats.max ?? 0) <= GATES.longTaskMaxMs);
+    check("C heavy switch-back long-task P95", heavyLongTaskStats.p95 ?? 0, GATES.longTaskP95Ms, (heavyLongTaskStats.p95 ?? 0) <= GATES.longTaskP95Ms);
+    check("C heavy switch-back latency P95 (click→tail rendered)", heavySwitchStats.p95, GATES.interactiveP95Ms, heavySwitchStats.p95 <= GATES.interactiveP95Ms);
+    // tl1083 §6.4 #5, in-bench half: the small session must keep taking the
+    // legacy stale reload (decision label unchanged) — the path tl1332 leaves
+    // alone. Its timings are printed for reference, not gated (scenario B
+    // gates the fresh fast path; the stale reload is pre-tl1332 behaviour).
+    check("C small-session control kept legacy stale reload", staleLegacyDecisions, controlSwitches, staleLegacyDecisions >= controlSwitches, "");
+    console.log(`  INFO  C control (markdown, legacy stale reload): switch P95 ${ms(controlSwitchStats.p95)}, long-task max ${ms(controlLongTaskStats.max)} / P95 ${ms(controlLongTaskStats.p95)} (n=${controlLongTaskStats.n})`);
+    console.log(`  INFO  C heavy fill total (first paint→fill done): P50 ${ms(fillTotalStats.p50)}, max ${ms(fillTotalStats.max)} (n=${fillDone}); heavy long tasks n=${heavyLongTaskStats.n}, P50 ${ms(heavyLongTaskStats.p50)}`);
   } finally {
     await browser.close();
-    preview.kill();
+    killPreview(preview);
   }
 
   report.finishedAt = new Date().toISOString();
