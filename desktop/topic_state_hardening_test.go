@@ -88,7 +88,7 @@ func TestRestoreTombstonedTopicInLegacyBridgeScope(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := restoreSessionTopicIndex(dir, path); err != nil {
+	if _, err := restoreSessionTopicIndex(dir, path); err != nil {
 		t.Fatal(err)
 	}
 	projects := loadProjectsFile()

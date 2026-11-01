@@ -36,6 +36,10 @@ func (c *Catalog) SyncMetadata(ctx context.Context, projects []ProjectRecord, to
 		return err
 	}
 	roots := map[string]struct{}{}
+	// tl1331: topic ids the caller fed under project scope this sync (see the
+	// cleanup DELETE below for why they lift the session-shielding exemption
+	// for global rows).
+	projectFedTopics := map[string]struct{}{}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_projects`); err != nil {
 		_ = tx.Rollback()
 		return err
@@ -63,6 +67,14 @@ func (c *Catalog) SyncMetadata(ctx context.Context, projects []ProjectRecord, to
 		if strings.TrimSpace(topic.TopicID) == "" {
 			continue
 		}
+		if topic.Scope == "project" {
+			// tl1331: the caller's own feed is the attribution carrier — a
+			// topic fed under project scope is project-owned by the
+			// unique-ownership contract (project wins), so any GLOBAL row
+			// carrying this id is a leak row (tl1302 G10/W10 fuel) and loses
+			// the session-shielding exemption in the cleanup DELETE below.
+			projectFedTopics[topic.TopicID] = struct{}{}
+		}
 		skip, err := c.skipFoldedRecoveryShell(ctx, tx, topic)
 		if err != nil {
 			_ = tx.Rollback()
@@ -77,11 +89,33 @@ func (c *Catalog) SyncMetadata(ctx context.Context, projects []ProjectRecord, to
 		}
 		roots[topic.WorkspaceRoot] = struct{}{}
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_topics
+	// The cleanup DELETE implements the "never remove session-derived topics"
+	// exemption: session rows shield their topic row from metadata-only
+	// cleanup. tl1331 adds the single exception the unique-ownership contract
+	// requires — a global row whose topic was fed under project scope this
+	// very sync is a leak row (project wins) and must not stay alive just
+	// because catalog_sessions(global, T) rows exist (0-byte shells keep
+	// regenerating them until the tl1331 G11 move relocates the file).
+	// Residual window: a global-directory reconcile re-derives the row from
+	// session aggregates until the file moves; the next metadata tick
+	// re-deletes, and the render side yields project-owned rows via the
+	// tl1208 registry hook, so the row never carries metadata again.
+	deleteSQL := `DELETE FROM catalog_topics
         WHERE metadata_present=0 AND NOT EXISTS (
             SELECT 1 FROM catalog_sessions s WHERE s.scope=catalog_topics.scope
 			AND s.workspace_root_key=catalog_topics.workspace_root_key AND s.topic_id=catalog_topics.topic_id
-        )`); err != nil {
+        )`
+	var deleteArgs []any
+	if len(projectFedTopics) > 0 {
+		placeholders := make([]string, 0, len(projectFedTopics))
+		for topicID := range projectFedTopics {
+			placeholders = append(placeholders, "?")
+			deleteArgs = append(deleteArgs, topicID)
+		}
+		deleteSQL += ` OR (catalog_topics.scope='global' AND catalog_topics.topic_id IN (` +
+			strings.Join(placeholders, ",") + `))`
+	}
+	if _, err := tx.ExecContext(ctx, deleteSQL, deleteArgs...); err != nil {
 		_ = tx.Rollback()
 		return err
 	}

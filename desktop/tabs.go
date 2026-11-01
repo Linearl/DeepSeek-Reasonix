@@ -7753,20 +7753,57 @@ func projectRootKey(root string) string {
 	return root
 }
 
-func restoreSessionTopicIndex(dir, sessionPath string) error {
+// restoreSessionTopicIndex heals a session file's sidebar index after the
+// file landed. It returns the session path the heal ended at: a tl1331 (G11)
+// empty-shell move relocates the file, and the caller must tell the session
+// catalog about BOTH paths.
+func restoreSessionTopicIndex(dir, sessionPath string) (string, error) {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
-		return nil
+		return sessionPath, nil
 	}
 	meta, ok, err := agent.LoadBranchMeta(sessionPath)
 	if err != nil {
-		return err
+		return sessionPath, err
 	}
 	if !ok || strings.TrimSpace(meta.TopicID) == "" {
 		// The migration pass takes per-session meta locks itself, so it must
 		// run outside the lock taken below.
 		migrateLegacySessionsIntoGlobalTopics(dir)
-		return nil
+		return sessionPath, nil
+	}
+
+	// tl1331 (G11 空壳自愈扩展): resolve ownership the same way the heal
+	// below will, and before taking any meta lock relocate a 0-byte shell
+	// whose registry owner is a project into the owning scope's session dir.
+	// tl1283 healed the shell's meta + registration but left the file in the
+	// global dir — the directory kept regenerating catalog_sessions(global,
+	// T) rows, which shielded the leaked catalog topic row from SyncMetadata
+	// cleanup forever (catalog_sessions 永存 → 清理豁免 → 永不收敛). Moving
+	// the shell removes that fuel; catalog convergence then flows through the
+	// existing removal path. Best-effort by contract: any failure logs and
+	// heals in place, exactly as pre-tl1331. Content-bearing files never move
+	// here — their placement is G9/G12 范畴，需用户确认，不归自动自愈裁决。
+	shellScope := strings.TrimSpace(meta.Scope)
+	shellRoot := strings.TrimSpace(meta.WorkspaceRoot)
+	if shellScope != "global" && shellScope != "project" {
+		if shellRoot == "" {
+			shellScope = "global"
+		} else {
+			shellScope = "project"
+		}
+	}
+	healedFrom := ""
+	if healScope, healRoot := resolveTopicIndexTarget(shellScope, shellRoot, strings.TrimSpace(meta.TopicID)); healScope == "project" {
+		moved, moveErr := moveEmptyShellSessionToScope(sessionPath, healRoot)
+		if moveErr != nil {
+			slog.Warn("desktop: empty shell stays in place after move failure; healing at original path",
+				"path", sessionPath, "err", moveErr)
+		} else if moved != sessionPath {
+			healedFrom = sessionPath
+			sessionPath = moved
+			dir = filepath.Dir(moved)
+		}
 	}
 
 	// Read-modify-write on the branch-meta sidecar: re-read and save under the
@@ -7774,15 +7811,15 @@ func restoreSessionTopicIndex(dir, sessionPath string) error {
 	// between and get rolled back by the write at the end.
 	unlock, err := agent.LockSessionMetaPath(sessionPath)
 	if err != nil {
-		return err
+		return sessionPath, err
 	}
 	defer unlock()
 	meta, ok, err = agent.LoadBranchMeta(sessionPath)
 	if err != nil {
-		return err
+		return sessionPath, err
 	}
 	if !ok || strings.TrimSpace(meta.TopicID) == "" {
-		return nil
+		return sessionPath, nil
 	}
 
 	topicID := strings.TrimSpace(meta.TopicID)
@@ -7819,7 +7856,7 @@ func restoreSessionTopicIndex(dir, sessionPath string) error {
 		title = defaultTopicTitle
 	}
 	if err := ensureTopicIndexed(scope, workspaceRoot, topicID, title, topicTitleSourceManual); err != nil {
-		return err
+		return sessionPath, err
 	}
 
 	if scope == "global" {
@@ -7832,10 +7869,70 @@ func restoreSessionTopicIndex(dir, sessionPath string) error {
 	meta.TopicID = topicID
 	meta.TopicTitle = title
 	if err := agent.SaveBranchMetaPreserveUpdatedLocked(sessionPath, meta); err != nil {
-		return err
+		return sessionPath, err
+	}
+	if healedFrom != "" {
+		invalidateTopicSessionIndexForPath(healedFrom)
 	}
 	invalidateTopicSessionIndexForPath(sessionPath)
-	return nil
+	return sessionPath, nil
+}
+
+// moveEmptyShellSessionToScope relocates a 0-byte empty shell session file
+// (plus its branch-meta sidecar) into the owning scope's session directory.
+// Returns the path the shell lives at afterwards (input path when nothing
+// moved). tl1331 (G11): the transcript is empty, so the move is lossless —
+// the topic binding rides the meta, which the heal re-pins at the new path.
+// On a meta-sidecar failure the transcript is rolled back so the shell never
+// sits split across scopes.
+func moveEmptyShellSessionToScope(sessionPath, workspaceRoot string) (string, error) {
+	info, err := os.Stat(sessionPath)
+	if err != nil {
+		return sessionPath, err
+	}
+	if info.Size() != 0 {
+		return sessionPath, nil
+	}
+	targetDir := desktopSessionDir(workspaceRoot)
+	if sameDesktopPath(filepath.Dir(sessionPath), targetDir) {
+		return sessionPath, nil
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return sessionPath, err
+	}
+	target := filepath.Join(targetDir, filepath.Base(sessionPath))
+	if _, statErr := os.Stat(target); os.IsNotExist(statErr) {
+		// Name free — keep it.
+	} else if statErr != nil {
+		return sessionPath, statErr
+	} else {
+		// Name collision in the owning scope: an empty shell may take a fresh
+		// name (topic binding rides the meta, not the filename).
+		target = agent.NewSessionPath(targetDir, "")
+	}
+	if err := os.Rename(sessionPath, target); err != nil {
+		return sessionPath, err
+	}
+	metaPath := agent.BranchMetaPath(sessionPath)
+	_, statErr := os.Stat(metaPath)
+	if os.IsNotExist(statErr) {
+		slog.Info("desktop: empty shell session moved to owning scope (no meta sidecar)",
+			"from", sessionPath, "to", target)
+		return target, nil
+	}
+	if statErr != nil {
+		_ = os.Rename(target, sessionPath)
+		return sessionPath, statErr
+	}
+	if renameErr := os.Rename(metaPath, agent.BranchMetaPath(target)); renameErr != nil {
+		if backErr := os.Rename(target, sessionPath); backErr != nil {
+			return sessionPath, errors.Join(renameErr, fmt.Errorf("roll back shell move: %w", backErr))
+		}
+		return sessionPath, renameErr
+	}
+	slog.Info("desktop: empty shell session moved to owning scope",
+		"from", sessionPath, "to", target)
+	return target, nil
 }
 
 func restoredSessionTopicTitle(dir, sessionPath string, meta agent.BranchMeta) string {
