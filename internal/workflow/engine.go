@@ -133,6 +133,11 @@ func (e *Engine) ResumeWithID(ctx context.Context, wf *Workflow, snap *runSnapsh
 	if err != nil {
 		return nil, err
 	}
+	// runID 随 ctx 下行（与 RunWithID 同一注入语义，tl1316b）：续跑节点的任务
+	// 面板登记 id 必须是 wf:<snap.RunID>:<nodeID>。漏注入时 runner 落 wf:norun:
+	// 兜底——续跑行与 run 脱钩、跨 run 同名节点共用 jobID，并发重叠时 recorder
+	// 配对表串线留僵尸 alive 行（persist_resume_monitor_test 钉 A/B）。
+	ctx = withRunID(ctx, s.runID)
 	s.replayTerminalEvents(snap)
 	runErr := s.runAll(ctx)
 	return s.buildReport(runErr), runErr

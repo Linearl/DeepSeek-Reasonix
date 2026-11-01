@@ -45,7 +45,8 @@ func currentTaskMonitorRecorder() *taskmonitor.TaskRecorder {
 }
 
 // runID 随 ctx 下行：登记 id（wf:<runId>:<nodeID>）由 runner 组装，引擎在
-// RunWithID 解析出最终 runID（外部钉定或自动生成）后注入。
+// RunWithID 解析出最终 runID（外部钉定或自动生成）、ResumeWithID 灌回快照
+// runID 后注入——任一入口漏注入，该入口的登记就落 wf:norun: 兜底。
 type runIDContextKey struct{}
 
 func withRunID(ctx context.Context, runID string) context.Context {
