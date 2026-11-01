@@ -192,5 +192,40 @@ console.log("\ntask 934 workflow live feed: 真事件接面板 + fixture 降为�
   ok(wireGo.includes('event.WorkflowNode:            "workflow_node"'), "node events ride the existing agent:event wire kind (685 已预拟面，不双投)");
 }
 
+
+// -- ④ 任务1316：断点续跑面（interrupted 态 + resumable + 续跑钮接线）--
+{
+  ok(liveRunStateToPanelState("interrupted") === "errored", "interrupted renders as errored badge (五态模型不动，可续跑性走续跑钮)");
+  const resumed = makeRun({ runId: "wf-cut", state: "interrupted", resumable: true });
+  const kept = mergeRunsSnapshot([], [resumed])[0];
+  ok(kept.state === "interrupted" && kept.resumable === true, "merge keeps the interrupted state and the resumable flag");
+
+  const panel = read("src/components/WorkflowPanel.tsx");
+  ok(panel.includes('liveView.run.state === "interrupted" && liveView.run.resumable'), "resume button only renders for interrupted+resumable runs (默认视图零改动)");
+  ok(panel.includes("wf-resume-live"), "resume button carries its test id");
+  ok(panel.includes("WorkflowResumeRun"), "panel wires the resume binding");
+  ok(panel.includes('"workflowPanel.run.interrupted"'), "picker option names the interrupted state");
+
+  const bridge = read("src/lib/bridge.ts");
+  ok(bridge.includes("WorkflowResumeRun(runId: string): Promise<boolean>;"), "bridge declares the resume binding");
+  ok(bridge.includes("async WorkflowResumeRun()"), "bridge mock implements resume");
+
+  const feedSrc = read("src/lib/workflowRunFeed.ts");
+  ok(feedSrc.includes('case "interrupted"'), "feed maps the interrupted wire state");
+
+  const types = read("src/lib/workflowTypes.ts");
+  ok(types.includes('"running" | "completed" | "failed" | "interrupted"'), "wire run state union opens interrupted");
+  ok(types.includes("resumable?: boolean"), "wire run carries the resumable flag");
+
+  const goHub = readFileSync(`${repoRoot}/desktop/workflow_runs_app.go`, "utf8");
+  ok(goHub.includes("func (a *App) WorkflowResumeRun("), "desktop App exposes the resume binding");
+  ok(goHub.includes("ResumeRunFromPanel"), "App delegates to the panel resume entry");
+
+  const goBoot = readFileSync(`${repoRoot}/internal/boot/boot.go`, "utf8");
+  ok(goBoot.includes('if sessionID != "" || taskTool == nil'), "boot fallback runner source only answers the empty session (面板入口)");
+  const goSvc = readFileSync(`${repoRoot}/internal/workflow/service.go`, "utf8");
+  ok(goSvc.includes("func (s *Service) ResumeRunFromPanel("), "service carries the panel resume entry");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exitCode = 1;

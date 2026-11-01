@@ -63,12 +63,15 @@ type workflowRunNodeWire struct {
 type workflowRunWire struct {
 	RunID     string                `json:"runId"`
 	Workflow  string                `json:"workflow"`
-	State     string                `json:"state"` // running | completed | failed
+	State     string                `json:"state"` // running | completed | failed | interrupted（任务 1316）
 	StartedAt int64                 `json:"startedAt,omitempty"`
 	EndedAt   int64                 `json:"endedAt,omitempty"`
 	Error     string                `json:"error,omitempty"`
 	DAG       *workflowRunDagWire   `json:"dag,omitempty"`
 	Nodes     []workflowRunNodeWire `json:"nodes"`
+	// Resumable（任务 1316）：服务侧可续判定（interrupted+定义在+指纹匹配）。
+	// 面板「续跑」钮的可见性权威；前端不算指纹。
+	Resumable bool `json:"resumable,omitempty"`
 }
 
 // workflowDagWireFromDef 把引擎定义映射成面板 DAG 视图。节点名即节点 id
@@ -133,6 +136,7 @@ func workflowRunsWire() []workflowRunWire {
 			StartedAt: s.StartedAt.UnixMilli(),
 			Error:     s.Err,
 			DAG:       workflowDagWireFromDef(s.Def),
+			Resumable: s.Resumable,
 		}
 		if !s.EndedAt.IsZero() {
 			wire.EndedAt = s.EndedAt.UnixMilli()
@@ -199,4 +203,22 @@ func (a *App) WorkflowRunsSnapshot() []workflowRunWire {
 // WorkflowCancelRun 中止一次运行（面板停止钮）。未知名或已终态返回 false。
 func (a *App) WorkflowCancelRun(runID string) bool {
 	return workflow.Global().CancelRun(runID)
+}
+
+// workflowResumeWire 是续跑请求的回执（面板凭 runId 继续选中该运行）。
+type workflowResumeWire struct {
+	RunID string `json:"runId"`
+	State string `json:"state"`
+}
+
+// WorkflowResumeRun（任务 1316）从断点续跑一次 interrupted run（面板续跑钮）。
+// 面板没有调用方会话身份——service 侧以空 sessionID 走 boot 回退源（最新装配
+// 的子代理基底）；节点事件不进任何会话 feed，面板由 workflow:runs 推送点亮。
+// 不可续（定义漂移/已取消/无 checkpoint）返回错误，文案给已存在的下一步。
+func (a *App) WorkflowResumeRun(runID string) (workflowResumeWire, error) {
+	res, err := workflow.Global().ResumeRunFromPanel(context.Background(), runID)
+	if err != nil {
+		return workflowResumeWire{}, err
+	}
+	return workflowResumeWire{RunID: res.RunID, State: res.State}, nil
 }

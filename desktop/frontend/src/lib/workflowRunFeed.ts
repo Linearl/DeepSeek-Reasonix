@@ -183,6 +183,10 @@ export function liveRunStateToPanelState(state: WorkflowRunLiveState): WorkflowR
       return "running";
     case "completed":
       return "completed";
+    // 任务1316: interrupted 落 errored 徽章（未跑完的中性口径），可续跑性
+    // 由行内「续跑」钮表达——面板五态模型不动。
+    case "interrupted":
+      return "errored";
     default:
       return "errored";
   }

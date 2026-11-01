@@ -198,6 +198,14 @@ export function WorkflowPanel({
     reportFrontendLog("workflowPanel", "cancel requested", liveView.run.runId);
   }, [liveView]);
 
+  // 任务1316：断点续跑（interrupted + 服务侧 resumable 判定）。成功后运行态
+  // 经 workflow:runs 推送自然翻转到 running，无需本地状态。
+  const resumeLiveRun = useCallback(() => {
+    if (!liveView) return;
+    void app.WorkflowResumeRun(liveView.run.runId).catch(() => {});
+    reportFrontendLog("workflowPanel", "resume requested", liveView.run.runId);
+  }, [liveView]);
+
   // Esc 关闭（document 级，焦点漂移也生效）；关闭时停掉演示脚本。
   useEffect(() => {
     if (!open) return;
@@ -464,7 +472,11 @@ export function WorkflowPanel({
               >
                 {liveRuns.map((run) => (
                   <option key={run.runId} value={run.runId}>
-                    {`${run.workflow} · ${run.runId} · ${t(RUN_STATE_KEY[liveRunStateToPanelRunKey(run.state)])}`}
+                    {`${run.workflow} · ${run.runId} · ${t(
+                      run.state === "interrupted"
+                        ? "workflowPanel.run.interrupted"
+                        : RUN_STATE_KEY[liveRunStateToPanelRunKey(run.state)],
+                    )}`}
                   </option>
                 ))}
               </select>
@@ -473,6 +485,12 @@ export function WorkflowPanel({
               <button type="button" className="wf-panel__action" onClick={stopLiveRun} data-testid="wf-stop-live">
                 <Square size={13} aria-hidden="true" />
                 {t("workflowPanel.action.stop")}
+              </button>
+            )}
+            {liveView && liveView.run.state === "interrupted" && liveView.run.resumable && (
+              <button type="button" className="wf-panel__action" onClick={resumeLiveRun} data-testid="wf-resume-live">
+                <Play size={13} aria-hidden="true" />
+                {t("workflowPanel.action.resume")}
               </button>
             )}
             {/* 演示（933 拍板保留）：fixture 视图 planned 态可播；live 视图下
