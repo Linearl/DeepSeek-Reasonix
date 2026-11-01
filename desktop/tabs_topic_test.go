@@ -266,6 +266,12 @@ func TestSetTopicPinnedOrdersProjectTopics(t *testing.T) {
 	if err := addProject(projectRoot, ""); err != nil {
 		t.Fatalf("add project: %v", err)
 	}
+	// tl1331 G10: 布景走注册收点——树渲染只认注册面（Topics ∪ PinnedTopics），
+	// 裸标题（title-only 未注册）不再产生渲染行（那是 G9 泄露形态）。标题表
+	// 只负责行标签。
+	if err := registerTopic("project", projectRoot, topicRegisterOpts{ensureProject: true}, "topic_a", "topic_b"); err != nil {
+		t.Fatalf("register topics: %v", err)
+	}
 	if err := setTopicTitle(projectRoot, "topic_a", "Alpha"); err != nil {
 		t.Fatalf("set topic a title: %v", err)
 	}
