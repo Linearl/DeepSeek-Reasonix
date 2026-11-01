@@ -688,16 +688,30 @@ export function Transcript(props: TranscriptProps) {
   // the visible top-to-bottom scroll). The kernel authority decides where to
   // land: tail → bottom, reader → its anchored block. Once per surface.
   const landedSurfaceRef = useRef("");
+  // tl 1341: the deferred switch-back tail landing (hook layer) needs a
+  // pre-paint retry on the commits where the incoming surface's real extent
+  // becomes measurable: the hydrate-complete frame (real history replaces the
+  // placeholder) and the geometry commits that re-render this component
+  // (streaming batches, layout revisions). Once per settled surface — the
+  // authority itself no-ops once the landing is discharged, and a reader
+  // anchor never reaches this chain (the hook only defers tail restores).
+  const tailRetrySurfaceRef = useRef("");
   useLayoutEffect(() => {
     if (empty) return;
     if (hydrating) {
       landedSurfaceRef.current = "";
+      tailRetrySurfaceRef.current = "";
       return;
     }
-    if (landedSurfaceRef.current === surfaceKey) return;
-    landedSurfaceRef.current = surfaceKey;
+    if (landedSurfaceRef.current !== surfaceKey) {
+      landedSurfaceRef.current = surfaceKey;
+      restoreLanding();
+      return;
+    }
+    if (tailRetrySurfaceRef.current === surfaceKey) return;
+    tailRetrySurfaceRef.current = surfaceKey;
     restoreLanding();
-  }, [empty, hydrating, restoreLanding, surfaceKey]);
+  }, [empty, hydrating, projection.completedBlocks.length, restoreLanding, surfaceKey]);
   // 任务874: transcript 空白哨兵 + 有界自恢复。2026-10-13 19:10 实录：大会话
   // reset 重建后 items 已在 state，视口可见块却为 0（渲染层丢失）；kernel 的
   // blank-viewport anomaly 只重观察一次且不落 desktop.log，空白持续到用户重开
