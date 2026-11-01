@@ -105,7 +105,7 @@ type WorkflowFindingView struct {
 type WorkflowRunView struct {
 	RunID     string                 `json:"runId"`
 	Workflow  string                 `json:"workflow"`
-	State     string                 `json:"state"` // running | completed | failed
+	State     string                 `json:"state"` // running | completed | failed | interrupted（interrupted=进程重启后可从断点续跑，任务 1316）
 	StartedAt int64                  `json:"startedAt,omitempty"`
 	EndedAt   int64                  `json:"endedAt,omitempty"`
 	Error     string                 `json:"error,omitempty"`
@@ -119,12 +119,13 @@ type WorkflowStatusResult struct {
 }
 
 // WorkflowService 是宿主注入的 seam（internal/workflow 的 Service 实现）。
-// 全部方法必须并发安全；实现方拥有校验、持久化与运行登记。
+// 全部方法必须并发安全；实现方拥有校验、持久化与运行登记。RunWorkflow 的
+// resumeRunID 非空（任务 1316）= 续跑该 interrupted run（断点续跑）。
 type WorkflowService interface {
 	DefineWorkflow(ctx context.Context, doc string, overwrite bool) (WorkflowDefineResult, error)
 	ListWorkflows(ctx context.Context) (WorkflowListResult, error)
 	GetWorkflow(ctx context.Context, name string) (WorkflowGetResult, error)
-	RunWorkflow(ctx context.Context, name string) (WorkflowRunResult, error)
+	RunWorkflow(ctx context.Context, name string, resumeRunID string) (WorkflowRunResult, error)
 	WorkflowStatus(ctx context.Context, runID string) (WorkflowStatusResult, error)
 }
 
@@ -298,12 +299,13 @@ type workflowRun struct{}
 func (workflowRun) Name() string { return "workflow_run" }
 
 func (workflowRun) Description() string {
-	return "Start one stored workflow. The run executes in the background on this session's sub-agent substrate: nodes run in topological order, gate failures drive their fix loops, and node state events stream to THIS conversation (the workflow visualization panel lights up live). The call returns immediately with a runId — poll workflow_status for progress and the final report. A run outlives the turn that started it. " + workflowContractDoc
+	return "Start one stored workflow. The run executes in the background on this session's sub-agent substrate: nodes run in topological order, gate failures drive their fix loops, and node state events stream to THIS conversation (the workflow visualization panel lights up live). The call returns immediately with a runId — poll workflow_status for progress and the final report. A run outlives the turn that started it. Pass resume_run_id (task 1316) to resume an interrupted run from its checkpoint: finished nodes are preserved and only the remaining work executes; the definition must be unchanged since the checkpoint, and a run the user cancelled on purpose refuses to resume. " + workflowContractDoc
 }
 
 func (workflowRun) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{
-  "name":{"type":"string","description":"Workflow name from workflow_list."}
+  "name":{"type":"string","description":"Workflow name from workflow_list."},
+  "resume_run_id":{"type":"string","description":"Optional runId of an interrupted run (workflow_status shows state \"interrupted\") to resume from its checkpoint. Omit to start fresh."}
 },"required":["name"]}`)
 }
 
@@ -315,7 +317,8 @@ func (workflowRun) Execute(ctx context.Context, args json.RawMessage) (string, e
 		return "", err
 	}
 	var p struct {
-		Name string `json:"name"`
+		Name        string `json:"name"`
+		ResumeRunID string `json:"resume_run_id"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -323,7 +326,7 @@ func (workflowRun) Execute(ctx context.Context, args json.RawMessage) (string, e
 	if strings.TrimSpace(p.Name) == "" {
 		return "", fmt.Errorf("name is required: the workflow name from workflow_list")
 	}
-	result, err := svc.RunWorkflow(ctx, p.Name)
+	result, err := svc.RunWorkflow(ctx, p.Name, strings.TrimSpace(p.ResumeRunID))
 	if err != nil {
 		return "", err
 	}

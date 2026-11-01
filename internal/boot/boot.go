@@ -2404,6 +2404,16 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 		return workflow.NewTaskSubagentRunner(taskTool), true
 	})
+	// 任务 1316：面板续跑钮没有调用方会话身份（sessionID 为空串），由这条
+	// 回退源承接最新装配的基底。只对空 sessionID 命中——工具路径（真实分支
+	// 号）不经过它，多标签「各用各的基底」语义不变；新装配先注册（prepend
+	// 后先查），面板拿到的恒是最新 boot 的 taskTool。
+	workflow.Global().AddRunnerSource(func(sessionID string) (workflow.SubagentRunner, bool) {
+		if sessionID != "" || taskTool == nil {
+			return nil, false
+		}
+		return workflow.NewTaskSubagentRunner(taskTool), true
+	})
 	// Task 19 / 141–145: multi-session collaboration (contact addressing,
 	// talk_to_session, task cards). Off by default. The Desktop mirror is OR'd in
 	// the same way Trace-as-State is: the settings toggle writes both keys, and a

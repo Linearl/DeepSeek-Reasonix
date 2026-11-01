@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 
 	"reasonix/internal/event"
 )
@@ -16,6 +18,10 @@ type Engine struct {
 	Subagents SubagentRunner
 	Gate      GateRunner
 	Sink      event.Sink
+	// Checkpoint（任务 1316）在每个节点终态（finish/abort/skip）被调用，
+	// 携带 runState 的恢复投影。引擎不感知磁盘——落盘是宿主（Service）的
+	// 职责；nil = 不关心（Run 的既有调用方零影响）。
+	Checkpoint func(*CheckpointData)
 }
 
 // New builds an engine with production defaults (shell gate, discard sink).
@@ -109,6 +115,194 @@ func (e *Engine) RunWithID(ctx context.Context, wf *Workflow, runID string) (*Wo
 	s.emitAll(event.WorkflowNodeQueued, 0, "")
 	err := s.runAll(ctx)
 	return s.buildReport(err), err
+}
+
+// ResumeWithID（任务 1316）从快照恢复调度：已完成/已跳过节点灌回并重放边
+// 决策，其余节点重置 pending，runAll 从断点继续。调度器零改动——终态节点
+// 不是 pending，扫描自然越过。恢复节点向事件流重放一次终态事件，续跑发起
+// 会话的 feed 由此看到全图状态；skip 节点保持不发声（与原 run 的 queued-gray
+// 一致）。
+func (e *Engine) ResumeWithID(ctx context.Context, wf *Workflow, snap *runSnapshot) (*WorkflowReport, error) {
+	if err := wf.Validate(); err != nil {
+		return nil, err
+	}
+	s, err := runStateFromSnapshot(e, wf, snap)
+	if err != nil {
+		return nil, err
+	}
+	s.replayTerminalEvents(snap)
+	runErr := s.runAll(ctx)
+	return s.buildReport(runErr), runErr
+}
+
+// runStateFromSnapshot 把快照灌回一个新 runState（engine.go 顶部 runState 的
+// 恢复对应面）。快照里 output 截断超限的节点整节点重置——它的下游
+// interpolation 会拼出残缺 prompt，宁可重跑不可续错。
+func runStateFromSnapshot(e *Engine, wf *Workflow, snap *runSnapshot) (*runState, error) {
+	s := newRunState(e, wf)
+	s.runID = snap.RunID
+	s.phase = snap.Phase
+	s.failedNode = snap.FailedNode
+	s.gateRound = snap.GateRound
+	for _, f := range snap.Bag {
+		// add 原样接受 verified 状态（幂等去重按 where/what）——快照里的
+		// findings 状态是引擎指派的权威值，直接灌回。
+		s.bag.add(f)
+	}
+	s.verifs = append(s.verifs, snap.Verifs...)
+
+	restored := map[string]bool{}
+	for id, ns := range snap.Nodes {
+		if _, ok := s.index[id]; !ok {
+			return nil, fmt.Errorf("workflow: snapshot %s: node %q not in definition %q", snap.RunID, id, wf.Name)
+		}
+		if ns.OutputTruncated {
+			continue // 整节点重置重跑
+		}
+		switch ns.Status {
+		case "done":
+			s.status[id] = stDone
+		case "skipped":
+			s.status[id] = stSkipped
+		default:
+			continue // aborted/pending 等一律重跑
+		}
+		switch ns.Terminal {
+		case "passed":
+			s.term[id] = termPassed
+		case "gate_failed":
+			s.term[id] = termGateFailed
+		default:
+			s.term[id] = termSkipped
+		}
+		if ns.GatePassed != nil {
+			s.gatePassed[id] = *ns.GatePassed
+		}
+		s.output[id] = ns.Output
+		if len(ns.Result) > 0 {
+			var v any
+			if err := json.Unmarshal(ns.Result, &v); err != nil {
+				return nil, fmt.Errorf("workflow: snapshot %s: node %q result: %w", snap.RunID, id, err)
+			}
+			s.result[id] = v
+		}
+		if len(ns.Findings) > 0 {
+			s.findings[id] = append([]Finding(nil), ns.Findings...)
+		}
+		restored[id] = true
+	}
+	// 边决策重放：resolveOutEdges 是 (terminal, gatePassed) 的纯函数，全部
+	// 节点状态灌完后再统一重放，避免顺序依赖。
+	for id := range restored {
+		s.resolveOutEdges(id, s.term[id])
+	}
+	return s, nil
+}
+
+// replayTerminalEvents 给恢复的终态节点补发一次六态事件（新会话 feed 的全图
+// 状态重建）。优先用快照记录的六态（unconfirmed 等协议态引擎态推导不出）；
+// 无记录时按引擎态推导。skipped 节点不发（skip 本就无事件，面板保持
+// queued-gray）。
+func (s *runState) replayTerminalEvents(snap *runSnapshot) {
+	for i := range s.wf.Nodes {
+		n := &s.wf.Nodes[i]
+		if s.status[n.ID] != stDone {
+			continue // skipped 无事件：skip 语义保持（面板 queued-gray）
+		}
+		state := event.WorkflowNodeCompleted
+		if n.Type == NodeGate && s.gatePassed[n.ID] {
+			state = event.WorkflowNodeGatePassed
+		}
+		round := 0
+		detail := "restored from checkpoint"
+		if ns, ok := snap.Nodes[n.ID]; ok {
+			if ns.LastEventState != "" {
+				state = event.WorkflowNodeState(ns.LastEventState)
+			}
+			if ns.Detail != "" {
+				detail = ns.Detail
+			}
+			round = ns.Round
+		}
+		s.emit(n, state, round, detail)
+	}
+}
+
+// checkpoint 把当前恢复投影递给宿主回调（nil 回调零开销）。
+func (s *runState) checkpoint() {
+	if s.eng == nil || s.eng.Checkpoint == nil {
+		return
+	}
+	data := &CheckpointData{
+		Nodes:      map[string]nodeSnapshot{},
+		NodeOrder:  append([]string(nil), s.declaredOrder()...),
+		Bag:        s.bag.snapshot(),
+		Verifs:     append([]string(nil), s.verifs...),
+		Phase:      s.phase,
+		FailedNode: s.failedNode,
+		GateRound:  s.gateRound,
+	}
+	for i := range s.wf.Nodes {
+		n := &s.wf.Nodes[i]
+		ns, ok := s.nodeSnapshot(n)
+		if ok {
+			data.Nodes[n.ID] = ns
+		}
+	}
+	s.eng.Checkpoint(data)
+}
+
+// declaredOrder 返回非 fixer 节点的声明序（首见序的上界近似；recordNode 的
+// order 仍是面板权威，快照 NodeOrder 只是恢复兜底）。
+func (s *runState) declaredOrder() []string {
+	out := make([]string, 0, len(s.wf.Nodes))
+	for i := range s.wf.Nodes {
+		if !s.fixers[s.wf.Nodes[i].ID] {
+			out = append(out, s.wf.Nodes[i].ID)
+		}
+	}
+	return out
+}
+
+// nodeSnapshot 投影一个节点；只有恢复相关终态（done/skipped）返回 true。
+func (s *runState) nodeSnapshot(n *Node) (nodeSnapshot, bool) {
+	var ns nodeSnapshot
+	ns.NodeType = n.Type
+	switch s.status[n.ID] {
+	case stDone:
+		ns.Status = "done"
+	case stSkipped:
+		ns.Status = "skipped"
+	default:
+		return ns, false
+	}
+	switch s.term[n.ID] {
+	case termPassed:
+		ns.Terminal = "passed"
+	case termGateFailed:
+		ns.Terminal = "gate_failed"
+	default:
+		ns.Terminal = "skipped"
+	}
+	if n.Type == NodeGate {
+		v := s.gatePassed[n.ID]
+		ns.GatePassed = &v
+		ns.Round = s.gateRound
+	}
+	if ns.Terminal == "gate_failed" {
+		ns.Detail = fmt.Sprintf("exit ≠ 0 with a receiving branch (round %d)", s.gateRound)
+	}
+	out, truncated := truncateTail(s.output[n.ID], maxNodeOutputBytes)
+	ns.Output = out
+	ns.OutputTruncated = truncated
+	if r, ok := s.result[n.ID]; ok {
+		raw, err := json.Marshal(r)
+		if err == nil {
+			ns.Result = raw
+		}
+	}
+	ns.Findings = s.findings[n.ID]
+	return ns, true
 }
 
 func newRunState(e *Engine, wf *Workflow) *runState {
@@ -243,6 +437,7 @@ func (s *runState) skip(n *Node) {
 	s.status[n.ID] = stSkipped
 	s.term[n.ID] = termSkipped
 	s.resolveOutEdges(n.ID, termSkipped)
+	s.checkpoint() // 1316：skip 也进快照（无事件但恢复需要它的边决策）
 }
 
 // resolveOutEdges decides every out-edge of a terminal node per its branch

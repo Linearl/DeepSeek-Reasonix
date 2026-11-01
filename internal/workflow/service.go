@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -27,14 +28,23 @@ import (
 // 多标签各用各的基底，互不串线。事件水槽按次捕获：workflow_run 的调用上下文
 // 携带发起会话的 sink，节点事件嵌进发起会话的事件流（面板由此点亮）。
 
-// RunState 是一次运行的服务侧状态（工具与面板共读）。
+// RunState 是一次运行的服务侧状态（工具与面板共读）。interrupted（任务
+// 1316）= 进程重启后从磁盘恢复的未完 run，可续跑；由启动恢复标定，本进程
+// 内不产生（本进程未完即 running）。
 type RunState string
 
 const (
-	RunRunning   RunState = "running"
-	RunCompleted RunState = "completed"
-	RunFailed    RunState = "failed"
+	RunRunning     RunState = "running"
+	RunCompleted   RunState = "completed"
+	RunFailed      RunState = "failed"
+	RunInterrupted RunState = "interrupted"
 )
+
+// workflowMaxFinishedRuns 是终态 run 的保留窗口（内存与磁盘同边界，任务
+// 1316 §7 收口 service.go 无 delete 的无界增长）。running/interrupted 永不
+// 逐出。量级对齐 heartbeat maxRunHistory=20 的先例：workflow run 是全局低频
+// 重件（每条含报告），取一个量级宽。
+const workflowMaxFinishedRuns = 100
 
 // RunRecord 是一次运行的登记行。nodes 由 recordingSink 在事件到达时更新
 // （引擎异步发射，登记与事件同序）；report 在引擎返回后落袋。
@@ -53,6 +63,14 @@ type RunRecord struct {
 	def       *Workflow
 	cancel    context.CancelFunc
 	cancelled bool
+	// lastCP 是引擎最后一次 checkpoint 投影（1316）；finishRun 用它落终态
+	// 快照。持久化关闭（dir 空）时为 nil。
+	lastCP *CheckpointData
+	// defFingerprint 是装载定义的指纹（1316）：快照入盘与 resume 校验同源。
+	defFingerprint string
+	// resumableOK 是启动恢复时算好的可续判定（定义存在 + 指纹匹配）；resume
+	// 时还会重算（定义可能中途被 overwrite）。本进程产生的 run 恒 false。
+	resumableOK bool
 }
 
 type nodeRecord struct {
@@ -82,15 +100,22 @@ type Service struct {
 	// 消费方（desktop hub）自行拉快照。缓冲 1 = 合并风暴。
 	dirty chan struct{}
 	once  sync.Once
+	// persistDir 是 run 快照目录收口（WorkflowsDir/runs；空 = 不落盘，
+	// 持久化整体退化，行为与 1316 之前逐字节相同）。
+	persistDir string
+	// restored 标记启动恢复已跑完（异步）；完成前面板看不到历史 run。
+	restored bool
 }
 
 // NewService 构造服务；dir 为 config.WorkflowsDir()（空 = 内存目录）。
 func NewService(dir string) *Service {
-	return &Service{
-		store: newStore(dir),
-		runs:  map[string]*RunRecord{},
-		dirty: make(chan struct{}, 1),
+	s := &Service{
+		store:      newStore(dir),
+		runs:       map[string]*RunRecord{},
+		dirty:      make(chan struct{}, 1),
+		persistDir: runsDir(dir),
 	}
+	return s
 }
 
 // global 是进程级单例（惰性构造，boot 与桌面 hub 共用）。
@@ -100,9 +125,14 @@ var (
 )
 
 // Global 返回进程级服务单例。目录在首个调用者处定死（boot 早于一切会话）。
+// 启动恢复（任务 1316）异步执行：扫 runs/ 把终态历史与 interrupted run 载入
+// 只读视图（磁盘为权威、内存为缓存），完成后 touch 一次刷新面板。
 func Global() *Service {
 	globalOnce.Do(func() {
 		globalSvc = NewService(config.WorkflowsDir())
+		if globalSvc.persistDir != "" {
+			go globalSvc.restoreFromDisk()
+		}
 	})
 	return globalSvc
 }
@@ -182,7 +212,9 @@ func (s *Service) GetWorkflow(_ context.Context, name string) (builtin.WorkflowG
 
 // Run 实现 builtin.WorkflowService：解析基底与水槽，登记运行，后台起引擎。
 // 运行存活于触发 turn 之外（自有 context），事件仍嵌进发起会话的事件流。
-func (s *Service) RunWorkflow(ctx context.Context, name string) (builtin.WorkflowRunResult, error) {
+// resumeRunID 非空（任务 1316）= 续跑该 interrupted run：断点后的节点继续，
+// 已完成节点不重跑；run 沿用原 runID，快照覆盖更新。
+func (s *Service) RunWorkflow(ctx context.Context, name string, resumeRunID string) (builtin.WorkflowRunResult, error) {
 	sessionID := jobs.SessionFromContext(ctx)
 	s.mu.Lock()
 	wf, err := s.store.load(name)
@@ -199,39 +231,188 @@ func (s *Service) RunWorkflow(ctx context.Context, name string) (builtin.Workflo
 	if !ok || sink == nil {
 		sink = event.Discard
 	}
+
+	resumeSnap := (*runSnapshot)(nil)
+	var rec *RunRecord
 	runID := newRunID()
+	if resumeRunID != "" {
+		rec, resumeSnap, err = s.prepareResumeLocked(resumeRunID, wf)
+		if err != nil {
+			s.mu.Unlock()
+			return builtin.WorkflowRunResult{}, err
+		}
+		runID = rec.ID
+	} else {
+		rec = &RunRecord{
+			ID:             runID,
+			Workflow:       wf.Name,
+			State:          RunRunning,
+			StartedAt:      time.Now(),
+			def:            wf,
+			defFingerprint: defFingerprint(wf),
+			nodes:          map[string]*nodeRecord{},
+		}
+		s.runs[runID] = rec
+		s.order = append(s.order, runID)
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	// 子代理转录按发起会话归属（父会话探活、垃圾回收、面板归属都吃它）。
 	if sessionID != "" {
 		runCtx = agent.WithParentSession(runCtx, sessionID)
 		runCtx = jobs.WithSession(runCtx, sessionID)
 	}
-	rec := &RunRecord{
-		ID:        runID,
-		Workflow:  wf.Name,
-		State:     RunRunning,
-		StartedAt: time.Now(),
-		def:       wf,
-		cancel:    cancel,
-		nodes:     map[string]*nodeRecord{},
-	}
-	s.runs[runID] = rec
-	s.order = append(s.order, runID)
+	rec.mu.Lock()
+	rec.cancel = cancel
+	rec.cancelled = false
+	rec.mu.Unlock()
 	s.mu.Unlock()
 
 	eng := New(runner, nil, &recordingSink{svc: s, runID: runID, inner: sink})
+	if s.persistDir != "" {
+		eng.Checkpoint = func(cd *CheckpointData) {
+			s.persistCheckpoint(runID, cd)
+		}
+	}
 	go func() {
 		defer cancel()
-		report, runErr := eng.RunWithID(runCtx, wf, runID)
+		var report *WorkflowReport
+		var runErr error
+		if resumeSnap != nil {
+			report, runErr = eng.ResumeWithID(runCtx, wf, resumeSnap)
+		} else {
+			report, runErr = eng.RunWithID(runCtx, wf, runID)
+		}
 		s.finishRun(runID, report, runErr)
 	}()
 	s.touch()
+	hint := "poll workflow_status with this runId; node events stream to the conversation that started the run"
+	if resumeSnap != nil {
+		hint = "resumed from the interrupted checkpoint: finished nodes are preserved, remaining nodes continue; poll workflow_status with this runId"
+	}
 	return builtin.WorkflowRunResult{
 		RunID:    runID,
 		Workflow: wf.Name,
 		State:    string(RunRunning),
-		Hint:     "poll workflow_status with this runId; node events stream to the conversation that started the run",
+		Hint:     hint,
 	}, nil
+}
+
+// prepareResumeLocked 校验并翻新待续跑的 run（调用方持 s.mu）：只允许
+// interrupted 且非用户主动取消的 run；定义指纹必须与快照匹配（拿旧断点配
+// 新图是错误的续跑）。返回翻新后的登记行与盘上快照。
+func (s *Service) prepareResumeLocked(runID string, wf *Workflow) (*RunRecord, *runSnapshot, error) {
+	rec, ok := s.runs[runID]
+	if !ok {
+		return nil, nil, fmt.Errorf("unknown run %q; call workflow_status without run_id to list recent runs", runID)
+	}
+	rec.mu.Lock()
+	state := rec.State
+	cancelled := rec.cancelled
+	rec.mu.Unlock()
+	if state == RunRunning {
+		return nil, nil, fmt.Errorf("run %q is still running; nothing to resume (poll workflow_status)", runID)
+	}
+	if state == RunCompleted {
+		return nil, nil, fmt.Errorf("run %q already completed; there is nothing to resume", runID)
+	}
+	if state != RunInterrupted {
+		// failed 终态：用户主动取消的不可续（对齐「user stopped on purpose」
+		// 语义——重新 workflow_run 从头跑是明确的下一步），真实失败可续。
+		if cancelled {
+			return nil, nil, fmt.Errorf("run %q was cancelled on purpose; resuming it is not supported — start a fresh run with workflow_run instead", runID)
+		}
+		return nil, nil, fmt.Errorf("run %q is %s and holds no checkpoint to resume; start a fresh run with workflow_run instead", runID, state)
+	}
+	snap, err := loadRunSnapshot(s.persistDir, runID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("run %q: checkpoint unavailable: %w", runID, err)
+	}
+	if fp := defFingerprint(wf); fp == "" || fp != snap.DefFingerprint {
+		return nil, nil, fmt.Errorf("workflow %q has changed since run %q checkpointed; resuming against a different definition is not supported — start a fresh run with workflow_run, or inspect the current document with workflow_get", wf.Name, runID)
+	}
+	// 翻新：interrupted → running；终态/错误面清零；节点六态记录保留（面板
+	// 历史连续）。cancel 由调用方随后填（prepareResume 不持有新 ctx）。
+	rec.mu.Lock()
+	rec.State = RunRunning
+	rec.EndedAt = time.Time{}
+	rec.Err = ""
+	rec.Report = nil
+	rec.lastCP = nil
+	rec.resumableOK = false
+	rec.mu.Unlock()
+	return rec, snap, nil
+}
+
+// persistCheckpoint 是引擎 checkpoint 回调的服务侧落地面：投影 + 服务侧六态
+// 记录合并成 run.json（原子覆盖写）。写盘失败只降级 log——持久化是增强不是
+// 门禁。
+func (s *Service) persistCheckpoint(runID string, cd *CheckpointData) {
+	s.mu.Lock()
+	rec, ok := s.runs[runID]
+	persistDir := s.persistDir
+	s.mu.Unlock()
+	if !ok || persistDir == "" {
+		return
+	}
+	rec.mu.Lock()
+	rec.lastCP = cd
+	// 合并服务侧六态（LastEventState/轮次细节）：recordingSink 先于 checkpoint
+	// 回调（引擎同 goroutine 先 emit 后投影），此处的 nodeRecord 已含本节点终态。
+	merged := make(map[string]nodeSnapshot, len(cd.Nodes))
+	for id, ns := range cd.Nodes {
+		if nr := rec.nodes[id]; nr != nil {
+			ns.LastEventState = string(nr.state)
+			if ns.Detail == "" {
+				ns.Detail = nr.detail
+			}
+			if ns.Round == 0 {
+				ns.Round = nr.round
+			}
+		}
+		merged[id] = ns
+	}
+	snap := s.buildSnapshotLocked(rec, merged)
+	rec.mu.Unlock()
+	if err := saveRunSnapshot(persistDir, snap); err != nil {
+		log.Printf("[workflow] checkpoint persist failed for run %s: %v", runID, err)
+	}
+}
+
+// buildSnapshotLocked 组装快照（调用方持 rec.mu）。
+func (s *Service) buildSnapshotLocked(rec *RunRecord, nodes map[string]nodeSnapshot) *runSnapshot {
+	snap := &runSnapshot{
+		SchemaVersion:  snapshotSchemaVersion,
+		RunID:          rec.ID,
+		Workflow:       rec.Workflow,
+		DefFingerprint: rec.defFingerprint,
+		State:          string(rec.State),
+		StartedAt:      rec.StartedAt,
+		Cancelled:      rec.cancelled,
+		Nodes:          nodes,
+	}
+	if rec.lastCP != nil {
+		snap.Phase = rec.lastCP.Phase
+		snap.FailedNode = rec.lastCP.FailedNode
+		snap.GateRound = rec.lastCP.GateRound
+		snap.Bag = rec.lastCP.Bag
+		snap.Verifs = rec.lastCP.Verifs
+	}
+	if !rec.EndedAt.IsZero() {
+		ended := rec.EndedAt
+		snap.EndedAt = &ended
+	}
+	snap.Err = rec.Err
+	snap.Report = rec.Report
+	// NodeOrder：优先登记首见序，退化为 lastCP 的声明序。
+	for _, id := range rec.order {
+		if _, ok := nodes[id]; ok {
+			snap.NodeOrder = append(snap.NodeOrder, id)
+		}
+	}
+	if len(snap.NodeOrder) == 0 && rec.lastCP != nil {
+		snap.NodeOrder = rec.lastCP.NodeOrder
+	}
+	return snap
 }
 
 // Status 实现 builtin.WorkflowService：runID 空 = 最近运行（新→旧，截 20 条）。
@@ -276,6 +457,25 @@ func (s *Service) CancelRun(runID string) bool {
 	return true
 }
 
+// ResumeRunFromPanel（任务 1316）是面板续跑钮的承接面：面板没有调用方会话
+// 身份，sessionID 传空串，由 boot 注册的回退 RunnerSource（仅对空 sessionID
+// 命中）解析最新装配的子代理基底——工具路径（workflow_run resume_run_id）
+// 不受影响。事件流归属：空会话无事件流，节点六态不进任何会话 feed，面板
+// 由 workflow:runs 推送照常点亮。
+func (s *Service) ResumeRunFromPanel(ctx context.Context, runID string) (builtin.WorkflowRunResult, error) {
+	s.mu.Lock()
+	rec, ok := s.runs[runID]
+	workflowName := ""
+	if ok {
+		workflowName = rec.Workflow
+	}
+	s.mu.Unlock()
+	if !ok {
+		return builtin.WorkflowRunResult{}, fmt.Errorf("unknown run %q; the run list is in the workflow panel", runID)
+	}
+	return s.RunWorkflow(ctx, workflowName, runID)
+}
+
 // RunNodeSnapshot 是一次运行中一个节点的锁外快照。
 type RunNodeSnapshot struct {
 	ID        string
@@ -300,6 +500,9 @@ type RunSnapshot struct {
 	Report    *WorkflowReport
 	Def       *Workflow
 	Nodes     []RunNodeSnapshot
+	// Resumable（任务 1316）：面板「可续跑」徽章与续跑钮的判定（服务侧单一
+	// 真相；前端不算指纹）。interrupted + 定义存在 + 指纹匹配。
+	Resumable bool
 }
 
 // Snapshot 返回全部运行（启动序）的快照。
@@ -319,6 +522,7 @@ func (s *Service) Snapshot() []RunSnapshot {
 			Err:       rec.Err,
 			Report:    rec.Report,
 			Def:       rec.def,
+			Resumable: rec.resumableOK && rec.State == RunInterrupted && !rec.cancelled,
 		}
 		for _, nid := range rec.order {
 			nr := rec.nodes[nid]
@@ -353,7 +557,8 @@ func (s *Service) RunDefinition(runID string) *Workflow {
 }
 
 // finishRun 落袋终态（成功/失败/取消统一走这里；report 永不为 nil 语义由
-// 引擎保证——见 Engine.Run 注释）。
+// 引擎保证——见 Engine.Run 注释）。终态同时入盘上快照（1316），随后惰性
+// prune 终态保留窗口。
 func (s *Service) finishRun(runID string, report *WorkflowReport, runErr error) {
 	s.mu.Lock()
 	rec, ok := s.runs[runID]
@@ -375,9 +580,134 @@ func (s *Service) finishRun(runID string, report *WorkflowReport, runErr error) 
 	default:
 		rec.State = RunCompleted
 	}
+	// 终态快照：最后一次引擎投影 + 服务侧六态 + 终态字段。lastCP 为 nil
+	// （持久化关闭，或运行零节点终态就死了）则跳过盘面——登记仍是权威。
+	if s.persistDir != "" && rec.lastCP != nil {
+		merged := make(map[string]nodeSnapshot, len(rec.lastCP.Nodes))
+		for id, ns := range rec.lastCP.Nodes {
+			if nr := rec.nodes[id]; nr != nil {
+				ns.LastEventState = string(nr.state)
+				if ns.Detail == "" {
+					ns.Detail = nr.detail
+				}
+				if ns.Round == 0 {
+					ns.Round = nr.round
+				}
+			}
+			merged[id] = ns
+		}
+		snap := s.buildSnapshotLocked(rec, merged)
+		if err := saveRunSnapshot(s.persistDir, snap); err != nil {
+			log.Printf("[workflow] final snapshot persist failed for run %s: %v", runID, err)
+		}
+	}
 	rec.mu.Unlock()
+	s.pruneLocked()
 	s.mu.Unlock()
 	s.touch()
+}
+
+// restoreFromDisk（任务 1316）启动恢复：扫 runs/ 目录把快照载入只读视图。
+// state=running 的快照（本进程没有它的 finishRun）标 interrupted；终态原样。
+// 定义存在且指纹匹配的 interrupted run 标可续；损坏/未来版本跳过（log 提示，
+// 不炸启动）。完成后 prune 终态窗口并 touch 一次面板。
+func (s *Service) restoreFromDisk() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, id := range listRunSnapshotIDs(s.persistDir) {
+		snap, err := loadRunSnapshot(s.persistDir, id)
+		if err != nil {
+			log.Printf("[workflow] skipping unreadable run snapshot %s: %v", id, err)
+			continue
+		}
+		if _, dup := s.runs[snap.RunID]; dup {
+			continue // 本进程已产出同 id（newRunID 冲突，概率忽略）；内存权威
+		}
+		rec := &RunRecord{
+			ID:             snap.RunID,
+			Workflow:       snap.Workflow,
+			StartedAt:      snap.StartedAt,
+			defFingerprint: snap.DefFingerprint,
+			nodes:          map[string]*nodeRecord{},
+			Err:            snap.Err,
+		}
+		for _, nid := range snap.NodeOrder {
+			ns, ok := snap.Nodes[nid]
+			if !ok {
+				continue
+			}
+			nr := &nodeRecord{
+				nodeType: ns.NodeType,
+				state:    event.WorkflowNodeState(ns.LastEventState),
+				round:    ns.Round,
+				detail:   ns.Detail,
+			}
+			if nr.state == "" {
+				// skip 等无事件节点：六态缺省 queued（面板 queued-gray 语义）。
+				nr.state = event.WorkflowNodeQueued
+			}
+			rec.nodes[nid] = nr
+			rec.order = append(rec.order, nid)
+		}
+		switch snap.State {
+		case string(RunRunning):
+			rec.State = RunInterrupted
+		case string(RunCompleted):
+			rec.State = RunCompleted
+		case string(RunFailed):
+			rec.State = RunFailed
+			rec.cancelled = snap.Cancelled
+		default:
+			log.Printf("[workflow] run snapshot %s has unknown state %q; skipping", id, snap.State)
+			continue
+		}
+		if snap.EndedAt != nil {
+			rec.EndedAt = *snap.EndedAt
+		}
+		rec.Report = snap.Report
+		if rec.State == RunInterrupted {
+			if wf, err := s.store.load(snap.Workflow); err == nil && defFingerprint(wf) == snap.DefFingerprint {
+				rec.def = wf
+				rec.resumableOK = true
+			}
+		}
+		s.runs[rec.ID] = rec
+		s.order = append(s.order, rec.ID)
+	}
+	s.restored = true
+	s.pruneLocked()
+	s.touch()
+}
+
+// pruneLocked 收口终态保留窗口（任务 1316 §7；调用方持 s.mu）：只有
+// completed/failed 可逐出，running/interrupted 永不逐出；内存行与盘上目录
+// 同步消失（单一边界，两层真相会腐化）。
+func (s *Service) pruneLocked() {
+	var finished []string
+	for _, id := range s.order {
+		switch s.runs[id].State {
+		case RunCompleted, RunFailed:
+			finished = append(finished, id)
+		}
+	}
+	if len(finished) <= workflowMaxFinishedRuns {
+		return
+	}
+	evict := make(map[string]bool, len(finished)-workflowMaxFinishedRuns)
+	for _, id := range finished[:len(finished)-workflowMaxFinishedRuns] {
+		evict[id] = true
+		removeRunSnapshot(s.persistDir, id)
+	}
+	order := s.order[:0]
+	for _, id := range s.order {
+		if !evict[id] {
+			order = append(order, id)
+		}
+	}
+	s.order = order
+	for id := range evict {
+		delete(s.runs, id)
+	}
 }
 
 // recordingSink 是运行的水槽包装：WorkflowNode 事件在转发前更新登记行，

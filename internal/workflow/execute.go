@@ -43,6 +43,9 @@ func (s *runState) execute(ctx context.Context, n *Node) error {
 			round = s.gateRound // the attempt the world-failure hit
 		}
 		s.emit(n, event.WorkflowNodeFailed, round, truncate(err.Error(), 240))
+		// 1316：abort 也是 checkpoint 点——崩溃前的最后一次投影把已完成
+		// 节点全部落袋（abort 节点本身不落，恢复时重跑）。
+		s.checkpoint()
 		return err
 	}
 	return nil
@@ -54,6 +57,7 @@ func (s *runState) finish(n *Node, state event.WorkflowNodeState, t terminal, de
 	s.term[n.ID] = t
 	s.emit(n, state, 0, detail)
 	s.resolveOutEdges(n.ID, t)
+	s.checkpoint() // 1316：节点终态即 checkpoint 点
 }
 
 // runSubagent dispatches one sub-agent node. A node declaring a result
@@ -152,6 +156,7 @@ func (s *runState) runGate(ctx context.Context, n *Node) error {
 			s.term[n.ID] = termPassed
 			s.emit(n, event.WorkflowNodeGatePassed, round, "exit 0")
 			s.resolveOutEdges(n.ID, termPassed)
+			s.checkpoint() // 1316：gate 不走 finish()，终态在此入快照
 			return nil
 		}
 		if n.Loop == nil || round >= maxRounds {
@@ -177,6 +182,7 @@ func (s *runState) runGate(ctx context.Context, n *Node) error {
 	s.term[n.ID] = termGateFailed
 	s.emit(n, event.WorkflowNodeFailed, maxRounds, fmt.Sprintf("exit %d", last.ExitCode))
 	s.resolveOutEdges(n.ID, termGateFailed)
+	s.checkpoint() // 1316：gate_failed 分支值也入快照
 	return nil
 }
 
