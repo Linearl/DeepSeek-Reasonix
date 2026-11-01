@@ -331,7 +331,7 @@ func (a *App) syncSessionCatalogMetadata(ctx context.Context, catalog *sessionca
 		titles := loadTopicTitles(root)
 		sources := loadTopicTitleSources(root)
 		created := loadTopicCreatedAts(root)
-		ordered := pinnedTopicIDs(orderedTopicIDs(ids, titles), pinnedIDs)
+		ordered := pinnedTopicIDs(orderedTopicIDs(ids), pinnedIDs)
 		for index, topicID := range ordered {
 			if deleted[topicID] {
 				continue
@@ -623,7 +623,7 @@ func (a *App) pinnedTopicShells(scope, workspaceRoot string, topicIDs, pinnedIDs
 	created := loadTopicCreatedAts(workspaceRoot)
 	available := make(map[string]bool, len(topicIDs)+len(titles))
 	sortIndex := map[string]int{}
-	for index, topicID := range orderedTopicIDs(topicIDs, titles) {
+	for index, topicID := range orderedTopicIDs(topicIDs) {
 		available[topicID] = true
 		sortIndex[topicID] = index
 	}

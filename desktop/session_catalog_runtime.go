@@ -181,7 +181,7 @@ func (a *App) metadataProjectTopics(scope, workspaceRoot string) []ProjectNode {
 	}
 	out := []ProjectNode{}
 	seen := map[string]bool{}
-	for sortOrder, topicID := range pinnedTopicIDs(orderedTopicIDs(ids, titles), pinnedIDs) {
+	for sortOrder, topicID := range pinnedTopicIDs(orderedTopicIDs(ids), pinnedIDs) {
 		if !manualOrder {
 			sortOrder = -1
 		}

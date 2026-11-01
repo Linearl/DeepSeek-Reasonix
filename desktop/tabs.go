@@ -3778,15 +3778,13 @@ func resetReusableBlankTabTitle(tab *WorkspaceTab, scope, workspaceRoot string) 
 // indexedBlankTopicIDLocked finds a blank topic ID that is indexed on disk
 // but not open in any tab — for reusing without creating a new topic.
 func (a *App) indexedBlankTopicIDLocked(scope, workspaceRoot string) string {
-	titleRoot := topicTitleRoot(scope, workspaceRoot)
-	titles := loadTopicTitles(titleRoot)
 	f := loadProjectsFile()
 
 	var topicIDs []string
 	if scope == "global" {
-		topicIDs = orderedTopicIDs(f.GlobalTopics, titles)
+		topicIDs = orderedTopicIDs(f.GlobalTopics)
 	} else if i := projectIndexByRoot(f.Projects, workspaceRoot); i >= 0 {
-		topicIDs = orderedTopicIDs(f.Projects[i].Topics, titles)
+		topicIDs = orderedTopicIDs(f.Projects[i].Topics)
 	}
 	if len(topicIDs) == 0 {
 		return ""
@@ -6798,9 +6796,22 @@ func pinnedTopicIDs(topicIDs []string, pinned []string) []string {
 	return out
 }
 
-func orderedTopicIDs(explicit []string, titleMap map[string]string) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, len(explicit)+len(titleMap))
+// orderedTopicIDs orders the registered sidebar list: trim, drop empties,
+// dedupe, preserving registration order.
+//
+// tl1331 (G10 喂入侧收口): the title map is no longer consulted to EXPAND the
+// set. The feed set must equal the registered set — a topic that only has a
+// title-table entry is either a leak (global root carrying a project-owned
+// topic) or a not-yet-registered race, and surfacing either in the sidebar
+// made the title table a shadow SSOT (tl1302 深查报告 W10). Title lookups for
+// registered ids happen at the call sites via the same map.
+//
+// Guard: TestOrderedTopicIDsCallSitesGuardTL1331 pins the full call-site set;
+// a new reader must be reviewed against this contract before the allowlist
+// grows.
+func orderedTopicIDs(explicit []string) []string {
+	seen := make(map[string]bool, len(explicit))
+	out := make([]string, 0, len(explicit))
 	for _, tid := range explicit {
 		tid = strings.TrimSpace(tid)
 		if tid == "" || seen[tid] {
@@ -6809,14 +6820,7 @@ func orderedTopicIDs(explicit []string, titleMap map[string]string) []string {
 		seen[tid] = true
 		out = append(out, tid)
 	}
-	var remaining []string
-	for tid := range titleMap {
-		if !seen[tid] {
-			remaining = append(remaining, tid)
-		}
-	}
-	sort.Strings(remaining)
-	return append(out, remaining...)
+	return out
 }
 
 func projectTreeOrderKey(node ProjectNode) string {
