@@ -234,13 +234,13 @@ groups:
       - id: viewLayout
         labelKey: settings.viewLayout
         tier: recommended
-        onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalSmoothScrollFollow, experimentalDraftRewrite]
+        # tl1309 卡②：trajectoryView（轨迹观测）迁出本卡成员表，入可观测性组
+        # 「运行可观测」卡（704 定位即「可观测性视图」）；灯键随迁出。容器档
+        # 仍推荐（自有档推荐压过其余可选成员，聚合徽章不变）。
+        onKeys: [experimentalSplitView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalSmoothScrollFollow, experimentalDraftRewrite]
         members:
           - id: splitView
             labelKey: settings.splitView
-            tier: optional
-          - id: trajectoryView
-            labelKey: settings.trajectoryView
             tier: optional
           - id: sidebarHoverLeft
             labelKey: settings.sidebarHoverLeft
@@ -347,14 +347,37 @@ groups:
             labelKey: settings.restartUpdate
             tier: recommended
 
-  # ── 可观测性（2 项；任务 783：用量监测卡落组）─────────────────
+  # ── 可观测性（3 项；任务 783：用量监测卡落组；tl1309 卡②：监控 + events
+  #    瘦身 + 轨迹观测三面并「运行可观测」卡）─────────────────
   - key: observability
     labelKey: settings.labGroup.observability
     entries:
-      - id: monitoring
-        labelKey: settings.monitoring
+      # tl1309 卡②：运行可观测（合并卡，742/782/961 条目级合并先例）——
+      # 监控（monitoring：会话+性能监控，perf monitor 面）+ events 瘦身
+      # （eventsRotation：事件日志轮转面，自存储组 sessionStore 卡迁入）+
+      # 轨迹观测（trajectoryView：轨迹投影面，自界面组 viewLayout 卡迁入）
+      # 三成员并卡（任务书②：同属 events/perf 数据面）。容器档 = 成员最高档
+      # （监控推荐 → 推荐）；卡内各行各读各的键、各写各的 setter，配置键零
+      # 变化，已存偏好零迁移。
+      - id: runtimeObservability
+        labelKey: settings.runtimeObservability
         tier: recommended
-        onKeys: [experimentalSessionMonitor, experimentalPerfMonitor]
+        onKeys: [experimentalSessionMonitor, experimentalPerfMonitor, eventsRotationNonDefault, experimentalTrajectoryView]
+        members:
+          # 监控（原 observability 独立卡，推荐档，本件并卡；318.5 的
+          # 会话+性能双开关保持卡内两行独立）。
+          - id: monitoring
+            labelKey: settings.monitoring
+            tier: recommended
+          # events 瘦身（原存储组 sessionStore 卡成员，迁入本卡）。
+          - id: eventsRotation
+            labelKey: settings.eventsRotation
+            tier: optional
+          # 轨迹观测（原界面组 viewLayout 卡成员，迁入本卡；704 DSH 同款
+          # 可观测性视图，纯前端投影）。
+          - id: trajectoryView
+            labelKey: settings.trajectoryView
+            tier: optional
       # 任务 783：「用量监测」合并卡（coding plan 用量架构）——GLM Plan 用量
       # （PlanUsageCard 已上线，provider 解析显示，无开关展示行）+ OpenCode Go
       # 用量（自界面组迁入，782④ 同一动作的落卡半程）。
@@ -410,14 +433,14 @@ groups:
     entries:
       - id: sessionStore
         labelKey: settings.sessionStore
-        onKeys: [sessionStorageNonDefault, eventsRotationNonDefault]
+        # tl1309 卡②：eventsRotation（events 瘦身）迁出本卡成员表，入可观测
+        # 性组「运行可观测」卡——存储档位面（sessionStorage）留本卡；灯键
+        # eventsRotationNonDefault 随迁出（容器档=成员最高档：未稳定，不变）。
+        onKeys: [sessionStorageNonDefault]
         members:
           - id: sessionStorage
             labelKey: settings.sessionStorage
             tier: unstable
-          - id: eventsRotation
-            labelKey: settings.eventsRotation
-            tier: optional
       # 任务 846：配置数据目录可更改（未稳定档，默认关）。独立卡+独立 pane
       # （向导在 SettingsPanel 的 homePointer 分支，HomePointerLabPane）。
       - id: homePointer

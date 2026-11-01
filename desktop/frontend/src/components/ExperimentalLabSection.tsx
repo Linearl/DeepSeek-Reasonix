@@ -643,6 +643,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           // 条目——墙灯读它自己的键（563 教训：成员永远读自己的键，不读卡灯）。
           map[pick] = (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge);
           break;
+        case "monitoring":
+          // tl1309 卡②：monitoring 并入「运行可观测」卡后不再是 rail 条目——
+          // 墙灯同 563 教训读它自己的两键（会话监控 OR 性能监控，318.5 口径）。
+          map[pick] = Boolean(s.experimentalSessionMonitor) || Boolean(s.experimentalPerfMonitor);
+          break;
         case "tabCompress":
           // 任务 742：自适应压缩并入 tabManagement 合并卡后不再是 rail
           // 条目——墙灯同 563 教训读它自己的键，不读合并卡灯。
@@ -1063,9 +1068,17 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             </>
           )}
                     {/* Task 318.5: one entry hosts both monitors. The two switches stay
-              fully independent — enabling one never flips the other. */}
-          {selected === "monitoring" && (
+              fully independent — enabling one never flips the other.
+              tl1309 卡②：monitoring 独立 pane 退役——「运行可观测」合并卡
+              （runtimeObservability，任务书②）成员行承载：perf monitor 面
+              （本段）+ events 瘦身（eventsRotation，自存储组 sessionStore 卡
+              迁入）+ 轨迹观测（trajectoryView，自界面组 viewLayout 卡迁入）。
+              卡头行=卡名+关联说明（依赖/派生：events 轮转瘦的是本卡监控同源
+              的 events 数据面、轨迹视图是会话数据面的只读投影）。各行仍读各
+              的键、写各的 setter（81/123 丢存铁律），配置键零变化。 */}
+          {selected === "runtimeObservability" && (
             <>
+              <SettingsField label={labLabel("runtimeObservability", t("settings.runtimeObservability"))} hint={t("settings.runtimeObservabilityHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
               <SettingsField label={labLabel("monitoring", t("settings.sessionMonitor"))} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
@@ -1175,6 +1188,33 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {/* Task 338: WS series + heap pie, read-only over the existing
                   samples (no new sampling cost; the switch stays authoritative). */}
               <PerfMemorySection busy={busy} apply={apply} />
+              {/* tl1309 卡②成员行：events 瘦身（事件日志轮转，自存储组
+                  sessionStore 卡迁入；SessionEventsPanel 原样随迁，配置键
+                  events_auto_rotation/阈值族零变化，行级徽章经 labLabel 保留）。 */}
+              <SettingsField label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+                {/* The backend normalizes the stored mode to off|manual|auto
+                    (config helper falls back to manual), so the cast cannot name
+                    a value the locales lack. */}
+                <SessionEventsPanel mode={(s.eventsAutoRotation ?? "manual") as RotationMode} busy={busy} apply={apply} />
+              </SettingsField>
+              {/* tl1309 卡②成员行：轨迹观测（704 DSH 同款可观测性视图，自界面
+                  组 viewLayout 卡迁入；纯前端投影，开关关=仅转录不变）。 */}
+              <SettingsField label={labLabel("trajectoryView", t("settings.trajectoryView"))} hint={t("settings.trajectoryViewHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalTrajectoryView) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalTrajectoryView(on);
+                      })}
+                    >
+                      {t(on ? "settings.trajectoryView.on" : "settings.trajectoryView.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {/* Task 561 M7 会话存储族: storage-version + event-rotation fold into ONE
@@ -1238,12 +1278,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   <DagBackupCleanupSection t={t} busy={busy} />
                 </LabSectionCard>
               </SettingsField>
-              <SettingsField label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
-                {/* The backend normalizes the stored mode to off|manual|auto
-                    (config helper falls back to manual), so the cast cannot name
-                    a value the locales lack. */}
-                <SessionEventsPanel mode={(s.eventsAutoRotation ?? "manual") as RotationMode} busy={busy} apply={apply} />
-              </SettingsField>
+              {/* tl1309 卡②：eventsRotation（events 瘦身）成员行迁出本卡——入
+                  可观测性组「运行可观测」卡（同属 events 数据面）；SessionEventsPanel
+                  原样随迁，配置键/setter 零变化。 */}
             </>
           )}
           {/* 任务 782：视图布局（合并卡，742 tabManagement 先例）——分栏 +
@@ -1270,22 +1307,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("trajectoryView", t("settings.trajectoryView"))} hint={t("settings.trajectoryViewHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalTrajectoryView) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalTrajectoryView(on);
-                      })}
-                    >
-                      {t(on ? "settings.trajectoryView.on" : "settings.trajectoryView.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
+              {/* tl1309 卡②：trajectoryView（轨迹观测）成员行迁出本卡——入
+                  可观测性组「运行可观测」卡（704 定位即「可观测性视图」），
+                  开关行原样随迁，配置键/setter 零变化。 */}
               {/* 任务 826：左右边栏 hover 展开（视图布局卡成员，左右独立两键
                   两行——各读各键各写各 setter；300ms 防误触 + 离开 15s 延时
                   折叠，只回收 hover 自动展开的，手动展开不回收）。纯前端门：

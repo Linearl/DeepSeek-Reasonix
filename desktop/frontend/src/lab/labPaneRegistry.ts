@@ -19,12 +19,16 @@ export type ExperimentFeatureId =
   //   sessionStore       = M7 会话存储族 (sessionStorage + eventsRotation)
   //   （任务 517：M1 autonomousRunGuard 与 standalone eventWaitRecheck 已并入
   //   单键卡 safetyCostControl——不是入口级合并，是配置键级合并。）
-  // M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
-  // fullAccess（tl1309：optimisticParallel 自此清单并入 contextGovernance 卡）。
+  // M8 keeps standalone entries: autopilot / sessionCollab / fullAccess
+  // （tl1309 卡①：optimisticParallel 并 contextGovernance；卡②：monitoring 并
+  // runtimeObservability——两 id 自此清单除名）。
   | "autopilot"
   // Task 318.5: session + performance monitoring merge into one lab entry
   // (the two underlying switches stay independent inside the page).
-  | "monitoring"
+  // tl1309 卡②：monitoring 独立 pane 退役——并入「运行可观测」合并卡
+  // （runtimeObservability）成员行（961 先例；union id 同步摘除，行级徽章
+  // 经 labLabel 保留）。
+  | "runtimeObservability"
   // 任务 782：视图布局合并卡（分栏 + 轨迹视图，条目级合并，742 先例）——
   // splitView/trajectoryView 独立 pane 退役为卡内成员行（键/setter 零变化）。
   | "viewLayout"
@@ -169,7 +173,9 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "inputSelection",
   "usageMonitoring",
   "updateFeedback",
-  "monitoring",
+  // tl1309 卡②：monitoring 独立 pane 退役——「运行可观测」合并卡成员行
+  // （961 先例）；容器 id 入表。
+  "runtimeObservability",
   "devDebug",
   "sessionStore",
   // 任务 846: data-home migration wizard pane.

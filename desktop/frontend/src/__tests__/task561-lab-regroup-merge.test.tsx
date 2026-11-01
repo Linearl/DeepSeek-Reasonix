@@ -199,19 +199,28 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   ] },
   // 任务 785：S1 常驻底座开关详情卡退役——endMarker 随迁到物理下一个卡
   // monitoring（旧 marker 不存在会让 cardSlice 返回空、测试假红/假绿）。
-  { id: "updateFeedback", endMarker: '{selected === "monitoring" && (', members: [
+  // tl1309 卡②：monitoring pane 退役并入「运行可观测」合并卡——endMarker
+  // 再随迁到 runtimeObservability。
+  { id: "updateFeedback", endMarker: '{selected === "runtimeObservability" && (', members: [
     // 任务 971：restartUpdate 迁至工具优化聚合页（toolOptimizations pane）——
     // 本卡不再含该行（键/setter 零变化，仅 UI 落点迁移）。
     { label: "M6 feedback", field: "s.experimentalFeedback", setter: "app.SetExperimentalFeedback(on)" },
     // 任务 670: fork 首启提示（默认开，用户裁决）入卡，独立开关独立 setter。
     { label: "670 forkNotice", field: "s.forkNotice", setter: "app.SetDesktopForkNotice(on)" },
   ] },
+  // tl1309 卡②：「运行可观测」合并卡（monitoring+events 瘦身+轨迹观测）——
+  // M7 eventsRotation 行自 sessionStore、M8 监控段自 monitoring、782
+  // trajectoryView 行自 viewLayout 三处随迁本卡（键/setter 零变化）。
+  { id: "runtimeObservability", endMarker: '{selected === "sessionStore" && (', members: [
+    { label: "tl1309 eventsRotation", field: "RotationMode", setter: "" },
+    { label: "tl1309 trajectoryView", field: "s.experimentalTrajectoryView", setter: "app.SetExperimentalTrajectoryView(on)" },
+  ] },
   // 任务 782：splitView pane 退役并入 viewLayout 合并卡——sessionStore 的
   // endMarker 随迁到源码中的后继分支 viewLayout（旧 marker 不存在会让
-  // cardSlice 返回空、测试假红/假绿）。
+  // cardSlice 返回空、测试假红/假绿）。tl1309 卡②：eventsRotation 行迁出本卡
+  // （成员清单随迁 runtimeObservability）。
   { id: "sessionStore", endMarker: '{selected === "viewLayout" && (', members: [
     { label: "M7 sessionStorage", field: "storageMode === mode", setter: "app.SetSessionStorage(mode)" },
-    { label: "M7 eventsRotation", field: "RotationMode", setter: "" },
   ] },
   // 任务 782：界面组三张条目级合并卡（742 tabManagement 先例）——各成员行
   // 读自己的键、写自己的 setter；聚合徽章断言在 562 测试。
@@ -220,7 +229,7 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // 任务 1072：renderArtifact 整功能移除，成员行随件退役（不再断言）。
   { id: "viewLayout", endMarker: '{selected === "collabHub" && (', members: [
     { label: "782 splitView", field: "s.experimentalSplitView", setter: "app.SetExperimentalSplitView(on)" },
-    { label: "782 trajectoryView", field: "s.experimentalTrajectoryView", setter: "app.SetExperimentalTrajectoryView(on)" },
+    // tl1309 卡②：trajectoryView 行迁出本卡（成员清单随迁 runtimeObservability）。
   ] },
   { id: "searchHistory", endMarker: '{selected === "localServer" && (', members: [
     { label: "782 promptHistoryPicker", field: "s.experimentalPromptHistoryPicker", setter: "app.SetExperimentalPromptHistoryPicker(on)" },
@@ -271,12 +280,15 @@ for (const family of families) {
 // ② M7 specifics: the storage-mode selector and the rotation panel both live
 //    inside the sessionStore card, each with its own setter. tl1287: the
 //    selector renders from the v3-only selectable list (v4 support retired).
+//    tl1309 卡②：rotation panel 随 eventsRotation 成员行迁出——挂载面断言
+//    随迁「运行可观测」卡（setter 仍在 SessionEventsPanel）。
 {
   const card = cardSlice('{selected === "sessionStore" && (', '{selected === "viewLayout" && (');
   ok(card.includes("SESSION_STORAGE_SELECTABLE_MODES.map") && card.includes("app.SetSessionStorage(mode)"),
     "M7 sessionStorage: mode selector saves through SetSessionStorage");
-  ok(card.includes("<SessionEventsPanel"),
-    "M7 eventsRotation: rotation panel mounts inside the sessionStore card (its setters live in SessionEventsPanel)");
+  const obs = cardSlice('{selected === "runtimeObservability" && (', '{selected === "sessionStore" && (');
+  ok(obs.includes("<SessionEventsPanel"),
+    "tl1309 eventsRotation: rotation panel mounts inside the runtimeObservability card (its setters live in SessionEventsPanel)");
 }
 
 // ② M2 specifics: modelCapabilityFilter renders READ-ONLY (no setter call in
@@ -292,13 +304,13 @@ for (const family of families) {
 // 数据（入口 id + 自有 onKeys），pane 分支断言仍读 SettingsPanel。
 // tl1309 卡①：optimisticParallel 自 M8 清单并入 contextGovernance 卡
 // （任务书①，961 先例——独立 rail 入口/pane 分支退役为成员行）。
+// tl1309 卡②：monitoring 同款并入 runtimeObservability 卡。
 {
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const entryIds = new Set(LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id)));
   for (const [id, pane] of [
     ["autopilot", '{selected === "autopilot" && ('],
     ["sessionCollab", '{selected === "sessionCollab" && ('],
-    ["monitoring", '{selected === "monitoring" && ('],
     ["fullAccess", '{selected === "fullAccess" && ('],
   ] as const) {
     ok(entryIds.has(id), `M8 ${id} keeps its own rail entry`);
@@ -341,6 +353,8 @@ for (const id of [
   "outputStyle",
   // tl1309 卡①：optimisticParallel 并入 contextGovernance 卡（同款先例）。
   "optimisticParallel",
+  // tl1309 卡②：monitoring 并入「运行可观测」卡（同款先例）。
+  "monitoring",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);
@@ -355,6 +369,8 @@ for (const id of [
   "usageMonitoring",
   // 任务 961：两张合并卡容器 id 进 union。
   "smartAutomation", "interactionPresentation",
+  // tl1309 卡②：「运行可观测」合并卡容器 id 进 union。
+  "runtimeObservability",
 ]) {
   ok(panel.includes(`| "${id}"`), `union gains the family id ${id}`);
 }

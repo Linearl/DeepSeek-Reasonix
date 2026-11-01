@@ -185,7 +185,13 @@ export type TierFeatureId =
   // 提取+心跳任务后台化）、interactionPresentation（交互与呈现：快捷指令+
   // 轨迹状态+回答风格）。
   | "smartAutomation"
-  | "interactionPresentation";
+  | "interactionPresentation"
+  // tl1309 卡②：「运行可观测」合并卡容器 id（可观测性组，961 先例纯前端
+  // 容器、无自有配置键）——监控（monitoring，会话+性能数据面）+ events 瘦身
+  // （eventsRotation，事件日志轮转面）+ 轨迹观测（trajectoryView，轨迹投影
+  // 面）三散条/迁出成员并卡（任务书②：同属 events/perf 数据面）。Go 渲染
+  // 表无条目，同 tabManagement 豁免。
+  | "runtimeObservability";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -363,6 +369,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 组织，不降级任何成员特性。
   smartAutomation: "optional",
   interactionPresentation: "recommended",
+  // tl1309 卡②：「运行可观测」合并卡容器档 = 成员最高档（监控推荐压过
+  // events 瘦身/轨迹观测两可选 → 推荐）。
+  runtimeObservability: "recommended",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render.go labFeatureTiers,
@@ -441,10 +450,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * jsonlZstd 补登（58c19737d，optional 非 unstable）⇒ 并集态 81 项/可选 44/
  * 未稳定 12（zcode 预警的「81/13」中 13 系误算，已按实值修正）。
  * tl1193b：pinnedIndex（pinned 常驻层索引化，实验室新「记忆与上下文」组首卡）
- * 按未稳定档入表——未稳定 12→13、总数 81→82（Go 渲染表同步 72→73）。 */
+ * 按未稳定档入表——未稳定 12→13、总数 81→82（Go 渲染表同步 72→73）。
+ * tl1309 卡②：runtimeObservability（「运行可观测」合并卡，纯前端容器 id）按
+ * 推荐档入表——推荐 21→22、总数 82→83（Go 渲染表无条目，同 tabManagement 豁免）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
-  recommended: 21,
+  recommended: 22,
   optional: 44,
   unstable: 12,
   retired: 1,
@@ -515,7 +526,9 @@ export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, reado
   selectionActions: ["settings.labGroup.ui", "settings.inputSelection"],
   completionSummary: ["settings.labGroup.ui", "settings.completionSummary"],
   // ── observability（可观测性）─────────────────────────────────
-  monitoring: ["settings.labGroup.observability", "settings.monitoring"],
+  // tl1309 卡②：监控并入「运行可观测」合并卡——设置位置指到新卡（742
+  // tabCompress → tabManagement 同款）。
+  monitoring: ["settings.labGroup.observability", "settings.runtimeObservability"],
 };
 
 /**

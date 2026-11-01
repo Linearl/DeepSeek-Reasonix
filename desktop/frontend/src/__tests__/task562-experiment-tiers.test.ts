@@ -133,11 +133,14 @@ console.log("\ntask 562 lab three-tier badges");
   // 「81/13」中 13 系误算——jsonlZstd 非 unstable，已按实值钉 12）。
   // tl1193b：pinnedIndex（pinned 常驻层索引化，实验室新「记忆与上下文」组
   // 首卡）按未稳定档入表——未稳定 12→13、总数 81→82（Go 侧同步 72→73）。
-  ok(counts.stable === 4 && counts.recommended === 21 && counts.optional === 44 && counts.unstable === 12 && counts.retired === 1,
-    `register counts are 4 稳定/20/44/13/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 82, `register holds exactly 82 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 21 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/21/44/12/1");
+  // tl1309 卡②：runtimeObservability（「运行可观测」合并卡，纯前端容器 id）
+  // 按推荐档入表——推荐 21→22、总数 82→83（Go 渲染表无条目，同 tabManagement
+  // 豁免）。
+  ok(counts.stable === 4 && counts.recommended === 22 && counts.optional === 44 && counts.unstable === 12 && counts.retired === 1,
+    `register counts are 4 稳定/22/44/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 83, `register holds exactly 83 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 22 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/22/44/12/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -202,7 +205,8 @@ console.log("\ntask 562 lab three-tier badges");
   // tl 1165：smoothScrollFollow 入表（两侧共享）——Go registry 68→69。
   // tl-1218：multi_edit 三条增强入表（两侧共享，工具优化聚合页成员行）——
   // Go registry 69→72。tl1193b：pinnedIndex 入表（两侧共享，记忆与上下文组
-  // 新组首卡）——Go registry 72→73。
+  // 新组首卡）——Go registry 72→73。tl1309 卡②：runtimeObservability 为纯
+  // 前端容器 id（Go 渲染表无条目，同 tabManagement 豁免），Go registry 仍 73。
   ok(Object.keys(goTiers).length === 73, `Go registry parses to 73 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
@@ -213,8 +217,8 @@ console.log("\ntask 562 lab three-tier badges");
   ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "networkRetryBudget", "sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
   // tl 1132：startupLoading（「启动与加载」纯前端容器 id，Go 渲染表无条目，
-  // 同 tabManagement 豁免）加入 feOnly。
-  ok(JSON.stringify(feOnly) === JSON.stringify(["glmPlanUsage", "heartbeatRotation", "inputSelection", "interactionPresentation", "logManagement", "modelCapabilityFilter", "searchHistory", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout"]),
+  // 同 tabManagement 豁免）加入 feOnly。tl1309 卡②：runtimeObservability 加入。
+  ok(JSON.stringify(feOnly) === JSON.stringify(["glmPlanUsage", "heartbeatRotation", "inputSelection", "interactionPresentation", "logManagement", "modelCapabilityFilter", "runtimeObservability", "searchHistory", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
@@ -251,7 +255,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl 1165：viewLayout 卡补 smoothScrollFollow 成员行——46→47。
   // tl-1218：toolOptimizations 卡补 multi_edit 三条增强成员行——47→50。
   // tl1309 卡①：optimisticParallel 散条并入 contextGovernance 卡——50→51。
-  ok(members.length === 51, `merged cards carry 51 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl1309 卡②：monitoring 并 runtimeObservability（eventsRotation/
+  // trajectoryView 为跨卡平移，成员总数净零）——51→52。
+  ok(members.length === 52, `merged cards carry 52 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -271,7 +277,7 @@ console.log("\ntask 562 lab three-tier badges");
   // tl-1218：multi_edit 三条增强叠加入表 → 80（基线 77 口径 +3）；
   // 并集解回调（58c19737d jsonlZstd 已计入主线 78 口径）→ 78+3=81。
   // tl1193b：pinnedIndex 独立 rail 入口计入（记忆与上下文新组）→ 82。
-  ok(covered.size === 82, "rail entries cover all 82 features");
+  ok(covered.size === 83, "rail entries cover all 83 features");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
@@ -308,7 +314,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 971：toolOptimizations 聚合页（readBack 推荐 + 证据门未稳定 + multi_edit
   // 直注可选 + restart_update 推荐）——卡头聚合单枚 推荐。
   ok(agg("toolOptimizations") === "recommended", `toolOptimizations hub aggregates to 推荐 (got ${String(agg("toolOptimizations"))})`);
-  ok(agg("sessionStore") === "optional", `sessionStore aggregates to 可选 over its unstable member (got ${String(agg("sessionStore"))})`);
+  // tl1309 卡②：eventsRotation 迁出 sessionStore——仅余未稳定成员，聚合终值
+  // 可选→未稳定（未稳定压过可选的聚合方向不变，成员面变化如实反映）。
+  ok(agg("sessionStore") === "unstable", `sessionStore aggregates to 未稳定 after the tl1309 eventsRotation move (got ${String(agg("sessionStore"))})`);
+  // tl1309 卡②：运行可观测卡聚合输入 [推荐(监控), 可选(events 瘦身/轨迹观测)]
+  // → 卡头单枚 推荐。
+  ok(JSON.stringify(railTiersForDefault("runtimeObservability")) === JSON.stringify(["recommended", "optional"]) && agg("runtimeObservability") === "recommended",
+    `runtimeObservability: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("runtimeObservability"))} → ${String(agg("runtimeObservability"))})`);
   ok(agg("devDebug") === "unstable", `devDebug aggregates to 未稳定 (got ${String(agg("devDebug"))})`);
   // 任务 782：界面组三张合并卡逐卡钉聚合终值——容器徽章 = 成员最高档
   // （searchHistory 三成员 [推荐,可选] → 推荐；inputSelection 全可选成员 → 可选）。

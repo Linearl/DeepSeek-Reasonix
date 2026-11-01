@@ -5669,6 +5669,9 @@ export const en = {
   "settings.highSpeedModel.on": "On",
   "settings.highSpeedModel.off": "Off",
   "settings.monitoring": "Monitoring (session + performance)",
+  // tl1309 card 2: "Runtime Observability" merged card (monitoring + events slimming + trajectory).
+  "settings.runtimeObservability": "Runtime Observability",
+  "settings.runtimeObservabilityHint": "Aggregates three faces of the same events/perf data plane: session/performance monitoring (perf samples every 5s), event-log slimming via rotation, and the read-only trajectory projection of session data.",
   "settings.compressOpt": "Compaction optimization",
   "settings.budgetControl": "Budget control",
   "settings.proactiveCompact": "Proactive compact cooldown (configurable)",

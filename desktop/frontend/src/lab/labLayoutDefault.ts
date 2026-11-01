@@ -37,6 +37,10 @@
 //       （plan E pinned 常驻层索引化，未稳定档，默认关，boot 快照重启生效）。
 //   tl1256 调序：「记忆与上下文」组移基础设施组之后（原 automation 后
 //       efficiency 前，用户 20261029 令；yaml 同步移动）。
+//   tl1309 卡②：可观测性组 monitoring 散卡 + eventsRotation（自存储组
+//       sessionStore 卡迁出）+ trajectoryView（自界面组 viewLayout 卡迁出）
+//       三成员并「运行可观测」卡（runtimeObservability，容器档=成员最高档
+//       推荐；配置键/setter/徽章零变化）。
 
 import type { DictKey } from "../locales/en";
 import type { LabTier, TierFeatureId } from "../lib/experimentTiers";
@@ -249,10 +253,11 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.viewLayout",
           // tl 1125：视图布局合并卡升「推荐」（与标签页管理一并，同指令）。
           tier: "recommended",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite"],
+          // tl1309 卡②：trajectoryView（轨迹观测）迁出本卡成员表（入可观测
+          // 性组「运行可观测」卡，704 定位即「可观测性视图」）；灯键随迁出。
+          onKeys: ["experimentalSplitView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
-            { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
             { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" },
             { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" },
             { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" },
@@ -334,11 +339,24 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "observability",
       labelKey: "settings.labGroup.observability",
       entries: [
+        // tl1309 卡②：运行可观测（合并卡，742/782/961 条目级合并先例）——
+        // 监控（monitoring，会话+性能监控面）+ events 瘦身（eventsRotation，
+        // 自存储组 sessionStore 卡迁入）+ 轨迹观测（trajectoryView，自界面组
+        // viewLayout 卡迁入）三成员并卡（任务书②：同属 events/perf 数据面）。
+        // 容器档 = 成员最高档（监控推荐 → 推荐）；配置键零变化。
         {
-          id: "monitoring",
-          labelKey: "settings.monitoring",
+          id: "runtimeObservability",
+          labelKey: "settings.runtimeObservability",
           tier: "recommended",
-          onKeys: ["experimentalSessionMonitor", "experimentalPerfMonitor"],
+          onKeys: ["experimentalSessionMonitor", "experimentalPerfMonitor", "eventsRotationNonDefault", "experimentalTrajectoryView"],
+          members: [
+            // 监控（原 observability 独立卡，推荐档，本件并卡）。
+            { id: "monitoring", labelKey: "settings.monitoring", tier: "recommended" },
+            // events 瘦身（原存储组 sessionStore 卡成员，迁入本卡）。
+            { id: "eventsRotation", labelKey: "settings.eventsRotation", tier: "optional" },
+            // 轨迹观测（原界面组 viewLayout 卡成员，迁入本卡）。
+            { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
+          ],
         },
         // 任务 783：「用量监测」合并卡（coding plan 用量架构）——GLM Plan
         // 用量（PlanUsageCard 已上线，provider 解析显示，无开关展示行）+
@@ -394,10 +412,12 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "sessionStore",
           labelKey: "settings.sessionStore",
-          onKeys: ["sessionStorageNonDefault", "eventsRotationNonDefault"],
+          // tl1309 卡②：eventsRotation（events 瘦身）迁出本卡成员表（入可
+          // 观测性组「运行可观测」卡）；灯键随迁出（容器档=成员最高档：未
+          // 稳定，不变）。
+          onKeys: ["sessionStorageNonDefault"],
           members: [
             { id: "sessionStorage", labelKey: "settings.sessionStorage", tier: "unstable" },
-            { id: "eventsRotation", labelKey: "settings.eventsRotation", tier: "optional" },
           ],
         },
         // 任务 846：配置数据目录可更改（未稳定档，默认关）。独立卡——迁移

@@ -5654,6 +5654,9 @@ export const zh: Record<DictKey, string> = {
   "settings.highSpeedModel.on": "开启",
   "settings.highSpeedModel.off": "关闭",
   "settings.monitoring": "监控（会话 + 性能）",
+  // tl1309 卡②：「运行可观测」合并卡（监控 + events 瘦身 + 轨迹观测）。
+  "settings.runtimeObservability": "运行可观测",
+  "settings.runtimeObservabilityHint": "聚合会话/性能监控、事件日志瘦身与轨迹投影三面：监控看运行指标（perf 每 5s 采样），events 轮转给事件日志瘦身，轨迹视图是会话数据面的只读投影——三者同属 events/perf 数据面。",
   "settings.compressOpt": "压缩优化",
   "settings.budgetControl": "预算控制",
   "settings.proactiveCompact": "主动压缩冷却（可配）",

@@ -5650,6 +5650,9 @@ export const zhTW: Record<DictKey, string> = {
   "settings.highSpeedModel.on": "開啟",
   "settings.highSpeedModel.off": "關閉",
   "settings.monitoring": "監控（會話 + 性能）",
+  // tl1309 卡②：「執行可觀測」合併卡（監控 + events 瘦身 + 軌跡觀測）。
+  "settings.runtimeObservability": "執行可觀測",
+  "settings.runtimeObservabilityHint": "聚合會話/效能監控、事件日誌瘦身與軌跡投影三面：監控看執行指標（perf 每 5s 採樣），events 輪轉給事件日誌瘦身，軌跡視圖是會話資料面的唯讀投影——三者同屬 events/perf 資料面。",
   "settings.compressOpt": "壓縮優化",
   "settings.budgetControl": "預算控制",
   "settings.proactiveCompact": "主動壓縮冷卻（可配）",
