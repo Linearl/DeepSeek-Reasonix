@@ -15,10 +15,21 @@ package workflow
 //         真实缺口不是「无去重」，而是「去重键过严：要求 what 全等」。
 //         ⇒ 按 where 单独去重会误合并同一文件的不同问题（报告里
 //           internal/tool/builtin/webfetch.go 有 3 个不同问题同文件）。
+//         ✅ tl1326 已修（选型 B1：引擎分配来源序号 <nodeID>#<n> + 复核节点
+//         回填序号；add/promote 共用 sameFinding 键）。G3 两钉已按审计线
+//         README 翻正为修复后正向断言，另补三条硬条件钉（⑥同源键/⑦回填
+//         合并可升级/③部分成立）。
 //   G4(medium) 引擎按拓扑序串行执行 —— engine.go runAll 每轮只 execute
 //         一个节点就 break 重扫。附带两个隐藏前置的读数：
 //         ①bag.add 有锁（report.go:52）⇒ 无数据竞争，但并行化仍需确认；
 //         ②并行化必须复用 agent 层 DefaultMaxParallelWriters。
+//         ✅ tl1326 已修（审计 05 变体 A「并发段+单写者汇聚」：并发段只派
+//         runner 拿 answer、不碰 runState；gate/join/phase 保持串行内联；
+//         事件与 bag 顺序按波次=声明序保持确定；写代理并发上限复用 agent
+//         层 session scheduler，不造新并发语义）。
+//         G4_RunsSeriallyNotConcurrently 已翻正为 IndependentNodesRunConcurrently，
+//         另补状态完整性钉（本机无 gcc 跑不了 -race ⇒ 测试自断言条数与
+//         完整性，CI 不开 -race 也能抓丢条/丢状态）。
 //   G6(medium) 工作流子代理在任务/子代理面板不可见 —— 已由 tl1324 修复
 //         （方案 A 修正版：TaskSubagentRunner.Run 节点级登记进 taskmonitor，
 //         复用 controller 装配的同一 recorder 实例）。两条 G6 钉已改为
@@ -102,18 +113,24 @@ func gapBFinding(where, what string) string {
 	return fmt.Sprintf(`{"where":%q,"what":%q,"evidence":"ev","severity":"medium"}`, where, what)
 }
 
-// TestGapB_G3_SameIssueDifferentWordingLandsTwice 证明 G3：
-// 同一问题在扫描节点与复核节点用**不同措辞** ⇒ bag 的 (where, what) 全等去重失效
-// ⇒ 两条都进袋（报告条数虚高）。
-//
-// 现状应通过（缺口成立）：最终 findings 有 2 条。
-// 修复后此测试应转红（届时把断言改为「只有 1 条」）。
+// gapBFindingWithID 构造一条带引擎来源序号的 finding JSON 片段（B1 回填形态）。
+func gapBFindingWithID(where, what, id string) string {
+	return strings.TrimSuffix(gapBFinding(where, what), "}") + `,"id":"` + id + `"}`
+}
+
+// TestGapB_G3_SameIssueDifferentWordingLandsTwice —— 名字是缺口存证：修复前
+// 同一 where 因措辞不同落袋 2 条（(where, what) 全等去重失效）。
+// tl1326 B1 修复后的正向断言（原 wantCurrentlyPass 断言已按审计线 README 翻正）：
+// 引擎给扫描条目分配来源序号（scanner#1）并随 {{scanner.findings}} 传给复核
+// 节点；复核节点回填该序号 ⇒ add 按序号把改写措辞合并进原条目 ⇒ 只落 1 条。
 func TestGapB_G3_SameIssueDifferentWordingLandsTwice(t *testing.T) {
 	const where = "internal/tool/builtin/webfetch.go:200"
 
 	// 扫描者原话 vs 复核者改写后的话 —— 指向同一处代码，措辞不同。
+	// 复核者回填引擎注扎的序号（生产链路：{{scanner.findings}} 携带
+	// "id":"scanner#1"，复核复制回自己重报的条目上）。
 	scannerWording := gapBFinding(where, "每次请求新建 Transport，无 idle 超时")
-	reviewerWording := gapBFinding(where, "Transport 未复用且缺少 idle 超时设置")
+	reviewerWording := gapBFindingWithID(where, "Transport 未复用且缺少 idle 超时设置", "scanner#1")
 
 	runner := &gapBRunner{byNode: map[string]string{
 		"scanner":  `{"findings":[` + scannerWording + `],"count":1,"coverage":"c"}`,
@@ -127,7 +144,7 @@ func TestGapB_G3_SameIssueDifferentWordingLandsTwice(t *testing.T) {
     {"id":"scanner","type":"subagent","prompt":"scan",
      "result":[{"name":"findings","type":"array"}],
      "findings_field":"findings"},
-    {"id":"reviewer","type":"subagent","prompt":"review",
+    {"id":"reviewer","type":"subagent","prompt":"review {{scanner.findings}}",
      "result":[{"name":"confirmed","type":"array"},{"name":"rejected","type":"array"}],
      "findings_field":"confirmed"}
   ],
@@ -141,17 +158,16 @@ func TestGapB_G3_SameIssueDifferentWordingLandsTwice(t *testing.T) {
 	}
 
 	got := run.bag.snapshot()
-	if len(got) != 2 {
-		t.Fatalf("G3 前提不成立：期望 2 条（措辞不同 ⇒ 全等去重失效），实际 %d 条", len(got))
+	if len(got) != 1 {
+		t.Fatalf("修复后（B1 序号回填合并）同一问题应只落 1 条，实际 %d 条：%+v", len(got), got)
 	}
-	t.Logf("G3 成立（当前未修）：同一 where（%s）因措辞不同落袋 2 条", where)
-	t.Logf("  条目1 what=%q", got[0].What)
-	t.Logf("  条目2 what=%q", got[1].What)
-
-	// 修复后的正向断言（现在必然失败，作为修复的验收标准留档）：
-	//   if len(got) != 1 {
-	//       t.Fatalf("修复后同一问题应只落 1 条，实际 %d", len(got))
-	//   }
+	if got[0].What != "Transport 未复用且缺少 idle 超时设置" {
+		t.Fatalf("合并应采纳拓扑在后（复核）的措辞，实际 what=%q", got[0].What)
+	}
+	if got[0].SourceID != "scanner#1" {
+		t.Fatalf("合并条目应保留引擎来源序号，实际 %q", got[0].SourceID)
+	}
+	t.Logf("G3 已修（B1）：复核回填序号 scanner#1，改写措辞合并进原条目，只落 1 条")
 }
 
 // TestGapB_G3_SameIssueIdenticalWordingLandsOnce 是对照组：
@@ -237,6 +253,121 @@ func TestGapB_G3_DifferentIssuesSameFileMustNotMerge(t *testing.T) {
 	t.Logf("过度合并护栏成立：同文件 3 个不同问题落 3 条")
 }
 
+// TestGapB_G3_MergedEntryPromotesToVerified 钉 tl1326 硬条件⑦（B1 全链路）：
+// 扫描产出条目（引擎注序号 scanner#1）→ 复核 subagent 回填序号（措辞改写，
+// 袋内条目数不增）→ confirm 节点以 verdicts 按序号逐条升级 ⇒ 袋内仍 1 条、
+// 状态 verified、evidence 并入裁决 note；且 confirm 的 evidence 携带序号
+// （复核看得见、回填得回来）。
+func TestGapB_G3_MergedEntryPromotesToVerified(t *testing.T) {
+	const where = "internal/tool/builtin/webfetch.go:200"
+	runner := &gapBRunner{byNode: map[string]string{
+		"scanner":  `{"findings":[` + gapBFinding(where, "每次请求新建 Transport，无 idle 超时") + `],"count":1,"coverage":"c"}`,
+		"reviewer": `{"confirmed":[` + gapBFindingWithID(where, "Transport 未复用且缺少 idle 超时设置", "scanner#1") + `],"rejected":[]}`,
+		"checker":  `{"confirmed":true,"reason":"reproduced","verdicts":[{"id":"scanner#1","confirmed":true,"note":"reproduced via benchmarks"}]}`,
+	}}
+	doc := `{
+  "version": 1,
+  "name": "gap-g3-b1-fullchain",
+  "nodes": [
+    {"id":"scanner","type":"subagent","prompt":"scan",
+     "result":[{"name":"findings","type":"array"}],
+     "findings_field":"findings"},
+    {"id":"reviewer","type":"subagent","prompt":"review {{scanner.findings}}",
+     "result":[{"name":"confirmed","type":"array"},{"name":"rejected","type":"array"}],
+     "findings_field":"confirmed"},
+    {"id":"checker","type":"confirm","target":"scanner"}
+  ],
+  "edges": [{"from":"scanner","to":"reviewer"}]
+}`
+	wf := gapBParse(t, doc)
+	eng := New(runner, nil, nil)
+	run := newRunState(eng, wf)
+	if err := run.runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+
+	got := run.bag.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("回填+确认后袋内应仍 1 条（条目数不得因回填增长），实际 %d：%+v", len(got), got)
+	}
+	if got[0].Status != FindingVerified {
+		t.Fatalf("回填条目应被 verdicts 升为 verified，实际 %s", got[0].Status)
+	}
+	if got[0].What != "Transport 未复用且缺少 idle 超时设置" {
+		t.Fatalf("条目措辞应为复核改写版（后写覆盖），实际 %q", got[0].What)
+	}
+	if !strings.Contains(got[0].Evidence, "[confirm] reproduced via benchmarks") {
+		t.Fatalf("verdict note 应并入 evidence，实际 %q", got[0].Evidence)
+	}
+	// ⑦ 前半：传给 confirm 的 evidence 携带来源序号（复核可见、可回填）。
+	var confirmPrompt string
+	for _, p := range runner.prompts {
+		if strings.Contains(p, "independent confirmer sub-agent") {
+			confirmPrompt = p
+		}
+	}
+	if confirmPrompt == "" || !strings.Contains(confirmPrompt, "scanner#1") {
+		t.Fatalf("confirm evidence 应携带来源序号 scanner#1，prompts=%v", runner.prompts)
+	}
+	t.Logf("硬条件⑦成立：序号随 evidence 下行、复核回填合并不增条、verdicts 逐条升级 verified")
+}
+
+// TestGapB_G3_PartialVerdictsPromoteOnlyConfirmed 钉 tl1326 硬条件③（B1 的
+// 价值所在，最易漏）：复核对 3 条给「1 成立 2 不成立」⇒ 只升那 1 条，其余
+// 2 条保持 unconfirmed 且一条不丢；幻觉序号（目标从未产出）不得入袋。
+// 现状（修复前）引擎只知道一个总布尔，要么全升要么全不升——这条修复前必红。
+func TestGapB_G3_PartialVerdictsPromoteOnlyConfirmed(t *testing.T) {
+	items := []string{
+		gapBFinding("a.go:1", "问题一"),
+		gapBFinding("a.go:2", "问题二"),
+		gapBFinding("a.go:3", "问题三"),
+	}
+	runner := &gapBRunner{byNode: map[string]string{
+		"scanner": `{"findings":[` + strings.Join(items, ",") + `],"count":3,"coverage":"c"}`,
+		"checker": `{"confirmed":true,"reason":"one reproduced","verdicts":[` +
+			`{"id":"scanner#1","confirmed":true,"note":"reproduced"},` +
+			`{"id":"scanner#2","confirmed":false},` +
+			`{"id":"scanner#3","confirmed":false},` +
+			`{"id":"scanner#9","confirmed":true}]}`,
+	}}
+	doc := `{
+  "version": 1,
+  "name": "gap-g3-partial",
+  "nodes": [
+    {"id":"scanner","type":"subagent","prompt":"scan",
+     "result":[{"name":"findings","type":"array"}],
+     "findings_field":"findings"},
+    {"id":"checker","type":"confirm","target":"scanner"}
+  ],
+  "edges": []
+}`
+	wf := gapBParse(t, doc)
+	eng := New(runner, nil, nil)
+	run := newRunState(eng, wf)
+	if err := run.runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+
+	got := run.bag.snapshot()
+	if len(got) != 3 {
+		t.Fatalf("3 条发现一条不丢，实际 %d：%+v", len(got), got)
+	}
+	statuses := map[string]string{}
+	for _, f := range got {
+		statuses[f.SourceID] = f.Status
+	}
+	if statuses["scanner#1"] != FindingVerified {
+		t.Fatalf("scanner#1（裁决成立）应升 verified，实际 %s", statuses["scanner#1"])
+	}
+	if statuses["scanner#2"] != FindingUnconfirmed || statuses["scanner#3"] != FindingUnconfirmed {
+		t.Fatalf("被否决的 2 条应保持 unconfirmed（不升级、不丢弃），实际 %v", statuses)
+	}
+	if _, ok := statuses["scanner#9"]; ok {
+		t.Fatalf("幻觉序号 scanner#9 不得入袋：%+v", got)
+	}
+	t.Logf("硬条件③成立：verdicts 逐条升级——1 升 verified、2 保持 unconfirmed、幻觉序号忽略")
+}
+
 // TestGapB_G3_BagAddIsLockedAndIdempotent 记录 reportBag 的既有能力：
 // add 已有锁 + 已按 (where, what) 幂等。
 //
@@ -267,15 +398,62 @@ func TestGapB_G3_BagAddIsLockedAndIdempotent(t *testing.T) {
 		t.Fatalf("并发重复 add 后应仍只落 1 条（证明 add 有锁），实际 %d", len(got))
 	}
 	t.Logf("reportBag 既有能力确认：add 有锁 + 按 (where, what) 幂等 ⇒ G4 并行化无数据竞争风险")
+
+	// tl1326 B1 序号合并：同序号不同措辞 = 复核改写 ⇒ 合并为 1 条（措辞取后写）。
+	b2 := &reportBag{}
+	b2.add(Finding{Where: "a.go:1", What: "原话", Evidence: "e1", Severity: "medium", SourceID: "scan#1"})
+	b2.add(Finding{Where: "a.go:1", What: "改写", Evidence: "e2", Severity: "high", SourceID: "scan#1"})
+	if got := b2.snapshot(); len(got) != 1 || got[0].What != "改写" || got[0].Severity != "high" {
+		t.Fatalf("同序号回填应合并为 1 条并采纳后写措辞，实际 %+v", got)
+	}
+	// 并发加同序号（措辞各异）仍只落 1 条：锁 + 序号合并协同。
+	var wg2 sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg2.Add(1)
+		go func(i int) {
+			defer wg2.Done()
+			b2.add(Finding{Where: "a.go:1", What: fmt.Sprintf("并发改写%d", i), SourceID: "scan#1"})
+		}(i)
+	}
+	wg2.Wait()
+	if got := b2.snapshot(); len(got) != 1 || got[0].SourceID != "scan#1" {
+		t.Fatalf("并发同序号 add 后应仍只 1 条，实际 %+v", got)
+	}
+	t.Logf("B1 序号合并确认：同序号回填（含并发）合并为 1 条，后写措辞生效")
+}
+
+// TestGapB_G3_FindingKeySharedByAddAndPromote 钉 tl1326 硬条件⑥：add 与
+// promote 必须共用同一去重键（sameFinding）。行为级断言：若任一处退回
+// 修复前的「仅 (where,what) 全等」旧键，下面两段必有一段红——这正是
+// 「只改 add 不改 promote ⇒ 合并后永不升级」陷阱的防线。
+func TestGapB_G3_FindingKeySharedByAddAndPromote(t *testing.T) {
+	// add 侧：同序号、不同措辞 ⇒ 必须合并（旧全等键会落 2 条）。
+	b := &reportBag{}
+	b.add(Finding{Where: "a.go:1", What: "原话", SourceID: "s#1"})
+	b.add(Finding{Where: "a.go:1", What: "改写", SourceID: "s#1"})
+	if got := b.snapshot(); len(got) != 1 {
+		t.Fatalf("add 未走序号键（疑似退回全等匹配）：应 1 条，实际 %d：%+v", len(got), got)
+	}
+	// promote 侧：同序号、措辞与袋内条目全不同 ⇒ 必须原地升级（旧全等键会
+	// 匹配失败而追加一条 verified，袋里变 2 条且原条目永不升级）。
+	b.promote(Finding{Where: "zz.go:9", What: "措辞完全不同", SourceID: "s#1"})
+	got := b.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("promote 未走序号键（疑似退回全等匹配而追加）：应仍 1 条，实际 %d：%+v", len(got), got)
+	}
+	if got[0].Status != FindingVerified {
+		t.Fatalf("promote 应按序号升级原条目，实际 status=%s", got[0].Status)
+	}
+	t.Logf("硬条件⑥成立：add 与 promote 对同序号条目解析到同一条（共用 sameFinding 键）")
 }
 
 // ---- G4 ----
 
-// TestGapB_G4_RunsSeriallyNotConcurrently 证明 G4：三个无依赖节点**串行**执行。
-//
-// 现状应通过（缺口成立）：总耗时 ≈ 各节点耗时之和。
-// 修复后此测试应转红（届时断言总耗时 ≈ max(各节点耗时)）。
-func TestGapB_G4_RunsSeriallyNotConcurrently(t *testing.T) {
+// TestGapB_G4_IndependentNodesRunConcurrently（原名
+// TestGapB_G4_RunsSeriallyNotConcurrently，缺口钉翻正为修复后断言）：
+// 三个无依赖节点同波并发——总耗时 ≈ max(各节点耗时) 而非串行累加。
+// 缺口期读数留档：修复前 3 节点各 300ms 串行总耗时 902.6ms。
+func TestGapB_G4_IndependentNodesRunConcurrently(t *testing.T) {
 	const each = 300 * time.Millisecond
 
 	runner := &gapBRunner{
@@ -310,18 +488,194 @@ func TestGapB_G4_RunsSeriallyNotConcurrently(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	// 串行 ⇒ ≈3×each；并行 ⇒ ≈each。
-	serialThreshold := 2*each + 100*time.Millisecond
-	if elapsed < serialThreshold {
-		t.Fatalf("wantCurrentlyPass 断言失败：现状应为串行（耗时 ≥ 2×单节点），实际 %v（若变红说明 G4 可能已修复）", elapsed)
+	// 并行 ⇒ ≈each（≈300ms）；若调度退回串行 ⇒ ≈3×each（≈900ms）。
+	// 阈值 2×each=600ms：两侧各留 300ms 调度余量，CI 慢机也不抖。
+	parallelThreshold := 2 * each
+	if elapsed >= parallelThreshold {
+		t.Fatalf("修复后无依赖节点应同波并发（耗时 ≈%v），实际 %v（≥2×单节点 ⇒ 疑似退回串行）", each, elapsed)
 	}
-	t.Logf("G4 成立（当前未修）：3 节点各 %v，串行总耗时 %v（并行应 ≈%v）", each, elapsed, each)
+	if runner.promptCount() != 3 {
+		t.Fatalf("3 个节点都应被派发，实际 %d", runner.promptCount())
+	}
+	t.Logf("G4 已修：3 节点各 %v，并发总耗时 %v（修复前串行读数 902.6ms）", each, elapsed)
+}
 
-	// 修复后的正向断言（现在必然失败，作为修复的验收标准留档）：
-	//   parallelThreshold := each + 150*time.Millisecond
-	//   if elapsed > parallelThreshold {
-	//       t.Fatalf("修复后应并行，总耗时应 ≈%v，实际 %v", each, elapsed)
-	//   }
+// TestGapB_G4_WaveKeepsStateComplete 是 G4 并行化的**状态完整性钉**
+// （审计 05 §4：本机无 gcc 跑不了 -race ⇒ 不依赖 race detector，测试自己
+// 断言条数与完整性——CI 不开 -race 也能抓丢条/丢状态）。菱形拓扑
+// a→(b,c)→d：a 波、b/c 同波、d 收尾——断言拓扑序、每节点 status/output/
+// result 齐全、findings 一条不丢、verifs 精确、全部边已决策。
+func TestGapB_G4_WaveKeepsStateComplete(t *testing.T) {
+	var order []string
+	var mu sync.Mutex
+	// 每节点各报一条**不同**的 finding（同 where+what 会被幂等去重合并，
+	// 那是 G3 的正确行为，不能在这里当「丢条」误报）。
+	nodeAnswer := func(id string) string {
+		return `{"findings":[{"where":"` + id + `.go:1","what":"问题` + id + `","evidence":"e","severity":"low"}],"count":1,"coverage":"c"}`
+	}
+	runner := &gapBRunner{
+		byNode: map[string]string{
+			"a": nodeAnswer("a"),
+			"b": nodeAnswer("b"),
+			"c": nodeAnswer("c"),
+		},
+		delayByNode: map[string]time.Duration{
+			"a": 50 * time.Millisecond,
+			"b": 50 * time.Millisecond,
+			"c": 100 * time.Millisecond, // c 比 b 慢一倍 ⇒ 并发下波次等最慢者
+		},
+		onRun: func(nodeID string) {
+			mu.Lock()
+			order = append(order, nodeID)
+			mu.Unlock()
+		},
+	}
+
+	doc := `{
+  "version": 1,
+  "name": "gap-g4-wave",
+  "nodes": [
+    {"id":"a","type":"subagent","prompt":"a",
+     "result":[{"name":"findings","type":"array"}],"findings_field":"findings"},
+    {"id":"b","type":"subagent","prompt":"b",
+     "result":[{"name":"findings","type":"array"}],"findings_field":"findings"},
+    {"id":"c","type":"subagent","prompt":"c",
+     "result":[{"name":"findings","type":"array"}],"findings_field":"findings"},
+    {"id":"d","type":"join"}
+  ],
+  "edges": [{"from":"a","to":"b"},{"from":"a","to":"c"},{"from":"b","to":"d"},{"from":"c","to":"d"}]
+}`
+	wf := gapBParse(t, doc)
+	eng := New(runner, nil, nil)
+	run := newRunState(eng, wf)
+	if err := run.runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+
+	mu.Lock()
+	gotOrder := strings.Join(order, ",")
+	mu.Unlock()
+
+	// 拓扑序护栏：order 只含派 runner 的 a,b,c（join d 不派发）；a 在 b/c 之前。
+	// d 在 b/c 之后由下面的 join 聚合断言证明（聚齐 3 上游 ⇒ 两个上游已终态）。
+	idx := func(id string) int { return strings.Index(gotOrder, id) }
+	if idx("a") < 0 || idx("b") < 0 || idx("c") < 0 || idx("d") >= 0 {
+		t.Fatalf("order 应只含 a,b,c（join 不派 runner），实际 %s", gotOrder)
+	}
+	if idx("a") > idx("b") || idx("a") > idx("c") {
+		t.Fatalf("拓扑序被破坏：a 必须在 b/c 之前，order=%s", gotOrder)
+	}
+
+	// 状态完整性：a/b/c 全部 stDone，output/result 有值；bag 3 条一条不丢。
+	for _, id := range []string{"a", "b", "c"} {
+		if run.status[id] != stDone {
+			t.Fatalf("节点 %s 应 stDone，实际 %v", id, run.status[id])
+		}
+		if run.output[id] == "" {
+			t.Fatalf("节点 %s 的 output 丢失（并发写丢状态）", id)
+		}
+		if run.result[id] == nil {
+			t.Fatalf("节点 %s 的 result 丢失（并发写丢状态）", id)
+		}
+	}
+	if got := len(run.bag.snapshot()); got != 3 {
+		t.Fatalf("3 个 findings 节点各 1 条 ⇒ bag 应 3 条，实际 %d", got)
+	}
+	// join d 聚齐直接入边的两个上游（b、c；a 是传递上游不进 join map）——
+	// 能聚齐 ⇒ b/c 都已终态 ⇒ d 在其两个上游之后（拓扑序的状态级证明）。
+	jm, ok := run.result["d"].(map[string]any)
+	if !ok || len(jm) != 2 {
+		t.Fatalf("join d 应聚合直接入边上游 b、c，实际 %v", run.result["d"])
+	}
+	if _, ok := jm["b"]; !ok {
+		t.Fatalf("join d 缺上游 b，实际 %v", jm)
+	}
+	if _, ok := jm["c"]; !ok {
+		t.Fatalf("join d 缺上游 c，实际 %v", jm)
+	}
+	// verifs 只由 gate/confirm 产生 ⇒ 应为空；全部边应已决策。
+	if len(run.verifs) != 0 {
+		t.Fatalf("无 gate/confirm ⇒ verifs 应为空，实际 %v", run.verifs)
+	}
+	for _, e := range run.edges {
+		if !e.decided {
+			t.Fatalf("运行结束后所有边应已决策：%+v", e)
+		}
+	}
+	t.Logf("状态完整性钉成立：波次拓扑序 %s（a→[b,c]→d），3 节点状态齐全、findings 3 条不丢、边全决策", gotOrder)
+}
+
+// TestGapB_G4_PhaseBarrierKeepsSectionChronology 是 phase 屏障钉：真实定义
+// （如 code-audit）把 phase 分区节点声明为无入边的根、夹在节点组之间——串行
+// 引擎按声明序把它们插在扫描节点之间执行，事件 Phase 标签随之分区。并行化
+// 不得让所有根 phase 塌缩进第一波（否则扫描期间事件全带「报告」分区标签）。
+// 断言：phase-review 的 running 事件在扫描节点全部事件之后，且扫描事件的
+// Phase 标签是 phase-scan 的（而非更后面分区的）。
+func TestGapB_G4_PhaseBarrierKeepsSectionChronology(t *testing.T) {
+	runner := &gapBRunner{answer: `{"findings":[],"count":0,"coverage":"c"}`}
+	rec := &eventRecorder{}
+	eng := New(runner, nil, rec)
+	doc := `
+version: 1
+name: gap-g4-phasebarrier
+nodes:
+  - id: phase-scan
+    type: phase
+    label: 扫描分区
+  - id: scan-a
+    type: subagent
+    prompt: a
+    result:
+      - {name: findings, type: array, description: d}
+    findings_field: findings
+  - id: scan-b
+    type: subagent
+    prompt: b
+    result:
+      - {name: findings, type: array, description: d}
+    findings_field: findings
+  - id: phase-review
+    type: phase
+    label: 复核分区
+  - id: reviewer
+    type: subagent
+    prompt: review
+edges:
+  - {from: scan-a, to: reviewer}
+  - {from: scan-b, to: reviewer}`
+	wf := gapBParse(t, doc)
+	if err := newRunState(eng, wf).runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+
+	// 事件序列：phase-review 的 running 必须晚于 scan-a/scan-b 的一切事件。
+	phaseReviewRunning := -1
+	lastScanEvent := -1
+	for i, e := range rec.events {
+		switch {
+		case e.NodeID == "phase-review" && e.State == event.WorkflowNodeRunning:
+			phaseReviewRunning = i
+		case e.NodeID == "scan-a" || e.NodeID == "scan-b":
+			lastScanEvent = i
+		}
+	}
+	if phaseReviewRunning < 0 || lastScanEvent < 0 {
+		t.Fatalf("事件缺失：phaseReviewRunning=%d lastScanEvent=%d，events=%+v", phaseReviewRunning, lastScanEvent, rec.events)
+	}
+	if phaseReviewRunning < lastScanEvent {
+		t.Fatalf("分区时序被破坏：phase-review 的 running（%d）先于扫描节点事件（%d），events=%+v", phaseReviewRunning, lastScanEvent, rec.events)
+	}
+	// 扫描事件的 Phase 标签必须是「扫描分区」（phase-scan 的），不得漂移成
+	// 更后分区的标签。
+	for _, e := range rec.events {
+		if (e.NodeID == "scan-a" || e.NodeID == "scan-b") && e.State == event.WorkflowNodeRunning {
+			if e.Phase != "扫描分区" {
+				t.Fatalf("扫描事件的 Phase 标签漂移：want 扫描分区，got %q", e.Phase)
+			}
+			break
+		}
+	}
+	t.Logf("phase 屏障钉成立：phase-review 在扫描组之后执行，扫描事件 Phase=扫描分区（分区时序与串行引擎一致）")
 }
 
 // TestGapB_G4_ConcurrentBagAddKeepsAllFindings 是 G4 的**并行前置钉**：

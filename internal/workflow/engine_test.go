@@ -152,8 +152,9 @@ edges:
 	}
 	// The consumer prompt must carry the interpolated ancestor output (the
 	// findings array re-marshaled compactly with map keys sorted — Go's
-	// encoding/json orders them alphabetically).
-	want := `[{"evidence":"a[i] without guard","severity":"high","what":"nil deref","where":"src/a.go:42"}]`
+	// encoding/json orders them alphabetically). Since tl1326 B1 the entries
+	// carry the engine's source serial so a downstream reviewer can echo it.
+	want := `[{"evidence":"a[i] without guard","id":"hunt#1","severity":"high","what":"nil deref","where":"src/a.go:42"}]`
 	if !strings.Contains(subs.prompts[1].Prompt, want) {
 		t.Fatalf("consumer prompt missing ancestor ref, got:\n%s", subs.prompts[1].Prompt)
 	}

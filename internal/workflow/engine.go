@@ -88,7 +88,7 @@ type runState struct {
 	result     map[string]any       // parsed typed result / join map
 	findings   map[string][]Finding // per producer node, for promotion
 
-	phase      string
+	phase      string // 工作流分区标签：只由 phase 节点在串行扫描段写（tl1326 G4：并发波次共享「最近进入的分区」，原义不变）
 	failedNode string
 	gateRound  int // current gate attempt, so a world-failure reports its round
 }
@@ -374,16 +374,41 @@ func newRunID() string {
 	return "wf-" + hex.EncodeToString(b[:])
 }
 
-// runAll is the sequential scheduler: repeatedly scan in declaration order,
-// execute the first node whose in-edges have all decided with at least one
-// active, or skip a node whose in-edges all decided inactive (skip
-// propagates by deciding its out-edges inactive). Terminates because the
-// graph is acyclic and each pass either runs or skips exactly one node.
+// runAll is the topological scheduler (tl1326 G4 拓扑真并行). Each pass
+// scans in declaration order and:
+//   - resolves the skip cascade serially (a node whose in-edges all decided
+//     inactive skips; skip propagates by deciding its out-edges inactive);
+//   - dispatches EVERY ready subagent/confirm node's runner call concurrently
+//     and aggregates the answers single-writer in wave order (= declaration
+//     order);
+//   - runs gates (with their fixer loop) and joins inline during the scan —
+//     their whole body is runState mutation, so they stay on the single
+//     writer by construction;
+//   - treats a ready phase node as a wave barrier: dispatch whatever was
+//     collected, run the phase first thing next pass. Phase nodes are section
+//     markers (they only write s.phase); several real definitions place them
+//     as roots between node groups, and the pre-G4 engine ran them in
+//     declaration position — the barrier keeps that section chronology (the
+//     events' Phase label) intact under parallelism.
+//
+// Concurrency contract (audit 05 variant A 并发段+单写者汇聚): the concurrent
+// segment is ONLY "call the injected runner and take the answer" — prompts
+// are interpolated and requests built in the serial scan, and every state
+// write (status/output/result/findings/bag/verifs/edges/events/checkpoint)
+// happens in the serial scan or the serial aggregation pass. runState stays
+// lock-free without a data race; an in-flight wave never reorders topology
+// because a node only joins a wave after all its in-edges decided. An
+// inline-node error fails fast BEFORE the wave dispatches; a dispatched-node
+// error fails fast at its aggregation position (already-aggregated earlier
+// nodes keep their terminal state — salvage unchanged).
 func (s *runState) runAll(ctx context.Context) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		// ---- serial scan: skip cascade, inline nodes, wave collection ----
+		var calls []*nodeCall
+		var phaseGate *Node
 		progressed := false
 		for i := range s.wf.Nodes {
 			n := &s.wf.Nodes[i]
@@ -395,7 +420,7 @@ func (s *runState) runAll(ctx context.Context) error {
 			if n.Type == NodeConfirm && s.status[n.Target] == stSkipped {
 				s.skip(n)
 				progressed = true
-				break
+				continue
 			}
 			decided, active := s.inState(n.ID)
 			if !decided {
@@ -404,16 +429,38 @@ func (s *runState) runAll(ctx context.Context) error {
 			if !active {
 				s.skip(n)
 				progressed = true
+				continue
+			}
+			if n.Type == NodePhase {
+				// 波次屏障：已收集的节点先派发，phase 下一轮最先执行——
+				// 分区标签时序与串行引擎一致（见函数注释）。
+				phaseGate = n
+				progressed = true
 				break
 			}
+			progressed = true
+			if n.Type == NodeSubagent || n.Type == NodeConfirm {
+				calls = append(calls, s.beginNode(ctx, n))
+				continue
+			}
+			// gate/join: serial inline — an error fails fast before this
+			// wave's runner calls go out.
 			if err := s.execute(ctx, n); err != nil {
 				return err
 			}
-			progressed = true
-			break
 		}
 		if !progressed {
 			return nil
+		}
+		switch {
+		case len(calls) > 0:
+			if err := s.dispatchAndCollect(calls); err != nil {
+				return err
+			}
+		case phaseGate != nil:
+			if err := s.execute(ctx, phaseGate); err != nil {
+				return err
+			}
 		}
 	}
 }
