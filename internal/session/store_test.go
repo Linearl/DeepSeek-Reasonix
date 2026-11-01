@@ -565,7 +565,12 @@ func TestMigrationMapLeaseWaitIsContextCancellable(t *testing.T) {
 	}
 }
 
+// tl1280: the schema-2 multi-head legacy fixture (ForkHead + per-head
+// MigrateLegacyHead) left with the write-path slow lane. ForkHead is gone and
+// ListSessionHeads is an always-nil shim, so the two-head scenario is
+// unreachable — retired with an explicit skip (no silent SKIP).
 func TestMigrateLegacyHeadsBecomeIndependentLinearSessions(t *testing.T) {
+	t.Skip("tl1280 DAG 写路径慢车道删除: ForkHead/ListSessionHeads 双头夹具随慢车道退役，单头 legacy 迁移由其余 MigrateLegacy* 用例覆盖，显式退役非静默")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "old.jsonl")
 	session := agent.NewSession("sys")
@@ -574,35 +579,20 @@ func TestMigrateLegacyHeadsBecomeIndependentLinearSessions(t *testing.T) {
 	if err := session.Save(path); err != nil {
 		t.Fatal(err)
 	}
-	childHead, err := session.ForkHead(path, session.Snapshot()[2].ID, agent.HeadKindFork, "child")
-	if err != nil {
-		t.Fatal(err)
-	}
-	session.Add(provider.Message{Role: provider.RoleUser, Content: "child only"})
-	if err := session.Save(path); err != nil {
-		t.Fatal(err)
-	}
 	heads, err := agent.ListSessionHeads(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootHead := ""
-	for _, head := range heads {
-		if head.ID != childHead {
-			rootHead = head.ID
-			break
-		}
-	}
-	if rootHead == "" {
-		t.Fatalf("legacy root head missing: %+v", heads)
+	if len(heads) != 0 {
+		t.Fatalf("ListSessionHeads shim must be empty, got %+v", heads)
 	}
 
 	v3root := filepath.Join(dir, "sessions-v4")
-	rootResult, err := MigrateLegacyHead(t.Context(), path, v3root, rootHead)
+	rootResult, err := MigrateLegacyHead(t.Context(), path, v3root, agent.SessionMainHead)
 	if err != nil {
 		t.Fatal(err)
 	}
-	childResult, err := MigrateLegacyHead(t.Context(), path, v3root, childHead)
+	childResult, err := MigrateLegacyHead(t.Context(), path, v3root, "child")
 	if err != nil {
 		t.Fatal(err)
 	}

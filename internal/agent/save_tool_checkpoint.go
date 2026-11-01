@@ -96,8 +96,9 @@ func (s *Session) flushDeferredDerivedFiles(path string) bool {
 		}
 		return true
 	}
-	probe, err := probeLogForSave(path)
-	if err != nil || s.dagSaveRoute(path, probe) != dagRouteSchemaOne {
+	// tl1280: the schema-2 slow lane is gone; a sealed DAG log is refused by
+	// probeLogForSave, so only the flat schema-1 path may flush here.
+	if _, err := probeLogForSave(path); err != nil {
 		return false
 	}
 	msgs, version, rewriteVersion := s.snapshotWithVersion()

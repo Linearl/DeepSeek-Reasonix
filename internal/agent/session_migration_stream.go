@@ -39,13 +39,13 @@ func StreamSessionMessagesForMigration(ctx context.Context, path, headID string,
 		return MigrationMessageStream{}, err
 	}
 
-	var loaded *Session
-	var err error
-	if strings.TrimSpace(headID) != "" {
-		loaded, err = LoadSessionHeadForMigration(ctx, path, headID)
-	} else {
-		loaded, err = LoadSession(path)
-	}
+	// tl1280: the DAG head-materialization entry (LoadSessionHeadForMigration)
+	// left with the write-path slow lane. A frozen legacy headID used to replay
+	// one head of a schema-2 log; with the slow lane gone the v4 bridge can only
+	// import the flat transcript the .jsonl checkpoint already holds, so the
+	// headID argument is accepted and ignored (the target ID still keys off it,
+	// preserving the per-head migration map rows).
+	loaded, err := LoadSession(path)
 	if err != nil {
 		return MigrationMessageStream{}, err
 	}

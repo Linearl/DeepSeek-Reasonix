@@ -157,9 +157,9 @@ func loadHeadEvents(st *sessionDAGState, selected, sessionPath string) []HeadEve
 			OtherMessages: domLen,
 		})
 	}
-	if ev, ok := detectMaterializationGap(sessionPath, st); ok {
-		events = append(events, ev)
-	}
+	// tl1280: the materialization-gap detector left with the write-path slow
+	// lane; a sealed schema-2 log is no longer a live write target, so the
+	// watermark gap has no live consumer here.
 	return events
 }
 

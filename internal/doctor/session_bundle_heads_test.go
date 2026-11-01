@@ -13,6 +13,10 @@ import (
 	"reasonix/internal/store"
 )
 
+// tl1280: the schema-2 head fixture (ForkHead + multi-head manifest) left with
+// the write-path slow lane. ListSessionHeads is a shim that always returns
+// nil, so a schema-1 session leaves LogFormat/Heads empty — the bundle still
+// carries the event log itself, and the manifest must not leak REASONIX_HOME.
 func TestWriteSessionBundleListsSessionLogHeads(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
@@ -24,14 +28,6 @@ func TestWriteSessionBundleListsSessionLogHeads(t *testing.T) {
 	sess := agent.NewSession("system")
 	sess.Add(provider.Message{Role: provider.RoleUser, Content: "shared question"})
 	sess.Add(provider.Message{Role: provider.RoleAssistant, Content: "shared answer"})
-	if err := sess.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	fork, err := sess.ForkHead(path, sess.Snapshot()[2].ID, agent.HeadKindFork, "alt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess.Add(provider.Message{Role: provider.RoleUser, Content: "alt question"})
 	if err := sess.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -52,15 +48,11 @@ func TestWriteSessionBundleListsSessionLogHeads(t *testing.T) {
 		t.Fatalf("manifest sessions = %+v, want the log alone: heads are not chain members", manifest.Sessions)
 	}
 	entry := manifest.Sessions[0]
-	if entry.LogFormat != 2 || entry.SelectedHead != fork || len(entry.Heads) != 2 {
-		t.Fatalf("manifest entry = %+v", entry)
-	}
-	main, alt := entry.Heads[0], entry.Heads[1]
-	if main.ID != agent.SessionMainHead || main.Kind != agent.HeadKindMain || !main.Covered || main.Selected || main.MessageCount != 3 {
-		t.Fatalf("main head = %+v", main)
-	}
-	if alt.ID != fork || alt.Kind != agent.HeadKindFork || alt.Name != "alt" || !alt.Selected || alt.Covered || alt.ParentHead != agent.SessionMainHead || alt.MessageCount != 4 {
-		t.Fatalf("fork head = %+v", alt)
+	// tl1280: ListSessionHeads is the always-nil shim, so the schema-1 log
+	// reports LogFormat 0 and no head rows — the event log is the only
+	// durable surface the bundle carries.
+	if entry.LogFormat != 0 || len(entry.Heads) != 0 {
+		t.Fatalf("manifest entry = %+v, want empty head projection", entry)
 	}
 	if len(manifest.Missing) != 0 {
 		t.Fatalf("missing = %v, want none", manifest.Missing)

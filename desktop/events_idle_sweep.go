@@ -119,19 +119,10 @@ type eventsIdleSweepCandidate struct {
 	LiveBytes      int64
 	LastActivityAt int64
 	Busy           bool
-	// MultiHead mirrors sidecar HeadCount>1 (schema-2 only): the only
-	// sessions where a stale concurrent head can be hiding behind the bytes
-	// the sweep is about to rewrite (task 945).
-	MultiHead bool
-	// LandingBytes is the tl 1186 fold-landing 口径: where the maintenance
-	// fold's product lands for THIS session (agent.SessionFoldLandingBytes —
-	// the survivor-union after the repair retire CompactSessionFile runs).
-	// 0 keeps the task-1073 proxy: for schema-1 logs the transcript IS the
-	// product, and for unreadable/archived logs there is no honest prediction.
-	// The old proxy measured the selected chain (the view); on deep-branch
-	// multi-head logs the view is a fraction of the product (11MiB vs ~100MB
-	// 实测), so the estimate promised savings the rotation could not deliver.
-	LandingBytes int64
+	// tl1280: the schema-2 MultiHead / LandingBytes readings left with the
+	// write-path slow lane. A flat log's transcript IS the fold product, so
+	// the task-1073 proxy (LiveBytes) is the honest estimate for every
+	// candidate now.
 }
 
 // eventsIdleSweepReleasableBytes is the quota-ranking 口径 (tl1285 P0-②): how
@@ -147,6 +138,14 @@ func eventsIdleSweepReleasableBytes(c eventsIdleSweepCandidate) int64 {
 		return r
 	}
 	return 0
+}
+
+// foldLandingBytes is the profitability estimate's second input. tl1280: the
+// schema-2 fold-landing measurement left with the slow lane, so every
+// candidate uses the task-1073 transcript proxy — for a flat log the
+// transcript IS the fold product, so the proxy is exact.
+func foldLandingBytes(c eventsIdleSweepCandidate) int64 {
+	return c.LiveBytes
 }
 
 // eventsIdleSweepDecision is the whole per-session policy in one testable
@@ -309,15 +308,10 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 			continue
 		}
 		res := eventsIdleSweepResult{Path: c.Path}
-		if c.MultiHead && retire != nil {
-			if heads, err := retire(c.Path); err != nil {
-				slog.Warn("desktop: stale concurrent head retire before sweep rewrite failed (rewrite continues)",
-					"path", c.Path, "err", secrets.RedactError(err))
-			} else if len(heads) > 0 {
-				slog.Info("desktop: stale concurrent heads retired before sweep rewrite",
-					"path", c.Path, "heads", len(heads))
-			}
-		}
+		// tl1280: the schema-2 stale-head retire left with the slow lane; the
+		// injected retire hook stays in the signature so the pass harness does
+		// not churn, but no candidate reaches it any more.
+		_ = retire
 		before, after, err := compact(c.Path)
 		res.Before, res.After, res.Freed = before, after, before-after
 		if err != nil {
@@ -409,17 +403,6 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 		slog.Info("desktop: events idle sweep skip summary", fields...)
 	}
 	return results
-}
-
-// foldLandingBytes is the profitability estimate's second input (tl 1186):
-// the fold's predicted landing when the agent measured one, else the task-1073
-// view proxy — schema-1 logs fold to their transcript, so there the proxy IS
-// the landing and the behavior is byte-for-byte the old one.
-func foldLandingBytes(c eventsIdleSweepCandidate) int64 {
-	if c.LandingBytes > 0 {
-		return c.LandingBytes
-	}
-	return c.LiveBytes
 }
 
 // slimAttempt runs the L2 archive (and, only when the archived size still
@@ -552,36 +535,16 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 			} else if leaseInfo, leaseErr := agent.LoadSessionLeaseInfo(info.Path); leaseErr == nil && leaseInfo != nil {
 				busy = true
 			}
-			// Task 945: the sidecar mirror cheaply marks sessions that can hold a
-			// stale concurrent head — the retire probe (a replay) is then spent
-			// only on the rare multi-head log, never on the single-head majority.
-			multiHead := false
-			dagSchema := false
-			if meta, ok, metaErr := agent.LoadBranchMeta(info.Path); metaErr == nil && ok {
-				multiHead = meta.LogSchema == 2 && meta.HeadCount > 1
-				dagSchema = meta.LogSchema == 2
-			}
-			// tl 1186: measure the fold-landing 口径 for the rare candidates the
-			// estimate actually gates — over-limit schema-2 logs in plaintext
-			// form. It costs one DAG replay each, but replaces the far costlier
-			// futile 100MB-class load+rewrite the view proxy used to trigger
-			// (freed ∈ [−217, 0] measured), and is what lets retireable
-			// multi-head sessions pass honestly. Schema-1 and archived logs
-			// keep the proxy (agent returns 0 for them by contract).
-			landing := int64(0)
+			// tl1280: the schema-2 multi-head mirror and fold-landing
+			// measurement left with the slow lane; every candidate carries the
+			// flat-log readings only.
 			live := statFileSize(info.Path)
-			overLimit := agent.EventsLogAboveThreshold(eventsBytes, live, knobs.factor, knobs.capMB)
-			if overLimit && dagSchema {
-				landing = agent.SessionFoldLandingBytes(info.Path)
-			}
 			cands = append(cands, eventsIdleSweepCandidate{
 				Path:           info.Path,
 				EventsBytes:    eventsBytes,
 				LiveBytes:      live,
-				LandingBytes:   landing,
 				LastActivityAt: info.LastActivityAt.UnixMilli(),
 				Busy:           busy,
-				MultiHead:      multiHead,
 			})
 		}
 	}
@@ -624,7 +587,7 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 		}
 	}
 	results := runEventsIdleSweepPass(cands, knobs, l.park,
-		func(path string) ([]string, error) { return agent.RetireStaleConcurrentHeadsNow(path, time.Now()) },
+		nil, // tl1280: the schema-2 stale-head retire left with the slow lane
 		agent.CompactSessionFile, slim, l.ledgerPark)
 	l.mu.Unlock()
 	compacted, skipped := 0, 0

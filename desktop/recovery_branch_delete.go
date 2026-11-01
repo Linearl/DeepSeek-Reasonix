@@ -115,9 +115,9 @@ func (a *App) DeleteSessionVersionHead(mainPath, headID string) error {
 			return readOnlyChannelErr()
 		}
 	}
-	if err := agent.RetireSessionHead(mainPath, headID); err != nil {
-		return friendlySessionFileError(err)
-	}
+	// tl1280: the schema-2 retire marker (agent.RetireSessionHead) left with
+	// the write-path slow lane; a head row is a leftover the catalog no longer
+	// produces, so the retire is a no-op and the catalog still reconciles.
 	dir := filepath.Dir(mainPath)
 	if catalog := a.sessionCatalog.Load(); catalog != nil {
 		target := sessioncatalog.DirectoryTarget{Path: dir, Scope: "global", WorkspaceRoot: ""}

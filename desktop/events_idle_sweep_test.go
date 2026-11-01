@@ -252,13 +252,19 @@ func TestEventsIdleSweepPassUnderLimitSilent(t *testing.T) {
 // 再 compact（顺序即语义——rotation 只丢不可达节点，并发头 retire 后其独占
 // 字节才不可达）；单头候选不问 retire（sidecar 预筛挡掉绝大多数 replay）；
 // retire 失败不阻断 compact（没有它就退化为今天的清法，不该升级为新的失败面）。
+//
+// tl1280: the schema-2 MultiHead mirror and the pre-compact stale-head retire
+// left with the write-path slow lane. The pass now always passes a nil retire
+// hook, so the only live behavior is "every eligible candidate is asked to
+// compact exactly once" — the retire-ordering legs below retire with it.
 func TestEventsIdleSweepPassRetiresStaleHeadsBeforeCompact(t *testing.T) {
+	t.Skip("tl1280 DAG 写路径慢车道删除: MultiHead 镜像与 retire 前置钩子随慢车道退役，pass 恒以 nil retire 运行，显式退役非静默")
 	const mb = int64(1) << 20
 	activity := int64(1790600000000)
 	cands := []eventsIdleSweepCandidate{
-		{Path: "multi.jsonl", EventsBytes: 100 * mb, LiveBytes: 40 * mb, LastActivityAt: activity, MultiHead: true},
+		{Path: "multi.jsonl", EventsBytes: 100 * mb, LiveBytes: 40 * mb, LastActivityAt: activity},
 		{Path: "single.jsonl", EventsBytes: 80 * mb, LiveBytes: 30 * mb, LastActivityAt: activity},
-		{Path: "racy.jsonl", EventsBytes: 70 * mb, LiveBytes: 20 * mb, LastActivityAt: activity, MultiHead: true},
+		{Path: "racy.jsonl", EventsBytes: 70 * mb, LiveBytes: 20 * mb, LastActivityAt: activity},
 	}
 	var retiredAsked []string
 	retire := func(path string) ([]string, error) {
@@ -297,7 +303,7 @@ func TestEventsIdleSweepPassRetiresStaleHeadsBeforeCompact(t *testing.T) {
 
 	// park 语义不受 retire 影响：parked 的多头会话不再问 retire 也不再 compact。
 	swept := []eventsIdleSweepCandidate{
-		{Path: "multi.jsonl", EventsBytes: 45 * mb, LiveBytes: 40 * mb, LastActivityAt: activity, MultiHead: true},
+		{Path: "multi.jsonl", EventsBytes: 45 * mb, LiveBytes: 40 * mb, LastActivityAt: activity},
 	}
 	retiredAsked = nil
 	runEventsIdleSweepPass(swept, sweepKnobs, park, retire, h.compact, eventsIdleSweepSlim{}, nil)
@@ -308,7 +314,11 @@ func TestEventsIdleSweepPassRetiresStaleHeadsBeforeCompact(t *testing.T) {
 
 // 任务 945 验收②（顺序）：同一会话内 retire 严格先于 compact——反过来就没有
 // 意义（先 compact 清不到 retire 之后才不可达的字节）。
+//
+// tl1280: the retire hook left with the write-path slow lane; the ordering
+// leg is retired with an explicit skip (no silent SKIP).
 func TestEventsIdleSweepPassRetireRunsBeforeCompactPerSession(t *testing.T) {
+	t.Skip("tl1280 DAG 写路径慢车道删除: retire 前置钩子随慢车道退役，顺序语义不再存在，显式退役非静默")
 	const mb = int64(1) << 20
 	var seq []string
 	retire := func(path string) ([]string, error) {
@@ -320,7 +330,7 @@ func TestEventsIdleSweepPassRetireRunsBeforeCompactPerSession(t *testing.T) {
 		return 90 * mb, 40 * mb, nil
 	}
 	cands := []eventsIdleSweepCandidate{
-		{Path: "m.jsonl", EventsBytes: 90 * mb, LiveBytes: 40 * mb, LastActivityAt: 1, MultiHead: true},
+		{Path: "m.jsonl", EventsBytes: 90 * mb, LiveBytes: 40 * mb, LastActivityAt: 1},
 	}
 	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, retire, compact, eventsIdleSweepSlim{}, nil)
 	if len(seq) != 2 || seq[0] != "retire:m.jsonl" || seq[1] != "compact:m.jsonl" {
@@ -375,14 +385,21 @@ func TestEventsIdleSweepPassSkipsNoGainFold(t *testing.T) {
 // （repair 退休后幸存头链 union，agent.SessionFoldLandingBytes）如实拒绝。
 // 可退休头形态落地≈视图，照常放行；无测量（schema-1/归档/坏档）回退视图
 // 代理，逐字节旧行为。门槛数字（10%）不动。
+//
+// tl1280: the schema-2 LandingBytes reading left with the write-path slow
+// lane; foldLandingBytes now always returns the task-1073 transcript proxy
+// (LiveBytes), so the deep-branch "no-shrink" shape is unreachable — a flat
+// log's transcript IS the fold product. The proxy identity leg below keeps
+// pinning the function contract.
 func TestEventsIdleSweepPassUsesLandingBytesForProfitability(t *testing.T) {
+	t.Skip("tl1280 DAG 写路径慢车道删除: LandingBytes 落地口径随慢车道退役，foldLandingBytes 恒等于 LiveBytes 视图代理，深分叉 no-shrink 形态不可达，显式退役非静默")
 	const mb = int64(1) << 20
 	activity := int64(1790600000000)
 	cands := []eventsIdleSweepCandidate{
 		// 深分叉不可退休形态：视图代理 11MB（旧口径会放行），真实落地 96MB。
-		{Path: "branch-no-shrink.jsonl", EventsBytes: 100 * mb, LiveBytes: 11 * mb, LandingBytes: 96 * mb, LastActivityAt: activity},
+		{Path: "branch-no-shrink.jsonl", EventsBytes: 100 * mb, LiveBytes: 11 * mb, LastActivityAt: activity},
 		// 可退休头形态：落地≈视图，放行（真实折叠）。
-		{Path: "branch-shrink.jsonl", EventsBytes: 100 * mb, LiveBytes: 11 * mb, LandingBytes: 11 * mb, LastActivityAt: activity},
+		{Path: "branch-shrink.jsonl", EventsBytes: 100 * mb, LiveBytes: 11 * mb, LastActivityAt: activity},
 		// 无落地测量（schema-1/归档/坏档形态）：回退视图代理，旧行为原样。
 		{Path: "legacy.jsonl", EventsBytes: 100 * mb, LiveBytes: 20 * mb, LastActivityAt: activity},
 	}
@@ -414,12 +431,15 @@ func TestEventsIdleSweepPassUsesLandingBytesForProfitability(t *testing.T) {
 
 // tl 1186：无落地测量时逐字节回退视图代理——schema-1/归档/坏档形态的行为与
 // 引入前完全一致（1172 铁律：关态=现状）。
+//
+// tl1280: foldLandingBytes is now the proxy itself (LiveBytes), so the
+// fallback leg is the whole contract.
 func TestFoldLandingBytesFallsBackToViewProxy(t *testing.T) {
 	if got := foldLandingBytes(eventsIdleSweepCandidate{LiveBytes: 5}); got != 5 {
-		t.Fatalf("no landing measurement must fall back to the view proxy: got %d", got)
+		t.Fatalf("foldLandingBytes must equal the transcript proxy: got %d", got)
 	}
-	if got := foldLandingBytes(eventsIdleSweepCandidate{LiveBytes: 5, LandingBytes: 7}); got != 7 {
-		t.Fatalf("a landing measurement must take precedence: got %d", got)
+	if got := foldLandingBytes(eventsIdleSweepCandidate{LiveBytes: 5}); got != 5 {
+		t.Fatalf("a candidate's LiveBytes must be its landing: got %d", got)
 	}
 }
 

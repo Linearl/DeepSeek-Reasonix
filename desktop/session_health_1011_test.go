@@ -16,38 +16,18 @@ import (
 // 任务 1011 桌面后端：路径校验（修复永不写到会话目录之外）、需求 E 的
 // v3 heads 分组列表、开关关闭时的零改动姿态。
 
-// desktopHealFixture writes a schema-2 session through the public agent API
-// whose selected head is strictly dominated: the main chain grows longer AND
-// newer after a fork, then the selection lands back on the short fork (the
-// ai-passport incident shape).
+// desktopHealFixture wrote a schema-2 session through the public agent API
+// whose selected head was strictly dominated (ForkHead + SwitchHead). tl1280:
+// the schema-2 head family left with the write-path slow lane, so the fixture
+// now writes a flat schema-1 session with the same message count; the
+// multi-head tests that used it retire with an explicit skip.
 func desktopHealFixture(t *testing.T, dir, name string, messages int) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
 	s := agent.NewSession("sys")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "root question"})
-	if err := s.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	forkID, err := s.ForkHead(path, "", agent.HeadKindConcurrent, "v2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.Add(provider.Message{Role: provider.RoleAssistant, Content: "answer on the fork"})
-	if err := s.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	// 主链继续生长：更长（3 条）且活动更晚。
-	if err := s.SwitchHead(path, agent.SessionMainHead); err != nil {
-		t.Fatal(err)
-	}
-	s.Add(provider.Message{Role: provider.RoleUser, Content: "main follow-up"})
-	s.Add(provider.Message{Role: provider.RoleAssistant, Content: "main answer two"})
-	if err := s.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	// 最后把选择留在短且旧的 fork 上——被支配形态。
-	if err := s.SwitchHead(path, forkID); err != nil {
-		t.Fatal(err)
+	for i := 1; i < messages; i++ {
+		s.Add(provider.Message{Role: provider.RoleAssistant, Content: fmt.Sprintf("follow-up %d", i)})
 	}
 	if err := s.Save(path); err != nil {
 		t.Fatal(err)
@@ -164,8 +144,12 @@ func Test1011DesktopRepairOnPostureFixesAndLogs(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// 多 head 且选中落后：fork 后不再动它，等自愈把选择切过去。
-	path := desktopHealFixture(t, dir, "onposture.jsonl", 2)
+	// tl1280: the head_lag promote leg left with the write-path slow lane
+	// (SuggestedHeadID / HeadFrom / HeadTo are gone from the report). The
+	// live surface this pins is the on-posture repair path itself: heal on ⇒
+	// a broken (projection-overflow) session repairs, leaves a backup, and
+	// records the action.
+	path := desktopHealFixture(t, dir, "onposture.jsonl", 400)
 	time.Sleep(10 * time.Millisecond)
 
 	app := NewApp()
@@ -177,18 +161,15 @@ func Test1011DesktopRepairOnPostureFixesAndLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if check.Healthy || check.SuggestedHeadID == "" {
-		t.Fatalf("fixture must flag head_lag with a suggestion: %+v", check)
+	if check.Healthy {
+		t.Fatalf("fixture must inspect unhealthy (projection overflow): %+v", check)
 	}
-	report, err := app.RepairSessionFor(path, true, true, false)
+	report, err := app.RepairSessionFor(path, false, false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !report.Repaired {
 		t.Fatalf("expected repair: %+v", report)
-	}
-	if report.HeadTo == "" || report.HeadFrom == "" {
-		t.Fatalf("head switch readings missing: %+v", report)
 	}
 	if report.BackupDir == "" {
 		t.Fatal("repair must leave a backup dir")
@@ -293,15 +274,14 @@ func Test1011DesktopVersionGroupsSamplePanel(t *testing.T) {
 	if group.Selected != "01M51VBWNBR0MXNBPJ25SNRYHC" {
 		t.Errorf("panel selected head = %q, want the rotation-pinned 01M51VB chain", group.Selected)
 	}
-	// 检查读数：健康检查必须给出「更长且更新」建议 = 01M59JNK 链。
+	// tl1280: the head_lag suggestion (SuggestedHeadID) left with the write-path
+	// slow lane. The sample acceptance still pins the panel listing and the
+	// unhealthy verdict (projection overflow on the incident sample).
 	check, err := app.InspectSessionHealthFor(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if check.Healthy {
 		t.Fatal("the incident sample must inspect unhealthy")
-	}
-	if check.SuggestedHeadID != "01M59JNKEEW3CEQC16XTX035TW" {
-		t.Errorf("panel suggestion = %q, want the longer-newer 01M59JNK chain (7087 msgs / 120 turns)", check.SuggestedHeadID)
 	}
 }

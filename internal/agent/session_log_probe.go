@@ -1,73 +1,66 @@
 package agent
 
-// tl-1220（tl1173 V4 观测计数落地）——纯观测，零行为影响：
-//
-//   - 计数①：save 链图获取（dagStateForSave）整本重放时守卫原因 reason=nil_cache
-//     且日志字节数 >32MiB 的组合计数。口径来自 tl1173 评估 rev2.1 §五（830 §3.5
-//     建议 3）：量化「冷启动首存/首触」——进程图缓存为空时对大日志的整本重放——
-//     的真实占比。32MiB 阈值复用 sessionTranscriptTailThresholdBytes（首绘尾部
-//     窗口阈值，session_load.go），与评估报告引用的是同一个常量，不另立口径。
-//     上报通道 = 现有 telemetry（slog 结构化行，落 desktop.log）+ 导出 getter
-//     （进程内可查，同 SessionGraphCacheStats 惯例）。
-//   - 计数②：存量 DAG 会话数——全库 events 侧车 probe.dag 命中的会话数
-//     （tl1173 §4.3 读兼容退场条件计数源：计数 <10 或时间 ≥3 个月触发评估）。
-//     查询口 = `reasonix dag-sessions`（internal/cli/dagsessions.go，只读）。
-//
-// 零行为影响的自证边界：
-//   - 计数①的调用点只挂在整本重放分支内部（extended 快路径连函数都不进）；
-//     计数器无任何控制流读者（仅 getter 读取），日志行只出现在刚付完整本重放
-//     代价的路径上（一行 slog 相对重放本身是噪声）。
-//   - 计数②的普查是只读扫描：不走 limitsForSessionLog（那会触发 zst 物化落盘），
-//     归档态日志在内存里解头部窗口分类，绝不写盘（测试钉住）。
-
 import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"log/slog"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 
 	"reasonix/internal/store"
 )
 
-// sessionDAGNilCacheLargeReplays 计数①：reason=nil_cache 且 log_bytes>32MiB
-// 的 save 链整本重放累计次数。进程内累计，无持久化——与图缓存命中计数同口径
-// （运行期观测，装机读数看日志行里的 count_total）。
-var sessionDAGNilCacheLargeReplays atomic.Uint64
-
-// SessionDAGNilCacheLargeReplays returns the cumulative count of save-chain
-// full DAG replays whose guard reason was nil_cache while the replayed log
-// exceeded the 32MiB tail threshold (tl-1220 counter ①). Observation only:
-// nothing reads it for control flow.
-func SessionDAGNilCacheLargeReplays() uint64 {
-	return sessionDAGNilCacheLargeReplays.Load()
+// probeLogForSave classifies the event log for a save, refusing a schema this
+// build cannot own and healing a torn schema-1 tail before anything appends
+// behind it. tl1280: the dagSaveRoute branch that routed a schema-2 log onto
+// the slow lane left with the write path itself; a sealed schema-2 log still
+// refuses here so the flat writer never appends into a log this build no
+// longer owns.
+func probeLogForSave(path string) (sessionEventLogProbe, error) {
+	probe, err := probeSessionEventLog(path)
+	if err != nil {
+		return probe, err
+	}
+	if probe.futureSchema {
+		return probe, fmt.Errorf("session event log for %s uses schema %d; this build supports up to %d", path, probe.schemaVersion, sessionDAGSchemaVersion)
+	}
+	if probe.native && probe.size > 0 {
+		if err := repairSessionEventLogTail(path); err != nil {
+			return probe, fmt.Errorf("repair session event log: %w", err)
+		}
+	}
+	return probe, nil
 }
 
-// noteSessionDAGNilCacheLargeReplay is the single observation point for
-// counter ①. Called from dagStateForSave only on the full-replay branch, with
-// the guard reason that forced the replay and the replayed byte count
-// (st.size, which a full replay sets to the log's file size). Extended fast
-// paths never reach here, so the hot save loop pays one string compare at
-// most — and only after it already paid a full replay.
-func noteSessionDAGNilCacheLargeReplay(reason string, logBytes int64) {
-	if reason != "nil_cache" || logBytes <= sessionTranscriptTailThresholdBytes {
-		return
+// SessionLogSchemaEnv is the env var that used to switch the session-log
+// writer between the flat schema-1 form and the schema-2 DAG form ("v1"/"v2").
+// tl1280: the DAG writer left with the write-path slow lane, so the variable
+// no longer routes anything — the constant stays because tests and operator
+// docs still name it, and an unknown or "v2" value is simply ignored (every
+// session writes flat).
+const SessionLogSchemaEnv = "REASONIX_SESSION_LOG"
+
+// sameSessionLogPath compares two session log paths by canonical identity so
+// case/separator differences in the raw forms cannot split a single physical
+// file into two reuse guards (task 196fix).
+func sameSessionLogPath(a, b string) bool {
+	if a == "" || b == "" {
+		// Empty never claims a physical file: canonical("") resolves to the
+		// working directory, which would make two empties "match".
+		return false
 	}
-	total := sessionDAGNilCacheLargeReplays.Add(1)
-	slog.Info("session: dag nil_cache large log full replay (tl-1220 observation)",
-		"reason", reason,
-		"log_bytes", logBytes,
-		"threshold_bytes", int64(sessionTranscriptTailThresholdBytes),
-		"count_total", total)
+	return canonicalSessionSavePath(a) == canonicalSessionSavePath(b)
 }
 
 // SessionDAGCensus is the tl-1220 counter ② reading over a set of session
 // directories: how many stored sessions carry an event-log sidecar, and how
 // many of those sidecars classify as DAG (probe.dag hit) — the tl1173 §4.3
-// retirement-condition source.
+// retirement-condition source. tl1280: the census itself survives the slow
+// lane's deletion because the doctor and the `dag-sessions` CLI still report
+// the reading; only the save-path nil-cache observation counter went with the
+// writer.
 type SessionDAGCensus struct {
 	ScannedDirs      int   `json:"scanned_dirs"`       // directories actually scanned
 	DirErrors        int   `json:"dir_errors"`         // directories that could not be read

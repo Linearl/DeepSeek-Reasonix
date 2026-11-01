@@ -1,11 +1,9 @@
 package control
 
 import (
-	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
@@ -31,13 +29,8 @@ func (c *Controller) markInFlightTurn(startMessageIndex int, preserveUser bool) 
 	if path == "" {
 		return agent.InFlightTurnMeta{}
 	}
-	if s := c.loggedTurnSession(); s != nil {
-		id := agent.NewMessageID()
-		if s.QueueTurnBegin(id, preserveUser) {
-			ref, _ := s.Head()
-			return agent.InFlightTurnMeta{ID: id, StartMessageIndex: startMessageIndex, PreserveUser: preserveUser, StartedAt: time.Now().UTC(), HeadID: ref.HeadID}
-		}
-	}
+	// tl1280: the schema-2 turn_begin/turn_end markers left with the write-path
+	// slow lane; every session now uses the schema-1 sidecar marker below.
 	marker, err := agent.BeginSessionInFlightTurn(path, startMessageIndex, preserveUser)
 	if err != nil {
 		slog.Warn("controller: mark in-flight turn", "err", err)
@@ -51,12 +44,9 @@ func (c *Controller) clearInFlightTurn(marker agent.InFlightTurnMeta) {
 	if path == "" || marker.ID == "" {
 		return
 	}
-	if marker.HeadID != "" {
-		if s := c.loggedTurnSession(); s != nil {
-			s.QueueTurnEnd(marker.ID)
-		}
-		return
-	}
+	// tl1280: a marker that still carries a HeadID was written before the
+	// slow-lane retirement; clear it through the sidecar path too so old
+	// markers cannot strand.
 	if _, err := agent.ClearSessionInFlightTurnIfMatch(path, marker); err != nil {
 		slog.Warn("controller: clear in-flight turn", "err", err)
 	}
@@ -66,10 +56,7 @@ func (c *Controller) clearInFlightTurn(marker agent.InFlightTurnMeta) {
 // crash marker. A crash can therefore leave either a recoverable marker or a
 // durable completed transcript, never an unmarked in-memory-only suffix.
 func (c *Controller) finishInFlightTurn(startMessages int, marker agent.InFlightTurnMeta) {
-	if marker.HeadID != "" {
-		c.finishLoggedTurn(startMessages, marker)
-		return
-	}
+	// tl1280: the schema-2 logged-turn finish left with the slow lane.
 	commitPrepared := marker.ID == ""
 	if marker.ID != "" && c.executor != nil {
 		digest, digestErr := c.executor.Session().ContentDigest()
@@ -135,12 +122,8 @@ func (c *Controller) recoverInterruptedTurn(path string) {
 		return
 	}
 	c.emitHeadEvents()
-	if s := c.loggedTurnSession(); s != nil {
-		if turn, open := s.OpenTurn(); open {
-			c.recoverLoggedInterruptedTurn(s, turn)
-			return
-		}
-	}
+	// tl1280: the schema-2 open-turn recovery left with the slow lane; the
+	// schema-1 sidecar marker below owns interrupted-turn recovery now.
 	meta, ok, err := agent.LoadBranchMeta(path)
 	if err != nil || !ok || meta.InFlightTurn == nil {
 		if err != nil {
@@ -244,79 +227,11 @@ func interruptedTurnContinuedOnRecoveryBranch(path string, marker *agent.InFligh
 	return false
 }
 
-// loggedTurnSession returns the executor session when its turn markers live
-// in a schema-2 log, nil for schema-1 sessions that still use the sidecar.
-func (c *Controller) loggedTurnSession() *agent.Session {
-	if c.executor == nil {
-		return nil
-	}
-	s := c.executor.Session()
-	if s == nil {
-		return nil
-	}
-	if _, ok := s.Head(); !ok {
-		return nil
-	}
-	return s
-}
-
-// finishLoggedTurn queues the end marker before the completed transcript is
-// saved, so the tail and its turn_end land in one appended batch. A failed
-// save leaves the marker queued for the next one.
-func (c *Controller) finishLoggedTurn(startMessages int, marker agent.InFlightTurnMeta) {
-	if s := c.loggedTurnSession(); s != nil {
-		s.QueueTurnEnd(marker.ID)
-	}
-	if durable, err := c.snapshotActivityIfChanged(startMessages); err != nil && !durable {
-		slog.Warn("controller: keeping open turn marker after failed turn snapshot", "err", err)
-	} else if err != nil {
-		slog.Warn("controller: turn transcript saved before metadata update failed", "err", err)
-	}
-}
-
-// recoverLoggedInterruptedTurn closes a turn a previous runtime left open in
-// the schema-2 log. Its tail is dropped through a rewind marker (never a
-// truncation) unless the turn visibly continued: on another head, or through
-// later completed turns on this one.
-func (c *Controller) recoverLoggedInterruptedTurn(s *agent.Session, turn agent.SessionOpenTurn) {
-	finish := func() {
-		s.QueueTurnEnd(turn.TurnID)
-		if err := c.snapshot(false, true, false); err != nil {
-			slog.Warn("controller: post-interrupted-turn snapshot", "err", err)
-		}
-	}
-	if s.TurnContinuedOnOtherHead(turn.LeafID) {
-		finish()
-		return
-	}
-	msgs := s.Snapshot()
-	start := 0
-	if turn.LeafID != "" {
-		if idx := s.IndexOfID(turn.LeafID); idx >= 0 {
-			start = idx + 1
-		} else {
-			start = len(msgs)
-		}
-	}
-	if interruptedTurnCrossesLaterTurn(msgs, start) {
-		slog.Warn("controller: preserving transcript after stale open turn marker",
-			"turn", turn.TurnID, "messages", len(msgs), "resolved_index", start)
-		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
-			Text: "Session recovery found completed turns after a stale interruption marker; the full history was preserved."})
-		finish()
-		return
-	}
-	if len(msgs) > start {
-		if turn.PreserveUser {
-			c.stripCancelledVisibleTurnMessagesAfterWithFallbackAt(start, provider.Message{}, turn.StartedAt)
-		} else {
-			c.stripTurnMessagesAfter(start)
-		}
-	}
-	finish()
-}
-
-// emitHeadEvents turns the head facts a save or load recorded into notices.
+// emitHeadEvents used to turn the head facts a save or load recorded into
+// notices. tl1280: the schema-2 write path that recorded head events left with
+// the write-path slow lane, so DrainHeadEvents is now always empty. The entry
+// point stays so a future producer can reuse the call sites without
+// restructuring every load/save path; the body is a drain-and-return.
 func (c *Controller) emitHeadEvents() {
 	if c.executor == nil {
 		return
@@ -325,73 +240,7 @@ func (c *Controller) emitHeadEvents() {
 	if s == nil {
 		return
 	}
-	for _, ev := range s.DrainHeadEvents() {
-		switch ev.Kind {
-		case agent.HeadEventForkedConcurrent:
-			// Task 203: attribute before phrasing. external/unknown keep the
-			// outside-window warning (accurate for a real second process);
-			// local is an in-process writer — a dual tab open on the same
-			// conversation is the real dual writer and gets its own notice,
-			// while a plain in-process race is logged without crying wolf.
-			if ev.Class == agent.HeadDivergenceLocal && concurrentDualTabProbe != nil && concurrentDualTabProbe(c.SessionPath()) {
-				c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionConcurrentDualTab,
-					"this conversation is open in two tabs of this window; both wrote, and the extra content is kept as a separate version"))
-				continue
-			}
-			if ev.Class == agent.HeadDivergenceLocal {
-				slog.Info("session: concurrent head fork by an in-process writer (not another window)",
-					"path", c.SessionPath(), "other_writer", ev.OtherWriter, "head", ev.HeadID)
-				continue
-			}
-			// Task 646: before the user-facing warning, log who the competing
-			// writer was — id/pid/hostname when the registry knows it, and for
-			// the unknown class which identity record was missing — so a
-			// single-instance warning can be attributed after the fact.
-			slog.Warn("session: concurrent head fork by an out-of-process or unattributable writer",
-				"path", c.SessionPath(), "class", ev.Class,
-				"other_writer", ev.OtherWriter, "other_pid", ev.OtherPID, "other_hostname", ev.OtherHostname,
-				"unknown_reason", ev.UnknownReason, "head", ev.HeadID)
-			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionConcurrentWriter,
-				"another Reasonix window or process added to this conversation; its content is kept as a separate version"))
-		case agent.HeadEventMultipleRecentHeads:
-			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionHeadSwitched,
-				"opened the newest version of this conversation; other saved versions are available in View versions"))
-		case agent.HeadEventSelectedHeadBehind:
-			// 任务 1011: with the self-heal on, the dominated head is not
-			// just reported — the controller switches to the strictly longer
-			// and newer chain right here (the same SwitchBranch the versions
-			// panel uses, so the old version stays and the move is
-			// reversible). With the heal off this stays the 1010 observation.
-			if sessionSelfHealActive() {
-				if _, err := c.SwitchBranch(ev.OtherHeadID); err == nil {
-					notice := sessionRecoveryNotice(event.NoticeCodeSessionSelfHealed,
-						"opened the newer, longer version of this conversation automatically; the previous version is kept and reversible from View versions")
-					notice.Detail = fmt.Sprintf("actions=%s from=%s(%d) to=%s(%d)", agent.HealActionPromoteHead,
-						ev.HeadID, ev.Messages, ev.OtherHeadID, ev.OtherMessages)
-					c.sink.Emit(notice)
-					agent.WriteSelfHealRepairRecord(c.SessionPath(), "", []string{agent.HealActionPromoteHead},
-						string(agent.HealthHeadLag))
-					continue
-				}
-				// 切换失败：落回 1010 的只读提示，绝不在失败时静默。
-			}
-			// 任务 1010 需求 4: name both chains' readings so the user can see
-			// which version is longer and newer; switching is manual. The
-			// Detail carries the readings as key=value pairs the frontend
-			// interpolates into the localized copy.
-			notice := sessionRecoveryNotice(event.NoticeCodeSessionSelectedHeadBehind,
-				fmt.Sprintf("opened version %s (%d messages), but version %s holds %d messages with newer activity; switch versions manually in View versions if that is the chain you want",
-					ev.HeadID, ev.Messages, ev.OtherHeadID, ev.OtherMessages))
-			notice.Detail = fmt.Sprintf("selected_messages=%d other_messages=%d", ev.Messages, ev.OtherMessages)
-			c.sink.Emit(notice)
-		case agent.HeadEventMaterializationLag:
-			// 任务 1010 需求 3: detection only. The notice points at the manual
-			// repair entry; nothing here ever writes a session file.
-			notice := sessionRecoveryNotice(event.NoticeCodeSessionMaterializationLag,
-				fmt.Sprintf("%d messages of this conversation are not materialized into the local transcript (events are newer); right-click the session and choose the repair-conversation action",
-					ev.OtherMessages-ev.Messages))
-			notice.Detail = fmt.Sprintf("gap=%d event_chain=%d materialized=%d", ev.OtherMessages-ev.Messages, ev.OtherMessages, ev.Messages)
-			c.sink.Emit(notice)
-		}
+	// Drain and drop: no schema-2 head events can be produced anymore.
+	for range s.DrainHeadEvents() {
 	}
 }

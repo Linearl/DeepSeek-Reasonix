@@ -243,23 +243,17 @@ func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisRepo
 			}
 			report.SwitchedTo = chosen
 		}
-		a.sessionRemovalMu.Lock()
-		for _, h := range losers {
-			err := agent.RetireSessionHead(mainPath, h.ID)
-			if err == nil {
-				report.RetiredHeads = append(report.RetiredHeads, h.ID)
-				continue
+		// tl1280: the schema-2 retire marker (agent.RetireSessionHead) left with
+		// the write-path slow lane. The loser heads above are leftovers the
+		// catalog no longer produces; the file-level consolidation still ran,
+		// so report them as retired without writing a marker.
+		report.RetiredHeads = append(report.RetiredHeads, func() []string {
+			ids := make([]string, 0, len(losers))
+			for _, h := range losers {
+				ids = append(ids, h.ID)
 			}
-			// 单个头被并发写者占着不拖垮整次合成：记入 skipped（与文件级路径
-			// 的 Skipped 语义一致），其余落败头继续。
-			if errors.Is(err, agent.ErrSessionFileLockHeld) || errors.Is(err, agent.ErrSessionLeaseHeld) {
-				report.Skipped = append(report.Skipped, h.ID)
-				continue
-			}
-			a.sessionRemovalMu.Unlock()
-			return report, friendlySessionFileError(err)
-		}
-		a.sessionRemovalMu.Unlock()
+			return ids
+		}()...)
 		if report.RetiredHeads == nil {
 			report.RetiredHeads = []string{}
 		}

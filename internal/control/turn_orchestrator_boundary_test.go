@@ -51,18 +51,37 @@ func TestTurnOrchestratorCheckpointBoundaryPrecedesUserMessage(t *testing.T) {
 	if err := c.Rewind(0, RewindConversation); err != nil {
 		t.Fatal(err)
 	}
-	// A schema-2 rewind moves the live session onto a new head of the same
-	// log; the boundary precedes the user message, so one message remains,
-	// and the parent chain survives on the main head.
+	// tl1280: the schema-2 in-log rewind head left with the write-path slow
+	// lane; a conversation rewind now forks a NEW session file seeded with the
+	// boundary prefix, and the controller switches onto it. The boundary
+	// precedes the user message, so the fork keeps only the system message.
 	live := exec.Session()
 	if live == nil || len(live.Messages) != 1 {
 		t.Fatalf("rewind did not truncate the live transcript: %+v", live)
 	}
-	if ref, ok := live.Head(); !ok || ref.HeadID == agent.SessionMainHead || c.SessionPath() != path {
-		t.Fatalf("rewind must move to a new head of the same log: head=%+v ok=%v path=%q", ref, ok, c.SessionPath())
+	if ref, ok := live.Head(); ok {
+		t.Fatalf("flat rewind must not report a schema-2 head: head=%+v", ref)
 	}
-	heads, err := agent.ListSessionHeads(path)
-	if err != nil || len(heads) != 2 || heads[0].MessageCount != 2 {
-		t.Fatalf("parent chain must survive on the main head: %+v err=%v", heads, err)
+	forkPath := c.SessionPath()
+	if forkPath == path {
+		t.Fatalf("rewind must switch to a forked session file, still on %q", path)
+	}
+	parent, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatalf("LoadSession parent: %v", err)
+	}
+	if len(parent.Snapshot()) != 2 {
+		t.Fatalf("parent transcript = %d messages, want the pre-rewind turn intact", len(parent.Snapshot()))
+	}
+	fork, err := agent.LoadSession(forkPath)
+	if err != nil {
+		t.Fatalf("LoadSession fork: %v", err)
+	}
+	if len(fork.Snapshot()) != 1 {
+		t.Fatalf("fork transcript = %d messages, want the boundary prefix (system only)", len(fork.Snapshot()))
+	}
+	heads, err := agent.ListSessionHeads(forkPath)
+	if err != nil || len(heads) != 0 {
+		t.Fatalf("ListSessionHeads shim on the fork = %+v err=%v, want empty", heads, err)
 	}
 }

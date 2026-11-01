@@ -136,7 +136,7 @@ func (a *App) scanRecentSessionHealth() map[string]SessionHealthFindingView {
 			view.Codes = append(view.Codes, issue.Code)
 			view.Detail += issue.Code + "{" + issue.Detail + "} "
 		}
-		view.SuggestHead = report.SuggestedHeadID
+		// tl1280: the head_lag suggest-head reading left with the slow lane.
 		findings[c.path] = view
 	}
 	return findings

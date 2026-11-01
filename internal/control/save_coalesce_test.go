@@ -136,8 +136,16 @@ func TestSnapshotGateIsPathScoped(t *testing.T) {
 
 // 任务 748: the gate's "at most one gap stale" argument collapses when the
 // session file vanished externally (the save is also what detects the removal
-// and forks recovery) or when turn markers are queued but not yet persisted
-// (they are the schema-2 crash contract the skip itself leans on).
+// and forks recovery) or when a turn marker is open but not yet committed
+// (the schema-1 sidecar crash contract the skip itself leans on).
+//
+// tl1280: the schema-2 in-log turn markers (QueueTurnBegin /
+// HasPendingTurnMarkers) left with the write-path slow lane; the marker now
+// lives in the sidecar (BeginSessionInFlightTurn), which the gate never reads
+// — the sidecar is not part of the transcript, so nothing pins the valve on
+// it. The pending-marker leg below pins that the schema-1 sidecar marker
+// leaves the gate armed (file present ⇒ coalesce) while an uncommitted
+// NeedsRewriteSave still forces the save through.
 func TestSnapshotGateNeverSkipsRemovedFileOrPendingMarkers(t *testing.T) {
 	oldGap := snapshotSaveMinGap.Load()
 	snapshotSaveMinGap.Store(int64(time.Hour))
@@ -157,21 +165,19 @@ func TestSnapshotGateNeverSkipsRemovedFileOrPendingMarkers(t *testing.T) {
 		t.Fatal("fresh durable record must arm the gate")
 	}
 
-	// Pending turn markers: the gate must not skip the save that would carry
-	// them into the log.
-	if !exec.Session().QueueTurnBegin("t748-marker", true) {
-		t.Fatal("session must be schema 2 after its first save")
+	// Pending sidecar marker: it lives outside the transcript, so the gate
+	// stays armed (the sidecar is not a transcript change). The schema-2
+	// in-log marker used to force the save through; the sidecar does not.
+	if _, err := agent.BeginSessionInFlightTurn(path, sess.Len(), true); err != nil {
+		t.Fatalf("begin in-flight turn: %v", err)
 	}
-	if !exec.Session().HasPendingTurnMarkers() {
-		t.Fatal("queued marker must report pending")
-	}
-	if c.snapshotSaveRecentlyDurable(path) {
-		t.Fatal("gate skipped with pending turn markers")
+	if !c.snapshotSaveRecentlyDurable(path) {
+		t.Fatal("a pending sidecar marker must not unarm the gate: it is not a transcript change")
 	}
 
 	// External removal: the gate must fall through so the save detects the
 	// removal and forks the stable recovery branch. Persist first so the
-	// queued marker from the previous step does not pin the valve.
+	// sidecar marker from the previous step does not pin the valve.
 	if err := c.SnapshotDurable(); err != nil {
 		t.Fatalf("persist markers: %v", err)
 	}

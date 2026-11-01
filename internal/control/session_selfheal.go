@@ -91,34 +91,19 @@ func (c *Controller) SelfHealOpenSession(windowTokens int) SelfHealOpenOutcome {
 		out.Detail = "no_path"
 		return out
 	}
-	if _, dag := s.Head(); !dag {
-		out.Detail = "not_schema2"
-		return out
-	}
-
+	// tl1280: the schema-2 gate and the head_lag promote left with the
+	// write-path slow lane; every session is flat now, so the diet criterion
+	// below is the only live action.
 	report := agent.InspectSessionHealth(path, agent.HealthInspectOptions{WindowTokens: windowTokens})
 	if report.Healthy {
 		out.Healthy = true
 		return out
 	}
 
-	// 判据 head_lag：切到「更长且更新」链。SwitchBranch 是版本面板同一条
-	// 通路：旧链保留为版本，切换天然可撤销。
-	if report.SuggestedHeadID != "" && report.SuggestedHeadID != report.SelectedHeadID {
-		if _, err := c.SwitchBranch(report.SuggestedHeadID); err != nil {
-			slog.Warn("selfheal: head switch failed", "path", path, "to", report.SuggestedHeadID, "err", err)
-			out.Detail = "switch_failed:" + err.Error()
-		} else {
-			out.SwitchedHeadFrom = report.SelectedHeadID
-			out.SwitchedHeadTo = report.SuggestedHeadID
-			out.Actions = append(out.Actions, agent.HealActionPromoteHead)
-		}
-	}
-
 	// 判据 projection_overflow / compact_fail_streak：投影饮食。先备份整
 	// 目录（与文件级自愈同一备份形态），再走 CAS 重写。
 	if needsDiet(report.Issues) {
-		s = c.executor.Session() // SwitchBranch may have replaced the transcript
+		s = c.executor.Session()
 		if s != nil {
 			backupDir, err := agent.BackupSessionFiles(path)
 			if err != nil {

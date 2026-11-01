@@ -56,9 +56,10 @@ func (c *Controller) forkNamedReady(turn int, name string, switchToFork bool, ki
 	if !hasBound {
 		return "", c.rewindFail(fmt.Errorf("fork unavailable for turn %d (resumed session)", turn))
 	}
-	if sess := c.headBranchSession(); sess != nil && switchToFork {
-		return c.forkHeadReady(sess, turn, boundary, name, kind)
-	}
+	// tl1280: in-log head forks left with the write-path slow lane; a
+	// conversation fork always creates a new session file now. switchToFork is
+	// kept in the signature so the rewind call sites stay unchanged.
+	_ = switchToFork
 
 	// Persist the current conversation first so the branch point survives, then
 	// seed a fresh session with the messages up to the fork and switch to it.
@@ -171,11 +172,9 @@ func (c *Controller) branchTip(name string, forceFile bool) (string, error) {
 	if err := c.SnapshotDurable(); err != nil {
 		return "", c.rewindFail(err)
 	}
-	if !forceFile {
-		if sess := c.headBranchSession(); sess != nil {
-			return c.forkHeadReady(sess, -1, sess.Len(), name, agent.HeadKindFork)
-		}
-	}
+	// tl1280: in-log head forks left with the write-path slow lane; every
+	// branch creates a new session file.
+	_ = forceFile
 	parentPath := c.SessionPath()
 	parentID := agent.BranchID(parentPath)
 	src := c.executor.Session().Snapshot()
@@ -263,17 +262,12 @@ func (c *Controller) SwitchBranch(ref string) (agent.BranchInfo, error) {
 	if !agent.IsVisibleSession(match.Path) {
 		return agent.BranchInfo{}, c.rewindFail(fmt.Errorf("branch %q not found", ref))
 	}
-	if match.HeadID != "" && agent.CanonicalSessionPath(match.Path) == agent.CanonicalSessionPath(c.SessionPath()) {
-		return c.switchHeadInPlace(match)
-	}
+	// tl1280: in-log head switching left with the write-path slow lane, so a
+	// branch with a HeadID is a leftover schema-2 row the catalog no longer
+	// produces; fall through to the file-branch switch below.
 	loaded, err := agent.LoadSession(match.Path)
 	if err != nil {
 		return agent.BranchInfo{}, c.rewindFail(err)
-	}
-	if match.HeadID != "" {
-		if err := loaded.SwitchHead(match.Path, match.HeadID); err != nil {
-			return agent.BranchInfo{}, c.rewindFail(err)
-		}
 	}
 	commitTransition, err := c.prepareSessionTransition(match.Path, "switch", loaded)
 	if err != nil {
@@ -339,58 +333,10 @@ func branchDisplayName(b agent.BranchInfo) string {
 	return b.ID
 }
 
-// forkHeadReady is the schema-2 fork: a new head starts at the message before
-// boundary and this controller moves onto it without changing session path;
-// checkpoint turns past the boundary stay hidden by CheckpointHasBoundary.
-func (c *Controller) forkHeadReady(sess *agent.Session, turn, boundary int, name, kind string) (string, error) {
-	if err := c.SnapshotDurable(); err != nil {
-		slog.Warn("controller: pre-fork snapshot", "err", err)
-	}
-	path := c.SessionPath()
-	src := sess.Snapshot()
-	if boundary > len(src) {
-		boundary = len(src)
-	}
-	from := ""
-	if boundary > 0 {
-		from = src[boundary-1].ID
-	}
-	c.snapshotMu.Lock()
-	head, err := sess.ForkHead(path, from, kind, name)
-	if err != nil {
-		c.snapshotMu.Unlock()
-		return "", c.rewindFail(fmt.Errorf("fork head: %w", err))
-	}
-	c.afterHeadSwitch(path)
-	c.snapshotMu.Unlock()
-	if turn >= 0 {
-		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
-			Text: fmt.Sprintf("forked conversation at turn %d into a new version", turn)})
-	} else {
-		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
-			Text: fmt.Sprintf("created branch %s", head)})
-	}
-	return head, nil
-}
-
-// switchHeadInPlace moves the live session onto another head of its own log.
-func (c *Controller) switchHeadInPlace(match agent.BranchInfo) (agent.BranchInfo, error) {
-	sess := c.executor.Session()
-	path := c.SessionPath()
-	c.snapshotMu.Lock()
-	if err := sess.SwitchHead(path, match.HeadID); err != nil {
-		c.snapshotMu.Unlock()
-		return agent.BranchInfo{}, c.rewindFail(err)
-	}
-	c.afterHeadSwitch(path)
-	c.snapshotMu.Unlock()
-	c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
-		Text: fmt.Sprintf("switched to branch %s", branchDisplayName(match))})
-	return match, nil
-}
-
 // afterHeadSwitch re-derives the per-transcript runtime state after the
-// session moved to another head of the same log. Callers hold snapshotMu.
+// session moved to another head of the same log. tl1280: head switches left
+// with the slow lane, so no caller reaches it any more; the body stays as the
+// rebind recipe a future producer would reuse. Callers hold snapshotMu.
 func (c *Controller) afterHeadSwitch(path string) {
 	c.bindExecutorProjection(path, true)
 	c.ResetPlannerSession()
@@ -405,75 +351,33 @@ func (c *Controller) afterHeadSwitch(path string) {
 	c.sink.Emit(event.Event{Kind: event.SessionChanged, SessionPath: path, SessionReset: true})
 }
 
-// withHeadBranches lists the heads of the current schema-2 log as branches:
-// the main head keeps the file's identity so the tree stays rooted at the
-// log, and every other head hangs under its parent head.
-func (c *Controller) withHeadBranches(branches []agent.BranchInfo) []agent.BranchInfo {
-	sess := c.headBranchSession()
-	if sess == nil {
-		return branches
-	}
-	path := c.SessionPath()
-	heads, err := agent.ListSessionHeads(path)
-	if err != nil || len(heads) == 0 {
-		return branches
-	}
-	fileID := agent.BranchID(path)
-	headID := func(id string) string {
-		if id == agent.SessionMainHead || id == "" {
-			return fileID
-		}
-		return id
-	}
-	var file agent.BranchInfo
-	out := make([]agent.BranchInfo, 0, len(branches)+len(heads))
-	for _, b := range branches {
-		if agent.CanonicalSessionPath(b.Path) == agent.CanonicalSessionPath(path) {
-			file = b
-			continue
-		}
-		out = append(out, b)
-	}
-	for _, h := range heads {
-		if h.Retired {
-			continue
-		}
-		info := file
-		info.Path = path
-		info.HeadID, info.HeadKind = h.ID, h.Kind
-		info.ID = headID(h.ID)
-		info.Turns, info.Preview = h.Turns, h.Preview
-		if h.ID != agent.SessionMainHead {
-			info.Name = h.Name
-			info.ParentID = headID(h.ParentHead)
-			info.ForkTurn, info.ForkMessageIndex = -1, 0
-			info.CreatedAt = h.CreatedAt
-		}
-		out = append(out, info)
-	}
-	return out
-}
+// tl1280: the in-log head surfaces (withHeadBranches / headBranchSession /
+// SessionHead) left with the write-path slow lane. Branches are session files
+// again; the three names stay so port.go, branches.go and the desktop tab
+// wiring compile against the same interface while always answering the
+// file-only shape.
 
 // sessionHeadPolicy groups the frontend's choice between in-log heads and
-// separate session files for branch operations.
+// separate session files for branch operations. tl1280: only the file shape
+// remains, so the flag is accepted and ignored.
 type sessionHeadPolicy struct {
 	fileBranchesOnly bool
 }
 
-// headBranchSession returns the session when branch operations may create
-// heads inside its schema-2 log, nil when the frontend asked for files.
+// headBranchSession always returns nil now: no branch operation may create a
+// head inside a log any more.
 func (c *Controller) headBranchSession() *agent.Session {
-	if c.headPolicy.fileBranchesOnly {
-		return nil
-	}
-	return c.loggedTurnSession()
+	return nil
 }
 
-// SessionHead reports the schema-2 head the live session is on; ok is false
-// for schema-1 sessions, whose branches are still separate files.
+// withHeadBranches is the identity mapping: there are no in-log heads left to
+// fold into the file branch list.
+func (c *Controller) withHeadBranches(branches []agent.BranchInfo) []agent.BranchInfo {
+	return branches
+}
+
+// SessionHead always reports the schema-1 shape (ok=false): the live session
+// no longer sits on a log head.
 func (c *Controller) SessionHead() (agent.HeadRef, bool) {
-	if c == nil || c.executor == nil || c.executor.Session() == nil {
-		return agent.HeadRef{}, false
-	}
-	return c.executor.Session().Head()
+	return agent.HeadRef{}, false
 }
