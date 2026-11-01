@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/jobs"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/shellrun"
+	"reasonix/internal/taskmonitor"
 	"reasonix/internal/tool"
 )
 
@@ -30,6 +32,12 @@ type SubagentRequest struct {
 	// ReadOnly forces the read-only task path — independent confirmers are
 	// read-only by protocol (reproduce from evidence, never edit).
 	ReadOnly bool
+	// Occurrence is this nodeID's 1-based execution index within one run.
+	// Plain subagent/confirm nodes execute once (0 or 1); gate-loop fixers
+	// re-run per round (round number), and the task-panel monitor id must
+	// stay unique per execution (tl1324 ⑤: same id never reused — the
+	// recorder's start→done pairing is an in-memory map keyed by id).
+	Occurrence int
 }
 
 // SubagentRunner runs one sub-agent and returns its final answer. Injected so
@@ -97,16 +105,108 @@ func NewTaskSubagentRunner(task *agent.TaskTool) *TaskSubagentRunner {
 }
 
 // Run executes one node's sub-agent call via tool Execute with a JSON-args
-// envelope matching the task tool schema. The answer returned is the child's
-// UNMODIFIED final text: the host may wrap the tool's answer with a
-// completion envelope ("status: …", "summary: …") and receipts for the
-// parent model, and that envelope is prose, not the JSON a typed result
-// needs (G1) — so the raw answer recorded on ctx wins whenever the host
-// provided it.
+// envelope matching the task tool schema. When a task-monitor recorder is
+// assembled (controller initializeTaskRecorder → SetTaskMonitorRecorder),
+// the node's lifecycle is registered node-level into the task panel: start
+// on entry, done on EVERY exit path — error, cancellation, and panic
+// included (tl1324 ⑥: the heartbeat only stops at RecordDone; a missed done
+// on the failure path leaves the lease renewing forever = a zombie "alive"
+// row on the panel).
+//
+// The answer returned is the child's UNMODIFIED final text: the host may
+// wrap the tool's answer with a completion envelope ("status: …",
+// "summary: …") and receipts for the parent model, and that envelope is
+// prose, not the JSON a typed result needs (G1) — so the raw answer recorded
+// on ctx wins whenever the host provided it.
 func (r *TaskSubagentRunner) Run(ctx context.Context, req SubagentRequest) (string, error) {
 	if r == nil || r.task == nil {
 		return "", fmt.Errorf("workflow: subagent runner is not configured")
 	}
+	rec := currentTaskMonitorRecorder()
+	if rec == nil {
+		return r.runNode(ctx, req)
+	}
+	return r.runNodeMonitored(ctx, req, rec)
+}
+
+// runNodeMonitored wraps one node execution with task-panel lifecycle
+// registration (tl1324 G6). The recorder captured here is held for BOTH the
+// start and the done call: the recorder's start→done pairing is an
+// in-memory map on that instance, so a mid-run re-assembly of a newer
+// controller recorder must not split the pair across instances (the delayed
+// done would miss the map and never stop the heartbeat).
+func (r *TaskSubagentRunner) runNodeMonitored(ctx context.Context, req SubagentRequest, rec *taskmonitor.TaskRecorder) (string, error) {
+	return runNodeWithMonitor(ctx, req, rec, r.runNode)
+}
+
+// runNodeWithMonitor is the testable core of the registration wrapper (exec
+// injectable so the panic path is pinned deterministically).
+func runNodeWithMonitor(ctx context.Context, req SubagentRequest, rec *taskmonitor.TaskRecorder, exec func(context.Context, SubagentRequest) (string, error)) (answer string, err error) {
+	sid := jobs.SessionFromContext(ctx)
+	id := wfMonitorTaskID(runIDFromContext(ctx), req)
+	label := wfMonitorLabel(runIDFromContext(ctx), req)
+	rec.RecordStartSession(sid, id, monitorKindWorkflowSubagent, label)
+	defer func() {
+		if p := recover(); p != nil {
+			rec.RecordDone(id, jobs.Failed, fmt.Errorf("workflow subagent panic: %v", p))
+			panic(p)
+		}
+		switch {
+		case err == nil:
+			rec.RecordDone(id, jobs.Done, nil)
+		case ctx.Err() != nil:
+			// The run was cancelled (panel stop / session teardown): report
+			// the interrupt as its own terminal so the row leaves "alive".
+			rec.RecordDone(id, jobs.Interrupted, err)
+		default:
+			rec.RecordDone(id, jobs.Failed, err)
+		}
+	}()
+	answer, err = exec(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	return answer, nil
+}
+
+// monitorKindWorkflowSubagent is the kind reported for workflow sub-agent
+// node rows (jobs-side rows report "task").
+const monitorKindWorkflowSubagent = "workflow_subagent"
+
+// wfMonitorTaskID builds the task-panel registration id for one node
+// execution: wf:<runId>:<nodeID>, suffixed #<occurrence> from the second
+// execution on (gate-loop fixer rounds). The wf: prefix keeps the namespace
+// disjoint from jobs.Manager job ids (pin 4: both coexist in one store).
+func wfMonitorTaskID(runID string, req SubagentRequest) string {
+	if runID == "" {
+		runID = "norun"
+	}
+	id := "wf:" + runID + ":" + req.NodeID
+	if req.Occurrence > 1 {
+		id += fmt.Sprintf("#%d", req.Occurrence)
+	}
+	return id
+}
+
+// wfMonitorLabel builds the panel display label: wf:<runId 前 8>:<节点描述或
+// nodeID>（tl1324 ④，节点级粒度）。
+func wfMonitorLabel(runID string, req SubagentRequest) string {
+	if runID == "" {
+		runID = "norun"
+	}
+	if len(runID) > 8 {
+		runID = runID[:8]
+	}
+	desc := req.Description
+	if desc == "" {
+		desc = req.NodeID
+	}
+	return "wf:" + runID + ":" + desc
+}
+
+// runNode is the un-monitored node execution (identical behavior to
+// pre-tl1324 Run when no recorder is assembled).
+func (r *TaskSubagentRunner) runNode(ctx context.Context, req SubagentRequest) (string, error) {
 	ctx = agent.WithSubagentRawAnswerSink(ctx)
 	args := map[string]any{"prompt": req.Prompt}
 	set := func(key, v string) {

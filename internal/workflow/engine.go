@@ -106,6 +106,9 @@ func (e *Engine) RunWithID(ctx context.Context, wf *Workflow, runID string) (*Wo
 	if runID != "" {
 		s.runID = runID
 	}
+	// runID 随 ctx 下行（tl1324 G6）：任务面板登记 id（wf:<runId>:<nodeID>）
+	// 由 sub-agent runner 在节点执行时组装，外部钉定与自动生成两条路都覆盖。
+	ctx = withRunID(ctx, s.runID)
 	s.emitAll(event.WorkflowNodeQueued, 0, "")
 	err := s.runAll(ctx)
 	return s.buildReport(err), err

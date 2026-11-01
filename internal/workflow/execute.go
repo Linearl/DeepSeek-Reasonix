@@ -114,6 +114,9 @@ func (s *runState) runFixer(ctx context.Context, fixer *Node, feedback string, r
 		Model:       fixer.Model,
 		Effort:      fixer.Effort,
 		MaxSteps:    fixer.MaxSteps,
+		// fixer 每轮重跑同一 nodeID：occurrence=轮次保证任务面板登记 id
+		// 不复用（tl1324 ⑤）。
+		Occurrence: round,
 	})
 	if err != nil {
 		s.status[fixer.ID] = stAborted
