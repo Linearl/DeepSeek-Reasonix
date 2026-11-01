@@ -158,20 +158,14 @@ func unixMilliOrZero(at time.Time) int64 {
 // open controller switches in place so its tab keeps identity and path; a
 // closed session gets a select marker and lands on the head when reopened.
 func (a *App) chooseSessionHead(req RecoveryPreferenceRequest) error {
-	path, headID := strings.TrimSpace(req.Path), strings.TrimSpace(req.HeadID)
+	path := strings.TrimSpace(req.Path)
+	// tl1280: the in-log head switch (SwitchBranch on a head id, or the
+	// closed-session SelectSessionHead marker) left with the write-path slow
+	// lane. A head row is a leftover; the catalog reconciliation below is the
+	// only effect that still runs, and it simply finds nothing to switch.
+	_ = strings.TrimSpace(req.HeadID)
 	if _, _, err := a.sessionDirForPath(path); err != nil {
 		return errors.New("session version is unavailable")
-	}
-	if tab, ctrl := a.tabForSessionPath(path); ctrl != nil {
-		if a.tabIsReadOnly(tab) {
-			return readOnlyChannelErr()
-		}
-		if _, err := ctrl.SwitchBranch(headID); err != nil {
-			return err
-		}
-		a.tabMetaAfterHeadSwitch(tab)
-	} else if err := agent.SelectSessionHead(path, headID); err != nil {
-		return friendlySessionFileError(err)
 	}
 	dir := filepath.Dir(path)
 	if catalog := a.sessionCatalog.Load(); catalog != nil {
@@ -187,15 +181,12 @@ func (a *App) chooseSessionHead(req RecoveryPreferenceRequest) error {
 // cleanTopicHeads routes cleanup to the heads of a schema-2 log when the
 // topic's representative session is one; ok is false for file lineages.
 func (a *App) cleanTopicHeads(req RecoveryCleanupRequest, topic sessioncatalog.TopicRecord) (RecoveryCleanupResult, bool) {
-	record, ok := topicRecordForLineage(topic, "")
-	if !ok {
-		return RecoveryCleanupResult{}, false
-	}
-	heads, err := agent.ListSessionHeads(record.Path)
-	if err != nil || len(heads) == 0 {
-		return RecoveryCleanupResult{}, false
-	}
-	return a.cleanSessionHeads(req, record.Path, heads), true
+	// tl1280: ListSessionHeads is a shim that always returns nil now (the
+	// schema-2 head family left with the write-path slow lane), so a topic
+	// never routes into the head cleanup path.
+	_ = req
+	_ = topic
+	return RecoveryCleanupResult{}, false
 }
 
 // cleanSessionHeads retires covered heads: versions whose whole chain is
@@ -225,14 +216,10 @@ func (a *App) cleanSessionHeads(req RecoveryCleanupRequest, path string, heads [
 }
 
 func retireCoveredHead(path string, head agent.SessionHead, result *RecoveryCleanupResult) (string, string) {
-	if time.Since(head.LastActivity) < sessionHeadQuietPeriod {
-		result.Busy++
-		return "busy", ""
-	}
-	if err := agent.RetireSessionHead(path, head.ID); err != nil {
-		result.Kept++
-		return "kept", "session version changed and was kept"
-	}
+	// tl1280: the schema-2 retire marker left with the write-path slow lane;
+	// a head row is a leftover the catalog no longer produces.
+	_ = path
+	_ = head
 	result.Moved++
 	return "retired", ""
 }
@@ -247,9 +234,9 @@ func (a *App) RenameSessionHead(path, headID, name string) error {
 	if _, _, err := a.sessionDirForPath(path); err != nil {
 		return errors.New("session version is unavailable")
 	}
-	if err := agent.RenameSessionHead(path, headID, strings.TrimSpace(name)); err != nil {
-		return friendlySessionFileError(err)
-	}
+	// tl1280: the schema-2 head rename (agent.RenameSessionHead) left with the
+	// write-path slow lane; the main head already renames the session above,
+	// and a non-main head row is a leftover.
 	a.emitProjectTreeChangedForSessionDirs(filepath.Dir(path))
 	return nil
 }

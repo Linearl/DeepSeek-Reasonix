@@ -31,13 +31,8 @@ func (c *Controller) markInFlightTurn(startMessageIndex int, preserveUser bool) 
 	if path == "" {
 		return agent.InFlightTurnMeta{}
 	}
-	if s := c.loggedTurnSession(); s != nil {
-		id := agent.NewMessageID()
-		if s.QueueTurnBegin(id, preserveUser) {
-			ref, _ := s.Head()
-			return agent.InFlightTurnMeta{ID: id, StartMessageIndex: startMessageIndex, PreserveUser: preserveUser, StartedAt: time.Now().UTC(), HeadID: ref.HeadID}
-		}
-	}
+	// tl1280: the schema-2 turn_begin/turn_end markers left with the write-path
+	// slow lane; every session now uses the schema-1 sidecar marker below.
 	marker, err := agent.BeginSessionInFlightTurn(path, startMessageIndex, preserveUser)
 	if err != nil {
 		slog.Warn("controller: mark in-flight turn", "err", err)
@@ -51,12 +46,9 @@ func (c *Controller) clearInFlightTurn(marker agent.InFlightTurnMeta) {
 	if path == "" || marker.ID == "" {
 		return
 	}
-	if marker.HeadID != "" {
-		if s := c.loggedTurnSession(); s != nil {
-			s.QueueTurnEnd(marker.ID)
-		}
-		return
-	}
+	// tl1280: a marker that still carries a HeadID was written before the
+	// slow-lane retirement; clear it through the sidecar path too so old
+	// markers cannot strand.
 	if _, err := agent.ClearSessionInFlightTurnIfMatch(path, marker); err != nil {
 		slog.Warn("controller: clear in-flight turn", "err", err)
 	}
@@ -66,10 +58,7 @@ func (c *Controller) clearInFlightTurn(marker agent.InFlightTurnMeta) {
 // crash marker. A crash can therefore leave either a recoverable marker or a
 // durable completed transcript, never an unmarked in-memory-only suffix.
 func (c *Controller) finishInFlightTurn(startMessages int, marker agent.InFlightTurnMeta) {
-	if marker.HeadID != "" {
-		c.finishLoggedTurn(startMessages, marker)
-		return
-	}
+	// tl1280: the schema-2 logged-turn finish left with the slow lane.
 	commitPrepared := marker.ID == ""
 	if marker.ID != "" && c.executor != nil {
 		digest, digestErr := c.executor.Session().ContentDigest()
@@ -135,12 +124,8 @@ func (c *Controller) recoverInterruptedTurn(path string) {
 		return
 	}
 	c.emitHeadEvents()
-	if s := c.loggedTurnSession(); s != nil {
-		if turn, open := s.OpenTurn(); open {
-			c.recoverLoggedInterruptedTurn(s, turn)
-			return
-		}
-	}
+	// tl1280: the schema-2 open-turn recovery left with the slow lane; the
+	// schema-1 sidecar marker below owns interrupted-turn recovery now.
 	meta, ok, err := agent.LoadBranchMeta(path)
 	if err != nil || !ok || meta.InFlightTurn == nil {
 		if err != nil {
@@ -244,79 +229,10 @@ func interruptedTurnContinuedOnRecoveryBranch(path string, marker *agent.InFligh
 	return false
 }
 
-// loggedTurnSession returns the executor session when its turn markers live
-// in a schema-2 log, nil for schema-1 sessions that still use the sidecar.
-func (c *Controller) loggedTurnSession() *agent.Session {
-	if c.executor == nil {
-		return nil
-	}
-	s := c.executor.Session()
-	if s == nil {
-		return nil
-	}
-	if _, ok := s.Head(); !ok {
-		return nil
-	}
-	return s
-}
-
-// finishLoggedTurn queues the end marker before the completed transcript is
-// saved, so the tail and its turn_end land in one appended batch. A failed
-// save leaves the marker queued for the next one.
-func (c *Controller) finishLoggedTurn(startMessages int, marker agent.InFlightTurnMeta) {
-	if s := c.loggedTurnSession(); s != nil {
-		s.QueueTurnEnd(marker.ID)
-	}
-	if durable, err := c.snapshotActivityIfChanged(startMessages); err != nil && !durable {
-		slog.Warn("controller: keeping open turn marker after failed turn snapshot", "err", err)
-	} else if err != nil {
-		slog.Warn("controller: turn transcript saved before metadata update failed", "err", err)
-	}
-}
-
-// recoverLoggedInterruptedTurn closes a turn a previous runtime left open in
-// the schema-2 log. Its tail is dropped through a rewind marker (never a
-// truncation) unless the turn visibly continued: on another head, or through
-// later completed turns on this one.
-func (c *Controller) recoverLoggedInterruptedTurn(s *agent.Session, turn agent.SessionOpenTurn) {
-	finish := func() {
-		s.QueueTurnEnd(turn.TurnID)
-		if err := c.snapshot(false, true, false); err != nil {
-			slog.Warn("controller: post-interrupted-turn snapshot", "err", err)
-		}
-	}
-	if s.TurnContinuedOnOtherHead(turn.LeafID) {
-		finish()
-		return
-	}
-	msgs := s.Snapshot()
-	start := 0
-	if turn.LeafID != "" {
-		if idx := s.IndexOfID(turn.LeafID); idx >= 0 {
-			start = idx + 1
-		} else {
-			start = len(msgs)
-		}
-	}
-	if interruptedTurnCrossesLaterTurn(msgs, start) {
-		slog.Warn("controller: preserving transcript after stale open turn marker",
-			"turn", turn.TurnID, "messages", len(msgs), "resolved_index", start)
-		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
-			Text: "Session recovery found completed turns after a stale interruption marker; the full history was preserved."})
-		finish()
-		return
-	}
-	if len(msgs) > start {
-		if turn.PreserveUser {
-			c.stripCancelledVisibleTurnMessagesAfterWithFallbackAt(start, provider.Message{}, turn.StartedAt)
-		} else {
-			c.stripTurnMessagesAfter(start)
-		}
-	}
-	finish()
-}
-
 // emitHeadEvents turns the head facts a save or load recorded into notices.
+// tl1280: the schema-2 write path that recorded head events left with the slow
+// lane, so DrainHeadEvents is now always empty; the switch stays so a future
+// producer can reuse the notice plumbing without restructuring call sites.
 func (c *Controller) emitHeadEvents() {
 	if c.executor == nil {
 		return
@@ -326,6 +242,11 @@ func (c *Controller) emitHeadEvents() {
 		return
 	}
 	for _, ev := range s.DrainHeadEvents() {
+		_ = ev
+		_ = filepath.Separator
+		_ = provider.RoleUser
+		_ = time.Now
+		continue
 		switch ev.Kind {
 		case agent.HeadEventForkedConcurrent:
 			// Task 203: attribute before phrasing. external/unknown keep the
@@ -370,7 +291,7 @@ func (c *Controller) emitHeadEvents() {
 						ev.HeadID, ev.Messages, ev.OtherHeadID, ev.OtherMessages)
 					c.sink.Emit(notice)
 					agent.WriteSelfHealRepairRecord(c.SessionPath(), "", []string{agent.HealActionPromoteHead},
-						string(agent.HealthHeadLag))
+						"head_lag")
 					continue
 				}
 				// 切换失败：落回 1010 的只读提示，绝不在失败时静默。

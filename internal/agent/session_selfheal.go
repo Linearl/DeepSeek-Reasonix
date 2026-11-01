@@ -230,14 +230,9 @@ func SelfHealSessionContext(ctx context.Context, path string, opts SelfHealOptio
 	if path == "" {
 		return report, fmt.Errorf("self-heal: empty session path")
 	}
-	probe, err := probeSessionEventLog(path)
-	if err != nil {
-		return report, fmt.Errorf("self-heal: %w", err)
-	}
-	if !probe.dag {
-		return report, fmt.Errorf("self-heal: %s: %w", filepath.Base(path), ErrSessionNotDAG)
-	}
-
+	// tl1280: the schema-2-only guard left with the write-path slow lane. A
+	// sealed schema-2 log now reports healthy (no criterion applies), so the
+	// heal falls through to the flat-schema-1 diet below.
 	before := InspectSessionHealthContext(ctx, path, HealthInspectOptions{WindowTokens: opts.WindowTokens})
 	if before.Healthy {
 		return report, nil
@@ -257,29 +252,16 @@ func SelfHealSessionContext(ctx context.Context, path string, opts SelfHealOptio
 	report.BackupDir = backupDir
 	report.Repaired = true
 
-	// 动作 1：head 重选（更长且更新）。SelectSessionHead 自带双锁与重放，
-	// 这里不持外层锁，避免与它的锁序互嵌。
-	if opts.PromoteHead && before.SuggestedHeadID != "" {
-		if err := SelectSessionHead(path, before.SuggestedHeadID); err != nil {
-			report.Actions = append(report.Actions, SelfHealAction{Action: HealActionPromoteHead, Status: "failed", Detail: err.Error()})
-		} else {
-			report.HeadFrom, report.HeadTo = before.SelectedHeadID, before.SuggestedHeadID
-			report.Actions = append(report.Actions, SelfHealAction{
-				Action: HealActionPromoteHead, Status: "done",
-				Detail: fmt.Sprintf("from=%s to=%s", before.SelectedHeadID, before.SuggestedHeadID),
-			})
-		}
-	} else if opts.PromoteHead {
-		report.Actions = append(report.Actions, SelfHealAction{Action: HealActionPromoteHead, Status: "skipped", Detail: "no dominating live head"})
+	// tl1280: the head-promote and hydrate steps left with the write-path slow
+	// lane (they replayed a schema-2 log). A schema-1 session has no heads to
+	// promote and no event chain to hydrate from — the .jsonl checkpoint is
+	// already the transcript. The option fields stay so the GUI's repair
+	// buttons keep their wire shape; they report skipped.
+	if opts.PromoteHead {
+		report.Actions = append(report.Actions, SelfHealAction{Action: HealActionPromoteHead, Status: "skipped", Detail: "schema-2 head promote left with tl1280 slow-lane retirement"})
 	}
-
-	// 动作 2：补水物化。选中链（可能已被上一步切换）落回 .jsonl 检查点。
 	if opts.Hydrate {
-		if err := hydrateSessionCheckpoint(ctx, path); err != nil {
-			report.Actions = append(report.Actions, SelfHealAction{Action: HealActionHydrate, Status: "failed", Detail: err.Error()})
-		} else {
-			report.Actions = append(report.Actions, SelfHealAction{Action: HealActionHydrate, Status: "done"})
-		}
+		report.Actions = append(report.Actions, SelfHealAction{Action: HealActionHydrate, Status: "skipped", Detail: "schema-2 hydrate left with tl1280 slow-lane retirement"})
 	}
 
 	// 动作 3：饮食（剥图 → 折叠）。只对仍然超窗的投影执行；执行走
@@ -399,41 +381,6 @@ func backupSessionFiles(path string) (string, error) {
 	}
 	slog.Info("session: self-heal backup written", "path", path, "backup_dir", backupDir, "files", copied)
 	return backupDir, nil
-}
-
-// hydrateSessionCheckpoint materializes the selected head's chain into the
-// .jsonl checkpoint (tmp file + atomic rename) and refreshes the meta mirror
-// so listings and .jsonl-side readers see the promoted watermark. Read path
-// is the events log itself — no recovery bolt, no manifest (the v3_only
-// storage shape from the incident has neither).
-func hydrateSessionCheckpoint(ctx context.Context, path string) error {
-	limits := limitsForSessionLog(path, defaultSessionReplayLimits)
-	st, err := replaySessionDAG(ctx, store.SessionEventLog(path), limits)
-	if err != nil {
-		return fmt.Errorf("replay: %w", err)
-	}
-	selected := st.selectedHead()
-	msgs, times := st.materialize(selected)
-	if len(msgs) == 0 {
-		return fmt.Errorf("selected head %s materialized to zero messages", selected)
-	}
-	if err := writeJSONLCheckpointAtomic(path, msgs, times); err != nil {
-		return err
-	}
-	preview, turns := SessionPreviewFromMessages(msgs)
-	if err := UpdateBranchMeta(path, true, func(meta *BranchMeta) error {
-		meta.HeadID = selected
-		meta.HeadCount = len(st.heads)
-		meta.LogSchema = sessionDAGSchemaVersion
-		meta.LogGeneration = st.generation
-		meta.Turns = turns
-		meta.Preview = preview
-		return nil
-	}); err != nil {
-		return fmt.Errorf("meta refresh: %w", err)
-	}
-	slog.Info("session: self-heal hydrated checkpoint", "path", path, "head", selected, "messages", len(msgs))
-	return nil
 }
 
 // writeJSONLCheckpointAtomic writes the transcript as the canonical .jsonl

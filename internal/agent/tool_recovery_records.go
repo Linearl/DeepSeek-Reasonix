@@ -245,9 +245,9 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 			break
 		}
 	}
-	if open, ok := a.sess.conversation.OpenTurn(); ok {
-		identity.TurnID = open.TurnID
-	}
+	// tl1280: the schema-2 open-turn marker (OpenTurn) left with the write-path
+	// slow lane; the last user-authored turn above is the identity the
+	// schema-1 in-flight meta marker already tracks.
 	// Unknown resource scopes intentionally cover the session. No guessed path
 	// or model-provided scope may weaken the unresolved-effect barrier.
 	identity.ResourceScope = "session:" + identity.SessionID

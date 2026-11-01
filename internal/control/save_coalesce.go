@@ -90,9 +90,10 @@ func (c *Controller) snapshotSaveRecentlyDurable(path string) bool {
 		if c.executor.Session().NeedsRewriteSave() {
 			return false
 		}
-		if c.executor.Session().HasPendingTurnMarkers() {
-			return false
-		}
+		// tl1280: schema-2 turn markers left with the slow lane, so
+		// HasPendingTurnMarkers is gone; the sidecar marker path never queues
+		// in-memory entries, and the gap window's coverage argument is now
+		// purely the sidecar marker plus the boundary saves.
 	}
 	if _, err := os.Stat(path); err != nil {
 		// Missing or unreadable: let the real save run so external removal is

@@ -543,13 +543,9 @@ func (s *Session) saveLockedInner(path string, mode sessionSaveMode) error {
 		}
 	}
 	probeMs = time.Since(probeStart).Milliseconds()
-	if route := s.dagSaveRoute(path, probe); route != dagRouteSchemaOne {
-		digest, err := s.snapshotDigest(path, msgs, version, rewriteVersion)
-		if err != nil {
-			return err
-		}
-		return s.saveDAGLocked(path, mode, route, msgs, version, rewriteVersion, digest)
-	}
+	// tl1280: the schema-2 slow lane (dagSaveRoute/saveDAGLocked) is gone. A
+	// sealed schema-2 log is refused by probeLogForSave above, so every save
+	// that reaches here writes the flat schema-1 form.
 	digest, contentBytes, err := s.transcriptDigestAndSizeForSave(msgs, version, rewriteVersion)
 	if err != nil {
 		return err
