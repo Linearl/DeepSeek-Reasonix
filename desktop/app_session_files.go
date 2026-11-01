@@ -392,10 +392,19 @@ func (a *App) restoreSession(path string) error {
 	if err := restoreTrashedSessionFile(dir, path); err != nil {
 		return err
 	}
-	if err := restoreSessionTopicIndex(dir, target); err != nil {
+	healed, err := restoreSessionTopicIndex(dir, target)
+	if err != nil {
 		return err
 	}
-	a.requestSessionCatalogPath("", "", target)
+	if healed != target {
+		// tl1331 (G11): the empty shell now lives in its owning scope's
+		// session dir — retire the global-side catalog rows immediately
+		// (RemoveSession deletes the session row; recomputeTopic then drops
+		// the shielded topic row) instead of waiting for a missing-grace
+		// reconcile of the global directory.
+		a.removeSessionCatalogPath(target, "tl1331: empty shell moved to owning scope")
+	}
+	a.requestSessionCatalogPath("", "", healed)
 	a.emitProjectTreeChangedForSessionDirs(dir)
 	a.invalidatePromptHistoryCache()
 	return nil

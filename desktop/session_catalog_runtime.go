@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -181,7 +182,9 @@ func (a *App) metadataProjectTopics(scope, workspaceRoot string) []ProjectNode {
 	}
 	out := []ProjectNode{}
 	seen := map[string]bool{}
-	for sortOrder, topicID := range pinnedTopicIDs(orderedTopicIDs(ids, titles), pinnedIDs) {
+	// 注册面 = Topics ∪ PinnedTopics（tl1283 归属面同款）：仅置顶的 topic
+	// 照常出投影；标题表只查 title 不扩集合（tl1331 G10）。
+	for sortOrder, topicID := range pinnedTopicIDs(orderedTopicIDs(slices.Concat(ids, pinnedIDs)), pinnedIDs) {
 		if !manualOrder {
 			sortOrder = -1
 		}

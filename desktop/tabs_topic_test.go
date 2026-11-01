@@ -266,6 +266,12 @@ func TestSetTopicPinnedOrdersProjectTopics(t *testing.T) {
 	if err := addProject(projectRoot, ""); err != nil {
 		t.Fatalf("add project: %v", err)
 	}
+	// tl1331 G10: 布景走注册收点——树渲染只认注册面（Topics ∪ PinnedTopics），
+	// 裸标题（title-only 未注册）不再产生渲染行（那是 G9 泄露形态）。标题表
+	// 只负责行标签。
+	if err := registerTopic("project", projectRoot, topicRegisterOpts{ensureProject: true}, "topic_a", "topic_b"); err != nil {
+		t.Fatalf("register topics: %v", err)
+	}
 	if err := setTopicTitle(projectRoot, "topic_a", "Alpha"); err != nil {
 		t.Fatalf("set topic a title: %v", err)
 	}
@@ -1244,11 +1250,26 @@ func TestTombstonedTitleOnlyTopicStaysHiddenInProjectTree(t *testing.T) {
 		t.Fatalf("add project: %v", err)
 	}
 
-	// Control: a legitimate title-only topic (not in GlobalTopics) must keep
-	// rendering through the orderedTopicIDs title-map fallback.
+	// Control (tl1331 G10 语义反转): a title-only topic that is NOT in the
+	// registered list must NOT render anymore — the title table lost its
+	// shadow-SSOT role, so a Global rendering requires registration. A
+	// registered topic keeps rendering; its title still comes from the title
+	// table.
 	controlID := "topic_control_visible"
 	if err := setTopicTitle("", controlID, "正常话题"); err != nil {
 		t.Fatalf("set control title: %v", err)
+	}
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		f.GlobalTopics = prependUniqueString(f.GlobalTopics, controlID)
+		return true, nil
+	}); err != nil {
+		t.Fatalf("register control topic: %v", err)
+	}
+	// Title-only and NOT registered: pre-tl1331 the title map expanded the
+	// feed and leaked it into Global; now it must stay hidden.
+	titleOnlyID := "topic_title_only_unregistered"
+	if err := setTopicTitle("", titleOnlyID, "仅标题未注册"); err != nil {
+		t.Fatalf("set title-only title: %v", err)
 	}
 	// Race product: DeleteTopic landed, but a stale whole-map save wrote the
 	// topic's title back — tombstoned, absent from GlobalTopics, title present.
@@ -1281,8 +1302,11 @@ func TestTombstonedTitleOnlyTopicStaysHiddenInProjectTree(t *testing.T) {
 	if seen[tombstonedID] {
 		t.Fatalf("global children = %#v, tombstoned title-only topic %q must stay hidden", global.Children, tombstonedID)
 	}
+	if seen[titleOnlyID] {
+		t.Fatalf("global children = %#v, unregistered title-only topic %q must stay hidden (G10: title table no longer expands the feed)", global.Children, titleOnlyID)
+	}
 	if !seen[controlID] {
-		t.Fatalf("global children = %#v, legitimate title-only topic %q should still render", global.Children, controlID)
+		t.Fatalf("global children = %#v, registered topic %q should still render", global.Children, controlID)
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -218,12 +219,31 @@ func TestRestoreSessionTopicIndexHealsGlobalShellTL1283(t *testing.T) {
 	}
 
 	// 触发：会话文件触碰链路的同一入口。
-	if err := restoreSessionTopicIndex(globalDir, shellPath); err != nil {
+	healedPath, err := restoreSessionTopicIndex(globalDir, shellPath)
+	if err != nil {
 		t.Fatalf("restore session topic index: %v", err)
 	}
 
-	// 验收①：空壳 meta 被重钉回项目归属（自愈，不只是登记面绕过）。
-	meta, ok, err := agent.LoadBranchMeta(shellPath)
+	// 验收⓪（tl1331 G11 空壳自愈扩展）：0 字节空壳文件随自愈迁入归属
+	// scope 会话目录——global 目录不再留燃料（catalog_sessions(global,T)
+	// 不再被目录扫描再生，SyncMetadata 清理豁免失去屏蔽物）。
+	if healedPath == shellPath {
+		t.Fatalf("empty shell stayed in the global dir (%s) — tl1331 G11 move did not happen", shellPath)
+	}
+	if _, statErr := os.Stat(shellPath); !os.IsNotExist(statErr) {
+		t.Fatalf("global-dir shell transcript still present after the heal: %v", statErr)
+	}
+	if _, statErr := os.Stat(agent.BranchMetaPath(shellPath)); !os.IsNotExist(statErr) {
+		t.Fatalf("global-dir shell meta sidecar still present after the heal: %v", statErr)
+	}
+	if !sameDesktopPath(filepath.Dir(healedPath), desktopSessionDir(projectRoot)) {
+		t.Fatalf("healed shell path %q not in the owning project session dir %q",
+			healedPath, desktopSessionDir(projectRoot))
+	}
+
+	// 验收①：空壳 meta 被重钉回项目归属（自愈，不只是登记面绕过；tl1331
+	// 起重钉落在迁移后的新路径上）。
+	meta, ok, err := agent.LoadBranchMeta(healedPath)
 	if err != nil || !ok {
 		t.Fatalf("reload shell meta: ok=%v err=%v", ok, err)
 	}
@@ -243,6 +263,62 @@ func TestRestoreSessionTopicIndexHealsGlobalShellTL1283(t *testing.T) {
 	owner, ownerOK := topicRegistryOwnerOf(topicID)
 	if !ownerOK || owner.Scope != topicregistry.ScopeProject || !sameProjectRoot(owner.Root, projectRoot) {
 		t.Fatalf("index owner = %+v ok=%v, want project %q", owner, ownerOK, projectRoot)
+	}
+}
+
+// TestRestoreSessionTopicIndexKeepsContentSessionInPlaceTL1331 钉 G11 移动
+// 的边界：只有 0 字节空壳随自愈迁移；承载内容的会话（哪怕误钉 global、
+// 归属判 project）留在原目录原地愈合——内容件的落点归 G9/G12 范畴，需
+// 用户确认，不归自动自愈裁决。
+func TestRestoreSessionTopicIndexKeepsContentSessionInPlaceTL1331(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	projectRoot := t.TempDir()
+	if err := addProject(projectRoot, "ai-passport"); err != nil {
+		t.Fatalf("add project: %v", err)
+	}
+	topicID := "topic_tl1331_content_session"
+	if err := registerTopic("project", projectRoot, topicRegisterOpts{ensureProject: true}, topicID); err != nil {
+		t.Fatalf("seed project registration: %v", err)
+	}
+
+	globalDir := desktopSessionDir(globalWorkspaceRoot())
+	contentPath, err := createEmptySessionFile(globalDir, "")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := pinNewEmptySessionBranchMeta(contentPath, "global", "", topicID, "剧情核对", ""); err != nil {
+		t.Fatalf("pin meta: %v", err)
+	}
+	// 给文件塞内容——空壳判据（0 字节）必须挡住迁移。
+	f, err := os.OpenFile(contentPath, os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		t.Fatalf("open session for content: %v", err)
+	}
+	if _, err := f.WriteString(`{"role":"user","content":"有内容"}` + "\n"); err != nil {
+		f.Close()
+		t.Fatalf("write content: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close session: %v", err)
+	}
+
+	healedPath, err := restoreSessionTopicIndex(globalDir, contentPath)
+	if err != nil {
+		t.Fatalf("restore session topic index: %v", err)
+	}
+	if healedPath != contentPath {
+		t.Fatalf("content session moved to %q — only 0-byte shells may move (tl1331 G11 边界)", healedPath)
+	}
+	if _, statErr := os.Stat(contentPath); statErr != nil {
+		t.Fatalf("content session vanished from the global dir: %v", statErr)
+	}
+	// 原地愈合仍然成立：meta 重钉回项目归属。
+	meta, ok, err := agent.LoadBranchMeta(contentPath)
+	if err != nil || !ok {
+		t.Fatalf("reload meta: ok=%v err=%v", ok, err)
+	}
+	if meta.Scope != "project" || !sameProjectRoot(meta.WorkspaceRoot, projectRoot) {
+		t.Fatalf("in-place heal lost: scope=%q root=%q", meta.Scope, meta.WorkspaceRoot)
 	}
 }
 

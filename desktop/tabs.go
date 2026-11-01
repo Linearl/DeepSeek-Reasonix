@@ -3778,15 +3778,15 @@ func resetReusableBlankTabTitle(tab *WorkspaceTab, scope, workspaceRoot string) 
 // indexedBlankTopicIDLocked finds a blank topic ID that is indexed on disk
 // but not open in any tab — for reusing without creating a new topic.
 func (a *App) indexedBlankTopicIDLocked(scope, workspaceRoot string) string {
-	titleRoot := topicTitleRoot(scope, workspaceRoot)
-	titles := loadTopicTitles(titleRoot)
 	f := loadProjectsFile()
 
 	var topicIDs []string
 	if scope == "global" {
-		topicIDs = orderedTopicIDs(f.GlobalTopics, titles)
+		// 注册面 = Topics ∪ PinnedTopics（tl1283 归属面同款，tl1331 G10 收口
+		// 后标题表不再兜底扩集）。
+		topicIDs = orderedTopicIDs(slices.Concat(f.GlobalTopics, f.GlobalPinnedTopics))
 	} else if i := projectIndexByRoot(f.Projects, workspaceRoot); i >= 0 {
-		topicIDs = orderedTopicIDs(f.Projects[i].Topics, titles)
+		topicIDs = orderedTopicIDs(slices.Concat(f.Projects[i].Topics, f.Projects[i].PinnedTopics))
 	}
 	if len(topicIDs) == 0 {
 		return ""
@@ -6798,9 +6798,25 @@ func pinnedTopicIDs(topicIDs []string, pinned []string) []string {
 	return out
 }
 
-func orderedTopicIDs(explicit []string, titleMap map[string]string) []string {
-	seen := map[string]bool{}
-	out := make([]string, 0, len(explicit)+len(titleMap))
+// orderedTopicIDs orders the registered sidebar list: trim, drop empties,
+// dedupe, preserving registration order.
+//
+// tl1331 (G10 喂入侧收口): the title map is no longer consulted to EXPAND the
+// set. The feed set must equal the registered set — a topic that only has a
+// title-table entry is either a leak (global root carrying a project-owned
+// topic) or a not-yet-registered race, and surfacing either in the sidebar
+// made the title table a shadow SSOT (tl1302 深查报告 W10). Title lookups for
+// registered ids happen at the call sites via the same map. The registered
+// surfaces are the scope's Topics ∪ PinnedTopics (tl1283 归属面同款:
+// PinnedTopics is a registration list of its own — 仅置顶 topic 照常喂入,
+// call sites concat the two lists before ordering).
+//
+// Guard: TestOrderedTopicIDsCallSitesGuardTL1331 pins the full call-site set;
+// a new reader must be reviewed against this contract before the allowlist
+// grows.
+func orderedTopicIDs(explicit []string) []string {
+	seen := make(map[string]bool, len(explicit))
+	out := make([]string, 0, len(explicit))
 	for _, tid := range explicit {
 		tid = strings.TrimSpace(tid)
 		if tid == "" || seen[tid] {
@@ -6809,14 +6825,7 @@ func orderedTopicIDs(explicit []string, titleMap map[string]string) []string {
 		seen[tid] = true
 		out = append(out, tid)
 	}
-	var remaining []string
-	for tid := range titleMap {
-		if !seen[tid] {
-			remaining = append(remaining, tid)
-		}
-	}
-	sort.Strings(remaining)
-	return append(out, remaining...)
+	return out
 }
 
 func projectTreeOrderKey(node ProjectNode) string {
@@ -7749,20 +7758,57 @@ func projectRootKey(root string) string {
 	return root
 }
 
-func restoreSessionTopicIndex(dir, sessionPath string) error {
+// restoreSessionTopicIndex heals a session file's sidebar index after the
+// file landed. It returns the session path the heal ended at: a tl1331 (G11)
+// empty-shell move relocates the file, and the caller must tell the session
+// catalog about BOTH paths.
+func restoreSessionTopicIndex(dir, sessionPath string) (string, error) {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
-		return nil
+		return sessionPath, nil
 	}
 	meta, ok, err := agent.LoadBranchMeta(sessionPath)
 	if err != nil {
-		return err
+		return sessionPath, err
 	}
 	if !ok || strings.TrimSpace(meta.TopicID) == "" {
 		// The migration pass takes per-session meta locks itself, so it must
 		// run outside the lock taken below.
 		migrateLegacySessionsIntoGlobalTopics(dir)
-		return nil
+		return sessionPath, nil
+	}
+
+	// tl1331 (G11 空壳自愈扩展): resolve ownership the same way the heal
+	// below will, and before taking any meta lock relocate a 0-byte shell
+	// whose registry owner is a project into the owning scope's session dir.
+	// tl1283 healed the shell's meta + registration but left the file in the
+	// global dir — the directory kept regenerating catalog_sessions(global,
+	// T) rows, which shielded the leaked catalog topic row from SyncMetadata
+	// cleanup forever (catalog_sessions 永存 → 清理豁免 → 永不收敛). Moving
+	// the shell removes that fuel; catalog convergence then flows through the
+	// existing removal path. Best-effort by contract: any failure logs and
+	// heals in place, exactly as pre-tl1331. Content-bearing files never move
+	// here — their placement is G9/G12 范畴，需用户确认，不归自动自愈裁决。
+	shellScope := strings.TrimSpace(meta.Scope)
+	shellRoot := strings.TrimSpace(meta.WorkspaceRoot)
+	if shellScope != "global" && shellScope != "project" {
+		if shellRoot == "" {
+			shellScope = "global"
+		} else {
+			shellScope = "project"
+		}
+	}
+	healedFrom := ""
+	if healScope, healRoot := resolveTopicIndexTarget(shellScope, shellRoot, strings.TrimSpace(meta.TopicID)); healScope == "project" {
+		moved, moveErr := moveEmptyShellSessionToScope(sessionPath, healRoot)
+		if moveErr != nil {
+			slog.Warn("desktop: empty shell stays in place after move failure; healing at original path",
+				"path", sessionPath, "err", moveErr)
+		} else if moved != sessionPath {
+			healedFrom = sessionPath
+			sessionPath = moved
+			dir = filepath.Dir(moved)
+		}
 	}
 
 	// Read-modify-write on the branch-meta sidecar: re-read and save under the
@@ -7770,15 +7816,15 @@ func restoreSessionTopicIndex(dir, sessionPath string) error {
 	// between and get rolled back by the write at the end.
 	unlock, err := agent.LockSessionMetaPath(sessionPath)
 	if err != nil {
-		return err
+		return sessionPath, err
 	}
 	defer unlock()
 	meta, ok, err = agent.LoadBranchMeta(sessionPath)
 	if err != nil {
-		return err
+		return sessionPath, err
 	}
 	if !ok || strings.TrimSpace(meta.TopicID) == "" {
-		return nil
+		return sessionPath, nil
 	}
 
 	topicID := strings.TrimSpace(meta.TopicID)
@@ -7815,7 +7861,7 @@ func restoreSessionTopicIndex(dir, sessionPath string) error {
 		title = defaultTopicTitle
 	}
 	if err := ensureTopicIndexed(scope, workspaceRoot, topicID, title, topicTitleSourceManual); err != nil {
-		return err
+		return sessionPath, err
 	}
 
 	if scope == "global" {
@@ -7828,10 +7874,70 @@ func restoreSessionTopicIndex(dir, sessionPath string) error {
 	meta.TopicID = topicID
 	meta.TopicTitle = title
 	if err := agent.SaveBranchMetaPreserveUpdatedLocked(sessionPath, meta); err != nil {
-		return err
+		return sessionPath, err
+	}
+	if healedFrom != "" {
+		invalidateTopicSessionIndexForPath(healedFrom)
 	}
 	invalidateTopicSessionIndexForPath(sessionPath)
-	return nil
+	return sessionPath, nil
+}
+
+// moveEmptyShellSessionToScope relocates a 0-byte empty shell session file
+// (plus its branch-meta sidecar) into the owning scope's session directory.
+// Returns the path the shell lives at afterwards (input path when nothing
+// moved). tl1331 (G11): the transcript is empty, so the move is lossless —
+// the topic binding rides the meta, which the heal re-pins at the new path.
+// On a meta-sidecar failure the transcript is rolled back so the shell never
+// sits split across scopes.
+func moveEmptyShellSessionToScope(sessionPath, workspaceRoot string) (string, error) {
+	info, err := os.Stat(sessionPath)
+	if err != nil {
+		return sessionPath, err
+	}
+	if info.Size() != 0 {
+		return sessionPath, nil
+	}
+	targetDir := desktopSessionDir(workspaceRoot)
+	if sameDesktopPath(filepath.Dir(sessionPath), targetDir) {
+		return sessionPath, nil
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return sessionPath, err
+	}
+	target := filepath.Join(targetDir, filepath.Base(sessionPath))
+	if _, statErr := os.Stat(target); os.IsNotExist(statErr) {
+		// Name free — keep it.
+	} else if statErr != nil {
+		return sessionPath, statErr
+	} else {
+		// Name collision in the owning scope: an empty shell may take a fresh
+		// name (topic binding rides the meta, not the filename).
+		target = agent.NewSessionPath(targetDir, "")
+	}
+	if err := os.Rename(sessionPath, target); err != nil {
+		return sessionPath, err
+	}
+	metaPath := agent.BranchMetaPath(sessionPath)
+	_, statErr := os.Stat(metaPath)
+	if os.IsNotExist(statErr) {
+		slog.Info("desktop: empty shell session moved to owning scope (no meta sidecar)",
+			"from", sessionPath, "to", target)
+		return target, nil
+	}
+	if statErr != nil {
+		_ = os.Rename(target, sessionPath)
+		return sessionPath, statErr
+	}
+	if renameErr := os.Rename(metaPath, agent.BranchMetaPath(target)); renameErr != nil {
+		if backErr := os.Rename(target, sessionPath); backErr != nil {
+			return sessionPath, errors.Join(renameErr, fmt.Errorf("roll back shell move: %w", backErr))
+		}
+		return sessionPath, renameErr
+	}
+	slog.Info("desktop: empty shell session moved to owning scope",
+		"from", sessionPath, "to", target)
+	return target, nil
 }
 
 func restoredSessionTopicTitle(dir, sessionPath string, meta agent.BranchMeta) string {
