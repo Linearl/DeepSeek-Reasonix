@@ -147,7 +147,7 @@ func TestServiceRunStatusAndEvents(t *testing.T) {
 	sink := &captureSink{}
 	callCtx := withCallSink(context.Background(), sink, "branch-abc")
 
-	res, err := svc.RunWorkflow(callCtx, "svc-test-wf")
+	res, err := svc.RunWorkflow(callCtx, "svc-test-wf", "")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestServiceRunWithoutSubstrateFailsReadable(t *testing.T) {
 	if _, err := svc.DefineWorkflow(ctx, svcTestDoc, false); err != nil {
 		t.Fatalf("define: %v", err)
 	}
-	_, err := svc.RunWorkflow(ctx, "svc-test-wf")
+	_, err := svc.RunWorkflow(ctx, "svc-test-wf", "")
 	if err == nil || !strings.Contains(err.Error(), "no workflow subagent substrate") {
 		t.Fatalf("missing substrate must fail readable, got %v", err)
 	}
@@ -246,7 +246,7 @@ func TestServiceFailedRunKeepsReport(t *testing.T) {
 	}
 	runner := &fakeRunner{}
 	svc.AddRunnerSource(func(string) (SubagentRunner, bool) { return runner, true })
-	res, err := svc.RunWorkflow(ctx, "svc-test-wf")
+	res, err := svc.RunWorkflow(ctx, "svc-test-wf", "")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestServiceCancelRun(t *testing.T) {
 	runner := &blockingRunner{release: make(chan struct{})}
 	t.Cleanup(func() { runner.once.Do(func() {}) })
 	svc.AddRunnerSource(func(string) (SubagentRunner, bool) { return runner, true })
-	res, err := svc.RunWorkflow(ctx, "svc-test-wf")
+	res, err := svc.RunWorkflow(ctx, "svc-test-wf", "")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestServiceSnapshotCarriesDefinition(t *testing.T) {
 	}
 	runner := &fakeRunner{}
 	svc.AddRunnerSource(func(string) (SubagentRunner, bool) { return runner, true })
-	res, err := svc.RunWorkflow(ctx, "svc-test-wf")
+	res, err := svc.RunWorkflow(ctx, "svc-test-wf", "")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
