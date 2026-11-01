@@ -264,6 +264,7 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 		OnAdoptSessionVersion:      a.collabAdoptSessionVersion,
 		OnSessionStop:              a.collabSessionStop,
 		OnSessionSetModel:          a.collabSessionSetModel,
+		OnSessionReopen:            a.collabSessionReopen,
 		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
 		OnCascadeSourceCapability:  cascadeSourceCapabilityFor,

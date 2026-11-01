@@ -335,7 +335,7 @@ func (c *Controller) onCompactionSettled() {
 func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, parkWhileRunning, parkWhileFinishing bool, onStart func()) admissionResult {
 	if err := c.ensureWriteAuthorityReady(); err != nil {
 		slog.Warn("control: submit dropped", "reason", "write_authority_not_ready", "err", err)
-		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "input was not accepted: this session is no longer writable — reopen it and try again"})
+		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: noticeSessionNotWritable})
 		return turnDroppedWriteAuthority
 	}
 	c.mu.Lock()

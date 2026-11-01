@@ -37,6 +37,15 @@ type SessionControlHooks struct {
 	// reported so the tool can fail closed with the exact remedy; applied
 	// carries the resulting modelRef for the receipt.
 	SetModel func(contactID, model string) (applied, wasRunning, known bool, newRef string, err error)
+	// Reopen (tl1311) re-runs the target's resource remount — the same lease
+	// re-acquire + write-authority rebind a manual tab reopen performs — so a
+	// session wedged into "no longer writable" (provider-blocked long turn,
+	// stale authority family) becomes writable again without touching its
+	// in-memory transcript or queued inbox. reopened=false with a nil error is
+	// an honest nothing-to-repair / declined receipt (authority already valid,
+	// or a live holder keeps the lease); known=false: this host cannot see
+	// that runtime.
+	Reopen func(contactID string) (reopened, known bool, err error)
 }
 
 type sessionControlTool struct{ cfg SessionCollabConfig }
@@ -52,11 +61,11 @@ func NewSessionControlTool(cfg SessionCollabConfig) tool.Tool {
 func (sessionControlTool) Name() string { return "session_control" }
 
 func (sessionControlTool) Description() string {
-	return "Stop a peer session's active turn or switch its model (task 274, experimental). Actions: stop (cancels the target's running turn through its own cancel chain; the target's transcript gets a remote-stop notice) and set_model (switches the target's model with the SAME setter its own switcher uses). HARD RULE: set_model refuses while the target has an active turn — mid-turn swaps break sampling/cache consistency; stop first (action=stop) or wait for the turn to end, then call again. Resolution goes through the contact directory like talk_to_session — bare/unknown refs are refused. Requires experimental_session_control. set_model NEVER acts on the calling session itself (use the in-session switcher) and every applied change is audited (caller, target, old and new model). Receipts carry the outcome (stopped/no-active-turn/applied-modelRef with the previous model)."
+	return "Stop a peer session's active turn, switch its model, or reopen a session stuck as no-longer-writable (task 274, tl1311; experimental). Actions: stop (cancels the target's running turn through its own cancel chain; the target's transcript gets a remote-stop notice), set_model (switches the target's model with the SAME setter its own switcher uses), and reopen (re-runs the target's resource remount — the same lease re-acquire + write-authority rebind a manual tab reopen performs — for a session whose deliveries die with \"this session is no longer writable\"; the transcript and queued inbox are untouched, and reopen is also the one action allowed on the calling session itself, so an agent can repair its own wedge). HARD RULE: set_model refuses while the target has an active turn — mid-turn swaps break sampling/cache consistency; stop first (action=stop) or wait for the turn to end, then call again. Resolution goes through the contact directory like talk_to_session — bare/unknown refs are refused. Requires experimental_session_control. set_model NEVER acts on the calling session itself (use the in-session switcher) and every applied change is audited (caller, target, old and new model). Receipts carry the outcome (stopped/no-active-turn/applied-modelRef with the previous model; reopened true = authority remounted, false = nothing to repair or declined)."
 }
 
 func (sessionControlTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["stop","set_model"],"description":"stop = cancel the target's active turn; set_model = switch its model (refused while running)."},"target":{"type":"string","description":"Session to control: contact_id, topic_id, or exact title (directory resolution — bare refs refused)."},"model":{"type":"string","description":"Required for set_model: the model name exactly as the target's switcher shows it (provider/model)."}},"required":["action","target"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"action":{"type":"string","enum":["stop","set_model","reopen"],"description":"stop = cancel the target's active turn; set_model = switch its model (refused while running); reopen = repair a no-longer-writable session by re-running the tab-reopen remount (lease rebind / takeover)."},"target":{"type":"string","description":"Session to control: contact_id, topic_id, or exact title (directory resolution — bare refs refused). reopen additionally accepts the calling session's own contact_id."},"model":{"type":"string","description":"Required for set_model: the model name exactly as the target's switcher shows it (provider/model)."}},"required":["action","target"]}`)
 }
 
 // ReadOnly is false: both actions mutate the peer session (cancel a turn,
@@ -93,11 +102,15 @@ func (t sessionControlTool) Execute(ctx context.Context, args json.RawMessage) (
 	if resolved.ContactID == "" {
 		return "", fmt.Errorf("session %q has no contact_id — message it once first (first contact mints the address)", target)
 	}
-	// Task 387: a model change is a peer-session operation — "非己" (not self)
-	// is a hard rule from the capability-gating list. Acting on the caller's
-	// own session is what the in-session switcher is for.
-	if caller := strings.TrimSpace(t.cfg.currentContactID()); caller != "" && caller == resolved.ContactID {
-		return "", fmt.Errorf("session %q is the calling session itself — use its own model switcher instead (cross-session model change refuses to act on self)", target)
+	// Task 387 self-target rule scopes to set_model only (moved here from the
+	// shared pre-switch block in tl1311): reopen deliberately ALLOWS self —
+	// repairing the calling session's own write authority is the one recovery
+	// an agent can run mid-turn against its own wedge, and unlike a model swap
+	// it touches no sampling state.
+	if action == "set_model" {
+		if caller := strings.TrimSpace(t.cfg.currentContactID()); caller != "" && caller == resolved.ContactID {
+			return "", fmt.Errorf("session %q is the calling session itself — use its own model switcher instead (cross-session model change refuses to act on self)", target)
+		}
 	}
 	controlHooks := t.cfg.SessionControl
 	if controlHooks.Stop == nil || controlHooks.SetModel == nil {
@@ -178,7 +191,35 @@ func (t sessionControlTool) Execute(ctx context.Context, args json.RawMessage) (
 		})
 		return string(out), nil
 
+	case "reopen":
+		// tl1311: the agent-side reopen — the host hook runs the same remount
+		// a manual tab reopen performs (desktop healCollabTargetWriteAuthority:
+		// live-lease re-issue, or free-lock takeover + authority rebind).
+		// reopened=false (nil error) is an honest receipt, never a guessed
+		// success; the tool passes both outcomes through.
+		if controlHooks.Reopen == nil {
+			return "", fmt.Errorf("reopen is not wired on this host (no reopen hook) — the capability is unavailable here")
+		}
+		reopened, known, rerr := controlHooks.Reopen(resolved.ContactID)
+		if rerr != nil {
+			return "", rerr
+		}
+		if !known {
+			return "", fmt.Errorf("session %q is not visible to this host (another process or runtime not stood up) — cannot reopen what this host cannot see", target)
+		}
+		out, _ := json.Marshal(map[string]any{
+			"reopened": reopened,
+			"target":   resolved.ContactID,
+			"note": func() string {
+				if reopened {
+					return "write authority remounted (the tab-reopen path: lease rebind or takeover); transcript and queued inbox untouched — undelivered items re-drive on the next pump tick"
+				}
+				return "nothing to repair (authority already valid) or the repair was declined (a live holder keeps the lease) — session state unchanged"
+			}(),
+		})
+		return string(out), nil
+
 	default:
-		return "", fmt.Errorf("action must be stop or set_model (got %q)", p.Action)
+		return "", fmt.Errorf("action must be stop, set_model, or reopen (got %q)", p.Action)
 	}
 }

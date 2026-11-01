@@ -172,6 +172,15 @@ type idleTurnTargetView struct {
 	// Controller.HealStalledRunning; tests inject a stub; nil keeps the
 	// skip-only behaviour.
 	healStalledRunning func() (bool, time.Duration)
+	// healWriteAuthority (tl1311) repairs a no-longer-writable target by
+	// re-running the resource remount a manual tab reopen performs (a fresh
+	// generation from the live lease, or a free-lock takeover + authority
+	// rebind — App.healCollabTargetWriteAuthority). Fired when the opening
+	// run fails with the stale/missing write-authority family. Tests inject
+	// a stub; nil (dormant targets — every wake already builds a fresh
+	// runtime, a remount by construction) keeps the 579 three-strike
+	// behaviour.
+	healWriteAuthority func() bool
 	// exhausted fires once per stuck item when the 3-strike budget is spent.
 	// Production records a 570 receipt; tests collect. nil keeps log-only.
 	exhausted func(contactID, itemID, collabMsgID, collabMailTo, source string, attempts int, lastErr error)
@@ -726,6 +735,26 @@ func (b *idleTurnBridge) sweepTargets(targets []idleTurnTargetView, now time.Tim
 				log.Printf("[session-collab] idle-turn bridge: turn for contact %s item %s ended with admission-race error: %v", contact, id, err)
 				return
 			}
+			// tl1311: a no-longer-writable target is repairable, not stranded.
+			// The failed run never consumed the item (ClaimItem fires only
+			// after admission succeeds), so repairing the write authority here
+			// and letting the NEXT sweep pass re-drive the same FIFO head is
+			// exactly one re-injection — idempotent by the inbox claim state
+			// machine. The repair runs BEFORE the strike: an authority failure
+			// is not the target refusing work, it is the target unable to
+			// accept it; burning the 579 budget on it would strand the head
+			// behind a permanent exhausted receipt even though a remount fixes
+			// it. A nil seam or a declined repair (live foreign holder, removed
+			// tab) keeps the three-strike semantics unchanged.
+			if isSessionWriteAuthorityError(err) {
+				if heal := target.healWriteAuthority; heal != nil && heal() {
+					b.clearBudget(contact, id)
+					log.Printf("[session-collab] idle-turn bridge: healed no-longer-writable target %s (write authority remounted; item %s stays queued, next sweep re-opens it)", contact, id)
+					return
+				}
+				b.recordOpeningFailure(target, id, err)
+				return
+			}
 			// 任务579：持续性失败计一次 strike，3 次用尽后封存并上报。
 			b.recordOpeningFailure(target, id, err)
 		})
@@ -932,6 +961,16 @@ func (p *sessionCollabPump) idleTurnTargetViews(live []sessionCollabTarget, fill
 		// finishing heal above, for the shape that holds running=true.
 		view.healStalledRunning = func() (bool, time.Duration) {
 			return ctrl.HealStalledRunning(idleTurnRunningStuckTimeout)
+		}
+		// tl1311: the pump-side reopen seam. Visible and detached tabs both
+		// resolve through the registry scan inside the App helper, so one
+		// closure covers both surfaces; tabID-less targets (none today among
+		// live targets) keep the nil seam.
+		if t.tabID != "" {
+			tabID := t.tabID
+			view.healWriteAuthority = func() bool {
+				return p.app.healCollabTargetWriteAuthority(tabID)
+			}
 		}
 		for _, item := range snap.Items {
 			if item.State == sessioninbox.StateQueued {

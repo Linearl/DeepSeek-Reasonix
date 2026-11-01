@@ -47,9 +47,18 @@ func (c *Controller) WriteAuthorityGeneration() uint64 {
 	return c.executor.Session().WriteAuthority().Generation()
 }
 
+// noticeSessionNotWritable is the single admission-refusal line for the
+// stale/missing write authority family (tl1311). The remedy names the exact
+// user action — closing and reopening the session tab is the resource remount
+// that re-acquires the lease and rebinds a fresh write authority
+// (desktop/tabs.go buildTabController → commitStartupWriteAuthorityLocked →
+// bindTabWriteAuthority); the abstract "reopen" alone left users without the
+// next step.
+const noticeSessionNotWritable = "input was not accepted: this session is no longer writable — close and reopen this session's tab and try again"
+
 func (c *Controller) submitCommandOrTurn(trimmed, input, display string, scopedRefsOnly bool, editedOriginal, format string) {
 	if err := c.ensureWriteAuthorityReady(); err != nil {
-		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "input was not accepted: this session is no longer writable — reopen it and try again"})
+		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: noticeSessionNotWritable})
 		return
 	}
 	c.submitCommandOrTurnReady(trimmed, input, display, scopedRefsOnly, editedOriginal, format)
