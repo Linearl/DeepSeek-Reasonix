@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { sessionCatalogNotice } from "../lib/sessionCatalogPresentation";
+import { catalogStatusSettlesRebuildFailure, sessionCatalogNotice } from "../lib/sessionCatalogPresentation";
 import type { SessionCatalogStatus } from "../lib/sessionCatalogTypes";
 
 const status = (overrides: Partial<SessionCatalogStatus> = {}): SessionCatalogStatus => ({
@@ -91,5 +91,24 @@ assert.deepEqual(
   "failed",
   "older backends without canRebuild fail closed",
 );
+
+// tl1315: a failed manual rebuild may only hold its failure notice across the
+// backend's transition (the restarted watcher reports opening/rebuilding); the
+// first settled status supersedes it, so the banner can clear once the
+// catalog recovers instead of freezing until the next successful rebuild.
+assert.equal(catalogStatusSettlesRebuildFailure(status({ state: "ready" })), true,
+  "a ready catalog supersedes a remembered rebuild failure");
+assert.equal(catalogStatusSettlesRebuildFailure(status({ state: "degraded", canRebuild: true })), true,
+  "a still-degraded catalog reports itself truthfully instead of the stale failure");
+assert.equal(catalogStatusSettlesRebuildFailure(status({ state: "ready", lastError: "scan failed", canRebuild: true })), true,
+  "ready-with-error is settled and keeps its own rebuild notice");
+assert.equal(catalogStatusSettlesRebuildFailure(status({ state: "opening", indexed: 0, total: 0 })), false,
+  "the restarted watcher's opening phase must not wipe the failure notice");
+assert.equal(catalogStatusSettlesRebuildFailure(status({ state: "rebuilding" })), false,
+  "a rebuild still in flight is not a settled answer");
+assert.equal(catalogStatusSettlesRebuildFailure(status({ state: "closed" })), false,
+  "a closed catalog (shutdown) is not a settled answer");
+assert.equal(catalogStatusSettlesRebuildFailure(undefined), false,
+  "a snapshot without catalog status (older backend) keeps the failure notice");
 
 console.log("session catalog presentation tests passed");

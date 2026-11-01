@@ -9,7 +9,7 @@ import { writeClipboardText } from "../lib/clipboard";
 import { OpenerIcon } from "./ExternalOpener";
 import { cachedSessionPurpose, loadSessionPurpose, setCachedSessionPurpose, subscribeSessionPurposes } from "../lib/sessionPurpose";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
-import { createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
+import { catalogStatusSettlesRebuildFailure, createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
 import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicFirstPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreePageLoadFlipsIndicator, projectTreeBrowsePageContinues, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
 import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeBodyState, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
@@ -547,7 +547,11 @@ export function ProjectTree({
       // Task 186: the render-side backstop keeps the host's own workspace from
       // coming back as a project node even if a backend path forgets the whitelist.
       const projects = projectTreeWithoutBuiltinWorkspaceNodes(asArray(snapshot.projects));
-      if (!catalogRebuildFailedRef.current && catalogStatusGeneration === catalogStatusGenerationRef.current) setCatalogStatus(snapshot.catalog);
+      if (catalogStatusGeneration === catalogStatusGenerationRef.current
+        && (!catalogRebuildFailedRef.current || catalogStatusSettlesRebuildFailure(snapshot.catalog))) {
+        catalogRebuildFailedRef.current = false;
+        setCatalogStatus(snapshot.catalog);
+      }
       setTree((current) => applyRuntimeProjection(projects.map((project) => {
         const previous = current.find((node) => node.key === project.key);
         // Topic pages reload asynchronously. Keep the last painted children
@@ -584,12 +588,20 @@ export function ProjectTree({
     try {
       await app.RebuildSessionCatalog(); catalogStatusGenerationRef.current += 1;
       await refresh();
-    } catch {
+    } catch (error) {
       catalogRebuildFailedRef.current = true; catalogStatusGenerationRef.current += 1; setCatalogStatus(catalogStatus);
+      // tl1315: the rejection used to be swallowed whole — no log line, no
+      // feedback — so "重建索引也失败" left nothing to diagnose. The backend
+      // detail goes to desktop.log; the toast stays generic (backend errors are
+      // not user copy) and states what really happened: a failed rebuild
+      // restarts the background catalog watcher.
+      const detail = error instanceof Error ? error.message : String(error);
+      reportFrontendLog("project-tree", "session catalog rebuild failed", `error=${detail}`, "warn");
+      showToast(t("projectTree.rebuildCatalogFailed"), "error");
     } finally {
       rebuildingCatalogRef.current = false;
     }
-  }, [catalogStatus, refresh]);
+  }, [catalogStatus, refresh, showToast, t]);
 
   useEffect(() => {
     treeRef.current = tree;
@@ -668,7 +680,12 @@ export function ProjectTree({
       void refreshProjectGroupsRef.current();
     }
     const catalogStatusGeneration = catalogStatusGenerationRef.current;
-    void app.GetSessionCatalogStatus().then((status) => { if (!catalogRebuildFailedRef.current && catalogStatusGeneration === catalogStatusGenerationRef.current) setCatalogStatus(status); }).catch(() => {});
+    void app.GetSessionCatalogStatus().then((status) => {
+      if (catalogStatusGeneration !== catalogStatusGenerationRef.current) return;
+      if (catalogRebuildFailedRef.current && !catalogStatusSettlesRebuildFailure(status)) return;
+      catalogRebuildFailedRef.current = false;
+      setCatalogStatus(status);
+    }).catch(() => {});
     if (treeRef.current.length === 0) { void refresh(); return; } // race: event before shell
     let affected: string[] = [];
     for (const item of events) {

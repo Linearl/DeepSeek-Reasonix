@@ -1400,6 +1400,7 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.recovered": "已恢復",
   "projectTree.recoveryOnly": "可恢復",
   "projectTree.rebuildCatalog": "重建索引",
+  "projectTree.rebuildCatalogFailed": "重建索引未完成，背景整理已重新啟動（詳情見日誌）",
   "projectTree.loadMore": "載入更多",
   "projectTree.newTopic": "新建會話",
   "projectTree.createWorktree": "建立隔離工作區",
