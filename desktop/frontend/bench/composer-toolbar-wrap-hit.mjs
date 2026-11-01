@@ -179,7 +179,6 @@ try {
       assert.notEqual(c.hitCursor, "text", `row${c.row} "${c.label}" hit layer cursor is not the text I-beam`);
     }
     pass(`all ${reachable.length} enabled toolbar controls reachable at wrapped ${snap.viewportWidth}px viewport`);
-    assert.equal(snap.geometry.overflowPx <= 0 || true, true); // 结构断言随修复方案定，见提交说明
     assert.ok(click.opened, "real mouse click on the model trigger opens the model menu while wrapped");
     pass("model menu opens on real click under wrap");
   }
