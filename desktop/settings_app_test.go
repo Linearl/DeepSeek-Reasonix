@@ -1794,6 +1794,31 @@ func TestProviderModelOverrideViewPreservesMaxOutputTokens(t *testing.T) {
 	}
 }
 
+// tl1313（20261022 实锤）：设置面输出上限钳制——UI 弹窗校验挡 UI 路径，直改
+// 配置/API 路径由 providerModelOverridesForSave 按窗口钳制。钉四条：超窗钳到
+// 窗口、-1 不下发标记不钳、窗口未设（0）不钳、正常对不原样保留。
+func TestProviderModelOverrideSaveClampsMaxOutputTokensToContextWindow(t *testing.T) {
+	input := []ProviderModelOverrideView{
+		{Model: "over-window", ContextWindow: 1_048_576, MaxOutputTokens: 4_000_000},
+		{Model: "omit-marker", ContextWindow: 32_000, MaxOutputTokens: -1},
+		{Model: "no-window", MaxOutputTokens: 500_000},
+		{Model: "healthy", ContextWindow: 128_000, MaxOutputTokens: 32_768},
+	}
+	saved := providerModelOverridesForSave(input, []string{"over-window", "omit-marker", "no-window", "healthy"})
+	if got := saved["over-window"]; got.MaxOutputTokens != 1_048_576 {
+		t.Fatalf("over-window output = %d, want clamped to context window 1048576", got.MaxOutputTokens)
+	}
+	if got := saved["omit-marker"]; got.MaxOutputTokens != -1 {
+		t.Fatalf("omit-marker output = %d, want -1 preserved (wire-omission semantics)", got.MaxOutputTokens)
+	}
+	if got := saved["no-window"]; got.MaxOutputTokens != 500_000 {
+		t.Fatalf("no-window output = %d, want 500000 preserved (window unknown, nothing to clamp against)", got.MaxOutputTokens)
+	}
+	if got := saved["healthy"]; got.MaxOutputTokens != 32_768 {
+		t.Fatalf("healthy output = %d, want 32768 preserved", got.MaxOutputTokens)
+	}
+}
+
 func TestDeepSeekProtocolUpgradeSourceAvailableWithLegacyGlobalAndProjectConfig(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	legacyPath := config.LegacyUserConfigPath()
