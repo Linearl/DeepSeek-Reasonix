@@ -1300,6 +1300,30 @@ type NetworkConfig struct {
 	// layer — see RetryBudgetConfig for each knob's meaning. Off keeps every
 	// hard-coded default byte-for-byte.
 	RetryBudget RetryBudgetConfig `toml:"retry_budget"`
+
+	// DialGate (任务 tl1327, 默认开启) is the process-wide dial budget + outage
+	// breaker — see DialGateConfig. Zero values keep the built-in defaults;
+	// disabled = true is the rollback to pre-tl1327 dial behaviour.
+	DialGate DialGateConfig `toml:"dial_gate"`
+}
+
+// DialGateConfig (任务 tl1327) tunes the process-level dial gate that bounds
+// concurrent new TCP connections and circuit-breaks a dead network. Defaults
+// live in the provider package (16 concurrent dials / 3 consecutive failures /
+// 45s cooldown); a zero field here means "keep the default". disabled = true
+// turns the gate off entirely — dials behave byte-for-byte as before tl1327.
+// The gate is fail-open by design: a broken gate reverts to plain dialling.
+type DialGateConfig struct {
+	// Disabled is the rollback switch (default false = gate on).
+	Disabled bool `toml:"disabled"`
+	// MaxConcurrentDials overrides the 16-connection process budget when >0.
+	MaxConcurrentDials int `toml:"max_concurrent_dials"`
+	// FailureThreshold overrides the 3-consecutive-failure breaker trip point
+	// when >0.
+	FailureThreshold int `toml:"failure_threshold"`
+	// CooldownSeconds overrides the 45s breaker cooldown when >0 (the 30-60s
+	// window from the task is the sane range).
+	CooldownSeconds int `toml:"cooldown_seconds"`
 }
 
 // RetryBudgetConfig (task 1056 方案 B) is the lab-switch-gated retry tuning
@@ -1376,6 +1400,32 @@ func (c *Config) NetworkRetryBudget() ResolvedRetryBudget {
 		DialTimeout: time.Duration(c.Network.RetryBudget.DialTimeoutSeconds) * time.Second,
 		FastBackoff: time.Duration(c.Network.RetryBudget.FastBackoffSeconds) * time.Second,
 		WallClock:   time.Duration(c.Network.RetryBudget.WallClockSeconds) * time.Second,
+	}
+}
+
+// ResolvedDialGate is the [network.dial_gate] family as the runtime reads it.
+// Zero fields keep the provider-package defaults; the settings carry no
+// "enabled" tri-state — Disabled=false is the zero value and the gate is on by
+// default (tl1327 根治件), so explicit overrides are the only visible change.
+type ResolvedDialGate struct {
+	Disabled         bool
+	MaxConcurrent    int
+	FailureThreshold int
+	Cooldown         time.Duration
+}
+
+// NetworkDialGate resolves the [network.dial_gate] family. nil config (legacy
+// assemblers) resolves to all-zeros: keep every default, gate stays on.
+func (c *Config) NetworkDialGate() ResolvedDialGate {
+	if c == nil {
+		return ResolvedDialGate{}
+	}
+	d := c.Network.DialGate
+	return ResolvedDialGate{
+		Disabled:         d.Disabled,
+		MaxConcurrent:    d.MaxConcurrentDials,
+		FailureThreshold: d.FailureThreshold,
+		Cooldown:         time.Duration(d.CooldownSeconds) * time.Second,
 	}
 }
 

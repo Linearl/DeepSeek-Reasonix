@@ -181,19 +181,19 @@ type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
 // idempotent.
 type gatedDialContext DialFunc
 
-// chatMaxIdleConnsPerHost bounds how many established connections stay warm
+// ChatMaxIdleConnsPerHost bounds how many established connections stay warm
 // per host between requests. net/http's default 2 is sized for short page
 // fetches; a chat session routinely overlaps its main stream with auxiliary
 // calls on the same host, and every evicted idle connection is a fresh TCP
 // dial (through the NAT table this task exists to protect).
-const chatMaxIdleConnsPerHost = 8
+const ChatMaxIdleConnsPerHost = 8
 
 // GateHTTPClient prepares a chat-mainline HTTP client in place:
 //   - it installs the process dial gate on the transport's DialContext, so all
 //     new TCP connections this client ever opens count against the process
 //     dial budget and feed the outage breaker (tl1327 ①②);
 //   - it raises MaxIdleConnsPerHost from net/http's default 2 to
-//     chatMaxIdleConnsPerHost, so an idle provider connection survives between
+//     ChatMaxIdleConnsPerHost, so an idle provider connection survives between
 //     turns instead of being closed and re-dialed on the next request
 //     (tl1327 ③ connection-reuse tuning; the webfetch tl1319 precedent).
 //
@@ -207,8 +207,8 @@ func GateHTTPClient(c *http.Client) *http.Client {
 	if !ok || tr == nil {
 		return c
 	}
-	if tr.MaxIdleConnsPerHost < chatMaxIdleConnsPerHost {
-		tr.MaxIdleConnsPerHost = chatMaxIdleConnsPerHost
+	if tr.MaxIdleConnsPerHost < ChatMaxIdleConnsPerHost {
+		tr.MaxIdleConnsPerHost = ChatMaxIdleConnsPerHost
 	}
 	inner := tr.DialContext
 	if _, already := any(inner).(gatedDialContext); already {

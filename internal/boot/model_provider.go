@@ -100,6 +100,11 @@ func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpe
 	if budget := providerBudgetFromConfig(cfg); budget != nil {
 		extra["retry_budget"] = *budget
 	}
+	// 任务 tl1327: the [network.dial_gate] family (default on, built-in
+	// defaults) reaches the process-wide dial gate from the same config-aware
+	// construction path as the retry budget above. All-default config stamps
+	// nothing, so the gate's breaker state survives provider rebuilds.
+	applyDialGateFromConfig(cfg)
 	// 任务1308: live credential re-auth — the HTTP adapters read this hook and
 	// SendWithRetry calls it on a 401 (once, forced) and proactively per
 	// CredentialRefreshInterval, so a long-lived runtime picks up externally
@@ -147,4 +152,30 @@ func providerBudgetFromConfig(cfg *config.Config) *provider.TransportBudget {
 		return nil
 	}
 	return &provider.TransportBudget{DialTimeout: b.DialTimeout, ForceDNSRefresh: true}
+}
+
+// applyDialGateFromConfig hands the [network.dial_gate] family (任务 tl1327) to
+// the process-wide dial gate. The gate itself is on by default with built-in
+// defaults, so an all-default family stamps nothing — the process gate is left
+// exactly as constructed (no breaker-state reset across provider rebuilds).
+// Only an explicit override (disabled = true or any knob) swaps the gate;
+// swaps are idempotent, so per-provider construction is safe. nil config
+// (legacy assemblers, desktop probes) stamps nothing.
+func applyDialGateFromConfig(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	d := cfg.NetworkDialGate()
+	if !d.Disabled && d.MaxConcurrent <= 0 && d.FailureThreshold <= 0 && d.Cooldown <= 0 {
+		return
+	}
+	settings := provider.DialGateSettings{
+		MaxConcurrent:    d.MaxConcurrent,
+		FailureThreshold: d.FailureThreshold,
+		Cooldown:         d.Cooldown,
+	}
+	if d.Disabled {
+		settings.Disabled = &d.Disabled
+	}
+	provider.ConfigureDialGate(settings)
 }

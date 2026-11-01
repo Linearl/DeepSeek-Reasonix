@@ -2282,6 +2282,24 @@ func (c *Config) SetNetworkRetryBudget(b RetryBudgetConfig) error {
 	return nil
 }
 
+// SetNetworkDialGate writes the tl1327 dial-gate family. The gate is on by
+// default with built-in defaults; zero fields keep those defaults, disabled
+// = true is the full rollback. Bounds keep a mistyped config from either
+// disarming the budget (huge caps) or starving normal traffic (tiny ones).
+func (c *Config) SetNetworkDialGate(d DialGateConfig) error {
+	if d.MaxConcurrentDials < 0 || d.MaxConcurrentDials > 128 {
+		return fmt.Errorf("network.dial_gate.max_concurrent_dials must be 0..128 (0 = default), got %d", d.MaxConcurrentDials)
+	}
+	if d.FailureThreshold < 0 || d.FailureThreshold > 20 {
+		return fmt.Errorf("network.dial_gate.failure_threshold must be 0..20 (0 = default), got %d", d.FailureThreshold)
+	}
+	if d.CooldownSeconds < 0 || d.CooldownSeconds > 600 {
+		return fmt.Errorf("network.dial_gate.cooldown_seconds must be 0..600 (0 = default), got %d", d.CooldownSeconds)
+	}
+	c.Network.DialGate = d
+	return nil
+}
+
 // ModelRefsProvider reports whether ref targets the named provider. It matches
 // both bare provider names ("deepseek") and "provider/model" refs.
 func ModelRefsProvider(ref, name string) bool {

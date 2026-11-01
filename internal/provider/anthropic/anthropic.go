@@ -193,13 +193,21 @@ func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 	// 任务1056-B: DialTimeout is config-driven only when the retry-budget lab
 	// switch is on; off-state keeps the historical 30s.
 	dialTimeout, forceDNSRefresh := provider.TransportTuning(cfg.Extra)
-	return netclient.NewHTTPClient(spec, netclient.TransportOptions{
+	client, err := netclient.NewHTTPClient(spec, netclient.TransportOptions{
 		DialTimeout:           dialTimeout,
 		KeepAlive:             30 * time.Second,
 		TLSHandshakeTimeout:   15 * time.Second,
 		ResponseHeaderTimeout: 300 * time.Second,
 		ForceDNSRefresh:       forceDNSRefresh,
 	})
+	if err != nil {
+		return nil, err
+	}
+	// 任务 tl1327 ①②③: every new TCP connection this client opens counts
+	// against the process dial budget and feeds the outage breaker; idle
+	// per-host connections survive between turns (keep-alive reuse).
+	provider.GateHTTPClient(client)
+	return client, nil
 }
 
 type client struct {
