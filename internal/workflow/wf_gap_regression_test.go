@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/event"
 )
 
 // hostWrappedAnswer 复刻宿主 composeSubagentAnswer（internal/agent/subagent_report.go）
@@ -140,4 +141,176 @@ func TestG1_FallbackWhenHostRecordedNothing(t *testing.T) {
 			t.Fatalf("回退路径应留 debug 日志，实际：%s", out)
 		}
 	})
+}
+
+// ---- G2 ----
+
+// gapCaptureRunner 捕获引擎实际发给子代理的 prompt，并按节点返回答案。
+type gapCaptureRunner struct {
+	prompts []string
+	answer  string            // 默认答案
+	byNode  map[string]string // 按节点 ID 指定答案（缺省用 answer）
+}
+
+func (r *gapCaptureRunner) Run(_ context.Context, req SubagentRequest) (string, error) {
+	r.prompts = append(r.prompts, req.Prompt)
+	if a, ok := r.byNode[req.NodeID]; ok {
+		return a, nil
+	}
+	return r.answer, nil
+}
+
+const gapFinderAnswer = `{"findings":[{"where":"internal/permission/permission.go:747","what":"示例缺陷","evidence":"示例证据","severity":"medium"}],"count":1,"coverage":"示例覆盖"}`
+
+// gapFinderConfirmDoc 是最小工作流：一个 subagent 产出 findings，一个 confirm 复核。
+const gapFinderConfirmDoc = `{
+  "version": 1,
+  "name": "gap-g2",
+  "nodes": [
+    {"id":"finder","type":"subagent","prompt":"find issues",
+     "result":[{"name":"findings","type":"array"}],
+     "findings_field":"findings"},
+    {"id":"checker","type":"confirm","target":"finder","prompt":"reproduce each finding"}
+  ],
+  "edges": [{"from":"finder","to":"checker"}]
+}`
+
+// gapRunFinderConfirm 跑完 finder→checker 并返回引擎 run 状态。
+func gapRunFinderConfirm(t *testing.T, runner *gapCaptureRunner) *runState {
+	t.Helper()
+	wf, err := Parse([]byte(gapFinderConfirmDoc))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if err := wf.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	eng := New(runner, nil, nil)
+	run := newRunState(eng, wf)
+	if err := run.runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+	return run
+}
+
+// TestG2_ConfirmPromptCarriesResultContract（验收②）：confirm 节点的 prompt
+// 必须带 confirmed 字段契约——否则确认子代理不知道要输出 {"confirmed": …}，
+// parseConfirmed 恒 false，复核闸门永失效（G2 根因）。
+func TestG2_ConfirmPromptCarriesResultContract(t *testing.T) {
+	runner := &gapCaptureRunner{
+		answer: `{"confirmed": true, "reason": "all reproduced"}`,
+		byNode: map[string]string{"finder": gapFinderAnswer},
+	}
+	gapRunFinderConfirm(t, runner)
+
+	if len(runner.prompts) != 2 {
+		t.Fatalf("应捕获 2 个 prompt（finder + checker），实际 %d", len(runner.prompts))
+	}
+	confirmPrompt := runner.prompts[1]
+	if !strings.Contains(confirmPrompt, `"confirmed"`) {
+		t.Fatalf("confirm prompt 应含 confirmed 字段契约：\n%s", confirmPrompt)
+	}
+	if !strings.Contains(confirmPrompt, "true only when you actually reproduced") {
+		t.Fatalf("confirm prompt 应说明 confirmed=true 的判据：\n%s", confirmPrompt)
+	}
+}
+
+// TestG2_ParseConfirmedSemanticsUnchanged（设计约束钉）：修 G2 靠注入契约，
+// 不放宽 parseConfirmed——缺键/纯自然语言仍判 false，显式 true/false 语义保持。
+func TestG2_ParseConfirmedSemanticsUnchanged(t *testing.T) {
+	cases := []struct {
+		name   string
+		answer string
+		want   bool
+	}{
+		{"显式 true", `{"confirmed": true, "reason": "ok"}`, true},
+		{"显式 false", `{"confirmed": false, "reason": "no"}`, false},
+		{"缺 confirmed 键（未收到契约时的典型输出）", `{"reason": "ok"}`, false},
+		{"纯自然语言", `the finding is confirmed`, false},
+	}
+	for _, tc := range cases {
+		if got := parseConfirmed(tc.answer); got != tc.want {
+			t.Fatalf("%s: parseConfirmed = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestG2_FindingsPromoteOnConfirmed（验收④ 护栏 + 验收③ 引擎面）：confirm 判
+// true ⇒ findings 原地升 verified，且目标节点不得被回写 unconfirmed 污染。
+func TestG2_FindingsPromoteOnConfirmed(t *testing.T) {
+	runner := &gapCaptureRunner{
+		answer: `{"confirmed": true, "reason": "all reproduced"}`,
+		byNode: map[string]string{"finder": gapFinderAnswer},
+	}
+	wf, err := Parse([]byte(gapFinderConfirmDoc))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if err := wf.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	rec := &eventRecorder{}
+	run := newRunState(New(runner, nil, rec), wf)
+	if err := run.runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+
+	if got := run.status["checker"]; got != stDone {
+		t.Fatalf("checker 应为 stDone，实际 %v", got)
+	}
+	found := false
+	for _, v := range run.verifs {
+		if strings.Contains(v, "independent confirmation of finder by checker") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("confirm 判 true 后应记录复核 verifs，实际 %v", run.verifs)
+	}
+	fs := run.bag.snapshot()
+	if len(fs) != 1 || fs[0].Status != FindingVerified {
+		t.Fatalf("findings 应原地升为 verified，实际 %+v", fs)
+	}
+	for _, e := range rec.events {
+		if e.NodeID == "finder" && e.State == event.WorkflowNodeUnconfirmed {
+			t.Fatalf("confirmed:true 时目标节点不得被回写 unconfirmed（G2 污染），事件=%+v", e)
+		}
+	}
+}
+
+// TestG2_FalseVerdictStillLabelsTargetUnconfirmed（负向对照）：confirm 判 false
+// ⇒ 目标节点仍按既有语义标记 unconfirmed——注入契约不得翻转否定语义。
+func TestG2_FalseVerdictStillLabelsTargetUnconfirmed(t *testing.T) {
+	runner := &gapCaptureRunner{
+		answer: `{"confirmed": false, "reason": "could not reproduce"}`,
+		byNode: map[string]string{"finder": gapFinderAnswer},
+	}
+	wf, err := Parse([]byte(gapFinderConfirmDoc))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if err := wf.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	rec := &eventRecorder{}
+	run := newRunState(New(runner, nil, rec), wf)
+	if err := run.runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+	if len(run.verifs) != 0 {
+		t.Fatalf("confirm 判 false 不得记复核 verifs，实际 %v", run.verifs)
+	}
+	labeled := false
+	for _, e := range rec.events {
+		if e.NodeID == "finder" && e.State == event.WorkflowNodeUnconfirmed {
+			labeled = true
+		}
+	}
+	if !labeled {
+		t.Fatal("confirm 判 false 时目标节点应被标记 unconfirmed（既有语义保持）")
+	}
+	fs := run.bag.snapshot()
+	if len(fs) != 1 || fs[0].Status != FindingUnconfirmed {
+		t.Fatalf("false 判定时 findings 应保持 unconfirmed，实际 %+v", fs)
+	}
 }
