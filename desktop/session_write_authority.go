@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/control"
@@ -90,9 +91,53 @@ func (a *App) restoreTabWriteAuthorityAfterStale(tab *WorkspaceTab) bool {
 	if !ok || concrete == nil {
 		return false
 	}
+	return a.repairTabWriteAuthority(tab, concrete)
+}
+
+// healCollabTargetWriteAuthority is the tl1311 delivery-pump reopen seam: a
+// collab target reported no-longer-writable, so the same resource remount a
+// manual tab reopen performs is driven here on the pump's behalf — across
+// BOTH surfaces a live collab target can live in (the visible tab registry
+// and the detached runtime registry, unlike the save-path heal above which
+// only sees a.tabs). Read-only tabs and tabs without a live controller are
+// declined; the caller (idle-turn bridge) then keeps the 579 three-strike
+// classification for that failure.
+func (a *App) healCollabTargetWriteAuthority(tabID string) bool {
+	tabID = strings.TrimSpace(tabID)
+	if tabID == "" {
+		return false
+	}
+	a.mu.RLock()
+	tab := a.tabs[tabID]
+	resident := tab != nil && !tab.removed
+	if tab == nil {
+		for _, detached := range a.detachedSessions {
+			if detached != nil && detached.ID == tabID {
+				tab = detached
+				resident = true
+				break
+			}
+		}
+	}
+	var concrete *control.Controller
+	if tab != nil && resident {
+		concrete, _ = tab.Ctrl.(*control.Controller)
+	}
+	a.mu.RUnlock()
+	if tab == nil || !resident || tab.ReadOnly || concrete == nil {
+		return false
+	}
+	return a.repairTabWriteAuthority(tab, concrete)
+}
+
+// repairTabWriteAuthority is the shared two-path repair core of the tl1201
+// self-heal (and, since tl1311, of the pump reopen seam). The caller owns the
+// residency/read-only/controller preconditions; this body is the actual
+// remount:
+func (a *App) repairTabWriteAuthority(tab *WorkspaceTab, concrete *control.Controller) bool {
 	key := tab.sessionLeaseRuntimeKey()
 	if key == "" {
-		key = sessionRuntimeKey(ctrl.SessionPath())
+		key = sessionRuntimeKey(concrete.SessionPath())
 	}
 	if key == "" {
 		return false
