@@ -1210,14 +1210,22 @@ func providerModelOverridesForSave(overrides []ProviderModelOverrideView, models
 		if model == "" || (len(modelSet) > 0 && !modelSet[model]) {
 			continue
 		}
+		contextWindow := max(item.ContextWindow, 0)
+		// tl1313（20261022 实锤）：输出上限 > 模型上下文窗口 ⇒ 每笔请求超窗
+		// 400 ⇒ 回退全量投影。设置写入是最后一道闸：弹窗校验挡得住 UI 路径，
+		// 直改配置/API 路径由这里按窗口钳制（-1 = 不下发可选限制，不钳）。
+		maxOutputTokens := item.MaxOutputTokens
+		if maxOutputTokens > 0 && contextWindow > 0 && maxOutputTokens > contextWindow {
+			maxOutputTokens = contextWindow
+		}
 		ov := config.ProviderModelOverride{
 			ReasoningProtocol: strings.TrimSpace(item.ReasoningProtocol),
 			SupportedEfforts:  nonNil(item.SupportedEfforts),
 			DefaultEffort:     strings.TrimSpace(item.DefaultEffort),
 			Vision:            item.Vision,
 			Audio:             item.Audio,
-			ContextWindow:     max(item.ContextWindow, 0),
-			MaxOutputTokens:   item.MaxOutputTokens,
+			ContextWindow:     contextWindow,
+			MaxOutputTokens:   maxOutputTokens,
 		}
 		if strings.TrimSpace(ov.ReasoningProtocol) == "" && len(ov.SupportedEfforts) == 0 && strings.TrimSpace(ov.DefaultEffort) == "" && ov.Vision == nil && ov.Audio == nil && ov.ContextWindow == 0 && ov.MaxOutputTokens == 0 {
 			continue

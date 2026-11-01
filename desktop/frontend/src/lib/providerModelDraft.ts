@@ -9,8 +9,11 @@ export type ModelDraft = { model: string; contextWindow: string; maxOutputTokens
 
 /** Validate explicit overrides without turning an inherited value into a guessed limit.
  *  tl 1104: 上区弹窗校验口径收紧——上下文 / 输出上限必须走数字输入（0 = 未设 = 继承，
- *  输出上限额外允许 -1 = 不下发可选限制），杜绝「留空存 0、语义靠约定」。 */
-export function modelDraftError(draft: { model: string; contextWindow: string; maxOutputTokens: number }, existing: string[], original?: string): "required" | "duplicate" | "syntax" | "context" | "output" | null {
+ *  输出上限额外允许 -1 = 不下发可选限制），杜绝「留空存 0、语义靠约定」。
+ *  tl1313: 输出上限对照已设的模型上下文窗口——输出 > 窗口即拒绝（"outputTooLarge"）。
+ *  20261022 实锤：输出上限大于窗口 ⇒ 每笔请求都超窗 400 ⇒ 回退全量投影；发送端
+ *  admission 钳制只是运行时兜底，设置面必须在写入前挡住这对矛盾。 */
+export function modelDraftError(draft: { model: string; contextWindow: string; maxOutputTokens: number }, existing: string[], original?: string): "required" | "duplicate" | "syntax" | "context" | "output" | "outputTooLarge" | null {
   const model = draft.model.trim();
   if (!model) return "required";
   if (/[\s,，]/.test(model)) return "syntax";
@@ -19,6 +22,7 @@ export function modelDraftError(draft: { model: string; contextWindow: string; m
   if (!Number.isSafeInteger(context) || context < 0) return "context";
   const output = Number(draft.maxOutputTokens);
   if (!Number.isSafeInteger(output) || output < -1 || output === 0) return "output";
+  if (output > 0 && context > 0 && output > context) return "outputTooLarge";
   return null;
 }
 
