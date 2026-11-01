@@ -2579,65 +2579,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               ) : null}
             </>
           )}
-          {selected === "optimisticParallel" && (
-            <>
-            <SettingsField label={labLabel("optimisticParallel", t("settings.optimisticParallel"))} hint={t("settings.optimisticParallelHint")} icon={<Sparkles size={18} />}>
-              {/* Task 650: the checkbox became a two-segment capsule control
-                  (Off | On) matching the permission-tier switch style; the
-                  binding still reads the field upright (On = optimistic). */}
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.sandbox?.optimisticWrite) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetOptimisticWrite(on))}
-                  >
-                    {t(on ? "settings.optimisticParallel.on" : "settings.optimisticParallel.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-            {/* Task 575 → 815: the heavy-bash write guard joins the card as a
-                family sibling row (researchBudget/coldCacheCompact precedent:
-                companion rows read their own key, save through their own
-                setter, carry no separate tier badge). Off keeps pre-575
-                behavior byte-for-byte. */}
-            <SettingsField label={t("settings.bashHeavyGuard")} hint={t("settings.bashHeavyGuardHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalBashHeavyGuard) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalBashHeavyGuard(on))}
-                  >
-                    {t(on ? "settings.bashHeavyGuard.on" : "settings.bashHeavyGuard.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-            {/* tl-1166: the reasoning-only final repair joins the same card as
-                a sibling row (bashHeavyGuard precedent: own key, own setter,
-                no tier badge). Ships ON — the readback is the resolved gate,
-                so the toggle always writes an explicit value. Restart to
-                apply (the gate rides the agent Options boot snapshot). */}
-            <SettingsField label={t("settings.reasoningOnlyContinuation")} hint={t("settings.reasoningOnlyContinuationHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.reasoningOnlyContinuation) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalReasoningOnlyContinuation(on))}
-                  >
-                    {t(on ? "settings.reasoningOnlyContinuation.on" : "settings.reasoningOnlyContinuation.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-            </>
-          )}
           {selected === "autopilot" && (
             <>
               <SettingsField label={labLabel("autopilot", t("settings.autopilot"))} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
@@ -3233,6 +3174,68 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     <p style={{ opacity: 0.7, fontSize: 12 }}>{t("settings.cacheTuning.restartHint")}</p>
                   </>
               </>
+              {/* tl1309：optimisticParallel 散条并入本卡（任务书①，961 先例）——
+                  独立 pane 退役为卡尾成员行：乐观并行主行（写并发，lamp 键
+                  optimistic_write）+ 家族伴生两行（重 bash 写守护 575 / 推理-
+                  only 续跑修复 tl-1166）。各读各键、各写各 setter（81/123 丢存
+                  铁律）；主行行级徽章经 labLabel 保留，伴生行不挂独立徽章
+                  （621 附属行口径）。关联说明：写并发开 → 大写入不再阻塞转录
+                  渲染；守护行是同一写入面的安全伴生（依赖/派生关系）。 */}
+              <SettingsField label={labLabel("optimisticParallel", t("settings.optimisticParallel"))} hint={t("settings.optimisticParallelHint")} icon={<Sparkles size={18} />}>
+                {/* Task 650: the checkbox became a two-segment capsule control
+                    (Off | On) matching the permission-tier switch style; the
+                    binding still reads the field upright (On = optimistic). */}
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.sandbox?.optimisticWrite) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetOptimisticWrite(on))}
+                    >
+                      {t(on ? "settings.optimisticParallel.on" : "settings.optimisticParallel.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* Task 575 → 815: the heavy-bash write guard joins the card as a
+                  family sibling row (researchBudget/coldCacheCompact precedent:
+                  companion rows read their own key, save through their own
+                  setter, carry no separate tier badge). Off keeps pre-575
+                  behavior byte-for-byte. */}
+              <SettingsField label={t("settings.bashHeavyGuard")} hint={t("settings.bashHeavyGuardHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalBashHeavyGuard) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalBashHeavyGuard(on))}
+                    >
+                      {t(on ? "settings.bashHeavyGuard.on" : "settings.bashHeavyGuard.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* tl-1166: the reasoning-only final repair joins the same card as
+                  a sibling row (bashHeavyGuard precedent: own key, own setter,
+                  no tier badge). Ships ON — the readback is the resolved gate,
+                  so the toggle always writes an explicit value. Restart to
+                  apply (the gate rides the agent Options boot snapshot). */}
+              <SettingsField label={t("settings.reasoningOnlyContinuation")} hint={t("settings.reasoningOnlyContinuationHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.reasoningOnlyContinuation) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalReasoningOnlyContinuation(on))}
+                    >
+                      {t(on ? "settings.reasoningOnlyContinuation.on" : "settings.reasoningOnlyContinuation.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {/* 任务 783：用量监测（可观测性组合并卡，742 先例）——GLM Plan

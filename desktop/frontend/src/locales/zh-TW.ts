@@ -2457,7 +2457,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.heartbeatBackground.on": "開",
 "settings.heartbeatBackground.off": "關",
 // 任務 1070：Standard 流續跑總閘（預設關 = 1070 前的行為）。
-"settings.standardContinuation": "一般對話續跑（實驗）",
+"settings.standardContinuation": "一般對話續跑",
 "settings.standardContinuationHint": "控制一般對話（Standard 流）是否允許有界的同回合續跑（實驗特性，預設關閉）。開啟：當模型「列了待辦卻沒執行」「宣布了下一步卻直接收尾」時，宿主會自動補一輪繼續，每次續跑都有提示，且受次數上限與「無進展即停」約束；計畫模式、唯讀、禁止變更、子代理等邊界一律不續跑。關閉（預設）：一般對話保持現狀——乾淨收尾即結束回合，不會自動續跑（Goal/評審/守護等專用流程不受此開關影響）。儲存後對下一次回合生效，無需重啟。",
 "settings.standardContinuation.on": "開",
 "settings.standardContinuation.off": "關",

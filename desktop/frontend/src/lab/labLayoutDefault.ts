@@ -126,14 +126,15 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "efficiency",
       labelKey: "settings.labGroup.efficiency",
       entries: [
-        // 任务 815：bash_heavy_guard（575）补实验室入口——卡成员行+灯
-        // （optimistic_write 家族伴生，无 member 行不挂独立徽章）。
-        { id: "optimisticParallel", labelKey: "settings.optimisticParallel", tier: "recommended", onKeys: ["optimisticWrite", "experimentalBashHeavyGuard"] },
         {
           id: "contextGovernance",
           labelKey: "settings.contextGovernance",
           // 任务 815：active_tab_resident 补灯（Task 347 附属行，Go 侧
           // cacheTuning renderKeys 家族已含，前端灯漏接）。
+          // tl1309：optimisticParallel 散条并入本卡（任务书①）——两键随迁
+          // 入灯（optimistic_write + bash_heavy_guard 575 家族伴生）；pane
+          // 三行（乐观并行主行 + 重 bash 守护 + 推理-only 续跑）迁卡尾，
+          // 配置键/setter 零变化。容器档 = 成员最高档（推荐，与并入前一致）。
           onKeys: [
             "experimentalCompactionParallel",
             "experimentalContextBudget",
@@ -142,12 +143,18 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalColdCacheCompact",
             "experimentalCacheTuning",
             "experimentalActiveTabResident",
+            "optimisticWrite",
+            "experimentalBashHeavyGuard",
           ],
           members: [
             { id: "compactionParallel", labelKey: "settings.compactionParallel", tier: "optional" },
             { id: "budgetControl", labelKey: "settings.contextBudget", tier: "recommended" },
             { id: "compressOpt", labelKey: "settings.proactiveCompact", tier: "recommended" },
             { id: "cacheTuning", labelKey: "settings.cacheTuning", tier: "optional" },
+            // tl1309：乐观并行（原独立卡，推荐档，并入本卡尾部；pane 内
+            // bash_heavy_guard / reasoning_only_continuation 为其家族伴生行，
+            // 不挂独立徽章——621 附属行口径）。
+            { id: "optimisticParallel", labelKey: "settings.optimisticParallel", tier: "recommended" },
           ],
         },
         {

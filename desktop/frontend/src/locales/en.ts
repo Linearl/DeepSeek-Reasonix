@@ -3112,7 +3112,7 @@ export const en = {
 "settings.heartbeatBackground.on": "On",
 "settings.heartbeatBackground.off": "Off",
 // 任务 1070: Standard-flow continuation total gate (off by default = pre-1070 behaviour).
-"settings.standardContinuation": "Standard conversation continuation (experimental)",
+"settings.standardContinuation": "Standard conversation continuation",
 "settings.standardContinuationHint": "Controls whether an ordinary (Standard) conversation may take bounded same-run continuation rounds (experimental, off by default). On: when the model leaves a todo list unexecuted or announces a next step and then stops, the host appends one continuation round; every round is announced, bounded by a round cap and a no-progress stop, and plan mode / read-only / no-mutation / sub-agent boundaries never continue. Off (default): an ordinary conversation keeps today's behaviour — a clean stop ends the turn with no auto-continuation (dedicated Goal/review/guardian flows are unaffected either way). Applies to the next run after you save, no restart.",
 "settings.standardContinuation.on": "On",
 "settings.standardContinuation.off": "Off",

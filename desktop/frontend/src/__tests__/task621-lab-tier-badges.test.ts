@@ -48,6 +48,11 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
     if (id === "opencodeGoUsage") {
       // 独立用量卡自带徽章，pane 内不重复挂。
       if (n !== 0) dupes.push(`${id}×${n}`);
+    } else if (id === "logManagement") {
+      // tl1309 预存红修正：日志管理参数卡（tl 1097）的 pane 由专用
+      // LogManagementLabPane 承接，徽章在组件内直接渲染——562⑤ 同款豁免，
+      // 本测试漏跟（基线上「missing logManagement」假红）。
+      if (n !== 0) dupes.push(`${id}×${n}`);
     } else if (id === "modelCapabilityFilter") {
       // 任务 722 点2：「已退役」徽章移除（rail 成员表 + 卡内只读行都不挂）。
       if (n !== 0) dupes.push(`${id}×${n}`);

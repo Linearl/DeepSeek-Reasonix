@@ -3102,7 +3102,7 @@ export const zh: Record<DictKey, string> = {
 "settings.heartbeatBackground.on": "开",
 "settings.heartbeatBackground.off": "关",
 // 任务 1070：Standard 流续跑总闸（默认关 = 1070 前的行为）。
-"settings.standardContinuation": "普通对话续跑（实验）",
+"settings.standardContinuation": "普通对话续跑",
 "settings.standardContinuationHint": "控制普通对话（Standard 流）是否允许有界的同回合续跑（实验特性，默认关闭）。开启：当模型「列了待办但没执行」「宣布了下一步却直接收尾」时，宿主会自动补一轮继续，每次续跑都有提示，且受次数上限与「无进展即停」约束；计划模式、只读、禁止变更、子代理等边界一律不续跑。关闭（默认）：普通对话保持现状——干净收尾即结束回合，不会自动续跑（Goal/评审/守护等专用流程不受此开关影响）。保存后对下一次回合生效，无需重启。",
 "settings.standardContinuation.on": "开",
 "settings.standardContinuation.off": "关",

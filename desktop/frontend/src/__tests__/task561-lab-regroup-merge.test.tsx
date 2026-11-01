@@ -117,8 +117,9 @@ console.log("\ntask 561 lab regroup + merged cards");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
   // tl1174：jsonlZstd 入存储组时本 pin 漏跟（基线 f3c268b7f 实跑 36/存储 5，
   // pin 钉 35/存储 4 = 预存红）；tl1193b：记忆与上下文新组 + pinnedIndex 卡
-  // → 总数 37（实值钉，同步顺带收掉 1174 欠账）。
-  ok(defEntries.length === 37, `default layout carries exactly 37 rail entries (got ${defEntries.length})`);
+  // → 总数 37（实值钉，同步顺带收掉 1174 欠账）。tl1309 卡①：
+  // optimisticParallel 散条并入 contextGovernance 卡 → 37→36。
+  ok(defEntries.length === 36, `default layout carries exactly 36 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -147,10 +148,11 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 总数 36（本 pin 漏跟=基线预存红）。tl1193b：记忆与上下文新组
   // （pinnedIndex 卡）→ 总数 37（实值钉）；tl1256 调序：memory-context
   // 移 infra 之后（组分布序随 rail 序，各组成员数不变）→ 4/6/11/3/1/5/6/1。
-  ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 11 &&
+  // tl1309 卡①：efficiency 6→5（optimisticParallel 并卡）→ 4/5/11/3/1/5/6/1。
+  ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 11 &&
      groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 5 && groups["infra"] === 6 &&
      groups["memory-context"] === 1,
-    `group counts are 4/6/11/3/1/5/6/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 4/5/11/3/1/5/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -288,6 +290,8 @@ for (const family of families) {
 
 // ③ M8 standalone entries（任务 722/724 修订）：rail 入口断言读布局默认
 // 数据（入口 id + 自有 onKeys），pane 分支断言仍读 SettingsPanel。
+// tl1309 卡①：optimisticParallel 自 M8 清单并入 contextGovernance 卡
+// （任务书①，961 先例——独立 rail 入口/pane 分支退役为成员行）。
 {
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const entryIds = new Set(LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id)));
@@ -296,7 +300,6 @@ for (const family of families) {
     ["sessionCollab", '{selected === "sessionCollab" && ('],
     ["monitoring", '{selected === "monitoring" && ('],
     ["fullAccess", '{selected === "fullAccess" && ('],
-    ["optimisticParallel", '{selected === "optimisticParallel" && ('],
   ] as const) {
     ok(entryIds.has(id), `M8 ${id} keeps its own rail entry`);
     ok(panel.includes(pane), `M8 ${id} keeps its own pane branch`);
@@ -336,6 +339,8 @@ for (const id of [
   "quickCommands",
   "traceAsState",
   "outputStyle",
+  // tl1309 卡①：optimisticParallel 并入 contextGovernance 卡（同款先例）。
+  "optimisticParallel",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);

@@ -55,10 +55,11 @@ const paneIds = new Set<string>();
 
   const storage = LAB_LAYOUT_DEFAULT_DATA.groups.find((g) => g.key === "storage");
   // 任务 846：homePointer 独立卡入存储组（3→4）；815 收口本测试未跟的 pin。
-  // tl-1174 jsonlZstd 与 tl1227 dagMigration 先后入组（4→6），此计数钉当时未跟——
-  // tl1286 预存红修正：现为 6 项（sessionStore/homePointer/jsonlZstd/dagMigration/
-  // idleReleaseMinutes/gcPercent）。
-  ok(storage?.entries.length === 6, "storage group carries sessionStore + homePointer + jsonlZstd + dagMigration + two param cards");
+  // tl-1174 jsonlZstd 入组（4→5）；tl1286 预存红修正时把 dagMigration 仍计入
+  // （钉 6）——tl1287 随后把 DAG 迁移卡转正迁出 rail，存储组回落 5 项而本钉
+  // 漏跟（基线预存红）。tl1309 实测对齐：sessionStore/homePointer/jsonlZstd/
+  // idleReleaseMinutes/gcPercent（tl1309 卡③再把两参数卡并入 infra 段资源治理卡）。
+  ok(storage?.entries.length === 5, "storage group carries sessionStore + homePointer + jsonlZstd + two param cards");
   const idle = storage?.entries.find((e) => e.id === "idleReleaseMinutes");
   const mem = storage?.entries.find((e) => e.id === "gcPercent");
   ok(idle?.kind === "param" && JSON.stringify(idle.fields) === JSON.stringify([{ id: "detachedIdleReleaseMinutes", input: "number" }]),
@@ -95,7 +96,10 @@ const paneIds = new Set<string>();
 // ── ③ SettingsPanel：硬编码行退役 + 通用参数渲染接线 ──
 {
   const scStart = panel.indexOf('{selected === "sessionCollab" && (');
-  const scEnd = panel.indexOf('{selected === "optimisticParallel" && (', scStart);
+  // tl1309：optimisticParallel 独立 pane 退役（并入 contextGovernance 卡）——
+  // 边界 needle 随迁下一分支（needle 消失=indexOf -1=slice 退化=断言假绿，
+  // 742 needle-随迁同款教训）。
+  const scEnd = panel.indexOf('{selected === "autopilot" && (', scStart);
   const sessionCollabPane = panel.slice(scStart, scEnd);
   ok(!sessionCollabPane.includes("detachedIdleRelease") && !sessionCollabPane.includes("gcPercent"),
     "the sessionCollab card no longer hosts the two parameter rows");

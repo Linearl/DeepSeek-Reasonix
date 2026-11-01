@@ -104,23 +104,23 @@ groups:
             labelKey: settings.standardContinuation
             tier: optional
 
-  # ── 提效（6 项；任务 722：安全/成本控制卡迁入本组；任务 961 三散条并交互与呈现卡）──
+  # ── 提效（5 项；任务 722：安全/成本控制卡迁入本组；任务 961 三散条并
+  #    交互与呈现卡；tl1309：optimisticParallel 散条并入上下文治理卡成员行）──
   - key: efficiency
     labelKey: settings.labGroup.efficiency
     entries:
-      - id: optimisticParallel
-        labelKey: settings.optimisticParallel
-        tier: recommended
-        # 任务 815：bash_heavy_guard（575）补实验室入口——optimistic-parallel
-        # 卡成员行（写并发保护，optimistic_write 家族伴生开关；pane 行+灯，
-        # 无 member 行不挂独立徽章）。
-        onKeys: [optimisticWrite, experimentalBashHeavyGuard]
       - id: contextGovernance
         labelKey: settings.contextGovernance
         # 任务 722 点5：compactModel 迁出（键引用同步移走）。
         # 任务 815：active_tab_resident 补灯（Task 347 附属行早已在 pane，
         # Go 侧 cacheTuning renderKeys 家族已含——前端灯漏接，开了卡不亮）。
-        onKeys: [experimentalCompactionParallel, experimentalContextBudget, experimentalResearchBudget, experimentalProactiveCompact, experimentalColdCacheCompact, experimentalCacheTuning, experimentalActiveTabResident]
+        # tl1309：optimisticParallel 散条并入本卡（任务书①：提效组剩余散条
+        # 并入既有 contextGovernance 卡）——乐观并行的两键（optimistic_write
+        # 主键 + bash_heavy_guard 575 家族伴生）随迁入灯；卡内 pane 行迁至
+        # 本卡尾部（乐观并行主行 + 重 bash 守护 + 推理-only 续跑修复三行，
+        # 各读各键各写各 setter，配置键零变化）。容器档 = 成员最高档（乐观
+        # 并行/预算/主动压缩推荐 → 推荐，聚合徽章与并入前一致）。
+        onKeys: [experimentalCompactionParallel, experimentalContextBudget, experimentalResearchBudget, experimentalProactiveCompact, experimentalColdCacheCompact, experimentalCacheTuning, experimentalActiveTabResident, optimisticWrite, experimentalBashHeavyGuard]
         members:
           - id: compactionParallel
             labelKey: settings.compactionParallel
@@ -134,6 +134,12 @@ groups:
           - id: cacheTuning
             labelKey: settings.cacheTuning
             tier: optional
+          # tl1309：乐观并行（原 efficiency 独立卡，推荐档，并入本卡尾部；
+          # pane 内 bash_heavy_guard/reasoning_only_continuation 两行为其家族
+          # 伴生行，不挂独立徽章——621 附属行口径）。
+          - id: optimisticParallel
+            labelKey: settings.optimisticParallel
+            tier: recommended
       - id: safetyCostControl
         labelKey: settings.safetyCostControl
         tier: optional

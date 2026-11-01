@@ -35,7 +35,13 @@ function ok(condition: unknown, label: string) {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = join(root, "..", "..", "..");
-const panelRaw = readFileSync(join(root, "components/SettingsPanel.tsx"), "utf8");
+// tl1309 预存红修正：tl1134 实验室 chunk 拆分后 optimisticParallel 的 pane 行
+// 落在懒加载的 ExperimentalLabSection.tsx、白名单/union 在 labPaneRegistry.ts
+// ——本测试只读 SettingsPanel.tsx，基线上四个 pin 假红。对齐 722/562 同款
+// 三文件拼接。
+const panelRaw = readFileSync(join(root, "components/SettingsPanel.tsx"), "utf8")
+  + "\n" + readFileSync(join(root, "components/ExperimentalLabSection.tsx"), "utf8")
+  + "\n" + readFileSync(join(root, "lab", "labPaneRegistry.ts"), "utf8");
 const panel = panelRaw.replace(/\n\s*/g, " ");
 const en = readFileSync(join(root, "locales/en.ts"), "utf8");
 const zh = readFileSync(join(root, "locales/zh.ts"), "utf8");
@@ -64,7 +70,9 @@ ok(effBlockYaml.includes("- id: optimisticParallel"),
   "lab-layout.yaml puts the lab entry in the efficiency group (task 650)");
 ok(!autoBlockYaml.includes("- id: optimisticParallel"),
   "lab-layout.yaml's automation group no longer lists the entry (task 650)");
-ok(panel.includes('| "optimisticParallel"'), "the detail union includes the id");
+// tl1309 卡①：optimisticParallel 独立 pane 退役，union id 同步摘除
+// （961 先例——成员行承载，rail 面经 contextGovernance 卡）。
+ok(!panel.includes('| "optimisticParallel"'), "the pane union drops the retired standalone id (tl1309 member fold)");
 
 // ── segmented-control binding: reads the field upright (On=乐观, task 650) ──
 ok(panel.includes('className={`set-seg__btn${Boolean(s.sandbox?.optimisticWrite) === on ? " set-seg__btn--on" : ""}`}'),
@@ -80,8 +88,9 @@ ok(!panelRaw.includes('onChange={(e) => void apply(() => app.SetOptimisticWrite(
 // Task 724: the entry's on-state is an onKeys reference resolved against the
 // light-key registry; the predicate itself is the old upright field read.
 const labLights = readFileSync(join(root, "lab", "labLightKeys.ts"), "utf8");
+// tl1309 卡①：两键随并入迁为 contextGovernance onKeys 尾段（灯语义不变）。
 ok(effBlockDefault.includes('{ id: "optimisticParallel", labelKey: "settings.optimisticParallel", tier: "recommended", onKeys: ["optimisticWrite", "experimentalBashHeavyGuard"] }')
-  || (effBlockDefault.includes('{ id: "optimisticParallel"') && effBlockYaml.includes("onKeys: [optimisticWrite, experimentalBashHeavyGuard]")),
+  || (effBlockDefault.includes('{ id: "optimisticParallel"') && effBlockYaml.includes("optimisticWrite, experimentalBashHeavyGuard]")),
   "the lab entry's on-state references the optimisticWrite light key (default false = off = safety check on)");
 ok(/optimisticWrite:\s*\(s:\s*SettingsView\)\s*=>\s*Boolean\(s\.sandbox\?\.optimisticWrite\)/.test(labLights),
   "the optimisticWrite light predicate reads the field upright (task 724 registry)");

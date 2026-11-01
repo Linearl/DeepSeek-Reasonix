@@ -250,7 +250,8 @@ console.log("\ntask 562 lab three-tier badges");
   // tl 1132：startupLoading 卡补 startupSplash 成员行——45→46。
   // tl 1165：viewLayout 卡补 smoothScrollFollow 成员行——46→47。
   // tl-1218：toolOptimizations 卡补 multi_edit 三条增强成员行——47→50。
-  ok(members.length === 50, `merged cards carry 50 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl1309 卡①：optimisticParallel 散条并入 contextGovernance 卡——50→51。
+  ok(members.length === 51, `merged cards carry 51 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）

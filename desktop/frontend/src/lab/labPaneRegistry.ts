@@ -20,7 +20,7 @@ export type ExperimentFeatureId =
   //   （任务 517：M1 autonomousRunGuard 与 standalone eventWaitRecheck 已并入
   //   单键卡 safetyCostControl——不是入口级合并，是配置键级合并。）
   // M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
-  // fullAccess / optimisticParallel.
+  // fullAccess（tl1309：optimisticParallel 自此清单并入 contextGovernance 卡）。
   | "autopilot"
   // Task 318.5: session + performance monitoring merge into one lab entry
   // (the two underlying switches stay independent inside the page).
@@ -72,7 +72,9 @@ export type ExperimentFeatureId =
   | "preapproveManagedPaths"
   // Task 280: the former permissions-area safety checkbox, re-homed here as
   // "optimistic parallel writes" (same underlying key, inverted checkbox).
-  | "optimisticParallel"
+  // tl1309：optimisticParallel 独立 pane 退役——并入 contextGovernance 合并卡
+  // 成员行（任务书①，961 先例；union id 同步摘除，行级徽章经 labLabel 保留）。
+
   // 任务 782：输入与选区合并卡（草稿持久化 + 选区快捷操作）——
   // draftPersistence/selectionActions 独立 pane 退役为卡内成员行。
   | "inputSelection"
@@ -149,7 +151,6 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   // 任务 961：quickCommands/traceAsState/outputStyle 三散条并入
   // interactionPresentation 合并卡（成员行承载，独立 pane 退役）。
   "interactionPresentation",
-  "optimisticParallel",
   "contextGovernance",
   "safetyCostControl",
   "modelStrategy",
