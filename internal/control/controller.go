@@ -6699,6 +6699,17 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 		} else {
 			c.promptOwner.Clear()
 		}
+		// 任务1004: the in-process sweep. A stall abandoned by Cancel leaves
+		// every already-consumed steer copy in the manifest (P15's drop only
+		// fires on open/rebind, 840's planned-restart sweep only on the
+		// roster chain), so close() settles the copies whose bodies sit on
+		// the transcript — the next process finds only real pending work.
+		// Best-effort: a sweep failure must not block teardown; the next
+		// open's recovery pass remains the backstop. Runs before the inbox is
+		// sealed (c.inbox.closed) so ensureInbox can still reach the store.
+		if dropped := c.SettleConsumedGuidanceResidue("close"); dropped > 0 {
+			slog.Info("controller: close settled consumed guidance residue", "count", dropped)
+		}
 		// Join sidecar creation and queue scans without waiting for the
 		// dispatcher itself: host admission may retire its own controller.
 		c.inbox.scanMu.Lock()
