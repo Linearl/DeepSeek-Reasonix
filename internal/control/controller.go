@@ -66,6 +66,7 @@ import (
 	"reasonix/internal/store"
 	"reasonix/internal/taskmonitor"
 	"reasonix/internal/tool"
+	"reasonix/internal/workflow"
 	"reasonix/internal/workspacelease"
 )
 
@@ -1195,9 +1196,15 @@ func (c *Controller) initializeTaskRecorder(store taskmonitor.WriteStore) {
 	if store == nil {
 		store = taskmonitor.NewFileStore(filepath.Join(".reasonix", "tasks"))
 	}
-	c.jobs.SetTaskRecorder(taskmonitor.NewTaskRecorder(
+	recorder := taskmonitor.NewTaskRecorder(
 		store, c.workspaceRoot, func() string { return c.parentSessionID() },
-	))
+	)
+	c.jobs.SetTaskRecorder(recorder)
+	// 工作流子代理节点（tl1324 G6）共用这同一个 recorder：任务面板对 jobs
+	// 后台任务与 workflow 节点看到同一份 store/实例。★不得在 workflow 侧再
+	// NewTaskRecorder——双实例 runtimeOwnerID 互斥守卫互拒对方条目，heartbeat
+	// lease 也是 per-instance。
+	workflow.SetTaskMonitorRecorder(recorder)
 }
 
 // SetDisplayRecorder installs an optional hook used by frontends that persist a

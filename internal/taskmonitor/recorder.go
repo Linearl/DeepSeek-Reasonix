@@ -133,12 +133,28 @@ func (r *TaskRecorder) stopHeartbeat(monitorID string) {
 
 // RecordStart implements jobs.TaskRecorder.
 func (r *TaskRecorder) RecordStart(id, kind, label string) {
-	ctx := context.Background()
-	now := timeNow()
 	sessionID := ""
 	if r.sessionIDFn != nil {
 		sessionID = r.sessionIDFn()
 	}
+	r.recordStartSession(sessionID, id, kind, label)
+}
+
+// RecordStartSession is RecordStart with an explicit session id (tl1324 G6):
+// callers whose lifecycle does not flow through jobs.Manager — workflow
+// sub-agent nodes run foreground via TaskTool.Execute — resolve the session
+// from their own context (jobs.SessionFromContext convention) and pass it in,
+// so the snapshot lands in the initiating session's task-panel view
+// (ListTasksForTab filters by exact SessionID match). The jobs.TaskRecorder
+// interface is unchanged; this variant is NOT part of it.
+// SessionID 传空时与 RecordStart 同语义：登记仍落盘，但面板按会话过滤时不可见。
+func (r *TaskRecorder) RecordStartSession(sessionID, id, kind, label string) {
+	r.recordStartSession(sessionID, id, kind, label)
+}
+
+func (r *TaskRecorder) recordStartSession(sessionID, id, kind, label string) {
+	ctx := context.Background()
+	now := timeNow()
 	monitorID := monitorTaskID(sessionID, id)
 	if sessionID == "" {
 		monitorID = sessionlessMonitorTaskID(id)
