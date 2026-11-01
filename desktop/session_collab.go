@@ -1966,6 +1966,32 @@ func (a *App) collabSessionSetModel(contactID, model string) (applied, wasRunnin
 	return false, false, false, "", nil
 }
 
+// collabSessionReopen (tl1311) drives the tab-reopen resource remount for a
+// peer session (or the calling session itself — reopen is the one
+// session_control action allowed on self) that outside injections can no
+// longer wake: resolve the backing tab across the visible and detached
+// registries, then run the tl1201 stale-authority repair (live-lease
+// re-issue, or free-lock takeover + authority rebind — the same remount the
+// manual close-and-reopen tab path performs). known=false for runtimes this
+// host cannot see; reopened=false (nil error) = nothing to repair or the
+// repair was declined — an honest receipt, never a guessed success.
+func (a *App) collabSessionReopen(contactID string) (reopened, known bool, err error) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return false, false, nil
+	}
+	for _, target := range a.sessionCollabLiveTargets(nil) {
+		if target.contactID != contactID {
+			continue
+		}
+		if target.ctrl == nil {
+			return false, true, nil
+		}
+		return a.healCollabTargetWriteAuthority(target.tabID), true, nil
+	}
+	return false, false, nil
+}
+
 // collabSessionTurnStatus (task 319) exposes the peer's authoritative turn
 // lifecycle to the subscription verdict: a turn that reached a NON-completed
 // terminal state (failed/interrupted/recovery_required) is the peer dying

@@ -255,6 +255,10 @@ type Options struct {
 	// refusal (CLI/tests build configs without a host runtime).
 	OnSessionStop     func(contactID string) (stopped, wasRunning, known bool, err error)
 	OnSessionSetModel func(contactID, model string) (applied, wasRunning, known bool, newRef string, err error)
+	// OnSessionReopen (tl1311) is the agent-side reopen hook: it re-runs the
+	// target's resource remount (the manual tab-reopen path) for a session
+	// wedged no-longer-writable. Nil keeps every reopen a refusal (CLI/tests).
+	OnSessionReopen func(contactID string) (reopened, known bool, err error)
 	// OnSessionTurnStatus (task 319) exposes a peer's authoritative turn
 	// lifecycle to the subscription verdict (abnormal-end detection). Nil
 	// keeps every status unknown so the detector never guesses a death.
@@ -2477,10 +2481,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			SessionGroupMatch:   opts.OnSessionGroupMatch,
 			SessionVersions:     opts.OnSessionVersions,
 			AdoptSessionVersion: opts.OnAdoptSessionVersion,
-			// Task 274 ②③: controller hooks for stop/set_model (gated below).
+			// Task 274 ②③: controller hooks for stop/set_model (gated below);
+			// tl1311 adds reopen (the tab-reopen remount for a wedged session).
 			SessionControl: agent.SessionControlHooks{
 				Stop:     opts.OnSessionStop,
 				SetModel: opts.OnSessionSetModel,
+				Reopen:   opts.OnSessionReopen,
 			},
 			SessionTurnStatus: opts.OnSessionTurnStatus,
 			// Task 173: parameter-level panel gates, checked at call time with
