@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"reasonix/internal/agent"
@@ -96,11 +97,17 @@ func NewTaskSubagentRunner(task *agent.TaskTool) *TaskSubagentRunner {
 }
 
 // Run executes one node's sub-agent call via tool Execute with a JSON-args
-// envelope matching the task tool schema.
+// envelope matching the task tool schema. The answer returned is the child's
+// UNMODIFIED final text: the host may wrap the tool's answer with a
+// completion envelope ("status: …", "summary: …") and receipts for the
+// parent model, and that envelope is prose, not the JSON a typed result
+// needs (G1) — so the raw answer recorded on ctx wins whenever the host
+// provided it.
 func (r *TaskSubagentRunner) Run(ctx context.Context, req SubagentRequest) (string, error) {
 	if r == nil || r.task == nil {
 		return "", fmt.Errorf("workflow: subagent runner is not configured")
 	}
+	ctx = agent.WithSubagentRawAnswerSink(ctx)
 	args := map[string]any{"prompt": req.Prompt}
 	set := func(key, v string) {
 		if v != "" {
@@ -120,8 +127,29 @@ func (r *TaskSubagentRunner) Run(ctx context.Context, req SubagentRequest) (stri
 	if err != nil {
 		return "", err
 	}
+	var answer string
 	if req.ReadOnly && r.readOnly != nil {
-		return r.readOnly.Execute(ctx, raw)
+		answer, err = r.readOnly.Execute(ctx, raw)
+	} else {
+		answer, err = r.task.Execute(ctx, raw)
 	}
-	return r.task.Execute(ctx, raw)
+	if err != nil {
+		return "", err
+	}
+	return resolvedSubagentAnswer(ctx, req.NodeID, answer), nil
+}
+
+// resolvedSubagentAnswer prefers the child's raw answer recorded by the host
+// during the run and falls back to the answer text Execute returned. The
+// fallback keeps the engine runnable against hosts that never record (version
+// skew), but it silently re-opens G1 — the host envelope would reach typed
+// parsing — so the fallback path leaves a trace.
+func resolvedSubagentAnswer(ctx context.Context, nodeID, answer string) string {
+	if orig := agent.SubagentRawAnswer(ctx); orig != "" {
+		return orig
+	}
+	slog.Debug("workflow: host recorded no raw sub-agent answer; using the tool's answer text",
+		"node", nodeID,
+		"hint", "typed-result parsing may see the host completion envelope (G1)")
+	return answer
 }
