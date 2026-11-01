@@ -6,14 +6,25 @@
 
 **两类版本的区别**：标 <span class="vtag vtag-release">正式 Release</span> 的是发布到 GitHub Releases 的版本，可从 Release 页直接下载安装；标 <span class="vtag vtag-internal">内部包</span> 的是持续集成的开发快照，未经发布流程，仅供内部验证与升级链路使用。本 fork 的开发节奏是每个工作日可能出多个内部包，正式 Release 按里程碑单独发布。
 
-**统计**：10-12 起共 38 个开发包（正式 Release 1 个、内部包 37 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
+**统计**：10-12 起共 39 个开发包（正式 Release 1 个、内部包 38 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
 
 <div class="timeline">
 
 <details class="day-group" open>
-<summary>2026-11-01 <span class="gcount">· 1 个包</span></summary>
+<summary>2026-11-01 <span class="gcount">· 2 个包</span></summary>
 
 <div class="inner">
+<section>
+#### v1.38.3-20261101-1633 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">1633 构建</p>
+
+- **workflow 引擎批A（G1+G2）**（1325）：宿主包装头污染子代理 JSON 的竞态型必然失败修复（ctx 旁路结构化取回原文）+ confirm 节点确认恒否修复（结果契约注入）——工作流从「不可用」到「可用」，审计线回归钉 7 测试工具级全 PASS。
+- **会话数据完整性**（1317/1313/1311）：会话自动保存失败根治（写侧 json.Valid 守卫+坏 event 隔离 sidecar 可救存量）+ 会话主文件无声消失修复 + 长轮会话不可写修复。
+- **观测面与治理**（1324/1327/1316/1309）：G6 工作流子代理进任务面板（节点级登记）+ provider 连接治理（拨号并发预算+断网熔断）+ 工作流 run 级持久化与断点续跑（runs 侧车+checkpoint+resume 入口，重启不再丢运行记录）+ 实验室卡片化改造。
+
+</section>
+
 <section>
 #### v1.38.3-20261101-0936 <span class="vtag vtag-internal">内部包</span>
 
