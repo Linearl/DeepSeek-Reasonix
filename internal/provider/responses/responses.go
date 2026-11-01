@@ -154,9 +154,15 @@ func New(cfg Config) provider.Provider {
 		TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 300 * time.Second,
 		ForceDNSRefresh: forceDNSRefresh,
 	}); err == nil {
+		// 任务 tl1327 ①②③: every new TCP connection this client opens counts
+		// against the process dial budget and feeds the outage breaker; idle
+		// per-host connections survive between turns (keep-alive reuse).
+		provider.GateHTTPClient(built)
 		httpClient = built
 	}
 	if cfg.HTTPClient != nil {
+		// Credential-proxy tunnel client: an internal localhost hop, not part
+		// of the outbound dial budget — left ungated by design.
 		httpClient = cfg.HTTPClient
 	}
 	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
