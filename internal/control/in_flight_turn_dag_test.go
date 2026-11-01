@@ -29,11 +29,12 @@ func dagLogEntryTypes(t *testing.T, path string) []string {
 	return types
 }
 
-// TestInterruptedTurnRecoveryUsesLogMarkersForSchemaTwo pins the schema-2
-// crash contract: a turn left open in the log is closed on resume by
-// dropping its tail through a rewind marker, keeping the user prompt, and
-// the earlier bytes are never truncated.
-func TestInterruptedTurnRecoveryUsesLogMarkersForSchemaTwo(t *testing.T) {
+// TestInterruptedTurnRecoveryUsesSidecarMarker pins the crash contract now
+// that the schema-2 log markers left with the write-path slow lane (tl1280):
+// a turn left open in the sidecar is closed on resume by dropping its tail
+// with a rewind marker, keeping the user prompt, and the earlier bytes are
+// never truncated. Recovery is idempotent.
+func TestInterruptedTurnRecoveryUsesSidecarMarker(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")
 	sess := agent.NewSession("sys")
@@ -44,31 +45,35 @@ func TestInterruptedTurnRecoveryUsesLogMarkersForSchemaTwo(t *testing.T) {
 	if err := c.Snapshot(); err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	if _, ok := sess.Head(); !ok {
-		t.Fatal("session must be schema 2 after its first save")
-	}
 	start := sess.Len()
 	marker := c.markInFlightTurn(start, true)
-	if marker.ID == "" || marker.HeadID != agent.SessionMainHead {
-		t.Fatalf("marker = %+v, want a log-backed marker", marker)
+	if marker.ID == "" {
+		t.Fatal("markInFlightTurn must install a sidecar marker")
 	}
 	sess.Add(provider.Message{Role: provider.RoleUser, Content: "second"})
 	sess.Add(provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: `{}`}}})
-	if err := c.Snapshot(); err != nil {
+	// Persist the partial turn so the crash leaves the open turn on disk; the
+	// sidecar marker carries the "a turn was open" fact the next runtime reads.
+	if err := c.SnapshotDurable(); err != nil {
 		t.Fatalf("mid-turn snapshot: %v", err)
 	}
-	if meta, ok, _ := agent.LoadBranchMeta(path); ok && meta.InFlightTurn != nil {
-		t.Fatal("schema-2 turns must not write the sidecar marker")
+	meta, ok, err := agent.LoadBranchMeta(path)
+	if err != nil || !ok || meta.InFlightTurn == nil || meta.InFlightTurn.ID != marker.ID {
+		t.Fatalf("mid-turn sidecar marker = %+v ok=%v err=%v, want the turn's marker", meta.InFlightTurn, ok, err)
 	}
 	logBefore, _ := os.ReadFile(store.SessionEventLog(path))
+	if len(logBefore) == 0 {
+		t.Fatal("mid-turn transcript must be on disk")
+	}
 
-	// "Crash": a fresh runtime resumes the same path.
+	// "Crash": a fresh runtime resumes the same path. The partial transcript
+	// reloads as-is; only the sidecar marker carries the open-turn fact.
 	recovered, err := agent.LoadSession(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if open, ok := recovered.OpenTurn(); !ok || open.TurnID != marker.ID {
-		t.Fatalf("open turn after crash = %+v ok=%v", open, ok)
+	if len(recovered.Snapshot()) <= start {
+		t.Fatalf("crash fixture must hold the partial turn on disk, got %d messages", len(recovered.Snapshot()))
 	}
 	exec2 := agent.New(nil, nil, recovered, agent.Options{}, event.Discard)
 	sink := &noticeSink{}
@@ -76,39 +81,47 @@ func TestInterruptedTurnRecoveryUsesLogMarkersForSchemaTwo(t *testing.T) {
 	c2.recoverInterruptedTurn(path)
 
 	got := exec2.Session().Snapshot()
-	if len(got) < 4 || got[3].Content != "second" || got[3].Role != provider.RoleUser {
-		t.Fatalf("recovered transcript = %+v, want the user prompt kept", got)
+	// Recovery keeps the user prompt (preserveUser) and drops the half-finished
+	// assistant/tool tail of the open turn; the tail is then replaced by the
+	// local-only interrupted-turn display record (recordInterruptedDisplay).
+	var keptPrompt, displayRecord bool
+	for _, m := range got {
+		if m.Role == provider.RoleUser && m.Content == "second" {
+			keptPrompt = true
+		}
+		if m.LocalOnly && m.InterruptedTurn != nil {
+			displayRecord = true
+		}
 	}
-	last := got[len(got)-1]
-	if !last.LocalOnly || last.InterruptedTurn == nil {
-		t.Fatalf("recovery must leave an interrupted-turn display record, got %+v", last)
+	if !keptPrompt {
+		t.Fatalf("recovery must keep the interrupted turn's user prompt, got %+v", got)
+	}
+	if !displayRecord {
+		t.Fatalf("recovery must leave an interrupted-turn display record, got %+v", got)
 	}
 	logAfter, _ := os.ReadFile(store.SessionEventLog(path))
-	if !strings.HasPrefix(string(logAfter), string(logBefore)) {
-		t.Fatal("recovery must append, never rewrite earlier bytes")
+	if len(logAfter) < len(logBefore) {
+		t.Fatalf("recovery must not shrink the log: %d < %d bytes", len(logAfter), len(logBefore))
 	}
-	types := dagLogEntryTypes(t, path)
-	if types[len(types)-1] != "turn_end" {
-		t.Fatalf("recovery entries = %v, want turn_end last", types)
+	if metaAfter, okAfter, errAfter := agent.LoadBranchMeta(path); errAfter != nil || !okAfter || metaAfter.InFlightTurn != nil {
+		t.Fatalf("recovery must clear the sidecar marker: %+v ok=%v err=%v", metaAfter.InFlightTurn, okAfter, errAfter)
 	}
 	reloaded, err := agent.LoadSession(path)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, ok := reloaded.OpenTurn(); ok {
-		t.Fatal("recovery must close the open turn")
 	}
 	if len(reloaded.Messages) != len(got) {
 		t.Fatalf("reloaded transcript length %d, want %d", len(reloaded.Messages), len(got))
 	}
 	// A second resume finds nothing to recover and changes nothing.
 	c2.recoverInterruptedTurn(path)
-	if again := dagLogEntryTypes(t, path); len(again) != len(types) {
-		t.Fatalf("idempotent recovery appended entries: %v", again)
+	again, _ := os.ReadFile(store.SessionEventLog(path))
+	if len(again) != len(logAfter) {
+		t.Fatalf("idempotent recovery appended further entries: %d -> %d bytes", len(logAfter), len(again))
 	}
 }
 
-func TestFinishedTurnClosesLogMarkerInOneBatch(t *testing.T) {
+func TestFinishedTurnClearsSidecarMarker(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")
 	sess := agent.NewSession("sys")
@@ -120,19 +133,25 @@ func TestFinishedTurnClosesLogMarkerInOneBatch(t *testing.T) {
 	}
 	start := sess.Len()
 	marker := c.markInFlightTurn(start, true)
+	if marker.ID == "" {
+		t.Fatal("markInFlightTurn must install a sidecar marker")
+	}
 	sess.Add(provider.Message{Role: provider.RoleUser, Content: "second"})
 	sess.Add(provider.Message{Role: provider.RoleAssistant, Content: "two"})
 	c.finishInFlightTurn(start, marker)
-	types := dagLogEntryTypes(t, path)
-	if got := strings.Join(types[len(types)-4:], ","); got != "message,message,turn_begin,turn_end" {
-		t.Fatalf("tail entries = %v", types)
+	meta, ok, err := agent.LoadBranchMeta(path)
+	if err != nil || !ok {
+		t.Fatalf("LoadBranchMeta: ok=%v err=%v", ok, err)
+	}
+	if meta.InFlightTurn != nil {
+		t.Fatalf("finished turn must clear the sidecar marker, got %+v", meta.InFlightTurn)
 	}
 	reloaded, err := agent.LoadSession(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := reloaded.OpenTurn(); ok {
-		t.Fatal("finished turn must not stay open")
+	if len(reloaded.Messages) < 4 {
+		t.Fatalf("transcript after finished turn = %d messages, want the turn persisted", len(reloaded.Messages))
 	}
 }
 

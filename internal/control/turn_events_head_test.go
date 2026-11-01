@@ -12,11 +12,12 @@ import (
 	"reasonix/internal/tool"
 )
 
-// TestTurnDoneStampsHeadReferenceForSchemaTwo pins that the terminal turn
-// envelope names the head and leaf message the turn ended on, so projection
-// acks and orphan repair can identify the transcript position without a
-// revision/digest pair.
-func TestTurnDoneStampsHeadReferenceForSchemaTwo(t *testing.T) {
+// TestTurnDoneLeavesHeadReferenceEmptyForSchemaOne pins the tl1280 envelope
+// shape: the schema-2 head stamping (Session.Head / SetTranscriptHead) left
+// with the write-path slow lane, so a terminal turn envelope carries an empty
+// HeadID and LeafMessageID for a flat session. The digest/revision pair stays
+// the transcript position.
+func TestTurnDoneLeavesHeadReferenceEmptyForSchemaOne(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")
 	reply := [][]provider.Chunk{{{Type: provider.ChunkText, Text: "ok"}, {Type: provider.ChunkDone}}}
@@ -29,7 +30,6 @@ func TestTurnDoneStampsHeadReferenceForSchemaTwo(t *testing.T) {
 			}
 		})})
 	t.Cleanup(c.Close)
-	// The first turn's save creates the schema-2 log; the second turn ends on it.
 	for _, input := range []string{"first", "second"} {
 		c.Submit(input)
 		select {
@@ -49,16 +49,15 @@ func TestTurnDoneStampsHeadReferenceForSchemaTwo(t *testing.T) {
 			break
 		}
 	}
-	ref, ok := exec.Session().Head()
-	if !ok {
-		t.Fatal("session must be schema 2 after two saved turns")
+	if ref, ok := exec.Session().Head(); ok {
+		t.Fatalf("flat session must not report a schema-2 head, got %+v", ref)
 	}
 	got := records[terminal]
-	if got.HeadID != ref.HeadID || got.LeafMessageID == "" || got.LeafMessageID != exec.Session().LeafID() {
-		t.Fatalf("terminal envelope head=%q leaf=%q, want head %q leaf %q", got.HeadID, got.LeafMessageID, ref.HeadID, exec.Session().LeafID())
+	if got.HeadID != "" || got.LeafMessageID != "" {
+		t.Fatalf("terminal envelope head=%q leaf=%q, want empty for a flat session", got.HeadID, got.LeafMessageID)
 	}
 	view, err := c.TurnEventReplay(0)
-	if err != nil || view.HeadID != ref.HeadID || view.LeafMessageID != got.LeafMessageID {
-		t.Fatalf("replay view = %+v err=%v", view, err)
+	if err != nil || view.HeadID != "" || view.LeafMessageID != "" {
+		t.Fatalf("replay view = %+v err=%v, want empty head reference", view, err)
 	}
 }

@@ -1,14 +1,12 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
-	"reasonix/internal/provider"
 )
 
 // 任务 1064：面板手动删除分支的两条后端路径。
@@ -17,8 +15,11 @@ import (
 // 全约束①当前选中版本不可选不可删 ②删除走回收语义（可反悔）③修复记录/备
 // 份关联引用处理；删除后列表即时刷新。本测试钉住后端面：
 //  ① 副本分支删除 = forced 归档（不要求覆盖证明），落进可恢复 .trash；
-//  ② head 删除 = retire 标记，当前选中 head 拒绝；
-//  ③ 主线转录本体拒绝走副本删除路径（面板只允许删分支）。
+//  ② 主线转录本体拒绝走副本删除路径（面板只允许删分支）。
+//
+// tl1280: the schema-2 head-delete path (ForkHead / SelectSessionHead /
+// ErrSessionHeadUnknown) left with the write-path slow lane, so the
+// current-head refusal leg is retired with an explicit skip below.
 
 func newBranchDeleteApp(t *testing.T) *App {
 	t.Helper()
@@ -100,71 +101,13 @@ func TestDeleteRecoveryBranchRefusesPlainTranscript(t *testing.T) {
 	}
 }
 
+// tl1280: the schema-2 head-delete fixture (ForkHead multi-head log + the
+// current-head refusal) left with the write-path slow lane. ForkHead and
+// ErrSessionHeadUnknown are gone, and ListSessionHeads is an always-nil shim,
+// so the two-head scenario is unreachable — retired with an explicit skip
+// (no silent SKIP). The removed 1064 contract (current head not deletable,
+// retired head reads back retired, unknown head refused) is documented in the
+// skip reason; the file-level paths above still pin the live surface.
 func TestDeleteSessionVersionHeadRefusesSelectedHead(t *testing.T) {
-	t.Skip("tl1236 DAG 读退役善后(1227 后续): 1064 选中头删除约束依赖单日志多头（ForkHead 对扁平新会话拒绝+tl1227 ListSessionHeads 垫片恒空），场景不可达，显式退役非静默")
-	// sessionDirForPath only trusts known session dirs, so the fixture lives
-	// under the app's real global session dir (the same contract the versions
-	// panel operates under in production).
-	dir := config.SessionDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "heads-branch-del-3.jsonl")
-	t.Cleanup(func() { _ = os.Remove(path) })
-	// Build the schema-2 fixture through the agent's own session save (the same
-	// shape internal/agent's head tests use), so ForkHead records real markers.
-	s := agent.NewSession("sys")
-	s.Add(provider.Message{Role: provider.RoleUser, Content: "q1"})
-	s.Add(provider.Message{Role: provider.RoleAssistant, Content: "a1"})
-	if err := s.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	fork, err := s.ForkHead(path, s.Snapshot()[1].ID, agent.HeadKindFork, "side")
-	if err != nil {
-		t.Fatal(err)
-	}
-	selected, err := agent.ListSessionHeads(path)
-	if err != nil || len(selected) != 2 {
-		t.Fatalf("heads=%+v err=%v", selected, err)
-	}
-	current := ""
-	for _, h := range selected {
-		if h.Selected {
-			current = h.ID
-		}
-	}
-	if current == "" {
-		t.Fatal("fixture must have a selected head")
-	}
-
-	app := newBranchDeleteApp(t)
-	if err := app.DeleteSessionVersionHead(path, current); err == nil {
-		t.Fatal("the current version must not be deletable (1064 constraint ①)")
-	}
-
-	// Switch off the fork, then the fork head becomes deletable.
-	if err := agent.SelectSessionHead(path, agent.SessionMainHead); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.DeleteSessionVersionHead(path, fork); err != nil {
-		t.Fatalf("retire of a non-current head must succeed: %v", err)
-	}
-	heads, err := agent.ListSessionHeads(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	retired := false
-	for _, h := range heads {
-		if h.ID == fork && h.Retired {
-			retired = true
-		}
-	}
-	if !retired {
-		t.Fatalf("the deleted head must read back as retired: %+v", heads)
-	}
-	if err := app.DeleteSessionVersionHead(path, "no-such-head"); err == nil {
-		t.Fatal("an unknown head must be refused")
-	} else if !errors.Is(err, agent.ErrSessionHeadUnknown) {
-		t.Fatalf("unknown-head error must wrap ErrSessionHeadUnknown, got %v", err)
-	}
+	t.Skip("tl1280 DAG 写路径慢车道删除: 1064 选中头删除约束依赖 ForkHead/SelectSessionHead/ErrSessionHeadUnknown，均随慢车道退役；ListSessionHeads 垫片恒空，显式退役非静默")
 }

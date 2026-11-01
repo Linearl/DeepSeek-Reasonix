@@ -27,7 +27,7 @@ func TestP18SaveQueueUnderLoaderLoop(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "p18.jsonl")
-	s := p18RoundSession(t, 700) // ≈2100 messages
+	s := p18RoundSession(700) // ≈2100 messages
 	if err := s.Save(path); err != nil {
 		t.Fatal(err)
 	}

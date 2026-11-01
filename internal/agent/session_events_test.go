@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -923,11 +922,17 @@ func TestSessionEventLogSizeAcceptsResolvedLogPath(t *testing.T) {
 	}
 }
 
-// TestReplayFromResolvedPathSizesBudget drives the actual failing path: a DAG state holds
-// the resolved log path, and replayFrom must still size the budget to the file rather than
+// TestReplayFromResolvedPathSizesBudget drives the actual failing path: a replay
+// holds the resolved log path, and the budget still sizes to the file rather than
 // refusing it with the default.
+//
+// tl1280 收敛：本件原先驱动 sessionDAGState.replayFrom（schema-2 慢车道重放），
+// REASONIX_SESSION_LOG=v2 的写路线由 save_dag.go dagSaveRoute 承载、已随慢车道
+// 删除。自适应预算 sizing 是读侧公共件（limitsForSessionLog），改由 schema-1
+// 的 replaySessionEventLog 同路验证：预算默认值压到日志一半，只有自适应放行
+// 才不拒。schema-2 重放的预算语义由 session_dag_replay 的其余用例与
+// TestReplayRejectsUnsupportedSchemaVersion（未来 schema 硬错）覆盖。
 func TestReplayFromResolvedPathSizesBudget(t *testing.T) {
-	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := filepath.Join(t.TempDir(), "20260911-065117.149415700-minimax-MiniMax-M3.jsonl")
 	sessionWithTurns(t, path, 3)
 
@@ -949,9 +954,8 @@ func TestReplayFromResolvedPathSizesBudget(t *testing.T) {
 		defaultSessionReplayLimits = original
 	})
 
-	st := newSessionDAGState(logPath)
-	if err := st.replayFrom(context.Background(), 0, defaultSessionReplayLimits); err != nil {
-		t.Fatalf("replayFrom on a resolved log path refused a %d-byte log (budget %d): %v",
+	if _, err := replaySessionEventLogWithLimits(logPath, defaultSessionReplayLimits, nil); err != nil {
+		t.Fatalf("replay on a resolved log path refused a %d-byte log (budget %d): %v",
 			info.Size(), defaultSessionReplayLimits.maxBytes, err)
 	}
 }

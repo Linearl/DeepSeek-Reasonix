@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"reasonix/internal/control"
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
-	"reasonix/internal/sessioncatalog"
 	"reasonix/internal/store"
 )
 
@@ -206,95 +204,12 @@ func TestChooseRecoveryBranchSwitchesOpenTabHeadInPlace(t *testing.T) {
 	}
 }
 
+// tl1280: the schema-2 lineage fixture (ForkHead multi-head log + the
+// cleanup/retire legs) left with the write-path slow lane. ForkHead is gone
+// and ListSessionHeads is an always-nil shim, so the two-head lineage view is
+// unreachable — retired with an explicit skip (no silent SKIP). The removed
+// 1064/1227 contract (heads view, cleanup eligibility, retire) is documented
+// in the skip reason; file-level lineage paths still run in the live suite.
 func TestGetRecoveryLineageListsHeadsAndCleansCoveredOnes(t *testing.T) {
-	t.Skip("tl1236 DAG 读退役善后(1227 后续): heads 谱系列表/清理依赖单日志多头（ForkHead 对扁平新会话拒绝+tl1227 垫片恒空），场景不可达，显式退役非静默")
-	isolateDesktopUserDirs(t)
-	ctx := context.Background()
-	dir := config.SessionDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	catalog, err := sessioncatalog.Open(ctx, sessioncatalog.Options{InMemory: true, DisableRepair: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = catalog.Close(ctx) })
-	path := filepath.Join(dir, "log.jsonl")
-	session := agent.NewSession("system")
-	session.Add(provider.Message{Role: provider.RoleUser, Content: "shared question"})
-	session.Add(provider.Message{Role: provider.RoleAssistant, Content: "shared answer"})
-	if err := session.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	fork, err := session.ForkHead(path, session.Snapshot()[2].ID, agent.HeadKindFork, "alt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	session.Add(provider.Message{Role: provider.RoleUser, Content: "alt question"})
-	if err := session.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	if err := agent.UpdateBranchMeta(path, false, func(meta *agent.BranchMeta) error {
-		meta.Scope, meta.TopicID, meta.TopicTitle, meta.CustomTitle = "global", "topic", "Topic", "log note"
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.ReconcileDirectory(ctx, sessioncatalog.DirectoryTarget{Path: dir, Scope: "global"}); err != nil {
-		t.Fatal(err)
-	}
-	app := NewApp()
-	app.sessionCatalog.Store(catalog)
-	key := ProjectTopicKey{Scope: "global", TopicID: "topic"}
-
-	view := app.GetRecoveryLineage(key)
-	if view.State != sessionHeadLineageState || len(view.Members) != 2 || view.CleanupEligible != 1 {
-		t.Fatalf("heads view = %+v", view)
-	}
-	main, alt := view.Members[0], view.Members[1]
-	if main.HeadID != agent.SessionMainHead || main.Canonical || main.VersionNote != "log note" || main.Path != path {
-		t.Fatalf("main member = %+v", main)
-	}
-	if alt.HeadID != fork || !alt.Canonical || !alt.Selected || alt.HeadName != "alt" || alt.VersionNote != "alt" || alt.Path != path {
-		t.Fatalf("fork member = %+v", alt)
-	}
-	if state := app.GetSessionVersionState(key); state.ActiveVersionID != fork || state.ActivePath != path {
-		t.Fatalf("version state = %+v", state)
-	}
-
-	if err := app.ChooseRecoveryBranch(RecoveryPreferenceRequest{Scope: "global", TopicID: "topic", Path: path, HeadID: agent.SessionMainHead}); err != nil {
-		t.Fatalf("ChooseRecoveryBranch: %v", err)
-	}
-	view = app.GetRecoveryLineage(key)
-	if !view.Members[0].Canonical || view.Members[1].Canonical || view.CleanupEligible != 0 {
-		t.Fatalf("after selecting main = %+v", view)
-	}
-	if dry := app.CleanRecoveryLineage(RecoveryCleanupRequest{Scope: "global", TopicID: "topic"}); dry.Eligible != 0 {
-		t.Fatalf("diverged fork must not be cleanup-eligible: %+v", dry)
-	}
-
-	if err := app.ChooseRecoveryBranch(RecoveryPreferenceRequest{Scope: "global", TopicID: "topic", Path: path, HeadID: fork}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { sessionHeadQuietPeriod = time.Minute })
-	sessionHeadQuietPeriod = time.Hour
-	busy := app.CleanRecoveryLineage(RecoveryCleanupRequest{Scope: "global", TopicID: "topic", Apply: true})
-	if busy.Eligible != 1 || busy.Busy != 1 || busy.Moved != 0 || busy.Items[0].HeadID != agent.SessionMainHead || busy.Items[0].Status != "busy" {
-		t.Fatalf("cleanup inside the quiet period = %+v", busy)
-	}
-	sessionHeadQuietPeriod = 0
-	applied := app.CleanRecoveryLineage(RecoveryCleanupRequest{Scope: "global", TopicID: "topic", Apply: true})
-	if applied.Eligible != 1 || applied.Moved != 1 || applied.Items[0].Status != "retired" {
-		t.Fatalf("cleanup = %+v", applied)
-	}
-	heads, err := agent.ListSessionHeads(path)
-	if err != nil || len(heads) != 2 || !heads[0].Retired || heads[1].Retired {
-		t.Fatalf("heads after cleanup = %+v err=%v", heads, err)
-	}
-	if view = app.GetRecoveryLineage(key); len(view.Members) != 1 || view.Members[0].HeadID != fork {
-		t.Fatalf("view after cleanup = %+v", view)
-	}
-	if got := transcriptFilesIn(t, dir); got != 1 {
-		t.Fatalf("transcript files = %d, want cleanup to leave the log alone", got)
-	}
+	t.Skip("tl1280 DAG 写路径慢车道删除: heads 谱系/清理依赖 ForkHead 单日志多头夹具，ForkHead 随慢车道退役且 ListSessionHeads 垫片恒空，显式退役非静默")
 }

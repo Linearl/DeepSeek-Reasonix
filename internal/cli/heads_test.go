@@ -71,21 +71,18 @@ func TestBranchAndSwitchCommandsMoveBetweenSessionFiles(t *testing.T) {
 	}
 }
 
+// tl1280: the schema-2 head fixture (ForkHead + multi-head diagnose counts)
+// left with the write-path slow lane. The scenario is unreachable now — new
+// sessions are flat, ForkHead is gone, and ListSessionHeads is an always-nil
+// shim — so the whole body is retired with an explicit skip (no silent SKIP).
 func TestSessionsDiagnoseCountsSessionLogHeadsAndCleanupLeavesThem(t *testing.T) {
-	t.Skip("tl1236 DAG 读退役善后(1227 后续): 「单日志多头不构成恢复组」场景不可达——tl-1173 P1 起新会话扁平、ForkHead 对扁平会话拒绝（session log is not schema 2），存量 DAG 日志已由 MigrateSessionDAGLog 一次性迁移且 tl1227 ListSessionHeads 垫片恒空，显式退役非静默")
+	t.Skip("tl1280 DAG 写路径慢车道删除: 「单日志多头不构成恢复组」场景不可达——ForkHead/SelectSessionHead 随慢车道删除、ListSessionHeads 垫片恒空，显式退役非静默")
 	t.Setenv("REASONIX_HOME", t.TempDir())
 	dir := t.TempDir()
 	path := filepath.Join(dir, "log.jsonl")
 	s := agent.NewSession("system")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "shared question"})
 	s.Add(provider.Message{Role: provider.RoleAssistant, Content: "shared answer"})
-	if err := s.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.ForkHead(path, s.Snapshot()[2].ID, agent.HeadKindFork, "alt"); err != nil {
-		t.Fatal(err)
-	}
-	s.Add(provider.Message{Role: provider.RoleUser, Content: "alt question"})
 	if err := s.Save(path); err != nil {
 		t.Fatal(err)
 	}
