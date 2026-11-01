@@ -605,6 +605,79 @@ func TestGapB_G4_WaveKeepsStateComplete(t *testing.T) {
 	t.Logf("状态完整性钉成立：波次拓扑序 %s（a→[b,c]→d），3 节点状态齐全、findings 3 条不丢、边全决策", gotOrder)
 }
 
+// TestGapB_G4_PhaseBarrierKeepsSectionChronology 是 phase 屏障钉：真实定义
+// （如 code-audit）把 phase 分区节点声明为无入边的根、夹在节点组之间——串行
+// 引擎按声明序把它们插在扫描节点之间执行，事件 Phase 标签随之分区。并行化
+// 不得让所有根 phase 塌缩进第一波（否则扫描期间事件全带「报告」分区标签）。
+// 断言：phase-review 的 running 事件在扫描节点全部事件之后，且扫描事件的
+// Phase 标签是 phase-scan 的（而非更后面分区的）。
+func TestGapB_G4_PhaseBarrierKeepsSectionChronology(t *testing.T) {
+	runner := &gapBRunner{answer: `{"findings":[],"count":0,"coverage":"c"}`}
+	rec := &eventRecorder{}
+	eng := New(runner, nil, rec)
+	doc := `
+version: 1
+name: gap-g4-phasebarrier
+nodes:
+  - id: phase-scan
+    type: phase
+    label: 扫描分区
+  - id: scan-a
+    type: subagent
+    prompt: a
+    result:
+      - {name: findings, type: array, description: d}
+    findings_field: findings
+  - id: scan-b
+    type: subagent
+    prompt: b
+    result:
+      - {name: findings, type: array, description: d}
+    findings_field: findings
+  - id: phase-review
+    type: phase
+    label: 复核分区
+  - id: reviewer
+    type: subagent
+    prompt: review
+edges:
+  - {from: scan-a, to: reviewer}
+  - {from: scan-b, to: reviewer}`
+	wf := gapBParse(t, doc)
+	if err := newRunState(eng, wf).runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+
+	// 事件序列：phase-review 的 running 必须晚于 scan-a/scan-b 的一切事件。
+	phaseReviewRunning := -1
+	lastScanEvent := -1
+	for i, e := range rec.events {
+		switch {
+		case e.NodeID == "phase-review" && e.State == event.WorkflowNodeRunning:
+			phaseReviewRunning = i
+		case e.NodeID == "scan-a" || e.NodeID == "scan-b":
+			lastScanEvent = i
+		}
+	}
+	if phaseReviewRunning < 0 || lastScanEvent < 0 {
+		t.Fatalf("事件缺失：phaseReviewRunning=%d lastScanEvent=%d，events=%+v", phaseReviewRunning, lastScanEvent, rec.events)
+	}
+	if phaseReviewRunning < lastScanEvent {
+		t.Fatalf("分区时序被破坏：phase-review 的 running（%d）先于扫描节点事件（%d），events=%+v", phaseReviewRunning, lastScanEvent, rec.events)
+	}
+	// 扫描事件的 Phase 标签必须是「扫描分区」（phase-scan 的），不得漂移成
+	// 更后分区的标签。
+	for _, e := range rec.events {
+		if (e.NodeID == "scan-a" || e.NodeID == "scan-b") && e.State == event.WorkflowNodeRunning {
+			if e.Phase != "扫描分区" {
+				t.Fatalf("扫描事件的 Phase 标签漂移：want 扫描分区，got %q", e.Phase)
+			}
+			break
+		}
+	}
+	t.Logf("phase 屏障钉成立：phase-review 在扫描组之后执行，扫描事件 Phase=扫描分区（分区时序与串行引擎一致）")
+}
+
 // TestGapB_G4_ConcurrentBagAddKeepsAllFindings 是 G4 的**并行前置钉**：
 // 并发执行多个 findings 节点时，bag 必须**一条不丢**。
 //

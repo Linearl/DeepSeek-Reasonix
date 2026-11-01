@@ -376,9 +376,15 @@ func newRunID() string {
 //   - dispatches EVERY ready subagent/confirm node's runner call concurrently
 //     and aggregates the answers single-writer in wave order (= declaration
 //     order);
-//   - runs gates (with their fixer loop), joins and phases inline during the
-//     scan — their whole body is runState mutation, so they stay on the
-//     single writer by construction.
+//   - runs gates (with their fixer loop) and joins inline during the scan —
+//     their whole body is runState mutation, so they stay on the single
+//     writer by construction;
+//   - treats a ready phase node as a wave barrier: dispatch whatever was
+//     collected, run the phase first thing next pass. Phase nodes are section
+//     markers (they only write s.phase); several real definitions place them
+//     as roots between node groups, and the pre-G4 engine ran them in
+//     declaration position — the barrier keeps that section chronology (the
+//     events' Phase label) intact under parallelism.
 //
 // Concurrency contract (audit 05 variant A 并发段+单写者汇聚): the concurrent
 // segment is ONLY "call the injected runner and take the answer" — prompts
@@ -397,6 +403,7 @@ func (s *runState) runAll(ctx context.Context) error {
 		}
 		// ---- serial scan: skip cascade, inline nodes, wave collection ----
 		var calls []*nodeCall
+		var phaseGate *Node
 		progressed := false
 		for i := range s.wf.Nodes {
 			n := &s.wf.Nodes[i]
@@ -419,13 +426,20 @@ func (s *runState) runAll(ctx context.Context) error {
 				progressed = true
 				continue
 			}
+			if n.Type == NodePhase {
+				// 波次屏障：已收集的节点先派发，phase 下一轮最先执行——
+				// 分区标签时序与串行引擎一致（见函数注释）。
+				phaseGate = n
+				progressed = true
+				break
+			}
 			progressed = true
 			if n.Type == NodeSubagent || n.Type == NodeConfirm {
 				calls = append(calls, s.beginNode(ctx, n))
 				continue
 			}
-			// gate/join/phase: serial inline — an error fails fast before
-			// this wave's runner calls go out.
+			// gate/join: serial inline — an error fails fast before this
+			// wave's runner calls go out.
 			if err := s.execute(ctx, n); err != nil {
 				return err
 			}
@@ -433,8 +447,13 @@ func (s *runState) runAll(ctx context.Context) error {
 		if !progressed {
 			return nil
 		}
-		if len(calls) > 0 {
+		switch {
+		case len(calls) > 0:
 			if err := s.dispatchAndCollect(calls); err != nil {
+				return err
+			}
+		case phaseGate != nil:
+			if err := s.execute(ctx, phaseGate); err != nil {
 				return err
 			}
 		}
