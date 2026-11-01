@@ -71,12 +71,15 @@ export function auditRestoreLandingSites(sources) {
   } else violations.push(`${KERNEL}: missing from sources.`);
 
   // Hook: the synchronous chain has exactly two wires into the authority —
-  // the replaceSurface effect and the hydrate-complete wrapper. No inline
-  // tail-sync recovery combos outside settleGeometry's streaming follow-up.
+  // the replaceSurface effect and the hydrate-complete wrapper. tl 1341's
+  // deferred-tail discharge inside settleGeometry reaches the authority
+  // THROUGH the wrapper (restoreLandingRef, same single delegation), so it
+  // adds no direct call site. No inline tail-sync recovery combos outside
+  // settleGeometry's streaming follow-up.
   if (has(HOOK)) {
     const h = stripComments(get(HOOK));
     const wires = countMatches(h, /kernel\.restoreLanding\s*\(/g);
-    if (wires !== 2) violations.push(`${HOOK}: kernel.restoreLanding call sites = ${wires}, expected exactly 2 (replaceSurface effect + hydrate-complete wrapper).`);
+    if (wires !== 2) violations.push(`${HOOK}: kernel.restoreLanding call sites = ${wires}, expected exactly 2 (replaceSurface effect + hydrate-complete wrapper; the deferred-tail discharge rides the wrapper).`);
     const inlineTailSync = countMatches(h, /kernel\.begin\(\s*"tail-sync"/g);
     if (inlineTailSync !== 1) violations.push(`${HOOK}: inline kernel.begin("tail-sync") sites = ${inlineTailSync}, expected exactly 1 (settleGeometry's streaming geometry commit). An inline recovery combo re-grew here.`);
     const formulaCopy = countMatches(h, /scrollHeight\s*-\s*geometry\.clientHeight\s*-\s*geometry\.scrollTop\s*<=/g);

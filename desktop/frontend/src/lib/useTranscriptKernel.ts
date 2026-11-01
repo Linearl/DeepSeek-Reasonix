@@ -243,12 +243,40 @@ export function useTranscriptKernel({
   const prependAwaitingGeometryRef = useRef(false);
   const geometryWork = useRef<{ generation: number; cancel: () => void } | null>(null);
   const coverageRef = useRef(true);
+  // tl 1341: last geometry triple observed through this hook's own readers.
+  // The switch-back commit tick reads the OUTGOING surface's geometry (the
+  // reused scroller still reports the previous session's scrollHeight while
+  // the new surface's block window mounts one commit later), so a measurement
+  // taken there demotes a fresh tail restore onto the stale floor — the first
+  // painted frame lands mid-transcript and the second positioning pass
+  // (settleGeometry / scheduleTailSync) drags it to the bottom afterwards.
+  // Landing defers until a geometry observation differs from the switch tick,
+  // which is exactly the frame where the incoming surface's real extent is
+  // measurable and the write can cover the first paint.
+  const lastGeometryRef = useRef<{ scrollTop: number; scrollHeight: number; clientHeight: number } | null>(null);
+  const pendingTailLandingRef = useRef<{ generation: number } | null>(null);
+  // settleGeometry discharges the pending landing through the SAME wrapper the
+  // hydrate-complete frame uses (single authority delegation, tl 1204); a ref
+  // breaks the declaration-order cycle (settleGeometry is defined first).
+  const restoreLandingRef = useRef<(() => boolean) | null>(null);
 
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const snapshot = useCallback(() => {
     const element = scrollRef.current;
     if (!element || ![element.scrollTop, element.scrollHeight, element.clientHeight].every(Number.isFinite)) return null;
     return readSnapshot(element);
+  }, []);
+  // tl 1341: the switch tick and the deferred landing share this comparison.
+  // "Fresh" means the CURRENT observation no longer matches what the reused
+  // scroller reported when the surface swapped — the incoming surface's own
+  // extent is what the reader will actually see painted.
+  const geometryFreshSinceSwap = useCallback((current: { scrollTop: number; scrollHeight: number; clientHeight: number } | null): boolean => {
+    const baseline = lastGeometryRef.current;
+    if (!baseline) return true;
+    if (!current) return false;
+    return current.scrollTop !== baseline.scrollTop
+      || current.scrollHeight !== baseline.scrollHeight
+      || current.clientHeight !== baseline.clientHeight;
   }, []);
 
   useLayoutEffect(() => {
@@ -288,6 +316,24 @@ export function useTranscriptKernel({
     // the kernel's own authority (chain a of two). The 1187 inline tail-sync
     // moved into kernel.restoreLanding so the hydrate-complete frame asks the
     // exact same authority instead of re-deriving tail/block semantics here.
+    //
+    // tl 1341: the switch tick's geometry still describes the OUTGOING surface
+    // (the reused scroller reports the previous session's scrollHeight until
+    // the incoming block window mounts). Landing a restored tail there writes
+    // the stale floor — the first painted frame sits mid-transcript and the
+    // second positioning pass drags it to the bottom afterwards (the two-stage
+    // "scrolls from the middle" report). Defer a TAIL landing until a geometry
+    // observation differs from this switch tick, i.e. the incoming surface's
+    // real extent is measurable; block restores keep the synchronous path —
+    // their target is a mounted block's measured top, not the scroller floor.
+    lastGeometryRef.current = (() => {
+      const element = scrollRef.current;
+      if (!element || ![element.scrollTop, element.scrollHeight, element.clientHeight].every(Number.isFinite)) return null;
+      return { scrollTop: element.scrollTop, scrollHeight: element.scrollHeight, clientHeight: element.clientHeight };
+    })();
+    pendingTailLandingRef.current = restored.anchor.kind === "tail" ? { generation: restored.generation } : null;
+    // tl 1204 chain a stays byte-for-byte here — the authority lands (or
+    // refuses on the switch tick's geometry and arms its single rAF fallback).
     kernel.restoreLanding();
     refresh();
   }, [kernel, refresh, sessionKey, writer]);
@@ -321,6 +367,24 @@ export function useTranscriptKernel({
       }
       kernel.reportHealthyGeometry();
       kernel.advanceGeometry();
+      // tl 1341: a switch-back tail landing whose synchronous pass read the
+      // outgoing surface's geometry is still pending. Discharge it only once
+      // a LATER observation differs from the switch tick (the incoming
+      // surface's own extent is measurable now) and land through the
+      // authority before this frame paints; while the measurement still
+      // matches the switch tick the ordinary follow-up keeps running — it
+      // writes a no-op floor on the stale extent (see the probe record) and
+      // the deferred landing corrects it the moment the extent refreshes.
+      if (pendingTailLandingRef.current) {
+        if (pendingTailLandingRef.current.generation !== kernel.generation) {
+          pendingTailLandingRef.current = null;
+        } else if (geometryFreshSinceSwap(geometry)) {
+          pendingTailLandingRef.current = null;
+          restoreLandingRef.current?.();
+          refresh();
+          return;
+        }
+      }
       const transaction = kernel.activeTransaction ?? (kernel.intent === "tail" ? kernel.begin("tail-sync", { kind: "tail" }) : null);
       let synced = false;
       if (transaction && element && (transaction.kind !== "prepend" || !prependAwaitingGeometryRef.current)) {
@@ -347,7 +411,7 @@ export function useTranscriptKernel({
       const cancel = kernel.afterCurrentGenerationPaint(commit);
       geometryWork.current = { generation: kernel.generation, cancel };
     }
-  }, [kernel, refresh, snapshot]);
+  }, [geometryFreshSinceSwap, kernel, refresh, restoreLandingRef, snapshot]);
 
   const commitViewportGeometry = useCallback((covered?: boolean, beforePaint = false) => {
     if (covered !== undefined) coverageRef.current = covered;
@@ -370,10 +434,23 @@ export function useTranscriptKernel({
     // verdict itself stays inside the kernel (single authority); the snapshot
     // shape is structurally the viewport geometry triple it asks for.
     const geometry = snapshot();
+    // tl 1341: a deferred switch-back tail landing is discharged by THIS
+    // authority entry once the observation is fresh (hydrate-complete frame,
+    // surface-commit chain); a stale observation keeps the deferral armed so
+    // the next fresh geometry pass lands instead of writing the old floor.
+    // The switch tick itself runs this entry BEFORE the deferral is armed
+    // (see the replaceSurface effect), so its synchronous landing keeps the
+    // tl 1204 byte-for-byte semantics.
+    if (pendingTailLandingRef.current) {
+      if (pendingTailLandingRef.current.generation !== kernel.generation) pendingTailLandingRef.current = null;
+      else if (geometryFreshSinceSwap(geometry)) pendingTailLandingRef.current = null;
+      else return false;
+    }
     const landed = kernel.restoreLanding(element ? (key) => blockTop(element, key) : undefined, geometry ?? undefined);
     refresh();
     return landed;
-  }, [kernel, refresh, snapshot]);
+  }, [geometryFreshSinceSwap, kernel, refresh, snapshot]);
+  restoreLandingRef.current = restoreLanding;
 
   const beginAnchorRestore = useCallback((anchor?: LogicalAnchor) => {
     const restoreAnchor = anchor ?? kernel.anchor;
