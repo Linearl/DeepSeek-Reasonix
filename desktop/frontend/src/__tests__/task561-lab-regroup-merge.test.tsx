@@ -120,7 +120,9 @@ console.log("\ntask 561 lab regroup + merged cards");
   // → 总数 37（实值钉，同步顺带收掉 1174 欠账）。tl1309 卡①：
   // optimisticParallel 散条并入 contextGovernance 卡 → 37→36。
   // tl1309 卡③：infra 四散条 + storage 两参数卡并「资源治理」卡 → 36−6+1=31。
-  ok(defEntries.length === 31, `default layout carries exactly 31 rail entries (got ${defEntries.length})`);
+  // tl1309 卡④：todoSidebar 并 tabManagement、三面板并 sessionTaskPanels
+  // → 31−4+1=28。
+  ok(defEntries.length === 28, `default layout carries exactly 28 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -150,11 +152,13 @@ console.log("\ntask 561 lab regroup + merged cards");
   // （pinnedIndex 卡）→ 总数 37（实值钉）；tl1256 调序：memory-context
   // 移 infra 之后（组分布序随 rail 序，各组成员数不变）→ 4/6/11/3/1/5/6/1。
   // tl1309 卡①：efficiency 6→5（optimisticParallel 并卡）→ 4/5/11/3/1/5/6/1。
-  // tl1309 卡③：storage 5→3、infra 6→3（七项并「资源治理」卡）→ 4/5/11/3/1/3/3/1。
-  ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 11 &&
+  // tl1309 卡③：storage 5→3、infra 6→3（七项并「资源治理」卡）。tl1309 卡④：
+  // ui 11→8（todoSidebar 并 tabManagement、三面板并 sessionTaskPanels）
+  // → 4/5/8/3/1/3/3/1。
+  ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 8 &&
      groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 3 &&
      groups["memory-context"] === 1,
-    `group counts are 4/5/11/3/1/3/3/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 4/5/8/3/1/3/3/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -251,7 +255,11 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
     { label: "782 questionSearch", field: "s.experimentalQuestionSearch", setter: "app.SetExperimentalQuestionSearch(on)" },
     { label: "782 autoLoadOlder", field: "s.experimentalAutoLoadOlder", setter: "app.SetExperimentalAutoLoadOlder(on)" },
   ] },
-  { id: "inputSelection", endMarker: '{selected === "completionSummary" && (', members: [
+  // tl1309 卡④：completionSummary pane 退役入「会话与任务面板」卡——endMarker 随迁。
+  // tl1309 卡④②段修订：completionSummary 分支退役后，inputSelection 的物理
+  // 后继分支是 interactionPresentation——endMarker 随迁（sessionTaskPanels 分支
+  // 在文件更早位置，作 endMarker 会把 slice 截断为空）。
+  { id: "inputSelection", endMarker: '{selected === "interactionPresentation" && (', members: [
     { label: "782 draftPersistence", field: "s.experimentalComposerDraft", setter: "app.SetExperimentalComposerDraft(on)" },
     { label: "782 selectionActions", field: "s.experimentalSelectionActions", setter: "app.SetExperimentalSelectionActions(on)" },
   ] },
@@ -376,6 +384,11 @@ for (const id of [
   "orphanHandling",
   "acpListen",
   "localServer",
+  // tl1309 卡④：todoSidebar 并 tabManagement；三面板并 sessionTaskPanels。
+  "todoSidebar",
+  "sessionWall",
+  "workflowPanel",
+  "completionSummary",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);
@@ -391,8 +404,9 @@ for (const id of [
   // 任务 961：两张合并卡容器 id 进 union。
   "smartAutomation", "interactionPresentation",
   // tl1309 卡②：「运行可观测」合并卡容器 id 进 union。tl1309 卡③：「资源
-  // 治理」合并卡容器 id 进 union。
-  "runtimeObservability", "resourceGovernance",
+  // 治理」合并卡容器 id 进 union。tl1309 卡④：「会话与任务面板」合并卡容器
+  // id 进 union。
+  "runtimeObservability", "resourceGovernance", "sessionTaskPanels",
 ]) {
   ok(panel.includes(`| "${id}"`), `union gains the family id ${id}`);
 }

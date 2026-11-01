@@ -27,7 +27,13 @@ const frontendRoot = `${here}../..`;
 const repoRoot = `${frontendRoot}/../..`;
 const yamlText = readFileSync(`${frontendRoot}/src/lab/lab-layout.yaml`, "utf8");
 const labDefault = readFileSync(`${frontendRoot}/src/lab/labLayoutDefault.ts`, "utf8");
-const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8");
+// tl1309 预存红修正：tl1134 chunk 拆分后 tabManagement/smartAutomation 的 pane
+// 分支与 LAB_PANE_IDS 白名单都在懒加载 ExperimentalLabSection.tsx /
+// labPaneRegistry.ts——本测试只读 SettingsPanel.tsx，基线上六个 pin 假红。
+// 对齐 722/562 同款三文件拼接。
+const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8")
+  + "\n" + readFileSync(`${frontendRoot}/src/components/ExperimentalLabSection.tsx`, "utf8")
+  + "\n" + readFileSync(`${frontendRoot}/src/lab/labPaneRegistry.ts`, "utf8");
 const tiers = readFileSync(`${frontendRoot}/src/lib/experimentTiers.ts`, "utf8");
 const lightKeys = readFileSync(`${frontendRoot}/src/lab/labLightKeys.ts`, "utf8");
 const view = readFileSync(`${frontendRoot}/src/lib/settingsViewTypes.ts`, "utf8");
@@ -55,13 +61,16 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
   // 内置默认与 yaml 同构（722 ① 已钉全量同构，这里钉 742 面避免回归假绿）。
   // tl 1125：容器档位「可选 → 推荐」（用户 2026-10-24 指令：标签管理徽章
   // 档位提升为推荐）——本行 pin 随档位步进，OR light 与配置键零变化。
-  ok(labDefault.includes('{ id: "tabManagement", labelKey: "settings.tabManagement", tier: "recommended", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] }'),
-    "built-in default carries the tabManagement merged entry with the OR light (tl 1125: recommended tier)");
+  // tl1309 卡④：todoSidebar 成员行入卡——默认布局改为多行对象形态（成员表
+  // + 灯键三键），本 pin 随结构步进（OR light 语义不变：三键任一非默认即亮）。
+  ok(labDefault.includes('id: "tabManagement"') && labDefault.includes('onKeys: ["experimentalTabCompress", "tabModeTintNonDefault", "experimentalTodoSidebar"]') &&
+     labDefault.includes('{ id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended" }'),
+    "built-in default carries the tabManagement merged entry with the OR light (tl 1125 recommended; tl1309 todoSidebar member)");
   ok(!labDefault.includes('{ id: "tabCompress"') && !labDefault.includes('{ id: "tabModeTint"'),
     "built-in default retires the standalone entries too");
   // 合并卡灯 = 两键 OR（自适应压缩开 或 权限指示离默认档）。
-  ok(yamlText.includes("onKeys: [experimentalTabCompress, tabModeTintNonDefault]"),
-    "merged card light is the OR of both member keys");
+  ok(yamlText.includes("onKeys: [experimentalTabCompress, tabModeTintNonDefault, experimentalTodoSidebar]"),
+    "merged card light is the OR of its member keys (tl1309 adds the todoSidebar key)");
   // rail pane 白名单随迁。
   const paneMatch = panel.match(/const LAB_PANE_IDS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\);/);
   const paneIds = paneMatch ? paneMatch[1] : "";

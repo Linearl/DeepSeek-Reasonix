@@ -5675,6 +5675,9 @@ export const en = {
   // tl1309 card 3: "Resource Governance" merged card (reuse pool / orphan reclaim / ACP / local server / GC / idle release).
   "settings.resourceGovernance": "Resource Governance",
   "settings.resourceGovernanceHint": "Aggregates six memory & resource-lifecycle controls: the reuse pool and orphan reclaim govern the two ends of runtime-assembly lifecycle, the GC dial and idle release govern memory and resident sessions, the ACP listener and local server govern resident process resources.",
+  // tl1309 card 4: "Session & Task Panels" merged card (session wall / workflow panel / completion summary).
+  "settings.sessionTaskPanels": "Session & Task Panels",
+  "settings.sessionTaskPanelsHint": "Aggregates three run-state visualization surfaces: the session wall and workflow panel both open from the command palette, while the completion summary card lives in the transcript — all three are read-only over run state.",
   "settings.compressOpt": "Compaction optimization",
   "settings.budgetControl": "Budget control",
   "settings.proactiveCompact": "Proactive compact cooldown (configurable)",

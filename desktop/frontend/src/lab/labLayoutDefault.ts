@@ -239,7 +239,18 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。
         // tl 1125：标签页管理合并卡升「推荐」（用户 2026-10-24 指令，与视图
         // 布局一并；配置键/默认值/卡内成员档位零变化，只动容器徽章档）。
-        { id: "tabManagement", labelKey: "settings.tabManagement", tier: "recommended", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] },
+        // tl1309 卡④：todoSidebar（侧栏增强）散条并入本卡成员行——侧栏标签
+        // 显隐墙与标签栏压缩/权限指示同属标签页管理面（任务书④按先例归卡）；
+        // 灯键随迁。容器档 仍推荐。
+        {
+          id: "tabManagement",
+          labelKey: "settings.tabManagement",
+          tier: "recommended",
+          onKeys: ["experimentalTabCompress", "tabModeTintNonDefault", "experimentalTodoSidebar"],
+          members: [
+            { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended" },
+          ],
+        },
         // 任务 782：视图布局（合并卡，742 先例）——分栏 + 轨迹视图。容器档
         // =成员最高档（可选）；卡内两行各读各键各写各 setter，配置键零变化。
         // 任务 826：左右边栏 hover 展开两行入卡（左右独立两键两行，默认关；
@@ -272,7 +283,24 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "draftRewrite", labelKey: "settings.draftRewrite", tier: "optional" },
           ],
         },
-        { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },
+        // tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
+        // 会话图墙 + 工作流面板 + 任务完成摘要三散条并卡：三者同为「运行状态/
+        // 产出的可视化面板面」（任务书④按先例归卡）。容器档 = 成员最高档
+        // （图墙推荐 → 推荐）；配置键零变化。
+        {
+          id: "sessionTaskPanels",
+          labelKey: "settings.sessionTaskPanels",
+          tier: "recommended",
+          onKeys: ["experimentalSessionWall", "experimentalWorkflowPanel", "experimentalCompletionSummary"],
+          members: [
+            { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended" },
+            // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎
+            // 未落地，当前为前端 fixture 预览+演示回放）。未稳定档。
+            { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable" },
+            // 任务 782 验收⑤曾钉「保持独立」——tl1309 分析结论按面板面归卡。
+            { id: "completionSummary", labelKey: "settings.completionSummary", tier: "optional" },
+          ],
+        },
         // 任务 782：检索与历史（合并卡）——历史提问选择器 + 搜索历史提问 +
         // 自动加载更早消息。容器档 =成员最高档（推荐）。
         {
@@ -286,10 +314,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "autoLoadOlder", labelKey: "settings.autoLoadOlder", tier: "optional" },
           ],
         },
-        { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended", onKeys: ["experimentalSessionWall"] },
-        // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎
-        // 未落地，当前为前端 fixture 预览+演示回放）。默认关=palette 不变。
-        { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable", onKeys: ["experimentalWorkflowPanel"] },
+        // tl1309 卡④：sessionWall/workflowPanel/completionSummary 三散条迁出——
+        // 并入上方「会话与任务面板」合并卡（sessionTaskPanels）。
         {
           id: "subagentSuite",
           labelKey: "settings.subagentSuite",
@@ -306,8 +332,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "subagentTps", labelKey: "settings.subagentTps", tier: "optional" },
           ],
         },
-        // 任务 782 验收⑤：任务完成摘要保持独立（Go 用量迁出后无合并对象）。
-        { id: "completionSummary", labelKey: "settings.completionSummary", tier: "optional", onKeys: ["experimentalCompletionSummary"] },
+        // tl1309 卡④：completionSummary 散条迁出——并入「会话与任务面板」卡。
         // 任务 782：输入与选区（合并卡）——草稿持久化 + 选区快捷操作。容器
         // 档 =成员最高档（可选）。
         {

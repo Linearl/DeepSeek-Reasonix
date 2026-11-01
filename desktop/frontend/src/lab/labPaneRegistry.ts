@@ -32,12 +32,12 @@ export type ExperimentFeatureId =
   // 任务 782：视图布局合并卡（分栏 + 轨迹视图，条目级合并，742 先例）——
   // splitView/trajectoryView 独立 pane 退役为卡内成员行（键/setter 零变化）。
   | "viewLayout"
-  | "todoSidebar"
-  // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
-  | "sessionWall"
-  // 任务 686: 工作流可视化面板（palette 入口开 DAG 流程图；685 引擎未落地
-  // 为前端 fixture 预览）。纯前端门，保存即生效免重启。
-  | "workflowPanel"
+  // tl1309 卡④：todoSidebar/sessionWall/workflowPanel/completionSummary 四
+  // 独立 pane 退役——todoSidebar 并入「标签页管理」卡（侧栏标签显隐与标签栏
+  // 同面），sessionWall/workflowPanel/completionSummary 并入新「会话与任务
+  // 面板」合并卡（sessionTaskPanels，三面板同属运行状态可视化面）——961
+  // 先例，union id 同步摘除。
+  | "sessionTaskPanels"
   // 任务 782：检索与历史合并卡（历史提问选择器 + 搜索历史提问 + 自动加载
   // 更早消息）——promptHistoryPicker/questionSearch/autoLoadOlder 独立 pane
   // 退役为卡内成员行。
@@ -84,7 +84,6 @@ export type ExperimentFeatureId =
   // 任务 782：输入与选区合并卡（草稿持久化 + 选区快捷操作）——
   // draftPersistence/selectionActions 独立 pane 退役为卡内成员行。
   | "inputSelection"
-  | "completionSummary"
   // Task 385a: lab 回答风格 (output style selector + persistence)——任务 961
   // 随「交互与呈现」合并卡退役为卡内成员行（union id 摘除，742 先例）。
   // Task 257: full access (yolo).
@@ -166,13 +165,11 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "startupLoading",
   "tabManagement",
   "viewLayout",
-  "todoSidebar",
+  // tl1309 卡④：会话与任务面板合并卡（sessionTaskPanels）容器 id 入表；
+  // 四散条独立 pane id 摘除（961 先例）。
+  "sessionTaskPanels",
   "searchHistory",
-  "sessionWall",
-  // 任务 686：工作流可视化面板 pane。
-  "workflowPanel",
   "subagentSuite",
-  "completionSummary",
   "inputSelection",
   "usageMonitoring",
   "updateFeedback",

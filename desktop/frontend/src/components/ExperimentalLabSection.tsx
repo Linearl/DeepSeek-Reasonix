@@ -655,6 +655,18 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           // 墙灯同 563 教训读它自己的两键（会话监控 OR 性能监控，318.5 口径）。
           map[pick] = Boolean(s.experimentalSessionMonitor) || Boolean(s.experimentalPerfMonitor);
           break;
+        case "todoSidebar":
+          // tl1309 卡④：todoSidebar 并入「标签页管理」卡——墙灯读自己的键。
+          map[pick] = Boolean(s.experimentalTodoSidebar);
+          break;
+        case "sessionWall":
+          // tl1309 卡④：sessionWall 并入「会话与任务面板」卡——墙灯读自己的键。
+          map[pick] = Boolean(s.experimentalSessionWall);
+          break;
+        case "completionSummary":
+          // tl1309 卡④：completionSummary 并入「会话与任务面板」卡——同上。
+          map[pick] = Boolean(s.experimentalCompletionSummary);
+          break;
         case "tabCompress":
           // 任务 742：自适应压缩并入 tabManagement 合并卡后不再是 rail
           // 条目——墙灯同 563 教训读它自己的键，不读合并卡灯。
@@ -1479,85 +1491,71 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               )}
             </SettingsField>
           )}
-          {selected === "todoSidebar" && (
+          {/* tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
+              会话图墙 + 工作流面板 + 任务完成摘要三散条并卡：三者同为「运行
+              状态/产出的可视化面板面」（任务书④按先例归卡）。卡头行=卡名+
+              关联说明（依赖/派生：图墙与工作流面板同走 palette 入口，完成摘要
+              是转录内的任务产出面；三者都只读运行状态、不写）。各行仍读各的
+              键、写各的 setter（81/123 丢存铁律），配置键零变化。 */}
+          {selected === "sessionTaskPanels" && (
             <>
-              <SettingsField label={labLabel("todoSidebar", t("settings.todoSidebar"))} hint={t("settings.todoSidebarHint")} icon={<Sparkles size={18} />}>
+              <SettingsField label={labLabel("sessionTaskPanels", t("settings.sessionTaskPanels"))} hint={t("settings.sessionTaskPanelsHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              {/* 成员行 1：会话图墙（原 ui 独立卡，推荐档——palette 入口 +
+                  会话网格墙；boot 快照，翻转需重启）。 */}
+              <SettingsField label={labLabel("sessionWall", t("settings.sessionWall"))} hint={t("settings.sessionWallHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
                       key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalTodoSidebar) === on ? " set-seg__btn--on" : ""}`}
+                      className={`set-seg__btn${Boolean(s.experimentalSessionWall) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
                       onClick={() => void apply(async () => {
-                        // Boot snapshot (task 259): the dock reads the flag once at
-                        // startup, so saving raises the restart banner instead of
-                        // flipping the layout mid-session.
-                        await app.SetExperimentalTodoSidebar(on);
+                        // Boot snapshot (task 505): the palette entry and the
+                        // wall read the flag once at startup, so saving raises
+                        // the restart banner.
+                        await app.SetExperimentalSessionWall(on);
                         setRestartNeeded(true);
                       })}
                     >
-                      {t(on ? "settings.todoSidebar.on" : "settings.todoSidebar.off")}
+                      {t(on ? "settings.sessionWall.on" : "settings.sessionWall.off")}
                     </button>
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField
-                label={t("settings.dockTabVisibility")}
-                hint={Boolean(s.experimentalTodoSidebar) ? t("settings.dockTabVisibilityHint") : t("settings.dockTabsDisabledHint")}
-                icon={<Sparkles size={18} />}
-              >
-                <div className="set-gates">
-                  {([
-                    ["context", "rightDock.overview"],
-                    ["files", "workspace.filesTab"],
-                    ["changed", "workspace.changedTab"],
-                    ["remote", "rightDock.remote"],
-                    ["todos", "workspace.todosTab"],
-                    ["artifacts", "workspace.artifactsTab"],
-                    ["references", "workspace.referencesTab"],
-                    // 任务620：子代理标签的显隐从「子代理族」卡移进这面墙，与其余
-                    // 侧栏标签同处配置；它另有前置开关「子代理面板」——面板未开启
-                    // 时此项置灰不可勾选（依赖联动），下方提示指认要开的开关。
-                    ["subagents", "workspace.subagentsTab"],
-                  ] as const).map(([tabId, labelKey]) => {
-                    // Task 259: the visibility checkboxes live under the todo-sidebar
-                    // switch; with it off they stay visible and readable but disabled,
-                    // with a hint naming the switch to flip (task 253's lesson).
-                    // 任务620：subagents 行还要过「子代理面板」这道前置——两道闸任
-                    // 一关闭即置灰，提示行分别指认各自的开关。
-                    const locked = busy
-                      || !Boolean(s.experimentalTodoSidebar)
-                      || (tabId === "subagents" && !Boolean(s.experimentalSubagentPanel));
-                    const on = !isDockTabHidden(tabId);
-                    // Keep at least one RENDERABLE tab visible (audit-2 minor c):
-                    // gated-off tabs — remote with no hosts, overview in creation —
-                    // must not satisfy the guard, or the user could hide everything
-                    // the dock actually shows and end up with zero tabs.
-                    const lastOn = isLastRenderableVisibleTab(tabId, {
-                      todoSidebar: Boolean(s.experimentalTodoSidebar),
-                      subagentsPanel: Boolean(s.experimentalSubagentPanel),
-                      remoteAvailable,
-                      creation: desktopLayoutStyle === "creation",
-                    });
-                    return (
-                      <label key={tabId} className={`set-gates__item${locked ? " set-gates__item--locked" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          disabled={locked || lastOn}
-                          onChange={(event) => setDockTabHidden(tabId, !event.target.checked)}
-                        />
-                        <span className="set-gates__label">{t(labelKey)}</span>
-                      </label>
-                    );
-                  })}
-                  {!Boolean(s.experimentalTodoSidebar) && (
-                    <div className="set-gates__hint">{t("settings.dockTabsDisabledHint")}</div>
-                  )}
-                  {!Boolean(s.experimentalSubagentPanel) && (
-                    <div className="set-gates__hint">{t("settings.subagentPanelTabDisabledHint")}</div>
-                  )}
-                </div>
+              {/* 成员行 2：工作流可视化面板（原 ui 独立卡，未稳定档——palette
+                  入口开 DAG 流程图；纯前端门保存即生效）。 */}
+              <SettingsField label={labLabel("workflowPanel", t("settings.workflowPanel"))} hint={t("settings.workflowPanelHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalWorkflowPanel) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // Call-time gate（742/826 先例）：palette 条目与面板挂载
+                        // 每次渲染现读 labFlags，保存后立即生效，无需重启。
+                        await app.SetExperimentalWorkflowPanel(on);
+                      })}
+                    >
+                      {t(on ? "settings.workflowPanel.on" : "settings.workflowPanel.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* 成员行 3：任务完成摘要（原 ui 独立卡，可选档——每轮结果卡）。 */}
+              <SettingsField label={labLabel("completionSummary", t("settings.completionSummary"))} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalCompletionSummary) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalCompletionSummary(on))}
+                    >
+                      {t(on ? "settings.completionSummary.on" : "settings.completionSummary.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
               </SettingsField>
             </>
           )}
@@ -1639,51 +1637,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-          {selected === "sessionWall" && (
-            <SettingsField label={labLabel("sessionWall", t("settings.sessionWall"))} hint={t("settings.sessionWallHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalSessionWall) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      // Boot snapshot (task 505): the palette entry and the
-                      // wall read the flag once at startup, so saving raises
-                      // the restart banner.
-                      await app.SetExperimentalSessionWall(on);
-                      setRestartNeeded(true);
-                    })}
-                  >
-                    {t(on ? "settings.sessionWall.on" : "settings.sessionWall.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {/* 任务 686：工作流可视化面板——palette 入口开 DAG 流程图。纯前端
-              门（685 引擎未落地，当前为 fixture 预览+演示回放），保存即
-              生效免重启（sessionWall 的 boot-snapshot 语义不同）。 */}
-          {selected === "workflowPanel" && (
-            <SettingsField label={labLabel("workflowPanel", t("settings.workflowPanel"))} hint={t("settings.workflowPanelHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalWorkflowPanel) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      // Call-time gate（742/826 先例）：palette 条目与面板挂载
-                      // 每次渲染现读 labFlags，保存后立即生效，无需重启。
-                      await app.SetExperimentalWorkflowPanel(on);
-                    })}
-                  >
-                    {t(on ? "settings.workflowPanel.on" : "settings.workflowPanel.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
+          {/* tl1309 卡④：sessionWall/workflowPanel 两独立 pane 退役——并入上方
+              「会话与任务面板」合并卡（sessionTaskPanels）成员行承载。 */}
           {/* tl 1132：启动与加载（合并卡，742/782 条目级合并先例）——首项=
               启动遮罩（DSH 式启动画面：logo+副文案+点动画，覆盖主区待核心
               UI 挂载完成后淡出）；为 tl 1133 后续启动优化开关预留成员位。
@@ -1758,6 +1713,88 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     </button>
                   ))}
                 </SettingsOptions>
+              </SettingsField>
+              {/* tl1309 卡④：todoSidebar（侧栏增强）成员行迁入本卡（任务书④
+                  按「标签页管理」先例归卡）——侧栏标签显隐墙与标签栏压缩/权限
+                  指示同属标签页管理面。开关行+标签显隐墙原样随迁，配置键
+                  experimental_todo_sidebar 与各显隐 checkbox 零变化。 */}
+              <SettingsField label={labLabel("todoSidebar", t("settings.todoSidebar"))} hint={t("settings.todoSidebarHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalTodoSidebar) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // Boot snapshot (task 259): the dock reads the flag once at
+                        // startup, so saving raises the restart banner instead of
+                        // flipping the layout mid-session.
+                        await app.SetExperimentalTodoSidebar(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.todoSidebar.on" : "settings.todoSidebar.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField
+                label={t("settings.dockTabVisibility")}
+                hint={Boolean(s.experimentalTodoSidebar) ? t("settings.dockTabVisibilityHint") : t("settings.dockTabsDisabledHint")}
+                icon={<Sparkles size={18} />}
+              >
+                <div className="set-gates">
+                  {([
+                    ["context", "rightDock.overview"],
+                    ["files", "workspace.filesTab"],
+                    ["changed", "workspace.changedTab"],
+                    ["remote", "rightDock.remote"],
+                    ["todos", "workspace.todosTab"],
+                    ["artifacts", "workspace.artifactsTab"],
+                    ["references", "workspace.referencesTab"],
+                    // 任务620：子代理标签的显隐从「子代理族」卡移进这面墙，与其余
+                    // 侧栏标签同处配置；它另有前置开关「子代理面板」——面板未开启
+                    // 时此项置灰不可勾选（依赖联动），下方提示指认要开的开关。
+                    ["subagents", "workspace.subagentsTab"],
+                  ] as const).map(([tabId, labelKey]) => {
+                    // Task 259: the visibility checkboxes live under the todo-sidebar
+                    // switch; with it off they stay visible and readable but disabled,
+                    // with a hint naming the switch to flip (task 253's lesson).
+                    // 任务620：subagents 行还要过「子代理面板」这道前置——两道闸任
+                    // 一关闭即置灰，提示行分别指认各自的开关。
+                    const locked = busy
+                      || !Boolean(s.experimentalTodoSidebar)
+                      || (tabId === "subagents" && !Boolean(s.experimentalSubagentPanel));
+                    const on = !isDockTabHidden(tabId);
+                    // Keep at least one RENDERABLE tab visible (audit-2 minor c):
+                    // gated-off tabs — remote with no hosts, overview in creation —
+                    // must not satisfy the guard, or the user could hide everything
+                    // the dock actually shows and end up with zero tabs.
+                    const lastOn = isLastRenderableVisibleTab(tabId, {
+                      todoSidebar: Boolean(s.experimentalTodoSidebar),
+                      subagentsPanel: Boolean(s.experimentalSubagentPanel),
+                      remoteAvailable,
+                      creation: desktopLayoutStyle === "creation",
+                    });
+                    return (
+                      <label key={tabId} className={`set-gates__item${locked ? " set-gates__item--locked" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={locked || lastOn}
+                          onChange={(event) => setDockTabHidden(tabId, !event.target.checked)}
+                        />
+                        <span className="set-gates__label">{t(labelKey)}</span>
+                      </label>
+                    );
+                  })}
+                  {!Boolean(s.experimentalTodoSidebar) && (
+                    <div className="set-gates__hint">{t("settings.dockTabsDisabledHint")}</div>
+                  )}
+                  {!Boolean(s.experimentalSubagentPanel) && (
+                    <div className="set-gates__hint">{t("settings.subagentPanelTabDisabledHint")}</div>
+                  )}
+                </div>
               </SettingsField>
             </>
           )}
@@ -3280,22 +3317,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-                    {selected === "completionSummary" && (
-            <SettingsField label={labLabel("completionSummary", t("settings.completionSummary"))} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalCompletionSummary) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalCompletionSummary(on))}
-                  >
-                    {t(on ? "settings.completionSummary.on" : "settings.completionSummary.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
+                    {/* tl1309 卡④：completionSummary 独立 pane 退役——并入「会话与
+              任务面板」合并卡（sessionTaskPanels）成员行承载。 */}
           {/* 任务 961：交互与呈现（合并卡，742/782 条目级合并先例）——快捷指令 +
               轨迹状态 + 回答风格三散条并卡。卡内三行各读各的键、各写各的
               setter；行级徽章经 labLabel 保留，rail 卡头聚合徽章取成员最高档

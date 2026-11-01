@@ -221,13 +221,15 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   const lightKeys = read("src/lab/labLightKeys.ts");
   ok(lightKeys.includes("experimentalWorkflowPanel: (s: SettingsView) => Boolean(s.experimentalWorkflowPanel)"), "lab light predicate reads the switch");
   const layoutDefault = read("src/lab/labLayoutDefault.ts");
-  ok(layoutDefault.includes('id: "workflowPanel"') && layoutDefault.includes('onKeys: ["experimentalWorkflowPanel"]'), "built-in lab layout carries the card");
+  // tl1309 卡④：workflowPanel 散条并入「会话与任务面板」卡——布局断言随迁
+  // 成员行形态（容器 sessionTaskPanels，成员 tier unstable；键零变化）。
+  ok(layoutDefault.includes('id: "sessionTaskPanels"') && layoutDefault.includes('{ id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable" }'), "built-in lab layout carries the card (sessionTaskPanels member since tl1309)");
   const layoutYaml = read("src/lab/lab-layout.yaml");
-  ok(layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalWorkflowPanel]"), "lab-layout.yaml mirrors the card (724 同构)");
+  ok(layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalSessionWall, experimentalWorkflowPanel, experimentalCompletionSummary]"), "lab-layout.yaml mirrors the card (724 同构, sessionTaskPanels member since tl1309)");
   // 预存红修复（tl933）：pane 分支已从 SettingsPanel.tsx 迁至实验室卡片面
   // ExperimentalLabSection.tsx（tl1193b 重构欠账），断言随迁。
   const labSection = read("src/components/ExperimentalLabSection.tsx");
-  ok(labSection.includes('selected === "workflowPanel"'), "lab section carries the pane branch");
+  ok(labSection.includes('selected === "sessionTaskPanels"'), "lab section carries the pane branch (sessionTaskPanels since tl1309)");
   ok(labSection.includes('labLabel("workflowPanel"'), "pane row carries exactly one tier badge (621)");
   ok(labSection.includes("await app.SetExperimentalWorkflowPanel(on);"), "pane row writes through the bridge setter");
   const appTsx = read("src/App.tsx");

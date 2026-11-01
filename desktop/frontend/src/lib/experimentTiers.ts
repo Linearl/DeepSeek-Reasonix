@@ -196,6 +196,10 @@ export type TierFeatureId =
   // 纯前端容器豁免）——运行时复用池/孤儿回收/ACP 常驻监听/本地服务/GC 策略/
   // 闲置释放六成员并卡（任务书③：同为内存/资源生命周期面）。
   | "resourceGovernance"
+  // tl1309 卡④：「会话与任务面板」合并卡容器 id（界面组，同 tabManagement
+  // 纯前端容器豁免）——会话图墙/工作流面板/任务完成摘要三散条并卡（任务书④
+  // 按先例归卡，三面板同属运行状态可视化面）。
+  | "sessionTaskPanels"
   // tl1309 卡③：GC 策略旋钮（tl1286 参数卡）入表——原 kind:param 独立卡，
   // 档位可选随迁（rail 徽章与并入前一致）。本件起以「资源治理」卡成员行
   // 承载（字段绑定仍在 labParamFields，值语义单源）。Go 渲染表无条目（775
@@ -390,6 +394,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 推荐——与原独立参数卡 rail 徽章一致，展示零变化）。
   gcPercent: "optional",
   idleReleaseMinutes: "recommended",
+  // tl1309 卡④：「会话与任务面板」合并卡容器档 = 成员最高档（图墙推荐压过
+  // 工作流未稳定 → 推荐）。
+  sessionTaskPanels: "recommended",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render.go labFeatureTiers,
@@ -473,10 +480,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 推荐档入表——推荐 21→22、总数 82→83（Go 渲染表无条目，同 tabManagement 豁免）。
  * tl1309 卡③：resourceGovernance（「资源治理」合并卡容器，稳定）+ gcPercent
  * （可选）+ idleReleaseMinutes（推荐）三 id 入表——稳定 4→5、推荐 22→23、
- * 可选 44→45、总数 83→86（三 id Go 渲染表均无条目，同 tabManagement 豁免）。 */
+ * 可选 44→45、总数 83→86（三 id Go 渲染表均无条目，同 tabManagement 豁免）。
+ * tl1309 卡④：sessionTaskPanels（「会话与任务面板」合并卡，纯前端容器 id）
+ * 按推荐档入表——推荐 23→24、总数 86→87（Go 渲染表无条目，同 tabManagement 豁免）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 5,
-  recommended: 23,
+  recommended: 24,
   optional: 45,
   unstable: 12,
   retired: 1,
@@ -532,20 +541,22 @@ export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, reado
   // 任务 722：消息合并并入「安全 / 成本控制」卡（卡随 722 归提效组）。
   messageMerge: ["settings.labGroup.efficiency", "settings.safetyCostControl"],
   // ── ui（界面）───────────────────────────────────────────────
-  sessionWall: ["settings.labGroup.ui", "settings.sessionWall"],
   // 任务 742：自适应压缩并入「标签页管理」卡——设置位置指到新卡。
   tabCompress: ["settings.labGroup.ui", "settings.tabManagement"],
-  todoSidebar: ["settings.labGroup.ui", "settings.todoSidebar"],
   // 任务 782：检索与历史合并卡——历史提问选择器成员的设置位置指到新卡
   // （742 tabCompress → tabManagement 同款）。
   promptHistoryPicker: ["settings.labGroup.ui", "settings.searchHistory"],
   restartUpdate: ["settings.labGroup.ui", "settings.updateFeedback"],
+  // tl1309 卡④：会话图墙/任务完成摘要并入「会话与任务面板」卡——设置位置
+  // 指到新卡；侧栏增强并入「标签页管理」卡（同款）。
+  todoSidebar: ["settings.labGroup.ui", "settings.tabManagement"],
+  sessionWall: ["settings.labGroup.ui", "settings.sessionTaskPanels"],
+  completionSummary: ["settings.labGroup.ui", "settings.sessionTaskPanels"],
   // 任务 782：分栏并入「视图布局」卡——设置位置指到新卡。
   splitView: ["settings.labGroup.ui", "settings.viewLayout"],
   subagentPanel: ["settings.labGroup.ui", "settings.subagentSuite"],
   // 任务 782：选区快捷操作并入「输入与选区」卡——设置位置指到新卡。
   selectionActions: ["settings.labGroup.ui", "settings.inputSelection"],
-  completionSummary: ["settings.labGroup.ui", "settings.completionSummary"],
   // ── observability（可观测性）─────────────────────────────────
   // tl1309 卡②：监控并入「运行可观测」合并卡——设置位置指到新卡（742
   // tabCompress → tabManagement 同款）。

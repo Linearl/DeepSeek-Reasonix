@@ -5656,6 +5656,9 @@ export const zhTW: Record<DictKey, string> = {
   // tl1309 卡③：「資源治理」合併卡（復用池/孤兒回收/監聽/本地服務/GC/閒置釋放）。
   "settings.resourceGovernance": "資源治理",
   "settings.resourceGovernanceHint": "聚合記憶體與資源生命週期六項：執行時復用池與孤兒回收管執行時裝配的復用與回收兩端，GC 策略與閒置釋放治理記憶體與駐留會話，ACP 監聽與本地服務治理常駐程式資源。",
+  // tl1309 卡④：「會話與任務面板」合併卡（會話圖牆/工作流面板/完成摘要）。
+  "settings.sessionTaskPanels": "會話與任務面板",
+  "settings.sessionTaskPanelsHint": "聚合三張執行狀態視覺化面板：會話圖牆與工作流面板同走命令面板入口，任務完成摘要掛在轉錄裡——三者都唯讀執行狀態、不改任何行為。",
   "settings.compressOpt": "壓縮優化",
   "settings.budgetControl": "預算控制",
   "settings.proactiveCompact": "主動壓縮冷卻（可配）",
