@@ -23,6 +23,13 @@ package workflow
 //         一个节点就 break 重扫。附带两个隐藏前置的读数：
 //         ①bag.add 有锁（report.go:52）⇒ 无数据竞争，但并行化仍需确认；
 //         ②并行化必须复用 agent 层 DefaultMaxParallelWriters。
+//         ✅ tl1326 已修（审计 05 变体 A「并发段+单写者汇聚」：并发段只派
+//         runner 拿 answer、不碰 runState；gate/join/phase 保持串行内联；
+//         事件与 bag 顺序按波次=声明序保持确定；写代理并发上限复用 agent
+//         层 session scheduler，不造新并发语义）。
+//         G4_RunsSeriallyNotConcurrently 已翻正为 IndependentNodesRunConcurrently，
+//         另补状态完整性钉（本机无 gcc 跑不了 -race ⇒ 测试自断言条数与
+//         完整性，CI 不开 -race 也能抓丢条/丢状态）。
 //   G6(medium) 工作流子代理在任务/子代理面板不可见 —— 已由 tl1324 修复
 //         （方案 A 修正版：TaskSubagentRunner.Run 节点级登记进 taskmonitor，
 //         复用 controller 装配的同一 recorder 实例）。两条 G6 钉已改为
@@ -442,11 +449,11 @@ func TestGapB_G3_FindingKeySharedByAddAndPromote(t *testing.T) {
 
 // ---- G4 ----
 
-// TestGapB_G4_RunsSeriallyNotConcurrently 证明 G4：三个无依赖节点**串行**执行。
-//
-// 现状应通过（缺口成立）：总耗时 ≈ 各节点耗时之和。
-// 修复后此测试应转红（届时断言总耗时 ≈ max(各节点耗时)）。
-func TestGapB_G4_RunsSeriallyNotConcurrently(t *testing.T) {
+// TestGapB_G4_IndependentNodesRunConcurrently（原名
+// TestGapB_G4_RunsSeriallyNotConcurrently，缺口钉翻正为修复后断言）：
+// 三个无依赖节点同波并发——总耗时 ≈ max(各节点耗时) 而非串行累加。
+// 缺口期读数留档：修复前 3 节点各 300ms 串行总耗时 902.6ms。
+func TestGapB_G4_IndependentNodesRunConcurrently(t *testing.T) {
 	const each = 300 * time.Millisecond
 
 	runner := &gapBRunner{
@@ -481,18 +488,121 @@ func TestGapB_G4_RunsSeriallyNotConcurrently(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	// 串行 ⇒ ≈3×each；并行 ⇒ ≈each。
-	serialThreshold := 2*each + 100*time.Millisecond
-	if elapsed < serialThreshold {
-		t.Fatalf("wantCurrentlyPass 断言失败：现状应为串行（耗时 ≥ 2×单节点），实际 %v（若变红说明 G4 可能已修复）", elapsed)
+	// 并行 ⇒ ≈each（≈300ms）；若调度退回串行 ⇒ ≈3×each（≈900ms）。
+	// 阈值 2×each=600ms：两侧各留 300ms 调度余量，CI 慢机也不抖。
+	parallelThreshold := 2 * each
+	if elapsed >= parallelThreshold {
+		t.Fatalf("修复后无依赖节点应同波并发（耗时 ≈%v），实际 %v（≥2×单节点 ⇒ 疑似退回串行）", each, elapsed)
 	}
-	t.Logf("G4 成立（当前未修）：3 节点各 %v，串行总耗时 %v（并行应 ≈%v）", each, elapsed, each)
+	if runner.promptCount() != 3 {
+		t.Fatalf("3 个节点都应被派发，实际 %d", runner.promptCount())
+	}
+	t.Logf("G4 已修：3 节点各 %v，并发总耗时 %v（修复前串行读数 902.6ms）", each, elapsed)
+}
 
-	// 修复后的正向断言（现在必然失败，作为修复的验收标准留档）：
-	//   parallelThreshold := each + 150*time.Millisecond
-	//   if elapsed > parallelThreshold {
-	//       t.Fatalf("修复后应并行，总耗时应 ≈%v，实际 %v", each, elapsed)
-	//   }
+// TestGapB_G4_WaveKeepsStateComplete 是 G4 并行化的**状态完整性钉**
+// （审计 05 §4：本机无 gcc 跑不了 -race ⇒ 不依赖 race detector，测试自己
+// 断言条数与完整性——CI 不开 -race 也能抓丢条/丢状态）。菱形拓扑
+// a→(b,c)→d：a 波、b/c 同波、d 收尾——断言拓扑序、每节点 status/output/
+// result 齐全、findings 一条不丢、verifs 精确、全部边已决策。
+func TestGapB_G4_WaveKeepsStateComplete(t *testing.T) {
+	var order []string
+	var mu sync.Mutex
+	// 每节点各报一条**不同**的 finding（同 where+what 会被幂等去重合并，
+	// 那是 G3 的正确行为，不能在这里当「丢条」误报）。
+	nodeAnswer := func(id string) string {
+		return `{"findings":[{"where":"` + id + `.go:1","what":"问题` + id + `","evidence":"e","severity":"low"}],"count":1,"coverage":"c"}`
+	}
+	runner := &gapBRunner{
+		byNode: map[string]string{
+			"a": nodeAnswer("a"),
+			"b": nodeAnswer("b"),
+			"c": nodeAnswer("c"),
+		},
+		delayByNode: map[string]time.Duration{
+			"a": 50 * time.Millisecond,
+			"b": 50 * time.Millisecond,
+			"c": 100 * time.Millisecond, // c 比 b 慢一倍 ⇒ 并发下波次等最慢者
+		},
+		onRun: func(nodeID string) {
+			mu.Lock()
+			order = append(order, nodeID)
+			mu.Unlock()
+		},
+	}
+
+	doc := `{
+  "version": 1,
+  "name": "gap-g4-wave",
+  "nodes": [
+    {"id":"a","type":"subagent","prompt":"a",
+     "result":[{"name":"findings","type":"array"}],"findings_field":"findings"},
+    {"id":"b","type":"subagent","prompt":"b",
+     "result":[{"name":"findings","type":"array"}],"findings_field":"findings"},
+    {"id":"c","type":"subagent","prompt":"c",
+     "result":[{"name":"findings","type":"array"}],"findings_field":"findings"},
+    {"id":"d","type":"join"}
+  ],
+  "edges": [{"from":"a","to":"b"},{"from":"a","to":"c"},{"from":"b","to":"d"},{"from":"c","to":"d"}]
+}`
+	wf := gapBParse(t, doc)
+	eng := New(runner, nil, nil)
+	run := newRunState(eng, wf)
+	if err := run.runAll(context.Background()); err != nil {
+		t.Fatalf("runAll: %v", err)
+	}
+
+	mu.Lock()
+	gotOrder := strings.Join(order, ",")
+	mu.Unlock()
+
+	// 拓扑序护栏：order 只含派 runner 的 a,b,c（join d 不派发）；a 在 b/c 之前。
+	// d 在 b/c 之后由下面的 join 聚合断言证明（聚齐 3 上游 ⇒ 两个上游已终态）。
+	idx := func(id string) int { return strings.Index(gotOrder, id) }
+	if idx("a") < 0 || idx("b") < 0 || idx("c") < 0 || idx("d") >= 0 {
+		t.Fatalf("order 应只含 a,b,c（join 不派 runner），实际 %s", gotOrder)
+	}
+	if idx("a") > idx("b") || idx("a") > idx("c") {
+		t.Fatalf("拓扑序被破坏：a 必须在 b/c 之前，order=%s", gotOrder)
+	}
+
+	// 状态完整性：a/b/c 全部 stDone，output/result 有值；bag 3 条一条不丢。
+	for _, id := range []string{"a", "b", "c"} {
+		if run.status[id] != stDone {
+			t.Fatalf("节点 %s 应 stDone，实际 %v", id, run.status[id])
+		}
+		if run.output[id] == "" {
+			t.Fatalf("节点 %s 的 output 丢失（并发写丢状态）", id)
+		}
+		if run.result[id] == nil {
+			t.Fatalf("节点 %s 的 result 丢失（并发写丢状态）", id)
+		}
+	}
+	if got := len(run.bag.snapshot()); got != 3 {
+		t.Fatalf("3 个 findings 节点各 1 条 ⇒ bag 应 3 条，实际 %d", got)
+	}
+	// join d 聚齐直接入边的两个上游（b、c；a 是传递上游不进 join map）——
+	// 能聚齐 ⇒ b/c 都已终态 ⇒ d 在其两个上游之后（拓扑序的状态级证明）。
+	jm, ok := run.result["d"].(map[string]any)
+	if !ok || len(jm) != 2 {
+		t.Fatalf("join d 应聚合直接入边上游 b、c，实际 %v", run.result["d"])
+	}
+	if _, ok := jm["b"]; !ok {
+		t.Fatalf("join d 缺上游 b，实际 %v", jm)
+	}
+	if _, ok := jm["c"]; !ok {
+		t.Fatalf("join d 缺上游 c，实际 %v", jm)
+	}
+	// verifs 只由 gate/confirm 产生 ⇒ 应为空；全部边应已决策。
+	if len(run.verifs) != 0 {
+		t.Fatalf("无 gate/confirm ⇒ verifs 应为空，实际 %v", run.verifs)
+	}
+	for _, e := range run.edges {
+		if !e.decided {
+			t.Fatalf("运行结束后所有边应已决策：%+v", e)
+		}
+	}
+	t.Logf("状态完整性钉成立：波次拓扑序 %s（a→[b,c]→d），3 节点状态齐全、findings 3 条不丢、边全决策", gotOrder)
 }
 
 // TestGapB_G4_ConcurrentBagAddKeepsAllFindings 是 G4 的**并行前置钉**：
