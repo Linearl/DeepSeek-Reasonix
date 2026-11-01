@@ -6,9 +6,28 @@
 
 **两类版本的区别**：标 <span class="vtag vtag-release">正式 Release</span> 的是发布到 GitHub Releases 的版本，可从 Release 页直接下载安装；标 <span class="vtag vtag-internal">内部包</span> 的是持续集成的开发快照，未经发布流程，仅供内部验证与升级链路使用。本 fork 的开发节奏是每个工作日可能出多个内部包，正式 Release 按里程碑单独发布。
 
-**统计**：10-12 起共 37 个开发包（正式 Release 1 个、内部包 36 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
+**统计**：10-12 起共 38 个开发包（正式 Release 1 个、内部包 37 个）；另有早期正式 Release 10 个（v1.31.3 至 20260921-1600）见页末。
 
 <div class="timeline">
+
+<details class="day-group" open>
+<summary>2026-11-01 <span class="gcount">· 1 个包</span></summary>
+
+<div class="inner">
+<section>
+#### v1.38.3-20261101-0936 <span class="vtag vtag-internal">内部包</span>
+
+<p class="tl-date">0936 构建</p>
+
+- **引导消息拒收修复**（1303）与 **turn 终止失效修复**（1304）：跨会话引导消息不再被静默吞掉（改排队+可感知可重发+监督观测）；停止按钮真正可达（可重入幂等+首按武装 30 秒升级阶梯+后端 cancel==nil 四处回执化+自愈守卫扩到前台会话）。
+- **超窗会话自救**（1083②③④）：压缩摘要输入解耦（分块道+401 摘要换道）断根「越大越压不动」；Diet 通路重接（绑定可校验物化转录，tl1173 后新会话全部受益）；顺带 snapToRuneBoundary panic 修复。
+- **会话管理批量面**（1305/1306）：delete_session 批量（谓词+保护阶梯+dry-run 报告）、manage_sessions 归档动作、**trash 后 metadata 收口（侧栏僵尸条目根治）**、回收站清空进度条。
+- **安全审计批次六单元**（1318-1323，全部带复跑验收）：zstd 归档物化四连修（字节全等往返+8 并发验收）、webfetch Transport 泄漏+SSRF 尽力校验（保 GFW 代理解析）、shellsafe 审批旁路闭合+凭据黑名单整族拦截、provider 确定性错误不重试/SSE 吞错留痕/tool_use 整块丢失三修、订阅短读不丢事件+权限策略写入加锁、low 五件。
+
+</section>
+
+</div>
+</details>
 
 <details class="day-group" open>
 <summary>2026-10-31 <span class="gcount">· 7 个包</span></summary>
