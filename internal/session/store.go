@@ -498,6 +498,9 @@ func loadStartupSessionState(ctx context.Context, dir, eventsPath string, extern
 	var durableEnd int64
 	var projectionErr error
 	err = scanV4CommitFile(ctx, file, 0, 1, contentStoreForSessionDir(dir), nil, func(offset int64, commit Commit) bool {
+		// tl1317: replay skips events whose payload is not valid JSON instead
+		// of failing the whole session open; each one lands in the sidecar.
+		commit = quarantineCommitPayloads(dir, commit)
 		if applyErr := applyProjectionCommit(&state.projection, commit); applyErr != nil {
 			projectionErr = applyErr
 			return false
@@ -607,6 +610,9 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 				unresolved[event.Sequence] = err
 				continue
 			}
+			if quarantineDamagedEvent(dir, resolved) {
+				continue
+			}
 			business.Events = append(business.Events, resolved)
 		}
 		if err := applyProjectionCommit(&state.projection, business); err != nil {
@@ -648,6 +654,9 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 				unresolved[event.Sequence] = resolveErr
 				continue
 			}
+			if quarantineDamagedEvent(dir, resolved) {
+				continue
+			}
 			resolvedRecent.Events = append(resolvedRecent.Events, resolved)
 		}
 		if err := applyRecentCommit(&state.recentMessages, resolvedRecent); err != nil {
@@ -678,7 +687,7 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 		return nil, 0, false, projectionErr
 	}
 	if sawModelEvent {
-		if err := loadCurrentModelProjection(ctx, file, content, state, modelOffset, modelSequence); err != nil {
+		if err := loadCurrentModelProjection(ctx, file, content, dir, state, modelOffset, modelSequence); err != nil {
 			return nil, 0, false, err
 		}
 	}
@@ -692,7 +701,7 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 	return state, durableEnd, durableEnd < info.Size(), nil
 }
 
-func loadCurrentModelProjection(ctx context.Context, file *os.File, content *sessioncontent.Store, state *startupSessionState, offset int64, sequence uint64) error {
+func loadCurrentModelProjection(ctx context.Context, file *os.File, content *sessioncontent.Store, dir string, state *startupSessionState, offset int64, sequence uint64) error {
 	var projectionErr error
 	err := scanV4CommitFileRefs(ctx, file, offset, sequence, content, nil, func(_ int64, commit Commit) bool {
 		model := commit
@@ -705,6 +714,9 @@ func loadCurrentModelProjection(ctx context.Context, file *os.File, content *ses
 			if err != nil {
 				projectionErr = err
 				return false
+			}
+			if quarantineDamagedEvent(dir, resolved) {
+				continue
 			}
 			model.Events = append(model.Events, resolved)
 		}

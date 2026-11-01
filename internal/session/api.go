@@ -499,6 +499,10 @@ func readCommitPageWithCache(ctx context.Context, dir, cacheDir string, offset u
 			page.Truncated = true
 			return false
 		}
+		// tl1317: cold readers (snapshot, history pages, export) skip events
+		// whose payload is not valid JSON instead of failing wholesale; each
+		// one lands in the session's damaged-events sidecar.
+		commit = quarantineCommitPayloads(dir, commit)
 		page.Commits = append(page.Commits, commit)
 		page.Next = commit.LastSequence()
 		return true
