@@ -470,6 +470,15 @@ func (s *Session) saveLockedInner(path string, mode sessionSaveMode) error {
 	defer releaseAuth()
 	healStart := time.Now()
 	observeUnleasedSessionWrite(path, mode)
+	// tl1313: stamp a baseline-known file that vanished out of band BEFORE the
+	// WAL heal below can silently recreate it — the 20261031 ghost-save
+	// incident ran for days with saves reporting success while a periodic
+	// external remover deleted transcript and event log between writes, and
+	// the heal+no-op pair absorbed every disappearance without a trace (the
+	// only signal was canonical-probe `outcome=missing` lines). One WARN per
+	// disappearance episode turns that into a first-class desktop.log event
+	// carrying the baseline facts (size/revision) for later forensics.
+	s.warnVanishedPersistedFiles(path)
 	// Heal an empty/missing checkpoint from a valid WAL before classification
 	// so a 0-byte .jsonl never forces a false diverged recovery.
 	if err := healEmptyCheckpointFromWAL(path); err != nil {
@@ -1084,9 +1093,11 @@ func (s *Session) ownsPersistedState(path string, existingDigest [sha256.Size]by
 // is genuinely behind must surface the stale-prefix conflict rather than skip
 // (TestDAGSaveBehindDiskReportsStalePrefix). So the fast path re-verifies the
 // disk before it claims anything: the event log must still end exactly where
-// the baseline saw it, and the ledger must still describe the baseline digest.
-// Both checks are small fixed-size reads (one stat, one sidecar read) — the
-// cost the no-op exists to avoid is the full-transcript serialize + digest,
+// the baseline saw it, the transcript checkpoint must still exist at its
+// baseline size (tl1313 — a baseline-known checkpoint that vanished out of
+// band must never arm a skip), and the ledger must still describe the baseline
+// digest. All three are small fixed-size reads (two stats, one sidecar read) —
+// the cost the no-op exists to avoid is the full-transcript serialize + digest,
 // which stays gone.
 func (s *Session) snapshotNoOpReason(path string) string {
 	key := canonicalSessionSavePath(path)
@@ -1100,6 +1111,7 @@ func (s *Session) snapshotNoOpReason(path string) string {
 		return ""
 	}
 	baselineTail := s.persisted.logTail
+	baselineCheckpointBytes := s.persisted.checkpointBytes
 	baselineRevision := s.persisted.revision
 	baselineDigest := s.persisted.digest
 	armed := "save-verified"
@@ -1116,6 +1128,21 @@ func (s *Session) snapshotNoOpReason(path string) string {
 	if info, err := os.Stat(store.SessionEventLog(path)); err != nil || info.Size() != baselineTail {
 		return ""
 	}
+	// tl1313: the transcript checkpoint rides the same re-verification. The
+	// two checks above can both pass while the .jsonl itself was removed out
+	// of band (ghost-save incident 20261031: saves kept reporting
+	// save-verified while canonical probes recorded the file missing), and a
+	// skip on that state leaves a baseline-known transcript missing forever.
+	// Absence is only legitimate when the baseline itself recorded no
+	// checkpoint (schema-2 events-authoritative sessions never materialize
+	// one) — mirrored off the logTail zero case in snapshotTailWindowClean.
+	if info, err := os.Stat(path); err != nil {
+		if baselineCheckpointBytes != 0 {
+			return ""
+		}
+	} else if info.IsDir() || info.Size() != baselineCheckpointBytes {
+		return ""
+	}
 	rev, ledgerDigest, err := sessionContentRevision(path)
 	if err != nil || rev != baselineRevision || ledgerDigest != digestString(baselineDigest) {
 		return ""
@@ -1128,6 +1155,56 @@ func (s *Session) snapshotNoOpReason(path string) string {
 // digest + probe entirely (#6607).
 func (s *Session) snapshotUpToDate(path string) bool {
 	return s.snapshotNoOpReason(path) != ""
+}
+
+// warnVanishedPersistedFiles stamps an out-of-band removal of a baseline-known
+// transcript checkpoint or event log (tl1313). Both sizes live on the persist
+// baseline (checkpointBytes / logTail, recorded at the last save or load), so
+// one stat per armed file decides. The WARN fires once per disappearance
+// episode: the latch arms on the missing sighting and clears as soon as a
+// later save sees the file back (heal/recreation/restore — regardless of who
+// brought it back), so a continuing remover cannot storm the log (the
+// 847-lines-per-day class task 710 retired). The WARN carries the baseline
+// facts so desktop.log alone can answer "what was lost, and since when". An
+// external remover cannot be audited from inside this process, but its effect
+// on every writer must at least stop being silent.
+func (s *Session) warnVanishedPersistedFiles(path string) {
+	key := canonicalSessionSavePath(path)
+	s.mu.RLock()
+	armed := s.persisted.ok && s.persisted.path == key
+	var baselineLogTail, baselineCheckpointBytes, baselineRevision int64
+	if armed {
+		baselineLogTail = s.persisted.logTail
+		baselineCheckpointBytes = s.persisted.checkpointBytes
+		baselineRevision = s.persisted.revision
+	}
+	s.mu.RUnlock()
+	if !armed {
+		return
+	}
+	if baselineCheckpointBytes > 0 {
+		if _, err := os.Stat(path); err != nil {
+			if s.vanishWarnedCheckpoint.CompareAndSwap(false, true) {
+				slog.Warn("session: transcript vanished on disk since the last save (removed out of band?)",
+					"path", path, "baseline_bytes", baselineCheckpointBytes,
+					"baseline_revision", baselineRevision)
+			}
+		} else {
+			s.vanishWarnedCheckpoint.Store(false)
+		}
+	}
+	if baselineLogTail > 0 {
+		logPath := store.SessionEventLog(path)
+		if _, err := os.Stat(logPath); err != nil {
+			if s.vanishWarnedLog.CompareAndSwap(false, true) {
+				slog.Warn("session: event log vanished on disk since the last save (removed out of band?)",
+					"path", logPath, "baseline_bytes", baselineLogTail,
+					"baseline_revision", baselineRevision)
+			}
+		} else {
+			s.vanishWarnedLog.Store(false)
+		}
+	}
 }
 
 // snapshotTailWindowClean reports that a first-paint tail-window session is a

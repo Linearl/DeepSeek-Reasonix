@@ -66,6 +66,14 @@ type Session struct {
 	// Messages outright and never faced an appended turn).
 	tailWindowLen   int
 	eventLogDamaged bool
+	// vanishWarnedCheckpoint / vanishWarnedLog latch the tl1313 out-of-band
+	// removal WARN per disappearance episode: set when warnVanishedPersistedFiles
+	// fires for a baseline-known file that is gone, cleared when a baseline is
+	// recorded with the file present again (a successful save recreates it).
+	// Without the latch a continuing deleter would repeat the WARN on every
+	// save — the 847-lines-per-day log storm class task 710 retired.
+	vanishWarnedCheckpoint atomic.Bool
+	vanishWarnedLog        atomic.Bool
 	// rawMessages preserves the pre-normalization transcript when the load-time
 	// repairs changed it (normalizedDirty). It is only meaningful on a freshly
 	// loaded Session: checkSnapshotWrite compares a pending snapshot against
