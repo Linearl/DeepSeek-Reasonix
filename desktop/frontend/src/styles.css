@@ -9067,6 +9067,13 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-dim);
   font-family: var(--font-metadata-family);
   font-size: var(--font-status);
+  /* tl1333：用户定高模式下工具栏 flex-wrap 换行增高时，.composer 被 flex 压缩，
+     但 textarea 带显式 px 高度不随缩，从 .composer（无裁剪）溢出压到本行上方；
+     .composer__content 是定位层、绘制晚于非定位内容，透明 textarea 便盖住首行
+     图标（命中它 + cursor:text 的 I 光标，点击全部失效）。把本行提为定位层并
+     压回绘制顺序之上，让首行控件恢复命中；换行残余的几何溢出不含交互面。 */
+  position: relative;
+  z-index: var(--z-local-raised);
 }
 
 .composer-meta__params {
