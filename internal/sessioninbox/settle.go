@@ -106,6 +106,99 @@ func boundedSamples(ids []string, n int) []string {
 	return ids
 }
 
+// SettleConsumedGuidanceResidue drops StateSteerConsumed rows whose bodies
+// still sit on the session transcript — the durable injection receipt. This
+// is the 任务1004 in-process sweep: MarkSteerConsumed is the delivery boundary
+// the loader commits *before* the instruction reaches the agent, so the row
+// itself is already application evidence; the transcript match only adds the
+// confirmation that the same text was recorded by the session that will keep
+// running.
+//
+// Face it fixes: a stalled run is abandoned by a Cancel in the same process
+// (the 1008 stop/recover flow), so no store reopen and no roster restore point
+// ever runs. The previous recovery drop (P15) only fires from RecoverOrphaned-
+// InFlightOwnedBy on open/rebind, and the 840/1004 planned-restart sweep only
+// fires from the roster chain — the consumed copies just sat in the manifest
+// until some later restart finally dropped them. Worse, until then a
+// re-injection (turn-end flush, retry) could find the row still present and
+// re-apply the same guidance twice.
+//
+// The sweep is safe on rows that have not crossed the delivery boundary: a
+// queued follow-up may legitimately repeat a finished instruction (the user
+// meant to send it again), and an uncertain park keeps its review face. Only
+// StateSteerConsumed rows qualify, and only when the matcher vouches for their
+// body — the caller passes the same transcript matcher P15 uses. Idempotency
+// keys and receipts travel with the row (the settled-deletion shape shared by
+// the other two settle passes).
+func (s *Store) SettleConsumedGuidanceResidue(match func(meta InboxItemMeta, env PromptEnvelope) bool) (int, error) {
+	if s == nil {
+		return 0, ErrClosed
+	}
+	if match == nil {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	release, err := s.beginDiskTransactionLocked()
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+	if err := s.mutableLocked(); err != nil {
+		return 0, err
+	}
+	next := s.man.clone()
+	kept := next.Items[:0]
+	var removed []InboxItemMeta
+	var unmatched []string           // consumed rows kept without a transcript receipt
+	var droppedIDs map[string]string // idempotency key -> itemID (settle deletions)
+	for _, item := range next.Items {
+		if item.State != StateSteerConsumed {
+			kept = append(kept, item)
+			continue
+		}
+		env, readErr := s.readBlobLocked(blobNameFor(item), item.Checksum)
+		if readErr != nil || !match(item, env) {
+			if readErr == nil {
+				unmatched = append(unmatched, item.ID)
+			}
+			kept = append(kept, item)
+			continue
+		}
+		removed = append(removed, item)
+		if item.Idempotency != "" {
+			if droppedIDs == nil {
+				droppedIDs = map[string]string{}
+			}
+			droppedIDs[item.Idempotency] = item.ID
+		}
+	}
+	if len(unmatched) > 0 {
+		slog.Info("sessioninbox: consumed residue kept without a transcript receipt",
+			"count", len(unmatched), "sampleIDs", boundedSamples(unmatched, 3))
+	}
+	if len(removed) == 0 {
+		return 0, nil
+	}
+	next.Items = kept
+	for key, itemID := range droppedIDs {
+		if id, ok := next.Idempotency[key]; ok && id == itemID {
+			delete(next.Idempotency, key)
+			delete(next.IdempotencyHashes, key)
+		}
+		delete(next.Receipts, key)
+	}
+	clearPauseIfEmpty(next)
+	if err := s.commitManifestLocked(next); err != nil {
+		return 0, err
+	}
+	for _, item := range removed {
+		s.removeBlobLocked(blobNameFor(item))
+	}
+	s.notifyLocked(s.snapshotLocked())
+	return len(removed), nil
+}
+
 // SettlePlannedRestartResidue drops the admission-proven review parks whose
 // source mail carries a settled delivery receipt (任务840: the planned-restart
 // read confirmation).

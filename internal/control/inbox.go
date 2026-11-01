@@ -381,6 +381,39 @@ func (c *Controller) SettlePlannedRestartGuidance() int {
 	return dropped
 }
 
+// SettleConsumedGuidanceResidue is the 任务1004 in-process sweep of
+// StateSteerConsumed queue copies. A stall abandoned by Cancel leaves every
+// already-consumed steer copy in the manifest: no store reopen (P15's drop)
+// and no roster restore point (840/1004's planned-restart sweep) ever runs in
+// that flow, so the copies used to wait for some later restart. The
+// Controller calls this from close() with its transcript matcher — the same
+// residueMatcher P15 uses — so the drop needs an injection receipt, not just
+// the row's own delivery evidence. Returns the number of settled rows; hosts
+// without a transcript matcher (matcher == nil) are a no-op.
+func (c *Controller) SettleConsumedGuidanceResidue(stage string) int {
+	if c == nil {
+		return 0
+	}
+	matcher := c.inbox.residueMatcher(c.SessionPath())
+	if matcher == nil {
+		return 0
+	}
+	st, err := c.ensureInbox()
+	if err != nil {
+		slog.Warn("controller: consumed guidance residue settle", "stage", stage, "err", err)
+		return 0
+	}
+	dropped, err := st.SettleConsumedGuidanceResidue(matcher)
+	if err != nil {
+		slog.Warn("controller: consumed guidance residue settle", "stage", stage, "err", err)
+		return 0
+	}
+	if dropped > 0 {
+		slog.Info("controller: settled consumed guidance residue", "stage", stage, "count", dropped)
+	}
+	return dropped
+}
+
 func (s *inboxState) activeIDs() []string {
 	if s == nil || len(s.activeItemIDs) == 0 {
 		return nil
