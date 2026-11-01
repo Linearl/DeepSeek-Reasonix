@@ -76,6 +76,10 @@ func decorateExecutionReceipt(rec *evidence.Receipt, result string, ex *tool.She
 // run: the host-adjudicated completion claim when the child submitted one, the
 // child's own prose, then the host's receipts.
 func composeSubagentAnswer(ctx context.Context, answer string, sub *Agent, claims WritePathSet, delegationText string) string {
+	// The parameter is still the child's own answer here — the completion
+	// envelope and host receipts below are appended to the COPY the parent
+	// sees. Record the pristine text for parsers before any of that (G1).
+	RecordSubagentRawAnswer(ctx, answer)
 	summary := sub.EvidenceSummary()
 	report, reasons, hasReport := sub.CompletionReport()
 	if hasReport {

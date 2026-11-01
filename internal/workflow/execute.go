@@ -222,6 +222,15 @@ type confirmOutcome struct {
 	Reason    string `json:"reason"`
 }
 
+// confirmResultContract is the typed-result contract appended to every
+// confirmer prompt (audit 2026-11-01 gap G2): without it the confirmer never
+// learns the verdict shape, parseConfirmed reads every answer as "missing key
+// ⇒ false", and the gate can never open — the target node is written back as
+// unconfirmed even when the human-readable verdict was "reproduced".
+const confirmResultContract = `Your verdict must be a single JSON object and nothing else:
+{"confirmed": true, "reason": "<what you reproduced, or why you could not>"}
+Set "confirmed" to true only when you actually reproduced the finding from the evidence. The host reads this object programmatically; a verdict without it counts as not confirmed.`
+
 // runConfirm is the independent confirmation protocol (point 4): a second,
 // read-only sub-agent reproduces the target's findings from evidence alone.
 // Failure KEEPS every finding and labels it unconfirmed — never drops, never
@@ -242,6 +251,7 @@ func (s *runState) runConfirm(ctx context.Context, n *Node) error {
 	if strings.TrimSpace(n.Prompt) != "" {
 		prompt = s.interpolate(n.Prompt) + "\n\n" + prompt
 	}
+	prompt += "\n\n" + confirmResultContract
 	answer, err := s.eng.runSubagent(ctx, SubagentRequest{
 		NodeID:      n.ID,
 		Prompt:      prompt,
