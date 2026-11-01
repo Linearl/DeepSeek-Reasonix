@@ -175,6 +175,15 @@ func (s *Session) PrepareBatchContext(ctx context.Context, operationID string, b
 		if !event.Optional && !ProjectionKinds[event.Kind] {
 			return PreparedBatch{}, fmt.Errorf("%w: unknown required event %q", ErrUnsupportedVersion, event.Kind)
 		}
+		// tl1317: a payload that is not valid JSON poisons every later
+		// serialization of the batch (hashOperation marshals all events at
+		// once), so one bad event used to fail this batch and every later one
+		// that re-hashed it, wedging the session autosave permanently. Reject
+		// the batch at the entrance with the offending index and kind: no
+		// sequence is consumed and later batches stay clean.
+		if len(event.Payload) > 0 && !json.Valid(event.Payload) {
+			return PreparedBatch{}, fmt.Errorf("%w: invalid JSON payload at events[%d] (kind=%q)", ErrDamagedStore, i, event.Kind)
+		}
 		// The durable sequence is assigned at commit time so a rejected batch
 		// never consumes one.
 		event.Sequence = 0

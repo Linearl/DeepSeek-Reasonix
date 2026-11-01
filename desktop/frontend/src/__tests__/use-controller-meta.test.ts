@@ -179,6 +179,18 @@ console.log("\nuse controller meta");
     "Session save failed before changing models: disk full",
     "backend save-before-action notice localizes the action",
   );
+  // tl1317 P3: the backend-internal serialization filler localizes instead of
+  // leaking Go internals into the autosave/save-before templates.
+  eq(
+    localizedBackendNoticeText("Session autosave failed: internal serialization error (details in logs)"),
+    "Session save hit an internal serialization error; details are in the logs.",
+    "backend autosave internal-error filler is localized",
+  );
+  eq(
+    localizedBackendNoticeText("Session save failed before changing model: internal serialization error (details in logs)"),
+    "Session save failed before changing models: Session save hit an internal serialization error; details are in the logs.",
+    "backend save-before internal-error filler is localized",
+  );
   eq(
     localizedBackendNoticeText('model "old/model" is no longer available; switched to new/model'),
     'Model "old/model" is no longer available; switched to new/model.',

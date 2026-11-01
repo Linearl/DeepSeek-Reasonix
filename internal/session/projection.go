@@ -101,6 +101,14 @@ func applyProjectionCommit(projection *Projection, commit Commit) error {
 	closedBefore := len(projection.Turns)
 	for _, ev := range commit.Events {
 		projection.CommittedSequence = ev.Sequence
+		// tl1317 P2: every projected event's payload must be valid JSON,
+		// checked once here so a handler cannot forget it (plan/state and
+		// goal/state additionally require an object; the strict decoders
+		// cover the rest structurally). Empty payloads stay legal — several
+		// kinds carry none and the projection tolerates that today.
+		if len(ev.Payload) > 0 && !json.Valid(ev.Payload) {
+			return damagedPayload(ev, nil)
+		}
 		var err error
 		switch ev.Kind {
 		case "legacy/import":

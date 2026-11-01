@@ -5101,6 +5101,7 @@ export const zh: Record<DictKey, string> = {
   "notice.compactionNoSummary": "上下文已压缩，但未生成摘要。",
   "notice.goalNotReady": "目标暂未达到完成条件，继续处理剩余工作。",
   "notice.goalUnfinished": "目标还有未完成的任务状态，继续处理。",
+  "notice.snapshotInternalError": "会话保存遇到内部序列化错误，详情见日志。",
   "notice.backgroundJobFailed": "后台 {kind} 需要处理。",
   "notice.jobArtifactMigrationFailed": "任务产物迁移失败。",
   "notice.jobTeardownTimeout": "后台任务清理超时。",

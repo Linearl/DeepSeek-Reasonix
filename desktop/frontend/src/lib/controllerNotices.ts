@@ -254,10 +254,20 @@ function backendNoticeKey(msg: string): DictKey | "" {
 
 export function localizedBackendNoticeText(text: string): string {
   const msg = text.trim();
+  // tl1317 P3: the backend replaces Go-internal error texts with this filler
+  // before a notice is emitted; localize it instead of interpolating English
+  // filler into the autosave template.
+  const internalFiller = "internal serialization error (details in logs)";
   const autosave = /^Session autosave failed: (.+)$/s.exec(msg);
-  if (autosave) return t("status.sessionAutosaveFailed", { err: autosave[1] });
+  if (autosave) {
+    if (autosave[1] === internalFiller) return t("notice.snapshotInternalError");
+    return t("status.sessionAutosaveFailed", { err: autosave[1] });
+  }
   const saveBefore = /^Session save failed before (.+?): (.+)$/s.exec(msg);
-  if (saveBefore) return t("status.sessionSaveFailedBefore", { action: localizedSessionAction(saveBefore[1]), err: saveBefore[2] });
+  if (saveBefore) {
+    if (saveBefore[2] === internalFiller) return t("status.sessionSaveFailedBefore", { action: localizedSessionAction(saveBefore[1]), err: t("notice.snapshotInternalError") });
+    return t("status.sessionSaveFailedBefore", { action: localizedSessionAction(saveBefore[1]), err: saveBefore[2] });
+  }
   const modelFallback = /^model (.+) is no longer available; switched to (.+)$/s.exec(msg);
   if (modelFallback) return t("status.modelFallbackSwitched", { model: modelFallback[1], fallback: modelFallback[2] });
   const backgroundJob = /^background (.+) failed: needs attention$/s.exec(msg);

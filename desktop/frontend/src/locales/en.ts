@@ -5113,6 +5113,7 @@ export const en = {
   "notice.compactionNoSummary": "Context was compacted without a generated summary.",
   "notice.goalNotReady": "Goal is not ready to complete yet; continuing the remaining work.",
   "notice.goalUnfinished": "Goal still has unfinished task state; continuing the remaining work.",
+  "notice.snapshotInternalError": "Session save hit an internal serialization error; details are in the logs.",
   "notice.backgroundJobFailed": "Background {kind} needs attention.",
   "notice.jobArtifactMigrationFailed": "Job artifact migration failed.",
   "notice.jobTeardownTimeout": "Background job teardown timed out.",
