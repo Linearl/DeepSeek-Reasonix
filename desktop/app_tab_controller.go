@@ -176,7 +176,27 @@ func (a *App) reportTabSnapshotError(tab *WorkspaceTab, action string, err error
 	if strings.TrimSpace(action) != "" && action != "autosave" {
 		prefix = "Session save failed before " + action
 	}
-	tab.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: prefix + ": " + err.Error()})
+	tab.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: prefix + ": " + snapshotUserNoticeReason(err)})
+}
+
+// snapshotInternalErrorMarkers flag Go-internal error texts that must never
+// reach the chat notice verbatim (tl1317 P3). The full error stays in the
+// slog line above; curated errors — like the damaged-store one that names the
+// offending event index and kind — pass through unchanged.
+var snapshotInternalErrorMarkers = []string{
+	"json.RawMessage", "MarshalJSON", "json: error calling", "goroutine", "panic: ",
+}
+
+// snapshotUserNoticeReason reduces a snapshot error to the text the chat
+// notice may show.
+func snapshotUserNoticeReason(err error) string {
+	text := err.Error()
+	for _, marker := range snapshotInternalErrorMarkers {
+		if strings.Contains(text, marker) {
+			return "internal serialization error (details in logs)"
+		}
+	}
+	return text
 }
 
 func (a *App) reconciledSessionPathForTab(tab *WorkspaceTab) string {
