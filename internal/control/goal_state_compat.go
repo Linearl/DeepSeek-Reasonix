@@ -1,6 +1,9 @@
 package control
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"log/slog"
+)
 
 var goalStateKnownFields = map[string]struct{}{
 	"goal": {}, "status": {}, "researchMode": {}, "autoResearchTaskID": {},
@@ -35,6 +38,14 @@ func marshalGoalState(state goalState, extra map[string]json.RawMessage) ([]byte
 	}
 	for key, value := range extra {
 		if _, current := goalStateKnownFields[key]; current {
+			continue
+		}
+		// tl1317: a RawMessage emits its bytes verbatim, so one extra field
+		// that is not valid JSON would fail the merged marshal wholesale and
+		// kill the goal sidecar save. Drop that field with a warning instead
+		// of failing the whole state.
+		if len(value) > 0 && !json.Valid(value) {
+			slog.Warn("control: goal state extra field is not valid JSON; dropped", "key", key)
 			continue
 		}
 		merged[key] = append(json.RawMessage(nil), value...)

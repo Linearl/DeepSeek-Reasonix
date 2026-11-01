@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -108,6 +109,13 @@ func (g *goalMachine) writeStateAtEpoch(epoch uint64, todos []evidence.TodoItem)
 }
 
 func writeGoalStateData(path string, data []byte) error {
+	// tl1317: fail fast on bytes that are not valid JSON — persisting them
+	// would poison the sidecar itself and every later marshalGoalState merge
+	// that reads its unknown fields back. Callers treat the error as a
+	// best-effort warn, so failing here loses nothing that worked before.
+	if len(data) > 0 && !json.Valid(data) {
+		return fmt.Errorf("control: refusing to write goal state %s: data is not valid JSON", filepath.Base(path))
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
