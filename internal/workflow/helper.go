@@ -104,6 +104,7 @@ func resultHint(n *Node) string {
 	}
 	if n.FindingsField != "" {
 		fmt.Fprintf(&b, "The %s field is an array of objects with keys: where (string), what (string), evidence (string), severity (low|medium|high).\n", n.FindingsField)
+		fmt.Fprintf(&b, "If your input evidence lists findings that carry an \"id\" key, echo that id on your re-reported entry for the same issue — the engine merges duplicates by it instead of double-counting. Omit the key for issues you report new.\n")
 	}
 	return b.String()
 }
@@ -129,11 +130,17 @@ func parseResultJSON(answer string) (map[string]any, error) {
 	return nil, fmt.Errorf("answer is not a JSON object: %s", truncate(trimmed, 120))
 }
 
-// extractFindings pulls the findings array out of a typed result. The array
+// extractFindings pulls the findings array out of a typed result, stamping
+// each accepted entry with the engine's source serial ("<nodeID>#<n>",
+// tl1326 B1): the serial lands on the extracted Finding (the add/promote
+// key) AND on the raw result-map entry, so {{node.findings}} carries it
+// downstream and a reviewer can echo it back. An entry that already carries
+// an "id" (a reviewer echoing a producer serial, or a producer minting its
+// own stable tag) keeps it — the echo IS the merge mechanism. The array
 // itself must exist when declared (a producer that silently drops its
 // findings field breaks the confirmation contract); individual malformed
 // entries are skipped rather than failing the node.
-func extractFindings(obj map[string]any, field string) ([]Finding, error) {
+func extractFindings(obj map[string]any, field, sourcePrefix string) ([]Finding, error) {
 	raw, ok := obj[field]
 	if !ok {
 		return nil, fmt.Errorf("declared findings_field %q missing from result", field)
@@ -157,6 +164,11 @@ func extractFindings(obj map[string]any, field string) ([]Finding, error) {
 		}
 		if f.Where == "" && f.What == "" {
 			continue
+		}
+		f.SourceID = findingString(m, "id")
+		if f.SourceID == "" {
+			f.SourceID = fmt.Sprintf("%s#%d", sourcePrefix, len(out)+1)
+			m["id"] = f.SourceID
 		}
 		out = append(out, f)
 	}

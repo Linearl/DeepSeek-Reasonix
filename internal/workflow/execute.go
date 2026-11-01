@@ -90,7 +90,7 @@ func (s *runState) runSubagent(ctx context.Context, n *Node) error {
 		}
 		s.result[n.ID] = obj
 		if n.FindingsField != "" {
-			fs, err := extractFindings(obj, n.FindingsField)
+			fs, err := extractFindings(obj, n.FindingsField, n.ID)
 			if err != nil {
 				return fmt.Errorf("workflow: subagent %q: %w", n.ID, err)
 			}
@@ -225,10 +225,23 @@ func (s *runState) runJoin(n *Node) error {
 	return nil
 }
 
-// confirmOutcome is the confirmer's verdict.
+// confirmOutcome is the confirmer's verdict. Verdicts (tl1326 B1) carry the
+// per-finding booleans referencing the engine's source serials from the
+// evidence; their presence turns promotion into per-item (partial refutation
+// keeps the refuted findings unconfirmed), their absence keeps the pre-B1
+// all-or-nothing promote of the target's findings.
 type confirmOutcome struct {
+	Confirmed bool             `json:"confirmed"`
+	Reason    string           `json:"reason"`
+	Verdicts  []confirmVerdict `json:"verdicts,omitempty"`
+}
+
+// confirmVerdict is one per-finding verdict (tl1326 B1): ID is the engine's
+// source serial copied verbatim from the evidence ("nodeID#n").
+type confirmVerdict struct {
+	ID        string `json:"id"`
 	Confirmed bool   `json:"confirmed"`
-	Reason    string `json:"reason"`
+	Note      string `json:"note,omitempty"`
 }
 
 // confirmResultContract is the typed-result contract appended to every
@@ -236,9 +249,12 @@ type confirmOutcome struct {
 // learns the verdict shape, parseConfirmed reads every answer as "missing key
 // ⇒ false", and the gate can never open — the target node is written back as
 // unconfirmed even when the human-readable verdict was "reproduced".
+// The verdicts paragraph (tl1326 B1) lets the confirmer answer per finding
+// and merge-deduplicate against the producer's serials.
 const confirmResultContract = `Your verdict must be a single JSON object and nothing else:
 {"confirmed": true, "reason": "<what you reproduced, or why you could not>"}
-Set "confirmed" to true only when you actually reproduced the finding from the evidence. The host reads this object programmatically; a verdict without it counts as not confirmed.`
+Set "confirmed" to true only when you actually reproduced the finding from the evidence. The host reads this object programmatically; a verdict without it counts as not confirmed.
+When the evidence contains findings entries carrying an "id" key, also return a "verdicts" array with one entry per finding you checked: {"id": "<copy the id verbatim>", "confirmed": true|false, "note": "<what you reproduced or refuted>"}. Omit the verdict entry for findings you could not check (they stay unconfirmed); a "confirmed": true overall with verdicts promotes only the verdict entries marked true.`
 
 // runConfirm is the independent confirmation protocol (point 4): a second,
 // read-only sub-agent reproduces the target's findings from evidence alone.
@@ -287,29 +303,61 @@ func (s *runState) runConfirm(ctx context.Context, n *Node) error {
 		s.resolveOutEdges(n.ID, termPassed)
 		return nil
 	}
-	// Reproduced: the target's bagged findings upgrade unconfirmed → verified
-	// in place (never a re-add, never a drop).
-	for _, f := range s.findings[n.Target] {
-		s.bag.promote(f)
+	// Reproduced: promote the target's findings through the SAME key add
+	// merges on (tl1326). With per-item verdicts only the confirmed source
+	// serials flip — partial refutation keeps the refuted findings
+	// unconfirmed and never drops them; without verdicts every target finding
+	// promotes (pre-B1 all-or-nothing, kept for confirmers that predate the
+	// serials). A serial the target never produced is not promotable.
+	if outcome, ok := parseConfirmOutcome(answer); ok && len(outcome.Verdicts) > 0 {
+		known := make(map[string]Finding, len(s.findings[n.Target]))
+		for _, f := range s.findings[n.Target] {
+			if f.SourceID != "" {
+				known[f.SourceID] = f
+			}
+		}
+		for _, v := range outcome.Verdicts {
+			if !v.Confirmed {
+				continue // refuted: stays unconfirmed, never dropped
+			}
+			f, ok := known[v.ID]
+			if !ok {
+				continue // hallucinated serial: nothing to promote
+			}
+			s.bag.promoteNote(f, v.Note)
+		}
+	} else {
+		for _, f := range s.findings[n.Target] {
+			s.bag.promote(f)
+		}
 	}
 	s.verifs = append(s.verifs, fmt.Sprintf("independent confirmation of %s by %s", n.Target, n.ID))
 	s.finish(n, event.WorkflowNodeCompleted, termPassed, "")
 	return nil
 }
 
-// parseConfirmed extracts the confirmer's boolean verdict. Unparseable,
-// ambiguous, or negative answers all mean NOT confirmed (doubt survives).
-func parseConfirmed(answer string) bool {
+// parseConfirmOutcome extracts the confirmer's full verdict (tl1326 B1): the
+// overall boolean plus the optional per-finding verdicts. ok is false for
+// unparseable, ambiguous, or negative answers — doubt survives.
+func parseConfirmOutcome(answer string) (confirmOutcome, bool) {
 	trimmed := finalAnswerBody(answer)
 	// Prefer a fenced/JSON blob inside prose.
 	start := strings.Index(trimmed, "{")
 	end := strings.LastIndex(trimmed, "}")
 	if start < 0 || end < start {
-		return false
+		return confirmOutcome{}, false
 	}
 	var out confirmOutcome
 	if err := json.Unmarshal([]byte(trimmed[start:end+1]), &out); err != nil {
-		return false
+		return confirmOutcome{}, false
 	}
-	return out.Confirmed
+	return out, true
+}
+
+// parseConfirmed extracts the confirmer's boolean verdict. Unparseable,
+// ambiguous, or negative answers all mean NOT confirmed (doubt survives).
+// Signature and semantics kept verbatim from before tl1326 (batch A pin).
+func parseConfirmed(answer string) bool {
+	out, ok := parseConfirmOutcome(answer)
+	return ok && out.Confirmed
 }

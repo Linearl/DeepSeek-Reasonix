@@ -15,13 +15,34 @@ const (
 )
 
 // Finding is one reported observation. Status is engine-assigned at report
-// time (never trusted from the sub-agent's answer).
+// time (never trusted from the sub-agent's answer). SourceID is the engine's
+// per-producer serial ("<nodeID>#<n>", tl1326 B1): it travels on the typed
+// result entries so a downstream reviewer can echo it back, and add/promote
+// then merge the rewrite into the ORIGINAL entry instead of appending a
+// duplicate. Engine-internal — WorkflowFindingView (the external JSON) does
+// not carry it.
 type Finding struct {
 	Where    string `json:"where"`
 	What     string `json:"what"`
 	Evidence string `json:"evidence"`
 	Status   string `json:"status"`
 	Severity string `json:"severity"`
+	SourceID string `json:"sourceId,omitempty"`
+}
+
+// sameFinding is THE dedup/promotion key, shared by reportBag.add and
+// reportBag.promote (tl1326 hard rule: both must resolve the same entry —
+// two independent matchers here are how a merged entry silently stops
+// promoting). Same engine-issued source serial decides first (the reviewer's
+// rewrite merges into the original); otherwise exact (where, what) wording
+// equality keeps the pre-B1 idempotent contract ("resumed or double-reported
+// item never appears twice") — including the case of two producers minting
+// different serials for the identical wording.
+func sameFinding(a, b Finding) bool {
+	if a.SourceID != "" && a.SourceID == b.SourceID {
+		return true
+	}
+	return a.Where == b.Where && a.What == b.What
 }
 
 // WorkflowReport is the run's handoff shape (task 685 point 5): what was
@@ -43,18 +64,30 @@ type reportBag struct {
 	findings []Finding
 }
 
-// add appends one finding immediately. Idempotent per (where, what) so a
-// resumed or double-reported item never appears twice.
+// add appends one finding immediately. Idempotent per the shared key
+// (sameFinding): a backfill carrying a known source serial merges its
+// rewrite into the original entry in place — topologically later wording
+// wins, the bag never grows — while an exact (where, what) re-report stays a
+// no-op exactly as before tl1326.
 func (b *reportBag) add(f Finding) {
 	if f.Status != FindingVerified && f.Status != FindingUnconfirmed {
 		f.Status = FindingUnconfirmed
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	for _, have := range b.findings {
-		if have.Where == f.Where && have.What == f.What {
-			return
+	for i := range b.findings {
+		have := &b.findings[i]
+		if !sameFinding(*have, f) {
+			continue
 		}
+		if f.SourceID != "" && have.SourceID == f.SourceID {
+			// Same engine-issued source: the (topologically later) reviewer's
+			// rewrite overwrites the original wording/evidence/severity.
+			have.What = f.What
+			have.Evidence = f.Evidence
+			have.Severity = f.Severity
+		}
+		return
 	}
 	b.findings = append(b.findings, f)
 }
@@ -71,18 +104,30 @@ func (b *reportBag) snapshot() []Finding {
 	return out
 }
 
-// promote flips unconfirmed findings matching (where, what) to verified once
-// an independent confirmation reproduces them. Unconfirmed rows are kept —
-// promotion is a status upgrade in place, never a drop.
+// promote flips unconfirmed findings matching the shared key (sameFinding)
+// to verified once an independent confirmation reproduces them. Unconfirmed
+// rows are kept — promotion is a status upgrade in place, never a drop. A
+// non-empty note (tl1326 B1 per-item verdict) is folded into the entry's
+// evidence so the confirmer's wording reaches the human report.
 func (b *reportBag) promote(f Finding) {
+	b.promoteNote(f, "")
+}
+
+// promoteNote is promote with an optional confirmer note; both go through
+// the same key as add (tl1326 hard rule).
+func (b *reportBag) promoteNote(f Finding, note string) {
 	f.Status = FindingVerified
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for i := range b.findings {
-		if b.findings[i].Where == f.Where && b.findings[i].What == f.What {
-			b.findings[i].Status = FindingVerified
-			return
+		if !sameFinding(b.findings[i], f) {
+			continue
 		}
+		b.findings[i].Status = FindingVerified
+		if note != "" {
+			b.findings[i].Evidence = strings.TrimSpace(b.findings[i].Evidence + "\n[confirm] " + note)
+		}
+		return
 	}
 	b.findings = append(b.findings, f)
 }
