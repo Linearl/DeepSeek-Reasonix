@@ -141,11 +141,14 @@ console.log("\ntask 562 lab three-tier badges");
   // tabManagement 豁免）。
   // tl1309 卡④：sessionTaskPanels（「会话与任务面板」合并卡容器）按推荐档
   // 入表——推荐 23→24、总数 86→87（同 tabManagement 豁免）。
-  ok(counts.stable === 5 && counts.recommended === 24 && counts.optional === 45 && counts.unstable === 12 && counts.retired === 1,
-    `register counts are 5 稳定/24/45/13/1 (got ${JSON.stringify(counts)})`);
+  // tl1338：sessionStorage（会话存储档位面）未稳定→稳定（用户 2026-11-01 拍
+  // 板：fork 已锁 v3，卡内余项皆迁移工具非实验能力）——稳定 5→6、未稳定
+  // 12→11、总数不变 87；Go 渲染表同步 LabTierStable（条目数不变 73）。
+  ok(counts.stable === 6 && counts.recommended === 24 && counts.optional === 45 && counts.unstable === 11 && counts.retired === 1,
+    `register counts are 6 稳定/24/45/11/1 (got ${JSON.stringify(counts)})`);
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 87, `register holds exactly 87 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 5 && LAB_TIER_COUNTS.recommended === 24 && LAB_TIER_COUNTS.optional === 45 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 5 稳定/24/45/12/1");
+  ok(LAB_TIER_COUNTS.stable === 6 && LAB_TIER_COUNTS.recommended === 24 && LAB_TIER_COUNTS.optional === 45 && LAB_TIER_COUNTS.unstable === 11 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 6 稳定/24/45/11/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -326,8 +329,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 直注可选 + restart_update 推荐）——卡头聚合单枚 推荐。
   ok(agg("toolOptimizations") === "recommended", `toolOptimizations hub aggregates to 推荐 (got ${String(agg("toolOptimizations"))})`);
   // tl1309 卡②：eventsRotation 迁出 sessionStore——仅余未稳定成员，聚合终值
-  // 可选→未稳定（未稳定压过可选的聚合方向不变，成员面变化如实反映）。
-  ok(agg("sessionStore") === "unstable", `sessionStore aggregates to 未稳定 after the tl1309 eventsRotation move (got ${String(agg("sessionStore"))})`);
+  // 可选→未稳定。tl1338：唯一成员 sessionStorage 未稳定→稳定（用户 2026-11-01
+  // 拍板），容器无自有档 ⇒ 聚合输入恰为 [稳定] 一枚、聚合终值 稳定；导航 rail
+  // 与卡头同源 labEntryBadgeTier（ExperimentalLabSection 586 行）随之联动。
+  // 断言输入清单精确等于 ["stable"]：若日后有人往本卡塞回未稳定成员致徽章
+  // 回落，此处即红（连带①「无其他成员阻滞」钉死）。
+  ok(JSON.stringify(railTiersForDefault("sessionStore")) === JSON.stringify(["stable"]) && agg("sessionStore") === "stable",
+    `sessionStore: sole member sessionStorage 稳定 ⇒ input exactly [稳定], aggregates to 稳定 after tl1338 (got ${JSON.stringify(railTiersForDefault("sessionStore"))} → ${String(agg("sessionStore"))})`);
   // tl1309 卡②：运行可观测卡聚合输入 [推荐(监控), 可选(events 瘦身/轨迹观测)]
   // → 卡头单枚 推荐。
   ok(JSON.stringify(railTiersForDefault("runtimeObservability")) === JSON.stringify(["recommended", "optional"]) && agg("runtimeObservability") === "recommended",
