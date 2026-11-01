@@ -30,7 +30,13 @@ function ok(value: boolean, label: string) {
 }
 
 const src = (name: string) => readFileSync(fileURLToPath(new URL(name, import.meta.url)), "utf8");
-const panel = src("../components/SettingsPanel.tsx");
+// tl1309 预存红修正：tl1134 实验室 chunk 拆分后 contextGovernance 的 pane
+// 分支落在懒加载的 ExperimentalLabSection.tsx、union/白名单在
+// labPaneRegistry.ts——本测试只读 SettingsPanel.tsx，基线上四个 pin 假红。
+// 对齐 722/562 同款三文件拼接。
+const panel = src("../components/SettingsPanel.tsx")
+  + "\n" + src("../components/ExperimentalLabSection.tsx")
+  + "\n" + src("../lab/labPaneRegistry.ts");
 const zh = src("../locales/zh.ts");
 const en = src("../locales/en.ts");
 const zhTW = src("../locales/zh-TW.ts");
@@ -108,12 +114,21 @@ ok(panel.includes('{selected === "contextGovernance" && ('), "pane branch render
     "experimentalColdCacheCompact",
     "experimentalCacheTuning",
     "experimentalActiveTabResident",
+    // tl1309 卡①：optimisticParallel 并卡，两键随迁入灯（九键并集）。
+    "optimisticWrite",
+    "experimentalBashHeavyGuard",
   ];
   ok(JSON.stringify(familyEntry?.entry.onKeys ?? []) === JSON.stringify(expected),
-    "family entry onKeys are exactly the seven member switches");
+    "family entry onKeys are exactly the seven member switches + tl1309 optimistic pair");
   // lightKeys 谓词逐键读原配置键（④ 的「原名读取」在灯侧同样成立）。
+  // tl1309 卡①：optimisticWrite 是嵌套字段派生谓词（s.sandbox?.optimisticWrite，
+  // 724「判亮规则收拢在谓词里」的非布尔键先例）——单独钉派生形态。
   const lightKeysSrc = src("../lab/labLightKeys.ts");
   for (const key of expected) {
+    if (key === "optimisticWrite") {
+      ok(lightKeysSrc.includes("optimisticWrite: (s: SettingsView) => Boolean(s.sandbox?.optimisticWrite)"), "light reads s.sandbox?.optimisticWrite (derived nested-field predicate)");
+      continue;
+    }
     ok(lightKeysSrc.includes(`${key}: (s: SettingsView) => Boolean(s.${key})`), `light reads s.${key}`);
   }
   // either on = discoverable：labEntryLightOn 的 some 语义功能验证（全关不亮，

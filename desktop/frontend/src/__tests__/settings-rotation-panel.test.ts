@@ -12,7 +12,7 @@ const bridge = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
 const viewTypes = readFileSync(resolve(testDir, "../lib/settingsViewTypes.ts"), "utf8");
 const backend = readFileSync(resolve(testDir, "../../../session_events_app.go"), "utf8");
 const prefs = readFileSync(resolve(testDir, "../../../settings_preferences.go"), "utf8");
-const appGo = readFileSync(resolve(testDir, "../../../app.go"), "utf8");
+const appGo = readFileSync(resolve(testDir, "../../../app_lifecycle.go"), "utf8");
 const gateEvents = readFileSync(resolve(testDir, "../../../../internal/agent/session_events.go"), "utf8");
 const rotationConfig = readFileSync(resolve(testDir, "../../../../internal/config/events_rotation.go"), "utf8");
 const locales = ["zh.ts", "zh-TW.ts", "en.ts"].map((name) => readFileSync(resolve(testDir, `../locales/${name}`), "utf8"));
@@ -34,12 +34,22 @@ console.log("\ntask 333 rotation gate contract");
 
 // Render table (81/123 lesson: a missing entry silently drops the save).
 // Task 561 M7: the entry folds into the sessionStore family card (storage).
-ok(
-  /\{ id: "sessionStore", group: "storage", label: t\("settings\.sessionStore"\)/.test(settings),
-  "Render table carries the sessionStore family entry in the storage group",
-);
-ok(settings.includes('| "sessionStore"'), "ExperimentFeatureId union exposes sessionStore");
-ok(!settings.includes('| "eventsRotation"'), "union drops the standalone eventsRotation id (folded into sessionStore)");
+// tl1309 预存红修正：tl1134 chunk 拆分后 render table 在懒加载
+// ExperimentalLabSection、union/白名单在 labPaneRegistry——读面补齐两文件
+// （基线读 SettingsPanel 时这些 pin 假红）。724 起 render table 数据驱动，
+// 字面量形态 pin 随机制迁移为布局数据断言。
+const labSection = readFileSync(resolve(testDir, "../components/ExperimentalLabSection.tsx"), "utf8");
+const labRegistry = readFileSync(resolve(testDir, "../lab/labPaneRegistry.ts"), "utf8");
+const labDefault = readFileSync(resolve(testDir, "../lab/labLayoutDefault.ts"), "utf8");
+const panelSources = settings + "\n" + labSection + "\n" + labRegistry;
+{
+  const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
+  const storage = LAB_LAYOUT_DEFAULT_DATA.groups.find((g) => g.key === "storage");
+  ok(Boolean(storage?.entries.some((e) => e.id === "sessionStore")),
+    "Render table (layout data) carries the sessionStore family entry in the storage group");
+}
+ok(panelSources.includes('| "sessionStore"'), "ExperimentFeatureId union exposes sessionStore");
+ok(!panelSources.includes('| "eventsRotation"'), "union drops the standalone eventsRotation id (folded member since 561 M7)");
 // Task 345: the repair list must answer "which session, is it safe" before the
 // click — display name with the path demoted to the hover title, a status
 // badge, and a disabled repair on busy rows.
@@ -61,8 +71,10 @@ ok(
   panel.includes('window.confirm(t("settings.eventsRotation.card.busyConfirm"))'),
   "manual clicks on an in-use session confirm the collision risk first",
 );
-ok(settings.includes('selected === "sessionStore"') && settings.includes("<SessionEventsPanel"), "sessionStore detail card mounts the rotation panel");
-ok(settings.includes('import { SessionEventsPanel, type RotationMode }'), "SettingsPanel imports the panel with its literal mode type");
+// tl1309 卡②：SessionEventsPanel 随 eventsRotation 成员行迁入可观测性组
+// 「运行可观测」卡（runtimeObservability）——挂载面 needle 随迁。
+ok(labSection.includes('selected === "runtimeObservability"') && labSection.includes("<SessionEventsPanel"), "runtimeObservability detail card mounts the rotation panel (tl1309 move)");
+ok(panelSources.includes('import { SessionEventsPanel, type RotationMode }'), "the lab panel imports the panel with its literal mode type");
 
 // Bridge contract: three views + two setters, declared and mocked.
 const bridgeMethods = [
@@ -121,9 +133,16 @@ ok(panel.includes("onClose") && panel.includes("setDialogOpen(false)"), "Dialog 
 // card-button split is about busy, the menu must not gray out on
 // manual/auto). The old gate treated "manual" as off AND let "off" light up —
 // both wrong against the three-state mode.
+// tl1309 预存红修正+卡②：灯面自 724 起数据驱动（labLightKeys 谓词 + 布局
+// onKeys 引用），旧字面量形态 pin 迁移为双断言——sessionStorageNonDefault/
+// eventsRotationNonDefault 两谓词在表，前者仍挂 sessionStore 卡、后者随
+// eventsRotation 迁挂「运行可观测」卡。
 ok(
-  settings.includes('on: (s.sessionStorage ?? "v3_only") !== "v3_only" || (s.eventsAutoRotation ?? "manual") !== "off"'),
-  "sessionStore entry light reads the rotation mode (manual/auto lit, off gray, task 362 shape)",
+  /sessionStorageNonDefault: \(s: SettingsView\) => \(s\.sessionStorage \?\? "v3_only"\) !== "v3_only"/.test(readFileSync(resolve(testDir, "../lab/labLightKeys.ts"), "utf8")) &&
+    /eventsRotationNonDefault: \(s: SettingsView\) => \(s\.eventsAutoRotation \?\? "manual"\) !== "off"/.test(readFileSync(resolve(testDir, "../lab/labLightKeys.ts"), "utf8")) &&
+    labDefault.includes('onKeys: ["sessionStorageNonDefault"]') &&
+    labDefault.includes('"eventsRotationNonDefault"'),
+  "sessionStore/runtimeObservability lights read the rotation mode via registry predicates (manual/auto lit, off gray, task 362 shape)",
 );
 ok(
   !settings.includes('on: (s.eventsAutoRotation ?? "manual") !== "manual"'),

@@ -37,6 +37,10 @@
 //       （plan E pinned 常驻层索引化，未稳定档，默认关，boot 快照重启生效）。
 //   tl1256 调序：「记忆与上下文」组移基础设施组之后（原 automation 后
 //       efficiency 前，用户 20261029 令；yaml 同步移动）。
+//   tl1309 卡②：可观测性组 monitoring 散卡 + eventsRotation（自存储组
+//       sessionStore 卡迁出）+ trajectoryView（自界面组 viewLayout 卡迁出）
+//       三成员并「运行可观测」卡（runtimeObservability，容器档=成员最高档
+//       推荐；配置键/setter/徽章零变化）。
 
 import type { DictKey } from "../locales/en";
 import type { LabTier, TierFeatureId } from "../lib/experimentTiers";
@@ -126,14 +130,15 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "efficiency",
       labelKey: "settings.labGroup.efficiency",
       entries: [
-        // 任务 815：bash_heavy_guard（575）补实验室入口——卡成员行+灯
-        // （optimistic_write 家族伴生，无 member 行不挂独立徽章）。
-        { id: "optimisticParallel", labelKey: "settings.optimisticParallel", tier: "recommended", onKeys: ["optimisticWrite", "experimentalBashHeavyGuard"] },
         {
           id: "contextGovernance",
           labelKey: "settings.contextGovernance",
           // 任务 815：active_tab_resident 补灯（Task 347 附属行，Go 侧
           // cacheTuning renderKeys 家族已含，前端灯漏接）。
+          // tl1309：optimisticParallel 散条并入本卡（任务书①）——两键随迁
+          // 入灯（optimistic_write + bash_heavy_guard 575 家族伴生）；pane
+          // 三行（乐观并行主行 + 重 bash 守护 + 推理-only 续跑）迁卡尾，
+          // 配置键/setter 零变化。容器档 = 成员最高档（推荐，与并入前一致）。
           onKeys: [
             "experimentalCompactionParallel",
             "experimentalContextBudget",
@@ -142,12 +147,18 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalColdCacheCompact",
             "experimentalCacheTuning",
             "experimentalActiveTabResident",
+            "optimisticWrite",
+            "experimentalBashHeavyGuard",
           ],
           members: [
             { id: "compactionParallel", labelKey: "settings.compactionParallel", tier: "optional" },
             { id: "budgetControl", labelKey: "settings.contextBudget", tier: "recommended" },
             { id: "compressOpt", labelKey: "settings.proactiveCompact", tier: "recommended" },
             { id: "cacheTuning", labelKey: "settings.cacheTuning", tier: "optional" },
+            // tl1309：乐观并行（原独立卡，推荐档，并入本卡尾部；pane 内
+            // bash_heavy_guard / reasoning_only_continuation 为其家族伴生行，
+            // 不挂独立徽章——621 附属行口径）。
+            { id: "optimisticParallel", labelKey: "settings.optimisticParallel", tier: "recommended" },
           ],
         },
         {
@@ -228,7 +239,18 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。
         // tl 1125：标签页管理合并卡升「推荐」（用户 2026-10-24 指令，与视图
         // 布局一并；配置键/默认值/卡内成员档位零变化，只动容器徽章档）。
-        { id: "tabManagement", labelKey: "settings.tabManagement", tier: "recommended", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] },
+        // tl1309 卡④：todoSidebar（侧栏增强）散条并入本卡成员行——侧栏标签
+        // 显隐墙与标签栏压缩/权限指示同属标签页管理面（任务书④按先例归卡）；
+        // 灯键随迁。容器档 仍推荐。
+        {
+          id: "tabManagement",
+          labelKey: "settings.tabManagement",
+          tier: "recommended",
+          onKeys: ["experimentalTabCompress", "tabModeTintNonDefault", "experimentalTodoSidebar"],
+          members: [
+            { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended" },
+          ],
+        },
         // 任务 782：视图布局（合并卡，742 先例）——分栏 + 轨迹视图。容器档
         // =成员最高档（可选）；卡内两行各读各键各写各 setter，配置键零变化。
         // 任务 826：左右边栏 hover 展开两行入卡（左右独立两键两行，默认关；
@@ -242,10 +264,11 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.viewLayout",
           // tl 1125：视图布局合并卡升「推荐」（与标签页管理一并，同指令）。
           tier: "recommended",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite"],
+          // tl1309 卡②：trajectoryView（轨迹观测）迁出本卡成员表（入可观测
+          // 性组「运行可观测」卡，704 定位即「可观测性视图」）；灯键随迁出。
+          onKeys: ["experimentalSplitView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
-            { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
             { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" },
             { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" },
             { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" },
@@ -260,7 +283,24 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "draftRewrite", labelKey: "settings.draftRewrite", tier: "optional" },
           ],
         },
-        { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },
+        // tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
+        // 会话图墙 + 工作流面板 + 任务完成摘要三散条并卡：三者同为「运行状态/
+        // 产出的可视化面板面」（任务书④按先例归卡）。容器档 = 成员最高档
+        // （图墙推荐 → 推荐）；配置键零变化。
+        {
+          id: "sessionTaskPanels",
+          labelKey: "settings.sessionTaskPanels",
+          tier: "recommended",
+          onKeys: ["experimentalSessionWall", "experimentalWorkflowPanel", "experimentalCompletionSummary"],
+          members: [
+            { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended" },
+            // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎
+            // 未落地，当前为前端 fixture 预览+演示回放）。未稳定档。
+            { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable" },
+            // 任务 782 验收⑤曾钉「保持独立」——tl1309 分析结论按面板面归卡。
+            { id: "completionSummary", labelKey: "settings.completionSummary", tier: "optional" },
+          ],
+        },
         // 任务 782：检索与历史（合并卡）——历史提问选择器 + 搜索历史提问 +
         // 自动加载更早消息。容器档 =成员最高档（推荐）。
         {
@@ -274,10 +314,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "autoLoadOlder", labelKey: "settings.autoLoadOlder", tier: "optional" },
           ],
         },
-        { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended", onKeys: ["experimentalSessionWall"] },
-        // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎
-        // 未落地，当前为前端 fixture 预览+演示回放）。默认关=palette 不变。
-        { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable", onKeys: ["experimentalWorkflowPanel"] },
+        // tl1309 卡④：sessionWall/workflowPanel/completionSummary 三散条迁出——
+        // 并入上方「会话与任务面板」合并卡（sessionTaskPanels）。
         {
           id: "subagentSuite",
           labelKey: "settings.subagentSuite",
@@ -294,8 +332,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "subagentTps", labelKey: "settings.subagentTps", tier: "optional" },
           ],
         },
-        // 任务 782 验收⑤：任务完成摘要保持独立（Go 用量迁出后无合并对象）。
-        { id: "completionSummary", labelKey: "settings.completionSummary", tier: "optional", onKeys: ["experimentalCompletionSummary"] },
+        // tl1309 卡④：completionSummary 散条迁出——并入「会话与任务面板」卡。
         // 任务 782：输入与选区（合并卡）——草稿持久化 + 选区快捷操作。容器
         // 档 =成员最高档（可选）。
         {
@@ -327,11 +364,24 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "observability",
       labelKey: "settings.labGroup.observability",
       entries: [
+        // tl1309 卡②：运行可观测（合并卡，742/782/961 条目级合并先例）——
+        // 监控（monitoring，会话+性能监控面）+ events 瘦身（eventsRotation，
+        // 自存储组 sessionStore 卡迁入）+ 轨迹观测（trajectoryView，自界面组
+        // viewLayout 卡迁入）三成员并卡（任务书②：同属 events/perf 数据面）。
+        // 容器档 = 成员最高档（监控推荐 → 推荐）；配置键零变化。
         {
-          id: "monitoring",
-          labelKey: "settings.monitoring",
+          id: "runtimeObservability",
+          labelKey: "settings.runtimeObservability",
           tier: "recommended",
-          onKeys: ["experimentalSessionMonitor", "experimentalPerfMonitor"],
+          onKeys: ["experimentalSessionMonitor", "experimentalPerfMonitor", "eventsRotationNonDefault", "experimentalTrajectoryView"],
+          members: [
+            // 监控（原 observability 独立卡，推荐档，本件并卡）。
+            { id: "monitoring", labelKey: "settings.monitoring", tier: "recommended" },
+            // events 瘦身（原存储组 sessionStore 卡成员，迁入本卡）。
+            { id: "eventsRotation", labelKey: "settings.eventsRotation", tier: "optional" },
+            // 轨迹观测（原界面组 viewLayout 卡成员，迁入本卡）。
+            { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
+          ],
         },
         // 任务 783：「用量监测」合并卡（coding plan 用量架构）——GLM Plan
         // 用量（PlanUsageCard 已上线，provider 解析显示，无开关展示行）+
@@ -387,10 +437,12 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "sessionStore",
           labelKey: "settings.sessionStore",
-          onKeys: ["sessionStorageNonDefault", "eventsRotationNonDefault"],
+          // tl1309 卡②：eventsRotation（events 瘦身）迁出本卡成员表（入可
+          // 观测性组「运行可观测」卡）；灯键随迁出（容器档=成员最高档：未
+          // 稳定，不变）。
+          onKeys: ["sessionStorageNonDefault"],
           members: [
             { id: "sessionStorage", labelKey: "settings.sessionStorage", tier: "unstable" },
-            { id: "eventsRotation", labelKey: "settings.eventsRotation", tier: "optional" },
           ],
         },
         // 任务 846：配置数据目录可更改（未稳定档，默认关）。独立卡——迁移
@@ -413,41 +465,44 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // tl1287：DAG 迁移卡已转正迁出实验室——pane 与扫描/执行动作改宿主
         // 会话存储卡（sessionStore 分支内，DagMigrationSection），不再占
         // rail。rail 卡与 pane 白名单随之摘除 id（yaml 同步删除）。
-        // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
-        // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
-        // 任务 781：补 tier——闲置释放=recommended（rail 显推荐徽章）。
-        {
-          id: "idleReleaseMinutes",
-          labelKey: "settings.detachedIdleRelease",
-          kind: "param",
-          tier: "recommended",
-          onKeys: [],
-          fields: [{ id: "detachedIdleReleaseMinutes", input: "number" }],
-        },
-        // tl1286：GC 策略旋钮（替代 308-O3 软内存上限——低设即 GC 满跑）——
-        // 参数卡（无开关；0=跟随默认等效 100，设回 100 即回默认）。
-        // tier 延续 optional（rail 显可选徽章）。
-        {
-          id: "gcPercent",
-          labelKey: "settings.gcPercent",
-          kind: "param",
-          tier: "optional",
-          onKeys: [],
-          fields: [{ id: "gcPercent", input: "number" }],
-        },
+        // tl1309 卡③：GC 策略（tl1286）与闲置释放（775）两参数卡迁出本组——
+        // 入基础设施组「资源治理」卡成员行（同为内存/资源生命周期面；字段
+        // 绑定仍在 labParamFields 注册表，配置键/setter 零变化）。
       ],
     },
     {
       key: "infra",
       labelKey: "settings.labGroup.infra",
       // 任务 785：S1 常驻底座开关条目已随底座退役移除。
+      // tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——运行时
+      // 复用池 + 孤儿回收 + ACP 常驻监听 + 本地服务四散条，加 GC 策略与闲置
+      // 释放两参数卡（自存储组迁入，字段绑定仍在 labParamFields，值语义单源）
+      // 六成员并卡（任务书③：同为内存/资源生命周期面）。容器档 = 成员最高档
+      // （复用池稳定 → 稳定）；配置键/setter/徽章零变化。
       entries: [
-        { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "stable", onKeys: ["experimentalRuntimeReuse"] },
-        // 任务 790：ACP 常驻监听（与 yaml 同序同值——回退安全网）。
-        { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable", onKeys: ["experimentalACPListen"] },
+        {
+          id: "resourceGovernance",
+          labelKey: "settings.resourceGovernance",
+          tier: "stable",
+          onKeys: ["experimentalRuntimeReuse", "experimentalOrphanHandling", "experimentalACPListen", "experimentalLocalServer"],
+          members: [
+            // 运行时复用池（原 infra 独立卡，稳定档，1005 批1 转档）。
+            { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "stable" },
+            // 孤儿资源回收清理（原 infra 独立卡，推荐档——992 随复用池升推荐）。
+            { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended" },
+            // 后台会话闲置释放（原存储组 kind:param 参数卡，775 首批；推荐档）。
+            { id: "idleReleaseMinutes", labelKey: "settings.detachedIdleRelease", tier: "recommended" },
+            // GC 策略旋钮（原存储组 kind:param 参数卡，tl1286；可选档）。
+            { id: "gcPercent", labelKey: "settings.gcPercent", tier: "optional" },
+            // ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
+            { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable" },
+            // 本地服务（原 infra 独立卡，未稳定档）。
+            { id: "localServer", labelKey: "settings.localServer", tier: "unstable" },
+          ],
+        },
+        // 任务 564：路径规则——已退役只读展示行（551 范式），非资源生命周期面，
+        // 维持独立卡不入资源治理卡（tl1309 卡③范围裁决）。
         { id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] },
-        { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended", onKeys: ["experimentalOrphanHandling"] },
-        { id: "localServer", labelKey: "settings.localServer", tier: "unstable", onKeys: ["experimentalLocalServer"] },
         // 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原独立
         // tool-opt 组退役，labGroup.toolOpt 不再引用）；restartUpdate 归位回界面组
         // updateFeedback 卡（971 迁入撤销，onKeys/members 同步回迁）；宽松模式升可选。

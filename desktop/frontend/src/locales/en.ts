@@ -3112,7 +3112,7 @@ export const en = {
 "settings.heartbeatBackground.on": "On",
 "settings.heartbeatBackground.off": "Off",
 // 任务 1070: Standard-flow continuation total gate (off by default = pre-1070 behaviour).
-"settings.standardContinuation": "Standard conversation continuation (experimental)",
+"settings.standardContinuation": "Standard conversation continuation",
 "settings.standardContinuationHint": "Controls whether an ordinary (Standard) conversation may take bounded same-run continuation rounds (experimental, off by default). On: when the model leaves a todo list unexecuted or announces a next step and then stops, the host appends one continuation round; every round is announced, bounded by a round cap and a no-progress stop, and plan mode / read-only / no-mutation / sub-agent boundaries never continue. Off (default): an ordinary conversation keeps today's behaviour — a clean stop ends the turn with no auto-continuation (dedicated Goal/review/guardian flows are unaffected either way). Applies to the next run after you save, no restart.",
 "settings.standardContinuation.on": "On",
 "settings.standardContinuation.off": "Off",
@@ -5672,6 +5672,15 @@ export const en = {
   "settings.highSpeedModel.on": "On",
   "settings.highSpeedModel.off": "Off",
   "settings.monitoring": "Monitoring (session + performance)",
+  // tl1309 card 2: "Runtime Observability" merged card (monitoring + events slimming + trajectory).
+  "settings.runtimeObservability": "Runtime Observability",
+  "settings.runtimeObservabilityHint": "Aggregates three faces of the same events/perf data plane: session/performance monitoring (perf samples every 5s), event-log slimming via rotation, and the read-only trajectory projection of session data.",
+  // tl1309 card 3: "Resource Governance" merged card (reuse pool / orphan reclaim / ACP / local server / GC / idle release).
+  "settings.resourceGovernance": "Resource Governance",
+  "settings.resourceGovernanceHint": "Aggregates six memory & resource-lifecycle controls: the reuse pool and orphan reclaim govern the two ends of runtime-assembly lifecycle, the GC dial and idle release govern memory and resident sessions, the ACP listener and local server govern resident process resources.",
+  // tl1309 card 4: "Session & Task Panels" merged card (session wall / workflow panel / completion summary).
+  "settings.sessionTaskPanels": "Session & Task Panels",
+  "settings.sessionTaskPanelsHint": "Aggregates three run-state visualization surfaces: the session wall and workflow panel both open from the command palette, while the completion summary card lives in the transcript — all three are read-only over run state.",
   "settings.compressOpt": "Compaction optimization",
   "settings.budgetControl": "Budget control",
   "settings.proactiveCompact": "Proactive compact cooldown (configurable)",

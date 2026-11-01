@@ -46,15 +46,20 @@ ok(
   "Mocks exist with empty-state shapes",
 );
 
-// Mount point: monitoring detail card, after the heap export button.
-ok(settings.includes("import { PerfMemorySection } from \"./PerfMemorySection\""), "SettingsPanel imports the section");
+// Mount point: 运行可观测（runtimeObservability，tl1309 卡②自 monitoring 卡
+// 扩容）detail card, after the heap export button. tl1309 预存红修正：读面
+// 补齐懒加载 ExperimentalLabSection（tl1134 拆分漏跟——import 与挂载点都在
+// 其上，基线读 SettingsPanel 时三个 pin 假红）。
+const labSection = readFileSync(resolve(testDir, "../components/ExperimentalLabSection.tsx"), "utf8");
+const panelSources = settings + "\n" + labSection;
+ok(panelSources.includes("import { PerfMemorySection } from \"./PerfMemorySection\""), "the lab panel imports the section");
 ok(
-  settings.includes("<PerfMemorySection busy={busy} apply={apply} />") &&
-    settings.indexOf("<PerfMemorySection") > settings.indexOf('selected === "monitoring"') &&
-    settings.indexOf("<PerfMemorySection") < settings.indexOf('selected === "sessionStore"'),
-  "Section mounts inside the monitoring detail card",
+  labSection.includes("<PerfMemorySection busy={busy} apply={apply} />") &&
+    labSection.indexOf("<PerfMemorySection") > labSection.indexOf('selected === "runtimeObservability"') &&
+    labSection.indexOf("<PerfMemorySection") < labSection.indexOf('selected === "sessionStore"'),
+  "Section mounts inside the runtime-observability detail card",
 );
-ok(settings.includes("await app.SaveHeapProfile();"), "Original export-only heap button is preserved");
+ok(labSection.includes("await app.SaveHeapProfile();"), "Original export-only heap button is preserved");
 
 // Section behavior markers.
 ok(section.includes("] as const;") && section.includes("settings.perfMonitor.window.48h"), "Window selector carries the four 1h..48h steps as const");

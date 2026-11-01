@@ -25,7 +25,11 @@ const frontendSrc = fileURLToPath(new URL("../", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../../..", import.meta.url));
 const read = (p: string) => readFileSync(`${frontendSrc}${p}`, "utf8");
 
-const panel = read("components/SettingsPanel.tsx");
+// tl1309 预存红修正：tl1134 实验室 chunk 拆分后 bashHeavyGuard /
+// editEvidenceRelaxed / active_tab_resident 的 pane 行都落在懒加载的
+// ExperimentalLabSection.tsx（SettingsPanel 只挂 rail 与分派）——本测试的
+// panel 读面漏跟拆分，基线上四个 pin 假红。对齐 722/562/621 同款三文件拼接。
+const panel = read("components/SettingsPanel.tsx") + "\n" + read("components/ExperimentalLabSection.tsx") + "\n" + read("lab/labPaneRegistry.ts");
 const bridge = read("lib/bridge.ts");
 const viewTypes = read("lib/settingsViewTypes.ts");
 const types = read("lib/types.ts");
@@ -53,8 +57,10 @@ console.log("\ntask 815 lab entry completeness (config key ↔ lab entry)");
     ["pane row wires the setter", panel.includes("app.SetExperimentalBashHeavyGuard(on)")],
     ["pane row reads the view field", panel.includes("Boolean(s.experimentalBashHeavyGuard) === on")],
     ["light predicate", lightKeys.includes("experimentalBashHeavyGuard: (s: SettingsView) => Boolean(s.experimentalBashHeavyGuard)")],
-    ["yaml light ref", yaml.includes("onKeys: [optimisticWrite, experimentalBashHeavyGuard]")],
-    ["default light ref", labDefault.includes('"optimisticWrite", "experimentalBashHeavyGuard"')],
+    // tl1309：optimisticParallel 散条并入 contextGovernance 卡——两键随迁为
+    // 该卡 onKeys 尾段（灯语义不变：任一非默认即亮，卡=成员灯并集）。
+    ["yaml light ref (contextGovernance onKeys tail)", yaml.includes("optimisticWrite, experimentalBashHeavyGuard]")],
+    ["default light ref (contextGovernance onKeys tail)", /"experimentalActiveTabResident",\s*"optimisticWrite",\s*"experimentalBashHeavyGuard",/.test(labDefault)],
     ["Go renderKeys family (exemption dropped)", goRender.includes('"optimistic_write", "experimental_bash_heavy_guard"') && !goRender.includes('"experimental_bash_heavy_guard":')],
     ["locale zh/en/zh-TW", ["locales/zh.ts", "locales/en.ts", "locales/zh-TW.ts"].every((f) => read(f).includes('"settings.bashHeavyGuardHint"'))],
   ] as const;
@@ -83,7 +89,9 @@ console.log("\ntask 815 lab entry completeness (config key ↔ lab entry)");
 {
   ok(yaml.includes("onKeys: [experimentalSessionCollab, experimentalCascadeApproval]") && lightKeys.includes("experimentalCascadeApproval: (s: SettingsView) => Boolean(s.experimentalCascadeApproval)"),
     "cascade_approval light wired (sessionCollab card, Task 225 row)");
-  ok(yaml.includes("experimentalCacheTuning, experimentalActiveTabResident]") && lightKeys.includes("experimentalActiveTabResident: (s: SettingsView) => Boolean(s.experimentalActiveTabResident)"),
+  // tl1309：contextGovernance onKeys 尾段扩为乐观并行两键——本 pin 的
+  // 「数组以 active_tab_resident 收尾」needle 随迁（灯键本身仍在数组中）。
+  ok(yaml.includes("experimentalCacheTuning, experimentalActiveTabResident, optimisticWrite") && lightKeys.includes("experimentalActiveTabResident: (s: SettingsView) => Boolean(s.experimentalActiveTabResident)"),
     "active_tab_resident light wired (contextGovernance card, Task 347 row)");
   ok(yaml.includes("onKeys: [experimentalHighSpeedModel, experimentalFallbackModel]") && lightKeys.includes("experimentalFallbackModel: (s: SettingsView) => Boolean(s.experimentalFallbackModel)"),
     "fallback_model light wired (modelStrategy card, 722 点1 row)");

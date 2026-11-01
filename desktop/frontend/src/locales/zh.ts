@@ -3102,7 +3102,7 @@ export const zh: Record<DictKey, string> = {
 "settings.heartbeatBackground.on": "开",
 "settings.heartbeatBackground.off": "关",
 // 任务 1070：Standard 流续跑总闸（默认关 = 1070 前的行为）。
-"settings.standardContinuation": "普通对话续跑（实验）",
+"settings.standardContinuation": "普通对话续跑",
 "settings.standardContinuationHint": "控制普通对话（Standard 流）是否允许有界的同回合续跑（实验特性，默认关闭）。开启：当模型「列了待办但没执行」「宣布了下一步却直接收尾」时，宿主会自动补一轮继续，每次续跑都有提示，且受次数上限与「无进展即停」约束；计划模式、只读、禁止变更、子代理等边界一律不续跑。关闭（默认）：普通对话保持现状——干净收尾即结束回合，不会自动续跑（Goal/评审/守护等专用流程不受此开关影响）。保存后对下一次回合生效，无需重启。",
 "settings.standardContinuation.on": "开",
 "settings.standardContinuation.off": "关",
@@ -5657,6 +5657,15 @@ export const zh: Record<DictKey, string> = {
   "settings.highSpeedModel.on": "开启",
   "settings.highSpeedModel.off": "关闭",
   "settings.monitoring": "监控（会话 + 性能）",
+  // tl1309 卡②：「运行可观测」合并卡（监控 + events 瘦身 + 轨迹观测）。
+  "settings.runtimeObservability": "运行可观测",
+  "settings.runtimeObservabilityHint": "聚合会话/性能监控、事件日志瘦身与轨迹投影三面：监控看运行指标（perf 每 5s 采样），events 轮转给事件日志瘦身，轨迹视图是会话数据面的只读投影——三者同属 events/perf 数据面。",
+  // tl1309 卡③：「资源治理」合并卡（复用池/孤儿回收/监听/本地服务/GC/闲置释放）。
+  "settings.resourceGovernance": "资源治理",
+  "settings.resourceGovernanceHint": "聚合内存与资源生命周期六项：运行时复用池与孤儿回收管运行时装配的复用与回收两端，GC 策略与闲置释放治理内存与驻留会话，ACP 监听与本地服务治理常驻进程资源。",
+  // tl1309 卡④：「会话与任务面板」合并卡（会话图墙/工作流面板/完成摘要）。
+  "settings.sessionTaskPanels": "会话与任务面板",
+  "settings.sessionTaskPanelsHint": "聚合三张运行状态可视化面板：会话图墙与工作流面板同走命令面板入口，任务完成摘要挂在转录里——三者都只读运行状态、不改任何行为。",
   "settings.compressOpt": "压缩优化",
   "settings.budgetControl": "预算控制",
   "settings.proactiveCompact": "主动压缩冷却（可配）",

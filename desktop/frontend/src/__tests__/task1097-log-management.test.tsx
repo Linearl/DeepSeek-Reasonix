@@ -30,7 +30,12 @@ function ok(value: boolean, label: string) {
 const here = fileURLToPath(new URL(".", import.meta.url));
 const frontendRoot = `${here}../..`;
 const yamlText = readFileSync(`${frontendRoot}/src/lab/lab-layout.yaml`, "utf8");
-const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8");
+// tl1309 预存红修正：tl1134 chunk 拆分后 LAB_PANE_IDS 白名单在
+// labPaneRegistry.ts、LogManagementLabPane 在懒加载 ExperimentalLabSection.tsx
+// ——本测试只读 SettingsPanel.tsx，基线上四个 pin 假红。对齐 722/562 同款拼接。
+const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8")
+  + "\n" + readFileSync(`${frontendRoot}/src/components/ExperimentalLabSection.tsx`, "utf8")
+  + "\n" + readFileSync(`${frontendRoot}/src/lab/labPaneRegistry.ts`, "utf8");
 const registry = readFileSync(`${frontendRoot}/src/lab/labParamFields.ts`, "utf8");
 const view = readFileSync(`${frontendRoot}/src/lib/settingsViewTypes.ts`, "utf8");
 const types = readFileSync(`${frontendRoot}/src/lib/types.ts`, "utf8");

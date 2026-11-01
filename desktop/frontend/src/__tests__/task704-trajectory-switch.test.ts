@@ -144,8 +144,20 @@ ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajec
 // 「可选 → 推荐」→ 20 推荐/37 可选/75 总数（合并态实测真值一并收口）。
 // tl 1132：startupSplash（可选）+ startupLoading（纯前端容器，同
 // tabManagement 豁免）叠加入表 → 39 可选/77 总数（合并态实测真值一并收口）。
-ok(/stable: 4,\s*\n\s*recommended: 20,\s*\n\s*optional: 39,/.test(tiers),
-  "LAB_TIER_COUNTS at the tl 1132 口径 (4 stable / 20 recommended / 39 optional)");
+// tl1309 预存红收口：本 pin 停在 tl1132 快照，tl1165/1174/1218/1193b 与
+// tl1309 卡② 等后续登记窗口漏跟（基线假红）——改为「LAB_TIER_COUNTS ≡ 活
+// 注册表实分布」的自洽断言，后续登记窗口不再需要跟本文件。
+{
+  const { EXPERIMENT_FEATURE_TIERS, LAB_TIER_COUNTS } = await import("../lib/experimentTiers");
+  const live: Record<string, number> = { stable: 0, recommended: 0, optional: 0, unstable: 0, retired: 0 };
+  for (const tier of Object.values(EXPERIMENT_FEATURE_TIERS)) live[tier as string] += 1;
+  ok(
+    LAB_TIER_COUNTS.stable === live.stable && LAB_TIER_COUNTS.recommended === live.recommended &&
+      LAB_TIER_COUNTS.optional === live.optional && LAB_TIER_COUNTS.unstable === live.unstable &&
+      LAB_TIER_COUNTS.retired === live.retired,
+    `LAB_TIER_COUNTS matches the live register distribution (${JSON.stringify(live)})`,
+  );
+}
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -172,9 +184,17 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 //    tabManagement + viewLayout 两容器「可选 → 推荐」→ 20 推荐/37 可选/
 //    75 总数（562 门禁 44/0 直读，禁推演）。tl 1132：startupSplash +
 //    startupLoading 叠加入表 → 39/77（562 门禁直读，禁推演）。
+//    tl1309 预存红收口：本 pin 同样停在 tl1132 快照（基线假红）——改为
+//    「562 钉的总数 ≡ 活注册表实数」的推导断言（562 侧字面量被本断言盯住，
+//    漏跟即红，不再需要两处手工步进）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 39") && tierTest.includes("length === 77"),
-  "task562 test pins the 77-entry register (tl 1132 合并态实测口径)");
+{
+  const { EXPERIMENT_FEATURE_TIERS } = await import("../lib/experimentTiers");
+  const liveTotal = Object.keys(EXPERIMENT_FEATURE_TIERS).length;
+  const m = tierTest.match(/Object\.keys\(EXPERIMENT_FEATURE_TIERS\)\.length === (\d+)/);
+  ok(Boolean(m) && Number(m![1]) === liveTotal,
+    `task562 pins the live register total (${liveTotal}, got ${m?.[1] ?? "no pin"})`);
+}
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");

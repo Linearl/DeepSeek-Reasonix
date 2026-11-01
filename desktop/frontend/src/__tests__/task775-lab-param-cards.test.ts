@@ -45,7 +45,9 @@ const paneIds = new Set<string>();
   if (m) for (const id of m[1].matchAll(/"([a-zA-Z]+)"/g)) paneIds.add(id[1]);
 }
 
-// ── ② 首批迁移：两参数卡进存储组，yaml ≡ 内置默认 ──
+// ── ② 首批迁移 → tl1309 卡③ 并卡：两参数（闲置释放/GC 策略）以成员行落
+//    「资源治理」卡（infra 组），字段绑定不变（值语义单源在 labParamFields），
+//    yaml ≡ 内置默认 ──
 {
   const resolved = resolveLabLayout(yamlText, { allowedEntryIds: paneIds });
   ok(resolved.source === "yaml" && resolved.warnings.length === 0,
@@ -54,25 +56,26 @@ const paneIds = new Set<string>();
     "yaml structure equals the built-in default (param cards included)");
 
   const storage = LAB_LAYOUT_DEFAULT_DATA.groups.find((g) => g.key === "storage");
-  // 任务 846：homePointer 独立卡入存储组（3→4）；815 收口本测试未跟的 pin。
-  // tl-1174 jsonlZstd 与 tl1227 dagMigration 先后入组（4→6），此计数钉当时未跟——
-  // tl1286 预存红修正：现为 6 项（sessionStore/homePointer/jsonlZstd/dagMigration/
-  // idleReleaseMinutes/gcPercent）。
-  ok(storage?.entries.length === 6, "storage group carries sessionStore + homePointer + jsonlZstd + dagMigration + two param cards");
-  const idle = storage?.entries.find((e) => e.id === "idleReleaseMinutes");
-  const mem = storage?.entries.find((e) => e.id === "gcPercent");
-  ok(idle?.kind === "param" && JSON.stringify(idle.fields) === JSON.stringify([{ id: "detachedIdleReleaseMinutes", input: "number" }]),
-    "idleReleaseMinutes is a param card with the detachedIdleReleaseMinutes number field");
-  ok(mem?.kind === "param" && JSON.stringify(mem.fields) === JSON.stringify([{ id: "gcPercent", input: "number" }]),
-    "gcPercent is a param card with the gcPercent number field");
-  ok(idle?.labelKey === "settings.detachedIdleRelease" && mem?.labelKey === "settings.gcPercent",
-    "param cards label the existing settings keys (零新增文案)");
-  ok(idle && !idle.members?.length && mem && !mem.members?.length,
-    "param cards carry no folded members (参数卡无开关无子项)");
-  ok(idle && labEntryLightOn(idle, {} as never) === false,
-    "param card light reads off (无开关 → 灯常灭，不进组点亮计数)");
-  ok(Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "idleReleaseMinutes")) && Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "gcPercent")),
-    "both param cards are addressable through findLabEntry (搜索/rail 同一布局)");
+  // tl1309 卡③：GC 策略/闲置释放两参数卡迁出存储组——存储组回落
+  // sessionStore/homePointer/jsonlZstd 三项。
+  ok(storage?.entries.length === 3, "storage group carries sessionStore + homePointer + jsonlZstd (tl1309 card-3 move)");
+  const infra = LAB_LAYOUT_DEFAULT_DATA.groups.find((g) => g.key === "infra");
+  const gov = infra?.entries.find((e) => e.id === "resourceGovernance");
+  // 「资源治理」合并卡：六成员（任务书③），两参数 id 以成员行承载（tier 随迁：
+  // 闲置释放 recommended / GC 可选——与原独立参数卡 rail 徽章一致）。
+  ok(gov?.tier === "stable" && gov.labelKey === "settings.resourceGovernance",
+    "resourceGovernance is the stable-container merged card in the infra group");
+  const idle = gov?.members?.find((m) => m.id === "idleReleaseMinutes");
+  const mem = gov?.members?.find((m) => m.id === "gcPercent");
+  ok(idle?.tier === "recommended" && idle.labelKey === "settings.detachedIdleRelease",
+    "idleReleaseMinutes rides resourceGovernance as a recommended member (tier/label unchanged)");
+  ok(mem?.tier === "optional" && mem.labelKey === "settings.gcPercent",
+    "gcPercent rides resourceGovernance as an optional member (tier/label unchanged)");
+  ok(gov?.members?.length === 6,
+    "resourceGovernance carries exactly six members (runtimeReuse/orphanHandling/idleReleaseMinutes/gcPercent/acpListen/localServer)");
+  ok(Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance")) &&
+     !findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "idleReleaseMinutes") && !findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "gcPercent"),
+    "the merged card is addressable through findLabEntry; the two param ids are members, not entries");
 }
 
 // ── ②b 绑定注册表：值语义收拢在代码 ──
@@ -95,7 +98,10 @@ const paneIds = new Set<string>();
 // ── ③ SettingsPanel：硬编码行退役 + 通用参数渲染接线 ──
 {
   const scStart = panel.indexOf('{selected === "sessionCollab" && (');
-  const scEnd = panel.indexOf('{selected === "optimisticParallel" && (', scStart);
+  // tl1309：optimisticParallel 独立 pane 退役（并入 contextGovernance 卡）——
+  // 边界 needle 随迁下一分支（needle 消失=indexOf -1=slice 退化=断言假绿，
+  // 742 needle-随迁同款教训）。
+  const scEnd = panel.indexOf('{selected === "autopilot" && (', scStart);
   const sessionCollabPane = panel.slice(scStart, scEnd);
   ok(!sessionCollabPane.includes("detachedIdleRelease") && !sessionCollabPane.includes("gcPercent"),
     "the sessionCollab card no longer hosts the two parameter rows");
@@ -105,23 +111,32 @@ const paneIds = new Set<string>();
     "the pane dispatch routes param cards to the generic data-driven renderer");
   ok(panel.includes("import { LAB_PARAM_FIELDS } from \"../lab/labParamFields\";"),
     "the panel imports the param binding registry");
-  ok(paneIds.has("idleReleaseMinutes") && paneIds.has("gcPercent"),
-    "both param card ids are in the pane whitelist");
-  // tl1286 预存红修正：tl1227 往 union 尾部追加 "dagMigration" 时分号随行迁移，
-  // 旧钉 '| "usageMonitoring";' 自此失配——改为不含分号的 id 本体验钉。
-  ok(panel.includes('| "idleReleaseMinutes"\n  | "gcPercent"') && panel.includes('| "usageMonitoring"'),
-    "both param card ids are in the pane union (783 appends usageMonitoring after them)");
+  // tl1309 卡③：两参数卡退役为「资源治理」成员行——pane 白名单/union id 摘除
+  // （961 先例；字段值语义仍单源在 labParamFields，pane 行经注册表绑定渲染）。
+  ok(!paneIds.has("idleReleaseMinutes") && !paneIds.has("gcPercent"),
+    "both param card ids left the pane whitelist (tl1309 member fold)");
+  ok(!panel.includes('| "idleReleaseMinutes"') && !panel.includes('| "gcPercent"'),
+    "both param card ids left the pane union (tl1309 member fold)");
+  ok(panel.includes('| "resourceGovernance"') && panel.includes('"resourceGovernance",'),
+    "the merged container id entered the pane union + whitelist");
+  ok(panel.includes('labLabel("idleReleaseMinutes"') && panel.includes('labLabel("gcPercent"'),
+    "both param member rows wrap their labels in labLabel (行级徽章保留，562⑤/621 口径)");
+  ok(panel.includes("LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.write") && panel.includes("LAB_PARAM_FIELDS.gcPercent.write"),
+    "the two param member rows read/write through the registry bindings (值语义单源)");
 }
 
 // ── ① 机制安全网：参数卡引用越界 ⇒ 整份回退默认 ──
 {
+  // tl1309 卡③：fixture 卡 id 换仍在白名单内的参数卡 logManagement（机制
+  // 断言不变——resolver 只核 kind/fields/引用，不核具体 id；字段仍用
+  // detachedIdleReleaseMinutes number 绑定核对注册表一致性）。
   const base = `version: 1
 groups:
   - key: storage
     labelKey: settings.labGroup.storage
     entries:
-      - id: idleReleaseMinutes
-        labelKey: settings.detachedIdleRelease
+      - id: logManagement
+        labelKey: settings.logManagement
         kind: param
         fields:
           - id: detachedIdleReleaseMinutes

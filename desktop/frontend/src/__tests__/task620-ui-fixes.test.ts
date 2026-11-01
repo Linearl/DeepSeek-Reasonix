@@ -19,7 +19,12 @@ function ok(value: boolean, label: string) {
 }
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
-const panel = read("../components/SettingsPanel.tsx");
+// tl1309 预存红修正：tl1134 chunk 拆分后 todoSidebar/subagentSuite 的 pane
+// 分支在懒加载 ExperimentalLabSection.tsx——本测试只读 SettingsPanel.tsx，
+// 基线上「subagent-suite card branch located」等 pin 假红。对齐 722/562 同款拼接。
+const panel = read("../components/SettingsPanel.tsx")
+  + "\n" + read("../components/ExperimentalLabSection.tsx")
+  + "\n" + read("../lab/labPaneRegistry.ts");
 const inbox = read("../components/CollabInboxPanel.tsx");
 const css = read("../styles.css");
 
@@ -43,7 +48,9 @@ ok(inbox.includes("collabInbox.cleaned") && inbox.includes("collabInbox.cleanNot
 
 // ② 子代理标签 checkbox 移墙 + 前置闸。
 {
-  const sidebarCard = cardSlice('{selected === "todoSidebar" && (', '{selected === "subagentSuite" && (');
+  // tl1309 卡④：todoSidebar 面板分支退役并入 tabManagement 卡——切片随迁
+  // tabManagement→smartAutomation（标签显隐墙现在挂标签页管理卡尾部）。
+  const sidebarCard = cardSlice('{selected === "tabManagement" && (', '{selected === "smartAutomation" && (');
   ok(sidebarCard.includes('["subagents", "workspace.subagentsTab"]'),
     "the subagents tab row lives in the sidebar-enhancement card's visibility wall");
   ok(sidebarCard.includes('tabId === "subagents" && !Boolean(s.experimentalSubagentPanel)'),
@@ -52,7 +59,9 @@ ok(inbox.includes("collabInbox.cleaned") && inbox.includes("collabInbox.cleanNot
     "the wall names the switch to flip when the subagent panel is off");
   // 742 合卡后 tabCompress 面板分支已并入 tabManagement，subagentSuite 的
   // 下一分支变为 sessionWall——切片终点随分支序更新（778 收口）。
-  const subagentCard = cardSlice('{selected === "subagentSuite" && (', '{selected === "sessionWall" && (');
+  // tl1309 卡④：sessionWall 分支退役入 sessionTaskPanels（其在源码序中位于
+  // subagentSuite 之前，不能作终点）——终点随迁物理下一分支 startupLoading。
+  const subagentCard = cardSlice('{selected === "subagentSuite" && (', '{selected === "startupLoading" && (');
   ok(subagentCard.length > 0, "the subagent-suite card branch located");
   ok(!subagentCard.includes('isDockTabHidden("subagents")'),
     "the subagent-suite card no longer renders its own tab-visibility checkbox");

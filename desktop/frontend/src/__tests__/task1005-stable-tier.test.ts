@@ -56,8 +56,10 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // 75，合并态实测真值一并收口）。tl 1132：startupSplash（可选）+
   // startupLoading（纯前端容器，同 tabManagement 豁免）叠加入表——
   // 可选 37→39、总数 75→77。
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 21 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/20 推荐/39 可选/13 未稳定/1 退役 (tl 1132 步进)");
+  // tl1309 卡③：resourceGovernance（稳定容器）+ gcPercent（可选）+
+  // idleReleaseMinutes（推荐）三 id 入表——稳定 4→5、推荐 22→23、可选 44→45。
+  ok(LAB_TIER_COUNTS.stable === 5 && LAB_TIER_COUNTS.recommended === 24 && LAB_TIER_COUNTS.optional === 45 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 5 稳定/24 推荐/45 可选/12 未稳定/1 退役 (tl1309 卡④步进)");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");
@@ -71,21 +73,27 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   ].every((s) => goRender.includes(s)) && goRender.includes('LabTierStable      LabTier = "stable"'),
     "Go labFeatureTiers registers the four as LabTierStable");
   // 布局数据两份同源：四项 tier stable（yaml 与内置默认同构由 722 锚守护，
-  // 这里钉四项本身）。
+  // 这里钉四项本身）。tl1309 卡③：runtimeReuse 独立卡退役为「资源治理」卡
+  // 成员行——flatTiers 同步收录成员面（成员 tier 也入映射，登记语义不变）。
   const yamlText = read("src/lab/lab-layout.yaml");
   const paneIds = new Set(LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g) => g.entries.map((e) => e.id)));
   const resolved = resolveLabLayout(yamlText, { allowedEntryIds: paneIds });
   const flatTiers = (layout: typeof LAB_LAYOUT_DEFAULT_DATA) =>
-    layout.groups.flatMap((g) => g.entries.map((e) => [e.id, e.tier ?? null] as const)).filter(([id]) => four.includes(id as TierFeatureId));
+    layout.groups.flatMap((g) => g.entries.flatMap((e) => [
+      [e.id, e.tier ?? null] as const,
+      ...(e.members ?? []).map((m) => [m.id, m.tier] as const),
+    ])).filter(([id]) => four.includes(id as TierFeatureId));
   assert.deepEqual(flatTiers(resolved.layout), flatTiers(LAB_LAYOUT_DEFAULT_DATA));
   ok(resolved.source === "yaml" && flatTiers(resolved.layout).every(([, tier]) => tier === "stable"),
-    "yaml and built-in default carry the four at stable (resolved from yaml)");
+    "yaml and built-in default carry the four at stable (entry or member, resolved from yaml)");
   // 徽章聚合：autopilot 卡头单枚稳定；sessionCollab 卡头稳定压过可选子项。
+  // tl1309 卡③：runtimeReuse 独立卡退役为「资源治理」卡成员行——稳定档聚合
+  // 面随迁容器卡（成员最高档=稳定，聚合方向与四卡各自单枚稳定同源）。
   ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "autopilot") === "stable" &&
      labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "sessionCollab") === "stable" &&
      labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "fullAccess") === "stable" &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "runtimeReuse") === "stable",
-    "rail aggregation yields the single stable badge for all four cards");
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance") === "stable",
+    "rail aggregation yields the single stable badge for the stable cards (tl1309: runtimeReuse rides resourceGovernance)");
   // TierBadge 渲染 stable（轻渲染：类名 + 文案 + tooltip 键）。
   const dom = new JSDOM("<div id='root'></div>");
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });

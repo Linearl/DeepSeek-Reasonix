@@ -36,8 +36,10 @@ console.log("\ntask 604 lab picks settings-location hint");
     if (!loc) return "";
     return [zh["settings.title"], zh["settings.tab.experimental"], zh[loc[0]], zh[loc[1]]].join(" → ");
   };
-  ok(path("sessionWall") === "设置 → 实验室 → 界面 → 会话图墙",
-    `sampled sessionWall resolves to 设置 → 实验室 → 界面 → 会话图墙 (got ${path("sessionWall")})`);
+  // tl1309 卡④：会话图墙并入「会话与任务面板」卡——采样路径指到新卡（742
+  // tabCompress → tabManagement 同款）。
+  ok(path("sessionWall") === "设置 → 实验室 → 界面 → 会话与任务面板",
+    `sampled sessionWall resolves to 设置 → 实验室 → 界面 → 会话与任务面板 (got ${path("sessionWall")})`);
   ok(path("restartUpdate") === "设置 → 实验室 → 界面 → 更新与反馈",
     `sampled restartUpdate (561 merged member) resolves to 更新与反馈 card (got ${path("restartUpdate")})`);
   ok(path("budgetControl") === "设置 → 实验室 → 提效 → 上下文治理",

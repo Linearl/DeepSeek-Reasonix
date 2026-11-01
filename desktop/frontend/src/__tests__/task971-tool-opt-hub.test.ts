@@ -59,7 +59,9 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
 {
   // restartUpdate 迁出 updateFeedback pane：该 pane 不再含 restartUpdate 行。
   const ufStart = panel.indexOf('{selected === "updateFeedback" && (');
-  const ufEnd = panel.indexOf('{selected === "monitoring" && (');
+  // tl1309 卡②：monitoring pane 退役改名 runtimeObservability——endMarker
+  // needle 随迁（needle 消失=indexOf -1=slice 退化=断言假绿/假红）。
+  const ufEnd = panel.indexOf('{selected === "runtimeObservability" && (');
   ok(ufStart >= 0 && ufEnd > ufStart, "updateFeedback pane branch located");
   const ufSlice = panel.slice(ufStart, ufEnd);
   ok(!ufSlice.includes("app.SetExperimentalRestartUpdate(on)"),

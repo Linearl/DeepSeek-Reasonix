@@ -116,7 +116,10 @@ items:
   const msStart = panel.indexOf('{selected === "modelStrategy" && (');
   const msEnd = panel.indexOf('{selected === "contextGovernance" && (', msStart);
   const scStart = panel.indexOf('{selected === "sessionCollab" && (');
-  const scEnd = panel.indexOf('{selected === "optimisticParallel" && (', scStart);
+  // tl1309：optimisticParallel 独立 pane 退役（并入 contextGovernance）——
+  // 边界 needle 随迁到分支序里的下一张卡（needle 不存在时 indexOf 返回 -1
+  // 会让 slice 退化，测试会假绿，742 needle-随迁同款教训）。
+  const scEnd = panel.indexOf('{selected === "autopilot" && (', scStart);
   ok(panel.slice(msStart, msEnd).includes('t("settings.fallbackModelSwitch")'),
     "点1: the fallback-model switch row lives in the modelStrategy card");
   ok(!panel.slice(scStart, scEnd).includes("fallbackModelSwitch"),
