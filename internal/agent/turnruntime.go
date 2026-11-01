@@ -189,7 +189,9 @@ type terminalProtocolState struct {
 	// rejectedTemplateBlocks counts fixed provider rejection sentences seen
 	// this run (task 286 / #10721). Kept separate from emptyFinalBlocks: the
 	// causes differ (provider filter vs no output), the ceilings differ, and
-	// mixing them would let one budget silently consume the other.
+	// mixing them would let one budget silently consume the other. It is also
+	// the ladder position for the tl-1314 recovery rounds: 1 → rewrite round,
+	// 2 → degrade-to-file round, 3 → run ends, nothing injected.
 	rejectedTemplateBlocks int
 	// readinessAdvisories counts turns that ended with an unmet readiness contract
 	// carried forward instead of pausing. Unattended (autopilot) runs advise and

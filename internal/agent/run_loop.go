@@ -524,10 +524,18 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	// fall through as a visible final answer and end the turn silently — no
 	// recognition, no retry, no notice. Recognize it BEFORE the readiness /
 	// grace / empty-final paths (they would all happily deliver it), emit a
-	// searchable notice, replay the request once, and end as an error if the
-	// provider rejects again. The counter is independent of emptyFinalBlocks
-	// (different cause, different ceiling), and the pending rejection template
-	// itself is never committed as the model's reply.
+	// searchable notice, and end as an error once the recovery ladder is
+	// exhausted. The counter is independent of emptyFinalBlocks (different
+	// cause, different ceiling), and the pending rejection template itself is
+	// never committed as the model's reply.
+	//
+	// Task 1314 turned the single generic replay into a two-round ladder
+	// (hard cap maxRejectedRecoveryRounds = 2, no third replay exists):
+	// rejection #1 injects a rewrite instruction (shorter + de-sensitized +
+	// paraphrased), rejection #2 injects the degrade fallback (full content
+	// into a workspace file, reply body reduced to a progress summary), and
+	// rejection #3 ends the run — the 2026-10-31 incident showed the old
+	// same-content replay loop stalling 1.5h against a fixed provider filter.
 	if isKnownProviderRejection(text) {
 		state.terminal.rejectedTemplateBlocks++
 		providerName := ""
@@ -541,10 +549,26 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			Text:   providerRejectionNotice(),
 			Detail: providerRejectionDetail(providerName, strings.TrimSpace(text)),
 		})
-		if state.terminal.rejectedTemplateBlocks >= maxRejectedTemplateBlocks {
-			return false, fmt.Errorf("provider rejected the request with a fixed safety sentence %d times and the replay was also rejected; the answer was not delivered", state.terminal.rejectedTemplateBlocks)
+		if state.terminal.rejectedTemplateBlocks > maxRejectedRecoveryRounds {
+			return false, fmt.Errorf("provider rejected the request with a fixed safety sentence %d times; the rewrite replay and the file-dump fallback replay were both rejected too, so the answer was not delivered. Next: send a new request with the sensitive wording removed or the task split into smaller pieces", state.terminal.rejectedTemplateBlocks)
 		}
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(providerRejectionRetryMessage())))
+		stage := state.terminal.rejectedTemplateBlocks
+		recoveryMsg := providerRejectionRewriteMessage()
+		recoveryCode := event.NoticeCodeProviderRejectionRewrite
+		recoveryText := providerRejectionRewriteNotice()
+		if stage >= 2 {
+			recoveryMsg = providerRejectionDegradeMessage()
+			recoveryCode = event.NoticeCodeProviderRejectionDegrade
+			recoveryText = providerRejectionDegradeNotice()
+		}
+		a.svc.sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelInfo,
+			Code:   recoveryCode,
+			Text:   recoveryText,
+			Detail: providerRejectionStageDetail(stage),
+		})
+		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(recoveryMsg)))
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}

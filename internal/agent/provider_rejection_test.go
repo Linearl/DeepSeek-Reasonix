@@ -53,10 +53,25 @@ func (p *rejectionProvider) Stream(ctx context.Context, req provider.Request) (<
 	return ch, nil
 }
 
-// The rejection must never be delivered silently: one replay, a searchable
-// notice, and a closed error when the provider rejects again — not a final
-// answer, not an unbounded loop.
-func TestProviderRejectionReplaysOnceThenFailsClosed(t *testing.T) {
+// userInstructions returns the content of every host-generated user message
+// matching needle, in conversation order.
+func userInstructions(t *testing.T, a *Agent, needle string) []string {
+	t.Helper()
+	var found []string
+	for _, m := range a.Session().Snapshot() {
+		if m.Role == provider.RoleUser && strings.Contains(m.Content, needle) {
+			found = append(found, m.Content)
+		}
+	}
+	return found
+}
+
+// Task 1314: the rejection ladder is bounded by construction — rejection #1
+// injects the rewrite instruction, rejection #2 injects the degrade fallback
+// (content into a file, reply reduced to a progress summary), and rejection
+// #3 ends the run as an error. The third rejection must not inject anything:
+// no third host instruction, no fourth provider call, never a loop.
+func TestProviderRejectionLadderRewriteThenDegradeThenHardCap(t *testing.T) {
 	sink := &incompleteReadEventSink{}
 	prov := &rejectionProvider{}
 	reg := tool.NewRegistry()
@@ -64,29 +79,115 @@ func TestProviderRejectionReplaysOnceThenFailsClosed(t *testing.T) {
 
 	err := a.Run(context.Background(), "list my tasks")
 	if err == nil {
-		t.Fatal("repeated provider rejection must end the run as an error, not as a delivered answer")
+		t.Fatal("a third provider rejection must end the run as an error, not as a delivered answer")
 	}
 	if !strings.Contains(err.Error(), "provider rejected") {
 		t.Fatalf("error = %v, want the provider-rejection failure", err)
 	}
-	if prov.call != 2 {
-		t.Fatalf("provider calls = %d, want exactly 2 (one bounded replay, no loop)", prov.call)
+	// Hard cap: 1 original round + exactly 2 bounded recovery rounds. A 4th
+	// call would mean the ladder kept replaying after the cap.
+	if prov.call != 3 {
+		t.Fatalf("provider calls = %d, want exactly 3 (original + rewrite round + degrade round, cap enforced)", prov.call)
 	}
 	if !sink.hasCode(event.NoticeCodeProviderRejection) {
 		t.Fatal("no provider_rejection notice — the rejection was silent")
 	}
-	// Delivery contract is proven by the error above: the run did NOT end on
-	// the canned sentence. The retry instruction reached the model as a
-	// host-generated turn message:
-	sawReplayInstruction := false
-	for _, m := range a.Session().Snapshot() {
-		if m.Role == provider.RoleUser && strings.Contains(strings.ToLower(m.Content), "replay the answer once") {
-			sawReplayInstruction = true
-			break
+	if !sink.hasCode(event.NoticeCodeProviderRejectionRewrite) {
+		t.Fatal("no provider_rejection_rewrite notice — the stage-1 rewrite round never fired")
+	}
+	if !sink.hasCode(event.NoticeCodeProviderRejectionDegrade) {
+		t.Fatal("no provider_rejection_degrade notice — the stage-2 degrade round never fired")
+	}
+	// Exactly two host recovery instructions, in ladder order: rewrite first,
+	// degrade second, and nothing after the cap.
+	rewrites := userInstructions(t, a, "rewrite the answer once")
+	degrades := userInstructions(t, a, "file-write tool")
+	if len(rewrites) != 1 || len(degrades) != 1 {
+		t.Fatalf("host instructions: %d rewrite, %d degrade, want exactly 1 each", len(rewrites), len(degrades))
+	}
+	snapshot := a.Session().Snapshot()
+	rewriteIdx, degradeIdx := -1, -1
+	for i, m := range snapshot {
+		if m.Role == provider.RoleUser && strings.Contains(m.Content, "rewrite the answer once") {
+			rewriteIdx = i
+		}
+		if m.Role == provider.RoleUser && strings.Contains(m.Content, "file-write tool") {
+			degradeIdx = i
 		}
 	}
-	if !sawReplayInstruction {
-		t.Fatal("no host replay instruction in the session — the bounded retry was never requested")
+	if rewriteIdx == -1 || degradeIdx == -1 || rewriteIdx > degradeIdx {
+		t.Fatalf("ladder order broken: rewrite at %d, degrade at %d, want rewrite before degrade", rewriteIdx, degradeIdx)
+	}
+}
+
+// The ladder stops as soon as a recovery round succeeds: one rejection, the
+// rewrite round produces a real answer, and the degrade stage must never arm.
+func TestProviderRejectionRewriteRoundRecoversAndLadderStops(t *testing.T) {
+	const template = "The request was rejected because it was considered high risk"
+	sink := &incompleteReadEventSink{}
+	prov := &scriptedProvider{name: "p", turns: [][]provider.Chunk{
+		{{Type: provider.ChunkText, Text: template}, {Type: provider.ChunkDone}},
+		{{Type: provider.ChunkText, Text: "All checks passed: 5 tasks listed."}, {Type: provider.ChunkDone}},
+	}}
+	reg := tool.NewRegistry()
+	a := New(prov, reg, NewSession("sys"), Options{}, sink)
+
+	if err := a.Run(context.Background(), "list my tasks"); err != nil {
+		t.Fatalf("run after rewrite round failed: %v", err)
+	}
+	if prov.call != 2 {
+		t.Fatalf("provider calls = %d, want exactly 2 (original + one rewrite round)", prov.call)
+	}
+	if !sink.hasCode(event.NoticeCodeProviderRejectionRewrite) {
+		t.Fatal("no rewrite notice for the first rejection")
+	}
+	if sink.hasCode(event.NoticeCodeProviderRejectionDegrade) {
+		t.Fatal("degrade notice fired even though the rewrite round recovered — the ladder did not stop")
+	}
+	if userInstructions(t, a, "file-write tool") != nil {
+		t.Fatal("degrade instruction injected although the rewrite round succeeded")
+	}
+}
+
+// The degrade fallback is a real exit, not a dead end: after the second
+// rejection the model can dump the full content into a workspace file through
+// the ordinary write tool and deliver a short progress summary as the final
+// answer — and the summary round starts a fresh streak (tl-286 semantics).
+func TestProviderRejectionDegradeRoundRecoversViaFileDump(t *testing.T) {
+	const template = "The request was rejected because it was considered high risk"
+	sink := &incompleteReadEventSink{}
+	prov := &scriptedProvider{name: "p", turns: [][]provider.Chunk{
+		{{Type: provider.ChunkText, Text: template}, {Type: provider.ChunkDone}},
+		{{Type: provider.ChunkText, Text: template}, {Type: provider.ChunkDone}},
+		{toolCallChunk("w1", "write_file", `{"path":"report.md"}`), {Type: provider.ChunkDone}},
+		{{Type: provider.ChunkText, Text: "Saved report.md: 3 sections, 12 steps done."}, {Type: provider.ChunkDone}},
+	}}
+	reg := tool.NewRegistry()
+	reg.Add(fakeWriteFileTool{})
+	a := New(prov, reg, NewSession("sys"), Options{}, sink)
+
+	if err := a.Run(context.Background(), "write the report"); err != nil {
+		t.Fatalf("run after degrade round failed: %v", err)
+	}
+	if prov.call != 4 {
+		t.Fatalf("provider calls = %d, want exactly 4 (2 rejections + file-dump tool round + summary round)", prov.call)
+	}
+	if !sink.hasCode(event.NoticeCodeProviderRejectionDegrade) {
+		t.Fatal("no degrade notice — the fallback strategy was never requested")
+	}
+	// The degrade instruction must precede the file-dump tool round it asks for.
+	snapshot := a.Session().Snapshot()
+	degradeIdx, writeIdx := -1, -1
+	for i, m := range snapshot {
+		if m.Role == provider.RoleUser && strings.Contains(m.Content, "file-write tool") {
+			degradeIdx = i
+		}
+		if m.Role == provider.RoleTool && m.Name == "write_file" {
+			writeIdx = i
+		}
+	}
+	if degradeIdx == -1 || writeIdx == -1 || degradeIdx > writeIdx {
+		t.Fatalf("degrade flow broken: degrade instruction at %d, write_file result at %d, want instruction first", degradeIdx, writeIdx)
 	}
 }
 
@@ -108,5 +209,8 @@ func TestNormalAnswerIsNotTreatedAsRejection(t *testing.T) {
 	}
 	if sink.hasCode(event.NoticeCodeProviderRejection) {
 		t.Fatal("normal answer fired the provider-rejection notice")
+	}
+	if sink.hasCode(event.NoticeCodeProviderRejectionRewrite) || sink.hasCode(event.NoticeCodeProviderRejectionDegrade) {
+		t.Fatal("normal answer fired a rejection-ladder notice")
 	}
 }

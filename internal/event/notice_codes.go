@@ -8,10 +8,19 @@ import "reasonix/internal/nilutil"
 // wording edits in Go no longer silently break localization. Values are
 // wire-stable: never rename or reuse one once shipped.
 const (
-	NoticeCodeFinalReadiness        = "final_readiness"
-	NoticeCodeEmptyFinal            = "empty_final"
-	NoticeCodeProviderRejection     = "provider_rejection"
-	NoticeCodeFallbackModelSwitched = "fallback_model_switched"
+	NoticeCodeFinalReadiness    = "final_readiness"
+	NoticeCodeEmptyFinal        = "empty_final"
+	NoticeCodeProviderRejection = "provider_rejection"
+	// NoticeCodeProviderRejectionRewrite / NoticeCodeProviderRejectionDegrade
+	// (tl-1314): the two bounded recovery rounds of the rejection ladder —
+	// round 1 injects a rewrite instruction (shorter + de-sensitized +
+	// paraphrased), round 2 injects the degrade fallback (full content into a
+	// workspace file, reply body only a progress summary). A third rejection
+	// injects nothing and ends the run; these codes make each round searchable
+	// separately from the bare provider_rejection detection notice.
+	NoticeCodeProviderRejectionRewrite = "provider_rejection_rewrite"
+	NoticeCodeProviderRejectionDegrade = "provider_rejection_degrade"
+	NoticeCodeFallbackModelSwitched    = "fallback_model_switched"
 	NoticeCodeReadinessAdvisory     = "readiness_advisory"
 	NoticeCodeExecutorHandoff       = "executor_handoff"
 	// NoticeCodeStalledIntent (任务 1069)：模型「宣布下一步就停」触发的续轮
