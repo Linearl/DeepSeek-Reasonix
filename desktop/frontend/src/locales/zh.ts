@@ -5657,6 +5657,9 @@ export const zh: Record<DictKey, string> = {
   // tl1309 卡②：「运行可观测」合并卡（监控 + events 瘦身 + 轨迹观测）。
   "settings.runtimeObservability": "运行可观测",
   "settings.runtimeObservabilityHint": "聚合会话/性能监控、事件日志瘦身与轨迹投影三面：监控看运行指标（perf 每 5s 采样），events 轮转给事件日志瘦身，轨迹视图是会话数据面的只读投影——三者同属 events/perf 数据面。",
+  // tl1309 卡③：「资源治理」合并卡（复用池/孤儿回收/监听/本地服务/GC/闲置释放）。
+  "settings.resourceGovernance": "资源治理",
+  "settings.resourceGovernanceHint": "聚合内存与资源生命周期六项：运行时复用池与孤儿回收管运行时装配的复用与回收两端，GC 策略与闲置释放治理内存与驻留会话，ACP 监听与本地服务治理常驻进程资源。",
   "settings.compressOpt": "压缩优化",
   "settings.budgetControl": "预算控制",
   "settings.proactiveCompact": "主动压缩冷却（可配）",

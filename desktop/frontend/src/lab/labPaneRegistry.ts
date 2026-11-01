@@ -54,13 +54,15 @@ export type ExperimentFeatureId =
   // 任务 961：「交互与呈现」合并卡（interactionPresentation）——quickCommands/
   // traceAsState/outputStyle 三散条并卡，独立 pane 退役为卡内成员行。
   | "interactionPresentation"
-  | "localServer"
+  // tl1309 卡③：localServer 独立 pane 退役——并入「资源治理」合并卡成员行
+  // （union id 同步摘除）。
   | "pathRules"
   | "sessionCollab"
   // Task 244 B4/B5, merged into one switch by task 449.
-  | "orphanHandling"
-  // Task 363A: runtime assembly reuse pool.
-  | "runtimeReuse"
+  // tl1309 卡③：orphanHandling 独立 pane 退役——并入「资源治理」合并卡
+  // （resourceGovernance）成员行（961 先例；union id 同步摘除）。
+  // Task 363A: runtime assembly reuse pool——tl1309 卡③同款并入资源治理卡。
+  | "resourceGovernance"
   // 任务 722：messageMerge 并入 safetyCostControl 卡（成员，无独立 pane）；
   // sessionCollabAutoFold 并入 sessionCollab 卡（成员，无独立 pane）——两个
   // id 从 pane union 摘除，卡片行/徽章走布局数据的成员登记。
@@ -88,8 +90,8 @@ export type ExperimentFeatureId =
   // Task 257: full access (yolo).
   | "fullAccess"
   // 任务 790: resident ACP listener (loopback TCP, one client surface per
-  // connection; default off, restart to apply).
-  | "acpListen"
+  // connection; default off, restart to apply)——tl1309 卡③：acpListen 独立
+  // pane 退役，并入「资源治理」合并卡成员行（union id 同步摘除）。
   // 任务 517:「安全 / 成本控制」— the task-244 B1/B2/B3 guards merge into ONE
   // config key (experimental_safety_cost_control): the 561 autonomousRunGuard
   // family card and the standalone eventWaitRecheck entry fold into this
@@ -121,8 +123,9 @@ export type ExperimentFeatureId =
   | "collabHub"
   // 任务 775: kind:param 参数卡 id——无硬编码 pane，pane 走通用参数渲染器
   // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
-  | "idleReleaseMinutes"
-  | "gcPercent" // tl1286：goMemLimit 卡退役换 GC 策略旋钮卡（pane 语义不变——仍走通用参数渲染器）
+  // tl1309 卡③：idleReleaseMinutes/gcPercent 两参数卡退役——并入「资源治理」
+  // 合并卡成员行（字段绑定不变，值语义仍单源在 labParamFields；union id 同步
+  // 摘除，通用参数渲染器此后只承接 logManagement 卡）。
   // tl 1097：日志管理参数卡 id（可观测性组）——pane 由专用
   // LogManagementLabPane 承接（含当前占用行 + 打开目录按钮 + 「永久+无限制」
   // 警示行，超出通用参数渲染器覆盖面）；两个 segment 字段仍走 labParamFields
@@ -184,19 +187,18 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "jsonlZstd",
   // tl1193b: pinned index mode pane (memory-context group).
   "pinnedIndex",
-  "runtimeReuse",
-  "acpListen",
+  // tl1309 卡③：资源治理合并卡（runtimeReuse/acpListen/orphanHandling/
+  // localServer/idleReleaseMinutes/gcPercent 六独立 pane 退役为成员行，
+  // 容器 id 入表——961 先例）。
+  "resourceGovernance",
   "pathRules",
-  "orphanHandling",
-  "localServer",
   "toolOptimizations",
   // 任务 971：multiEditInjection 独立 pane 退役（聚合页成员行，943 语义不变）。
   // 任务 775：kind:param 参数卡 id——pane 由通用参数渲染器承接（无独立
   // 硬编码分支）；登记进白名单与 feature 卡同一安全网语义（yaml 引用
-  // 白名单外 id ⇒ 整份回退默认）。
-  "idleReleaseMinutes",
-  // tl1286：GC 策略旋钮参数卡（替代退役的 goMemLimit）。
-  "gcPercent",
+  // 白名单外 id ⇒ 整份回退默认）。tl1309 卡③：idleReleaseMinutes/gcPercent
+  // 两参数卡退役为「资源治理」成员行，白名单 id 随之摘除（字段绑定与值语义
+  // 单源不变在 labParamFields）。
   // tl 1097：日志管理参数卡（可观测性组）。
   "logManagement",
   // tl1287：dagMigration 已摘除（动作卡转正进会话存储卡，见 union 尾注）。

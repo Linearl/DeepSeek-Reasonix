@@ -426,8 +426,9 @@ groups:
             labelKey: settings.lifecycleNoiseGate
             tier: unstable
 
-  # ── 存储（5 项；任务 775：闲置释放/内存上限两参数卡迁入；tl-1174 增冷压缩；
-  #    tl1287：DAG 迁移卡转正迁出——改宿主会话存储卡，不再占实验室 rail）──
+  # ── 存储（3 项；任务 775：闲置释放/内存上限两参数卡迁入；tl-1174 增冷压缩；
+  #    tl1287：DAG 迁移卡转正迁出——改宿主会话存储卡，不再占实验室 rail；
+  #    tl1309 卡③：GC 策略/闲置释放两参数卡迁出——入基础设施组「资源治理」卡）──
   - key: storage
     labelKey: settings.labGroup.storage
     entries:
@@ -455,61 +456,58 @@ groups:
         labelKey: settings.jsonlZstd
         tier: optional
         onKeys: [experimentalJsonlZstd]
-      # 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡。
-      # 无开关纯字段卡（分钟；0=从不释放）；字段绑定在 src/lab/labParamFields.ts
-      # （值语义收拢在代码，yaml 只描述结构与引用——724 硬约束同构延伸）。
-      # 任务 781：补 tier（闲置释放=recommended）。
-      - id: idleReleaseMinutes
-        labelKey: settings.detachedIdleRelease
-        kind: param
-        tier: recommended
-        fields:
-          - id: detachedIdleReleaseMinutes
-            input: number
-      # tl1286：GC 策略旋钮（debug.SetGCPercent；0=跟随默认等效 100）——参数卡
-      # （无开关），替代 308-O3 软内存上限（实测低设软限制会引发 GC 满跑整机
-      # 卡死，旋钮随活跃堆缩放无悬崖）。字段绑定在 src/lab/labParamFields.ts。
-      - id: gcPercent
-        labelKey: settings.gcPercent
-        kind: param
-        tier: optional
-        fields:
-          - id: gcPercent
-            input: number
+      # tl1309 卡③：GC 策略（tl1286）与闲置释放（775）两参数卡迁出本组——
+      # 入基础设施组「资源治理」卡成员行（同为内存/资源生命周期面；字段绑定
+      # 仍在 labParamFields 注册表，配置键/setter 零变化）。
 
-  # ── 基础设施（7 项；任务 785：S1 常驻底座开关条目随底座退役移除；
-  #    任务 992：工具优化整体并入本组，原独立 tool-opt 组退役）──
+  # ── 基础设施（3 项；任务 785：S1 常驻底座开关条目随底座退役移除；
+  #    任务 992：工具优化整体并入本组，原独立 tool-opt 组退役；tl1309 卡③：
+  #    复用池/孤儿回收/ACP 监听/本地服务 + GC 策略/闲置释放（自存储组迁入）
+  #    六项并「资源治理」卡）──
   - key: infra
     labelKey: settings.labGroup.infra
     entries:
-      # 任务 1005 批1 转档：runtimeReuse 升「稳定」（与内置默认/前端注册表
-      # /Go labFeatureTiers 三方同构）。
-      - id: runtimeReuse
-        labelKey: settings.runtimeReuse
+      # tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——运行时
+      # 复用池 + 孤儿回收 + ACP 常驻监听 + 本地服务四散条，加 GC 策略与闲置
+      # 释放两参数卡（自存储组迁入，字段绑定仍在 labParamFields，值语义单源）
+      # 六成员并卡（任务书③：同为内存/资源生命周期面）。容器档 = 成员最高档
+      # （复用池稳定 → 稳定）；卡内各行各读各的键、各写各的 setter，配置键
+      # 零变化，已存偏好零迁移。
+      - id: resourceGovernance
+        labelKey: settings.resourceGovernance
         tier: stable
-        onKeys: [experimentalRuntimeReuse]
-      # tl-1048：zcodeTaskBus 随 8787 任务总线退役出 rail（原 unstable）。
-      # 任务 790：ACP 常驻监听（loopback TCP，每连接独立 client 面；默认关，
-      # 重启生效）。815：tier optional→unstable——修正与内置 default/前端注册
-      # 表/Go labFeatureTiers 三方的既有漂移（722 同构锚要求 yaml=default）。
-      - id: acpListen
-        labelKey: settings.acpListen
-        tier: unstable
-        onKeys: [experimentalACPListen]
+        onKeys: [experimentalRuntimeReuse, experimentalOrphanHandling, experimentalACPListen, experimentalLocalServer]
+        members:
+          # 运行时复用池（原 infra 独立卡，稳定档，1005 批1 转档）。
+          - id: runtimeReuse
+            labelKey: settings.runtimeReuse
+            tier: stable
+          # 孤儿资源回收清理（原 infra 独立卡，推荐档——992 随复用池升推荐）。
+          - id: orphanHandling
+            labelKey: settings.orphanHandling
+            tier: recommended
+          # 后台会话闲置释放（原存储组 kind:param 参数卡，775 首批；推荐档）。
+          - id: idleReleaseMinutes
+            labelKey: settings.detachedIdleRelease
+            tier: recommended
+          # GC 策略旋钮（原存储组 kind:param 参数卡，tl1286；可选档）。
+          - id: gcPercent
+            labelKey: settings.gcPercent
+            tier: optional
+          # ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
+          - id: acpListen
+            labelKey: settings.acpListen
+            tier: unstable
+          # 本地服务（原 infra 独立卡，未稳定档）。
+          - id: localServer
+            labelKey: settings.localServer
+            tier: unstable
+      # 任务 564：路径规则——已退役只读展示行（551 范式），非资源生命周期面，
+      # 维持独立卡不入资源治理卡（tl1309 卡③范围裁决）。
       - id: pathRules
         labelKey: settings.pathRules
         tier: unstable
         onKeys: [experimentalPathRules]
-      # 任务 992：orphanHandling 随复用池升推荐——本文件随 1005 一并补同步
-      # （992 漏同步 drift 收口）。
-      - id: orphanHandling
-        labelKey: settings.orphanHandling
-        tier: recommended
-        onKeys: [experimentalOrphanHandling]
-      - id: localServer
-        labelKey: settings.localServer
-        tier: unstable
-        onKeys: [experimentalLocalServer]
       # 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原
       # 独立 tool-opt 组退役）；restartUpdate 归位回界面组 updateFeedback 卡
       # （本文件随 1005 一并补同步——卡灯三键，restartUpdate 不再入灯/入卡）。

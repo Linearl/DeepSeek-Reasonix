@@ -440,41 +440,44 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // tl1287：DAG 迁移卡已转正迁出实验室——pane 与扫描/执行动作改宿主
         // 会话存储卡（sessionStore 分支内，DagMigrationSection），不再占
         // rail。rail 卡与 pane 白名单随之摘除 id（yaml 同步删除）。
-        // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
-        // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
-        // 任务 781：补 tier——闲置释放=recommended（rail 显推荐徽章）。
-        {
-          id: "idleReleaseMinutes",
-          labelKey: "settings.detachedIdleRelease",
-          kind: "param",
-          tier: "recommended",
-          onKeys: [],
-          fields: [{ id: "detachedIdleReleaseMinutes", input: "number" }],
-        },
-        // tl1286：GC 策略旋钮（替代 308-O3 软内存上限——低设即 GC 满跑）——
-        // 参数卡（无开关；0=跟随默认等效 100，设回 100 即回默认）。
-        // tier 延续 optional（rail 显可选徽章）。
-        {
-          id: "gcPercent",
-          labelKey: "settings.gcPercent",
-          kind: "param",
-          tier: "optional",
-          onKeys: [],
-          fields: [{ id: "gcPercent", input: "number" }],
-        },
+        // tl1309 卡③：GC 策略（tl1286）与闲置释放（775）两参数卡迁出本组——
+        // 入基础设施组「资源治理」卡成员行（同为内存/资源生命周期面；字段
+        // 绑定仍在 labParamFields 注册表，配置键/setter 零变化）。
       ],
     },
     {
       key: "infra",
       labelKey: "settings.labGroup.infra",
       // 任务 785：S1 常驻底座开关条目已随底座退役移除。
+      // tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——运行时
+      // 复用池 + 孤儿回收 + ACP 常驻监听 + 本地服务四散条，加 GC 策略与闲置
+      // 释放两参数卡（自存储组迁入，字段绑定仍在 labParamFields，值语义单源）
+      // 六成员并卡（任务书③：同为内存/资源生命周期面）。容器档 = 成员最高档
+      // （复用池稳定 → 稳定）；配置键/setter/徽章零变化。
       entries: [
-        { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "stable", onKeys: ["experimentalRuntimeReuse"] },
-        // 任务 790：ACP 常驻监听（与 yaml 同序同值——回退安全网）。
-        { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable", onKeys: ["experimentalACPListen"] },
+        {
+          id: "resourceGovernance",
+          labelKey: "settings.resourceGovernance",
+          tier: "stable",
+          onKeys: ["experimentalRuntimeReuse", "experimentalOrphanHandling", "experimentalACPListen", "experimentalLocalServer"],
+          members: [
+            // 运行时复用池（原 infra 独立卡，稳定档，1005 批1 转档）。
+            { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "stable" },
+            // 孤儿资源回收清理（原 infra 独立卡，推荐档——992 随复用池升推荐）。
+            { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended" },
+            // 后台会话闲置释放（原存储组 kind:param 参数卡，775 首批；推荐档）。
+            { id: "idleReleaseMinutes", labelKey: "settings.detachedIdleRelease", tier: "recommended" },
+            // GC 策略旋钮（原存储组 kind:param 参数卡，tl1286；可选档）。
+            { id: "gcPercent", labelKey: "settings.gcPercent", tier: "optional" },
+            // ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
+            { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable" },
+            // 本地服务（原 infra 独立卡，未稳定档）。
+            { id: "localServer", labelKey: "settings.localServer", tier: "unstable" },
+          ],
+        },
+        // 任务 564：路径规则——已退役只读展示行（551 范式），非资源生命周期面，
+        // 维持独立卡不入资源治理卡（tl1309 卡③范围裁决）。
         { id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] },
-        { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended", onKeys: ["experimentalOrphanHandling"] },
-        { id: "localServer", labelKey: "settings.localServer", tier: "unstable", onKeys: ["experimentalLocalServer"] },
         // 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原独立
         // tool-opt 组退役，labGroup.toolOpt 不再引用）；restartUpdate 归位回界面组
         // updateFeedback 卡（971 迁入撤销，onKeys/members 同步回迁）；宽松模式升可选。

@@ -5653,6 +5653,9 @@ export const zhTW: Record<DictKey, string> = {
   // tl1309 卡②：「執行可觀測」合併卡（監控 + events 瘦身 + 軌跡觀測）。
   "settings.runtimeObservability": "執行可觀測",
   "settings.runtimeObservabilityHint": "聚合會話/效能監控、事件日誌瘦身與軌跡投影三面：監控看執行指標（perf 每 5s 採樣），events 輪轉給事件日誌瘦身，軌跡視圖是會話資料面的唯讀投影——三者同屬 events/perf 資料面。",
+  // tl1309 卡③：「資源治理」合併卡（復用池/孤兒回收/監聽/本地服務/GC/閒置釋放）。
+  "settings.resourceGovernance": "資源治理",
+  "settings.resourceGovernanceHint": "聚合記憶體與資源生命週期六項：執行時復用池與孤兒回收管執行時裝配的復用與回收兩端，GC 策略與閒置釋放治理記憶體與駐留會話，ACP 監聽與本地服務治理常駐程式資源。",
   "settings.compressOpt": "壓縮優化",
   "settings.budgetControl": "預算控制",
   "settings.proactiveCompact": "主動壓縮冷卻（可配）",

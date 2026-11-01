@@ -348,6 +348,11 @@ export function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps
   const [hopLimit, setHopLimit] = useState<number>(s.sessionCollabHopLimit ?? 5);
   // 任务 775：308-O4/O3 两参数的本地草稿态随硬编码行一并退役——值读写改走
   // LabParamFieldsCard（组件内草稿态）+ labParamFields 注册表。
+  // tl1309 卡③：两参数随卡并入「资源治理」卡成员行后，通用参数渲染器不再
+  // 承接（logManagement 专用 pane 除外）——两行的键入草稿态按 775 同款手感
+  // 迁回本组件（onBlur 落盘，配置层自行钳制）。
+  const [gcPercentDraft, setGcPercentDraft] = useState<string>(String(s.gcPercent ?? 100));
+  const [idleReleaseDraft, setIdleReleaseDraft] = useState<string>(String(s.detachedIdleReleaseMinutes ?? 0));
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
@@ -440,7 +445,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     };
   }, [selected]);
   useEffect(() => {
-    if (selected !== "acpListen") return undefined;
+    // tl1309 卡③：ACP 监听状态行随 acpListen 成员行迁入「资源治理」卡——
+    // 按需加载触发条件随迁卡 id（语义不变）。
+    if (selected !== "resourceGovernance") return undefined;
     let alive = true;
     void app.ACPListenStatus()
       .then((st) => {
@@ -2013,22 +2020,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-                    {selected === "localServer" && (
-            <SettingsField label={labLabel("localServer", t("settings.localServer"))} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalLocalServer) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalLocalServer(on))}
-                  >
-                    {t(on ? "settings.localServer.on" : "settings.localServer.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
+                    {/* tl1309 卡③：localServer 独立 pane 退役——并入「资源治理」合并卡
+              （resourceGovernance，任务书③）成员行承载。 */}
           {selected === "homePointer" && (
             /* 任务 846: change-data-home wizard. The switch is the lab gate
                (ships off); the wizard body renders only while it is on. */
@@ -2103,55 +2096,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             </SettingsField>
           )}
                     {/* 任务 961：traceAsState 独立 pane 退役——并入「交互与呈现」合并卡
-              （interactionPresentation，卡内成员行承载）。 */}
-          {selected === "orphanHandling" && (
-            <>
-              <SettingsField label={labLabel("orphanHandling", t("settings.orphanHandling"))} hint={t("settings.orphanHandlingHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalOrphanHandling) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalOrphanHandling(on);
-                      })}
-                    >
-                      {t(on ? "settings.orphanHandling.on" : "settings.orphanHandling.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-            </>
-          )}
-
-                    {selected === "runtimeReuse" && (
-            <>
-              <SettingsField label={labLabel("runtimeReuse", t("settings.runtimeReuse"))} hint={t("settings.runtimeReuseHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalRuntimeReuse) === on ? " set-seg__btn--on" : ""}`}
-                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
-                      disabled={busy || labStableLocked("runtimeReuse")}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalRuntimeReuse(on);
-                      })}
-                    >
-                      {t(on ? "settings.runtimeReuse.on" : "settings.runtimeReuse.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 任务 1005：稳定档禁用态两分支解释行；开发者模式解锁态改显警示。 */}
-              {labStableLocked("runtimeReuse") ? (
-                <p className="settings-field__hint-line">{t(Boolean(s.experimentalRuntimeReuse) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
-              ) : labStableUnlocked("runtimeReuse") ? (
-                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
-              ) : null}
-            </>
-          )}
+              （interactionPresentation，卡内成员行承载）。
+              tl1309 卡③：orphanHandling/runtimeReuse 两独立 pane 同款退役——
+              并入「资源治理」合并卡（resourceGovernance）成员行承载。 */}
           {/* 任务 517:「安全 / 成本控制」— one switch for all three task-244
               B-group guards (this absorbs the 561 M1 autonomousRunGuard card
               and the standalone eventWaitRecheck entry; the config side is a
@@ -3508,42 +3455,140 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-          {selected === "acpListen" && (
-            // 任务 790: resident ACP listener. The listener arms at desktop
-            // boot, so a flip needs a restart — same banner pattern as the
-            // CDP endpoint. When on, the card doubles as the 状态灯: bound
-            // loopback address while running, bind failure, or the
-            // await-restart note. 127.0.0.1 is pinned in the host; the port
-            // (acp_listen_port, default 8790) is a config key, not a UI field.
-            <SettingsField
-              label={labLabel("acpListen", t("settings.acpListen"))}
-              hint={
-                acpListenStatus && acpListenStatus.err
-                  ? `${t("settings.acpListen.notRunning")} ${acpListenStatus.err}`
-                  : acpListenStatus && acpListenStatus.running
-                    ? `${t("settings.acpListen.running")} ${acpListenStatus.addr}`
-                    : Boolean(s.experimentalACPListen) && acpListenStatus && !acpListenStatus.running
-                      ? t("settings.acpListen.awaitRestart")
-                      : t("settings.acpListenHint")
-              }
-              icon={<Server size={18} />}
-            >
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalACPListen) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalACPListen(on);
-                      setRestartNeeded(true);
-                    })}
-                  >
-                    {t(on ? "settings.acpListen.on" : "settings.acpListen.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+          {/* tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——
+              运行时复用池 + 孤儿回收 + ACP 常驻监听 + 本地服务四散条，加 GC
+              策略/闲置释放两参数卡（自存储组迁入）六成员并卡（任务书③：同为
+              内存/资源生命周期面）。卡头行=卡名+关联说明（依赖/派生：复用池与
+              孤儿回收同管运行时装配的生命周期两端；GC/闲置释放治理内存与驻留
+              会话；监听/本地服务治理常驻进程资源）。各行仍读各的键、写各的
+              setter（81/123 丢存铁律），配置键零变化；两参数行值读写走
+              labParamFields 注册表绑定（775 值语义单源）。 */}
+          {selected === "resourceGovernance" && (
+            <>
+              <SettingsField label={labLabel("resourceGovernance", t("settings.resourceGovernance"))} hint={t("settings.resourceGovernanceHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              {/* 成员行 1：运行时复用池（原 infra 独立卡，稳定档——1005 批1
+                  转档；稳定档禁用态/开发者模式解锁语义原样随迁）。 */}
+              <SettingsField label={labLabel("runtimeReuse", t("settings.runtimeReuse"))} hint={t("settings.runtimeReuseHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRuntimeReuse) === on ? " set-seg__btn--on" : ""}`}
+                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
+                      disabled={busy || labStableLocked("runtimeReuse")}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalRuntimeReuse(on);
+                      })}
+                    >
+                      {t(on ? "settings.runtimeReuse.on" : "settings.runtimeReuse.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {labStableLocked("runtimeReuse") ? (
+                <p className="settings-field__hint-line">{t(Boolean(s.experimentalRuntimeReuse) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
+              ) : labStableUnlocked("runtimeReuse") ? (
+                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
+              ) : null}
+              {/* 成员行 2：孤儿资源回收清理（原 infra 独立卡，推荐档——992
+                  随复用池升推荐；与复用池同管运行时装配的生命周期两端）。 */}
+              <SettingsField label={labLabel("orphanHandling", t("settings.orphanHandling"))} hint={t("settings.orphanHandlingHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalOrphanHandling) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalOrphanHandling(on);
+                      })}
+                    >
+                      {t(on ? "settings.orphanHandling.on" : "settings.orphanHandling.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* 成员行 3：后台会话闲置释放（原存储组参数卡，775/308-O4）——
+                  值读写走 labParamFields 绑定（onBlur 落盘，配置层钳制）。 */}
+              <SettingsField label={labLabel("idleReleaseMinutes", t("settings.detachedIdleRelease"))} hint={t(LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.hintKey)} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.min}
+                  max={LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.max}
+                  value={idleReleaseDraft}
+                  disabled={busy}
+                  onChange={(e) => setIdleReleaseDraft(e.target.value)}
+                  onBlur={() => {
+                    const n = Number(idleReleaseDraft);
+                    if (Number.isNaN(n)) return;
+                    void apply(() => LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.write(n));
+                  }}
+                />
+              </SettingsField>
+              {/* 成员行 4：GC 策略旋钮（原存储组参数卡，tl1286）——同上走注册
+                  表绑定；0=跟随默认等效 100，设置即热改。 */}
+              <SettingsField label={labLabel("gcPercent", t("settings.gcPercent"))} hint={t(LAB_PARAM_FIELDS.gcPercent.hintKey)} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={LAB_PARAM_FIELDS.gcPercent.min}
+                  max={LAB_PARAM_FIELDS.gcPercent.max}
+                  value={gcPercentDraft}
+                  disabled={busy}
+                  onChange={(e) => setGcPercentDraft(e.target.value)}
+                  onBlur={() => {
+                    const n = Number(gcPercentDraft);
+                    if (Number.isNaN(n)) return;
+                    void apply(() => LAB_PARAM_FIELDS.gcPercent.write(n));
+                  }}
+                />
+              </SettingsField>
+              {/* 成员行 5：ACP 常驻监听（原 infra 独立卡，790；状态灯语义原样
+                  随迁——监听在桌面 boot 装配，翻转需重启）。 */}
+              <SettingsField
+                label={labLabel("acpListen", t("settings.acpListen"))}
+                hint={
+                  acpListenStatus && acpListenStatus.err
+                    ? `${t("settings.acpListen.notRunning")} ${acpListenStatus.err}`
+                    : acpListenStatus && acpListenStatus.running
+                      ? `${t("settings.acpListen.running")} ${acpListenStatus.addr}`
+                      : Boolean(s.experimentalACPListen) && acpListenStatus && !acpListenStatus.running
+                        ? t("settings.acpListen.awaitRestart")
+                        : t("settings.acpListenHint")
+                }
+                icon={<Server size={18} />}
+              >
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalACPListen) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalACPListen(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.acpListen.on" : "settings.acpListen.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* 成员行 6：本地服务（原 infra 独立卡）。 */}
+              <SettingsField label={labLabel("localServer", t("settings.localServer"))} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalLocalServer) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalLocalServer(on))}
+                    >
+                      {t(on ? "settings.localServer.on" : "settings.localServer.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
           )}
           {/* 任务 961：outputStyle 独立 pane 退役——并入「交互与呈现」合并卡
               （interactionPresentation，卡内成员行承载；Task 385a 门控+选择器

@@ -191,7 +191,18 @@ export type TierFeatureId =
   // （eventsRotation，事件日志轮转面）+ 轨迹观测（trajectoryView，轨迹投影
   // 面）三散条/迁出成员并卡（任务书②：同属 events/perf 数据面）。Go 渲染
   // 表无条目，同 tabManagement 豁免。
-  | "runtimeObservability";
+  | "runtimeObservability"
+  // tl1309 卡③：「资源治理」合并卡容器 id（基础设施组，同 tabManagement
+  // 纯前端容器豁免）——运行时复用池/孤儿回收/ACP 常驻监听/本地服务/GC 策略/
+  // 闲置释放六成员并卡（任务书③：同为内存/资源生命周期面）。
+  | "resourceGovernance"
+  // tl1309 卡③：GC 策略旋钮（tl1286 参数卡）入表——原 kind:param 独立卡，
+  // 档位可选随迁（rail 徽章与并入前一致）。本件起以「资源治理」卡成员行
+  // 承载（字段绑定仍在 labParamFields，值语义单源）。Go 渲染表无条目（775
+  // 参数卡同款豁免）。
+  | "gcPercent"
+  // tl1309 卡③：后台会话闲置释放（775 首批参数卡）入表——推荐档随迁，同上。
+  | "idleReleaseMinutes";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -372,6 +383,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1309 卡②：「运行可观测」合并卡容器档 = 成员最高档（监控推荐压过
   // events 瘦身/轨迹观测两可选 → 推荐）。
   runtimeObservability: "recommended",
+  // tl1309 卡③：「资源治理」合并卡容器档 = 成员最高档（运行时复用池稳定
+  // 压过闲置释放/孤儿回收两推荐 → 稳定）。合并是入口层组织，不降级成员。
+  resourceGovernance: "stable",
+  // tl1309 卡③：两参数卡成员档随迁（gcPercent 可选 / idleReleaseMinutes
+  // 推荐——与原独立参数卡 rail 徽章一致，展示零变化）。
+  gcPercent: "optional",
+  idleReleaseMinutes: "recommended",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render.go labFeatureTiers,
@@ -452,11 +470,14 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * tl1193b：pinnedIndex（pinned 常驻层索引化，实验室新「记忆与上下文」组首卡）
  * 按未稳定档入表——未稳定 12→13、总数 81→82（Go 渲染表同步 72→73）。
  * tl1309 卡②：runtimeObservability（「运行可观测」合并卡，纯前端容器 id）按
- * 推荐档入表——推荐 21→22、总数 82→83（Go 渲染表无条目，同 tabManagement 豁免）。 */
+ * 推荐档入表——推荐 21→22、总数 82→83（Go 渲染表无条目，同 tabManagement 豁免）。
+ * tl1309 卡③：resourceGovernance（「资源治理」合并卡容器，稳定）+ gcPercent
+ * （可选）+ idleReleaseMinutes（推荐）三 id 入表——稳定 4→5、推荐 22→23、
+ * 可选 44→45、总数 83→86（三 id Go 渲染表均无条目，同 tabManagement 豁免）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  stable: 4,
-  recommended: 22,
-  optional: 44,
+  stable: 5,
+  recommended: 23,
+  optional: 45,
   unstable: 12,
   retired: 1,
 };

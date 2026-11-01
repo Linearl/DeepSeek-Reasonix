@@ -5672,6 +5672,9 @@ export const en = {
   // tl1309 card 2: "Runtime Observability" merged card (monitoring + events slimming + trajectory).
   "settings.runtimeObservability": "Runtime Observability",
   "settings.runtimeObservabilityHint": "Aggregates three faces of the same events/perf data plane: session/performance monitoring (perf samples every 5s), event-log slimming via rotation, and the read-only trajectory projection of session data.",
+  // tl1309 card 3: "Resource Governance" merged card (reuse pool / orphan reclaim / ACP / local server / GC / idle release).
+  "settings.resourceGovernance": "Resource Governance",
+  "settings.resourceGovernanceHint": "Aggregates six memory & resource-lifecycle controls: the reuse pool and orphan reclaim govern the two ends of runtime-assembly lifecycle, the GC dial and idle release govern memory and resident sessions, the ACP listener and local server govern resident process resources.",
   "settings.compressOpt": "Compaction optimization",
   "settings.budgetControl": "Budget control",
   "settings.proactiveCompact": "Proactive compact cooldown (configurable)",
