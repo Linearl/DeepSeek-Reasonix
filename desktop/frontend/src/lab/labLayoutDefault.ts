@@ -438,11 +438,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           id: "sessionStore",
           labelKey: "settings.sessionStore",
           // tl1309 卡②：eventsRotation（events 瘦身）迁出本卡成员表（入可
-          // 观测性组「运行可观测」卡）；灯键随迁出（容器档=成员最高档：未
-          // 稳定，不变）。
+          // 观测性组「运行可观测」卡）；灯键随迁出。
+          // tl1338：sessionStorage 未稳定→稳定（用户 2026-11-01 拍板：fork 已锁
+          // v3，卡内余项皆迁移工具非实验能力）。容器档=成员最高档：未稳定→
+          // 稳定。与 lab-layout.yaml 同构同值（724 回退安全网）。
           onKeys: ["sessionStorageNonDefault"],
           members: [
-            { id: "sessionStorage", labelKey: "settings.sessionStorage", tier: "unstable" },
+            { id: "sessionStorage", labelKey: "settings.sessionStorage", tier: "stable" },
           ],
         },
         // 任务 846：配置数据目录可更改（未稳定档，默认关）。独立卡——迁移

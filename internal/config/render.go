@@ -182,7 +182,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 确定性裁剪头尾+标记），档位可选，默认关=超限且 fold 不回本的会话维持
 	// 现状（left in place + WARN），铁律 2。
 	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation", "experimental_events_slim_oversize"}},
-	{"sessionStorage", LabTierUnstable, []string{"session_storage"}},
+	// tl1338（用户 2026-11-01 拍板）：未稳定→稳定。fork 已锁定 v3（916），卡内
+	// 余项（v4/v5 迁移、扫描清理）皆迁移工具非实验能力。前端 experimentTiers.ts
+	// 同步（562 双侧门禁）。模式键非布尔：lab_bulk.go labBulkExcluded 挂
+	// not_bool_switch，进稳定批量范围也永不盲写。
+	{"sessionStorage", LabTierStable, []string{"session_storage"}},
 	// 任务 846：配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
 	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
 	{"homePointer", LabTierUnstable, []string{"experimental_home_pointer"}},

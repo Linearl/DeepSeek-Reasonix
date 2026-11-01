@@ -299,7 +299,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   lifecycleNoiseGate: "unstable",
   // ── storage（存储，4 项；846 增 homePointer，tl-1174 增 jsonlZstd）────
   eventsRotation: "optional",
-  sessionStorage: "unstable",
+  // tl1338（用户 2026-11-01 拍板）：未稳定→稳定。fork 已锁定 v3（916），会话
+  // 存储卡内其余条目（v4/v5 迁移、扫描清理）均为迁移操作工具而非实验能力，
+  // 不该挂未稳定徽章。Go 渲染表 render.go 同步 LabTierStable（562 双侧门禁）。
+  // 模式键非布尔：进批量范围后由 lab_bulk.go labBulkExcluded 挂 not_bool_switch
+  // 原因码（与 messageMerge/eventsRotation 同机制），永不盲写。
+  sessionStorage: "stable",
   homePointer: "unstable",
   // tl 1174: 冷会话 transcript zstd 归档——档位与 Go 渲染表 LabTierOptional
   // 双侧一致（562 门禁）。
@@ -482,12 +487,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * （可选）+ idleReleaseMinutes（推荐）三 id 入表——稳定 4→5、推荐 22→23、
  * 可选 44→45、总数 83→86（三 id Go 渲染表均无条目，同 tabManagement 豁免）。
  * tl1309 卡④：sessionTaskPanels（「会话与任务面板」合并卡，纯前端容器 id）
- * 按推荐档入表——推荐 23→24、总数 86→87（Go 渲染表无条目，同 tabManagement 豁免）。 */
+ * 按推荐档入表——推荐 23→24、总数 86→87（Go 渲染表无条目，同 tabManagement 豁免）。
+ * tl1338：sessionStorage（会话存储档位面）未稳定→稳定（用户 2026-11-01 拍板：
+ * fork 已锁 v3，卡内余项皆迁移工具）——稳定 5→6、未稳定 12→11、总数不变 87
+ * （Go 渲染表同步 LabTierStable，条目数不变 73）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  stable: 5,
+  stable: 6,
   recommended: 24,
   optional: 45,
-  unstable: 12,
+  unstable: 11,
   retired: 1,
 };
 

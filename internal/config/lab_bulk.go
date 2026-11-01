@@ -191,6 +191,9 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 //   - messageMerge：主开关是三态键 collab_inbox_merge（off|same_sender|all），
 //     「开」没有唯一布尔语义；
 //   - eventsRotation：主开关是三态键 events_auto_rotation（off|manual|…）；
+//   - sessionStorage（tl1338 升稳定后进入批量范围）：主开关是模式键
+//     session_storage（v3_only|dual_write_read_v3|…），且 fork 已锁 v3（916）
+//     ——「开」没有唯一布尔语义，批量更不得触碰存储档位面；
 //   - opencodeGoUsage：用量监测卡成员行（783 定档 recommended），无批量写入器
 //     ——开关走卡片行内 setter，纯展示侧栏卡的配置面，批量无独立语义。
 var labBulkExcluded = map[string]string{
@@ -198,6 +201,7 @@ var labBulkExcluded = map[string]string{
 	"autopilot":       LabBulkSkipPrecondition,
 	"messageMerge":    LabBulkSkipNotBool,
 	"eventsRotation":  LabBulkSkipNotBool,
+	"sessionStorage":  LabBulkSkipNotBool,
 	"opencodeGoUsage": LabBulkSkipNoSetter,
 }
 
