@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -331,7 +332,10 @@ func (a *App) syncSessionCatalogMetadata(ctx context.Context, catalog *sessionca
 		titles := loadTopicTitles(root)
 		sources := loadTopicTitleSources(root)
 		created := loadTopicCreatedAts(root)
-		ordered := pinnedTopicIDs(orderedTopicIDs(ids), pinnedIDs)
+		// 注册面 = Topics ∪ PinnedTopics（tl1283 归属面同款：PinnedTopics 是
+		// 注册清单之一）。仅置顶（不在 Topics）的 topic 照常喂入；标题表只查
+		// title 不扩集合（tl1331 G10）。
+		ordered := pinnedTopicIDs(orderedTopicIDs(slices.Concat(ids, pinnedIDs)), pinnedIDs)
 		for index, topicID := range ordered {
 			if deleted[topicID] {
 				continue
@@ -623,7 +627,9 @@ func (a *App) pinnedTopicShells(scope, workspaceRoot string, topicIDs, pinnedIDs
 	created := loadTopicCreatedAts(workspaceRoot)
 	available := make(map[string]bool, len(topicIDs)+len(titles))
 	sortIndex := map[string]int{}
-	for index, topicID := range orderedTopicIDs(topicIDs) {
+	// 注册面 = Topics ∪ PinnedTopics：仅置顶的 topic 也要能出壳（tl1331 G10
+	// 收口后标题表不再兜底扩集，置顶清单本身就是注册面）。
+	for index, topicID := range orderedTopicIDs(slices.Concat(topicIDs, pinnedIDs)) {
 		available[topicID] = true
 		sortIndex[topicID] = index
 	}

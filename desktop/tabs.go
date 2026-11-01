@@ -3782,9 +3782,11 @@ func (a *App) indexedBlankTopicIDLocked(scope, workspaceRoot string) string {
 
 	var topicIDs []string
 	if scope == "global" {
-		topicIDs = orderedTopicIDs(f.GlobalTopics)
+		// 注册面 = Topics ∪ PinnedTopics（tl1283 归属面同款，tl1331 G10 收口
+		// 后标题表不再兜底扩集）。
+		topicIDs = orderedTopicIDs(slices.Concat(f.GlobalTopics, f.GlobalPinnedTopics))
 	} else if i := projectIndexByRoot(f.Projects, workspaceRoot); i >= 0 {
-		topicIDs = orderedTopicIDs(f.Projects[i].Topics)
+		topicIDs = orderedTopicIDs(slices.Concat(f.Projects[i].Topics, f.Projects[i].PinnedTopics))
 	}
 	if len(topicIDs) == 0 {
 		return ""
@@ -6804,7 +6806,10 @@ func pinnedTopicIDs(topicIDs []string, pinned []string) []string {
 // title-table entry is either a leak (global root carrying a project-owned
 // topic) or a not-yet-registered race, and surfacing either in the sidebar
 // made the title table a shadow SSOT (tl1302 深查报告 W10). Title lookups for
-// registered ids happen at the call sites via the same map.
+// registered ids happen at the call sites via the same map. The registered
+// surfaces are the scope's Topics ∪ PinnedTopics (tl1283 归属面同款:
+// PinnedTopics is a registration list of its own — 仅置顶 topic 照常喂入,
+// call sites concat the two lists before ordering).
 //
 // Guard: TestOrderedTopicIDsCallSitesGuardTL1331 pins the full call-site set;
 // a new reader must be reviewed against this contract before the allowlist
