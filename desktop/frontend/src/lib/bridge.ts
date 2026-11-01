@@ -1671,6 +1671,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 运行时通道）与运行中止。
   WorkflowRunsSnapshot(): Promise<WireWorkflowRun[]>;
   WorkflowCancelRun(runId: string): Promise<boolean>;
+  // 任务1316: 面板续跑钮——从断点续跑一次 interrupted run（服务侧校验可续性）。
+  WorkflowResumeRun(runId: string): Promise<boolean>;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; call-time gate, next scheduled run applies it).
   SetExperimentalHeartbeatBackground(enabled: boolean): Promise<void>;
@@ -6636,6 +6638,9 @@ function makeMockApp(): AppBindings {
     // 任务 934：浏览器 dev mock 无工作流服务，给诚实的空表/不可中止。
     async WorkflowRunsSnapshot() {
       return [] as WireWorkflowRun[];
+    },
+    async WorkflowResumeRun() {
+      return false;
     },
     async WorkflowCancelRun() {
       return false;

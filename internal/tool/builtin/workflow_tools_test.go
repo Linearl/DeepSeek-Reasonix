@@ -40,6 +40,7 @@ type fakeWorkflowService struct {
 	lastDoc       string
 	lastOverwrite bool
 	lastRunName   string
+	lastResumeID  string
 	lastStatusID  string
 }
 
@@ -54,8 +55,9 @@ func (f *fakeWorkflowService) GetWorkflow(_ context.Context, name string) (Workf
 	_ = name
 	return f.getRes, f.getErr
 }
-func (f *fakeWorkflowService) RunWorkflow(_ context.Context, name string) (WorkflowRunResult, error) {
+func (f *fakeWorkflowService) RunWorkflow(_ context.Context, name, resumeRunID string) (WorkflowRunResult, error) {
 	f.lastRunName = name
+	f.lastResumeID = resumeRunID
 	return f.runRes, f.runErr
 }
 func (f *fakeWorkflowService) WorkflowStatus(_ context.Context, runID string) (WorkflowStatusResult, error) {
