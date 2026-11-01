@@ -12,6 +12,7 @@ import {
   type ActivationDiagnostic,
   type SessionPipelineDiagnostics,
 } from "./sessionDiagnostics";
+import { drainFrontendLogRing, peekFrontendLogRing } from "./frontendLog";
 
 export interface ReasonixPerfHook {
   /** Aggregate point-in-time diagnostics snapshot. */
@@ -20,6 +21,10 @@ export interface ReasonixPerfHook {
   activations(): ActivationDiagnostic[];
   /** Clear activation/history counters (between benchmark scenarios). */
   reset(): void;
+  /** Snapshot of the frontend log ring (hydrate decisions, fill lines). */
+  frontendLog(): readonly string[];
+  /** Take and clear the frontend log ring (between benchmark iterations). */
+  drainLog(): string[];
 }
 
 declare global {
@@ -35,5 +40,7 @@ export function installPerfDebugHook(): void {
     stats: () => sessionPipelineDiagnostics(),
     activations: () => activationLog(),
     reset: () => resetSessionDiagnostics(),
+    frontendLog: () => peekFrontendLogRing(),
+    drainLog: () => drainFrontendLogRing(),
   };
 }

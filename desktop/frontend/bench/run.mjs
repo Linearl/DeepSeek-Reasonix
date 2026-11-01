@@ -309,16 +309,24 @@ async function main() {
     checks: [],
     scenarioA: {},
     scenarioB: {},
+    scenarioC: {},
   };
   const check = (name, value, gate, pass, unit = "ms") => {
     report.checks.push({ name, value, gate, pass, unit });
     console.log(`  ${pass ? "PASS" : "FAIL"}  ${name}: ${typeof value === "number" ? value.toFixed(1) : value}${unit} (gate ${gate}${unit})`);
   };
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--enable-precise-memory-info", "--disable-dev-shm-usage"],
-  });
+  const launchArgs = { headless: true, args: ["--enable-precise-memory-info", "--disable-dev-shm-usage"] };
+  let browser;
+  try {
+    browser = await chromium.launch(launchArgs);
+  } catch (error) {
+    // tl1332 bench runs on hosts without the downloaded Playwright bundle:
+    // fall back to the system Edge/Chrome channel (Windows ships Edge).
+    console.log(`[bench] bundled chromium unavailable (${error.message.split("\n")[0]}); falling back to the system browser channel…`);
+    browser = await chromium.launch({ ...launchArgs, channel: "msedge" })
+      .catch(() => chromium.launch({ ...launchArgs, channel: "chrome" }));
+  }
   try {
     // ── Scenario A: cold open ──────────────────────────────────────────────
     console.log(`[bench] scenario A: ${COLD_RUNS} cold opens of the markdown-heavy session…`);
@@ -462,6 +470,87 @@ async function main() {
     check("B cache: resident sessions", cache.residentSessions ?? 0, MAX_RESIDENT_SESSIONS, (cache.residentSessions ?? 0) <= MAX_RESIDENT_SESSIONS, "");
     const domGrowthPct = baseline.domNodes > 0 ? ((final.domNodes - baseline.domNodes) / baseline.domNodes) * 100 : 0;
     check("B DOM node growth vs warmup baseline", domGrowthPct, 10, domGrowthPct <= 10, "%");
+
+    // ── Scenario C (tl1332 / tl1083 §5.1 最小档 + §6.4): resident-stale
+    // switch-backs — the degraded tail-first-paint + background-fill shape.
+    // `staleMeta=1` advances the mock ledger on every meta read (the stand-in
+    // for multi-writer sessions whose fingerprints always move), so every
+    // switch-back to the 3.2k-message tools session is resident-stale and
+    // takes the degraded path, while the ~600-message markdown session stays
+    // under the heavy-page gate and keeps the legacy reload (the in-bench
+    // small-session control). Evidence: hydrate decision labels + fill lines
+    // drained from the frontend log ring, plus the shared long-task collector.
+    const STALE_SWITCHES = Math.round(numEnv("REASONIX_BENCH_STALE_SWITCHES", 20));
+    console.log(`[bench] scenario C: ${STALE_SWITCHES} resident-stale switch-backs (tail-first + background fill)…`);
+    const contextC = await browser.newContext();
+    const pageC = await contextC.newPage();
+    await pageC.addInitScript(COLLECTOR_INIT);
+    await pageC.goto(`${PAGE_URL}&staleMeta=1`, { waitUntil: "domcontentloaded" });
+    await pageC.waitForFunction(INTERACTIVE_FN, undefined, { timeout: 30_000, polling: "raf" });
+    await pageC.waitForFunction(() => Boolean(window.__reasonixPerf), undefined, { timeout: 10_000 });
+    // Warmup: make both sessions LRU-resident and finish on the markdown tab,
+    // so every measured switch to tools is a switch-BACK (resident present).
+    for (let i = 0; i < 4; i += 1) await switchTo(pageC, i % 2 === 0 ? TAB.tools : TAB.markdown);
+    const drainLines = () => pageC.evaluate(() => (window.__reasonixPerf.drainLog ? window.__reasonixPerf.drainLog() : []));
+    let tailFirstDecisions = 0;
+    let staleLegacyDecisions = 0;
+    let fillDone = 0;
+    const fillMsValues = [];
+    const tally = (lines) => {
+      tailFirstDecisions += lines.filter((line) => line.includes("reason=resident-stale-tail-first")).length;
+      // Legacy stale reload (the markdown control stays under the heavy gate).
+      staleLegacyDecisions += lines.filter((line) => /reason=resident-stale\b(?!-tail)/.test(line)).length;
+      for (const line of lines) {
+        const match = /hydrate tail-first fill done.*ms=(\d+)/.exec(line);
+        if (match) {
+          fillDone += 1;
+          fillMsValues.push(Number(match[1]));
+        }
+      }
+    };
+    tally(await drainLines());
+    const staleLatencies = [];
+    for (let i = 0; i < STALE_SWITCHES; i += 1) {
+      staleLatencies.push(await switchTo(pageC, i % 2 === 0 ? TAB.tools : TAB.markdown));
+      tally(await drainLines());
+    }
+    // The last switch's background fill lands after its first paint — give it
+    // the same window the other switches got before reading the counters.
+    await pageC
+      .waitForFunction(
+        (expected) => {
+          const log = window.__reasonixPerf.frontendLog ? window.__reasonixPerf.frontendLog() : [];
+          return log.some((line) => line.includes("hydrate tail-first fill done")) || expected === 0;
+        },
+        STALE_SWITCHES - fillDone,
+        { timeout: 20_000, polling: 200 },
+      )
+      .catch(() => {});
+    await pageC.waitForTimeout(300);
+    tally(await drainLines());
+    const { staleLongTasks } = await pageC.evaluate(() => ({
+      staleLongTasks: window.__benchMetrics.longTasks.map((t) => t.duration),
+    }));
+    await contextC.close();
+
+    const staleLongTaskStats = statsOf(staleLongTasks);
+    const staleSwitchStats = statsOf(staleLatencies);
+    const degradedSwitches = Math.ceil(STALE_SWITCHES / 2); // tools switches
+    report.scenarioC = {
+      switches: STALE_SWITCHES,
+      degradedSwitches,
+      switchMs: staleSwitchStats,
+      longTasksMs: staleLongTaskStats,
+      tailFirstDecisions,
+      staleLegacyDecisions,
+      fillDone,
+      fillTotalMs: statsOf(fillMsValues),
+    };
+    check("C tail-first decision fired on heavy switch-backs", tailFirstDecisions, degradedSwitches, tailFirstDecisions >= degradedSwitches - 1, "");
+    check("C background fill completed on heavy switch-backs", fillDone, degradedSwitches, fillDone >= degradedSwitches - 1, "");
+    check("C long-task max (tl1083 §6.4 hard cap)", staleLongTaskStats.max ?? 0, GATES.longTaskMaxMs, (staleLongTaskStats.max ?? 0) <= GATES.longTaskMaxMs);
+    check("C long-task P95", staleLongTaskStats.p95 ?? 0, GATES.longTaskP95Ms, (staleLongTaskStats.p95 ?? 0) <= GATES.longTaskP95Ms);
+    check("C switch latency P95 (click→target rendered)", staleSwitchStats.p95, GATES.interactiveP95Ms, staleSwitchStats.p95 <= GATES.interactiveP95Ms);
   } finally {
     await browser.close();
     preview.kill();

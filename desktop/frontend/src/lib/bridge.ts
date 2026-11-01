@@ -3039,6 +3039,16 @@ function makeMockApp(): AppBindings {
   const noticePreviewMock = scenario === "notice";
   const deepSeekUpgradeMock = scenario === "deepseek_upgrade";
   const benchMock = scenario === "bench";
+  // tl1332 bench stale mode (`?mock=bench&staleMeta=1`): every meta read
+  // advances the mock ledger fingerprint — the bench stand-in for the
+  // multi-writer sessions whose fingerprints always move (保存/fork/inbox 轮
+  // 背后持续写). Switch-backs then take the resident-stale branch, and on the
+  // 3.2k-message tools session the degraded tail-first + background-fill
+  // shape runs under the bench long-task collector (tl1083 §6.4 evidence).
+  const benchStaleMeta = benchMock
+    && typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("staleMeta") === "1";
+  let benchMetaRevision = 0;
   const mockAttachmentDataURLs = new Map<string, string>();
   let cancelled = false;
   let pendingAskPreview = false, pendingApprovalPreview = false;
@@ -5204,7 +5214,7 @@ function makeMockApp(): AppBindings {
           return turns;
         },
         async HistorySliceForTab(tabID: string, req: HistorySliceRequest) {
-          return mockHistorySlice(tabID, await this.HistoryForTab(tabID), req, benchMock);
+          return mockHistorySlice(tabID, await this.HistoryForTab(tabID), req, benchMock, benchStaleMeta ? benchMetaRevision : 0);
         },
         async HistoryLoadPhase(_tabID: string) {
           return "";
@@ -5545,6 +5555,7 @@ function makeMockApp(): AppBindings {
             label: tab?.label ?? "DeepSeek-R1",
             ready: tab?.ready ?? true,
             eventChannel: EVENT_CHANNEL,
+            ...(benchStaleMeta ? { sessionRevision: ++benchMetaRevision, sessionDigest: "bench-stale" } : {}),
             cwd: tab?.cwd || cwd,
             workspaceRoot: tab?.workspaceRoot || workspacePath,
             workspaceName: tab?.workspaceName,

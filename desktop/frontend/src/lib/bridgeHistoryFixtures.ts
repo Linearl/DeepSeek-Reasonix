@@ -11,6 +11,11 @@ export function mockHistorySlice(
   messages: HistoryMessage[],
   req: HistorySliceRequest,
   benchMock: boolean,
+  // tl1332 bench stale mode: the mock ledger revision the page is cut under
+  // (0 = the legacy identity-less contract). A positive value marks the slice
+  // revisionKnown, so the switch-back freshness gate can compare it against
+  // a moving MetaForTab fingerprint.
+  sliceRevision = 0,
 ): HistorySlice {
   const turnsOf: number[] = [];
   let turn = 0;
@@ -25,7 +30,7 @@ export function mockHistorySlice(
       if (typeof decoded.before === "number" && decoded.before >= 0 && decoded.before < before) before = decoded.before;
     } catch { /* unknown cursor: serve the latest page */ }
   }
-  const empty: HistorySlice = { entries: [], nextCursor: "", hasOlder: false, totalTurns: turn, startTurn: 0, endTurn: 0, stale: false, revision: 0 };
+  const empty: HistorySlice = { entries: [], nextCursor: "", hasOlder: false, totalTurns: turn, startTurn: 0, endTurn: 0, stale: false, revision: sliceRevision };
   if (before <= 0 || messages.length === 0) return empty;
   const windowedTranscriptContract = messages.length === 2_000
     && messages.some((message) => message.content?.includes("Windowed turn 1000"));
@@ -55,13 +60,21 @@ export function mockHistorySlice(
   // make the test depend on a long chain of incidental prepend timings.
   const toolDenseSelectionContract = messages.length > 1_500
     && messages.some((message) => message.content?.startsWith("bench turn 38:"));
+  // tl1332 stale-bench contract: under a moving fingerprint the mock serves
+  // the whole tool-dense transcript per page. The production 60-turn page of
+  // a real 45MB session holds thousands of rows; the generic 1000-entry cap
+  // would keep the resident page under the heavy-page gate and the degraded
+  // tail-first path would never fire in the bench scenario.
+  const staleBenchContract = sliceRevision > 0 && messages.length > 1_500;
   const maxEntries = geometryContract
     ? messages.length
-    : toolDenseSelectionContract
-      ? Math.max(1_000, Math.floor(req.entries || 0))
-      : windowedTranscriptContract
-        ? Math.max(240, Math.floor(req.entries || 0))
-        : Math.max(1, Math.floor(req.entries || 120));
+    : staleBenchContract
+      ? messages.length
+      : toolDenseSelectionContract
+        ? Math.max(1_000, Math.floor(req.entries || 0))
+        : windowedTranscriptContract
+          ? Math.max(240, Math.floor(req.entries || 0))
+          : Math.max(1, Math.floor(req.entries || 120));
   if (before - lo > maxEntries) lo = before - maxEntries;
   const entries = messages.slice(lo, before).map((message, index) => {
     const entryId = `smock-${tabID}:r0:m${lo + index}:o0`;
@@ -98,7 +111,8 @@ export function mockHistorySlice(
     startTurn: visibleTurns.length > 0 ? Math.min(...visibleTurns) : 0,
     endTurn: visibleTurns.length > 0 ? Math.max(...visibleTurns) : 0,
     stale: false,
-    revision: 0,
+    revision: sliceRevision,
+    revisionKnown: sliceRevision > 0,
   };
 }
 
