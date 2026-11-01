@@ -3039,6 +3039,16 @@ function makeMockApp(): AppBindings {
   const noticePreviewMock = scenario === "notice";
   const deepSeekUpgradeMock = scenario === "deepseek_upgrade";
   const benchMock = scenario === "bench";
+  // tl1332 bench stale mode (`?mock=bench&staleMeta=1`): every meta read
+  // advances the mock ledger fingerprint — the bench stand-in for the
+  // multi-writer sessions whose fingerprints always move (保存/fork/inbox 轮
+  // 背后持续写). Switch-backs then take the resident-stale branch, and on the
+  // 3.2k-message tools session the degraded tail-first + background-fill
+  // shape runs under the bench long-task collector (tl1083 §6.4 evidence).
+  const benchStaleMeta = benchMock
+    && typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("staleMeta") === "1";
+  let benchMetaRevision = 0;
   const mockAttachmentDataURLs = new Map<string, string>();
   let cancelled = false;
   let pendingAskPreview = false, pendingApprovalPreview = false;
@@ -3926,6 +3936,10 @@ function makeMockApp(): AppBindings {
   let mockTabs: TabMeta[] = benchMock ? [
     // Phase F benchmark scenario: the two heaviest sessions pre-opened, the
     // markdown-heavy one active (cold open renders the 500KiB answer).
+    // tl1332 stale mode: the tabs carry a session path so a switch-back is a
+    // same-session hydrate (preserveCachedHistory → 任务580 freshness gate);
+    // without an identity every open is a replace-surface reload and the
+    // resident-stale branch can never fire in the mock.
     {
       id: "tab_bench_markdown",
       scope: "project",
@@ -3933,6 +3947,7 @@ function makeMockApp(): AppBindings {
       workspaceName: "reasonix",
       workspacePath: "~/projects/reasonix",
       gitBranch: "bench",
+      ...(benchStaleMeta ? { sessionPath: "~/sessions/bench-markdown-46t.jsonl" } : {}),
       topicId: "topic_bench_markdown",
       topicTitle: "bench:markdown-46t",
       projectColor: "purple",
@@ -3953,6 +3968,7 @@ function makeMockApp(): AppBindings {
       workspaceName: "reasonix",
       workspacePath: "~/projects/reasonix",
       gitBranch: "bench",
+      ...(benchStaleMeta ? { sessionPath: "~/sessions/bench-tools-38t.jsonl" } : {}),
       topicId: "topic_bench_tools",
       topicTitle: "bench:tools-38t",
       projectColor: "blue",
@@ -5204,7 +5220,7 @@ function makeMockApp(): AppBindings {
           return turns;
         },
         async HistorySliceForTab(tabID: string, req: HistorySliceRequest) {
-          return mockHistorySlice(tabID, await this.HistoryForTab(tabID), req, benchMock);
+          return mockHistorySlice(tabID, await this.HistoryForTab(tabID), req, benchMock, benchStaleMeta ? benchMetaRevision : 0);
         },
         async HistoryLoadPhase(_tabID: string) {
           return "";
@@ -5545,6 +5561,7 @@ function makeMockApp(): AppBindings {
             label: tab?.label ?? "DeepSeek-R1",
             ready: tab?.ready ?? true,
             eventChannel: EVENT_CHANNEL,
+            ...(benchStaleMeta ? { sessionRevision: ++benchMetaRevision, sessionDigest: "bench-stale" } : {}),
             cwd: tab?.cwd || cwd,
             workspaceRoot: tab?.workspaceRoot || workspacePath,
             workspaceName: tab?.workspaceName,

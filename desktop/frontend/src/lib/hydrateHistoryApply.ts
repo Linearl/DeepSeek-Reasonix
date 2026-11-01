@@ -469,3 +469,72 @@ export function sameSessionPlaceholderItems<T>(
 ): T[] | undefined {
   return sameSessionHydrateIdentity(target, prev?.meta) ? prev?.items : undefined;
 }
+
+// ── tl1332 (tl1083 §5.1 最小档): resident-stale 大会话降级 ───────────────────
+//
+// 多写者会话的指纹必然动（保存/fork/inbox 轮在背后持续写），切回 tab 时
+// resident-stale → 放弃缓存全量重载。45MB/5369+ 条的会话上这是一次秒级
+// 主线程卡死（tl1083 实例③：后端读 771-841ms + 前端重灌数千条）。降级
+// 形状与「关 tab 重开能缓解」的冷启动 tail 首绘（LoadSessionTail/任务
+// 831③ 通道，后端只解码尾部窗口）同构：先用一个很浅的尾窗页换回指纹、
+// 立即 hydrate_done 首绘，再在后台把整页取回、分片 prepend 补史。
+//
+// 门槛刻意收窄：仅 resident 核鲜失败且驻留页本身已证明很重（messages>N
+// 或 bytes>M）才降级。小会话（两条腿都不中）一条指令都不变，快路径命中
+// 不受影响；LRU 已驱逐（无驻留页）的冷开路径也不在本次范围。
+
+/** 首绘尾窗页深（turns）。只服务首绘换指纹，完整页由后台补史恢复。 */
+export const HISTORY_TAIL_FIRST_TURNS = 12;
+
+/** 后台补史每片最大行数；片间让出主线程，保证无 >500ms 单任务。 */
+export const HISTORY_FILL_CHUNK_ITEMS = 600;
+
+/** messages>N 门槛：驻留页消息记录数（一条 provider 消息一条 record）。 */
+export const TAIL_FIRST_PAGE_MIN_RECORDS = 1200;
+
+/** bytes>M 门槛：驻留页已解码消息体字节。 */
+export const TAIL_FIRST_PAGE_MIN_BYTES = 2 << 20;
+
+/**
+ * 驻留页是否重到「全量重载会卡死主线程」。stats 来自 transcriptStore
+ * 的 sessionStats()（records = 消息条数，bodyBytes = 已解码消息体字节）；
+ * undefined = 无驻留页（LRU 已驱逐），返回 false——冷开路径不在本件范围。
+ */
+export function residentPageHeavy(
+  stats: { records: number; bodyBytes: number } | undefined,
+): boolean {
+  if (!stats) return false;
+  return stats.records >= TAIL_FIRST_PAGE_MIN_RECORDS || stats.bodyBytes >= TAIL_FIRST_PAGE_MIN_BYTES;
+}
+
+/**
+ * 把整页 items 切成补史分片（下标区间，升序覆盖 [0, items.length)）。
+ * 空页返回空数组；余量片允许小于 chunkSize。
+ */
+export function planHistoryFillChunks(itemsLength: number, chunkSize: number): Array<[number, number]> {
+  const chunks: Array<[number, number]> = [];
+  if (itemsLength <= 0 || chunkSize <= 0) return chunks;
+  for (let start = 0; start < itemsLength; start += chunkSize) {
+    chunks.push([start, Math.min(start + chunkSize, itemsLength)]);
+  }
+  return chunks;
+}
+
+/**
+ * 一个补史分片的 historyStartTurn：分片首条带 historyTurn 的行就是锚；
+ * 一片里一行锚都没有（罕见：纯 tool/assistant 前缀片）时回退整页
+ * startTurn——中间片的暂态值随后续分片被覆盖，只有最后落地的最老片
+ * （调用方保证其 startTurn=整页起点）决定最终 historyStartTurn。
+ */
+export function fillChunkStartTurn(
+  items: ReadonlyArray<unknown>,
+  from: number,
+  to: number,
+  pageStartTurn: number,
+): number {
+  for (let i = from; i < to && i < items.length; i += 1) {
+    const turn = (items[i] as { historyTurn?: number } | undefined)?.historyTurn;
+    if (typeof turn === "number" && turn > 0) return turn;
+  }
+  return pageStartTurn;
+}

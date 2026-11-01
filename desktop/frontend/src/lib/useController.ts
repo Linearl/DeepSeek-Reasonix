@@ -50,7 +50,7 @@ import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydrateFailureDetail, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { HISTORY_AUTO_RETRY_LIMIT, runBoundedAutoRetry } from "./historyAutoRetry";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, hydratedHistoryApplyMode, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fillChunkStartTurn, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, HISTORY_FILL_CHUNK_ITEMS, HISTORY_TAIL_FIRST_TURNS, hydratedHistoryApplyMode, planHistoryFillChunks, residentPageHeavy, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
 import { prefetchMruTabs, type PrefetchCandidate } from "./transcriptPrefetch";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
@@ -3693,12 +3693,23 @@ export function useController() {
       // their contract (reset-surface local-snapshot path).
       let freshMeta: Meta | undefined;
       let residentStale = false;
+      // tl1332 (tl1083 §5.1 最小档): when the freshness gate un-skips a
+      // resident page heavy enough that the full reload re-filled thousands of
+      // rows on the main thread (the 45MB switch-back stall), degrade to a
+      // shallow tail-window first paint now + a chunked full-page fill in the
+      // background — the switch-tab shape of the cold-open LoadSessionTail
+      // (任务831③) first paint. Small pages keep the byte-identical legacy
+      // path; an evicted (non-resident) target is a cold open, out of scope.
+      let tailFirstFill = false;
       if (skipHistory && !options.skipHistory) {
         const resident = statesRef.current.get(tabId);
         freshMeta = await loadMetaForTab(tabId);
         if (!sessionLoadCurrent(tabId, seq)) return;
         residentStale = !residentSurfaceFresh(resident, freshMeta);
-        if (residentStale) skipHistory = false;
+        if (residentStale) {
+          tailFirstFill = residentPageHeavy(getTranscriptStore().sessionStats(tabId, sessionPath));
+          skipHistory = false;
+        }
       }
       // Task 123: record which branch decided, so the monitor board can answer
       // "did this switch reuse the cache" without guessing from timings.
@@ -3735,7 +3746,10 @@ export function useController() {
             : residentStale
               // 任务580: the resident copy was reusable but provably stale —
               // the meta fingerprint moved while the tab was away.
-              ? "resident-stale"
+              // tl1332: "-tail-first" marks the degraded two-phase shape
+              // (shallow tail page now, chunked full-page fill behind) so the
+              // monitor board can tell it from the plain full reload.
+              ? (tailFirstFill ? "resident-stale-tail-first" : "resident-stale")
               : residentVeto
                 ? "cache-vetoed"
                 : "backend-fetch";
@@ -3823,7 +3837,10 @@ export function useController() {
           loadTimed("history", () =>
             // Resident LRU only when the caller keeps cache; reset/no-cache re-fetch.
             getTranscriptStore().loadLatest(tabId, sessionPath, {
-              turns: HISTORY_PAGE_TURNS,
+              // tl1332: on the degraded resident-stale shape this first fetch is
+              // the FIRST-PAINT tail window only (12 turns); the full-depth page
+              // is re-fetched and applied in chunks by the background fill below.
+              turns: tailFirstFill ? HISTORY_TAIL_FIRST_TURNS : HISTORY_PAGE_TURNS,
               preferResident: shouldPreferResidentHistory(resetSurface, options.preserveCachedHistory),
               // 任务580: when the switch-back freshness check un-skipped this
               // hydrate, expectedRevision/Digest carry the FRESH meta values —
@@ -3948,6 +3965,94 @@ export function useController() {
         reportBootHydrateArrival(tabId, hydrateElapsed);
       }
 
+      // tl1332 (tl1083 §5.1 最小档): background history fill for the degraded
+      // resident-stale switch. The shallow tail page above already painted and
+      // hydrate_done fired; this pass re-fetches the full-depth page and
+      // applies it in bounded chunks (history_prepend, newest-older chunk
+      // first so the oldest chunk lands last and historyStartTurn ends at the
+      // page start) with a yield between chunks — no single main-thread task
+      // carries the multi-thousand-row refill that made 45MB switch-backs
+      // stall. Stage readings `<reason>:fill:apply` per chunk and
+      // `<reason>:fill:total` are the tl1083 §6.4 evidence.
+      //
+      // historyOlderLoading is armed for the fill's duration: it is the
+      // existing loadOlder concurrency gate, so a user "load earlier" during
+      // the fill queues through loadOlder's own retry instead of interleaving
+      // prepends out of order.
+      let backgroundHistoryFill: Promise<void> = Promise.resolve();
+      if (tailFirstFill && projection !== undefined) {
+        const fillExpectedRevision = freshMeta?.sessionRevision ?? sessionRevision;
+        const fillExpectedDigest = freshMeta?.sessionDigest ?? sessionDigest;
+        backgroundHistoryFill = (async () => {
+          const fillStartedAt = Date.now();
+          // Let the tail-page paint win a frame before the fill round trip.
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+          if (!stillCurrent()) return;
+          dispatchTo(tabId, { type: "history_older_start" });
+          let dispatchedAny = false;
+          // Backstop: paths that exit before the first prepend must not leave
+          // historyOlderLoading armed (same contract as the loadOlder finally).
+          const clearOlderGateIfOrphaned = () => {
+            if (dispatchedAny || !sessionLoadCurrent(tabId, seq)) return;
+            const state = statesRef.current.get(tabId);
+            if (state?.historyOlderLoading) dispatchTo(tabId, { type: "history_older_error" });
+          };
+          try {
+            const fullPage = await loadTimed("history fill", () => getTranscriptStore().loadLatest(tabId, sessionPath, {
+              turns: HISTORY_PAGE_TURNS,
+              preferResident: false,
+              expectedRevision: fillExpectedRevision,
+              expectedDigest: fillExpectedDigest,
+            }));
+            if (!stillCurrent()) return;
+            if (fullPage === undefined || fullPage.items.length === 0) {
+              // The tail page stands; the store keeps its cursor, so manual
+              // "load earlier" still pages the rest in.
+              reportFrontendLog("session-monitor", "hydrate tail-first fill unavailable", `tab=${tabId} seq=${currentSwitchSeq(tabId)}`, "warn");
+              return;
+            }
+            if (foregroundTurnActive()) {
+              // A turn went live between paint and fill: the live tail owns the
+              // surface (same rule as the reconcile path); paging and later
+              // reconciles heal the prefix.
+              reportFrontendLog("session-monitor", "hydrate tail-first fill skipped live turn", `tab=${tabId} seq=${currentSwitchSeq(tabId)}`, "info");
+              return;
+            }
+            const pageItems = fullPage.items;
+            const pageRevision = fullPage.revisionKnown ? fullPage.revision : undefined;
+            const pageDigest = fullPage.digest || undefined;
+            const chunks = planHistoryFillChunks(pageItems.length, HISTORY_FILL_CHUNK_ITEMS);
+            for (let i = chunks.length - 1; i >= 0; i -= 1) {
+              if (!stillCurrent()) return;
+              if (foregroundTurnActive()) {
+                reportFrontendLog("session-monitor", "hydrate tail-first fill paused live turn", `tab=${tabId} seq=${currentSwitchSeq(tabId)} applied=${dispatchedAny ? "partial" : "none"}`, "info");
+                return;
+              }
+              const [from, to] = chunks[i];
+              const chunkStartedAt = Date.now();
+              dispatchTo(tabId, {
+                type: "history_prepend",
+                items: pageItems.slice(from, to),
+                removeIds: [],
+                startTurn: fillChunkStartTurn(pageItems, from, to, fullPage.startTurn),
+                totalTurns: fullPage.totalTurns,
+                hasOlder: fullPage.hasOlder,
+                revision: pageRevision,
+                digest: pageDigest,
+              });
+              dispatchedAny = true;
+              reportStageTiming(tabId, `${reason}:fill:apply`, Date.now() - chunkStartedAt);
+              if (i > 0) await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+            }
+            reportStageTiming(tabId, `${reason}:fill:total`, Date.now() - fillStartedAt);
+            addBreadcrumb("tab.hydrate", `tail-first fill ${tabId} chunks=${chunks.length} items=${pageItems.length} ms=${Date.now() - fillStartedAt}`);
+            reportFrontendLog("session-monitor", "hydrate tail-first fill done", `tab=${tabId} seq=${currentSwitchSeq(tabId)} chunks=${chunks.length} items=${pageItems.length} ms=${Date.now() - fillStartedAt}`, "info");
+          } finally {
+            clearOlderGateIfOrphaned();
+          }
+        })();
+      }
+
       // Phase 2: local ancillary data. It stays inside the same in-flight
       // promise so duplicate ready/startup hydrations coalesce, but it runs
       // after hydrate_done so slow Wails calls don't keep the visible transcript
@@ -3972,8 +4077,11 @@ export function useController() {
       // Task 123 phase 2: a fingerprint mismatch no longer blocks ancillary
       // loads. The first exact page is already painted; reconcile re-reads the
       // pair in the background and replaces history only when fingerprints agree.
+      // tl1332: when the tail-first fill owns this switch it subsumes the
+      // reconcile (same full-depth page fetch, fresher binding) — running both
+      // would interleave two replace streams on one surface.
       let backgroundReconcile: Promise<void> = Promise.resolve();
-      if (meta !== undefined && projection !== undefined && !skipHistory &&
+      if (meta !== undefined && projection !== undefined && !skipHistory && !tailFirstFill &&
         !foregroundTurnActive() && !historyFingerprintMatchesMeta(projection, meta)) {
         const seedMeta = meta;
         backgroundReconcile = (async () => {
@@ -4094,7 +4202,7 @@ export function useController() {
       });
       // Join the background fingerprint reconcile so the in-flight marker covers
       // it, without having delayed ancillary or checkpoints.
-      await backgroundReconcile;
+      await Promise.all([backgroundReconcile, backgroundHistoryFill]);
     })();
     if (shouldTrackInFlight) {
       sessionLoadInFlight.current.set(tabId, { sessionPath, revision: sessionRevision, digest: sessionDigest, promise });

@@ -59,9 +59,15 @@ ok(
   /residentStale = !residentSurfaceFresh\(resident, freshMeta\)/.test(controller),
   "loadSessionDataForTab gates the reuse path on residentSurfaceFresh",
 );
+// tl1332: the stale branch now also consults the heavy-page gate, but a stale
+// fingerprint still drops the fetch-free switch unconditionally.
 ok(
-  /if \(residentStale\) skipHistory = false;/.test(controller),
-  "a stale resident fingerprint drops the fetch-free switch",
+  /if \(residentStale\) \{[\s\S]{0,240}tailFirstFill = residentPageHeavy\(/.test(controller),
+  "a stale resident fingerprint drops the fetch-free switch (tl1332 gate rides the same branch)",
+);
+ok(
+  /if \(residentStale\) \{[\s\S]{0,240}skipHistory = false;/.test(controller),
+  "the stale branch still un-skips history for every session size",
 );
 ok(
   /expectedRevision: freshMeta\?\.sessionRevision \?\? sessionRevision/.test(controller),
@@ -71,8 +77,10 @@ ok(
   /let meta = skipHistory && freshMeta !== undefined \? freshMeta : await loadTimed\("meta"/.test(controller),
   "the fetch-free switch reuses the freshness meta instead of a second MetaForTab round trip",
 );
+// tl1332: the stale-refetch decision stays named; the degraded two-phase shape
+// gets its own label so the monitor board can tell it from the plain reload.
 ok(
-  /: residentStale[\s\S]{0,200}\? "resident-stale"/.test(controller),
+  /: residentStale[\s\S]{0,400}\? \(tailFirstFill \? "resident-stale-tail-first" : "resident-stale"\)/.test(controller),
   "the stale-refetch decision is named in the hydrate decision log (diagnosable, not silent)",
 );
 ok(
