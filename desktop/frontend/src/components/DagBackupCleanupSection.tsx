@@ -19,7 +19,10 @@ function formatStamp(modifiedAt: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function DagBackupCleanupSection({ t, busy }: { t: Translator; busy: boolean }) {
+// tl1337：showHint=false 时不渲染说明行——宿主子项行左列简述
+// （settings.sessionStorage.backupGroupDesc）已含 dagbak/保留最近一份要点，
+// 防左右重复；键与「保留最近一份」防线仍由 dag-backup-cleanup.test.ts 钉住。
+export function DagBackupCleanupSection({ t, busy, showHint = true }: { t: Translator; busy: boolean; showHint?: boolean }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [plan, setPlan] = useState<DagBackupCleanupPlanView | null>(null);
   const [result, setResult] = useState<{ deleted: number; deletedBytes: number; failed: number } | null>(null);
@@ -61,7 +64,7 @@ export function DagBackupCleanupSection({ t, busy }: { t: Translator; busy: bool
 
   return (
     <div data-dag-backup-cleanup="">
-      <p className="settings-field__hint-line">{t("settings.dagBackupCleanup.hint")}</p>
+      {showHint && <p className="settings-field__hint-line">{t("settings.dagBackupCleanup.hint")}</p>}
       {error !== "" && <p className="settings-field__hint-line">{error}</p>}
 
       {phase === "idle" && (

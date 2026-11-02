@@ -3059,8 +3059,13 @@ export const en = {
 "settings.sessionStorage.risk.v4_only": "Known risk: this stage cannot be reached in one step (a dual-write stage must run first); the v3 lag keeps growing, and rolling back means selecting a lower stage, restarting, then running the migration to carry the content back.",
 "settings.sessionStorage.restartPending": "Saved, but it only takes effect after a restart - this process is still on {{mode}}.",
 // tl1292: two sub-function group cards inside the session storage card (LabSectionCard titles).
+// tl1337 rework: the two titles now head left-copy/right-control subitem rows;
+// cardDesc/backupGroupDesc are the one-to-two-line summaries that replace the
+// stacked sessionStorageHint paragraph (all its content survives, condensed).
 "settings.sessionStorage.migrationGroup": "Migrate from v4/v5",
 "settings.sessionStorage.backupGroup": "Scan & clean migration backups",
+"settings.sessionStorage.cardDesc": "Locked to v3 (recommended, the default stage): sessions are stored complete in sessions/, v4 is not enabled and carries no known risk. The v4/v5 stages are retired - use the migration below to bring v4 data back in one pass (an automatic backup runs first).",
+"settings.sessionStorage.backupGroupDesc": "Scans DAG (schema-2) logs and converts them to the flat form; migration keeps original bytes at *.dagbak-tl1227 for rollback, and once every session is migrated (a clean check) historical backups can be cleaned up (the newest one is always kept).",
 "settings.splitViewHint": "Adds a split-view action to the tab context menu: two tabs side by side in one window, each keeping its own transcript, composer and running turn. Experimental, off by default - with it off the menu looks exactly as before.",
 "settings.migration.hint": "Carries what the v4 mirror holds beyond sessions/ back into the v3 store. Affected files are backed up automatically, the plan is previewed first, and re-running is safe.",
 "settings.migration.action": "Migrate the v4 copy back to v3…",

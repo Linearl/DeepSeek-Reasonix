@@ -20,7 +20,9 @@ type MigrationPhase = "idle" | "confirming" | "running" | "done" | "failed";
 
 const MIGRATION_PROGRESS_EVENT = "sessionStorageMigrationProgress";
 
-export function SessionMigrationSection({ t, onRunningChange }: { t: Translator; onRunningChange: (running: boolean) => void }) {
+// tl1337：showHint=false 时不再渲染说明行——宿主卡子项行（左文右操作）把
+// 同一句说明放左列（settings.migration.hint），右侧只留按钮/状态，防左右重复。
+export function SessionMigrationSection({ t, onRunningChange, showHint = true }: { t: Translator; onRunningChange: (running: boolean) => void; showHint?: boolean }) {
   const [phase, setPhase] = useState<MigrationPhase>("idle");
   const [kind, setKind] = useState<MigrationKind>("v4-backfill");
   const [plan, setPlan] = useState<SessionStorageMigrationPlanView | null>(null);
@@ -91,7 +93,7 @@ export function SessionMigrationSection({ t, onRunningChange }: { t: Translator;
   return (
     <div data-session-migration="">
       {error && phase !== "running" && <p className="settings-field__hint-line">{error}</p>}
-      <p className="settings-field__hint-line">{t("settings.migration.hint")}</p>
+      {showHint && <p className="settings-field__hint-line">{t("settings.migration.hint")}</p>}
       {phase === "idle" && (
         <div className="settings-actions">
           <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void open("v4-backfill")}>

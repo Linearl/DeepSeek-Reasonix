@@ -19653,6 +19653,30 @@ button.statusbar__mcp:focus-visible {
   }
 }
 
+/* tl1337：会话存储卡「左文右操作」子项行的右列容器——操作控件与状态行纵排
+   （settings-field 默认 control 是右对齐横排，子项行要按钮在上、状态行在下
+   左对齐）。网格本身复用 settings-field（左 copy 右 control），零新布局机制；
+   状态行走 hint-line 形态但允许换行（右列宽度内 1-2 行，不再大段堆叠）。 */
+.lab-subitem__ops {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.lab-subitem__ops .settings-actions {
+  margin: 0;
+}
+.lab-subitem__ops .settings-field__hint-line {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  text-align: left;
+}
+.lab-subitem__ops .set-seg {
+  justify-content: flex-start;
+}
+
 .settings-inline-controls {
   display: flex;
   align-items: center;

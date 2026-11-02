@@ -433,6 +433,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
     {
       key: "storage",
       labelKey: "settings.labGroup.storage",
+      // tl1337 返修口径（与 yaml 同步）：存储域=会话存储/数据目录/存储版本/
+      // 迁移项——存储版本与迁移/备份清理是 sessionStore 卡内子项（pane 左文
+      // 右操作行）；数据目录（homePointer）与冷压缩（jsonlZstd）维持域内
+      // 独立卡。成员归属与 yaml 同构同值，无搬移。
       entries: [
         {
           id: "sessionStore",
