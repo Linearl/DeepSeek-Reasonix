@@ -198,6 +198,14 @@ func (a *App) listSessionsFromDir(dir, active string) []SessionMeta {
 	out := make([]SessionMeta, 0, len(records))
 	for _, record := range records {
 		_, isOpen := open[record.Path]
+		// tl1352 D：侧栏过滤 recovery 副本条目。副本以主会话的文件名前缀+继承
+		// title 出现在侧栏，与 tab 标题错位（现场被用户判为对话泄露）。排除
+		// 非 open 的副本条目——已打开的 tab（正写在副本上）必须保留自己的条目；
+		// 副本管理走既有的 recovery-copy groups 面板。fork 副本转正（tl1352 A）
+		// 落地后副本通常很快消失，这里的过滤只是侧栏的兜底净化。
+		if !isOpen && record.Path != active && agent.LooksLikeRecoveryFilename(record.Path) {
+			continue
+		}
 		meta := sessionMetaFromCatalog(record, record.Path == active, isOpen)
 		if route, ok := channelRoutes[sessionRuntimeKey(record.Path)]; ok {
 			applyChannelSessionRoute(&meta, route)

@@ -116,6 +116,12 @@ type Controller struct {
 	// forks that split one conversation across copies), so the controller
 	// adopts the disk transcript instead of forking again.
 	lastSnapshotForkAt time.Time
+	// pendingRecoveryPromotion carries one armed fork promotion (tl1352 A):
+	// the fork isolated the local transcript onto a recovery copy; the copy
+	// folds back onto the main file at a later save cycle once the main file
+	// has stayed quiet since the fork (the other writer is gone). nil when no
+	// promotion is pending.
+	pendingRecoveryPromotion *recoveryPromotion
 	// recoveryGate is the shared Auto Guard state for this controller.
 	// nil when the feature is not wired for this controller.
 	recoveryGate *recovery.Gate
@@ -5009,6 +5015,14 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 		return false, nil
 	}
 	s := c.executor.Session()
+	// tl1352 A：fork 副本延迟转正在每个保存周期开头结算（详见 recoveryPromotion）。
+	// 结算换道后 s 重新取向（apply 内部已经 adoptDiskSession 换绑 executor）。
+	if c.applyPendingRecoveryPromotion() {
+		c.mu.Lock()
+		path = c.sessionPath
+		c.mu.Unlock()
+	}
+	s = c.executor.Session()
 	if !s.HasContent() {
 		// Nothing to persist yet (e.g. a fresh session with only a system
 		// prompt) — staying quiet here is correct, not a data-loss path.
@@ -5289,6 +5303,21 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 			return path, conflictAdoptedDisk, nil
 		}
 	}
+	// tl1352 B：fork 总量闸。每个 logical topic（剥到非副本根 stem）生命周期内
+	// 现存副本数到达 SnapshotForkQuotaPerTopic 即拒绝再 fork：强制 adopt 盘上
+	// 转录并 fail-loud——20261031 现场 2 分钟刹车窗挡不住跨重启的副本风暴
+	// （23:19/23:34/23:53/00:03/00:05 全部落在窗外），副本总数才是硬上限。
+	forkCount := agent.RecoveryForkCountForTopic(path)
+	if forkCount >= agent.SnapshotForkQuotaPerTopic {
+		if c.adoptDiskSession(path) {
+			appendSnapshotConflictDiagnostic(path, mode, "adopted_disk_fork_quota_exhausted", saveErr, "", true)
+			slog.Warn("controller: snapshot conflict; fork quota exhausted for this topic; adopted the disk transcript and dropped the unsaved local copy",
+				append(logAttrs, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount, "fork_quota", agent.SnapshotForkQuotaPerTopic)...)
+			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
+				"this conversation has hit its recovery-copy limit; the on-disk transcript was adopted and unsaved local changes were dropped so the copies stop growing"))
+			return path, conflictAdoptedDisk, nil
+		}
+	}
 	reason := "snapshot conflict"
 	if forceRewrite {
 		reason = "rewrite conflict"
@@ -5330,7 +5359,13 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 	c.markSnapshotFork()
 	appendSnapshotConflictDiagnostic(path, mode, "forked_recovery_branch", saveErr, info.Path, info.Existing)
 	slog.Warn("controller: snapshot conflict; forked recovery branch",
-		append(logAttrs, "recovery", info.Path, "existing", info.Existing)...)
+		append(logAttrs, "recovery", info.Path, "existing", info.Existing, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount+1)...)
+	// tl1352 A：fork 先按既有契约隔离（另一写者可能仍在写主文件），同时登记
+	// 延迟转正——之后的保存周期开头结算：主文件自 fork 起保持安静（另一写者
+	// 已消失，20261031 现场主文件停更两天）即把副本整体 rename 回主文件名并
+	// 回绑主路径，恢复「主文件即活跃写入」；主文件仍在被写则保留登记继续
+	// 隔离，绝不与活跃写者抢盘。
+	c.armPendingRecoveryPromotion(path, info)
 	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryForked,
 		"session changed on disk; unsaved local transcript was saved as a conflict copy"))
 	return info.Path, conflictForkedBranch, nil

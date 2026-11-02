@@ -157,7 +157,11 @@ func (a *Agent) runOverflowDiet(s *Session, reason string, est int) {
 		return
 	}
 	window := a.effectiveContextWindow()
-	folded, actions, changed := DietSessionMessages(s.Snapshot(), window)
+	// 预检只决定「是否值得备份动手」（纯函数、便宜）；真正的折叠在
+	// RewriteAndSaveCompact 的保存锁窗内对落笔时刻的完整转录重算——
+	// tl1352 C+：内存折叠与盘上 CAS 压实之间不再留「内存已折叠、盘上
+	// 仍旧字节」的窗口让前台 checkpoint/autosave 插入竞态分叉。
+	_, actions, changed := DietSessionMessages(s.Snapshot(), window)
 	if !changed {
 		slog.Info("session: overflow diet skipped (nothing to strip or fold)",
 			"path", filepath.Base(path), "reason", reason,
@@ -171,8 +175,19 @@ func (a *Agent) runOverflowDiet(s *Session, reason string, est int) {
 			"path", path, "reason", reason, "err", err)
 		return
 	}
-	s.Rewrite(folded, "selfheal_diet")
-	if err := s.SaveRewriteCompact(path); err != nil {
+	var folded []provider.Message
+	err = s.RewriteAndSaveCompact(path, "selfheal_diet", func(complete []provider.Message) []provider.Message {
+		f, acts, ch := DietSessionMessages(complete, window)
+		actions = acts
+		if !ch {
+			// 锁窗内的完整转录已不再超窗（如 transcript 升级补全后达标）：
+			// 无折叠可做，原样保存并按原样校验。
+			f = complete
+		}
+		folded = f
+		return f
+	})
+	if err != nil {
 		slog.Warn("session: overflow diet rewrite failed",
 			"path", path, "reason", reason, "err", err)
 		return

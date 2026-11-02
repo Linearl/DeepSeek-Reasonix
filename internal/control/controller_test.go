@@ -1452,25 +1452,40 @@ func TestRecoveryBranchPersistsLaterOwnedCompactionRewrite(t *testing.T) {
 	}
 
 	localSess.Add(provider.Message{Role: provider.RoleUser, Content: "continue"})
-	if err := c.Snapshot(); err != nil {
+	// 第一笔把「continue」落副本（tl1352 A 转正门槛：内存未与副本字节稳定时
+	// 先落副本，不转正）；主文件自 fork 起安静，第二笔结算延迟转正，副本
+	// 整体 rename 回主文件、controller 回绑主路径。
+	if err := c.SnapshotDurable(); err != nil {
 		t.Fatalf("Snapshot recovery append: %v", err)
 	}
-	localSess.Replace([]provider.Message{
+	if err := c.SnapshotDurable(); err != nil {
+		t.Fatalf("Snapshot recovery promotion settle: %v", err)
+	}
+	if got := c.SessionPath(); got != path {
+		t.Fatalf("session path after quiet-main convergence = %q, want the main file %q (tl1352 A deferred promotion)", got, path)
+	}
+	if _, err := os.Stat(recoveryPath); !os.IsNotExist(err) {
+		t.Fatalf("converged recovery copy must be gone: stat err=%v", err)
+	}
+	// 转正以副本字节重载了 executor 会话：旧的 localSess 引用已失效，改用
+	// 活会话做后续 owned 重写。
+	live := c.executor.Session()
+	live.Replace([]provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
 		{Role: provider.RoleUser, Content: "<compaction-summary>\nSummary of recovery branch work: first -> local\n</compaction-summary>"},
 		{Role: provider.RoleUser, Content: "continue"},
 	})
-	localSess.IncrementRewrite()
+	live.IncrementRewrite()
 
 	if err := c.SnapshotActivity(); err != nil {
 		t.Fatalf("SnapshotActivity recovery compaction: %v", err)
 	}
-	if got := c.SessionPath(); got != recoveryPath {
-		t.Fatalf("session path after recovery compaction = %q, want recovery %q", got, recoveryPath)
+	if got := c.SessionPath(); got != path {
+		t.Fatalf("session path after recovery compaction = %q, want main %q", got, path)
 	}
-	reloaded, err := agent.LoadSession(recoveryPath)
+	reloaded, err := agent.LoadSession(path)
 	if err != nil {
-		t.Fatalf("LoadSession recovery: %v", err)
+		t.Fatalf("LoadSession main: %v", err)
 	}
 	if got := len(reloaded.Messages); got != 3 {
 		t.Fatalf("message count after recovery compaction = %d, want 3: %+v", got, reloaded.Messages)
@@ -1552,16 +1567,29 @@ func TestConcurrentSnapshotsShareSingleRecoveryHandoff(t *testing.T) {
 	default:
 	}
 
-	if got := c.SessionPath(); got != first.recoveryPath {
-		t.Fatalf("controller session path = %q, want recovery %q", got, first.recoveryPath)
+	// tl1352 A：主文件自 fork 起安静（没有其他写者），延迟转正在此后的保存
+	// 周期把唯一副本折叠回主文件——仍只发生过一次恢复交接（上面的 entered
+	// 断言不变），本地转录逐字保留在主文件上，磁盘不再留副本。
+	if err := c.SnapshotDurable(); err != nil {
+		t.Fatalf("promotion settle snapshot: %v", err)
+	}
+	if got := c.SessionPath(); got != path {
+		t.Fatalf("controller session path = %q, want the main file after deferred promotion folded the single copy back", got)
 	}
 	matches, err := filepath.Glob(filepath.Join(dir, "*-recovery-*.jsonl"))
 	if err != nil {
 		t.Fatalf("glob recovery branches: %v", err)
 	}
 	recoveries := recoveryTranscriptPaths(matches)
-	if len(recoveries) != 1 || recoveries[0] != first.recoveryPath {
-		t.Fatalf("recovery branches = %v err=%v, want only %q", matches, err, first.recoveryPath)
+	if len(recoveries) != 0 {
+		t.Fatalf("recovery branches = %v err=%v, want none after the quiet-main promotion folded the copy back", matches, err)
+	}
+	loaded, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatalf("LoadSession main after promotion: %v", err)
+	}
+	if got := loaded.Messages[len(loaded.Messages)-1].Content; got != "local" {
+		t.Fatalf("main tail after promotion = %q, want the isolated local transcript", got)
 	}
 }
 

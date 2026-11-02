@@ -7,6 +7,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
+	"reasonix/internal/provider"
 )
 
 // 任务 1011：打开会话的内建自动检测 + 自动自愈。
@@ -117,10 +118,20 @@ func (c *Controller) SelfHealOpenSession(windowTokens int) SelfHealOpenOutcome {
 					"repair could not back up this conversation's files first, so nothing was changed; check disk space and try again"))
 			} else {
 				out.BackupDir = backupDir
-				folded, actions, changed := agent.DietSessionMessages(s.Snapshot(), windowTokens)
+				// tl1352 C+：预检只判 changed；折叠改在 RewriteAndSaveCompact
+				// 的保存锁窗内对落笔时刻的完整转录重算，与前台 checkpoint/
+				// autosave 序列化到同一条保存路径（消除「内存已折叠、盘上旧
+				// 字节」窗口里的同进程 baseline 竞态 → recovery 副本 fork）。
+				_, actions, changed := agent.DietSessionMessages(s.Snapshot(), windowTokens)
 				if changed {
-					s.Rewrite(folded, "selfheal_diet")
-					if err := s.SaveRewriteCompact(path); err != nil {
+					if err := s.RewriteAndSaveCompact(path, "selfheal_diet", func(complete []provider.Message) []provider.Message {
+						f, acts, ch := agent.DietSessionMessages(complete, windowTokens)
+						actions = acts
+						if !ch {
+							return complete
+						}
+						return f
+					}); err != nil {
 						slog.Warn("selfheal: diet rewrite failed", "path", path, "err", err)
 						out.Detail = strings.TrimPrefix(out.Detail+"&", "&") + "diet_failed"
 					} else {

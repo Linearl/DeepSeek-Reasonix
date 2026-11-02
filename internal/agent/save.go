@@ -304,6 +304,63 @@ func (s *Session) SaveRewriteCompact(path string) error {
 	return s.saveObserved(path, sessionSaveRewriteCompact)
 }
 
+// RewriteAndSaveCompact installs an in-memory history rewrite and persists it
+// as one CAS-protected compact rewrite inside a single save-path lock window
+// (tl1352 C+). The separate Rewrite → SaveRewriteCompact pair leaves a window
+// where the in-memory transcript is already folded but the disk still holds
+// the old bytes and the CAS ledger the old baseline: a foreground checkpoint
+// or autosave firing inside that window races the diet on the same session
+// file, and the losing side classifies the mismatch as a foreign divergence
+// (ErrSessionSnapshotConflict kind=diverged) and forks a recovery copy — the
+// 20261031 recovery-copy storm. Holding the save-path mutex across both steps
+// makes that intermediate state unobservable to every other saver of the
+// path: they queue behind the same mutex the foreground paths already use.
+//
+// fold runs inside the lock window against the complete in-memory transcript
+// at save time, so the rewrite product never derives from a stale snapshot.
+// It must be pure and must not acquire session save locks or call back into
+// Session write methods (the path mutex is non-reentrant — re-entry from here
+// deadlocks). The transcript upgrade (task 187) still runs outside the locks,
+// so first-paint tail-window sessions are completed before fold sees them.
+//
+// On save failure the in-memory transcript keeps the folded state while the
+// disk keeps the old bytes — the same observable outcome as the previous
+// Rewrite-then-SaveRewriteCompact pair, so callers' failure handling is
+// unchanged.
+func (s *Session) RewriteAndSaveCompact(path string, reason string, fold func(complete []provider.Message) []provider.Message) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("empty session path")
+	}
+	if fold == nil {
+		return fmt.Errorf("rewrite compact %s: nil fold", path)
+	}
+	if err := s.upgradeTruncatedTranscriptForWrite(path); err != nil {
+		return err
+	}
+	// Task 885 discipline: directory create is disk IO, not a critical-section
+	// step — it runs before the mutex so a slow volume cannot stretch the hold.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create session dir: %w", err)
+	}
+	lockWaitStart := time.Now()
+	unlock, lockErr := lockSessionSavePathWithin(path, sessionSavePathLockWait)
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
+	unlockFile, err := lockSessionFile(path)
+	if err != nil {
+		return fmt.Errorf("lock session file: %w", err)
+	}
+	defer unlockFile()
+	// Task 357: the wait just paid is a first-class segment of the save total.
+	s.lastSaveLockWaitMs.Store(time.Since(lockWaitStart).Milliseconds())
+	return s.saveObservedAfterUpgrade(path, sessionSaveRewriteCompact, func() error {
+		s.Rewrite(fold(s.Snapshot()), reason)
+		return s.saveLocked(path, sessionSaveRewriteCompact)
+	})
+}
+
 func (s *Session) save(path string, mode sessionSaveMode) error {
 	if path == "" {
 		return fmt.Errorf("empty session path")
@@ -1151,6 +1208,18 @@ func (s *Session) snapshotNoOpReason(path string) string {
 // digest + probe entirely (#6607).
 func (s *Session) snapshotUpToDate(path string) bool {
 	return s.snapshotNoOpReason(path) != ""
+}
+
+// SnapshotUpToDateForPath reports whether the live session's in-memory
+// transcript is byte-stable since the last successful save to path — nothing
+// changed in memory and the file on disk still matches the persisted baseline
+// (tl1352 A: deferred recovery promotion gates on this before folding the
+// copy back onto the main file — promoting while the session holds unsaved
+// content would discard that content in the post-promotion reload). A
+// tail-window session (task 187 first-paint) counts as stable when its tail
+// baseline matches the file: promotion's reload restores exactly that tail.
+func (s *Session) SnapshotUpToDateForPath(path string) bool {
+	return s.snapshotUpToDate(path) || s.snapshotTailWindowClean(path)
 }
 
 // warnVanishedPersistedFiles stamps an out-of-band removal of a baseline-known
