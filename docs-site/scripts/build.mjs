@@ -37,8 +37,10 @@ const SECTIONS = [
   { slug: "features", label: "功能", navOrder: 2, blurb: "会话、工作区、扩展、实验室等核心能力。" },
   { slug: "reference", label: "参考", navOrder: 3, blurb: "配置项、命令、工具清单的查表式参考。" },
   { slug: "troubleshooting", label: "疑难排查", navOrder: 4, blurb: "日志位置、常见报错、诊断入口。" },
-  // 任务 1263：两个根级单页（rootPage 指向根目录 md，不生成目录落地页）。
-  { slug: "changelog", label: "更新日志", navOrder: 5, blurb: "版本时间线：正式 Release 与内部包分开标注。", rootPage: "changelog.md" },
+  // 任务 1263：about 根级单页（rootPage 指向根目录 md，不生成目录落地页）。
+  // 任务 1358：changelog 改回目录 section——docs-site/changelog/{index,2026-11,2026-10,releases}.md
+  // 按月分页；目录落地页 listing 会被 index.md 覆盖（落地页先 push、文章页后 push，写入后者胜）。
+  { slug: "changelog", label: "更新日志", navOrder: 5, blurb: "版本时间线：按月分页，正式 Release 与内部包分开标注。" },
   { slug: "about", label: "关于", navOrder: 6, blurb: "上游问题、开发方法论、fork 取舍、版本规则与路线图。", rootPage: "about.md" },
 ];
 
@@ -51,8 +53,11 @@ function inline(text) {
   // 任务 1263：白名单 HTML 透传。文档作者只写这几类装饰元素（徽章/编号
   // chip/版本标注），escape 之前先摘出占位保护，其余一律转义——不放开
   // 任意 HTML，避免把静态文档站变成注入面。
+  // 任务 1358：changelog 已拆为纯 md 平铺（不再用块级 HTML），但白名单
+  // 不能收窄——features/key-features 的手风琴折叠（tl1271）依赖 details/
+  // summary 透传，收窄会把它转义成可见文本（20261102 实测）。
   const rawFragments = [];
-  const allowed = /<(?:span|div|section|details|summary|p) class="(?:badge|fnum|vtag|tl-date)[^"]*"[^>]*>|<(?:details|summary)(?:\s[^>]*)?>|<\/(?:span|div|section|details|summary|p)>/g;
+  const allowed = /<(?:span|div|section|details|summary|p) class="(?:badge|fnum|vtag|tl-date|acc)[^"]*"[^>]*>|<(?:details|summary)(?:\s[^>]*)?>|<\/(?:span|div|section|details|summary|p)>/g;
   let src = String(text).replace(allowed, (m) => { rawFragments.push(m); return `\u0002${rawFragments.length - 1}\u0002`; });
   let out = escapeHtml(src);
   // 行内代码先摘出来保护，避免被下面的规则误伤。
@@ -83,12 +88,13 @@ function markdownToHtml(md) {
   while (i < lines.length) {
     const line = lines[i];
 
-    // 块级白名单 HTML（任务 1263：时间线容器 + 日期分组折叠）——整行匹配的
-    // <div class="timeline|inner"> / <section ...> / <details>/<summary> /
-    // <p class="tl-date"> / 闭合标签原样输出，不进段落（否则会被 <p> 包裹或
-    // 被上一行吞掉，导致 section 计数缺失与嵌套 p）。
-    // summary 允许带内容（如 <summary>日期 <span class="gcount">· N 个包</span></summary>）。
-    if (/^\s*<(?:div class="(?:timeline|inner)"|\/div|section[^>]*|\/section|details[^>]*|\/details|\/summary)>\s*$/.test(line)
+    // 块级白名单 HTML（任务 1263；任务 1358 后 changelog 不再用，但保留：
+    // features/key-features 的手风琴（tl1271，details.acc+summary+内联 JS）
+    // 依赖本分支，收窄会致其转义成可见文本）。
+    // 整行匹配的 <div class="timeline|inner"> / <section ...> / <details>/
+    // <summary>（允许带内容）/ <p class="tl-date"> / 闭合标签原样输出，
+    // 不进段落（否则会被 <p> 包裹或被上一行吞掉，导致计数缺失与嵌套 p）。
+    if (/^\s*<(?:div class="(?:timeline|inner|acc)"|\/div|section[^>]*|\/section|details[^>]*|\/details|\/summary)>\s*$/.test(line)
       || /^\s*<summary[^>]*>[\s\S]*<\/summary>\s*$/.test(line)
       || /^\s*<p class="tl-date">[^<]*<\/p>\s*$/.test(line)) {
       closeList();
