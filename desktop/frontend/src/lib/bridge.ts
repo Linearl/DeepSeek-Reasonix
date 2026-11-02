@@ -3063,7 +3063,10 @@ function makeMockApp(): AppBindings {
   let mockDesktopZoomFactor = 1.0;
   let mockActiveThemeId = "";
   let mockBaseStyle = "graphite";
-  let mockThemeMode: "auto" | "light" | "dark" = "dark";
+  // tl1359：初值必须与 settings.desktopTheme（下方 "auto"）一致——旧值 "dark"
+  // 让 GetThemeExperience 在未写盘前返回 dark，与 Settings/DesktopStartupSettings
+  // 的 auto 分歧，浏览器 mock 下启动即被 applyExperienceToDOM 钉成深色。
+  let mockThemeMode: "auto" | "light" | "dark" = "auto";
   let mockHeartbeatRevision = 0;
   let mockHeartbeatTasks: unknown[] = [];
   // Vite rewrites these literal asset URLs in both dev and production builds.
