@@ -30,7 +30,9 @@ export function humanBytes(bytes: number): string {
   return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-export function DagMigrationSection({ t, busy, apply }: { t: Translator; busy: boolean; apply: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+// tl1337：showHint=false 时不渲染长说明行——宿主子项行的左列简述
+// （settings.sessionStorage.backupGroupDesc）已浓缩本说明要点，防左右重复。
+export function DagMigrationSection({ t, busy, apply, showHint = true }: { t: Translator; busy: boolean; apply: (fn: () => Promise<unknown>) => Promise<boolean>; showHint?: boolean }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [scan, setScan] = useState<DagMigrationScanView | null>(null);
   const [result, setResult] = useState<DagMigrationRunView | null>(null);
@@ -92,7 +94,7 @@ export function DagMigrationSection({ t, busy, apply }: { t: Translator; busy: b
 
   return (
     <div data-dag-migration="">
-      <p className="settings-field__hint-line">{t("settings.dagMigration.hint")}</p>
+      {showHint && <p className="settings-field__hint-line">{t("settings.dagMigration.hint")}</p>}
       {error !== "" && <p className="settings-field__hint-line">{error}</p>}
 
       {phase === "idle" && (

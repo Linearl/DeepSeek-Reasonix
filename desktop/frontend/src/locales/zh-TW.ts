@@ -2404,8 +2404,12 @@ export const zhTW: Record<DictKey, string> = {
 "settings.sessionStorage.risk.v4_only": "已知風險：本檔不可一步到達（必須先經過雙寫檔）；v3 記錄滯後會持續累積，回退=改選更低檔位並重啟，再用遷移把內容搬回 v3。",
 "settings.sessionStorage.restartPending": "已儲存，重啟後生效 —— 本程序目前仍在使用 {{mode}}。",
 // tl1292：會話儲存卡內兩組子功能卡（LabSectionCard 組標題）。
+// tl1337 返修：兩組標題轉用為「左文右操作」子項列標題；cardDesc/backupGroupDesc
+// 為兩行簡述（取代原 sessionStorageHint 大段堆疊，內容濃縮全保留）。
 "settings.sessionStorage.migrationGroup": "從 v4/v5 遷移",
 "settings.sessionStorage.backupGroup": "掃描&清理遷移備份",
+"settings.sessionStorage.cardDesc": "已鎖定 v3（推薦·預設檔）：工作階段完整保存在 sessions/，v4 未啟用、無已知風險；v4/v5 檔位已退役，帶 v4 資料用下方遷移一次性遷回（自動備份）。",
+"settings.sessionStorage.backupGroupDesc": "掃描 DAG（schema-2）日誌並轉平坦格式；遷移在 *.dagbak-tl1227 留原始備份可回滾，全部遷完（檢查歸零）後可清理歷史備份（保留最近一份）。",
 "settings.splitViewHint": "在分頁右鍵選單加入「分割檢視」：同一視窗左右並排兩個分頁，各自保留自己的轉錄、輸入框與執行狀態。實驗特性，預設關閉——關閉時右鍵選單與現況完全一致。",
 "settings.migration.hint": "把 v4 副本裡比 sessions/ 多的內容搬回 v3。改動檔案先自動備份，先預覽再寫入，可反覆執行。",
 "settings.migration.action": "從 v4 副本遷回 v3…",

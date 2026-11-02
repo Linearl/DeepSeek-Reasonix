@@ -3047,8 +3047,12 @@ export const zh: Record<DictKey, string> = {
 "settings.sessionStorage.risk.v4_only": "已知风险：本档不可一步到达（必须先经过双写档）；v3 记录滞后会持续累积，回退=改选更低档位并重启，再用迁移把内容搬回 v3。",
 "settings.sessionStorage.restartPending": "已保存，重启后生效 —— 本进程目前仍在使用 {{mode}}。",
 // tl1292：会话存储卡内两组子功能卡（LabSectionCard 组标题）。
+// tl1337 返修：两组标题转用为「左文右操作」子项行标题；cardDesc/backupGroupDesc
+// 为两行简述（替代原 sessionStorageHint 大段堆叠，内容浓缩全保留）。
 "settings.sessionStorage.migrationGroup": "从 v4/v5 迁移",
 "settings.sessionStorage.backupGroup": "扫描&清理迁移备份",
+"settings.sessionStorage.cardDesc": "已锁定 v3（推荐·默认档）：会话完整保存在 sessions/，v4 未启用、无已知风险；v4/v5 档位已退役，带 v4 数据用下方迁移一次性迁回（自动备份）。",
+"settings.sessionStorage.backupGroupDesc": "扫描 DAG（schema-2）日志并转平坦格式；迁移在 *.dagbak-tl1227 留原始备份可回滚，全部迁完（检查归零）后可清理历史备份（保留最近一份）。",
 "settings.splitViewHint": "在标签页右键菜单里加一项「分栏显示」：同一个窗口左右并排两个标签，各自保留自己的转录、输入框与运行状态。实验特性，默认关闭——关闭时右键菜单与现在完全一致。",
 "settings.migration.hint": "把 v4 副本里比 sessions/ 多出的内容搬回 v3。改动文件先自动备份，先预览再写入，可反复运行。",
 "settings.migration.action": "从 v4 副本迁回 v3…",

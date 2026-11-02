@@ -1241,61 +1241,89 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               lost-save rule). */}
           {selected === "sessionStore" && (
             <>
-              <SettingsField label={labLabel("sessionStorage", t("settings.sessionStorage"))} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
-                <SettingsOptions layout="field" className="set-seg">
-                  {/* tl1287: v4 退役——卡内不再渲染任何 v4 档按钮（用户拍板
-                      20261031）。仍停在 v4 档的用户由下方 stage/risk 行按已存
-                      档位如实提示，回去路径是同卡的 v4→v3 迁移器（后端对降档
-                      永远放行，点 v3 即降档，916 的「只许逐级升」仅约束升档）。 */}
-                  {SESSION_STORAGE_SELECTABLE_MODES.map((mode) => (
-                    <button
-                      key={mode}
-                      className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
-                      disabled={busy || migrationRunning}
-                      onClick={() => void apply(async () => {
-                        await app.SetSessionStorage(mode);
+              {/* tl1337 返修（任务书 20261101 21:2x 存储域实例，用户原话「存储
+                  实际相当于有很多子项」）：卡内改「左文右操作」子项行——复用
+                  settings-field 既有网格（左 copy=子项标题+一到两行简述，右
+                  control=按钮/状态），与 782/961 合并卡成员行同款；原 stacked
+                  大段说明堆叠（sessionStorageHint 整段）不再占详情区主体。
+                  三子项（纯聚合展示，配置键/setter/徽章零变化）：
+                  ①存储版本（仅 v3 推荐+简述）②从 v4/v5 迁移（说明+两按钮+
+                  扫描态）③扫描&清理迁移备份（说明+扫描按钮+dagbak 说明）。
+                  迁移→清理先后顺序保持（tl1287⑤ blocked 文案「先在上方完成
+                  迁移」在同卡内继续成立）。 */}
+              {/* 子项① 存储版本：左=标题（稳定档徽章，tl1338）+简述（新键
+                  cardDesc 浓缩原 sessionStorageHint 大段：锁定原因/默认档/
+                  迁移出口/自动备份全保留）；右=v3 分段按钮（推荐徽章）+状态行。
+                  锁定/阶段/风险三行改为仅非 v3 档（仍停 v4 的用户）按已存档位
+                  渲染——v3 档下该三行与简述+推荐徽章同义，不再常驻堆叠；
+                  restartPending 状态照旧条件渲染。 */}
+              <SettingsField label={labLabel("sessionStorage", t("settings.sessionStorage"))} hint={t("settings.sessionStorage.cardDesc")}>
+                <div className="lab-subitem__ops">
+                  <SettingsOptions layout="field" className="set-seg">
+                    {/* tl1287: v4 退役——卡内不再渲染任何 v4 档按钮（用户拍板
+                        20261031）。仍停在 v4 档的用户由下方 stage/risk 状态行
+                        按已存档位如实提示，回去路径是同卡的 v4→v3 迁移器（后端
+                        对降档永远放行，点 v3 即降档，916 的「只许逐级升」仅约束
+                        升档）。 */}
+                    {SESSION_STORAGE_SELECTABLE_MODES.map((mode) => (
+                      <button
+                        key={mode}
+                        className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
+                        disabled={busy || migrationRunning}
+                        onClick={() => void apply(async () => {
+                          await app.SetSessionStorage(mode);
+                        })}
+                      >
+                        {t(`settings.sessionStorage.mode.${mode}`)}
+                        {/* 805: v3 is the fork's long-term recommendation — the
+                            same pill the lab tiers use, no new copy or CSS. */}
+                        <TierBadge tier="recommended" translator={t} />
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                  {s.sessionStorageRestartPending ? (
+                    <p className="settings-field__hint-line">
+                      {t("settings.sessionStorage.restartPending", {
+                        mode: t(`settings.sessionStorage.mode.${asSessionStorageMode(s.sessionStorageEffective)}`),
                       })}
-                    >
-                      {t(`settings.sessionStorage.mode.${mode}`)}
-                      {/* 805: v3 is the fork's long-term recommendation — the
-                          same pill the lab tiers use, no new copy or CSS. */}
-                      <TierBadge tier="recommended" translator={t} />
-                    </button>
-                  ))}
-                </SettingsOptions>
-                {/* 916: 锁定原因贴着禁用档位渲染；下方 805 迁移区保持可达——
-                    带 v4 数据的升级用户打开本卡仍看得到迁移引导。 */}
-                <p className="settings-field__hint-line">{t("settings.sessionStorage.locked")}</p>
-                <p className="settings-field__hint-line">{t(`settings.sessionStorage.stage.${storageMode}`)}</p>
-                <p className="settings-field__hint-line">{t(`settings.sessionStorage.risk.${storageMode}`)}</p>
-                {s.sessionStorageRestartPending ? (
-                  <p className="settings-field__hint-line">
-                    {t("settings.sessionStorage.restartPending", {
-                      mode: t(`settings.sessionStorage.mode.${asSessionStorageMode(s.sessionStorageEffective)}`),
-                    })}
-                  </p>
-                ) : null}
-                {/* tl1292 返修（用户 20261031 截图「面板看着乱」）：子功能拆两组
-                    LabSectionCard（1099 既有功能族分组卡，纯视觉容器零新机制），
-                    不新增 rail/顶层入口——卡内档位段仍是卡头，工具族各自成卡：
-                    ①从 v4/v5 迁移（805 两路由）；②扫描&清理迁移备份（DAG 迁移
-                    与其备份清理是同一生命周期，tl1287⑤ 的 blocked 文案「先在
-                    上方完成迁移」在同卡内继续成立）。 */}
-                <LabSectionCard title={t("settings.sessionStorage.migrationGroup")}>
-                  {/* 任务 805: the migration routes (v4 backfill + the 773 v5
-                      import) live in the same card, under the stage controls. */}
-                  <SessionMigrationSection t={t} onRunningChange={setMigrationRunning} />
-                </LabSectionCard>
-                <LabSectionCard title={t("settings.sessionStorage.backupGroup")}>
+                    </p>
+                  ) : null}
+                  {/* 916/805: 非 v3 档（v4 停留户）状态行——锁定原因在最上，
+                      其下阶段/风险（session-storage-lock 契约：锁定先于阶段）。 */}
+                  {storageMode === "v3_only" ? null : (
+                    <>
+                      <p className="settings-field__hint-line">{t("settings.sessionStorage.locked")}</p>
+                      <p className="settings-field__hint-line">{t(`settings.sessionStorage.stage.${storageMode}`)}</p>
+                      <p className="settings-field__hint-line">{t(`settings.sessionStorage.risk.${storageMode}`)}</p>
+                    </>
+                  )}
+                </div>
+              </SettingsField>
+              {/* 子项② 从 v4/v5 迁移（原 tl1292 迁移子卡）：左=标题+迁移简述
+                  （复用 settings.migration.hint，本就是一两行）；右=805 两路由
+                  按钮+扫描/执行/进度态（两步确认与事件进度原样）。showHint=
+                  false 防同一句说明左右重复渲染。 */}
+              <SettingsField label={t("settings.sessionStorage.migrationGroup")} hint={t("settings.migration.hint")}>
+                <div className="lab-subitem__ops">
+                  <SessionMigrationSection t={t} onRunningChange={setMigrationRunning} showHint={false} />
+                </div>
+              </SettingsField>
+              {/* 子项③ 扫描&清理迁移备份（原 tl1292 备份子卡）：左=标题+简述
+                  （新键 backupGroupDesc，dagbak 说明在简述内）；右=DAG 迁移与
+                  备份清理各自扫描/执行按钮+状态（tl1287③⑤ 原样，迁移在上、
+                  清理在下）。原 LabSectionCard 视觉容器由子项行本身承接
+                  （settings-field 行即族边界），不再嵌两层容器。 */}
+              <SettingsField label={t("settings.sessionStorage.backupGroup")} hint={t("settings.sessionStorage.backupGroupDesc")}>
+                <div className="lab-subitem__ops">
                   {/* tl1287③：DAG 迁移卡转正——自实验室 rail 摘除，动作卡改宿主
                       本卡（一次性收尾：迁完永久无事）。两步确认（扫描→执行）+
                       事件进度 + 逐会话读数原样保留；不再有任何实验室侧开关或
                       rail 入口。 */}
-                  <DagMigrationSection t={t} busy={busy} apply={apply} />
+                  <DagMigrationSection t={t} busy={busy} apply={apply} showHint={false} />
                   {/* tl1287⑤：迁移备份清理——check 归零 + 保留最近一份，其余
                       时间倒序删；确认弹层逐行列出将删文件与体量。 */}
-                  <DagBackupCleanupSection t={t} busy={busy} />
-                </LabSectionCard>
+                  <DagBackupCleanupSection t={t} busy={busy} showHint={false} />
+                </div>
               </SettingsField>
               {/* tl1309 卡②：eventsRotation（events 瘦身）成员行迁出本卡——入
                   可观测性组「运行可观测」卡（同属 events 数据面）；SessionEventsPanel
