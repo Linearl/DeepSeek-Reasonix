@@ -197,7 +197,12 @@ export async function restoreGraphiteAppearance(): Promise<ThemeExperienceView> 
 }
 
 export async function setThemeMode(mode: Theme): Promise<ThemeExperienceView> {
-  const base = (isThemeStyle(experienceCache?.baseStyle) ? experienceCache!.baseStyle : "graphite") as ThemeStyle;
+  // tl1359：baseStyle 不得被冲蚀。experienceCache 为 null（GetThemeExperience
+  // 尚未返回/失败）时旧实现回落 "graphite" 并连带写盘——用户选的
+  // aurora/slate 等方向被静默重置。空样式让 Go 侧保留既有 theme_style
+  //（internal/config/edit.go SetDesktopAppearance：style 为空只改 theme）。
+  const cachedBase = experienceCache?.baseStyle;
+  const base = isThemeStyle(cachedBase) ? (cachedBase as ThemeStyle) : "";
   await app.SetDesktopAppearance(mode, base);
   const view = await loadThemeExperience();
   // Theme mode is independent of pack — re-apply pack on top.

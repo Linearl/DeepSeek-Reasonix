@@ -685,9 +685,12 @@ export function SettingsPanel({
                       customFontName={customFontName}
                       customMonoFontName={customMonoFontName}
                       onTheme={(nextTheme) => {
+                        // tl1359：只做乐观镜像，持久化由 AppearanceOverview.
+                        // handleThemeMode → setThemeMode 单条权威写承担。
+                        // 旧实现此处再排队一次 SetDesktopAppearance，与
+                        // setThemeMode 双写竞争（第二发可能带中间态 style）。
                         applyConfiguredBaseAppearance(nextTheme, themeStyle);
                         setThemeState(nextTheme);
-                        void apply(() => app.SetDesktopAppearance(nextTheme, themeStyle));
                       }}
                       onConversationWidth={(width) => {
                         applyConversationWidth(width);
