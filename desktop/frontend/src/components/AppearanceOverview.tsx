@@ -255,6 +255,11 @@ export function AppearanceOverview({
   };
 
   const handleThemeMode = async (mode: Theme) => {
+    // tl1359：去双写。旧实现 onTheme 先写盘（SettingsPanel.onTheme →
+    // SetDesktopAppearance(next, themeStyle)）再 setThemeMode 二次写盘——
+    // 两次排队写若第二发读到中间态会把 baseStyle 冲成 graphite。onTheme
+    // 只保留乐观 DOM/React 镜像（applyConfiguredBaseAppearance + setState），
+    // 持久化收敛到 setThemeMode 单条权威写。
     onTheme(mode);
     try {
       const exp = await setThemeMode(mode);
