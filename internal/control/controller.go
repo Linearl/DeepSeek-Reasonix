@@ -5289,6 +5289,21 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 			return path, conflictAdoptedDisk, nil
 		}
 	}
+	// tl1352 B：fork 总量闸。每个 logical topic（剥到非副本根 stem）生命周期内
+	// 现存副本数到达 SnapshotForkQuotaPerTopic 即拒绝再 fork：强制 adopt 盘上
+	// 转录并 fail-loud——20261031 现场 2 分钟刹车窗挡不住跨重启的副本风暴
+	// （23:19/23:34/23:53/00:03/00:05 全部落在窗外），副本总数才是硬上限。
+	forkCount := agent.RecoveryForkCountForTopic(path)
+	if forkCount >= agent.SnapshotForkQuotaPerTopic {
+		if c.adoptDiskSession(path) {
+			appendSnapshotConflictDiagnostic(path, mode, "adopted_disk_fork_quota_exhausted", saveErr, "", true)
+			slog.Warn("controller: snapshot conflict; fork quota exhausted for this topic; adopted the disk transcript and dropped the unsaved local copy",
+				append(logAttrs, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount, "fork_quota", agent.SnapshotForkQuotaPerTopic)...)
+			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
+				"this conversation has hit its recovery-copy limit; the on-disk transcript was adopted and unsaved local changes were dropped so the copies stop growing"))
+			return path, conflictAdoptedDisk, nil
+		}
+	}
 	reason := "snapshot conflict"
 	if forceRewrite {
 		reason = "rewrite conflict"
@@ -5329,8 +5344,20 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 	}
 	c.markSnapshotFork()
 	appendSnapshotConflictDiagnostic(path, mode, "forked_recovery_branch", saveErr, info.Path, info.Existing)
+	// tl1352 A：副本转正。fork 只把本地转录救成副本，活跃写入从此落在副本
+	// 上、主文件永久停更（现场：主文件 mtime 停两天）。两条保存锁都空闲时
+	// 把副本整体 rename 回主文件名（主文件现存字节先归档，零丢失），恢复
+	// 「主文件即活跃写入」；锁忙或任何一步失败则留在副本上（fork 仍兜底）。
+	if c.promoteRecoveryBranchToMain(path, info) {
+		appendSnapshotConflictDiagnostic(path, mode, "promoted_recovery_branch_to_main", saveErr, path, false)
+		slog.Warn("controller: snapshot conflict; recovery branch promoted back to the main file",
+			append(logAttrs, "recovery", info.Path, "promoted_to", path, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount+1)...)
+		c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
+			"the transcript conflict was resolved by writing the active conversation back to its main file; the previous on-disk version is archived beside it"))
+		return path, conflictAdoptedDisk, nil
+	}
 	slog.Warn("controller: snapshot conflict; forked recovery branch",
-		append(logAttrs, "recovery", info.Path, "existing", info.Existing)...)
+		append(logAttrs, "recovery", info.Path, "existing", info.Existing, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount+1)...)
 	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryForked,
 		"session changed on disk; unsaved local transcript was saved as a conflict copy"))
 	return info.Path, conflictForkedBranch, nil
