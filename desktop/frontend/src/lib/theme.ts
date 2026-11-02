@@ -8,6 +8,9 @@
 // theme (title bar, traffic lights, etc.) so the OS chrome matches the webview.
 
 import { baseCodeReadabilityStylesheet } from "./codeReadability";
+// tl1359：首帧 appearance 缓存（与 App.tsx 的 loadCachedAppearance 同源）。
+// layoutPreferences 零依赖，theme→layoutPreferences 不成环。
+import { loadCachedAppearance } from "./layoutPreferences";
 
 export type Theme = "auto" | "light" | "dark";
 export type ResolvedTheme = Exclude<Theme, "auto">;
@@ -206,9 +209,21 @@ export function clearLegacyThemePreference(): void {
 // initTheme runs before React mounts. It applies the saved theme to the DOM and
 // sets the native window background colour to match the resolved theme, avoiding
 // a white (or wrong-colour) flash while the webview paints its first frame.
+//
+// tl1359：模块级 currentTheme 初值恒为 auto，旧实现首帧一律按 auto 处理——
+// 强制 dark/light 用户每次启动先看到 auto 解析色，直到 App 异步偏好落地才
+// 翻回（「主题切了跨重启不保持」的首帧半边）。这里同步读首帧 localStorage
+// 缓存（saveCachedAppearance 在每次权威写盘时落），把强制模式在 JS 执行的
+// 第一帧就挂上 data-theme；无缓存/非法值回退 auto，由异步 config 纠正。
 export function initTheme(): void {
-  const theme = getTheme();
-  applyTheme(theme, getThemeStyle(theme), { persist: false });
+  let theme: Theme = DEFAULT_THEME;
+  let style: ThemeStyle = DEFAULT_THEME_STYLE;
+  const cached = loadCachedAppearance();
+  if (cached) {
+    theme = normalizeThemePreference(cached.theme);
+    style = normalizeThemeStyleForTheme(cached.themeStyle, theme);
+  }
+  applyTheme(theme, style, { persist: false });
 }
 
 function syncNativeWindowBackground(theme: Theme): void {
