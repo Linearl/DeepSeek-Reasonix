@@ -25,7 +25,7 @@ Reasonix 是一款开源（MIT）的编码 Agent：**可以一直开着跑**。�
 
 ## 关于本站所文档化的仓库
 
-本站文档化的是 [Linearl/DeepSeek-Reasonix](https://github.com/Linearl/DeepSeek-Reasonix)——上游 [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) 的长期维护 fork（`main-v2-stable` 分支）。数据与上游兼容，随时可切回官方版；fork 独有改动见[本 fork 特性](features/fork-highlights.html)。
+本站文档化的是 [Linearl/DeepSeek-Reasonix](https://github.com/Linearl/DeepSeek-Reasonix)——上游 [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) 的长期维护 fork（`main-v2-stable` 分支）。数据与上游兼容，随时可切回官方版；fork 独有改动见[本 fork 特性](features/key-features.html)。
 
 ## 快速链接
 
