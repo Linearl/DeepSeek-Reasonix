@@ -116,6 +116,12 @@ type Controller struct {
 	// forks that split one conversation across copies), so the controller
 	// adopts the disk transcript instead of forking again.
 	lastSnapshotForkAt time.Time
+	// pendingRecoveryPromotion carries one armed fork promotion (tl1352 A):
+	// the fork isolated the local transcript onto a recovery copy; the copy
+	// folds back onto the main file at a later save cycle once the main file
+	// has stayed quiet since the fork (the other writer is gone). nil when no
+	// promotion is pending.
+	pendingRecoveryPromotion *recoveryPromotion
 	// recoveryGate is the shared Auto Guard state for this controller.
 	// nil when the feature is not wired for this controller.
 	recoveryGate *recovery.Gate
@@ -5009,6 +5015,14 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 		return false, nil
 	}
 	s := c.executor.Session()
+	// tl1352 A：fork 副本延迟转正在每个保存周期开头结算（详见 recoveryPromotion）。
+	// 结算换道后 s 重新取向（apply 内部已经 adoptDiskSession 换绑 executor）。
+	if c.applyPendingRecoveryPromotion() {
+		c.mu.Lock()
+		path = c.sessionPath
+		c.mu.Unlock()
+	}
+	s = c.executor.Session()
 	if !s.HasContent() {
 		// Nothing to persist yet (e.g. a fresh session with only a system
 		// prompt) — staying quiet here is correct, not a data-loss path.
@@ -5344,20 +5358,14 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 	}
 	c.markSnapshotFork()
 	appendSnapshotConflictDiagnostic(path, mode, "forked_recovery_branch", saveErr, info.Path, info.Existing)
-	// tl1352 A：副本转正。fork 只把本地转录救成副本，活跃写入从此落在副本
-	// 上、主文件永久停更（现场：主文件 mtime 停两天）。两条保存锁都空闲时
-	// 把副本整体 rename 回主文件名（主文件现存字节先归档，零丢失），恢复
-	// 「主文件即活跃写入」；锁忙或任何一步失败则留在副本上（fork 仍兜底）。
-	if c.promoteRecoveryBranchToMain(path, info) {
-		appendSnapshotConflictDiagnostic(path, mode, "promoted_recovery_branch_to_main", saveErr, path, false)
-		slog.Warn("controller: snapshot conflict; recovery branch promoted back to the main file",
-			append(logAttrs, "recovery", info.Path, "promoted_to", path, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount+1)...)
-		c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
-			"the transcript conflict was resolved by writing the active conversation back to its main file; the previous on-disk version is archived beside it"))
-		return path, conflictAdoptedDisk, nil
-	}
 	slog.Warn("controller: snapshot conflict; forked recovery branch",
 		append(logAttrs, "recovery", info.Path, "existing", info.Existing, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount+1)...)
+	// tl1352 A：fork 先按既有契约隔离（另一写者可能仍在写主文件），同时登记
+	// 延迟转正——之后的保存周期开头结算：主文件自 fork 起保持安静（另一写者
+	// 已消失，20261031 现场主文件停更两天）即把副本整体 rename 回主文件名并
+	// 回绑主路径，恢复「主文件即活跃写入」；主文件仍在被写则保留登记继续
+	// 隔离，绝不与活跃写者抢盘。
+	c.armPendingRecoveryPromotion(path, info)
 	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryForked,
 		"session changed on disk; unsaved local transcript was saved as a conflict copy"))
 	return info.Path, conflictForkedBranch, nil

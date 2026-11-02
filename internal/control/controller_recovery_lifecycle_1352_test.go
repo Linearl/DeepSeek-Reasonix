@@ -78,9 +78,28 @@ func Test1352ForkPromotesBackToMainFile(t *testing.T) {
 	dir := t.TempDir()
 	ctrlA, _, path := divergedControllers1352(t, dir, "shared.jsonl", event.Discard)
 
-	// A① 转正：controller 回到主路径。
+	// A0 fork 先按既有契约隔离：controller 在副本上、副本存在（延迟转正未结算）。
+	if got := ctrlA.SessionPath(); got == path {
+		t.Fatalf("fork must isolate first: controller still on the main file before any quiet-main save cycle")
+	}
+	if n := recoveryCopyCount1352(t, path); n != 1 {
+		t.Fatalf("recovery copies right after the fork = %d, want 1", n)
+	}
+
+	// A① 延迟转正结算：主文件自 fork 起安静，保存周期内收敛回主文件
+	// （副本先落盘的中间周期允许存在——转正门槛要求内存与副本字节逐字稳定）。
+	// SnapshotDurable 绕过 recently-durable 合并闸（生产上回合收尾的
+	// SnapshotActivity 同样不过闸，转正在回合边界结算）。
+	for range 4 {
+		if err := ctrlA.SnapshotDurable(); err != nil {
+			t.Fatalf("post-fork snapshot: %v", err)
+		}
+		if ctrlA.SessionPath() == path {
+			break
+		}
+	}
 	if got := ctrlA.SessionPath(); got != path {
-		t.Fatalf("controller path after fork = %s, want the main file (promotion back)", got)
+		t.Fatalf("controller path = %s, want the main file after deferred promotion settled on the quiet main file", got)
 	}
 	// A② 副本消失（整体 rename 回主文件名）。
 	if n := recoveryCopyCount1352(t, path); n != 0 {
@@ -109,28 +128,35 @@ func Test1352ForkPromotesBackToMainFile(t *testing.T) {
 		t.Fatalf("main file must hold the promoted transcript: %q", diskText)
 	}
 
-	// A⑤ 验收主腿：fork 之后主文件 mtime 跟进——活跃写入在主文件上。
+	// A⑤ 验收主腿：收敛之后主文件 mtime 跟进——活跃写入持续落在主文件上。
 	infoBefore, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(50 * time.Millisecond) // Windows mtime 分辨率兜底
-	if err := ctrlA.RunTurn(context.Background(), "third from A"); err != nil {
-		t.Fatalf("A third turn: %v", err)
+	if err := ctrlA.RunTurn(context.Background(), "fourth from A"); err != nil {
+		t.Fatalf("A fourth turn: %v", err)
 	}
-	if err := ctrlA.Snapshot(); err != nil {
-		t.Fatalf("A snapshot 3: %v", err)
+	if err := ctrlA.SnapshotDurable(); err != nil {
+		t.Fatalf("A snapshot after convergence: %v", err)
 	}
 	infoAfter, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !infoAfter.ModTime().After(infoBefore.ModTime()) {
-		t.Fatalf("main file mtime must advance after post-fork saves (before=%v after=%v) — active writes must live on the main file",
+		t.Fatalf("main file mtime must advance after post-convergence saves (before=%v after=%v) — active writes must live on the main file",
 			infoBefore.ModTime(), infoAfter.ModTime())
 	}
 	if n := recoveryCopyCount1352(t, path); n != 0 {
-		t.Fatalf("post-fork saves must not create new recovery copies: %d found", n)
+		t.Fatalf("post-convergence saves must not create new recovery copies: %d found", n)
+	}
+	disk, err = agent.LoadSession(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(requestMessagesText(disk.Snapshot()), "fourth from A") {
+		t.Fatalf("post-convergence turn must persist on the main file: %q", requestMessagesText(disk.Snapshot()))
 	}
 }
 

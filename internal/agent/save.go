@@ -1214,6 +1214,18 @@ func (s *Session) snapshotUpToDate(path string) bool {
 	return s.snapshotNoOpReason(path) != ""
 }
 
+// SnapshotUpToDateForPath reports whether the live session's in-memory
+// transcript is byte-stable since the last successful save to path — nothing
+// changed in memory and the file on disk still matches the persisted baseline
+// (tl1352 A: deferred recovery promotion gates on this before folding the
+// copy back onto the main file — promoting while the session holds unsaved
+// content would discard that content in the post-promotion reload). A
+// tail-window session (task 187 first-paint) counts as stable when its tail
+// baseline matches the file: promotion's reload restores exactly that tail.
+func (s *Session) SnapshotUpToDateForPath(path string) bool {
+	return s.snapshotUpToDate(path) || s.snapshotTailWindowClean(path)
+}
+
 // warnVanishedPersistedFiles stamps an out-of-band removal of a baseline-known
 // transcript checkpoint or event log (tl1313). Both sizes live on the persist
 // baseline (checkpointBytes / logTail, recorded at the last save or load), so
