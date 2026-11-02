@@ -497,12 +497,21 @@ func dietSessionProjection(ctx context.Context, path string, windowTokens int) (
 		return nil, "load failed: " + err.Error()
 	}
 	msgs := s.Snapshot()
-	folded, acts, changed := DietSessionMessages(msgs, windowTokens)
+	_, acts, changed := DietSessionMessages(msgs, windowTokens)
 	if !changed {
 		return nil, "nothing to strip or fold"
 	}
-	s.Rewrite(folded, "selfheal_diet")
-	if err := s.SaveRewriteCompact(path); err != nil {
+	// tl1352 C+：折叠在 RewriteAndSaveCompact 的保存锁窗内对落笔时刻的完整
+	// 转录重算，与前台保存序列化到同一条保存路径（消除「内存已折叠、盘上
+	// 旧字节」窗口里的同进程 baseline 竞态 → recovery 副本 fork）。
+	if err := s.RewriteAndSaveCompact(path, "selfheal_diet", func(complete []provider.Message) []provider.Message {
+		f, acts2, ch := DietSessionMessages(complete, windowTokens)
+		acts = acts2
+		if !ch {
+			return complete
+		}
+		return f
+	}); err != nil {
 		for i := range acts {
 			acts[i].Status = "failed"
 			acts[i].Detail += " rewrite_error=" + err.Error()
