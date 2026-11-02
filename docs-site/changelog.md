@@ -160,6 +160,8 @@
 
 </section>
 
+</details>
+
 <details class="day-group">
 <summary>2026-10-29 <span class="gcount">· 8 个包</span></summary>
 
