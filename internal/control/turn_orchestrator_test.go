@@ -898,6 +898,123 @@ func TestTurnOrchestratorProviderErrorPreservesCompletedPairAndLocalPartial(t *t
 	}
 }
 
+// TestTurnOrchestratorProviderFailureKeepsTerminalEvidenceInRecovery (tl1364)
+// pins the six-round reproduction: a turn killed by a terminal provider error
+// right after round one — no assistant text, no tool calls — used to be
+// rewritten into a bare {pending:true} sentinel, because the strip merge below
+// dropped the TerminalStatus/FailureSummary that recordInterruptedDisplay had
+// persisted (task 340). An HTTP 401 outage therefore surfaced as an
+// unexplainable "interrupted" record in the transcript. The merged recovery
+// must keep the terminal evidence so the user card and the next turn's
+// recovery block name the real cause.
+func TestTurnOrchestratorProviderFailureKeepsTerminalEvidenceInRecovery(t *testing.T) {
+	sess := agent.NewSession("system")
+	const authSummary = `authentication failed for provider "mimo-api · Anthropic Messages" (HTTP 401): MIMO_API_KEY from Reasonix credentials (.env) is invalid or expired — update it (in .env or your environment) and retry`
+	runner := &cancelStrippingRunner{
+		session: sess,
+		add: []provider.Message{
+			{
+				Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName,
+				LocalOnly: true, WorkDurationMs: 511,
+				InterruptedTurn: &provider.InterruptedTurnRecovery{
+					Pending:        true,
+					TerminalStatus: "failed",
+					FailureDiagnostic: &provider.FailureDiagnostic{
+						Kind: "auth", Status: 401, ProviderID: "mimo-api", Protocol: "anthropic-messages",
+					},
+					FailureSummary: authSummary,
+				},
+			},
+		},
+		err: errors.New(authSummary),
+	}
+	ex := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
+	c := New(Options{Runner: runner, Executor: ex})
+	err := newTurnOrchestrator(c).runTurnWithRawDisplay(context.Background(), "test dispatch", "test dispatch", "")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401") {
+		t.Fatalf("run error = %v, want the provider auth failure", err)
+	}
+	msgs := sess.Snapshot()
+	if len(msgs) != 3 {
+		t.Fatalf("session messages after failed turn = %d, want system + user + recovery sentinel: %+v", len(msgs), msgs)
+	}
+	if msgs[1].Role != provider.RoleUser || msgs[1].Content != "test dispatch" {
+		t.Fatalf("user prompt not preserved: %+v", msgs[1])
+	}
+	last := msgs[2]
+	if !last.LocalOnly || last.Name != provider.LocalOnlyToolName {
+		t.Fatalf("final record must stay the local-only sentinel: %+v", last)
+	}
+	recovery := last.InterruptedTurn
+	if recovery == nil || !recovery.Pending {
+		t.Fatalf("pending recovery metadata missing: %+v", last)
+	}
+	if recovery.TerminalStatus != "failed" || recovery.FailureSummary != authSummary {
+		t.Fatalf("terminal evidence erased by the recovery rewrite: %+v", recovery)
+	}
+	if recovery.FailureDiagnostic == nil || recovery.FailureDiagnostic.Status != 401 {
+		t.Fatalf("failure diagnostic erased by the recovery rewrite: %+v", recovery)
+	}
+	if last.WorkDurationMs != 511 {
+		t.Fatalf("display work duration lost: %+v", last)
+	}
+}
+
+// TestTurnOrchestratorRecoveryMergeKeepsNewestFailureEvidence verifies the
+// multi-record form of the tl1364 fix: when the stripped turn range already
+// holds an evidence-free sentinel (e.g. from an earlier host-side break) plus
+// the failing attempt's own record, the merged recovery carries the newest
+// terminal facts and keeps every tool list.
+func TestTurnOrchestratorRecoveryMergeKeepsNewestFailureEvidence(t *testing.T) {
+	sess := agent.NewSession("system")
+	older := provider.Message{
+		Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName,
+		LocalOnly: true,
+		InterruptedTurn: &provider.InterruptedTurnRecovery{
+			Pending:          true,
+			InterruptedTools: []string{"read_file"},
+		},
+	}
+	newerSummary := "provider request failed (HTTP 503): upstream unavailable"
+	newer := provider.Message{
+		Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName,
+		LocalOnly: true, WorkDurationMs: 329,
+		InterruptedTurn: &provider.InterruptedTurnRecovery{
+			Pending:           true,
+			TerminalStatus:    "failed",
+			FailureDiagnostic: &provider.FailureDiagnostic{Kind: "server", Status: 503},
+			FailureSummary:    newerSummary,
+		},
+	}
+	runner := &cancelStrippingRunner{
+		session: sess,
+		add:     []provider.Message{older, newer},
+		err:     errors.New(newerSummary),
+	}
+	ex := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
+	c := New(Options{Runner: runner, Executor: ex})
+	if err := newTurnOrchestrator(c).runTurnWithRawDisplay(context.Background(), "probe", "probe", ""); err == nil {
+		t.Fatal("expected the provider error to surface")
+	}
+	msgs := sess.Snapshot()
+	if len(msgs) != 4 {
+		t.Fatalf("session messages after failed turn = %d, want system + user + two local sentinels: %+v", len(msgs), msgs)
+	}
+	if msgs[2].InterruptedTurn != nil {
+		t.Fatalf("earlier sentinel must not carry the merged recovery: %+v", msgs[2])
+	}
+	recovery := msgs[3].InterruptedTurn
+	if recovery == nil || !recovery.Pending {
+		t.Fatalf("pending recovery metadata missing: %+v", msgs[1])
+	}
+	if recovery.TerminalStatus != "failed" || recovery.FailureSummary != newerSummary {
+		t.Fatalf("newest terminal evidence not carried: %+v", recovery)
+	}
+	if len(recovery.InterruptedTools) != 1 || recovery.InterruptedTools[0] != "read_file" {
+		t.Fatalf("older tool facts lost in the merge: %+v", recovery)
+	}
+}
+
 func TestTurnOrchestratorInterruptedAfterCompactionRelocatesVisibleTurn(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
