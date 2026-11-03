@@ -697,6 +697,9 @@ ok(gallerySource.includes("if (!immersive || !selectedPack) return") && galleryS
 ok(gallerySource.includes("closeImmersivePreview") && gallerySource.includes("cancelGlobalPreview();"), "leaving immersive preview restores the prior appearance");
 ok(!gallerySource.includes("settings.themeGallery.tempPreview"), "redundant global-trial button is removed");
 ok(gallerySource.includes("theme-gallery__rail-section") && gallerySource.includes("packs: groups.official") && gallerySource.includes("packs: groups.media") && gallerySource.includes("packs: groups.user") && gallerySource.includes("packs: groups.base"), "immersive rail includes official, media, user, and base theme groups");
+// tl1343: media packs are labeled in the gallery badge and the overview kind label.
+ok(gallerySource.includes('if (kind === "media") return t("settings.themeGallery.kindMedia")'), "media packs carry the media kind badge in the gallery");
+ok(overviewSource.includes('pack.kind === "media"') && overviewSource.includes("settings.themeGallery.kindMedia"), "overview kind label routes media packs to the media badge");
 ok(gallerySource.includes("filter((section) => section.packs.length > 0)"), "immersive rail hides empty groups");
 ok(!gallerySource.includes("theme-gallery__tabs--compact"), "immersive rail has no duplicate bottom tab navigation");
 ok(gallerySource.includes("theme-gallery__detail-status"), "active theme uses a status badge");
