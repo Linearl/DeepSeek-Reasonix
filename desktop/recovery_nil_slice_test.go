@@ -50,13 +50,14 @@ func TestListRecoveryChainsChainsNotNilWhenAllCandidatesRefused(t *testing.T) {
 	if strings.Contains(string(b), `"chains":null`) {
 		t.Fatalf("response marshals chains as null: %s", b)
 	}
-	// 降级身份行：保留该候选、计数全零、Degraded 标记、无读数。
+	// 降级行：保留该候选、Degraded 标记；条数由纯行计数填真实值（2 个完整
+	// 行，协调线输入①——降级行不再是无读数身份行），轮次/预览不可得。
 	if len(set.Chains) != 1 {
 		t.Fatalf("the unreadable candidate must stay listed, got %d chains: %s", len(set.Chains), b)
 	}
 	row := set.Chains[0]
-	if !row.Degraded || row.MessageCount != 0 || row.Turns != 0 || row.Preview != "" || row.LastActivity != "" {
-		t.Fatalf("the unreadable candidate must be an identity row (degraded, zero readings): %+v", row)
+	if !row.Degraded || row.MessageCount != 2 || row.Turns != 0 || row.Preview != "" {
+		t.Fatalf("the unreadable candidate must be a degraded row with quick-count readings: %+v", row)
 	}
 	// 零读数不产生推荐（1019/1123 语义）：更长/更新留空。
 	if set.LongestPath != "" || set.NewestPath != "" {

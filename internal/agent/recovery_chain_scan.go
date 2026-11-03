@@ -20,10 +20,16 @@ import (
 // 复展开同一会话零重付。
 
 // ChainScanMaxBytes 是链扫描愿意为单个候选文件付出的读取上限。超过它的文
-// 件降级为「仅文件身份」行（计数全零、不读内容），与面板 heads 路径
+// 件跳过整文件解析，纯行计数填条数后按 Degraded 降级——与面板 heads 路径
 // （panelHeadsReplayMaxBytes，256 MiB）同档语义：只拦病态大文件，不拦正
 // 常大日志。var 而非 const：测试收窄它来验证降级路径。
 var ChainScanMaxBytes int64 = 256 << 20
+
+// ChainScanTimeBudget 是单组候选扫描的累计时间预算（tl1355 协调线输入②，
+// 用户 20261103 定 10s）：超时即停整文件解析，余行以纯行计数降级——面板
+// 展开一个多副本会话最坏等 ~10s + 单文件一次解析的量级，而不是无限期。
+// var 而非 const：测试收窄它来验证降级路径。
+var ChainScanTimeBudget = 10 * time.Second
 
 // ChainScanView 是一个候选转录文件的内容扫描读数。Path 之外的字段分两档：
 // Loadable（严格快照可载）时全部读数可信且可参与覆盖判定；仅 Readable
@@ -80,6 +86,44 @@ func lastMessageActivity(msgs []provider.Message) time.Time {
 	return time.Time{}
 }
 
+// countTranscriptLines counts the checkpoint's message lines without parsing
+// any JSON — the cheap reading that keeps degraded rows' counts real when the
+// full parse is out of budget (协调线输入①/⑤：纯行计数 ~0.1s/86MB，全量解
+// 析的 1/10)。The checkpoint is one message per line (writeSessionMessages
+// encodes per message), so lines ≈ the strict snapshot's Len including the
+// leading system line. A file that cannot be read counts zero — an identity
+// row, not an invented number.
+func countTranscriptLines(path string) int {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	count := 0
+	partial := false
+	buf := make([]byte, 256<<10)
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			for _, b := range buf[:n] {
+				if b == '\n' {
+					count++
+					partial = false
+				} else {
+					partial = true
+				}
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	if partial {
+		count++
+	}
+	return count
+}
+
 // TolerantChainReadings counts and previews a transcript with the tolerant
 // loader — the path damaged or unnormalized copies take when the strict
 // snapshot refuses them. ok is false when the tolerant loader cannot read the
@@ -111,19 +155,37 @@ func TolerantChainReadings(path string) (messageCount, turns int, preview string
 // coverage claim, but it still shows its tolerant readings with the row
 // marked degraded. Files over ChainScanMaxBytes degrade to identity rows
 // without any content read — the panel keeps the row, never hangs the page.
+//
+// tl1355 协调线输入②（用户 20261103 定）：扫描有 10 秒时间预算——单组累计
+// 超时即停，余下候选不再做整文件解析，改用纯行计数（不解析 JSON，实测
+// 86MB 全量解析 1.09s vs 纯计数 ~0.1s 量级）填真实条数后按 Degraded 降级
+// 行展示。整文件重放（严格快照、tolerant 兜底）仍是条数/轮次/预览的权威
+// 来源，但只在预算内进行。
 func ScanSessionChainViews(paths []string) []ChainScanView {
 	views := make([]ChainScanView, 0, len(paths))
+	start := time.Now()
 	for _, path := range paths {
 		v := ChainScanView{Path: path}
 		var modTime time.Time
 		if info, err := os.Stat(path); err == nil {
 			modTime = info.ModTime()
-			if info.Size() > ChainScanMaxBytes {
-				// 病态大文件：面板降级为身份行，不读内容（与 heads 面板预算
-				// 同语义——保留行、计数全零、不重放）。
-				views = append(views, v)
-				continue
-			}
+		}
+		// 时间预算：超时后停止整文件解析，余行以纯计数降级（计数仍真实，
+		// 轮次/预览/覆盖不可得）。预算检查逐候选进行——单个大文件的一次解
+		// 析（实测 86MB ≈ 1.1s）是最大超冲量，面板不会被任何单文件挂死。
+		if time.Since(start) > ChainScanTimeBudget {
+			v.MessageCount = countTranscriptLines(path)
+			v.LastActivity = modTime
+			views = append(views, v)
+			continue
+		}
+		if info, err := os.Stat(path); err == nil && info.Size() > ChainScanMaxBytes {
+			// 病态大文件：不做整文件解析（与 heads 面板预算同语义），纯计数
+			// 填条数后降级——计数仍真实，不再是无读数的身份行。
+			v.MessageCount = countTranscriptLines(path)
+			v.LastActivity = modTime
+			views = append(views, v)
+			continue
 		}
 		snap, ok := LoadSessionContentSnapshot(path)
 		if ok {
@@ -143,20 +205,30 @@ func ScanSessionChainViews(paths []string) []ChainScanView {
 			views = append(views, v)
 			continue
 		}
-		// 严格快照拒绝（脏化/事件日志损）：tolerant 兜底。读数真实（可能
-		// 是残缺日志的可读前缀），Loadable=false 让覆盖判定跳过它。
-		if count, turns, preview, tok := TolerantChainReadings(path); tok {
-			v.MessageCount = count
-			v.Turns = turns
-			v.Preview = preview
-			// tolerantReplay 有缓存（TolerantChainReadings 刚付过重放），这里
-			// 的第二次取用零额外成本；文件在扫描中途消失时拿到 nil，零时间
-			// 落到 mtime 兜底。
-			v.LastActivity = lastMessageActivity(tolerantReplay(path))
+		// 严格快照拒绝（脏化/事件日志损）：预算内先试 tolerant 兜底。读数真
+		// 实（可能是残缺日志的可读前缀），Loadable=false 让覆盖判定跳过它。
+		if time.Since(start) <= ChainScanTimeBudget {
+			if count, turns, preview, tok := TolerantChainReadings(path); tok {
+				v.MessageCount = count
+				v.Turns = turns
+				v.Preview = preview
+				// tolerantReplay 有缓存（TolerantChainReadings 刚付过重放），这里
+				// 的第二次取用零额外成本；文件在扫描中途消失时拿到 nil，零时间
+				// 落到 mtime 兜底。
+				v.LastActivity = lastMessageActivity(tolerantReplay(path))
+				if v.LastActivity.IsZero() {
+					v.LastActivity = modTime
+				}
+				v.Readable = true
+			}
+		}
+		if !v.Readable {
+			// tolerant 也读不出（或预算已尽）：纯行计数填条数——降级行的计数
+			// 仍真实（不解析 JSON），轮次/预览不可得，面板照实标 Degraded。
+			v.MessageCount = countTranscriptLines(path)
 			if v.LastActivity.IsZero() {
 				v.LastActivity = modTime
 			}
-			v.Readable = true
 		}
 		views = append(views, v)
 	}

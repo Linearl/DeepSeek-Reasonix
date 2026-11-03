@@ -958,10 +958,14 @@ export function RecoveryCopiesSection() {
     setErrors([]);
     // 任务 1085：只扫真有副本的行——v3-only 占位行（copies 为空）没有可测的
     // 副本文件，ScanRecoveryCopyGroup 对它只会空跑一轮目录扫描。
-    for (const group of composedGroups) {
-      if (group.copies.length === 0) continue;
+    // tl1355 协调线输入③：多会话测量是串行循环，逐个报「第 N / 共 M 个」——
+    // 复用合并/合成进度同一状态行，不新增 UI 面。
+    const targets = composedGroups.filter((g) => g.copies.length > 0);
+    for (const [index, group] of targets.entries()) {
+      setStatus(`${t("settings.recoveryCopiesMeasuring")} ${index + 1}/${targets.length} · ${group.mainLabel}`);
       await scanOne(group.mainPath);
     }
+    setStatus("");
   };
 
   // Scan only the rows the user has checked. On a project with dozens of
@@ -971,9 +975,11 @@ export function RecoveryCopiesSection() {
     const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
     if (!chosen.length) return;
     setErrors([]);
-    for (const group of chosen) {
+    for (const [index, group] of chosen.entries()) {
+      setStatus(`${t("settings.recoveryCopiesMeasuring")} ${index + 1}/${chosen.length} · ${group.mainLabel}`);
       await scanOne(group.mainPath);
     }
+    setStatus("");
   };
 
   const winnerText = (group: RecoveryCopyGroupView) => {

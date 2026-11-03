@@ -156,11 +156,49 @@ func TestScanSessionChainViewsBudgetDegrades(t *testing.T) {
 		t.Fatalf("views = %d, want 1", len(views))
 	}
 	v := views[0]
-	if v.Readable || v.Loadable || v.MessageCount != 0 || v.Turns != 0 || v.Preview != "" {
-		t.Fatalf("over-budget file must degrade to an identity row: %+v", v)
+	// 协调线输入①：降级行的条数由纯行计数填真实值（不解析 JSON），不再是
+	// 无读数身份行。checkpoint 3 行 = 引导 system + 1 轮问答（2 条消息）。
+	if v.Readable || v.Loadable {
+		t.Fatalf("over-budget file must skip the full parse: %+v", v)
+	}
+	if v.MessageCount != 3 {
+		t.Fatalf("degraded row must carry the real line count, got %d want 3", v.MessageCount)
+	}
+	if v.Turns != 0 || v.Preview != "" {
+		t.Fatalf("degraded row has no full-content readings (turns/preview): %+v", v)
 	}
 	if v.CoveredBy != "" {
 		t.Fatalf("identity rows must not carry coverage claims: %+v", v)
+	}
+	if v.LastActivity.IsZero() {
+		t.Fatalf("degraded row must carry the mtime as last-activity: %+v", v)
+	}
+}
+
+// 协调线输入②：10 秒时间预算——预算耗尽后余行整文件解析即停，纯计数降级，
+// 面板展开多副本会话的等待有上界。
+func TestScanSessionChainViewsTimeBudgetQuickCounts(t *testing.T) {
+	dir := t.TempDir()
+	first := saveScanFixture(t, dir, "tb-first.jsonl", 2)
+	second := saveScanFixture(t, dir, "tb-second.jsonl", 1)
+	old := ChainScanTimeBudget
+	ChainScanTimeBudget = time.Nanosecond
+	defer func() { ChainScanTimeBudget = old }()
+
+	views := ScanSessionChainViews([]string{first, second})
+	if len(views) != 2 {
+		t.Fatalf("views = %d, want 2", len(views))
+	}
+	for i, v := range views {
+		if v.Readable || v.Loadable {
+			t.Fatalf("view %d must skip the full parse under an exhausted budget: %+v", i, v)
+		}
+		if v.MessageCount == 0 {
+			t.Fatalf("view %d must carry the real quick line count: %+v", i, v)
+		}
+		if v.Turns != 0 || v.Preview != "" || v.CoveredBy != "" {
+			t.Fatalf("quick-count rows have no full-content readings or coverage: %+v", v)
+		}
 	}
 }
 

@@ -129,12 +129,16 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 		isMain := samePath(path, mainPath)
 		scan := scanByPath[path]
 		if !scan.Readable {
-			// 仅文件身份行：内容读不出（超扫描预算/文件消失）。与任务 1039
-			// 的降级同语义——保留行、计数全零、不读内容，其他候选照旧枚举，
-			// 面板看得见哪一份读不了。
+			// 降级行：整文件读不出（超字节/时间预算、tolerant 也拒、文件消
+			// 失）。与任务 1039 的降级同语义——保留行、其他候选照旧枚举，
+			// 面板看得见哪一份读不了；条数由纯行计数填真实值（协调线输入①：
+			// 不解析 JSON，~0.1s/86MB），轮次/预览不可得。
 			set.Chains = append(set.Chains, RecoveryChainView{
 				Path: path, Label: recoveryDisplayName(path), IsMain: isMain,
-				Bytes: bytes, Degraded: true,
+				Selected:     isMain,
+				MessageCount: scan.MessageCount,
+				LastActivity: scan.LastActivity.UTC().Format("2006-01-02T15:04:05Z"),
+				Bytes:        bytes, Degraded: true,
 			})
 			continue
 		}
@@ -153,7 +157,7 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 			Bytes:        bytes,
 			Preview:      scan.Preview,
 			// Degraded 语义收窄为「读数来自 tolerant 兜底」：计数真实但未经
-			// 严格校验（残缺日志的可读前缀），面板标灰但不隐藏。仅身份行
+			// 严格校验（残缺日志的可读前缀），面板标灰但不隐藏。降级身份行
 			// （!Readable）在上方单独成行。
 			Degraded: !scan.Loadable,
 		})
@@ -175,13 +179,15 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 		}
 		return set.Chains[i].LastActivity > set.Chains[j].LastActivity
 	})
-	// 任务 1019：longest（更长）与 newest（更新）只在带真实读数的链里选——
-	// 零读数（仅身份的降级行、真空会话）不推为赢家，全部为零时留空，前端
-	// 因此不标推荐。tl1355 起降级行里有一档 tolerant 兜底行（计数真实但未经
-	// 严格校验）：它们按真实读数参选——「更长」的判据是内容事实，不是行的
-	// 校验等级；Chains 已按轮次优先排好序，第一个带内容的就是「更长」。
+	// 任务 1019：longest（更长）与 newest（更新）只在带**完整内容读数**的链
+	// 里选——零读数（真空会话）与纯计数降级行（时间/字节预算外，条数来自
+	// 行计数、轮次/预览不可得）不推为赢家，全部不可得时留空，前端因此不标
+	// 推荐。tl1355 起降级行里有一档 tolerant 兜底行（计数真实但未经严格校
+	// 验）：它们按真实读数参选——「更长」的判据是内容事实，不是行的校验等
+	// 级；Chains 已按轮次优先排好序，第一个带完整读数的就是「更长」。
 	for _, chain := range set.Chains {
-		if chain.MessageCount > 0 {
+		scan := scanByPath[chain.Path]
+		if chain.MessageCount > 0 && (scan.Loadable || scan.Readable) {
 			set.LongestPath = chain.Path
 			set.LongestHead = chain.HeadID
 			break
@@ -189,11 +195,13 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 	}
 	// 任务 1123：「更新」独立于「更长」计算——LastActivity 是字符串比较
 	// （RFC3339 UTC 恒定宽度，字典序即时间序），直接扫一遍取最大值即可，
-	// 不需要额外排序。同样只认带真实读数的行（零读数不是「最新」）。平手时
-	// 按当前排序序（轮次优先）先出现者胜，与 longest 的平手规则一致。
+	// 不需要额外排序。同样只认带完整内容读数的行（零读数与纯计数行不是
+	// 「最新」）。平手时按当前排序序（轮次优先）先出现者胜，与 longest 的
+	// 平手规则一致。
 	newestIndex := -1
 	for i, chain := range set.Chains {
-		if chain.MessageCount == 0 {
+		scan := scanByPath[chain.Path]
+		if chain.MessageCount == 0 || !(scan.Loadable || scan.Readable) {
 			continue
 		}
 		if newestIndex == -1 || chain.LastActivity > set.Chains[newestIndex].LastActivity {
