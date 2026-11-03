@@ -2,6 +2,7 @@ package sessioncatalog
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -113,15 +114,31 @@ func (c *Catalog) reconcileLoop() {
 	}
 }
 
+// queuedReconcileBudget bounds one save-triggered directory scan. A scan that
+// outlives it fails through failDirectoryScan, which degrades the catalog.
+const queuedReconcileBudget = 2 * time.Minute
+
+// queuedReconcileSlowLog is the elapsed time above which a queued scan is
+// logged even when it succeeds (tl1315): the budget was being crossed in the
+// field with no record of how close ordinary scans ran to it.
+const queuedReconcileSlowLog = 30 * time.Second
+
 func (c *Catalog) runQueuedReconcile(target DirectoryTarget) {
 	key := queuePathKey(target.Path)
 	for {
 		if c.testReconcileStartHook != nil {
 			c.testReconcileStartHook(target)
 		}
-		ctx, cancel := context.WithTimeout(c.workerCtx, 2*time.Minute)
-		_ = c.reconcileDirectory(ctx, target, target.mutationSeq)
+		started := time.Now()
+		ctx, cancel := context.WithTimeout(c.workerCtx, queuedReconcileBudget)
+		err := c.reconcileDirectory(ctx, target, target.mutationSeq)
 		cancel()
+		if elapsed := time.Since(started); elapsed >= queuedReconcileSlowLog {
+			slog.Info("sessioncatalog: slow directory reconcile",
+				"feature", "catalog-reconcile", "path", target.Path,
+				"elapsed_ms", elapsed.Milliseconds(), "budget_ms", queuedReconcileBudget.Milliseconds(),
+				"ok", err == nil)
+		}
 
 		c.reconcileDirtyMu.Lock()
 		followUp, dirty := c.reconcileDirty[key]

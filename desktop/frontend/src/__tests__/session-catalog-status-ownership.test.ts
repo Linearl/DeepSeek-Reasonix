@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 let generation = 0;
-const statusWriteIsAllowed = (candidateGeneration: number, rebuildFailed: boolean) => !rebuildFailed && candidateGeneration === generation;
+// tl1315③: a failed rebuild fences status writes only until the backend
+// reports a settled state (ready/degraded) — that settled read is the recovery
+// signal itself, so it must take over and clear the frozen banner. Transitional
+// states (opening/rebuilding/closed) stay fenced exactly as before. The old
+// rule (ignore every status until the next successful rebuild) froze
+// "正在整理历史 — 失败" for the life of the window even after the backend had
+// recovered on its own.
+const settles = (state: string) => state === "ready" || state === "degraded";
+const statusWriteIsAllowed = (candidateGeneration: number, rebuildFailed: boolean, state: string) =>
+  candidateGeneration === generation && (!rebuildFailed || settles(state));
 const renderedStates: string[] = [];
 let resolveRemoteStatus: ((state: string) => void) | undefined;
 const remoteStatus = new Promise<string>((resolve) => {
@@ -10,7 +19,7 @@ const remoteStatus = new Promise<string>((resolve) => {
 });
 const remoteGeneration = generation;
 const lateRemoteWrite = remoteStatus.then((state) => {
-  if (statusWriteIsAllowed(remoteGeneration, false)) renderedStates.push(state);
+  if (statusWriteIsAllowed(remoteGeneration, false, state)) renderedStates.push(state);
 });
 
 // The Wails rebuild rejects after the finished event has already started its
@@ -25,32 +34,47 @@ assert.deepEqual(
   "a late pre-failure status response cannot replace the restored retry state",
 );
 
+// During watcher startup a failed rebuild keeps fencing same-generation
+// transitional reads: they describe a backend still cycling, not a recovery.
 const postFailureGeneration = generation;
-if (statusWriteIsAllowed(postFailureGeneration, true)) renderedStates.push("opening");
+if (statusWriteIsAllowed(postFailureGeneration, true, "opening")) renderedStates.push("opening");
 assert.deepEqual(
   renderedStates,
   ["degraded"],
-  "status reads started after a failed rebuild cannot replace its retry state during watcher startup",
+  "transitional status reads started after a failed rebuild cannot replace its retry state during watcher startup",
 );
 
-const retryGeneration = generation;
-if (statusWriteIsAllowed(retryGeneration, false)) renderedStates.push("ready");
-assert.deepEqual(renderedStates, ["degraded", "ready"], "a new rebuild re-enables authoritative status writes");
+// tl1315③: the first settled read after a failure takes over — it clears the
+// failure memory and lets the banner recover instead of freezing it.
+if (statusWriteIsAllowed(postFailureGeneration, true, "ready")) renderedStates.push("ready");
+assert.deepEqual(
+  renderedStates,
+  ["degraded", "ready"],
+  "a settled status read after a failed rebuild takes over and clears the frozen banner",
+);
+
+// While no rebuild failure is held, an authoritative same-generation read
+// always applies, whatever state it carries.
+assert.equal(
+  statusWriteIsAllowed(postFailureGeneration, false, "opening"),
+  true,
+  "an authoritative read while no rebuild failure is held always applies",
+);
 
 const projectTreeSource = readFileSync(new URL("../components/ProjectTree.tsx", import.meta.url), "utf8");
 assert.match(
   projectTreeSource,
-  /catch \{\s*catalogRebuildFailedRef\.current = true; catalogStatusGenerationRef\.current \+= 1; setCatalogStatus\(catalogStatus\)/,
+  /catch \(error\) \{\s*catalogRebuildFailedRef\.current = true; catalogStatusGenerationRef\.current \+= 1; setCatalogStatus\(catalogStatus\)/,
   "ProjectTree invalidates older status reads before restoring a failed rebuild",
 );
 assert.match(
   projectTreeSource,
-  /GetSessionCatalogStatus\(\)[\s\S]*!catalogRebuildFailedRef\.current && catalogStatusGeneration === catalogStatusGenerationRef\.current/,
-  "ProjectTree fences every event-driven status write behind rebuild ownership",
+  /GetSessionCatalogStatus\(\)[\s\S]*catalogStatusGeneration !== catalogStatusGenerationRef\.current[\s\S]*catalogRebuildFailedRef\.current && !catalogStatusSettlesRebuildFailure\(status\)/,
+  "ProjectTree fences every event-driven status write behind rebuild ownership (a settled read takes over)",
 );
 assert.match(
   projectTreeSource,
-  /GetProjectTreeSnapshot\(\)[\s\S]*!catalogRebuildFailedRef\.current && catalogStatusGeneration === catalogStatusGenerationRef\.current/,
+  /GetProjectTreeSnapshot\(\)[\s\S]*catalogStatusGeneration === catalogStatusGenerationRef\.current[\s\S]*\(!catalogRebuildFailedRef\.current \|\| catalogStatusSettlesRebuildFailure\(snapshot\.catalog\)\)/,
   "ProjectTree fences snapshot status writes behind the same rebuild ownership",
 );
 

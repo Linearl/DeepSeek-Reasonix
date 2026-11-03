@@ -1764,6 +1764,7 @@ export const zh: Record<DictKey, string> = {
   "projectTree.recovered": "已恢复",
   "projectTree.recoveryOnly": "可恢复",
   "projectTree.rebuildCatalog": "重建索引",
+  "projectTree.rebuildCatalogFailed": "重建索引未完成，后台整理已重新启动（详情见日志）",
   "projectTree.loadMore": "加载更多",
   "projectTree.newTopic": "新会话",
   "projectTree.createWorktree": "创建隔离工作区",

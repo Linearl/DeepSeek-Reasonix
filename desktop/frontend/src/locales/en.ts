@@ -1768,6 +1768,7 @@ export const en = {
   "projectTree.recovered": "Recovered",
   "projectTree.recoveryOnly": "Recoverable",
   "projectTree.rebuildCatalog": "Rebuild index",
+  "projectTree.rebuildCatalogFailed": "Index rebuild did not finish; background indexing restarted (details in log)",
   "projectTree.loadMore": "Load more",
   "projectTree.newTopic": "New session",
   "projectTree.createWorktree": "Create isolated worktree",
