@@ -263,7 +263,8 @@ const treeSource = readFileSync(join(srcRoot, "components/ProjectTree.tsx"), "ut
 ok(treeSource.includes("const forceArchiveDialog = useConfirmDialog();"), "force 归档确认持有独立 useConfirmDialog 实例");
 ok(treeSource.includes("await forceArchiveDialog.confirm({"), "force 确认走 forceArchiveDialog.confirm（应用内弹层）");
 ok(treeSource.includes("{forceArchiveDialog.dialog}"), "forceArchiveDialog 的 dialog 元素挂在组件树内（portal 载体）");
-ok(treeSource.includes('message: t("projectTree.forceArchiveConfirm", { reason: topicArchiveForceableReason(error) })'), "弹层消息仍携带失败原因（{reason}）");
+// tl1367 line 2: 失败原因改走 formatSessionBusyError 本地化渲染
+ok(treeSource.includes('message: t("projectTree.forceArchiveConfirm", { reason: formatSessionBusyError(error) })'), "弹层消息仍携带失败原因（{reason}，本地化）");
 ok(treeSource.includes("if (!isTopicArchiveForceableError(error)) return false;"), "仅后端标记的失败允许升级 force（分诊门保持）");
 ok(treeSource.includes("if (!confirmed) return true;"), "取消=已处理语义保持（零进一步动作、无普通 toast）");
 ok(treeSource.includes("await trashTopicForceAny(topicId);"), "确认后仍路由进 TrashTopicForce");

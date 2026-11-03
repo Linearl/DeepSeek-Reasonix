@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { app } from "./bridge";
 import { invalidateProjectTreeTopicLoads, projectTreeFolderKeyForSession, projectTreeFolderKeyForTopic } from "./projectTreeTopic";
+import { formatSessionBusyError } from "./sessionBusyError";
 import type { ToastContextValue } from "./toast";
 import type { ProjectNode } from "./types";
 
@@ -152,6 +153,7 @@ export function useProjectTreeArchiveController({
   closeMenu,
   onTopicsChanged,
   showToast,
+  confirmSessionOccupied,
 }: {
   treeRef: { current: ProjectNode[] };
   topicLoadSeqRef: { current: Record<string, number> };
@@ -162,6 +164,10 @@ export function useProjectTreeArchiveController({
   closeMenu: () => void;
   onTopicsChanged?: () => Promise<void> | void;
   showToast: ToastContextValue["showToast"];
+  /** tl1367 line 1: occupancy preflight before a destructive session delete.
+   * false = the user declined after seeing the holder warning — the delete is
+   * not started at all. Omitted = delete straight through (tests). */
+  confirmSessionOccupied?: (sessionPath: string) => Promise<boolean>;
 }) {
   const {
     trashingTopics,
@@ -218,7 +224,10 @@ export function useProjectTreeArchiveController({
           } catch {
             handled = false;
           }
-          if (!handled) showToast(err instanceof Error ? err.message : String(err), "error");
+          // tl1367 line 2: the plain-toast path renders localized copy too —
+          // the lease-busy family shows holder identity in the UI language and
+          // no other error ever prints the machine `reasonix_error:` prefix.
+          if (!handled) showToast(formatSessionBusyError(err), "error");
           await refreshRef.current(reloadOptions);
         },
       });
@@ -241,11 +250,15 @@ export function useProjectTreeArchiveController({
 
     const queued = enqueueProjectTreeArchive(archiveQueueRef.current, async () => {
       try {
+        // tl1367 line 1: the occupancy warning fires BEFORE the delete runs —
+        // declining leaves the row untouched instead of surfacing a refusal.
+        if (confirmSessionOccupied && !(await confirmSessionOccupied(sessionPath))) return;
         await app.DeleteSession(sessionPath);
         await refreshRef.current(reloadOptions);
         await Promise.resolve(onTopicsChanged?.()).catch(() => undefined);
       } catch (err) {
-        showToast(err instanceof Error ? err.message : String(err), "error");
+        // tl1367 line 2: localized busy copy; machine prefix never toasts.
+        showToast(formatSessionBusyError(err), "error");
         await refreshRef.current(reloadOptions).catch(() => undefined);
       } finally {
         sessionTrashingRef.current = projectTreeTrashingTopics(sessionTrashingRef.current, sessionPath, false);
@@ -254,7 +267,7 @@ export function useProjectTreeArchiveController({
     });
     archiveQueueRef.current = queued;
     await queued;
-  }, [closeMenu, onTopicsChanged, refreshRef, showToast, treeRef]);
+  }, [closeMenu, confirmSessionOccupied, onTopicsChanged, refreshRef, showToast, treeRef]);
 
   return { trashingTopics, trashingSessions, currentArchiveTombstones, trashTopic, trashSession };
 }

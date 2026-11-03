@@ -39,6 +39,7 @@ import { createDesktopPreferencesMock } from "./desktopPreferencesMock";
 import type {
   BatchMoveToGroupResult,
   BatchTopicArchiveResult,
+  SessionOccupancyInfo,
   TurnChanges,
   TurnFileChange,
   RemoteHostView,
@@ -2178,6 +2179,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RenameTopic(topicID: string, title: string): Promise<void>;
   DeleteTopic(topicID: string): Promise<void>;
   TrashTopic(topicID: string): Promise<void>;
+  /** tl1367 line 1: read-only occupancy preflight for a session path — busy
+   * plus WHO holds it (holder class, pid, process name/path, host, acquire
+   * time, runtime id). Advisory only; the archive still re-checks authoritatively. */
+  ProbeSessionOccupancy(sessionPath: string): Promise<SessionOccupancyInfo>;
   /** tl1240: batch archive — the whole selection in one call so the backend
    * takes its mutation gates once. Per-topic failures are isolated in items;
    * a fully-busy gate declines the whole batch with the same busy error the
@@ -7971,6 +7976,11 @@ function makeMockApp(): AppBindings {
     },
     async TrashTopic(topicID: string) {
       deleteMockTopic(topicID);
+    },
+    // tl1367: browser-dev mock — probes never busy, same no-gating stance as
+    // the mock archive endpoints.
+    async ProbeSessionOccupancy(_sessionPath: string): Promise<SessionOccupancyInfo> {
+      return { busy: false };
     },
     // tl1240: browser mock — same shape as the Go endpoint, no gating.
     async BatchTrashTopics(topicIDs: string[]) {

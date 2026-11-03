@@ -11,6 +11,7 @@
 // per-topic outcomes the backend already isolated.
 
 import type { BatchMoveToGroupResult, BatchTopicArchiveItem, BatchTopicArchiveResult, ProjectNode } from "./types";
+import { formatSessionBusyError } from "./sessionBusyError";
 
 /** A topic row eligible for batch operations: local, has a topic id, and is a
  * real topic (project topic or global topic — standalone session rows are
@@ -83,14 +84,16 @@ export interface BatchTopicArchiveSummary {
 
 /** Resolve display titles for the report. Titles come from the selection
  * snapshot taken at action time (the tree may have reloaded by the time the
- * batch lands); unknown ids fall back to the raw id. */
+ * batch lands); unknown ids fall back to the raw id. tl1367 line 2: the
+ * lease-busy family renders localized (holder identity in the UI language)
+ * and no reason ever shows the machine `reasonix_error:` prefix. */
 function failureItems(items: BatchTopicArchiveItem[], titles: Map<string, string>): BatchTopicFailure[] {
   return items
     .filter((item) => !item.ok)
     .map((item) => ({
       topicId: item.topicId,
       title: titles.get(item.topicId) ?? item.topicId,
-      reason: item.error ?? "",
+      reason: item.error ? formatSessionBusyError(item.error) : "",
       skipped: Boolean(item.forceable),
     }));
 }

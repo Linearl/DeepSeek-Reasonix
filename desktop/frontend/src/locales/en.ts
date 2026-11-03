@@ -5632,6 +5632,13 @@ export const en = {
   "projectTree.filterByColorAll": "All colors",
   "projectTree.forceArchiveConfirm": "Normal archive failed: {reason}\n\nForce archive anyway? It skips the running-session checks and cannot be undone.",
   "projectTree.forceArchiveTopic": "Force archive",
+  // tl1367: lease-busy family, localized from the backend's [reasonix-holder] block.
+  "sessionBusy.self": "This session is held by another runtime of this Reasonix instance — pid {pid}{proc}, host {host}, since {time} (runtime {writer}). Wait for its work to finish or restart Reasonix, then retry.",
+  "sessionBusy.live": "This session is in use by another Reasonix process — pid {pid}{proc}, host {host}, since {time} (runtime {writer}). Close that window or quit the other Reasonix instance, then retry.",
+  "sessionBusy.zombie": "This session was left locked by a crashed Reasonix process — pid {pid}{proc}, since {time}. Restart Reasonix to clear the leftover lock, then retry.",
+  "sessionBusy.reused": "This session's stale lease record names pid {pid}, which now belongs to another program{proc}. Force archive clears the leftover record, then retry.",
+  "sessionBusy.unknown": "This session is in use by another Reasonix window or process — close that window (or quit the other Reasonix instance), then retry.",
+  "projectTree.sessionOccupiedConfirm": "This session is currently occupied:\n{reason}\n\nArchiving now would be refused. Continue to try a normal archive; if it fails, the force-archive path (which takes over leftover locks) will be offered. Continue?",
   // tl1240 sidebar batch manage mode
   "projectTree.batchManage": "Batch manage",
   "projectTree.batchManageExit": "Exit batch manage",
