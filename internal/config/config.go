@@ -2624,6 +2624,7 @@ type ProviderEntry struct {
 	ResponsesStateful  *bool `toml:"responses_stateful"`
 	resolvedAPIKey     string
 	credentialsFrozen  bool
+	probeAPIKey        bool   // WithAPIKeyForProbe copy: live credential refresh (任务1308) must not swap the caller-issued draft key
 	credentialProxyURL string // runtime-only loopback transport, never persisted
 	resolvedSource     CredentialSource
 	BalanceURL         string `toml:"balance_url"` // optional; a provider-specific wallet-balance endpoint (DeepSeek: https://api.deepseek.com/user/balance). Empty = no balance readout.

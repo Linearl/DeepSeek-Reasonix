@@ -110,7 +110,12 @@ func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpe
 	// CredentialRefreshInterval, so a long-lived runtime picks up externally
 	// rotated credentials instead of 401-looping until a rebuild. Entries
 	// without an api_key_env get no hook (auth failures keep their fast-fail).
-	if refresher := providerCredentialRefresher(e); refresher != nil {
+	// Probe overrides are excluded too (KeyIsProbeOverride): the caller handed
+	// over the exact draft credential to send (WithAPIKeyForProbe), and the
+	// proactive first-send refresh would silently swap it for the env/store
+	// value — the settings probe then tests the wrong key (desktop
+	// TestProviderDraftProbesDoNotPersistCredentialsOrConfiguration 稳定红根因).
+	if refresher := providerCredentialRefresher(e); refresher != nil && !e.KeyIsProbeOverride() {
 		extra["reauth"] = refresher
 	}
 	return provider.New(e.Kind, provider.Config{
