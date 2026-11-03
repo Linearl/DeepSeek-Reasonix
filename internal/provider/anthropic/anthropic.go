@@ -235,13 +235,12 @@ type client struct {
 	http             *http.Client
 	idleTimeout      time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
 	authed           atomic.Bool   // a request has succeeded — gate transient-401 retry
-	// 任务1308: live credential re-auth. reauth re-reads the credential source
-	// (boot wires config.RefreshProviderCredential); a swap of the build-time
-	// apiKey shares keyMu with its reads so a concurrent send never observes a
-	// torn key, and lastCredCheck throttles the proactive refresh.
+	// 任务1308 (收窄于 831×1308 裁决): live credential re-auth, 401-event-driven
+	// only. reauth re-reads the credential source (boot wires
+	// config.RefreshProviderCredential); a swap of the build-time apiKey shares
+	// keyMu with its reads so a concurrent send never observes a torn key.
 	reauth        func() (string, bool)
 	keyMu         sync.Mutex
-	lastCredCheck time.Time
 }
 
 func (c *client) Name() string { return c.name }
@@ -302,12 +301,12 @@ func (c *client) sendOpts() provider.SendOptions {
 		KeySource:           c.keySource,
 		KeyPresent:          c.currentAPIKey() != "",
 		RetryAuth:           c.authed.Load(),
-		RefreshCredential:   c.maybeRefreshCredential,
+		RefreshCredential:   c.refreshCredential,
 	}
 }
 
 // currentAPIKey returns the request key under the re-auth lock (任务1308):
-// maybeRefreshCredential may swap it between sends.
+// refreshCredential may swap it between sends.
 func (c *client) currentAPIKey() string {
 	if c == nil {
 		return ""
@@ -317,22 +316,19 @@ func (c *client) currentAPIKey() string {
 	return c.apiKey
 }
 
-// maybeRefreshCredential re-reads the credential source (任务1308). force=true
-// is the 401 re-auth path — SendWithRetry forces exactly one re-read per call;
-// force=false is the proactive check, throttled to one source read per
-// CredentialRefreshInterval. Reports whether the key changed, which is the
-// only signal SendWithRetry needs; key material never leaves the client.
-func (c *client) maybeRefreshCredential(force bool) bool {
+// refreshCredential re-reads the credential source (任务1308, 收窄于 831×1308
+// 裁决): SendWithRetry calls it exactly once, and only after the cached key
+// was actually rejected with a 401 — the re-auth self-heal path. There is no
+// proactive refresh: a running turn keeps the boot-accepted snapshot's key
+// until the turn ends (配置变更轮内冻结), so an externally rotated credential
+// is picked up on the 401 it causes, never speculatively. Reports whether the
+// key changed; key material never leaves the client.
+func (c *client) refreshCredential() bool {
 	if c == nil || c.reauth == nil {
 		return false
 	}
 	c.keyMu.Lock()
 	defer c.keyMu.Unlock()
-	now := time.Now()
-	if !force && !c.lastCredCheck.IsZero() && now.Sub(c.lastCredCheck) < provider.CredentialRefreshInterval {
-		return false
-	}
-	c.lastCredCheck = now
 	key, ok := c.reauth()
 	if !ok || key == "" || key == c.apiKey {
 		return false

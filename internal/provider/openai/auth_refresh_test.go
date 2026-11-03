@@ -103,59 +103,7 @@ func TestStream401ReauthSelfHeals(t *testing.T) {
 			t.Fatalf("request %d Authorization = %q, want %q (full: %v)", i+1, auths[i], want[i], auths)
 		}
 	}
-	if sourceReads != 2 {
-		t.Fatalf("credential source reads = %d, want 2 (stream-1 proactive check + the forced re-auth)", sourceReads)
-	}
-}
-
-// TestProactiveCredentialRefreshThrottled pins 任务1308 ③: the proactive check
-// runs at most once per CredentialRefreshInterval — a long-lived session picks
-// up a rotated credential on its next send after the interval, without waiting
-// for a 401, and does not touch the credential file on every send.
-func TestProactiveCredentialRefreshThrottled(t *testing.T) {
-	old := provider.CredentialRefreshInterval
-	provider.CredentialRefreshInterval = time.Hour
-	t.Cleanup(func() { provider.CredentialRefreshInterval = old })
-
-	var mu sync.Mutex
-	sourceReads := 0
-	sse := "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, sse)
-	}))
-	defer srv.Close()
-
-	p, err := New(provider.Config{
-		Name: "mimo", BaseURL: srv.URL, Model: "mimo-v2.6-flash", APIKey: "k",
-		Extra: map[string]any{
-			"request_url": srv.URL,
-			"reauth": func() (string, bool) {
-				mu.Lock()
-				defer mu.Unlock()
-				sourceReads++
-				return "k", true // unchanged — only the read is counted
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	c := p.(*client)
-
-	for i := 0; i < 2; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		ch, err := c.Stream(ctx, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
-		if err != nil {
-			t.Fatalf("stream %d: %v", i, err)
-		}
-		for range ch {
-		}
-		cancel()
-	}
-	mu.Lock()
-	defer mu.Unlock()
 	if sourceReads != 1 {
-		t.Fatalf("source reads across two back-to-back sends = %d, want 1 (interval throttle)", sourceReads)
+		t.Fatalf("credential source reads = %d, want 1 (831×1308 收窄: the forced re-auth only — no proactive check)", sourceReads)
 	}
 }

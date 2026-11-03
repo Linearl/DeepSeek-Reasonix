@@ -105,15 +105,19 @@ func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpe
 	// construction path as the retry budget above. All-default config stamps
 	// nothing, so the gate's breaker state survives provider rebuilds.
 	applyDialGateFromConfig(cfg)
-	// 任务1308: live credential re-auth — the HTTP adapters read this hook and
-	// SendWithRetry calls it on a 401 (once, forced) and proactively per
-	// CredentialRefreshInterval, so a long-lived runtime picks up externally
-	// rotated credentials instead of 401-looping until a rebuild. Entries
-	// without an api_key_env get no hook (auth failures keep their fast-fail).
-	// Probe overrides are excluded too (KeyIsProbeOverride): the caller handed
-	// over the exact draft credential to send (WithAPIKeyForProbe), and the
-	// proactive first-send refresh would silently swap it for the env/store
-	// value — the settings probe then tests the wrong key (desktop
+	// 任务1308 (收窄于 831×1308 裁决 2026-11-03): live credential re-auth — the
+	// HTTP adapters read this hook and SendWithRetry calls it exactly once,
+	// only after the accepted snapshot's key was actually rejected with a 401,
+	// so an externally rotated credential still self-heals instead of
+	// 401-looping until a rebuild. There is NO proactive refresh: a running
+	// turn keeps the boot-accepted snapshot's model+key even when config or
+	// credentials change mid-run — 配置变更轮内冻结、下一回合生效 (contract
+	// pin: TestModelSettingsChildCreatedAfterSaveInheritsAcceptedRunSnapshot).
+	// Entries without an api_key_env get no hook (auth failures keep their
+	// fast-fail). Probe overrides are excluded too (KeyIsProbeOverride): the
+	// caller handed over the exact draft credential to send
+	// (WithAPIKeyForProbe), and a re-read would silently swap it for the
+	// env/store value — the settings probe then tests the wrong key (desktop
 	// TestProviderDraftProbesDoNotPersistCredentialsOrConfiguration 稳定红根因).
 	if refresher := providerCredentialRefresher(e); refresher != nil && !e.KeyIsProbeOverride() {
 		extra["reauth"] = refresher
@@ -128,9 +132,11 @@ func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpe
 
 // providerCredentialRefresher builds the 任务1308 live re-auth hook for an
 // entry: each call re-reads the global credentials store exactly where config
-// load resolved from, fresh and uncached, so a credential rotated after boot is
-// seen on the next read. Nil for entries without an api_key_env — those keep
-// today's fixed build-time key behaviour.
+// load resolved from, fresh and uncached. The adapters invoke it only on a 401
+// rejection (831×1308 收窄: no proactive polling), so a credential rotated
+// after boot is picked up on the failure it causes, while a turn that has not
+// been rejected keeps its accepted snapshot key. Nil for entries without an
+// api_key_env — those keep the fixed build-time key behaviour.
 func providerCredentialRefresher(e *config.ProviderEntry) func() (string, bool) {
 	if e == nil {
 		return nil

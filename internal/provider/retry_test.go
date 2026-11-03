@@ -637,12 +637,13 @@ func TestIndependentRequestAttemptCounter(t *testing.T) {
 	}
 }
 
-// ---- 任务1308: credential re-auth + proactive refresh ----
+// ---- 任务1308: credential re-auth（收窄于 831×1308 裁决: 401 事件驱动，无 proactive）----
 
 // TestSendWithRetryRefreshesCredentialOn401 pins the re-auth lane: a previously
 // authenticated key that starts 401ing because the source rotated gets ONE
 // forced re-read inside the existing auth budget, the next attempt rides the
-// fresh key, and the turn succeeds — no runtime rebuild needed.
+// fresh key, and the turn succeeds — no runtime rebuild needed. The re-read is
+// event-driven only: it never fires before a real 401 (受理快照契约).
 func TestSendWithRetryRefreshesCredentialOn401(t *testing.T) {
 	calls := 0
 	var auths []string
@@ -655,15 +656,10 @@ func TestSendWithRetryRefreshesCredentialOn401(t *testing.T) {
 		return statusResp(200, nil), nil
 	})}
 	forceRefreshes := 0
-	proactiveRefreshes := 0
 	opts := SendOptions{Provider: "mimo", KeyEnv: "MIMO_API_KEY", KeyPresent: true, RetryAuth: true}
-	opts.RefreshCredential = func(force bool) bool {
-		if force {
-			forceRefreshes++
-			return true // source has a new key; the client swapped it in
-		}
-		proactiveRefreshes++
-		return false
+	opts.RefreshCredential = func() bool {
+		forceRefreshes++
+		return true // source has a new key; the client swapped it in
 	}
 	newReq := func(ctx context.Context) (*http.Request, error) {
 		req, err := newDummyReq(ctx)
@@ -683,9 +679,6 @@ func TestSendWithRetryRefreshesCredentialOn401(t *testing.T) {
 	if forceRefreshes != 1 {
 		t.Fatalf("forced re-reads = %d, want exactly 1 per SendWithRetry", forceRefreshes)
 	}
-	if proactiveRefreshes != 1 {
-		t.Fatalf("proactive checks = %d, want exactly 1 per SendWithRetry", proactiveRefreshes)
-	}
 	_ = auths // header assertion happens at the client layer (C3); here the budget is the contract
 }
 
@@ -700,7 +693,7 @@ func TestSendWithRetryUnchangedCredentialKeepsAuthBudget(t *testing.T) {
 		return statusResp(401, nil), nil
 	})}
 	opts := SendOptions{Provider: "mimo", KeyEnv: "MIMO_API_KEY", KeyPresent: true, RetryAuth: true}
-	opts.RefreshCredential = func(bool) bool { return false } // source unchanged
+	opts.RefreshCredential = func() bool { return false } // source unchanged
 	_, err := SendWithRetry(context.Background(), cl, opts, newDummyReq)
 	if calls != 1+maxAuthRetries {
 		t.Fatalf("persistent 401 with unchanged credential made %d calls, want %d", calls, 1+maxAuthRetries)
@@ -726,10 +719,8 @@ func TestSendWithRetryNeverAuthedSkipsCredentialRefresh(t *testing.T) {
 	})}
 	forceRefreshes := 0
 	opts := SendOptions{Provider: "deepseek", KeyEnv: "DEEPSEEK_API_KEY", KeyPresent: true, RetryAuth: false}
-	opts.RefreshCredential = func(force bool) bool {
-		if force {
-			forceRefreshes++
-		}
+	opts.RefreshCredential = func() bool {
+		forceRefreshes++
 		return false
 	}
 	_, err := SendWithRetry(context.Background(), cl, opts, newDummyReq)

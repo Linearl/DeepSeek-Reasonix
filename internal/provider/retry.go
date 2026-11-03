@@ -62,24 +62,17 @@ type SendOptions struct {
 	RetryAuth           bool   // the key has authenticated before — retry transient 401s instead of failing fast
 	// RefreshCredential re-reads the credential from its source and swaps the
 	// request key when the source has changed, reporting whether it changed.
-	// 任务1308: a long-lived runtime caches its key at build time while
-	// token-plan credentials keep rotating behind it — the cached state goes
-	// stale and every request 401s until a runtime rebuild re-reads the
-	// credential. force=true is the 401 re-auth path (one forced re-read per
-	// SendWithRetry); force=false is the throttled proactive check SendWithRetry
-	// runs once per call before the first attempt. Nil = no live re-read wired
-	// (custom assemblers) — behaviour stays exactly as before. Key material
-	// never crosses this boundary: the callback owns the swap and only the
-	// changed-bool comes back.
-	RefreshCredential func(force bool) bool
+	// 任务1308, 收窄于 831×1308 裁决（2026-11-03）: the only trigger is the 401
+	// re-auth path — one forced re-read per SendWithRetry after the cached key
+	// was actually rejected. The former throttled proactive check is gone: a
+	// running turn must keep the boot-accepted snapshot's key even when the
+	// store rotates behind it (配置变更轮内冻结、下一回合生效); an externally
+	// rotated credential still self-heals on the 401 it causes. Nil = no live
+	// re-read wired (custom assemblers) — behaviour stays exactly as before.
+	// Key material never crosses this boundary: the callback owns the swap and
+	// only the changed-bool comes back.
+	RefreshCredential func() bool
 }
-
-// CredentialRefreshInterval is how long a client trusts its cached credential
-// before SendWithRetry's proactive check re-reads the source (任务1308 ③). A
-// var so tests can shrink it; the value only bounds staleness of the cached
-// copy — a stale window left by a shorter upstream TTL is still caught by the
-// 401 re-auth path.
-var CredentialRefreshInterval = 10 * time.Minute
 
 // RetryBudget (task 1056 方案 B) is the lab-switch-gated retry tuning layer.
 // It rides a context value so SendWithRetry — the single choke point every HTTP
@@ -606,13 +599,9 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 		return &RetryBudgetExhaustedError{Attempts: attempts, Elapsed: time.Since(started), WallClock: budget.WallClock, Cause: lastErr}
 	}
 	started := time.Now()
-	// 任务1308 ③: one throttled proactive credential check per SendWithRetry —
-	// a long-lived session picks up an externally rotated credential on its
-	// next request instead of waiting for a 401. The callback throttles itself
-	// (CredentialRefreshInterval); nil keeps today's behaviour byte-for-byte.
-	if opts.RefreshCredential != nil {
-		opts.RefreshCredential(false)
-	}
+	// 831×1308 裁决收窄: no proactive credential check before the first
+	// attempt. A running turn sends the boot-accepted snapshot's key; the only
+	// re-read happens after a real 401 rejection below.
 	reauthed := false
 	for attempt := 0; attempt <= limit; attempt++ {
 		if attempt > 0 {
@@ -690,7 +679,7 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 				// credential never adds an attempt beyond today's budget.
 				if !reauthed && opts.RefreshCredential != nil {
 					reauthed = true
-					opts.RefreshCredential(true)
+					opts.RefreshCredential()
 				}
 				lastErr = authErr
 				continue
