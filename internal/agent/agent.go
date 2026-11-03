@@ -1052,6 +1052,38 @@ type steerEntry struct {
 // unapplied failure in the transcript.
 var ErrSteerWithdrawn = errors.New("steer withdrawn")
 
+// SteerBodyError is a steer load failure that still knows the user-authored
+// body it tried to deliver (tl1347). A durable blob can be unreadable for
+// reasons that leave the body intact — reference materialization failed, the
+// frozen block was unavailable, the consume transition errored — and the
+// unapplied-steer notice must show the user's original guidance ("原文可见
+// 可复制"), not a placeholder. Loaders wrap the underlying error; consumers
+// extract the body via steerBodyFromLoadError.
+type SteerBodyError struct {
+	Body string
+	Err  error
+}
+
+func (e *SteerBodyError) Error() string {
+	if e.Err == nil {
+		return "steer body load failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *SteerBodyError) Unwrap() error { return e.Err }
+
+// steerBodyFromLoadError extracts the user-authored body a loader carried
+// alongside a load failure. Empty when the loader could not read a body at
+// all (store read error, empty envelope) — callers keep their placeholder.
+func steerBodyFromLoadError(err error) string {
+	var bodyErr *SteerBodyError
+	if errors.As(err, &bodyErr) {
+		return strings.TrimSpace(bodyErr.Body)
+	}
+	return ""
+}
+
 // Steer queues a message for mid-turn injection. It reports whether an active
 // turn accepted the text; on false nothing was queued and the caller must
 // deliver it another way (typically as a new turn). Without the active check,
@@ -1200,7 +1232,11 @@ func (a *Agent) consumeSteer() (payload SteerPayload, itemID string, ok bool) {
 			if errors.Is(err, ErrSteerWithdrawn) {
 				return SteerPayload{}, "", false
 			}
-			return SteerPayload{}, e.itemID, false
+			// tl1347: ok=false, but surface the body the loader carried (when
+			// it did) on the payload so the run loop's unapplied notice shows
+			// the user's original guidance instead of a placeholder. The
+			// payload is otherwise unused on this path.
+			return SteerPayload{Text: steerBodyFromLoadError(err)}, e.itemID, false
 		}
 		return p, e.itemID, true
 	}
@@ -1253,6 +1289,11 @@ func (a *Agent) flushSteerQueue() {
 				continue
 			} else if err == nil {
 				text = p.Text
+			} else if body := steerBodyFromLoadError(err); body != "" {
+				// tl1347: same load-failure window as the run loop's consume
+				// path — keep the user's original body visible instead of an
+				// empty notice.
+				text = body
 			}
 		}
 		dropped = append(dropped, droppedSteer{text: text, itemID: e.itemID})
