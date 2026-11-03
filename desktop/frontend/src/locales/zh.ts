@@ -1726,7 +1726,7 @@ export const zh: Record<DictKey, string> = {
   "recovery.noticeHeadSwitched": "已打开该会话的最新版本，其他保存版本可在“查看版本”中查看。",
   "recovery.noticeRepairStillOverWindow": "这次修复把检查点补了回来，但会话仍超出模型窗口——请再跑一次修复并勾选 Diet（减肥），剥图折叠后即可恢复可用。",
   "recovery.noticeSelectedHeadBehind": "已打开一个较旧的版本（{selectedMessages} 条），另一版本更长且更新（{otherMessages} 条）；如需那条链，可在“查看版本”中手动切换。",
-  "recovery.noticeMaterializationLag": "本会话有 {gap} 条历史未落入本地记录（事件日志 {eventChain} 条，本地记录 {materialized} 条）；可右键该会话选择“修复对话”。",
+  "recovery.noticeMaterializationLag": "本会话有 {gap} 条历史未落入本地记录（事件日志 {eventChain} 条，本地记录 {materialized} 条）；可在「设置 → 存储与路径 → 工作阶段版本与副本」面板中找到该会话，展开后执行“修复”。",
   "recovery.noticeSelfHealed": "会话已自动修复并恢复可用（{actions}）；原版本保留，可在「查看版本」中切回。",
   "recovery.noticeCompactFailStreak": "上下文压缩已连续失败 {streak} 次，投影可能超出模型窗口；重新打开本会话可让本地自愈剥图并折叠旧消息。",
   "recovery.noticeHeadSelected": "已将此版本设为当前版本。",
@@ -4671,6 +4671,15 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesDeleting": "正在删除",
   "settings.recoveryCopiesOutcomeDeleted": "已删除",
   "settings.recoveryCopiesDeleteReopenHint": "删除已生效。请到项目中重新打开该会话（或刷新标签页）才能看到列表更新——被删内容还在回收站里。",
+  // 任务 1368 线2：整对话级删除——主文件（含 v3 版本与侧车）与全部副本一起
+  // 进两条可恢复回收站（主文件走会话回收站可整体还原；副本走 .trash 的
+  // forced 归档链路）。
+  "settings.recoveryCopiesDeleteConversation": "删除选中对话",
+  "settings.recoveryCopiesDeleteConversationTitle": "删除选中对话（含全部副本）",
+  "settings.recoveryCopiesDeleteConversationLead": "即将删除的对话（主文件、全部版本与副本、侧车一起进回收站）",
+  "settings.recoveryCopiesDeleteConversationWarn": "主文件与全部副本会分别移入可恢复的回收站（不会永久删除）；正在打开的该会话标签页会被关闭。",
+  "settings.recoveryCopiesOutcomeConversationDeleted": "已删除（主线入回收站，副本 {copies} 条归档）",
+  "settings.recoveryCopiesOutcomeConversationCopiesOnly": "已删除（主线原本不在，副本 {copies} 条归档）",
   // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
   //  tail 预览已在候选链行内），本组键只补「合成」这个一键式主操作：确认时
   //  列出参与分支与读数、进度/结果报告合成前后条数与轮次（并集可核对）。
@@ -4763,6 +4772,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewEmpty": "（该分支无预览文本）",
   "settings.recoveryCopiesMerging": "正在合并",
   "settings.recoveryCopiesChains": "候选链（合并后由最长的一条成为主线）",
+  "settings.recoveryCopiesChainsHint": "候选链在展开会话行时自动重放加载，无需扫描；「扫描」测的是副本与主线的差异读数",
   "settings.recoveryCopiesChainCurrent": "当前主线",
   "settings.recoveryCopiesChainCandidate": "候选链",
   "settings.recoveryCopiesRecommended": "推荐",
@@ -4791,7 +4801,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPhaseUnmerged": "待合入",
   "settings.recoveryCopiesPhaseUnmergedHint": "这些副本含主线没有的内容——这是需要处理的",
   "settings.recoveryCopiesPhasePending": "待处理",
-  "settings.recoveryCopiesPhasePendingHint": "还没扫描，先点「扫描」看清代价",
+  "settings.recoveryCopiesPhasePendingHint": "点行内「扫描」测量副本与主线的差异读数（合并预览基于它）",
   "settings.recoveryCopiesPhaseMerged": "已合入",
   "settings.recoveryCopiesPhaseMergedHint": "副本内容主线已全部包含，无需处理",
   "settings.recoveryCopiesBlocked": "被分叉阻断",

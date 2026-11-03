@@ -1362,7 +1362,7 @@ export const zhTW: Record<DictKey, string> = {
   "recovery.noticeHeadSwitched": "已開啟該會話的最新版本，其他儲存版本可在「查看版本」中查看。",
   "recovery.noticeRepairStillOverWindow": "這次修復把檢查點補了回來，但會話仍超出模型視窗——請再跑一次修復並勾選 Diet（減肥），剝圖折疊後即可恢復可用。",
   "recovery.noticeSelectedHeadBehind": "已開啟一個較舊的版本（{selectedMessages} 條），另一版本更長且更新（{otherMessages} 條）；如需那條鏈，可在「查看版本」中手動切換。",
-  "recovery.noticeMaterializationLag": "本會話有 {gap} 條歷史未落入本地記錄（事件日誌 {eventChain} 條，本地記錄 {materialized} 條）；可右鍵該會話選擇「修復對話」。",
+  "recovery.noticeMaterializationLag": "本會話有 {gap} 條歷史未落入本地記錄（事件日誌 {eventChain} 條，本地記錄 {materialized} 條）；可在「設定 → 儲存與路徑 → 工作階段版本與副本」面板中找到該會話，展開後執行「修復」。",
   "recovery.noticeSelfHealed": "工作階段已自動修復並恢復可用（{actions}）；原版本保留，可在「查看版本」中切回。",
   "recovery.noticeCompactFailStreak": "上下文壓縮已連續失敗 {streak} 次，投影可能超出模型視窗；重新開啟本工作階段可讓本地自癒剝圖並摺疊舊訊息。",
   "recovery.noticeHeadSelected": "已將此版本設為目前版本。",
@@ -3235,6 +3235,15 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesDeleting": "正在刪除",
   "settings.recoveryCopiesOutcomeDeleted": "已刪除",
   "settings.recoveryCopiesDeleteReopenHint": "刪除已生效。請到專案中重新開啟該工作階段（或重新整理標籤頁）才能看到列表更新——被刪內容還在回收站裡。",
+  // 任務 1368 線2：整工作階段級刪除——主檔（含 v3 版本與側車）與全部副本一
+  // 起進兩條可恢復回收站（主檔走工作階段回收站可整體還原；副本走 .trash 的
+  // forced 歸檔鏈路）。
+  "settings.recoveryCopiesDeleteConversation": "刪除選中對話",
+  "settings.recoveryCopiesDeleteConversationTitle": "刪除選中對話（含全部副本）",
+  "settings.recoveryCopiesDeleteConversationLead": "即將刪除的對話（主檔、全部版本與副本、側車一起進回收站）",
+  "settings.recoveryCopiesDeleteConversationWarn": "主檔與全部副本會分別移入可恢復的回收站（不會永久刪除）；正在開啟的該工作階段標籤頁會被關閉。",
+  "settings.recoveryCopiesOutcomeConversationDeleted": "已刪除（主線入回收站，副本 {copies} 條歸檔）",
+  "settings.recoveryCopiesOutcomeConversationCopiesOnly": "已刪除（主線原本不在，副本 {copies} 條歸檔）",
   // 任務 1065：選 HEAD 反向合成最長鏈——繼承 1.34 合併規則（輪次優先推薦 +
   //  tail 預覽已在候選鏈行內），本組鍵只補「合成」這個一鍵式主操作：確認時
   //  列出任與分支與讀數、進度/結果報告合成前後條數與輪次（並集可核對）。
@@ -3327,6 +3336,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewEmpty": "（該分支無預覽文字）",
   "settings.recoveryCopiesMerging": "正在合併",
   "settings.recoveryCopiesChains": "候選鏈（合併後由最長的一條成為主線）",
+  "settings.recoveryCopiesChainsHint": "候選鏈在展開會話行時自動重放載入，無需掃描；「掃描」測的是副本與主線的差異讀數",
   "settings.recoveryCopiesChainCurrent": "目前主線",
   "settings.recoveryCopiesChainCandidate": "候選鏈",
   "settings.recoveryCopiesRecommended": "推薦",
@@ -3355,7 +3365,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPhaseUnmerged": "待合併",
   "settings.recoveryCopiesPhaseUnmergedHint": "這些副本含主線沒有的內容——這是需要處理的",
   "settings.recoveryCopiesPhasePending": "待處理",
-  "settings.recoveryCopiesPhasePendingHint": "還沒掃描，先點「掃描」看清代價",
+  "settings.recoveryCopiesPhasePendingHint": "點行內「掃描」測量副本與主線的差異讀數（合併預覽基於它）",
   "settings.recoveryCopiesPhaseMerged": "已合併",
   "settings.recoveryCopiesPhaseMergedHint": "副本內容主線已全部包含，無需處理",
   "settings.recoveryCopiesBlocked": "被分叉阻斷",

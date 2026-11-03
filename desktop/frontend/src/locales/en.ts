@@ -1730,7 +1730,7 @@ export const en = {
   "recovery.noticeHeadSwitched": "Opened the newest version of this conversation. Other saved versions are available in View versions.",
   "recovery.noticeRepairStillOverWindow": "This repair refilled the checkpoint, but the conversation is still over the model window — run repair again with Diet checked to strip images and fold old messages.",
   "recovery.noticeSelectedHeadBehind": "Opened an older version ({selectedMessages} messages), while another version is longer and newer ({otherMessages} messages); switch in View versions if that is the chain you want.",
-  "recovery.noticeMaterializationLag": "{gap} messages of this conversation are not materialized into the local transcript (events: {eventChain}, transcript: {materialized}); right-click the session and choose the repair-conversation action.",
+  "recovery.noticeMaterializationLag": "{gap} messages of this conversation are not materialized into the local transcript (events: {eventChain}, transcript: {materialized}); find this conversation in Settings → Storage & paths → Session versions and copies, expand it and run repair.",
   "recovery.noticeSelfHealed": "This conversation was repaired automatically and is usable again ({actions}); the previous version is kept and reversible from View versions.",
   "recovery.noticeCompactFailStreak": "Context compaction has failed {streak} times in a row and the projection may overflow the window; reopening the conversation lets the local self-heal strip images and fold old messages.",
   "recovery.noticeHeadSelected": "This version is now the current version of the conversation.",
@@ -4684,6 +4684,15 @@ export const en = {
   "settings.recoveryCopiesDeleting": "Deleting",
   "settings.recoveryCopiesOutcomeDeleted": "Deleted",
   "settings.recoveryCopiesDeleteReopenHint": "The deletion has taken effect. Reopen the conversation in its project (or refresh the tab) to see the updated list — deleted content is still in the trash.",
+  // 任务 1368 线2：whole-conversation delete — the main transcript (with its
+  // v3 versions and sidecars) and every copy go into the two recoverable
+  // trashes (session trash for the main, forced-archive .trash for copies).
+  "settings.recoveryCopiesDeleteConversation": "Delete selected conversations",
+  "settings.recoveryCopiesDeleteConversationTitle": "Delete selected conversations (with every copy)",
+  "settings.recoveryCopiesDeleteConversationLead": "Conversations about to be deleted (main transcript, all versions and copies, sidecars move to the trash together)",
+  "settings.recoveryCopiesDeleteConversationWarn": "The main transcript and every copy move to the recoverable trash (nothing is permanently deleted); tabs holding these conversations are closed.",
+  "settings.recoveryCopiesOutcomeConversationDeleted": "Deleted (main transcript trashed, {copies} copies archived)",
+  "settings.recoveryCopiesOutcomeConversationCopiesOnly": "Deleted (main transcript was already gone, {copies} copies archived)",
   // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
   //  tail 预览已在候选链行内），本组键只补「合成」这个一键式主操作：确认时
   //  列出参与分支与读数、进度/结果报告合成前后条数与轮次（并集可核对）。
@@ -4776,6 +4785,7 @@ export const en = {
   "settings.recoveryCopiesPreviewEmpty": "(no preview text for this branch)",
   "settings.recoveryCopiesMerging": "merging",
   "settings.recoveryCopiesChains": "candidate chains (the longest one becomes the main transcript)",
+  "settings.recoveryCopiesChainsHint": "candidate chains load automatically when a row expands — no scan needed; Scan measures each copy against the main",
   "settings.recoveryCopiesChainCurrent": "current main",
   "settings.recoveryCopiesChainCandidate": "chain",
   "settings.recoveryCopiesRecommended": "recommended",
@@ -4804,7 +4814,7 @@ export const en = {
   "settings.recoveryCopiesPhaseUnmerged": "To merge",
   "settings.recoveryCopiesPhaseUnmergedHint": "these copies hold events the main transcript does not - act on these",
   "settings.recoveryCopiesPhasePending": "Not measured",
-  "settings.recoveryCopiesPhasePendingHint": "scan first to see what merging would cost",
+  "settings.recoveryCopiesPhasePendingHint": "use a row's Scan to measure each copy against the main (the merge preview is built from it)",
   "settings.recoveryCopiesPhaseMerged": "Merged",
   "settings.recoveryCopiesPhaseMergedHint": "the main transcript already holds everything these copies do",
   "settings.recoveryCopiesBlocked": "blocked by divergence",

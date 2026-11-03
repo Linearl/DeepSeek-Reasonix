@@ -64,6 +64,16 @@ function buttonByText(text: string): HTMLButtonElement | undefined {
   );
 }
 
+// tl1368: prefix matching on the batch button's count suffix — the
+// whole-conversation delete button's label also contains "Delete selected"
+// as a substring but never takes the "Delete selected (N)" form, so this
+// probe stays unambiguous both before and after a branch is checked.
+function batchDeleteButton(): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
+    b.textContent?.trim().startsWith("Delete selected ("),
+  );
+}
+
 function bodyText(): string {
   return document.body.textContent || "";
 }
@@ -192,15 +202,19 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await act(async () => { (toggles[0] as HTMLButtonElement).click(); });
   await flush();
 
-  const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-delete"));
+  // tl1368: the whole-conversation delete button also carries the rc-delete
+  // class, so the in-row count is scoped to the copy and version rows; and
+  // its label contains "Delete selected" as a substring, so the batch-button
+  // probes match the branch-batch button exactly instead of by substring.
+  const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-row--copy .rc-delete, .rc-versions__table .rc-delete"));
   ok(deleteButtons.length === 3, "① both copy rows and the non-current version row render a delete entry");
   const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>(".rc-row--copy input[type=checkbox]"));
   ok(checkboxes.length === 2, "① both copy rows render a selection checkbox");
-  ok(!buttonByText("Delete selected"), "① no batch button before anything is checked");
+  ok(!batchDeleteButton(), "① no batch button before anything is checked");
 
   await act(async () => { checkboxes[0].click(); });
   await flush();
-  const batch = buttonByText("Delete selected");
+  const batch = batchDeleteButton();
   ok(Boolean(batch), "① the batch button appears once a branch is checked");
   ok((batch?.textContent || "").includes("(1)"), "① the batch button counts the checked branches");
 
