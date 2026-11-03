@@ -123,6 +123,15 @@ func Test1019PanelHeadsBudgetDegradesOversizeLog(t *testing.T) {
 		t.Fatalf("degrade path must not replay: %v", elapsed)
 	}
 
+	// tl1355：链行的降级预算已随多头重放退役而移交 agent 扫描层
+	// （agent.ChainScanMaxBytes/ChainScanTimeBudget；panelHeadsReplayMaxBytes
+	// 只治理上面那段 heads 读数）。这里收窄扫描字节预算复现「超预算候选」，
+	// 并按 tl1355 协调线输入①断言新面孔：降级行不再是无读数身份行——条数由
+	// 纯行计数填真实值（不解析 JSON），轮次/预览缺席，且绝不推为最长链。
+	oldMax := agent.ChainScanMaxBytes
+	agent.ChainScanMaxBytes = 1
+	defer func() { agent.ChainScanMaxBytes = oldMax }()
+
 	set, err := NewApp().ListRecoveryChains(path)
 	if err != nil {
 		t.Fatal(err)
@@ -130,8 +139,8 @@ func Test1019PanelHeadsBudgetDegradesOversizeLog(t *testing.T) {
 	if len(set.Chains) != 1 || !set.Chains[0].Degraded {
 		t.Fatalf("oversize candidate must surface one degraded row: %+v", set.Chains)
 	}
-	if set.Chains[0].MessageCount != 0 || set.Chains[0].Turns != 0 {
-		t.Fatalf("degraded row must carry zero counts: %+v", set.Chains[0])
+	if set.Chains[0].MessageCount <= 0 || set.Chains[0].Turns != 0 || set.Chains[0].Preview != "" {
+		t.Fatalf("degraded row must carry the real quick line count without full-content readings: %+v", set.Chains[0])
 	}
 	if set.LongestPath == set.Chains[0].Path {
 		t.Fatal("a degraded row must never be recommended as the longest chain")
