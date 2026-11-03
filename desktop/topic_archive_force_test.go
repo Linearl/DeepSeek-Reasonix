@@ -18,6 +18,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/control"
 )
 
 // stageForceArchiveTopic stages the historical force shape: a topic with one
@@ -317,5 +318,82 @@ func TestTrashTopicForceNeverStealsLiveLockBehindStaleVerdict(t *testing.T) {
 	releaseHolder()
 	if err := app.TrashTopic(topicID); err != nil {
 		t.Fatalf("regular archive after holder release: %v", err)
+	}
+}
+
+
+// forceCloseStoppableController is a running controller that actually stops on
+// Cancel, so stop_and_close observes idle within the grace window and closes
+// the tab WITHOUT detaching (the detach path returns early and keeps the
+// lease alive — the shape force-archive must not rely on).
+type forceCloseStoppableController struct {
+	backgroundRuntimeController
+}
+
+func (c *forceCloseStoppableController) Cancel() {
+	c.status.Running = false
+	c.turnCancel++
+}
+
+// GoalStatus is reached by the archive teardown; the embedded stub's nil
+// SessionAPI interface would panic here.
+func (c *forceCloseStoppableController) GoalStatus() string { return control.GoalStatusStopped }
+
+// tl1367-fix defect B acceptance ④: force-archiving a session whose tab is
+// open and RUNNING in THIS window must close that tab (stop its run, save
+// first, release its lease) as part of the same force click — bouncing the
+// user back with "close that tab first" is exactly the dead-end guidance the
+// 2026-11-04 00:10 incident exposed. After the close, the archive completes
+// in ONE call.
+func TestTrashTopicForceClosesOpenTopicTabAndArchives(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	topicID := "topic_force_open_tab"
+	sessionPath := stageForceArchiveTopic(t, "force-open-tab.jsonl", topicID, "Force open tab")
+
+	app := NewApp()
+	ctrl := &forceCloseStoppableController{}
+	ctrl.status = control.RuntimeStatus{Running: true, Cancellable: true}
+	tab := app.createTabEntryWithID("global", globalTabWorkspaceRoot(), topicID, "force-open-tab")
+	tab.SessionPath = sessionPath
+	tab.Ctrl = ctrl
+	tab.sink = &tabEventSink{tabID: tab.ID, app: app}
+	if err := tab.ensureSessionLease(sessionPath); err != nil {
+		t.Fatalf("tab lease bind: %v", err)
+	}
+	installNoopRuntimeEvents(app, tab.sink)
+	app.mu.Lock()
+	app.tabs[tab.ID] = tab
+	app.tabOrder = append(app.tabOrder, tab.ID)
+	app.mu.Unlock()
+	t.Cleanup(func() { tab.releaseSessionLease() })
+
+	// The regular archive is refused at the active-work gate: the session is
+	// running in this window's tab.
+	if err := app.TrashTopic(topicID); !errors.Is(err, errTopicHasActiveWork) {
+		t.Fatalf("regular TrashTopic against a running tab = %v, want errTopicHasActiveWork", err)
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		t.Fatalf("refused archive removed the session: %v", err)
+	}
+	if ctrl.turnCancel != 0 {
+		t.Fatal("the refused archive must not cancel the running turn")
+	}
+
+	// Force: the tab stops and closes (lease released with it), then the
+	// archive completes — one force click, no manual tab closing.
+	if err := app.TrashTopicForce(topicID); err != nil {
+		t.Fatalf("TrashTopicForce with the tab open and running: %v", err)
+	}
+	if ctrl.turnCancel == 0 {
+		t.Fatal("force archive never stopped the tab's running turn")
+	}
+	app.mu.RLock()
+	_, tabStillOpen := app.tabs[tab.ID]
+	app.mu.RUnlock()
+	if tabStillOpen {
+		t.Fatal("force archive left the topic's tab open; the running tab must close as part of the force click")
+	}
+	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
+		t.Fatalf("archived session still on disk: %v", err)
 	}
 }

@@ -5656,7 +5656,8 @@ export const zh: Record<DictKey, string> = {
   "projectTree.forceArchiveConfirm": "正常归档失败：{reason}\n\n是否强制归档？强制归档会跳过运行中检查，此操作不可恢复。",
   "projectTree.forceArchiveTopic": "强制归档",
   // tl1367: lease-busy 家族，按后端 [reasonix-holder] 块本地化渲染。
-  "sessionBusy.self": "该会话被本 Reasonix 实例的另一个运行时占用——pid {pid}{proc}，主机 {host}，自 {time} 起（运行时标识 {writer}）。请等它的工作结束或重启 Reasonix 后重试。",
+  // tl1367-fix 缺陷B：self=本窗口自己持有（不是「另一个运行时」），指引改为关本窗口的会话标签页/停止运行。
+  "sessionBusy.self": "该会话正在本 Reasonix 窗口中运行——请先关闭该会话标签页，或停止其运行，然后再归档。（持有者：pid {pid}{proc}，自 {time} 起）",
   "sessionBusy.live": "该会话正被另一个 Reasonix 进程占用——pid {pid}{proc}，主机 {host}，自 {time} 起（运行时标识 {writer}）。请先关闭那个窗口或退出对应实例，再重试。",
   "sessionBusy.zombie": "该会话被已崩溃的 Reasonix 进程遗留锁定——pid {pid}{proc}，自 {time} 起。重启 Reasonix 即可清除残留锁，然后重试。",
   "sessionBusy.reused": "该会话的残留锁记录指向 pid {pid}，该编号现已被其他程序{proc}占用。强制归档可清除残留记录，然后重试。",

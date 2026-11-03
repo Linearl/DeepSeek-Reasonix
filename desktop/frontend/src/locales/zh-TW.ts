@@ -5652,7 +5652,8 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.forceArchiveConfirm": "正常歸檔失敗：{reason}\n\n是否強制歸檔？強制歸檔會跳過執行中檢查，此操作不可恢復。",
   "projectTree.forceArchiveTopic": "強制歸檔",
   // tl1367: lease-busy 家族，按後端 [reasonix-holder] 區塊本地化渲染。
-  "sessionBusy.self": "該工作階段被本 Reasonix 實例的另一個執行時佔用——pid {pid}{proc}，主機 {host}，自 {time} 起（執行時標識 {writer}）。請等它的工作結束或重啟 Reasonix 後重試。",
+  // tl1367-fix 缺陷B：self=本視窗自己持有（不是「另一個執行時」），指引改為關本視窗的工作階段標籤頁/停止執行。
+  "sessionBusy.self": "該工作階段正在本 Reasonix 視窗中執行——請先關閉該工作階段標籤頁，或停止其執行，然後再歸檔。（持有者：pid {pid}{proc}，自 {time} 起）",
   "sessionBusy.live": "該工作階段正被另一個 Reasonix 程序佔用——pid {pid}{proc}，主機 {host}，自 {time} 起（執行時標識 {writer}）。請先關閉該視窗或結束對應實例，再重試。",
   "sessionBusy.zombie": "該工作階段被已當機的 Reasonix 程序遺留鎖定——pid {pid}{proc}，自 {time} 起。重啟 Reasonix 即可清除殘留鎖，然後重試。",
   "sessionBusy.reused": "該工作階段的殘留鎖記錄指向 pid {pid}，該編號現已被其他程序{proc}佔用。強制歸檔可清除殘留記錄，然後重試。",

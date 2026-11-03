@@ -9,6 +9,7 @@ import { isTopicNode, projectTreeGroupActiveCount, projectTreeGroupDotStatus, pr
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
 import { canNestUnder, childGroups, descendantGroupIDs, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
+import { formatSessionBusyError } from "../lib/sessionBusyError";
 import type { DeleteGroupsPlan, ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { reportFrontendLog } from "../lib/frontendLog";
@@ -1161,9 +1162,13 @@ export function ProjectTreeGroupRows({
                       }
                       if (failures.length > 0) {
                         const first = failures[0]!;
-                        const firstMessage = first.error instanceof Error ? first.error.message : String(first.error);
+                        // tl1367-fix defect C: the busy family renders localized
+                        // (holder block) instead of the raw English sentence.
+                        // The frontend log keeps the raw message for diagnosis.
+                        const rawMessage = first.error instanceof Error ? first.error.message : String(first.error);
+                        const firstMessage = formatSessionBusyError(first.error);
                         showToast(t("projectTree.deleteGroupSessionsFailed", { count: String(failures.length), error: firstMessage }), "error", { durationMs: 6000 });
-                        reportFrontendLog("project-groups", "delete group with sessions: some sessions failed to trash", `group=${group.id} failed=${failures.length}/${members.length} first=${firstMessage}`, "error");
+                        reportFrontendLog("project-groups", "delete group with sessions: some sessions failed to trash", `group=${group.id} failed=${failures.length}/${members.length} first=${rawMessage}`, "error");
                         return;
                       }
                     }

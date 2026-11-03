@@ -72,7 +72,46 @@ func markTopicArchiveForceable(err error) error {
 // the holder identity (tl1367 line 1) for the localized "who holds it and how
 // to close it" copy.
 func (a *App) TrashTopicForce(topicID string) error {
+	// tl1367-fix defect B: a self-held session whose tab is open in THIS window
+	// is the exact shape "force" exists to clear — close the tab (canceling its
+	// run, saving first) before the archive takes the global gates, so one
+	// force click completes the archive instead of bouncing the user back with
+	// "close that tab first". Must run BEFORE trashTopic's locks: closeTabRuntime
+	// needs both the runtime-mutation barrier and sessionRemovalMu. A tab whose
+	// work will not stop within the grace window detaches to the background
+	// runtime; the archive below then still refuses with the self-holder
+	// guidance — a working runtime is never grabbed silently.
+	a.closeTopicTabsForForceArchive(topicID)
 	return friendlySessionFileError(a.trashTopic(topicID, true))
+}
+
+// closeTopicTabsForForceArchive closes this window's visible tabs bound to the
+// topic ahead of a force archive, reusing the user-facing close policy
+// (stop_and_close: snapshot save → cancel owned work → bounded wait → close).
+// Detached background sessions are left to the existing self-lease reclaim
+// paths; only tabs the user can SEE are closed here, because "force" from the
+// UI means "this session I am looking at must go".
+func (a *App) closeTopicTabsForForceArchive(topicID string) {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" {
+		return
+	}
+	a.mu.RLock()
+	tabIDs := make([]string, 0, 4)
+	for _, tab := range a.tabs {
+		if tab != nil && tab.TopicID == topicID && strings.TrimSpace(tab.ID) != "" {
+			tabIDs = append(tabIDs, tab.ID)
+		}
+	}
+	a.mu.RUnlock()
+	for _, id := range tabIDs {
+		if err := a.CloseTabWithPolicy(id, "stop_and_close"); err != nil {
+			slog.Info("desktop: force archive could not close a topic tab before archiving",
+				"tab", id, "err", err)
+		} else {
+			slog.Info("desktop: force archive closed the topic's tab before archiving", "tab", id)
+		}
+	}
 }
 
 func (a *App) topicHasActiveRuntimeWork(topicID string) bool {

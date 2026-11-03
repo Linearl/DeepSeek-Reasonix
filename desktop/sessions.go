@@ -188,7 +188,15 @@ var errSessionBusyZombie = errors.New("this session was left locked by a crashed
 type sessionLeaseHeldBusyError struct{ cause error }
 
 func (e *sessionLeaseHeldBusyError) Error() string {
-	return sessionLeaseBusyClassification(e.cause).Error()
+	// tl1367-fix defect A: the single-archive chain (TrashTopic / TrashTopicForce /
+	// DeleteSession) used to render only the classification sentinel, so the
+	// frontend never saw the holder block and every lease-busy toast degraded to
+	// the generic "another Reasonix window" copy even when the holder was this
+	// very window. Render the full detail — the same machine-readable holder
+	// block + sentence the batch failure list and the occupancy probe already
+	// show (sessionLeaseBusyDetail) — while Unwrap keeps the sentinel reachable
+	// for errors.Is and the original lease error reachable for errors.As.
+	return sessionLeaseBusyDetail(e.cause)
 }
 
 // Unwrap exposes both faces: the classified sentinel (sentinel comparisons
@@ -220,7 +228,12 @@ func sessionLeaseBusyDetail(err error) string {
 		var sentence string
 		switch info.PID {
 		case os.Getpid():
-			sentence = fmt.Sprintf("this session is held by another runtime of this Reasonix instance (pid %d%s%s) — wait for its work to finish or restart Reasonix, then retry", info.PID, identity, since)
+			// tl1367-fix defect B: "another runtime of this instance" read as
+			// somebody else's window and sent the user hunting for a window
+			// that does not exist — the holder is THIS window (its own tab or
+			// background runtime). The guidance names the real next step:
+			// close this session's tab or stop its run.
+			sentence = fmt.Sprintf("this session is running in this Reasonix window (pid %d%s%s) — close that session's tab, or stop its run, then retry", info.PID, identity, since)
 		default:
 			if !desktopLeaseAlive(info.PID) {
 				sentence = fmt.Sprintf("this session was left locked by a crashed Reasonix process (pid %d%s%s) — restart Reasonix to clear the leftover lock, then retry", info.PID, identity, since)

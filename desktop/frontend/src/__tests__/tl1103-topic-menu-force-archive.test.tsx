@@ -307,7 +307,11 @@ ok(goArchiveSource.includes('topicArchiveForceablePrefix = "reasonix_error:topic
 ok(goArchiveSource.includes("errors.Is(err, errTopicHasActiveWork) || errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, errSessionBusyZombie) || errors.Is(err, agent.ErrSessionLeaseHeld)"), "exactly the force-clearable family is marked (active-work gate + lease-busy + zombie + lease-held)");
 ok(goArchiveSource.includes("func (e *topicArchiveForceableError) Unwrap() error { return e.cause }"), "the marked error keeps its chain so Go tests' errors.Is keep passing");
 ok(/func \(a \*App\) TrashTopic\(topicID string\) error \{\s*\n\treturn markTopicArchiveForceable\(friendlySessionFileError/.test(goArchiveSource), "TrashTopic wraps through the marker");
-ok(/func \(a \*App\) TrashTopicForce\(topicID string\) error \{\s*\n\treturn friendlySessionFileError/.test(goArchiveSource), "TrashTopicForce itself stays unmarked (it is already the fallback)");
+// tl1367-fix 缺陷B：TrashTopicForce 先自动关该主题的可见 tab（stop_and_close，
+// 全局锁之前执行）再走原 force 链；机器前缀 contract 不变——force 出口仍不包
+// forceable 标记（它本身就是 fallback）。
+ok(/func \(a \*App\) TrashTopicForce\(topicID string\) error \{\s*\n\t\/\/ tl1367-fix defect B[\s\S]*?a\.closeTopicTabsForForceArchive\(topicID\)[\s\S]*?return friendlySessionFileError\(a\.trashTopic\(topicID, true\)\)\s*\n\}/.test(goArchiveSource), "TrashTopicForce closes the topic's tab first (tl1367-fix B) and stays unmarked (it is already the fallback)");
+ok(goArchiveSource.includes("func (a *App) closeTopicTabsForForceArchive(topicID string) {"), "the tab-close helper for force archives exists");
 
 // ── ⑥ 三语 locale ────────────────────────────────────────────────────────────
 console.log("\ntl1103 ⑥ three-locale keys");

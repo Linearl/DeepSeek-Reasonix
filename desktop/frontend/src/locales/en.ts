@@ -5672,7 +5672,8 @@ export const en = {
   "projectTree.forceArchiveConfirm": "Normal archive failed: {reason}\n\nForce archive anyway? It skips the running-session checks and cannot be undone.",
   "projectTree.forceArchiveTopic": "Force archive",
   // tl1367: lease-busy family, localized from the backend's [reasonix-holder] block.
-  "sessionBusy.self": "This session is held by another runtime of this Reasonix instance — pid {pid}{proc}, host {host}, since {time} (runtime {writer}). Wait for its work to finish or restart Reasonix, then retry.",
+  // tl1367-fix defect B: self = held by THIS window (its own tab / background runtime), so the guidance is closing this window's session tab or stopping its run.
+  "sessionBusy.self": "This session is running in this Reasonix window — close that session's tab, or stop its run, then retry. (Holder: pid {pid}{proc}, since {time})",
   "sessionBusy.live": "This session is in use by another Reasonix process — pid {pid}{proc}, host {host}, since {time} (runtime {writer}). Close that window or quit the other Reasonix instance, then retry.",
   "sessionBusy.zombie": "This session was left locked by a crashed Reasonix process — pid {pid}{proc}, since {time}. Restart Reasonix to clear the leftover lock, then retry.",
   "sessionBusy.reused": "This session's stale lease record names pid {pid}, which now belongs to another program{proc}. Force archive clears the leftover record, then retry.",

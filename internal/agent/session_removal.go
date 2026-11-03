@@ -34,14 +34,44 @@ func tryTakeSessionLeaseLock(path string) (*sessionLockFile, error) {
 	return lock, err
 }
 
+// fallbackSelfLeaseInfo rebuilds the holder identity for a refusal whose
+// in-process registry says THIS process holds the lease but whose identity
+// record is unreadable (a releasing holder deletes the record before its
+// teardown completes; AV quarantine; torn write). The registry hit is the
+// proof of self-hold — the holder is known, only the readable record was
+// lost — so the refusal must not degrade to an unidentified holder.
+// AcquiredAt stays zero: the true acquire time is unknowable here and is
+// never invented.
+func fallbackSelfLeaseInfo(path string) *SessionLeaseInfo {
+	host, _ := os.Hostname()
+	return &SessionLeaseInfo{
+		SessionPath: canonicalSessionSavePath(path),
+		WriterID:    SessionWriterID(),
+		PID:         os.Getpid(),
+		Hostname:    host,
+	}
+}
+
 // TryAcquireSessionRemovalGuard takes both locks without blocking. A live
 // holder of either — including a lease held elsewhere in this process —
 // surfaces as ErrSessionLeaseHeld so callers report the session as busy
 // instead of deleting files out from under a running owner.
+//
+// tl1367-fix defect A: the locally-held branch backfills the self identity
+// when the lease info record is unreadable. The holder IS this process (the
+// registry says so), so a missing record must never turn a self refusal into
+// holder_class=unknown pid=0 — the 2026-11-04 00:10 archive incident showed
+// exactly that flip: 00:10:01 classified self pid=42544, a retry ten seconds
+// later (after the tab released and the info record was already deleted)
+// degraded to unknown pid=0 and the UI misdirected the user to "another
+// Reasonix window".
 func TryAcquireSessionRemovalGuard(path string) (*SessionRemovalGuard, error) {
 	path = canonicalSessionSavePath(path)
 	if sessionLeaseHeldLocally(path) {
 		info, _ := LoadSessionLeaseInfo(path)
+		if info == nil {
+			info = fallbackSelfLeaseInfo(path)
+		}
 		return nil, &SessionLeaseError{Path: path, Info: info}
 	}
 	leaseLock, err := tryTakeSessionLeaseLock(path)
