@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "media-no52-natgeo",
+  "name": "No.52 National Geographic",
+  "author": "yinji",
+  "description": "Warm beige paper with restrained signature-yellow accents — the National Geographic magazine feel: the more sparingly the yellow is used, the more it reads. Dark variant is an interpretation (deep charcoal with earthy yellow).",
+  "license": "MIT",
+  "baseStyle": "graphite",
+  "tokens": {
+    "light": {
+      "bg": "#F5EED9",
+      "bgSoft": "#EDE4CB",
+      "bgElev": "#FAF4E3",
+      "panel": "#F7F0DE",
+      "sidebar": "#EFE6CD",
+      "chat": "#FAF5E5",
+      "workspace": "#F7F0DE",
+      "workspaceFiles": "#EFE7CF",
+      "border": "#D5C8A2",
+      "borderSoft": "#E4DABB",
+      "fg": "#2B2B2B",
+      "fgDim": "#5B574F",
+      "fgFaint": "#827C70",
+      "accent": "#FFCC00",
+      "accentFg": "#201A05",
+      "ok": "#3E6B3A",
+      "warn": "#8F6B00",
+      "err": "#B3402A"
+    },
+    "dark": {
+      "bg": "#1E1B13",
+      "bgSoft": "#26221A",
+      "bgElev": "#302B20",
+      "panel": "#2B261C",
+      "sidebar": "#241F17",
+      "chat": "#211D15",
+      "workspace": "#302B20",
+      "workspaceFiles": "#26221A",
+      "border": "#46402F",
+      "borderSoft": "#342F23",
+      "fg": "#EEE8D8",
+      "fgDim": "#B4AC97",
+      "fgFaint": "#89826F",
+      "accent": "#FFD219",
+      "accentFg": "#201A05",
+      "ok": "#85B57C",
+      "warn": "#DDB14B",
+      "err": "#E8826E"
+    }
+  },
+  "recipes": {
+    "density": "comfortable",
+    "corners": "square"
+  }
+}

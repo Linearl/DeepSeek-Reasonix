@@ -25,13 +25,80 @@ var mediaThemesFS embed.FS
 const (
 	mediaThemeDirName  = "themes/media"
 	themeKindMedia     = "media"
-	mediaExpectedCount = 1 // release gate: all embedded media presets
+	mediaExpectedCount = 8 // release gate: all embedded media presets
 	mediaThemeIDPrefix = "media-"
 )
 
-// Fixed gallery / list order (not alphabetical).
+// Design ledger for the tl1362 set (皮皮QAQ 公众号排版笔记, exact parameters
+// from the 2026-11-03 user-verified collection: the user logged into Xiaohongshu,
+// read each note's parameter card and transcribed them; the sheet lives in the
+// workspace under docs/report/主题风格参数-皮皮QAQ-20261101.md). All seven carry
+// tier-A sourced parameters now; where the source names a style without a hex
+// (noted below), the token fills in with the brand-standard / faithful
+// approximation and the dark variants remain our own design work.
+//
+// Structural + typography parameters have no channel in the Theme Pack schema
+// (tokens are colors only, recipes are density/corners), so — like the
+// Broadsheet FT precedent — they are recorded here, not wired:
+//
+//	no44 cream   16px/1.8 justified · H1 25px centered bold · H2 18px bold on a
+//	             soft-apricot pill · H3 17px orange-brown + warm dot · captions
+//	             13px · quote = white card + apricot dashed rounded border ·
+//	             emphasis = orange-brown bold (source gave no accent hex; sheet
+//	             kills the earlier #A5A233 guess → filled #A96426)
+//	no47 muji    16px/1.8 + 0.5 letter-spacing · H2 19px bold + claret 01/02
+//	             numerals + pale hairline · quote = pale beige fill, no bar ·
+//	             images square, no border/shadow · emphasis = bold only, claret
+//	             #8E4E52-tier reserved for tiny marks (source described the
+//	             claret without hex → filled)
+//	no48 econ    16px/1.75 · fg #2B2B29 (sourced) · H2 18px extra-bold, red
+//	             01/02 numerals, pale hairline below · pull-quote 22px bold +
+//	             red left rule, no fill · red = rules only, never a fill
+//	             (Swiss style): accent bar above headings, red index, quote rule
+//	no46 ikea    IKEA blue #0058A3 (sourced) writes, IKEA yellow #FFDA1A
+//	             (sourced) only paints blocks/rules, never words · H1 24px
+//	             extra-bold blue over a 4px yellow rule · H2 numbered chips,
+//	             yellow fill + blue 01/02 · emphasis = bold + blue, never red ·
+//	             the yellow block surfaces as sidebar #FCEDA8 (paper-tone step
+//	             of #FFDA1A; full-strength yellow stays a rule color)
+//	no52 natgeo  yellow only draws lines, never fills · H2 index 22px with a
+//	             4px yellow rule left + 1px hairline right · divider 52px × 3px
+//	             · quote 15px on pale gray + 4px yellow left rule + 28px yellow
+//	             quotation mark · highlight = pale gray fill + 2px yellow
+//	             underline (never a yellow fill) · links keep color, yellow
+//	             underline only · bg "warm beige paper" and fg "dark" came
+//	             without hex → filled #F5EED9 / #2B2B2B, signature yellow
+//	             #FFCC00 (accentFg dark — yellow as text would vanish)
+//	no42 apple   whitespace / hierarchy / restraint · body 15px/1.8 · H1 21px,
+//	             H2 17px, captions 13px · body is deep gray, never pure black;
+//	             emphasis = bold only, no red/blue/yellow anywhere → accent is
+//	             the achromatic ink #1D1D1F (dark mode flips it to a light gray
+//	             #E8E8EA with near-black label, apple-dark button pairing)
+//	no36 forest  warm beige sheet, deep coffee-brown body (lower contrast for
+//	             long reads) · 16px/1.8 + 20px paragraph spacing · H2 20px
+//	             white on pea-green pill with big side radii (bookmark feel) ·
+//	             wood-tone left bar on subheads · pull-quote on pale green
+//	             rounded fill + thin green dashed ring · emphasis = bold, deep
+//	             forest green
+//
+// Dark variants are our own design work for every theme (the source covers are
+// light-only): brand hue kept on a darkened inversion of the light sheet,
+// ~#E8E6E3-tier body text, accents brightened one step when too dark for a
+// dark ground (economist #E3120B → #FF5566) or muted when too vivid (IKEA blue
+// #0058A3 → #5BA3D9, yellow via warn #D9A400). no42 keeps apple's own dark
+// layering (#000/#1D1D1F) and stays achromatic.
+
+// Fixed gallery / list order (not alphabetical). Broadsheet Rose (tl1343
+// seed) first, then the tl1362 sheet order.
 var mediaThemeOrderFixed = []string{
 	"media-broadsheet-rose",
+	"media-no44-cream",
+	"media-no47-muji",
+	"media-no48-economist",
+	"media-no46-ikea",
+	"media-no52-natgeo",
+	"media-no42-apple",
+	"media-no36-forest",
 }
 
 type mediaTheme struct {

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "media-no44-cream",
+  "name": "No.44 Cream",
+  "author": "yinji",
+  "description": "Near-white cream sheet, warm brown text, orange-brown bold accents with soft-apricot labels and dashed quote cards — the gentle cream-soda layout. Dark variant is an interpretation (deep cocoa warmth).",
+  "license": "MIT",
+  "baseStyle": "graphite",
+  "tokens": {
+    "light": {
+      "bg": "#FFF5F0",
+      "bgSoft": "#F8E7D6",
+      "bgElev": "#FFF9F4",
+      "panel": "#FFF9F4",
+      "sidebar": "#F9EDE3",
+      "chat": "#FFFBF7",
+      "workspace": "#FFF9F4",
+      "workspaceFiles": "#FAEFE7",
+      "border": "#EAD3C2",
+      "borderSoft": "#F4E3D6",
+      "fg": "#7A5A45",
+      "fgDim": "#9A7A64",
+      "fgFaint": "#B79C88",
+      "accent": "#A96426",
+      "accentFg": "#FFF8F0",
+      "ok": "#4E7D45",
+      "warn": "#A87E22",
+      "err": "#C25A42"
+    },
+    "dark": {
+      "bg": "#241B15",
+      "bgSoft": "#332A21",
+      "bgElev": "#3A2F26",
+      "panel": "#362B22",
+      "sidebar": "#282019",
+      "chat": "#261E17",
+      "workspace": "#3A2F26",
+      "workspaceFiles": "#2E241C",
+      "border": "#4C3B2F",
+      "borderSoft": "#3A2D24",
+      "fg": "#F1E3D5",
+      "fgDim": "#C3AA96",
+      "fgFaint": "#97816E",
+      "accent": "#D08B52",
+      "accentFg": "#241B15",
+      "ok": "#A0BF6E",
+      "warn": "#DCAF55",
+      "err": "#E08A72"
+    }
+  },
+  "recipes": {
+    "density": "comfortable",
+    "corners": "soft"
+  }
+}

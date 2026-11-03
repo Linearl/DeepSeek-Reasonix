@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "media-no48-economist",
+  "name": "No.48 The Economist",
+  "author": "yinji",
+  "description": "Pure white sheet, near-black deep-gray text, one economist red that only ever draws rules, never floods a background — the Swiss-style signpost. Dark variant is an interpretation (warm charcoal with a red tint).",
+  "license": "MIT",
+  "baseStyle": "graphite",
+  "tokens": {
+    "light": {
+      "bg": "#FFFFFF",
+      "bgSoft": "#F6F5F2",
+      "bgElev": "#FFFFFF",
+      "panel": "#FAF9F7",
+      "sidebar": "#F2F0EC",
+      "chat": "#FFFFFF",
+      "workspace": "#FAF9F7",
+      "workspaceFiles": "#F5F3F0",
+      "border": "#D6D2CA",
+      "borderSoft": "#E7E4DE",
+      "fg": "#2B2B29",
+      "fgDim": "#55534F",
+      "fgFaint": "#7D7B76",
+      "accent": "#E3120B",
+      "accentFg": "#FFFFFF",
+      "ok": "#1E6B3C",
+      "warn": "#8F6B12",
+      "err": "#AF1A0E"
+    },
+    "dark": {
+      "bg": "#211A18",
+      "bgSoft": "#2A2220",
+      "bgElev": "#342B28",
+      "panel": "#2E2623",
+      "sidebar": "#261F1D",
+      "chat": "#241D1B",
+      "workspace": "#342B28",
+      "workspaceFiles": "#2A2220",
+      "border": "#4E403B",
+      "borderSoft": "#3A2F2B",
+      "fg": "#EDE9E6",
+      "fgDim": "#B4ACA5",
+      "fgFaint": "#897F78",
+      "accent": "#FF5566",
+      "accentFg": "#2B1013",
+      "ok": "#74BE8F",
+      "warn": "#E0B34C",
+      "err": "#FF8A80"
+    }
+  },
+  "recipes": {
+    "density": "comfortable",
+    "corners": "square"
+  }
+}
