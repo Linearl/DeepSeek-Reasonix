@@ -47,15 +47,25 @@ var leaseReconcileProcessAlive = desktopProcessAlive
 type leaseHolderVerdict int
 
 const (
-	leaseHolderNone        leaseHolderVerdict = iota // no record at all
-	leaseHolderForeignLive                           // another live process holds it — respect
-	leaseHolderForeignDead                           // recorded holder is gone — stale leftover
-	leaseHolderSelf                                  // this process's own record
+	leaseHolderNone         leaseHolderVerdict = iota // no record at all
+	leaseHolderForeignLive                            // another live process holds it — respect
+	leaseHolderForeignDead                            // recorded holder is gone — stale leftover
+	leaseHolderSelf                                   // this process's own record
+	// leaseHolderForeignReused is the tl1367 line 3 verdict: the recorded pid
+	// is ALIVE but its executable is not this application — the pid number was
+	// reused by an unrelated program, so the record is stale even though the
+	// pid probes alive. Pre-tl1367 this read as ForeignLive, which both
+	// mislabeled a leftover as a live foreign window (the 2026-11-03 "another
+	// window" single-instance report) and made the takeover guidance tell the
+	// user to taskkill an innocent program.
+	leaseHolderForeignReused
 )
 
 // classifyLeaseHolder maps a lease record onto the verdict. A record without
 // a usable pid is ForeignLive (fail toward respecting an unknown holder); the
 // lock probe in the callers still separates a live holder from a torn file.
+// An unresolvable holder image keeps the conservative ForeignLive verdict —
+// only a positively-identified foreign program flips to reused.
 func classifyLeaseHolder(info *agent.SessionLeaseInfo, selfPID int, selfWriter string, alive func(int) bool) leaseHolderVerdict {
 	if info == nil {
 		return leaseHolderNone
@@ -67,6 +77,9 @@ func classifyLeaseHolder(info *agent.SessionLeaseInfo, selfPID int, selfWriter s
 	}
 	if info.PID > 0 && !alive(info.PID) {
 		return leaseHolderForeignDead
+	}
+	if info.PID > 0 && !agent.ProcessLooksLikeSelf(info.PID) {
+		return leaseHolderForeignReused
 	}
 	return leaseHolderForeignLive
 }
@@ -186,7 +199,10 @@ func (a *App) inspectLocalLeaseHolder(path string) localLeaseHolder {
 // localLeaseHolderGuidance renders the task 456 ③ user-facing message for a
 // local lease holder: pid, alive/dead, and a next step that actually exists.
 // This replaces the dead-end "no resident serve on this machine holds this
-// session" for every locally-held session.
+// session" for every locally-held session. tl1367 line 3: a reused-pid record
+// (alive pid running an unrelated program) names that program and never
+// suggests killing it — the pre-tl1367 taskkill advice would have targeted an
+// innocent process.
 func localLeaseHolderGuidance(holder localLeaseHolder) (string, bool) {
 	switch holder.verdict {
 	case leaseHolderSelf:
@@ -197,6 +213,9 @@ func localLeaseHolderGuidance(holder localLeaseHolder) (string, bool) {
 	case leaseHolderForeignDead:
 		return fmt.Sprintf("leftover runtime pid=%d (dead) still holds this session's lease record; confirming the takeover clears it and reopens the session — restarting the desktop clears it too",
 			holder.info.PID), true
+	case leaseHolderForeignReused:
+		return fmt.Sprintf("this session's stale lease record names pid=%d, which now belongs to another program (%s); confirming the takeover clears the leftover record and reopens the session — restarting the desktop clears it too",
+			holder.info.PID, agent.ReasonixProcessLabel(holder.info.PID)), true
 	case leaseHolderForeignLive:
 		return fmt.Sprintf("leftover runtime pid=%d (alive) on this machine holds this session; close that window/runtime or run taskkill /PID %d, then retry the takeover or reopen the session",
 			holder.info.PID, holder.info.PID), true
@@ -224,7 +243,7 @@ func (a *App) adoptLocalLeaseHeldSession(tab *WorkspaceTab, path string) error {
 			return errors.New(guidance)
 		}
 		return errors.New("a live local runtime holds this session")
-	case leaseHolderForeignDead, leaseHolderNone:
+	case leaseHolderForeignDead, leaseHolderForeignReused, leaseHolderNone:
 		// The lock may still be held by a live process whose record was torn
 		// away (pid reuse, AV quarantine): only clear when the lock is free.
 		if holder.locked {
