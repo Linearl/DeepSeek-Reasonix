@@ -41034,6 +41034,14 @@ button.statusbar__mcp:focus-visible {
   justify-content: flex-end;
   gap: 6px;
 }
+/* tl1369 点外关闭守卫豁免锚点：挂在触发钮上供 closest() 匹配，
+   视觉样式全部由 .btn/.btn--small 承担，本类零样式仅为稳定锚点。 */
+.channel-chat__createtoggle {
+  /* JS 豁免锚点，无自有样式 */
+}
+.channel-chat__detailtoggle {
+  /* JS 豁免锚点，无自有样式 */
+}
 .channel-chat__create {
   position: absolute;
   top: 44px;
