@@ -30,3 +30,7 @@ func virtualScreenMetrics() (ScreenMetrics, error) {
 func captureVirtualScreenPNG(outputPath string) (ScreenMetrics, error) {
 	return ScreenMetrics{}, fmt.Errorf("screen capture is only implemented on Windows (tl 1088)")
 }
+
+func cursorMonitorKey() (string, ScreenMetrics, error) {
+	return "", ScreenMetrics{}, fmt.Errorf("screen capture is only implemented on Windows (tl 1370)")
+}

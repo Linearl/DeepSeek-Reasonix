@@ -207,5 +207,39 @@ ok(
   "the preview bridge guards on the same capture-dir prefix as release, plus absolute path and temp-root containment",
 );
 
+// tl 1370 cursor-follow: while the overlay is open in single-monitor mode the
+// picture must follow the cursor across display boundaries (WeChat/Snipaste
+// baseline), re-capturing through the same chain the toggle uses — and the
+// tl 1088 virtual-desktop chain stays untouched by the follow path.
+const followBackendSource = readFileSync(resolve(here, "../../../screenshot_screen_windows.go"), "utf8");
+ok(
+  /export const CURSOR_FOLLOW_POLL_MS = 250/.test(overlaySource),
+  "the cursor-follow poll interval is a named throttle constant (boundary-crossing detection, not per-move)",
+);
+ok(
+  /app\.ScreenshotCursorMonitor\(\)/.test(overlaySource) && /device === followMonitorRef\.current/.test(overlaySource),
+  "the follow loop samples the cursor's monitor and compares it against the captured display's identity",
+);
+ok(
+  /followMonitorRef\.current = await sampleCursorMonitor\(\)/.test(overlaySource) && /if \(!open \|\| crossMonitor\) return;/.test(overlaySource),
+  "the follow loop baselines at open time and stands down while the tl 1088 cross-monitor toggle is on",
+);
+ok(
+  /followMonitorRef\.current = device;\s*\n\s*await recapture\(false\)/.test(overlaySource),
+  "a display boundary crossing re-captures the cursor's display through the same chain as the toggle",
+);
+ok(
+  /virtual \? await app\.CaptureScreenshotVirtualDesktop\(\) : await app\.CaptureScreenshotAtCursor\(\)/.test(overlaySource),
+  "the virtual-desktop capture only rides the toggle branch; the follow path captures the cursor's display",
+);
+ok(
+  /if \(captureInflightRef\.current\) return;/.test(overlaySource) && /captureInflightRef\.current = true/.test(overlaySource),
+  "captures are serialised through an in-flight guard (a crossing storm cannot stack re-captures)",
+);
+ok(
+  /func cursorMonitorKey\(/.test(followBackendSource) && /func \(a \*App\) ScreenshotCursorMonitor\(/.test(previewBackendSource),
+  "the backend exposes the cursor-monitor identity query (pure query, no capture side effect)",
+);
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
