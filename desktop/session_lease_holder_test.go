@@ -171,8 +171,14 @@ func TestProbeSessionOccupancySelfHeldLease(t *testing.T) {
 	if !probe.Busy || probe.Class != "self" || probe.PID == 0 {
 		t.Fatalf("self-held probe = %+v, want busy self with pid", probe)
 	}
-	if probe.Detail == "" || !strings.Contains(probe.Detail, "another runtime of this Reasonix instance") {
+	// tl1367-fix defect B: the self guidance names THIS window and the real
+	// next step (close the session tab / stop the run) — never "another
+	// runtime/window".
+	if probe.Detail == "" || !strings.Contains(probe.Detail, "running in this Reasonix window") {
 		t.Fatalf("probe detail = %q, want the self-holder sentence", probe.Detail)
+	}
+	if strings.Contains(probe.Detail, "another runtime") || strings.Contains(probe.Detail, "another Reasonix window") {
+		t.Fatalf("probe detail = %q, must not misdirect to another runtime/window", probe.Detail)
 	}
 	lease.Release()
 	if app.ProbeSessionOccupancy(sessionPath).Busy {

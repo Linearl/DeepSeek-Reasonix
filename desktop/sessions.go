@@ -228,7 +228,12 @@ func sessionLeaseBusyDetail(err error) string {
 		var sentence string
 		switch info.PID {
 		case os.Getpid():
-			sentence = fmt.Sprintf("this session is held by another runtime of this Reasonix instance (pid %d%s%s) — wait for its work to finish or restart Reasonix, then retry", info.PID, identity, since)
+			// tl1367-fix defect B: "another runtime of this instance" read as
+			// somebody else's window and sent the user hunting for a window
+			// that does not exist — the holder is THIS window (its own tab or
+			// background runtime). The guidance names the real next step:
+			// close this session's tab or stop its run.
+			sentence = fmt.Sprintf("this session is running in this Reasonix window (pid %d%s%s) — close that session's tab, or stop its run, then retry", info.PID, identity, since)
 		default:
 			if !desktopLeaseAlive(info.PID) {
 				sentence = fmt.Sprintf("this session was left locked by a crashed Reasonix process (pid %d%s%s) — restart Reasonix to clear the leftover lock, then retry", info.PID, identity, since)

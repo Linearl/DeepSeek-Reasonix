@@ -35,7 +35,7 @@ const HOLDER_PAIR = /(\w+)="([^"]*)"/g;
 const BUSY_SENTINELS = [
   "this session is in use by another Reasonix window or process",
   "this session was left locked by a crashed Reasonix process",
-  "this session is held by another runtime of this Reasonix instance",
+  "this session is running in this Reasonix window",
 ] as const;
 
 export function parseSessionBusyHolder(raw: string): SessionBusyHolder | null {

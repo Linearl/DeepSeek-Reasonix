@@ -103,8 +103,15 @@ func TestBatchTopicArchiveFailureItemsListEveryHolderDistinctly(t *testing.T) {
 func TestBatchTopicArchiveFailureItemSelfHeldRuntimeReason(t *testing.T) {
 	swapDesktopProcessAliveForBusyDetail(t, true)
 	item := batchTopicArchiveFailureItem("topic_a", &sessionLeaseHeldBusyError{cause: leaseBusyFixture(os.Getpid())})
-	if !strings.Contains(item.Error, "another runtime of this Reasonix instance") {
-		t.Fatalf("self-held refusal must point at the instance's own runtime, got %q", item.Error)
+	// tl1367-fix defect B: the self guidance names THIS window ("running in
+	// this Reasonix window" + close-the-tab next step) — never "another
+	// runtime/window", which read as somebody else's process and sent the user
+	// hunting for a window that does not exist.
+	if !strings.Contains(item.Error, "running in this Reasonix window") {
+		t.Fatalf("self-held refusal must point at this window's own runtime, got %q", item.Error)
+	}
+	if strings.Contains(item.Error, "another runtime") || strings.Contains(item.Error, "another Reasonix window") {
+		t.Fatalf("self-held refusal must not misdirect to another runtime/window, got %q", item.Error)
 	}
 }
 
