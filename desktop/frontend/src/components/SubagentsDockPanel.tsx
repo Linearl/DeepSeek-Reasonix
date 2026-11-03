@@ -16,14 +16,16 @@ import { useT, type DictKey } from "../lib/i18n";
 import { formatDurationLabel } from "../lib/durationFormat";
 import { useLayoutStore } from "../store/layout";
 import { Tooltip } from "./Tooltip";
-import { historyMessagesToItems } from "../lib/useController";
+import { historyMessagesToItems, type Item } from "../lib/useController";
 import { subjectOf } from "../lib/tools";
 import type { HistoryMessage } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
   mergeEndedSubagentRecords,
+  subagentChildTools,
   type SubagentDirectory,
   type SubagentDirectoryEntry,
+  type SubagentDirectoryItem,
 } from "../lib/subagentDirectory";
 import type { SubagentArtifactView } from "../lib/types";
 
@@ -100,6 +102,28 @@ function entryStartedClock(entry: SubagentDirectoryEntry): string {
   return entry.item.startedAt
     ? new Date(entry.item.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "";
+}
+
+// tl1361: one glyph per child-tool status — the same visual language the
+// directory rows use (spin while running, check when done, alert on error).
+function ChildToolGlyph({ status }: { status: SubagentDirectoryItem["status"] }) {
+  switch (status) {
+    case "running":
+      return <LoaderCircle size={12} aria-hidden="true" className="subagents-panel__spin" />;
+    case "error":
+      return <CircleAlert size={12} aria-hidden="true" className="subagents-panel__icon subagents-panel__icon--failed" />;
+    case "stopped":
+      return <Ban size={12} aria-hidden="true" className="subagents-panel__icon subagents-panel__icon--cancelled" />;
+    default:
+      return <CheckCircle2 size={12} aria-hidden="true" className="subagents-panel__icon subagents-panel__icon--done" />;
+  }
+}
+
+// tl1361: the running detail's live tool-call stream row label. Same fallback
+// chain the row title uses (stamped subject → parsed subject → resolved name →
+// tool name), so a tool without a parseable subject still reads as something.
+function childToolLabel(tool: SubagentDirectoryItem): string {
+  return tool.subject || subjectOf(tool.name, tool.args) || tool.resolvedName || tool.name;
 }
 
 /** One folded row (requirement 495 ①: ended subagents default to the row
@@ -212,6 +236,7 @@ function SubagentDetailView({
   sessionPath,
   onReadSubagent,
   onOpenInMain,
+  transcriptItems,
 }: {
   entry: SubagentDirectoryEntry;
   onBack: () => void;
@@ -219,6 +244,11 @@ function SubagentDetailView({
   onReadSubagent?: (sessionPath: string, ref: string) => Promise<HistoryMessage[]>;
   /** tl1109: 「在主区打开」出口 —— 大屏/长文阅读走主区 ReadOnly tab。 */
   onOpenInMain?: (entry: SubagentDirectoryEntry) => void;
+  /** tl1361: the session transcript items — the source of the running child's
+   *  live tool-call stream (nested_sink.go re-parents the child's real tool
+   *  events under the task call's id). Undefined keeps the detail view
+   *  byte-for-byte the tl1202 shape (备用视图 passes nothing). */
+  transcriptItems?: readonly Item[];
 }) {
   const t = useT();
   const title = rowTitle(entry);
@@ -270,6 +300,16 @@ function SubagentDetailView({
   // Value-keyed projection: a poll returning identical content re-renders the
   // wrapper but not the transcript tree.
   const liveItems = useMemo(() => historyMessagesToItems(live.messages, "subagent-dock").items, [live.messages]);
+  // tl1361: the running child's live tool-call stream, projected from the
+  // transcript the window already holds. The progress preview above only
+  // carries the child's reasoning/text/notice — a tool-heavy child (fetch /
+  // scrape / verify runs) produces almost none of those, which read as "the
+  // panel cannot see the work in progress". The re-parented tool events are
+  // the actual process, and they update live as the child works.
+  const childTools = useMemo(
+    () => (entry.running ? subagentChildTools(transcriptItems, entry.item.id) : []),
+    [entry.running, entry.item.id, transcriptItems],
+  );
   return (
     <div className="subagents-panel__detailview" role="region" aria-label={t("subagentPanel.detailTitle")}>
       <div className="subagents-panel__detailview-head">
@@ -336,6 +376,31 @@ function SubagentDetailView({
               {t("composer.capsuleHistoryPending")}
             </p>
           ) : null}
+          {/* tl1361: the running child's live tool-call stream — the work
+              process itself, beyond the reasoning/text preview. Renders only
+              while the entry is running and the transcript carries nested
+              child tools; ended entries are unchanged (their full transcript
+              renders through the read path above). */}
+          {entry.running && childTools.length > 0 ? (
+            <div className="subagents-panel__livetools" data-subagents-livetools="true">
+              <div className="subagents-panel__detailview-label">{t("subagentPanel.liveTools")}</div>
+              <ul className="subagents-panel__livetool-list">
+                {childTools.map((tool) => {
+                  const label = childToolLabel(tool);
+                  return (
+                    <li key={tool.id} className="subagents-panel__livetool" data-subagents-livetool-status={tool.status}>
+                      <ChildToolGlyph status={tool.status} />
+                      {/* 任务1033 convention: wrap-mode Tooltip carries the full
+                          label; the row itself stays one ellipsized line. */}
+                      <Tooltip label={label} wrap>
+                        <span className="subagents-panel__livetool-subject">{label}</span>
+                      </Tooltip>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
           {error ? (
             <div className="subagents-panel__detailview-block subagents-panel__detailview-block--error">
               <div className="subagents-panel__detailview-label">{t("subagent.preview.notice")}</div>
@@ -367,7 +432,7 @@ function SubagentDetailView({
             </div>
           ) : null}
           {progress?.truncated ? <div className="subagents-panel__detailview-note">{t("subagent.preview.truncated")}</div> : null}
-          {!summary && !error && !hasPreview && !(entry.running && ref) ? (
+          {!summary && !error && !hasPreview && !(entry.running && (ref || childTools.length > 0)) ? (
             <p className="subagents-panel__detailview-note">{t("subagentPanel.detailNoPreview")}</p>
           ) : null}
         </>
@@ -387,6 +452,7 @@ export function SubagentsDockPanel({
   onListPersisted,
   onOpenInMain,
   onTerminateSubagent,
+  transcriptItems,
 }: {
   directory: SubagentDirectory;
   /** Task 507 plan-A gate: row clicks open the read-only detail view. */
@@ -417,6 +483,11 @@ export function SubagentsDockPanel({
    * a cancelled outcome while the turn keeps running. Without it the rows
    * render without the terminate button, byte-for-byte the pre-1209 panel. */
   onTerminateSubagent?: (ref: string) => Promise<boolean>;
+  /** tl1361: the session transcript items for the running detail's live
+   * tool-call stream. Optional for the same byte-for-byte rule as the other
+   * optional props — the 备用视图 (WorkspaceDockRegion) passes only
+   * `directory` and keeps the exact tl1202 detail shape. */
+  transcriptItems?: readonly Item[];
 }) {
   const t = useT();
   // Task 495 ④: reveal the ended list 20 rows at a time (zcode's PAGE_SIZE).
@@ -552,6 +623,7 @@ export function SubagentsDockPanel({
             sessionPath={sessionPath}
             onReadSubagent={onReadSubagent}
             onOpenInMain={onOpenInMain}
+            transcriptItems={transcriptItems}
           />
         ) : (
           <div className="subagents-panel__detailview">

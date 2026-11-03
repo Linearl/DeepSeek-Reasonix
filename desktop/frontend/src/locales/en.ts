@@ -3188,6 +3188,7 @@ export const en = {
 "subagentPanel.detailSummary": "Result summary",
 "subagentPanel.detailReadOnly": "Subagent details are a read-only record; there is no input.",
 "subagentPanel.detailNoPreview": "No preview content: only the name and status survive a restart.",
+"subagentPanel.liveTools": "Work in progress (tool calls)",
 "subagentPanel.widen": "Widen preview",
 "subagentPanel.narrow": "Restore width",
 "settings.dockTabVisibility": "Dock tab visibility",

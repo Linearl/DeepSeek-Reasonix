@@ -14,7 +14,10 @@
 // - directory model: running/ended classification (terminal phase wins over a
 //   stale running status; hydrated cards classify by status), newest first;
 // - panel: two sections, rows folded, ended list reveals 20 at a time via the
-//   show-more button (requirement ④).
+//   show-more button (requirement ④);
+// - tl1361: the running detail renders the child's live tool-call stream from
+//   the transcript items (nested_sink.go re-parents child tool events under
+//   the task call id) — ended entries and the no-prop panel stay byte-for-byte.
 
 import assert from "node:assert/strict";
 import { createElement } from "react";
@@ -396,6 +399,126 @@ console.log("\nsubagent panel dock (task 495)");
   eq(calls.join(","), "sub-live", "tl1209: clicking terminate calls the injected bridge with the row ref");
   await act(async () => { root.unmount(); });
   container.remove();
+}
+
+// 10. tl1361: the running detail's live tool-call stream — the work process
+//     itself. The tl1202 preview only carries the child's reasoning/text/
+//     notice; a tool-heavy child produces none of those and the detail read as
+//     "cannot see the work in progress". The backend re-parents the child's
+//     real tool events under the task call id (nested_sink.go), so the
+//     transcript items the window already holds ARE the live process.
+//     Contract: a running entry renders the nested child tools (label +
+//     status glyph) from the transcriptItems prop; ended entries never do;
+//     without the prop the panel stays byte-for-byte the tl1202 shape.
+{
+  const { subagentChildTools } = await import("../lib/subagentDirectory");
+
+  // Projection unit: filters by parentId, keeps transcript order, ignores
+  // non-tool rows and guards the empty call id.
+  const parentCard = subagentTool({ id: "call-1", status: "running" });
+  const c1 = subagentTool({ id: "call-1/web-a", name: "web_fetch", args: '{"url":"https://example.com/report"}', status: "done", parentId: "call-1" });
+  const c2 = subagentTool({ id: "call-1/web-b", name: "bash", args: '{"command":"ls"}', status: "running", parentId: "call-1" });
+  const c3 = subagentTool({ id: "call-1/web-c", name: "write_file", args: '{"path":"out/report.md"}', status: "error", parentId: "call-1" });
+  const other = subagentTool({ id: "call-2/x", name: "ls", args: "", status: "done", parentId: "call-2" });
+  eq(subagentChildTools([parentCard, c1, other, c2, c3], "call-1").map((t) => t.id).join(","), "call-1/web-a,call-1/web-b,call-1/web-c",
+    "tl1361 projection: only the call's own children, transcript order kept");
+  eq(subagentChildTools([c1], "").length, 0, "tl1361 projection: empty call id yields nothing");
+  eq(subagentChildTools(undefined, "call-1").length, 0, "tl1361 projection: undefined items yields nothing");
+
+  // The regression shape: a RUNNING child whose progress preview is EMPTY
+  // (tool-heavy run) — pre-fix this rendered only the pending note / 无预览.
+  const runningCard = subagentTool({
+    id: "call-1", status: "running", startedAt: 5_000, subject: "抓取并核对报告",
+    subagentProgress: { phase: "tool", reasoning: "", text: "", notice: "", lastActivityAt: 6_000, truncated: false, startedAt: 5_000, ref: "sub-tools" },
+  });
+  const endedCard = subagentTool({
+    id: "call-0", status: "done", startedAt: 1_000, subject: "已结束子代理",
+    subagentProgress: { phase: "completed", reasoning: "", text: "", notice: "", lastActivityAt: 2_000, truncated: false, startedAt: 1_000, ref: "sub-done" },
+  });
+  const dir = buildSubagentDirectory([runningCard, endedCard]);
+  const transcriptItems: Item[] = [runningCard, endedCard, c1, c2, c3, other];
+
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(LocaleProvider, null,
+      createElement(SubagentsDockPanel, { directory: dir, detailEnabled: true, transcriptItems })));
+  });
+
+  // Open the RUNNING row's detail: the live stream renders all three child
+  // tools with per-row status markers, newest-process order preserved.
+  const runningRow = Array.from(container.querySelectorAll<HTMLButtonElement>(".subagents-panel__row"))
+    .find((el) => el.textContent?.includes("抓取并核对报告"));
+  ok(runningRow !== undefined, "tl1361: running row rendered");
+  await act(async () => { runningRow!.click(); });
+  const live = container.querySelector('[data-subagents-livetools="true"]');
+  ok(live !== null, "tl1361: the running detail renders the live tool-call stream");
+  const rows = Array.from(container.querySelectorAll(".subagents-panel__livetool"));
+  eq(rows.length, 3, "tl1361: every nested child tool renders as a stream row");
+  ok((live?.querySelector(".subagents-panel__detailview-label")?.textContent?.length ?? 0) > 0,
+    "tl1361: the stream carries the section label");
+  eq(rows.map((el) => el.getAttribute("data-subagents-livetool-status")).join(","), "done,running,error",
+    "tl1361: each row carries its tool status marker");
+  ok((rows[0]?.textContent ?? "").includes("https://example.com/report"), "tl1361: subject parsed from args (web_fetch url)");
+  ok((rows[2]?.textContent ?? "").includes("out/report.md"), "tl1361: subject parsed from args (write_file path)");
+  eq(Array.from(container.querySelectorAll(".subagents-panel__detailview-note"))
+    .some((el) => el.getAttribute("data-subagents-live-pending") !== "true"), false,
+    "tl1361: a running entry with a live stream never shows the no-preview note (pending note excepted)");
+
+  // Switch to the ENDED row: no stream — the ended read path is unchanged.
+  const endedRow = Array.from(container.querySelectorAll<HTMLButtonElement>(".subagents-panel__row"))
+    .find((el) => el.textContent?.includes("已结束子代理"));
+  await act(async () => { endedRow!.click(); });
+  eq(container.querySelector('[data-subagents-livetools="true"]') !== null, false,
+    "tl1361: ended entries never render the live stream (read path byte-for-byte)");
+
+  await act(async () => { root.unmount(); });
+  container.remove();
+
+  // Byte-for-byte guard: without transcriptItems the running detail keeps the
+  // exact tl1202 shape (pending note, no stream section) — the 备用视图
+  // (WorkspaceDockRegion) passes only `directory`. DOM form: the detail only
+  // exists once a row is clicked, static markup would show the picker note.
+  const bareContainer = document.createElement("div");
+  document.body.appendChild(bareContainer);
+  const bareRoot = createRoot(bareContainer);
+  const bareDir = buildSubagentDirectory([runningCard]);
+  await act(async () => {
+    bareRoot.render(createElement(LocaleProvider, null,
+      createElement(SubagentsDockPanel, { directory: bareDir, detailEnabled: true })));
+  });
+  const bareRow = Array.from(bareContainer.querySelectorAll<HTMLButtonElement>(".subagents-panel__row"))
+    .find((el) => el.textContent?.includes("抓取并核对报告"));
+  await act(async () => { bareRow!.click(); });
+  eq(bareContainer.querySelector('[data-subagents-livetools="true"]') !== null, false,
+    "tl1361: no transcriptItems keeps the tl1202 detail (no stream)");
+  eq(bareContainer.querySelector('[data-subagents-live-pending="true"]') !== null, true,
+    "tl1361: no transcriptItems keeps the tl1202 pending note");
+  await act(async () => { bareRoot.unmount(); });
+  bareContainer.remove();
+
+  // A running entry without ref and without stream still shows the no-preview
+  // note (unchanged), so the empty-run shape never turns into a blank pane.
+  const reflessCard = subagentTool({
+    id: "call-9", status: "running", startedAt: 7_000,
+    subagentProgress: { phase: "running", reasoning: "", text: "", notice: "", lastActivityAt: 7_000, truncated: false, startedAt: 7_000 },
+  });
+  const reflessContainer = document.createElement("div");
+  document.body.appendChild(reflessContainer);
+  const reflessRoot = createRoot(reflessContainer);
+  await act(async () => {
+    reflessRoot.render(createElement(LocaleProvider, null,
+      createElement(SubagentsDockPanel, { directory: buildSubagentDirectory([reflessCard]), detailEnabled: true, transcriptItems: [reflessCard] })));
+  });
+  const reflessRow = reflessContainer.querySelector<HTMLButtonElement>(".subagents-panel__row");
+  await act(async () => { reflessRow!.click(); });
+  eq(reflessContainer.querySelector('[data-subagents-livetools="true"]') !== null, false,
+    "tl1361: no nested children renders no stream");
+  eq(reflessContainer.querySelector(".subagents-panel__detailview-note") !== null, true,
+    "tl1361: ref-less childless running entry keeps the no-preview note");
+  await act(async () => { reflessRoot.unmount(); });
+  reflessContainer.remove();
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -2532,6 +2532,7 @@ export const zhTW: Record<DictKey, string> = {
 "subagentPanel.detailSummary": "結果摘要",
 "subagentPanel.detailReadOnly": "子代理詳情為唯讀記錄，不提供輸入",
 "subagentPanel.detailNoPreview": "暫無預覽內容：重啟後僅保留名稱與狀態",
+"subagentPanel.liveTools": "工作過程（工具調用）",
 "subagentPanel.widen": "加寬預覽",
 "subagentPanel.narrow": "還原寬度",
 "settings.dockTabVisibility": "側欄標籤顯示",

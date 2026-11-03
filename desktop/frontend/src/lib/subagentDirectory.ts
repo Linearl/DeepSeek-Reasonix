@@ -68,6 +68,24 @@ function entryRef(item: SubagentDirectoryItem): string | undefined {
   return item.subagentProgress?.ref || item.subagentOutcome?.[0] || parseSubagentOutcomeText(item.output)?.[0] || undefined;
 }
 
+// tl1361: the child's own live tool-call stream. The backend re-parents a
+// running sub-agent's real tool events under the dispatching task call's id
+// (internal/agent/nested_sink.go: Tool.ParentID = <task call id>, call ids
+// namespaced as "<parent id>/<child id>"), so the transcript the window
+// already holds carries the child's work process — the dock detail can render
+// it without any backend change. Pure projection in transcript order; the
+// running entry's own card never matches (its parentId points at the parent
+// turn's assistant item, not at itself).
+export function subagentChildTools(items: readonly Item[] | undefined, callId: string): SubagentDirectoryItem[] {
+  if (!callId) return [];
+  const out: SubagentDirectoryItem[] = [];
+  for (const item of items ?? []) {
+    if (item.kind !== "tool" || item.parentId !== callId) continue;
+    out.push(item);
+  }
+  return out;
+}
+
 export function buildSubagentDirectory(items: readonly Item[] | undefined): SubagentDirectory {
   const running: SubagentDirectoryEntry[] = [];
   const ended: SubagentDirectoryEntry[] = [];
