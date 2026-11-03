@@ -107,6 +107,17 @@ func (c *Controller) ensureWriteAuthorityReady() error {
 	return agent.ErrSessionWriteAuthorityStale
 }
 
+// WriteAuthorityReady exposes the exact verdict the turn admission gates apply
+// (ensureWriteAuthorityReady) to hosts that need to classify a submission's
+// fate after the fact (tl1342): the desktop submit surface calls the controller
+// asynchronously and learns nothing from the void Submit* contracts, so right
+// after a submit returns it probes this method — a stale/missing verdict means
+// the input was refused at the gate (the gates run before admission and drop
+// with a notice only) and the host may heal and retry.
+func (c *Controller) WriteAuthorityReady() error {
+	return c.ensureWriteAuthorityReady()
+}
+
 // IssueAndBindWriteAuthority is used by SessionLeaseKeeper and desktop tabs
 // after a successful lease acquire/rebind.
 func IssueAndBindWriteAuthority(c *Controller, lease *agent.SessionLease) error {

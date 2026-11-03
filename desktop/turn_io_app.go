@@ -105,16 +105,25 @@ func (a *App) submitToTabResult(tabID, input string, fromBridge, classifyManagem
 			defer admission.abort()
 			tab = admission.tab
 			a.ensureTabTopicIndexedForUserTurn(tab)
-			if submitter, supported := admittedCtrl.(interface {
-				SubmitDisplayWithResult(display, input string) control.SubmitResult
-			}); supported {
-				result := submitter.SubmitDisplayWithResult(input, input)
-				admission.finish(admittedCtrl)
-				return result, nil
+			managementResult := management
+			submitBody := func(c control.SessionAPI) {
+				if submitter, supported := c.(interface {
+					SubmitDisplayWithResult(display, input string) control.SubmitResult
+				}); supported {
+					managementResult = submitter.SubmitDisplayWithResult(input, input)
+				} else {
+					c.SubmitDisplay(input, input)
+				}
 			}
-			admittedCtrl.SubmitDisplay(input, input)
-			admission.finish(admittedCtrl)
-			return management, nil
+			submitBody(admittedCtrl)
+			started := admission.finish(admittedCtrl)
+			// tl1342: the write-authority gate refuses management submissions the
+			// same way it refuses turns (submitCommandOrTurn runs the gate for
+			// every Submit*) — the retry is equally valid here.
+			a.retryTabTurnAfterStaleWriteAuthority(admission, admittedCtrl, started, !fromBridge, submissionID, func(_ *tabTurnAdmission, c control.SessionAPI) {
+				submitBody(c)
+			})
+			return managementResult, nil
 		}
 	}
 	admission, ctrl, err := a.beginTabTurn(tabID, !fromBridge, submissionID...)
@@ -132,24 +141,39 @@ func (a *App) submitToTabResult(tabID, input string, fromBridge, classifyManagem
 	if block, inject := a.decisionPatternsInjectBlock(tab); inject {
 		input = block + input
 	}
-	if submitter, ok := ctrl.(interface {
-		SubmitDisplayWithResult(display, input string) control.SubmitResult
-	}); ok {
-		result = submitter.SubmitDisplayWithResult(display, input)
-	} else {
-		ctrl.SubmitDisplay(display, input)
-	}
-	// 任务900（上游 #9806/PR10781 语义）：受理锁释放后 tab 可能已换上重建后
-	// 的控制器，替换者不持有本次提交的 receipt。ctrl 是受理本提交的那个控制
-	// 器（beginTabTurn 返回），turn id 在 Submit 返回时已同步入账（spawnGuarded
-	// → prepareTurnAdmission → ledger.Begin），这里直接取走，调用方无需再向
-	// 重解析出的控制器查询。
-	if result.TurnID == "" && firstSubmissionID(submissionID) != "" {
-		if admitted, ok := ctrl.(interface{ TurnIDForSubmission(string) string }); ok {
-			result.TurnID = admitted.TurnIDForSubmission(firstSubmissionID(submissionID))
+	// submitTurnBody submits the prepared (display, input) pair and harvests
+	// the admission receipt. Shared verbatim by the first attempt and the
+	// tl1342 retry so the two can never drift.
+	submitTurnBody := func(c control.SessionAPI) {
+		if submitter, ok := c.(interface {
+			SubmitDisplayWithResult(display, input string) control.SubmitResult
+		}); ok {
+			result = submitter.SubmitDisplayWithResult(display, input)
+		} else {
+			c.SubmitDisplay(display, input)
+		}
+		// 任务900（上游 #9806/PR10781 语义）：受理锁释放后 tab 可能已换上重建后
+		// 的控制器，替换者不持有本次提交的 receipt。ctrl 是受理本提交的那个控制
+		// 器（beginTabTurn 返回），turn id 在 Submit 返回时已同步入账（spawnGuarded
+		// → prepareTurnAdmission → ledger.Begin），这里直接取走，调用方无需再向
+		// 重解析出的控制器查询。
+		if result.TurnID == "" && firstSubmissionID(submissionID) != "" {
+			if admitted, ok := c.(interface{ TurnIDForSubmission(string) string }); ok {
+				result.TurnID = admitted.TurnIDForSubmission(firstSubmissionID(submissionID))
+			}
 		}
 	}
-	admission.finish(ctrl)
+	submitTurnBody(ctrl)
+	started := admission.finish(ctrl)
+	// tl1342: the UI send surface. A stale write authority made the gate drop
+	// this input before admission (a warn notice is all the void Submit*
+	// contract ever reports); heal through the 1311/1201 repair seam and rerun
+	// the exact submission once on a fresh admission. The retry deliberately
+	// happens AFTER finish released turnStartMu — the retry's own beginTabTurn
+	// re-occupies the sink reservation cancelTurnStart cleared.
+	a.retryTabTurnAfterStaleWriteAuthority(admission, ctrl, started, !fromBridge, submissionID, func(_ *tabTurnAdmission, c control.SessionAPI) {
+		submitTurnBody(c)
+	})
 	return result, nil
 }
 
@@ -320,7 +344,16 @@ func (a *App) submitInitialGoalToLocalTab(
 	} else {
 		ctrl.SubmitDisplay(display, input)
 	}
-	admission.finish(ctrl)
+	started := admission.finish(ctrl)
+	// tl1342: goal activation submits through the same gated Submit* family;
+	// a stale write authority drops the first turn silently here too.
+	a.retryTabTurnAfterStaleWriteAuthority(admission, ctrl, started, true, submissionID, func(_ *tabTurnAdmission, c control.SessionAPI) {
+		if len(invocations) > 0 {
+			c.SubmitInvocationDisplay(display, input, controlInvocationRequests(invocations))
+		} else {
+			c.SubmitDisplay(display, input)
+		}
+	})
 	return drained, nil
 }
 

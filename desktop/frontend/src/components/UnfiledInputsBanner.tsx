@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { CheckCheck, ChevronDown, ChevronRight, ClipboardCopy, ClipboardPaste, Eye, EyeOff, SendHorizontal, Undo2 } from "lucide-react";
 import { writeClipboardText } from "../lib/clipboard";
 import { countUnhandled, markHandledTurns, readHandledTurns, useUnfiledInputs } from "../lib/unfiledInputs";
+import { runBulkResend } from "../lib/resendFeedback";
 import { useToast } from "../lib/toast";
 import { useI18n } from "../lib/i18n";
 import { ModalCloseButton } from "./ModalCloseButton";
@@ -40,6 +41,11 @@ const COPY = {
     resent: "Resubmitted — the entry is marked handled",
     handledDone: "Marked handled",
     resendUnavailable: "Resend unavailable here",
+    resendAll: "Resend all",
+    resendAllPending: "Resending…",
+    resendAllDone: (ok: number) => `All ${ok} entries resubmitted`,
+    resendAllPartial: (ok: number, failed: number) => `${ok} resubmitted, ${failed} refused — refused entries stay listed`,
+    resendAllFailed: (failed: number) => `All ${failed} entries were refused — see the toasts for reasons`,
     turnLabel: (turn: number) => `Turn ${turn}`,
     timeUnknown: "time unknown",
     close: "Close",
@@ -63,6 +69,11 @@ const COPY = {
     resent: "已重新提交，条目标记为已处理",
     handledDone: "已标记处理",
     resendUnavailable: "当前不可重发",
+    resendAll: "全部重发",
+    resendAllPending: "重发中…",
+    resendAllDone: (ok: number) => `已全部重发 ${ok} 条`,
+    resendAllPartial: (ok: number, failed: number) => `已重发 ${ok} 条，${failed} 条被拒——被拒条目保留在列表`,
+    resendAllFailed: (failed: number) => `${failed} 条全部被拒——失败原因见提示`,
     turnLabel: (turn: number) => `轮次 ${turn}`,
     timeUnknown: "时间未知",
     close: "关闭",
@@ -86,6 +97,11 @@ const COPY = {
     resent: "已重新提交，條目標記為已處理",
     handledDone: "已標記處理",
     resendUnavailable: "目前不可重發",
+    resendAll: "全部重發",
+    resendAllPending: "重發中…",
+    resendAllDone: (ok: number) => `已全部重發 ${ok} 條`,
+    resendAllPartial: (ok: number, failed: number) => `已重發 ${ok} 條，${failed} 條被拒——被拒條目保留在列表`,
+    resendAllFailed: (failed: number) => `${failed} 條全部被拒——失敗原因見提示`,
     turnLabel: (turn: number) => `輪次 ${turn}`,
     timeUnknown: "時間未知",
     close: "關閉",
@@ -104,8 +120,15 @@ export function UnfiledInputsBanner({
   sessionKey: string;
   /** Inserts the recovered text into the composer draft (task 1023). */
   onDraft?: (text: string) => void;
-  /** Resubmits the recovered text through the transcript prompt channel. */
-  onResend?: (text: string) => void;
+  /**
+   * Resubmits the recovered text through the transcript prompt channel.
+   * tl1342②/③: resolves to true only when the backend accepted (or durably
+   * queued) the prompt; the failure reason toast is the handler's contract.
+   * The entry is marked handled ONLY on true — a refused resend must stay
+   * listed instead of vanishing (the old void contract marked it handled
+   * before the outcome existed, so a refused resend was silent loss).
+   */
+  onResend?: (text: string) => Promise<boolean> | boolean;
   disabled?: boolean;
   /** Notifies the owner after the handled set changed (in-place cards re-filter). */
   onHandled?: () => void;
@@ -116,6 +139,8 @@ export function UnfiledInputsBanner({
   const { entries } = useUnfiledInputs(tabId);
   const [handled, setHandled] = useState<Set<number>>(() => readHandledTurns(sessionKey));
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [resendAllPending, setResendAllPending] = useState(false);
+  const resendAllPendingRef = useRef(false);
   useEffect(() => {
     setHandled(readHandledTurns(sessionKey));
   }, [sessionKey]);
@@ -147,6 +172,34 @@ export function UnfiledInputsBanner({
     showToast(t.handledAllDone, "info");
   }, [entries, handled, sessionKey, showToast, t, onHandled]);
 
+  // tl1342③: one-click resend of EVERY unhandled entry. Sequential (they all
+  // pass the same session's turn gate; a parallel burst would just race it),
+  // outcome-aware through the same channel the per-entry button uses. Only
+  // delivered/queued entries get marked handled — refused ones stay listed
+  // and the summary toast says so.
+  const resendAll = useCallback(async () => {
+    if (!onResend || resendAllPendingRef.current || pending.length === 0) return;
+    resendAllPendingRef.current = true;
+    setResendAllPending(true);
+    try {
+      const prompts = pending.map((entry) => entry.prompt);
+      const turns = pending.map((entry) => entry.turn);
+      const channel = onResend;
+      const { ok, failed, deliveredIndexes } = await runBulkResend(prompts, (prompt) => Promise.resolve(channel(prompt)));
+      if (ok > 0) {
+        markHandledTurns(sessionKey, deliveredIndexes.map((index) => turns[index]));
+        setHandled(readHandledTurns(sessionKey));
+        onHandled?.();
+      }
+      if (failed === 0) showToast(t.resendAllDone(ok), "info");
+      else if (ok > 0) showToast(t.resendAllPartial(ok, failed), "warn");
+      else showToast(t.resendAllFailed(failed), "warn");
+    } finally {
+      resendAllPendingRef.current = false;
+      setResendAllPending(false);
+    }
+  }, [onResend, pending, sessionKey, showToast, t, onHandled]);
+
   // tl 1127 空态铁律：全部处理完（unhandledCount===0）时横幅与大窗口一起消失，
   // 不残留空白窗口。App.tsx 外层还有 unfiledUnhandledCount>0 的闸门双保险。
   if (unhandledCount === 0) return null;
@@ -160,6 +213,17 @@ export function UnfiledInputsBanner({
           {` — ${t.bannerSuffix}`}
         </span>
         <span className="banner__spacer" />
+        {pending.length > 1 && onResend && (
+          <button
+            className="btn btn--primary btn--small"
+            type="button"
+            disabled={resendAllPending || disabled}
+            onClick={() => void resendAll()}
+          >
+            <SendHorizontal size={13} aria-hidden="true" />
+            <span>{resendAllPending ? t.resendAllPending : t.resendAll}</span>
+          </button>
+        )}
         {pending.length > 1 && (
           <button className="btn btn--secondary btn--small" type="button" onClick={markAllHandled}>
             <CheckCheck size={13} aria-hidden="true" />
@@ -186,6 +250,8 @@ export function UnfiledInputsBanner({
           onResend={onResend}
           onMarkHandled={markHandled}
           onMarkAllHandled={markAllHandled}
+          onResendAll={onResend ? resendAll : undefined}
+          resendAllPending={resendAllPending}
           onClose={() => setViewerOpen(false)}
         />
       )}
@@ -208,6 +274,8 @@ function UnfiledInputsViewer({
   onResend,
   onMarkHandled,
   onMarkAllHandled,
+  onResendAll,
+  resendAllPending,
   onClose,
 }: {
   count: number;
@@ -215,9 +283,12 @@ function UnfiledInputsViewer({
   t: (typeof COPY)[keyof typeof COPY];
   disabled?: boolean;
   onDraft?: (text: string) => void;
-  onResend?: (text: string) => void;
+  onResend?: (text: string) => Promise<boolean> | boolean;
   onMarkHandled: (turn: number, toast?: string) => void;
   onMarkAllHandled: () => void;
+  /** tl1342③: bulk channel; undefined = resend-all unavailable (no onResend). */
+  onResendAll?: () => Promise<void> | void;
+  resendAllPending?: boolean;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -279,6 +350,17 @@ function UnfiledInputsViewer({
             <strong>{t.banner(count)}</strong>
             {` — ${t.bannerSuffix}`}
           </span>
+          {pending.length > 1 && onResendAll && (
+            <button
+              className="btn btn--primary btn--small"
+              type="button"
+              disabled={resendAllPending || disabled}
+              onClick={() => void onResendAll()}
+            >
+              <SendHorizontal size={13} aria-hidden="true" />
+              <span>{resendAllPending ? t.resendAllPending : t.resendAll}</span>
+            </button>
+          )}
           {pending.length > 1 && (
             <button className="btn btn--secondary btn--small" type="button" onClick={onMarkAllHandled}>
               <CheckCheck size={13} aria-hidden="true" />
@@ -322,12 +404,28 @@ function UnfiledEntryCard({
   t: (typeof COPY)[keyof typeof COPY];
   disabled?: boolean;
   onDraft?: (text: string) => void;
-  onResend?: (text: string) => void;
+  onResend?: (text: string) => Promise<boolean> | boolean;
   onMarkHandled: (turn: number, toast?: string) => void;
 }) {
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState(false);
+  // tl1342②: the resend button has a real pending face now — the outcome
+  // decides handled marking (true) or the stay-listed failure face (false;
+  // the refusal toast is the handler's contract).
+  const [resendPending, setResendPending] = useState(false);
   const formatTime = entry.time > 0 ? new Date(entry.time).toLocaleString() : t.timeUnknown;
+  const handleResend = useCallback(async () => {
+    if (!onResend || resendPending) return;
+    setResendPending(true);
+    try {
+      const delivered = await onResend(entry.prompt);
+      if (delivered) onMarkHandled(entry.turn, t.resent);
+      // Refused: the handler already toasted the reason; the entry stays
+      // listed (nothing marked) so the banner keeps telling the truth.
+    } finally {
+      setResendPending(false);
+    }
+  }, [entry.prompt, entry.turn, onMarkHandled, onResend, resendPending, t]);
   return (
     <div className="banner banner--info" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
       {/* 头部行：标题 + 展开/收起 + 四个操作按钮。position: sticky 保证正文内部
@@ -373,16 +471,12 @@ function UnfiledEntryCard({
         <button
           className="btn btn--primary btn--small"
           type="button"
-          disabled={disabled || !onResend}
-          title={disabled ? t.resendUnavailable : undefined}
-          onClick={() => {
-            if (!onResend) return;
-            onResend(entry.prompt);
-            onMarkHandled(entry.turn, t.resent);
-          }}
+          disabled={disabled || !onResend || resendPending}
+          title={disabled ? t.resendUnavailable : resendPending ? t.resendAllPending : undefined}
+          onClick={() => void handleResend()}
         >
           <SendHorizontal size={13} aria-hidden="true" />
-          <span>{t.resend}</span>
+          <span>{resendPending ? t.resendAllPending : t.resend}</span>
         </button>
         <button className="btn btn--small" type="button" onClick={() => onMarkHandled(entry.turn, t.handledDone)}>
           <Undo2 size={13} aria-hidden="true" />

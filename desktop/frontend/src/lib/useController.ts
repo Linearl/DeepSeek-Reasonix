@@ -977,12 +977,35 @@ function historyRevisionIsOlder(current: number | undefined, incoming: number | 
     && typeof incoming === "number" && incoming > 0
     && incoming < current;
 }
+/**
+ * tl1342②: how a submitted turn actually settled, resolved when the backend
+ * admission receipt (or the refusal) arrives. `sendToTab` used to be
+ * fire-and-forget — the only failure face was the reducer's send_failed
+ * notice — which made every manual resend press unverifiable: the caller
+ * could not tell "delivered" from "refused again" and could not give the
+ * user a toast either way (20261101 现场: 按重发无任何反馈).
+ */
+export interface SendTurnOutcome {
+  /** The backend admission receipt arrived — the input became a turn. */
+  confirmed: boolean;
+  /** The refusal degraded into the durable guidance queue (bubble stays delivered). */
+  degraded: boolean;
+  /** The refusal reason text when neither confirmed nor degraded. */
+  error?: string;
+}
+
 type Action =
   | { type: "event"; e: WireEvent; remote?: boolean }
   | { type: "stream_batch"; segments: StreamSegment[] }
   | { type: "user"; text: string; submitText?: string; seq: number; submissionId: string; deliveryRecovery?: boolean }
   | { type: "unsend" }
   | { type: "send_confirmed"; submissionId: string }
+  // tl1342②: a failed submission was resent and the resend's admission
+  // receipt arrived — drop the dead optimistic bubble. `turn` numbers user
+  // items exactly as handleEditPrompt/transcriptRows do (0-based user count);
+  // removal only fires when that item is still the failed bubble, so a
+  // rehydrate that already cleaned it is a no-op.
+  | { type: "resent_failed_turn"; turn: number }
   | { type: "management_confirmed"; submissionId: string }
   | { type: "turn_admitted"; turnId: string; submissionId: string }
   | { type: "turn_submit_rejected"; submissionId: string; error: string }
@@ -2699,6 +2722,24 @@ export function reducer(s: State, a: Action): State {
         turnLifecycleObservedAt: promptEventClock(),
       });
       return cleared;
+    }
+    case "resent_failed_turn": {
+      let userCount = 0;
+      let removed = false;
+      const items = s.items.filter((item) => {
+        if (item.kind !== "user") return true;
+        const matches = userCount === a.turn && Boolean(item.failed);
+        userCount += 1;
+        if (matches) {
+          removed = true;
+          return false;
+        }
+        return true;
+      });
+      // The resend appended its own fresh bubble before this action ran; the
+      // stale failed bubble keeps its position, so removal never shifts the
+      // new turn's numbering. A reload already cleaned the bubble = no-op.
+      return removed ? { ...s, items } : s;
     }
     case "cancel_requested": {
       return endPromptWait({
@@ -5283,6 +5324,13 @@ export function useController() {
       collaborationMode: CollaborationMode;
       toolApprovalMode: ToolApprovalMode;
     },
+    // tl1342②: opting in moves the resolution from "dispatch issued" (the
+    // historic fire-and-forget contract every existing awaiter relies on —
+    // composer send, undo-resend, goal submit) to "admission receipt or
+    // refusal settled", and the resolved value carries that outcome. Only the
+    // resend surfaces (resendFailedToTab, commitThenSend's banner channel)
+    // pass true: they must tell delivered from refused for the toast face.
+    awaitReceipt?: boolean,
   ) => {
     if (!tabId) throw new Error(t("composer.workspaceStarting"));
     const currentState = getOrCreateState(statesRef.current, tabId);
@@ -5299,6 +5347,11 @@ export function useController() {
     if (currentState.hydrateReason === "rewind") dispatchTo(tabId, { type: "hydrate_done" });
     dispatchTo(tabId, { type: "user", text: displayText, submitText: display !== submit ? submit : undefined, seq, submissionId });
     invalidateCache();
+    // tl1342②: settle() resolves the outcome the moment the receipt (or its
+    // refusal) lands, so callers awaiting the return value can tell delivery
+    // from refusal — the fire-and-forget callers below keep ignoring it.
+    let settleOutcome!: (outcome: SendTurnOutcome) => void;
+    const outcome = new Promise<SendTurnOutcome>((resolve) => { settleOutcome = resolve; });
     try {
       const submitPromise = initialGoal
         ? app.SubmitInitialGoalToTabWithID(
@@ -5325,21 +5378,30 @@ export function useController() {
         dispatchTo(tabId, { type: "send_confirmed", submissionId });
         const ids = Array.isArray(drained) ? drained : [];
         if (ids.length) dispatchTo(tabId, { type: "approval_drained", ids, epoch: promptEpoch });
-        return;
+        settleOutcome({ confirmed: true, degraded: false });
+        return awaitReceipt ? outcome : undefined;
       }
       void submitPromise.then(
         (receipt) => {
-          if (receipt && typeof receipt === "object" && "disposition" in receipt && receipt.disposition === "management_handled") return void dispatchTo(tabId, { type: "management_confirmed", submissionId });
+          if (receipt && typeof receipt === "object" && "disposition" in receipt && receipt.disposition === "management_handled") {
+            dispatchTo(tabId, { type: "management_confirmed", submissionId });
+            settleOutcome({ confirmed: true, degraded: false });
+            return;
+          }
           if (receipt && typeof receipt === "object" && "turnId" in receipt && typeof receipt.turnId === "string") {
             dispatchTo(tabId, { type: "turn_admitted", turnId: receipt.turnId, submissionId });
           }
           dispatchTo(tabId, { type: "send_confirmed", submissionId });
+          settleOutcome({ confirmed: true, degraded: false });
         },
         (error) => {
           // 任务461-P6: "turn already running" degrades to the guidance queue;
           // every other rejection keeps the Send-failed face (P3 resend).
           void degradeRunningTurnSubmit(tabId, submissionId, display, submit, error).then((degraded) => {
             if (!degraded) rejectTurnSubmission(tabId, submissionId, error);
+            settleOutcome(degraded
+              ? { confirmed: false, degraded: true }
+              : { confirmed: false, degraded: false, error: errorMessage(error) });
           });
         },
       );
@@ -5347,10 +5409,25 @@ export function useController() {
       const degraded = await degradeRunningTurnSubmit(tabId, submissionId, display, submit, error);
       if (!degraded) {
         rejectTurnSubmission(tabId, submissionId, error);
+        settleOutcome({ confirmed: false, degraded: false, error: errorMessage(error) });
         throw error;
       }
+      settleOutcome({ confirmed: false, degraded: true });
     }
+    // Without awaitReceipt the historic contract holds: resolved as soon as
+    // the submission was issued — the receipt/refusal chain keeps running on
+    // its own (the outcome promise is settled for nobody, which is fine).
+    return awaitReceipt ? outcome : undefined;
   }, [bumpCancelHydrateSeq, degradeRunningTurnSubmit, dispatchTo, rejectTurnSubmission]);
+
+  // tl1342②: resend one failed submission and, when its admission receipt
+  // confirms, drop the stale failed bubble from the transcript (the fresh
+  // bubble the resend appended stays). App layer owns the toast feedback.
+  const resendFailedToTab = useCallback(async (tabId: string, failedTurn: number, displayText: string, submitText = displayText): Promise<SendTurnOutcome> => {
+    const outcome = await sendToTab(tabId, displayText, submitText, undefined, undefined, undefined, true);
+    if (outcome?.confirmed) dispatchTo(tabId, { type: "resent_failed_turn", turn: failedTurn });
+    return outcome ?? { confirmed: false, degraded: false };
+  }, [dispatchTo, sendToTab]);
 
   const recoverDeliveryToTab = useCallback(async (tabId: string, displayText: string, submitText = displayText) => {
     if (!tabId) throw new Error(t("composer.workspaceStarting"));
@@ -6818,7 +6895,7 @@ export function useController() {
     itemsForTab: (tabId: string) => statesRef.current.get(tabId)?.items,
     liveStore,
     activeTabId,
-    send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, queueGuidanceBubble, notice,
+    send, sendToTab, resendFailedToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, queueGuidanceBubble, notice,
     cancel, cancelForTab, approve, approveForTab, isPromptCurrentForTab, resolvePlanDecision, resolvePlanDecisionForTab,
     resolveRecovery, resolveRecoveryForTab, answerQuestion, answerQuestionForTab,
     notifyAskInteraction, notifyAskInteractionForTab, notifyAskActivity, notifyAskActivityForTab,
