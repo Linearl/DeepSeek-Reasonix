@@ -1730,7 +1730,7 @@ export const en = {
   "recovery.noticeHeadSwitched": "Opened the newest version of this conversation. Other saved versions are available in View versions.",
   "recovery.noticeRepairStillOverWindow": "This repair refilled the checkpoint, but the conversation is still over the model window — run repair again with Diet checked to strip images and fold old messages.",
   "recovery.noticeSelectedHeadBehind": "Opened an older version ({selectedMessages} messages), while another version is longer and newer ({otherMessages} messages); switch in View versions if that is the chain you want.",
-  "recovery.noticeMaterializationLag": "{gap} messages of this conversation are not materialized into the local transcript (events: {eventChain}, transcript: {materialized}); right-click the session and choose the repair-conversation action.",
+  "recovery.noticeMaterializationLag": "{gap} messages of this conversation are not materialized into the local transcript (events: {eventChain}, transcript: {materialized}); find this conversation in Settings → Storage & paths → Session versions and copies, expand it and run repair.",
   "recovery.noticeSelfHealed": "This conversation was repaired automatically and is usable again ({actions}); the previous version is kept and reversible from View versions.",
   "recovery.noticeCompactFailStreak": "Context compaction has failed {streak} times in a row and the projection may overflow the window; reopening the conversation lets the local self-heal strip images and fold old messages.",
   "recovery.noticeHeadSelected": "This version is now the current version of the conversation.",

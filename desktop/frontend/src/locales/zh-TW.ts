@@ -1362,7 +1362,7 @@ export const zhTW: Record<DictKey, string> = {
   "recovery.noticeHeadSwitched": "已開啟該會話的最新版本，其他儲存版本可在「查看版本」中查看。",
   "recovery.noticeRepairStillOverWindow": "這次修復把檢查點補了回來，但會話仍超出模型視窗——請再跑一次修復並勾選 Diet（減肥），剝圖折疊後即可恢復可用。",
   "recovery.noticeSelectedHeadBehind": "已開啟一個較舊的版本（{selectedMessages} 條），另一版本更長且更新（{otherMessages} 條）；如需那條鏈，可在「查看版本」中手動切換。",
-  "recovery.noticeMaterializationLag": "本會話有 {gap} 條歷史未落入本地記錄（事件日誌 {eventChain} 條，本地記錄 {materialized} 條）；可右鍵該會話選擇「修復對話」。",
+  "recovery.noticeMaterializationLag": "本會話有 {gap} 條歷史未落入本地記錄（事件日誌 {eventChain} 條，本地記錄 {materialized} 條）；可在「設定 → 儲存與路徑 → 工作階段版本與副本」面板中找到該會話，展開後執行「修復」。",
   "recovery.noticeSelfHealed": "工作階段已自動修復並恢復可用（{actions}）；原版本保留，可在「查看版本」中切回。",
   "recovery.noticeCompactFailStreak": "上下文壓縮已連續失敗 {streak} 次，投影可能超出模型視窗；重新開啟本工作階段可讓本地自癒剝圖並摺疊舊訊息。",
   "recovery.noticeHeadSelected": "已將此版本設為目前版本。",
