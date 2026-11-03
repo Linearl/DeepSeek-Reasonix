@@ -362,6 +362,7 @@ func (s *Service) persistCheckpoint(runID string, cd *CheckpointData) {
 	for id, ns := range cd.Nodes {
 		if nr := rec.nodes[id]; nr != nil {
 			ns.LastEventState = string(nr.state)
+			ns.ChangedAt = nr.changedAt // tl1336：与六态同源同刻落盘，恢复时回填
 			if ns.Detail == "" {
 				ns.Detail = nr.detail
 			}
@@ -587,6 +588,7 @@ func (s *Service) finishRun(runID string, report *WorkflowReport, runErr error) 
 		for id, ns := range rec.lastCP.Nodes {
 			if nr := rec.nodes[id]; nr != nil {
 				ns.LastEventState = string(nr.state)
+				ns.ChangedAt = nr.changedAt // tl1336：同 persistCheckpoint
 				if ns.Detail == "" {
 					ns.Detail = nr.detail
 				}
@@ -641,6 +643,10 @@ func (s *Service) restoreFromDisk() {
 				state:    event.WorkflowNodeState(ns.LastEventState),
 				round:    ns.Round,
 				detail:   ns.Detail,
+				// tl1336：回填落盘时的六态变迁时刻（旧快照/无事件节点为零值，
+				// 视图侧按「未知」省略）。startedAt 刻意不回填：续跑重放终态事件
+				// 会把 changedAt 刷成重放时刻，配旧起点会把停机时长算进单节点耗时。
+				changedAt: ns.ChangedAt,
 			}
 			if nr.state == "" {
 				// skip 等无事件节点：六态缺省 queued（面板 queued-gray 语义）。
@@ -772,14 +778,19 @@ func (s *Service) runViewLocked(rec *RunRecord) builtin.WorkflowRunView {
 		if nr == nil {
 			continue
 		}
-		view.Nodes = append(view.Nodes, builtin.WorkflowRunNodeState{
-			NodeID:    id,
-			NodeType:  nr.nodeType,
-			State:     string(nr.state),
-			Round:     nr.round,
-			Detail:    nr.detail,
-			ChangedAt: nr.changedAt.UnixMilli(),
-		})
+		node := builtin.WorkflowRunNodeState{
+			NodeID:   id,
+			NodeType: nr.nodeType,
+			State:    string(nr.state),
+			Round:    nr.round,
+			Detail:   nr.detail,
+		}
+		// 零值 = 时刻未知（tl1336 之前的旧快照恢复 / 无事件节点）：留 0 由
+		// omitempty 省略，与上方 EndedAt 同口径，不外露 Go 零值毫秒数。
+		if !nr.changedAt.IsZero() {
+			node.ChangedAt = nr.changedAt.UnixMilli()
+		}
+		view.Nodes = append(view.Nodes, node)
 	}
 	if rec.Report != nil {
 		view.Report = reportView(rec.Report)

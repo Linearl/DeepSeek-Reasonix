@@ -42,10 +42,15 @@ type nodeSnapshot struct {
 	// LastEventState 是该节点最后一次六态事件（服务层 recordNode 记录），
 	// 恢复时灌回面板渲染；skip 节点无事件故为空（保持 queued-gray，与原 run 一致）。
 	LastEventState string `json:"lastEventState,omitempty"`
+	// ChangedAt 是该节点最后一次六态事件的时刻（服务层 recordNode 记录，与
+	// LastEventState 同源同刻；tl1336）。恢复时回填运行登记，workflow_status
+	// 与面板读到落盘时的真实时刻而非 Go 零值（UnixMilli=-62135596800000）。
+	// 无事件节点与 tl1336 之前的旧快照为零值（omitzero 不落盘），视图侧按「未知」省略。
+	ChangedAt time.Time `json:"changedAt,omitzero"`
 	// Status 是引擎调度态序列化："done" | "skipped"（其余值不落盘不恢复）。
 	Status string `json:"status"`
 	// Terminal 是终态类别："passed" | "gate_failed" | "skipped"。
-	Terminal string `json:"terminal,omitempty"`
+	Terminal   string `json:"terminal,omitempty"`
 	GatePassed *bool  `json:"gatePassed,omitempty"`
 	Round      int    `json:"round,omitempty"`
 	Detail     string `json:"detail,omitempty"`
