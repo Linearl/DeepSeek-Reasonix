@@ -169,4 +169,49 @@ for (const unavailable of [false, true]) {
   await ui.cleanup();
   await act(async () => { pending.resolve({ args: '{"command":"UNMOUNTED"}', output: "" }); await settle(); });
 }
+
+// tl1365 交互①②③: 点卡只展开结果；命令区默认 3 行截断（--clamped），由
+// 「展开命令」二级按钮全量展开、再点收起；结果块渲染在命令块之前。
+{
+  const ui = await mount(card());
+  try {
+    assert.equal(document.querySelector(".tool__command"), null, "collapsed state mounts no command");
+    await ui.expand();
+    const body = document.querySelector(".tool__body")!;
+    const command = document.querySelector(".tool__command")!;
+    assert.ok(body.textContent?.includes("OUTPUT_STAYS_VISIBLE"), "card click reveals the result");
+    const outputBlock = body.querySelector(":scope > .code-block");
+    assert.ok(outputBlock, "result block mounted");
+    assert.notEqual(outputBlock.compareDocumentPosition(command) & Node.DOCUMENT_POSITION_FOLLOWING, 0, "result renders before the command block");
+    assert.ok(command.classList.contains("tool__command--clamped"), "default command is 3-line clamped");
+    assert.equal(command.querySelector("pre")?.style.maxHeight, "", "clamped command carries no scroll maxHeight");
+    const toggle = command.querySelector<HTMLButtonElement>(".tool__command-toggle");
+    assert.ok(toggle, "command toggle present");
+    assert.equal(toggle.getAttribute("aria-expanded"), "false", "toggle announces collapsed");
+    await ui.click(".tool__command-toggle");
+    const expandedCommand = document.querySelector(".tool__command")!;
+    assert.ok(!expandedCommand.classList.contains("tool__command--clamped"), "expand command removes the clamp");
+    assert.equal(expandedCommand.querySelector("pre")?.style.maxHeight, "240px", "expanded command restores the scroll bound");
+    assert.equal(expandedCommand.querySelector(".tool__command-toggle")?.getAttribute("aria-expanded"), "true", "toggle announces expanded");
+    await ui.click(".tool__command-toggle");
+    assert.ok(document.querySelector(".tool__command")?.classList.contains("tool__command--clamped"), "second click collapses back to 3 lines");
+  } finally { await ui.cleanup(); }
+}
+
+// tl1365 交互④: 输出「显示全部N行」与命令三态互不影响。
+{
+  const manyLines = Array.from({ length: 30 }, (_, i) => `line-${i + 1}`).join("\n");
+  const ui = await mount(card({ output: manyLines }));
+  try {
+    await ui.expand();
+    assert.ok(document.querySelector(".tool__command")?.classList.contains("tool__command--clamped"), "default output leaves the command clamped");
+    await ui.click(".tool__showall");
+    assert.ok(document.querySelector(".tool__body")?.textContent?.includes("line-30"), "showAll reveals the full output");
+    assert.ok(document.querySelector(".tool__command")?.classList.contains("tool__command--clamped"), "showAll leaves the command state untouched");
+    await ui.click(".tool__command-toggle");
+    assert.ok(!document.querySelector(".tool__command")?.classList.contains("tool__command--clamped"), "command expand leaves showAll untouched");
+    assert.ok(document.querySelector(".tool__body")?.textContent?.includes("line-30"), "output stays fully shown across the command toggle");
+  } finally { await ui.cleanup(); }
+}
 console.log("PASS shell command visibility, exact copy, archived retry and identity fencing");
+console.log("PASS tl1365 result-first split, 3-line clamped command toggle, independent showAll");
