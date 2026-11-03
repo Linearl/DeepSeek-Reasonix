@@ -60,10 +60,13 @@ func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (agent.Steer
 		}
 		materialized, images, block, materializeErr := applyInboxReferences(env)
 		if materializeErr != nil {
-			return agent.SteerPayload{}, materializeErr
+			// tl1347: the body itself was readable — wrap it so the
+			// unapplied-steer notice shows the user's original guidance
+			// instead of a "(body load failed)" placeholder.
+			return agent.SteerPayload{}, &agent.SteerBodyError{Body: text, Err: materializeErr}
 		}
 		if block != "" {
-			return agent.SteerPayload{}, fmt.Errorf("frozen reference unavailable: %s", block)
+			return agent.SteerPayload{}, &agent.SteerBodyError{Body: text, Err: fmt.Errorf("frozen reference unavailable: %s", block)}
 		}
 		// 任务870: frozen images ride the injected steer message so the next
 		// provider request carries them. Admission is capability-gated in
@@ -75,7 +78,9 @@ func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (agent.Steer
 			if errors.Is(err, sessioninbox.ErrNotFound) {
 				return agent.SteerPayload{}, agent.ErrSteerWithdrawn
 			}
-			return agent.SteerPayload{}, err
+			// tl1347: same body passthrough — the consume transition failed,
+			// not the body read.
+			return agent.SteerPayload{}, &agent.SteerBodyError{Body: text, Err: err}
 		}
 		// Task 309: the mail just entered the recipient's context — the read
 		// level. Best-effort: a receipt failure must not fail the injection,

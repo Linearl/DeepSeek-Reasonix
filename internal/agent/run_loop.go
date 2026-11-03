@@ -239,7 +239,15 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 		} else if itemID != "" {
 			// Loader failed after dequeue: durable entry stays for inspection
 			// (unapplied path marks uncertain + pause via the notice sink).
-			a.RecordUnappliedSteer("(body load failed)", itemID)
+			// tl1347: the loader may have carried the user's original body on
+			// the payload (SteerBodyError); the literal covers the windows
+			// where no body could be read (store error, empty envelope) so
+			// the notice never presents a blank guidance.
+			text := payload.Text
+			if strings.TrimSpace(text) == "" {
+				text = "(body load failed)"
+			}
+			a.RecordUnappliedSteer(text, itemID)
 		}
 		schemas := a.providerToolSchemas()
 		prefixShape := a.capturePrefixShape(schemas)
