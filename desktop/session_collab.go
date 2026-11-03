@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -91,6 +92,12 @@ type sessionCollabPump struct {
 	dormantMu      sync.Mutex
 	dormantProbeAt time.Time
 	dormant        []dormantQueuedTarget
+
+	// tl1340: retention-WARN dedup state — one stale-pending WARN per message
+	// per threshold window (the map is nil until the first stale hit, and is
+	// dropped entirely when the mailbox drains).
+	staleWarnedMu sync.Mutex
+	staleWarned   map[string]time.Time
 }
 
 // collabRetryState is one contact's consecutive-failure chain: the count
@@ -310,6 +317,12 @@ func (p *sessionCollabPump) drainOnce() {
 	// Task 221: re-arm the drain merge before any delivery, so a settings
 	// change lands with the next pass and the queued merge sees it.
 	syncCollabInboxMergeMode()
+	// tl1340: with the admission gate on, the retention sweep rides every
+	// pass — stranded pending mail becomes a searchable WARN without waiting
+	// for someone to diff mailbox files. Gate off ⇒ no sweep, byte-identical.
+	if collabAdmissionGateEnabled() {
+		p.sweepStaleMailPending(time.Now())
+	}
 	result := p.drain(true)
 	if result.Delivered == 0 && result.Refused == 0 {
 		// 任务 569: the idle-turn bridge still gets its pass on quiet ticks —
@@ -1033,7 +1046,9 @@ type sessionCollabTarget struct {
 type collabDelivery struct {
 	// enqueue hands one rendered message to the target. steered reports whether
 	// a steer actually injected; err means the target could not take it.
-	enqueue func(msg sessioncollab.MailMessage, body string) (steered bool, err error)
+	// forceFollowup (tl1340) is the admission gate's inferred verdict: the
+	// message must land as a queued follow-up, never a mid-turn steer.
+	enqueue func(msg sessioncollab.MailMessage, body string, forceFollowup bool) (steered bool, err error)
 	// notify writes a status note back to the sender (once per key).
 	notify func(msg sessioncollab.MailMessage, kind, text string)
 	// notifySilent (任务894) is the 无需行动 tier's demoted channel: a settle
@@ -1066,6 +1081,20 @@ type collabDelivery struct {
 	// enqueue/steer actually succeeded, so the skip can never drop an
 	// undelivered message. Empty return keeps the legacy behavior.
 	settledReceipt func(msg sessioncollab.MailMessage) string
+	// admit (tl1340) is the admission code gate: nil keeps the legacy path
+	// byte-identical. Non-nil, every claimed message is judged by the policy
+	// table BEFORE any semantic step — explicit keeps its delivery intent,
+	// inferred is forced to a queued follow-up, ignore settles terminally
+	// without injection. The gate never reads the message body for anything
+	// but the structural @-mention check (trust boundary: content does not
+	// change permissions).
+	admit func(msg sessioncollab.MailMessage) sessioncollab.AdmissionDecision
+	// observ (tl1340) turns on the structured decision log. It rides the same
+	// switch as admit; false emits nothing beyond today's log lines.
+	observ bool
+	// topicLabel is the target topic id for the decision records' topic field
+	// (session is runCollabDelivery's contactID — the mail coordinate).
+	topicLabel string
 }
 
 // deliverToTarget hands every pending message to the target and acks only what
@@ -1079,9 +1108,23 @@ func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (deliver
 		return 0, 0, nil
 	}
 	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit())
+	// tl1340: resolve the gate ONCE per target pass — roster and rosters are
+	// snapshots; every message in this pass is judged against the same
+	// policy inputs (determinism within a pass).
+	gateOn := collabAdmissionGateEnabled()
+	var admit func(sessioncollab.MailMessage) sessioncollab.AdmissionDecision
+	var allow, deny []string
+	var roster map[string]sessioncollab.Identity
+	if gateOn {
+		allow, deny = collabAdmissionLists()
+		roster = p.app.collabRosterIndex()
+		admit = func(msg sessioncollab.MailMessage) sessioncollab.AdmissionDecision {
+			return resolveCollabAdmissionDecision(msg, roster, allow, deny)
+		}
+	}
 	return runCollabDelivery(mail, target.contactID, collabDelivery{
-		enqueue: func(msg sessioncollab.MailMessage, body string) (bool, error) {
-			return p.deliverOne(target, msg, body)
+		enqueue: func(msg sessioncollab.MailMessage, body string, forceFollowup bool) (bool, error) {
+			return p.deliverOne(target, msg, body, forceFollowup)
 		},
 		notify: p.notifySenderOnce,
 		// 任务894：无需行动回执（steer 降级等）走 UI 通知层，不注入模型。
@@ -1104,6 +1147,12 @@ func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (deliver
 		// this sender for the grant window — the task-source registration the
 		// cascade delegate resolves later.
 		onDelivered: func(msg sessioncollab.MailMessage) { registerCascadeGrant(msg.To, msg.From) },
+		// tl1340: the admission code gate + structured decision log ride the
+		// experimental_collab_admission_gate switch; admit=nil/observ=false
+		// keeps the legacy path byte-identical.
+		admit:      admit,
+		observ:     gateOn,
+		topicLabel: target.topicID,
 	})
 }
 
@@ -1155,6 +1204,21 @@ func (a *App) inboxDispatchExhausted(info control.InboxDispatchExhausted) {
 	}); err != nil {
 		log.Printf("[session-collab] dispatch exhaustion receipt for %s: %v", info.CollabMsgID, err)
 	}
+	// tl1340 ③: the queued_followup → exhausted moment gets its structured
+	// decision record (why this message will not move, and for whom).
+	// Gate-off passes emit nothing new.
+	if collabAdmissionGateEnabled() {
+		lastErr := ""
+		if info.Err != nil {
+			lastErr = info.Err.Error()
+		}
+		logDeliveryDecision(slog.LevelWarn, "degraded", "open_retry_exhausted", info.CollabMailTo, "",
+			"msg_id", info.CollabMsgID,
+			"source", info.Source,
+			"item_id", info.ItemID,
+			"attempts", info.Attempts,
+			"err", lastErr)
+	}
 }
 
 // notice routes one settle notice by the action tier of the outcome it
@@ -1204,6 +1268,10 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 		if d.recordReceipt != nil {
 			d.recordReceipt(msg, sessioncollab.ReceiptRefusedHop, "collaboration chain hop limit reached")
 		}
+		if d.observ {
+			// tl1340: every skip leaves a searchable trail (no log blind spots).
+			logDeliveryDecision(slog.LevelWarn, "skipped", "refused_hop", contactID, d.topicLabel, "msg_id", msg.ID, "from", msg.From)
+		}
 		acked = append(acked, msg.ID)
 		refused++
 	}
@@ -1219,9 +1287,42 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 				// Silent on purpose (任务461 P10① precedent): a failure notice
 				// would feed retry loops, and nothing failed here.
 				log.Printf("[session-collab] skipping re-delivery of %s: already settled by a prior pass (%s)", msg.ID, outcome)
+				if d.observ {
+					logDeliveryDecision(slog.LevelInfo, "skipped", "already_settled:"+outcome, contactID, d.topicLabel, "msg_id", msg.ID, "from", msg.From)
+				}
 				acked = append(acked, msg.ID)
 				delivered++
 				continue
+			}
+		}
+		// tl1340: the admission code gate judges BEFORE any semantic step —
+		// a policy-ignored message never reaches provenance verification, and
+		// the model layer only ever receives an already-decided message.
+		// d.admit == nil keeps the legacy order byte-identical.
+		forceFollowup := false
+		var dec sessioncollab.AdmissionDecision
+		if d.admit != nil {
+			dec = d.admit(msg)
+			switch dec.Verdict {
+			case sessioncollab.AdmissionIgnore:
+				// Terminal policy refusal: settle with the ignored_admission
+				// receipt, NO sender notice — retrying cannot change the
+				// verdict (trust boundary: neither content nor retries change
+				// permissions), and a notice would only feed a retry loop.
+				// The WARN + receipt are the searchable trail.
+				if d.recordReceipt != nil {
+					d.recordReceipt(msg, sessioncollab.ReceiptIgnoredAdmission, "admission policy: "+dec.Rule)
+				}
+				if d.observ {
+					logAdmissionDecision(slog.LevelWarn, "skipped", "policy_ignore", contactID, d.topicLabel, msg.ID, dec)
+				}
+				acked = append(acked, msg.ID)
+				refused++
+				continue
+			case sessioncollab.AdmissionInferred:
+				// Deliverable, but never mid-turn: whatever the delivery mode
+				// asked for, this message lands as a queued follow-up.
+				forceFollowup = true
 			}
 		}
 		effectiveHop, verr := d.deriveHop(msg)
@@ -1238,11 +1339,21 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 				// to see it by id, not only as a note that landed unread.
 				d.recordReceipt(msg, kind, verr.Error())
 			}
+			if d.observ {
+				logDeliveryDecision(slog.LevelWarn, "skipped", kind, contactID, d.topicLabel, "msg_id", msg.ID, "from", msg.From, "err", verr.Error())
+			}
 			acked = append(acked, msg.ID)
 			refused++
 			continue
 		}
-		steered, derr := d.enqueue(msg, d.render(msg, effectiveHop))
+		body := d.render(msg, effectiveHop)
+		if d.admit != nil {
+			// tl1340: the model layer only receives the policy REFERENCE —
+			// version + rule count + this message's verdict. The rules
+			// themselves live solely in the table (anti-dual-source-of-truth).
+			body = admissionPolicyReference(dec) + "\n" + body
+		}
+		steered, derr := d.enqueue(msg, body, forceFollowup)
 		if derr != nil {
 			// 判定放决策点：既识别 deliverOne 包装后的 sentinel，也兜住任何
 			// 直接漏出的原始冲突（生产两条路径同语义，测试夹具亦可直注）。
@@ -1252,6 +1363,9 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 				// 5-6s 一次 conflict 重投风暴）。
 				if d.recordReceipt != nil {
 					d.recordReceipt(msg, sessioncollab.ReceiptQueuedFollowup, "duplicate: target inbox already holds identical content (idempotent resend)")
+				}
+				if d.observ {
+					logDeliveryDecision(slog.LevelInfo, "skipped", "duplicate_idempotent", contactID, d.topicLabel, "msg_id", msg.ID, "from", msg.From)
 				}
 				acked = append(acked, msg.ID)
 				delivered++
@@ -1265,6 +1379,9 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 				// so (failed_retrying) and a later success overwrites it.
 				d.recordReceipt(msg, sessioncollab.ReceiptFailedRetrying, derr.Error())
 			}
+			if d.observ {
+				logDeliveryDecision(slog.LevelWarn, "failed_retrying", "enqueue_error", contactID, d.topicLabel, "msg_id", msg.ID, "from", msg.From, "err", derr.Error())
+			}
 			note(derr)
 			continue
 		}
@@ -1272,17 +1389,39 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 			// 任务 570 c1: the settle outcome. steered=true means the steer
 			// actually injected mid-turn; false means it landed as a queued
 			// follow-up (normal for delivery=followup, a degradation for steer).
+			// tl1340: a gate-forced follow-up names the policy cell in the
+			// receipt detail, so get_message_status answers WHY the steer mode
+			// did not inject.
 			if steered {
 				d.recordReceipt(msg, sessioncollab.ReceiptInjected, "")
+			} else if forceFollowup {
+				d.recordReceipt(msg, sessioncollab.ReceiptQueuedFollowup, "admission policy: "+dec.Rule)
 			} else {
 				d.recordReceipt(msg, sessioncollab.ReceiptQueuedFollowup, "")
 			}
 		}
-		if !steered && msg.Delivery == string(sessioncollab.DeliverySteer) {
+		if d.observ {
+			// tl1340 ①: the injection success record names its trigger. A
+			// degraded steer is NOT re-recorded here — deliverOne's
+			// logSteerDegraded already emitted the structured record with the
+			// admission disposition (one event, one decision record).
+			if steered {
+				logAdmissionDecision(slog.LevelInfo, "injected", "delivery_steer", contactID, d.topicLabel, msg.ID, dec, "from", msg.From)
+			} else if forceFollowup {
+				// The gate forced the queue: report the policy as the trigger.
+				logAdmissionDecision(slog.LevelInfo, "queued", "admission_inferred_forced_followup", contactID, d.topicLabel, msg.ID, dec, "from", msg.From)
+			} else if msg.Delivery != string(sessioncollab.DeliverySteer) {
+				logDeliveryDecision(slog.LevelInfo, "queued", "delivery_followup", contactID, d.topicLabel, "msg_id", msg.ID, "from", msg.From)
+			}
+		}
+		if !steered && msg.Delivery == string(sessioncollab.DeliverySteer) && !forceFollowup {
 			// 任务894：steer 降级 = queued_followup，属无需行动侧——消息已在
 			// 目标持久队列、空闲开轮桥接管，发送方无需做任何事。通知降级到
 			// UI 通知层 + 570 回执（get_message_status 可查），不再作为独立
 			// 消息注入发送方模型（省一个纯空转轮次）。
+			// tl1340：门控强制 followup（inferred）不发本通知——降级原因是
+			// 策略判定而非「目标不可注入」，回执 detail 已带策略出处，通知
+			// 文案的旧理由会误导发送方去重试（重试不改变判定）。
 			d.notice(msg, "steer_degraded", sessioncollab.ReceiptQueuedFollowup, sessionCollabSteerDegradedText(msg))
 		}
 		acked = append(acked, msg.ID)
@@ -1477,8 +1616,10 @@ func collabAdmissionErr(err error) error {
 // deliverOne hands one message to the target. It reports whether a steer
 // actually injected, so the caller can tell the sender when it degraded. A
 // detached target is reached through its controller — there is no visible tab
-// to address by id.
-func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessioncollab.MailMessage, body string) (bool, error) {
+// to address by id. forceFollowup (tl1340) is the admission gate's inferred
+// verdict: the message lands as a queued follow-up regardless of its delivery
+// mode — no mid-turn steer is attempted.
+func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessioncollab.MailMessage, body string, forceFollowup bool) (bool, error) {
 	// Task 309: the idempotency key defaults to content-based (from, thread,
 	// body) — a retried send mints a fresh msg.ID but must dedup onto the
 	// original delivery, and the pump's own redelivery of the same mail lands
@@ -1498,7 +1639,7 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 		if target.ctrl == nil {
 			return false, fmt.Errorf("detached runtime has no controller")
 		}
-		if msg.Delivery != string(sessioncollab.DeliverySteer) {
+		if msg.Delivery != string(sessioncollab.DeliverySteer) || forceFollowup {
 			_, err := p.app.enqueueInboxWithControllerSource(target.tabID, target.ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 			return false, collabAdmissionErr(err)
 		}
@@ -1509,6 +1650,7 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 		steered := sessionCollabReceiptSteered(receipt.Disposition)
 		if !steered {
 			log.Printf("[session-collab] steer degraded to follow-up for %s (disposition=%s)", msg.To, receipt.Disposition)
+			p.logSteerDegraded(target, msg, receipt.Disposition)
 		}
 		return steered, nil
 	}
@@ -1522,7 +1664,7 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 	if ctrlErr != nil {
 		return false, ctrlErr
 	}
-	if msg.Delivery != string(sessioncollab.DeliverySteer) && !target.activeTab {
+	if forceFollowup || (msg.Delivery != string(sessioncollab.DeliverySteer) && !target.activeTab) {
 		_, err := p.app.enqueueInboxWithControllerSource(target.tabID, ctrl, sessioninbox.IntentFollowup, body, body, nil, idem, false, "", "", source, msg.ReceiptRequested, msg.ID, msg.To)
 		return false, collabAdmissionErr(err)
 	}
@@ -1541,8 +1683,21 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 	steered := sessionCollabReceiptSteered(receipt.Disposition)
 	if !steered {
 		log.Printf("[session-collab] steer degraded to follow-up for %s (disposition=%s)", msg.To, receipt.Disposition)
+		p.logSteerDegraded(target, msg, receipt.Disposition)
 	}
 	return steered, nil
+}
+
+// logSteerDegraded is the tl1340 structured record for an admission that
+// degraded from a steer to a queued follow-up inside deliverOne (disposition
+// detail lives here; the caller's degraded record names the outcome class).
+// Gate-off pump passes emit nothing new.
+func (p *sessionCollabPump) logSteerDegraded(target sessionCollabTarget, msg sessioncollab.MailMessage, disposition string) {
+	if !collabAdmissionGateEnabled() {
+		return
+	}
+	logDeliveryDecision(slog.LevelWarn, "degraded", "steer_admission_degraded", target.contactID, target.topicID,
+		"msg_id", msg.ID, "from", msg.From, "disposition", disposition)
 }
 
 // sessionCollabSteerDegradedText 描述与实现一致的降级后果（任务579④：旧文案

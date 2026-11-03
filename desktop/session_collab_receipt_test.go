@@ -79,7 +79,7 @@ func TestReceiptRecordsInjectedSteer(t *testing.T) {
 	id := deliverOnePlain(t, mail, sessioncollab.MailMessage{From: "sc_from", To: target, Body: "wake", Delivery: "steer"})
 	d, _, _, _ := collabTestDelivery(t, mail, nil)
 	// 把 enqueue 换成「注入成功」：steered=true。
-	d.enqueue = func(sessioncollab.MailMessage, string) (bool, error) { return true, nil }
+	d.enqueue = func(sessioncollab.MailMessage, string, bool) (bool, error) { return true, nil }
 	d = receiptTestDelivery(d, mail)
 	if _, _, err := runCollabDelivery(mail, target, d); err != nil {
 		t.Fatal(err)

@@ -40,7 +40,7 @@ func collabTestDelivery(t *testing.T, mail *sessioncollab.MailStore, fail func(s
 	notices := &[]string{}
 	silentNotices := &[]string{}
 	d := collabDelivery{
-		enqueue: func(msg sessioncollab.MailMessage, body string) (bool, error) {
+		enqueue: func(msg sessioncollab.MailMessage, body string, forceFollowup bool) (bool, error) {
 			if fail != nil {
 				if err := fail(msg); err != nil {
 					return false, err
@@ -330,7 +330,7 @@ func TestDeriveHopRefusalsAreClassifiedByCause(t *testing.T) {
 			}
 			var kind, text string
 			d := collabDelivery{
-				enqueue: func(sessioncollab.MailMessage, string) (bool, error) {
+				enqueue: func(sessioncollab.MailMessage, string, bool) (bool, error) {
 					t.Fatal("a refused message must not reach the target")
 					return false, nil
 				},

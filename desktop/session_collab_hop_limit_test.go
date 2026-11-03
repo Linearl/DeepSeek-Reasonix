@@ -66,7 +66,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	deliver := func(contactID string) (string, string, int, int) {
 		var kind, text string
 		d := collabDelivery{
-			enqueue:   func(msg sessioncollab.MailMessage, body string) (bool, error) { return false, nil },
+			enqueue:   func(msg sessioncollab.MailMessage, body string, forceFollowup bool) (bool, error) { return false, nil },
 			notify:    func(msg sessioncollab.MailMessage, k, note string) { kind, text = k, note },
 			deriveHop: pump.verifyHop,
 			render:    sessionCollabDeliveryText,

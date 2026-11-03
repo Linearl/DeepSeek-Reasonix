@@ -65,7 +65,7 @@ func TestSettledReceiptSkipsRedispatchAfterRestart(t *testing.T) {
 	enqueued := 0
 	pump := &sessionCollabPump{}
 	d := collabDelivery{
-		enqueue: func(sessioncollab.MailMessage, string) (bool, error) {
+		enqueue: func(sessioncollab.MailMessage, string, bool) (bool, error) {
 			enqueued++
 			return false, nil
 		},
@@ -104,7 +104,7 @@ func TestUnsettledMessageStillDeliversAfterRestart(t *testing.T) {
 	enqueued := 0
 	pump := &sessionCollabPump{}
 	d := collabDelivery{
-		enqueue: func(sessioncollab.MailMessage, string) (bool, error) {
+		enqueue: func(sessioncollab.MailMessage, string, bool) (bool, error) {
 			enqueued++
 			return false, nil // 落为 queued follow-up（降级语义），消息不丢
 		},
@@ -147,7 +147,7 @@ func TestFailedRetryingReceiptStillRedelivers(t *testing.T) {
 	enqueued := 0
 	pump := &sessionCollabPump{}
 	d := collabDelivery{
-		enqueue: func(sessioncollab.MailMessage, string) (bool, error) {
+		enqueue: func(sessioncollab.MailMessage, string, bool) (bool, error) {
 			enqueued++
 			return false, nil
 		},
@@ -200,7 +200,7 @@ func TestNilSettledReceiptKeepsLegacyDelivery(t *testing.T) {
 	enqueued := 0
 	pump := &sessionCollabPump{}
 	d := collabDelivery{
-		enqueue: func(sessioncollab.MailMessage, string) (bool, error) {
+		enqueue: func(sessioncollab.MailMessage, string, bool) (bool, error) {
 			enqueued++
 			return false, nil
 		},
