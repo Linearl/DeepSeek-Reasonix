@@ -114,9 +114,24 @@ func cursorMonitorRect() (left, top, right, bottom int32, err error) {
 // its IDXGIOutput (both sides are physical pixels in the PMv2 product
 // process, so the handles and rects line up).
 func cursorMonitorHandle() (hmon uintptr, left, top, right, bottom int32, err error) {
+	hmon, info, err := cursorMonitorFromPoint()
+	if err != nil {
+		return 0, 0, 0, 0, 0, err
+	}
+	m := info.rcMonitor
+	return hmon, m.left, m.top, m.right, m.bottom, nil
+}
+
+// cursorMonitorFromPoint resolves the monitor under the current cursor
+// position into its HMONITOR and full MONITORINFOEXW. Shared by the capture
+// paths (which need the HMONITOR for the DXGI duplication match) and the
+// tl 1370 cursor-follow poll (which needs the device identity instead of a
+// capture). The visibility check lives here so every consumer sees the same
+// failure for a zero-size monitor.
+func cursorMonitorFromPoint() (uintptr, screenshotMonitorInfo, error) {
 	var cur screenshotPoint
 	if r, _, callErr := screenshotProcGetCursorPos.Call(uintptr(unsafe.Pointer(&cur))); r == 0 {
-		return 0, 0, 0, 0, 0, fmt.Errorf("GetCursorPos failed: %v", callErr)
+		return 0, screenshotMonitorInfo{}, fmt.Errorf("GetCursorPos failed: %v", callErr)
 	}
 	// The point must stay referenced until the syscall returns: LazyProc.Call
 	// keeps no liveness for its arguments, so a collected stack object would
@@ -126,20 +141,40 @@ func cursorMonitorHandle() (hmon uintptr, left, top, right, bottom int32, err er
 	// Pack the POINT as a single uintptr (x low word, y high word) exactly as
 	// the win32 by-value signature expects.
 	packed := uintptr(uint32(uint16(cur.x)) | (uint32(uint16(cur.y)) << 16))
-	hmon, _, _ = screenshotProcMonitorFromPt.Call(packed, monitorDefaultToNearest)
+	hmon, _, _ := screenshotProcMonitorFromPt.Call(packed, monitorDefaultToNearest)
 	if hmon == 0 {
-		return 0, 0, 0, 0, 0, fmt.Errorf("MonitorFromPoint failed for cursor at (%d,%d)", cur.x, cur.y)
+		return 0, screenshotMonitorInfo{}, fmt.Errorf("MonitorFromPoint failed for cursor at (%d,%d)", cur.x, cur.y)
 	}
 	info := screenshotMonitorInfo{cbSize: monitorInfoHeaderSize}
 	if r, _, callErr := screenshotProcGetMonitorInf.Call(hmon, uintptr(unsafe.Pointer(&info))); r == 0 {
-		return 0, 0, 0, 0, 0, fmt.Errorf("GetMonitorInfo failed: %v", callErr)
+		return 0, screenshotMonitorInfo{}, fmt.Errorf("GetMonitorInfo failed: %v", callErr)
 	}
 	runtime.KeepAlive(info)
 	m := info.rcMonitor
 	if m.right-m.left <= 0 || m.bottom-m.top <= 0 {
-		return 0, 0, 0, 0, 0, fmt.Errorf("monitor at cursor has no visible size (%dx%d)", m.right-m.left, m.bottom-m.top)
+		return 0, screenshotMonitorInfo{}, fmt.Errorf("monitor at cursor has no visible size (%dx%d)", m.right-m.left, m.bottom-m.top)
 	}
-	return hmon, m.left, m.top, m.right, m.bottom, nil
+	return hmon, info, nil
+}
+
+// cursorMonitorKey resolves the monitor under the cursor into a stable
+// identity — the \\.\DISPLAYn device name — plus its geometry, with no
+// capture side effect (tl 1370 cursor-follow). The overlay's follow loop
+// compares device names across polls; a change means the cursor crossed a
+// display boundary and the single-monitor capture must be redone for the
+// new display (WeChat/Snipaste behaviour).
+func cursorMonitorKey() (string, ScreenMetrics, error) {
+	_, info, err := cursorMonitorFromPoint()
+	if err != nil {
+		return "", ScreenMetrics{}, err
+	}
+	m := info.rcMonitor
+	return windows.UTF16ToString(info.szDevice[:]), ScreenMetrics{
+		Width:  int(m.right - m.left),
+		Height: int(m.bottom - m.top),
+		X:      int(m.left),
+		Y:      int(m.top),
+	}, nil
 }
 
 // enumMonitorHandles lists every attached monitor's HMONITOR. The virtual-

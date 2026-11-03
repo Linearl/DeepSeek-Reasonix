@@ -77,6 +77,32 @@ func (a *App) CaptureScreenshotVirtualDesktop() (ScreenShotCapture, error) {
 	return ScreenShotCapture{Path: path, Width: metrics.Width, Height: metrics.Height, X: metrics.X, Y: metrics.Y}, nil
 }
 
+// ScreenCursorMonitor identifies the monitor that currently holds the mouse
+// cursor (tl 1370). Device (a \\.\DISPLAYn name) is the stable identity the
+// overlay's follow loop compares across polls; the geometry rides along for
+// diagnostics only.
+type ScreenCursorMonitor struct {
+	Device string `json:"device"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+// ScreenshotCursorMonitor reports which monitor holds the mouse cursor right
+// now — a pure query with no capture side effect. The overlay polls it while
+// open in single-monitor mode (tl 1370 cursor-follow) and re-captures when
+// the cursor has crossed to another display, mirroring the WeChat/Snipaste
+// behaviour the user pinned as the acceptance baseline. The virtual-desktop
+// capture chain (tl 1088/1130) is untouched by this path.
+func (a *App) ScreenshotCursorMonitor() (ScreenCursorMonitor, error) {
+	device, m, err := cursorMonitorKey()
+	if err != nil {
+		return ScreenCursorMonitor{}, err
+	}
+	return ScreenCursorMonitor{Device: device, X: m.X, Y: m.Y, Width: m.Width, Height: m.Height}, nil
+}
+
 // ReleaseScreenshotCapture removes a capture's temp directory. A missing or
 // empty path is a no-op so a failed capture never leaves the frontend
 // holding an error the user cannot clear.

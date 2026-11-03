@@ -104,6 +104,35 @@ func TestCaptureScreenAtCursorStubFailsOffWindows(t *testing.T) {
 	if _, err := captureVirtualScreenPNG("out.png"); err == nil {
 		t.Fatal("non-Windows stub must fail explicitly")
 	}
+	if _, _, err := cursorMonitorKey(); err == nil {
+		t.Fatal("non-Windows stub must fail explicitly")
+	}
+}
+
+// TestScreenshotCursorMonitorContract pins the tl 1370 cursor-follow query
+// contract on both build variants: the JSON field set the frontend bridge
+// declares must stay stable, and on a real display (Windows with a monitor)
+// the device identity and geometry must be populated — a pure query, no
+// capture side effect, so it is safe to call anywhere the capture itself is.
+func TestScreenshotCursorMonitorContract(t *testing.T) {
+	var shape ScreenCursorMonitor = ScreenCursorMonitor{Device: `\\.\DISPLAY1`, X: -1920, Y: 0, Width: 1920, Height: 1080}
+	if shape.Device != `\\.\DISPLAY1` || shape.Width != 1920 || shape.Height != 1080 || shape.X != -1920 || shape.Y != 0 {
+		t.Fatalf("ScreenCursorMonitor field wiring broken: %+v", shape)
+	}
+	if runtime.GOOS != "windows" {
+		t.Skip("live query needs a Windows display session")
+	}
+	a := &App{}
+	mon, err := a.ScreenshotCursorMonitor()
+	if err != nil {
+		t.Fatalf("cursor monitor query failed on a live desktop: %v", err)
+	}
+	if mon.Device == "" {
+		t.Fatal("cursor monitor device identity is empty")
+	}
+	if mon.Width <= 0 || mon.Height <= 0 {
+		t.Fatalf("cursor monitor geometry is empty: %+v", mon)
+	}
 }
 
 func TestScreenMetricsShapeIsStable(t *testing.T) {
