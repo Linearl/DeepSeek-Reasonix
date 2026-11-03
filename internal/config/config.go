@@ -2417,6 +2417,28 @@ type AgentConfig struct {
 	// "background sessions stay out of the tab bar" see session_collab
 	// background (task 264), which keeps delivery exactly as it was.
 	ExperimentalCollabBackgroundDelivery bool `toml:"experimental_collab_background_delivery"`
+	// ExperimentalCollabAdmissionGate (tl1340) arms the code-level admission
+	// gate on the host collab delivery pump: every claimed message is judged by
+	// the deterministic policy table (internal/sessioncollab/admission.go —
+	// source × list × @mention → explicit/inferred/ignore) BEFORE any model
+	// layer sees it. explicit keeps the message's own delivery intent,
+	// inferred is forced down to a queued follow-up, ignore settles terminally
+	// with an ignored_admission receipt (no sender notice — retrying cannot
+	// change the verdict). The same switch turns on the structured decision
+	// log (delivery_decision/decision_reason/session/topic) and the stale
+	// pending-mail WARN sweep. OFF (default, fork rule 2) keeps the pump
+	// byte-identical to its pre-gate behavior. Live-read per pump pass (the
+	// 264 precedent): the gate only re-routes or declines injection, it never
+	// changes consumption rights, so a settings flip applies from the next
+	// pass without a restart.
+	ExperimentalCollabAdmissionGate bool `toml:"experimental_collab_admission_gate"`
+	// CollabAdmissionAllow / CollabAdmissionDeny are the recipient-maintained
+	// sender contactId rosters the admission gate consults (v1: global for all
+	// targets). Deny wins when a contact appears in both. Empty lists mean
+	// every sender is "none" — the gate still applies its source/mention
+	// rules. Config-only (hand-edited): no settings-UI mirror in this slice.
+	CollabAdmissionAllow []string `toml:"collab_admission_allow"`
+	CollabAdmissionDeny  []string `toml:"collab_admission_deny"`
 	// 任务579: experimental_collab_idle_turn (task 569's switch) is REMOVED —
 	// the idle-turn bridge is always on. User ruling 2026-10-07: "不需要做成
 	// 一个可以开关的特性，就应该始终打开". The only remaining gate is the
