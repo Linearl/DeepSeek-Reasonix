@@ -383,7 +383,11 @@ func TestLegacyChannelsSelectOfficialPointers(t *testing.T) {
 	if !reflect.DeepEqual(stable, want) || !reflect.DeepEqual(preview, want) {
 		t.Fatalf("manifest endpoints: stable=%q preview=%q want=%q", stable, preview, want)
 	}
-	if got := downloadPage("preview"); got != "https://reasonix.io/?download=desktop#start" {
+	// fork 分发重指向（3ba30b3c2，设置页外链全量切 fork 仓库，downloadPageURL
+	// 同换）：官方下载页期望值随之更新。该断言排在 tabs.go panic 测试之后，
+	// panic 杀全包跑的时期从未被执行到，期望欠账在 panic 消解（97a9f8861）后
+	// 首次全量跑才暴露。
+	if got := downloadPage("preview"); got != "https://github.com/Linearl/DeepSeek-Reasonix/releases?download=desktop" {
 		t.Errorf("legacy preview download page = %q", got)
 	}
 	if got := manifestDownloadPage("preview", "https://reasonix.io/?channel=preview&download=desktop#start"); got != "https://reasonix.io/?download=desktop#start" {
