@@ -19,6 +19,13 @@ type UnfiledInputView struct {
 	// AnchorMessageId is the ID of the message currently at AnchorIndex, when
 	// in range; the transcript inserts the recovered card before that message.
 	AnchorMessageId string `json:"anchorMessageId,omitempty"`
+	// Class is the tl1372 gap classification: empty (or "unfiled") = never
+	// reached the conversation; "pending_recovery" = the text lives in a
+	// recovery fork of the same topic (CAS-refused stale runtime), reported
+	// under its own banner copy instead of the never-filed alarm. Only set
+	// when the A2 experiment flag is on — default keeps the single bucket
+	// with no field on the wire.
+	Class string `json:"class,omitempty"`
 }
 
 // UnfiledInputs reconciles the active tab's checkpoints against its transcript.
@@ -42,14 +49,19 @@ func (a *App) UnfiledInputsForTab(tabID string) []UnfiledInputView {
 	inputs := ctrl.UnfiledInputs()
 	out := make([]UnfiledInputView, 0, len(inputs))
 	for _, in := range inputs {
-		out = append(out, UnfiledInputView{
+		view := UnfiledInputView{
 			Turn:            in.Turn,
 			MsgIndex:        in.MsgIndex,
 			Time:            in.Time.UnixMilli(),
 			Prompt:          in.Prompt,
 			AnchorIndex:     in.AnchorIndex,
 			AnchorMessageId: in.AnchorID,
-		})
+		}
+		// 只透传非默认桶：默认单桶时 wire 上没有 class 字段，前端零改动。
+		if in.Class == "pending_recovery" {
+			view.Class = string(in.Class)
+		}
+		out = append(out, view)
 	}
 	return out
 }

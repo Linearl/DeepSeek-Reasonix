@@ -1207,6 +1207,10 @@ export interface UnfiledInputView {
   prompt: string;
   anchorIndex: number;
   anchorMessageId?: string;
+  // tl1372 A2 桶分类：后端实验开关默认关（不发该字段=单桶「未进入对话」）；
+  // "pending_recovery" = 原文在 recovery 副本中的 CAS 拒档形态，按「待恢复」
+  // 文案呈现。
+  class?: "unfiled" | "pending_recovery";
 }
 
 export type { RewindPlanView } from "./rewindTypes";

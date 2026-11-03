@@ -136,5 +136,29 @@ console.log("\nunfiled inputs: large-window viewer (tl 1127, 方案 A)");
   ok(banner.includes('role="presentation"') && banner.includes("event.target === event.currentTarget"), "backdrop click closes the viewer");
 }
 
+console.log("\nunfiled inputs: tl1372 A2 dual bucket (pending recovery, 实验开关默认关)");
+{
+  // A2 双桶：class 缺省/单桶 = 「未进入对话」；"pending_recovery" = 「待恢复」
+  // （CAS 拒档，原文在 recovery 副本中）。横幅总数不因 class 改变——任一桶
+  // 非空即挂横幅，文案按桶分。
+  const entries: UnfiledInputView[] = [
+    entry(1, 1000),
+    { ...entry(2, 2000), class: "pending_recovery" as const },
+  ];
+  ok(countUnhandled(entries, new Set()) === 2, "both buckets count toward the banner presence");
+  ok(countUnhandled(entries, new Set([2])) === 1, "handled keys work per turn across buckets");
+  // 源码契约：横幅按桶分文案（entryBucket 集中判定 + 三语 recovery 文案）。
+  const banner = await readFile(new URL("../components/UnfiledInputsBanner.tsx", import.meta.url), "utf8");
+  ok(banner.includes("function entryBucket"), "bucket decision is centralized in entryBucket");
+  ok(banner.includes('entry.class === "pending_recovery"'), "only the pending_recovery class opts into recovery copy");
+  ok(banner.includes("unfiledHeadlineText"), "headline composes the never-filed alarm and the recovery line");
+  ok((banner.match(/recoveryBanner:/g) || []).length === 3 && (banner.match(/recoveryTag:/g) || []).length === 3, "recovery copy present in all three locales");
+  // 默认单桶契约：desktop 桥的 class 字段 omitempty，开关关时 wire 无新字段、
+  // 前端呈现与历史逐字节一致。
+  const appGo = await readFile(new URL("../../../unfiled_inputs_app.go", import.meta.url), "utf8");
+  ok(appGo.includes(`json:"class,omitempty"`), "class field is omitempty on the wire — flag-off payloads unchanged");
+  ok(appGo.includes('in.Class == "pending_recovery"'), "desktop bridge forwards only the pending_recovery bucket");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
