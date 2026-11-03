@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "media-no46-ikea",
+  "name": "No.46 IKEA",
+  "author": "yinji",
+  "description": "White sheet ruled by two colors only — IKEA blue does the writing, IKEA yellow only paints blocks and rules, never words. Dark variant is an interpretation (deep blue-charcoal, muted blue and gold).",
+  "license": "MIT",
+  "baseStyle": "graphite",
+  "tokens": {
+    "light": {
+      "bg": "#FFFFFF",
+      "bgSoft": "#F5F4F0",
+      "bgElev": "#FFFFFF",
+      "panel": "#FAF9F5",
+      "sidebar": "#FCEDA8",
+      "chat": "#FDFDFB",
+      "workspace": "#FAF9F5",
+      "workspaceFiles": "#F4F3EE",
+      "border": "#D4D2CB",
+      "borderSoft": "#E5E3DD",
+      "fg": "#333333",
+      "fgDim": "#666666",
+      "fgFaint": "#8D8D8D",
+      "accent": "#0058A3",
+      "accentFg": "#FFFFFF",
+      "ok": "#2E7D4F",
+      "warn": "#8A6900",
+      "err": "#C43A2C"
+    },
+    "dark": {
+      "bg": "#16202B",
+      "bgSoft": "#1D2833",
+      "bgElev": "#25313E",
+      "panel": "#212D3A",
+      "sidebar": "#131C25",
+      "chat": "#18222C",
+      "workspace": "#25313E",
+      "workspaceFiles": "#1D2833",
+      "border": "#3B4957",
+      "borderSoft": "#2B3743",
+      "fg": "#E8E6E3",
+      "fgDim": "#A2AEB9",
+      "fgFaint": "#77828C",
+      "accent": "#5BA3D9",
+      "accentFg": "#0F2231",
+      "ok": "#74BE8F",
+      "warn": "#D9A400",
+      "err": "#E8796E"
+    }
+  },
+  "recipes": {
+    "density": "comfortable",
+    "corners": "square"
+  }
+}

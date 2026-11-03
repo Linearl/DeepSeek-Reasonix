@@ -320,7 +320,7 @@ ok(!styleText("reasonix-theme-pack-overlay").includes("--grad:"), "task 706: no 
 // resolved mode, so the salmon #FFF1E5 background lands in creation too.
 applyThemePack(draftPackView({
   id: "media-broadsheet-rose",
-  name: "Broadsheet Rose",
+  name: "Financial Times",
   baseStyle: "graphite",
   // Lowercase hex mirrors what the Go validator persists (validateThemeTokenMap
   // lowercases every token before save/list).
@@ -349,12 +349,49 @@ ok(
   "creation scope chunks carry the derived soft accent",
 );
 
-// tl1343: the media group exists beside official/user/base/plugin.
+// tl1362: every media preset must reach both the root and the creation-scope
+// overlay in its light and dark skins. Values mirror the Go-side
+// TestMediaThemeTokenDesign ledger (tokens arrive lowercased from the shell).
+const MEDIA_TOKEN_DESIGNS: Array<[string, string, string]> = [
+  ["media-no44-cream", "#fff5f0", "#241b15"],
+  ["media-no47-muji", "#f5f1ea", "#262320"],
+  ["media-no48-economist", "#ffffff", "#211a18"],
+  ["media-no46-ikea", "#ffffff", "#16202b"],
+  ["media-no52-natgeo", "#f5eed9", "#1e1b13"],
+  ["media-no42-apple", "#ffffff", "#000000"],
+  ["media-no36-forest", "#f5f1e6", "#1c231b"],
+];
+for (const [id, lightBg, darkBg] of MEDIA_TOKEN_DESIGNS) {
+  applyThemePack(
+    draftPackView({
+      id,
+      name: id,
+      baseStyle: "graphite",
+      tokens: { light: { bg: lightBg }, dark: { bg: darkBg } },
+      recipes: { density: "comfortable", corners: "square" },
+    }),
+  );
+  const overlay = styleText("reasonix-theme-pack-overlay");
+  ok(overlay.includes(`:root[data-theme="light"][data-theme-pack="${id}"]{--bg:${lightBg}`), `${id} root light chunk carries its paper color`);
+  ok(overlay.includes(`:root[data-theme="dark"][data-theme-pack="${id}"]{--bg:${darkBg}`), `${id} root dark chunk carries its dark inversion`);
+  ok(
+    overlay.includes(`:root[data-theme="light"][data-theme-style][data-theme-pack="${id}"] .app--creation{--bg:${lightBg}`),
+    `${id} creation scope light chunk carries its paper color`,
+  );
+  ok(
+    overlay.includes(`:root[data-theme="dark"][data-theme-style][data-theme-pack="${id}"] .app--creation{--bg:${darkBg}`),
+    `${id} creation scope dark chunk carries its dark inversion`,
+  );
+}
+
+// tl1343: the media group exists beside official/user/base/plugin. tl1362
+// proves it stays plural across the eight-preset set.
 const grouped = groupThemePacks([
-  { id: "media-broadsheet-rose", name: "Broadsheet Rose", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
+  { id: "media-broadsheet-rose", name: "Financial Times", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
+  { id: "media-no52-natgeo", name: "No.52 National Geographic", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
   { id: "official-rose-dawn", name: "Rose Dawn", baseStyle: "graphite", builtin: true, kind: "official", active: false, hasBackground: false, tokens: {}, recipes: {} },
 ]);
-ok(grouped.media.length === 1 && grouped.media[0].id === "media-broadsheet-rose", "groupThemePacks routes kind=media into the media group");
+ok(grouped.media.length === 2 && grouped.media[0].id === "media-broadsheet-rose" && grouped.media[1].id === "media-no52-natgeo", "groupThemePacks routes kind=media into the media group");
 ok(grouped.official.length === 1, "groupThemePacks keeps official grouping intact");
 
 const twoSceneDraft = draftPackView({
@@ -742,8 +779,18 @@ for (const id of OFFICIAL_IDS) {
     ok(localeZhTW.includes(`"${key}"`), `zh-TW has ${key}`);
   }
 }
-// Localized media preset names/descriptions in all three locales (tl1343).
-const MEDIA_IDS = ["media-broadsheet-rose"];
+// Localized media preset names/descriptions in all three locales (tl1343 seed
+// + the tl1362 eight-preset set).
+const MEDIA_IDS = [
+  "media-broadsheet-rose",
+  "media-no44-cream",
+  "media-no47-muji",
+  "media-no48-economist",
+  "media-no46-ikea",
+  "media-no52-natgeo",
+  "media-no42-apple",
+  "media-no36-forest",
+];
 for (const id of MEDIA_IDS) {
   for (const suffix of ["name", "description"]) {
     const key = `settings.themes.media.${id}.${suffix}`;
@@ -774,10 +821,10 @@ for (const key of [
   ok(localeEn.includes(`"${key}"`) && localeZh.includes(`"${key}"`) && localeZhTW.includes(`"${key}"`), `gallery key ${key} in all locales`);
 }
 
-// Mock parity: 6 base + 8 official + 1 media mock packs so browser dev matches the shell.
+// Mock parity: 6 base + 8 official + 8 media mock packs so browser dev matches the shell.
 ok((bridgeSource.match(/kind: "base"/g) || []).length === 6, "mock has 6 base packs");
 ok((bridgeSource.match(/kind: "official"/g) || []).length === 8, "mock has 8 official packs");
-ok((bridgeSource.match(/kind: "media"/g) || []).length === 1, "mock has 1 media pack");
+ok((bridgeSource.match(/kind: "media"/g) || []).length === 8, "mock has 8 media packs");
 ok((bridgeSource.match(/previewUrl: new URL\("\.\.\/\.\.\/\.\.\/themes\/official\//g) || []).length === 8, "browser mock has 8 real official previews");
 ok((bridgeSource.match(/backgroundUrl: new URL\("\.\.\/\.\.\/\.\.\/themes\/official\//g) || []).length === 8, "browser mock has 8 real official backgrounds");
 ok((bridgeSource.match(/paneOpacity:\s*0\.50/g) || []).length === 8, "browser mock gives every official theme the product pane opacity");

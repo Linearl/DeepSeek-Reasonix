@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "media-no36-forest",
+  "name": "No.36 Forest Journal",
+  "author": "yinji",
+  "description": "Warm beige paper, deep coffee-brown text, pea-green bookmark headings and deep forest-green bold accents — a lifestyle-magazine mood. Dark variant is an interpretation (deep forest green-gray).",
+  "license": "MIT",
+  "baseStyle": "graphite",
+  "tokens": {
+    "light": {
+      "bg": "#F5F1E6",
+      "bgSoft": "#ECEAD8",
+      "bgElev": "#FAF8F0",
+      "panel": "#F7F5EB",
+      "sidebar": "#E6EAD6",
+      "chat": "#F9F6EC",
+      "workspace": "#F7F5EB",
+      "workspaceFiles": "#EFEDE0",
+      "border": "#D2D2BC",
+      "borderSoft": "#E2E2CF",
+      "fg": "#4A3A2C",
+      "fgDim": "#7A6A5B",
+      "fgFaint": "#9C8D7E",
+      "accent": "#3D6B3C",
+      "accentFg": "#F5F1E6",
+      "ok": "#4E7B50",
+      "warn": "#977B2E",
+      "err": "#A8543C"
+    },
+    "dark": {
+      "bg": "#1C231B",
+      "bgSoft": "#242C22",
+      "bgElev": "#2D362B",
+      "panel": "#283126",
+      "sidebar": "#20281F",
+      "chat": "#1E261D",
+      "workspace": "#2D362B",
+      "workspaceFiles": "#242C22",
+      "border": "#45503E",
+      "borderSoft": "#333D2E",
+      "fg": "#EDE7DA",
+      "fgDim": "#A8A191",
+      "fgFaint": "#7E786C",
+      "accent": "#90B48B",
+      "accentFg": "#1C231B",
+      "ok": "#9DC497",
+      "warn": "#D3B96B",
+      "err": "#DE8D77"
+    }
+  },
+  "recipes": {
+    "density": "comfortable",
+    "corners": "soft"
+  }
+}
