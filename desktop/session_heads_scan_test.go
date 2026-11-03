@@ -147,11 +147,15 @@ func Test1019PanelHeadsBudgetDegradesOversizeLog(t *testing.T) {
 	}
 }
 
-// Test1019VersionGroupsListStaysZeroReplay（验收②懒加载断言）：设置页加载
-// 路径（ListSessionVersionGroups）在目录里有大 gap 会话时仍然零重放——只读
-// meta 副车，绝不给面板缓存添重放条目。
+// Test1019VersionGroupsListStaysZeroReplay（验收②懒加载断言）改述（tl1280③
+// 同款纪律，显式注释非静默 SKIP）：原断言要求多头会话以 meta-only 方式列入
+// 版本组，而多头形态已随 schema-2 头重放退役（tl1227 ListSessionHeads 恒空
+// 垫片，tl1280 删 DAG 写路径）——BranchMeta.HeadCount 只剩镜像已退役头注册
+// 表的结构性写入，新会话恒 ≤1，ListSessionVersionGroups 被动收敛为空。本测
+// 试改钉收敛后契约：普通会话不入组（无版本对象可展示）+ 列表路径保持零重放
+// （meta 副车，不给面板缓存添重放条目——懒加载红线在退役面依然成立）。
+// 原 REASONIX_SESSION_LOG=v2 环境钉随 dagSaveRoute 退役而失效，一并移除。
 func Test1019VersionGroupsListStaysZeroReplay(t *testing.T) {
-	t.Setenv("REASONIX_SESSION_LOG", "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	isolateDesktopUserDirs(t)
 	resetPanelHeadsScanForTest(t)
 	dir := desktopSessionDir(globalWorkspaceRoot())
@@ -164,17 +168,10 @@ func Test1019VersionGroupsListStaysZeroReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
 	for _, g := range groups {
 		if samePath(g.MainPath, path) {
-			found = true
-			if g.HeadCount < 2 {
-				t.Fatalf("multi-head session must list via meta only: %d", g.HeadCount)
-			}
+			t.Fatalf("retired heads mean no version objects: plain session must not list as a version group, got %+v", g)
 		}
-	}
-	if !found {
-		t.Fatal("multi-head session missing from the zero-replay list")
 	}
 	panelHeadsCache.Lock()
 	grew := len(panelHeadsCache.entries)
