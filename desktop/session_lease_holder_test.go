@@ -179,3 +179,44 @@ func TestProbeSessionOccupancySelfHeldLease(t *testing.T) {
 		t.Fatal("after release the probe must answer not busy")
 	}
 }
+
+// tl1367-fix defect A regression: the single-archive chain used to render only
+// the classification sentinel in Error(), so the frontend could never parse a
+// holder block and every lease-busy toast degraded to the generic "another
+// Reasonix window" copy — even when the holder was this very window. The
+// message must carry the machine-readable holder block (same text the batch
+// failure list renders), while both compat faces stay reachable.
+func TestSessionLeaseHeldBusyErrorMessageCarriesHolderBlock(t *testing.T) {
+	restoreAlive := desktopLeaseAlive
+	desktopLeaseAlive = func(int) bool { return true }
+	defer func() { desktopLeaseAlive = restoreAlive }()
+
+	selfErr := &agent.SessionLeaseError{
+		Path: "session.jsonl",
+		Info: &agent.SessionLeaseInfo{PID: os.Getpid(), WriterID: "writer-x", Hostname: "host-x"},
+	}
+	msg := (&sessionLeaseHeldBusyError{cause: selfErr}).Error()
+	if !strings.Contains(msg, `[reasonix-holder class="self"`) {
+		t.Fatalf("message missing self holder block: %q", msg)
+	}
+	if strings.Contains(msg, "session.jsonl") {
+		t.Fatalf("message leaks the session path: %q", msg)
+	}
+
+	// Compat faces: the sentinel classification and the original lease error
+	// both stay reachable through Unwrap/errors.
+	wrapped := &sessionLeaseHeldBusyError{cause: selfErr}
+	if !errors.Is(wrapped, errSessionBusyElsewhere) {
+		t.Fatal("errors.Is(errSessionBusyElsewhere) failed on the wrapped refusal")
+	}
+	var leaseErr *agent.SessionLeaseError
+	if !errors.As(wrapped, &leaseErr) || leaseErr.Info == nil || leaseErr.Info.PID != os.Getpid() {
+		t.Fatal("errors.As(*agent.SessionLeaseError) failed on the wrapped refusal")
+	}
+
+	// No usable identity: the message degrades to the plain sentinel text.
+	bare := (&sessionLeaseHeldBusyError{cause: &agent.SessionLeaseError{Path: "session.jsonl"}}).Error()
+	if bare != errSessionBusyElsewhere.Error() {
+		t.Fatalf("identity-less message = %q, want the plain sentinel %q", bare, errSessionBusyElsewhere.Error())
+	}
+}

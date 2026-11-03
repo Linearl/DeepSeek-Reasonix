@@ -180,3 +180,45 @@ func TestSessionLeaseConversionFailureKeepsLeaseActive(t *testing.T) {
 		t.Fatalf("competing lease after failed conversion err = %v, want ErrSessionLeaseHeld", err)
 	}
 }
+
+// tl1367-fix defect A: when the in-process registry says THIS process holds
+// the lease but the identity record is unreadable (already deleted by a
+// releasing holder, AV quarantine, torn write), the removal-guard refusal
+// must still name the self holder. The 2026-11-04 00:10 archive incident
+// showed the regression shape: one refusal classified holder_class=self
+// pid=42544, a retry ten seconds later degraded to holder_class=unknown
+// pid=0 because the info record was gone, and the UI misdirected the user
+// to "another Reasonix window" while the session was held by this very one.
+func TestTryAcquireSessionRemovalGuardSelfHeldBackfillsMissingInfo(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "session.jsonl")
+	if err := os.WriteFile(path, []byte("work"), 0o644); err != nil {
+		t.Fatalf("seed session file: %v", err)
+	}
+	key := canonicalSessionSavePath(path)
+	// Registry says this process holds the lease.
+	sessionLeaseOwners.Store(key, 42)
+	t.Cleanup(func() { sessionLeaseOwners.CompareAndDelete(key, 42) })
+	// ...but the identity record reads as corrupt, like a torn write.
+	if err := os.WriteFile(store.SessionLeaseLock(path), nil, 0o644); err != nil {
+		t.Fatalf("corrupt lease info: %v", err)
+	}
+	if info, err := LoadSessionLeaseInfo(path); err == nil && info != nil {
+		t.Fatalf("precondition: identity record still readable: %+v", info)
+	}
+
+	_, err := TryAcquireSessionRemovalGuard(path)
+	if !errors.Is(err, ErrSessionLeaseHeld) {
+		t.Fatalf("guard err = %v, want ErrSessionLeaseHeld", err)
+	}
+	var leaseErr *SessionLeaseError
+	if !errors.As(err, &leaseErr) || leaseErr == nil || leaseErr.Info == nil {
+		t.Fatalf("self refusal lost the holder info (errors.As chain broken): %v", err)
+	}
+	if leaseErr.Info.PID != os.Getpid() {
+		t.Fatalf("backfilled holder pid = %d, want self pid %d", leaseErr.Info.PID, os.Getpid())
+	}
+	if leaseErr.Info.WriterID != SessionWriterID() {
+		t.Fatalf("backfilled writer = %q, want %q", leaseErr.Info.WriterID, SessionWriterID())
+	}
+}

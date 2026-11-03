@@ -96,7 +96,13 @@ func acquireTopicArchiveOwnership(targets []topicTrashTarget, removed []removedS
 			tab.adoptSessionLease(lease)
 			if errors.Is(err, agent.ErrSessionLeaseHeld) {
 				batch.rollback()
-				return nil, errSessionBusyElsewhere
+				// tl1367-fix defect A: keep the lease error flowing (wrapped, so
+				// both the classification sentinel and the holder Info stay
+				// reachable through Unwrap/errors.As). The bare sentinel here
+				// used to sever the errors.As chain — the refusal log degraded
+				// to holder_class=unknown pid=0 and the frontend lost the
+				// holder block.
+				return nil, &sessionLeaseHeldBusyError{cause: err}
 			}
 			slog.Warn("desktop: topic archive lease conversion failed, falling back to non-runtime guard",
 				"session", target.sessionPath, "err", err)

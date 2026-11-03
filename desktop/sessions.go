@@ -188,7 +188,15 @@ var errSessionBusyZombie = errors.New("this session was left locked by a crashed
 type sessionLeaseHeldBusyError struct{ cause error }
 
 func (e *sessionLeaseHeldBusyError) Error() string {
-	return sessionLeaseBusyClassification(e.cause).Error()
+	// tl1367-fix defect A: the single-archive chain (TrashTopic / TrashTopicForce /
+	// DeleteSession) used to render only the classification sentinel, so the
+	// frontend never saw the holder block and every lease-busy toast degraded to
+	// the generic "another Reasonix window" copy even when the holder was this
+	// very window. Render the full detail — the same machine-readable holder
+	// block + sentence the batch failure list and the occupancy probe already
+	// show (sessionLeaseBusyDetail) — while Unwrap keeps the sentinel reachable
+	// for errors.Is and the original lease error reachable for errors.As.
+	return sessionLeaseBusyDetail(e.cause)
 }
 
 // Unwrap exposes both faces: the classified sentinel (sentinel comparisons
