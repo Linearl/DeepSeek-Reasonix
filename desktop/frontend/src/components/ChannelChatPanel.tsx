@@ -21,6 +21,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom";
 import { app as appBridge } from "../lib/bridge";
 import type { CollabSessionDirectoryRow } from "./CollabInboxPanel";
+// tl1369 缺陷C：详情抽屉显式关闭钮复用 modal 家族 × 基件（ProviderDialog 同款）。
+import { ModalCloseButton } from "./ModalCloseButton";
 import {
   COLLAB_GROUP_POLL_MS,
   collabGroupRetryDelaysMs,
@@ -303,6 +305,88 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
       document.removeEventListener("click", onDocClick, true);
     };
   }, [inviteOpen]);
+
+  // tl1369 缺陷A（用户 20261103 报）：详情抽屉点外部关闭——此前必须点右上角
+  // 被 300px 宽抽屉（inset 44px 起、右侧锚定）盖住的「详情」toggle 才能关，
+  // 唯一关闭路不可达。形态照 980/1242 家族 house 形态（mousedown+click 双通道、
+  // 捕获阶段、closest 守卫；拖拽起始等 click 不派发路径由 mousedown 兜底）。
+  // 豁免四处（「点内不误关」的边界）：
+  //   ① 抽屉自身（成员操作/邀请框/退群解散全在其中）；
+  //   ② chathead 触发 toggle（.channel-chat__detailtoggle）——不豁免则
+  //      mousedown 先关、click 的 toggle 再开，按钮永远关不掉抽屉；
+  //   ③ 本面板 portal 到 body 的右键菜单与全屏 veil（980 同款排除：语义属本
+  //      面板，右键撤回/菜单项点击若计入外部会把抽屉连带关掉）；
+  //   ④ .modal-backdrop（980 同款：子树内确认框语义属面板）。
+  // Esc 不在此接管：Hub 壳已有 Esc 关 Hub（980），子浮层再挂 Esc 会在同一
+  // 次按键里把抽屉与 Hub 一起关掉；抽屉走 点外/×/触发toggle 三路（1242 同款无 Esc）。
+  useEffect(() => {
+    if (!detailOpen) return;
+    const isOutside = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      return !target?.closest(".channel-chat__detail, .channel-chat__detailtoggle, .channel-chat__menu, .channel-chat__menuveil, .modal-backdrop");
+    };
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (isOutside(event)) setDetailOpen(false);
+    };
+    const onDocClick = (event: MouseEvent) => {
+      if (isOutside(event)) setDetailOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("click", onDocClick, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("click", onDocClick, true);
+    };
+  }, [detailOpen]);
+
+  // tl1369 同类收口：建群对话框点外部关闭（对话框此前只能点内「关闭」钮）。
+  // 豁免：对话框自身 / 触发钮（.channel-chat__createtoggle，toggle 冲突同上）/
+  // 右键菜单+veil / .modal-backdrop（同详情抽屉四条边界）。表单值存组件 state，
+  // 点外关闭不丢已输入内容（重开即见，与邀请框「勾选保留」同一口径）。
+  useEffect(() => {
+    if (!createOpen) return;
+    const isOutside = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      return !target?.closest(".channel-chat__create, .channel-chat__createtoggle, .channel-chat__menu, .channel-chat__menuveil, .modal-backdrop");
+    };
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (isOutside(event)) setCreateOpen(false);
+    };
+    const onDocClick = (event: MouseEvent) => {
+      if (isOutside(event)) setCreateOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("click", onDocClick, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("click", onDocClick, true);
+    };
+  }, [createOpen]);
+
+  // tl1369 同类收口：@ 选人浮层点外部关闭（此前只能 Esc/选中/继续输入关闭，
+  // 点流区/别处浮层悬着不走）。守卫严格只豁免浮层自身：触发是输入 @ 而非按钮，
+  // 无 toggle 冲突；点输入框/发送钮等「外部」即收起（顺带修掉「@ 悬浮时点
+  // 发送、草稿清空而浮层残留」的边缘），再输入 @ 即重开。补全浮层非面板形态，
+  // 不加 ×（Esc 即显式关闭；1242 家族点外关闭对齐）。
+  useEffect(() => {
+    if (!atOpen) return;
+    const isOutside = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      return !target?.closest(".channel-chat__atpop");
+    };
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (isOutside(event)) setAtOpen(false);
+    };
+    const onDocClick = (event: MouseEvent) => {
+      if (isOutside(event)) setAtOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("click", onDocClick, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("click", onDocClick, true);
+    };
+  }, [atOpen]);
 
   const openChannel = useCallback((id: string) => {
     setOpenId(id);
@@ -604,7 +688,8 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
       <div className="channel-chat__list">
         <div className="channel-chat__listhead">
           <span className="channel-chat__listtitle">{t("collabGroup.chat.title")}</span>
-          <button type="button" className="btn btn--small" onClick={() => { setCreateOpen(true); setActionError(null); }}>
+          {/* tl1369：触发钮挂稳定类供建群对话框点外关闭守卫豁免（同详情 toggle）。 */}
+          <button type="button" className="btn btn--small channel-chat__createtoggle" onClick={() => { setCreateOpen(true); setActionError(null); }}>
             {t("collabGroup.chat.create")}
           </button>
         </div>
@@ -661,7 +746,9 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
               <span className="channel-chat__chatname" title={openCh.name}>{openCh.name}</span>
               {openCh.topic && <span className="channel-chat__chattopic">{openCh.topic}</span>}
               <span className="channel-chat__chatmeta">{t("collabGroup.membersCount", { n: openCh.members?.length ?? 0 })}</span>
-              <button type="button" className="btn btn--small" onClick={() => setDetailOpen((v) => !v)}>
+              {/* tl1369：触发 toggle 挂稳定类供点外关闭守卫豁免（不豁免则
+                  mousedown 先关、click 再开，按钮关不掉抽屉）。 */}
+              <button type="button" className="btn btn--small channel-chat__detailtoggle" onClick={() => setDetailOpen((v) => !v)}>
                 {detailOpen ? t("collabGroup.chat.closeDetail") : t("collabGroup.chat.detail")}
               </button>
             </div>
@@ -824,6 +911,14 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
                 })}
               </span>
             )}
+            {/* tl1369 缺陷C：显式关闭钮（modal 家族 × 基件）——面板关闭不再
+                依赖点外关闭或被抽屉遮挡的原触发钮（用户 20261103 截图报）。
+                aria-label 零新键，复用既有 collabGroup.chat.closeDetail。 */}
+            <ModalCloseButton
+              className="channel-chat__detailclose"
+              label={t("collabGroup.chat.closeDetail")}
+              onClick={() => setDetailOpen(false)}
+            />
           </div>
           {openCh.topic && <div className="channel-chat__detailtopic">{openCh.topic}</div>}
 
@@ -900,8 +995,13 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
                     <button type="button" className="btn btn--small" disabled={invitePicked.length === 0} onClick={() => void invite()}>
                       {t("collabGroup.chat.inviteConfirm", { n: invitePicked.length })}
                     </button>
-                    {/* 任务 856 ⑥：无显式关闭按钮——点击弹层外部区域自动关闭
-                        （demo v2 钦定）；invitePicked 不清空=已勾选保留，重开不丢。 */}
+                    {/* tl1369 缺陷C：补显式关闭钮（此前 856⑥ demo v2 只给点外
+                        关闭+提示文案；tl1369 口径=浮层一律有可见关闭钮，不依赖
+                        点外关闭）。行为与点外关闭同款：invitePicked 不清空=已
+                        勾选保留，重开不丢。零新键（复用 collabGroup.close）。 */}
+                    <button type="button" className="btn btn--secondary btn--small" onClick={() => setInviteOpen(false)}>
+                      {t("collabGroup.close")}
+                    </button>
                     <span className="channel-chat__invitedismiss">{t("collabGroup.chat.inviteDismissHint")}</span>
                   </div>
                 </div>

@@ -40925,6 +40925,12 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-xs);
   color: var(--fg-dim);
 }
+/* tl1369 缺陷C：详情抽屉显式关闭钮（modal-close-button ×）钉在头部最右；
+   面板关闭不再唯一依赖被抽屉遮挡的 chathead 触发钮或点外关闭。 */
+.channel-chat__detailclose {
+  margin-left: auto;
+  align-self: flex-start;
+}
 .channel-chat__detailtopic {
   font-size: var(--text-xs);
   color: var(--fg-faint);
