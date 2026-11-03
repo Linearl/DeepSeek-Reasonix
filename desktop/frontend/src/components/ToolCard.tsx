@@ -280,6 +280,10 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   const openRef = useRef(open);
   openRef.current = open;
   const [showAll, setShowAll] = useState(false);
+  // tl1365: the command has its own three-state surface, decoupled from the
+  // card toggle — clamped to 3 lines by default, "expand command" shows it in
+  // full, clicking again collapses back.
+  const [commandExpanded, setCommandExpanded] = useState(false);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   // The sub-agent reasoning preview opens as a one-line summary; the full
   // Markdown only mounts after the user expands the reasoning section.
@@ -552,13 +556,6 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
           </div>
         )}
 
-        {open && shellCommand && (
-          <div className="tool__command">
-            <div className="tool__command-label">{t("tool.command")}</div>
-            <CodeViewer value={shellCommand} language={commandLanguage(execution?.shell, item.name)} maxHeight={240} />
-          </div>
-        )}
-
         {shellPreview && (
           <>
             <CodeViewer value={showAll ? shellOutput! : shellPreview.preview} maxHeight={showAll ? 480 : 260} />
@@ -569,6 +566,25 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
             )}
             {item.truncated && <div className="tool__note">{t("tool.truncated")}</div>}
           </>
+        )}
+
+        {open && shellCommand && (
+          <div className={`tool__command${commandExpanded ? "" : " tool__command--clamped"}`}>
+            <div className="tool__command-label">{t("tool.command")}</div>
+            <CodeViewer
+              value={shellCommand}
+              language={commandLanguage(execution?.shell, item.name)}
+              maxHeight={commandExpanded ? 240 : undefined}
+            />
+            <button
+              type="button"
+              className="tool__command-toggle"
+              aria-expanded={commandExpanded}
+              onClick={() => { beginUserResize(); setCommandExpanded((value) => !value); }}
+            >
+              {commandExpanded ? t("tool.collapseCommand") : t("tool.expandCommand")}
+            </button>
+          </div>
         )}
 
         {hasStderrDetails && (
