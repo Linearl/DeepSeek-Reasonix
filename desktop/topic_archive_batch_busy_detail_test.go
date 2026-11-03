@@ -18,9 +18,17 @@ import (
 
 func swapDesktopProcessAliveForBusyDetail(t *testing.T, alive bool) {
 	t.Helper()
-	previous := agent.ProcessAlive
+	// tl1367: the holder detail/classification chain reads desktopLeaseAlive
+	// (the desktop seam) while other lease paths still consult
+	// agent.ProcessAlive — swap both so every consumer sees the same verdict.
+	previousAgent := agent.ProcessAlive
 	agent.ProcessAlive = func(int) bool { return alive }
-	t.Cleanup(func() { agent.ProcessAlive = previous })
+	previousDesktop := desktopLeaseAlive
+	desktopLeaseAlive = func(int) bool { return alive }
+	t.Cleanup(func() {
+		agent.ProcessAlive = previousAgent
+		desktopLeaseAlive = previousDesktop
+	})
 }
 
 func leaseBusyFixture(pid int) *agent.SessionLeaseError {

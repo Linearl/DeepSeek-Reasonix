@@ -91,3 +91,72 @@ func TestSessionInUseMessageNamesCrashedProcess(t *testing.T) {
 		t.Fatalf("fallback message = %q", got)
 	}
 }
+
+// tl1367 line 1: every holder branch must name WHO holds the session —
+// process name and image path, hostname, acquire time, and the holder
+// runtime's writer id — so neither the user nor the log needs to capture the
+// scene by hand.
+func withProcessImageNameForControlTest(t *testing.T, name func(int) (string, string)) {
+	t.Helper()
+	orig := agent.ProcessImageName
+	agent.ProcessImageName = name
+	t.Cleanup(func() { agent.ProcessImageName = orig })
+}
+
+func TestSessionInUseMessageCarriesHolderIdentity(t *testing.T) {
+	withProcessAliveForTest(t, func(pid int) bool { return pid == 5000 })
+	withProcessImageNameForControlTest(t, func(pid int) (string, string) {
+		return "reasonix-desktop.exe", `C:\Program Files\Reasonix\reasonix-desktop.exe`
+	})
+
+	live := &agent.SessionLeaseError{Path: "p", Info: &agent.SessionLeaseInfo{
+		PID:        5000,
+		Hostname:   "DESKTOP-XYZ",
+		AcquiredAt: time.Date(2026, 11, 3, 12, 34, 0, 0, time.Local),
+		WriterID:   "writer-abc",
+	}}
+	got := SessionInUseMessage(live)
+	for _, want := range []string{
+		"pid 5000",
+		"reasonix-desktop.exe",
+		`C:\Program Files\Reasonix\reasonix-desktop.exe`,
+		"host DESKTOP-XYZ",
+		"writer writer-abc",
+		"since 12:34",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("live message %q must contain %q", got, want)
+		}
+	}
+}
+
+func TestSessionInUseMessageNamesPidReuseStaleRecord(t *testing.T) {
+	withProcessAliveForTest(t, func(pid int) bool { return true })
+	withProcessImageNameForControlTest(t, func(pid int) (string, string) {
+		return "everything-scraper.exe", `C:\tools\everything-scraper.exe`
+	})
+
+	reused := &agent.SessionLeaseError{Path: "p", Info: &agent.SessionLeaseInfo{PID: 6000, WriterID: "w-old"}}
+	got := SessionInUseMessage(reused)
+	if !strings.Contains(got, "stale lease record") || !strings.Contains(got, "pid 6000") {
+		t.Fatalf("reused-pid message = %q, want the stale-record wording with the pid", got)
+	}
+	if !strings.Contains(got, "everything-scraper.exe") {
+		t.Fatalf("reused-pid message = %q, must name the program that now owns the pid", got)
+	}
+	if strings.Contains(got, SessionLeaseCloseHint) {
+		t.Fatalf("reused-pid message must not send the user closing a window that does not exist, got %q", got)
+	}
+	if got := SessionLeaseHintFor(reused); !strings.Contains(got, "another program") || !strings.Contains(got, "force-archive") {
+		t.Fatalf("reused-pid hint = %q, want force-archive/restart guidance", got)
+	}
+}
+
+func TestSessionLeaseHintForZombieKeepsIdentityFreeOfWindowAdvice(t *testing.T) {
+	withProcessAliveForTest(t, func(int) bool { return false })
+	dead := &agent.SessionLeaseError{Path: "p", Info: &agent.SessionLeaseInfo{PID: 7000}}
+	got := SessionLeaseHintFor(dead)
+	if !strings.Contains(got, "pid 7000") || !strings.Contains(got, "restart Reasonix") {
+		t.Fatalf("zombie hint = %q, want pid + restart guidance", got)
+	}
+}
