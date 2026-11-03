@@ -47,22 +47,23 @@ func SanitizeComponent(name string) (string, error) {
 	if name == "" {
 		return "", errEmptyComponent
 	}
+	// Reject both separator styles on every platform first: IsLocal is
+	// platform-flavored (on Unix a backslash is a legal filename byte), but
+	// a Windows-origin identifier containing one would fork into a different
+	// file when the same data directory is read on Windows. Portable stored
+	// names never contain either separator.
+	if strings.ContainsAny(name, `/\`) {
+		return "", fmt.Errorf("invalid path component %q: contains a path separator", name)
+	}
 	// filepath.IsLocal rejects absolute paths, traversal that escapes the
 	// current directory, and (on Windows) reserved device names. It accepts
 	// plain names and dots inside names ("task.v2" stays legal).
 	if !filepath.IsLocal(name) {
-		return "", fmt.Errorf("path component %q is not a safe single path component", name)
-	}
-	// IsLocal is platform-flavored: on Unix a backslash is a legal filename
-	// byte, but a Windows-origin identifier containing one would fork into a
-	// different file when the same data directory is read on Windows. Reject
-	// both separator styles on every platform so stored names are portable.
-	if strings.ContainsAny(name, `/\`) {
-		return "", fmt.Errorf("path component %q contains a path separator", name)
+		return "", fmt.Errorf("invalid path component %q: not a safe single path component", name)
 	}
 	base := filepath.Base(name)
 	if base == "." || base == ".." {
-		return "", fmt.Errorf("path component %q is not usable as a directory or file name", name)
+		return "", fmt.Errorf("invalid path component %q: not usable as a directory or file name", name)
 	}
 	// Sanitization point: the leading separator forces an absolute
 	// interpretation so Clean discards any residual traversal, and the

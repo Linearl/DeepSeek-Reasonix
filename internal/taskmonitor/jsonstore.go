@@ -37,32 +37,25 @@ func NewObservedFileStore(baseDir string, sink ProjectionSink) *FileStore {
 
 // safeID validates a user-supplied identifier for use as a filesystem path
 // component. It rejects empty strings, ".", "..", and values containing a
-// path separator. Used for both taskID and idempotency keys.
+// path separator (tl1373: validation now flows through the shared
+// SanitizeComponent sanitization point). Used for both taskID and
+// idempotency keys.
 func safeID(name string) (string, error) {
-	if name == "" {
-		return "", errors.New("identifier must not be empty")
-	}
-	cleaned := filepath.Base(name)
-	if cleaned == "." || cleaned == ".." {
-		return "", fmt.Errorf("invalid identifier %q", name)
-	}
-	// Windows accepts both slash styles as path separators. Check both so
-	// validation has the same traversal behavior on every platform.
-	if strings.ContainsAny(name, `/\\`) {
-		return "", fmt.Errorf("identifier %q contains path separator", name)
-	}
-	return cleaned, nil
+	return fileutil.SanitizeComponent(name)
 }
 
 // taskRoot returns the cleaned directory holding task data for projectDir.
 // projectDir is the caller-selected project scope, not a path relative to a
 // separate containment root. Parent-relative paths such as ../project and
-// directory names containing ".." are therefore valid inputs.
+// directory names containing ".." are therefore valid inputs; SanitizeFilePath
+// anchors them to their absolute meaning-preserving form (tl1373 sanitization
+// point) so the store root flows into filesystem operations in one normalized
+// spelling.
 func (s *FileStore) taskRoot(projectDir string) (string, error) {
 	if projectDir == "" {
 		projectDir = "."
 	}
-	cleaned := filepath.Clean(projectDir)
+	cleaned := fileutil.SanitizeFilePath(projectDir)
 	root := filepath.Join(cleaned, s.baseDir)
 	if err := rejectStoreParents(cleaned, root); err != nil {
 		return "", err
