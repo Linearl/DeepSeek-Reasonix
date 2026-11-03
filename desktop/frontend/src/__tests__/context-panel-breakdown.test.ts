@@ -242,6 +242,89 @@ eq(
   "an incomplete structured quote never renders a partial selected total",
 );
 
+// tl1379 口径：partial_priced 与 complete 零价都是权威金额，不再落「不可估算」。
+const partialPricedZero = contextCostDisplay({
+  info: {
+    sessionCost: 0,
+    sessionCurrency: "CNY",
+    sessionCostComplete: true,
+    sessionCostQuote: {
+      original: { amount: "0", currency: "CNY" },
+      selected: { amount: "0", currency: "CNY" },
+      estimated: true,
+      costComplete: true,
+      displayComplete: true,
+      complete: true,
+      displayStatus: "partial_priced",
+      partialPricedCount: 2,
+    },
+  },
+  sessionCost: 0,
+  sessionCurrency: "CNY",
+});
+eq(
+  partialPricedZero,
+  { amount: 0, currency: "CNY", estimated: true, complete: true, labelKind: "partial_priced", partialPricedCount: 2 },
+  "a partial-priced zero quote renders as an authoritative zero with its count",
+);
+const mixedPartialSum = contextCostDisplay({
+  info: {
+    sessionCost: 1,
+    sessionCurrency: "CNY",
+    sessionCostComplete: true,
+    sessionCostQuote: {
+      original: { amount: "1", currency: "CNY" },
+      selected: { amount: "1", currency: "CNY" },
+      estimated: true,
+      costComplete: true,
+      displayComplete: true,
+      complete: true,
+      displayStatus: "partial_priced",
+      partialPricedCount: 1,
+    },
+  },
+  sessionCost: 1,
+  sessionCurrency: "CNY",
+});
+eq(
+  mixedPartialSum,
+  { amount: 1, currency: "CNY", estimated: true, complete: true, labelKind: "partial_priced", partialPricedCount: 1 },
+  "a priced-plus-partial aggregate keeps the priced sum under the partial label",
+);
+const resetZeroQuote = contextCostDisplay({
+  info: {
+    sessionCost: 0,
+    sessionCurrency: "CNY",
+    sessionCostComplete: true,
+    sessionCostQuote: {
+      original: { amount: "0", currency: "CNY" },
+      selected: { amount: "0", currency: "CNY" },
+      estimated: true,
+      costComplete: true,
+      displayComplete: true,
+      complete: true,
+      displayStatus: "matched",
+    },
+  },
+  sessionCost: 0,
+  sessionCurrency: "CNY",
+});
+eq(
+  resetZeroQuote,
+  { amount: 0, currency: "CNY", estimated: true, complete: true, labelKind: "estimated" },
+  "a matched zero total (post-reset) renders as an estimated zero instead of unavailable",
+);
+const legacyUnavailableZero = contextCostDisplay({
+  info: { sessionCost: 0, sessionCurrency: "", sessionCostUsd: 0, sessionCostComplete: false },
+  sessionCost: 0,
+  sessionCurrency: "CNY",
+});
+eq(
+  legacyUnavailableZero,
+  { amount: 0, currency: "CNY", estimated: true, complete: false, labelKind: "unavailable" },
+  "a true anomaly (sessionCostComplete=false) still renders as not estimable",
+);
+
 console.log("\ncontext panel session cache scope");
 
 eq(

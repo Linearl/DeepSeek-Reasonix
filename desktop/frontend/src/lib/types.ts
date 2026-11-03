@@ -243,6 +243,9 @@ export interface CostQuote {
   incompleteReason?: string;
   legacyEstimate?: boolean;
   catalogSource?: string;
+  // tl1379 口径：聚合内按 0 计的无定价段数。>0 时 displayStatus 为
+  // partial_priced，金额仍是权威总额（含 0 元段）；旧宿主省略=无零价段。
+  partialPricedCount?: number;
 }
 
 export interface WireRecoveryApproval {

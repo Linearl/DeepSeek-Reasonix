@@ -1744,21 +1744,52 @@ func normalizeLegacyMimoProviderCatalogs(c *Config) bool {
 	changed := false
 	for i := range c.Providers {
 		p := &c.Providers[i]
-		if legacyMimoProviderName(p.Name) == "" || len(p.Models) > 0 {
+		if legacyMimoProviderName(p.Name) == "" {
 			continue
 		}
-		switch officialProviderHost(p.BaseURL) {
-		case "api.xiaomimimo.com":
-			if applyLegacyMimoCatalog(p, legacyMimoAPIModels(), []string{"mimo-v2.5", "mimo-v2-omni"}, "mimo-v2.5-pro") {
-				changed = true
+		if len(p.Models) == 0 {
+			switch officialProviderHost(p.BaseURL) {
+			case "api.xiaomimimo.com":
+				if applyLegacyMimoCatalog(p, legacyMimoAPIModels(), []string{"mimo-v2.5", "mimo-v2-omni"}, "mimo-v2.5-pro") {
+					changed = true
+				}
+			case "token-plan-cn.xiaomimimo.com":
+				if applyLegacyMimoCatalog(p, legacyMimoTokenPlanModels(), []string{"mimo-v2.5"}, "mimo-v2.5-pro") {
+					changed = true
+				}
 			}
-		case "token-plan-cn.xiaomimimo.com":
-			if applyLegacyMimoCatalog(p, legacyMimoTokenPlanModels(), []string{"mimo-v2.5"}, "mimo-v2.5-pro") {
-				changed = true
-			}
+			continue
+		}
+		// tl1379 数据层修正: a hand-upgraded model list (mimo-v2.6-*) used to
+		// keep the stale v2.5-only price keys, so the new models resolved with
+		// no per-model price and every session fell into the unpriced path.
+		// Align absent price keys with the model list; configured prices
+		// (custom rates included) are never overwritten.
+		if fillMimoModelPrices(p) {
+			changed = true
 		}
 	}
 	return changed
+}
+
+// fillMimoModelPrices fills only absent per-model price keys for the entry's
+// model list. Idempotent: a second pass over a filled table reports no change.
+func fillMimoModelPrices(p *ProviderEntry) bool {
+	if p == nil {
+		return false
+	}
+	filled := false
+	for model, price := range mimoDomesticPrices(p.ModelList()) {
+		if p.Prices[model] != nil {
+			continue
+		}
+		if p.Prices == nil {
+			p.Prices = map[string]*provider.Pricing{}
+		}
+		p.Prices[model] = price
+		filled = true
+	}
+	return filled
 }
 
 func applyLegacyMimoCatalog(p *ProviderEntry, models, visionModels []string, fallbackDefault string) bool {

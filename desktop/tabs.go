@@ -258,7 +258,9 @@ type sessionUsageStats struct {
 	SessionCost          float64 `json:"sessionCost,omitempty"`
 	SessionCurrency      string  `json:"sessionCurrency,omitempty"`
 	SessionCostUsd       float64 `json:"sessionCostUsd,omitempty"`
-	// SessionCostComplete is false when any entry lacks a shared display valuation.
+	// SessionCostComplete is false only for true anomalies (unrecoverable cost
+	// facts); zero-priced segments stay complete with a partialPricedCount on
+	// the session quote (tl1379 口径).
 	SessionCostComplete bool `json:"sessionCostComplete,omitempty"`
 	// CostLedger stores occurrence-time quotes keyed by model+source+fingerprint+rateDate.
 	CostLedger *billing.Ledger `json:"costLedger,omitempty"`
@@ -1064,12 +1066,13 @@ func (t *WorkspaceTab) recordUsage(e event.Event) {
 			src.SessionCostUsd = src.SessionCost
 			src.SessionCurrency = total.LegacyCurrencySymbol()
 		} else {
-			// Incomplete: never invent a zero total by wiping prior costs.
+			// tl1379: zero-priced (partial_priced) totals arrive here with
+			// Selected set, so this branch now only fires for true anomalies
+			// (unrecoverable records). Keep the last-known amounts — wiping
+			// them would erase accrued history — and mark the quote incomplete
+			// so surfaces render「不可估算」instead of a stale number.
 			if t.runtimeCostDisplayCurrency == "" {
 				t.usageTelemetry.SessionCostComplete = false
-				t.usageTelemetry.SessionCost = 0
-				t.usageTelemetry.SessionCurrency = ""
-				t.usageTelemetry.SessionCostUsd = 0
 			}
 			if q.Selected == nil {
 				src.SessionCurrency = billing.CurrencySymbol(q.Original.Currency)
@@ -1140,10 +1143,9 @@ func (t *WorkspaceTab) displayTelemetrySnapshot() tabTelemetrySnapshot {
 		snapshot.Usage.SessionCurrency = quote.LegacyCurrencyCode()
 		snapshot.Usage.SessionCostUsd = snapshot.Usage.SessionCost
 	} else {
+		// tl1379: true anomalies keep the last-known amounts instead of wiping
+		// them; SessionCostComplete=false drives the「不可估算」rendering.
 		snapshot.Usage.SessionCostComplete = false
-		snapshot.Usage.SessionCost = 0
-		snapshot.Usage.SessionCurrency = ""
-		snapshot.Usage.SessionCostUsd = 0
 	}
 	return snapshot
 }

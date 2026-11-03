@@ -10,6 +10,7 @@ import { formatDurationLabel } from "../lib/durationFormat";
 import { appendRateBand, rateBandLabel } from "../lib/costRateBand";
 import type { BalanceInfo, ContextInfo, ContextPanelInfo } from "../lib/types";
 import { AnchoredPopover } from "./AnchoredPopover";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { contextWindowStatus, formatCacheHitRate } from "../lib/contextPanelUtils";
 import { compositionSegments, compositionThreeSections, isOpencodeGoProvider, requestContextOverview } from "../lib/contextGaugePopup";
 import {
@@ -89,9 +90,9 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   const compactPct = Math.round(compactRatio * 100);
   const status = contextWindowStatus(rawUsagePct, compactPct);
 
-  const loadInfo = useCallback(() => {
+  const loadInfo = useCallback((force = false) => {
     if (!enabled || !tabId) return;
-    if (loadingTabRef.current === tabId) return;
+    if (!force && loadingTabRef.current === tabId) return;
     const requestTab = tabId;
     const seq = requestSeq.current + 1;
     requestSeq.current = seq;
@@ -102,6 +103,29 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
       if (requestSeq.current === seq) loadingTabRef.current = null;
     });
   }, [enabled, tabId]);
+
+  // tl1379 功能层：重置会话费用入口——费用记账清零、token 统计不动。
+  // 破坏性动作走既有确认框；确认后立即重拉 ContextPanel 让读数归零上屏。
+  const { confirm, dialog: resetCostDialog } = useConfirmDialog();
+  const [resettingCost, setResettingCost] = useState(false);
+  const requestResetCost = useCallback(async () => {
+    if (!tabId || resettingCost) return;
+    const confirmed = await confirm({
+      title: t("context.sessionCostResetTitle"),
+      message: t("context.sessionCostResetMessage"),
+      confirmLabel: t("context.sessionCostResetConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    setResettingCost(true);
+    try {
+      await app.ClearSessionCostForTab(tabId);
+      loadInfo(true);
+    } finally {
+      setResettingCost(false);
+    }
+  }, [confirm, resettingCost, tabId, t, loadInfo]);
 
   // Reset when tabId changes so an older panel request cannot paint a new session.
   useEffect(() => {
@@ -219,12 +243,14 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   const sessionCostBucketed = quoteStatus === "bucketed" || info?.sessionCostQuote?.aggregateMode === "currency_buckets";
   const sessionCostFallback = quoteStatus === "fallback_original";
   const sessionCostComplete = (sessionCostFallback || info?.sessionCostComplete !== false) && quoteStatus !== "unavailable";
+  // tl1379 口径：无定价按 0 段是权威金额——0 也要上屏，行标签换成「含 N 条」。
+  const sessionCostPartial = quoteStatus === "partial_priced" || (info?.sessionCostQuote?.partialPricedCount ?? 0) > 0;
   const sessionCostRaw = info?.sessionCostQuote?.selected
     ? Number(info.sessionCostQuote.selected.amount)
     : info?.sessionCost;
   const sessionCostCurrency = info?.sessionCostQuote?.selected?.currency || info?.sessionCurrency;
   const sessionCost =
-    !sessionCostBucketed && sessionCostComplete && typeof sessionCostRaw === "number" && sessionCostRaw > 0
+    !sessionCostBucketed && sessionCostComplete && typeof sessionCostRaw === "number" && (sessionCostRaw > 0 || ((sessionCostPartial || info?.sessionCostQuote?.complete === true) && info?.sessionCostQuote?.selected))
       ? `≈${formatMoneyLocalized(sessionCostRaw, sessionCostCurrency, { locale, empty: "dash" }).replace(/^≈/, "")}`
       : undefined;
   const sessionCostHint =
@@ -232,6 +258,8 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
         ? "payg_equivalent"
         : sessionCostFallback
           ? "fallback_original"
+        : sessionCost && sessionCostPartial
+          ? "partial_priced"
         : sessionCost
           ? "estimated"
         : undefined;
@@ -451,6 +479,8 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
                     ? t("context.sessionCostPaygEquivalent")
                     : sessionCostHint === "fallback_original"
                       ? t("context.sessionCostFallback")
+                    : sessionCostHint === "partial_priced"
+                      ? t("context.sessionCostPartialPriced", { count: info?.sessionCostQuote?.partialPricedCount ?? 0 })
                     : t("context.sessionCostEstimated")}
                 </span>
                 <span className="context-ring-popover__value" title={sessionRateBandTitle}>{sessionCostLabel}</span>
@@ -519,8 +549,17 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
             <span>{t("context.moreDetail")}</span>
             <ChevronRight size={12} aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            className="context-ring-popover__reset"
+            onClick={() => { void requestResetCost(); }}
+            disabled={resettingCost}
+          >
+            <span>{t("context.sessionCostReset")}</span>
+          </button>
         </div>
       </AnchoredPopover>
+      {resetCostDialog}
     </>
   );
 }

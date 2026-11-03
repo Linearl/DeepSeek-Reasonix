@@ -82,10 +82,9 @@ func (t *WorkspaceTab) selectDisplayCurrency(display string) bool {
 	t.usageTelemetry.SessionCostQuote = &total
 	t.usageTelemetry.SessionCostComplete = total.Complete
 	if total.Selected == nil {
+		// tl1379: only true anomalies land here now; keep accrued amounts and
+		// let SessionCostComplete=false drive the「不可估算」rendering.
 		t.usageTelemetry.SessionCostComplete = false
-		t.usageTelemetry.SessionCost = 0
-		t.usageTelemetry.SessionCurrency = ""
-		t.usageTelemetry.SessionCostUsd = 0
 		return true
 	}
 	t.usageTelemetry.SessionCost = total.Selected.Float64()

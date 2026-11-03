@@ -132,7 +132,8 @@ export function contextCostDisplay({
   estimated?: boolean;
   complete?: boolean;
   billingMode?: string;
-  labelKind?: "estimated" | "payg_equivalent" | "fallback" | "bucketed" | "unavailable";
+  labelKind?: "estimated" | "payg_equivalent" | "fallback" | "bucketed" | "unavailable" | "partial_priced";
+  partialPricedCount?: number;
 } {
   // Prefer structured session quote, then per-usage quote.
   const quote = info?.sessionCostQuote || usage?.costQuote;
@@ -156,17 +157,30 @@ export function contextCostDisplay({
     };
   }
   const selected = quote?.selected;
-  if (selected?.amount) {
+  // tl1379 口径：partial_priced（含无定价按 0 段）与 complete 零价（重置/恰好
+  // 为零）都是权威金额，0 也要上屏，不再掉进「不可估算」兜底。
+  const partialPricedCount = quote?.partialPricedCount ?? 0;
+  const quoteAuthoritative = quote?.costComplete !== false && quote?.displayComplete !== false;
+  if (selected?.amount && quoteAuthoritative) {
     const n = Number(selected.amount);
-    if (Number.isFinite(n) && n > 0) {
+    if (Number.isFinite(n) && (n > 0 || quote?.complete === true)) {
       const mode = quote?.billingMode || info?.sessionBillingMode;
+      const partialPriced = quote?.displayStatus === "partial_priced" || partialPricedCount > 0;
       return {
         amount: n,
         currency: selected.currency || usage?.currencyCode || usage?.currency || info?.sessionCurrency,
         estimated: quote?.estimated !== false,
         complete: quote?.displayComplete !== false,
         billingMode: mode,
-        labelKind: fallbackOriginal ? "fallback" : mode === "subscription_equivalent" ? "payg_equivalent" : "estimated",
+        labelKind: partialPriced
+          ? "partial_priced"
+          : fallbackOriginal
+            ? "fallback"
+            : mode === "subscription_equivalent"
+              ? "payg_equivalent"
+              : "estimated",
+        // undefined-safe（旧宿主无此字段）：JSON 序列化时缺省，不破坏既有 eq 断言。
+        partialPricedCount: quote?.partialPricedCount,
       };
     }
   }
@@ -612,9 +626,11 @@ export function ContextPanel({
     ? t("context.sessionCostBucketed")
     : cost.labelKind === "unavailable"
       ? t("context.sessionCostUnavailable")
-      : cost.labelKind === "fallback"
-        ? `${markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated)} (${t("context.sessionCostFallback")})`
-        : markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
+      : cost.labelKind === "partial_priced"
+        ? `${markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated)} (${t("context.sessionCostPartialPriced", { count: cost.partialPricedCount ?? 0 })})`
+        : cost.labelKind === "fallback"
+          ? `${markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated)} (${t("context.sessionCostFallback")})`
+          : markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
   const sessionCostLabel = rawSessionCostLabel;
   const turnRateBandTitle = rateBandLabel(turnRateBand, t) ? t("billing.rateBand.tooltip") : undefined;
   const sessionRateBand = normalizeRateBand(info?.sessionCostQuote?.rateBand);

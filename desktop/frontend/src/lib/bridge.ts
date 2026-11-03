@@ -1262,6 +1262,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   NewSessionForTab(tabID: string): Promise<void>;
   ClearSession(): Promise<SessionClearResult>;
   ClearSessionForTab(tabID: string): Promise<SessionClearResult>;
+  /** tl1379：重置会话费用——只清费用记账（ledger+标量+分来源），token 统计不动；契约对齐 desktop App.ResetSessionCostForTab（wails generate 禁用，手写对齐）。 */
+  ClearSessionCost(): Promise<void>;
+  ClearSessionCostForTab(tabID?: string): Promise<void>;
   History(): Promise<HistoryMessage[]>;
   HistoryForTab(tabID: string): Promise<HistoryMessage[]>;
   HistoryPage(beforeTurn: number, limit: number): Promise<HistoryPage>;
@@ -5172,6 +5175,8 @@ function makeMockApp(): AppBindings {
         async NewSessionForTab() {},
         async ClearSession() { return { sessionPath: "", sessionGeneration: 0 }; },
         async ClearSessionForTab() { return { sessionPath: "", sessionGeneration: 0 }; },
+        async ClearSessionCost() {},
+        async ClearSessionCostForTab() {},
     async Checkpoints() {
       return [
         { turn: 0, prompt: "你好呀", files: ["src/App.tsx"], fileCount: 1, turnFileCount: 1, time: Date.now() - 30_000, canCode: true, canConversation: true },

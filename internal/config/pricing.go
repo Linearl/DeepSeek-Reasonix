@@ -217,6 +217,25 @@ func mimoV2FlashPrice() *provider.Pricing {
 	return &provider.Pricing{CacheHit: 0.07, Input: 0.70, Output: 2.10, Currency: "¥"}
 }
 
+// mimoV26Prices return the v2.6-generation real-time (per-1M-token) rate card
+// (tl1379 数据层修正). The preset price table previously stopped at v2.5, so a
+// hand-upgraded model list (mimo-v2.6-*) resolved with no per-model price and
+// the session fell into the unpriced path. Batch inference prices exist
+// upstream (pro 0.0125/1.5/3, flash 0.01/0.5/1; ultraspeed has no batch lane)
+// but provider.Pricing carries no batch field, so only the real-time table is
+// expressible here.
+func mimoV26ProPrice() *provider.Pricing {
+	return &provider.Pricing{CacheHit: 0.025, Input: 3, Output: 6, Currency: "¥"}
+}
+
+func mimoV26FlashPrice() *provider.Pricing {
+	return &provider.Pricing{CacheHit: 0.02, Input: 1, Output: 2, Currency: "¥"}
+}
+
+func mimoV26ProUltraspeedPrice() *provider.Pricing {
+	return &provider.Pricing{CacheHit: 0.25, Input: 30, Output: 60, Currency: "¥"}
+}
+
 func mimoDomesticPrices(models []string) map[string]*provider.Pricing {
 	prices := map[string]*provider.Pricing{}
 	for _, model := range models {
@@ -227,6 +246,12 @@ func mimoDomesticPrices(models []string) map[string]*provider.Pricing {
 			prices[model] = mimoV25Price()
 		case "mimo-v2-flash":
 			prices[model] = mimoV2FlashPrice()
+		case "mimo-v2.6-pro":
+			prices[model] = mimoV26ProPrice()
+		case "mimo-v2.6-pro-ultraspeed":
+			prices[model] = mimoV26ProUltraspeedPrice()
+		case "mimo-v2.6-flash":
+			prices[model] = mimoV26FlashPrice()
 		}
 	}
 	return prices
