@@ -48,3 +48,19 @@ func TestToolRecoveryRejectsStaleSnapshot(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+// tl1366: MaintenanceInFlight is the restart-resume chain's boot-maintenance
+// probe. Nil-safe (a controller without an executor — the restore-path fake
+// shape) and idle-false (zero cost on the common path); the true path is a
+// 1:1 forward of agent.CompactionInFlight, whose maintaining-counter semantics
+// the agent package pins directly (maintenance_hooks_test.go).
+func TestMaintenanceInFlightNilSafeAndIdleFalse(t *testing.T) {
+	var nilController *Controller
+	if nilController.MaintenanceInFlight() {
+		t.Fatal("nil controller must report no maintenance")
+	}
+	c := New(Options{Sink: event.Discard})
+	if c.MaintenanceInFlight() {
+		t.Fatal("idle controller must report no maintenance")
+	}
+}

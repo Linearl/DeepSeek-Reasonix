@@ -62,6 +62,22 @@ func (c *Controller) HasPendingToolRecovery() bool {
 	return len(c.executor.PendingToolRecovery()) > 0
 }
 
+// MaintenanceInFlight reports whether a context-maintenance transaction
+// (task-920 压缩单飞门: prune/fold/rescue, including the boot-time pressure
+// compaction a freshly restored oversized session runs) is executing right
+// now (tl1366). The restart-resume chain reads it through a narrow type
+// assertion (restartMaintenanceProbe) so the continue prompt is submitted
+// into a settled controller instead of parking behind the very compaction
+// window whose burn killed the incident's resumed turn. Same narrow-probe
+// convention as HasPendingToolRecovery above — a fake or an older controller
+// without the method simply never triggers the wait.
+func (c *Controller) MaintenanceInFlight() bool {
+	if c == nil || c.executor == nil {
+		return false
+	}
+	return c.executor.CompactionInFlight()
+}
+
 // SettleRestartInterruptedEffects hands the session's pending effect records
 // to the restart resume chain (task 435): a session staged in the task-254
 // roster was interrupted by OUR planned restart, so when its restore point
