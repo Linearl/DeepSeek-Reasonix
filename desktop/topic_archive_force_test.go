@@ -8,8 +8,11 @@ package main
 // grabbed silently (refusal keeps the holder identity, tl1367 line 1).
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -154,5 +157,165 @@ func TestTrashTopicForceCompletesWithReusedPidLeaseRecord(t *testing.T) {
 	}
 	if _, err := agent.LoadSessionLeaseInfo(key); !os.IsNotExist(err) {
 		t.Fatalf("reused-pid record survived the force archive: %v", err)
+	}
+}
+
+// spawnForeignLeaseHolder starts a real second process holding the session's
+// OS lease lock (the topic-archive foreign-lease helper), so the refusals
+// below are arbitrated by a genuine cross-process lock instead of a mock.
+// The returned func waits for the helper to exit after releasing it.
+func spawnForeignLeaseHolder(t *testing.T, sessionPath string) func() {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestTrashTopicForeignLeaseHelper$")
+	cmd.Env = append(os.Environ(),
+		"REASONIX_TOPIC_ARCHIVE_LEASE_HELPER=1",
+		"REASONIX_TOPIC_ARCHIVE_LEASE_PATH="+sessionPath,
+	)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("lease helper stdin: %v", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("lease helper stdout: %v", err)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start lease helper: %v", err)
+	}
+	release := func() {
+		_ = stdin.Close()
+		if err := cmd.Wait(); err != nil {
+			t.Errorf("lease helper exit: %v (%s)", err, stderr.String())
+		}
+	}
+	ready, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil || ready != "ready\n" {
+		stdin.Close()
+		cmd.Wait()
+		t.Fatalf("lease helper readiness = %q, err=%v (%s)", ready, err, stderr.String())
+	}
+	return release
+}
+
+// TestTrashTopicForceRefusesLiveForeignHolderWithoutGrabbing pins the line-4
+// real-occupation contract: a live holder running this application is never
+// grabbed by force. The force call must refuse with the busy family, leave
+// the holder's lock and identity record untouched, and keep the session
+// intact — while the regular archive succeeds once the holder walks away.
+func TestTrashTopicForceRefusesLiveForeignHolderWithoutGrabbing(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	topicID := "topic_force_live_foreign"
+	sessionPath := stageForceArchiveTopic(t, "force-live.jsonl", topicID, "Force live")
+	key := sessionRuntimeKey(sessionPath)
+
+	releaseHolder := spawnForeignLeaseHolder(t, sessionPath)
+	info, err := agent.LoadSessionLeaseInfo(key)
+	if err != nil || info == nil || info.PID <= 0 {
+		t.Fatalf("holder record after spawn: %v (%v)", info, err)
+	}
+	holderPID := info.PID
+
+	app := NewApp()
+	forceErr := app.TrashTopicForce(topicID)
+	if forceErr == nil {
+		releaseHolder()
+		t.Fatal("force archive must not succeed against a live foreign holder")
+	}
+	if !errors.Is(forceErr, errSessionBusyElsewhere) {
+		t.Fatalf("force against a live holder = %v, want the live busy family", forceErr)
+	}
+	// Not grabbed: the holder's lock and identity record are untouched.
+	if _, locked, err := agent.InspectSessionLease(key); err != nil || !locked {
+		releaseHolder()
+		t.Fatalf("holder lock disturbed by force: locked=%v err=%v", locked, err)
+	}
+	if got, err := agent.LoadSessionLeaseInfo(key); err != nil || got == nil || got.PID != holderPID {
+		releaseHolder()
+		t.Fatalf("holder identity record disturbed by force: %v (%v)", got, err)
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		releaseHolder()
+		t.Fatalf("failed force removed the session: %v", err)
+	}
+	if agent.IsCleanupPending(sessionPath) {
+		releaseHolder()
+		t.Fatal("failed force published a cleanup-pending marker")
+	}
+
+	// The holder walks away; the regular archive then succeeds — nothing was
+	// stolen or corrupted by the refused force call.
+	releaseHolder()
+	if err := app.TrashTopic(topicID); err != nil {
+		t.Fatalf("regular archive after holder release: %v", err)
+	}
+}
+
+// TestTrashTopicForceNeverStealsLiveLockBehindStaleVerdict pins the honest
+// stale boundary: when the holder verdict reads stale (the injected probe
+// models the torn-record shape — a live lock whose record can no longer be
+// trusted) but the OS lock is REALLY held by a live process, the stale-record
+// retirement must refuse (the clear primitive is verify-free-then-remove) and
+// the force archive must fail cleanly instead of faking success — the holder's
+// record, the live lock, and the session all survive; the regular archive
+// succeeds after the holder leaves.
+func TestTrashTopicForceNeverStealsLiveLockBehindStaleVerdict(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	prevAlive := leaseReconcileProcessAlive
+	prevDetailAlive := desktopLeaseAlive
+	t.Cleanup(func() {
+		leaseReconcileProcessAlive = prevAlive
+		desktopLeaseAlive = prevDetailAlive
+	})
+
+	topicID := "topic_force_stale_verdict_live_lock"
+	sessionPath := stageForceArchiveTopic(t, "force-stale-live.jsonl", topicID, "Force stale live")
+	key := sessionRuntimeKey(sessionPath)
+
+	releaseHolder := spawnForeignLeaseHolder(t, sessionPath)
+	info, err := agent.LoadSessionLeaseInfo(key)
+	if err != nil || info == nil || info.PID <= 0 {
+		releaseHolder()
+		t.Fatalf("holder record after spawn: %v (%v)", info, err)
+	}
+	holderPID := info.PID
+	// The liveness seam now calls the live holder stale — the torn-record
+	// shape: our verdict says "leftover", the lock says "someone alive".
+	deadProbe := func(pid int) bool { return pid != holderPID }
+	leaseReconcileProcessAlive = deadProbe
+	desktopLeaseAlive = deadProbe
+
+	app := NewApp()
+	forceErr := app.TrashTopicForce(topicID)
+	if forceErr == nil {
+		releaseHolder()
+		t.Fatal("force archive must not succeed while a live process holds the lock")
+	}
+	if !errors.Is(forceErr, errSessionBusyZombie) {
+		t.Fatalf("force with a stale verdict on a live lock = %v, want the zombie family", forceErr)
+	}
+	// The stale-verdict retirement was NOT performed through a stolen lock,
+	// and the lock is still held by the live holder.
+	if got, err := agent.LoadSessionLeaseInfo(key); err != nil || got == nil || got.PID != holderPID {
+		releaseHolder()
+		t.Fatalf("holder record disturbed during force: %v (%v)", got, err)
+	}
+	if _, locked, err := agent.InspectSessionLease(key); err != nil || !locked {
+		releaseHolder()
+		t.Fatalf("live lock disturbed by force: locked=%v err=%v", locked, err)
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		releaseHolder()
+		t.Fatalf("failed force removed the session: %v", err)
+	}
+	if agent.IsCleanupPending(sessionPath) {
+		releaseHolder()
+		t.Fatal("failed force published a cleanup-pending marker")
+	}
+
+	releaseHolder()
+	if err := app.TrashTopic(topicID); err != nil {
+		t.Fatalf("regular archive after holder release: %v", err)
 	}
 }
