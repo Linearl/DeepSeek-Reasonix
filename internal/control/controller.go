@@ -5549,6 +5549,20 @@ func (c *Controller) stripCancelledVisibleTurnMessagesAfterWithFallbackAt(idx in
 				recovery.InterruptedTools = append(recovery.InterruptedTools, previousRecovery.InterruptedTools...)
 				recovery.NotStartedTools = append(recovery.NotStartedTools, previousRecovery.NotStartedTools...)
 				recovery.UnknownTools = append(recovery.UnknownTools, previousRecovery.UnknownTools...)
+				// tl1364: carry the terminal failure evidence across the merge.
+				// recordInterruptedDisplay writes TerminalStatus plus the
+				// credential-scrubbed FailureSummary/FailureDiagnostic (task 340);
+				// dropping them here rewrote every provider-failure turn into a
+				// bare {pending:true} sentinel, so a turn killed by e.g. an
+				// HTTP 401 showed "interrupted" with no cause to the user, the
+				// model, and every later reload. Newest record wins: the merge
+				// walks chronologically, so the last failed attempt names the
+				// state the turn actually stopped in.
+				if previousRecovery.TerminalStatus != "" {
+					recovery.TerminalStatus = previousRecovery.TerminalStatus
+					recovery.FailureDiagnostic = previousRecovery.FailureDiagnostic
+					recovery.FailureSummary = previousRecovery.FailureSummary
+				}
 			} else {
 				for _, call := range m.ToolCalls {
 					provider.RecordToolRecovery(recovery, interruptedToolSummary(call), provider.ToolRunUnknown)
