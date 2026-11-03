@@ -6304,6 +6304,30 @@ button.reasoning-summary:focus-visible {
 .tool__command .code {
   max-height: 240px;
 }
+/* tl1365: 默认态命令区至多 3 行，line-clamp 截断留省略号；完整展开由
+   「展开命令」按钮切换（ToolCard 移除 --clamped 修饰类即恢复常规块布局）。 */
+.tool__command--clamped .code {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.tool__command-toggle {
+  display: inline-block;
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: var(--font-caption);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  line-height: 1.6;
+}
+.tool__command-toggle:hover {
+  background: color-mix(in srgb, var(--accent-soft) 60%, transparent);
+}
 .tool__search-query {
   color: var(--fg);
   overflow-wrap: anywhere;
