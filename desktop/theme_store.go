@@ -326,6 +326,9 @@ func resolveActiveThemeID(st ThemeDesktopState) string {
 	if isOfficialThemeID(id) {
 		return id
 	}
+	if isMediaThemeID(id) {
+		return id
+	}
 	if userThemeExists(id) {
 		// Quick re-validate; corrupt themes fall back to none (caller falls to base style).
 		if _, err := loadUserThemeManifest(id); err == nil {

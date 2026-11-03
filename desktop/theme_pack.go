@@ -570,7 +570,7 @@ func manifestToView(m *ThemePackManifest, kind string, active bool, backgroundUR
 		Description:       m.Description,
 		License:           m.License,
 		BaseStyle:         m.BaseStyle,
-		Builtin:           kind == themeKindBase || kind == themeKindOfficial,
+		Builtin:           kind == themeKindBase || kind == themeKindOfficial || kind == themeKindMedia,
 		Kind:              kind,
 		Active:            active,
 		HasBackground:     (m.Background != nil && m.Background.Image != "") || (m.TaskBackground != nil && m.TaskBackground.Image != ""),
@@ -586,6 +586,10 @@ func manifestToView(m *ThemePackManifest, kind string, active bool, backgroundUR
 	if kind == themeKindOfficial {
 		v.NameKey = "settings.themes.official." + m.ID + ".name"
 		v.DescriptionKey = "settings.themes.official." + m.ID + ".description"
+	}
+	if kind == themeKindMedia {
+		v.NameKey = "settings.themes.media." + m.ID + ".name"
+		v.DescriptionKey = "settings.themes.media." + m.ID + ".description"
 	}
 	if m.Background != nil {
 		bg := *m.Background

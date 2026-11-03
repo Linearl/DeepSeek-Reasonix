@@ -2867,6 +2867,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.themes.official.official-cyan-stage.description": "青藍未來舞台與原創數位表演者。",
   "settings.themes.official.official-noir-gold.name": "黑金序曲",
   "settings.themes.official.official-noir-gold.description": "黑色絲絨舞台與金色聚光燈下的原創創意紳士。",
+  "settings.themes.media.media-broadsheet-rose.name": "報紙玫瑰",
+  "settings.themes.media.media-broadsheet-rose.description": "金融時報紙感：三文魚粉紙底、暖深灰正文、單一酒紅強調，hairline 分隔。少即是多。",
 
   "settings.textSize": "介面字號",
   "settings.textSizeSmall": "小",
@@ -5222,6 +5224,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.themeGallery.tabBase": "基礎配色",
   "settings.themeGallery.tabAll": "全部主題",
   "settings.themeGallery.sectionFlagship": "旗艦主題",
+  "settings.themeGallery.sectionMedia": "媒體風格",
+  "settings.themeGallery.kindMedia": "媒體風格",
   "settings.themeGallery.kindOfficial": "官方主題",
   "settings.themeGallery.kindUser": "我的主題",
   "settings.themeGallery.kindPlugin": "插件 · {name}",

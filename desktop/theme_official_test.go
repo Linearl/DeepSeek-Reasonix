@@ -188,7 +188,7 @@ func TestOfficialListOrderAndKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base, official, user := 0, 0, 0
+	base, official, media, user := 0, 0, 0, 0
 	seenOfficial := 0
 	for i, p := range list {
 		switch p.Kind {
@@ -206,6 +206,18 @@ func TestOfficialListOrderAndKinds(t *testing.T) {
 			if p.NameKey == "" || p.DescriptionKey == "" {
 				t.Fatalf("official i18n keys missing: %+v", p)
 			}
+		case themeKindMedia:
+			// tl1343: media presets ride the same list; token-only with i18n keys.
+			media++
+			if !p.Builtin {
+				t.Fatal("media must keep builtin=true")
+			}
+			if p.HasBackground || p.BackgroundURL != "" || p.PreviewURL != "" {
+				t.Fatalf("media is token-only: %+v", p)
+			}
+			if p.NameKey == "" || p.DescriptionKey == "" {
+				t.Fatalf("media i18n keys missing: %+v", p)
+			}
 		case themeKindUser:
 			user++
 			if p.Builtin {
@@ -215,8 +227,8 @@ func TestOfficialListOrderAndKinds(t *testing.T) {
 			t.Fatalf("unknown kind %q", p.Kind)
 		}
 	}
-	if base != 6 || official != officialExpectedCount || user < 2 {
-		t.Fatalf("list = %d base + %d official + %d user", base, official, user)
+	if base != 6 || official != officialExpectedCount || media != mediaExpectedCount || user < 2 {
+		t.Fatalf("list = %d base + %d official + %d media + %d user", base, official, media, user)
 	}
 	haveA, haveB := false, false
 	for _, p := range list {

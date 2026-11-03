@@ -35,6 +35,7 @@ import {
   applyExperienceToDOM,
   cancelGlobalPreview,
   configuredBaseStyleForSync,
+  groupThemePacks,
   isPreviewActive,
   startGlobalPreview,
 } from "../lib/themeExperience";
@@ -302,7 +303,8 @@ ok(styleText("reasonix-theme-pack-overlay").includes("--r:14px"), "applies round
 const gradDecl = "--grad:linear-gradient(120deg, var(--accent), var(--accent-strong))";
 const overlayCss = styleText("reasonix-theme-pack-overlay");
 ok(overlayCss.includes(gradDecl), "task 706: pack overlay re-derives --grad from accent");
-ok(overlayCss.split(gradDecl).length - 1 === 4, "task 706: --grad re-derived across dark/light/auto chunks");
+// tl1343: 4 root chunks + 4 element-scoped (.app--creation) chunks.
+ok(overlayCss.split(gradDecl).length - 1 === 8, "task 706 + tl1343: --grad re-derived across root and scope chunks");
 
 applyThemePack(draftPackView({
   id: "accentless-pack",
@@ -311,6 +313,49 @@ applyThemePack(draftPackView({
   tokens: { dark: { fg: "#ffffff" } },
 }));
 ok(!styleText("reasonix-theme-pack-overlay").includes("--grad:"), "task 706: no --grad re-derivation when the pack sets no accent");
+
+// tl1343: packs must reach the creation layout. mode-creation.css re-declares
+// the token set on .app--creation, which shadows :root — the overlay mirrors
+// its chunks onto the registered scopes one specificity tier higher, split by
+// resolved mode, so the salmon #FFF1E5 background lands in creation too.
+applyThemePack(draftPackView({
+  id: "media-broadsheet-rose",
+  name: "Broadsheet Rose",
+  baseStyle: "graphite",
+  // Lowercase hex mirrors what the Go validator persists (validateThemeTokenMap
+  // lowercases every token before save/list).
+  tokens: {
+    light: { bg: "#fff1e5", fg: "#33302e", accent: "#990f3d" },
+    dark: { bg: "#1b1614", fg: "#f3e9df", accent: "#c9355c" },
+  },
+  recipes: { density: "comfortable", corners: "square" },
+}));
+const roseOverlay = styleText("reasonix-theme-pack-overlay");
+ok(roseOverlay.includes(':root[data-theme="light"][data-theme-pack="media-broadsheet-rose"]{--bg:#fff1e5'), "root light chunk carries the salmon background");
+ok(
+  roseOverlay.includes(':root[data-theme="light"][data-theme-style][data-theme-pack="media-broadsheet-rose"] .app--creation{--bg:#fff1e5'),
+  "creation scope light chunk carries the salmon background above the mode sheet",
+);
+ok(
+  roseOverlay.includes('@media (prefers-color-scheme: dark){:root:not([data-theme])[data-theme-style][data-theme-pack="media-broadsheet-rose"] .app--creation{--bg:#1b1614'),
+  "creation scope auto-dark chunk carries the pack dark background",
+);
+ok(
+  roseOverlay.includes(':root[data-theme="dark"][data-theme-style][data-theme-pack="media-broadsheet-rose"] .app--creation{--bg:#1b1614'),
+  "creation scope forced-dark chunk carries the pack dark background",
+);
+ok(
+  roseOverlay.includes('.app--creation{--bg:#fff1e5') && roseOverlay.includes(';--accent-soft: color-mix(in srgb, #990f3d 12%, transparent)'),
+  "creation scope chunks carry the derived soft accent",
+);
+
+// tl1343: the media group exists beside official/user/base/plugin.
+const grouped = groupThemePacks([
+  { id: "media-broadsheet-rose", name: "Broadsheet Rose", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
+  { id: "official-rose-dawn", name: "Rose Dawn", baseStyle: "graphite", builtin: true, kind: "official", active: false, hasBackground: false, tokens: {}, recipes: {} },
+]);
+ok(grouped.media.length === 1 && grouped.media[0].id === "media-broadsheet-rose", "groupThemePacks routes kind=media into the media group");
+ok(grouped.official.length === 1, "groupThemePacks keeps official grouping intact");
 
 const twoSceneDraft = draftPackView({
   ...draft,
@@ -651,7 +696,10 @@ ok(gallerySource.includes("handlePreviewRadioKey") && gallerySource.includes("ta
 ok(gallerySource.includes("if (!immersive || !selectedPack) return") && gallerySource.includes("previewPackGlobally(selectedPack)"), "immersive selection automatically starts a global preview");
 ok(gallerySource.includes("closeImmersivePreview") && gallerySource.includes("cancelGlobalPreview();"), "leaving immersive preview restores the prior appearance");
 ok(!gallerySource.includes("settings.themeGallery.tempPreview"), "redundant global-trial button is removed");
-ok(gallerySource.includes("theme-gallery__rail-section") && gallerySource.includes("packs: groups.official") && gallerySource.includes("packs: groups.user") && gallerySource.includes("packs: groups.base"), "immersive rail includes official, user, and base theme groups");
+ok(gallerySource.includes("theme-gallery__rail-section") && gallerySource.includes("packs: groups.official") && gallerySource.includes("packs: groups.media") && gallerySource.includes("packs: groups.user") && gallerySource.includes("packs: groups.base"), "immersive rail includes official, media, user, and base theme groups");
+// tl1343: media packs are labeled in the gallery badge and the overview kind label.
+ok(gallerySource.includes('if (kind === "media") return t("settings.themeGallery.kindMedia")'), "media packs carry the media kind badge in the gallery");
+ok(overviewSource.includes('pack.kind === "media"') && overviewSource.includes("settings.themeGallery.kindMedia"), "overview kind label routes media packs to the media badge");
 ok(gallerySource.includes("filter((section) => section.packs.length > 0)"), "immersive rail hides empty groups");
 ok(!gallerySource.includes("theme-gallery__tabs--compact"), "immersive rail has no duplicate bottom tab navigation");
 ok(gallerySource.includes("theme-gallery__detail-status"), "active theme uses a status badge");
@@ -669,7 +717,7 @@ ok(bridgeSource.includes("DisableThemePack"), "bridge exposes DisableThemePack")
 
 // Gallery navigation merges built-in choices while keeping their semantics.
 ok(gallerySource.includes('["catalog", t("settings.themeGallery.tabAll"), catalogPacks.length]'), "gallery combines official and base packs in all themes");
-ok(gallerySource.includes('id: "official"') && gallerySource.includes('id: "base"'), "all themes keeps flagship and base sections");
+ok(gallerySource.includes('id: "official"') && gallerySource.includes('id: "media"') && gallerySource.includes('id: "base"'), "all themes keeps flagship, media, and base sections");
 ok(gallerySource.includes('role="group"') && gallerySource.includes("theme-gallery__section-head"), "catalog sections retain accessible grouping");
 ok(!gallerySource.includes('["base", t("settings.themeGallery.tabBase"), groups.base.length]'), "base styles are no longer a separate top-level tab");
 ok(gallerySource.includes("selectionSeeded.current") && gallerySource.includes("packs.length === 0"), "empty user tab is not overwritten by selection seeding");
@@ -694,6 +742,16 @@ for (const id of OFFICIAL_IDS) {
     ok(localeZhTW.includes(`"${key}"`), `zh-TW has ${key}`);
   }
 }
+// Localized media preset names/descriptions in all three locales (tl1343).
+const MEDIA_IDS = ["media-broadsheet-rose"];
+for (const id of MEDIA_IDS) {
+  for (const suffix of ["name", "description"]) {
+    const key = `settings.themes.media.${id}.${suffix}`;
+    ok(localeEn.includes(`"${key}"`), `en has ${key}`);
+    ok(localeZh.includes(`"${key}"`), `zh has ${key}`);
+    ok(localeZhTW.includes(`"${key}"`), `zh-TW has ${key}`);
+  }
+}
 for (const key of [
   "settings.themeGallery.title",
   "settings.themeGallery.apply",
@@ -704,6 +762,8 @@ for (const key of [
   "settings.themeGallery.scenePreviewHint",
   "settings.themeGallery.tabAll",
   "settings.themeGallery.sectionFlagship",
+  "settings.themeGallery.sectionMedia",
+  "settings.themeGallery.kindMedia",
   "settings.themeEditor.safeAreaHint",
   "settings.themeLibrary.confirmDeleteTitle",
   "settings.themeLibrary.confirmReplaceImportTitle",
@@ -714,9 +774,10 @@ for (const key of [
   ok(localeEn.includes(`"${key}"`) && localeZh.includes(`"${key}"`) && localeZhTW.includes(`"${key}"`), `gallery key ${key} in all locales`);
 }
 
-// Mock parity: 6 base + 8 official mock packs so browser dev matches the shell.
+// Mock parity: 6 base + 8 official + 1 media mock packs so browser dev matches the shell.
 ok((bridgeSource.match(/kind: "base"/g) || []).length === 6, "mock has 6 base packs");
 ok((bridgeSource.match(/kind: "official"/g) || []).length === 8, "mock has 8 official packs");
+ok((bridgeSource.match(/kind: "media"/g) || []).length === 1, "mock has 1 media pack");
 ok((bridgeSource.match(/previewUrl: new URL\("\.\.\/\.\.\/\.\.\/themes\/official\//g) || []).length === 8, "browser mock has 8 real official previews");
 ok((bridgeSource.match(/backgroundUrl: new URL\("\.\.\/\.\.\/\.\.\/themes\/official\//g) || []).length === 8, "browser mock has 8 real official backgrounds");
 ok((bridgeSource.match(/paneOpacity:\s*0\.50/g) || []).length === 8, "browser mock gives every official theme the product pane opacity");
@@ -759,9 +820,31 @@ ok(
 );
 ok(localeZh.includes('"settings.themeEditor.safeArea": "界面内容区域"') && localeZh.includes('"settings.themeEditor.safeAreaHint": "选择文字和卡片主要显示的位置；建议避开图片主体。"'), "Chinese content-area copy explains foreground placement");
 
-// Pack overlay stays at :root — Workbench/Creation element-scoped auto-light
-// selectors must keep winning in their subtree (theme never overrides them).
-ok(!packSource.includes(".app--"), "pack overlay never targets layout-scoped selectors");
+// tl1343 contract: the pack overlay stays at :root EXCEPT for the registered
+// element-level token-shadow sites (creation mode re-declares tokens on
+// .app--creation, which would otherwise shadow every pack token). The overlay
+// may target ONLY those registered layout scopes — any other layout-scoped
+// selector stays forbidden — and every full-token shadow site in the mode
+// stylesheets must be registered (new site without registration = red).
+const PACK_TOKEN_ELEMENT_SCOPES = [".app--creation"];
+const declaredScopes = (packSource.match(/PACK_TOKEN_ELEMENT_SCOPES = \[([^\]]*)\]/)?.[1] ?? "")
+  .split(",")
+  .map((raw) => raw.trim().replace(/^["']|["']$/g, ""))
+  .filter(Boolean);
+ok(
+  declaredScopes.length > 0 && declaredScopes.every((s) => /^\.app--[a-z-]+$/.test(s)),
+  `pack overlay scope list only contains layout-scoped token-shadow sites (got ${JSON.stringify(declaredScopes)})`,
+);
+const fullShadowSites = new Set<string>();
+for (const chunk of stylesSource.split("}")) {
+  if (!chunk.includes("--bg:") || !chunk.includes("--fg:")) continue;
+  const selector = chunk.slice(0, chunk.lastIndexOf("{"));
+  for (const m of selector.matchAll(/\.?(app--[a-z-]+)/g)) fullShadowSites.add(`.${m[1]}`);
+}
+ok(
+  [...fullShadowSites].every((s) => PACK_TOKEN_ELEMENT_SCOPES.includes(s)),
+  `every mode-sheet full-token shadow site is registered in PACK_TOKEN_ELEMENT_SCOPES (got ${JSON.stringify([...fullShadowSites])})`,
+);
 ok(packSource.includes("prefers-color-scheme: light"), "auto mode follows system light/dark");
 
 // Keep ThemeLibrary available for any residual editor helpers.
