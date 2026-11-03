@@ -5,7 +5,7 @@
 import { JSDOM } from "jsdom";
 import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
-import { countUnhandled, readHandledTurns, markHandledTurns, withUnfiledNoticeItems } from "../lib/unfiledInputs";
+import { countUnhandled, readHandledTurns, markHandledTurns, unfiledSessionKeyOf, withUnfiledNoticeItems } from "../lib/unfiledInputs";
 import type { UnfiledInputView } from "../lib/types";
 import type { Item } from "../lib/useController";
 
@@ -158,6 +158,32 @@ console.log("\nunfiled inputs: tl1372 A2 dual bucket (pending recovery, 实验�
   const appGo = await readFile(new URL("../../../unfiled_inputs_app.go", import.meta.url), "utf8");
   ok(appGo.includes(`json:"class,omitempty"`), "class field is omitempty on the wire — flag-off payloads unchanged");
   ok(appGo.includes('in.Class == "pending_recovery"'), "desktop bridge forwards only the pending_recovery bucket");
+}
+
+console.log("\nunfiled inputs: tl1372 dismiss key normalization (recovery fork follows the parent)");
+{
+  // 判则②：recovery fork 换 sessionPath 后 dismiss 必须跟随——键归一到同根
+  // 父会话路径（与后端 agent.RecoveryFilenameRootID 同构的剥层判定）。
+  const parent = "C:/sessions/20261102-021909.744449100-mimo-token-plan.jsonl";
+  const fork = "C:/sessions/20261102-021909.744449100-mimo-token-plan-recovery-9318b1f6a1b2c3d4.jsonl";
+  ok(unfiledSessionKeyOf(fork) === parent, "a recovery fork maps onto the parent session path");
+  ok(unfiledSessionKeyOf(parent) === parent, "a plain session keeps its own path (存量键零迁移)");
+  const nestedFork = "C:/sessions/20261102-021909.744449100-mimo-token-plan-recovery-0123456789abcdef-recovery-fedcba9876543210.jsonl";
+  ok(unfiledSessionKeyOf(nestedFork) === parent, "nested recovery forks peel back to the same root");
+  ok(unfiledSessionKeyOf("") === "" && unfiledSessionKeyOf("  ") === "", "empty stays empty (tab-id fallback upstream)");
+  ok(unfiledSessionKeyOf("C:/sessions/foo-recovery-short.jsonl") === "C:/sessions/foo-recovery-short.jsonl", "a suffix that is not 16 hex is not a recovery marker");
+  ok(unfiledSessionKeyOf("C:/sessions/foo-recovery-0123456789ABCDEF.jsonl") === "C:/sessions/foo.jsonl", "uppercase hex matches the backend peel");
+  ok(unfiledSessionKeyOf("C:/sessions/foo-recovery-0123456789abcde.jsonl") === "C:/sessions/foo-recovery-0123456789abcde.jsonl", "15 hex is not a recovery marker");
+  ok(unfiledSessionKeyOf("tab-1") === "tab-1", "non-path fallbacks pass through unchanged");
+
+  // 行为面：fork 前标记 → fork 后仍生效；不同会话不串。
+  const keyParent = unfiledSessionKeyOf(parent);
+  markHandledTurns(keyParent, [7]);
+  ok(readHandledTurns(unfiledSessionKeyOf(fork)).has(7), "a mark made before the fork still applies after the fork");
+  markHandledTurns(unfiledSessionKeyOf(nestedFork), [9]);
+  ok(readHandledTurns(keyParent).has(9), "a mark made on a nested fork lands on the shared parent key");
+  const otherKey = unfiledSessionKeyOf("C:/sessions/another-session-recovery-0123456789abcdef.jsonl");
+  ok(otherKey === "C:/sessions/another-session.jsonl" && !readHandledTurns(otherKey).has(7), "a different session topic never sees the parent's handled set");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

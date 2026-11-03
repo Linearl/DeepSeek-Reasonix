@@ -331,7 +331,7 @@ import { setStatusBarItems, setStatusBarStyle, useShellPrefsStore } from "./stor
 import { setCollabAutoFold } from "./store/collabDisplay";
 import { useInvocationMetadata } from "./app-runtime/useInvocationMetadata";
 import { UnfiledInputsBanner } from "./components/UnfiledInputsBanner";
-import { countUnhandled, readHandledTurns, useUnfiledInputs, withUnfiledNoticeItems } from "./lib/unfiledInputs";
+import { countUnhandled, readHandledTurns, unfiledSessionKeyOf, useUnfiledInputs, withUnfiledNoticeItems } from "./lib/unfiledInputs";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
@@ -4162,7 +4162,9 @@ export default function App() {
   // 任务 1023 阶段 0：未入档输入（已从检查点恢复）——只读对账 + 就地呈现。
   const unfiled = useUnfiledInputs(visibleTranscriptTabId);
   const [unfiledHandledSeq, setUnfiledHandledSeq] = useState(0);
-  const unfiledSessionKey = (activeTab?.sessionPath ?? state.meta?.sessionPath ?? visibleTranscriptTabId ?? "").trim();
+  // tl1372 判则②：键归一到 recovery 组根路径——fork 换 sessionPath 后已处理
+  // 标记跟随父会话（unfiledSessionKeyOf）。
+  const unfiledSessionKey = unfiledSessionKeyOf(activeTab?.sessionPath ?? state.meta?.sessionPath ?? visibleTranscriptTabId ?? "");
   const unfiledHandledTurns = useMemo(
     () => readHandledTurns(unfiledSessionKey),
     // unfiledHandledSeq: the banner marks turns handled in localStorage directly;
