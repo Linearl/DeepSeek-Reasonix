@@ -133,11 +133,20 @@ func runsDir(workflowsDir string) string {
 	if workflowsDir == "" {
 		return ""
 	}
-	return filepath.Join(workflowsDir, "runs")
+	// tl1373：存储根等价消毒（Clean+绝对锚定，语义不变），外部输入经 config
+	// 路径流入文件操作的告警面在此收口。
+	return filepath.Join(fileutil.SanitizeFilePath(workflowsDir), "runs")
 }
 
-func runSnapshotPath(dir, runID string) string {
-	return filepath.Join(dir, runID, "run.json")
+// runSnapshotPath 拼一个 run 的快照路径。runID 是外部可传入的恢复键
+// （resume/删除），必须收敛为单个分量——非法 id 返回错误，绝不落到 id
+// 指向的位置。
+func runSnapshotPath(dir, runID string) (string, error) {
+	safe, err := fileutil.SanitizeComponent(runID)
+	if err != nil {
+		return "", fmt.Errorf("workflow: snapshot %q: %w", runID, err)
+	}
+	return filepath.Join(dir, safe, "run.json"), nil
 }
 
 // saveRunSnapshot 原子写一份快照。dir 为空 = no-op（持久化是增强不是门禁，
@@ -150,10 +159,14 @@ func saveRunSnapshot(dir string, snap *runSnapshot) error {
 	if err != nil {
 		return fmt.Errorf("workflow: snapshot encode: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(runSnapshotPath(dir, snap.RunID)), 0o755); err != nil {
+	path, err := runSnapshotPath(dir, snap.RunID)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("workflow: snapshot store: %w", err)
 	}
-	if err := fileutil.AtomicWriteFile(runSnapshotPath(dir, snap.RunID), raw, 0o644); err != nil {
+	if err := fileutil.AtomicWriteFile(path, raw, 0o644); err != nil {
 		return fmt.Errorf("workflow: snapshot store: %w", err)
 	}
 	return nil
@@ -165,7 +178,11 @@ func loadRunSnapshot(dir, runID string) (*runSnapshot, error) {
 	if dir == "" {
 		return nil, os.ErrNotExist
 	}
-	raw, err := os.ReadFile(runSnapshotPath(dir, runID))
+	path, err := runSnapshotPath(dir, runID)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -201,10 +218,15 @@ func listRunSnapshotIDs(dir string) []string {
 	return ids
 }
 
-// removeRunSnapshot 删一个 run 的快照目录。
+// removeRunSnapshot 删一个 run 的快照目录。id 消毒失败 = 不存在该 run 的
+// 合法存储位，no-op（删除面绝不跟随未消毒 id）。
 func removeRunSnapshot(dir, runID string) {
 	if dir == "" {
 		return
 	}
-	_ = os.RemoveAll(filepath.Join(dir, runID))
+	path, err := runSnapshotPath(dir, runID)
+	if err != nil {
+		return
+	}
+	_ = os.RemoveAll(filepath.Dir(path))
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"reasonix/internal/fileutil"
 	"reasonix/internal/secrets"
 	"reasonix/internal/store"
 )
@@ -69,11 +70,16 @@ const SessionTranscriptZstCompressFloor = 1 << 20 // 1 MiB
 const sessionTranscriptZstKind = "reasonix-session-transcript-zst"
 
 // sessionTranscriptZstPaths resolves the (plain, zst) pair for a session path.
+// tl1373: sanitization choke point for the transcript archive layer — the
+// sanitizer (Clean + absolute anchor) is meaning-preserving for real
+// filesystem paths, so callers see identical behavior with a normalized
+// spelling.
 func sessionTranscriptZstPaths(sessionPath string) (plain, zst string) {
 	if sessionPath == "" {
 		return "", ""
 	}
-	return sessionPath, store.SessionTranscriptZst(sessionPath)
+	plain = fileutil.SanitizeFilePath(sessionPath)
+	return plain, store.SessionTranscriptZst(plain)
 }
 
 // ensureSessionTranscriptPlain guarantees the plaintext transcript exists,
@@ -208,6 +214,9 @@ func materializeSessionTranscriptZst(plain, zst string) error {
 // 归档→删明文」窗口内没有追加落在明文上。冷度由调用方判定（本函数再核验
 // 一次 mtime，双保险）；热门会话被误传入时按 not-cold 拒绝并返回原尺寸。
 func CompressSessionTranscriptZst(sessionPath string, now time.Time) (before, after int64, err error) {
+	// tl1373: sanitize before the file lock derives from the input; the lock
+	// key is the canonical identity, unchanged by the normalization.
+	sessionPath = fileutil.SanitizeFilePath(sessionPath)
 	plain, zst := sessionTranscriptZstPaths(sessionPath)
 	if plain == "" {
 		return 0, 0, fmt.Errorf("empty session transcript path")

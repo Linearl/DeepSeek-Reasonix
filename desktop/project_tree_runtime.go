@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reasonix/internal/secrets"
 )
 
 type projectTreeRuntimeState struct {
@@ -221,8 +223,10 @@ func (a *App) replenishLastTabSurface(scope, workspaceRoot string) {
 		return
 	}
 	if _, err := a.ensureBlankTab(scope, workspaceRoot); err != nil {
+		// tl1373 (clear-text-logging): the error text can carry the workspace
+		// root or session path; redact before it lands in the log.
 		slog.Warn("desktop: replenishing the last closed tab with a fresh session failed",
-			"scope", scope, "err", err)
+			"scope", scope, "err", secrets.RedactError(err))
 	}
 }
 

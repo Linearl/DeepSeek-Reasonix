@@ -16,6 +16,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"reasonix/internal/fileutil"
 	"reasonix/internal/secrets"
 	"reasonix/internal/store"
 )
@@ -116,8 +117,12 @@ func sessionEventZstStreamDecoder(src io.Reader) (dec *zstd.Decoder, release fun
 
 // sessionEventLogPlainPath mirrors store.ResolveSessionEventLog: either input
 // form (transcript path or resolved event-log path) normalizes here.
+// tl1373: this is the sanitization choke point for the events archive layer —
+// every plain/zst path the layer touches derives from this one call, and the
+// sanitizer (Clean + absolute anchor) is meaning-preserving for callers that
+// pass real filesystem paths.
 func sessionEventLogPlainPath(sessionPathOrLog string) string {
-	return store.ResolveSessionEventLog(sessionPathOrLog)
+	return store.ResolveSessionEventLog(fileutil.SanitizeFilePath(sessionPathOrLog))
 }
 
 // sessionEventLogZstPathFor returns the archive path for either input form.
@@ -351,6 +356,10 @@ func preserveBrokenZst(zst string, cause error, label string) {
 // 是调用方的职责；文件锁保证的是「压缩期间没有追加落在读明文→删明文的
 // 窗口里」，这是数据安全边界；lease 语义边界由调用方守。
 func CompressSessionEventLogZst(sessionPath string) (before, after int64, err error) {
+	// tl1373: sanitize before the file lock and archive paths derive from the
+	// input; the lock key is the canonical identity, which is unchanged by the
+	// meaning-preserving normalization.
+	sessionPath = fileutil.SanitizeFilePath(sessionPath)
 	plain := sessionEventLogPlainPath(sessionPath)
 	if plain == "" {
 		return 0, 0, fmt.Errorf("empty session event log path")

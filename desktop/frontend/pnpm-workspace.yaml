@@ -10,3 +10,7 @@ overrides:
   '@modelcontextprotocol/client': 2.2.0
   katex: 0.18.9
   source-map-js: 1.2.2
+  # tl1373 security pin: dependabot #194 (GHSA-g3hv-75wg-m249, denial of
+  # service via globparts amplification — 10.2.6 is the only affected
+  # release; fixed in 11.0.1, pinned to the latest 11.x).
+  minimatch: 11.0.4

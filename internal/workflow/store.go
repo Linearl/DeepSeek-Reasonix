@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"reasonix/internal/fileutil"
 )
 
 // 任务 934 —— 工作流定义存储：agent 工具（workflow_define/list/get）与桌面
@@ -47,11 +49,20 @@ func newStore(dir string) *store {
 	if strings.TrimSpace(dir) == "" {
 		return &store{mem: map[string][]byte{}}
 	}
-	return &store{dir: dir}
+	// tl1373：存储根经等价消毒收口（Clean+绝对锚定，语义不变——WorkflowsDir
+	// 本就是绝对用户状态目录），阻断外部输入经 config 路径流入文件操作的告警面。
+	return &store{dir: fileutil.SanitizeFilePath(dir)}
 }
 
 func (s *store) path(name string) string {
-	return filepath.Join(s.dir, slug(name)+".json")
+	// tl1373：slug 已是严格字符白名单（[A-Za-z0-9_-]，天然无分隔符/无穿
+	// 逃逸），SanitizeComponent 对其恒过且值不变；此处再过一遍消毒收口，
+	// 白名单若未来放宽则兜底退回常量 stem，绝不写 name 指向的位置。
+	safe, err := fileutil.SanitizeComponent(slug(name))
+	if err != nil {
+		safe = "unnamed"
+	}
+	return filepath.Join(s.dir, safe+".json")
 }
 
 // save 校验并落盘（或入内存目录）。existing 非空 = 覆盖写，须 overwrite；
