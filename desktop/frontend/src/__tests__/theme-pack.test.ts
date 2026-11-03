@@ -320,7 +320,7 @@ ok(!styleText("reasonix-theme-pack-overlay").includes("--grad:"), "task 706: no 
 // resolved mode, so the salmon #FFF1E5 background lands in creation too.
 applyThemePack(draftPackView({
   id: "media-broadsheet-rose",
-  name: "Broadsheet Rose",
+  name: "Financial Times",
   baseStyle: "graphite",
   // Lowercase hex mirrors what the Go validator persists (validateThemeTokenMap
   // lowercases every token before save/list).
@@ -387,7 +387,7 @@ for (const [id, lightBg, darkBg] of MEDIA_TOKEN_DESIGNS) {
 // tl1343: the media group exists beside official/user/base/plugin. tl1362
 // proves it stays plural across the eight-preset set.
 const grouped = groupThemePacks([
-  { id: "media-broadsheet-rose", name: "Broadsheet Rose", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
+  { id: "media-broadsheet-rose", name: "Financial Times", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
   { id: "media-no52-natgeo", name: "No.52 National Geographic", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
   { id: "official-rose-dawn", name: "Rose Dawn", baseStyle: "graphite", builtin: true, kind: "official", active: false, hasBackground: false, tokens: {}, recipes: {} },
 ]);

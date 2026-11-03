@@ -4100,7 +4100,7 @@ export const en = {
   "settings.themes.official.official-cyan-stage.description": "An airy cyan stage with light rings and an original digital performer.",
   "settings.themes.official.official-noir-gold.name": "Noir Gold",
   "settings.themes.official.official-noir-gold.description": "A black velvet stage and gold spotlights around an original creative gentleman.",
-  "settings.themes.media.media-broadsheet-rose.name": "Broadsheet Rose",
+  "settings.themes.media.media-broadsheet-rose.name": "Financial Times",
   "settings.themes.media.media-broadsheet-rose.description": "Financial-times paper feel: salmon-pink sheet, warm charcoal text, a single claret accent, hairline rules. Less is more.",
   "settings.themes.media.media-no44-cream.name": "No.44 Cream",
   "settings.themes.media.media-no44-cream.description": "Near-white cream sheet, warm brown text, orange-brown bold accents with soft-apricot labels and dashed quote cards — the gentle cream-soda layout. Dark variant is an interpretation (deep cocoa warmth).",

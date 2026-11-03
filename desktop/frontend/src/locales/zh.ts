@@ -4086,7 +4086,7 @@ export const zh: Record<DictKey, string> = {
   "settings.themes.official.official-cyan-stage.description": "青蓝未来舞台与原创数字表演者。",
   "settings.themes.official.official-noir-gold.name": "黑金序曲",
   "settings.themes.official.official-noir-gold.description": "黑色丝绒舞台与金色聚光灯下的原创创意绅士。",
-  "settings.themes.media.media-broadsheet-rose.name": "报纸玫瑰",
+  "settings.themes.media.media-broadsheet-rose.name": "金融时报",
   "settings.themes.media.media-broadsheet-rose.description": "金融时报纸感：三文鱼粉纸底、暖深灰正文、单一酒红强调，hairline 分隔。少即是多。",
   "settings.themes.media.media-no44-cream.name": "44期 奶油色",
   "settings.themes.media.media-no44-cream.description": "近白奶油底、暖棕正文、橙棕加粗强调，浅杏标签与虚线引用卡的柔和暖调。深色为设计发挥（深可可暖调）。",

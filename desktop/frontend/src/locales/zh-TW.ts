@@ -2867,7 +2867,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.themes.official.official-cyan-stage.description": "青藍未來舞台與原創數位表演者。",
   "settings.themes.official.official-noir-gold.name": "黑金序曲",
   "settings.themes.official.official-noir-gold.description": "黑色絲絨舞台與金色聚光燈下的原創創意紳士。",
-  "settings.themes.media.media-broadsheet-rose.name": "報紙玫瑰",
+  "settings.themes.media.media-broadsheet-rose.name": "金融時報",
   "settings.themes.media.media-broadsheet-rose.description": "金融時報紙感：三文魚粉紙底、暖深灰正文、單一酒紅強調，hairline 分隔。少即是多。",
   "settings.themes.media.media-no44-cream.name": "44期 奶油色",
   "settings.themes.media.media-no44-cream.description": "近白奶油底、暖棕正文、橙棕加粗強調，淺杏標籤與虛線引用卡的柔和暖調。深色為設計發揮（深可可暖調）。",
