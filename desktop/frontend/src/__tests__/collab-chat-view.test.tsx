@@ -58,6 +58,9 @@ const replayEntries = [
       ListCollabChannels: () => Promise.resolve([]),
       ReadCollabChannel: () => Promise.resolve({ channel: null as never, messages: [] }),
       ChannelMessagesForHuman: () => Promise.resolve({ channel: null as never, messages: [] }),
+      // tl1369：协作动态浮层（activity → CollabGroupPanel embedded）的总览读口——
+      // 空目录健康空态，不靠失败路径渲染浮层。
+      GetCollabViewOverview: () => Promise.resolve({ sessions: [], generatedAt: 0 }),
       ChannelCreateForHuman: () => Promise.reject(new Error("not wired")),
       ChannelJoinHuman: () => Promise.reject(new Error("not wired")),
       ChannelLeaveHuman: () => Promise.reject(new Error("not wired")),
@@ -146,6 +149,42 @@ assert.equal(document.querySelector(".collab-chat-view__ctx"), null, "Esc closes
 await act(async () => { tabs().find((b) => b.textContent === "Group chat")!.click(); });
 assert.ok(document.querySelector(".channel-chat"), "switching back remounts the group channel");
 assert.equal(document.querySelector(".collab-chat-view__dirlist"), null, "the directs half unmounts (zero cost)");
+
+// ── tl1369 同类收口：协作动态浮层点外部关闭 ─────────────────────────────
+// （浮层家族与 Hub 980/邀请框 1242/详情抽屉 tl1369 行为一致；头部关闭钮本就
+// 有，本段钉点外关闭与触发 toggle 豁免两条。）
+const activityBtn = () => document.querySelector(".collab-chat-view__activitybtn")! as HTMLElement;
+assert.ok(activityBtn(), "the activity toggle carries the stable base class (tl1369 守卫锚点)");
+await act(async () => { activityBtn().click(); });
+await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+assert.ok(document.querySelector(".collab-chat-view__activity"), "the activity overlay opens");
+// 面板内点击不误关（浮层标题条在浮层内部）。
+await act(async () => {
+  (document.querySelector(".collab-chat-view__activitytitle")! as HTMLElement).click();
+});
+await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+assert.ok(document.querySelector(".collab-chat-view__activity"), "clicking inside the activity overlay keeps it open (面板内不误关)");
+// 点外部「真实表面」（通道切换 tab）关闭——click 通道。
+await act(async () => { tabs()[0].click(); });
+await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+assert.equal(document.querySelector(".collab-chat-view__activity"), null, "clicking outside closes the activity overlay (tl1369 点外关闭)");
+// mousedown 通道（house 形态）。
+await act(async () => { activityBtn().click(); });
+await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+assert.ok(document.querySelector(".collab-chat-view__activity"), "the activity overlay reopens for the mousedown check");
+await act(async () => {
+  (document.querySelector(".collab-chat-view__tabs")! as HTMLElement).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+});
+await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+assert.equal(document.querySelector(".collab-chat-view__activity"), null, "a mousedown outside closes the activity overlay (tl1369 mousedown 通道)");
+// 触发 toggle 豁免：开着时点 toggle 本身必须能关掉（不豁免则 mousedown 先关、
+// click 的 toggle 再开=按钮关不掉）。
+await act(async () => { activityBtn().click(); });
+await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+assert.ok(document.querySelector(".collab-chat-view__activity"), "the overlay reopens for the toggle-exemption check");
+await act(async () => { activityBtn().click(); });
+await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+assert.equal(document.querySelector(".collab-chat-view__activity"), null, "the toggle itself still closes the overlay (触发钮豁免)");
 
 await act(async () => { root.unmount(); });
 console.log("collab-chat-view: all assertions passed");
