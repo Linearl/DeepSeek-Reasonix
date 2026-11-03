@@ -608,7 +608,11 @@ export function ProjectTree({
   refreshRef.current = refresh;
   const { openRemoteProject, openRemoteWindow, remoteSessions, setRemoteSessions, remoteServers, remoteGroupBusy, remoteGroupError, ensureRemoteGroupSessions, refreshRemoteSessions } = useRemoteProjectGroups(tree, showToast, expanded, query);
   const treeWithRemoteSessions = useRemoteRuntimeTree(tree, remoteSessions, t);
-  const remoteSessionActions = useRemoteSessionActions(remoteSessions, refreshRemoteSessions, (error) => showToast(error instanceof Error ? error.message : String(error), "error"));
+  // tl1367-fix defect C: this handler is the toast path for TrashTopicForce —
+  // the force-archive confirm's follow-up call. Its lease-busy refusals carry
+  // the holder block; rendering them through formatSessionBusyError shows the
+  // localized holder copy instead of the raw English sentence.
+  const remoteSessionActions = useRemoteSessionActions(remoteSessions, refreshRemoteSessions, (error) => showToast(formatSessionBusyError(error), "error"));
   const { addingProject, handleAddProject, openBlankProjectFlow, blankProjectFlow, openRemoteConnectFlow, remoteConnectFlow } = useProjectCreation({
     onAddProject,
     onRefresh: refresh,

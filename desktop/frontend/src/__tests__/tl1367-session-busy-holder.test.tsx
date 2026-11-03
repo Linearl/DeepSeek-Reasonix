@@ -87,8 +87,13 @@ console.log("\ntl1367 ② localized rendering (lib behaviour, en mirror)");
   ok(zombie.toLowerCase().includes("restart reasonix"), "zombie copy points at the restart repair");
   const reused = busy.formatSessionBusyError(new Error('[reasonix-holder class="reused" pid="42"] stale lease record'));
   ok(reused.toLowerCase().includes("pid 42"), "reused copy names the stale pid");
-  const self = busy.formatSessionBusyError(new Error('[reasonix-holder class="self" pid="12345"] held by another runtime'));
-  ok(self.toLowerCase().includes("this reasonix instance"), "self copy points at this instance's own runtime");
+  const self = busy.formatSessionBusyError(new Error('[reasonix-holder class="self" pid="12345"] this session is running in this Reasonix window'));
+  // tl1367-fix 缺陷B：self=本窗口自己持有——指引必须是「关本窗口的会话标签页/
+  // 停止运行」，绝不再指向「another runtime / another window」（2026-11-04 00:10
+  // 装机实测的误导文案）。
+  ok(self.toLowerCase().includes("this reasonix window"), "self copy names THIS window, not another runtime");
+  ok(self.toLowerCase().includes("close that session's tab") || self.toLowerCase().includes("停止") || self.includes("标签页"), "self copy guides to closing the session tab / stopping the run");
+  ok(!self.toLowerCase().includes("another"), "self copy never says 'another'");
 }
 {
   // 无块但命中 sentinel 家族 → unknown 通用文案（老后端兼容）。en 镜像下
@@ -194,6 +199,25 @@ ok(treeSource.includes("void trashTopicForceableAny(activeTopicId)"), "the activ
 ok(bridgeSource.includes("ProbeSessionOccupancy(sessionPath: string): Promise<SessionOccupancyInfo>"), "the bridge interface declares ProbeSessionOccupancy");
 ok(bridgeSource.includes("async ProbeSessionOccupancy(_sessionPath: string)"), "the browser-dev mock answers the probe");
 ok(readFileSync(resolve(desktopRoot, "session_occupancy_probe.go"), "utf8").includes("func (a *App) ProbeSessionOccupancy"), "the backend probe endpoint exists");
+
+// ── ④b tl1367-fix 缺陷C：全删除/归档链本地化接线源码钉 ────────────────────────
+// 2026-11-04 装机实测：TrashTopicForce 的错误经 remoteSessionActions 的统一
+// reportError 裸打 err.message——中文界面弹英文原文。以下钉住所有删除/归档
+// toast 链都过 formatSessionBusyError。
+console.log("\ntl1367 ④b all archive/delete toast chains go through formatSessionBusyError (source pins)");
+
+{
+  ok(treeSource.includes("useRemoteSessionActions(remoteSessions, refreshRemoteSessions, (error) => showToast(formatSessionBusyError(error), \"error\"))"),
+    "ProjectTree: the remote-session reportError (TrashTopicForce chain) renders localized busy copy");
+  const orgSource = readFileSync(resolve(frontendRoot, "src/components/ProjectTreeOrganization.tsx"), "utf8");
+  ok(orgSource.includes("const firstMessage = formatSessionBusyError(first.error)"),
+    "ProjectTreeOrganization: delete-group-sessions failure toast renders localized busy copy");
+  const recoverySource = readFileSync(resolve(frontendRoot, "src/components/RecoveryCopiesSection.tsx"), "utf8");
+  ok(recoverySource.includes("onError(formatSessionBusyError(e))"),
+    "RecoveryCopiesSection: version-head delete failure renders localized busy copy");
+  ok(recoverySource.includes("detail: formatSessionBusyError(err)"),
+    "RecoveryCopiesSection: conversation delete failure lines render localized busy copy");
+}
 
 // ── ⑤ 三语 locale ───────────────────────────────────────────────────────────
 console.log("\ntl1367 ⑤ locale keys (en/zh/zh-TW)");

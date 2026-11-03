@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { useT, type Translator } from "../lib/i18n";
+import { formatSessionBusyError } from "../lib/sessionBusyError";
 import { useConfirmDialog } from "./ConfirmDialog";
 
 /** 任务 1063：存储与路径页的两个版本分区合并成一个。
@@ -504,7 +505,8 @@ function VersionRows({
       await app.DeleteSessionVersionHead(mainPath, headId);
       onReload();
     } catch (e) {
-      onError(e instanceof Error ? e.message : String(e));
+      // tl1367-fix defect C: the busy family renders localized (holder block).
+      onError(formatSessionBusyError(e));
     } finally {
       setDeleting(null);
     }
@@ -1296,7 +1298,9 @@ export function RecoveryCopiesSection() {
         collected.push({
           label: group.mainLabel,
           kind: "failed",
-          detail: err instanceof Error ? err.message : String(err),
+          // tl1367-fix defect C: the busy family renders localized (holder
+          // block) instead of the raw English sentence.
+          detail: formatSessionBusyError(err),
         });
       }
       setDeletedOutcomes([...collected]);
