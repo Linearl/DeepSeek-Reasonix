@@ -11,16 +11,18 @@ import (
 	"reasonix/internal/provider"
 )
 
-// TestEffectSessionLogUpgradeKeepsModelMessagesThroughRealBuild opens a
-// schema-1 session written by the real stack, upgrades it on the next save,
-// and pins that the provider-visible transcript (ids included) is
-// byte-identical across the upgrade: the format change never touches the
-// prompt-cache prefix.
-func TestEffectSessionLogUpgradeKeepsModelMessagesThroughRealBuild(t *testing.T) {
+// TestSessionResumeThroughRealBuildKeepsModelMessages（原
+// TestEffectSessionLogUpgradeKeepsModelMessagesThroughRealBuild）改述：原测试
+// 钉「schema-1 → schema-2 升级保模型消息字节不变」——升级目标与 heads 读数都
+// 随 schema-2/DAG 头机制退役（tl1227 ListSessionHeads 恒空垫片，tl1280 删
+// DAG 写路径，REASONIX_SESSION_LOG 环境钉随 dagSaveRoute 一同失效），升级腿
+// 不可达。保留并继续钉住其中独立于格式的红线：真实 Build 栈写下会话 → 换一
+// 个 runtime 走 lease+Resume 续跑 → provider 可见转录（含 id）前缀字节不变且
+// 继续增长——提示缓存前缀永不被格式/重载改动。
+func TestSessionResumeThroughRealBuildKeepsModelMessages(t *testing.T) {
 	isolateConfigHome(t)
 	dir := robustTempDir(t)
 	t.Chdir(dir)
-	t.Setenv("REASONIX_SESSION_LOG", "v1")
 
 	rec := &effectRecordingProvider{}
 	provider.Register("boot-effect-session-log", func(provider.Config) (provider.Provider, error) {
@@ -54,13 +56,7 @@ model = "x"
 		t.Fatal(err)
 	}
 	first.Close()
-	if heads, err := agent.ListSessionHeads(path); err != nil || heads != nil {
-		t.Fatalf("schema-1 session must have no heads yet: %v %v", heads, err)
-	}
 
-	// The upgrade leg needs the DAG route on: v2 pins it without depending on
-	// the build default, which is the flat route since tl-1173 P1.
-	t.Setenv("REASONIX_SESSION_LOG", "v2")
 	lease, err := agent.TryAcquireSessionLease(path)
 	if err != nil {
 		t.Fatalf("lease: %v", err)
@@ -81,10 +77,6 @@ model = "x"
 	}
 	if err := second.Snapshot(); err != nil {
 		t.Fatalf("Snapshot: %v", err)
-	}
-	heads, err := agent.ListSessionHeads(path)
-	if err != nil || len(heads) != 1 {
-		t.Fatalf("session was not upgraded to schema 2: heads=%v err=%v", heads, err)
 	}
 	after, err := json.Marshal(provider.ModelMessages(second.History()))
 	if err != nil {
