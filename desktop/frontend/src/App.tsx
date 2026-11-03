@@ -6802,6 +6802,11 @@ export default function App() {
                        session path scopes the reads to the active tab. */
                     sessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}
                     onReadSubagent={capsuleReadSubagent}
+                    /* tl1361: the running detail's live tool-call stream
+                       projects the same items this session's directory is
+                       built from (nested_sink.go re-parents the child's tool
+                       events under the task call id). */
+                    transcriptItems={visibleRuntimeState.items}
                     /* 任务495 剩余项: the persisted ended directory (same
                        bridge the capsule uses) merges into the ended section —
                        ended subagents stay listed across restart and

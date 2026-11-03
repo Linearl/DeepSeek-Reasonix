@@ -29764,6 +29764,37 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-dim);
 }
 
+/* tl1361: the running detail's live tool-call stream — one compact row per
+   re-parented child tool, same glyph language as the directory rows. */
+.subagents-panel__livetools {
+  min-width: 0;
+}
+
+.subagents-panel__livetool-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subagents-panel__livetool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+
+.subagents-panel__livetool-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .subagents-panel__detailview-text {
   margin: 0;
   font-size: var(--text-xs);

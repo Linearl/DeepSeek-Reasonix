@@ -3177,6 +3177,7 @@ export const zh: Record<DictKey, string> = {
 "subagentPanel.detailSummary": "结果摘要",
 "subagentPanel.detailReadOnly": "子代理详情为只读记录，不提供输入",
 "subagentPanel.detailNoPreview": "暂无预览内容：重启后仅保留名称与状态",
+"subagentPanel.liveTools": "工作过程（工具调用）",
 "subagentPanel.widen": "加宽预览",
 "subagentPanel.narrow": "还原宽度",
 "settings.dockTabVisibility": "侧栏标签显示",
