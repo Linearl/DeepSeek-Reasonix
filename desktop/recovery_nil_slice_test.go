@@ -18,20 +18,21 @@ import (
 	"testing"
 )
 
-// TestListRecoveryChainsChainsNotNilWhenAllCandidatesRefused 钉：所有候选被
-// 非限额错误跳过时，成功响应里 chains 必须是 []（JSON "chains":[]），不得是
-// null。
+// TestListRecoveryChainsChainsNotNilWhenAllCandidatesRefused 钉：候选读不出
+// 时，成功响应里 chains 不得是 null（nil 切片直发前端会崩渲染树）。tl1355
+// 起读面语义显式更新：候选不再因读不出被跳过（旧硬错误 skip 面），而是保
+// 留一行仅文件身份的降级行（任务 1039 的「保留行、计数全零、不重放」语义
+// 在内容扫描世界里的统一形态——面板看得见哪一份读不了）；本测试随之改钉
+// ①非 null ②降级身份行 ③零读数不产生推荐。
 func TestListRecoveryChainsChainsNotNilWhenAllCandidatesRefused(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "sess1.jsonl")
-	if err := os.WriteFile(main, []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// events 日志：首条是合法 DAG 头（探测判 dag=true），次条是未知条目类型
-	// （重放硬错误、非限额）——ListSessionHeads 对该候选报错且不降级。
-	events := filepath.Join(dir, "sess1.events.jsonl")
-	payload := "{\"schema_version\":2,\"type\":\"log\"}\n{\"schema_version\":2,\"type\":\"bogus-1039r2\"}\n"
-	if err := os.WriteFile(events, []byte(payload), 0o644); err != nil {
+	// 转录本体中段夹一行残缺字节（且无 events 日志可自愈重建）：checkpoint
+	// 解码硬错误——严格快照与 tolerant 兜底都读不出（后者同走该解码器），
+	// 候选以仅文件身份的降级行保留。
+	// （原夹具的「未知条目类型硬错误」在今天的重放里被前向兼容跳过；空
+	// checkpoint 还会被自愈重建兜住——中段残缺行才是稳定的双拒源。）
+	if err := os.WriteFile(main, []byte("{\"id\":\"m1\",\"role\":\"user\",\"content\":\"hi\"}\n{not-json\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -49,8 +50,17 @@ func TestListRecoveryChainsChainsNotNilWhenAllCandidatesRefused(t *testing.T) {
 	if strings.Contains(string(b), `"chains":null`) {
 		t.Fatalf("response marshals chains as null: %s", b)
 	}
-	if !strings.Contains(string(b), `"chains":[]`) {
-		t.Fatalf("response should carry an explicit empty chains array, got: %s", b)
+	// 降级身份行：保留该候选、计数全零、Degraded 标记、无读数。
+	if len(set.Chains) != 1 {
+		t.Fatalf("the unreadable candidate must stay listed, got %d chains: %s", len(set.Chains), b)
+	}
+	row := set.Chains[0]
+	if !row.Degraded || row.MessageCount != 0 || row.Turns != 0 || row.Preview != "" || row.LastActivity != "" {
+		t.Fatalf("the unreadable candidate must be an identity row (degraded, zero readings): %+v", row)
+	}
+	// 零读数不产生推荐（1019/1123 语义）：更长/更新留空。
+	if set.LongestPath != "" || set.NewestPath != "" {
+		t.Fatalf("zero-reading rows must not be recommended as longest/newest, got longest=%q newest=%q", set.LongestPath, set.NewestPath)
 	}
 }
 
