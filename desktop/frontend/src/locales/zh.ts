@@ -4670,6 +4670,15 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesDeleting": "正在删除",
   "settings.recoveryCopiesOutcomeDeleted": "已删除",
   "settings.recoveryCopiesDeleteReopenHint": "删除已生效。请到项目中重新打开该会话（或刷新标签页）才能看到列表更新——被删内容还在回收站里。",
+  // 任务 1368 线2：整对话级删除——主文件（含 v3 版本与侧车）与全部副本一起
+  // 进两条可恢复回收站（主文件走会话回收站可整体还原；副本走 .trash 的
+  // forced 归档链路）。
+  "settings.recoveryCopiesDeleteConversation": "删除选中对话",
+  "settings.recoveryCopiesDeleteConversationTitle": "删除选中对话（含全部副本）",
+  "settings.recoveryCopiesDeleteConversationLead": "即将删除的对话（主文件、全部版本与副本、侧车一起进回收站）",
+  "settings.recoveryCopiesDeleteConversationWarn": "主文件与全部副本会分别移入可恢复的回收站（不会永久删除）；正在打开的该会话标签页会被关闭。",
+  "settings.recoveryCopiesOutcomeConversationDeleted": "已删除（主线入回收站，副本 {copies} 条归档）",
+  "settings.recoveryCopiesOutcomeConversationCopiesOnly": "已删除（主线原本不在，副本 {copies} 条归档）",
   // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
   //  tail 预览已在候选链行内），本组键只补「合成」这个一键式主操作：确认时
   //  列出参与分支与读数、进度/结果报告合成前后条数与轮次（并集可核对）。

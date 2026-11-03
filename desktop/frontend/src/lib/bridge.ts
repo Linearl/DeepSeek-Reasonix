@@ -1323,6 +1323,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   DeleteRecoveryBranch(path: string): Promise<void>;
   /** 任务 1064：版本面板删除 v3 head（retire 标记；当前选中 head 后端拒绝）。 */
   DeleteSessionVersionHead(mainPath: string, headId: string): Promise<void>;
+  /** 任务 1368：整对话级删除——主文件（含 v3 事件日志与侧车）入会话回收站
+   *  （RestoreSession 可整体还原），全部副本+副本侧车入可恢复 .trash（1064
+   *  forced 归档链路）。mainTrashed=false 表示主线本就不在（orphan 组）。 */
+  DeleteConversationWithCopies(mainPath: string): Promise<{ mainTrashed: boolean; copiesArchived: number }>;
   GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<RecoveryLineageView>;
   GetSessionVersionState(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<import("./types").SessionVersionStateView>;
   SetActiveSessionVersion(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
@@ -5353,6 +5357,12 @@ function makeMockApp(): AppBindings {
       return this.DeleteSession(path);
     },
     async DeleteSessionVersionHead() {},
+    // 任务 1368：dev mock 里整对话删除与删会话同义（mock 无回收站），回执
+    // 报「主线已入回收站 + 副本数 0」——mock 组没有真副本文件。
+    async DeleteConversationWithCopies(mainPath: string) {
+      await this.DeleteSession(mainPath);
+      return { mainTrashed: true, copiesArchived: 0 };
+    },
     async GetRecoveryLineage(key) {
       const topic = findMockTopic(key.topicId);
       return {

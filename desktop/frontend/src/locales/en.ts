@@ -4683,6 +4683,15 @@ export const en = {
   "settings.recoveryCopiesDeleting": "Deleting",
   "settings.recoveryCopiesOutcomeDeleted": "Deleted",
   "settings.recoveryCopiesDeleteReopenHint": "The deletion has taken effect. Reopen the conversation in its project (or refresh the tab) to see the updated list — deleted content is still in the trash.",
+  // 任务 1368 线2：whole-conversation delete — the main transcript (with its
+  // v3 versions and sidecars) and every copy go into the two recoverable
+  // trashes (session trash for the main, forced-archive .trash for copies).
+  "settings.recoveryCopiesDeleteConversation": "Delete selected conversations",
+  "settings.recoveryCopiesDeleteConversationTitle": "Delete selected conversations (with every copy)",
+  "settings.recoveryCopiesDeleteConversationLead": "Conversations about to be deleted (main transcript, all versions and copies, sidecars move to the trash together)",
+  "settings.recoveryCopiesDeleteConversationWarn": "The main transcript and every copy move to the recoverable trash (nothing is permanently deleted); tabs holding these conversations are closed.",
+  "settings.recoveryCopiesOutcomeConversationDeleted": "Deleted (main transcript trashed, {copies} copies archived)",
+  "settings.recoveryCopiesOutcomeConversationCopiesOnly": "Deleted (main transcript was already gone, {copies} copies archived)",
   // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
   //  tail 预览已在候选链行内），本组键只补「合成」这个一键式主操作：确认时
   //  列出参与分支与读数、进度/结果报告合成前后条数与轮次（并集可核对）。

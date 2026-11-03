@@ -3234,6 +3234,15 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesDeleting": "正在刪除",
   "settings.recoveryCopiesOutcomeDeleted": "已刪除",
   "settings.recoveryCopiesDeleteReopenHint": "刪除已生效。請到專案中重新開啟該工作階段（或重新整理標籤頁）才能看到列表更新——被刪內容還在回收站裡。",
+  // 任務 1368 線2：整工作階段級刪除——主檔（含 v3 版本與側車）與全部副本一
+  // 起進兩條可恢復回收站（主檔走工作階段回收站可整體還原；副本走 .trash 的
+  // forced 歸檔鏈路）。
+  "settings.recoveryCopiesDeleteConversation": "刪除選中對話",
+  "settings.recoveryCopiesDeleteConversationTitle": "刪除選中對話（含全部副本）",
+  "settings.recoveryCopiesDeleteConversationLead": "即將刪除的對話（主檔、全部版本與副本、側車一起進回收站）",
+  "settings.recoveryCopiesDeleteConversationWarn": "主檔與全部副本會分別移入可恢復的回收站（不會永久刪除）；正在開啟的該工作階段標籤頁會被關閉。",
+  "settings.recoveryCopiesOutcomeConversationDeleted": "已刪除（主線入回收站，副本 {copies} 條歸檔）",
+  "settings.recoveryCopiesOutcomeConversationCopiesOnly": "已刪除（主線原本不在，副本 {copies} 條歸檔）",
   // 任務 1065：選 HEAD 反向合成最長鏈——繼承 1.34 合併規則（輪次優先推薦 +
   //  tail 預覽已在候選鏈行內），本組鍵只補「合成」這個一鍵式主操作：確認時
   //  列出任與分支與讀數、進度/結果報告合成前後條數與輪次（並集可核對）。

@@ -130,10 +130,12 @@ type Outcome = {
 
 /** DeleteOutcome is one branch's delete result (任务 1064). Kept separate from
  *  Outcome because "deleted" is not a merge shape - the panel's merge vocabulary
- *  ("merged"/"forced"/"blocked") would misreport a delete as a content move. */
+ *  ("merged"/"forced"/"blocked") would misreport a delete as a content move.
+ *  任务 1368：kind 增加 "conversation"——整对话级删除（主文件+全部副本）的
+ *  回执；detail 携带 locale 化的完整读数文案（主线去向+副本归档数）。 */
 type DeleteOutcome = {
   label: string;
-  kind: "deleted" | "failed";
+  kind: "deleted" | "conversation" | "failed";
   detail?: string;
 };
 
@@ -1234,6 +1236,73 @@ export function RecoveryCopiesSection() {
     }
   };
 
+  /** deleteConversations is the 1368 whole-conversation clear: each checked
+   *  conversation (its main transcript, every version inside the event log,
+   *  every recovery copy and all sidecars) moves into the two recoverable
+   *  trashes in one backend call. The panel's contribution is the same as the
+   *  other destructive actions here: one confirmation naming what leaves, a
+   *  per-conversation outcome line, and a reload so the rows disappear from
+   *  the panel (and the sidebar, via the backend's tree refresh) at once. */
+  const deleteConversations = async () => {
+    const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+    if (!chosen.length) return;
+    const okToDelete = await confirm({
+      title: t("settings.recoveryCopiesDeleteConversationTitle"),
+      message: (
+        <div>
+          <p>
+            {t("settings.recoveryCopiesDeleteConversationLead")}：{chosen.length}
+          </p>
+          <ul className="rc-versions__issues">
+            {chosen.map((g) => (
+              <li key={g.mainPath}>
+                {g.mainLabel}
+                {g.copies.length > 0 ? ` · ×${g.copies.length}` : ""}
+              </li>
+            ))}
+          </ul>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesDeleteConversationWarn")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesDeleteConversation"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!okToDelete) return;
+    setBusy(true);
+    setErrors([]);
+    const collected: DeleteOutcome[] = [];
+    for (const [index, group] of chosen.entries()) {
+      setStatus(`${t("settings.recoveryCopiesDeleting")} ${index + 1}/${chosen.length} · ${group.mainLabel}`);
+      try {
+        const report = await app.DeleteConversationWithCopies(group.mainPath);
+        const template = report.mainTrashed
+          ? t("settings.recoveryCopiesOutcomeConversationDeleted")
+          : t("settings.recoveryCopiesOutcomeConversationCopiesOnly");
+        collected.push({
+          label: group.mainLabel,
+          kind: "conversation",
+          detail: template.replace("{copies}", String(report.copiesArchived)),
+        });
+      } catch (err) {
+        collected.push({
+          label: group.mainLabel,
+          kind: "failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+      setDeletedOutcomes([...collected]);
+    }
+    setSelected(new Set());
+    // 任务 1146 同口径：列表重取完成后再释放 busy，删除期间底部保持加载指示。
+    try {
+      await load();
+    } finally {
+      setBusy(false);
+      setStatus("");
+    }
+  };
+
   /** synthesizeHeads is the 1065 one-key operation: given the HEAD the user
    *  picked (or the current main when nothing is picked), fold every other
    *  branch's unique events into that one chain. The panel's contribution over
@@ -1794,18 +1863,25 @@ export function RecoveryCopiesSection() {
                   </div>
                 ) : groups === null ? (
                   <div className="empty">{t("settings.loading")}</div>
-                ) : composedGroups.length === 0 ? (
-                  /* 任务 1085：空态文案区分——「真没副本文件」与「有副本但 v3
-                     无 heads」是两种情况，一句「没有发现 recovery 副本」盖住
-                     后者会让用户以为面板坏了。 */
-                  <div className="empty">
-                    {groups.length === 0
-                      ? t("settings.recoveryCopiesEmpty")
-                      : t("settings.recoveryCopiesEmptyNoHeads")}
-                  </div>
                 ) : (
                   <>
-                    {errors.length > 0 && (
+                    {/* 任务 1368 线2：结果回执区（合并/删除/合成的 outcome）从
+                        「列表非空」分支提升到与空态平级——整对话删除后列表必然
+                        变空，回执若还挂在非空分支里就会被空态吞掉（用户删完只
+                        看到「没有发现副本」，删除结果无从确认）。列表状态管列表，
+                        回执状态管回执，互不吞并。 */}
+                    {composedGroups.length === 0 ? (
+                      /* 任务 1085：空态文案区分——「真没副本文件」与「有副本但 v3
+                         无 heads」是两种情况，一句「没有发现 recovery 副本」盖住
+                         后者会让用户以为面板坏了。 */
+                      <div className="empty">
+                        {groups.length === 0
+                          ? t("settings.recoveryCopiesEmpty")
+                          : t("settings.recoveryCopiesEmptyNoHeads")}
+                      </div>
+                    ) : (
+                      <>
+                        {errors.length > 0 && (
                       <div className="banner banner--error" role="alert">
                         <ul className="rc-errors">
                           {/* key 用下标不用文案本身：同一句话重复出现（如两行同时
@@ -1816,6 +1892,35 @@ export function RecoveryCopiesSection() {
                           ))}
                         </ul>
                       </div>
+                    )}
+                    <div className="rc-table">
+                      <div className="rc-row rc-row--head">
+                        <span />
+                        <span>{t("settings.recoveryCopiesColLine")}</span>
+                        <span>{t("settings.recoveryCopiesColModified")}</span>
+                        <span>{t("settings.recoveryCopiesColSize")}</span>
+                        <span>{t("settings.recoveryCopiesColTurns")}</span>
+                        <span>{t("settings.recoveryCopiesColCopies")}</span>
+                        <span>{t("settings.recoveryCopiesColUnique")}</span>
+                        <span />
+                      </div>
+                      {renderPhase(
+                        t("settings.recoveryCopiesPhaseUnmerged"),
+                        phased.unmerged,
+                        t("settings.recoveryCopiesPhaseUnmergedHint"),
+                      )}
+                      {renderPhase(
+                        t("settings.recoveryCopiesPhasePending"),
+                        phased.pending,
+                        t("settings.recoveryCopiesPhasePendingHint"),
+                      )}
+                      {renderPhase(
+                        t("settings.recoveryCopiesPhaseMerged"),
+                        phased.merged,
+                        t("settings.recoveryCopiesPhaseMergedHint"),
+                      )}
+                    </div>
+                      </>
                     )}
                     {outcomes.length > 0 && (
                       <div className="rc-result">
@@ -1927,33 +2032,6 @@ export function RecoveryCopiesSection() {
                         ) : null}
                       </div>
                     )}
-                    <div className="rc-table">
-                      <div className="rc-row rc-row--head">
-                        <span />
-                        <span>{t("settings.recoveryCopiesColLine")}</span>
-                        <span>{t("settings.recoveryCopiesColModified")}</span>
-                        <span>{t("settings.recoveryCopiesColSize")}</span>
-                        <span>{t("settings.recoveryCopiesColTurns")}</span>
-                        <span>{t("settings.recoveryCopiesColCopies")}</span>
-                        <span>{t("settings.recoveryCopiesColUnique")}</span>
-                        <span />
-                      </div>
-                      {renderPhase(
-                        t("settings.recoveryCopiesPhaseUnmerged"),
-                        phased.unmerged,
-                        t("settings.recoveryCopiesPhaseUnmergedHint"),
-                      )}
-                      {renderPhase(
-                        t("settings.recoveryCopiesPhasePending"),
-                        phased.pending,
-                        t("settings.recoveryCopiesPhasePendingHint"),
-                      )}
-                      {renderPhase(
-                        t("settings.recoveryCopiesPhaseMerged"),
-                        phased.merged,
-                        t("settings.recoveryCopiesPhaseMergedHint"),
-                      )}
-                    </div>
                   </>
                 )}
               </div>
@@ -2006,6 +2084,20 @@ export function RecoveryCopiesSection() {
                   onClick={() => void load()}
                 >
                   {t("settings.recoveryCopiesRefresh")}
+                </button>
+                {/* 任务 1368 线2：整对话级删除——放在「刷新」右边，归档选中会话
+                    的主文件（含 v3 版本与侧车）与全部副本到两条可恢复回收站。
+                    与 1064 的「删除所选」（删副本分支）是两个粒度：这里勾的是
+                    会话行（selected），一次清掉整个对话。 */}
+                <button
+                  className="btn btn--secondary btn--small rc-delete"
+                  type="button"
+                  disabled={busy || scanningAll || selected.size === 0}
+                  onClick={() => void deleteConversations()}
+                >
+                  {selected.size > 0
+                    ? `${t("settings.recoveryCopiesDeleteConversation")} (${selected.size})`
+                    : t("settings.recoveryCopiesDeleteConversation")}
                 </button>
                 {busy ? (
                   <span className="rc-note">{status || t("settings.loading")}</span>
