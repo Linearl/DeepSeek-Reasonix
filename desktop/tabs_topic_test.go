@@ -27,6 +27,13 @@ func (c *runtimeStatusSessionController) RuntimeStatus() control.RuntimeStatus {
 	return c.status
 }
 
+// SessionPath overrides the embedded nil control.SessionAPI: tl1266 的受理链
+// 前置实体校验（sessionEntityAdmissionErrForTab → tabSessionDisconnected →
+// currentSessionPath）会读 Ctrl.SessionPath()，内嵌接口为 nil 时该调用 panic。
+// 空路径 = 「尚未绑定会话路径」，断开判定按存在处理，受理链继续走到本测试
+// 真正要钉的 readiness 拒绝。
+func (c *runtimeStatusSessionController) SessionPath() string { return "" }
+
 func waitForTabReady(t *testing.T, app *App, tabID string) *WorkspaceTab {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
