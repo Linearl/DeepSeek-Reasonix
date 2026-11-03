@@ -112,6 +112,34 @@ export function CollabChatView() {
   const openPair = pairs?.find((p) => p.pairId === openPairId) ?? null;
   const pairTitle = (p: CollabDirectChainPairView) => `${displayName(p.a)} ↔ ${displayName(p.b)}`;
 
+  // tl1369 同类收口：协作动态浮层点外部关闭（此前只有头部关闭钮；浮层家族
+  // 点外关闭一次收口，与 Hub 980/邀请框 1242/详情抽屉 tl1369 行为一致）。
+  // house 形态：mousedown+click 双通道、捕获阶段、closest 守卫。豁免三处：
+  //   ① 浮层自身（内嵌的协作动态内容点击不误关）；
+  //   ② tools 行触发 toggle（.collab-chat-view__activitybtn，本件起常挂基类）
+  //      ——不豁免则 mousedown 先关、click 的 toggle 再开，按钮关不掉浮层；
+  //   ③ 对话链右键菜单 .collab-chat-view__ctx（980 同款排除：portal 到 body
+  //      但语义属本视图，菜单点击不计入外部）。
+  useEffect(() => {
+    if (!activityOpen) return;
+    const isOutside = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      return !target?.closest(".collab-chat-view__activity, .collab-chat-view__activitybtn, .collab-chat-view__ctx");
+    };
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (isOutside(event)) setActivityOpen(false);
+    };
+    const onDocClick = (event: MouseEvent) => {
+      if (isOutside(event)) setActivityOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("click", onDocClick, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("click", onDocClick, true);
+    };
+  }, [activityOpen]);
+
   // ⑦ Esc/点击外部关闭右键菜单。
   useEffect(() => {
     if (!msgMenu) return;
@@ -152,7 +180,7 @@ export function CollabChatView() {
         <span className="collab-chat-view__spacer" aria-hidden="true" />
         <button
           type="button"
-          className={`btn btn--small${activityOpen ? " collab-chat-view__activitybtn--on" : ""}`}
+          className={`btn btn--small collab-chat-view__activitybtn${activityOpen ? " collab-chat-view__activitybtn--on" : ""}`}
           aria-expanded={activityOpen}
           onClick={() => setActivityOpen((v) => !v)}
         >

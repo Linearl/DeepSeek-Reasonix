@@ -480,14 +480,15 @@ await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); 
 assert.match(composerInput.value, /@[^ ]+ /, "picking inserts 「@名字 」into the draft");
 assert.equal(chat().querySelector(".channel-chat__atpop"), null, "picking closes the picker");
 
-// ⑥ 邀请框点外部区域自动关闭（无显式关闭按钮；勾选保留）。
+// ⑥ 邀请框点外部区域自动关闭（tl1369 缺陷C 起另有显式关闭钮；勾选保留）。
 await act(async () => {
   Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Add sessions")!.click();
 });
 await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 const inviteBox = chat().querySelector(".channel-chat__invitebox");
 assert.ok(inviteBox, "the invite box opens");
-assert.equal(Array.from(inviteBox!.querySelectorAll("button")).some((b) => b.textContent === "Close"), false, "the invite box has NO explicit close button (856 ⑥)");
+// tl1369 缺陷C：浮层一律有可见关闭钮——856⑥「无显式关闭钮」口径作废，改为断言钮在。
+assert.ok(Array.from(inviteBox!.querySelectorAll("button")).some((b) => b.textContent === "Close"), "the invite box has an explicit close button (tl1369 缺陷C，取代 856⑥ 无钮口径)");
 const firstCandidate = inviteBox!.querySelector("input[type=checkbox]")! as HTMLInputElement;
 await act(async () => { firstCandidate.click(); });
 assert.ok(firstCandidate.checked, "a candidate can be checked");
@@ -498,6 +499,14 @@ assert.ok(chat().querySelector(".channel-chat__invitebox"), "clicking inside the
 document.body.click();
 await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 assert.equal(chat().querySelector(".channel-chat__invitebox"), null, "clicking outside dismisses the invite box");
+// tl1369 缺陷A：body 是详情抽屉外部——点外关闭同时收起抽屉（邀请框与抽屉
+// 一次点外各自关闭，互不连带保留）。
+assert.equal(chat().querySelector(".channel-chat__detail"), null, "clicking outside the drawer dismisses it too (tl1369 缺陷A 点外关闭)");
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Details")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.ok(chat().querySelector(".channel-chat__detail"), "the drawer reopens after the outside dismiss");
 await act(async () => {
   Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Add sessions")!.click();
 });
@@ -510,6 +519,9 @@ assert.ok(reChecked, "the pick survives the outside-dismiss (重开不丢)");
 await act(async () => { (chat().querySelector(".channel-chat__detailtitle")! as HTMLElement).click(); });
 await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 assert.equal(chat().querySelector(".channel-chat__invitebox"), null, "clicking a real outside surface dismisses the invite box (tl1242 点卡片外部空白)");
+// tl1369：标题条在抽屉内部——邀请框关了，抽屉必须不误关（stopPropagation 边界：
+// 邀请框守卫与抽屉守卫各管各的，抽屉内点击对抽屉守卫是「内部」）。
+assert.ok(chat().querySelector(".channel-chat__detail"), "the drawer survives a click inside it that dismisses the invite box (tl1369 面板内不误关)");
 // tl1242：mousedown 通道（CollabHubPanel/topicbar export 的 house 形态）——
 // 外部按下即关，覆盖拖拽起始等 click 不派发的边缘路径。
 await act(async () => {
@@ -522,6 +534,129 @@ await act(async () => {
 });
 await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 assert.equal(chat().querySelector(".channel-chat__invitebox"), null, "a mousedown outside dismisses the invite box (tl1242 mousedown 通道)");
+
+// ── tl1369 缺陷A：详情抽屉点外关闭（与 980 Hub / 1242 邀请框行为一致）────
+// 此处抽屉仍开着（1242 段的关闭都只落在邀请框上）。验收①：点抽屉外部
+// 「真实空白表面」（群列表标题，非 document.body）即关闭——click 通道。
+await act(async () => { (chat().querySelector(".channel-chat__listtitle")! as HTMLElement).click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__detail"), null, "clicking a real outside surface dismisses the detail drawer (tl1369 ①点外关闭)");
+// mousedown 通道（1242 house 形态）：外部按下即关，覆盖 click 不派发路径。
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Details")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.ok(chat().querySelector(".channel-chat__detail"), "the drawer reopens for the mousedown-channel check");
+await act(async () => {
+  (chat().querySelector(".channel-chat__listtitle")! as HTMLElement).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__detail"), null, "a mousedown outside dismisses the detail drawer (tl1369 mousedown 通道)");
+
+// 验收②：面板内点击不误关（stopPropagation 边界）——成员行/标题条点击后
+// 抽屉必须还在。
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Details")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const drawer = chat().querySelector(".channel-chat__detail")!;
+assert.ok(drawer, "the drawer reopens for the inside-click check");
+await act(async () => { (chat().querySelector(".channel-chat__detailtitle")! as HTMLElement).click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.ok(chat().querySelector(".channel-chat__detail"), "clicking inside the drawer (title strip) keeps it open (tl1369 ②面板内不误关)");
+await act(async () => {
+  const memberRow = chat().querySelector(".channel-chat__member")! as HTMLElement;
+  memberRow.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.ok(chat().querySelector(".channel-chat__detail"), "clicking a member row keeps the drawer open (tl1369 ②面板内不误关)");
+
+// 触发 toggle 豁免：开着时点右上「详情/收起」toggle 必须能关掉（守卫若不豁免
+// 触发钮，mousedown 先关、click 的 toggle 再开=按钮永远关不掉——用户报的原缺陷）。
+await act(async () => {
+  (chat().querySelector(".channel-chat__chathead .channel-chat__detailtoggle")! as HTMLElement).click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__detail"), null, "the head toggle still closes the drawer (tl1369 触发钮豁免)");
+
+// ── tl1369 缺陷C：详情抽屉显式关闭钮（×）────────────────────────────────
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Details")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const closeX = chat().querySelector(".channel-chat__detail .channel-chat__detailclose");
+assert.ok(closeX, "the detail drawer has a visible × close button (tl1369 缺陷C)");
+await act(async () => { (closeX as HTMLElement).click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__detail"), null, "the × button closes the drawer (tl1369 缺陷C)");
+
+// ── tl1369 缺陷C：邀请框显式关闭钮——关闭但勾选保留（与点外关闭同款）────
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Details")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Add sessions")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const inviteForX = chat().querySelector(".channel-chat__invitebox")!;
+// 此时 sc_dev6 候选已是勾选态（856⑥ 段勾过且保留至今）——只读快照，不再点击
+// （点击会把已勾选翻成未选，语义就不是「保留」而是「切换」）。
+const pickBeforeX = (inviteForX.querySelector("input[type=checkbox]")! as HTMLInputElement).checked;
+assert.ok(pickBeforeX, "a candidate is checked before the × close");
+const inviteX = Array.from(inviteForX.querySelectorAll("button")).find((b) => b.textContent === "Close")!;
+await act(async () => { (inviteX as HTMLElement).click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__invitebox"), null, "the invite × closes the invite box");
+assert.ok(chat().querySelector(".channel-chat__detail"), "the invite × does NOT close the detail drawer (× 语义=只关邀请框)");
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Add sessions")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const pickAfterX = (chat().querySelector(".channel-chat__invitebox input[type=checkbox]")! as HTMLInputElement).checked;
+assert.equal(pickAfterX, pickBeforeX, "the pick survives the × close (与点外关闭同款勾选保留)");
+
+// ── tl1369 同类收口：建群对话框点外关闭 ─────────────────────────────────
+// 先关抽屉（避免双浮层守卫交叉让断言含糊），再走建群对话框。
+await act(async () => {
+  (chat().querySelector(".channel-chat__chathead .channel-chat__detailtoggle")! as HTMLElement).click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "New group")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const createBox = chat().querySelector(".channel-chat__create")!;
+assert.ok(createBox, "the create dialog opens for the outside-close check");
+await act(async () => { (createBox.querySelector(".channel-chat__createtitle")! as HTMLElement).click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.ok(chat().querySelector(".channel-chat__create"), "clicking inside the create dialog keeps it open (面板内不误关)");
+await act(async () => { (chat().querySelector(".channel-chat__listtitle")! as HTMLElement).click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__create"), null, "clicking outside closes the create dialog (tl1369 同类收口)");
+// 显式关闭钮仍在（缺陷C 对建群对话框早已满足，回归钉住）。
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "New group")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+await act(async () => {
+  (Array.from(chat().querySelectorAll(".channel-chat__create button")).find((b) => b.textContent === "Close")! as HTMLElement).click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__create"), null, "the create dialog's explicit Close button still works (缺陷C 回归钉)");
+
+// ── tl1369 同类收口：@ 选人浮层点外关闭 ─────────────────────────────────
+const atInput = chat().querySelector(".channel-chat__input")! as HTMLTextAreaElement;
+await act(async () => {
+  setNativeValue(atInput, "@");
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.ok(chat().querySelector(".channel-chat__atpop"), "typing @ opens the mention picker");
+await act(async () => {
+  (chat().querySelector(".channel-chat__listtitle")! as HTMLElement).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__atpop"), null, "a mousedown outside closes the mention picker (tl1369 同类收口)");
 
 // 邮箱哨兵：全程没有任何信件中心读口调用（去重口径 b）。
 assert.equal(calls.some((c) => /Mail|Inbox/i.test(c.name)), false, "the chat never touches the mail center");
