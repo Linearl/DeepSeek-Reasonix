@@ -267,3 +267,37 @@ func TestParseLineRange(t *testing.T) {
 		}
 	}
 }
+
+// 任务554：容量提示改为 max(len(lines), len(replLines)) 后，超出提示的替换
+// 必须经 append 摊销增长得到与原实现逐字节一致的结果（覆盖提示 < 实际路径）。
+func TestEditFileLineRangeLargeReplacementBeyondCapacityHint(t *testing.T) {
+	lines := make([]string, 0, 12)
+	lines = append(lines, "package main", "")
+	for i := 0; i < 9; i++ {
+		lines = append(lines, fmt.Sprintf("func filler%d() {}", i))
+	}
+	lines = append(lines, "func tail() {}", "")
+	content := strings.Join(lines, "\n")
+
+	repl := make([]string, 0, 64)
+	for i := 0; i < 60; i++ {
+		repl = append(repl, fmt.Sprintf("// new line %02d", i))
+	}
+	updated, inserted, err := applyLineRangeEdit(content, "3-11", "func filler0()", "func filler8()", strings.Join(repl, "\n"))
+	if err != nil {
+		t.Fatalf("applyLineRangeEdit failed: %v", err)
+	}
+	if inserted != 60 {
+		t.Fatalf("inserted = %d, want 60", inserted)
+	}
+
+	want := []string{"package main", ""}
+	want = append(want, repl...)
+	want = append(want, "func tail() {}", "")
+	if updated != strings.Join(want, "\n") {
+		t.Fatalf("updated content mismatch: got %d lines, want %d", strings.Count(updated, "\n"), len(want)-1)
+	}
+	if !strings.Contains(updated, "// new line 59\nfunc tail()") {
+		t.Fatal("the replacement tail must be followed by the untouched remainder")
+	}
+}

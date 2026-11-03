@@ -292,18 +292,16 @@ func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisRepo
 
 	// Post-run reading of the new main: the panel shows it next to the pre-run
 	// counts so "总条数≈并集" is checkable on screen.
+	// tl1355：多头重放（panelSessionHeads）恒空后，AfterTurns 原先从选中头
+	// 取的路径永远拿不到轮次——合成回执的轮次读数也改为内容扫描（与面板链
+	// 表同一数据源）。
 	if snap, ok := agent.LoadSessionContentSnapshot(mainPath); ok {
 		report.AfterMessages = snap.Len()
 	}
-	if heads, _, headErr := panelSessionHeads(mainPath); headErr == nil {
-		for _, h := range heads {
-			if h.Selected || h.ID == agent.SessionMainHead {
-				report.AfterTurns = h.Turns
-				if report.AfterMessages == 0 {
-					report.AfterMessages = h.MessageCount
-				}
-				break
-			}
+	if scans := agent.ScanSessionChainViews([]string{mainPath}); len(scans) == 1 && scans[0].Turns > 0 {
+		report.AfterTurns = scans[0].Turns
+		if report.AfterMessages == 0 {
+			report.AfterMessages = scans[0].MessageCount
 		}
 	}
 
