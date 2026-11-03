@@ -10,6 +10,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
+	"reasonix/internal/sessioncatalog"
 )
 
 // tl1330: transcript ids ("<stamp>-<provider>-<model>[-recovery-<hash>]") must
@@ -172,5 +173,40 @@ func TestProjectTreeSessionChildRowsUseFriendlyLabels(t *testing.T) {
 	}
 	if strings.Contains(forkLabel, "recovery-7503") || strings.Contains(forkLabel, "mimo") || strings.Contains(forkLabel, ".jsonl") {
 		t.Fatalf("fork row label leaked the transcript id: %q", forkLabel)
+	}
+}
+
+// tl1330 同机制面：新会话「复用最近会话目录」选项的来源行（TabBar newmenu）
+// 与历史面板索引占位卡也不再裸奔 transcript id。
+func TestLatestSessionDisplayTitleNeverCarriesTranscriptID(t *testing.T) {
+	const stampName = "20261031-220415.123-mimo-token-plan-mimo-v2.6-flash-recovery-7503ae1e8c61e196.jsonl"
+	if got := latestSessionDisplayTitle("用户标题", "", "/x/"+stampName); got != "用户标题" {
+		t.Fatalf("custom title = %q", got)
+	}
+	if got := latestSessionDisplayTitle("", "话题标题", "/x/"+stampName); got != "话题标题" {
+		t.Fatalf("topic title = %q", got)
+	}
+	if got := latestSessionDisplayTitle("", "", "/x/"+stampName); got != "20261031 22:04" {
+		t.Fatalf("stamp fallback = %q, want 20261031 22:04", got)
+	}
+	// Unstampable name: empty — the FE omits the line, no id, no guess.
+	if got := latestSessionDisplayTitle("", "", "/x/session-a.jsonl"); got != "" {
+		t.Fatalf("no-info fallback = %q, want empty", got)
+	}
+}
+
+func TestSessionMetaFromCatalogIndexedPlaceholderIsFriendly(t *testing.T) {
+	record := sessioncatalog.SessionRecord{
+		Path:       "/x/20261031-220415.123-mimo-token-plan-mimo-v2.6-flash-recovery-7503ae1e8c61e196.jsonl",
+		TurnsState: sessioncatalog.TurnsUnknown,
+	}
+	meta := sessionMetaFromCatalog(record, false, false)
+	if meta.Preview != "History is being indexed — 20261031 22:04" {
+		t.Fatalf("indexed placeholder = %q, want the stamp form", meta.Preview)
+	}
+	record.Path = "/x/session-a.jsonl"
+	meta = sessionMetaFromCatalog(record, false, false)
+	if meta.Preview != "History is being indexed" {
+		t.Fatalf("indexed placeholder = %q, want plain status text", meta.Preview)
 	}
 }

@@ -138,7 +138,14 @@ func sessionMetaFromCatalog(record sessioncatalog.SessionRecord, current, open b
 	title := strings.TrimSpace(record.CustomTitle)
 	preview := record.Preview
 	if strings.TrimSpace(preview) == "" && record.TurnsState == sessioncatalog.TurnsUnknown {
-		preview = "History is being indexed — " + filepath.Base(record.Path)
+		// tl1330: the placeholder rides the same slot the FE renders as the
+		// card title (title/preview chain), so a raw transcript id leaked into
+		// the history wall during startup indexing. Stamp label only; without
+		// one the plain status text stands alone.
+		preview = "History is being indexed"
+		if stamp := sessionStampLabelFromBase(strings.TrimSuffix(filepath.Base(record.Path), filepath.Ext(record.Path))); stamp != "" {
+			preview += " — " + stamp
+		}
 	}
 	recovered := record.Recovered || strings.TrimSpace(record.RecoveryDigest) != "" || isAutomaticRecoverySessionPath(record.Path)
 	// RecoveryCopy comes from the catalog projection, which re-proves coverage
