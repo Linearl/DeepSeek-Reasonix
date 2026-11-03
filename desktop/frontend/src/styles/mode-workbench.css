@@ -788,6 +788,7 @@
 
 .sidebar--workbench .project-tree__topic-time {
   min-width: 0;
+  white-space: nowrap; /* same single-line guard as classic mode (20261103) */
   overflow: hidden;
   text-overflow: ellipsis;
 }

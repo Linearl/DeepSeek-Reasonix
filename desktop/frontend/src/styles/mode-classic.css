@@ -1132,6 +1132,7 @@
 
 .app--classic .project-tree__topic-time {
   min-width: 0;
+  white-space: nowrap; /* single-line guard: long provider refs (mimo-token-plan) must not wrap and blow up row height (20261103) */
   overflow: hidden;
   text-overflow: ellipsis;
 }
