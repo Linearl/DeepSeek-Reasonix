@@ -222,6 +222,66 @@ func (a *App) stageInterruptedByRestart(sessionPath string) bool {
 // whole SubmitToTab call graph, which closes a cycle through the restore path.
 var restartResumeSubmit func(a *App, tabID, prompt string) error
 
+// tl1366: the two greppable tokens of the resume-delivery chain. The 包68
+// incident (2026-11-03 12:17-12:28) showed the roster resume firing and the
+// submit succeeding, and the resumed turn still dying without a trace inside
+// the fresh process's boot-time maintenance window — the session sat silent
+// until the user typed. Both faces are named so an undelivered resume can
+// never be silent again (1545 anti-silent-loss, same convention as
+// 未入册/未续跑/中断工具不重放):
+//   - 维护未清: the boot-time maintenance (task-920 compaction) did not
+//     settle within resumeMaintenanceWaitBound; the submit goes through
+//     anyway and the task-920 park path remains the backstop.
+//   - 续跑落空: the submit was accepted but the transcript never grew —
+//     the resumed turn neither appended its prompt nor left any other trace.
+//     One bounded retry follows; a second fall-through gives up named.
+const (
+	resumeMaintenanceBusyMarker = "维护未清"
+	resumeFallThroughMarker     = "续跑落空"
+)
+
+// Resume-delivery knobs (tl1366). Vars, not consts, so tests can shrink the
+// windows; production runs on the defaults below.
+var (
+	// resumeMaintenanceWaitBound is how long the resume waits for the fresh
+	// session's boot-time maintenance to settle before submitting. The
+	// incident's boot compaction ran 2m50s before burning; five minutes
+	// covers it with headroom without stalling the wake-up meaningfully
+	// (the alternative — submitting immediately — is exactly the park-
+	// behind-compaction shape the incident killed on).
+	resumeMaintenanceWaitBound = 5 * time.Minute
+	// resumeMaintenancePoll is the maintenance-settle check cadence.
+	resumeMaintenancePoll = 500 * time.Millisecond
+	// resumeLivenessWindow is how long a submitted resume watches for the
+	// transcript to grow (the continue prompt landing in the session). A
+	// living turn appends its user message within seconds of starting; a
+	// window this size catches the silent-death shape without mistaking a
+	// still-settling controller for a dead one (maintenance already cleared
+	// before the submit, and a park — if any — drains on the settle hook).
+	resumeLivenessWindow = 60 * time.Second
+	// resumeLivenessPoll is the transcript-growth check cadence.
+	resumeLivenessPoll = 500 * time.Millisecond
+)
+
+// restartMaintenanceProbe is the narrow control surface for the tl1366
+// maintenance wait: is the fresh controller still inside a boot-time
+// context-maintenance transaction (task-920 compaction)? The real Controller
+// implements it (internal/control); a fake or an older controller without
+// the capability simply never triggers the wait — the pre-tl1366 submit
+// timing, byte for byte.
+type restartMaintenanceProbe interface {
+	MaintenanceInFlight() bool
+}
+
+// restartResumeLivenessProbe is the narrow control surface for the tl1366
+// delivery check: a cheap transcript-length read. Growth past the submit-time
+// baseline is the receipt that the continue prompt actually landed in the
+// session; a fake without the capability skips the check and keeps the
+// pre-tl1366 fire-and-forget shape.
+type restartResumeLivenessProbe interface {
+	HistoryLen() int
+}
+
 func init() {
 	restartResumeSubmit = func(a *App, tabID, prompt string) error {
 		return a.SubmitToTab(tabID, prompt)
@@ -378,15 +438,127 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	a.settleRestartFenceForTab(tab)
 	id := tab.ID
 	go func() {
-		if err := restartResumeSubmit(a, id, autonomousUpdateResumePrompt); err != nil {
+		a.resumeRosterSession(tab, id, sessionKey, autonomousUpdateResumePrompt)
+	}()
+}
+
+// resumeTabStillMatches reports whether the tab still holds the session this
+// resume chain owns. The delivery chain runs across seconds-to-minutes (the
+// maintenance wait and the liveness window); a tab whose session was swapped,
+// closed, or torn down mid-chain must not receive a stale continue prompt.
+func (a *App) resumeTabStillMatches(tab *WorkspaceTab, sessionKey string) bool {
+	if a == nil || tab == nil {
+		return false
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if !tab.Ready || tab.removed || tab.Ctrl == nil {
+		return false
+	}
+	return sessionRuntimeKey(tab.currentSessionPath()) == sessionKey
+}
+
+// resumeDelivered watches the tab's transcript for growth past baseline — the
+// receipt that the continue prompt landed in the session (a living turn
+// appends its user message within seconds of starting). Returns false when
+// the window closes with zero growth (the silent-death shape) or the tab
+// stopped matching mid-watch.
+func (a *App) resumeDelivered(tab *WorkspaceTab, sessionKey string, baseline int) bool {
+	probe, ok := tab.Ctrl.(restartResumeLivenessProbe)
+	if !ok {
+		return true // no probe → assume delivered (pre-tl1366 shape)
+	}
+	deadline := time.Now().Add(resumeLivenessWindow)
+	for {
+		if probe.HistoryLen() > baseline {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(resumeLivenessPoll)
+		if !a.resumeTabStillMatches(tab, sessionKey) {
+			return false
+		}
+	}
+}
+
+// resumeRosterSession delivers the roster continue prompt (task 254) with the
+// tl1366 delivery guarantees:
+//
+//  1. Wait out the fresh controller's boot-time maintenance (task-920
+//     compaction, bounded by resumeMaintenanceWaitBound) before submitting.
+//     The 包68 incident: the submit fired at tab-restore, parked behind a
+//     2m50s boot compaction on a 980k-token session, the compaction burned
+//     ("conversation changed while compression was running"), and the
+//     drained resume turn died without appending anything — the session sat
+//     silent until the user typed. Submitting into a settled controller
+//     removes the park-burn-drain race at its source.
+//  2. After an accepted submit, verify delivery via transcript growth; a
+//     fall-through is named (续跑落空) and retried exactly once. A second
+//     fall-through gives up named — task 263: a failed resume must not
+//     resurrect in a loop.
+//  3. A REFUSED submit (err) is never retried (task 263 / audit-2 判词③),
+//     same as the pre-tl1366 chain.
+//
+// Sessions whose controller lacks the narrow probes keep the pre-tl1366
+// fire-and-forget behavior byte for byte.
+func (a *App) resumeRosterSession(tab *WorkspaceTab, tabID, sessionKey, prompt string) {
+	for attempt := 1; ; attempt++ {
+		if !a.resumeTabStillMatches(tab, sessionKey) {
+			slog.Info("desktop: roster resume abandoned — the tab no longer holds the session (swapped, closed, or tearing down)", "tab", tabID, "attempt", attempt)
+			return
+		}
+		// The maintenance wait runs before EVERY submit attempt (not just the
+		// first): a maintenance transaction that starts between the liveness
+		// expiry and the retry would otherwise park the retry behind it —
+		// the exact park-burn-drain shape this chain exists to avoid — and a
+		// later settle would then run BOTH bodies (duplicate continue prompt).
+		if probe, ok := tab.Ctrl.(restartMaintenanceProbe); ok && probe.MaintenanceInFlight() {
+			deadline := time.Now().Add(resumeMaintenanceWaitBound)
+			for probe.MaintenanceInFlight() {
+				if !time.Now().Before(deadline) {
+					slog.Warn("desktop: roster resume submitting past unsettled boot maintenance ("+resumeMaintenanceBusyMarker+"; the task-920 park path remains the backstop)", "tab", tabID, "attempt", attempt, "waited", resumeMaintenanceWaitBound.String())
+					break
+				}
+			time.Sleep(resumeMaintenancePoll)
+			if !a.resumeTabStillMatches(tab, sessionKey) {
+				slog.Info("desktop: roster resume abandoned while waiting out boot maintenance — the tab no longer holds the session", "tab", tabID, "attempt", attempt)
+				return
+			}
+			}
+		}
+		baseline := -1
+		if probe, ok := tab.Ctrl.(restartResumeLivenessProbe); ok {
+			baseline = probe.HistoryLen()
+		}
+		err := restartResumeSubmit(a, tabID, prompt)
+		if err != nil {
 			// codeql[go/clear-text-logging] the flagged chain only carries the
 			// provider env-var NAME from config validation errors, never the
 			// key value; RedactError also strips any provider-echoed key text.
-			slog.Warn("desktop: autonomous-update resume skipped ("+restartResumeSkippedMarker+"; review the session manually)", "tab", id, "err", secrets.RedactError(err))
+			slog.Warn("desktop: autonomous-update resume skipped ("+restartResumeSkippedMarker+"; review the session manually)", "tab", tabID, "attempt", attempt, "err", secrets.RedactError(err))
 			return
 		}
-		slog.Info("desktop: autonomous-update run resumed", "tab", id)
-	}()
+		if baseline < 0 {
+			// No liveness probe → the pre-tl1366 fire-and-forget contract.
+			slog.Info("desktop: autonomous-update run resumed", "tab", tabID)
+			return
+		}
+		if a.resumeDelivered(tab, sessionKey, baseline) {
+			if attempt > 1 {
+				slog.Info("desktop: autonomous-update resume delivered on retry", "tab", tabID, "attempt", attempt)
+			} else {
+				slog.Info("desktop: autonomous-update run resumed", "tab", tabID)
+			}
+			return
+		}
+		if attempt > 1 {
+			slog.Warn("desktop: roster resume produced no transcript growth after one retry ("+resumeFallThroughMarker+"; giving up — review the session manually)", "tab", tabID)
+			return
+		}
+		slog.Warn("desktop: roster resume produced no transcript growth ("+resumeFallThroughMarker+"; retrying once)", "tab", tabID, "window", resumeLivenessWindow.String())
+	}
 }
 
 // sessionRunsAutopilot reports whether the tab bound to sessionPath runs on
