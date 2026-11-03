@@ -132,6 +132,27 @@ func TestPostSaveBusyDefersReplay(t *testing.T) {
 	}
 }
 
+// 任务554：重建失败的错误链可能携带 provider 回显的密钥形状文本，降级警告
+// （warnForTab UI 文案 + 返回值）必须在边界脱敏——密钥形状文本不得原样出现。
+func TestPostSaveDowngradeRedactsSecretShapedErrors(t *testing.T) {
+	f := newSettingsSaveFixture(t, true)
+
+	err := errors.New("provider activation failed (api key sk-test1234567890abcdef rejected)")
+	warning, downgraded := f.app.downgradePostSaveRebuildFailure("compact", err)
+	if !downgraded {
+		t.Fatal("a hard rebuild failure after save must still downgrade")
+	}
+	if !contains(warning, "restart the desktop to apply") {
+		t.Fatalf("warning must carry the restart hint, got %q", warning)
+	}
+	if contains(warning, "sk-test1234567890abcdef") {
+		t.Fatalf("the warning must not carry the raw secret-shaped text, got %q", warning)
+	}
+	if !contains(warning, "****") {
+		t.Fatalf("the secret-shaped text must be masked, got %q", warning)
+	}
+}
+
 // TestPreSaveGuardStillRefusesDuringStreaming pins the unchanged pre-save
 // guard: during a running turn the edit is refused BEFORE anything is written,
 // so the error there is honest (nothing bounced, nothing silently dropped).
