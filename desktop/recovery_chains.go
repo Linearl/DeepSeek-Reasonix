@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,11 +14,11 @@ import (
 // RecoveryChainView is one candidate chain a merge could promote: a session
 // transcript as seen from one of its heads.
 //
-// A session log is a DAG, and every head is the tip of one chain back to the
-// root - chainIDs walks node.parent from the head's leaf, so a head *is* a chain.
-// Copies of a session are separate files that forked from the main one, and each
-// carries the whole history it forked from, so a candidate chain is always
-// complete on its own: choosing one needs no splicing across files.
+// tl1355：schema-2 头重放退役（tl1227/tl1280）后，一个候选 = 一个转录文件
+// （schema-1 单链形态，HeadID 恒空、行身份即文件）；主转录与各恢复副本各占
+// 一行，每行自带完整历史，选它不需要跨文件拼接。读数由会话文件内容扫描合
+// 成（agent.ScanSessionChainViews），链间覆盖关系由 digest/前缀覆盖判定标
+// 出（Covered）。
 //
 // MessageCount and Turns are what make "longest" a fact rather than a guess, and
 // LastActivity is what makes "newest" one.
@@ -108,68 +107,56 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 		return set, err
 	}
 
+	// tl1355：链读数改为会话文件内容扫描合成。panelSessionHeads 的多头枚举
+	// 自 tl1227/tl1280 起是恒空垫片（schema-2 头重放退役），原代码走到
+	// len(heads)==0 分支时每候选只带 snapshot 条数——0·0+无预览正是那次退
+	// 化的现场。现在每个候选文件本身就是一条完整的链（schema-1 单链形态），
+	// 条数/轮次/预览/最后活动直接从内容扫描来，链间覆盖关系由 digest/前缀
+	// 覆盖判定（ScanSessionChainViews，与合并引擎同一套 Covers 规则）标出。
+	// 扫描成本（整文件读取）比读索引高，任务书明示可接受；快照/重叠缓存让
+	// 反复展开同一会话零重付。
+	scans := agent.ScanSessionChainViews(candidates)
+	scanByPath := make(map[string]agent.ChainScanView, len(scans))
+	for _, scan := range scans {
+		scanByPath[scan.Path] = scan
+	}
 	for _, path := range candidates {
-		// 任务 1019：面板路径走限流缓存入口——命中零重放；超预算的病态大
-		// 日志降级为一行 Degraded 标记而不是把设置页挂在全量重放上。
 		info, statErr := os.Stat(path)
 		var bytes int64
 		if statErr == nil {
 			bytes = info.Size()
 		}
 		isMain := samePath(path, mainPath)
-		heads, degraded, err := panelSessionHeads(path)
-		if err != nil {
-			// A copy that cannot be replayed is reported as an empty chain rather
-			// than failing the whole inventory: the other candidates are still
-			// usable, and the panel shows which one is unreadable.
-			//
-			// 任务 1039：重放超预算不再是「跳过该候选」——主转录被跳过时整个
-			// 集合为空，前端弹窗只有一句「设置加载失败」。与降级行同语义：
-			// 保留行、计数全零、不重放；其他候选（副本/正常会话）照旧枚举。
-			if errors.Is(err, agent.ErrSessionReplayLimitExceeded) {
-				set.Chains = append(set.Chains, RecoveryChainView{
-					Path: path, Label: recoveryDisplayName(path), IsMain: isMain,
-					Bytes: bytes, Degraded: true,
-				})
-				continue
-			}
-			continue
-		}
-		if degraded {
+		scan := scanByPath[path]
+		if !scan.Readable {
+			// 仅文件身份行：内容读不出（超扫描预算/文件消失）。与任务 1039
+			// 的降级同语义——保留行、计数全零、不读内容，其他候选照旧枚举，
+			// 面板看得见哪一份读不了。
 			set.Chains = append(set.Chains, RecoveryChainView{
 				Path: path, Label: recoveryDisplayName(path), IsMain: isMain,
 				Bytes: bytes, Degraded: true,
 			})
 			continue
 		}
-		if len(heads) == 0 {
-			// A schema-1 log has no heads. It is still a candidate chain - the
-			// whole file - so it is listed with the numbers the snapshot reports
-			// instead of being hidden.
-			view := RecoveryChainView{
-				Path: path, Label: recoveryDisplayName(path), IsMain: isMain, Bytes: bytes,
-			}
-			if snap, ok := agent.LoadSessionContentSnapshot(path); ok {
-				view.MessageCount = snap.Len()
-			}
-			set.Chains = append(set.Chains, view)
-			continue
-		}
-		for _, head := range heads {
-			set.Chains = append(set.Chains, RecoveryChainView{
-				Path:         path,
-				HeadID:       head.ID,
-				Label:        recoveryDisplayName(path),
-				IsMain:       isMain,
-				Selected:     head.Selected,
-				Covered:      head.Covered,
-				MessageCount: head.MessageCount,
-				Turns:        head.Turns,
-				LastActivity: head.LastActivity.UTC().Format("2006-01-02T15:04:05Z"),
-				Bytes:        bytes,
-				Preview:      head.Preview,
-			})
-		}
+		set.Chains = append(set.Chains, RecoveryChainView{
+			Path:    path,
+			Label:   recoveryDisplayName(path),
+			IsMain:  isMain,
+			// 无 DAG 时「会话正开在哪」= 主转录本身；副本行的激活按钮
+			// （headId 为空）走既有的副本采纳路径（SetActiveSessionVersion
+			// 的 catalog lineage 校验），与恒空 heads 时代副本行的行为一致。
+			Selected:     isMain,
+			Covered:      scan.CoveredBy != "",
+			MessageCount: scan.MessageCount,
+			Turns:        scan.Turns,
+			LastActivity: scan.LastActivity.UTC().Format("2006-01-02T15:04:05Z"),
+			Bytes:        bytes,
+			Preview:      scan.Preview,
+			// Degraded 语义收窄为「读数来自 tolerant 兜底」：计数真实但未经
+			// 严格校验（残缺日志的可读前缀），面板标灰但不隐藏。仅身份行
+			// （!Readable）在上方单独成行。
+			Degraded: !scan.Loadable,
+		})
 	}
 
 	sort.SliceStable(set.Chains, func(i, j int) bool {
@@ -188,11 +175,13 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 		}
 		return set.Chains[i].LastActivity > set.Chains[j].LastActivity
 	})
-	// 任务 1019：longest（更长）与 newest（更新）都只在真正重放过的链里选——
-	// 全部降级时留空，前端因此不标推荐，而不是把零读数的降级行推为赢家。
-	// Chains 已按轮次优先排好序，第一个非降级的就是「更长」（longest）。
+	// 任务 1019：longest（更长）与 newest（更新）只在带真实读数的链里选——
+	// 零读数（仅身份的降级行、真空会话）不推为赢家，全部为零时留空，前端
+	// 因此不标推荐。tl1355 起降级行里有一档 tolerant 兜底行（计数真实但未经
+	// 严格校验）：它们按真实读数参选——「更长」的判据是内容事实，不是行的
+	// 校验等级；Chains 已按轮次优先排好序，第一个带内容的就是「更长」。
 	for _, chain := range set.Chains {
-		if !chain.Degraded {
+		if chain.MessageCount > 0 {
 			set.LongestPath = chain.Path
 			set.LongestHead = chain.HeadID
 			break
@@ -200,11 +189,11 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 	}
 	// 任务 1123：「更新」独立于「更长」计算——LastActivity 是字符串比较
 	// （RFC3339 UTC 恒定宽度，字典序即时间序），直接扫一遍取最大值即可，
-	// 不需要额外排序。同样跳过降级行（零读数不是「最新」）。平手时按当前
-	// 排序序（轮次优先）先出现者胜，与 longest 的平手规则一致。
+	// 不需要额外排序。同样只认带真实读数的行（零读数不是「最新」）。平手时
+	// 按当前排序序（轮次优先）先出现者胜，与 longest 的平手规则一致。
 	newestIndex := -1
 	for i, chain := range set.Chains {
-		if chain.Degraded {
+		if chain.MessageCount == 0 {
 			continue
 		}
 		if newestIndex == -1 || chain.LastActivity > set.Chains[newestIndex].LastActivity {

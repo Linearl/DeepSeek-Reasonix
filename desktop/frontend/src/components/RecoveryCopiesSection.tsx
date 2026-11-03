@@ -556,7 +556,9 @@ function VersionRows({
             return (
               <tr key={`${c.path}|${c.headId}|${chainRowIndex++}`}>
                 <td>
-                  {c.headId ? c.headId.slice(0, 8) : "main"}
+                  {/* tl1355：无 DAG 后行身份=文件（headId 恒空）——主转录行仍
+                      显示 main，副本行显示「副本」而不是误标 main。 */}
+                  {c.headId ? c.headId.slice(0, 8) : c.isMain ? "main" : t("settings.recoveryCopiesCopy")}
                   {/* 任务 1039r：降级行必须说自己是降级——否则零计数行与
                       「空会话」在面板上无法区分。 */}
                   {c.degraded && (
