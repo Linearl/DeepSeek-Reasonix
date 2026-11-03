@@ -427,7 +427,9 @@ func (s *Service) WorkflowStatus(_ context.Context, runID string) (builtin.Workf
 		}
 		ids = []string{rec.ID}
 	}
-	out := builtin.WorkflowStatusResult{}
+	// 任务 1334：runs 契约=始终数组。Go nil 切片 JSON 序列化为 null，无 run
+	// 时会回 {"runs":null}，与有 run 时的数组形态不一致；起手赋空切片修平。
+	out := builtin.WorkflowStatusResult{Runs: []builtin.WorkflowRunView{}}
 	for i := len(ids) - 1; i >= 0 && len(out.Runs) < 20; i-- {
 		out.Runs = append(out.Runs, s.runViewLocked(s.runs[ids[i]]))
 	}

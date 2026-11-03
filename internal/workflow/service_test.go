@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -233,6 +234,28 @@ func TestServiceRunWithoutSubstrateFailsReadable(t *testing.T) {
 	_, err = svc.WorkflowStatus(ctx, "wf-nope")
 	if err == nil || !strings.Contains(err.Error(), "workflow_status") {
 		t.Fatalf("unknown run status must point at workflow_status, got %v", err)
+	}
+}
+
+// 任务 1334：runs 契约=始终数组。空态（服务内无任何 run）必须回空切片
+// （非 nil），wire 形态 {"runs":[]} 而非 {"runs":null}；与有 run 时的
+// 数组形态保持一致，消费方无需双态防御。
+func TestServiceStatusEmptyRunsReturnsEmptySlice(t *testing.T) {
+	svc := newTestService(t)
+
+	st, err := svc.WorkflowStatus(context.Background(), "")
+	if err != nil {
+		t.Fatalf("status on empty service: %v", err)
+	}
+	if st.Runs == nil || len(st.Runs) != 0 {
+		t.Fatalf("empty status must return empty non-nil slice, got %#v", st.Runs)
+	}
+	wire, err := json.Marshal(st)
+	if err != nil {
+		t.Fatalf("marshal status: %v", err)
+	}
+	if !strings.Contains(string(wire), `"runs":[]`) {
+		t.Fatalf(`wire form must carry "runs":[], got %s`, wire)
 	}
 }
 
