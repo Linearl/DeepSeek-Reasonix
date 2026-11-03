@@ -4960,6 +4960,8 @@ export const en = {
   "notice.warning": "Warning",
   "notice.askSubmitFailed": "Unable to submit answer: {error}",
   "notice.details": "Details",
+  "notice.hostProtocolLabel": "host context",
+  "notice.hostProtocolHint": "Host protocol message — click to expand or collapse",
   "notice.decisionReceiptTitle": "Decision recorded",
   "notice.decisionReceiptTool": "Tool approval",
   "notice.decisionReceiptAsk": "Question answered",

@@ -11,7 +11,8 @@ import { InlineAssistantReasoning } from "./InlineAssistantReasoning";
 import { ToolCard } from "./ToolCard";
 import { ReadOnlyBatch } from "./ReadOnlyBatch";
 import { ToolGroup } from "./ToolGroup";
-import { CompactionCard, NoticeCard, PhaseCard, SteerCard } from "./TranscriptCards";
+import { CompactionCard, HostProtocolNoticeCard, NoticeCard, PhaseCard, SteerCard } from "./TranscriptCards";
+import { isHostProtocolNoticeText } from "../lib/hostProtocolNotice";
 import { ExtensionCard } from "./ExtensionCard";
 import { LiveAssistantMessage } from "./LiveAssistantMessage";
 
@@ -115,7 +116,10 @@ export function useTranscriptRowRenderer({
       case "tool-batch": return <div className="turn-collapse__body"><ReadOnlyBatch items={[...row.items]} subcalls={subcallsByParent} tabId={tabId} /></div>;
       case "tool-group": return <div className="turn-collapse__body"><ToolGroup kind={row.groupKind} items={[...row.items]} subcalls={subcallsByParent} tabId={tabId} /></div>;
       case "phase": return <div className="turn-collapse__body"><PhaseCard id={row.item.id} text={row.item.text} /></div>;
-      case "process-notice": return <div className="turn-collapse__body"><NoticeCard item={row.item} /></div>;
+      // tl1350: host 协议/引导消息（session-context/压缩提醒/reasoning-language/
+      // nudge 等英文长段）折叠为一行紧凑条，不再全宽铺开。work-process fold 内
+      // 同口径。
+      case "process-notice": return <div className="turn-collapse__body">{isHostProtocolNoticeText(row.item.text) ? <HostProtocolNoticeCard item={row.item} /> : <NoticeCard item={row.item} />}</div>;
       case "compaction": return <div className="turn-collapse__body"><CompactionCard item={row.item} /></div>;
       case "answer": return <LiveAssistantMessage
         item={assistantAnswerOnly(row.item)} creationMode={creationMode}
@@ -123,6 +127,10 @@ export function useTranscriptRowRenderer({
         onExplicitFoldChange={(open) => onReasoningFoldIntent(row.item.id, open)}
       />;
       case "notice": {
+        // tl1350: host 协议/引导消息优先折叠——hostGuidanceRows 产物带 "↪ " 前缀，
+        // 会落进下方 steer 卡分支全宽铺开；协议分类先于 steer 形态判定（真实用户
+        // steer 不含 host 锚点，不受影响）。
+        if (isHostProtocolNoticeText(row.item.text)) return <HostProtocolNoticeCard item={row.item} />;
         // 任务723: a steer bubble whose inboxItemId materialized as a turn's
         // user row renders as the collapsed deferred placeholder.
         if (isSteerNoticeText(row.item.text)) return <SteerCard id={row.item.id} text={row.item.text} deferred={row.item.steerDeferred === true} createdAt={row.item.createdAt} />;

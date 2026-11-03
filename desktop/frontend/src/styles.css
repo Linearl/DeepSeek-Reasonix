@@ -3526,6 +3526,66 @@ a[href] {
   background: color-mix(in srgb, var(--bg-soft) 76%, var(--bg-elev));
   border: 1px solid var(--border-soft);
 }
+/* tl1350: host 协议消息折叠条——默认一行（图标+标签+首行截断），点击展开全文。 */
+.notice-line--host-protocol {
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+}
+.host-protocol-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.host-protocol-bar:hover {
+  color: var(--fg-dim);
+  background: color-mix(in srgb, var(--bg-soft) 60%, transparent);
+}
+.host-protocol-bar__icon {
+  flex: none;
+}
+.host-protocol-bar__label {
+  flex: none;
+  font-weight: 600;
+}
+.host-protocol-bar__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.host-protocol-bar__chevron {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.host-protocol-bar__chevron--open {
+  transform: rotate(90deg);
+}
+.host-protocol-bar__body {
+  margin: 4px 8px 6px 26px;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+  background: color-mix(in srgb, var(--bg-soft) 70%, var(--bg-elev));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
 /* Task 131: sandbox write-directory tiers (project / session / global). */
 .sandbox-write-roots {
   margin-top: 12px;
