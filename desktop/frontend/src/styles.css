@@ -35030,6 +35030,34 @@ button.statusbar__mcp:focus-visible {
   outline-offset: 2px;
 }
 
+/* tl1379: reset session cost entry — same slot language as __more, danger tone. */
+.context-ring-popover__reset {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 7px;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  background: none;
+  color: var(--fg-faint);
+  font-size: calc(11.5px * var(--font-scale));
+  cursor: pointer;
+}
+.context-ring-popover__reset:hover {
+  color: var(--danger);
+  text-decoration: underline;
+}
+.context-ring-popover__reset:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--danger) 60%, transparent);
+  outline-offset: 2px;
+}
+.context-ring-popover__reset:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 :is(.app--creation, .app--workbench) .welcome-creation__headline {
   display: block;
   margin: 0;

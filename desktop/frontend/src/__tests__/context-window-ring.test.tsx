@@ -285,6 +285,90 @@ console.log("\ncontext window ring");
   dom.window.close();
 }
 
+{
+  // tl1379 功能层：重置会话费用入口——确认框把门、取消不触发。开轮前先等
+  // 250ms 让前序场景留下的 queryCoalesce 窗口（200ms）过期，否则模块级
+  // inflight 缓存会吞掉本场景的 ContextPanel 调用（跨场景共享导致）。
+  const dom = installDom();
+  const resetCalls: string[] = [];
+  const panelFetches: string[] = [];
+  (window as unknown as { go: { main: { App: Record<string, unknown> } } }).go = {
+    main: {
+      App: {
+        ContextPanel: async (tabId: string) => {
+          panelFetches.push(tabId);
+          return contextPanelInfo(panelFetches.length);
+        },
+        ClearSessionCostForTab: async (tabId?: string) => {
+          resetCalls.push(tabId ?? "");
+        },
+      },
+    },
+  };
+  const { root } = await renderRing();
+  await act(async () => { await wait(250); });
+  await act(async () => {
+    (document.querySelector(".context-ring") as HTMLButtonElement).click();
+    await wait();
+  });
+  const resetButton = document.querySelector<HTMLButtonElement>(".context-ring-popover__reset");
+  ok(Boolean(resetButton), "reset cost entry renders in the popover");
+
+  await act(async () => { resetButton!.click(); await wait(); });
+  const dialog = document.querySelector(".reasonix-confirm-dialog");
+  ok(Boolean(dialog), "reset asks for confirmation before clearing");
+  // 取消键按结构（非 danger 主键）定位，文案随语言变。
+  const cancelButton = dialog?.querySelector("button.btn:not(.btn--danger)");
+  await act(async () => { cancelButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })); await wait(); });
+  eq(resetCalls.length, 0, "cancelling the dialog keeps the accrued cost");
+
+  await act(async () => {
+    root.unmount();
+  });
+  dom.window.close();
+}
+
+{
+  // tl1379 功能层：确认后调用桌面命令一次，并重拉 ContextPanel 让读数归零
+  // 上屏。ClearSessionCostForTab 命中 queryCoalesce 的 mutation 前缀表，
+  // 刷新不会被 200ms 合并窗口吞掉；先等 250ms 隔离前序场景缓存。
+  const dom = installDom();
+  const resetCalls: string[] = [];
+  const panelFetches: string[] = [];
+  (window as unknown as { go: { main: { App: Record<string, unknown> } } }).go = {
+    main: {
+      App: {
+        ContextPanel: async (tabId: string) => {
+          panelFetches.push(tabId);
+          return contextPanelInfo(panelFetches.length);
+        },
+        ClearSessionCostForTab: async (tabId?: string) => {
+          resetCalls.push(tabId ?? "");
+        },
+      },
+    },
+  };
+  const { root } = await renderRing();
+  await act(async () => { await wait(250); });
+  await act(async () => {
+    (document.querySelector(".context-ring") as HTMLButtonElement).click();
+    await wait();
+  });
+  const resetButton = document.querySelector<HTMLButtonElement>(".context-ring-popover__reset");
+  await act(async () => { resetButton!.click(); await wait(); });
+  const confirmButton = document.querySelector(".reasonix-confirm-dialog")?.querySelector("button.btn--danger");
+  ok(Boolean(confirmButton), "confirm dialog exposes the danger confirm button");
+  await act(async () => { confirmButton!.dispatchEvent(new MouseEvent("click", { bubbles: true })); await wait(); });
+  eq(resetCalls.length, 1, "confirmed reset calls the desktop command once");
+  eq(resetCalls[0], "tab-a", "reset targets the popover's tab");
+  ok(panelFetches.length >= 2, "panel data refreshes after a confirmed reset");
+
+  await act(async () => {
+    root.unmount();
+  });
+  dom.window.close();
+}
+
 await checkSeparateDurations();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
