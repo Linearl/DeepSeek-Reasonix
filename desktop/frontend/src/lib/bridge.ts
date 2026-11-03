@@ -1486,6 +1486,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   CaptureScreenshotAtCursor(): Promise<{ path: string; width: number; height: number; x: number; y: number }>;
   /** tl 1088: capture the whole virtual desktop so a selection can span displays. */
   CaptureScreenshotVirtualDesktop(): Promise<{ path: string; width: number; height: number; x: number; y: number }>;
+  /** tl 1370: which monitor holds the cursor right now — a pure query, no
+   *  capture side effect. Device (a \\.\DISPLAYn name) is the stable identity
+   *  the overlay's cursor-follow loop compares across polls. Contract aligned
+   *  with desktop App.ScreenshotCursorMonitor (wails generate disabled). */
+  ScreenshotCursorMonitor(): Promise<{ device: string; x: number; y: number; width: number; height: number }>;
   ReleaseScreenshotCapture(path: string): Promise<void>;
   SaveScreenshotAttachment(dataUrl: string): Promise<string>;
   SaveScreenshotToPath(path: string, dataUrl: string): Promise<void>;
@@ -6270,6 +6275,12 @@ function makeMockApp(): AppBindings {
       mockAttachmentDataURLs.set(path, mockPreviewImageDataURL);
       // A two-monitor virtual desktop: the second display sits to the right.
       return { path, width: 320, height: 120, x: 0, y: 0 };
+    },
+    // tl 1370 browser-dev mock: a single fixed display identity, so the
+    // cursor-follow loop samples a stable monitor and never spuriously
+    // re-captures in the dev browser.
+    async ScreenshotCursorMonitor() {
+      return { device: "\\\\.\\DISPLAY1", x: 0, y: 0, width: 160, height: 120 };
     },
     async ReleaseScreenshotCapture(_path: string) {},
     async SaveScreenshotAttachment(dataUrl: string) {

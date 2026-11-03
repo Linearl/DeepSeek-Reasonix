@@ -70,6 +70,11 @@ interface Capture {
 // an existing one, draw an annotation, drag the text caret) and its origin.
 type DragMode = "select" | "resize" | "annotate" | null;
 
+// tl 1370 cursor-follow: how often the open overlay checks which monitor
+// holds the cursor (the boundary-crossing throttle, not a per-move hook).
+// Exported so the contract test pins the value against a storm of re-captures.
+export const CURSOR_FOLLOW_POLL_MS = 250;
+
 export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverlayProps) {
   const t = useT();
   const { showToast } = useToast();
@@ -111,6 +116,13 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
   const [crossMonitor, setCrossMonitor] = useState(false);
   const crossMonitorRef = useRef(crossMonitor);
   crossMonitorRef.current = crossMonitor;
+  // tl 1370 cursor-follow: the poll interval is the throttle — a display
+  // boundary crossing is detected at most every CURSOR_FOLLOW_POLL_MS, never
+  // per pointer move — and captureInflightRef serialises captures so a rapid
+  // back-and-forth crossing cannot storm re-captures. followMonitorRef holds
+  // the display identity the current picture was captured for.
+  const captureInflightRef = useRef(false);
+  const followMonitorRef = useRef("");
 
   // Kick off the capture the first time the overlay opens; release the temp
   // file when it closes (Esc / confirm) so no stray PNG outlives the gesture.
@@ -125,6 +137,11 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
     setTextInput(null);
     setNumberCounter(emptyNumberCounter());
     setCrossMonitor(false);
+    // tl 1370: the initial capture joins the same in-flight guard as the
+    // cursor-follow re-captures — while it runs, the follow loop must not
+    // start a competing capture (the last writer would win the picture and
+    // the loser's temp file would leak).
+    captureInflightRef.current = true;
     (async () => {
       try {
         const shot = await app.CaptureScreenshotAtCursor();
@@ -132,6 +149,11 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
           await app.ReleaseScreenshotCapture(shot.path).catch(() => {});
           return;
         }
+        // Park the path in the ref before the state update: the follow loop's
+        // re-capture releases whatever the ref holds, and between the async
+        // completion and the next render the ref is the only up-to-date
+        // record of an unreleased temp file.
+        capturePathRef.current = shot.path;
         const dataUrl = await loadCapturePreview(shot.path);
         if (cancelled) {
           await app.ReleaseScreenshotCapture(shot.path).catch(() => {});
@@ -148,16 +170,25 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
       } catch (error) {
         console.warn("[screenshot] capture failed", error);
         if (!cancelled) setCaptureError(error);
+      } finally {
+        if (!cancelled) captureInflightRef.current = false;
       }
     })();
     return () => {
       cancelled = true;
+      captureInflightRef.current = false;
     };
   }, [open]);
 
-  // Re-capture when the cross-monitor toggle flips (tl 1088). The previous
-  // capture's temp file is released so a toggle storm cannot leak directories.
+  // Re-capture when the cross-monitor toggle flips (tl 1088) or when the
+  // cursor crosses to another display (tl 1370 follow). The previous capture's
+  // temp file is released so a toggle storm cannot leak directories. The
+  // in-flight guard serialises captures: a request arriving while one is
+  // running is dropped (the follow loop re-checks on its next poll, so a
+  // dropped follow re-capture is retried there, never lost).
   const recapture = useCallback(async (virtual: boolean) => {
+    if (captureInflightRef.current) return;
+    captureInflightRef.current = true;
     const previous = capturePathRef.current;
     if (previous) {
       void app.ReleaseScreenshotCapture(previous).catch(() => {});
@@ -178,8 +209,50 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
     } catch (error) {
       console.warn("[screenshot] re-capture failed", error);
       setCaptureError(error);
+    } finally {
+      captureInflightRef.current = false;
     }
   }, []);
+
+  // tl 1370 cursor-follow: while the overlay is open in single-monitor mode,
+  // poll which monitor holds the cursor; a device change means the cursor
+  // crossed a display boundary, so the picture is re-captured for the new
+  // display (WeChat/Snipaste behaviour) instead of freezing on the monitor
+  // that was under the cursor at open time. Deliberately off while the
+  // cross-monitor toggle (tl 1088) is on — the virtual-desktop picture
+  // already covers every display, and that toggle's semantics stay untouched.
+  // The loop is a self-rescheduling timeout rather than setInterval: each
+  // poll waits for the previous one (including its re-capture) to finish, so
+  // polls never pile up.
+  useEffect(() => {
+    if (!open || crossMonitor) return;
+    let stopped = false;
+    const sampleCursorMonitor = async (): Promise<string> => {
+      try {
+        const mon = await app.ScreenshotCursorMonitor();
+        return mon?.device ?? "";
+      } catch {
+        return ""; // backend hiccup: retry on the next poll, never crash the overlay
+      }
+    };
+    (async () => {
+      // Baseline: the identity of the display the initial capture targeted
+      // (CaptureScreenshotAtCursor also resolves the cursor's monitor), so
+      // the first poll does not spuriously re-capture the same display.
+      followMonitorRef.current = await sampleCursorMonitor();
+      while (!stopped) {
+        await new Promise((resolve) => setTimeout(resolve, CURSOR_FOLLOW_POLL_MS));
+        if (stopped || captureInflightRef.current) continue;
+        const device = await sampleCursorMonitor();
+        if (stopped || !device || device === followMonitorRef.current) continue;
+        followMonitorRef.current = device;
+        await recapture(false);
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+  }, [open, crossMonitor, recapture]);
 
   // Release the backend temp file once the overlay unmounts or closes. The
   // capture path lives in a ref so the cleanup sees the final value even
@@ -577,11 +650,14 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
             </button>
             <span className="screenshot-overlay__divider" />
             {/* tl 1088：跨屏开关——抓整个虚拟桌面，选区可横跨显示器。翻转会
-                重新抓图并清掉当前选区/标注（底下的像素变了）。 */}
+                重新抓图并清掉当前选区/标注（底下的像素变了）。tl 1370：一次
+                采集进行中忽略翻转——吞掉点击比让开关状态和画面脱同步好
+                （窗口只有一次采集时长，下一轮轮询照常工作）。 */}
             <button
               type="button"
               className={`screenshot-overlay__action${crossMonitor ? " screenshot-overlay__action--on" : ""}`}
               onClick={() => {
+                if (captureInflightRef.current) return;
                 const next = !crossMonitor;
                 setCrossMonitor(next);
                 void recapture(next);
