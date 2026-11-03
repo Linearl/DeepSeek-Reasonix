@@ -37,6 +37,9 @@ import (
 //   - open_retry_exhausted（任务579）：消息已入目标收件箱队列，但空闲开轮尝试
 //     用尽重试预算（3 次）——消息保留在队列未丢弃；空闲桥在队首变化或会话恢复
 //     活动后会重新获得预算，人工重试同样有效
+//   - ignored_admission（tl1340）：准入策略表终局否决（verdict=ignore）——接收方
+//     名单/来源策略拒绝注入。重试不改变判定（信任边界：内容与重试都不改权限），
+//     因此泵不发任何发送方通知；结局只存在于本回执 + 结构化日志（可检索 WARN）。
 const (
 	ReceiptInjected           = "injected"
 	ReceiptQueuedFollowup     = "queued_followup"
@@ -45,6 +48,7 @@ const (
 	ReceiptRefusedCrossWire   = "refused_cross_wire"
 	ReceiptFailedRetrying     = "failed_retrying"
 	ReceiptOpenRetryExhausted = "open_retry_exhausted"
+	ReceiptIgnoredAdmission   = "ignored_admission"
 )
 
 // 任务 599：投递泵的建议轮询节奏（毫秒），单一事实源。
@@ -65,7 +69,7 @@ func ValidDeliveryReceiptOutcome(s string) bool {
 	switch s {
 	case ReceiptInjected, ReceiptQueuedFollowup, ReceiptRefusedHop,
 		ReceiptRefusedProvenance, ReceiptRefusedCrossWire, ReceiptFailedRetrying,
-		ReceiptOpenRetryExhausted:
+		ReceiptOpenRetryExhausted, ReceiptIgnoredAdmission:
 		return true
 	default:
 		return false
@@ -93,6 +97,10 @@ func DeliveryReceiptSettled(outcome string) bool {
 //   - injected：steer 真正注入当轮，绿灯；
 //   - queued_followup：delivery=followup 的正常落点；delivery=steer 的降级
 //     ——消息已在目标持久收件箱队列，空闲开轮桥接管，无需发送方做任何事。
+//   - ignored_admission（tl1340）：准入策略终局否决。发送方无法用「重发」改变
+//     判定（信任边界：重试不改权限），任何通知都只会喂养重试循环（任务461 P10
+//     的 conflict 风暴同源）——结局可按 messageId 查询（get_message_status），
+//     但不进通知通道。
 //
 // 无需行动的通知在任务894 被降级（静默化）：只进 talk_to_session 返回值 +
 // UI 通知层 + 本回执存储（get_message_status 按 messageId 查），绝不注入
@@ -103,7 +111,7 @@ func DeliveryReceiptSettled(outcome string) bool {
 // 危险方向在「静默侧多收」，故 fail-safe 倒向注入侧）。
 func ReceiptNeedsAction(outcome string) bool {
 	switch outcome {
-	case ReceiptInjected, ReceiptQueuedFollowup:
+	case ReceiptInjected, ReceiptQueuedFollowup, ReceiptIgnoredAdmission:
 		return false
 	default:
 		// 全部需行动结局（refused_*、failed_retrying、open_retry_exhausted）

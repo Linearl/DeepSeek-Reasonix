@@ -106,7 +106,7 @@ func (e *idleTurnE2E) deliverSteer(t *testing.T, from, to, body string) (bool, s
 	}
 	itemID := ""
 	d := collabDelivery{
-		enqueue: func(msg sessioncollab.MailMessage, body string) (bool, error) {
+		enqueue: func(msg sessioncollab.MailMessage, body string, forceFollowup bool) (bool, error) {
 			// deliverOne 的 detached steer 分支同款：TryEnqueueAndSteer。
 			req := control.InboxRequest{
 				Intent: sessioninbox.IntentSteer, Display: body, Raw: body, Submit: body,

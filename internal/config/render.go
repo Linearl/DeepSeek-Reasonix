@@ -242,6 +242,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_cascade_approval":              "task 225：派遣审批回投任务源（815 核验：sessionCollab 卡内行级开关已交付，非缺口；家族伴生行不挂独立徽章，621 附属行口径）",
 	"experimental_fallback_model":                "task 242：额度耗尽切 fallback_model（815 核验：722 点1 已迁 modelStrategy 卡行级开关+灯，非缺口；模型策略域伴生行不挂独立徽章）",
 	"experimental_collab_background_delivery":    "task 224：协作投递后台化——boot-resolved 服务端开关（collab_drain_gate.go：drain_inbox 注册与 pump 跳过均取 boot 快照，翻转重启才生效），config-only 是合理形态（815 定档不建卡）",
+	"experimental_collab_admission_gate":         "tl1340：投递泵准入策略表代码门（来源×名单×@→三值确定性判定，先于模型语义层）+ 结构化决策日志 + 滞留 WARN——live 读每 pass 生效，判定只改路由不改消费权，config-only 手编键（默认关=泵逐字节旧行为）",
 	"experimental_parallel_writer_readonly_bash": "task 573：并行 writer 只读 bash 回退（写隔离伴生开关，write_paths 象限自证能力，实验室 tab 无入口）",
 	"experimental_gc_child_session":              "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
@@ -1052,6 +1053,21 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "collab_inbox_merge = %q   # task 221: inbox drain merge mode (off | same_sender | all; default off)\n", NormalizeCollabInboxMerge(c.Agent.CollabInboxMerge))
 	fmt.Fprintf(&b, "collab_guidance_merge = %v   # task 153: guidance shelf manual merge-next button\n", c.Agent.CollabGuidanceMerge)
 	fmt.Fprintf(&b, "experimental_collab_background_delivery = %v   # task 224: collab delivery opens tabs inactive (woken conversation runs in background)\n", c.Agent.ExperimentalCollabBackgroundDelivery)
+	fmt.Fprintf(&b, "experimental_collab_admission_gate = %v   # tl1340: pump-side admission policy table (source×list×@mention → explicit/inferred/ignore) ahead of the model layer, with the structured decision log; off = byte-identical pump\n", c.Agent.ExperimentalCollabAdmissionGate)
+	if len(c.Agent.CollabAdmissionAllow) > 0 {
+		quoted := make([]string, 0, len(c.Agent.CollabAdmissionAllow))
+		for _, id := range c.Agent.CollabAdmissionAllow {
+			quoted = append(quoted, fmt.Sprintf("%q", id))
+		}
+		fmt.Fprintf(&b, "collab_admission_allow = [%s]   # tl1340: sender contactIds the admission gate treats as allow-listed (deny wins)\n", strings.Join(quoted, ", "))
+	}
+	if len(c.Agent.CollabAdmissionDeny) > 0 {
+		quoted := make([]string, 0, len(c.Agent.CollabAdmissionDeny))
+		for _, id := range c.Agent.CollabAdmissionDeny {
+			quoted = append(quoted, fmt.Sprintf("%q", id))
+		}
+		fmt.Fprintf(&b, "collab_admission_deny = [%s]   # tl1340: sender contactIds the admission gate refuses (terminal ignored_admission, no sender notice)\n", strings.Join(quoted, ", "))
+	}
 	fmt.Fprintf(&b, "perf_monitor_retention_hours = %d   # task 184: how long samples are kept (default 48h)\n", c.Agent.PerfMonitorRetentionHours)
 	if len(c.Agent.PerfMonitorPaths) > 0 {
 		quoted := make([]string, 0, len(c.Agent.PerfMonitorPaths))

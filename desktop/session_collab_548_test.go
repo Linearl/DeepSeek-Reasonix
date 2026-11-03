@@ -48,7 +48,7 @@ func TestRefusalNoticeReachesTheSender(t *testing.T) {
 	}
 
 	d := collabDelivery{
-		enqueue: func(sessioncollab.MailMessage, string) (bool, error) {
+		enqueue: func(sessioncollab.MailMessage, string, bool) (bool, error) {
 			t.Fatal("a provenance-refused message must not reach the target")
 			return false, nil
 		},
