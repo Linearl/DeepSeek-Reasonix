@@ -188,7 +188,11 @@ func TestServiceRestoreWithoutChangedAtOmitsZeroReading(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save snapshot: %v", err)
 	}
-	raw, err := os.ReadFile(runSnapshotPath(runsDir(dir), "wf-legacy"))
+	path, err := runSnapshotPath(runsDir(dir), "wf-legacy")
+	if err != nil {
+		t.Fatalf("snapshot path: %v", err)
+	}
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read snapshot: %v", err)
 	}
