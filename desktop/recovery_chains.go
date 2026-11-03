@@ -34,10 +34,10 @@ type RecoveryChainView struct {
 	LastActivity string `json:"lastActivity"`
 	Bytes        int64  `json:"bytes"`
 	Preview      string `json:"preview"`
-	// Degraded marks a chain listed without a full replay (任务 1019): the
-	// events log exceeded the panel replay budget, so the row carries the file
-	// identity only and every count stays zero rather than the panel hanging
-	// the settings page on the replay.
+	// Degraded marks a row whose readings are not full-content verified
+	// (tl1355)：读数来自 tolerant 兜底（残缺日志的可读前缀，计数真实但未经
+	// 严格校验），或整文件解析不可得（超字节/时间预算——条数由纯行计数填真
+	// 实值，轮次/预览缺席）。行照常展示、标灰，不推为「更长/更新」赢家。
 	Degraded bool `json:"degraded,omitempty"`
 }
 
