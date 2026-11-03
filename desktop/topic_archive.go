@@ -62,9 +62,15 @@ func markTopicArchiveForceable(err error) error {
 // that could not be archived through the regular path (e.g. a session that
 // failed to recover left its runtime lease held). It skips the active-work
 // gate — a failed session has already Ctrl.Close()'d and is not running — so a
-// blocked topic can still be trashed. File moves still use removal guards, so a
-// genuinely in-use session is protected; the skip only relaxes the red-flag
-// check that would otherwise reject the whole topic.
+// blocked topic can still be trashed. tl1367 line 4: force is a real unlock —
+// before the file moves, stale lease holders (leftover records from dead
+// processes, records whose pid was reused by an unrelated program, this
+// window's own zombie runtimes) are reclaimed through the same primitives as
+// the task-456 takeover, so a stale-held archive completes in ONE call. A
+// live holder running this application is real occupation: it is never
+// grabbed silently — the removal guard still refuses and the refusal carries
+// the holder identity (tl1367 line 1) for the localized "who holds it and how
+// to close it" copy.
 func (a *App) TrashTopicForce(topicID string) error {
 	return friendlySessionFileError(a.trashTopic(topicID, true))
 }
@@ -116,6 +122,74 @@ func (a *App) reclaimTopicSelfLeasesLocked(topicID string, targets []topicTrashT
 				tab.releaseSessionLeaseForKey(key)
 			}
 		}
+	}
+}
+
+// reclaimTopicStaleLeaseHolders is the tl1367 line-4 force-unlock half: force
+// archive must actually clear stale lease holders, not merely skip the UI
+// confirm. For every archive target whose recorded holder is provably stale —
+// a leftover record from a dead process (zombie), a record whose pid was
+// reused by an unrelated program, or this window's own leftover record — the
+// stale identity is retired through agent.ClearStaleSessionLeaseInfo, the
+// verify-free-then-remove primitive the task-456 takeover already uses: a
+// live holder's OS lock is never touched. An in-process holder is released
+// only in the provable-zombie form of the task-456 takeover sweep (bound the
+// lease, no controller, no build in flight) — the form
+// reclaimTopicSelfLeasesLocked cannot see because its holder tab carries a
+// different or empty TopicID. A live holder running this application is REAL
+// occupation: it is never grabbed silently — the ownership acquisition below
+// still refuses and the caller's error keeps the holder identity (tl1367
+// line 1). Caller holds sessionRemovalMu (same contract as
+// reclaimTopicSelfLeasesLocked).
+func (a *App) reclaimTopicStaleLeaseHolders(targets []topicTrashTarget) {
+	for _, target := range targets {
+		key := sessionRuntimeKey(target.sessionPath)
+		if key == "" {
+			continue
+		}
+		holder := a.inspectLocalLeaseHolder(target.sessionPath)
+		switch holder.verdict {
+		case leaseHolderSelf:
+			if !holder.locked {
+				// Leftover self record on a free lock: retire it like any stale
+				// record so the archive starts against a clean identity.
+				forceRetireStaleLeaseRecord(key, holder.info)
+				continue
+			}
+			// The lock is held inside this process. reclaimTopicSelfLeasesLocked
+			// already released no-work owners matched by topic; what remains is
+			// the task-456 zombie form. Release exactly those provably dead
+			// holders; a functional owner survives and the removal guard keeps
+			// refusing (never a silent grab of a working runtime).
+			a.releaseZombieSessionLeaseHoldersForKey(key, nil)
+		case leaseHolderForeignDead, leaseHolderForeignReused:
+			// Stale record forms: a dead holder, or a pid now owned by an
+			// unrelated program (tl1367 line 3 verdict). ClearStaleSessionLeaseInfo
+			// removes the record only while the OS lock is provably free, so a
+			// live unidentified holder of the lock file itself is never touched.
+			forceRetireStaleLeaseRecord(key, holder.info)
+		case leaseHolderForeignLive:
+			// Real occupation: a live process running this application holds the
+			// session. Force reports who holds it and how to close it — the
+			// refusal below carries the identity; nothing is cleared here.
+		}
+	}
+}
+
+// forceRetireStaleLeaseRecord retires one stale lease record during a force
+// archive and logs the retired holder identity (tl1367 line 1 discipline: a
+// destructive unlock leaves a traceable record). Logged values name the holder
+// process, never the session path.
+func forceRetireStaleLeaseRecord(key string, info *agent.SessionLeaseInfo) {
+	cleared, err := agent.ClearStaleSessionLeaseInfo(key)
+	if err != nil {
+		slog.Warn("desktop: force archive could not retire a stale lease record",
+			"holder_pid", holderPIDForLog(info), "err", err)
+		return
+	}
+	if cleared {
+		slog.Info("desktop: force archive retired a stale lease record",
+			"holder_pid", holderPIDForLog(info))
 	}
 }
 
@@ -217,6 +291,11 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 	trace.phase = "force_reclaim_self_lease"
 	if force {
 		a.reclaimTopicSelfLeasesLocked(topicID, targets)
+		// tl1367 line 4: force is a real unlock — stale holders (dead pid,
+		// reused pid, self leftover/zombie) are reclaimed before the ownership
+		// acquisition so the archive completes in one call; a live foreign
+		// holder is left untouched and still refuses with its identity.
+		a.reclaimTopicStaleLeaseHolders(targets)
 	}
 	trace.targetCount = len(targets)
 	changedDirs := make([]string, 0, len(targets))
