@@ -670,6 +670,45 @@ func ListSessionRepairRecordsFor(path string) ([]RepairRecord, error) {
 	return out, nil
 }
 
+// LatestFoldRepairTime reads the session's repair log and returns when the
+// most recent completed projection fold ran (tl1372 A1). Only records whose
+// fold action finished ("done") count: a fold that was skipped or failed left
+// the transcript bytes untouched and explains no missing text. Zero time with
+// ok=false means no fold evidence exists (missing log, no completed fold, or
+// unparsable timestamps) — callers must keep reporting in that case.
+func LatestFoldRepairTime(path string) (time.Time, bool) {
+	records, err := ListSessionRepairRecordsFor(path)
+	if err != nil && len(records) == 0 {
+		return time.Time{}, false
+	}
+	// A mid-file decode error returns the records decoded so far; consuming
+	// them keeps the exemption conservative (less evidence, fewer exemptions).
+	var latest time.Time
+	for _, rec := range records {
+		done := false
+		for _, act := range rec.Actions {
+			if act.Action == HealActionFold && act.Status == "done" {
+				done = true
+				break
+			}
+		}
+		if !done {
+			continue
+		}
+		at, parseErr := time.Parse(time.RFC3339, strings.TrimSpace(rec.At))
+		if parseErr != nil {
+			continue
+		}
+		if latest.IsZero() || at.After(latest) {
+			latest = at
+		}
+	}
+	if latest.IsZero() {
+		return time.Time{}, false
+	}
+	return latest, true
+}
+
 func issueCodesLine(r SessionHealthReport) string {
 	if r.Healthy {
 		return "healthy"

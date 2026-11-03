@@ -145,6 +145,63 @@ func TestReadCheckpointInputsMissingDir(t *testing.T) {
 	}
 }
 
+// tl1372 A1 折叠免报：repairlog fold 时间晚于 checkpoint 的 turn 归
+// 「已折叠存档」桶，不再以「未进入对话」上报。
+func TestReconcileGapsFoldExemption(t *testing.T) {
+	base := time.Now()
+	inputs := []Input{
+		{Turn: 1, Time: base.Add(-2 * time.Hour), Prompt: "折叠前的输入", MsgIndex: 3},
+		{Turn: 2, Time: base.Add(-30 * time.Minute), Prompt: "折叠后的输入", MsgIndex: 8},
+	}
+	// 无折叠史：两 turn 都报（原口径不变）。
+	gaps := ReconcileGaps(inputs, nil, ClassifyOptions{})
+	if len(gaps) != 2 || gaps[0].Class != GapUnfiled || gaps[1].Class != GapUnfiled {
+		t.Fatalf("no fold evidence must keep phase-0 single bucket, got %+v", gaps)
+	}
+	// 最近 fold 在两 turn 之后：turn 1 归折叠存档桶，turn 2 保持普通缺口。
+	// ReconcileGaps 返回带分类的全集；折叠桶由调用侧（control）免报丢弃。
+	gaps = ReconcileGaps(inputs, nil, ClassifyOptions{LatestFold: base.Add(-time.Hour)})
+	if len(gaps) != 2 {
+		t.Fatalf("classified output must keep both gaps, got %+v", gaps)
+	}
+	if gaps[0].Class != GapFoldedArchive || gaps[0].Turn != 1 {
+		t.Fatalf("the pre-fold turn must classify folded_archive, got %+v", gaps[0])
+	}
+	if gaps[1].Class != GapUnfiled || gaps[1].Turn != 2 {
+		t.Fatalf("the post-fold turn stays a plain gap, got %+v", gaps[1])
+	}
+	// 已入档的 turn 不受折叠史影响（containment 优先于分类）。
+	filed := []string{"<wrap>折叠前的输入</wrap>"}
+	gaps = ReconcileGaps(inputs, filed, ClassifyOptions{LatestFold: base.Add(-time.Hour)})
+	if len(gaps) != 1 || gaps[0].Turn != 2 || gaps[0].Class != GapUnfiled {
+		t.Fatalf("filed check must run before classification, got %+v", gaps)
+	}
+}
+
+// 无时间戳的旧 checkpoint（time 零值）证据不足，保守继续上报——免报必须凭
+// 「checkpoint 早于 fold」的双侧时间证据。
+func TestReconcileGapsFoldExemptionNeedsBothTimes(t *testing.T) {
+	inputs := []Input{{Turn: 5, Prompt: "无时间戳的输入", MsgIndex: 2}}
+	gaps := ReconcileGaps(inputs, nil, ClassifyOptions{LatestFold: time.Now()})
+	if len(gaps) != 1 || gaps[0].Class != GapUnfiled {
+		t.Fatalf("zero-time checkpoint must not be fold-exempted, got %+v", gaps)
+	}
+}
+
+// Reconcile 是 ReconcileGaps 零选项的 phase-0 投影：语义与历史口径逐条一致。
+func TestReconcileWrapsReconcileGaps(t *testing.T) {
+	inputs := []Input{
+		{Turn: 1, Time: time.Now().Add(-time.Hour), Prompt: "已入档", MsgIndex: 1},
+		{Turn: 2, Time: time.Now().Add(-time.Hour), Prompt: "未入档", MsgIndex: 5},
+	}
+	filed := []string{"<wrap>已入档</wrap>"}
+	want := ReconcileGaps(inputs, filed, ClassifyOptions{})
+	got := Reconcile(inputs, filed)
+	if len(got) != len(want) || len(got) != 1 || got[0].Turn != want[0].Turn || got[0].Prompt != want[0].Prompt {
+		t.Fatalf("Reconcile must mirror zero-option ReconcileGaps: got %+v want %+v", got, want)
+	}
+}
+
 // TestReadCheckpointInputsReadOnly pins the phase-0 contract: scanning a
 // checkpoint directory must not change a single byte of it (checkpoint.New
 // runs GC on construction, which is exactly why this reader exists).

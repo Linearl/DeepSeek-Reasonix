@@ -2,7 +2,11 @@ package control
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
@@ -83,4 +87,59 @@ func TestUnfiledInputsNilSafe(t *testing.T) {
 	if got := hollow.UnfiledInputs(); got != nil {
 		t.Fatalf("executor-less controller must return nil, got %+v", got)
 	}
+}
+
+// tl1372 A1 接线：repairlog 里最近一次完成的投影折叠晚于 checkpoint 的 turn
+// 归「已折叠存档」桶，不再计入「未进入」横幅（免报）。三态：fold 前免报 /
+// fold 后正常报 / 无 repairlog 不影响。
+func TestUnfiledInputsFoldExemption(t *testing.T) {
+	// 无 repairlog：口径与原状一致，缺口照报。
+	c := newUnfiledTestController(t)
+	c.beginCheckpoint(context.Background(), "无折叠史的缺口")
+	if got := c.UnfiledInputs(); len(got) != 1 {
+		t.Fatalf("no repairlog must keep the gap reported, got %+v", got)
+	}
+
+	// repairlog 折叠晚于 checkpoint：免报。
+	writeFoldRepairRecord(t, c.SessionPath(), 2*time.Hour)
+	if got := c.UnfiledInputs(); len(got) != 0 {
+		t.Fatalf("a completed fold newer than the checkpoint must exempt the turn, got %+v", got)
+	}
+
+	// repairlog 折叠早于 checkpoint：不豁免，缺口照报（换新 controller 避免同
+	// 一 checkpoint 元数据跨态混淆）。
+	c2 := newUnfiledTestController(t)
+	c2.beginCheckpoint(context.Background(), "折叠前的缺口")
+	writeFoldRepairRecord(t, c2.SessionPath(), -2*time.Hour)
+	if got := c2.UnfiledInputs(); len(got) != 1 {
+		t.Fatalf("a fold older than the checkpoint must not exempt the turn, got %+v", got)
+	}
+}
+
+// writeFoldRepairRecord 在会话旁落一条 repairlog 折叠（done）记录，at 相对
+// 当前时间偏移 offset——checkpoint 的 turn 时间即 beginCheckpoint 的 now，
+// 正偏移=折叠晚于 turn（免报态），负偏移=折叠早于 turn（照报态）。
+func writeFoldRepairRecord(t *testing.T, sessionPath string, offset time.Duration) {
+	t.Helper()
+	if sessionPath == "" {
+		t.Fatal("test controller must carry a session path")
+	}
+	record := map[string]any{
+		"at":   time.Now().Add(offset).UTC().Format(time.RFC3339),
+		"path": sessionPath,
+		"actions": []map[string]string{
+			{"action": "fold", "status": "done"},
+		},
+		"before": "projection_overflow",
+		"after":  "healthy",
+	}
+	blob, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := strings.TrimSuffix(sessionPath, ".jsonl") + ".repairlog.jsonl"
+	if err := os.WriteFile(logPath, blob, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(logPath) })
 }
