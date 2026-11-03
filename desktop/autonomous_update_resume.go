@@ -504,6 +504,7 @@ func (a *App) resumeDelivered(tab *WorkspaceTab, sessionKey string, baseline int
 // Sessions whose controller lacks the narrow probes keep the pre-tl1366
 // fire-and-forget behavior byte for byte.
 func (a *App) resumeRosterSession(tab *WorkspaceTab, tabID, sessionKey, prompt string) {
+	baseline0 := -1
 	for attempt := 1; ; attempt++ {
 		if !a.resumeTabStillMatches(tab, sessionKey) {
 			slog.Info("desktop: roster resume abandoned — the tab no longer holds the session (swapped, closed, or tearing down)", "tab", tabID, "attempt", attempt)
@@ -521,16 +522,30 @@ func (a *App) resumeRosterSession(tab *WorkspaceTab, tabID, sessionKey, prompt s
 					slog.Warn("desktop: roster resume submitting past unsettled boot maintenance ("+resumeMaintenanceBusyMarker+"; the task-920 park path remains the backstop)", "tab", tabID, "attempt", attempt, "waited", resumeMaintenanceWaitBound.String())
 					break
 				}
-			time.Sleep(resumeMaintenancePoll)
-			if !a.resumeTabStillMatches(tab, sessionKey) {
-				slog.Info("desktop: roster resume abandoned while waiting out boot maintenance — the tab no longer holds the session", "tab", tabID, "attempt", attempt)
-				return
+				time.Sleep(resumeMaintenancePoll)
+				if !a.resumeTabStillMatches(tab, sessionKey) {
+					slog.Info("desktop: roster resume abandoned while waiting out boot maintenance — the tab no longer holds the session", "tab", tabID, "attempt", attempt)
+					return
+				}
 			}
+			// On the retry path the wait above may have let the FIRST submit's
+			// parked body drain and land after all (its transcript growth is
+			// the same receipt). Delivering then means the resume already
+			// happened — re-submitting would only double the continue prompt,
+			// so the late delivery retires the chain.
+			if attempt > 1 && baseline0 >= 0 {
+				if probe, ok := tab.Ctrl.(restartResumeLivenessProbe); ok && probe.HistoryLen() > baseline0 {
+					slog.Info("desktop: autonomous-update resume delivered late (the first submit landed once maintenance settled)", "tab", tabID)
+					return
+				}
 			}
 		}
 		baseline := -1
 		if probe, ok := tab.Ctrl.(restartResumeLivenessProbe); ok {
 			baseline = probe.HistoryLen()
+			if attempt == 1 {
+				baseline0 = baseline
+			}
 		}
 		err := restartResumeSubmit(a, tabID, prompt)
 		if err != nil {
