@@ -3745,6 +3745,8 @@ export const zhTW: Record<DictKey, string> = {
   "tool.receivingArgs": "接收參數中 ↓ {chars}…",
   "tool.errorReceiptMismatch": "證據命令沒有匹配的成功執行記錄",
   "tool.command": "命令",
+  "tool.expandCommand": "展開命令",
+  "tool.collapseCommand": "收起命令",
   "tool.loadFailed": "無法載入完整工具詳情。",
   "tool.truncated": "輸出已截斷",
   "tool.showAllLines": "顯示全部 {n} 行",

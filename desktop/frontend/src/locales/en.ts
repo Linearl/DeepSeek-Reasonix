@@ -5214,6 +5214,8 @@ export const en = {
   "tool.receivingArgs": "receiving arguments ↓ {chars}…",
   "tool.errorReceiptMismatch": "verification command has no matching successful receipt",
   "tool.command": "Command",
+  "tool.expandCommand": "expand command",
+  "tool.collapseCommand": "collapse command",
   "tool.loadFailed": "Could not load the complete tool details.",
   "tool.truncated": "output truncated",
   "tool.showAllLines": "show all {n} lines",
