@@ -19,7 +19,7 @@ import { topicActivityTime } from "../lib/session";
 import { useT, type Translator } from "../lib/i18n";
 import { requestTopicVersions } from "../lib/sessionRecoveryVersionHostBridge";
 import { PROJECT_COLOR_OPTIONS, projectColorValue, type ProjectColorKey, type ProjectColorOption } from "../lib/projectColors";
-import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, projectTreeWithoutTopics, isTopicArchiveForceableError, reloadProjectTreeTopics, topicArchiveForceableReason, useProjectTreeArchiveController, type ProjectTreeRefresh, type ProjectTreeRefreshOptions } from "../lib/projectTreeArchive";
+import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, projectTreeWithoutTopics, isTopicArchiveForceableError, reloadProjectTreeTopics, useProjectTreeArchiveController, type ProjectTreeRefresh, type ProjectTreeRefreshOptions } from "../lib/projectTreeArchive";
 // tl1240: sidebar batch manage mode (multi-select → one-call batch archive/move).
 import { batchEntryForNode, batchSelectionAfterArchive, collectBatchTopics, singleBatchTarget, summarizeBatchMove, summarizeBatchTopicArchive, type BatchReportState, type BatchTopicEntry } from "../lib/projectTreeBatch";
 import { ProjectTreeBatchBar } from "./ProjectTreeBatchBar";
@@ -66,6 +66,7 @@ import {
 } from "../lib/projectGroupCatalog";
 import { NewGroupPanel } from "./NewGroupPanel";
 import { useConfirmDialog } from "./ConfirmDialog";
+import { formatSessionBusyError } from "../lib/sessionBusyError";
 import { loadReadActivityStore, markReadKeysRead, persistReadActivity, readActivityEquals, readActivityKeysInScope, readActivityKeysInSubtree, READ_ACTIVITY_CHANGED_EVENT } from "../lib/readActivity";
 import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction } from "./ProjectTreeAddControls";
 import { activeRemoteProjectAncestorKeys, buildRemoteProjectMenuItems, useRemoteRuntimeTree, openRemoteSessionNode, remoteProjectKey, remoteServeBadgeState, renameRemoteProjectTitle, RemoteProjectEmptyState, useRemoteProjectGroups, useRemoteSessionActions } from "./ProjectTreeRemoteGroups";
@@ -364,10 +365,43 @@ export function ProjectTree({
   const topicLoadSeqRef = useRef<Record<string, number>>({});
   const topicLoadErrorRef = useRef<Record<string, string>>({});
   const refreshRef = useRef<ProjectTreeRefresh>(async () => {});
+  // tl1367 line 1: the occupancy preflight dialog + probes. Declared before
+  // the archive controller so trashSession can take the preflight callback.
+  const occupancyDialog = useConfirmDialog();
+  // confirmSessionOccupied probes the session's lease before a destructive
+  // start: busy shows the holder identity and asks whether to continue
+  // (true = proceed). An empty path or a failed probe passes through — the
+  // probe is advisory, the archive re-checks authoritatively under the gates.
+  const confirmSessionOccupied = useCallback(async (sessionPath: string | undefined): Promise<boolean> => {
+    const path = (sessionPath ?? "").trim();
+    if (!path) return true;
+    let busy = false;
+    let reason = "";
+    try {
+      const probe = await app.ProbeSessionOccupancy(path);
+      busy = probe.busy;
+      reason = probe.detail ? formatSessionBusyError(probe.detail) : t("sessionBusy.unknown");
+    } catch {
+      return true;
+    }
+    if (!busy) return true;
+    return await occupancyDialog.confirm({
+      title: t("history.moveToTrash"),
+      message: t("projectTree.sessionOccupiedConfirm", { reason }),
+      confirmLabel: t("common.confirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+  }, [occupancyDialog]);
+  // probeOccupiedThen runs `run` only after the occupancy warning is accepted.
+  const probeOccupiedThen = useCallback(async (sessionPath: string | undefined, run: () => void | Promise<void>) => {
+    if (!(await confirmSessionOccupied(sessionPath))) return;
+    await run();
+  }, [confirmSessionOccupied]);
   const { trashingTopics, trashingSessions, currentArchiveTombstones, trashTopic, trashSession } = useProjectTreeArchiveController({
     treeRef, topicLoadSeqRef, topicPageStateRef, updateTopicPageState, refreshRef,
     optimisticallyRemoveTopic: (topicId) => setTree((current) => projectTreeWithoutTopic(current, topicId)),
-    closeMenu, onTopicsChanged, showToast,
+    closeMenu, onTopicsChanged, showToast, confirmSessionOccupied,
   });
   const applyRuntimeProjection = useProjectTreeRuntimeProjection(setTree, currentArchiveTombstones);
   const clickTimerRef = useRef<ProjectTreePendingTopicOpen | null>(null);
@@ -1336,7 +1370,10 @@ export function ProjectTree({
       // 应用内确认对话框（tl1246 同载体，danger tone）。
       const confirmed = await forceArchiveDialog.confirm({
         title: t("history.moveToTrash"),
-        message: t("projectTree.forceArchiveConfirm", { reason: topicArchiveForceableReason(error) }),
+        // tl1367 line 2: the failure reason renders localized (holder class,
+        // pid, process name/path, host, acquire time, runtime id) instead of
+        // the raw backend English sentence.
+        message: t("projectTree.forceArchiveConfirm", { reason: formatSessionBusyError(error) }),
         confirmLabel: t("projectTree.forceArchiveTopic"),
         cancelLabel: t("common.cancel"),
         tone: "danger",
@@ -2031,8 +2068,10 @@ export function ProjectTree({
           onSelect: () => {
             // tl 1103：普通回收站先行；lease busy 类失败由 trashTopicForceableAny
             // 弹二次确认引导到 force——一级不再单列「强制归档」。
+            // tl1367 line 1: FIRST click probes occupancy — a held lease warns
+            // with the holder identity up front instead of after the refusal.
             if (confirmArchiveTarget === archiveTargetKey) void trashTopicForceableAny(topicId);
-            else setConfirmArchiveTarget(archiveTargetKey);
+            else void probeOccupiedThen(sessionPath, () => setConfirmArchiveTarget(archiveTargetKey));
           },
         },
       ];
@@ -2586,8 +2625,10 @@ export function ProjectTree({
         danger: true,
         onSelect: () => {
           if (!activeTopicId) return;
-          if (confirmArchiveTarget === activeTopicArchiveTarget) void trashTopic(activeTopicId);
-          else setConfirmArchiveTarget(activeTopicArchiveTarget);
+          // tl1367 line 1: same first-click occupancy preflight as the row
+          // menu; the active tab's session path represents the topic here.
+          if (confirmArchiveTarget === activeTopicArchiveTarget) void trashTopicForceableAny(activeTopicId);
+          else void probeOccupiedThen(activeSessionPath, () => setConfirmArchiveTarget(activeTopicArchiveTarget));
         },
       },
       ...(scope === "project"
@@ -3619,6 +3660,8 @@ export function ProjectTree({
       {projectGroupDeleteDialog.dialog}
       {/* tl1249: the force-archive second confirm dialog — same carrier rule. */}
       {forceArchiveDialog.dialog}
+      {/* tl1367 line 1: the occupancy preflight dialog — same carrier rule. */}
+      {occupancyDialog.dialog}
       <NewGroupPanel open={newGroupOpen} onClose={() => setNewGroupOpen(false)} onConfirm={handleAddGroup} />
       {/* Task 881 ①: blank-area right-click — the create-group door that works
           with zero projects and zero groups on screen. */}

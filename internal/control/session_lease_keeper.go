@@ -633,6 +633,10 @@ const SessionLeaseCloseHint = "close the other Reasonix window or process first"
 // 4); this process's own pid points at the instance's own runtimes; a DEAD pid
 // is a zombie leftover — no window exists to close, so the hint names the
 // crashed process and the restart that clears it instead of looping the user.
+// An ALIVE pid whose executable is not this application at all is the pid-
+// reuse form (tl1367 line 3): the recorded holder is gone and an unrelated
+// program now owns the number, so the hint says so instead of sending the
+// user hunting for a window that does not exist.
 func SessionLeaseHintFor(err error) string {
 	var leaseErr *agent.SessionLeaseError
 	if !errors.As(err, &leaseErr) || leaseErr == nil || leaseErr.Info == nil || leaseErr.Info.PID <= 0 {
@@ -646,6 +650,10 @@ func SessionLeaseHintFor(err error) string {
 		return fmt.Sprintf("stale lease from a crashed Reasonix process (pid %d%s); restart Reasonix to clear it — no window is holding it",
 			info.PID, leaseAcquiredSinceSuffix(info))
 	}
+	if !agent.ProcessLooksLikeSelf(info.PID) {
+		return fmt.Sprintf("stale lease record: its holder pid %d now belongs to another program (%s); force-archive or restart Reasonix to clear the leftover record",
+			info.PID, agent.ReasonixProcessLabel(info.PID))
+	}
 	return SessionLeaseCloseHint
 }
 
@@ -657,13 +665,39 @@ func leaseAcquiredSinceSuffix(info *agent.SessionLeaseInfo) string {
 	return ", since " + info.AcquiredAt.Local().Format("15:04")
 }
 
+// leaseHolderIdentitySuffix renders the full holder identity block requested
+// by tl1367 line 1: process name and image path, hostname, acquire time, and
+// the holding runtime's writer id — everything an operator needs to tell WHO
+// holds the session without capturing the scene by hand (tl1258 was blocked
+// on exactly this). The session file path stays out; the caller already knows
+// which session it asked about. Empty parts are skipped.
+func leaseHolderIdentitySuffix(info *agent.SessionLeaseInfo) string {
+	var b strings.Builder
+	if label := agent.ReasonixProcessLabel(info.PID); label != "" {
+		b.WriteString(", process " + label)
+	}
+	if host := strings.TrimSpace(info.Hostname); host != "" {
+		b.WriteString(", host " + host)
+	}
+	if !info.AcquiredAt.IsZero() {
+		b.WriteString(", since " + info.AcquiredAt.Local().Format("15:04"))
+	}
+	if writer := strings.TrimSpace(info.WriterID); writer != "" {
+		b.WriteString(", writer " + writer)
+	}
+	return b.String()
+}
+
 // SessionInUseMessage renders a lease-acquisition failure as the shared
 // operator-facing "who is holding this" line used by the CLI, serve, and ACP.
 // It names the holder from the lease info when available and degrades to a
 // generic line otherwise. A dead holder pid is reported as the crashed-process
-// leftover it is (tl 1201) instead of implying a second live window. The
-// session file path is deliberately omitted — the caller already knows which
-// session it asked for.
+// leftover it is (tl 1201) instead of implying a second live window; an alive
+// pid running an unrelated program is reported as the pid-reuse leftover
+// (tl1367). Every holder branch carries the full identity block (process
+// name/path, hostname, acquire time, writer id — tl1367 line 1). The session
+// file path is deliberately omitted — the caller already knows which session
+// it asked for.
 func SessionInUseMessage(err error) string {
 	const fallback = "this session is in use by another Reasonix window or process"
 	var leaseErr *agent.SessionLeaseError
@@ -673,16 +707,15 @@ func SessionInUseMessage(err error) string {
 	info := leaseErr.Info
 	if info.PID != os.Getpid() && !agent.ProcessAlive(info.PID) {
 		return fmt.Sprintf("this session was left locked by a crashed Reasonix process (pid %d%s); restart Reasonix to clear it, then retry",
-			info.PID, leaseAcquiredSinceSuffix(info))
+			info.PID, leaseHolderIdentitySuffix(info))
+	}
+	if info.PID != os.Getpid() && !agent.ProcessLooksLikeSelf(info.PID) {
+		return fmt.Sprintf("this session's stale lease record names pid %d, which now belongs to another program (%s); restart Reasonix or force-archive to clear it, then retry",
+			info.PID, leaseHolderIdentitySuffix(info))
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "this session is in use by another Reasonix process (pid %d", info.PID)
-	if host := strings.TrimSpace(info.Hostname); host != "" {
-		b.WriteString(" on " + host)
-	}
-	if !info.AcquiredAt.IsZero() {
-		b.WriteString(", since " + info.AcquiredAt.Local().Format("15:04"))
-	}
+	b.WriteString(leaseHolderIdentitySuffix(info))
 	b.WriteString(")")
 	return b.String()
 }

@@ -700,6 +700,25 @@ export interface BatchTopicArchiveResult {
   totalMs: number;
 }
 
+// tl1367 line 1: read-only occupancy preflight (desktop/session_occupancy_probe.go).
+// The frontend calls it when the user STARTS a delete/close so the occupancy
+// question — and WHO holds the session — surfaces before any refusal.
+export interface SessionOccupancyInfo {
+  busy: boolean;
+  /** self | zombie | reused | live | unknown */
+  class?: string;
+  pid?: number;
+  /** Holder process image base name and full path (not a session path). */
+  name?: string;
+  path?: string;
+  hostname?: string;
+  /** RFC3339 (UTC). */
+  acquiredAt?: string;
+  writerId?: string;
+  /** Pre-rendered English refusal sentence; fallback for old renderers. */
+  detail?: string;
+}
+
 export interface BatchMoveToGroupItem {
   topicId: string;
   ok: boolean;

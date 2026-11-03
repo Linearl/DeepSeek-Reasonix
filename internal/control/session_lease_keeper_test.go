@@ -494,14 +494,19 @@ func TestSessionInUseMessageNamesHolder(t *testing.T) {
 	if !strings.Contains(msg, "another Reasonix process") {
 		t.Fatalf("message %q missing holder wording", msg)
 	}
-	if !strings.Contains(msg, "pid 12345") || !strings.Contains(msg, "on devbox") {
+	if !strings.Contains(msg, "pid 12345") || !strings.Contains(msg, "host devbox") {
 		t.Fatalf("message %q missing pid/host", msg)
 	}
 	if !strings.Contains(msg, "since "+acquired.Local().Format("15:04")) {
 		t.Fatalf("message %q missing local acquire time", msg)
 	}
-	if strings.Contains(msg, "writer-nonce-should-not-appear") {
-		t.Fatalf("message %q leaks the writer id", msg)
+	// tl1367 line 1 (2026-11-03 order) flips the tl1201-era stance: the
+	// holder's runtime identifier (WriterID = host-pid-nonce, the same value
+	// already persisted in every lease file) is now REQUIRED in the refusal
+	// text so two same-host runtimes are distinguishable without hand-
+	// capturing the scene. The session path stays out (asserted below).
+	if !strings.Contains(msg, "writer writer-nonce-should-not-appear") {
+		t.Fatalf("message %q must carry the holding runtime id (tl1367)", msg)
 	}
 	if strings.Contains(msg, "/tmp/x.jsonl") {
 		t.Fatalf("message %q leaks the session path", msg)
@@ -521,8 +526,8 @@ func TestSessionInUseMessageNamesHolder(t *testing.T) {
 	if !strings.Contains(deadMsg, "crashed Reasonix process") || !strings.Contains(deadMsg, "restart Reasonix") {
 		t.Fatalf("dead-holder message %q missing crashed-process + restart guidance (tl 1201)", deadMsg)
 	}
-	if strings.Contains(deadMsg, "writer-nonce-should-not-appear") {
-		t.Fatalf("dead-holder message %q leaks the writer id", deadMsg)
+	if !strings.Contains(deadMsg, "writer writer-nonce-should-not-appear") {
+		t.Fatalf("dead-holder message %q must carry the runtime id too (tl1367)", deadMsg)
 	}
 }
 

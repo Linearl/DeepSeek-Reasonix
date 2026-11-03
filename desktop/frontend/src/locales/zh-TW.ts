@@ -5629,6 +5629,13 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.filterByColorAll": "全部顏色",
   "projectTree.forceArchiveConfirm": "正常歸檔失敗：{reason}\n\n是否強制歸檔？強制歸檔會跳過執行中檢查，此操作不可恢復。",
   "projectTree.forceArchiveTopic": "強制歸檔",
+  // tl1367: lease-busy 家族，按後端 [reasonix-holder] 區塊本地化渲染。
+  "sessionBusy.self": "該工作階段被本 Reasonix 實例的另一個執行時佔用——pid {pid}{proc}，主機 {host}，自 {time} 起（執行時標識 {writer}）。請等它的工作結束或重啟 Reasonix 後重試。",
+  "sessionBusy.live": "該工作階段正被另一個 Reasonix 程序佔用——pid {pid}{proc}，主機 {host}，自 {time} 起（執行時標識 {writer}）。請先關閉該視窗或結束對應實例，再重試。",
+  "sessionBusy.zombie": "該工作階段被已當機的 Reasonix 程序遺留鎖定——pid {pid}{proc}，自 {time} 起。重啟 Reasonix 即可清除殘留鎖，然後重試。",
+  "sessionBusy.reused": "該工作階段的殘留鎖記錄指向 pid {pid}，該編號現已被其他程序{proc}佔用。強制歸檔可清除殘留記錄，然後重試。",
+  "sessionBusy.unknown": "該工作階段正被另一個 Reasonix 視窗或程序佔用——請先關閉該視窗（或結束另一實例），再重試。",
+  "projectTree.sessionOccupiedConfirm": "該工作階段目前正被佔用：\n{reason}\n\n現在歸檔會被拒絕。繼續將先嘗試正常歸檔；若失敗會引導強制歸檔（自動接管殘留鎖）。是否繼續？",
   // tl1240 側欄批量管理態
   "projectTree.batchManage": "批量管理",
   "projectTree.batchManageExit": "退出批量管理",

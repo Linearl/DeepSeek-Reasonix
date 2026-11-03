@@ -165,9 +165,15 @@ func TestRestoreTabWriteAuthorityAfterStaleRefusesLiveHolder(t *testing.T) {
 
 // 归档/删除 busy 分类的 zombie 判据：死 pid → errSessionBusyZombie；
 // 活 pid / 本进程 / 无身份 → errSessionBusyElsewhere 原样。
+// tl1367：分类链读 desktopLeaseAlive（desktop 接缝）与 ProcessLooksLikeSelf，
+// 两处一并换掉；活 pid 身份不可解析时保守按活处理（live 分支不变）。
 func TestSessionLeaseBusyClassification(t *testing.T) {
 	orig := agent.ProcessAlive
-	defer func() { agent.ProcessAlive = orig }()
+	origDesktop := desktopLeaseAlive
+	defer func() {
+		agent.ProcessAlive = orig
+		desktopLeaseAlive = origDesktop
+	}()
 
 	cases := []struct {
 		name  string
@@ -183,6 +189,7 @@ func TestSessionLeaseBusyClassification(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			agent.ProcessAlive = tc.alive
+			desktopLeaseAlive = tc.alive
 			got := sessionLeaseBusyClassification(&agent.SessionLeaseError{Path: "p", Info: tc.info})
 			if !errors.Is(got, tc.want) {
 				t.Fatalf("classification = %v, want %v", got, tc.want)

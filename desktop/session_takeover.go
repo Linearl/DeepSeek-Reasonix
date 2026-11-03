@@ -235,7 +235,10 @@ func (a *App) QuerySessionTakeover(tabID string) (*SessionTakeoverView, error) {
 		// an unsolvable message.
 		if holder := a.inspectLocalLeaseHolder(path); holder.verdict != leaseHolderNone && holder.info != nil {
 			if guidance, ok := localLeaseHolderGuidance(holder); ok {
-				adoptable := holder.verdict == leaseHolderSelf || holder.verdict == leaseHolderForeignDead
+				// tl1367: a reused-pid record is as adoptable as a dead-holder
+				// record — the pid is alive but belongs to an unrelated program,
+				// so the record is stale (the lock probe still arbitrates).
+				adoptable := holder.verdict == leaseHolderSelf || holder.verdict == leaseHolderForeignDead || holder.verdict == leaseHolderForeignReused
 				return &SessionTakeoverView{
 					Available:   adoptable,
 					Reason:      guidance,

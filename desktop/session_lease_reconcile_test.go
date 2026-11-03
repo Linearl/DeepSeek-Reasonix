@@ -370,3 +370,126 @@ func TestTakeoverFailureNamesLocalHolderPidAndFate(t *testing.T) {
 		}
 	})
 }
+
+// ── tl1367 line 3: the pid-reuse verdict ─────────────────────────────────────
+// An ALIVE holder pid whose executable is NOT this application is a stale
+// record (pid reused by an unrelated program), not a live foreign window.
+
+func withHolderImageForReconcileTest(t *testing.T, image func(int) (string, string)) {
+	t.Helper()
+	orig := agent.ProcessImageName
+	agent.ProcessImageName = image
+	t.Cleanup(func() { agent.ProcessImageName = orig })
+}
+
+func TestClassifyLeaseHolderReusedPidVerdict(t *testing.T) {
+	withHolderImageForReconcileTest(t, func(pid int) (string, string) {
+		switch pid {
+		case 1367001:
+			return "chrome.exe", `C:\Program Files\Chrome\chrome.exe`
+		case 1367002:
+			return "reasonix-desktop.exe", `D:\other-install\reasonix-desktop.exe`
+		default:
+			return "", ""
+		}
+	})
+	selfPID := os.Getpid()
+	selfWriter := agent.SessionWriterID()
+	alive := func(pid int) bool { return pid == 1367001 || pid == 1367002 }
+	host, _ := os.Hostname()
+
+	cases := []struct {
+		name string
+		info *agent.SessionLeaseInfo
+		want leaseHolderVerdict
+	}{
+		{"reused pid by an unrelated program", &agent.SessionLeaseInfo{PID: 1367001, Hostname: host}, leaseHolderForeignReused},
+		{"live foreign reasonix build at another path", &agent.SessionLeaseInfo{PID: 1367002, Hostname: host}, leaseHolderForeignLive},
+		{"dead holder stays dead", &agent.SessionLeaseInfo{PID: 1367999, Hostname: host}, leaseHolderForeignDead},
+		{"self stays self", &agent.SessionLeaseInfo{PID: selfPID, WriterID: selfWriter, Hostname: host}, leaseHolderSelf},
+		{"nil stays none", nil, leaseHolderNone},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyLeaseHolder(tc.info, selfPID, selfWriter, alive)
+			if got != tc.want {
+				t.Fatalf("verdict = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// An unresolvable holder image keeps the conservative ForeignLive verdict —
+// the classification must never flip to reused on probe damage.
+func TestClassifyLeaseHolderUnresolvableStaysConservative(t *testing.T) {
+	withHolderImageForReconcileTest(t, func(int) (string, string) { return "", "" })
+	got := classifyLeaseHolder(&agent.SessionLeaseInfo{PID: 1367555}, os.Getpid(), agent.SessionWriterID(), func(int) bool { return true })
+	if got != leaseHolderForeignLive {
+		t.Fatalf("verdict = %v, want ForeignLive for an unresolvable image", got)
+	}
+}
+
+// The reused verdict's guidance names the program that now owns the pid and
+// NEVER suggests taskkill — the pre-tl1367 advice would have targeted an
+// innocent process.
+func TestLocalLeaseHolderGuidanceReusedNeverTaskkills(t *testing.T) {
+	withHolderImageForReconcileTest(t, func(int) (string, string) {
+		return "indexer-pro.exe", `C:\tools\indexer-pro.exe`
+	})
+	holder := localLeaseHolder{
+		verdict: leaseHolderForeignReused,
+		info:    &agent.SessionLeaseInfo{PID: 1367001, AcquiredAt: time.Now().Add(-time.Hour).UTC()},
+	}
+	guidance, ok := localLeaseHolderGuidance(holder)
+	if !ok {
+		t.Fatal("the reused verdict must produce guidance")
+	}
+	for _, want := range []string{"stale lease record", "indexer-pro.exe", "restart"} {
+		if !strings.Contains(guidance, want) {
+			t.Fatalf("guidance %q missing %q", guidance, want)
+		}
+	}
+	if strings.Contains(guidance, "taskkill") {
+		t.Fatalf("guidance %q must never suggest killing an innocent program (tl1367)", guidance)
+	}
+}
+
+// A reused-pid record is adoptable through the local takeover, same as a
+// dead-holder record — QuerySessionTakeover must say so and name the program.
+func TestQueryTakeoverAdoptsReusedPidRecord(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	prevAlive := leaseReconcileProcessAlive
+	t.Cleanup(func() { leaseReconcileProcessAlive = prevAlive })
+	withHolderImageForReconcileTest(t, func(pid int) (string, string) {
+		if pid == 1367001 {
+			return "indexer-pro.exe", `C:\tools\indexer-pro.exe`
+		}
+		return "", ""
+	})
+	leaseReconcileProcessAlive = func(pid int) bool { return pid == 1367001 }
+
+	path := write456SessionPath(t, "reused-holder-takeover.jsonl")
+	key := sessionRuntimeKey(path)
+	if err := agent.SaveSessionLeaseInfo(path, agent.SessionLeaseInfo{
+		SessionPath: key, WriterID: "writer-reused", PID: 1367001,
+		Hostname: "reused-leftover", AcquiredAt: time.Now().Add(-time.Hour).UTC(),
+	}); err != nil {
+		t.Fatalf("stage reused record: %v", err)
+	}
+	app, blocked := new456AppWithTab(t, "blocked", path)
+	blocked.StartupErrLeaseHeld = true
+
+	view, err := app.QuerySessionTakeover(blocked.ID)
+	if err != nil {
+		t.Fatalf("QuerySessionTakeover: %v", err)
+	}
+	if !view.Available {
+		t.Fatalf("a reused-pid record is stale and must be adoptable: %+v", view)
+	}
+	if strings.Contains(view.Reason, "taskkill") {
+		t.Fatalf("guidance must not target the innocent pid owner: %q", view.Reason)
+	}
+	if !strings.Contains(view.Reason, "indexer-pro.exe") {
+		t.Fatalf("guidance must name the program that now owns the pid: %q", view.Reason)
+	}
+}

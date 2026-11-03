@@ -243,7 +243,8 @@ ok(readFileSync(resolve(frontendRoot, "src/styles.css"), "utf8").includes(".cont
 
 // trash 项确认链：应用内确认对话框二次确认（tl1249 迁 useConfirmDialog）→ trashTopicForceableAny → TrashTopicForce
 ok(treeSource.includes("const trashTopicForceableAny"), "trash menu wires the forceable entry");
-ok(treeSource.includes('message: t("projectTree.forceArchiveConfirm", { reason: topicArchiveForceableReason(error) })'), "confirm message carries the failure reason ({reason})");
+// tl1367 line 2: the reason now renders localized via formatSessionBusyError
+ok(treeSource.includes('message: t("projectTree.forceArchiveConfirm", { reason: formatSessionBusyError(error) })'), "confirm message carries the failure reason ({reason}, localized)");
 ok(treeSource.includes("if (!isTopicArchiveForceableError(error)) return false;"), "only backend-marked failures may raise the force confirm");
 ok(treeSource.includes("if (!confirmed) return true;"), "cancel: handled with zero further action");
 ok(treeSource.includes("await trashTopicForceAny(topicId);"), "confirm: routes into TrashTopicForce");

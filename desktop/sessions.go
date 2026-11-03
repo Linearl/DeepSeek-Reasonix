@@ -200,25 +200,62 @@ func (e *sessionLeaseHeldBusyError) Unwrap() []error {
 
 // sessionLeaseBusyDetail renders the complete human-facing reason for a
 // lease-held refusal: who holds the session (this instance / another live
-// window with pid and acquire time / a crashed leftover) plus the matching
-// next step. Sanitized like the sentinels — pid and wall-clock only, never a
-// hostname or path. The holder branches mirror control.SessionLeaseHintFor
-// (tl1201) so the desktop UI speaks the same semantics; refusals without
-// usable lease info degrade to the upgraded errSessionBusyElsewhere text.
+// window / a crashed leftover / a reused pid) plus the matching next step.
+// tl1367 line 1: every holder branch now carries the full holder identity —
+// process name and image path, hostname, acquire time, writer id — so the
+// user and the log can tell exactly WHICH program holds the session without
+// capturing the scene by hand. tl1367 line 2: the text is prefixed with the
+// machine-readable holder block ([reasonix-holder k="v" ...], see
+// sessionLeaseHolderBlock) so the frontend can render localized copy from
+// structured values while an older frontend that toasts the raw text still
+// reads a complete English sentence. Refusals without usable lease info
+// degrade to the upgraded errSessionBusyElsewhere text.
 func sessionLeaseBusyDetail(err error) string {
 	var leaseErr *agent.SessionLeaseError
 	if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil && leaseErr.Info.PID > 0 {
 		info := leaseErr.Info
 		since := desktopLeaseSinceSuffix(info)
-		if info.PID == os.Getpid() {
-			return fmt.Sprintf("this session is held by another runtime of this Reasonix instance (pid %d%s) — wait for its work to finish or restart Reasonix, then retry", info.PID, since)
+		identity := leaseHolderIdentityText(info)
+		block := sessionLeaseHolderBlock(sessionLeaseHolderClass(info, desktopLeaseAlive), info)
+		var sentence string
+		switch info.PID {
+		case os.Getpid():
+			sentence = fmt.Sprintf("this session is held by another runtime of this Reasonix instance (pid %d%s%s) — wait for its work to finish or restart Reasonix, then retry", info.PID, identity, since)
+		default:
+			if !desktopLeaseAlive(info.PID) {
+				sentence = fmt.Sprintf("this session was left locked by a crashed Reasonix process (pid %d%s%s) — restart Reasonix to clear the leftover lock, then retry", info.PID, identity, since)
+			} else if !agent.ProcessLooksLikeSelf(info.PID) {
+				sentence = fmt.Sprintf("this session's stale lease record names pid %d%s%s — that pid now belongs to another program, so the record is a leftover; force archive clears it, then retry", info.PID, identity, since)
+			} else {
+				sentence = fmt.Sprintf("this session is in use by another Reasonix window or process (pid %d%s%s) — close that window or quit the other Reasonix instance, then retry", info.PID, identity, since)
+			}
 		}
-		if !agent.ProcessAlive(info.PID) {
-			return fmt.Sprintf("this session was left locked by a crashed Reasonix process (pid %d%s) — restart Reasonix to clear the leftover lock, then retry", info.PID, since)
+		if block == "" {
+			return sentence
 		}
-		return fmt.Sprintf("this session is in use by another Reasonix window or process (pid %d%s) — close that window or quit the other Reasonix instance, then retry", info.PID, since)
+		return block + " " + sentence
 	}
 	return errSessionBusyElsewhere.Error()
+}
+
+// leaseHolderIdentityText renders ", process name (path), host X, writer Y"
+// for the holder when resolvable — the human-readable face of the tl1367
+// line 1 identity requirement inside the desktop detail text.
+func leaseHolderIdentityText(info *agent.SessionLeaseInfo) string {
+	var parts []string
+	if label := agent.ReasonixProcessLabel(info.PID); label != "" {
+		parts = append(parts, "process "+label)
+	}
+	if host := strings.TrimSpace(info.Hostname); host != "" {
+		parts = append(parts, "host "+host)
+	}
+	if writer := strings.TrimSpace(info.WriterID); writer != "" {
+		parts = append(parts, "writer "+writer)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ", " + strings.Join(parts, ", ")
 }
 
 // desktopLeaseSinceSuffix renders ", since HH:MM" for a usable acquire time
@@ -235,12 +272,16 @@ func desktopLeaseSinceSuffix(info *agent.SessionLeaseInfo) string {
 // sessionLeaseBusyClassification maps a lease-held refusal onto the sanitized
 // busy error. A holder pid that is alive (or unknown) is real mutual
 // exclusion and reports errSessionBusyElsewhere unchanged; a DEAD pid is the
-// zombie leftover form and reports errSessionBusyZombie (tl 1201).
+// zombie leftover form and reports errSessionBusyZombie (tl 1201) — and so is
+// an ALIVE pid whose executable is not this application (tl1367: pid reuse,
+// a stale record with no window to close, same restart-to-clear repair).
 func sessionLeaseBusyClassification(err error) error {
 	var leaseErr *agent.SessionLeaseError
 	if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil {
-		if pid := leaseErr.Info.PID; pid > 0 && pid != os.Getpid() && !agent.ProcessAlive(pid) {
-			return errSessionBusyZombie
+		if pid := leaseErr.Info.PID; pid > 0 && pid != os.Getpid() {
+			if !desktopLeaseAlive(pid) || !agent.ProcessLooksLikeSelf(pid) {
+				return errSessionBusyZombie
+			}
 		}
 	}
 	return errSessionBusyElsewhere
@@ -261,17 +302,13 @@ func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard,
 			// tl1258: the wrapper renders the same tl1201 sentinel text but
 			// keeps the original lease error reachable (Unwrap), so the batch
 			// failure renderer can read holder pid/acquire time from it. The
-			// holder pid also lands in the log (task 272 G4 precedent: a
-			// refusal reaches the UI and the log) so a user retry leaves a
-			// traceable holder record even after the toast/report is gone.
-			// Logged values carry pid/classification only — never the path.
-			var leaseErr *agent.SessionLeaseError
-			if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil && leaseErr.Info.PID > 0 {
-				slog.Info("desktop: session removal guard refused by lease holder",
-					"holder_pid", leaseErr.Info.PID, "self_held", leaseErr.Info.PID == os.Getpid())
-			} else {
-				slog.Info("desktop: session removal guard refused by lease holder", "holder_pid", 0)
-			}
+			// holder lands in the log too (task 272 G4 precedent: a refusal
+			// reaches the UI and the log) — tl1367 line 1 upgrades that log
+			// entry to the full holder identity (class, pid, process name and
+			// image path, hostname, acquire time, writer id) so a retry leaves
+			// a complete traceable holder record even after the toast is gone.
+			// Logged values name the holder process only — never the path.
+			logSessionLeaseHolderRefusal("desktop: session removal guard refused by lease holder", err)
 			return nil, &sessionLeaseHeldBusyError{cause: err}
 		}
 		return nil, err
@@ -328,8 +365,11 @@ func validateSessionTrashTarget(dir, sessionPath, key string) error {
 			if removable {
 				return nil
 			}
-			if agent.SessionLeaseHeldByOtherRuntime(sessionPath) {
-				return errSessionBusyElsewhere
+			// tl1367 line 1: probe-path refusals carry the holder identity too —
+			// a duplicate trash target blocked by a live holder used to surface
+			// the bare sentinel with nothing to act on.
+			if busy := sessionLeaseHeldBusyErrorFromProbe(sessionPath); busy != nil {
+				return busy
 			}
 			return nil
 		} else if err != nil && !os.IsNotExist(err) {
@@ -368,8 +408,9 @@ func prepareSessionTrashTarget(dir, sessionPath, key string) (preparedSessionTra
 			if removable {
 				return preparedSessionTrashTarget{}, removeDesktopSessionArtifacts(sessionPath)
 			}
-			if agent.SessionLeaseHeldByOtherRuntime(sessionPath) {
-				return preparedSessionTrashTarget{}, errSessionBusyElsewhere
+			// tl1367 line 1: identity-carrying refusal, same as the validate pass.
+			if busy := sessionLeaseHeldBusyErrorFromProbe(sessionPath); busy != nil {
+				return preparedSessionTrashTarget{}, busy
 			}
 			return preparedSessionTrashTarget{shouldMove: true, allocateUnique: true}, nil
 		} else if err != nil && !os.IsNotExist(err) {
