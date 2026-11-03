@@ -44,7 +44,7 @@ export type ThemeContrastWarning = {
   suggest?: string;
 };
 
-export type ThemePackKind = "base" | "official" | "user" | "plugin";
+export type ThemePackKind = "base" | "official" | "media" | "user" | "plugin";
 
 export type ThemePackView = {
   id: string;
@@ -79,7 +79,7 @@ export type ThemePackView = {
  * the historical builtin flag: builtin ? "base" : "user".
  */
 export function themePackKind(pack: Pick<ThemePackView, "kind" | "builtin">): ThemePackKind {
-  if (pack.kind === "base" || pack.kind === "official" || pack.kind === "user" || pack.kind === "plugin") return pack.kind;
+  if (pack.kind === "base" || pack.kind === "official" || pack.kind === "media" || pack.kind === "user" || pack.kind === "plugin") return pack.kind;
   return pack.builtin ? "base" : "user";
 }
 
@@ -117,6 +117,18 @@ export type ThemeImportResult = {
 export type ThemeScene = "home" | "task";
 
 const PACK_STYLE_ID = "reasonix-theme-pack-overlay";
+
+// tl1343: the creation layout re-declares the whole token vocabulary on
+// `.app--creation` (styles/mode-creation.css). An element-level declaration
+// shadows everything the pack overlay writes on :root, so a pack (e.g.
+// Broadsheet Rose's #FFF1E5 background) never reached the creation UI. The
+// overlay therefore re-asserts pack tokens ON the registered sites with one
+// extra attribute in each selector, so they win regardless of stylesheet
+// injection order. Layout-local tuning the pack does not own (--button-bg,
+// --pill-bg, --accent-title-grad, …) is not re-asserted and still comes from
+// the mode sheet. The mode-css contract test fails when a new full-token
+// shadow site appears without registering here.
+const PACK_TOKEN_ELEMENT_SCOPES = [".app--creation"] as const;
 const TOKEN_KEYS = [
   "bg",
   "bgSoft",
@@ -410,6 +422,29 @@ function buildPackOverlayCSS(pack: ThemePackView): string {
     chunks.push(
       `:root[data-theme="light"][data-theme-pack="${cssEscape(pack.id)}"]{--accent-soft: color-mix(in srgb, ${accentLight} 12%, transparent);}`,
     );
+  }
+
+  // Element-level token-shadow sites (see PACK_TOKEN_ELEMENT_SCOPES): mirror
+  // the root chunks one specificity tier higher and split by resolved mode so
+  // each scope chunk strictly beats the mode sheet's own (0,4,0) blocks.
+  const softDarkDecl =
+    accentDark && isSafeHex(accentDark) ? `;--accent-soft: color-mix(in srgb, ${accentDark} 16%, transparent)` : "";
+  const softLightDecl =
+    accentLight && isSafeHex(accentLight) ? `;--accent-soft: color-mix(in srgb, ${accentLight} 12%, transparent)` : "";
+  const id = cssEscape(pack.id);
+  for (const scope of PACK_TOKEN_ELEMENT_SCOPES) {
+    if (dark) {
+      chunks.push(`:root[data-theme="dark"][data-theme-style][data-theme-pack="${id}"] ${scope}{${dark}${softDarkDecl}}`);
+      chunks.push(
+        `@media (prefers-color-scheme: dark){:root:not([data-theme])[data-theme-style][data-theme-pack="${id}"] ${scope}{${dark}${softDarkDecl}}}`,
+      );
+    }
+    if (light) {
+      chunks.push(`:root[data-theme="light"][data-theme-style][data-theme-pack="${id}"] ${scope}{${light}${softLightDecl}}`);
+      chunks.push(
+        `@media (prefers-color-scheme: light){:root:not([data-theme])[data-theme-style][data-theme-pack="${id}"] ${scope}{${light}${softLightDecl}}}`,
+      );
+    }
   }
 
   return chunks.join("\n");
