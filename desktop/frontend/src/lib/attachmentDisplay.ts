@@ -4,6 +4,13 @@ const attachmentRefRe = /@(\.reasonix\/attachments\/[^\s]+)/g;
 const namedAttachmentRefRe = /(^|\s)@\[([^\]\r\n]+)\]\(([^)\s]+)\)/g;
 const trailingPunctuationRe = /[.,;!?)\]}，。；！？）】]+$/;
 
+// tl1347 兜底层：controller.ResolveRefs 注入的引用 XML 块（<image path="…">
+// …</image> 等，模型侧表示，见 internal/control/refs.go appendRefBlock）只应
+// 给模型看。后端 StripReferencedContextPrefix 负责常规剥离（history 路径）；
+// 此处兜住仍漏进显示文本的残块——任何 image path 文本都不得原样进用户视图。
+// 块体可多行，非贪婪匹配到对应闭合标签。
+const injectedRefXmlRe = /<(image|file|dir|resource|audio) path="[^"]*">[\s\S]*?<\/\1>\n?/g;
+
 export interface DisplayAttachment {
   path: string;
   name: string;
@@ -99,7 +106,16 @@ export function formatAttachmentRefForSubmit(attachment: Pick<DisplayAttachment,
 
 export function parseAttachmentRefsForDisplay(text: string): { text: string; attachments: DisplayAttachment[] } {
   const attachments: DisplayAttachment[] = [];
-  const cleaned = text
+  // tl1347 兜底层：先剥模型侧注入的引用 XML 块（见 injectedRefXmlRe 注释）。
+  let cleaned = text.replace(injectedRefXmlRe, "");
+  if (cleaned !== text) {
+    // 注入块剥除后，其前导标签（Referenced context:）已不携带内容，一并剥
+    // 掉——与后端 StripReferencedContextPrefix 的输出对齐；仅限确实剥了块
+    // 的文本，用户手打的同形文本不受影响。残留的连续空行收拢成单个段落间
+    // 隔，避免剥除后留白堆叠。
+    cleaned = cleaned.replace(/^Referenced context:[^\n]*\n?/, "").replace(/\n{3,}/g, "\n\n");
+  }
+  cleaned = cleaned
     .replace(namedAttachmentRefRe, (_full, lead: string, label: string, token: string) => {
       const { core, suffix } = splitTrailingPunctuation(token);
       if (!core || !isDisplayReference(core)) return _full;
