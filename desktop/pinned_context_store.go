@@ -62,27 +62,12 @@ func loadPinnedContextState(sessionPath string) (pinnedContextState, error) {
 		return state, nil
 	}
 	path := store.SessionPinnedContext(sessionPath)
-	file, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return state, nil
-	}
+	raw, err := readPinnedContextSidecarBytes(path)
 	if err != nil {
-		return state, fmt.Errorf("read pinned context state: %w", err)
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return state, fmt.Errorf("stat pinned context state: %w", err)
-	}
-	if info.Size() > maxPinnedContextStateBytes {
-		return state, fmt.Errorf("pinned context state exceeds %d bytes", maxPinnedContextStateBytes)
-	}
-	raw, err := io.ReadAll(io.LimitReader(file, maxPinnedContextStateBytes+1))
-	if err != nil {
-		return state, fmt.Errorf("read pinned context state: %w", err)
-	}
-	if len(raw) > maxPinnedContextStateBytes {
-		return state, fmt.Errorf("pinned context state exceeds %d bytes", maxPinnedContextStateBytes)
+		if errors.Is(err, os.ErrNotExist) {
+			return state, nil
+		}
+		return state, err
 	}
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return emptyPinnedContextState(sessionPath), fmt.Errorf("decode pinned context state: %w", err)
@@ -92,7 +77,25 @@ func loadPinnedContextState(sessionPath string) (pinnedContextState, error) {
 	}
 	wantID := agent.BranchID(sessionPath)
 	if state.SessionID != wantID {
-		return emptyPinnedContextState(sessionPath), fmt.Errorf("pinned context belongs to session %q, not %q", state.SessionID, wantID)
+		// tl1371 读侧自愈：fork/转正写坏的「副本归属」文件（sessionId 带
+		// -recovery-<16hex> 后缀、剥离后与本会话同根）在这里容忍读取并就地
+		// 把归属回写为本会话 id——已损坏文件不再让钉住上下文每轮被拒，也不
+		// 再等用户手工改坐标（20261103 新11 现场，手修后 18:44 又被写回）。
+		// 剥离后仍不同根 = 真串台，维持拒绝：两个不同会话各读各的边界不破。
+		if root, ok := recoveryRootIDForStoredPinnedOwner(state.SessionID); ok && root == wantID {
+			fromID := state.SessionID
+			if healErr := healPinnedContextOwnerFn(path, wantID); healErr != nil {
+				// 回写失败不阻塞读取（fail-open）：本次读成功即达标，下一轮再自愈。
+				slog.Warn("desktop: pinned context self-heal write failed",
+					"session", wantID, "from", fromID, "to", wantID, "err", healErr)
+			} else {
+				slog.Info("desktop: pinned context owner self-healed",
+					"session", wantID, "from", fromID, "to", wantID, "files", len(state.Files))
+			}
+			state.SessionID = wantID
+		} else {
+			return emptyPinnedContextState(sessionPath), fmt.Errorf("pinned context belongs to session %q, not %q", state.SessionID, wantID)
+		}
 	}
 	files, err := normalizePinnedContextFiles(state.Files)
 	if err != nil {
@@ -241,4 +244,59 @@ func applyPinnedContextSessionBinding(tab *WorkspaceTab, state pinnedContextStat
 	if !preserveLegacy {
 		tab.setPinnedFiles(state.Files)
 	}
+}
+
+// recoveryRootIDForStoredPinnedOwner peels the recovery-fork naming convention
+// off a sessionId stored inside a pinned-context sidecar (tl1371 读侧自愈的
+// 相等判定). The stored value is a bare session stem, while agent's
+// RecoveryFilenameRootID takes a session path and applies BranchID first —
+// handing it a bare stem would strip at the last internal dot (a "v2.6" model
+// tag in the stem becomes "v2") and break exactly the field-real ids this heal
+// exists for. Pointing the stem back at its nominal transcript path keeps the
+// existing peel mechanism and the comparison against BranchID(sessionPath)
+// exact. A stored id without a well-formed -recovery-<16 hex> suffix reports
+// not-ok: the caller keeps its reject (真串台不 tolerate).
+// readPinnedContextSidecarBytes reads one pinned-context sidecar fully and
+// closes the handle before returning (tl1371). The close-before-return shape
+// matters on Windows: the load-side self-heal replaces this same file
+// atomically right after, and a handle still open without FILE_SHARE_DELETE
+// turns that replace into a ~15s sharing-violation retry that always fails.
+func readPinnedContextSidecarBytes(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("read pinned context state: %w", err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat pinned context state: %w", err)
+	}
+	if info.Size() > maxPinnedContextStateBytes {
+		return nil, fmt.Errorf("pinned context state exceeds %d bytes", maxPinnedContextStateBytes)
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, maxPinnedContextStateBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read pinned context state: %w", err)
+	}
+	if len(raw) > maxPinnedContextStateBytes {
+		return nil, fmt.Errorf("pinned context state exceeds %d bytes", maxPinnedContextStateBytes)
+	}
+	return raw, nil
+}
+
+func recoveryRootIDForStoredPinnedOwner(storedID string) (string, bool) {
+	storedID = strings.TrimSpace(storedID)
+	if storedID == "" {
+		return "", false
+	}
+	return agent.RecoveryFilenameRootID(storedID + store.SessionTranscriptSuffix)
+}
+
+// healPinnedContextOwnerFn is a test seam (same pattern as fileutil's
+// renameFile): the self-heal read path must tolerate a failed ownership
+// rewrite without failing the read, and a real write fault on a file the test
+// just read successfully is not provokable portably. Production routes to the
+// shared atomic rewrite (tmp+rename) in internal/agent.
+var healPinnedContextOwnerFn = func(path, ownerID string) error {
+	return agent.RewritePinnedContextSessionID(path, ownerID)
 }

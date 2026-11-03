@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/fileutil"
 	"reasonix/internal/store"
 )
 
@@ -632,7 +633,7 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (gr
 		// pinned-files feature (2026-09-13 incident). Rewrite it in place; if
 		// it cannot be parsed, drop it — pinning rebuilds from an empty list.
 		if base == filepath.Base(store.SessionPinnedContext(winnerPath)) {
-			if err := rewritePinnedContextSessionID(dst, mainStem); err != nil {
+			if err := RewritePinnedContextSessionID(dst, mainStem); err != nil {
 				slog.Warn("promote: pinned-context rewrite failed; dropping", "file", dst, "err", err)
 				os.Remove(dst)
 			}
@@ -721,11 +722,19 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (gr
 	})
 }
 
-// rewritePinnedContextSessionID re-points a migrated pinned-context sidecar at
-// the promoted main. The desktop package owns the schema (schemaVersion /
-// sessionId / files); agent re-encodes it generically so the files list and
-// any future fields survive byte-for-byte apart from the identity.
-func rewritePinnedContextSessionID(path, mainStem string) error {
+// RewritePinnedContextSessionID re-points a pinned-context sidecar's
+// ownership (the sessionId field) at ownerID — the stem of the session that
+// now owns the file. Three callers share it (tl1371): the consolidation swap,
+// the tl1352 deferred promotion, and the desktop load-side self-heal, so a
+// renamed sidecar can never keep the previous session's identity.
+//
+// The desktop package owns the schema (schemaVersion / sessionId / files);
+// agent re-encodes it generically so the files list and any future fields
+// survive byte-for-byte apart from the identity. The write is atomic
+// (tmp+rename): a concurrent reader sees either the old or the complete new
+// file. A document without a sessionId field is skipped untouched — there is
+// no ownership to rewrite, and inventing one is not this function's job.
+func RewritePinnedContextSessionID(path, ownerID string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -734,7 +743,10 @@ func rewritePinnedContextSessionID(path, mainStem string) error {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return err
 	}
-	id, err := json.Marshal(mainStem)
+	if _, ok := doc["sessionId"]; !ok {
+		return nil
+	}
+	id, err := json.Marshal(ownerID)
 	if err != nil {
 		return err
 	}
@@ -744,5 +756,5 @@ func rewritePinnedContextSessionID(path, mainStem string) error {
 		return err
 	}
 	out = append(out, '\n')
-	return os.WriteFile(path, out, 0o600)
+	return fileutil.AtomicWriteFileStrict(path, out, 0o600)
 }
