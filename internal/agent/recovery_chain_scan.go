@@ -199,6 +199,11 @@ func markChainCoverage(views []ChainScanView) {
 			if !coverer.Covers(covered) {
 				continue
 			}
+			// 等长互覆盖（两份字节同内容的文件）：只标后出现的那个为被覆盖，
+			// 先出现的（调用方传主转录在先）保住容器身份。
+			if coverer.Len() == covered.Len() && j > i {
+				continue
+			}
 			if best == -1 || coverer.Len() > bestLen {
 				best, bestLen = j, coverer.Len()
 			}
