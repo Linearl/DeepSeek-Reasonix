@@ -155,12 +155,16 @@ func TestFinishedTurnClearsSidecarMarker(t *testing.T) {
 	}
 }
 
-func TestConcurrentWriterEmitsNoticeOnBothSides(t *testing.T) {
-	// Task 203: two controllers on one process classify the competing writer as
-	// local; with the probe reporting an actual dual open this is the real dual
-	// writer and must keep prompting — with its own phrasing now.
-	SetConcurrentDualTabProbe(func(string) bool { return true })
-	t.Cleanup(func() { SetConcurrentDualTabProbe(nil) })
+// TestConcurrentWriterLoserForksRecoveryCopyAndIsPrompted（原
+// TestConcurrentWriterEmitsNoticeOnBothSides）改述：task 203 的双 tab 通知
+// 产生于 schema-2 写路径的 head 事件（emitHeadEvents × DrainHeadEvents），
+// tl1280 把写路径慢车道退役后该产生器恒空——concurrentDualTabProbe 与
+// session_concurrent_dual_tab / session_head_switched 通知码已死，并发写分类
+// 由保存冲突的 conflict-copy 机制（tl1352 家族）接管。本测试改钉接管后契约：
+// 输家在保存时命中快照冲突 → 收 session_recovery_forked 提示并迁到主文件旁的
+// 副本上继续；赢家的主文件自始至终自洽、零通知；副本以 recovered 子分支登记
+// 供侧栏/恢复面展示。
+func TestConcurrentWriterLoserForksRecoveryCopyAndIsPrompted(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "shared.jsonl")
 	const systemPrompt = "SYS"
@@ -184,27 +188,37 @@ func TestConcurrentWriterEmitsNoticeOnBothSides(t *testing.T) {
 	if err := ctrlB.RunTurn(context.Background(), "second from B"); err != nil {
 		t.Fatal(err)
 	}
-	// Side that discovered the fork: dual-tab notice on save (task 203: local
-	// class + probe true = the real dual writer, phrased as a dual tab rather
-	// than blamed on another window).
+	// The losing writer is prompted with the conflict-copy notice and moved
+	// onto the recovery copy (the retired machinery used to emit
+	// session_concurrent_dual_tab here).
 	notice, ok := sinkB.lastNotice()
-	if !ok || notice.Code != event.NoticeCodeSessionConcurrentDualTab {
-		t.Fatalf("B notice = %+v ok=%v, want concurrent dual-tab notice", notice, ok)
+	if !ok || notice.Code != event.NoticeCodeSessionRecoveryForked {
+		t.Fatalf("B notice = %+v ok=%v, want the conflict-copy recovery notice", notice, ok)
 	}
-	// Side that reopens after the dual write: head-switched notice on load.
-	// Together these cover "both sides see a prompt" without re-notifying a
-	// writer that merely continues on its own head.
-	reopened, err := agent.LoadSession(path)
+	if ctrlB.SessionPath() == path {
+		t.Fatalf("the losing writer must continue on a recovery copy, still on %q", ctrlB.SessionPath())
+	}
+	// The copy is registered beside the main as a recovered child so the
+	// sidebar/recovery UI can offer it.
+	branches, err := agent.ListBranches(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	execC := agent.New(&recordingProvider{streams: reply}, tool.NewRegistry(), agent.NewSession(systemPrompt), agent.Options{}, event.Discard)
-	sinkC := &noticeSink{}
-	ctrlC := New(Options{Runner: execC, Executor: execC, SystemPrompt: systemPrompt, SessionDir: dir, SessionPath: path, Label: "c", Sink: sinkC})
-	ctrlC.Resume(reopened, path)
-	notice, ok = sinkC.lastNotice()
-	if !ok || notice.Code != event.NoticeCodeSessionHeadSwitched {
-		t.Fatalf("C notice = %+v ok=%v, want head switched notice", notice, ok)
+	recovered := false
+	for _, b := range branches {
+		if b.Recovered && b.ParentID == agent.BranchID(path) {
+			recovered = true
+		}
+	}
+	if !recovered {
+		t.Fatalf("no recovered child branch registered under %q: %+v", path, branches)
+	}
+	// The untouched winner never sees a notice: reopening the main path loads
+	// A's transcript coherently. (The retired machinery used to emit
+	// session_head_switched on reopen; with head replay gone there is no second
+	// head on the main to switch to.)
+	if notice, ok := sinkA.lastNotice(); ok {
+		t.Fatalf("the winning writer must stay silent, got notice %+v", notice)
 	}
 }
 
