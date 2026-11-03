@@ -82,6 +82,11 @@ func (a *App) ListThemePacks() ([]ThemePackView, error) {
 		pvURL := officialAssetURL(m.ID, officialPreviewName)
 		out = append(out, manifestToView(&m, themeKindOfficial, activeID == m.ID, bgURL, pvURL))
 	}
+	// Media presets (token-only editorial group) follow the official themes.
+	for _, mt := range mediaThemes() {
+		m := mt.manifest
+		out = append(out, manifestToView(&m, themeKindMedia, activeID == m.ID, "", ""))
+	}
 	ids, err := listUserThemeIDs()
 	if err != nil {
 		return out, err
@@ -255,6 +260,10 @@ func (a *App) loadThemeViewLocked(id string, active bool) (ThemePackView, error)
 		pvURL := officialAssetURL(m.ID, officialPreviewName)
 		return manifestToView(&m, themeKindOfficial, active, bgURL, pvURL), nil
 	}
+	if mt := findMediaTheme(id); mt != nil {
+		m := mt.manifest
+		return manifestToView(&m, themeKindMedia, active, "", ""), nil
+	}
 	if pluginName, themeID, ok := parsePluginThemeID(id); ok {
 		pt := findPluginTheme(pluginName, themeID)
 		if pt == nil {
@@ -307,6 +316,10 @@ func (a *App) ActivateThemePack(id string) error {
 		return saveThemeDesktopState(st)
 	}
 	if findOfficialTheme(id) != nil {
+		st.ActiveThemeID = id
+		return saveThemeDesktopState(st)
+	}
+	if findMediaTheme(id) != nil {
 		st.ActiveThemeID = id
 		return saveThemeDesktopState(st)
 	}
@@ -643,6 +656,10 @@ func (a *App) CopyThemePack(sourceID, newID, newName string) (ThemePackView, err
 			return ThemePackView{}, fmt.Errorf("read official background: %w", err)
 		}
 		imageBytes = data
+	} else if mt := findMediaTheme(sourceID); mt != nil {
+		// Media presets are token-only: the duplicate is a plain editable user theme.
+		cp := mt.manifest
+		m = &cp
 	} else {
 		src, err := loadUserThemeManifest(sourceID)
 		if err != nil {

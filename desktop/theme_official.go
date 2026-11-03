@@ -226,10 +226,11 @@ func isOfficialThemeID(id string) bool {
 	return findOfficialTheme(id) != nil
 }
 
-// isReservedThemeID covers both the six base styles and the eight official
-// themes: user saves, imports, copies, overwrites and deletes must refuse them.
+// isReservedThemeID covers the six base styles, the eight official themes and
+// the embedded media presets: user saves, imports, copies, overwrites and
+// deletes must refuse them.
 func isReservedThemeID(id string) bool {
-	return isBuiltinThemeID(id) || isOfficialThemeID(id)
+	return isBuiltinThemeID(id) || isOfficialThemeID(id) || isMediaThemeID(id)
 }
 
 // officialAssetURL builds the content-addressed URL for an embedded asset.
