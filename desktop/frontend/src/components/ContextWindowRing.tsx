@@ -243,12 +243,14 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   const sessionCostBucketed = quoteStatus === "bucketed" || info?.sessionCostQuote?.aggregateMode === "currency_buckets";
   const sessionCostFallback = quoteStatus === "fallback_original";
   const sessionCostComplete = (sessionCostFallback || info?.sessionCostComplete !== false) && quoteStatus !== "unavailable";
+  // tl1379 口径：无定价按 0 段是权威金额——0 也要上屏，行标签换成「含 N 条」。
+  const sessionCostPartial = quoteStatus === "partial_priced" || (info?.sessionCostQuote?.partialPricedCount ?? 0) > 0;
   const sessionCostRaw = info?.sessionCostQuote?.selected
     ? Number(info.sessionCostQuote.selected.amount)
     : info?.sessionCost;
   const sessionCostCurrency = info?.sessionCostQuote?.selected?.currency || info?.sessionCurrency;
   const sessionCost =
-    !sessionCostBucketed && sessionCostComplete && typeof sessionCostRaw === "number" && sessionCostRaw > 0
+    !sessionCostBucketed && sessionCostComplete && typeof sessionCostRaw === "number" && (sessionCostRaw > 0 || ((sessionCostPartial || info?.sessionCostQuote?.complete === true) && info?.sessionCostQuote?.selected))
       ? `≈${formatMoneyLocalized(sessionCostRaw, sessionCostCurrency, { locale, empty: "dash" }).replace(/^≈/, "")}`
       : undefined;
   const sessionCostHint =
@@ -256,6 +258,8 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
         ? "payg_equivalent"
         : sessionCostFallback
           ? "fallback_original"
+        : sessionCost && sessionCostPartial
+          ? "partial_priced"
         : sessionCost
           ? "estimated"
         : undefined;
@@ -475,6 +479,8 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
                     ? t("context.sessionCostPaygEquivalent")
                     : sessionCostHint === "fallback_original"
                       ? t("context.sessionCostFallback")
+                    : sessionCostHint === "partial_priced"
+                      ? t("context.sessionCostPartialPriced", { count: info?.sessionCostQuote?.partialPricedCount ?? 0 })
                     : t("context.sessionCostEstimated")}
                 </span>
                 <span className="context-ring-popover__value" title={sessionRateBandTitle}>{sessionCostLabel}</span>

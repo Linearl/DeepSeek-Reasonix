@@ -3407,6 +3407,7 @@ export const zhTW: Record<DictKey, string> = {
   "context.sessionCostResetTitle": "重置會話費用",
   "context.sessionCostResetMessage": "將會話累計費用清零？token 統計保留。此操作不可撤銷。",
   "context.sessionCostResetConfirm": "重置",
+  "context.sessionCostPartialPriced": "含 {count} 條無定價按 0",
   "settings.config": "設定檔：{path}",
   "settings.configShadowed": "被工作區設定覆蓋：{path}（這裡的修改可能不會生效）",
 

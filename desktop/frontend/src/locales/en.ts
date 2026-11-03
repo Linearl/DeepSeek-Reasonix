@@ -4858,6 +4858,7 @@ export const en = {
   "context.sessionCostResetTitle": "Reset session cost",
   "context.sessionCostResetMessage": "Clear the accrued session cost to zero? Token statistics are kept. This cannot be undone.",
   "context.sessionCostResetConfirm": "Reset",
+  "context.sessionCostPartialPriced": "incl. {count} unpriced (billed 0)",
   "settings.config": "config: {path}",
   "settings.configShadowed": "overridden by workspace config: {path} (changes here may not take effect)",
   "settings.generativeMusic": "Generative background music",

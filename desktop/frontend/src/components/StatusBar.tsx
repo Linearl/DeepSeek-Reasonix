@@ -277,11 +277,14 @@ export function StatusBar({
   const statusBucketed = statusQuote?.displayStatus === "bucketed" || statusQuote?.aggregateMode === "currency_buckets";
   const statusUnavailable = context.sessionCostComplete === false || statusQuote?.displayStatus === "unavailable" || statusQuote?.costComplete === false;
   const statusSelectedAmount = statusQuote?.selected?.amount ? Number(statusQuote.selected.amount) : NaN;
+  // tl1379 口径：partial_priced（无定价按 0 段）是权威金额，0 也要上屏。
+  // 状态栏空间有限，只上金额；「含 N 条」解释放在右栏与圆环弹层。
+  const statusPartialPriced = statusQuote?.displayStatus === "partial_priced" || (statusQuote?.partialPricedCount ?? 0) > 0;
   const rawStatusCostLabel = statusBucketed
     ? t("context.sessionCostBucketed")
     : statusUnavailable
       ? "-"
-      : Number.isFinite(statusSelectedAmount) && statusSelectedAmount > 0
+      : Number.isFinite(statusSelectedAmount) && (statusSelectedAmount > 0 || (statusPartialPriced && statusQuote?.complete === true))
         ? markEstimated(formatMoneyLocalized(statusSelectedAmount, statusQuote?.selected?.currency || context.sessionCurrency || currency, { locale }), statusQuote?.estimated !== false)
         : costLabel;
   const statusCostLabel = appendRateBand(rawStatusCostLabel, statusQuote?.rateBand, t);
