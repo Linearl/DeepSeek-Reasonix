@@ -90,14 +90,97 @@ type Entry struct {
 // capability routes, tool lists) around the user's words, so exact equality
 // would false-positive every wrapped message. Matching folds whitespace so
 // reflowed wrappers still reconcile.
+//
+// tl1372: classification-aware callers should use ReconcileGaps instead; this
+// form keeps the task-1023 phase-0 semantics (every unmatched input is a gap,
+// no fold/recovery evidence consulted).
 func Reconcile(inputs []Input, filedTexts []string) []Entry {
+	gaps := ReconcileGaps(inputs, filedTexts, ClassifyOptions{})
+	out := make([]Entry, 0, len(gaps))
+	for _, g := range gaps {
+		if g.Class != GapUnfiled {
+			// Unreachable with empty options; kept so Reconcile can never leak
+			// a classified bucket into the phase-0 contract by accident.
+			continue
+		}
+		out = append(out, g.Entry)
+	}
+	return out
+}
+
+// GapClass classifies why a checkpoint prompt is missing from the transcript
+// (tl1372 误报修复). The banner semantics differ per class: a gap is only a
+// "never reached the conversation" alarm when no side account explains its
+// absence.
+type GapClass string
+
+const (
+	// GapUnfiled — no transcript user message carries the text and no side
+	// account explains the absence: the never-filed alarm the banner exists for.
+	GapUnfiled GapClass = "unfiled"
+	// GapFoldedArchive — a projection fold (self-heal diet) ran after the turn
+	// was filed: the fold placeholder replaced the original text, so the
+	// transcript no longer carries it. The input DID enter the conversation;
+	// reporting it as never-filed is the 36-entry false-alarm class. Exempt
+	// from the banner.
+	GapFoldedArchive GapClass = "folded_archive"
+	// GapPendingRecovery — the text lives in a recovery fork of the same
+	// session topic: the runtime consumed it but its transcript saves were
+	// CAS-refused (stale runtime), and the restart recovered it into a fork
+	// instead of the parent transcript. Reportable, but as "pending recovery",
+	// not "never entered". Gated behind the tl1372 experiment flag; with the
+	// flag off this class collapses into GapUnfiled (现状单桶).
+	GapPendingRecovery GapClass = "pending_recovery"
+)
+
+// Gap is one classified unfiled input.
+type Gap struct {
+	Entry
+	Class GapClass
+}
+
+// ClassifyOptions carries the side-account evidence ReconcileGaps consults
+// before calling an unmatched input a gap. Zero value = phase-0 semantics
+// (no side accounts, everything unmatched is GapUnfiled).
+type ClassifyOptions struct {
+	// LatestFold is the time of the most recent completed projection fold
+	// (repairlog fold action, agent.LatestFoldRepairTime). A checkpoint older
+	// than that fold was in the transcript when the fold ran, so the fold
+	// placeholder explains its absence. Zero = no fold history.
+	LatestFold time.Time
+	// RecoveredTexts are user-message texts read from the session topic's
+	// recovery forks (read-only). Consulted only when AllowPendingRecovery.
+	RecoveredTexts []string
+	// AllowPendingRecovery is the tl1372 A2 experiment gate: false keeps the
+	// single-bucket status quo (fork-recoverable gaps stay GapUnfiled).
+	AllowPendingRecovery bool
+}
+
+// ReconcileGaps is Reconcile with the tl1372 side accounts: after the
+// transcript containment check fails, a turn is classified
+// GapFoldedArchive when its checkpoint predates the latest fold, and
+// GapPendingRecovery when its text is present in a recovery fork and the
+// experiment flag allows the split. Everything else stays GapUnfiled.
+//
+// Classification never files an input: folded/pending-recovery gaps are still
+// not in the transcript — they just must not be advertised as "never reached
+// the conversation".
+func ReconcileGaps(inputs []Input, filedTexts []string, opts ClassifyOptions) []Gap {
 	filed := make([]string, 0, len(filedTexts))
 	for _, text := range filedTexts {
 		if n := normalize(text); n != "" {
 			filed = append(filed, n)
 		}
 	}
-	var out []Entry
+	recovered := make([]string, 0, len(opts.RecoveredTexts))
+	if opts.AllowPendingRecovery {
+		for _, text := range opts.RecoveredTexts {
+			if n := normalize(text); n != "" {
+				recovered = append(recovered, n)
+			}
+		}
+	}
+	var out []Gap
 	for _, in := range inputs {
 		prompt := strings.TrimSpace(in.Prompt)
 		if prompt == "" || IsSystemPrompt(prompt) {
@@ -106,7 +189,19 @@ func Reconcile(inputs []Input, filedTexts []string) []Entry {
 		if containsAny(filed, normalize(prompt)) {
 			continue
 		}
-		out = append(out, Entry{Input: in, AnchorIndex: in.MsgIndex})
+		class := GapUnfiled
+		switch {
+		case !opts.LatestFold.IsZero() && !in.Time.IsZero() && in.Time.Before(opts.LatestFold):
+			// 折叠免报（判则①主修）：fold 只折叠早于它的消息；checkpoint 早于
+			// 最近一次完成折叠的 turn，其原文在折叠时必然在档，占位符解释了
+			// 缺席。无时间戳的旧 checkpoint 证据不足，保守继续上报。
+			class = GapFoldedArchive
+		case opts.AllowPendingRecovery && containsAny(recovered, normalize(prompt)):
+			// CAS 拒档形态（判则①补充）：原文在 recovery 副本里，是「待恢复」
+			// 而非「未进入对话」。
+			class = GapPendingRecovery
+		}
+		out = append(out, Gap{Entry: Entry{Input: in, AnchorIndex: in.MsgIndex}, Class: class})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].AnchorIndex != out[j].AnchorIndex {

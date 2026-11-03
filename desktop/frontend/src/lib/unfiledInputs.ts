@@ -54,6 +54,36 @@ export function markHandledTurns(sessionKey: string, turns: number[]): void {
   writeHandledAll(all);
 }
 
+// tl1372 判则②：recovery fork 换 sessionPath 后 dismiss 不跟随（一天换 3 次
+// 路径，旧键的已处理集合全部失效）。键归一到同根父会话路径：文件 stem 剥掉每
+// 一层 -recovery-<16hex> 后回到非 recovery 根——判定与后端
+// agent.RecoveryFilenameRootID 同构（16 位 hex、可嵌套、非 recovery 路径原样
+// 保留），改动任一侧必须同步另一侧。
+const RECOVERY_SUFFIX_RE = /^(.*-recovery-)([0-9a-fA-F]{16})((?:\.[A-Za-z0-9]+)?)$/;
+
+function peelRecoverySuffix(path: string): string | null {
+  const match = path.match(RECOVERY_SUFFIX_RE);
+  if (!match) return null;
+  const stem = match[1].slice(0, -"-recovery-".length);
+  if (!stem) return null;
+  return stem + match[3];
+}
+
+// unfiledSessionKeyOf collapses a session path onto its recovery-group root:
+// a plain session keeps its own path (存量 dismissed 键零迁移)，a recovery
+// fork maps to the parent's path so handled/dismissed state survives forks.
+// Empty in stays empty out (unsaved sessions fall back to the tab id upstream).
+export function unfiledSessionKeyOf(sessionPath: string): string {
+  let current = (sessionPath ?? "").trim();
+  if (!current) return "";
+  for (;;) {
+    const next = peelRecoverySuffix(current);
+    if (next === null) break;
+    current = next;
+  }
+  return current;
+}
+
 export function useUnfiledInputs(tabId: string | undefined): {
   entries: UnfiledInputView[];
   loading: boolean;

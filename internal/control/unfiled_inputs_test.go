@@ -2,7 +2,12 @@ package control
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
@@ -82,5 +87,116 @@ func TestUnfiledInputsNilSafe(t *testing.T) {
 	hollow := &Controller{}
 	if got := hollow.UnfiledInputs(); got != nil {
 		t.Fatalf("executor-less controller must return nil, got %+v", got)
+	}
+}
+
+// tl1372 A1 接线：repairlog 里最近一次完成的投影折叠晚于 checkpoint 的 turn
+// 归「已折叠存档」桶，不再计入「未进入」横幅（免报）。三态：fold 前免报 /
+// fold 后正常报 / 无 repairlog 不影响。
+func TestUnfiledInputsFoldExemption(t *testing.T) {
+	// 无 repairlog：口径与原状一致，缺口照报。
+	c := newUnfiledTestController(t)
+	c.beginCheckpoint(context.Background(), "无折叠史的缺口")
+	if got := c.UnfiledInputs(); len(got) != 1 {
+		t.Fatalf("no repairlog must keep the gap reported, got %+v", got)
+	}
+
+	// repairlog 折叠晚于 checkpoint：免报。
+	writeFoldRepairRecord(t, c.SessionPath(), 2*time.Hour)
+	if got := c.UnfiledInputs(); len(got) != 0 {
+		t.Fatalf("a completed fold newer than the checkpoint must exempt the turn, got %+v", got)
+	}
+
+	// repairlog 折叠早于 checkpoint：不豁免，缺口照报（换新 controller 避免同
+	// 一 checkpoint 元数据跨态混淆）。
+	c2 := newUnfiledTestController(t)
+	c2.beginCheckpoint(context.Background(), "折叠前的缺口")
+	writeFoldRepairRecord(t, c2.SessionPath(), -2*time.Hour)
+	if got := c2.UnfiledInputs(); len(got) != 1 {
+		t.Fatalf("a fold older than the checkpoint must not exempt the turn, got %+v", got)
+	}
+}
+
+// writeFoldRepairRecord 在会话旁落一条 repairlog 折叠（done）记录，at 相对
+// 当前时间偏移 offset——checkpoint 的 turn 时间即 beginCheckpoint 的 now，
+// 正偏移=折叠晚于 turn（免报态），负偏移=折叠早于 turn（照报态）。
+func writeFoldRepairRecord(t *testing.T, sessionPath string, offset time.Duration) {
+	t.Helper()
+	if sessionPath == "" {
+		t.Fatal("test controller must carry a session path")
+	}
+	record := map[string]any{
+		"at":   time.Now().Add(offset).UTC().Format(time.RFC3339),
+		"path": sessionPath,
+		"actions": []map[string]string{
+			{"action": "fold", "status": "done"},
+		},
+		"before": "projection_overflow",
+		"after":  "healthy",
+	}
+	blob, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := strings.TrimSuffix(sessionPath, ".jsonl") + ".repairlog.jsonl"
+	if err := os.WriteFile(logPath, blob, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(logPath) })
+}
+
+// tl1372 A2：CAS 拒档形态——checkpoint 落盘而 transcript 保存被 CAS 全拒的
+// turn，其原文落在同根 recovery 副本里。实验开关（默认关）开启时归「待恢复」
+// 桶（pending_recovery），不再与「未进入对话」混桶；默认关保持单桶原状。
+func TestUnfiledInputsPendingRecoveryBucket(t *testing.T) {
+	c := newUnfiledTestController(t)
+	// 同目录同根 recovery 副本，名字符合 -recovery-<16hex> 命名约定，内含
+	// CAS 拒档那轮的用户原文（stale runtime 的未保存变更）。
+	forkPath := filepath.Join(filepath.Dir(c.SessionPath()), "unfiled-recovery-0123456789abcdef.jsonl")
+	fork := agent.NewSession("sys")
+	fork.Add(provider.Message{Role: provider.RoleUser, ID: "fork-msg", Content: "CAS拒档丢失的输入"})
+	if err := fork.Save(forkPath); err != nil {
+		t.Fatalf("seed recovery fork transcript: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(forkPath) })
+
+	c.beginCheckpoint(context.Background(), "CAS拒档丢失的输入")
+
+	// 默认关：单桶——fork 副本在盘也不改变分类。
+	prev := unfiledRecoveryBucketEnabled
+	unfiledRecoveryBucketEnabled = false
+	got := c.UnfiledInputs()
+	if len(got) != 1 || got[0].Class != unfiled.GapUnfiled {
+		t.Fatalf("flag off must keep the single bucket (GapUnfiled), got %+v", got)
+	}
+
+	// 开关开：同一 turn 归「待恢复」桶。
+	unfiledRecoveryBucketEnabled = true
+	got = c.UnfiledInputs()
+	unfiledRecoveryBucketEnabled = prev
+	if len(got) != 1 || got[0].Class != unfiled.GapPendingRecovery {
+		t.Fatalf("flag on must classify the fork-recoverable turn pending_recovery, got %+v", got)
+	}
+}
+
+// 不同根的 recovery 副本（别的会话 topic）不得充当证据。
+func TestUnfiledInputsPendingRecoveryIgnoresForeignForks(t *testing.T) {
+	c := newUnfiledTestController(t)
+	forkPath := filepath.Join(filepath.Dir(c.SessionPath()), "another-session-recovery-fedcba9876543210.jsonl")
+	fork := agent.NewSession("sys")
+	fork.Add(provider.Message{Role: provider.RoleUser, ID: "fork-msg", Content: "别的会话的原文"})
+	if err := fork.Save(forkPath); err != nil {
+		t.Fatalf("seed foreign fork transcript: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(forkPath) })
+
+	c.beginCheckpoint(context.Background(), "别的会话的原文")
+
+	prev := unfiledRecoveryBucketEnabled
+	unfiledRecoveryBucketEnabled = true
+	got := c.UnfiledInputs()
+	unfiledRecoveryBucketEnabled = prev
+	if len(got) != 1 || got[0].Class != unfiled.GapUnfiled {
+		t.Fatalf("a foreign-topic fork must not classify pending_recovery, got %+v", got)
 	}
 }

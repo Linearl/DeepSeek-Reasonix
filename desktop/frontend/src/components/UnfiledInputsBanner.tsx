@@ -49,6 +49,8 @@ const COPY = {
     turnLabel: (turn: number) => `Turn ${turn}`,
     timeUnknown: "time unknown",
     close: "Close",
+    recoveryBanner: (n: number) => `${n} input ${n === 1 ? "entry" : "entries"} pending recovery — the text lives in a recovery copy`,
+    recoveryTag: "pending recovery",
   },
   zh: {
     banner: (n: number) => `检测到 ${n} 条输入未进入对话`,
@@ -77,6 +79,8 @@ const COPY = {
     turnLabel: (turn: number) => `轮次 ${turn}`,
     timeUnknown: "时间未知",
     close: "关闭",
+    recoveryBanner: (n: number) => `${n} 条输入待恢复——原文在恢复副本中`,
+    recoveryTag: "待恢复",
   },
   "zh-TW": {
     banner: (n: number) => `偵測到 ${n} 條輸入未進入對話`,
@@ -105,8 +109,31 @@ const COPY = {
     turnLabel: (turn: number) => `輪次 ${turn}`,
     timeUnknown: "時間未知",
     close: "關閉",
+    recoveryBanner: (n: number) => `${n} 條輸入待恢復——原文在恢復副本中`,
+    recoveryTag: "待恢復",
   },
 } as const;
+
+// tl1372 A2 双桶判定：class 缺省或 "unfiled" = 「未进入对话」；
+// "pending_recovery" = 「待恢复」（CAS 拒档，原文在 recovery 副本中）。
+// 后端实验开关默认关（不发 class 字段）时全部落单桶，呈现与历史一致。
+function entryBucket(entry: UnfiledInputView): "unfiled" | "pending_recovery" {
+  return entry.class === "pending_recovery" ? "pending_recovery" : "unfiled";
+}
+
+// unfiledHeadlineText composes the banner/viewer headline across the two
+// buckets: the never-filed alarm keeps its suffix; the pending-recovery line
+// joins on. Single bucket = exactly the historical string (开关关时逐字节不变).
+function unfiledHeadlineText(
+  t: (typeof COPY)[keyof typeof COPY],
+  unfiledCount: number,
+  recoveryCount: number,
+): string {
+  const parts: string[] = [];
+  if (unfiledCount > 0) parts.push(`${t.banner(unfiledCount)} — ${t.bannerSuffix}`);
+  if (recoveryCount > 0) parts.push(t.recoveryBanner(recoveryCount));
+  return parts.join("  ");
+}
 
 export function UnfiledInputsBanner({
   tabId,
@@ -150,6 +177,13 @@ export function UnfiledInputsBanner({
     () => entries.filter((entry) => !handled.has(entry.turn)),
     [entries, handled],
   );
+  // tl1372 A2 双桶计数：横幅总数不变（任一桶非空即挂横幅），标题按桶分文案。
+  const pendingUnfiledCount = useMemo(
+    () => pending.filter((entry) => entryBucket(entry) === "unfiled").length,
+    [pending],
+  );
+  const pendingRecoveryCount = pending.length - pendingUnfiledCount;
+  const headlineText = unfiledHeadlineText(t, pendingUnfiledCount, pendingRecoveryCount);
 
   const markHandled = useCallback(
     (turn: number, toast?: string) => {
@@ -205,12 +239,11 @@ export function UnfiledInputsBanner({
   if (unhandledCount === 0) return null;
 
   return (
-    <section className="composer-guidance-shelf" role="status" aria-label={t.banner(unhandledCount)}>
+    <section className="composer-guidance-shelf" role="status" aria-label={headlineText}>
       <div className="banner banner--warning banner--actionable" style={{ flexWrap: "wrap" }}>
         <CheckCheck size={17} aria-hidden="true" />
         <span className="banner__msg">
-          <strong>{t.banner(unhandledCount)}</strong>
-          {` — ${t.bannerSuffix}`}
+          <strong>{headlineText}</strong>
         </span>
         <span className="banner__spacer" />
         {pending.length > 1 && onResend && (
@@ -242,7 +275,7 @@ export function UnfiledInputsBanner({
       </div>
       {viewerOpen && (
         <UnfiledInputsViewer
-          count={unhandledCount}
+          headline={headlineText}
           pending={pending}
           t={t}
           disabled={disabled}
@@ -266,7 +299,7 @@ export function UnfiledInputsBanner({
 // 的 flex 高度链：列表 min-height:0 + overflow-y:auto，滚动链 contain 不带动
 // 底层 transcript）。条目卡片复用 UnfiledEntryCard，操作行为与横幅面完全一致。
 function UnfiledInputsViewer({
-  count,
+  headline,
   pending,
   t,
   disabled,
@@ -278,7 +311,7 @@ function UnfiledInputsViewer({
   resendAllPending,
   onClose,
 }: {
-  count: number;
+  headline: string;
   pending: UnfiledInputView[];
   t: (typeof COPY)[keyof typeof COPY];
   disabled?: boolean;
@@ -343,12 +376,11 @@ function UnfiledInputsViewer({
         className="modal unfiled-viewer"
         role="dialog"
         aria-modal="true"
-        aria-label={t.banner(count)}
+        aria-label={headline}
       >
         <div className="unfiled-viewer__head">
           <span className="unfiled-viewer__head-title">
-            <strong>{t.banner(count)}</strong>
-            {` — ${t.bannerSuffix}`}
+            <strong>{headline}</strong>
           </span>
           {pending.length > 1 && onResendAll && (
             <button
@@ -438,7 +470,7 @@ function UnfiledEntryCard({
           onClick={() => setExpanded((v) => !v)}
         >
           {expanded ? <ChevronDown className="notice-line__chevron" size={14} aria-hidden="true" /> : <ChevronRight className="notice-line__chevron" size={14} aria-hidden="true" />}
-          <span className="notice-line__title">{`${t.turnLabel(entry.turn)} · ${formatTime}`}</span>
+          <span className="notice-line__title">{`${t.turnLabel(entry.turn)} · ${formatTime}${entryBucket(entry) === "pending_recovery" ? ` · ${t.recoveryTag}` : ""}`}</span>
         </button>
         <span className="banner__spacer" />
         <button className="btn btn--secondary btn--small" type="button" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
