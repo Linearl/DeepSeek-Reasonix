@@ -76,7 +76,10 @@ func (a *App) retryTabTurnAfterStaleWriteAuthority(
 	submissionID []string,
 	resubmit func(*tabTurnAdmission, control.SessionAPI),
 ) {
-	if admission == nil || admission.released || started || !submissionRefusedByStaleWriteAuthority(ctrl) {
+	// admission.released==true here is the REQUIRED state (the caller finished
+	// the first attempt, releasing turnStartMu and the sink reservation), not a
+	// guard condition — this retry must run strictly after finish.
+	if admission == nil || started || !submissionRefusedByStaleWriteAuthority(ctrl) {
 		return
 	}
 	tab := admission.tab
