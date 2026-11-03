@@ -355,6 +355,14 @@ func TestPositionalCompressionPreservesCheckpointLineage(t *testing.T) {
 // boundary lands in the live tail (past the fold start) must keep the
 // compaction projection instead of ballooning the context back to the
 // pre-compaction transcript and re-paying a full summary.
+//
+// 夹具体量红线：bulk 必须撑起「值得折叠的前缀」，但整体 token 估算必须远低于
+// 硬输入上限（~9744 @ window 10k）。原 40×200 行 ≈ 10.7k tokens 越过上限，
+// turn 2 的保存路径触发 1114 的失效自动 Diet，把 canonical 物理折叠到折叠点
+// 早于回溯边界，回溯被「compacted past this point」诚实拒绝——是夹具越权触发
+// 了无关的数据安全特性，不是尾回溯契约本身坏了（显式 CompactNow 在未折叠
+// canonical 上仍是仅投影安装，尾回溯保持投影，本测试继续钉住该契约）。
+// 15×100 行 ≈ 2.2k tokens：值得折叠，且离 8000 触发线与 9744 上限都有余量。
 func TestTailRewindKeepsCompactionProjection(t *testing.T) {
 	dir := t.TempDir()
 	prov := &scriptedTurns{turns: [][]provider.Chunk{
@@ -376,9 +384,9 @@ func TestTailRewindKeepsCompactionProjection(t *testing.T) {
 	if err := c.runTurnWithRaw(ctx, "first prompt", "first prompt"); err != nil {
 		t.Fatalf("turn 1: %v", err)
 	}
-	big := strings.Repeat("line\n", 200)
+	big := strings.Repeat("line\n", 100)
 	sess := ag.Session()
-	for i := range 40 {
+	for i := range 15 {
 		id := fmt.Sprintf("bulk-%d", i)
 		sess.Add(provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: id, Name: "read_file", Arguments: "{}"}}})
 		sess.Add(provider.Message{Role: provider.RoleTool, ToolCallID: id, Name: "read_file", Content: big})
