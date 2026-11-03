@@ -260,10 +260,10 @@ func sessionEventsDisplayTitle(topic, title, preview, path string) string {
 		}
 	}
 	base := strings.TrimSuffix(filepath.Base(strings.TrimSpace(path)), ".jsonl")
-	if len(base) >= 13 {
-		if _, err := time.Parse("20060102-1504", base[:13]); err == nil {
-			return base[:8] + " " + base[9:11] + ":" + base[11:13]
-		}
+	// tl1330: the stamp carve moved to sessionStampLabelFromBase so every
+	// fallback label in the app shares one implementation. Behavior unchanged.
+	if stamp := sessionStampLabelFromBase(base); stamp != "" {
+		return stamp
 	}
 	if base != "" && base != "." {
 		return base

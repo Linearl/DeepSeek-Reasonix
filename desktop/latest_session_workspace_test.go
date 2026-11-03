@@ -64,13 +64,17 @@ func TestLastSessionWorkspaceInfoEmptyWhenNoCandidate(t *testing.T) {
 	}
 }
 
-// Title fallback ends at the transcript file name.
+// tl1330 改钉（原「Title fallback ends at the transcript file name」）：
+// 用户 20261101 报「启动时模型名带一长串」——transcript id
+// （<stamp>-<provider>-<model>[-recovery-<hash>]）是内部命名，作为 fallback
+// 标题读起来就是内部模型标识泄漏。合同改为：custom > topic > 文件名时间戳
+// 截取；无可截取时返回空（FE 对空 sessionTitle 整行不渲染，不给猜测值）。
 func TestLatestSessionDisplayTitleFallsBackToFileName(t *testing.T) {
-	got := latestSessionDisplayTitle("", "", filepath.Join("store", "20261006_100000_gamma.jsonl"))
-	if got != "20261006_100000_gamma" {
-		t.Fatalf("title = %q, want the transcript file stem", got)
+	got := latestSessionDisplayTitle("", "", filepath.Join("store", "20261006-100000.123-provider-model.jsonl"))
+	if got != "20261006 10:00" {
+		t.Fatalf("title = %q, want the carved stamp label", got)
 	}
-	if latestSessionDisplayTitle("  ", "", "x.jsonl") != "x" {
-		t.Fatal("blank custom/topic titles must fall through to the file stem")
+	if latestSessionDisplayTitle("  ", "", "x.jsonl") != "" {
+		t.Fatal("blank custom/topic titles and an unstampable name must fall through to empty (FE omits the line)")
 	}
 }

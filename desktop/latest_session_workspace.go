@@ -43,7 +43,10 @@ func lastSessionWorkspaceInfo(latest agent.LatestSessionWorkspace, ok bool) Last
 
 // latestSessionDisplayTitle picks a best-effort label so the user can confirm
 // whose directory they are about to reuse: the user-chosen title, then the
-// topic title, then the transcript file name.
+// topic title, then a time label carved from the transcript name; an empty
+// result means "nothing worth showing" and the FE omits the line entirely
+// (tl1330: the raw transcript id never surfaces — it reads as a leaked model
+// string).
 func latestSessionDisplayTitle(customTitle, topicTitle, sessionPath string) string {
 	if title := strings.TrimSpace(customTitle); title != "" {
 		return title
@@ -51,5 +54,5 @@ func latestSessionDisplayTitle(customTitle, topicTitle, sessionPath string) stri
 	if title := strings.TrimSpace(topicTitle); title != "" {
 		return title
 	}
-	return strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
+	return sessionStampLabelFromBase(strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath)))
 }

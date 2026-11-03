@@ -332,10 +332,11 @@ func (a *App) runtimeProjectTopicNodes(scope, workspaceRoot string, snapshots []
 					status, running = catalogStateStatus(*session.state, session.activity)
 				}
 				path := strings.TrimSpace(session.sessionPath)
-				sessionLabel := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-				if sessionLabel == "" || sessionLabel == "." {
-					sessionLabel = label
-				}
+				// tl1330: the raw transcript id ("<stamp>-<provider>-<model>"
+				// plus "-recovery-<hash>" on forked copies) is an internal name
+				// that read as a leaked model string; child rows carry the
+				// friendly display chain instead.
+				sessionLabel := a.sessionDisplayLabelForPath(path, label)
 				if session.open {
 					node.Open = true
 					if node.SessionPath == "" {
