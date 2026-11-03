@@ -4905,6 +4905,8 @@ export const en = {
   "msg.imSender": "Sender {id}",
   "msg.collabRoute": "From {from} → to {to}",
   "msg.resend": "Resend",
+  "msg.resendSuccess": "Resend accepted — the message is running now",
+  "msg.resendDegraded": "A turn is running — the resent message was routed to the queue instead",
   "msg.resending": "Resending…",
   "msg.sendFailed": "Send failed — message was not delivered",
   "msg.fileAttachment": "File",

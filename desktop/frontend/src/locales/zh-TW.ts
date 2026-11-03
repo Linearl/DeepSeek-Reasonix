@@ -5423,6 +5423,8 @@ export const zhTW: Record<DictKey, string> = {
   "msg.imSender": "傳送者 {id}",
   "msg.collabRoute": "來自 {from} → 發至 {to}",
   "msg.resend": "重發",
+  "msg.resendSuccess": "重發已受理——訊息正在執行",
+  "msg.resendDegraded": "目前有任務執行中——重發的訊息已轉入排隊/補充指示",
   "msg.resending": "重發中…",
   "msg.sendFailed": "傳送失敗 — 訊息未送達",
   "tool.readCount": "已讀 {n} 個檔案",

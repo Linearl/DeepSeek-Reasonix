@@ -528,7 +528,13 @@ export const UserMessage = memo(function UserMessage({
   // 任务461-P3: resend a failed submission through the SAME rewind+submit
   // channel the edit flow uses — the original display/submit payload travels
   // unchanged (复用原投递参数), only the click differs from edit-and-resend.
-  const canResend = failed && turn !== undefined && onResend !== undefined && !editDisabled;
+  // tl1342②: the resend gate must NOT inherit editDisabled — edit needs the
+  // turn's checkpoint, and a FAILED submission never got one, so this button
+  // was born permanently disabled (visible, clickable-looking, dead: the
+  // 20261101 现场「按重发无反应」的第一机制). Refusals now have their own
+  // honest face — the handler toasts the reason — so the click is always
+  // allowed to reach it.
+  const canResend = failed && turn !== undefined && onResend !== undefined;
   const handleResend = async () => {
     if (!canResend || resending) return;
     setResending(true);

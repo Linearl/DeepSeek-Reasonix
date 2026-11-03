@@ -77,7 +77,8 @@ import { consumedGuidanceIdsFromItems } from "./lib/composerInboxQueue";
 import { OPEN_CONTEXT_OVERVIEW_EVENT, contextOverviewTarget } from "./lib/contextGaugePopup";
 import { RemoteNavigationContext, type RemoteNavigationCommand } from "./lib/remoteNavigationCommands";
 import type { CommandOutcome } from "./lib/commandOutcome";
-import { useController, type Item } from "./lib/useController";
+import { useController, type Item, type SendTurnOutcome } from "./lib/useController";
+import { describeResendOutcome } from "./lib/resendFeedback";
 import { replayPendingPromptsForActiveTab } from "./lib/promptReplay";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { reportBootFirstPaint, reportBootUiStateApplied } from "./lib/bootTimeline";
@@ -693,6 +694,7 @@ export default function App() {
     liveStore,
     activeTabId,
     sendToTab,
+    resendFailedToTab,
     recoverDeliveryToTab,
     runShellForTab,
     steerForTab,
@@ -1754,7 +1756,8 @@ export default function App() {
       collaborationMode: CollaborationMode;
       toolApprovalMode: ToolApprovalMode;
     },
-  ) => Promise<void>>(async () => {});
+    awaitReceipt?: boolean,
+  ) => Promise<SendTurnOutcome | undefined>>(async () => undefined);
   const rightDockDetailActive = rightDockMode !== "context" && workspacePreviewActive;
   // tl1108 方案 E: width is three-state. No open file ⇒ the narrow 246px rail;
   // an open file ⇒ min(720, viewport×46%) widened content; a user drag stores
@@ -2684,8 +2687,8 @@ export default function App() {
           displayText: trimmed,
           submitText,
           structured,
-          sendToTab: (tabId, nextGoal, display, routedSubmit, routedStructured) =>
-            commitThenSendRef.current(
+          sendToTab: async (tabId, nextGoal, display, routedSubmit, routedStructured) => {
+            await commitThenSendRef.current(
               tabId,
               display,
               routedSubmit,
@@ -2695,7 +2698,8 @@ export default function App() {
                 collaborationMode: controllerComposerProfileCollaborationMode(composerProfile),
                 toolApprovalMode,
               },
-            ),
+            );
+          },
         });
         patchActivatedGoalForTab(sourceTabId, trimmed);
         return;
@@ -4228,6 +4232,10 @@ export default function App() {
       collaborationMode: CollaborationMode;
       toolApprovalMode: ToolApprovalMode;
     },
+    // tl1342②/③: opt-in receipt wait — only the banner resend channel pays
+    // the settlement latency; every other caller keeps the historic
+    // dispatch-issued resolution.
+    awaitReceipt?: boolean,
   ) => {
     const sourceTab = tabMetas.find((tab) => tab.id === sourceTabId);
     if (!sourceTab) throw new Error(t("composer.workspaceStarting"));
@@ -4243,7 +4251,7 @@ export default function App() {
     if (rewindStatesByTabRef.current[sourceTabId]) {
       setRewindStateForTab(sourceTabId, null);
     }
-    await sendToTab(sourceTabId, displayText, submitText, undefined, structured, initialGoal);
+    return await sendToTab(sourceTabId, displayText, submitText, undefined, structured, initialGoal, awaitReceipt);
   }, [sendToTab, setRewindStateForTab, t, tabMetas]);
 
   const handleTranscriptPrompt = useCallback((text: string) => {
@@ -4252,6 +4260,36 @@ export default function App() {
       console.warn("Failed to submit transcript prompt", err);
     });
   }, [activeTabId, commitThenSend, controllerReady]);
+
+  // tl1342③: the unfiled-inputs banner's resend channel. Outcome-aware so the
+  // banner only marks an entry handled when the backend accepted (or durably
+  // queued) it; a refused resend toasts the reason and the entry stays listed.
+  // Success stays toast-silent here — the per-entry card and the bulk summary
+  // already give the success feedback, and stacking two info toasts per entry
+  // would drown the four-at-once case this whole tl exists for.
+  const handleBannerResend = useCallback(async (text: string): Promise<boolean> => {
+    const sourceTabId = activeTabId;
+    if (!sourceTabId || !controllerReady) {
+      showToast(t("composer.workspaceStarting"), "warn");
+      return false;
+    }
+    const strings = {
+      sendFailed: t("msg.sendFailed"),
+      resendSuccess: t("msg.resendSuccess"),
+      resendDegraded: t("msg.resendDegraded"),
+    };
+    try {
+      const outcome = await commitThenSend(sourceTabId, text, undefined, undefined, undefined, true);
+      if (outcome?.confirmed) return true;
+      const face = describeResendOutcome(outcome, undefined, strings);
+      showToast(face.text, face.level);
+      return Boolean(outcome?.degraded);
+    } catch (error) {
+      const face = describeResendOutcome(undefined, error, strings);
+      showToast(face.text, face.level);
+      return false;
+    }
+  }, [activeTabId, commitThenSend, controllerReady, showToast, t]);
 
   const handleDeliveryContinue = useCallback(async () => {
     await continueDelivery({
@@ -4398,6 +4436,49 @@ export default function App() {
       return false;
     }
   }, [activeTab?.readOnly, activeTabId, clearContextPending, controllerReady, hydratePlaceholderActive, sendToTab, state.approval, state.ask, state.items, state.messageAction, state.running, rewindForTabDetailed]);
+
+  // tl1342②: the failed-message resend button's dedicated handler. The old
+  // wiring reused handleEditPrompt, whose rewind-first flow is wrong for a
+  // FAILED submission (it never entered the backend conversation, so the
+  // rewind targets a turn that does not exist and the press died silently
+  // — 20261101 现场: 按重发无 loading、无 toast、无错误更新). Contract here:
+  // no rewind (nothing to rewind), every refusal path toasts the reason,
+  // confirmed resends toast success and drop the stale failed bubble, and
+  // the return value drives Message's pending face honestly.
+  const handleResendFailedPrompt = useCallback(async (turn: number, displayText: string, submitText?: string): Promise<boolean> => {
+    const sourceTabId = activeTabId;
+    if (!sourceTabId || !controllerReady || hydratePlaceholderActive) {
+      showToast(t("composer.workspaceStarting"), "warn");
+      return false;
+    }
+    if (activeTab?.readOnly) {
+      showToast(t("composer.readOnlyChannel"), "warn");
+      return false;
+    }
+    const next = displayText.trim();
+    if (!next) {
+      showToast(t("msg.sendFailed"), "warn");
+      return false;
+    }
+    try {
+      const outcome = await resendFailedToTab(sourceTabId, turn, next, (submitText ?? displayText).trim());
+      const face = describeResendOutcome(outcome, undefined, {
+        sendFailed: t("msg.sendFailed"),
+        resendSuccess: t("msg.resendSuccess"),
+        resendDegraded: t("msg.resendDegraded"),
+      });
+      showToast(face.text, face.level);
+      return Boolean(outcome?.confirmed || outcome?.degraded);
+    } catch (error) {
+      const face = describeResendOutcome(undefined, error, {
+        sendFailed: t("msg.sendFailed"),
+        resendSuccess: t("msg.resendSuccess"),
+        resendDegraded: t("msg.resendDegraded"),
+      });
+      showToast(face.text, face.level);
+      return false;
+    }
+  }, [activeTab?.readOnly, activeTabId, controllerReady, hydratePlaceholderActive, resendFailedToTab, showToast, t]);
 
   const openTrash = useCallback(async () => {
     closeTransientOverlays("trash page");
@@ -6037,7 +6118,7 @@ export default function App() {
                     sessionKey={unfiledSessionKey}
                     disabled={Boolean(activeTab?.readOnly)}
                     onDraft={insertQuickCommand}
-                    onResend={handleTranscriptPrompt}
+                    onResend={handleBannerResend}
                     onHandled={() => setUnfiledHandledSeq((v) => v + 1)}
                   />
                 )}
@@ -6097,7 +6178,7 @@ export default function App() {
                       onOpenVerification={openTurnVerification}
                       onViewVersions={() => requestTopicVersionsForSession(tabMetas.find((tab) => tab.id === (visibleTranscriptTabId ?? activeTabId)) ?? activeTab)}
                       onEditPrompt={handleEditPrompt}
-                      onResendPrompt={handleEditPrompt}
+                      onResendPrompt={handleResendFailedPrompt}
                       onRewind={handleMessageAction}
                       checkpoints={state.checkpoints}
                       actionPending={state.messageAction != null}

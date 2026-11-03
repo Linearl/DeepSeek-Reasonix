@@ -408,7 +408,11 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
     ports: {
       rewindForTab, rewindForTabDetailed,
       refreshTabMetas: () => void refreshTabMetas(undefined, { afterMutation: true }),
-      undoRewindForTab, sendToTab,
+      // tl1342②: sendToTab now resolves a SendTurnOutcome for resend feedback;
+      // the undo/edit port keeps its void contract (outcome ignored here).
+      undoRewindForTab, sendToTab: async (tabId: string, display: string, submit: string, original: string) => {
+        await sendToTab(tabId, display, submit, original);
+      },
       composeInsert: replaceComposerInsert,
       refreshDock: () => setDockRefreshKey((value) => value + 1),
       refreshProject: () => setProjectRevision((value) => value + 1),
@@ -425,7 +429,13 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
       { tabId: activeTabId ?? "", profile: composerProfile, ready: controllerReady },
       { starting: t("composer.workspaceStarting"), readOnly: t("composer.readOnlyChannel") }),
     missingSource: t("composer.workspaceStarting"),
-    ports: createSubmissionPorts({ send: sendToTab, setGoal: setControllerGoalForTab, clearGoal: clearControllerGoalForTab,
+    ports: createSubmissionPorts({
+      // tl1342②: discard the SendTurnOutcome — the composer submission surface
+      // keeps its void contract (failures stay on the reducer's failed face).
+      send: async (tabId: string, display: string, submit?: string, original?: string, structured?: import("../lib/invocationDisplay").StructuredInvocationSubmit, initialGoal?: Parameters<typeof sendToTab>[5]) => {
+        await sendToTab(tabId, display, submit, original, structured, initialGoal);
+      },
+      setGoal: setControllerGoalForTab, clearGoal: clearControllerGoalForTab,
       clearUndo: clearSubmissionUndo, patchGoal: patchActivatedGoalForTab, profile: applyControllerProfile }),
   });
   const patchPlanExitProfileForTab = useCommittedCommand((tabId: string, mode: CollaborationMode) => {
@@ -519,7 +529,8 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
     t,
     ports: {
       remoteSend: (text) => remoteSend(text),
-      sendToTab: (tabId, text) => sendToTab(tabId, text),
+      // tl1342②: void contract here too — the todo panel ignores the outcome.
+      sendToTab: async (tabId: string, text: string) => { await sendToTab(tabId, text); },
       dismissTodoBatch: (tabId, batchKey) => desktopBridge.dismissTodoBatchForTab(tabId, batchKey),
     },
   });
