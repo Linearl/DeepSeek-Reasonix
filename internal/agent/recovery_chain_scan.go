@@ -31,6 +31,13 @@ var ChainScanMaxBytes int64 = 256 << 20
 // var 而非 const：测试收窄它来验证降级路径。
 var ChainScanTimeBudget = 10 * time.Second
 
+// chainScanClock 返回当前时刻，预算检查统一经它取样。var 而非直接调
+// time.Now：测试注入假时钟，把「预算耗尽」钉成确定事件——真实时钟下
+// start 后首次取样可能读出 0 差值（时钟采样粒度），再小的正预算也不保证
+// 命中降级分支，断言「预算耗尽应跳过全解析」就会与机器速度竞速（tl1355
+// 返修：合并线实测 5 连跑 3 红即此因）。
+var chainScanClock = time.Now
+
 // ChainScanView 是一个候选转录文件的内容扫描读数。Path 之外的字段分两档：
 // Loadable（严格快照可载）时全部读数可信且可参与覆盖判定；仅 Readable
 // （tolerant 兜底读出）时计数真实但未经验证，行面以 Degraded 标注；两者
@@ -163,7 +170,7 @@ func TolerantChainReadings(path string) (messageCount, turns int, preview string
 // 来源，但只在预算内进行。
 func ScanSessionChainViews(paths []string) []ChainScanView {
 	views := make([]ChainScanView, 0, len(paths))
-	start := time.Now()
+	start := chainScanClock()
 	for _, path := range paths {
 		v := ChainScanView{Path: path}
 		var modTime time.Time
@@ -173,7 +180,7 @@ func ScanSessionChainViews(paths []string) []ChainScanView {
 		// 时间预算：超时后停止整文件解析，余行以纯计数降级（计数仍真实，
 		// 轮次/预览/覆盖不可得）。预算检查逐候选进行——单个大文件的一次解
 		// 析（实测 86MB ≈ 1.1s）是最大超冲量，面板不会被任何单文件挂死。
-		if time.Since(start) > ChainScanTimeBudget {
+		if chainScanClock().Sub(start) > ChainScanTimeBudget {
 			v.MessageCount = countTranscriptLines(path)
 			v.LastActivity = modTime
 			views = append(views, v)
@@ -207,7 +214,7 @@ func ScanSessionChainViews(paths []string) []ChainScanView {
 		}
 		// 严格快照拒绝（脏化/事件日志损）：预算内先试 tolerant 兜底。读数真
 		// 实（可能是残缺日志的可读前缀），Loadable=false 让覆盖判定跳过它。
-		if time.Since(start) <= ChainScanTimeBudget {
+		if chainScanClock().Sub(start) <= ChainScanTimeBudget {
 			if count, turns, preview, tok := TolerantChainReadings(path); tok {
 				v.MessageCount = count
 				v.Turns = turns

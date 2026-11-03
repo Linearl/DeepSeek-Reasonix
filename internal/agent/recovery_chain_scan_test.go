@@ -177,13 +177,22 @@ func TestScanSessionChainViewsBudgetDegrades(t *testing.T) {
 
 // 协调线输入②：10 秒时间预算——预算耗尽后余行整文件解析即停，纯计数降级，
 // 面板展开多副本会话的等待有上界。
+//
+// tl1355 返修：耗尽改由假时钟确定性制造。旧版把预算收窄到 1ns 靠真实时钟
+// 竞速——时钟采样粒度下 start 后首次取样可读出 0 差值，快机器上全解析先
+// 完成、断言落空（合并线实测 5 连跑 3 红）。现预算保持默认 10s，假时钟每次
+// 取样 +1h：预算检查恒读到小时级差值，「耗尽」100% 成立、与机器速度无关。
 func TestScanSessionChainViewsTimeBudgetQuickCounts(t *testing.T) {
 	dir := t.TempDir()
 	first := saveScanFixture(t, dir, "tb-first.jsonl", 2)
 	second := saveScanFixture(t, dir, "tb-second.jsonl", 1)
-	old := ChainScanTimeBudget
-	ChainScanTimeBudget = time.Nanosecond
-	defer func() { ChainScanTimeBudget = old }()
+	oldClock := chainScanClock
+	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	chainScanClock = func() time.Time {
+		now = now.Add(time.Hour)
+		return now
+	}
+	defer func() { chainScanClock = oldClock }()
 
 	views := ScanSessionChainViews([]string{first, second})
 	if len(views) != 2 {
