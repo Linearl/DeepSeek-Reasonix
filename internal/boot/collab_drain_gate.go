@@ -52,6 +52,15 @@ func PublishCollabDrainInboxGate(enabled bool) {
 // 使用：验证「首次发布决定」（once 语义）的测试必须在干净 once 上跑，而同一
 // 测试进程里其它测试可能已先发布（同包顺序依赖）；生产路径不会调用它。
 func resetCollabDrainGateForTest() {
+	ResetCollabDrainInboxGateForTest()
+}
+
+// ResetCollabDrainInboxGateForTest 是 resetCollabDrainGateForTest 的导出形，
+// 供跨包测试（desktop 的 gate 契约钉）使用。desktop 的
+// TestCollabBackgroundDeliveryResolvesBootSnapshot 要验证「首次发布决定」，
+// 而全包顺序里更早的 boot 快照构建可能已用 off 先发布，把 once 烧掉——不重置
+// 则该测试在顺序跑稳定红、单跑绿。生产路径绝不可调用。
+func ResetCollabDrainInboxGateForTest() {
 	collabDrainInboxPublish = sync.Once{}
 	collabDrainInboxSnapshot.Store(false)
 }

@@ -24,6 +24,10 @@ import (
 // still-registered drain_inbox (the ON→OFF window that reopened the M-a
 // double-consume race).
 func TestCollabBackgroundDeliveryResolvesBootSnapshot(t *testing.T) {
+	// 验证「首次发布决定」必须在干净 once 上跑：全包顺序里更早的 boot 快照
+	// 构建可能已用 off 先发布把 once 烧掉（同进程顺序依赖），不重置则本测试
+	// 顺序跑稳定红、单跑绿。boot 侧同款注释见 resetCollabDrainGateForTest。
+	boot.ResetCollabDrainInboxGateForTest()
 	boot.PublishCollabDrainInboxGate(true)
 	if !collabBackgroundDelivery() {
 		t.Fatal("gate true must make the pump skip (drain_inbox owns MailStore)")

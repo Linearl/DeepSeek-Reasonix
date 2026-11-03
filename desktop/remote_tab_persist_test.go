@@ -254,8 +254,13 @@ func TestSetActiveRemoteTabPersistsAndUnknownKeepsSelection(t *testing.T) {
 
 // 837 语义变更（原 TestSetActiveRemoteTabBlocksWhenCurrentSessionCannotPersist）：
 // local→remote 切换的本地兜底快照同样移交后台单飞，持久化失败不再阻塞选择。
+//
+// 目录用 robustTempDir 而非 t.TempDir：837 后台化意味着测试断言通过时后台
+// 单飞可能仍在向该目录重试写盘，裸 t.TempDir 的 RemoveAll 与后台写竞态会把
+// 已全绿的测试染红（Windows 报「目录非空」——robustTempDir 注释里点名的
+// main-v2 CI flake 同款）。
 func TestSetActiveRemoteTabProceedsWhenCurrentSessionCannotPersist(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "blocked.jsonl")
+	path := filepath.Join(robustTempDir(t), "blocked.jsonl")
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatalf("mkdir blocked path: %v", err)
 	}
@@ -280,9 +285,10 @@ func TestSetActiveRemoteTabProceedsWhenCurrentSessionCannotPersist(t *testing.T)
 
 // 837 语义变更（原 TestSetActiveLocalTabKeepsRemoteSelectionWhenSessionCannotPersist）：
 // remote→local 切换快照后台化（831① 起生效），持久化失败不再阻塞切换——
-// remote 选择被清除、本地目标 tab 正常激活。
+// remote 选择被清除、本地目标 tab 正常激活。目录用 robustTempDir，同因见
+// TestSetActiveRemoteTabProceedsWhenCurrentSessionCannotPersist 注释。
 func TestSetActiveLocalTabSwitchesWhenSessionCannotPersist(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "blocked.jsonl")
+	path := filepath.Join(robustTempDir(t), "blocked.jsonl")
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatalf("mkdir blocked path: %v", err)
 	}
