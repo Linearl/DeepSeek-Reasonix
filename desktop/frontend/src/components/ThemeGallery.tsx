@@ -90,6 +90,7 @@ function packDescription(pack: ThemePackView, t: (key: never, vars?: Record<stri
 function packKindBadge(pack: ThemePackView, t: ReturnType<typeof useT>): string {
   const kind = themePackKind(pack);
   if (kind === "official") return t("settings.themeGallery.kindOfficial");
+  if (kind === "media") return t("settings.themeGallery.kindMedia");
   if (kind === "base") return t("settings.themeGallery.kindBase");
   if (kind === "plugin") {
     return pack.pluginName
@@ -278,12 +279,16 @@ export function ThemeGallery({
   }, [reload]);
 
   const groups = useMemo(() => groupThemePacks(packs), [packs]);
-  const catalogPacks = useMemo(() => [...groups.official, ...groups.plugin, ...groups.base], [groups.official, groups.plugin, groups.base]);
+  const catalogPacks = useMemo(
+    () => [...groups.official, ...groups.media, ...groups.plugin, ...groups.base],
+    [groups.official, groups.media, groups.plugin, groups.base],
+  );
   const visible = tab === "catalog" ? catalogPacks : groups.user;
   const visibleSections =
     tab === "catalog"
       ? [
           { id: "official", label: t("settings.themeGallery.sectionFlagship"), packs: groups.official },
+          { id: "media", label: t("settings.themeGallery.sectionMedia"), packs: groups.media },
           { id: "plugin", label: t("settings.themeLibrary.groupPlugin"), packs: groups.plugin },
           { id: "base", label: t("settings.themeGallery.tabBase"), packs: groups.base },
         ].filter((section) => section.packs.length > 0)
@@ -619,6 +624,7 @@ export function ThemeGallery({
             <div className="theme-gallery__rail-list" role="listbox" aria-label={t("settings.themeGallery.title")}>
               {[
                 { id: "official", label: t("settings.themeLibrary.groupOfficial"), packs: groups.official },
+                { id: "media", label: t("settings.themeGallery.sectionMedia"), packs: groups.media },
                 { id: "user", label: t("settings.themeLibrary.groupUser"), packs: groups.user },
                 { id: "plugin", label: t("settings.themeLibrary.groupPlugin"), packs: groups.plugin },
                 { id: "base", label: t("settings.themeGallery.tabBase"), packs: groups.base },

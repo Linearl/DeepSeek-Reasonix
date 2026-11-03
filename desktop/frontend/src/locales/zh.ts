@@ -4086,6 +4086,8 @@ export const zh: Record<DictKey, string> = {
   "settings.themes.official.official-cyan-stage.description": "青蓝未来舞台与原创数字表演者。",
   "settings.themes.official.official-noir-gold.name": "黑金序曲",
   "settings.themes.official.official-noir-gold.description": "黑色丝绒舞台与金色聚光灯下的原创创意绅士。",
+  "settings.themes.media.media-broadsheet-rose.name": "报纸玫瑰",
+  "settings.themes.media.media-broadsheet-rose.description": "金融时报纸感：三文鱼粉纸底、暖深灰正文、单一酒红强调，hairline 分隔。少即是多。",
 
   "settings.themeGallery.title": "主题画廊",
   "settings.themeGallery.subtitle": "点击主题即可全局预览，应用后才会保存",
@@ -4111,6 +4113,8 @@ export const zh: Record<DictKey, string> = {
   "settings.themeGallery.tabBase": "基础配色",
   "settings.themeGallery.tabAll": "全部主题",
   "settings.themeGallery.sectionFlagship": "旗舰主题",
+  "settings.themeGallery.sectionMedia": "媒体风格",
+  "settings.themeGallery.kindMedia": "媒体风格",
   "settings.themeGallery.kindOfficial": "官方主题",
   "settings.themeGallery.kindUser": "我的主题",
   "settings.themeGallery.kindPlugin": "插件 · {name}",
