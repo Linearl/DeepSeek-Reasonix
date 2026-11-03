@@ -58,7 +58,7 @@ jobs:
 
             let labels = [];
             try {
-              const res = await fetch('https://api.xiaomimimo.com/v1/chat/completions', {
+              const res = await fetch('https://token-plan-cn.xiaomimimo.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${process.env.MIMO_API_KEY}`,
