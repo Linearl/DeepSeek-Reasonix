@@ -52,16 +52,19 @@ const selfHealRepairLogSuffix = store.SessionRepairLogSuffix
 // 键是 TrimPrefix(name, stemBase+".") 之后的裸 rel（无前导点）——主转录的
 // rel 是 "jsonl"，sidecar 的 rel 是 "jsonl.meta" 等。带前导点的键会全部 miss。
 var sessionBackupAllowlist = map[string]struct{}{
-	"jsonl":                       {}, // 主转录自身（stem+".jsonl" ⇒ rel = "jsonl"）
-	"jsonl.meta":                  {},
-	"jsonl.telemetry.json":        {},
-	"jsonl.toolstats.json":        {},
-	"events.jsonl":                {},
-	"events.jsonl.damaged":        {},
-	"context.json":                {},
-	"turns.jsonl":                 {},
-	"goal-state.json":             {},
-	"recovery.json":               {},
+	"jsonl":                {}, // 主转录自身（stem+".jsonl" ⇒ rel = "jsonl"）
+	"jsonl.meta":           {},
+	"jsonl.telemetry.json": {},
+	"jsonl.toolstats.json": {},
+	"events.jsonl":         {},
+	"events.jsonl.damaged": {},
+	"context.json":         {},
+	"turns.jsonl":          {},
+	"goal-state.json":      {},
+	"recovery.json":        {},
+	// tl1371：pinned-context 是会话数据侧车（desktop 钉住上下文归属），转正/
+	// 自愈置换主文件侧车前必须先归档——白名单缺它 = 被逐下的钉住列表零归档。
+	"pinned-context.json":         {},
 	"display-index.json":          {},
 	"event-index.json":            {},
 	"conflicts.jsonl":             {},
@@ -103,11 +106,11 @@ type SelfHealAction struct {
 
 // SelfHealReport is what one repair run produced.
 type SelfHealReport struct {
-	Path      string          `json:"path"`
-	BackupDir string          `json:"backup_dir,omitempty"`
+	Path      string           `json:"path"`
+	BackupDir string           `json:"backup_dir,omitempty"`
 	Actions   []SelfHealAction `json:"actions"`
-	HeadFrom  string          `json:"head_from,omitempty"`
-	HeadTo    string          `json:"head_to,omitempty"`
+	HeadFrom  string           `json:"head_from,omitempty"`
+	HeadTo    string           `json:"head_to,omitempty"`
 	// Healthy is the post-repair re-inspection verdict.
 	Healthy     bool                 `json:"healthy"`
 	BeforeAfter []SessionHealthIssue `json:"-"`

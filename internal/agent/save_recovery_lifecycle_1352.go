@@ -3,6 +3,7 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -136,6 +137,18 @@ func PromoteRecoveryBranchToMain(recoveryPath, mainPath string) (archived string
 		}
 		if err := os.Rename(recoveryArts[i], mainArts[i]); err != nil {
 			return "", fmt.Errorf("promote sidecar %s: %w", filepath.Base(recoveryArts[i]), err)
+		}
+		// tl1371：副本的 pinned-context 归属写在副本 id 上（fork 时由 desktop
+		// copyPinnedContextState 重建）。rename 只换文件名不换字节——转正后主
+		// 会话每轮读 pinned context 都会被 belongs-to 校验拒绝（20261103 新11
+		// 现场）。落位即把归属改写到主 stem；改写失败按 consolidation 同一先例
+		// 丢弃该文件（钉住列表从空重建），绝不留下一个每轮被拒的坏归属。
+		if mainArts[i] == store.SessionPinnedContext(mainPath) {
+			if rewriteErr := RewritePinnedContextSessionID(mainArts[i], BranchID(mainPath)); rewriteErr != nil {
+				slog.Warn("promote: pinned-context rewrite failed; dropping",
+					"file", mainArts[i], "err", rewriteErr)
+				os.Remove(mainArts[i])
+			}
 		}
 	}
 	if err := os.Rename(recoveryPath, mainPath); err != nil {
