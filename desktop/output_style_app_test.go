@@ -39,8 +39,16 @@ var _ outputStyleBindings = (*App)(nil)
 // layer: default-off zero regression, selector/settings round trip, custom md
 // with and without keep-coding-instructions, a bad frontmatter surfaced as a
 // visible issue, and an unknown style rejected instead of silently written.
+//
+// 本测试钉 home 约定目录加载契约（用户自定义风格放 ~/.claude 或 ~/.reasonix），
+// 而 outputstyle.Dirs() 见 REASONIX_HOME 非空即跳过 home 约定目录（隔离运行时
+// 的故意设计）。1032 给 isolateDesktopUserDirs 补设了 REASONIX_HOME（防写真实
+// 用户目录），顺带关掉了这里的 home 扫描 → 本测试与 TestOutputStyleOpenDir
+// 一同转红。恢复方式：REASONIX_HOME 置空走 fallback——USERPROFILE/AppData 已
+// 被隔离 helper 指向临时目录，fallback 仍落在临时目录，隔离目标不受损。
 func TestOutputStyleLabRoundTrip(t *testing.T) {
 	home := isolateDesktopUserDirs(t)
+	t.Setenv("REASONIX_HOME", "")
 	app := &App{}
 
 	// 1. Default off: no gate, no style — zero regression before any click.
@@ -185,8 +193,13 @@ func TestOutputStyleLabRoundTrip(t *testing.T) {
 // reveal lands on a real folder; an existing home convention dir wins over
 // the fallback; and among several existing dirs the highest-priority one
 // (.reasonix — the loader's later-wins order) wins.
+//
+// 与 TestOutputStyleLabRoundTrip 同因：GetOutputStylesDir 的候选集来自
+// outputstyle.Dirs() 的 home 段，REASONIX_HOME 非空（1032 隔离）会整段跳过，
+// 只剩 fallback。这里同样置空恢复 home 扫描，隔离仍由 USERPROFILE 承担。
 func TestOutputStyleOpenDir(t *testing.T) {
 	home := isolateDesktopUserDirs(t)
+	t.Setenv("REASONIX_HOME", "")
 	app := &App{}
 
 	// 1. Empty home: the fallback is created and returned.
