@@ -1604,7 +1604,14 @@ export function RecoveryCopiesSection() {
               if (!set || set.chains.length === 0) return null;
               return (
                 <div className="rc-chains">
-                  <div className="rc-chains__head">{t("settings.recoveryCopiesChains")}</div>
+                  {/* 任务 1368 线1②：候选链与测量各自说明触发方式——候选链是展开
+                      行时的自动重放加载，扫描只测副本覆盖读数，两者互不依赖。旧
+                      pending hint「还没扫描，先点扫描」把两者混为一谈，读作「不
+                      扫描就没有候选链」。 */}
+                  <div className="rc-chains__head">
+                    {t("settings.recoveryCopiesChains")}
+                    <span className="rc-chains__synth-hint">{t("settings.recoveryCopiesChainsHint")}</span>
+                  </div>
                   {/* 任务 1065：合成入口与进度放链表头部——它需要用户先在链行
                       里选定 HEAD（行内预览+选中徽标），行内按钮只负责「把这一
                       行设为 HEAD 并预览」，一键合成是整表级操作（1.34 的「选
