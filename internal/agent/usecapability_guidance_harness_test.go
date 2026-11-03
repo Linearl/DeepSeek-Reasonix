@@ -176,8 +176,8 @@ func TestGuidanceSevenScenarios(t *testing.T) {
 				groupRows++
 			}
 		}
-		if groupRows != 8 {
-			t.Fatalf("group rows = %d, want exactly 8", groupRows)
+		if groupRows != 9 {
+			t.Fatalf("group rows = %d, want exactly 9", groupRows)
 		}
 	})
 }

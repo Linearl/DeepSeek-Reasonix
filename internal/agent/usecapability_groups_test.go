@@ -215,8 +215,8 @@ func TestListGroupRowsAndMemberTags(t *testing.T) {
 			}
 		}
 	}
-	if groupRows != 8 {
-		t.Fatalf("group rows in list = %d, want 8", groupRows)
+	if groupRows != 9 {
+		t.Fatalf("group rows in list = %d, want 9", groupRows)
 	}
 	if byID["tool:rename_session"] != "session" {
 		t.Errorf("tool:rename_session group tag = %q, want session", byID["tool:rename_session"])
