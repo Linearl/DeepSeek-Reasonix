@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"os"
 
+	"reasonix/internal/fileutil"
 	"reasonix/internal/provider"
 	"reasonix/internal/store"
 )
@@ -49,14 +50,18 @@ func (s *Session) setPersistedBaselineWithLedger(path string, digest [sha256.Siz
 	// lock: the value is advisory, and the no-op path re-verifies both this
 	// size and the ledger identity before it skips, so a racing append can at
 	// worst cost one extra stat.
+	// tl1373: the stat targets flow through the shared path sanitizer
+	// (meaning-preserving normalization); identity strings below keep the
+	// caller's original spelling.
+	statPath := fileutil.SanitizeFilePath(path)
 	baselineLogTail := int64(0)
-	if info, err := os.Stat(store.SessionEventLog(path)); err == nil {
+	if info, err := os.Stat(store.SessionEventLog(statPath)); err == nil {
 		baselineLogTail = info.Size()
 	}
 	// tl1281: the checkpoint size rides along for the tail-window snapshot
 	// skip. Advisory like logTail — the skip re-verifies it before acting.
 	baselineCheckpointBytes := int64(0)
-	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+	if info, err := os.Stat(statPath); err == nil && !info.IsDir() {
 		baselineCheckpointBytes = info.Size()
 	}
 	s.mu.Lock()
@@ -117,7 +122,7 @@ func (s *Session) syncWriterBaseline(path string) {
 		return
 	}
 	logTail := int64(0)
-	if info, err := os.Stat(store.SessionEventLog(path)); err == nil {
+	if info, err := os.Stat(store.SessionEventLog(fileutil.SanitizeFilePath(path))); err == nil {
 		logTail = info.Size()
 	}
 	writer.RecordBaseline(path, st.revision, digestString(st.digest), true, logTail)
