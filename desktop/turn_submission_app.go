@@ -191,7 +191,13 @@ func (a *App) submitDisplayToTab(tabID, display, input, submissionID string) err
 	tab := admission.tab
 	timedSubmitStage("topic_index", func() { a.ensureTabTopicIndexedForUserTurn(tab) })
 	timedSubmitStage("controller_submit", func() { ctrl.SubmitDisplay(display, input) })
-	timedSubmitStage("admission_finish", func() { admission.finish(ctrl) })
+	started := false
+	timedSubmitStage("admission_finish", func() { started = admission.finish(ctrl) })
+	// tl1342: a stale write authority dropped this input at the gate; heal and
+	// retry once on a fresh admission (see turn_write_authority_retry.go).
+	a.retryTabTurnAfterStaleWriteAuthority(admission, ctrl, started, true, []string{submissionID}, func(_ *tabTurnAdmission, c control.SessionAPI) {
+		c.SubmitDisplay(display, input)
+	})
 	return nil
 }
 
@@ -216,7 +222,14 @@ func (a *App) submitDeliveryRecoveryToTab(tabID, display, input, submissionID st
 	tab := admission.tab
 	timedSubmitStage("topic_index", func() { a.ensureTabTopicIndexedForUserTurn(tab) })
 	timedSubmitStage("controller_submit", func() { ctrl.SubmitDeliveryRecovery(display, input) })
-	timedSubmitStage("admission_finish", func() { admission.finish(ctrl) })
+	started := false
+	timedSubmitStage("admission_finish", func() { started = admission.finish(ctrl) })
+	// tl1342: the banner "inputs that did not reach the conversation" resend
+	// rides this surface — the same stale heal + single retry applies, so the
+	// recovery itself must not die on the very gate it recovers from.
+	a.retryTabTurnAfterStaleWriteAuthority(admission, ctrl, started, true, []string{submissionID}, func(_ *tabTurnAdmission, c control.SessionAPI) {
+		c.SubmitDeliveryRecovery(display, input)
+	})
 	return nil
 }
 
@@ -240,10 +253,16 @@ func (a *App) submitInvocationsToTab(tabID, display, input string, invocations [
 	defer admission.abort()
 	tab := admission.tab
 	timedSubmitStage("topic_index", func() { a.ensureTabTopicIndexedForUserTurn(tab) })
+	requests := controlInvocationRequests(invocations)
 	timedSubmitStage("controller_submit", func() {
-		ctrl.SubmitInvocationDisplay(display, input, controlInvocationRequests(invocations))
+		ctrl.SubmitInvocationDisplay(display, input, requests)
 	})
-	timedSubmitStage("admission_finish", func() { admission.finish(ctrl) })
+	started := false
+	timedSubmitStage("admission_finish", func() { started = admission.finish(ctrl) })
+	// tl1342: same stale heal + single retry as the other WithID surfaces.
+	a.retryTabTurnAfterStaleWriteAuthority(admission, ctrl, started, true, []string{submissionID}, func(_ *tabTurnAdmission, c control.SessionAPI) {
+		c.SubmitInvocationDisplay(display, input, requests)
+	})
 	return nil
 }
 
@@ -281,6 +300,11 @@ func (a *App) submitEditedDisplayToTab(tabID, display, input, original, submissi
 	tab := admission.tab
 	timedSubmitStage("topic_index", func() { a.ensureTabTopicIndexedForUserTurn(tab) })
 	timedSubmitStage("controller_submit", func() { ctrl.SubmitEditedDisplay(display, input, original) })
-	timedSubmitStage("admission_finish", func() { admission.finish(ctrl) })
+	started := false
+	timedSubmitStage("admission_finish", func() { started = admission.finish(ctrl) })
+	// tl1342: same stale heal + single retry as the other WithID surfaces.
+	a.retryTabTurnAfterStaleWriteAuthority(admission, ctrl, started, true, []string{submissionID}, func(_ *tabTurnAdmission, c control.SessionAPI) {
+		c.SubmitEditedDisplay(display, input, original)
+	})
 	return nil
 }
