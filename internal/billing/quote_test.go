@@ -121,11 +121,13 @@ func TestNormalizeOldQuote(t *testing.T) {
 	}
 }
 
-func TestBuildQuoteNoPriceIsUnavailable(t *testing.T) {
+// tl1379 口径翻转（原 never-invent-zero 断言）：no_price 段升级为 partial_priced
+// 零价事实，不再让会话费用整体不可算。
+func TestBuildQuoteNoPriceBillsZeroAsPartialPriced(t *testing.T) {
 	q := CostQuote{Estimated: true, CostComplete: false, DisplayComplete: false, Complete: false, DisplayStatus: DisplayStatusUnavailable, IncompleteReason: "no_price"}
 	q = NormalizeQuote(q)
-	if q.DisplayStatus != DisplayStatusUnavailable || q.Complete || q.CostComplete {
-		t.Fatalf("unavailable = %+v", q)
+	if q.DisplayStatus != DisplayStatusPartialPriced || !q.Complete || !q.CostComplete {
+		t.Fatalf("partial_priced = %+v", q)
 	}
 }
 

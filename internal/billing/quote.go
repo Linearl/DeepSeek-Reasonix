@@ -106,6 +106,12 @@ type CostQuote struct {
 	IncompleteReason   string `json:"incompleteReason,omitempty"`
 	LegacyEstimate     bool   `json:"legacyEstimate,omitempty"`
 	CatalogSource      string `json:"catalogSource,omitempty"`
+	// PartialPricedCount is the number of aggregated segments billed 0 under
+	// the tl1379 zero-price口径 (no price table covered the model). Surfaces
+	// render 「含 N 条无定价按 0」when it is positive; true anomalies
+	// (usage_unknown, legacy wiped records) keep the aggregate unavailable
+	// instead and leave this at 0.
+	PartialPricedCount int `json:"partialPricedCount,omitempty"`
 }
 
 // Valuation is one currency view of a cost fact.
@@ -500,6 +506,7 @@ type quoteAccumulator struct {
 	originalComplete  bool
 	costFactsComplete bool
 	displayComplete   bool
+	partialPriced     int
 	modes             map[string]struct{}
 	rateBands         map[string]struct{}
 	unknownRateBand   bool
@@ -526,6 +533,11 @@ func newQuoteAccumulator(display string) *quoteAccumulator {
 
 func (a *quoteAccumulator) add(quote CostQuote) {
 	quote = NormalizeQuote(quote)
+	if quote.DisplayStatus == DisplayStatusPartialPriced {
+		// tl1379 口径: a no-price segment bills 0 and stays part of the usable
+		// total; the count lets surfaces distinguish it from a fully priced sum.
+		a.partialPriced++
+	}
 	if !quoteHasCompleteCostFact(quote) {
 		a.costFactsComplete = false
 		if a.out.IncompleteReason == "" {
@@ -546,6 +558,24 @@ func (a *quoteAccumulator) add(quote CostQuote) {
 		a.out.RateDate = quote.RateDate
 	}
 	originalCurrency := NormalizeCurrency(quote.Original.Currency)
+	if quote.DisplayStatus == DisplayStatusPartialPriced && originalCurrency == "" && len(quote.Valuations) == 0 {
+		// Legacy no_price records carry no currency fact. Anchor the zero
+		// segment to the aggregate's currency so the display path keeps a
+		// consistent valuation instead of degrading into buckets/unavailable.
+		anchor := a.originalCurrency
+		if anchor == "" {
+			anchor = a.display
+		}
+		if anchor == "" {
+			anchor = "CNY"
+		}
+		a.addOriginal(MoneyOf(Zero, anchor), anchor)
+		a.addValuation(anchor, Valuation{
+			Money: MoneyOf(Zero, anchor), Basis: BasisIdentity, Source: "aggregate",
+			AsOf: time.Now().UTC().Format("2006-01-02"),
+		})
+		return
+	}
 	if len(quote.OriginalTotals) > 0 {
 		for _, original := range quote.OriginalTotals {
 			a.addOriginal(original, NormalizeCurrency(original.Currency))
@@ -605,6 +635,10 @@ func (a *quoteAccumulator) addValuation(code string, valuation Valuation) {
 
 func (a *quoteAccumulator) finish() CostQuote {
 	a.out.CostComplete = a.costFactsComplete
+	a.out.PartialPricedCount = a.partialPriced
+	if a.partialPriced > 0 {
+		a.out.IncompleteReason = firstNonEmpty(a.out.IncompleteReason, "missing_price_or_usage")
+	}
 	if a.originalComplete && a.originalCurrency != "" {
 		a.out.Original = MoneyOf(a.originalTotal, a.originalCurrency)
 		a.syncOriginalValuation()
@@ -614,7 +648,7 @@ func (a *quoteAccumulator) finish() CostQuote {
 	if len(a.originalTotals) > 1 {
 		codes := make([]string, 0, len(a.originalTotals))
 		for code := range a.originalTotals {
-			codes = append(codes, code)
+			a.out.OriginalTotals = append(a.out.OriginalTotals, MoneyOf(a.originalTotals[code], code))
 		}
 		sort.Strings(codes)
 		for _, code := range codes {
@@ -636,12 +670,18 @@ func (a *quoteAccumulator) finish() CostQuote {
 			a.out.RateBand = RateBandMixed
 		}
 	}
+	// tl1379: zero-priced segments keep the total usable but must not read as
+	// "every segment was priced" — surface partial_priced instead of matched.
+	matchedStatus := DisplayStatusMatched
+	if a.partialPriced > 0 {
+		matchedStatus = DisplayStatusPartialPriced
+	}
 	if a.display == "" && a.originalComplete && a.costFactsComplete {
 		selected := a.out.Original
 		a.out.Selected = &selected
 		a.out.DisplayComplete = true
 		a.out.Complete = true
-		a.out.DisplayStatus = DisplayStatusMatched
+		a.out.DisplayStatus = matchedStatus
 		a.out.AggregateMode = AggregateModeSingleCurrency
 		return a.out
 	}
@@ -651,7 +691,7 @@ func (a *quoteAccumulator) finish() CostQuote {
 		a.out.Selected = &selected
 		a.out.DisplayComplete = true
 		a.out.Complete = true
-		a.out.DisplayStatus = DisplayStatusMatched
+		a.out.DisplayStatus = matchedStatus
 		if len(a.originalTotals) > 1 {
 			a.out.AggregateMode = AggregateModeCommonValuation
 		} else {
@@ -712,20 +752,32 @@ func NormalizeQuote(q CostQuote) CostQuote {
 			q.AggregateMode = AggregateModeSingleCurrency
 		}
 	}
+	// tl1379 口径落地 (replaces the upstream never-invent-zero semantics of
+	// 8e55fc49f): a segment with known usage but no price bills 0 instead of
+	// failing the session total. Pre-1044 sidecars and old eventwire payloads
+	// persist such segments as CostComplete=false/no_price; upgrade them to the
+	// partial_priced zero fact at every persistence/transport boundary. True
+	// anomalies (usage_unknown, legacy wiped/invalid records) stay unavailable.
+	if !q.CostComplete && (q.IncompleteReason == "no_price" || q.IncompleteReason == "missing_price_or_usage") {
+		q.CostComplete = true
+		q.DisplayComplete = true
+		q.DisplayStatus = DisplayStatusPartialPriced
+	}
 	q.Complete = q.DisplayComplete
 	return q
 }
 
 // quoteHasCompleteCostFact separates a known original-currency charge from a
-// display-only valuation failure must not poison an exact original total,
-// while unpriced and unrecoverable legacy records stay incomplete in every
+// display-only valuation failure must not poison an exact original total.
+// Unpriced segments count as complete facts under the tl1379 zero-price口径
+// (they bill 0); unrecoverable legacy records stay incomplete in every
 // display currency.
 func quoteHasCompleteCostFact(q CostQuote) bool {
 	if q.CostComplete {
 		return true
 	}
 	switch q.IncompleteReason {
-	case "no_price", "missing_price_or_usage", "legacy_unrecoverable",
+	case "legacy_unrecoverable",
 		"legacy_wiped_or_zero", "legacy_invalid_amount", "mixed_original_currencies",
 		"incomplete_cost_fact":
 		return false
