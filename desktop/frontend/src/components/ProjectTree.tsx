@@ -21,6 +21,7 @@ import { useT, type Translator } from "../lib/i18n";
 import { requestTopicVersions } from "../lib/sessionRecoveryVersionHostBridge";
 import { PROJECT_COLOR_OPTIONS, projectColorValue, type ProjectColorKey, type ProjectColorOption } from "../lib/projectColors";
 import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, projectTreeWithoutTopics, isTopicArchiveForceableError, reloadProjectTreeTopics, useProjectTreeArchiveController, type ProjectTreeRefresh, type ProjectTreeRefreshOptions } from "../lib/projectTreeArchive";
+import { runProjectTreeReload } from "../lib/projectTreeReload";
 // tl1240: sidebar batch manage mode (multi-select → one-call batch archive/move).
 import { batchEntryForNode, batchSelectionAfterArchive, collectBatchTopics, singleBatchTarget, summarizeBatchMove, summarizeBatchTopicArchive, type BatchReportState, type BatchTopicEntry } from "../lib/projectTreeBatch";
 import { ProjectTreeBatchBar } from "./ProjectTreeBatchBar";
@@ -1525,6 +1526,19 @@ export function ProjectTree({
     }
   };
 
+  // tl1363（用户 20261102 拍板）：手动「重载会话列表」——调用链收口在
+  // lib/projectTreeReload（行为钉在 __tests__/tl1363-reload-session-list.test.tsx）。
+  const reloadSessions = (menuScope: string, workspaceRoot: string, folderKey: string) =>
+    runProjectTreeReload({
+      bindings: app,
+      scope: menuScope,
+      workspaceRoot,
+      folderKey,
+      refresh,
+      showToast,
+      t,
+    });
+
   const visibleTree = useMemo(() => {
     const q = query.trim().toLowerCase();
     // Time filter: compute cutoff timestamp.
@@ -2518,6 +2532,19 @@ export function ProjectTree({
         })),
       },
       { type: "separator" as const, key: "path-separator" },
+      {
+        // tl1363（用户 20261102 拍板）：「重载会话列表」在「复制路径」正上方——
+        // 后台归档（如 Heartbeat 一次性会话轮换）摘掉 sidecar 引用后，应用此前
+        // 只能靠重启收敛侧栏残留。点击=本 scope 一次对账（清零绑定影子条目 +
+        // 重挂活会话）+ 本文件夹权威全量重拉。
+        key: "reload-sessions",
+        icon: <ListRestart size={13} />,
+        label: t("projectTree.reloadSessions"),
+        onSelect: () => {
+          void reloadSessions(scope, scope === "global" ? "" : projectPath, key);
+          closeMenu();
+        },
+      },
       {
         key: "copy-path",
         icon: <Copy size={13} />,

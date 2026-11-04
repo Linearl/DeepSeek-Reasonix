@@ -28657,22 +28657,6 @@ button.statusbar__mcp:focus-visible {
   color: color-mix(in srgb, #0284c7 78%, var(--fg-dim));
 }
 
-.project-tree__topic-recovery-copies {
-  flex: 0 0 auto;
-  height: 17px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 5px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--fg-faint) 10%, transparent);
-  color: var(--fg-faint);
-  font-size: 10.5px;
-  font-weight: 620;
-  line-height: 1;
-  white-space: nowrap;
-}
-
 .project-tree__topic-status {
   flex: 0 0 auto;
   max-width: 64px;

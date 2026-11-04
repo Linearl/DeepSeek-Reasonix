@@ -71,7 +71,7 @@ ok(
   tabsSource.split("normalizeWorkspaceScope(scope, workspaceRoot)").length >= 4,
   "every tab-open entry in tabs.go applies the builtin-root scope normalization",
 );
-const restoreSource = readFileSync(resolve(here, "../../../app.go"), "utf8");
+const restoreSource = readFileSync(resolve(here, "../../../app_tabs.go"), "utf8");
 ok(
   restoreSource.includes("normalizeWorkspaceScope(entry.Scope, entry.WorkspaceRoot)"),
   "the persisted-tab restore normalizes a builtin-root entry to Global scope",

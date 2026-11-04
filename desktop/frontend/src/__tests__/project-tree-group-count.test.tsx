@@ -66,8 +66,10 @@ for (const members of [[running("a")], [idle("a")], [running("a"), idle("b")], [
     "member/topic rows keep 14 + depth * 16 (expanded children do not move)");
   // Task 350 → 892: the base formula stays the task-313 folder column; a
   // nested group rides one extra 16px step PER LEVEL (arbitrary depth replaced
-  // the old single `nested` step).
-  ok(orgSource.includes("style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16 }}"),
+  // the old single `nested` step). tl1267 shares the style object with the
+  // --project-tree-drop-inset drag var, so the pin matches the paddingLeft
+  // formula prefix rather than the whole (now multi-field) object literal.
+  ok(orgSource.includes("style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16"),
     "the group header keeps the task-313 folder column (task 892 adds one 16px step per nesting level)");
   ok(orgSource.includes("depth={depth + 1}") === false || treeSource.includes("depth={depth + 1}"),
     "the caller still passes folder depth + 1 — member rows keep their level");

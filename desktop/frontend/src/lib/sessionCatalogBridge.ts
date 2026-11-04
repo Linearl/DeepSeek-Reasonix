@@ -5,6 +5,7 @@ import type {
   ProjectTopicPage,
   ProjectTopicPageRequest,
   ProjectTreeChangedV2,
+  ProjectTreeReloadResult,
   SessionCatalogBindings,
 } from "./types";
 
@@ -73,5 +74,10 @@ export function makeMockSessionCatalogBindings(cloneProjectTree: () => ProjectNo
       return { state: "ready", mode: "memory", revision: 1, indexed: 4, total: 4, repairPending: 0, sourceCount: 4, canRebuild: false };
     },
     async RebuildSessionCatalog() {},
+    // tl1363 browser-dev mock: the mock tree never carries shadow registrations,
+    // so the reload is a no-op receipt with the same shape as the Go endpoint.
+    async ReloadProjectTreeSessions(scope: string, workspaceRoot: string): Promise<ProjectTreeReloadResult> {
+      return { scope, workspaceRoot: workspaceRoot || undefined, removedTopicIds: [], skippedPinned: 0, skippedReferenced: 0, reconciledDirs: 0 };
+    },
   };
 }

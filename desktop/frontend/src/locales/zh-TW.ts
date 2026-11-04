@@ -1490,6 +1490,8 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.removeProjectShort": "移除",
   "projectTree.confirmRemoveProjectShort": "確認移除",
   "projectTree.copyPath": "複製路徑",
+  "projectTree.reloadSessions": "重載會話列表",
+  "projectTree.reloadSessionsDone": "已清理 {n} 條殘留並重載列表",
   "projectTree.revealInFinder": "在 Finder 中顯示",
   "projectTree.revealInExplorer": "在檔案總管中顯示",
   "projectTree.revealInFileManager": "在檔案管理器中顯示",

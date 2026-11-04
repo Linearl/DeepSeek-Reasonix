@@ -1875,6 +1875,8 @@ export const en = {
   "projectTree.removeProjectShort": "Remove",
   "projectTree.confirmRemoveProjectShort": "Confirm remove",
   "projectTree.copyPath": "Copy path",
+  "projectTree.reloadSessions": "Reload session list",
+  "projectTree.reloadSessionsDone": "Removed {n} leftover entries and reloaded",
   "projectTree.revealInFinder": "Show in Finder",
   "projectTree.revealInExplorer": "Show in File Explorer",
   "projectTree.revealInFileManager": "Show in file manager",
