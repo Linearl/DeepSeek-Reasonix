@@ -567,3 +567,163 @@ func TestSessionLeaseReleaseRetiresLockSidecars(t *testing.T) {
 	}
 	first.Release()
 }
+
+func TestSweepOrphanReleasesUnboundLeaseAndClearsEntry(t *testing.T) {
+	// The tl1392 incident form, package 73: a live lease object whose
+	// desktop-layer binding is gone, holding its OS lock while the disk record
+	// has been torn away. Reclaim can never win here (the object's lock keeps
+	// failing the lock take) and the zombie/tab sweeps cannot see the object,
+	// so force archive looped forever. The sweep must release the registered
+	// object through the normal path and clear the entry, so ONE force
+	// succeeds.
+	userPath, key := leaseTestPath(t)
+	holder, err := TryAcquireSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("TryAcquireSessionLease: %v", err)
+	}
+	if liveSessionLeaseFor(key) != holder {
+		t.Fatal("acquired lease is not registered as the live lease")
+	}
+	// Tear the identity sources out from under the live holder: the lock file
+	// (delete-marked; its handle keeps the lock) and the legacy sidecar.
+	if err := os.Remove(store.SessionLeaseLock(key)); err != nil {
+		t.Fatalf("remove lease lock file: %v", err)
+	}
+	_ = os.Remove(sessionLeaseInfoPath(key))
+	if _, err := LoadSessionLeaseInfo(key); err == nil {
+		t.Fatal("lease info should be unreadable after the record tear")
+	}
+
+	cleared, err := SweepOrphanInProcessSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("SweepOrphanInProcessSessionLease: %v", err)
+	}
+	if cleared == 0 {
+		t.Fatal("orphan sweep cleared nothing")
+	}
+	if liveSessionLeaseFor(key) != nil {
+		t.Fatal("released holder is still registered as the live lease")
+	}
+	if _, ok := sessionLeaseOwners.Load(key); ok {
+		t.Fatal("orphan owner entry survived the sweep")
+	}
+	// The acceptance core: the very next acquire succeeds — no loop.
+	lease, err := TryAcquireSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("TryAcquireSessionLease after orphan sweep: %v", err)
+	}
+	lease.Release()
+}
+
+func TestSweepOrphanClearsFreeLockEntryWithoutObject(t *testing.T) {
+	// The registry-entry-only residue: an owner entry with no lock, no info,
+	// and no registered object (an acquire generation that lost its object
+	// before the registry existed). The lock take arbitrates; the entry goes.
+	userPath, key := leaseTestPath(t)
+	sessionLeaseOwners.Store(key, uint64(1<<61))
+	t.Cleanup(func() { sessionLeaseOwners.Delete(key) })
+
+	if lease, err := TryAcquireSessionLease(userPath); !errors.Is(err, ErrSessionLeaseHeld) {
+		if lease != nil {
+			lease.Release()
+		}
+		t.Fatalf("TryAcquireSessionLease err = %v, want ErrSessionLeaseHeld", err)
+	}
+	cleared, err := SweepOrphanInProcessSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("SweepOrphanInProcessSessionLease: %v", err)
+	}
+	if cleared == 0 {
+		t.Fatal("free-lock orphan entry was not cleared")
+	}
+	if _, ok := sessionLeaseOwners.Load(key); ok {
+		t.Fatal("orphan entry survived the sweep")
+	}
+	lease, err := TryAcquireSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("TryAcquireSessionLease after sweep: %v", err)
+	}
+	lease.Release()
+}
+
+func TestSweepOrphanLeavesUsableHolderRecordAlone(t *testing.T) {
+	// A healthy holder keeps its published identity on disk for its whole
+	// hold: the sweep must not touch it (tl1367 contract — a working runtime
+	// is never grabbed silently).
+	userPath, key := leaseTestPath(t)
+	holder, err := TryAcquireSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("TryAcquireSessionLease: %v", err)
+	}
+	defer holder.Release()
+
+	cleared, err := SweepOrphanInProcessSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("SweepOrphanInProcessSessionLease: %v", err)
+	}
+	if cleared != 0 {
+		t.Fatalf("sweep cleared %d holders with a usable record on disk, want 0", cleared)
+	}
+	if liveSessionLeaseFor(key) != holder {
+		t.Fatal("healthy holder lost its live-lease registration")
+	}
+	if lease, err := TryAcquireSessionLease(userPath); !errors.Is(err, ErrSessionLeaseHeld) {
+		if lease != nil {
+			lease.Release()
+		}
+		t.Fatalf("TryAcquireSessionLease err = %v, want ErrSessionLeaseHeld", err)
+	}
+}
+
+func TestSweepOrphanLeavesForeignLiveRecordAlone(t *testing.T) {
+	// A readable record naming another (alive) pid is real occupation: the
+	// sweep has no say even though the evidence shape could be argued — the
+	// identity probe stays the only authority for named holders.
+	userPath, key := leaseTestPath(t)
+	if err := SaveSessionLeaseInfo(key, SessionLeaseInfo{
+		SessionPath: key,
+		WriterID:    "other-window-writer",
+		PID:         os.Getpid() + 1,
+		AcquiredAt:  time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("SaveSessionLeaseInfo: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(sessionLeaseInfoPath(key)) })
+
+	cleared, err := SweepOrphanInProcessSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("SweepOrphanInProcessSessionLease: %v", err)
+	}
+	if cleared != 0 {
+		t.Fatalf("sweep cleared %d holders behind a foreign record, want 0", cleared)
+	}
+}
+
+func TestSessionLeaseRegistryTracksConvertAndRestore(t *testing.T) {
+	// The conversion path moves the lock from the lease object to the guard;
+	// the registry must follow both ways or the sweep would release a lease
+	// that no longer holds anything (or miss one that does).
+	userPath, key := leaseTestPath(t)
+	lease, err := TryAcquireSessionLease(userPath)
+	if err != nil {
+		t.Fatalf("TryAcquireSessionLease: %v", err)
+	}
+	guard, err := lease.TryConvertToRemovalGuard()
+	if err != nil {
+		t.Fatalf("TryConvertToRemovalGuard: %v", err)
+	}
+	if liveSessionLeaseFor(key) != nil {
+		t.Fatal("converted lease is still registered as live")
+	}
+	restored, err := guard.RestoreSessionLease()
+	if err != nil {
+		t.Fatalf("RestoreSessionLease: %v", err)
+	}
+	if liveSessionLeaseFor(key) != restored {
+		t.Fatal("restored lease is not re-registered as live")
+	}
+	restored.Release()
+	if liveSessionLeaseFor(key) != nil {
+		t.Fatal("released lease is still registered as live")
+	}
+}

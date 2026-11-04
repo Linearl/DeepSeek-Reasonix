@@ -133,6 +133,10 @@ func (l *SessionLease) TryConvertToRemovalGuard() (*SessionRemovalGuard, error) 
 	leaseLock := l.leaseLock
 	l.leaseLock = nil
 	l.released = true
+	// The lease object has handed its lock to the guard; unregister it so the
+	// orphan sweep never sees a live lease that no longer holds anything.
+	// RestoreSessionLease re-registers on rollback.
+	unregisterSessionLeaseLive(l)
 	return &SessionRemovalGuard{
 		path:         l.path,
 		saveLock:     saveLock,
@@ -157,6 +161,7 @@ func (g *SessionRemovalGuard) RestoreSessionLease() (*SessionLease, error) {
 	sessionLeaseActiveOwners.Delete(g.path)
 	sessionLeaseActiveOwners.Store(g.path, ownerID)
 	lease := &SessionLease{path: g.path, ownerID: ownerID, leaseLock: g.leaseLock}
+	registerSessionLeaseLive(lease)
 	g.leaseLock = nil
 	g.saveLock.Unlock()
 	g.saveLock = nil
