@@ -8,6 +8,7 @@ import { app } from "../lib/bridge";
 import { writeClipboardText } from "../lib/clipboard";
 import { OpenerIcon } from "./ExternalOpener";
 import { cachedSessionPurpose, loadSessionPurpose, setCachedSessionPurpose, subscribeSessionPurposes } from "../lib/sessionPurpose";
+import { rememberLiveSessionModel, sessionModelHover, titleWithSessionModel } from "../lib/sessionModelHover";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
 import { catalogStatusSettlesRebuildFailure, createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
 import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicFirstPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreePageLoadFlipsIndicator, projectTreeBrowsePageContinues, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
@@ -1889,7 +1890,16 @@ export function ProjectTree({
       // 侧栏标题多为自动命名，purpose 才是真实职责——拼进 title 供原生 tooltip
       // 与 aria-label 展示；purposeRevision 订阅保证拉取到达后即时补上。
       const rowPurpose = node.sessionPath ? cachedSessionPurpose(node.sessionPath) ?? "" : "";
-      const titleWithPurpose = rowPurpose ? `${title}\n${rowPurpose}` : title;
+      // tl1387: model hover — live (selector-source) > last known live >
+      // creation-time (annotated). Remembered live values feed later fallbacks;
+      // the row itself never renders the model inline.
+      const modelHoverKey = node.sessionPath || `${topicId ?? ""}\u0000${label}`;
+      if (node.modelRef) rememberLiveSessionModel(modelHoverKey, node.modelRef);
+      const modelHover = sessionModelHover(modelHoverKey, { modelRef: node.modelRef, metaModel: node.metaModel });
+      const titleWithPurpose = [
+        titleWithSessionModel(title, modelHover, (key, values) => t(key, values)),
+        rowPurpose,
+      ].filter(Boolean).join("\n");
       const topicMenuOpen = menuNodeKey === key;
       // tl1240: in batch mode eligible topic rows trade the open-on-click for
       // checkbox selection; standalone session rows and remote rows stay out
@@ -2200,14 +2210,11 @@ export function ProjectTree({
             <span className="project-tree__topic-copy">
               <span className="project-tree__topic-heading">
                 <span className="project-tree__topic-label">{label}</span>
-                {/* Task 274 ①: model visibility on the sidebar row — provider
-                    shown inline, the full modelRef on hover (title/data attr).
-                    Absent when the host cannot see the runtime: no guess. */}
-                {node.modelRef ? (
-                  <span className="project-tree__topic-time" title={node.modelRef} data-model={node.modelRef}>
-                    {node.provider || node.modelRef}
-                  </span>
-                ) : null}
+                {/* tl1387（用户裁决 20261104 13:0x/13:5x）: the sidebar row is
+                    title+time two segments — provider/model names never render
+                    inline (the tl1330/Task 274① inline tag is retired; the
+                    model lives on the row's hover title and the composer
+                    selector). node.modelRef data chain stays for the hover. */}
                 {recoveryLabel && <span className="project-tree__topic-recovery" title={recoveryLabel}>{recoveryLabel}</span>}
                 {imSource && (
                   <span

@@ -1398,6 +1398,8 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.repairDeferred": "歷史記錄稍後重試",
   "projectTree.repairBlocked": "{count} 條歷史需要修復",
   "projectTree.recovered": "已恢復",
+  "projectTree.modelHover.current": "當前生效模型：{model}",
+  "projectTree.modelHover.createdAt": "{model}（建立時）",
   "projectTree.recoveryOnly": "可恢復",
   "projectTree.rebuildCatalog": "重建索引",
   "projectTree.rebuildCatalogFailed": "重建索引未完成，背景整理已重新啟動（詳情見日誌）",

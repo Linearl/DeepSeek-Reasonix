@@ -7666,8 +7666,13 @@ type ProjectNode struct {
 	// Task 274 ①: the session's current model on the sidebar row — same probe
 	// as the directory list (fillNodeModel), absent when the runtime is
 	// invisible (no guessing).
-	ModelRef                     string `json:"modelRef,omitempty"`
-	Provider                     string `json:"provider,omitempty"`
+	ModelRef string `json:"modelRef,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	// tl1387: the session sidecar's creation-time model (BranchMeta.Model),
+	// stamped only when the runtime probe above could not see a live value.
+	// The row hover renders the live modelRef first and annotates this one
+	// 「创建时」 (user ruling 20261104 14:0x) — never inline.
+	MetaModel                    string `json:"metaModel,omitempty"`
 	Preview                      string `json:"preview,omitempty"`
 	ProjectColor                 string `json:"projectColor,omitempty"`
 	Turns                        int    `json:"turns,omitempty"`
