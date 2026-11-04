@@ -8,6 +8,7 @@ import { useManagementWorkspace } from "./lib/useManagementWorkspace";
 import { loadSplitState, persistSplitState, type SplitState } from "./lib/splitView";
 import { setSettingsOpenHook, useAppNavigationStore } from "./store/appNavigation";
 import { useEffortApplyingStore } from "./store/effortApplying";
+import { useModelApplyingStore } from "./store/modelApplying";
 import { prefetchSettingsView } from "./lib/settingsPrefetch";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
@@ -767,6 +768,9 @@ export default function App() {
   // 实测 ~2.4s 无反馈像卡死）——传给 Composer 在力度控件旁渲染过渡态；
   // 快速通道不 emit 事件，恒为 false，行为不变。
   const effortApplyingActive = useEffortApplyingStore((s) => (activeTabId ? Boolean(s.applying[activeTabId]) : false));
+  // tl1389：模型侧同形——当前 tab 的模型切换正走 fallback 重建（recovery-fork
+  // 实测 12.3s），模型名旁渲染过渡态；快速通道不 emit，恒为 false。
+  const modelApplyingActive = useModelApplyingStore((s) => (activeTabId ? Boolean(s.applying[activeTabId]) : false));
   // 任务1015：长工具链可见性——最新一个 running 工具卡的名字（后端
   // ToolDispatch 事件的镜像，非本地推断），供「正在执行 <工具>」展示。
   const currentToolLabel = useMemo(() => {
@@ -6553,6 +6557,7 @@ export default function App() {
               tabId={activeTabId} turnId={remoteSurfaceActive ? undefined : state.activeTurnId}
               effort={remoteSurfaceActive ? remoteSession.effort : state.effort}
               effortApplying={!remoteSurfaceActive && effortApplyingActive}
+              modelApplying={!remoteSurfaceActive && modelApplyingActive}
               onSend={remoteSurfaceActive ? remoteComposerSend : handleComposerSend}
               splitTarget={splitTarget}
               onSplitTargetChange={setSplitTarget}

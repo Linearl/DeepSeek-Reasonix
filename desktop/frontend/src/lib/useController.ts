@@ -9,8 +9,9 @@ import { asArray } from "./array";
 import { createControllerModelCommands } from "./controllerModelCommands";
 import { compactArchivedToolItems } from "./archivedToolItems";
 import { addBreadcrumb } from "./breadcrumbs";
-import { app, onEffortApplying, onEvent, onReady, onRuntimeRebuilt, onTabMeta, onTabsRestored, onTopicActivation } from "./bridge";
+import { app, onEffortApplying, onEvent, onModelApplying, onReady, onRuntimeRebuilt, onTabMeta, onTabsRestored, onTopicActivation } from "./bridge";
 import { clearEffortApplying, handleEffortApplyingEvent } from "../store/effortApplying";
+import { clearModelApplying, handleModelApplyingEvent } from "../store/modelApplying";
 import { invalidateCache } from "./composerHistory";
 import { formatInboxCancelError } from "./inboxError";
 import { hydrateQueuedGuidanceBubbles, missingQueuedGuidanceBubbles } from "./inboxSurfaceReconcile";
@@ -5004,8 +5005,10 @@ export function useController() {
         dispatchTo(rebuiltTabId, { type: "controller_rebuilt" });
         // Task 1301 backstop: the settle clear in setEffortForTab is the
         // primary off-switch for the applying transition; the rebuild fence
-        // clears again in case that settle was missed.
+        // clears again in case that settle was missed. tl1389: the model
+        // switch's applying hint gets the same fence backstop.
         clearEffortApplying(rebuiltTabId);
+        clearModelApplying(rebuiltTabId);
       } else {
         if (runtimeEpoch) {
           for (const id of Array.from(statesRef.current.keys())) runtimeEpochByTabRef.current.set(id, runtimeEpoch);
@@ -5014,6 +5017,7 @@ export function useController() {
           invalidateSharedQuery("MetaForTab", [id]);
           dispatchTo(id, { type: "controller_rebuilt" });
           clearEffortApplying(id);
+          clearModelApplying(id);
         }
       }
     });
@@ -5022,6 +5026,11 @@ export function useController() {
     // until the SetEffortForTab call settles. Guarded by the in-flight
     // registry (store), so a late event for a settled switch cannot stick it.
     const offEffortApplying = onEffortApplying(handleEffortApplyingEvent);
+    // tl1389: the model-side twin — the backend emits "model:applying" when a
+    // model switch took the fallback rebuild; the composer shows the applying
+    // transition until the call settles (guarded by the in-flight registry in
+    // the store, so a late event for a settled switch cannot stick it).
+    const offModelApplying = onModelApplying(handleModelApplyingEvent);
     const offTopicActivation = onTopicActivation(handleTopicActivationEvent);
     // tab:meta carries a full refreshed Meta after the backend's background
     // refresh of the expensive fields (git branch, image-input capability) —
@@ -5086,6 +5095,7 @@ export function useController() {
       offReady();
       offRebuilt();
       offEffortApplying();
+      offModelApplying();
       offTopicActivation();
       offTabMeta();
       offTabsRestored();

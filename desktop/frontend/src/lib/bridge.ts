@@ -2564,6 +2564,21 @@ export function onEffortApplying(cb: (tabId?: string) => void): () => void {
   return () => {};
 }
 
+// onModelApplying fires when a model switch took the fallback rebuild path
+// (tl1389, the effort seam carried to the model side): the composer shows
+// the "applying model" transition beside the switcher until the
+// SetModelForTab call settles (the settled tab:meta push and the
+// runtime:rebuilt fence clear it). The fast paths never emit, so normal
+// sessions never see the transition.
+export function onModelApplying(cb: (tabId?: string) => void): () => void {
+  if (realApp() && typeof window !== "undefined" && window.runtime) {
+    return window.runtime.EventsOn("model:applying", (tabId?: unknown) =>
+      cb(typeof tabId === "string" ? tabId : undefined)
+    );
+  }
+  return () => {};
+}
+
 export function onReady(cb: (tabId?: string) => void): () => void {
   if (realApp() && typeof window !== "undefined" && window.runtime) {
     return window.runtime.EventsOn("agent:ready", (tabId?: unknown) => cb(typeof tabId === "string" ? tabId : undefined));
