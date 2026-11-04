@@ -180,6 +180,16 @@ var errSessionBusyElsewhere = errors.New("this session is in use by another Reas
 // holder. Still sanitized (no path).
 var errSessionBusyZombie = errors.New("this session was left locked by a crashed Reasonix process — restart Reasonix to clear it, then retry")
 
+// errSessionBusyUnidentifiedHolder is the tl1383 classification for a refusal
+// whose lease error carries NO usable holder identity (holder_class=unknown
+// pid=0 — the 2026-11-04 08:23/09:08 archive refusals). "In use by another
+// Reasonix window" sent the user hunting for a window nobody can name; the
+// holder here is by definition unidentifiable (the record was lost while the
+// refusal state survived), so the actionable steps are the ones that work
+// without knowing the holder: the restart, or force archive (whose sweep
+// retires free-lock leftovers). Still sanitized (no path, no pid).
+var errSessionBusyUnidentifiedHolder = errors.New("this session's lease is locked by a leftover record whose holder cannot be identified — restart Reasonix to clear it, or use force archive, then retry")
+
 // sessionLeaseHeldBusyError wraps a lease-held refusal so the tl1201 sentinel
 // classification (zombie vs live holder) keeps flowing through errors.Is
 // while the original *agent.SessionLeaseError stays reachable for the detail
@@ -220,6 +230,12 @@ func (e *sessionLeaseHeldBusyError) Unwrap() []error {
 // degrade to the upgraded errSessionBusyElsewhere text.
 func sessionLeaseBusyDetail(err error) string {
 	var leaseErr *agent.SessionLeaseError
+	if errors.As(err, &leaseErr) && leaseErr != nil && (leaseErr.Info == nil || leaseErr.Info.PID <= 0) {
+		// tl1383: no usable identity — never the "another window" fallback
+		// (the user would hunt for a window nobody can name). The leftover
+		// copy names the two repairs that work without a holder identity.
+		return errSessionBusyUnidentifiedHolder.Error()
+	}
 	if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil && leaseErr.Info.PID > 0 {
 		info := leaseErr.Info
 		since := desktopLeaseSinceSuffix(info)
@@ -283,15 +299,21 @@ func desktopLeaseSinceSuffix(info *agent.SessionLeaseInfo) string {
 }
 
 // sessionLeaseBusyClassification maps a lease-held refusal onto the sanitized
-// busy error. A holder pid that is alive (or unknown) is real mutual
-// exclusion and reports errSessionBusyElsewhere unchanged; a DEAD pid is the
-// zombie leftover form and reports errSessionBusyZombie (tl 1201) — and so is
-// an ALIVE pid whose executable is not this application (tl1367: pid reuse,
-// a stale record with no window to close, same restart-to-clear repair).
+// busy error. A refusal with no usable holder identity reports
+// errSessionBusyUnidentifiedHolder (tl1383: never the "another window" copy
+// for a holder nobody can name); a holder pid that is alive (or unknown but
+// named) is real mutual exclusion and reports errSessionBusyElsewhere
+// unchanged; a DEAD pid is the zombie leftover form and reports
+// errSessionBusyZombie (tl 1201) — and so is an ALIVE pid whose executable is
+// not this application (tl1367: pid reuse, a stale record with no window to
+// close, same restart-to-clear repair).
 func sessionLeaseBusyClassification(err error) error {
 	var leaseErr *agent.SessionLeaseError
-	if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil {
-		if pid := leaseErr.Info.PID; pid > 0 && pid != os.Getpid() {
+	if errors.As(err, &leaseErr) && leaseErr != nil {
+		if leaseErr.Info == nil || leaseErr.Info.PID <= 0 {
+			return errSessionBusyUnidentifiedHolder
+		}
+		if pid := leaseErr.Info.PID; pid != os.Getpid() {
 			if !desktopLeaseAlive(pid) || !agent.ProcessLooksLikeSelf(pid) {
 				return errSessionBusyZombie
 			}

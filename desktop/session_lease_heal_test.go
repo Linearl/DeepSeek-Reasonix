@@ -148,6 +148,29 @@ func TestHealUnidentifiedLeaseHolderAdoptsFreeLockResidue(t *testing.T) {
 	}
 }
 
+// tl1383 验收文案面：身份缺失的拒绝渲染 leftover 文案，不再回退
+// 「another window」；分类落到 errSessionBusyUnidentifiedHolder 且保持
+// forceable 通道（强制归档是残留形态的两个正解之一）。
+func TestUnidentifiedHolderBusyDetailAndForceable(t *testing.T) {
+	err := &sessionLeaseHeldBusyError{cause: &agent.SessionLeaseError{Path: "p"}}
+	if detail := err.Error(); detail != errSessionBusyUnidentifiedHolder.Error() {
+		t.Fatalf("identity-missing detail = %q, want the leftover copy", detail)
+	}
+	if !errors.Is(err, errSessionBusyUnidentifiedHolder) {
+		t.Fatal("identity-missing busy error must classify as errSessionBusyUnidentifiedHolder")
+	}
+	if errors.Is(err, errSessionBusyElsewhere) {
+		t.Fatal("identity-missing busy error must not classify as the another-window sentinel")
+	}
+	var forceable *topicArchiveForceableError
+	if !errors.As(markTopicArchiveForceable(err), &forceable) {
+		t.Fatal("identity-missing refusal must stay forceable")
+	}
+	if got := sessionLeaseBusyDetail(&agent.SessionLeaseError{Path: "p", Info: &agent.SessionLeaseInfo{PID: 0}}); got != errSessionBusyUnidentifiedHolder.Error() {
+		t.Fatalf("pid-0 detail = %q, want the leftover copy", got)
+	}
+}
+
 // A live (locked) residue is never grabbed: with the lease lock held by a
 // still-open handle, the heal must fail and leave the refusal as-is.
 func TestHealUnidentifiedLeaseHolderNeverGrabsLiveLock(t *testing.T) {

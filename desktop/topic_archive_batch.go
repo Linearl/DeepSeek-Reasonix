@@ -191,7 +191,7 @@ func batchTopicArchiveFailureItem(topicID string, err error) desktopBatchTopicAr
 	// would collapse into the generic sentinel and drop the holder info.
 	// Active-work refusals keep their own message below: it already names the
 	// next step ("wait for the session to finish…").
-	if errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, errSessionBusyZombie) || errors.Is(err, agent.ErrSessionLeaseHeld) {
+	if errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, errSessionBusyZombie) || errors.Is(err, errSessionBusyUnidentifiedHolder) || errors.Is(err, agent.ErrSessionLeaseHeld) {
 		return desktopBatchTopicArchiveItem{TopicID: topicID, Forceable: true, Error: sessionLeaseBusyDetail(err)}
 	}
 	marked := markTopicArchiveForceable(friendlySessionFileError(err))

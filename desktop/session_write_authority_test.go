@@ -164,7 +164,9 @@ func TestRestoreTabWriteAuthorityAfterStaleRefusesLiveHolder(t *testing.T) {
 }
 
 // 归档/删除 busy 分类的 zombie 判据：死 pid → errSessionBusyZombie；
-// 活 pid / 本进程 / 无身份 → errSessionBusyElsewhere 原样。
+// 活 pid / 本进程 → errSessionBusyElsewhere 原样。
+// tl1383：无身份（Info nil / pid 0）→ errSessionBusyUnidentifiedHolder——
+// 持有者不可识别时绝不给「another window」文案。
 // tl1367：分类链读 desktopLeaseAlive（desktop 接缝）与 ProcessLooksLikeSelf，
 // 两处一并换掉；活 pid 身份不可解析时保守按活处理（live 分支不变）。
 func TestSessionLeaseBusyClassification(t *testing.T) {
@@ -184,7 +186,8 @@ func TestSessionLeaseBusyClassification(t *testing.T) {
 		{"dead foreign pid", &agent.SessionLeaseInfo{PID: 424242}, func(int) bool { return false }, errSessionBusyZombie},
 		{"live foreign pid", &agent.SessionLeaseInfo{PID: 424242}, func(int) bool { return true }, errSessionBusyElsewhere},
 		{"self pid", &agent.SessionLeaseInfo{PID: os.Getpid()}, func(int) bool { return false }, errSessionBusyElsewhere},
-		{"no identity", nil, func(int) bool { return false }, errSessionBusyElsewhere},
+		{"no identity", nil, func(int) bool { return false }, errSessionBusyUnidentifiedHolder},
+		{"zero pid identity", &agent.SessionLeaseInfo{PID: 0}, func(int) bool { return false }, errSessionBusyUnidentifiedHolder},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

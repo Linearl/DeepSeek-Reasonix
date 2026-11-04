@@ -54,7 +54,9 @@ func (a *App) ProbeSessionOccupancy(sessionPath string) SessionOccupancyInfo {
 	out := SessionOccupancyInfo{Busy: true}
 	out.Class = sessionLeaseHolderClass(info, desktopLeaseAlive)
 	if info == nil || info.PID <= 0 {
-		out.Detail = errSessionBusyElsewhere.Error()
+		// tl1383: no usable identity — the detail carries the leftover copy
+		// (restart / force archive), never the "another window" fallback.
+		out.Detail = errSessionBusyUnidentifiedHolder.Error()
 		return out
 	}
 	out.PID = info.PID

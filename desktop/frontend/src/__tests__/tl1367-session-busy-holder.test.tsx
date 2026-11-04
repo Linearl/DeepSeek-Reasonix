@@ -11,7 +11,7 @@
 //     busy 失败的 toast 走本地化文案（不再裸打英文/机器前缀）；
 //   ④ 源码钉：两处菜单首击走 probeOccupiedThen；occupancyDialog.dialog 在场；
 //     bridge 接口+mock 声明 ProbeSessionOccupancy；后端探针文件在场；
-//   ⑤ 三语 locale：sessionBusy.* 五键 + projectTree.sessionOccupiedConfirm 齐
+//   ⑤ 三语 locale：sessionBusy.* 六键（tl1383 增 leftover）+ projectTree.sessionOccupiedConfirm 齐
 //     备，占位符集合一致。
 
 import { readFileSync } from "node:fs";
@@ -110,6 +110,25 @@ console.log("\ntl1367 ② localized rendering (lib behaviour, en mirror)");
   eq(plain, "not enough disk space to finish the operation — free some space and retry", "non-busy errors pass through unchanged");
   const marked = busy.formatSessionBusyError(new Error("reasonix_error:topic_archive_forceable: wait for the session to finish"));
   eq(marked, "wait for the session to finish", "forceable prefix is stripped for display");
+}
+
+// ── ②c tl1383：身份缺失残留形态走专属 leftover 文案 ─────────────────────────
+// 2026-11-04 08:23/09:08 归档拒绝（holder_class=unknown pid=0）：无块 + 命中
+// leftover sentinel 的错误绝不能落 unknown 的「另一窗口」文案——持有者不可
+// 识别时「关掉另一窗口」是无法执行的指引。
+console.log("\ntl1383 ②c identity-missing leftover form renders its own copy (lib behaviour)");
+
+{
+  const { t } = await import("../lib/i18n");
+  const leftoverRaw = "this session's lease is locked by a leftover record whose holder cannot be identified — restart Reasonix to clear it, or use force archive, then retry";
+  ok(busy.isSessionBusyError(leftoverRaw), "the leftover sentinel is detected as busy family");
+  ok(busy.isSessionBusyError(leftoverRaw.toUpperCase()), "leftover sentinel detection is case-insensitive");
+  const rendered = busy.formatSessionBusyError(new Error(leftoverRaw));
+  eq(rendered, t("sessionBusy.leftover"), "the leftover form renders the sessionBusy.leftover copy");
+  ok(rendered !== t("sessionBusy.unknown"), "the leftover form never falls back to the another-window copy");
+  // 带机器前缀的形态（单条归档链）同样命中。
+  const prefixed = busy.formatSessionBusyError(new Error("reasonix_error:topic_archive_forceable: " + leftoverRaw));
+  eq(prefixed, t("sessionBusy.leftover"), "the forceable-prefixed leftover form renders the leftover copy");
 }
 
 // ── ③ trashSession 预检门（controller 挂载行为） ────────────────────────────
@@ -228,6 +247,7 @@ const KEYS = [
   "sessionBusy.zombie",
   "sessionBusy.reused",
   "sessionBusy.unknown",
+  "sessionBusy.leftover",
   "projectTree.sessionOccupiedConfirm",
 ];
 function placeholders(line: string): string[] {

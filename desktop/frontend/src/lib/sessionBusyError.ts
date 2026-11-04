@@ -36,7 +36,14 @@ const BUSY_SENTINELS = [
   "this session is in use by another Reasonix window or process",
   "this session was left locked by a crashed Reasonix process",
   "this session is running in this Reasonix window",
+  // tl1383: the identity-missing leftover form — the holder cannot be named,
+  // so it gets its own localized copy instead of the "another window" one.
+  "this session's lease is locked by a leftover record whose holder cannot be identified",
 ] as const;
+
+/** The tl1383 leftover sentinel stem, recognized before the generic unknown
+ * copy so an unidentifiable-holder refusal never reads as "another window". */
+const LEFTOVER_SENTINEL = "leftover record whose holder cannot be identified";
 
 export function parseSessionBusyHolder(raw: string): SessionBusyHolder | null {
   const match = HOLDER_BLOCK.exec(raw);
@@ -94,6 +101,11 @@ export function formatSessionBusyError(error: unknown): string {
   if (!holder) {
     if (!isSessionBusyError(raw)) {
       return raw.startsWith(TOPIC_ARCHIVE_FORCEABLE_PREFIX) ? raw.slice(TOPIC_ARCHIVE_FORCEABLE_PREFIX.length) : raw;
+    }
+    // tl1383: the identity-missing leftover form carries no holder block, so
+    // it lands here — render its own copy, never the "another window" one.
+    if (raw.toLowerCase().includes(LEFTOVER_SENTINEL)) {
+      return t("sessionBusy.leftover");
     }
     return t("sessionBusy.unknown");
   }
