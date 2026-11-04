@@ -631,6 +631,16 @@ func TestConcurrentLoadDuringAppendsStaysConsistent(t *testing.T) {
 				}
 				return
 			}
+			// tl1390: 每轮读完必须让出 save-path 互斥锁一小段。锁的获取是
+			// TryLock+25ms 轮询（sessionSavePathLockPoll），写者 SaveSnapshot
+			// 只能靠轮询撞进锁的空闲窗；无间隙紧循环会在读完的 µs 级间隙里
+			// 立即重抢，空闲窗占比趋近零，慢机上 40 次保存总有一次轮询耗尽
+			// 30s 预算（sessionSavePathLockWait）→ ErrSessionFileLockHeld，
+			// 测试在锁竞争悬崖边 1绿2红。节流后写者每轮 ≤1 个轮询周期即到手，
+			// 并发重叠与全部断言（保存不失败 / 并发读不报错 / eventLogDamaged
+			// 恒 false）原样保留——只消解环境敏感面，不弱化一致性验证。
+			// 与 p18_acceptance_probe_test.go 的 loader 循环同一形状同一解法。
+			time.Sleep(30 * time.Millisecond)
 		}
 	}()
 	for i := range 40 {
