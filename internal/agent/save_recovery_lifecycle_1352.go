@@ -28,6 +28,13 @@ import (
 // disk transcript instead of forking a fourth copy.
 const SnapshotForkQuotaPerTopic = 2
 
+// promoteStagingSuffix marks a main-side sidecar displaced mid-promotion
+// (tl1390). The two-step swap — main sidecar to the staging name first, copy
+// sidecar onto the main name second — keeps every original byte reachable
+// under a known name until the whole transaction lands, so a failed or
+// crashed attempt can roll back or resume without losing anything.
+const promoteStagingSuffix = ".promote-staging"
+
 // RecoveryTopicRootID returns the stable logical-topic root of a session path:
 // a plain session is its own root; a recovery copy peels every nested
 // -recovery-<16 hex> suffix back to the non-recovery stem.
@@ -131,28 +138,118 @@ func PromoteRecoveryBranchToMain(recoveryPath, mainPath string) (archived string
 
 	recoveryArts := store.SessionSidecarFiles(recoveryPath)
 	mainArts := store.SessionSidecarFiles(mainPath)
+
+	// tl1390 ②幂等续跑：上一次转正在换位中途崩溃会留下 .promote-staging 残留。
+	// 按三态还原——副本侧车还在 = 配对未完成，原始主字节归还主名（主名已被占
+	// 则以现主名为准、丢弃 staging）；副本侧车已不在 = 配对已完成，原始主字节
+	// 在本轮白名单归档里，staging 直接丢弃。还原后按全新一轮继续。
+	for i := range mainArts {
+		staging := mainArts[i] + promoteStagingSuffix
+		if _, err := os.Lstat(staging); err != nil {
+			continue
+		}
+		_, recoveryStillThere := os.Lstat(recoveryArts[i])
+		if recoveryStillThere != nil {
+			// 副本侧车已不在 = 配对在上次崩溃前已完成；原始主字节在本轮
+			// 白名单归档里，staging 退出舞台。
+			if rmErr := os.Remove(staging); rmErr != nil {
+				slog.Warn("promote: stale staging sidecar could not be removed", "file", staging, "err", rmErr)
+			}
+			continue
+		}
+		// 配对未完成：原始主字节归还主名（主名已被占则按现主名为准、丢 staging）。
+		if _, mainOccupied := os.Lstat(mainArts[i]); mainOccupied == nil {
+			if rmErr := os.Remove(staging); rmErr != nil {
+				slog.Warn("promote: stale staging sidecar could not be removed", "file", staging, "err", rmErr)
+			}
+			continue
+		}
+		if err := os.Rename(staging, mainArts[i]); err != nil {
+			return "", fmt.Errorf("resume staged sidecar %s: %w", filepath.Base(mainArts[i]), err)
+		}
+	}
+
+	// tl1390 ①②：Windows 上 rename/replace 要求源与目标都没有未关句柄
+	// （Go 的 os.Open 共享模式不含 FILE_SHARE_DELETE，MoveFileEx 拿不到
+	// DELETE 权限即 "being used by another process"——2026-11-04 事故的永久
+	// declined 机制）。换位用两步：主侧车先挪 staging 名、副本侧车再落主名。
+	// 任何一步失败都整笔回滚（副本侧车退回副本名、staging 归还主名），主侧车
+	// 字节自始至终以原名或 staging 名可达——绝不留下 meta/events 已搬主名而
+	// turns.jsonl 卡住的半搬现场（该现场正是「event log vanished」WARN 与每
+	// 30 秒 declined 伴生的来源，tl1313 的 vanished 哨兵因此免加抑制开关）。
+	type movedSidecar struct {
+		recovery, main, staging string
+	}
+	var moved []movedSidecar
+	rollback := func(cause error, what string) error {
+		for j := len(moved) - 1; j >= 0; j-- {
+			p := moved[j]
+			if err := os.Rename(p.main, p.recovery); err != nil {
+				slog.Error("promote: rollback of promoted sidecar failed; file stays on the main name",
+					"file", p.main, "err", err)
+				continue // 主名被占时 staging 也还不了；两处都大声留痕
+			}
+			if p.staging != "" {
+				if err := os.Rename(p.staging, p.main); err != nil {
+					slog.Error("promote: rollback of staged main sidecar failed; original stays staged",
+						"file", p.staging, "err", err)
+				}
+			}
+		}
+		return fmt.Errorf("%s: %w", what, cause)
+	}
 	for i := range recoveryArts {
 		if _, statErr := os.Lstat(recoveryArts[i]); statErr != nil {
 			continue // 副本没有这个侧车
 		}
-		if err := os.Rename(recoveryArts[i], mainArts[i]); err != nil {
-			return "", fmt.Errorf("promote sidecar %s: %w", filepath.Base(recoveryArts[i]), err)
+		pair := movedSidecar{recovery: recoveryArts[i], main: mainArts[i]}
+		if _, statErr := os.Lstat(mainArts[i]); statErr == nil {
+			staging := mainArts[i] + promoteStagingSuffix
+			if err := os.Rename(mainArts[i], staging); err != nil {
+				return "", rollback(err, "promote sidecar (stage main "+filepath.Base(mainArts[i])+")")
+			}
+			pair.staging = staging
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return "", rollback(statErr, "promote sidecar (stat main "+filepath.Base(mainArts[i])+")")
 		}
-		// tl1371：副本的 pinned-context 归属写在副本 id 上（fork 时由 desktop
-		// copyPinnedContextState 重建）。rename 只换文件名不换字节——转正后主
-		// 会话每轮读 pinned context 都会被 belongs-to 校验拒绝（20261103 新11
-		// 现场）。落位即把归属改写到主 stem；改写失败按 consolidation 同一先例
-		// 丢弃该文件（钉住列表从空重建），绝不留下一个每轮被拒的坏归属。
-		if mainArts[i] == store.SessionPinnedContext(mainPath) {
-			if rewriteErr := RewritePinnedContextSessionID(mainArts[i], BranchID(mainPath)); rewriteErr != nil {
+		if err := os.Rename(recoveryArts[i], mainArts[i]); err != nil {
+			if pair.staging != "" {
+				if rstErr := os.Rename(pair.staging, mainArts[i]); rstErr != nil {
+					slog.Error("promote: staged main sidecar could not return to the main name",
+						"file", pair.staging, "err", rstErr)
+				}
+			}
+			return "", rollback(err, "promote sidecar "+filepath.Base(recoveryArts[i]))
+		}
+		moved = append(moved, pair)
+	}
+	// tl1371：副本的 pinned-context 归属写在副本 id 上（fork 时由 desktop
+	// copyPinnedContextState 重建）。rename 只换文件名不换字节——转正后主
+	// 会话每轮读 pinned context 都会被 belongs-to 校验拒绝（20261103 新11
+	// 现场）。归属改写挪到事务落位后统一做（tl1390 ②）：改写失败回滚会把
+	// 已改写的归属留在副本名上，污染回滚后的副本。改写失败按 consolidation
+	// 同一先例丢弃该文件（钉住列表从空重建），绝不留下一个每轮被拒的坏归属。
+	if pinnedPath := store.SessionPinnedContext(mainPath); pinnedPath != "" {
+		if _, statErr := os.Lstat(pinnedPath); statErr == nil {
+			if rewriteErr := RewritePinnedContextSessionID(pinnedPath, BranchID(mainPath)); rewriteErr != nil {
 				slog.Warn("promote: pinned-context rewrite failed; dropping",
-					"file", mainArts[i], "err", rewriteErr)
-				os.Remove(mainArts[i])
+					"file", pinnedPath, "err", rewriteErr)
+				os.Remove(pinnedPath)
 			}
 		}
 	}
 	if err := os.Rename(recoveryPath, mainPath); err != nil {
-		return "", fmt.Errorf("promote recovery transcript: %w", err)
+		return "", rollback(err, "promote recovery transcript")
+	}
+	// 事务落定：被换下的原始主字节已在白名单归档里，staging 退出舞台。
+	for _, p := range moved {
+		if p.staging == "" {
+			continue
+		}
+		if rmErr := os.Remove(p.staging); rmErr != nil {
+			slog.Warn("promote: staged original sidecar could not be removed after promotion",
+				"file", p.staging, "err", rmErr)
+		}
 	}
 	// tl1383 追加面：rename 只换文件名不换字节——副本的 branch-meta 侧车搬进
 	// 主名后，meta.id 仍是副本身份（fork 嵌套时甚至停在更早的世代），CAS 账本
