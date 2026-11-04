@@ -185,10 +185,40 @@ var errSessionBusyZombie = errors.New("this session was left locked by a crashed
 // pid=0 — the 2026-11-04 08:23/09:08 archive refusals). "In use by another
 // Reasonix window" sent the user hunting for a window nobody can name; the
 // holder here is by definition unidentifiable (the record was lost while the
-// refusal state survived), so the actionable steps are the ones that work
-// without knowing the holder: the restart, or force archive (whose sweep
-// retires free-lock leftovers). Still sanitized (no path, no pid).
-var errSessionBusyUnidentifiedHolder = errors.New("this session's lease is locked by a leftover record whose holder cannot be identified — restart Reasonix to clear it, or use force archive, then retry")
+// refusal state survived). tl1392 copy discipline: the named next step must
+// exist and work. Force archive is the repair the sweep actually implements
+// (disk leftover retirement PLUS the tl1392 in-process orphan sweep), so it
+// leads; the restart recommendation moved out of THIS form — restart only
+// provably clears the DISK-residue shapes (errSessionBusyZombie keeps it),
+// while the in-process orphan form came back after restarts because the boot
+// restore re-acquired the session. Still sanitized (no path, no pid).
+var errSessionBusyUnidentifiedHolder = errors.New("this session's lease is locked by a leftover record whose holder cannot be identified — use force archive to clear the leftover, then retry")
+
+// errSessionBusyUnidentifiedHolderAfterForce is the tl1392 copy for a refusal
+// that SURVIVES a force archive in the identity-missing form: force already
+// ran its sweeps (disk leftovers + in-process orphans), so recommending force
+// again is the self-referential loop the package-73 user was stuck in, and a
+// bare "restart clears it" over-promises (the boot restore can re-acquire the
+// session). What remains is a holder this code cannot name: the honest next
+// steps are the report (desktop.log carries the sweep's audit lines) and the
+// restart-then-archive-before-opening fallback. Never marked forceable — the
+// frontend must not offer the force button the user just clicked.
+var errSessionBusyUnidentifiedHolderAfterForce = errors.New("force archive cleared the leftover lease records, but this session is still held inside this Reasonix window by an unidentified holder — attach desktop.log and report this, or restart Reasonix and archive before the session opens")
+
+// sessionLeaseHeldBusyAfterForceError wraps a force-archive refusal whose
+// cause is still the identity-missing form. Error() renders the after-force
+// copy (never a second force recommendation); Unwrap keeps the original chain
+// reachable so errors.As(*agent.SessionLeaseError) and
+// errors.Is(agent.ErrSessionLeaseHeld) keep working for logs and probes.
+type sessionLeaseHeldBusyAfterForceError struct{ cause error }
+
+func (e *sessionLeaseHeldBusyAfterForceError) Error() string {
+	return errSessionBusyUnidentifiedHolderAfterForce.Error()
+}
+
+func (e *sessionLeaseHeldBusyAfterForceError) Unwrap() []error {
+	return []error{errSessionBusyUnidentifiedHolderAfterForce, e.cause}
+}
 
 // sessionLeaseHeldBusyError wraps a lease-held refusal so the tl1201 sentinel
 // classification (zombie vs live holder) keeps flowing through errors.Is
@@ -422,7 +452,23 @@ func healUnidentifiedLeaseHolder(sessionPath string, cause error) (*agent.Sessio
 	}
 	lease, reclaimErr := agent.TryReclaimCurrentProcessSessionLease(sessionPath)
 	if reclaimErr != nil {
-		return nil, reclaimErr
+		// tl1392: reclaim loses to a lock its lock-take cannot win — the
+		// orphan form where a live-but-unbound lease object still holds the OS
+		// lock after its disk record was torn away. Sweep the orphan first
+		// (release the registered object through the save-drain, discard the
+		// registry entry) and retry the reclaim once; the sweep's own evidence
+		// discipline keeps a usable holder record untouched, so this only ever
+		// ADDS a success form.
+		if cleared, sweepErr := agent.SweepOrphanInProcessSessionLease(sessionPath); sweepErr != nil {
+			slog.Warn("desktop: removal guard heal orphan sweep failed", "err", sweepErr)
+		} else if cleared > 0 {
+			slog.Info("desktop: removal guard heal swept an orphan in-process lease holder before reclaiming",
+				"cleared", cleared)
+			lease, reclaimErr = agent.TryReclaimCurrentProcessSessionLease(sessionPath)
+		}
+		if reclaimErr != nil {
+			return nil, reclaimErr
+		}
 	}
 	guard, convErr := lease.TryConvertToRemovalGuard()
 	if convErr != nil {

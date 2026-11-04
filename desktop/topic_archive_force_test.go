@@ -19,6 +19,9 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/store"
+
+	"golang.org/x/sys/windows"
 )
 
 // stageForceArchiveTopic stages the historical force shape: a topic with one
@@ -158,6 +161,38 @@ func TestTrashTopicForceCompletesWithReusedPidLeaseRecord(t *testing.T) {
 	}
 	if _, err := agent.LoadSessionLeaseInfo(key); !os.IsNotExist(err) {
 		t.Fatalf("reused-pid record survived the force archive: %v", err)
+	}
+}
+
+// corruptLeaseLockContent overwrites the lease lock file's owner-identity
+// region in place (identity probes read corrupt) while every handle and the
+// byte-range lock stay exactly where they are. It must go through CreateFile
+// with the full share mask: Go's os.OpenFile requests a share mode without
+// DELETE, which collides with the lock handle's DELETE access and fails with
+// a sharing violation — the same file the identity reader opens fine. The
+// write starts at offset 1 (sessionLeaseOwnerOffset, where the identity
+// reader begins): the holder's LockFileEx pins byte 0, and a write there
+// fails with ERROR_LOCK_VIOLATION.
+func corruptLeaseLockContent(t *testing.T, lockPath string) {
+	t.Helper()
+	pathp, err := windows.UTF16PtrFromString(lockPath)
+	if err != nil {
+		t.Fatalf("lock path utf16: %v", err)
+	}
+	handle, err := windows.CreateFile(pathp,
+		windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		t.Fatalf("open lease lock for corrupting: %v", err)
+	}
+	f := os.NewFile(uintptr(handle), lockPath)
+	if _, err := f.WriteAt([]byte("{torn-garbage"), 1); err != nil {
+		f.Close()
+		t.Fatalf("corrupt lease lock content: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close lease lock: %v", err)
 	}
 }
 
@@ -396,4 +431,63 @@ func TestTrashTopicForceClosesOpenTopicTabAndArchives(t *testing.T) {
 	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
 		t.Fatalf("archived session still on disk: %v", err)
 	}
+}
+
+// TestTrashTopicForceCompletesWithUnboundOrphanLeaseHolder is the tl1392
+// package-73 incident form: a live lease object with NO tab binding whose disk
+// record was torn away. Every pre-tl1392 lever misses it — the tab sweep
+// matches holders through tabs, the zombie sweep requires a bound lease, and
+// reclaim cannot win the OS lock the object still holds — so "tear the disk
+// record" succeeded while the next acquire kept refusing, forever. The
+// acceptance core: ONE force call completes the archive, no loop.
+func TestTrashTopicForceCompletesWithUnboundOrphanLeaseHolder(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	topicID := "topic_force_orphan_holder"
+	sessionPath := stageForceArchiveTopic(t, "force-orphan.jsonl", topicID, "Force orphan")
+	key := sessionRuntimeKey(sessionPath)
+
+	// The orphan: acquired, registered in the agent live-lease registry, its
+	// identity record torn from under it — the lock file's CONTENT is garbage
+	// (torn publish, the tl1383 corrupt family) so every identity probe reads
+	// "unidentifiable", while the object's OS lock handle stays very much
+	// alive on the same, still-named lock file. The corrupt-record form is the
+	// one the tl1383 heal cannot cross — reclaim keeps failing the lock take —
+	// and it is exactly what the orphan sweep exists for. No App tab ever
+	// references the object; it stays reachable only through the registry,
+	// which is what the sweep consults.
+	if _, err := agent.TryAcquireSessionLease(sessionPath); err != nil {
+		t.Fatalf("orphan acquire: %v", err)
+	}
+	corruptLeaseLockContent(t, store.SessionLeaseLock(key))
+	if _, err := agent.LoadSessionLeaseInfo(key); err == nil {
+		t.Fatal("orphan identity record should be unreadable after the tear")
+	}
+
+	app := NewApp()
+	// The regular archive refuses: the in-process owner entry blocks the
+	// removal guard (the loop's first half).
+	if err := app.TrashTopic(topicID); !errors.Is(err, agent.ErrSessionLeaseHeld) {
+		t.Fatalf("regular TrashTopic against an unbound orphan = %v, want the lease-held family", err)
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		t.Fatalf("refused archive removed the session: %v", err)
+	}
+
+	// ONE force call: the orphan sweep releases the registered object (its
+	// lock goes with it), discards the entry, and the archive completes. No
+	// second click, no restart, no loop.
+	if err := app.TrashTopicForce(topicID); err != nil {
+		t.Fatalf("TrashTopicForce against an unbound orphan lease: %v", err)
+	}
+	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
+		t.Fatalf("force archive left the session in place: %v", err)
+	}
+	// If any orphan state survived (owner entry or lock handle), this very
+	// reacquire would bounce off it — the loop's exact shape. Success here is
+	// the whole acceptance.
+	reattach, err := agent.TryAcquireSessionLease(sessionPath)
+	if err != nil {
+		t.Fatalf("reacquire after force = %v, want a clean lease state", err)
+	}
+	reattach.Release()
 }

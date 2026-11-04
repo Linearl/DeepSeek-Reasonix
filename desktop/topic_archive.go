@@ -82,7 +82,19 @@ func (a *App) TrashTopicForce(topicID string) error {
 	// runtime; the archive below then still refuses with the self-holder
 	// guidance — a working runtime is never grabbed silently.
 	a.closeTopicTabsForForceArchive(topicID)
-	return friendlySessionFileError(a.trashTopic(topicID, true))
+	err := friendlySessionFileError(a.trashTopic(topicID, true))
+	if err != nil && sessionLeaseHolderIdentityMissing(err) {
+		// tl1392 copy discipline: the user IS inside the force flow — a
+		// refusal that still recommends force loops forever (the package-73
+		// self-referential toast), and a bare restart promise over-delivers
+		// when the boot restore re-acquires the session. Render the after-force
+		// copy: what was swept, what still holds the session, and the steps
+		// that exist (report the log / restart and archive before opening).
+		// Deliberately NOT wrapped in topicArchiveForceableError: the frontend
+		// must not re-offer the button the user just clicked.
+		return &sessionLeaseHeldBusyAfterForceError{cause: err}
+	}
+	return err
 }
 
 // closeTopicTabsForForceArchive closes this window's visible tabs bound to the
@@ -223,6 +235,21 @@ func (a *App) reclaimTopicStaleLeaseHolders(targets []topicTrashTarget) {
 			// refuses with the unidentified-holder copy.
 			forceRetireStaleLeaseRecord(key, holder.info)
 			a.releaseZombieSessionLeaseHoldersForKey(key, nil)
+			// tl1392: the third refusal source no force lever could reach — an
+			// IN-PROCESS orphan (a registry entry, or a live lease object with
+			// no tab binding at all, whose disk record was already torn). The
+			// tab/zombie sweeps above match holders through tabs; an unbound
+			// orphan misses both, so "tear the disk record" succeeded while the
+			// next acquire kept refusing (the package-73 force loop). The
+			// sweep's own evidence discipline (identity missing/torn/pid-less
+			// on disk) decides; a usable holder record is never touched.
+			if cleared, sweepErr := agent.SweepOrphanInProcessSessionLease(key); sweepErr != nil {
+				slog.Warn("desktop: force archive orphan sweep failed",
+					"err", sweepErr)
+			} else if cleared > 0 {
+				slog.Info("desktop: force archive cleared an in-process orphan lease holder",
+					"cleared", cleared)
+			}
 		}
 	}
 }
