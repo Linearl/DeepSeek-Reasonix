@@ -419,6 +419,14 @@ func (t *WorkspaceTab) ensureSessionLease(path string) error {
 		t.sessionLeaseMu.Unlock()
 		return err
 	}
+	// tl1392 boot re-acquire diagnosis: a REAL acquire here means this tab
+	// just took the cross-process lock (a fresh bind — restore after restart,
+	// session switch, failed-lease rebuild). Leases reconfirmed on the same
+	// key never reach the acquire, so the line stays rare and greppable; it
+	// pairs with the acp session/load line to answer "who re-locked this
+	// session after the restart" from desktop.log alone.
+	slog.Info("desktop: session lease acquired on tab bind",
+		"session_base", filepath.Base(key))
 	if hook := sessionLeaseAcquireHookForTest; hook != nil {
 		hook()
 	}

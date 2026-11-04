@@ -289,3 +289,35 @@ func TestTrashTopicForceAfterForceRefusalRendersReportCopy(t *testing.T) {
 		t.Fatalf("failed force removed the session: %v", err)
 	}
 }
+
+// TestTabBindAcquireLeavesDiagnosisLog pins tl1392 acceptance ④: a REAL
+// tab-bind acquire (the boot-restore re-lock source) leaves a greppable Info
+// line, so "who re-acquired this session after the restart" is answerable
+// from desktop.log alone — paired with the acp session/load line for collab
+// sessions. Same-key lease reconfirmation never reaches the acquire, so the
+// line only fires on fresh binds.
+func TestTabBindAcquireLeavesDiagnosisLog(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	logs := captureSlog(t)
+	sessionPath := filepath.Join(config.SessionDir(), "bind-log-probe.jsonl")
+
+	app := NewApp()
+	tab := app.createTabEntryWithID("global", globalTabWorkspaceRoot(), "", "bind-log-probe")
+	t.Cleanup(func() { tab.releaseSessionLease() })
+
+	if err := tab.ensureSessionLease(sessionPath); err != nil {
+		t.Fatalf("ensureSessionLease: %v", err)
+	}
+	if text := logs.String(); !strings.Contains(text, "session lease acquired on tab bind") {
+		t.Fatalf("tab-bind acquire left no diagnosis log line; log = %s", text)
+	}
+
+	// Reconfirmation on the same key must NOT re-log: the line stays rare.
+	logs.Reset()
+	if err := tab.ensureSessionLease(sessionPath); err != nil {
+		t.Fatalf("reconfirmed ensureSessionLease: %v", err)
+	}
+	if text := logs.String(); strings.Contains(text, "session lease acquired on tab bind") {
+		t.Fatal("same-key lease reconfirmation was logged as a fresh acquire")
+	}
+}
