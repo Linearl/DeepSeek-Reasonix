@@ -141,6 +141,25 @@ def parse_handoff(md_path: Path) -> list[dict]:
 # ── spec ────────────────────────────────────────────────────────────────────
 
 
+def resolve_handoff_path(spec: dict, spec_path: Path, override: str | None) -> Path | None:
+    """handoff 路径解析：--handoff 覆盖 > spec.handoff（绝对 / 相对 CWD /
+    相对 spec 所在仓库根，即 spec_path.parents[2]）。找不到返回 None。"""
+    if override:
+        p = Path(override)
+        return p if p.is_file() else None
+    raw = str(spec.get("handoff", "")).strip()
+    if not raw:
+        return None
+    p = Path(raw)
+    if p.is_absolute():
+        return p if p.is_file() else None
+    for base in (Path.cwd(), spec_path.parents[2] if len(spec_path.parents) > 2 else spec_path.parent, spec_path.parent):
+        cand = base / p
+        if cand.is_file():
+            return cand
+    return None
+
+
 def load_spec(path: Path) -> dict:
     spec = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(spec.get("checks"), list) or not spec["checks"]:
@@ -409,11 +428,9 @@ def cmd_run(args) -> int:
     spec = load_spec(spec_path)
     checks: list[dict] = spec["checks"]
 
-    handoff_path = Path(args.handoff) if args.handoff else None
-    if handoff_path is None and spec.get("handoff") and not args.no_handoff:
-        cand = Path(spec["handoff"])
-        if cand.is_file():
-            handoff_path = cand
+    handoff_path = None if args.no_handoff else resolve_handoff_path(spec, spec_path, args.handoff)
+    if not args.no_handoff and not handoff_path and spec.get("handoff"):
+        print(f"[verify_pkg_ui] 注: spec.handoff 未找到（{spec['handoff']}），按仅 spec 模式执行；可用 --handoff 指定")
 
     if handoff_path:
         rows = parse_handoff(handoff_path)
@@ -503,7 +520,7 @@ def cmd_run(args) -> int:
 def cmd_plan(args) -> int:
     spec = load_spec(Path(args.spec))
     checks = spec["checks"]
-    handoff_path = Path(args.handoff) if args.handoff else (Path(spec["handoff"]) if spec.get("handoff") and Path(spec["handoff"]).is_file() else None)
+    handoff_path = resolve_handoff_path(spec, Path(args.spec), args.handoff)
     if handoff_path:
         rows = parse_handoff(handoff_path)
         assigned, unused = match_rows_to_checks(rows, checks)

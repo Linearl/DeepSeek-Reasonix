@@ -1,0 +1,73 @@
+{
+  "package": "v1.38.3-20261103-2358",
+  "handoff": "../../../docs/handoff/fork开发-包71部署安装handoff-20261103.md",
+  "note": "包71 装机后验证点 → CDP 断言清单（tl1382 首例）。handoff 路径相对仓库根；match 关键词对验证表「验证」列做子串匹配。click_text 只允许导航/面板切换类（runner 侧另有危险动作 denylist 兜底）。",
+  "checks": [
+    {
+      "id": "sidebar-css-nowrap",
+      "match": ["侧栏 CSS"],
+      "title": "侧栏行单行守卫（38a82c458）",
+      "kind": "eval",
+      "js": "(() => { const rows = [...document.querySelectorAll('.project-tree__topic-time')]; if (rows.length === 0) return {pass: false, detail: '侧栏行 .project-tree__topic-time 未找到（侧栏未挂载？）'}; const bad = []; for (const el of rows) { const cs = getComputedStyle(el); const ok = cs.whiteSpace === 'nowrap' && cs.overflow === 'hidden' && cs.textOverflow === 'ellipsis'; if (!ok) { bad.push((el.textContent || '').trim().slice(0, 20) + ' [ws=' + cs.whiteSpace + ',of=' + cs.overflow + ',te=' + cs.textOverflow + ']'); } if (bad.length >= 3) break; } return bad.length === 0 ? {pass: true, detail: rows.length + ' 行全部 nowrap+hidden+ellipsis（classic/workbench 两处同族守卫在包71 二进制内生效）'} : {pass: false, detail: bad.length + '/' + rows.length + ' 行未守住单行: ' + bad.join('; ')}; })()",
+      "screenshot": true
+    },
+    {
+      "id": "theme-media-broadsheet",
+      "match": ["tl1343"],
+      "title": "主题第三组「媒体风格」+ Broadsheet Rose（7d820796a）",
+      "kind": "actions",
+      "steps": [
+        {"press": "Escape"},
+        {"press": "Escape"},
+        {"wait_ms": 400},
+        {"press": "Control+,"},
+        {"wait_ms": 1500},
+        {"click_text": {"selector": ".settings-center__navitem", "text": "外观"}},
+        {"wait_ms": 1200}
+      ],
+      "assert_js": "(() => { const names = [...document.querySelectorAll('.theme-gallery-card__name')].map(e => (e.textContent || '').trim()); if (names.length === 0) return {pass: false, detail: '外观 tab 已打开但未找到主题画廊卡片 .theme-gallery-card__name'}; const hit = names.find(n => n.includes('金融时报风')); return hit ? {pass: true, detail: '画廊 ' + names.length + ' 卡含「金融时报风」（媒体风格组已随包71 交付）'} : {pass: false, detail: '画廊 ' + names.length + ' 卡无「金融时报风」: ' + names.slice(0, 12).join('、')}; })()",
+      "screenshot": true
+    },
+    {
+      "id": "recovery-copies-panel",
+      "match": ["tl1368"],
+      "title": "副本面板：死文案收口 +「删除选中对话」按钮（be12db201）",
+      "kind": "actions",
+      "steps": [
+        {"press": "Escape"},
+        {"press": "Escape"},
+        {"wait_ms": 400},
+        {"press": "Control+,"},
+        {"wait_ms": 1500},
+        {"click_text": {"selector": ".settings-center__navitem", "text": "存储与路径"}},
+        {"wait_ms": 1200}
+      ],
+      "assert_js": "(() => { const btns = [...document.querySelectorAll('button')].filter(b => (b.textContent || '').includes('删除选中对话')); if (btns.length === 0) return {pass: false, detail: '存储页未找到「删除选中对话」按钮（tl1368 线2 面板缺失）'}; const b = btns[0]; return {pass: true, detail: '按钮在场（disabled=' + b.disabled + '；未勾选会话时禁用属预期——自动验证只断言在场，不点击）'}; })()",
+      "screenshot": true
+    },
+    {
+      "id": "archive-force-unlock",
+      "match": ["tl1367"],
+      "kind": "manual",
+      "why": "需人为构造残留锁环境（曾报 in use by another window 的会话）才能复现强制归档解锁链；装机态无坏锁时无断言可做。人工按验证表操作列复验：报错须中文+占用进程身份。"
+    },
+    {
+      "id": "pinned-self-heal",
+      "match": ["tl1371"],
+      "kind": "manual",
+      "why": "自愈只发生在「首次读取坏文件」——存量坏文件可能已在包 70→71 过渡被读掉。人工打开曾报 pinned context belongs to session 的会话验证正常加载；辅助读数: desktop.log 检索 selfHeal（或 ui-verify.mjs log）。"
+    },
+    {
+      "id": "screenshot-cursor-screen",
+      "match": ["tl1370"],
+      "kind": "manual",
+      "why": "双屏 + 真 OS 鼠标行为：CDP 注入事件不经过操作系统光标，无法自动化。人工双屏下点截图，确认截鼠标所在屏。"
+    },
+    {
+      "id": "admission-gate-log",
+      "match": ["tl1340"],
+      "kind": "manual",
+      "why": "实验开关 experimental_collab_admission_gate 默认关——默认装机态打开投递日志必无 delivery_decision，自动断言会假 FAIL。人工流程: 配置打开后观察投递日志出现 delivery_decision 结构化字段；开关打开时可改用 log 类断言（patterns=[delivery_decision]）复跑。"
+    }
+  ]
+}
