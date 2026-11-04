@@ -581,6 +581,12 @@ type sessionEventReplay struct {
 	times []time.Time
 	// records counts cleanly applied events.
 	records int
+	// lastRevision is the Revision field of the last cleanly applied record —
+	// the ledger position the log itself encodes. tl1383: the branch-meta
+	// sidecar IS the CAS ledger, so a meta whose revision disagrees with this
+	// value is a wrong-generation sidecar (a promote that moved a fork's meta
+	// under the main name), and reconciliation aligns the meta to it.
+	lastRevision int64
 	// lastGoodEnd is the byte offset just past the last cleanly applied
 	// record; truncating the log here drops only undecodable bytes.
 	lastGoodEnd int64
@@ -713,6 +719,7 @@ func replaySessionEventLogWithContext(ctx context.Context, path string, limits s
 			return replay, fmt.Errorf("decode session event log %s: unsupported event type %q", path, rec.Type)
 		}
 		replay.records++
+		replay.lastRevision = rec.Revision
 		replay.lastGoodEnd = dec.InputOffset()
 	}
 }

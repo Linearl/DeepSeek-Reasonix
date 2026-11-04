@@ -116,6 +116,14 @@ type Controller struct {
 	// forks that split one conversation across copies), so the controller
 	// adopts the disk transcript instead of forking again.
 	lastSnapshotForkAt time.Time
+	// tl1383 追加面：同一冲突指纹（path+kind+base+disk）连续复燃是「账本与
+	// 内容互不相认」的错代形态签名——真分歧的指纹每次保存都会变化。 strikes
+	// 计连续同指纹次数；达到阈值先做一次 meta 身份/账位对齐（具名升级路径，
+	// 不再无限 15s 刷冲突），healedFingerprint 保证每个指纹串只自愈一次，
+	// 自愈不奏效就照旧走 fork/adopt 梯子。
+	conflictFingerprint       string
+	conflictStrikes           int
+	conflictHealedFingerprint string
 	// pendingRecoveryPromotion carries one armed fork promotion (tl1352 A):
 	// the fork isolated the local transcript onto a recovery copy; the copy
 	// folds back onto the main file at a later save cycle once the main file
@@ -225,7 +233,7 @@ type Controller struct {
 	// state compares against. Zero before the first render or when the
 	// model-facing discovery gate hides the directory.
 	contextDirectoryBytes atomic.Int64
-	sessionDir              string
+	sessionDir            string
 	// sessionV4 mirrors transcripts into the experimental v4 store when set.
 	sessionV4 *SessionV4Bridge
 	commands  atomic.Pointer[[]command.Command]
@@ -5270,9 +5278,77 @@ func (c *Controller) markSnapshotFork() {
 	c.lastSnapshotForkAt = time.Now()
 }
 
+// conflictReconcileStrikes is how many consecutive identical conflict
+// fingerprints must fire before the wrong-generation meta reconciliation runs
+// (two strikes = the third identical refusal). Genuine divergence changes the
+// fingerprint on every save — only a ledger/content identity mismatch repeats
+// verbatim — so the threshold stays low, and the per-fingerprint healed mark
+// keeps this a one-shot escalation: if the reconciliation finds nothing to
+// fix, the pre-existing fork/adopt ladder owns the conflict again.
+const conflictReconcileStrikes = 2
+
+// reconcileWrongGenerationMetaOnRepeat is the tl1383 named escalation for a
+// repeating snapshot-conflict fingerprint: after conflictReconcileStrikes
+// identical refusals it aligns the branch-meta sidecar to the session file's
+// disk reality (agent.ReconcileBranchMetaIdentity) once, and on a real
+// reconciliation adopts the disk transcript so the next save starts from the
+// corrected ledger. It never widens what gets recovered: a no-op heal or a
+// failed heal falls back to the existing ladder, and each fingerprint is
+// healed at most once per streak.
+func (c *Controller) reconcileWrongGenerationMetaOnRepeat(path string, saveErr error) bool {
+	kind, _ := agent.SnapshotConflictKind(saveErr)
+	base, disk := snapshotConflictRevisions(saveErr)
+	fingerprint := fmt.Sprintf("%s|%s|%d|%d", path, kind, base, disk)
+	c.mu.Lock()
+	if c.conflictFingerprint != fingerprint {
+		c.conflictFingerprint = fingerprint
+		c.conflictStrikes = 1
+		c.conflictHealedFingerprint = ""
+		c.mu.Unlock()
+		return false
+	}
+	c.conflictStrikes++
+	strikes := c.conflictStrikes
+	alreadyHealed := c.conflictHealedFingerprint == fingerprint
+	c.mu.Unlock()
+	if strikes < conflictReconcileStrikes || alreadyHealed {
+		return false
+	}
+	changed, err := agent.ReconcileBranchMetaIdentity(path)
+	c.mu.Lock()
+	c.conflictHealedFingerprint = fingerprint
+	c.mu.Unlock()
+	if err != nil {
+		slog.Warn("controller: repeated snapshot conflict; wrong-generation meta reconciliation failed; falling back to the recovery ladder",
+			"strikes", strikes, "kind", kind, "base", base, "disk", disk, "err", err)
+		return false
+	}
+	if !changed {
+		slog.Warn("controller: repeated snapshot conflict; meta identity already consistent; falling back to the recovery ladder",
+			"strikes", strikes, "kind", kind, "base", base, "disk", disk)
+		return false
+	}
+	slog.Warn("controller: repeated snapshot conflict healed by reconciling a wrong-generation branch meta; adopting the disk transcript",
+		"strikes", strikes, "kind", kind, "base", base, "disk", disk)
+	appendSnapshotConflictDiagnostic(path, "snapshot", "meta_identity_reconciled", saveErr, "", true)
+	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
+		"the session's save ledger was stuck repeating the same conflict; the on-disk transcript was adopted after repairing its metadata"))
+	if c.adoptDiskSession(path) {
+		return true
+	}
+	return false
+}
+
 func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRewrite bool) (string, conflictOutcome, error) {
 	if c.executor == nil || strings.TrimSpace(path) == "" {
 		return "", conflictDropped, saveErr
+	}
+	// tl1383 追加面：同一冲突指纹连续复燃，先做一次错代 meta 对齐再走既有
+	// 梯子——2026-11-04 9318b1f6 转正事故里 base/disk 指纹每 15s 原样复燃、
+	// persist admission 循环拒绝、会话不可写；真分歧的指纹每次保存都会变化，
+	// 原样复燃几乎总是账本与内容互不相认（转正/改名把别代 meta 搬了进来）。
+	if c.reconcileWrongGenerationMetaOnRepeat(path, saveErr) {
+		return path, conflictAdoptedDisk, nil
 	}
 	mode := "snapshot"
 	if forceRewrite {
