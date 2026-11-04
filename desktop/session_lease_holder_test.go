@@ -220,9 +220,11 @@ func TestSessionLeaseHeldBusyErrorMessageCarriesHolderBlock(t *testing.T) {
 		t.Fatal("errors.As(*agent.SessionLeaseError) failed on the wrapped refusal")
 	}
 
-	// No usable identity: the message degrades to the plain sentinel text.
+	// No usable identity (tl1383): the message renders the leftover copy —
+	// never the "another window" fallback, whose guidance (close the other
+	// window) is unexecutable when nobody can name the holder.
 	bare := (&sessionLeaseHeldBusyError{cause: &agent.SessionLeaseError{Path: "session.jsonl"}}).Error()
-	if bare != errSessionBusyElsewhere.Error() {
-		t.Fatalf("identity-less message = %q, want the plain sentinel %q", bare, errSessionBusyElsewhere.Error())
+	if bare != errSessionBusyUnidentifiedHolder.Error() {
+		t.Fatalf("identity-less message = %q, want the leftover copy %q", bare, errSessionBusyUnidentifiedHolder.Error())
 	}
 }
