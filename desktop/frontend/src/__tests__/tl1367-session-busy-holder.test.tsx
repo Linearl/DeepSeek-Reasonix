@@ -120,7 +120,7 @@ console.log("\ntl1383 ②c identity-missing leftover form renders its own copy (
 
 {
   const { t } = await import("../lib/i18n");
-  const leftoverRaw = "this session's lease is locked by a leftover record whose holder cannot be identified — restart Reasonix to clear it, or use force archive, then retry";
+  const leftoverRaw = "this session's lease is locked by a leftover record whose holder cannot be identified — use force archive to clear the leftover, then retry";
   ok(busy.isSessionBusyError(leftoverRaw), "the leftover sentinel is detected as busy family");
   ok(busy.isSessionBusyError(leftoverRaw.toUpperCase()), "leftover sentinel detection is case-insensitive");
   const rendered = busy.formatSessionBusyError(new Error(leftoverRaw));
@@ -129,6 +129,23 @@ console.log("\ntl1383 ②c identity-missing leftover form renders its own copy (
   // 带机器前缀的形态（单条归档链）同样命中。
   const prefixed = busy.formatSessionBusyError(new Error("reasonix_error:topic_archive_forceable: " + leftoverRaw));
   eq(prefixed, t("sessionBusy.leftover"), "the forceable-prefixed leftover form renders the leftover copy");
+}
+
+// ── ②d tl1392：force 之后的拒绝走 after-force 文案，绝不再建议 force ────────
+// 包 73 实测死循环：用户正处在强制归档流程里，拒绝文案却再次建议「使用强制
+// 归档」。after-force sentinel 必须先于 leftover stem 匹配，渲染专属反馈文案
+// （附 desktop.log），永不落回 leftover（会再次建议 force）。
+console.log("\ntl1392 ②d after-force refusal renders the report copy (lib behaviour)");
+
+{
+  const { t } = await import("../lib/i18n");
+  const afterForceRaw = "force archive cleared the leftover lease records, but this session is still held inside this Reasonix window by an unidentified holder — attach desktop.log and report this, or restart Reasonix and archive before the session opens";
+  ok(busy.isSessionBusyError(afterForceRaw), "the after-force sentinel is detected as busy family");
+  const rendered = busy.formatSessionBusyError(new Error(afterForceRaw));
+  eq(rendered, t("sessionBusy.leftoverAfterForce"), "the after-force form renders the sessionBusy.leftoverAfterForce copy");
+  ok(rendered !== t("sessionBusy.leftover"), "the after-force form never falls back to the leftover copy (which recommends force again)");
+  ok(!t("sessionBusy.leftoverAfterForce").toLowerCase().includes("use force archive"), "the after-force copy never recommends force");
+  ok(t("sessionBusy.leftover").toLowerCase().includes("force archive"), "the regular leftover copy still names the force repair");
 }
 
 // ── ③ trashSession 预检门（controller 挂载行为） ────────────────────────────

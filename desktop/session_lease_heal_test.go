@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"reasonix/internal/agent"
@@ -197,5 +198,126 @@ func TestHealUnidentifiedLeaseHolderNeverGrabsLiveLock(t *testing.T) {
 	// The live lease is untouched and still held by this process.
 	if !agent.SessionLeaseHeldByCurrentRuntime(sessionPath) {
 		t.Fatal("live lease lost its active ownership after a refused heal")
+	}
+}
+
+// TestLeaseBusyCopyThreeFormContract pins the tl1392 copy discipline across
+// the three refusal shapes a user can land in:
+//
+//  1. the regular identity-missing refusal names force archive (the repair
+//     that exists) and no longer promises the restart — restart only provably
+//     clears the disk-residue shapes, which keep their own copy (zombie);
+//  2. the zombie (disk-residue) copy keeps the restart recommendation;
+//  3. the after-force copy never recommends force again (the user is already
+//     inside the force flow — the package-73 self-referential loop) and names
+//     the report-a-log path instead.
+func TestLeaseBusyCopyThreeFormContract(t *testing.T) {
+	regular := errSessionBusyUnidentifiedHolder.Error()
+	if !strings.Contains(regular, "use force archive") {
+		t.Fatalf("regular unidentified-holder copy lost the force repair: %s", regular)
+	}
+	if strings.Contains(regular, "restart Reasonix") {
+		t.Fatalf("regular unidentified-holder copy still promises a restart (restart only provably clears disk residue): %s", regular)
+	}
+
+	zombie := errSessionBusyZombie.Error()
+	if !strings.Contains(zombie, "restart Reasonix") {
+		t.Fatalf("disk-residue (zombie) copy lost the restart repair: %s", zombie)
+	}
+
+	afterForce := errSessionBusyUnidentifiedHolderAfterForce.Error()
+	if strings.Contains(strings.ToLower(afterForce), "use force archive") {
+		t.Fatalf("after-force copy recommends force again (self-referential loop): %s", afterForce)
+	}
+	if !strings.Contains(afterForce, "desktop.log") {
+		t.Fatalf("after-force copy lost the report-a-log path: %s", afterForce)
+	}
+	if !strings.Contains(afterForce, "force archive cleared") {
+		t.Fatalf("after-force copy lost its FE sentinel stem (sessionBusyError.ts matches it): %s", afterForce)
+	}
+}
+
+// TestTrashTopicForceAfterForceRefusalRendersReportCopy is the after-force
+// acceptance ②: when a force archive still refuses in the identity-missing
+// form (here: a REAL cross-process holder whose identity record was torn —
+// nothing force may grab), the returned error carries the after-force copy,
+// stays in the lease-held family for logs, and is NOT marked forceable (the
+// frontend must not re-offer the button the user just clicked).
+func TestTrashTopicForceAfterForceRefusalRendersReportCopy(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	topicID := "topic_force_after_force_copy"
+	sessionPath := stageForceArchiveTopic(t, "force-after.jsonl", topicID, "Force after copy")
+
+	releaseHolder := spawnForeignLeaseHolder(t, sessionPath)
+	key := sessionRuntimeKey(sessionPath)
+	// Corrupt the holder's identity records IN PLACE (the lock-file path stays
+	// live and genuinely locked — nothing force may grab). Deleting the lock
+	// file would rebuild the namespace entry and bypass the stale lock; the
+	// corrupt form keeps every refusal on the identity-missing branch while
+	// the lock take keeps failing — the shape that survives force and lands in
+	// the after-force copy.
+	corruptLeaseLockContent(t, store.SessionLeaseLock(key))
+	_ = os.Remove(store.SessionLeaseInfo(key))
+
+	app := NewApp()
+	forceErr := app.TrashTopicForce(topicID)
+	if forceErr == nil {
+		releaseHolder()
+		t.Fatal("force archive must not succeed against a live external holder")
+	}
+	defer releaseHolder()
+
+	if !errors.Is(forceErr, errSessionBusyUnidentifiedHolderAfterForce) {
+		t.Fatalf("after-force refusal = %v, want the after-force sentinel", forceErr)
+	}
+	if !errors.Is(forceErr, agent.ErrSessionLeaseHeld) {
+		t.Fatalf("after-force refusal lost the lease-held chain: %v", forceErr)
+	}
+	if text := forceErr.Error(); strings.Contains(strings.ToLower(text), "use force archive") {
+		t.Fatalf("after-force refusal recommends force again: %s", text)
+	}
+	if strings.HasPrefix(forceErr.Error(), topicArchiveForceablePrefix) {
+		t.Fatal("after-force refusal must not be marked forceable — the user just clicked force")
+	}
+	// Nothing was grabbed: the external holder's lock still blocks the session
+	// (InspectSessionLease reads corrupt here by design — the identity was
+	// torn in place — so the busy probe is the lock's honest verdict).
+	if !agent.SessionLeaseHeldByOtherRuntime(sessionPath) {
+		t.Fatal("holder lock disturbed by force: the session no longer reports busy")
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		t.Fatalf("failed force removed the session: %v", err)
+	}
+}
+
+// TestTabBindAcquireLeavesDiagnosisLog pins tl1392 acceptance ④: a REAL
+// tab-bind acquire (the boot-restore re-lock source) leaves a greppable Info
+// line, so "who re-acquired this session after the restart" is answerable
+// from desktop.log alone — paired with the acp session/load line for collab
+// sessions. Same-key lease reconfirmation never reaches the acquire, so the
+// line only fires on fresh binds.
+func TestTabBindAcquireLeavesDiagnosisLog(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	logs := captureSlog(t)
+	sessionPath := filepath.Join(config.SessionDir(), "bind-log-probe.jsonl")
+
+	app := NewApp()
+	tab := app.createTabEntryWithID("global", globalTabWorkspaceRoot(), "", "bind-log-probe")
+	t.Cleanup(func() { tab.releaseSessionLease() })
+
+	if err := tab.ensureSessionLease(sessionPath); err != nil {
+		t.Fatalf("ensureSessionLease: %v", err)
+	}
+	if text := logs.String(); !strings.Contains(text, "session lease acquired on tab bind") {
+		t.Fatalf("tab-bind acquire left no diagnosis log line; log = %s", text)
+	}
+
+	// Reconfirmation on the same key must NOT re-log: the line stays rare.
+	logs.Reset()
+	if err := tab.ensureSessionLease(sessionPath); err != nil {
+		t.Fatalf("reconfirmed ensureSessionLease: %v", err)
+	}
+	if text := logs.String(); strings.Contains(text, "session lease acquired on tab bind") {
+		t.Fatal("same-key lease reconfirmation was logged as a fresh acquire")
 	}
 }

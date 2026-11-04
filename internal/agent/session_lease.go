@@ -33,6 +33,55 @@ var (
 	sessionLeaseSeq          atomic.Uint64
 )
 
+// sessionLeaseLiveLeases tracks every live *SessionLease this process holds,
+// keyed by canonical session path. tl1392: a lease whose desktop-layer binding
+// was lost (a tab closed without release, a collab bridge drop) used to be
+// unreachable to force-archive repair — its in-process owner entry and its OS
+// lock handle both survived with nothing left able to name them, so every
+// re-acquire bounced off the registry entry while the disk said "no holder".
+// The registry gives the orphan sweep (SweepOrphanInProcessSessionLease) a
+// real handle to release exactly the object that blocks the session.
+var sessionLeaseLiveLeases sync.Map
+
+// registerSessionLeaseLive publishes l as the live lease for its path. The
+// acquire paths call it right before returning the lease; the last writer of
+// a path wins (a reclaim overwrites a stale predecessor whose lock it already
+// proved dead).
+func registerSessionLeaseLive(l *SessionLease) {
+	if l == nil || l.path == "" {
+		return
+	}
+	sessionLeaseLiveLeases.Store(l.path, l)
+}
+
+// unregisterSessionLeaseLive retires l's registration, but only while it is
+// still the registered lease for the path — a successor (reclaim/handoff
+// takeover) must never be unregistered by a stale predecessor's teardown.
+func unregisterSessionLeaseLive(l *SessionLease) {
+	if l == nil {
+		return
+	}
+	if cur, ok := sessionLeaseLiveLeases.Load(l.path); ok && cur == l {
+		sessionLeaseLiveLeases.Delete(l.path)
+	}
+}
+
+// liveSessionLeaseFor returns the registered lease for path, skipping entries
+// whose release has already begun. It never invents a lease from the owner
+// map: only objects this process actually acquired and has not released are
+// returned.
+func liveSessionLeaseFor(path string) *SessionLease {
+	cur, ok := sessionLeaseLiveLeases.Load(path)
+	if !ok {
+		return nil
+	}
+	lease, _ := cur.(*SessionLease)
+	if lease == nil || lease.Released() {
+		return nil
+	}
+	return lease
+}
+
 type SessionLeaseInfo struct {
 	SessionPath      string    `json:"session_path"`
 	WriterID         string    `json:"writer_id"`
@@ -222,6 +271,7 @@ func TryAcquireSessionLease(path string) (*SessionLease, error) {
 		return nil, err
 	}
 	sessionLeaseActiveOwners.Store(path, ownerID)
+	registerSessionLeaseLive(lease)
 	return lease, nil
 }
 
@@ -279,6 +329,7 @@ func TryReclaimCurrentProcessSessionLease(path string) (*SessionLease, error) {
 		return nil, err
 	}
 	sessionLeaseActiveOwners.Store(path, ownerID)
+	registerSessionLeaseLive(lease)
 	return lease, nil
 }
 
@@ -386,6 +437,93 @@ func ClearStaleSessionLeaseInfo(path string) (bool, error) {
 	_ = os.Remove(sessionLeaseInfoPath(path))
 	_ = leaseLock.RemoveAndUnlock()
 	return true, nil
+}
+
+// SweepOrphanInProcessSessionLease clears the tl1392 orphan form: an in-process
+// owner entry (and possibly a live-but-unbound lease object) that survived its
+// own disk record. Evidence discipline: the sweep only fires when the lease
+// identity on disk is missing, torn, or pid-less — a healthy holder publishes
+// and keeps its identity present for its whole hold, so "the disk record is
+// gone while this process still books the path" is residue by definition and
+// clearing it is as legitimate as retiring the stale disk record itself.
+//
+// Two residue halves are cleared, in lock-arbiter order:
+//
+//  1. A live lease object registered for the path (sessionLeaseLiveLeases) is
+//     released through the normal Release path — the save-drain included, so
+//     an in-flight authority-guarded save can never be revoked mid-write.
+//     Only registered objects are released; nothing is invented from the
+//     owner map alone. This is the half that reclaim cannot reach: the
+//     object's OS lock keeps TryReclaimCurrentProcessSessionLease failing
+//     forever while the disk record it tore away no longer names it.
+//  2. The owner-map entry is discarded only while this sweep holds the OS
+//     lock (the same verify-free-then-act arbitration
+//     ClearStaleSessionLeaseInfo uses), so a genuinely held session is never
+//     stripped and a pending acquire attempt keeps cleaning up after itself.
+//
+// The window where this can touch a fresh acquisition is the microseconds
+// between an acquire's lock take and its identity publish; the released
+// acquirer then fails its attempt with ErrSessionLeaseHeld and retries, which
+// is strictly better than the orphan wedging every acquire forever. A refusal
+// is not an error: a record naming a usable holder (or a lock that stays held
+// with no registered object to release) returns cleared=0 and the caller
+// keeps its normal refusal path.
+func SweepOrphanInProcessSessionLease(path string) (cleared int, err error) {
+	path = canonicalSessionSavePath(path)
+	if strings.TrimSpace(path) == "" {
+		return 0, fmt.Errorf("empty session path")
+	}
+	info, infoErr := LoadSessionLeaseInfo(path)
+	switch {
+	case infoErr == nil && info != nil && info.PID > 0:
+		// A usable holder identity on disk: not an orphan. Even a self-named
+		// record means some runtime published it — the sweep has no say here.
+		return 0, nil
+	case infoErr == nil:
+		// A pid-less record: identity residue (the tl1383 holder_class=unknown
+		// pid=0 family). Evidence stands; the lock arbiter below decides.
+	case os.IsNotExist(infoErr), errors.Is(infoErr, errSessionLeaseInfoCorrupt):
+		// Missing or torn record: the residue evidence itself.
+	default:
+		// Unreadable record (permission damage, ...): identity hidden. The
+		// lock arbiter below keeps any live holder protected anyway.
+	}
+
+	// Half 1: release the registered-but-unbound object. Release is
+	// synchronous, so its OS lock is gone by the time it returns and the lock
+	// take below can proceed.
+	if lease := liveSessionLeaseFor(path); lease != nil {
+		lease.Release()
+		cleared++
+		slog.Info("session: orphan sweep released an unbound in-process lease holder",
+			"session_base", filepath.Base(path), "owner_generation", lease.ownerID)
+	}
+
+	// Half 2: discard the leftover owner entry while the lock is provably
+	// free. A lock still held with nothing registered to release names a
+	// holder this process cannot identify (another process, or a leaked
+	// handle from before the registry existed): leave it and report what was
+	// cleared so far.
+	leaseLock, lockErr := tryTakeSessionLeaseLock(path)
+	if lockErr != nil {
+		return cleared, nil
+	}
+	if cur, ok := sessionLeaseOwners.Load(path); ok {
+		if sessionLeaseOwners.CompareAndDelete(path, cur) {
+			cleared++
+		}
+	}
+	// Holding the lock proves no active owner exists; a stale active entry is
+	// residue by the same proof.
+	sessionLeaseActiveOwners.Delete(path)
+	// Remove the probe-created (empty) lock file with the lock held so the
+	// identity probe cannot keep reading a torn ghost record.
+	_ = leaseLock.RemoveAndUnlock()
+	if cleared > 0 {
+		slog.Info("session: orphan sweep discarded the leftover in-process lease owner entry",
+			"session_base", filepath.Base(path))
+	}
+	return cleared, nil
 }
 
 // InspectSessionLease reports the published owner and whether the OS lock is
@@ -514,6 +652,7 @@ func (l *SessionLease) ReleaseForHandoff(targetWriterID, handoffID string) error
 	leaseLock := l.leaseLock
 	l.leaseLock = nil
 	l.mu.Unlock()
+	unregisterSessionLeaseLive(l)
 
 	sessionLeaseActiveOwners.CompareAndDelete(l.path, l.ownerID)
 	sessionLeaseOwners.CompareAndDelete(l.path, l.ownerID)
@@ -563,6 +702,7 @@ func TryAcquireSessionLeaseWithHandoff(path, sourceWriterID, handoffID string) (
 		return nil, err
 	}
 	sessionLeaseActiveOwners.Store(path, ownerID)
+	registerSessionLeaseLive(lease)
 	_ = os.Remove(sessionLeaseInfoPath(path))
 	return lease, nil
 }
@@ -622,6 +762,7 @@ func (l *SessionLease) Release() {
 	l.leaseLock = nil
 	beforeReleaseLock := l.beforeReleaseLock
 	l.mu.Unlock()
+	unregisterSessionLeaseLive(l)
 	if waited := time.Since(releaseWaitStart); waited >= sessionSaveLockWarnWait {
 		slog.Warn("session: lease release waited for in-flight saves",
 			"path", l.path, "wait_ms", waited.Milliseconds(), "active_saves", lastActiveSaves)

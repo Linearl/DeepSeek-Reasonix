@@ -39,11 +39,20 @@ const BUSY_SENTINELS = [
   // tl1383: the identity-missing leftover form — the holder cannot be named,
   // so it gets its own localized copy instead of the "another window" one.
   "this session's lease is locked by a leftover record whose holder cannot be identified",
+  // tl1392: the refusal that SURVIVES a force archive — force already ran, so
+  // this copy never recommends force again.
+  "force archive cleared the leftover lease records",
 ] as const;
 
 /** The tl1383 leftover sentinel stem, recognized before the generic unknown
  * copy so an unidentifiable-holder refusal never reads as "another window". */
 const LEFTOVER_SENTINEL = "leftover record whose holder cannot be identified";
+
+/** The tl1392 after-force sentinel stem: matched BEFORE the plain leftover
+ * stem so a still-refusing force archive gets the report-a-log copy, never a
+ * second "use force archive" recommendation (the package-73 self-referential
+ * loop). */
+const LEFTOVER_AFTER_FORCE_SENTINEL = "force archive cleared the leftover lease records";
 
 export function parseSessionBusyHolder(raw: string): SessionBusyHolder | null {
   const match = HOLDER_BLOCK.exec(raw);
@@ -104,7 +113,13 @@ export function formatSessionBusyError(error: unknown): string {
     }
     // tl1383: the identity-missing leftover form carries no holder block, so
     // it lands here — render its own copy, never the "another window" one.
-    if (raw.toLowerCase().includes(LEFTOVER_SENTINEL)) {
+    // tl1392: the after-force form is matched first so a refusal that survived
+    // force archive never reads as "use force archive again".
+    const lowerRaw = raw.toLowerCase();
+    if (lowerRaw.includes(LEFTOVER_AFTER_FORCE_SENTINEL)) {
+      return t("sessionBusy.leftoverAfterForce");
+    }
+    if (lowerRaw.includes(LEFTOVER_SENTINEL)) {
       return t("sessionBusy.leftover");
     }
     return t("sessionBusy.unknown");

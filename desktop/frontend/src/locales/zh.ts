@@ -5660,7 +5660,8 @@ export const zh: Record<DictKey, string> = {
   "sessionBusy.reused": "该会话的残留锁记录指向 pid {pid}，该编号现已被其他程序{proc}占用。强制归档可清除残留记录，然后重试。",
   "sessionBusy.unknown": "该会话正被另一个 Reasonix 窗口或进程占用——请先关闭该窗口（或退出另一实例），再重试。",
   // tl1383: 身份缺失残留形态——持有者不可识别，绝不误导「另一窗口」
-  "sessionBusy.leftover": "该会话的租约被一条无法识别持有者的残留记录锁定——重启 Reasonix 可清除残留，或使用强制归档，然后重试。",
+  "sessionBusy.leftover": "该会话的租约被一条无法识别持有者的残留记录锁定——使用强制归档清除残留，然后重试。",
+  "sessionBusy.leftoverAfterForce": "强制归档已清除残留租约记录，但该会话仍被本 Reasonix 窗口内一个无法识别的持有者占用——请附 desktop.log 反馈此问题；若仍未解决，请重启 Reasonix 并在会话未打开的状态下归档。",
   "projectTree.sessionOccupiedConfirm": "该会话当前正被占用：\n{reason}\n\n现在归档会被拒绝。继续将先尝试正常归档；若失败会引导强制归档（自动接管残留锁）。是否继续？",
   // tl1240 侧栏批量管理态
   "projectTree.batchManage": "批量管理",

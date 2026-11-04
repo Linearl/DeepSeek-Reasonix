@@ -1014,6 +1014,13 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam 
 		ctrl.Close()
 		return SessionConfigState{}, sessionLeaseBindError(method, leaseErr)
 	}
+	// tl1392 boot re-acquire diagnosis: session/load is the collab bridge's
+	// boot-time restore — after an app restart this is who re-locks a
+	// transcript the user believes restart had freed, so an archive right
+	// after restart hits the lease again. The Info line makes that source
+	// greppable (paired with the desktop tab-bind log) instead of a mystery.
+	slog.Info("acp: session lease acquired on collaboration session load",
+		"session_base", filepath.Base(path), "method", method)
 	loaded, err := agent.LoadSession(path)
 	if err != nil {
 		lease.Release()

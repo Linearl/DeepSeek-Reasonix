@@ -5656,7 +5656,8 @@ export const zhTW: Record<DictKey, string> = {
   "sessionBusy.reused": "該工作階段的殘留鎖記錄指向 pid {pid}，該編號現已被其他程序{proc}佔用。強制歸檔可清除殘留記錄，然後重試。",
   "sessionBusy.unknown": "該工作階段正被另一個 Reasonix 視窗或程序佔用——請先關閉該視窗（或結束另一實例），再重試。",
   // tl1383: 身份缺失殘留形態——持有者不可識別，絕不誤導「另一視窗」
-  "sessionBusy.leftover": "該工作階段的租約被一條無法識別持有者的殘留記錄鎖定——重啟 Reasonix 可清除殘留，或使用強制歸檔，然後重試。",
+  "sessionBusy.leftover": "該工作階段的租約被一條無法識別持有者的殘留記錄鎖定——使用強制歸檔清除殘留，然後重試。",
+  "sessionBusy.leftoverAfterForce": "強制歸檔已清除殘留租約記錄，但該工作階段仍被本 Reasonix 視窗內一個無法識別的持有者佔用——請附 desktop.log 回報此問題；若仍未解決，請重啟 Reasonix 並在工作階段未開啟的狀態下歸檔。",
   "projectTree.sessionOccupiedConfirm": "該工作階段目前正被佔用：\n{reason}\n\n現在歸檔會被拒絕。繼續將先嘗試正常歸檔；若失敗會引導強制歸檔（自動接管殘留鎖）。是否繼續？",
   // tl1240 側欄批量管理態
   "projectTree.batchManage": "批量管理",
