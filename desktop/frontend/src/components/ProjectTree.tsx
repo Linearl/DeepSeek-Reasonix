@@ -20,6 +20,7 @@ import { useT, type Translator } from "../lib/i18n";
 import { requestTopicVersions } from "../lib/sessionRecoveryVersionHostBridge";
 import { PROJECT_COLOR_OPTIONS, projectColorValue, type ProjectColorKey, type ProjectColorOption } from "../lib/projectColors";
 import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, projectTreeWithoutTopics, isTopicArchiveForceableError, reloadProjectTreeTopics, useProjectTreeArchiveController, type ProjectTreeRefresh, type ProjectTreeRefreshOptions } from "../lib/projectTreeArchive";
+import { runProjectTreeReload } from "../lib/projectTreeReload";
 // tl1240: sidebar batch manage mode (multi-select → one-call batch archive/move).
 import { batchEntryForNode, batchSelectionAfterArchive, collectBatchTopics, singleBatchTarget, summarizeBatchMove, summarizeBatchTopicArchive, type BatchReportState, type BatchTopicEntry } from "../lib/projectTreeBatch";
 import { ProjectTreeBatchBar } from "./ProjectTreeBatchBar";
@@ -1524,24 +1525,18 @@ export function ProjectTree({
     }
   };
 
-  // tl1363（用户 20261102 拍板）：手动「重载会话列表」——后端一次对账（清零绑定
-  // 影子条目 + 同步注册投影 + 重挂活会话 + 发 reason="metadata" v2 事件），随后
-  // 本文件夹做一次权威全量重拉（full=true replace 合并丢弃驻留残行，无需重启/
-  // 折叠展开）。后端失败不阻断重拉：残留行仍可见且错误可见，重载语义保持可重试。
-  const reloadSessions = async (menuScope: string, workspaceRoot: string, folderKey: string) => {
-    let removed = 0;
-    try {
-      const result = await app.ReloadProjectTreeSessions?.(menuScope, workspaceRoot);
-      removed = result?.removedTopicIds?.length ?? 0;
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
-    }
-    await refresh({
-      reloadTopicKeys: folderKey ? [folderKey] : undefined,
-      reloadAllTopics: !folderKey,
+  // tl1363（用户 20261102 拍板）：手动「重载会话列表」——调用链收口在
+  // lib/projectTreeReload（行为钉在 __tests__/tl1363-reload-session-list.test.tsx）。
+  const reloadSessions = (menuScope: string, workspaceRoot: string, folderKey: string) =>
+    runProjectTreeReload({
+      bindings: app,
+      scope: menuScope,
+      workspaceRoot,
+      folderKey,
+      refresh,
+      showToast,
+      t,
     });
-    if (removed > 0) showToast(t("projectTree.reloadSessionsDone", { n: removed }), "info", { durationMs: 4000 });
-  };
 
   const visibleTree = useMemo(() => {
     const q = query.trim().toLowerCase();
