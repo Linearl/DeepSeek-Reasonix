@@ -63,6 +63,18 @@ export interface ProjectTreeChangedV2 {
   reason: string;
 }
 
+/** desktop/project_tree_reload.go ProjectTreeReloadResult 的 TS 镜像（tl1363）：
+ * 手动「重载会话列表」的回执——扫除了哪些影子条目、保护了多少条、几个目录
+ * 重挂对账。 */
+export interface ProjectTreeReloadResult {
+  scope: string;
+  workspaceRoot?: string;
+  removedTopicIds: string[];
+  skippedPinned: number;
+  skippedReferenced: number;
+  reconciledDirs: number;
+}
+
 export interface ProjectRuntimeTopic {
   scope: "global" | "project" | string;
   workspaceRoot?: string;
@@ -98,6 +110,10 @@ export interface SessionCatalogBindings {
   GetTopicSummary(key: ProjectTopicKey): Promise<ProjectNode>;
   GetSessionCatalogStatus(): Promise<SessionCatalogStatus>;
   RebuildSessionCatalog(): Promise<void>;
+  /** tl1363（用户 20261102 拍板）：手动「重载会话列表」——清零绑定影子条目
+   *  + 同步注册投影 + 重挂活会话 + 发 reason="metadata" v2 事件。可选：老
+   *  mock/浏览器开发面没有该方法，调用点 typeof 守卫，失败照常全量重拉。 */
+  ReloadProjectTreeSessions?(scope: string, workspaceRoot: string): Promise<ProjectTreeReloadResult>;
   /** desktop topic inventory 对账（desktop/topic_inventory.go）。可选方法：
    *  wails 生成物已含这两个绑定，TS 侧声明此前缺失，bridge.ts 的
    *  _CheckGenToApp 自检（AssertNever<Exclude<GeneratedAppKeys, keyof AppBindings>>）

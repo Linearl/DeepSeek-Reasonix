@@ -1524,6 +1524,25 @@ export function ProjectTree({
     }
   };
 
+  // tl1363（用户 20261102 拍板）：手动「重载会话列表」——后端一次对账（清零绑定
+  // 影子条目 + 同步注册投影 + 重挂活会话 + 发 reason="metadata" v2 事件），随后
+  // 本文件夹做一次权威全量重拉（full=true replace 合并丢弃驻留残行，无需重启/
+  // 折叠展开）。后端失败不阻断重拉：残留行仍可见且错误可见，重载语义保持可重试。
+  const reloadSessions = async (menuScope: string, workspaceRoot: string, folderKey: string) => {
+    let removed = 0;
+    try {
+      const result = await app.ReloadProjectTreeSessions?.(menuScope, workspaceRoot);
+      removed = result?.removedTopicIds?.length ?? 0;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), "error");
+    }
+    await refresh({
+      reloadTopicKeys: folderKey ? [folderKey] : undefined,
+      reloadAllTopics: !folderKey,
+    });
+    if (removed > 0) showToast(t("projectTree.reloadSessionsDone", { n: removed }), "info", { durationMs: 4000 });
+  };
+
   const visibleTree = useMemo(() => {
     const q = query.trim().toLowerCase();
     // Time filter: compute cutoff timestamp.
@@ -2511,6 +2530,19 @@ export function ProjectTree({
         })),
       },
       { type: "separator" as const, key: "path-separator" },
+      {
+        // tl1363（用户 20261102 拍板）：「重载会话列表」在「复制路径」正上方——
+        // 后台归档（如 Heartbeat 一次性会话轮换）摘掉 sidecar 引用后，应用此前
+        // 只能靠重启收敛侧栏残留。点击=本 scope 一次对账（清零绑定影子条目 +
+        // 重挂活会话）+ 本文件夹权威全量重拉。
+        key: "reload-sessions",
+        icon: <ListRestart size={13} />,
+        label: t("projectTree.reloadSessions"),
+        onSelect: () => {
+          void reloadSessions(scope, scope === "global" ? "" : projectPath, key);
+          closeMenu();
+        },
+      },
       {
         key: "copy-path",
         icon: <Copy size={13} />,
