@@ -40,7 +40,7 @@ type todoItem struct {
 func (todoWrite) Name() string { return "todo_write" }
 
 func (todoWrite) Description() string {
-	return "Record and update a structured task list for the current work. Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read; send the COMPLETE `todos` list only for a wholesale rewrite. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time, and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Deeper nesting (task 152): give a sub-step `parent_id` = the parent's step_id to build a tree (T1 / T1.1 / T1.1.1 — a parent may be signed off only once every subtask under it is finished, abandoned, or archived). Statuses: pending | in_progress | completed, plus abandoned (you are giving this item up — say so instead of leaving it dangling) and archived (a completed item kept for the record; only completed items may be archived). Each item has `content` (imperative, e.g. \"Add the parser\"), `status`, `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), optional `parent_id`, and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one."
+	return "Record and update a structured task list for the current work. Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read; send the COMPLETE `todos` list only for a wholesale rewrite. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time — the FIRST unfinished item, in the shape [completed, in_progress, pending] (if it lands behind pending work the host auto-reorders instead of rejecting, but send the correct order) — and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Deeper nesting (task 152): give a sub-step `parent_id` = the parent's step_id to build a tree (T1 / T1.1 / T1.1.1 — a parent may be signed off only once every subtask under it is finished, abandoned, or archived). Statuses: pending | in_progress | completed, plus abandoned (you are giving this item up — say so instead of leaving it dangling) and archived (a completed item kept for the record; only completed items may be archived). Each item has `content` (imperative, e.g. \"Add the parser\"), `status`, `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), optional `parent_id`, and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one."
 }
 
 func (todoWrite) Schema() json.RawMessage {
@@ -54,7 +54,7 @@ func (todoWrite) Schema() json.RawMessage {
       "type":"object",
       "properties":{
         "content":{"type":"string","description":"Imperative description of the task."},
-        "status":{"type":"string","enum":["pending","in_progress","completed","abandoned","archived"],"description":"Task state. Keep at most one in_progress. abandoned = you are giving this item up; archived = completed work kept for the record (only completed items may be archived)."},
+        "status":{"type":"string","enum":["pending","in_progress","completed","abandoned","archived"],"description":"Task state. Keep at most one in_progress, and it must be the FIRST unfinished item (shape: [completed, in_progress, pending]); if it lands behind pending work the host auto-reorders instead of rejecting, but send the correct order. abandoned = you are giving this item up; archived = completed work kept for the record (only completed items may be archived)."},
         "activeForm":{"type":"string","description":"Present-continuous form shown while the task is in progress (e.g. \"Running tests\")."},
         "level":{"type":"integer","enum":[0,1],"description":"Nesting level: 0 = phase/milestone, 1 = a sub-step of the phase above it. Omit for a flat list."},
         "parent_id":{"type":"string","description":"Task 152 tree: step_id of this item's parent task. The parent must appear earlier in the list. Build T1/T1.1/T1.1.1 hierarchies for stage→substep work; a parent may be completed or archived only after every subtask under it is finished, abandoned, or archived. A child must come after its parent."},
@@ -84,7 +84,7 @@ func (todoWrite) Schema() json.RawMessage {
       "required":["op"]
     }
   },
-  "plan_id":{"type":"string","description":"Optional plan marker (task 972). Send a NEW value when you start a different plan — the host then treats the write as a wholesale replacement and archives the old plan, instead of rejecting your new items as invented. Re-send the SAME value (or omit it) while working inside the current plan, where completed items are preserved and never invented. The host echoes the current plan marker back in todo_read."}
+  "plan_id":{"type":"string","description":"Optional plan marker (task 972). DESTRUCTIVE: sending a NEW value archives the ENTIRE current plan — the old list is closed out and the user's todo panel switches to a sealed/archived view (the active panel empties, which reads as data loss to the user). Never send a turn id, timestamp, or invented marker as plan_id; each unintended new value seals the user's visible plan. Send a NEW value ONLY when you genuinely start a different plan: the write is then treated as a wholesale replacement (old plan archived, not rejected as invented). If you switched by mistake, recover immediately: re-send the ORIGINAL full list with its ORIGINAL plan_id (todo_read echoes the current marker). Re-send the SAME value (or omit it) while working inside the current plan, where completed items are preserved and never invented."}
 }
 }`)
 }
@@ -161,14 +161,26 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 			return "", fmt.Errorf("todo %d: invalid status %q (want pending|in_progress|completed|abandoned|archived)", i+1, t.Status)
 		}
 	}
-	if err := evidence.ValidateSerialTodos(toEvidenceTodos(p.Todos)); err != nil {
-		// Task 23 P0-a: attach the host's current plan so a rejected write can be
-		// repaired without guessing (upstream #10023). The rule text alone left
-		// the model retrying the same invalid list.
-		if snapshot := todoPlanSnapshot(previous); snapshot != "" {
-			return "", fmt.Errorf("%w.%s", err, snapshot)
+	// tl1354: the "current item must be the first unfinished item" ordering slip
+	// is the one failure the host repairs instead of rejecting — the agent used
+	// to have to decode the rule text and retry (two same-day incidents). Every
+	// other validation failure still rejects below; RepairSerialTodoCurrentOrder
+	// only reorders, it never invents, promotes, or drops an item.
+	reordered := false
+	evTodos := toEvidenceTodos(p.Todos)
+	if err := evidence.ValidateSerialTodos(evTodos); err != nil {
+		repaired, ok := evidence.RepairSerialTodoCurrentOrder(evTodos)
+		if !ok {
+			// Task 23 P0-a: attach the host's current plan so a rejected write can be
+			// repaired without guessing (upstream #10023). The rule text alone left
+			// the model retrying the same invalid list.
+			if snapshot := todoPlanSnapshot(previous); snapshot != "" {
+				return "", fmt.Errorf("%w.%s", err, snapshot)
+			}
+			return "", err
 		}
-		return "", err
+		p.Todos = fromEvidenceTodos(repaired)
+		reordered = true
 	}
 	if err := verifyUniqueStepIDs(p.Todos); err != nil {
 		return "", err
@@ -197,7 +209,14 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 		ack += fmt.Sprintf(" %d abandoned (given up; kept in the list as a record).", dropped)
 	}
 	if planSwitched {
-		ack += fmt.Sprintf(" 计划已切换，旧计划 %d 项已归档。", len(previous))
+		// tl1354: the archive is user-visible (the active panel seals), so the
+		// ack must carry the recovery path — a mistaken switch (e.g. a turn id
+		// pasted as plan_id) is undoable by replaying the original list with
+		// its original marker, and the model needs to know that on the spot.
+		ack += fmt.Sprintf(" 计划已切换，旧计划 %d 项已归档。若为误传（例如把 turn id 当作 plan_id），可立即恢复：用 todo_read 查回原 plan_id，重发原完整列表并带上该 plan_id。", len(previous))
+	}
+	if reordered {
+		ack += " Note: the in_progress item was behind pending work; the host auto-reordered it to the first unfinished slot — send the [completed, in_progress, pending] shape next time."
 	}
 	return ack, nil
 }
@@ -441,4 +460,26 @@ func toEvidenceTodo(todo todoItem) evidence.TodoItem {
 		Running:    todo.Running,
 		ParentID:   strings.TrimSpace(todo.ParentID),
 	}
+}
+
+// fromEvidenceTodos is the inverse of toEvidenceTodos, used only by the
+// tl1354 auto-reorder path: the repair works in the evidence shape, so the
+// reordered list is converted back before the continuity checks run. PlanID is
+// deliberately not carried over — the model never sends per-item plan ids (the
+// host stamps them), and the later receipt path re-stamps them.
+func fromEvidenceTodos(items []evidence.TodoItem) []todoItem {
+	out := make([]todoItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, todoItem{
+			Content:    item.Content,
+			Status:     item.Status,
+			ActiveForm: item.ActiveForm,
+			Level:      item.Level,
+			StepID:     item.StepID,
+			Owner:      item.Owner,
+			Running:    item.Running,
+			ParentID:   item.ParentID,
+		})
+	}
+	return out
 }

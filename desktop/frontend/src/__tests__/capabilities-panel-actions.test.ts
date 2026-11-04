@@ -243,7 +243,10 @@ const customGroupIndex = subagentsSource.indexOf('aria-labelledby="subagents-cus
 const builtinGroupIndex = subagentsSource.indexOf('aria-labelledby="subagents-builtin-title"');
 ok(customGroupIndex >= 0 && builtinGroupIndex > customGroupIndex, "custom subagents should render before built-in subagents");
 ok((subagentsSource.match(/className="subagents-profile-group"/g) ?? []).length === 2, "custom and built-in subagents should use separate sections");
-ok(subagentsSource.includes('className="btn btn--small subagents-reset-override"'), "override status and reset should share one compact action");
+// tl1361 顺手修预存红: task 591 按钮分级给该按钮机械插入 btn--secondary（b 型审计落点），
+// 本钉原读 task 559 时代的整段字面量。语义未变——override 状态与 reset 仍共用一个紧凑动作键
+// （btn--small + subagents-reset-override），btn 变体类在前的具体形态不属本钉语义。
+ok(/className="btn(?: btn--\w+)* btn--small subagents-reset-override"/.test(subagentsSource), "override status and reset should share one compact action");
 ok(subagentsStyles.includes("repeat(2, minmax(0, 1fr)) 152px"), "built-in subagent pickers should use equal shrinkable columns and reserve one stable status column");
 ok(subagentsSource.includes('className="settings-model-picker subagents-effort-picker"'), "effort and model overrides should share the same picker interaction pattern");
 ok(subagentsSource.includes("<SubagentInvocation name={skill.name}"), "every subagent card should show its chat invocation affordance");
