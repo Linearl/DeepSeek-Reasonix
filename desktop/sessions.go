@@ -306,6 +306,18 @@ func sessionLeaseBusyClassification(err error) error {
 // atomically with the release — a one-shot busy probe followed by RemoveAll
 // would let another process acquire the lease in between and then lose its
 // freshly locked lease file, breaking cross-process mutual exclusion.
+//
+// tl1383: a refusal whose lease error carries NO usable holder identity
+// (holder_class=unknown pid=0, the 2026-11-04 08:23/09:08 archive refusals)
+// is healed once through the lock-arbitrated reclaim primitive instead of
+// refusing forever. The lease doctrine (TryReclaimCurrentProcessSessionLease)
+// already says a missing or unreadable identity record with a free lock is a
+// leftover, not a holder — the removal-guard path just never invoked it, so
+// the leftover kept wedging archives and force-archive had no lever either.
+// The OS lock stays the arbiter: a live holder of the lock file keeps the
+// reclaim failing, so nothing is ever grabbed silently; a refusal that
+// survives the heal keeps the original error (identity, sentinel, forceable
+// mark) unchanged.
 func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard, error) {
 	guard, err := withSessionLeaseContentionRetry(func() (*agent.SessionRemovalGuard, error) {
 		return agent.TryAcquireSessionRemovalGuard(sessionPath)
@@ -322,9 +334,78 @@ func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard,
 			// a complete traceable holder record even after the toast is gone.
 			// Logged values name the holder process only — never the path.
 			logSessionLeaseHolderRefusal("desktop: session removal guard refused by lease holder", err)
+			if healed, healErr := healUnidentifiedLeaseHolder(sessionPath, err); healErr == nil {
+				slog.Info("desktop: removal guard healed an unidentified lease holder via reclaim",
+					"session_base", filepath.Base(sessionPath))
+				return healed, nil
+			}
 			return nil, &sessionLeaseHeldBusyError{cause: err}
 		}
 		return nil, err
+	}
+	return guard, nil
+}
+
+// sessionLeaseHolderIdentityMissing reports whether a lease refusal names no
+// usable holder at all (no readable identity record, or a record without a
+// pid). tl1383: this is the residue form — a live holder's identity is always
+// published into the held .lease.lock, so identity-missing means the record
+// was lost (torn write, AV quarantine, external delete) while a stale refusal
+// state survived. The classification maps this form onto
+// errSessionBusyUnidentifiedHolder so the copy never misdirects the user to a
+// window that may not exist.
+func sessionLeaseHolderIdentityMissing(err error) bool {
+	var leaseErr *agent.SessionLeaseError
+	if !errors.As(err, &leaseErr) || leaseErr == nil {
+		return false
+	}
+	return leaseErr.Info == nil || leaseErr.Info.PID <= 0
+}
+
+// sessionLeaseHealCandidate reports whether a removal-guard refusal is the
+// tl1383 residue shape the reclaim heal may repair: either the refusal names
+// NO holder (identity record lost), or it names THIS process while the
+// identity record is gone entirely — the 2026-11-04 incident form, where an
+// in-process registry entry survived its own record (the 0330 build refused
+// with holder_class=unknown pid=0 for exactly this shape). Live holders keep
+// the lock file present for their whole hold, so a self entry beside a
+// missing record is an orphaned entry, and the reclaim's lock take stays the
+// arbiter: a still-live handle (a holder whose record was quarantined but
+// whose lock lives) keeps the heal failing and the refusal intact.
+func sessionLeaseHealCandidate(sessionPath string, cause error) bool {
+	if sessionLeaseHolderIdentityMissing(cause) {
+		return true
+	}
+	var leaseErr *agent.SessionLeaseError
+	if !errors.As(cause, &leaseErr) || leaseErr == nil || leaseErr.Info == nil {
+		return false
+	}
+	if leaseErr.Info.PID != os.Getpid() {
+		return false
+	}
+	_, infoErr := agent.LoadSessionLeaseInfo(sessionPath)
+	return os.IsNotExist(infoErr)
+}
+
+// healUnidentifiedLeaseHolder is the tl1383 one-shot repair for a removal-guard
+// refusal in the residue shape: reclaim the lease through the
+// OS-lock-arbitrated primitive (a live holder's lock keeps it failing; a
+// leftover with a free lock is adopted and its stale registry entry
+// overwritten), then convert the adopted lease into the removal guard the
+// caller wanted. Any failure returns the original refusal path — the heal only
+// ever ADDS a success form, it never widens what gets refused or grabbed.
+func healUnidentifiedLeaseHolder(sessionPath string, cause error) (*agent.SessionRemovalGuard, error) {
+	if !sessionLeaseHealCandidate(sessionPath, cause) {
+		return nil, cause
+	}
+	lease, reclaimErr := agent.TryReclaimCurrentProcessSessionLease(sessionPath)
+	if reclaimErr != nil {
+		return nil, reclaimErr
+	}
+	guard, convErr := lease.TryConvertToRemovalGuard()
+	if convErr != nil {
+		lease.Release()
+		return nil, convErr
 	}
 	return guard, nil
 }

@@ -34,6 +34,19 @@ func tryTakeSessionLeaseLock(path string) (*sessionLockFile, error) {
 	return lock, err
 }
 
+// TryLockSessionFileForTest holds the session's save lock exactly as an
+// in-flight writer would, so desktop tests can pin the refusal shapes a held
+// save lock produces (tl1383: the save-lock branch is one of the two
+// identity-missing refusal producers). The returned func unlocks. Same
+// ForTest-seam convention as HoldSessionSavePathForTest.
+func TryLockSessionFileForTest(sessionPath string) (func(), error) {
+	lock, err := tryTakeSessionLockFile(store.SessionLockFile(sessionPath))
+	if err != nil {
+		return nil, err
+	}
+	return func() { lock.Unlock() }, nil
+}
+
 // fallbackSelfLeaseInfo rebuilds the holder identity for a refusal whose
 // in-process registry says THIS process holds the lease but whose identity
 // record is unreadable (a releasing holder deletes the record before its
