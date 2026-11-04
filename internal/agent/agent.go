@@ -580,6 +580,12 @@ type Agent struct {
 	// turn; the interval keeps a model from folding its way through a session
 	// (task 60, point 2). Zero means it has not folded yet.
 	lastExplicitFoldAt atomic.Int64
+	// lastCurateAt is when the model last ran the fine-grained curate_context
+	// pass (tl1378 增量1). A curate also rewrites part of the prefix, so it
+	// carries its own lighter rate limit (minCurateInterval) instead of
+	// sharing the fold cooldown it exists to complement. Zero means no curation
+	// has run yet.
+	lastCurateAt atomic.Int64
 
 	// planMode enables planning workflow instructions and explicit phase opt-outs.
 	// It does not replace the permission or sandbox boundary. The system prompt and

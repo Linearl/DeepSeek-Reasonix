@@ -1126,6 +1126,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if cfg.Agent.ExperimentalUIDriver {
 		reg.Add(builtin.NewUIInteractTool(builtin.UIInteractConfig{WorkDir: root}))
 	}
+	// tl1378 增量1: the curate_context fine-grained tier, same gating shape —
+	// off (the default) keeps the model-visible tool surface byte-identical to
+	// the pre-tl1378 baseline.
+	if cfg.Agent.ExperimentalCurateContext {
+		reg.Add(builtin.CurateContextTool{})
+	}
 	addWebSearch(reg, cfg, entry, proxySpec, sink)
 	builtinsMs := time.Since(builtinsStart).Milliseconds()
 	// Task 413: the mcp pre-enumeration segment (host pick, enabled-plugin

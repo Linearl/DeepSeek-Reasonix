@@ -39,6 +39,7 @@ export const LAB_LIGHT_KEYS = {
   experimentalResearchBudget: (s: SettingsView) => Boolean(s.experimentalResearchBudget),
   experimentalProactiveCompact: (s: SettingsView) => Boolean(s.experimentalProactiveCompact),
   experimentalColdCacheCompact: (s: SettingsView) => Boolean(s.experimentalColdCacheCompact),
+  experimentalCurateContext: (s: SettingsView) => Boolean(s.experimentalCurateContext),
   experimentalCacheTuning: (s: SettingsView) => Boolean(s.experimentalCacheTuning),
   experimentalCompactModel: (s: SettingsView) => Boolean(s.experimentalCompactModel),
   // 任务 815：三键补灯（半缺口收口——pane 行级开关早已交付、卡片灯漏接，

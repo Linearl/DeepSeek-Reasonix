@@ -2271,6 +2271,15 @@ type AgentConfig struct {
 	// ColdCacheCompactIdleMinutes is the idle time before the pass fires
 	// (0 = the built-in 300 minutes = 5h).
 	ColdCacheCompactIdleMinutes int `toml:"cold_cache_compact_idle_minutes"`
+	// tl1378 增量1: the curate_context fine-grained tier. On: the model may
+	// replace one already-processed tool result with a one-line note
+	// (curate_context drop=[{id,note}]); results it does not name stay
+	// verbatim, so the prompt-cache damage is a fraction of a full fold. This
+	// fills the gap the fold cooldown leaves: mid-window cleanup while folding
+	// is rate-limited away. Off by default (iron rule 2): the tool is not
+	// registered at all, so the model-visible surface is byte-identical to the
+	// pre-tl1378 baseline.
+	ExperimentalCurateContext bool `toml:"experimental_curate_context"`
 	// ExperimentalUIDriver enables the task 233 batch-2 ui_interact tool:
 	// controlled UI driving (activate / click / type / key) for agent-run
 	// verification. Off by default (iron rule 2) — injecting input into
