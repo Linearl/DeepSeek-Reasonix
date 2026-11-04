@@ -1,6 +1,7 @@
 import type { AppBindings } from "./bridge";
 import type { StructuredInvocationSubmit } from "./invocationDisplay";
 import { resolveActiveTurnId } from "./inboxSubmit";
+import { isNotActiveTurnRejection } from "./controllerNotices";
 import { attachInboxDedupItemId, forgetInboxEnqueue, noteInboxEnqueue } from "./inboxDedup";
 
 type InboxEnqueueBindings = Pick<AppBindings, "EnqueueInboxFollowup" | "EnqueueInboxFollowupWithInvocations" | "EnqueueInboxSteer" | "EnqueueInboxSteerForTurn">;
@@ -84,7 +85,19 @@ async function performEnqueue(
       // user's message when the exact-turn id is unknown (owner may be another
       // process / recovery fork / controller rebuild).
       if (!opts.turnId) return binding.EnqueueInboxSteer(tabId, display, submit || display, opts?.idempotency ?? "") as Promise<InboxGuidanceReceipt>;
-      return binding.EnqueueInboxSteerForTurn(tabId, opts.turnId, display, submit || display, "") as Promise<InboxGuidanceReceipt>;
+      try {
+        return await binding.EnqueueInboxSteerForTurn(tabId, opts.turnId, display, submit || display, "") as InboxGuidanceReceipt;
+      } catch (error) {
+        // tl1393: a stale turn id (the turn ended or rolled over between the
+        // snapshot and this fence) bounces the exact-turn steer with "is not
+        // the active turn". Per tl1303's design the replacement turn must not
+        // be steered through the session-level channel — keep the text in the
+        // durable follow-up queue (the turn-boundary pump dispatches it) and
+        // never throw the raw rejection at the composer. Other rejections
+        // stay honest failures.
+        if (!isNotActiveTurnRejection(error) || typeof binding.EnqueueInboxFollowup !== "function") throw error;
+        return binding.EnqueueInboxFollowup(tabId, display, submit || display, opts?.idempotency ?? "") as Promise<InboxGuidanceReceipt>;
+      }
     }
     return binding.EnqueueInboxSteer(tabId, display, submit || display, "") as Promise<InboxGuidanceReceipt>;
   }
