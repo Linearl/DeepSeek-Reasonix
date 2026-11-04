@@ -2336,27 +2336,16 @@ func (a *Agent) deliveryMutationCheckpointReady() bool {
 }
 
 func (a *Agent) setTodoState(todos []evidence.TodoItem) {
-	// Task 152: an explicit parent_id tree manages its own state machine — the
-	// legacy segment normalizer is hard-wired to level 0/1 adjacency and would
-	// rewrite statuses the tree validation already approved. Normalization
-	// stays a flat-list repair only.
-	if !todoListHasExplicitParents(todos) {
-		todos = evidence.NormalizeSerialTodos(todos)
-	}
+	// tl1354: shared entry point — ordering repair first (so the canonical
+	// shape matches what todo_write's Execute accepted), then the legacy
+	// normalizer. Task 152: an explicit parent_id tree manages its own state
+	// machine — the legacy segment normalizer is hard-wired to level 0/1
+	// adjacency and would rewrite statuses the tree validation already
+	// approved. Normalization stays a flat-list repair only.
+	todos = evidence.NormalizeSerialTodoInput(todos)
 	a.sess.todoMu.Lock()
 	a.sess.todoState = todos
 	a.sess.todoMu.Unlock()
-}
-
-// todoListHasExplicitParents reports whether any item declares a parent_id
-// (task 152 tree). Mirrors evidence's own check without exporting it wider.
-func todoListHasExplicitParents(todos []evidence.TodoItem) bool {
-	for _, todo := range todos {
-		if strings.TrimSpace(todo.ParentID) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 func (a *Agent) hasActiveCanonicalTodo() bool {
@@ -2466,13 +2455,10 @@ func (a *Agent) rebuildTodoState(msgs []provider.Message) {
 			rec = evidence.ExpandTodoOpsReceipt(rec, todos)
 			// A successful empty todo_write is an explicit clear. Preserve it as the
 			// latest base so history reloads do not resurrect an older non-empty list.
-			// Task 152: explicit parent_id trees skip the legacy normalizer (see
-			// setTodoState).
-			if !todoListHasExplicitParents(rec.Todos) {
-				todos = evidence.NormalizeSerialTodos(rec.Todos)
-			} else {
-				todos = rec.Todos
-			}
+			// tl1354: the shared entry point repairs the ordering slip first so a
+			// replayed history lands on the same shape the live call recorded; the
+			// legacy normalizer stays flat-list only (task 152, see setTodoState).
+			todos = evidence.NormalizeSerialTodoInput(rec.Todos)
 			baseIdx = i
 		}
 	}

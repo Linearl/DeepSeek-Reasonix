@@ -161,14 +161,26 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 			return "", fmt.Errorf("todo %d: invalid status %q (want pending|in_progress|completed|abandoned|archived)", i+1, t.Status)
 		}
 	}
-	if err := evidence.ValidateSerialTodos(toEvidenceTodos(p.Todos)); err != nil {
-		// Task 23 P0-a: attach the host's current plan so a rejected write can be
-		// repaired without guessing (upstream #10023). The rule text alone left
-		// the model retrying the same invalid list.
-		if snapshot := todoPlanSnapshot(previous); snapshot != "" {
-			return "", fmt.Errorf("%w.%s", err, snapshot)
+	// tl1354: the "current item must be the first unfinished item" ordering slip
+	// is the one failure the host repairs instead of rejecting — the agent used
+	// to have to decode the rule text and retry (two same-day incidents). Every
+	// other validation failure still rejects below; RepairSerialTodoCurrentOrder
+	// only reorders, it never invents, promotes, or drops an item.
+	reordered := false
+	evTodos := toEvidenceTodos(p.Todos)
+	if err := evidence.ValidateSerialTodos(evTodos); err != nil {
+		repaired, ok := evidence.RepairSerialTodoCurrentOrder(evTodos)
+		if !ok {
+			// Task 23 P0-a: attach the host's current plan so a rejected write can be
+			// repaired without guessing (upstream #10023). The rule text alone left
+			// the model retrying the same invalid list.
+			if snapshot := todoPlanSnapshot(previous); snapshot != "" {
+				return "", fmt.Errorf("%w.%s", err, snapshot)
+			}
+			return "", err
 		}
-		return "", err
+		p.Todos = fromEvidenceTodos(repaired)
+		reordered = true
 	}
 	if err := verifyUniqueStepIDs(p.Todos); err != nil {
 		return "", err
@@ -198,6 +210,9 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 	}
 	if planSwitched {
 		ack += fmt.Sprintf(" 计划已切换，旧计划 %d 项已归档。", len(previous))
+	}
+	if reordered {
+		ack += " Note: the in_progress item was behind pending work; the host auto-reordered it to the first unfinished slot — send the [completed, in_progress, pending] shape next time."
 	}
 	return ack, nil
 }
@@ -441,4 +456,26 @@ func toEvidenceTodo(todo todoItem) evidence.TodoItem {
 		Running:    todo.Running,
 		ParentID:   strings.TrimSpace(todo.ParentID),
 	}
+}
+
+// fromEvidenceTodos is the inverse of toEvidenceTodos, used only by the
+// tl1354 auto-reorder path: the repair works in the evidence shape, so the
+// reordered list is converted back before the continuity checks run. PlanID is
+// deliberately not carried over — the model never sends per-item plan ids (the
+// host stamps them), and the later receipt path re-stamps them.
+func fromEvidenceTodos(items []evidence.TodoItem) []todoItem {
+	out := make([]todoItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, todoItem{
+			Content:    item.Content,
+			Status:     item.Status,
+			ActiveForm: item.ActiveForm,
+			Level:      item.Level,
+			StepID:     item.StepID,
+			Owner:      item.Owner,
+			Running:    item.Running,
+			ParentID:   item.ParentID,
+		})
+	}
+	return out
 }
