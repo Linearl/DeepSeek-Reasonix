@@ -140,6 +140,23 @@ func TestCompressToolRequiresActiveAgent(t *testing.T) {
 	}
 }
 
+// tl1378 增量3: the hand-off guidance must name changed files and open
+// questions alongside facts/decisions/acceptance criteria, in both the tool
+// description and the focus field schema — the summary structure the model
+// fills under pressure is shaped by exactly these two strings.
+func TestCompressToolHandOffGuidance(t *testing.T) {
+	desc := (compressContext{}).Description()
+	for _, want := range []string{"facts, decisions, acceptance criteria, changed files and open questions"} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("compress description missing hand-off guidance %q:\n%s", want, desc)
+		}
+	}
+	schema := string((compressContext{}).Schema())
+	if !strings.Contains(schema, "facts, decisions, changed files and open questions the summary must preserve") {
+		t.Fatalf("focus field description missing hand-off guidance:\n%s", schema)
+	}
+}
+
 func TestReadFile(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "src.go")
