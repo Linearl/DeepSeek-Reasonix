@@ -303,8 +303,10 @@ const goArchiveSource = readFileSync(resolve(desktopRoot, "topic_archive.go"), "
 ok(goArchiveSource.includes('topicArchiveForceablePrefix = "reasonix_error:topic_archive_forceable: "'), "TrashTopic marks forceable failures with the stable machine prefix");
 // tl 1201 extended the family with the zombie classification (dead holder pid):
 // a crashed Reasonix process cannot be closed by hand, so force is the repair.
+// tl1383 extended it with the unidentified-holder classification (an
+// unidentifiable leftover record — restart or force archive are the repairs).
 // Pin stays verbatim so any future family change forces a conscious update.
-ok(goArchiveSource.includes("errors.Is(err, errTopicHasActiveWork) || errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, errSessionBusyZombie) || errors.Is(err, agent.ErrSessionLeaseHeld)"), "exactly the force-clearable family is marked (active-work gate + lease-busy + zombie + lease-held)");
+ok(goArchiveSource.includes("errors.Is(err, errTopicHasActiveWork) || errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, errSessionBusyZombie) || errors.Is(err, errSessionBusyUnidentifiedHolder) || errors.Is(err, agent.ErrSessionLeaseHeld)"), "exactly the force-clearable family is marked (active-work gate + lease-busy + zombie + unidentified-holder + lease-held)");
 ok(goArchiveSource.includes("func (e *topicArchiveForceableError) Unwrap() error { return e.cause }"), "the marked error keeps its chain so Go tests' errors.Is keep passing");
 ok(/func \(a \*App\) TrashTopic\(topicID string\) error \{\s*\n\treturn markTopicArchiveForceable\(friendlySessionFileError/.test(goArchiveSource), "TrashTopic wraps through the marker");
 // tl1367-fix 缺陷B：TrashTopicForce 先自动关该主题的可见 tab（stop_and_close，
