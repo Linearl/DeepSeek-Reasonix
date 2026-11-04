@@ -243,7 +243,9 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   const sessionCostBucketed = quoteStatus === "bucketed" || info?.sessionCostQuote?.aggregateMode === "currency_buckets";
   const sessionCostFallback = quoteStatus === "fallback_original";
   const sessionCostComplete = (sessionCostFallback || info?.sessionCostComplete !== false) && quoteStatus !== "unavailable";
-  // tl1379 口径：无定价按 0 段是权威金额——0 也要上屏，行标签换成「含 N 条」。
+  // tl1379 口径：无定价按 0 段是权威金额——0 也要上屏。tl1386：显示简化，
+  // 弹层不再给 partial 态单独的「含 N 条无定价按 0」行标签（并入估算行），
+  // 0 元权威总额渲染 ¥0.00 而非「≈-」；数据层（partialPricedCount）不动。
   const sessionCostPartial = quoteStatus === "partial_priced" || (info?.sessionCostQuote?.partialPricedCount ?? 0) > 0;
   const sessionCostRaw = info?.sessionCostQuote?.selected
     ? Number(info.sessionCostQuote.selected.amount)
@@ -251,15 +253,16 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   const sessionCostCurrency = info?.sessionCostQuote?.selected?.currency || info?.sessionCurrency;
   const sessionCost =
     !sessionCostBucketed && sessionCostComplete && typeof sessionCostRaw === "number" && (sessionCostRaw > 0 || ((sessionCostPartial || info?.sessionCostQuote?.complete === true) && info?.sessionCostQuote?.selected))
-      ? `≈${formatMoneyLocalized(sessionCostRaw, sessionCostCurrency, { locale, empty: "dash" }).replace(/^≈/, "")}`
+      ? `≈${(sessionCostRaw > 0
+          ? formatMoneyLocalized(sessionCostRaw, sessionCostCurrency, { locale })
+          : formatMoneyLocalized(0, sessionCostCurrency, { locale, fractionDigits: 2 })
+        ).replace(/^≈/, "")}`
       : undefined;
   const sessionCostHint =
     info?.sessionBillingMode === "subscription_equivalent"
         ? "payg_equivalent"
         : sessionCostFallback
           ? "fallback_original"
-        : sessionCost && sessionCostPartial
-          ? "partial_priced"
         : sessionCost
           ? "estimated"
         : undefined;
@@ -479,8 +482,6 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
                     ? t("context.sessionCostPaygEquivalent")
                     : sessionCostHint === "fallback_original"
                       ? t("context.sessionCostFallback")
-                    : sessionCostHint === "partial_priced"
-                      ? t("context.sessionCostPartialPriced", { count: info?.sessionCostQuote?.partialPricedCount ?? 0 })
                     : t("context.sessionCostEstimated")}
                 </span>
                 <span className="context-ring-popover__value" title={sessionRateBandTitle}>{sessionCostLabel}</span>

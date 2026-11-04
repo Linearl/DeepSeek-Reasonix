@@ -208,6 +208,39 @@ eq(groupCalls, 0, "no group fetch happens without identity");
 const bareText = document.querySelector(".context-panel__session-section")?.textContent ?? "";
 ok(!bareText.includes("covered by a fuller version"), "identity-less panel hides the recovery row");
 
+// Case 4 (tl1386): partial_priced 0 元权威总额——会话费用格渲染 ¥0.00 而
+// 非「-」，且不再出现「incl. N unpriced (billed 0)」标注（tl1379 数据层
+// 口径不动，partialPricedCount 照常下发）。
+mainApp.ContextPanel = async () => ({
+  ...emptyPanelInfo(),
+  sessionCurrency: "CNY",
+  sessionCostComplete: true,
+  sessionCostQuote: {
+    original: { amount: "0", currency: "CNY" },
+    selected: { amount: "0", currency: "CNY" },
+    estimated: true,
+    costComplete: true,
+    displayComplete: true,
+    complete: true,
+    displayStatus: "partial_priced",
+    partialPricedCount: 8,
+  },
+} as ContextPanelInfo);
+
+await act(async () => {
+  root.render(
+    <LocaleProvider>
+      <ContextPanel tabId="tab-partial-zero" context={{ used: 10, window: 100 }} />
+    </LocaleProvider>,
+  );
+  await wait(20);
+});
+
+const partialZeroText = document.querySelector(".context-panel__session-section")?.textContent ?? "";
+ok(partialZeroText.includes("¥0.00"), "partial-priced zero total renders ¥0.00, never -");
+ok(!partialZeroText.includes("unpriced"), "the incl-N-unpriced annotation is gone from the panel");
+ok(!partialZeroText.includes("("), "no parenthesised billing suffix remains on the session cost cell");
+
 await act(async () => {
   root.unmount();
 });

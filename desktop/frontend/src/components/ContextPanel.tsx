@@ -627,7 +627,14 @@ export function ContextPanel({
     : cost.labelKind === "unavailable"
       ? t("context.sessionCostUnavailable")
       : cost.labelKind === "partial_priced"
-        ? `${markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated)} (${t("context.sessionCostPartialPriced", { count: cost.partialPricedCount ?? 0 })})`
+        // tl1386: 去「含 N 条无定价按 0」后缀（明细不再占版面）；0 元权威
+        // 总额直接上 ¥0.00 而非「-」——tl1379 数据层口径不动，只改显示。
+        ? markEstimated(
+            cost.amount > 0
+              ? formatMoneyLocalized(cost.amount, cost.currency, { locale })
+              : formatMoneyLocalized(0, cost.currency, { locale, fractionDigits: 2 }),
+            sessionEstimated,
+          )
         : cost.labelKind === "fallback"
           ? `${markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated)} (${t("context.sessionCostFallback")})`
           : markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
