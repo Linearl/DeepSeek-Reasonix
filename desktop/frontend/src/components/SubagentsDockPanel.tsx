@@ -22,6 +22,7 @@ import type { HistoryMessage } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
   mergeEndedSubagentRecords,
+  mergeRegistryRunningSubagents,
   subagentChildTools,
   type SubagentDirectory,
   type SubagentDirectoryEntry,
@@ -453,6 +454,7 @@ export function SubagentsDockPanel({
   onOpenInMain,
   onTerminateSubagent,
   transcriptItems,
+  registryRunning,
 }: {
   directory: SubagentDirectory;
   /** Task 507 plan-A gate: row clicks open the read-only detail view. */
@@ -488,6 +490,11 @@ export function SubagentsDockPanel({
    * optional props — the 备用视图 (WorkspaceDockRegion) passes only
    * `directory` and keeps the exact tl1202 detail shape. */
   transcriptItems?: readonly Item[];
+  /** tl1387: registry-projected running rows (controller background jobs +
+   * the tab's foreground registry — the zcode form's backend-owned second
+   * source). Merged under the transcript projection; without it the panel is
+   * byte-for-byte the pre-1387 body. */
+  registryRunning?: readonly SubagentDirectoryEntry[];
 }) {
   const t = useT();
   // Task 495 ④: reveal the ended list 20 rows at a time (zcode's PAGE_SIZE).
@@ -534,9 +541,18 @@ export function SubagentsDockPanel({
   const ended = mergedEnded.ended;
   const visibleEnded = ended.slice(0, revealed);
   const hiddenEnded = ended.length - visibleEnded.length;
-  const empty = directory.running.length === 0 && ended.length === 0;
+  // tl1387: the running section is transcript ∪ registry — a child the
+  // transcript projection cannot see (gap-stall, tail-first window) stays
+  // visible through the same registries the capsule reads. The merged list
+  // feeds the count, the rows and the selection lookup; the empty state must
+  // consider it too, or a registry-visible child still reads 「暂无子代理」.
+  const running = useMemo(
+    () => mergeRegistryRunningSubagents(directory, registryRunning).running,
+    [directory, registryRunning],
+  );
+  const empty = running.length === 0 && ended.length === 0;
   const selected = selectedId
-    ? directory.running.find((entry) => entry.item.id === selectedId)
+    ? running.find((entry) => entry.item.id === selectedId)
       ?? ended.find((entry) => entry.item.id === selectedId)
     : undefined;
   // tl1109 方案 E: 有打开的子代理内容 ⇒ 抬宽边栏；卸载/取消选中 ⇒ 回落。
@@ -581,13 +597,13 @@ export function SubagentsDockPanel({
         <div className="subagents-panel__listpane">
           <section className="subagents-panel__section">
             <h3 className="subagents-panel__section-title">
-              {t("subagent.phase.running")} · {directory.running.length}
+              {t("subagent.phase.running")} · {running.length}
             </h3>
-            {directory.running.length === 0 ? (
+            {running.length === 0 ? (
               <p className="subagents-panel__section-empty">{t("subagentPanel.runningEmpty")}</p>
             ) : (
               <ul className="subagents-panel__list">
-                {directory.running.map((entry) => (
+                {running.map((entry) => (
                   <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} onTerminate={onTerminateSubagent} />
                 ))}
               </ul>
@@ -638,13 +654,13 @@ export function SubagentsDockPanel({
       {widenToolbar}
       <section className="subagents-panel__section">
         <h3 className="subagents-panel__section-title">
-          {t("subagent.phase.running")} · {directory.running.length}
+          {t("subagent.phase.running")} · {running.length}
         </h3>
-        {directory.running.length === 0 ? (
+        {running.length === 0 ? (
           <p className="subagents-panel__section-empty">{t("subagentPanel.runningEmpty")}</p>
         ) : (
           <ul className="subagents-panel__list">
-            {directory.running.map((entry) => (
+            {running.map((entry) => (
               <DirectoryRow
                 key={entry.item.id}
                 entry={entry}

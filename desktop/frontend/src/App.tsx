@@ -54,7 +54,7 @@ import {
   Check,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
-import { buildSubagentDirectory, subagentsTabLabel } from "./lib/subagentDirectory";
+import { buildSubagentDirectory, registryRunningEntries, subagentsTabLabel } from "./lib/subagentDirectory";
 // 任务 686: 工作流可视化面板的 palette 插条（flag 关=原数组逐字节不变）。
 // 单独轻量模块：workflowDag 的 fixture/布局只随面板懒加载 chunk 走，不进
 // initial 面（首版实测炸 initial 线的教训）。
@@ -1873,6 +1873,15 @@ export default function App() {
   const subagentDirectory = useMemo(
     () => buildSubagentDirectory(visibleRuntimeState.items),
     [visibleRuntimeState.items],
+  );
+  // tl1387: the dock panel's second running source — the same backend
+  // registries the capsule merges (mergeCapsuleWork contract): the active
+  // controller's background sub-agent jobs plus the process-local foreground
+  // registry rows bound to this tab. Projected per render; the panel merges
+  // them under the transcript projection (transcript entries win).
+  const registryRunning = useMemo(
+    () => registryRunningEntries({ jobs: state.jobs, foreground: foregroundSubagents }, activeTabId ?? ""),
+    [state.jobs, foregroundSubagents, activeTabId],
   );
   const exportLive = liveStore.getSnapshot(activeTabId) ?? state.live;
   // Task 447 capsule: stable wrappers so the panel's reload effects key on
@@ -6794,6 +6803,11 @@ export default function App() {
                   <SubagentsDockPanel
                     key={activeTabId}
                     directory={subagentDirectory}
+                    /* tl1387: registry-backed second running source (jobs +
+                       foreground registry) — the running list survives a
+                       transcript-projection stall and foreground (synchronous)
+                       children become panel-visible (zcode form). */
+                    registryRunning={registryRunning}
                     detailEnabled={subagentDetailEnabled}
                     wide={subagentsWide}
                     onToggleWide={toggleSubagentsWide}
