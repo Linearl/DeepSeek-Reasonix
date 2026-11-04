@@ -72,7 +72,7 @@ type logCollect struct {
 	BackendCensus   []censusRow
 	// 任务 909（验收自动化一期）：切换耗时三读数。
 	ModelSwitchFast   []sample // desktop: model switch（fast-same-model/fast-per-request，elapsed_ms）
-	ModelSwitchFallbk int      // desktop: model switch path=fallback-* 条数（走重建=非快路径）
+	ModelSwitchFallbk int      // desktop: runtime build end trigger=set-model 条数（走重建=非快路径；tl1389 P4 单源）
 	EffortSwitchFast  []sample // desktop: effort switch（fast-same-level/fast-per-request，elapsed_ms）
 	EffortSwitchFallb int      // desktop: runtime build end trigger=set-effort 条数（快路径双双拒收）
 	EffortReadSlow    []sample // desktop: effort read breakdown（≥150ms 才落行，截断样本普查）
@@ -218,12 +218,16 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 				sample{At: ln.ts, Tab: d["tab"], MS: ms, Kind: "firstFrame"})
 		}
 	// 任务 909：切换模型/effort 耗时。快路径行带 elapsed_ms（model 侧
-	// 909 补齐，effort 侧 task 148 已有）；fallback 行不带读数，只计条数
-	// （走重建路径的占比本身是体验信号：重建=秒级，快路径=毫秒级）。
+	// 909 补齐，effort 侧 task 148 已有）；fallback 计数在 runtime build end
+	// trigger 上单源统计（tl1389 P4，见该 case 注释）。
 	case "desktop: model switch":
 		path := ln.attrs["path"]
 		if strings.HasPrefix(path, "fallback") {
-			c.ModelSwitchFallbk++
+			// tl1389 P4：不再按本行计数——persona 边界拒收后同一开关必发
+			// trigger=set-model 的 build end，两处都计会双计；而 recovery-fork
+			// / 无控制器等拒收根本不发本行（只在 agent 侧落 declined 行），
+			// 只认 path=fallback* 才漏统计重建、误判「没有重建」。本行仅剩
+			// 归因价值（拒收原因），不留档。
 			return
 		}
 		if ms, ok := parseMs(ln.attrs["elapsed_ms"]); ok {
@@ -237,10 +241,16 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 				sample{At: ln.ts, Tab: ln.attrs["tab"], MS: ms, Kind: path})
 		}
 	case "desktop: runtime build end":
-		// effort 快路径双双拒收后落 rebuild；trigger=set-effort 的 end 行
-		// 是 fallback 的读数面（model 侧 fallback 由上面 path=fallback-* 计数）。
+		// effort 快路径双双拒收后落 rebuild；trigger=set-effort 的 end 行是
+		// effort fallback 的计数源。tl1389 P4：model 侧同源——trigger=set-model
+		// 的 end 行是「走重建」的唯一完整计数（重建路径只有 persona 边界
+		// 一种拒收会发 path=fallback* 行，recovery-fork/无控制器不发，原先
+		// 只认该行就把这些重建漏成了「没有重建」）。end 行在 build 阶段
+		// 之后的失败路径也会落（defer 语义），与 effort 侧同口径。
 		if ln.attrs["trigger"] == "set-effort" {
 			c.EffortSwitchFallb++
+		} else if ln.attrs["trigger"] == "set-model" {
+			c.ModelSwitchFallbk++
 		}
 	case "desktop: effort read breakdown":
 		// 截断样本（total_ms ≥150 才落行，effortBreakdownLogMs）：每条=一次

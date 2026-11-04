@@ -90,6 +90,8 @@ export const zhTW: Record<DictKey, string> = {
 "composer.blockedDisabled": "目前狀態下無法傳送",
   // tl1301：effort 走 fallback 重建在飛（顯示在力度控制項旁；快速通道不出現）。
   "composer.effortApplying": "正在套用推理力度…",
+  // tl1389：模型切換走 fallback 重建在飛（顯示在模型名旁；快速通道不出現）。
+  "composer.modelApplying": "正在套用模型…",
   "composer.submitInFlight": "上一條訊息仍在受理，請稍候；受理完成後會自動清空輸入框",
   "composer.workspaceStarting": "工作區還在啟動",
   "app.splashSubtitle": "Agent 工作區",

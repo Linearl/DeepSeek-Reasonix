@@ -610,6 +610,7 @@ export function Composer({
   tabId, turnId,
   effort,
   effortApplying = false,
+  modelApplying = false,
   onSend,
   splitTarget = "primary",
   onSplitTargetChange,
@@ -734,6 +735,8 @@ export function Composer({
   effort?: EffortInfo;
   /** 任务1301：本 tab 的 effort 切换正走 fallback 重建（在飞）——effort 控件旁渲染「正在应用推理力度…」过渡态并锁定控件；快速通道恒为 false，行为不变。 */
   effortApplying?: boolean;
+  /** tl1389：本 tab 的模型切换正走 fallback 重建（在飞）——模型名旁渲染「正在应用模型…」过渡态；快速通道与既有队列语义不变，仅补提示。 */
+  modelApplying?: boolean;
   onSend: (displayText: string, submitText?: string, tabId?: string, structured?: StructuredInvocationSubmit) => void | Promise<void>;
   /** Split view (task 70, B): where the composer sends while a split is open. */
   splitTarget?: "primary" | "secondary" | "both";
@@ -6276,6 +6279,8 @@ export function Composer({
                 useAppNavigationStore.getState().setSettingsFocus({ target: "model-access" });
                 useAppNavigationStore.getState().setSettingsTarget("models");
               }} /></Suspense>
+              {/* tl1389：fallback 重建在飞（recovery-fork 会话实测 12.3s）——模型名旁过渡态提示，落定由 tab:meta 推送/runtime:rebuilt 清除。复用 effort 的 applying 样式类，零新 UI 载体。 */}
+              {modelApplying && <span className="composer-effort-applying" role="status">{t("composer.modelApplying")}</span>}
               {hasEffort && !heroMode && <div className="composer-effort-control">
                 <ComposerChoice key={`effort-${tabId}`} label={effortLabel(currentEffort)}
                   ariaLabel={`${t("status.effortTitle")}: ${effortLabel(currentEffort)}`}

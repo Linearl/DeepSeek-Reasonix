@@ -1,6 +1,7 @@
 import { app } from "./bridge";
 import { emitActiveModelChanged } from "./activeModelChanged";
 import { beginEffortSwitch, endEffortSwitch } from "../store/effortApplying";
+import { beginModelSwitch, endModelSwitch } from "../store/modelApplying";
 import type { BalanceInfo } from "./types";
 
 type Ref<T> = { current: T };
@@ -22,6 +23,19 @@ export function createControllerModelCommands(ports: Ports) {
     enqueueModelSwitch, clearBalanceForTab, dispatchTo, refreshBalanceForTab, refreshMetaForTab } = ports;
   const setModelForTab = async (tabId: string, name: string) => {
     if (!tabId) return false;
+    // tl1389: bracket the backend call like the effort side does (task 1301).
+    // The fallback rebuild emits "model:applying" mid-call (marked only
+    // inside this window); when the call settles — applied or failed — the
+    // transition must go, so the clear runs on every exit path below.
+    beginModelSwitch(tabId);
+    try {
+      return await setModelForTabInner(tabId, name);
+    } finally {
+      endModelSwitch(tabId);
+    }
+  };
+
+  const setModelForTabInner = async (tabId: string, name: string) => {
     const switchSeq = (modelSwitchSeqByTab.current.get(tabId) ?? 0) + 1;
     const successVersion = modelSwitchSuccessVersionByTab.current.get(tabId) ?? 0;
     const existingQueue = modelSwitchQueueByTab.current.get(tabId);

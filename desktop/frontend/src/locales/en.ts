@@ -91,6 +91,8 @@ export const en = {
 "composer.blockedDisabled": "Sending is unavailable in the current state",
   // tl1301: fallback effort rebuild in flight (shown beside the effort control; fast paths never show it).
   "composer.effortApplying": "Applying reasoning effort…",
+  // tl1389: fallback model rebuild in flight (shown beside the model switcher; fast paths never show it).
+  "composer.modelApplying": "Applying model…",
   "composer.submitInFlight": "The previous message is still being admitted; please wait. The composer clears once it is admitted",
   "composer.workspaceStarting": "Workspace is still starting",
   "app.splashSubtitle": "Agent Workspace",
