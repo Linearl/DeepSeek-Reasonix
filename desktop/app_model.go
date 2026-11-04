@@ -164,12 +164,8 @@ type modelSwitchTiming struct {
 
 // resolveTabModelRef validates a user-facing model name against the tab's
 // config and returns the canonical "provider/model" ref plus the resolved
-// entry, mirroring plugin-namespaced fallback and provider-access gating. Shared by the model-switch fast path and the build+swap path (task 148) so the two cannot drift on what counts as a switchable model. For plugin-namespaced refs the descriptor ref comes back as the canonical ref and pluginRef is true (the entry stays nil — extension sidecars own it).
-func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string) (string, *config.ProviderEntry, bool, error) {
-	cfg, err := config.LoadForRoot(workspaceRoot)
-	if err != nil {
-		return "", nil, false, err
-	}
+// entry, mirroring plugin-namespaced fallback and provider-access gating. Shared by the model-switch fast path and the build+swap path (task 148) so the two cannot drift on what counts as a switchable model. For plugin-namespaced refs the descriptor ref comes back as the canonical ref and pluginRef is true (the entry stays nil — extension sidecars own it). tl1389 P0: the caller owns the config load — one load per switch feeds every resolution instead of one per call.
+func (a *App) resolveTabModelRef(tab *WorkspaceTab, cfg *config.Config, name string) (string, *config.ProviderEntry, bool, error) {
 	entry, ok := cfg.ResolveModel(name)
 	pluginRef := false
 	if !ok {
@@ -195,10 +191,9 @@ func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string) 
 
 // modelSwitchPersonaBoundary reports whether the switch crosses the official
 // DeepSeek-V4-Pro persona boundary (task 602). The persona is prepended to the
-// cache-stable system prompt at boot (config.ApplyOfficialDeepSeekV4ProPersona) and ReasoningLanguageForEntry pins its auto reasoning language — neither has an override seam, so crossing the boundary keeps the build+swap path, which re-derives the prompt exactly as boot does. Plugin-namespaced targets (nil entry) never apply the persona.
-func modelSwitchPersonaBoundary(workspaceRoot, currentRef string, target *config.ProviderEntry) bool {
-	cfg, err := config.LoadForRoot(workspaceRoot)
-	if err != nil {
+// cache-stable system prompt at boot (config.ApplyOfficialDeepSeekV4ProPersona) and ReasoningLanguageForEntry pins its auto reasoning language — neither has an override seam, so crossing the boundary keeps the build+swap path, which re-derives the prompt exactly as boot does. Plugin-namespaced targets (nil entry) never apply the persona. tl1389 P0: the caller's per-switch config load feeds the gate.
+func modelSwitchPersonaBoundary(cfg *config.Config, currentRef string, target *config.ProviderEntry) bool {
+	if cfg == nil {
 		return false // unreadable config declines the gate; resolution fails later either way
 	}
 	current := false
@@ -223,17 +218,16 @@ type modelSwitchIdentity struct {
 
 // modelSwitchExtras derives the entry-scoped payload the hot switch needs
 // (task 602): the agent override scalars plus the controller identity, exactly
-// the surfaces a rebuild re-derives from the new entry (boot folds the same pricing/window/high-speed inputs into the executor and the controller).
-func modelSwitchExtras(workspaceRoot, ref string, entry *config.ProviderEntry) (agent.ModelOverrideExtras, modelSwitchIdentity, error) {
+// the surfaces a rebuild re-derives from the new entry (boot folds the same pricing/window/high-speed inputs into the executor and the controller). tl1389 P0: the caller's per-switch config load feeds the derivation.
+func modelSwitchExtras(cfg *config.Config, ref string, entry *config.ProviderEntry) (agent.ModelOverrideExtras, modelSwitchIdentity, error) {
 	if entry == nil {
 		// Plugin-namespaced ref: the sidecar owns the entry; the agent-side
 		// resolver seam constructs the provider, zero extras keep the
 		// construction scalars.
 		return agent.ModelOverrideExtras{}, modelSwitchIdentity{}, nil
 	}
-	cfg, err := config.LoadForRoot(workspaceRoot)
-	if err != nil {
-		return agent.ModelOverrideExtras{}, modelSwitchIdentity{}, err
+	if cfg == nil {
+		return agent.ModelOverrideExtras{}, modelSwitchIdentity{}, fmt.Errorf("config unavailable for model %q", ref)
 	}
 	extras := agent.ModelOverrideExtras{
 		Pricing:         entry.Price,
@@ -297,12 +291,20 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	tab.turnStartMu.Lock()
 	defer tab.turnStartMu.Unlock()
 	switchSnap := a.tabRuntimeSnapshot(tab)
-	switchRef, switchEntry, _, err := a.resolveTabModelRef(tab, switchSnap.workspaceRoot, name)
+	// tl1389 P0: one config load feeds the whole switch — fast-path
+	// resolution, persona gate, override extras and the effort fold all read
+	// this snapshot. Was three+ full loads per switch (one per helper); the
+	// rebuild path still loads its own inside boot.Build, unchanged.
+	switchCfg, err := config.LoadForRoot(switchSnap.workspaceRoot)
+	if err != nil {
+		return err
+	}
+	switchRef, switchEntry, switchPluginRef, err := a.resolveTabModelRef(tab, switchCfg, name)
 	if err != nil {
 		return err
 	}
 	timing.Config = time.Since(stageStarted)
-	if handled, err := a.tryModelSessionOverride(tab, tabID, switchRef, switchSnap, switchEntry, totalStarted); err != nil {
+	if handled, err := a.tryModelSessionOverride(tab, tabID, switchRef, switchCfg, switchSnap, switchEntry, totalStarted); err != nil {
 		return err
 	} else if handled {
 		return nil
@@ -343,9 +345,25 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	runtime := snap.normalizedRuntime()
 	// Same resolution as the fast path above (task 148): one helper so the
 	// build+swap fallback cannot drift from what the fast path accepts.
-	canonicalRef, entry, pluginRef, err := a.resolveTabModelRef(tab, snap.workspaceRoot, name)
-	if err != nil {
-		return err
+	// tl1389 P0: on the same root the fast-path resolution already pinned the
+	// answer — the config snapshot is shared, and a plugin-namespaced ref can
+	// only have resolved when a controller (hence the same merged catalog)
+	// was already live, so the attach attempts between the two snapshots
+	// cannot move it. A mid-switch root change reloads.
+	var canonicalRef string
+	var entry *config.ProviderEntry
+	var pluginRef bool
+	if snap.workspaceRoot == switchSnap.workspaceRoot {
+		canonicalRef, entry, pluginRef = switchRef, switchEntry, switchPluginRef
+	} else {
+		cfg, cfgErr := config.LoadForRoot(snap.workspaceRoot)
+		if cfgErr != nil {
+			return cfgErr
+		}
+		canonicalRef, entry, pluginRef, err = a.resolveTabModelRef(tab, cfg, name)
+		if err != nil {
+			return err
+		}
 	}
 	name = canonicalRef
 	effortOverride := cloneStringPtr(snap.effort)
@@ -402,7 +420,8 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 // the log line measures what the user's click actually waited — the same
 // seam task 148 already wired for the effort fast path (task 909: the model
 // side had no comparable reading, so "切换模型快不快" was unmeasurable).
-func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string, switchSnap tabRuntimeSnapshot, switchEntry *config.ProviderEntry, switchStarted time.Time) (bool, error) {
+// tl1389 P0: switchCfg is the caller's per-switch config load.
+func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string, switchCfg *config.Config, switchSnap tabRuntimeSnapshot, switchEntry *config.ProviderEntry, switchStarted time.Time) (bool, error) {
 	// Alias-folded same-model short circuit: the raw check above runs before
 	// resolution; tab.model holds the canonical ref the tab currently runs.
 	a.mu.RLock()
@@ -413,7 +432,7 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 		return true, nil
 	}
 	if ctrl := a.controllerForTab(tab); ctrl != nil {
-		if !modelSwitchPersonaBoundary(switchSnap.workspaceRoot, tab.model, switchEntry) {
+		if !modelSwitchPersonaBoundary(switchCfg, tab.model, switchEntry) {
 			// Task 1161b: fold the carried effort onto the destination before
 			// the arm — a level the destination cannot express (deepseek max →
 			// MiMo) would fail the destination's boot gate inside Resolve and
@@ -454,8 +473,8 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 						// re-checks the wire gates), so the 1161b
 						// vocabulary check downstream keeps holding as the
 						// safety net.
-						if cfg, cfgErr := config.LoadForRoot(switchSnap.workspaceRoot); cfgErr == nil && cfg.Agent.ExperimentalEffortCrossModelMap {
-							if srcEntry, srcOK := cfg.ResolveModel(srcRef); srcOK {
+						if switchCfg != nil && switchCfg.Agent.ExperimentalEffortCrossModelMap {
+							if srcEntry, srcOK := switchCfg.ResolveModel(srcRef); srcOK {
 								if mapped, note, mapOK := config.MapEffortAcrossVocabularies(srcEntry, switchEntry, display); mapOK {
 									foldedEffort = mapped
 									foldNote = note
@@ -470,7 +489,7 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 					}
 				}
 			}
-			extras, identity, extrasErr := modelSwitchExtras(switchSnap.workspaceRoot, switchRef, switchEntry)
+			extras, identity, extrasErr := modelSwitchExtras(switchCfg, switchRef, switchEntry)
 			if extrasErr != nil {
 				return false, extrasErr
 			}
@@ -561,7 +580,28 @@ func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, 
 	// write lease to the replacement so background jobs survive the swap
 	// (nil/nil falls back to a fresh pair — pre-890 behavior).
 	handoffJobs, handoffLease := jobsHandoffFrom(oldCtrl)
-	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
+	// tl1389 P0: feed the 363A runtime-reuse pool into the model-switch
+	// rebuild (same shape as the rebind chain in app_session_rebind.go).
+	// Acquire the OUTGOING generation's assembly — keyed by the tab's
+	// pre-switch root/model/effort identity, the one identity guaranteed warm
+	// once the tab has built; the new-model key would be cold on first
+	// arrival. Skill/command/hook discovery and the prompt re-scan are
+	// model-independent, and boot re-derives the persona on top of the reused
+	// prompt (strip+prepend), so a boundary crossing stays correct. A fast
+	// effort switch between builds can leave the warm entry under the older
+	// effort key — the same accepted miss profile the rebind chain carries.
+	// ReuseAssembly is nil when the gate is off or the pool is cold and the
+	// build is then byte-identical to the pre-tl1389 one.
+	oldEffortKey := ""
+	if snap.effort != nil {
+		oldEffortKey = *snap.effort
+	}
+	reuseAssembly := a.acquireRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, snap.model, oldEffortKey))
+	newEffortKey := ""
+	if effortOverride != nil {
+		newEffortKey = *effortOverride
+	}
+	newCtrl, assembly, err := boot.BuildWithAssembly(a.bootContext(), boot.Options{
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      name,
@@ -614,12 +654,24 @@ func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, 
 		// Keep the private temporary directory across model switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
 		// Task 890: the shared pair keeps background jobs alive across the swap.
+		// ReuseAssembly lives on the embedded RuntimeReload; promoted names
+		// cannot appear in the outer literal, so name the embedded struct
+		// (same shape as the rebind chain and the startup build).
+		RuntimeReload: boot.RuntimeReload{
+			ReuseAssembly: reuseAssembly,
+			PreviousPlan:  boot.FullReusePlan(),
+		},
 		Jobs:           handoffJobs,
 		WorkspaceLease: handoffLease,
 	})
 	if err != nil {
 		return nil, err
 	}
+	// Task 405 Q1: publish the freshly built assembly under the post-switch
+	// identity so switching back to this model (or any later same-key
+	// rebuild) skips discovery too. No-op when the gate is off or the build
+	// reused without producing a new assembly.
+	a.storeRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, name, newEffortKey), assembly)
 	timing.Build = time.Since(stageStarted)
 	a.bindControllerDisplayRecorder(newCtrl)
 	configureControllerRuntime(newCtrl, oldCtrl, runtime)
