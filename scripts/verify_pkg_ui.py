@@ -369,18 +369,32 @@ class CdpRunner:
         return passed, detail, evidence
 
     def restore_workspace(self) -> str:
-        """settings 类 actions 跑完后把界面还原回工作台（best effort）。"""
+        """settings 类 actions 跑完后把界面还原回工作台（best effort）。
+        rc-modal（工作阶段版本与副本等）不响应 Escape，先点它头部的关闭钮——
+        backdrop 居中区域被 modal 本体拦截点击，head 关闭钮才是确定性收口；
+        然后点设置面板的返回键（设置页卸载时子视图一并消亡）。"""
         if not self.navigated_settings:
             return ""
+        note = ""
+        try:
+            backdrop = self.page.locator(".rc-backdrop")
+            if backdrop.count() > 0 and backdrop.first.is_visible():
+                close_btn = self.page.locator(".rc-modal__head button")
+                if close_btn.count() > 0:
+                    close_btn.first.click(timeout=3000)
+                    self.page.wait_for_timeout(400)
+                    note = "已关副本面板 modal；"
+        except Exception as exc:
+            note = f"关覆盖层失败（不影响结论）: {exc}; "
         try:
             back = self.page.locator("#management-back")
             if back.count() > 0 and back.first.is_visible():
-                back.first.click(timeout=3000)
+                back.first.click(timeout=4000)
                 self.page.wait_for_timeout(500)
-                return "已还原回工作台"
+                return note + "已还原回工作台"
+            return note + "未发现设置面板返回键（可能未进入设置）"
         except Exception as exc:
-            return f"还原失败（不影响结论）: {exc}"
-        return "未发现设置面板返回键（可能未进入设置）"
+            return f"{note}还原失败（不影响结论）: {exc}"
 
 
 def run_log_check(chk: dict) -> tuple[bool, str]:

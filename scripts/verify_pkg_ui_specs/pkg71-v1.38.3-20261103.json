@@ -23,9 +23,11 @@
         {"press": "Control+,"},
         {"wait_ms": 1500},
         {"click_text": {"selector": ".settings-center__navitem", "text": "外观"}},
+        {"wait_ms": 1200},
+        {"click_text": {"selector": "button", "text": "浏览主题"}},
         {"wait_ms": 1200}
       ],
-      "assert_js": "(() => { const names = [...document.querySelectorAll('.theme-gallery-card__name')].map(e => (e.textContent || '').trim()); if (names.length === 0) return {pass: false, detail: '外观 tab 已打开但未找到主题画廊卡片 .theme-gallery-card__name'}; const hit = names.find(n => n.includes('金融时报风')); return hit ? {pass: true, detail: '画廊 ' + names.length + ' 卡含「金融时报风」（媒体风格组已随包71 交付）'} : {pass: false, detail: '画廊 ' + names.length + ' 卡无「金融时报风」: ' + names.slice(0, 12).join('、')}; })()",
+      "assert_js": "(() => { const names = [...document.querySelectorAll('.theme-gallery-card__name')].map(e => (e.textContent || '').trim()); if (names.length === 0) return {pass: false, detail: '画廊已打开（浏览主题）但未找到卡片 .theme-gallery-card__name'}; const hit = names.find(n => n.includes('金融时报风')); return hit ? {pass: true, detail: '画廊 ' + names.length + ' 卡含「金融时报风」（媒体风格组已随包71 交付，可预览应用）'} : {pass: false, detail: '画廊 ' + names.length + ' 卡无「金融时报风」: ' + names.slice(0, 12).join('、')}; })()",
       "screenshot": true
     },
     {
@@ -40,9 +42,11 @@
         {"press": "Control+,"},
         {"wait_ms": 1500},
         {"click_text": {"selector": ".settings-center__navitem", "text": "存储与路径"}},
-        {"wait_ms": 1200}
+        {"wait_ms": 1200},
+        {"click_text": {"selector": "button", "text": "查看并合并会话副本"}},
+        {"wait_ms": 2000}
       ],
-      "assert_js": "(() => { const btns = [...document.querySelectorAll('button')].filter(b => (b.textContent || '').includes('删除选中对话')); if (btns.length === 0) return {pass: false, detail: '存储页未找到「删除选中对话」按钮（tl1368 线2 面板缺失）'}; const b = btns[0]; return {pass: true, detail: '按钮在场（disabled=' + b.disabled + '；未勾选会话时禁用属预期——自动验证只断言在场，不点击）'}; })()",
+      "assert_js": "(() => { const btns = [...document.querySelectorAll('button')].filter(b => (b.textContent || '').includes('删除选中对话')); if (btns.length === 0) return {pass: false, detail: '副本面板已展开但未找到「删除选中对话」按钮（tl1368 线2 面板缺失）'}; const b = btns[0]; return {pass: true, detail: '按钮在场（disabled=' + b.disabled + '；未勾选会话时禁用属预期——自动验证只断言在场，不点击）'}; })()",
       "screenshot": true
     },
     {
