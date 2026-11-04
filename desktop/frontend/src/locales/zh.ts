@@ -4983,6 +4983,8 @@ export const zh: Record<DictKey, string> = {
   "notice.warning": "警告",
   "notice.askSubmitFailed": "提交回答失败：{error}",
   "notice.details": "详情",
+  "notice.hostProtocolLabel": "host 上下文",
+  "notice.hostProtocolHint": "host 协议消息，点击展开/收起",
   "notice.decisionReceiptTitle": "已记录决策",
   "notice.decisionReceiptTool": "工具审批",
   "notice.decisionReceiptAsk": "已回答问题",

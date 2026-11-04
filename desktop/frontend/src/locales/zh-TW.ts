@@ -3523,6 +3523,8 @@ export const zhTW: Record<DictKey, string> = {
   "notice.warning": "警告",
   "notice.askSubmitFailed": "提交回答失敗：{error}",
   "notice.details": "詳情",
+  "notice.hostProtocolLabel": "host 上下文",
+  "notice.hostProtocolHint": "host 協議訊息，點擊展開/收起",
   "notice.decisionReceiptTitle": "已記錄決策",
   "notice.decisionReceiptTool": "工具核准",
   "notice.decisionReceiptAsk": "已回答問題",

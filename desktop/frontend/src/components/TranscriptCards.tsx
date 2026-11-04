@@ -2,7 +2,7 @@
 // decision receipts, and compaction cards.
 
 import { Suspense, lazy, useCallback, useMemo, useState } from "react";
-import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, GitBranch, Info, MessageSquare, TriangleAlert } from "lucide-react";
+import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, Cog, FileSearch, GitBranch, Info, MessageSquare, TriangleAlert } from "lucide-react";
 import { getLocale, useT } from "../lib/i18n";
 import type { CompactionItem, NoticeItem } from "../lib/transcriptRows";
 import type { WireCompletionSummary } from "../lib/types";
@@ -29,6 +29,7 @@ import { ProcessCompactIcon, ProcessPhaseIcon } from "./ProcessCard";
 import { useTranscriptUserResizeIntent } from "./TranscriptLayoutIntentContext";
 import { useTick } from "../lib/workStatus";
 import { compactionLiveReadout } from "../lib/compactionLive";
+import { hostProtocolNoticeBody } from "../lib/hostProtocolNotice";
 
 export function PhaseCard({ id, text }: { id: string; text: string }) {
   return <div className="phase" data-entrance={id}><ProcessPhaseIcon size={12} /><span>{text}</span></div>;
@@ -419,6 +420,37 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
           移到 .notice-line 卡片之外的末尾（flex column 容器，卡片最末尾
           一行，与三类消息时间戳同一位置口径：卡片下方）。 */}
       {!result && <CardTime createdAt={item.createdAt} className="notice-line__time" />}
+    </div>
+  );
+}
+
+// tl1350: host 协议消息折叠条。host 生成的协议/引导消息（session-context 信封、
+// 压缩 briefing、reasoning-language 约束、feedback/回信 nudge、finalization
+// nudge 等英文长段）走 notice 通道进 transcript，此前全宽逐字铺开，一条就能
+// 挤掉整屏对话。折叠条把占用压到默认一行（⚙ host context · 首行截断），点击
+// 展开全文——任务 172 的「host 插话必须可见」契约保留，只是最小化占位
+// （任务书方案①+③；不采用方案②默认隐藏，可见性是 notice 通道的存在意义）。
+// 命中判定在渲染器入口（isHostProtocolNoticeText），本组件只负责形态。
+export function HostProtocolNoticeCard({ item }: { item: NoticeItem }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const body = hostProtocolNoticeBody(item.text);
+  const firstLine = (body.split("\n", 1)[0] ?? "").trim();
+  return (
+    <div className="notice-line notice-line--host-protocol" data-entrance={item.id}>
+      <button
+        type="button"
+        className="host-protocol-bar"
+        aria-expanded={open}
+        title={t("notice.hostProtocolHint")}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Cog size={12} className="host-protocol-bar__icon" aria-hidden="true" />
+        <span className="host-protocol-bar__label">{t("notice.hostProtocolLabel")}</span>
+        {!open && firstLine && <span className="host-protocol-bar__summary">{firstLine}</span>}
+        <ChevronRight size={12} className={open ? "host-protocol-bar__chevron host-protocol-bar__chevron--open" : "host-protocol-bar__chevron"} aria-hidden="true" />
+      </button>
+      {open && <pre className="host-protocol-bar__body">{body}</pre>}
     </div>
   );
 }
