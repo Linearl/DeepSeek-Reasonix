@@ -3636,6 +3636,16 @@ func (a *App) alignReusableBlankTabModel(tab *WorkspaceTab, model string) error 
 	// cancel that generation before publishing the corrected tab model, then
 	// start a replacement build. The generation check prevents the cancelled
 	// build from overwriting the replacement if it completes late.
+	// tl1392: seed the pre-build label with the resolved display name instead
+	// of the raw provider ref — this fenced replacement build would otherwise
+	// show e.g. the full provider ref for the whole boot window. Unresolvable
+	// refs keep the raw input (old behavior). Computed off a.mu: resolution
+	// reads the tab's controller catalog.
+	cfg, cfgErr := config.LoadForRoot(tab.WorkspaceRoot)
+	label := model
+	if cfgErr == nil {
+		label = a.resolvedTabModelLabel(tab, cfg, model)
+	}
 	a.mu.Lock()
 	if tab.removed || a.tabs[tab.ID] != tab {
 		a.mu.Unlock()
@@ -3647,7 +3657,7 @@ func (a *App) alignReusableBlankTabModel(tab *WorkspaceTab, model string) error 
 	}
 	a.supersedeTabBuildLocked(tab)
 	tab.model = model
-	tab.Label = model
+	tab.Label = label
 	tab.Ready = false
 	clearTabStartupError(tab)
 	a.saveTabsLocked()
@@ -4787,13 +4797,20 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	if rootKey == "" {
 		rootKey = "__global__" // stable key for global workspace tabs
 	}
+	// tl1392: seed the pre-build label with the resolved display name (boot's
+	// derivation) instead of the raw provider ref — the whole boot window
+	// (seconds) used to show e.g. "glm-coding-plan-cn-39e5…" in the composer
+	// until ctrl.Label() landed at publication. Unresolvable refs keep the raw
+	// input (old behavior). Computed off a.mu: resolution reads the tab's
+	// controller catalog and holds the caller's config load.
+	resolvedLabel := a.resolvedTabModelLabel(tab, cfg, model)
 	a.mu.Lock()
 	if a.tabBuildSupersededLocked(tab, buildGeneration) {
 		a.mu.Unlock()
 		return
 	}
 	tab.model = model
-	tab.Label = model
+	tab.Label = resolvedLabel
 	tab.SharedHostKey = rootKey
 	buildEffort := cloneStringPtr(tab.effort)
 	buildTokenMode := currentTabTokenMode(tab)

@@ -189,6 +189,53 @@ func (a *App) resolveTabModelRef(tab *WorkspaceTab, cfg *config.Config, name str
 	return name, entry, pluginRef, nil
 }
 
+// resolvedTabModelLabel mirrors boot's controller label derivation (the
+// entry's model, plus the planner suffix when a planner model is configured)
+// for the pre-build tab label (tl1392): the build paths seed tab.Label with
+// the raw provider ref the moment they start, and ctrl.Label() only lands at
+// publication — so the whole boot window (seconds) showed e.g.
+// "glm-coding-plan-cn-39e5…" in the composer. Resolution reuses
+// resolveTabModelRef so plugin-namespaced fallback and provider-access gating
+// cannot drift from the switch path; a ref that does not resolve (unknown
+// model, nil config, no controller for plugin refs) falls back to the raw
+// input — the old behavior — rather than failing the caller. cfg is the
+// caller's load; call this OFF a.mu (it reads the controller catalog).
+func (a *App) resolvedTabModelLabel(tab *WorkspaceTab, cfg *config.Config, ref string) string {
+	raw := strings.TrimSpace(ref)
+	if raw == "" || cfg == nil {
+		return raw
+	}
+	canonical, entry, pluginRef, err := a.resolveTabModelRef(tab, cfg, raw)
+	if err != nil {
+		return raw
+	}
+	name := ""
+	if pluginRef {
+		// boot synthesizes the plugin entry from the merged resolver catalog
+		// and labels it with the entry's model segment (splitProviderRef
+		// semantics): the part after the first slash, else the descriptor
+		// model.
+		if d, found := extensionModelDescriptor(a.providerCatalogForTab(tab), canonical); found {
+			if _, model, ok := strings.Cut(d.Ref, "/"); ok && model != "" {
+				name = model
+			} else {
+				name = d.Model
+			}
+		}
+	} else if entry != nil {
+		name = entry.Model
+	}
+	if name == "" {
+		return raw
+	}
+	if planner := strings.TrimSpace(cfg.Agent.PlannerModel); planner != "" {
+		if pe, ok := cfg.ResolveModel(planner); ok {
+			name = name + " + planner " + pe.Model
+		}
+	}
+	return name
+}
+
 // modelSwitchPersonaBoundary reports whether the switch crosses the official
 // DeepSeek-V4-Pro persona boundary (task 602). The persona is prepended to the
 // cache-stable system prompt at boot (config.ApplyOfficialDeepSeekV4ProPersona) and ReasoningLanguageForEntry pins its auto reasoning language — neither has an override seam, so crossing the boundary keeps the build+swap path, which re-derives the prompt exactly as boot does. Plugin-namespaced targets (nil entry) never apply the persona. tl1389 P0: the caller's per-switch config load feeds the gate.
