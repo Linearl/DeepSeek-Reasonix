@@ -139,3 +139,27 @@ func TestTodoWriteWellFormedListHasNoReorderNote(t *testing.T) {
 		t.Fatalf("a correct order must not carry the reorder note: %q", out)
 	}
 }
+
+// ③ schema guidance: the ordering rule AND the auto-tolerance are written into
+// the schema so the agent learns the right shape on first use instead of
+// discovering it through a rejection. Source pin.
+func TestTodoWriteSchemaCarriesOrderingGuidance(t *testing.T) {
+	schema := string(todoWrite{}.Schema())
+	for _, want := range []string{
+		"must be the FIRST unfinished item",
+		"auto-reorders instead of rejecting",
+	} {
+		if !strings.Contains(schema, want) {
+			t.Fatalf("schema must teach %q, got %s", want, schema)
+		}
+	}
+	description := todoWrite{}.Description()
+	for _, want := range []string{
+		"the FIRST unfinished item, in the shape [completed, in_progress, pending]",
+		"the host auto-reorders instead of rejecting",
+	} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("description must teach %q, got %s", want, description)
+		}
+	}
+}
