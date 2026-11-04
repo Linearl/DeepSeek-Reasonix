@@ -11,7 +11,7 @@
 // what has to be fetched.
 
 import { parseSubagentOutcomeText } from "./subagentOutcome";
-import type { SubagentArtifactView } from "./types";
+import type { ForegroundSubagentView, JobView, SubagentArtifactView } from "./types";
 import { isTerminalSubagentPhase, type Item, type SubagentPhase, type ToolStatus } from "./useController";
 
 export type SubagentDirectoryItem = Extract<Item, { kind: "tool" }>;
@@ -157,4 +157,87 @@ export function mergeEndedSubagentRecords(directory: SubagentDirectory, views: r
  *  ended content is visible at the entry before the tab is opened. */
 export function subagentsTabLabel(base: string, endedCount: number): string {
   return endedCount > 0 ? `${base} · ${endedCount}` : base;
+}
+
+// tl1387: a second, backend-owned running source for the dock panel (the
+// zcode form: the directory's running list must never depend on one data
+// path). The transcript projection above is the rich source (progress
+// preview, nested tool stream, terminate) — but it only knows about a child
+// while the session transcript holds its dispatch card, and that card is a
+// live-reducer artifact: a gap repair stall, a tail-first hydration window or
+// a speculative-rollback can leave the panel blind while the child is
+// demonstrably running (the capsule's job/foreground registries see it —
+// tl1387 第一层/第二层两层都断在「列表只读转录」这一单源上). The registries
+// the capsule already merges (mergeCapsuleWork: controller jobs + the
+// process-local foreground registry from emitSubagentLifecycle telemetry)
+// are the same breadth the 557/440 contract gives the capsule — projected
+// here as preview-only running rows.
+
+/** RegistryRunningSource is what App already holds for the ACTIVE tab: the
+ *  controller's background sub-agent jobs plus the foreground registry rows
+ *  bound to the same tab. bash jobs are not sub-agents and never enter. */
+export interface RegistryRunningSource {
+  jobs?: readonly JobView[];
+  foreground?: readonly ForegroundSubagentView[];
+}
+
+/** One registry-projected running entry. `ref` is stamped only for
+ *  foreground rows (the child's real transcript ref — the same string
+ *  CancelSubagentForTab and ReadSubagentSession take); background job rows
+ *  carry the job id as the item id only, so they render without a terminate
+ *  button or a transcript read instead of aiming those bridges at a job id
+ *  that is not a ref. */
+export function registryRunningEntries(source: RegistryRunningSource | undefined, tabId: string): SubagentDirectoryEntry[] {
+  const out: SubagentDirectoryEntry[] = [];
+  if (!source) return out;
+  const seen = new Set<string>();
+  const push = (id: string, label: string, startedAt: number | undefined, ref: string | undefined) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    const item: SubagentDirectoryItem = {
+      kind: "tool",
+      id,
+      // tl1209 semantics: the dispatch description tells same-profile
+      // children apart; the profile name is the fallback.
+      name: label || "task",
+      args: "",
+      readOnly: true,
+      status: "running",
+      startedAt: startedAt || undefined,
+      subject: label || undefined,
+    };
+    out.push({ item, running: true, status: "running", ...(ref ? { ref } : {}) });
+  };
+  for (const job of source.jobs ?? []) {
+    if (!job || job.kind === "bash") continue;
+    push(`registry:job:${job.id}`, job.label, job.startedAt, undefined);
+  }
+  for (const entry of source.foreground ?? []) {
+    if (!entry) continue;
+    // Only the active tab's rows belong in this session's directory; foreign
+    // tabs carry their origin in the capsule instead (task 557 contract).
+    if (tabId && entry.tabId && entry.tabId !== tabId) continue;
+    push(`registry:fg:${entry.ref}`, entry.description || entry.name || entry.ref, entry.startedAt, entry.ref);
+  }
+  return out;
+}
+
+/** tl1387: fold registry-projected running rows into the transcript
+ *  projection. Transcript entries win on ref collisions (they carry the
+ *  richer live state); a registry row whose ref (or id, for ref-less job
+ *  rows) is not represented is appended. Pure: returns the input directory
+ *  when there is nothing to add. */
+export function mergeRegistryRunningSubagents(directory: SubagentDirectory, registry: readonly SubagentDirectoryEntry[] | undefined): SubagentDirectory {
+  if (!registry || registry.length === 0) return directory;
+  const known = new Set<string>();
+  for (const entry of directory.running) {
+    if (entry.ref) known.add(entry.ref);
+    known.add(entry.item.id);
+  }
+  const extra = registry.filter((entry) => {
+    if (entry.ref && known.has(entry.ref)) return false;
+    return !known.has(entry.item.id);
+  });
+  if (extra.length === 0) return directory;
+  return { running: [...extra, ...directory.running], ended: directory.ended };
 }

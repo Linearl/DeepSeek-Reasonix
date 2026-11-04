@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"reasonix/internal/agent"
@@ -234,19 +235,59 @@ func (a *App) metadataProjectTopics(scope, workspaceRoot string) []ProjectNode {
 // fillNodeModel (task 274 ①) stamps a tree row with the session's current
 // model when this host can see its runtime — the same collabSessionInfo probe
 // the directory rows use, so the sidebar and list_addressable_sessions can
-// never disagree. Rows whose runtime is invisible stay unstamped (no guess).
+// never disagree. Rows whose runtime is invisible stay unstamped on ModelRef
+// (no guess about the live value), but tl1387 stamps MetaModel from the
+// session sidecar (BranchMeta.Model — the creation-time model) so the row
+// hover stays usable for sessions with no visible runtime (user ruling
+// 20261104 13:1x/14:0x: hover fallback = last known live value > meta model
+// 「创建时」; the live/creation distinction rides the two separate fields).
 func (a *App) fillNodeModel(node *ProjectNode) {
 	if node == nil || node.SessionPath == "" {
 		return
 	}
 	contact := agent.SessionContactID(node.SessionPath)
-	if contact == "" {
-		return
+	if contact != "" {
+		if ref, prov, known := a.collabSessionInfo(contact); known {
+			node.ModelRef = ref
+			node.Provider = prov
+			return
+		}
 	}
-	if ref, prov, known := a.collabSessionInfo(contact); known {
-		node.ModelRef = ref
-		node.Provider = prov
+	node.MetaModel = cachedSessionMetaModel(node.SessionPath)
+}
+
+// metaModelCache memoizes the creation-time model per session path. The value
+// is BranchMeta.Model — stamped at session creation (fork/new) and never the
+// live selector value, so a stable path-keyed cache is semantically exact:
+// a continued/forked session gets a NEW path and reads fresh. Bounded: past
+// the cap the whole map resets (sidebar-sized workloads never approach it).
+var metaModelCacheMu sync.Mutex
+var metaModelCache = map[string]string{}
+
+const metaModelCacheCap = 4096
+
+func cachedSessionMetaModel(sessionPath string) string {
+	metaModelCacheMu.Lock()
+	if model, ok := metaModelCache[sessionPath]; ok {
+		metaModelCacheMu.Unlock()
+		return model
 	}
+	metaModelCacheMu.Unlock()
+	meta, _, err := agent.LoadBranchMeta(sessionPath)
+	if err != nil {
+		return ""
+	}
+	model := strings.TrimSpace(meta.Model)
+	if model == "" {
+		return ""
+	}
+	metaModelCacheMu.Lock()
+	if len(metaModelCache) >= metaModelCacheCap {
+		metaModelCache = map[string]string{}
+	}
+	metaModelCache[sessionPath] = model
+	metaModelCacheMu.Unlock()
+	return model
 }
 
 func (a *App) runtimeOnlyProjectTopics(scope, workspaceRoot string) []ProjectNode {

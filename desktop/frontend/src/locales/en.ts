@@ -1766,6 +1766,8 @@ export const en = {
   "projectTree.repairDeferred": "History repair will retry later",
   "projectTree.repairBlocked": "{count} histories need repair",
   "projectTree.recovered": "Recovered",
+  "projectTree.modelHover.current": "Current model: {model}",
+  "projectTree.modelHover.createdAt": "{model} (at creation)",
   "projectTree.recoveryOnly": "Recoverable",
   "projectTree.rebuildCatalog": "Rebuild index",
   "projectTree.rebuildCatalogFailed": "Index rebuild did not finish; background indexing restarted (details in log)",

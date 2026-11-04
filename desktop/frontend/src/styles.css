@@ -28732,6 +28732,11 @@ button.statusbar__mcp:focus-visible {
 
 .project-tree__topic--session .project-tree__topic-label {
   color: var(--fg-dim);
+  /* tl1387 C: the session row is title+time two segments; at narrow widths
+     the title column must not collapse toward one character (the flex
+     min-width:0 above lets it shrink -- this floor keeps the title readable
+     while the ellipsis still trims the overflow). */
+  min-width: 72px;
 }
 
 .project-tree__topic-main:focus-visible {

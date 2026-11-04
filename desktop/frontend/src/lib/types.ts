@@ -748,6 +748,8 @@ export interface ProjectNode extends RemoteProjectNodeFields {
   /** Task 274 ①: the session's current model on the sidebar row (absent when the runtime is invisible). */
   modelRef?: string;
   provider?: string;
+  /** tl1387: the session sidecar's creation-time model, stamped only when the runtime probe saw no live value. Hover annotates it 「创建时」; never rendered inline. */
+  metaModel?: string;
   preview?: string;
   projectColor?: string;
   turns?: number;
