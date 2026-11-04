@@ -15,6 +15,12 @@
 > 4. **追齐类工作暂停/降级**：上游版本对照、上游 PR 本地体现核对、追齐 merge 流程。
 > 5. **下方 2026-09-10 三原则中，第 1 条「保持对齐」已被本更新取代**；第 2/3 条仍有效（限单点/思路层）。
 
+> **⚠️ 2026-11-03 更新（用户拍板，上游跟进口径细化 + 路线拍板）**：
+> 1. **1.38.3 之后，上游我们只跟 bug 修复**——cherry-pick 通道仅收 bug fix；上游新特性/重构不再吸收。
+> 2. **studio 线更新只参考、不照搬**——上游 studio 分支的演进（MCP Apps 宿主扩展、#12584 Intelligent UI、#11564 render_chart 内联渲染等）**一律只作设计输入参考**，禁止直接移植或照搬实现；fork 相关能力按自己的路线（MCP Apps 插件生态）自建。
+> 3. **UI 交互能力路线拍板（同日）**：走 **MCP Apps 插件生态**路线（对齐 zcode UI Plugin 同款官方协议），形态为**内置插件、用户可选装、默认勾选**——不做 host 内建全家桶；不管上游 #11564「host 内建、不做插件」的裁决（已分道扬镳，两条路线并行）。
+> 4. 背景评估锚点：fork 已继承上游 MCP Apps 宿主（MCPAppCard/AppBridge/appregistry，零改动）；差距 = 六个宿主扩展 API（callServerTool/sendMessage/updateModelContext/registerTool/widgetState/ui.surfaces）+ sampling，按插件生态需求逐项补齐。
+
 **长期并行，不废弃。**（历史：2026-09-10 三原则）
 
 1. ~~**保持对齐**~~ —— **已被 2026-10-05 更新取代**。（原：持续追齐上游版本；每次 merge 逐文件论证、保留魔改、双向 tree 比对。）
