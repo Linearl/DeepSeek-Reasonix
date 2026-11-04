@@ -69,6 +69,27 @@ export function errorMessage(err: unknown): string {
   return String(err || "");
 }
 
+// tl1393: the two Go-side running-turn refusal forms the guidance degrade
+// chain may take over, pinned here so every surface classifies them the same
+// way. Format strings live in exactly four Go sites (a drift breaks this
+// predicate AND the desktop-side pin test together — extend both):
+//   internal/control/controller.go ErrTurnRunning → "turn already running"
+//   desktop/turn_runtime_api.go (validatePromptIdentity, AnswerPromptForTab)
+//   desktop/inbox_app.go (EnqueueInboxSteerForTurn, SteerInboxItemForTurn)
+//     → `turn %q is not the active turn for tab %q`
+export function isTurnAlreadyRunningRejection(err: unknown): boolean {
+  return /turn already running/i.test(errorMessage(err));
+}
+
+// tl1303/tl1393: the exact-turn fence bounced the turnId the frontend held
+// (turn ended or rolled over between the snapshot and the fence). This is the
+// "no injectable live turn" signal — the replacement turn must not be steered
+// through the session-level channel; the text belongs in the durable
+// follow-up queue (the turn-boundary pump dispatches it when the run exits).
+export function isNotActiveTurnRejection(err: unknown): boolean {
+  return /is not the active turn/i.test(errorMessage(err));
+}
+
 const noticeCodeKeys: Record<string, DictKey> = {
   final_readiness: "notice.finalReadiness",
   search_sources_not_provided: "sources.notProvided",

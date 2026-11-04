@@ -43,6 +43,8 @@ import {
   appendNoticeItem,
   deliveryReadinessDetail,
   errorMessage,
+  isNotActiveTurnRejection,
+  isTurnAlreadyRunningRejection,
   readinessMissingIds,
 } from "./controllerNotices";
 import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
@@ -5250,7 +5252,14 @@ export function useController() {
     error: unknown,
   ): Promise<boolean> => {
     if (statesRef.current.get(tabId)?.pendingSubmissionId !== submissionId) return false;
-    if (!/turn already running/i.test(errorMessage(error))) return false;
+    // tl1393: both running-turn refusal forms degrade — "turn already
+    // running" (admission raced a live turn) and "is not the active turn"
+    // (a turn-id-fenced surface bounced the stale id the frontend held).
+    // The not-active-turn form rides the tl1303 branch below: the stale
+    // exact-turn steer attempt re-resolves a fresh id, and its rejection —
+    // or the original one — lands the text in the durable follow-up queue
+    // instead of the raw Send-failed face.
+    if (!isTurnAlreadyRunningRejection(error) && !isNotActiveTurnRejection(error)) return false;
     type DegradedReceipt = { itemId?: string; disposition?: string; error?: string };
     let receipt: DegradedReceipt | undefined;
     let steerError: unknown;
@@ -5493,16 +5502,32 @@ export function useController() {
     const turnId = typeof app.EnqueueInboxSteerForTurn === "function" ? await resolveActiveTurnId(app, tabId, statesRef.current.get(tabId)?.activeTurnId) : undefined;
     // Durable steer first: body is on disk before admission. Rejected steers
     // become follow-ups automatically (disposition queued_followup).
-    const receipt = typeof app.EnqueueInboxSteerForTurn === "function"
-      ? turnId
-        ? await app.EnqueueInboxSteerForTurn(tabId, turnId, text, text, "")
-        // Fork: the turn id can be unavailable when the running turn is owned
-        // by another process (second writer / recovery fork / controller
-        // rebuild). Degrade to the session-level durable steer queue instead
-        // of rejecting the user's message; the host records it durably and a
-        // rejected steer becomes a follow-up (disposition queued_followup).
-        : await app.EnqueueInboxSteer(tabId, text, text, "")
-      : await app.EnqueueInboxSteer(tabId, text, text, "");
+    let receipt;
+    try {
+      receipt = typeof app.EnqueueInboxSteerForTurn === "function"
+        ? turnId
+          ? await app.EnqueueInboxSteerForTurn(tabId, turnId, text, text, "")
+          // Fork: the turn id can be unavailable when the running turn is owned
+          // by another process (second writer / recovery fork / controller
+          // rebuild). Degrade to the session-level durable steer queue instead
+          // of rejecting the user's message; the host records it durably and a
+          // rejected steer becomes a follow-up (disposition queued_followup).
+          : await app.EnqueueInboxSteer(tabId, text, text, "")
+        : await app.EnqueueInboxSteer(tabId, text, text, "");
+    } catch (error) {
+      // tl1393: a stale turn id (the turn ended or rolled over between the
+      // ListTabs snapshot and this fence) bounces the exact-turn steer with
+      // "is not the active turn" — this used to throw the raw Go error straight
+      // at the composer and the text went nowhere. Per tl1303's design the
+      // replacement turn must not be steered through the session-level channel
+      // (a dead or wedged run would accept and never consume it): keep the
+      // text in the durable follow-up queue and let the turn-boundary pump
+      // dispatch it when the run exits. Other rejections stay honest failures.
+      if (!isNotActiveTurnRejection(error)) throw error;
+      reportFrontendLog("send", "exact-turn steer refused; text kept in the follow-up queue",
+        `tab=${tabId} turn=${turnId ?? ""}: ${errorMessage(error)}`, "warn");
+      receipt = await app.EnqueueInboxFollowup(tabId, text, text, "");
+    }
     if (receipt?.error) throw new Error(receipt.error);
     // Task 258: show the bubble at receipt time. The message is durable now;
     // waiting for the agent's consume event (which may not fire before the
