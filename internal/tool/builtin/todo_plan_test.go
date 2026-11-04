@@ -172,6 +172,73 @@ func TestTodoWriteFirstMarkerThenUnmarkedContinuation(t *testing.T) {
 	}
 }
 
+// tl1354 ①: the archive ack must carry the recovery path on the spot — the
+// seal is user-visible (tl1353: the panel has no expand entry), so "archived"
+// alone reads as data loss and the model needs the undo recipe immediately.
+func TestTodoWritePlanSwitchAckCarriesRecoveryGuidance(t *testing.T) {
+	ctx := ledgerWithPlanTodos(t, oldPlanArgs)
+
+	out, err := (todoWrite{}).Execute(ctx, json.RawMessage(`{"plan_id":"turn-accidental-123","todos":[
+		{"content":"Investigate the new bug","status":"in_progress","step_id":"new_step_01"}
+	]}`))
+	if err != nil {
+		t.Fatalf("declared switch should succeed: %v", err)
+	}
+	if !strings.Contains(out, "已归档") {
+		t.Fatalf("ack must report the archive, got %q", out)
+	}
+	for _, want := range []string{"误传", "todo_read", "原 plan_id", "重发原完整列表"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("recovery guidance must mention %q, got %q", want, out)
+		}
+	}
+}
+
+// tl1354 ① recovery actually works: replaying the original list under its
+// original marker is a legal switch back — the continuity checks do not
+// block the restore, so the sealed plan is recoverable as documented. Both
+// calls go through the receipt recording path so the second one sees the
+// baseline the mistaken switch produced.
+func TestTodoWriteMistakenSwitchIsRecoverable(t *testing.T) {
+	ledger := evidence.NewLedger()
+	ledger.Record(evidence.ReceiptFromToolCall("todo_write", json.RawMessage(oldPlanArgs), true, true))
+	ctx := evidence.WithLedger(context.Background(), ledger)
+
+	mistaken := `{"plan_id":"turn-accidental-123","todos":[
+		{"content":"Investigate the new bug","status":"in_progress","step_id":"new_step_01"}
+	]}`
+	if _, err := (todoWrite{}).Execute(ctx, json.RawMessage(mistaken)); err != nil {
+		t.Fatalf("mistaken switch setup: %v", err)
+	}
+	ledger.Record(evidence.ReceiptFromToolCall("todo_write", json.RawMessage(mistaken), true, true))
+
+	out, err := (todoWrite{}).Execute(ctx, json.RawMessage(oldPlanArgs))
+	if err != nil {
+		t.Fatalf("replaying the original list under its original marker must restore the plan: %v", err)
+	}
+	if !strings.Contains(out, "计划已切换，旧计划 1 项已归档") {
+		t.Fatalf("the restore is itself a switch (the accidental plan is archived), got %q", out)
+	}
+}
+
+// tl1354 ① schema pin: the destructive semantics must live in the schema
+// description itself — that is the only text the model sees before calling.
+func TestTodoWriteSchemaPlanIDCarriesDestructiveSemantics(t *testing.T) {
+	schema := string(todoWrite{}.Schema())
+	for _, want := range []string{
+		"DESTRUCTIVE",
+		"archives the ENTIRE current plan",
+		"sealed/archived view",
+		"Never send a turn id, timestamp, or invented marker",
+		"recover immediately",
+		"ORIGINAL plan_id",
+	} {
+		if !strings.Contains(schema, want) {
+			t.Fatalf("schema plan_id description must carry %q, got %s", want, schema)
+		}
+	}
+}
+
 // A plan switch requires the full todos path — ops edit the current plan only.
 func TestTodoWritePlanSwitchRejectsOpsPath(t *testing.T) {
 	ctx := ledgerWithPlanTodos(t, oldPlanArgs)

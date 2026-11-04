@@ -84,7 +84,7 @@ func (todoWrite) Schema() json.RawMessage {
       "required":["op"]
     }
   },
-  "plan_id":{"type":"string","description":"Optional plan marker (task 972). Send a NEW value when you start a different plan — the host then treats the write as a wholesale replacement and archives the old plan, instead of rejecting your new items as invented. Re-send the SAME value (or omit it) while working inside the current plan, where completed items are preserved and never invented. The host echoes the current plan marker back in todo_read."}
+  "plan_id":{"type":"string","description":"Optional plan marker (task 972). DESTRUCTIVE: sending a NEW value archives the ENTIRE current plan — the old list is closed out and the user's todo panel switches to a sealed/archived view (the active panel empties, which reads as data loss to the user). Never send a turn id, timestamp, or invented marker as plan_id; each unintended new value seals the user's visible plan. Send a NEW value ONLY when you genuinely start a different plan: the write is then treated as a wholesale replacement (old plan archived, not rejected as invented). If you switched by mistake, recover immediately: re-send the ORIGINAL full list with its ORIGINAL plan_id (todo_read echoes the current marker). Re-send the SAME value (or omit it) while working inside the current plan, where completed items are preserved and never invented."}
 }
 }`)
 }
@@ -209,7 +209,11 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 		ack += fmt.Sprintf(" %d abandoned (given up; kept in the list as a record).", dropped)
 	}
 	if planSwitched {
-		ack += fmt.Sprintf(" 计划已切换，旧计划 %d 项已归档。", len(previous))
+		// tl1354: the archive is user-visible (the active panel seals), so the
+		// ack must carry the recovery path — a mistaken switch (e.g. a turn id
+		// pasted as plan_id) is undoable by replaying the original list with
+		// its original marker, and the model needs to know that on the spot.
+		ack += fmt.Sprintf(" 计划已切换，旧计划 %d 项已归档。若为误传（例如把 turn id 当作 plan_id），可立即恢复：用 todo_read 查回原 plan_id，重发原完整列表并带上该 plan_id。", len(previous))
 	}
 	if reordered {
 		ack += " Note: the in_progress item was behind pending work; the host auto-reordered it to the first unfinished slot — send the [completed, in_progress, pending] shape next time."
