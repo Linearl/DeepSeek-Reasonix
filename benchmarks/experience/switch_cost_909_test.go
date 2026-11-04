@@ -26,7 +26,12 @@ func TestCollectSwitchCostLines(t *testing.T) {
 		`time=2026-10-16T15:13:00.000+08:00 level=INFO msg="desktop: effort switch" tab=tab_a path=fast-per-request level=high elapsed_ms=4`,
 		`time=2026-10-16T15:14:00.000+08:00 level=INFO msg="desktop: effort switch" tab=tab_a path=fast-same-level level=high elapsed_ms=2`,
 		`time=2026-10-16T15:15:00.000+08:00 level=INFO msg="desktop: runtime build end" trigger=set-effort ms=4200 shared_host_reused=true path=fallback`,
+		// persona 边界重建：switch 行 + build end 同一次开关——只按 build end 计 1（tl1389 P4 单源，双计即回归）。
 		`time=2026-10-16T15:16:00.000+08:00 level=INFO msg="desktop: runtime build end" trigger=set-model ms=5100 shared_host_reused=true path=fallback`,
+		// recovery-fork 形态：快路径拒收只落 agent 侧 declined 行，没有任何
+		// model switch fallback 行——tl1389 P4 补盲：这条裸 build end 必须计 1。
+		`time=2026-10-16T15:16:30.000+08:00 level=INFO msg="agent: model override declined" reason=recovery-fork ref=p/m5`,
+		`time=2026-10-16T15:16:45.000+08:00 level=INFO msg="desktop: runtime build end" trigger=set-model ms=12300 shared_host_reused=false`,
 		`time=2026-10-16T15:17:00.000+08:00 level=INFO msg="desktop: effort read breakdown" tab=tab_a stage="switch-tab:ancillary effort" total_ms=596 reconcile_ms=594 memo_ms=1`,
 		`time=2026-10-16T15:18:00.000+08:00 level=INFO msg="desktop: effort read breakdown" tab=tab_b stage="switch-tab:ancillary effort" total_ms=181 reconcile_ms=180`,
 		"", // 结尾空行不得致错
@@ -43,8 +48,8 @@ func TestCollectSwitchCostLines(t *testing.T) {
 	if len(col.ModelSwitchFast) != 2 || col.ModelSwitchFast[0].MS != 12 || col.ModelSwitchFast[1].MS != 1 {
 		t.Fatalf("model 快路径样本不符（无 elapsed_ms 的老行应丢弃）：%+v", col.ModelSwitchFast)
 	}
-	if col.ModelSwitchFallbk != 1 {
-		t.Fatalf("model fallback 计数 = %d，want 1", col.ModelSwitchFallbk)
+	if col.ModelSwitchFallbk != 2 {
+		t.Fatalf("model fallback 计数 = %d，want 2（persona 边界 1 + recovery-fork 裸 build end 1；tl1389 P4 单源 build end）", col.ModelSwitchFallbk)
 	}
 	if len(col.EffortSwitchFast) != 2 || col.EffortSwitchFast[0].MS != 4 || col.EffortSwitchFast[1].MS != 2 {
 		t.Fatalf("effort 快路径样本不符：%+v", col.EffortSwitchFast)
