@@ -974,6 +974,32 @@ func (l *Ledger) Close() error {
 	return l.maybeCompactLocked(true)
 }
 
+// WithWriterQuiesced runs fn while the ledger's O_APPEND writer handle is
+// closed and concurrent appends are fenced on the ledger mutex (tl1390).
+// Windows cannot rename or replace a file held open without FILE_SHARE_DELETE,
+// so any sidecar move that touches the turns ledger loses to the live writer
+// with "being used by another process" — the 2026-11-04 promotion incident
+// declined forever while a streaming turn kept the handle open. Quiescing
+// releases the handle for the duration of fn; writes are direct (no bufio), so
+// closing loses nothing, and the next append re-opens the writer through
+// ensureWriterLocked — including an append that arrives after fn moved the
+// file, because O_APPEND re-opens by path and the caller is expected to rebind
+// the ledger to the surviving session path right after a successful move.
+func (l *Ledger) WithWriterQuiesced(fn func() error) error {
+	if l == nil {
+		return fn()
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.writer == nil {
+		return fn()
+	}
+	if err := l.closeWriterLocked(); err != nil {
+		return err
+	}
+	return fn()
+}
+
 func (l *Ledger) MetricsSnapshot() MetricsSnapshot {
 	if l == nil {
 		return MetricsSnapshot{}
