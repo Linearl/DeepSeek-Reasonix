@@ -326,6 +326,57 @@ func TestTopicActivityStatusClearsOnCompactionDone(t *testing.T) {
 	}
 }
 
+// tl1384: 审批结算事件必须驱动侧栏徽章状态机，不能只等后续活动事件或
+// TurnDone 兜底——中断场景下那两条链都可能断。批准/回答 → PromptAnswered
+// =turn 续跑，徽章推进到 thinking（与 tab 运行态一致）；无答案丢弃 →
+// PromptClosed =徽章随 prompt 一起死（任务730「控制器代答核销」的事件驱动
+// 形态）。走真实 tabEventSink.Emit → setTabActivityStatus 链路钉。
+func TestApprovalSettlementEventsDriveSidebarBadge(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	sink := &tabEventSink{tabID: "settle-badge", app: app}
+	app.mu.Lock()
+	app.detachedSessions[sessionRuntimeKey("settle-badge.jsonl")] = &WorkspaceTab{
+		ID:            "settle-badge",
+		Scope:         "global",
+		WorkspaceRoot: globalTabWorkspaceRoot(),
+		TopicID:       "topic_settle_badge",
+		SessionPath:   "settle-badge.jsonl",
+		Ready:         true,
+		sink:          sink,
+		disabledMCP:   map[string]ServerView{},
+	}
+	app.mu.Unlock()
+	readBadge := func() string {
+		app.mu.RLock()
+		defer app.mu.RUnlock()
+		return app.detachedSessions[sessionRuntimeKey("settle-badge.jsonl")].ActivityStatus
+	}
+
+	// 审批请求到达 → 徽章挂「待确认」（既有合同）。
+	sink.Emit(event.Event{Kind: event.ApprovalRequest, ItemID: "1"})
+	if got := readBadge(); got != topicStatusWaitingConfirmation {
+		t.Fatalf("after ApprovalRequest badge = %q, want %q", got, topicStatusWaitingConfirmation)
+	}
+	// 用户批准 → PromptAnswered：徽章必须立即从「待确认」推进，而不是挂着
+	// 等一个可能永远不来的 Reasoning/TurnDone（tl1384 残留场景的根修）。
+	sink.Emit(event.Event{Kind: event.PromptAnswered, ItemID: "1"})
+	if got := readBadge(); got != topicStatusThinking {
+		t.Fatalf("after PromptAnswered badge = %q, want %q (settlement must advance the badge)", got, topicStatusThinking)
+	}
+
+	// 无答案丢弃（取消/超时/teardown）→ PromptClosed：徽章清空，
+	// waiting_confirmation 不得比它锚定的 prompt 活得更久。
+	sink.Emit(event.Event{Kind: event.AskRequest, ItemID: "2"})
+	if got := readBadge(); got != topicStatusWaitingConfirmation {
+		t.Fatalf("after AskRequest badge = %q, want %q", got, topicStatusWaitingConfirmation)
+	}
+	sink.Emit(event.Event{Kind: event.PromptClosed, ItemID: "2"})
+	if got := readBadge(); got != "" {
+		t.Fatalf("after PromptClosed badge = %q, want cleared (badge must not outlive its prompt)", got)
+	}
+}
+
 func TestCatalogRuntimeStatusPreservesDeliveryCheckWhenIdle(t *testing.T) {
 	got := catalogRuntimeStatus(topicStatusAwaitingDelivery, control.RuntimeStatus{})
 	if got != topicStatusAwaitingDelivery {
