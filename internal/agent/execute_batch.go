@@ -158,6 +158,11 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		}
 	}
 	turn.toolCallsThisTurn += len(calls)
+	// tl1378 增量2: the review-hint layer counts executed batches (flood-cancelled
+	// admissions never count — no result the model reads was produced).
+	if a.reviewHint {
+		a.reviewHintBatches.Add(1)
+	}
 	// Task 820 delegation metrics: only batches that pass the flood gate get
 	// here, so the counters reflect executed work, not cancelled admissions.
 	for _, call := range calls {
@@ -244,6 +249,10 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 			return
 		}
 		committed[i] = true
+		// tl1378 增量2: the advisory review hint rides the batch's fresh last
+		// result BEFORE it is stored — extending new tail content costs no
+		// cache invalidation, rewriting stored history would.
+		a.maybeApplyReviewHint(&outcomes[i], i == len(calls)-1)
 		a.finalizeIncompleteReadOutcome(ctx, outcomes[i].incompleteRead, &outcomes[i])
 		a.finalizeReadDelivery(ctx, calls[i], &outcomes[i])
 		results[i] = outcomes[i].output

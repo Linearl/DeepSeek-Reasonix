@@ -1045,6 +1045,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_cold_cache_compact = %v   # task 297: compact a long conversation once before it goes cold (off by default)\n", c.Agent.ExperimentalColdCacheCompact)
 	fmt.Fprintf(&b, "cold_cache_compact_min_bytes = %d   # task 297: visible-context size floor in bytes (0 = built-in 614400 = 600 KiB)\n", c.Agent.ColdCacheCompactMinBytes)
 	fmt.Fprintf(&b, "cold_cache_compact_idle_minutes = %d   # task 297: idle minutes before the cold-cache pass fires (0 = built-in 300 = 5h)\n", c.Agent.ColdCacheCompactIdleMinutes)
+	fmt.Fprintf(&b, "experimental_curate_context = %v   # tl1378: register the curate_context tool (replace processed tool results with one-line notes; off by default)\n", c.Agent.ExperimentalCurateContext)
+	fmt.Fprintf(&b, "experimental_review_hint = %v   # tl1378: append an advisory review line to the latest tool result every 25 batches or +20k tokens (off by default)\n", c.Agent.ExperimentalReviewHint)
 	fmt.Fprintf(&b, "experimental_composer_draft = %v   # task 318.3: persist composer drafts across restarts (off by default)\n", c.Agent.ExperimentalComposerDraft)
 	// Task 514: task-369 selection quick-actions gate. Must render under
 	// [agent] — the field lives on the Agent struct, and the [desktop] line it

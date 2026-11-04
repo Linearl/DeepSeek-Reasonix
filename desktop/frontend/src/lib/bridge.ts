@@ -1796,6 +1796,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetDagGraphCacheMaxMB(maxMB: number): Promise<void>;
   SetDagGraphCacheEntryMaxMB(maxMB: number): Promise<void>;
   SetExperimentalColdCacheCompact(enabled: boolean): Promise<void>;
+  /** tl1378: curate_context fine-grained tier (boot snapshot, restart to apply). */
+  SetExperimentalCurateContext(enabled: boolean): Promise<void>;
+  /** tl1378: review-hint prompt layer (boot snapshot, restart to apply). */
+  SetExperimentalReviewHint(enabled: boolean): Promise<void>;
   SetColdCacheCompactMinBytes(bytes: number): Promise<void>;
   SetColdCacheCompactIdleMinutes(minutes: number): Promise<void>;
   // Task 60: Trace-as-State compaction (experimental).
@@ -6783,6 +6787,8 @@ function makeMockApp(): AppBindings {
     async SetDagGraphCacheMaxMB() {},
     async SetDagGraphCacheEntryMaxMB() {},
     async SetExperimentalColdCacheCompact() {},
+    async SetExperimentalCurateContext() {},
+    async SetExperimentalReviewHint() {},
     async SetColdCacheCompactMinBytes() {},
     async SetColdCacheCompactIdleMinutes() {},
     async SetExperimentalTraceAsState() {},

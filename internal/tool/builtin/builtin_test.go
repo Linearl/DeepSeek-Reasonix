@@ -82,6 +82,16 @@ func (s *compressStub) CompressContext(_ context.Context, request tool.CompressR
 	return s.result, nil
 }
 
+type curateStub struct {
+	request tool.CurateRequest
+	result  tool.CurateResult
+}
+
+func (s *curateStub) CurateContext(_ context.Context, request tool.CurateRequest) (tool.CurateResult, error) {
+	s.request = request
+	return s.result, nil
+}
+
 func TestCompressToolProtocol(t *testing.T) {
 	stub := &compressStub{result: tool.CompressResult{
 		Status: "ok", Direction: "before", Anchor: "unique", Messages: 4,
@@ -137,6 +147,74 @@ func TestCompressToolRequiresActiveAgent(t *testing.T) {
 	}))
 	if err == nil || !strings.Contains(err.Error(), "active agent session") {
 		t.Fatalf("error = %v, want unavailable context compressor", err)
+	}
+}
+
+// tl1378 增量1: the curate_context tool forwards trimmed drops, trims
+// per-entry fields, refuses malformed input, and reports unavailable outside
+// an active session — the same protocol face as compress.
+func TestCurateContextToolProtocol(t *testing.T) {
+	stub := &curateStub{result: tool.CurateResult{
+		Status: "ok", Replaced: 1, SourceTokens: 900, ProjectionTokens: 300, SavedTokens: 600,
+	}}
+	ctx := tool.WithContextCurator(context.Background(), stub)
+	out, err := (CurateContextTool{}).Execute(ctx, argsJSON(t, map[string]any{
+		"drop": []map[string]any{{"id": " r_1a2b3c4d ", "note": " listed 3 modules "}},
+	}))
+	if err != nil {
+		t.Fatalf("curate Execute: %v", err)
+	}
+	if len(stub.request.Drop) != 1 || stub.request.Drop[0].ID != "r_1a2b3c4d" || stub.request.Drop[0].Note != "listed 3 modules" {
+		t.Fatalf("forwarded request = %+v", stub.request)
+	}
+	var got tool.CurateResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if got != stub.result {
+		t.Fatalf("result = %+v, want %+v", got, stub.result)
+	}
+	if !(CurateContextTool{}).ReadOnly() || !(CurateContextTool{}).PlanModeSafe() {
+		t.Fatal("curate_context must be workspace-read-only and Plan Mode safe")
+	}
+
+	for _, tt := range []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{"empty drop", map[string]any{"drop": []map[string]any{}}, "at least one"},
+		{"missing note", map[string]any{"drop": []map[string]any{{"id": "r_x"}}}, "note"},
+		{"long note", map[string]any{"drop": []map[string]any{{"id": "r_x", "note": strings.Repeat("a", 241)}}}, "240 bytes"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := (CurateContextTool{}).Execute(ctx, argsJSON(t, tt.args))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+	if _, err := (CurateContextTool{}).Execute(context.Background(), argsJSON(t, map[string]any{
+		"drop": []map[string]any{{"id": "r_x", "note": "n"}},
+	})); err == nil || !strings.Contains(err.Error(), "active agent session") {
+		t.Fatalf("unbound error = %v, want unavailable context curator", err)
+	}
+}
+
+// tl1378 增量3: the hand-off guidance must name changed files and open
+// questions alongside facts/decisions/acceptance criteria, in both the tool
+// description and the focus field schema — the summary structure the model
+// fills under pressure is shaped by exactly these two strings.
+func TestCompressToolHandOffGuidance(t *testing.T) {
+	desc := (compressContext{}).Description()
+	for _, want := range []string{"facts, decisions, acceptance criteria, changed files and open questions"} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("compress description missing hand-off guidance %q:\n%s", want, desc)
+		}
+	}
+	schema := string((compressContext{}).Schema())
+	if !strings.Contains(schema, "facts, decisions, changed files and open questions the summary must preserve") {
+		t.Fatalf("focus field description missing hand-off guidance:\n%s", schema)
 	}
 }
 

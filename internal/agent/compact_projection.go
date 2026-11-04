@@ -139,6 +139,10 @@ type explicitCompressionSnapshot struct {
 	projectionVersion uint64
 	generation        uint64
 	promptCacheKey    string
+	// summaryHash carries the installed projection's summary digest so a
+	// tl1378 curate install can preserve it — curation replaces tool results
+	// and must not read as a new summary generation downstream.
+	summaryHash string
 }
 
 func (a *Agent) snapshotExplicitCompression() explicitCompressionSnapshot {
@@ -161,6 +165,7 @@ func (a *Agent) snapshotExplicitCompression() explicitCompressionSnapshot {
 		projectionVersion: state.Projection.ProjectionVersion,
 		generation:        state.Generation,
 		promptCacheKey:    cacheKey,
+		summaryHash:       state.Projection.SummaryHash,
 	}
 }
 

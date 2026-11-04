@@ -565,6 +565,9 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 		}
 	}
 	cctx := tool.WithContextCompressor(withCallContext(ctx, plan.call.ID, a.svc.sink, a.svc.asker, a.planMode.Load()), a)
+	// tl1378 增量1: the curate_context tool rides the same session binding —
+	// the agent owns the projection state, the schema stays static.
+	cctx = tool.WithContextCurator(cctx, a)
 	// Task 254: the autonomous-update controller binds through the call
 	// context, plus the calling session path execute uses for its busy-guard
 	// exemption (the restart ends the turn that asked for it).

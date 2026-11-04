@@ -637,7 +637,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           map[pick] = Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget);
           break;
         case "compressOpt":
-          map[pick] = Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact);
+          map[pick] = Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) || Boolean(s.experimentalCurateContext) || Boolean(s.experimentalReviewHint);
           break;
         case "restartUpdate":
           map[pick] = Boolean(s.experimentalRestartUpdate);
@@ -3068,6 +3068,37 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     }}
                   />
                   <span> h</span>
+                </SettingsField>
+                {/* tl1378：curateContext 是 compressOpt 的附属开关（细粒度注记档）——
+                    徽章只在主控行（proactiveCompact），附属行不重复挂。 */}
+                <SettingsField label={t("settings.curateContext")} hint={t("settings.curateContextHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalCurateContext) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalCurateContext(on))}
+                      >
+                        {t(on ? "settings.curateContext.on" : "settings.curateContext.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                {/* tl1378：reviewHint 同为 compressOpt 附属开关（提示层，只提示不代劳）。 */}
+                <SettingsField label={t("settings.reviewHint")} hint={t("settings.reviewHintHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalReviewHint) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalReviewHint(on))}
+                      >
+                        {t(on ? "settings.reviewHint.on" : "settings.reviewHint.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
                 </SettingsField>
               </>
               <>

@@ -41,6 +41,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.ExperimentalResearchBudget = boolPtr(true)     // M3
 	orig.Agent.ExperimentalProactiveCompact = true            // M3
 	orig.Agent.ExperimentalColdCacheCompact = true            // M3
+	orig.Agent.ExperimentalCurateContext = true               // tl1378（curate 细粒度档）
+	orig.Agent.ExperimentalReviewHint = true                  // tl1378（review hint 提示层）
 	orig.Desktop.ExperimentalCacheTuning = true               // M3
 	orig.Agent.ExperimentalHighSpeedModel = true              // M2
 	orig.Agent.CollabInboxMerge = "same_sender"               // messageMerge light half 1
@@ -187,6 +189,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_high_speed_model = true",
 		"experimental_proactive_compact = true",
 		"experimental_cold_cache_compact = true",
+		// tl1378：curate 细粒度档（效率组 contextGovernance 卡附属行）。
+		"experimental_curate_context = true",
+		// tl1378：review hint 提示层（同卡附属行，只提示不代劳）。
+		"experimental_review_hint = true",
 		"experimental_composer_draft = true",
 		"experimental_selection_actions = true",
 		"experimental_opencode_go_usage = true",

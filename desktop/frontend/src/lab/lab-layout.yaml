@@ -120,7 +120,7 @@ groups:
         # 本卡尾部（乐观并行主行 + 重 bash 守护 + 推理-only 续跑修复三行，
         # 各读各键各写各 setter，配置键零变化）。容器档 = 成员最高档（乐观
         # 并行/预算/主动压缩推荐 → 推荐，聚合徽章与并入前一致）。
-        onKeys: [experimentalCompactionParallel, experimentalContextBudget, experimentalResearchBudget, experimentalProactiveCompact, experimentalColdCacheCompact, experimentalCacheTuning, experimentalActiveTabResident, optimisticWrite, experimentalBashHeavyGuard]
+        onKeys: [experimentalCompactionParallel, experimentalContextBudget, experimentalResearchBudget, experimentalProactiveCompact, experimentalColdCacheCompact, experimentalCurateContext, experimentalReviewHint, experimentalCacheTuning, experimentalActiveTabResident, optimisticWrite, experimentalBashHeavyGuard]
         members:
           - id: compactionParallel
             labelKey: settings.compactionParallel

@@ -286,6 +286,10 @@ export interface SettingsView {
   experimentalColdCacheCompact?: boolean;
   coldCacheCompactMinBytes?: number;
   coldCacheCompactIdleMinutes?: number;
+  // tl1378: curate_context fine-grained tier (boot snapshot).
+  experimentalCurateContext?: boolean;
+  // tl1378: review-hint prompt layer (boot snapshot).
+  experimentalReviewHint?: boolean;
   // Task 19: multi-session collaboration experiment.
   experimentalSessionCollab?: boolean;
   // 任务 517: merged safety/cost switch (one「安全 / 成本控制」knob for the

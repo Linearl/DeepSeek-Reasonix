@@ -1126,6 +1126,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if cfg.Agent.ExperimentalUIDriver {
 		reg.Add(builtin.NewUIInteractTool(builtin.UIInteractConfig{WorkDir: root}))
 	}
+	// tl1378 增量1: the curate_context fine-grained tier, same gating shape —
+	// off (the default) keeps the model-visible tool surface byte-identical to
+	// the pre-tl1378 baseline.
+	if cfg.Agent.ExperimentalCurateContext {
+		reg.Add(builtin.CurateContextTool{})
+	}
 	addWebSearch(reg, cfg, entry, proxySpec, sink)
 	builtinsMs := time.Since(builtinsStart).Milliseconds()
 	// Task 413: the mcp pre-enumeration segment (host pick, enabled-plugin
@@ -2370,6 +2376,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ReadinessCatchUp:         cfg.Agent.ReadinessCatchUp,
 		ReadinessCatchUpLimit:    cfg.Agent.ReadinessCatchUpLimit,
 		ToolFloodLimit:           cfg.Agent.ExperimentalToolFloodLimit,
+		// tl1378 增量2: the review-hint prompt layer. Boot snapshot: restart to
+		// apply, same contract as the other lab behaviour switches here.
+		ReviewHint: cfg.Agent.ExperimentalReviewHint,
 		// Task 845 (user-ratified retry semantics): the retry knobs. Minutes→
 		// Duration here; zero/negative keeps the agent-package default, which
 		// is byte-identical to the pre-845 behavior.

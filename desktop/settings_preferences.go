@@ -637,6 +637,18 @@ func (a *App) SetColdCacheCompactIdleMinutes(minutes int) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetColdCacheCompactIdleMinutes(minutes) })
 }
 
+// SetExperimentalCurateContext toggles the tl1378 curate_context fine-grained
+// tier (tool registration is a boot snapshot; restart to apply).
+func (a *App) SetExperimentalCurateContext(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCurateContext(enabled) })
+}
+
+// SetExperimentalReviewHint toggles the tl1378 review-hint prompt layer
+// (boot snapshot; restart to apply).
+func (a *App) SetExperimentalReviewHint(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalReviewHint(enabled) })
+}
+
 // SetExperimentalComposerDraft toggles cross-restart composer draft
 // persistence (task 318.3; the frontend live-reads this on settings change).
 // SetExperimentalSelectionActions toggles the selection quick-actions

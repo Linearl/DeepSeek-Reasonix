@@ -85,8 +85,10 @@ var builtinSafety = map[string]SafetySpec{
 	"bash_output":   {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
 	"complete_step": {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
 	"compress":      {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
-	"todo_write":    {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
-	"wait":          {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
+	// tl1378：curate_context 与 compress 同族——投影安装有状态，必须独占串行批。
+	"curate_context": {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
+	"todo_write":     {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
+	"wait":           {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
 	// 工作区文件变更（原 permission.IsFileMutationTool 七个名字的元数据化）。
 	"delete_range":  {ReadOnly: false, ConcurrentSafe: false, FileMutation: true, RiskLevel: RiskMedium},
 	"delete_symbol": {ReadOnly: false, ConcurrentSafe: false, FileMutation: true, RiskLevel: RiskMedium},

@@ -580,6 +580,18 @@ type Agent struct {
 	// turn; the interval keeps a model from folding its way through a session
 	// (task 60, point 2). Zero means it has not folded yet.
 	lastExplicitFoldAt atomic.Int64
+	// lastCurateAt is when the model last ran the fine-grained curate_context
+	// pass (tl1378 增量1). A curate also rewrites part of the prefix, so it
+	// carries its own lighter rate limit (minCurateInterval) instead of
+	// sharing the fold cooldown it exists to complement. Zero means no curation
+	// has run yet.
+	lastCurateAt atomic.Int64
+	// reviewHintBatches counts tool batches since the last review hint (tl1378
+	// 增量2); reviewHintTokenWatermark is the estimated visible context at the
+	// last hint (0 = never hinted). In-memory only: the hint is advisory, so a
+	// restart simply re-arms it from zero.
+	reviewHintBatches        atomic.Int64
+	reviewHintTokenWatermark atomic.Int64
 
 	// planMode enables planning workflow instructions and explicit phase opt-outs.
 	// It does not replace the permission or sandbox boundary. The system prompt and
@@ -1761,6 +1773,9 @@ type Options struct {
 	// Distinct from storm breaker (cross-turn repeat failures): this is the
 	// single-turn call-count face MiMo's TOOLCALL_FLOODING_LIMIT guards.
 	ToolFloodLimit bool
+	// ReviewHint (tl1378 增量2) enables the advisory review-hint layer on the
+	// latest tool result (experimental_review_hint, default off — iron rule 2).
+	ReviewHint bool
 	// Task 845 (user-ratified three-lane retry semantics) — the retry knobs:
 	//   RetryWaitBudget bounds the waiting lane (429 queue / 5xx recovery);
 	//   zero falls back to the package default (10min — the pre-845 value).
@@ -1903,6 +1918,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			editEvidenceRelaxed:        opts.EditEvidenceRelaxed,
 			multiEditErrorDetail:       opts.MultiEditErrorDetail,
 			multiEditEvidenceNarrow:    opts.MultiEditEvidenceNarrow,
+			reviewHint:                 opts.ReviewHint,
 		},
 		sess: sessionRuntime{
 			conversation: session,

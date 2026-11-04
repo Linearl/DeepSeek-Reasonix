@@ -1896,6 +1896,20 @@ func (c *Config) SetExperimentalColdCacheCompact(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalCurateContext toggles the tl1378 curate_context fine-grained
+// tier (boot-snapshot registration; off by default — restart to apply).
+func (c *Config) SetExperimentalCurateContext(enabled bool) error {
+	c.Agent.ExperimentalCurateContext = enabled
+	return nil
+}
+
+// SetExperimentalReviewHint toggles the tl1378 review-hint prompt layer
+// (boot snapshot; off by default — restart to apply).
+func (c *Config) SetExperimentalReviewHint(enabled bool) error {
+	c.Agent.ExperimentalReviewHint = enabled
+	return nil
+}
+
 // SetColdCacheCompactMinBytes stores the size floor. Values are clamped into
 // the sane band (1 KiB .. 64 MiB) instead of refused: the settings field
 // shows the stored number, so a silently-clamped store would make the UI
