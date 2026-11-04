@@ -124,12 +124,17 @@ type Controller struct {
 	conflictFingerprint       string
 	conflictStrikes           int
 	conflictHealedFingerprint string
-	// pendingRecoveryPromotion carries one armed fork promotion (tl1352 A):
-	// the fork isolated the local transcript onto a recovery copy; the copy
-	// folds back onto the main file at a later save cycle once the main file
-	// has stayed quiet since the fork (the other writer is gone). nil when no
-	// promotion is pending.
-	pendingRecoveryPromotion *recoveryPromotion
+	// pendingRecoveryPromotions carries armed fork promotions (tl1352 A) in
+	// FIFO order: the fork isolated the local transcript onto a recovery copy;
+	// the oldest copy folds back onto its main file at a later save cycle once
+	// the main file has stayed quiet since the fork (the other writer is gone).
+	// Empty when no promotion is pending. tl1390: a fork off an already-forked
+	// copy must not silently drop the earlier promotion — the 2026-11-04
+	// incident overwrote the pending pointer (copy1→trueMain replaced by
+	// copy2→copy1), abandoning the true main and keeping two live copies with
+	// the ledger bound to the stale one. The queue settles oldest-first and
+	// retargets later entries whose mainPath was just settled.
+	pendingRecoveryPromotions []*recoveryPromotion
 	// recoveryGate is the shared Auto Guard state for this controller.
 	// nil when the feature is not wired for this controller.
 	recoveryGate *recovery.Gate

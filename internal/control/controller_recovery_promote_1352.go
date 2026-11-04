@@ -42,7 +42,11 @@ type recoveryPromotion struct {
 
 // armPendingRecoveryPromotion registers the promotion for a freshly created
 // fork. Pre-existing recovery copies (Existing=true) are an isolation state
-// this controller did not create — never armed.
+// this controller did not create — never armed. tl1390: arms join a FIFO
+// queue instead of overwriting the pending pointer — a fork off an already
+// forked copy queues behind the first promotion (oldest copy settles onto the
+// true main first; later entries retarget to the settled main), so the true
+// main is never abandoned and copies converge instead of accumulating.
 func (c *Controller) armPendingRecoveryPromotion(originalPath string, info agent.RecoveryBranchInfo) {
 	if c.executor == nil || strings.TrimSpace(originalPath) == "" || strings.TrimSpace(info.Path) == "" || info.Path == originalPath {
 		return
@@ -52,28 +56,49 @@ func (c *Controller) armPendingRecoveryPromotion(originalPath string, info agent
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.pendingRecoveryPromotion = &recoveryPromotion{
+	for _, pending := range c.pendingRecoveryPromotions {
+		if pending.copyPath == info.Path {
+			return // 同一副本的登记已在队（fork 重试/重复登记），不重复入队
+		}
+	}
+	// tl1390：从已在队的副本上再 fork（副本链）时，新登记直接指向链条根主
+	// 路径——2026-11-04 事故的 copy2→copy1 转正把 recovery 名当成了 main，
+	// 真主被弃、双副本并存。转正是副本字节整体上调（fork 前向复制），落点
+	// 必须始终是主名；旧登记保留在队（其副本可能仍有独有字节，由换道守卫
+	// 逐周期出队），孤儿副本交由既有清理通路收敛。
+	for _, existing := range c.pendingRecoveryPromotions {
+		if existing.copyPath == originalPath {
+			originalPath = existing.mainPath
+			break
+		}
+	}
+	c.pendingRecoveryPromotions = append(c.pendingRecoveryPromotions, &recoveryPromotion{
 		mainPath: originalPath,
 		copyPath: info.Path,
 		forkedAt: time.Now(),
-	}
+	})
 }
 
-// applyPendingRecoveryPromotion settles an armed promotion when the main file
-// has stayed quiet since the fork. It reports whether the controller now lives
-// on the main path again (callers re-read c.sessionPath).
+// applyPendingRecoveryPromotion settles the oldest armed promotion when its
+// main file has stayed quiet since the fork. It reports whether the controller
+// now lives on a main path again (callers re-read c.sessionPath).
 func (c *Controller) applyPendingRecoveryPromotion() bool {
 	c.mu.Lock()
-	pending := c.pendingRecoveryPromotion
+	if len(c.pendingRecoveryPromotions) == 0 {
+		c.mu.Unlock()
+		return false
+	}
+	pending := c.pendingRecoveryPromotions[0]
 	currentPath := c.sessionPath
 	c.mu.Unlock()
 	if pending == nil || c.executor == nil {
 		return false
 	}
 	if currentPath != pending.copyPath {
-		// 已被其他通路换道（brake adopt / quota adopt / 手动切会话）：登记作废。
+		// 已被其他通路换道（brake adopt / quota adopt / 手动切会话）：队首
+		// 登记作废，下个保存周期结算下一条。
 		c.mu.Lock()
-		c.pendingRecoveryPromotion = nil
+		c.pendingRecoveryPromotions = c.pendingRecoveryPromotions[1:]
 		c.mu.Unlock()
 		return false
 	}
@@ -91,13 +116,47 @@ func (c *Controller) applyPendingRecoveryPromotion() bool {
 	} else if info.ModTime().After(pending.forkedAt.Add(promotionQuietEpsilon)) {
 		return false // fork 后主文件仍在被写：另一写者活跃，保持隔离
 	}
-	archived, err := agent.PromoteRecoveryBranchToMain(pending.copyPath, pending.mainPath)
+	// tl1390：quiesce 本控制器的账本写手句柄再搬侧车。活跃 turn 期间账本
+	// 长期持有绑定会话的 *.turns.jsonl 句柄，源或目标任一侧落在绑定会话上
+	// 时 rename 必败（Windows 无 FILE_SHARE_DELETE）——2026-11-04 事故永久
+	// declined 的直接机制。quiesce 关句柄且拦住并发 append（fn 在 l.mu 内），
+	// 写手直写无 bufio 零丢失；decline 后下次 append 经 ensureWriterLocked
+	// 原路径重开，成功后 adoptDiskSession 会 rebindTurnEvents 到新主路径。
+	ledger := c.turnEventLedger()
+	var archived string
+	promote := func() error {
+		var err error
+		archived, err = agent.PromoteRecoveryBranchToMain(pending.copyPath, pending.mainPath)
+		return err
+	}
+	var err error
+	if ledger != nil {
+		err = ledger.WithWriterQuiesced(promote)
+	} else {
+		err = promote()
+	}
 	if err != nil {
 		// 锁忙/搬运失败：保留登记，下一保存周期重试。
 		slog.Warn("controller: deferred recovery promotion declined this cycle; staying on the recovery copy",
 			"main", pending.mainPath, "recovery", pending.copyPath, "err", err)
 		return false
 	}
+	// tl1390：链式结算——队列里以本副本为 mainPath 的后继登记重定向到刚
+	// 落定的主路径（copy2→copy1 变 copy2→trueMain），forkedAt 同步重置：
+	// 主文件刚换了身份（= 刚结算的副本字节），「fork 后保持安静」的判定
+	// 基准从重定向此刻起算，否则旧基准早于主文件最新写入，后继永远无法
+	// 满足安静条件。
+	c.mu.Lock()
+	retargeted := c.pendingRecoveryPromotions[:0]
+	for _, later := range c.pendingRecoveryPromotions[1:] {
+		if later.mainPath == pending.copyPath {
+			later.mainPath = pending.mainPath
+			later.forkedAt = time.Now()
+		}
+		retargeted = append(retargeted, later)
+	}
+	c.pendingRecoveryPromotions = retargeted
+	c.mu.Unlock()
 	// 回绑主路径：从盘上重载（字节刚由副本 rename 而来，与内存转录逐字一致），
 	// 以主路径为基线重建干净的 CAS 账本，投影/检查点/任务面同步翻转。
 	if !c.adoptDiskSession(pending.mainPath) {
@@ -106,14 +165,13 @@ func (c *Controller) applyPendingRecoveryPromotion() bool {
 		slog.Error("controller: recovery branch promoted but the main session failed to reload; next save recovers via the external-removal path",
 			"main", pending.mainPath, "recovery", pending.copyPath)
 		c.mu.Lock()
-		c.pendingRecoveryPromotion = nil
+		c.pendingRecoveryPromotions = c.pendingRecoveryPromotions[1:]
 		c.mu.Unlock()
 		return false
 	}
 	c.mu.Lock()
 	c.sessionPath = pending.mainPath
 	c.guardianPath = guardian.PathFor(pending.mainPath)
-	c.pendingRecoveryPromotion = nil
 	c.mu.Unlock()
 	// commitRecoveredSession 曾把 in-flight turn 标记从主路径搬到副本；转正
 	// 后搬回来，中断回合的恢复面跟随权威路径。
