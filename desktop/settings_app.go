@@ -672,6 +672,8 @@ type SettingsView struct {
 	ColdCacheCompactIdleMinutes  int   `json:"coldCacheCompactIdleMinutes"`
 	// tl1378: curate_context fine-grained tier (boot snapshot).
 	ExperimentalCurateContext bool `json:"experimentalCurateContext"`
+	// tl1378: review-hint prompt layer (boot snapshot).
+	ExperimentalReviewHint bool `json:"experimentalReviewHint"`
 
 	VisionModel              string   `json:"visionModel"`
 	WebSearchModel           string   `json:"webSearchModel"`
@@ -1017,6 +1019,8 @@ type DesktopStartupSettingsView struct {
 	ColdCacheCompactIdleMinutes  int   `json:"coldCacheCompactIdleMinutes"`
 	// tl1378: curate_context fine-grained tier (boot snapshot).
 	ExperimentalCurateContext bool `json:"experimentalCurateContext"`
+	// tl1378: review-hint prompt layer (boot snapshot).
+	ExperimentalReviewHint bool `json:"experimentalReviewHint"`
 	// ExperimentalLocalServer exposes the Settings → 本地服务 page (task 130).
 	ExperimentalLocalServer bool `json:"experimentalLocalServer"`
 	// ExperimentalLifecycleNoiseGate is the task-377 crash-report noise
@@ -2155,6 +2159,7 @@ func (a *App) Settings() SettingsView {
 		ColdCacheCompactMinBytes:        config.ColdCacheCompactEffectiveMinBytes(cfg),
 		ColdCacheCompactIdleMinutes:     config.ColdCacheCompactEffectiveIdleMinutes(cfg),
 		ExperimentalCurateContext:       cfg.Agent.ExperimentalCurateContext,
+		ExperimentalReviewHint:          cfg.Agent.ExperimentalReviewHint,
 		ProactiveCompactCooldownMinutes: cfg.Agent.ProactiveCompactCooldownMinutes,
 		ExperimentalComposerDraft:       cfg.Agent.ExperimentalComposerDraft,
 		ExperimentalSelectionActions:    cfg.Agent.ExperimentalSelectionActions,

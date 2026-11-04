@@ -90,6 +90,11 @@ type agentConfig struct {
 	// Options.DecisionExtract. Zero value = off: every hook checks Enabled
 	// first, so a disabled config keeps compact/turn paths byte-identical.
 	decisionExtract DecisionExtractOptions
+	// reviewHint enables the tl1378 review-hint prompt layer: an advisory
+	// line on the latest tool result every reviewHintBatchInterval batches or
+	// reviewHintTokenDelta tokens of growth. Off (the default) appends
+	// nothing — see execute_batch.go for the exact face.
+	reviewHint bool
 }
 
 // ReadPipelineOptions carries the internal read-pipeline rollback switches. The

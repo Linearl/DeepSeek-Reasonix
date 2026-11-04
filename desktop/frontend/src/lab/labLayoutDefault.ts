@@ -146,6 +146,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalProactiveCompact",
             "experimentalColdCacheCompact",
             "experimentalCurateContext",
+            "experimentalReviewHint",
             "experimentalCacheTuning",
             "experimentalActiveTabResident",
             "optimisticWrite",

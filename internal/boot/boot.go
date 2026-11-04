@@ -2376,6 +2376,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ReadinessCatchUp:         cfg.Agent.ReadinessCatchUp,
 		ReadinessCatchUpLimit:    cfg.Agent.ReadinessCatchUpLimit,
 		ToolFloodLimit:           cfg.Agent.ExperimentalToolFloodLimit,
+		// tl1378 增量2: the review-hint prompt layer. Boot snapshot: restart to
+		// apply, same contract as the other lab behaviour switches here.
+		ReviewHint: cfg.Agent.ExperimentalReviewHint,
 		// Task 845 (user-ratified retry semantics): the retry knobs. Minutes→
 		// Duration here; zero/negative keeps the agent-package default, which
 		// is byte-identical to the pre-845 behavior.

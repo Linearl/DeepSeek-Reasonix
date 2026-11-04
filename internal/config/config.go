@@ -2280,6 +2280,13 @@ type AgentConfig struct {
 	// registered at all, so the model-visible surface is byte-identical to the
 	// pre-tl1378 baseline.
 	ExperimentalCurateContext bool `toml:"experimental_curate_context"`
+	// tl1378 增量2: the review-hint prompt layer. On: every reviewHintBatchInterval
+	// tool batches or reviewHintTokenDelta estimated tokens of growth, the host
+	// appends one advisory line to the latest tool result suggesting a
+	// compression review. It only speaks — it never compresses on its own and
+	// no threshold feeds back into any maintenance decision. Off by default
+	// (iron rule 2): the hint line is never appended, byte-for-byte baseline.
+	ExperimentalReviewHint bool `toml:"experimental_review_hint"`
 	// ExperimentalUIDriver enables the task 233 batch-2 ui_interact tool:
 	// controlled UI driving (activate / click / type / key) for agent-run
 	// verification. Off by default (iron rule 2) — injecting input into
