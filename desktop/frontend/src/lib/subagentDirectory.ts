@@ -42,6 +42,14 @@ export type SubagentDirectoryEntry = {
    *  transcript through it; undefined (ephemeral run, ref never seen) keeps
    *  the entry preview-only. */
   ref?: string;
+  /** tl1361: the transcript call id under which the child's live tool events
+   *  are re-parented (nested_sink.go: Tool.ParentID = <dispatch call id>).
+   *  The detail view's running tool stream looks the events up by it.
+   *  Undefined means "the item id is the lookup key" — the transcript
+   *  projection's case, where item.id IS the dispatch call id — and for a
+   *  registry row whose source carries no call id (background job rows) the
+   *  lookup finds nothing and the detail stays preview-only, as designed. */
+  callId?: string;
 };
 
 export type SubagentDirectory = {
@@ -186,12 +194,17 @@ export interface RegistryRunningSource {
  *  CancelSubagentForTab and ReadSubagentSession take); background job rows
  *  carry the job id as the item id only, so they render without a terminate
  *  button or a transcript read instead of aiming those bridges at a job id
- *  that is not a ref. */
+ *  that is not a ref. tl1361: a foreground row whose lifecycle telemetry
+ *  carried the dispatch call id (ForegroundSubagentView.parentToolCallId,
+ *  task 667) stamps it as `callId`, so the detail view's running tool stream
+ *  can look the child's re-parented tool events up in the transcript even
+ *  while the card itself is missing (the stall this registry row exists
+ *  for). */
 export function registryRunningEntries(source: RegistryRunningSource | undefined, tabId: string): SubagentDirectoryEntry[] {
   const out: SubagentDirectoryEntry[] = [];
   if (!source) return out;
   const seen = new Set<string>();
-  const push = (id: string, label: string, startedAt: number | undefined, ref: string | undefined) => {
+  const push = (id: string, label: string, startedAt: number | undefined, ref: string | undefined, callId?: string) => {
     if (!id || seen.has(id)) return;
     seen.add(id);
     const item: SubagentDirectoryItem = {
@@ -206,7 +219,7 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
       startedAt: startedAt || undefined,
       subject: label || undefined,
     };
-    out.push({ item, running: true, status: "running", ...(ref ? { ref } : {}) });
+    out.push({ item, running: true, status: "running", ...(ref ? { ref } : {}), ...(callId ? { callId } : {}) });
   };
   for (const job of source.jobs ?? []) {
     if (!job || job.kind === "bash") continue;
@@ -217,7 +230,7 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
     // Only the active tab's rows belong in this session's directory; foreign
     // tabs carry their origin in the capsule instead (task 557 contract).
     if (tabId && entry.tabId && entry.tabId !== tabId) continue;
-    push(`registry:fg:${entry.ref}`, entry.description || entry.name || entry.ref, entry.startedAt, entry.ref);
+    push(`registry:fg:${entry.ref}`, entry.description || entry.name || entry.ref, entry.startedAt, entry.ref, entry.parentToolCallId || undefined);
   }
   return out;
 }
@@ -225,8 +238,11 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
 /** tl1387: fold registry-projected running rows into the transcript
  *  projection. Transcript entries win on ref collisions (they carry the
  *  richer live state); a registry row whose ref (or id, for ref-less job
- *  rows) is not represented is appended. Pure: returns the input directory
- *  when there is nothing to add. */
+ *  rows) is not represented is appended. tl1361: a registry row's `callId`
+ *  (the dispatch call id) also dedupes against a transcript card's item id —
+ *  a card that lost its progress-preview ref (hydration window) still means
+ *  "this child is represented", so the registry twin must not double the
+ *  row. Pure: returns the input directory when there is nothing to add. */
 export function mergeRegistryRunningSubagents(directory: SubagentDirectory, registry: readonly SubagentDirectoryEntry[] | undefined): SubagentDirectory {
   if (!registry || registry.length === 0) return directory;
   const known = new Set<string>();
@@ -236,6 +252,7 @@ export function mergeRegistryRunningSubagents(directory: SubagentDirectory, regi
   }
   const extra = registry.filter((entry) => {
     if (entry.ref && known.has(entry.ref)) return false;
+    if (entry.callId && known.has(entry.callId)) return false;
     return !known.has(entry.item.id);
   });
   if (extra.length === 0) return directory;

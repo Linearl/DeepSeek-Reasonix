@@ -307,9 +307,15 @@ function SubagentDetailView({
   // scrape / verify runs) produces almost none of those, which read as "the
   // panel cannot see the work in progress". The re-parented tool events are
   // the actual process, and they update live as the child works.
+  // tl1361 补: the lookup key is the dispatch call id. A transcript-projected
+  // entry's item.id IS that call id; a registry-projected entry (tl1387
+  // stall fallback) carries it as entry.callId (ForegroundSubagentView.
+  // parentToolCallId) — without the stamp the lookup used the synthetic
+  // registry id and never matched, leaving the stall scenario's detail
+  // preview-only even while the transcript held the child's tool events.
   const childTools = useMemo(
-    () => (entry.running ? subagentChildTools(transcriptItems, entry.item.id) : []),
-    [entry.running, entry.item.id, transcriptItems],
+    () => (entry.running ? subagentChildTools(transcriptItems, entry.callId ?? entry.item.id) : []),
+    [entry.running, entry.callId, entry.item.id, transcriptItems],
   );
   return (
     <div className="subagents-panel__detailview" role="region" aria-label={t("subagentPanel.detailTitle")}>
