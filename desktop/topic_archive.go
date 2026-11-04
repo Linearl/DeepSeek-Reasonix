@@ -211,6 +211,18 @@ func (a *App) reclaimTopicStaleLeaseHolders(targets []topicTrashTarget) {
 			// Real occupation: a live process running this application holds the
 			// session. Force reports who holds it and how to close it — the
 			// refusal below carries the identity; nothing is cleared here.
+		case leaseHolderNone:
+			// tl1383: an absent or UNREADABLE holder record used to be invisible
+			// to this sweep — force had no verdict to act on and the refusal
+			// repeated forever (the 2026-11-04 holder_class=unknown pid=0
+			// archive refusals). Both repairs stay provable-stale-only:
+			// ClearStaleSessionLeaseInfo removes a record only while the OS
+			// lock is free, and the zombie sweep releases only bound-lease
+			// holders with no controller and no build in flight — a live holder
+			// survives both untouched and the ownership acquisition below
+			// refuses with the unidentified-holder copy.
+			forceRetireStaleLeaseRecord(key, holder.info)
+			a.releaseZombieSessionLeaseHoldersForKey(key, nil)
 		}
 	}
 }
@@ -398,8 +410,28 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 		if hook := topicArchiveCleanupHookForTest; hook != nil {
 			err = hook()
 		}
+		// Take the guard only when it will actually be used: on a pre-trash
+		// failure the guard must stay in the batch so the deferred
+		// ownership.release() retires its locks (a taken-and-dropped guard
+		// would wedge the session's locks until restart).
 		if err == nil {
-			err = trashSessionArtifactsWithGuard(target.dir, target.sessionPath, target.key, ownership.take(target.sessionPath))
+			guard := ownership.take(target.sessionPath)
+			if sessionTrashTargetFileMissing(target.sessionPath) {
+				// tl1383: the transcript is gone — nothing to protect or move.
+				// Release any converted guard (its lock files are pure residue
+				// for a missing file), settle the cleanup-pending marker so
+				// startup reconciliation does not re-run, and let the topic
+				// metadata deletion below retire the sidebar entry.
+				if guard != nil {
+					if relErr := guard.RemoveSidecarsAndRelease(); relErr != nil {
+						slog.Warn("desktop: topic archive could not retire the guard sidecars of a missing session file", "err", relErr)
+					}
+					guard = nil
+				}
+				err = agent.ClearCleanupPending(target.sessionPath)
+			} else {
+				err = trashSessionArtifactsWithGuard(target.dir, target.sessionPath, target.key, guard)
+			}
 		}
 		finishDestroyHandles(destroys)
 		if err != nil {

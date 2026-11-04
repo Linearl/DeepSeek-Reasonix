@@ -42,8 +42,13 @@ func TestAcquireTopicArchiveOwnershipConvertBusyKeepsLeaseError(t *testing.T) {
 	targets := []topicTrashTarget{{dir: dir, sessionPath: path, key: key}}
 
 	_, err = acquireTopicArchiveOwnership(targets, removed)
-	if !errors.Is(err, errSessionBusyElsewhere) {
-		t.Fatalf("ownership err = %v, want the busy sentinel classification", err)
+	// tl1383: the released-lease conversion refusal carries no holder identity
+	// (the lease is gone — nobody holds the session), so it classifies as the
+	// unidentified-holder leftover form instead of the "another window"
+	// sentinel. The defect-A contract below (the lease error flowing through
+	// errors.As) is the part that must never regress.
+	if !errors.Is(err, errSessionBusyUnidentifiedHolder) {
+		t.Fatalf("ownership err = %v, want the unidentified-holder classification", err)
 	}
 	var leaseErr *agent.SessionLeaseError
 	if !errors.As(err, &leaseErr) {

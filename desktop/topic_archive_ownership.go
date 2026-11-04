@@ -3,7 +3,10 @@ package main
 import (
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/control"
@@ -49,6 +52,18 @@ func topicArchiveLeaseOwners(removed []removedSessionRuntime) map[string]*Worksp
 	return owners
 }
 
+// sessionTrashTargetFileMissing reports whether the trash target's transcript
+// is absent from disk. tl1383: the zombie-entry form (tl1363 family) — a
+// restored tab or stale binding pointing at a lost or already-trashed session.
+// Such a target has nothing to protect and nothing to move.
+func sessionTrashTargetFileMissing(sessionPath string) bool {
+	if strings.TrimSpace(sessionPath) == "" {
+		return false
+	}
+	_, err := os.Stat(sessionPath)
+	return os.IsNotExist(err)
+}
+
 func acquireTopicArchiveOwnership(targets []topicTrashTarget, removed []removedSessionRuntime) (*topicArchiveOwnershipBatch, error) {
 	batch := &topicArchiveOwnershipBatch{byPath: make(map[string]*topicArchiveRemovalOwnership, len(targets))}
 	localOwners := topicArchiveLeaseOwners(removed)
@@ -57,6 +72,22 @@ func acquireTopicArchiveOwnership(targets []topicTrashTarget, removed []removedS
 	for _, target := range targets {
 		key := sessionRuntimeKey(target.sessionPath)
 		if localOwners[key] != nil {
+			continue
+		}
+		if sessionTrashTargetFileMissing(target.sessionPath) {
+			// tl1383: no transcript on disk to protect or move — refusing to
+			// archive a session whose file does not exist protects nobody and
+			// wedges the topic forever ("给不存在的会话解占用" is a dead-end
+			// refusal). Tear any leftover lease record through the
+			// free-lock-arbitrated primitive and record a nil guard so the
+			// trash step skips straight to marker cleanup. A lease whose
+			// handle is still live keeps its lock, so a real writer of a
+			// not-yet-created file is never stripped.
+			if cleared, err := agent.ClearStaleSessionLeaseInfo(key); err == nil && cleared {
+				slog.Info("desktop: topic archive tore a leftover lease record for a missing session file",
+					"session_base", filepath.Base(target.sessionPath))
+			}
+			batch.add(target, nil, nil)
 			continue
 		}
 		guard, err := acquireSessionRemovalGuard(target.sessionPath)
