@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 import type { AppBindings, TabMeta, WireEvent } from "../lib/bridge";
 import { LocaleProvider } from "../lib/i18n";
 import { useController } from "../lib/useController";
+import { enqueueInboxGuidanceForActiveTurn } from "../lib/inboxGuidanceSubmit";
 
 let passed = 0;
 let failed = 0;
@@ -62,6 +63,9 @@ type SteerReceipt = { itemId: string; disposition: string; position: number; pau
 let steerExactBehavior: "accept" | "queued" | "throw" | "notActive" = "accept";
 let steerPlainBehavior: "accept" | "queued" | "throw" = "throw";
 let followupBehavior: "queued" | "throw" = "queued";
+// tl1393: the original submit rejection form ("turn already running" is the
+// 461-P6 default; "notActive" is the turn-rollover form this task takes over).
+let submitErrorForm: "running" | "notActive" = "running";
 const calls: { name: string; args: unknown[] }[] = [];
 let eventHandlers: Array<(event: WireEvent) => void> = [];
 
@@ -96,7 +100,9 @@ function installBindings() {
         ReplayPendingPromptsForTab: async () => {},
         StartTurnForTab: async (tabId: string, _input: string, submissionId: string) => {
           record("StartTurnForTab", [tabId, submissionId]);
-          throw new Error("turn already running");
+          throw new Error(submitErrorForm === "notActive"
+            ? `turn "turn-stale" is not the active turn for tab ${tabId}`
+            : "turn already running");
         },
         EnqueueInboxSteerForTurn: async (tabId: string, turnId: string, display: string, submit: string, idempotency: string) => {
           record("EnqueueInboxSteerForTurn", [tabId, turnId, display, submit, idempotency]);
@@ -384,6 +390,126 @@ async function main() {
       window.setInterval = originalSetInterval;
       steerExactBehavior = "accept";
     }
+  }
+
+  // 7. tl1393 — the user's scene: the composer's running branch steers through
+  // steerForTab; the exact-turn fence bounces the stale turn id with "is not
+  // the active turn" (turn ended/rolled over between the ListTabs snapshot and
+  // the fence). Before tl1393 this threw the raw Go error at the composer and
+  // the text went nowhere. Now: session-level steer stays skipped (tl1303 — a
+  // dead or wedged run would accept and never consume it), the durable
+  // follow-up queue keeps the text, the receipt-time bubble renders, and the
+  // refusal lands in desktop.log. The turn-boundary pump dispatches the queued
+  // item when the run exits (Go side: TestEndRotationDispatchesQueuedInboxItem
+  // / TestNaturalCompletionAutoDispatchesDurableFIFO).
+  {
+    steerExactBehavior = "notActive";
+    steerPlainBehavior = "accept"; // a session-level steer WOULD be accepted — must stay untouched
+    followupBehavior = "queued";
+    const root = await mount();
+    let threw: unknown;
+    await act(async () => {
+      try {
+        await controller?.steerForTab("tab-p6", "运行中会话的消息");
+      } catch (error) {
+        threw = error;
+      }
+      await flushPromises();
+    });
+    const state = controller?.state;
+    eq(threw, undefined, "tl1393: a not-active-turn steer rejection never throws at the composer");
+    ok(calls.some((c) => c.name === "EnqueueInboxSteerForTurn"), "tl1393: the exact-turn fence is tried first");
+    ok(!calls.some((c) => c.name === "EnqueueInboxSteer"), "tl1393: the rejection never falls back to the session-level steer");
+    const followup = calls.find((c) => c.name === "EnqueueInboxFollowup");
+    ok(Boolean(followup), "tl1393: the rejection lands in the durable follow-up queue");
+    eq(followup?.args[1], "运行中会话的消息", "tl1393: the queue keeps the original text");
+    ok(state?.items.some((item) => item.kind === "notice" && item.text === `↪ 运行中会话的消息` && item.inboxItemId === "item-followup") ?? false,
+      "tl1393: the receipt-time bubble renders the queued fact");
+    const refuseLine = calls.find((c) => c.name === "ReportFrontendLog" && c.args[2] === "exact-turn steer refused; text kept in the follow-up queue");
+    ok(String(refuseLine?.args[3] ?? "").includes("is not the active turn"), `tl1393: the refusal reaches desktop.log for 对账 (${refuseLine?.args[3]})`);
+    // 验收②前置：nothing wedged — the composer face stays clean for the next turn.
+    eq(state?.items.some((item) => item.kind === "user" && item.failed), false, "tl1393: no Send-failed face from the steer rejection");
+    root.unmount();
+    await reset();
+    steerPlainBehavior = "throw";
+  }
+
+  // 7b. tl1393 — the same fence through the composer's durable-guidance branch
+  // (enqueueInboxGuidanceForActiveTurn, the finishing/localDurableGuidance
+  // variant): the not-active-turn rejection degrades to the follow-up queue
+  // and resolves; other rejections stay honest failures.
+  {
+    const followupBinding = async () => ({ itemId: "item-followup", disposition: "queued_followup", position: 1, paused: false });
+    const rejecting: Pick<AppBindings, "ListTabs" | "EnqueueInboxSteer" | "EnqueueInboxSteerForTurn" | "EnqueueInboxFollowup"> = {
+      ListTabs: async () => [tab],
+      EnqueueInboxSteer: async () => { throw new Error("steer channel unavailable"); },
+      EnqueueInboxSteerForTurn: async (tabId: string, turnId: string) => { throw new Error(`turn ${turnId} is not the active turn for tab ${tabId}`); },
+      EnqueueInboxFollowup: followupBinding as unknown as AppBindings["EnqueueInboxFollowup"],
+    };
+    const receipt = await enqueueInboxGuidanceForActiveTurn(rejecting as AppBindings, "tab-p6", "队列落点", "队列落点", undefined, "turn-stale");
+    eq(receipt.itemId, "item-followup", "tl1393: the durable-guidance branch degrades a not-active-turn rejection to the follow-up queue");
+    let honestFailure: unknown;
+    const hardRejecting: Pick<AppBindings, "ListTabs" | "EnqueueInboxSteer" | "EnqueueInboxSteerForTurn" | "EnqueueInboxFollowup"> = {
+      ListTabs: async () => [tab],
+      EnqueueInboxSteer: async () => { throw new Error("steer channel unavailable"); },
+      EnqueueInboxSteerForTurn: async () => { throw new Error("steer channel unavailable"); },
+      EnqueueInboxFollowup: followupBinding as unknown as AppBindings["EnqueueInboxFollowup"],
+    };
+    try {
+      await enqueueInboxGuidanceForActiveTurn(hardRejecting as AppBindings, "tab-p6", "诚实失败", "诚实失败", undefined, "turn-stale");
+    } catch (error) {
+      honestFailure = error;
+    }
+    ok(honestFailure instanceof Error && honestFailure.message === "steer channel unavailable", "tl1393: non-fence rejections keep failing honestly");
+  }
+
+  // 8. tl1393 — the degrade gate admits the not-active-turn form as the
+  // ORIGINAL submit rejection (the task's root-cause framing: a turn-id-fenced
+  // submit surface bouncing the stale id). The gate must take over, run the
+  // tl1303 chain (fresh exact-turn attempt → durable queue on refusal), and
+  // never show the raw Send-failed face.
+  {
+    submitErrorForm = "notActive";
+    steerExactBehavior = "notActive"; // the fresh exact-turn attempt bounces too — rollover in flight
+    followupBehavior = "queued";
+    const root = await mount();
+    await act(async () => { await controller?.sendToTab("tab-p6", "换代窗口的消息"); await flushPromises(); });
+    const state = controller?.state;
+    ok(calls.some((c) => c.name === "EnqueueInboxSteerForTurn"), "tl1393: the gate takes over the not-active-turn submit rejection");
+    ok(calls.some((c) => c.name === "EnqueueInboxFollowup"), "tl1393: the tl1303 branch keeps the text in the durable queue");
+    eq(state?.items.some((item) => item.kind === "user" && item.failed), false, "tl1393: the Send-failed face never appears for the not-active-turn form");
+    ok(state?.items.some((item) => item.kind === "notice" && item.text === DEGRADE_NOTICE("queued")) ?? false, "tl1393: the composer shows the queued destination text");
+    root.unmount();
+    await reset();
+  }
+
+  // 8b. tl1393 acceptance ② — nothing stays wedged: after a queued
+  // degradation and the turn's end, the FIRST ordinary send succeeds
+  // immediately (no residual queue blocking, no failed face).
+  {
+    submitErrorForm = "running";
+    steerExactBehavior = "queued";
+    followupBehavior = "queued";
+    const root = await mount();
+    await act(async () => { await controller?.sendToTab("tab-p6", "排队中的消息"); await flushPromises(); });
+    await act(async () => {
+      for (const handler of eventHandlers) handler({ kind: "turn_done", tabId: "tab-p6", turnId: "turn-authoritative" } as WireEvent);
+      await flushPromises();
+    });
+    const go = window.go as { main: { App: Record<string, unknown> } };
+    const followupsBefore = calls.filter((c) => c.name === "EnqueueInboxFollowup").length;
+    go.main.App.StartTurnForTab = async (tabId: string, _input: string, submissionId: string) => {
+      calls.push({ name: "StartTurnForTab", args: [tabId, submissionId] });
+      return { turnId: "turn-fresh", status: "running", disposition: "admitted", submissionId };
+    };
+    await act(async () => { await controller?.sendToTab("tab-p6", "回合结束后的首发"); await flushPromises(); });
+    const state = controller?.state;
+    eq(state?.items.some((item) => item.kind === "user" && item.text === "回合结束后的首发" && item.failed), false, "tl1393②: the first post-turn send keeps the bubble delivered");
+    eq(state?.items.some((item) => item.kind === "user" && item.failed), false, "tl1393②: the first post-turn send never shows the Send-failed face");
+    eq(calls.filter((c) => c.name === "EnqueueInboxFollowup").length, followupsBefore, "tl1393②: the first post-turn send goes straight through, not into the queue");
+    root.unmount();
+    await reset();
+    steerExactBehavior = "accept";
   }
 
   process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
