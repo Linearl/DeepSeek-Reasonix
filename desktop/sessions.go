@@ -180,6 +180,16 @@ var errSessionBusyElsewhere = errors.New("this session is in use by another Reas
 // holder. Still sanitized (no path).
 var errSessionBusyZombie = errors.New("this session was left locked by a crashed Reasonix process — restart Reasonix to clear it, then retry")
 
+// errSessionBusyUnidentifiedHolder is the tl1383 classification for a refusal
+// whose lease error carries NO usable holder identity (holder_class=unknown
+// pid=0 — the 2026-11-04 08:23/09:08 archive refusals). "In use by another
+// Reasonix window" sent the user hunting for a window nobody can name; the
+// holder here is by definition unidentifiable (the record was lost while the
+// refusal state survived), so the actionable steps are the ones that work
+// without knowing the holder: the restart, or force archive (whose sweep
+// retires free-lock leftovers). Still sanitized (no path, no pid).
+var errSessionBusyUnidentifiedHolder = errors.New("this session's lease is locked by a leftover record whose holder cannot be identified — restart Reasonix to clear it, or use force archive, then retry")
+
 // sessionLeaseHeldBusyError wraps a lease-held refusal so the tl1201 sentinel
 // classification (zombie vs live holder) keeps flowing through errors.Is
 // while the original *agent.SessionLeaseError stays reachable for the detail
@@ -220,6 +230,12 @@ func (e *sessionLeaseHeldBusyError) Unwrap() []error {
 // degrade to the upgraded errSessionBusyElsewhere text.
 func sessionLeaseBusyDetail(err error) string {
 	var leaseErr *agent.SessionLeaseError
+	if errors.As(err, &leaseErr) && leaseErr != nil && (leaseErr.Info == nil || leaseErr.Info.PID <= 0) {
+		// tl1383: no usable identity — never the "another window" fallback
+		// (the user would hunt for a window nobody can name). The leftover
+		// copy names the two repairs that work without a holder identity.
+		return errSessionBusyUnidentifiedHolder.Error()
+	}
 	if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil && leaseErr.Info.PID > 0 {
 		info := leaseErr.Info
 		since := desktopLeaseSinceSuffix(info)
@@ -283,15 +299,21 @@ func desktopLeaseSinceSuffix(info *agent.SessionLeaseInfo) string {
 }
 
 // sessionLeaseBusyClassification maps a lease-held refusal onto the sanitized
-// busy error. A holder pid that is alive (or unknown) is real mutual
-// exclusion and reports errSessionBusyElsewhere unchanged; a DEAD pid is the
-// zombie leftover form and reports errSessionBusyZombie (tl 1201) — and so is
-// an ALIVE pid whose executable is not this application (tl1367: pid reuse,
-// a stale record with no window to close, same restart-to-clear repair).
+// busy error. A refusal with no usable holder identity reports
+// errSessionBusyUnidentifiedHolder (tl1383: never the "another window" copy
+// for a holder nobody can name); a holder pid that is alive (or unknown but
+// named) is real mutual exclusion and reports errSessionBusyElsewhere
+// unchanged; a DEAD pid is the zombie leftover form and reports
+// errSessionBusyZombie (tl 1201) — and so is an ALIVE pid whose executable is
+// not this application (tl1367: pid reuse, a stale record with no window to
+// close, same restart-to-clear repair).
 func sessionLeaseBusyClassification(err error) error {
 	var leaseErr *agent.SessionLeaseError
-	if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil {
-		if pid := leaseErr.Info.PID; pid > 0 && pid != os.Getpid() {
+	if errors.As(err, &leaseErr) && leaseErr != nil {
+		if leaseErr.Info == nil || leaseErr.Info.PID <= 0 {
+			return errSessionBusyUnidentifiedHolder
+		}
+		if pid := leaseErr.Info.PID; pid != os.Getpid() {
 			if !desktopLeaseAlive(pid) || !agent.ProcessLooksLikeSelf(pid) {
 				return errSessionBusyZombie
 			}
@@ -306,6 +328,18 @@ func sessionLeaseBusyClassification(err error) error {
 // atomically with the release — a one-shot busy probe followed by RemoveAll
 // would let another process acquire the lease in between and then lose its
 // freshly locked lease file, breaking cross-process mutual exclusion.
+//
+// tl1383: a refusal whose lease error carries NO usable holder identity
+// (holder_class=unknown pid=0, the 2026-11-04 08:23/09:08 archive refusals)
+// is healed once through the lock-arbitrated reclaim primitive instead of
+// refusing forever. The lease doctrine (TryReclaimCurrentProcessSessionLease)
+// already says a missing or unreadable identity record with a free lock is a
+// leftover, not a holder — the removal-guard path just never invoked it, so
+// the leftover kept wedging archives and force-archive had no lever either.
+// The OS lock stays the arbiter: a live holder of the lock file keeps the
+// reclaim failing, so nothing is ever grabbed silently; a refusal that
+// survives the heal keeps the original error (identity, sentinel, forceable
+// mark) unchanged.
 func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard, error) {
 	guard, err := withSessionLeaseContentionRetry(func() (*agent.SessionRemovalGuard, error) {
 		return agent.TryAcquireSessionRemovalGuard(sessionPath)
@@ -322,9 +356,78 @@ func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard,
 			// a complete traceable holder record even after the toast is gone.
 			// Logged values name the holder process only — never the path.
 			logSessionLeaseHolderRefusal("desktop: session removal guard refused by lease holder", err)
+			if healed, healErr := healUnidentifiedLeaseHolder(sessionPath, err); healErr == nil {
+				slog.Info("desktop: removal guard healed an unidentified lease holder via reclaim",
+					"session_base", filepath.Base(sessionPath))
+				return healed, nil
+			}
 			return nil, &sessionLeaseHeldBusyError{cause: err}
 		}
 		return nil, err
+	}
+	return guard, nil
+}
+
+// sessionLeaseHolderIdentityMissing reports whether a lease refusal names no
+// usable holder at all (no readable identity record, or a record without a
+// pid). tl1383: this is the residue form — a live holder's identity is always
+// published into the held .lease.lock, so identity-missing means the record
+// was lost (torn write, AV quarantine, external delete) while a stale refusal
+// state survived. The classification maps this form onto
+// errSessionBusyUnidentifiedHolder so the copy never misdirects the user to a
+// window that may not exist.
+func sessionLeaseHolderIdentityMissing(err error) bool {
+	var leaseErr *agent.SessionLeaseError
+	if !errors.As(err, &leaseErr) || leaseErr == nil {
+		return false
+	}
+	return leaseErr.Info == nil || leaseErr.Info.PID <= 0
+}
+
+// sessionLeaseHealCandidate reports whether a removal-guard refusal is the
+// tl1383 residue shape the reclaim heal may repair: either the refusal names
+// NO holder (identity record lost), or it names THIS process while the
+// identity record is gone entirely — the 2026-11-04 incident form, where an
+// in-process registry entry survived its own record (the 0330 build refused
+// with holder_class=unknown pid=0 for exactly this shape). Live holders keep
+// the lock file present for their whole hold, so a self entry beside a
+// missing record is an orphaned entry, and the reclaim's lock take stays the
+// arbiter: a still-live handle (a holder whose record was quarantined but
+// whose lock lives) keeps the heal failing and the refusal intact.
+func sessionLeaseHealCandidate(sessionPath string, cause error) bool {
+	if sessionLeaseHolderIdentityMissing(cause) {
+		return true
+	}
+	var leaseErr *agent.SessionLeaseError
+	if !errors.As(cause, &leaseErr) || leaseErr == nil || leaseErr.Info == nil {
+		return false
+	}
+	if leaseErr.Info.PID != os.Getpid() {
+		return false
+	}
+	_, infoErr := agent.LoadSessionLeaseInfo(sessionPath)
+	return os.IsNotExist(infoErr)
+}
+
+// healUnidentifiedLeaseHolder is the tl1383 one-shot repair for a removal-guard
+// refusal in the residue shape: reclaim the lease through the
+// OS-lock-arbitrated primitive (a live holder's lock keeps it failing; a
+// leftover with a free lock is adopted and its stale registry entry
+// overwritten), then convert the adopted lease into the removal guard the
+// caller wanted. Any failure returns the original refusal path — the heal only
+// ever ADDS a success form, it never widens what gets refused or grabbed.
+func healUnidentifiedLeaseHolder(sessionPath string, cause error) (*agent.SessionRemovalGuard, error) {
+	if !sessionLeaseHealCandidate(sessionPath, cause) {
+		return nil, cause
+	}
+	lease, reclaimErr := agent.TryReclaimCurrentProcessSessionLease(sessionPath)
+	if reclaimErr != nil {
+		return nil, reclaimErr
+	}
+	guard, convErr := lease.TryConvertToRemovalGuard()
+	if convErr != nil {
+		lease.Release()
+		return nil, convErr
 	}
 	return guard, nil
 }

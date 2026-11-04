@@ -5678,6 +5678,8 @@ export const en = {
   "sessionBusy.zombie": "This session was left locked by a crashed Reasonix process — pid {pid}{proc}, since {time}. Restart Reasonix to clear the leftover lock, then retry.",
   "sessionBusy.reused": "This session's stale lease record names pid {pid}, which now belongs to another program{proc}. Force archive clears the leftover record, then retry.",
   "sessionBusy.unknown": "This session is in use by another Reasonix window or process — close that window (or quit the other Reasonix instance), then retry.",
+  // tl1383: identity-missing leftover form — the holder cannot be named, so never point at "another window"
+  "sessionBusy.leftover": "This session's lease is locked by a leftover record whose holder cannot be identified — restart Reasonix to clear it, or use force archive, then retry.",
   "projectTree.sessionOccupiedConfirm": "This session is currently occupied:\n{reason}\n\nArchiving now would be refused. Continue to try a normal archive; if it fails, the force-archive path (which takes over leftover locks) will be offered. Continue?",
   // tl1240 sidebar batch manage mode
   "projectTree.batchManage": "Batch manage",

@@ -154,5 +154,16 @@ func PromoteRecoveryBranchToMain(recoveryPath, mainPath string) (archived string
 	if err := os.Rename(recoveryPath, mainPath); err != nil {
 		return "", fmt.Errorf("promote recovery transcript: %w", err)
 	}
+	// tl1383 追加面：rename 只换文件名不换字节——副本的 branch-meta 侧车搬进
+	// 主名后，meta.id 仍是副本身份（fork 嵌套时甚至停在更早的世代），CAS 账本
+	// 与文件名互不相认会让之后每次保存都撞冲突、会话不可写（2026-11-04
+	// 9318b1f6 转正事故）。转正落位即对齐：id 改写为主身份，账位对齐事件日志
+	// 实况（与 consolidation 转正的 meta 改写、migrateSessionSidecars 的
+	// ID 改写同一规则）。对齐失败不阻断转正（字节已就位，元数据下次保存仍可
+	// 收敛），但必须具名留下痕迹。
+	if _, reconcileErr := ReconcileBranchMetaIdentity(mainPath); reconcileErr != nil {
+		slog.Warn("promote: branch meta identity reconciliation failed; the meta may stay on the copy's generation",
+			"err", reconcileErr)
+	}
 	return archived, nil
 }
