@@ -1913,6 +1913,18 @@ func topicActivityStatusFromEvent(e event.Event) (string, bool) {
 		return topicStatusStreaming, true
 	case event.ApprovalRequest, event.AskRequest:
 		return topicStatusWaitingConfirmation, true
+	case event.PromptAnswered:
+		// tl1384: the settlement event itself must drive the badge. The user
+		// answered, so the turn resumed — advance to thinking (the face the
+		// tab bar already shows) instead of leaving "待确认" hanging until a
+		// follow-up Reasoning/TurnDone that an interrupt may never deliver.
+		return topicStatusThinking, true
+	case event.PromptClosed:
+		// tl1384: a prompt dropped backend-side without an answer (cancel,
+		// timeout, controller teardown) kills its badge with it — the
+		// event-driven form of the task-730 rule: waiting_confirmation must
+		// never outlive the prompt it is anchored to.
+		return "", true
 	case event.TurnDone:
 		if status, ok := topicStatusFromTurnDone(e.Outcome); ok {
 			return status, true

@@ -62,11 +62,8 @@ func TestMediaThemeTokenDesign(t *testing.T) {
 	expected := map[string]struct{ lightBg, darkBg, accent, corners string }{
 		"media-broadsheet-rose": {"#fff1e5", "#1b1614", "#990f3d", "square"},
 		"media-no44-cream":      {"#fff5f0", "#241b15", "#a96426", "soft"},
-		"media-no47-muji":       {"#f5f1ea", "#262320", "#8e4e52", "square"},
 		"media-no48-economist":  {"#ffffff", "#211a18", "#e3120b", "square"},
 		"media-no46-ikea":       {"#ffffff", "#16202b", "#0058a3", "square"},
-		"media-no52-natgeo":     {"#f5eed9", "#1e1b13", "#ffcc00", "square"},
-		"media-no42-apple":      {"#ffffff", "#000000", "#1d1d1f", "round"},
 		"media-no36-forest":     {"#f5f1e6", "#1c231b", "#3d6b3c", "soft"},
 	}
 	if len(expected) != mediaExpectedCount {

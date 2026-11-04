@@ -354,11 +354,8 @@ ok(
 // TestMediaThemeTokenDesign ledger (tokens arrive lowercased from the shell).
 const MEDIA_TOKEN_DESIGNS: Array<[string, string, string]> = [
   ["media-no44-cream", "#fff5f0", "#241b15"],
-  ["media-no47-muji", "#f5f1ea", "#262320"],
   ["media-no48-economist", "#ffffff", "#211a18"],
   ["media-no46-ikea", "#ffffff", "#16202b"],
-  ["media-no52-natgeo", "#f5eed9", "#1e1b13"],
-  ["media-no42-apple", "#ffffff", "#000000"],
   ["media-no36-forest", "#f5f1e6", "#1c231b"],
 ];
 for (const [id, lightBg, darkBg] of MEDIA_TOKEN_DESIGNS) {
@@ -385,13 +382,13 @@ for (const [id, lightBg, darkBg] of MEDIA_TOKEN_DESIGNS) {
 }
 
 // tl1343: the media group exists beside official/user/base/plugin. tl1362
-// proves it stays plural across the eight-preset set.
+// proves it stays plural across the preset set (tl1385: five presets).
 const grouped = groupThemePacks([
   { id: "media-broadsheet-rose", name: "Financial Times", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
-  { id: "media-no52-natgeo", name: "No.52 National Geographic", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
+  { id: "media-no44-cream", name: "Cream", baseStyle: "graphite", builtin: true, kind: "media", active: false, hasBackground: false, tokens: {}, recipes: {} },
   { id: "official-rose-dawn", name: "Rose Dawn", baseStyle: "graphite", builtin: true, kind: "official", active: false, hasBackground: false, tokens: {}, recipes: {} },
 ]);
-ok(grouped.media.length === 2 && grouped.media[0].id === "media-broadsheet-rose" && grouped.media[1].id === "media-no52-natgeo", "groupThemePacks routes kind=media into the media group");
+ok(grouped.media.length === 2 && grouped.media[0].id === "media-broadsheet-rose" && grouped.media[1].id === "media-no44-cream", "groupThemePacks routes kind=media into the media group");
 ok(grouped.official.length === 1, "groupThemePacks keeps official grouping intact");
 
 const twoSceneDraft = draftPackView({
@@ -780,15 +777,12 @@ for (const id of OFFICIAL_IDS) {
   }
 }
 // Localized media preset names/descriptions in all three locales (tl1343 seed
-// + the tl1362 eight-preset set).
+// + the tl1362 preset set; tl1385 trimmed the group to five presets).
 const MEDIA_IDS = [
   "media-broadsheet-rose",
   "media-no44-cream",
-  "media-no47-muji",
   "media-no48-economist",
   "media-no46-ikea",
-  "media-no52-natgeo",
-  "media-no42-apple",
   "media-no36-forest",
 ];
 for (const id of MEDIA_IDS) {
@@ -824,7 +818,7 @@ for (const key of [
 // Mock parity: 6 base + 8 official + 8 media mock packs so browser dev matches the shell.
 ok((bridgeSource.match(/kind: "base"/g) || []).length === 6, "mock has 6 base packs");
 ok((bridgeSource.match(/kind: "official"/g) || []).length === 8, "mock has 8 official packs");
-ok((bridgeSource.match(/kind: "media"/g) || []).length === 8, "mock has 8 media packs");
+ok((bridgeSource.match(/kind: "media"/g) || []).length === 5, "mock has 5 media packs");
 ok((bridgeSource.match(/previewUrl: new URL\("\.\.\/\.\.\/\.\.\/themes\/official\//g) || []).length === 8, "browser mock has 8 real official previews");
 ok((bridgeSource.match(/backgroundUrl: new URL\("\.\.\/\.\.\/\.\.\/themes\/official\//g) || []).length === 8, "browser mock has 8 real official backgrounds");
 ok((bridgeSource.match(/paneOpacity:\s*0\.50/g) || []).length === 8, "browser mock gives every official theme the product pane opacity");

@@ -369,6 +369,50 @@ console.log("\ncontext window ring");
   dom.window.close();
 }
 
+{
+  // tl1386: partial 态显示简化——0 元权威总额（全无定价按 0）在弹层里渲染
+  // ¥0.00 而非「≈-」，且不再出现「incl. N unpriced」行标注；tl1379 数据层
+  // 口径（partialPricedCount 等）不动。
+  const dom = installDom();
+  installContextPanelMock(async () => ({
+    ...contextPanelInfo(3),
+    sessionCost: 0,
+    sessionCurrency: "CNY",
+    sessionCostComplete: true,
+    sessionCostQuote: {
+      original: { amount: "0", currency: "CNY" },
+      selected: { amount: "0", currency: "CNY" },
+      estimated: true,
+      costComplete: true,
+      displayComplete: true,
+      complete: true,
+      displayStatus: "partial_priced",
+      partialPricedCount: 8,
+    },
+  }));
+  // Wait out the bridge's 200ms query-coalesce window first — the previous
+  // block's ContextPanel("tab-a") response is still cached and my fixture
+  // (requestCount 3) would otherwise be shadowed by it (same trick as the
+  // reset-cost block above).
+  const { root } = await renderRing();
+  await act(async () => { await wait(250); });
+  const button = document.querySelector(".context-ring") as HTMLButtonElement | null;
+  if (!button) throw new Error("missing context ring button");
+  await act(async () => {
+    button.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: null }));
+    await wait(220);
+  });
+  // Locale-independent assertions: the row label follows the active locale
+  // (the en-label row lookups above are the known zh-machine reds), so pin
+  // the VALUE and the annotation absence on the popover text itself.
+  const popoverText = document.querySelector(".context-ring-popover")?.textContent ?? "";
+  ok(popoverText.includes("≈¥0.00"), `partial-priced zero total renders ≈¥0.00 (popover: ${popoverText.slice(0, 160) || "EMPTY"})`);
+  ok(!popoverText.includes("≈-") && !popoverText.includes("-（") && !popoverText.includes("- ("), "zero total never renders the dash face");
+  ok(!popoverText.includes("unpriced") && !popoverText.includes("无定价"), "the incl-N-unpriced annotation is gone from the ring popover");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
 await checkSeparateDurations();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
