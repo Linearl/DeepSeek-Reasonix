@@ -307,6 +307,13 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	} else if handled {
 		return nil
 	}
+	// tl1389 (the task-1301 effort seam carried to the model side): reaching
+	// this point = both fast paths declined and this call will hold for the
+	// full runtime rebuild — seconds on recovery-forked sessions, which reads
+	// as a frozen composer. Tell the frontend now so the model name shows its
+	// "applying" transition; the settle push below and runtime:rebuilt clear
+	// it. Fast paths never emit, so normal sessions keep their instant behavior.
+	a.notifyTabModelApplying(tab)
 	prevPath := a.sessionPathForSettingsRebuild(tab)
 	if a.controllerForTab(tab) == nil && prevPath != "" {
 		a.attachExistingSessionRuntime(tab, prevPath, a.ctx)
@@ -531,6 +538,11 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 				logAttrs = append(logAttrs, "effort_fold", foldFrom+"->"+foldedEffort) // task 1161b: the depth that rode the switch.
 			}
 			slog.Info("desktop: model switch", logAttrs...)
+			// tl1389: the fast path wrote tab.Label/tab.effort with no agent
+			// event to carry them — push the settled meta so the composer's
+			// model name updates on the event instead of the frontend's own
+			// pull chain (MetaForTab → ContextUsage → Effort round trips).
+			a.notifyTabMetaRefresh(tab)
 			return true, nil
 		} else {
 			// Task 602: the official DeepSeek-V4-Pro persona is baked into the
@@ -669,6 +681,11 @@ func (a *App) swapModelController(tab *WorkspaceTab, tabID, name string, newCtrl
 	// automatic wallet hint and let the next balance response rebind it.
 	tab.clearRuntimeDisplayCurrency()
 	a.notifyTabRuntimeRebuilt(tab)
+	// tl1389: push the settled meta right behind the runtime:rebuilt fence on
+	// the same sink lane — the rebuild wrote tab.Label/tab.effort with no
+	// agent event either, and the fence-first ordering keeps the frontend
+	// from merging pre-swap state after the new identity.
+	a.notifyTabMetaRefresh(tab)
 	timing.SwapAndPersist = time.Since(stageStarted)
 	return nil
 }

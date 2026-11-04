@@ -2001,6 +2001,58 @@ func (a *App) notifyTabEffortApplying(tab *WorkspaceTab) {
 	a.emitRuntimeEvent("effort:applying", tabID)
 }
 
+// notifyTabModelApplying tells the frontend a tab's model switch took the
+// fallback rebuild path (tl1389, the task-1301 effort seam carried to the
+// model side): both fast paths declined, so SetModelForTab stays in flight
+// for the whole runtime build — recovery-forked sessions measured 12.3s —
+// and the composer shows the "applying model" transition beside the
+// switcher. The switch's settle push (notifyTabMetaRefresh) and the
+// runtime:rebuilt fence clear it; fast paths never emit, so normal sessions
+// keep their instant no-feedback behavior. Same delivery ladder as
+// notifyTabEffortApplying — tab sink first, App-level emit only when the
+// sink cannot deliver.
+func (a *App) notifyTabModelApplying(tab *WorkspaceTab) {
+	if tab == nil {
+		return
+	}
+	a.mu.RLock()
+	sink := tab.sink
+	tabID := tab.ID
+	a.mu.RUnlock()
+	if sink != nil && sink.context() != nil {
+		sink.emitRuntimeEvent("model:applying", tabID)
+		return
+	}
+	a.emitRuntimeEvent("model:applying", tabID)
+}
+
+// notifyTabMetaRefresh pushes a freshly recomputed MetaForTab on "tab:meta"
+// (tl1389): a model switch writes tab.Label/tab.effort with no agent event
+// to carry them, so the composer's model name used to wait for the
+// frontend's own pull chain (MetaForTab → ContextUsage → Effort, two extra
+// round trips). Emitted right after the switch settles — the per-request
+// fast path and the rebuild swap alike. Same delivery ladder as
+// notifyTabRuntimeRebuilt, so on the rebuild path the fresh meta rides the
+// same FIFO lane behind the runtime:rebuilt fence. MetaForTab never takes
+// runtimeRebuildMu, so calling it while a switch holds that lock cannot
+// deadlock; the disk read it pays (branch meta) is the same one the
+// frontend's pull would have paid, just one round trip earlier.
+func (a *App) notifyTabMetaRefresh(tab *WorkspaceTab) {
+	if tab == nil {
+		return
+	}
+	a.mu.RLock()
+	sink := tab.sink
+	tabID := tab.ID
+	a.mu.RUnlock()
+	meta := a.MetaForTab(tabID)
+	if sink != nil && sink.context() != nil {
+		sink.emitRuntimeEvent(tabMetaRefreshEventChannel, TabMetaRefreshEvent{TabID: tabID, Meta: meta})
+		return
+	}
+	a.emitRuntimeEvent(tabMetaRefreshEventChannel, TabMetaRefreshEvent{TabID: tabID, Meta: meta})
+}
+
 // notifyTabRuntimeRebuiltAtEpoch emits the rebuild fence for a transaction
 // that advanced its epoch inside the controller/path/lease commit. Keeping the
 // chosen epoch avoids a second generation bump after publication.
