@@ -1200,9 +1200,11 @@ export function RecoveryCopiesSection() {
     });
   };
 
-  /** tl1415 点9: 已合入默认折叠——合并/合成把一个会话收成单一主线后,它的
-   *  展开区使命已完成,行折回概要一行(点击可再展开);面板重开时所有行本就
-   *  默认折叠,这里是操作后的即时回落。 */
+  /** tl1415 点9: 已合入默认折叠——合并把一个会话收成单一主线后,它的展开区
+   *  使命已完成,行折回概要一行(点击可再展开);面板重开时所有行本就默认折叠,
+   *  这里是操作后的即时回落。适用边界(点9 返修):只挂在批量合并路径——
+   *  合成(synthesizeHeads)不折行,1146(用户裁决返修2)钉死合成后行保持
+   *  展开、结果原地可见,折叠会卸载展开区并让链清单 lazy 重拉失去目标。 */
   const collapseRow = (path: string) => {
     setExpanded((current) => {
       const next = new Set(current);
@@ -1847,8 +1849,9 @@ export function RecoveryCopiesSection() {
           // tl1402：v3 形态的合成真实生效（切主线/清理落败 heads）——同弹
           // toast 让反馈离开面板也可见；文案直接用横幅的 locale 句（已三语）。
           showToast(detail, "info");
-          // tl1415 点9: 已合入默认折叠——v3 合成真实生效,行折回概要一行。
-          collapseRow(mainPath);
+          // tl1415 点9 返修:合成路径不折行——1146(20261025 用户裁决返修2)钉死
+          // 「合成后行保持展开,结果原地可见」;折叠会卸载展开区,lazy effect 又
+          // 只为展开中的行重拉链清单,反馈面整体消失。折回仅保留在批量合并路径。
         } else if (v3Only) {
           // 后端确认无事可做（无落败分支、无需切换）——保留诚实的「无可做」
           // 回执并指出现有出路（版本表的「切换到此版本」按钮，该入口真实存在）。
@@ -1902,8 +1905,8 @@ export function RecoveryCopiesSection() {
       // 入主线的独有事件数（graft 零双份，与主线增量同量级）。outcome 行只
       // 有展开面板才可见，toast 让反馈离开面板也在。
       showToast(t("settings.recoveryCopiesMergedToast", { count: uniqueTotal }), "info");
-      // tl1415 点9: 已合入默认折叠——文件级合成生效,行折回概要一行。
-      collapseRow(mainPath);
+      // tl1415 点9 返修:文件级合成同合成路径口径——行保持展开(1146 钉死的
+      // 原地反馈),不折回;折回仅保留在批量合并路径。
       // Named winners were consumed; the next run starts neutral.
       setPickedChain((current) => {
         const next = { ...current };
