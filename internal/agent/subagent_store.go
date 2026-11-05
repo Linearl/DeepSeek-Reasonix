@@ -34,30 +34,30 @@ const (
 // SubagentMeta is the sidecar for a persisted sub-agent transcript. It captures
 // the execution identity that must stay stable for continuation/fork.
 type SubagentMeta struct {
-	Ref              string         `json:"ref"`
-	CreatedAt        time.Time      `json:"createdAt"`
-	UpdatedAt        time.Time      `json:"updatedAt"`
-	Status           SubagentStatus `json:"status"`
-	Outcome          string         `json:"outcome,omitempty"`
-	Retryable        bool           `json:"retryable,omitempty"`
-	ErrorCode        string         `json:"errorCode,omitempty"`
-	Kind             string         `json:"kind"` // task | skill
-	Name             string         `json:"name"`
+	Ref       string         `json:"ref"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	Status    SubagentStatus `json:"status"`
+	Outcome   string         `json:"outcome,omitempty"`
+	Retryable bool           `json:"retryable,omitempty"`
+	ErrorCode string         `json:"errorCode,omitempty"`
+	Kind      string         `json:"kind"` // task | skill
+	Name      string         `json:"name"`
 	// Description is the human-readable dispatch line (task 工具的 description
 	// 入参, tl1209). Display-only: panels prefer it over Name so same-profile
 	// runs are distinguishable. Deliberately NOT part of the continuation
 	// identity — validateMeta never compares it, so a continue_from with a
 	// different description is still accepted.
-	Description      string         `json:"description,omitempty"`
-	WorkspaceRoot    string         `json:"workspaceRoot"`
-	ParentSession    string         `json:"parentSession,omitempty"`
-	ParentToolCallID string         `json:"parentToolCallId,omitempty"`
-	ForkedFrom       string         `json:"forkedFrom,omitempty"`
-	SystemPromptHash string         `json:"systemPromptHash"`
-	ToolScope        []string       `json:"toolScope"`
-	ToolSchemaHash   string         `json:"toolSchemaHash"`
-	Model            string         `json:"model"`
-	Effort           string         `json:"effort"`
+	Description      string   `json:"description,omitempty"`
+	WorkspaceRoot    string   `json:"workspaceRoot"`
+	ParentSession    string   `json:"parentSession,omitempty"`
+	ParentToolCallID string   `json:"parentToolCallId,omitempty"`
+	ForkedFrom       string   `json:"forkedFrom,omitempty"`
+	SystemPromptHash string   `json:"systemPromptHash"`
+	ToolScope        []string `json:"toolScope"`
+	ToolSchemaHash   string   `json:"toolSchemaHash"`
+	Model            string   `json:"model"`
+	Effort           string   `json:"effort"`
 	// Capsule records what context this run was given; CapsuleHash is its
 	// stable identity for comparing two runs.
 	Capsule     ContextCapsule `json:"capsule"`
@@ -85,8 +85,8 @@ func isSubagentMetaDecodeError(err error) bool {
 
 // SubagentSpec describes the current invocation identity.
 type SubagentSpec struct {
-	Kind             string
-	Name             string
+	Kind string
+	Name string
 	// Description is the display-only dispatch line (tl1209). It lands on the
 	// sidecar meta but stays outside the continuation identity — see
 	// SubagentMeta.Description.
