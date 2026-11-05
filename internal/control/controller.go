@@ -277,6 +277,7 @@ type Controller struct {
 	sessionRecoveryMeta               func(SessionRecoveryRequest) agent.BranchMeta
 	onSessionRecovered                func(SessionRecoveryInfo) error
 	onSessionTransition               func(SessionTransitionInfo) error
+	onSessionPromoted                 func(SessionPromotionInfo) error
 	// onCascadeDelegate (task 225): resolves the task-source parent's Ask
 	// channel for approval forwarding. nil keeps every prompt local.
 	onCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
@@ -683,6 +684,16 @@ func (i SessionRecoveryInfo) OnCommit(fn func()) {
 	}
 }
 
+// SessionPromotionInfo carries the deferred recovery-fork promotion outcome to
+// the host (tl1403). CopyPath is the recovery fork the host surface may still
+// be bound to; MainPath is the session file the controller now lives on after
+// the copy's bytes were promoted back. An error from the handler does not roll
+// the promotion back (the bytes already moved); it surfaces in the log only.
+type SessionPromotionInfo struct {
+	CopyPath string
+	MainPath string
+}
+
 type sessionRecoveryCommit struct {
 	hooks []func()
 }
@@ -992,6 +1003,11 @@ type Options struct {
 	// OnSessionTransition transfers write ownership before an intentional
 	// fork, branch, or switch publishes a different Session.
 	OnSessionTransition func(SessionTransitionInfo) error
+	// OnSessionPromoted is called after a deferred recovery-fork promotion has
+	// moved the controller back onto the main session file (tl1352/tl1403).
+	// Hosts keep their tab surface and lease on the fork copy until this fires;
+	// it is the only notification that the writer returned to the main path.
+	OnSessionPromoted func(SessionPromotionInfo) error
 	// ApprovalTimeout bounds how long a tool-approval or ask prompt blocks waiting
 	// for a user decision. Zero (default) waits forever — right for an interactive
 	// terminal. Bot/headless frontends set a positive value so an unanswered
@@ -1129,6 +1145,7 @@ func New(opts Options) *Controller {
 		sessionRecoveryMeta:               opts.SessionRecoveryMeta,
 		onSessionRecovered:                opts.OnSessionRecovered,
 		onSessionTransition:               opts.OnSessionTransition,
+		onSessionPromoted:                 opts.OnSessionPromoted,
 		balanceURL:                        opts.BalanceURL,
 		balanceKey:                        opts.BalanceKey,
 		balanceClient:                     opts.BalanceClient,
@@ -1322,6 +1339,25 @@ func (c *Controller) sessionRecoveredHandler() func(SessionRecoveryInfo) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.onSessionRecovered
+}
+
+// SetOnSessionPromoted installs the deferred-promotion notification (tl1403).
+// The promotion fires on a save cycle after the fork went quiet on the main
+// file, so a host that acquired its lease at fork time is still bound to the
+// copy path until this hands the ownership facts over.
+func (c *Controller) SetOnSessionPromoted(fn func(SessionPromotionInfo) error) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onSessionPromoted = fn
+}
+
+func (c *Controller) sessionPromotedHandler() func(SessionPromotionInfo) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.onSessionPromoted
 }
 
 func (c *Controller) recordDisplay(content, display string) {

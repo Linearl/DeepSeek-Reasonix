@@ -180,6 +180,20 @@ func (c *Controller) applyPendingRecoveryPromotion() bool {
 	slog.Warn("controller: recovery branch promoted back to the main file after the main file stayed quiet",
 		"main", pending.mainPath, "recovery", pending.copyPath, "archived", archived,
 		"topic", agent.RecoveryTopicRootID(pending.mainPath))
+	// tl1403: the host surface (tab SessionPath / lease / write authority /
+	// frontend identity) was moved onto the copy at fork time by
+	// OnSessionRecovered; the promotion just moved the writer back to the main
+	// path. Without this notification the display face and the write face stay
+	// split — the tab keeps watching the copy while every save lands on the
+	// main file, which is exactly the watchdog early-stop loop. Fire-and-report:
+	// the bytes already moved, so a handler failure never rolls the promotion
+	// back; it logs and moves on.
+	if promoted := c.sessionPromotedHandler(); promoted != nil {
+		if err := promoted(SessionPromotionInfo{CopyPath: pending.copyPath, MainPath: pending.mainPath}); err != nil {
+			slog.Warn("controller: recovery promotion host notification failed",
+				"main", pending.mainPath, "recovery", pending.copyPath, "err", err)
+		}
+	}
 	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
 		"the conflict copy was folded back into this conversation's main file; the previous on-disk version is archived beside it"))
 	return true

@@ -251,6 +251,7 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 		PinnedContextLoader:        pinnedContextLoader(snap.workspaceRoot),
 		OnSessionRecovered:         a.handleTabSessionRecovered(tab),
 		OnSessionTransition:        a.handleTabSessionTransition(tab),
+		OnSessionPromoted:          a.handleTabSessionPromoted(tab),
 		BeforeInboxDispatch:        a.beforeInboxDispatch,
 		OnInboxDispatchExhausted:   a.inboxDispatchExhausted,
 		OnSessionTitleChanged:      a.onSessionTitleChanged,

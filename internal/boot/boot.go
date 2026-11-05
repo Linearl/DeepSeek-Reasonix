@@ -220,6 +220,7 @@ type Options struct {
 	SessionRecoveryMeta func(control.SessionRecoveryRequest) agent.BranchMeta
 	OnSessionRecovered  func(control.SessionRecoveryInfo) error
 	OnSessionTransition func(control.SessionTransitionInfo) error
+	OnSessionPromoted   func(control.SessionPromotionInfo) error
 	BeforeInboxDispatch func(*control.Controller) (func(), error)
 	// OnInboxDispatchExhausted (任务579) rides the same chain as
 	// BeforeInboxDispatch: the host surfaces the bounded-retry exhaustion of a
@@ -2957,6 +2958,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		SessionRecoveryMeta:       opts.SessionRecoveryMeta,
 		OnSessionRecovered:        opts.OnSessionRecovered,
 		OnSessionTransition:       opts.OnSessionTransition,
+		OnSessionPromoted:         opts.OnSessionPromoted,
 		BeforeInboxDispatch:       opts.BeforeInboxDispatch,
 		OnInboxDispatchExhausted:  opts.OnInboxDispatchExhausted,
 		// The merged catalog lets frontends enumerate sidecar providers.
