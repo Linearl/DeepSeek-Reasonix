@@ -5253,6 +5253,10 @@ const (
 	// conflictForkedBranch: the same in-memory session moved to a freshly
 	// forked recovery branch path.
 	conflictForkedBranch
+	// conflictTookOver (tl1409): the live in-memory transcript was persisted
+	// over a dead second writer's on-disk state; path and session are
+	// unchanged and the disk ledger advanced past the stale revision.
+	conflictTookOver
 )
 
 func sessionRecoveryNotice(code, text string) event.Event {
@@ -5360,6 +5364,21 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 		mode = "rewrite"
 	}
 	logAttrs := snapshotConflictLogAttrs(saveErr, path, mode)
+	// tl1409: rev-lag takeover. The existing ladder had no verdict for the
+	// diverged shape where the disk revision ran AHEAD of the local base and
+	// the live transcript ran ahead of disk — a second writer advanced the
+	// ledger and then died (the 2026-11-05 field shape: disk 243 msgs at
+	// revision 120 vs a live snapshot growing 244→248 from base 119). Before
+	// this branch the only outcomes were a recovery fork (a new copy next to a
+	// dead main file — the fork-storm class) or adopting the disk transcript
+	// (discarding the live side that kept growing). The takeover persists the
+	// live transcript over the dead writer's state instead; every precondition
+	// and the disk-still-stale re-verification live inside
+	// agent.SaveAdoptOverStaleDisk, so a shape it declines here falls through
+	// to the pre-existing ladder unchanged.
+	if c.takeoverDivergedRevLag(path, saveErr, mode) {
+		return path, conflictTookOver, nil
+	}
 	// Fork: avalanche brake. When this controller already forked a recovery
 	// branch moments ago, the conflict is a racing writer (the
 	// repeated_in_process forks observed in the field), not an independent
