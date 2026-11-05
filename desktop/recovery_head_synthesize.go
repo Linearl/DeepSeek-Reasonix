@@ -317,6 +317,22 @@ func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisRepo
 	}
 	a.emitProjectTreeChangedForSessionDirs(dir)
 	a.invalidatePromptHistoryCache()
+	// tl1402: the synthesis rewrites the main transcript in place while a tab
+	// may still hold its pre-synthesis snapshot — the user reads the stale pane
+	// as lost history (20261105 实测：合成成功落盘，打开的对话却不刷新). The
+	// sidebar refreshes via project-tree:changed-v2; this event is the signal
+	// the OPEN TAB listens for, so it can reload the transcript projection
+	// (frontend reason=synthesize-done). Same event and payload shape as the
+	// merge path's emission (recovery_consolidate.go) so the frontend keeps
+	// exactly one subscription for "this conversation was rewritten in place".
+	// Failure paths return above and stay silent.
+	a.emitRuntimeEvent("session:consolidated", map[string]any{
+		"mainPath":      mainPath,
+		"promoted":      report.Promoted,
+		"trashed":       report.Trashed,
+		"afterMessages": report.AfterMessages,
+		"afterTurns":    report.AfterTurns,
+	})
 	return report, nil
 }
 
