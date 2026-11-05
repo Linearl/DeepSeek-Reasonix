@@ -193,13 +193,25 @@ func (c SessionCollabConfig) currentSessionPath() string {
 // reply must be sent to. It falls back to minting the id on first use, exactly
 // like the async send path, so "the sender is always addressable" holds for a
 // session that only ever sends.
+//
+// tl1403 追加面：boot 快照与活路径互证后才可信。assembly 复用/换道竞态会把
+// 上一会话的身份连 path 带_id 一起烤进快照——污染的签名就是快照 path 与活
+// 路径不一致（新11 发信 from 落到 ai-novel 分叉身份的现场形态）。这种快照
+// 整体拒收，身份以活路径 meta 为权威；快照与活路径同源时保留显式裁定语义
+// （同路径声明他者 id = 越权拒绝测试钉住的产品行为）。
 func (c SessionCollabConfig) currentContactID() string {
-	if id := strings.TrimSpace(c.CurrentContactID); id != "" {
-		return id
-	}
 	path := c.currentSessionPath()
+	snapshot := strings.TrimSpace(c.CurrentContactID)
 	if path == "" {
-		return ""
+		// 无活路径（boot 期未绑定）：快照是唯一线索，原样信任。
+		return snapshot
+	}
+	if snapshotPath := strings.TrimSpace(c.CurrentSessionPath); snapshot != "" && snapshotPath != "" && snapshotPath != path {
+		// 快照属于另一个会话：拒绝跨会话身份，落回活路径自身解析。
+		snapshot = ""
+	}
+	if snapshot != "" {
+		return snapshot
 	}
 	if id := SessionContactID(path); id != "" {
 		return id

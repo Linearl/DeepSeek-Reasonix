@@ -60,6 +60,14 @@ func (s *Session) prepareRecoveryBranchMetaLocked(path string, opts RecoveryBran
 		}
 	}
 	meta.ContentDigest = digest
+	// tl1403 追加面：分叉继承主会话身份——fork/recovery 是同一会话的延续，
+	// contact_id（多会话通讯地址）必须随行；此前副本 meta 只带 opts/已有侧车
+	// 字段，主 meta 的 contact_id 不在复制面里，分叉态发信身份解析失据
+	// （2026-11-05 现场：b26cee 副本 33 字段无 contact_id）。只继承不铸造：
+	// 主会话自身没有地址时给副本铸一个新 id 会把同一会话的身份永久劈成两半。
+	if strings.TrimSpace(meta.ContactID) == "" && strings.TrimSpace(opts.OriginalPath) != "" {
+		meta.ContactID = SessionContactID(opts.OriginalPath)
+	}
 	stampSessionListingProjection(&meta)
 	if !ledgerCurrent || strings.TrimSpace(meta.WriterID) == "" {
 		meta.WriterID = SessionWriterID()
