@@ -439,8 +439,25 @@ function SubagentDetailView({
             </div>
           ) : null}
           {progress?.truncated ? <div className="subagents-panel__detailview-note">{t("subagent.preview.truncated")}</div> : null}
-          {!summary && !error && !hasPreview && !(entry.running && (ref || childTools.length > 0)) ? (
-            <p className="subagents-panel__detailview-note">{t("subagentPanel.detailNoPreview")}</p>
+          {!summary && !error && !hasPreview ? (
+            entry.running ? (
+              /* tl1387 二轮: a RUNNING entry never reads 「重启后仅保留名称与
+                  状态」 — that copy describes restart-hydrated ended cards, and
+                  it fired on live children whose ref and childTools were both
+                  absent (registry job rows before the 二轮 callId stamp,
+                  ref-less cards before the first nested tool call — the 包74
+                  user rejection). The honest running note stands in until the
+                  live tool stream above renders; a ref-bearing row keeps the
+                  「完成后可读」 pending note instead. Ended entries keep the
+                  restart copy byte-for-byte. */
+              !ref && childTools.length === 0 ? (
+                <p className="subagents-panel__detailview-note" data-subagents-running-blank="true">
+                  {t("subagentPanel.runningNoPreview")}
+                </p>
+              ) : null
+            ) : (
+              <p className="subagents-panel__detailview-note">{t("subagentPanel.detailNoPreview")}</p>
+            )
           ) : null}
         </>
       )}
