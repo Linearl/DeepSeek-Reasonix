@@ -88,9 +88,9 @@ func SendMessageReceiptText(ref string, receipt subagentmailbox.Receipt) string 
 	case subagentmailbox.DispositionSteered:
 		return fmt.Sprintf("Message delivered to sub-agent %s (steered): the sub-agent consumes it at its next tool-round gap as guidance for its current task.", ref)
 	case subagentmailbox.DispositionQueued:
-		return fmt.Sprintf("Sub-agent %s is finishing its run, so the message is persisted in its mailbox (queued, id %s). It is delivered automatically if this transcript is continued with continue_from=%s; otherwise the user can read it in the subagent panel.", ref, receipt.Entry.ID, ref)
+		return fmt.Sprintf("Sub-agent %s is finishing its run, so the message is persisted in its mailbox (queued, id %s). It is delivered automatically if this transcript is continued with continue_from=%s; otherwise the user can read it in the task panel.", ref, receipt.Entry.ID, ref)
 	case subagentmailbox.DispositionParked:
-		return fmt.Sprintf("Sub-agent %s is not running (ended or unknown), so the message is persisted in its mailbox (parked, id %s). To deliver it, continue that transcript with continue_from=%s; the user can also read it in the subagent panel.", ref, receipt.Entry.ID, ref)
+		return fmt.Sprintf("Sub-agent %s is not running (ended or unknown), so the message is persisted in its mailbox (parked, id %s). To deliver it, continue that transcript with continue_from=%s; the user can also read it in the task panel.", ref, receipt.Entry.ID, ref)
 	default:
 		return fmt.Sprintf("Message for sub-agent %s was persisted (disposition %s).", ref, receipt.Disposition)
 	}
