@@ -187,6 +187,7 @@ func (a *App) clearSessionBuildOptions(tab *WorkspaceTab, snap tabRuntimeSnapsho
 		PinnedContextLoader:        pinnedContextLoader(snap.workspaceRoot),
 		OnSessionRecovered:         a.handleTabSessionRecovered(tab),
 		OnSessionTransition:        a.handleTabSessionTransition(tab),
+		OnSessionPromoted:          a.handleTabSessionPromoted(tab),
 		BeforeInboxDispatch:        a.beforeInboxDispatch,
 		OnInboxDispatchExhausted:   a.inboxDispatchExhausted,
 		OnSessionTitleChanged:      a.onSessionTitleChanged,

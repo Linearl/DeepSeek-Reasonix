@@ -2,6 +2,16 @@ import { useEffect, type RefObject } from "react";
 import { reportFrontendLog } from "./frontendLog";
 
 const STALE_TURN_RECONCILE_MS = 30_000;
+// tl1403: a move-follow hydration is seconds-scale; a marker older than this
+// is an orphaned entry (hydrate kept failing) and must not exempt the tab
+// forever — the stale verdict resumes so a genuinely dead turn still gets
+// its reconcile.
+const SESSION_MOVE_EXEMPTION_WINDOW_MS = 120_000;
+
+export function sessionMoveExemptionActive(moveAt: number | undefined, now = Date.now()): boolean {
+  if (moveAt === undefined || moveAt <= 0) return false;
+  return now - moveAt >= 0 && now - moveAt < SESSION_MOVE_EXEMPTION_WINDOW_MS;
+}
 
 export type StaleTurnWatchdogState = {
   running: boolean;
@@ -13,7 +23,14 @@ export function shouldReconcileStaleTurn(
   lastTurnActivityAt: number,
   now = Date.now(),
   timeoutMs = STALE_TURN_RECONCILE_MS,
+  moveInFlight = false,
 ): boolean {
+  // tl1403: a session-move window (recovery fork/promote surface follow) is
+  // the one quiet shape that is NOT a dead turn — the writer changed files and
+  // the follow hydration is re-binding the surface to it. Firing here would
+  // reset a live turn out from under the move (the 2026-11-05 14:10 early
+  // stop), so the exemption outranks the quiet verdict.
+  if (moveInFlight) return false;
   const lastEvidenceAt = lastTurnActivityAt > 0 ? lastTurnActivityAt : state?.turnStartAt ?? 0;
   if (!state?.running || lastEvidenceAt <= 0) return false;
   return Math.max(0, now - lastEvidenceAt) >= timeoutMs;
@@ -25,6 +42,7 @@ export function useStaleTurnWatchdog<T extends StaleTurnWatchdogState>({
   activeTabIdRef,
   statesRef,
   lastTurnActivityAtByTab,
+  sessionMoveAtByTab,
   reconcile,
 }: {
   tabId?: string;
@@ -32,12 +50,17 @@ export function useStaleTurnWatchdog<T extends StaleTurnWatchdogState>({
   activeTabIdRef: RefObject<string | undefined>;
   statesRef: RefObject<Map<string, T>>;
   lastTurnActivityAtByTab: RefObject<Map<string, number>>;
+  /** tl1403: tabId → move-start timestamp while a session-move follow
+   * hydration is in flight. An absent map keeps the legacy behavior. */
+  sessionMoveAtByTab?: RefObject<Map<string, number>>;
   reconcile: (tabId: string) => Promise<void>;
 }) {
   useEffect(() => {
     if (!tabId) return;
     let cancelled = false;
     let timer: number | undefined;
+
+    const moveInFlight = () => sessionMoveExemptionActive(sessionMoveAtByTab?.current?.get(tabId));
 
     const schedule = (delay?: number) => {
       if (cancelled || activeTabIdRef.current !== tabId) return;
@@ -53,8 +76,12 @@ export function useStaleTurnWatchdog<T extends StaleTurnWatchdogState>({
       if (cancelled || activeTabIdRef.current !== tabId) return;
       const current = statesRef.current.get(tabId);
       const lastActivityAt = lastTurnActivityAtByTab.current.get(tabId) ?? 0;
-      if (!shouldReconcileStaleTurn(current, lastActivityAt)) {
-        schedule();
+      const exempt = moveInFlight();
+      if (!shouldReconcileStaleTurn(current, lastActivityAt, Date.now(), STALE_TURN_RECONCILE_MS, exempt)) {
+        // tl1403: an exempt tick is already past the quiet timeout, so the
+        // remaining-quiet formula would re-arm with delay 0 and spin. Re-judge
+        // after one full period instead; the legacy path keeps schedule().
+        schedule(exempt ? STALE_TURN_RECONCILE_MS : undefined);
         return;
       }
       // 任务874: 看门狗触发过去完全静默——2026-10-13 19:10 的 transcript 自行
@@ -77,5 +104,5 @@ export function useStaleTurnWatchdog<T extends StaleTurnWatchdogState>({
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [activeTabIdRef, lastTurnActivityAtByTab, reconcile, statesRef, tabId, visibleState.running, visibleState.turnStartAt]);
+  }, [activeTabIdRef, lastTurnActivityAtByTab, reconcile, sessionMoveAtByTab, statesRef, tabId, visibleState.running, visibleState.turnStartAt]);
 }

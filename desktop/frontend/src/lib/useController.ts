@@ -303,7 +303,7 @@ export type ControllerLiveStore = {
 export type HistoryMutationKind = "replace" | "prepend" | "append" | "patch";
 export type HistoryMutation = { seq: number; kind: HistoryMutationKind };
 export type HistoryLoadTrigger = "viewport-user" | "question-jump" | "retry" | "auto-fill";
-export type HydrateReason = "switch-tab" | "new-session" | "resume-session" | "open-topic" | "startup" | "rewind" | "session-changed" | "synthesize-done";
+export type HydrateReason = "switch-tab" | "new-session" | "resume-session" | "open-topic" | "startup" | "rewind" | "session-changed" | "synthesize-done" | "session-follow";
 type SyncActiveTabOptions = { preserveCachedHistory?: boolean; navigationIntentSeq?: number; surfacePolicy?: HydrateSurfacePolicy; deferHydration?: boolean };
 // A ticketed StartTopicActivation in flight. Only the latest one is tracked:
 // superseded requests get "cancelled" from the backend and are ignored.
@@ -3260,6 +3260,11 @@ export function useController() {
   const modelSwitchSuccessVersionByTab = useRef(new Map<string, number>());
   const modelSwitchQueueByTab = useRef(new Map<string, ModelSwitchQueueState>());
   const lastTurnActivityAtByTab = useRef(new Map<string, number>());
+  // tl1403: tabId → move-start timestamp while a session-move follow hydration
+  // (recovery fork/promote surface re-bind) is in flight. The stale-turn
+  // watchdog consults this and exempts the tab — a quiet turn during the move
+  // is the writer changing files, not a dead turn.
+  const sessionMoveAtByTab = useRef(new Map<string, number>());
   // tl1303 ③: per-tab acceptance instant of a degraded steer that returned
   // steer_accepted — arms the pure-observation supervision window (see the
   // effect near useStaleTurnWatchdog). Cleared by the steer's own injection
@@ -4660,6 +4665,42 @@ export function useController() {
     return active.id;
   }, [activeTabFromBackend, beginActiveNavigation, confirmBackendActiveTab, dispatchRuntimeStatusForTab, dispatchTo, isNavigationIntentCurrent, loadSessionDataForTab]);
 
+  // tl1403: a recovery fork or deferred promotion moves the controller onto a
+  // different session file while the open surface keeps streaming against the
+  // old one (the 监测面/写入面 split behind the 2026-11-05 early-stop loop).
+  // followSessionMoveForTab re-binds the surface onto the authoritative path
+  // through the regular replace-surface hydration, and marks the move window
+  // so the stale-turn watchdog exempts the tab while the re-bind is in flight.
+  const followSessionMoveForTab = useCallback(async (
+    tabId: string,
+    target: { sessionPath?: string; sessionRevision?: number; sessionDigest?: string; sessionGeneration?: number },
+  ): Promise<boolean> => {
+    const path = (target.sessionPath ?? "").trim();
+    if (!path) return false;
+    const local = statesRef.current.get(tabId);
+    const localPath = (local?.meta?.sessionPath ?? "").trim();
+    if (!localPath || sameSessionHydrateIdentity({ sessionPath: path, sessionGeneration: target.sessionGeneration }, local?.meta)) return false;
+    reportFrontendLog("session-monitor", "session move follow", `tab=${tabId} from=${localPath} to=${path}`, "info");
+    sessionMoveAtByTab.current.set(tabId, Date.now());
+    try {
+      await loadSessionDataForTab(tabId, true, "session-follow", {
+        surfacePolicy: "replace-surface",
+        sessionPath: path,
+        sessionRevision: target.sessionRevision,
+        sessionDigest: target.sessionDigest,
+        sessionGeneration: target.sessionGeneration,
+      });
+    } finally {
+      // Clear the exemption only when the surface actually landed on the
+      // target; a failed/stale hydrate leaves the marker so the watchdog keeps
+      // exempting while the split persists (the next reconcile retries).
+      if ((statesRef.current.get(tabId)?.meta?.sessionPath ?? "").trim() === path) {
+        sessionMoveAtByTab.current.delete(tabId);
+      }
+    }
+    return true;
+  }, [loadSessionDataForTab]);
+
   const reconcileTabRuntime = useCallback(async (
     tabId: string,
     options: { hydrateSessionData?: boolean; refreshAncillary?: boolean } = {},
@@ -4673,8 +4714,15 @@ export function useController() {
     if (tab.runtime?.epoch) runtimeEpochByTabRef.current.set(tabId, tab.runtime.epoch);
     const local = statesRef.current.get(tabId);
     const needsInitialLoad = !local?.meta;
+    // tl1403: the authoritative path differing from the surface identity is
+    // the split itself — follow it BEFORE the missed-turn judgement, which
+    // would otherwise read the split's silence as a dead turn and reset.
+    const followed = await followSessionMoveForTab(tabId, tab);
+    // A landed follow already reset the per-tab state; the pre-follow `local`
+    // snapshot must not feed the missed-turn judgement (it would double-reset).
+    const localAfterFollow = followed ? statesRef.current.get(tabId) : local;
     const foregroundRunning = dispatchRuntimeStatusForTab(tabId, tab, snapshotAt);
-    const missedTurnDone = Boolean(local?.running && !foregroundRunning);
+    const missedTurnDone = Boolean(localAfterFollow?.running && !foregroundRunning);
     if (hydrateSessionData && (needsInitialLoad || missedTurnDone)) {
       if (missedTurnDone) {
         // 任务874: 这条分支是「无用户操作、transcript 自行 reset 重建」的主要
@@ -5047,6 +5095,18 @@ export function useController() {
         current.meta.sessionPath !== undefined &&
         meta.sessionPath !== current.meta.sessionPath
       ) {
+        // tl1403: a path-changing push is only a deliberate surface move when
+        // it carries a strictly-advancing session generation — the marker the
+        // desktop stamps at fork/promotion time. Without the marker the push
+        // is a stale emission from the outgoing session (mid-switch races)
+        // and stays dropped, as before.
+        const moveGeneration = meta.sessionGeneration;
+        if (moveGeneration === undefined || moveGeneration <= (current.meta.sessionGeneration ?? 0)) {
+          return;
+        }
+        void followSessionMoveForTab(tabId, meta).then((followed) => {
+          if (!followed) dispatchTo(tabId, { type: "meta", meta });
+        });
         return;
       }
       dispatchTo(tabId, { type: "meta", meta });
@@ -5102,7 +5162,7 @@ export function useController() {
       offTabMeta();
       offTabsRestored();
     };
-  }, [dispatchTo, handleTopicActivationEvent, loadSessionDataForTab, refreshBalanceForTab, refreshCheckpoints, refreshMetaForTab, schedulePromptFenceReconcile, syncActiveTabFromBackend, turnEventProjector]);
+  }, [dispatchTo, followSessionMoveForTab, handleTopicActivationEvent, loadSessionDataForTab, refreshBalanceForTab, refreshCheckpoints, refreshMetaForTab, schedulePromptFenceReconcile, syncActiveTabFromBackend, turnEventProjector]);
 
   // Track the visible tab in the transcript store: the active tab is pinned
   // out of LRU eviction. (In-flight loads of background tabs still complete
@@ -5197,7 +5257,7 @@ export function useController() {
   }, [reconcileTabRuntime]);
   useStaleTurnWatchdog({
     tabId: runtimeState.known ? undefined : activeTabId, visibleState: activeState, activeTabIdRef, statesRef,
-    lastTurnActivityAtByTab, reconcile: reconcileStaleTurn,
+    lastTurnActivityAtByTab, sessionMoveAtByTab, reconcile: reconcileStaleTurn,
   });
 
   // tl1303 ③: steer_accepted→生效监督（纯观测，零行为影响）。2026-10-31 事故：

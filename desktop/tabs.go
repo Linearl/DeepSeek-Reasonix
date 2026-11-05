@@ -4892,6 +4892,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		PinnedContextLoader:        pinnedContextLoader(root),
 		OnSessionRecovered:         a.handleTabSessionRecovered(tab),
 		OnSessionTransition:        a.handleTabSessionTransition(tab),
+		OnSessionPromoted:          a.handleTabSessionPromoted(tab),
 		BeforeInboxDispatch:        a.beforeInboxDispatch,
 		OnInboxDispatchExhausted:   a.inboxDispatchExhausted,
 		OnSessionTitleChanged:      a.onSessionTitleChanged,

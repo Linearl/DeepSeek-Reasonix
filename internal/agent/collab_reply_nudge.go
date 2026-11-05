@@ -74,19 +74,21 @@ type CollabReplyNudgeConfig struct {
 
 // contactID resolves the scanning session's own address, preferring the boot
 // snapshot over a mint and the live path over both.
+//
+// tl1403 追加面：活路径可解析时快照不得跨会话——boot 快照可能带着 assembly
+// 复用/换道烤进来的上一会话身份（currentContactID 同款裁定）。快照与活路径
+// 无法互证时，以活路径 meta 为准，解析不出宁可空手。
 func (c *CollabReplyNudgeConfig) contactID() string {
 	if c == nil {
 		return ""
-	}
-	if id := strings.TrimSpace(c.ContactID); id != "" {
-		return id
 	}
 	var path string
 	if c.ResolveSessionPath != nil {
 		path = strings.TrimSpace(c.ResolveSessionPath())
 	}
+	snapshot := strings.TrimSpace(c.ContactID)
 	if path == "" {
-		return ""
+		return snapshot
 	}
 	if id := SessionContactID(path); id != "" {
 		return id
@@ -94,7 +96,7 @@ func (c *CollabReplyNudgeConfig) contactID() string {
 	if minted, err := EnsureContactID(path); err == nil {
 		return minted
 	}
-	return ""
+	return snapshot
 }
 
 // mailRoot resolves the mailbox root at call time.

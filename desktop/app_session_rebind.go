@@ -633,6 +633,7 @@ func (a *App) rebindCandidateBuildOptions(tab *WorkspaceTab, source tabRuntimeSn
 		PinnedContextLoader:        pinnedContextLoader(root),
 		OnSessionRecovered:         a.handleTabSessionRecovered(tab),
 		OnSessionTransition:        a.handleTabSessionTransition(tab),
+		OnSessionPromoted:          a.handleTabSessionPromoted(tab),
 		BeforeInboxDispatch:        a.beforeInboxDispatch,
 		OnInboxDispatchExhausted:   a.inboxDispatchExhausted,
 		OnSessionTitleChanged:      a.onSessionTitleChanged,

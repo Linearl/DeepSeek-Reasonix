@@ -167,6 +167,13 @@ type Meta struct {
 	SessionPath           string             `json:"sessionPath,omitempty"`
 	SessionRevision       int64              `json:"sessionRevision,omitempty"`
 	SessionDigest         string             `json:"sessionDigest,omitempty"`
+	// SessionGeneration mirrors tab.SessionGeneration on the "tab:meta" push
+	// (tl1403): a recovery fork/promote moves the controller onto a new session
+	// file, and the pushed meta carries the bumped generation as the deliberate
+	// surface-move marker — the frontend accepts a path-changing push only when
+	// this generation strictly advances, so stale pushes from the outgoing
+	// session can never clobber a settled tab. Additive omitempty field.
+	SessionGeneration    uint64             `json:"sessionGeneration,omitempty"`
 	Cwd                   string             `json:"cwd"`
 	WorkspaceRoot         string             `json:"workspaceRoot,omitempty"`
 	WorkspaceName         string             `json:"workspaceName,omitempty"`
@@ -319,6 +326,7 @@ func (a *App) MetaForTab(tabID string) Meta {
 		SessionPath:           sessionPath,
 		SessionRevision:       sessionRevision,
 		SessionDigest:         sessionDigest,
+		SessionGeneration:     tab.SessionGeneration,
 		Cwd:                   cwd,
 		WorkspaceRoot:         cwd,
 		WorkspaceName:         tabWorkspaceNameForScope(snap.scope, cwd),

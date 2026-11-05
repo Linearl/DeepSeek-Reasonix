@@ -34,6 +34,8 @@ func (a *App) handleTabSessionRecovered(tab *WorkspaceTab) func(control.SessionR
 		}
 		invalidateTopicSessionIndexForPath(info.RecoveryPath)
 		a.mu.Lock()
+		sinkGeneration := uint64(0)
+		sink := (*tabEventSink)(nil)
 		if tab != nil && !tab.removed {
 			oldKey := sessionRuntimeKey(info.OriginalPath)
 			newKey := sessionRuntimeKey(info.RecoveryPath)
@@ -43,14 +45,37 @@ func (a *App) handleTabSessionRecovered(tab *WorkspaceTab) func(control.SessionR
 				a.detachedSessions[newKey] = tab
 			}
 			tab.SessionPath = canonicalTabSessionPath(info.RecoveryPath)
+			// tl1403: the fork moves the controller onto a new session file while
+			// the open tab keeps streaming against the old surface identity.
+			// Bump the tab-local generation (same semantics as the rotation path
+			// in handleTabSessionTransition) so the hydrate identity changes and
+			// the "tab:meta" push below carries a strictly-advancing marker the
+			// frontend can trust as a deliberate surface move. The sink is
+			// rebound off-lock right after this block: wire events stamped with
+			// the old generation would be dropped by the frontend generation
+			// fence and the moved-to surface would go permanently quiet.
+			tab.SessionGeneration++
+			sinkGeneration = tab.SessionGeneration
+			sink = tab.sink
 			if a.tabs[tab.ID] == tab {
 				a.saveTabsLocked()
 			}
 		}
 		a.mu.Unlock()
+		if sink != nil {
+			sink.setSessionGeneration(sinkGeneration)
+		}
 		info.OnCommit(func() {
 			if tab != nil {
 				tab.setPinnedFiles(pinnedState.Files)
+				// tl1403: the open tab's surface follows the fork. The frontend
+				// only re-hydrates onto the recovery path when the authoritative
+				// meta reaches it — the "tab:meta" push is that channel (the
+				// session:recovered event feeds the version catalog, not the
+				// open tab). Runs at commit.publish(), i.e. after the controller
+				// has installed the recovery path, so MetaForTab reports the
+				// moved path.
+				a.emitRuntimeEvent(tabMetaRefreshEventChannel, TabMetaRefreshEvent{TabID: tab.ID, Meta: a.MetaForTab(tab.ID)})
 			}
 		})
 		// The fork continues the same conversation, so its cost history moves
