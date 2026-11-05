@@ -19,6 +19,14 @@ import (
 
 const sessionCatalogMetadataSyncTimeout = 30 * time.Second
 
+// tl1413: rename-scoped bound for the synchronous metadata push in
+// finishTopicRename. Deliberately far shorter than sessionCatalogMetadataSyncTimeout:
+// this wait happens inside the RenameTopic IPC call, so a wedged catalog
+// writer must not stall the user's rename — past the timeout the async
+// convergence path (requestSessionCatalogMetadataSync + changed-v2 events)
+// still lands the title.
+const topicRenameCatalogSyncTimeout = 2 * time.Second
+
 const desktopSessionCatalogPersistObserverKey = "desktop-session-catalog"
 
 type desktopSessionCatalogPersistObserver struct{ app *App }
