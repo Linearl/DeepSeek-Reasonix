@@ -120,7 +120,7 @@ func TestTailStart(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			start := tailStart(tc.msgs, tc.head, tc.budget, 1.0, tc.minKeep)
+			start := tailStart(tc.msgs, tc.head, tc.budget, func(m provider.Message) int { return msgChars(m) }, tc.minKeep)
 			if start != tc.wantStr {
 				t.Errorf("start = %d, want %d", start, tc.wantStr)
 			}
@@ -144,7 +144,7 @@ func TestTailStartSmallSession(t *testing.T) {
 		if len(msgs) > 0 && msgs[0].Role == provider.RoleSystem {
 			head = 1
 		}
-		start := tailStart(msgs, head, 16384, 0.25, 2)
+		start := tailStart(msgs, head, 16384, func(m provider.Message) int { return int(float64(msgChars(m)) * 0.25) }, 2)
 		if start < head || start > len(msgs) {
 			t.Errorf("case %d: start=%d out of bounds [%d,%d]", i, start, head, len(msgs))
 		}

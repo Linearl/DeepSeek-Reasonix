@@ -57,7 +57,10 @@ func (a *Agent) truncateView(visible []provider.Message, target int) ([]provider
 	}
 	head := a.pinnedPrefixLen(visible)
 	budget := max(1, min(a.recentTailBudget(), target/truncateProtectShare))
-	protect := tailStart(visible, head, budget, a.tokPerChar(), minRecentKeep)
+	// tl1395: same billing ruler as the fold planner — a protect boundary priced
+	// on the char census stranded image batches inside the protected tail where
+	// the drop rungs could not reach them (the 截不动 shape).
+	protect := tailStart(visible, head, budget, a.messageTokens, minRecentKeep)
 	projected := append([]provider.Message(nil), visible...)
 	remaining, affected := total, 0
 	for i := head; i < protect && remaining >= target; i++ {

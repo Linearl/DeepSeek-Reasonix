@@ -991,7 +991,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	}
 	latestContext := sessionContextCarrierSet(msgs)
 	_, preliminaryFold, _ := a.partitionFoldForProjectionAt(msgs[head:start], head, latestContext)
-	if len(preliminaryFold) == 0 || (!req.force && !foldEconomics(preliminaryFold)) {
+	if len(preliminaryFold) == 0 || (!req.force && !a.foldEconomics(preliminaryFold)) {
 		return CompactionNoop, nil
 	}
 	fixedPrefixTokens := a.estimatedVisibleRequestTokens(msgs[:head])

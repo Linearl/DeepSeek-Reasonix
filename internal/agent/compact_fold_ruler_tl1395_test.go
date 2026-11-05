@@ -88,7 +88,7 @@ func TestFoldEconomicsPricesOnBillingRuler(t *testing.T) {
 		t.Fatalf("fixture 失真：计费尺只报 %d < %d，图片没进计价", billed, floorTokens)
 	}
 	// tl1395 把判据搬到计费尺上（foldEconomics 变为 Agent 方法）；地板值不变。
-	if !foldEconomics(region) {
+	if !a.foldEconomics(region) {
 		t.Fatalf("计费尺 %d 的图片区域被经济学判据拒绝（粗尺读数）——图片压力只能等 400 救援（tl1395）",
 			a.estimatedPromptTokens(region))
 	}
