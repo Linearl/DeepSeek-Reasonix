@@ -15,8 +15,20 @@ const (
 	defaultRecallLimit = 8
 	maxRecallLimit     = 20
 	maxRecallSnippet   = 260
-	recallScoreFloor   = 0.15
+
+	// tl1349②: the two recall lanes need different score floors. Explicit
+	// search means someone is actively looking, so err on the side of returning
+	// more — a low-ranked hit costs nothing. Automatic recall injects into every
+	// turn's prompt and stays strict to keep noise out. (mimo's score_floor
+	// split, measured on their pool.)
+	explicitRecallScoreFloor = 0.05
+	autoRecallScoreFloor     = 0.24
 )
+
+// explicitRecallFloor lets the explicit-search floor be tuned at runtime
+// without touching the call site; a non-positive value falls back to the
+// package default above.
+var explicitRecallFloor = explicitRecallScoreFloor
 
 type recallTool struct{ store Store }
 
@@ -98,6 +110,10 @@ type memoryHit struct {
 	Memory  Memory
 	Score   float64
 	Snippet string
+	// Triggered marks a hit adopted by the trigger lane rather than by BM25.
+	// These bypass the relative-score floor by construction: the lane exists
+	// for facts BM25 scored at or near zero.
+	Triggered bool
 }
 
 type memoryDoc struct {
@@ -149,13 +165,15 @@ func searchMemories(ctx context.Context, store Store, query string, typ Type, sc
 	var hits []memoryHit
 	for _, doc := range docs {
 		score := retrieval.BM25Score(doc.counts, doc.length, queryTerms, df, len(docs), avgLen)
-		if score <= 0 {
+		triggered := triggerHit(doc.memory.Triggers, queryTerms)
+		if score <= 0 && !triggered {
 			continue
 		}
 		hits = append(hits, memoryHit{
-			Memory:  doc.memory,
-			Score:   score,
-			Snippet: retrieval.MakeSnippet(doc.text, query, queryTerms, maxRecallSnippet),
+			Memory:    doc.memory,
+			Score:     score,
+			Snippet:   retrieval.MakeSnippet(doc.text, query, queryTerms, maxRecallSnippet),
+			Triggered: triggered,
 		})
 	}
 	sort.Slice(hits, func(i, j int) bool {
@@ -164,9 +182,25 @@ func searchMemories(ctx context.Context, store Store, query string, typ Type, sc
 		}
 		return hits[i].Score > hits[j].Score
 	})
-	hits = retrieval.KeepTopRelativeScore(hits, recallScoreFloor, func(hit memoryHit) float64 {
+	floor := explicitRecallFloor
+	if floor <= 0 {
+		floor = explicitRecallScoreFloor
+	}
+	// Trim the BM25-scored tail, but never the trigger hits: their whole point
+	// is surviving where the lexical score says nothing.
+	kept := make([]memoryHit, 0, len(hits))
+	scored := make([]memoryHit, 0, len(hits))
+	for _, hit := range hits {
+		if hit.Triggered {
+			kept = append(kept, hit)
+			continue
+		}
+		scored = append(scored, hit)
+	}
+	kept = append(kept, retrieval.KeepTopRelativeScore(scored, floor, func(hit memoryHit) float64 {
 		return hit.Score
-	})
+	})...)
+	hits = kept
 	if len(hits) > limit {
 		hits = hits[:limit]
 	}
@@ -221,6 +255,7 @@ func memorySearchText(m Memory) string {
 		string(NormalizeFactScope(string(m.Scope))),
 		m.Description,
 		m.Keywords,
+		m.Triggers,
 		m.Body,
 	}, "\n")
 }

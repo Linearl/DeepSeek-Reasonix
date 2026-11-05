@@ -103,7 +103,7 @@ func recallIndexFor(store Store) *RecallIndex {
 			return c.index
 		}
 	}
-	index := BuildRecallIndex(store)
+	index := buildRecallIndexFromFTS(store)
 	if fp != "" {
 		recallCache.Store(&recallCacheEntry{fingerprint: fp, index: index})
 	}
