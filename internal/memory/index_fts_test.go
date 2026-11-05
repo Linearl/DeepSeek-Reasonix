@@ -12,8 +12,18 @@ import (
 // the reconcile fingerprint is deterministic across a fast test run.
 func writeTestFact(t *testing.T, dir, name, title, body string, modTime time.Time) string {
 	t.Helper()
+	return writeScopedTestFact(t, dir, name, title, body, FactScopeProject, modTime)
+}
+
+// writeScopedTestFact is writeTestFact with an explicit scope so tests can
+// plant the project/global twin pairs the shadow gate reasons about.
+func writeScopedTestFact(t *testing.T, dir, name, title, body string, scope FactScope, modTime time.Time) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
 	content := fmt.Sprintf(`---
-id: mem-%s
+id: mem-%s-%s
 revision: 1
 created_at: "2026-01-01T00:00:00.0000000Z"
 updated_at: "2026-01-01T00:00:00.0000000Z"
@@ -22,13 +32,13 @@ title: %s
 description: test fact for the durable recall index
 metadata:
   type: project
-  scope: project
+  scope: %s
   activation: relevant
   volatility: stable
 ---
 
 %s
-`, name, name, title, body)
+`, scope, name, name, title, scope, body)
 	path := filepath.Join(dir, name+".md")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write fact %s: %v", name, err)
@@ -185,5 +195,44 @@ func TestRecallFTSEmptyStore(t *testing.T) {
 	index := buildRecallIndexFromFTS(store)
 	if index != nil {
 		t.Fatalf("zero store must yield a nil index, got %+v", index)
+	}
+}
+
+// TestRecallFTSHonorsProjectOverGlobalShadow pins the scope-shadow contract on
+// the durable path. BuildRecallIndex runs the markdown pool through
+// recallMemories, which drops a global fact whose identity is claimed by a
+// project fact; the FTS rows are one per fact file, so the durable path must
+// gate identically or the shadowed global twin silently re-enters automatic
+// recall (the desktop TestMemoryViewIncludesRecallFreshnessAndOverrides red
+// was exactly this). Both paths must agree here.
+func TestRecallFTSHonorsProjectOverGlobalShadow(t *testing.T) {
+	dir := t.TempDir()
+	store := Store{Dir: filepath.Join(dir, "project"), GlobalDir: filepath.Join(dir, "global")}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	writeScopedTestFact(t, store.GlobalDir, "deploy-target", "Deploy target",
+		"Deploy payments to the legacy cluster.", FactScopeGlobal, base)
+	writeScopedTestFact(t, store.Dir, "deploy-target", "Deploy target",
+		"Deploy payments to the green cluster.", FactScopeProject, base)
+
+	fromFTS := buildRecallIndexFromFTS(store)
+	if fromFTS == nil || len(fromFTS.docs) != 1 {
+		t.Fatalf("fts pool docs = %v, want exactly the project fact", fromFTS)
+	}
+	if got := NormalizeFactScope(string(fromFTS.docs[0].memory.Scope)); got != FactScopeProject {
+		t.Fatalf("served fact scope = %q, want project", got)
+	}
+	fromDisk := BuildRecallIndex(store)
+	if fromDisk == nil || len(fromDisk.docs) != 1 || NormalizeFactScope(string(fromDisk.docs[0].memory.Scope)) != FactScopeProject {
+		t.Fatalf("full rebuild docs = %+v, want exactly the project fact", fromDisk)
+	}
+
+	// Without the project twin the global fact must come back — the gate is a
+	// shadow, not a ban on global scope.
+	if err := os.Remove(filepath.Join(store.Dir, "deploy-target.md")); err != nil {
+		t.Fatalf("remove project twin: %v", err)
+	}
+	index := buildRecallIndexFromFTS(store)
+	if index == nil || len(index.docs) != 1 || NormalizeFactScope(string(index.docs[0].memory.Scope)) != FactScopeGlobal {
+		t.Fatalf("orphaned global fact docs = %+v, want exactly the global fact", index)
 	}
 }
