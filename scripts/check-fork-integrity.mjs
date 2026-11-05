@@ -1137,6 +1137,18 @@ const CHECKS = [
   { feature: "tl1435 派发即登记（PrepareFresh 落盘 running meta，失败即派发失败）", file: "internal/agent/subagent_store.go", patterns: ["mark new subagent %q running"] },
   { feature: "tl1435 运行中区同源合并（running 态持久化视图折进运行段，transcript 卡 ref 去重）", file: "desktop/frontend/src/lib/subagentDirectory.ts", patterns: ["mergePersistedRunningSubagents", "persistedRunningDirectoryEntry"] },
   { feature: "tl1435 面板接线（同源合并+5s 轮询补 transcript 触发不到的实时性）", file: "desktop/frontend/src/components/SubagentsDockPanel.tsx", patterns: ["mergePersistedRunningSubagents", "SUBAGENTS_PERSISTED_POLL_MS"] },
+  // tl1443（wt-tl1443，2026-11-06）：recovery fork 全链路决策打点（纯观测面）。
+  // 冲突携带双方 digest+账本写者、进程内账本提交环反查对手写路径、每个恢复
+  // 出口一行「controller: recovery fork decision」、doctor 全工作区分叉普查。
+  // merge 顶掉任一环 = 分叉重新变回「只知道发生了、不知道谁触发谁写的盘」。
+  { feature: "tl1443 冲突双方身份证据（digest 三元组+账本写者归类）", file: "internal/agent/save_conflict_identity.go", patterns: ["type SnapshotConflictIdentity struct", "func LedgerWriterOrigin"] },
+  { feature: "tl1443 冲突构造点填身份（三处）", file: "internal/agent/save.go", patterns: ["Identity:         newSnapshotConflictIdentity(baseState, nextDigest, existingDigest, ledger)", "noteLedgerCommit(path, committed, digest)"] },
+  { feature: "tl1443 进程内账本提交环（对手写者归因）", file: "internal/agent/save_ledger_trace.go", patterns: ["func noteLedgerCommit", "func RecentLedgerCommit"] },
+  { feature: "tl1443 决策行与字段（fork_decision/fork_reason/双方三元组/刹车窗/对手写路径）", file: "internal/control/recovery_fork_trace.go", patterns: ["controller: recovery fork decision", "\"fork_decision\", t.decision", "\"src_rev\", c.BaseRevision", "\"brake_seq\", b.seq", "\"peer_trigger\", p.origin.trigger"] },
+  { feature: "tl1443 fork_trigger 枚举表（调用栈→写路径）", file: "internal/control/recovery_fork_trigger.go", patterns: ["var forkTriggerRows = []forkFrameRow{", "func ForkTriggerForFunction", "{\"(*App).tabSnapshotLoop\", forkTriggerTabAutosave}"] },
+  { feature: "tl1443 梯子出口接线（包装+逐出口 decide）", file: "internal/control/controller.go", patterns: ["trace := c.beginForkTrace(path, mode, saveErr)", "trace.decide(forkDecisionFork, forkReasonDiverged)", "trace.decide(forkDecisionAdopt, forkReasonBrake)"] },
+  { feature: "tl1443 保存路径冲突检出点（rewrite 升级/tool checkpoint）", file: "internal/control/snapshot_same_revision.go", patterns: ["traceConflictEscalation(s, path, err, forkReasonPendingRewrite, rewriteErr, checkpoint)", "traceConflictEscalation(s, path, err, \"\", err, true)"] },
+  { feature: "tl1443 doctor 全工作区分叉普查（按日/按触发源/按成因）", file: "internal/doctor/recovery_trace.go", patterns: ["func collectRecoveryForks", "func forkCensusDescends", "recovery forks (all workspaces)"] },
   // 任务462：跨会话消息卡显示双方对话名（contact_id 降为 hover）。解析层丢
   // 了会退回裸 sc_id；降级与 hover 断言丢了会掩盖「id 丢失/空白渲染」回归。
   { feature: "任务462 contact_id→会话名 解析层（TTL 缓存+降级短 id）", file: "desktop/frontend/src/lib/collabContactNames.ts", patterns: ["refreshCollabContactNames", "collabDisplayLabel", "shortContactId"] },

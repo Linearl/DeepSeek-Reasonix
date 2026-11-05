@@ -188,6 +188,7 @@ type SessionSnapshotConflictError struct {
 	SnapshotMessages int
 	BaseRevision     int64
 	DiskRevision     int64
+	Identity         SnapshotConflictIdentity // tl1443 trace evidence; never part of Error()
 }
 
 func (e *SessionSnapshotConflictError) Error() string {
@@ -784,10 +785,11 @@ func (s *Session) checkSnapshotWrite(path string, next []provider.Message, nextD
 		}
 		return snapshotWriteDecision{}, err
 	}
-	currentRevision, currentLedgerDigest, err := sessionContentRevision(path)
+	ledger, err := sessionContentLedger(path)
 	if err != nil {
 		return snapshotWriteDecision{}, err
 	}
+	currentRevision, currentLedgerDigest := ledger.revision, ledger.digest
 	existing := current.Snapshot()
 	existingDigest, err := digestSessionMessages(existing)
 	if err != nil {
@@ -848,7 +850,8 @@ func (s *Session) checkSnapshotWrite(path string, next []provider.Message, nextD
 		// appending would resurrect the suffix another runtime removed.
 		if baseState.ok && baseState.revisionKnown && currentRevision != baseState.revision && !contentUnchanged &&
 			!appendCoversPersistedBaseline(next, existing, baseState.digest) {
-			return snapshotWriteDecision{}, snapshotConflict(path, existing, next, baseState.revision, currentRevision)
+			return snapshotWriteDecision{}, snapshotConflict(path, existing, next, baseState.revision, currentRevision,
+				newSnapshotConflictIdentity(baseState, nextDigest, existingDigest, ledger))
 		}
 		// A normalized-dirty load means LoadSession repaired the history on the
 		// way in: the digests match but the raw bytes on disk do not, so the
@@ -898,6 +901,7 @@ func (s *Session) checkSnapshotWrite(path string, next []provider.Message, nextD
 			SnapshotMessages: len(next),
 			BaseRevision:     baseState.revision,
 			DiskRevision:     currentRevision,
+			Identity:         newSnapshotConflictIdentity(baseState, nextDigest, existingDigest, ledger),
 		}
 	}
 	// tl1409: an armed stale-disk takeover converts the diverged terminal into
@@ -916,10 +920,11 @@ func (s *Session) checkSnapshotWrite(path string, next []provider.Message, nextD
 		SnapshotMessages: len(next),
 		BaseRevision:     baseState.revision,
 		DiskRevision:     currentRevision,
+		Identity:         newSnapshotConflictIdentity(baseState, nextDigest, existingDigest, ledger),
 	}
 }
 
-func snapshotConflict(path string, existing, next []provider.Message, baseRevision, diskRevision int64) error {
+func snapshotConflict(path string, existing, next []provider.Message, baseRevision, diskRevision int64, identity SnapshotConflictIdentity) error {
 	kind := SessionSnapshotConflictDiverged
 	if messagesHavePrefix(existing, next) || messagesHavePrefixWithCompatibleSystem(existing, next) {
 		kind = SessionSnapshotConflictStalePrefix
@@ -931,6 +936,7 @@ func snapshotConflict(path string, existing, next []provider.Message, baseRevisi
 		SnapshotMessages: len(next),
 		BaseRevision:     baseRevision,
 		DiskRevision:     diskRevision,
+		Identity:         identity,
 	}
 }
 
@@ -1416,14 +1422,11 @@ func SessionContentIdentity(path string) (PersistedState, bool, error) {
 // revision 0 would desync every runtime baseline from the ledger and turn the
 // next honest save into a bogus conflict (and a recovery branch).
 func sessionContentRevision(path string) (int64, string, error) {
-	meta, ok, err := loadBranchMetaRetry(path)
+	ledger, err := sessionContentLedger(path)
 	if err != nil {
 		return 0, "", err
 	}
-	if !ok {
-		return 0, "", nil
-	}
-	return meta.Revision, strings.TrimSpace(meta.ContentDigest), nil
+	return ledger.revision, ledger.digest, nil
 }
 
 func recordSessionContentRevision(path string, digest [sha256.Size]byte, baseRevision, reservedRevision int64) (int64, error) {
@@ -1471,10 +1474,12 @@ func recordSessionContentRevision(path string, digest [sha256.Size]byte, baseRev
 	if err != nil {
 		return 0, err
 	}
+	committed := meta.Revision
 	if ok && stored.Revision > 0 {
-		return stored.Revision, nil
+		committed = stored.Revision
 	}
-	return meta.Revision, nil
+	noteLedgerCommit(path, committed, digest)
+	return committed, nil
 }
 
 func digestString(digest [sha256.Size]byte) string {

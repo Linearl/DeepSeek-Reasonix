@@ -37,12 +37,18 @@ func persistSessionSnapshotMode(s *agent.Session, path string, forceRewrite, che
 	}
 	// Auto-compaction may rewrite between the decision and the write.
 	if s.NeedsRewriteSave() {
-		return s.SaveRewrite(path), true
+		rewriteErr := s.SaveRewrite(path)
+		traceConflictEscalation(s, path, err, forkReasonPendingRewrite, rewriteErr, checkpoint)
+		return rewriteErr, true
 	}
 	// Same-revision diverged: prefer rewrite over a recovery fork when this
 	// session still holds a live write authority for path.
 	if err2, ok := retrySameRevisionDivergedRewrite(s, path, err); ok {
+		traceConflictEscalation(s, path, err, forkReasonSameRevRewrite, err2, checkpoint)
 		return err2, true
+	}
+	if checkpoint {
+		traceConflictEscalation(s, path, err, "", err, true)
 	}
 	return err, false
 }
@@ -80,7 +86,7 @@ func retrySameRevisionDivergedRewrite(s *agent.Session, path string, err error) 
 // self-deadlocked TestRepeatedConflictFingerprintReconcilesWrongGenerationMeta
 // for 27 minutes). The admission-side twin healDivergedSnapshotConflict runs
 // outside that lock chain and therefore takes it itself.
-func (c *Controller) takeoverDivergedRevLag(path string, saveErr error, mode string) bool {
+func (c *Controller) takeoverDivergedRevLag(trace *forkTrace, path string, saveErr error, mode string) bool {
 	if c == nil || c.executor == nil {
 		return false
 	}
@@ -93,11 +99,13 @@ func (c *Controller) takeoverDivergedRevLag(path string, saveErr error, mode str
 		return false
 	}
 	if err := session.SaveAdoptOverStaleDisk(path, conflict); err != nil {
+		trace.fall(forkFellTakeoverDeclined)
 		slog.Warn("controller: snapshot conflict; rev-lag takeover declined", "err", err, "mode", mode,
 			"base_revision", conflict.BaseRevision, "disk_revision", conflict.DiskRevision)
 		return false
 	}
-	appendSnapshotConflictDiagnostic(path, mode, "diverged_takeover_committed", saveErr, "", true)
+	trace.decide(forkDecisionRewrite, forkReasonRevLagTakeover)
+	appendTracedConflictDiagnostic(trace, path, mode, "diverged_takeover_committed", saveErr, "", true)
 	slog.Warn("controller: snapshot conflict; live transcript took over the dead disk writer's state", "mode", mode,
 		"base_revision", conflict.BaseRevision, "disk_revision", conflict.DiskRevision,
 		"disk_messages", conflict.ExistingMessages, "snapshot_messages", conflict.SnapshotMessages)
