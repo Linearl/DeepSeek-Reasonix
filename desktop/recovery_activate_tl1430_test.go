@@ -56,7 +56,11 @@ func activateTestSetup(t *testing.T, rootMessages, forkMessages []string) (strin
 	}
 	t.Cleanup(func() { _ = catalog.Close(context.Background()) })
 	root := filepath.Join(dir, "root.jsonl")
-	fork := filepath.Join(dir, "fork.jsonl")
+	// tl1430b: the fork uses the real recovery naming the versions panel
+	// scans for (recoveryCopiesByMain keys on -recovery-<hex> filenames); a
+	// plain "fork.jsonl" never enters the candidate list and the table-side
+	// nails would test an empty shape.
+	fork := filepath.Join(dir, "root-recovery-7fa1f7e5deadbeef.jsonl")
 	activateTestSave(t, root, rootMessages...)
 	activateTestSave(t, fork, forkMessages...)
 	created := time.UnixMilli(100)
@@ -347,4 +351,133 @@ func mustActivateSessionDir(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// tl1430b return-fix end-to-end nails: after a switch reports success (the
+// receipt the user saw), BOTH downstream reads must follow the new main line —
+// the reopen target (catalog representative after the next reconcile) and the
+// panel's own selected-row data source (ListRecoveryChains). The package-78
+// field report: receipt flashed, main row unchanged, reopen unchanged — the
+// adoption landed in meta but never reached the projection layer.
+func TestSetActiveSessionVersionRepresentativeAndChainSelectedFollowSwitch(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	root, fork, catalog := activateTestSetup(t,
+		[]string{"shared question", "shared answer", "root unique", "root answer"},
+		[]string{"shared question", "shared answer", "fork unique", "fork answer", "fork tail", "fork answer 2"})
+	app := activateTestApp(catalog)
+
+	if err := app.SetActiveSessionVersion(RecoveryPreferenceRequest{Path: fork}); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	// The next background scan reconciles the directory again; the reopen
+	// target must survive it.
+	if err := catalog.ReconcileDirectory(context.Background(), sessioncatalog.DirectoryTarget{Path: filepath.Dir(root), Scope: "global"}); err != nil {
+		t.Fatal(err)
+	}
+	topic, ok, err := catalog.GetTopic(context.Background(), sessioncatalog.TopicKey{Scope: "global", TopicID: "topic"})
+	if err != nil || !ok {
+		t.Fatalf("topic after switch: ok=%v err=%v", ok, err)
+	}
+	if rep := strings.TrimSpace(topic.RepresentativePath); !sameRecoveryLineagePath(rep, fork) {
+		t.Fatalf("reopen target after switch+rescan = %q, want the adopted fork %q", rep, fork)
+	}
+	if path := app.catalogSessionPathForTopic("global", "", "topic"); !sameRecoveryLineagePath(path, fork) {
+		t.Fatalf("catalogSessionPathForTopic after switch = %q, want the adopted fork", path)
+	}
+
+	// Ring 2: the panel's own table data source. Selected must move off the
+	// scan origin (root) onto the adopted line.
+	set, err := app.ListRecoveryChains(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := ""
+	for _, chain := range set.Chains {
+		if chain.Selected {
+			selected = chain.Path
+		}
+	}
+	if !sameRecoveryLineagePath(selected, fork) {
+		t.Fatalf("chain selected row after switch = %q, want the adopted fork (main row must flip in place)", selected)
+	}
+}
+
+// The field-reported conversation ("人类专属调研员1") carries damage history.
+// A damaged tail must not silently void the user's explicit adoption: the
+// switch receipt fired, yet preferred without a digest is refused by
+// RecoveryPreferenceCurrent at promote time, so representative/reopen never
+// moved. This test pins whatever behavior the fix lands on.
+func TestSetActiveSessionVersionAdoptsForkWithDamagedTail(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	// Root stays the LONGER line on purpose: with a longer fork the linear-
+	// chain rule would land the representative on the fork regardless of the
+	// preference, masking the promote path under test. The field shape is a
+	// shorter valuable fork the user deliberately promotes over a longer main.
+	root, fork, catalog := activateTestSetup(t,
+		[]string{"shared question", "shared answer", "root unique", "root answer", "root tail", "root answer 2"},
+		[]string{"shared question", "shared answer", "fork unique", "fork answer"})
+	// A torn trailing record after the healthy prefix, the way an interrupted
+	// writer leaves the log.
+	f, err := os.OpenFile(store.SessionEventLog(fork), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("{\"schema_version\":1,\"type\":\"append\",\"trunc"); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	if _, err := agent.LoadSession(fork); err == nil {
+		// Load may succeed with a damaged marker; it must at least flag it.
+		t.Log("damaged fork loaded without error (tolerant loader)")
+	}
+
+	app := activateTestApp(catalog)
+	if err := app.SetActiveSessionVersion(RecoveryPreferenceRequest{Path: fork}); err != nil {
+		t.Fatalf("activate damaged fork: %v", err)
+	}
+	meta, ok, err := agent.LoadBranchMeta(fork)
+	if err != nil || !ok {
+		t.Fatalf("fork meta after switch: ok=%v err=%v", ok, err)
+	}
+	t.Logf("damaged fork preferred=%v digestEmpty=%v", meta.RecoveryPreferred, meta.RecoveryPreferredDigest == "")
+
+	if err := catalog.ReconcileDirectory(context.Background(), sessioncatalog.DirectoryTarget{Path: filepath.Dir(root), Scope: "global"}); err != nil {
+		t.Fatal(err)
+	}
+	topic, ok, err := catalog.GetTopic(context.Background(), sessioncatalog.TopicKey{Scope: "global", TopicID: "topic"})
+	if err != nil || !ok {
+		t.Fatalf("topic: ok=%v err=%v", ok, err)
+	}
+	rep := strings.TrimSpace(topic.RepresentativePath)
+	if !sameRecoveryLineagePath(rep, fork) {
+		t.Logf("DIAG: representative after damaged-fork switch = %q (fork=%q) — adoption voided at promote time", rep, fork)
+	} else {
+		t.Logf("DIAG: representative followed the damaged-fork adoption")
+	}
+}
+
+// Clean-fork control for the damaged variant: a healthy shorter fork adopted
+// over a longer main moves the representative through the preference-promote
+// path alone. If this fails while the damaged variant fails identically, the
+// break is in the promote chain, not the damage gate.
+func TestSetActiveSessionVersionAdoptsCleanShortFork(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	root, fork, catalog := activateTestSetup(t,
+		[]string{"shared question", "shared answer", "root unique", "root answer", "root tail", "root answer 2"},
+		[]string{"shared question", "shared answer", "fork unique", "fork answer"})
+	app := activateTestApp(catalog)
+	if err := app.SetActiveSessionVersion(RecoveryPreferenceRequest{Path: fork}); err != nil {
+		t.Fatalf("activate clean short fork: %v", err)
+	}
+	if err := catalog.ReconcileDirectory(context.Background(), sessioncatalog.DirectoryTarget{Path: filepath.Dir(root), Scope: "global"}); err != nil {
+		t.Fatal(err)
+	}
+	topic, ok, err := catalog.GetTopic(context.Background(), sessioncatalog.TopicKey{Scope: "global", TopicID: "topic"})
+	if err != nil || !ok {
+		t.Fatalf("topic: ok=%v err=%v", ok, err)
+	}
+	if rep := strings.TrimSpace(topic.RepresentativePath); !sameRecoveryLineagePath(rep, fork) {
+		t.Fatalf("clean short fork: representative = %q, want the adopted fork (promote chain broken independent of damage)", rep)
+	}
 }

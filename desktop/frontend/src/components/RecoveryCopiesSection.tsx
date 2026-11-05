@@ -583,11 +583,22 @@ function VersionRows({
   // 文件内、后端标记为当前选中的 head(RecoveryChainView.Selected,与版本表
   // 「当前选中」同源)才算;无任何 Selected 读数(降级行/schema-1 整文件行)
   // 时退回旧行为——单行场景不回归。
+  // tl1430b:Selected 是「当前主线」的单一真相源,不再限定 path===mainPath
+  // ——显式采纳副本后 Selected 移到副本文件上,主线行必须跟着换(包 78 现场:
+  // 回执闪了但主线行纹丝不动,就是这里把主线钉死在扫描起点 mainPath 上)。
+  // 无任何 Selected 读数时退回旧行为:mainPath 行恰一行则按旧口径取它。
   const mainFileRows = chainRows.filter((c) => c.path === mainPath);
-  const selectedMainExists = mainFileRows.some((c) => c.selected);
-  const currentMainChain = chainRows.find(
-    (c) => c.path === mainPath && (selectedMainExists ? Boolean(c.selected) : mainFileRows.length === 1),
-  );
+  const selectedRow = chainRows.find((c) => c.selected);
+  const currentMainChain =
+    selectedRow ??
+    (mainFileRows.length === 1 && chainRows.every((c) => !c.selected)
+      ? mainFileRows[0]
+      : mainFileRows.find((c) => Boolean(c.selected)));
+  // 主线行是采纳来的文件时亮出短标识——否则「主线」标签换了行用户却看不出
+  // 换的是哪一份(tl1430 验收①:表内主线行立即换,要可辨识)。
+  const mainChainShortName = currentMainChain && currentMainChain.path !== mainPath
+    ? recoveryShortName(currentMainChain.path)
+    : "";
   // 候选链与版本组 = 除当前主线外的全部链(其余 heads + 副本文件链)。当前主
   // 线升格为表首主线行,不再在组里重复出现——原先它在候选链块和版本表各出现
   // 一次,同一事实被渲染两遍。
@@ -634,6 +645,13 @@ function VersionRows({
             <td className="rc-detail__check" />
             <td className="rc-label">
               {t("settings.recoveryCopiesMain")}
+              {/* tl1430b: 主线行换到采纳来的文件时亮短标识,让「主线行换了」
+                  立即可辨识(悬停 title 给完整路径)。 */}
+              {mainChainShortName ? (
+                <span className="rc-copy__shortname" title={currentMainChain?.path}>
+                  {mainChainShortName}
+                </span>
+              ) : null}
               {winner?.isMain ? ` · ${t("settings.recoveryCopiesWins")}` : ""}
               {!group.mainExists ? ` · ${t("settings.recoveryCopiesOrphan")}` : ""}
               {/* 任务 1039r:降级行必须说自己是降级——否则零计数行与「空会话」
