@@ -100,10 +100,22 @@ func resolveThroughBypass(t *testing.T, wrapped string) string {
 // TestG1_Invariance_EngineParsersUnchanged（变体3 验收④）：helper.go 三个解析
 // 函数签名与行为不变——宿主包装文本今天解析不动、修复后照样解析不动（证明
 // 没有把字符串剥离塞回引擎）；Final answer: 前缀能力保持。
+//
+// tl1432 更新（容错提取落地后）：「parseResultJSON 必须拒绝宿主包装文本」的
+// 断言随 tl1432 审计裁决（严格单次解析判「过度严格」）放宽——解析器升级为
+// 「最后一个平衡顶层对象」提取后，包装文本回退场景（宿主未记录原文的版本偏
+// 斜）提取出的是**子代理原文那个 JSON**（尾部对象），比报废整轮更正确。tl1325
+// 的架构决策本身不变：原文取回仍在 runner 层、ctx 旁路优先（上面
+// TestG1_HostEnvelopeFormsParseViaRawBypass 原样钉住），finalAnswerBody 一行
+// 未动。此子测试改钉「提取结果 = 原文对象」，记录裁决链。
 func TestG1_Invariance_EngineParsersUnchanged(t *testing.T) {
-	t.Run("parseResultJSON 仍拒绝宿主包装文本", func(t *testing.T) {
-		if _, err := parseResultJSON(hostWrappedAnswer(gapFinderSummary, true)); err == nil {
-			t.Fatal("引擎解析器未变：包装文本必须仍然失败（原文取回应发生在 runner 层）")
+	t.Run("parseResultJSON 容错提取取到包装文本尾部的原文 JSON", func(t *testing.T) {
+		obj, err := parseResultJSON(hostWrappedAnswer(gapFinderSummary, true))
+		if err != nil {
+			t.Fatalf("tl1432 容错提取应取到包装文本尾部的子代理原文 JSON: %v", err)
+		}
+		if len(obj["findings"].([]any)) != 1 {
+			t.Fatalf("提取出的应是子代理原文对象（findings=1），实际 %v", obj)
 		}
 	})
 	t.Run("finalAnswerBody 仍只剥 Final answer:", func(t *testing.T) {

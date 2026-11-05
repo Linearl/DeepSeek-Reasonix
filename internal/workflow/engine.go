@@ -22,6 +22,31 @@ type Engine struct {
 	// 携带 runState 的恢复投影。引擎不感知磁盘——落盘是宿主（Service）的
 	// 职责；nil = 不关心（Run 的既有调用方零影响）。
 	Checkpoint func(*CheckpointData)
+	// ResultParseRetries（tl1432 B）：声明了 typed result 的 subagent 节点在
+	// 输出无法解析为 JSON 对象时（容错提取也失败，见 parseResultJSON），向模
+	// 型定向重发的次数上限——重发 prompt 带原 prompt 全文与「只输出 JSON 对
+	// 象」指令，防报废整轮。0（零值）= 默认 1 次（默认即修复生效）；负数 =
+	// 禁用重发；更大值按字面生效。只挂 subagent 节点：confirm 节点解析失败
+	// 的语义是「未确认」（保留 findings 继续跑），不报废也不重发。
+	ResultParseRetries int
+}
+
+// DefaultResultParseRetries is the directed-retry budget when
+// ResultParseRetries is left at its zero value (tl1432 B): exactly one
+// re-ask — enough to recover a noisy answer, small enough that a model that
+// cannot follow the JSON contract fails fast (two outputs max per node).
+const DefaultResultParseRetries = 1
+
+// resultParseRetries resolves the effective budget.
+func (e *Engine) resultParseRetries() int {
+	switch {
+	case e == nil || e.ResultParseRetries < 0:
+		return 0
+	case e.ResultParseRetries == 0:
+		return DefaultResultParseRetries
+	default:
+		return e.ResultParseRetries
+	}
 }
 
 // New builds an engine with production defaults (shell gate, discard sink).

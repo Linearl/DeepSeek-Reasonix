@@ -407,6 +407,10 @@ var English = Messages{
 	// under the live-path identity.
 	CollabIdentitySnapshotRejectedFmt: "Boot snapshot identity rejected: the snapshot names session path %s (contact_id=%s), which does not match the session you are actually running in (%s) — the cross-session pollution signature, so the snapshot identity was discarded wholesale. This mail still left under your live-path identity %s (the send itself is not blocked, and the identity never falls back to another session's). Re-anchor yourself using auxiliary info such as the conversation title: verify against list_addressable_sessions and re-register with set_session_purpose; do not reuse the snapshot contact_id.",
 
+	// tl1432: workflow subagent typed result still unparsable after the
+	// directed re-ask; the node aborts, earlier findings are preserved.
+	WorkflowTypedResultRetryExhaustedFmt: "The node's output could not be parsed as a JSON object — the engine's tolerant extraction (markdown fences, prose wrappers, balanced-object scan) failed too, and %d directed retry that re-asked the model to output only the JSON object still returned unparsable output. The node is aborted; findings collected earlier in the run are preserved. The technical summaries of both outputs follow after \"detail:\".",
+
 	MemoryEditHint:               "edit doc files or use “/remember <note>”; doc edits apply next session",
 	ForgetUsage:                  "usage: /forget <name> — the slug shown under “saved memories” in /memory",
 	ForgetDoneFmt:                "forgot and archived memory: %s",

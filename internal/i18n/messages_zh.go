@@ -407,6 +407,11 @@ var Chinese = Messages{
 	// 拒收；信件仍按活路径权威身份正常发出，回执须带拒因与自查指引。
 	CollabIdentitySnapshotRejectedFmt: "boot 快照身份已被拒用：快照声称的会话路径为 %s（contact_id=%s），与你实际所在的会话路径 %s 不一致——这是跨会话污染签名，快照身份已整体拒收。本次发信仍按活路径权威身份 %s 正常发出（拒发语义不变，不会回退到其他会话的身份）。请按对话名（标题）等辅助信息自查重定位自己的会话身份：用 list_addressable_sessions 按标题核对、用 set_session_purpose 重新登记；此后不要再用快照里的 contact_id。",
 
+	// tl1432：工作流 subagent 节点的 typed result 经定向重发后仍无法解析为
+	// JSON 对象；节点中止，本轮此前收集的 findings 全部保留。人话行走本目录
+	// 三语文案，技术摘要（两次输出）以英文 detail: 拼接在其后。
+	WorkflowTypedResultRetryExhaustedFmt: "节点输出不是合法 JSON 对象——引擎的容错提取（markdown 代码栅栏、前后噪音、平衡对象扫描）也失败了，定向重发 %d 次（要求模型只输出 JSON 对象、不带任何其他文本）后仍无法解析，节点已中止；本轮此前已收集的 findings 全部保留。两次输出的技术摘要在 \"detail:\" 之后。",
+
 	MemoryEditHint:               "可直接编辑记忆文档，或输入 “/remember 内容” 快速记录；文档改动会在下次会话生效",
 	ForgetUsage:                  "用法：/forget <name> — name 是 /memory 中显示的条目标识",
 	ForgetDoneFmt:                "已归档记忆：%s",
