@@ -180,7 +180,20 @@ export default function TranscriptWindow({
       const ownsAnchor = kernel.anchor.kind === "block" && kernel.anchor.blockKey === block.key;
       if (!element || ownsAnchor || element.contains(document.activeElement) || protectedBlockKeys.has(block.key)) break;
       const rect = element.getBoundingClientRect();
-      if (rect.bottom >= viewport.top - scrollElement.clientHeight) break;
+      // tl1424② 预存红清理: the drain used to recognize only "a full viewport
+      // above the reader" as safely transferable. Growth appends at the tail, so
+      // a reader parked far above the tail (e.g. scrolled to the top) left every
+      // expanded resident block BELOW that one-sided cushion — none ever
+      // qualified, resident stayed at the stale post-growth count (36 for
+      // 101→135), coldMountBudget collapsed (40-36=4), the cold range could not
+      // cover the viewport (covered=false), and two blank-viewport settles
+      // latched safeMode: permanent full:135. Mirror the above rule: a block a
+      // full viewport BELOW the reader transfers under the same identity-
+      // preserving contract (exact size committed to the ledger before React
+      // removes the in-flow host, so neither extent nor visible geometry moves).
+      const clearAbove = rect.bottom < viewport.top - scrollElement.clientHeight;
+      const clearBelow = rect.top > viewport.bottom + scrollElement.clientHeight;
+      if (!clearAbove && !clearBelow) break;
       residentChanges.push({ key: block.key, size: Math.max(64, rect.height || element.offsetHeight) });
       nextResidentIndex += 1;
     }

@@ -264,8 +264,14 @@ try {
     tailAction?.click();
   });
   await harness.waitFor(() => tailAction?.hidden === true, "jump-to-bottom visibility after tail restore");
+  // tl1424② 预存红清理: 2d961020b renamed the takeover scroll element to
+  // readerTranscript and dropped the old `const transcript` declaration but
+  // missed this one reference. The line was dead code ever since — every run
+  // aborted earlier (the tail-restore waitFor used to time out on the safeMode
+  // cascade fixed in TranscriptWindow this round) — so the stale identifier
+  // never surfaced until the drain fix let execution reach it.
   ok(
-    transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight <= 4,
+    readerTranscript.scrollHeight - readerTranscript.scrollTop - readerTranscript.clientHeight <= 4,
     "the identity-stable jump-to-bottom action restores native tail geometry through the kernel",
   );
 
