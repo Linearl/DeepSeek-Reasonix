@@ -95,6 +95,7 @@ func TryAcquireSessionRemovalGuard(path string) (*SessionRemovalGuard, error) {
 		}
 		return nil, err
 	}
+	leaseLock.annotateSessionLock("removal_guard")
 	saveLock, err := tryTakeSessionLockFile(store.SessionLockFile(path))
 	if err != nil {
 		leaseLock.Unlock()
@@ -104,6 +105,7 @@ func TryAcquireSessionRemovalGuard(path string) (*SessionRemovalGuard, error) {
 		}
 		return nil, err
 	}
+	saveLock.annotateSessionLock("removal_guard_save_lock")
 	return &SessionRemovalGuard{path: path, saveLock: saveLock, leaseLock: leaseLock}, nil
 }
 
@@ -126,6 +128,7 @@ func (l *SessionLease) TryConvertToRemovalGuard() (*SessionRemovalGuard, error) 
 		}
 		return nil, err
 	}
+	saveLock.annotateSessionLock("removal_guard_save_lock")
 	// Keep the OS lock and original process-local reservation while revoking
 	// active runtime ownership. Both block competing acquisition and make
 	// rollback immune to an in-process lease race.
@@ -133,6 +136,9 @@ func (l *SessionLease) TryConvertToRemovalGuard() (*SessionRemovalGuard, error) 
 	leaseLock := l.leaseLock
 	l.leaseLock = nil
 	l.released = true
+	// The hold continues under a new owner: re-annotate so a refusal dump
+	// names the guard, not the acquire that created the handle.
+	leaseLock.annotateSessionLock("removal_guard_converted")
 	// The lease object has handed its lock to the guard; unregister it so the
 	// orphan sweep never sees a live lease that no longer holds anything.
 	// RestoreSessionLease re-registers on rollback.

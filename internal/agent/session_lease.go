@@ -254,6 +254,9 @@ func TryAcquireSessionLease(path string) (*SessionLease, error) {
 		}
 		return nil, err
 	}
+	// tl1429: name the hold in the in-process lock registry so a later refusal
+	// can dump WHO holds the lock (runtime/op + time) instead of pid=0.
+	leaseLock.annotateSessionLock("session_lease_acquire")
 	// A handoff reservation is stored inside the lock file before the previous
 	// holder unlocks it. Re-check only after acquiring the OS lock so a plain
 	// contender cannot race between reservation publication and unlock.
@@ -316,6 +319,7 @@ func TryReclaimCurrentProcessSessionLease(path string) (*SessionLease, error) {
 		}
 		return nil, err
 	}
+	leaseLock.annotateSessionLock("session_lease_reclaim")
 	// Holding the OS lock proves no live lease owns this path right now, so
 	// overwriting the stale owner entry is safe; concurrent reclaimers fail
 	// the lock above and never reach this store, and a stale lease released
@@ -695,6 +699,7 @@ func TryAcquireSessionLeaseWithHandoff(path, sourceWriterID, handoffID string) (
 		sessionLeaseOwners.CompareAndDelete(path, ownerID)
 		return nil, &SessionLeaseError{Path: path, Info: info}
 	}
+	leaseLock.annotateSessionLock("session_lease_handoff_acquire")
 	sessionLeaseActiveOwners.Delete(path)
 	lease := &SessionLease{path: path, ownerID: ownerID, leaseLock: leaseLock}
 	if err := publishSessionLeaseOwner(leaseLock, path); err != nil {

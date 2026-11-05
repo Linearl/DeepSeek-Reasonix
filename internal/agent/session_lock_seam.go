@@ -29,6 +29,21 @@ func HoldSessionFileLockForTest(path string) (release func(), err error) {
 	return lock.Unlock, nil
 }
 
+// HoldSessionLeaseLockForTest takes the session's lease lock through the
+// production wrapper (tl1429): the handle is BOOKED in the in-process lock
+// registry — exactly the self-lock form a lost binding leaves behind. Tests
+// use it to stage the in-process orphan handle; pair it with
+// DropSessionLeaseLockRegistrationForTest to model a handle this process
+// knows nothing about (a pre-registry leftover / foreign process).
+func HoldSessionLeaseLockForTest(path string) (release func(), err error) {
+	lock, err := tryTakeSessionLeaseLockFile(store.SessionLeaseLock(canonicalSessionSavePath(path)))
+	if err != nil {
+		return nil, err
+	}
+	lock.annotateSessionLock("test_self_lock")
+	return func() { lock.RemoveAndUnlock() }, nil
+}
+
 // HoldForeignSessionLeaseForTest publishes lease metadata naming another
 // runtime and keeps the OS lock held so SessionLeaseHeldByOtherRuntime
 // reports true for path. Production code never stages a foreign identity;
