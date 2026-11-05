@@ -8392,6 +8392,54 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-faint);
   margin-top: 3px;
 }
+/* tl1438: use_capability inspect 的机器 schema 层——可折叠参数表,默认收起,prose 输出不受影响 */
+.tool__schema {
+  margin-top: 4px;
+  font-size: var(--font-caption);
+}
+.tool__schema > summary {
+  cursor: pointer;
+  color: var(--accent);
+  user-select: none;
+  line-height: 1.6;
+}
+.tool__schema > summary:hover {
+  text-decoration: underline;
+}
+.tool__schema-note {
+  margin-top: 3px;
+  color: var(--fg-faint);
+}
+.tool__schema-table {
+  margin-top: 4px;
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-code-family);
+  font-size: var(--font-caption);
+}
+.tool__schema-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--fg-faint);
+  padding: 2px 8px 2px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.tool__schema-table td {
+  vertical-align: top;
+  padding: 2px 8px 2px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.tool__schema-name {
+  color: var(--fg);
+  white-space: nowrap;
+}
+.tool__schema-required {
+  color: var(--err);
+  margin-left: 2px;
+}
+
 .tool__showall {
   display: inline-block;
   margin-top: 4px;
