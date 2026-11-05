@@ -1,14 +1,20 @@
 // Run: tsx src/__tests__/tl1426-subagent-split-layout.test.ts
 //
-// tl1426 需求②：子代理面板 split 形态的列表列固定宽——dock 进 1:1 宽态
-// （~824px）后，旧 minmax(180px, 34%) 把列表列拉到 ~280px 挤占详情；固定
-// 200px 让列表列不随面板宽度漂移。钉三层：
+// tl1426 需求②③：子代理面板 split 形态的列表列固定宽 + 列表/详情比例可调。
+// ②——dock 进 1:1 宽态（~824px）后，旧 minmax(180px, 34%) 把列表列拉到
+// ~280px 挤占详情；固定 200px 让列表列不随面板宽度漂移。
+// ③——列表↔详情加拖拽分隔条（ResizableDrawer 同款：拖动经 CSS 变量实时
+// 生效，松手/键盘持久化，双击回默认）。钉五层：
 // ① 纯函数层——clampSubagentsSplitListWidth 的上下界族（默认界 / 面板宽
-//    感知界 / 取整），App(面板) 与本文件同式调用零漂移；
+//    感知界 / 取整），面板与本文件同式调用零漂移；
 // ② CSS 契约层——.subagents-panel--split 的列表列是固定 px（var 兜底值），
 //    不再有百分比拉伸；兜底值与 SUBAGENTS_SPLIT_LIST_DEFAULT_WIDTH 同源；
-// ③ 持久化层——subagentsSplitListWidth sizes 键注册（① commit 已进
-//    LayoutSizeKey + LEGACY_SIZE_KEYS），真实 localStorage 往返。
+// ③ 持久化层——subagentsSplitListWidth sizes 键注册 + 真实 localStorage
+//    往返；
+// ④ 接线层——SubagentsDockPanel 分隔条（拖拽/键盘/双击复位）调用点静态
+//    断言（side-dock-user-width 先例：渲染编排行为无法组件级挂载，静态
+//    断言防回归漂移）；
+// ⑤ 主题/i18n 层——分隔条视觉全走主题 token（--accent 等）+ 三语键齐。
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -18,6 +24,10 @@ import { JSDOM } from "jsdom";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const cssSource = readFileSync(resolve(testDir, "../styles.css"), "utf8");
 const prefsSource = readFileSync(resolve(testDir, "../lib/layoutPreferences.ts"), "utf8");
+const panelSource = readFileSync(resolve(testDir, "../components/SubagentsDockPanel.tsx"), "utf8");
+const enSource = readFileSync(resolve(testDir, "../locales/en.ts"), "utf8");
+const zhSource = readFileSync(resolve(testDir, "../locales/zh.ts"), "utf8");
+const zhTwSource = readFileSync(resolve(testDir, "../locales/zh-TW.ts"), "utf8");
 
 let passed = 0;
 let failed = 0;
@@ -100,6 +110,71 @@ layout.saveSubagentsSplitListWidth(100);
 eq(prefs.loadOptionalLayoutSize("subagentsSplitListWidth", layout.clampSubagentsSplitListWidth), 180, "保存越界值被 clamp 家族拦回 180 下界");
 layout.saveSubagentsSplitListWidth(380, 480);
 eq(prefs.loadOptionalLayoutSize("subagentsSplitListWidth", layout.clampSubagentsSplitListWidth), 300, "面板感知界随保存生效（pane 480 → 列表上限 300）");
+
+// ④ 接线层：SubagentsDockPanel 分隔条接线静态断言。
+console.log("\ntl1426③ 接线: 拖拽分隔条 + 持久化");
+ok(
+  panelSource.includes('role="separator"') && panelSource.includes('aria-orientation="vertical"'),
+  "分隔条 role=separator + vertical 朝向",
+);
+ok(
+  panelSource.includes('aria-label={t("subagentPanel.splitResize")}'),
+  "分隔条挂三语 aria-label",
+);
+ok(
+  panelSource.includes("aria-valuemin={SUBAGENTS_SPLIT_LIST_MIN_WIDTH}") && panelSource.includes("aria-valuemax={SUBAGENTS_SPLIT_LIST_MAX_WIDTH}") && panelSource.includes("aria-valuenow={splitListWidth}"),
+  "分隔条 aria 值三元组挂 clamp 族常量与当前宽",
+);
+ok(
+  panelSource.includes("onPointerDown={startSplitResize}") && panelSource.includes("onKeyDown={onSplitResizeKeyDown}") && panelSource.includes("onDoubleClick={resetSplitListWidth}"),
+  "分隔条三入口: 拖拽/键盘/双击复位",
+);
+{
+  const dragBody = panelSource.slice(
+    panelSource.indexOf("const startSplitResize = useCallback"),
+    panelSource.indexOf("const onSplitResizeKeyDown = useCallback"),
+  );
+  ok(dragBody.includes('cssVar: "--subagents-list-width"'), "拖拽经 CSS 变量实时生效（createRafResizeUpdater rAF 批处理）");
+  ok(dragBody.includes("clampSubagentsSplitListWidth(moveEvent.clientX - rect.left, rect.width)"), "拖拽实时值按面板实际宽截断（详情保底 180 不被挤穿）");
+  ok(dragBody.includes("saveSubagentsSplitListWidth(nextWidth"), "拖拽松手持久化（onDone 落 sizes 键）");
+  ok(dragBody.includes('document.body.style.cursor = "col-resize"'), "拖拽中全局 col-resize 光标（ResizableDrawer 同款）");
+}
+{
+  const keyBody = panelSource.slice(
+    panelSource.indexOf("const onSplitResizeKeyDown = useCallback"),
+    panelSource.indexOf("const resetSplitListWidth = useCallback"),
+  );
+  ok(keyBody.includes('event.key === "ArrowLeft"') && keyBody.includes("16"), "键盘左右 ±16 步进");
+  ok(keyBody.includes("SUBAGENTS_SPLIT_LIST_MIN_WIDTH") && keyBody.includes("SUBAGENTS_SPLIT_LIST_MAX_WIDTH"), "键盘 Home/End 跳下上界（同走持久化路径）");
+}
+ok(
+  panelSource.includes("const resetSplitListWidth = useCallback(() => applySplitListWidth(SUBAGENTS_SPLIT_LIST_DEFAULT_WIDTH)"),
+  "双击复位回固定宽默认 200",
+);
+ok(
+  panelSource.includes('loadOptionalLayoutSize("subagentsSplitListWidth", clampSubagentsSplitListWidth) ?? SUBAGENTS_SPLIT_LIST_DEFAULT_WIDTH'),
+  "初始宽从持久化读回（无记录走默认 200）——跨重启保持用户比例",
+);
+ok(
+  panelSource.includes('"--subagents-list-width"') && panelSource.includes("subagents-panel--split-resizing"),
+  "容器挂 CSS 变量 + 拖拽中 resizing 类（发丝线/光标联动）",
+);
+
+// ⑤ 主题/i18n 层：分隔条视觉全 token + 三语键齐。
+{
+  const idx = cssSource.indexOf(".subagents-panel__splitter {");
+  ok(idx >= 0, "styles.css 持有 .subagents-panel__splitter 规则");
+  // 切片带到 resizing 段为止（含 ::after 发丝线规则）。
+  const block = cssSource.slice(idx, cssSource.indexOf(".subagents-panel--split-resizing,", idx));
+  ok(block.includes("position: absolute") && block.includes("left: calc(var(--subagents-list-width, 200px) - 4px)"), "分隔条绝对定位钉在列表列边界（随 var 联动）");
+  ok(block.includes("--wails-draggable: no-drag"), "分隔条 no-drag（窗口拖拽区豁免，drawer-resizer 同款）");
+  ok(block.includes("cursor: col-resize"), "分隔条 col-resize 光标");
+  ok(block.includes("var(--accent)"), "发丝线用主题 token --accent（七主题兼容，无硬编码色）");
+  ok(!/#[0-9a-fA-F]{3,8}\b/.test(block), "分隔条规则无硬编码色值");
+}
+ok(enSource.includes('"subagentPanel.splitResize"'), "en 词典含 splitResize 键");
+ok(zhSource.includes('"subagentPanel.splitResize"'), "zh 词典含 splitResize 键");
+ok(zhTwSource.includes('"subagentPanel.splitResize"'), "zh-TW 词典含 splitResize 键");
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

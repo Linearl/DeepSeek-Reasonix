@@ -3201,6 +3201,7 @@ export const en = {
 // their honest stand-in until the live tool stream (or the pending note)
 // fills the pane.
 "subagentPanel.runningNoPreview": "The sub-agent is running: nothing to show yet — its tool calls will appear here as they happen.",
+"subagentPanel.splitResize": "Resize the list column",
 "subagentPanel.liveTools": "Work in progress (tool calls)",
 "subagentPanel.widen": "Widen preview",
 "subagentPanel.narrow": "Restore width",

@@ -30078,6 +30078,49 @@ button.statusbar__mcp:focus-visible {
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+  /* tl1426③: 分隔条绝对定位的定位上下文。 */
+  position: relative;
+}
+
+/* tl1426③: 列表↔详情拖拽分隔条——drawer-resizer 同款规格（8px 命中带 +
+   hover/focus/拖拽中 1px accent 发丝线），token 全走主题变量（七主题兼容）。 */
+.subagents-panel__splitter {
+  --wails-draggable: no-drag;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--subagents-list-width, 200px) - 4px);
+  z-index: var(--z-local-handle);
+  width: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.subagents-panel__splitter::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background 0.12s, box-shadow 0.12s;
+}
+
+.subagents-panel__splitter:hover::after,
+.subagents-panel__splitter:focus-visible::after,
+.subagents-panel--split-resizing .subagents-panel__splitter::after {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.subagents-panel--split-resizing,
+.subagents-panel--split-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .subagents-panel--split .subagents-panel__listpane {

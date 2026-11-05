@@ -1,4 +1,5 @@
-import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -14,7 +15,16 @@ import {
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
 import { formatDurationLabel } from "../lib/durationFormat";
-import { useLayoutStore } from "../store/layout";
+import { loadOptionalLayoutSize } from "../lib/layoutPreferences";
+import { createRafResizeUpdater } from "../lib/resizeDrag";
+import {
+  clampSubagentsSplitListWidth,
+  saveSubagentsSplitListWidth,
+  SUBAGENTS_SPLIT_LIST_DEFAULT_WIDTH,
+  SUBAGENTS_SPLIT_LIST_MAX_WIDTH,
+  SUBAGENTS_SPLIT_LIST_MIN_WIDTH,
+  useLayoutStore,
+} from "../store/layout";
 import { Tooltip } from "./Tooltip";
 import { historyMessagesToItems, type Item } from "../lib/useController";
 import { subjectOf } from "../lib/tools";
@@ -535,6 +545,79 @@ export function SubagentsDockPanel({
   // persisted, so a restart lands back on the list (语义诚实: the preview
   // content itself is memory-only).
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // tl1426（需求②③）：split 列表列固定宽（默认 200，不再随面板百分比拉伸）+
+  // 拖拽分隔条调整（ResizableDrawer 同款：拖动经 CSS 变量实时生效，松手/
+  // 键盘写 subagentsSplitListWidth sizes 键持久化；双击回默认）。面板级偏好
+  // 走组件本地 state + layoutPreferences——与 ResizableDrawer 同款收口，不进
+  // zustand（跨面板无共享语义）。
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [splitListWidth, setSplitListWidth] = useState(() =>
+    loadOptionalLayoutSize("subagentsSplitListWidth", clampSubagentsSplitListWidth) ?? SUBAGENTS_SPLIT_LIST_DEFAULT_WIDTH,
+  );
+  const [splitResizing, setSplitResizing] = useState(false);
+  const applySplitListWidth = useCallback((next: number) => {
+    const paneWidth = splitRef.current?.getBoundingClientRect().width;
+    const clamped = clampSubagentsSplitListWidth(next, paneWidth);
+    setSplitListWidth(clamped);
+    saveSubagentsSplitListWidth(clamped, paneWidth);
+  }, []);
+  const startSplitResize = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) return;
+      const pane = splitRef.current;
+      if (!pane) return;
+      event.preventDefault();
+      setSplitResizing(true);
+      let nextWidth = splitListWidth;
+      const liveResize = createRafResizeUpdater({
+        target: pane,
+        separator: event.currentTarget,
+        cssVar: "--subagents-list-width",
+      });
+      const onMove = (moveEvent: PointerEvent) => {
+        const rect = pane.getBoundingClientRect();
+        nextWidth = clampSubagentsSplitListWidth(moveEvent.clientX - rect.left, rect.width);
+        liveResize.schedule(nextWidth);
+      };
+      const onDone = () => {
+        liveResize.flush();
+        setSplitListWidth(nextWidth);
+        saveSubagentsSplitListWidth(nextWidth, pane.getBoundingClientRect().width);
+        setSplitResizing(false);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onDone);
+        window.removeEventListener("pointercancel", onDone);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onDone);
+      window.addEventListener("pointercancel", onDone);
+    },
+    [splitListWidth],
+  );
+  const onSplitResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        applySplitListWidth(splitListWidth + (event.key === "ArrowLeft" ? -16 : 16));
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        applySplitListWidth(SUBAGENTS_SPLIT_LIST_MIN_WIDTH);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        applySplitListWidth(SUBAGENTS_SPLIT_LIST_MAX_WIDTH);
+      }
+    },
+    [applySplitListWidth, splitListWidth],
+  );
+  const resetSplitListWidth = useCallback(() => applySplitListWidth(SUBAGENTS_SPLIT_LIST_DEFAULT_WIDTH), [applySplitListWidth]);
+  const splitStyle = useMemo(
+    () => ({ "--subagents-list-width": `${splitListWidth}px` }) as CSSProperties,
+    [splitListWidth],
+  );
   // 任务495 剩余项: the persisted sidecar records for this session. Reloads
   // on session switch and whenever the transcript's ended count moves (a
   // just-finished child writes its sidecar at completion — the same refresh
@@ -623,7 +706,12 @@ export function SubagentsDockPanel({
   // 无意义（列表就在旁边），点击它等价于取消选中。
   if (detailEnabled) {
     return (
-      <div className="subagents-panel subagents-panel--split" aria-label={t("workspace.subagentsTab")}>
+      <div
+        ref={splitRef}
+        className={`subagents-panel subagents-panel--split${splitResizing ? " subagents-panel--split-resizing" : ""}`}
+        style={splitStyle}
+        aria-label={t("workspace.subagentsTab")}
+      >
         {widenToolbar}
         <div className="subagents-panel__listpane">
           <section className="subagents-panel__section">
@@ -662,6 +750,22 @@ export function SubagentsDockPanel({
             )}
           </section>
         </div>
+        {/* tl1426③: 列表↔详情拖拽分隔条——拖动实时改 --subagents-list-width，
+            松手/键盘持久化，双击回默认 200。绝对定位钉在列表列右边界上
+            （drawer-resizer 同款），不改 grid 列结构。 */}
+        <button
+          type="button"
+          className="subagents-panel__splitter"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("subagentPanel.splitResize")}
+          aria-valuemin={SUBAGENTS_SPLIT_LIST_MIN_WIDTH}
+          aria-valuemax={SUBAGENTS_SPLIT_LIST_MAX_WIDTH}
+          aria-valuenow={splitListWidth}
+          onPointerDown={startSplitResize}
+          onKeyDown={onSplitResizeKeyDown}
+          onDoubleClick={resetSplitListWidth}
+        />
         {selected ? (
           <SubagentDetailView
             key={selected.item.id}
