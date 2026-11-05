@@ -114,7 +114,7 @@ func (a *App) BatchTrashTopics(topicIDs []string) (desktopBatchTopicArchiveResul
 			continue
 		}
 		topicTrace := topicArchiveTrace{phase: "start"}
-		fallback, changedDirs, err := a.commitTopicArchiveTargets(topicID, targets, &topicTrace, false)
+		fallback, changedDirs, err := a.commitTopicArchiveTargets(topicID, targets, &topicTrace, false, false)
 		trace.targetCount += topicTrace.targetCount
 		trace.runtimeCount += topicTrace.runtimeCount
 		trace.phase = topicTrace.phase

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"log/slog"
+	"path/filepath"
 
 	"reasonix/internal/agent"
 )
@@ -26,9 +27,21 @@ func (a *App) captureTopicRuntimeBindings(topicID string) []removedSessionRuntim
 
 // snapshotTopicRuntimeBindings keeps bindings usable until every writable
 // controller snapshots. The caller owns runtime admission, blocking new turns.
-func (a *App) snapshotTopicRuntimeBindings(captured []removedSessionRuntime) error {
+// The tl1404 terminal mode never refuses: a running turn is canceled (the
+// lost-turn cost the force confirm copy announces, logged here with the who)
+// and the save-before-remove snapshot courtesy is skipped — the session is
+// being discarded, and a wedged runtime must not wedge the archive.
+func (a *App) snapshotTopicRuntimeBindings(captured []removedSessionRuntime, terminal bool) error {
 	for _, item := range captured {
 		if item.ctrl == nil || item.readOnly {
+			continue
+		}
+		if terminal {
+			if item.ctrl.Running() {
+				item.ctrl.Cancel()
+				slog.Warn("desktop: terminal archive canceled a running turn",
+					"session_base", filepath.Base(item.sessionPath))
+			}
 			continue
 		}
 		if item.ctrl.Running() {
