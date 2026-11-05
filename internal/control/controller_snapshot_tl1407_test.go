@@ -2,6 +2,7 @@ package control
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -98,6 +99,57 @@ func TestTL1407ResumeRepairsHeadlessStock(t *testing.T) {
 	}
 	if got := exec.Session().Snapshot()[0].Content; got != "healthy base" {
 		t.Fatalf("stock repair must reuse the controller base prompt, got %q", got)
+	}
+}
+
+// TestTL1407TurnAccumulationPersistsAcrossSaveCycles is the field-shape
+// acceptance pin (20261105 现场:turn 在跑、消息只在内存堆积 201→248、每个
+// 保存周期全量 Snapshot 后拒绝):messages accumulate between autosave cycles
+// on a headless session — the first cycle repairs, every later cycle persists
+// the accumulated tail, and the whole conversation reaches disk (crash-safety)
+// with a bounded log volume.
+func TestTL1407TurnAccumulationPersistsAcrossSaveCycles(t *testing.T) {
+	logs := tl1407CaptureLogs(t)
+	dir := schemaOneTempDir(t)
+	path := filepath.Join(dir, "turn-shape.jsonl")
+	exec := agent.New(nil, nil, tl1407HeadlessSession(), agent.Options{}, event.Discard)
+	c := New(Options{Executor: exec, SessionDir: dir, SessionPath: path, Label: "tl1407"})
+
+	for i := 0; i < 3; i++ {
+		// turn 在跑:两个保存周期之间消息继续进内存(现场的 message_count 增长形态)。
+		exec.Session().Add(provider.Message{Role: provider.RoleUser, Content: fmt.Sprintf("turn message %d", i)})
+		exec.Session().Add(provider.Message{Role: provider.RoleAssistant, Content: fmt.Sprintf("reply %d", i)})
+		if err := c.SnapshotActivity(); err != nil {
+			t.Fatalf("cycle %d: snapshot activity: %v", i, err)
+		}
+	}
+
+	storms := strings.Count(logs.String(), "refusing to snapshot")
+	if storms > 2 {
+		t.Fatalf("refusal WARN storm across %d cycles: %d, want <= 2", 3, storms)
+	}
+	if !exec.Session().HasSystemMessage() {
+		t.Fatal("turn-time guard must give the session a terminal repaired state")
+	}
+	loaded, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	onDisk := loaded.Snapshot()
+	if onDisk[0].Role != provider.RoleSystem {
+		t.Fatalf("persisted transcript lost the identity header: first role=%s", onDisk[0].Role)
+	}
+	for i := 0; i < 3; i++ {
+		want := fmt.Sprintf("turn message %d", i)
+		found := false
+		for _, m := range onDisk {
+			if m.Content == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("accumulated turn message %q never reached disk (crash-loss shape)", want)
+		}
 	}
 }
 
