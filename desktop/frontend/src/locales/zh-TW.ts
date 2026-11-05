@@ -2545,6 +2545,7 @@ export const zhTW: Record<DictKey, string> = {
 // their honest stand-in until the live tool stream (or the pending note)
 // fills the pane.
 "subagentPanel.runningNoPreview": "子代理運行中：暫無可顯示的過程——工具調用開始後將在此實時出現。",
+"subagentPanel.splitResize": "調整列表寬度",
 "subagentPanel.liveTools": "工作過程（工具調用）",
 "subagentPanel.widen": "加寬預覽",
 "subagentPanel.narrow": "還原寬度",

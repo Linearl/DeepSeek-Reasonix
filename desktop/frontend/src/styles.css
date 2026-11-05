@@ -30068,13 +30068,59 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-soft);
 }
 
-/* tl1109: 子代理面板「列表(左) + 内容(右)」同屏布局（复用方案 E 容器宽度）。 */
+/* tl1109: 子代理面板「列表(左) + 内容(右)」同屏布局（复用方案 E 容器宽度）。
+   tl1426②: 列表列从 minmax(180px, 34%) 百分比弹性改固定 200px——dock 进
+   1:1 宽态（~824px）后 34% 会把列表拉到 ~280px 挤占详情；固定宽让列表列
+   不随面板宽度漂移，比例调整走 tl1426③ 的 --subagents-list-width。 */
 .subagents-panel--split {
   display: grid;
-  grid-template-columns: minmax(180px, 34%) minmax(0, 1fr);
+  grid-template-columns: var(--subagents-list-width, 200px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+  /* tl1426③: 分隔条绝对定位的定位上下文。 */
+  position: relative;
+}
+
+/* tl1426③: 列表↔详情拖拽分隔条——drawer-resizer 同款规格（8px 命中带 +
+   hover/focus/拖拽中 1px accent 发丝线），token 全走主题变量（七主题兼容）。 */
+.subagents-panel__splitter {
+  --wails-draggable: no-drag;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--subagents-list-width, 200px) - 4px);
+  z-index: var(--z-local-handle);
+  width: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.subagents-panel__splitter::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background 0.12s, box-shadow 0.12s;
+}
+
+.subagents-panel__splitter:hover::after,
+.subagents-panel__splitter:focus-visible::after,
+.subagents-panel--split-resizing .subagents-panel__splitter::after {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.subagents-panel--split-resizing,
+.subagents-panel--split-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .subagents-panel--split .subagents-panel__listpane {

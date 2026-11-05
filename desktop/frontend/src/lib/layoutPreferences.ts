@@ -8,7 +8,11 @@ export type LayoutSizeKey =
   | "workspaceTreeWidth"
   | "composerHeight"
   | "drawerWidth"
-  | "settingsDrawerWidth";
+  | "settingsDrawerWidth"
+  // tl1426: 子代理详情态的 dock 宽度记忆 + 面板内列表列固定宽（用户显式
+  // 调整后写入的持久化值；未调整时键不存在，走各自默认公式/默认值）。
+  | "subagentDetailDockWidth"
+  | "subagentsSplitListWidth";
 
 type LayoutPreferences = {
   sizes?: Partial<Record<LayoutSizeKey, number>>;
@@ -41,6 +45,8 @@ const LEGACY_SIZE_KEYS: Record<LayoutSizeKey, string[]> = {
   composerHeight: ["reasonix.composerHeight"],
   drawerWidth: ["reasonix.drawer.width"],
   settingsDrawerWidth: ["reasonix.settingsDrawer.width"],
+  subagentDetailDockWidth: [],
+  subagentsSplitListWidth: [],
 };
 
 type ClampSize = (value: number) => number;
