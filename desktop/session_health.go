@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -253,8 +254,18 @@ func (a *App) ListSessionVersionGroups() ([]SessionVersionGroupView, error) {
 				continue
 			}
 			path := filepath.Join(dir, e.Name())
+			// tl1415 点9: 版本面板只列「活的会话本体」。recovery 副本文件
+			// (分支,不是本体)与已归档/已决议的版本(本体已归档)不再出现——
+			// 前者是另一条主线在本文面板里的幻影行,后者的本体已进回收站,
+			// 留着只会让用户对着一个不可恢复的入口点「切换/删除」。
+			if agent.LooksLikeRecoveryFilename(path) {
+				continue
+			}
 			meta, ok, err := agent.LoadBranchMeta(path)
 			if err != nil || !ok || meta.HeadCount <= 1 {
+				continue
+			}
+			if state := meta.EffectiveVersionState(); state == agent.VersionTrashed || state == agent.VersionResolved {
 				continue
 			}
 			groups = append(groups, SessionVersionGroupView{
@@ -268,6 +279,38 @@ func (a *App) ListSessionVersionGroups() ([]SessionVersionGroupView, error) {
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].MainLabel < groups[j].MainLabel })
 	return groups, nil
+}
+
+// ClearSessionMergeHistory resets a conversation's merge-era head mirror in the
+// meta sidecar (head_id/head_count) back to the single-chain defaults.
+//
+// tl1415 点9: this mirror is what the version panel's listing reads
+// (ListSessionVersionGroups), and since tl1280 retired the schema-2 replay
+// nothing maintains it — a conversation whose branches were all merged away
+// kept showing a stale "N 版本" badge with nothing behind it. Clearing is a
+// bookkeeping reset only: the transcript, its event log and every copy on disk
+// are untouched, and the panel's live readings (ListRecoveryChains) come from a
+// content scan that never looked at this field in the first place.
+func (a *App) ClearSessionMergeHistory(mainPath string) error {
+	mainPath = strings.TrimSpace(mainPath)
+	if mainPath == "" {
+		return fmt.Errorf("no session path given")
+	}
+	if _, _, err := a.sessionDirForPath(mainPath); err != nil {
+		return friendlySessionFileError(err)
+	}
+	if resolved, ok := resolveTranscriptSibling(mainPath); ok {
+		mainPath = resolved
+	}
+	if err := agent.UpdateBranchMeta(mainPath, true, func(meta *agent.BranchMeta) error {
+		meta.HeadID = ""
+		meta.HeadCount = 1
+		return nil
+	}); err != nil {
+		return friendlySessionFileError(err)
+	}
+	a.invalidatePromptHistoryCache()
+	return nil
 }
 
 // sessionSelfHealEnabled reads the experimental switch live (nil = on).

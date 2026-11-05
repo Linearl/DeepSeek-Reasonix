@@ -196,9 +196,13 @@ console.log("\ncandidate chain recommendation splits into independent longer/new
   // 相同）——「更长」标签只在第一次出现时打一次（见
   // RecoveryCopiesSection.tsx 的 seenLongerPaths 去重），因此取第一条命中行。
   const rows = versionRows();
-  const mainRows = rows.filter((r) => (r.textContent || "").includes("6800"));
-  const mainRow = mainRows[0]?.textContent || "";
-  const copyRow = rows.find((r) => (r.textContent || "").includes("468"))?.textContent || "";
+  // tl1415 点3: the merged table's row order puts the promoted main-line row
+  // and the copy rows ahead of the candidate chain rows, and the fixture's
+  // readings (6800/468) appear on those rows too — so the tag assertions key
+  // on the tag text itself, keeping the original semantics (the tag renders
+  // on the chain row whose readings it describes).
+  const mainRow = rows.find((r) => (r.textContent || "").includes("longer ("))?.textContent || "";
+  const copyRow = rows.find((r) => (r.textContent || "").includes("newer ("))?.textContent || "";
   ok(mainRow !== "", "① the long-but-older main chain renders a version row");
   ok(copyRow !== "", "① the short-but-newer copy chain renders a version row");
 

@@ -3235,7 +3235,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.languageHint": "選擇介面語言，或跟隨作業系統。",
   "settings.storageTitle": "資料位置",
   "settings.storageHint": "檢視 Reasonix 的工作區與應用程式資料位置。",
-  "settings.recoveryCopiesTitle": "工作階段版本與副本",
+  "settings.recoveryCopiesTitle": "對話版本管理",
   // 任務 1063：兩個分區合併成一個——badge 在工作階段行內標註 v3 多 heads 版
   // 本數，unique 徽標標註副本裡的獨有事件；兩者都是分級展示的可見性基礎（體
   // 積欄見 recoveryCopiesColSize）。
@@ -3319,7 +3319,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersions.repairLog": "修復記錄：",
   "settings.sessionVersions.degraded": "已降級",
   "settings.sessionVersions.degradedHint": "該會話的事件日誌讀取被拒或失敗（如重放超出安全預算）：行內計數不可用，其餘分區不受影響。",
-  "settings.recoveryCopiesHint": "列出所有帶 recovery 副本的工作階段；「獨有」是僅存在於該副本、未併入主線的事件數——它大就說明那邊有會丟的工作。先看清，再勾選合併。",
+  "settings.recoveryCopiesHint": "彙整各會話的版本與副本，用於異常時恢復主線。",
   "settings.recoveryCopiesEmpty": "沒有發現 recovery 副本。",
   // 任務 1085：兩種空態要分清——「沒有副本檔」（recovery 掃描為空）與「有
   // 副本列但 v3 無多 heads」（v3 版本列表為空）是兩回事，不能用同一句話糊住。
@@ -3364,6 +3364,55 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesFailedToast": "{count} 個會話合成失敗",
   "settings.recoveryCopiesChains": "候選鏈（合併後由最長的一條成為主線）",
   "settings.recoveryCopiesChainsHint": "候選鏈在展開會話行時自動重放載入，無需掃描；「掃描」測的是副本與主線的差異讀數",
+  // tl1415 點3：三表合併後的分組行——副本（recovery 檔案）與候選鏈/版本
+  // （v3 事件日誌）是兩條資料鏈路，分組行保住資料來源的可辨識性。
+  // tl1415 點5+6：操作按鈕的 hover 功能說明——每個動作說清「做什麼、動不動
+  // 主線、可不可恢復」；「修復並瘦身」寫清兩個動作（剝離圖片 payload + 折疊
+  // 超窗舊訊息，session_selfheal.go 的 Diet 語義）。
+  "settings.recoveryCopiesScanHint": "測量該會話：數出每份副本的訊息數與主線沒有的獨有事件數（合併預覽基於它），唯讀不改",
+  // tl1415 點5 補口：概要列的合併勾選框——可見面上最後一個沒有 hover 說明
+  // 的可操作控制項（其餘是自描述標籤：關閉/重試/展開尾部等）。
+  "settings.recoveryCopiesSelectHint": "勾選該會話參與底部的「合併所選」；隨時可取消勾選，勾選本身不動資料",
+  "settings.recoveryCopiesScanAllHint": "逐個測量列表裡所有帶副本的會話（串列執行，逐個報進度），唯讀不改",
+  "settings.recoveryCopiesScanSelectedHint": "只測量勾選的會話，唯讀不改",
+  "settings.recoveryCopiesRefreshHint": "重新拉取副本列表與版本讀數，不修改任何會話",
+  "settings.recoveryCopiesMergeHint": "把勾選會話的副本併入主線：最全的候選成為新主線，其餘副本進回收站（可恢復）；未測量會先自動測量",
+  "settings.recoveryCopiesDeleteSelectedHint": "把勾選的副本分支移入回收站（可恢復），不動主線內容",
+  "settings.recoveryCopiesDeleteConversationHint": "把勾選的整個對話（主檔案、全部版本與副本、側車）分別移入兩條可恢復的回收站；正在開啟的該會話分頁會被關閉",
+  "settings.recoveryCopiesDeleteHint": "把這份副本移入回收站（可恢復），不動主線內容",
+  "settings.recoveryCopiesPreviewBtnHint": "預覽這條分支的開頭與結尾，並可把它選定為主線；唯讀，不寫入任何檔案",
+  "settings.recoveryCopiesDeleteHeadHint": "刪除這個版本：先打 retire 標記（隱藏），下次單寫輪換才真正裁掉，期間可隨時切回",
+  "settings.recoveryCopiesSynthesizeBtnHint": "把其餘分支的獨有事件併入選定的主線（重複事件零雙份）；落敗分支進回收站（可恢復）",
+  "settings.sessionVersionsActivateHint": "把主線切換到這個版本：切換是一條 select 標記，可隨時切回，舊版本保留",
+  "settings.sessionVersionsCheckHint": "檢查這份事件日誌的健康狀態（唯讀，不修復）",
+  "settings.sessionVersionsRepairHint": "修復事件日誌（回填檢查點等）；修復前自動備份，並留修復記錄",
+  "settings.sessionVersionsRepairDietHint": "修復並瘦身，兩個動作：①剝離訊息裡的圖片 payload（大圖轉佔位）②把超出模型視窗的舊訊息摺疊成一條本地佔位——縮小體積；修復前自動備份",
+  // tl1415 點10/11/12: 「未測量」狀態、降級預覽的獨立空態、檔名短標識。
+  "settings.recoveryCopiesUnmeasured": "未測量",
+  "settings.recoveryCopiesUnmeasuredHint": "尚未測量——點行內「掃描」或底部掃描按鈕後顯示真實讀數",
+  "settings.recoveryCopiesPreviewUnreadable": "讀數降級——預覽不可得（收起後重新展開可重試）",
+  // tl1415 點9: 清空合併歷史——版本徽標讀的是 meta 頭鏡像,tl1280 頭重放
+  // 退役後無人維護;清空只是賬面重置,所有檔案保留。
+  "settings.recoveryCopiesClearHistory": "清空合併歷史",
+  "settings.recoveryCopiesClearHistoryHint": "把版本徽標背後的陳舊合併賬面清零（頭重放退役後該元資料已無人維護）；不改動轉錄、事件日誌與任何副本檔案",
+  "settings.recoveryCopiesClearHistoryTitle": "清空合併歷史",
+  "settings.recoveryCopiesClearHistoryLead": "把該會話的合併賬面復位為單鏈（版本徽標隨之消失）",
+  "settings.recoveryCopiesClearHistoryNote": "這只清舊版元資料裡的合併計數；對話內容、事件日誌與磁碟上的副本檔案全部保留。",
+  "settings.recoveryCopiesClearHistoryConfirm": "清空",
+  "settings.recoveryCopiesClearHistoryDone": "已清空合併歷史",
+  // tl1415 點8: 一鍵清理多餘副本——主線已完整覆蓋(unique=0)的已測副本,
+  // 逐份走可恢復回收站。
+  "settings.recoveryCopiesCleanup": "清理多餘副本",
+  "settings.recoveryCopiesCleanupHint": "把主線已完整覆蓋的副本（獨有=0）逐份移入回收站（可恢復）；正在開啟的副本會被跳過並在結果裡說明",
+  "settings.recoveryCopiesCleanupHintShort": "只清主線已完整覆蓋（獨有=0）的副本，進回收站可恢復",
+  "settings.recoveryCopiesCleanupTitle": "清理多餘副本",
+  "settings.recoveryCopiesCleanupLead": "以下副本已被主線完整覆蓋，將逐份移入回收站（可恢復）：",
+  "settings.recoveryCopiesCleanupNote": "每份副本都是歸檔而非銷毀——需要時可從回收站還原。正在開啟的副本會被跳過並說明。",
+  "settings.recoveryCopiesCleanupConfirm": "清理",
+  "settings.recoveryCopiesCleanupDone": "已歸檔 {n} 份多餘副本（回收站可恢復）",
+  "settings.recoveryCopiesCleanupFailed": "沒有副本歸檔成功——原因見錯誤列表",
+  "settings.recoveryCopiesGroupCopies": "副本（recovery 檔案）",
+  "settings.recoveryCopiesGroupChains": "候選鏈與版本（v3 事件日誌）",
   "settings.recoveryCopiesChainCurrent": "目前主線",
   "settings.recoveryCopiesChainCandidate": "候選鏈",
   "settings.recoveryCopiesRecommended": "推薦",
