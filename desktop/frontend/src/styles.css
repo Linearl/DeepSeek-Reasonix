@@ -40045,10 +40045,55 @@ button.statusbar__mcp:focus-visible {
 .rc-modal__foot {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 12px 22px;
   border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
+/* tl1415b: 沉底横排(demo v5 footer)——[已选 N] 标签 / 分隔竖线 / 弹性空隙 /
+   三步流程提示线(独占一行)。 */
+.rc-foot__label { font-size: 0.88em; opacity: 0.72; white-space: nowrap; }
+.rc-foot__sep { width: 1px; height: 22px; background: color-mix(in srgb, currentColor 16%, transparent); }
+.rc-foot__spacer { flex: 1 1 auto; }
+.rc-foot__hintline {
+  width: 100%;
+  margin-top: -2px;
+  font-size: 0.84em;
+  opacity: 0.72;
+}
+/* 更多▾(口径⑨): 修复记录等次要内容与次要入口的收纳弹层。 */
+.rc-more { position: relative; }
+.rc-more > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.88em;
+  padding: 4px 11px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  white-space: nowrap;
+  user-select: none;
+}
+.rc-more > summary::-webkit-details-marker { display: none; }
+.rc-more > summary:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
+.rc-more__popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: var(--z-popover, 30);
+  width: 430px;
+  max-width: 70vw;
+  background: var(--bg-elev);
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.13);
+  padding: 12px 14px;
+  font-size: 0.88em;
+  font-weight: 400;
+}
+.rc-more__popover h4 { margin: 0 0 8px; font-size: 0.95em; }
+.rc-more__popover .rc-ops { margin-bottom: 8px; }
+.rc-more__hint { margin: 4px 0 0; opacity: 0.7; }
 
 /* tl1415b: 全页一张表(demo v5)——类型列替代一切分组横条与小表,唯一表头
    sticky+不透明背景。列宽参照 demo:v5 的 c-sel/c-kind/c-name 34%/12%/7%/9%/

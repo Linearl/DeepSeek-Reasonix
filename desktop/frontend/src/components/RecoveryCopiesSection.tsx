@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionHealthReportView } from "../lib/bridge";
+import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { useT, type Translator } from "../lib/i18n";
 import { formatSessionBusyError } from "../lib/sessionBusyError";
 import { useToast } from "../lib/toast";
@@ -452,6 +452,10 @@ export function RecoveryCopiesSection() {
   const [activating, setActivating] = useState<string | null>(null);
   const [switchedNote, setSwitchedNote] = useState("");
   const [deletingHead, setDeletingHead] = useState<string | null>(null);
+  // 更多▾ 弹窗(口径⑨): 修复记录等次要内容进弹窗——选中会话的修复日志在
+  // 弹窗打开时按需加载,关闭重开时刷新。
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [records, setRecords] = useState<{ label: string; records: SessionRepairRecordView[] }[]>([]);
   const [busy, setBusy] = useState(false);
   // previewingPath names the chain whose preview is being built. Without it the
   // only feedback was every button greying out, which reads as a dead click
@@ -481,7 +485,6 @@ export function RecoveryCopiesSection() {
   // means "let the engine take the fullest one". Keyed per conversation so a pick
   // in one group never leaks into another.
   const [pickedChain, setPickedChain] = useState<Record<string, string>>({});
-  const pickedChainCount = Object.values(pickedChain).filter(Boolean).length;
   // 任务 1065：选 HEAD 反向合成——pickedChain（HEAD）+ 合成结果/进度各自成
   // 线：合成中报「正在合成第 N/M 条」，完成后报合成前后读数（并集可核对）。
   const [synthesizing, setSynthesizing] = useState<Record<string, string>>({});
@@ -2119,6 +2122,31 @@ export function RecoveryCopiesSection() {
     }
   };
 
+  // 更多▾ 打开时按需加载选中会话的修复记录(次要内容进弹窗——口径⑨)。
+  // 只挂 moreOpen:会话勾选变化时弹窗通常已关,重开即重读。
+  useEffect(() => {
+    if (!moreOpen) return;
+    let cancelled = false;
+    void (async () => {
+      const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+      const loaded: { label: string; records: SessionRepairRecordView[] }[] = [];
+      for (const group of chosen) {
+        let recs: SessionRepairRecordView[] = [];
+        try {
+          recs = (await app.ListSessionRepairRecordsFor(group.mainPath)) ?? [];
+        } catch {
+          // 修复日志读不到不是面板失败——列表主体照常渲染。
+        }
+        loaded.push({ label: group.mainLabel, records: recs });
+      }
+      if (!cancelled) setRecords(loaded);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moreOpen]);
+
   return (
     <>
       <section className="settings-section">
@@ -2388,17 +2416,22 @@ export function RecoveryCopiesSection() {
               </div>
 
               <div className="rc-modal__foot">
+                {/* 口径⑤+⑨: 沉底横排按 demo v5 编排——[已选 N] ③合成 | 检查
+                    健康·修复·瘦身·清理非主线副本·清空合并历史 | 删除所选·刷新
+                    | 更多▾;扫描全部/扫描所选/整对话删除收进更多▾(次要入口)。 */}
+                <span className="rc-foot__label">
+                  {t("settings.recoveryCopiesSelectedLabel").replace("{count}", String(selected.size))}
+                </span>
                 <button
                   className="btn btn--small btn--primary"
                   type="button"
-                  title={t("settings.recoveryCopiesMergeHint")}
+                  title={t("settings.recoveryCopiesStepMergeHint")}
                   disabled={busy || selected.size === 0}
                   onClick={() => void mergeSelected()}
                 >
-                  {pickedChainCount > 0
-                    ? `${t("settings.recoveryCopiesMergePicked")} (${pickedChainCount})`
-                    : `${t("settings.recoveryCopiesMerge")} (${selected.size})`}
+                  {t("settings.recoveryCopiesMergeFlowBtn")}
                 </button>
+                <div className="rc-foot__sep" />
                 <button
                   className="btn btn--secondary btn--small"
                   type="button"
@@ -2439,7 +2472,8 @@ export function RecoveryCopiesSection() {
                 </button>
                 {/* tl1415 点9: 清空合并历史——版本徽标的账面读数(head meta 镜像)
                     在 tl1280 头重放退役后无人维护,合并完的会话留着陈旧「N 版本」。
-                    沉底为批量入口,作用于勾选会话中 headCount>1 的那些。 */}
+                    沉底为批量入口,作用于勾选会话中 headCount>1 的那些;清空后该
+                    会话移出已合入组(口径④)。 */}
                 <button
                   className="btn btn--secondary btn--small"
                   type="button"
@@ -2454,15 +2488,7 @@ export function RecoveryCopiesSection() {
                 >
                   {t("settings.recoveryCopiesClearHistory")}
                 </button>
-                <button
-                  className="btn btn--secondary btn--small"
-                  type="button"
-                  title={t("settings.recoveryCopiesScanAllHint")}
-                  disabled={busy || scanningAll}
-                  onClick={() => void scanAll()}
-                >
-                  {t("settings.recoveryCopiesScanAll")}
-                </button>
+                <div className="rc-foot__spacer" />
                 {/* 任务 1064：批量删除所选分支——勾选的是副本行左侧的复选框
                     （branchesSelected），与会话行的合并勾选互不干扰。 */}
                 {branchesSelected.size > 0 ? (
@@ -2476,17 +2502,6 @@ export function RecoveryCopiesSection() {
                     {`${t("settings.recoveryCopiesDeleteSelected")} (${branchesSelected.size})`}
                   </button>
                 ) : null}
-                {selected.size > 0 ? (
-                  <button
-                    className="btn btn--secondary btn--small"
-                    type="button"
-                    title={t("settings.recoveryCopiesScanSelectedHint")}
-                    disabled={busy || scanningAll}
-                    onClick={() => void scanSelected()}
-                  >
-                    {`${t("settings.recoveryCopiesScanSelected")} (${selected.size})`}
-                  </button>
-                ) : null}
                 <button
                   className="btn btn--secondary btn--small"
                   type="button"
@@ -2496,21 +2511,78 @@ export function RecoveryCopiesSection() {
                 >
                   {t("settings.recoveryCopiesRefresh")}
                 </button>
-                {/* 任务 1368 线2：整对话级删除——归档选中会话的主文件（含 v3 版
-                    本与侧车）与全部副本到两条可恢复回收站。与 1064 的「删除所选」
-                    （删副本分支）是两个粒度：这里勾的是会话行（selected），一次
-                    清掉整个对话。 */}
-                <button
-                  className="btn btn--secondary btn--small rc-delete"
-                  type="button"
-                  title={t("settings.recoveryCopiesDeleteConversationHint")}
-                  disabled={busy || scanningAll || selected.size === 0}
-                  onClick={() => void deleteConversations()}
+                {/* 口径⑨: 修复记录等次要内容进更多▾弹窗;次要入口(面板级全量
+                    扫描/扫描所选/整对话删除)收纳于此。JSDOM 里 details 折叠不
+                    影响子元素在 DOM 与可点击——harness 的全局按钮查找不受影
+                    响。 */}
+                <details
+                  className="rc-more"
+                  open={moreOpen}
+                  onToggle={(e) => setMoreOpen((e.target as HTMLDetailsElement).open)}
                 >
-                  {selected.size > 0
-                    ? `${t("settings.recoveryCopiesDeleteConversation")} (${selected.size})`
-                    : t("settings.recoveryCopiesDeleteConversation")}
-                </button>
+                  <summary>{t("settings.recoveryCopiesMoreBtn")}</summary>
+                  <div className="rc-more__popover">
+                    {records.length > 0 ? (
+                      <>
+                        <h4>{t("settings.sessionVersions.repairLog")}</h4>
+                        <ul className="rc-versions__issues">
+                          {records.map((r) => (
+                            <li key={r.label}>
+                              {r.label}
+                              <ul>
+                                {r.records.map((rec, i) => (
+                                  <li key={i}>
+                                    {formatWhen(rec.at)} {rec.before} → {rec.after}
+                                    {rec.backupDir ? ` · ${rec.backupDir}` : ""}
+                                  </li>
+                                ))}
+                              </ul>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                    <h4>{t("settings.recoveryCopiesSecondaryEntries")}</h4>
+                    <div className="rc-ops" style={{ justifyContent: "flex-start" }}>
+                      <button
+                        className="btn btn--secondary btn--small"
+                        type="button"
+                        title={t("settings.recoveryCopiesScanAllHint")}
+                        disabled={busy || scanningAll}
+                        onClick={() => void scanAll()}
+                      >
+                        {t("settings.recoveryCopiesScanAll")}
+                      </button>
+                      {selected.size > 0 ? (
+                        <button
+                          className="btn btn--secondary btn--small"
+                          type="button"
+                          title={t("settings.recoveryCopiesScanSelectedHint")}
+                          disabled={busy || scanningAll}
+                          onClick={() => void scanSelected()}
+                        >
+                          {`${t("settings.recoveryCopiesScanSelected")} (${selected.size})`}
+                        </button>
+                      ) : null}
+                      {/* 任务 1368 线2：整对话级删除——归档选中会话的主文件（含
+                          v3 版本与侧车）与全部副本到两条可恢复回收站。与 1064 的
+                          「删除所选」（删副本分支）是两个粒度：这里勾的是会话行
+                          （selected），一次清掉整个对话。 */}
+                      <button
+                        className="btn btn--secondary btn--small rc-delete"
+                        type="button"
+                        title={t("settings.recoveryCopiesDeleteConversationHint")}
+                        disabled={busy || scanningAll || selected.size === 0}
+                        onClick={() => void deleteConversations()}
+                      >
+                        {selected.size > 0
+                          ? `${t("settings.recoveryCopiesDeleteConversation")} (${selected.size})`
+                          : t("settings.recoveryCopiesDeleteConversation")}
+                      </button>
+                    </div>
+                    <p className="rc-more__hint">{t("settings.recoveryCopiesSynthesizePickHint")}</p>
+                  </div>
+                </details>
                 {busy ? (
                   <span className="rc-note">{status || t("settings.loading")}</span>
                 ) : selectedGroups.length === 0 ? (
@@ -2518,6 +2590,10 @@ export function RecoveryCopiesSection() {
                 ) : needingCount > 0 ? (
                   <span className="rc-note">{t("settings.recoveryCopiesWillMeasure")}</span>
                 ) : null}
+                {/* 口径⑤: 三步流程提示线(demo v5 底部 hintline)。 */}
+                <div className="rc-foot__hintline">
+                  {t("settings.recoveryCopiesFlowHint")}
+                </div>
               </div>
             </div>
           </div>,
