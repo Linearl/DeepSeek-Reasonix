@@ -40050,17 +40050,15 @@ button.statusbar__mcp:focus-visible {
   border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
 
-.rc-table { display: flex; flex-direction: column; }
-.rc-row {
-  display: grid;
-  grid-template-columns: 26px minmax(200px, 2fr) 138px 92px 84px 68px 84px 92px;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
+/* tl1415b: 全页一张表(demo v5)——类型列替代一切分组横条与小表,唯一表头
+   sticky+不透明背景。列宽参照 demo:v5 的 c-sel/c-kind/c-name 34%/12%/7%/9%/
+   7%/6%/17% 配比,行内操作列右对齐。 */
+.rc-maintable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
-.rc-row--head {
+.rc-maintable__head th {
   position: sticky;
   top: 0;
   z-index: var(--z-inline-sticky);
@@ -40074,56 +40072,136 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   color: color-mix(in srgb, currentColor 72%, transparent);
   border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-}
-.rc-row--group { font-weight: 600; }
-.rc-row--group:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
-.rc-row--main {
-  margin-top: 2px;
-  background: color-mix(in srgb, currentColor 9%, transparent);
-}
-.rc-row--copy { opacity: 0.94; }
-
-.rc-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
   text-align: left;
-  cursor: pointer;
 }
-.rc-caret { flex: 0 0 auto; opacity: 0.7; }
-.rc-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-maintable__head th.rc-num { text-align: right; }
+.rc-maintable__head th.rc-col-ops { text-align: right; }
+.rc-maintable th.rc-detail__hcheck { width: 30px; }
+.rc-maintable th.rc-col-kind { width: 76px; }
+.rc-maintable th.rc-col-name { width: 32%; }
+.rc-maintable th.rc-col-when { width: 12%; }
+.rc-maintable td.rc-col-name { min-width: 0; }
+.rc-maintable tbody td { vertical-align: top; }
+.rc-session td { padding-top: 8px; }
+.rc-session:hover > td { background: color-mix(in srgb, currentColor 5%, transparent); }
+.rc-session > td { font-weight: 600; }
+.rc-child > td { opacity: 0.98; }
+.rc-child td.rc-col-name { padding-left: 30px; }
+/* 口径⑧: 栏限宽——名称单行省略号/预览两行折行截断,hover title 给全文
+   (title 由组件挂在 td/摘要行上)。 */
+.rc-clip1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rc-sub2 {
+  color: color-mix(in srgb, currentColor 62%, transparent);
+  font-size: 0.92em;
+  margin-top: 2px;
+}
+.rc-clip2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  max-height: 2.9em;
+}
+/* 口径⑥: 行内预览行的「尾部」徽章——预览=尾部消息,不是开头。 */
+.rc-tailtag {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 600;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  white-space: nowrap;
+}
+/* 类型列(会话/主线/副本/版本)——demo v5 的 k-session/k-main/k-copy 三色 +
+   版本行的中性第四色。 */
+.rc-kindtag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.rc-kindtag--session {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.rc-kindtag--main {
+  color: var(--accent, #3d7a52);
+  border-color: color-mix(in srgb, var(--accent, #3d7a52) 40%, transparent);
+  background: color-mix(in srgb, var(--accent, #3d7a52) 10%, transparent);
+}
+.rc-kindtag--copy {
+  color: color-mix(in srgb, currentColor 78%, transparent);
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+.rc-kindtag--version {
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  background: transparent;
+}
+.rc-kindtag--cur {
+  color: var(--bg-elev);
+  background: var(--accent, #3d7a52);
+  border-color: var(--accent, #3d7a52);
+}
+/* 组段行(表内可折叠分组行):待处理默认展开/已合入默认折叠,计数徽章+提示。 */
+.rc-grouprow > td {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.92em;
+  font-weight: 700;
+  padding: 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+}
+.rc-grouprow:hover > td { background: color-mix(in srgb, currentColor 12%, transparent); }
+.rc-grouprow .rc-caret { margin-right: 4px; }
+.rc-grouprow__count {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 8px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elev);
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 0.88em;
+  font-weight: 600;
+  text-align: center;
+}
+.rc-grouprow__note {
+  margin-left: 10px;
+  font-weight: 400;
+  font-size: 0.88em;
+  opacity: 0.62;
+}
+.rc-grouprow__tip {
+  float: right;
+  font-weight: 400;
+  font-size: 0.88em;
+  opacity: 0.55;
+}
+.rc-caret { display: inline-block; opacity: 0.7; }
 .rc-muted { opacity: 0.5; }
 .rc-unique { font-weight: 700; }
-.rc-action { display: flex; justify-content: flex-end; }
+.rc-ops {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
 .rc-note { margin-left: auto; opacity: 0.8; }
 
 .rc-preview { margin: 8px 0; padding-left: 20px; }
 .rc-preview__warn { margin: 8px 0 0; opacity: 0.8; }
 
-.rc-phase { margin-top: 14px; }
-.rc-phase:first-child { margin-top: 0; }
-.rc-phase__head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 8px 10px 6px;
-  font-size: 0.9em;
-}
-.rc-phase__title { font-weight: 700; }
-.rc-phase__count {
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  text-align: center;
-}
-.rc-phase__hint { opacity: 0.6; }
 .rc-errors { margin: 0; padding-left: 20px; }
 /* 任务 1039：失败横幅上的后端原因——比横幅文案小一号、可换行，长错误
    （重放超限带 resource=value/limit）不撑破横幅。 */
@@ -40238,16 +40316,6 @@ button.statusbar__mcp:focus-visible {
 .rc-delete {
   color: var(--danger, #e5484d);
   border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, transparent);
-}
-.rc-action { gap: 8px; }
-/* tl1415 点8: 表格底部的「清理多余副本」一行——按钮+短说明并排。 */
-.rc-cleanup {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent);
 }
 .rc-result {
   margin-bottom: 10px;

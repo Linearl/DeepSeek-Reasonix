@@ -1,7 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
+import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionHealthReportView } from "../lib/bridge";
 import { useT, type Translator } from "../lib/i18n";
 import { formatSessionBusyError } from "../lib/sessionBusyError";
 import { useToast } from "../lib/toast";
@@ -19,6 +19,13 @@ import { useConfirmDialog } from "./ConfirmDialog";
  *  只动 UI 收口：两条数据链路（recovery 副本扫描 / v3 heads 重放）原样保
  *  留，各自负责各自的读数，本组件只负责把它们画到一起。原两区的全部操作
  *  （合并副本 / 候选链预览与选 HEAD / 检查健康 / 修复 / 切换版本）零丢失。
+ *
+ *  tl1415b 二轮形态（20261106，验收基准 = docs/drafts/版本面板三表合一-
+ *  demo-20261106.html v5）：全页一张表——「类型」列（会话/主线/副本/版本）
+ *  替代一切分组横条与小表；候选链段移除（与副本同名冗余），其数据（消息·
+ *  轮次/尾部预览）并入副本行；两组列表——待处理默认展开、已合入默认折叠
+ *  （组头为表内可折叠分组行+计数徽章）；预览=尾部消息（尾部徽章+结尾优先
+ *  弹窗）；会话级操作全部沉底横排，修复记录等次要内容进「更多▾」弹窗。
  */
 
 /** bytes → a short human size. */
@@ -47,8 +54,15 @@ function formatWhen(iso: string): string {
  *  (the column used to render the message count under a turns header, which is
  *  exactly the "5396 · 215" confusion the user flagged). Zero turns after a
  *  scan is a real reading (tool-only transcripts have none) and shows as 0. */
-function groupTurnsText(group: RecoveryCopyGroupView, t: Translator): string {
-  if (group.mainMessages > 0 || group.mainTurns > 0) return String(group.mainTurns);
+function sessionMeasured(group: RecoveryCopyGroupView): boolean {
+  return group.mainMessages > 0 || group.mainTurns > 0 || group.copies.some((c) => c.scanned);
+}
+
+/** tl1415b: the session row's merged「消息数 · 轮次」cell (demo v5 shows one
+ *  column carrying both readings as "291 · 37"). Unmeasured conversations name
+ *  the state instead of inventing a pair of zeros. */
+function sessionMsgTurnsText(group: RecoveryCopyGroupView, t: Translator): string {
+  if (sessionMeasured(group)) return `${group.mainMessages} · ${group.mainTurns}`;
   return group.copies.length > 0 ? t("settings.recoveryCopiesUnmeasured") : "—";
 }
 
@@ -88,7 +102,12 @@ function volumeDeltaText(before: number, after: number, t: Translator): string {
     .replace("{after}", formatBytes(after))}`;
 }
 
-type Phase = "pending" | "unmerged" | "merged";
+/** tl1415b: two groups only (demo v5)——待处理（有副本/候选需要处理的会话）
+ *  与已合入（合并成功后自动进入）。The old three-phase split (unmerged /
+ *  pending / merged) folded into one 待处理 group. 组迁移语义（口径④）：
+ *  有副本但已无合并历史（headCount≤1）的会话留在待处理——清空合并历史把它
+ *  移出已合入组，仍多副本时它（重新扫描后）回到待处理组。 */
+type Phase = "todo" | "merged";
 
 /** copiesNeedingMeasurement is what stands between "not measured" and "mergeable".
  *
@@ -125,10 +144,14 @@ function predictedWinner(group: RecoveryCopyGroupView): Winner | null {
   return best;
 }
 
-/** phaseOf sorts a conversation by what a user would do about it. */
-function phaseOf(group: RecoveryCopyGroupView): Phase {
-  if (copiesNeedingMeasurement(group).length > 0) return "pending";
-  if (uniqueIn(group) > 0) return "unmerged";
+/** phaseOf sorts a conversation into the two demo groups by what a user would do
+ *  about it. headCount is the merge-history reading (meta head mirror): a
+ *  conversation with copies but no merge history has not been through the flow
+ *  yet, whatever the coverage numbers say. */
+function phaseOf(group: RecoveryCopyGroupView, headCount: number): Phase {
+  if (copiesNeedingMeasurement(group).length > 0) return "todo";
+  if (uniqueIn(group) > 0) return "todo";
+  if (group.copies.length > 0 && headCount <= 1) return "todo";
   return "merged";
 }
 
@@ -192,13 +215,12 @@ type SynthesisOutcome = {
 /** RecoveryCopiesSection is the one versions-and-copies panel on the storage page.
  *
  *  Opening it is one directory read per session folder, so it appears at once and
- *  shows the shape of the problem without opening any transcript. Conversations
- *  start collapsed and are grouped by what they need.
+ *  shows the shape of the problem without opening any transcript.
  *
  *  Measuring a copy means reading and comparing whole transcripts. The panel offers
- *  it on demand, and the merge performs it itself when needed - the preview is built
- *  from those counts, so the button can produce them rather than sending the user
- *  back to press Scan first.
+ *  it on demand (the row scan button, step ① of the flow), and the merge performs
+ *  it itself when needed - the preview is built from those counts, so the button
+ *  can produce them rather than sending the user back to press Scan first.
  *
  *  This is a promotion, not a splice: the fullest candidate becomes the canonical
  *  transcript and the rest are folded into the recoverable trash. So the preview
@@ -341,243 +363,25 @@ function degradedChainSet(mainPath: string): RecoveryChainSet {
   return { mainPath, mainLabel: "", chains: [row], longestPath: "", longestHead: "", newestPath: "", newestHead: "" };
 }
 
-/** VersionRows is the merged detail table of one conversation's expanded row
- *  (tl1415 点3: 副本列表 + 候选链 + 版本表三块合一).
- *
- *  任务 1063 把副本块与 v3 版本块并排放进展开区时,二者各自渲染一张表;用户
- *  实测同一会话的信息被三张表说三遍(候选链行还裸拼「5396 · 215 交互轮次」
- *  没有表头)。本组件现在把三者收进一张表:主线行(当前主线链或主线读数)、
- *  副本组行(recovery 文件)、候选链与版本组行(事件日志 heads),每条分支两行
- *  ——主行放核心读数,次行放操作与预览摘要——全部操作入口零丢失。
- *
- *  候选链与版本表的数据源本来就是同一个调用(ListRecoveryChains 的链清单),
- *  是真合并;副本是另一条链路(副本文件扫描),视觉并入同一张表+分组行,不
- *  强行同质化。链清单由外层的惰性缓存传入(外层 loadChains),本组件不再自
- *  己重放一遍——原先两个组件各调一次 ListRecoveryChains,同一会话被重放两
- *  次;合并后一次加载喂整张表。
- *
- *  Local state remains for what only this row needs (health report, repair
- *  receipt, repair log), loaded on demand the first time the row expands. */
-function VersionRows({
-  group,
-  chains,
-  chainLoading,
-  t,
-  confirm,
-  onReload,
-  onError,
-  repairNote,
-  setRepairNote,
-  dataVersion,
-  busy,
-  scanningAll,
-  synthesizing,
-  pickedChain,
-  previewingPath,
-  branchesSelected,
-  onToggleBranch,
-  onDeleteBranch,
-  onPick,
-  onSynthesize,
-  headCount,
-  onClearHistory,
-}: {
-  group: RecoveryCopyGroupView;
-  /** 外层惰性缓存的一条链清单(loadChains 的落点)。undefined = 尚未加载完
-   *  成;空数组 = 枚举被拒后的降级落点(外层已报错误横幅)。 */
+/** One session's fully derived row model: the current main chain (tl1430b:
+ *  Selected 是主线行的单一真相源), the chain bound to each copy file, and the
+ *  leftover chains (in-log heads + extra heads of copy files) that render as
+ *  版本 rows. Derived once per session render so every row shape below reads
+ *  the same inventory.
+ */
+type SessionChainModel = {
   chains: RecoveryChainSet | undefined;
-  chainLoading: boolean;
-  t: Translator;
-  confirm: ReturnType<typeof useConfirmDialog>["confirm"];
-  onReload: () => void;
-  onError: (message: string) => void;
-  repairNote: string;
-  setRepairNote: (note: string) => void;
-  /** 任务 1146:load() 的代际号。行保持展开时组件不重挂载,本 effect 若只看
-   *  mainPath 就永远不重拉——合成/切换/删除版本后列表已换代,版本表必须跟
-   *  着重读一次,否则用户看到的是操作前的旧表(实测:合成已生效,版本表仍
-   *  显示旧版本)。 */
-  dataVersion: number;
-  busy: boolean;
-  scanningAll: boolean;
-  /** 该会话的合成进度("0/N"),undefined = 不在合成中。 */
-  synthesizing: string | undefined;
-  /** 该会话已选定的 HEAD(外层 pickedChain),undefined = 未选。 */
-  pickedChain: string | undefined;
-  previewingPath: string | null;
-  branchesSelected: Set<string>;
-  onToggleBranch: (path: string) => void;
-  onDeleteBranch: (copyPath: string, index: number) => void;
-  onPick: (chain: RecoveryChainView) => void;
-  onSynthesize: () => void;
-  /** tl1415 点9: 该会话在 meta 头镜像里的版本计数(>1 才有「清空合并历史」
-   *  可清)。0 = 版本清单里没有该会话。 */
-  headCount: number;
-  /** tl1415 点9: 清空合并历史(确认+调用+toast+重载都在外层)。 */
-  onClearHistory: () => void;
-}) {
-  const mainPath = group.mainPath;
-  // tl1414：版本行删除与面板其余删除入口同族——成功/失败都弹 toast，
-  // 反馈不再只在展开面板内可见。
-  const { showToast } = useToast();
-  const [health, setHealth] = useState<{ path: string; report: SessionHealthReportView | null }>({ path: "", report: null });
-  const [repairing, setRepairing] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [records, setRecords] = useState<SessionRepairRecordView[]>([]);
-  // 任务 1146:区分「换行」与「同行的数据刷新」。mainPath 变化才把读数打回
-  // loading;dataVersion 触发的重拉保留旧读数渲染(stale-while-revalidate),
-  // 新读数到达后原地替换——否则修复回执/健康检查结果会在每次刷新时闪失
-  // (1064b 当初就是把回执提升到分区层来躲「行重载丢回执」的,这里不能再
-  // 把它藏回 loading 里)。
-  const prevMainRef = useRef(mainPath);
+  loading: boolean;
+  currentMainChain: RecoveryChainView | undefined;
+  /** Candidate chains minus the current main. */
+  candidates: RecoveryChainView[];
+};
 
-  // 本组件只剩修复日志一项自加载(chains 已由外层惰性缓存提供,原先在这里
-  // 重复调用的 ListRecoveryChains 随三表合并一并去掉)。错误不反向触发重载:
-  // 报错走 onError 的通道,避免「读被拒→报错→effect 重跑→再被拒」循环。
-  useEffect(() => {
-    const mainChanged = prevMainRef.current !== mainPath;
-    prevMainRef.current = mainPath;
-    if (mainChanged) {
-      setHealth({ path: "", report: null });
-      setRecords([]);
-    }
-    let cancelled = false;
-    void (async () => {
-      let recs: SessionRepairRecordView[] = [];
-      try {
-        recs = (await app.ListSessionRepairRecordsFor(mainPath)) ?? [];
-      } catch {
-        // 修复日志读不到不是展开区的失败——链读数才是主体,缺席时其余部分照常渲染。
-      }
-      if (!cancelled) setRecords(recs);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mainPath, dataVersion]);
-
-  const inspect = async () => {
-    try {
-      const report = await app.InspectSessionHealthFor(mainPath);
-      setHealth({ path: mainPath, report });
-    } catch (e) {
-      onError(String(e));
-    }
-  };
-
-  const repair = async (diet: boolean) => {
-    setRepairing(true);
-    setRepairNote("");
-    let note = "";
-    let receiptWritten = false;
-    try {
-      // 队尾体积列修复：修复前后文件读数对比——后端报告本身不带体积，这里在
-      // 调用前后各读一次磁盘大小（os.Stat 的同一读数，与链表的体积列同源），
-      // 瘦身类修复（diet）的收益才在面板上看得见；纯修复类动作体积不变时照实
-      // 显示「无变化」，不编造数字。
-      const beforeBytes = await fileSizeOf(mainPath);
-      const report = await app.RepairSessionFor(mainPath, true, true, diet);
-      const afterBytes = await fileSizeOf(mainPath);
-      if (!report.repaired) {
-        note = t("settings.sessionVersions.noRepairNeeded");
-      } else {
-        // 动作名标注 done/skipped（后端 SelfHealAction.Status 就是 done|skipped|
-        // failed）：一行回执说清「哪些做了、哪些没做」，而不是只报一串动作名。
-        const actionsText = report.actions
-          .map((a) => `${a.action}(${a.status})`)
-          .join("+");
-        const volumeText = volumeDeltaText(beforeBytes, afterBytes, t);
-        note = `${t("settings.sessionVersions.repaired")
-          .replace("{actions}", actionsText)
-          .replace("{backup}", report.backupDir || "—")}${volumeText}`;
-        // 任务 1116 件 1：hydrate 回填了检查点但 diet 没跑、投影仍超窗 ⇒ 回执
-        // 不能停在「修复完成」。追加显式告警与下一步（勾 Diet 再跑一次），与
-        // 后端 report.warning / repairlog / notice 三方一致。
-        if (report.warning) {
-          note += ` — ${t("settings.sessionVersions.repairStillOverWindow")}`;
-        }
-        setRepairNote(note);
-        receiptWritten = true;
-        onReload();
-      }
-      const fresh = await app.InspectSessionHealthFor(mainPath).catch(() => null);
-      if (fresh) setHealth({ path: mainPath, report: fresh });
-    } catch (e) {
-      note = String(e);
-    } finally {
-      setRepairing(false);
-      if (note && !receiptWritten) {
-        // The success path wrote its receipt above (same tick as the repair);
-        // the no-repair-needed and error paths fall through here.
-        setRepairNote(note);
-      }
-    }
-  };
-
-  // tl1430:「切换到此版本」= 采纳该行的文件为新主线(adopt)。修复前的入口
-  // 恒传 mainPath(点副本行请求的却是把主线自己设为激活)+scope 硬编码
-  // global+topicId 空,后端校验链路对不上,点击成了静默 no-op。现在传被点
-  // 行的真实 path;scope/topicId 留空由后端按 catalog filing 反查,副本行与
-  // project 会话同一条通路。headId 恒空:in-log head 切换已随 tl1280 下线,
-  // 后端对该形态显式报错,这里不再有机会走错分支。
-  const [activating, setActivating] = useState<string | null>(null);
-  const [switchedNote, setSwitchedNote] = useState("");
-  const activate = async (chain: RecoveryChainView) => {
-    setActivating(chain.path);
-    try {
-      await app.SetActiveSessionVersion({ scope: "", topicId: "", path: chain.path, headId: "" });
-      const label = recoveryShortName(chain.path) || chain.label || chain.path;
-      setSwitchedNote(t("settings.sessionVersions.activated").replace("{name}", label));
-      onReload();
-    } catch (e) {
-      onError(String(e));
-    } finally {
-      setActivating(null);
-    }
-  };
-
-  /** 任务 1064：v3 版本块里的单版本删除。与父级的批量删除共用同一条确认与
-   *  回收语义（后端 retire 标记：不选中就不可删，删后条目从列表消失、独有
-   *  事件在下一次单写轮换前仍可通过重放找回）。 */
-  const deleteHead = async (headId: string) => {
-    const okToDelete = await confirm({
-      title: t("settings.recoveryCopiesDeleteHeadTitle"),
-      message: (
-        <div>
-          <p>
-            {t("settings.recoveryCopiesDeleteHeadLead")}
-            ：{headId ? headId.slice(0, 8) : "main"}
-          </p>
-          <p className="rc-preview__warn">{t("settings.recoveryCopiesDeleteHeadWarn")}</p>
-        </div>
-      ),
-      confirmLabel: t("settings.recoveryCopiesDeleteConfirm"),
-      cancelLabel: t("common.cancel"),
-      tone: "danger",
-    });
-    if (!okToDelete) return;
-    setDeleting(headId);
-    try {
-      await app.DeleteSessionVersionHead(mainPath, headId);
-      // tl1414 反馈对称：retire 生效同弹 toast（outcome 行不存在于这条路径，
-      // 无 toast 时成功零反馈，读作没点）。
-      showToast(t("settings.recoveryCopiesVersionDeletedToast", { count: 1 }), "info");
-      onReload();
-    } catch (e) {
-      // tl1367-fix defect C: the busy family renders localized (holder block).
-      const detail = formatSessionBusyError(e);
-      // tl1414 反馈对称：失败同弹 toast（横幅只在面板打开且行展开时可见）。
-      showToast(
-        `${t("settings.recoveryCopiesVersionDeleteFailedToast", { count: 1 })}：${detail}`,
-        "error",
-      );
-      onError(detail);
-    } finally {
-      setDeleting(null);
-    }
-  };
-
-  // ── 合并表行数据(tl1415 点3) ──
+function buildSessionChainModel(
+  group: RecoveryCopyGroupView,
+  chains: RecoveryChainSet | undefined,
+  loading: boolean,
+): SessionChainModel {
   const chainRows = chains?.chains ?? [];
   // 任务 1146 返修2(协调线 2120):「当前主线」只标当前激活的那条链——主转录
   // 文件内、后端标记为当前选中的 head(RecoveryChainView.Selected,与版本表
@@ -587,375 +391,37 @@ function VersionRows({
   // ——显式采纳副本后 Selected 移到副本文件上,主线行必须跟着换(包 78 现场:
   // 回执闪了但主线行纹丝不动,就是这里把主线钉死在扫描起点 mainPath 上)。
   // 无任何 Selected 读数时退回旧行为:mainPath 行恰一行则按旧口径取它。
-  const mainFileRows = chainRows.filter((c) => c.path === mainPath);
+  const mainFileRows = chainRows.filter((c) => c.path === group.mainPath);
   const selectedRow = chainRows.find((c) => c.selected);
   const currentMainChain =
     selectedRow ??
     (mainFileRows.length === 1 && chainRows.every((c) => !c.selected)
       ? mainFileRows[0]
       : mainFileRows.find((c) => Boolean(c.selected)));
-  // 主线行是采纳来的文件时亮出短标识——否则「主线」标签换了行用户却看不出
-  // 换的是哪一份(tl1430 验收①:表内主线行立即换,要可辨识)。
-  const mainChainShortName = currentMainChain && currentMainChain.path !== mainPath
-    ? recoveryShortName(currentMainChain.path)
-    : "";
   // 候选链与版本组 = 除当前主线外的全部链(其余 heads + 副本文件链)。当前主
-  // 线升格为表首主线行,不再在组里重复出现——原先它在候选链块和版本表各出现
-  // 一次,同一事实被渲染两遍。
-  const candidateChains = currentMainChain ? chainRows.filter((c) => c !== currentMainChain) : chainRows;
-  // 主线行读数来源:有当前主线链时用链读数(含轮次),未加载时用主线 stat 读数
-  // (副本扫描链路,零重放;tl1415 点10 起扫描带实测轮次 mainTurns,不再是
-  // 恒 0 的「—」)。
-  const mainMessages = currentMainChain ? currentMainChain.messageCount : group.mainMessages;
-  const mainTurns = currentMainChain ? currentMainChain.turns : group.mainTurns;
-  const mainModified = currentMainChain ? currentMainChain.lastActivity : group.mainModified;
-  const mainBytes = currentMainChain ? currentMainChain.bytes : group.mainBytes;
-  // 副本行的「将成为主线」判定(与外层概要行同一预测)。
-  const measured = copiesNeedingMeasurement(group).length === 0;
-  const winner = measured ? predictedWinner(group) : null;
-  // 任务 1123:same path+headId 的行会在链表里出现两次(主转录本体一行 + 它
-  // 的某个 head 一行,字段读数相同)——两条标签各只打一次。
-  const seenLongerPaths = new Set<string>();
-  const seenNewerPaths = new Set<string>();
+  // 线升格为表首主线行,不再在组里重复出现。
+  const candidates = currentMainChain ? chainRows.filter((c) => c !== currentMainChain) : [...chainRows];
+  return { chains, loading, currentMainChain, candidates };
+}
 
-  return (
-    <div className="rc-versions rc-detail">
-      <table className="rc-versions__table">
-        {/* tl1415 点1+4:合并表自带语义化表头——「条数」「交互轮次」进列名,
-            候选链行的裸数字拼列(「5396 · 215 交互轮次 …」)废止。 */}
-        <thead>
-          <tr>
-            <th className="rc-detail__hcheck" aria-label={t("settings.recoveryCopiesColCopies")} />
-            <th>{t("settings.recoveryCopiesColLine")}</th>
-            <th className="rc-num">{t("settings.sessionVersions.messages")}</th>
-            <th className="rc-num">{t("settings.recoveryCopiesColTurns")}</th>
-            <th>{t("settings.recoveryCopiesColModified")}</th>
-            <th className="rc-num">{t("settings.recoveryCopiesColSize")}</th>
-            <th className="rc-num">{t("settings.recoveryCopiesColUnique")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {/* ── 主线行:当前主线链升格为表首(挂 rc-chain,候选链计数的口径
-              与原候选链块一致),chains 未加载时以主线 stat 读数先行渲染。 ── */}
-          <tr
-            className={`rc-detail__row${currentMainChain ? " rc-chain" : ""} rc-detail__row--main${
-              winner?.isMain ? " rc-row--winner" : ""
-            }`}
-          >
-            <td className="rc-detail__check" />
-            <td className="rc-label">
-              {t("settings.recoveryCopiesMain")}
-              {/* tl1430b: 主线行换到采纳来的文件时亮短标识,让「主线行换了」
-                  立即可辨识(悬停 title 给完整路径)。 */}
-              {mainChainShortName ? (
-                <span className="rc-copy__shortname" title={currentMainChain?.path}>
-                  {mainChainShortName}
-                </span>
-              ) : null}
-              {winner?.isMain ? ` · ${t("settings.recoveryCopiesWins")}` : ""}
-              {!group.mainExists ? ` · ${t("settings.recoveryCopiesOrphan")}` : ""}
-              {/* 任务 1039r:降级行必须说自己是降级——否则零计数行与「空会话」
-                  在面板上无法区分。悬停 title 给出完整原因。 */}
-              {currentMainChain?.degraded && (
-                <span className="sv-degraded" title={t("settings.sessionVersions.degradedHint")}>
-                  {t("settings.sessionVersions.degraded")}
-                </span>
-              )}
-              {currentMainChain?.selected && (
-                <span className="rc-versions__tag">{t("settings.sessionVersions.selected")}</span>
-              )}
-            </td>
-            <td className="rc-num">{mainMessages || "—"}</td>
-            <td className="rc-num">{mainTurns || "—"}</td>
-            <td>{formatWhen(mainModified)}</td>
-            <td className="rc-num">{formatBytes(mainBytes)}</td>
-            <td className="rc-num rc-muted">—</td>
-          </tr>
-
-          {/* ── 副本组(recovery 文件链路):异源数据视觉并入,分组行保住数据
-              源的可辨识性——副本是独立文件,候选链与版本是同一份事件日志的
-              读数,两者不强行同质化。 ── */}
-          {group.copies.length > 0 && (
-            <tr className="rc-detail__group">
-              <td colSpan={7}>{t("settings.recoveryCopiesGroupCopies")}</td>
-            </tr>
-          )}
-          {group.copies.map((copy, index) => {
-            const wins = winner ? !winner.isMain && winner.copyIndex === index : false;
-            // tl1415 点12: 文件名短标识(recovery-<8 hex>)——用户要能把面板行
-            // 对回磁盘上的 recovery-5df6de18 文件;悬停 title 给完整文件名。
-            const shortName = recoveryShortName(copy.path);
-            return (
-              <Fragment key={copy.path}>
-                <tr className={`rc-detail__row rc-row--copy${wins ? " rc-row--winner" : ""}`}>
-                  <td className="rc-detail__check" />
-                  <td className="rc-label">
-                    {t("settings.recoveryCopiesCopy")} {index + 1}
-                    {shortName ? (
-                      <span className="rc-copy__shortname" title={copy.path}>
-                        {shortName}
-                      </span>
-                    ) : null}
-                    {copy.orphan ? ` · ${t("settings.recoveryCopiesOrphan")}` : ""}
-                    {wins ? ` · ${t("settings.recoveryCopiesWins")}` : ""}
-                    {/* 任务 1063:副本行的「独有」徽标——分级展示的核心:副本
-                        不是又一个版本,它可能是主线没有的唯一一份工作。 */}
-                    {copy.scanned && copy.unique > 0 ? (
-                      <span className="rc-copy__unique-badge">
-                        {t("settings.recoveryCopiesUniqueBadge").replace("{n}", String(copy.unique))}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="rc-num">{copy.scanned ? copy.messages : "—"}</td>
-                  {/* tl1415 点10: 轮次随扫描实测(与条数同一轮重放)。未扫描的
-                      副本给「未测量」状态而不是裸「—」;扫描后的 0 是真读数
-                      (纯工具转录),照实显示 0。 */}
-                  <td className="rc-num">
-                    {copy.scanned ? (
-                      copy.turns
-                    ) : (
-                      <span className="rc-muted" title={t("settings.recoveryCopiesUnmeasuredHint")}>
-                        {t("settings.recoveryCopiesUnmeasured")}
-                      </span>
-                    )}
-                  </td>
-                  <td>{formatWhen(copy.modified)}</td>
-                  <td className="rc-num">{formatBytes(copy.bytes)}</td>
-                  <td className={copy.unique > 0 ? "rc-unique rc-num" : "rc-muted rc-num"}>
-                    {copy.scanned ? copy.unique : "—"}
-                  </td>
-                </tr>
-                <tr className="rc-detail__ops">
-                  <td colSpan={7} className="rc-detail__ops-cell">
-                    {/* 任务 1064:副本行的复选框+删除入口。孤立副本(orphan,主线
-                        已缺失)没有「另一条链可以兜底」的前提,删除即真正丢内容,
-                        因此不提供删除入口——它只能被合并(作为新主线)而非删除。 */}
-                    {!copy.orphan && (
-                      <>
-                        <input
-                          type="checkbox"
-                          checked={branchesSelected.has(copy.path)}
-                          disabled={busy}
-                          onChange={() => onToggleBranch(copy.path)}
-                          aria-label={`${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`}
-                        />
-                        <button
-                          className="btn btn--secondary btn--small rc-delete"
-                          type="button"
-                          title={t("settings.recoveryCopiesDeleteHint")}
-                          disabled={busy}
-                          onClick={() => onDeleteBranch(copy.path, index)}
-                        >
-                          {t("settings.recoveryCopiesDelete")}
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              </Fragment>
-            );
-          })}
-
-          {/* ── 候选链与版本组(v3 事件日志链路):除当前主线外的全部链。 ── */}
-          {(chainLoading || candidateChains.length > 0) && (
-            <tr className="rc-detail__group">
-              <td colSpan={7}>{t("settings.recoveryCopiesGroupChains")}</td>
-            </tr>
-          )}
-          {/* 任务 1146:链清单重拉期间显示加载占位而不是整块消失——合成/删除
-              后的自动刷新会清空链缓存再重读,占位让「正在刷新」可见,链区不
-              闪烁。空集(拉取被拒时的降级落点,外层错误横幅已另行报告)不渲染
-              占位,不把它误报成「加载中」。 */}
-          {chainLoading && (
-            <tr className="rc-detail__loading">
-              <td colSpan={7}>{t("settings.loading")}</td>
-            </tr>
-          )}
-          {candidateChains.map((c, chainIndex) => {
-            // 任务 1123(原 1065 的「建议(更长且更新)」拆成两条独立标签):
-            // 「更长」按轮次优先(后端 longestPath/longestHead,已按轮次排序,
-            // 全降级时为空 ⇒ 不标)、「更新」按最后活动时间独立计算(后端
-            // newestPath/newestHead,同样跳过降级行)。长/新是两个独立事实,
-            // 一条链可能只占其一(也可能都占),因此各标各的理由、各带各的
-            // 实际值。当前选中行不打标签——它是合成的保留对象。
-            const chainKey = `${c.path}|${c.headId}`;
-            const seenLonger = seenLongerPaths.has(chainKey);
-            const seenNewer = seenNewerPaths.has(chainKey);
-            const isLonger = !c.selected && chains?.longestPath === c.path && chains?.longestHead === c.headId && !seenLonger;
-            const isNewer = !c.selected && chains?.newestPath === c.path && chains?.newestHead === c.headId && !seenNewer;
-            if (isLonger) seenLongerPaths.add(chainKey);
-            if (isNewer) seenNewerPaths.add(chainKey);
-            const isPicked = pickedChain === c.path;
-            return (
-              <Fragment key={`${c.path}|${c.headId}|${chainIndex}`}>
-                <tr
-                  className={`rc-detail__row rc-chain${isLonger ? " rc-chain--recommended" : ""}${isPicked ? " rc-chain--picked" : ""}`}
-                >
-                  <td className="rc-detail__check" />
-                  <td className="rc-label">
-                    {/* tl1355:无 DAG 后行身份=文件(headId 恒空)——副本行显示
-                        文件名短标识(recovery-<8 hex>,tl1415 点12:用户要能把
-                        面板行对回磁盘文件);非副本文件链行显示 headId 前 8 位。 */}
-                    {c.headId ? c.headId.slice(0, 8) : recoveryShortName(c.path) || t("settings.recoveryCopiesCopy")}
-                    {/* 任务 1039r:降级行必须说自己是降级。 */}
-                    {c.degraded && (
-                      <span className="sv-degraded" title={t("settings.sessionVersions.degradedHint")}>
-                        {t("settings.sessionVersions.degraded")}
-                      </span>
-                    )}
-                    {isLonger && (
-                      <span className="rc-versions__tag">
-                        {t("settings.sessionVersions.longerTag")
-                          .replace("{messages}", String(c.messageCount))
-                          .replace("{turns}", String(c.turns))}
-                      </span>
-                    )}
-                    {isNewer && (
-                      <span className="rc-versions__tag">
-                        {t("settings.sessionVersions.newerTag").replace("{date}", (c.lastActivity || "").slice(0, 10))}
-                      </span>
-                    )}
-                    {isPicked && <span className="rc-chain__picked-badge">{t("settings.recoveryCopiesPickedBadge")}</span>}
-                  </td>
-                  <td className="rc-num">{c.messageCount}</td>
-                  <td className="rc-num">{c.turns}</td>
-                  <td>{formatWhen(c.lastActivity)}</td>
-                  <td className="rc-num">{formatBytes(c.bytes)}</td>
-                  <td className="rc-num rc-muted">—</td>
-                </tr>
-                <tr className="rc-detail__ops">
-                  <td colSpan={7} className="rc-detail__ops-cell">
-                    {/* The head's own preview text: what this chain would leave the
-                        conversation looking like, which is the thing a user needs in
-                        order to choose. Without it the list showed numbers only.
-                        tl1415 点11: 降级行(预算外/解析拒)的预览不可得是**扫描状态**,
-                        不冒充「该分支无预览文本」(数据缺席)——两种空态分开说。 */}
-                    <span className="rc-chain__preview rc-chain__name" title={c.preview || undefined}>
-                      {c.preview?.trim()
-                        ? c.preview
-                        : c.degraded
-                          ? t("settings.recoveryCopiesPreviewUnreadable")
-                          : t("settings.recoveryCopiesPreviewEmpty")}
-                    </span>
-                    <button
-                      className="btn btn--secondary btn--small rc-chain__preview-btn"
-                      type="button"
-                      title={t("settings.recoveryCopiesPreviewBtnHint")}
-                      disabled={busy || scanningAll}
-                      onClick={() => onPick(c)}
-                    >
-                      {previewingPath === c.path
-                        ? t("settings.recoveryCopiesPreviewBuildingShort")
-                        : isPicked
-                          ? t("settings.recoveryCopiesUnpick")
-                          : t("settings.recoveryCopiesPreviewBtn")}
-                    </button>
-                    {!c.selected && (
-                      <button
-                        className="btn btn--secondary btn--small"
-                        type="button"
-                        title={c.covered ? t("settings.sessionVersionsActivateCoveredHint") : t("settings.sessionVersionsActivateHint")}
-                        disabled={repairing || activating !== null || c.covered}
-                        onClick={() => void activate(c)}
-                      >
-                        {activating === c.path ? "…" : t("settings.sessionVersions.activate")}
-                      </button>
-                    )}
-                    {/* 任务 1064:非当前版本行加删除入口——当前选中版本不可选不
-                        可删(后端也拒绝),删除走确认+回收语义。降级行没有 head
-                        身份可言,不提供删除。 */}
-                    {!c.selected && !c.degraded && c.headId && (
-                      <button
-                        className="btn btn--secondary btn--small rc-delete"
-                        type="button"
-                        title={t("settings.recoveryCopiesDeleteHeadHint")}
-                        disabled={repairing || deleting !== null}
-                        onClick={() => void deleteHead(c.headId)}
-                      >
-                        {deleting === c.headId ? "…" : t("settings.recoveryCopiesDelete")}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-      <div className="rc-versions__actions">
-        {/* 任务 1065:合成入口与进度放表下操作区——它需要用户先在链行里选定
-            HEAD(行内预览+选中徽标),行内按钮只负责「把这一行设为 HEAD 并预
-            览」,一键合成是整表级操作(1.34 的「选 HEAD → 反向合成最长链」语
-            义:合成针对整条会话,不是单行)。 */}
-        <button
-          className="btn btn--secondary btn--small"
-          type="button"
-          title={t("settings.recoveryCopiesSynthesizeBtnHint")}
-          disabled={busy || scanningAll || Boolean(synthesizing)}
-          onClick={onSynthesize}
-        >
-          {synthesizing
-            ? `${t("settings.recoveryCopiesSynthesizing")} ${synthesizing}`
-            : t("settings.recoveryCopiesSynthesizeBtn")}
-        </button>
-        {pickedChain ? (
-          <span className="rc-chains__synth-hint">{t("settings.recoveryCopiesSynthesizeHeadHint")}</span>
-        ) : (
-          <span className="rc-chains__synth-hint">{t("settings.recoveryCopiesSynthesizePickHint")}</span>
-        )}
-        <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsCheckHint")} onClick={() => void inspect()}>{t("settings.sessionVersions.check")}</button>
-        <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsRepairHint")} disabled={repairing} onClick={() => void repair(false)}>{t("settings.sessionVersions.repair")}</button>
-        <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsRepairDietHint")} disabled={repairing} onClick={() => void repair(true)}>{t("settings.sessionVersions.repairDiet")}</button>
-        {/* tl1415 点9: 清空合并历史——版本徽标的账面读数(head meta 镜像)在
-            tl1280 头重放退役后无人维护,合并完的会话留着陈旧「N 版本」。展开
-            后才可见,只清账面不动内容。 */}
-        {headCount > 1 && (
-          <button
-            className="btn btn--secondary btn--small"
-            type="button"
-            title={t("settings.recoveryCopiesClearHistoryHint")}
-            disabled={busy}
-            onClick={onClearHistory}
-          >
-            {t("settings.recoveryCopiesClearHistory")}
-          </button>
-        )}
-      </div>
-      {health.path === mainPath && health.report && (
-        <div className="rc-versions__health">
-          {health.report.healthy ? (
-            <div>{t("settings.sessionVersions.healthy")}</div>
-          ) : (
-            <ul className="rc-versions__issues">
-              {(health.report.issues ?? []).map((issue) => (
-                <li key={issue.code}>
-                  <code>{issue.code}</code> {issue.detail}
-                  {issue.suggestedAction && <> → {issue.suggestedAction}</>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-      {/* tl1430: 切换回执与修复回执同层可见——成功也要说出口,不靠用户从
-          选中态变化里反推发生了什么。 */}
-      {switchedNote && <div className="rc-versions__health">{switchedNote}</div>}
-      {repairNote && <div className="rc-versions__health">{repairNote}</div>}
-      {records.length > 0 && (
-        <div className="rc-versions__health">
-          <div>{t("settings.sessionVersions.repairLog")}</div>
-          <ul className="rc-versions__issues">
-            {records.map((r, i) => (
-              <li key={i}>
-                {formatWhen(r.at)} {r.before} → {r.after}
-                {r.backupDir ? ` · ${r.backupDir}` : ""}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
+/** Each copy row binds to the first candidate chain on the same path (the copy
+ *  file's own chain, whose 消息·轮次/尾部预览 merge into the copy row — 口径②:
+ *  候选链段与副本同名冗余,移除段、数据并入行). Remaining chains on that path
+ *  (a copy file with several heads) fall through to 版本 rows. */
+function bindCopyChains(
+  candidates: RecoveryChainView[],
+  copies: RecoveryCopyGroupView["copies"],
+): { byCopy: Map<number, RecoveryChainView>; leftover: RecoveryChainView[] } {
+  const pool = [...candidates];
+  const byCopy = new Map<number, RecoveryChainView>();
+  for (const [index, copy] of copies.entries()) {
+    const hit = pool.findIndex((c) => c.path === copy.path);
+    if (hit >= 0) {
+      byCopy.set(index, pool[hit]);
+      pool.splice(hit, 1);
+    }
+  }
+  return { byCopy, leftover: pool };
 }
 
 export function RecoveryCopiesSection() {
@@ -965,12 +431,27 @@ export function RecoveryCopiesSection() {
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<RecoveryCopyGroupView[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [scanning, setScanning] = useState<Set<string>>(new Set());
-  // 队尾体积列修复回执：放在分区层（而非行内组件状态）——行随重载折叠时其本
-  // 身的状态会随子树卸载而丢，回执读不到是实测根因；分区层只有一份，切换会话
-  // 时由行的展开动作清空。
-  const [repairNote, setRepairNote] = useState("");
+  // tl1415b: two group-collapse states (demo v5)——待处理默认展开、已合入默认
+  // 折叠;组头是表内可折叠分组行,点击切换。
+  const [todoOpen, setTodoOpen] = useState(true);
+  const [mergedOpen, setMergedOpen] = useState(false);
+  // 会话级动作的回执面（tl1415b 沉底后收在分区层，渲染在表格下方）：
+  // 健康报告、修复回执、切换回执。行随重载折叠会丢行内状态（1064b 教训），
+  // 分区层只有一份，不随行消失。
+  const [healthReports, setHealthReports] = useState<{ label: string; report: SessionHealthReportView }[]>([]);
+  const [repairNotes, setRepairNotes] = useState<string[]>([]);
+  const [repairing, setRepairing] = useState(false);
+  // tl1430:「切换到此版本」= 采纳该行的文件为新主线(adopt)。修复前的入口
+  // 恒传 mainPath(点副本行请求的却是把主线自己设为激活)+scope 硬编码
+  // global+topicId 空,后端校验链路对不上,点击成了静默 no-op。现在传被点
+  // 行的真实 path;scope/topicId 留空由后端按 catalog filing 反查,副本行与
+  // project 会话同一条通路。headId 恒空:in-log head 切换已随 tl1280 下线,
+  // 后端对该形态显式报错,这里不再有机会走错分支。(tl1430b 在修切换生效位
+  // ——本组件只挪按钮位置,activate 本体一字未动,衔接点见交付报告。)
+  const [activating, setActivating] = useState<string | null>(null);
+  const [switchedNote, setSwitchedNote] = useState("");
+  const [deletingHead, setDeletingHead] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // previewingPath names the chain whose preview is being built. Without it the
   // only feedback was every button greying out, which reads as a dead click
@@ -986,19 +467,16 @@ export function RecoveryCopiesSection() {
   // 任务 1039：失败原因单独留一份——只显示「设置加载失败」时用户与日志都
   // 无从判断是哪条链路断了（实测 49MB events 日志重放被拒）。
   const [failedReason, setFailedReason] = useState("");
-  // chains holds each expanded conversation's candidate chains, keyed by main path.
-  // Loading them replays every log for that conversation, so it happens when a row
-  // is opened rather than for the whole list at once.
+  // chains holds each conversation's candidate chains, keyed by main path.
+  // Loading them replays every log for that conversation. tl1415b: rows are all
+  // inline now (no per-row expansion), so the inventory loads for the groups
+  // whose child rows are visible——待处理组展开时整组、已合入组展开时有内容
+  // (副本或 heads)的会话。
   const [chains, setChains] = useState<Map<string, RecoveryChainSet>>(new Map());
   // versionGroups is the v3 events-log view of the same directories (任务 1011
   // 需求 E), fetched alongside the copies list so the two readings of one
   // conversation can be merged into the same row (任务 1063).
   const [versionGroups, setVersionGroups] = useState<Map<string, SessionVersionGroupView>>(new Map());
-  // 任务 1146：dataVersion 是全量刷新的代际号——load() 每成功一轮就自增。
-  // VersionRows 的加载 effect 只看 mainPath 的话，行保持展开时（本件起 load()
-  // 不再折叠行）切换/删除版本后的重拉没有触发条件；把这个号传进去，列表数据
-  // 每换一代，版本表就跟着重读一次。
-  const [dataVersion, setDataVersion] = useState(0);
   // pickedChain names the branch the user chose to win, keyed by main path. Empty
   // means "let the engine take the fullest one". Keyed per conversation so a pick
   // in one group never leaks into another.
@@ -1008,15 +486,175 @@ export function RecoveryCopiesSection() {
   // 线：合成中报「正在合成第 N/M 条」，完成后报合成前后读数（并集可核对）。
   const [synthesizing, setSynthesizing] = useState<Record<string, string>>({});
   const [synthesisOutcomes, setSynthesisOutcomes] = useState<SynthesisOutcome[]>([]);
-  // Tail reveal: the summary carries ~12k chars of trailing messages; the first
-  // Clicking a chain previews it in a wide dialog - sizes, how it starts and
-  // ends, and what picking it keeps or drops against the main - and only a
-  // confirm inside that dialog names it as the winner. Clicking the picked
-  // chain again un-picks it. The main chain is pickable too: it means keep the
-  // current main and archive the rest. Nothing is written on preview.
-  // The tail-reveal state lives inside ChainPreviewBody: ConfirmDialog keeps
-  // the message element it was handed, so state owned out here was invisible
-  // to the rendered dialog.
+  // 任务 1064：复选框批量选中——勾选的是**分支**（副本文件），不是会话行本身。
+  // 会话行左侧的复选框仍是「勾选要合并的会话」，两套选择互不干扰：批量删除
+  // 只看 branchesSelected。当前版本（主线转录本）永远不在候选里——它没有
+  // 「分支」身份可删（1064 安全约束①的前端面，后端 DeleteRecoveryBranch 也
+  // 会拒绝非副本路径）。
+  const [branchesSelected, setBranchesSelected] = useState<Set<string>>(new Set());
+
+  // tl1414：load() 返回本轮重取是否成功。横幅照旧由内部 catch 落（面板打开
+  // 时可见），但删除后的重取失败必须让调用方能观察到——「已删除」回执配上
+  // 一套纹丝不动的旧列表会被读成「删除没发生」（1146 的中间态教训同源），
+  // toast 把重取失败也带出面板。返回值非抛错：本函数的既有调用方（useEffect
+  // 的 void load() / 刷新按钮 / onReload）没有 catch，rethrow 会让 unhandled
+  // rejection 打崩 harness 进程（组件注释里已有两处实测先例）。
+  const load = useCallback(async (): Promise<boolean> => {
+    setFailed(false);
+    setFailedReason("");
+    try {
+      // 任务 1063：两个列表合并拉取——v3 版本列表（meta sidecar 读数，零重放）
+      // 与副本扫描并存，合并成同一行。任何一侧失败都不拖垮另一侧：副本列表
+      // 是本分区的主体，v3 读数是叠加的可见性，拿不到时行内只缺版本徽标。
+      //
+      // 两个调用刻意**串行**（不是 Promise.all）：两个 reject 的 Promise 在同一
+      // 事件循环 tick 里被同一个 try/catch 消费时，Node 的 unhandledRejection
+      // 判定会先于 catch 链接成立——第二个 rejection 在 catch 附着前就已被标记，
+      // 进程级 handler 收到它（实测 harness 场景：ListRecoveryCopyGroups
+      // reject 时整个测试进程被这条「已处理」的 rejection 打崩）。串行 await
+      // 让每个 rejection 在下一个调用发出前就被消费，消除这个窗口。
+      //
+      // v3 列表用 typeof 守卫而不是 .catch：bridge 的 dev mock 没实现这个方法，
+      // 直接调用会抛「not a function」（同步 throw，不是 Promise rejection），
+      // .catch 拦不住它——旧 harness 的 Partial stub 正是这个形态。
+      const list = await app.ListRecoveryCopyGroups();
+      const versions =
+        typeof app.ListSessionVersionGroups === "function"
+          ? await app.ListSessionVersionGroups().catch(() => [] as SessionVersionGroupView[])
+          : ([] as SessionVersionGroupView[]);
+      setGroups(list);
+      setVersionGroups(new Map((versions ?? []).map((g) => [g.mainPath, g])));
+      setSelected(new Set());
+      // 任务 1146：候选链缓存一并作废。合成/删除/合并之后链清单已经变了，但
+      // 这份 Map 只在行展开时写入：load() 不清它，惰性加载 effect 的
+      // chains.has(path) 守卫就会命中合成前的旧缓存而跳过重拉——这正是用户
+      // 实测「合成已生效，候选链区仍显示两条旧链」的根因。清空后仍可见的
+      // 子行由下方 effect 立即重拉。
+      setChains(new Map());
+      setChainLoads(new Set());
+      return true;
+    } catch (e) {
+      setGroups(null);
+      setFailed(true);
+      // 任务 1039：把后端原因带进横幅——「设置加载失败」单独出现时无法区分
+      // 是 bridge 断、后端拒还是重放超限，排查只能靠猜。
+      setFailedReason(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      void load();
+    }
+  }, [open, load]);
+
+  // 任务 1085：v3-only 会话补行——groups（recovery 副本扫描）只含「有副本文件
+  // 的会话」，v3 多 heads 会话若没有副本文件就不在其中，整行连同 1064 删除/
+  // 1065 合成入口一起消失。这里把 versionGroups 中缺席的会话合成「无副本」的
+  // 占位行（copies: []），使整行（含 v3 版本读数与 heads 子行的全部入口）照
+  // 常渲染。mainBytes/mainModified 为 0/""——副本扫描链路从不读这类会话的
+  // stat，不编造数字，行内照实显示「—」。
+  const composedGroups = useMemo(() => {
+    const list = groups ?? [];
+    const seen = new Set(list.map((g) => g.mainPath));
+    const extras: RecoveryCopyGroupView[] = [];
+    for (const [mainPath, versionGroup] of versionGroups) {
+      if (seen.has(mainPath)) continue;
+      extras.push({
+        mainPath,
+        mainLabel: versionGroup.mainLabel,
+        directory: versionGroup.directory,
+        mainExists: true,
+        mainMessages: 0,
+        mainTurns: 0,
+        mainBytes: 0,
+        mainModified: "",
+        copies: [],
+      });
+    }
+    return extras.length > 0 ? [...list, ...extras] : list;
+  }, [groups, versionGroups]);
+
+  const phased = useMemo(() => {
+    const todo: RecoveryCopyGroupView[] = [];
+    const merged: RecoveryCopyGroupView[] = [];
+    for (const group of composedGroups) {
+      const headCount = versionGroups.get(group.mainPath)?.headCount ?? 0;
+      if (phaseOf(group, headCount) === "todo") todo.push(group);
+      else merged.push(group);
+    }
+    return { todo, merged };
+  }, [composedGroups, versionGroups]);
+
+  const toggle = (path: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+
+  /** loadChains replays one conversation's logs to list its candidate chains. A
+   *  merge promotes the chain with the most messages, so the list is what tells the
+   *  user which transcript they are about to be left with. Failure is recorded as
+   *  a loaded-but-empty inventory so the effect below does not retry in a loop;
+   *  the error banner carries the reason.
+   *
+   *  tl1415 点3:合并表只认这一份链清单。枚举被拒时落 degradedChainSet(与原
+   *  版本表的降级同语义:一行 Degraded + 原因横幅),而不是空集——空集会让
+   *  版本行整块消失,降级读数无处显示。 */
+  const loadChains = useCallback(async (mainPath: string) => {
+    try {
+      const set = await app.ListRecoveryChains(mainPath);
+      // 任务 1039r2:后端 nil 切片会以 null 到达(全候选被非限额错误跳过时
+      // chains 为 null)——落进 state 前归一成空数组,渲染树的 .length 读数
+      // 才有定义(实测 chains:null 直通让分区横幅报 null.length)。
+      setChains((current) => new Map(current).set(mainPath, { ...set, chains: set.chains ?? [] }));
+    } catch (err) {
+      setChains((current) => new Map(current).set(mainPath, degradedChainSet(mainPath)));
+      setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
+    }
+  }, []);
+
+  // Chain inventory is lazy: it replays every log for the conversation, so it
+  // loads only for conversations whose child rows are on screen. tl1415b: there
+  // is no per-row expansion any more——待处理组展开 ⇒ 整组需要;已合入组展开 ⇒
+  // 只有仍带内容(副本或 heads)的会话需要。chainLoads guards concurrent repeats.
+  const [chainLoads, setChainLoads] = useState<Set<string>>(new Set());
+  const chainNeededPaths = useMemo(() => {
+    const out: string[] = [];
+    if (todoOpen) for (const g of phased.todo) out.push(g.mainPath);
+    if (mergedOpen) {
+      for (const g of phased.merged) {
+        const headCount = versionGroups.get(g.mainPath)?.headCount ?? 0;
+        if (g.copies.length > 0 || headCount > 1) out.push(g.mainPath);
+      }
+    }
+    return out;
+  }, [todoOpen, mergedOpen, phased, versionGroups]);
+  useEffect(() => {
+    for (const path of chainNeededPaths) {
+      if (chains.has(path) || chainLoads.has(path)) continue;
+      setChainLoads((current) => new Set(current).add(path));
+      void loadChains(path).finally(() => {
+        setChainLoads((current) => {
+          const next = new Set(current);
+          next.delete(path);
+          return next;
+        });
+      });
+    }
+  }, [chainNeededPaths, chains, chainLoads, loadChains]);
+
+  /** togglePick previews a chain in a wide dialog and — on confirm — names it as
+   *  the merge HEAD (pickedChain). Clicking the picked chain again un-picks it.
+   *  The main chain is pickable too: it means keep the current main and archive
+   *  the rest. Nothing is written on preview.
+   *
+   *  The tail-reveal state lives inside ChainPreviewBody: ConfirmDialog keeps
+   *  the message element it was handed, so state owned out here was invisible
+   *  to the rendered dialog. */
   const togglePick = async (mainPath: string, chain: RecoveryChainView) => {
     if (pickedChain[mainPath] === chain.path) {
       setPickedChain((current) => {
@@ -1071,241 +709,68 @@ export function RecoveryCopiesSection() {
     }
   };
 
-  // tl1414：load() 返回本轮重取是否成功。横幅照旧由内部 catch 落（面板打开
-  // 时可见），但删除后的重取失败必须让调用方能观察到——「已删除」回执配上
-  // 一套纹丝不动的旧列表会被读成「删除没发生」（1146 的中间态教训同源），
-  // toast 把重取失败也带出面板。返回值非抛错：本函数的既有调用方（useEffect
-  // 的 void load() / 刷新按钮 / onReload）没有 catch，rethrow 会让 unhandled
-  // rejection 打崩 harness 进程（组件注释里已有两处实测先例）。
-  const load = useCallback(async (): Promise<boolean> => {
-    setFailed(false);
-    setFailedReason("");
+  // tl1430b 衔接点:activate 本体与 tl1430b 返修共用,本组件只把按钮摆上副本
+  // 行/版本行(逻辑零改动)。
+  const activate = async (chain: RecoveryChainView) => {
+    setActivating(chain.path);
     try {
-      // 任务 1063：两个列表合并拉取——v3 版本列表（meta sidecar 读数，零重放）
-      // 与副本扫描并存，合并成同一行。任何一侧失败都不拖垮另一侧：副本列表
-      // 是本分区的主体，v3 读数是叠加的可见性，拿不到时行内只缺版本徽标。
-      //
-      // 两个调用刻意**串行**（不是 Promise.all）：两个 reject 的 Promise 在同一
-      // 事件循环 tick 里被同一个 try/catch 消费时，Node 的 unhandledRejection
-      // 判定会先于 catch 链接成立——第二个 rejection 在 catch 附着前就已被标记，
-      // 进程级 handler 收到它（实测 harness 场景：ListRecoveryCopyGroups
-      // reject 时整个测试进程被这条「已处理」的 rejection 打崩）。串行 await
-      // 让每个 rejection 在下一个调用发出前就被消费，消除这个窗口。
-      //
-      // v3 列表用 typeof 守卫而不是 .catch：bridge 的 dev mock 没实现这个方法，
-      // 直接调用会抛「not a function」（同步 throw，不是 Promise rejection），
-      // .catch 拦不住它——旧 harness 的 Partial stub 正是这个形态。
-      const list = await app.ListRecoveryCopyGroups();
-      const versions =
-        typeof app.ListSessionVersionGroups === "function"
-          ? await app.ListSessionVersionGroups().catch(() => [] as SessionVersionGroupView[])
-          : ([] as SessionVersionGroupView[]);
-      setGroups(list);
-      setVersionGroups(new Map((versions ?? []).map((g) => [g.mainPath, g])));
-      setSelected(new Set());
-      // 任务 1146：候选链缓存一并作废。合成/删除/合并之后链清单已经变了，但
-      // 这份 Map 只在行展开时写入：load() 不清它，惰性加载 effect 的
-      // chains.has(path) 守卫就会命中合成前的旧缓存而跳过重拉——这正是用户
-      // 实测「合成已生效，候选链区仍显示两条旧链」的根因。清空后仍展开的行
-      // 由下方 effect 立即重拉，折叠中的行在重新展开时重拉。
-      setChains(new Map());
-      setChainLoads(new Set());
-      setDataVersion((v) => v + 1);
-      return true;
+      await app.SetActiveSessionVersion({ scope: "", topicId: "", path: chain.path, headId: "" });
+      const label = recoveryShortName(chain.path) || chain.label || chain.path;
+      setSwitchedNote(t("settings.sessionVersions.activated").replace("{name}", label));
+      await load();
     } catch (e) {
-      setGroups(null);
-      setFailed(true);
-      // 任务 1039：把后端原因带进横幅——「设置加载失败」单独出现时无法区分
-      // 是 bridge 断、后端拒还是重放超限，排查只能靠猜。
-      setFailedReason(e instanceof Error ? e.message : String(e));
-      return false;
+      setErrors((current) => [...current, e instanceof Error ? e.message : String(e)]);
+    } finally {
+      setActivating(null);
     }
-  }, []);
-
-  useEffect(() => {
-    if (open) {
-      // 任务 1146：默认折叠是「打开面板」的语义（Collapsed by default: the
-      // summary line answers "which conversation has copies", and the per-copy
-      // detail only matters once one is chosen），不是每次数据刷新的副作用。
-      // 放在这里而非 load()：面板内合成/删除/合并/手动刷新触发的 load() 保持
-      // 行展开，候选链与版本表在原地重拉，用户不再需要重新展开行或重开面板
-      // 才能看到操作后的状态。
-      setExpanded(new Set());
-      void load();
-    }
-  }, [open, load]);
-
-  // 任务 1085：v3-only 会话补行——groups（recovery 副本扫描）只含「有副本文件
-  // 的会话」，v3 多 heads 会话若没有副本文件就不在其中，整行连同 1064 删除/
-  // 1065 合成入口一起消失。这里把 versionGroups 中缺席的会话合成「无副本」的
-  // 占位行（copies: []），使整行（含 v3 版本徽标与展开后的链表块/VersionRows
-  // 的全部入口）照常渲染。mainBytes/mainModified 为 0/""——副本扫描链路从不
-  // 读这类会话的 stat，不编造数字，行内照实显示「—」。
-  const composedGroups = useMemo(() => {
-    const list = groups ?? [];
-    const seen = new Set(list.map((g) => g.mainPath));
-    const extras: RecoveryCopyGroupView[] = [];
-    for (const [mainPath, versionGroup] of versionGroups) {
-      if (seen.has(mainPath)) continue;
-      extras.push({
-        mainPath,
-        mainLabel: versionGroup.mainLabel,
-        directory: versionGroup.directory,
-        mainExists: true,
-        mainMessages: 0,
-        mainTurns: 0,
-        mainBytes: 0,
-        mainModified: "",
-        copies: [],
-      });
-    }
-    return extras.length > 0 ? [...list, ...extras] : list;
-  }, [groups, versionGroups]);
-
-  const phased = useMemo(() => {
-    const pending: RecoveryCopyGroupView[] = [];
-    const unmerged: RecoveryCopyGroupView[] = [];
-    const merged: RecoveryCopyGroupView[] = [];
-    for (const group of composedGroups) {
-      const phase = phaseOf(group);
-      if (phase === "pending") pending.push(group);
-      else if (phase === "unmerged") unmerged.push(group);
-      else merged.push(group);
-    }
-    return { pending, unmerged, merged };
-  }, [composedGroups]);
-
-  /** redundantCopies is what the tl1415 点8 one-click cleanup targets: measured,
-   *  non-orphan copies whose every event the main transcript already holds
-   *  (unique = 0) — the residue a synthesis leaves behind once the branches
-   *  have been folded into a single long chain. Unmeasured or divergent copies
-   *  never qualify, and the button disappears entirely when nothing does. */
-  const redundantCopies = useMemo(
-    () =>
-      composedGroups.flatMap((group) =>
-        group.copies
-          .filter((copy) => !copy.orphan && copy.scanned && copy.unique === 0)
-          .map((copy) => ({ group, copy })),
-      ),
-    [composedGroups],
-  );
-
-  const toggle = (path: string) =>
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-
-  /** loadChains replays one conversation's logs to list its candidate chains. A
-   *  merge promotes the chain with the most messages, so the list is what tells the
-   *  user which transcript they are about to be left with. Failure is recorded as
-   *  a loaded-but-empty inventory so the effect below does not retry in a loop;
-   *  the error banner carries the reason.
-   *
-   *  tl1415 点3:展开区合并表只认这一份链清单(原 VersionRows 自己重放的第二
-   *  份已随合并删除)。枚举被拒时落 degradedChainSet(与原版本表的降级同语
-   *  义:一行 Degraded + 原因横幅),而不是空集——空集会让「候选链与版本」组
-   *  整组消失,降级读数无处显示。 */
-  const loadChains = useCallback(async (mainPath: string) => {
-    try {
-      const set = await app.ListRecoveryChains(mainPath);
-      // 任务 1039r2:后端 nil 切片会以 null 到达(全候选被非限额错误跳过时
-      // chains 为 null)——落进 state 前归一成空数组,渲染树的 .length 读数
-      // 才有定义(实测 chains:null 直通让分区横幅报 null.length)。
-      setChains((current) => new Map(current).set(mainPath, { ...set, chains: set.chains ?? [] }));
-    } catch (err) {
-      setChains((current) => new Map(current).set(mainPath, degradedChainSet(mainPath)));
-      setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
-    }
-  }, []);
-
-  // Chain inventory is lazy: it replays every log for the conversation, so it
-  // loads when a row becomes expanded - however that happened. Scanning
-  // expands rows programmatically (scanOne), and before this effect only the
-  // manual toggle loaded the inventory, which is why scanned rows showed no
-  // candidate chains at all. One effect keeps "expanded" and "chains loaded"
-  // in step for both paths; chainLoads guards against concurrent repeats.
-  const [chainLoads, setChainLoads] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    for (const path of expanded) {
-      if (chains.has(path) || chainLoads.has(path)) continue;
-      setChainLoads((current) => new Set(current).add(path));
-      void loadChains(path).finally(() => {
-        setChainLoads((current) => {
-          const next = new Set(current);
-          next.delete(path);
-          return next;
-        });
-      });
-    }
-  }, [expanded, chains, chainLoads, loadChains]);
-
-  const toggleExpanded = (path: string) => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
   };
 
-  /** tl1415 点9: 已合入默认折叠——合并把一个会话收成单一主线后,它的展开区
-   *  使命已完成,行折回概要一行(点击可再展开);面板重开时所有行本就默认折叠,
-   *  这里是操作后的即时回落。适用边界(点9 返修):只挂在批量合并路径——
-   *  合成(synthesizeHeads)不折行,1146(用户裁决返修2)钉死合成后行保持
-   *  展开、结果原地可见,折叠会卸载展开区并让链清单 lazy 重拉失去目标。 */
-  const collapseRow = (path: string) => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      next.delete(path);
-      return next;
-    });
-  };
-
-  /** tl1415 点9: 清空合并历史——meta 头镜像复位为单链(账面重置,内容零触
-   *  碰)。确认、调用、toast、重载收在这一处,VersionRows 只拿回调。 */
-  const clearMergeHistory = async (mainPath: string, label: string) => {
-    const ok = await confirm({
-      title: t("settings.recoveryCopiesClearHistoryTitle"),
+  /** 任务 1064：v3 版本块里的单版本删除。与父级的批量删除共用同一条确认与
+   *  回收语义（后端 retire 标记：不选中就不可删，删后条目从列表消失、独有
+   *  事件在下一次单写轮换前仍可通过重放找回）。 */
+  const deleteHead = async (mainPath: string, headId: string) => {
+    const okToDelete = await confirm({
+      title: t("settings.recoveryCopiesDeleteHeadTitle"),
       message: (
         <div>
           <p>
-            {t("settings.recoveryCopiesClearHistoryLead")}：{label}
+            {t("settings.recoveryCopiesDeleteHeadLead")}
+            ：{headId ? headId.slice(0, 8) : "main"}
           </p>
-          <p className="rc-preview__warn">{t("settings.recoveryCopiesClearHistoryNote")}</p>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesDeleteHeadWarn")}</p>
         </div>
       ),
-      confirmLabel: t("settings.recoveryCopiesClearHistoryConfirm"),
+      confirmLabel: t("settings.recoveryCopiesDeleteConfirm"),
       cancelLabel: t("common.cancel"),
       tone: "danger",
     });
-    if (!ok) return;
-    setBusy(true);
+    if (!okToDelete) return;
+    setDeletingHead(headId);
     try {
-      await app.ClearSessionMergeHistory(mainPath);
-      showToast(t("settings.recoveryCopiesClearHistoryDone"), "info");
+      await app.DeleteSessionVersionHead(mainPath, headId);
+      // tl1414 反馈对称：retire 生效同弹 toast（outcome 行不存在于这条路径，
+      // 无 toast 时成功零反馈，读作没点）。
+      showToast(t("settings.recoveryCopiesVersionDeletedToast", { count: 1 }), "info");
       await load();
-    } catch (err) {
-      setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
+    } catch (e) {
+      // tl1367-fix defect C: the busy family renders localized (holder block).
+      const detail = formatSessionBusyError(e);
+      // tl1414 反馈对称：失败同弹 toast（横幅只在面板打开时可见）。
+      showToast(
+        `${t("settings.recoveryCopiesVersionDeleteFailedToast", { count: 1 })}：${detail}`,
+        "error",
+      );
+      setErrors((current) => [...current, detail]);
     } finally {
-      setBusy(false);
+      setDeletingHead(null);
     }
   };
 
-  /** scanOne measures a conversation and returns the fresh row, so callers that
-   *  need the numbers immediately do not have to wait for a re-render. */
   const scanOne = async (mainPath: string): Promise<RecoveryCopyGroupView | null> => {
     setScanning((current) => new Set(current).add(mainPath));
     try {
       const fresh = await app.ScanRecoveryCopyGroup(mainPath);
       setGroups((current) => (current ?? []).map((g) => (g.mainPath === mainPath ? fresh : g)));
-      // Scanning is the moment the detail becomes worth reading, so open the row.
-      setExpanded((current) => new Set(current).add(mainPath));
       return fresh;
     } catch (err) {
       setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
@@ -1355,22 +820,141 @@ export function RecoveryCopiesSection() {
       : `${t("settings.recoveryCopiesCopy")} ${winner.copyIndex + 1} ${winner.turns}`;
   };
 
-  // tl1415 点8: 清理多余副本——把主线已完整覆盖(unique=0)的副本逐份走
-  // DeleteRecoveryBranch 的回收语义(可恢复 .trash;打开中的副本后端拒绝,
-  // 跳过并在结果里说明)。确认框列出会话与份数,结果给 toast。
-  const [cleaningUp, setCleaningUp] = useState(false);
-  const cleanupRedundantCopies = async () => {
-    const targets = redundantCopies;
+  // tl1415 点9: 清空合并历史——meta 头镜像复位为单链(账面重置,内容零触
+  // 碰)。tl1415b: 沉底为会话级批量入口——作用于勾选会话中 headCount>1 的
+  // 那些列清单一次确认,逐个调用。组迁移语义(口径④):清空后该会话移出已
+  // 合入组(phaseOf 的 headCount 判定),仍多副本则回到待处理组。
+  const clearMergeHistorySelected = async () => {
+    const chosen = phased.merged.filter(
+      (g) => selected.has(g.mainPath) && (versionGroups.get(g.mainPath)?.headCount ?? 0) > 1,
+    );
+    if (!chosen.length) return;
+    const ok = await confirm({
+      title: t("settings.recoveryCopiesClearHistoryTitle"),
+      message: (
+        <div>
+          <p>{t("settings.recoveryCopiesClearHistoryBatchLead")}</p>
+          <ul className="rc-versions__issues">
+            {chosen.map((g) => (
+              <li key={g.mainPath}>{g.mainLabel}</li>
+            ))}
+          </ul>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesClearHistoryNote")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesClearHistoryConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      let cleared = 0;
+      const failures: string[] = [];
+      for (const group of chosen) {
+        try {
+          await app.ClearSessionMergeHistory(group.mainPath);
+          cleared += 1;
+        } catch (err) {
+          failures.push(`${group.mainLabel}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      if (cleared > 0) showToast(t("settings.recoveryCopiesClearHistoryDone"), "info");
+      if (failures.length > 0) setErrors((current) => [...current, ...failures]);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ── 会话级批处理:检查健康 / 修复 / 修复并瘦身(tl1415b 沉底) ──
+  // 原先住在每行展开区(VersionRows),行折叠即丢状态;沉底后作用于勾选会话,
+  // 回执收在分区层(表格下方 rc-versions__health 块),不随行消失。
+  const inspectSelected = async () => {
+    const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+    if (!chosen.length) return;
+    setErrors([]);
+    for (const group of chosen) {
+      try {
+        const report = await app.InspectSessionHealthFor(group.mainPath);
+        setHealthReports((current) => [
+          ...current.filter((h) => h.label !== group.mainLabel),
+          { label: group.mainLabel, report },
+        ]);
+      } catch (e) {
+        setErrors((current) => [...current, e instanceof Error ? e.message : String(e)]);
+      }
+    }
+  };
+
+  const repairSelected = async (diet: boolean) => {
+    const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+    if (!chosen.length) return;
+    setRepairing(true);
+    setRepairNotes([]);
+    setErrors([]);
+    try {
+      for (const group of chosen) {
+        let note = "";
+        try {
+          // 队尾体积列修复：修复前后文件读数对比——后端报告本身不带体积，这里在
+          // 调用前后各读一次磁盘大小（os.Stat 的同一读数，与链表的体积列同源），
+          // 瘦身类修复（diet）的收益才在面板上看得见；纯修复类动作体积不变时照实
+          // 显示「无变化」，不编造数字。
+          const beforeBytes = await fileSizeOf(group.mainPath);
+          const report = await app.RepairSessionFor(group.mainPath, true, true, diet);
+          const afterBytes = await fileSizeOf(group.mainPath);
+          if (!report.repaired) {
+            note = t("settings.sessionVersions.noRepairNeeded");
+          } else {
+            // 动作名标注 done/skipped（后端 SelfHealAction.Status 就是 done|skipped|
+            // failed）：一行回执说清「哪些做了、哪些没做」，而不是只报一串动作名。
+            const actionsText = report.actions
+              .map((a) => `${a.action}(${a.status})`)
+              .join("+");
+            const volumeText = volumeDeltaText(beforeBytes, afterBytes, t);
+            note = `${t("settings.sessionVersions.repaired")
+              .replace("{actions}", actionsText)
+              .replace("{backup}", report.backupDir || "—")}${volumeText}`;
+            // 任务 1116 件 1：hydrate 回填了检查点但 diet 没跑、投影仍超窗 ⇒ 回执
+            // 不能停在「修复完成」。追加显式告警与下一步（勾 Diet 再跑一次），与
+            // 后端 report.warning / repairlog / notice 三方一致。
+            if (report.warning) {
+              note += ` — ${t("settings.sessionVersions.repairStillOverWindow")}`;
+            }
+          }
+        } catch (e) {
+          note = String(e);
+        }
+        setRepairNotes((current) => [...current, `${group.mainLabel} · ${note}`]);
+      }
+      await load();
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  // tl1415 点8: 清理多余副本——tl1415b 改形为「清理非主线副本」:作用于勾选
+  // 会话,把它们的全部非主线副本(孤立副本除外——主线已缺失的副本删除即真
+  // 丢内容,只能被合并)逐份走 DeleteRecoveryBranch 的回收语义。二次确认列出
+  // 会话与份数,结果给 toast。
+  const cleanupNonMainCopies = async () => {
+    const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+    const targets = chosen.flatMap((group) =>
+      group.copies
+        .filter((copy) => !copy.orphan)
+        .map((copy) => ({ group, copy })),
+    );
     if (targets.length === 0) return;
     const perGroup = new Map<string, number>();
     for (const { group } of targets) {
       perGroup.set(group.mainLabel, (perGroup.get(group.mainLabel) ?? 0) + 1);
     }
     const ok = await confirm({
-      title: t("settings.recoveryCopiesCleanupTitle"),
+      title: t("settings.recoveryCopiesCleanupNonMainTitle"),
       message: (
         <div>
-          <p>{t("settings.recoveryCopiesCleanupLead")}</p>
+          <p>{t("settings.recoveryCopiesCleanupNonMainLead")}</p>
           <ul className="rc-versions__issues">
             {Array.from(perGroup.entries()).map(([label, count]) => (
               <li key={label}>
@@ -1387,7 +971,6 @@ export function RecoveryCopiesSection() {
     });
     if (!ok) return;
     setBusy(true);
-    setCleaningUp(true);
     setErrors([]);
     try {
       let archived = 0;
@@ -1403,7 +986,7 @@ export function RecoveryCopiesSection() {
       if (failures.length === targets.length) {
         showToast(t("settings.recoveryCopiesCleanupFailed"), "error");
       } else {
-        showToast(t("settings.recoveryCopiesCleanupDone", { n: archived }), "info");
+        showToast(t("settings.recoveryCopiesCleanupNonMainDone", { n: archived }), "info");
       }
       if (failures.length > 0) {
         setErrors((current) => [...current, ...failures]);
@@ -1411,7 +994,6 @@ export function RecoveryCopiesSection() {
       await load();
     } finally {
       setBusy(false);
-      setCleaningUp(false);
       setStatus("");
     }
   };
@@ -1547,8 +1129,6 @@ export function RecoveryCopiesSection() {
           }
           try {
             const forced = await app.ForceConsolidateSessionRecoveryCopies(group.mainPath, pickedChain[group.mainPath] ?? "");
-            // tl1415 点9: 已合入默认折叠——合并成功,展开区使命完成,行折回。
-            collapseRow(group.mainPath);
             collected.push({
               label: group.mainLabel,
               kind: "forced",
@@ -1569,8 +1149,6 @@ export function RecoveryCopiesSection() {
           continue;
         }
 
-        // tl1415 点9: 已合入默认折叠——合并成功,行折回概要一行(点击可再展开)。
-        collapseRow(group.mainPath);
         collected.push({
           label: group.mainLabel,
           kind: "merged",
@@ -1616,12 +1194,6 @@ export function RecoveryCopiesSection() {
   const needingCount = selectedGroups.reduce((n, g) => n + copiesNeedingMeasurement(g).length, 0);
   const anyMerged = outcomes.some((o) => o.kind === "merged" || o.kind === "forced");
 
-  // 任务 1064：复选框批量选中——勾选的是**分支**（副本文件），不是会话行本身。
-  // 会话行左侧的复选框仍是「勾选要合并的会话」，两套选择互不干扰：批量删除
-  // 只看 branchesSelected。当前版本（主线转录本）永远不在候选里——它没有
-  // 「分支」身份可删（1064 安全约束①的前端面，后端 DeleteRecoveryBranch 也
-  // 会拒绝非副本路径）。
-  const [branchesSelected, setBranchesSelected] = useState<Set<string>>(new Set());
   const toggleBranch = (path: string) =>
     setBranchesSelected((current) => {
       const next = new Set(current);
@@ -1703,10 +1275,9 @@ export function RecoveryCopiesSection() {
     setStatus("");
   };
 
-  /** deleteBranchOne is the 任务 1064 single-copy delete. tl1415 点3:抽出为
-   *  具名函数——合并表把副本行的渲染移进了 VersionRows,删除动作统一走外层
-   *  回调,不再内联在行 JSX 里。语义原样:确认框 → DeleteRecoveryBranch(回
-   *  收语义)→ 结果行 → 列表重取完成后才释放 busy(与批量删除同口径)。 */
+  /** deleteBranchOne is the 任务 1064 single-copy delete. 语义原样:确认框 →
+   *  DeleteRecoveryBranch(回收语义)→ 结果行 → 列表重取完成后才释放 busy(与
+   *  批量删除同口径)。 */
   const deleteBranchOne = async (group: RecoveryCopyGroupView, copyPath: string, index: number) => {
     const okToDelete = await confirm({
       title: t("settings.recoveryCopiesDeleteTitle"),
@@ -1856,7 +1427,11 @@ export function RecoveryCopiesSection() {
    *  The 1.34 merge rules ride along untouched: the chain list already carries
    *  the turn-priority recommendation (轮次优先, backend longestHead) and each
    *  chain row offers the tail preview that lets a user judge which branch to
-   *  keep as the HEAD before pressing synthesize. */
+   *  keep as the HEAD before pressing synthesize.
+   *
+   *  tl1415b: 入口仍在会话行（事件日志头合成是会话级动作,与文件级合并=底部
+   *  ③「以选定 HEAD 合成最长链」是两个引擎、两条确认链,harness 钉死各自
+   *  语义——见交付报告的衔接说明）。 */
   const synthesizeHeads = async (mainPath: string, groupLabel: string) => {
     const headId = pickedChain[mainPath] ?? "";
     const participants = (chains.get(mainPath)?.chains ?? []).filter(
@@ -1951,12 +1526,10 @@ export function RecoveryCopiesSection() {
           // tl1402：v3 形态的合成真实生效（切主线/清理落败 heads）——同弹
           // toast 让反馈离开面板也可见；文案直接用横幅的 locale 句（已三语）。
           showToast(detail, "info");
-          // tl1415 点9 返修:合成路径不折行——1146(20261025 用户裁决返修2)钉死
-          // 「合成后行保持展开,结果原地可见」;折叠会卸载展开区,lazy effect 又
-          // 只为展开中的行重拉链清单,反馈面整体消失。折回仅保留在批量合并路径。
+          // Named winners were consumed even on this no-op path; reset the pick.
         } else if (v3Only) {
           // 后端确认无事可做（无落败分支、无需切换）——保留诚实的「无可做」
-          // 回执并指出现有出路（版本表的「切换到此版本」按钮，该入口真实存在）。
+          // 回执并指出现有出路（版本行的「切换到此版本」按钮，该入口真实存在）。
           setSynthesisOutcomes((current) => [
             ...current,
             { label: groupLabel, kind: "v3only", detail: t("settings.recoveryCopiesSynthesizeNoCopyBranch") },
@@ -2007,8 +1580,6 @@ export function RecoveryCopiesSection() {
       // 入主线的独有事件数（graft 零双份，与主线增量同量级）。outcome 行只
       // 有展开面板才可见，toast 让反馈离开面板也在。
       showToast(t("settings.recoveryCopiesMergedToast", { count: uniqueTotal }), "info");
-      // tl1415 点9 返修:文件级合成同合成路径口径——行保持展开(1146 钉死的
-      // 原地反馈),不折回;折回仅保留在批量合并路径。
       // Named winners were consumed; the next run starts neutral.
       setPickedChain((current) => {
         const next = { ...current };
@@ -2059,18 +1630,445 @@ export function RecoveryCopiesSection() {
     }
   };
 
-  const renderGroup = (group: RecoveryCopyGroupView) => {
-    const isOpen = expanded.has(group.mainPath);
+  // ── 行渲染(tl1415b 单表形态) ──
+  // 任务 1123:same path+headId 的行会在链表里出现两次(主转录本体一行 + 它
+  // 的某个 head 一行,字段读数相同)——两条标签各只打一次。
+  const seenLongerPaths = new Set<string>();
+  const seenNewerPaths = new Set<string>();
+  const chainTagInfo = (c: RecoveryChainView, set: RecoveryChainSet | undefined) => {
+    const chainKey = `${c.path}|${c.headId}`;
+    const isLonger = !c.selected && set?.longestPath === c.path && set?.longestHead === c.headId && !seenLongerPaths.has(chainKey);
+    const isNewer = !c.selected && set?.newestPath === c.path && set?.newestHead === c.headId && !seenNewerPaths.has(chainKey);
+    if (isLonger) seenLongerPaths.add(chainKey);
+    if (isNewer) seenNewerPaths.add(chainKey);
+    return { isLonger, isNewer };
+  };
+
+  /** tailPreviewText is the inline tail-preview line's text (口径⑥: 预览=尾
+   *  部消息;行内 sub2 摘要 + hover 全文). Degraded and empty states keep their
+   *  tl1360 缺陷② distinction: a refused replay is a scan state, not "the
+   *  branch has no preview text". */
+  const tailPreviewText = (c: RecoveryChainView): string =>
+    c.preview?.trim()
+      ? c.preview
+      : c.degraded
+        ? t("settings.recoveryCopiesPreviewUnreadable")
+        : t("settings.recoveryCopiesPreviewEmpty");
+
+  const renderSessionBlock = (group: RecoveryCopyGroupView, phase: Phase) => {
     const isScanning = scanning.has(group.mainPath);
+    const headCount = versionGroups.get(group.mainPath)?.headCount ?? 0;
     const measured = copiesNeedingMeasurement(group).length === 0;
     const groupUnique = measured ? uniqueIn(group) : null;
-    // 任务 1063：同一会话的 v3 版本读数叠在副本行上——多 heads 的会话在
-    // 合并前的两个入口里各说各话，现在版本徽标直接跟在行内，展开行才不需
-    // 要用户自己去另一区对号入座。
-    const versions = versionGroups.get(group.mainPath);
+    const model = buildSessionChainModel(group, chains.get(group.mainPath), chainLoads.has(group.mainPath) && !chains.has(group.mainPath));
+    const { byCopy, leftover } = bindCopyChains(model.candidates, group.copies);
+    // tl1430 验收①:主线行换到采纳来的文件时亮短标识,让「主线行换了」立即可辨识。
+    const mainChainShortName =
+      model.currentMainChain && model.currentMainChain.path !== group.mainPath
+        ? recoveryShortName(model.currentMainChain.path)
+        : "";
+    const mainMessages = model.currentMainChain ? model.currentMainChain.messageCount : group.mainMessages;
+    const mainTurns = model.currentMainChain ? model.currentMainChain.turns : group.mainTurns;
+    const mainModified = model.currentMainChain ? model.currentMainChain.lastActivity : group.mainModified;
+    const mainBytes = model.currentMainChain ? model.currentMainChain.bytes : group.mainBytes;
+    const winner = measured ? predictedWinner(group) : null;
+    const sessionTitleText =
+      headCount > 1
+        ? `${group.mainLabel}（${t("settings.recoveryCopiesVersionsBadge").replace("{count}", String(headCount))}）`
+        : group.mainLabel;
+
     return (
-      <div className="rc-group" key={group.mainPath}>
-        <div className="rc-row rc-row--group">
+      <Fragment key={group.mainPath}>
+        {/* ── 会话行(类型列=会话;勾选=参与底部合并;操作=①扫描) ── */}
+        <tr className="rc-session rc-row--group">
+          <td className="rc-detail__check">
+            <input
+              type="checkbox"
+              checked={selected.has(group.mainPath)}
+              disabled={busy}
+              onChange={() => toggle(group.mainPath)}
+              aria-label={group.mainLabel}
+              title={t("settings.recoveryCopiesSelectHint")}
+            />
+          </td>
+          <td className="rc-col-kind">
+            <span className="rc-kindtag rc-kindtag--session">{t("settings.recoveryCopiesKindSession")}</span>
+          </td>
+          <td className="rc-col-name" title={sessionTitleText}>
+            <div className="rc-clip1">{group.mainLabel}</div>
+          </td>
+          <td>{formatWhen(group.mainModified)}</td>
+          <td className="rc-num">{formatBytes(group.mainBytes)}</td>
+          <td className="rc-num">
+            {sessionMeasured(group) ? (
+              sessionMsgTurnsText(group, t)
+            ) : (
+              <span className="rc-muted" title={t("settings.recoveryCopiesUnmeasuredHint")}>
+                {sessionMsgTurnsText(group, t)}
+              </span>
+            )}
+          </td>
+          <td className="rc-num">×{group.copies.length}</td>
+          <td className={`rc-num ${groupUnique ? "rc-unique" : "rc-muted"}`}>{groupUnique ?? "—"}</td>
+          <td className="rc-col-ops">
+            <div className="rc-ops">
+              <button
+                className="btn btn--secondary btn--small"
+                type="button"
+                title={
+                  phase === "merged"
+                    ? t("settings.recoveryCopiesRescanHint")
+                    : t("settings.recoveryCopiesStepScanHint")
+                }
+                disabled={isScanning || scanningAll}
+                onClick={() => void scanOne(group.mainPath)}
+              >
+                {isScanning ? "…" : t("settings.recoveryCopiesScan")}
+              </button>
+              <button
+                className="btn btn--secondary btn--small"
+                type="button"
+                title={t("settings.recoveryCopiesSynthesizeBtnHint")}
+                disabled={busy || scanningAll || Boolean(synthesizing[group.mainPath])}
+                onClick={() => void synthesizeHeads(group.mainPath, group.mainLabel)}
+              >
+                {synthesizing[group.mainPath]
+                  ? `${t("settings.recoveryCopiesSynthesizing")} ${synthesizing[group.mainPath]}`
+                  : t("settings.recoveryCopiesSynthesizeBtn")}
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        {/* ── 主线行(类型列=主线;无切换钮——主线就是当前,只有预览) ── */}
+        <tr className="rc-child rc-detail__row rc-detail__row--main">
+          <td className="rc-detail__check" />
+          <td className="rc-col-kind">
+            <span className="rc-kindtag rc-kindtag--main">{t("settings.recoveryCopiesMain")}</span>
+            {model.currentMainChain?.selected ? (
+              <span className="rc-kindtag rc-kindtag--cur">{t("settings.sessionVersions.selected")}</span>
+            ) : null}
+          </td>
+          <td
+            className="rc-col-name"
+            title={
+              model.currentMainChain
+                ? `${t("settings.recoveryCopiesMain")}${mainChainShortName ? `｜${model.currentMainChain.path}` : ""}｜${tailPreviewText(model.currentMainChain)}`
+                : undefined
+            }
+          >
+            <div className="rc-clip1">
+              {t("settings.recoveryCopiesMain")}
+              {mainChainShortName ? (
+                <span className="rc-copy__shortname" title={model.currentMainChain?.path}>
+                  {mainChainShortName}
+                </span>
+              ) : null}
+              {winner?.isMain ? ` · ${t("settings.recoveryCopiesWins")}` : ""}
+              {!group.mainExists ? ` · ${t("settings.recoveryCopiesOrphan")}` : ""}
+              {/* 任务 1039r:降级行必须说自己是降级——否则零计数行与「空会话」
+                  在面板上无法区分。悬停 title 给出完整原因。 */}
+              {model.currentMainChain?.degraded && (
+                <span className="sv-degraded" title={t("settings.sessionVersions.degradedHint")}>
+                  {t("settings.sessionVersions.degraded")}
+                </span>
+              )}
+            </div>
+            {model.currentMainChain ? (
+              <div className="rc-sub2 rc-clip2" title={tailPreviewText(model.currentMainChain)}>
+                {tailPreviewText(model.currentMainChain)}
+              </div>
+            ) : null}
+          </td>
+          <td>{formatWhen(mainModified)}</td>
+          <td className="rc-num">{formatBytes(mainBytes)}</td>
+          <td className="rc-num">{mainMessages || mainTurns ? `${mainMessages} · ${mainTurns}` : "—"}</td>
+          <td className="rc-num rc-muted">—</td>
+          <td className="rc-num rc-muted">—</td>
+          <td className="rc-col-ops">
+            <div className="rc-ops">
+              <button
+                className="btn btn--secondary btn--small rc-chain__preview-btn"
+                type="button"
+                title={t("settings.recoveryCopiesStepMainPreviewHint")}
+                disabled={busy || scanningAll || !model.currentMainChain}
+                onClick={() => model.currentMainChain && void togglePick(group.mainPath, model.currentMainChain)}
+              >
+                {previewingPath === model.currentMainChain?.path
+                  ? t("settings.recoveryCopiesPreviewBuildingShort")
+                  : t("settings.recoveryCopiesPreviewBtn")}
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        {/* ── 副本行(类型列=副本;候选链数据并入——消息·轮次/尾部预览/更长·
+            更新标签;操作=预览+②切换到此版本+删除) ── */}
+        {group.copies.map((copy, index) => {
+          const wins = winner ? !winner.isMain && winner.copyIndex === index : false;
+          const chain = byCopy.get(index);
+          const tags = chain ? chainTagInfo(chain, model.chains) : { isLonger: false, isNewer: false };
+          // tl1415 点12: 文件名短标识(recovery-<8 hex>)——用户要能把面板行
+          // 对回磁盘上的 recovery-5df6de18 文件;悬停 title 给完整文件名。
+          const shortName = recoveryShortName(copy.path);
+          const copyTitle = chain
+            ? `${t("settings.recoveryCopiesCopy")} ${index + 1}${shortName ? ` · ${copy.path}` : ""}｜${tailPreviewText(chain)}`
+            : shortName
+              ? copy.path
+              : undefined;
+          return (
+            <tr key={copy.path} className="rc-child rc-row--copy">
+              <td className="rc-detail__check">
+                {/* 任务 1064:副本行的复选框+删除入口。孤立副本(orphan,主线
+                    已缺失)没有「另一条链可以兜底」的前提,删除即真正丢内容,
+                    因此不提供删除入口——它只能被合并(作为新主线)而非删除。 */}
+                {!copy.orphan && (
+                  <input
+                    type="checkbox"
+                    checked={branchesSelected.has(copy.path)}
+                    disabled={busy}
+                    onChange={() => toggleBranch(copy.path)}
+                    aria-label={`${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`}
+                    title={t("settings.recoveryCopiesBranchCheckHint")}
+                  />
+                )}
+              </td>
+              <td className="rc-col-kind">
+                <span className="rc-kindtag rc-kindtag--copy">{t("settings.recoveryCopiesCopy")}</span>
+              </td>
+              <td className="rc-col-name" title={copyTitle}>
+                <div className="rc-clip1">
+                  {t("settings.recoveryCopiesCopy")} {index + 1}
+                  {shortName ? (
+                    <span className="rc-copy__shortname" title={copy.path}>
+                      {shortName}
+                    </span>
+                  ) : null}
+                  {copy.orphan ? ` · ${t("settings.recoveryCopiesOrphan")}` : ""}
+                  {wins ? ` · ${t("settings.recoveryCopiesWins")}` : ""}
+                  {/* 任务 1063:副本行的「独有」徽标——分级展示的核心:副本
+                      不是又一个版本,它可能是主线没有的唯一一份工作。 */}
+                  {copy.scanned && copy.unique > 0 ? (
+                    <span className="rc-copy__unique-badge">
+                      {t("settings.recoveryCopiesUniqueBadge").replace("{n}", String(copy.unique))}
+                    </span>
+                  ) : null}
+                  {tags.isLonger && (
+                    <span className="rc-versions__tag">
+                      {t("settings.sessionVersions.longerTag")
+                        .replace("{messages}", String(chain?.messageCount ?? 0))
+                        .replace("{turns}", String(chain?.turns ?? 0))}
+                    </span>
+                  )}
+                  {tags.isNewer && (
+                    <span className="rc-versions__tag">
+                      {t("settings.sessionVersions.newerTag").replace("{date}", (chain?.lastActivity || "").slice(0, 10))}
+                    </span>
+                  )}
+                </div>
+                {chain ? (
+                  <div className="rc-sub2 rc-clip2 rc-chain__preview" title={tailPreviewText(chain)}>
+                    {tailPreviewText(chain)}
+                  </div>
+                ) : null}
+              </td>
+              <td>{formatWhen(copy.modified)}</td>
+              <td className="rc-num">{formatBytes(copy.bytes)}</td>
+              <td className="rc-num">
+                {copy.scanned ? (
+                  `${copy.messages} · ${copy.turns}`
+                ) : (
+                  <span className="rc-muted" title={t("settings.recoveryCopiesUnmeasuredHint")}>
+                    {t("settings.recoveryCopiesUnmeasured")}
+                  </span>
+                )}
+              </td>
+              <td className="rc-num rc-muted">—</td>
+              <td className={`rc-num ${copy.unique > 0 ? "rc-unique" : "rc-muted"}`}>
+                {copy.scanned ? copy.unique : "—"}
+              </td>
+              <td className="rc-col-ops">
+                <div className="rc-ops">
+                  <button
+                    className="btn btn--secondary btn--small rc-chain__preview-btn"
+                    type="button"
+                    title={t("settings.recoveryCopiesStepPreviewHint")}
+                    disabled={busy || scanningAll || !chain}
+                    onClick={() => chain && void togglePick(group.mainPath, chain)}
+                  >
+                    {previewingPath === chain?.path
+                      ? t("settings.recoveryCopiesPreviewBuildingShort")
+                      : pickedChain[group.mainPath] === chain?.path && chain
+                        ? t("settings.recoveryCopiesUnpick")
+                        : t("settings.recoveryCopiesPreviewBtn")}
+                  </button>
+                  {/* 口径⑤第②步:切换到此版本(主线行跟随/热切——tl1430 语义,
+                      activate 本体未动)。当前主线行不提供切换(口径⑦)。 */}
+                  <button
+                    className="btn btn--secondary btn--small"
+                    type="button"
+                    title={
+                      chain?.covered
+                        ? t("settings.sessionVersionsActivateCoveredHint")
+                        : t("settings.recoveryCopiesStepActivateHint")
+                    }
+                    disabled={busy || activating !== null || !chain || Boolean(chain?.covered)}
+                    onClick={() => chain && void activate(chain)}
+                  >
+                    {activating === copy.path ? "…" : t("settings.sessionVersions.activate")}
+                  </button>
+                  {!copy.orphan && (
+                    <button
+                      className="btn btn--secondary btn--small rc-delete"
+                      type="button"
+                      title={t("settings.recoveryCopiesDeleteHint")}
+                      disabled={busy}
+                      onClick={() => void deleteBranchOne(group, copy.path, index)}
+                    >
+                      {t("settings.recoveryCopiesDelete")}
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+
+        {/* 链清单重拉期间显示加载占位而不是整块消失(任务 1146 同款)。 */}
+        {model.loading && (
+          <tr className="rc-detail__loading">
+            <td colSpan={9}>{t("settings.loading")}</td>
+          </tr>
+        )}
+
+        {/* ── 版本行(v3 事件日志 heads + 未被副本行并走的链):预览/切换/删除。
+            demo v5 数据未含该形态,类型列给「版本」——能力保留,衔接点见交付
+            报告(tl1430b 在切换按钮区返修,activate 本体未动)。 ── */}
+        {leftover.map((c) => {
+          const tags = chainTagInfo(c, model.chains);
+          const isPicked = pickedChain[group.mainPath] === c.path;
+          return (
+            <tr key={`${c.path}|${c.headId}|${leftover.indexOf(c)}`} className="rc-child rc-chain">
+              <td className="rc-detail__check" />
+              <td className="rc-col-kind">
+                <span className="rc-kindtag rc-kindtag--version">{t("settings.recoveryCopiesKindVersion")}</span>
+                {isPicked ? <span className="rc-chain__picked-badge">{t("settings.recoveryCopiesPickedBadge")}</span> : null}
+              </td>
+              <td
+                className="rc-col-name"
+                title={c.degraded ? t("settings.sessionVersions.degradedHint") : tailPreviewText(c)}
+              >
+                <div className="rc-clip1">
+                  {/* tl1355:无 DAG 后行身份=文件(headId 恒空)——副本文件行显示
+                      文件名短标识(recovery-<8 hex>);非副本文件链行显示 headId
+                      前 8 位。 */}
+                  {c.headId ? c.headId.slice(0, 8) : recoveryShortName(c.path) || t("settings.recoveryCopiesCopy")}
+                  {/* 任务 1039r:降级行必须说自己是降级。 */}
+                  {c.degraded && (
+                    <span className="sv-degraded" title={t("settings.sessionVersions.degradedHint")}>
+                      {t("settings.sessionVersions.degraded")}
+                    </span>
+                  )}
+                  {tags.isLonger && (
+                    <span className="rc-versions__tag">
+                      {t("settings.sessionVersions.longerTag")
+                        .replace("{messages}", String(c.messageCount))
+                        .replace("{turns}", String(c.turns))}
+                    </span>
+                  )}
+                  {tags.isNewer && (
+                    <span className="rc-versions__tag">
+                      {t("settings.sessionVersions.newerTag").replace("{date}", (c.lastActivity || "").slice(0, 10))}
+                    </span>
+                  )}
+                </div>
+                <div className="rc-sub2 rc-clip2 rc-chain__preview" title={tailPreviewText(c)}>
+                  {tailPreviewText(c)}
+                </div>
+              </td>
+              <td>{formatWhen(c.lastActivity)}</td>
+              <td className="rc-num">{formatBytes(c.bytes)}</td>
+              <td className="rc-num">{c.messageCount || c.turns ? `${c.messageCount} · ${c.turns}` : "—"}</td>
+              <td className="rc-num rc-muted">—</td>
+              <td className="rc-num rc-muted">—</td>
+              <td className="rc-col-ops">
+                <div className="rc-ops">
+                  <button
+                    className="btn btn--secondary btn--small rc-chain__preview-btn"
+                    type="button"
+                    title={t("settings.recoveryCopiesPreviewBtnHint")}
+                    disabled={busy || scanningAll}
+                    onClick={() => void togglePick(group.mainPath, c)}
+                  >
+                    {previewingPath === c.path
+                      ? t("settings.recoveryCopiesPreviewBuildingShort")
+                      : isPicked
+                        ? t("settings.recoveryCopiesUnpick")
+                        : t("settings.recoveryCopiesPreviewBtn")}
+                  </button>
+                  {!c.selected && (
+                    <button
+                      className="btn btn--secondary btn--small"
+                      type="button"
+                      title={c.covered ? t("settings.sessionVersionsActivateCoveredHint") : t("settings.sessionVersionsActivateHint")}
+                      disabled={busy || activating !== null || c.covered}
+                      onClick={() => void activate(c)}
+                    >
+                      {activating === c.path ? "…" : t("settings.sessionVersions.activate")}
+                    </button>
+                  )}
+                  {/* 任务 1064:非当前版本行加删除入口——当前选中版本不可选不
+                      可删(后端也拒绝),删除走确认+回收语义。降级行没有 head
+                      身份可言,不提供删除。 */}
+                  {!c.selected && !c.degraded && c.headId && (
+                    <button
+                      className="btn btn--secondary btn--small rc-delete"
+                      type="button"
+                      title={t("settings.recoveryCopiesDeleteHeadHint")}
+                      disabled={busy || deletingHead !== null}
+                      onClick={() => void deleteHead(group.mainPath, c.headId)}
+                    >
+                      {deletingHead === c.headId ? "…" : t("settings.recoveryCopiesDelete")}
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+      </Fragment>
+    );
+  };
+
+  const renderGroupRow = (
+    key: string,
+    title: string,
+    hint: string,
+    count: number,
+    isOpen: boolean,
+    onToggle: () => void,
+  ) => (
+    <tr key={key} className="rc-grouprow" onClick={onToggle}>
+      <td colSpan={9}>
+        <span className="rc-caret">{isOpen ? "▾" : "▸"}</span>
+        {title} <span className="rc-grouprow__count">{count}</span>
+        <span className="rc-grouprow__note">{hint}</span>
+        <span className="rc-grouprow__tip">{isOpen ? t("settings.recoveryCopiesGroupCollapseTip") : t("settings.recoveryCopiesGroupExpandTip")}</span>
+      </td>
+    </tr>
+  );
+
+  /** renderSessionBlockPlain is the collapsed-form session row for merged
+   *  conversations that carry nothing to read (no copies, single version): one
+   *  row, demo-faithful, whose only action is the rescan that brings it back to
+   *  待处理 when copies reappear. Kept separate from renderSessionBlock so the
+   *  merged group's many ×0 rows never trigger chain replays. */
+  const renderSessionBlockPlain = (group: RecoveryCopyGroupView) => {
+    const isScanning = scanning.has(group.mainPath);
+    const sessionTitleText = group.mainLabel;
+    return (
+      <tr key={group.mainPath} className="rc-session rc-row--group">
+        <td className="rc-detail__check">
           <input
             type="checkbox"
             checked={selected.has(group.mainPath)}
@@ -2079,94 +2077,34 @@ export function RecoveryCopiesSection() {
             aria-label={group.mainLabel}
             title={t("settings.recoveryCopiesSelectHint")}
           />
-          <button
-            className="rc-toggle"
-            type="button"
-            aria-expanded={isOpen}
-            onClick={() => toggleExpanded(group.mainPath)}
-          >
-            <span className="rc-caret">{isOpen ? "▾" : "▸"}</span>
-            <span className="rc-label">{group.mainLabel}</span>
-            {versions ? (
-              <span
-                className="rc-versions__badge"
-                title={t("settings.recoveryCopiesVersionsBadgeHint").replace("{count}", String(versions.headCount))}
-              >
-                {t("settings.recoveryCopiesVersionsBadge").replace("{count}", String(versions.headCount))}
-              </span>
-            ) : null}
-          </button>
-          <span>{formatWhen(group.mainModified)}</span>
-          <span>{formatBytes(group.mainBytes)}</span>
-          {/* tl1415 点10: 该列列名是「交互轮次」——放实测轮次,不再拿消息数
-              冒充;未测量时给状态文案而不是裸「—」。 */}
-          <span
-            className={group.mainMessages > 0 || group.mainTurns > 0 ? undefined : "rc-muted"}
-            title={group.mainMessages > 0 || group.mainTurns > 0 ? undefined : t("settings.recoveryCopiesUnmeasuredHint")}
-          >
-            {groupTurnsText(group, t)}
-          </span>
-          <span>×{group.copies.length}</span>
-          <span className={groupUnique ? "rc-unique" : "rc-muted"}>{groupUnique ?? "—"}</span>
-          <span className="rc-action">
+        </td>
+        <td className="rc-col-kind">
+          <span className="rc-kindtag rc-kindtag--session">{t("settings.recoveryCopiesKindSession")}</span>
+        </td>
+        <td className="rc-col-name" title={sessionTitleText}>
+          <div className="rc-clip1">{group.mainLabel}</div>
+        </td>
+        <td>—</td>
+        <td className="rc-num">—</td>
+        <td className="rc-num rc-muted">—</td>
+        <td className="rc-num">×{group.copies.length}</td>
+        <td className="rc-num rc-muted">—</td>
+        <td className="rc-col-ops">
+          <div className="rc-ops">
             <button
               className="btn btn--secondary btn--small"
               type="button"
-              title={t("settings.recoveryCopiesScanHint")}
+              title={t("settings.recoveryCopiesRescanHint")}
               disabled={isScanning || scanningAll}
               onClick={() => void scanOne(group.mainPath)}
             >
               {isScanning ? "…" : t("settings.recoveryCopiesScan")}
             </button>
-          </span>
-        </div>
-
-        {isOpen && (
-          /* tl1415 点3:展开区三表合一。原先的主线行、副本行、候选链块
-             (rc-chains,无表头,行内裸拼「条数 · 交互轮次」)与版本表四块,
-             收进 VersionRows 渲染的一张合并表(两行制:主行=核心读数,次行=
-             操作+预览摘要);全部操作入口(勾选合并/删除副本/预览并选 HEAD/
-             切换到此版本/删除版本/合成/检查健康/修复/修复并瘦身)零丢失。 */
-          <VersionRows
-            group={group}
-            chains={chains.get(group.mainPath)}
-            chainLoading={chainLoads.has(group.mainPath) && !chains.has(group.mainPath)}
-            t={t}
-            confirm={confirm}
-            onReload={() => { void load(); }}
-            onError={(message) => setErrors((current) => [...current, message])}
-            repairNote={repairNote}
-            setRepairNote={setRepairNote}
-            dataVersion={dataVersion}
-            busy={busy}
-            scanningAll={scanning.size > 0}
-            synthesizing={synthesizing[group.mainPath]}
-            pickedChain={pickedChain[group.mainPath]}
-            previewingPath={previewingPath}
-            branchesSelected={branchesSelected}
-            onToggleBranch={toggleBranch}
-            onDeleteBranch={(copyPath, index) => { void deleteBranchOne(group, copyPath, index); }}
-            onPick={(chain) => { void togglePick(group.mainPath, chain); }}
-            onSynthesize={() => { void synthesizeHeads(group.mainPath, group.mainLabel); }}
-            headCount={versions?.headCount ?? 0}
-            onClearHistory={() => { void clearMergeHistory(group.mainPath, group.mainLabel); }}
-          />
-        )}
-      </div>
+          </div>
+        </td>
+      </tr>
     );
   };
-
-  const renderPhase = (title: string, rows: RecoveryCopyGroupView[], hint: string) =>
-    rows.length ? (
-      <div className="rc-phase" key={title}>
-        <div className="rc-phase__head">
-          <span className="rc-phase__title">{title}</span>
-          <span className="rc-phase__count">{rows.length}</span>
-          <span className="rc-phase__hint">{hint}</span>
-        </div>
-        {rows.map(renderGroup)}
-      </div>
-    ) : null;
 
   const outcomeText = (outcome: Outcome) => {
     switch (outcome.kind) {
@@ -2245,65 +2183,96 @@ export function RecoveryCopiesSection() {
                     ) : (
                       <>
                         {errors.length > 0 && (
-                      <div className="banner banner--error" role="alert">
-                        <ul className="rc-errors">
-                          {/* key 用下标不用文案本身：同一句话重复出现（如两行同时
-                              遇到同一个重放拒绝）时，按文案取 key 会让 React 报
-                              重复 key 警告并把两行折叠成一行。 */}
-                          {errors.map((message, index) => (
-                            <li key={index}>{message}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <div className="rc-table">
-                      <div className="rc-row rc-row--head">
-                        <span />
-                        <span>{t("settings.recoveryCopiesColLine")}</span>
-                        <span>{t("settings.recoveryCopiesColModified")}</span>
-                        <span>{t("settings.recoveryCopiesColSize")}</span>
-                        <span>{t("settings.recoveryCopiesColTurns")}</span>
-                        <span>{t("settings.recoveryCopiesColCopies")}</span>
-                        <span>{t("settings.recoveryCopiesColUnique")}</span>
-                        <span />
-                      </div>
-                      {renderPhase(
-                        t("settings.recoveryCopiesPhaseUnmerged"),
-                        phased.unmerged,
-                        t("settings.recoveryCopiesPhaseUnmergedHint"),
-                      )}
-                      {renderPhase(
-                        t("settings.recoveryCopiesPhasePending"),
-                        phased.pending,
-                        t("settings.recoveryCopiesPhasePendingHint"),
-                      )}
-                      {renderPhase(
-                        t("settings.recoveryCopiesPhaseMerged"),
-                        phased.merged,
-                        t("settings.recoveryCopiesPhaseMergedHint"),
-                      )}
-                      {/* tl1415 点8: 清理多余副本——一键把主线已完整覆盖的副本
-                          (unique=0)逐份送回收站。无副本/未测量/未合成(没有
-                          命中的副本)时整块不渲染。 */}
-                      {redundantCopies.length > 0 && (
-                        <div className="rc-cleanup">
-                          <button
-                            className="btn btn--secondary btn--small rc-delete"
-                            type="button"
-                            title={t("settings.recoveryCopiesCleanupHint")}
-                            disabled={busy || cleaningUp}
-                            onClick={() => void cleanupRedundantCopies()}
-                          >
-                            {cleaningUp
-                              ? "…"
-                              : `${t("settings.recoveryCopiesCleanup")} (${redundantCopies.length})`}
-                          </button>
-                          <span className="rc-note">{t("settings.recoveryCopiesCleanupHintShort")}</span>
-                        </div>
-                      )}
-                    </div>
+                          <div className="banner banner--error" role="alert">
+                            <ul className="rc-errors">
+                              {/* key 用下标不用文案本身：同一句话重复出现（如两行同时
+                                  遇到同一个重放拒绝）时，按文案取 key 会让 React 报
+                                  重复 key 警告并把两行折叠成一行。 */}
+                              {errors.map((message, index) => (
+                                <li key={index}>{message}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {/* tl1415b: 全页一张表——唯一表头(sticky+不透明背景,表头
+                            下滑遮盖行内容),「类型」列替代一切分组横条与小表。 */}
+                        <table className="rc-versions__table rc-maintable">
+                          <thead>
+                            <tr className="rc-maintable__head">
+                              <th className="rc-detail__hcheck" aria-label={t("settings.recoveryCopiesColCopies")} />
+                              <th className="rc-col-kind">{t("settings.recoveryCopiesColKind")}</th>
+                              <th className="rc-col-name">{t("settings.recoveryCopiesColLine")}</th>
+                              <th className="rc-col-when">{t("settings.recoveryCopiesColModified")}</th>
+                              <th className="rc-num">{t("settings.recoveryCopiesColSize")}</th>
+                              <th className="rc-num">{t("settings.recoveryCopiesColMsgTurns")}</th>
+                              <th className="rc-num">{t("settings.recoveryCopiesColCopies")}</th>
+                              <th className="rc-num">{t("settings.recoveryCopiesColUnique")}</th>
+                              <th className="rc-col-ops">{t("settings.recoveryCopiesColOps")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {renderGroupRow(
+                              "grouprow-todo",
+                              t("settings.recoveryCopiesPhaseTodo"),
+                              t("settings.recoveryCopiesPhaseTodoHint"),
+                              phased.todo.length,
+                              todoOpen,
+                              () => setTodoOpen((v) => !v),
+                            )}
+                            {todoOpen && phased.todo.map((g) => renderSessionBlock(g, "todo"))}
+                            {renderGroupRow(
+                              "grouprow-merged",
+                              t("settings.recoveryCopiesPhaseMerged"),
+                              t("settings.recoveryCopiesPhaseMergedHint"),
+                              phased.merged.length,
+                              mergedOpen,
+                              () => setMergedOpen((v) => !v),
+                            )}
+                            {mergedOpen &&
+                              phased.merged.map((g) => {
+                                const headCount = versionGroups.get(g.mainPath)?.headCount ?? 0;
+                                // 已合入组展开时,只给仍带内容(副本或 heads)的会话
+                                // 渲染子行——×0 且单版本的会话没有可读的子行,不触
+                                // 发链重放(28 个已合入会话一次性全量重放是实测过
+                                // 的性能坑)。
+                                if (g.copies.length === 0 && headCount <= 1) {
+                                  return renderSessionBlockPlain(g);
+                                }
+                                return renderSessionBlock(g, "merged");
+                              })}
+                          </tbody>
+                        </table>
                       </>
                     )}
+
+                    {/* 会话级动作的回执面(沉底后收在分区层,不随行消失):健康
+                        报告 / 切换回执 / 修复回执。 */}
+                    {healthReports.map((h) => (
+                      <div className="rc-versions__health" key={h.label}>
+                        <div>
+                          {h.label} ·{" "}
+                          {h.report.healthy ? (
+                            t("settings.sessionVersions.healthy")
+                          ) : (
+                            <ul className="rc-versions__issues">
+                              {(h.report.issues ?? []).map((issue) => (
+                                <li key={issue.code}>
+                                  <code>{issue.code}</code> {issue.detail}
+                                  {issue.suggestedAction && <> → {issue.suggestedAction}</>}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {switchedNote && <div className="rc-versions__health">{switchedNote}</div>}
+                    {repairNotes.map((note, i) => (
+                      <div className="rc-versions__health" key={i}>
+                        {note}
+                      </div>
+                    ))}
+
                     {outcomes.length > 0 && (
                       <div className="rc-result">
                         <ul className="rc-outcomes">
@@ -2378,27 +2347,27 @@ export function RecoveryCopiesSection() {
                     {synthesisOutcomes.length > 0 && (
                       <div className="rc-result">
                         <ul className="rc-outcomes">
-                    {synthesisOutcomes.map((outcome) => (
-                      <li
-                        key={outcome.label}
-                        className={
-                          outcome.kind === "failed"
-                            ? "rc-outcome--failed"
-                            : outcome.kind === "v3only"
-                              ? // 任务 1146 返修：「无可做」回执走中性样式——绿
-                                // 色成功面会把无事发生读成「已成功」。
-                                "rc-outcome--blocked"
-                              : "rc-outcome--ok"
-                        }
-                      >
-                        <span className="rc-outcome__label">{outcome.label}</span>
-                        <span>
-                          {outcome.kind === "synthesized"
-                            ? `${t("settings.recoveryCopiesOutcomeSynthesized")} ${outcome.participants} · ${t("settings.recoveryCopiesUnique")} ${outcome.uniqueTotal} → ${outcome.afterMessages} · ${outcome.afterTurns} ${t("settings.recoveryCopiesColTurns")}${outcome.prefixed ? ` · ${t("settings.recoveryCopiesSynthesizePrefixed")} ${outcome.prefixed}` : ""}${outcome.trashed ? ` · ${t("settings.recoveryCopiesArchived")} ${outcome.trashed}` : ""}`
-                            : outcome.detail ?? ""}
-                        </span>
-                      </li>
-                    ))}
+                          {synthesisOutcomes.map((outcome) => (
+                            <li
+                              key={outcome.label}
+                              className={
+                                outcome.kind === "failed"
+                                  ? "rc-outcome--failed"
+                                  : outcome.kind === "v3only"
+                                    ? // 任务 1146 返修：「无可做」回执走中性样式——绿
+                                      // 色成功面会把无事发生读成「已成功」。
+                                      "rc-outcome--blocked"
+                                    : "rc-outcome--ok"
+                              }
+                            >
+                              <span className="rc-outcome__label">{outcome.label}</span>
+                              <span>
+                                {outcome.kind === "synthesized"
+                                  ? `${t("settings.recoveryCopiesOutcomeSynthesized")} ${outcome.participants} · ${t("settings.recoveryCopiesUnique")} ${outcome.uniqueTotal} → ${outcome.afterMessages} · ${outcome.afterTurns} ${t("settings.recoveryCopiesColTurns")}${outcome.prefixed ? ` · ${t("settings.recoveryCopiesSynthesizePrefixed")} ${outcome.prefixed}` : ""}${outcome.trashed ? ` · ${t("settings.recoveryCopiesArchived")} ${outcome.trashed}` : ""}`
+                                  : outcome.detail ?? ""}
+                              </span>
+                            </li>
+                          ))}
                         </ul>
                         {/* 任务 1117：「合成已生效」提示只在真的有合成成功时显示
                             ——全部失败的 outcome 列表配上这句成功文案会自相矛盾
@@ -2429,6 +2398,61 @@ export function RecoveryCopiesSection() {
                   {pickedChainCount > 0
                     ? `${t("settings.recoveryCopiesMergePicked")} (${pickedChainCount})`
                     : `${t("settings.recoveryCopiesMerge")} (${selected.size})`}
+                </button>
+                <button
+                  className="btn btn--secondary btn--small"
+                  type="button"
+                  title={t("settings.sessionVersionsCheckHint")}
+                  disabled={busy || repairing || selected.size === 0}
+                  onClick={() => void inspectSelected()}
+                >
+                  {t("settings.sessionVersions.check")}
+                </button>
+                <button
+                  className="btn btn--secondary btn--small"
+                  type="button"
+                  title={t("settings.sessionVersionsRepairHint")}
+                  disabled={busy || repairing || selected.size === 0}
+                  onClick={() => void repairSelected(false)}
+                >
+                  {t("settings.sessionVersions.repair")}
+                </button>
+                <button
+                  className="btn btn--secondary btn--small"
+                  type="button"
+                  title={t("settings.sessionVersionsRepairDietHint")}
+                  disabled={busy || repairing || selected.size === 0}
+                  onClick={() => void repairSelected(true)}
+                >
+                  {t("settings.sessionVersions.repairDiet")}
+                </button>
+                {/* 口径⑩: 「清理非主线副本」——清空合并历史左边,二次确认,主线
+                    保留;作用于勾选会话的全部非主线副本(孤立副本除外)。 */}
+                <button
+                  className="btn btn--secondary btn--small rc-delete"
+                  type="button"
+                  title={t("settings.recoveryCopiesCleanupNonMainHint")}
+                  disabled={busy || selected.size === 0}
+                  onClick={() => void cleanupNonMainCopies()}
+                >
+                  {t("settings.recoveryCopiesCleanupNonMainTitle")}
+                </button>
+                {/* tl1415 点9: 清空合并历史——版本徽标的账面读数(head meta 镜像)
+                    在 tl1280 头重放退役后无人维护,合并完的会话留着陈旧「N 版本」。
+                    沉底为批量入口,作用于勾选会话中 headCount>1 的那些。 */}
+                <button
+                  className="btn btn--secondary btn--small"
+                  type="button"
+                  title={t("settings.recoveryCopiesClearHistoryHint")}
+                  disabled={
+                    busy ||
+                    !phased.merged.some(
+                      (g) => selected.has(g.mainPath) && (versionGroups.get(g.mainPath)?.headCount ?? 0) > 1,
+                    )
+                  }
+                  onClick={() => void clearMergeHistorySelected()}
+                >
+                  {t("settings.recoveryCopiesClearHistory")}
                 </button>
                 <button
                   className="btn btn--secondary btn--small"
@@ -2472,10 +2496,10 @@ export function RecoveryCopiesSection() {
                 >
                   {t("settings.recoveryCopiesRefresh")}
                 </button>
-                {/* 任务 1368 线2：整对话级删除——放在「刷新」右边，归档选中会话
-                    的主文件（含 v3 版本与侧车）与全部副本到两条可恢复回收站。
-                    与 1064 的「删除所选」（删副本分支）是两个粒度：这里勾的是
-                    会话行（selected），一次清掉整个对话。 */}
+                {/* 任务 1368 线2：整对话级删除——归档选中会话的主文件（含 v3 版
+                    本与侧车）与全部副本到两条可恢复回收站。与 1064 的「删除所选」
+                    （删副本分支）是两个粒度：这里勾的是会话行（selected），一次
+                    清掉整个对话。 */}
                 <button
                   className="btn btn--secondary btn--small rc-delete"
                   type="button"
@@ -2504,3 +2528,5 @@ export function RecoveryCopiesSection() {
     </>
   );
 }
+
+
