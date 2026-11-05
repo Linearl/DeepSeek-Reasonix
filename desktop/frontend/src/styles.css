@@ -7853,6 +7853,21 @@ body > .mermaid-diagram--fullscreen {
   user-select: text;
   -webkit-user-select: text;
 }
+/* tl1421: 可点击态 chip（探针 ResolveOpenablePathForTab 通过）——pointer +
+   hover 描边示意可点；视觉仅 hover 变化，默认视图零改动。 */
+.turn-actions__file-chip--openable {
+  cursor: pointer;
+}
+.turn-actions__file-chip--openable:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+/* tl1421: 缺失态 chip（探针空串=不存在/已移动/逃出工作区/可执行目标）——
+   置灰不可点，title 带说明；保留文本可选（复制文件名仍可用）。 */
+.turn-actions__file-chip--missing {
+  opacity: 0.45;
+  cursor: default;
+}
 .turn-actions__files-toggle {
   flex: 0 0 auto;
   border: none;

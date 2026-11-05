@@ -5013,6 +5013,8 @@ export const zh: Record<DictKey, string> = {
   "turnActions.filesMore": "+{n} 个文件",
   "turnActions.filesFewer": "收起",
   "turnActions.turnMetaTitle": "本回合输入/输出 token 与完成时间",
+  // tl1421: 文件 chip 缺失态（探针 ResolveOpenablePathForTab 空串）hover 说明。
+  "turnActions.fileMissing": "文件不存在或已移动，无法打开：{path}",
   "transcript.jumpToBottom": "跳到底部",
   "markdown.tableExpandAll": "展开全部 {n} 行",
   "markdown.tableCollapse": "收起表格",

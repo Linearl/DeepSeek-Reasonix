@@ -3553,6 +3553,8 @@ export const zhTW: Record<DictKey, string> = {
   "turnActions.filesMore": "+{n} 個檔案",
   "turnActions.filesFewer": "收起",
   "turnActions.turnMetaTitle": "本回合輸入/輸出 token 與完成時間",
+  // tl1421：檔案 chip 缺失態（探針 ResolveOpenablePathForTab 空串）hover 說明。
+  "turnActions.fileMissing": "檔案不存在或已移動，無法開啟：{path}",
   "transcript.jumpToBottom": "跳到底部",
   "markdown.tableExpandAll": "展開全部 {n} 行",
   "markdown.tableCollapse": "收起表格",
