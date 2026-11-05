@@ -2260,6 +2260,26 @@ type AgentConfig struct {
 	// 约束(保头 ≥95% 前缀缓存,破线拒装回退全量路径)。风险:高频小折把
 	// 刚完成的轮次折成摘要,近因细节从逐字变为摘要级——实验档未稳定档。
 	ExperimentalRangesCompact bool `toml:"experimental_ranges_compact"`
+	// tl1419 (迭代三,实验档): model-driven ranges folds — the compress_ranges
+	// tool lets the model initiate the tl1397 small-segment fold at natural
+	// work boundaries instead of waiting for the pressure check. Off by
+	// default (iron rule 2): off keeps the tool out of the registry entirely,
+	// so the model-visible surface is byte-identical to the pre-tl1419
+	// baseline (boot-gated registration, curate_context precedent). On, the
+	// fold still rides the tl1397 transaction: the ranges lane switch above
+	// must ALSO be on at run time, and the flood gate (per-fold savings floor
+	// + sliding frequency window) bounds how often the model may churn the
+	// prefix cache — the whole-range compress tool's cooldown deliberately
+	// does not apply here (收益限+窗口替代冷却,约束①).
+	ExperimentalModelRangesCompact bool `toml:"experimental_model_ranges_compact"`
+	// tl1419: sliding window length (minutes) for the model-driven ranges
+	// flood gate. 0 = built-in default (5). Configurable so observation data
+	// from the tl1397 telemetry surface can retune the limits without a
+	// rebuild (参数化预留: the mechanism ships now, tuned N/M come from data).
+	ModelRangesFoldWindowMinutes int `toml:"model_ranges_fold_window_minutes"`
+	// tl1419: max model-driven ranges folds allowed inside the sliding
+	// window. 0 = built-in default (2).
+	ModelRangesFoldWindowMax int `toml:"model_ranges_fold_window_max"`
 	// Task 318.3: persist composer drafts across restarts (localStorage
 	// cold-start layer, #9580). Off by default (iron rule 2): drafts are
 	// runtime-memory only, exactly the pre-#9580 contract.
