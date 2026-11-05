@@ -584,6 +584,14 @@ type Agent struct {
 	// 过)。观测面预留(用户三约束③「压缩频次×缓存抖动」联合观测的频次半边):
 	// 内存态,重启归零,只作观测不作决策。
 	rangesFoldIndex atomic.Int64
+	// lastRangesFoldAt 是上一次 ranges 折叠的时间(UnixNano;0 = 没折过),
+	// 与 rangesFoldIndex 一起构成联合观测的间隔读数。内存态,同上。
+	lastRangesFoldAt atomic.Int64
+	// rangesSwitchCached/Until 是 ranges 实验开关的活读缓存(TTL 见
+	// rangesSwitchCacheTTL):armed 检查挂在每轮低于触发线的 Prepare 上,
+	// 不能每轮都走一次配置读取;缓存让改动在 ≤TTL 内生效(重启会话立即可见)。
+	rangesSwitchCached atomic.Bool
+	rangesSwitchUntil  atomic.Int64
 	// lastCurateAt is when the model last ran the fine-grained curate_context
 	// pass (tl1378 增量1). A curate also rewrites part of the prefix, so it
 	// carries its own lighter rate limit (minCurateInterval) instead of

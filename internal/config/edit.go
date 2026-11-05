@@ -1963,12 +1963,13 @@ func (c *Config) SetExperimentalRangesCompact(enabled bool) error {
 }
 
 // RangesCompactLive is the package-level read for the ranges-compact switch
-// (tl1397). Read per maintenance transaction (same shape as
-// ProactiveCompactCooldownLive): a fold is orders of magnitude rarer than a
-// turn, so the load cost never rides the hot path, and a settings change
-// applies without a restart.
+// (tl1397). READ-ONLY user-config read (LoadUserConfigReadOnly — the
+// bus.go precedent): no on-disk migration, no credential pinning, no project
+// file walk, because callers check it on maintenance transactions that can run
+// every turn. The switch is a user-level lab key (registered in
+// labFeatureTiers), so the project layer intentionally does not participate.
 func RangesCompactLive() bool {
-	cfg, err := Load()
+	cfg, err := LoadUserConfigReadOnly()
 	if err != nil || cfg == nil {
 		return false
 	}

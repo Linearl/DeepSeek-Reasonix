@@ -172,6 +172,15 @@ type CompactionTelemetry struct {
 	ProviderRequestID string `json:"provider_request_id,omitempty"`
 	SummaryInputMode  string `json:"summary_input_mode,omitempty"`
 	Error             string `json:"error,omitempty"`
+	// tl1397 ranges 观测面(实验档,全量路径恒零值):RangesFold 标记本次为
+	// 小段增量折叠;RangesFoldIndex 是会话内序号(频次半边);PreservedTokens
+	// 是保头前缀的计费尺读数;RangesCacheHit 是装前以 1396 态③口径实测的
+	// 命中率(缓存半边)。「频次×缓存抖动」联合观测由此出数,迭代三洪水闸
+	// 在此定参。
+	RangesFold      bool    `json:"ranges_fold,omitempty"`
+	RangesFoldIndex int     `json:"ranges_fold_index,omitempty"`
+	PreservedTokens int     `json:"preserved_tokens,omitempty"`
+	RangesCacheHit  float64 `json:"ranges_cache_hit,omitempty"`
 }
 
 // ContextStatePath returns the projection sidecar path for a session transcript.

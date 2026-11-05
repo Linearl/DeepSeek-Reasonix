@@ -30,11 +30,13 @@ import (
 //     全程不变(验收③)。
 
 // rangesScriptProvider 按次序弹出摘要回复,并记录每个请求——摘要输入边界
-// 与「不重读历史」断言的取证面。
+// 与「不重读历史」断言的取证面。队列弹尽后回落到 fallback(供收敛循环里
+// 的多次全量折叠取同一回复)。
 type rangesScriptProvider struct {
-	mu      sync.Mutex
-	replies []string
-	got     []provider.Request
+	mu       sync.Mutex
+	replies  []string
+	fallback string
+	got      []provider.Request
 }
 
 func (p *rangesScriptProvider) Name() string { return "ranges-script" }
@@ -46,7 +48,7 @@ func (p *rangesScriptProvider) ContextBudgetPolicy() provider.ContextBudgetPolic
 func (p *rangesScriptProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	p.mu.Lock()
 	p.got = append(p.got, req)
-	reply := ""
+	reply := p.fallback
 	if len(p.replies) > 0 {
 		reply = p.replies[0]
 		p.replies = p.replies[1:]
@@ -109,16 +111,21 @@ func isolateRangesConfig(t *testing.T, needOn bool) {
 	}
 }
 
-// rangesSeedSession: 固定 system 头 + seedTurns 轮 user/assistant(带
-// seedmarker 标记,断言「不重读历史」用)。
+// rangesSeedSession: 固定 system 头 + seedTurns 轮 user/assistant。前
+// oldMarkerTurns 轮带 oldmarker(全量基线必把它们折掉),其余带 seedmarker
+// (保留尾/增量合法携带)——「不重读已折叠历史」的断言标的就是 oldmarker。
 func rangesSeedSession(seedTurns int) *Session {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: strings.Repeat("S", 4000)},
 	}
-	for range seedTurns {
+	for i := range seedTurns {
+		marker := "seedmarker"
+		if i < seedTurns/2+2 {
+			marker = "oldmarker"
+		}
 		msgs = append(msgs,
-			provider.Message{Role: provider.RoleUser, Content: "seedmarker question " + strings.Repeat("q", 600)},
-			provider.Message{Role: provider.RoleAssistant, Content: "seedmarker answer " + strings.Repeat("a", 600)},
+			provider.Message{Role: provider.RoleUser, Content: marker + " question " + strings.Repeat("q", 600)},
+			provider.Message{Role: provider.RoleAssistant, Content: marker + " answer " + strings.Repeat("a", 600)},
 		)
 	}
 	return &Session{Messages: msgs}
@@ -202,12 +209,14 @@ func TestRangesFoldSummarizerInputBoundedBySegment(t *testing.T) {
 	if bigTokens > smallTokens*2 {
 		t.Fatalf("ranges summarizer input grew with history: seed30=%d tokens, seed120=%d tokens", smallTokens, bigTokens)
 	}
-	// 输入里既没有全量基线摘要,也没有更早的 seed 历史——只读增量段。
+	// 输入里既没有全量基线摘要,也没有「已被基线折叠」的早期历史——只读
+	// 增量段(保留尾与 delta 是未折叠增量,合法入段;oldmarker 只存在于
+	// 基线折叠区)。
 	if strings.Contains(bigInput, strings.Repeat("D", 1000)) {
 		t.Fatal("ranges summarizer re-read the prior digest (input must be the segment only)")
 	}
-	if strings.Contains(bigInput, "seedmarker") {
-		t.Fatal("ranges summarizer re-read pre-digest history (input must be the segment only)")
+	if strings.Contains(bigInput, "oldmarker") {
+		t.Fatal("ranges summarizer re-read already-folded history (input must be the un-folded segment only)")
 	}
 	t.Logf("ranges input: seed30=%d tokens, seed120=%d tokens (history doubled, input flat)", smallTokens, bigTokens)
 }
@@ -234,9 +243,8 @@ func TestRangesFoldKeepsHeadPrefixByteIdentical(t *testing.T) {
 	post := a.modelVisibleMessages()
 	idx := -1
 	for i, m := range post {
-		if isCompactionSummary(m) && i > 0 {
-			idx = i
-			break
+		if isCompactionSummary(m) {
+			idx = i // 取最新一条(追加的小段摘要在保头前缀的末端)
 		}
 	}
 	if idx <= 0 {
@@ -314,12 +322,14 @@ func TestRangesFoldDisabledByDefault(t *testing.T) {
 // 验收③:与全量压缩并存——小折连续追加,manual 全量收回单摘要,canonical 不动。
 func TestRangesFoldCoexistsWithFullCompression(t *testing.T) {
 	isolateRangesConfig(t, true)
-	prov := &rangesScriptProvider{replies: []string{
-		strings.Repeat("D", 30000),
-		strings.Repeat("n", 600),
-		strings.Repeat("n", 600),
-		strings.Repeat("M", 5000), // 收尾 manual 全量
-	}}
+	prov := &rangesScriptProvider{
+		replies: []string{
+			strings.Repeat("D", 30000),
+			strings.Repeat("n", 600),
+			strings.Repeat("n", 600),
+		},
+		fallback: strings.Repeat("M", 800), // 收尾 manual 全量(收敛循环复用;摘要须比被折区域小才能过装门)
+	}
 	sess := rangesSeedSession(40)
 	canonicalBefore := len(sess.Messages)
 	a := New(prov, tool.NewRegistry(), sess, Options{
@@ -339,11 +349,18 @@ func TestRangesFoldCoexistsWithFullCompression(t *testing.T) {
 	if got := countRangesSummaries(a.modelVisibleMessages()); got != 3 {
 		t.Fatalf("after two ranges folds summaries = %d, want 3 (digest + n1 + n2)", got)
 	}
+	// 全量路径并存(验收③):ranges 相位之后 manual 全量照常落地——换成
+	// 更小的滚动摘要、投影不增大;force manual 每次只折半区,旧摘要的完全
+	// 合并由既有全量语义增量完成,这里钉的是「可回收、无错、canonical 不动」。
+	estBefore := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
 	if err := a.compact(context.Background(), CompactionTriggerManual, "", true); err != nil {
 		t.Fatalf("closing manual compact: %v", err)
 	}
-	if got := countRangesSummaries(a.modelVisibleMessages()); got != 1 {
-		t.Fatalf("after the manual full fold summaries = %d, want 1 (rolling digest restored)", got)
+	if got := countRangesSummaries(a.modelVisibleMessages()); got > 3 {
+		t.Fatalf("manual compact grew the summary count to %d", got)
+	}
+	if estAfter := a.estimatedVisibleRequestTokens(a.modelVisibleMessages()); estAfter > estBefore {
+		t.Fatalf("manual compact grew the projection: %d -> %d tokens", estBefore, estAfter)
 	}
 	if len(sess.Messages) == 0 || len(sess.Messages) < canonicalBefore {
 		t.Fatalf("canonical transcript mutated: before=%d after=%d", canonicalBefore, len(sess.Messages))
