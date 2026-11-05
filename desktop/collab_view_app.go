@@ -85,6 +85,9 @@ type CollabChannelMessageView struct {
 	// 「已取消」而不是正文（349 Cancel 语义：墓碑保时间与发送方）。
 	CancelledAt int64                     `json:"cancelledAt,omitempty"`
 	Fanout      []collabchannel.FanoutRow `json:"fanout,omitempty"`
+	// tl1406 发布期路由注记：仅发送返回值携带（历史读零污染）。
+	RoutedTo   []string `json:"routedTo,omitempty"`
+	Deputyless bool     `json:"deputyless,omitempty"`
 }
 
 // CollabChannelReadView is one channel read: the channel header plus its
