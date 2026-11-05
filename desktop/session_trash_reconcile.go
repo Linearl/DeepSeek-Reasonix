@@ -25,6 +25,25 @@ func trashSessionArtifactsWithGuard(dir, sessionPath, key string, guard *agent.S
 	if guard == nil {
 		return errSessionBusyElsewhere
 	}
+	// tl1429b: the transcript is already gone — a previous archive moved it
+	// and the caller (the cleanup-pending reconcile) is re-trashing residue.
+	// When NO bucket holds the transcript yet (the unique-bucket form), a
+	// fresh allocation here minted a second, transcript-less record (the
+	// package-78 double trash entry) while the first one stayed stuck behind
+	// its own missing meta — tear the leftover sidecars instead. A bucket
+	// that DOES hold the transcript keeps the flow below: remaining sidecars
+	// move into it so a later restore brings them back (the committed
+	// partial-move form).
+	if _, statErr := os.Stat(sessionPath); os.IsNotExist(statErr) {
+		bucketPath := filepath.Join(sessionTrashPath(dir), key, key)
+		if _, bucketErr := os.Stat(bucketPath); os.IsNotExist(bucketErr) {
+			removeSessionOwnedResidue(sessionPath, key)
+			_ = agent.ClearCleanupPending(sessionPath)
+			invalidateTopicSessionIndexForPath(sessionPath)
+			_ = guard.RemoveSidecarsAndRelease()
+			return nil
+		}
+	}
 	defer guard.Release()
 	itemDir := filepath.Join(sessionTrashPath(dir), key)
 	if info, err := os.Stat(itemDir); err == nil {
