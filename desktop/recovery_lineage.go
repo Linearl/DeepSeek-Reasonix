@@ -171,12 +171,16 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 	}
 	memberFound := false
 	// The line giving way (the from side of the head_switch marker) is the
-	// group's canonical member: the topic representative when it belongs to
-	// this group, else the canonical recovery record.
-	fromPath := ""
-	if representative := strings.TrimSpace(topic.RepresentativePath); representative != "" && recoveryTopicHasGroupMember(topic, groupID, representative) {
-		fromPath = representative
-	}
+	// line the user is actually on before the switch: the open tab's current
+	// transcript when one holds this topic, else the group's preferred/
+	// canonical member, else the group's sole normal (non-recovered)
+	// transcript - the flat-form main line - else the topic representative
+	// if it belongs to this group. The representative alone is a sort
+	// artifact in a diverged lineage and may name the very row being
+	// activated; it must never masquerade as the incumbent main line
+	// (tl1430 test-caught defect).
+	memberPreferred := ""
+	memberNormal := ""
 	for _, member := range topic.Sessions {
 		if !recoveryRecordBelongsToGroup(member, groupID) {
 			continue
@@ -184,27 +188,64 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 		if sameRecoveryLineagePath(member.Path, req.Path) && member.RecoveryRole != sessioncatalog.RecoveryRoleCoveredCopy {
 			memberFound = true
 		}
-		if fromPath == "" && member.RecoveryCanonical {
-			fromPath = member.Path
+		// The explicit choice surfaces at filing level as the preferred role
+		// (promoteCanonicalLeaves translates meta.RecoveryPreferred into
+		// RecoveryRolePreferred); the bare record flag and the ordinary-list
+		// folding marker (RecoveryCanonical) are not the user's line.
+		if memberPreferred == "" && (member.RecoveryPreferred || member.RecoveryRole == sessioncatalog.RecoveryRolePreferred) {
+			memberPreferred = member.Path
+		}
+		if memberNormal == "" && !member.Recovered && member.RecoveryRole != sessioncatalog.RecoveryRoleCoveredCopy {
+			memberNormal = member.Path
 		}
 	}
 	if !memberFound {
 		return errors.New("selected version is outside the recovery lineage")
 	}
-	if fromPath != "" && sameRecoveryLineagePath(fromPath, req.Path) {
-		return errors.New("this version is already the conversation's main line")
-	}
 	a.mu.RLock()
 	var tabID string
+	var tabFromPath string
 	for _, tab := range a.runtimeTabsLocked() {
 		if tab == nil || tab.TopicID != req.TopicID || tab.Scope != req.Scope ||
 			(req.Scope == "project" && tab.WorkspaceRoot != req.WorkspaceRoot) {
 			continue
 		}
 		tabID = tab.ID
+		if candidate := strings.TrimSpace(tab.currentSessionPath()); candidate != "" && recoveryTopicHasGroupMember(topic, groupID, candidate) {
+			tabFromPath = candidate
+		}
 		break
 	}
 	a.mu.RUnlock()
+	fromPath := tabFromPath
+	if fromPath == "" {
+		fromPath = memberPreferred
+	}
+	if fromPath == "" {
+		fromPath = memberNormal
+	}
+	if fromPath == "" {
+		if representative := strings.TrimSpace(topic.RepresentativePath); representative != "" && recoveryTopicHasGroupMember(topic, groupID, representative) {
+			fromPath = representative
+		}
+	}
+	if fromPath == "" {
+		// A lineage whose main transcript is gone (fork-only): record the
+		// logical group identity as the from side instead of inventing a
+		// path for a file that does not exist.
+		fromPath = groupID
+	}
+	// "Already the main line" answers against the two authorities for the
+	// line the user interacts with: the open tab's transcript and the
+	// explicit preference. The catalog's diverged-group canonical marker and
+	// the representative are ordinary-list folding artifacts - they may name
+	// the very row being activated while the user's line is elsewhere, so
+	// they must never trigger a false already-there refusal (tl1430
+	// test-caught defect).
+	if (tabFromPath != "" && sameRecoveryLineagePath(tabFromPath, req.Path)) ||
+		(memberPreferred != "" && sameRecoveryLineagePath(memberPreferred, req.Path)) {
+		return errors.New("this version is already the conversation's main line")
+	}
 	if tabID != "" {
 		// tl1430 hot-switch gating: an idle tab rehydrates onto the new main
 		// line in place (no close/reopen); a tab with work in flight stays on
