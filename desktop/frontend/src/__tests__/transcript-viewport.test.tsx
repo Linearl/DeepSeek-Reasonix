@@ -217,8 +217,18 @@ try {
   // the button is never satisfiable. Full-DOM measures the rows themselves and does satisfy it.
   const readerTailAction = harness.container.querySelector<HTMLButtonElement>(".transcript__jump-bottom");
   const readerTranscript = harness.scrollElement();
+  // tl1416 预存红消解（基线 919ac3061 同红实证，申报先例 c25dbe44f）: wheel 与其
+  // 驱动的原生 scroll 在真浏览器里分属两个任务/帧，而 readSnapshot 的同帧合并
+  // （task 861）会把同一 act 里紧随 wheel 的 scroll 读取折回 wheel 时刻的快照
+  // （scrollTop 仍是 6400）——位移观察被吞，intent 永远停在 tail，按钮恒 hidden。
+  // 分开两次 act 让 harness 的确定性时钟在中间推进一帧，镜像真实任务边界；
+  // 手势 lease（wheel 开启，320ms 假时钟不推进仍活跃）覆盖 scroll 到达，与
+  // 真机一致。
   await act(async () => {
     readerTranscript.dispatchEvent(new harness.dom.window.WheelEvent("wheel", { deltaY: -1000, bubbles: true }));
+  });
+  await harness.flush();
+  await act(async () => {
     readerTranscript.scrollTop = 0;
     readerTranscript.dispatchEvent(new Event("scroll"));
   });
