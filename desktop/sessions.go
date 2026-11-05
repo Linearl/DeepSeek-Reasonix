@@ -772,6 +772,24 @@ func listTrashedSessionFiles(dir string) ([]string, error) {
 		if store.IsSessionTranscriptName(e.Name()) {
 			keys = append(keys, e.Name())
 		}
+		if len(keys) == 0 {
+			// tl1429b: a meta-less unique bucket (crash between the artifact
+			// move and the meta write) used to vanish from this listing while
+			// its bytes sat in the trash forever. Offer its transcript-named
+			// entries — exactly one, so the record is never a guess — and
+			// validateTrashedSessionPath's meta-less fallback accepts the
+			// pair, keeping the record visible AND clearable.
+			inner, _ := os.ReadDir(itemDir)
+			named := []string{}
+			for _, fe := range inner {
+				if !fe.IsDir() && store.IsSessionTranscriptName(fe.Name()) {
+					named = append(named, fe.Name())
+				}
+			}
+			if len(named) == 1 {
+				keys = append(keys, named[0])
+			}
+		}
 		for _, key := range keys {
 			path := filepath.Join(itemDir, key)
 			validPath, _, _, err := validateTrashedSessionPath(dir, path)
@@ -1133,13 +1151,27 @@ func validateTrashedSessionPath(dir, sessionPath string) (string, string, string
 		return "", "", "", fmt.Errorf("invalid trash session path: %s", sessionPath)
 	}
 	if parts[0] != parts[1] {
-		b, err := readFileUTF8(filepath.Join(root, parts[0], sessionTrashMetaFile))
-		if err != nil {
-			return "", "", "", fmt.Errorf("invalid trash session path: %s", sessionPath)
+		b, metaErr := readFileUTF8(filepath.Join(root, parts[0], sessionTrashMetaFile))
+		if metaErr == nil {
+			var meta trashedSessionMeta
+			if json.Unmarshal(b, &meta) != nil || meta.Key != parts[1] {
+				metaErr = fmt.Errorf("trash meta key mismatch")
+			}
 		}
-		var meta trashedSessionMeta
-		if err := json.Unmarshal(b, &meta); err != nil || meta.Key != parts[1] {
-			return "", "", "", fmt.Errorf("invalid trash session path: %s", sessionPath)
+		if metaErr != nil {
+			// tl1429b: a unique bucket whose meta was lost (a crash between
+			// the artifact move and the meta write, or a torn write) used to
+			// hard-fail here, and every later purge/restore/clear of that
+			// record surfaced as "trashed session path outside known session
+			// dirs" — the stuck second trash record of the 2026-11-05
+			// package-78 scene. The bucket lives inside .trash with a
+			// transcript-named entry; purge/restore are destructive flows
+			// over this directory by construction, so accept the pair when
+			// the target file really sits in the bucket instead of wedging
+			// on metadata.
+			if _, statErr := os.Lstat(filepath.Join(root, parts[0], parts[1])); statErr != nil {
+				return "", "", "", fmt.Errorf("invalid trash session path: %s", sessionPath)
+			}
 		}
 	}
 	if info, err := os.Lstat(absPath); err == nil {

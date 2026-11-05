@@ -522,6 +522,36 @@ func SweepOrphanInProcessSessionLease(path string) (cleared int, err error) {
 	// cleared so far.
 	leaseLock, lockErr := tryTakeSessionLeaseLock(path)
 	if lockErr != nil {
+		// tl1429b: the lock registry separates the two unidentifiable-holder
+		// forms. A BOOKED handle is this process's own leftover (the lost-
+		// binding self-lock: no lease object, no owner entry, a pid-less disk
+		// record — exactly the evidence gate this sweep sits behind), so
+		// evicting it is as legitimate as retiring the stale disk record in
+		// the free-lock branch. It heals the ordinary archive path through the
+		// reclaim heal (sweep → retry reclaim), which used to refuse forever
+		// until the user escalated to force/terminal. An unbooked lock stays
+		// untouched: outside this process, never grabbed.
+		if SessionLeaseLockHeldInProcess(path) {
+			if evicted := takeRegisteredSessionLock(store.SessionLeaseLock(path)); evicted != nil {
+				_ = evicted.RemoveAndUnlock()
+				cleared++
+				slog.Info("session: orphan sweep evicted an unbound in-process lease lock handle",
+					"session_base", filepath.Base(path))
+			}
+			// With the handle gone the lock is free: the same owner/identity
+			// teardown as the free-lock branch applies.
+			if cur, ok := sessionLeaseOwners.Load(path); ok {
+				if sessionLeaseOwners.CompareAndDelete(path, cur) {
+					cleared++
+				}
+			}
+			sessionLeaseActiveOwners.Delete(path)
+			_ = os.Remove(sessionLeaseInfoPath(path))
+			if cleared > 0 {
+				slog.Info("session: orphan sweep discarded the leftover in-process lease owner entry",
+					"session_base", filepath.Base(path))
+			}
+		}
 		return cleared, nil
 	}
 	if cur, ok := sessionLeaseOwners.Load(path); ok {
