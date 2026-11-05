@@ -169,7 +169,7 @@ func NewChannelSendTool(cfg SessionCollabConfig) tool.Tool { return channelSendT
 func (channelSendTool) Name() string { return "channel_send" }
 
 func (channelSendTool) Description() string {
-	return "Send a message to a chat channel (task 349): the message lands in the channel's SQLite history AND is queued for delivery to every other member as an individual followup through the session mailbox (task 309 — no separate broadcast channel), paced 2-5s apart under the channel's hourly message cap. Returns the message id and how many members it was queued for; delivery continues in the background. The sending session is never a recipient of its own message (it already has the line in channel history). Experimental."
+	return "Send a message to a chat channel (task 349): the message lands in the channel's SQLite history AND is queued for delivery through the session mailbox (task 309 — no separate broadcast channel), paced 2-5s apart under the channel's hourly message cap. Delivery routing (tl1406): an explicit @-mention delivers to the @'d members only (@<contact_id> as shown by channel_list — display names do not resolve on this tool); without a mention the message routes to the channel's deputy manager alone; a human-owned channel with no deputy delivers to NOTHING (members still see the line in channel history) and the reply carries deputyless=true. Returns the message id, how many members the message was queued for (queuedFor) and the deputyless flag; delivery continues in the background. The sending session is never a recipient of its own message (it already has the line in channel history). Experimental."
 }
 
 func (channelSendTool) Schema() json.RawMessage {
@@ -202,17 +202,11 @@ func (t channelSendTool) Execute(_ context.Context, args json.RawMessage) (strin
 		_ = store.Close()
 		return "", err
 	}
-	ch, chErr := store.Channel(p.Channel)
 	_ = store.Close()
-	if chErr != nil {
-		return "", chErr
-	}
-	queued := 0
-	for _, m := range ch.Members {
-		if m != sender {
-			queued++
-		}
-	}
+	// tl1406：queuedFor 如实上报路由结果（msg.RoutedTo），不再是「全员-自己」
+	// 的群发口径——有副管理员的未 @ 消息报 1，无副管理员的 human 群报 0 并带
+	// deputyless=true（调用方可据此向用户转述「没人收到，成员仍可查历史」）。
+	queued := len(msg.RoutedTo)
 	mailDir := t.cfg.MailDir
 	if mailDir == "" {
 		mailDir = config.SessionCollabMailDir()
@@ -230,11 +224,12 @@ func (t channelSendTool) Execute(_ context.Context, args json.RawMessage) (strin
 		_, _ = drain.DrainFanout(ctx)
 	})
 	out, _ := json.Marshal(map[string]any{
-		"channel":   p.Channel,
-		"messageId": msg.ID,
-		"queuedFor": queued,
-		"at":        msg.At,
-		"note":      "fan-out paced in the background (2-5s per member, delivery=followup, hourly cap enforced)",
+		"channel":    p.Channel,
+		"messageId":  msg.ID,
+		"queuedFor":  queued,
+		"deputyless": msg.Deputyless,
+		"at":         msg.At,
+		"note":       "fan-out paced in the background (2-5s per member, delivery=followup, hourly cap enforced); deputyless=true means nobody was queued (un-@ on a human group with no deputy — history still readable)",
 	})
 	return string(out), nil
 }

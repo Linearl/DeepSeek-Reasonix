@@ -793,6 +793,11 @@ export interface CollabChannelMessageView {
   // 802: 取消墓碑时间（缺省 0/undefined=未撤回）——撤回后渲染「已取消」行。
   cancelledAt?: number;
   fanout?: CollabChannelFanoutCellView[];
+  // tl1406 发布期路由注记：仅在发送返回值上出现（历史读零污染）。
+  // routedTo=实际排队投递的成员；deputyless=true=human 群无副管理员且未 @，
+  // 本次零投递（前端据此提示「没人收到」）。
+  routedTo?: string[];
+  deputyless?: boolean;
 }
 
 /** 任务 856 ③: 对话链（会话↔会话协作流）聚合一行——pairId 为稳定无序对键。 */

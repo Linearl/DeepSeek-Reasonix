@@ -6057,6 +6057,9 @@ export const en = {
   "collabGroup.chat.deputyBadge": "Deputy",
   "collabGroup.chat.setDeputy": "Set as deputy",
   "collabGroup.chat.unsetDeputy": "Remove deputy",
+  // tl1406: zero-delivery notice when an un-mentioned line lands in a human
+  // group with no deputy (ruling Q3) — honest post-send feedback.
+  "collabGroup.chat.deputylessHint": "No deputy in this group: this message was not pushed to any conversation (members can still see it in history). Set a deputy in the member list and resend, or @ a member directly.",
   "collabGroup.chat.inviteDismissHint": "Click outside this box to dismiss (picks are kept)",
   "collabGroup.chat.atPopLabel": "Pick someone to mention",
   "collabGroup.chat.atPopTitle": "Pick someone to mention (up/down to move, Enter to pick)",
