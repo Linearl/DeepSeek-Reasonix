@@ -15220,6 +15220,20 @@ button.statusbar__mcp:focus-visible {
   border-bottom: 1px solid var(--border);
   flex: none;
 }
+/* tl1433: 任务面板 run 行跳转落点反馈——工具条短暂脉冲一次（info token
+   渐隐），常态样式零改动；data-wf-focus-run 由落点效果挂摘，供 harness
+   断言。 */
+.wf-panel__toolbar--focus {
+  animation: wf-toolbar-focus 1.6s var(--ease-out, ease-out) 1;
+}
+@keyframes wf-toolbar-focus {
+  0% {
+    background: color-mix(in srgb, var(--info) 16%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
 .wf-panel__title {
   display: flex;
   align-items: center;
@@ -30202,6 +30216,46 @@ button.statusbar__mcp:focus-visible {
 .subagents-panel__wide[aria-pressed="true"] {
   color: var(--fg);
   border-color: var(--fg-faint);
+}
+
+/* tl1433: 工作流 run 行并入「运行中」列表——标题下挂一行元信息（类型/
+   当前节点/进度/时长），全部走既有主题 token，视觉重量与子代理行的展开
+   元行（detail-meta）同级。row-main 占据标题槽位（title 的 flex 行为上移
+   到列容器），右侧状态徽章与跳出图标的位置不变。 */
+.subagents-panel__row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subagents-panel__row-main .tooltip-trigger {
+  flex: none;
+  min-width: 0;
+}
+
+.subagents-panel__wf-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.subagents-panel__wf-kind {
+  flex: none;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
+.subagents-panel__wf-node {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-dim);
 }
 
 .subagents-panel__detailview {
