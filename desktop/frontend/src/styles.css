@@ -7849,7 +7849,7 @@ body > .mermaid-diagram--fullscreen {
   max-height: 76vh;
   object-fit: contain;
   border-radius: var(--radius-sm);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-2);
 }
 .image-annotation__canvas {
   position: absolute;
@@ -40097,6 +40097,22 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
 }
 .rc-versions__health { margin-top: 6px; }
+.rc-detail { padding-top: 4px; }
+.rc-detail__hcheck { width: 28px; }
+.rc-detail__check { width: 28px; }
+.rc-detail__row--main { background: color-mix(in srgb, currentColor 5%, transparent); }
+.rc-detail__group td {
+  font-weight: 600;
+  opacity: 0.72;
+  font-size: 0.9em;
+  padding-top: 10px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+.rc-detail__ops td { border-bottom: none; padding-top: 0; }
+.rc-detail__ops-cell { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.rc-detail__ops-cell .btn--small { margin: 2px 0; }
+.rc-detail__loading td { opacity: 0.6; font-style: italic; }
+
 .rc-versions__issues { margin: 0; padding-left: 18px; }
 /* 任务 1064：删除入口——危险动作用 danger 色区分于普通次级按钮，但按钮本体
    仍是常规尺寸（面板里的行内操作，不做大红块）。副本行的操作格里复选框与
