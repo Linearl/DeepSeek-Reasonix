@@ -2262,6 +2262,11 @@ export interface JobView {
   status: string; // "running"
   startedAt: number; // unix milliseconds
   tps?: number; // sub-agent streaming rate in tok/s (#9521 popover heartbeat); omitted when unknown
+  // tl1387 二轮: the dispatching task/fleet call id — nested_sink.go re-parents
+  // the background child's live tool events under it, so the dock panel's
+  // registry job row can project the child's work process even while the
+  // transcript card itself is missing. Absent for bash jobs.
+  parentToolCallId?: string;
 }
 
 // SubagentArtifactView is one persisted sub-agent transcript owned by the

@@ -189,6 +189,26 @@ console.log("\ntl1387 subagent registry (dock second running source)");
   eq(directory.running.length, 2, "app: projection feeds the merge directly");
 }
 
+// 6. tl1387 二轮: task/fleet job rows stamp the dispatch call id
+// (JobView.parentToolCallId ← jobs.View.ParentToolCallID) — the detail's
+// running tool stream looks the child's re-parented tool events up by it,
+// so a background child whose transcript card is missing gets the live
+// work-process stream too.
+{
+  const stamped = registryRunningEntries({ jobs: [job({ id: "job-9", parentToolCallId: "call-77" })] }, "tab-1");
+  eq(stamped[0]?.callId, "call-77", "projection: task job row stamps the dispatch callId (tl1387 二轮)");
+  const unstamped = registryRunningEntries({ jobs: [job({ id: "job-10" })] }, "tab-1");
+  ok(unstamped[0] ? unstamped[0].callId === undefined : false, "projection: job row without parentToolCallId keeps callId undefined");
+
+  // The callId also dedupes a job row against its visible transcript card
+  // (card item.id == dispatch call id) — no twin rows for background children.
+  const directory = buildSubagentDirectory([subagentTool()]);
+  const jobTwin = registryRunningEntries({ jobs: [job({ id: "job-twin", parentToolCallId: "tool-transcript" })] }, "tab-1");
+  const dedupedByCall = mergeRegistryRunningSubagents(directory, jobTwin);
+  eq(dedupedByCall.running.length, 1, "merge: job row callId collision drops the registry twin (tl1387 二轮)");
+  eq(dedupedByCall.running[0]?.item.id, "tool-transcript", "merge: the transcript card survives the job-twin collision");
+}
+
 let code = 0;
 if (failed > 0) {
   process.stdout.write(`\n${failed} failed, ${passed} passed\n`);

@@ -996,7 +996,10 @@ func (t *TaskTool) runBackgroundProfileSpec(ctx context.Context, spec ProfileExe
 	backgroundEvidence := evidence.NewLedger()
 	slotReq := acquireReq
 	trk.queued()
-	job := jm.StartForSession(jobs.SessionFromContext(ctx), "task", label, func(jobCtx context.Context, _ io.Writer) (result string, err error) {
+	// tl1387 二轮: stamp the dispatch call id — nested_sink re-parents the
+	// child's live tool events under it, and the desktop dock projects the
+	// background child's work process by looking them up through the job view.
+	job := jm.StartForSessionDetailCall(jobs.SessionFromContext(ctx), "task", label, "", parentID, func(jobCtx context.Context, _ io.Writer) (result string, err error) {
 		if writerRegistered {
 			defer mutationObserver.UnregisterWriter(recoveryTaskID)
 		}

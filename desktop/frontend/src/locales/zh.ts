@@ -3183,6 +3183,10 @@ export const zh: Record<DictKey, string> = {
 "subagentPanel.detailSummary": "结果摘要",
 "subagentPanel.detailReadOnly": "子代理详情为只读记录，不提供输入",
 "subagentPanel.detailNoPreview": "暂无预览内容：重启后仅保留名称与状态",
+// tl1387 二轮: running entries never read the restart copy above — this is
+// their honest stand-in until the live tool stream (or the pending note)
+// fills the pane.
+"subagentPanel.runningNoPreview": "子代理运行中：暂无可显示的过程——工具调用开始后将在此实时出现。",
 "subagentPanel.liveTools": "工作过程（工具调用）",
 "subagentPanel.widen": "加宽预览",
 "subagentPanel.narrow": "还原宽度",

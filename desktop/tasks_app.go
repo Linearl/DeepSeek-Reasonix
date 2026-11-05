@@ -24,6 +24,11 @@ type JobView struct {
 	Status    string `json:"status"`
 	StartedAt int64  `json:"startedAt"`
 	Tps       int    `json:"tps,omitempty"` // sub-agent streaming rate (tok/s), omitted when unknown (#9521)
+	// ParentToolCallID (tl1387 二轮) is the dispatching task/fleet call id —
+	// nested_sink re-parents the background child's live tool events under it,
+	// so the dock panel can project the child's work process even while the
+	// transcript card itself is missing. Empty for bash jobs.
+	ParentToolCallID string `json:"parentToolCallId,omitempty"`
 }
 
 // Jobs returns the still-running background jobs for the status bar. It refreshes
@@ -104,7 +109,7 @@ func (a *App) jobsForCtrl(ctrl control.SessionAPI, out []JobView) []JobView {
 		return out
 	}
 	for _, v := range ctrl.Jobs() {
-		out = append(out, JobView{ID: v.ID, Kind: v.Kind, Label: v.Label, Detail: v.Detail, Status: v.Status, StartedAt: v.StartedAt, Tps: v.Tps})
+		out = append(out, JobView{ID: v.ID, Kind: v.Kind, Label: v.Label, Detail: v.Detail, Status: v.Status, StartedAt: v.StartedAt, Tps: v.Tps, ParentToolCallID: v.ParentToolCallID})
 	}
 	return out
 }

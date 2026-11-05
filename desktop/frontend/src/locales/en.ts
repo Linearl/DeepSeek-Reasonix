@@ -3194,6 +3194,10 @@ export const en = {
 "subagentPanel.detailSummary": "Result summary",
 "subagentPanel.detailReadOnly": "Subagent details are a read-only record; there is no input.",
 "subagentPanel.detailNoPreview": "No preview content: only the name and status survive a restart.",
+// tl1387 二轮: running entries never read the restart copy above — this is
+// their honest stand-in until the live tool stream (or the pending note)
+// fills the pane.
+"subagentPanel.runningNoPreview": "The sub-agent is running: nothing to show yet — its tool calls will appear here as they happen.",
 "subagentPanel.liveTools": "Work in progress (tool calls)",
 "subagentPanel.widen": "Widen preview",
 "subagentPanel.narrow": "Restore width",

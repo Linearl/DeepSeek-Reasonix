@@ -498,8 +498,12 @@ console.log("\nsubagent panel dock (task 495)");
   await act(async () => { bareRoot.unmount(); });
   bareContainer.remove();
 
-  // A running entry without ref and without stream still shows the no-preview
-  // note (unchanged), so the empty-run shape never turns into a blank pane.
+  // A running entry without ref and without stream keeps a note (the empty-run
+  // shape never turns into a blank pane) — but tl1387 二轮 consciously changes
+  // WHICH note: the restart copy fired on live children (the 包74 user
+  // rejection), so a running entry now reads the honest running note and
+  // never the restart copy. Ended entries keep the restart copy (pinned in
+  // tl1387-detail-running).
   const reflessCard = subagentTool({
     id: "call-9", status: "running", startedAt: 7_000,
     subagentProgress: { phase: "running", reasoning: "", text: "", notice: "", lastActivityAt: 7_000, truncated: false, startedAt: 7_000 },
@@ -516,7 +520,11 @@ console.log("\nsubagent panel dock (task 495)");
   eq(reflessContainer.querySelector('[data-subagents-livetools="true"]') !== null, false,
     "tl1361: no nested children renders no stream");
   eq(reflessContainer.querySelector(".subagents-panel__detailview-note") !== null, true,
-    "tl1361: ref-less childless running entry keeps the no-preview note");
+    "tl1361: ref-less childless running entry keeps a note (pane never blank)");
+  eq(reflessContainer.querySelector('[data-subagents-running-blank="true"]') !== null, true,
+    "tl1387 二轮: the running blank note is the honest running note, not the restart copy");
+  ok(!reflessContainer.textContent?.includes("survive a restart"),
+    "tl1387 二轮: the running entry never reads the restart copy");
   await act(async () => { reflessRoot.unmount(); });
   reflessContainer.remove();
 }
