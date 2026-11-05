@@ -39,6 +39,8 @@ import {
   type SubagentDirectoryItem,
 } from "../lib/subagentDirectory";
 import type { SubagentArtifactView } from "../lib/types";
+import { runningWorkflowRuns, workflowRunRowView, type WorkflowRunRowView } from "../lib/workflowRunRows";
+import type { WireWorkflowRun } from "../lib/workflowTypes";
 
 // 任务440: the dock detail's live transcript loads lazily — the same pattern
 // as the capsule detail, and the chunk is already in the bundle (main
@@ -218,6 +220,71 @@ const DirectoryRow = memo(function DirectoryRow({
           </p>
         </div>
       )}
+    </li>
+  );
+});
+
+// tl1433: 运行中行的时长墙钟——节点事件之间的间隙（一个长节点跑几分钟）里
+// 没有推送，行内时长会冻结在上一次重渲染；运行行在列时面板级 15s 一跳，
+// 只驱动本面板重渲染（行组件是纯展示，memo 的子代理行不受影响）。
+function useWorkflowWallClock(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return now;
+}
+
+function workflowRowElapsed(view: WorkflowRunRowView, now: number, t: ReturnType<typeof useT>): string {
+  if (view.startedAt === undefined) return "—";
+  // 与 WorkflowPanel 工具条同款折算（tl1299 统一格式化），缺失起点显示 —。
+  return formatDurationLabel(Math.max(0, Math.round((now - view.startedAt) / 1000)), t);
+}
+
+/** tl1433: 任务面板「运行中」列表并入的工作流 run 行（运行中的工作流作为一
+ *  种任务类型）。行本体 = 状态图标（旋转）+ 工作流名 + 元行（当前节点 ·
+ *  已完成/总节点 · 时长）+ 状态徽章 + 跳出图标；点击经 onOpenWorkflowRun
+ *  跳工作流面板并选中该 run（App 注入；无回调时不渲染行——数据与出口同
+ *  源注入，备用视图不传即 byte-for-byte 原面板）。 */
+const WorkflowRunRow = memo(function WorkflowRunRow({
+  view,
+  now,
+  onOpen,
+}: {
+  view: WorkflowRunRowView;
+  now: number;
+  onOpen?: (runId: string) => void;
+}) {
+  const t = useT();
+  if (!onOpen) return null;
+  return (
+    <li className="subagents-panel__row-wrap">
+      <button
+        type="button"
+        className="subagents-panel__row subagents-panel__row--workflow"
+        data-workflow-run={view.runId}
+        aria-label={`${t("workflowPanel.title")} ${view.workflow}`}
+        onClick={() => onOpen(view.runId)}
+      >
+        <LoaderCircle size={13} aria-hidden="true" className="subagents-panel__spin" />
+        <span className="subagents-panel__row-main">
+          <Tooltip label={view.workflow} wrap>
+            <span className="subagents-panel__row-title">{view.workflow}</span>
+          </Tooltip>
+          <span className="subagents-panel__wf-meta" data-wf-run-meta={view.runId}>
+            <span className="subagents-panel__wf-kind">{t("workflowPanel.title")}</span>
+            {view.currentNode && <span className="subagents-panel__wf-node">{view.currentNode}</span>}
+            <span>
+              {t("workflowPanel.progress", { done: String(view.doneCount), total: String(view.totalCount) })}
+            </span>
+            <span>{workflowRowElapsed(view, now, t)}</span>
+          </span>
+        </span>
+        <span className="subagents-panel__row-status">{t("workflowPanel.run.running")}</span>
+        <ExternalLink size={12} aria-hidden="true" className="subagents-panel__chevron" />
+      </button>
     </li>
   );
 });
@@ -488,6 +555,8 @@ export function SubagentsDockPanel({
   onTerminateSubagent,
   transcriptItems,
   registryRunning,
+  workflowRuns,
+  onOpenWorkflowRun,
 }: {
   directory: SubagentDirectory;
   /** Task 507 plan-A gate: row clicks open the read-only detail view. */
@@ -524,10 +593,17 @@ export function SubagentsDockPanel({
    * `directory` and keeps the exact tl1202 detail shape. */
   transcriptItems?: readonly Item[];
   /** tl1387: registry-projected running rows (controller background jobs +
-   * the tab's foreground registry — the zcode form's backend-owned second
-   * source). Merged under the transcript projection; without it the panel is
-   * byte-for-byte the pre-1387 body. */
+   *  the tab's foreground registry — the zcode form's backend-owned second
+   *  source). Merged under the transcript projection; without it the panel is
+   *  byte-for-byte the pre-1387 body. */
   registryRunning?: readonly SubagentDirectoryEntry[];
+  /** tl1433: 运行中的工作流 run（App 订阅既有 workflowRunFeed 后投影传入，
+   *  纯展示数据）。在列时作为任务行并入「运行中」列表；不传即无 run 行，
+   *  面板 byte-for-byte 原样（备用视图不传）。 */
+  workflowRuns?: readonly WireWorkflowRun[];
+  /** tl1433: run 行点击出口——App 据此跳工作流面板并选中该 run。数据与出口
+   *  同源注入：有数据无出口（不应出现）时行不渲染，不产生死行。 */
+  onOpenWorkflowRun?: (runId: string) => void;
 }) {
   const t = useT();
   // Task 495 ④: reveal the ended list 20 rows at a time (zcode's PAGE_SIZE).
@@ -659,7 +735,14 @@ export function SubagentsDockPanel({
     () => mergeRegistryRunningSubagents(directory, registryRunning).running,
     [directory, registryRunning],
   );
-  const empty = running.length === 0 && ended.length === 0;
+  // tl1433: 运行中的工作流 run 行视图（纯投影）；行渲染与「运行中」计数、
+  // 空态判定都要计入，工作流在跑时面板不再读「暂无」。时长墙钟只在有运行
+  // 行时跳（15s），静止面板零定时器。入列条件在本面板再过滤一道（App 下发
+  // 前已过滤——防御面：completed/interrupted 落进来也不渲染成说谎的行）。
+  const workflowViews = useMemo(() => runningWorkflowRuns(workflowRuns ?? []).map(workflowRunRowView), [workflowRuns]);
+  const wallNow = useWorkflowWallClock(workflowViews.length > 0);
+  const hasWorkflowRows = workflowViews.length > 0;
+  const empty = running.length === 0 && ended.length === 0 && !hasWorkflowRows;
   const selected = selectedId
     ? running.find((entry) => entry.item.id === selectedId)
       ?? ended.find((entry) => entry.item.id === selectedId)
@@ -716,12 +799,16 @@ export function SubagentsDockPanel({
         <div className="subagents-panel__listpane">
           <section className="subagents-panel__section">
             <h3 className="subagents-panel__section-title">
-              {t("subagent.phase.running")} · {running.length}
+              {t("subagent.phase.running")} · {running.length + workflowViews.length}
             </h3>
-            {running.length === 0 ? (
+            {running.length === 0 && !hasWorkflowRows ? (
               <p className="subagents-panel__section-empty">{t("subagentPanel.runningEmpty")}</p>
             ) : (
               <ul className="subagents-panel__list">
+                {/* tl1433: 运行中的工作流 run 行并入运行列表（编排任务排在子代理行前）。 */}
+                {workflowViews.map((view) => (
+                  <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun} />
+                ))}
                 {running.map((entry) => (
                   <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} onTerminate={onTerminateSubagent} />
                 ))}
@@ -789,12 +876,17 @@ export function SubagentsDockPanel({
       {widenToolbar}
       <section className="subagents-panel__section">
         <h3 className="subagents-panel__section-title">
-          {t("subagent.phase.running")} · {running.length}
+          {t("subagent.phase.running")} · {running.length + workflowViews.length}
         </h3>
-        {running.length === 0 ? (
+        {running.length === 0 && !hasWorkflowRows ? (
           <p className="subagents-panel__section-empty">{t("subagentPanel.runningEmpty")}</p>
         ) : (
           <ul className="subagents-panel__list">
+            {/* tl1433: 运行中的工作流 run 行并入运行列表（点击跳出详情语义，
+                与子代理行的行内展开/详情不同，走 onOpenWorkflowRun）。 */}
+            {workflowViews.map((view) => (
+              <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun} />
+            ))}
             {running.map((entry) => (
               <DirectoryRow
                 key={entry.item.id}
