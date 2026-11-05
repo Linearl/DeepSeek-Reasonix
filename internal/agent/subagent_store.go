@@ -34,30 +34,30 @@ const (
 // SubagentMeta is the sidecar for a persisted sub-agent transcript. It captures
 // the execution identity that must stay stable for continuation/fork.
 type SubagentMeta struct {
-	Ref              string         `json:"ref"`
-	CreatedAt        time.Time      `json:"createdAt"`
-	UpdatedAt        time.Time      `json:"updatedAt"`
-	Status           SubagentStatus `json:"status"`
-	Outcome          string         `json:"outcome,omitempty"`
-	Retryable        bool           `json:"retryable,omitempty"`
-	ErrorCode        string         `json:"errorCode,omitempty"`
-	Kind             string         `json:"kind"` // task | skill
-	Name             string         `json:"name"`
+	Ref       string         `json:"ref"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	Status    SubagentStatus `json:"status"`
+	Outcome   string         `json:"outcome,omitempty"`
+	Retryable bool           `json:"retryable,omitempty"`
+	ErrorCode string         `json:"errorCode,omitempty"`
+	Kind      string         `json:"kind"` // task | skill
+	Name      string         `json:"name"`
 	// Description is the human-readable dispatch line (task 工具的 description
 	// 入参, tl1209). Display-only: panels prefer it over Name so same-profile
 	// runs are distinguishable. Deliberately NOT part of the continuation
 	// identity — validateMeta never compares it, so a continue_from with a
 	// different description is still accepted.
-	Description      string         `json:"description,omitempty"`
-	WorkspaceRoot    string         `json:"workspaceRoot"`
-	ParentSession    string         `json:"parentSession,omitempty"`
-	ParentToolCallID string         `json:"parentToolCallId,omitempty"`
-	ForkedFrom       string         `json:"forkedFrom,omitempty"`
-	SystemPromptHash string         `json:"systemPromptHash"`
-	ToolScope        []string       `json:"toolScope"`
-	ToolSchemaHash   string         `json:"toolSchemaHash"`
-	Model            string         `json:"model"`
-	Effort           string         `json:"effort"`
+	Description      string   `json:"description,omitempty"`
+	WorkspaceRoot    string   `json:"workspaceRoot"`
+	ParentSession    string   `json:"parentSession,omitempty"`
+	ParentToolCallID string   `json:"parentToolCallId,omitempty"`
+	ForkedFrom       string   `json:"forkedFrom,omitempty"`
+	SystemPromptHash string   `json:"systemPromptHash"`
+	ToolScope        []string `json:"toolScope"`
+	ToolSchemaHash   string   `json:"toolSchemaHash"`
+	Model            string   `json:"model"`
+	Effort           string   `json:"effort"`
 	// Capsule records what context this run was given; CapsuleHash is its
 	// stable identity for comparing two runs.
 	Capsule     ContextCapsule `json:"capsule"`
@@ -85,8 +85,8 @@ func isSubagentMetaDecodeError(err error) bool {
 
 // SubagentSpec describes the current invocation identity.
 type SubagentSpec struct {
-	Kind             string
-	Name             string
+	Kind string
+	Name string
 	// Description is the display-only dispatch line (tl1209). It lands on the
 	// sidecar meta but stays outside the continuation identity — see
 	// SubagentMeta.Description.
@@ -508,6 +508,29 @@ func (s *SubagentStore) PrepareFresh(spec SubagentSpec) (*SubagentRun, error) {
 	}
 	now := time.Now().UTC()
 	meta := metaFromSpec(ref, SubagentRunning, now, now, spec)
+	// tl1435: persist the running meta at dispatch, not only at the terminal
+	// save. The right-dock subagent panel and the capsule read the persisted
+	// directory (ListSubagentsByParent) as their ended source; a child whose
+	// dispatch never produces a session-transcript card — workflow node
+	// execution is the live case (internal/workflow runner.go calls
+	// TaskTool.Execute outside any turn) — was therefore invisible while
+	// running and only surfaced once SaveOutcome landed. PrepareContinue
+	// already re-persists the running state for the same reason ("re-acquire
+	// the running state … so a resumed transcript is visible as active"), so
+	// fresh dispatches now meet it there. Crash leftovers keep their
+	// existing repair path: CleanupStaleRunning marks them interrupted once
+	// the parent session probe and lease prove nobody owns them. A failed
+	// persist fails the dispatch (PrepareContinue precedent): an invisible
+	// child is exactly the defect this fixes, so degrading to a silent run
+	// would reintroduce it. A parent the destroyed checker already reports
+	// gone keeps the terminal-save contract (saves are no-ops, nothing lands
+	// on disk), so the dispatch stays disk-silent there too.
+	if !(s.destroyed != nil && s.destroyed(meta.ParentSession)) {
+		if err := s.saveMeta(meta); err != nil {
+			release()
+			return nil, fmt.Errorf("mark new subagent %q running: %w", ref, err)
+		}
+	}
 	return &SubagentRun{Ref: ref, Session: NewSession(spec.SystemPrompt), Meta: meta, store: s, release: release}, nil
 }
 

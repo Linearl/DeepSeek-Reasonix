@@ -31,6 +31,14 @@ export function isSubagentToolName(name: string | undefined): boolean {
 /** Task 495 ④: the ended list starts at 20 rows; "show more" reveals +20. */
 export const SUBAGENT_DIRECTORY_PAGE_SIZE = 20;
 
+/** tl1435: how often the mounted panel re-pulls the persisted directory while
+ *  nothing else triggers it. The transcript-count trigger cannot see a
+ *  workflow-dispatched child (no session transcript card → no ended-count
+ *  move), so this interval is what makes its running row appear — and its
+ *  move to the ended section happen — live. Same cadence the task monitor
+ *  panel polls its store (TaskMonitorPanel POLL_INTERVAL_MS). */
+export const SUBAGENTS_PERSISTED_POLL_MS = 5000;
+
 export type SubagentDirectoryEntry = {
   item: SubagentDirectoryItem;
   running: boolean;
@@ -162,6 +170,57 @@ export function mergeEndedSubagentRecords(directory: SubagentDirectory, views: r
   if (persisted.length === 0) return directory;
   const ended = [...directory.ended, ...persisted].sort(byStartedDesc);
   return { running: directory.running, ended };
+}
+
+// tl1435: a persisted-only RUNNING entry. Same view-model convention as
+// persistedDirectoryEntry (never enters the transcript; the "persisted:" id
+// prefix keeps the row's React key stable when the same ref later flips to a
+// terminal status and moves to the ended section), but projected as a running
+// row: the sidecar meta now lands on disk at dispatch (agent.PrepareFresh
+// saveMeta, PrepareContinue precedent), so the persisted directory carries
+// live state too — and it is the ONLY source that sees a child whose dispatch
+// never produces a session-transcript card (workflow node execution:
+// internal/workflow runner.go calls TaskTool.Execute outside any turn, so
+// neither the transcript projection nor the turn-scoped foreground registry
+// ever sees it while running).
+function persistedRunningDirectoryEntry(view: SubagentArtifactView): SubagentDirectoryEntry {
+  const item: SubagentDirectoryItem = {
+    kind: "tool",
+    id: `persisted:${view.ref}`,
+    // tl1209 semantics, same as the ended twin: the dispatch description
+    // distinguishes same-profile children; the profile name is the fallback.
+    name: view.description || view.name || view.kind || "task",
+    args: "",
+    readOnly: true,
+    status: "running",
+    startedAt: view.createdAt || undefined,
+    subject: view.description || view.name || undefined,
+  };
+  return { item, running: true, status: "running", ref: view.ref };
+}
+
+/** tl1435 (运行中区收工作流子代理): fold RUNNING persisted sidecar views into
+ *  the running section — the two sections of the panel now draw from the same
+ *  ListSubagentsByParent source the ended section already reads (557-style
+ *  single-source convergence), so a workflow-dispatched child is visible
+ *  while it runs and moves to the ended section when its meta flips terminal.
+ *  Transcript entries win on ref collisions (a regular task child has both a
+ *  card and a running meta; the card carries the richer live state), so the
+ *  merge changes nothing for children the transcript already represents.
+ *  Pure: returns the input directory when there is nothing to add. */
+export function mergePersistedRunningSubagents(directory: SubagentDirectory, views: readonly SubagentArtifactView[] | undefined): SubagentDirectory {
+  const runningViews = (views ?? []).filter((view) => view.status === "running" && view.ref);
+  if (runningViews.length === 0) return directory;
+  const known = new Set<string>();
+  for (const entry of directory.running) {
+    if (entry.ref) known.add(entry.ref);
+    known.add(entry.item.id);
+  }
+  const extra = runningViews
+    .filter((view) => !known.has(view.ref))
+    .map(persistedRunningDirectoryEntry);
+  if (extra.length === 0) return directory;
+  return { running: [...extra, ...directory.running], ended: directory.ended };
 }
 
 /** 任务495 剩余项 (用法引导): the dock tab label surfaces the ended count so

@@ -1129,6 +1129,14 @@ const CHECKS = [
   { feature: "任务558 面板折叠与删除入口（默认折叠+会话内记住+nonce 重拉）", file: "desktop/frontend/src/components/CapsulePanel.tsx", patterns: ["const [endedExpanded, setEndedExpanded] = useState(false)", "data-capsule-ended-expanded={endedExpanded}", "deleteRecord", "clearEnded"] },
   { feature: "任务558 已结束列表限高+内部滚动", file: "desktop/frontend/src/styles.css", patterns: [".capsule-panel__list", "max-height: min(46vh, 430px)", "overscroll-behavior: contain"] },
   { feature: "任务558 行为钉测试（折叠默认/两段确认删除/重拉目录）", file: "desktop/frontend/src/__tests__/capsule-panel.test.tsx", patterns: ["已结束目录默认折叠，行不渲染", "两段确认后删除调用恰好一次", "删除/清空成功后经 nonce 触发目录重拉"] },
+  // tl1435（wt-tl1435，2026-11-06）：运行中区收工作流子代理——两段数据源单
+  // 源化。PrepareFresh 派发即落盘 running meta（无转录卡子代理的实时登记面，
+  // 工作流节点是活例），前端把 running 态持久化视图折进运行中区（与已结束
+  // 区同源 ListSubagentsByParent）+5s 轮询补实时性。merge 顶掉任一环都会退
+  // 回「运行中不可见、结束才出现」。
+  { feature: "tl1435 派发即登记（PrepareFresh 落盘 running meta，失败即派发失败）", file: "internal/agent/subagent_store.go", patterns: ["mark new subagent %q running"] },
+  { feature: "tl1435 运行中区同源合并（running 态持久化视图折进运行段，transcript 卡 ref 去重）", file: "desktop/frontend/src/lib/subagentDirectory.ts", patterns: ["mergePersistedRunningSubagents", "persistedRunningDirectoryEntry"] },
+  { feature: "tl1435 面板接线（同源合并+5s 轮询补 transcript 触发不到的实时性）", file: "desktop/frontend/src/components/SubagentsDockPanel.tsx", patterns: ["mergePersistedRunningSubagents", "SUBAGENTS_PERSISTED_POLL_MS"] },
   // 任务462：跨会话消息卡显示双方对话名（contact_id 降为 hover）。解析层丢
   // 了会退回裸 sc_id；降级与 hover 断言丢了会掩盖「id 丢失/空白渲染」回归。
   { feature: "任务462 contact_id→会话名 解析层（TTL 缓存+降级短 id）", file: "desktop/frontend/src/lib/collabContactNames.ts", patterns: ["refreshCollabContactNames", "collabDisplayLabel", "shortContactId"] },
