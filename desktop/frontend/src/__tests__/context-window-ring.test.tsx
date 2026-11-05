@@ -6,6 +6,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ContextWindowRing } from "../components/ContextWindowRing";
 import { LocaleProvider } from "../lib/i18n";
+import { resetQueryCoalescing } from "../lib/queryCoalesce";
 import type { ContextPanelInfo } from "../lib/types";
 
 let passed = 0;
@@ -37,6 +38,15 @@ class TestResizeObserver {
 }
 
 function installDom() {
+  // Node >=21 exposes a machine-locale global navigator (zh-CN on Chinese
+  // Windows). i18n's detectLocale reads bare `navigator`, which inside jsdom
+  // tests still resolves to Node's global — without this pin the popover
+  // renders Chinese labels on zh machines and the English-label assertions
+  // fail machine-dependently (tl1424 预存红).
+  Object.defineProperty(globalThis, "navigator", {
+    value: { language: "en-US", languages: ["en-US"] },
+    configurable: true,
+  });
   const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
     pretendToBeVisual: true,
     url: "http://localhost/",
@@ -231,6 +241,10 @@ console.log("\ncontext window ring");
 
 {
   const dom = installDom();
+  // tl1424: the module-level queryCoalesce cache survives across scenarios in
+  // this process; drop it so this block's ContextPanel calls always reach the
+  // mock (the wait(220)s below cover UI hover timers, not cache expiry).
+  resetQueryCoalescing();
   const calls: string[] = [];
   const resolvers = new Map<string, (value: ContextPanelInfo) => void>();
   installContextPanelMock((tabId) => {
@@ -286,9 +300,10 @@ console.log("\ncontext window ring");
 }
 
 {
-  // tl1379 功能层：重置会话费用入口——确认框把门、取消不触发。开轮前先等
-  // 250ms 让前序场景留下的 queryCoalesce 窗口（200ms）过期，否则模块级
-  // inflight 缓存会吞掉本场景的 ContextPanel 调用（跨场景共享导致）。
+  // tl1379 功能层：重置会话费用入口——确认框把门、取消不触发。tl1424:
+  // 场景头部直接 resetQueryCoalescing() 丢掉前序场景的模块级 inflight 缓存
+  // （确定性，替代对 250ms 窗口过期的依赖；wait(250) 仍保留用于 UI 定时器）。
+  resetQueryCoalescing();
   const dom = installDom();
   const resetCalls: string[] = [];
   const panelFetches: string[] = [];
@@ -331,7 +346,8 @@ console.log("\ncontext window ring");
 {
   // tl1379 功能层：确认后调用桌面命令一次，并重拉 ContextPanel 让读数归零
   // 上屏。ClearSessionCostForTab 命中 queryCoalesce 的 mutation 前缀表，
-  // 刷新不会被 200ms 合并窗口吞掉；先等 250ms 隔离前序场景缓存。
+  // 刷新不会被 200ms 合并窗口吞掉；tl1424: 场景头部确定性 reset 前序缓存。
+  resetQueryCoalescing();
   const dom = installDom();
   const resetCalls: string[] = [];
   const panelFetches: string[] = [];
@@ -393,7 +409,9 @@ console.log("\ncontext window ring");
   // Wait out the bridge's 200ms query-coalesce window first — the previous
   // block's ContextPanel("tab-a") response is still cached and my fixture
   // (requestCount 3) would otherwise be shadowed by it (same trick as the
-  // reset-cost block above).
+  // reset-cost block above). tl1424: deterministic reset replaces the
+  // cache-expiry purpose of that wait (UI timers still need the wait).
+  resetQueryCoalescing();
   const { root } = await renderRing();
   await act(async () => { await wait(250); });
   const button = document.querySelector(".context-ring") as HTMLButtonElement | null;

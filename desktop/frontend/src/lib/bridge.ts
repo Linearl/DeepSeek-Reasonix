@@ -2849,6 +2849,10 @@ const listeners = new Set<(e: WireEvent) => void>();
 let mockScopedTabId: string | undefined;
 let mockPendingTopicActivation: { requestId: string; tabId: string } | undefined;
 let mockTopicActivationCounter = 0;
+// tl1424 预存红清理④: mock CreateTopic 的 id 不能只用 Date.now() —— 同毫秒内
+// 连续创建(如 tl1240 ③ 桥接契约测试)会生成相同 id,第二个 topic 覆盖第一个,
+// BatchTrashTopics 随即报 per-topic 失败。加单调计数器保证 id 唯一。
+let mockTopicIdCounter = 0;
 let mockWriteDirsProject: string[] = [];
 let mockWriteDirsSession: string[] = [];
 let mockWriteDirsOther: string[] = [];
@@ -8024,7 +8028,7 @@ function makeMockApp(): AppBindings {
     },
     async CreateTopic(_scope: string, _workspaceRoot: string, title: string) {
       const now = Date.now();
-      const id = "topic_" + now;
+      const id = "topic_" + now + "_" + (++mockTopicIdCounter);
       const topicTitle = title.trim() || t("mock.newSession");
       const parent = _scope === "global"
         ? ensureMockGlobalFolder()

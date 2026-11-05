@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,31 @@ func tabsToSessions(tabs []TabMeta) []bot.DesktopSessionInfo {
 
 func newBridgeTestEnv(tabs []TabMeta) *bridgeTestEnv {
 	return newBridgeTestEnvSessions(tabsToSessions(tabs))
+}
+
+// TestBotBridgeHubLazyWorker 固化 tl1424 防线：hub 构造不得起 goroutine（desktop
+// 全包曾因构造即 `go h.run()` 在批量 NewApp 的测试二进制里累积数万条常驻
+// goroutine 而 15m 超时）。worker 只允许在首条 enqueue 时惰性启动，且恰好一条。
+func TestBotBridgeHubLazyWorker(t *testing.T) {
+	before := runtime.NumGoroutine()
+	h := newBotBridgeHub(botBridgeDeps{
+		notify: func(ctx context.Context, connectionID, domain string, msg bot.OutboundMessage) (bot.SendResult, error) {
+			return bot.SendResult{}, nil
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if got := runtime.NumGoroutine(); got != before {
+		t.Fatalf("newBotBridgeHub must not spawn goroutines: before=%d after=%d", before, got)
+	}
+
+	h.enqueue(desktopBridgeNotification{route: &bot.DesktopWatchRoute{ChatID: "chat-lazy"}})
+	deadline := time.Now().Add(2 * time.Second)
+	for runtime.NumGoroutine() != before+1 {
+		if time.Now().After(deadline) {
+			t.Fatalf("lazy worker must start exactly once on first enqueue: before=%d after=%d", before, runtime.NumGoroutine())
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func newBridgeTestEnvSessions(sessions []bot.DesktopSessionInfo) *bridgeTestEnv {
