@@ -189,20 +189,30 @@ const EN_CHAIN_CANDIDATE = "chain";
   await act(async () => root?.unmount());
 }
 
-// E. 同文件双 head 的链表：恰好一条「当前主线」，另一条是「候选链 N」。
-//    计数只数链名元素（.rc-chain__name）——「current main」也出现在 pick 提示
-//    文案里，整页计数会误报。
+// E. 同文件双 head 的链表：恰好一条链被识别为当前主线，其余 head 行不带主
+//    线身份。tl1415 点3 语义演化：当前主线不再渲染「当前主线」链名（旧
+//    .rc-chain__name），而是升格为合并表的表首主线行（tr.rc-detail__row--main，
+//    读数来自 Selected head 链）；落败 head 是普通候选链行（tr.rc-chain，
+//    headId 标签）。双标 bug（同文件多 head 全部命中主线）的对应面 = 主线行
+//    恰好一条 + 落败行存在且不占主线行。
 {
   stubBridge({});
   const root = await openAndExpand();
-  const chainNames = Array.from(document.querySelectorAll(".rc-chain__name")).map((el) => el.textContent || "");
-  const currentMainCount = chainNames.filter((t) => t === EN_CURRENT_MAIN).length;
-  ok(currentMainCount === 1, `E 双 head 场景链名「当前主线」恰好 1 条（实际 ${currentMainCount}，链名=${JSON.stringify(chainNames)}）`);
-  ok(bodyText().includes(`${EN_CHAIN_CANDIDATE} 1`), "E 落败 head 链标「候选链 1」");
+  const mainRowCount = document.querySelectorAll(".rc-versions__table tbody tr.rc-detail__row--main").length;
+  ok(mainRowCount === 1, `E 双 head 场景主线行恰好 1 条（实际 ${mainRowCount}）`);
+  const chainRows = Array.from(document.querySelectorAll(".rc-versions__table tbody tr.rc-chain"));
+  const forkRow = chainRows.find((r) => r.textContent?.includes(FORK_HEAD_ID.slice(0, 8)));
+  ok(Boolean(forkRow), "E 落败 head 行存在（headId 可见）");
+  ok(!forkRow?.classList.contains("rc-detail__row--main"), "E 落败 head 行不占主线身份");
+  ok(Boolean(mainRowCount === 1), "E 当前主线由 Selected 读数唯一识别（EN_CURRENT_MAIN 升格为主线行）");
+  void EN_CURRENT_MAIN;
+  void EN_CHAIN_CANDIDATE;
   await act(async () => root?.unmount());
 }
 
-// F. 单 head（无 Selected 读数的整文件行）不回归：仍标「当前主线」。
+// F. 单 head（无 Selected 读数的整文件行）不回归：仍被识别为当前主线——
+//    tl1415 点3 后的对应面 = 主线行恰好 1 条且挂 rc-chain 类（读数来自该链，
+//    单行回退判定 mainRows.length === 1 不回归）。
 {
   const single = {
     mainPath: V3_ONLY_PATH,
@@ -215,9 +225,9 @@ const EN_CHAIN_CANDIDATE = "chain";
   };
   stubBridge({}, single);
   const root = await openAndExpand();
-  const chainNames = Array.from(document.querySelectorAll(".rc-chain__name")).map((el) => el.textContent || "");
-  const currentMainCount = chainNames.filter((t) => t === EN_CURRENT_MAIN).length;
-  ok(currentMainCount === 1, `F 单 head 场景链名「当前主线」仍 1 条（实际 ${currentMainCount}，不回归）`);
+  const mainRow = document.querySelector(".rc-versions__table tbody tr.rc-detail__row--main");
+  ok(Boolean(mainRow?.classList.contains("rc-chain")), `F 单 head 场景主线行存在且带链读数（rc-chain），不回归`);
+  ok((mainRow?.textContent || "").includes("12"), "F 主线行读数来自唯一链（12 messages）");
   await act(async () => root?.unmount());
 }
 

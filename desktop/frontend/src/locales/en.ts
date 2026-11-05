@@ -4811,6 +4811,10 @@ export const en = {
   "settings.recoveryCopiesFailedToast": "{count} conversation(s) failed to merge",
   "settings.recoveryCopiesChains": "candidate chains (the longest one becomes the main transcript)",
   "settings.recoveryCopiesChainsHint": "candidate chains load automatically when a row expands — no scan needed; Scan measures each copy against the main",
+  // tl1415: grouped rows of the merged table — copies and chains/versions are
+  // two distinct data paths; the group rows keep their provenance readable.
+  "settings.recoveryCopiesGroupCopies": "Copies (recovery files)",
+  "settings.recoveryCopiesGroupChains": "Candidate chains & versions (v3 event log)",
   "settings.recoveryCopiesChainCurrent": "current main",
   "settings.recoveryCopiesChainCandidate": "chain",
   "settings.recoveryCopiesRecommended": "recommended",

@@ -4798,6 +4798,10 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesFailedToast": "{count} 个会话合成失败",
   "settings.recoveryCopiesChains": "候选链（合并后由最长的一条成为主线）",
   "settings.recoveryCopiesChainsHint": "候选链在展开会话行时自动重放加载，无需扫描；「扫描」测的是副本与主线的差异读数",
+  // tl1415 点3：三表合并后的分组行——副本（recovery 文件）与候选链/版本
+  // （v3 事件日志）是两条数据链路，分组行保住数据源的可辨识性。
+  "settings.recoveryCopiesGroupCopies": "副本（recovery 文件）",
+  "settings.recoveryCopiesGroupChains": "候选链与版本（v3 事件日志）",
   "settings.recoveryCopiesChainCurrent": "当前主线",
   "settings.recoveryCopiesChainCandidate": "候选链",
   "settings.recoveryCopiesRecommended": "推荐",

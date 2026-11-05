@@ -3360,6 +3360,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesFailedToast": "{count} 個會話合成失敗",
   "settings.recoveryCopiesChains": "候選鏈（合併後由最長的一條成為主線）",
   "settings.recoveryCopiesChainsHint": "候選鏈在展開會話行時自動重放載入，無需掃描；「掃描」測的是副本與主線的差異讀數",
+  // tl1415 點3：三表合併後的分組行——副本（recovery 檔案）與候選鏈/版本
+  // （v3 事件日誌）是兩條資料鏈路，分組行保住資料來源的可辨識性。
+  "settings.recoveryCopiesGroupCopies": "副本（recovery 檔案）",
+  "settings.recoveryCopiesGroupChains": "候選鏈與版本（v3 事件日誌）",
   "settings.recoveryCopiesChainCurrent": "目前主線",
   "settings.recoveryCopiesChainCandidate": "候選鏈",
   "settings.recoveryCopiesRecommended": "推薦",

@@ -206,9 +206,11 @@ console.log("\nrecovery branch delete single + batch (1064)");
   // class, so the in-row count is scoped to the copy and version rows; and
   // its label contains "Delete selected" as a substring, so the batch-button
   // probes match the branch-batch button exactly instead of by substring.
+  // tl1415 点3: the merged detail table keeps every entry; copy rows render
+  // inside the same table, so one selector now covers both shapes.
   const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-row--copy .rc-delete, .rc-versions__table .rc-delete"));
   ok(deleteButtons.length === 3, "① both copy rows and the non-current version row render a delete entry");
-  const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>(".rc-row--copy input[type=checkbox]"));
+  const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>(".rc-versions__table input[type=checkbox]"));
   ok(checkboxes.length === 2, "① both copy rows render a selection checkbox");
   ok(!batchDeleteButton(), "① no batch button before anything is checked");
 
@@ -258,14 +260,19 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
   await flush();
 
-  const headRows = Array.from(document.querySelectorAll<HTMLTableRowElement>(".rc-versions__table tbody tr"));
+  // tl1415 点3: the heads live in the merged table as chain rows (tr.rc-chain,
+  // the current main promoted to the table's first row); counting by chain row
+  // keeps the assertion on "both heads are listed" rather than on the table's
+  // total row count (group/ops rows now share the tbody).
+  const headRows = Array.from(document.querySelectorAll<HTMLTableRowElement>(".rc-versions__table tbody tr.rc-chain"));
   ok(headRows.length === 2, "③ the v3 block lists both heads");
   const selectedRow = headRows.find((r) => r.textContent?.includes("selected"));
   const unselectedRow = headRows.find((r) => !r.textContent?.includes("selected"));
   ok(Boolean(selectedRow), "③ the selected head row is identifiable");
   ok(Boolean(unselectedRow), "③ an unselected head row exists");
   ok(!selectedRow?.querySelector(".rc-delete"), "③ the current version row has no delete entry");
-  ok(Boolean(unselectedRow?.querySelector(".rc-delete")), "③ a non-current version row has a delete entry");
+  // tl1415 点3: the delete entry lives on the branch's sibling ops row.
+  ok(Boolean(unselectedRow?.nextElementSibling?.querySelector(".rc-delete")), "③ a non-current version row has a delete entry");
 
   await act(async () => root.unmount());
 }
