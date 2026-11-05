@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/control"
@@ -111,18 +113,26 @@ func (a *App) ReconcileRecoveryVersions(key ProjectTopicKey) error {
 
 // SetActiveSessionVersion selects and opens a recovery version on the existing
 // topic tab. It rejects subagent transcripts and preserves the logical topic.
+//
+// tl1430 semantics: a switch is the adoption of one transcript file as the
+// conversation's authoritative main line. Events are append-only - nothing on
+// either side of the switch is rewritten, moved, or deleted; the switch itself
+// is recorded as a head_switch event on the adopted transcript, the tab hot-
+// switches its projection by replaying the new file, and the reopened
+// conversation reads the new main line from the persisted preference. Every
+// path either really switches or returns an explicit error; a silent no-op is
+// forbidden.
 func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 	a.sessionVersionActivationMu.Lock()
 	defer a.sessionVersionActivationMu.Unlock()
-	if req.HeadID != "" {
-		if err := a.chooseSessionHead(req); err != nil {
-			return err
-		}
-		a.emitRuntimeEvent("session:active-version-changed", sessionRecoveryEvent{
-			ConversationID: req.TopicID, ActiveVersionID: req.HeadID, RecoveryVersionID: req.HeadID,
-			Scope: req.Scope, WorkspaceRoot: req.WorkspaceRoot, TopicID: req.TopicID, CanContinue: true,
-		})
-		return nil
+	// tl1430: the in-log head switch left with the tl1280 write-path slow
+	// lane. A request naming a head id can only come from a stale caller, and
+	// honoring it used to drop the id, reconcile nothing, and report success.
+	if strings.TrimSpace(req.HeadID) != "" {
+		return errors.New("in-log head switching was retired; switch versions by transcript file")
+	}
+	if strings.TrimSpace(req.Path) == "" {
+		return errors.New("session version is unavailable")
 	}
 	meta, ok, err := agent.LoadBranchMeta(req.Path)
 	if err != nil || !ok {
@@ -135,7 +145,23 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 	if catalog == nil {
 		return errors.New("session catalog is unavailable")
 	}
-	topic, ok, err := catalog.GetTopic(a.bootContext(), sessioncatalog.TopicKey{Scope: req.Scope, WorkspaceRoot: req.WorkspaceRoot, TopicID: req.TopicID})
+	// tl1430 direction D: the versions panel is path-driven and used to
+	// hardcode scope=global with an empty topic id, so the lineage gate could
+	// never pass for a conversation the catalog files elsewhere. Resolve the
+	// owning topic from the catalog filing when the caller does not name one.
+	scope, workspaceRoot, topicID := strings.TrimSpace(req.Scope), strings.TrimSpace(req.WorkspaceRoot), strings.TrimSpace(req.TopicID)
+	if topicID == "" {
+		resolveCtx, cancel := a.catalogReadContext()
+		record, found, lookupErr := catalog.GetSession(resolveCtx, req.Path)
+		cancel()
+		if lookupErr != nil || !found || strings.TrimSpace(record.LogicalTopicID) == "" {
+			return errors.New("the selected version does not belong to a known conversation")
+		}
+		scope, workspaceRoot = normalizeDesktopTopicScope(record.Scope, record.WorkspaceRoot)
+		topicID = strings.TrimSpace(record.LogicalTopicID)
+		req.Scope, req.WorkspaceRoot, req.TopicID = scope, workspaceRoot, topicID
+	}
+	topic, ok, err := catalog.GetTopic(a.bootContext(), sessioncatalog.TopicKey{Scope: scope, WorkspaceRoot: workspaceRoot, TopicID: topicID})
 	if err != nil || !ok {
 		return errors.New("recovery lineage is unavailable")
 	}
@@ -144,14 +170,29 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 		return errors.New("selected version is outside the recovery lineage")
 	}
 	memberFound := false
+	// The line giving way (the from side of the head_switch marker) is the
+	// group's canonical member: the topic representative when it belongs to
+	// this group, else the canonical recovery record.
+	fromPath := ""
+	if representative := strings.TrimSpace(topic.RepresentativePath); representative != "" && recoveryTopicHasGroupMember(topic, groupID, representative) {
+		fromPath = representative
+	}
 	for _, member := range topic.Sessions {
-		if recoveryRecordBelongsToGroup(member, groupID) && sameRecoveryLineagePath(member.Path, req.Path) && member.RecoveryRole != sessioncatalog.RecoveryRoleCoveredCopy {
+		if !recoveryRecordBelongsToGroup(member, groupID) {
+			continue
+		}
+		if sameRecoveryLineagePath(member.Path, req.Path) && member.RecoveryRole != sessioncatalog.RecoveryRoleCoveredCopy {
 			memberFound = true
-			break
+		}
+		if fromPath == "" && member.RecoveryCanonical {
+			fromPath = member.Path
 		}
 	}
 	if !memberFound {
 		return errors.New("selected version is outside the recovery lineage")
+	}
+	if fromPath != "" && sameRecoveryLineagePath(fromPath, req.Path) {
+		return errors.New("this version is already the conversation's main line")
 	}
 	a.mu.RLock()
 	var tabID string
@@ -165,12 +206,30 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 	}
 	a.mu.RUnlock()
 	if tabID != "" {
+		// tl1430 hot-switch gating: an idle tab rehydrates onto the new main
+		// line in place (no close/reopen); a tab with work in flight stays on
+		// its line and the user gets an explicit refusal instead of a silent
+		// or disruptive swap.
+		a.mu.RLock()
+		runningTab := a.tabs[tabID]
+		a.mu.RUnlock()
+		if runningTab != nil && runningTab.Ctrl != nil {
+			if state := controllerRuntimeState(runningTab.Ctrl); state.ActiveWork() {
+				return errors.New("the current main line is still working; wait for its turn to finish, then switch again")
+			}
+		}
 		if _, err := a.ResumeSessionForTab(tabID, req.Path); err != nil {
 			return err
 		}
 	}
 	if err := a.ChooseRecoveryBranch(req); err != nil {
 		return err
+	}
+	// tl1430: record the switch as appended history on the adopted transcript.
+	// The from side stays untouched (append-only); a failure here leaves the
+	// switch itself in effect but must surface, never disappear silently.
+	if err := agent.AppendSessionHeadSwitchEvent(req.Path, fromPath, req.Path); err != nil {
+		return fmt.Errorf("the switch succeeded but recording the head_switch event failed: %w", err)
 	}
 	a.emitRuntimeEvent("session:active-version-changed", sessionRecoveryEvent{
 		ConversationID: req.TopicID, ActiveVersionID: agent.BranchID(req.Path),
@@ -409,6 +468,17 @@ func recoveryTopicHasGroup(topic sessioncatalog.TopicRecord, groupID string) boo
 	return false
 }
 
+// recoveryTopicHasGroupMember reports whether one concrete path belongs to the
+// lineage group via the same membership rule the group filter uses.
+func recoveryTopicHasGroupMember(topic sessioncatalog.TopicRecord, groupID, path string) bool {
+	for _, record := range topic.Sessions {
+		if recoveryRecordBelongsToGroup(record, groupID) && sameRecoveryLineagePath(record.Path, path) {
+			return true
+		}
+	}
+	return false
+}
+
 func recoveryRecordBelongsToGroup(record sessioncatalog.SessionRecord, groupID string) bool {
 	if record.Recovered {
 		return record.RecoveryGroupID == groupID
@@ -431,8 +501,10 @@ func recoveryLineageIsCovered(view RecoveryLineageView) bool {
 // ChooseRecoveryBranch changes only the default open target. Diverged content
 // remains on disk and is never made cleanup-eligible by this choice.
 func (a *App) ChooseRecoveryBranch(req RecoveryPreferenceRequest) error {
-	if req.HeadID != "" {
-		return a.chooseSessionHead(req)
+	if strings.TrimSpace(req.HeadID) != "" {
+		// tl1430: in-log head switching left with the tl1280 slow lane; the
+		// leftover branch used to drop the id and report success silently.
+		return errors.New("in-log head switching was retired; switch versions by transcript file")
 	}
 	catalog := a.sessionCatalog.Load()
 	if catalog == nil {
