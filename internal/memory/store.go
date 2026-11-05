@@ -92,6 +92,7 @@ type Memory struct {
 	ExpiresAt      time.Time  // hard freshness boundary; zero = never expires
 	LastVerifiedAt time.Time  // last explicit confirmation; renews the freshness clock
 	Keywords       string     // search aliases (bilingual synonyms, related commands); recall-only, never rendered into the index
+	Triggers       string     // tl1349③: space-separated trigger phrases the fact declares for itself. Unlike keywords (folded into the BM25 text), triggers feed a separate recall lane scored by phrase overlap, so a fact can be found by words its body never uses.
 	Body           string     // the fact itself (Markdown)
 }
 
@@ -752,6 +753,7 @@ func loadMemory(path string) (Memory, bool) {
 		Title:          fm["title"],
 		Description:    fm["description"],
 		Keywords:       fm["keywords"],
+		Triggers:       fm["triggers"],
 		Activation:     NormalizeActivation(fm["activation"]),
 		Volatility:     NormalizeVolatility(fm["volatility"]),
 		SubjectKey:     NormalizeSubjectKey(fm["subject_key"]),

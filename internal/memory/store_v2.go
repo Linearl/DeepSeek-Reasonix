@@ -112,7 +112,7 @@ func (s Store) MigrateV2() (MigrationReport, error) {
 
 // inheritOnUpdate keeps the update-omittable fields of an existing revision:
 // an update that leaves scope, activation, volatility, expiry, verification,
-// or keywords empty preserves them, it does not clear them. ClearExpiry is
+// or keywords/triggers empty preserves them, it does not clear them. ClearExpiry is
 // the explicit exception — dropping a boundary must be a stated intent.
 func inheritOnUpdate(m Memory, existing Memory, clearExpiry bool) Memory {
 	if strings.TrimSpace(string(m.Scope)) == "" {
@@ -137,6 +137,9 @@ func inheritOnUpdate(m Memory, existing Memory, clearExpiry bool) Memory {
 	}
 	if strings.TrimSpace(m.Keywords) == "" {
 		m.Keywords = existing.Keywords
+	}
+	if strings.TrimSpace(m.Triggers) == "" {
+		m.Triggers = existing.Triggers
 	}
 	return m
 }

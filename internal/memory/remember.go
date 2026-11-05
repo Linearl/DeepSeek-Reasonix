@@ -30,6 +30,7 @@ type rememberRequest struct {
 	ExpiresAt        string `json:"expires_at"`
 	Verified         bool   `json:"verified"`
 	Keywords         string `json:"keywords"`
+	Triggers         string `json:"triggers"`
 	Body             string `json:"body"`
 }
 
@@ -72,6 +73,7 @@ func (rememberTool) Schema() json.RawMessage {
 			"expires_at": {"type": "string", "description": "Hard expiry as RFC3339 or YYYY-MM-DD. Past this moment the fact stops being auto-recalled entirely. Set it when the fact has a known end of life. Omit on update to preserve; \"never\" clears an existing expiry."},
 			"verified": {"type": "boolean", "description": "Set true only when you have JUST re-confirmed the fact still holds (checked the file, ran the command). Renews the freshness clock without changing the meaning of updated_at."},
 			"keywords": {"type": "string", "description": "Space-separated search aliases a future query might use where the body's own words would miss: synonyms, translations of key terms (recall matching is lexical, so give Chinese facts English aliases and vice versa), related command or tool names. Omit when the body already carries the likely query words. When updating, omit to preserve existing keywords."},
+			"triggers": {"type": "string", "description": "Space-separated phrases that should summon this fact on their own, independent of what the body says. Unlike keywords (folded into the lexical search text), a trigger fires when the whole phrase appears in the query, so use it to declare the other-language wording a future turn might use: e.g. body in English about a relay port ⇒ triggers \"代理端口 网络代理\". Keep phrases specific (two or more characters) — a single common bigram is rejected as too generic. When updating, omit to preserve existing triggers."},
 			"body": {"type": "string", "description": "The fact itself (Markdown). For feedback/project, include a \"**Why:**\" line and a \"**How to apply:**\" line; link related memories with [[their-name]]."}
 		},
 		"required": ["description", "body"]
@@ -122,6 +124,7 @@ func (t rememberTool) Execute(ctx context.Context, args json.RawMessage) (string
 		ExpiresAt:      expiresAt,
 		LastVerifiedAt: verifiedAt,
 		Keywords:       in.Keywords,
+		Triggers:       in.Triggers,
 		Body:           in.Body,
 	}, SaveOptions{
 		ExpectedRevision:        in.ExpectedRevision,

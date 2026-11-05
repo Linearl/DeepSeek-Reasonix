@@ -42,7 +42,7 @@ import (
 	"reasonix/internal/retrieval"
 )
 
-const recallFTSSchemaVersion = "1"
+const recallFTSSchemaVersion = "2"
 
 // recallFTSPath returns the durable index location for this store. Each project
 // store gets its own file: the same store can see GlobalDir + Dir, and two
@@ -92,6 +92,7 @@ func recallFTSMigrations() []string {
 			expires_at INTEGER NOT NULL,
 			last_verified_at INTEGER NOT NULL,
 			keywords TEXT NOT NULL,
+			triggers TEXT NOT NULL,
 			body TEXT NOT NULL,
 			search_text TEXT NOT NULL,
 			fts_terms TEXT NOT NULL,
@@ -287,9 +288,9 @@ func upsertFactRow(db *sql.DB, memory Memory, file factFileState) error {
 	terms := retrieval.Tokens(searchText)
 	_, err := db.Exec(`INSERT INTO facts(
 			path,id,scope,revision,created_at,updated_at,name,title,description,ftype,
-			activation,volatility,subject,expires_at,last_verified_at,keywords,body,
+			activation,volatility,subject,expires_at,last_verified_at,keywords,triggers,body,
 			search_text,fts_terms,content_hash,term_count)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET
 			id=excluded.id, scope=excluded.scope, revision=excluded.revision,
 			created_at=excluded.created_at, updated_at=excluded.updated_at,
@@ -297,6 +298,7 @@ func upsertFactRow(db *sql.DB, memory Memory, file factFileState) error {
 			ftype=excluded.ftype, activation=excluded.activation, volatility=excluded.volatility,
 			subject=excluded.subject, expires_at=excluded.expires_at,
 			last_verified_at=excluded.last_verified_at, keywords=excluded.keywords,
+			triggers=excluded.triggers,
 			body=excluded.body, search_text=excluded.search_text, fts_terms=excluded.fts_terms,
 			content_hash=excluded.content_hash, term_count=excluded.term_count`,
 		file.path, memory.ID, string(memory.Scope), memory.Revision,
@@ -304,7 +306,7 @@ func upsertFactRow(db *sql.DB, memory Memory, file factFileState) error {
 		memory.Name, memory.Title, memory.Description, string(memory.Type),
 		string(memory.Activation), string(memory.Volatility), memory.SubjectKey,
 		memory.ExpiresAt.Unix(), memory.LastVerifiedAt.Unix(),
-		memory.Keywords, memory.Body,
+		memory.Keywords, memory.Triggers, memory.Body,
 		searchText, strings.Join(terms, " "), file.hash, len(terms))
 	return err
 }
@@ -313,7 +315,7 @@ func upsertFactRow(db *sql.DB, memory Memory, file factFileState) error {
 // no tokenization (the stored term stream is re-split).
 func loadRecallFTSDocs(db *sql.DB) ([]recallFTSDoc, error) {
 	rows, err := db.Query(`SELECT id,scope,revision,created_at,updated_at,name,title,description,
-			ftype,activation,volatility,subject,expires_at,last_verified_at,keywords,body,
+			ftype,activation,volatility,subject,expires_at,last_verified_at,keywords,triggers,body,
 			search_text,fts_terms FROM facts`)
 	if err != nil {
 		return nil, err
@@ -323,12 +325,12 @@ func loadRecallFTSDocs(db *sql.DB) ([]recallFTSDoc, error) {
 	for rows.Next() {
 		var (
 			id, scope, name, title, description, ftype, activation, volatility string
-			subject, keywords, body, searchText, ftsTerms                     string
+			subject, keywords, triggers, body, searchText, ftsTerms            string
 			revision, createdAt, updatedAt, expiresAt, lastVerifiedAt         int64
 		)
 		if err := rows.Scan(&id, &scope, &revision, &createdAt, &updatedAt, &name, &title,
 			&description, &ftype, &activation, &volatility, &subject, &expiresAt,
-			&lastVerifiedAt, &keywords, &body, &searchText, &ftsTerms); err != nil {
+			&lastVerifiedAt, &keywords, &triggers, &body, &searchText, &ftsTerms); err != nil {
 			return nil, err
 		}
 		terms := strings.Fields(ftsTerms)
@@ -352,6 +354,7 @@ func loadRecallFTSDocs(db *sql.DB) ([]recallFTSDoc, error) {
 				ExpiresAt:      time.Unix(expiresAt, 0),
 				LastVerifiedAt: time.Unix(lastVerifiedAt, 0),
 				Keywords:       keywords,
+				Triggers:       triggers,
 				Body:           body,
 			},
 			text:   searchText,

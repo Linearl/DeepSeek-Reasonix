@@ -23,6 +23,7 @@ type memoryFrontmatter struct {
 	Title          string `yaml:"title,omitempty"`
 	Desc           string `yaml:"description"`
 	Keywords       string `yaml:"keywords,omitempty"`
+	Triggers       string `yaml:"triggers,omitempty"`
 	Activation     string `yaml:"activation,omitempty"`
 	Volatility     string `yaml:"volatility,omitempty"`
 	SubjectKey     string `yaml:"subject_key,omitempty"`
@@ -39,7 +40,7 @@ type memoryFrontmatter struct {
 func render(m Memory, name string) string {
 	fm := memoryFrontmatter{
 		ID: m.ID, Revision: m.Revision, Name: name, Title: oneLine(m.Title), Desc: oneLine(m.Description),
-		Keywords: oneLine(m.Keywords), Activation: string(NormalizeActivation(string(m.Activation))),
+		Keywords: oneLine(m.Keywords), Triggers: oneLine(m.Triggers), Activation: string(NormalizeActivation(string(m.Activation))),
 		Volatility: string(NormalizeVolatility(string(m.Volatility))),
 		SubjectKey: NormalizeSubjectKey(m.SubjectKey),
 	}

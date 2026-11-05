@@ -47,6 +47,9 @@ type RecallHit struct {
 	Freshness string
 	Reason    string
 	Snippet   string
+	// Triggered marks a fact adopted by the trigger lane: its own declared
+	// triggers matched even though BM25 may have scored it at zero.
+	Triggered bool
 }
 
 // RecallResult records both the selected facts and the budget decision. Block
@@ -180,11 +183,12 @@ func autoRecallIndexed(index *RecallIndex, result RecallResult, opts RecallOptio
 	var hits []RecallHit
 	for _, doc := range docs {
 		matched := matchedRecallTerms(queryTerms, doc.counts)
-		if !strongRecallMatch(result.Query, queryTerms, matched) {
+		triggered := triggerHit(doc.memory.Triggers, queryTerms)
+		if !triggered && !strongRecallMatch(result.Query, queryTerms, matched) {
 			continue
 		}
 		score := retrieval.BM25Score(doc.counts, doc.length, queryTerms, df, len(docs), avgLen)
-		if score <= 0 {
+		if score <= 0 && !triggered {
 			continue
 		}
 		if NormalizeFactScope(string(doc.memory.Scope)) == FactScopeProject {
@@ -205,6 +209,7 @@ func autoRecallIndexed(index *RecallIndex, result RecallResult, opts RecallOptio
 			Freshness: freshness,
 			Reason:    recallReason(matched, doc.memory.Scope),
 			Snippet:   retrieval.MakeSnippet(doc.text, result.Query, queryTerms, maxAutoRecallSnippetRunes),
+			Triggered: triggered,
 		})
 	}
 	if len(hits) == 0 {
@@ -224,7 +229,18 @@ func autoRecallIndexed(index *RecallIndex, result RecallResult, opts RecallOptio
 	if autoFloor <= 0 {
 		autoFloor = autoRecallScoreFloor
 	}
-	hits = retrieval.KeepTopRelativeScore(hits, autoFloor, func(hit RecallHit) float64 { return hit.Score })
+	// Trigger hits bypass the relative-score floor: that floor trims weak
+	// lexical matches, and a declared-trigger match is not one.
+	keptTriggered := make([]RecallHit, 0, len(hits))
+	scoredHits := make([]RecallHit, 0, len(hits))
+	for _, hit := range hits {
+		if hit.Triggered {
+			keptTriggered = append(keptTriggered, hit)
+			continue
+		}
+		scoredHits = append(scoredHits, hit)
+	}
+	hits = append(keptTriggered, retrieval.KeepTopRelativeScore(scoredHits, autoFloor, func(hit RecallHit) float64 { return hit.Score })...)
 	limit := recallLimit(opts.Limit)
 	if len(hits) > limit {
 		result.Omitted += len(hits) - limit
@@ -313,7 +329,7 @@ func strongRecallMatch(query string, queryTerms, matched []string) bool {
 }
 
 func autoRecallSearchText(memory Memory) string {
-	return strings.Join([]string{memory.Name, memory.Title, memory.Description, memory.Keywords, memory.Body}, "\n")
+	return strings.Join([]string{memory.Name, memory.Title, memory.Description, memory.Keywords, memory.Triggers, memory.Body}, "\n")
 }
 
 func distinctiveQueryTerm(query, normalizedTerm string) bool {
