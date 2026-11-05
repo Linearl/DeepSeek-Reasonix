@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -661,10 +662,25 @@ func TrashReclaimableRecoveryBranch(path, parentDir string) error {
 	return trashCoveredRecoveryBranch(path, parentDir, true, false)
 }
 
+// sameSessionDirSpelling reports whether two cleaned directory spellings name
+// the same directory. Windows filenames are case-insensitive, and the desktop
+// legitimately produces two spellings for one session directory: the panel's
+// scan face spells it as the directory exists on disk, while the path gate
+// resolves it through WorkspaceSlug's case-folded form. Byte-comparing the two
+// faces refused every panel-listed branch on such machines (tl1414 实测：副本
+// 删除确认后静默无反应，「must be a direct child」拒绝只落在面板底部一行小
+// 字里), so the containment check folds case where the platform does.
+func sameSessionDirSpelling(a, b string) bool {
+	if a == b {
+		return true
+	}
+	return runtime.GOOS == "windows" && strings.EqualFold(a, b)
+}
+
 func trashCoveredRecoveryBranch(path, parentDir string, requireIdle, force bool) error {
 	path = filepath.Clean(strings.TrimSpace(path))
 	parentDir = filepath.Clean(strings.TrimSpace(parentDir))
-	if path == "." || parentDir == "." || filepath.Dir(path) != parentDir {
+	if path == "." || parentDir == "." || !sameSessionDirSpelling(filepath.Dir(path), parentDir) {
 		return fmt.Errorf("recovery branch must be a direct child of its session directory")
 	}
 	key := filepath.Base(path)

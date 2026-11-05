@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"reasonix/internal/agent"
@@ -123,8 +124,13 @@ func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisRepo
 	// Pre-run reading: how much of each branch is unique against the chosen
 	// chain. This is the number the panel shows while synthesizing and the one
 	// "总条数≈并集" is checked against afterwards.
+	//
+	// tl1414: enumerate against the session path's own parent spelling. On
+	// Windows the gate-resolved dir differs from the scanned spelling by case,
+	// so a lookup keyed by one and probed with the other silently read as "no
+	// copies" and misreported synthesizable conversations as single-chain.
 	copies := []string{}
-	if list, _, listErr := recoveryCopiesByMain(dir); listErr == nil {
+	if list, _, listErr := recoveryCopiesByMain(filepath.Dir(mainPath)); listErr == nil {
 		for _, c := range list[mainPath] {
 			copies = append(copies, c.Path)
 		}

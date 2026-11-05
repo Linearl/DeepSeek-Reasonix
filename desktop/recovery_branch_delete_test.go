@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"reasonix/internal/agent"
@@ -110,4 +113,95 @@ func TestDeleteRecoveryBranchRefusesPlainTranscript(t *testing.T) {
 // skip reason; the file-level paths above still pin the live surface.
 func TestDeleteSessionVersionHeadRefusesSelectedHead(t *testing.T) {
 	t.Skip("tl1280 DAG 写路径慢车道删除: 1064 选中头删除约束依赖 ForkHead/SelectSessionHead/ErrSessionHeadUnknown，均随慢车道退役；ListSessionHeads 垫片恒空，显式退役非静默")
+}
+
+// tl1414：删除链的每条路径必须留痕（desktop.log 可观测性）。
+//
+// 事故形态（2026-11-05 用户实测）：面板副本行点删除→确认→静默无反应，
+// desktop.log 零 delete-recovery-branch 痕迹——lockRuntimeMutation 与 busy
+// 拒全不落日志，事后无法区分「前端没调用」还是「后端拒绝」。真机证据钉死
+// 断点：活 tab 自己的转录本以副本行出现在面板（recovery-8a3a…jsonl 正被
+// 每 8 秒 save），点删它 → sessionOpenInAnyTab 拒 → 全链路零日志零 toast。
+// 本测试钉三条拒绝路径与成功路径各留一行日志，拒绝原因（reason）可读。
+func TestDeleteRecoveryBranchEveryPathLeavesALogTrace(t *testing.T) {
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	capture := func(t *testing.T, run func(app *App)) string {
+		t.Helper()
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+		run(newBranchDeleteApp(t))
+		return buf.String()
+	}
+
+	// ① 活 tab 占用拒（本次事故断点）：副本被任一 tab 持有时拒绝且留痕。
+	{
+		mainPath, copyPath := writeRecoveryCopyFixture(t, dir, "sess-branch-del-3.jsonl", "sess-branch-del-3-recovery-0123456789abcdef.jsonl")
+		t.Cleanup(func() { _ = os.Remove(mainPath) })
+		logs := capture(t, func(app *App) {
+			app.mu.Lock()
+			app.tabs = map[string]*WorkspaceTab{"tab": {SessionPath: copyPath}}
+			app.mu.Unlock()
+			if err := app.DeleteRecoveryBranch(copyPath); err == nil {
+				t.Fatal("deleting a copy that is open in a tab must be refused")
+			}
+			if _, err := os.Stat(copyPath); err != nil {
+				t.Fatalf("the refused copy must survive: %v", err)
+			}
+		})
+		for _, want := range []string{"recovery branch delete refused", "session open in a tab"} {
+			if !strings.Contains(logs, want) {
+				t.Fatalf("busy refusal must leave a trace naming the reason %q; log:\n%s", want, logs)
+			}
+		}
+	}
+
+	// ② 非 recovery 文件名拒：主线走副本删除入口被拒且留痕。
+	{
+		mainPath, _ := writeRecoveryCopyFixture(t, dir, "sess-branch-del-4.jsonl", "sess-branch-del-4-recovery-0123456789abcdef.jsonl")
+		t.Cleanup(func() { _ = os.Remove(mainPath) })
+		logs := capture(t, func(app *App) {
+			if err := app.DeleteRecoveryBranch(mainPath); err == nil {
+				t.Fatal("deleting the main transcript through the branch path must be refused")
+			}
+		})
+		for _, want := range []string{"recovery branch delete refused", "not a recovery copy filename"} {
+			if !strings.Contains(logs, want) {
+				t.Fatalf("filename-gate refusal must leave a trace naming the reason %q; log:\n%s", want, logs)
+			}
+		}
+	}
+
+	// ③ 未知目录拒：面板之外的任意路径被拒且留痕。
+	{
+		logs := capture(t, func(app *App) {
+			if err := app.DeleteRecoveryBranch(filepath.Join(t.TempDir(), "x-recovery-0123456789abcdef.jsonl")); err == nil {
+				t.Fatal("a path outside known session dirs must be refused")
+			}
+		})
+		for _, want := range []string{"recovery branch delete refused", "path outside known session dirs"} {
+			if !strings.Contains(logs, want) {
+				t.Fatalf("dir-gate refusal must leave a trace naming the reason %q; log:\n%s", want, logs)
+			}
+		}
+	}
+
+	// ④ 成功路径留痕：文件归档成功必须有「deleted」一行，事后可对账。
+	{
+		mainPath, copyPath := writeRecoveryCopyFixture(t, dir, "sess-branch-del-5.jsonl", "sess-branch-del-5-recovery-0123456789abcdef.jsonl")
+		t.Cleanup(func() { _ = os.Remove(mainPath) })
+		logs := capture(t, func(app *App) {
+			if err := app.DeleteRecoveryBranch(copyPath); err != nil {
+				t.Fatalf("forced archive must succeed: %v", err)
+			}
+		})
+		if !strings.Contains(logs, "recovery branch deleted") {
+			t.Fatalf("a successful delete must leave a trace; log:\n%s", logs)
+		}
+	}
 }

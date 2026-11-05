@@ -44,12 +44,21 @@ var errSessionVersionNotDeletable = errors.New("the current version cannot be de
 // dir resolves through the same known-session-dirs gate as every other panel
 // write, so a path from the project tree (not just the active tab's directory)
 // is accepted while an arbitrary filesystem path is still refused.
+// Every refusal and every success below leaves one slog line. tl1414 (2026-11-05
+// 用户实测)：一次点确认后的删除在 desktop.log 里零痕迹——lockRuntimeMutation 与
+// busy 拒全都不落日志，事后只能猜「没调用还是被拒」。诊断可观测性从这条链开始：
+// 入口/两道静态门/占用拒/租约拒/trash 失败/成功，六处各留一行。
 func (a *App) DeleteRecoveryBranch(path string) error {
 	dir, sessionPath, err := a.sessionDirForPath(path)
 	if err != nil {
-		return friendlySessionFileError(err)
+		err = friendlySessionFileError(err)
+		slog.Warn("desktop: recovery branch delete refused", "reason", "path outside known session dirs",
+			"path", path, "err", err)
+		return err
 	}
 	if !agent.LooksLikeRecoveryFilename(sessionPath) {
+		slog.Warn("desktop: recovery branch delete refused", "reason", "not a recovery copy filename",
+			"path", sessionPath)
 		return fmt.Errorf("not a recovery copy: only discarded branches may be deleted here")
 	}
 	if err := func() error {
@@ -58,20 +67,28 @@ func (a *App) DeleteRecoveryBranch(path string) error {
 		defer a.sessionRemovalMu.Unlock()
 		// A copy open in a tab (read-only ones included) keeps its own DAG state;
 		// archiving it under the tab's feet would leave the tab reading a file
-		// that no longer exists in the directory listing.
+		// that no longer exists in the directory listing. tl1414：面板行标签取同族
+		// topic title，活 tab 自己的转录本也以副本行的形态出现——这正是用户点删
+		// 后「静默无反应」的形态（活副本被拒，另外两份锁空闲），拒绝必须可见。
 		if a.sessionOpenInAnyTab(sessionPath) {
+			slog.Warn("desktop: recovery branch delete refused", "reason", "session open in a tab",
+				"path", sessionPath)
 			return errSessionBusyElsewhere
 		}
 		if err := agent.TrashRecoveryBranchForced(sessionPath, dir); err != nil {
 			if errors.Is(err, agent.ErrSessionLeaseHeld) {
+				slog.Warn("desktop: recovery branch delete refused", "reason", "session lease held by a live runtime",
+					"path", sessionPath, "err", err)
 				return errSessionBusyElsewhere
 			}
+			slog.Warn("desktop: recovery branch delete failed", "path", sessionPath, "err", err)
 			return err
 		}
 		return nil
 	}(); err != nil {
 		return friendlySessionFileError(err)
 	}
+	slog.Info("desktop: recovery branch deleted", "path", sessionPath)
 	if err := botruntime.ForgetAutoSessionMappingsForPath(sessionPath); err != nil {
 		slog.Warn("desktop: failed to clear auto bot session mapping", "err", err)
 	}
