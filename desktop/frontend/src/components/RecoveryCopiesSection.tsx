@@ -654,6 +654,7 @@ function VersionRows({
                         <button
                           className="btn btn--secondary btn--small rc-delete"
                           type="button"
+                          title={t("settings.recoveryCopiesDeleteHint")}
                           disabled={busy}
                           onClick={() => onDeleteBranch(copy.path, index)}
                         >
@@ -744,6 +745,7 @@ function VersionRows({
                     <button
                       className="btn btn--secondary btn--small rc-chain__preview-btn"
                       type="button"
+                      title={t("settings.recoveryCopiesPreviewBtnHint")}
                       disabled={busy || scanningAll}
                       onClick={() => onPick(c)}
                     >
@@ -757,6 +759,7 @@ function VersionRows({
                       <button
                         className="btn btn--secondary btn--small"
                         type="button"
+                        title={t("settings.sessionVersionsActivateHint")}
                         disabled={repairing}
                         onClick={() => void activate(c.headId)}
                       >
@@ -770,6 +773,7 @@ function VersionRows({
                       <button
                         className="btn btn--secondary btn--small rc-delete"
                         type="button"
+                        title={t("settings.recoveryCopiesDeleteHeadHint")}
                         disabled={repairing || deleting !== null}
                         onClick={() => void deleteHead(c.headId)}
                       >
@@ -791,6 +795,7 @@ function VersionRows({
         <button
           className="btn btn--secondary btn--small"
           type="button"
+          title={t("settings.recoveryCopiesSynthesizeBtnHint")}
           disabled={busy || scanningAll || Boolean(synthesizing)}
           onClick={onSynthesize}
         >
@@ -803,9 +808,9 @@ function VersionRows({
         ) : (
           <span className="rc-chains__synth-hint">{t("settings.recoveryCopiesSynthesizePickHint")}</span>
         )}
-        <button className="btn btn--secondary btn--small" type="button" onClick={() => void inspect()}>{t("settings.sessionVersions.check")}</button>
-        <button className="btn btn--secondary btn--small" type="button" disabled={repairing} onClick={() => void repair(false)}>{t("settings.sessionVersions.repair")}</button>
-        <button className="btn btn--secondary btn--small" type="button" disabled={repairing} onClick={() => void repair(true)}>{t("settings.sessionVersions.repairDiet")}</button>
+        <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsCheckHint")} onClick={() => void inspect()}>{t("settings.sessionVersions.check")}</button>
+        <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsRepairHint")} disabled={repairing} onClick={() => void repair(false)}>{t("settings.sessionVersions.repair")}</button>
+        <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsRepairDietHint")} disabled={repairing} onClick={() => void repair(true)}>{t("settings.sessionVersions.repairDiet")}</button>
       </div>
       {health.path === mainPath && health.report && (
         <div className="rc-versions__health">
@@ -1802,6 +1807,7 @@ export function RecoveryCopiesSection() {
             <button
               className="btn btn--secondary btn--small"
               type="button"
+              title={t("settings.recoveryCopiesScanHint")}
               disabled={isScanning || scanningAll}
               onClick={() => void scanOne(group.mainPath)}
             >
@@ -2090,6 +2096,7 @@ export function RecoveryCopiesSection() {
                 <button
                   className="btn btn--small btn--primary"
                   type="button"
+                  title={t("settings.recoveryCopiesMergeHint")}
                   disabled={busy || selected.size === 0}
                   onClick={() => void mergeSelected()}
                 >
@@ -2100,6 +2107,7 @@ export function RecoveryCopiesSection() {
                 <button
                   className="btn btn--secondary btn--small"
                   type="button"
+                  title={t("settings.recoveryCopiesScanAllHint")}
                   disabled={busy || scanningAll}
                   onClick={() => void scanAll()}
                 >
@@ -2111,6 +2119,7 @@ export function RecoveryCopiesSection() {
                   <button
                     className="btn btn--secondary btn--small rc-delete"
                     type="button"
+                    title={t("settings.recoveryCopiesDeleteSelectedHint")}
                     disabled={busy}
                     onClick={() => void deleteBranches()}
                   >
@@ -2121,6 +2130,7 @@ export function RecoveryCopiesSection() {
                   <button
                     className="btn btn--secondary btn--small"
                     type="button"
+                    title={t("settings.recoveryCopiesScanSelectedHint")}
                     disabled={busy || scanningAll}
                     onClick={() => void scanSelected()}
                   >
@@ -2130,6 +2140,7 @@ export function RecoveryCopiesSection() {
                 <button
                   className="btn btn--secondary btn--small"
                   type="button"
+                  title={t("settings.recoveryCopiesRefreshHint")}
                   disabled={busy || scanningAll}
                   onClick={() => void load()}
                 >
@@ -2142,6 +2153,7 @@ export function RecoveryCopiesSection() {
                 <button
                   className="btn btn--secondary btn--small rc-delete"
                   type="button"
+                  title={t("settings.recoveryCopiesDeleteConversationHint")}
                   disabled={busy || scanningAll || selected.size === 0}
                   onClick={() => void deleteConversations()}
                 >
