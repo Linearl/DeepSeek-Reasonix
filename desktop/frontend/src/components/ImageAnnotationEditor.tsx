@@ -82,6 +82,9 @@ const MIN_SHAPE_DRAG = 3;
 export function ImageAnnotationEditor({ imageUrl, imageName, onCancel, onComplete }: ImageAnnotationEditorProps) {
   const t = useT();
   const imgRef = useRef<HTMLImageElement | null>(null);
+  // The editor's own decoded Image (not the layout <img>): the export pass
+  // needs natural dimensions and decoded pixels independent of CSS layout.
+  const decodedImageRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const penPointsRef = useRef<AnnotationPoint[]>([]);
   const textAnchorRef = useRef<AnnotationPoint | null>(null);
@@ -121,6 +124,7 @@ export function ImageAnnotationEditor({ imageUrl, imageName, onCancel, onComplet
     const image = new Image();
     image.onload = () => {
       if (stale) return;
+      decodedImageRef.current = image;
       setImgLoaded(true);
     };
     image.onerror = () => {
@@ -231,7 +235,11 @@ export function ImageAnnotationEditor({ imageUrl, imageName, onCancel, onComplet
   };
 
   // Esc inside the editor steps back one layer (text input → editor → viewer)
-  // without ever reaching the viewer's close-on-Esc handler.
+  // without ever reaching the viewer's close-on-Esc handler. Registered on
+  // window in the CAPTURE phase on purpose: the viewer listens on document,
+  // and for an Escape dispatched on document both listeners sit at target
+  // phase where capture flags don't reorder — window capture runs first and
+  // stopPropagation keeps the viewer's handler out of the way entirely.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -243,14 +251,14 @@ export function ImageAnnotationEditor({ imageUrl, imageName, onCancel, onComplet
       }
       onCancel();
     };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [textInput, onCancel]);
 
   // ---- export ----
 
   const renderFinalDataURL = useCallback((): string | null => {
-    const img = imgRef.current;
+    const img = decodedImageRef.current ?? imgRef.current;
     const canvas = canvasRef.current;
     if (!img || !canvas) return null;
     const naturalWidth = Math.max(1, img.naturalWidth || canvas.width || 1);
