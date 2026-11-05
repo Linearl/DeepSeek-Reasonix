@@ -375,6 +375,37 @@ type recallFTSDoc struct {
 	length int
 }
 
+// filterRecallFTSPool applies the recall pool's scope-shadow gate to the rows
+// the durable index loaded. BuildRecallIndex runs the markdown pool through
+// recallMemories, which drops a global fact whose identity (id/name/title/
+// subject) is claimed by a project fact — and (plan E off) skips pinned facts
+// whose bodies already ride session-context. The FTS rows are one row per
+// fact file, so without this gate the durable path silently resurrects
+// shadowed global twins and pinned facts on exactly the deployments where the
+// accelerator is healthy. recallMemories itself is the single semantic source;
+// the kept set is matched back by ID, which is unique per fact in production
+// (random mem-… or scope-qualified legacy-…).
+func filterRecallFTSPool(docs []recallFTSDoc) []recallFTSDoc {
+	if len(docs) == 0 {
+		return docs
+	}
+	memories := make([]Memory, 0, len(docs))
+	for _, doc := range docs {
+		memories = append(memories, doc.memory)
+	}
+	kept := make(map[string]bool, len(memories))
+	for _, memory := range recallMemories(memories) {
+		kept[memory.ID] = true
+	}
+	out := docs[:0]
+	for _, doc := range docs {
+		if kept[doc.memory.ID] {
+			out = append(out, doc)
+		}
+	}
+	return out
+}
+
 // buildRecallIndexFromFTS tries the durable index first and falls back to the
 // full rebuild. The fallback is unconditional on error: an accelerator that
 // cannot work must never cost us recall.
@@ -385,6 +416,7 @@ func buildRecallIndexFromFTS(store Store) *RecallIndex {
 		slog.Warn("memory: recall fts unavailable, rebuilding from disk", "err", err)
 		return BuildRecallIndex(store)
 	}
+	docs = filterRecallFTSPool(docs)
 	// Keep BuildRecallIndex's observability contract: LastRecallIndexBuildStats
 	// is how the cache tests and diagnostics tell "rebuilt" from "reused", so
 	// the durable path must still publish one record per rebuild.
