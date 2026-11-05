@@ -8266,12 +8266,7 @@ func (a *App) RenameTopic(topicID, title string) error {
 				return err
 			}
 			a.updateOpenTopicTitle(topicID, trimmed, topicTitleSourceManual)
-			changedDirs := a.updateTopicSessionTitles(topicID, trimmed)
-			if len(changedDirs) > 0 {
-				a.emitProjectTreeChangedForSessionDirs(changedDirs...)
-			} else {
-				a.emitProjectTreeMetadataChanged()
-			}
+			a.finishTopicRename(a.updateTopicSessionTitles(topicID, trimmed))
 			return nil
 		}
 	}
@@ -8282,12 +8277,7 @@ func (a *App) RenameTopic(topicID, title string) error {
 			return err
 		}
 		a.updateOpenTopicTitle(topicID, trimmed, topicTitleSourceManual)
-		changedDirs := a.updateTopicSessionTitles(topicID, trimmed)
-		if len(changedDirs) > 0 {
-			a.emitProjectTreeChangedForSessionDirs(changedDirs...)
-		} else {
-			a.emitProjectTreeMetadataChanged()
-		}
+		a.finishTopicRename(a.updateTopicSessionTitles(topicID, trimmed))
 		return nil
 	}
 	if scope, workspaceRoot, ok := a.findTopicLocation(topicID); ok {
@@ -8295,17 +8285,49 @@ func (a *App) RenameTopic(topicID, title string) error {
 			return err
 		}
 		a.updateOpenTopicTitle(topicID, trimmed, topicTitleSourceManual)
-		changedDirs := a.updateTopicSessionTitles(topicID, trimmed)
-		if len(changedDirs) > 0 {
-			a.emitProjectTreeChangedForSessionDirs(changedDirs...)
-		} else {
-			a.emitProjectTreeMetadataChanged()
-		}
+		a.finishTopicRename(a.updateTopicSessionTitles(topicID, trimmed))
 		return nil
 	}
 	// Catalog-only topics (no title map entry, no open tab) persist through
 	// renameCatalogOnlyTopic instead of failing (#9090).
 	return a.renameCatalogOnlyTopic(topicID, trimmed)
+}
+
+// finishTopicRename is the shared tail of every RenameTopic branch (indexed
+// project/global, location-resolved, and catalog-only via
+// renameCatalogOnlyTopic). tl1413: before the change events go out it waits,
+// bounded, for one metadata sync so the session catalog already carries the
+// fresh title when RenameTopic returns. That turns "rename returned" into a
+// sidebar-consistency point: the refetch the frontend schedules right after
+// (refreshProjectsAndTabs → GetProjectTreeSnapshot / ListProjectTopics) reads
+// the synced catalog instead of racing the async metadata sync plus the
+// frontend's 400ms event batch window — the stale-name window users read as
+// "renaming from the top bar does not reach the sidebar". The sidebar's own
+// rename entry keeps its optimistic paint; both entries now converge on the
+// same immediate state. A sync failure (timeout, catalog shutting down)
+// degrades to the old async convergence: the change events below still fire.
+func (a *App) finishTopicRename(changedDirs []string) {
+	a.pushRenameTitleToCatalog()
+	if len(changedDirs) > 0 {
+		a.emitProjectTreeChangedForSessionDirs(changedDirs...)
+	} else {
+		a.emitProjectTreeMetadataChanged()
+	}
+}
+
+// pushRenameTitleToCatalog runs one metadata push under topicRenameCatalogSyncTimeout.
+// The sync is a titles/pins/order transaction under the catalog's
+// single-writer mutex and never walks session storage (same shape as
+// syncSessionCatalogMetadataBounded); holding topicTitleMutationMu across it
+// is safe because no catalog writer path takes that mutex back.
+func (a *App) pushRenameTitleToCatalog() {
+	catalog := a.sessionCatalog.Load()
+	if catalog == nil || a.shuttingDown.Load() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(a.bootContext(), topicRenameCatalogSyncTimeout)
+	defer cancel()
+	_ = a.syncSessionCatalogMetadata(ctx, catalog)
 }
 
 func (a *App) findTopicLocation(topicID string) (string, string, bool) {

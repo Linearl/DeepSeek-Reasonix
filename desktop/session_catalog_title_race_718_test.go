@@ -94,9 +94,13 @@ func Test718RegistryTitleSurvivesStaleSessionMeta(t *testing.T) {
 }
 
 // Test718RenameReachesSidebarWithoutWaitingForMetadataTick pins the propagation
-// half: RenameTopic must publish the registry title to the catalog immediately
-// (emitProjectTreeChangedForSessionDirs now pushes metadata), so the sidebar
-// shows the new name without waiting for the 30s periodic metadata tick.
+// half: RenameTopic must publish the registry title to the catalog immediately,
+// so the sidebar shows the new name without waiting for the 30s periodic
+// metadata tick. tl1413 tightened the contract from "converges within 5s" to
+// "true the moment RenameTopic returns": finishTopicRename now runs the
+// metadata push synchronously (bounded 2s) before returning, which is the
+// backend half of the top-bar-vs-sidebar rename symmetry — the refetch the
+// frontend schedules right after the IPC call must never read a stale catalog.
 func Test718RenameReachesSidebarWithoutWaitingForMetadataTick(t *testing.T) {
 	app, root, _ := setup718TitledProject(t, "t1", "改名前")
 
@@ -104,30 +108,72 @@ func Test718RenameReachesSidebarWithoutWaitingForMetadataTick(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The metadata sync inside the rename propagation is async — poll briefly.
-	deadline := time.Now().Add(5 * time.Second)
-	label := ""
-	for time.Now().Before(deadline) {
-		page, err := app.ListProjectTopics(ProjectTopicPageRequest{Scope: "project", WorkspaceRoot: root, SortMode: "updated"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if label = topicLabel718(page, "t1"); label == "改名后" {
-			// A subsequent reconcile (simulated session activity) must not flip
-			// it back now that the registry row is claimed and derivation is gated.
-			reconcileSessionCatalogForTest(t, app, desktopSessionDir(root), "project", root)
-			page, err = app.ListProjectTopics(ProjectTopicPageRequest{Scope: "project", WorkspaceRoot: root, SortMode: "updated"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if after := topicLabel718(page, "t1"); after != "改名后" {
-				t.Fatalf("label reverted after reconcile = %q, want %q", after, "改名后")
-			}
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	// No polling: the title must be readable on the first refetch after
+	// RenameTopic returns. This is exactly what the frontend's
+	// refreshProjectsAndTabs does right after the IPC call resolves.
+	page, err := app.ListProjectTopics(ProjectTopicPageRequest{Scope: "project", WorkspaceRoot: root, SortMode: "updated"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatalf("sidebar label never reached %q (last %q)", "改名后", label)
+	if label := topicLabel718(page, "t1"); label != "改名后" {
+		t.Fatalf("sidebar label on first refetch after rename = %q, want %q (async metadata sync still in flight)", label, "改名后")
+	}
+
+	// A subsequent reconcile (simulated session activity) must not flip
+	// it back now that the registry row is claimed and derivation is gated.
+	reconcileSessionCatalogForTest(t, app, desktopSessionDir(root), "project", root)
+	page, err = app.ListProjectTopics(ProjectTopicPageRequest{Scope: "project", WorkspaceRoot: root, SortMode: "updated"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after := topicLabel718(page, "t1"); after != "改名后" {
+		t.Fatalf("label reverted after reconcile = %q, want %q", after, "改名后")
+	}
+}
+
+// Test1413RenameReturnsFreshCatalogUnderMetadataStorm pins the storm half of
+// tl1413: concurrent metadata syncs (what a running session produces — every
+// title/pin/activity mutation kicks requestSessionCatalogMetadataSync) must
+// not delay or lose the rename's own catalog push. The sync serializes on the
+// catalog's single-writer mutex, so the rename's push simply queues behind
+// them and RenameTopic still returns with the fresh title already readable.
+func Test1413RenameReturnsFreshCatalogUnderMetadataStorm(t *testing.T) {
+	app, root, _ := setup718TitledProject(t, "t1", "风暴前名")
+
+	// Simulate the runtime event storm: concurrent metadata syncs, exactly what
+	// requestSessionCatalogMetadataSync spawns per emitted change event.
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			catalog := app.sessionCatalog.Load()
+			if catalog == nil {
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = app.syncSessionCatalogMetadata(ctx, catalog)
+			cancel()
+		}
+	}()
+
+	if err := app.RenameTopic("t1", "风暴后名"); err != nil {
+		t.Fatal(err)
+	}
+	close(stop)
+
+	page, err := app.ListProjectTopics(ProjectTopicPageRequest{Scope: "project", WorkspaceRoot: root, SortMode: "updated"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if label := topicLabel718(page, "t1"); label != "风暴后名" {
+		t.Fatalf("sidebar label after rename under storm = %q, want %q", label, "风暴后名")
+	}
 }
 
 // Test718RegistryTitleWinsOverSessionDerivedRow covers the fresh-catalog window:
