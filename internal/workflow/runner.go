@@ -239,7 +239,7 @@ func (r *TaskSubagentRunner) runNode(ctx context.Context, req SubagentRequest) (
 	if err != nil {
 		return "", err
 	}
-	recordWorkflowSubagentRef(ctx, req, agent.SubagentRef(ctx))
+	ReportSubagentRef(ctx, req, agent.SubagentRef(ctx))
 	return resolvedSubagentAnswer(ctx, req.NodeID, answer), nil
 }
 
@@ -263,10 +263,13 @@ func subagentRefRecorderFrom(ctx context.Context) subagentRefRecorder {
 	return rec
 }
 
-// recordWorkflowSubagentRef 把一次派发产出的 transcript ref 报给 run 级登记
-// （tl1434）。空 ref（ephemeral 运行：resume-from-panel 无父会话时 transcript
-// 不持久化）不上报——查看面按「无关联」降级，不伪造身份。
-func recordWorkflowSubagentRef(ctx context.Context, req SubagentRequest, ref string) {
+// ReportSubagentRef 把一次派发产出的 transcript ref 报给 run 级登记（tl1434）。
+// 生产路径：TaskSubagentRunner.runNode 在 Execute 返回后调用（ref 来自派发
+// ctx 上的 agent.WithSubagentRefSink）。导出面兼作 SubagentRunner 模拟方的
+// 同一契约（测试以生产同形路径登记，不另开后门）。空 ref（ephemeral 运行：
+// resume-from-panel 无父会话时 transcript 不持久化）不上报——查看面按
+// 「无关联」降级，不伪造身份。
+func ReportSubagentRef(ctx context.Context, req SubagentRequest, ref string) {
 	if ref == "" {
 		return
 	}
