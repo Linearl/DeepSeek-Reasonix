@@ -26,8 +26,34 @@ Object.assign(globalThis, {
   Node: dom.window.Node,
   localStorage: dom.window.localStorage,
   IS_REACT_ACT_ENVIRONMENT: true,
+  // tl1441 ②：工作区面板换装 Composer 后需要的 jsdom 缺失件（composer 族
+  // harness 同款 stub 集——MutationObserver/ResizeObserver/matchMedia/rAF）。
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  Event: dom.window.Event,
+  CustomEvent: dom.window.CustomEvent,
+  KeyboardEvent: dom.window.KeyboardEvent,
+  InputEvent: dom.window.InputEvent,
+  MouseEvent: dom.window.MouseEvent,
+  PointerEvent: dom.window.MouseEvent,
+  MutationObserver: dom.window.MutationObserver,
+  File: dom.window.File,
+  FileReader: dom.window.FileReader,
+  requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
+  cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
 });
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+window.matchMedia = (() => ({
+  matches: true,
+  media: "(prefers-reduced-motion: reduce)",
+  onchange: null,
+  addEventListener() {},
+  removeEventListener() {},
+  addListener() {},
+  removeListener() {},
+  dispatchEvent: () => false,
+})) as unknown as typeof window.matchMedia;
 
 const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
@@ -198,18 +224,25 @@ ok(stream.querySelector(".channel-chat__bubble"), "the workspace stream renders 
 ok(stream.querySelectorAll(".channel-chat__row").length === 2, "the tail window renders both messages");
 ok(stream.textContent?.includes("agent 汇报进度"), "agent messages render with their body");
 
-// 发送桥接 channel_send（mock 绑定收口）。
-const input = dom.window.document.querySelector(".channel-workspace__composer textarea")! as HTMLTextAreaElement;
-const sendBtn = dom.window.document.querySelector(".channel-workspace__composer .channel-chat__send")! as HTMLButtonElement;
-ok(input && sendBtn, "the workspace input area is mounted (①步过渡件，②步换装 Composer 群聊模式)");
-// React 受控组件：原型原生 setter 绕过 tracker（React 19 + jsdom 标准做法，
-// channel-chat-panel 同款 setNativeValue）。
-const setNativeValue = (el: HTMLTextAreaElement, value: string): void => {
-  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value")!.set!;
-  setter.call(el, value);
-  el.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+// 发送桥接 channel_send（mock 绑定收口）——tl1441 ② 换装 Composer 群聊模式
+// 后，输入面是 Composer（channelMode），发送经 onSend 桥接。
+const composerHost = dom.window.document.querySelector(".channel-workspace__composer")!;
+ok(composerHost.getAttribute("data-tl1441-composer") === "channel-mode", "the composer slot is the Composer channel-mode mount (②换装)");
+const input = composerHost.querySelector(".composer__input")! as HTMLTextAreaElement;
+const sendBtn = composerHost.querySelector(".composer__btn--send")! as HTMLButtonElement;
+ok(input && sendBtn, "the Composer channel-mode input area is mounted");
+// React 受控组件：focus + 原生 setter + 选区 + InputEvent（composer 族 harness 同款）。
+const typeIntoComposer = async (value: string): Promise<void> => {
+  await act(async () => {
+    input.focus();
+    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value")!.set!;
+    setter.call(input, value);
+    input.setSelectionRange(value.length, value.length);
+    input.dispatchEvent(new dom.window.InputEvent("input", { bubbles: true, data: value, inputType: "insertText", isComposing: false }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 };
-await act(async () => { setNativeValue(input, "你好群"); });
+await typeIntoComposer("你好群");
 await act(async () => { sendBtn.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
 ok(sentBodies.includes("你好群"), "sending bridges to ChannelSendFromHuman (发送桥接 channel_send)");
 ok(ws()?.querySelectorAll(".channel-chat__row").length === 3, "the sent message lands optimistically then reconciles");
@@ -346,7 +379,7 @@ for (const needle of [
   ok(appSrc.includes(needle), `App wiring pin: ${needle.slice(0, 48)}…`);
 }
 const workspaceSrc = fs.readFileSync(path.join(import.meta.dirname, "..", "components", "ChannelWorkspacePanel.tsx"), "utf-8");
-ok(workspaceSrc.includes('data-tl1441-composer="legacy"'), "the ①-step composer keeps its swappable test anchor (②步换装点)");
+ok(workspaceSrc.includes('data-tl1441-composer="channel-mode"'), "the composer slot stays on its test anchor (②已换装 Composer 群聊模式)");
 
 // ── ⑥ 三语文案 ──────────────────────────────────────────────────────────
 const zh = fs.readFileSync(path.join(import.meta.dirname, "..", "locales", "zh.ts"), "utf-8");

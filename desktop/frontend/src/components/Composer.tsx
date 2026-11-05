@@ -691,6 +691,11 @@ export function Composer({
   guidanceQueuePreviewItems,
   showContextWindowRing = false,
   heroMode = false,
+  // tl1441 ②：群聊模式——会话专属槽位（模型/effort/权限档/计划目标/autopilot/
+  // 分屏目标/胶囊/上下文环/改写草稿②步先隐③步接桥）结构性隐藏；通用能力
+  // （粘图/表情/草稿/截图/历史提示词/快捷指令）保留；发送由挂载点桥接
+  // （onSend 注入 channel_send），draft 按 sessionKey（channel:<ref>）分键。
+  channelMode = false,
   context,
   turnCost,
   turnRateBand,
@@ -861,6 +866,8 @@ export function Composer({
   // Creation empty-session hero: slim centered composer under the welcome
   // headline (hides task/approval chrome; keeps model + effort).
   heroMode?: boolean;
+  /** tl1441 ②：群聊模式（会话专属槽位结构性隐藏；挂载点桥接 channel_send）。 */
+  channelMode?: boolean;
   context?: ContextInfo;
   turnCost?: number;
   turnRateBand?: string;
@@ -6066,7 +6073,7 @@ export function Composer({
         />
         <div className={composerMetaClass}>
           <div className="composer-meta__params">
-            {!heroMode && (
+            {!heroMode && !channelMode && (
               <div className="composer-meta__control composer-meta__control--capsule">
                 {/* 任务 447 胶囊：悬浮窗面板——运行中任务 + 已结束子代理目录 + 子代理历史查看。
                     任务 440：面板列出全部运行中子代理/后台命令（跨 tab+分离会话）并按 tab 停止。 */}
@@ -6086,7 +6093,7 @@ export function Composer({
                 />
               </div>
             )}
-            {!heroMode && (
+            {!heroMode && !channelMode && (
               <div className="composer-meta__control composer-meta__control--content">
                 <Tooltip label={t("composer.contentMenuTitle")} disabled={contentMenuOpen}>
                   <button
@@ -6109,7 +6116,7 @@ export function Composer({
             )}
             {/* 任务 465 两维矩阵：徽章只标第二维（计划/目标）。第一维 autopilot
                 在右侧模式条第四档呈现；两维同开时徽章与档位同时可见。 */}
-            {!heroMode && (planModeOn || goalModeOn) && (
+            {!heroMode && !channelMode && (planModeOn || goalModeOn) && (
               <div className="composer-meta__control composer-meta__control--intent">
                 <Tooltip label={taskModeTooltipLabel} disabled={intentMenuOpen || intentMenuClosing}>
                   <button
@@ -6127,7 +6134,7 @@ export function Composer({
                 </Tooltip>
               </div>
             )}
-            {!heroMode && (
+            {!heroMode && !channelMode && (
               <div className={`composer-meta__control composer-meta__control--approval${approvalSelectOn ? " composer-meta__control--approval--select" : ""}`}>
                 {/* A pending tool approval disables the composer, but the approval
                     bar stays usable so mode changes remain possible mid-prompt;
@@ -6218,7 +6225,7 @@ export function Composer({
                 )}
               </div>
             )}
-            {!heroMode && splitActive && (
+            {!heroMode && !channelMode && splitActive && (
               <div className={`composer-meta__control composer-meta__control--target${sendTargetSelectOn ? " composer-meta__control--target--select" : ""}`}>
                 {/* One composer, three targets (task 70, B) -- the same three-state
                     capsule the approval bar uses, so styling and keyboard behaviour are
@@ -6277,7 +6284,7 @@ export function Composer({
                 )}
               </div>
             )}
-            {!heroMode && qualityFloor === "delivery" && (
+            {!heroMode && !channelMode && qualityFloor === "delivery" && (
               <div className="composer-meta__control composer-meta__control--delivery">
                 <Tooltip label={`${t("common.close")} ${t("composer.qualityFloorDelivery")}`}>
                   <button type="button"
@@ -6322,7 +6329,9 @@ export function Composer({
                 </Tooltip>
               </div>
             )}
-            <div className="composer-meta__control composer-meta__control--model">
+            {/* tl1441 ②：模型/effort/上下文环是会话专属槽位——群聊模式整块
+                隐藏（验收 3「零展示」是结构性门控，不依赖挂载点不传 props）。 */}
+            {!channelMode && <div className="composer-meta__control composer-meta__control--model">
               {!heroMode && (
                 <ContextWindowRing
                   enabled
@@ -6353,7 +6362,7 @@ export function Composer({
                 {/* 任务1301：fallback 重建在飞（recovery-fork 会话实测 ~2.4s）——控件旁过渡态提示，重建完成由 settle/runtime:rebuilt 清除。 */}
                 {effortApplying && <span className="composer-effort-applying" role="status">{t("composer.effortApplying")}</span>}
               </div>}
-            </div>
+            </div>}
             <div className={`composer-toolbar-send${submitUnavailableHint ? " composer-toolbar-send--unavailable" : ""}`}>
               {/* 任务 869：emoji 面板入口。与历史提示词时钟同一弹层语义
                   （AnchoredPopover portal 到 body，Esc/外点关闭）；面板 lazy
@@ -6458,7 +6467,7 @@ export function Composer({
                   弹窗（2/5/10/20KB 四档+取消），选档后交辅助模型改写、回填输入
                   框；不自动发送。tl 1115：与停止按钮位置互换——改写在左、
                   停止紧邻发送键（用户 2026-10-24 要求）。 */}
-              {draftRewriteOn && (
+              {draftRewriteOn && !channelMode && (
                 <Tooltip label={t("composer.rewriteDraft")}>
                   <button
                     className="composer__btn composer__btn--rewrite"

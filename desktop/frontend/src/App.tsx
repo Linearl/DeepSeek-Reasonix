@@ -6102,6 +6102,8 @@ export default function App() {
                 fallbackName={entry?.name}
                 onBackToList={() => { activateChannelTab(null); setCollabGroupOpen(true); }}
                 onOpenSession={(contactId) => openSessionFromCollabHub(contactId)}
+                quickCommands={quickCommands}
+                onManageQuickCommands={() => setQuickCommandsManagerOpen(true)}
               />
             );
           })()}

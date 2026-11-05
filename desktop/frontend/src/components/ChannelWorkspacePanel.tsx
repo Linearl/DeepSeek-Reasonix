@@ -28,6 +28,9 @@ import type {
   CollabChannelView,
 } from "../lib/bridge";
 import type { CollabSessionDirectoryRow } from "./CollabInboxPanel";
+import type { ComposerInsertRequest } from "../lib/types";
+import type { QuickCommandEntry } from "../lib/settingsViewTypes";
+import { Composer } from "./Composer";
 import { useT } from "../lib/i18n";
 
 const MESSAGE_TAIL_LIMIT = 50;
@@ -53,6 +56,8 @@ export function ChannelWorkspacePanel({
   bindings,
   onBackToList,
   onOpenSession,
+  quickCommands,
+  onManageQuickCommands,
 }: {
   channelRef: string;
   /** 通讯录/尾窗加载前的群名兜底（打开链路带上，杜绝首帧空白）。 */
@@ -62,6 +67,10 @@ export function ChannelWorkspacePanel({
   onBackToList?: () => void;
   /** 右键菜单「打开发信方会话」（App 层既有打开会话路由）。 */
   onOpenSession?: (contactId: string) => void;
+  /** tl1441 ③：快捷指令（App 既有 settings 来源透传，与会话同源）。 */
+  quickCommands?: QuickCommandEntry[];
+  /** tl1441 ③：打开快捷指令管理（App 既有 manager 对话框）。 */
+  onManageQuickCommands?: () => void;
 }) {
   const t = useT();
   const b: ChannelWorkspaceBindings = bindings ?? appBridge;
@@ -70,8 +79,8 @@ export function ChannelWorkspacePanel({
   const [loadError, setLoadError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deputylessHint, setDeputylessHint] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
+  // tl1441 ③：快捷指令插入经 Composer 的 insertRequest 通道（同会话面语义）。
+  const [composerInsertRequest, setComposerInsertRequest] = useState<ComposerInsertRequest | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   // tl1441：邀请框子状态受控上提（跨抽屉卸载存活，856⑥「勾选不丢失」同口径）。
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -169,14 +178,17 @@ export function ChannelWorkspacePanel({
     };
   }, [menu]);
 
-  const send = useCallback(async () => {
-    const body = draft.trim();
-    if (!body || sending) return;
-    setSending(true);
+  // tl1441 ②：发送桥接——Composer 的 onSend 注入 channel_send。submitText
+  // 含附件 @路径 引用串（composer 提交路径组装），body 取 submitText ?? displayText；
+  // 清 draft 由 Composer 持久化层接管（sessionKey 分键，channel 各自独立）。
+  const sendingRef = useRef(false);
+  const sendViaComposer = useCallback(async (_displayText: string, submitText?: string) => {
+    const body = (submitText ?? _displayText).trim();
+    if (!body || sendingRef.current) return;
+    sendingRef.current = true;
     setActionError(null);
     try {
       const msg = await b.ChannelSendFromHuman(channelRefRef.current, body);
-      setDraft("");
       // tl1406：零投递分支如实提示（后端路由注记，非本地猜测）。
       setDeputylessHint(Boolean(msg.deputyless));
       // 乐观上屏 + 立刻对账（轮询刷新已读标注）。
@@ -189,9 +201,15 @@ export function ChannelWorkspacePanel({
     } catch (err) {
       setActionError(String(err)); // 小时上限等风暴治理错误如实透出
     } finally {
-      setSending(false);
+      sendingRef.current = false;
     }
-  }, [b, draft, refresh, sending]);
+  }, [b, refresh]);
+
+  // tl1441 ③：快捷指令插入（Composer insertRequest 通道，光标处插入）。
+  const insertQuickCommand = useCallback((text: string) => {
+    if (!text) return;
+    setComposerInsertRequest({ id: Date.now(), text, mode: "insert" });
+  }, []);
 
   const cancelMessage = useCallback(async (messageId: string) => {
     setMenu(null);
@@ -360,31 +378,48 @@ export function ChannelWorkspacePanel({
               />
             </div>
 
-            {/* 输入区：①步过渡件（textarea，与内嵌视图同交互）；②步换装
-                Composer 群聊模式（data-tl1441-composer 为换装点可测锚）。 */}
-            <div className="channel-workspace__composer" data-tl1441-composer="legacy">
-              <textarea
-                className="channel-chat__input"
-                value={draft}
-                rows={2}
-                placeholder={t("collabGroup.chat.sendPlaceholder")}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  // Enter 发送、Shift+Enter 换行；中文输入法组词中的 Enter 不发送。
-                  if (event.key === "Enter" && !event.shiftKey && !(event.nativeEvent as KeyboardEvent).isComposing) {
-                    event.preventDefault();
-                    void send();
-                  }
-                }}
+            {/* 输入区：tl1441 ② 换装 Composer 群聊模式（同一组件双态的载体）。
+                发送桥接 onSend→ChannelSendFromHuman；draft 按 sessionKey=
+                channel:<ref> 分键（composer 既有 draftKey 惯例）；channelMode
+                结构性隐藏模型/effort/权限三档（④口径）。 */}
+            <div className="channel-workspace__composer" data-tl1441-composer="channel-mode">
+              <Composer
+                running={false}
+                collaborationMode="normal"
+                toolApprovalMode="ask"
+                channelMode
+                modelLabel=""
+                sessionKey={`channel:${channelRef}`}
+                tabId={undefined}
+                ready
+                imageInputEnabled={false}
+                audioInputEnabled={false}
+                attachmentInputEnabled={false}
+                historyPickerEnabled
+                quickCommands={quickCommands}
+                onInsertQuickCommand={insertQuickCommand}
+                onManageQuickCommands={onManageQuickCommands}
+                insertRequest={composerInsertRequest}
+                onSend={sendViaComposer}
+                splitTarget="primary"
+                // 会话专属回调：channelMode 下控件结构性隐藏，回调不可达——
+                // 传 no-op 仅满足必填签名，不承载任何会话语义。
+                onCancel={() => Promise.resolve({
+                  receipt: { id: "", status: "rejected", reason: "unreachable" },
+                  restoredText: "",
+                  restoredQueuedIDs: [],
+                } as never)}
+                onCycleMode={() => undefined}
+                onSetMode={() => undefined}
+                onSetCollaborationMode={() => undefined}
+                onSetToolApprovalMode={() => undefined}
+                onToggleYoloApprovalMode={() => Promise.resolve(true)}
+                onClearGoal={() => undefined}
+                onPauseGoal={() => undefined}
+                onResumeGoal={() => undefined}
+                onSwitchModel={() => true}
+                onSetEffort={() => undefined}
               />
-              <button
-                type="button"
-                className="btn channel-chat__send"
-                disabled={!draft.trim() || sending}
-                onClick={() => void send()}
-              >
-                {t("collabGroup.chat.send")}
-              </button>
             </div>
           </>
         )}
