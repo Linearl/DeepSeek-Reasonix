@@ -387,6 +387,10 @@ var ChineseTraditional = Messages{
 	ListMcpHeader:       "MCP 伺服器",
 	ListMcpNone:         "未連線 MCP 伺服器 — 在 reasonix.toml（[[plugins]]）或專案 .mcp.json 中新增",
 
+	// tl1431：talk_to_session 回執——boot 快照身份被判定為跨會話污染整體
+	// 拒收；信件仍按活路徑權威身份正常發出，回執須帶拒因與自查指引。
+	CollabIdentitySnapshotRejectedFmt: "boot 快照身份已被拒用：快照聲稱的會話路徑為 %s（contact_id=%s），與你實際所在的會話路徑 %s 不一致——這是跨會話污染簽名，快照身份已整體拒收。本次發信仍按活路徑權威身份 %s 正常發出（拒發語義不變，不會回退到其他會話的身份）。請按對話名（標題）等輔助資訊自查重定位自己的會話身份：用 list_addressable_sessions 按標題核對、用 set_session_purpose 重新登記；此後不要再用快照裡的 contact_id。",
+
 	MemoryEditHint:               "可直接編輯記憶文件，或輸入 “/remember 內容” 快速記錄；文件變動會在下次會話生效",
 	ForgetUsage:                  "用法：/forget <name> — name 是 /memory 中顯示的條目標識",
 	ForgetDoneFmt:                "已刪除記憶：%s",

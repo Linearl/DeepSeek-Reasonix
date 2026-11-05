@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/i18n"
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/store"
 	"reasonix/internal/tool"
@@ -199,27 +200,68 @@ func (c SessionCollabConfig) currentSessionPath() string {
 // 路径不一致（新11 发信 from 落到 ai-novel 分叉身份的现场形态）。这种快照
 // 整体拒收，身份以活路径 meta 为权威；快照与活路径同源时保留显式裁定语义
 // （同路径声明他者 id = 越权拒绝测试钉住的产品行为）。
+//
+// tl1431 回执面：拒收不再静默——判定细节走 currentContactIDVerdict 给发信
+// 回执；本函数保持原签名与语义，作为既有调用方的逐字入口。
 func (c SessionCollabConfig) currentContactID() string {
+	return c.currentContactIDVerdict().ContactID
+}
+
+// collabIdentityVerdict carries the identity in force plus whether the boot
+// snapshot identity was rejected as cross-session pollution (tl1403 拒发语义
+// / tl1431 回执面). Carrying the verdict NEVER changes the rejection
+// semantics: a polluted snapshot is discarded wholesale and the live path's
+// own meta is the only authority — the struct only makes that rejection
+// audible to the sender (禁 fallback 到他人 identity 的铁律原样不动).
+type collabIdentityVerdict struct {
+	// ContactID is the identity in force for this call (live-path authority,
+	// or the snapshot when it passes cross-verification, or boot-only trust).
+	ContactID string
+	// SnapshotRejected is true when the boot snapshot carried a contact_id
+	// belonging to a DIFFERENT session path (polluted signature) and was
+	// discarded; ContactID then comes from the live path authority.
+	SnapshotRejected bool
+	// SnapshotPath / SnapshotID are the rejected snapshot's own values —
+	// receipt evidence so the polluted session can recognize what was
+	// dropped. Both empty unless SnapshotRejected.
+	SnapshotPath string
+	SnapshotID   string
+	// LivePath is the session path the identity was resolved against
+	// (empty in the boot-only case where no live path is bound).
+	LivePath string
+}
+
+// currentContactIDVerdict resolves the send identity exactly like
+// currentContactID and additionally reports a snapshot rejection verdict.
+// The resolution steps are the tl1403 branch order verbatim — any drift here
+// changes send semantics, not just the receipt.
+func (c SessionCollabConfig) currentContactIDVerdict() collabIdentityVerdict {
 	path := c.currentSessionPath()
 	snapshot := strings.TrimSpace(c.CurrentContactID)
 	if path == "" {
 		// 无活路径（boot 期未绑定）：快照是唯一线索，原样信任。
-		return snapshot
+		return collabIdentityVerdict{ContactID: snapshot}
 	}
+	v := collabIdentityVerdict{LivePath: path}
 	if snapshotPath := strings.TrimSpace(c.CurrentSessionPath); snapshot != "" && snapshotPath != "" && snapshotPath != path {
 		// 快照属于另一个会话：拒绝跨会话身份，落回活路径自身解析。
+		v.SnapshotRejected = true
+		v.SnapshotPath = snapshotPath
+		v.SnapshotID = snapshot
 		snapshot = ""
 	}
 	if snapshot != "" {
-		return snapshot
+		v.ContactID = snapshot
+		return v
 	}
 	if id := SessionContactID(path); id != "" {
-		return id
+		v.ContactID = id
+		return v
 	}
 	if minted, err := EnsureContactID(path); err == nil {
-		return minted
+		v.ContactID = minted
 	}
-	return ""
+	return v
 }
 
 func NewSetSessionPurposeTool(cfg SessionCollabConfig) tool.Tool {
@@ -1043,7 +1085,8 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// Task 158.B: resolve the sender's own address at call time — the boot-time
 	// snapshot is empty for desktop sessions, which is what made a self-directed
 	// set_session_purpose fail and every unregistered sender read as "(未登记)".
-	fromContact := t.cfg.currentContactID()
+	verdict := t.cfg.currentContactIDVerdict()
+	fromContact := verdict.ContactID
 	fromSession := t.cfg.currentSessionPath()
 	mailDir := t.mailDirFor(target, viaBus)
 	mail := sessioncollab.NewMailStoreWithHopLimit(mailDir, t.cfg.hopLimit())
@@ -1158,6 +1201,21 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		"delivery":     msg.Delivery,
 		"hop":          msg.Hop,
 		"queued":       true,
+	}
+	// tl1431 (tl1403 拒发回执面)：快照身份被整体拒收时不再静默——回执带上
+	// 拒因（快照 path/id 与活路径互证失败）+ 建议按对话名等辅助信息自查重
+	// 定位。拒发语义本身零改动：信已按活路径权威身份正常发出（from 字段
+	// 即生效身份），禁 fallback 到他人 identity 的铁律原样不动。三语文案走
+	// i18n 目录（frontends 渲染 Notice 系文案的同一词典）。
+	if verdict.SnapshotRejected {
+		payload["identitySnapshotRejected"] = true
+		payload["identitySnapshotPath"] = verdict.SnapshotPath
+		payload["identitySnapshotContactId"] = verdict.SnapshotID
+		payload["identitySnapshotRejectedNote"] = fmt.Sprintf(i18n.M.CollabIdentitySnapshotRejectedFmt,
+			verdict.SnapshotPath, verdict.SnapshotID, verdict.LivePath, fromContact)
+		t.cfg.collabStatusEvent(CollabStatusIdentityRejected, fmt.Sprintf(
+			"boot snapshot identity %s (path %s) rejected; send left as %s",
+			verdict.SnapshotID, verdict.SnapshotPath, fromContact), false)
 	}
 	// 任务 570 (c1)：把「queued 只是入队回执，不是投递终态」说成显式字段，
 	// 并给出查询终态的现成入口。既有调用方零破坏：全部为增量字段，原字段

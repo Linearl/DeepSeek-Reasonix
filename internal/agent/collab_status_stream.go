@@ -47,6 +47,12 @@ const (
 	// CollabStatusReplyNudge (task 530): a turn closed with unanswered
 	// require_reply mail and the host injected a visible reply reminder.
 	CollabStatusReplyNudge = "reply_nudge"
+	// CollabStatusIdentityRejected (tl1431): this session's boot snapshot
+	// carried ANOTHER session's contact_id (snapshot path ≠ live path, the
+	// tl1403 pollution signature); the snapshot identity was discarded and
+	// the send left under the live-path identity. Audit line for the same
+	// rejection the talk_to_session receipt reports to the sender.
+	CollabStatusIdentityRejected = "identity_rejected"
 )
 
 const (
