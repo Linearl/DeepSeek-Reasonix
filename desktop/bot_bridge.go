@@ -63,6 +63,14 @@ type botBridgeHub struct {
 	persistMu      sync.Mutex
 	lastPersistSeq uint64
 
+	// startOnce 惰性启动投递 worker（见 enqueue）。构造器不再直接 go h.run()：
+	// hub 随 App 生命周期存在、没有关闭点（生产单进程单实例，随进程退出），
+	// 构造即起 goroutine 会在批量构造 App 的测试二进制里线性累积数万条
+	// 常驻 goroutine（tl1424 预存红：desktop 全包 15m 超时，panic 栈全指向
+	// bot_bridge.go:139）。惰性启动后，从未收到通知的 hub 零 goroutine；
+	// 生产语义不变——通知只在 enqueue 之后才需要 worker。
+	startOnce sync.Once
+
 	queue chan desktopBridgeNotification
 }
 
@@ -136,7 +144,6 @@ func newBotBridgeHub(deps botBridgeDeps) *botBridgeHub {
 		takeoverTabs:    make(map[string]string),
 		queue:           make(chan desktopBridgeNotification, botBridgeQueueSize),
 	}
-	go h.run()
 	return h
 }
 
@@ -201,6 +208,9 @@ func (h *botBridgeHub) rememberPendingLocked(id string, p desktopPendingPrompt) 
 }
 
 func (h *botBridgeHub) enqueue(n desktopBridgeNotification) {
+	// 惰性 worker：首条通知才起投递 goroutine。先 Do 后发送保证 worker 一定
+	// 在消费端就位（channel 缓冲保证即使 worker 尚未 range 到也不丢消息）。
+	h.startOnce.Do(func() { go h.run() })
 	select {
 	case h.queue <- n:
 	default:
