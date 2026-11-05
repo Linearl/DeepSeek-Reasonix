@@ -43,10 +43,14 @@ func tryLockSessionFile(path string) (func(), error) {
 
 // sessionLockFile is a non-blocking exclusive lock on a lock file itself,
 // used by cleanup paths that may need to delete the file they locked.
+// tl1429: reg is the in-process registration entry booked at take time (see
+// session_lock_registry.go) — the handle stays nameable and releasable even
+// after its owner loses the binding (the self-lock form).
 type sessionLockFile struct {
 	handle     windows.Handle
 	path       string
 	overlapped windows.Overlapped
+	reg        *sessionLockRegistration
 }
 
 // sessionLockDispositionFallbacks counts RemoveAndUnlock calls that could not
@@ -89,10 +93,12 @@ func tryTakeSessionLockFileAt(lockPath string) (*sessionLockFile, error) {
 		}
 		return nil, err
 	}
+	l.registerSessionLock()
 	return l, nil
 }
 
 func (l *sessionLockFile) Unlock() {
+	l.noteReleased()
 	_ = windows.UnlockFileEx(l.handle, 0, 1, 0, &l.overlapped)
 	_ = windows.CloseHandle(l.handle)
 }

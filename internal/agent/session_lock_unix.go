@@ -33,8 +33,14 @@ func tryLockSessionFile(path string) (func(), error) {
 
 // sessionLockFile is a non-blocking exclusive lock on a lock file itself,
 // used by cleanup paths that may need to delete the file they locked.
+// tl1429: reg is the in-process registration entry booked at take time (see
+// session_lock_registry.go) — the handle stays nameable and releasable even
+// after its owner loses the binding (the self-lock form). path is the exact
+// take-time lock path: the registry key and the eviction lookup both use it.
 type sessionLockFile struct {
-	f *os.File
+	f    *os.File
+	path string
+	reg  *sessionLockRegistration
 }
 
 // tryTakeSessionLockFile opens lockPath and takes its exclusive flock without
@@ -51,7 +57,9 @@ func tryTakeSessionLockFile(lockPath string) (*sessionLockFile, error) {
 		}
 		return nil, err
 	}
-	return &sessionLockFile{f: f}, nil
+	l := &sessionLockFile{f: f, path: lockPath}
+	l.registerSessionLock()
+	return l, nil
 }
 
 func tryTakeSessionLeaseLockFile(lockPath string) (*sessionLockFile, error) {
@@ -59,6 +67,7 @@ func tryTakeSessionLeaseLockFile(lockPath string) (*sessionLockFile, error) {
 }
 
 func (l *sessionLockFile) Unlock() {
+	l.noteReleased()
 	_ = unix.Flock(int(l.f.Fd()), unix.LOCK_UN)
 	_ = l.f.Close()
 }

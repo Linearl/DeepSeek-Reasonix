@@ -171,16 +171,28 @@ func sessionLeaseOwnerBytes(b []byte) []byte {
 type SessionLeaseError struct {
 	Path string
 	Info *SessionLeaseInfo
+	// HeldInProcess is the tl1429 in-process registry evidence for the lock
+	// behind this refusal: when the on-disk identity record is missing or
+	// pid-less (the constant pid=0 form), the registry still says WHO holds
+	// the lock (which runtime/op, since when). Empty when the registry holds
+	// no entry for the lock — i.e. a genuinely unbooked holder.
+	HeldInProcess []SessionLockHolderEvidence
 }
 
 func (e *SessionLeaseError) Error() string {
 	if e == nil {
 		return ErrSessionLeaseHeld.Error()
 	}
+	var msg string
 	if e.Info != nil && e.Info.WriterID != "" {
-		return fmt.Sprintf("%s: %s is held by %s", ErrSessionLeaseHeld, e.Path, e.Info.WriterID)
+		msg = fmt.Sprintf("%s: %s is held by %s", ErrSessionLeaseHeld, e.Path, e.Info.WriterID)
+	} else {
+		msg = fmt.Sprintf("%s: %s", ErrSessionLeaseHeld, e.Path)
 	}
-	return fmt.Sprintf("%s: %s", ErrSessionLeaseHeld, e.Path)
+	if len(e.HeldInProcess) > 0 {
+		msg += " (lock held inside this process: " + e.HeldInProcess[0].String() + ")"
+	}
+	return msg
 }
 
 func (e *SessionLeaseError) Unwrap() error {
@@ -254,6 +266,9 @@ func TryAcquireSessionLease(path string) (*SessionLease, error) {
 		}
 		return nil, err
 	}
+	// tl1429: name the hold in the in-process lock registry so a later refusal
+	// can dump WHO holds the lock (runtime/op + time) instead of pid=0.
+	leaseLock.annotateSessionLock("session_lease_acquire")
 	// A handoff reservation is stored inside the lock file before the previous
 	// holder unlocks it. Re-check only after acquiring the OS lock so a plain
 	// contender cannot race between reservation publication and unlock.
@@ -316,6 +331,7 @@ func TryReclaimCurrentProcessSessionLease(path string) (*SessionLease, error) {
 		}
 		return nil, err
 	}
+	leaseLock.annotateSessionLock("session_lease_reclaim")
 	// Holding the OS lock proves no live lease owns this path right now, so
 	// overwriting the stale owner entry is safe; concurrent reclaimers fail
 	// the lock above and never reach this store, and a stale lease released
@@ -695,6 +711,7 @@ func TryAcquireSessionLeaseWithHandoff(path, sourceWriterID, handoffID string) (
 		sessionLeaseOwners.CompareAndDelete(path, ownerID)
 		return nil, &SessionLeaseError{Path: path, Info: info}
 	}
+	leaseLock.annotateSessionLock("session_lease_handoff_acquire")
 	sessionLeaseActiveOwners.Delete(path)
 	lease := &SessionLease{path: path, ownerID: ownerID, leaseLock: leaseLock}
 	if err := publishSessionLeaseOwner(leaseLock, path); err != nil {

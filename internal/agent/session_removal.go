@@ -85,25 +85,33 @@ func TryAcquireSessionRemovalGuard(path string) (*SessionRemovalGuard, error) {
 		if info == nil {
 			info = fallbackSelfLeaseInfo(path)
 		}
-		return nil, &SessionLeaseError{Path: path, Info: info}
+		return nil, &SessionLeaseError{Path: path, Info: info, HeldInProcess: SessionLeaseLockInProcessHolders(path)}
 	}
 	leaseLock, err := tryTakeSessionLeaseLock(path)
 	if err != nil {
 		if errors.Is(err, ErrSessionLeaseHeld) {
 			info, _ := LoadSessionLeaseInfo(path)
-			return nil, &SessionLeaseError{Path: path, Info: info}
+			// tl1429: an identity-missing record (the constant pid=0 form) is
+			// no longer a zero-information refusal — the in-process registry
+			// evidence names the lock holder (runtime/op + time) when this
+			// process booked the hold.
+			return nil, &SessionLeaseError{Path: path, Info: info, HeldInProcess: SessionLeaseLockInProcessHolders(path)}
 		}
 		return nil, err
 	}
+	leaseLock.annotateSessionLock("removal_guard")
 	saveLock, err := tryTakeSessionLockFile(store.SessionLockFile(path))
 	if err != nil {
 		leaseLock.Unlock()
 		if errors.Is(err, ErrSessionFileLockHeld) {
-			// A save is in flight; deleting mid-write would race it.
-			return nil, &SessionLeaseError{Path: path}
+			// A save is in flight; deleting mid-write would race it. The save
+			// lock's registry entry (tl1429) names the holder when this
+			// process booked it.
+			return nil, &SessionLeaseError{Path: path, HeldInProcess: SessionSaveLockInProcessHolders(path)}
 		}
 		return nil, err
 	}
+	saveLock.annotateSessionLock("removal_guard_save_lock")
 	return &SessionRemovalGuard{path: path, saveLock: saveLock, leaseLock: leaseLock}, nil
 }
 
@@ -122,10 +130,11 @@ func (l *SessionLease) TryConvertToRemovalGuard() (*SessionRemovalGuard, error) 
 	saveLock, err := tryTakeSessionLockFile(store.SessionLockFile(l.path))
 	if err != nil {
 		if errors.Is(err, ErrSessionFileLockHeld) {
-			return nil, &SessionLeaseError{Path: l.path}
+			return nil, &SessionLeaseError{Path: l.path, HeldInProcess: SessionSaveLockInProcessHolders(l.path)}
 		}
 		return nil, err
 	}
+	saveLock.annotateSessionLock("removal_guard_save_lock")
 	// Keep the OS lock and original process-local reservation while revoking
 	// active runtime ownership. Both block competing acquisition and make
 	// rollback immune to an in-process lease race.
@@ -133,6 +142,9 @@ func (l *SessionLease) TryConvertToRemovalGuard() (*SessionRemovalGuard, error) 
 	leaseLock := l.leaseLock
 	l.leaseLock = nil
 	l.released = true
+	// The hold continues under a new owner: re-annotate so a refusal dump
+	// names the guard, not the acquire that created the handle.
+	leaseLock.annotateSessionLock("removal_guard_converted")
 	// The lease object has handed its lock to the guard; unregister it so the
 	// orphan sweep never sees a live lease that no longer holds anything.
 	// RestoreSessionLease re-registers on rollback.
