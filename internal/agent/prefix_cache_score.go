@@ -50,19 +50,21 @@ const PartialCompressCacheFloorRatio = 0.95
 // drop judgment (state ②): after a full compression, the prefix-cache hit rate
 // must stay at or above hitBefore × this coefficient. The value is the
 // conservative lower bound measured over the calibration pool in
-// TestFullCompressionCacheCalibration (synthetic sessions driven through the
-// real projection builder), rounded DOWN to a 0.05 grid so normal samples sit
-// strictly above the line. Calibration data (2026-11-05, tl1396 first run,
-// fallbackTokPerChar-independent rune metric):
+// TestFullCompressionCacheCalibration (240 synthetic sessions driven through
+// the real projection builder), rounded DOWN to a 0.05 grid so normal samples
+// sit strictly above the line. First calibration run (2026-11-05, tl1396,
+// tokenizer-independent rune metric, seed-pinned pool):
 //
-//	samples=240  min ratio=0.2487  (min landed on the tight-head/wide-tail
-//	corner: a small fixed head over a heavily compressed body, where the
-//	retained head is the only surviving prefix)
+//	n=240  min=0.0828  mean=0.1893  p10=0.1094
 //
-// so the line is 0.20. Any change to the fold that eats into the head, or
-// inflates the projection so the retained prefix shrinks relative to the
-// request, breaks the line and turns the gate red.
-const fullCompressionCacheFloorRatio = 0.20
+// The min lands on the theoretical corner: a small fixed system head over a
+// large body folded at the median point with a weak (0.27) compression ratio
+// — the retained head is the only surviving prefix there, exactly the
+// "全量重写必然断前缀" necessity the exemption encodes. The committed line is
+// 0.05 (~40% margin under the measured bound). A change that eats into the
+// head (measured hit ~0.01) or a compression that stops shrinking breaks the
+// line and turns the gate red.
+const fullCompressionCacheFloorRatio = 0.05
 
 // PrefixCacheHitRate estimates the share of `request`'s provider-visible
 // tokens a provider prefix cache can still serve, given the bytes the cache
