@@ -26,6 +26,7 @@ import {
 } from "../lib/composerDraftPersistence";
 import { bareTabIdFromDraftKey, isSessionScopedDraftKey, parkedStartupDraftStorageKey } from "../lib/composerDraftKey";
 import { app, onFilesDropped } from "../lib/bridge";
+import { onAnnotatedImageAttachment } from "../lib/imageAnnotationAttach";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
 import { formatInboxError, isInboxItemMissing } from "../lib/inboxError";
@@ -1030,6 +1031,37 @@ export function Composer({
       requestActiveDraftFrame(() => taRef.current?.focus());
     }
   }, [showToast, t]);
+
+  // tl 1412: the image-viewer annotation editor hands its finished PNG over a
+  // window event (the viewer also lives inside transcript Message hosts that
+  // have no prop path into the draft bookkeeping). Storage mirrors
+  // onScreenshotConfirmed / the paste-image chain: SavePastedImage lands the
+  // bytes in .reasonix/attachments, the chip enters the active draft through
+  // addAttachmentToDraft.
+  useEffect(() => {
+    return onAnnotatedImageAttachment(async ({ dataUrl, name }) => {
+      if (!attachmentInputEnabled) {
+        showToast(t("imageAnnotation.inputDisabled"), "warn");
+        return;
+      }
+      const sourceDraftKey = activeDraftKeyRef.current;
+      updatePendingPasteForDraft(sourceDraftKey, 1);
+      try {
+        const path = await app.SavePastedImage(dataUrl);
+        const previewUrl = await app.AttachmentDataURL(path);
+        const key = { hash: await dataURLHash(previewUrl), source: `annotated:${path}` };
+        if (!attachmentSeenInDraft(sourceDraftKey, key)) {
+          addAttachmentToDraft(sourceDraftKey, { path, previewUrl, displayName: name }, key);
+        }
+      } catch (error) {
+        console.warn("[composer] failed to attach annotated image", error);
+        showToast(t("composer.attachImageFailed"), "warn");
+      } finally {
+        updatePendingPasteForDraft(sourceDraftKey, -1);
+        requestActiveDraftFrame(() => taRef.current?.focus());
+      }
+    });
+  }, [attachmentInputEnabled, showToast, t]);
 
   const [workspaceRefs, setWorkspaceRefs] = useState<WorkspaceReference[]>([]);
   const [invocations, setInvocations] = useState<ComposerInvocation[]>([]);
