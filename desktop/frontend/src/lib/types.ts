@@ -1628,6 +1628,51 @@ export interface CapabilitiesView {
   plugins: PluginView[];
   allowImplicitInvocation?: boolean;
 }
+// tl1422: external agent one-click import (commands/skills/MCP) wire shapes.
+export interface AgentImportSourceView {
+  tool: string;
+  detected: boolean;
+  paths?: Record<string, string>;
+  note?: string;
+  items: number;
+}
+export interface AgentImportItemView {
+  id: string;
+  tool: string;
+  kind: "command" | "skill" | "mcp" | string;
+  name: string;
+  description?: string;
+  sourcePath?: string;
+  preview?: string;
+  conflict: boolean;
+  nativelyActive: boolean;
+  recommended: boolean;
+  notes?: string[];
+}
+export interface AgentImportScanView {
+  sources?: AgentImportSourceView[];
+  items?: AgentImportItemView[];
+}
+export interface AgentImportRequestView {
+  id: string;
+  policy: "skip" | "overwrite" | "rename" | string;
+}
+export interface AgentImportOutcomeView {
+  id: string;
+  tool: string;
+  kind: string;
+  name: string;
+  status: "imported" | "renamed" | "skipped" | "failed" | string;
+  detail?: string;
+}
+export interface AgentImportReceiptView {
+  imported: number;
+  skipped: number;
+  failed: number;
+  items?: AgentImportOutcomeView[];
+  skillsRefreshed?: boolean;
+  commandsReloaded?: boolean;
+}
 export interface SkillsSettingsView {
   skills: SkillView[];
   skillRoots: SkillRootView[];
