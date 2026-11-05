@@ -1,13 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
+import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { useToast } from "../lib/toast";
 
 /** One navigable entry of a multi-image viewer session (tl1289). */
 export interface ImageViewerImage {
   url: string;
   name?: string;
 }
+
+/**
+ * tl1411: image mime types the "save to local" button can persist in their
+ * original format (the viewer only ever holds backend-issued data URLs, so
+ * the bytes are the untouched source file). The extension is derived from the
+ * data URL's mime, never re-encoded.
+ */
+const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "image/bmp": ".bmp",
+};
 
 export interface ImageViewerProps {
   open: boolean;
@@ -37,10 +53,14 @@ export interface ImageViewerProps {
  */
 export function ImageViewer({ open, imageUrl, imageName, onClose, images, initialIndex }: ImageViewerProps) {
   const t = useT();
+  const { showToast } = useToast();
   const [portalTarget, setPortalTarget] = useState<Element | null>(null);
   const [visible, setVisible] = useState(false);
   // tl1289: position inside the multi-image list; -1 means "single-image mode".
   const [index, setIndex] = useState(0);
+  // tl1411: in-flight flag for the "save to local" flow so a double click can
+  // never open two native save dialogs.
+  const [saving, setSaving] = useState(false);
 
   const total = images?.length ?? 0;
   const multi = total > 1;
@@ -60,6 +80,38 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
   const goNext = useCallback(() => {
     setIndex((i) => Math.min(total - 1, Math.max(i, 0) + 1));
   }, [total]);
+
+  // tl1411: "save to local" — reuses the session-export two-step channel
+  // (PickExportFile native save dialog + SaveExportFile base64 write), the
+  // same path App.tsx uses for PNG session exports; the web build's mock
+  // bridge implements both as a plain <a download>. The viewer only holds
+  // backend-issued data URLs, so the payload bytes are the original file and
+  // no re-encoding happens (PNG stays PNG, JPG stays JPG).
+  const handleSaveToLocal = useCallback(async () => {
+    if (saving) return;
+    const match = /^data:([^;,]+);base64,([\s\S]+)$/.exec(current.url);
+    const mime = match?.[1] ?? "";
+    const payload = match?.[2] ?? "";
+    const ext = IMAGE_MIME_EXTENSIONS[mime] ?? "";
+    if (!ext || !payload || typeof app.PickExportFile !== "function" || typeof app.SaveExportFile !== "function") {
+      showToast(t("imageViewer.saveFailed", { error: "" }), "error");
+      return;
+    }
+    const baseName = (current.name ?? "").trim() || "image";
+    const dot = baseName.lastIndexOf(".");
+    const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+    setSaving(true);
+    try {
+      const path = await app.PickExportFile(`${stem}${ext}`, mime);
+      if (!path) return; // user cancelled the save dialog
+      await app.SaveExportFile(path, payload, true);
+      showToast(t("externalOpener.saved", { path }), "info");
+    } catch (err) {
+      showToast(t("imageViewer.saveFailed", { error: err instanceof Error ? err.message : String(err) }), "error");
+    } finally {
+      setSaving(false);
+    }
+  }, [saving, current.url, current.name, showToast, t]);
 
   // Resolve portal target when opening.
   useEffect(() => {
@@ -103,7 +155,18 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
 
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) onClose();
+      // tl1411: everything on the mask counts as blank except the visible
+      // content itself (the image and its filename caption). The invisible
+      // `.image-viewer__content` wrapper is the flex box that centers them —
+      // its inter-image gap and margin strips read as blank to users, so a
+      // direct hit on the wrapper closes too. Clicks that start on the image
+      // or the caption bubble up with their own targets and never close.
+      if (e.target === e.currentTarget) {
+        onClose();
+        return;
+      }
+      const target = e.target;
+      if (target instanceof Element && target.classList.contains("image-viewer__content")) onClose();
     },
     [onClose],
   );
@@ -118,6 +181,16 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
       aria-modal="true"
       aria-label={current.name || t("imageViewer.title")}
     >
+      <button
+        className="image-viewer__save"
+        type="button"
+        onClick={handleSaveToLocal}
+        disabled={saving}
+        aria-label={t("imageViewer.saveToLocal")}
+        title={t("imageViewer.saveToLocal")}
+      >
+        <Download size={20} />
+      </button>
       <button
         className="image-viewer__close"
         type="button"

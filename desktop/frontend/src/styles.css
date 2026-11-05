@@ -7612,6 +7612,34 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg-soft);
   color: var(--fg);
 }
+/* tl1411: "save to local" button sits left of the close button and shares its
+   chrome so the top-right cluster reads as one toolbar; offset = close's
+   right(16px) + width(36px) + 8px gap. Theme comes from the same tokens. */
+.image-viewer__save {
+  position: absolute;
+  top: 16px;
+  right: 60px;
+  z-index: var(--z-local-raised);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.image-viewer__save:hover:not(:disabled) {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+.image-viewer__save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 /* tl1289: multi-image navigation — prev/next arrows sit mid-height and are
    hover/focus-shown so they never compete with the image itself. */
 .image-viewer__nav {
