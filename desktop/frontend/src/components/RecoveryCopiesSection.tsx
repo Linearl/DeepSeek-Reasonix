@@ -1121,6 +1121,21 @@ export function RecoveryCopiesSection() {
     return { pending, unmerged, merged };
   }, [composedGroups]);
 
+  /** redundantCopies is what the tl1415 点8 one-click cleanup targets: measured,
+   *  non-orphan copies whose every event the main transcript already holds
+   *  (unique = 0) — the residue a synthesis leaves behind once the branches
+   *  have been folded into a single long chain. Unmeasured or divergent copies
+   *  never qualify, and the button disappears entirely when nothing does. */
+  const redundantCopies = useMemo(
+    () =>
+      composedGroups.flatMap((group) =>
+        group.copies
+          .filter((copy) => !copy.orphan && copy.scanned && copy.unique === 0)
+          .map((copy) => ({ group, copy })),
+      ),
+    [composedGroups],
+  );
+
   const toggle = (path: string) =>
     setSelected((current) => {
       const next = new Set(current);
@@ -1282,6 +1297,67 @@ export function RecoveryCopiesSection() {
     return winner.isMain
       ? `${t("settings.recoveryCopiesWinnerMain")} ${winner.turns}`
       : `${t("settings.recoveryCopiesCopy")} ${winner.copyIndex + 1} ${winner.turns}`;
+  };
+
+  // tl1415 点8: 清理多余副本——把主线已完整覆盖(unique=0)的副本逐份走
+  // DeleteRecoveryBranch 的回收语义(可恢复 .trash;打开中的副本后端拒绝,
+  // 跳过并在结果里说明)。确认框列出会话与份数,结果给 toast。
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const cleanupRedundantCopies = async () => {
+    const targets = redundantCopies;
+    if (targets.length === 0) return;
+    const perGroup = new Map<string, number>();
+    for (const { group } of targets) {
+      perGroup.set(group.mainLabel, (perGroup.get(group.mainLabel) ?? 0) + 1);
+    }
+    const ok = await confirm({
+      title: t("settings.recoveryCopiesCleanupTitle"),
+      message: (
+        <div>
+          <p>{t("settings.recoveryCopiesCleanupLead")}</p>
+          <ul className="rc-versions__issues">
+            {Array.from(perGroup.entries()).map(([label, count]) => (
+              <li key={label}>
+                {label} · ×{count}
+              </li>
+            ))}
+          </ul>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesCleanupNote")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesCleanupConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setCleaningUp(true);
+    setErrors([]);
+    try {
+      let archived = 0;
+      const failures: string[] = [];
+      for (const { copy } of targets) {
+        try {
+          await app.DeleteRecoveryBranch(copy.path);
+          archived += 1;
+        } catch (err) {
+          failures.push(`${copy.label}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      if (failures.length === targets.length) {
+        showToast(t("settings.recoveryCopiesCleanupFailed"), "error");
+      } else {
+        showToast(t("settings.recoveryCopiesCleanupDone", { n: archived }), "info");
+      }
+      if (failures.length > 0) {
+        setErrors((current) => [...current, ...failures]);
+      }
+      await load();
+    } finally {
+      setBusy(false);
+      setCleaningUp(false);
+      setStatus("");
+    }
   };
 
   const mergeSelected = async () => {
@@ -1896,6 +1972,7 @@ export function RecoveryCopiesSection() {
             disabled={busy}
             onChange={() => toggle(group.mainPath)}
             aria-label={group.mainLabel}
+            title={t("settings.recoveryCopiesSelectHint")}
           />
           <button
             className="rc-toggle"
@@ -2099,6 +2176,25 @@ export function RecoveryCopiesSection() {
                         t("settings.recoveryCopiesPhaseMerged"),
                         phased.merged,
                         t("settings.recoveryCopiesPhaseMergedHint"),
+                      )}
+                      {/* tl1415 点8: 清理多余副本——一键把主线已完整覆盖的副本
+                          (unique=0)逐份送回收站。无副本/未测量/未合成(没有
+                          命中的副本)时整块不渲染。 */}
+                      {redundantCopies.length > 0 && (
+                        <div className="rc-cleanup">
+                          <button
+                            className="btn btn--secondary btn--small rc-delete"
+                            type="button"
+                            title={t("settings.recoveryCopiesCleanupHint")}
+                            disabled={busy || cleaningUp}
+                            onClick={() => void cleanupRedundantCopies()}
+                          >
+                            {cleaningUp
+                              ? "…"
+                              : `${t("settings.recoveryCopiesCleanup")} (${redundantCopies.length})`}
+                          </button>
+                          <span className="rc-note">{t("settings.recoveryCopiesCleanupHintShort")}</span>
+                        </div>
                       )}
                     </div>
                       </>

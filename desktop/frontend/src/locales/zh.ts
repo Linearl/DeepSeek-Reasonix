@@ -4669,7 +4669,7 @@ export const zh: Record<DictKey, string> = {
   "settings.languageHint": "选择界面语言，或跟随操作系统。",
   "settings.storageTitle": "数据位置",
   "settings.storageHint": "查看 Reasonix 的工作区和应用数据位置。",
-  "settings.recoveryCopiesTitle": "工作阶段版本与副本",
+  "settings.recoveryCopiesTitle": "对话版本管理",
   // 任务 1063：两个分区合并成一个——badge 在会话行内标注 v3 多 heads 版本数，
   // unique 徽标标注副本里的独有事件；两者都是分级展示的可见性基础（体积列
   // 见 recoveryCopiesColSize）。
@@ -4753,7 +4753,7 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.repairLog": "修复记录：",
   "settings.sessionVersions.degraded": "已降级",
   "settings.sessionVersions.degradedHint": "该会话的事件日志读取被拒或失败（如重放超出安全预算）：行内计数不可用，其余分区不受影响。",
-  "settings.recoveryCopiesHint": "列出所有带 recovery 副本的工作阶段；「独有」是仅存在于该副本、未并入主线的事件数——它大就说明那边有会丢的工作。先看清，再勾选合并。",
+  "settings.recoveryCopiesHint": "汇总各会话的版本与副本，用于异常时恢复主线。",
   "settings.recoveryCopiesEmpty": "没有发现 recovery 副本。",
   // 任务 1085：两种空态要分清——「没有副本文件」（recovery 扫描为空）与「有
   // 副本行但 v3 无多 heads」（v3 版本列表为空）是两回事，不能用同一句话糊住。
@@ -4804,6 +4804,9 @@ export const zh: Record<DictKey, string> = {
   // 主线、可不可恢复」；「修复并瘦身」写清两个动作（剥离图片 payload + 折叠
   // 超窗旧消息，session_selfheal.go 的 Diet 语义）。
   "settings.recoveryCopiesScanHint": "测量该会话：数出每份副本的消息数与主线没有的独有事件数（合并预览基于它），只读不改",
+  // tl1415 点5 补口：概要行的合并勾选框——可见面上最后一个没有 hover 说明
+  // 的可操作控件（其余是自描述标签：关闭/重试/展开尾部等）。
+  "settings.recoveryCopiesSelectHint": "勾选该会话参与底部的「合并所选」；随时可取消勾选，勾选本身不动数据",
   "settings.recoveryCopiesScanAllHint": "逐个测量列表里所有带副本的会话（串行执行，逐个报进度），只读不改",
   "settings.recoveryCopiesScanSelectedHint": "只测量勾选的会话，只读不改",
   "settings.recoveryCopiesRefreshHint": "重新拉取副本列表与版本读数，不修改任何会话",
@@ -4831,6 +4834,17 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesClearHistoryNote": "这只清旧版元数据里的合并计数；对话内容、事件日志与磁盘上的副本文件全部保留。",
   "settings.recoveryCopiesClearHistoryConfirm": "清空",
   "settings.recoveryCopiesClearHistoryDone": "已清空合并历史",
+  // tl1415 点8: 一键清理多余副本——主线已完整覆盖(unique=0)的已测副本,
+  // 逐份走可恢复回收站。
+  "settings.recoveryCopiesCleanup": "清理多余副本",
+  "settings.recoveryCopiesCleanupHint": "把主线已完整覆盖的副本（独有=0）逐份移入回收站（可恢复）；正在打开的副本会被跳过并在结果里说明",
+  "settings.recoveryCopiesCleanupHintShort": "只清主线已完整覆盖（独有=0）的副本，进回收站可恢复",
+  "settings.recoveryCopiesCleanupTitle": "清理多余副本",
+  "settings.recoveryCopiesCleanupLead": "以下副本已被主线完整覆盖，将逐份移入回收站（可恢复）：",
+  "settings.recoveryCopiesCleanupNote": "每份副本都是归档而非销毁——需要时可从回收站还原。正在打开的副本会被跳过并说明。",
+  "settings.recoveryCopiesCleanupConfirm": "清理",
+  "settings.recoveryCopiesCleanupDone": "已归档 {n} 份多余副本（回收站可恢复）",
+  "settings.recoveryCopiesCleanupFailed": "没有副本归档成功——原因见错误列表",
   "settings.recoveryCopiesGroupCopies": "副本（recovery 文件）",
   "settings.recoveryCopiesGroupChains": "候选链与版本（v3 事件日志）",
   "settings.recoveryCopiesChainCurrent": "当前主线",

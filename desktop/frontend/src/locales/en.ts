@@ -4682,7 +4682,7 @@ export const en = {
   "settings.languageHint": "Choose the interface language or follow the operating system.",
   "settings.storageTitle": "Data locations",
   "settings.storageHint": "Review where Reasonix stores workspaces and application data.",
-  "settings.recoveryCopiesTitle": "Session versions and copies",
+  "settings.recoveryCopiesTitle": "Conversation version management",
   // 任务 1063：两个分区合并成一个——badge 在会话行内标注 v3 多 heads 版本数，
   // unique 徽标标注副本里的独有事件；两者都是分级展示的可见性基础（体积列
   // 见 recoveryCopiesColSize）。
@@ -4766,7 +4766,7 @@ export const en = {
   "settings.sessionVersions.repairLog": "Repair log:",
   "settings.sessionVersions.degraded": "Degraded",
   "settings.sessionVersions.degradedHint": "Reading this conversation's event log was refused or failed (for example a replay beyond the safety budget): in-row counts are unavailable; other sections are unaffected.",
-  "settings.recoveryCopiesHint": "Every conversation with recovery copies. Unique counts the events that exist only in that copy and not in the canonical transcript - a large number means work would be lost by ignoring it. Read first, then select and merge.",
+  "settings.recoveryCopiesHint": "One view of every conversation's versions and copies, for restoring the main line when something goes wrong.",
   "settings.recoveryCopiesEmpty": "No recovery copies found.",
   // 任务 1085：两种空态要分清——「没有副本文件」（recovery 扫描为空）与「有
   // 副本行但 v3 无多 heads」（v3 版本列表为空）是两回事，不能用同一句话糊住。
@@ -4818,6 +4818,9 @@ export const en = {
   // repair names both of its actions (strip image payloads + fold over-window
   // old messages, per session_selfheal.go's Diet semantics).
   "settings.recoveryCopiesScanHint": "measures this conversation: counts each copy's messages and the events the main lacks (the merge preview builds on it); read-only",
+  // tl1415 point 5 gap: the summary row's merge checkbox — the last actionable
+  // control without a hover description (the rest are self-describing labels).
+  "settings.recoveryCopiesSelectHint": "checks this conversation into the merge-selected action at the bottom; untick any time — ticking itself changes nothing",
   "settings.recoveryCopiesScanAllHint": "measures every conversation with copies in turn (serial, per-row progress); read-only",
   "settings.recoveryCopiesScanSelectedHint": "measures only the checked conversations; read-only",
   "settings.recoveryCopiesRefreshHint": "re-reads the copies list and version readings; modifies nothing",
@@ -4848,6 +4851,17 @@ export const en = {
   "settings.recoveryCopiesClearHistoryNote": "This only clears the merge counters in legacy metadata. The conversation, its event log and every copy on disk are kept.",
   "settings.recoveryCopiesClearHistoryConfirm": "Clear",
   "settings.recoveryCopiesClearHistoryDone": "Merge history cleared",
+  // tl1415 点8: one-click cleanup of redundant copies — measured copies the
+  // main fully covers (unique = 0), recycled through the recoverable trash.
+  "settings.recoveryCopiesCleanup": "Clean up redundant copies",
+  "settings.recoveryCopiesCleanupHint": "moves every copy the main fully covers (unique = 0) to the recoverable trash, one by one; copies open in a tab are skipped and reported in the result",
+  "settings.recoveryCopiesCleanupHintShort": "copies the main fully covers (unique = 0) go to the recoverable trash",
+  "settings.recoveryCopiesCleanupTitle": "Clean up redundant copies",
+  "settings.recoveryCopiesCleanupLead": "These copies are fully covered by their main transcript and will move to the recoverable trash, one by one:",
+  "settings.recoveryCopiesCleanupNote": "Each copy is archived, not destroyed — restore it from the trash if needed. Copies open in a tab are skipped and reported.",
+  "settings.recoveryCopiesCleanupConfirm": "Clean up",
+  "settings.recoveryCopiesCleanupDone": "Archived {n} redundant copies (recoverable from the trash)",
+  "settings.recoveryCopiesCleanupFailed": "No copy could be archived — see the error list for reasons",
   "settings.recoveryCopiesGroupCopies": "Copies (recovery files)",
   "settings.recoveryCopiesGroupChains": "Candidate chains & versions (v3 event log)",
   "settings.recoveryCopiesChainCurrent": "current main",

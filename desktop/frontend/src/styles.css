@@ -39593,6 +39593,15 @@ button.statusbar__mcp:focus-visible {
   border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, transparent);
 }
 .rc-action { gap: 8px; }
+/* tl1415 点8: 表格底部的「清理多余副本」一行——按钮+短说明并排。 */
+.rc-cleanup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent);
+}
 .rc-result {
   margin-bottom: 10px;
   padding: 8px 10px;
