@@ -1,13 +1,14 @@
 import { TranscriptPresentationProvider } from "./TranscriptPresentationContext";
 import { useNativeViewportSnapshot } from "../lib/useTranscriptNativeViewport";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LogicalAnchor, TranscriptKernel } from "../lib/transcriptKernel";
 import type { ProjectionViewProps } from "./TranscriptProjectionView";
 import { TranscriptMeasurementLedger } from "../lib/transcriptMeasurementLedger";
 import type { TimelineBlock, TimelineProjection } from "../lib/transcriptTimeline";
 import { extractTranscriptWindowIndexes } from "../lib/transcriptWindowRange";
 import { commitTranscriptWindowGeometry, findTranscriptMeasurementPublicationBoundary, MAX_MOUNTED_COMPLETED_BLOCKS, type TranscriptWindowGeometry } from "../lib/transcriptWindowGeometry";
+import { useTranscriptMeasurementRevision } from "../lib/useTranscriptMeasurementRevision";
 
 const ANCHOR_MEASUREMENT_RADIUS = 4;
 // Keep enough mounted runway for native engines whose scroll event can arrive
@@ -201,8 +202,12 @@ export default function TranscriptWindow({
     if (rect.bottom >= viewport.top && rect.top <= viewport.bottom) onPinnedJumpVisible();
   }, [onPinnedJumpVisible, pinnedJumpBlockKey, rangeRevision, scrollElement]);
   const surfaceGeneration = kernel.generation;
-  const [measurementRevision, setMeasurementRevision] = useState(0);
-  const presentationChanged = useCallback(() => setMeasurementRevision(value => value + 1), []);
+  // tl1416 (issue #82): geometryChanged used to be a bare counter increment, so
+  // W MarkdownHistory rows changing inside one commit chained W synchronous
+  // re-render + measurement-sweep rounds in the same prepaint window. The gate
+  // below collapses them into one increment per prepaint pass; see the hook's
+  // contract for the publication-bump path that stays ungated.
+  const { revision: measurementRevision, signalGeometryChanged: presentationChanged, beginMeasurementPass, bumpForPublishedSizes } = useTranscriptMeasurementRevision();
   const presentation = useMemo(() => ({ gestureActive: kernel.userGestureActive, windowed: true, geometryChanged: presentationChanged }),
     [kernel.userGestureActive, presentationChanged]);
   useLayoutEffect(() => {
@@ -215,7 +220,7 @@ export default function TranscriptWindow({
       if (disposed || generation !== kernel.generation || cancelFrame) return;
       cancelFrame = kernel.afterCurrentGenerationPaint(() => {
         cancelFrame = undefined;
-        if (!disposed && generation === kernel.generation) setMeasurementRevision(revision => revision + 1);
+        if (!disposed && generation === kernel.generation) presentationChanged();
       });
     });
     // Absolute children do not resize the projection root. Observe the actual
@@ -226,6 +231,9 @@ export default function TranscriptWindow({
   const measuredItems = fullDOMFallback ? geometry.prefix.items : virtualItems;
   useLayoutEffect(() => {
     measurementNeedsRender.current = false;
+    // tl1416: consume a pending geometryChanged signal — this pass observes the
+    // whole committed DOM, so same-commit signals collapse into it.
+    beginMeasurementPass();
     const container = residentTailRef.current;
     const changes: Array<{ key: string; size: number }> = [];
     const firstMeasurements = new Set<string>();
@@ -320,7 +328,9 @@ export default function TranscriptWindow({
       // A layout-effect state update closes the batch before paint; do not
       // depend on TanStack's asynchronous notification scheduling. Geometry
       // acknowledges this same batch instead of retaining the older prefix.
-      setMeasurementRevision(revision => revision + 1);
+      // tl1416: deliberately ungated (bumpForPublishedSizes) — absorbing this
+      // increment would drop the follow-up pass a published batch needs.
+      bumpForPublishedSizes();
       return;
     }
   }, [coldIndexByKey, fullDOMFallback, kernel.intent, kernel.userGestureActive, logicalAnchorIndex, measuredItems, measurementLedger, measurementRevision, nativeViewport.clientHeight, nativeViewport.scrollTop, onGeometryChange, onGeometryWillChange, projection.activeBlock?.measurementRevision, rangeRevision, scrollElement, split.resident, virtualItems, virtualizer, origin, scrollMargin, totalSize]);
