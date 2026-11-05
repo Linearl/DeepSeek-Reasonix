@@ -88,10 +88,12 @@ const idleTurnMaxAttempts = 3
 const idleTurnFinishingStuckTimeout = 90 * time.Second
 
 // idleTurnRunningStuckTimeout is the tl1288 running-turn quiet threshold the
-// bridge hands to Controller.HealStalledRunning: a RUNNING turn whose turn
-// event ledger has produced nothing for this long has a wedged body — no
-// TurnDone will ever arrive, the tab projects a phantom busy state (green dot
-// + work counter), and every sweep tick would otherwise read skip:running
+// bridge hands to Controller.HealStalledRunning: a RUNNING turn that has
+// produced nothing for this long on EITHER wedge-probe evidence source (the
+// turn event ledger for guarded turns; the sink-wide liveness tracker for the
+// synchronous turns that never Begin the ledger — tl1394) has a wedged body —
+// no TurnDone will ever arrive, the tab projects a phantom busy state (green
+// dot + work counter), and every sweep tick would otherwise read skip:running
 // forever. Mirrors control.RunningStallQuietTimeout (10min — deliberately far
 // above the 90s fan-out bound: the false-positive cost is abandoning a
 // genuinely slow foreground tool, so only silence no honest tool run can
@@ -650,7 +652,7 @@ func (b *idleTurnBridge) sweepTargets(targets []idleTurnTargetView, now time.Tim
 		if target.running && !target.finishing && target.healStalledRunning != nil {
 			if healed, stuck := target.healStalledRunning(); healed {
 				b.logSweepDecision(target, sweepHealedRunning, idle, tracked, now)
-				log.Printf("[session-collab] idle-turn bridge: healed stalled-running target for contact %s (no ledger activity for %s, threshold %s; the tab projection re-arms on the next sweep)",
+				log.Printf("[session-collab] idle-turn bridge: healed stalled-running target for contact %s (no turn activity for %s, threshold %s; the tab projection re-arms on the next sweep)",
 					target.contactID, stuck.Round(time.Second), idleTurnRunningStuckTimeout)
 				continue
 			}
@@ -896,7 +898,7 @@ func (p *sessionCollabPump) sweepForegroundTurnHeals(now time.Time) {
 		// abandoned here.
 		if st.Running && !st.Finishing {
 			if healed, stuck := healer.HealStalledRunning(idleTurnRunningStuckTimeout); healed {
-				log.Printf("[idle-turn-sweep] tab=%s healed stalled-running turn (foreground pass, no ledger activity for %s, threshold %s; tl1304 ④)",
+				log.Printf("[idle-turn-sweep] tab=%s healed stalled-running turn (foreground pass, no turn activity for %s, threshold %s; tl1304 ④)",
 					target.tabID, stuck.Round(time.Second), idleTurnRunningStuckTimeout)
 			}
 		}

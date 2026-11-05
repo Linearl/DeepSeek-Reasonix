@@ -27,13 +27,15 @@ const turnInterruptStaleTimeout = 45 * time.Second
 const FinishingStuckTimeout = 90 * time.Second
 
 // RunningStallQuietTimeout is the tl1288 bound on a RUNNING turn's silence:
-// every sign of life appends to the turn event ledger (tool dispatch/result,
-// tokens, status changes, retries), so a running turn whose ledger has been
-// quiet this long is wedged inside its body — no TurnDone will ever arrive,
-// c.running stays true, and every later observer (TabBar projection, 579
-// bridge) reads a phantom busy state (20261031 01:07-01:18 现场：579 桥开的
-// collab 轮体卡死，sweep 连续 11 分钟 skip:running，tab 挂绿点+已工作计数残
-// 影，实体在盘所以 1266b 不拦). Deliberately far above FinishingStuckTimeout
+// every sign of life lands on one of the two evidence sources the heal reads
+// (guarded turns append to the turn event ledger — tool dispatch/result,
+// tokens, status changes, retries — and synchronous turns' events refresh the
+// sink-wide liveness tracker; see runningTurnLastActivity), so a running turn
+// quiet this long on BOTH is wedged inside its body — no TurnDone will ever
+// arrive, c.running stays true, and every later observer (TabBar projection,
+// 579 bridge) reads a phantom busy state (20261031 01:07-01:18 现场：579 桥开
+// 的 collab 轮体卡死，sweep 连续 11 分钟 skip:running，tab 挂绿点+已工作计数
+// 残影，实体在盘所以 1266b 不拦). Deliberately far above FinishingStuckTimeout
 // and the 303 interrupt-stale 45s: the false-positive cost is abandoning a
 // genuinely slow foreground tool, so only silence no honest tool run can
 // produce (background jobs keep their own aliveness guard in the heal) may
@@ -171,25 +173,55 @@ func (c *Controller) HealStuckFinishing(maxAge time.Duration) (healed bool, stal
 	return true, stalledFor
 }
 
-// RunningQuietFor reports how long the running turn has produced no ledger
-// event (the tl1288 liveness probe). ok=false when no turn is running, the
-// controller is closed, or there is no ledger stamp to read — callers must
-// treat a missing stamp as "cannot judge", never as "quiet forever".
+// runningTurnLastActivity returns the newest stamp across the two tl1288
+// evidence sources: the turn event ledger (guarded/async turns append their
+// lifecycle and stream events) and the controller-wide liveness tracker (fed
+// by EVERY sink event, including those of the synchronous turns — inbox
+// bridge, bot/ACP RunTurn, protocol recovery — that never Begin the ledger,
+// so their activity is invisible to LastActivityAt). Taking the newer of the
+// two is the wedge verdict's honesty guard (tl1394): a synchronous turn
+// admitted onto a ledger whose last record predates it (long idle,
+// compaction-truncated records) used to inherit the stale stamp and get
+// abandoned seconds after admission (20261103 17:01 / 20261105 09:18 GLM
+// scenes: quiet_for read 17m/2h48m on turns seconds old), while a genuinely
+// wedged synchronous turn produces no sink events either — both stamps age
+// together and the heal still fires, so tl1288's unattended rescue keeps
+// working. Caller must hold c.mu (c.mu → turnEvents.mu order).
+func (c *Controller) runningTurnLastActivity() time.Time {
+	newest := time.Time{}
+	if ledger := c.turnEventLedger(); ledger != nil {
+		if ms := ledger.LastActivityAt(); ms > 0 {
+			newest = time.UnixMilli(ms)
+		}
+	}
+	if last := c.liveness.lastEvent.Load(); last > 0 {
+		if t := time.Unix(0, last); t.After(newest) {
+			newest = t
+		}
+	}
+	return newest
+}
+
+// RunningQuietFor reports how long the running turn has produced no event on
+// either tl1288 evidence source (the tl1394 honesty guard above). ok=false
+// when no turn is running, the controller is closed, or there is no stamp on
+// either source — callers must treat a missing stamp as "cannot judge",
+// never as "quiet forever".
 func (c *Controller) RunningQuietFor(now time.Time) (quiet time.Duration, ok bool) {
 	if c == nil {
 		return 0, false
 	}
 	c.mu.Lock()
 	running, closed := c.running, c.closed
+	var last time.Time
+	if running && !closed {
+		last = c.runningTurnLastActivity()
+	}
 	c.mu.Unlock()
-	if !running || closed {
+	if !running || closed || last.IsZero() {
 		return 0, false
 	}
-	last := c.turnEventLedger().LastActivityAt()
-	if last <= 0 {
-		return 0, false
-	}
-	quiet = now.Sub(time.UnixMilli(last))
+	quiet = now.Sub(last)
 	if quiet < 0 {
 		quiet = 0
 	}
@@ -208,12 +240,14 @@ func (c *Controller) RunningQuietFor(now time.Time) (quiet time.Duration, ok boo
 // The heal fires only on the unambiguous shape — running, gate not rotating,
 // no parked bodies (a live FIFO drain keeps the gate busy legitimately), no
 // in-flight compaction, no background jobs (a running job is the turn's
-// aliveness evidence: foreground tools wait on them routinely), ledger quiet
-// past maxQuiet — and does what the wedged turn's own abandon path would do:
-// cancel the body, bump the generation so its late completion is recognized
-// stale (finishGuardedTurn's 303 stale-completion guard), reopen the gate,
-// notify, and re-arm the durable consumers. The caller re-evaluates on its
-// next sweep tick; this method never opens a turn itself.
+// aliveness evidence: foreground tools wait on them routinely), both evidence
+// sources quiet past maxQuiet (runningTurnLastActivity: the ledger for
+// guarded turns, the sink-wide liveness tracker for the synchronous turns
+// that never Begin it — tl1394) — and does what the wedged turn's own abandon
+// path would do: cancel the body, bump the generation so its late completion
+// is recognized stale (finishGuardedTurn's 303 stale-completion guard),
+// reopen the gate, notify, and re-arm the durable consumers. The caller
+// re-evaluates on its next sweep tick; this method never opens a turn itself.
 func (c *Controller) HealStalledRunning(maxQuiet time.Duration) (healed bool, stalledFor time.Duration) {
 	if c == nil || maxQuiet <= 0 {
 		return false, 0
@@ -233,12 +267,12 @@ func (c *Controller) HealStalledRunning(maxQuiet time.Duration) (healed bool, st
 		c.mu.Unlock()
 		return false, 0
 	}
-	last := c.turnEventLedger().LastActivityAt()
-	if last <= 0 {
+	last := c.runningTurnLastActivity()
+	if last.IsZero() {
 		c.mu.Unlock()
 		return false, 0
 	}
-	stalledFor = now.Sub(time.UnixMilli(last))
+	stalledFor = now.Sub(last)
 	if stalledFor < maxQuiet {
 		c.mu.Unlock()
 		return false, 0

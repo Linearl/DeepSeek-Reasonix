@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/extension"
@@ -99,6 +100,17 @@ func (c *Controller) runSynchronousTurn(
 	}
 	c.running = true
 	c.canceling = false
+	// tl1394: anchor the wedge probe at admission, mirroring
+	// spawnGuardedTurn's reset on the guarded path. Without this anchor a
+	// synchronous turn (inbox bridge / bot / ACP / RunTurn) admitted onto a
+	// controller whose liveness stamp predates a long idle inherits that stale
+	// stamp until its first event lands — a sweep tick firing inside that gap
+	// judges the freshly admitted turn wedged on silence that predates it
+	// (20261105 09:18/09:25 GLM scenes: the heal canceled the bridge turn
+	// 1-2s after opening). The reset also clears the previous turn's
+	// preflight-stall marker, which must not leak across the generation
+	// boundary.
+	c.liveness.reset(time.Now())
 	c.mu.Unlock()
 	c.refreshRuntimeState(event.Event{})
 	finish := func() {
