@@ -172,12 +172,10 @@ func (a *App) renameCatalogOnlyTopic(topicID, title string) error {
 	if err := setTopicTitle(workspaceRoot, topicID, title); err != nil {
 		return err
 	}
-	changedDirs := a.updateTopicSessionTitles(topicID, title)
-	if len(changedDirs) > 0 {
-		a.emitProjectTreeChangedForSessionDirs(changedDirs...)
-	} else {
-		a.emitProjectTreeMetadataChanged()
-	}
+	// tl1413: same shared tail as the indexed RenameTopic branches — the
+	// bounded catalog push before the change events keeps the rename-return
+	// contract (sidebar reads the fresh title on its very next refetch).
+	a.finishTopicRename(a.updateTopicSessionTitles(topicID, title))
 	return nil
 }
 

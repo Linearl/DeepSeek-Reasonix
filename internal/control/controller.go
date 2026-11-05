@@ -511,6 +511,14 @@ type Controller struct {
 	// Not reentrant — never call snapshot (or anything that snapshots, such as
 	// recoverInterruptedTurn or maybeColdResumePrune) while holding it.
 	snapshotMu sync.Mutex
+	// tl1407: bounded logging + one-shot crash dump for snapshot-refusal
+	// branches (content without a system message after a failed repair; content
+	// without a session path). Both branches run under snapshotMu, which guards
+	// these counters. Before the bound, each autosave cycle (30s) re-logged the
+	// anomaly — the 20261105 field storm logged 471 WARNs across sessions while
+	// the conversation lived only in memory.
+	refusalWarnCount int
+	refusalDumpPath  string
 	// 任务 710: coalesces redundant snapshot-mode saves. Redundant savers
 	// (desktop TurnDone autosave, action-time snapshotTab) consult the gate
 	// before queueing behind a full save; durability-boundary callers (turn
@@ -580,7 +588,10 @@ type pendingAsk struct {
 	// budget suspended) until the user releases the takeover. Each delivery
 	// carries the next state (true = hold, false = release). Buffered size 1
 	// with a drain-on-send so rapid toggles collapse to the last click.
-	// Non-nil only for the same reversible-timed class as interact/activity.
+	// Non-nil for the reversible-timed class (with interact/activity) and,
+	// since tl1408, for the autopilot high-risk tier — registerAskTakeover
+	// arms only this channel there, so the panel's 接管 button can park the
+	// 109 B4 / 477 window while the user is present.
 	takeover chan bool
 	// reattach carries the 任务178 "the session was reopened and the panel is
 	// back on screen" signal (NotifyAskReattached). Buffered size 1; sent
@@ -3370,6 +3381,11 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// one the run may answer itself.
 	explicitAskGranted := c.explicitAskGranted.Load()
 	reversibleTimedAsk := c.autopilot && reversibleAsk && !explicitAskGranted
+	// tl1408: the high-risk tier's timer predicate, in the same shape as the
+	// askTimer arming and the AutoDecideWaitMs stamp below. The explicit ask
+	// grant deliberately does NOT exempt it — the grant never reaches the
+	// high-risk tier (task 806b), those asks keep the 477/109 waits.
+	autopilotHighRiskAsk := c.autopilot && !reversibleAsk
 	if explicitAskGranted && c.autopilot && reversibleAsk {
 		// 判据锚 (task 806b): the one grep-able line answering "why did this
 		// reversible ask NOT auto-decide".
@@ -3493,7 +3509,15 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// interaction channel so the panel can stop the auto-decide timer, and
 	// with the task-844 activity channel so hover can reset it; task 849 adds
 	// the takeover channel so the panel button can park the timer outright.
-	// Every other prompt class keeps the plain registration verbatim.
+	// tl1408: the autopilot high-risk tier arms the wait below too, so it now
+	// registers with the takeover channel as well (registerAskTakeover) — the
+	// panel's 接管 button on a high-risk ask must actually park that window.
+	// The old contract armed no channel here, so the toggle answered false and
+	// the button rolled back while the countdown expired under the user's
+	// hands. interact/activity stay nil on this tier: a selection or a hover
+	// must NOT stop or reset the high-risk window — only the explicit takeover
+	// button may suspend the safety valve, and only while the user holds it.
+	// Attended asks keep the plain registration verbatim.
 	var interactCh chan struct{}
 	var activityCh chan struct{}
 	var takeoverCh chan bool
@@ -3501,6 +3525,8 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	var reply chan []event.AskAnswer
 	if reversibleTimedAsk {
 		id, reply, interactCh, activityCh, takeoverCh = c.approval.registerAskInteractive(questions)
+	} else if autopilotHighRiskAsk {
+		id, reply, takeoverCh = c.approval.registerAskTakeover(questions)
 	} else {
 		id, reply = c.approval.registerAsk(questions)
 	}
@@ -3533,7 +3559,7 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// timer, no toast deadline). Both timed tiers (reversible under autopilot,
 	// high-risk under autopilot) arm from the same call below.
 	var autoDecideWaitMs int64
-	if reversibleTimedAsk || (c.autopilot && !reversibleAsk) {
+	if reversibleTimedAsk || autopilotHighRiskAsk {
 		autoDecideWaitMs = c.autopilotAskWaitFor().Milliseconds()
 	}
 	emitErr := event.EmitChecked(c.sink, event.Event{Kind: event.AskRequest, TurnID: turnID, ItemID: id, Ask: event.Ask{ID: id, Questions: questions, TurnID: turnID, AutoDecideWaitMs: autoDecideWaitMs}})
@@ -3577,6 +3603,12 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// ask falls out of the timed reversible block above, and testing
 	// reversibleTimedAsk here would dump it into this 15s-refusal lane
 	// instead of the attended wait the grant promises.
+	// tl1408: this window is parkable. The takeover channel registered above
+	// suspends it outright while the user holds the 接管 button (an infinite
+	// wait — they declared themselves present), and releasing re-arms a fresh
+	// window; the 109 B4 safety valve is real only while nobody has taken
+	// over. Re-read the old contract as: "real when nobody is there" — a user
+	// mid-incident must not watch the countdown expire beneath their click.
 	var askTimeout <-chan time.Time
 	var askWait time.Duration
 	// askTimer stays in scope so the 任务178 reattach case below can re-arm the
@@ -3585,7 +3617,7 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// never reach this point with a timer: the immediate refusal above answers
 	// them before registration, so no heartbeat ask can park this loop.
 	var askTimer *time.Timer
-	if c.autopilot && !reversibleAsk {
+	if autopilotHighRiskAsk {
 		askWait = c.autopilotAskWaitFor()
 		askTimer = time.NewTimer(askWait)
 		defer askTimer.Stop()
@@ -3749,6 +3781,14 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 				timer.Reset(askWait)
 				log.Printf("[ask-panel] ask takeover released; auto-decide window re-armed for %s (task 849) turn=%s item=%s", askWait, turnID, id)
 			case <-reattachCh:
+				// tl1408: a held takeover parked the window and the budget; a
+				// re-presented panel must not restart them — the user believes
+				// the clock is suspended, and the same contract as the
+				// high-risk tier below applies.
+				if takeover {
+					log.Printf("[ask-panel] ask re-presented while takeover held; the parked window and budget stay suspended (tl1408) turn=%s item=%s", turnID, id)
+					continue
+				}
 				// 任务178（打开后才计时）: the session was reopened and the panel is
 				// back on screen. The window this backgrounded ask silently spent
 				// must not decide for a user who never saw it — park both timers
@@ -3787,10 +3827,42 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// 任务178: looped so a session-reopen signal can re-arm askTimeout in place
 	// (打开后才计时) before the wait continues; every non-reattach case returns,
 	// so the loop is behavior-identical for callers that never reopen.
+	// tl1408: the takeover toggle rides this loop on a high-risk ask, same as
+	// the reversible tier above. Hold = park the window outright — an infinite
+	// wait, not a single extension: the user declared themselves present, and
+	// the 109 B4 safety valve is only real while nobody holds the takeover.
+	// Release = re-arm a fresh window from now, the same arming posture as the
+	// registration. Attended asks carry a nil channel (plain registration), so
+	// the case never fires and their contract is untouched.
+	takeoverHeld := false
 	for {
 		select {
 		case ans := <-reply:
 			return ans, nil
+		case taking := <-takeoverCh:
+			if taking == takeoverHeld {
+				continue
+			}
+			takeoverHeld = taking
+			if askTimer == nil {
+				continue // defensive: a takeover-capable ask always carries the timer
+			}
+			if takeoverHeld {
+				// Park: stop and drain so a concurrently-fired expiry cannot
+				// resurface as a stale askTimeout after the hold lands.
+				if !askTimer.Stop() {
+					select {
+					case <-askTimer.C:
+					default:
+					}
+				}
+				log.Printf("[ask-panel] high-risk ask takeover held; the %s autopilot window parked, waiting for the user (tl1408) turn=%s item=%s", askWait, turnID, id)
+				continue
+			}
+			// Released: the timer was stopped and drained at the hold, so
+			// Reset is on a clean timer — a fresh window from this moment.
+			askTimer.Reset(askWait)
+			log.Printf("[ask-panel] high-risk ask takeover released; the autopilot window re-armed for %s (tl1408) turn=%s item=%s", askWait, turnID, id)
 		case <-askTimeout:
 			c.cancelOwnedPrompt(id)
 			c.expirePendingCard(id)
@@ -3832,7 +3904,14 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			// re-presentation, draining a concurrently-fired expiry first (same
 			// Timer.Reset dance as the timer cases above). Attended asks have no
 			// timer (askTimer == nil) and simply keep waiting for the user.
+			// tl1408: a held takeover keeps the window parked — a re-presented
+			// panel must not secretly restart what the user believes is
+			// suspended; only their release re-arms it.
 			if askTimer == nil {
+				continue
+			}
+			if takeoverHeld {
+				log.Printf("[ask-panel] high-risk ask re-presented while takeover held; the parked window stays suspended (tl1408) turn=%s item=%s", turnID, id)
 				continue
 			}
 			if !askTimer.Stop() {
@@ -3879,16 +3958,18 @@ func (c *Controller) NotifyAskActivity(id string) {
 
 // NotifyAskTakeover applies the task-849 panel takeover toggle for a pending
 // ask: taking=true parks the reversible ask's auto-decide timer and its
-// absolute hover budget outright — the user explicitly declared themselves
-// present, so the ask waits indefinitely no matter how long they think — and
-// taking=false releases the takeover, re-arming a fresh window and a fresh
-// budget. This is deliberately stronger than NotifyAskActivity: hover is the
-// weak "the user is reading" signal, takeover is the explicit "the user is
-// here" declaration. Reports whether a timed ask actually consumed the toggle
-// — false is the expected answer for every other prompt class (attended asks
-// have no auto-decide to park, and the 109 B4 safety valve on high-risk asks
-// must stay real), which is why callers may fire it for any ask ID without
-// knowing the risk tier. Unknown/expired IDs are ignored.
+// absolute hover budget outright, and since tl1408 the autopilot high-risk
+// window as well — the user explicitly declared themselves present, so the
+// ask waits indefinitely no matter how long they think — and taking=false
+// releases the takeover, re-arming a fresh window (and a fresh budget on the
+// reversible tier). This is deliberately stronger than NotifyAskActivity:
+// hover is the weak "the user is reading" signal, takeover is the explicit
+// "the user is here" declaration. Reports whether a timed ask actually
+// consumed the toggle — false is the expected answer for every other prompt
+// class (attended asks have no timer to park; the 109 B4 safety valve on
+// high-risk asks stays real whenever nobody has taken over), which is why
+// callers may fire it for any ask ID without knowing the risk tier.
+// Unknown/expired IDs are ignored.
 func (c *Controller) NotifyAskTakeover(id string, taking bool) bool {
 	if c == nil || id == "" {
 		return false
@@ -4840,6 +4921,7 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	c.snapshotMu.Lock()
 	if c.executor != nil {
 		c.executor.SetSession(s)
+		c.repairHeadlessResumedSession(s)
 	}
 	c.mu.Lock()
 	c.sessionPath = path
@@ -4897,6 +4979,23 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	// (possibly owner-adjusted) phase payload.
 	if err := c.extensionSessionPhase(context.Background(), extension.PointSessionLoad, dispatch.PhaseLoad, path); err != nil {
 		c.extensionWarn("session policy failed at session.load", err)
+	}
+}
+
+// repairHeadlessResumedSession is the tl1407 stock heal: transcripts written
+// by pre-fix builds (the self-heal fold that swallowed the identity header,
+// headless fork/branch lineages) load without a leading system message.
+// Restoring it here gives the first model request its identity contract back
+// and lets the very next autosave persist the whole transcript — no refusal,
+// no in-memory-only accumulation. Runs once per Resume, off the save cycle,
+// so there is no storm surface. Caller holds snapshotMu.
+func (c *Controller) repairHeadlessResumedSession(s *agent.Session) {
+	if s == nil || !s.HasContent() || s.HasSystemMessage() {
+		return
+	}
+	if s.SetLeadingSystemPromptWithReason(c.identityRepairPrompt(), "resume_headless_repair") {
+		slog.Warn("controller: resumed a session with content but no system message; identity header restored",
+			"label", c.Label(), "session_dir", c.SessionDir(), "message_count", s.Len())
 	}
 }
 
@@ -5078,23 +5177,30 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 		return false, nil
 	}
 	if !s.HasSystemMessage() {
-		// The session has user/assistant/tool messages but no leading system
-		// prompt.  Persisting it would create a session file that, when
-		// reloaded, has no agent-identity contract — the model falls back to
-		// its training-data defaults, giving wrong answers to identity
-		// queries ("who are you?").  Log the anomaly so the root cause
-		// (typically an empty sysPrompt reaching NewSession) can be
-		// diagnosed, then refuse to write a corrupted transcript.
-		slog.Warn("controller: refusing to snapshot session with content but no system message",
-			"label", c.Label(), "session_dir", c.SessionDir(), "message_count", len(s.Snapshot()))
-		return false, nil
+		// tl1407 终局:补头续跑,而非无限拒绝。The session has user/assistant/
+		// tool messages but no leading system prompt — persisting that used to
+		// be refused to protect the reload identity contract, but the refusal
+		// never fixed anything: every autosave cycle re-logged the WARN (the
+		// 20261105 storm), the turn kept running with the messages piling up
+		// in memory only, and one crash lost the whole conversation. Restoring
+		// the header satisfies exactly what the guard protected: the model
+		// request and the persisted file both carry the identity contract
+		// again, and this save proceeds. One ERROR, terminal.
+		if s.SetLeadingSystemPromptWithReason(c.identityRepairPrompt(), "snapshot_guard_headless_repair") {
+			slog.Error("controller: session had content but no system message; identity header restored, save proceeding",
+				"label", c.Label(), "session_dir", c.SessionDir(), "message_count", s.Len())
+		} else {
+			// 终局拒绝形态(理论上不可达:回退文案恒非空)——保留防未来退化。
+			c.noteSnapshotRefusal(s, path, "session with content but no system message")
+			return false, nil
+		}
 	}
 	if path == "" {
 		// There IS content but nowhere to write it: this silently dropped whole
-		// bot conversations (#4414). Surface it loudly instead of returning nil
-		// so the missing session path can be diagnosed and fixed at the source.
-		slog.Warn("controller: session has content but no session path; conversation will not be persisted",
-			"label", c.Label(), "session_dir", c.SessionDir())
+		// bot conversations (#4414). Surface it loudly, bound the per-cycle
+		// WARN (tl1407: same storm family), and dump the transcript beside the
+		// session dir so a crash cannot take the conversation with it.
+		c.noteSnapshotRefusal(s, path, "session has content but no session path; conversation will not be persisted")
 		return false, errNoSessionPath
 	}
 	// session.save: the session_policy owner rules on the impending save; a
@@ -5289,6 +5395,10 @@ const (
 	// conflictForkedBranch: the same in-memory session moved to a freshly
 	// forked recovery branch path.
 	conflictForkedBranch
+	// conflictTookOver (tl1409): the live in-memory transcript was persisted
+	// over a dead second writer's on-disk state; path and session are
+	// unchanged and the disk ledger advanced past the stale revision.
+	conflictTookOver
 )
 
 func sessionRecoveryNotice(code, text string) event.Event {
@@ -5396,6 +5506,21 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 		mode = "rewrite"
 	}
 	logAttrs := snapshotConflictLogAttrs(saveErr, path, mode)
+	// tl1409: rev-lag takeover. The existing ladder had no verdict for the
+	// diverged shape where the disk revision ran AHEAD of the local base and
+	// the live transcript ran ahead of disk — a second writer advanced the
+	// ledger and then died (the 2026-11-05 field shape: disk 243 msgs at
+	// revision 120 vs a live snapshot growing 244→248 from base 119). Before
+	// this branch the only outcomes were a recovery fork (a new copy next to a
+	// dead main file — the fork-storm class) or adopting the disk transcript
+	// (discarding the live side that kept growing). The takeover persists the
+	// live transcript over the dead writer's state instead; every precondition
+	// and the disk-still-stale re-verification live inside
+	// agent.SaveAdoptOverStaleDisk, so a shape it declines here falls through
+	// to the pre-existing ladder unchanged.
+	if c.takeoverDivergedRevLag(path, saveErr, mode) {
+		return path, conflictTookOver, nil
+	}
 	// Fork: avalanche brake. When this controller already forked a recovery
 	// branch moments ago, the conflict is a racing writer (the
 	// repeated_in_process forks observed in the field), not an independent

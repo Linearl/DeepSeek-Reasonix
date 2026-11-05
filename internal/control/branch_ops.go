@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/config"
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
 )
@@ -73,8 +74,7 @@ func (c *Controller) forkNamedReady(turn int, name string, switchToFork bool, ki
 		boundary = len(src)
 	}
 	forked := append([]provider.Message(nil), src[:boundary]...)
-	sess := agent.NewSession("")
-	sess.Messages = forked
+	sess := c.seedBranchedSession(forked, parentPath)
 
 	newPath := agent.NewSessionPath(c.sessionDir, c.activeLabel())
 	if err := sess.SaveIfAbsent(newPath); err != nil {
@@ -179,8 +179,7 @@ func (c *Controller) branchTip(name string, forceFile bool) (string, error) {
 	parentID := agent.BranchID(parentPath)
 	src := c.executor.Session().Snapshot()
 	branched := append([]provider.Message(nil), src...)
-	sess := agent.NewSession("")
-	sess.Messages = branched
+	sess := c.seedBranchedSession(branched, parentPath)
 
 	newPath := agent.NewSessionPath(c.sessionDir, c.activeLabel())
 	if err := sess.SaveIfAbsent(newPath); err != nil {
@@ -331,6 +330,40 @@ func branchDisplayName(b agent.BranchInfo) string {
 		return fmt.Sprintf("%s (%s)", b.Name, b.ID)
 	}
 	return b.ID
+}
+
+// identityRepairPrompt returns the identity contract to seed onto a headless
+// transcript: the controller's own base prompt when one is wired (fresh
+// assembly — the same prompt a /new session would carry), falling back to the
+// canonical product default. tl1407: a transcript without this header is not
+// safe to persist (reload loses the agent-identity contract) and used to be
+// refused forever by the snapshot guard.
+func (c *Controller) identityRepairPrompt() string {
+	if prompt := c.freshSessionBasePrompt(); prompt != "" {
+		return prompt
+	}
+	return config.DefaultSystemPrompt
+}
+
+// seedBranchedSession builds the fresh session a fork/branch switches to. A
+// carried prefix that already starts with the system message is taken over
+// verbatim (unchanged healthy path); a headless prefix gets the controller's
+// identity contract seeded in front — previously the child inherited the
+// missing header and every descendant stayed headless forever (the
+// 20260927-020815 collab lineage). parentPath is only for the diagnostic line.
+func (c *Controller) seedBranchedSession(prefix []provider.Message, parentPath string) *agent.Session {
+	if len(prefix) > 0 && prefix[0].Role == provider.RoleSystem {
+		sess := agent.NewSession("")
+		sess.Messages = prefix
+		return sess
+	}
+	slog.Warn("controller: fork/branch seeded a system header onto a headless parent transcript",
+		"label", c.Label(), "parent", parentPath)
+	sess := agent.NewSession(c.identityRepairPrompt())
+	if len(prefix) > 0 {
+		sess.Messages = append(sess.Messages, prefix...)
+	}
+	return sess
 }
 
 // afterHeadSwitch re-derives the per-transcript runtime state after the

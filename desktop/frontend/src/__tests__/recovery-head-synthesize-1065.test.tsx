@@ -248,10 +248,15 @@ console.log("\nrecovery head synthesis pick-HEAD + one-key merge (1065)");
 
   // Pick the copy chain as the HEAD first (the preview dialog's confirm),
   // then press synthesize from the copy's row.
-  const copyRow = Array.from(document.querySelectorAll<HTMLDivElement>(".rc-chain")).find((r) =>
-    r.textContent?.includes("copy tail"),
+  // tl1415 点3: the merged table renders each branch as a reading row
+  // (tr.rc-chain) followed by an ops row (tr.rc-detail__ops) carrying the
+  // preview text and the buttons — key the copy chain by its preview text on
+  // the ops row, then step back to the reading row for the picked badge.
+  const copyOpsRow = Array.from(document.querySelectorAll(".rc-detail__ops")).find((el) =>
+    el.textContent?.includes("copy tail"),
   );
-  const previewBtn = copyRow?.querySelector<HTMLButtonElement>("button");
+  const copyRow = copyOpsRow?.previousElementSibling;
+  const previewBtn = copyOpsRow?.querySelector<HTMLButtonElement>("button");
   await act(async () => { previewBtn?.click(); });
   await flush();
   const previewConfirm = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))

@@ -291,6 +291,9 @@ export interface RecoveryCopyView {
   shared: number;
   unique: number;
   scanned: boolean;
+  /** tl1415 点10: user-turn count from the same measurement replay as messages;
+   *  zero on an unscanned copy means "not measured", not "no turns". */
+  turns: number;
   /** orphan marks a copy whose canonical transcript is gone: another line rather
    *  than a fork, so it cannot be merged. */
   orphan?: boolean;
@@ -302,6 +305,10 @@ export interface RecoveryCopyGroupView {
   directory: string;
   mainExists: boolean;
   mainMessages: number;
+  /** tl1415 点10: the main transcript's user-turn count, measured by the same
+   *  scan; zero before the first scan. The summary row's turns column shows
+   *  this (it used to show mainMessages under a turns header). */
+  mainTurns: number;
   /** The canonical transcript's own size and mtime, so the table can show it on
    *  the same row the copies are read against. */
   mainBytes: number;
@@ -1327,6 +1334,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   DeleteRecoveryBranch(path: string): Promise<void>;
   /** 任务 1064：版本面板删除 v3 head（retire 标记；当前选中 head 后端拒绝）。 */
   DeleteSessionVersionHead(mainPath: string, headId: string): Promise<void>;
+  /** tl1415 点9：清空合并历史——把 meta 头镜像（head_id/head_count）复位为
+   *  单链默认；纯账面重置，转录/事件日志/副本文件零触碰。tl1280 头重放退役
+   *  后该字段无人维护，合并完的会话靠它清掉陈旧的「N 版本」徽标。 */
+  ClearSessionMergeHistory(mainPath: string): Promise<void>;
   /** 任务 1368：整对话级删除——主文件（含 v3 事件日志与侧车）入会话回收站
    *  （RestoreSession 可整体还原），全部副本+副本侧车入可恢复 .trash（1064
    *  forced 归档链路）。mainTrashed=false 表示主线本就不在（orphan 组）。 */
@@ -2838,6 +2849,10 @@ const listeners = new Set<(e: WireEvent) => void>();
 let mockScopedTabId: string | undefined;
 let mockPendingTopicActivation: { requestId: string; tabId: string } | undefined;
 let mockTopicActivationCounter = 0;
+// tl1424 预存红清理④: mock CreateTopic 的 id 不能只用 Date.now() —— 同毫秒内
+// 连续创建(如 tl1240 ③ 桥接契约测试)会生成相同 id,第二个 topic 覆盖第一个,
+// BatchTrashTopics 随即报 per-topic 失败。加单调计数器保证 id 唯一。
+let mockTopicIdCounter = 0;
 let mockWriteDirsProject: string[] = [];
 let mockWriteDirsSession: string[] = [];
 let mockWriteDirsOther: string[] = [];
@@ -4364,7 +4379,7 @@ function makeMockApp(): AppBindings {
       return [];
     },
     async ScanRecoveryCopyGroup(_mainPath: string): Promise<RecoveryCopyGroupView> {
-      return { mainPath: "", mainLabel: "", directory: "", mainExists: false, mainMessages: 0, mainBytes: 0, mainModified: "", copies: [] };
+      return { mainPath: "", mainLabel: "", directory: "", mainExists: false, mainMessages: 0, mainTurns: 0, mainBytes: 0, mainModified: "", copies: [] };
     },
     async ForceConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
       return this.ForceConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);
@@ -5413,6 +5428,9 @@ function makeMockApp(): AppBindings {
       return this.DeleteSession(path);
     },
     async DeleteSessionVersionHead() {},
+    async ClearSessionMergeHistory(_mainPath: string) {
+      // mock: the browser-dev meta sidecars do not exist; nothing to reset.
+    },
     // 任务 1368：dev mock 里整对话删除与删会话同义（mock 无回收站），回执
     // 报「主线已入回收站 + 副本数 0」——mock 组没有真副本文件。
     async DeleteConversationWithCopies(mainPath: string) {
@@ -8010,7 +8028,7 @@ function makeMockApp(): AppBindings {
     },
     async CreateTopic(_scope: string, _workspaceRoot: string, title: string) {
       const now = Date.now();
-      const id = "topic_" + now;
+      const id = "topic_" + now + "_" + (++mockTopicIdCounter);
       const topicTitle = title.trim() || t("mock.newSession");
       const parent = _scope === "global"
         ? ensureMockGlobalFolder()

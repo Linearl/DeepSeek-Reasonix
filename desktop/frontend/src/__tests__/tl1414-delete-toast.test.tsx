@@ -14,6 +14,11 @@
 //  ⑥（续跑）删除后 load() 重取失败 → toast + 横幅双落——load() 内部 catch
 //    后返回布尔（从不抛错），反馈对称性靠返回值补 toast（旧 try/catch 是
 //    永不触发的死代码，本条是它生效的证明）。
+//
+// tl1415 移植适配：三表合并单会话单表后，副本行的删除按钮与复选框都住在
+// `tr.rc-detail__ops` 次行（不再嵌在 `.rc-row--copy` 主行里），选择器按合并
+// 表口径取（与 1064 harness 同款）；删除动作本身已由 tl1415 抽成具名回调
+// deleteBranchOne，本 harness 断言的可见性行为不变。
 
 import { JSDOM } from "jsdom";
 import { act } from "react";
@@ -154,7 +159,9 @@ async function runSingleDeleteFlow(spies: { listCalls: number; deleted: string[]
   await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
   await flush();
   const listCallsBefore = spies.listCalls;
-  const deleteBtn = document.querySelector<HTMLButtonElement>(".rc-row--copy .rc-delete");
+  // tl1415 合并表：副本行删除按钮住在 ops 次行，表内第一个 .rc-delete 即
+  // 副本 1 的删除（副本行先于候选链行渲染，与 1064 harness 同口径）。
+  const deleteBtn = document.querySelector<HTMLButtonElement>(".rc-versions__table .rc-delete");
   if (!deleteBtn) throw new Error("copy-row delete button missing");
   await act(async () => { deleteBtn.click(); });
   await flush();
@@ -181,7 +188,8 @@ async function runBatchDeleteFlow(spies: { listCalls: number; deleted: string[] 
   await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
   await flush();
   const listCallsBefore = spies.listCalls;
-  const box = document.querySelector<HTMLInputElement>(".rc-row--copy input[type=checkbox]");
+  // tl1415 合并表：副本复选框住在 ops 次行，按表口径取（1064 harness 同款）。
+  const box = document.querySelector<HTMLInputElement>(".rc-versions__table input[type=checkbox]");
   if (!box) throw new Error("copy checkbox missing");
   await act(async () => { box.click(); });
   await flush();

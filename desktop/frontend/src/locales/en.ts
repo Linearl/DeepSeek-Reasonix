@@ -1048,7 +1048,7 @@ export const en = {
   "composer.contentQuickCommands": "Quick commands",
   "composer.contentQuickCommandsSearch": "Search quick commands",
   "composer.contentQuickCommandsEmpty": "No quick commands yet - add some in Settings > General > Quick commands.",
-  "composer.contentQuickCommandsAdd": "Add quick command",
+  "composer.contentQuickCommandsAdd": "Manage quick commands",
   "composer.quickCommandsBangHint": "Type !!/！！ at the start of any line to open this list",
   "composer.contentUseCommandsDesc": "Browse available commands and skills",
   "composer.contentUseCommandsEmptyOnly": "Available when the input is empty — commands replace the whole message",
@@ -1175,6 +1175,9 @@ export const en = {
   "composer.stopForceHint": "Force stop (waits up to 15s for a clean finish; press again to end now)",
   "composer.stopKillHint": "Force terminate now (unsaved state may be lost)",
   "composer.stopCountdown": "Force stop in {n}s",
+  "composer.stopStopping": "Stopping…",
+  "composer.stopForceCountdown": "Force stop · {n}s",
+  "composer.stopTerminated": "Terminated",
   "composer.stopUnknownState": "State unknown — a stop can still be requested",
   "composer.stopShort": "Stop",
   "composer.pastedLabel": "[Pasted text #{id} · {lines} lines]",
@@ -3198,6 +3201,7 @@ export const en = {
 // their honest stand-in until the live tool stream (or the pending note)
 // fills the pane.
 "subagentPanel.runningNoPreview": "The sub-agent is running: nothing to show yet — its tool calls will appear here as they happen.",
+"subagentPanel.splitResize": "Resize the list column",
 "subagentPanel.liveTools": "Work in progress (tool calls)",
 "subagentPanel.widen": "Widen preview",
 "subagentPanel.narrow": "Restore width",
@@ -4682,7 +4686,7 @@ export const en = {
   "settings.languageHint": "Choose the interface language or follow the operating system.",
   "settings.storageTitle": "Data locations",
   "settings.storageHint": "Review where Reasonix stores workspaces and application data.",
-  "settings.recoveryCopiesTitle": "Session versions and copies",
+  "settings.recoveryCopiesTitle": "Conversation version management",
   // 任务 1063：两个分区合并成一个——badge 在会话行内标注 v3 多 heads 版本数，
   // unique 徽标标注副本里的独有事件；两者都是分级展示的可见性基础（体积列
   // 见 recoveryCopiesColSize）。
@@ -4776,7 +4780,7 @@ export const en = {
   "settings.sessionVersions.repairLog": "Repair log:",
   "settings.sessionVersions.degraded": "Degraded",
   "settings.sessionVersions.degradedHint": "Reading this conversation's event log was refused or failed (for example a replay beyond the safety budget): in-row counts are unavailable; other sections are unaffected.",
-  "settings.recoveryCopiesHint": "Every conversation with recovery copies. Unique counts the events that exist only in that copy and not in the canonical transcript - a large number means work would be lost by ignoring it. Read first, then select and merge.",
+  "settings.recoveryCopiesHint": "One view of every conversation's versions and copies, for restoring the main line when something goes wrong.",
   "settings.recoveryCopiesEmpty": "No recovery copies found.",
   // 任务 1085：两种空态要分清——「没有副本文件」（recovery 扫描为空）与「有
   // 副本行但 v3 无多 heads」（v3 版本列表为空）是两回事，不能用同一句话糊住。
@@ -4821,6 +4825,59 @@ export const en = {
   "settings.recoveryCopiesFailedToast": "{count} conversation(s) failed to merge",
   "settings.recoveryCopiesChains": "candidate chains (the longest one becomes the main transcript)",
   "settings.recoveryCopiesChainsHint": "candidate chains load automatically when a row expands — no scan needed; Scan measures each copy against the main",
+  // tl1415: grouped rows of the merged table — copies and chains/versions are
+  // two distinct data paths; the group rows keep their provenance readable.
+  // tl1415: hover hints for every action button — each states what it does,
+  // whether it touches the main line, and whether it is recoverable. The diet
+  // repair names both of its actions (strip image payloads + fold over-window
+  // old messages, per session_selfheal.go's Diet semantics).
+  "settings.recoveryCopiesScanHint": "measures this conversation: counts each copy's messages and the events the main lacks (the merge preview builds on it); read-only",
+  // tl1415 point 5 gap: the summary row's merge checkbox — the last actionable
+  // control without a hover description (the rest are self-describing labels).
+  "settings.recoveryCopiesSelectHint": "checks this conversation into the merge-selected action at the bottom; untick any time — ticking itself changes nothing",
+  "settings.recoveryCopiesScanAllHint": "measures every conversation with copies in turn (serial, per-row progress); read-only",
+  "settings.recoveryCopiesScanSelectedHint": "measures only the checked conversations; read-only",
+  "settings.recoveryCopiesRefreshHint": "re-reads the copies list and version readings; modifies nothing",
+  "settings.recoveryCopiesMergeHint": "merges the checked conversations' copies into their mains: the fullest candidate becomes the new main, the rest go to the recoverable trash; unmeasured ones are measured first",
+  "settings.recoveryCopiesDeleteSelectedHint": "moves the checked copy branches to the recoverable trash; the main line is untouched",
+  "settings.recoveryCopiesDeleteConversationHint": "moves each checked conversation (main file, every version and copy, sidecars) into the two recoverable trashes; tabs holding the conversation are closed",
+  "settings.recoveryCopiesDeleteHint": "moves this copy to the recoverable trash; the main line is untouched",
+  "settings.recoveryCopiesPreviewBtnHint": "previews this branch's start and end, and can pick it as the merged main; read-only, writes nothing",
+  "settings.recoveryCopiesDeleteHeadHint": "deletes this version: a retire marker hides it first, the next single-writer rotation actually drops it, and until then you can switch back",
+  "settings.recoveryCopiesSynthesizeBtnHint": "folds the other branches' unique events into the picked main (no duplicated events); losing branches go to the recoverable trash",
+  "settings.sessionVersionsActivateHint": "switches the main line to this version: a select marker you can revert any time; the old version is kept",
+  "settings.sessionVersionsCheckHint": "inspects the event log's health (read-only, no repair)",
+  "settings.sessionVersionsRepairHint": "repairs the event log (checkpoint backfill etc.); backs up first and writes a repair record",
+  "settings.sessionVersionsRepairDietHint": "repair + diet, two actions: 1) strip image payloads from messages 2) fold over-window old messages into one local placeholder — shrinking the file; backs up first",
+  // tl1415 点10/11/12: unmeasured status for the turns column, a distinct
+  // empty state for degraded previews, and the recovery filename short
+  // signature that maps a panel row back to the file on disk.
+  "settings.recoveryCopiesUnmeasured": "unmeasured",
+  "settings.recoveryCopiesUnmeasuredHint": "not measured yet — run Scan (row button or footer) to get real readings",
+  "settings.recoveryCopiesPreviewUnreadable": "readings degraded — preview unavailable (collapse and re-expand to retry)",
+  // tl1415 点9: clear-merge-history — the version badge reads a meta head
+  // mirror that nothing has maintained since the schema-2 replay retired;
+  // clearing it is bookkeeping only, every file stays.
+  "settings.recoveryCopiesClearHistory": "Clear merge history",
+  "settings.recoveryCopiesClearHistoryHint": "resets the stale merge bookkeeping behind the version badge (kept by metadata no longer maintained since the head replay retired); touches no transcript, event log or copy file",
+  "settings.recoveryCopiesClearHistoryTitle": "Clear merge history",
+  "settings.recoveryCopiesClearHistoryLead": "Reset this conversation's merge bookkeeping to a single chain (the version badge disappears)",
+  "settings.recoveryCopiesClearHistoryNote": "This only clears the merge counters in legacy metadata. The conversation, its event log and every copy on disk are kept.",
+  "settings.recoveryCopiesClearHistoryConfirm": "Clear",
+  "settings.recoveryCopiesClearHistoryDone": "Merge history cleared",
+  // tl1415 点8: one-click cleanup of redundant copies — measured copies the
+  // main fully covers (unique = 0), recycled through the recoverable trash.
+  "settings.recoveryCopiesCleanup": "Clean up redundant copies",
+  "settings.recoveryCopiesCleanupHint": "moves every copy the main fully covers (unique = 0) to the recoverable trash, one by one; copies open in a tab are skipped and reported in the result",
+  "settings.recoveryCopiesCleanupHintShort": "copies the main fully covers (unique = 0) go to the recoverable trash",
+  "settings.recoveryCopiesCleanupTitle": "Clean up redundant copies",
+  "settings.recoveryCopiesCleanupLead": "These copies are fully covered by their main transcript and will move to the recoverable trash, one by one:",
+  "settings.recoveryCopiesCleanupNote": "Each copy is archived, not destroyed — restore it from the trash if needed. Copies open in a tab are skipped and reported.",
+  "settings.recoveryCopiesCleanupConfirm": "Clean up",
+  "settings.recoveryCopiesCleanupDone": "Archived {n} redundant copies (recoverable from the trash)",
+  "settings.recoveryCopiesCleanupFailed": "No copy could be archived — see the error list for reasons",
+  "settings.recoveryCopiesGroupCopies": "Copies (recovery files)",
+  "settings.recoveryCopiesGroupChains": "Candidate chains & versions (v3 event log)",
   "settings.recoveryCopiesChainCurrent": "current main",
   "settings.recoveryCopiesChainCandidate": "chain",
   "settings.recoveryCopiesRecommended": "recommended",
@@ -5686,7 +5743,7 @@ export const en = {
   "projectGroup.ungrouped": "Ungrouped",
   "projectTree.filterByColor": "Filter by color",
   "projectTree.filterByColorAll": "All colors",
-  "projectTree.forceArchiveConfirm": "Normal archive failed: {reason}\n\nForce archive anyway? It skips the running-session checks and cannot be undone.",
+  "projectTree.forceArchiveConfirm": "Normal archive failed: {reason}\n\nForce archive anyway? It skips the running-session checks, stops any running reply (its in-flight output may be lost), and cannot be undone.",
   "projectTree.forceArchiveTopic": "Force archive",
   // tl1367: lease-busy family, localized from the backend's [reasonix-holder] block.
   // tl1367-fix defect B: self = held by THIS window (its own tab / background runtime), so the guidance is closing this window's session tab or stopping its run.

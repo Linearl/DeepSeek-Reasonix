@@ -96,6 +96,88 @@ export function clampSubagentsWideWidth(currentWidth: number, availableWidth: nu
   return capped;
 }
 
+// tl1426（用户 20261105 需求①）：子代理详情态的 dock 宽度记忆族。默认对话区↔
+// dock 对半（1:1）；用户显式调过宽度（拖动松手/键盘/加宽按钮经
+// setSavedWorkspacePanelWidth 写入）后记住用户值。持久化沿用 tl1129 家族
+// 先例：宽度数值走 layoutPreferences sizes 键（subagentDetailDockWidth），
+// 用户调宽指示位走独立布尔键（sidebarCollapsed 同款 "1"/"0" 风格）。
+export const SUBAGENT_DETAIL_SPLIT_RATIO = 0.5;
+const SUBAGENT_DETAIL_USER_WIDTH_ACTIVE_KEY = "reasonix.subagentDetail.userWidthActive";
+
+export function clampSubagentDetailDockWidth(width: number, maxWidth = RIGHT_DOCK_MAX_WIDTH): number {
+  return Math.min(Math.max(maxWidth, RIGHT_DOCK_TREE_MIN_WIDTH), Math.max(RIGHT_DOCK_TREE_MIN_WIDTH, Math.round(width)));
+}
+
+// 1:1 目标宽：视口去掉左栏与分隔条后对半（SUBAGENT_DETAIL_SPLIT_RATIO）；
+// 对话区保底（chatMinWidth）先于对半生效——窄窗口宁可达不到 1:1 也不压穿
+// 对话区（tl1108 保底原则同源）。与 clampRightDockPreviewWidth 同款双参
+// clamp 家族。纯函数：App 与 harness 同式调用，公式零漂移。
+export function subagentDetailSplitTargetWidth(input: {
+  viewportWidth: number;
+  sidebarWidth: number;
+  sidebarCollapsed: boolean;
+  resizerWidth: number;
+  chatMinWidth: number;
+}): number {
+  const chrome = (input.sidebarCollapsed ? 0 : input.sidebarWidth) + input.resizerWidth;
+  const half = Math.floor(Math.max(0, input.viewportWidth - chrome) * SUBAGENT_DETAIL_SPLIT_RATIO);
+  const available = Math.max(0, input.viewportWidth - chrome - input.chatMinWidth);
+  return clampSubagentDetailDockWidth(Math.min(half, available));
+}
+
+// tl1129 返修同款：用户宽度指示位的持久化读写。
+export function loadSubagentDetailUserWidthActive(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SUBAGENT_DETAIL_USER_WIDTH_ACTIVE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveSubagentDetailUserWidthActive(active: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SUBAGENT_DETAIL_USER_WIDTH_ACTIVE_KEY, active ? "1" : "0");
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
+function loadSubagentDetailDockWidth(): number {
+  return loadLayoutSize("subagentDetailDockWidth", defaultRightDockTreeWidth(), clampSubagentDetailDockWidth);
+}
+
+export function saveSubagentDetailDockWidth(width: number): void {
+  saveLayoutSize("subagentDetailDockWidth", width, clampSubagentDetailDockWidth);
+}
+
+// tl1426（需求②③）：子代理面板「列表↔详情」分栏的列表列宽族。需求②先钉
+// 固定宽默认（不再随面板宽度百分比拉伸——dock 进 1:1 宽态后 34% 会把列表
+// 拉到 ~280px 挤占详情）；需求③的拖拽分隔条与键盘调宽写
+// subagentsSplitListWidth sizes 键持久化（ResizableDrawer 同款 sizes 键先
+// 例）。拖拽实时值还需按面板实际宽截断：详情列保底
+// SUBAGENTS_SPLIT_DETAIL_MIN_WIDTH，列表列不把详情挤穿。
+export const SUBAGENTS_SPLIT_LIST_DEFAULT_WIDTH = 200;
+export const SUBAGENTS_SPLIT_LIST_MIN_WIDTH = 180;
+export const SUBAGENTS_SPLIT_LIST_MAX_WIDTH = 400;
+export const SUBAGENTS_SPLIT_DETAIL_MIN_WIDTH = 180;
+
+export function clampSubagentsSplitListWidth(width: number, paneWidth?: number): number {
+  const hardMax =
+    paneWidth !== undefined && paneWidth > 0
+      ? Math.max(
+          SUBAGENTS_SPLIT_LIST_MIN_WIDTH,
+          Math.min(SUBAGENTS_SPLIT_LIST_MAX_WIDTH, paneWidth - SUBAGENTS_SPLIT_DETAIL_MIN_WIDTH),
+        )
+      : SUBAGENTS_SPLIT_LIST_MAX_WIDTH;
+  return Math.min(hardMax, Math.max(SUBAGENTS_SPLIT_LIST_MIN_WIDTH, Math.round(width)));
+}
+
+export function saveSubagentsSplitListWidth(width: number, paneWidth?: number): void {
+  saveLayoutSize("subagentsSplitListWidth", width, (value) => clampSubagentsSplitListWidth(value, paneWidth));
+}
+
 function clampStoredRightDockTreeWidth(width: number): number {
   // Stored widths are validated again against the live viewport at load time
   // (resolveWorkspacePanelWidth clamps to the chat pane's 400px floor), so
@@ -380,6 +462,17 @@ export type LayoutState = {
    *  折叠 / 关面板 / 宽态翻窄都不清；setSideDockUserWidthActive(false) 仅
    *  作为「用户显式放弃宽度记忆」的预留入口（当前无调用者）。 */
   sideDockUserWidthActive: boolean;
+  /** tl1426（需求①）：子代理详情态的 dock 记忆宽度与用户调宽指示。详情打开
+   *  时 dock 宽度默认走 subagentDetailSplitTargetWidth（1:1 公式）；指示位
+   *  为 true（用户显式调过，随 localStorage 持久化）时改读
+   *  subagentDetailDockWidth——跨重启保留，折叠/展开不清。 */
+  subagentDetailDockWidth: number;
+  subagentDetailUserWidthActive: boolean;
+  /** tl1426（需求①）：子代理详情面板上报的「详情驱动宽态」来源标识——与
+   *  sideDockWideActive 同置位时机，但只有子代理面板置位（文件面板的上报
+   *  不置位）。App 据此选 1:1 宽度分支，宽态族互不串扰。会话内状态
+   *  （不持久化）。 */
+  subagentsDetailWideActive: boolean;
   rightDockMode: RightDockMode;
   terminalPanelOpen: boolean;
   terminalHeight: number;
@@ -400,6 +493,9 @@ export type LayoutState = {
   setWorkspacePreviewActive: Dispatch<SetStateAction<boolean>>;
   setSideDockWideActive: (active: boolean) => void;
   setSideDockUserWidthActive: (active: boolean) => void;
+  setSubagentDetailDockWidth: (width: number) => void;
+  setSubagentDetailUserWidthActive: (active: boolean) => void;
+  setSubagentsDetailWideActive: (active: boolean) => void;
   setRightDockMode: Dispatch<SetStateAction<RightDockMode>>;
   setTerminalPanelOpen: Dispatch<SetStateAction<boolean>>;
   setTerminalHeight: (height: number) => void;
@@ -422,6 +518,9 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   workspacePreviewActive: false,
   sideDockWideActive: false,
   sideDockUserWidthActive: loadSideDockUserWidthActive(),
+  subagentDetailDockWidth: loadSubagentDetailDockWidth(),
+  subagentDetailUserWidthActive: loadSubagentDetailUserWidthActive(),
+  subagentsDetailWideActive: false,
   rightDockMode: loadRightDockMode(""),
   terminalPanelOpen: loadTerminalPanelOpen(),
   terminalHeight: loadTerminalHeight(),
@@ -441,6 +540,9 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   setWorkspacePreviewActive: (update) => set((s) => ({ workspacePreviewActive: applySetState(s.workspacePreviewActive, update) })),
   setSideDockWideActive: (active) => set((s) => (s.sideDockWideActive === active ? s : { sideDockWideActive: active })),
   setSideDockUserWidthActive: (active) => set((s) => (s.sideDockUserWidthActive === active ? s : { sideDockUserWidthActive: active })),
+  setSubagentDetailDockWidth: (width) => set({ subagentDetailDockWidth: width }),
+  setSubagentDetailUserWidthActive: (active) => set((s) => (s.subagentDetailUserWidthActive === active ? s : { subagentDetailUserWidthActive: active })),
+  setSubagentsDetailWideActive: (active) => set((s) => (s.subagentsDetailWideActive === active ? s : { subagentsDetailWideActive: active })),
   setRightDockMode: (update) => set((s) => ({ rightDockMode: applySetState(s.rightDockMode, update) })),
   setTerminalPanelOpen: (update) => set((s) => ({ terminalPanelOpen: applySetState(s.terminalPanelOpen, update) })),
   setTerminalHeight: (height) => set({ terminalHeight: height }),

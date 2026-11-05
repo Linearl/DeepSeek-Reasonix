@@ -349,5 +349,90 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
+// ── tl1420 三级终止档位显形：主反馈在按钮本体（三档三文案三色 class），hover 为辅 ──
+// ⑦ L1 已受理：首击后文案「停止中…」直接上按钮 + stopping 档 class（琥珀）；
+// 1s 无可见效果 armed 加脉冲 class（再点一次进强制的视觉信号；脉冲本体 CSS
+// 动画 jsdom 不可验，这里钉 class 配对）。
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced"));
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
+  const { root } = await renderComposer({ running: true, tabId: "tl1420-l1", stopLevel: 0, stopDeadlineUnix: 0 });
+  eq(stopButton()?.classList.contains("composer__btn--stop-stopping"), false, "tl1420 idle keeps the resting look (no tier class)");
+  await act(async () => {
+    stopButton()?.click();
+    await flushTimers();
+  });
+  eq(stopButton()?.textContent, en["composer.stopStopping"], "tl1420 L1 label reads 停止中… on the button itself");
+  eq(stopButton()?.classList.contains("composer__btn--stop-stopping"), true, "tl1420 L1 carries the stopping tier class right after the click");
+  eq(stopButton()?.classList.contains("composer__btn--stop-armed"), false, "tl1420 fresh L1 does not pulse yet");
+  await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+  ok(Boolean(stopButton()?.classList.contains("composer__btn--stop-armed")), "tl1420 armed adds the pulse class 1s after the click without visible effect");
+  eq(stopButton()?.classList.contains("composer__btn--stop-stopping"), true, "tl1420 armed stays on the stopping (amber) tier");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
+// ⑧ L2 强制宽限：倒计时数字直接在按钮上，且每秒更新（红色渐深档 class）。
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced"));
+  runtimeStateStore.flush();
+  const deadline = Math.floor(Date.now() / 1000) + 9;
+  const { root } = await renderComposer({ running: true, tabId: "tl1420-l2", stopLevel: 2, stopDeadlineUnix: deadline });
+  const btn = stopButton();
+  ok(Boolean(btn?.classList.contains("composer__btn--stop-grace")), "tl1420 L2 grace carries the grace tier class");
+  ok(!btn?.classList.contains("composer__btn--stop-stopping"), "tl1420 grace is not the amber step (red escalation)");
+  const readNs = (): number => {
+    const m = stopButton()?.textContent?.match(/(\d+)\s*s/);
+    return m ? Number(m[1]) : -1;
+  };
+  const n0 = readNs();
+  ok(n0 >= 7 && n0 <= 9, `tl1420 grace renders the countdown on the button (got ${n0}s)`);
+  ok(Boolean(stopButton()?.textContent?.includes("Force stop ·")), "tl1420 grace label reads 强制停止 · Ns");
+  await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+  const n1 = readNs();
+  ok(n1 >= 0 && n1 < n0, `tl1420 grace countdown updates every second (${n0}s → ${n1}s)`);
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
+// ⑨ L3 已终止：force 档 class + 「已终止」文案（还在 running 期间即显形）。
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced"));
+  runtimeStateStore.flush();
+  const { root } = await renderComposer({ running: true, tabId: "tl1420-l3", stopLevel: 3, stopDeadlineUnix: 0 });
+  const btn = stopButton();
+  ok(Boolean(btn?.classList.contains("composer__btn--stop-force")), "tl1420 L3 carries the force tier class");
+  eq(btn?.textContent, en["composer.stopTerminated"], "tl1420 L3 reads 已终止");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
+// ⑩ L3 定格回 idle：turn 终局后按钮短暂定格「已终止」（settle linger），到时
+// 回 idle 并卸载；定格期内按钮 inert（没有可停的东西了）。
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced"));
+  runtimeStateStore.flush();
+  const { root, rerender } = await renderComposer({ running: true, tabId: "tl1420-settle", stopLevel: 1, stopDeadlineUnix: 0 });
+  eq(stopButton()?.classList.contains("composer__btn--stop-stopping"), true, "tl1420 settle pre: stop engaged (L1 visible)");
+  await act(async () => {
+    runtimeStateStore.commit(projection("synced", { running: false, phase: "idle", turnStatus: "completed" }));
+    runtimeStateStore.flush();
+    await rerender({ running: false });
+  });
+  const btn = stopButton();
+  ok(btn !== null, "tl1420 settled keeps the button mounted during the hold");
+  ok(Boolean(btn?.classList.contains("composer__btn--stop-settled")), "tl1420 settled carries the settled tier class");
+  eq(btn?.textContent, en["composer.stopTerminated"], "tl1420 settled reads 已终止 during the hold");
+  eq(btn?.disabled, true, "tl1420 settled button is inert (nothing left to stop)");
+  await act(async () => { await new Promise((r) => setTimeout(r, 1900)); });
+  eq(stopButton(), null, "tl1420 after the linger the button is back to idle and unmounts");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
 process.stdout.write(`\ncomposer stop unknown: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

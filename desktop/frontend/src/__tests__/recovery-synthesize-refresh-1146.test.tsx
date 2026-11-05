@@ -362,10 +362,12 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   stubBridge({}, spies);
   const root = await openAndExpand();
   const chainCallsBefore = spies.chainCalls;
+  // tl1415 点3: the fork head renders as a reading row (tr.rc-chain) plus a
+  // sibling ops row carrying its delete entry.
   const forkRow = Array.from(document.querySelectorAll<HTMLTableRowElement>(".rc-versions__table tbody tr")).find((r) =>
     r.textContent?.includes(FORK_HEAD.slice(0, 8)),
   );
-  const deleteBtn = forkRow?.querySelector<HTMLButtonElement>(".rc-delete");
+  const deleteBtn = forkRow?.nextElementSibling?.querySelector<HTMLButtonElement>(".rc-delete");
   ok(Boolean(deleteBtn), "④ the fork-head row offers the delete entry");
   await act(async () => { deleteBtn?.click(); });
   await flush();

@@ -2,7 +2,13 @@ import { recoveryStatusText, type RecoveryRetry } from "../lib/recoveryStatus";
 import { turnHeartbeatSeconds } from "../lib/workStatus";
 import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { useRuntimeSession } from "../lib/useRuntimeState";
-import { stopButtonView, type StopButtonPhase } from "../lib/stopButton";
+import {
+  stopButtonView,
+  stopButtonTier,
+  stopButtonLabelSpec,
+  STOP_SETTLE_LINGER_MS,
+  type StopButtonPhase,
+} from "../lib/stopButton";
 import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessionKey, type PendingFollowup } from "../lib/pendingFollowup";
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -915,18 +921,40 @@ export function Composer({
   // countdown. Clicks past L1 route to the backend escalation entry.
   const [stopInitiatedAt, setStopInitiatedAt] = useState<number | null>(null);
   const [stopTickNow, setStopTickNow] = useState(() => Date.now());
+  // tl1420 档位显形: track whether a stop was ever engaged this turn so the
+  // 「已终止」 settle hold only appears on stop-driven endings (a turn that
+  // finishes on its own keeps today's behavior — button just unmounts).
+  const [stopEverEngaged, setStopEverEngaged] = useState(false);
+  const [stopSettledAt, setStopSettledAt] = useState<number | null>(null);
   const stopRunning = running && (stopInitiatedAt != null || (stopLevel ?? 0) >= 1);
   useEffect(() => {
     if (!stopRunning) {
       setStopInitiatedAt(null);
       return;
     }
+    setStopEverEngaged(true);
     const timer = window.setInterval(() => setStopTickNow(Date.now()), 500);
     return () => window.clearInterval(timer);
   }, [stopRunning]);
   useEffect(() => {
     if (!running) setStopInitiatedAt(null);
   }, [running]);
+  // tl1420: the turn ended while a stop had been engaged → stamp the settle
+  // moment; the view machine holds 「已终止」 until the linger expires.
+  useEffect(() => {
+    if (!running && stopEverEngaged && stopSettledAt == null) setStopSettledAt(Date.now());
+  }, [running, stopEverEngaged, stopSettledAt]);
+  // tl1420: linger expiry (or a fresh turn) clears the hold — button returns
+  // to idle and unmounts like before.
+  useEffect(() => {
+    if (running || stopSettledAt == null || !stopEverEngaged) return;
+    const remain = STOP_SETTLE_LINGER_MS - (Date.now() - stopSettledAt);
+    const timer = window.setTimeout(() => {
+      setStopEverEngaged(false);
+      setStopSettledAt(null);
+    }, Math.max(0, remain));
+    return () => window.clearTimeout(timer);
+  }, [running, stopEverEngaged, stopSettledAt]);
   const stopView = stopButtonView({
     stopLevel: stopLevel ?? 0,
     stopDeadlineUnix: stopDeadlineUnix ?? 0,
@@ -934,15 +962,17 @@ export function Composer({
     running,
     now: stopTickNow,
     armAfterMs: 1000,
+    stopEverEngaged,
+    stopSettledAt,
   });
-  const stopButtonLabel = (phase: StopButtonPhase, countdown: number | null): string => {
-    if (phase === "grace") return t("composer.stopCountdown", { n: countdown ?? 0 });
-    if (phase === "armed" || phase === "force") return t("composer.stopForce");
-    return t("composer.stop");
-  };
+  // tl1420 档位显形: the label itself is the tier feedback (L1 停止中… /
+  // L2 强制停止 · Ns / L3 已终止); the tooltip hint stays auxiliary.
+  const stopTier = stopButtonTier(stopView.phase);
+  const stopLabelSpec = stopButtonLabelSpec(stopView.phase, stopView.countdownSeconds);
+  const stopButtonLabel = t(stopLabelSpec.key, stopLabelSpec.n != null ? { n: stopLabelSpec.n } : undefined);
   const stopButtonHover = (phase: StopButtonPhase): string => {
     if (phase === "grace" || phase === "armed") return t("composer.stopForceHint");
-    if (phase === "force") return t("composer.stopKillHint");
+    if (phase === "force" || phase === "settled") return t("composer.stopTerminated");
     return t("composer.stopNormal");
   };
   const finishing = runtimeState.finishing;
@@ -6412,11 +6442,14 @@ export function Composer({
               {/* 任务510（a 保出口）：unknown 降级态不再隐藏停止按钮——降级提示
                   （run strip「连接中断／状态待同步」+ 输入禁用）保留，但安全出口
                   必须始终在场。unknown 下 tooltip/aria 明示状态未知，点击照常
-                  发出停止请求；disabled 只由「非 unknown 的明确不可取消」触发。 */}
-              {running && !finishing && (
-                <Tooltip label={runtimeState.unknown ? t("composer.stopUnknownState") : stopButtonHover(stopView.phase)}>
+                  发出停止请求；disabled 只由「非 unknown 的明确不可取消」触发。
+                  tl1420 档位显形：主反馈在按钮本体——三档三文案三色阶
+                  （停止中…琥珀 / 强制停止·Ns 深红+倒计时 / 已终止定格），
+                  tooltip 降为辅助；L3 后定格短暂显示「已终止」再回 idle。 */}
+              {(running && !finishing) || stopView.phase === "settled" ? (
+                <Tooltip label={runtimeState.unknown && stopView.phase !== "settled" ? t("composer.stopUnknownState") : stopButtonHover(stopView.phase)}>
                   <button
-                    className="composer__btn composer__btn--stop"
+                    className={`composer__btn composer__btn--stop${stopTier ? ` composer__btn--stop-${stopTier}` : ""}${stopView.phase === "armed" ? " composer__btn--stop-armed" : ""}`}
                     type="button"
                     onClick={() => {
                       // 任务461-P7: the first press is the L1 stop (guidance
@@ -6427,15 +6460,20 @@ export function Composer({
                       }
                       void onEscalateStop?.();
                     }}
-                    disabled={(!runtimeState.unknown && runtimeState.cancellable === false) || cancelSettlingDraftsRef.current.has(draftKey)}
-                    aria-label={runtimeState.unknown ? t("composer.stopUnknownState") : stopButtonLabel(stopView.phase, stopView.countdownSeconds)}
+                    disabled={stopView.phase === "settled" || (!runtimeState.unknown && runtimeState.cancellable === false) || cancelSettlingDraftsRef.current.has(draftKey)}
+                    aria-label={runtimeState.unknown && stopView.phase !== "settled" ? t("composer.stopUnknownState") : stopButtonLabel}
                   >
-                    {stopView.phase === "grace" && stopView.countdownSeconds != null
-                      ? <span className="composer__stop-countdown">{t("composer.stopCountdown", { n: stopView.countdownSeconds })}</span>
-                      : <Square size={12} fill="currentColor" />}
+                    {stopView.phase === "idle"
+                      ? <Square size={12} fill="currentColor" />
+                      : <>
+                          <Square size={12} fill="currentColor" />
+                          <span className={stopView.phase === "grace" ? "composer__stop-countdown" : "composer__stop-label"}>
+                            {stopButtonLabel}
+                          </span>
+                        </>}
                   </button>
                 </Tooltip>
-              )}
+              ) : null}
               <Tooltip label={submitUnavailableHint || submitTooltip}>
                 <button
                   className={`composer__btn composer__btn--send${running ? " composer__btn--steer" : ""}`}

@@ -79,10 +79,20 @@ func (a *App) TrashTopicForce(topicID string) error {
 	// "close that tab first". Must run BEFORE trashTopic's locks: closeTabRuntime
 	// needs both the runtime-mutation barrier and sessionRemovalMu. A tab whose
 	// work will not stop within the grace window detaches to the background
-	// runtime; the archive below then still refuses with the self-holder
-	// guidance — a working runtime is never grabbed silently.
+	// runtime; the terminal fallback below then cancels that runtime's turn
+	// (the cost the force confirm copy announces).
 	a.closeTopicTabsForForceArchive(topicID)
 	err := friendlySessionFileError(a.trashTopic(topicID, true))
+	// tl1404 终局兜底:强制归档仍被拒时,预算内进程级清场收尾——缺文件残留
+	// 活体、holder unknown+save 锁长持、门禁热态、运行中 runtime、以及任何
+	// 未知新根因,都必须在有限步骤内归档成功。唯一不升级的形态是真实占用
+	// (活的、可指认的其它 Reasonix 进程,tl1367 line 1):它有明确的关闭路径,
+	// 不是死局。
+	if terminalFallbackEligible(err) {
+		if terminalErr := a.terminalTopicArchive(topicID, err); terminalErr == nil {
+			return nil
+		}
+	}
 	if err != nil && sessionLeaseHolderIdentityMissing(err) {
 		// tl1392 copy discipline: the user IS inside the force flow — a
 		// refusal that still recommends force loops forever (the package-73
@@ -272,6 +282,15 @@ func forceRetireStaleLeaseRecord(key string, info *agent.SessionLeaseInfo) {
 }
 
 func (a *App) trashTopic(topicID string, force bool) (retErr error) {
+	return a.trashTopicBounded(topicID, force, false, time.Time{})
+}
+
+// trashTopicBounded runs the full single-topic archive. terminal+deadline
+// switch the gate policy (bounded wait instead of TryLock fail-fast) and the
+// commit semantics (cancel running turns, guard-less trash, no refusal
+// branches) — the tl1404 terminal fallback. The regular path passes
+// terminal=false and keeps every behavior byte-identical.
+func (a *App) trashTopicBounded(topicID string, force, terminal bool, deadline time.Time) (retErr error) {
 	topicID = strings.TrimSpace(topicID)
 	if topicID == "" {
 		return fmt.Errorf("topicID is required")
@@ -286,10 +305,17 @@ func (a *App) trashTopic(topicID string, force bool) (retErr error) {
 		slog.Debug("desktop: topic archive timing", "outcome", outcome, "phase", trace.phase,
 			"total_ms", time.Since(started).Milliseconds(), "target_count", trace.targetCount, "runtime_count", trace.runtimeCount)
 	}()
-	fallback, changedDirs, err := a.commitTopicArchive(topicID, &trace, force)
+	fallback, changedDirs, err := a.commitTopicArchive(topicID, &trace, force, terminal, deadline)
 	if err != nil {
 		return err
 	}
+	a.finishTopicArchive(fallback, changedDirs, &trace)
+	return nil
+}
+
+// finishTopicArchive runs the post-commit phases both the regular and the
+// terminal archive path share (blank cleanup, fallback runtime, tree events).
+func (a *App) finishTopicArchive(fallback fallbackRuntimeTarget, changedDirs []string, trace *topicArchiveTrace) {
 	if fallback.workspaceRoot != "" {
 		changedDirs = append(changedDirs, desktopSessionDir(fallback.workspaceRoot))
 	} else if fallback.needs {
@@ -323,7 +349,6 @@ func (a *App) trashTopic(topicID string, force bool) (retErr error) {
 	} else {
 		a.emitProjectTreeMetadataChanged()
 	}
-	return nil
 }
 
 // commitTopicArchive runs the single-topic archive: it takes the two global
@@ -334,15 +359,36 @@ func (a *App) trashTopic(topicID string, force bool) (retErr error) {
 // across the whole batch. Phase order matters: the active-work gate must reject
 // before the scan's runtime-tabs merge touches live tab controllers (a
 // readOnly/pending tab may not implement the full session API).
-func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force bool) (fallbackRuntimeTarget, []string, error) {
+//
+// The gates stay TryLock fail-fast on the regular path. The tl1404 terminal
+// path (terminal=true) waits for them within the deadline instead — a fork or
+// rebuild loop keeping the rebuild gate hot is a deadlock form, not a refusal
+// form, and the terminal owns it. Deadline exceeded reports
+// errTopicArchiveTerminalTimeout (honest failure, never forceable).
+func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force, terminal bool, deadline time.Time) (fallbackRuntimeTarget, []string, error) {
 	trace.phase = "runtime_lock"
 	releaseRuntime, ok := a.tryLockRuntimeMutation("trash-topic")
+	for !ok && terminal && time.Now().Before(deadline) {
+		time.Sleep(terminalArchiveGatePollInterval)
+		releaseRuntime, ok = a.tryLockRuntimeMutation("trash-topic")
+	}
 	if !ok {
+		if terminal {
+			return fallbackRuntimeTarget{}, nil, errTopicArchiveTerminalTimeout
+		}
 		return fallbackRuntimeTarget{}, nil, errTopicArchiveBusy
 	}
 	defer releaseRuntime()
 	trace.phase = "removal_lock"
-	if !a.sessionRemovalMu.TryLock() {
+	lockedRemoval := a.sessionRemovalMu.TryLock()
+	for !lockedRemoval && terminal && time.Now().Before(deadline) {
+		time.Sleep(terminalArchiveGatePollInterval)
+		lockedRemoval = a.sessionRemovalMu.TryLock()
+	}
+	if !lockedRemoval {
+		if terminal {
+			return fallbackRuntimeTarget{}, nil, errTopicArchiveTerminalTimeout
+		}
 		return fallbackRuntimeTarget{}, nil, errTopicArchiveBusy
 	}
 	defer a.sessionRemovalMu.Unlock()
@@ -355,7 +401,7 @@ func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force
 	if err != nil {
 		return fallbackRuntimeTarget{}, nil, err
 	}
-	return a.commitTopicArchiveTargets(topicID, targets, trace, force)
+	return a.commitTopicArchiveTargets(topicID, targets, trace, force, terminal)
 }
 
 // commitTopicArchiveTargets runs the post-scan phases of the topic archive
@@ -365,7 +411,10 @@ func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force
 // nil/empty slice behaves like the single path with no matches. force is only
 // set by the single-topic force entry point — the batch endpoint is regular
 // archive only, so a topic that needs force stays a per-topic action.
-func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarget, trace *topicArchiveTrace, force bool) (fallbackRuntimeTarget, []string, error) {
+// terminal (tl1404) additionally swaps every remaining refusal for a
+// clear-down: running turns are canceled, an untakeable removal guard
+// degrades to a guard-less trash, and residue is torn instead of protected.
+func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarget, trace *topicArchiveTrace, force, terminal bool) (fallbackRuntimeTarget, []string, error) {
 	trace.phase = "force_reclaim_self_lease"
 	if force {
 		a.reclaimTopicSelfLeasesLocked(topicID, targets)
@@ -383,11 +432,11 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 	trace.phase = "snapshot"
 	removed := a.captureTopicRuntimeBindings(topicID)
 	trace.runtimeCount = len(removed)
-	if err := a.snapshotTopicRuntimeBindings(removed); err != nil {
+	if err := a.snapshotTopicRuntimeBindings(removed, terminal); err != nil {
 		return fallbackRuntimeTarget{}, nil, err
 	}
 	trace.phase = "acquire_removal_ownership"
-	ownership, err := acquireTopicArchiveOwnership(targets, removed)
+	ownership, err := acquireTopicArchiveOwnership(a, targets, removed, terminal)
 	if err != nil {
 		return fallbackRuntimeTarget{}, nil, err
 	}
@@ -455,7 +504,24 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 					}
 					guard = nil
 				}
+				// tl1404: a vanished transcript still leaves session-owned
+				// residue on disk (meta/event sidecars, lock and identity
+				// files — and possibly an in-process orphan lease this path
+				// can only clear through the evidence-gated sweep). Tearing it
+				// here is what turns the old fake-success into a real one.
+				if cleared, sweepErr := agent.SweepOrphanInProcessSessionLease(target.key); sweepErr != nil {
+					slog.Warn("desktop: topic archive orphan sweep failed for a missing session file", "err", sweepErr)
+				} else if cleared > 0 {
+					slog.Info("desktop: topic archive cleared an in-process orphan lease holder of a missing session file",
+						"cleared", cleared)
+				}
+				removeSessionOwnedResidue(target.sessionPath, target.key)
 				err = agent.ClearCleanupPending(target.sessionPath)
+			} else if guard == nil && terminal {
+				// tl1404 terminal: the guard could not be taken even after the
+				// in-process clear-down — trash without it (the unique-bucket
+				// flow), tearing whatever lock/identity residue remains.
+				err = trashSessionArtifactsTerminal(target.dir, target.sessionPath, target.key)
 			} else {
 				err = trashSessionArtifactsWithGuard(target.dir, target.sessionPath, target.key, guard)
 			}
@@ -557,8 +623,58 @@ func (a *App) topicTrashTargetsFromDirIndexes(topicID string, dirIndex func(dir 
 				}
 			}
 		}
+		// tl1404: the dir index only lists transcripts present on disk, so a
+		// session whose transcript vanished (the tl1363 zombie-entry family's
+		// no-tab form) used to escape the scan entirely — the archive
+		// fake-succeeded on such topics (metadata deleted) while its orphan
+		// lease/lock residue stayed alive and wedged the path forever. The
+		// meta sidecar is the only disk trace tying a lost transcript to its
+		// topic: supplement the scan with a meta pass so missing-file targets
+		// reach the residue-teardown chain. The shared index stays untouched
+		// (heartbeat and tree consumers keep their own semantics).
+		if err := appendMissingFileTrashTargets(a, topicID, dir, seen, addTarget); err != nil {
+			return nil, err
+		}
 	}
 	return targets, nil
+}
+
+// appendMissingFileTrashTargets adds trash targets for sessions whose meta
+// sidecar still names topicID while the transcript itself is gone. addTarget
+// dedups (shared seen map) and validates; the ownership/trash chain downstream
+// already has first-class missing-file semantics (tear residue, nil guard,
+// marker cleanup).
+func appendMissingFileTrashTargets(a *App, topicID, dir string, seen map[string]bool, addTarget func(dir, path string) error) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil // a directory that cannot be read has nothing to add
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, store.SessionMetaFileSuffix) {
+			continue
+		}
+		// SessionMeta appends ".meta" to the FULL transcript path
+		// (<id>.jsonl.meta), so the transcript name is the entry name minus
+		// only ".meta" — trimming SessionMetaFileSuffix would strip the
+		// ".jsonl" too and fail the shape check below.
+		transcriptName := strings.TrimSuffix(name, ".meta")
+		if !isSessionShapedFileName(transcriptName) {
+			continue
+		}
+		path := filepath.Join(dir, transcriptName)
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			continue // transcript present — the dir index covers it
+		}
+		meta, ok, metaErr := agent.LoadBranchMeta(path)
+		if metaErr != nil || !ok || strings.TrimSpace(meta.TopicID) != topicID {
+			continue
+		}
+		if err := addTarget(dir, path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // appendTopicRuntimeTrashTargets merges the topic's live tab bindings into the

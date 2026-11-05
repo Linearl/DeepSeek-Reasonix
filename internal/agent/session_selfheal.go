@@ -563,16 +563,29 @@ func stripMessageImages(msgs []provider.Message) []provider.Message {
 // tokens fit the budget and folds everything older into one local placeholder
 // message. No model is called: the placeholder names the count and where the
 // originals live (repair backup + pre-rewrite log segments).
+//
+// tl1407: the leading system messages are never foldable. The old loop walked
+// down to i>=1 and placed the placeholder at index 0, so every fold on a
+// healthy system-led session swallowed the identity header together with the
+// old history — the rewritten transcript started with a user-role placeholder,
+// and the controller snapshot guard then refused every later save (the
+// 20261105 refusal storm). The placeholder now lands right after the system
+// prefix.
 func foldProjectionTail(msgs []provider.Message, budgetTokens int) ([]provider.Message, int) {
 	if budgetTokens <= 0 || len(msgs) == 0 {
 		return msgs, 0
 	}
+	sysEnd := 0
+	for sysEnd < len(msgs) && msgs[sysEnd].Role == provider.RoleSystem {
+		sysEnd++
+	}
 	// Walk from the newest message backwards accumulating tokens; acc always
 	// equals estimate(msgs[keep:]). Stop at the first message that no longer
-	// fits: everything before keep folds.
+	// fits: everything before keep folds. The walk never enters the system
+	// prefix: i stops above sysEnd so msgs[sysEnd] stays unfoldable.
 	acc := 0
 	keep := len(msgs)
-	for i := len(msgs) - 1; i >= 1; i-- {
+	for i := len(msgs) - 1; i >= sysEnd+1; i-- {
 		cost := estimateProjectionTokens(msgs[i : i+1])
 		if acc+cost > budgetTokens {
 			keep = i + 1
@@ -581,17 +594,18 @@ func foldProjectionTail(msgs []provider.Message, budgetTokens int) ([]provider.M
 		acc += cost
 		keep = i
 	}
-	if keep <= 1 || keep >= len(msgs) {
+	if keep <= sysEnd+1 || keep >= len(msgs) {
 		// Either the whole tail fits (nothing to fold) or even the newest
 		// message alone busts the budget (nothing safe to fold around).
 		return msgs, 0
 	}
-	foldedCount := keep
+	foldedCount := keep - sysEnd
 	placeholder := provider.Message{
 		Role:    provider.RoleUser,
 		Content: fmt.Sprintf("[本地折叠] 已省略 %d 条早期消息以恢复会话可用（投影超窗应急，纯本地操作，未调用模型）；原文在修复备份目录与本次改写前的日志段中。", foldedCount),
 	}
-	out := make([]provider.Message, 0, len(msgs)-keep+2)
+	out := make([]provider.Message, 0, sysEnd+len(msgs)-keep+1)
+	out = append(out, msgs[:sysEnd]...)
 	out = append(out, placeholder)
 	out = append(out, msgs[keep:]...)
 	return out, foldedCount

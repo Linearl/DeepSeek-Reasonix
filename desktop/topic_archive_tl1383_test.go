@@ -54,7 +54,7 @@ func TestAcquireTopicArchiveOwnershipSkipsMissingFileTarget(t *testing.T) {
 		t.Fatal("precondition: the target transcript must be missing")
 	}
 
-	batch, err := acquireTopicArchiveOwnership(targets, nil)
+	batch, err := acquireTopicArchiveOwnership(nil, targets, nil, false)
 	if err != nil {
 		t.Fatalf("ownership for a missing-file target = %v, want nil guard acquisition", err)
 	}

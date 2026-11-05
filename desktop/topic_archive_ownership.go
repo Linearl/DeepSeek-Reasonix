@@ -64,7 +64,14 @@ func sessionTrashTargetFileMissing(sessionPath string) bool {
 	return os.IsNotExist(err)
 }
 
-func acquireTopicArchiveOwnership(targets []topicTrashTarget, removed []removedSessionRuntime) (*topicArchiveOwnershipBatch, error) {
+// acquireTopicArchiveOwnership takes removal ownership for every target. The
+// regular path refuses (returns the error) when a guard cannot be taken. The
+// tl1404 terminal path (terminal=true) instead clear-downs: this process's
+// lease state for the key is force-released (tab-bound objects, unbound
+// orphans, owner entries, identity records — each with a slog trail), the
+// guard is retried once, and a guard that STILL cannot be taken degrades to a
+// nil-guard entry the trash step handles via the terminal guard-less flow.
+func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []removedSessionRuntime, terminal bool) (*topicArchiveOwnershipBatch, error) {
 	batch := &topicArchiveOwnershipBatch{byPath: make(map[string]*topicArchiveRemovalOwnership, len(targets))}
 	localOwners := topicArchiveLeaseOwners(removed)
 	// Acquire historical/non-runtime sessions first. If another process owns
@@ -91,6 +98,21 @@ func acquireTopicArchiveOwnership(targets []topicTrashTarget, removed []removedS
 			continue
 		}
 		guard, err := acquireSessionRemovalGuard(target.sessionPath)
+		if err != nil && terminal {
+			// tl1404 terminal: clear this process's lease state, retry the
+			// guard once, and let the OS lease lock arbitrate what remains —
+			// external holder = keep the refusal, contested save lock only =
+			// degrade to unguarded trash (see the helper's contract).
+			guard, err = a.terminalArchiveGuardAfterReclaim(target.sessionPath, key, err)
+			if err != nil {
+				batch.release()
+				return nil, err
+			}
+			if guard == nil {
+				batch.add(target, nil, nil)
+				continue
+			}
+		}
 		if err != nil {
 			batch.release()
 			return nil, err
@@ -112,6 +134,17 @@ func acquireTopicArchiveOwnership(targets []topicTrashTarget, removed []removedS
 			// a failed restore). Fall back to non-runtime guard acquisition
 			// so the archive can proceed without a live lease.
 			guard, err := acquireSessionRemovalGuard(target.sessionPath)
+			if err != nil && terminal {
+				guard, err = a.terminalArchiveGuardAfterReclaim(target.sessionPath, key, err)
+				if err != nil {
+					batch.rollback()
+					return nil, err
+				}
+				if guard == nil {
+					batch.add(target, nil, nil)
+					continue
+				}
+			}
 			if err != nil {
 				batch.rollback()
 				return nil, err
@@ -126,6 +159,22 @@ func acquireTopicArchiveOwnership(targets []topicTrashTarget, removed []removedS
 			// instead of aborting the entire archive.
 			tab.adoptSessionLease(lease)
 			if errors.Is(err, agent.ErrSessionLeaseHeld) {
+				if terminal {
+					// tl1404 terminal: the conversion lost a lock this process
+					// cannot name. Clear the in-process state, retry once, and
+					// let the OS lease lock arbitrate (see the helper).
+					guard2, err2 := a.terminalArchiveGuardAfterReclaim(target.sessionPath, key, err)
+					if err2 != nil {
+						batch.rollback()
+						return nil, err2
+					}
+					if guard2 == nil {
+						batch.add(target, nil, nil)
+						continue
+					}
+					batch.add(target, guard2, nil)
+					continue
+				}
 				batch.rollback()
 				// tl1367-fix defect A: keep the lease error flowing (wrapped, so
 				// both the classification sentinel and the holder Info stay
@@ -138,6 +187,17 @@ func acquireTopicArchiveOwnership(targets []topicTrashTarget, removed []removedS
 			slog.Warn("desktop: topic archive lease conversion failed, falling back to non-runtime guard",
 				"session", target.sessionPath, "err", err)
 			guard2, err2 := acquireSessionRemovalGuard(target.sessionPath)
+			if err2 != nil && terminal {
+				guard2, err2 = a.terminalArchiveGuardAfterReclaim(target.sessionPath, key, err2)
+				if err2 != nil {
+					batch.rollback()
+					return nil, err2
+				}
+				if guard2 == nil {
+					batch.add(target, nil, nil)
+					continue
+				}
+			}
 			if err2 != nil {
 				batch.rollback()
 				return nil, err2

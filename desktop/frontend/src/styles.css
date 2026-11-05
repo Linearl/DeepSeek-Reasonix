@@ -9135,6 +9135,86 @@ body > .mermaid-diagram--fullscreen {
   white-space: nowrap;
   padding: 0 2px;
 }
+/* tl1420 三级终止档位显形: the button itself carries the tier (main signal;
+   tooltip stays auxiliary). Three engaged tiers, three label tones, three
+   color steps — all token-driven (--warn amber / --err red) so the seven
+   theme families (light+dark) pick their own contrast-correct values.
+   --stop-tier-color/-pct feed the theme-pack guard rule further below, which
+   re-applies the tier hue with pane blending under themed backgrounds. */
+.composer__btn--stop-stopping,
+.composer__btn--stop-grace,
+.composer__btn--stop-force,
+.composer__btn--stop-settled {
+  width: auto;
+  min-width: 32px;
+  gap: 5px;
+  padding: 0 9px;
+}
+.composer__btn--stop .composer__stop-label {
+  font-size: var(--text-2xs, 11px);
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+.composer__btn--stop-stopping {
+  --stop-tier-color: var(--warn);
+  --stop-tier-pct: 16%;
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  background: color-mix(in srgb, var(--warn) 16%, var(--bg-elev-2));
+  color: var(--warn);
+}
+.composer__btn--stop-stopping:hover,
+.composer__btn--stop-stopping:focus-visible {
+  background: color-mix(in srgb, var(--warn) 30%, var(--bg-elev-2));
+  border-color: color-mix(in srgb, var(--warn) 75%, var(--border));
+}
+.composer__btn--stop-stopping:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+/* L1 armed: same amber step as stopping, plus the pulse — the affordance for
+   "next press escalates". Collapsed under prefers-reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .composer__btn--stop-armed {
+    animation: composer-stop-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes composer-stop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 42%, transparent); }
+  55% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 0%, transparent); }
+}
+.composer__btn--stop-grace {
+  --stop-tier-color: var(--err);
+  --stop-tier-pct: 34%;
+  border-color: color-mix(in srgb, var(--err) 70%, var(--border));
+  background: color-mix(in srgb, var(--err) 34%, var(--bg-elev-2));
+  color: var(--fg);
+}
+.composer__btn--stop-grace:hover,
+.composer__btn--stop-grace:focus-visible {
+  background: color-mix(in srgb, var(--err) 48%, var(--bg-elev-2));
+  border-color: color-mix(in srgb, var(--err) 85%, var(--border));
+}
+.composer__btn--stop-grace:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.composer__btn--stop-force {
+  --stop-tier-color: var(--err);
+  --stop-tier-pct: 48%;
+  border-color: color-mix(in srgb, var(--err) 85%, var(--border));
+  background: color-mix(in srgb, var(--err) 48%, var(--bg-elev-2));
+  color: var(--fg);
+}
+.composer__btn--stop-settled {
+  --stop-tier-color: var(--err);
+  --stop-tier-pct: 26%;
+  border-color: color-mix(in srgb, var(--err) 55%, var(--border));
+  background: color-mix(in srgb, var(--err) 26%, var(--bg-elev-2));
+  color: var(--fg);
+  cursor: default;
+}
 .composer-meta {
   --composer-control-height: 32px;
   --composer-control-radius: 7px;
@@ -29988,13 +30068,59 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-soft);
 }
 
-/* tl1109: 子代理面板「列表(左) + 内容(右)」同屏布局（复用方案 E 容器宽度）。 */
+/* tl1109: 子代理面板「列表(左) + 内容(右)」同屏布局（复用方案 E 容器宽度）。
+   tl1426②: 列表列从 minmax(180px, 34%) 百分比弹性改固定 200px——dock 进
+   1:1 宽态（~824px）后 34% 会把列表拉到 ~280px 挤占详情；固定宽让列表列
+   不随面板宽度漂移，比例调整走 tl1426③ 的 --subagents-list-width。 */
 .subagents-panel--split {
   display: grid;
-  grid-template-columns: minmax(180px, 34%) minmax(0, 1fr);
+  grid-template-columns: var(--subagents-list-width, 200px) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+  /* tl1426③: 分隔条绝对定位的定位上下文。 */
+  position: relative;
+}
+
+/* tl1426③: 列表↔详情拖拽分隔条——drawer-resizer 同款规格（8px 命中带 +
+   hover/focus/拖拽中 1px accent 发丝线），token 全走主题变量（七主题兼容）。 */
+.subagents-panel__splitter {
+  --wails-draggable: no-drag;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--subagents-list-width, 200px) - 4px);
+  z-index: var(--z-local-handle);
+  width: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.subagents-panel__splitter::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background 0.12s, box-shadow 0.12s;
+}
+
+.subagents-panel__splitter:hover::after,
+.subagents-panel__splitter:focus-visible::after,
+.subagents-panel--split-resizing .subagents-panel__splitter::after {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.subagents-panel--split-resizing,
+.subagents-panel--split-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .subagents-panel--split .subagents-panel__listpane {
@@ -39435,8 +39561,13 @@ button.statusbar__mcp:focus-visible {
   z-index: var(--z-inline-sticky);
   font-size: 0.86em;
   font-weight: 600;
-  opacity: 0.72;
-  background: inherit;
+  /* tl1415（用户截图实证）：表头是滚动容器内的浮层，背景必须不透明——
+     `background: inherit` 继承到的是透明，滚动时行内容从表头底下穿过，
+     文字叠文字。取 modal 的实际背景色（.modal 的 var(--bg-elev)），滚动
+     时表头遮盖下方内容，表头自身完整可读。opacity 不能挂在表头整行上
+     （会让背景跟着半透明），改挂在文字色上。 */
+  background: var(--bg-elev);
+  color: color-mix(in srgb, currentColor 72%, transparent);
   border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
 }
 .rc-row--group { font-weight: 600; }
@@ -39537,6 +39668,15 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
   white-space: nowrap;
 }
+/* tl1415 点12: 副本行/文件链行的文件名短标识(recovery-<8 hex>)——用户把
+   面板行对回磁盘文件的锚点。等宽小字、淡色,是身份标注不是告警。 */
+.rc-copy__shortname {
+  margin-left: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82em;
+  opacity: 0.62;
+  white-space: nowrap;
+}
 .rc-versions {
   margin: 8px 0 4px;
   padding: 8px 10px 4px;
@@ -39579,6 +39719,15 @@ button.statusbar__mcp:focus-visible {
   border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, transparent);
 }
 .rc-action { gap: 8px; }
+/* tl1415 点8: 表格底部的「清理多余副本」一行——按钮+短说明并排。 */
+.rc-cleanup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent);
+}
 .rc-result {
   margin-bottom: 10px;
   padding: 8px 10px;
@@ -42628,6 +42777,15 @@ button.statusbar__mcp:focus-visible {
 
 :root[data-theme-pack][data-theme-has-bg="true"] .app:not(.app--creation) .composer__btn--stop {
   background: color-mix(in srgb, color-mix(in srgb, var(--err) 14%, var(--bg-elev-2)) 80%, transparent) !important;
+}
+/* tl1420: the tier feedback must survive theme packs — the pack rules above
+   hard-paint the resting red onto every .composer__btn--stop, which would
+   flatten 停止中…(amber)/强制停止(deep red)/已终止 into one color. Re-apply
+   the tier hue (set as --stop-tier-color/-pct by the tier rules) with the
+   same pane blending; the [class*=] bump also wins over the scene-scoped
+   pack rules. Settled/force/grace/stopping all carry a modifier class. */
+:root[data-theme-pack][data-theme-has-bg="true"] .app:not(.app--creation) .composer__btn--stop[class*="composer__btn--stop-"] {
+  background: color-mix(in srgb, color-mix(in srgb, var(--stop-tier-color, var(--err)) var(--stop-tier-pct, 14%), var(--bg-elev-2)) var(--theme-pane-child-pct, 80%), transparent) !important;
 }
 
 

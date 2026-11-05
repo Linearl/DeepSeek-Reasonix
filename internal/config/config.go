@@ -2253,6 +2253,13 @@ type AgentConfig struct {
 	// model-driven folds while ExperimentalProactiveCompact is on (task 318.2;
 	// default 10 minutes — the value the hard-coded path always used).
 	ProactiveCompactCooldownMinutes int `toml:"proactive_compact_cooldown_minutes"`
+	// tl1397 (迭代一,实验档): ranges 小段增量压缩——压力事务先尝试把「上一
+	// 摘要边界到活跃轮」的未折叠增量折成一条追加式小摘要,保头前缀逐字节
+	// 不动,替代「顶线后整段单 span 全量重写」。Off by default (iron rule 2):
+	// off 时压缩路径与引入前逐字节一致;on 时仍受 tl1396 态③红线运行时门
+	// 约束(保头 ≥95% 前缀缓存,破线拒装回退全量路径)。风险:高频小折把
+	// 刚完成的轮次折成摘要,近因细节从逐字变为摘要级——实验档未稳定档。
+	ExperimentalRangesCompact bool `toml:"experimental_ranges_compact"`
 	// Task 318.3: persist composer drafts across restarts (localStorage
 	// cold-start layer, #9580). Off by default (iron rule 2): drafts are
 	// runtime-memory only, exactly the pre-#9580 contract.

@@ -1,6 +1,6 @@
 // Run: npx --no-install tsx src/__tests__/composer-content-menu-manage-quick-command.test.tsx
 //
-// 任务 721 验收：输入框「添加内容 → 快捷指令」列表底部「添加快捷指令」入口
+// 任务 721 验收：输入框「添加内容 → 快捷指令」列表底部「管理快捷指令」入口
 // 点击后呼出共享的「管理快捷指令」面板（QuickCommandsManagerDialog，与设置
 // 入口同一实现）——656 的 picker 内嵌小表单方案已回退移除——
 //  1) 入口固定在列表底部（最后一条 menuitem），无 onManageQuickCommands 通道
@@ -142,7 +142,7 @@ async function main() {
   if (!rootEl) throw new Error("missing root");
   const root = createRoot(rootEl);
 
-  console.log("\n任务 721 picker「添加快捷指令」入口呼出管理面板（内嵌表单已回退）");
+  console.log("\n任务 721 picker「管理快捷指令」入口呼出管理面板（内嵌表单已回退）");
 
   const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>("[role=\"menuitem\"]")];
   const itemWithTitle = (label: string) => menuItems().find((node) => (node.textContent ?? "").includes(label));
@@ -166,10 +166,10 @@ async function main() {
     await act(async () => { pickerEntry!.click(); await flushTimers(); });
     ok(Boolean(document.querySelector(".composer-content-menu__search")), "picker page with search is open");
 
-    // 2) 列表底部入口：最后一条 menuitem 即「添加快捷指令」。
-    const addEntry = itemWithTitle("添加快捷指令");
+    // 2) 列表底部入口：最后一条 menuitem 即「管理快捷指令」。
+    const addEntry = itemWithTitle("管理快捷指令");
     ok(Boolean(addEntry), "add entry renders at the picker bottom");
-    eq(menuItems()[menuItems().length - 1]?.textContent, "添加快捷指令", "add entry is the LAST menuitem in the list");
+    eq(menuItems()[menuItems().length - 1]?.textContent, "管理快捷指令", "add entry is the LAST menuitem in the list");
     ok((menuItems()[menuItems().length - 1]?.classList.contains("composer-content-menu__add")) === true,
       "add entry carries the composer-content-menu__add class");
 
@@ -200,7 +200,7 @@ async function main() {
     await act(async () => { itemWithTitle("快捷指令")!.click(); await flushTimers(); });
     const search = document.querySelector<HTMLInputElement>(".composer-content-menu__search");
     await act(async () => { typeInto(search!, "zzz-无匹配"); await flushTimers(); });
-    const addAfterSearch = itemWithTitle("添加快捷指令");
+    const addAfterSearch = itemWithTitle("管理快捷指令");
     ok(Boolean(addAfterSearch), "add entry survives a no-match search");
     await act(async () => { addAfterSearch!.click(); await flushTimers(); });
     eq(managed, 2, "manager channel fires from the no-match state too");
@@ -241,7 +241,7 @@ async function main() {
     const pickerEntry = [...document.querySelectorAll<HTMLButtonElement>("[role=\"menuitem\"]")]
       .find((node) => (node.textContent ?? "").includes("快捷指令"));
     await act(async () => { pickerEntry!.click(); await flushTimers(); });
-    eq(itemWithTitle("添加快捷指令"), undefined, "no add entry without the onManageQuickCommands channel");
+    eq(itemWithTitle("管理快捷指令"), undefined, "no add entry without the onManageQuickCommands channel");
     ok(itemWithTitle("片段A") !== undefined, "picker list unaffected without the channel");
     await act(async () => {
       root2.unmount();

@@ -41,7 +41,7 @@ func TestAcquireTopicArchiveOwnershipConvertBusyKeepsLeaseError(t *testing.T) {
 	removed := []removedSessionRuntime{{tab: tab, sessionPath: path}}
 	targets := []topicTrashTarget{{dir: dir, sessionPath: path, key: key}}
 
-	_, err = acquireTopicArchiveOwnership(targets, removed)
+	_, err = acquireTopicArchiveOwnership(nil, targets, removed, false)
 	// tl1383: the released-lease conversion refusal carries no holder identity
 	// (the lease is gone — nobody holds the session), so it classifies as the
 	// unidentified-holder leftover form instead of the "another window"
