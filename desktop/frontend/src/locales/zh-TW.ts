@@ -3505,6 +3505,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesFlowHint": "正常流程：① 掃描 → ② 選主線（可預覽尾部判斷）→ ③ 合併——合併成功後對話自動移入「已合入」組；「清空合併歷史」把它移出，若仍有多副本下次掃描自動回到「待處理」。",
   "settings.recoveryCopiesMoreBtn": "更多 ▾",
   "settings.recoveryCopiesSecondaryEntries": "次要入口",
+  "settings.recoveryCopiesTailTag": "尾部",
   "settings.recoveryCopiesGroupCopies": "副本（recovery 檔案）",
   "settings.recoveryCopiesGroupChains": "候選鏈與版本（v3 事件日誌）",
   "settings.recoveryCopiesChainCurrent": "目前主線",

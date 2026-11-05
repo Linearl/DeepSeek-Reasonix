@@ -4943,6 +4943,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesFlowHint": "正常流程：① 扫描 → ② 选主线（可预览尾部判断）→ ③ 合并——合并成功后对话自动移入「已合入」组；「清空合并历史」把它移出，若仍有多副本下次扫描自动回到「待处理」。",
   "settings.recoveryCopiesMoreBtn": "更多 ▾",
   "settings.recoveryCopiesSecondaryEntries": "次要入口",
+  "settings.recoveryCopiesTailTag": "尾部",
   "settings.recoveryCopiesGroupCopies": "副本（recovery 文件）",
   "settings.recoveryCopiesGroupChains": "候选链与版本（v3 事件日志）",
   "settings.recoveryCopiesChainCurrent": "当前主线",

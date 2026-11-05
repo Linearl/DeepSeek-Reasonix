@@ -40246,6 +40246,15 @@ button.statusbar__mcp:focus-visible {
 
 .rc-preview { margin: 8px 0; padding-left: 20px; }
 .rc-preview__warn { margin: 8px 0 0; opacity: 0.8; }
+/* tl1415b 口径⑥: 预览弹窗结尾优先——开头降为一行摘要,收在尾部区之后。 */
+.rc-preview__start {
+  margin-top: 8px;
+  font-size: 0.88em;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .rc-errors { margin: 0; padding-left: 20px; }
 /* 任务 1039：失败横幅上的后端原因——比横幅文案小一号、可换行，长错误

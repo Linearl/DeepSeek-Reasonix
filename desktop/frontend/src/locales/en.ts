@@ -4962,6 +4962,7 @@ export const en = {
   "settings.recoveryCopiesFlowHint": "Normal flow: ① Scan → ② pick the main line (preview the tail to judge) → ③ merge — after a successful merge the conversation moves into the Merged group; Clear merge history moves it out, and if it still holds several copies the next scan puts it back into Pending.",
   "settings.recoveryCopiesMoreBtn": "More ▾",
   "settings.recoveryCopiesSecondaryEntries": "Secondary entries",
+  "settings.recoveryCopiesTailTag": "tail",
   "settings.recoveryCopiesGroupCopies": "Copies (recovery files)",
   "settings.recoveryCopiesGroupChains": "Candidate chains & versions (v3 event log)",
   "settings.recoveryCopiesChainCurrent": "current main",

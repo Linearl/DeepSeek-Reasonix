@@ -333,6 +333,12 @@ function ChainPreviewBody({ preview }: { preview: RecoveryChainPreview }) {
           {t("settings.recoveryCopiesPreviewDropWarn").replace("{n}", String(preview.uniqueToChain))}
         </div>
       ) : null}
+      {/* 口径⑥: 结尾优先——尾部区置顶(上面),开头降为一行摘要收尾。 */}
+      {!preview.degraded && preview.firstUserText?.trim() ? (
+        <div className="rc-preview__start" title={preview.firstUserText}>
+          {t("settings.recoveryCopiesPreviewStart")}：{preview.firstUserText}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1779,6 +1785,7 @@ export function RecoveryCopiesSection() {
             </div>
             {model.currentMainChain ? (
               <div className="rc-sub2 rc-clip2" title={tailPreviewText(model.currentMainChain)}>
+                <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                 {tailPreviewText(model.currentMainChain)}
               </div>
             ) : null}
@@ -1871,6 +1878,7 @@ export function RecoveryCopiesSection() {
                 </div>
                 {chain ? (
                   <div className="rc-sub2 rc-clip2 rc-chain__preview" title={tailPreviewText(chain)}>
+                    <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                     {tailPreviewText(chain)}
                   </div>
                 ) : null}
@@ -1986,6 +1994,7 @@ export function RecoveryCopiesSection() {
                   )}
                 </div>
                 <div className="rc-sub2 rc-clip2 rc-chain__preview" title={tailPreviewText(c)}>
+                  <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                   {tailPreviewText(c)}
                 </div>
               </td>
