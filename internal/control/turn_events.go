@@ -354,7 +354,7 @@ func (c *Controller) prepareTurnAdmission(body func(context.Context) error) func
 			// on each due attempt, and a suspension with an explicit user
 			// notice when the budget runs out. On self-heal success the latch
 			// is cleared and admission falls through to the normal path.
-			if blocked := c.gateDivergedTurnAdmission(conflict, admissionErr, body); blocked != nil {
+			if blocked := c.gateDivergedTurnAdmission(conflict, admissionErr); blocked != nil {
 				return blocked
 			}
 			admissionErr = c.turnEventLedgerError()

@@ -69,7 +69,7 @@ func turnAdmissionConflictBackoffFor(retries int) time.Duration {
 // gateDivergedTurnAdmission is the diverged branch of prepareTurnAdmission.
 // It returns nil only when admission may proceed (the self-heal cleared the
 // latch); a non-nil result is the rejection body to return to the caller.
-func (c *Controller) gateDivergedTurnAdmission(conflict *agent.SessionSnapshotConflictError, admissionErr error, body func(context.Context) error) func(context.Context) error {
+func (c *Controller) gateDivergedTurnAdmission(conflict *agent.SessionSnapshotConflictError, admissionErr error) func(context.Context) error {
 	c.turnEvents.mu.Lock()
 	suspended := c.turnEvents.conflictSuspended
 	retries := c.turnEvents.conflictRetries
@@ -111,7 +111,7 @@ func (c *Controller) gateDivergedTurnAdmission(conflict *agent.SessionSnapshotCo
 		c.turnEvents.conflictLastAttempt = time.Time{}
 		c.turnEvents.mu.Unlock()
 		c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
-			"the session file conflict was auto-repaired; the message you just sent did not run — please send it again"))
+			"the session file conflict was auto-repaired; if a message failed to send during the conflict, send it again"))
 		return nil
 	}
 
@@ -131,7 +131,7 @@ func (c *Controller) gateDivergedTurnAdmission(conflict *agent.SessionSnapshotCo
 			"err", admissionErr, "path", conflict.Path, "retries", retries,
 			"base_revision", conflict.BaseRevision, "disk_revision", conflict.DiskRevision,
 			"disk_messages", conflict.ExistingMessages, "snapshot_messages", conflict.SnapshotMessages)
-		c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryDepthCap,
+		c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoverySuspended,
 			"the session file conflicts with another writer and could not be auto-repaired; sending is paused for this session — reopen it (history is safe) and send your message again"))
 		return func(context.Context) error {
 			return fmt.Errorf("persist turn admission: diverged session conflict unresolved after %d attempts; reopen this session to retry: %w", retries, admissionErr)
