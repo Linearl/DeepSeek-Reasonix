@@ -260,6 +260,11 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	// usage sat below the fold trigger (the issue 7935 contract).
 	forceFold := policy.Force || policy.Trigger == CompactionTriggerManual || policy.Trigger == CompactionTriggerOverflow || est >= hard
 	if est < fold && !forceFold {
+		// tl1397(实验档,默认关):低于全量触发线的 ranges 主动小折通道——
+		// 开关关闭时此分支零行为(铁律 2),触发线之上的回收责任仍归全量路径。
+		if out, err, ran := m.rangesFoldBeforeTrigger(ctx, policy, est, fold, hard); ran {
+			return out, err
+		}
 		return prepared, nil
 	}
 

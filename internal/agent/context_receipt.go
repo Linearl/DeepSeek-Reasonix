@@ -174,6 +174,11 @@ func (a *Agent) emitCompactionTelemetry(t CompactionTelemetry) {
 	if t.ProviderRequestID != "" {
 		detail += " provider_request_id=" + t.ProviderRequestID
 	}
+	// tl1397: ranges 小段增量的观测读数随遥测出数(观测面,不影响判定)。
+	if t.RangesFold {
+		detail += fmt.Sprintf(" ranges_fold=%d preserved=%d ranges_hit=%.3f",
+			t.RangesFoldIndex, t.PreservedTokens, t.RangesCacheHit)
+	}
 	if t.Error != "" {
 		// CompactionModeDegraded remains readable for legacy telemetry, although
 		// new summarizer failures never install a degraded projection.

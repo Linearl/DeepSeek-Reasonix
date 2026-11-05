@@ -1954,6 +1954,28 @@ func ProactiveCompactCooldownLive() int {
 	return cfg.ProactiveCompactCooldownMinutesLive()
 }
 
+// SetExperimentalRangesCompact toggles tl1397's ranges small-segment
+// incremental compression (iron rule 2: default off — off keeps the
+// compression path byte-for-byte identical to before).
+func (c *Config) SetExperimentalRangesCompact(enabled bool) error {
+	c.Agent.ExperimentalRangesCompact = enabled
+	return nil
+}
+
+// RangesCompactLive is the package-level read for the ranges-compact switch
+// (tl1397). READ-ONLY user-config read (LoadUserConfigReadOnly — the
+// bus.go precedent): no on-disk migration, no credential pinning, no project
+// file walk, because callers check it on maintenance transactions that can run
+// every turn. The switch is a user-level lab key (registered in
+// labFeatureTiers), so the project layer intentionally does not participate.
+func RangesCompactLive() bool {
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalRangesCompact
+}
+
 // SetExperimentalFallbackModel toggles task 242 (iron rule 2: default off).
 func (c *Config) SetExperimentalFallbackModel(enabled bool) error {
 	c.Agent.ExperimentalFallbackModel = enabled

@@ -102,6 +102,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 707：压缩模型指定（经济模型压缩）。上下文治理卡内 compressOpt 下方；
 	// 档位按任务书建议可选——不开启不影响体验，只影响成本。
 	{"compactModel", LabTierOptional, []string{"experimental_compact_model", "compact_model"}},
+	// tl1397（迭代一）：ranges 小段增量压缩，未稳定档——开启后压力事务改走
+	// 「追加式小摘要」路径，近因细节从逐字退为摘要级，且高频小折的前缀缓存
+	// 收益依赖 provider 缓存行为（tl1396 态③红线运行时兜底，破线回退全量）。
+	// 默认关=压缩路径逐字节一致（铁律 2）。
+	{"rangesCompact", LabTierUnstable, []string{"experimental_ranges_compact"}},
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
 	// 任务 856 ③：collabGroupView 语义升级为「协作中心」入口总开关（信件中心+
@@ -1042,6 +1047,15 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// [agent] 开关群统一输出（task 953/955 合并文案），此处不重复渲染。
 	fmt.Fprintf(&b, "experimental_proactive_compact = %v   # task 318.2: use proactive_compact_cooldown_minutes instead of the hard-coded 10min fold cooldown (off by default)\n", c.Agent.ExperimentalProactiveCompact)
 	fmt.Fprintf(&b, "proactive_compact_cooldown_minutes = %d   # task 318.2: model-driven fold cooldown in minutes (default 10; used only when the switch above is on)\n", c.Agent.ProactiveCompactCooldownMinutes)
+	// tl1397: ranges small-segment incremental compression. Experimental
+	// (unstable tier): when on, a pressure transaction first tries an
+	// append-only small summary over the un-folded delta, keeping the head
+	// prefix byte-identical (tl1396 state-③ runtime gate; a line-breaking
+	// fold is rejected and the full path takes over). Off = byte-for-byte
+	// today's full-compression path. Risk: recent turns degrade from verbatim
+	// to summary-grade detail, and the cache win depends on provider cache
+	// behavior.
+	fmt.Fprintf(&b, "experimental_ranges_compact = %v   # tl1397: ranges small-segment incremental compression, append-only summaries with a byte-stable head prefix (experimental, off by default; a pressure fold may keep less verbatim recent detail than the full path)\n", c.Agent.ExperimentalRangesCompact)
 	fmt.Fprintf(&b, "experimental_cold_cache_compact = %v   # task 297: compact a long conversation once before it goes cold (off by default)\n", c.Agent.ExperimentalColdCacheCompact)
 	fmt.Fprintf(&b, "cold_cache_compact_min_bytes = %d   # task 297: visible-context size floor in bytes (0 = built-in 614400 = 600 KiB)\n", c.Agent.ColdCacheCompactMinBytes)
 	fmt.Fprintf(&b, "cold_cache_compact_idle_minutes = %d   # task 297: idle minutes before the cold-cache pass fires (0 = built-in 300 = 5h)\n", c.Agent.ColdCacheCompactIdleMinutes)
