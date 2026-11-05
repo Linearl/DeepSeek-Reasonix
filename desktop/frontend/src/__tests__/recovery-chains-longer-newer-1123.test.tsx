@@ -169,8 +169,7 @@ async function openAndExpand(): Promise<Root> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  const toggle = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
-  await act(async () => { toggle?.click(); });
+  // tl1415b: 待处理组默认展开——链行(主线行+版本行)随面板打开渲染。
   await flush();
   return root;
 }

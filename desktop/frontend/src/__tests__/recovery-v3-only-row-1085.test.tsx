@@ -132,23 +132,26 @@ type Root = ReturnType<typeof createRoot>;
 console.log("\nv3-only session gets a full row (1085)");
 
 // ① v3 多 heads 无副本会话：整行渲染（不是整行消失）。
+//   tl1415b: v3-only 会话(无副本)落在已合入组(默认折叠)——组段行+会话行在
+//   单表内,点组段行展开后 heads 子行与 1064/1065 入口可见;版本计数读数随
+//   demo v5 进会话行 hover title(不再挂可见徽标)。
 {
   stubBridge({});
   const root = await openPanel();
-  const rows = document.querySelectorAll(".rc-modal .rc-group");
-  ok(rows.length === 1, "① the v3-only conversation renders as a row (不是整行缺席)");
-  const toggle = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
-  ok(Boolean(toggle && toggle.textContent?.includes("GC v3")), "① the row carries the conversation's label");
-  const badge = document.querySelector(".rc-versions__badge");
-  ok(Boolean(badge), "① the v3 version badge is present on the row");
-  // 展开行，检查 1064/1065 入口是否可见。
-  await act(async () => { toggle?.click(); });
+  const rows = document.querySelectorAll("tr.rc-session");
+  ok(rows.length === 0, "① collapsed by default: the v3-only row hides until the merged group expands");
+  const mergedRow = document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement;
+  ok((mergedRow?.querySelector(".rc-grouprow__count")?.textContent || "") === "1", "① the merged group badge counts the v3-only conversation");
+  await act(async () => { mergedRow.click(); });
   await flush();
+  const sessionRow = document.querySelector("tr.rc-session");
+  ok(Boolean(sessionRow && sessionRow.textContent?.includes("GC v3")), "① the row carries the conversation's label (展开后)");
+  ok((sessionRow?.querySelector("td.rc-col-name")?.getAttribute("title") || "").includes("2 v3 versions"), "① the row's hover title carries the v3 version count (demo v5: 计数进名称格 hover)");
   const synthBtn = buttonByText("Synthesize longest chain");
-  ok(Boolean(synthBtn), "② the 1065 synthesis entry (one-key) is visible in the chain block");
-  // VersionRows 的删除入口（1064 单版本删除）——当前选中行不可删，降级行也不可删，
-  // 但非当前、非降级、有 headId 的行必须有删除按钮。
-  const versionDeleteBtns = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-versions__table button")).filter((b) =>
+  ok(Boolean(synthBtn), "② the 1065 synthesis entry (one-key) is visible on the session row");
+  // 1064 单版本删除——当前选中行不可删，降级行也不可删，
+  // 但非当前、非降级、有 headId 的行必须有删除按钮（单表内版本行的行内操作列）。
+  const versionDeleteBtns = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-versions__table tr.rc-chain button")).filter((b) =>
     b.textContent?.includes("Delete"),
   );
   ok(versionDeleteBtns.length >= 1, "② the 1064 delete entry is visible on a non-current head row");

@@ -119,7 +119,9 @@ function checkboxByLabel(label: string): HTMLInputElement | undefined {
 }
 
 /** Drives the full merge flow: open panel → tick the conversation → press
- *  "Merge selected" → confirm the danger dialog. */
+ *  the step-③ merge button → confirm the danger dialog.
+ *  tl1415b: 底部③按钮改名「Merge into longest chain (checked)」(demo v5 文案,
+ *  hover 带第③步说明);确认框的 confirm 文案键(recoveryCopiesMerge)未动。 */
 async function runMergeFlow() {
   const openBtn = buttonByText("Review and merge");
   if (!openBtn) throw new Error("panel open button missing");
@@ -129,7 +131,7 @@ async function runMergeFlow() {
   if (!box) throw new Error("conversation checkbox missing");
   await act(async () => { box.click(); });
   await flush();
-  const mergeBtn = buttonByText("Merge selected");
+  const mergeBtn = buttonByText("Merge into longest chain");
   if (!mergeBtn) throw new Error("merge button missing");
   await act(async () => { mergeBtn.click(); });
   await flush();

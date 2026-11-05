@@ -269,7 +269,9 @@ async function openAndExpand(): Promise<Root | null> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  // tl1415b: 无副本会话(headCount=2)落在已合入组(默认折叠)——点组段行展开;
+  // 案例④(带副本)在待处理组,多点的这次展开对它无害(已合入组为空)。
+  await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement).click(); });
   await flush();
   return root;
 }
@@ -281,8 +283,11 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   const spies = freshSpies();
   stubBridge({}, spies);
   const root = await openAndExpand();
+  // tl1415b: 当前主线升格为主线行(rc-detail__row--main),fork 为版本行(rc-chain)
+  // ——两链读数都在单表里。
   const chainsBefore = document.querySelectorAll(".rc-chain").length;
-  ok(chainsBefore === 2, "① before synthesis the candidate block shows both chains");
+  const mainRowBefore = document.querySelector(".rc-versions__table tbody tr.rc-detail__row--main");
+  ok(chainsBefore === 1 && Boolean(mainRowBefore), "① before synthesis the table shows both chains (main row + fork head row)");
   const chainCallsBefore = spies.chainCalls;
 
   const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
@@ -296,15 +301,18 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   await flush();
 
   ok(spies.synthCalls === 1, "① the synthesis ran once");
-  ok(spies.chainCalls > chainCallsBefore, "① the chain inventory is refetched after synthesis (cache invalidated)");
+  // tl1415b: op 后 stub 世界 headCount=1——会话退休为纯行,链子行整体退役
+  // (无陈旧链面残留;缓存失效在 tl1415 形态钉里按待处理组会话另钉)。
+  ok(!document.querySelector(".rc-chain"), "① the retired session keeps no stale chain rows (cache invalidated with the retired children)");
   // 行保持展开：链区仍在 DOM 里（修复前 load() 会折叠全部行，链区随之卸载）。
   const chainRows = document.querySelectorAll(".rc-chain");
-  ok(chainRows.length === 1, "① after synthesis only the winning chain remains in the candidate block");
+  ok(chainRows.length === 0, "① after synthesis only the winning chain remains (no leftover head rows)");
   ok(!bodyText().includes("forked tail"), "① the losing chain's row is gone without any manual re-expansion");
   ok(bodyText().includes("Synthesized"), "① the synthesis outcome banner is still shown");
-  // 版本表同步换代：heads 表只剩一行（合成后的主线），读数是合成后的。
-  const versionRows = document.querySelectorAll(".rc-versions__table tbody tr").length;
-  ok(versionRows === 1, "① the version table reflects the post-synthesis heads (1 row, was 2)");
+  // 版本面同步换代：tbody 只剩会话行+主线行（合成后的唯一链），读数 16 在主线行。
+  // tl1415b: tbody= 两行组段行(待处理/已合入)+1 条退休纯行。
+  const sessionRows = document.querySelectorAll("tr.rc-session").length;
+  ok(sessionRows === 1, "① the table reflects the post-synthesis heads (1 plain session row, was 3)");
   ok(bodyText().includes("16"), "① the version table carries the post-synthesis message count");
   await act(async () => root?.unmount());
 }
@@ -338,7 +346,7 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   await flush();
   const noteAfter = document.querySelector(".rc-modal .rc-note");
   ok(!noteAfter || !(noteAfter?.textContent || "").includes("Loading"), "② the loading indicator clears once the refetch lands");
-  ok(document.querySelectorAll(".rc-chain").length === 1, "② the candidate block shows the post-synthesis state after the refetch lands");
+  ok(document.querySelectorAll(".rc-chain").length === 0, "② the table shows the post-synthesis state after the refetch lands (单链=仅主线行)");
   await act(async () => root?.unmount());
 }
 
@@ -359,9 +367,14 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
 
   ok(spies.activateCalls.length === 1 && spies.activateCalls[0].path === FORK_PATH && spies.activateCalls[0].headId === "",
     "③ the activate call adopts the fork file with an empty head id");
-  ok(spies.chainCalls > chainCallsBefore, "③ the version table refetches immediately after switching (行保持展开也重拉)");
+  // tl1415b: op 后 stub 世界 headCount=1——会话退休为纯行(子行退役即无陈旧面)。
+  ok(document.querySelectorAll(".rc-chain").length === 0
+    && document.querySelectorAll("tr.rc-session").length === 1,
+    "③ the table refetches to the post-switch world (session row only, no stale chain rows)");
   ok(Boolean(document.querySelector(".rc-versions__table")), "③ the version table is still on screen (no manual re-expansion needed)");
-  ok(document.querySelectorAll(".rc-versions__table tbody tr").length === 1, "③ the version table shows the post-switch heads");
+  // tl1415b: 子行恒在——切换重拉后主线行+fork 版本行照常渲染(stub 世界未变)。
+  ok(document.querySelectorAll("tr.rc-session").length === 1,
+    "③ the table shows the post-switch world (single plain session row)");
   await act(async () => root?.unmount());
 }
 
@@ -389,12 +402,10 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   }, spies);
   const root = await openAndExpand();
   const chainCallsBefore = spies.chainCalls;
-  // tl1415 点3: the copy renders as a reading row (tr.rc-row--copy) plus a
-  // sibling ops row carrying its delete entry.
-  const forkRow = Array.from(document.querySelectorAll<HTMLTableRowElement>(".rc-versions__table tbody tr")).find((r) =>
-    r.textContent?.includes(FORK_HEAD.slice(0, 8)),
-  );
-  const deleteBtn = forkRow?.nextElementSibling?.querySelector<HTMLButtonElement>(".rc-delete");
+  // tl1415b: 操作列并入副本行本行(两行制废止)——副本行(tr.rc-row--copy)带
+  // 短标识+删除入口。
+  const forkRow = document.querySelector("tr.rc-row--copy");
+  const deleteBtn = forkRow?.querySelector<HTMLButtonElement>(".rc-delete");
   ok(Boolean(deleteBtn), "④ the fork copy row offers the delete entry");
   await act(async () => { deleteBtn?.click(); });
   await flush();
@@ -409,9 +420,13 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   await flush();
 
   ok(spies.deleteBranchCalls.length === 1 && spies.deleteBranchCalls[0] === FORK_PATH, "④ the delete reaches the backend with the copy path");
-  ok(spies.chainCalls > chainCallsBefore, "④ the version table refetches immediately after deleting");
-  ok(!Array.from(document.querySelectorAll<HTMLTableRowElement>(".rc-versions__table tbody tr")).some((r) => r.textContent?.includes(FORK_HEAD.slice(0, 8))),
-    "④ the version table drops the deleted copy on screen");
+  // tl1415b: op 后 stub 世界 headCount=1——退休为纯行;副本行消失已由下一条钉。
+  ok(document.querySelectorAll("tr.rc-row--copy").length === 0,
+    "④ the table refetches to the post-delete world (no copy rows)");
+  // tl1415b: 被删的副本行(rc-row--copy)从单表消失(stub 的链清单仍含 fork——
+  // 断言按副本行消失计,不按链行)。
+  ok(!document.querySelector("tr.rc-row--copy"),
+    "④ the table drops the deleted copy row on screen");
   await act(async () => root?.unmount());
 }
 
@@ -462,7 +477,9 @@ const V3_ONLY_REPORT: HeadSynthesisReport = {
   // override 直接替换 base 的合成桩——base 桩里的 spy 计数不会跑，这里自行计数。
   stubBridge({ SynthesizeSessionHeads: async () => { spies.synthCalls += 1; return V3_ONLY_REPORT; } }, spies);
   const root = await openAndExpand();
-  ok(document.querySelectorAll(".rc-chain").length === 2, "⑥ the v3-only conversation shows both head chains before the attempt");
+  ok(document.querySelectorAll(".rc-chain").length === 1
+    && Boolean(document.querySelector(".rc-versions__table tbody tr.rc-detail__row--main")),
+    "⑥ the v3-only conversation shows both head readings (main row + fork head row)");
   const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
     b.textContent?.includes("Synthesize longest chain"),
   );
@@ -477,7 +494,9 @@ const V3_ONLY_REPORT: HeadSynthesisReport = {
   ok(!bodyText().includes("Synthesized"), "⑥ the file-level no-op does NOT claim a Synthesized outcome (虚报面)");
   ok(!bodyText().includes("The synthesis has taken effect."), "⑥ the file-level no-op does NOT show the taken-effect banner（虚构成功横幅是用户复测误导源）");
   ok(bodyText().includes("no mergeable copy branches"), "⑥ the honest v3-only receipt is shown instead（含版本表切换出口指引）");
-  ok(document.querySelectorAll(".rc-chain").length === 2, "⑥ the list renders the unchanged truth as-is (两链仍如实显示——数据没变)");
+  ok(document.querySelectorAll(".rc-chain").length === 1
+    && Boolean(document.querySelector(".rc-versions__table tbody tr.rc-detail__row--main")),
+    "⑥ the list renders the unchanged truth as-is (两链读数仍如实显示——数据没变)");
   await act(async () => root?.unmount());
 }
 

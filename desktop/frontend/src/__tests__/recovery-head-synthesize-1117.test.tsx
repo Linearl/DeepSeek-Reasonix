@@ -141,8 +141,10 @@ async function openAndExpand(): Promise<Root> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  const toggle = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
-  await act(async () => { toggle?.click(); });
+  // tl1415b: v3-only 会话(无副本,headCount=2)落在已合入组(默认折叠)——
+  // 点组段行展开,合成入口(会话行)随之可见。
+  const mergedRow = document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement;
+  await act(async () => { mergedRow.click(); });
   await flush();
   return root;
 }

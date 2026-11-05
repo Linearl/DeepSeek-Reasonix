@@ -198,7 +198,7 @@ async function openAndExpand(): Promise<Root | null> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  // tl1415b: 待处理组默认展开——副本行的链清单由子行可见性驱动,无需点行展开。
   await flush();
   return root;
 }
@@ -248,15 +248,12 @@ console.log("\nrecovery head synthesis pick-HEAD + one-key merge (1065)");
 
   // Pick the copy chain as the HEAD first (the preview dialog's confirm),
   // then press synthesize from the copy's row.
-  // tl1415 点3: the merged table renders each branch as a reading row
-  // (tr.rc-chain) followed by an ops row (tr.rc-detail__ops) carrying the
-  // preview text and the buttons — key the copy chain by its preview text on
-  // the ops row, then step back to the reading row for the picked badge.
-  const copyOpsRow = Array.from(document.querySelectorAll(".rc-detail__ops")).find((el) =>
+  // tl1415b: 候选链数据并入副本行——副本行(tr.rc-row--copy)的 sub2 带尾部
+  // 预览文本,预览/切换/删除都在同一行的操作列;picked 徽标也落在该行。
+  const copyRow = Array.from(document.querySelectorAll("tr.rc-row--copy")).find((el) =>
     el.textContent?.includes("copy tail"),
   );
-  const copyRow = copyOpsRow?.previousElementSibling;
-  const previewBtn = copyOpsRow?.querySelector<HTMLButtonElement>("button");
+  const previewBtn = copyRow?.querySelector<HTMLButtonElement>("button");
   await act(async () => { previewBtn?.click(); });
   await flush();
   const previewConfirm = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
