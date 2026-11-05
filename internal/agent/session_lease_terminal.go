@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"reasonix/internal/store"
 )
@@ -72,8 +73,37 @@ func ForceReleaseInProcessSessionLease(path string) (released bool) {
 	}
 	leaseLock, lockErr := tryTakeSessionLeaseLock(path)
 	if lockErr != nil {
-		// The lock is held by something this process cannot release (another
-		// process, or an unregistered handle). Nothing more to give up here.
+		// The lock take failed: the holder is either another process, or a
+		// handle THIS process booked in the lock registry but lost the binding
+		// for (the tl1429 self-lock form — a lease object whose registry entry
+		// was torn, a guard taken and never released, a dropped reference).
+		// The registry separates the two: a booked handle is this process's
+		// own state and the terminal semantics (everything under this
+		// process's name retires) say it goes; an unbooked lock is outside
+		// this process and is never grabbed.
+		held, evidence := sessionLeaseLockInProcessHolder(path)
+		if !held {
+			return released
+		}
+		evicted := takeRegisteredSessionLock(store.SessionLeaseLock(path))
+		if evicted != nil {
+			_ = evicted.RemoveAndUnlock()
+		}
+		released = true
+		// The owner/identity residue the free-lock path clears below is
+		// cleared here too: with the handle gone the lock is free, so the
+		// same teardown applies.
+		if cur, ok := sessionLeaseOwners.Load(path); ok {
+			if sessionLeaseOwners.CompareAndDelete(path, cur) {
+				// already counted released above
+			}
+		}
+		sessionLeaseActiveOwners.Delete(path)
+		_ = os.Remove(sessionLeaseInfoPath(path))
+		slog.Warn("session: terminal archive force-released an unbound in-process lease lock handle",
+			"session_base", filepath.Base(path),
+			"holder_kind", evidenceHolderKind(evidence),
+			"held_since", evidenceHoldSince(evidence))
 		return released
 	}
 	if cur, ok := sessionLeaseOwners.Load(path); ok {
@@ -89,4 +119,61 @@ func ForceReleaseInProcessSessionLease(path string) (released bool) {
 			"session_base", filepath.Base(path))
 	}
 	return released
+}
+
+// SessionLeaseHeldOutsideProcess answers the tl1404 terminal question with
+// the tl1429 evidence: is the lease lock held by something this process
+// cannot name? SessionLeaseHeldByOtherRuntime reports true for BOTH a foreign
+// process and an in-process handle whose registry entry is the only trace —
+// the probe cannot tell the two apart. The lock registry can: a booked entry
+// means the hold is this process's own state (the terminal owns it); no entry
+// means genuinely outside (never grabbed, tl1367 line 1).
+func SessionLeaseHeldOutsideProcess(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	path = canonicalSessionSavePath(path)
+	if !SessionLeaseHeldByOtherRuntime(path) {
+		return false
+	}
+	return !SessionLeaseLockHeldInProcess(path)
+}
+
+// sessionLeaseLockInProcessHolder reports whether the session's lease lock is
+// held by a registered in-process handle, with its evidence for the log.
+func sessionLeaseLockInProcessHolder(path string) (bool, []SessionLockHolderEvidence) {
+	held := SessionLeaseLockHeldInProcess(path)
+	if !held {
+		return false, nil
+	}
+	return true, SessionLeaseLockInProcessHolders(path)
+}
+
+// evidenceHolderKind renders the first evidence entry's kind for a log attr.
+func evidenceHolderKind(evidence []SessionLockHolderEvidence) string {
+	if len(evidence) == 0 {
+		return sessionLockKindUnattributed
+	}
+	kind := evidence[0].Kind
+	if kind == "" {
+		return sessionLockKindUnattributed
+	}
+	return kind
+}
+
+// evidenceHoldSince renders the earliest evidence hold time for a log attr.
+func evidenceHoldSince(evidence []SessionLockHolderEvidence) string {
+	if len(evidence) == 0 {
+		return "unknown"
+	}
+	earliest := evidence[0].AcquiredAt
+	for _, ev := range evidence[1:] {
+		if !ev.AcquiredAt.IsZero() && (earliest.IsZero() || ev.AcquiredAt.Before(earliest)) {
+			earliest = ev.AcquiredAt
+		}
+	}
+	if earliest.IsZero() {
+		return "unknown"
+	}
+	return earliest.UTC().Format(time.RFC3339)
 }

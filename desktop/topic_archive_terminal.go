@@ -191,7 +191,17 @@ func (a *App) terminalArchiveGuardAfterReclaim(sessionPath, key string, cause er
 	if err == nil {
 		return guard, nil
 	}
-	if agent.SessionLeaseHeldByOtherRuntime(key) {
+	// tl1429: the old input here was SessionLeaseHeldByOtherRuntime, whose
+	// lock probe reports true for BOTH a foreign process and an in-process
+	// handle whose registry entry is the only trace (the self-lock form:
+	// holder record pid-less, no lease object, no tab). The user-side
+	// 2026-11-04 17:55 incident burned the whole terminal budget on exactly
+	// that misclassification ("held outside this process" for a lock this
+	// process itself held). The registry arbitrates now: a booked handle is
+	// this process's own state — ForceReleaseInProcessSessionLease above
+	// already tears it down, and a still-failing guard then degrades to the
+	// guard-less trash below; only an unbooked lock stays "outside".
+	if agent.SessionLeaseHeldOutsideProcess(key) {
 		slog.Warn("desktop: terminal fallback keeps the refusal: the lease lock is held outside this process",
 			"session_base", filepath.Base(sessionPath))
 		return nil, fmt.Errorf("%w: %w", errTopicArchiveExternalHolder, cause)
