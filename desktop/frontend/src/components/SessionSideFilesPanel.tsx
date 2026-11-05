@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FilePlus2, FileText, ListPlus } from "lucide-react";
+import { ExternalLink, FilePlus2, FileText, FolderOpen, ListPlus, MessageSquarePlus } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { useToast } from "../lib/toast";
 import { collectSessionSideFiles, formatReferenceListForPrompt, type SessionSideFile, type SessionSideItem } from "../lib/sessionSideFiles";
+import { formatWorkspaceReference } from "../lib/workspaceDrag";
 import { workspacePathCopyMenuItems } from "../lib/workspacePathCopyMenuItems";
 import { FloatingMenu, FloatingMenuItems, type FloatingMenuItem } from "./FloatingMenu";
 
@@ -18,19 +20,30 @@ function looksAbsolutePath(path: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("/") || path.startsWith("\\\\");
 }
 
+// tl1421 同款就地提取：打开/显示失败的 toast 附原因。
+function menuErrorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** tl1437: interactive row list for the artifacts dock variant — the gap list
- *  against the file tree (WorkspaceTreeMenu family) asked for row selection
- *  and a context menu. A click highlights the row (single selection, same
- *  semantics as the tree's preview selection); a right-click selects the
- *  right-clicked row (Explorer behavior) and opens the row menu — the same
- *  FloatingMenu component the tree menu uses, with the tree's copy-path pair
- *  (relative copies the listed path, absolute resolves through
- *  ResolveWorkspacePathForTab with the same scope guard). Without a tabId the
- *  list renders byte-for-byte the static rows — the accordion's shared
- *  FileList above is untouched, so the default files-mode view keeps its
- *  exact pre-tl1437 behavior. */
-function DockArtifactList({ files, tabId }: { files: SessionSideFile[]; tabId?: string }) {
+ *  against the file tree (WorkspaceTreeMenu family) asked for row selection,
+ *  a context menu, copy-path, add-reference and open-type actions. A click
+ *  highlights the row (single selection, same semantics as the tree's preview
+ *  selection); a right-click selects the right-clicked row (Explorer
+ *  behavior) and opens the row menu — the same FloatingMenu component the
+ *  tree menu uses, with: open/reveal behind the tl1421 openability probe
+ *  (ResolveOpenablePathForTab → OpenLocalPath / RevealPath, no dead buttons —
+ *  probing disables the pair, an empty probe removes it), the tree's
+ *  copy-path pair (relative copies the listed path, absolute resolves through
+ *  ResolveWorkspacePathForTab with the same scope guard; absolute-shaped
+ *  paths copy as-is), and the tree's add-reference action reusing the dock's
+ *  existing composer-injection channel (@path). Without a tabId the list
+ *  renders byte-for-byte the static rows — the accordion's shared FileList
+ *  above is untouched, so the default files-mode view keeps its exact
+ *  pre-tl1437 behavior. */
+function DockArtifactList({ files, tabId, onInjectReferences }: { files: SessionSideFile[]; tabId?: string; onInjectReferences?: (text: string) => void }) {
   const t = useT();
+  const { showToast } = useToast();
   const [expanded, setExpanded] = useState(false);
   // tl1437: the selected row path. Component-local like the tree's selection —
   // the artifacts list is a transcript projection, so nothing here persists.
@@ -45,6 +58,13 @@ function DockArtifactList({ files, tabId }: { files: SessionSideFile[]; tabId?: 
   const [menuTabId, setMenuTabId] = useState("");
   const liveTabIdRef = useRef(tabId ?? "");
   liveTabIdRef.current = tabId ?? "";
+  // tl1421 惯例：菜单打开即探针（ResolveOpenablePathForTab——相对路径按会话
+  // 项目根解析、存在性 stat、opener 门禁），在途时打开/显示两项禁用（点了不
+  // 落空），探针空串=不可开 → 两项从菜单移除（不发死按钮）；通过后记住解析
+  // 出的绝对路径，打开/显示直接用它（OpenLocalPath / RevealPath，任务 1060/
+  // 944 opener 家族，与回合文件 chip 完全同链路）。
+  const [menuProbe, setMenuProbe] = useState<"probing" | "ok" | "none">("probing");
+  const [menuResolved, setMenuResolved] = useState("");
   const listRef = useRef<HTMLUListElement>(null);
   const visible = expanded ? files : files.slice(0, INITIAL);
   const hidden = files.length - visible.length;
@@ -69,6 +89,26 @@ function DockArtifactList({ files, tabId }: { files: SessionSideFile[]; tabId?: 
       window.removeEventListener("keydown", onKey);
     };
   }, [menu]);
+  useEffect(() => {
+    if (!menu || !menuTabId) return;
+    let cancelled = false;
+    setMenuProbe("probing");
+    setMenuResolved("");
+    app.ResolveOpenablePathForTab(menuTabId, menu.path)
+      .then((absolute) => {
+        if (cancelled) return;
+        setMenuResolved(absolute || "");
+        setMenuProbe(absolute ? "ok" : "none");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMenuResolved("");
+        setMenuProbe("none");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [menu, menuTabId]);
   // tl1437: right-click = select the row, then open the menu on it (the tree's
   // openTreeMenu collapses the selection to the right-clicked row; this list
   // is single-selection so that is just the one row).
@@ -85,7 +125,40 @@ function DockArtifactList({ files, tabId }: { files: SessionSideFile[]; tabId?: 
     const path = menu.path;
     const close = () => setMenu(null);
     const isScopeCurrent = () => liveTabIdRef.current === menuTabId;
+    const openDefault = () => {
+      close();
+      const absolute = menuResolved;
+      if (!absolute) return;
+      app.OpenLocalPath(absolute).catch((error: unknown) => {
+        showToast(t("localPath.openFailed", { path, error: menuErrorText(error) }), "error");
+      });
+    };
+    const reveal = () => {
+      close();
+      const absolute = menuResolved;
+      if (!absolute) return;
+      app.RevealPath(absolute).catch((error: unknown) => {
+        showToast(t("externalOpener.failed", { name: t("externalOpener.reveal"), error: menuErrorText(error) }), "error");
+      });
+    };
     return [
+      ...(menuProbe !== "none"
+        ? [
+            {
+              icon: <ExternalLink size={14} />,
+              label: t("workspace.openWithDefaultApp"),
+              disabled: menuProbe !== "ok",
+              onSelect: openDefault,
+            },
+            {
+              icon: <FolderOpen size={14} />,
+              label: t("workspace.revealInFileManager"),
+              disabled: menuProbe !== "ok",
+              onSelect: reveal,
+            },
+            { separator: true as const, key: "sep-open" },
+          ]
+        : []),
       ...workspacePathCopyMenuItems({
         path,
         resolveAbsolutePath: async () => {
@@ -97,8 +170,21 @@ function DockArtifactList({ files, tabId }: { files: SessionSideFile[]; tabId?: 
         relativeLabel: t("workspace.copyRelativePath"),
         absoluteLabel: t("workspace.copyAbsolutePath"),
       }),
+      ...(onInjectReferences
+        ? [
+            { separator: true as const, key: "sep-ref" },
+            {
+              icon: <MessageSquarePlus size={14} />,
+              label: t("workspace.addFileReferenceToChat"),
+              onSelect: () => {
+                close();
+                onInjectReferences(formatWorkspaceReference(path));
+              },
+            },
+          ]
+        : []),
     ];
-  }, [menu, menuTabId, t]);
+  }, [menu, menuTabId, menuProbe, menuResolved, onInjectReferences, showToast, t]);
   if (files.length === 0) return <p className="side-files__empty">{t("sideFiles.empty")}</p>;
   return (
     <>
@@ -140,7 +226,7 @@ function DockArtifactList({ files, tabId }: { files: SessionSideFile[]; tabId?: 
         </div>
       )}
       {menu && (
-        <FloatingMenu x={menu.x} y={menu.y} estimatedHeight={96} className="workspace-tree-menu">
+        <FloatingMenu x={menu.x} y={menu.y} estimatedHeight={240} className="workspace-tree-menu">
           <FloatingMenuItems items={menuItems} />
         </FloatingMenu>
       )}
@@ -240,8 +326,9 @@ export function SessionSideFilesPanel({ items, onInjectReferences }: SessionSide
  *
  * tl1437: the artifacts variant swaps the static list for the interactive
  * DockArtifactList when a tabId is provided (App always provides one) — row
- * selection and the row menu close the gap against the file tree. Without a
- * tabId the artifacts body stays byte-for-byte the task-260 shape.
+ * selection, the row menu (open/reveal/copy/reference) close the gap against
+ * the file tree. Without a tabId the artifacts body stays byte-for-byte the
+ * task-260 shape.
  */
 export function SideFilesDockPanel({ items, variant, onInjectReferences, tabId }: {
   items: readonly SessionSideItem[];
@@ -266,7 +353,7 @@ export function SideFilesDockPanel({ items, variant, onInjectReferences, tabId }
               </span>
               <span className="side-files__meta">{t("sideFiles.artifactsMeta", { count: artifacts.length })}</span>
             </summary>
-            <DockArtifactList files={artifacts} tabId={tabId} />
+            <DockArtifactList files={artifacts} tabId={tabId} onInjectReferences={onInjectReferences} />
           </details>
         )}
       </div>
