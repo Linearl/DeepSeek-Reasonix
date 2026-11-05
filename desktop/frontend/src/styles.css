@@ -40128,13 +40128,13 @@ button.statusbar__mcp:focus-visible {
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
-  z-index: var(--z-popover, 30);
+  z-index: var(--z-popover);
   width: 430px;
   max-width: 70vw;
   background: var(--bg-elev);
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
   border-radius: var(--radius-md, 10px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.13);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow-color, #000) 13%, transparent);
   padding: 12px 14px;
   font-size: 0.88em;
   font-weight: 400;
@@ -43881,3 +43881,12 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-soft);
   color: var(--fg);
 }
+
+/* --- check:css assert1 补定义（20261106 包79 出包门禁，代 zcode 补齐交付面） --- */
+.channel-chat__opentab { flex-shrink: 0; }
+.channel-workspace__errorstrip {
+  border-color: color-mix(in srgb, var(--danger, #c0504d) 45%, transparent);
+}
+.rc-row--group > td { background: color-mix(in srgb, currentColor 4%, transparent); }
+.rc-detail__row > td { padding-top: 6px; padding-bottom: 6px; }
+.subagents-panel__row--workflow { font-weight: 500; }
