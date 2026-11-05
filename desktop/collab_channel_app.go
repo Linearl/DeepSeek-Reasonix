@@ -80,13 +80,18 @@ func (a *App) ChannelDissolveForHuman(ref string) error {
 
 // ChannelSendFromHuman publishes one message as human:local through the SAME
 // Publish path the agent tools use (风暴治理/小时上限对人类发言同样生效) and
-// kicks the background drain.
+// kicks the background drain. tl1406 路由：composer 插入的是 "@<显示名> "
+// （directoryTitle = title || purpose || contact id，气泡渲染匹配同款字面
+// needle），所以 @ 解析必须拿到同一份别名——从名册视图带出 title/purpose；
+// human 自指代词按 collabGroup.chat.you 双语给全（"@我"/"@You"，路由本就
+// 跳过发送者，仅保证语义完整）。
 func (a *App) ChannelSendFromHuman(ref, body string) (collabchannel.Message, error) {
 	store, err := collabchannel.Open(config.SessionCollabMailDir())
 	if err != nil {
 		return collabchannel.Message{}, err
 	}
-	msg, err := store.Publish(ref, collabchannel.HumanLocal, body)
+	names := humanMentionNames(a.ListAddressableSessions())
+	msg, err := store.PublishWithMentionNames(ref, collabchannel.HumanLocal, body, names)
 	_ = store.Close()
 	if err != nil {
 		return collabchannel.Message{}, err
@@ -103,6 +108,34 @@ func (a *App) ChannelSendFromHuman(ref, body string) (collabchannel.Message, err
 		_, _ = drain.DrainFanout(ctx)
 	})
 	return msg, nil
+}
+
+// humanMentionNames builds the @-alias map for the human send face (tl1406):
+// roster title/purpose per contact — the same needles the composer inserts
+// ("@<directoryTitle> ", directoryTitle = title || purpose || contact id) and
+// the bubble renderer highlights — plus bilingual self-tokens for human:local
+// ("@我"/"@You", mirroring collabGroup.chat.you; self-routing is moot anyway
+// since the sender is never fanned). Roster rows without a ContactID (the
+// human is not in the directory) are skipped; the resolver never widens the
+// recipient set beyond current roster members, so stale rows are inert.
+func humanMentionNames(rows []AddressableSessionView) map[string][]string {
+	names := map[string][]string{collabchannel.HumanLocal: {"我", "You"}}
+	for _, row := range rows {
+		if row.ContactID == "" {
+			continue
+		}
+		var aliases []string
+		if row.Title != "" {
+			aliases = append(aliases, row.Title)
+		}
+		if row.Purpose != "" {
+			aliases = append(aliases, row.Purpose)
+		}
+		if len(aliases) > 0 {
+			names[row.ContactID] = aliases
+		}
+	}
+	return names
 }
 
 // ChannelInvite adds session members to a channel — owner-only (任务 803 ③

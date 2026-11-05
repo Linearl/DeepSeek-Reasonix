@@ -124,6 +124,9 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   const [directory, setDirectory] = useState<CollabSessionDirectoryRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // tl1406：零投递提示——human 群未设副管理员且未 @ 时发送成功但没人被投递，
+  // 用后端回执的 deputyless 注记驱动（不猜群状态）；下一条消息/切群即清。
+  const [deputylessHint, setDeputylessHint] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -393,6 +396,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     openIdRef.current = id;
     setChat(null);
     setActionError(null);
+    setDeputylessHint(false); // tl1406：切群清零投递提示
     setDetailOpen(false);
     setInviteOpen(false);
     setAtOpen(false);
@@ -408,6 +412,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     setInviteOpen(false);
     setAtOpen(false);
     setDissolveArmed(false);
+    setDeputylessHint(false); // tl1406：关群清零投递提示
   }, []);
 
   const send = useCallback(async () => {
@@ -419,6 +424,8 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     try {
       const msg = await b.ChannelSendFromHuman(ref, body);
       setDraft("");
+      // tl1406：零投递分支如实提示（后端路由注记，非本地猜测）。
+      setDeputylessHint(Boolean(msg.deputyless));
       // 乐观上屏 + 立刻对账（refresh 同时刷新群列表计数与自己的未读记账）。
       setChat((prev) => {
         if (!prev || (prev.channel.id !== ref && prev.channel.name !== ref)) return prev;
@@ -757,6 +764,15 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
               <div className="channel-chat__actionerror" role="alert">
                 <span>{actionError}</span>
                 <button type="button" className="btn btn--secondary btn--small" onClick={() => setActionError(null)}>{t("collabGroup.close")}</button>
+              </div>
+            )}
+
+            {/* tl1406：零投递提示（Q3）——消息已入历史但没有任何会话被推送，
+                引导设置副管理员或直接 @；成员仍可主动查询历史。 */}
+            {deputylessHint && (
+              <div className="channel-chat__deputyless" role="status">
+                <span>{t("collabGroup.chat.deputylessHint")}</span>
+                <button type="button" className="btn btn--secondary btn--small" onClick={() => setDeputylessHint(false)}>{t("collabGroup.close")}</button>
               </div>
             )}
 

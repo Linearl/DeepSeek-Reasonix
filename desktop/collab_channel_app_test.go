@@ -41,7 +41,8 @@ func TestChannelHumanAPIEndToEnd(t *testing.T) {
 		t.Fatalf("founding member wrong: %+v", ch.MemberDetails)
 	}
 
-	// ② 邀请 agent 会话（群主权限）。
+	// ② 邀请 agent 会话（群主权限）+ 任命副管理员（tl1406：human 群未 @ 的
+	// 默认收件人；不设则零投递——该分支在下面的专属测试里钉）。
 	ch, err = app.ChannelInvite(ch.ID, []string{"sc_dev6", "sc_merge"})
 	if err != nil {
 		t.Fatalf("invite: %v", err)
@@ -49,8 +50,11 @@ func TestChannelHumanAPIEndToEnd(t *testing.T) {
 	if len(ch.Members) != 3 {
 		t.Fatalf("invited members: %+v", ch.Members)
 	}
+	if _, err := app.ChannelSetDeputy(ch.ID, "sc_dev6"); err != nil {
+		t.Fatalf("set deputy: %v", err)
+	}
 
-	// ③ 人类发言：同 Publish 链路；后台 drain 同步跑完。
+	// ③ 人类发言（未 @）：同 Publish 链路；后台 drain 同步跑完。
 	msg, err := app.ChannelSendFromHuman(ch.ID, "大家好，我是人类")
 	if err != nil {
 		t.Fatalf("send: %v", err)
@@ -58,23 +62,31 @@ func TestChannelHumanAPIEndToEnd(t *testing.T) {
 	if msg.Sender != collabchannel.HumanLocal || msg.Body == "" {
 		t.Fatalf("published message: %+v", msg)
 	}
+	// tl1406：未 @ 只路由给副管理员一行。
+	if len(msg.RoutedTo) != 1 || msg.RoutedTo[0] != "sc_dev6" || msg.Deputyless {
+		t.Fatalf("un-mentioned human line must route to the deputy alone: %+v", msg)
+	}
 
-	// ④ agent 成员各收到一封 followup；human 收件箱必须为空（④跳过投递只落库）。
+	// ④ mailbox 计数断言（不只看投递日志）：副管理员恰好 +1，其他成员零新增；
+	// human 收件箱必须为空（human 跳过投递只落库）。
 	mail := sessioncollab.NewMailStore(config.SessionCollabMailDir())
-	for _, member := range []string{"sc_dev6", "sc_merge"} {
-		inbox, err := mail.Inbox(member)
-		if err != nil || len(inbox) != 1 || inbox[0].From != collabchannel.HumanLocal {
-			t.Fatalf("%s inbox: %v %+v", member, err, inbox)
-		}
-		if inbox[0].Delivery != string(sessioncollab.DeliveryFollowup) {
-			t.Fatalf("fan-out must stay followup: %+v", inbox[0])
-		}
+	inbox, err := mail.Inbox("sc_dev6")
+	if err != nil || len(inbox) != 1 || inbox[0].From != collabchannel.HumanLocal {
+		t.Fatalf("deputy inbox: %v %+v", err, inbox)
+	}
+	if inbox[0].Delivery != string(sessioncollab.DeliveryFollowup) {
+		t.Fatalf("fan-out must stay followup: %+v", inbox[0])
+	}
+	if other, err := mail.Inbox("sc_merge"); err != nil || len(other) != 0 {
+		t.Fatalf("non-deputy member must have zero mailbox growth: %v %+v", err, other)
 	}
 	if humanInbox, err := mail.Inbox(collabchannel.HumanLocal); err != nil || len(humanInbox) != 0 {
 		t.Fatalf("human must never be mailed: %v %+v", err, humanInbox)
 	}
 
 	// ⑤ session 发言后人类读消息：UI 可见即已读（human 行 delivered+read）。
+	// 副管理员本人未 @ 发言不落行（发送者=默认收件人被排除），所以让副管理员
+	// 显式 @ human——被 @ 者分支恰好覆盖 human 这一行。
 	if _, err := app.ChannelSendFromHuman(ch.ID, "占位"); err != nil { // 触发 drain 语义一致性（human 发言路径）
 		t.Fatal(err)
 	}
@@ -82,7 +94,7 @@ func TestChannelHumanAPIEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Publish(ch.ID, "sc_dev6", "agent 汇报进度"); err != nil {
+	if _, err := store.PublishWithMentionNames(ch.ID, "sc_dev6", "@human:local agent 汇报进度", nil); err != nil {
 		t.Fatal(err)
 	}
 	_ = store.Close()
@@ -164,5 +176,91 @@ func TestChannelHumanAPIEndToEnd(t *testing.T) {
 	}
 	if err := app.ChannelLeaveHuman(scOwned.ID); err != nil {
 		t.Fatalf("human (non-owner) leave must work: %v", err)
+	}
+}
+
+// tl1406 desktop 面验收（用户 20261105 四条裁决 + 18:2x 加严口径——mailbox
+// 计数断言，不只看投递日志）：
+//
+//	① human 群无副管理员 + 未 @ → 零投递（成员收件箱零新增）+ Deputyless=true
+//	   返回给前端做弹窗；历史照常落库、UI 只读可见（Q2）。
+//	② 显式 @<contact_id> → 仅落被 @ 者，副管理员不再兜底收到。
+func TestChannelHumanRoutingDeputylessAndMention(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	captureHumanDrain(t)
+	app := NewApp()
+	mail := sessioncollab.NewMailStore(config.SessionCollabMailDir())
+
+	ch, err := app.ChannelCreateForHuman("无副群", "tl1406", 0)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := app.ChannelInvite(ch.ID, []string{"sc_a", "sc_b"}); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+
+	// ① 未 @ + 无副管理员：零投递 + deputyless 弹窗数据源。
+	msg, err := app.ChannelSendFromHuman(ch.ID, "今天先做 A 项")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if !msg.Deputyless || len(msg.RoutedTo) != 0 {
+		t.Fatalf("deputyless group must flag zero routing: %+v", msg)
+	}
+	for _, member := range []string{"sc_a", "sc_b"} {
+		if inbox, err := mail.Inbox(member); err != nil || len(inbox) != 0 {
+			t.Fatalf("%s mailbox must have zero growth: %v %+v", member, err, inbox)
+		}
+	}
+	view, err := app.ChannelMessagesForHuman(ch.ID, 0, 0)
+	if err != nil || len(view.Messages) != 1 || view.Messages[0].Body != "今天先做 A 项" {
+		t.Fatalf("read-only history must still surface the line: %v %+v", err, view.Messages)
+	}
+
+	// ② 任命副管理员后，未 @ 只投副管理员；显式 @ 只投被 @ 者。
+	if _, err := app.ChannelSetDeputy(ch.ID, "sc_a"); err != nil {
+		t.Fatalf("set deputy: %v", err)
+	}
+	if _, err := app.ChannelSendFromHuman(ch.ID, "散会前汇总一下"); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if inbox, err := mail.Inbox("sc_a"); err != nil || len(inbox) != 1 {
+		t.Fatalf("deputy inbox must be exactly one: %v %+v", err, inbox)
+	}
+	if inbox, err := mail.Inbox("sc_b"); err != nil || len(inbox) != 0 {
+		t.Fatalf("non-deputy mailbox must stay empty: %v %+v", err, inbox)
+	}
+	if _, err := app.ChannelSendFromHuman(ch.ID, "@sc_b 这条给你"); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if inbox, err := mail.Inbox("sc_b"); err != nil || len(inbox) != 1 {
+		t.Fatalf("mentioned member inbox must be exactly one: %v %+v", err, inbox)
+	}
+	if inbox, err := mail.Inbox("sc_a"); err != nil || len(inbox) != 1 {
+		t.Fatalf("deputy must stay at one (mention overrides the default): %v %+v", err, inbox)
+	}
+}
+
+// tl1406：human 面别名表 = composer 同款 needle（title || purpose）+ 双语自指
+// 代词；无 contactId 的行跳过。
+func TestHumanMentionNamesBuilder(t *testing.T) {
+	names := humanMentionNames([]AddressableSessionView{
+		{ContactID: "sc_1", Title: "需求与计划", Purpose: "收集需求"},
+		{ContactID: "sc_2", Title: "", Purpose: "架构设计"},
+		{ContactID: "", Title: "no contact id"},
+		{ContactID: "sc_3"},
+	})
+	if got := names["sc_1"]; len(got) != 2 || got[0] != "需求与计划" || got[1] != "收集需求" {
+		t.Fatalf("sc_1 aliases: %v", got)
+	}
+	if got := names["sc_2"]; len(got) != 1 || got[0] != "架构设计" {
+		t.Fatalf("sc_2 aliases: %v", got)
+	}
+	if _, ok := names["sc_3"]; ok {
+		t.Fatalf("bare contact needs no alias row: %v", names["sc_3"])
+	}
+	self := names[collabchannel.HumanLocal]
+	if len(self) != 2 || self[0] != "我" || self[1] != "You" {
+		t.Fatalf("human self tokens: %v", self)
 	}
 }

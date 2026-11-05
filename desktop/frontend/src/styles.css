@@ -41014,6 +41014,18 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-dim);
   word-break: break-all;
 }
+.channel-chat__deputyless {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent, #06c) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent, #06c) 8%, var(--bg));
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  word-break: break-all;
+}
 .channel-chat__stream {
   flex: 1;
   display: flex;
