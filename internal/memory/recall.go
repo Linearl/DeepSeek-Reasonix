@@ -15,8 +15,20 @@ const (
 	defaultRecallLimit = 8
 	maxRecallLimit     = 20
 	maxRecallSnippet   = 260
-	recallScoreFloor   = 0.15
+
+	// tl1349②: the two recall lanes need different score floors. Explicit
+	// search means someone is actively looking, so err on the side of returning
+	// more — a low-ranked hit costs nothing. Automatic recall injects into every
+	// turn's prompt and stays strict to keep noise out. (mimo's score_floor
+	// split, measured on their pool.)
+	explicitRecallScoreFloor = 0.05
+	autoRecallScoreFloor     = 0.24
 )
+
+// explicitRecallFloor lets the explicit-search floor be tuned at runtime
+// without touching the call site; a non-positive value falls back to the
+// package default above.
+var explicitRecallFloor = explicitRecallScoreFloor
 
 type recallTool struct{ store Store }
 
@@ -164,7 +176,11 @@ func searchMemories(ctx context.Context, store Store, query string, typ Type, sc
 		}
 		return hits[i].Score > hits[j].Score
 	})
-	hits = retrieval.KeepTopRelativeScore(hits, recallScoreFloor, func(hit memoryHit) float64 {
+	floor := explicitRecallFloor
+	if floor <= 0 {
+		floor = explicitRecallScoreFloor
+	}
+	hits = retrieval.KeepTopRelativeScore(hits, floor, func(hit memoryHit) float64 {
 		return hit.Score
 	})
 	if len(hits) > limit {

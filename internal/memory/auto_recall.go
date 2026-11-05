@@ -32,6 +32,10 @@ type RecallOptions struct {
 	Limit    int
 	MaxChars int
 	Now      time.Time
+	// ScoreFloor overrides the automatic-recall trim ratio for this call; a
+	// non-positive value keeps autoRecallScoreFloor. Explicit search has its
+	// own floor (explicitRecallFloor), so tuning one lane never moves the other.
+	ScoreFloor float64
 }
 
 // RecallHit is one provider-visible fact plus the explanation needed by context
@@ -216,7 +220,11 @@ func autoRecallIndexed(index *RecallIndex, result RecallResult, opts RecallOptio
 		}
 		return hits[i].Memory.ID < hits[j].Memory.ID
 	})
-	hits = retrieval.KeepTopRelativeScore(hits, 0.24, func(hit RecallHit) float64 { return hit.Score })
+	autoFloor := opts.ScoreFloor
+	if autoFloor <= 0 {
+		autoFloor = autoRecallScoreFloor
+	}
+	hits = retrieval.KeepTopRelativeScore(hits, autoFloor, func(hit RecallHit) float64 { return hit.Score })
 	limit := recallLimit(opts.Limit)
 	if len(hits) > limit {
 		result.Omitted += len(hits) - limit
