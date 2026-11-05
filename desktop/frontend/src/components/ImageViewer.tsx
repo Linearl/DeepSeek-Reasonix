@@ -103,7 +103,18 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
 
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) onClose();
+      // tl1411: everything on the mask counts as blank except the visible
+      // content itself (the image and its filename caption). The invisible
+      // `.image-viewer__content` wrapper is the flex box that centers them —
+      // its inter-image gap and margin strips read as blank to users, so a
+      // direct hit on the wrapper closes too. Clicks that start on the image
+      // or the caption bubble up with their own targets and never close.
+      if (e.target === e.currentTarget) {
+        onClose();
+        return;
+      }
+      const target = e.target;
+      if (target instanceof Element && target.classList.contains("image-viewer__content")) onClose();
     },
     [onClose],
   );
