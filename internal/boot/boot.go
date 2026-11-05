@@ -1133,6 +1133,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if cfg.Agent.ExperimentalCurateContext {
 		reg.Add(builtin.CurateContextTool{})
 	}
+	// tl1419 (迭代三): model-driven ranges folds, same gating shape — off (the
+	// default) keeps compress_ranges out of the registry entirely, so the
+	// model-visible surface stays byte-identical to the pre-tl1419 baseline.
+	// Tool add/remove needs a restart; at run time the fold still requires the
+	// ranges lane switch (live read inside RangesFoldCompact) and the flood
+	// gate, so a mid-session switch-off can never install a fold.
+	if cfg.Agent.ExperimentalModelRangesCompact {
+		reg.Add(builtin.CompressRangesTool{})
+	}
 	addWebSearch(reg, cfg, entry, proxySpec, sink)
 	builtinsMs := time.Since(builtinsStart).Milliseconds()
 	// Task 413: the mcp pre-enumeration segment (host pick, enabled-plugin
