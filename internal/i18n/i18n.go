@@ -422,6 +422,16 @@ type Messages struct {
 	// %s = live contact_id the mail actually left under.
 	CollabIdentitySnapshotRejectedFmt string
 
+	// WorkflowTypedResultRetryExhaustedFmt (tl1432): a workflow subagent
+	// node's typed result never parsed as a JSON object (the engine's
+	// tolerant extraction failed too) even after the directed re-ask — the
+	// node aborts and the run's earlier findings stay preserved. The
+	// human-readable line is this catalogue string; the technical detail
+	// (first/retry output summaries) is appended in English after "detail:"
+	// so developer logs stay language-stable. %d = the retry budget that was
+	// spent.
+	WorkflowTypedResultRetryExhaustedFmt string
+
 	// in-chat memory/model/rewind notices.
 
 	MemoryEditHint               string
