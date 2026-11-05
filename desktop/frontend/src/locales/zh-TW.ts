@@ -5654,7 +5654,7 @@ export const zhTW: Record<DictKey, string> = {
   "projectGroup.ungrouped": "未分組",
   "projectTree.filterByColor": "按顏色篩選",
   "projectTree.filterByColorAll": "全部顏色",
-  "projectTree.forceArchiveConfirm": "正常歸檔失敗：{reason}\n\n是否強制歸檔？強制歸檔會跳過執行中檢查，此操作不可恢復。",
+  "projectTree.forceArchiveConfirm": "正常歸檔失敗：{reason}\n\n是否強制歸檔？強制歸檔會跳過執行中檢查、停止執行中的回覆（輸出中的內容可能遺失），此操作不可恢復。",
   "projectTree.forceArchiveTopic": "強制歸檔",
   // tl1367: lease-busy 家族，按後端 [reasonix-holder] 區塊本地化渲染。
   // tl1367-fix 缺陷B：self=本視窗自己持有（不是「另一個執行時」），指引改為關本視窗的工作階段標籤頁/停止執行。

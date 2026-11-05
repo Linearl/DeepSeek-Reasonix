@@ -5658,7 +5658,7 @@ export const zh: Record<DictKey, string> = {
   "projectGroup.ungrouped": "未分组",
   "projectTree.filterByColor": "按颜色筛选",
   "projectTree.filterByColorAll": "全部颜色",
-  "projectTree.forceArchiveConfirm": "正常归档失败：{reason}\n\n是否强制归档？强制归档会跳过运行中检查，此操作不可恢复。",
+  "projectTree.forceArchiveConfirm": "正常归档失败：{reason}\n\n是否强制归档？强制归档会跳过运行中检查、停止运行中的回复（输出中的内容可能丢失），此操作不可恢复。",
   "projectTree.forceArchiveTopic": "强制归档",
   // tl1367: lease-busy 家族，按后端 [reasonix-holder] 块本地化渲染。
   // tl1367-fix 缺陷B：self=本窗口自己持有（不是「另一个运行时」），指引改为关本窗口的会话标签页/停止运行。

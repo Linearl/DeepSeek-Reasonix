@@ -143,6 +143,70 @@ func TestTrashTopicForceSurvivesUnknownHolderWithLongHeldSaveLock(t *testing.T) 
 	}
 }
 
+// 验收钉:兜底仅终局——可正常归档/强制归档可收敛的形态绝不进入终局兜底。
+// 正常归档干净 topic、强制归档干净 topic,两次兜底计数都必须零增量;三死局
+// 形态里,①②③各自的收敛路径由上方测试钉住(①走强制路径清扫,②走终局,
+// ③走限时等门)。
+func TestTerminalFallbackNotTriggeredWhenArchiveSucceedsWithoutIt(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	before := terminalArchiveFallbackRuns.Load()
+	topicID := "topic_terminal_pin_normal"
+	_, projectRoot := stageTerminalArchiveTopic(t, "terminal-pin-normal.jsonl", topicID, "Terminal pin normal")
+	if err := NewApp().TrashTopic(topicID); err != nil {
+		t.Fatalf("regular TrashTopic on a clean topic = %v, want plain success", err)
+	}
+	if got := loadTopicTitle(projectRoot, topicID); got != "" {
+		t.Fatalf("archived topic title = %q, want cleared", got)
+	}
+	if after := terminalArchiveFallbackRuns.Load(); after != before {
+		t.Fatalf("a successful regular archive entered the terminal fallback (runs %d -> %d)", before, after)
+	}
+
+	topicID2 := "topic_terminal_pin_force"
+	sessionPath2, _ := stageTerminalArchiveTopic(t, "terminal-pin-force.jsonl", topicID2, "Terminal pin force")
+	if err := NewApp().TrashTopicForce(topicID2); err != nil {
+		t.Fatalf("TrashTopicForce on a clean topic = %v, want success via the force path", err)
+	}
+	if _, err := os.Stat(sessionPath2); !os.IsNotExist(err) {
+		t.Fatalf("force archive left the transcript in place: %v", err)
+	}
+	if after := terminalArchiveFallbackRuns.Load(); after != before {
+		t.Fatalf("a clean-topic force archive entered the terminal fallback (runs %d -> %d)", before, after)
+	}
+}
+
+// 验收钉:真实占用(活的、可指认的其它 Reasonix 进程)永不进入终局兜底——
+// tl1367 line 1 契约在终局阶梯下原样保持:强制归档拒绝、holder 锁与身份
+// 原样、会话完好;holder 退场后正常归档一次成功。布景与 tl1367 的活外部
+// holder 测试同源(真实跨进程锁)。
+func TestTerminalFallbackSkipsLiveForeignHolder(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	topicID := "topic_terminal_pin_live_foreign"
+	sessionPath, _ := stageTerminalArchiveTopic(t, "terminal-pin-live-foreign.jsonl", topicID, "Terminal pin live foreign")
+
+	releaseHolder := spawnForeignLeaseHolder(t, sessionPath)
+	before := terminalArchiveFallbackRuns.Load()
+	app := NewApp()
+	forceErr := app.TrashTopicForce(topicID)
+	if forceErr == nil {
+		releaseHolder()
+		t.Fatal("force archive must not succeed against a live foreign holder, not even through the terminal fallback")
+	}
+	if after := terminalArchiveFallbackRuns.Load(); after != before {
+		releaseHolder()
+		t.Fatalf("the terminal fallback ran against a live foreign holder (runs %d -> %d)", before, after)
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		releaseHolder()
+		t.Fatalf("refused archive removed the session: %v", err)
+	}
+	releaseHolder()
+	if err := app.TrashTopic(topicID); err != nil {
+		t.Fatalf("regular archive after holder release: %v", err)
+	}
+}
+
 // 形态③(红):fork 循环中归档。连续 fork 触发的 controller 构建把
 // runtimeRebuildMu+runtimeAdmissionMu 两个全局门禁保持热态;现有归档对门禁
 // 一律 TryLock 快败——正常归档与强制归档都会立刻弹「finishing another

@@ -201,7 +201,7 @@ func TestSnapshotTopicRuntimeConflictLogOmitsSessionPath(t *testing.T) {
 	defer slog.SetDefault(previous)
 
 	app := NewApp()
-	if err := app.snapshotTopicRuntimeBindings([]removedSessionRuntime{{ctrl: ctrl}}); err != nil {
+	if err := app.snapshotTopicRuntimeBindings([]removedSessionRuntime{{ctrl: ctrl}}, false); err != nil {
 		t.Fatalf("snapshotTopicRuntimeBindings: %v", err)
 	}
 	logged := output.String()
@@ -468,7 +468,7 @@ func TestTopicArchiveOwnershipRollbackRestoresLocalLease(t *testing.T) {
 	removed := []removedSessionRuntime{{tab: tab, sessionDir: dir, sessionPath: sessionPath}}
 	targets := []topicTrashTarget{{dir: dir, sessionPath: sessionPath, key: filepath.Base(sessionPath)}}
 
-	batch, err := acquireTopicArchiveOwnership(targets, removed)
+	batch, err := acquireTopicArchiveOwnership(nil, targets, removed, false)
 	if err != nil {
 		t.Fatalf("acquireTopicArchiveOwnership: %v", err)
 	}

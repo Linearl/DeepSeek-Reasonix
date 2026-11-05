@@ -5674,7 +5674,7 @@ export const en = {
   "projectGroup.ungrouped": "Ungrouped",
   "projectTree.filterByColor": "Filter by color",
   "projectTree.filterByColorAll": "All colors",
-  "projectTree.forceArchiveConfirm": "Normal archive failed: {reason}\n\nForce archive anyway? It skips the running-session checks and cannot be undone.",
+  "projectTree.forceArchiveConfirm": "Normal archive failed: {reason}\n\nForce archive anyway? It skips the running-session checks, stops any running reply (its in-flight output may be lost), and cannot be undone.",
   "projectTree.forceArchiveTopic": "Force archive",
   // tl1367: lease-busy family, localized from the backend's [reasonix-holder] block.
   // tl1367-fix defect B: self = held by THIS window (its own tab / background runtime), so the guidance is closing this window's session tab or stopping its run.

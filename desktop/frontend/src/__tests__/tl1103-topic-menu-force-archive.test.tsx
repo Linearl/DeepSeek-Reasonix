@@ -312,8 +312,15 @@ ok(/func \(a \*App\) TrashTopic\(topicID string\) error \{\s*\n\treturn markTopi
 // tl1367-fix 缺陷B：TrashTopicForce 先自动关该主题的可见 tab（stop_and_close，
 // 全局锁之前执行）再走原 force 链；机器前缀 contract 不变——force 出口仍不包
 // forceable 标记（它本身就是 fallback）。
-ok(/func \(a \*App\) TrashTopicForce\(topicID string\) error \{\s*\n\t\/\/ tl1367-fix defect B[\s\S]*?a\.closeTopicTabsForForceArchive\(topicID\)[\s\S]*?return friendlySessionFileError\(a\.trashTopic\(topicID, true\)\)\s*\n\}/.test(goArchiveSource), "TrashTopicForce closes the topic's tab first (tl1367-fix B) and stays unmarked (it is already the fallback)");
+// tl1404 有意识更新：force 链失败后接入终局兜底（terminalFallbackEligible →
+// terminalTopicArchive 预算内进程级清场；真实占用——活的、可指认的其它
+// Reasonix 进程——不在升级范围，tl1367 line 1 契约保持），force 出口形状从
+// 「直接 return」变为「失败后分级返回」，钉随之改形。
+ok(/func \(a \*App\) TrashTopicForce\(topicID string\) error \{\s*\n\t\/\/ tl1367-fix defect B[\s\S]*?a\.closeTopicTabsForForceArchive\(topicID\)\s*\n\terr := friendlySessionFileError\(a\.trashTopic\(topicID, true\)\)[\s\S]*?if terminalFallbackEligible\(err\) \{\s*\n\t\tif terminalErr := a\.terminalTopicArchive\(topicID, err\); terminalErr == nil \{\s*\n\t\t\treturn nil\s*\n\t\t\}\s*\n\t\}/.test(goArchiveSource), "TrashTopicForce closes the topic's tab first (tl1367-fix B) and escalates a refused force into the tl1404 terminal fallback");
 ok(goArchiveSource.includes("func (a *App) closeTopicTabsForForceArchive(topicID string) {"), "the tab-close helper for force archives exists");
+// tl1404: 终局兜底的唯一升级点在 force 失败之后；真实占用排除与预算常量
+// 都住在 terminal 文件里，这里钉关键形状防止被绕开。
+ok(/func terminalFallbackEligible\(err error\) bool \{/.test(readFileSync(resolve(desktopRoot, "topic_archive_terminal.go"), "utf8")), "the terminal fallback's eligibility gate (live foreign holder excluded) exists");
 
 // ── ⑥ 三语 locale ────────────────────────────────────────────────────────────
 console.log("\ntl1103 ⑥ three-locale keys");
