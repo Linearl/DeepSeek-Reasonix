@@ -2844,6 +2844,7 @@ export default function App() {
   // 走 ListTabs 拉取对齐，失步窗口 ≤5s（tick 兜底），不再依赖下一次任意
   // turn 事件或 15s 前台兜底。
   useRuntimeStateSync();
+  useTabRuntimeReconcile(refreshTabMetas, tabMetas);
   const seedActiveTabMeta = useCallback((tab: TabMeta): void => {
     setTabMetas((current) => {
       const seeded = { ...tab, active: true };
