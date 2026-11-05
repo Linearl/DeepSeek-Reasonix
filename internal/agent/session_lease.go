@@ -171,16 +171,28 @@ func sessionLeaseOwnerBytes(b []byte) []byte {
 type SessionLeaseError struct {
 	Path string
 	Info *SessionLeaseInfo
+	// HeldInProcess is the tl1429 in-process registry evidence for the lock
+	// behind this refusal: when the on-disk identity record is missing or
+	// pid-less (the constant pid=0 form), the registry still says WHO holds
+	// the lock (which runtime/op, since when). Empty when the registry holds
+	// no entry for the lock — i.e. a genuinely unbooked holder.
+	HeldInProcess []SessionLockHolderEvidence
 }
 
 func (e *SessionLeaseError) Error() string {
 	if e == nil {
 		return ErrSessionLeaseHeld.Error()
 	}
+	var msg string
 	if e.Info != nil && e.Info.WriterID != "" {
-		return fmt.Sprintf("%s: %s is held by %s", ErrSessionLeaseHeld, e.Path, e.Info.WriterID)
+		msg = fmt.Sprintf("%s: %s is held by %s", ErrSessionLeaseHeld, e.Path, e.Info.WriterID)
+	} else {
+		msg = fmt.Sprintf("%s: %s", ErrSessionLeaseHeld, e.Path)
 	}
-	return fmt.Sprintf("%s: %s", ErrSessionLeaseHeld, e.Path)
+	if len(e.HeldInProcess) > 0 {
+		msg += " (lock held inside this process: " + e.HeldInProcess[0].String() + ")"
+	}
+	return msg
 }
 
 func (e *SessionLeaseError) Unwrap() error {

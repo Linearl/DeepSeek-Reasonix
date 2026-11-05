@@ -85,13 +85,17 @@ func TryAcquireSessionRemovalGuard(path string) (*SessionRemovalGuard, error) {
 		if info == nil {
 			info = fallbackSelfLeaseInfo(path)
 		}
-		return nil, &SessionLeaseError{Path: path, Info: info}
+		return nil, &SessionLeaseError{Path: path, Info: info, HeldInProcess: SessionLeaseLockInProcessHolders(path)}
 	}
 	leaseLock, err := tryTakeSessionLeaseLock(path)
 	if err != nil {
 		if errors.Is(err, ErrSessionLeaseHeld) {
 			info, _ := LoadSessionLeaseInfo(path)
-			return nil, &SessionLeaseError{Path: path, Info: info}
+			// tl1429: an identity-missing record (the constant pid=0 form) is
+			// no longer a zero-information refusal — the in-process registry
+			// evidence names the lock holder (runtime/op + time) when this
+			// process booked the hold.
+			return nil, &SessionLeaseError{Path: path, Info: info, HeldInProcess: SessionLeaseLockInProcessHolders(path)}
 		}
 		return nil, err
 	}
@@ -100,8 +104,10 @@ func TryAcquireSessionRemovalGuard(path string) (*SessionRemovalGuard, error) {
 	if err != nil {
 		leaseLock.Unlock()
 		if errors.Is(err, ErrSessionFileLockHeld) {
-			// A save is in flight; deleting mid-write would race it.
-			return nil, &SessionLeaseError{Path: path}
+			// A save is in flight; deleting mid-write would race it. The save
+			// lock's registry entry (tl1429) names the holder when this
+			// process booked it.
+			return nil, &SessionLeaseError{Path: path, HeldInProcess: SessionSaveLockInProcessHolders(path)}
 		}
 		return nil, err
 	}
@@ -124,7 +130,7 @@ func (l *SessionLease) TryConvertToRemovalGuard() (*SessionRemovalGuard, error) 
 	saveLock, err := tryTakeSessionLockFile(store.SessionLockFile(l.path))
 	if err != nil {
 		if errors.Is(err, ErrSessionFileLockHeld) {
-			return nil, &SessionLeaseError{Path: l.path}
+			return nil, &SessionLeaseError{Path: l.path, HeldInProcess: SessionSaveLockInProcessHolders(l.path)}
 		}
 		return nil, err
 	}

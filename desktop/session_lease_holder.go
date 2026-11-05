@@ -25,34 +25,50 @@ import (
 // desktopProcessAlive; tests inject deterministic verdicts.
 var desktopLeaseAlive = desktopProcessAlive
 
-// sessionLeaseHolderClass classifies the recorded holder of a lease refusal:
+// sessionLeaseHolderClass classifies the recorded holder of a lease refusal.
+// tl1429 枚举化:分类全集收敛为常量,新增分类必须落在这里,拒绝日志/文案/
+// 前端解析共用同一枚举——
 //
-//	self    — this process holds the lease (another runtime of this window)
-//	zombie  — the recorded pid is dead: a crashed-process leftover
-//	reused  — the recorded pid is ALIVE but its executable is not this
-//	          application: the pid number was reused by an unrelated program,
-//	          so the record is stale even though "alive" (the tl1367 line 3
-//	          misjudgment form — pre-fix it read as a live foreign window)
-//	live    — a live process running a Reasonix-like executable: real
-//	          cross-process mutual exclusion
-//	unknown — no usable identity; the sentinel text stays generic
-//
+//	self      — this process holds the lease (another runtime of this window)
+//	self_lock — the lock is held by a handle THIS PROCESS booked in the
+//	            in-process lock registry while the identity record is missing
+//	            or pid-less (the lost-binding self-lock form; tl1429). The
+//	            refusal identity comes from the registry, not the record.
+//	zombie    — the recorded pid is dead: a crashed-process leftover
+//	reused    — the recorded pid is ALIVE but its executable is not this
+//	            application: the pid number was reused by an unrelated
+//	            program, so the record is stale even though "alive" (the
+//	            tl1367 line 3 misjudgment form — pre-fix it read as a live
+//	            foreign window)
+//	live      — a live process running a Reasonix-like executable: real
+//	            cross-process mutual exclusion
+//	unknown   — no usable identity anywhere (no record AND no registry
+//	            entry); the sentinel text stays generic
+const (
+	holderClassSelf     = "self"
+	holderClassSelfLock = "self_lock"
+	holderClassZombie   = "zombie"
+	holderClassReused   = "reused"
+	holderClassLive     = "live"
+	holderClassUnknown  = "unknown"
+)
+
 // desktopProcessAlive (not agent.ProcessAlive) is passed by callers that want
 // the desktop test seams; both implement the same husk-aware verdict.
 func sessionLeaseHolderClass(info *agent.SessionLeaseInfo, alive func(int) bool) string {
 	if info == nil || info.PID <= 0 {
-		return "unknown"
+		return holderClassUnknown
 	}
 	if info.PID == os.Getpid() {
-		return "self"
+		return holderClassSelf
 	}
 	if !alive(info.PID) {
-		return "zombie"
+		return holderClassZombie
 	}
 	if !agent.ProcessLooksLikeSelf(info.PID) {
-		return "reused"
+		return holderClassReused
 	}
-	return "live"
+	return holderClassLive
 }
 
 // sessionLeaseHolderBlock renders the machine-readable holder block that
@@ -101,12 +117,35 @@ func sessionLeaseHolderBlock(class string, info *agent.SessionLeaseInfo) string 
 
 // sessionLeaseHolderLogAttrs renders the structured log attributes for a
 // refusal (tl1367 line 1: the desktop log must carry the holder identity so a
-// retry leaves a traceable record even after the toast is gone).
+// retry leaves a traceable record even after the toast is gone). tl1429: when
+// the identity record is missing or pid-less (the constant pid=0 form) but
+// the in-process lock registry booked the hold, the refusal identity comes
+// from the registry — holder_class flips to self_lock and the holder kind and
+// hold time are dumped. A pid=0 refusal with a registry hit is never
+// zero-information again.
 func sessionLeaseHolderLogAttrs(info *agent.SessionLeaseInfo) []any {
+	return sessionLeaseHolderLogAttrsWithEvidence(info, nil)
+}
+
+func sessionLeaseHolderLogAttrsWithEvidence(info *agent.SessionLeaseInfo, evidence []agent.SessionLockHolderEvidence) []any {
 	class := sessionLeaseHolderClass(info, desktopLeaseAlive)
+	identityMissing := info == nil || info.PID <= 0
+	if identityMissing && len(evidence) > 0 {
+		class = holderClassSelfLock
+	}
 	attrs := []any{"holder_class", class}
-	if info == nil || info.PID <= 0 {
-		return append(attrs, "holder_pid", 0)
+	if identityMissing {
+		if len(evidence) == 0 {
+			return append(attrs, "holder_pid", 0)
+		}
+		// tl1429 registry identity replaces the bare pid=0: which runtime/op
+		// holds the lock and since when. Logged values still name no session
+		// path — the evidence type is redacted by construction.
+		attrs = append(attrs, "holder_pid", 0, "holder_lock_kind", evidence[0].Kind)
+		if !evidence[0].AcquiredAt.IsZero() {
+			attrs = append(attrs, "holder_lock_since", evidence[0].AcquiredAt.UTC().Format(time.RFC3339))
+		}
+		return attrs
 	}
 	attrs = append(attrs, "holder_pid", info.PID)
 	if name, path := agent.ProcessImageName(info.PID); strings.TrimSpace(name) != "" || strings.TrimSpace(path) != "" {
@@ -130,10 +169,12 @@ func sessionLeaseHolderLogAttrs(info *agent.SessionLeaseInfo) []any {
 func logSessionLeaseHolderRefusal(msg string, err error) {
 	var leaseErr *agent.SessionLeaseError
 	info := (*agent.SessionLeaseInfo)(nil)
-	if errorsAsSessionLeaseError(err, &leaseErr) {
+	var evidence []agent.SessionLockHolderEvidence
+	if errorsAsSessionLeaseError(err, &leaseErr) && leaseErr != nil {
 		info = leaseErr.Info
+		evidence = leaseErr.HeldInProcess
 	}
-	slog.Warn(msg, sessionLeaseHolderLogAttrs(info)...)
+	slog.Warn(msg, sessionLeaseHolderLogAttrsWithEvidence(info, evidence)...)
 }
 
 // sessionLeaseHeldBusyErrorFromProbe converts a boolean
