@@ -528,6 +528,9 @@ export function SubagentsDockPanel({
   // 时上报加宽指示——与文件面板共用同一 sideDockWideActive 判据（超时自动
   // 折叠抑制同源），关闭内容（back/取消选中）后回落。
   const setSideDockWideActive = useLayoutStore((s) => s.setSideDockWideActive);
+  // tl1426（需求①）：详情驱动宽态的来源标识——App 据此走 1:1 宽度分支；
+  // 文件面板的 wide 上报不置位，两个宽态族互不串扰。
+  const setSubagentsDetailWideActive = useLayoutStore((s) => s.setSubagentsDetailWideActive);
   // Task 507 plan A: the open detail's item id. Component state only — never
   // persisted, so a restart lands back on the list (语义诚实: the preview
   // content itself is memory-only).
@@ -581,8 +584,13 @@ export function SubagentsDockPanel({
   // tl1109 方案 E: 有打开的子代理内容 ⇒ 抬宽边栏；卸载/取消选中 ⇒ 回落。
   useEffect(() => {
     setSideDockWideActive(detailEnabled && Boolean(selected));
-    return () => setSideDockWideActive(false);
-  }, [detailEnabled, selected, setSideDockWideActive]);
+    // tl1426: 同步上报来源标识（详情打开=子代理驱动），App 据此默认 1:1。
+    setSubagentsDetailWideActive(detailEnabled && Boolean(selected));
+    return () => {
+      setSideDockWideActive(false);
+      setSubagentsDetailWideActive(false);
+    };
+  }, [detailEnabled, selected, setSideDockWideActive, setSubagentsDetailWideActive]);
   const widenToolbar = onToggleWide ? (
     <div className="subagents-panel__toolbar">
       <button

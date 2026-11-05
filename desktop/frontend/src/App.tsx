@@ -283,6 +283,10 @@ import {
   workspacePanelMemoryRoot,
   dockModeWithinSidebarGates,
   clampSubagentsWideWidth,
+  clampSubagentDetailDockWidth,
+  saveSubagentDetailDockWidth,
+  saveSubagentDetailUserWidthActive,
+  subagentDetailSplitTargetWidth,
   useLayoutStore,
 } from "./store/layout";
 import { useOverlayStore } from "./store/overlays";
@@ -1784,6 +1788,14 @@ export default function App() {
   // 反馈的「宽度调整好后自动回缩」）。tl1129 返修：指示位持久化，折叠/展开
   // 与跨重启都保留用户宽度（用户拍板：宽度记忆为核心）。
   const sideDockUserWidthActive = useLayoutStore((s) => s.sideDockUserWidthActive);
+  // tl1426（需求①）：子代理详情态分支。面板上报 subagentsDetailWideActive 时
+  // dock 宽度默认 1:1（对话区↔dock 对半）；用户显式调过宽度（拖动松手/键盘/
+  // 加宽按钮经 setSavedWorkspacePanelWidth 写入，随 localStorage 持久化）后
+  // 改记用户值——跨重启保留。文件/概览 tab 的 720 宽态族（sideDockWideActive）
+  // 与 tl1129 用户宽度族不受影响，公式链只在最前面加了一级。
+  const subagentsDetailWideActive = useLayoutStore((s) => s.subagentsDetailWideActive);
+  const subagentDetailDockWidth = useLayoutStore((s) => s.subagentDetailDockWidth);
+  const subagentDetailUserWidthActive = useLayoutStore((s) => s.subagentDetailUserWidthActive);
   const sideDockWideTargetWidth = useMemo(() => {
     const viewportCap = Math.round(viewportWidth * SIDE_DOCK_WIDE_VIEWPORT_RATIO);
     // 对话区保底 380px（tl1108 规格 3.1/踩坑 3）：窄窗口时面板不加满。
@@ -1793,14 +1805,31 @@ export default function App() {
     );
     return Math.min(SIDE_DOCK_WIDE_TARGET_WIDTH, viewportCap, available);
   }, [sidebarCollapsed, sidebarWidth, viewportWidth]);
+  // tl1426: 子代理详情态的 1:1 目标宽——对话区保底（CHAT_MIN_WIDTH）先于
+  // 对半生效，与宽态公式的保底顺序同源。
+  const subagentDetailSplitTarget = useMemo(
+    () =>
+      subagentDetailSplitTargetWidth({
+        viewportWidth,
+        sidebarWidth,
+        sidebarCollapsed,
+        resizerWidth: WORKSPACE_RESIZER_WIDTH,
+        chatMinWidth: CHAT_MIN_WIDTH,
+      }),
+    [sidebarCollapsed, sidebarWidth, viewportWidth],
+  );
   // The dock keeps one width across tab switches (context/files/changed):
   // the tree width is the single source so toggling tabs never resizes the
   // sidebar. Preview detail stays inside the dock without widening it.
-  const preferredWorkspacePanelWidth = sideDockWideActive
-    ? Math.max(rightDockTreeWidth, sideDockWideTargetWidth)
-    : sideDockUserWidthActive
-      ? rightDockTreeWidth
-      : RIGHT_DOCK_TREE_NARROW_WIDTH;
+  const preferredWorkspacePanelWidth = subagentsDetailWideActive
+    ? subagentDetailUserWidthActive
+      ? subagentDetailDockWidth
+      : subagentDetailSplitTarget
+    : sideDockWideActive
+      ? Math.max(rightDockTreeWidth, sideDockWideTargetWidth)
+      : sideDockUserWidthActive
+        ? rightDockTreeWidth
+        : RIGHT_DOCK_TREE_NARROW_WIDTH;
   // tl1108: 窄态收回到 246（关最后文件复位 246 的落地点）—— min 随态取值，
   // 否则 300 的旧地板会把「回到 246」顶掉。
   const rightDockTreeMinWidth = sideDockWideActive
@@ -3153,6 +3182,17 @@ export default function App() {
       // 宽度（用户拍板：宽度记忆为核心；旧版 94e9e1cd0 对照=宽度本有记忆）。
       useLayoutStore.getState().setSideDockUserWidthActive(true);
       saveSideDockUserWidthActive(true);
+      // tl1426（需求①）：子代理详情态驱动 dock 时，同一次显式写宽也喂给该态
+      // 自己的宽度记忆（拖动松手/键盘/加宽按钮同路入记忆；1:1 默认从此让位
+      // 用户值）。双击复位走 resetWorkspacePanelWidth 的清位路径。
+      const layoutState = useLayoutStore.getState();
+      if (layoutState.subagentsDetailWideActive) {
+        const detailNext = clampSubagentDetailDockWidth(next, workspacePanelAvailableWidth);
+        layoutState.setSubagentDetailDockWidth(detailNext);
+        saveSubagentDetailDockWidth(detailNext);
+        layoutState.setSubagentDetailUserWidthActive(true);
+        saveSubagentDetailUserWidthActive(true);
+      }
     },
     [closeTransientOverlays, rightDockTreeWidthClamp, workspacePanelAvailableWidth],
   );
@@ -3333,6 +3373,9 @@ export default function App() {
         // tl1108/1109: 切走文件/子代理 tab ⇒ 该 tab 的方案 E 加宽指示一并清
         // （切回时由面板重新上报），避免宽态残留把「关最后文件回落 246」盖掉。
         useLayoutStore.getState().setSideDockWideActive(false);
+        // tl1426: 来源标识同源清理（面板卸载清理之外的第二道闸，防切 tab
+        // 瞬间残留把 1:1 分支带进别的 tab）。
+        useLayoutStore.getState().setSubagentsDetailWideActive(false);
       }
       setRightDockMode(mode);
       saveRightDockMode(mode, activeWorkspaceRoot);
@@ -5430,6 +5473,30 @@ export default function App() {
   const workspacePanelResetWidth = desktopLayoutStyle === "creation"
     ? defaultCreationRightDockTreeWidth()
     : defaultRightDockTreeWidth();
+  // tl1426（需求①）：双击复位——子代理详情态回到 1:1 默认（清该态用户指示，
+  // 默认公式重新接管、随视口自适应）；其余态维持 workspacePanelResetWidth
+  // 既有语义。顺序敏感：先走 setSavedWorkspacePanelWidth（会把当前详情态
+  // 宽度入记忆），再覆写该态记忆为目标宽并清指示位。
+  const resetWorkspacePanelWidth = useCallback(
+    () => {
+      setSavedWorkspacePanelWidth(workspacePanelResetWidth);
+      const layoutState = useLayoutStore.getState();
+      if (layoutState.subagentsDetailWideActive) {
+        const target = subagentDetailSplitTargetWidth({
+          viewportWidth,
+          sidebarWidth,
+          sidebarCollapsed,
+          resizerWidth: WORKSPACE_RESIZER_WIDTH,
+          chatMinWidth: CHAT_MIN_WIDTH,
+        });
+        layoutState.setSubagentDetailDockWidth(target);
+        saveSubagentDetailDockWidth(target);
+        layoutState.setSubagentDetailUserWidthActive(false);
+        saveSubagentDetailUserWidthActive(false);
+      }
+    },
+    [setSavedWorkspacePanelWidth, sidebarCollapsed, sidebarWidth, viewportWidth, workspacePanelResetWidth],
+  );
   const workspacePanelResizeMinWidth = workspacePanelAriaMinWidth(workspacePanelMinWidth, workspacePanelRenderWidth);
   const workspacePanelResizeMaxWidth = workspacePanelAvailableWidth;
   const sidebarCreation = desktopLayoutStyle === "creation";
@@ -6651,7 +6718,7 @@ export default function App() {
             aria-valuenow={workspacePanelRenderWidth}
             onPointerDown={startWorkspacePanelResize}
             onKeyDown={resizeWorkspacePanelWithKeyboard}
-            onDoubleClick={() => setSavedWorkspacePanelWidth(workspacePanelResetWidth)}
+            onDoubleClick={resetWorkspacePanelWidth}
           />
         )}
 
