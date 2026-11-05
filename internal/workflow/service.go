@@ -56,6 +56,10 @@ type RunRecord struct {
 	EndedAt   time.Time
 	Err       string
 	Report    *WorkflowReport
+	// sessionID 是发起会话的分支号（tl1434）：工作流节点详情按它定位子代理
+	// transcript 归属（与 meta.ParentSession 同一身份）。resume-from-panel 的
+	// 空会话/重启恢复的旧快照为空——查看面按「无关联」降级。
+	sessionID string
 
 	mu        sync.Mutex
 	nodes     map[string]*nodeRecord
@@ -83,6 +87,13 @@ type nodeRecord struct {
 	// 各自计起点）；终态事件到达时与 changedAt 相减即单节点耗时（任务 934
 	// 块③指标面）。
 	startedAt time.Time
+	// subagentRefs / subagentRefParents 是 tl1434 的 nodeId→子代理执行实例
+	// 登记（append-only）：每次派发（含门循环各轮）产生的持久化 transcript
+	// ref 按执行序追加，parents 与 refs 一一对应（跨会话 resume 后新派发的
+	// 归属可能与 run 级 sessionID 不同，所以按次登记）。空=无关联（老 run、
+	// ephemeral 派发、gate/join 节点），查看面按此降级。
+	subagentRefs       []string
+	subagentRefParents []string
 }
 
 // RunnerSource 按「调用方会话分支号」解析该会话的子代理基底。boot 注册；
@@ -251,6 +262,7 @@ func (s *Service) RunWorkflow(ctx context.Context, name string, resumeRunID stri
 			def:            wf,
 			defFingerprint: defFingerprint(wf),
 			nodes:          map[string]*nodeRecord{},
+			sessionID:      sessionID,
 		}
 		s.runs[runID] = rec
 		s.order = append(s.order, runID)
@@ -261,6 +273,11 @@ func (s *Service) RunWorkflow(ctx context.Context, name string, resumeRunID stri
 		runCtx = agent.WithParentSession(runCtx, sessionID)
 		runCtx = jobs.WithSession(runCtx, sessionID)
 	}
+	// tl1434: 子代理 transcript ref 的 run 级登记口——runner 派发后经此闭包
+	// 把 nodeId→ref 落进 RunRecord（append-only），面板「工作过程」由此回放。
+	runCtx = withSubagentRefRecorder(runCtx, func(req SubagentRequest, ref, parentSession string) {
+		s.recordSubagentRef(runID, req, ref, parentSession)
+	})
 	rec.mu.Lock()
 	rec.cancel = cancel
 	rec.cancelled = false
@@ -369,6 +386,9 @@ func (s *Service) persistCheckpoint(runID string, cd *CheckpointData) {
 			if ns.Round == 0 {
 				ns.Round = nr.round
 			}
+			// tl1434：执行实例关联随快照落盘（重启后面板仍可回放）。
+			ns.SubagentRefs = nr.subagentRefs
+			ns.SubagentRefParents = nr.subagentRefParents
 		}
 		merged[id] = ns
 	}
@@ -390,6 +410,7 @@ func (s *Service) buildSnapshotLocked(rec *RunRecord, nodes map[string]nodeSnaps
 		StartedAt:      rec.StartedAt,
 		Cancelled:      rec.cancelled,
 		Nodes:          nodes,
+		SessionID:      rec.sessionID,
 	}
 	if rec.lastCP != nil {
 		snap.Phase = rec.lastCP.Phase
@@ -479,6 +500,52 @@ func (s *Service) ResumeRunFromPanel(ctx context.Context, runID string) (builtin
 	return s.RunWorkflow(ctx, workflowName, runID)
 }
 
+// recordSubagentRef 是 tl1434 的登记落点（runner 派发尾经 runCtx 闭包调
+// 用，任意 goroutine）：append-only 追加该节点的执行实例关联，不触碰既有
+// 六态/输出记录（并发安全口径与 recordNode 相同——rec.mu 串行化）。
+func (s *Service) recordSubagentRef(runID string, req SubagentRequest, ref, parentSession string) {
+	s.mu.Lock()
+	rec, ok := s.runs[runID]
+	s.mu.Unlock()
+	if !ok {
+		return
+	}
+	rec.mu.Lock()
+	nr, seen := rec.nodes[req.NodeID]
+	if !seen {
+		nr = &nodeRecord{}
+		rec.nodes[req.NodeID] = nr
+		rec.order = append(rec.order, req.NodeID)
+	}
+	nr.subagentRefs = append(nr.subagentRefs, ref)
+	nr.subagentRefParents = append(nr.subagentRefParents, parentSession)
+	rec.mu.Unlock()
+	s.touch()
+}
+
+// SubagentRefForNode 返回某节点第 occurrence 次（1-based）执行登记的
+// transcript ref 与其归属父会话（desktop 查看桥的归属证明：ref 只能来自
+// 登记表，不能任意指名读盘）。无关联（未知 run/节点、越界 occurrence、
+// 空表）返回明确错误——查看面按错误降级，绝不猜。
+func (s *Service) SubagentRefForNode(runID, nodeID string, occurrence int) (ref, parentSession string, err error) {
+	s.mu.Lock()
+	rec, ok := s.runs[runID]
+	s.mu.Unlock()
+	if !ok {
+		return "", "", fmt.Errorf("unknown run %q; the run list is in the workflow panel", runID)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	nr := rec.nodes[nodeID]
+	if nr == nil || len(nr.subagentRefs) == 0 {
+		return "", "", fmt.Errorf("node %q has no recorded sub-agent execution trace (legacy run or non-persisted dispatch)", nodeID)
+	}
+	if occurrence < 1 || occurrence > len(nr.subagentRefs) {
+		return "", "", fmt.Errorf("occurrence %d out of range: node %q has %d recorded executions", occurrence, nodeID, len(nr.subagentRefs))
+	}
+	return nr.subagentRefs[occurrence-1], nr.subagentRefParents[occurrence-1], nil
+}
+
 // RunNodeSnapshot 是一次运行中一个节点的锁外快照。
 type RunNodeSnapshot struct {
 	ID        string
@@ -489,6 +556,10 @@ type RunNodeSnapshot struct {
 	ChangedAt time.Time
 	// StartedAt 是本轮 running 起点（零值 = 未见 running，如排队即跳过）。
 	StartedAt time.Time
+	// SubagentRefs / SubagentRefParents 是 tl1434 的执行实例关联快照
+	// （append-only，执行序）。空=无关联，面板按降级显示。
+	SubagentRefs       []string
+	SubagentRefParents []string
 }
 
 // RunSnapshot 是一次运行的锁外快照（desktop hub 组装面板 wire 用）。
@@ -533,13 +604,15 @@ func (s *Service) Snapshot() []RunSnapshot {
 				continue
 			}
 			snap.Nodes = append(snap.Nodes, RunNodeSnapshot{
-				ID:        nid,
-				NodeType:  nr.nodeType,
-				State:     nr.state,
-				Round:     nr.round,
-				Detail:    nr.detail,
-				ChangedAt: nr.changedAt,
-				StartedAt: nr.startedAt,
+				ID:                 nid,
+				NodeType:           nr.nodeType,
+				State:              nr.state,
+				Round:              nr.round,
+				Detail:             nr.detail,
+				ChangedAt:          nr.changedAt,
+				StartedAt:          nr.startedAt,
+				SubagentRefs:       append([]string(nil), nr.subagentRefs...),
+				SubagentRefParents: append([]string(nil), nr.subagentRefParents...),
 			})
 		}
 		rec.mu.Unlock()
@@ -597,6 +670,9 @@ func (s *Service) finishRun(runID string, report *WorkflowReport, runErr error) 
 				if ns.Round == 0 {
 					ns.Round = nr.round
 				}
+				// tl1434：同 persistCheckpoint，终态快照也带执行实例关联。
+				ns.SubagentRefs = nr.subagentRefs
+				ns.SubagentRefParents = nr.subagentRefParents
 			}
 			merged[id] = ns
 		}
@@ -634,6 +710,7 @@ func (s *Service) restoreFromDisk() {
 			defFingerprint: snap.DefFingerprint,
 			nodes:          map[string]*nodeRecord{},
 			Err:            snap.Err,
+			sessionID:      snap.SessionID, // tl1434：回填发起会话，恢复后仍可回放
 		}
 		for _, nid := range snap.NodeOrder {
 			ns, ok := snap.Nodes[nid]
@@ -649,6 +726,9 @@ func (s *Service) restoreFromDisk() {
 				// 视图侧按「未知」省略）。startedAt 刻意不回填：续跑重放终态事件
 				// 会把 changedAt 刷成重放时刻，配旧起点会把停机时长算进单节点耗时。
 				changedAt: ns.ChangedAt,
+				// tl1434：执行实例关联随快照回填（旧快照无字段=无关联，降级）。
+				subagentRefs:       ns.SubagentRefs,
+				subagentRefParents: ns.SubagentRefParents,
 			}
 			if nr.state == "" {
 				// skip 等无事件节点：六态缺省 queued（面板 queued-gray 语义）。

@@ -842,6 +842,10 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	// stream so the frontend can bind the live card to the on-disk transcript
 	// (the dock live view reads through the ref). Empty for ephemeral runs.
 	trk.setRef(run.Ref)
+	// tl1434: 同一处把 ref 登记进派发方装的 ctx sink——工作流节点详情的
+	// 「工作过程」只读回放靠它建立 nodeId→执行实例关联（ephemeral 空 ref
+	// 为 no-op，legacy 无 sink 路径零成本）。
+	RecordSubagentRef(ctx, run.Ref)
 	lifecyclePhase := "child_created"
 	if strings.TrimSpace(spec.Context.ContinueFrom) != "" || strings.TrimSpace(spec.Context.ForkFrom) != "" {
 		lifecyclePhase = "child_resume"
