@@ -1,6 +1,6 @@
 import { createContext, lazy, memo, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { BrainCircuit, ChevronDown, FileText, GitBranch, Image, MessageSquare, Pencil, RotateCcw, ScrollText } from "lucide-react";
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import { BrainCircuit, ChevronDown, ExternalLink, FileText, FolderOpen, GitBranch, Image, MessageSquare, Pencil, RotateCcw, ScrollText } from "lucide-react";
 import { Markdown } from "./Markdown";
 import { CopyButton } from "./CopyButton";
 import { ComposerContextCard } from "./ComposerContextCard";
@@ -30,6 +30,9 @@ import { formatSelectionLabels, languageFor, parseSelectedTextContext, stripSele
 // 任务1122: 助手消息时间戳复用 TranscriptCards 的 CardTime（998 同款三档
 // 契约），避免两处重复实现格式化逻辑。
 import { CardTime } from "./TranscriptCards";
+import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
+import { MarkdownImageTabContext } from "./MarkdownImageContext";
+import { useToast } from "../lib/toast";
 
 const AssistantReasoningPanel = lazy(() => import("./AssistantReasoningPanel").then((module) => ({ default: module.AssistantReasoningPanel })));
 const MemoryCitations = lazy(() => import("./MemoryCitations").then((module) => ({ default: module.MemoryCitations })));
@@ -45,6 +48,144 @@ const TURN_TAIL_FILES_VISIBLE = 5;
 // 与 checkpoint tooltip 同一 basename 惯例：chip 只显文件名，全路径进 title。
 function fileBasename(path: string): string {
   return path.split(/[/\\]/).pop() || path;
+}
+
+// tl1421：打开失败 toast 附原因（与 githubLink / TranscriptSelectionMenu 同款就地提取）。
+function turnChipErrorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * tl1421：回合结算行「本轮文件」chip 可点击。
+ *
+ * 链路全部复用既有 opener 家族（任务 1060/1138/1158 先例，零新后端）：
+ *  - 探针 ResolveOpenablePathForTab(tabId, file) 一次性权威判定——相对路径按
+ *    会话项目根解析（绝不落 desktop 进程 cwd）、存在性 stat、opener 门禁
+ *    （可执行目标拒绝）、逃出项目根拒绝。返回绝对路径 = 可开；空串 = 不存在 /
+ *    已移动 / 不可开 → chip 置灰 + title 说明，不发死调用。
+ *  - 左键 / 回车 = OpenLocalPath（默认应用打开）；右键 = 复用 ContextMenu
+ *    两项（用默认应用打开 / 在文件管理器中显示 RevealPath），文案与 1060
+ *    选中路径菜单同源。
+ *  - tabId 来自 MarkdownImageTabContext（Transcript 根上提供，turn-actions 行
+ *    在其子树内）；探针在途时点击不落空——await 在途探针后按结果走（1158
+ *    乐观 chip 同款语义）。
+ */
+function TurnFileChip({ file }: { file: string }) {
+  const t = useT();
+  const { showToast } = useToast();
+  const tabId = useContext(MarkdownImageTabContext);
+  const [resolved, setResolved] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [menuPoint, setMenuPoint] = useState<ContextMenuPoint | null>(null);
+  const probeRef = useRef<Promise<string | null> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const probe = app.ResolveOpenablePathForTab(tabId, file)
+      .then((absolute) => {
+        if (cancelled) return null;
+        if (absolute) setResolved(absolute);
+        else setMissing(true);
+        return absolute || null;
+      })
+      .catch(() => {
+        if (!cancelled) setMissing(true);
+        return null;
+      });
+    probeRef.current = probe;
+    return () => { cancelled = true; };
+  }, [file, tabId]);
+
+  const awaitResolved = useCallback(
+    () => (probeRef.current ?? Promise.resolve(null)) as Promise<string | null>,
+    [],
+  );
+
+  const openDefault = useCallback(async () => {
+    const absolute = await awaitResolved();
+    if (!absolute) return;
+    try {
+      await app.OpenLocalPath(absolute);
+    } catch (error) {
+      showToast(t("localPath.openFailed", { path: file, error: turnChipErrorText(error) }), "error");
+    }
+  }, [awaitResolved, file, showToast, t]);
+
+  const reveal = useCallback(async () => {
+    const absolute = await awaitResolved();
+    if (!absolute) return;
+    try {
+      await app.RevealPath(absolute);
+    } catch (error) {
+      showToast(t("externalOpener.failed", { name: t("externalOpener.reveal"), error: turnChipErrorText(error) }), "error");
+    }
+  }, [awaitResolved, showToast, t]);
+
+  // 右键 = 次级入口（打开所在目录等两项）。菜单锚点必须在 await 前同步算好：
+  // 合成事件的 currentTarget 只在派发期间有效。探针未过（缺失态）不开菜单。
+  const openChipMenu = useCallback(async (event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = contextMenuPointFromEvent(event);
+    const absolute = await awaitResolved();
+    if (!absolute) return;
+    setMenuPoint(point);
+  }, [awaitResolved]);
+
+  const chipMenuItems = useMemo<ContextMenuItem[]>(() => [
+    {
+      key: "open-default",
+      icon: <ExternalLink size={13} aria-hidden="true" />,
+      label: t("externalOpener.openDefault"),
+      onSelect: () => { setMenuPoint(null); void openDefault(); },
+    },
+    {
+      key: "reveal",
+      icon: <FolderOpen size={13} aria-hidden="true" />,
+      label: t("externalOpener.reveal"),
+      onSelect: () => { setMenuPoint(null); void reveal(); },
+    },
+  ], [openDefault, reveal, t]);
+
+  if (missing) {
+    return (
+      <span
+        className="turn-actions__file-chip turn-actions__file-chip--missing"
+        title={t("turnActions.fileMissing", { path: file })}
+      >
+        {fileBasename(file)}
+      </span>
+    );
+  }
+  const openable = resolved !== null;
+  return (
+    <>
+      <span
+        role={openable ? "button" : undefined}
+        tabIndex={openable ? 0 : undefined}
+        aria-haspopup={openable ? "menu" : undefined}
+        className={`turn-actions__file-chip${openable ? " turn-actions__file-chip--openable" : ""}`}
+        title={file}
+        onClick={() => { void openDefault(); }}
+        onContextMenu={(event) => { void openChipMenu(event); }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          void openDefault();
+        }}
+      >
+        {fileBasename(file)}
+      </span>
+      <ContextMenu
+        open={menuPoint !== null}
+        point={menuPoint}
+        items={chipMenuItems}
+        onClose={() => setMenuPoint(null)}
+        minWidth={200}
+        ariaLabel={t("turnActions.turnFiles")}
+      />
+    </>
+  );
 }
 // token 读数与状态栏 formatTokenCount 同格式（toLocaleString 全量）。
 function formatTurnTokens(tokens: number): string {
@@ -1096,13 +1237,14 @@ export function TurnActions({
       )}
       {/* 任务 1137：本轮修改文件卡片——换行块占满工具栏行第二行（行容器本就
           flex-wrap）。明细与 1155 的 files 计数同源（toolFilePaths），计数是
-          明细的 size，两处口径永不漂移。零工具轮不渲染。 */}
+          明细的 size，两处口径永不漂移。零工具轮不渲染。tl1421：chip 可点击
+          （默认应用打开；右键菜单可定位所在目录），缺失态置灰，见 TurnFileChip。 */}
       {tailFiles.length > 0 && (
         <div className="turn-actions__files">
           <span className="turn-actions__files-label">{t("turnActions.turnFiles")}</span>
           <span className="turn-actions__file-chips">
             {shownFiles.map((file) => (
-              <span key={file} className="turn-actions__file-chip" title={file}>{fileBasename(file)}</span>
+              <TurnFileChip key={file} file={file} />
             ))}
             {visibleFilesExpanded && (
               <button

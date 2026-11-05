@@ -195,7 +195,15 @@ console.log("\ntl1137 turn-tail info band");
   globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
   globalThis.ResizeObserver = TestResizeObserver;
   (window as unknown as { go: unknown }).go = {
-    main: { App: { ClipboardSetText: async () => true } },
+    main: {
+      App: {
+        ClipboardSetText: async () => true,
+        // tl1421: 文件 chip 挂了探针（ResolveOpenablePathForTab）；本套只验
+        // 渲染面（chip 数/title/折叠），mock 按原样回显路径=可点击态，
+        // title=file 的既有断言在 pending/openable 两态下都不变。
+        ResolveOpenablePathForTab: async (_tabID: string, path: string) => path,
+      },
+    },
   };
 
   const flushTimers = (): Promise<void> => new Promise((r) => setTimeout(r, 0));

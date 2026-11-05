@@ -5042,6 +5042,8 @@ export const en = {
   "turnActions.filesMore": "+{n} more",
   "turnActions.filesFewer": "Show less",
   "turnActions.turnMetaTitle": "Turn input/output tokens and completion time",
+  // tl1421: missing-file chip (ResolveOpenablePathForTab probe empty) hover note.
+  "turnActions.fileMissing": "File missing or moved, cannot open: {path}",
   "transcript.jumpToBottom": "Jump to bottom",
   "markdown.tableExpandAll": "Expand all {n} rows",
   "markdown.tableCollapse": "Collapse table",
