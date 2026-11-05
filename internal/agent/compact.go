@@ -347,23 +347,28 @@ func (a *Agent) planCompaction(msgs []provider.Message, min int, force bool) (he
 	if a.destinationContextWindow() > 0 {
 		budget := a.recentTailBudget()
 		if force {
-			if half := a.estimatedPromptTokens(modelInputMessages(msgs)) / 2; half > 0 && half < budget {
+			if half := estimateMessagesTokens(modelInputMessages(msgs)) / 2; half > 0 && half < budget {
 				budget = half
 			}
 		}
-		// tl1395: the tail budget is a share of the window, so the boundary must
-		// be planned on the SAME calibrated ruler the window comparison and the
-		// install gate bill with (messageTokens prices images and drifts with the
-		// session calibration). The old msgChars×tokPerChar census cannot see
-		// images: it left whole screenshot batches in the verbatim tail, the
-		// installed projection crossed the window, and the next request paid the
-		// 400 → rescue → 压前反升 chain.
+		// tl1395: the PREFERRED boundary walks the billing ruler (messageTokens
+		// prices images and drifts with the session calibration). The old
+		// msgChars×tokPerChar census could not see images: it left whole
+		// screenshot batches in the verbatim tail, the installed projection
+		// crossed the window, and the next request paid the 400 → rescue →
+		// 压前反升 chain.
 		start = tailStart(msgs, head, budget, a.messageTokens, a.tailFloor())
-		// Remeasure when force or non-strict roles; strict-alternating otherwise
-		// keeps a cheap per-message overestimate of the tail under force.
+		// Conservative second opinion (kept from the pre-tl1395 shape): the
+		// estimateTextTokens census errs HIGH (~1 token per rune — 4x the real
+		// ASCII rate, ~right for CJK), so a tail the cheap walk admits can still
+		// be trimmed further when the session drifts from the cold estimate.
+		// It only ever advances start — over-folding, never under-folding — and
+		// the install gate (acceptCheckpointCandidate) keeps an over-fold from
+		// raising the projection. tailStart already bounds the tail at the
+		// budget on the billing ruler; this census is pure extra safety.
 		floor := max(head, len(msgs)-a.tailFloor())
 		remeasure := force || !a.strictAlternatingRoles
-		for remeasure && start < floor && a.estimatedPromptTokens(modelInputMessages(msgs[start:])) > budget {
+		for remeasure && start < floor && estimateMessagesTokens(provider.ModelMessages(msgs[start:])) > budget {
 			start++
 			for start < floor && start < len(msgs) && msgs[start].Role == provider.RoleTool {
 				start++
