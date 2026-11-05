@@ -1474,10 +1474,12 @@ func recordSessionContentRevision(path string, digest [sha256.Size]byte, baseRev
 	if err != nil {
 		return 0, err
 	}
+	committed := meta.Revision
 	if ok && stored.Revision > 0 {
-		return stored.Revision, nil
+		committed = stored.Revision
 	}
-	return meta.Revision, nil
+	noteLedgerCommit(path, committed, digest)
+	return committed, nil
 }
 
 func digestString(digest [sha256.Size]byte) string {
