@@ -1191,6 +1191,8 @@ export const en = {
   "imageViewer.title": "Image preview",
   "imageViewer.prevImage": "Previous image",
   "imageViewer.nextImage": "Next image",
+  "imageViewer.saveToLocal": "Save to local",
+  "imageViewer.saveFailed": "Could not save image: {error}",
   "composer.attachImageFailed": "Image paste failed",
   "composer.attachAudioFailed": "Audio attach failed",
   "composer.audioTooLarge": "Audio file exceeds the 50 MB inline limit",

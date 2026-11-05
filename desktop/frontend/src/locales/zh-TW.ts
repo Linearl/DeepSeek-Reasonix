@@ -878,6 +878,8 @@ export const zhTW: Record<DictKey, string> = {
   "imageViewer.title": "圖片預覽",
   "imageViewer.prevImage": "上一張",
   "imageViewer.nextImage": "下一張",
+  "imageViewer.saveToLocal": "儲存到本機",
+  "imageViewer.saveFailed": "儲存圖片失敗：{error}",
   "composer.imageInputUnsupported": "目前模型不會直接接收圖片。請在設定中配置圖片理解模型，或切換到支援圖片的模型；也可讓 OCR/識圖 MCP 工具讀取附件路徑。",
   "composer.imageInputUnsupportedDeepSeek": "目前模型不會直接接收圖片。請在設定中配置圖片理解模型，或切換到支援圖片的模型；也可讓 OCR/識圖 MCP 工具讀取附件路徑。",
   "composer.contextItems": "上下文項目",
