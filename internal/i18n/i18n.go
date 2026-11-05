@@ -411,6 +411,17 @@ type Messages struct {
 	ListMcpHeader       string // "mcp servers"
 	ListMcpNone         string // no mcp servers
 
+	// Cross-session collaboration (talk_to_session receipts).
+	// CollabIdentitySnapshotRejectedFmt (tl1431): the boot snapshot carried
+	// ANOTHER session's contact_id (snapshot path ≠ live path, the tl1403
+	// pollution signature), so the snapshot identity was rejected and the
+	// mail left under the live-path identity instead. The receipt must name
+	// the reason and the self-relocation hint — never silently swap the
+	// sender's identity. Positional args: %s = snapshot session path,
+	// %s = rejected snapshot contact_id, %s = live session path,
+	// %s = live contact_id the mail actually left under.
+	CollabIdentitySnapshotRejectedFmt string
+
 	// in-chat memory/model/rewind notices.
 
 	MemoryEditHint               string
