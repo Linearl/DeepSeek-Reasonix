@@ -1209,6 +1209,7 @@ export const en = {
   "imageAnnotation.save": "Save to input",
   "imageAnnotation.textPlaceholder": "Type annotation text",
   "imageAnnotation.inputDisabled": "Image attachments are disabled for this session; the annotated image cannot be added to the input box",
+  "imageAnnotation.loadFailed": "The image could not be loaded for annotation",
   "imageAnnotation.attachFailed": "Failed to save the annotated image",
   "composer.attachImageFailed": "Image paste failed",
   "composer.attachAudioFailed": "Audio attach failed",

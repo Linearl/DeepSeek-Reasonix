@@ -1205,6 +1205,7 @@ export const zh: Record<DictKey, string> = {
   "imageAnnotation.save": "保存到输入框",
   "imageAnnotation.textPlaceholder": "输入标注文字",
   "imageAnnotation.inputDisabled": "当前会话未开启图片附件，标注结果无法加入输入框",
+  "imageAnnotation.loadFailed": "图片加载失败，无法标注",
   "imageAnnotation.attachFailed": "标注图片保存失败",
   "composer.attachImageFailed": "图片粘贴失败",
   "composer.attachAudioFailed": "音频附件添加失败",

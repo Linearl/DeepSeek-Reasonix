@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, PenTool, X } from "lucide-react";
 import { useT } from "../lib/i18n";
+import { ImageAnnotationEditor } from "./ImageAnnotationEditor";
 
 /** One navigable entry of a multi-image viewer session (tl1289). */
 export interface ImageViewerImage {
@@ -34,6 +35,11 @@ export interface ImageViewerProps {
  * It follows the same portal pattern as MermaidDiagram fullscreen:
  * the overlay is portaled into .chat-pane (fallback document.body) so it
  * covers the chat area without being clipped by overflow containers.
+ *
+ * tl1412: the toolbar grows an "annotate" button that swaps the preview for
+ * the ImageAnnotationEditor (canvas overlay on top of the untouched image).
+ * Finishing the edit hands the composite PNG to the composer attach channel
+ * and closes the viewer; cancelling just returns to the plain preview.
  */
 export function ImageViewer({ open, imageUrl, imageName, onClose, images, initialIndex }: ImageViewerProps) {
   const t = useT();
@@ -41,6 +47,10 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
   const [visible, setVisible] = useState(false);
   // tl1289: position inside the multi-image list; -1 means "single-image mode".
   const [index, setIndex] = useState(0);
+  // tl1412: annotation mode. Entering is explicit (toolbar button); leaving
+  // is either cancel (back to the preview, original untouched) or complete
+  // (composite PNG handed to the composer channel, viewer closes).
+  const [annotating, setAnnotating] = useState(false);
 
   const total = images?.length ?? 0;
   const multi = total > 1;
@@ -53,6 +63,14 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
     const wanted = initialIndex ?? 0;
     setIndex(Math.min(Math.max(wanted, 0), total - 1));
   }, [open, multi, initialIndex, total]);
+
+  // Freshly opened viewers (and switched entries) always start in preview.
+  useEffect(() => {
+    if (!open) setAnnotating(false);
+  }, [open]);
+  useEffect(() => {
+    setAnnotating(false);
+  }, [imageUrl, safeIndex]);
 
   const goPrev = useCallback(() => {
     setIndex((i) => Math.max(0, Math.min(i, total - 1) - 1));
@@ -76,9 +94,12 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
   }, [open]);
 
   // Close on Escape; tl1289: switch on ArrowLeft/ArrowRight in multi-image mode.
+  // tl1412: while the annotation editor is up it owns Escape (capture-phase,
+  // steps back editor → preview), so the viewer ignores all keys here.
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (annotating) return;
       if (event.key === "Escape") {
         onClose();
         return;
@@ -89,7 +110,7 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose, multi, goPrev, goNext]);
+  }, [open, onClose, multi, goPrev, goNext, annotating]);
 
   // Prevent body scroll while open.
   useEffect(() => {
@@ -103,10 +124,20 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
 
   const handleBackdropClick = useCallback(
     (e: React.MouseEvent) => {
+      // tl1412: a stray click on the dark border must never throw away an
+      // in-progress annotation session; only plain preview closes this way.
+      if (annotating) return;
       if (e.target === e.currentTarget) onClose();
     },
-    [onClose],
+    [onClose, annotating],
   );
+
+  const handleAnnotateComplete = useCallback(() => {
+    // The editor already handed the composite PNG to the composer attach
+    // channel (window event); close the whole viewer like a completed action.
+    setAnnotating(false);
+    onClose();
+  }, [onClose]);
 
   if (!open || !portalTarget || !current.url) return null;
 
@@ -118,48 +149,70 @@ export function ImageViewer({ open, imageUrl, imageName, onClose, images, initia
       aria-modal="true"
       aria-label={current.name || t("imageViewer.title")}
     >
-      <button
-        className="image-viewer__close"
-        type="button"
-        onClick={onClose}
-        aria-label={t("imageViewer.closePreview")}
-      >
-        <X size={22} />
-      </button>
-      {multi && (
+      {!annotating && (
         <>
-          <div className="image-viewer__counter">
-            {safeIndex + 1} / {total}
-          </div>
           <button
-            className="image-viewer__nav image-viewer__nav--prev"
+            className="image-viewer__close"
             type="button"
-            onClick={goPrev}
-            disabled={safeIndex <= 0}
-            aria-label={t("imageViewer.prevImage")}
+            onClick={onClose}
+            aria-label={t("imageViewer.closePreview")}
           >
-            <ChevronLeft size={22} />
+            <X size={22} />
           </button>
           <button
-            className="image-viewer__nav image-viewer__nav--next"
+            className="image-viewer__annotate"
             type="button"
-            onClick={goNext}
-            disabled={safeIndex >= total - 1}
-            aria-label={t("imageViewer.nextImage")}
+            onClick={() => setAnnotating(true)}
+            aria-label={t("imageViewer.annotate")}
+            title={t("imageViewer.annotate")}
           >
-            <ChevronRight size={22} />
+            <PenTool size={18} />
           </button>
+          {multi && (
+            <>
+              <div className="image-viewer__counter">
+                {safeIndex + 1} / {total}
+              </div>
+              <button
+                className="image-viewer__nav image-viewer__nav--prev"
+                type="button"
+                onClick={goPrev}
+                disabled={safeIndex <= 0}
+                aria-label={t("imageViewer.prevImage")}
+              >
+                <ChevronLeft size={22} />
+              </button>
+              <button
+                className="image-viewer__nav image-viewer__nav--next"
+                type="button"
+                onClick={goNext}
+                disabled={safeIndex >= total - 1}
+                aria-label={t("imageViewer.nextImage")}
+              >
+                <ChevronRight size={22} />
+              </button>
+            </>
+          )}
         </>
       )}
-      <div className="image-viewer__content">
-        <img
-          className="image-viewer__image"
-          src={current.url}
-          alt={current.name || ""}
-          draggable={false}
+      {annotating ? (
+        <ImageAnnotationEditor
+          imageUrl={current.url}
+          imageName={current.name}
+          onCancel={() => setAnnotating(false)}
+          onComplete={handleAnnotateComplete}
         />
-        {current.name && <div className="image-viewer__name">{current.name}</div>}
-      </div>
+      ) : (
+        <div className="image-viewer__content">
+          <img
+            className="image-viewer__image"
+            src={current.url}
+            alt={current.name || ""}
+            draggable={false}
+          />
+          {current.name && <div className="image-viewer__name">{current.name}</div>}
+        </div>
+      )}
     </div>
   );
 

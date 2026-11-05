@@ -7689,6 +7689,174 @@ body > .mermaid-diagram--fullscreen {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* tl1412: annotate entry button — sits left of the close button in the same
+   chrome family so the two read as one toolbar. */
+.image-viewer__annotate {
+  position: absolute;
+  top: 16px;
+  right: 60px;
+  z-index: var(--z-local-raised);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.image-viewer__annotate:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+
+/* ---- tl1412 ImageAnnotationEditor (canvas overlay on the untouched image) */
+.image-annotation {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 94vw;
+}
+.image-annotation__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+.image-annotation__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.image-annotation__spacer {
+  flex: 0 0 8px;
+}
+.image-annotation__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.image-annotation__btn:hover:not(:disabled) {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+.image-annotation__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.image-annotation__btn--active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.image-annotation__btn--text {
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.image-annotation__btn--primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.image-annotation__btn--primary:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-fg);
+  filter: brightness(1.08);
+}
+.image-annotation__swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.image-annotation__swatch--active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.image-annotation__width-dot {
+  display: inline-block;
+  border-radius: 50%;
+  background: currentColor;
+}
+.image-annotation__width-dot[data-width="2"] {
+  width: 4px;
+  height: 4px;
+}
+.image-annotation__width-dot[data-width="4"] {
+  width: 8px;
+  height: 8px;
+}
+.image-annotation__width-dot[data-width="8"] {
+  width: 12px;
+  height: 12px;
+}
+.image-annotation__stage {
+  position: relative;
+  display: inline-block;
+  max-width: 90vw;
+  max-height: 76vh;
+}
+.image-annotation__image {
+  display: block;
+  max-width: 90vw;
+  max-height: 76vh;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+.image-annotation__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+.image-annotation__canvas--text {
+  cursor: text;
+}
+.image-annotation__text-input {
+  position: absolute;
+  min-width: 160px;
+  padding: 4px 6px;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-md);
+  resize: none;
+}
+.image-annotation__error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  color: var(--fg-dim);
+  font-size: var(--text-md);
+}
 
 .msg--assistant .msg__body {
   line-height: 1.68;
@@ -41584,7 +41752,7 @@ button.statusbar__mcp:focus-visible {
 }
 .collab-hub-panel__view--on {
   background: var(--bg-elevated, var(--bg));
-  color: var(--accent, var(--fg));
+  color: var(--accent);
   font-weight: 600;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-color) 8%, transparent);
 }
@@ -41638,7 +41806,7 @@ button.statusbar__mcp:focus-visible {
   flex: 1;
 }
 .collab-chat-view__activitybtn--on {
-  color: var(--accent, var(--fg));
+  color: var(--accent);
 }
 .collab-chat-view__body {
   flex: 1;
@@ -41785,7 +41953,7 @@ button.statusbar__mcp:focus-visible {
 }
 .collab-chat-view__tab--on {
   background: var(--bg-elevated, var(--bg));
-  color: var(--accent, var(--fg));
+  color: var(--accent);
   font-weight: 600;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-color) 8%, transparent);
 }
@@ -41820,7 +41988,7 @@ button.statusbar__mcp:focus-visible {
 }
 .collab-chat-view__diritem--on {
   background: var(--bg-soft);
-  border-left-color: var(--accent, var(--fg));
+  border-left-color: var(--accent);
 }
 /* 用户 1138：链名/预览截断处一律 ellipsis + title hover */
 .collab-chat-view__dirname {
@@ -42005,7 +42173,7 @@ button.statusbar__mcp:focus-visible {
 }
 .collab-chat-view__ctx > button:hover {
   background: var(--bg-soft);
-  color: var(--accent, var(--fg));
+  color: var(--accent);
 }
 .channel-chat__menuitem--muted {
   color: var(--text-muted, inherit);
@@ -42067,7 +42235,7 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
 }
 .channel-chat__mention {
-  color: var(--accent, var(--fg));
+  color: var(--accent);
   cursor: pointer;
   text-decoration: underline;
 }

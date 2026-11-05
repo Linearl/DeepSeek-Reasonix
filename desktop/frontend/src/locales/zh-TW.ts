@@ -896,6 +896,7 @@ export const zhTW: Record<DictKey, string> = {
   "imageAnnotation.save": "儲存到輸入框",
   "imageAnnotation.textPlaceholder": "輸入標註文字",
   "imageAnnotation.inputDisabled": "目前工作階段未開啟圖片附件，標註結果無法加入輸入框",
+  "imageAnnotation.loadFailed": "圖片載入失敗，無法標註",
   "imageAnnotation.attachFailed": "標註圖片儲存失敗",
   "composer.imageInputUnsupported": "目前模型不會直接接收圖片。請在設定中配置圖片理解模型，或切換到支援圖片的模型；也可讓 OCR/識圖 MCP 工具讀取附件路徑。",
   "composer.imageInputUnsupportedDeepSeek": "目前模型不會直接接收圖片。請在設定中配置圖片理解模型，或切換到支援圖片的模型；也可讓 OCR/識圖 MCP 工具讀取附件路徑。",
