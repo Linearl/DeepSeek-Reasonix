@@ -154,9 +154,19 @@ func (t *UseCapabilityTool) inspect(_ context.Context, id string) (string, error
 	if strings.HasPrefix(id, "skill:") {
 		if contract, ok := t.capabilityArgumentContract(id); ok {
 			payload["input_schema"] = contract.Schema
+			if params := tool.SchemaParams(contract.Schema); len(params) > 0 {
+				payload["parameters"] = params
+			}
 			payload["call_example"] = contract.Example
 			payload["schema_fingerprint"] = tool.SchemaFingerprint(contract.Schema)
+		} else {
+			// tl1438: an inspect without a schema must say so instead of
+			// letting the prose description read as a complete contract.
+			payload["schema_note"] = "no argument contract is available for this skill"
 		}
+	}
+	if e.Kind == capability.KindTool {
+		t.decorateRegistryToolInspect(payload, e)
 	}
 	if e.Kind == capability.KindGroup {
 		t.decorateGroupInspect(payload, e, cat)
@@ -261,6 +271,13 @@ func (t *UseCapabilityTool) decorateMCPInspect(payload map[string]any, e capabil
 		payload["description"] = selected.Description
 		payload["read_only"] = selected.ReadOnly
 		payload["input_schema"] = selected.Schema
+		if params := tool.SchemaParams(selected.Schema); len(params) > 0 {
+			payload["parameters"] = params
+		} else {
+			// tl1438: the cached schema is real but declares no properties —
+			// label it instead of letting an empty body read as truncated data.
+			payload["schema_note"] = "this MCP tool's schema declares no per-parameter properties"
+		}
 		payload["schema_fingerprint"] = tool.SchemaFingerprint(selected.Schema)
 		payload["call_example"] = map[string]any{
 			"action":        "call",
@@ -279,6 +296,46 @@ func (t *UseCapabilityTool) decorateMCPInspect(payload map[string]any, e capabil
 
 func (t *UseCapabilityTool) capabilityAudit() *capability.Audit {
 	return t.audit
+}
+
+// registryToolNameForEntry resolves the registry name behind a local catalog
+// entry. The entry's own ToolName is authoritative (it is the name the
+// registry was seeded with); the "tool:" trim only covers hand-built test
+// catalogs that predate the field.
+func registryToolNameForEntry(e capability.Entry) string {
+	if name := strings.TrimSpace(e.ToolName); name != "" {
+		return name
+	}
+	return strings.TrimSpace(strings.TrimPrefix(e.ID, "tool:"))
+}
+
+// decorateRegistryToolInspect attaches the machine schema layer (tl1438) for
+// local registry-backed tools (heartbeat_task_upsert and friends). The raw
+// schema comes straight from the tool's own Schema() — the same bytes the
+// provider layer advertises and argument validation enforces — so the inspect
+// surface cannot drift from the engine definition. A tool whose schema
+// declares no properties gets an explicit schema_note instead of fabricated
+// parameter rows.
+func (t *UseCapabilityTool) decorateRegistryToolInspect(payload map[string]any, e capability.Entry) {
+	if t.registry == nil {
+		payload["schema_note"] = "no parameter schema is available (tool registry is unavailable)"
+		return
+	}
+	target, ok := t.registry.Get(registryToolNameForEntry(e))
+	if !ok {
+		// Catalog and registry disagree — do not invent a schema for an
+		// unresolvable name; the existing identity fields stay authoritative.
+		return
+	}
+	schema := target.Schema()
+	params := tool.SchemaParams(schema)
+	if len(params) == 0 {
+		payload["schema_note"] = "this tool's engine definition declares no per-parameter schema"
+		return
+	}
+	payload["input_schema"] = schema
+	payload["parameters"] = params
+	payload["schema_fingerprint"] = tool.SchemaFingerprint(schema)
 }
 
 type inspectToolInfo struct {
