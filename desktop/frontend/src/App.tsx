@@ -71,6 +71,8 @@ import { useGoalActionHandler } from "./lib/goalAction";
 import { clearWailsResizeEdge, useWailsResizeFix } from "./lib/useWailsResizeFix";
 import { asArray } from "./lib/array";
 import { activeLeaseBlockedTab, createBoundedRefreshCoordinator, sameTabMetaLists, shouldRefreshTabMetaForEvent, TAB_META_MAX_IN_FLIGHT } from "./lib/tabMetaRefresh";
+import { useRuntimeStateSync } from "./lib/useRuntimeState";
+import { useTabRuntimeReconcile } from "./lib/tabRuntimeReconcile";
 import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, useI18n, useT } from "./lib/i18n";
 import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
@@ -2835,6 +2837,14 @@ export default function App() {
     }
     return tabs;
   }, []);
+  // tl1410 会话运行态双源失步收敛：①恢复 runtime-state 同步挂载（上游把
+  // AppRuntime 组合根架空时丢了 useRuntimeStateSync——store 生产恒空，510/981/
+  // 1015 整套 runtime-state 投影走 fallback；恢复=回归设计态）；②顶栏 tabMetas
+  // 对账——store 投影与 tab.running 失步（事件泵阻塞丢 turn_done 的现场）时
+  // 走 ListTabs 拉取对齐，失步窗口 ≤5s（tick 兜底），不再依赖下一次任意
+  // turn 事件或 15s 前台兜底。
+  useRuntimeStateSync();
+  useTabRuntimeReconcile(refreshTabMetas, tabMetas);
   const seedActiveTabMeta = useCallback((tab: TabMeta): void => {
     setTabMetas((current) => {
       const seeded = { ...tab, active: true };
