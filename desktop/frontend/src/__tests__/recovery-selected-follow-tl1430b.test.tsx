@@ -132,7 +132,9 @@ async function openAndExpand(): Promise<Root | null> {
     Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent?.includes("Review and merge"))?.click();
   });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  // tl1415b: copies 空的多 head 会话落在已合入组(默认折叠)——点组段行展开,
+  // 子行(主线行/版本行)随之渲染(chains 惰性重放由展开驱动)。
+  await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement).click(); });
   await flush();
   return root;
 }
@@ -147,14 +149,13 @@ console.log("\nversions table main row follows the adopted line (tl1430b)");
   const mainRow = document.querySelector(".rc-versions__table tbody tr.rc-detail__row--main");
   ok(Boolean(mainRow?.textContent?.includes("recovery-7fa1f7e5")), "① the main row shows the adopted file's short badge");
   ok(Boolean(mainRow?.textContent?.includes("selected")), "① the main row carries the selected tag for the adopted line");
-  // The main row itself carries .rc-chain too; candidate rows are the chain
-  // rows BELOW the main row (an ops row follows each reading row). The old
-  // line (gc.jsonl, no recovery short name) renders under the plain-copy
-  // label in the candidate block.
+  // tl1415b: 主线行升格为 rc-detail__row--main;被取代的旧线(gc.jsonl,无
+  // recovery 短名)降为版本行(rc-chain),操作列并入行内——主线行之后至少
+  // 还有一条候选行。
   const rowTexts = Array.from(document.querySelectorAll(".rc-versions__table tbody tr")).map((r) => r.textContent || "");
   const mainIndex = rowTexts.findIndex((t) => t.includes("recovery-7fa1f7e5"));
-  ok(mainIndex >= 0 && rowTexts.slice(mainIndex + 1).length >= 2,
-    "② the old line demotes into the candidate rows");
+  ok(mainIndex >= 0 && rowTexts.slice(mainIndex + 1).length >= 1,
+    "② the old line demotes into the candidate rows (版本行随主线行之后)");
   ok(!mainRow?.textContent?.includes("hello world"), "① the main row reads the adopted chain, not the scan origin");
   await act(async () => root?.unmount());
 }

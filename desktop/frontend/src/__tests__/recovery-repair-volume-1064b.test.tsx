@@ -116,7 +116,11 @@ function stubBridge(overrides: Partial<AppBindings>, spies: { bytesReads: number
   let bytes = 4096;
   const base = {
     ListRecoveryCopyGroups: async () => [GROUP],
-    ListSessionVersionGroups: async () => [],
+    // tl1415b: CHAINS 描述了双 head 会话,版本清单照实报 headCount=2——
+    // 该会话落在已合入组且子行(链读数)可达。
+    ListSessionVersionGroups: async () => [
+      { mainPath: MAIN_PATH, mainLabel: "GC", directory: "/sessions", headCount: 2, selected: "", heads: [] },
+    ],
     ListRecoveryChains: async () => {
       spies.bytesReads += 1;
       return chainSetWithBytes(bytes);
@@ -157,7 +161,12 @@ async function openAndExpand(): Promise<Root> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  // tl1415b: 该会话(无副本,headCount=2)在已合入组——点组段行展开;检查健康/
+  // 修复/瘦身沉底为批量入口,作用于勾选会话,这里顺手勾上。
+  await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement).click(); });
+  await flush();
+  const sessionCheckbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
+  await act(async () => { sessionCheckbox?.click(); });
   await flush();
   return root;
 }

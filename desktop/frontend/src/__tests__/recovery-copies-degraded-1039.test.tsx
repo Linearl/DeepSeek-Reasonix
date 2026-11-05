@@ -117,8 +117,13 @@ console.log("\nrecovery copies degraded + failure reason (1039)");
   await act(async () => { openBtn!.click(); });
   await flush();
 
+  // tl1415b: copies 空的降级会话落在已合入组(默认折叠)——点组段行展开后行可见。
+  const mergedGroupRow = document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement;
+  await act(async () => { mergedGroupRow.click(); });
+  await flush();
+
   const body = document.body.textContent || "";
-  ok(body.includes("GC开发专员"), "① degraded conversation row is listed, not an error banner");
+  ok(body.includes("GC开发专员"), "① degraded conversation row is listed, not an error banner (展开已合入组后)");
   ok(!body.includes("Settings could not be loaded"), "① no full-page load-failed banner for a degraded row");
   ok(body.includes("Recommended") === false, "① degraded row is never recommended as longest");
   await act(async () => root.unmount());

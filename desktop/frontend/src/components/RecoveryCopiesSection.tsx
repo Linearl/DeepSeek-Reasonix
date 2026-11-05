@@ -831,11 +831,12 @@ export function RecoveryCopiesSection() {
 
   // tl1415 点9: 清空合并历史——meta 头镜像复位为单链(账面重置,内容零触
   // 碰)。tl1415b: 沉底为会话级批量入口——作用于勾选会话中 headCount>1 的
-  // 那些列清单一次确认,逐个调用。组迁移语义(口径④):清空后该会话移出已
-  // 合入组(phaseOf 的 headCount 判定),仍多副本则回到待处理组。
+  // 那些(不限组段:待处理组里带合并历史的会话同样可清),一次确认列清单,
+  // 逐个调用。组迁移语义(口径④):清空后该会话移出已合入组(phaseOf 的
+  // headCount 判定),仍多副本则回到待处理组。
   const clearMergeHistorySelected = async () => {
-    const chosen = phased.merged.filter(
-      (g) => selected.has(g.mainPath) && (versionGroups.get(g.mainPath)?.headCount ?? 0) > 1,
+    const chosen = selectedGroups.filter(
+      (g) => (versionGroups.get(g.mainPath)?.headCount ?? 0) > 1,
     );
     if (!chosen.length) return;
     const ok = await confirm({
@@ -1827,7 +1828,7 @@ export function RecoveryCopiesSection() {
               ? copy.path
               : undefined;
           return (
-            <tr key={copy.path} className="rc-child rc-row--copy">
+            <tr key={copy.path} className={`rc-child rc-row--copy${tags.isLonger ? " rc-chain--recommended" : ""}`}>
               <td className="rc-detail__check">
                 {/* 任务 1064:副本行的复选框+删除入口。孤立副本(orphan,主线
                     已缺失)没有「另一条链可以兜底」的前提,删除即真正丢内容,
@@ -1845,6 +1846,11 @@ export function RecoveryCopiesSection() {
               </td>
               <td className="rc-col-kind">
                 <span className="rc-kindtag rc-kindtag--copy">{t("settings.recoveryCopiesCopy")}</span>
+                {/* 选定 HEAD(合成③的落点)——demo v5 未画徽标,但「选了哪条」
+                    必须在行上可辨识(1065 钉:预览确认后徽标落在该行)。 */}
+                {chain && pickedChain[group.mainPath] === chain.path ? (
+                  <span className="rc-chain__picked-badge">{t("settings.recoveryCopiesPickedBadge")}</span>
+                ) : null}
               </td>
               <td className="rc-col-name" title={copyTitle}>
                 <div className="rc-clip1">
@@ -1959,7 +1965,7 @@ export function RecoveryCopiesSection() {
           const tags = chainTagInfo(c, model.chains);
           const isPicked = pickedChain[group.mainPath] === c.path;
           return (
-            <tr key={`${c.path}|${c.headId}|${leftover.indexOf(c)}`} className="rc-child rc-chain">
+            <tr key={`${c.path}|${c.headId}|${leftover.indexOf(c)}`} className={`rc-child rc-chain${tags.isLonger ? " rc-chain--recommended" : ""}`}>
               <td className="rc-detail__check" />
               <td className="rc-col-kind">
                 <span className="rc-kindtag rc-kindtag--version">{t("settings.recoveryCopiesKindVersion")}</span>
@@ -2489,8 +2495,8 @@ export function RecoveryCopiesSection() {
                   title={t("settings.recoveryCopiesClearHistoryHint")}
                   disabled={
                     busy ||
-                    !phased.merged.some(
-                      (g) => selected.has(g.mainPath) && (versionGroups.get(g.mainPath)?.headCount ?? 0) > 1,
+                    !selectedGroups.some(
+                      (g) => (versionGroups.get(g.mainPath)?.headCount ?? 0) > 1,
                     )
                   }
                   onClick={() => void clearMergeHistorySelected()}

@@ -140,9 +140,11 @@ console.log("\nrecovery nil-slice arrays never crash the section render (1039r2)
   await act(async () => { openBtn!.click(); });
   await flush();
 
-  const toggle = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
-  ok(Boolean(toggle), "① the incident conversation row is listed in the modal");
-  await act(async () => { toggle!.click(); });
+  // tl1415b: 无副本会话(headCount=2)落在已合入组(默认折叠)——组段行存在,
+  // 点开后行与子行渲染(chains:null 归一为空集不崩)。
+  const toggle = document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement;
+  ok(Boolean(toggle), "① the incident conversation's group row is listed in the modal");
+  await act(async () => { toggle.click(); });
   await flush();
 
   const text = bodyText();
@@ -165,9 +167,9 @@ console.log("\nrecovery nil-slice arrays never crash the section render (1039r2)
   ok(Boolean(openBtn), "② the copies panel open button renders");
   await act(async () => { openBtn!.click(); });
   await flush();
-  const expand = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
-  ok(Boolean(expand), "② the versions panel row renders");
-  await act(async () => { expand!.click(); });
+  const expand = document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement;
+  ok(Boolean(expand), "② the versions group row renders");
+  await act(async () => { expand.click(); });
   await flush();
 
   const text = bodyText();
