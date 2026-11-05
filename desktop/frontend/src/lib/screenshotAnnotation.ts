@@ -31,6 +31,10 @@ export interface Annotation {
   points?: AnnotationPoint[];
   // number carries the tl 1088 auto-increment badge index (1, 2, 3 …).
   number?: number;
+  // tl 1412: stroke width in annotation-space pixels. Optional so every
+  // tl 1087/1088 producer stays byte-compatible; the renderer falls back to
+  // the screenshot flow's fixed 3px when absent.
+  width?: number;
 }
 
 // A normalized rectangle: x/y are the top-left, width/height are positive.
@@ -244,10 +248,11 @@ export function buildAnnotation(
 export function buildPenAnnotation(
   points: AnnotationPoint[],
   color: string,
+  width?: number,
 ): Annotation | null {
   const trimmed = dedupeNearbyPoints(points, 1.5);
   if (trimmed.length < 2) return null;
-  return { kind: "pen", start: trimmed[0], end: trimmed[trimmed.length - 1], color, points: trimmed };
+  return { kind: "pen", start: trimmed[0], end: trimmed[trimmed.length - 1], color, points: trimmed, width };
 }
 
 // Drop consecutive points closer than `minDistance` — a freehand drag emits

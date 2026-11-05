@@ -29,6 +29,10 @@ const overlaySource = readFileSync(resolve(here, "../components/ScreenshotOverla
 const modelSource = readFileSync(resolve(here, "../lib/screenshotAnnotation.ts"), "utf8");
 const composerSource = readFileSync(resolve(here, "../components/Composer.tsx"), "utf8");
 const backendSource = readFileSync(resolve(here, "../../../screenshot_app.go"), "utf8");
+// tl 1412: the annotation painter moved to lib/annotationRender.ts (shared
+// with the image-viewer annotation editor); the painting contracts below
+// read that file instead of the overlay component.
+const renderSource = readFileSync(resolve(here, "../lib/annotationRender.ts"), "utf8");
 
 console.log("\ntl 1087 screenshot overlay contract");
 
@@ -138,8 +142,11 @@ ok(
 );
 
 ok(
-  /case "ellipse"/.test(overlaySource) && /ctx\.ellipse\(/.test(overlaySource),
-  "the ellipse tool strokes an ellipse through the canvas",
+  // tl 1412: the painter lives in lib/annotationRender.ts; the overlay must
+  // import it from there so both hosts share one rendering semantics.
+  /import \{ drawAnnotation \} from "\.\.\/lib\/annotationRender"/.test(overlaySource) &&
+    /case "ellipse"/.test(renderSource) && /ctx\.ellipse\(/.test(renderSource),
+  "the ellipse tool strokes an ellipse through the canvas (shared tl 1412 renderer)",
 );
 
 ok(
