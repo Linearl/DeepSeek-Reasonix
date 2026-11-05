@@ -1247,15 +1247,33 @@ export function RecoveryCopiesSection() {
         await app.DeleteRecoveryBranch(item.path);
         collected.push({ label: item.label, kind: "deleted" });
       } catch (err) {
-        collected.push({ label: item.label, kind: "failed", detail: err instanceof Error ? err.message : String(err) });
+        // tl1367 口径：busy 族渲染本地化持有者文案（与单删/整对话删除同源）。
+        collected.push({ label: item.label, kind: "failed", detail: formatSessionBusyError(err) });
       }
       setDeletedOutcomes([...collected]);
+    }
+    // tl1414 反馈对称：批量删除的结果同样不能只活在展开面板里。成功计数一
+    // 条 toast；有失败时失败计数 + 首条原因一条 toast（其余原因在 outcome
+    // 行，面板内可查），与 tl1401 合并 toast 的口径一致。
+    const deletedCount = collected.filter((o) => o.kind === "deleted").length;
+    const failedItems = collected.filter((o) => o.kind === "failed");
+    if (deletedCount > 0) {
+      showToast(t("settings.recoveryCopiesDeletedToast", { count: deletedCount }), "info");
+    }
+    if (failedItems.length > 0) {
+      showToast(
+        `${t("settings.recoveryCopiesDeleteFailedToast", { count: failedItems.length })}：${failedItems[0].detail ?? ""}`,
+        "error",
+      );
     }
     setBranchesSelected(new Set());
     // 任务 1146：与合成路径同理——列表重取完成后再释放 busy，删除期间底部
     // 保持加载指示，避免「已删除回执 + 旧列表」并存的静止中间态。
+    // tl1414：load() 失败不吞（同单删口径）。
     try {
       await load();
+    } catch (loadErr) {
+      showToast(loadErr instanceof Error ? loadErr.message : String(loadErr), "error");
     } finally {
       setBusy(false);
       setStatus("");
@@ -1676,20 +1694,39 @@ export function RecoveryCopiesSection() {
                                   ...current,
                                   { label: `${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`, kind: "deleted" },
                                 ]);
+                                // tl1414 反馈对称（20261105 用户实测：点确认后静默
+                                // 无反应）：outcome 行只有展开面板才可见，成功同弹
+                                // toast——离开面板也在。
+                                showToast(t("settings.recoveryCopiesDeletedToast", { count: 1 }), "info");
                               } catch (err) {
+                                // tl1367 口径：busy 族渲染本地化持有者文案，其余透传
+                                // 后端原文；失败 toast 带原因，不再只留展开式行。
+                                const detail = formatSessionBusyError(err);
                                 setDeletedOutcomes((current) => [
                                   ...current,
                                   {
                                     label: `${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`,
                                     kind: "failed",
-                                    detail: err instanceof Error ? err.message : String(err),
+                                    detail,
                                   },
                                 ]);
+                                showToast(
+                                  `${t("settings.recoveryCopiesDeleteFailedToast", { count: 1 })}：${detail}`,
+                                  "error",
+                                );
                               } finally {
                                 // 任务 1146：列表重取完成后再释放 busy（与合成/
-                                // 批量删除路径同口径）。
-                                await load();
-                                setBusy(false);
+                                // 批量删除路径同口径）。tl1414：load() 自身的异常
+                                // 不允许吞掉重取失败（列表不动会被读成「删除没发
+                                // 生」），也不允许跳过 setBusy(false)（busy 卡死
+                                // 面板全按钮禁用）。
+                                try {
+                                  await load();
+                                } catch (loadErr) {
+                                  showToast(loadErr instanceof Error ? loadErr.message : String(loadErr), "error");
+                                } finally {
+                                  setBusy(false);
+                                }
                               }
                             })();
                           }}

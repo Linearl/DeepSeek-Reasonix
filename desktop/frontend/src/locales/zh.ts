@@ -4694,6 +4694,9 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesDeleting": "正在删除",
   "settings.recoveryCopiesOutcomeDeleted": "已删除",
   "settings.recoveryCopiesDeleteReopenHint": "删除已生效。请到项目中重新打开该会话（或刷新标签页）才能看到列表更新——被删内容还在回收站里。",
+  // tl1414：删除反馈 toast——outcome 行只在展开面板可见，拒绝/静默删除被读作「没反应」。
+  "settings.recoveryCopiesDeletedToast": "已删除 {count} 个分支",
+  "settings.recoveryCopiesDeleteFailedToast": "{count} 个分支删除失败",
   // 任务 1368 线2：整对话级删除——主文件（含 v3 版本与侧车）与全部副本一起
   // 进两条可恢复回收站（主文件走会话回收站可整体还原；副本走 .trash 的
   // forced 归档链路）。

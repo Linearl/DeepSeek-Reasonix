@@ -4707,6 +4707,10 @@ export const en = {
   "settings.recoveryCopiesDeleting": "Deleting",
   "settings.recoveryCopiesOutcomeDeleted": "Deleted",
   "settings.recoveryCopiesDeleteReopenHint": "The deletion has taken effect. Reopen the conversation in its project (or refresh the tab) to see the updated list — deleted content is still in the trash.",
+  // tl1414: delete feedback toasts — the outcome row only shows inside the
+  // expanded panel, so a refused/silent delete read as "nothing happened".
+  "settings.recoveryCopiesDeletedToast": "Deleted {count} branch(es)",
+  "settings.recoveryCopiesDeleteFailedToast": "Failed to delete {count} branch(es)",
   // 任务 1368 线2：whole-conversation delete — the main transcript (with its
   // v3 versions and sidecars) and every copy go into the two recoverable
   // trashes (session trash for the main, forced-archive .trash for copies).

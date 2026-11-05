@@ -1,0 +1,230 @@
+// tl1414 harness：版本面板副本删除的反馈可见性。
+//
+// 事故形态（20261105 用户实测）：副本行点删除→确认→静默无反应。根因是活
+// tab 自己的转录本以副本行出现，后端 busy 拒绝；前端只把失败写进展开面板
+// 里才可见的 outcome 行，无 toast——用户读作「什么都没发生」。本 harness
+// 钉三点（反馈对称性，tl1401 同口径）：
+//  ① 单删成功 → outcome 行「Deleted」+ toast「Deleted 1 branch(es)」+ 列表重拉；
+//  ② 单删失败 → toast 带后端原因原文（不再只留展开式行）+ outcome 行在；
+//  ③ 批量删除成功 → toast 报成功计数 + 列表重拉。
+
+import { JSDOM } from "jsdom";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import type { AppBindings } from "../lib/bridge";
+
+const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", { pretendToBeVisual: true, url: "http://localhost/" });
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.window = dom.window as unknown as Window & typeof globalThis;
+globalThis.document = dom.window.document;
+Object.defineProperty(dom.window.navigator, "language", { configurable: true, value: "en-US" });
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+globalThis.Node = dom.window.Node;
+globalThis.Element = dom.window.Element;
+globalThis.HTMLElement = dom.window.HTMLElement;
+globalThis.HTMLButtonElement = dom.window.HTMLButtonElement;
+globalThis.HTMLInputElement = dom.window.HTMLInputElement;
+globalThis.Event = dom.window.Event;
+globalThis.MouseEvent = dom.window.MouseEvent;
+globalThis.localStorage = dom.window.localStorage;
+
+const { RecoveryCopiesSection } = await import("../components/RecoveryCopiesSection");
+const { LocaleProvider } = await import("../lib/i18n");
+const { ToastProvider } = await import("../lib/toast");
+
+let passed = 0;
+let failed = 0;
+function ok(value: boolean, label: string) {
+  process.stdout.write(`  ${value ? "PASS" : "FAIL"}  ${label}\n`);
+  if (value) passed += 1; else failed += 1;
+}
+
+function installDom(): HTMLElement {
+  document.getElementById("root")?.remove();
+  const root = document.createElement("div");
+  root.id = "root";
+  document.body.appendChild(root);
+  return root;
+}
+
+async function flush() {
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
+function buttonByText(text: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+    .find((b) => b.textContent?.trim().includes(text));
+}
+
+function bodyText(): string {
+  return document.body.textContent || "";
+}
+
+function toastText(): string {
+  return document.querySelector(".toast-container")?.textContent ?? "";
+}
+
+const MAIN_PATH = "/sessions/gc.jsonl";
+const COPY_PATH = "/sessions/gc-recovery-0123456789abcdef.jsonl";
+const COPY_PATH_2 = "/sessions/gc-recovery-fedcba9876543210.jsonl";
+
+const COPY = {
+  path: COPY_PATH,
+  label: "GC copy 1",
+  bytes: 2048,
+  modified: "2026-11-05T01:00:00Z",
+  messages: 3,
+  shared: 1,
+  unique: 2,
+  scanned: true,
+  orphan: false,
+};
+
+const GROUP = {
+  mainPath: MAIN_PATH,
+  mainLabel: "GC dev session",
+  directory: "/sessions",
+  mainExists: true,
+  mainMessages: 12,
+  mainBytes: 1024,
+  mainModified: "2026-11-05T00:33:00Z",
+  copies: [
+    COPY,
+    {
+      path: COPY_PATH_2,
+      label: "GC copy 2",
+      bytes: 4096,
+      modified: "2026-11-05T02:00:00Z",
+      messages: 5,
+      shared: 2,
+      unique: 3,
+      scanned: true,
+      orphan: false,
+    },
+  ],
+};
+
+function stubBridge(deleteImpl: (path: string) => Promise<void>, spies: { listCalls: number; deleted: string[] }) {
+  window.go = {
+    main: {
+      App: {
+        ListRecoveryCopyGroups: async () => {
+          spies.listCalls += 1;
+          return [GROUP];
+        },
+        ListSessionVersionGroups: async () => [],
+        ListRecoveryChains: async () => ({
+          mainPath: MAIN_PATH,
+          mainLabel: "GC dev session",
+          chains: [],
+          longestPath: "",
+          longestHead: "",
+        }),
+        DeleteRecoveryBranch: deleteImpl,
+        DeleteSessionVersionHead: async () => {},
+      } as Partial<AppBindings> as AppBindings,
+    },
+  } as typeof window.go;
+}
+
+/** Drives the single-copy delete flow: open panel → expand the conversation →
+ *  press the copy row's Delete → confirm the danger dialog. */
+async function runSingleDeleteFlow(spies: { listCalls: number; deleted: string[] }) {
+  const rootEl = installDom();
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
+  });
+  await flush();
+  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await flush();
+  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  await flush();
+  const listCallsBefore = spies.listCalls;
+  const deleteBtn = document.querySelector<HTMLButtonElement>(".rc-row--copy .rc-delete");
+  if (!deleteBtn) throw new Error("copy-row delete button missing");
+  await act(async () => { deleteBtn.click(); });
+  await flush();
+  const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
+    .find((b) => b.textContent?.trim() === "Delete");
+  if (!confirmBtn) throw new Error("confirm button missing");
+  await act(async () => { confirmBtn.click(); });
+  await flush();
+  await flush();
+  return { root, listCallsBefore };
+}
+
+/** Drives the batch delete flow: tick the first copy's checkbox → press
+ *  "Delete selected (1)" → confirm. */
+async function runBatchDeleteFlow(spies: { listCalls: number; deleted: string[] }) {
+  const rootEl = installDom();
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
+  });
+  await flush();
+  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await flush();
+  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  await flush();
+  const listCallsBefore = spies.listCalls;
+  const box = document.querySelector<HTMLInputElement>(".rc-row--copy input[type=checkbox]");
+  if (!box) throw new Error("copy checkbox missing");
+  await act(async () => { box.click(); });
+  await flush();
+  const batchBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+    .find((b) => b.textContent?.trim().startsWith("Delete selected ("));
+  if (!batchBtn) throw new Error("batch delete button missing");
+  await act(async () => { batchBtn.click(); });
+  await flush();
+  const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
+    .find((b) => b.textContent?.trim() === "Delete");
+  if (!confirmBtn) throw new Error("batch confirm button missing");
+  await act(async () => { confirmBtn.click(); });
+  await flush();
+  await flush();
+  return { root, listCallsBefore };
+}
+
+console.log("\ntl1414 copy-delete feedback toasts");
+
+// ① 成功案：outcome 行 + toast + 列表重拉。
+{
+  const spies = { listCalls: 0, deleted: [] as string[] };
+  stubBridge(async (path) => { spies.deleted.push(path); }, spies);
+  const { root, listCallsBefore } = await runSingleDeleteFlow(spies);
+  ok(spies.deleted.length === 1 && spies.deleted[0] === COPY_PATH, "① the confirmed delete reaches the backend");
+  ok(bodyText().includes("Deleted"), "① the outcome row reports the deletion");
+  ok(toastText().includes("Deleted 1 branch(es)"), `① success toast appears (got ${JSON.stringify(toastText())})`);
+  ok(spies.listCalls > listCallsBefore, "① the list reloads after the delete");
+  await act(async () => { root.unmount(); });
+}
+
+// ② 失败案：toast 带后端原因原文（本次事故形态：活 tab 占用被 busy 拒）。
+{
+  const spies = { listCalls: 0, deleted: [] as string[] };
+  const busyReason = "this session is in use by another Reasonix window or process — close that window (or quit the other Reasonix instance), then retry";
+  stubBridge(async () => { throw new Error(busyReason); }, spies);
+  const { root } = await runSingleDeleteFlow(spies);
+  ok(spies.deleted.length === 0, "② a refused delete never reaches the archive");
+  const text = toastText();
+  ok(text.includes("Failed to delete 1 branch(es)"), `② failure toast appears (got ${JSON.stringify(text)})`);
+  ok(text.includes("in use by another Reasonix window"), "② the failure toast carries the backend reason");
+  ok(bodyText().includes("in use by another Reasonix window"), "② the outcome row keeps the reason too");
+  await act(async () => { root.unmount(); });
+}
+
+// ③ 批量删除成功案：toast 报成功计数 + 列表重拉。
+{
+  const spies = { listCalls: 0, deleted: [] as string[] };
+  stubBridge(async (path) => { spies.deleted.push(path); }, spies);
+  const { root, listCallsBefore } = await runBatchDeleteFlow(spies);
+  ok(spies.deleted.length === 1 && spies.deleted[0] === COPY_PATH, "③ the confirmed batch delete reaches the backend");
+  ok(toastText().includes("Deleted 1 branch(es)"), `③ batch success toast appears (got ${JSON.stringify(toastText())})`);
+  ok(spies.listCalls > listCallsBefore, "③ the list reloads after the batch delete");
+  await act(async () => { root.unmount(); });
+}
+
+console.log(`tl1414 delete-toast: ${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);
+dom.window.close();
