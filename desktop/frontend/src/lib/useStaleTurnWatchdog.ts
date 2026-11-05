@@ -76,8 +76,12 @@ export function useStaleTurnWatchdog<T extends StaleTurnWatchdogState>({
       if (cancelled || activeTabIdRef.current !== tabId) return;
       const current = statesRef.current.get(tabId);
       const lastActivityAt = lastTurnActivityAtByTab.current.get(tabId) ?? 0;
-      if (!shouldReconcileStaleTurn(current, lastActivityAt, Date.now(), STALE_TURN_RECONCILE_MS, moveInFlight())) {
-        schedule();
+      const exempt = moveInFlight();
+      if (!shouldReconcileStaleTurn(current, lastActivityAt, Date.now(), STALE_TURN_RECONCILE_MS, exempt)) {
+        // tl1403: an exempt tick is already past the quiet timeout, so the
+        // remaining-quiet formula would re-arm with delay 0 and spin. Re-judge
+        // after one full period instead; the legacy path keeps schedule().
+        schedule(exempt ? STALE_TURN_RECONCILE_MS : undefined);
         return;
       }
       // 任务874: 看门狗触发过去完全静默——2026-10-13 19:10 的 transcript 自行
