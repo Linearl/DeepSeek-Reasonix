@@ -4807,6 +4807,8 @@ export const en = {
   "settings.recoveryCopiesMergePicked": "Merge with picked branches",
   "settings.recoveryCopiesPreviewEmpty": "(no preview text for this branch)",
   "settings.recoveryCopiesMerging": "merging",
+  "settings.recoveryCopiesMergedToast": "Merged {count} entries into the main transcript",
+  "settings.recoveryCopiesFailedToast": "{count} conversation(s) failed to merge",
   "settings.recoveryCopiesChains": "candidate chains (the longest one becomes the main transcript)",
   "settings.recoveryCopiesChainsHint": "candidate chains load automatically when a row expands — no scan needed; Scan measures each copy against the main",
   "settings.recoveryCopiesChainCurrent": "current main",

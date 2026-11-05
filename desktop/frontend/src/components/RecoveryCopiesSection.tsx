@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { useT, type Translator } from "../lib/i18n";
 import { formatSessionBusyError } from "../lib/sessionBusyError";
+import { useToast } from "../lib/toast";
 import { useConfirmDialog } from "./ConfirmDialog";
 
 /** 任务 1063：存储与路径页的两个版本分区合并成一个。
@@ -662,6 +663,7 @@ function VersionRows({
 
 export function RecoveryCopiesSection() {
   const t = useT();
+  const { showToast } = useToast();
   const { confirm, dialog } = useConfirmDialog();
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<RecoveryCopyGroupView[] | null>(null);
@@ -1160,6 +1162,20 @@ export function RecoveryCopiesSection() {
       }
 
       setOutcomes(collected);
+      // tl1401 反馈对称：面板内的 outcome 行只有展开存储页才可见，用户实测
+      // 「合成最长链后没有任何弹窗反馈」。成功给 toast（条数=合入主线的增量
+      // 轮数，多组求和），失败同样给 toast——失败路径原本有行无弹窗，与成功
+      // 静默是同一个「读作没发生」的问题。blocked 是明确的业务原因（双重打开
+      // /用户取消强制），不算失败也不抢 toast。
+      const mergedOutcomes = collected.filter((o) => o.kind === "merged" || o.kind === "forced");
+      if (mergedOutcomes.length > 0) {
+        const grafted = mergedOutcomes.reduce((sum, o) => sum + Math.max(0, (o.after ?? 0) - (o.before ?? 0)), 0);
+        showToast(t("settings.recoveryCopiesMergedToast", { count: grafted }), "info");
+      }
+      const failedOutcomes = collected.filter((o) => o.kind === "failed");
+      if (failedOutcomes.length > 0) {
+        showToast(t("settings.recoveryCopiesFailedToast", { count: failedOutcomes.length }), "error");
+      }
       setSelected(new Set());
       // Named winners were consumed by the merge just run; the picked branches
       // no longer exist as copies, so the next run starts neutral.
@@ -1378,10 +1394,13 @@ export function RecoveryCopiesSection() {
       // 不再落 synthesized 的读数横幅（否则会出现「红框报错 + 顶部成功横幅」
       // 并存的矛盾现场，20261024 fork开发-新8 实测）。
       if (report.items.length === 0) {
+        // tl1402 反馈对称：失败同弹 toast（与成功 toast 对称），不再只留
+        // 面板内 outcome 行——弹窗关掉后失败读作「没发生」。
         setSynthesisOutcomes((current) => [
           ...current,
           { label: groupLabel, kind: "failed", detail: t("settings.recoveryCopiesSynthesizeNoBranch") },
         ]);
+        showToast(t("settings.recoveryCopiesSynthesizeNoBranch"), "error");
         // Named winners were consumed even on this no-op path; reset the pick.
         setPickedChain((current) => {
           const next = { ...current };
@@ -1414,6 +1433,9 @@ export function RecoveryCopiesSection() {
             ...current,
             { label: groupLabel, kind: "v3synthesized", switched: Boolean(report.switchedTo), retired: retiredCount, detail },
           ]);
+          // tl1402：v3 形态的合成真实生效（切主线/清理落败 heads）——同弹
+          // toast 让反馈离开面板也可见；文案直接用横幅的 locale 句（已三语）。
+          showToast(detail, "info");
         } else if (v3Only) {
           // 后端确认无事可做（无落败分支、无需切换）——保留诚实的「无可做」
           // 回执并指出现有出路（版本表的「切换到此版本」按钮，该入口真实存在）。
@@ -1425,17 +1447,20 @@ export function RecoveryCopiesSection() {
           // 有副本参与却没有文件级效果（全部被跳过/归档失败）：按失败
           // 处理，透传后端 skipped 明细供诊断（1039 先例：后端原文不
           // 加工直出），skipped 缺席时退回「没有可合成的分支」。
+          const failureDetail =
+            report.skipped.length > 0
+              ? report.skipped.join("; ")
+              : t("settings.recoveryCopiesSynthesizeNoBranch");
           setSynthesisOutcomes((current) => [
             ...current,
             {
               label: groupLabel,
               kind: "failed",
-              detail:
-                report.skipped.length > 0
-                  ? report.skipped.join("; ")
-                  : t("settings.recoveryCopiesSynthesizeNoBranch"),
+              detail: failureDetail,
             },
           ]);
+          // tl1402 反馈对称：失败同弹 toast。
+          showToast(failureDetail, "error");
         }
         // Named winners were consumed even on this no-op path; reset the pick.
         setPickedChain((current) => {
@@ -1459,6 +1484,11 @@ export function RecoveryCopiesSection() {
           trashed: report.trashed.length,
         },
       ]);
+      // tl1402（用户 20261105 实测：点「合成最长链」后没有任何弹窗反馈，数据
+      // 其实已落盘）：成功必须有 toast——「已合成 N 条入主线」，N=参与分支并
+      // 入主线的独有事件数（graft 零双份，与主线增量同量级）。outcome 行只
+      // 有展开面板才可见，toast 让反馈离开面板也在。
+      showToast(t("settings.recoveryCopiesMergedToast", { count: uniqueTotal }), "info");
       // Named winners were consumed; the next run starts neutral.
       setPickedChain((current) => {
         const next = { ...current };
@@ -1472,16 +1502,20 @@ export function RecoveryCopiesSection() {
       // 原文（那些错误暂无现成 locale key，直译会引入新键面，交由后续统一收
       // 整，这里不做生造文案）。
       const rawMessage = err instanceof Error ? err.message : String(err);
+      // tl1402 反馈对称：后端报错同弹 toast（已知错误命中三语文案，其余保留
+      // 后端原文——1117 的口径不变）。
+      const failureText = rawMessage.includes("only one chain")
+        ? t("settings.recoveryCopiesSynthesizeNoBranch")
+        : rawMessage;
       setSynthesisOutcomes((current) => [
         ...current,
         {
           label: groupLabel,
           kind: "failed",
-          detail: rawMessage.includes("only one chain")
-            ? t("settings.recoveryCopiesSynthesizeNoBranch")
-            : rawMessage,
+          detail: failureText,
         },
       ]);
+      showToast(failureText, "error");
     } finally {
       setSynthesizing((current) => {
         const next = { ...current };

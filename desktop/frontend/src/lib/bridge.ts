@@ -2701,6 +2701,21 @@ export function onSessionActiveVersionChanged(cb: (payload: SessionRecoveryEvent
   return window.runtime.EventsOn("session:active-version-changed", (payload?: unknown) => cb((payload ?? {}) as SessionRecoveryEvent));
 }
 
+// tl1402: the versions panel's synthesis/merge rewrites the main transcript in
+// place; the backend emits this once per successful run (the merge path from
+// recovery_consolidate.go, the synthesis path from recovery_head_synthesize.go).
+// Open tabs holding mainPath reload their transcript projection instead of
+// serving the pre-synthesis in-memory snapshot (the 20261105 "opened
+// conversation looks like it lost its history" report).
+export interface SessionConsolidatedEvent {
+  mainPath?: string;
+}
+
+export function onSessionConsolidated(cb: (payload: SessionConsolidatedEvent) => void): () => void {
+  if (typeof window === "undefined" || !window.runtime?.EventsOn) return () => {};
+  return window.runtime.EventsOn("session:consolidated", (payload?: unknown) => cb((payload ?? {}) as SessionConsolidatedEvent));
+}
+
 export function onSessionRecoveryFailed(cb: (payload: SessionRecoveryFailedEvent) => void): () => void {
   if (realApp() && typeof window !== "undefined" && window.runtime) {
     return window.runtime.EventsOn("session:recovery-failed", (payload?: unknown) => cb((payload ?? {}) as SessionRecoveryFailedEvent));
