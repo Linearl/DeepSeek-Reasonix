@@ -900,6 +900,15 @@ func (s *Session) checkSnapshotWrite(path string, next []provider.Message, nextD
 			DiskRevision:     currentRevision,
 		}
 	}
+	// tl1409: an armed stale-disk takeover converts the diverged terminal into
+	// an owned rewrite at the current disk revision — but only while the armed
+	// fingerprint still matches disk exactly (re-verified here under the save
+	// locks) and the live snapshot is the side that kept growing. Without this,
+	// a dead second writer leaves the pair in permanent mutual refusal and the
+	// admission path retries diverged saves forever.
+	if decision, ok := s.staleDiskTakeoverDecision(path, existing, next, baseState.revision, currentRevision); ok {
+		return decision, nil
+	}
 	return snapshotWriteDecision{}, &SessionSnapshotConflictError{
 		Path:             path,
 		Kind:             SessionSnapshotConflictDiverged,
