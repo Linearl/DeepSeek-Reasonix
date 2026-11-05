@@ -293,3 +293,116 @@ func TestChannelCancelToolStopsPendingFanout(t *testing.T) {
 		t.Fatal("unknown message must be rejected")
 	}
 }
+
+// tl1406 工具面验收：channel_send 的 queuedFor 如实上报路由结果（不再「全员
+// -自己」的群发口径），deputyless 标志透出零投递分支；@<contact_id> 按描述
+// 契约解析。用户 20261105 实证场景（四人群未 @ 报 queuedFor=3）在此钉死。
+func TestChannelSendReportsRoutingVerdict(t *testing.T) {
+	cfg, store := channelFixture(t)
+	ctx := context.Background()
+
+	// 捕获后台 drain job，测试内同步跑（与 TestChannelToolsListSendRead 同款）。
+	var captured []func()
+	origSpawn := channelSpawn
+	channelSpawn = func(job func()) { captured = append(captured, job) }
+	defer func() { channelSpawn = origSpawn }()
+
+	// human-owned 群：调用会话 + sc_dep（副管理员）+ sc_b（普通成员）。
+	if _, err := store.CreateChannelWithOwner("ops", "tl1406", 0, collabchannel.MemberTypeHuman, collabchannel.HumanLocal); err != nil {
+		t.Fatal(err)
+	}
+	contact := cfg.CurrentContactID
+	for _, m := range []string{contact, "sc_dep", "sc_b"} {
+		if err := store.Join("ops", m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.SetDeputy("ops", "sc_dep"); err != nil {
+		t.Fatal(err)
+	}
+
+	type sendView struct {
+		MessageID  string `json:"messageId"`
+		QueuedFor  int    `json:"queuedFor"`
+		Deputyless bool   `json:"deputyless"`
+	}
+
+	// ① 有副管理员 + 未 @ → queuedFor=1，只有副管理员被投递唤醒。
+	out, err := NewChannelSendTool(cfg).Execute(ctx, json.RawMessage(`{"channel":"ops","message":"请大家看一下这个需求"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v sendView
+	if err := json.Unmarshal([]byte(out), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.QueuedFor != 1 || v.Deputyless {
+		t.Fatalf("un-@ with deputy: want queuedFor=1 deputyless=false, got %s", out)
+	}
+	if _, err := store.DrainFanout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mail := sessioncollab.NewMailStore(cfg.MailDir)
+	if rows, err := mail.Inbox("sc_dep"); err != nil || len(rows) != 1 {
+		t.Fatalf("deputy inbox: %v %+v", err, rows)
+	}
+	if rows, err := mail.Inbox("sc_b"); err != nil || len(rows) != 0 {
+		t.Fatalf("plain member must get zero pushes: %v %+v", err, rows)
+	}
+
+	// ② 显式 @<contact_id> → 仅落被 @ 者（queuedFor=1 且不是副管理员）。
+	out, err = NewChannelSendTool(cfg).Execute(ctx, json.RawMessage(`{"channel":"ops","message":"@sc_b 这条给你"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.QueuedFor != 1 || v.Deputyless {
+		t.Fatalf("explicit @: want queuedFor=1, got %s", out)
+	}
+	if _, err := store.DrainFanout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := mail.Inbox("sc_b"); err != nil || len(rows) != 1 {
+		t.Fatalf("mentioned member inbox: %v %+v", err, rows)
+	}
+	if rows, err := mail.Inbox("sc_dep"); err != nil || len(rows) != 1 {
+		t.Fatalf("deputy must stay at one (only the first message): %v %+v", err, rows)
+	}
+
+	// ③ human 群无副管理员 + 未 @ → queuedFor=0 + deputyless=true；历史仍可
+	// 只读查询（channel_read 看得到这行），零推送零唤醒。
+	if _, err := store.CreateChannelWithOwner("lonely", "无副管理员群", 0, collabchannel.MemberTypeHuman, collabchannel.HumanLocal); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []string{contact, "sc_c"} { // sc_c 未收过件：零推送断言不被前面的用例污染
+		if err := store.Join("lonely", m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err = NewChannelSendTool(cfg).Execute(ctx, json.RawMessage(`{"channel":"lonely","message":"今天先做 A 项"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.QueuedFor != 0 || !v.Deputyless {
+		t.Fatalf("deputyless group: want queuedFor=0 deputyless=true, got %s", out)
+	}
+	readOut, err := NewChannelReadTool(cfg).Execute(ctx, json.RawMessage(`{"channel":"lonely"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(readOut, "今天先做 A 项") {
+		t.Fatalf("member read-only query must still see history: %s", readOut)
+	}
+	if _, err := store.DrainFanout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := mail.Inbox("sc_c"); err != nil || len(rows) != 0 {
+		t.Fatalf("deputyless zero-push broken: %v %+v", err, rows)
+	}
+	_ = captured // drain job 已被上方同步 DrainFanout 等价覆盖（job 即同一 store 链路）
+}

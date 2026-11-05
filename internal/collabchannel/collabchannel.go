@@ -802,13 +802,16 @@ func (s *Store) Publish(ref, sender, body string) (Message, error) {
 
 // PublishWithMentionNames is Publish with a caller-supplied display-name map
 // (contact id → alias names) for resolving @-mentions in the body (tl1406).
-// The desktop face passes the collab roster's title/purpose/topic aliases —
-// the composer inserts "@<显示名> " and the bubble renderer matches the same
-// literal needle — plus the localized self-token for human:local ("@我"/
-// "@You", mirroring collabGroup.chat.you). The tool face passes the session
-// directory the same way (agents mostly @ the bare contact id). nil/empty
-// keeps contact-id-only resolution; names never widen the recipient set
-// beyond current roster members.
+// The desktop face passes the collab roster's title/purpose aliases — the
+// composer inserts "@<显示名> " and the bubble renderer matches the same
+// literal needle (directoryTitle = title || purpose || contact id) — plus
+// bilingual self-tokens for human:local ("@我"/"@You", mirroring
+// collabGroup.chat.you; self-routing is moot anyway since the sender is never
+// fanned). The tool face deliberately stays on bare contact ids (nil names):
+// channel_send's description contracts "@<contact_id>", and title aliases
+// would need desktop-only roster state threaded into SessionCollabConfig.
+// nil/empty keeps contact-id-only resolution; names never widen the recipient
+// set beyond current roster members.
 func (s *Store) PublishWithMentionNames(ref, sender, body string, names map[string][]string) (Message, error) {
 	sender = strings.TrimSpace(sender)
 	body = strings.TrimSpace(body)
