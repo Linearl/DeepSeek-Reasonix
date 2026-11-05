@@ -230,10 +230,10 @@ func TestDivergedAdmissionSelfHealClearsLatch(t *testing.T) {
 		t.Fatalf("live save err = %v, want diverged conflict", saveErr)
 	}
 
-	c := newAdmissionConflictController(t, path)
+	c := newTakeoverLadderController(t, path, live)
 	// The controller's executor session IS the live session (same shape as the
-	// field: the runtime holds the growing transcript).
-	c.executor.SetSession(live)
+	// field: the runtime holds the growing transcript) and carries the bound
+	// write authority the takeover precondition requires.
 	latchDivergedAdmission(c, conflict)
 
 	bodyRan := false

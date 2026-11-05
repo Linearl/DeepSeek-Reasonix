@@ -73,6 +73,13 @@ func retrySameRevisionDivergedRewrite(s *agent.Session, path string, err error) 
 // lease) and the under-the-locks disk-still-stale re-verification live in
 // agent.SaveAdoptOverStaleDisk, and a declined attempt returns false so the
 // pre-existing ladder owns the conflict unchanged.
+//
+// Lock contract: every recoverSnapshotConflict caller (snapshotWithDurability,
+// the post-cancel flush) already holds c.snapshotMu, and that mutex is not
+// reentrant — this helper must NOT take it again (the first version did and
+// self-deadlocked TestRepeatedConflictFingerprintReconcilesWrongGenerationMeta
+// for 27 minutes). The admission-side twin healDivergedSnapshotConflict runs
+// outside that lock chain and therefore takes it itself.
 func (c *Controller) takeoverDivergedRevLag(path string, saveErr error, mode string) bool {
 	if c == nil || c.executor == nil {
 		return false
@@ -81,8 +88,6 @@ func (c *Controller) takeoverDivergedRevLag(path string, saveErr error, mode str
 	if !errors.As(saveErr, &conflict) || conflict == nil || conflict.Kind != agent.SessionSnapshotConflictDiverged {
 		return false
 	}
-	c.snapshotMu.Lock()
-	defer c.snapshotMu.Unlock()
 	session := c.executor.Session()
 	if session == nil {
 		return false

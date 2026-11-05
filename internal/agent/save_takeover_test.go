@@ -15,6 +15,7 @@ import (
 func TestSaveAdoptOverStaleDiskTakeoverCommits(t *testing.T) {
 	path := schemaOneSessionPath(t, "takeover.jsonl")
 	live := NewSession("sys")
+	bindSessionWriter(t, live, path)
 	live.Add(provider.Message{Role: provider.RoleUser, Content: "m1"})
 	live.Add(provider.Message{Role: provider.RoleAssistant, Content: "m2"})
 	live.Add(provider.Message{Role: provider.RoleUser, Content: "m3"})
@@ -105,6 +106,7 @@ func TestSaveAdoptOverStaleDiskTakeoverCommits(t *testing.T) {
 func TestSaveAdoptOverStaleDiskRefusedWhenDiskAdvanced(t *testing.T) {
 	path := schemaOneSessionPath(t, "takeover-refused.jsonl")
 	live := NewSession("sys")
+	bindSessionWriter(t, live, path)
 	live.Add(provider.Message{Role: provider.RoleUser, Content: "m1"})
 	live.Add(provider.Message{Role: provider.RoleAssistant, Content: "m2"})
 	if err := live.SaveSnapshot(path); err != nil {
@@ -158,6 +160,7 @@ func TestSaveAdoptOverStaleDiskRefusedWhenDiskAdvanced(t *testing.T) {
 func TestSaveAdoptOverStaleDiskRefusedBadShapes(t *testing.T) {
 	path := schemaOneSessionPath(t, "takeover-shapes.jsonl")
 	live := NewSession("sys")
+	bindSessionWriter(t, live, path)
 	live.Add(provider.Message{Role: provider.RoleUser, Content: "m1"})
 	if err := live.SaveSnapshot(path); err != nil {
 		t.Fatalf("initial save: %v", err)

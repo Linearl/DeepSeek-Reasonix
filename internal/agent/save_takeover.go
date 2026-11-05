@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"reasonix/internal/provider"
 )
@@ -31,11 +32,18 @@ import (
 //  2. the disk revision ran AHEAD of this session's baseline (evidence a
 //     second writer existed) and the live snapshot has MORE messages than the
 //     disk transcript (evidence the live side is the one that kept growing);
-//  3. no other runtime currently holds the session lease — a live writer
-//     never gets raced;
-//  4. under the save locks, the on-disk state still matches the conflict
-//     fingerprint (revision and message count unchanged since the conflict was
-//     raised) — disk moved on means the "dead" writer is not dead and the
+//  3. this session holds a live write authority covering the path — the
+//     in-register writer of that session file. A session that never bound an
+//     authority (legacy CAS callers, test scaffolds) declines, and so does a
+//     controller whose authority points elsewhere — this is what keeps a
+//     same-process second controller (another tab) from being run over;
+//  4. the branch meta carries this file's own identity — a wrong-generation
+//     meta (tl1383's patient) is a different disease with its own repair and
+//     must not be papered over with a byte overwrite;
+//  5. no other runtime currently holds the session lease;
+//  6. under the save locks, the on-disk state still matches the conflict
+//     fingerprint (revision and message count unchanged since the conflict
+//     was raised) — disk moved on means the "dead" writer is not dead and the
 //     takeover is refused.
 //
 // The write itself reuses the ordinary owned-rewrite commit path (CAS ledger
@@ -67,6 +75,12 @@ func (s *Session) SaveAdoptOverStaleDisk(path string, conflict *SessionSnapshotC
 	if canonicalSessionSavePath(conflict.Path) != canonical {
 		return fmt.Errorf("stale-disk takeover conflict names a different session (%s, wanted %s)", conflict.Path, canonical)
 	}
+	if !s.hasValidWriteAuthority(canonical) {
+		return fmt.Errorf("stale-disk takeover declined: this session holds no live write authority for the path")
+	}
+	if reason := foreignBranchMetaReason(canonical); reason != "" {
+		return fmt.Errorf("stale-disk takeover declined: %s", reason)
+	}
 	if SessionLeaseHeldByOtherRuntime(canonical) {
 		return fmt.Errorf("stale-disk takeover declined: another runtime holds the session lease")
 	}
@@ -88,6 +102,24 @@ func (s *Session) SaveAdoptOverStaleDisk(path string, conflict *SessionSnapshotC
 		"disk_messages", conflict.ExistingMessages,
 		"snapshot_messages", conflict.SnapshotMessages)
 	return nil
+}
+
+// foreignBranchMetaReason reports why the branch meta on disk disqualifies a
+// stale-disk takeover: a wrong-generation identity is tl1383's patient and
+// must be aligned by that reconciliation, not overwritten around. Empty means
+// the meta is absent, digest-only, or names this very file.
+func foreignBranchMetaReason(canonical string) string {
+	meta, ok, err := loadBranchMetaRetry(canonical)
+	if err != nil {
+		return "branch meta unreadable"
+	}
+	if !ok {
+		return ""
+	}
+	if id := strings.TrimSpace(meta.ID); id != "" && id != BranchID(canonical) {
+		return fmt.Sprintf("branch meta carries a foreign identity %q", id)
+	}
+	return ""
 }
 
 // armStaleDiskTakeover records the one allowed takeover fingerprint. A second
@@ -116,7 +148,9 @@ func (s *Session) disarmStaleDiskTakeover() {
 // fingerprint, and the live snapshot (next) is the side that kept growing,
 // the diverged refusal converts into an owned-rewrite decision based at the
 // current disk revision. Anything else declines so the conflict surfaces
-// unchanged.
+// unchanged. Runs under the save locks; re-verifies the writer authority and
+// the meta identity so a state change between arming and committing cannot
+// push the write through.
 func (s *Session) staleDiskTakeoverDecision(path string, existing, next []provider.Message, baseRevision, diskRevision int64) (snapshotWriteDecision, bool) {
 	s.takeoverMu.Lock()
 	armed := s.takeoverArmed
@@ -141,6 +175,15 @@ func (s *Session) staleDiskTakeoverDecision(path string, existing, next []provid
 		return snapshotWriteDecision{}, false
 	}
 	if len(next) <= len(existing) {
+		return snapshotWriteDecision{}, false
+	}
+	// Same gates as the arming preconditions, re-checked inside the lock
+	// window: only the in-register writer of this path may take it over, and a
+	// wrong-generation meta keeps its own repair path.
+	if !s.hasValidWriteAuthority(armed.Path) {
+		return snapshotWriteDecision{}, false
+	}
+	if reason := foreignBranchMetaReason(armed.Path); reason != "" {
 		return snapshotWriteDecision{}, false
 	}
 	if SessionLeaseHeldByOtherRuntime(armed.Path) {
