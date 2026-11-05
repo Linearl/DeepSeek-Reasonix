@@ -79,15 +79,20 @@ eq(
 
 // tl1413 — rename entry symmetry. The sidebar entry (ProjectTree
 // commitRenameTopic) and the top-bar entry (App commitActiveTopicRename) must
-// converge on the same renameTopic handler, and that handler must refetch the
-// sidebar right after the backend rename resolves. The backend half of the
-// contract lives in Go (finishTopicRename pushes the title into the catalog
+// converge on the same renameTopic handler. The backend half of the contract
+// lives in Go (finishTopicRename pushes the title into the catalog
 // synchronously, bounded, before RenameTopic returns — pinned by
 // Test718RenameReachesSidebarWithoutWaitingForMetadataTick and
-// Test1413RenameReturnsFreshCatalogUnderMetadataStorm), so this post-return
-// refetch reads the fresh title even while the project-tree:changed-v2 event
-// is still sitting in the 400ms batch window: the entries no longer depend on
-// the event round-trip for consistency.
+// Test1413RenameReturnsFreshCatalogUnderMetadataStorm), so the catalog is
+// already fresh when the frontend resumes.
+//
+// Package-78 rework (tl1413b) corrected the tl1413 conclusion: the
+// refreshSignal-driven refresh() does NOT reload topic pages (only pinned
+// shells — see the projectTreeArchive pin below), so the refetch alone never
+// painted expanded-folder rows and the top-bar entry still lagged seconds on
+// the changed-v2 round-trip. The missing half is the receipt consumption:
+// renameTopic now pushes the new title to the tree as topicTitlePatch, which
+// paints it the same way the tree's own rename entry does.
 const appSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../App.tsx"), "utf8");
 eq(
   appSource.includes("onRenameTopic={renameTopic}"),
@@ -100,9 +105,54 @@ eq(
   "the top-bar rename commit routes through the same shared renameTopic handler",
 );
 eq(
-  /const renameTopic = useCallback\(async \(topicId: string, title: string\) => \{[\s\S]*?await app\.RenameTopic\(topicId, nextTitle\);\s*await refreshProjectsAndTabs\(\);/.test(appSource),
+  /const renameTopic = useCallback\(async \(topicId: string, title: string\) => \{[\s\S]*?await app\.RenameTopic\(topicId, nextTitle\);\s*\/\/ tl1413b[\s\S]*?pushTopicTitlePatch\(topicId, nextTitle\);\s*await refreshProjectsAndTabs\(\);/.test(appSource),
   true,
-  "renameTopic refetches the sidebar immediately after the backend rename returns (fresh catalog guaranteed by the synchronous backend push)",
+  "renameTopic consumes the receipt (pushTopicTitlePatch) then refetches — the package-78 rework: the refetch alone only reloads pinned shells, so the patch is what paints expanded-folder rows immediately",
+);
+
+// tl1413b — the top-bar entry's missing half. The shared handler now pushes a
+// rename receipt to the tree; these pins keep the whole consumption chain
+// wired: App state → prop → tree effect (same optimistic paint as the
+// tree's own entry), plus the history-panel entry riding the same patch.
+eq(
+  /const \[topicTitlePatch, setTopicTitlePatch\] = useState<\{ topicId: string; title: string; seq: number \} \| null>\(null\);/.test(appSource),
+  true,
+  "App owns the rename-receipt patch state (topicId/title/seq)",
+);
+eq(
+  /const pushTopicTitlePatch = useCallback\(\(topicId: string, title: string\) => \{\s*topicTitlePatchSeqRef\.current \+= 1;/.test(appSource),
+  true,
+  "receipts carry a monotonic seq so the tree can drop stale patches",
+);
+eq(
+  appSource.includes("topicTitlePatch={topicTitlePatch ?? undefined}"),
+  true,
+  "the sidebar tree receives the rename-receipt patch at the render site",
+);
+eq(
+  /if \(session\.topicId\) \{[\s\S]*?await app\.RenameTopic\(session\.topicId, title\);[\s\S]*?pushTopicTitlePatch\(session\.topicId, title\.trim\(\)\);/.test(appSource),
+  true,
+  "the history-panel rename entry consumes the receipt the same way (same mechanism family)",
+);
+const propsSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../components/ProjectTreeProps.ts"), "utf8");
+eq(
+  propsSource.includes("topicTitlePatch?: { topicId: string; title: string; seq: number }"),
+  true,
+  "ProjectTreeProps declares the optional receipt patch channel",
+);
+eq(
+  /appliedTitlePatchSeqRef\.current = topicTitlePatch\.seq;\s*setTree\(\(current\) => applyRuntimeProjection\(projectTreeWithTopicTitle\(current, topicTitlePatch\.topicId, topicTitlePatch\.title\)\)\);/.test(projectTreeSource),
+  true,
+  "the tree paints the receipt through the same projectTreeWithTopicTitle optimistic path its own rename entry uses, one-shot per seq",
+);
+// The mechanism root this patch exists for: refresh() with no options must NOT
+// reload topic pages (only pinned shells) — if that ever changes to a default
+// full reload, the patch becomes redundant and may be retired.
+const archiveSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../lib/projectTreeArchive.ts"), "utf8");
+eq(
+  /const targets = projects\.filter\(\(project\) => options\?\.reloadAllTopics \|\| keys\.has\(project\.key\)\);/.test(archiveSource),
+  true,
+  "refresh() with no options reloads no topic pages (options?.reloadAllTopics is falsy and keys is empty) — the reason the receipt patch, not the refetch, paints the rename",
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);
