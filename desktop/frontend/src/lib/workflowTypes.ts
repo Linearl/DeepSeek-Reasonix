@@ -52,6 +52,10 @@ export interface WireRunNode {
   changedAt?: number;
   /** 本轮 running 起点（unix ms；缺省 = 未见 running，如排队即跳过）。 */
   nodeStartedAt?: number;
+  /** tl1434: 节点执行实例关联（子代理 transcript ref，执行序，下标+1=
+   *  occurrence）。缺省 = 无关联（老 run/ephemeral 派发/非子代理节点），
+   *  详情面「工作过程」入口按此降级。 */
+  subagentRefs?: string[];
 }
 
 /** 一次运行的完整 wire 快照（desktop workflowRunWire 镜像）。 */

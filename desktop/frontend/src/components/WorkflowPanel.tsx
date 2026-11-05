@@ -15,7 +15,7 @@
 //   demo：fixture 演示脚本 playFixtureRun 保留（933 拍板演示不删）——无真
 //     运行时即 686 原始行为，有真运行时经「演示」按钮切换过去。
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { GitBranch, Play, RotateCcw, Square, X } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { formatDurationLabel } from "../lib/durationFormat";
@@ -31,6 +31,8 @@ import {
   type WorkflowRunStore,
   type WorkflowRunState,
 } from "../lib/workflowEvents";
+import { historyMessagesToItems } from "../lib/useController";
+import type { HistoryMessage } from "../lib/types";
 import { app } from "../lib/bridge";
 import {
   liveRunSnapshot,
@@ -78,8 +80,108 @@ function formatTokens(tokens?: number): string {
   return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
 }
 
+// tl1434: 子代理 transcript 的懒加载渲染器（capsule 只读详情同款管线——
+// historyMessagesToItems + Transcript，无输入/无续写入口）。
+const LazyTranscript = lazy(async () => ({ default: (await import("./Transcript")).Transcript }));
+
+/** 「工作过程」一次打开的读取态（只读；失败/空态各自显式文案）。 */
+interface NodeTraceState {
+  occurrence: number;
+  loading: boolean;
+  failed: boolean;
+  messages: HistoryMessage[];
+}
+
+const EMPTY_TRACE: NodeTraceState = { occurrence: 0, loading: false, failed: false, messages: [] };
+
+/**
+ * 节点详情「工作过程」段（tl1434）：子代理/确认节点的执行实例只读回放入口。
+ * 仅真运行（live）渲染——demo 视图无关联数据，保持逐字节原状。
+ *   refs 非空：逐次执行列出「第 N 次 · 查看」；打开即经只读桥拉 transcript，
+ *     全程无写入面（不唤醒/不续写子代理会话）。
+ *   refs 为空且节点已终态：降级说明行（老 run / ephemeral 派发无持久化
+ *     transcript，如实告知而非假装可看）。
+ */
+function NodeWorkProcessSection({ runId, nodeId, kind, refs, terminal }: {
+  runId: string;
+  nodeId: string;
+  kind: WorkflowDagNode["kind"];
+  refs: string[];
+  terminal: boolean;
+}) {
+  const t = useT();
+  const [trace, setTrace] = useState<NodeTraceState | null>(null);
+  if (kind !== "subagent" && kind !== "confirm") return null;
+  const open = (occurrence: number) => {
+    setTrace({ ...EMPTY_TRACE, occurrence, loading: true });
+    app
+      .ReadWorkflowNodeSubagent(runId, nodeId, occurrence)
+      .then((messages) => setTrace({ occurrence, loading: false, failed: false, messages }))
+      .catch(() => setTrace({ occurrence, loading: false, failed: true, messages: [] }));
+  };
+  if (refs.length === 0) {
+    // 降级显示：终态但无已登记关联（legacy run / 非持久化派发）。
+    if (!terminal) return null;
+    return (
+      <div className="wf-panel__trace" data-testid="wf-node-trace-missing">
+        <div className="wf-panel__detail-label">{t("workflowPanel.detail.process")}</div>
+        <p className="wf-panel__detail-empty">{t("workflowPanel.detail.processMissing")}</p>
+      </div>
+    );
+  }
+  const traceItems = trace && !trace.loading && !trace.failed
+    ? historyMessagesToItems(trace.messages, "wf-trace").items
+    : [];
+  return (
+    <div className="wf-panel__trace" data-testid="wf-node-trace">
+      <div className="wf-panel__detail-label">{t("workflowPanel.detail.process")}</div>
+      <div className="wf-panel__trace-runs">
+        {refs.map((ref, index) => (
+          <button
+            key={ref}
+            type="button"
+            className={trace?.occurrence === index + 1 ? "wf-panel__trace-open wf-panel__trace-open--active" : "wf-panel__trace-open"}
+            aria-pressed={trace?.occurrence === index + 1}
+            data-testid="wf-node-trace-open"
+            onClick={() => open(index + 1)}
+          >
+            {t("workflowPanel.detail.processOpen", { n: String(index + 1) })}
+          </button>
+        ))}
+      </div>
+      {trace && (
+        <div
+          className="wf-panel__trace-view"
+          data-testid="wf-node-trace-view"
+          data-wf-trace-state={trace.loading ? "loading" : trace.failed ? "failed" : traceItems.length === 0 ? "empty" : "ready"}
+        >
+          {trace.loading ? (
+            <p className="wf-panel__detail-empty">{t("workflowPanel.detail.processLoading")}</p>
+          ) : trace.failed ? (
+            <p className="wf-panel__detail-empty">{t("workflowPanel.detail.processFailed")}</p>
+          ) : traceItems.length === 0 ? (
+            <p className="wf-panel__detail-empty">{t("workflowPanel.detail.processEmpty")}</p>
+          ) : (
+            <Suspense fallback={<p className="wf-panel__detail-empty">{t("workflowPanel.detail.processLoading")}</p>}>
+              <LazyTranscript items={traceItems} onPrompt={() => {}} questionNavigator={false} rewindDisabled />
+            </Suspense>
+          )}
+        </div>
+      )}
+      <p className="wf-panel__trace-readonly">{t("workflowPanel.detail.processReadOnly")}</p>
+    </div>
+  );
+}
+
 /** 节点详情下钻面（四类信息 + 耗时/tokens；缺失段不渲染）。 */
-function NodeDetailPane({ node, run }: { node: WorkflowDagNode; run: ReturnType<WorkflowRunStore["getSnapshot"]>["nodes"][string] }) {
+function NodeDetailPane({ node, run, live, runId }: {
+  node: WorkflowDagNode;
+  run: ReturnType<WorkflowRunStore["getSnapshot"]>["nodes"][string];
+  /** tl1434: 是否真运行视图（demo/fixture 无关联数据，过程段不渲染）。 */
+  live: boolean;
+  /** 真运行 id（只读回放桥按 runId+nodeId+occurrence 归属校验）。 */
+  runId: string | null;
+}) {
   const t = useT();
   const detail = run.detail;
   const rows: Array<{ label: string; value: string; mono?: boolean }> = [];
@@ -103,6 +205,7 @@ function NodeDetailPane({ node, run }: { node: WorkflowDagNode; run: ReturnType<
   if (detail?.tokens !== undefined) {
     rows.push({ label: t("workflowPanel.detail.tokens"), value: formatTokens(detail.tokens) });
   }
+  const traceTerminal = run.state === "done" || run.state === "unconfirmed" || run.state === "failed";
   return (
     <div className="wf-panel__detail">
       <div className="wf-panel__detail-head">
@@ -121,6 +224,15 @@ function NodeDetailPane({ node, run }: { node: WorkflowDagNode; run: ReturnType<
             </div>
           </div>
         ))
+      )}
+      {live && runId && (
+        <NodeWorkProcessSection
+          runId={runId}
+          nodeId={node.id}
+          kind={node.kind}
+          refs={detail?.subagentRefs ?? []}
+          terminal={traceTerminal}
+        />
       )}
     </div>
   );
@@ -614,7 +726,14 @@ export function WorkflowPanel({
               </div>
             </div>
           </div>
-          {selected && <NodeDetailPane node={selected} run={snapshot.nodes[selected.id] ?? { state: "queued" }} />}
+          {selected && (
+            <NodeDetailPane
+              node={selected}
+              run={snapshot.nodes[selected.id] ?? { state: "queued" }}
+              live={liveView !== null}
+              runId={liveView?.run.runId ?? null}
+            />
+          )}
         </div>
       </section>
     </div>
