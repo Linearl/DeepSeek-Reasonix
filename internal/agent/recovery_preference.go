@@ -52,15 +52,13 @@ func SetRecoveryPreferred(paths []string, chosenPath string) error {
 			return nil
 		})
 	}
-	if chosen.normalizedDirty || chosen.eventLogDamaged {
-		// Damaged tail (#9890): record the preference without a digest —
-		// digest mismatch is a soft signal for later reconciliation, not a
-		// reason to reject the user's explicit choice.
-		return UpdateBranchMeta(chosenPath, false, func(meta *BranchMeta) error {
-			meta.RecoveryPreferred = true
-			return nil
-		})
-	}
+	// tl1430b: a damaged tail no longer skips the digest. The tolerant replay
+	// yields a deterministic message set (the readable prefix), so digesting
+	// exactly what loads keeps the user's explicit choice provable - the old
+	// flag-without-digest form was silently voided at promote time by
+	// RecoveryPreferenceCurrent, leaving the switch receipt a lie (package-78
+	// field report). Content drift still voids: the digest recomputed on the
+	// next reconcile must match what the user chose.
 	digest, err := digestSessionMessages(chosen.Snapshot())
 	if err != nil {
 		return err

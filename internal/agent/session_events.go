@@ -1000,6 +1000,14 @@ func AppendSessionHeadSwitchEvent(sessionPath, fromPath, toPath string) error {
 	if sessionPath == "" || fromPath == "" || toPath == "" {
 		return fmt.Errorf("head switch event needs the adopted transcript and both sides of the switch")
 	}
+	// The archive form is a storage shape, not a separate log: appending to a
+	// session whose log is still zst-compressed would create a plaintext stub
+	// holding only the marker while the transcript stays archived - a split
+	// log. Materialize first (tl1172 discipline: the same entry every reader
+	// and writer funnels through before touching the plaintext path).
+	if _, err := ensureSessionEventLogPlain(sessionPath); err != nil {
+		return err
+	}
 	return appendSessionEvent(sessionPath, sessionEventRecord{
 		Type:     sessionEventTypeHeadSwitch,
 		HeadFrom: fromPath,
