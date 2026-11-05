@@ -1376,6 +1376,18 @@ export default function App() {
   const statusBarItems = useShellPrefsStore((s) => s.statusBarItems);
   const [renamingTopicId, setRenamingTopicId] = useState<string | null>(null);
   const [topicTitleDraft, setTopicTitleDraft] = useState("");
+  // tl1413b: rename receipts pushed to the sidebar tree as an optimistic paint.
+  // Renames entered outside the tree (top-bar title editor, history panel) go
+  // through the same shared renameTopic / RenameTopic call, but the
+  // refreshSignal refresh() only reloads pinned shells — expanded-folder rows
+  // would stay stale until the changed-v2 round-trip. The patch is the same
+  // mechanism the tree's own rename entry uses (projectTreeWithTopicTitle).
+  const [topicTitlePatch, setTopicTitlePatch] = useState<{ topicId: string; title: string; seq: number } | null>(null);
+  const topicTitlePatchSeqRef = useRef(0);
+  const pushTopicTitlePatch = useCallback((topicId: string, title: string) => {
+    topicTitlePatchSeqRef.current += 1;
+    setTopicTitlePatch({ topicId, title, seq: topicTitlePatchSeqRef.current });
+  }, []);
   const topicExportOpen = useOverlayStore((s) => s.topicExportOpen);
   const setTopicExportOpen = useOverlayStore((s) => s.setTopicExportOpen);
   const sidebarSearchOpen = useOverlayStore((s) => s.sidebarSearchOpen);
@@ -5393,12 +5405,19 @@ export default function App() {
   const onRenameHistorySession = useCallback(
     async (session: SessionMeta, title: string) => {
       if (state.running) return;
-      if (session.topicId) await app.RenameTopic(session.topicId, title);
-      else await renameSession(session.path, title);
+      if (session.topicId) {
+        await app.RenameTopic(session.topicId, title);
+        // tl1413b: same receipt consumption as renameTopic — the history panel
+        // refreshes itself locally below, but the sidebar tree needs the patch
+        // to paint the new label before the changed-v2 round-trip.
+        pushTopicTitlePatch(session.topicId, title.trim());
+      } else {
+        await renameSession(session.path, title);
+      }
       const sessions = await listSessions();
       setHistView((cur) => refreshHistoryProjection(cur, sessions));
     },
-    [state.running, renameSession, listSessions],
+    [pushTopicTitlePatch, state.running, renameSession, listSessions],
   );
   // Workspace: open the folder chooser and switch projects. The hook resets the
   // transcript and refreshes meta on a pick. A cancel is a no-op.
@@ -5437,13 +5456,19 @@ export default function App() {
     if (!topicId || !nextTitle) return;
     try {
       await app.RenameTopic(topicId, nextTitle);
+      // tl1413b: consume the receipt immediately — paint the new label in the
+      // sidebar tree the way the tree's own rename entry does, instead of
+      // waiting for the changed-v2 round-trip (the refresh below only reloads
+      // pinned shells). Same-value repaints are identity-stable, so the
+      // tree's own entry (which already painted this title) is unaffected.
+      pushTopicTitlePatch(topicId, nextTitle);
       await refreshProjectsAndTabs();
       // #8280: keep the history panel snapshot in sync after in-session renames.
       await refreshHistoryView();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), "error");
     }
-  }, [refreshHistoryView, refreshProjectsAndTabs, showToast]);
+  }, [pushTopicTitlePatch, refreshHistoryView, refreshProjectsAndTabs, showToast]);
 
   const startActiveTopicRename = useCallback(() => {
     if (!activeTab?.topicId) return;
@@ -5830,6 +5855,7 @@ export default function App() {
                 onCreateIsolatedWorktree={(workspaceRoot) => enqueueNavigation({ kind: "isolated-worktree", workspaceRoot })}
                 onTopicsChanged={refreshProjectsAndTabs}
                 onRenameTopic={renameTopic}
+                topicTitlePatch={topicTitlePatch ?? undefined}
                 refreshSignal={projectRevision}
                 onAddProject={async (path) => {
                   await switchFolder(path);

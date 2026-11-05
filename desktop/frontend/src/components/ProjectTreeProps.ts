@@ -25,6 +25,14 @@ export interface ProjectTreeProps {
   onRenameTopic?: (topicId: string, title: string) => Promise<void> | void;
   onTopicsChanged?: () => Promise<void> | void;
   refreshSignal?: number;
+  /** tl1413b: rename receipt from entries that live outside the tree (top-bar
+   * title editor, history panel). The tree paints it immediately — the same
+   * optimistic paint the sidebar's own rename entry does in commitRenameTopic —
+   * because the refreshSignal-driven refresh() only reloads pinned shells
+   * (reloadProjectTreeTopics with no options reloads nothing), so a plain
+   * refetch would leave expanded-folder rows stale until the changed-v2
+   * round-trip. Monotonic seq; a lower/equal seq is ignored. */
+  topicTitlePatch?: { topicId: string; title: string; seq: number };
   timeFilter: "all" | "10" | "20" | "1h" | "3h" | "5h" | "1d";
   onTimeFilterChange: (filter: "all" | "10" | "20" | "1h" | "3h" | "5h" | "1d") => void;
   searchExpanded?: boolean;

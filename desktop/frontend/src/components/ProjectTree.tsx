@@ -247,6 +247,7 @@ export function ProjectTree({
   onRenameTopic,
   onTopicsChanged,
   refreshSignal,
+  topicTitlePatch,
   timeFilter,
   onTimeFilterChange,
   searchExpanded = true,
@@ -676,6 +677,23 @@ export function ProjectTree({
   useEffect(() => {
     void refresh();
   }, [refresh, refreshSignal]);
+
+  // tl1413b: paint rename receipts from entries outside the tree (top-bar
+  // title editor, history panel) the same way commitRenameTopic paints its own
+  // entry — immediately, via projectTreeWithTopicTitle. The refreshSignal
+  // refresh() above only reloads pinned shells (reloadProjectTreeTopics with
+  // no options reloads nothing), so without this paint an expanded-folder row
+  // stays stale until the changed-v2 round-trip converges (seconds when the
+  // catalog metadata sync is queued behind running-session writes). One-shot
+  // per seq: no replay, so a later backend title (e.g. AI rename) wins on the
+  // next data application. Same-value patches are identity-stable by
+  // projectTreeWithTopicTitle and cost no re-render.
+  const appliedTitlePatchSeqRef = useRef(0);
+  useEffect(() => {
+    if (!topicTitlePatch || topicTitlePatch.seq <= appliedTitlePatchSeqRef.current) return;
+    appliedTitlePatchSeqRef.current = topicTitlePatch.seq;
+    setTree((current) => applyRuntimeProjection(projectTreeWithTopicTitle(current, topicTitlePatch.topicId, topicTitlePatch.title)));
+  }, [topicTitlePatch]);
 
   // Task 892-B ⑤: the project-group catalog pull is declared further down with
   // the rest of the project-group state; the listener only needs the ref (it
