@@ -1,0 +1,55 @@
+name: Compress cache floor guard
+
+on:
+  pull_request_target:
+    branches: [main-v2, main-v2-stable]
+    types: [opened, synchronize, reopened, ready_for_review]
+    # The gate only cares about the compression-chain surfaces matched in
+    # scripts/check-compress-cache-floor.sh; PRs confined to clearly unrelated
+    # paths can never trip it, so skip the run entirely. Keep the ignore list
+    # conservative: when in doubt, run.
+    paths-ignore:
+      - 'docs/**'
+      - 'site/**'
+      - 'release-notes/**'
+      - 'workers/**'
+      - 'benchmarks/**'
+      - 'npm/**'
+      - '*.md'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: compress-cache-floor-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  compress-cache-floor:
+    runs-on: ubuntu-latest
+    steps:
+      # Unlike check-cache-impact.sh (metadata only), this gate runs the
+      # red-line tests against the PR's code, so it checks out the merge
+      # ref: the judgment reads the post-merge reality.
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Collect PR changed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --jq '.[].filename' > "$RUNNER_TEMP/compress-floor-files.txt"
+
+      - name: Run the tl1396 prefix-cache red line
+        env:
+          COMPRESS_FLOOR_CHANGED_FILES_FILE: ${{ runner.temp }}/compress-floor-files.txt
+        run: bash scripts/check-compress-cache-floor.sh

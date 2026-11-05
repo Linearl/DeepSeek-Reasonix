@@ -65,6 +65,9 @@ for file in "${changed_input:-}"; do
     internal/agent/recovery_prefix*|\
     internal/agent/session_extract*|\
     internal/agent/context_maintenance*|\
+    internal/agent/context_manager*|\
+    internal/agent/preflight*|\
+    internal/agent/projection*|\
     internal/agent/storm_breaker.go|\
     internal/tool/compress*|\
     internal/tool/builtin/compress.go)
