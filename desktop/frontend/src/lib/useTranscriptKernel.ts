@@ -52,20 +52,35 @@ let frameSnapshot: { element: HTMLElement; frame: number; snapshot: TranscriptVi
 // Task 861 (fork #50): block content coordinates survive a native scroll
 // (rect.top and scrollTop move together, and transcript blocks never position
 // themselves against the scroller), so the full-scan answers can outlive the
-// frame that measured them. The cache below is trusted only behind three
-// synchronous gates — a layout signature over the scroller's own dimensions,
-// a deep-compare of the ordered block keys, and first/last block sentinel
-// re-reads — plus an asynchronous MutationObserver epoch that widens
-// invalidation to same-task DOM churn the signature cannot see. Any gate
-// failure falls back to the full scan the previous behavior always did.
+// frame that measured them. The cache is trusted only behind synchronous
+// gates — a layout signature over the scroller's own dimensions, and
+// sentinel/reference re-reads described below — plus an asynchronous
+// MutationObserver dirty set that widens invalidation to same-task DOM churn
+// the signature cannot see. Any gate failure falls back to the full scan the
+// previous behavior always did.
+//
+// tl1416 (issue #82): #50's single global epoch invalidated the WHOLE cache on
+// any subtree mutation, so a tab-switch commit storm (every commit writes DOM,
+// every commit's MutationObserver delivery landed between reads) forced an
+// O(N) full scan per commit — the 16.6s single-task freeze. The epoch is
+// replaced by per-key invalidation: a mutation marks only the key of the block
+// that contains it; a read re-measures exactly the dirty/new keys and keeps
+// the rest. Cross-block side effects per-key cannot see — a height change (or
+// a spacer-height write) shifting the flow-laid suffix — are still caught by
+// reference re-reads: the first block, plus the last NON-dirty cached key
+// scanning backwards (any suffix shift must move it; dirty keys are re-measured
+// fresh anyway, so a fresh tail never masks a shifted clean prefix).
 let blockRectCache: {
   element: HTMLElement;
-  keys: string[];
   rects: Map<string, { top: number; bottom: number }>;
   signature: string;
-  epoch: number;
 } | null = null;
-let blockCacheEpoch = 0;
+// Block keys whose subtree mutated since the last cache (re)build. Filled by
+// the MutationObserver between reads (microtask delivery: reads inside the
+// mutating task still answer through the synchronous gates, exactly as in
+// #50), consumed by the next cache-validating read, cleared by fullScan
+// (which re-measures everything anyway).
+const blockCacheDirtyKeys = new Set<string>();
 let cacheObserverElement: HTMLElement | null = null;
 let cacheObserver: MutationObserver | null = null;
 
@@ -88,29 +103,38 @@ export function resetTranscriptGeometryReadStats(): void {
   transcriptGeometryReadStats.viewportRectReads = 0;
 }
 
+function markMutatedBlockKey(node: Node | null | undefined): void {
+  if (!node) return;
+  const element = node.nodeType === 1 ? (node as Element) : node.parentElement;
+  const key = element?.closest?.("[data-transcript-block-key]")?.getAttribute("data-transcript-block-key");
+  if (key) blockCacheDirtyKeys.add(key);
+}
+
 function ensureCacheObserver(element: HTMLElement): void {
   if (cacheObserverElement === element) return;
   cacheObserver?.disconnect();
   cacheObserver = null;
   cacheObserverElement = element;
   blockRectCache = null;
+  blockCacheDirtyKeys.clear();
   if (typeof MutationObserver !== "function") return;
-  // Any subtree mutation (structure, text, or attributes — including the
-  // style/class writes React uses for windowed placement) marks the cache
-  // stale for the *next* task; the synchronous gates above still guard reads
-  // that run inside the mutating task itself.
-  cacheObserver = new MutationObserver(() => {
-    blockCacheEpoch += 1;
+  // Per-key invalidation (tl1416): each mutation record marks only the block
+  // that contains it. Records are delivered as one microtask batch, so reads
+  // inside the mutating task still answer through the synchronous gates —
+  // the same same-task semantics #50 relied on, at a per-block cost instead
+  // of a whole-cache reset.
+  cacheObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === "childList") {
+        markMutatedBlockKey(mutation.target);
+        mutation.addedNodes.forEach(markMutatedBlockKey);
+        mutation.removedNodes.forEach(markMutatedBlockKey);
+      } else {
+        markMutatedBlockKey(mutation.target);
+      }
+    }
   });
   cacheObserver.observe(element, { subtree: true, childList: true, characterData: true, attributes: true });
-}
-
-function sameKeys(left: readonly string[], right: readonly string[]): boolean {
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) return false;
-  }
-  return true;
 }
 
 function visibleFromRects(
@@ -136,12 +160,76 @@ function fullScan(element: HTMLElement, entries: { node: HTMLElement; key: strin
     const contentTop = rect.top - viewport.top + top;
     rects.set(key, { top: contentTop, bottom: contentTop + rect.height });
   }
-  blockRectCache = { element, keys: entries.map((entry) => entry.key), rects, signature: layoutSignature(element), epoch: blockCacheEpoch };
+  blockRectCache = { element, rects, signature: layoutSignature(element) };
+  blockCacheDirtyKeys.clear();
   return rects;
 }
 
 function layoutSignature(element: HTMLElement): string {
   return `${element.scrollHeight}|${element.clientHeight}|${element.clientWidth}`;
+}
+
+const SENTINEL_TOLERANCE_PX = 0.5;
+
+// tl1416: surgical cache revalidation. Measure exactly the dirty/new keys,
+// keep every other cached rect, and guard the keep-set with two clean
+// references — the first block and the last non-dirty cached key scanning
+// backwards. A mismatch on either reference means layout shifted under the
+// cache in a way per-key marking cannot attribute (in-flow height change,
+// spacer growth pushing the resident tail); the caller then falls back to a
+// full scan so stale mid-list coordinates never reach anchor correction
+// (#50 invariant). Dirty keys are re-measured fresh, so they can never mask
+// the reference: a fully-dirty suffix simply leaves an earlier clean key as
+// the reference, and a fully-dirty cache is rejected by the caller's
+// dirty-size gate anyway.
+function revalidateRects(
+  element: HTMLElement,
+  cache: { rects: Map<string, { top: number; bottom: number }> },
+  entries: { node: HTMLElement; key: string }[],
+  top: number,
+  signature: string,
+): Map<string, { top: number; bottom: number }> | null {
+  transcriptGeometryReadStats.viewportRectReads += 1;
+  const viewport = element.getBoundingClientRect();
+  const measure = (node: HTMLElement) => {
+    transcriptGeometryReadStats.blockRectReads += 1;
+    const rect = node.getBoundingClientRect();
+    const contentTop = rect.top - viewport.top + top;
+    return { top: contentTop, bottom: contentTop + rect.height };
+  };
+  const rects = new Map<string, { top: number; bottom: number }>();
+  for (let index = 0; index < entries.length; index += 1) {
+    const { node, key } = entries[index];
+    const cached = cache.rects.get(key);
+    const stale = blockCacheDirtyKeys.has(key) || !cached;
+    const reference = index === 0;
+    if (!stale && !reference) {
+      rects.set(key, cached);
+      continue;
+    }
+    const fresh = measure(node);
+    if (!stale && reference && cached
+      && (Math.abs(cached.top - fresh.top) > SENTINEL_TOLERANCE_PX || Math.abs(cached.bottom - fresh.bottom) > SENTINEL_TOLERANCE_PX)) {
+      return null;
+    }
+    rects.set(key, fresh);
+  }
+  // Tail reference: the last non-dirty cached key. Fresh tail keys measure
+  // clean by construction; a shifted clean key further back is what must
+  // trip the gate.
+  for (let index = entries.length - 1; index >= 1; index -= 1) {
+    const { node, key } = entries[index];
+    const cached = cache.rects.get(key);
+    if (cached === undefined || blockCacheDirtyKeys.has(key)) continue;
+    const fresh = measure(node);
+    if (Math.abs(cached.top - fresh.top) > SENTINEL_TOLERANCE_PX || Math.abs(cached.bottom - fresh.bottom) > SENTINEL_TOLERANCE_PX) {
+      return null;
+    }
+    break;
+  }
+  blockRectCache = { element, rects, signature };
+  blockCacheDirtyKeys.clear();
+  return rects;
 }
 
 function readSnapshot(element: HTMLElement): TranscriptViewportSnapshot {
@@ -162,29 +250,9 @@ function readSnapshot(element: HTMLElement): TranscriptViewportSnapshot {
   const signature = layoutSignature(element);
   let rects: Map<string, { top: number; bottom: number }> | null = null;
   const cache = blockRectCache;
-  const keys = entries.map((entry) => entry.key);
-  if (cache && cache.element === element && cache.epoch === blockCacheEpoch
-    && cache.signature === signature && sameKeys(cache.keys, keys) && keys.length > 0) {
-    // Sentinels: re-read the first and last block so a layout shift that
-    // leaves the signature intact still invalidates before these coordinates
-    // reach anchor correction.
-    transcriptGeometryReadStats.blockRectReads += 2;
-    transcriptGeometryReadStats.viewportRectReads += 1;
-    const viewport = element.getBoundingClientRect();
-    const measure = (node: HTMLElement) => {
-      const rect = node.getBoundingClientRect();
-      const contentTop = rect.top - viewport.top + top;
-      return { top: contentTop, bottom: contentTop + rect.height };
-    };
-    const firstRect = measure(entries[0].node);
-    const lastRect = measure(entries[entries.length - 1].node);
-    const cachedFirst = cache.rects.get(keys[0]);
-    const cachedLast = cache.rects.get(keys[keys.length - 1]);
-    if (cachedFirst && cachedLast
-      && Math.abs(cachedFirst.top - firstRect.top) <= 0.5 && Math.abs(cachedFirst.bottom - firstRect.bottom) <= 0.5
-      && Math.abs(cachedLast.top - lastRect.top) <= 0.5 && Math.abs(cachedLast.bottom - lastRect.bottom) <= 0.5) {
-      rects = cache.rects;
-    }
+  if (cache && cache.element === element && cache.signature === signature
+    && entries.length > 0 && blockCacheDirtyKeys.size < entries.length) {
+    rects = revalidateRects(element, cache, entries, top, signature);
   }
   if (!rects) rects = fullScan(element, entries, top);
   else transcriptGeometryReadStats.cacheHits += 1;
