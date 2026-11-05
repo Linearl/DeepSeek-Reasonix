@@ -511,12 +511,25 @@ function VersionRows({
     }
   };
 
-  const activate = async (headId: string) => {
+  // tl1430:「切换到此版本」= 采纳该行的文件为新主线(adopt)。修复前的入口
+  // 恒传 mainPath(点副本行请求的却是把主线自己设为激活)+scope 硬编码
+  // global+topicId 空,后端校验链路对不上,点击成了静默 no-op。现在传被点
+  // 行的真实 path;scope/topicId 留空由后端按 catalog filing 反查,副本行与
+  // project 会话同一条通路。headId 恒空:in-log head 切换已随 tl1280 下线,
+  // 后端对该形态显式报错,这里不再有机会走错分支。
+  const [activating, setActivating] = useState<string | null>(null);
+  const [switchedNote, setSwitchedNote] = useState("");
+  const activate = async (chain: RecoveryChainView) => {
+    setActivating(chain.path);
     try {
-      await app.SetActiveSessionVersion({ scope: "global", topicId: "", path: mainPath, headId });
+      await app.SetActiveSessionVersion({ scope: "", topicId: "", path: chain.path, headId: "" });
+      const label = recoveryShortName(chain.path) || chain.label || chain.path;
+      setSwitchedNote(t("settings.sessionVersions.activated").replace("{name}", label));
       onReload();
     } catch (e) {
       onError(String(e));
+    } finally {
+      setActivating(null);
     }
   };
 
@@ -811,11 +824,11 @@ function VersionRows({
                       <button
                         className="btn btn--secondary btn--small"
                         type="button"
-                        title={t("settings.sessionVersionsActivateHint")}
-                        disabled={repairing}
-                        onClick={() => void activate(c.headId)}
+                        title={c.covered ? t("settings.sessionVersionsActivateCoveredHint") : t("settings.sessionVersionsActivateHint")}
+                        disabled={repairing || activating !== null || c.covered}
+                        onClick={() => void activate(c)}
                       >
-                        {t("settings.sessionVersions.activate")}
+                        {activating === c.path ? "…" : t("settings.sessionVersions.activate")}
                       </button>
                     )}
                     {/* 任务 1064:非当前版本行加删除入口——当前选中版本不可选不
@@ -894,6 +907,9 @@ function VersionRows({
           )}
         </div>
       )}
+      {/* tl1430: 切换回执与修复回执同层可见——成功也要说出口,不靠用户从
+          选中态变化里反推发生了什么。 */}
+      {switchedNote && <div className="rc-versions__health">{switchedNote}</div>}
       {repairNote && <div className="rc-versions__health">{repairNote}</div>}
       {records.length > 0 && (
         <div className="rc-versions__health">

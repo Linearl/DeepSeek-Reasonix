@@ -3383,7 +3383,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewBtnHint": "預覽這條分支的開頭與結尾，並可把它選定為主線；唯讀，不寫入任何檔案",
   "settings.recoveryCopiesDeleteHeadHint": "刪除這個版本：先打 retire 標記（隱藏），下次單寫輪換才真正裁掉，期間可隨時切回",
   "settings.recoveryCopiesSynthesizeBtnHint": "把其餘分支的獨有事件併入選定的主線（重複事件零雙份）；落敗分支進回收站（可恢復）",
-  "settings.sessionVersionsActivateHint": "把主線切換到這個版本：切換是一條 select 標記，可隨時切回，舊版本保留",
+  "settings.sessionVersionsActivateHint": "把主線切換到這個版本：切換不改動任何已有事件，原主線留檔可隨時切回；會話正在工作中會提示稍後再切",
+  // tl1430: 切換成功回執 + 已被主線完全包含的副本行按鈕禁用提示。
+  "settings.sessionVersions.activated": "已切換：{name} 成為當前主線；重開此對話將按新主線顯示",
+  "settings.sessionVersionsActivateCoveredHint": "這一版本的內容已全部包含在當前主線裡，無需切換",
   "settings.sessionVersionsCheckHint": "檢查這份事件日誌的健康狀態（唯讀，不修復）",
   "settings.sessionVersionsRepairHint": "修復事件日誌（回填檢查點等）；修復前自動備份，並留修復記錄",
   "settings.sessionVersionsRepairDietHint": "修復並瘦身，兩個動作：①剝離訊息裡的圖片 payload（大圖轉佔位）②把超出模型視窗的舊訊息摺疊成一條本地佔位——縮小體積；修復前自動備份",
