@@ -511,6 +511,14 @@ type Controller struct {
 	// Not reentrant — never call snapshot (or anything that snapshots, such as
 	// recoverInterruptedTurn or maybeColdResumePrune) while holding it.
 	snapshotMu sync.Mutex
+	// tl1407: bounded logging + one-shot crash dump for snapshot-refusal
+	// branches (content without a system message after a failed repair; content
+	// without a session path). Both branches run under snapshotMu, which guards
+	// these counters. Before the bound, each autosave cycle (30s) re-logged the
+	// anomaly — the 20261105 field storm logged 471 WARNs across sessions while
+	// the conversation lived only in memory.
+	refusalWarnCount int
+	refusalDumpPath  string
 	// 任务 710: coalesces redundant snapshot-mode saves. Redundant savers
 	// (desktop TurnDone autosave, action-time snapshotTab) consult the gate
 	// before queueing behind a full save; durability-boundary callers (turn
@@ -4840,6 +4848,7 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	c.snapshotMu.Lock()
 	if c.executor != nil {
 		c.executor.SetSession(s)
+		c.repairHeadlessResumedSession(s)
 	}
 	c.mu.Lock()
 	c.sessionPath = path
@@ -4897,6 +4906,23 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	// (possibly owner-adjusted) phase payload.
 	if err := c.extensionSessionPhase(context.Background(), extension.PointSessionLoad, dispatch.PhaseLoad, path); err != nil {
 		c.extensionWarn("session policy failed at session.load", err)
+	}
+}
+
+// repairHeadlessResumedSession is the tl1407 stock heal: transcripts written
+// by pre-fix builds (the self-heal fold that swallowed the identity header,
+// headless fork/branch lineages) load without a leading system message.
+// Restoring it here gives the first model request its identity contract back
+// and lets the very next autosave persist the whole transcript — no refusal,
+// no in-memory-only accumulation. Runs once per Resume, off the save cycle,
+// so there is no storm surface. Caller holds snapshotMu.
+func (c *Controller) repairHeadlessResumedSession(s *agent.Session) {
+	if s == nil || !s.HasContent() || s.HasSystemMessage() {
+		return
+	}
+	if s.SetLeadingSystemPromptWithReason(c.identityRepairPrompt(), "resume_headless_repair") {
+		slog.Warn("controller: resumed a session with content but no system message; identity header restored",
+			"label", c.Label(), "session_dir", c.SessionDir(), "message_count", s.Len())
 	}
 }
 
@@ -5078,23 +5104,30 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 		return false, nil
 	}
 	if !s.HasSystemMessage() {
-		// The session has user/assistant/tool messages but no leading system
-		// prompt.  Persisting it would create a session file that, when
-		// reloaded, has no agent-identity contract — the model falls back to
-		// its training-data defaults, giving wrong answers to identity
-		// queries ("who are you?").  Log the anomaly so the root cause
-		// (typically an empty sysPrompt reaching NewSession) can be
-		// diagnosed, then refuse to write a corrupted transcript.
-		slog.Warn("controller: refusing to snapshot session with content but no system message",
-			"label", c.Label(), "session_dir", c.SessionDir(), "message_count", len(s.Snapshot()))
-		return false, nil
+		// tl1407 终局:补头续跑,而非无限拒绝。The session has user/assistant/
+		// tool messages but no leading system prompt — persisting that used to
+		// be refused to protect the reload identity contract, but the refusal
+		// never fixed anything: every autosave cycle re-logged the WARN (the
+		// 20261105 storm), the turn kept running with the messages piling up
+		// in memory only, and one crash lost the whole conversation. Restoring
+		// the header satisfies exactly what the guard protected: the model
+		// request and the persisted file both carry the identity contract
+		// again, and this save proceeds. One ERROR, terminal.
+		if s.SetLeadingSystemPromptWithReason(c.identityRepairPrompt(), "snapshot_guard_headless_repair") {
+			slog.Error("controller: session had content but no system message; identity header restored, save proceeding",
+				"label", c.Label(), "session_dir", c.SessionDir(), "message_count", s.Len())
+		} else {
+			// 终局拒绝形态(理论上不可达:回退文案恒非空)——保留防未来退化。
+			c.noteSnapshotRefusal(s, path, "session with content but no system message")
+			return false, nil
+		}
 	}
 	if path == "" {
 		// There IS content but nowhere to write it: this silently dropped whole
-		// bot conversations (#4414). Surface it loudly instead of returning nil
-		// so the missing session path can be diagnosed and fixed at the source.
-		slog.Warn("controller: session has content but no session path; conversation will not be persisted",
-			"label", c.Label(), "session_dir", c.SessionDir())
+		// bot conversations (#4414). Surface it loudly, bound the per-cycle
+		// WARN (tl1407: same storm family), and dump the transcript beside the
+		// session dir so a crash cannot take the conversation with it.
+		c.noteSnapshotRefusal(s, path, "session has content but no session path; conversation will not be persisted")
 		return false, errNoSessionPath
 	}
 	// session.save: the session_policy owner rules on the impending save; a
