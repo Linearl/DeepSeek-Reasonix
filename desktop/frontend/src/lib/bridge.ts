@@ -291,6 +291,9 @@ export interface RecoveryCopyView {
   shared: number;
   unique: number;
   scanned: boolean;
+  /** tl1415 点10: user-turn count from the same measurement replay as messages;
+   *  zero on an unscanned copy means "not measured", not "no turns". */
+  turns: number;
   /** orphan marks a copy whose canonical transcript is gone: another line rather
    *  than a fork, so it cannot be merged. */
   orphan?: boolean;
@@ -302,6 +305,10 @@ export interface RecoveryCopyGroupView {
   directory: string;
   mainExists: boolean;
   mainMessages: number;
+  /** tl1415 点10: the main transcript's user-turn count, measured by the same
+   *  scan; zero before the first scan. The summary row's turns column shows
+   *  this (it used to show mainMessages under a turns header). */
+  mainTurns: number;
   /** The canonical transcript's own size and mtime, so the table can show it on
    *  the same row the copies are read against. */
   mainBytes: number;
@@ -4364,7 +4371,7 @@ function makeMockApp(): AppBindings {
       return [];
     },
     async ScanRecoveryCopyGroup(_mainPath: string): Promise<RecoveryCopyGroupView> {
-      return { mainPath: "", mainLabel: "", directory: "", mainExists: false, mainMessages: 0, mainBytes: 0, mainModified: "", copies: [] };
+      return { mainPath: "", mainLabel: "", directory: "", mainExists: false, mainMessages: 0, mainTurns: 0, mainBytes: 0, mainModified: "", copies: [] };
     },
     async ForceConsolidateTopicRecoveryCopies(_scope: string, _workspaceRoot: string, topicID: string): Promise<ConsolidationReport> {
       return this.ForceConsolidateSessionRecoveryCopies(`mock://topics/${topicID}`);

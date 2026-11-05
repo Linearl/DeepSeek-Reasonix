@@ -37,6 +37,12 @@ type RecoveryCopyView struct {
 	Shared   int  `json:"shared"`
 	Unique   int  `json:"unique"`
 	Scanned  bool `json:"scanned"`
+	// Turns is the copy's user-turn count, measured in the same scan that fills
+	// Messages (tl1415 点10: the panel's turns column showed "—" for every copy
+	// because the scan never counted turns; the same snapshot replay already
+	// walks every message, so the count rides along for free). Zero on an
+	// unscanned copy is "not measured", not "no turns" — the panel says so.
+	Turns int `json:"turns"`
 	// Orphan marks a copy whose canonical transcript is not on disk under the
 	// expected name. It is another line rather than a fork of this conversation,
 	// so the UI has to say so instead of offering a merge that cannot work.
@@ -53,6 +59,12 @@ type RecoveryCopyGroupView struct {
 	MainExists bool `json:"mainExists"`
 	// MainMessages is the canonical transcript's length, filled by scanning.
 	MainMessages int `json:"mainMessages"`
+	// MainTurns is the canonical transcript's user-turn count, measured in the
+	// same scan (tl1415 点10: the summary row's turns column used to render the
+	// message count under a turns header — the two readings agree only by
+	// accident. With MainTurns measured the column finally shows what its
+	// header says).
+	MainTurns int `json:"mainTurns"`
 	// The main's own size and mtime, so the table can show it on the same row the
 	// copies are read against rather than leaving that line blank.
 	MainBytes    int64              `json:"mainBytes"`
@@ -222,17 +234,28 @@ func recoveryCopyGroupFor(dir, mainPath string) (RecoveryCopyGroupView, bool) {
 	}
 	// The canonical transcript is measured too: without its length there is no
 	// baseline to read the copies against, which is the whole point of scanning.
+	// Turns ride the same replay (tl1415 点10): PreviewTurns counts user turns
+	// while the snapshot is already in memory, so the turns column stops being a
+	// per-column guess.
 	if snapshot, ok := agent.LoadSessionContentSnapshot(mainPath); ok {
 		group.MainMessages = snapshot.Len()
-	} else {
+		_, group.MainTurns = snapshot.PreviewTurns()
+	} else if count, turns, _, tok := agent.TolerantChainReadings(mainPath); tok {
 		// Strict load refused (damaged/unnormalized): the tolerant loader still
 		// counts, so the row shows real numbers instead of a misleading 0.
+		group.MainMessages = count
+		group.MainTurns = turns
+	} else {
 		group.MainMessages = agent.TolerantMessageCount(mainPath)
 	}
 	for _, copyView := range copies {
 		copyView.Scanned = true
 		if snapshot, ok := agent.LoadSessionContentSnapshot(copyView.Path); ok {
 			copyView.Messages = snapshot.Len()
+			_, copyView.Turns = snapshot.PreviewTurns()
+		} else if count, turns, _, tok := agent.TolerantChainReadings(copyView.Path); tok {
+			copyView.Messages = count
+			copyView.Turns = turns
 		} else {
 			copyView.Messages = agent.TolerantMessageCount(copyView.Path)
 		}

@@ -3380,6 +3380,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersionsCheckHint": "檢查這份事件日誌的健康狀態（唯讀，不修復）",
   "settings.sessionVersionsRepairHint": "修復事件日誌（回填檢查點等）；修復前自動備份，並留修復記錄",
   "settings.sessionVersionsRepairDietHint": "修復並瘦身，兩個動作：①剝離訊息裡的圖片 payload（大圖轉佔位）②把超出模型視窗的舊訊息摺疊成一條本地佔位——縮小體積；修復前自動備份",
+  // tl1415 點10/11/12: 「未測量」狀態、降級預覽的獨立空態、檔名短標識。
+  "settings.recoveryCopiesUnmeasured": "未測量",
+  "settings.recoveryCopiesUnmeasuredHint": "尚未測量——點行內「掃描」或底部掃描按鈕後顯示真實讀數",
+  "settings.recoveryCopiesPreviewUnreadable": "讀數降級——預覽不可得（收起後重新展開可重試）",
   "settings.recoveryCopiesGroupCopies": "副本（recovery 檔案）",
   "settings.recoveryCopiesGroupChains": "候選鏈與版本（v3 事件日誌）",
   "settings.recoveryCopiesChainCurrent": "目前主線",

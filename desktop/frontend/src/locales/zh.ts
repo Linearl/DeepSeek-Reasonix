@@ -4818,6 +4818,10 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersionsCheckHint": "检查这份事件日志的健康状态（只读，不修复）",
   "settings.sessionVersionsRepairHint": "修复事件日志（回填检查点等）；修复前自动备份，并留修复记录",
   "settings.sessionVersionsRepairDietHint": "修复并瘦身，两个动作：①剥离消息里的图片 payload（大图转占位）②把超出模型窗口的旧消息折叠成一条本地占位——缩小体积；修复前自动备份",
+  // tl1415 点10/11/12: 「未测量」状态、降级预览的独立空态、文件名短标识。
+  "settings.recoveryCopiesUnmeasured": "未测量",
+  "settings.recoveryCopiesUnmeasuredHint": "尚未测量——点行内「扫描」或底部扫描按钮后显示真实读数",
+  "settings.recoveryCopiesPreviewUnreadable": "读数降级——预览不可得（收起后重新展开可重试）",
   "settings.recoveryCopiesGroupCopies": "副本（recovery 文件）",
   "settings.recoveryCopiesGroupChains": "候选链与版本（v3 事件日志）",
   "settings.recoveryCopiesChainCurrent": "当前主线",

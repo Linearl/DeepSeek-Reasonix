@@ -42,6 +42,25 @@ function formatWhen(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** tl1415 点10: the summary row's turns column shows the main's measured turns
+ *  once a scan exists; before that it names the state instead of a bare "—"
+ *  (the column used to render the message count under a turns header, which is
+ *  exactly the "5396 · 215" confusion the user flagged). Zero turns after a
+ *  scan is a real reading (tool-only transcripts have none) and shows as 0. */
+function groupTurnsText(group: RecoveryCopyGroupView, t: Translator): string {
+  if (group.mainMessages > 0 || group.mainTurns > 0) return String(group.mainTurns);
+  return group.copies.length > 0 ? t("settings.recoveryCopiesUnmeasured") : "—";
+}
+
+/** tl1415 点12: the recovery filename's short signature — "recovery-<8 hex>",
+ *  the part that maps a panel row back to the file the user sees on disk
+ *  (recovery-5df6de18…). Empty for names that are not recovery copies, so
+ *  callers can fall back to the generic label. */
+function recoveryShortName(path: string): string {
+  const m = /-recovery-([0-9a-fA-F]{16})\.jsonl$/i.exec(path);
+  return m ? `recovery-${m[1].slice(0, 8).toLowerCase()}` : "";
+}
+
 /** fileSizeOf reads a transcript's on-disk size via the bridge's chain listing
  *  (the same reading the volume column shows), returning 0 when the file cannot
  *  be stat'd — a repair receipt that cannot compare sizes says so rather than
@@ -542,9 +561,10 @@ function VersionRows({
   // 一次,同一事实被渲染两遍。
   const candidateChains = currentMainChain ? chainRows.filter((c) => c !== currentMainChain) : chainRows;
   // 主线行读数来源:有当前主线链时用链读数(含轮次),未加载时用主线 stat 读数
-  // (副本扫描链路,零重放)。
+  // (副本扫描链路,零重放;tl1415 点10 起扫描带实测轮次 mainTurns,不再是
+  // 恒 0 的「—」)。
   const mainMessages = currentMainChain ? currentMainChain.messageCount : group.mainMessages;
-  const mainTurns = currentMainChain ? currentMainChain.turns : 0;
+  const mainTurns = currentMainChain ? currentMainChain.turns : group.mainTurns;
   const mainModified = currentMainChain ? currentMainChain.lastActivity : group.mainModified;
   const mainBytes = currentMainChain ? currentMainChain.bytes : group.mainBytes;
   // 副本行的「将成为主线」判定(与外层概要行同一预测)。
@@ -612,12 +632,20 @@ function VersionRows({
           )}
           {group.copies.map((copy, index) => {
             const wins = winner ? !winner.isMain && winner.copyIndex === index : false;
+            // tl1415 点12: 文件名短标识(recovery-<8 hex>)——用户要能把面板行
+            // 对回磁盘上的 recovery-5df6de18 文件;悬停 title 给完整文件名。
+            const shortName = recoveryShortName(copy.path);
             return (
               <Fragment key={copy.path}>
                 <tr className={`rc-detail__row rc-row--copy${wins ? " rc-row--winner" : ""}`}>
                   <td className="rc-detail__check" />
                   <td className="rc-label">
                     {t("settings.recoveryCopiesCopy")} {index + 1}
+                    {shortName ? (
+                      <span className="rc-copy__shortname" title={copy.path}>
+                        {shortName}
+                      </span>
+                    ) : null}
                     {copy.orphan ? ` · ${t("settings.recoveryCopiesOrphan")}` : ""}
                     {wins ? ` · ${t("settings.recoveryCopiesWins")}` : ""}
                     {/* 任务 1063:副本行的「独有」徽标——分级展示的核心:副本
@@ -629,8 +657,18 @@ function VersionRows({
                     ) : null}
                   </td>
                   <td className="rc-num">{copy.scanned ? copy.messages : "—"}</td>
-                  {/* 副本文件没有轮次读数(副本扫描只数消息)——照实留空,不编造。 */}
-                  <td className="rc-num rc-muted">—</td>
+                  {/* tl1415 点10: 轮次随扫描实测(与条数同一轮重放)。未扫描的
+                      副本给「未测量」状态而不是裸「—」;扫描后的 0 是真读数
+                      (纯工具转录),照实显示 0。 */}
+                  <td className="rc-num">
+                    {copy.scanned ? (
+                      copy.turns
+                    ) : (
+                      <span className="rc-muted" title={t("settings.recoveryCopiesUnmeasuredHint")}>
+                        {t("settings.recoveryCopiesUnmeasured")}
+                      </span>
+                    )}
+                  </td>
                   <td>{formatWhen(copy.modified)}</td>
                   <td className="rc-num">{formatBytes(copy.bytes)}</td>
                   <td className={copy.unique > 0 ? "rc-unique rc-num" : "rc-muted rc-num"}>
@@ -706,8 +744,9 @@ function VersionRows({
                   <td className="rc-detail__check" />
                   <td className="rc-label">
                     {/* tl1355:无 DAG 后行身份=文件(headId 恒空)——副本行显示
-                        「副本」而不是误标 main;其余链行显示 headId 前 8 位。 */}
-                    {c.headId ? c.headId.slice(0, 8) : t("settings.recoveryCopiesCopy")}
+                        文件名短标识(recovery-<8 hex>,tl1415 点12:用户要能把
+                        面板行对回磁盘文件);非副本文件链行显示 headId 前 8 位。 */}
+                    {c.headId ? c.headId.slice(0, 8) : recoveryShortName(c.path) || t("settings.recoveryCopiesCopy")}
                     {/* 任务 1039r:降级行必须说自己是降级。 */}
                     {c.degraded && (
                       <span className="sv-degraded" title={t("settings.sessionVersions.degradedHint")}>
@@ -738,9 +777,15 @@ function VersionRows({
                   <td colSpan={7} className="rc-detail__ops-cell">
                     {/* The head's own preview text: what this chain would leave the
                         conversation looking like, which is the thing a user needs in
-                        order to choose. Without it the list showed numbers only. */}
-                    <span className="rc-chain__preview rc-chain__name" title={c.preview}>
-                      {c.preview?.trim() || t("settings.recoveryCopiesPreviewEmpty")}
+                        order to choose. Without it the list showed numbers only.
+                        tl1415 点11: 降级行(预算外/解析拒)的预览不可得是**扫描状态**,
+                        不冒充「该分支无预览文本」(数据缺席)——两种空态分开说。 */}
+                    <span className="rc-chain__preview rc-chain__name" title={c.preview || undefined}>
+                      {c.preview?.trim()
+                        ? c.preview
+                        : c.degraded
+                          ? t("settings.recoveryCopiesPreviewUnreadable")
+                          : t("settings.recoveryCopiesPreviewEmpty")}
                     </span>
                     <button
                       className="btn btn--secondary btn--small rc-chain__preview-btn"
@@ -1033,6 +1078,7 @@ export function RecoveryCopiesSection() {
         directory: versionGroup.directory,
         mainExists: true,
         mainMessages: 0,
+        mainTurns: 0,
         mainBytes: 0,
         mainModified: "",
         copies: [],
@@ -1800,7 +1846,14 @@ export function RecoveryCopiesSection() {
           </button>
           <span>{formatWhen(group.mainModified)}</span>
           <span>{formatBytes(group.mainBytes)}</span>
-          <span>{group.mainMessages || "—"}</span>
+          {/* tl1415 点10: 该列列名是「交互轮次」——放实测轮次,不再拿消息数
+              冒充;未测量时给状态文案而不是裸「—」。 */}
+          <span
+            className={group.mainMessages > 0 || group.mainTurns > 0 ? undefined : "rc-muted"}
+            title={group.mainMessages > 0 || group.mainTurns > 0 ? undefined : t("settings.recoveryCopiesUnmeasuredHint")}
+          >
+            {groupTurnsText(group, t)}
+          </span>
           <span>×{group.copies.length}</span>
           <span className={groupUnique ? "rc-unique" : "rc-muted"}>{groupUnique ?? "—"}</span>
           <span className="rc-action">

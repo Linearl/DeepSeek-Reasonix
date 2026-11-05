@@ -39542,6 +39542,15 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
   white-space: nowrap;
 }
+/* tl1415 点12: 副本行/文件链行的文件名短标识(recovery-<8 hex>)——用户把
+   面板行对回磁盘文件的锚点。等宽小字、淡色,是身份标注不是告警。 */
+.rc-copy__shortname {
+  margin-left: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82em;
+  opacity: 0.62;
+  white-space: nowrap;
+}
 .rc-versions {
   margin: 8px 0 4px;
   padding: 8px 10px 4px;

@@ -4832,6 +4832,12 @@ export const en = {
   "settings.sessionVersionsCheckHint": "inspects the event log's health (read-only, no repair)",
   "settings.sessionVersionsRepairHint": "repairs the event log (checkpoint backfill etc.); backs up first and writes a repair record",
   "settings.sessionVersionsRepairDietHint": "repair + diet, two actions: 1) strip image payloads from messages 2) fold over-window old messages into one local placeholder — shrinking the file; backs up first",
+  // tl1415 点10/11/12: unmeasured status for the turns column, a distinct
+  // empty state for degraded previews, and the recovery filename short
+  // signature that maps a panel row back to the file on disk.
+  "settings.recoveryCopiesUnmeasured": "unmeasured",
+  "settings.recoveryCopiesUnmeasuredHint": "not measured yet — run Scan (row button or footer) to get real readings",
+  "settings.recoveryCopiesPreviewUnreadable": "readings degraded — preview unavailable (collapse and re-expand to retry)",
   "settings.recoveryCopiesGroupCopies": "Copies (recovery files)",
   "settings.recoveryCopiesGroupChains": "Candidate chains & versions (v3 event log)",
   "settings.recoveryCopiesChainCurrent": "current main",
