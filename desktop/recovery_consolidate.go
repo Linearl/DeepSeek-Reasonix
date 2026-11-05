@@ -104,6 +104,19 @@ func (a *App) consolidateSessionRecoveryCopies(path string, winnerPath string, f
 		}
 		a.emitProjectTreeChangedForSessionDirs(dir)
 		a.invalidatePromptHistoryCache()
+		// tl1401: the merge rewrites the main transcript on disk while a tab may
+		// still be showing its in-memory snapshot — the user reads the stale pane
+		// as lost history (20261105 实测：合成成功落盘，打开的对话却不刷新). The
+		// sidebar already refreshes via project-tree:changed-v2; this event is the
+		// signal the OPEN TAB listens for, so it can reload the transcript
+		// projection in place (frontend reason=synthesize-done).
+		a.emitRuntimeEvent("session:consolidated", map[string]any{
+			"mainPath":           sessionPath,
+			"promoted":           report.Promoted,
+			"trashed":            report.Trashed,
+			"mainMessageCount":   report.MainMessageCount,
+			"winnerMessageCount": report.WinnerMessageCount,
+		})
 	}
 	return report, nil
 }
