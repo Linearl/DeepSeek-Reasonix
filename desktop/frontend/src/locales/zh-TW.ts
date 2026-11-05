@@ -3352,6 +3352,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesMergePicked": "用所選分支合併",
   "settings.recoveryCopiesPreviewEmpty": "（該分支無預覽文字）",
   "settings.recoveryCopiesMerging": "正在合併",
+  "settings.recoveryCopiesMergedToast": "已合成 {count} 條入主線",
+  "settings.recoveryCopiesFailedToast": "{count} 個會話合成失敗",
   "settings.recoveryCopiesChains": "候選鏈（合併後由最長的一條成為主線）",
   "settings.recoveryCopiesChainsHint": "候選鏈在展開會話行時自動重放載入，無需掃描；「掃描」測的是副本與主線的差異讀數",
   "settings.recoveryCopiesChainCurrent": "目前主線",

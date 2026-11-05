@@ -97,6 +97,7 @@ import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type Cont
 import { reportFrontendLog } from "./lib/frontendLog";
 import { restoreComposerFocus } from "./lib/composerFocus";
 import { useRuntimeTransitionFocusRestore } from "./app-runtime/useLocalUiLifecycles";
+import { useConsolidatedSessionReload } from "./app-runtime/useConsolidatedSessionReload";
 import { useNavigationSurfaceTimeoutWatch } from "./app-runtime/navigationSurfaceTimeoutWatch";
 import { app, onBackendTabActivated, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
@@ -759,6 +760,7 @@ export default function App() {
     isNavigationIntentCurrent,
     reassertVisibleTabAfterStaleNavigation,
     syncActiveTab,
+    reloadTranscriptsForConsolidatedSession,
     ensureBlankTab,
     ensureBlankSurface,
     itemsForTab,
@@ -1226,6 +1228,13 @@ export default function App() {
       if (Array.isArray(payload)) setQuickCommands(payload as QuickCommandEntry[]);
     });
   }, [setQuickCommands]);
+
+  // tl1401: a recovery-copy consolidation rewrites the main transcript on
+  // disk. Tabs showing that session reload in place on this event — without
+  // it the pane keeps the open-time snapshot and the user reads stale content
+  // as lost history (20261105 实测). The reason lands as synthesize-done in
+  // the session monitor, so the reload is diagnosable like every other hydrate.
+  useConsolidatedSessionReload(reloadTranscriptsForConsolidatedSession);
 
   // Autopilot is opt-in: its mode only appears in the composer once the
   // preference is on, so nobody lands in an unattended run by accident.

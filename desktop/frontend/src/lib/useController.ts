@@ -303,7 +303,7 @@ export type ControllerLiveStore = {
 export type HistoryMutationKind = "replace" | "prepend" | "append" | "patch";
 export type HistoryMutation = { seq: number; kind: HistoryMutationKind };
 export type HistoryLoadTrigger = "viewport-user" | "question-jump" | "retry" | "auto-fill";
-export type HydrateReason = "switch-tab" | "new-session" | "resume-session" | "open-topic" | "startup" | "rewind" | "session-changed";
+export type HydrateReason = "switch-tab" | "new-session" | "resume-session" | "open-topic" | "startup" | "rewind" | "session-changed" | "synthesize-done";
 type SyncActiveTabOptions = { preserveCachedHistory?: boolean; navigationIntentSeq?: number; surfacePolicy?: HydrateSurfacePolicy; deferHydration?: boolean };
 // A ticketed StartTopicActivation in flight. Only the latest one is tracked:
 // superseded requests get "cancelled" from the backend and are ignored.
@@ -6049,6 +6049,26 @@ export function useController() {
     const m = statesRef.current.get(id)?.meta;
     await loadSessionDataForTab(id, false, "startup", { sessionPath: m?.sessionPath, sessionRevision: m?.sessionRevision, sessionDigest: m?.sessionDigest, preserveCachedHistory: false });
   }, [loadSessionDataForTab]);
+  // tl1401: the backend emits session:consolidated after a recovery-copy merge
+  // rewrites the main transcript on disk. A tab showing that session keeps its
+  // in-memory snapshot and reads the stale pane as lost history, so the App
+  // level listener funnels the event here: every tab whose sessionPath matches
+  // the consolidated main reloads its transcript projection in place. The
+  // reload is a full reset (reset=true → the surface rebuilds and history is
+  // re-fetched; the old revision/digest would veto the cached copy anyway),
+  // and the "synthesize-done" reason marks the decision in the session
+  // monitor so "why did this tab reload" stays diagnosable.
+  const reloadTranscriptsForConsolidatedSession = useCallback(async (mainPath: string) => {
+    const target = (mainPath ?? "").trim();
+    if (!target) return;
+    const matched: string[] = [];
+    for (const [tabId, tabState] of statesRef.current.entries()) {
+      if ((tabState.meta?.sessionPath ?? "").trim() === target) matched.push(tabId);
+    }
+    for (const tabId of matched) {
+      await loadSessionDataForTab(tabId, true, "synthesize-done");
+    }
+  }, [loadSessionDataForTab]);
   const reconcileSessionNavigationForTab = useCallback(async (
     tabId: string,
     navigationSeq: number,
@@ -6955,5 +6975,6 @@ export function useController() {
     isNavigationIntentCurrent,
     reassertVisibleTabAfterStaleNavigation,
     syncActiveTab: syncActiveTabFromBackend,
+    reloadTranscriptsForConsolidatedSession,
   };
 }

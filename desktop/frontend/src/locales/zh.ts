@@ -4790,6 +4790,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesMergePicked": "用所选分支合并",
   "settings.recoveryCopiesPreviewEmpty": "（该分支无预览文本）",
   "settings.recoveryCopiesMerging": "正在合并",
+  "settings.recoveryCopiesMergedToast": "已合成 {count} 条入主线",
+  "settings.recoveryCopiesFailedToast": "{count} 个会话合成失败",
   "settings.recoveryCopiesChains": "候选链（合并后由最长的一条成为主线）",
   "settings.recoveryCopiesChainsHint": "候选链在展开会话行时自动重放加载，无需扫描；「扫描」测的是副本与主线的差异读数",
   "settings.recoveryCopiesChainCurrent": "当前主线",
