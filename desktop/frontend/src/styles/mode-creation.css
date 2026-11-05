@@ -4777,6 +4777,11 @@
 :root[data-theme-pack][data-theme-has-bg="true"] .app:not(.app--creation) .composer__btn--stop {
   background: color-mix(in srgb, color-mix(in srgb, var(--err) 14%, var(--bg-elev-2)) 80%, transparent) !important;
 }
+/* tl1420: tier feedback must survive theme packs — mirror of the styles.css
+   guard; re-applies the tier hue (--stop-tier-color/-pct) with pane blending. */
+:root[data-theme-pack][data-theme-has-bg="true"] .app:not(.app--creation) .composer__btn--stop[class*="composer__btn--stop-"] {
+  background: color-mix(in srgb, color-mix(in srgb, var(--stop-tier-color, var(--err)) var(--stop-tier-pct, 14%), var(--bg-elev-2)) var(--theme-pane-child-pct, 80%), transparent) !important;
+}
 :root[data-theme-pack][data-theme-has-bg="true"] .app:not(.app--creation) .composer__btn--send.composer__btn--steer {
   background: color-mix(in srgb, color-mix(in srgb, var(--control-primary-bg) 16%, var(--bg-elev-2)) 80%, transparent) !important;
 }
