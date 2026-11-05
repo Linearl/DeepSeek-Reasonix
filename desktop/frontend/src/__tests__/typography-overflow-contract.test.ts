@@ -243,7 +243,13 @@ for (const selector of [
   ".context-panel__metric span",
   ".context-panel__metric strong",
   ".app--creation .context-panel__mini-stat-label",
-  ".app--creation .context-panel__mini-stat strong",
+  // tl1424③ 预存红清理: ".app--creation .context-panel__mini-stat strong" was
+  // removed from the clip group — stale since tl1129 (c5c5e0220). The value row
+  // deliberately stopped clipping ("费用不可估算" / "196分5秒" were hard-cut by
+  // nowrap+ellipsis in the 246px rail); both the base rule (styles.css) and the
+  // creation override (mode-creation.css) now wrap with overflow-wrap: anywhere
+  // and the test list was never updated. The replacement contract is pinned
+  // below instead of the removed clip trio.
   ".topbar__model",
   ".composer-modebar__item span",
   ".composer-more-menu__item span",
@@ -273,6 +279,10 @@ ok(
   finalDeclaration(".app--creation .context-panel__mini-stat strong", "max-width") !== "14ch",
   "creation overview values are not capped to a fixed 14ch width",
 );
+// tl1129: overview value rows wrap long amounts instead of silently clipping
+// them (base rule and creation override stay in sync — see both CSS comments).
+eq(finalDeclaration(".context-panel__mini-stat strong", "overflow-wrap"), "anywhere", "session metric values wrap instead of clipping");
+eq(finalDeclaration(".app--creation .context-panel__mini-stat strong", "overflow-wrap"), "anywhere", "creation metric values wrap instead of clipping");
 eq(finalDeclaration(".context-panel__mini-stat-head", "display"), "flex", "session metric labels and rate badges share a compact header row");
 eq(finalDeclaration(".context-panel__rate-band", "flex"), "0 0 auto", "rate badges remain visible without truncating the amount row");
 eq(finalDeclaration(".context-panel__rate-band", "white-space"), "nowrap", "rate badge labels stay intact");
