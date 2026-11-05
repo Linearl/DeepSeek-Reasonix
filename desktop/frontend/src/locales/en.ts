@@ -6126,6 +6126,8 @@ export const en = {
   "collabGroup.chat.placeholder": "Select a group chat to start",
   "collabGroup.chat.emptyStream": "No messages yet — say hello",
   "collabGroup.chat.back": "Back to the group list",
+  "collabGroup.chat.openTab": "Open in tab",
+  "channelWorkspace.title": "Group chat (tab)",
   "collabGroup.chat.detail": "Details",
   "collabGroup.chat.closeDetail": "Close",
   "collabGroup.chat.sendPlaceholder": "Type a message; Enter to send, Shift+Enter for a new line",

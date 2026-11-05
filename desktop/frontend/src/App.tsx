@@ -96,7 +96,21 @@ import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 // setCollabInboxOpen/setCollabGroupOpen（经转发缝重定向到 Hub）。
 import { useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
 import { CollabHubPanel, setCollabHubOpen } from "./components/CollabHubPanel";
-import { onCollabChatOpenSession } from "./components/CollabChatView";
+import { onCollabChatOpenSession, openSessionFromCollabHub } from "./components/CollabChatView";
+import { setCollabGroupOpen } from "./components/CollabGroupPanel";
+// tl1441 ①：群聊 tab 伪实体（前端注册表 + 标签栏投影 + 工作区面板）——
+// 「群聊 = 会话 tab 同型实体、数据源换 channel」的前端承载；零新后端。
+import {
+  activateChannelTab,
+  channelRefFromTabId,
+  closeChannelTabs,
+  isChannelTabId,
+  loadActiveChannelTabId,
+  loadOpenChannelTabs,
+  mergeChannelTabMetas,
+  onChannelTabsChange,
+} from "./lib/channelTabStore";
+import { ChannelWorkspacePanel } from "./components/ChannelWorkspacePanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { SessionWallBoundary } from "./components/SessionWallBoundary";
 import { effectiveSplitTier, loadSplitPreviewTier, persistSplitPreviewTier, splitPreviewTierFromPointer, SPLIT_PREVIEW_TIERS, setSplitPaneTitle, setSplitViewEnabled, type SplitPreviewTier } from "./lib/splitView";
@@ -1920,11 +1934,24 @@ export default function App() {
     () => tabMetas.find((tab) => tab.id === activeTabId) ?? tabMetas.find((tab) => tab.active),
     [activeTabId, tabMetas],
   );
+  // tl1441 ①：群聊 tab 注册表镜像（store 是单一真相源，这里只投影消费）。
+  // 激活态=显示面开关：Go 侧活动会话 tab 不动（会话机器零扰动，split view
+  // 的「多面共存」先例），主区在激活时渲染 ChannelWorkspacePanel。
+  const [channelTabEntries, setChannelTabEntries] = useState(loadOpenChannelTabs);
+  const [activeChannelTabIdState, setActiveChannelTabIdState] = useState<string | null>(loadActiveChannelTabId);
+  useEffect(() => onChannelTabsChange(() => {
+    setChannelTabEntries(loadOpenChannelTabs());
+    setActiveChannelTabIdState(loadActiveChannelTabId());
+  }), []);
+  const channelSurfaceActive = activeChannelTabIdState !== null;
   const { active: remoteSurfaceActive, session: remoteSession, onSend: remoteComposerSend } = useActiveRemoteSession(activeTab, showToast);
 
   const automationView = mainView === "automation";
-  const effectiveWorkspacePanelRenderable = automationView ? false : workspacePanelRenderable;
-  const effectiveWorkspacePanelGridOpen = automationView ? false : workspacePanelGridOpen;
+  // tl1441 ①：群聊 tab 激活时右侧工作区面板（会话作用域：context/files/
+  // changed/subagents 全是会话数据）随之隐藏——会话专属槽位在群聊态不展示
+  // （④口径），复用 automationView 同款门控链。
+  const effectiveWorkspacePanelRenderable = automationView || channelSurfaceActive ? false : workspacePanelRenderable;
+  const effectiveWorkspacePanelGridOpen = automationView || channelSurfaceActive ? false : workspacePanelGridOpen;
   // Task 259: a persisted "todos" mode while the experiment is off falls back to
   // files, so the dock never shows a selected tab it does not render. With the
   // experiment on the mode passes through unchanged.
@@ -2234,6 +2261,13 @@ export default function App() {
     pendingPrompt: state.pendingPrompt,
     visibleTabId,
   });
+  // tl1441 ①：标签栏/概览面板消费的合并投影 = 会话 tab ∪ 群聊伪实体
+  // （追加在尾部，不参与会话排序）；激活 id 同步让位给群聊 tab。
+  const tabsWithChannels = useMemo(
+    () => mergeChannelTabMetas(visibleTabs, channelTabEntries, activeChannelTabIdState),
+    [visibleTabs, channelTabEntries, activeChannelTabIdState],
+  );
+  const chromeActiveTabId = activeChannelTabIdState ?? visibleTabId;
 
   useTabOrderSync(tabMetas, setTabOrderIds);
 
@@ -3791,11 +3825,19 @@ export default function App() {
 
   const handleTabChange = useCallback((id: string) => {
     closeTransientOverlays("tab change");
+    // tl1441 ①：群聊 tab 走前端注册表（Go 侧活动会话 tab 不动）；点会话 tab
+    // 则让位回会话工作区（群聊 tab 保留在条上）。
+    if (isChannelTabId(id)) {
+      activateChannelTab(id);
+      setTabRevealSignal((signal) => signal + 1);
+      return;
+    }
+    if (activeChannelTabIdState !== null) activateChannelTab(null);
     const selected = tabMetas.find((tab) => tab.id === id);
     setTabMetas((current) => current.map((tab) => ({ ...tab, active: tab.id === id })));
     void enqueueTabSwitch(id, selected);
     setTabRevealSignal((signal) => signal + 1);
-  }, [closeTransientOverlays, enqueueTabSwitch, tabMetas]);
+  }, [activeChannelTabIdState, closeTransientOverlays, enqueueTabSwitch, tabMetas]);
 
   // Task 688: the backend can open AND activate a tab entirely on its side —
   // today the one-click analysis family (task 672 Global flow). No frontend
@@ -3871,6 +3913,14 @@ export default function App() {
   // background runtime instead of forcing a decision; "stop and close" is an
   // explicit choice from the tab context menu.
   const handleTabClose = useCallback(async (id: string) => {
+    // tl1441 ①：群聊 tab 关闭 = 前端注册表摘除（实体在 channel 存储，无
+    // 会话运行时可 detach；激活态由 store 自动回退到会话工作区）。
+    if (isChannelTabId(id)) {
+      closeTransientOverlays("tab close");
+      closeChannelTabs([id]);
+      setTabRevealSignal((signal) => signal + 1);
+      return;
+    }
     let work: ActiveWorkView | null = null;
     try {
       work = await app.ActiveWorkForTab(id);
@@ -3951,9 +4001,24 @@ export default function App() {
 
   const handleTabsClose = useCallback(async (ids: string[], nextActiveTabId?: string) => {
     closeTransientOverlays("tabs close");
+    // tl1441 ①：批量关闭分流——群聊 id 先走注册表摘除，剩余会话 id 才进
+    // 后端关闭链；nextActive 指向群聊 tab 时只改激活态，不碰 SwitchTab。
+    const channelIds = ids.filter((id) => isChannelTabId(id));
+    if (channelIds.length > 0) {
+      closeChannelTabs(channelIds);
+      if (nextActiveTabId && isChannelTabId(nextActiveTabId)) {
+        activateChannelTab(nextActiveTabId);
+        setTabRevealSignal((signal) => signal + 1);
+        return;
+      }
+    }
     const currentIds = tabMetas.map((tab) => tab.id);
     const targets = ids.filter((id, index) => currentIds.includes(id) && ids.indexOf(id) === index);
-    if (targets.length === 0) return;
+    if (targets.length === 0) {
+      if (channelIds.length > 0) setTabRevealSignal((signal) => signal + 1);
+      return;
+    }
+    if (activeChannelTabIdState !== null) activateChannelTab(null);
     // Task 223: batch close (关闭右侧 / 关闭其他) inherits the fork's single-close
     // semantics (task 162): closing never blocks, active work detaches to the
     // background runtime. The old per-tab ActiveWorkForTab + pendingClose
@@ -3987,16 +4052,19 @@ export default function App() {
     }
     await refreshTabMetas(undefined, { afterMutation: true });
     setTabRevealSignal((signal) => signal + 1);
-  }, [closeTransientOverlays, enqueueTabSwitch, finishTabClose, refreshTabMetas, showToast, t, tabMetas]);
+  }, [activeChannelTabIdState, closeTransientOverlays, enqueueTabSwitch, finishTabClose, refreshTabMetas, showToast, t, tabMetas]);
 
   const handleTabsReorder = useCallback(async (ids: string[]) => {
-    setTabOrderIds(ids);
+    // tl1441 ①：群聊伪实体不进会话排序链——后端 reorder 只认会话 id，群聊
+    // tab 恒追加在条尾（注册表自持）；无群聊参与时行为逐字节等价旧实现。
+    const sessionIds = ids.filter((id) => !isChannelTabId(id));
+    setTabOrderIds(sessionIds);
     setTabMetas((current) => {
       const byId = new Map(current.map((tab) => [tab.id, tab]));
-      const ordered = ids.map((id) => byId.get(id)).filter((tab): tab is TabMeta => Boolean(tab));
+      const ordered = sessionIds.map((id) => byId.get(id)).filter((tab): tab is TabMeta => Boolean(tab));
       return ordered.length === current.length ? ordered : current;
     });
-    await reorderTabs(ids);
+    await reorderTabs(sessionIds);
     await refreshTabMetas(undefined, { afterMutation: true });
     setTabRevealSignal((signal) => signal + 1);
   }, [refreshTabMetas, reorderTabs]);
@@ -4088,6 +4156,8 @@ export default function App() {
   // The secondary pane holds one other tab; toggling the tab already in it closes the
   // split. Focus is deliberately left alone — the two concerns are separate.
   const toggleSplitForTab = useCallback((tabId: string) => {
+    // tl1441 ①：群聊 tab 无转录面（数据源是 channel 消息流），不参与分屏。
+    if (isChannelTabId(tabId)) return;
     setSplitState((current) => {
       const next: SplitState = current.secondaryTabId === tabId
         ? { ...current, secondaryTabId: null }
@@ -5680,8 +5750,8 @@ export default function App() {
               platform={desktopPlatform}
               browserPreviewChrome={browserPreviewChrome}
               workbenchChrome={sidebarWorkbench}
-              tabs={visibleTabs}
-              activeTabId={visibleTabId}
+              tabs={tabsWithChannels}
+              activeTabId={chromeActiveTabId}
               revealActiveSignal={tabRevealSignal}
               commandCompact={true}
               sidebarTogglePressed={sidebarTogglePressed}
@@ -5707,8 +5777,8 @@ export default function App() {
                  invisible, a re-falling header would flash. */
               <Suspense fallback={null}>
                 <TabOverviewPanel
-                  tabs={visibleTabs}
-                  activeTabId={visibleTabId}
+                  tabs={tabsWithChannels}
+                  activeTabId={chromeActiveTabId}
                   recentClosedTabs={recentClosedTabs}
                   onActivateTab={(id) => void handleTabChange(id)}
                   onCloseTab={(id) => void handleTabClose(id)}
@@ -6018,6 +6088,25 @@ export default function App() {
         )}
 
         <section className={`chat-pane${creationEmptyHero ? " chat-pane--creation-empty" : ""}`}>
+          {/* tl1441 ①：群聊 tab 工作区（升级口径：群聊=会话 tab 同型实体、
+              数据源换 channel）。激活时以叠层占据会话工作区同位面——顶部栏
+              （详情/成员/返回列表）+ 消息流 + 输入区；Go 侧活动会话 tab 与
+              其机器不受扰动（会话内容保持挂载，切回即见，零导航成本）。 */}
+          {channelSurfaceActive && (() => {
+            const ref = channelRefFromTabId(activeChannelTabIdState ?? "");
+            if (!ref) return null;
+            const entry = channelTabEntries.find((e) => e.ref === ref);
+            return (
+              <ChannelWorkspacePanel
+                channelRef={ref}
+                fallbackName={entry?.name}
+                onBackToList={() => { activateChannelTab(null); setCollabGroupOpen(true); }}
+                onOpenSession={(contactId) => openSessionFromCollabHub(contactId)}
+                quickCommands={quickCommands}
+                onManageQuickCommands={() => setQuickCommandsManagerOpen(true)}
+              />
+            );
+          })()}
           <header className="topicbar">
             {automationReturn && <button className="btn btn--small" type="button" onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); openPage({ kind: "automation" }); }}>{locale === "en" ? "Back to automation" : locale === "zh-TW" ? "返回自動化" : "返回自动化"}</button>}
             {workbenchChromeHidden && (

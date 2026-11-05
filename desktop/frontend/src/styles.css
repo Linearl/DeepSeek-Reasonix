@@ -42779,6 +42779,118 @@ button.statusbar__mcp:focus-visible {
   color: var(--text-muted, inherit);
 }
 
+/* ─── tl1441 ①：群聊 tab 工作区（ChannelWorkspacePanel）──────────────
+   会话工作区同型实体、数据源换 channel：激活时以绝对定位叠层占据
+   .chat-pane 全位面（.chat-pane 已 position:relative），顶部栏承载群聊
+   特有功能（返回列表/详情/成员）。消息流/抽屉/气泡全复用 channel-chat
+   族既有类，这里只补工作区骨架。token 全主题变量，无硬编码色。 */
+.channel-workspace {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-local-raised);
+  display: flex;
+  flex-direction: column;
+  background: var(--chat-bg);
+  min-height: 0;
+}
+.channel-workspace__topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  min-width: 0;
+}
+.channel-workspace__backlist {
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex: none;
+}
+.channel-workspace__name {
+  font-weight: 600;
+  font-size: var(--text-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.channel-workspace__topic {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.channel-workspace__meta {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  white-space: nowrap;
+  flex: none;
+}
+/* tl1369 同款点外关闭守卫锚点：零自有样式，仅稳定锚点。 */
+.channel-workspace__detailtoggle {
+  /* JS 豁免锚点，无自有样式 */
+}
+.channel-workspace__detailtoggle--on {
+  color: var(--accent);
+}
+.channel-workspace__body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 8px 12px 10px;
+}
+.channel-workspace__placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}
+.channel-workspace__stream {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  min-height: 0;
+}
+.channel-workspace__composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex: none;
+}
+/* tl1441 ③：气泡内附件缩略图（成员侧可见图）——token 全主题变量；
+   失败静默不占位（读回成功才挂载 img）。 */
+.channel-chat__attpics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.channel-chat__attpic {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  object-fit: cover;
+  display: block;
+}
+
 /* tl 1087 桌面截图覆盖层：全屏选区 + 标注画布 + 浮动工具条。挂载在
    document.body（createPortal），z-index 沿用 --z-onboarding（最高档），
    与 image-viewer 同族，保证盖过 app chrome / popover / toast。 */

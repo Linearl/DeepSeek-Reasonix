@@ -1503,6 +1503,15 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   OpenLocalPath(path: string): Promise<void>;
   SavePastedImage(dataUrl: string): Promise<string>;
   SaveClipboardImage(): Promise<string>;
+  /** tl1441 ③：群聊附件落盘——全局工作区 .reasonix/attachments 锚点（群聊
+   *  无活动工作区可锚，会话附件链落的是当前活动会话的项目目录）；返回绝对
+   *  路径（消息体 @引用需跨工作区可解析）。契约对齐 desktop
+   *  App.SaveChannelAttachment（wails generate 禁用，手写声明）。 */
+  SaveChannelAttachment(dataUrl: string): Promise<string>;
+  /** tl1441 ③：群聊附件预览读回——只认解析后落在全局工作区
+   *  .reasonix/attachments 内的路径（tl1421 探针惯例，逃出即拒）。契约对齐
+   *  desktop App.ChannelAttachmentDataURL（手写声明）。 */
+  ChannelAttachmentDataURL(path: string): Promise<string>;
   SavePastedFile(name: string, dataUrl: string): Promise<string>;
   /** 任务 1008：音频附件保存（五格式白名单 + 50MB 上限）；wails generate 禁用，手写契约对齐 desktop App.SavePastedAudio。 */
   SavePastedAudio(name: string, dataUrl: string): Promise<string>;
@@ -1523,6 +1532,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ScreenshotCursorMonitor(): Promise<{ device: string; x: number; y: number; width: number; height: number }>;
   ReleaseScreenshotCapture(path: string): Promise<void>;
   SaveScreenshotAttachment(dataUrl: string): Promise<string>;
+  /** tl1441 ③：群聊改写草稿——借首个就绪会话控制器的辅助模型通道（改写是
+   *  纯辅助模型调用，contextTail 显式传入，无会话上下文渗漏）；失败/超时/
+   *  空结果一律空串，前端静默降级为「不改写」。契约对齐 desktop
+   *  App.RewriteDraftForChannel（手写声明）。 */
+  RewriteDraftForChannel(draft: string, contextTail: string, contextBudgetKB: number): Promise<string>;
   SaveScreenshotToPath(path: string, dataUrl: string): Promise<void>;
   PickScreenshotExportFile(): Promise<string>;
   /** tl 1088: put the final PNG on the OS clipboard as a real image. */
@@ -6343,6 +6357,20 @@ function makeMockApp(): AppBindings {
       const path = `.reasonix/attachments/mock-${mockAttachmentDataURLs.size + 1}.png`;
       mockAttachmentDataURLs.set(path, dataUrl);
       return path;
+    },
+    // tl1441 ③ mock：群聊附件落全局附件目录（mock 形态=带 channel- 前缀的
+    // 绝对形状路径，读回原样放行，与真实桥的包含校验面一致）。
+    async SaveChannelAttachment(dataUrl: string) {
+      const path = `/mock-global/.reasonix/attachments/channel-${mockAttachmentDataURLs.size + 1}.png`;
+      mockAttachmentDataURLs.set(path, dataUrl);
+      return path;
+    },
+    async ChannelAttachmentDataURL(path: string) {
+      return mockAttachmentDataURLs.get(path) ?? mockPreviewImageDataURL;
+    },
+    async RewriteDraftForChannel(draft: string) {
+      // 浏览器 dev mock：原样返回（不自动发送，仅回填输入框语义）。
+      return draft.trim();
     },
     async SaveClipboardImage() {
       const path = `.reasonix/attachments/mock-clipboard-${mockAttachmentDataURLs.size + 1}.png`;

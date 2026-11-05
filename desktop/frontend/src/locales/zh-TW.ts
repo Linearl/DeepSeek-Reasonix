@@ -6098,6 +6098,8 @@ export const zhTW: Record<DictKey, string> = {
   "collabGroup.chat.placeholder": "選擇一個群聊開始",
   "collabGroup.chat.emptyStream": "還沒有訊息，說點什麼吧",
   "collabGroup.chat.back": "返回群列表",
+  "collabGroup.chat.openTab": "開啟分頁",
+  "channelWorkspace.title": "群聊（分頁）",
   "collabGroup.chat.detail": "詳情",
   "collabGroup.chat.closeDetail": "收起",
   "collabGroup.chat.sendPlaceholder": "輸入訊息，Enter 傳送，Shift+Enter 換行",
