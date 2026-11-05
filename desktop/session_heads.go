@@ -154,28 +154,14 @@ func unixMilliOrZero(at time.Time) int64 {
 	return at.UnixMilli()
 }
 
-// chooseSessionHead makes one head the conversation's current version. An
-// open controller switches in place so its tab keeps identity and path; a
-// closed session gets a select marker and lands on the head when reopened.
+// chooseSessionHead refuses in-log head switching. tl1280 retired the
+// write-path slow lane that owned it; the leftover implementation dropped the
+// head id, reconciled a catalog that held nothing to switch, and reported
+// success - the silent no-op tl1430 forbids. Every caller must either switch
+// by transcript file (the adoption path) or surface this error.
 func (a *App) chooseSessionHead(req RecoveryPreferenceRequest) error {
-	path := strings.TrimSpace(req.Path)
-	// tl1280: the in-log head switch (SwitchBranch on a head id, or the
-	// closed-session SelectSessionHead marker) left with the write-path slow
-	// lane. A head row is a leftover; the catalog reconciliation below is the
-	// only effect that still runs, and it simply finds nothing to switch.
-	_ = strings.TrimSpace(req.HeadID)
-	if _, _, err := a.sessionDirForPath(path); err != nil {
-		return errors.New("session version is unavailable")
-	}
-	dir := filepath.Dir(path)
-	if catalog := a.sessionCatalog.Load(); catalog != nil {
-		target := sessioncatalog.DirectoryTarget{Path: dir, Scope: req.Scope, WorkspaceRoot: req.WorkspaceRoot}
-		if err := catalog.ReconcileDirectory(a.bootContext(), target); err != nil {
-			return errors.New("the version choice was saved but the session catalog could not refresh")
-		}
-	}
-	a.emitProjectTreeChangedForSessionDirs(dir)
-	return nil
+	_ = req
+	return errors.New("in-log head switching was retired; switch versions by transcript file")
 }
 
 // cleanTopicHeads routes cleanup to the heads of a schema-2 log when the

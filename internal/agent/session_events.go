@@ -26,6 +26,12 @@ const (
 	sessionEventSchemaVersion = 1
 	sessionEventTypeReplace   = "replace"
 	sessionEventTypeAppend    = "append"
+	// tl1430: head_switch records a version-switch decision (which transcript
+	// became the conversation's authoritative main line). It carries no
+	// transcript messages - replay skips it - so the event log stays
+	// append-only history: a switch never rewrites, moves, or deletes prior
+	// events on either side of the switch.
+	sessionEventTypeHeadSwitch = "head_switch"
 	// sessionEventReplayMaxBytes caps decoder input before encoding/json can
 	// allocate an arbitrarily large record. The ceiling still accommodates
 	// image-bearing histories while keeping corrupt logs from exhausting RAM.
@@ -311,7 +317,13 @@ type sessionEventRecord struct {
 	ContentDigest string             `json:"content_digest,omitempty"`
 	WriterID      string             `json:"writer_id,omitempty"`
 	Reason        string             `json:"reason,omitempty"`
-	CreatedAt     time.Time          `json:"created_at"`
+	// tl1430 head_switch bookkeeping: which transcript gave up and which
+	// became the authoritative main line. Empty on replace/append events;
+	// old readers ignore the unknown fields, so the wire format stays
+	// forward-compatible.
+	HeadFrom  string    `json:"head_from,omitempty"`
+	HeadTo    string    `json:"head_to,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // sessionEventWireRecord keeps the messages array encoded until the replay
@@ -327,6 +339,8 @@ type sessionEventWireRecord struct {
 	ContentDigest string          `json:"content_digest,omitempty"`
 	WriterID      string          `json:"writer_id,omitempty"`
 	Reason        string          `json:"reason,omitempty"`
+	HeadFrom      string          `json:"head_from,omitempty"`
+	HeadTo        string          `json:"head_to,omitempty"`
 	CreatedAt     time.Time       `json:"created_at"`
 }
 
@@ -715,11 +729,27 @@ func replaySessionEventLogWithContext(ctx context.Context, path string, limits s
 				replay.times = append(replay.times, rec.CreatedAt)
 			}
 			hasher.addAll(msgs)
+		case sessionEventTypeHeadSwitch:
+			// tl1430: a switch decision carries no transcript messages, so
+			// replay keeps the messages accumulated so far untouched - the
+			// transcript a reader sees comes from the events BEFORE this
+			// record plus whatever is appended after it on the new main
+			// line. It also stays transparent to the revision ledger below:
+			// head_switch records carry no revision of their own, and the
+			// save path's append baseline must not see it as a revision
+			// bump (otherwise the next save would fall back to a full
+			// replace write).
+			if rec.HeadFrom == "" || rec.HeadTo == "" {
+				replay.damaged = true
+				return replay, nil
+			}
 		default:
 			return replay, fmt.Errorf("decode session event log %s: unsupported event type %q", path, rec.Type)
 		}
 		replay.records++
-		replay.lastRevision = rec.Revision
+		if rec.Type != sessionEventTypeHeadSwitch {
+			replay.lastRevision = rec.Revision
+		}
 		replay.lastGoodEnd = dec.InputOffset()
 	}
 }
@@ -951,6 +981,30 @@ func appendSessionAppendEvent(sessionPath string, messageIndex int, msgs []provi
 		MessageIndex:  messageIndex,
 		Messages:      append([]provider.Message(nil), msgs...),
 		ContentDigest: digestString(digest),
+	}, true)
+}
+
+// AppendSessionHeadSwitchEvent records one version-switch decision on the
+// event log of the transcript that BECOMES the main line (sessionPath). The
+// record carries no messages and no revision: replay treats it as a marker,
+// so prior events on this log and on the transcript that gave up stay
+// byte-identical - a switch is a pointer move recorded as appended history,
+// never a rewrite (tl1430 semantics: append-only events, projection follows
+// the head). Callers invoke it only after the switch itself succeeded, so a
+// reader can trust that head_to is the authoritative main line from this
+// record on.
+func AppendSessionHeadSwitchEvent(sessionPath, fromPath, toPath string) error {
+	sessionPath = strings.TrimSpace(sessionPath)
+	fromPath = strings.TrimSpace(fromPath)
+	toPath = strings.TrimSpace(toPath)
+	if sessionPath == "" || fromPath == "" || toPath == "" {
+		return fmt.Errorf("head switch event needs the adopted transcript and both sides of the switch")
+	}
+	return appendSessionEvent(sessionPath, sessionEventRecord{
+		Type:     sessionEventTypeHeadSwitch,
+		HeadFrom: fromPath,
+		HeadTo:   toPath,
+		Reason:   "version switch",
 	}, true)
 }
 

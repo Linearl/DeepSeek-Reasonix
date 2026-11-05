@@ -105,7 +105,9 @@ func probeSessionEventLogWithLimits(sessionPath string, limits sessionReplayLimi
 	probe.schemaVersion = schemaVersion
 	switch {
 	case schemaVersion == sessionEventSchemaVersion &&
-		(eventType == sessionEventTypeReplace || eventType == sessionEventTypeAppend):
+		(eventType == sessionEventTypeReplace || eventType == sessionEventTypeAppend || eventType == sessionEventTypeHeadSwitch):
+		// tl1430: a head_switch first record is a native log too - the switch
+		// marker is appended by the same writer family and replay owns it.
 		probe.native = true
 	case schemaVersion == sessionDAGSchemaVersion:
 		probe.dag = true

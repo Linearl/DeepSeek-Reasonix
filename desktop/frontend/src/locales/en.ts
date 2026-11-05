@@ -4867,7 +4867,10 @@ export const en = {
   "settings.recoveryCopiesPreviewBtnHint": "previews this branch's start and end, and can pick it as the merged main; read-only, writes nothing",
   "settings.recoveryCopiesDeleteHeadHint": "deletes this version: a retire marker hides it first, the next single-writer rotation actually drops it, and until then you can switch back",
   "settings.recoveryCopiesSynthesizeBtnHint": "folds the other branches' unique events into the picked main (no duplicated events); losing branches go to the recoverable trash",
-  "settings.sessionVersionsActivateHint": "switches the main line to this version: a select marker you can revert any time; the old version is kept",
+  "settings.sessionVersionsActivateHint": "switches the main line to this version: no existing event is touched, the old main line stays archived and can be restored; an in-flight conversation is asked to wait",
+  // tl1430: switch receipt + covered-copy button hint.
+  "settings.sessionVersions.activated": "Switched: {name} is now the main line; reopening this conversation shows the new main line",
+  "settings.sessionVersionsActivateCoveredHint": "this version's content is fully contained in the current main line; no switch needed",
   "settings.sessionVersionsCheckHint": "inspects the event log's health (read-only, no repair)",
   "settings.sessionVersionsRepairHint": "repairs the event log (checkpoint backfill etc.); backs up first and writes a repair record",
   "settings.sessionVersionsRepairDietHint": "repair + diet, two actions: 1) strip image payloads from messages 2) fold over-window old messages into one local placeholder — shrinking the file; backs up first",

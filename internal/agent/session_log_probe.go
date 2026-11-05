@@ -250,7 +250,8 @@ func classifyArchivedEventLogHead(sessionPath string) (sessionEventLogClass, int
 func classFromSchema(schemaVersion int, eventType string) sessionEventLogClass {
 	switch {
 	case schemaVersion == sessionEventSchemaVersion &&
-		(eventType == sessionEventTypeReplace || eventType == sessionEventTypeAppend):
+		(eventType == sessionEventTypeReplace || eventType == sessionEventTypeAppend || eventType == sessionEventTypeHeadSwitch):
+		// tl1430: head_switch belongs to the same native writer family.
 		return eventLogClassNative
 	case schemaVersion == sessionDAGSchemaVersion:
 		return eventLogClassDAG

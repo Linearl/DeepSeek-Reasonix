@@ -73,6 +73,11 @@ function bodyText(): string {
 
 const MAIN_PATH = "/sessions/gc.jsonl";
 const FORK_HEAD = "deadbeefdeadbeef";
+// tl1430: after the DAG retirement a candidate row IS a file (headId is
+// always empty) - the fork lives in its own recovery file, and activating it
+// adopts that file as the main line. The mock keeps the old head id only to
+// pin the short badge the row renders.
+const FORK_PATH = `/sessions/gc-recovery-${FORK_HEAD}.jsonl`;
 
 const GROUP = {
   mainPath: MAIN_PATH,
@@ -104,10 +109,10 @@ const CHAINS_BEFORE = {
       preview: "hello",
     },
     {
-      path: MAIN_PATH,
-      headId: FORK_HEAD,
+      path: FORK_PATH,
+      headId: "",
       label: "GC fork",
-      isMain: true,
+      isMain: false,
       selected: false,
       covered: false,
       messageCount: 8,
@@ -117,10 +122,10 @@ const CHAINS_BEFORE = {
       preview: "forked tail",
     },
   ],
-  longestPath: MAIN_PATH,
-  longestHead: FORK_HEAD,
+  longestPath: FORK_PATH,
+  longestHead: "",
   newestPath: MAIN_PATH,
-  newestHead: FORK_HEAD,
+  newestHead: "",
 };
 
 // 合成后：只剩一条主线链（落败链已折进回收站），读数变大。
@@ -162,8 +167,10 @@ const SYNTHESIS_REPORT: HeadSynthesisReport = {
 type Spies = {
   chainCalls: number;
   synthCalls: number;
-  activateCalls: string[];
-  deleteHeadCalls: string[];
+  /** tl1430: each activation now captures {path, headId} - the adopted file
+   *  plus the always-empty head id. */
+  activateCalls: { path: string; headId: string }[];
+  deleteBranchCalls: string[];
   scanCalls: number;
   /** 第二次 ListRecoveryCopyGroups 起挂起，直到手动放行（中间态用例）。 */
   holdListFrom: number;
@@ -208,12 +215,12 @@ function stubBridge(overrides: Partial<AppBindings>, spies: Spies) {
       synthesized = true;
       return SYNTHESIS_REPORT;
     },
-    SetActiveSessionVersion: async (input: { headId: string }) => {
-      spies.activateCalls.push(input.headId);
+    SetActiveSessionVersion: async (input: { path: string; headId: string }) => {
+      spies.activateCalls.push({ path: input.path, headId: input.headId });
       synthesized = true;
     },
-    DeleteSessionVersionHead: async (_mainPath: string, headId: string) => {
-      spies.deleteHeadCalls.push(headId);
+    DeleteRecoveryBranch: async (copyPath: string) => {
+      spies.deleteBranchCalls.push(copyPath);
       synthesized = true;
     },
     ScanRecoveryCopyGroup: async () => {
@@ -232,7 +239,6 @@ function stubBridge(overrides: Partial<AppBindings>, spies: Spies) {
       lastActivity: "2026-10-20T00:00:00Z",
       degraded: false,
     }),
-    DeleteRecoveryBranch: async () => {},
   };
   window.go = {
     main: {
@@ -246,7 +252,7 @@ function freshSpies(holdListFrom = Number.MAX_SAFE_INTEGER): Spies {
     chainCalls: 0,
     synthCalls: 0,
     activateCalls: [],
-    deleteHeadCalls: [],
+    deleteBranchCalls: [],
     scanCalls: 0,
     holdListFrom,
     releaseList: () => {},
@@ -337,6 +343,8 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
 }
 
 // ③ 切换版本后即时刷新：版本表与候选链跟随重拉，行保持展开。
+// tl1430: activating a fork row adopts the fork's own file - the call carries
+// the row's path with an empty head id (the in-log head switch is retired).
 {
   const spies = freshSpies();
   stubBridge({}, spies);
@@ -349,7 +357,8 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   await act(async () => { activateBtn?.click(); });
   await flush();
 
-  ok(spies.activateCalls.length === 1 && spies.activateCalls[0] === FORK_HEAD, "③ the activate call carries the fork head id");
+  ok(spies.activateCalls.length === 1 && spies.activateCalls[0].path === FORK_PATH && spies.activateCalls[0].headId === "",
+    "③ the activate call adopts the fork file with an empty head id");
   ok(spies.chainCalls > chainCallsBefore, "③ the version table refetches immediately after switching (行保持展开也重拉)");
   ok(Boolean(document.querySelector(".rc-versions__table")), "③ the version table is still on screen (no manual re-expansion needed)");
   ok(document.querySelectorAll(".rc-versions__table tbody tr").length === 1, "③ the version table shows the post-switch heads");
@@ -357,28 +366,52 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
 }
 
 // ④ 删除版本后即时刷新：同口径重拉。
+// tl1430: with the head family retired, a flat fork the user deletes is a
+// recovery copy row - the delete goes through the branch-delete path with the
+// copy's file path.
 {
   const spies = freshSpies();
-  stubBridge({}, spies);
+  let copyDeleted = false;
+  const forkCopy = {
+    path: FORK_PATH,
+    label: "GC fork copy",
+    bytes: 512,
+    modified: "2026-10-20T00:00:00Z",
+    messages: 8,
+    shared: 6,
+    unique: 2,
+    scanned: true,
+  };
+  stubBridge({
+    // The delete itself flips the mock world: the refetch that follows the
+    // confirmed delete must see the post-delete group (no copies left).
+    ListRecoveryCopyGroups: async () => [copyDeleted ? { ...GROUP, copies: [] } : { ...GROUP, copies: [forkCopy] }],
+  }, spies);
   const root = await openAndExpand();
   const chainCallsBefore = spies.chainCalls;
-  // tl1415 点3: the fork head renders as a reading row (tr.rc-chain) plus a
+  // tl1415 点3: the copy renders as a reading row (tr.rc-row--copy) plus a
   // sibling ops row carrying its delete entry.
   const forkRow = Array.from(document.querySelectorAll<HTMLTableRowElement>(".rc-versions__table tbody tr")).find((r) =>
     r.textContent?.includes(FORK_HEAD.slice(0, 8)),
   );
   const deleteBtn = forkRow?.nextElementSibling?.querySelector<HTMLButtonElement>(".rc-delete");
-  ok(Boolean(deleteBtn), "④ the fork-head row offers the delete entry");
+  ok(Boolean(deleteBtn), "④ the fork copy row offers the delete entry");
   await act(async () => { deleteBtn?.click(); });
   await flush();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
     .find((b) => b.textContent?.trim() === "Delete");
-  await act(async () => { confirmBtn?.click(); });
+  await act(async () => {
+    confirmBtn?.click();
+    // The confirm resolves into the delete; the refetch inside the same
+    // chain must observe the post-delete group.
+    copyDeleted = true;
+  });
   await flush();
 
-  ok(spies.deleteHeadCalls.length === 1 && spies.deleteHeadCalls[0] === FORK_HEAD, "④ the delete reaches the backend with the head id");
+  ok(spies.deleteBranchCalls.length === 1 && spies.deleteBranchCalls[0] === FORK_PATH, "④ the delete reaches the backend with the copy path");
   ok(spies.chainCalls > chainCallsBefore, "④ the version table refetches immediately after deleting");
-  ok(document.querySelectorAll(".rc-versions__table tbody tr").length === 1, "④ the version table drops the deleted head on screen");
+  ok(!Array.from(document.querySelectorAll<HTMLTableRowElement>(".rc-versions__table tbody tr")).some((r) => r.textContent?.includes(FORK_HEAD.slice(0, 8))),
+    "④ the version table drops the deleted copy on screen");
   await act(async () => root?.unmount());
 }
 
