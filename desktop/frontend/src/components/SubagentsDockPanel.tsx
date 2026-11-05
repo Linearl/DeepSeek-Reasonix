@@ -31,7 +31,9 @@ import { subjectOf } from "../lib/tools";
 import type { HistoryMessage } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
+  SUBAGENTS_PERSISTED_POLL_MS,
   mergeEndedSubagentRecords,
+  mergePersistedRunningSubagents,
   mergeRegistryRunningSubagents,
   subagentChildTools,
   type SubagentDirectory,
@@ -622,30 +624,65 @@ export function SubagentsDockPanel({
   // on session switch and whenever the transcript's ended count moves (a
   // just-finished child writes its sidecar at completion — the same refresh
   // shape the capsule directory uses). A failure simply yields no extras.
+  // tl1435: also on a slow interval — a workflow-dispatched child never
+  // moves the transcript's ended count (its dispatch produces no session
+  // transcript card at all), so without the interval neither the running
+  // row (from the running-status sidecar meta, agent PrepareFresh) nor its
+  // later move to the ended section would ever be pulled. Same cadence the
+  // task monitor panel polls its store (5s); read-only and cheap.
   const [persisted, setPersisted] = useState<readonly SubagentArtifactView[]>([]);
   const endedCountKey = directory.ended.length;
+  const listPersisted = useCallback(
+    (onDone: (views: readonly SubagentArtifactView[]) => void) => {
+      if (!onListPersisted || !sessionPath) return;
+      let cancelled = false;
+      onListPersisted(sessionPath)
+        .then((views) => {
+          if (!cancelled) onDone(views);
+        })
+        .catch(() => {
+          if (!cancelled) onDone([]);
+        });
+      return () => {
+        cancelled = true;
+      };
+    },
+    [onListPersisted, sessionPath],
+  );
   useEffect(() => {
     if (!onListPersisted || !sessionPath) {
       setPersisted([]);
       return;
     }
-    let cancelled = false;
-    onListPersisted(sessionPath)
-      .then((views) => {
-        if (!cancelled) setPersisted(views);
-      })
-      .catch(() => {
-        if (!cancelled) setPersisted([]);
-      });
+    const cancel = listPersisted(setPersisted);
     return () => {
-      cancelled = true;
+      cancel?.();
     };
-  }, [onListPersisted, sessionPath, endedCountKey]);
+  }, [listPersisted, onListPersisted, sessionPath, endedCountKey]);
+  useEffect(() => {
+    if (!onListPersisted || !sessionPath) return;
+    const timer = window.setInterval(() => {
+      listPersisted(setPersisted);
+    }, SUBAGENTS_PERSISTED_POLL_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [listPersisted, onListPersisted, sessionPath]);
+  // 任务495 剩余项 (tl1435 单源化): the RUNNING sidecar views fold into the
+  // running section first (ref dedupe keeps the transcript card richer twin),
+  // then the registry merge layers on top — so both sections now draw from
+  // the same ListSubagentsByParent source, and a workflow-dispatched child
+  // (no transcript card, no turn-boundary registry row) is visible while it
+  // runs and moves to the ended section when its meta flips terminal.
+  const withPersistedRunning = useMemo(
+    () => mergePersistedRunningSubagents(directory, persisted),
+    [directory, persisted],
+  );
   // 任务495 剩余项: the ended section is transcript ∪ persisted, transcript
   // entries winning on ref collisions (they carry the richer live state).
   const mergedEnded = useMemo(
-    () => mergeEndedSubagentRecords(directory, persisted),
-    [directory, persisted],
+    () => mergeEndedSubagentRecords(withPersistedRunning, persisted),
+    [withPersistedRunning, persisted],
   );
   const ended = mergedEnded.ended;
   const visibleEnded = ended.slice(0, revealed);
@@ -656,8 +693,8 @@ export function SubagentsDockPanel({
   // feeds the count, the rows and the selection lookup; the empty state must
   // consider it too, or a registry-visible child still reads 「暂无子代理」.
   const running = useMemo(
-    () => mergeRegistryRunningSubagents(directory, registryRunning).running,
-    [directory, registryRunning],
+    () => mergeRegistryRunningSubagents(withPersistedRunning, registryRunning).running,
+    [withPersistedRunning, registryRunning],
   );
   const empty = running.length === 0 && ended.length === 0;
   const selected = selectedId
