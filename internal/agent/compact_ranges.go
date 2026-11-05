@@ -25,6 +25,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -88,6 +89,23 @@ Write 3-8 short bullet lines: what was attempted, key files/paths/IDs touched, c
 // 「改动 ≤30s 生效,重建会话立即可见」的准活读语义。
 const rangesSwitchCacheTTL = 30 * time.Second
 
+// rangesFoldReport 是一次 ranges 折叠事务的完整回执。tl1419(模型驱动触发)
+// 的失败可见性要求(遗留④):ranges 通道的失败此前只落 slog,模型看不到
+// 拒因就无法决策重试/放弃——所以事务把每个出口的拒因和关键读数带回给调用
+// 方。压力通道(rangesFoldBeforeTrigger)只用 outcome 与 slog,行为不变。
+type rangesFoldReport struct {
+	outcome CompactionOutcome
+	// reason 是模型可读的拒因(门槛拒/红线拒/请求失败);installed 时为空。
+	reason string
+	// segmentTokens/sourceTokens/projectionTokens 是计费尺读数:被折增量段、
+	// 折前可见视图、折后可见视图。拒因出口尽量带上(收益算术是模型决策面)。
+	segmentTokens    int
+	sourceTokens     int
+	projectionTokens int
+	// foldIndex 是安装成功后的会话内 ranges 折叠序号(观测面)。
+	foldIndex int
+}
+
 // rangesCompactEnabled 是开关的缓存活读:缓存过期才重新读一次只读用户配置
 // (RangesCompactLive),并发读可能重复刷新但结果幂等。
 func (a *Agent) rangesCompactEnabled() bool {
@@ -127,16 +145,16 @@ func (m ContextManager) rangesFoldBeforeTrigger(ctx context.Context, policy Cont
 	// 与压力路径同型的单飞门:以下要做真实的分钟级摘要工作。
 	a.maintaining.Add(1)
 	defer a.endMaintenance()
-	outcome, err := a.compactRangesFoldLocked(ctx, policy.Trigger, policy.Instructions)
+	report, err := a.compactRangesFoldLocked(ctx, policy.Trigger, policy.Instructions)
 	if ctx.Err() != nil {
 		return PreparedContext{}, ctx.Err(), true
 	}
 	if err != nil {
 		// 主动通道失败:留痕、不传播、不失败轮次(与压力路径的关键差异)。
 		slog.Warn("agent: ranges fold failed (below-trigger lane parks this attempt)",
-			"trigger", policy.Trigger, "err", err)
+			"trigger", policy.Trigger, "reason", report.reason, "err", err)
 	}
-	if outcome == CompactionInstalled {
+	if report.outcome == CompactionInstalled {
 		slog.Info("agent: ranges fold installed below the fold trigger",
 			"trigger", policy.Trigger, "est_before", est, "fold_trigger", fold)
 	}
@@ -175,19 +193,42 @@ func (a *Agent) rangesGeometryOK(msgs []provider.Message, segStart, end int, onP
 }
 
 // compactRangesFoldLocked 执行一次 ranges 小段增量折叠(compactionRunMu 已
-// 持有)。任何门槛不过 → (CompactionNoop, nil, 无事件):调用方安静回到
-// 现状。事件配对:CompactionStarted 发出后的每个出口都以 Done/Aborted 收口。
+// 持有)。任何门槛不过 → 安静回到现状(CompactionNoop),拒因随回执带出
+// (tl1419 失败可见性):压力通道照旧只看 outcome+slog,模型驱动通道把
+// reason 译成工具结果。事件配对:CompactionStarted 发出后的每个出口都以
+// Done/Aborted 收口。
 //
 // 与全量路径(commitSummaryProjection 同一 CAS 安装面)的关键差异:
 //   - 投影体 = 保头前缀 + 段内保留消息 + 一条追加笔记;不跑
 //     collapseSessionContextChain(任何中段重写都会破 95% 线);
 //   - 笔记请求单次封顶输出预算,不做截断翻倍重试(笔记膨胀就该被拒);
-//   - 装门 = tl1396 态③红线(实测 ≥95%)+ acceptCheckpointCandidate。
-func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructions string) (CompactionOutcome, error) {
-	decline := func(reason string, fields ...any) (CompactionOutcome, error) {
+//   - 装门 = tl1396 态③红线(实测 ≥95%)+ 洪水闸(模型触发源,B)+
+//     acceptCheckpointCandidate。
+func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructions string) (rangesFoldReport, error) {
+	report := rangesFoldReport{outcome: CompactionNoop}
+	decline := func(reason string, fields ...any) (rangesFoldReport, error) {
 		fields = append([]any{"reason", reason}, fields...)
 		slog.Info("agent: ranges fold declined", fields...)
-		return CompactionNoop, nil
+		report.reason = reason
+		return report, nil
+	}
+	abandon := func(reason string, tele *CompactionTelemetry, fields ...any) (rangesFoldReport, error) {
+		fields = append([]any{"reason", reason}, fields...)
+		slog.Info("agent: ranges fold abandoned", fields...)
+		report.reason = reason
+		if tele != nil {
+			a.emitCompactionTelemetry(*tele)
+		}
+		a.emitCompactionAborted(trigger)
+		return report, nil
+	}
+	// tl1419 洪水闸②(滑动窗口,模型触发源专属):窗口内安装数达到上限 → 拒。
+	// 只记安装不记拒约(防的是「安装抖前缀缓存」,失败尝试不改缓存面);窗口
+	// 参数配置活读(参数化预留)。放在最前——窗口超限连快照都不必取。
+	if trigger == CompactionTriggerModelRanges {
+		if reason := a.rangesModelWindowBlock(); reason != "" {
+			return decline(reason)
+		}
 	}
 	canonical, transcriptVersion := a.sess.conversation.snapshotMessagesVersion()
 	a.sess.compactionMu.Lock()
@@ -199,35 +240,39 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 
 	segStart := rangesSegmentStart(msgs)
 	if segStart < 0 {
-		return decline("no-summary-base")
+		return decline("no-summary-base: no running summary exists yet; the first baseline digest belongs to the full-compaction path")
 	}
 	end := len(msgs)
 	if active := a.activeTurnStart(msgs); active >= 0 {
 		end = active // 活跃轮保持逐字,折叠到它之前的最后一个已完成交换
 	}
 	if end <= segStart {
-		return decline("empty-segment", "seg_start", segStart, "end", end)
+		return decline("empty-segment: no completed exchange after the newest summary to fold", "seg_start", segStart, "end", end)
 	}
 	latestContext := sessionContextCarrierSet(msgs)
 	kept, fold, retention := a.partitionFoldForProjectionAt(msgs[segStart:end], segStart, latestContext)
 	if len(fold) == 0 {
-		return decline("nothing-foldable")
+		return decline("nothing-foldable: the segment after the newest summary carries no summarizable messages")
 	}
 	window := a.effectiveContextWindow()
 	segTokens := a.estimatedPromptTokens(fold)
+	report.segmentTokens = segTokens
 	if segTokens < rangesDeltaTriggerTokens(window) {
-		return decline("below-delta-trigger", "seg_tokens", segTokens)
+		return decline(fmt.Sprintf("below-delta-trigger: the un-folded segment is about %d billed tokens, below the %d-token floor for this lane; let more work accumulate before folding",
+			segTokens, rangesDeltaTriggerTokens(window)), "seg_tokens", segTokens)
 	}
 	if segTokens > rangesSegmentMaxTokens(window) {
-		return decline("segment-over-cap", "seg_tokens", segTokens, "cap", rangesSegmentMaxTokens(window))
+		return decline(fmt.Sprintf("segment-over-cap: the un-folded segment is about %d billed tokens, over the %d-token cap for this lane; an unusual growth jump like this belongs to the full-compaction path",
+			segTokens, rangesSegmentMaxTokens(window)), "seg_tokens", segTokens, "cap", rangesSegmentMaxTokens(window))
 	}
 	preservedTokens := a.estimatedPromptTokens(msgs[:segStart])
+	report.sourceTokens = a.estimatedVisibleRequestTokens(msgs)
 	if window > 0 && preservedTokens > window/rangesPrefixBloatShare {
-		return decline("prefix-bloat-valve", "preserved_tokens", preservedTokens)
+		return decline("prefix-bloat-valve: the preserved head prefix has grown past half the context window; recovery belongs to the full-compaction path", "preserved_tokens", preservedTokens)
 	}
 	covEnd, bodySuffix := projectionCoverageForFold(stateSnapshot, msgs, end, onProjection)
 	if !a.rangesGeometryOK(msgs, segStart, end, onProjection, canonical, stateSnapshot) {
-		return decline("geometry-gate", "preserved_tokens", preservedTokens, "seg_tokens", segTokens)
+		return decline("geometry-gate: folding this segment would not keep the prompt-cache hit above the partial-compression floor", "preserved_tokens", preservedTokens, "seg_tokens", segTokens)
 	}
 
 	// 门槛全过:开一段自己的压缩 pass(事件配对从这里开始)。
@@ -235,12 +280,6 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger, Pass: int(pass)}})
 	a.compactionLiveBegin(trigger)
 	defer a.compactionLiveStop()
-	abort := func(tele *CompactionTelemetry) {
-		if tele != nil {
-			a.emitCompactionTelemetry(*tele)
-		}
-		a.emitCompactionAborted(trigger)
-	}
 
 	if a.svc.hooks != nil {
 		if hookInstr := a.svc.hooks.PreCompact(ctx, trigger); hookInstr != "" {
@@ -252,41 +291,45 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	}
 	fold, instructions, err := a.interceptCompactionPrepare(ctx, fold, instructions)
 	if err != nil {
-		slog.Info("agent: ranges fold declined by compaction interceptor", "err", err)
-		abort(nil)
-		return CompactionNoop, nil
+		return abandon(fmt.Sprintf("compaction interceptor rejected the fold: %v", err), nil)
 	}
 	if len(fold) == 0 {
-		abort(nil)
-		return CompactionNoop, nil
+		return abandon("compaction hook removed the selected range", nil)
 	}
 	segTokens = a.estimatedPromptTokens(fold)
+	report.segmentTokens = segTokens
+	// tl1419 硬闸(foldEconomics,模型触发源专属补查):拦截器可能改写折叠段
+	// (hook 收窄),重算后的计费 token 若跌破 minFoldTokens 地板,这次摘要必
+	// 亏——压力通道靠入口 delta 下限保证(512 > 400),模型通道在此再钉一道。
+	if trigger == CompactionTriggerModelRanges && !a.foldEconomics(fold) {
+		return abandon(fmt.Sprintf("below-economics-floor: after hooks the segment to fold is about %d billed tokens, under the %d-token floor — a summary would cost more than it saves",
+			segTokens, minFoldTokens), nil)
+	}
 
 	summary, usage, err := a.rangesNoteSummary(ctx, fold, instructions)
 	if err != nil {
 		a.alertCredentialExpired(err)
 		slog.Warn("agent: ranges note request failed", "trigger", trigger, "seg_tokens", segTokens, "err", err)
-		abort(&CompactionTelemetry{
+		return abandon(fmt.Sprintf("segment note request failed: %v", err), &CompactionTelemetry{
 			Trigger: trigger, CacheState: a.CacheState(), Mode: CompactionModeSummarized,
 			SourceTokens: a.estimatedVisibleRequestTokens(msgs), FoldTokens: segTokens,
 			Spans: 1, SummaryInputMode: SummaryInputNonPrefix, RequestCount: 1,
 			Error: err.Error(),
 		})
-		return CompactionNoop, nil
 	}
 	summary, err = a.interceptCompactionComplete(ctx, summary)
 	if err != nil {
 		slog.Warn("agent: ranges note rejected by compaction interceptor", "err", err)
-		abort(&CompactionTelemetry{
+		return abandon(fmt.Sprintf("segment note rejected by the compaction interceptor: %v", err), &CompactionTelemetry{
 			Trigger: trigger, CacheState: a.CacheState(), Mode: CompactionModeSummarized,
 			SourceTokens: a.estimatedVisibleRequestTokens(msgs), FoldTokens: segTokens,
 			Spans: 1, SummaryInputMode: SummaryInputNonPrefix, RequestCount: 1,
 			Error: err.Error(),
 		})
-		return CompactionNoop, nil
 	}
 
 	sourceTokens := a.estimatedVisibleRequestTokens(msgs)
+	report.sourceTokens = sourceTokens
 	tele := CompactionTelemetry{
 		Trigger: trigger, CacheState: a.CacheState(), Mode: CompactionModeSummarized,
 		SourceTokens: sourceTokens, FoldTokens: segTokens, Spans: 1,
@@ -313,17 +356,28 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	projection, pinnedCheckpoint, err := rebasePinnedContextProjection(projectionMessagesPreservingPinnedContext(body), canonical, covEnd)
 	if err != nil {
 		tele.Error = err.Error()
-		abort(&tele)
-		return CompactionNoop, nil
+		return abandon(err.Error(), &tele)
 	}
 	spliced := append(append([]provider.Message(nil), projection...), canonical[covEnd:]...)
 	projTokens := a.estimatedVisibleRequestTokens(spliced)
 	tele.ProjectionTokens = projTokens
+	report.projectionTokens = projTokens
 	tele.RangesFold = true
 	tele.RangesFoldIndex = int(a.rangesFoldIndex.Load()) + 1
 	tele.PreservedTokens = preservedTokens
 	rangesHit := PrefixCacheHitRate(msgs, spliced)
 	tele.RangesCacheHit = rangesHit
+
+	// tl1419 洪水闸①(单次收益限,模型触发源专属):实测节省(计费尺,与
+	// foldEconomics 同尺)低于地板 → 拒装。第一刀在笔记花费已发生后仍成立——
+	// 拒的是「装上去」,让模型读到带读数的拒因去攒更大的段,而不是让一次
+	// 四舍五入级的收益抖动整个前缀缓存。压力通道不挂此门:入口 delta 下限
+	// (≥ 窗口 2% 且 > 400)在结构上已把收益抬过地板,迭代一行为逐字节不变。
+	if trigger == CompactionTriggerModelRanges && sourceTokens-projTokens < rangesModelSavingsFloor {
+		tele.Error = fmt.Sprintf("below-savings-floor: %d < %d", sourceTokens-projTokens, rangesModelSavingsFloor)
+		return abandon(fmt.Sprintf("below-savings-floor: this fold would only save about %d billed tokens (source %d → projected %d), under the %d-token floor; fold a larger segment or let more work accumulate first",
+			sourceTokens-projTokens, sourceTokens, projTokens, rangesModelSavingsFloor), &tele)
+	}
 
 	// tl1396 态③运行时门(验收②的执行面):真实读数不过 95% 绝对线 → 拒装。
 	// 拒装后本通道安静收场,会话留在原视图,下一轮检查重估。
@@ -331,13 +385,11 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 		tele.Error = err.Error()
 		slog.Warn("agent: ranges fold rejected by the tl1396 state-3 red line",
 			"ranges_cache_hit", rangesHit, "preserved_tokens", preservedTokens, "note_bytes", len(summary))
-		abort(&tele)
-		return CompactionNoop, nil
+		return abandon(fmt.Sprintf("rejected by the cache red line: %v — the folded view would not keep the prompt-cache hit above the partial-compression floor", err), &tele)
 	}
 	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projTokens); err != nil {
 		tele.Error = err.Error()
-		abort(&tele)
-		return CompactionNoop, nil
+		return abandon(err.Error(), &tele)
 	}
 	if pinnedCheckpoint {
 		slog.Warn("agent: ranges fold kept a pinned-context checkpoint that prevents shrinking", "trigger", trigger)
@@ -355,13 +407,17 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	if err != nil {
 		tele.Error = err.Error()
 		slog.Info("agent: ranges fold lost the checkpoint race", "err", err)
-		abort(&tele)
-		return CompactionNoop, nil
+		return abandon(fmt.Sprintf("another maintenance transaction installed first; retry with the current context: %v", err), &tele)
 	}
 
 	idx := a.rangesFoldIndex.Add(1)
 	now := time.Now().UnixNano()
 	prev := a.lastRangesFoldAt.Swap(now)
+	// tl1419: 模型触发源记入洪水闸滑动窗口(只记安装;compactionRunMu 全程
+	// 持有,窗口检查与本记账天然串行)。
+	if trigger == CompactionTriggerModelRanges {
+		a.modelRangesFoldTimes = append(a.modelRangesFoldTimes, now)
+	}
 	a.emitCompactionSucceeded(trigger, len(fold), summary, state.LastReceipt.Archive)
 	a.emitCompactionTelemetry(tele)
 	// 「压缩频次 × 缓存抖动」联合观测(三约束③的观测面):index/间隔是
@@ -381,7 +437,9 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 		"folded_messages", len(fold), "source_tokens", sourceTokens, "fold_tokens", tele.FoldTokens,
 		"projection_tokens", projTokens, "input_tokens", tele.InputTokens, "output_tokens", tele.OutputTokens,
 		"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
-	return CompactionInstalled, nil
+	report.outcome = CompactionInstalled
+	report.foldIndex = int(idx)
+	return report, nil
 }
 
 // rangesNoteSummary 发一次封顶输出预算的小段笔记请求。输入只有增量段

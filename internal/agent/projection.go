@@ -39,6 +39,10 @@ const (
 	CompactionTriggerOverflow = "overflow"
 	CompactionTriggerSnip     = "snip"
 	CompactionTriggerTool     = "tool"
+	// tl1419:模型驱动的 ranges 小段折叠(compress_ranges 工具)——新增触发
+	// 「发起源」,与阈值规则(压力/hard ceiling/overflow 安全网)叠加不替代;
+	// 折叠事务与判据(foldEconomics/1396 红线)对所有触发源一视同仁。
+	CompactionTriggerModelRanges = "model_ranges"
 )
 
 // Compaction mode labels.

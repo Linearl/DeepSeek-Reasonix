@@ -1976,6 +1976,86 @@ func RangesCompactLive() bool {
 	return cfg.Agent.ExperimentalRangesCompact
 }
 
+// ModelRangesCompact defaults (tl1419 flood-gate sliding window). Vars, not
+// consts, so tests can pin them independently of the config file.
+var (
+	// modelRangesWindowDefaultMinutes mirrors the 前置评估's 5-minute window
+	// proposal; the tuned value waits for tl1397 observation data.
+	modelRangesWindowDefaultMinutes = 5
+	// modelRangesWindowDefaultMax caps model-driven ranges folds per window.
+	// Conservative by design: each fold rewrites the prompt prefix, so the
+	// gate exists to bound cache churn, not to maximize folds.
+	modelRangesWindowDefaultMax = 2
+)
+
+// SetExperimentalModelRangesCompact toggles tl1419's model-driven ranges
+// folds (iron rule 2: default off — off keeps compress_ranges out of the
+// registry entirely, boot-gated like curate_context). Run-time folding
+// additionally requires the ranges lane switch on.
+func (c *Config) SetExperimentalModelRangesCompact(enabled bool) error {
+	c.Agent.ExperimentalModelRangesCompact = enabled
+	return nil
+}
+
+// SetModelRangesFoldWindowMinutes sets the flood-gate sliding window length
+// (0 = built-in default, otherwise 1..1440 minutes).
+func (c *Config) SetModelRangesFoldWindowMinutes(minutes int) error {
+	if minutes == 0 {
+		c.Agent.ModelRangesFoldWindowMinutes = 0
+		return nil
+	}
+	if minutes < 1 || minutes > 1440 {
+		return fmt.Errorf("model_ranges_fold_window_minutes %d: must be 0 (default) or between 1 and 1440", minutes)
+	}
+	c.Agent.ModelRangesFoldWindowMinutes = minutes
+	return nil
+}
+
+// SetModelRangesFoldWindowMax sets the flood-gate per-window fold cap
+// (0 = built-in default, otherwise 1..50).
+func (c *Config) SetModelRangesFoldWindowMax(maxFolds int) error {
+	if maxFolds == 0 {
+		c.Agent.ModelRangesFoldWindowMax = 0
+		return nil
+	}
+	if maxFolds < 1 || maxFolds > 50 {
+		return fmt.Errorf("model_ranges_fold_window_max %d: must be 0 (default) or between 1 and 50", maxFolds)
+	}
+	c.Agent.ModelRangesFoldWindowMax = maxFolds
+	return nil
+}
+
+// ModelRangesCompactLive is the package-level read for the model-driven
+// ranges switch (tl1419), same read-only live semantics as RangesCompactLive
+// (the compress_ranges tool fires orders of magnitude less often than a
+// turn, so the per-call read never rides a hot path).
+func ModelRangesCompactLive() bool {
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalModelRangesCompact
+}
+
+// ModelRangesFoldWindowLive returns the effective flood-gate window
+// parameters (minutes, max folds), resolving the 0 = built-in defaults so
+// callers never see unset knobs. Invalid stored values (hand-edited TOML
+// outside the setter validation) fall back to the defaults per key.
+func ModelRangesFoldWindowLive() (minutes, maxFolds int) {
+	minutes, maxFolds = modelRangesWindowDefaultMinutes, modelRangesWindowDefaultMax
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil || cfg == nil {
+		return minutes, maxFolds
+	}
+	if m := cfg.Agent.ModelRangesFoldWindowMinutes; m >= 1 && m <= 1440 {
+		minutes = m
+	}
+	if n := cfg.Agent.ModelRangesFoldWindowMax; n >= 1 && n <= 50 {
+		maxFolds = n
+	}
+	return minutes, maxFolds
+}
+
 // SetExperimentalFallbackModel toggles task 242 (iron rule 2: default off).
 func (c *Config) SetExperimentalFallbackModel(enabled bool) error {
 	c.Agent.ExperimentalFallbackModel = enabled

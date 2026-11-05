@@ -107,6 +107,12 @@ var labFeatureTiers = []labFeatureTier{
 	// 收益依赖 provider 缓存行为（tl1396 态③红线运行时兜底，破线回退全量）。
 	// 默认关=压缩路径逐字节一致（铁律 2）。
 	{"rangesCompact", LabTierUnstable, []string{"experimental_ranges_compact"}},
+	// tl1419（迭代三）：模型驱动 ranges 折叠，未稳定档——ranges 通道上叠加
+	// 新触发「发起源」（compress_ranges 工具，boot 门控注入，铁律 2 默认关
+	// =模型可见面逐字节一致）；折叠仍走 tl1397 事务，判据硬闸不变，冷却由
+	// 「单次收益限+滑动窗口」替代（约束①②）。窗口两键为家族子键（477
+	// 先例）：参数化预留，调参等 tl1397 观测面出数。
+	{"modelRangesCompact", LabTierUnstable, []string{"experimental_model_ranges_compact", "model_ranges_fold_window_minutes", "model_ranges_fold_window_max"}},
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
 	// 任务 856 ③：collabGroupView 语义升级为「协作中心」入口总开关（信件中心+
@@ -1056,6 +1062,16 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// to summary-grade detail, and the cache win depends on provider cache
 	// behavior.
 	fmt.Fprintf(&b, "experimental_ranges_compact = %v   # tl1397: ranges small-segment incremental compression, append-only summaries with a byte-stable head prefix (experimental, off by default; a pressure fold may keep less verbatim recent detail than the full path)\n", c.Agent.ExperimentalRangesCompact)
+	// tl1419: model-driven ranges folds. Stacks a new trigger source on the
+	// tl1397 lane (叠加不替代): the tool injects only while this switch is on,
+	// the fold still rides the tl1397 transaction (savings floor + sliding
+	// window flood gate replace the whole-range compress cooldown; the ranges
+	// lane switch above must also be on at run time; the tl1396 state-③ red
+	// line still gates every install). Tool add/remove needs a restart;
+	// fold-time gates are live reads.
+	fmt.Fprintf(&b, "experimental_model_ranges_compact = %v   # tl1419: let the model drive ranges folds via the compress_ranges tool (experimental, off by default; flood-gated by a per-fold savings floor + sliding frequency window; requires experimental_ranges_compact at run time; restart to add/remove the tool)\n", c.Agent.ExperimentalModelRangesCompact)
+	fmt.Fprintf(&b, "model_ranges_fold_window_minutes = %d   # tl1419: sliding window length in minutes for model-driven ranges folds (0 = built-in 5)\n", c.Agent.ModelRangesFoldWindowMinutes)
+	fmt.Fprintf(&b, "model_ranges_fold_window_max = %d   # tl1419: max model-driven ranges folds inside the sliding window (0 = built-in 2)\n", c.Agent.ModelRangesFoldWindowMax)
 	fmt.Fprintf(&b, "experimental_cold_cache_compact = %v   # task 297: compact a long conversation once before it goes cold (off by default)\n", c.Agent.ExperimentalColdCacheCompact)
 	fmt.Fprintf(&b, "cold_cache_compact_min_bytes = %d   # task 297: visible-context size floor in bytes (0 = built-in 614400 = 600 KiB)\n", c.Agent.ColdCacheCompactMinBytes)
 	fmt.Fprintf(&b, "cold_cache_compact_idle_minutes = %d   # task 297: idle minutes before the cold-cache pass fires (0 = built-in 300 = 5h)\n", c.Agent.ColdCacheCompactIdleMinutes)
