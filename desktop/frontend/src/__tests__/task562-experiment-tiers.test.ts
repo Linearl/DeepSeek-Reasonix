@@ -215,14 +215,21 @@ console.log("\ntask 562 lab three-tier badges");
   // Go registry 69→72。tl1193b：pinnedIndex 入表（两侧共享，记忆与上下文组
   // 新组首卡）——Go registry 72→73。tl1309 卡②：runtimeObservability 为纯
   // 前端容器 id（Go 渲染表无条目，同 tabManagement 豁免），Go registry 仍 73。
-  ok(Object.keys(goTiers).length === 73, `Go registry parses to 73 entries (got ${Object.keys(goTiers).length})`);
+  // tl1397：rangesCompact（ranges 小段增量压缩实验开关，experimental_ranges_compact，
+  // 默认关）只在 Go 侧登记——73→74。tl1419：modelRangesCompact（模型驱动 ranges
+  // 折叠实验开关+滑动窗口两家族子键，默认关）只在 Go 侧登记——74→75。两者前端
+  // experimentTiers 均无该 id（grep 零引用，无处挂徽章），同 networkRetryBudget
+  // 口径计入 Go-only config-only 豁免（后续设置页入口补前端注册时两侧转共享，
+  // 此处同步收回）——tl1424② 预存红清理。
+  ok(Object.keys(goTiers).length === 75, `Go registry parses to 75 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
   const feOnly = feIds.filter((id) => !goIds.includes(id));
   // 并集解回调（2026-10-28）：jsonlZstd 前端已随 58c19737d 注册 ⇒ Go-only
-  // 收回 3 条（去 jsonlZstd）。
-  ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "networkRetryBudget", "sessionCwdFollow"]),
+  // 收回 3 条（去 jsonlZstd）。tl1397/tl1419：rangesCompact/modelRangesCompact
+  // 加入（同上 config-only 豁免口径，5 条）。
+  ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "modelRangesCompact", "networkRetryBudget", "rangesCompact", "sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
   // tl 1132：startupLoading（「启动与加载」纯前端容器 id，Go 渲染表无条目，
   // 同 tabManagement 豁免）加入 feOnly。tl1309 卡②：runtimeObservability 加入。
