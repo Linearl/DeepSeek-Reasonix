@@ -588,7 +588,10 @@ type pendingAsk struct {
 	// budget suspended) until the user releases the takeover. Each delivery
 	// carries the next state (true = hold, false = release). Buffered size 1
 	// with a drain-on-send so rapid toggles collapse to the last click.
-	// Non-nil only for the same reversible-timed class as interact/activity.
+	// Non-nil for the reversible-timed class (with interact/activity) and,
+	// since tl1408, for the autopilot high-risk tier — registerAskTakeover
+	// arms only this channel there, so the panel's 接管 button can park the
+	// 109 B4 / 477 window while the user is present.
 	takeover chan bool
 	// reattach carries the 任务178 "the session was reopened and the panel is
 	// back on screen" signal (NotifyAskReattached). Buffered size 1; sent
@@ -3378,6 +3381,11 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// one the run may answer itself.
 	explicitAskGranted := c.explicitAskGranted.Load()
 	reversibleTimedAsk := c.autopilot && reversibleAsk && !explicitAskGranted
+	// tl1408: the high-risk tier's timer predicate, in the same shape as the
+	// askTimer arming and the AutoDecideWaitMs stamp below. The explicit ask
+	// grant deliberately does NOT exempt it — the grant never reaches the
+	// high-risk tier (task 806b), those asks keep the 477/109 waits.
+	autopilotHighRiskAsk := c.autopilot && !reversibleAsk
 	if explicitAskGranted && c.autopilot && reversibleAsk {
 		// 判据锚 (task 806b): the one grep-able line answering "why did this
 		// reversible ask NOT auto-decide".
@@ -3501,7 +3509,15 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// interaction channel so the panel can stop the auto-decide timer, and
 	// with the task-844 activity channel so hover can reset it; task 849 adds
 	// the takeover channel so the panel button can park the timer outright.
-	// Every other prompt class keeps the plain registration verbatim.
+	// tl1408: the autopilot high-risk tier arms the wait below too, so it now
+	// registers with the takeover channel as well (registerAskTakeover) — the
+	// panel's 接管 button on a high-risk ask must actually park that window.
+	// The old contract armed no channel here, so the toggle answered false and
+	// the button rolled back while the countdown expired under the user's
+	// hands. interact/activity stay nil on this tier: a selection or a hover
+	// must NOT stop or reset the high-risk window — only the explicit takeover
+	// button may suspend the safety valve, and only while the user holds it.
+	// Attended asks keep the plain registration verbatim.
 	var interactCh chan struct{}
 	var activityCh chan struct{}
 	var takeoverCh chan bool
@@ -3509,6 +3525,8 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	var reply chan []event.AskAnswer
 	if reversibleTimedAsk {
 		id, reply, interactCh, activityCh, takeoverCh = c.approval.registerAskInteractive(questions)
+	} else if autopilotHighRiskAsk {
+		id, reply, takeoverCh = c.approval.registerAskTakeover(questions)
 	} else {
 		id, reply = c.approval.registerAsk(questions)
 	}
@@ -3541,7 +3559,7 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// timer, no toast deadline). Both timed tiers (reversible under autopilot,
 	// high-risk under autopilot) arm from the same call below.
 	var autoDecideWaitMs int64
-	if reversibleTimedAsk || (c.autopilot && !reversibleAsk) {
+	if reversibleTimedAsk || autopilotHighRiskAsk {
 		autoDecideWaitMs = c.autopilotAskWaitFor().Milliseconds()
 	}
 	emitErr := event.EmitChecked(c.sink, event.Event{Kind: event.AskRequest, TurnID: turnID, ItemID: id, Ask: event.Ask{ID: id, Questions: questions, TurnID: turnID, AutoDecideWaitMs: autoDecideWaitMs}})
@@ -3585,6 +3603,12 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// ask falls out of the timed reversible block above, and testing
 	// reversibleTimedAsk here would dump it into this 15s-refusal lane
 	// instead of the attended wait the grant promises.
+	// tl1408: this window is parkable. The takeover channel registered above
+	// suspends it outright while the user holds the 接管 button (an infinite
+	// wait — they declared themselves present), and releasing re-arms a fresh
+	// window; the 109 B4 safety valve is real only while nobody has taken
+	// over. Re-read the old contract as: "real when nobody is there" — a user
+	// mid-incident must not watch the countdown expire beneath their click.
 	var askTimeout <-chan time.Time
 	var askWait time.Duration
 	// askTimer stays in scope so the 任务178 reattach case below can re-arm the
@@ -3593,7 +3617,7 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// never reach this point with a timer: the immediate refusal above answers
 	// them before registration, so no heartbeat ask can park this loop.
 	var askTimer *time.Timer
-	if c.autopilot && !reversibleAsk {
+	if autopilotHighRiskAsk {
 		askWait = c.autopilotAskWaitFor()
 		askTimer = time.NewTimer(askWait)
 		defer askTimer.Stop()
@@ -3757,6 +3781,14 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 				timer.Reset(askWait)
 				log.Printf("[ask-panel] ask takeover released; auto-decide window re-armed for %s (task 849) turn=%s item=%s", askWait, turnID, id)
 			case <-reattachCh:
+				// tl1408: a held takeover parked the window and the budget; a
+				// re-presented panel must not restart them — the user believes
+				// the clock is suspended, and the same contract as the
+				// high-risk tier below applies.
+				if takeover {
+					log.Printf("[ask-panel] ask re-presented while takeover held; the parked window and budget stay suspended (tl1408) turn=%s item=%s", turnID, id)
+					continue
+				}
 				// 任务178（打开后才计时）: the session was reopened and the panel is
 				// back on screen. The window this backgrounded ask silently spent
 				// must not decide for a user who never saw it — park both timers
@@ -3795,10 +3827,42 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// 任务178: looped so a session-reopen signal can re-arm askTimeout in place
 	// (打开后才计时) before the wait continues; every non-reattach case returns,
 	// so the loop is behavior-identical for callers that never reopen.
+	// tl1408: the takeover toggle rides this loop on a high-risk ask, same as
+	// the reversible tier above. Hold = park the window outright — an infinite
+	// wait, not a single extension: the user declared themselves present, and
+	// the 109 B4 safety valve is only real while nobody holds the takeover.
+	// Release = re-arm a fresh window from now, the same arming posture as the
+	// registration. Attended asks carry a nil channel (plain registration), so
+	// the case never fires and their contract is untouched.
+	takeoverHeld := false
 	for {
 		select {
 		case ans := <-reply:
 			return ans, nil
+		case taking := <-takeoverCh:
+			if taking == takeoverHeld {
+				continue
+			}
+			takeoverHeld = taking
+			if askTimer == nil {
+				continue // defensive: a takeover-capable ask always carries the timer
+			}
+			if takeoverHeld {
+				// Park: stop and drain so a concurrently-fired expiry cannot
+				// resurface as a stale askTimeout after the hold lands.
+				if !askTimer.Stop() {
+					select {
+					case <-askTimer.C:
+					default:
+					}
+				}
+				log.Printf("[ask-panel] high-risk ask takeover held; the %s autopilot window parked, waiting for the user (tl1408) turn=%s item=%s", askWait, turnID, id)
+				continue
+			}
+			// Released: the timer was stopped and drained at the hold, so
+			// Reset is on a clean timer — a fresh window from this moment.
+			askTimer.Reset(askWait)
+			log.Printf("[ask-panel] high-risk ask takeover released; the autopilot window re-armed for %s (tl1408) turn=%s item=%s", askWait, turnID, id)
 		case <-askTimeout:
 			c.cancelOwnedPrompt(id)
 			c.expirePendingCard(id)
@@ -3840,7 +3904,14 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			// re-presentation, draining a concurrently-fired expiry first (same
 			// Timer.Reset dance as the timer cases above). Attended asks have no
 			// timer (askTimer == nil) and simply keep waiting for the user.
+			// tl1408: a held takeover keeps the window parked — a re-presented
+			// panel must not secretly restart what the user believes is
+			// suspended; only their release re-arms it.
 			if askTimer == nil {
+				continue
+			}
+			if takeoverHeld {
+				log.Printf("[ask-panel] high-risk ask re-presented while takeover held; the parked window stays suspended (tl1408) turn=%s item=%s", turnID, id)
 				continue
 			}
 			if !askTimer.Stop() {
@@ -3887,16 +3958,18 @@ func (c *Controller) NotifyAskActivity(id string) {
 
 // NotifyAskTakeover applies the task-849 panel takeover toggle for a pending
 // ask: taking=true parks the reversible ask's auto-decide timer and its
-// absolute hover budget outright — the user explicitly declared themselves
-// present, so the ask waits indefinitely no matter how long they think — and
-// taking=false releases the takeover, re-arming a fresh window and a fresh
-// budget. This is deliberately stronger than NotifyAskActivity: hover is the
-// weak "the user is reading" signal, takeover is the explicit "the user is
-// here" declaration. Reports whether a timed ask actually consumed the toggle
-// — false is the expected answer for every other prompt class (attended asks
-// have no auto-decide to park, and the 109 B4 safety valve on high-risk asks
-// must stay real), which is why callers may fire it for any ask ID without
-// knowing the risk tier. Unknown/expired IDs are ignored.
+// absolute hover budget outright, and since tl1408 the autopilot high-risk
+// window as well — the user explicitly declared themselves present, so the
+// ask waits indefinitely no matter how long they think — and taking=false
+// releases the takeover, re-arming a fresh window (and a fresh budget on the
+// reversible tier). This is deliberately stronger than NotifyAskActivity:
+// hover is the weak "the user is reading" signal, takeover is the explicit
+// "the user is here" declaration. Reports whether a timed ask actually
+// consumed the toggle — false is the expected answer for every other prompt
+// class (attended asks have no timer to park; the 109 B4 safety valve on
+// high-risk asks stays real whenever nobody has taken over), which is why
+// callers may fire it for any ask ID without knowing the risk tier.
+// Unknown/expired IDs are ignored.
 func (c *Controller) NotifyAskTakeover(id string, taking bool) bool {
 	if c == nil || id == "" {
 		return false
