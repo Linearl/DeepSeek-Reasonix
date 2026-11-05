@@ -83,34 +83,44 @@ func TestHumanCreateChannelJoinAndTypes(t *testing.T) {
 	}
 }
 
-// 验收 1b + 2 + 3：人类发言走 Publish 同链路——session 成员收信、human 不收
-// （fan-out 跳过投递只落库）、小时上限对 human 发言同样生效。
+// 验收 1b + 2 + 3：人类发言走 Publish 同链路——tl1406 路由后：未 @ 落副管理
+// 员一行；@ human 的 fanout 行落库但收件箱必须保持空（803 ④ 跳投递只落库）；
+// 小时上限对 human 发言同样生效。
 func TestHumanPublishSamePathFanoutSkipsHumanMailbox(t *testing.T) {
 	s, dir, advance := newStore(t)
-	if _, err := s.CreateChannelWithOwner("dev", "", 0, MemberTypeHuman, HumanLocal, "sc_a"); err != nil {
+	dev, err := s.CreateChannelWithOwner("dev", "", 0, MemberTypeHuman, HumanLocal, "sc_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// tl1406：human 群默认收件人 = 副管理员；不设则零投递（Q3）。这里设
+	// sc_a 为副管理员以承接人类未 @ 的发言。
+	if _, err := s.SetDeputy(dev.ID, "sc_a"); err != nil {
 		t.Fatal(err)
 	}
 
-	// human 发言：session 成员照常排队收信。
+	// human 发言未 @：副管理员 sc_a 照常排队收信。
 	msg, err := s.Publish("dev", HumanLocal, "大家好，人类来了")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(msg.RoutedTo) != 1 || msg.RoutedTo[0] != "sc_a" || msg.Deputyless {
+		t.Fatalf("un-mentioned human line must route to the deputy: %+v", msg)
 	}
 	stats, err := s.DrainFanout(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stats.Delivered != 1 || stats.HumanSkipped != 0 || stats.Queued != 1 {
-		t.Fatalf("human→session drain: %+v", stats)
+		t.Fatalf("human→deputy drain: %+v", stats)
 	}
 	mail := sessioncollab.NewMailStore(dir)
 	inbox, err := mail.Inbox("sc_a")
 	if err != nil || len(inbox) != 1 || inbox[0].From != HumanLocal || inbox[0].Body != "大家好，人类来了" {
-		t.Fatalf("session member must receive the human's line: %v %+v", err, inbox)
+		t.Fatalf("deputy must receive the human's line: %v %+v", err, inbox)
 	}
 
-	// session 发言：human 的 fanout 行落库但收件箱必须保持空。
-	msg2, err := s.Publish("dev", "sc_a", "收到")
+	// 副管理员 @ human 发言：human 的 fanout 行落库但收件箱必须保持空。
+	msg2, err := s.Publish("dev", "sc_a", "@human:local 收到")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +161,7 @@ func TestHumanPublishSamePathFanoutSkipsHumanMailbox(t *testing.T) {
 	}
 
 	// 风暴治理：human 连发到上限同样被拒（cap 默认 30，这里造个小群直查）。
+	// tl1406：无副管理员群未 @ 零投递，但消息照常落库计数（cap 是入库门槛）。
 	small, err := s.CreateChannelWithOwner("tiny", "", 2, MemberTypeHuman, HumanLocal)
 	if err != nil {
 		t.Fatal(err)
@@ -358,6 +369,11 @@ func TestDissolveOwnerOnlyDestroysEverything(t *testing.T) {
 	s, _, _ := newStore(t)
 	humanOwned, err := s.CreateChannelWithOwner("h群", "topic", 0, MemberTypeHuman, HumanLocal, "sc_a")
 	if err != nil {
+		t.Fatal(err)
+	}
+	// tl1406：human 群未 @ 只落副管理员——先任命 sc_a 再发言才有 fanout 行
+	// （无副管理员时零投递，正是 Q3 语义，本测试只关心解散清理）。
+	if _, err := s.SetDeputy(humanOwned.ID, "sc_a"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Publish(humanOwned.ID, HumanLocal, "人类的发言"); err != nil {

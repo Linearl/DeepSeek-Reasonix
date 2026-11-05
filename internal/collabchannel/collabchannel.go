@@ -1,9 +1,18 @@
 // Package collabchannel is task 349: chat channels as durable entities.
 //
-// 群聊本质 (2026-09-28 user definition, the authoritative requirement):
+// 群聊本质 (2026-09-28 user definition):
 //  1. one channel many conversations can talk in;
 //  2. every conversation can send to it;
 //  3. every member receives every message.
+//
+// tl1406 (2026-11-05 user rulings) supersedes clause 3 on HUMAN-owned
+// channels: un-mentioned speech routes to the deputy manager alone (the task
+// dispatcher / default recipient, ruling Q1=A); with no deputy appointed it
+// delivers to nobody and the desktop prompts the human (Q3); an explicit
+// @-mention delivers only to the @'d members. Ordinary members are never
+// delivered or woken — they read history on demand (channel_read), push-free
+// (Q2). Ownerless / session-owned channels keep the original fan-out-all
+// semantics (the deputy concept does not exist there; migration contract).
 //
 // Shape (0928 拍板4 + 方案 §3b): the channel is a VIRTUAL address plus
 // tool-layer expansion to single sends — there is no second delivery channel.
@@ -34,6 +43,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -293,6 +303,17 @@ type Message struct {
 	// message keeps its history line but stops pending fan-out and is marked
 	// in every later read/export.
 	CancelledAt int64 `json:"cancelledAt,omitempty"`
+	// tl1406 publish-time routing annotations. Set ONLY on the Publish /
+	// PublishWithMentionNames return — history reads build the record from the
+	// messages table alone, so these never serialize there. RoutedTo lists the
+	// members a fan-out row was actually queued for (the deputy under
+	// un-mentioned speech, the @'d members under explicit mentions; the sender
+	// is never routed to themselves) — channel_send reports it as queuedFor.
+	// Deputyless marks the human-owned + un-mentioned + no-deputy branch
+	// (ruling Q3): zero delivery, and the desktop prompts the human to
+	// appoint one.
+	RoutedTo   []string `json:"routedTo,omitempty"`
+	Deputyless bool     `json:"deputyless,omitempty"`
 }
 
 // CancelResult reports what one cancel touched: the tombstone time, how many
@@ -766,12 +787,29 @@ func (s *Store) ListChannels() ([]Channel, error) {
 }
 
 // Publish is the pub/sub write half: the message lands in the channel's
-// SQLite log AND gets one queued fan-out row per member (sender excluded —
+// SQLite log AND gets one queued fan-out row per ROUTED recipient (tl1406
+// routing: explicit @-mentions → those members only; un-mentioned → the
+// deputy manager alone; no deputy on a human-owned channel → nobody, with
+// Deputyless set so the desktop can prompt; ownerless / session-owned
+// channels keep the original every-member fan-out). The sender is excluded —
 // they see their own line through channel history, and a self-copy would
-// echo back into their own mailbox as an inbound stranger). The hourly cap
+// echo back into their own mailbox as an inbound stranger. The hourly cap
 // gates here (429). Fan-out delivery itself is DrainFanout — Publish never
 // blocks on pacing.
 func (s *Store) Publish(ref, sender, body string) (Message, error) {
+	return s.PublishWithMentionNames(ref, sender, body, nil)
+}
+
+// PublishWithMentionNames is Publish with a caller-supplied display-name map
+// (contact id → alias names) for resolving @-mentions in the body (tl1406).
+// The desktop face passes the collab roster's title/purpose/topic aliases —
+// the composer inserts "@<显示名> " and the bubble renderer matches the same
+// literal needle — plus the localized self-token for human:local ("@我"/
+// "@You", mirroring collabGroup.chat.you). The tool face passes the session
+// directory the same way (agents mostly @ the bare contact id). nil/empty
+// keeps contact-id-only resolution; names never widen the recipient set
+// beyond current roster members.
+func (s *Store) PublishWithMentionNames(ref, sender, body string, names map[string][]string) (Message, error) {
 	sender = strings.TrimSpace(sender)
 	body = strings.TrimSpace(body)
 	if sender == "" || body == "" {
@@ -798,6 +836,12 @@ func (s *Store) Publish(ref, sender, body string) (Message, error) {
 	if err := tx.QueryRow(`SELECT hourly_limit FROM channels WHERE id = ?`, id).Scan(&capPerHour); err != nil {
 		return Message{}, err
 	}
+	// Deputy + owner read in the SAME tx as the write (tl1406 routing inputs;
+	// deputyOf/ownerOf would spawn a second reader beside the open tx).
+	var deputy, ownerType string
+	if err := tx.QueryRow(`SELECT COALESCE(deputy_id, ''), COALESCE(owner_type, '') FROM channels WHERE id = ?`, id).Scan(&deputy, &ownerType); err != nil {
+		return Message{}, err
+	}
 	var recent int
 	windowStart := s.now() - int64(time.Hour/time.Millisecond)
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM messages WHERE channel_id = ? AND at > ?`, id, windowStart).Scan(&recent); err != nil {
@@ -813,7 +857,9 @@ func (s *Store) Publish(ref, sender, body string) (Message, error) {
 		msg.ID, id, msg.At, sender, body); err != nil {
 		return Message{}, err
 	}
-	for _, m := range members {
+	route, deputyless := routeRecipients(body, members, names, deputy, ownerType)
+	msg.Deputyless = deputyless
+	for _, m := range route {
 		if m == sender {
 			continue
 		}
@@ -821,11 +867,124 @@ func (s *Store) Publish(ref, sender, body string) (Message, error) {
 			msg.ID, m, newID("chf_")); err != nil {
 			return Message{}, err
 		}
+		msg.RoutedTo = append(msg.RoutedTo, m)
 	}
 	if err := tx.Commit(); err != nil {
 		return Message{}, err
 	}
 	return msg, nil
+}
+
+// routeRecipients answers the tl1406 delivery routing (用户 20261105 四条
+// 裁决, in precedence order):
+//
+//  1. explicit @-mentions win — only the @'d members receive (multi-@ → one
+//     row each; the ruling's "多人 @ 语义" fixed here);
+//  2. no mention + a live deputy → the deputy alone (Q1=A: the deputy is the
+//     task dispatcher / default recipient; invite permission unchanged);
+//  3. no mention + no deputy on a HUMAN-owned channel → nobody, deputyless
+//     =true (Q3: zero delivery, the desktop prompts the human to appoint
+//     one);
+//  4. ownerless / session-owned channels keep the original fan-out-all
+//     semantics (no deputy concept there; the pre-tl1406 contract and the
+//     v2-migration behavior stay unchanged).
+//
+// A deputy routes only while still on the roster — one who left or was
+// removed degrades to branch 3 rather than mailing a non-member.
+func routeRecipients(body string, members []string, names map[string][]string, deputy, ownerType string) (route []string, deputyless bool) {
+	if mentioned := mentionedMembers(body, members, names); len(mentioned) > 0 {
+		return mentioned, false
+	}
+	if deputy != "" && memberIn(deputy, members) {
+		return []string{deputy}, false
+	}
+	if ownerType == MemberTypeHuman {
+		return nil, true
+	}
+	return members, false
+}
+
+func memberIn(contact string, members []string) bool {
+	for _, m := range members {
+		if m == contact {
+			return true
+		}
+	}
+	return false
+}
+
+// isNameByte reports whether b can be part of an ASCII identifier (emails,
+// hex ids) — a '@' directly behind one is an address, not a mention.
+func isNameByte(b byte) bool {
+	return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// mentionedMembers resolves the @-mentions in body against the member roster
+// (tl1406 — the parsing surface did not exist before). A member is mentioned
+// when body contains "@"+contactID or "@"+one of their alias names: the same
+// literal needle the composer inserts and renderBody matches, so UI, agents
+// and store agree on one syntax. At any match position the LONGEST needle
+// wins, so a mention of 新12 does not also route a hypothetical member named
+// 新1. Unresolvable @text is plain words — it never routes; a body whose @
+// tokens resolve to nobody falls through to the deputy / no-deputy branches.
+func mentionedMembers(body string, members []string, names map[string][]string) []string {
+	if !strings.Contains(body, "@") {
+		return nil
+	}
+	// longest needle at each match start (needles share the leading @).
+	type hit struct {
+		member string
+		end    int
+	}
+	best := map[int]hit{}
+	for _, m := range members {
+		needles := []string{"@" + m}
+		for _, alias := range names[m] {
+			if alias = strings.TrimSpace(alias); alias != "" {
+				needles = append(needles, "@"+alias)
+			}
+		}
+		for _, needle := range needles {
+			for at := 0; ; {
+				idx := strings.Index(body[at:], needle)
+				if idx < 0 {
+					break
+				}
+				at += idx
+				// Mention boundary: the @ must not sit right after an ASCII
+				// name character — a@sc_x.example is an email, not a mention.
+				if at == 0 || !isNameByte(body[at-1]) {
+					if prev, ok := best[at]; !ok || len(needle) > prev.end-at {
+						best[at] = hit{m, at + len(needle)}
+					}
+				}
+				at++
+			}
+		}
+	}
+	if len(best) == 0 {
+		return nil
+	}
+	starts := make([]int, 0, len(best))
+	for at := range best {
+		starts = append(starts, at)
+	}
+	sort.Ints(starts)
+	seen := map[string]bool{}
+	var out []string
+	maxEnd := -1
+	for _, at := range starts {
+		if at < maxEnd {
+			continue // swallowed by a longer match at an earlier position
+		}
+		h := best[at]
+		maxEnd = h.end
+		if !seen[h.member] {
+			seen[h.member] = true
+			out = append(out, h.member)
+		}
+	}
+	return out
 }
 
 // Cancel (取消消息) tombstones one channel message and stops its PENDING
