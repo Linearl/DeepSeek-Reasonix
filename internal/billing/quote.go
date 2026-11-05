@@ -646,11 +646,17 @@ func (a *quoteAccumulator) finish() CostQuote {
 		a.out.Original = Money{Amount: "0"}
 	}
 	if len(a.originalTotals) > 1 {
+		// tl1424 预存红清理: OriginalTotals 必须按货币码字典序输出。原实现把
+		// append 写进了收集 codes 的 map 迭代循环（顺序随机），codes 本身从未
+		// 被填充，sort.Strings 排的是空切片——多币种桶顺序随 map 摇摆，
+		// TestAggregateMixedCurrenciesProducesBuckets /
+		// TestLedgerMixedOriginalBucketsContinueAccumulating 因此偶发红。
 		codes := make([]string, 0, len(a.originalTotals))
 		for code := range a.originalTotals {
-			a.out.OriginalTotals = append(a.out.OriginalTotals, MoneyOf(a.originalTotals[code], code))
+			codes = append(codes, code)
 		}
 		sort.Strings(codes)
+		a.out.OriginalTotals = make([]Money, 0, len(codes))
 		for _, code := range codes {
 			a.out.OriginalTotals = append(a.out.OriginalTotals, MoneyOf(a.originalTotals[code], code))
 		}
