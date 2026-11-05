@@ -6075,6 +6075,8 @@ export const zh: Record<DictKey, string> = {
   "collabGroup.chat.placeholder": "选择一个群聊开始",
   "collabGroup.chat.emptyStream": "还没有消息，说点什么吧",
   "collabGroup.chat.back": "返回群列表",
+  "collabGroup.chat.openTab": "打开标签页",
+  "channelWorkspace.title": "群聊（标签页）",
   "collabGroup.chat.detail": "详情",
   "collabGroup.chat.closeDetail": "收起",
   "collabGroup.chat.sendPlaceholder": "输入消息，Enter 发送，Shift+Enter 换行",
