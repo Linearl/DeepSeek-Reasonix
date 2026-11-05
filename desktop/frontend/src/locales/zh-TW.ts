@@ -3384,6 +3384,15 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesUnmeasured": "未測量",
   "settings.recoveryCopiesUnmeasuredHint": "尚未測量——點行內「掃描」或底部掃描按鈕後顯示真實讀數",
   "settings.recoveryCopiesPreviewUnreadable": "讀數降級——預覽不可得（收起後重新展開可重試）",
+  // tl1415 點9: 清空合併歷史——版本徽標讀的是 meta 頭鏡像,tl1280 頭重放
+  // 退役後無人維護;清空只是賬面重置,所有檔案保留。
+  "settings.recoveryCopiesClearHistory": "清空合併歷史",
+  "settings.recoveryCopiesClearHistoryHint": "把版本徽標背後的陳舊合併賬面清零（頭重放退役後該元資料已無人維護）；不改動轉錄、事件日誌與任何副本檔案",
+  "settings.recoveryCopiesClearHistoryTitle": "清空合併歷史",
+  "settings.recoveryCopiesClearHistoryLead": "把該會話的合併賬面復位為單鏈（版本徽標隨之消失）",
+  "settings.recoveryCopiesClearHistoryNote": "這只清舊版元資料裡的合併計數；對話內容、事件日誌與磁碟上的副本檔案全部保留。",
+  "settings.recoveryCopiesClearHistoryConfirm": "清空",
+  "settings.recoveryCopiesClearHistoryDone": "已清空合併歷史",
   "settings.recoveryCopiesGroupCopies": "副本（recovery 檔案）",
   "settings.recoveryCopiesGroupChains": "候選鏈與版本（v3 事件日誌）",
   "settings.recoveryCopiesChainCurrent": "目前主線",

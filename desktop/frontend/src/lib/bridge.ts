@@ -1334,6 +1334,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   DeleteRecoveryBranch(path: string): Promise<void>;
   /** 任务 1064：版本面板删除 v3 head（retire 标记；当前选中 head 后端拒绝）。 */
   DeleteSessionVersionHead(mainPath: string, headId: string): Promise<void>;
+  /** tl1415 点9：清空合并历史——把 meta 头镜像（head_id/head_count）复位为
+   *  单链默认；纯账面重置，转录/事件日志/副本文件零触碰。tl1280 头重放退役
+   *  后该字段无人维护，合并完的会话靠它清掉陈旧的「N 版本」徽标。 */
+  ClearSessionMergeHistory(mainPath: string): Promise<void>;
   /** 任务 1368：整对话级删除——主文件（含 v3 事件日志与侧车）入会话回收站
    *  （RestoreSession 可整体还原），全部副本+副本侧车入可恢复 .trash（1064
    *  forced 归档链路）。mainTrashed=false 表示主线本就不在（orphan 组）。 */
@@ -5420,6 +5424,9 @@ function makeMockApp(): AppBindings {
       return this.DeleteSession(path);
     },
     async DeleteSessionVersionHead() {},
+    async ClearSessionMergeHistory(_mainPath: string) {
+      // mock: the browser-dev meta sidecars do not exist; nothing to reset.
+    },
     // 任务 1368：dev mock 里整对话删除与删会话同义（mock 无回收站），回执
     // 报「主线已入回收站 + 副本数 0」——mock 组没有真副本文件。
     async DeleteConversationWithCopies(mainPath: string) {

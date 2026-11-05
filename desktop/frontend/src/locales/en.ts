@@ -4838,6 +4838,16 @@ export const en = {
   "settings.recoveryCopiesUnmeasured": "unmeasured",
   "settings.recoveryCopiesUnmeasuredHint": "not measured yet — run Scan (row button or footer) to get real readings",
   "settings.recoveryCopiesPreviewUnreadable": "readings degraded — preview unavailable (collapse and re-expand to retry)",
+  // tl1415 点9: clear-merge-history — the version badge reads a meta head
+  // mirror that nothing has maintained since the schema-2 replay retired;
+  // clearing it is bookkeeping only, every file stays.
+  "settings.recoveryCopiesClearHistory": "Clear merge history",
+  "settings.recoveryCopiesClearHistoryHint": "resets the stale merge bookkeeping behind the version badge (kept by metadata no longer maintained since the head replay retired); touches no transcript, event log or copy file",
+  "settings.recoveryCopiesClearHistoryTitle": "Clear merge history",
+  "settings.recoveryCopiesClearHistoryLead": "Reset this conversation's merge bookkeeping to a single chain (the version badge disappears)",
+  "settings.recoveryCopiesClearHistoryNote": "This only clears the merge counters in legacy metadata. The conversation, its event log and every copy on disk are kept.",
+  "settings.recoveryCopiesClearHistoryConfirm": "Clear",
+  "settings.recoveryCopiesClearHistoryDone": "Merge history cleared",
   "settings.recoveryCopiesGroupCopies": "Copies (recovery files)",
   "settings.recoveryCopiesGroupChains": "Candidate chains & versions (v3 event log)",
   "settings.recoveryCopiesChainCurrent": "current main",

@@ -379,6 +379,8 @@ function VersionRows({
   onDeleteBranch,
   onPick,
   onSynthesize,
+  headCount,
+  onClearHistory,
 }: {
   group: RecoveryCopyGroupView;
   /** 外层惰性缓存的一条链清单(loadChains 的落点)。undefined = 尚未加载完
@@ -408,6 +410,11 @@ function VersionRows({
   onDeleteBranch: (copyPath: string, index: number) => void;
   onPick: (chain: RecoveryChainView) => void;
   onSynthesize: () => void;
+  /** tl1415 点9: 该会话在 meta 头镜像里的版本计数(>1 才有「清空合并历史」
+   *  可清)。0 = 版本清单里没有该会话。 */
+  headCount: number;
+  /** tl1415 点9: 清空合并历史(确认+调用+toast+重载都在外层)。 */
+  onClearHistory: () => void;
 }) {
   const mainPath = group.mainPath;
   const [health, setHealth] = useState<{ path: string; report: SessionHealthReportView | null }>({ path: "", report: null });
@@ -856,6 +863,20 @@ function VersionRows({
         <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsCheckHint")} onClick={() => void inspect()}>{t("settings.sessionVersions.check")}</button>
         <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsRepairHint")} disabled={repairing} onClick={() => void repair(false)}>{t("settings.sessionVersions.repair")}</button>
         <button className="btn btn--secondary btn--small" type="button" title={t("settings.sessionVersionsRepairDietHint")} disabled={repairing} onClick={() => void repair(true)}>{t("settings.sessionVersions.repairDiet")}</button>
+        {/* tl1415 点9: 清空合并历史——版本徽标的账面读数(head meta 镜像)在
+            tl1280 头重放退役后无人维护,合并完的会话留着陈旧「N 版本」。展开
+            后才可见,只清账面不动内容。 */}
+        {headCount > 1 && (
+          <button
+            className="btn btn--secondary btn--small"
+            type="button"
+            title={t("settings.recoveryCopiesClearHistoryHint")}
+            disabled={busy}
+            onClick={onClearHistory}
+          >
+            {t("settings.recoveryCopiesClearHistory")}
+          </button>
+        )}
       </div>
       {health.path === mainPath && health.report && (
         <div className="rc-versions__health">
@@ -1164,6 +1185,47 @@ export function RecoveryCopiesSection() {
     });
   };
 
+  /** tl1415 点9: 已合入默认折叠——合并/合成把一个会话收成单一主线后,它的
+   *  展开区使命已完成,行折回概要一行(点击可再展开);面板重开时所有行本就
+   *  默认折叠,这里是操作后的即时回落。 */
+  const collapseRow = (path: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      next.delete(path);
+      return next;
+    });
+  };
+
+  /** tl1415 点9: 清空合并历史——meta 头镜像复位为单链(账面重置,内容零触
+   *  碰)。确认、调用、toast、重载收在这一处,VersionRows 只拿回调。 */
+  const clearMergeHistory = async (mainPath: string, label: string) => {
+    const ok = await confirm({
+      title: t("settings.recoveryCopiesClearHistoryTitle"),
+      message: (
+        <div>
+          <p>
+            {t("settings.recoveryCopiesClearHistoryLead")}：{label}
+          </p>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesClearHistoryNote")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesClearHistoryConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await app.ClearSessionMergeHistory(mainPath);
+      showToast(t("settings.recoveryCopiesClearHistoryDone"), "info");
+      await load();
+    } catch (err) {
+      setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** scanOne measures a conversation and returns the fresh row, so callers that
    *  need the numbers immediately do not have to wait for a re-render. */
   const scanOne = async (mainPath: string): Promise<RecoveryCopyGroupView | null> => {
@@ -1353,6 +1415,8 @@ export function RecoveryCopiesSection() {
           }
           try {
             const forced = await app.ForceConsolidateSessionRecoveryCopies(group.mainPath, pickedChain[group.mainPath] ?? "");
+            // tl1415 点9: 已合入默认折叠——合并成功,展开区使命完成,行折回。
+            collapseRow(group.mainPath);
             collected.push({
               label: group.mainLabel,
               kind: "forced",
@@ -1373,6 +1437,8 @@ export function RecoveryCopiesSection() {
           continue;
         }
 
+        // tl1415 点9: 已合入默认折叠——合并成功,行折回概要一行(点击可再展开)。
+        collapseRow(group.mainPath);
         collected.push({
           label: group.mainLabel,
           kind: "merged",
@@ -1705,6 +1771,8 @@ export function RecoveryCopiesSection() {
           // tl1402：v3 形态的合成真实生效（切主线/清理落败 heads）——同弹
           // toast 让反馈离开面板也可见；文案直接用横幅的 locale 句（已三语）。
           showToast(detail, "info");
+          // tl1415 点9: 已合入默认折叠——v3 合成真实生效,行折回概要一行。
+          collapseRow(mainPath);
         } else if (v3Only) {
           // 后端确认无事可做（无落败分支、无需切换）——保留诚实的「无可做」
           // 回执并指出现有出路（版本表的「切换到此版本」按钮，该入口真实存在）。
@@ -1758,6 +1826,8 @@ export function RecoveryCopiesSection() {
       // 入主线的独有事件数（graft 零双份，与主线增量同量级）。outcome 行只
       // 有展开面板才可见，toast 让反馈离开面板也在。
       showToast(t("settings.recoveryCopiesMergedToast", { count: uniqueTotal }), "info");
+      // tl1415 点9: 已合入默认折叠——文件级合成生效,行折回概要一行。
+      collapseRow(mainPath);
       // Named winners were consumed; the next run starts neutral.
       setPickedChain((current) => {
         const next = { ...current };
@@ -1896,6 +1966,8 @@ export function RecoveryCopiesSection() {
             onDeleteBranch={(copyPath, index) => { void deleteBranchOne(group, copyPath, index); }}
             onPick={(chain) => { void togglePick(group.mainPath, chain); }}
             onSynthesize={() => { void synthesizeHeads(group.mainPath, group.mainLabel); }}
+            headCount={versions?.headCount ?? 0}
+            onClearHistory={() => { void clearMergeHistory(group.mainPath, group.mainLabel); }}
           />
         )}
       </div>

@@ -4822,6 +4822,15 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesUnmeasured": "未测量",
   "settings.recoveryCopiesUnmeasuredHint": "尚未测量——点行内「扫描」或底部扫描按钮后显示真实读数",
   "settings.recoveryCopiesPreviewUnreadable": "读数降级——预览不可得（收起后重新展开可重试）",
+  // tl1415 点9: 清空合并历史——版本徽标读的是 meta 头镜像,tl1280 头重放
+  // 退役后无人维护;清空只是账面重置,所有文件保留。
+  "settings.recoveryCopiesClearHistory": "清空合并历史",
+  "settings.recoveryCopiesClearHistoryHint": "把版本徽标背后的陈旧合并账面清零（头重放退役后该元数据已无人维护）；不改动转录、事件日志与任何副本文件",
+  "settings.recoveryCopiesClearHistoryTitle": "清空合并历史",
+  "settings.recoveryCopiesClearHistoryLead": "把该会话的合并账面复位为单链（版本徽标随之消失）",
+  "settings.recoveryCopiesClearHistoryNote": "这只清旧版元数据里的合并计数；对话内容、事件日志与磁盘上的副本文件全部保留。",
+  "settings.recoveryCopiesClearHistoryConfirm": "清空",
+  "settings.recoveryCopiesClearHistoryDone": "已清空合并历史",
   "settings.recoveryCopiesGroupCopies": "副本（recovery 文件）",
   "settings.recoveryCopiesGroupChains": "候选链与版本（v3 事件日志）",
   "settings.recoveryCopiesChainCurrent": "当前主线",
