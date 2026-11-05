@@ -3259,6 +3259,11 @@ export const zhTW: Record<DictKey, string> = {
   // tl1414：刪除回饋 toast——outcome 行只在展開面板可見，拒絕/靜默刪除被讀作「沒反應」。
   "settings.recoveryCopiesDeletedToast": "已刪除 {count} 個分支",
   "settings.recoveryCopiesDeleteFailedToast": "{count} 個分支刪除失敗",
+  // tl1414：整工作階段刪除與版本行刪除用各自的詞彙（工作階段/版本，不是分支）。
+  "settings.recoveryCopiesConversationDeletedToast": "已刪除 {count} 個對話",
+  "settings.recoveryCopiesConversationDeleteFailedToast": "{count} 個對話刪除失敗",
+  "settings.recoveryCopiesVersionDeletedToast": "已刪除 {count} 個版本",
+  "settings.recoveryCopiesVersionDeleteFailedToast": "{count} 個版本刪除失敗",
   // 任務 1368 線2：整工作階段級刪除——主檔（含 v3 版本與側車）與全部副本一
   // 起進兩條可恢復回收站（主檔走工作階段回收站可整體還原；副本走 .trash 的
   // forced 歸檔鏈路）。

@@ -3,10 +3,17 @@
 // 事故形态（20261105 用户实测）：副本行点删除→确认→静默无反应。根因是活
 // tab 自己的转录本以副本行出现，后端 busy 拒绝；前端只把失败写进展开面板
 // 里才可见的 outcome 行，无 toast——用户读作「什么都没发生」。本 harness
-// 钉三点（反馈对称性，tl1401 同口径）：
+// 钉六点（反馈对称性，tl1401 同口径）：
 //  ① 单删成功 → outcome 行「Deleted」+ toast「Deleted 1 branch(es)」+ 列表重拉；
 //  ② 单删失败 → toast 带后端原因原文（不再只留展开式行）+ outcome 行在；
-//  ③ 批量删除成功 → toast 报成功计数 + 列表重拉。
+//  ③ 批量删除成功 → toast 报成功计数 + 列表重拉；
+//  ④（续跑）整对话删除成功 → toast 报「Deleted N conversation(s)」（对话级
+//    词汇，不沿用分支计数）+ 列表重拉——该按钮正是目录拼写根因（Go 端
+//    recovery_branch_delete_casing_test.go）修复的受益路径；
+//  ⑤（续跑）整对话删除失败 → toast 带原因；
+//  ⑥（续跑）删除后 load() 重取失败 → toast + 横幅双落——load() 内部 catch
+//    后返回布尔（从不抛错），反馈对称性靠返回值补 toast（旧 try/catch 是
+//    永不触发的死代码，本条是它生效的证明）。
 
 import { JSDOM } from "jsdom";
 import { act } from "react";
@@ -104,7 +111,11 @@ const GROUP = {
   ],
 };
 
-function stubBridge(deleteImpl: (path: string) => Promise<void>, spies: { listCalls: number; deleted: string[] }) {
+function stubBridge(
+  deleteImpl: (path: string) => Promise<void>,
+  spies: { listCalls: number; deleted: string[] },
+  conversationImpl?: (path: string) => Promise<{ mainTrashed: boolean; copiesArchived: number }>,
+) {
   window.go = {
     main: {
       App: {
@@ -122,6 +133,8 @@ function stubBridge(deleteImpl: (path: string) => Promise<void>, spies: { listCa
         }),
         DeleteRecoveryBranch: deleteImpl,
         DeleteSessionVersionHead: async () => {},
+        DeleteConversationWithCopies:
+          conversationImpl ?? (async () => ({ mainTrashed: true, copiesArchived: 0 })),
       } as Partial<AppBindings> as AppBindings,
     },
   } as typeof window.go;
@@ -222,6 +235,120 @@ console.log("\ntl1414 copy-delete feedback toasts");
   ok(spies.deleted.length === 1 && spies.deleted[0] === COPY_PATH, "③ the confirmed batch delete reaches the backend");
   ok(toastText().includes("Deleted 1 branch(es)"), `③ batch success toast appears (got ${JSON.stringify(toastText())})`);
   ok(spies.listCalls > listCallsBefore, "③ the list reloads after the batch delete");
+  await act(async () => { root.unmount(); });
+}
+
+// ④（续跑）整对话删除成功案：会话行复选框 → 「Delete selected conversations (1)」
+//    → 确认 → toast 报对话级成功计数 + 列表重拉。
+{
+  const spies = { listCalls: 0, deleted: [] as string[] };
+  const conversations: string[] = [];
+  stubBridge(
+    async () => {},
+    spies,
+    async (path) => {
+      conversations.push(path);
+      return { mainTrashed: true, copiesArchived: 2 };
+    },
+  );
+  const rootEl = installDom();
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
+  });
+  await flush();
+  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await flush();
+  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  await flush();
+  const listCallsBefore = spies.listCalls;
+  const groupBox = document.querySelector<HTMLInputElement>(".rc-row--group input[type=checkbox]");
+  if (!groupBox) throw new Error("group checkbox missing");
+  await act(async () => { groupBox.click(); });
+  await flush();
+  const convBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+    .find((b) => b.textContent?.trim().startsWith("Delete selected conversations"));
+  if (!convBtn) throw new Error("conversation delete button missing");
+  await act(async () => { convBtn.click(); });
+  await flush();
+  const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
+    .find((b) => b.textContent?.trim() === "Delete selected conversations");
+  if (!confirmBtn) throw new Error("conversation confirm button missing");
+  await act(async () => { confirmBtn.click(); });
+  await flush();
+  await flush();
+  ok(conversations.length === 1 && conversations[0] === MAIN_PATH, "④ the confirmed conversation delete reaches the backend");
+  ok(toastText().includes("Deleted 1 conversation(s)"), `④ conversation success toast appears (got ${JSON.stringify(toastText())})`);
+  ok(spies.listCalls > listCallsBefore, "④ the list reloads after the conversation delete");
+  await act(async () => { root.unmount(); });
+}
+
+// ⑤（续跑）整对话删除失败案：toast 带后端原因原文。
+{
+  const spies = { listCalls: 0, deleted: [] as string[] };
+  const convReason = "recovery branch must be a direct child of its session directory";
+  stubBridge(
+    async () => {},
+    spies,
+    async () => { throw new Error(convReason); },
+  );
+  const rootEl = installDom();
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
+  });
+  await flush();
+  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await flush();
+  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  await flush();
+  const groupBox = document.querySelector<HTMLInputElement>(".rc-row--group input[type=checkbox]");
+  await act(async () => { groupBox?.click(); });
+  await flush();
+  const convBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+    .find((b) => b.textContent?.trim().startsWith("Delete selected conversations"));
+  await act(async () => { convBtn?.click(); });
+  await flush();
+  const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
+    .find((b) => b.textContent?.trim() === "Delete selected conversations");
+  await act(async () => { confirmBtn?.click(); });
+  await flush();
+  await flush();
+  const text = toastText();
+  ok(text.includes("Failed to delete 1 conversation(s)"), `⑤ conversation failure toast appears (got ${JSON.stringify(text)})`);
+  ok(text.includes("direct child of its session directory"), "⑤ the failure toast carries the backend reason");
+  await act(async () => { root.unmount(); });
+}
+
+// ⑥（续跑）删除后 load() 重取失败：toast + 横幅双落——load() 从不抛错，
+//    反馈对称性靠返回值（旧 try/catch 是永不触发的死代码，本条是它生效的证明）。
+{
+  const spies = { listCalls: 0, deleted: [] as string[] };
+  window.go = {
+    main: {
+      App: {
+        ListRecoveryCopyGroups: async () => {
+          spies.listCalls += 1;
+          if (spies.listCalls > 1) throw new Error("bridge unavailable after delete");
+          return [GROUP];
+        },
+        ListSessionVersionGroups: async () => [],
+        ListRecoveryChains: async () => ({
+          mainPath: MAIN_PATH,
+          mainLabel: "GC dev session",
+          chains: [],
+          longestPath: "",
+          longestHead: "",
+        }),
+        DeleteRecoveryBranch: async (path: string) => { spies.deleted.push(path); },
+        DeleteSessionVersionHead: async () => {},
+      } as Partial<AppBindings> as AppBindings,
+    },
+  } as typeof window.go;
+  const { root } = await runSingleDeleteFlow(spies);
+  ok(spies.listCalls >= 2, "⑥ the post-delete reload was attempted");
+  ok(toastText().includes("Settings could not be loaded"), `⑥ the failed reload toasts (got ${JSON.stringify(toastText())})`);
+  ok(Boolean(document.querySelector(".banner--error")), "⑥ the failed reload still raises the in-panel banner");
   await act(async () => { root.unmount(); });
 }
 

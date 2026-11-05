@@ -352,6 +352,9 @@ function VersionRows({
    *  显示旧版本）。 */
   dataVersion: number;
 }) {
+  // tl1414：版本行删除与面板其余删除入口同族——成功/失败都弹 toast，
+  // 反馈不再只在展开面板内可见。
+  const { showToast } = useToast();
   const [chains, setChains] = useState<RecoveryChainSet | null>(null);
   const [health, setHealth] = useState<{ path: string; report: SessionHealthReportView | null }>({ path: "", report: null });
   const [repairing, setRepairing] = useState(false);
@@ -504,10 +507,19 @@ function VersionRows({
     setDeleting(headId);
     try {
       await app.DeleteSessionVersionHead(mainPath, headId);
+      // tl1414 反馈对称：retire 生效同弹 toast（outcome 行不存在于这条路径，
+      // 无 toast 时成功零反馈，读作没点）。
+      showToast(t("settings.recoveryCopiesVersionDeletedToast", { count: 1 }), "info");
       onReload();
     } catch (e) {
       // tl1367-fix defect C: the busy family renders localized (holder block).
-      onError(formatSessionBusyError(e));
+      const detail = formatSessionBusyError(e);
+      // tl1414 反馈对称：失败同弹 toast（横幅只在面板打开且行展开时可见）。
+      showToast(
+        `${t("settings.recoveryCopiesVersionDeleteFailedToast", { count: 1 })}：${detail}`,
+        "error",
+      );
+      onError(detail);
     } finally {
       setDeleting(null);
     }
@@ -774,7 +786,13 @@ export function RecoveryCopiesSection() {
     }
   };
 
-  const load = useCallback(async () => {
+  // tl1414：load() 返回本轮重取是否成功。横幅照旧由内部 catch 落（面板打开
+  // 时可见），但删除后的重取失败必须让调用方能观察到——「已删除」回执配上
+  // 一套纹丝不动的旧列表会被读成「删除没发生」（1146 的中间态教训同源），
+  // toast 把重取失败也带出面板。返回值非抛错：本函数的既有调用方（useEffect
+  // 的 void load() / 刷新按钮 / onReload）没有 catch，rethrow 会让 unhandled
+  // rejection 打崩 harness 进程（组件注释里已有两处实测先例）。
+  const load = useCallback(async (): Promise<boolean> => {
     setFailed(false);
     setFailedReason("");
     try {
@@ -808,12 +826,14 @@ export function RecoveryCopiesSection() {
       setChains(new Map());
       setChainLoads(new Set());
       setDataVersion((v) => v + 1);
+      return true;
     } catch (e) {
       setGroups(null);
       setFailed(true);
       // 任务 1039：把后端原因带进横幅——「设置加载失败」单独出现时无法区分
       // 是 bridge 断、后端拒还是重放超限，排查只能靠猜。
       setFailedReason(e instanceof Error ? e.message : String(e));
+      return false;
     }
   }, []);
 
@@ -1269,15 +1289,14 @@ export function RecoveryCopiesSection() {
     setBranchesSelected(new Set());
     // 任务 1146：与合成路径同理——列表重取完成后再释放 busy，删除期间底部
     // 保持加载指示，避免「已删除回执 + 旧列表」并存的静止中间态。
-    // tl1414：load() 失败不吞（同单删口径）。
-    try {
-      await load();
-    } catch (loadErr) {
-      showToast(loadErr instanceof Error ? loadErr.message : String(loadErr), "error");
-    } finally {
-      setBusy(false);
-      setStatus("");
+    // tl1414：load() 失败不吞——它内部 catch 横幅后**返回布尔**（从不抛错，
+    // 此前的 try/catch 是永不触发的死代码），这里按返回值补 toast。
+    const reloaded = await load();
+    if (!reloaded) {
+      showToast(t("settings.loadFailed"), "error");
     }
+    setBusy(false);
+    setStatus("");
   };
 
   /** deleteConversations is the 1368 whole-conversation clear: each checked
@@ -1339,14 +1358,29 @@ export function RecoveryCopiesSection() {
       }
       setDeletedOutcomes([...collected]);
     }
+    // tl1414 反馈对称：整对话删除与单删/批量删同族——结果不能只活在展开
+    // 面板里。根因修复后（目录拼写折叠）该按钮才真正开始归档副本，成功/
+    // 失败都给 toast；对话级删除的词汇是「对话」不是「分支」，单独成键。
+    const conversationCount = collected.filter((o) => o.kind === "conversation").length;
+    const failedConversations = collected.filter((o) => o.kind === "failed");
+    if (conversationCount > 0) {
+      showToast(t("settings.recoveryCopiesConversationDeletedToast", { count: conversationCount }), "info");
+    }
+    if (failedConversations.length > 0) {
+      showToast(
+        `${t("settings.recoveryCopiesConversationDeleteFailedToast", { count: failedConversations.length })}：${failedConversations[0].detail ?? ""}`,
+        "error",
+      );
+    }
     setSelected(new Set());
     // 任务 1146 同口径：列表重取完成后再释放 busy，删除期间底部保持加载指示。
-    try {
-      await load();
-    } finally {
-      setBusy(false);
-      setStatus("");
+    // tl1414：load() 失败按返回值补 toast（同批量删口径）。
+    const reloaded = await load();
+    if (!reloaded) {
+      showToast(t("settings.loadFailed"), "error");
     }
+    setBusy(false);
+    setStatus("");
   };
 
   /** synthesizeHeads is the 1065 one-key operation: given the HEAD the user
@@ -1716,17 +1750,15 @@ export function RecoveryCopiesSection() {
                                 );
                               } finally {
                                 // 任务 1146：列表重取完成后再释放 busy（与合成/
-                                // 批量删除路径同口径）。tl1414：load() 自身的异常
-                                // 不允许吞掉重取失败（列表不动会被读成「删除没发
-                                // 生」），也不允许跳过 setBusy(false)（busy 卡死
-                                // 面板全按钮禁用）。
-                                try {
-                                  await load();
-                                } catch (loadErr) {
-                                  showToast(loadErr instanceof Error ? loadErr.message : String(loadErr), "error");
-                                } finally {
-                                  setBusy(false);
+                                // 批量删除路径同口径）。tl1414：load() 从不抛错
+                                // （内部 catch 落横幅后返回布尔），重取失败按返
+                                // 回值补 toast——列表不动会被读成「删除没发生」；
+                                // setBusy(false) 恒执行，busy 卡死面板全按钮禁用。
+                                const reloaded = await load();
+                                if (!reloaded) {
+                                  showToast(t("settings.loadFailed"), "error");
                                 }
+                                setBusy(false);
                               }
                             })();
                           }}
