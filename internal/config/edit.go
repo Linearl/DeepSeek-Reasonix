@@ -1954,6 +1954,27 @@ func ProactiveCompactCooldownLive() int {
 	return cfg.ProactiveCompactCooldownMinutesLive()
 }
 
+// SetExperimentalRangesCompact toggles tl1397's ranges small-segment
+// incremental compression (iron rule 2: default off — off keeps the
+// compression path byte-for-byte identical to before).
+func (c *Config) SetExperimentalRangesCompact(enabled bool) error {
+	c.Agent.ExperimentalRangesCompact = enabled
+	return nil
+}
+
+// RangesCompactLive is the package-level read for the ranges-compact switch
+// (tl1397). Read per maintenance transaction (same shape as
+// ProactiveCompactCooldownLive): a fold is orders of magnitude rarer than a
+// turn, so the load cost never rides the hot path, and a settings change
+// applies without a restart.
+func RangesCompactLive() bool {
+	cfg, err := Load()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalRangesCompact
+}
+
 // SetExperimentalFallbackModel toggles task 242 (iron rule 2: default off).
 func (c *Config) SetExperimentalFallbackModel(enabled bool) error {
 	c.Agent.ExperimentalFallbackModel = enabled
