@@ -2,8 +2,10 @@ package control
 
 import (
 	"errors"
+	"log/slog"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/event"
 )
 
 // persistSessionSnapshot writes path with snapshot semantics, escalating to an
@@ -57,6 +59,51 @@ func retrySameRevisionDivergedRewrite(s *agent.Session, path string, err error) 
 	// SaveRewrite itself requires digest ownership or a live authority; a
 	// process lease alone cannot claim the current bytes.
 	return s.SaveRewrite(path), true
+}
+
+// takeoverDivergedRevLag is the tl1409 escalation inside
+// recoverSnapshotConflict: it covers the rev axis the existing ladder leaves
+// unadjudicated. tl1383 aligns a wrong-generation meta identity and
+// retrySameRevisionDivergedRewrite owns base==disk divergence, but the shape
+// "disk revision ahead of the local base + live transcript ahead of disk" —
+// a second writer that advanced the ledger and then died — could only end in
+// a recovery fork or a disk adoption that discards the live side. The
+// takeover persists the live transcript over the dead writer's state; all
+// preconditions (diverged shape, rev order, message counts, no foreign
+// lease) and the under-the-locks disk-still-stale re-verification live in
+// agent.SaveAdoptOverStaleDisk, and a declined attempt returns false so the
+// pre-existing ladder owns the conflict unchanged.
+//
+// Lock contract: every recoverSnapshotConflict caller (snapshotWithDurability,
+// the post-cancel flush) already holds c.snapshotMu, and that mutex is not
+// reentrant — this helper must NOT take it again (the first version did and
+// self-deadlocked TestRepeatedConflictFingerprintReconcilesWrongGenerationMeta
+// for 27 minutes). The admission-side twin healDivergedSnapshotConflict runs
+// outside that lock chain and therefore takes it itself.
+func (c *Controller) takeoverDivergedRevLag(path string, saveErr error, mode string) bool {
+	if c == nil || c.executor == nil {
+		return false
+	}
+	var conflict *agent.SessionSnapshotConflictError
+	if !errors.As(saveErr, &conflict) || conflict == nil || conflict.Kind != agent.SessionSnapshotConflictDiverged {
+		return false
+	}
+	session := c.executor.Session()
+	if session == nil {
+		return false
+	}
+	if err := session.SaveAdoptOverStaleDisk(path, conflict); err != nil {
+		slog.Warn("controller: snapshot conflict; rev-lag takeover declined", "err", err, "mode", mode,
+			"base_revision", conflict.BaseRevision, "disk_revision", conflict.DiskRevision)
+		return false
+	}
+	appendSnapshotConflictDiagnostic(path, mode, "diverged_takeover_committed", saveErr, "", true)
+	slog.Warn("controller: snapshot conflict; live transcript took over the dead disk writer's state", "mode", mode,
+		"base_revision", conflict.BaseRevision, "disk_revision", conflict.DiskRevision,
+		"disk_messages", conflict.ExistingMessages, "snapshot_messages", conflict.SnapshotMessages)
+	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
+		"the session file held a stale copy from a closed writer; the live conversation took over the file and your latest turns are preserved"))
+	return true
 }
 
 // persistSessionSnapshotIfPathFree is the non-blocking form of

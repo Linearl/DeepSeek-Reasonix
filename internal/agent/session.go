@@ -80,6 +80,14 @@ type Session struct {
 	// what is actually on disk, and the repaired view no longer represents
 	// those bytes — a session that kept running extends the raw transcript.
 	rawMessages []provider.Message
+	// takeoverMu / takeoverArmed carry tl1409's armed stale-disk takeover
+	// intent: one diverged conflict fingerprint the next save may resolve by
+	// persisting the live transcript over the dead disk writer's state, but
+	// only while the on-disk facts still match the fingerprint (verified under
+	// the save locks). Armed only for the duration of one SaveAdoptOverStaleDisk
+	// call, so ordinary saves never see it.
+	takeoverMu    sync.Mutex
+	takeoverArmed *SessionSnapshotConflictError
 	// pendingContentReasons accumulates a reason string each time Rewrite()
 	// actually replaces provider-visible message bytes (compact, prune/snip,
 	// summarize, rewind, guardian merge). ReplaceLocalMetadata bumps

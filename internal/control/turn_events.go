@@ -35,6 +35,17 @@ type turnEventState struct {
 	ledger               *turnevent.Ledger
 	err                  error
 	lastAdmissionFailure time.Time
+	// tl1409: diverged-conflict admission terminal state. A diverged snapshot
+	// conflict is a persistent shape, not a transient write failure — retrying
+	// it at a fixed cadence forever (the 2026-11-05 field incident) burns CPU
+	// and floods the log without ever converging. conflictRetries /
+	// conflictLastAttempt drive the bounded exponential backoff,
+	// conflictSuspended marks the terminal state reached after the retry
+	// budget is spent (see turn_admission_conflict.go).
+	conflictRetries     int
+	conflictLastAttempt time.Time
+	conflictSuspended   bool
+	suspendWarned       time.Time
 }
 
 func newTurnEventSink(inner event.Sink, c *Controller) *turnEventSink {
@@ -330,25 +341,44 @@ const turnAdmissionRetryCooldown = 30 * time.Second
 func (c *Controller) prepareTurnAdmission(body func(context.Context) error) func(context.Context) error {
 	admissionErr := c.turnEventLedgerError()
 	if admissionErr != nil {
-		// tl1292: a transient write failure (a rename denied while a concurrent
-		// reader holds a large session log open) used to latch until a manual
-		// reopen. Once per cooldown window, clear it and let the normal path
-		// re-attempt: the ledger poison is write-path only, so re-opening the
-		// O_APPEND writer is safe, and clearing the cached admission error lets
-		// a cleared condition actually take effect instead of replaying the
-		// same latched error forever.
-		c.turnEvents.mu.RLock()
-		last := c.turnEvents.lastAdmissionFailure
-		c.turnEvents.mu.RUnlock()
-		if time.Since(last) >= turnAdmissionRetryCooldown {
-			if ledger := c.turnEventLedger(); ledger != nil {
-				_ = ledger.ClearTransientPoison()
+		var conflict *agent.SessionSnapshotConflictError
+		if errors.As(admissionErr, &conflict) && conflict != nil && conflict.Kind == agent.SessionSnapshotConflictDiverged {
+			// tl1409: a diverged snapshot conflict latched into the admission
+			// error is a persistent shape (a dead second writer on disk), not
+			// the transient write failure tl1292 targets. The cooldown
+			// clear-and-retry below would replay it forever at a fixed cadence
+			// — every failed attempt also refreshes lastAdmissionFailure, so a
+			// submission source faster than the cooldown starves the retry
+			// permanently. Route it through the bounded terminal channel
+			// instead: exponential backoff, a retry limit, takeover self-heal
+			// on each due attempt, and a suspension with an explicit user
+			// notice when the budget runs out. On self-heal success the latch
+			// is cleared and admission falls through to the normal path.
+			if blocked := c.gateDivergedTurnAdmission(conflict, admissionErr); blocked != nil {
+				return blocked
 			}
-			c.turnEvents.mu.Lock()
-			c.turnEvents.err = nil
-			c.turnEvents.lastAdmissionFailure = time.Now()
-			c.turnEvents.mu.Unlock()
-			admissionErr = nil
+			admissionErr = c.turnEventLedgerError()
+		} else {
+			// tl1292: a transient write failure (a rename denied while a concurrent
+			// reader holds a large session log open) used to latch until a manual
+			// reopen. Once per cooldown window, clear it and let the normal path
+			// re-attempt: the ledger poison is write-path only, so re-opening the
+			// O_APPEND writer is safe, and clearing the cached admission error lets
+			// a cleared condition actually take effect instead of replaying the
+			// same latched error forever.
+			c.turnEvents.mu.RLock()
+			last := c.turnEvents.lastAdmissionFailure
+			c.turnEvents.mu.RUnlock()
+			if time.Since(last) >= turnAdmissionRetryCooldown {
+				if ledger := c.turnEventLedger(); ledger != nil {
+					_ = ledger.ClearTransientPoison()
+				}
+				c.turnEvents.mu.Lock()
+				c.turnEvents.err = nil
+				c.turnEvents.lastAdmissionFailure = time.Now()
+				c.turnEvents.mu.Unlock()
+				admissionErr = nil
+			}
 		}
 	}
 	if ledger := c.turnEventLedger(); admissionErr == nil && ledger != nil {
@@ -410,6 +440,13 @@ func (c *Controller) rebindTurnEvents(sessionPath string) {
 	previous := c.turnEvents.ledger
 	c.turnEvents.ledger = ledger
 	c.turnEvents.err = nil
+	// tl1409: a rebind is the user's explicit recovery action (reopen this
+	// session, switch back to its tab). It re-arms the diverged-admission
+	// terminal ladder from a clean slate — automatic retries never will.
+	c.turnEvents.conflictRetries = 0
+	c.turnEvents.conflictLastAttempt = time.Time{}
+	c.turnEvents.conflictSuspended = false
+	c.turnEvents.suspendWarned = time.Time{}
 	c.turnEvents.mu.Unlock()
 	if previous != nil && previous != ledger {
 		if closeErr := previous.Close(); closeErr != nil {

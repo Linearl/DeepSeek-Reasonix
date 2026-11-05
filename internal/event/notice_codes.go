@@ -61,6 +61,10 @@ const (
 	NoticeCodeSessionRecoveryAdopted        = "session_recovery_adopted"
 	NoticeCodeSessionRecoveryAdoptedCovered = "session_recovery_adopted_covered"
 	NoticeCodeSessionRecoveryDepthCap       = "session_recovery_depth_cap"
+	// NoticeCodeSessionRecoverySuspended (tl1409): the turn-admission terminal
+	// state after repeated diverged conflicts — sending is paused for this
+	// session until the user reopens it; history is safe.
+	NoticeCodeSessionRecoverySuspended      = "session_recovery_suspended"
 	NoticeCodeSessionShutdownRecoveryForked = "session_shutdown_recovery_forked"
 	NoticeCodeSessionConcurrentWriter       = "session_concurrent_writer"
 	// NoticeCodeSessionConcurrentDualTab (task 203): the competing writer was
