@@ -48,7 +48,10 @@ export type ChannelWorkspaceBindings = Pick<
   | "ChannelLeaveHuman"
   | "ChannelDissolveForHuman"
   | "ListAddressableSessions"
->;
+> & {
+  /** tl1441 ③：群聊附件预览读回（全局附件目录锚点；测试注入点）。 */
+  ChannelAttachmentDataURL(path: string): Promise<string>;
+};
 
 export function ChannelWorkspacePanel({
   channelRef,
@@ -210,6 +213,16 @@ export function ChannelWorkspacePanel({
     if (!text) return;
     setComposerInsertRequest({ id: Date.now(), text, mode: "insert" });
   }, []);
+
+  // tl1441 ③：改写草稿上下文=群尾窗（发送方：body 行，human 行=「我」）——
+  // 与会话链（HistoryPageForTab）同语义的群聊版；档位裁剪在 Composer 侧。
+  const buildRewriteTail = useCallback(async (): Promise<string> => {
+    const current = chat?.messages ?? [];
+    const lines = current
+      .slice(-8)
+      .map((m) => `${directoryTitle(m.sender)}：${m.body}`);
+    return lines.join("\n");
+  }, [chat, directoryTitle]);
 
   const cancelMessage = useCallback(async (messageId: string) => {
     setMenu(null);
@@ -375,6 +388,7 @@ export function ChannelWorkspacePanel({
                 memberDetails={memberDetails}
                 directoryTitle={directoryTitle}
                 onBubbleContextMenu={(point) => setMenu(point)}
+                attachmentPreview={(path) => b.ChannelAttachmentDataURL(path)}
               />
             </div>
 
@@ -392,15 +406,16 @@ export function ChannelWorkspacePanel({
                 sessionKey={`channel:${channelRef}`}
                 tabId={undefined}
                 ready
-                imageInputEnabled={false}
+                imageInputEnabled
                 audioInputEnabled={false}
-                attachmentInputEnabled={false}
+                attachmentInputEnabled
                 historyPickerEnabled
                 quickCommands={quickCommands}
                 onInsertQuickCommand={insertQuickCommand}
                 onManageQuickCommands={onManageQuickCommands}
                 insertRequest={composerInsertRequest}
                 onSend={sendViaComposer}
+                rewriteContextProvider={buildRewriteTail}
                 splitTarget="primary"
                 // 会话专属回调：channelMode 下控件结构性隐藏，回调不可达——
                 // 传 no-op 仅满足必填签名，不承载任何会话语义。

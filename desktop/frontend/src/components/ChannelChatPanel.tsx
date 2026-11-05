@@ -66,6 +66,8 @@ export type ChannelChatBindings = {
   ChannelUnsetDeputy(ref: string): Promise<CollabChannelView>;
   ChannelCancelFromHuman(ref: string, messageID: string): Promise<CollabChannelCancelResultView>;
   ListAddressableSessions(): Promise<CollabSessionDirectoryRow[]>;
+  /** tl1441 ③：群聊附件预览读回（内嵌视图同样渲染成员侧图片；缺省=纯文本）。 */
+  ChannelAttachmentDataURL?(path: string): Promise<string>;
 };
 
 function readLastSeenCounts(): Record<string, number> {
@@ -655,6 +657,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
                 directoryTitle={directoryTitle}
                 onBubbleContextMenu={(point) => setMenu(point)}
                 onMentionClick={() => onViewDirectChains?.()}
+                attachmentPreview={b.ChannelAttachmentDataURL ? (path) => b.ChannelAttachmentDataURL!(path) : undefined}
               />
             </div>
 

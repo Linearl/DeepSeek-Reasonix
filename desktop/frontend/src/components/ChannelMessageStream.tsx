@@ -9,7 +9,7 @@
 //     tab 工作区没有对话链通道时传 undefined = 纯文本渲染）。
 // 右键菜单本体留在宿主（portal + veil 的挂载点与视图相关）。
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { CollabChannelMemberView, CollabChannelMessageView } from "../lib/bridge";
 import { HUMAN_LOCAL } from "./ChannelChatPanel";
 import { getLocale, useT } from "../lib/i18n";
@@ -27,10 +27,37 @@ export interface ChannelMessageStreamProps {
   memberDetails: CollabChannelMemberView[];
   /** 名册显示名（title || purpose || contact id；human 端点=「我/You」）。 */
   directoryTitle: (contactId: string) => string;
+  /**
+   * tl1441 ③（验收 1「成员侧可见图」）：群聊附件预览读回——消息体 @引用里
+   * 指向群聊附件目录的图片路径渲染为内嵌缩略图（多图逐张）；缺省=纯文本。
+   */
+  attachmentPreview?: (path: string) => Promise<string>;
   /** 气泡右键（own=撤回菜单；宿主决定菜单实现）。 */
   onBubbleContextMenu?: (event: { messageId: string; sender: string; x: number; y: number }) => void;
   /** @名字 点击（对话链快捷入口；缺省 = 纯文本渲染）。 */
   onMentionClick?: () => void;
+}
+
+/** 单张附件缩略图：读回成功才渲染，失败静默（气泡文本仍在）。 */
+function ChannelAttachmentImage({ path, preview }: { path: string; preview: (path: string) => Promise<string> }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    preview(path)
+      .then((url) => { if (alive) setDataUrl(url); })
+      .catch(() => { /* 预览失败=少一张图，不是错误条 */ });
+    return () => { alive = false; };
+  }, [path, preview]);
+  if (!dataUrl) return null;
+  return (
+    <img
+      className="channel-chat__attpic"
+      src={dataUrl}
+      alt={path}
+      loading="lazy"
+      data-attachment-path={path}
+    />
+  );
 }
 
 export function ChannelMessageStream({
@@ -39,8 +66,26 @@ export function ChannelMessageStream({
   directoryTitle,
   onBubbleContextMenu,
   onMentionClick,
+  attachmentPreview,
 }: ChannelMessageStreamProps) {
   const t = useT();
+
+  // 附件引用提取：空白分隔 token 以 @ 开头、归一化分隔符后落在
+  // .reasonix/attachments/ 内、图片扩展名结尾；拒绝包含 .. 的 token（tl1421
+  // 同款保守判据——这里只挑预览候选，真正的越界拒绝在 Go 读桥）。
+  const attachmentRefsOf = (body: string): string[] => {
+    if (!attachmentPreview || !body.includes("@")) return [];
+    const out: string[] = [];
+    for (const raw of body.split(/\s+/u)) {
+      if (!raw.startsWith("@") || raw.length > 512) continue;
+      const norm = raw.slice(1).replace(/\\/gu, "/");
+      if (norm.includes("..")) continue;
+      if (!norm.toLowerCase().includes(".reasonix/attachments/")) continue;
+      if (!/\.(?:png|jpe?g|gif|webp)$/iu.test(norm)) continue;
+      if (!out.includes(raw)) out.push(raw);
+    }
+    return out;
+  };
 
   const renderBody = (body: string): ReactNode => {
     if (!body.includes("@")) return body;
@@ -115,6 +160,13 @@ export function ChannelMessageStream({
               } : undefined}
             >
               {renderBody(m.body)}
+              {attachmentPreview && attachmentRefsOf(m.body).length > 0 && (
+                <span className="channel-chat__attpics">
+                  {attachmentRefsOf(m.body).map((path) => (
+                    <ChannelAttachmentImage key={path} path={path} preview={attachmentPreview} />
+                  ))}
+                </span>
+              )}
             </div>
             {(readMembers.length > 0 || failedMembers.length > 0) && (
               <div className="channel-chat__receipts">

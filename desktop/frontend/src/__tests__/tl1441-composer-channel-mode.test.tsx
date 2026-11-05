@@ -270,7 +270,8 @@ for (const needle of [
   "channelMode = false",
   "!heroMode && !channelMode && (",
   "!channelMode && <div className=\"composer-meta__control composer-meta__control--model\">",
-  "draftRewriteOn && !channelMode",
+  "await app.RewriteDraftForChannel(current, recent, contextBudgetKB)",
+  "channelMode ? app.SaveChannelAttachment(dataUrl) : app.SavePastedImage(dataUrl)",
 ]) {
   ok(composerSrc.includes(needle), `Composer gate pin: ${needle.slice(0, 44)}…`);
 }

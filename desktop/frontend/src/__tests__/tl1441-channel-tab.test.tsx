@@ -184,6 +184,8 @@ const wsBindings: ChannelWorkspaceBindings = {
   ChannelLeaveHuman: async () => undefined,
   ChannelDissolveForHuman: async () => undefined,
   ListAddressableSessions: async () => [{ contactId: "sc_dev", title: "开发会话", scope: "global", archived: false, sessionPath: "/s/sc_dev.jsonl" }],
+  // tl1441 ③：群聊附件预览读回（工作区绑定面成员；缺省时流内缩略图不渲染）。
+  ChannelAttachmentDataURL: async () => "data:image/png;base64,iVBORw0KGgo=",
 };
 
 const rootEl = dom.window.document.getElementById("root")!;
