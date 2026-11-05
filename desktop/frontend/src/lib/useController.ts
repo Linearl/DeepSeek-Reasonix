@@ -4717,9 +4717,12 @@ export function useController() {
     // tl1403: the authoritative path differing from the surface identity is
     // the split itself — follow it BEFORE the missed-turn judgement, which
     // would otherwise read the split's silence as a dead turn and reset.
-    await followSessionMoveForTab(tabId, tab);
+    const followed = await followSessionMoveForTab(tabId, tab);
+    // A landed follow already reset the per-tab state; the pre-follow `local`
+    // snapshot must not feed the missed-turn judgement (it would double-reset).
+    const localAfterFollow = followed ? statesRef.current.get(tabId) : local;
     const foregroundRunning = dispatchRuntimeStatusForTab(tabId, tab, snapshotAt);
-    const missedTurnDone = Boolean(local?.running && !foregroundRunning);
+    const missedTurnDone = Boolean(localAfterFollow?.running && !foregroundRunning);
     if (hydrateSessionData && (needsInitialLoad || missedTurnDone)) {
       if (missedTurnDone) {
         // 任务874: 这条分支是「无用户操作、transcript 自行 reset 重建」的主要
