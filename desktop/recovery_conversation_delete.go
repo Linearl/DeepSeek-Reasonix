@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/botruntime"
@@ -45,12 +46,15 @@ type DeleteConversationReport struct {
 // DeleteConversationWithCopies archives one conversation and every recovery
 // copy beside it.
 //
-// dir resolves through the same known-session-dirs gate as DeleteRecoveryBranch,
-// so a path from the versions panel (any scanned session directory, not just
-// the active tab's) is accepted while an arbitrary filesystem path is refused.
+// The path resolves through the same known-session-dirs gate as
+// DeleteRecoveryBranch, so a path from the versions panel (any scanned session
+// directory, not just the active tab's) is accepted while an arbitrary
+// filesystem path is refused. The copies themselves are enumerated against the
+// session path's own parent (tl1414) so the lookup and the trash gate see the
+// scan face's spelling, not the gate's folded one.
 func (a *App) DeleteConversationWithCopies(mainPath string) (DeleteConversationReport, error) {
 	report := DeleteConversationReport{}
-	dir, sessionPath, err := a.sessionDirForPath(mainPath)
+	_, sessionPath, err := a.sessionDirForPath(mainPath)
 	if err != nil {
 		return report, friendlySessionFileError(err)
 	}
@@ -61,7 +65,15 @@ func (a *App) DeleteConversationWithCopies(mainPath string) (DeleteConversationR
 	// unreadable copy aborts the whole conversation delete — a partial
 	// "conversation deleted but copies left behind" is exactly the state this
 	// button exists to end.
-	byMain, _, err := recoveryCopiesByMain(dir)
+	//
+	// tl1414: enumerate and trash against the session path's own parent
+	// spelling — the same string the panel scanned — not the gate-resolved
+	// `dir`. On Windows the two spellings differ by case (scan face = on-disk
+	// name, gate = WorkspaceSlug's folded form); a byMain lookup keyed by one
+	// and probed with the other misses silently, so the copies survived a
+	// "successful" delete with CopiesArchived=0.
+	copyDir := filepath.Dir(sessionPath)
+	byMain, _, err := recoveryCopiesByMain(copyDir)
 	if err != nil {
 		return report, friendlySessionFileError(fmt.Errorf("could not list recovery copies: %w", err))
 	}
@@ -74,7 +86,7 @@ func (a *App) DeleteConversationWithCopies(mainPath string) (DeleteConversationR
 			if a.sessionOpenInAnyTab(copyPath) {
 				return errSessionBusyElsewhere
 			}
-			if err := agent.TrashRecoveryBranchForced(copyPath, dir); err != nil {
+			if err := agent.TrashRecoveryBranchForced(copyPath, copyDir); err != nil {
 				if errors.Is(err, agent.ErrSessionLeaseHeld) {
 					return errSessionBusyElsewhere
 				}
