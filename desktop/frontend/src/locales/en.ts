@@ -4813,6 +4813,25 @@ export const en = {
   "settings.recoveryCopiesChainsHint": "candidate chains load automatically when a row expands — no scan needed; Scan measures each copy against the main",
   // tl1415: grouped rows of the merged table — copies and chains/versions are
   // two distinct data paths; the group rows keep their provenance readable.
+  // tl1415: hover hints for every action button — each states what it does,
+  // whether it touches the main line, and whether it is recoverable. The diet
+  // repair names both of its actions (strip image payloads + fold over-window
+  // old messages, per session_selfheal.go's Diet semantics).
+  "settings.recoveryCopiesScanHint": "measures this conversation: counts each copy's messages and the events the main lacks (the merge preview builds on it); read-only",
+  "settings.recoveryCopiesScanAllHint": "measures every conversation with copies in turn (serial, per-row progress); read-only",
+  "settings.recoveryCopiesScanSelectedHint": "measures only the checked conversations; read-only",
+  "settings.recoveryCopiesRefreshHint": "re-reads the copies list and version readings; modifies nothing",
+  "settings.recoveryCopiesMergeHint": "merges the checked conversations' copies into their mains: the fullest candidate becomes the new main, the rest go to the recoverable trash; unmeasured ones are measured first",
+  "settings.recoveryCopiesDeleteSelectedHint": "moves the checked copy branches to the recoverable trash; the main line is untouched",
+  "settings.recoveryCopiesDeleteConversationHint": "moves each checked conversation (main file, every version and copy, sidecars) into the two recoverable trashes; tabs holding the conversation are closed",
+  "settings.recoveryCopiesDeleteHint": "moves this copy to the recoverable trash; the main line is untouched",
+  "settings.recoveryCopiesPreviewBtnHint": "previews this branch's start and end, and can pick it as the merged main; read-only, writes nothing",
+  "settings.recoveryCopiesDeleteHeadHint": "deletes this version: a retire marker hides it first, the next single-writer rotation actually drops it, and until then you can switch back",
+  "settings.recoveryCopiesSynthesizeBtnHint": "folds the other branches' unique events into the picked main (no duplicated events); losing branches go to the recoverable trash",
+  "settings.sessionVersionsActivateHint": "switches the main line to this version: a select marker you can revert any time; the old version is kept",
+  "settings.sessionVersionsCheckHint": "inspects the event log's health (read-only, no repair)",
+  "settings.sessionVersionsRepairHint": "repairs the event log (checkpoint backfill etc.); backs up first and writes a repair record",
+  "settings.sessionVersionsRepairDietHint": "repair + diet, two actions: 1) strip image payloads from messages 2) fold over-window old messages into one local placeholder — shrinking the file; backs up first",
   "settings.recoveryCopiesGroupCopies": "Copies (recovery files)",
   "settings.recoveryCopiesGroupChains": "Candidate chains & versions (v3 event log)",
   "settings.recoveryCopiesChainCurrent": "current main",

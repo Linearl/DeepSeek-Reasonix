@@ -3362,6 +3362,24 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesChainsHint": "候選鏈在展開會話行時自動重放載入，無需掃描；「掃描」測的是副本與主線的差異讀數",
   // tl1415 點3：三表合併後的分組行——副本（recovery 檔案）與候選鏈/版本
   // （v3 事件日誌）是兩條資料鏈路，分組行保住資料來源的可辨識性。
+  // tl1415 點5+6：操作按鈕的 hover 功能說明——每個動作說清「做什麼、動不動
+  // 主線、可不可恢復」；「修復並瘦身」寫清兩個動作（剝離圖片 payload + 折疊
+  // 超窗舊訊息，session_selfheal.go 的 Diet 語義）。
+  "settings.recoveryCopiesScanHint": "測量該會話：數出每份副本的訊息數與主線沒有的獨有事件數（合併預覽基於它），唯讀不改",
+  "settings.recoveryCopiesScanAllHint": "逐個測量列表裡所有帶副本的會話（串列執行，逐個報進度），唯讀不改",
+  "settings.recoveryCopiesScanSelectedHint": "只測量勾選的會話，唯讀不改",
+  "settings.recoveryCopiesRefreshHint": "重新拉取副本列表與版本讀數，不修改任何會話",
+  "settings.recoveryCopiesMergeHint": "把勾選會話的副本併入主線：最全的候選成為新主線，其餘副本進回收站（可恢復）；未測量會先自動測量",
+  "settings.recoveryCopiesDeleteSelectedHint": "把勾選的副本分支移入回收站（可恢復），不動主線內容",
+  "settings.recoveryCopiesDeleteConversationHint": "把勾選的整個對話（主檔案、全部版本與副本、側車）分別移入兩條可恢復的回收站；正在開啟的該會話分頁會被關閉",
+  "settings.recoveryCopiesDeleteHint": "把這份副本移入回收站（可恢復），不動主線內容",
+  "settings.recoveryCopiesPreviewBtnHint": "預覽這條分支的開頭與結尾，並可把它選定為主線；唯讀，不寫入任何檔案",
+  "settings.recoveryCopiesDeleteHeadHint": "刪除這個版本：先打 retire 標記（隱藏），下次單寫輪換才真正裁掉，期間可隨時切回",
+  "settings.recoveryCopiesSynthesizeBtnHint": "把其餘分支的獨有事件併入選定的主線（重複事件零雙份）；落敗分支進回收站（可恢復）",
+  "settings.sessionVersionsActivateHint": "把主線切換到這個版本：切換是一條 select 標記，可隨時切回，舊版本保留",
+  "settings.sessionVersionsCheckHint": "檢查這份事件日誌的健康狀態（唯讀，不修復）",
+  "settings.sessionVersionsRepairHint": "修復事件日誌（回填檢查點等）；修復前自動備份，並留修復記錄",
+  "settings.sessionVersionsRepairDietHint": "修復並瘦身，兩個動作：①剝離訊息裡的圖片 payload（大圖轉佔位）②把超出模型視窗的舊訊息摺疊成一條本地佔位——縮小體積；修復前自動備份",
   "settings.recoveryCopiesGroupCopies": "副本（recovery 檔案）",
   "settings.recoveryCopiesGroupChains": "候選鏈與版本（v3 事件日誌）",
   "settings.recoveryCopiesChainCurrent": "目前主線",
