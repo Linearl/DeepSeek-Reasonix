@@ -592,6 +592,12 @@ type Agent struct {
 	// 不能每轮都走一次配置读取;缓存让改动在 ≤TTL 内生效(重启会话立即可见)。
 	rangesSwitchCached atomic.Bool
 	rangesSwitchUntil  atomic.Int64
+	// tl1419: 模型驱动 ranges 折叠(model_ranges 触发源)在洪水闸滑动窗口
+	// 内的安装时刻表(UnixNano)。窗口参数与上限由配置活读
+	// (config.ModelRangesFoldWindowLive);并发安全由 compactionRunMu 承担
+	// (每个折叠事务全程持有它)。只记安装、不记拒约——洪水闸防的是「安装
+	// 抖前缀缓存」,失败的尝试不改缓存面。内存态,重启归零,同上。
+	modelRangesFoldTimes []int64
 	// lastCurateAt is when the model last ran the fine-grained curate_context
 	// pass (tl1378 增量1). A curate also rewrites part of the prefix, so it
 	// carries its own lighter rate limit (minCurateInterval) instead of

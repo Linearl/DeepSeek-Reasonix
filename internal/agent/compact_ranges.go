@@ -222,6 +222,14 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 		a.emitCompactionAborted(trigger)
 		return report, nil
 	}
+	// tl1419 洪水闸②(滑动窗口,模型触发源专属):窗口内安装数达到上限 → 拒。
+	// 只记安装不记拒约(防的是「安装抖前缀缓存」,失败尝试不改缓存面);窗口
+	// 参数配置活读(参数化预留)。放在最前——窗口超限连快照都不必取。
+	if trigger == CompactionTriggerModelRanges {
+		if reason := a.rangesModelWindowBlock(); reason != "" {
+			return decline(reason)
+		}
+	}
 	canonical, transcriptVersion := a.sess.conversation.snapshotMessagesVersion()
 	a.sess.compactionMu.Lock()
 	stateSnapshot := a.sess.compactionState
@@ -290,6 +298,13 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	}
 	segTokens = a.estimatedPromptTokens(fold)
 	report.segmentTokens = segTokens
+	// tl1419 硬闸(foldEconomics,模型触发源专属补查):拦截器可能改写折叠段
+	// (hook 收窄),重算后的计费 token 若跌破 minFoldTokens 地板,这次摘要必
+	// 亏——压力通道靠入口 delta 下限保证(512 > 400),模型通道在此再钉一道。
+	if trigger == CompactionTriggerModelRanges && !a.foldEconomics(fold) {
+		return abandon(fmt.Sprintf("below-economics-floor: after hooks the segment to fold is about %d billed tokens, under the %d-token floor — a summary would cost more than it saves",
+			segTokens, minFoldTokens), nil)
+	}
 
 	summary, usage, err := a.rangesNoteSummary(ctx, fold, instructions)
 	if err != nil {
@@ -353,6 +368,17 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	rangesHit := PrefixCacheHitRate(msgs, spliced)
 	tele.RangesCacheHit = rangesHit
 
+	// tl1419 洪水闸①(单次收益限,模型触发源专属):实测节省(计费尺,与
+	// foldEconomics 同尺)低于地板 → 拒装。第一刀在笔记花费已发生后仍成立——
+	// 拒的是「装上去」,让模型读到带读数的拒因去攒更大的段,而不是让一次
+	// 四舍五入级的收益抖动整个前缀缓存。压力通道不挂此门:入口 delta 下限
+	// (≥ 窗口 2% 且 > 400)在结构上已把收益抬过地板,迭代一行为逐字节不变。
+	if trigger == CompactionTriggerModelRanges && sourceTokens-projTokens < rangesModelSavingsFloor {
+		tele.Error = fmt.Sprintf("below-savings-floor: %d < %d", sourceTokens-projTokens, rangesModelSavingsFloor)
+		return abandon(fmt.Sprintf("below-savings-floor: this fold would only save about %d billed tokens (source %d → projected %d), under the %d-token floor; fold a larger segment or let more work accumulate first",
+			sourceTokens-projTokens, sourceTokens, projTokens, rangesModelSavingsFloor), &tele)
+	}
+
 	// tl1396 态③运行时门(验收②的执行面):真实读数不过 95% 绝对线 → 拒装。
 	// 拒装后本通道安静收场,会话留在原视图,下一轮检查重估。
 	if err := CheckCompressCacheRedline(CompressScenarioPartial, 1.0, rangesHit); err != nil {
@@ -387,6 +413,11 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	idx := a.rangesFoldIndex.Add(1)
 	now := time.Now().UnixNano()
 	prev := a.lastRangesFoldAt.Swap(now)
+	// tl1419: 模型触发源记入洪水闸滑动窗口(只记安装;compactionRunMu 全程
+	// 持有,窗口检查与本记账天然串行)。
+	if trigger == CompactionTriggerModelRanges {
+		a.modelRangesFoldTimes = append(a.modelRangesFoldTimes, now)
+	}
 	a.emitCompactionSucceeded(trigger, len(fold), summary, state.LastReceipt.Archive)
 	a.emitCompactionTelemetry(tele)
 	// 「压缩频次 × 缓存抖动」联合观测(三约束③的观测面):index/间隔是
