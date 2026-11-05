@@ -580,6 +580,10 @@ type Agent struct {
 	// turn; the interval keeps a model from folding its way through a session
 	// (task 60, point 2). Zero means it has not folded yet.
 	lastExplicitFoldAt atomic.Int64
+	// tl1397: ranges 小段增量折叠的会话内序号(第几次 ranges 折叠,0 = 还没折
+	// 过)。观测面预留(用户三约束③「压缩频次×缓存抖动」联合观测的频次半边):
+	// 内存态,重启归零,只作观测不作决策。
+	rangesFoldIndex atomic.Int64
 	// lastCurateAt is when the model last ran the fine-grained curate_context
 	// pass (tl1378 增量1). A curate also rewrites part of the prefix, so it
 	// carries its own lighter rate limit (minCurateInterval) instead of
