@@ -3,10 +3,12 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"reasonix/internal/event"
+	"reasonix/internal/jsonutil"
 )
 
 // gate returns the configured gate runner (shell default).
@@ -109,11 +111,24 @@ func resultHint(n *Node) string {
 	return b.String()
 }
 
-// parseResultJSON decodes a typed result: the whole answer, or the first
-// JSON object embedded in prose/fences (sub-agents embellish). The task
-// substrate may wrap the final answer with a reference block — prefer the
-// text after "Final answer:" when present so the wrapper's braces never
-// pollute the slice.
+// parseResultJSON decodes a typed result, escalating through tolerant
+// extractions before giving up (tl1432 A — the audit found the single strict
+// parse "overly strict": one embellished answer used to scrap the whole node):
+//
+//  1. the whole answer after "Final answer:" (the task substrate may wrap the
+//     final answer with a reference block — prefer the text after the marker
+//     so the wrapper's braces never pollute the slice);
+//  2. the naive first-"{ … last-"}" slice (plain prose wrappers);
+//  3. the last balanced top-level JSON object (jsonutil — the same extractor
+//     goaleval uses). Markdown fences, surrounding prose and stray braces are
+//     noise the balanced scan skips by construction; "last" (not first)
+//     because thinking models routinely quote example objects before the real
+//     answer.
+//
+// Truncated output is never salvaged — an object that never closes is
+// incomplete data, and guessing a completion would fabricate results. The
+// error names that case so the directed retry (tl1432 B) and the reader can
+// tell it apart from mere noise.
 func parseResultJSON(answer string) (map[string]any, error) {
 	trimmed := finalAnswerBody(answer)
 	var obj map[string]any
@@ -127,7 +142,16 @@ func parseResultJSON(answer string) (map[string]any, error) {
 			return obj, nil
 		}
 	}
-	return nil, fmt.Errorf("answer is not a JSON object: %s", truncate(trimmed, 120))
+	if candidate, ok := jsonutil.LastJSONObject(trimmed); ok {
+		if err := json.Unmarshal([]byte(candidate), &obj); err == nil {
+			return obj, nil
+		}
+	}
+	msg := fmt.Sprintf("answer is not a JSON object: %s", truncate(trimmed, 120))
+	if jsonutil.HasUnclosedObject(trimmed) {
+		msg += " (output looks truncated — an object never closes)"
+	}
+	return nil, errors.New(msg)
 }
 
 // extractFindings pulls the findings array out of a typed result, stamping
