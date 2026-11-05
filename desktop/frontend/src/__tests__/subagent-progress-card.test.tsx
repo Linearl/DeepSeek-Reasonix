@@ -103,23 +103,39 @@ console.log("\nsubagent progress card");
   if (!rootEl) throw new Error("missing root");
   const root = createRoot(rootEl);
   hydrateSessionExperience("standard");
-  await act(async () => {
-    root.render(React.createElement(LocaleProvider, null, React.createElement(ToolCard, { item: makeItem("reasoning") })));
-    for (let i = 0; i < 50; i += 1) {
-      await flushTimers();
-      if (document.querySelector(".tool__subagent-preview .md")) break;
+  // tl1424④ 预存红清理: this block predates the SubagentPreview lazy split —
+  // a141c4aa1 (2026-09-07, 38 minutes after 22e450a9b introduced the case)
+  // wrapped the preview in React.lazy for runtime composition. jsdom cannot
+  // pump the scheduler wake-up that re-renders a fulfilled lazy boundary
+  // (MessageChannel), so every check here used to see only the null Suspense
+  // fallback: the cold import resolved during the third render — a collapsed
+  // completed card — and the later blocks passed solely on the warm module
+  // cache. The product contract itself is intact (a warm card auto-expands in
+  // standard mode, see the block below); polling re-renders the same item so
+  // each fulfilled lazy resolution is retried within the act window.
+  const renderCard = (item: ToolItem) =>
+    root.render(React.createElement(LocaleProvider, null, React.createElement(ToolCard, { item })));
+  const waitPreview = async (item: ToolItem, selector: string, rounds = 30): Promise<boolean> => {
+    // setTimeout ticks do not pump React's scheduler in jsdom (MessageChannel);
+    // only an act boundary flushes pending work, including the wake-up that
+    // retries a fulfilled lazy boundary. Each round = one act exit = one flush.
+    for (let round = 0; round < rounds; round += 1) {
+      await act(async () => {
+        renderCard(item);
+        for (let i = 0; i < 10; i += 1) await flushTimers();
+      });
+      if (document.querySelector(selector)) return true;
     }
-  });
-  ok(!!document.querySelector(".tool__subagent-preview .md"), "standard mode expands reasoning when the card mounts mid-stream");
+    return Boolean(document.querySelector(selector));
+  };
+  const first = await waitPreview(makeItem("reasoning"), ".tool__subagent-preview .md");
+  ok(first, "standard mode expands reasoning when the card mounts mid-stream");
 
   const responding = makeItem("responding");
   responding.id = "task-reasoning";
-  await act(async () => {
-    root.render(React.createElement(LocaleProvider, null, React.createElement(ToolCard, { item: responding })));
-    await flushTimers();
-  });
-  ok(!!document.querySelector(".tool__subagent-preview"), "standard mode keeps the subagent card open after reasoning starts responding");
-  ok(!!document.querySelector(".tool__subagent-preview .md"), "standard mode keeps completed subagent reasoning expanded while the task runs");
+  const keptOpen = await waitPreview(responding, ".tool__subagent-preview .md");
+  ok(keptOpen, "standard mode keeps the subagent card open after reasoning starts responding");
+  ok(keptOpen, "standard mode keeps completed subagent reasoning expanded while the task runs");
 
   const completed = makeItem("completed");
   completed.id = "task-reasoning";
