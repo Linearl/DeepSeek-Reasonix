@@ -15599,6 +15599,47 @@ button.statusbar__mcp:focus-visible {
   font-family: var(--mono);
   font-size: 10px;
 }
+/* tl1434: 节点详情「工作过程」段——逐次执行入口 + 只读回放视图 + 只读声明。 */
+.wf-panel__trace {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wf-panel__trace-runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wf-panel__trace-open {
+  --wails-draggable: no-drag;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: transparent;
+  cursor: pointer;
+}
+.wf-panel__trace-open:hover { border-color: var(--fg-faint); }
+.wf-panel__trace-open--active {
+  color: var(--fg);
+  border-color: var(--fg-faint);
+  background: var(--bg-soft);
+}
+.wf-panel__trace-view {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+.wf-panel__trace-readonly {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
 .drawer {
   position: relative;
   width: min(var(--drawer-width, 440px), 92vw);

@@ -208,6 +208,9 @@ func wfMonitorLabel(runID string, req SubagentRequest) string {
 // pre-tl1324 Run when no recorder is assembled).
 func (r *TaskSubagentRunner) runNode(ctx context.Context, req SubagentRequest) (string, error) {
 	ctx = agent.WithSubagentRawAnswerSink(ctx)
+	// tl1434: 同一派发 ctx 再装 ref sink——TaskTool 在 transcript ref 生成处
+	// 登记进来，Execute 返回后交给 run 级 recorder 落 nodeId→执行实例关联。
+	ctx = agent.WithSubagentRefSink(ctx)
 	args := map[string]any{"prompt": req.Prompt}
 	set := func(key, v string) {
 		if v != "" {
@@ -236,7 +239,45 @@ func (r *TaskSubagentRunner) runNode(ctx context.Context, req SubagentRequest) (
 	if err != nil {
 		return "", err
 	}
+	ReportSubagentRef(ctx, req, agent.SubagentRef(ctx))
 	return resolvedSubagentAnswer(ctx, req.NodeID, answer), nil
+}
+
+// subagentRefRecorder 是 run 级的 nodeId→ref 登记口（service.RunWorkflow 在
+// runCtx 上安装；引擎并发段只经此闭包触达服务登记，不持引擎锁）。缺省无
+// recorder（headless 测试/旧宿主）= no-op，派发行为与 tl1434 之前逐字节相同。
+type subagentRefRecorder func(req SubagentRequest, ref, parentSession string)
+
+// withSubagentRefRecorder / subagentRefRecorderFrom 是 recorder 的 ctx 载体。
+type subagentRefRecorderKey struct{}
+
+func withSubagentRefRecorder(ctx context.Context, rec subagentRefRecorder) context.Context {
+	if rec == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, subagentRefRecorderKey{}, rec)
+}
+
+func subagentRefRecorderFrom(ctx context.Context) subagentRefRecorder {
+	rec, _ := ctx.Value(subagentRefRecorderKey{}).(subagentRefRecorder)
+	return rec
+}
+
+// ReportSubagentRef 把一次派发产出的 transcript ref 报给 run 级登记（tl1434）。
+// 生产路径：TaskSubagentRunner.runNode 在 Execute 返回后调用（ref 来自派发
+// ctx 上的 agent.WithSubagentRefSink）。导出面兼作 SubagentRunner 模拟方的
+// 同一契约（测试以生产同形路径登记，不另开后门）。空 ref（ephemeral 运行：
+// resume-from-panel 无父会话时 transcript 不持久化）不上报——查看面按
+// 「无关联」降级，不伪造身份。
+func ReportSubagentRef(ctx context.Context, req SubagentRequest, ref string) {
+	if ref == "" {
+		return
+	}
+	rec := subagentRefRecorderFrom(ctx)
+	if rec == nil {
+		return
+	}
+	rec(req, ref, jobs.SessionFromContext(ctx))
 }
 
 // resolvedSubagentAnswer prefers the child's raw answer recorded by the host

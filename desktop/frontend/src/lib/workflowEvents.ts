@@ -26,6 +26,10 @@ export interface WorkflowNodeDetail {
   /** 任务934: 真实运行的引擎诊断短句（exit code / 未复现 / 错误摘要），
    * fixture 无此段。 */
   diagnostic?: string;
+  /** tl1434: 节点执行实例关联（子代理 transcript ref，执行序，下标+1=
+   *  occurrence）。非空时详情面渲染「工作过程」只读回放入口；fixture/老
+   *  run 无此段。 */
+  subagentRefs?: string[];
   durationMs?: number;
   tokens?: number;
 }

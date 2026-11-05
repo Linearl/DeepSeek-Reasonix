@@ -1708,6 +1708,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   WorkflowCancelRun(runId: string): Promise<boolean>;
   // 任务1316: 面板续跑钮——从断点续跑一次 interrupted run（服务侧校验可续性）。
   WorkflowResumeRun(runId: string): Promise<boolean>;
+  // tl1434: 节点详情「工作过程」——只读回放某节点第 occurrence 次（1-based）
+  // 子代理执行的 transcript（服务侧两道归属证明；只读，绝不唤醒子代理会话）。
+  ReadWorkflowNodeSubagent(runId: string, nodeId: string, occurrence: number): Promise<HistoryMessage[]>;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; call-time gate, next scheduled run applies it).
   SetExperimentalHeartbeatBackground(enabled: boolean): Promise<void>;
@@ -6811,6 +6814,11 @@ function makeMockApp(): AppBindings {
     },
     async WorkflowCancelRun() {
       return false;
+    },
+    // tl1434：浏览器 dev mock 无工作流运行登记，诚实给空表——详情面走
+    // 「无已登记记录」降级文案，不伪造过程回放。
+    async ReadWorkflowNodeSubagent() {
+      return [] as HistoryMessage[];
     },
     async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},
