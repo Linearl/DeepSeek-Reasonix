@@ -47,8 +47,11 @@ export type SubagentDirectoryEntry = {
    *  The detail view's running tool stream looks the events up by it.
    *  Undefined means "the item id is the lookup key" — the transcript
    *  projection's case, where item.id IS the dispatch call id — and for a
-   *  registry row whose source carries no call id (background job rows) the
-   *  lookup finds nothing and the detail stays preview-only, as designed. */
+   *  registry row whose source carries no call id (bash jobs) the lookup
+   *  finds nothing and the detail stays preview-only. tl1387 二轮: task/fleet
+   *  job rows stamp it too (JobView.parentToolCallId), so a background child
+   *  whose transcript card is missing still gets the live work-process
+   *  stream. */
   callId?: string;
 };
 
@@ -199,7 +202,10 @@ export interface RegistryRunningSource {
  *  task 667) stamps it as `callId`, so the detail view's running tool stream
  *  can look the child's re-parented tool events up in the transcript even
  *  while the card itself is missing (the stall this registry row exists
- *  for). */
+ *  for). tl1387 二轮: task/fleet job rows stamp the same dispatch call id
+ *  (JobView.parentToolCallId, jobs.View.ParentToolCallID) — the backend now
+ *  carries it, so a background child whose card is missing gets the live
+ *  work-process stream too; bash jobs never do. */
 export function registryRunningEntries(source: RegistryRunningSource | undefined, tabId: string): SubagentDirectoryEntry[] {
   const out: SubagentDirectoryEntry[] = [];
   if (!source) return out;
@@ -223,7 +229,7 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
   };
   for (const job of source.jobs ?? []) {
     if (!job || job.kind === "bash") continue;
-    push(`registry:job:${job.id}`, job.label, job.startedAt, undefined);
+    push(`registry:job:${job.id}`, job.label, job.startedAt, undefined, job.parentToolCallId || undefined);
   }
   for (const entry of source.foreground ?? []) {
     if (!entry) continue;

@@ -72,6 +72,13 @@ type View struct {
 	// Tps is the sub-agent's latest sampled streaming rate in tokens/second
 	// (fork #9521 popover heartbeat). Zero means "no sample yet".
 	Tps int `json:"tps,omitempty"`
+	// ParentToolCallID (tl1387 二轮) is the dispatching task/fleet call id under
+	// which nested_sink.go re-parents the child's live tool events. The dock
+	// panel's registry job rows look the child's work-process stream up by it —
+	// without it a background child whose transcript card is missing (the
+	// tl1387 stall) has no detail content at all. Empty for bash jobs and for
+	// jobs started through the legacy Start variants.
+	ParentToolCallID string `json:"parentToolCallId,omitempty"`
 }
 
 // Result is one job's terminal (or current) state returned by Wait.
@@ -133,6 +140,9 @@ type Job struct {
 	// discipline as the other snapshot fields; written once at Start.
 	Detail    string
 	SessionID string
+	// parentToolCallID (tl1387 二轮) is the dispatching call id stamped once at
+	// Start (StartForSessionDetailCall); readers see it through View only.
+	parentToolCallID string
 
 	mu          sync.Mutex
 	tail        []byte
@@ -1049,7 +1059,7 @@ func (m *Manager) RunningForSession(parentSession string) []View {
 		// runtime idle early. The public view remains "running" while a stop is
 		// in flight; clients may render a local "stopping" state after they
 		// request cancellation.
-		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Detail: j.Detail, Status: string(Running), StartedAt: j.startedAt, Tps: int(j.rate.Load())})
+		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Detail: j.Detail, Status: string(Running), StartedAt: j.startedAt, Tps: int(j.rate.Load()), ParentToolCallID: j.parentToolCallID})
 		j.mu.Unlock()
 	}
 	return out

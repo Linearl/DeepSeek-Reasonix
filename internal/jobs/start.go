@@ -20,6 +20,16 @@ func (m *Manager) StartForSession(parentSession, kind, label string, run func(ct
 // behind the label (tl1033: the bash tool passes the full command so the
 // capsule hover card can wrap it; label stays a display-sized preview).
 func (m *Manager) StartForSessionDetail(parentSession, kind, label, detail string, run func(ctx context.Context, out io.Writer) (string, error)) *Job {
+	// No ParentToolCallID — legacy callers keep a View without the dispatch
+	// linkage (jobs.View.ParentToolCallID).
+	return m.StartForSessionDetailCall(parentSession, kind, label, detail, "", run)
+}
+
+// StartForSessionDetailCall is StartForSessionDetail plus the dispatching
+// tool call id (tl1387 二轮). The task/fleet tools pass parentID so the
+// desktop can project the background child's live work-process stream
+// (nested_sink re-parents tool events under it); bash jobs keep it empty.
+func (m *Manager) StartForSessionDetailCall(parentSession, kind, label, detail, parentToolCallID string, run func(ctx context.Context, out io.Writer) (string, error)) *Job {
 	parentSession = strings.TrimSpace(parentSession)
 	kind = strings.TrimSpace(kind)
 	if err := validatePathSegment(parentSession, "parentSession"); err != nil {
@@ -40,6 +50,7 @@ func (m *Manager) StartForSessionDetail(parentSession, kind, label, detail strin
 		Label:            label,
 		Detail:           strings.TrimSpace(detail),
 		SessionID:        parentSession,
+		parentToolCallID: strings.TrimSpace(parentToolCallID),
 		status:           Running,
 		startedAt:        startedAt,
 		activityAt:       startedAt,

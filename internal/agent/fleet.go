@@ -275,7 +275,10 @@ func (f *FleetTool) Execute(ctx context.Context, args json.RawMessage) (result s
 				writerRegistered = true
 			}
 		}
-		job := jm.StartForSession(jobs.SessionFromContext(ctx), "fleet", label, func(jobCtx context.Context, _ io.Writer) (string, error) {
+		// tl1387 二轮: stamp the fleet group's dispatch call id (same contract
+		// as task jobs) so the dock's registry row can project the children's
+		// nested work-process stream.
+		job := jm.StartForSessionDetailCall(jobs.SessionFromContext(ctx), "fleet", label, "", parentID, func(jobCtx context.Context, _ io.Writer) (string, error) {
 			// Execute returns as soon as the job is registered, so the job owns
 			// the handed-off merger until every child preview and terminal has
 			// flushed. Closing it in Execute would strand child cards at running.
