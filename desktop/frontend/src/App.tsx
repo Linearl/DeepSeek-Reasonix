@@ -10,7 +10,7 @@ import { setSettingsOpenHook, useAppNavigationStore } from "./store/appNavigatio
 import { useEffortApplyingStore } from "./store/effortApplying";
 import { useModelApplyingStore } from "./store/modelApplying";
 import { prefetchSettingsView } from "./lib/settingsPrefetch";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
 import { ShellExpandProvider, useShellExpand } from "./lib/shellExpand";
 import {
@@ -65,6 +65,11 @@ import { WorkflowPanelBoundary } from "./components/WorkflowPanelBoundary";
 // flag 关 = 原数组逐字节不变，flag 开 = 在「重载运行时」后插入对应入口。
 import { insertSessionWallEntry } from "./lib/sessionWall";
 import { insertWorkflowPanelEntry } from "./lib/workflowPanelEntry";
+// tl1433: 任务面板「运行中」列表并入工作流 run 行——数据源即工作流面板同一
+// 喂单（workflowRunFeed：拉推合流单例），App 只订阅+过滤 running 并下发展示；
+// 跳转锚定经 focus 透传给面板。
+import { workflowRunFeed } from "./lib/workflowRunFeed";
+import { runningWorkflowRuns } from "./lib/workflowRunRows";
 import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
@@ -967,6 +972,20 @@ export default function App() {
   // 本身是懒加载 chunk，fixture 数据不进 initial 面；685 真事件源落地后
   // 经面板的 store prop 注入）。
   const [workflowPanelOpen, setWorkflowPanelOpen] = useState(false);
+  // tl1433: 任务面板并入的工作流 run 行——数据源即工作流面板同一喂单
+  // （workflowRunFeed 拉推合流单例，订阅成本=一次全量拉+低频推送；推送只在
+  // 真有工作流在跑时发生）。只把 running 行下发任务面板展示；跳转锚定经
+  // focus（runId+nonce）透传面板，nonce 让同一 run 的重复点击也能重新落点。
+  const workflowFeedRuns = useSyncExternalStore(workflowRunFeed.subscribe, workflowRunFeed.getRuns, workflowRunFeed.getRuns);
+  const workflowRunningRows = useMemo(() => runningWorkflowRuns(workflowFeedRuns), [workflowFeedRuns]);
+  const [workflowPanelFocus, setWorkflowPanelFocus] = useState<{ runId: string; nonce: number } | null>(null);
+  const workflowPanelFocusNonceRef = useRef(0);
+  const openWorkflowRunFromTasks = useCallback((runId: string) => {
+    workflowPanelFocusNonceRef.current += 1;
+    setWorkflowPanelFocus({ runId, nonce: workflowPanelFocusNonceRef.current });
+    setWorkflowPanelOpen(true);
+    reportFrontendLog("workflowPanel", "open requested", "tasks panel run row");
+  }, []);
   // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
   // global shortcut can't double-fire in split view; pulse re-selects the
   // query when the chord repeats while the bar is already open.
@@ -6899,6 +6918,10 @@ export default function App() {
                        transcript-projection stall and foreground (synchronous)
                        children become panel-visible (zcode form). */
                     registryRunning={registryRunning}
+                    /* tl1433: 运行中的工作流 run 并入「运行中」列表（同一喂单
+                       的 running 子集）；点击跳工作流面板并选中该 run。 */
+                    workflowRuns={workflowRunningRows}
+                    onOpenWorkflowRun={openWorkflowRunFromTasks}
                     detailEnabled={subagentDetailEnabled}
                     wide={subagentsWide}
                     onToggleWide={toggleSubagentsWide}
@@ -7219,6 +7242,11 @@ export default function App() {
                 reportFrontendLog("workflowPanel", "closed", "esc/backdrop/button");
                 setWorkflowPanelOpen(false);
               }}
+              /* tl1433: 任务面板 run 行跳转锚定——到达即选中该 run（工具条
+                 高亮 + 画布归位）；面板未开时上行 setWorkflowPanelOpen(true)
+                 已自动挂载，本 props 在首次挂载即生效。 */
+              focusRunId={workflowPanelFocus?.runId}
+              focusNonce={workflowPanelFocus?.nonce}
             />
           </WorkflowPanelBoundary>
         </Suspense>

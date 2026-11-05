@@ -132,6 +132,8 @@ export function WorkflowPanel({
   dag = WORKFLOW_FIXTURE_DAG,
   store: storeProp,
   runs: runsProp,
+  focusRunId,
+  focusNonce,
 }: {
   open: boolean;
   onClose: () => void;
@@ -140,6 +142,14 @@ export function WorkflowPanel({
   store?: WorkflowRunStore;
   /** 任务 934：真运行表（测试注入口）。缺省=workflowRunFeed 单例（拉推合流）。 */
   runs?: WireWorkflowRun[];
+  /** tl1433: 任务面板 run 行跳转的锚定目标（App 注入）。到达即选中该 run
+   *  （面板未开时 App 先置 open 再挂载，初始挂载同样走该效果），工具条短暂
+   *  高亮作落点反馈，画布归位到该 run 图的起点。run 若刚被裁剪出 feed，既
+   *  有回退逻辑自然落到最近一条（liveView 解析已内建）。 */
+  focusRunId?: string;
+  /** tl1433: 同一 run 重复点击也要重新落点——App 每次跳转递增，效果以其
+   *  变化为重触发键。 */
+  focusNonce?: number;
 }) {
   const t = useT();
   const { mounted, status } = useMountTransition(open, 200);
@@ -336,6 +346,28 @@ export function WorkflowPanel({
 
   useEffect(() => cancelPanGesture, [cancelPanGesture]);
 
+  // ── tl1433: 任务面板 run 行跳转锚定 ─────────────────────────────────
+  // focusRunId 到达即选中该 run（选择器与画布切到该运行）+ 画布归位到该图
+  // 起点 + 工具条短暂高亮作落点反馈。nonce 是重触发键（同一 run 再次点击也
+  // 要重新落点）；面板未开时 App 先置 open 再挂载，首次挂载即走本效果（在
+  // 视口偏好恢复之后执行，落点优先于恢复的滚动位置）。
+  const [focusFlash, setFocusFlash] = useState(false);
+  const lastFocusNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open || !focusRunId) return;
+    if (focusNonce !== undefined && lastFocusNonceRef.current === focusNonce) return;
+    lastFocusNonceRef.current = focusNonce ?? null;
+    setSelectedRunId(focusRunId);
+    const container = viewRef.current;
+    if (container) {
+      container.scrollLeft = 0;
+      container.scrollTop = 0;
+    }
+    setFocusFlash(true);
+    const timer = window.setTimeout(() => setFocusFlash(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [open, focusRunId, focusNonce]);
+
   // ── 缩放（tl933 需求③）：Ctrl+滚轮以光标位置为锚（参照 Chrome），范围
   // 25%~300%。画布经 transform: scale 缩放，外层 frame 撑出真实滚动范围；
   // 锚点保持 = 缩放后把「锚点下的内容点」拨回锚点（anchoredScroll）。
@@ -436,7 +468,10 @@ export function WorkflowPanel({
   return (
     <div className="drawer-backdrop wf-panel-backdrop" onPointerDown={onBackdropPointerDown} data-state={status}>
       <section className="wf-panel" role="dialog" aria-modal="true" aria-label={t("workflowPanel.title")}>
-        <header className="wf-panel__toolbar">
+        <header
+          className={`wf-panel__toolbar${focusFlash ? " wf-panel__toolbar--focus" : ""}`}
+          data-wf-focus-run={focusFlash ? focusRunId : undefined}
+        >
           <div className="wf-panel__title">
             <GitBranch size={15} aria-hidden="true" />
             <span className="wf-panel__name">{liveView ? liveView.run.workflow : activeDag.name}</span>
