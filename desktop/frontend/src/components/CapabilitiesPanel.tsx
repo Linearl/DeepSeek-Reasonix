@@ -15,6 +15,7 @@ import { InlineConfirmButton } from "./InlineConfirmButton";
 import { ResizableDrawer } from "./ResizableDrawer";
 import { Tooltip } from "./Tooltip";
 import { ModalCloseButton } from "./ModalCloseButton";
+import { AgentImportSection } from "./AgentImportSection";
 
 // CapabilitiesPanel is the desktop MCP & Skills drawer — the GUI counterpart to
 // the CLI's /mcp + /skill, aligning with Claude Code's Customize → Connectors:
@@ -3445,6 +3446,8 @@ export function SkillsSettingsPage({ activeWorkspaceKey = "" }: { activeWorkspac
 					))}
 				</div>
 			)}
+			{/* tl1422: 外部工具一键导入——默认折叠的二级区块,技能页默认视图零改动。 */}
+			<AgentImportSection />
 		</section>
 	);
 }

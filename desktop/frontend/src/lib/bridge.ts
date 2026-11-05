@@ -146,6 +146,9 @@ import type {
   SettingsView,
   ShellInstallResult,
   SkillsSettingsView,
+  AgentImportScanView,
+  AgentImportRequestView,
+  AgentImportReceiptView,
   SkillRootView,
   SkillSuggestion,
   SkillView,
@@ -1419,6 +1422,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   MCPMarketplace(query: string): Promise<MCPMarketplaceView>;
   MCPMarketplaceResolve(registryName: string): Promise<MCPMarketplaceEntry>;
   SkillsSettings(): Promise<SkillsSettingsView>;
+  // tl1422: external agent one-click import (commands/skills/MCP).
+  AgentImportScan(): Promise<AgentImportScanView>;
+  AgentImportImport(requests: AgentImportRequestView[]): Promise<AgentImportReceiptView>;
   CapabilityDiagnostics(includeSessionRuntime: boolean): Promise<CapabilityDiagnosticsReport>;
   RuntimeDoctor(): Promise<RuntimeDoctorReport>;
   Plugins(): Promise<PluginView[]>;
@@ -4217,7 +4223,7 @@ function makeMockApp(): AppBindings {
       mockTabs = mockTabs.map((tab, index) => (index === 0 ? { ...tab, label } : tab));
     }
   };
-  // @ts-expect-error mock is a diagnostics-only object; the newest Go methods (228/254/264/267 picks) are intentionally unimplemented — real bridge delegates to wails at runtime. (type bridge 2026-09-24)
+  // @ts-expect-error mock is a diagnostics-only object; the newest Go methods are intentionally unimplemented — real bridge delegates to wails at runtime. (type bridge 2026-09-24; still used with wailsjs present: suppresses mock gaps for methods newer than the mock)
   return {
     ...makeMockSessionCatalogBindings(cloneProjectTree),
     ...makeMockBlankProjectBindings(),
@@ -5752,6 +5758,52 @@ function makeMockApp(): AppBindings {
         skills: capSkills.map((s) => ({ ...s })),
         skillRoots: capSkillRoots.map((s) => ({ ...s })),
         allowImplicitInvocation: true,
+      };
+    },
+    async AgentImportScan(): Promise<AgentImportScanView> {
+      // tl1422 browser mock: one detected source plus one undetected, so the
+      // panel's empty/badge states stay visible outside the desktop shell.
+      return {
+        sources: [
+          { tool: "claude", detected: true, items: 1, paths: { command: "~/.claude/commands", skill: "~/.claude/skills", mcp: "~/.claude.json" } },
+          { tool: "codex", detected: true, items: 1, paths: { mcp: "~/.codex/config.toml" } },
+          { tool: "opencode", detected: false, note: "not detected", items: 0 },
+        ],
+        items: [
+          {
+            id: "claude:command:review",
+            tool: "claude",
+            kind: "command",
+            name: "review",
+            description: "Review code",
+            sourcePath: "~/.claude/commands/review.md",
+            preview: ["---", "description: Review code", "---", "", "Review $ARGUMENTS."].join("\n"),
+            conflict: false,
+            nativelyActive: true,
+            recommended: true,
+          },
+          {
+            id: "codex:mcp:codegraph",
+            tool: "codex",
+            kind: "mcp",
+            name: "codegraph",
+            description: "codegraph serve --mcp",
+            preview: ['{', '  "name": "codegraph",', '  "command": "codegraph",', '  "args": [ "serve", "--mcp" ]', '}'].join("\n"),
+            conflict: false,
+            nativelyActive: false,
+            recommended: true,
+          },
+        ],
+      };
+    },
+    async AgentImportImport(requests: AgentImportRequestView[]) {
+      return {
+        imported: requests.length,
+        skipped: 0,
+        failed: 0,
+        items: requests.map((r) => ({ id: r.id, tool: r.id.split(":")[0] ?? "", kind: r.id.split(":")[1] ?? "", name: r.id.split(":").slice(2).join(":"), status: "imported" as const })),
+        skillsRefreshed: true,
+        commandsReloaded: true,
       };
     },
     async RuntimeDoctor() {
