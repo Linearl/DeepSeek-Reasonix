@@ -152,6 +152,32 @@ export function saveSubagentDetailDockWidth(width: number): void {
   saveLayoutSize("subagentDetailDockWidth", width, clampSubagentDetailDockWidth);
 }
 
+// tl1426（需求②③）：子代理面板「列表↔详情」分栏的列表列宽族。需求②先钉
+// 固定宽默认（不再随面板宽度百分比拉伸——dock 进 1:1 宽态后 34% 会把列表
+// 拉到 ~280px 挤占详情）；需求③的拖拽分隔条与键盘调宽写
+// subagentsSplitListWidth sizes 键持久化（ResizableDrawer 同款 sizes 键先
+// 例）。拖拽实时值还需按面板实际宽截断：详情列保底
+// SUBAGENTS_SPLIT_DETAIL_MIN_WIDTH，列表列不把详情挤穿。
+export const SUBAGENTS_SPLIT_LIST_DEFAULT_WIDTH = 200;
+export const SUBAGENTS_SPLIT_LIST_MIN_WIDTH = 180;
+export const SUBAGENTS_SPLIT_LIST_MAX_WIDTH = 400;
+export const SUBAGENTS_SPLIT_DETAIL_MIN_WIDTH = 180;
+
+export function clampSubagentsSplitListWidth(width: number, paneWidth?: number): number {
+  const hardMax =
+    paneWidth !== undefined && paneWidth > 0
+      ? Math.max(
+          SUBAGENTS_SPLIT_LIST_MIN_WIDTH,
+          Math.min(SUBAGENTS_SPLIT_LIST_MAX_WIDTH, paneWidth - SUBAGENTS_SPLIT_DETAIL_MIN_WIDTH),
+        )
+      : SUBAGENTS_SPLIT_LIST_MAX_WIDTH;
+  return Math.min(hardMax, Math.max(SUBAGENTS_SPLIT_LIST_MIN_WIDTH, Math.round(width)));
+}
+
+export function saveSubagentsSplitListWidth(width: number, paneWidth?: number): void {
+  saveLayoutSize("subagentsSplitListWidth", width, (value) => clampSubagentsSplitListWidth(value, paneWidth));
+}
+
 function clampStoredRightDockTreeWidth(width: number): number {
   // Stored widths are validated again against the live viewport at load time
   // (resolveWorkspacePanelWidth clamps to the chat pane's 400px floor), so
