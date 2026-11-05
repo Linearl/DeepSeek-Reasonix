@@ -188,13 +188,24 @@ func recentTailFloor(budget, window int) int {
 	return budget
 }
 
+// minFoldTokens is the fold-economics floor: a region worth fewer billed
+// tokens than this cannot beat the digest's own size, so compacting it would
+// raise the projection (压前反升's small-region half).
+const minFoldTokens = 400
+
 // foldEconomics estimates whether compacting the given region saves enough
 // tokens to justify the summarization API call. It returns false when the
 // region is too small for the savings to outweigh the extra round-trip cost
 // and latency of calling the summarizer.
-func foldEconomics(region []provider.Message) bool {
-	const minFoldTokens = 400
-	return estimateMessagesTokens(region) >= minFoldTokens
+//
+// tl1395: the region is priced on the SAME calibrated ruler the wire bills
+// with (estimatedPromptTokens), not the coarse char census. estimateMessagesTokens
+// cannot see images or tokenizer drift, so a region it calls "small" can
+// dominate the window on the wire — image pressure then waits for the 400
+// rescue instead of folding at pressure time. The savings verdict and the
+// candidate acceptance (acceptCheckpointCandidate) now read one ruler.
+func (a *Agent) foldEconomics(region []provider.Message) bool {
+	return a.estimatedPromptTokens(region) >= minFoldTokens
 }
 
 func estimateMessagesTokens(msgs []provider.Message) int {
@@ -340,9 +351,21 @@ func (a *Agent) planCompaction(msgs []provider.Message, min int, force bool) (he
 				budget = half
 			}
 		}
-		start = tailStart(msgs, head, budget, a.tokPerChar(), a.tailFloor())
-		// Remeasure when force or non-strict roles; strict-alternating otherwise
-		// keeps a cheap tokPerChar overestimate of the tail under force.
+		// tl1395: the PREFERRED boundary walks the billing ruler (messageTokens
+		// prices images and drifts with the session calibration). The old
+		// msgChars×tokPerChar census could not see images: it left whole
+		// screenshot batches in the verbatim tail, the installed projection
+		// crossed the window, and the next request paid the 400 → rescue →
+		// 压前反升 chain.
+		start = tailStart(msgs, head, budget, a.messageTokens, a.tailFloor())
+		// Conservative second opinion (kept from the pre-tl1395 shape): the
+		// estimateTextTokens census errs HIGH (~1 token per rune — 4x the real
+		// ASCII rate, ~right for CJK), so a tail the cheap walk admits can still
+		// be trimmed further when the session drifts from the cold estimate.
+		// It only ever advances start — over-folding, never under-folding — and
+		// the install gate (acceptCheckpointCandidate) keeps an over-fold from
+		// raising the projection. tailStart already bounds the tail at the
+		// budget on the billing ruler; this census is pure extra safety.
 		floor := max(head, len(msgs)-a.tailFloor())
 		remeasure := force || !a.strictAlternatingRoles
 		for remeasure && start < floor && estimateMessagesTokens(provider.ModelMessages(msgs[start:])) > budget {
@@ -373,12 +396,15 @@ func (a *Agent) tailFloor() int {
 // message would push its token estimate past budgetTokens (but never below
 // minKeep messages), then aligns the boundary back off any tool result so the
 // tail never begins with an orphan whose assistant tool_calls were summarized
-// away.
-func tailStart(msgs []provider.Message, head, budgetTokens int, tokPerChar float64, minKeep int) int {
+// away. msgTokens is the per-message pricing ruler; callers pass the billing
+// ruler (messageTokens) so the planned tail fits the window-derived budget in
+// the same unit the wire bills with (tl1395 — the old char census was blind
+// to images and priced the budget in a different caliber).
+func tailStart(msgs []provider.Message, head, budgetTokens int, msgTokens func(provider.Message) int, minKeep int) int {
 	start := len(msgs)
 	acc := 0
 	for i := len(msgs) - 1; i > head; i-- {
-		c := int(float64(msgChars(msgs[i])) * tokPerChar)
+		c := msgTokens(msgs[i])
 		if len(msgs)-i > minKeep && acc+c > budgetTokens {
 			break
 		}

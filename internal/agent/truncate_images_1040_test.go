@@ -124,7 +124,7 @@ func TestTailStartAccountsImages(t *testing.T) {
 	msgs = append(msgs, provider.Message{Role: provider.RoleUser, Origin: provider.MessageOriginUser, Content: "tail"})
 	head := a.pinnedPrefixLen(msgs)
 	budget := a.recentTailBudget()
-	start := tailStart(msgs, head, budget, a.tokPerChar(), minRecentKeep)
+	start := tailStart(msgs, head, budget, a.messageTokens, minRecentKeep)
 	// 10 张图 ≈ 21K tokens > 32K 的一半：至少有一张图必须落在 fold 区。
 	foldedImages := 0
 	for i := head; i < start; i++ {
