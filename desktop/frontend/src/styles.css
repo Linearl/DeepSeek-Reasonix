@@ -39435,8 +39435,13 @@ button.statusbar__mcp:focus-visible {
   z-index: var(--z-inline-sticky);
   font-size: 0.86em;
   font-weight: 600;
-  opacity: 0.72;
-  background: inherit;
+  /* tl1415（用户截图实证）：表头是滚动容器内的浮层，背景必须不透明——
+     `background: inherit` 继承到的是透明，滚动时行内容从表头底下穿过，
+     文字叠文字。取 modal 的实际背景色（.modal 的 var(--bg-elev)），滚动
+     时表头遮盖下方内容，表头自身完整可读。opacity 不能挂在表头整行上
+     （会让背景跟着半透明），改挂在文字色上。 */
+  background: var(--bg-elev);
+  color: color-mix(in srgb, currentColor 72%, transparent);
   border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
 }
 .rc-row--group { font-weight: 600; }
