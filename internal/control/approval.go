@@ -543,8 +543,9 @@ func (a *approvalManager) registerAsk(questions []event.AskQuestion) (string, ch
 // choosing or typing (要素①, one-shot stop), the channel it signals on while
 // the pointer merely moves over the panel (task 844 hover, repeatable window
 // reset), and the channel the takeover button toggles (task 849, park/resume
-// the timer outright). All are nil elsewhere — high-risk and attended asks
-// keep the plain registration verbatim.
+// the timer outright). Attended asks keep the plain registration verbatim; the
+// autopilot high-risk tier registers via registerAskTakeover (tl1408), which
+// deliberately leaves interact/activity nil.
 func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) (string, chan []event.AskAnswer, chan struct{}, chan struct{}, chan bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -556,6 +557,28 @@ func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) 
 	takeover := make(chan bool, 1)
 	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, interact: interact, activity: activity, takeover: takeover, reattach: make(chan struct{}, 1)}
 	return id, reply, interact, activity, takeover
+}
+
+// registerAskTakeover is the tl1408 high-risk registration: the plain ask
+// record plus ONLY the task-849 takeover channel. The autopilot high-risk tier
+// arms the autopilot wait (109 B4 / 477), and the panel's takeover button must
+// be able to park that wait — before tl1408 this tier kept the plain
+// registration, so p.takeover was nil, the toggle answered false and the
+// button rolled back while the window expired under the user's hands.
+// interact/activity deliberately stay nil: unlike the reversible tier, a
+// selection or a hover must NOT stop or reset the high-risk window — only the
+// explicit takeover button may suspend the safety valve, and the valve stays
+// real whenever nobody has taken over (notifyAskInteraction /
+// notifyAskActivity answer false for these asks, as before).
+func (a *approvalManager) registerAskTakeover(questions []event.AskQuestion) (string, chan []event.AskAnswer, chan bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.nextID++
+	id := strconv.Itoa(a.nextID)
+	reply := make(chan []event.AskAnswer, 1)
+	takeover := make(chan bool, 1)
+	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, takeover: takeover, reattach: make(chan struct{}, 1)}
+	return id, reply, takeover
 }
 
 // askReattachChannel exposes the 任务178 re-presented signal for a pending ask
@@ -631,8 +654,9 @@ func (a *approvalManager) notifyAskActivity(id string) bool {
 // (true = hold, false = release). A full buffer is drained first so rapid
 // toggling collapses to the last click — the channel holds one state, not a
 // queue. False is the expected answer for every other prompt class (attended
-// and high-risk asks have no auto-decide to park; the 109 B4 safety valve must
-// stay real), mirroring notifyAskInteraction.
+// asks have no timer to park; on the high-risk tier the 109 B4 safety valve
+// stays real whenever nobody has taken over — tl1408), mirroring
+// notifyAskInteraction.
 func (a *approvalManager) notifyAskTakeover(id string, taking bool) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()

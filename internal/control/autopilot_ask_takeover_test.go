@@ -211,6 +211,61 @@ func TestAttendedAskRejectsTakeover(t *testing.T) {
 	}
 }
 
+// tl1408 edge, same mechanism as the high-risk tier: a held takeover must
+// survive a session reopen — the panel coming back on screen must not
+// secretly restart the window and the hover budget the user believes are
+// parked. Only the user's own release (or answer) ends the hold.
+func TestAutopilotReversibleAskTakeoverHoldSurvivesReattach(t *testing.T) {
+	const askWait = 40 * time.Millisecond
+	c, sink := askTakeoverController(t, askWait)
+	done := make(chan struct{})
+	var answers []event.AskAnswer
+	var err error
+	go func() {
+		answers, err = c.Ask(context.Background(), askActivityQuestion())
+		close(done)
+	}()
+	askID := waitPanel(t, sink)
+
+	if !c.NotifyAskTakeover(askID, true) {
+		t.Fatal("NotifyAskTakeover(hold) = false on a reversible timed ask")
+	}
+	// Settle the hold first: sitting out several windows without a decision
+	// proves the loop has consumed the hold and the timers are parked, so the
+	// reopen below lands strictly after the hold (a racing re-present that
+	// arrives before the hold is processed re-arms legitimately).
+	time.Sleep(3 * askWait)
+	select {
+	case <-done:
+		t.Fatal("reversible ask self-answered although the takeover was held")
+	default:
+	}
+	c.NotifyAskReattached(askID)
+	time.Sleep(3 * askWait)
+	select {
+	case <-done:
+		t.Fatalf("reversible ask self-answered after a reopen under a held takeover; the re-present must not restart the parked window (answers=%v err=%v)", answers, err)
+	default:
+	}
+	c.AnswerQuestion(askID, []event.AskAnswer{{QuestionID: "q1", Selected: []string{"table"}}})
+	select {
+	case <-done:
+		if err != nil {
+			t.Fatalf("ask err = %v, want the user's own answer", err)
+		}
+		if len(answers) != 1 || answers[0].Selected[0] != "table" {
+			t.Fatalf("answers = %+v, want the user's selection to win", answers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ask did not return after the user answered")
+	}
+	for _, n := range sink.notices() {
+		if n.Code == "autopilot_ask_auto_decide" {
+			t.Fatal("auto-decide fired although the takeover was held across the reopen; the parked window leaked")
+		}
+	}
+}
+
 // Rapid toggling collapses to the last click: hold then release with no
 // consumer in between must land the release, not lose it behind the hold —
 // the panel button is a toggle, so double-clicks are an expected gesture.
