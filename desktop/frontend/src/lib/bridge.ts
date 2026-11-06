@@ -255,6 +255,52 @@ export interface HeapBreakdownView {
   categories: HeapCategory[];
 }
 
+// tl1456 资源管理器（命令面板 → 工具与诊断）的桥契约。字段以
+// desktop/resource_snapshot.go 为准；Measured/Available=false 的语义是
+// 「平台没答上来」，不是 0——面板照此显示「—/未提供」。
+export interface ResourceProcessRow {
+  name: string;
+  pid: number;
+  memoryBytes: number;
+  uptimeSeconds: number;
+  kind: string; // "main" | "child"
+  measured: boolean;
+}
+
+export interface ResourceRuntimeMemory {
+  heapAllocBytes: number;
+  heapSysBytes: number;
+  heapObjects: number;
+  sysBytes: number;
+  goroutines: number;
+  numGC: number;
+  lastGCPauseMs: number;
+}
+
+export interface ResourceSystemMemory {
+  totalBytes: number;
+  availableBytes: number;
+  available: boolean;
+}
+
+export interface ResourceSubagentRow {
+  ref: string;
+  name?: string;
+  description?: string;
+  origin?: string;
+  startedAt: number; // unix milliseconds
+}
+
+export interface ResourceSnapshotView {
+  ts: string;
+  uptimeSeconds: number;
+  main: ResourceProcessRow;
+  children: ResourceProcessRow[];
+  runtime: ResourceRuntimeMemory;
+  system: ResourceSystemMemory;
+  subagents: ResourceSubagentRow[];
+}
+
 // ConsolidationReport summarizes one "merge recovery copies" run.
 export interface ConsolidationReport {
   mainPath: string;
@@ -796,7 +842,15 @@ export interface CollabChannelMessageView {
   // 802: 取消墓碑时间（缺省 0/undefined=未撤回）——撤回后渲染「已取消」行。
   cancelledAt?: number;
   fanout?: CollabChannelFanoutCellView[];
-  // tl1406 发布期路由注记：仅在发送返回值上出现（历史读零污染）。
+}
+
+// tl1406 发布期路由注记：Go 侧实为 collabchannel.Message
+//（internal/collabchannel 的 RoutedTo/Deputyless），仅在 ChannelSendFromHuman
+// 的发送返回值上出现——历史读走的 desktop.CollabChannelMessageView 没有这两
+// 个字段（历史构建自 messages 表，发布期注记零污染）。此前塌在一个接口里
+// 声明，check:bridge-tags 对 desktop 视图结构体必然失配（tl1456 接手时修的
+// 预存红）；发送回执没有同名 Go 结构体，故此接口以注释锚定 Go 真源。
+export interface CollabChannelSendReceipt extends CollabChannelMessageView {
   // routedTo=实际排队投递的成员；deputyless=true=human 群无副管理员且未 @，
   // 本次零投递（前端据此提示「没人收到」）。
   routedTo?: string[];
@@ -1854,6 +1908,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   PerfTimeSeries(windowMinutes: number): Promise<PerfTimeSeriesView>;
   SampleHeapBreakdown(): Promise<HeapBreakdownView>;
   HeapBreakdownPath(): Promise<string>;
+  // tl1456 资源管理器：一次按需读内存总览+本产品形态进程表（面板开着才轮询，
+  // 关闭即零成本——Go 侧无采样器无定时器）。
+  ResourceSnapshot(): Promise<ResourceSnapshotView>;
   // Task 19: multi-session collaboration tools (experimental).
   SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
   // 任务 517: merged safety/cost switch (one knob for task-244 B1/B2/B3).
@@ -1998,7 +2055,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ChannelLeaveHuman(ref: string): Promise<void>;
   /** tl1217: 解散群聊（仅 human 群主；硬删成员/消息，前端两击确认防误触）。 */
   ChannelDissolveForHuman(ref: string): Promise<void>;
-  ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
+  ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelSendReceipt>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
   /** 任务 856 ⑤: 任命单副管理员（仅 human 群主；目标须为群内会话成员）。 */
@@ -6921,6 +6978,20 @@ function makeMockApp(): AppBindings {
       ] };
     },
     async HeapBreakdownPath() { return ""; },
+    // tl1456 mock: one honest static frame (browser dev shell has no real
+    // process table); available=false keeps the system strip in its
+    // "platform didn't answer" state instead of fake numbers.
+    async ResourceSnapshot() {
+      return {
+        ts: new Date().toISOString(),
+        uptimeSeconds: 0,
+        main: { name: "reasonix (dev)", pid: 0, memoryBytes: 0, uptimeSeconds: 0, kind: "main", measured: false },
+        children: [],
+        runtime: { heapAllocBytes: 0, heapSysBytes: 0, heapObjects: 0, sysBytes: 0, goroutines: 0, numGC: 0, lastGCPauseMs: 0 },
+        system: { totalBytes: 0, availableBytes: 0, available: false },
+        subagents: [],
+      };
+    },
     async SetExperimentalSessionCollab() {},
     async SetExperimentalSafetyCostControl() {},
     async SetSafetyIdleTerminate() {},

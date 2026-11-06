@@ -31,6 +31,7 @@ import type {
   CollabChannelCancelResultView,
   CollabChannelMemberView,
   CollabChannelMessageView,
+  CollabChannelSendReceipt,
   CollabChannelView,
 } from "../lib/bridge";
 import { getLocale, useT } from "../lib/i18n";
@@ -56,7 +57,7 @@ export type ChannelChatBindings = {
   ChannelLeaveHuman(ref: string): Promise<void>;
   /** tl1217: 解散群聊（仅 human 群主；硬删成员/消息，前端两击确认防误触）。 */
   ChannelDissolveForHuman(ref: string): Promise<void>;
-  ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
+  ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelSendReceipt>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
   /** 任务 856 ⑤: 任命/撤销单副管理员（human 群主口）。 */
