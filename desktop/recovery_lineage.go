@@ -268,7 +268,7 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 				return errors.New(recoveryActiveWorkCode + "the current main line is still working; wait for its turn to finish, then switch again")
 			}
 		}
-		if _, err := a.ResumeSessionForTabExact(tabID, req.Path); err != nil {
+		if _, err := a.resumeSessionForTab(tabID, req.Path, false); err != nil {
 			return err
 		}
 	}
