@@ -257,9 +257,14 @@ func autoRecallIndexed(index *RecallIndex, result RecallResult, opts RecallOptio
 
 // shadowRankV2 runs the Retrieval V2 candidate (BM25F, code-symbol split,
 // mixed CJK grams) over the recall pool. Shadow only: recorded for offline
-// comparison, gated by MemoryBench before it can ever serve.
+// comparison, gated by MemoryBench before it can ever serve. The relative
+// score floor mirrors the auto-recall lane's own trim (tl1399①): the tl1381
+// triage flagged V2's missing relative cutoff as a structural gap versus both
+// production lanes, so the shadow now carries the same floor it would need on
+// promotion.
 func shadowRankV2(query string, docs []retrieval.FieldedDoc) []ShadowHit {
 	ranked := retrieval.RankV2(query, docs)
+	ranked = retrieval.KeepTopRelativeScore(ranked, autoRecallScoreFloor, func(hit retrieval.V2Hit) float64 { return hit.Score })
 	if len(ranked) > maxAutoRecallLimit {
 		ranked = ranked[:maxAutoRecallLimit]
 	}

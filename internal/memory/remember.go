@@ -144,7 +144,18 @@ func (t rememberTool) Execute(ctx context.Context, args json.RawMessage) (string
 	if q, ok := QueueFromContext(ctx); ok {
 		q.QueueMemory("Saved memory \"" + result.Memory.Name + "\" (" + string(factScope) + "): " + oneLine(result.Memory.Description) + "\n" + strings.TrimSpace(result.Memory.Body))
 	}
-	return fmt.Sprintf("Saved memory id=%s revision=%d (%s background) as %s (it applies now and its derived index loads automatically in future sessions).", result.Memory.ID, result.Memory.Revision, factScope, providerMemoryReference(result.Memory)), nil
+	message := fmt.Sprintf("Saved memory id=%s revision=%d (%s background) as %s (it applies now and its derived index loads automatically in future sessions).", result.Memory.ID, result.Memory.Revision, factScope, providerMemoryReference(result.Memory))
+	// tl1399② keywords nudge (half-automated coverage): the fact is saved
+	// exactly as requested — nothing is rewritten behind the caller's back —
+	// but when neither keywords nor triggers were supplied, the reply names
+	// the retrieval gap and asks for the aliases in a follow-up save. Recall
+	// matching is lexical: paraphrased queries cannot find a fact whose body
+	// never uses those words, and the live pool measures most facts as saved
+	// without them.
+	if strings.TrimSpace(in.Keywords) == "" && strings.TrimSpace(in.Triggers) == "" {
+		message += " Note: saved without keywords/triggers — recall can only match words already in the name/title/body. If a future query might use different wording (another language, a command or tool name, a synonym), save the fact again with keywords or triggers covering those aliases."
+	}
+	return message, nil
 }
 
 func (rememberTool) ReadOnly() bool { return false }
