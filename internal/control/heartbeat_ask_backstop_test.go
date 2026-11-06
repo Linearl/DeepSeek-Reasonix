@@ -127,7 +127,7 @@ func TestAttendedAskUnchangedWithoutHeartbeatMarker(t *testing.T) {
 		answers, err = c.Ask(context.Background(), heartbeatHighRiskQuestion)
 	}()
 	// Let the attended panel register, then answer as the user would.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(controlTestReceiveWindow)
 	var askID string
 	for askID == "" && time.Now().Before(deadline) {
 		askID = sink.lastAskID()

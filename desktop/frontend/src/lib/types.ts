@@ -2384,6 +2384,9 @@ export interface ForegroundSubagentView {
   description?: string;
   startedAt: number; // unix milliseconds
   parentToolCallId?: string; // dispatch-batch key shared by one parallel call (task 667; capsule UI ignores it)
+  // tl1447: 子代理最后一次可观测活动的时刻（unix ms；desktop 前台登记表维护，
+  // 进度事件逐次刷新）。缺省 = 无活跃面（旧行），静默判定按 0 处理（不虚报）。
+  lastActivityAt?: number;
 }
 
 export interface WorkspaceConflictView {

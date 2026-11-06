@@ -45,7 +45,7 @@ func TestSnapshotCoalescesRedundantSavesWithinGap(t *testing.T) {
 		t.Fatalf("RunTurn: %v", err)
 	}
 	// Wait for the turn-end snapshot (and its gate record) to finish.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(controlTestReceiveWindow)
 	for {
 		if !c.snapshotSaveRecentlyDurable(c.SessionPath()) && time.Now().Before(deadline) {
 			time.Sleep(10 * time.Millisecond)

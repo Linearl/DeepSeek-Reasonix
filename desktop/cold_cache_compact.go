@@ -420,7 +420,7 @@ func (l *coldCacheCompactLoop) headlessCompactOne(path, workspaceRoot string, si
 		SessionDir:               sessionDir,
 		WorkspaceRoot:            workspaceRoot,
 		MCPHostProfile:           plugin.HostProfileDesktopApps,
-		CleanupPendingReconciler: reconcileDesktopCleanupPending,
+		CleanupPendingReconciler: l.a.reconcileDesktopCleanupPending,
 	})
 	if err != nil {
 		return fmt.Errorf("headless build: %w", err)

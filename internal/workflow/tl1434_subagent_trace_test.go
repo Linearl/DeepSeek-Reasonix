@@ -217,6 +217,40 @@ func TestReportSubagentRefContract(t *testing.T) {
 	}
 }
 
+// tl1434 追加：即时上报（运行中 mint 处）+ 兜底上报（Execute 返回后）重复
+// 登记同一 ref——登记层幂等去重，occurrence 不翻倍；不同 ref 照常 append。
+func TestServiceSubagentRefDuplicateReportIsIdempotent(t *testing.T) {
+	svc := NewService(t.TempDir())
+	rec := &RunRecord{
+		ID: "run-dup", Workflow: "wf", State: RunRunning, StartedAt: time.Now(),
+		nodes: map[string]*nodeRecord{}, sessionID: "sess-1434",
+	}
+	svc.mu.Lock()
+	svc.runs[rec.ID] = rec
+	svc.order = append(svc.order, rec.ID)
+	svc.mu.Unlock()
+
+	req := SubagentRequest{NodeID: "probe", Occurrence: 1}
+	svc.recordSubagentRef(rec.ID, req, "sa_probe_live", "sess-1434") // 运行中即时登记
+	svc.recordSubagentRef(rec.ID, req, "sa_probe_live", "sess-1434") // Execute 返回后兜底（同 ref）
+
+	snap := nodeTraceFromSnapshot(t, svc.Snapshot(), rec.ID, "probe")
+	if len(snap.SubagentRefs) != 1 || snap.SubagentRefs[0] != "sa_probe_live" {
+		t.Fatalf("duplicate report must stay one occurrence, refs = %v", snap.SubagentRefs)
+	}
+	// 门循环下一轮：新 ref 照常 append（去重只针对重复上报，不针对新执行）。
+	req.Occurrence = 2
+	svc.recordSubagentRef(rec.ID, req, "sa_probe_r2", "sess-1434")
+	snap = nodeTraceFromSnapshot(t, svc.Snapshot(), rec.ID, "probe")
+	if len(snap.SubagentRefs) != 2 || snap.SubagentRefs[1] != "sa_probe_r2" {
+		t.Fatalf("a genuinely new execution must append, refs = %v", snap.SubagentRefs)
+	}
+	ref, _, err := svc.SubagentRefForNode(rec.ID, "probe", 2)
+	if err != nil || ref != "sa_probe_r2" {
+		t.Fatalf("query after dedup = (%q,%v)", ref, err)
+	}
+}
+
 // 落盘形态钉：快照 JSON 里字段名稳定（前端/跨版本读取依赖键名）。
 func TestSnapshotJSONFieldNamesForTrace(t *testing.T) {
 	dir := t.TempDir()

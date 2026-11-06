@@ -38,6 +38,36 @@ import (
 // acquire call itself).
 const sessionLockKindUnattributed = "unattributed"
 
+// SessionLockKindInFlightRemovalGuard reports whether kind names a removal
+// guard this process currently operates (tl1429b-2). Those handles are NOT
+// lost bindings: a live goroutine (the archive trash phase, the delayed
+// trash, the cleanup-pending reconcile) holds the guard struct and will
+// release it when its step completes. The orphan sweep and the terminal
+// force-release must leave them alone — evicting one tears the mutual
+// exclusion between two concurrent destructive flows on the same session
+// (the 2026-11-06 08:26 heal-vs-reconcile loop: each side's heal swept the
+// other side's in-flight guard as an "orphan" and both trashed concurrently).
+func SessionLockKindInFlightRemovalGuard(kind string) bool {
+	switch kind {
+	case "removal_guard", "removal_guard_converted":
+		return true
+	}
+	return false
+}
+
+// sessionLeaseLockHeldByInFlightRemovalGuard reports whether the registered
+// holder(s) of path's lease lock include an in-flight removal guard.
+func sessionLeaseLockHeldByInFlightRemovalGuard(path string) bool {
+	lockPath := store.SessionLeaseLock(canonicalSessionSavePath(path))
+	sessionLockRegistry.Lock()
+	defer sessionLockRegistry.Unlock()
+	reg, ok := sessionLockRegistry.byPath[lockPath]
+	if !ok || reg == nil {
+		return false
+	}
+	return SessionLockKindInFlightRemovalGuard(reg.kind)
+}
+
 // sessionLockRegistration is one live in-process lock handle. The registry
 // holds the *sessionLockFile itself so the terminal force-release can evict
 // exactly the handle that blocks a session — an orphaned handle would

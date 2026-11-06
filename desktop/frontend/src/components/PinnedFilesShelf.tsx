@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { AlertTriangle, FileText, Pin, X } from "lucide-react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useT } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import type { PinnedFileInfo } from "../lib/pinnedContextBridge";
@@ -20,7 +21,7 @@ export function PinnedFilesShelf({
       e.stopPropagation();
       if (!tabId) return;
       void app.UnpinFileForTab(tabId, path).catch((err: unknown) => {
-        showToast(String((err as Error)?.message || err), "error");
+        showToast(formatActionError("workspace.unpinFileFromContext", err), "error");
       });
     },
     [tabId, showToast],

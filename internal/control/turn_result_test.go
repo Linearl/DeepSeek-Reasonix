@@ -70,11 +70,7 @@ func TestControllerFreezesTurnResultBeforeTerminalPublication(t *testing.T) {
 				return nil
 			}
 			c.Send("update file")
-			select {
-			case <-runner.started:
-			case <-time.After(5 * time.Second):
-				t.Fatal("runner not started")
-			}
+			waitForSignal(t, "runner not started", runner.started)
 			if mode == "cancel" {
 				c.Cancel()
 			}

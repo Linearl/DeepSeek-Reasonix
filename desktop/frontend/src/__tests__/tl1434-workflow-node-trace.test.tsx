@@ -10,6 +10,11 @@
 //     存在（TestReadWorkflowNodeSubagentReturnsMessagesAndWritesNothing +
 //     assertDirUnchanged）。
 //  ④ 文案三语：7 个键 × en/zh/zh-TW。
+//  ⑤ tl1434 追加（装机实测缺口：运行中过程不可读）——运行中节点增量可见：
+//     前端轮询跟进（2s，纯读桥重入，开视图+运行中才转，终态/切换/卸载即停）、
+//     pending 哨兵等待态、live 提示行、降级显示保留、只读铁律不变；写侧
+//     （agent 周期快照 autosave + opt-in 边界 + stop 契约）与登记面（mint
+//     即时上报 + 重复上报幂等去重）的 Go harness 存在性钉。
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -134,6 +139,61 @@ console.log("\ntl1434 workflow node trace: nodeId→执行实例关联的只读�
   ok(en.includes('"workflowPanel.detail.processReadOnly"'), "en has the read-only statement key");
   ok(zh["workflowPanel.detail.processReadOnly"].includes("只读") && zh["workflowPanel.detail.processReadOnly"].includes("不会唤醒或写入"), "zh read-only copy states the no-wake/no-write promise");
   ok(zhTW["workflowPanel.detail.processReadOnly"].includes("唯讀"), "zh-TW read-only copy states the same promise");
+}
+
+// ── ⑤ tl1434 追加：运行中节点增量可见 ───────────────────────────────
+{
+  const panel = read("src/components/WorkflowPanel.tsx");
+  // 轮询方案钉（取舍：读取桥每次返回完整投影，重拉即增量，零新接口/零新
+  // 事件契约；事件驱动需为 ref 级 delta 新建跨层推送面，违背先用现有机制）。
+  ok(panel.includes("const WORKFLOW_TRACE_POLL_MS = 2000"), "poll cadence is a named 2s constant");
+  ok(panel.includes('running={run.state === "running"}'), "node six-state running feeds the section (follow window)");
+  ok(panel.includes("if (!running || openOccurrence === 0) return;"), "polling runs only while a trace view is open AND the node is running");
+  ok(panel.includes("clearInterval(iv)"), "polling stops via effect cleanup (terminal / occurrence switch / unmount)");
+  ok(panel.includes("ReadWorkflowNodeSubagent(runId, nodeId, occurrence)"), "follow-up re-reads the same read-only bridge (no new contract)");
+  // 等待态与 live 提示（pending 哨兵=后端「尚未保存」错误文案的稳定短语）。
+  ok(panel.includes('TRANSCRIPT_PENDING_MARKER = "has not been saved yet"'), "pending sentinel keys off the backend not-yet-saved error");
+  ok(panel.includes('data-testid="wf-node-trace-waiting"'), "waiting state renders the live-follow copy (transcript not on disk yet)");
+  ok(panel.includes('data-testid="wf-node-trace-live"'), "live-follow hint renders beside ready content while running");
+  ok(panel.includes("data-wf-trace-state={viewStatus}"), "view state attribute carries the full status set");
+  ok(panel.includes('trace?.status === "waiting" && !running ? "failed" : trace?.status'), "waiting honestly flips to failed once the node is terminal");
+  // 降级显示保留：无 transcript（无 refs）时运行中入口照旧不渲染、终态照旧给说明行。
+  ok(panel.includes("if (!terminal) return null;"), "degraded display preserved: running node without refs still renders no entry");
+  ok(panel.includes('data-testid="wf-node-trace-missing"'), "degraded missing-row survives the append");
+  ok(panel.includes('t("workflowPanel.detail.processReadOnly")'), "read-only statement still rendered alongside the live-follow view");
+
+  // 只读铁律不变：Go harness 零写入断言仍在（读面零写入，轮询只是只读桥重入）。
+  const goTest = readRepo("desktop/workflow_node_subagent_test.go");
+  ok(goTest.includes("func TestReadWorkflowNodeSubagentReturnsMessagesAndWritesNothing"), "Go zero-write acceptance test survives the append");
+  ok(goTest.includes("func assertDirUnchanged"), "Go content+mtime+file-set assertion survives the append");
+
+  // 后端哨兵短语与 desktop 桥错误文案一致（跨语言钉）。
+  const goBridge = readRepo("desktop/workflow_runs_app.go");
+  ok(goBridge.includes("has not been saved yet or was cleaned up"), "backend sentinel phrase intact (frontend classifies on it)");
+
+  // 写侧 harness（agent 周期快照 + opt-in 边界 + stop 契约）。
+  const autoSave = readRepo("internal/agent/subagent_transcript_autosave.go");
+  ok(autoSave.includes("func WithSubagentTranscriptAutosave("), "workflow dispatch marker exists (opt-in write side)");
+  ok(autoSave.includes("<-finished"), "stop waits out the in-flight snapshot (terminal save has no concurrent writer)");
+  ok(autoSave.includes("run.Session.Save(path)"), "snapshots reuse the Session.Save CAS protocol (no bespoke bytes, Windows-safe by inheritance)");
+  const autoSaveTest = readRepo("internal/agent/subagent_transcript_autosave_test.go");
+  ok(autoSaveTest.includes("func TestWorkflowDispatchAutosavePersistsMidRun"), "Go harness: mid-run snapshot acceptance (simulated append → disk content follows)");
+  ok(autoSaveTest.includes("func TestPlainDispatchKeepsTerminalOnlyPersistence"), "Go harness: opt-in boundary (plain dispatch stays terminal-only)");
+  ok(autoSaveTest.includes("func TestTranscriptAutosaveSnapshotsAndStopsCleanly"), "Go harness: stop contract (zero writes after stop) pinned");
+
+  // 登记面 harness（mint 即时上报 + 重复上报幂等）。
+  const runner = readRepo("internal/workflow/runner.go");
+  ok(runner.includes("agent.OnSubagentRefRecorded("), "runner registers the ref at mint time (mid-run visibility, before Execute returns)");
+  ok(runner.includes("agent.WithSubagentTranscriptAutosave("), "runner arms the mid-run snapshot autosave");
+  const wfTest = readRepo("internal/workflow/tl1434_subagent_trace_test.go");
+  ok(wfTest.includes("func TestServiceSubagentRefDuplicateReportIsIdempotent"), "Go harness: immediate + fallback double report dedup (occurrence never doubles)");
+
+  // 三语：新增 processLive 键。
+  ok("workflowPanel.detail.processLive" in zh, "zh has processLive");
+  ok("workflowPanel.detail.processLive" in zhTW, "zh-TW has processLive");
+  ok(read("src/locales/en.ts").includes('"workflowPanel.detail.processLive"'), "en has processLive");
+  ok(zh["workflowPanel.detail.processLive"].includes("新写入自动跟进"), "zh live copy states the follow promise");
+  ok(zhTW["workflowPanel.detail.processLive"].includes("新寫入自動跟進"), "zh-TW live copy states the follow promise");
 }
 
 process.stdout.write(`\ntl1434 workflow node trace: ${passed} passed, ${failed} failed\n`);

@@ -577,6 +577,8 @@ var English = Messages{
 	ProviderErrRateLimited:         "Rate limit reached (HTTP 429): too many requests (TPM/RPM). Retried with backoff — slow down or try again shortly.",
 	ProviderErrServer:              "Server error (HTTP 500): the provider hit an internal fault. Retried with backoff; if it keeps failing, try again later.",
 	ProviderErrServerBusy:          "Server busy (HTTP 503): the provider is overloaded. Retried with backoff; please try again shortly.",
+	ProviderErrBadGateway:          "Bad gateway (HTTP 502): the provider's gateway returned an invalid response. Retried with backoff; if it keeps failing, check the provider's status page or your proxy.",
+	ProviderErrGatewayTimeout:      "Gateway timeout (HTTP 504): the provider's gateway did not respond in time. Retried with backoff; if it keeps failing, check the provider's status page or your proxy.",
 	ProviderErrWaitExhaustedFmt:    "Reasonix stopped waiting after %s: the provider stayed unreachable through every retry. Check your network, proxy, or the provider's status page, then send the message again.",
 
 	SelectOneHint:  "(↑/↓ · Enter · q to cancel; / to search)",

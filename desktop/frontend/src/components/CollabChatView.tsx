@@ -11,6 +11,12 @@
 //
 // 用户 1138：文本截断处（链名/预览/群名）一律挂 title hover 提示。
 //
+// tl1439 修②：打开即恢复「上次打开」——通道 tab（collabChat.lastTab）、对话
+// 链（collabChat.lastDirectsPair）、群聊（collabChat.lastGroupsChannel）三键
+// 按 scope 各自记忆（lib/collabChatMemory.ts）；恢复前先对照列表校验，目标已
+// 删除/归档/解散即丢弃记忆回落默认视图。显式回到列表（链 tab 重击/群返回键/
+// 退群/解散）即清对应记忆。
+//
 // 409 观察窗（sessions 视图）按计划降级为本视图的辅助入口——「协作动态」
 // 次级按钮弹出 CollabGroupPanel（embedded + sessionsOnly 形态）。刷新机制
 // 零新增：各半边自管轮询与退避。
@@ -25,6 +31,14 @@ import { CollabGroupPanel } from "./CollabGroupPanel";
 import { getLocale, useT } from "../lib/i18n";
 // 任务1012：回放视图时间戳补日期——与消息气泡同一三档契约（lib/messageTimestamp.ts）。
 import { formatMessageTimestamp } from "../lib/messageTimestamp";
+// tl1439 修②：「上次打开」记忆（tab/对话链/群聊三键，读侧恢复均先校验列表）。
+import {
+  readCollabChatTab,
+  writeCollabChatTab,
+  readCollabChatLastPairId,
+  writeCollabChatLastPairId,
+  readCollabChatLastChannelId,
+} from "../lib/collabChatMemory";
 
 // ── ⑦ 打开会话的模块信号（App.tsx 注册；组件树经此发起导航）────────
 const sessionJumpListeners = new Set<(contactId: string) => void>();
@@ -44,7 +58,8 @@ type ChatChannelTab = "directs" | "groups";
 
 export function CollabChatView() {
   const t = useT();
-  const [tab, setTab] = useState<ChatChannelTab>("groups");
+  // tl1439 修②：通道 tab 恢复上次停留处（无记录/损坏值回落群聊=现状默认）。
+  const [tab, setTab] = useState<ChatChannelTab>(() => readCollabChatTab());
   // 409 观察窗降级形态：次级按钮弹出，关即卸载。
   const [activityOpen, setActivityOpen] = useState(false);
 
@@ -83,6 +98,18 @@ export function CollabChatView() {
   useEffect(() => {
     if (tab === "directs") void refreshPairs();
   }, [tab, refreshPairs]);
+
+  // tl1439 修②：「上次打开的对话链」恢复——列表就绪后校验记忆 pairId 仍在
+  // 列表里才恢复；已被删除/归档 → 丢弃记忆、回落占位视图（验收③：不报错不
+  // 空白）。只消费一次（重试/重拉不重复代开，用户后续手开不覆写判定）。
+  const lastPairRestoreRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!pairs || lastPairRestoreRef.current !== undefined) return;
+    lastPairRestoreRef.current = null;
+    const stored = readCollabChatLastPairId();
+    if (!stored) return;
+    if (pairs.some((p) => p.pairId === stored)) setOpenPairId(stored);
+  }, [pairs]);
 
   // 打开一条链：拉双向回放。
   useEffect(() => {
@@ -163,7 +190,14 @@ export function CollabChatView() {
             role="tab"
             aria-selected={tab === "directs"}
             className={`collab-chat-view__tab${tab === "directs" ? " collab-chat-view__tab--on" : ""}`}
-            onClick={() => { setTab("directs"); setOpenPairId(null); }}
+            onClick={() => {
+              // tl1439 修②：回链列表 = 显式关闭打开中的链，记忆同步清（重开
+              // 不再代开）；tab 停留处照落。
+              setTab("directs");
+              setOpenPairId(null);
+              writeCollabChatTab("directs");
+              writeCollabChatLastPairId(null);
+            }}
           >
             {t("collabHub.channel.directs")}
           </button>
@@ -172,7 +206,7 @@ export function CollabChatView() {
             role="tab"
             aria-selected={tab === "groups"}
             className={`collab-chat-view__tab${tab === "groups" ? " collab-chat-view__tab--on" : ""}`}
-            onClick={() => setTab("groups")}
+            onClick={() => { setTab("groups"); writeCollabChatTab("groups"); }}
           >
             {t("collabHub.channel.groups")}
           </button>
@@ -192,7 +226,10 @@ export function CollabChatView() {
         {tab === "groups" ? (
           <ChannelChatPanel
             onOpenSession={jumpTo}
-            onViewDirectChains={() => { setTab("directs"); setOpenPairId(null); }}
+            onViewDirectChains={() => { setTab("directs"); setOpenPairId(null); writeCollabChatLastPairId(null); }}
+            // tl1439 修②：注入「上次打开的群」初值（挂载后列表校验再恢复；
+            // 每次渲染现读存储——切 tab 重挂也能拿到最新记忆）。
+            initialOpenChannelId={readCollabChatLastChannelId()}
           />
         ) : (
           <>
@@ -215,7 +252,7 @@ export function CollabChatView() {
                   key={p.pairId}
                   type="button"
                   className={`collab-chat-view__diritem${openPairId === p.pairId ? " collab-chat-view__diritem--on" : ""}`}
-                  onClick={() => setOpenPairId(p.pairId)}
+                  onClick={() => { setOpenPairId(p.pairId); writeCollabChatLastPairId(p.pairId); }}
                 >
                   {/* 用户 1138：链名截断时 hover 提示完整链名。 */}
                   <span className="collab-chat-view__dirname" title={pairTitle(p)}>

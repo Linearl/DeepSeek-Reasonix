@@ -38,7 +38,7 @@ func (a *App) restoreOrBuildTabs() {
 	_, _ = config.MigrateLegacyIfNeeded()
 	// 任务 824 ①: P1 串行段逐段计时。只包住既有调用，不改变任何顺序。
 	topicReconcileStart := time.Now()
-	if err := reconcileTopicArchiveMetadataPending(a.deleteTopic); err != nil {
+	if err := a.reconcileTopicArchiveMetadataPending(); err != nil {
 		slog.Warn("desktop: topic archive metadata reconciliation remains pending")
 	}
 	bootTimelineNoteP1("topic_reconcile", time.Since(topicReconcileStart))

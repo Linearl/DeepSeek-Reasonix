@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
@@ -79,22 +78,12 @@ func (g *formatTurnDoneGate) Emit(e event.Event) {
 
 func receiveObservedTurnFormat(t *testing.T, observed <-chan observedTurnFormat) observedTurnFormat {
 	t.Helper()
-	select {
-	case got := <-observed:
-		return got
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for submitted turn")
-		return observedTurnFormat{}
-	}
+	return waitForValue(t, "timed out waiting for submitted turn", observed)
 }
 
 func waitForFormatTestSignal(t *testing.T, signal <-chan struct{}, message string) {
 	t.Helper()
-	select {
-	case <-signal:
-	case <-time.After(5 * time.Second):
-		t.Fatal(message)
-	}
+	waitForSignal(t, message, signal)
 }
 
 // TestSubmitHTTPFormatBindsToTurn holds the first turn's finishing window open,

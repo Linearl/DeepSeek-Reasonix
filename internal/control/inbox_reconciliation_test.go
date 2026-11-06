@@ -64,19 +64,11 @@ func TestSteerEventFollowsDurableConsumedTransition(t *testing.T) {
 		t.Fatal(err)
 	}
 	close(prov.release)
-	select {
-	case state := <-observed:
-		if state != sessioninbox.StateSteerConsumed {
-			t.Fatalf("state at steer event = %q, want %q", state, sessioninbox.StateSteerConsumed)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for steer event")
+	state := waitForValue(t, "timed out waiting for steer event", observed)
+	if state != sessioninbox.StateSteerConsumed {
+		t.Fatalf("state at steer event = %q, want %q", state, sessioninbox.StateSteerConsumed)
 	}
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for turn completion")
-	}
+	waitForSignal(t, "timed out waiting for turn completion", done)
 }
 
 func TestCancelWithInboxItemsResultRestoresOnlyUnconsumedItems(t *testing.T) {

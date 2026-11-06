@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -28,9 +29,19 @@ import (
 // 多标签各用各的基底，互不串线。事件水槽按次捕获：workflow_run 的调用上下文
 // 携带发起会话的 sink，节点事件嵌进发起会话的事件流（面板由此点亮）。
 
-// RunState 是一次运行的服务侧状态（工具与面板共读）。interrupted（任务
-// 1316）= 进程重启后从磁盘恢复的未完 run，可续跑；由启动恢复标定，本进程
-// 内不产生（本进程未完即 running）。
+// RunState 是一次运行的服务侧状态（工具与面板共读）。语义边界（tl1447 收口，
+// failed≠interrupted）：
+//
+//	running     — 运行中（本进程活着，未终态）。
+//	completed   — 全部节点完成，终态，不可续（没有可续的东西）。
+//	interrupted — 运行被中断（进程重启丢态、或用户经面板停止 tl1447），断点
+//	              在盘即「可续」；续跑只对本态开放。
+//	failed      — 真实失败（引擎节点报错终态），不可续——定义已漂移或执行已
+//	              失败到断点不可信的程度，从头重跑才是明确下一步。
+//
+// 停止（用户主动 cancel）落 interrupted 而非 failed（tl1447：停止≠失败）——
+// 停止只是「现在别跑了」，断点仍是有效进度；旧版本落 failed 的盘上快照保持
+// failed 语义不翻案（重跑），仅新停止落可续态。
 type RunState string
 
 const (
@@ -333,12 +344,14 @@ func (s *Service) prepareResumeLocked(runID string, wf *Workflow) (*RunRecord, *
 		return nil, nil, fmt.Errorf("run %q already completed; there is nothing to resume", runID)
 	}
 	if state != RunInterrupted {
-		// failed 终态：用户主动取消的不可续（对齐「user stopped on purpose」
-		// 语义——重新 workflow_run 从头跑是明确的下一步），真实失败可续。
+		// failed 终态不可续（tl1447 语义边界：failed=真实失败，断点不可信，
+		// 从头重跑是明确下一步）。tl1447 后用户停止已落 interrupted（可续），
+		// 走到这里的 cancelled 行只剩旧版本盘上快照的 legacy 形态——文案按
+		// 「旧版停止记录」与「真实失败」分叉，两版都给已存在的下一步。
 		if cancelled {
-			return nil, nil, fmt.Errorf("run %q was cancelled on purpose; resuming it is not supported — start a fresh run with workflow_run instead", runID)
+			return nil, nil, fmt.Errorf("run %q was stopped by an earlier build that recorded stops as failed; resuming it is not supported — start a fresh run with workflow_run instead", runID)
 		}
-		return nil, nil, fmt.Errorf("run %q is %s and holds no checkpoint to resume; start a fresh run with workflow_run instead", runID, state)
+		return nil, nil, fmt.Errorf("run %q failed and holds no trustworthy checkpoint to resume; start a fresh run with workflow_run instead", runID)
 	}
 	snap, err := loadRunSnapshot(s.persistDir, runID)
 	if err != nil {
@@ -503,6 +516,12 @@ func (s *Service) ResumeRunFromPanel(ctx context.Context, runID string) (builtin
 // recordSubagentRef 是 tl1434 的登记落点（runner 派发尾经 runCtx 闭包调
 // 用，任意 goroutine）：append-only 追加该节点的执行实例关联，不触碰既有
 // 六态/输出记录（并发安全口径与 recordNode 相同——rec.mu 串行化）。
+//
+// tl1434 追加：幂等去重——同节点尾部相同 ref 视为同一执行实例的重复上报
+// （运行中 mint 即时登记 + Execute 返回兜底各报一次），不重复 append。
+// occurrence 的语义=不同执行实例（transcript），不是不同次上报；ref 由
+// PrepareFresh 每次 mint 唯一 id，同一节点合法地再现同 ref 只可能是上报
+// 重复，故只比尾部即可。
 func (s *Service) recordSubagentRef(runID string, req SubagentRequest, ref, parentSession string) {
 	s.mu.Lock()
 	rec, ok := s.runs[runID]
@@ -516,6 +535,10 @@ func (s *Service) recordSubagentRef(runID string, req SubagentRequest, ref, pare
 		nr = &nodeRecord{}
 		rec.nodes[req.NodeID] = nr
 		rec.order = append(rec.order, req.NodeID)
+	}
+	if n := len(nr.subagentRefs); n > 0 && nr.subagentRefs[n-1] == ref {
+		rec.mu.Unlock()
+		return
 	}
 	nr.subagentRefs = append(nr.subagentRefs, ref)
 	nr.subagentRefParents = append(nr.subagentRefParents, parentSession)
@@ -596,7 +619,10 @@ func (s *Service) Snapshot() []RunSnapshot {
 			Err:       rec.Err,
 			Report:    rec.Report,
 			Def:       rec.def,
-			Resumable: rec.resumableOK && rec.State == RunInterrupted && !rec.cancelled,
+			// Resumable（任务 1316）：面板「可续跑」徽章与续跑钮的判定（服务侧
+			// 单一真相；前端不算指纹）。interrupted + 定义存在 + 指纹匹配。
+			// tl1447：用户停止也落 interrupted（cancelled 仅作来源标记），不再排除。
+			Resumable: rec.resumableOK && rec.State == RunInterrupted,
 		}
 		for _, nid := range rec.order {
 			nr := rec.nodes[nid]
@@ -647,9 +673,13 @@ func (s *Service) finishRun(runID string, report *WorkflowReport, runErr error) 
 	rec.EndedAt = time.Now()
 	rec.Report = report
 	switch {
-	case runErr != nil && cancelled:
-		rec.State = RunFailed
-		rec.Err = "cancelled"
+	case runErr != nil && cancelled && errors.Is(runErr, context.Canceled):
+		// tl1447：用户停止落「可续态」而非 failed——停止≠失败（RunState 语义
+		// 表）。断点随节点终态已落盘；有断点即标可续（prepareResume 读盘校验
+		// 兜底），面板续跑钮（resumable）由此点亮，卡死处置不再只能整跑重来。
+		rec.State = RunInterrupted
+		rec.Err = ""
+		rec.resumableOK = rec.lastCP != nil && s.persistDir != ""
 	case runErr != nil:
 		rec.State = RunFailed
 		rec.Err = runErr.Error()
@@ -740,6 +770,11 @@ func (s *Service) restoreFromDisk() {
 		switch snap.State {
 		case string(RunRunning):
 			rec.State = RunInterrupted
+		case string(RunInterrupted):
+			// tl1447：用户停止落的可续态快照（写终态时就是 interrupted）。
+			// cancelled 随行保留来源标记；可续判定与 running→interrupted 同口。
+			rec.State = RunInterrupted
+			rec.cancelled = snap.Cancelled
 		case string(RunCompleted):
 			rec.State = RunCompleted
 		case string(RunFailed):

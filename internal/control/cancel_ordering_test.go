@@ -42,17 +42,19 @@ func TestCancelSignalsTurnBeforeStatusBarrier(t *testing.T) {
 		c.Cancel()
 		close(cancelReturned)
 	}()
+	// 超时分支需先放行 status 屏障再 fail(防其它 goroutine 死锁),保留 select
+	// 只换负载容忍窗。
 	select {
 	case <-turnCtxDone:
-	case <-time.After(5 * time.Second):
+	case <-time.After(controlTestReceiveWindow):
 		close(releaseStatus)
-		t.Fatal("turn context was not cancelled before the status barrier")
+		t.Fatalf("turn context was not cancelled before the status barrier (window %s)", controlTestReceiveWindow)
 	}
 	select {
 	case <-statusEntered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(controlTestReceiveWindow):
 		close(releaseStatus)
-		t.Fatal("cancel never emitted the cancelling status")
+		t.Fatalf("cancel never emitted the cancelling status (window %s)", controlTestReceiveWindow)
 	}
 	select {
 	case <-cancelReturned:
@@ -61,11 +63,7 @@ func TestCancelSignalsTurnBeforeStatusBarrier(t *testing.T) {
 	default:
 	}
 	close(releaseStatus)
-	select {
-	case <-cancelReturned:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Cancel did not return after the barrier was released")
-	}
+	waitForSignal(t, "Cancel did not return after the barrier was released", cancelReturned)
 }
 
 // A cancelling status stamped for a turn that already terminated must not turn

@@ -154,12 +154,25 @@ async function openPanelAndSynthesize(report: HeadSynthesisReport | Error): Prom
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  // The synthesis button lives on the session row, which renders once the
-  // merged group expands (tl1415b: v3-only 会话在已合入组,默认折叠)。
+  // tl1415b: v3-only 会话在已合入组,默认折叠——点组段行展开。
   await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement)?.click(); });
   await flush();
-  const synthBtn = buttonByText("Synthesize longest chain");
-  await act(async () => { synthBtn?.click(); });
+  // tl1415b-2(点2/点3): 会话行默认折叠+合成唯一入口在底部③——展开会话行,
+  // 勾选后点底部「以选定 HEAD 合成最长链」,无副本+多 heads 按形态路由到头
+  // 合成(确认链不变,仍是「Start synthesis」)。
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
+  await flush();
+  const checkbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
+  await act(async () => { checkbox?.click(); });
+  await flush();
+  const mergeBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
+    (b) => b.textContent?.includes("Merge into longest chain"),
+  );
+  await act(async () => { mergeBtn?.click(); });
   await flush();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
     .find((b) => b.textContent?.trim() === "Start synthesis");

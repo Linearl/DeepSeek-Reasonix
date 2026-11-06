@@ -189,13 +189,9 @@ func TestWedgedSyncTurnStillHeals(t *testing.T) {
 	if stalled < 60*time.Millisecond {
 		t.Fatalf("stalled = %v, want ≥ threshold", stalled)
 	}
-	select {
-	case err := <-bodyDone:
-		if err == nil {
-			t.Fatal("the healed synchronous turn must unwind with an error")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the healed synchronous turn body never returned")
+	err := waitForValue(t, "the healed synchronous turn body never returned", bodyDone)
+	if err == nil {
+		t.Fatal("the healed synchronous turn must unwind with an error")
 	}
 	waitIdleAdmission(t, c)
 }

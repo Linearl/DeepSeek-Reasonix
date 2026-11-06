@@ -9,12 +9,17 @@ export function reduceSubmitFailure(
   error: string,
   conservative: boolean,
   observedAt: number,
+  // tl1446-4: the raw backend error behind the localized human line — lands
+  // in the notice's expandable detail (M1 folded form, mirror of
+  // retryExhausted) instead of being baked into the text.
+  detail?: string,
 ): State {
   if (state.pendingSubmissionId !== submissionId) return state;
   const index = state.items.findIndex((item) => item.kind === "user" && item.submissionId === submissionId);
   const items = index < 0
     ? state.items
     : state.items.map((item, itemIndex) => itemIndex === index ? { ...item, submissionId: undefined, failed: true } : item);
+  const trimmedDetail = detail?.trim();
   const next = {
     ...state,
     pendingUser: undefined,
@@ -22,7 +27,7 @@ export function reduceSubmitFailure(
     deliveryRecoveryActive: false,
     cancelRequested: false,
     seq: state.seq + 1,
-    items: [...removeEmptyAssistantItems(items), { kind: "notice", id: `n${state.seq}`, level: "warn", text: error } as Item],
+    items: [...removeEmptyAssistantItems(items), { kind: "notice", id: `n${state.seq}`, level: "warn", text: error, ...(trimmedDetail ? { detail: trimmedDetail } : {}) } as Item],
   };
   // Keep the turn id alive while a server-side prompt (ask/approval/mcp)
   // is still pending on that turn: clearing it dead-locks every later

@@ -261,6 +261,21 @@ try {
   const cardSingle = container.textContent ?? "";
   ok(!cardSingle.includes("轮") && !cardSingle.includes("round"), `single-pass card has no round suffix: ${JSON.stringify(cardSingle)}`);
 
+  // tl1446-6: the failed card's reason localizes by exact match against the
+  // backend's closed reason set; an unknown reason stays verbatim (M3 form).
+  const failedKnown: Item = { kind: "compaction", id: "c3", pending: false, failed: true, attempt: 1, reason: "summarizer request failed", trigger: "pressure", messages: 0, summary: "", archive: "" };
+  act(() => renderCard(failedKnown));
+  const cardFailedKnown = container.textContent ?? "";
+  // The en copy is "the summarizer request failed"; the raw backend reason is
+  // the same string WITHOUT the leading "the" — its presence proves the map
+  // rendered the dict key instead of the raw text.
+  ok(cardFailedKnown.includes("the summarizer request failed"), `known reason renders the localized (en) copy: ${JSON.stringify(cardFailedKnown)}`);
+
+  const failedUnknown: Item = { kind: "compaction", id: "c4", pending: false, failed: true, attempt: 2, reason: "pinned-context-too-large: checkpoint prevents compaction from reducing context", trigger: "pressure", messages: 0, summary: "", archive: "" };
+  act(() => renderCard(failedUnknown));
+  const cardFailedUnknown = container.textContent ?? "";
+  ok(cardFailedUnknown.includes("pinned-context-too-large"), `unknown reason stays verbatim: ${JSON.stringify(cardFailedUnknown)}`);
+
   await act(async () => {
     root?.unmount();
     root = null;

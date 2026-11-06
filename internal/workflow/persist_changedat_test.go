@@ -99,7 +99,8 @@ func TestServiceRestoreBackfillsCheckpointChangedAt(t *testing.T) {
 		svc1.CancelRun(res.RunID)
 		waitFor(t, 5*time.Second, func() bool {
 			st, err := svc1.WorkflowStatus(ctx, res.RunID)
-			return err == nil && len(st.Runs) == 1 && st.Runs[0].State == string(RunFailed)
+			// tl1447：停止落 interrupted（可续态）而非 failed。
+			return err == nil && len(st.Runs) == 1 && st.Runs[0].State == string(RunInterrupted)
 		})
 	}()
 	waitFor(t, 5*time.Second, func() bool { return runSnapshotOnDiskHas(dir, res.RunID, "first") })

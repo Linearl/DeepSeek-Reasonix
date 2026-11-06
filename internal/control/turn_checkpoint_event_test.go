@@ -55,13 +55,7 @@ func newCheckpointEventController(runner *checkpointEventRunner) (*Controller, <
 
 func receiveCheckpointTurnDone(t *testing.T, events <-chan event.Event) event.Event {
 	t.Helper()
-	select {
-	case e := <-events:
-		return e
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for TurnDone")
-		return event.Event{}
-	}
+	return waitForValue(t, "timed out waiting for TurnDone", events)
 }
 
 func requireCheckpointTurn(t *testing.T, e event.Event, want int) {
@@ -101,11 +95,7 @@ func TestCancelledTurnDoneCarriesRetainedUserCheckpoint(t *testing.T) {
 	defer controller.Close()
 
 	controller.Send("cancel this prompt")
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("runner did not start")
-	}
+	waitForSignal(t, "runner did not start", started)
 	controller.Cancel()
 	done := receiveCheckpointTurnDone(t, events)
 	if !done.Cancelled || done.Err != nil || done.Status != event.TurnRecoveryRequired || done.Recovery == nil || done.Recovery.Reason != "silent_interruption" {
@@ -122,11 +112,7 @@ func TestCancelBeforeRunnerAddsUserCarriesFallbackCheckpoint(t *testing.T) {
 	defer controller.Close()
 
 	controller.Send("cancel before user append")
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("runner did not start")
-	}
+	waitForSignal(t, "runner did not start", started)
 	controller.Cancel()
 	done := receiveCheckpointTurnDone(t, events)
 	requireCheckpointTurn(t, done, 0)
@@ -235,11 +221,7 @@ func TestParkedTurnsKeepIndependentCheckpointCandidates(t *testing.T) {
 	defer controller.Close()
 
 	controller.Send("first prompt")
-	select {
-	case <-firstDelivery:
-	case <-time.After(5 * time.Second):
-		t.Fatal("first TurnDone delivery did not start")
-	}
+	waitForSignal(t, "first TurnDone delivery did not start", firstDelivery)
 	controller.Send("parked second prompt")
 	close(releaseFirst)
 	requireCheckpointTurn(t, receiveCheckpointTurnDone(t, events), 0)

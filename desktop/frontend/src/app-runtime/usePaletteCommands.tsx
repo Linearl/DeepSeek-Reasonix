@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { AlarmClock, Activity, BarChart3, Brain, Cpu, Palette, Puzzle, RotateCw, Server, Settings as SettingsIcon, SquarePen, TerminalSquare, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { useGlobalShortcut } from "../lib/keyboardShortcuts";
 import { clearThemePack } from "../lib/themePack";
@@ -103,7 +104,7 @@ export function usePaletteCommands(input: PaletteCommandsInput) {
               clearThemePack();
               notice(t("settings.themeReset"));
             })
-            .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
+            .catch((err) => showToast(formatActionError("action.themeReset", err), "error"));
         },
       },
       { id: "cmd-memory", group: t("palette.group.commands"), title: t("palette.cmd.memory"), icon: <Brain size={15} />, compact: true, keywords: ["memory", "记忆"], run: () => navigation.setSettingsTarget("memory") },
@@ -136,7 +137,7 @@ export function usePaletteCommands(input: PaletteCommandsInput) {
           const tabID = activeTabId;
           if (!tabID) return;
           // Success/queued feedback arrives as a tab notice; only hard failures need a toast.
-          void app.ReloadRuntime(tabID).catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
+          void app.ReloadRuntime(tabID).catch((err) => showToast(formatActionError("palette.cmd.reloadRuntime", err), "error"));
         },
       },
     ];
@@ -192,7 +193,7 @@ export function usePaletteCommands(input: PaletteCommandsInput) {
           .then((message) => {
             if (message) showToast(message, "info");
           })
-          .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
+          .catch((err) => showToast(formatActionError("action.extensionRun", err), "error"));
       },
     }));
     return [...(remoteSurfaceActive ? cmds.filter((item) => item.id !== "cmd-terminal" && item.id !== "cmd-reload-runtime") : cmds), ...extensionItems, ...remoteItems, ...sessionItems];

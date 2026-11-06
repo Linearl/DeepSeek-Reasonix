@@ -516,11 +516,7 @@ func TestCancelSlashSubagentStopsChildAndKeepsParentSessionUsable(t *testing.T) 
 		},
 	})
 	c.Submit("/helper inspect auth")
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("slash subagent did not start")
-	}
+	waitForSignal(t, "slash subagent did not start", started)
 	c.Cancel()
 	gotEvents := waitForTurnEvents(t, events)
 	waitIdle(t, c)

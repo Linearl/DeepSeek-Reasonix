@@ -45,6 +45,10 @@ type ForegroundSubagentView struct {
 	Description      string `json:"description,omitempty"`
 	StartedAt        int64  `json:"startedAt"` // unix milliseconds
 	ParentToolCallID string `json:"parentToolCallId,omitempty"`
+	// LastActivityAt（tl1447）是子代理最后一次可观测活动的时刻（unix ms）：
+	// 登记时（lifecycle 活相）打起点，此后每个带 ref 的进度事件刷新。运行行
+	// 的静默时长 = now - LastActivityAt，越阈值即心跳警示徽章（异常先发声）。
+	LastActivityAt int64 `json:"lastActivityAt,omitempty"`
 }
 
 // foregroundSubagentEntry is the registry record for one running foreground
@@ -54,6 +58,7 @@ type foregroundSubagentEntry struct {
 	description      string
 	startedAt        int64 // unix milliseconds
 	parentToolCallID string
+	lastActivity     int64 // unix milliseconds; tl1447 活跃性判定面
 }
 
 // foregroundLifecycleAlivePhases are the lifecycle phases that mean "this ref
@@ -103,11 +108,32 @@ func (a *App) noteSubagentLifecycle(tabID string, info event.SubagentLifecycleIn
 			refs = make(map[string]foregroundSubagentEntry)
 			a.foregroundSubagents[tabID] = refs
 		}
-		refs[info.Ref] = foregroundSubagentEntry{name: info.Skill, description: info.Description, startedAt: startedAt, parentToolCallID: info.ParentToolCallID}
+		refs[info.Ref] = foregroundSubagentEntry{name: info.Skill, description: info.Description, startedAt: startedAt, parentToolCallID: info.ParentToolCallID, lastActivity: startedAt}
 		a.foregroundSubagentsMu.Unlock()
 	case foregroundLifecycleTerminalPhases[info.Phase]:
 		a.removeForegroundSubagent(tabID, info.Ref)
 	}
+}
+
+// noteSubagentActivity（tl1447）刷新一个运行中前台子代理的最后活跃时刻。
+// 调用源是 tabEventSink.Emit：子代理进度管道的每个事件（ToolProgress，带
+// SubagentRef）都是可观测活动——reasoning/text/notice 预览与阶段变迁都会
+// 走它，静默时长因此覆盖「长工具调用不产预览」的真实静默。仅刷新既有行：
+// 后台子代理不进本登记表（job 行代表它），无主 ref 天然 no-op，所以本函数
+// 永远不凭一个活动事件造行（造行是 lifecycle 活相的特权）。
+func (a *App) noteSubagentActivity(tabID, ref string) {
+	if a == nil || strings.TrimSpace(tabID) == "" || strings.TrimSpace(ref) == "" {
+		return
+	}
+	now := time.Now().UnixMilli()
+	a.foregroundSubagentsMu.Lock()
+	if refs := a.foregroundSubagents[tabID]; refs != nil {
+		if entry, ok := refs[ref]; ok {
+			entry.lastActivity = now
+			refs[ref] = entry
+		}
+	}
+	a.foregroundSubagentsMu.Unlock()
 }
 
 // removeForegroundSubagent drops one ref from a tab's set, pruning the tab
@@ -215,6 +241,12 @@ func (a *App) RunningSubagents() []ForegroundSubagentView {
 
 	out := make([]ForegroundSubagentView, 0, len(stagedEntries))
 	for _, item := range stagedEntries {
+		lastActivity := item.entry.lastActivity
+		if lastActivity == 0 {
+			// 旧登记行无活跃面（升级窗口）：退化为起点，静默从起点起算——
+			// 宁可早示警也不谎报「刚活跃过」。
+			lastActivity = item.entry.startedAt
+		}
 		out = append(out, ForegroundSubagentView{
 			TabID:            item.tabID,
 			Title:            titles[item.tabID],
@@ -223,6 +255,7 @@ func (a *App) RunningSubagents() []ForegroundSubagentView {
 			Description:      item.entry.description,
 			StartedAt:        item.entry.startedAt,
 			ParentToolCallID: item.entry.parentToolCallID,
+			LastActivityAt:   lastActivity,
 		})
 	}
 	// Deterministic order: start time, then tab, then ref — map iteration is

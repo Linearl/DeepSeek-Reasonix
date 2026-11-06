@@ -717,6 +717,9 @@ export function Composer({
   onCapsuleDeleteSubagent,
   onCapsuleClearEndedSubagents,
   onCapsuleSendSubagentMessage,
+  capsuleWorkflowRuns,
+  capsuleWorkflowRecentRuns,
+  onCapsuleOpenWorkflowRun,
   onInvocationMetadataChange,
 }: {
   running: boolean;
@@ -907,6 +910,13 @@ export function Composer({
   onCapsuleClearEndedSubagents?: (sessionPath: string) => Promise<number>;
   // 任务616: persist-first message send into a sub-agent's mailbox.
   onCapsuleSendSubagentMessage?: (sessionPath: string, ref: string, summary: string, text: string) => Promise<import("../lib/types").SubagentSendReceiptView>;
+  // tl1433 四缺口①④: workflow runs for the capsule — the running subset and
+  // the just-finished subset of the same workflowRunFeed the task panel reads
+  // (App subscribes once), plus the shared exit that opens the workflow panel
+  // on a run. Pass-through only; absent = byte-for-byte pre-1433 capsule.
+  capsuleWorkflowRuns?: readonly import("../lib/workflowTypes").WireWorkflowRun[];
+  capsuleWorkflowRecentRuns?: readonly import("../lib/workflowTypes").WireWorkflowRun[];
+  onCapsuleOpenWorkflowRun?: (runId: string) => void;
 }) {
   const { t, locale } = useI18n();
   const { showToast } = useToast();
@@ -6121,6 +6131,9 @@ export function Composer({
                   onDeleteSubagent={onCapsuleDeleteSubagent}
                   onClearEndedSubagents={onCapsuleClearEndedSubagents}
                   onSendMessage={onCapsuleSendSubagentMessage}
+                  workflowRuns={capsuleWorkflowRuns}
+                  workflowRecentRuns={capsuleWorkflowRecentRuns}
+                  onOpenWorkflowRun={onCapsuleOpenWorkflowRun}
                 />
               </div>
             )}

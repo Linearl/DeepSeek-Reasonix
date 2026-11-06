@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
@@ -47,13 +46,8 @@ func runHeadlessWriteOnce(t *testing.T, mode string, askRules []string) (prompts
 
 	done := make(chan error, 1)
 	go func() { done <- c.runTurnWithRaw(context.Background(), "edit", "edit") }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("runTurnWithRaw: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatalf("headless %s must not block on a write", mode)
+	if err := waitForValue(t, "headless "+mode+" must not block on a write", done); err != nil {
+		t.Fatalf("runTurnWithRaw: %v", err)
 	}
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
@@ -138,13 +132,8 @@ func TestApplyHeadlessApprovalModeDontAskDeniesWithoutPrompting(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() { done <- c.runTurnWithRaw(context.Background(), "edit", "edit") }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("runTurnWithRaw: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("headless dontAsk must not block")
+	if err := waitForValue(t, "headless dontAsk must not block", done); err != nil {
+		t.Fatalf("runTurnWithRaw: %v", err)
 	}
 	if prompts != 0 {
 		t.Fatalf("approval prompts = %d, want 0 (dontAsk denies silently)", prompts)
@@ -251,13 +240,8 @@ func TestBuildHeadlessApprovalGateMatchesParentExecutorContract(t *testing.T) {
 
 		done := make(chan error, 1)
 		go func() { done <- ag.Run(context.Background(), "edit") }()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Fatalf("Run: %v", err)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatalf("sub-agent gate in %s mode must not block", mode)
+		if err := waitForValue(t, "sub-agent gate in "+mode+" mode must not block", done); err != nil {
+			t.Fatalf("Run: %v", err)
 		}
 		writer.mu.Lock()
 		defer writer.mu.Unlock()
@@ -298,13 +282,8 @@ func TestSetToolApprovalModePropagatesToSubagentGate(t *testing.T) {
 		ag := agent.New(prov, reg, agent.NewSession(""), agent.Options{Gate: subagentGate}, event.Discard)
 		done := make(chan error, 1)
 		go func() { done <- ag.Run(context.Background(), "edit") }()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Fatalf("Run: %v", err)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("sub-agent gate must not block")
+		if err := waitForValue(t, "sub-agent gate must not block", done); err != nil {
+			t.Fatalf("Run: %v", err)
 		}
 		writer.mu.Lock()
 		defer writer.mu.Unlock()

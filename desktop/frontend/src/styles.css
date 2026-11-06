@@ -11052,6 +11052,29 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
   font-size: var(--font-status, 11px);
 }
+/* tl1433 四缺口①：胶囊里的工作流 run 行——整行就是跳转按钮（复用已结束行的
+   div 容器 + row-main 按钮形态与状态胶囊），run 与它嵌套的子代理收在同一块。 */
+.capsule-panel__wf {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.capsule-panel__wf + .capsule-panel__wf {
+  margin-top: 2px;
+}
+.capsule-panel__row--workflow .capsule-panel__copy strong {
+  font-weight: 600;
+}
+/* tl1433 四缺口③：工作流派发的子代理缩进挂在 run 行下，左侧引导线标出归属
+   （「子代理」徽标样式与任务面板共用，见 .subagents-panel__sub-badge）。 */
+.capsule-panel__wf-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0 14px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
 .capsule-panel__stop {
   display: inline-flex;
   align-items: center;
@@ -15563,6 +15586,12 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
 }
 /* 运行中脉冲点：reduced-motion 下退化为静态点（全局规则归零动画）。 */
+/* tl1447: 运行中节点静默越阈（疑似卡死）——警示描边，行内 title 给处置口径。 */
+.wf-node--silent {
+  outline: 1px solid var(--warn, transparent);
+  outline-offset: 1px;
+}
+
 .wf-node__spinner {
   position: absolute;
   top: 7px;
@@ -15689,6 +15718,11 @@ button.statusbar__mcp:focus-visible {
 .wf-panel__trace-readonly {
   font-size: 10px;
   color: var(--fg-faint);
+}
+/* tl1434 追加:运行中节点的增量跟进提示行(等待态复用同一文案)。 */
+.wf-panel__trace-live {
+  font-size: 10px;
+  color: var(--fg-dim);
 }
 .drawer {
   position: relative;
@@ -30222,6 +30256,64 @@ button.statusbar__mcp:focus-visible {
   color: var(--danger, var(--fg-dim));
 }
 
+/* tl1447: 心跳警示徽章（静默越阈的运行行）+「继续」续轮入口。 */
+.subagents-panel__silent {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--warn, var(--fg-dim));
+  border: 1px solid color-mix(in srgb, var(--warn, var(--fg-dim)) 45%, transparent);
+  animation: subagent-silent-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes subagent-silent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.subagents-panel__continue {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-left: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--warn, var(--fg-dim));
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.subagents-panel__continue:hover {
+  background: var(--bg-soft);
+  color: var(--warn, var(--fg-dim));
+}
+
+.subagents-panel__continue--confirm {
+  color: var(--fg);
+  border: 1px solid var(--warn, var(--fg-dim));
+  border-radius: 4px;
+  margin-left: 4px;
+}
+
+.subagents-panel__continue-receipt {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 0 9px 6px 29px;
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+
+.subagents-panel__continue-receipt[data-subagent-continue-disposition="error"] {
+  color: var(--danger, var(--fg-dim));
+}
+
 .subagents-panel__terminate:disabled {
   opacity: 0.5;
   cursor: default;
@@ -30370,6 +30462,38 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--fg-dim);
+}
+
+/* tl1433 四缺口③：子代理层级——归属到工作流 run 的运行中子代理缩进挂在 run 行
+   之下。run 行的 row-wrap 是可折行的 flex 容器（tl1209），嵌套列表像行内详情
+   一样独占一整行；左侧引导线标出「这些属于上面那个工作流」。 */
+.subagents-panel__wf-children {
+  flex: 1 1 100%;
+  min-width: 0;
+  list-style: none;
+  margin: 0 0 0 16px;
+  padding: 0;
+  border-top: 1px solid var(--border-soft);
+  border-left: 1px solid var(--border-soft);
+}
+
+/* 「子代理」徽标（任务面板嵌套行 + 胶囊嵌套行共用一处）。 */
+.subagents-panel__sub-badge,
+.capsule-panel__sub-badge {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--fg-dim);
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+/* tl1433 四缺口④：「最近工作流」段的终态 run 行读作历史——不加粗（运行中的
+   run 行由 .subagents-panel__row--workflow 加粗；双类选择器压过它）。 */
+.subagents-panel__row--workflow.subagents-panel__row--workflow-ended {
+  font-weight: 400;
 }
 
 .subagents-panel__detailview {
@@ -40182,8 +40306,28 @@ button.statusbar__mcp:focus-visible {
 .rc-session > td { font-weight: 600; }
 .rc-child > td { opacity: 0.98; }
 .rc-child td.rc-col-name { padding-left: 30px; }
-/* 口径⑧: 栏限宽——名称单行省略号/预览两行折行截断,hover title 给全文
-   (title 由组件挂在 td/摘要行上)。 */
+/* tl1415b-2（点2）：会话行的子行展开钮——caret+label 一体按钮，恢复「点开
+   见子行」的折叠形态（组段展开不再等于子行平铺）。按钮在单元格内铺满可用
+   宽度，截断交给内部 rc-clip1。 */
+.rc-session__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rc-session__toggle .rc-clip1 { min-width: 0; }
+/* 口径⑧: 栏限宽——名称单行省略号/预览折行截断,hover title 给全文(title
+   由组件挂在 td/摘要行上)。tl1415b-2(点1):预览行改 3 行截断——用户实测
+   2 行浪费空间,3 行在多数屏上正好一行读数。 */
 .rc-clip1 {
   min-width: 0;
   overflow: hidden;
@@ -40195,13 +40339,13 @@ button.statusbar__mcp:focus-visible {
   font-size: 0.92em;
   margin-top: 2px;
 }
-.rc-clip2 {
+.rc-clip3 {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-all;
-  max-height: 2.9em;
+  max-height: 4.4em;
 }
 /* 口径⑥: 行内预览行的「尾部」徽章——预览=尾部消息,不是开头。 */
 .rc-tailtag {
@@ -40397,6 +40541,9 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
 }
 .rc-versions__health { margin-top: 6px; }
+/* tl1415b-2: 旧 .rc-chain__preview flex/nowrap 样式已退役(类名保留作 hook,样式归 rc-sub2/rc-clip3)。 */
+.rc-chain__preview { color: inherit; }
+
 .rc-detail { padding-top: 4px; }
 .rc-detail__hcheck { width: 28px; }
 .rc-detail__check { width: 28px; }
@@ -40478,17 +40625,19 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
 }
 .rc-chains__synth-hint { font-size: 0.86em; opacity: 0.7; }
+/* tl1415b-2（用户装机实测点4 根因修复）：版本行（tr.rc-chain）在单表里是
+   表格行——旧链行的 flex 布局（display:flex/gap/padding）挂在 <tr> 上会拆
+   掉单元格栅格，实测形态=类型标签孤悬、时间/大小/轮次竖排错列。display
+   级属性全部退役，只留行字号；「更长」高亮改挂 td（行级 box-shadow 在
+   border-collapse 表格上渲染不可靠）。类名保留：多个回归套件把 tr.rc-chain
+   钉为版本行身份。 */
 .rc-chain {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 14px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
   font-size: 0.94em;
 }
-.rc-chain--recommended {
+.rc-chain--recommended > td {
   background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.rc-chain--recommended > td:first-child {
   box-shadow: inset 3px 0 0 0 var(--accent, currentColor);
 }
 .rc-chain__name { min-width: 90px; font-weight: 600; }
@@ -40582,28 +40731,13 @@ button.statusbar__mcp:focus-visible {
   flex: none;
 }
 
-/* Each candidate chain's own preview text - the last thing that branch said. Numbers
-   tell you which chain is longest; the preview tells you which one you want. */
-.rc-chain__preview {
-  flex: 1 1 240px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.72;
-  font-size: 0.94em;
-}
-
-/* A chain the user has picked to win. Clickable rows need affordance, and the
-   pick must survive alongside the recommendation badge without reading as one. */
-.rc-chain--picked {
-  outline: 1px solid var(--accent, #4c8dff);
-  background: color-mix(in srgb, var(--accent, #4c8dff) 12%, transparent);
-  cursor: pointer;
-}
-.rc-chain:not(.rc-chain--picked) {
-  cursor: pointer;
-}
+/* tl1415b-2（点4 同类排查收口）：旧 .rc-chain__preview 的 flex 基数与
+   white-space:nowrap 会把副本/版本行的行内预览压回单行、并参与旧链行 flex
+   布局——预览行的布局统一归 rc-sub2 + rc-clip3（3 行截断）管，本类不再有
+   样式。类名保留在 DOM（1065 harness 存在性钉）。
+   同批退役：.rc-chain--picked 与 .rc-chain:not(--picked) 的 pointer 手势——
+   行级点击（旧链行整行可点选）已随单表形态消失，行上操作全在按钮里，行级
+   pointer 手势只剩误导。 */
 
 /* Wide confirm dialog - chain previews and other content-heavy asks. Both the
    width and the max-width are set because the generic .modal max-width wins
@@ -41794,7 +41928,9 @@ button.statusbar__mcp:focus-visible {
   flex-direction: column;
   gap: 8px;
   overflow-y: auto;
-  padding: 4px 2px;
+  /* tl1439 修①：消息流内边距对齐对话链回放流（.collab-chat-view__stream 同值
+     12px 16px）——原 4px 2px 让气泡与时间戳贴面板边缘，两视图留白也不一致。 */
+  padding: 12px 16px;
 }
 .channel-chat__row {
   display: flex;

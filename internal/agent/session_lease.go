@@ -532,6 +532,19 @@ func SweepOrphanInProcessSessionLease(path string) (cleared int, err error) {
 		// until the user escalated to force/terminal. An unbooked lock stays
 		// untouched: outside this process, never grabbed.
 		if SessionLeaseLockHeldInProcess(path) {
+			// tl1429b-2: an in-flight removal guard is a LIVE owner, not an
+			// orphan. The guard's goroutine (archive trash, delayed trash,
+			// cleanup-pending reconcile) still exists and will release the
+			// lock when its step completes; evicting the handle here would
+			// let this sweep's caller trash the session concurrently with
+			// that goroutine — the double-record corruption shape. The
+			// caller's heal fails, the refusal stays, and the in-flight op
+			// finishes the job it already holds the locks for.
+			if sessionLeaseLockHeldByInFlightRemovalGuard(path) {
+				slog.Info("session: orphan sweep left an in-flight removal guard in place",
+					"session_base", filepath.Base(path))
+				return cleared, nil
+			}
 			if evicted := takeRegisteredSessionLock(store.SessionLeaseLock(path)); evicted != nil {
 				_ = evicted.RemoveAndUnlock()
 				cleared++

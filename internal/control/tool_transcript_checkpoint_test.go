@@ -11,7 +11,6 @@ import (
 	"reasonix/internal/tool"
 	"strings"
 	"testing"
-	"time"
 )
 
 type checkpointProbeTool struct {
@@ -47,11 +46,7 @@ func TestToolCheckpointSurvivesReloadWhileNextWriterRuns(t *testing.T) {
 	c := New(Options{Runner: exec, Executor: exec, Sink: sink, SessionDir: dir, SessionPath: path})
 	t.Cleanup(c.Close)
 	c.Submit("run both")
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("second tool did not start")
-	}
+	waitForSignal(t, "second tool did not start", started)
 	loaded, err := agent.LoadSession(path)
 	if err != nil {
 		t.Fatal(err)

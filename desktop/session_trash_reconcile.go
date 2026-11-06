@@ -14,7 +14,7 @@ func reconcileDesktopTrashSessionArtifacts(dir, sessionPath, key string) error {
 	// Hold the removal guard across the whole move so no runtime can acquire
 	// the session (or save into it) while its artifacts are relocated; the
 	// lock sidecars are deleted atomically with the guard release.
-	guard, err := acquireSessionRemovalGuard(sessionPath)
+	guard, err := acquireSessionRemovalGuardForOp("cleanup_pending_reconcile", sessionPath)
 	if err != nil {
 		return err
 	}

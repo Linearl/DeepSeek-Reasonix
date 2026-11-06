@@ -248,10 +248,20 @@ func (a *App) ListTrashedSessions() []SessionMeta {
 }
 
 func (a *App) trashedSessionDir(path string) (string, error) {
+	var lastErr error
 	for _, dir := range a.knownSessionDirs() {
 		if _, _, _, err := validateTrashedSessionPath(dir, path); err == nil {
 			return dir, nil
+		} else {
+			lastErr = err
 		}
+	}
+	if lastErr != nil {
+		// tl1429b-2: carry the strict-validation reason so a stuck record is
+		// attributable from desktop.log alone (the package-79 "outside known
+		// session dirs" toast carried no WHY).
+		slog.Warn("desktop: trashed session path rejected by every known session dir",
+			"reason", lastErr.Error())
 	}
 	return "", fmt.Errorf("trashed session path outside known session dirs: %s", path)
 }
@@ -389,7 +399,7 @@ func (a *App) restoreSession(path string) error {
 	// Windows handle kept a sidecar at the live path; the durable cleanup
 	// marker makes that recoverable — finish it before restore preflights.
 	if agent.IsCleanupPending(target) {
-		_ = reconcileDesktopCleanupPending(dir)
+		_ = reconcileDesktopCleanupPendingLocked(dir)
 		if agent.IsCleanupPending(target) {
 			return fmt.Errorf("session cleanup is still in progress: %s", key)
 		}

@@ -97,7 +97,7 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 			batch.add(target, nil, nil)
 			continue
 		}
-		guard, err := acquireSessionRemovalGuard(target.sessionPath)
+		guard, err := acquireSessionRemovalGuardForOp("archive_ownership", target.sessionPath)
 		if err != nil && terminal {
 			// tl1404 terminal: clear this process's lease state, retry the
 			// guard once, and let the OS lease lock arbitrate what remains —
@@ -133,7 +133,7 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 			// No lease available (e.g. tab in sessionRuntimeFailed after
 			// a failed restore). Fall back to non-runtime guard acquisition
 			// so the archive can proceed without a live lease.
-			guard, err := acquireSessionRemovalGuard(target.sessionPath)
+			guard, err := acquireSessionRemovalGuardForOp("archive_ownership_fallback", target.sessionPath)
 			if err != nil && terminal {
 				guard, err = a.terminalArchiveGuardAfterReclaim(target.sessionPath, key, err)
 				if err != nil {
@@ -186,7 +186,7 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 			}
 			slog.Warn("desktop: topic archive lease conversion failed, falling back to non-runtime guard",
 				"session", target.sessionPath, "err", err)
-			guard2, err2 := acquireSessionRemovalGuard(target.sessionPath)
+			guard2, err2 := acquireSessionRemovalGuardForOp("archive_ownership_fallback", target.sessionPath)
 			if err2 != nil && terminal {
 				guard2, err2 = a.terminalArchiveGuardAfterReclaim(target.sessionPath, key, err2)
 				if err2 != nil {
@@ -264,8 +264,21 @@ func (b *topicArchiveOwnershipBatch) release() {
 	}
 }
 
-func delayedDesktopTopicTrash(dir, sessionPath, key string, guard *agent.SessionRemovalGuard, destroys []control.SessionDestroyHandle) {
+// delayedDesktopTopicTrash is the destroy-timeout completion of a topic
+// archive: it waits for the runtime teardowns to settle, then trashes the
+// session artifacts under the guard the archive handed over. tl1429b-2: the
+// trash itself takes a.sessionRemovalMu. The goroutine can hold its removal
+// guard for an unbounded teardown wait, and without the mutex every later
+// guard acquirer for this session (a boot-time cleanup-pending reconcile, a
+// user's next archive) used to be refused by this LIVE handle and heal past
+// it by evicting the guard — two destructive flows on one session. With the
+// mutex, later flows serialize behind this trash (or honestly report busy);
+// the in-flight guard stays exactly that. The wait happens BEFORE the mutex
+// so a slow teardown never blocks the removal flows.
+func (a *App) delayedDesktopTopicTrash(dir, sessionPath, key string, guard *agent.SessionRemovalGuard, destroys []control.SessionDestroyHandle) {
 	waitAllDestroyHandles(destroys)
+	a.sessionRemovalMu.Lock()
+	defer a.sessionRemovalMu.Unlock()
 	if err := trashSessionArtifactsWithGuard(dir, sessionPath, key, guard); err != nil {
 		slog.Warn("desktop: delayed topic archive cleanup remains pending")
 	}

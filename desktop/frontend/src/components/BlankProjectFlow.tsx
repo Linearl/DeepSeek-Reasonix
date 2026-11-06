@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useToast } from "../lib/toast";
 import { BlankProjectDialog } from "./BlankProjectDialog";
 
@@ -29,7 +30,7 @@ export function BlankProjectFlow({
       else onCloseRef.current();
     }).catch((err: unknown) => {
       if (cancelled) return;
-      showToastRef.current(err instanceof Error ? err.message : String(err), "error");
+      showToastRef.current(formatActionError("action.folderPick", err), "error");
       onCloseRef.current();
     });
     return () => { cancelled = true; };

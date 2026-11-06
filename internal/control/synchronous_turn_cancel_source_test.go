@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"reasonix/internal/event"
 )
@@ -38,11 +37,7 @@ func TestRunSynchronousTurnCancelSourceNamesExternalCaller(t *testing.T) {
 			return ctx.Err()
 		})
 	}()
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("turn never started")
-	}
+	waitForSignal(t, "turn never started", started)
 	c.Cancel()
 	err := <-errCh
 	<-release

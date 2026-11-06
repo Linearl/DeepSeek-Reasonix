@@ -549,6 +549,8 @@ var ChineseTraditional = Messages{
 	ProviderErrRateLimited:         "請求速率達到上限 (HTTP 429)：請求過於頻繁 (TPM/RPM)。已退避重試，請放慢速率或稍後再試。",
 	ProviderErrServer:              "伺服器故障 (HTTP 500)：服務端內部錯誤。已退避重試；若持續失敗請稍後再試。",
 	ProviderErrServerBusy:          "伺服器繁忙 (HTTP 503)：服務端負載過高。已退避重試，請稍後再試。",
+	ProviderErrBadGateway:          "閘道錯誤 (HTTP 502)：供應商閘道回傳了無效回應。已退避重試；若持續失敗請檢查供應商狀態頁或網路代理。",
+	ProviderErrGatewayTimeout:      "閘道逾時 (HTTP 504)：供應商閘道未在時限內回應。已退避重試；若持續失敗請檢查供應商狀態頁或網路代理。",
 	ProviderErrWaitExhaustedFmt:    "已等待 %s，供應商始終無法連線，Reasonix 已停止等待。請檢查網路、代理或供應商狀態頁，然後重新傳送。",
 
 	SelectOneHint:  "(↑/↓ · Enter · q 取消)",

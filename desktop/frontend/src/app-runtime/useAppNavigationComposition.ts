@@ -1,4 +1,5 @@
 import { browserMockScenarioParam, GUIDANCE_QUEUE_MOCK_ITEMS, isGuidanceMockScenario } from "../lib/mockScenarios";
+import { formatActionError } from "../lib/actionErrors";
 import { formatShortcutCombo, resolvedShortcutCombo } from "../lib/keyboardShortcuts";
 import { showWorktreeCleanupNotice } from "../lib/worktreeCleanupNotice";
 import { desktopBridge } from "./desktopBridgeAdapter";
@@ -170,7 +171,7 @@ export function useAppNavigationComposition(input: AppNavigationCompositionInput
     } : undefined,
     ports: { ...desktopProjectAdapter, markChanged: setProjectRevision, refreshTabs: refreshTabMetas, syncActive: syncActiveTab },
     navigation: { openBlank: openBlankSession, enqueue: enqueueNavigation, switchFolder },
-    reportError: error => showToast(error instanceof Error ? error.message : String(error), "error"),
+    reportError: error => showToast(formatActionError("action.projectOperation", error), "error"),
   });
 
   const sidebarExpandBlocked = false;
