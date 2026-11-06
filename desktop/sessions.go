@@ -153,18 +153,6 @@ type trashedSessionMeta struct {
 	DeletedAt int64  `json:"deletedAt"`
 }
 
-type sessionTrashArtifact struct {
-	src  string
-	name string
-}
-
-func sessionTelemetryPath(sessionPath string) string {
-	if strings.TrimSpace(sessionPath) == "" {
-		return ""
-	}
-	return sessionPath + ".telemetry.json"
-}
-
 // errSessionBusyElsewhere is the sanitized error surfaced when a destructive
 // session operation is blocked by a live owner. It intentionally carries no
 // writer id, hostname, or path. tl1258: the bare "in use" sentence failed the
@@ -813,12 +801,12 @@ func trashSessionArtifactsBeforeMove(dir, sessionPath, key string, beforeMove fu
 	if beforeMove != nil {
 		beforeMove()
 	}
-	for _, artifact := range sessionTrashArtifacts(sessionPath, key) {
-		if err := movePathIfExists(artifact.src, filepath.Join(itemDir, artifact.name)); err != nil {
-			return err
-		}
-	}
-	if err := trashSubagentArtifacts(dir, sessionPath, itemDir); err != nil {
+	// tl1442-ext: the full store inventory moves counted, the stem-prefix
+	// sweep guarantees zero residue for shapes the inventory does not list,
+	// and the deletion log carries the same counting keys as every other
+	// deletion chain.
+	report, err := moveSessionTrashArtifactsToBucket(dir, sessionPath, key, itemDir)
+	if err != nil {
 		return err
 	}
 	if err := guard.RemoveSidecarsAndRelease(); err != nil {
@@ -835,6 +823,7 @@ func trashSessionArtifactsBeforeMove(dir, sessionPath, key string, beforeMove fu
 	if err := agent.ClearCleanupPending(sessionPath); err != nil {
 		return err
 	}
+	logSessionTrashMove(dir, key, &report)
 	return nil
 }
 
@@ -1090,20 +1079,21 @@ func copySymlink(src, dst string) error {
 	return os.Symlink(target, dst)
 }
 
-func trashSubagentArtifacts(dir, sessionPath, itemDir string) error {
+func trashSubagentArtifacts(dir, sessionPath, itemDir string, report *agent.TrashMoveReport) error {
 	artifacts, err := agent.ListSubagentsByParent(dir, agent.BranchID(sessionPath))
 	if err != nil {
 		return err
 	}
 	trashSubagentDir := filepath.Join(itemDir, "subagents")
 	for _, artifact := range artifacts {
+		stem := strings.TrimSuffix(filepath.Base(artifact.SessionPath), store.SessionTranscriptSuffix)
 		paths := []string{artifact.SessionPath, artifact.MetaPath}
 		paths = append(paths, store.SessionSidecarFiles(artifact.SessionPath)...)
 		for _, src := range paths {
 			if strings.TrimSpace(src) == "" {
 				continue
 			}
-			if err := movePathIfExists(src, filepath.Join(trashSubagentDir, filepath.Base(src))); err != nil {
+			if _, err := agent.MoveTrashArtifactTo(src, filepath.Join(trashSubagentDir, filepath.Base(src)), stem, report); err != nil {
 				return err
 			}
 		}

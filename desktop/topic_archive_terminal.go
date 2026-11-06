@@ -237,12 +237,10 @@ func trashSessionArtifactsTerminal(dir, sessionPath, key string) error {
 	}
 	slog.Warn("desktop: terminal archive trashing a session without the removal guard",
 		"session_base", filepath.Base(sessionPath))
-	for _, artifact := range sessionTrashArtifacts(sessionPath, key) {
-		if err := movePathIfExists(artifact.src, filepath.Join(itemDir, artifact.name)); err != nil {
-			return err
-		}
-	}
-	if err := trashSubagentArtifacts(dir, sessionPath, itemDir); err != nil {
+	// tl1442-ext: same full-inventory counted move + catch-all sweep as the
+	// guarded paths; the residue tear below stays as the guard-less backstop.
+	report, err := moveSessionTrashArtifactsToBucket(dir, sessionPath, key, itemDir)
+	if err != nil {
 		return err
 	}
 	removeSessionOwnedResidue(sessionPath, key)
@@ -254,7 +252,11 @@ func trashSessionArtifactsTerminal(dir, sessionPath, key string) error {
 	if err := os.WriteFile(filepath.Join(itemDir, sessionTrashMetaFile), b, 0o644); err != nil {
 		return err
 	}
-	return agent.ClearCleanupPending(sessionPath)
+	if err := agent.ClearCleanupPending(sessionPath); err != nil {
+		return err
+	}
+	logSessionTrashMove(dir, key, &report)
+	return nil
 }
 
 // removeSessionOwnedResidue tears every session-owned leftover the move did

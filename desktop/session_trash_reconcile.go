@@ -90,12 +90,11 @@ func trashSessionArtifactsWithGuard(dir, sessionPath, key string, guard *agent.S
 	if err := invalidateTopicDirMarkers(dir); err != nil {
 		return err
 	}
-	for _, artifact := range sessionTrashArtifacts(sessionPath, key) {
-		if err := movePathIfExists(artifact.src, filepath.Join(itemDir, artifact.name)); err != nil {
-			return err
-		}
-	}
-	if err := trashSubagentArtifacts(dir, sessionPath, itemDir); err != nil {
+	// tl1442-ext: same full-inventory counted move + catch-all sweep as the
+	// interactive delete, so a cleanup-pending completion reconciles against
+	// the same counting log and leaves the same zero residue.
+	report, err := moveSessionTrashArtifactsToBucket(dir, sessionPath, key, itemDir)
+	if err != nil {
 		return err
 	}
 	if err := guard.RemoveSidecarsAndRelease(); err != nil {
@@ -109,5 +108,9 @@ func trashSessionArtifactsWithGuard(dir, sessionPath, key string, guard *agent.S
 	if err := os.WriteFile(filepath.Join(itemDir, sessionTrashMetaFile), b, 0o644); err != nil {
 		return err
 	}
-	return agent.ClearCleanupPending(sessionPath)
+	if err := agent.ClearCleanupPending(sessionPath); err != nil {
+		return err
+	}
+	logSessionTrashMove(dir, key, &report)
+	return nil
 }
