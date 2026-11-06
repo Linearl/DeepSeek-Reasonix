@@ -79,10 +79,14 @@ for (const action of ["stop", "mode", "resync"]) {
   });
 }
 
+// tl1446-3 (8274010ff) routed bridge failures through formatActionError: the
+// toast is "{action} failed: {raw}" — the raw text stays verbatim after the
+// human half. These pins assert the full dual-track string; tl1446-action-errors.test.ts
+// pins the template itself at the unit level.
 const errors = Array.from(document.querySelectorAll(".toast--error .toast__text")).map((node) => node.textContent);
-ok(errors.includes("stop goal bridge failed"), "rejected Stop Goal action shows an error toast");
-ok(errors.includes("switch mode bridge failed"), "rejected mode action shows an error toast");
-ok(errors.includes("background goal resync bridge failed"), "rejected background Goal resync shows an error toast");
+ok(errors.includes("Goal action failed: stop goal bridge failed"), "rejected Stop Goal action shows an error toast");
+ok(errors.includes("Goal action failed: switch mode bridge failed"), "rejected mode action shows an error toast");
+ok(errors.includes("Goal action failed: background goal resync bridge failed"), "rejected background Goal resync shows an error toast");
 ok(unhandled.length === 0, "handled Goal action rejections do not emit unhandledrejection");
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -93,8 +97,8 @@ ok(
 );
 // controller-profile-lifecycle.test.tsx drives the production restoration effect
 // and verifies one error report, alongside the direct/awaited model reject contract.
-ok(errors.filter(error => error === "stop goal bridge failed").length === 1, "production Composer Stop Goal adapter presents the failure exactly once");
-ok(errors.filter(error => error === "switch mode bridge failed").length === 1, "production Composer mode adapter presents the failure exactly once");
+ok(errors.filter(error => error === "Goal action failed: stop goal bridge failed").length === 1, "production Composer Stop Goal adapter presents the failure exactly once");
+ok(errors.filter(error => error === "Goal action failed: switch mode bridge failed").length === 1, "production Composer mode adapter presents the failure exactly once");
 // session-submission-lifecycle.test.tsx rejects real Goal activation and checks
 // zero profile/intent patches or submit/undo side effects.
 
