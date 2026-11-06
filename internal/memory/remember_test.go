@@ -162,3 +162,44 @@ func TestRememberToolQueuesResolvedNameWhenUpdatingByID(t *testing.T) {
 		t.Fatalf("queued note did not use the resolved memory name: %v", q.notes)
 	}
 }
+
+// tl1399②: the keywords nudge. Saving without keywords/triggers must name the
+// retrieval gap in the reply (half-automated coverage: the model decides, the
+// host reminds); a save with keywords stays quiet. The fact itself is never
+// rewritten — the nudge is message-only.
+func TestRememberKeywordsNudge(t *testing.T) {
+	store := Store{Dir: t.TempDir()}
+	tl := NewRememberTool(store)
+
+	out, err := tl.Execute(context.Background(), []byte(`{"name":"bare-fact","description":"no aliases given","type":"project","body":"Body text."}`))
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out, "saved without keywords/triggers") {
+		t.Fatalf("bare save must carry the keywords nudge, got %q", out)
+	}
+
+	out, err = tl.Execute(context.Background(), []byte(`{"name":"aliased-fact","description":"aliases given","type":"project","keywords":"备份 backup","body":"Body text."}`))
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if strings.Contains(out, "saved without keywords/triggers") {
+		t.Fatalf("save with keywords must stay quiet, got %q", out)
+	}
+
+	out, err = tl.Execute(context.Background(), []byte(`{"name":"triggered-fact","description":"triggers given","type":"project","triggers":"删东西 规矩","body":"Body text."}`))
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if strings.Contains(out, "saved without keywords/triggers") {
+		t.Fatalf("save with triggers must stay quiet, got %q", out)
+	}
+
+	// The nudge must not alter the stored fact.
+	list := store.ListAll()
+	for _, m := range list {
+		if m.Name == "bare-fact" && (m.Keywords != "" || m.Triggers != "") {
+			t.Fatalf("nudge must not write keywords into the fact: %+v", m)
+		}
+	}
+}
