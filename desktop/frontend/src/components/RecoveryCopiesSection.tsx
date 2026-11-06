@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
@@ -975,11 +975,14 @@ export function RecoveryCopiesSection() {
   // 会话,把它们的全部非主线副本(孤立副本除外——主线已缺失的副本删除即真
   // 丢内容,只能被合并)逐份走 DeleteRecoveryBranch 的回收语义。二次确认列出
   // 会话与份数,结果给 toast。
+  // tl1448 删除路径校验:「非主线」是这条入口的名字承诺,过滤必须认识主线
+  // 指针——采纳后的主线文件仍在副本清单里,此前它照样入选(点一次清掉当前
+  // 主线)。逐条发请求前再复核一次(最终闸)。
   const cleanupNonMainCopies = async () => {
     const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
     const targets = chosen.flatMap((group) =>
       group.copies
-        .filter((copy) => !copy.orphan)
+        .filter((copy) => !copy.orphan && !sameSessionPath(copy.path, preferredMainPathOf(group)))
         .map((copy) => ({ group, copy })),
     );
     if (targets.length === 0) return;
@@ -1012,7 +1015,13 @@ export function RecoveryCopiesSection() {
     try {
       let archived = 0;
       const failures: string[] = [];
-      for (const { copy } of targets) {
+      for (const { group, copy } of targets) {
+        // tl1448:最终闸——请求前以最新主线指针复核(确认框悬停期间指针可能
+        // 已被采纳/合并改写)。
+        if (sameSessionPath(copy.path, preferredMainPathOf(group))) {
+          failures.push(`${copy.label}: ${t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", recoveryShortName(copy.path) || fileStemOf(copy.path))}`);
+          continue;
+        }
         try {
           await app.DeleteRecoveryBranch(copy.path);
           archived += 1;
@@ -1239,6 +1248,33 @@ export function RecoveryCopiesSection() {
       return next;
     });
 
+  /** preferredMainPathOf resolves a conversation's current main FILE path — the
+   *  Selected chain's file after an adoption (tl1430b), else the scan origin.
+   *  tl1448 删除路径校验的判据：三个删除入口（单删/批量删/清理非主线副本）在
+   *  触达后端前都以它复核删除对象——副本路径没有「选中」概念，后端
+   *  DeleteRecoveryBranch 拒不了主线文件（recovery_branch_delete.go 1064 约束
+   *  ①明文「前端负责禁用主线本身」），前端这道门就是唯一防线。
+   *  读 chainsRef 而非闭包快照：删除确认框悬停期间列表可能已刷新（采纳/合并
+   *  改写主线指针），「发请求前复核」必须看到最新链清单才是真复核。 */
+  const chainsRef = useRef(chains);
+  useEffect(() => {
+    chainsRef.current = chains;
+  }, [chains]);
+  const preferredMainPathOf = (group: RecoveryCopyGroupView): string =>
+    buildSessionChainModel(group, chainsRef.current.get(group.mainPath), false).currentMainChain?.path ?? group.mainPath;
+
+  /** refuseMainDelete is the shared guard rejection: the panel never asks the
+   *  backend to trash the conversation's current main file, however the request
+   *  arrived (a stale checkbox from before an adoption, a same-stem row click
+   *  mid-reload). Failure mode analysis: over-restriction only blocks a delete
+   *  (safe), letting one through deletes the main line — the 20261106 incident. */
+  const refuseMainDelete = (groupLabel: string, targetPath: string) => {
+    const name = recoveryShortName(targetPath) || fileStemOf(targetPath);
+    const detail = t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", name);
+    setErrors((current) => [...current, `${groupLabel} · ${detail}`]);
+    showToast(detail, "error");
+  };
+
   /** deleteBranches archives the checked copy branches in one confirmation. The
    *  backend moves each into the recoverable .trash (no coverage proof required:
    *  the user has seen each branch's reading and decided), so the batch is one
@@ -1248,21 +1284,39 @@ export function RecoveryCopiesSection() {
    *  kind keeps the delete result honest ("deleted", not "merged"). */
   const deleteBranches = async () => {
     const chosen = (groups ?? [])
-      .flatMap((g) => g.copies.map((c) => ({ path: c.path, label: `${g.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${g.copies.indexOf(c) + 1}` })))
+      .flatMap((g) => g.copies.map((c) => ({ path: c.path, group: g, label: `${g.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${g.copies.indexOf(c) + 1}` })))
       .filter((c) => branchesSelected.has(c.path));
-    if (!chosen.length) return;
+    // tl1448 删除路径校验（批量面）：勾选可能产生于采纳之前、随刷新残留——
+    // 勾选集中的当前主线文件在这里整批剔除，确认清单与后端请求都只见可删
+    // 分支。全被剔除时无事可做（勾选清掉，不给空确认框）。
+    const deletable = chosen.filter((c) => !sameSessionPath(c.path, preferredMainPathOf(c.group)));
+    const skippedMainCount = chosen.length - deletable.length;
+    if (!deletable.length) {
+      if (skippedMainCount > 0) {
+        const detail = t("settings.recoveryCopiesDeleteBatchMainSkipped").replace("{n}", String(skippedMainCount));
+        setErrors((current) => [...current, detail]);
+        showToast(detail, "error");
+      }
+      setBranchesSelected(new Set());
+      return;
+    }
     const okToDelete = await confirm({
       title: t("settings.recoveryCopiesDeleteBatchTitle"),
       message: (
         <div>
           <p>
-            {t("settings.recoveryCopiesDeleteBatchLead")}：{chosen.length}
+            {t("settings.recoveryCopiesDeleteBatchLead")}：{deletable.length}
           </p>
           <ul className="rc-versions__issues">
-            {chosen.map((c) => (
+            {deletable.map((c) => (
               <li key={c.path}>{c.label}</li>
             ))}
           </ul>
+          {skippedMainCount > 0 && (
+            <p>
+              {t("settings.recoveryCopiesDeleteBatchMainSkipped").replace("{n}", String(skippedMainCount))}
+            </p>
+          )}
           <p className="rc-preview__warn">{t("settings.recoveryCopiesDeleteBatchWarn")}</p>
         </div>
       ),
@@ -1274,8 +1328,14 @@ export function RecoveryCopiesSection() {
     setBusy(true);
     setErrors([]);
     const collected: DeleteOutcome[] = [];
-    for (const [index, item] of chosen.entries()) {
-      setStatus(`${t("settings.recoveryCopiesDeleting")} ${index + 1}/${chosen.length} · ${item.label}`);
+    for (const [index, item] of deletable.entries()) {
+      setStatus(`${t("settings.recoveryCopiesDeleting")} ${index + 1}/${deletable.length} · ${item.label}`);
+      // 发请求前逐条复核（确认框悬停期间主线指针可能已改写）——最终闸。
+      if (sameSessionPath(item.path, preferredMainPathOf(item.group))) {
+        collected.push({ label: item.label, kind: "failed", detail: t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", recoveryShortName(item.path) || fileStemOf(item.path)) });
+        setDeletedOutcomes([...collected]);
+        continue;
+      }
       try {
         await app.DeleteRecoveryBranch(item.path);
         collected.push({ label: item.label, kind: "deleted" });
@@ -1314,14 +1374,27 @@ export function RecoveryCopiesSection() {
 
   /** deleteBranchOne is the 任务 1064 single-copy delete. 语义原样:确认框 →
    *  DeleteRecoveryBranch(回收语义)→ 结果行 → 列表重取完成后才释放 busy(与
-   *  批量删除同口径)。 */
+   *  批量删除同口径)。
+   *  tl1448 删除路径校验:入口先以当前主线指针复核删除对象(删副本≠删主线
+   *  ——渲染层的入口抑制之外,这里是函数级防线,防行刷新间隙/同 stem 行点击
+   *  的残余路径);确认框明示删除对象文件(stem+完整路径),不再只说「副本 N」
+   *  ——用户要能把确认框对回磁盘上那份文件(20261106 误删事故验收①)。 */
   const deleteBranchOne = async (group: RecoveryCopyGroupView, copyPath: string, index: number) => {
+    if (sameSessionPath(copyPath, preferredMainPathOf(group))) {
+      refuseMainDelete(group.mainLabel, copyPath);
+      return;
+    }
+    const shortName = recoveryShortName(copyPath);
     const okToDelete = await confirm({
       title: t("settings.recoveryCopiesDeleteTitle"),
       message: (
         <div>
           <p>
             {t("settings.recoveryCopiesDeleteLead")}：{group.mainLabel} · {t("settings.recoveryCopiesCopy")} {index + 1}
+            {shortName ? `（${shortName}）` : ""}
+          </p>
+          <p>
+            {t("settings.recoveryCopiesDeleteTarget").replace("{path}", copyPath)}
           </p>
           <p className="rc-preview__warn">{t("settings.recoveryCopiesDeleteWarn")}</p>
         </div>
@@ -1331,6 +1404,12 @@ export function RecoveryCopiesSection() {
       tone: "danger",
     });
     if (!okToDelete) return;
+    // 确认框悬停期间列表可能已刷新(采纳/合并改写主线指针)——发后端请求前
+    // 以最新 state 复核一次,这是删除路径校验的第二道(最终)闸。
+    if (sameSessionPath(copyPath, preferredMainPathOf(group))) {
+      refuseMainDelete(group.mainLabel, copyPath);
+      return;
+    }
     setBusy(true);
     try {
       await app.DeleteRecoveryBranch(copyPath);

@@ -4768,6 +4768,14 @@ export const en = {
   "settings.recoveryCopiesDeleteBatchTitle": "Delete selected branches",
   "settings.recoveryCopiesDeleteBatchLead": "Branches to delete",
   "settings.recoveryCopiesDeleteBatchWarn": "The selected branches move to the recoverable trash, not permanent deletion.",
+  // tl1448 delete-path validation (acceptance ① of the 20261106 wrong-delete
+  // incident): the delete confirmation names the target file; the current main
+  // line file is refused (the backend has no "selected" concept for copy paths,
+  // so this frontend gate is the only line of defense); main line files mixed
+  // into a batch selection are filtered out and the confirm says so.
+  "settings.recoveryCopiesDeleteTarget": "Target file: {path}",
+  "settings.recoveryCopiesDeleteRefusedMain": "Delete refused: {name} is the current main line file and the main line cannot be deleted. Switch another version to be the main line first and it becomes a deletable copy again",
+  "settings.recoveryCopiesDeleteBatchMainSkipped": "{n} skipped: the current main line file among the selection cannot be deleted",
   "settings.recoveryCopiesDeleteSelected": "Delete selected",
   "settings.recoveryCopiesDeleting": "Deleting",
   "settings.recoveryCopiesOutcomeDeleted": "Deleted",
