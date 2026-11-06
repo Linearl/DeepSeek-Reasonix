@@ -580,6 +580,9 @@ var ChineseTraditional = Messages{
 	CLITelemetryConsentSaveFailedFmt:    "由於無法儲存偏好設定，CLI 使用統計仍維持關閉：%v",
 	CLITelemetryConsentCleanupFailedFmt: "CLI 使用統計已關閉，但無法刪除待傳送統計：%v",
 
+	SentinelDisabledRulesRestored:    "Sentinel 硬底線規則停用已恢復。",
+	SentinelDisabledRulesRestoredFmt: "[sentinel].disabled_rules 已清空，這些硬底線規則恢復保護：%s。",
+
 	UsageBody: `reasonix — 由設定和插件驅動的 coding agent（多模型）
 
 用法：

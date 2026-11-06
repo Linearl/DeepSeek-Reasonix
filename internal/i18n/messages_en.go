@@ -640,6 +640,9 @@ var English = Messages{
 	CLITelemetryConsentSaveFailedFmt:    "CLI telemetry remains disabled because the preference could not be saved: %v",
 	CLITelemetryConsentCleanupFailedFmt: "CLI telemetry is disabled, but pending statistics could not be deleted: %v",
 
+	SentinelDisabledRulesRestored:    "Sentinel hard-rule opt-outs restored.",
+	SentinelDisabledRulesRestoredFmt: "[sentinel].disabled_rules is now empty — these hard-forbidden rules are protected again: %s.",
+
 	UsageBody: `reasonix — a config- and plugin-driven coding agent (multi-model)
 
 Usage:
