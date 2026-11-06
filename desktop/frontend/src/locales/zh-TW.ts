@@ -3435,6 +3435,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersions.longerTag": "更長（{messages} 條 / {turns} 輪）",
   "settings.sessionVersions.newerTag": "更新（最後活動 {date}）",
   "settings.sessionVersions.activate": "切換到此版本",
+  // tl1415c B3: 兩條啟用拒絕的三語人話(按後端機器碼 reasonix_error:recovery_* 對應,
+  // 技術原文保留在句後,不隱藏不虛構)。
+  "settings.sessionVersions.activateAlreadyMain": "這個版本已是當前主線，沒有發生切換。若面板顯示的主線與實際不一致，重新整理一次即可對齊。",
+  "settings.sessionVersions.activateActiveWork": "當前主線正在產生回覆，暫時不能切換。等這一輪回覆結束後，再點一次「切換到此版本」。",
   "settings.sessionVersions.check": "檢查健康",
   "settings.sessionVersions.repair": "修復",
   "settings.sessionVersions.repairDiet": "修復並瘦身（剝圖+摺疊）",
@@ -3550,6 +3554,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesColOps": "行內操作",
   "settings.recoveryCopiesKindSession": "會話",
   "settings.recoveryCopiesKindVersion": "版本",
+  // tl1415c B1: 降級列(列舉被拒的佔位列/後端降級讀數列)的類型名——不再與正常副本/版本同標籤。
+  "settings.recoveryCopiesKindDegraded": "降級副本",
   // tl1448：同 stem 雙行——副本檔案被採納為目前主線後，它在表裡同時渲染主線行
   // 與副本行；副本行亮「目前選中」徽標（本鍵為懸停說明），勾選與刪除入口收回。
   "settings.recoveryCopiesMainFileHint": "該副本檔案就是目前主線（已採納）——主線本體不提供勾選與刪除入口；先把其他版本「切換到此版本」，它才會回到可刪副本",

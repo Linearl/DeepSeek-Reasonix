@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { app, onSessionRecoveryFailed } from "../lib/bridge";
 import { formatActionError } from "../lib/actionErrors";
 import { useT } from "../lib/i18n";
+import { formatRecoveryActivateError } from "../lib/recoveryActivateError";
 import type { ProjectTopicKey } from "../lib/sessionCatalogTypes";
 import { bindSessionVersionInspector, bindTopicVersionInspector } from "../lib/sessionRecoveryVersionHostBridge";
 import { normalizeRecoveryLineageView, userVisibleRecoveryVersions } from "../lib/sessionRecoveryVersions";
@@ -63,10 +64,13 @@ export function SessionRecoveryVersionsHost({ sessions, onResumeSession, onRecov
   useEffect(() => onSessionRecoveryFailed((event) => {
     showToast(event.recoveryPending ? t("recovery.failedPending") : t("recovery.failed"), "error", event.recoveryPending && event.recoveryPath && event.topicId ? {
       actionLabel: t("recovery.retry"),
+      // tl1415c B3: RetrySessionRecovery routes through SetActiveSessionVersion,
+      // so its refusals (already-main / active-work) carry the machine codes —
+      // render the localized human copy instead of the raw English sentence.
       onAction: () => { void app.RetrySessionRecovery({
         scope: event.workspaceRoot ? "project" : "global", workspaceRoot: event.workspaceRoot,
         topicId: event.topicId!, path: event.recoveryPath!,
-      }).catch((error) => showToast(error instanceof Error ? error.message : String(error), "error")); },
+      }).catch((error) => showToast(formatRecoveryActivateError(error), "error")); },
     } : undefined);
   }), [showToast, t]);
 

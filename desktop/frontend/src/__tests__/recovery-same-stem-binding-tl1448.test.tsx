@@ -40,6 +40,24 @@
 //    button and pins its "Preview" label so a reorder cannot silently pass;
 //  - chain inventory loads lazily per expanded group: Refresh in ⑤ needs extra
 //    flushes before the repointed main filter is visible.
+//
+// tl1415c adaptation (B2 same-path dedup, user ruling after tl1448): the
+// same-path row no longer renders at all — the main row is the ONLY row for
+// the adopted file. The dual-row shape this harness pinned (①② badge/entry
+// suppression on the main-file COPY row) is superseded, and each superseded
+// pin states who carries the guarantee now:
+//  - ① "both copy rows render" + "the main-file copy row carries the selected
+//    badge" → superseded by dedup: FORK_PATH renders exactly ONE row (the main
+//    row, which keeps the selected badge pin). The distinguishability goal is
+//    now trivially met — there is no second row to confuse.
+//  - ② "no checkbox / no delete / no switch on the main-file copy row" → the
+//    row is gone, so the entries are gone with it; the pin becomes "no row
+//    except the main row names FORK_PATH". The FUNCTION-level guarantees the
+//    entries used to front (main file never in a delete target set) stay
+//    pinned by ④⑤⑥ — those exercise preferredMainPathOf gates on the paths
+//    that still exist (stale checkbox residue, cleanup, single delete).
+//  - ⑦ "the main-file copy row previews its own chain" → the main row's
+//    preview now carries that file's preview attribution.
 
 import { JSDOM } from "jsdom";
 import { act } from "react";
@@ -246,7 +264,10 @@ function copyRowFor(path: string): HTMLTableRowElement | undefined {
 
 console.log("\nsame-stem dual rows + delete path validation (tl1448)");
 
-// ①②③ the same-stem dual-row shape, rendered honestly.
+// ①②③ the same-stem shape after tl1415c B2 dedup: the adopted file renders
+// exactly ONE row (the main row); the copy row for it is gone (superseded
+// pins documented in the header — the entries' guarantees ride the rows that
+// still exist plus the function-level gates pinned by ④⑤⑥).
 {
   const spies: Spies = { deleted: [], previews: [] };
   stubBridge([makeGroup([COPY_READINGS(FORK_PATH, 2048), COPY_READINGS(COPY_PATH, 4096)])], chainsAdopted(), spies);
@@ -254,20 +275,27 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
 
   const mainRow = document.querySelector<HTMLTableRowElement>("tr.rc-detail__row--main");
   ok(Boolean(mainRow?.textContent?.includes("recovery-7fa1f7e5") && mainRow?.textContent?.includes("selected")),
-    "① the main row follows the adopted copy file (tl1430b regression inside the same-stem shape)");
+    "① the main row follows the adopted copy file and carries the selected badge (tl1430b pin, kept)");
 
+  // tl1415c B2: same-path dedup — the adopted main file's copy row no longer
+  // renders. This replaces the old "both copy rows render / selected badge on
+  // the copy row" dual-row pins (superseded by the user's dedup ruling).
   const forkCopyRow = copyRowFor(FORK_PATH);
   const plainCopyRow = copyRowFor(COPY_PATH);
-  ok(Boolean(forkCopyRow && plainCopyRow), "① both copy rows render (the same file holds a main row AND a copy row)");
-  ok(Boolean(forkCopyRow?.textContent?.includes("selected")),
-    "① the main-file copy row carries the selected badge — the dual rows are distinguishable");
-  ok(!plainCopyRow?.textContent?.includes("selected"),
-    "① the regular copy row carries no selected badge");
+  ok(!forkCopyRow, "① tl1415c B2: the adopted main file renders NO copy row (同 path 不重复行)");
+  ok(Boolean(plainCopyRow), "① the regular copy row still renders");
+  ok(document.querySelectorAll("tr.rc-row--copy").length === 1,
+    "① the whole table holds exactly one copy row (the dedup removed the twin)");
 
-  ok(!forkCopyRow?.querySelector("input[type=checkbox]"), "② the main-file copy row has no delete-selection checkbox");
-  ok(!forkCopyRow?.querySelector(".rc-delete"), "② the main-file copy row has no delete entry (删副本≠删主线)");
-  ok(!Array.from(forkCopyRow?.querySelectorAll("button") ?? []).some((b) => b.textContent?.includes("switch to this version")),
-    "② the main-file copy row offers no switch-to-this-version (它就是当前主线,口径⑦/防 tl1430 no-op 形态)");
+  // ② superseded form: no row anywhere except the main row names the main
+  // file — checkbox/delete/switch cannot reach a file that has no row. The
+  // function-level guarantees (the old pins' real subject) stay on ④⑤⑥.
+  const rowsNamingFork = Array.from(document.querySelectorAll<HTMLTableRowElement>("tr")).filter((r) =>
+    !r.classList.contains("rc-detail__row--main") &&
+    Array.from(r.querySelectorAll<HTMLElement>("[title]")).some((el) => (el.getAttribute("title") || "").includes(FORK_PATH)),
+  );
+  ok(rowsNamingFork.length === 0, "② no non-main row names the main file (checkbox/delete/switch are unreachable with the row gone)");
+
   ok(Boolean(plainCopyRow?.querySelector("input[type=checkbox]")), "② the regular copy row keeps its checkbox");
   ok(Boolean(plainCopyRow?.querySelector(".rc-delete")), "② the regular copy row keeps its delete entry");
   ok(Array.from(plainCopyRow?.querySelectorAll("button") ?? []).some((b) => b.textContent?.includes("switch to this version")),
@@ -412,9 +440,12 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
   };
 
   const plainPreview = previewBtnOf(copyRowFor(COPY_PATH));
-  const forkPreview = previewBtnOf(copyRowFor(FORK_PATH));
+  // tl1415c B2: the main-file copy row is gone; the main ROW now carries that
+  // file's preview attribution (the old "main-file copy row previews its own
+  // chain" pin, superseded).
+  const mainPreview = previewBtnOf(document.querySelector<HTMLTableRowElement>("tr.rc-detail__row--main"));
   ok(Boolean(plainPreview && !plainPreview.disabled), "⑦ the regular copy row's preview is enabled");
-  ok(Boolean(forkPreview && !forkPreview.disabled), "⑦ the main-file copy row's preview binds its own chain (not a dead button)");
+  ok(Boolean(mainPreview && !mainPreview.disabled), "⑦ the main row's preview binds the adopted file's chain (not a dead button)");
 
   await act(async () => { plainPreview?.click(); });
   await flush();
@@ -422,9 +453,9 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
 
   await act(async () => { buttonByText("Cancel", true)?.click(); });
   await flush();
-  await act(async () => { forkPreview?.click(); });
+  await act(async () => { mainPreview?.click(); });
   await flush();
-  ok(spies.previews.length === 2 && spies.previews[1] === FORK_PATH, "⑦ the main-file copy row previews the same file's main chain");
+  ok(spies.previews.length === 2 && spies.previews[1] === FORK_PATH, "⑦ the main row previews the adopted file (B2: its copy row is gone)");
 
   const demotedVersionPreview = previewBtnOf(
     Array.from(document.querySelectorAll<HTMLTableRowElement>("tr.rc-chain")).find(

@@ -4946,6 +4946,10 @@ export const en = {
   "settings.sessionVersions.longerTag": "longer ({messages} messages / {turns} turns)",
   "settings.sessionVersions.newerTag": "newer (last activity {date})",
   "settings.sessionVersions.activate": "switch to this version",
+  // tl1415c B3: human copy for the two activation refusals (mapped from the
+  // reasonix_error:recovery_* machine codes; the technical cause stays verbatim).
+  "settings.sessionVersions.activateAlreadyMain": "This version is already the conversation's main line — nothing was switched. If the panel still shows an older main line, refresh once to align.",
+  "settings.sessionVersions.activateActiveWork": "The current main line is still generating its reply — wait for this turn to finish, then click switch to this version again.",
   "settings.sessionVersions.check": "check health",
   "settings.sessionVersions.repair": "repair",
   "settings.sessionVersions.repairDiet": "repair and diet (strip images + fold)",
@@ -5065,6 +5069,8 @@ export const en = {
   "settings.recoveryCopiesColOps": "row actions",
   "settings.recoveryCopiesKindSession": "session",
   "settings.recoveryCopiesKindVersion": "version",
+  // tl1415c B1: degraded rows (refused-enumeration placeholder / backend degraded readings) get their own type name.
+  "settings.recoveryCopiesKindDegraded": "degraded copy",
   // tl1448: same-stem dual row — after a copy file is adopted as the current
   // main line it renders both a main row and a copy row; the copy row carries
   // the "selected" badge (this key is its hover note) and loses its delete and
