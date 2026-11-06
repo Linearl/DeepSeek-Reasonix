@@ -5328,7 +5328,7 @@ export default function App() {
               title: t("palette.cmd.collabHub"),
               icon: <MessagesSquare size={15} />,
               compact: true,
-              keywords: ["collab", "hub", "collaboration", "mail", "letter", "chat", "group", "协作", "协作中心", "信件", "聊天", "群聊"],
+              keywords: ["collab", "hub", "collaboration", "mail", "letter", "chat", "group", "notification", "协作", "协作中心", "信件", "聊天", "群聊", "通知", "通知中心"],
               run: () => setCollabHubOpen(true),
             } satisfies PaletteItem,
           ]

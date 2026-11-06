@@ -245,10 +245,10 @@ console.log("\ntl1462 collab hub palette: search hits + enter-to-open + lab gate
   ok(zhTW["palette.cmd.collabHub"] === "協作中心" && zhTW["sidebar.collabHub"] === "協作中心", "zh-TW palette key matches sidebar.collabHub");
   ok(en["palette.cmd.collabHub"] === "Collaboration Hub" && en["sidebar.collabHub"] === "Collaboration Hub", "en palette key matches sidebar.collabHub");
 
-  // 衔接 tl1458：协作中心『通知』tab 合入后，在该 tab 落地处把「通知/通知中心」
-  // 追加进 cmd-collab-hub 的 keywords（或为 tab 单独立项），本件刻意不加——
-  // tab 尚不存在，现在加会误导。
-  ok(!block.includes("通知"), "notification keyword deliberately withheld until tl1458 lands the tab");
+  // 衔接 tl1458：协作中心『通知』tab 已合入，「通知/通知中心」进 cmd-collab-hub
+  // 的 keywords（搜通知直达协作中心；进哪个 tab 由面板记忆决定）。
+  ok(block.includes('"通知"') && block.includes('"通知中心"') && block.includes('"notification"'),
+    "notification keywords land with the tl1458 tab");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
