@@ -22,10 +22,24 @@
 //  ⑤ a checkbox ticked before an adoption (stale selection residue) is filtered
 //    out of the batch delete — no dialog, no backend call for the main file
 //  ⑥ "clean up non-main copies" skips the adopted main file (the name promises
-//    非主线; the filter must know the main pointer)
+//    非主线; the filter must know the main pointer) — pinned on BOTH reachable
+//    paths: ⑥ the never-expanded session (tl1415b-2 renders session rows
+//    collapsed and lazy-loads chain inventory per expanded group, so the
+//    cleanup entry must fetch the main pointer itself) and ⑥b the expanded
+//    session (chains already in memory; the same filter must still skip it)
 //  ⑦ preview attribution: each row previews its own file (copy row previews the
 //    copy, the main-file copy row previews through its own chain, the demoted
 //    main file's version row previews itself)
+//
+// Merge adaptation (wt-tl1448 × main-v2-stable tip 71fba891c, tl1415b-2 form):
+//  - session rows start COLLAPSED (点2): child rows render only after the
+//    session row's expand toggle — openPanel expands for ①-⑤⑦, scenario ⑥
+//    stays collapsed on purpose (that is the real-world cleanup flow now);
+//  - the preview buttons lost the .rc-chain__preview-btn class (the preview
+//    merged into the pick flow, togglePick): ⑦ targets the row's first .rc-ops
+//    button and pins its "Preview" label so a reorder cannot silently pass;
+//  - chain inventory loads lazily per expanded group: Refresh in ⑤ needs extra
+//    flushes before the repointed main filter is visible.
 
 import { JSDOM } from "jsdom";
 import { act } from "react";
@@ -202,7 +216,7 @@ function stubBridge(groups: unknown[], chains: ReturnType<typeof chainsAdopted>,
 
 type Root = ReturnType<typeof createRoot>;
 
-async function openPanel(): Promise<Root> {
+async function openPanel(expand = true): Promise<Root> {
   const root = createRoot(installDom());
   await act(async () => {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
@@ -210,6 +224,15 @@ async function openPanel(): Promise<Root> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
+  if (expand) {
+    // tl1415b-2 点2: 会话行默认折叠,子行(主线/副本/版本)点展开钮才渲染;
+    // 链清单随展开惰性加载,双 flush 等它落地(与 tl1415 harness 同款)。
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>("tr.rc-session .rc-session__toggle")?.click();
+    });
+    await flush();
+    await flush();
+  }
   return root;
 }
 
@@ -305,6 +328,10 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
   // The adoption lands (another tab switched the main line); the panel reloads.
   stubBridge([makeGroup([COPY_READINGS(FORK_PATH, 2048), COPY_READINGS(COPY_PATH, 4096)])], chainsAdopted(), spies);
   await act(async () => { buttonByText("Refresh")?.click(); });
+  // tl1415b-2: load() 作废链缓存后按展开组惰性重拉——主线指针(副本行收回勾选
+  // 的判据)要等这次补拉落地,三 flush 给足。 */
+  await flush();
+  await flush();
   await flush();
   ok(!copyRowFor(FORK_PATH)?.querySelector("input[type=checkbox]"), "⑤ after the adoption the fork row's checkbox is gone");
   ok(Boolean(batchDeleteButton()), "⑤ the stale selection residue keeps the batch button alive");
@@ -319,23 +346,53 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
   await act(async () => root.unmount());
 }
 
-// ⑥ "clean up non-main copies" skips the adopted main file.
+// ⑥ "clean up non-main copies" skips the adopted main file — on the
+// never-expanded flow. tl1415b-2 renders sessions collapsed and lazy-loads
+// chain inventory per expanded group, so this cleanup click happens with NO
+// chain data in memory: the entry must fetch the main pointer itself (b-类
+// 回植——指针缺席时过滤回落扫描起点,采纳来的主线文件混进目标集 = tl1448
+// 事故形态经新架构复活). openPanel(false) keeps the session collapsed.
 {
   const spies: Spies = { deleted: [], previews: [] };
   stubBridge([makeGroup([COPY_READINGS(FORK_PATH, 2048)])], chainsAdopted(), spies);
-  const root = await openPanel();
+  const root = await openPanel(false);
 
   const sessionCheckbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
   await act(async () => { sessionCheckbox?.click(); });
   await flush();
 
   const cleanup = buttonByText("Clean up non-main copies");
-  ok(Boolean(cleanup && !cleanup.disabled), "⑥ the cleanup entry is available");
+  ok(Boolean(cleanup && !cleanup.disabled), "⑥ the cleanup entry is available (collapsed session, never expanded)");
   await act(async () => { cleanup?.click(); });
+  await flush();
   await flush();
 
   ok(spies.deleted.length === 0, "⑥ the adopted main file is never offered to the cleanup (名字承诺「非主线」)");
   ok(!document.querySelector(".reasonix-confirm-dialog"), "⑥ no cleanup confirmation for a main-file-only target set");
+
+  await act(async () => root.unmount());
+}
+
+// ⑥b the same guarantee on the expanded flow — chains already in memory (the
+// original tl1448 shape); the same filter must skip the adopted main file
+// without re-fetching anything.
+{
+  const spies: Spies = { deleted: [], previews: [] };
+  stubBridge([makeGroup([COPY_READINGS(FORK_PATH, 2048)])], chainsAdopted(), spies);
+  const root = await openPanel(true);
+
+  const sessionCheckbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
+  await act(async () => { sessionCheckbox?.click(); });
+  await flush();
+
+  const cleanup = buttonByText("Clean up non-main copies");
+  ok(Boolean(cleanup && !cleanup.disabled), "⑥b the cleanup entry is available (expanded session)");
+  await act(async () => { cleanup?.click(); });
+  await flush();
+  await flush();
+
+  ok(spies.deleted.length === 0, "⑥b the adopted main file is never offered to the cleanup (expanded path)");
+  ok(!document.querySelector(".reasonix-confirm-dialog"), "⑥b no cleanup confirmation for a main-file-only target set (expanded path)");
 
   await act(async () => root.unmount());
 }
@@ -346,8 +403,16 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
   stubBridge([makeGroup([COPY_READINGS(FORK_PATH, 2048), COPY_READINGS(COPY_PATH, 4096)])], chainsAdopted(), spies);
   const root = await openPanel();
 
-  const plainPreview = copyRowFor(COPY_PATH)?.querySelector<HTMLButtonElement>(".rc-chain__preview-btn");
-  const forkPreview = copyRowFor(FORK_PATH)?.querySelector<HTMLButtonElement>(".rc-chain__preview-btn");
+  // tl1415b-2 合并形态:预览并入 pick 流(togglePick),.rc-chain__preview-btn
+  // 类已不存在——行 ops 里预览是第一个按钮(预览/切换/删除次序),再钉
+  // 「Preview」标签:首位若漂移到别的入口,这里立刻红而不是错点。
+  const previewBtnOf = (row?: HTMLTableRowElement): HTMLButtonElement | undefined => {
+    const btn = row?.querySelector<HTMLButtonElement>(".rc-ops button");
+    return btn && btn.textContent?.trim() === "Preview" ? btn : undefined;
+  };
+
+  const plainPreview = previewBtnOf(copyRowFor(COPY_PATH));
+  const forkPreview = previewBtnOf(copyRowFor(FORK_PATH));
   ok(Boolean(plainPreview && !plainPreview.disabled), "⑦ the regular copy row's preview is enabled");
   ok(Boolean(forkPreview && !forkPreview.disabled), "⑦ the main-file copy row's preview binds its own chain (not a dead button)");
 
@@ -361,9 +426,11 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
   await flush();
   ok(spies.previews.length === 2 && spies.previews[1] === FORK_PATH, "⑦ the main-file copy row previews the same file's main chain");
 
-  const demotedVersionPreview = Array.from(document.querySelectorAll<HTMLTableRowElement>("tr.rc-chain"))
-    .find((r) => r.querySelector(".rc-clip1")?.textContent === "gc")
-    ?.querySelector<HTMLButtonElement>(".rc-chain__preview-btn");
+  const demotedVersionPreview = previewBtnOf(
+    Array.from(document.querySelectorAll<HTMLTableRowElement>("tr.rc-chain")).find(
+      (r) => r.querySelector(".rc-clip1")?.textContent === "gc",
+    ),
+  );
   ok(Boolean(demotedVersionPreview && !demotedVersionPreview.disabled), "⑦ the demoted main file's version row previews its own file");
 
   await act(async () => root.unmount());
