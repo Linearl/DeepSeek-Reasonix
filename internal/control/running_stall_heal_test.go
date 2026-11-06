@@ -155,11 +155,7 @@ func TestHealStalledRunningReopensWedgedTurn(t *testing.T) {
 	}); got != turnStarted {
 		t.Fatalf("admission after heal = %v, want turnStarted", got)
 	}
-	select {
-	case <-bodyRan:
-	case <-time.After(5 * time.Second):
-		t.Fatal("fresh body did not run after the heal")
-	}
+	waitForSignal(t, "fresh body did not run after the heal", bodyRan)
 	waitIdleAdmission(t, c)
 }
 
