@@ -114,7 +114,7 @@ func summarize(per []recallPerCase) recallBenchSummary {
 	return s
 }
 
-func runRecallBench(t *testing.T, label string, cases []recallBenchCase, store Store, verbose bool) recallBenchSummary {
+func runRecallBench(t *testing.T, label string, cases []recallBenchCase, store Store, verbose bool) (recallBenchSummary, []recallPerCase) {
 	t.Helper()
 	per := make([]recallPerCase, 0, len(cases))
 	var ranks []string
@@ -143,7 +143,7 @@ func runRecallBench(t *testing.T, label string, cases []recallBenchCase, store S
 			if rank > 0 {
 				rankStr = fmt.Sprintf("rank=%d", rank)
 			}
-			ranks = append(ranks, fmt.Sprintf("  %s %-4s %s | top%d: %s", c.ID, c.Kind, rankStr, len(hits), strings.Join(names, ", ")))
+			ranks = append(ranks, fmt.Sprintf("  %s %-6s %s | top%d: %s", c.ID, c.Kind, rankStr, len(hits), strings.Join(names, ", ")))
 		}
 	}
 	s := summarize(per)
@@ -152,15 +152,34 @@ func runRecallBench(t *testing.T, label string, cases []recallBenchCase, store S
 			t.Log(line)
 		}
 		t.Logf("%s: Hit@1=%.3f Hit@8=%.3f P@3=%.3f Recall@5=%.3f MRR=%.3f (n=%d)", label, s.Hit1, s.Hit8, s.P3, s.R5, s.MRR, len(cases))
+		for kind, rows := range summarizeByKind(cases, per) {
+			ks := summarize(rows)
+			t.Logf("%s kind=%-6s n=%2d Hit@1=%.3f Hit@8=%.3f MRR=%.3f", label, kind, len(rows), ks.Hit1, ks.Hit8, ks.MRR)
+		}
 	}
-	return s
+	return s, per
+}
+
+// recallCorpusStats records where the flattened corpus came from. tl1399③:
+// the new-style per-project libraries (projects/<slug>/memory) join the pool —
+// the bench judges the most conservative joint pool, and the stats keep the
+// pool composition auditable (E3: derived numbers must trace to raw counts).
+type recallCorpusStats struct {
+	RootMD        int // reasonix/memory/*.md (legacy root files)
+	GlobalDirMD   int // reasonix/memory/global/*.md
+	ProjectDirMD  int // reasonix/memory/project/*.md
+	OtherDirMD    int // any other one-level subdir (rare; kept visible)
+	ProjectLibMD  int // reasonix/projects/<slug>/memory/*.md
+	ConflictsSkip int // basename collisions skipped (two sources claim one file)
 }
 
 // recallFlatCorpusDir resolves the evaluation corpus: a flat directory of
 // memory markdown files. REASONIX_RECALL_CORPUS wins (pinned snapshot, stable
-// numbers); otherwise the local memory store is flattened into a temp dir.
-// Reports ok=false when neither exists (explicit upstream Skip, not silent).
-func recallFlatCorpusDir(t *testing.T) (string, bool) {
+// numbers); otherwise the local memory store is flattened into a temp dir,
+// including every new-style project library under projects/<slug>/memory
+// (tl1399③). Reports ok=false when neither exists (explicit upstream Skip,
+// not silent).
+func recallFlatCorpusDir(t *testing.T) (string, bool, recallCorpusStats) {
 	t.Helper()
 	if dir := strings.TrimSpace(os.Getenv("REASONIX_RECALL_CORPUS")); dir != "" {
 		entries, err := os.ReadDir(dir)
@@ -170,31 +189,36 @@ func recallFlatCorpusDir(t *testing.T) (string, bool) {
 		if len(entries) == 0 {
 			t.Fatalf("REASONIX_RECALL_CORPUS=%s is empty", dir)
 		}
-		return dir, true
+		return dir, true, recallCorpusStats{}
 	}
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return "", false
+		return "", false, recallCorpusStats{}
 	}
 	root := filepath.Join(configDir, "reasonix", "memory")
 	if _, err := os.Stat(root); err != nil {
-		return "", false
+		return "", false, recallCorpusStats{}
 	}
 	flat := t.TempDir()
-	founds := 0
+	var stats recallCorpusStats
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatalf("memory store %s unreadable: %v", root, err)
 	}
-	copyMD := func(src string) {
+	copyMD := func(src string, into *int) {
 		b, err := os.ReadFile(src)
 		if err != nil {
 			t.Fatalf("read %s: %v", src, err)
 		}
-		if err := os.WriteFile(filepath.Join(flat, filepath.Base(src)), b, 0o644); err != nil {
+		dst := filepath.Join(flat, filepath.Base(src))
+		if _, err := os.Stat(dst); err == nil {
+			stats.ConflictsSkip++ // basename collision: first writer wins, skip counted
+			return
+		}
+		if err := os.WriteFile(dst, b, 0o644); err != nil {
 			t.Fatalf("copy %s: %v", src, err)
 		}
-		founds++
+		*into++
 	}
 	for _, entry := range entries {
 		name := entry.Name()
@@ -206,21 +230,46 @@ func recallFlatCorpusDir(t *testing.T) (string, bool) {
 			if err != nil {
 				continue
 			}
+			bucket := &stats.OtherDirMD
+			switch name {
+			case "global":
+				bucket = &stats.GlobalDirMD
+			case "project":
+				bucket = &stats.ProjectDirMD
+			}
 			for _, se := range sub {
 				if !se.IsDir() && strings.HasSuffix(se.Name(), ".md") && se.Name() != indexFile {
-					copyMD(filepath.Join(root, name, se.Name()))
+					copyMD(filepath.Join(root, name, se.Name()), bucket)
 				}
 			}
 			continue
 		}
 		if strings.HasSuffix(name, ".md") {
-			copyMD(filepath.Join(root, name))
+			copyMD(filepath.Join(root, name), &stats.RootMD)
 		}
 	}
-	if founds == 0 {
-		return "", false
+	// tl1399③: new-style per-project libraries join the bench pool. The joint
+	// pool is deliberately more conservative than any single session's pool
+	// (project lib + global): every library's entries act as distractors.
+	projectsRoot := filepath.Join(configDir, "reasonix", "projects")
+	if libs, err := os.ReadDir(projectsRoot); err == nil {
+		for _, lib := range libs {
+			libMemory := filepath.Join(projectsRoot, lib.Name(), "memory")
+			sub, err := os.ReadDir(libMemory)
+			if err != nil {
+				continue
+			}
+			for _, se := range sub {
+				if !se.IsDir() && strings.HasSuffix(se.Name(), ".md") && se.Name() != indexFile {
+					copyMD(filepath.Join(libMemory, se.Name()), &stats.ProjectLibMD)
+				}
+			}
+		}
 	}
-	return flat, true
+	if stats.RootMD+stats.GlobalDirMD+stats.ProjectDirMD+stats.OtherDirMD+stats.ProjectLibMD == 0 {
+		return "", false, stats
+	}
+	return flat, true, stats
 }
 
 // loadRecallBenchset parses and sanity-checks the benchset file.
@@ -325,12 +374,79 @@ func patchedCorpusStore(t *testing.T, flat string, patch recallPatchFile) (Store
 // TestRecallBenchsetEval is the tl-1210 acceptance gate: baseline numbers,
 // patched numbers, strict improvement on both Hit@1 and Hit@8, and the
 // on-demand-only bound (patched entries <= 20% of the pool).
+// summarizeByKind breaks the per-case scores out by benchset kind so the
+// tl1399③ paraphrase category reads as its own number instead of hiding
+// inside the pool average.
+func summarizeByKind(cases []recallBenchCase, per []recallPerCase) map[string][]recallPerCase {
+	byKind := map[string][]recallPerCase{}
+	for i, c := range cases {
+		byKind[c.Kind] = append(byKind[c.Kind], per[i])
+	}
+	return byKind
+}
+
+// runRecallBenchV2 is the shadow arm of the bench: Retrieval V2 (BM25F over
+// TokensV2) ranks the same pool for the same queries, scored by the same
+// metrics. Readings only — the V2晋升 decision is a separate, explicit step,
+// this arm never asserts and never serves.
+func runRecallBenchV2(t *testing.T, label string, cases []recallBenchCase, store Store) recallBenchSummary {
+	t.Helper()
+	index := BuildRecallIndex(store)
+	if index == nil {
+		t.Fatalf("%s: recall index is empty", label)
+	}
+	idToName := map[string]string{}
+	for _, doc := range index.docs {
+		idToName[doc.memory.ID] = doc.memory.Name
+	}
+	per := make([]recallPerCase, 0, len(cases))
+	for _, c := range cases {
+		hits := shadowRankV2(c.Query, index.fielded)
+		expected := map[string]bool{}
+		for _, name := range c.Expected {
+			expected[name] = true
+		}
+		converted := make([]memoryHit, 0, len(hits))
+		for _, h := range hits {
+			name, ok := idToName[h.ID]
+			if !ok {
+				continue
+			}
+			converted = append(converted, memoryHit{Memory: Memory{ID: h.ID, Name: name}, Score: h.Score})
+		}
+		h1, h8, p3, r5, mrr := scoreCase(converted, expected)
+		per = append(per, recallPerCase{hits: converted, hit1: h1, hit8: h8, p3: p3, r5: r5, mrr: mrr})
+		rank := firstExpectedRank(converted, expected)
+		rankStr := "MISS"
+		if rank > 0 {
+			rankStr = fmt.Sprintf("rank=%d", rank)
+		}
+		names := make([]string, 0, len(converted))
+		for _, h := range converted {
+			mark := ""
+			if expected[h.Memory.Name] {
+				mark = "*"
+			}
+			names = append(names, mark+h.Memory.Name)
+		}
+		t.Logf("  %s %-6s %s | top%d: %s", c.ID, c.Kind, rankStr, len(converted), strings.Join(names, ", "))
+	}
+	s := summarize(per)
+	for kind, rows := range summarizeByKind(cases, per) {
+		ks := summarize(rows)
+		t.Logf("%s kind=%-6s n=%2d Hit@1=%.3f Hit@8=%.3f MRR=%.3f", label, kind, len(rows), ks.Hit1, ks.Hit8, ks.MRR)
+	}
+	return s
+}
+
 func TestRecallBenchsetEval(t *testing.T) {
 	cases := loadRecallBenchset(t)
-	flat, ok := recallFlatCorpusDir(t)
+	flat, ok, stats := recallFlatCorpusDir(t)
 	if !ok {
 		t.Skip("no recall corpus: set REASONIX_RECALL_CORPUS to a flat snapshot dir, or provide a memory store under the user config dir (reasonix/memory)")
 	}
+	t.Logf("corpus origin: root=%d global=%d project=%d other-dir=%d project-libs=%d conflict-skips=%d",
+		stats.RootMD, stats.GlobalDirMD, stats.ProjectDirMD, stats.OtherDirMD, stats.ProjectLibMD, stats.ConflictsSkip)
 	// Label drift guard: every expected name must exist in the pool.
 	pool := map[string]bool{}
 	entries, err := os.ReadDir(flat)
@@ -368,10 +484,17 @@ func TestRecallBenchsetEval(t *testing.T) {
 	}
 
 	t.Logf("corpus pool: %d entries, benchset cases: %d, patch entries: %d", poolCount, len(cases), len(patch.Patches))
-	baseline := runRecallBench(t, "baseline", cases, corpusStore(t, flat), true)
+	baseline, _ := runRecallBench(t, "baseline", cases, corpusStore(t, flat), true)
 	patched, applied := patchedCorpusStore(t, flat, patch)
 	t.Logf("keywords patch applied to %d entries", applied)
-	patchedSummary := runRecallBench(t, "patched ", cases, patched, true)
+	patchedSummary, _ := runRecallBench(t, "patched ", cases, patched, true)
+
+	// tl1399① shadow arm: V2 (BM25F) readings over the same pool and cases.
+	// Readings only, no assertion — the production path above is untouched.
+	v2Baseline := runRecallBenchV2(t, "v2-baseline", cases, corpusStore(t, flat))
+	t.Logf("v2-baseline: Hit@1=%.3f Hit@8=%.3f P@3=%.3f Recall@5=%.3f MRR=%.3f (n=%d)", v2Baseline.Hit1, v2Baseline.Hit8, v2Baseline.P3, v2Baseline.R5, v2Baseline.MRR, len(cases))
+	v2Patched := runRecallBenchV2(t, "v2-patched ", cases, patched)
+	t.Logf("v2-patched : Hit@1=%.3f Hit@8=%.3f P@3=%.3f Recall@5=%.3f MRR=%.3f (n=%d)", v2Patched.Hit1, v2Patched.Hit8, v2Patched.P3, v2Patched.R5, v2Patched.MRR, len(cases))
 
 	// 2026-10-28（协调线补记）：该补丁的 5 条 keywords 已由协调线写入本机
 	// global 库（与 79088e163 的 10 条 project 库补强并行落地）⇒ corpusStore
