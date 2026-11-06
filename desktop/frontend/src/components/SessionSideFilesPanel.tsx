@@ -4,21 +4,16 @@ import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import { collectSessionSideFiles, formatReferenceListForPrompt, type SessionSideFile, type SessionSideItem } from "../lib/sessionSideFiles";
+import { looksAbsolutePath, sideFileDisplayPath } from "../lib/sideFilePathDisplay";
 import { formatWorkspaceReference } from "../lib/workspaceDrag";
 import { workspacePathCopyMenuItems } from "../lib/workspacePathCopyMenuItems";
 import { FloatingMenu, FloatingMenuItems, type FloatingMenuItem } from "./FloatingMenu";
 
 export type SideFilesDockVariant = "artifacts" | "references";
 
+// tl1468: this pacing is now the COMBINED panel's only (the dock lists render
+// every row — see DockSideFileList).
 const INITIAL = 12;
-
-/** tl1437: front-end path-shape recognition — same forms the open-probe
- *  contract describes (drive letter / UNC / leading slash). An absolute-shaped
- *  side-file path copies as-is; only workspace-relative shapes resolve through
- *  ResolveWorkspacePathForTab (the file tree's copy-absolute bridge). */
-function looksAbsolutePath(path: string): boolean {
-  return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("/") || path.startsWith("\\\\");
-}
 
 // tl1421 同款就地提取：打开/显示失败的 toast 附原因。
 function menuErrorText(error: unknown): string {
@@ -45,11 +40,23 @@ function menuErrorText(error: unknown): string {
  *  tl1445: the references dock variant shares this same list (the component
  *  was DockArtifactList before it grew the second caller) — both variants
  *  aggregate into the same SessionSideFile {path, via} shape, so the only
- *  per-variant input is the interactive listbox's aria label. */
-function DockSideFileList({ files, tabId, onInjectReferences, ariaLabel }: { files: SessionSideFile[]; tabId?: string; onInjectReferences?: (text: string) => void; ariaLabel: string }) {
+ *  per-variant input is the interactive listbox's aria label.
+ *
+ *  tl1468: rows render the DISPLAY path (sideFileDisplayPath — relative to
+ *  the workspace root / session directory, tail-segment+ellipsis for files
+ *  outside both, filename always visible) while every byte of the operation
+ *  layer (data-side-file-path, row menu, copy/open/reveal/reference, the
+ *  hover title) keeps the canonical stored path — the hover title still
+ *  carries the full absolute path. The task-260 "show more" fold is gone
+ *  here: the dock panel itself is the scroll container
+ *  (.workbench-dock__body > .side-files--dock, height:100% + overflow:auto),
+ *  so a fixed INITIAL slice folded rows behind a button even when the dock
+ *  had free space (the tl1428/tl1468 screenshot complaint) and the old
+ *  .side-files__list 240px cap forced an inner scrollbar alongside it. The
+ *  combined task-114 panel above keeps its fold + cap (FileList). */
+function DockSideFileList({ files, tabId, workspaceRoot, sessionPath, onInjectReferences, ariaLabel }: { files: SessionSideFile[]; tabId?: string; workspaceRoot?: string; sessionPath?: string; onInjectReferences?: (text: string) => void; ariaLabel: string }) {
   const t = useT();
   const { showToast } = useToast();
-  const [expanded, setExpanded] = useState(false);
   // tl1437: the selected row path. Component-local like the tree's selection —
   // the side-files lists are transcript projections, so nothing persists.
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -72,8 +79,6 @@ function DockSideFileList({ files, tabId, onInjectReferences, ariaLabel }: { fil
   const [menuProbe, setMenuProbe] = useState<"probing" | "ok" | "none">("probing");
   const [menuResolved, setMenuResolved] = useState("");
   const listRef = useRef<HTMLUListElement>(null);
-  const visible = expanded ? files : files.slice(0, INITIAL);
-  const hidden = files.length - visible.length;
   const interactive = Boolean(tabId);
   // tl1437: dismiss on outside mousedown / scroll / resize / Escape — the
   // WorkspacePanel tree-menu effect verbatim (FloatingMenu stops propagation,
@@ -195,7 +200,7 @@ function DockSideFileList({ files, tabId, onInjectReferences, ariaLabel }: { fil
   return (
     <>
       <ul ref={listRef} className="side-files__list" role={interactive ? "listbox" : undefined} aria-label={interactive ? ariaLabel : undefined}>
-        {visible.map((f) => (
+        {files.map((f) => (
           <li
             key={f.path}
             className={interactive ? "side-files__item side-files__item--interactive" : "side-files__item"}
@@ -213,24 +218,17 @@ function DockSideFileList({ files, tabId, onInjectReferences, ariaLabel }: { fil
                 onContextMenu={(event) => openRowMenu(event, f.path)}
               >
                 <FileText size={12} aria-hidden="true" />
-                <span>{f.path}</span>
+                <span>{sideFileDisplayPath(f.path, workspaceRoot ?? "", sessionPath ?? "")}</span>
               </button>
             ) : (
               <>
                 <FileText size={12} aria-hidden="true" />
-                <span>{f.path}</span>
+                <span>{sideFileDisplayPath(f.path, workspaceRoot ?? "", sessionPath ?? "")}</span>
               </>
             )}
           </li>
         ))}
       </ul>
-      {hidden > 0 && !expanded && (
-        <div className="side-files__foot">
-          <button type="button" className="btn btn--small" onClick={() => setExpanded(true)}>
-            {t("sideFiles.showMore", { count: hidden })}
-          </button>
-        </div>
-      )}
       {menu && (
         <FloatingMenu x={menu.x} y={menu.y} estimatedHeight={240} className="workspace-tree-menu">
           <FloatingMenuItems items={menuItems} />
@@ -344,8 +342,11 @@ export function SessionSideFilesPanel({ items, onInjectReferences }: SessionSide
  * the footer injects the formatted whole-list block (task 114 payload) —
  * per-file vs list-level, complementary not duplicate. Without a tabId the
  * references body stays byte-for-byte the task-260 shape too.
+ *
+ * tl1468: workspaceRoot/sessionPath feed the row DISPLAY paths only (see
+ * DockSideFileList) — the operation layer still consumes the canonical path.
  */
-export function SideFilesDockPanel({ items, variant, onInjectReferences, tabId }: {
+export function SideFilesDockPanel({ items, variant, onInjectReferences, tabId, workspaceRoot, sessionPath }: {
   items: readonly SessionSideItem[];
   variant: SideFilesDockVariant;
   onInjectReferences?: (text: string) => void;
@@ -353,6 +354,10 @@ export function SideFilesDockPanel({ items, variant, onInjectReferences, tabId }
    *  (open probe / absolute-path resolve). Absent keeps the list static.
    *  tl1445: scopes the references variant the same way. */
   tabId?: string;
+  /** tl1468: display-path bases (workspace root, then the session's own
+   *  directory). Empty strings degrade gracefully to the tail-segment rule. */
+  workspaceRoot?: string;
+  sessionPath?: string;
 }) {
   const t = useT();
   const { artifacts, references } = useMemo(() => collectSessionSideFiles(items), [items]);
@@ -369,7 +374,7 @@ export function SideFilesDockPanel({ items, variant, onInjectReferences, tabId }
               </span>
               <span className="side-files__meta">{t("sideFiles.artifactsMeta", { count: artifacts.length })}</span>
             </summary>
-            <DockSideFileList files={artifacts} tabId={tabId} onInjectReferences={onInjectReferences} ariaLabel={t("sideFiles.artifacts")} />
+            <DockSideFileList files={artifacts} tabId={tabId} workspaceRoot={workspaceRoot} sessionPath={sessionPath} onInjectReferences={onInjectReferences} ariaLabel={t("sideFiles.artifacts")} />
           </details>
         )}
       </div>
@@ -387,7 +392,7 @@ export function SideFilesDockPanel({ items, variant, onInjectReferences, tabId }
               </span>
               <span className="side-files__meta">{t("sideFiles.referencesMeta", { count: references.length })}</span>
             </summary>
-          <DockSideFileList files={references} tabId={tabId} onInjectReferences={onInjectReferences} ariaLabel={t("sideFiles.references")} />
+          <DockSideFileList files={references} tabId={tabId} workspaceRoot={workspaceRoot} sessionPath={sessionPath} onInjectReferences={onInjectReferences} ariaLabel={t("sideFiles.references")} />
           {onInjectReferences && (
             <div className="side-files__foot">
               <button

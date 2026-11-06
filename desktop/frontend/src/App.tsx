@@ -7036,6 +7036,8 @@ export default function App() {
                     variant={effectiveRightDockMode === "artifacts" ? "artifacts" : "references"}
                     onInjectReferences={addWorkspaceTextToComposer}
                     tabId={activeTabId}
+                    workspaceRoot={activeTab?.workspaceRoot ?? ""}
+                    sessionPath={activeTab?.sessionPath ?? ""}
                   />
                 </Suspense>
               ) : effectiveRightDockMode === "todos" ? (
