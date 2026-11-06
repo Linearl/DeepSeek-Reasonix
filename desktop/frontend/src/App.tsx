@@ -107,6 +107,7 @@ import { useRuntimeTransitionFocusRestore } from "./app-runtime/useLocalUiLifecy
 import { useConsolidatedSessionReload } from "./app-runtime/useConsolidatedSessionReload";
 import { useNavigationSurfaceTimeoutWatch } from "./app-runtime/navigationSurfaceTimeoutWatch";
 import { app, onBackendTabActivated, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
+import { formatActionError } from "./lib/actionErrors";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
 import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent, turnDoneChimeChoice } from "./lib/sound";
@@ -2176,7 +2177,7 @@ export default function App() {
       await app.SubmitExtensionForm(activeTabId, pending.pluginId, pending.surfaceId, values);
       dismissExtensionForm();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.extensionSubmit", err), "error");
     } finally {
       setExtensionFormBusy(false);
     }
@@ -2421,7 +2422,7 @@ export default function App() {
       await refreshBackgroundRuntimes();
       return cancelled;
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.jobCancel", err), "error");
       return false;
     }
   }, [refreshBackgroundRuntimes, showToast]);
@@ -2435,7 +2436,7 @@ export default function App() {
       await refreshBackgroundRuntimes();
       return cancelled;
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.subagentCancel", err), "error");
       return false;
     }
   }, [refreshBackgroundRuntimes, showToast]);
@@ -2802,7 +2803,7 @@ export default function App() {
             clearThemePack();
             notice(t("settings.themeReset"));
           } catch (err) {
-            showToast(err instanceof Error ? err.message : String(err), "error");
+            showToast(formatActionError("action.themeReset", err), "error");
           }
           return;
         }
@@ -2814,7 +2815,7 @@ export default function App() {
             applyTheme(next, style);
             notice(t("settings.themeChanged", { theme: next, style }));
           } catch (err) {
-            showToast(err instanceof Error ? err.message : String(err), "error");
+            showToast(formatActionError("action.themeChange", err), "error");
           }
           return;
         }
@@ -2825,7 +2826,7 @@ export default function App() {
             applyTheme(cur, arg);
             notice(t("settings.themeChanged", { theme: cur, style: arg }));
           } catch (err) {
-            showToast(err instanceof Error ? err.message : String(err), "error");
+            showToast(formatActionError("action.themeStyleChange", err), "error");
           }
           return;
         }
@@ -3640,7 +3641,7 @@ export default function App() {
   const openRemoteWorkspaceFromStatus = useCallback((host: RemoteHostView) => {
     const requestSeq = remoteWorkspaceLaunchGate.current.begin(host.id);
     void launchRemoteWorkspace(host, requestSeq).catch((err) => {
-      showToast(err instanceof Error ? err.message : String(err), "error", { durationMs: 6000 });
+      showToast(formatActionError("action.remoteWorkspaceOpen", err), "error", { durationMs: 6000 });
     });
   }, [launchRemoteWorkspace, showToast]);
 
@@ -3680,7 +3681,7 @@ export default function App() {
       try {
         await launchRemoteWorkspace(host, requestSeq);
       } catch (err) {
-        showToast(err instanceof Error ? err.message : String(err), "error", { durationMs: 6000 });
+        showToast(formatActionError("action.remoteWorkspaceOpen", err), "error", { durationMs: 6000 });
       }
     })();
   }, [launchRemoteWorkspace, requestRemoteStatusPopover, showToast, t]);
@@ -3783,7 +3784,7 @@ export default function App() {
         { afterMutation: true },
       );
     } catch (err) {
-      if (isNavigationIntentCurrent(navigationIntentSeq)) showToast(err instanceof Error ? err.message : String(err), "error");
+      if (isNavigationIntentCurrent(navigationIntentSeq)) showToast(formatActionError("action.tabSwitch", err), "error");
     } finally {
       settleNavigationSurface(navigationIntentSeq);
     }
@@ -3926,7 +3927,7 @@ export default function App() {
         { afterMutation: true },
       );
     } catch (err) {
-      if (isNavigationIntentCurrent(navigationIntentSeq)) showToast(err instanceof Error ? err.message : String(err), "error");
+      if (isNavigationIntentCurrent(navigationIntentSeq)) showToast(formatActionError("action.tabSwitch", err), "error");
     } finally {
       settleNavigationSurface(navigationIntentSeq);
     }
@@ -3943,7 +3944,7 @@ export default function App() {
       await createIsolatedWorktree(root, navigationIntentSeq);
       await refreshTabMetas(undefined, { afterMutation: true });
     } catch (err) {
-      if (isNavigationIntentCurrent(navigationIntentSeq)) showToast(err instanceof Error ? err.message : String(err), "error");
+      if (isNavigationIntentCurrent(navigationIntentSeq)) showToast(formatActionError("action.worktreeCreate", err), "error");
     } finally {
       settleNavigationSurface(navigationIntentSeq);
     }
@@ -4790,7 +4791,7 @@ export default function App() {
       }
       if (request.kind === "isolated-worktree") {
         console.warn("isolated Delivery workspace creation failed", err);
-        showToast(err instanceof Error ? err.message : String(err), "error", { durationMs: 6000 });
+        showToast(formatActionError("action.worktreeCreate", err), "error", { durationMs: 6000 });
         return;
       }
       if (request.kind === "sidebar-im") {
@@ -5175,7 +5176,7 @@ export default function App() {
               clearThemePack();
               notice(t("settings.themeReset"));
             })
-            .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
+            .catch((err) => showToast(formatActionError("action.themeReset", err), "error"));
         },
       },
     ];
@@ -5210,7 +5211,7 @@ export default function App() {
           const tabID = activeTab?.id;
           if (!tabID) return;
           // Success/queued feedback arrives as a tab notice; only hard failures need a toast.
-          void app.ReloadRuntime(tabID).catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
+          void app.ReloadRuntime(tabID).catch((err) => showToast(formatActionError("palette.cmd.reloadRuntime", err), "error"));
         },
       },
       { id: "cmd-trash", group: t("palette.group.tools"), title: t("palette.cmd.trash"), icon: <Trash2 size={15} />, compact: true, keywords: ["trash", "回收站"], run: () => void openTrash() },
@@ -5274,7 +5275,7 @@ export default function App() {
         compact: true,
         keywords: ["log", "dir", "folder", "日志", "目录"],
         // 打开日志目录：复用 Go 侧 RevealPath（后台化打开，explorer 不阻塞）。
-        run: () => void app.RevealPath(topicbarLogDirectory).catch((err) => showToast(err instanceof Error ? err.message : String(err), "error")),
+        run: () => void app.RevealPath(topicbarLogDirectory).catch((err) => showToast(formatActionError("palette.cmd.openLogDir", err), "error")),
       },
     ];
     const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -5329,7 +5330,7 @@ export default function App() {
           .then((message) => {
             if (message) showToast(message, "info");
           })
-          .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
+          .catch((err) => showToast(formatActionError("action.extensionRun", err), "error"));
       },
     }));
     // tl 1101 分组后仍沿用两条既有 lab 门控插条（task 505 / 任务 686）：flag 关
@@ -5466,7 +5467,7 @@ export default function App() {
       // #8280: keep the history panel snapshot in sync after in-session renames.
       await refreshHistoryView();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.renameSession", err), "error");
     }
   }, [pushTopicTitlePatch, refreshHistoryView, refreshProjectsAndTabs, showToast]);
 

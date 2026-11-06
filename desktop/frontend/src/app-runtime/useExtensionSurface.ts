@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 
 export type ExtensionSurfaceView = { pluginId: string; surfaceId: string };
@@ -40,7 +41,7 @@ export function useExtensionSurface(input: {
       await app.SubmitExtensionForm(activeTabId, pending.pluginId, pending.surfaceId, values);
       dismissForm();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.extensionSubmit", err), "error");
     } finally {
       setExtensionFormBusy(false);
     }

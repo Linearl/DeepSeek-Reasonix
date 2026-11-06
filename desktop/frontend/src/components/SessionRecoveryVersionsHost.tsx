@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { app, onSessionRecoveryFailed } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useT } from "../lib/i18n";
 import type { ProjectTopicKey } from "../lib/sessionCatalogTypes";
 import { bindSessionVersionInspector, bindTopicVersionInspector } from "../lib/sessionRecoveryVersionHostBridge";
@@ -28,7 +29,7 @@ export function SessionRecoveryVersionsHost({ sessions, onResumeSession, onRecov
       const view = normalizeRecoveryLineageView(initial ?? await app.GetRecoveryLineage(topic));
       if (userVisibleRecoveryVersions(view).length > 1) setState({ topic, view });
     } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), "error");
+      showToast(formatActionError("action.versionsOpen", error), "error");
     }
   }, [showToast]);
 

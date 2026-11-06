@@ -1,4 +1,5 @@
 import { useMemo, type Dispatch, type SetStateAction } from "react";
+import { formatActionError } from "../lib/actionErrors";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { useRemoteComposerProfileSync } from "../lib/useRemoteComposerIntegration";
 import {
@@ -74,7 +75,7 @@ export function useComposerProfileProjection(input: ComposerProfileProjectionInp
   const applyQualityFloor = useCommittedCommand((floor: QualityFloor) => {
     if (!activeTabId) return;
     if (remote) {
-      void remoteSession.setQualityFloor(floor).catch((error) => input.showToast(error instanceof Error ? error.message : String(error), "error"));
+      void remoteSession.setQualityFloor(floor).catch((error) => input.showToast(formatActionError("action.qualityFloorSet", error), "error"));
       return;
     }
     patchActiveComposerProfile({ qualityFloor: floor }, ["qualityFloor"]);

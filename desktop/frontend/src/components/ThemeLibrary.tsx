@@ -2,6 +2,7 @@ import { SettingsOptions } from "./SettingsOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Download, Pencil, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useT } from "../lib/i18n";
 import { THEME_STYLES, type ThemeStyle, isThemeStyle } from "../lib/theme";
 import {
@@ -126,7 +127,7 @@ export function ThemeLibrarySection() {
         if (!still) clearThemePack();
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeLoad", err), "error");
     } finally {
       setLoading(false);
     }
@@ -185,7 +186,7 @@ export function ThemeLibrarySection() {
       showToast(t("settings.themeLibrary.copied", { name: created.name }), "info");
       await reload();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeCopy", err), "error");
     } finally {
       setBusy(false);
     }
@@ -204,7 +205,7 @@ export function ThemeLibrarySection() {
       await reload();
       showToast(t("settings.themeLibrary.activated", { name: pack.name }), "info");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeApply", err), "error");
     } finally {
       setBusy(false);
     }
@@ -219,7 +220,7 @@ export function ThemeLibrarySection() {
       await reload();
       showToast(t("settings.themeLibrary.resetDone"), "info");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeReset", err), "error");
     } finally {
       setBusy(false);
     }
@@ -242,7 +243,7 @@ export function ThemeLibrarySection() {
       const active = await app.GetActiveThemePack();
       commitThemePreview(active.pack ?? null);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeDelete", err), "error");
     } finally {
       setBusy(false);
     }
@@ -277,8 +278,7 @@ export function ThemeLibrarySection() {
       showToast(t("settings.themeLibrary.imported", { name: result.pack.name }), "info");
       await reload();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      showToast(msg, "error");
+      showToast(formatActionError("action.themeImport", err), "error");
     } finally {
       setBusy(false);
     }
@@ -299,7 +299,7 @@ export function ThemeLibrarySection() {
       const path = await app.ExportThemePack(pack.id, "");
       if (path) showToast(t("settings.themeLibrary.exported"), "info");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeExport", err), "error");
     } finally {
       setBusy(false);
     }
@@ -335,7 +335,7 @@ export function ThemeLibrarySection() {
       await reload();
       showToast(t("settings.themeLibrary.saved", { name: saved.name }), "info");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeSave", err), "error");
     } finally {
       setBusy(false);
     }
@@ -674,7 +674,7 @@ function ThemeEditor({
         existingBackgroundUrl: "",
       });
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeBackgroundPick", err), "error");
     }
   };
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Plus, Server, Square, XCircle } from "lucide-react";
 
 import { app, onRemoteTabOpened, onRemoteTabUpdated } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { runtimeStateStore, selectRuntime, type RuntimeProjection } from "../lib/runtimeStateStore";
 import type { Translator } from "../lib/i18n";
 import type { ProjectNode, RemoteServerView, RemoteSessionView, RemoteTabRefView } from "../lib/types";
@@ -202,7 +203,7 @@ export function useRemoteProjectGroups(
       if (outcome.status === "failed") throw outcome.error;
       if (!opts?.focus) setRevision((current) => current + 1);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), "error");
+      showToast(formatActionError("action.remoteSessionOpen", error), "error");
     } finally {
       opening.current.delete(key);
     }
@@ -245,7 +246,7 @@ export function useRemoteProjectGroups(
       await publishNavigationIntent("remote-workspace");
       await app.OpenRemoteWorkspace(ref.hostId, ref.workspace);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), "error");
+      showToast(formatActionError("action.remoteWorkspaceOpen", error), "error");
     }
   }, [showToast, statuses]);
 
@@ -412,7 +413,7 @@ interface RemoteMenuOptions {
 
 export function buildRemoteProjectMenuItems(options: RemoteMenuOptions): ContextMenuItem[] {
   const { ref, t, closeMenu, openRemoteProject, openRemoteWindow, setRemoteSessions, refresh, showToast } = options;
-  const report = (error: unknown) => showToast(error instanceof Error ? error.message : String(error), "error");
+  const report = (error: unknown) => showToast(formatActionError("action.remoteOperation", error), "error");
   return [
     {
       key: "remote-new-session", icon: <Plus size={13} />, label: t("projectTree.newTopic"),

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
+import { formatActionError } from "../lib/actionErrors";
 import type { ToastContextValue } from "../lib/toast";
 
 const BlankProjectFlow = lazy(() => import("./BlankProjectFlow").then((module) => ({ default: module.BlankProjectFlow })));
@@ -30,7 +31,7 @@ export function useProjectCreation({
       await onAddProject();
       await onRefresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.projectAdd", err), "error");
     } finally {
       setAddingProject(false);
     }

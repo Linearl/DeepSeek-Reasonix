@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, Download, Flag, X } from "lucide-react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useToast } from "../lib/toast";
 import { useI18n, type Locale } from "../lib/i18n";
 import {
@@ -103,7 +104,7 @@ export function FrontendDiagnosticsControl({
         frontendDiagnostics.reset();
       }
     } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), "error");
+      showToast(formatActionError("action.diagExport", error), "error");
     } finally {
       setExporting(false);
     }

@@ -1,4 +1,5 @@
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { clearThemePack } from "../lib/themePack";
 import { applyTheme, getTheme, getThemeStyle, isThemeStyle } from "../lib/theme";
@@ -137,7 +138,7 @@ export function useComposerRouter(input: ComposerRouterInput) {
           clearThemePack();
           notice(t("settings.themeReset"));
         } catch (err) {
-          showToast(err instanceof Error ? err.message : String(err), "error");
+          showToast(formatActionError("action.themeReset", err), "error");
         }
         return;
       }
@@ -149,7 +150,7 @@ export function useComposerRouter(input: ComposerRouterInput) {
           applyTheme(next, style);
           notice(t("settings.themeChanged", { theme: next, style }));
         } catch (err) {
-          showToast(err instanceof Error ? err.message : String(err), "error");
+          showToast(formatActionError("action.themeChange", err), "error");
         }
         return;
       }
@@ -160,7 +161,7 @@ export function useComposerRouter(input: ComposerRouterInput) {
           applyTheme(cur, arg);
           notice(t("settings.themeChanged", { theme: cur, style: arg }));
         } catch (err) {
-          showToast(err instanceof Error ? err.message : String(err), "error");
+          showToast(formatActionError("action.themeStyleChange", err), "error");
         }
         return;
       }
