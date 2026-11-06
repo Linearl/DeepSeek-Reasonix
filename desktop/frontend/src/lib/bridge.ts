@@ -8,7 +8,7 @@ import type { InvocationRequest } from "./invocationDisplay";
 import type { PlanUsageResult } from "./planUsage";
 import type { FollowupBindings } from "./pendingFollowup";
 import type { ACPListenStatusView, OutputStyleListView, QuickCommandEntry } from "./settingsViewTypes";
-import { addBreadcrumb } from "./breadcrumbs";
+import { addBreadcrumb, noteActivity } from "./breadcrumbs";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
 import { makeMockHistoryCatalogBindings, type HistoryCatalogBindings } from "./historyCatalogBridge";
@@ -2888,29 +2888,69 @@ export const app: AppBindings = new Proxy({} as AppBindings, {
       const method = String(prop), crumb = bridgeBreadcrumb(method);
       const startedAt = crumb ? (typeof performance !== "undefined" ? performance.now() : Date.now()) : 0;
       if (crumb) addBreadcrumb("bridge", crumb);
+      // tl1417: every call, name only, into the activity lane — the curated
+      // crumb above stays as it is; this is what fills the 33s gap of issue #82.
+      noteActivity("bridge", method);
       try {
         const result = maybeShare(method, args, () => (v as (...a: unknown[]) => unknown).apply(target, args));
         if (result && typeof (result as Promise<unknown>).then === "function") {
           return (result as Promise<unknown>).then(
             (value) => {
               if (crumb) addBreadcrumb("bridge", `${crumb} done ms=${elapsedMs(startedAt)}`);
+              noteActivity("bridge.done", method);
               return value;
             },
             (err) => {
               if (crumb) addBreadcrumb("bridge.error", `${method} ms=${elapsedMs(startedAt)}`);
+              noteActivity("bridge.error", method);
               throw err;
             },
           );
         }
         if (crumb) addBreadcrumb("bridge", `${crumb} done ms=${elapsedMs(startedAt)}`);
+        noteActivity("bridge.done", method);
         return result;
       } catch (err) {
         if (crumb) addBreadcrumb("bridge.error", `${method} ms=${elapsedMs(startedAt)}`);
+        noteActivity("bridge.error", method);
         throw err;
       }
     };
   },
 });
+
+// tl1417: one subscription per runtime channel feeding the activity lane with
+// the event kind (agent:event) or the channel name — never the payload. Taps
+// are installed once, by the performance monitor, and only when the Wails
+// runtime is present; the dev mock has no runtime and gets nothing.
+const ACTIVITY_TAP_CHANNELS = [
+  "agent:ready", "ask:background", "effort:applying", "model:applying", "project-tree:changed",
+  "remote:forwards", "remote:server", "remote:status", "runtime:rebuilt", "session:active-version-changed",
+  "session:consolidated", "session:recovered", "session:recovery-failed", "tab:backend-activated", "tab:meta",
+  "tabs:restored", "terminal:exit", "terminal:output", "topic:activation", "updater:progress",
+] as const;
+let streamActivityTapInstalled = false;
+
+export function installStreamActivityTap(): void {
+  if (streamActivityTapInstalled || typeof window === "undefined" || !window.runtime?.EventsOn) return;
+  streamActivityTapInstalled = true;
+  try {
+    window.runtime.EventsOn(EVENT_CHANNEL, (payload) => {
+      const kind = (payload as { kind?: unknown } | undefined)?.kind;
+      noteActivity("stream", typeof kind === "string" && kind ? kind : "event");
+    });
+    for (const channel of ACTIVITY_TAP_CHANNELS) {
+      window.runtime.EventsOn(channel, () => noteActivity("stream", channel));
+    }
+  } catch {
+    // A tap must never break the app; the lane simply stays empty for streams.
+  }
+}
+
+/** Test seam: the tap is install-once module state. */
+export function resetStreamActivityTapForTest(): void {
+  streamActivityTapInstalled = false;
+}
 
 // openExternal opens a URL in the system browser (so links in rendered markdown
 // don't navigate the webview away from the app). Falls back to window.open in the

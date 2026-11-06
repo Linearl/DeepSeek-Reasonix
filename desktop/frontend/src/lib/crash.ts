@@ -1,9 +1,9 @@
 // Last-resort crash surface: a React render error with no boundary unmounts the
 // whole tree (blank window), and global errors/rejections leave no trace either.
 
-import { addBreadcrumb, dumpBreadcrumbs, snapshotBreadcrumbs, type Breadcrumb } from "./breadcrumbs";
+import { addBreadcrumb, dumpBreadcrumbs, snapshotActivity, snapshotBreadcrumbs, type ActivityEntry, type Breadcrumb } from "./breadcrumbs";
 import { writeClipboardText } from "./clipboard";
-import { app } from "./bridge";
+import { app, installStreamActivityTap } from "./bridge";
 import { t } from "./i18n";
 import { sessionPipelineDiagnostics, type SessionPipelineDiagnostics } from "./sessionDiagnostics";
 import { isWailsRuntimeOnlyCrashEvent } from "./wailsRuntimeCrash";
@@ -54,6 +54,10 @@ export type PerformanceSnapshot = {
   // stops sampling silently — the reader must see how much of the window was
   // actually covered instead of assuming 10ms precision.
   profilerSampling?: ProfilerSamplingSummary;
+  // tl1417 (issue #82 gap 2): what the app was doing right before the trigger —
+  // bridge method names, stream event kinds and DOM event types with uptime
+  // stamps, coalesced. Never arguments, payloads or content (breadcrumbs.ts).
+  recentActivity?: ActivityEntry[];
   connection?: {
     effectiveType?: string;
     downlinkMbps?: number;
@@ -464,6 +468,7 @@ function performanceSnapshot(reason: string, currentLagMs = 0): PerformanceSnaps
   const nav = typeof navigator === "undefined" ? undefined : (navigator as BrowserNavigator);
   const doc = typeof document === "undefined" ? undefined : document;
   const pipeline = sessionPipelineDiagnostics();
+  const recentActivity = snapshotActivity();
   return {
     reason,
     uptimeMs: typeof performance !== "undefined" ? performance.now() : 0,
@@ -477,6 +482,7 @@ function performanceSnapshot(reason: string, currentLagMs = 0): PerformanceSnaps
     longTasks: typeof performance !== "undefined" ? longTaskSummary() : undefined,
     connection: networkSnapshot(),
     sessionPipeline: Object.keys(pipeline).length > 0 ? pipeline : undefined,
+    recentActivity: recentActivity.length > 0 ? recentActivity : undefined,
   };
 }
 
@@ -540,6 +546,23 @@ export function formatPerformanceContext(snapshot: PerformanceSnapshot): string 
     parts.push(span, `${sampling.inWindow} in long-task windows`);
     lines.push(`profiler sampling: ${parts.join(", ")}`);
   }
+  // tl1417: the activity lane, then the one line a triage actually wants — what
+  // ran last before the longest stall began (the trigger-source question #82
+  // could not answer from a 33s crumb gap).
+  const activity = snapshot.recentActivity;
+  if (activity?.length) {
+    lines.push("recent activity (names only, coalesced; @ uptime):");
+    for (const entry of activity) lines.push(`  ${formatActivityEntry(entry)}`);
+    const maxStart = maxLongTaskStartMs(snapshot);
+    if (maxStart !== undefined) {
+      const before = lastActivityBefore(activity, maxStart);
+      lines.push(
+        before
+          ? `last activity before max long task @ ${fmtNumber(maxStart / 1000, 1)}s: ${formatActivityEntry(before)} (${fmtNumber(Math.max(0, maxStart - Math.min(before.last, maxStart)) / 1000, 1)}s earlier)`
+          : `no recorded activity before max long task @ ${fmtNumber(maxStart / 1000, 1)}s`,
+      );
+    }
+  }
   if (snapshot.connection) {
     const parts = [
       snapshot.connection.effectiveType,
@@ -588,6 +611,35 @@ export function formatPerformanceContext(snapshot: PerformanceSnapshot): string 
     );
   }
   return lines.join("\n");
+}
+
+function formatActivityEntry(entry: ActivityEntry): string {
+  const span = entry.n > 1 ? `..${fmtNumber(entry.last / 1000, 1)}s` : "";
+  const count = entry.n > 1 ? ` x${entry.n}` : "";
+  return `@ ${fmtNumber(entry.t / 1000, 1)}s${span} ${entry.kind} ${entry.name}${count}`;
+}
+
+function maxLongTaskStartMs(snapshot: PerformanceSnapshot): number | undefined {
+  if (snapshot.longTaskMaxFrames) return snapshot.longTaskMaxFrames.startMs;
+  const recent = snapshot.longTasks?.recent;
+  if (!recent?.length) return undefined;
+  let longest = recent[0];
+  for (const task of recent) if (task.durationMs > longest.durationMs) longest = task;
+  return longest.startMs;
+}
+
+// The event that triggered a stall is noted at the stall's START (its handler
+// IS the stall), so entries up to a short slack past the start still count as
+// "before"; among those, the one that ran latest wins.
+const ACTIVITY_TRIGGER_SLACK_MS = 50;
+
+export function lastActivityBefore(activity: readonly ActivityEntry[], startMs: number): ActivityEntry | undefined {
+  let best: ActivityEntry | undefined;
+  for (const entry of activity) {
+    if (entry.t > startMs + ACTIVITY_TRIGGER_SLACK_MS) continue;
+    if (!best || entry.last > best.last) best = entry;
+  }
+  return best;
 }
 
 export function performanceLabelForReason(reason: string): string {
@@ -1528,6 +1580,8 @@ export function installPerformancePressureMonitor() {
   if (performanceMonitorInstalled || typeof window === "undefined" || typeof performance === "undefined") return;
   if (!window.runtime) return;
   performanceMonitorInstalled = true;
+  // tl1417: stream taps for the activity lane live with the monitor that reads them.
+  installStreamActivityTap();
   const startedAt = performance.now();
   const graceUntil = startedAt + STARTUP_GRACE_MS;
   const isHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
