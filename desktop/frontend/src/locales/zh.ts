@@ -4830,6 +4830,12 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesDeleteBatchTitle": "批量删除所选分支",
   "settings.recoveryCopiesDeleteBatchLead": "即将删除的分支",
   "settings.recoveryCopiesDeleteBatchWarn": "所选分支会被移入回收站（可恢复），不会永久删除。",
+  // tl1448 删除路径校验（20261106 误删主线事故验收①）：删除确认明示删除对象
+  // 文件；当前主线文件拒绝删除（后端对副本路径没有「选中」概念，前端这道门
+  // 是唯一防线）；批量勾选中混入的主线文件整批剔除并在确认框说明。
+  "settings.recoveryCopiesDeleteTarget": "删除对象文件：{path}",
+  "settings.recoveryCopiesDeleteRefusedMain": "删除被拒：{name} 是当前主线文件，主线不可删除。先把其他版本「切换到此版本」，它才会回到可删副本",
+  "settings.recoveryCopiesDeleteBatchMainSkipped": "已跳过 {n} 条：勾选中的当前主线文件不可删除",
   "settings.recoveryCopiesDeleteSelected": "删除所选",
   "settings.recoveryCopiesDeleting": "正在删除",
   "settings.recoveryCopiesOutcomeDeleted": "已删除",
@@ -5002,6 +5008,9 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesColOps": "行内操作",
   "settings.recoveryCopiesKindSession": "会话",
   "settings.recoveryCopiesKindVersion": "版本",
+  // tl1448：同 stem 双行——副本文件被采纳为当前主线后，它在表里同时渲染主线行
+  // 与副本行；副本行亮「当前选中」徽标（本键为悬停说明），勾选与删除入口收回。
+  "settings.recoveryCopiesMainFileHint": "该副本文件就是当前主线（已采纳）——主线本体不提供勾选与删除入口；先把其他版本「切换到此版本」，它才会回到可删副本",
   "settings.recoveryCopiesPhaseTodo": "待处理",
   "settings.recoveryCopiesPhaseTodoHint": "有副本/候选需要处理的会话",
   "settings.recoveryCopiesGroupExpandTip": "点击展开本组",

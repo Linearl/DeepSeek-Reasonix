@@ -4846,6 +4846,14 @@ export const en = {
   "settings.recoveryCopiesDeleteBatchTitle": "Delete selected branches",
   "settings.recoveryCopiesDeleteBatchLead": "Branches to delete",
   "settings.recoveryCopiesDeleteBatchWarn": "The selected branches move to the recoverable trash, not permanent deletion.",
+  // tl1448 delete-path validation (acceptance ① of the 20261106 wrong-delete
+  // incident): the delete confirmation names the target file; the current main
+  // line file is refused (the backend has no "selected" concept for copy paths,
+  // so this frontend gate is the only line of defense); main line files mixed
+  // into a batch selection are filtered out and the confirm says so.
+  "settings.recoveryCopiesDeleteTarget": "Target file: {path}",
+  "settings.recoveryCopiesDeleteRefusedMain": "Delete refused: {name} is the current main line file and the main line cannot be deleted. Switch another version to be the main line first and it becomes a deletable copy again",
+  "settings.recoveryCopiesDeleteBatchMainSkipped": "{n} skipped: the current main line file among the selection cannot be deleted",
   "settings.recoveryCopiesDeleteSelected": "Delete selected",
   "settings.recoveryCopiesDeleting": "Deleting",
   "settings.recoveryCopiesOutcomeDeleted": "Deleted",
@@ -5024,6 +5032,11 @@ export const en = {
   "settings.recoveryCopiesColOps": "row actions",
   "settings.recoveryCopiesKindSession": "session",
   "settings.recoveryCopiesKindVersion": "version",
+  // tl1448: same-stem dual row — after a copy file is adopted as the current
+  // main line it renders both a main row and a copy row; the copy row carries
+  // the "selected" badge (this key is its hover note) and loses its delete and
+  // checkbox entries.
+  "settings.recoveryCopiesMainFileHint": "this copy file IS the current main line (adopted) — the main line itself has no checkbox or delete entry; switch another version to be the main line first and it becomes a deletable copy again",
   "settings.recoveryCopiesPhaseTodo": "Pending",
   "settings.recoveryCopiesPhaseTodoHint": "conversations with copies or candidates to process",
   "settings.recoveryCopiesGroupExpandTip": "click to expand this group",
