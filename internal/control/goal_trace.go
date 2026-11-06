@@ -225,9 +225,9 @@ func goalTraceErr(err error) string {
 // controller's canceling flag, so a durability failure must be classified
 // before the generic stop request or it reads as a user stop.
 const (
-	goalCancelDurability = "durability_failure"
-	goalCancelRequested  = "stop_requested"
-	goalCancelContext    = "context_cancelled"
+	goalCancelDurability = goalCauseDurability
+	goalCancelRequested  = goalCauseStopRequested
+	goalCancelContext    = goalCauseCancelled
 )
 
 // goalCancelCause classifies why the turn context died under a Goal.

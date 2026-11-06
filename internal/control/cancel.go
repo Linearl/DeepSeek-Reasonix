@@ -123,6 +123,6 @@ func (c *Controller) finishCancel(turnID string, cancelled bool, outcome cancelT
 	// there would be its own dishonesty and could wedge the next turn's UI.
 	c.logNoTurnStopReceipt("cancel", outcome)
 	if c.goals.active() {
-		c.stopGoal(GoalStatusStopped)
+		c.stopGoal(GoalStatusStopped, goalCauseStopRequested, "stop requested while no turn was running")
 	}
 }

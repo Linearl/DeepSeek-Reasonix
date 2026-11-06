@@ -1331,6 +1331,9 @@ export interface GoalRuntime {
   noProgressLimit: number;
   lastReason?: string;
   stopCause?: string;
+  // tl1459: why the Goal last left running (complete, report_blocked,
+  // durability_failure, stop_requested, cleared, ...). Observational only.
+  lastStopCause?: string;
   budgetExtensions: number; // Deprecated: resumes no longer extend a numeric quota.
 }
 export function normalizeCollaborationMode(mode?: string, goal?: string, legacyMode?: Mode): CollaborationMode {

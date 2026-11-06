@@ -31,6 +31,7 @@ type goalMachineSnapshot struct {
 	lastContinuationReason string
 	lastEvaluatorReason    string
 	stopCause              string
+	lastStopCause          string
 	budgetExtensions       int
 	progressEvidence       []string
 	stateExtra             map[string]json.RawMessage
@@ -56,6 +57,7 @@ func (g *goalMachine) captureLocked() goalMachineSnapshot {
 		lastContinuationReason: g.lastContinuationReason,
 		lastEvaluatorReason:    g.lastEvaluatorReason,
 		stopCause:              g.stopCause, budgetExtensions: g.budgetExtensions,
+		lastStopCause:    g.lastStopCause,
 		progressEvidence: append([]string(nil), g.progressEvidence...),
 		stateExtra:       cloneGoalStateExtra(g.stateExtra),
 	}
@@ -76,6 +78,7 @@ func (g *goalMachine) restore(snapshot goalMachineSnapshot) {
 	g.lastContinuationReason = snapshot.lastContinuationReason
 	g.lastEvaluatorReason = snapshot.lastEvaluatorReason
 	g.stopCause = snapshot.stopCause
+	g.lastStopCause = snapshot.lastStopCause
 	g.budgetExtensions = snapshot.budgetExtensions
 	g.progressEvidence = append([]string(nil), snapshot.progressEvidence...)
 	g.stateExtra = cloneGoalStateExtra(snapshot.stateExtra)

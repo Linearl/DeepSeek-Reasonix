@@ -4,16 +4,18 @@ import "fmt"
 
 // GoalRuntimeView is the host-side runtime summary exposed to frontends.
 type GoalRuntimeView struct {
-	TurnsUsed        int    `json:"turnsUsed"`
-	TurnsLimit       int    `json:"turnsLimit"`
-	TokensUsed       int    `json:"tokensUsed"`
-	RequestsUsed     int    `json:"requestsUsed,omitempty"`
-	WorkDurationMs   int64  `json:"workDurationMs,omitempty"`
-	TokensLimit      int    `json:"tokensLimit"`
-	NoProgressTurns  int    `json:"noProgressTurns"`
-	NoProgressLimit  int    `json:"noProgressLimit"`
-	LastReason       string `json:"lastReason,omitempty"`
-	StopCause        string `json:"stopCause,omitempty"`
+	TurnsUsed       int    `json:"turnsUsed"`
+	TurnsLimit      int    `json:"turnsLimit"`
+	TokensUsed      int    `json:"tokensUsed"`
+	RequestsUsed    int    `json:"requestsUsed,omitempty"`
+	WorkDurationMs  int64  `json:"workDurationMs,omitempty"`
+	TokensLimit     int    `json:"tokensLimit"`
+	NoProgressTurns int    `json:"noProgressTurns"`
+	NoProgressLimit int    `json:"noProgressLimit"`
+	LastReason      string `json:"lastReason,omitempty"`
+	StopCause       string `json:"stopCause,omitempty"`
+	// LastStopCause (tl1459) is why the Goal last left running; observational.
+	LastStopCause    string `json:"lastStopCause,omitempty"`
 	BudgetExtensions int    `json:"budgetExtensions"`
 }
 
@@ -30,7 +32,7 @@ func (g *goalMachine) runtimeView() GoalRuntimeView {
 		WorkDurationMs: g.workDurationMs,
 		TokensLimit:    g.tokensLimit, NoProgressTurns: g.noProgressTurns,
 		NoProgressLimit: 0, LastReason: last,
-		StopCause: g.stopCause, BudgetExtensions: 0,
+		StopCause: g.stopCause, LastStopCause: g.lastStopCause, BudgetExtensions: 0,
 	}
 }
 

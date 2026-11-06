@@ -148,6 +148,52 @@ const noticeCodeKeys: Record<string, DictKey> = {
   reasoning_only_final: "notice.reasoningOnlyFinal",
 };
 
+// tl1459: Goal lifecycle notices. The backend emits one goal_* notice every
+// time a running Goal leaves running (plus goal_auto_continue_halted when the
+// Goal stays on but its auto-continue stopped). Dual track: the human half is
+// localized here from the code and the cause in Detail (cause=<id>); the
+// backend's technical line stays visible as the notice detail. useController
+// also refreshes the tab's Goal state on any of these codes — that refresh is
+// what keeps the Goal control from showing "on" for a Goal the backend already
+// stopped (the 2026-11-06 early-stop desync).
+const goalNoticeKeys: Record<string, DictKey> = {
+  goal_complete: "notice.goalComplete",
+  goal_blocked: "notice.goalBlocked",
+  goal_paused: "notice.goalPaused",
+  goal_stopped: "notice.goalStopped",
+  goal_cleared: "notice.goalCleared",
+  goal_auto_continue_halted: "notice.goalAutoContinueHalted",
+};
+
+const goalCauseKeys: Record<string, DictKey> = {
+  report_blocked: "notice.goalCause.reportBlocked",
+  evaluator_blocked: "notice.goalCause.evaluatorBlocked",
+  budget_spend: "notice.goalCause.budgetSpend",
+  evaluator_unavailable: "notice.goalCause.evaluatorUnavailable",
+  recovery_paused: "notice.goalCause.recoveryPaused",
+  ask_unanswered: "notice.goalCause.askUnanswered",
+  manual: "notice.goalCause.manual",
+  autopilot_time_limit: "notice.goalCause.autopilotTimeLimit",
+  durability_failure: "notice.goalCause.durabilityFailure",
+  stop_requested: "notice.goalCause.stopRequested",
+  context_cancelled: "notice.goalCause.contextCancelled",
+};
+
+// isGoalLifecycleNotice reports whether a notice code announces a Goal state
+// change the frontend must re-read.
+export function isGoalLifecycleNotice(code?: string): boolean {
+  return Boolean(code && Object.prototype.hasOwnProperty.call(goalNoticeKeys, code));
+}
+
+// goalCauseLabel localizes a backend cause id; an unknown id stays verbatim so
+// a newer backend's cause is never hidden.
+export function goalCauseLabel(cause?: string): string {
+  const id = (cause ?? "").trim();
+  if (!id) return "";
+  const key = goalCauseKeys[id];
+  return key ? t(key) : id;
+}
+
 const streamInterruptReasonCodeKeys: Record<string, DictKey> = {
   stream_interrupted_idle_timeout: "notice.streamInterruptReason.idleTimeout",
   stream_interrupted_premature_eof: "notice.streamInterruptReason.prematureEof",
@@ -189,6 +235,10 @@ export function localizedNoticeText(text: string, code?: string, detail?: string
   const streamReasonKey = code ? streamInterruptReasonCodeKeys[code] : undefined;
   if (streamReasonKey) {
     return t("notice.streamInterruptReason", { reason: t(streamReasonKey) });
+  }
+  const goalKey = code ? goalNoticeKeys[code] : undefined;
+  if (goalKey) {
+    return t(goalKey, { cause: goalCauseLabel(detailParams(detail).cause) });
   }
   const key = code ? noticeCodeKeys[code] : undefined;
   return key ? t(key) : localizedBackendNoticeText(text);

@@ -107,7 +107,7 @@ func (o *turnOrchestrator) runSubagentSkillTurnsGoalLoop(ctx context.Context, sk
 		if ctx.Err() != nil {
 			o.traceGoalTurnExit(o.c.goalUsageTee.activeRecorder(), goalExitTurnCancelled, goalSiteSkill, expectedContinuationEpoch, err)
 			o.c.goalUsageTee.setActiveRecorder(nil)
-			o.c.stopGoal(GoalStatusStopped)
+			o.c.stopGoalForCancelledTurn()
 		}
 		if !o.goalTurnErrorAbsorbableFor(err) || !o.c.goals.active() {
 			o.c.goalUsageTee.setActiveRecorder(nil)
@@ -451,7 +451,7 @@ func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn
 		if ctx.Err() != nil {
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			o.traceGoalTurnExit(goalRecorder, goalExitTurnCancelled, goalSiteFirstTurn, expectedContinuationEpoch, err)
-			o.c.stopGoal(GoalStatusStopped)
+			o.c.stopGoalForCancelledTurn()
 			return err
 		}
 		if !o.goalTurnErrorAbsorbableFor(err) {
@@ -470,6 +470,7 @@ func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn
 				return contErr
 			}
 			o.traceGoalTurnExit(goalRecorder, goalExitTerminalError, goalSiteFirstTurn, expectedContinuationEpoch, err)
+			o.noticeGoalAutoContinueHalted(goalRecorder, err)
 			return err
 		}
 		if !o.c.goals.active() {
@@ -508,7 +509,7 @@ func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.
 		if ctx.Err() != nil {
 			o.c.goalUsageTee.setActiveRecorder(nil)
 			o.traceGoalTurnExit(goalRecorder, goalExitTurnCancelled, goalSiteEditedTurn, expectedContinuationEpoch, err)
-			o.c.stopGoal(GoalStatusStopped)
+			o.c.stopGoalForCancelledTurn()
 			return err
 		}
 		if !o.goalTurnErrorAbsorbableFor(err) {
@@ -522,6 +523,7 @@ func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.
 				return contErr
 			}
 			o.traceGoalTurnExit(goalRecorder, goalExitTerminalError, goalSiteEditedTurn, expectedContinuationEpoch, err)
+			o.noticeGoalAutoContinueHalted(goalRecorder, err)
 			return err
 		}
 		if !o.c.goals.active() {
@@ -552,7 +554,7 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 		}
 		if err := ctx.Err(); err != nil {
 			o.c.traceGoalExit(goalExitTurnCancelled, goalSiteContinuation, res.continuationEpoch, nil, o.goalCancelAttrs(err)...)
-			c.stopGoal(GoalStatusStopped)
+			c.stopGoalForCancelledTurn()
 			return err
 		}
 		intercept, ok := c.goals.acceptContinuation(res)
@@ -579,7 +581,7 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 			goalRecorder := c.goalUsageTee.activeRecorder()
 			if ctx.Err() != nil {
 				o.traceGoalTurnExit(goalRecorder, goalExitTurnCancelled, goalSiteContinuation, res.continuationEpoch, err)
-				c.stopGoal(GoalStatusStopped)
+				c.stopGoalForCancelledTurn()
 				return err
 			}
 			if !o.goalTurnErrorAbsorbableFor(err) {
@@ -587,6 +589,7 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 				// interactive Goal stays running for the next user turn.
 				c.goalUsageTee.setActiveRecorder(nil)
 				o.traceGoalTurnExit(goalRecorder, goalExitTerminalError, goalSiteContinuation, res.continuationEpoch, err)
+				o.noticeGoalAutoContinueHalted(goalRecorder, err)
 				return err
 			}
 			turnErr = err
@@ -700,6 +703,7 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 		// Terminal provider/host error: stop auto-continue without an FSM
 		// transition; the goal stays running for the next user turn.
 		c.traceGoalExit(goalExitTerminalError, goalSiteAdvance, expectedContinuationEpoch, recorder, "err", goalTraceErr(turnErr))
+		o.noticeGoalAutoContinueHalted(recorder, turnErr)
 		return goalAdvanceResult{cont: false}
 	} else if c.executor != nil {
 		readiness = c.executor.ReadinessResult()
@@ -742,9 +746,7 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 	})
 	c.traceGoalAdvance(expectedContinuationEpoch, recorder, res, report, evaluator, evaluatorFailed, pauseCause)
 	c.persistGoalState(res.path, res.data, res.ok)
-	if res.notice != "" {
-		c.notice(res.notice)
-	}
+	c.noticeGoalAdvance(res)
 	if res.notice == goalCompleteNotice && c.executor != nil {
 		c.completeRemainingGoalTodos()
 	}

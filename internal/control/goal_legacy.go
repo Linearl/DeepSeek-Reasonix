@@ -47,6 +47,7 @@ func (g *goalMachine) blockLegacyRestore(expectedEpoch uint64, reason string) (u
 	}
 	g.status = GoalStatusBlocked
 	g.stopCause = stopCauseLegacyArchive
+	g.lastStopCause = stopCauseLegacyArchive
 	g.block = clipGoalReason(reason)
 	g.bumpEpochLocked(goalEpochLegacyBlock)
 	return g.continuationEpoch, true
@@ -64,6 +65,7 @@ func (g *goalMachine) failLegacyRestorePersistence(expectedEpoch uint64, reason 
 	}
 	g.status = GoalStatusBlocked
 	g.stopCause = stopCauseLegacyArchive
+	g.lastStopCause = stopCauseLegacyArchive
 	g.block = clipGoalReason(reason)
 	g.bumpEpochLocked(goalEpochLegacyBlock)
 	return g.continuationEpoch, true

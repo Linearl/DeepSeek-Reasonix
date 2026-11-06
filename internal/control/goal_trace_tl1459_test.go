@@ -80,7 +80,7 @@ func TestGoalExitGateLogsRealBindingValues(t *testing.T) {
 	t.Run("turn no longer active", func(t *testing.T) {
 		logs := captureForkTraceLog(t)
 		c, rec := goalTraceController(t)
-		c.stopGoal(GoalStatusStopped)
+		c.stopGoal(GoalStatusStopped, goalCauseStopRequested, "")
 		newTurnOrchestrator(c).advanceGoalAfterTurn(context.Background(), rec.epoch, nil)
 		got := lastGoalExit(t, logs.String())
 		if got["goal_exit"] != goalExitGate || got["gate_reason"] != "turn_inactive" || got["turn_active"] != "false" ||
@@ -211,7 +211,7 @@ func TestGoalEpochChangesNameTheirSource(t *testing.T) {
 	c.PauseGoal()
 	c.ResumeGoal()
 	c.goals.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusRunning, reason: "more", nextAction: "next"}})
-	c.stopGoal(GoalStatusStopped)
+	c.stopGoal(GoalStatusStopped, goalCauseStopRequested, "")
 	c.SetGoal("")
 
 	wantSources := []string{goalEpochInstall, goalEpochPause, goalEpochResume, goalEpochAdvance, goalEpochStop, goalEpochClear}

@@ -91,7 +91,7 @@ func (updateGoal) Execute(ctx context.Context, args json.RawMessage) (string, er
 	}
 	recorder, ok := tool.GoalTurnRecorderFromContext(ctx)
 	if !ok {
-		return "", fmt.Errorf("update_goal is only available while an active goal turn is running — no goal state was changed")
+		return "", fmt.Errorf("%s", tool.UpdateGoalUnavailableMessage(ctx))
 	}
 	result, err := recorder.RecordGoalReport(tool.GoalReport{
 		Status:     p.Status,
