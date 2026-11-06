@@ -210,6 +210,120 @@ func findingString(m map[string]any, key string) string {
 	}
 }
 
+// upstreamCandidates collects the producer serials the interpolated prompt
+// actually carries ("nodeID#n" → the producing node's original finding,
+// tl1440). Only serials visible to THIS node may become rewrite-merge
+// candidates — a reviewer cannot be held to echo (or be merged by) a serial
+// it never saw, and a producer node's prompt (task text only) matches
+// nothing, keeping scan nodes merge-free. Called in the serial head, where
+// prompt interpolation happens; the returned map is a value snapshot, safe
+// to carry into the concurrent segment.
+func (s *runState) upstreamCandidates(prompt string) map[string]Finding {
+	if !strings.Contains(prompt, "#") {
+		return nil
+	}
+	var out map[string]Finding
+	for _, fs := range s.findings {
+		for _, f := range fs {
+			if f.SourceID == "" || !strings.Contains(prompt, f.SourceID) {
+				continue
+			}
+			if out == nil {
+				out = make(map[string]Finding, len(fs))
+			}
+			out[f.SourceID] = f
+		}
+	}
+	return out
+}
+
+// mergeEchoedFindings is the deterministic fallback for the rewrite-merge
+// contract (tl1440). tl1326 B1 lets a reviewer merge its rewrite into the
+// original entry by echoing the source serial the prompt carried — but that
+// relies on the model restating the serial, and when it doesn't, the
+// confirmed rewrite ("核实成立: …") lands as a NEW bag entry: the
+// (where, what) idempotency key misses precisely because the what was
+// rewritten (run wf-04d73376e38d: 10 bag entries for 7 real issues, +43%).
+//
+// For every extracted finding whose serial was engine-minted for THIS node
+// ("<nodeID>#n" — i.e. the model did NOT echo an id) and whose where matches
+// exactly one candidate serial the prompt carried, the entry is re-keyed to
+// that producer serial, in the extracted slice AND the raw result map
+// (m["id"]). bag.add then takes its same-source path (wording/evidence/
+// severity updated in place, count unchanged), and the confirm node's
+// evidence — which serializes the re-keyed raw map — lets verdicts promote
+// the ORIGINAL entry by its own serial. One mutation site, no second
+// matcher: the add/promote key (sameFinding) is untouched (tl1326 hard rule).
+//
+// Guards — a mis-merge here would silently destroy distinct findings:
+//   - an empty where never matches (ghost entries are counted and appended
+//     as-is — audit run wf-04d73376e38d ⑥: the rejected list carried a
+//     ghost, empty-where entry);
+//   - two candidates sharing the same where are distinct issues in one file:
+//     none of them merges (the over-merge guard from G3, preserved);
+//   - one candidate serial absorbs at most one rewrite per node completion —
+//     a second reviewer entry on the same where stays its own entry.
+//
+// Returns the counters for the caller's degradation log: merged (rewrites
+// re-keyed — the model did not honor the echo contract, engine recovered),
+// skippedMulti (same-where candidate sets left unmerged), ghost (empty-where
+// entries that can never merge).
+func mergeEchoedFindings(nodeID, field string, obj map[string]any, fs []Finding, cands map[string]Finding) (merged, skippedMulti, ghost int) {
+	if len(cands) == 0 || len(fs) == 0 {
+		return 0, 0, 0
+	}
+	arr, ok := obj[field].([]any)
+	if !ok {
+		return 0, 0, 0
+	}
+	rawByID := make(map[string]map[string]any, len(arr))
+	for _, item := range arr {
+		if m, ok := item.(map[string]any); ok {
+			if id := findingString(m, "id"); id != "" {
+				rawByID[id] = m
+			}
+		}
+	}
+	selfPrefix := nodeID + "#"
+	used := make(map[string]bool, len(fs))
+	for i := range fs {
+		f := &fs[i]
+		if f.SourceID == "" || !strings.HasPrefix(f.SourceID, selfPrefix) {
+			continue // echoed serial or model-minted tag: add/promote handle it
+		}
+		if f.Where == "" {
+			ghost++ // ghost where never matches — nothing to key on
+			continue
+		}
+		var orig Finding
+		found, multi := false, false
+		for sid, cand := range cands {
+			if cand.Where != f.Where || used[sid] {
+				continue
+			}
+			if found {
+				multi = true
+				break
+			}
+			found, orig = true, cand
+		}
+		if multi {
+			skippedMulti++ // same where, ≥2 upstream issues: over-merge guard
+			continue
+		}
+		if !found {
+			continue // genuinely new issue — belongs in the bag as its own entry
+		}
+		used[orig.SourceID] = true
+		if m := rawByID[f.SourceID]; m != nil {
+			m["id"] = orig.SourceID // downstream interpolations see the same key
+		}
+		f.SourceID = orig.SourceID
+		merged++
+	}
+	return merged, skippedMulti, ghost
+}
+
 // finalAnswerBody returns the part of a sub-agent reply after the task
 // substrate's "Final answer:" marker (or the whole reply when unwrapped).
 func finalAnswerBody(answer string) string {
@@ -252,9 +366,32 @@ func (s *runState) buildReport(runErr error) *WorkflowReport {
 		conclusion = buildConclusion(s.wf, s.interpolate(s.wf.Report.Conclusion), ran, total, "")
 	}
 	notCovered := append([]string(nil), s.wf.Report.NotCovered...)
+	findings := s.bag.snapshot()
+	// Conclusion counting note (tl1440): when reports were merged away
+	// (same-source rewrites or the where-fallback), the findings array is
+	// deliberately SHORTER than what the nodes reported. Without the note a
+	// reader sees "N findings" next to a conclusion counting fewer and cannot
+	// tell dedup from loss (run wf-04d73376e38d: 10 entries shown, conclusion
+	// counted 6 — the gap was duplicates the reviewer had reworded). The note
+	// only appears when a merge actually happened; count-per-status so the
+	// two number families reconcile on sight.
+	if raw := s.bag.reportedTotal(); raw > len(findings) {
+		verified, unconfirmed := 0, 0
+		for _, f := range findings {
+			switch f.Status {
+			case FindingVerified:
+				verified++
+			case FindingUnconfirmed:
+				unconfirmed++
+			}
+		}
+		conclusion += fmt.Sprintf(
+			" (dedup note: %d findings were reported across nodes and merged into %d entries — %d verified, %d unconfirmed; merged rewrites update their original entry in place)",
+			raw, len(findings), verified, unconfirmed)
+	}
 	return &WorkflowReport{
 		Conclusion: conclusion,
-		Findings:   s.bag.snapshot(),
+		Findings:   findings,
 		Verified:   append([]string(nil), s.verifs...),
 		NotCovered: notCovered,
 	}
