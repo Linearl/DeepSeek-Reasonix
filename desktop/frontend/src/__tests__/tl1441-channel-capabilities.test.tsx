@@ -293,8 +293,10 @@ await act(async () => { await flush(); });
 // ── ④ 消息流附件缩略图（成员侧可见图）───────────────────────────────────
 {
   const previews: Record<string, string> = {
-    "@/mock-global/.reasonix/attachments/p1.png": TINY_PNG_URL,
-    "@D:\\w\\.reasonix\\attachments\\p2.png": TINY_PNG_URL,
+    // tl1465：读桥收裸路径（@ 前缀在 attachmentRefsOf 剥除——事故修复后契约；
+    // 断言意图不变：成员侧可见图）。
+    "/mock-global/.reasonix/attachments/p1.png": TINY_PNG_URL,
+    "D:\\w\\.reasonix\\attachments\\p2.png": TINY_PNG_URL,
   };
   const preview = async (path: string): Promise<string> => {
     const hit = previews[path];
@@ -355,7 +357,7 @@ for (const needle of [
 }
 const workspaceSrc = fs.readFileSync(path.join(import.meta.dirname, "..", "components", "ChannelWorkspacePanel.tsx"), "utf-8");
 ok(workspaceSrc.includes("rewriteContextProvider={buildRewriteTail}"), "workspace pins the rewrite tail provider");
-ok(workspaceSrc.includes('attachmentPreview={(path) => b.ChannelAttachmentDataURL(path)}'), "workspace pins the stream preview bridge");
+ok(workspaceSrc.includes("attachmentPreview={channelAttachmentPreview}"), "workspace pins the stream preview bridge (tl1465：引用稳定化后的 useCallback 形态)");
 const bridgeSrc = fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "bridge.ts"), "utf-8");
 for (const needle of ["SaveChannelAttachment(dataUrl: string): Promise<string>", "ChannelAttachmentDataURL(path: string): Promise<string>", "RewriteDraftForChannel(draft: string, contextTail: string, contextBudgetKB: number): Promise<string>"]) {
   ok(bridgeSrc.includes(needle), `bridge declaration pin: ${needle.slice(0, 44)}…`);

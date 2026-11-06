@@ -1511,6 +1511,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
    *  路径（消息体 @引用需跨工作区可解析）。契约对齐 desktop
    *  App.SaveChannelAttachment（wails generate 禁用，手写声明）。 */
   SaveChannelAttachment(dataUrl: string): Promise<string>;
+  /** tl1465 D：原生剪贴板图片落群聊附件目录（全局工作区锚点）——粘贴链的
+   *  无文件载荷回退分支（截图工具等 image-hint 剪贴板）此前锚活动会话工作
+   *  区，chip 有预览但群消息引用了群外文件。返回绝对路径，契约对齐 desktop
+   *  App.SaveChannelClipboardImage（手写声明）。 */
+  SaveChannelClipboardImage(): Promise<string>;
   /** tl1441 ③：群聊附件预览读回——只认解析后落在全局工作区
    *  .reasonix/attachments 内的路径（tl1421 探针惯例，逃出即拒）。契约对齐
    *  desktop App.ChannelAttachmentDataURL（手写声明）。 */
@@ -6370,6 +6375,12 @@ function makeMockApp(): AppBindings {
     async SaveChannelAttachment(dataUrl: string) {
       const path = `/mock-global/.reasonix/attachments/channel-${mockAttachmentDataURLs.size + 1}.png`;
       mockAttachmentDataURLs.set(path, dataUrl);
+      return path;
+    },
+    // tl1465 D mock：原生剪贴板图片同锚全局附件目录（绝对形状路径）。
+    async SaveChannelClipboardImage() {
+      const path = `/mock-global/.reasonix/attachments/clipboard-${mockAttachmentDataURLs.size + 1}.png`;
+      mockAttachmentDataURLs.set(path, mockPreviewImageDataURL);
       return path;
     },
     async ChannelAttachmentDataURL(path: string) {

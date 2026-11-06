@@ -42005,6 +42005,61 @@ button.statusbar__mcp:focus-visible {
   border-top: 1px solid var(--border);
   padding-top: 6px;
 }
+/* tl1465 D：群聊输入框粘图 chip 条——pending 占位（落盘中）→ 缩略图；
+   与群聊 tab Composer 的附件 chip 同语义的轻量形态（Hub 面板输入区无
+   Composer 壳，只承载 chip 条 + 粘贴监听，不造第二套预览组件）。 */
+.channel-chat__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 2px;
+}
+.channel-chat__chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 160px;
+  padding: 2px 18px 2px 4px;
+  border: 1px solid var(--border-soft, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated, var(--bg));
+  font-size: var(--text-xs);
+}
+.channel-chat__chip--pending {
+  opacity: 0.6;
+  border-style: dashed;
+}
+.channel-chat__chipthumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 4px);
+  display: block;
+}
+.channel-chat__chipname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-chat__chippending {
+  color: var(--fg-dim);
+}
+.channel-chat__chipremove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  line-height: 14px;
+  font-size: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated, var(--bg));
+  color: var(--fg-dim);
+  cursor: pointer;
+}
 .channel-chat__input {
   flex: 1;
   resize: none;
