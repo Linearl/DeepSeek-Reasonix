@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { ProviderEditor, ProviderEditorModelPicker } from "../components/SettingsPanel";
+import { ProviderEditor } from "../components/SettingsPanel";
 import { ModelImageInputControl } from "../components/ModelImageInputControl";
 import { LocaleProvider } from "../lib/i18n";
 import { imageInputHardBlocked, imageInputState, mergeImageInputModes } from "../lib/providerImageInput";
@@ -10,6 +10,9 @@ import type { AppBindings } from "../lib/bridge";
 import type { ProviderModelCapabilityView, ProviderView } from "../lib/types";
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
+// 锁定 en 语区(理由同 provider-editor-compact:文案按钮按文本查找)。
+Object.defineProperty(dom.window.navigator, "language", { configurable: true, value: "en-US" });
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, Node: dom.window.Node, HTMLElement: dom.window.HTMLElement, Event: dom.window.Event, CustomEvent: dom.window.CustomEvent, MouseEvent: dom.window.MouseEvent, localStorage: dom.window.localStorage, sessionStorage: dom.window.sessionStorage, IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
@@ -34,12 +37,12 @@ assert(modeInput("auto").closest("label")?.classList.contains("set-seg__btn--on"
 await choose("on");
 assert(el.textContent?.includes("Manually enabled"));
 assert.equal(saved.length, 0, "draft must not write config");
-await click("Save");
+await click("Save changes");
 assert.equal(saved[0].modelOverrides?.[0].vision, true);
 assert.equal(saved[0].modelOverrides?.[0].contextWindow, 123456);
 assert.equal(saved[0].modelOverrides?.[0].maxOutputTokens, 4321);
 await choose("auto");
-await click("Save");
+await click("Save changes");
 assert.equal(saved[1].modelOverrides?.[0].vision, null);
 assert.equal(saved[1].modelOverrides?.[0].reasoningProtocol, "openai");
 await choose("off");
@@ -73,8 +76,13 @@ assert(!imageInputHardBlocked("https://api.deepseek.com.relay.test", "deepseek-v
 assert(!imageInputHardBlocked("https://api.deepseek.com", "deepseek-v4-flash-vision-exp"));
 assert.equal(mergeImageInputModes(initial.modelOverrides, initial.models, { "RELAY-MODEL": "off" })[0].vision, null);
 
-await render(<ProviderEditorModelPicker candidates={["relay-model"]} selectedModels={["relay-model"]} visionModels={[]} modelCapabilities={[unknown]} imageModes={{ "relay-model": "on" }} onImageInputChange={() => {}} contextWindows={{}} disabled={false} onToggleModel={() => {}} onContextWindowChange={() => {}} onSelectAll={() => {}} onClear={() => {}} />);
+// 296d8fc6d(integrate provider connections,2026-09-07)后 per-model 手动图像模式
+// 的承载面从 ProviderEditorModelPicker 行(旧 imageModes/onImageInputChange props
+// 已随统一模型编辑入口退役)移到 ProviderModelsEditor 行内 ModelImageInputControl;
+// 「手动开档位以 Manually enabled 状态呈现」的保证改钉现承载面(mode=on 直渲)。
+await render(<ModelImageInputControl model="relay-model" mode="on" capability={unknown} disabled={false} onChange={() => {}} />);
 assert(el.textContent?.includes("Manually enabled"));
+assert(modeInput("on").closest("label")?.classList.contains("set-seg__btn--on"), "manual on mode renders as the selected segmented state");
 await act(async () => root.unmount());
 dom.window.close();
 console.log("PASS provider image input: draft/save/auto/cancel/disabled/hard-limit/stale discovery");

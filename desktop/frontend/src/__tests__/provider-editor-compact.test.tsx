@@ -2,6 +2,10 @@ import { JSDOM } from 'jsdom';
 import { act } from 'react';
 import assert from 'node:assert/strict';
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost', pretendToBeVisual: true });
+// 锁定 en 语区:LocaleProvider.detectLocale 读 navigator.language,zh-CN 机器上
+// Node 原生 navigator 是 zh-CN,不钉则三语文案随机器漂(既有模式见 approval-modal-file-reference)。
+Object.defineProperty(dom.window.navigator, "language", { configurable: true, value: "en-US" });
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, Node: dom.window.Node, HTMLElement: dom.window.HTMLElement, requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window), IS_REACT_ACT_ENVIRONMENT: true });
 window.HTMLDialogElement.prototype.showModal = function() { this.setAttribute('open',''); this.querySelector('input')?.focus(); };
 const { createRoot } = await import('react-dom/client');
