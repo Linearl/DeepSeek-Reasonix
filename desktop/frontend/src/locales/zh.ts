@@ -3233,6 +3233,7 @@ export const zh: Record<DictKey, string> = {
   "workflowPanel.detail.processFailed": "过程记录读取失败，可能已被清理。",
   "workflowPanel.detail.processEmpty": "该次执行暂无可回放内容。",
   "workflowPanel.detail.processMissing": "该节点无已登记的执行过程记录（较早的运行或未持久化的派发）。",
+  "workflowPanel.detail.processLive": "节点运行中：已写盘内容即时可读，新写入自动跟进。",
   "workflowPanel.detail.processReadOnly": "子代理工作过程的只读回放，不会唤醒或写入其会话。",
 "workspace.subagentsTab": "任务",
 "subagentPanel.empty": "当前会话暂无子代理",

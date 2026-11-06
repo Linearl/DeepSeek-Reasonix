@@ -15688,6 +15688,11 @@ button.statusbar__mcp:focus-visible {
   font-size: 10px;
   color: var(--fg-faint);
 }
+/* tl1434 追加:运行中节点的增量跟进提示行(等待态复用同一文案)。 */
+.wf-panel__trace-live {
+  font-size: 10px;
+  color: var(--fg-dim);
+}
 .drawer {
   position: relative;
   width: min(var(--drawer-width, 440px), 92vw);

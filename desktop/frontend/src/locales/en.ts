@@ -3244,6 +3244,7 @@ export const en = {
   "workflowPanel.detail.processFailed": "Could not load the transcript. The record may have been cleaned up.",
   "workflowPanel.detail.processEmpty": "This execution has no replayable content yet.",
   "workflowPanel.detail.processMissing": "No recorded executions for this node (older run or non-persisted dispatch).",
+  "workflowPanel.detail.processLive": "Node is running — content already written to disk shows up here; new writes are followed automatically.",
   "workflowPanel.detail.processReadOnly": "Read-only replay of the sub-agent's work; the session is never woken or written to.",
 "workspace.subagentsTab": "Tasks",
 "subagentPanel.empty": "No subagents in this session",
