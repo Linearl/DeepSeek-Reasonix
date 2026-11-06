@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/provider"
+	"reasonix/internal/store"
 )
 
 func saveLineageSession(t *testing.T, path string, messages ...string) {
@@ -262,6 +264,126 @@ func TestReconcilePersistsContentProvenCanonicalLeaf(t *testing.T) {
 	}
 	if record.RecoveryRole != RecoveryRoleAdopted || !record.RecoveryCanonical {
 		t.Fatalf("reconciled recovery = %+v, want adopted canonical", record)
+	}
+}
+
+// saveDamagedLineageFork writes a root+recovered-fork lineage whose fork ends
+// in a torn event-log record, the shape an interrupted writer leaves (and the
+// shape every package-78/79 field report carried).
+func saveDamagedLineageFork(t *testing.T, dir string) (root, fork string) {
+	t.Helper()
+	root = filepath.Join(dir, "root.jsonl")
+	fork = filepath.Join(dir, "root-recovery-7fa1f7e5deadbeef.jsonl")
+	saveLineageSession(t, root, "q", "a", "root unique", "root answer")
+	saveLineageSession(t, fork, "q", "a", "fork unique", "fork answer")
+	f, err := os.OpenFile(store.SessionEventLog(fork), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("{\"schema_version\":1,\"type\":\"append\",\"trunc"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	created := time.UnixMilli(100)
+	for path, meta := range map[string]agent.BranchMeta{
+		root: {ID: "root", Scope: "global", TopicID: "topic", TopicTitle: "Topic", CreatedAt: created, UpdatedAt: created},
+		fork: {ID: "fork", Scope: "global", TopicID: "topic", TopicTitle: "Topic", Recovered: true, ParentID: "root", RecoveryDepth: 1, CreatedAt: created.Add(time.Second), UpdatedAt: created.Add(time.Second)},
+	} {
+		if err := agent.SaveBranchMetaPreserveUpdated(path, meta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root, fork
+}
+
+// tl1430-2 unit nail: the catalog projection must keep an explicit preference
+// proven by the tolerant replay even when the strict snapshot fail-closes on
+// the damaged log. The write side (SetRecoveryPreferred) and the promote check
+// (RecoveryPreferenceCurrent) accept that proof; a projection that re-proves it
+// through LoadSessionContentSnapshot silently voided the user's choice - the
+// package-79 field report's fourth ring.
+func TestReconcileKeepsDamagedPreferredChoice(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	root, fork := saveDamagedLineageFork(t, dir)
+	if err := agent.SetRecoveryPreferred([]string{root, fork}, fork); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := Open(ctx, Options{InMemory: true, DisableRepair: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer catalog.Close(ctx)
+	if err := catalog.ReconcileDirectory(ctx, DirectoryTarget{Path: dir, Scope: "global"}); err != nil {
+		t.Fatal(err)
+	}
+	record, ok, err := catalog.GetSession(ctx, fork)
+	if err != nil || !ok {
+		t.Fatalf("GetSession ok=%v err=%v", ok, err)
+	}
+	// The projection persists the choice as filing role; the bare flag is a
+	// scan-time-only field consumed by promoteCanonicalLeaves.
+	if record.RecoveryRole != RecoveryRolePreferred || !record.RecoveryCanonical {
+		t.Fatalf("damaged preferred fork reconciled as %s canonical=%v, want preferred+canonical", record.RecoveryRole, record.RecoveryCanonical)
+	}
+	topic, ok, err := catalog.GetTopic(ctx, TopicKey{Scope: "global", TopicID: "topic"})
+	if err != nil || !ok {
+		t.Fatalf("GetTopic ok=%v err=%v", ok, err)
+	}
+	if got := OrdinaryContinuePath(topic.Sessions, root); got != fork {
+		t.Fatalf("reopen continuation for %q = %q, want the adopted fork", root, got)
+	}
+}
+
+// The flip side of the tolerant-proof fallback: content drift must still void
+// the explicit choice. Continuing the adopted fork changes its digest, the
+// preference fails both proofs, and only content-derived classification may
+// keep the line canonical.
+func TestReconcileVoidsDriftedPreferredChoice(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	root, fork := saveDamagedLineageFork(t, dir)
+	// Heal the fork by saving past the damage (the next save rewrites), then
+	// drift it beyond what the user chose.
+	drifted := agent.NewSession("sys")
+	for _, m := range []struct {
+		role    provider.Role
+		content string
+	}{
+		{provider.RoleUser, "q"}, {provider.RoleAssistant, "a"},
+		{provider.RoleUser, "fork unique"}, {provider.RoleAssistant, "fork answer"},
+		{provider.RoleUser, "continued after the choice"},
+	} {
+		drifted.Add(provider.Message{Role: m.role, Content: m.content})
+	}
+	if err := drifted.Save(fork); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.SetRecoveryPreferred([]string{root, fork}, fork); err != nil {
+		t.Fatal(err)
+	}
+	// Drift AFTER the choice: append one more message so the file no longer
+	// matches the recorded digest.
+	drifted.Add(provider.Message{Role: provider.RoleUser, Content: "more drift"})
+	if err := drifted.Save(fork); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := Open(ctx, Options{InMemory: true, DisableRepair: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer catalog.Close(ctx)
+	if err := catalog.ReconcileDirectory(ctx, DirectoryTarget{Path: dir, Scope: "global"}); err != nil {
+		t.Fatal(err)
+	}
+	record, ok, err := catalog.GetSession(ctx, fork)
+	if err != nil || !ok {
+		t.Fatalf("GetSession ok=%v err=%v", ok, err)
+	}
+	if record.RecoveryRole == RecoveryRolePreferred {
+		t.Fatalf("drifted fork kept the preferred role: %+v", record)
 	}
 }
 
