@@ -13566,6 +13566,31 @@ button.statusbar__mcp:focus-visible {
 .side-files__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, ui-monospace, monospace); }
 .side-files__foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border-soft); }
 .side-files__empty { padding: 12px; color: var(--fg-dim); font-size: var(--text-sm); }
+/* tl1437: side-files dock rows turn interactive (selection + row menu). The
+   row button carries the padding the static li used to hold; selected/hover
+   reuse the file-tree selection token family — no new tokens. */
+.side-files__item--interactive { padding: 0; }
+.side-files__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--fg);
+}
+.side-files__row:hover { background: var(--tree-row-hover-bg); }
+.side-files__row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.side-files__row--selected,
+.side-files__row--selected:hover { background: var(--tree-row-current-bg); color: var(--tree-row-current-fg); }
+/* tl1445: the references dock rows mount the same interactive list, so the
+   same row styles serve both variants — nothing references-specific here. */
 /* Task 260: dock-tab variant fills the dock body (the body clips overflow). */
 .workbench-dock__body > .side-files--dock { height: 100%; overflow: auto; }
 
