@@ -97,7 +97,7 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 			batch.add(target, nil, nil)
 			continue
 		}
-		guard, err := acquireSessionRemovalGuard(target.sessionPath)
+		guard, err := acquireSessionRemovalGuardForOp("archive_ownership", target.sessionPath)
 		if err != nil && terminal {
 			// tl1404 terminal: clear this process's lease state, retry the
 			// guard once, and let the OS lease lock arbitrate what remains —
@@ -133,7 +133,7 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 			// No lease available (e.g. tab in sessionRuntimeFailed after
 			// a failed restore). Fall back to non-runtime guard acquisition
 			// so the archive can proceed without a live lease.
-			guard, err := acquireSessionRemovalGuard(target.sessionPath)
+			guard, err := acquireSessionRemovalGuardForOp("archive_ownership_fallback", target.sessionPath)
 			if err != nil && terminal {
 				guard, err = a.terminalArchiveGuardAfterReclaim(target.sessionPath, key, err)
 				if err != nil {
@@ -186,7 +186,7 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 			}
 			slog.Warn("desktop: topic archive lease conversion failed, falling back to non-runtime guard",
 				"session", target.sessionPath, "err", err)
-			guard2, err2 := acquireSessionRemovalGuard(target.sessionPath)
+			guard2, err2 := acquireSessionRemovalGuardForOp("archive_ownership_fallback", target.sessionPath)
 			if err2 != nil && terminal {
 				guard2, err2 = a.terminalArchiveGuardAfterReclaim(target.sessionPath, key, err2)
 				if err2 != nil {

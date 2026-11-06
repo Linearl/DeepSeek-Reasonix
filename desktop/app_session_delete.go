@@ -151,7 +151,7 @@ func removeDesktopSessionArtifacts(path string) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
-	guard, err := acquireSessionRemovalGuard(path)
+	guard, err := acquireSessionRemovalGuardForOp("session_delete", path)
 	if err != nil {
 		return err
 	}

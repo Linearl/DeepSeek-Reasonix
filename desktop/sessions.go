@@ -370,7 +370,39 @@ func sessionLeaseBusyClassification(err error) error {
 // reclaim failing, so nothing is ever grabbed silently; a refusal that
 // survives the heal keeps the original error (identity, sentinel, forceable
 // mark) unchanged.
+// acquireSessionRemovalGuard is the op-tag-free form kept for existing
+// callers and tests; production flows use acquireSessionRemovalGuardForOp so
+// the field log can pair acquire/refuse/heal timelines per component
+// (tl1429b-2: the 08:26 loop was unattributable because only refusals logged).
 func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard, error) {
+	return acquireSessionRemovalGuardForOp("archive", sessionPath)
+}
+
+// acquireSessionRemovalGuardForOp wraps agent.TryAcquireSessionRemovalGuard
+// with the sanitized busy error. The guard holds the session's save and lease
+// locks across the destructive operation and deletes the lock files
+// atomically with the release — a one-shot busy probe followed by RemoveAll
+// would let another process acquire the lease in between and then lose its
+// freshly locked lease file, breaking cross-process mutual exclusion.
+//
+// tl1383: a refusal whose lease error carries NO usable holder identity
+// (holder_class=unknown pid=0, the 2026-11-04 08:23/09:08 archive refusals)
+// is healed once through the lock-arbitrated reclaim primitive instead of
+// refusing forever. The lease doctrine (TryReclaimCurrentProcessSessionLease)
+// already says a missing or unreadable identity record with a free lock is a
+// leftover, not a holder — the removal-guard path just never invoked it, so
+// the leftover kept wedging archives and force-archive had no lever either.
+// The OS lock stays the arbiter: a live holder of the lock file keeps the
+// reclaim failing, so nothing is ever grabbed silently; a refusal that
+// survives the heal keeps the original error (identity, sentinel, forceable
+// mark) unchanged.
+//
+// tl1429b-2: both outcomes log the acquiring op (op= tag) — the success line
+// is the acquire-side timestamp the field log pairs against the refusal and
+// heal lines to answer "who took the lock when" without another package
+// round-trip.
+func acquireSessionRemovalGuardForOp(op, sessionPath string) (*agent.SessionRemovalGuard, error) {
+	started := time.Now()
 	guard, err := withSessionLeaseContentionRetry(func() (*agent.SessionRemovalGuard, error) {
 		return agent.TryAcquireSessionRemovalGuard(sessionPath)
 	})
@@ -385,16 +417,20 @@ func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard,
 			// image path, hostname, acquire time, writer id) so a retry leaves
 			// a complete traceable holder record even after the toast is gone.
 			// Logged values name the holder process only — never the path.
-			logSessionLeaseHolderRefusal("desktop: session removal guard refused by lease holder", err)
+			logSessionLeaseHolderRefusal("desktop: session removal guard refused by lease holder", err, op)
 			if healed, healErr := healUnidentifiedLeaseHolder(sessionPath, err); healErr == nil {
 				slog.Info("desktop: removal guard healed an unidentified lease holder via reclaim",
-					"session_base", filepath.Base(sessionPath))
+					"op", op, "session_base", filepath.Base(sessionPath),
+					"waited_ms", time.Since(started).Milliseconds())
 				return healed, nil
 			}
 			return nil, &sessionLeaseHeldBusyError{cause: err}
 		}
 		return nil, err
 	}
+	slog.Info("desktop: session removal guard acquired",
+		"op", op, "session_base", filepath.Base(sessionPath),
+		"waited_ms", time.Since(started).Milliseconds())
 	return guard, nil
 }
 
@@ -757,7 +793,7 @@ func trashSessionArtifactsBeforeMove(dir, sessionPath, key string, beforeMove fu
 	}
 	// Acquired after prepareSessionTrashTarget: the duplicate-trash path in
 	// there takes its own removal guard, and the guard is not reentrant.
-	guard, err := acquireSessionRemovalGuard(sessionPath)
+	guard, err := acquireSessionRemovalGuardForOp("session_trash_move", sessionPath)
 	if err != nil {
 		return err
 	}
