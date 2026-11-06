@@ -111,7 +111,7 @@ nodes:
 func TestTL1454DiagnoseLocatesEveryRejection(t *testing.T) {
 	cases := []struct {
 		name, doc, kind, path, node string
-		line                         int
+		line                        int
 	}{
 		{"yaml syntax", "version: 1\nname: x\nnodes:\n  - id: a\n   type: [", DiagSyntax, "", "", 3},
 		{"json syntax", "{\n  \"version\": 1,\n  \"name\": \"x\",\n  \"nodes\": [\n}", DiagSyntax, "", "", 5},
