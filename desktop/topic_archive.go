@@ -663,7 +663,18 @@ func (a *App) topicTrashTargetsFromDirIndexes(topicID string, dirIndex func(dir 
 		if err != nil {
 			return err
 		}
-		id := dir + "\x00" + sessionPath
+		// tl1429c: dedup by the session's canonical identity, not the raw
+		// spelling. The same physical file routinely enters the scan under two
+		// spellings (an on-disk dir listing vs a stored tab/roster path from an
+		// era when slugs preserved case) — the 2026-11-06 17:46 incident: the
+		// archive acquired the removal guard for spelling A, then refused
+		// ITSELF on spelling B (holder=self_lock kind=removal_guard) and the
+		// heal correctly left the in-flight guard alone. The lock layer works
+		// on canonical paths, so target identity must too.
+		id := sessionRuntimeKey(sessionPath)
+		if id == "" {
+			id = dir + "\x00" + sessionPath
+		}
 		if seen[id] {
 			return nil
 		}
@@ -744,16 +755,27 @@ func appendMissingFileTrashTargets(a *App, topicID, dir string, seen map[string]
 // target set. It reads App state, so callers hold the global mutation gates.
 func (a *App) appendTopicRuntimeTrashTargets(topicID string, targets []topicTrashTarget) ([]topicTrashTarget, error) {
 	topicID = strings.TrimSpace(topicID)
+	// tl1429c: the merge dedups by canonical session identity (same key the
+	// scan layer uses), so a runtime binding spelled differently from the disk
+	// listing (legacy case-preserving tab paths) merges into the existing
+	// target instead of adding a second acquire for the same file.
 	seen := map[string]bool{}
 	for _, target := range targets {
-		seen[target.dir+"\x00"+target.sessionPath] = true
+		id := sessionRuntimeKey(target.sessionPath)
+		if id == "" {
+			id = target.dir + "\x00" + target.sessionPath
+		}
+		seen[id] = true
 	}
 	addTarget := func(dir, path string) ([]topicTrashTarget, error) {
 		sessionPath, key, err := validateSessionPath(dir, path)
 		if err != nil {
 			return targets, err
 		}
-		id := dir + "\x00" + sessionPath
+		id := sessionRuntimeKey(sessionPath)
+		if id == "" {
+			id = dir + "\x00" + sessionPath
+		}
 		if seen[id] {
 			return targets, nil
 		}
