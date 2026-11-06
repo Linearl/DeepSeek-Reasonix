@@ -273,7 +273,9 @@ console.log("\ntl1433 workflow run in tasks panel: run 行入列 + 点击跳转�
   ok(panel.includes('import { runningWorkflowRuns, workflowRunRowView'), "接线：任务面板行视图走既有喂单的纯投影（workflowRunRows）");
   ok(panel.includes("runningWorkflowRuns(workflowRuns ?? [])"), "接线：面板内再过滤一道 running（防御面，completed 不渲染成说谎的行）");
   ok(panel.includes("data-workflow-run="), "接线：run 行携带可测 data 标记");
-  ok((panel.match(/WorkflowRunRow key=/g) ?? []).length === 2, "接线：split 与普通两种形态都渲染 run 行");
+  // 四缺口④起「最近工作流」段也渲染 WorkflowRunRow（ended 形态，key=wf-recent:）——
+  // 本钉的意图是「两种形态都渲染运行中 run 行」，按运行行的 key 模板计数。
+  ok((panel.match(/WorkflowRunRow key=\{`wf:\$\{view\.runId\}`\}/g) ?? []).length === 2, "接线：split 与普通两种形态都渲染 run 行");
   ok(panel.includes("running.length + workflowViews.length"), "接线：运行分区计数计入 run 行");
   ok(panel.includes("running.length === 0 && ended.length === 0 && !hasWorkflowRows"), "接线：空态判定计入 run 行");
   ok(panel.includes('t("workflowPanel.run.running")'), "接线：状态徽章复用既有三语键（不新增文案）");

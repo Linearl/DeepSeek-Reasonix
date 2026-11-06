@@ -37,6 +37,7 @@ import { historyMessagesToItems } from "../lib/useController";
 import { hasJobTwin } from "../lib/subagentDirectory";
 import {
   attributeWorkflowChildren,
+  endedWorkflowRunStateKey,
   runningWorkflowRuns,
   workflowRunRowView,
   type WorkflowRunRowView,
@@ -298,6 +299,7 @@ export function CapsuleIndicator({
   onClearEndedSubagents,
   onSendMessage,
   workflowRuns,
+  workflowRecentRuns,
   onOpenWorkflowRun,
 }: {
   jobs?: readonly JobView[];
@@ -349,6 +351,9 @@ export function CapsuleIndicator({
   // and exit are injected together: without the exit nothing renders and
   // nothing is counted (no dead rows). Absent props = byte-for-byte pre-1433.
   workflowRuns?: readonly WireWorkflowRun[];
+  // tl1433 四缺口④: just-finished runs (recentEndedWorkflowRuns over the same
+  // feed) — a 「最近工作流」 group so a run no longer vanishes when it ends.
+  workflowRecentRuns?: readonly WireWorkflowRun[];
   onOpenWorkflowRun?: (runId: string) => void;
 }) {
   const t = useT();
@@ -393,6 +398,12 @@ export function CapsuleIndicator({
   const workflowViews = useMemo(
     () => (onOpenWorkflowRun ? runningWorkflowRuns(workflowRuns ?? []).map(workflowRunRowView) : []),
     [workflowRuns, onOpenWorkflowRun],
+  );
+  // tl1433 四缺口④: just-finished runs; a running run slipping in would read
+  // as a lying terminal badge, so it is filtered here too.
+  const recentWorkflowViews = useMemo(
+    () => (onOpenWorkflowRun ? (workflowRecentRuns ?? []).filter((run) => run.state !== "running").map(workflowRunRowView) : []),
+    [workflowRecentRuns, onOpenWorkflowRun],
   );
   // tl1433 四缺口② (557 同族): workflow-dispatched sub-agents never register as
   // jobs nor in the foreground registry (tl1435), so the three sources above
@@ -470,17 +481,20 @@ export function CapsuleIndicator({
   // Track "this open session had content" for the drain auto-close: an
   // explicitly opened idle panel keeps its empty state (task 440 ③); a panel
   // whose running sections and directory drained closes itself (447 anti-noise).
+  // tl1433 四缺口④: the 「最近工作流」 group is content too — a workflow that
+  // just finished moves there, and the panel must not snap shut on it.
+  const hasRecentWorkflows = recentWorkflowViews.length > 0;
   useEffect(() => {
-    if (open && (hasRunning || ended.length > 0)) hadContentRef.current = true;
-  }, [open, hasRunning, ended.length]);
+    if (open && (hasRunning || ended.length > 0 || hasRecentWorkflows)) hadContentRef.current = true;
+  }, [open, hasRunning, ended.length, hasRecentWorkflows]);
   useEffect(() => {
     if (!open || !endedLoaded) return;
-    if (hadContentRef.current && !hasRunning && ended.length === 0) {
+    if (hadContentRef.current && !hasRunning && ended.length === 0 && !hasRecentWorkflows) {
       setOpen(false);
       setSelected(null);
       setDetail(EMPTY_DETAIL);
     }
-  }, [open, endedLoaded, hasRunning, ended.length]);
+  }, [open, endedLoaded, hasRunning, ended.length, hasRecentWorkflows]);
 
   const close = () => {
     setOpen(false);
@@ -742,21 +756,22 @@ export function CapsuleIndicator({
     .filter((view) => !workflowChildren.nested.has(view.ref))
     .map((view) => renderRunningArtifactRow(view, false));
 
-  // tl1433 四缺口①: one workflow run row — live elapsed, current node and
-  // (四缺口③) its nested workflow children. The whole row opens the workflow
-  // panel with this run selected — the same exit the right-dock task panel
-  // uses. Elapsed uses the capsule's own clock format so the row reads like
-  // its neighbours.
-  const renderWorkflowRow = (view: WorkflowRunRowView) => {
-    const elapsed = view.startedAt !== undefined ? formatCapsuleElapsed(view.startedAt, now) : "";
+  // tl1433 四缺口①/④: one workflow run row — running (live elapsed, current
+  // node, nested children) or just-finished (fixed duration, terminal badge).
+  // The whole row opens the workflow panel with this run selected — the same
+  // exit the right-dock task panel uses. Elapsed uses the capsule's own clock
+  // format so the row reads like its neighbours.
+  const renderWorkflowRow = (view: WorkflowRunRowView, ended: boolean) => {
+    const until = ended ? view.endedAt : now;
+    const elapsed = view.startedAt !== undefined && until !== undefined ? formatCapsuleElapsed(view.startedAt, until) : "";
     const meta = [
-      view.currentNode,
+      ended ? "" : view.currentNode,
       t("workflowPanel.progress", { done: String(view.doneCount), total: String(view.totalCount) }),
       elapsed,
     ].filter(Boolean).join(" · ");
-    const children = workflowChildren.byRun.get(view.runId);
+    const children = ended ? undefined : workflowChildren.byRun.get(view.runId);
     return (
-      <div className="capsule-panel__wf" key={`wf:${view.runId}`} data-capsule-workflow-run={view.runId} data-capsule-workflow-state={view.state}>
+      <div className="capsule-panel__wf" key={`${ended ? "wf-recent" : "wf"}:${view.runId}`} data-capsule-workflow-run={view.runId} data-capsule-workflow-state={view.state}>
         <div className="capsule-panel__row capsule-panel__row--ended capsule-panel__row--workflow">
           <button
             type="button"
@@ -773,7 +788,7 @@ export function CapsuleIndicator({
               </Tooltip>
               <small data-capsule-wf-meta={view.runId}>{meta}</small>
             </span>
-            <span className="capsule-panel__outcome">{t("workflowPanel.run.running")}</span>
+            <span className="capsule-panel__outcome">{ended ? t(endedWorkflowRunStateKey(view.state)) : t("workflowPanel.run.running")}</span>
           </button>
         </div>
         {children && children.length > 0 && (
@@ -844,7 +859,7 @@ export function CapsuleIndicator({
           ) : (
             <>
               <header className="capsule-panel__header">{t("composer.capsuleTitle")}</header>
-              {hasRunning || ended.length > 0 || runningArtifactRows.length > 0 ? (
+              {hasRunning || ended.length > 0 || runningArtifactRows.length > 0 || hasRecentWorkflows ? (
                 <div className="capsule-panel__list">
                   {/* Task 440 ③: an open panel with nothing running states it
                       explicitly instead of silently shrinking to the ended
@@ -860,7 +875,7 @@ export function CapsuleIndicator({
                   {workflowViews.length > 0 && (
                     <div className="capsule-panel__group" data-capsule-group="workflow">
                       <div className="capsule-panel__group-title">{t("workflowPanel.title")}</div>
-                      {workflowViews.map((view) => renderWorkflowRow(view))}
+                      {workflowViews.map((view) => renderWorkflowRow(view, false))}
                     </div>
                   )}
                   {renderRunningGroup(t("composer.capsuleAgents"), groups.agents, "agent")}
@@ -869,6 +884,14 @@ export function CapsuleIndicator({
                     <div className="capsule-panel__group" data-capsule-group="running-subagents">
                       <div className="capsule-panel__group-title">{t("composer.capsuleMailRunning")}</div>
                       {runningArtifactRows}
+                    </div>
+                  )}
+                  {/* tl1433 四缺口④: a finished run stays reachable for a while
+                      (history entry → workflow panel on that run). */}
+                  {hasRecentWorkflows && (
+                    <div className="capsule-panel__group" data-capsule-group="workflow-recent">
+                      <div className="capsule-panel__group-title">{t("workspace.workflowRecent")}</div>
+                      {recentWorkflowViews.map((view) => renderWorkflowRow(view, true))}
                     </div>
                   )}
                   {ended.length > 0 && (

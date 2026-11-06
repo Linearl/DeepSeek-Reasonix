@@ -418,6 +418,104 @@ section("③ 子代理层级：工作流派发的运行中子代理缩进挂在 
   ok(hierarchyRules.every((rule) => rule.length > 0 && rule.includes("var(--") && !/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(rule)),
     "样式：层级三条规则只用主题 token（无硬编码颜色）");
 }
+// ===== GAP 4 =====
+section("④ 历史入口：run 结束后进「最近工作流」段，点击走同一出口");
+{
+  const { recentEndedWorkflowRuns, WORKFLOW_RECENT_LIMIT, WORKFLOW_RECENT_WINDOW_MS, endedWorkflowRunStateKey, workflowRunRowView } = await import("../lib/workflowRunRows");
+  const at = NOW;
+  const runs = [
+    makeRun({ runId: "r-run" }),
+    makeRun({ runId: "r-c1", state: "completed", endedAt: at - 60_000 }),
+    makeRun({ runId: "r-f", state: "failed", endedAt: at - 30_000 }),
+    makeRun({ runId: "r-i", state: "interrupted", endedAt: at - 90_000 }),
+    makeRun({ runId: "r-old", state: "completed", endedAt: at - WORKFLOW_RECENT_WINDOW_MS - 1 }),
+    makeRun({ runId: "r-noend", state: "completed" }),
+    makeRun({ runId: "r-future", state: "completed", endedAt: at + 5_000 }),
+    makeRun({ runId: "r-c2", state: "completed", endedAt: at - 120_000 }),
+  ];
+  eq(recentEndedWorkflowRuns(runs, at).map((run) => run.runId).join(","), "r-f,r-c1,r-i",
+    "最近段：终态 + 窗口内，endedAt 新→旧，封顶 3 条（running/超窗/无终点/未来时刻都不入）");
+  eq(WORKFLOW_RECENT_LIMIT, 3, "最近段：条数上限 3");
+  eq(recentEndedWorkflowRuns([makeRun({ runId: "edge", state: "completed", endedAt: at - WORKFLOW_RECENT_WINDOW_MS })], at).length, 1, "最近段：窗口边界含端点");
+  eq(endedWorkflowRunStateKey("completed"), "workflowPanel.run.completed", "终态徽章：completed");
+  eq(endedWorkflowRunStateKey("failed"), "workflowPanel.run.errored", "终态徽章：failed 走 errored 口径（与 WorkflowPanel 同语义）");
+  eq(endedWorkflowRunStateKey("interrupted"), "workflowPanel.run.interrupted", "终态徽章：interrupted 走「已中断·可续跑」");
+  eq(workflowRunRowView(makeRun({ state: "completed", startedAt: at - 100_000, endedAt: at })).endedAt, at, "投影：终点随行视图");
+
+  const done = makeRun({
+    runId: "wf-done",
+    workflow: "release-wf",
+    state: "completed",
+    startedAt: NOW - 200_000,
+    endedAt: NOW - 60_000,
+    nodes: ["plan", "read-facts", "gate-tests", "confirm", "report"].map((id) => node(id, "subagent", "completed")),
+  });
+  const opened: string[] = [];
+  const dock = (extra: Record<string, unknown>) => (
+    <LocaleProvider>
+      <SubagentsDockPanel directory={buildSubagentDirectory([])} {...extra} />
+    </LocaleProvider>
+  );
+  await mount(dock({ workflowRuns: [], workflowRecentRuns: [done], onOpenWorkflowRun: (runId: string) => { opened.push(runId); } }));
+  const recent = host?.querySelector('[data-wf-recent="true"]') ?? null;
+  ok(recent !== null, "任务面板历史入口：run 结束后进「最近工作流」段（不再凭空消失）");
+  eq(host?.querySelector(".subagents-panel__empty") ?? null, null, "任务面板：最近段有内容时不读空态");
+  ok((recent?.querySelector(".subagents-panel__section-title")?.textContent ?? "").includes("1"), "任务面板：最近段标题带计数");
+  const recentRow = recent?.querySelector<HTMLButtonElement>('[data-workflow-run="wf-done"]') ?? null;
+  eq(recentRow?.getAttribute("data-wf-run-state") ?? null, "completed", "任务面板：最近段行携带终态标记");
+  ok(["已完成", "Completed"].includes(recentRow?.querySelector(".subagents-panel__row-status")?.textContent ?? ""), "任务面板：终态徽章（三语之一）");
+  ok((recentRow?.textContent ?? "").includes("5/5"), "任务面板：终态行进度定格（5/5）");
+  ok(recentRow?.classList.contains("subagents-panel__row--workflow-ended") ?? false, "任务面板：终态行读作历史（ended 形态类）");
+  await act(async () => { recentRow?.click(); });
+  eq(opened.join(","), "wf-done", "任务面板：点击最近段 run → 同一跳转出口（工作流面板选中该 run）");
+
+  await mount(dock({ workflowRecentRuns: [done], onOpenWorkflowRun: () => {}, detailEnabled: true }));
+  ok(host?.querySelector('[data-wf-recent="true"]') !== null, "任务面板 split 形态同样渲染最近段");
+  await mount(dock({ workflowRecentRuns: [makeRun({ runId: "wf-live" })], onOpenWorkflowRun: () => {} }));
+  eq(host?.querySelector("[data-wf-recent]") ?? null, null, "防御：running 落进最近数据不渲染成终态行");
+  await mount(dock({ workflowRecentRuns: [done] }));
+  eq(host?.querySelector("[data-wf-recent]") ?? null, null, "同源：无跳转出口不渲染最近段（不产生死行）");
+
+  // 胶囊（左侧）同一历史入口。
+  listResult = [];
+  const capsuleOpened: string[] = [];
+  await mount(capsule({ workflowRecentRuns: [done], onOpenWorkflowRun: (runId) => { capsuleOpened.push(runId); } }));
+  eq(capsuleCount(), "0", "胶囊：最近段不计入运行计数（历史不冒充运行中）");
+  await openCapsule();
+  const recentGroup = document.querySelector('[data-capsule-group="workflow-recent"]');
+  ok(recentGroup !== null, "胶囊历史入口：「最近工作流」组出现");
+  const capsuleRow = recentGroup?.querySelector('[data-capsule-workflow-run="wf-done"]') ?? null;
+  eq(capsuleRow?.getAttribute("data-capsule-workflow-state") ?? null, "completed", "胶囊：最近组行携带终态标记");
+  ok(["已完成", "Completed"].includes(capsuleRow?.querySelector(".capsule-panel__outcome")?.textContent ?? ""), "胶囊：终态胶囊（三语之一）");
+  ok(document.querySelector("[data-capsule-running-empty]") !== null, "胶囊：只有最近段时运行区仍诚实显示「暂无运行任务」");
+  await act(async () => { capsuleRow?.querySelector<HTMLButtonElement>("button.capsule-panel__row-main")?.click(); });
+  eq(capsuleOpened.join(","), "wf-done", "胶囊：点击最近组 run → 同一跳转出口");
+
+  // 排空自关：已打开的弹层里 run 跑完移入最近段——最近段也算内容，不自关；全部排空才按 447 规则自关。
+  // 开合态以触发器 aria-expanded 为准（弹层退场动画期间 DOM 可能尚在，不能拿节点存在与否判开合）。
+  const live = makeRun({ nodes: [node("read-facts", "subagent", "running")] });
+  await mount(capsule({ workflowRuns: [live], onOpenWorkflowRun: () => {} }));
+  await openCapsule();
+  ok(document.querySelector('[data-capsule-group="workflow"]') !== null, "排空前提：弹层打开且工作流组在列");
+  eq(trigger().getAttribute("aria-expanded"), "true", "排空前提：触发器 aria-expanded=true");
+  await rerender(capsule({ workflowRuns: [], workflowRecentRuns: [{ ...live, state: "completed", endedAt: NOW }], onOpenWorkflowRun: () => {} }));
+  eq(trigger().getAttribute("aria-expanded"), "true", "排空：run 跑完移入最近段，打开的弹层不自关（最近段也算内容）");
+  ok(document.querySelector('[data-capsule-group="workflow-recent"]') !== null, "排空：最近段承接刚跑完的 run");
+  await rerender(capsule({ onOpenWorkflowRun: () => {} }));
+  eq(trigger().getAttribute("aria-expanded"), "false", "对照：全部排空后仍按 447 规则自关");
+  await unmount();
+
+  const app = read("src/App.tsx");
+  ok(app.includes("recentEndedWorkflowRuns(workflowFeedRuns)"), "接线：App 从同一喂单取「刚结束」子集（不造新数据源）");
+  ok(app.includes("workflowRecentRuns={workflowRecentRows}") && app.includes("capsuleWorkflowRecentRuns={workflowRecentRows}"), "接线：最近子集下发任务面板与胶囊两处");
+  const composer = read("src/components/Composer.tsx");
+  ok(composer.includes("workflowRecentRuns={capsuleWorkflowRecentRuns}"), "接线：Composer 透传最近子集");
+  for (const locale of ["zh", "zh-TW", "en"]) {
+    ok(read(`src/locales/${locale}.ts`).includes('"workspace.workflowRecent"'), `三语：${locale} 有「最近工作流」段标题键`);
+  }
+  const css = read("src/styles.css");
+  ok(css.includes(".subagents-panel__row--workflow.subagents-panel__row--workflow-ended"), "样式：终态 run 行（历史）有定义");
+}
 // ===== SUMMARY =====
 
 console.log(`\n${passed} passed, ${failed} failed`);

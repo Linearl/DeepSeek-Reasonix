@@ -2590,6 +2590,7 @@ export const zhTW: Record<DictKey, string> = {
   "workflowPanel.detail.processMissing": "該節點無已登記的執行過程紀錄（較早的執行或未持久化的派發）。",
   "workflowPanel.detail.processReadOnly": "子代理工作過程的唯讀回放，不會喚醒或寫入其會話。",
 "workspace.subagentsTab": "任務",
+"workspace.workflowRecent": "最近工作流",
 "subagentPanel.empty": "目前會話暫無子代理",
 "subagentPanel.emptyGuide": "主對話派發子任務（task、explore 等）時產生：執行中即時刷新，結束後歸入下方「已結束」列表，重啟後仍保留；點擊行可展開摘要，已結束每頁 20 條。",
 "subagentPanel.runningEmpty": "暫無執行中的子代理",

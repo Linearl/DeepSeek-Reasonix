@@ -3246,6 +3246,7 @@ export const en = {
   "workflowPanel.detail.processMissing": "No recorded executions for this node (older run or non-persisted dispatch).",
   "workflowPanel.detail.processReadOnly": "Read-only replay of the sub-agent's work; the session is never woken or written to.",
 "workspace.subagentsTab": "Tasks",
+"workspace.workflowRecent": "Recent workflows",
 "subagentPanel.empty": "No subagents in this session",
 "subagentPanel.emptyGuide": "Subagents appear when the main conversation dispatches subtasks (task, explore, ...): running ones refresh live, ended ones move to the list below and survive a restart; click a row to expand its summary, 20 per page.",
 "subagentPanel.runningEmpty": "No running subagents",

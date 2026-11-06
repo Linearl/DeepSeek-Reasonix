@@ -30421,6 +30421,12 @@ button.statusbar__mcp:focus-visible {
   white-space: nowrap;
 }
 
+/* tl1433 四缺口④：「最近工作流」段的终态 run 行读作历史——不加粗（运行中的
+   run 行由 .subagents-panel__row--workflow 加粗；双类选择器压过它）。 */
+.subagents-panel__row--workflow.subagents-panel__row--workflow-ended {
+  font-weight: 400;
+}
+
 .subagents-panel__detailview {
   display: flex;
   flex-direction: column;

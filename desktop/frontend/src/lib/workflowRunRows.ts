@@ -11,6 +11,7 @@
 //   - completed 与 gate_passed 都算已完成（与 feed 六态→五态投影同口径）；
 //   - 总数取 DAG 定义的节点数（未见态节点的诚实总数），无 DAG 时退回节点表。
 
+import type { DictKey } from "./i18n";
 import type { WireRunNode, WireWorkflowRun } from "./workflowTypes";
 
 /** 一个 run 行的展示投影（任务面板「运行中」列表的字段面）。 */
@@ -28,6 +29,8 @@ export interface WorkflowRunRowView {
   totalCount: number;
   /** 运行起点（unix ms；缺省 = 快照未带，行内时长显示为 —）。 */
   startedAt?: number;
+  /** tl1433 四缺口④历史入口：运行终点（unix ms；缺省 = 未结束/快照未带）。 */
+  endedAt?: number;
   /** tl1433 四缺口②胶囊计数面：正在跑的子代理型节点数（subagent / confirm
    *  节点处于 running = 该节点的子代理正在执行）。工作流派发的子代理不进
    *  jobs、不进前台登记表（tl1435），胶囊三源都看不见——这里从同一喂单的
@@ -38,6 +41,36 @@ export interface WorkflowRunRowView {
 /** 运行中的运行（任务面板「运行中」列表的入列条件；本件只并入运行中）。 */
 export function runningWorkflowRuns(runs: readonly WireWorkflowRun[]): WireWorkflowRun[] {
   return runs.filter((run) => run.state === "running");
+}
+
+// tl1433 四缺口④：「最近」段窗口——run 结束后不再永远消失，终态且终点在
+// 窗口内的进最近段（历史入口：点击仍跳工作流面板选中该 run，完整史与续跑
+// 在面板）。窗口取宽（30 分钟）+ 条数取窄（3 条）：宁少勿吵，更早的 run 走
+// 工作流面板自身的运行选择器（既有面，非本件新机制）。
+export const WORKFLOW_RECENT_WINDOW_MS = 30 * 60_000;
+export const WORKFLOW_RECENT_LIMIT = 3;
+
+const WORKFLOW_TERMINAL_STATES = new Set<string>(["completed", "failed", "interrupted"]);
+
+/** 终态且刚结束的运行（「最近」段的入列条件；endedAt 新→旧，条数封顶）。
+ *  endedAt 缺失的终态 run 不入（不知何时结束的运行不冒充「最近」）；running
+ *  行永远走运行段，与本函数无关。 */
+export function recentEndedWorkflowRuns(runs: readonly WireWorkflowRun[], now: number = Date.now()): WireWorkflowRun[] {
+  return runs
+    .filter((run) => WORKFLOW_TERMINAL_STATES.has(run.state) && typeof run.endedAt === "number" && run.endedAt > 0 && now - run.endedAt >= 0 && now - run.endedAt <= WORKFLOW_RECENT_WINDOW_MS)
+    .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+    .slice(0, WORKFLOW_RECENT_LIMIT);
+}
+
+/** 终态 run 的状态徽章键（任务面板与胶囊共用一处）。与 WorkflowPanel 运行徽章
+ *  同一组键、同一语义（liveRunStateToPanelState：failed 落 errored，
+ *  interrupted 落「已中断·可续跑」）。 */
+export function endedWorkflowRunStateKey(state: WireWorkflowRun["state"]): DictKey {
+  switch (state) {
+    case "completed": return "workflowPanel.run.completed";
+    case "failed": return "workflowPanel.run.errored";
+    default: return "workflowPanel.run.interrupted";
+  }
 }
 
 /** 节点表折叠：后见覆盖（事件序 = 状态机序），与 runNodeMap 同规则。 */
@@ -83,6 +116,7 @@ export function workflowRunRowView(run: WireWorkflowRun): WorkflowRunRowView {
     doneCount,
     totalCount: run.dag ? run.dag.nodes.length : latest.size,
     startedAt: run.startedAt,
+    endedAt: run.endedAt,
     runningSubagents: runningSubagentNodeCount(run),
   };
 }
