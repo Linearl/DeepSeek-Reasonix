@@ -36,7 +36,8 @@ const (
 )
 
 // selfHealBackupSuffix 是备份目录的后缀形态：<stem>.pre-repair-<UTC 紧凑时间>。
-const selfHealBackupSuffix = ".pre-repair-"
+// 拼写单一来源在 store（tl1442-ext：清单与备份两侧共用同一常量）。
+const selfHealBackupSuffix = store.SessionPreRepairBackupSuffix
 
 // selfHealRepairLogSuffix 是修复记录文件的后缀：<stem>.repairlog.jsonl。
 // 单一源在 store（分类侧不得自行拼写，守卫 TestSessionPathSpellingsSingleSource）。
@@ -58,10 +59,18 @@ var sessionBackupAllowlist = map[string]struct{}{
 	"jsonl.toolstats.json": {},
 	"events.jsonl":         {},
 	"events.jsonl.damaged": {},
-	"context.json":         {},
-	"turns.jsonl":          {},
-	"goal-state.json":      {},
-	"recovery.json":        {},
+	// tl1442-ext：存储/诊断形态补登记——tl1172/tl1174 把它们加进了
+	// store.SessionSidecarFiles（删除清单）却没跟到这份归档白名单，被逐下的
+	// 主会话在冷分层形态下的归档历史（events/jsonl 的 .zst）就零归档。
+	// rel 键 = 后缀常量剥前导点，拼写仍单一来源。
+	strings.TrimPrefix(store.SessionEventLogZstSuffix, "."):               {}, // events.jsonl.zst
+	strings.TrimPrefix(store.SessionTranscriptZstSuffix, "."):             {}, // jsonl.zst
+	strings.TrimPrefix(store.SessionEventLogRotatingSuffix, "."):          {}, // events.jsonl.rotating
+	strings.TrimPrefix(store.SessionTurnEventLogSuffix, ".") + ".damaged": {}, // turns.jsonl.damaged
+	"context.json":    {},
+	"turns.jsonl":     {},
+	"goal-state.json": {},
+	"recovery.json":   {},
 	// tl1371：pinned-context 是会话数据侧车（desktop 钉住上下文归属），转正/
 	// 自愈置换主文件侧车前必须先归档——白名单缺它 = 被逐下的钉住列表零归档。
 	// tl1424：guardian 行的尾缀改走 store 常量拼写（键值逐字节不变，守卫

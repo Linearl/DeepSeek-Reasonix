@@ -2,39 +2,43 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 
 	"reasonix/internal/store"
 )
 
+// sessionTrashArtifact pairs the live source path of one session-owned
+// artifact with the name it keeps inside the trash bucket.
+type sessionTrashArtifact struct {
+	src  string
+	name string
+}
+
 // sessionTrashArtifacts lists every file and directory a session owns, with
 // the name each keeps inside the trash entry, so moving a session aside and
 // restoring it round-trip the whole set.
-// 任务 475（X6 模式 J）：name 一列不再手拼后缀——对 key（桶内保留的原始
-// 会话文件名）套用与 src 同一个 store 构造器再取 Base。桶内名与恢复目标路径
-// 因此保持既有的解耦语义（key 是原名，sessionPath 可以是改名后的目标），
-// 而 store 布局变更时桶内名自动跟随，不再出现第二份拼写。
+//
+// tl1442-ext（2026-11-07 用户裁决 A）：清单本体上移 store.SessionTrashSidecars
+// 成为唯一事实源（宪法 III）——本函数只做派生：src 对 live 会话路径套清单，
+// 桶内名对 key 套同一清单再剥 stem。桶内名与恢复目标路径因此保持既有的解耦
+// 语义（key 是原名，sessionPath 可以是改名后的目标），store 布局变更时
+// desktop/recovery/merge-promote 三面的行为在同一 commit 内同步变。
 func sessionTrashArtifacts(sessionPath, key string) []sessionTrashArtifact {
-	trashName := func(sidecar func(string) string) string {
-		return filepath.Base(sidecar(key))
+	// The transcript itself stays the first entry: the trash bucket keeps it
+	// under its original name, and restore's discardable-transcript special
+	// case keys off src == target.
+	artifacts := []sessionTrashArtifact{{src: sessionPath, name: key}}
+	sessionStem := strings.TrimSuffix(filepath.Base(sessionPath), store.SessionTranscriptSuffix)
+	keyStem := strings.TrimSuffix(key, store.SessionTranscriptSuffix)
+	for _, src := range store.SessionTrashSidecars(sessionPath) {
+		base := filepath.Base(src)
+		name := base
+		if sessionStem != keyStem && strings.HasPrefix(base, sessionStem) {
+			// 改名后的目标：桶内名跟随 key 的 stem（src 与 key 的 stem 在
+			// 现网所有调用点一致，这里只做防御性映射）。
+			name = keyStem + strings.TrimPrefix(base, sessionStem)
+		}
+		artifacts = append(artifacts, sessionTrashArtifact{src: src, name: name})
 	}
-	return []sessionTrashArtifact{
-		{src: sessionPath, name: key},
-		{src: store.SessionMeta(sessionPath), name: trashName(store.SessionMeta)},
-		{src: store.SessionGoalState(sessionPath), name: trashName(store.SessionGoalState)},
-		{src: store.SessionEventLog(sessionPath), name: trashName(store.SessionEventLog)},
-		// tl 1172 L2: 归档态事件日志随会话进出回收站——漏列等于删会话时把
-		// 100MB 级历史留在盘上，恢复时又缺历史。
-		{src: store.SessionEventLogZst(sessionPath), name: trashName(store.SessionEventLogZst)},
-		{src: store.SessionEventLogDamaged(sessionPath), name: trashName(store.SessionEventLogDamaged)},
-		{src: store.SessionEventLogRotating(sessionPath), name: trashName(store.SessionEventLogRotating)},
-		{src: store.SessionEventIndex(sessionPath), name: trashName(store.SessionEventIndex)},
-		{src: store.SessionDisplayIndex(sessionPath), name: trashName(store.SessionDisplayIndex)},
-		{src: store.SessionConflictLog(sessionPath), name: trashName(store.SessionConflictLog)},
-		{src: store.SessionRecoveryState(sessionPath), name: trashName(store.SessionRecoveryState)},
-		{src: store.SessionPinnedContext(sessionPath), name: trashName(store.SessionPinnedContext)},
-		{src: sessionTelemetryPath(sessionPath), name: key + ".telemetry.json"},
-		{src: store.SessionCheckpointDir(sessionPath), name: trashName(store.SessionCheckpointDir)},
-		{src: store.SessionJobsDir(sessionPath), name: trashName(store.SessionJobsDir)},
-		{src: store.SessionInboxDir(sessionPath), name: trashName(store.SessionInboxDir)},
-	}
+	return artifacts
 }

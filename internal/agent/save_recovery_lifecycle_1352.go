@@ -136,8 +136,14 @@ func PromoteRecoveryBranchToMain(recoveryPath, mainPath string) (archived string
 		return "", fmt.Errorf("stat main file: %w", statErr)
 	}
 
-	recoveryArts := store.SessionSidecarFiles(recoveryPath)
-	mainArts := store.SessionSidecarFiles(mainPath)
+	// tl1442-ext（2026-11-07 用户裁决 A）：换位清单从 SessionSidecarFiles 核心
+	// 16 件扩到 store.SessionStaticTrashSidecars 全集（telemetry/toolstats/
+	// guardian 全家/五个目录）——旧清单转正后把副本的这些侧车留在死 stem 下，
+	// 正是本任务要清的残留。这里必须用 static 形态：两条清单按位配对
+	// （tl1390 两步换位 + 幂等续跑按索引配对），glob 形态的时间戳目录两侧
+	// 数量可以不同，会错位；副本的 pre-repair 目录群在换位落定后单独改嫁。
+	recoveryArts := store.SessionStaticTrashSidecars(recoveryPath)
+	mainArts := store.SessionStaticTrashSidecars(mainPath)
 
 	// tl1390 ②幂等续跑：上一次转正在换位中途崩溃会留下 .promote-staging 残留。
 	// 按三态还原——副本侧车还在 = 配对未完成，原始主字节归还主名（主名已被占
@@ -198,9 +204,20 @@ func PromoteRecoveryBranchToMain(recoveryPath, mainPath string) (archived string
 		}
 		return fmt.Errorf("%s: %w", what, cause)
 	}
+	// tl1442-ext：换位计数与删除链同格式对账（LogTrashMoveCounts 单一出口）。
+	var migration TrashMoveReport
 	for i := range recoveryArts {
 		if _, statErr := os.Lstat(recoveryArts[i]); statErr != nil {
 			continue // 副本没有这个侧车
+		}
+		if info, statErr := os.Lstat(recoveryArts[i]); statErr == nil {
+			if info.IsDir() {
+				migration.Dirs++
+			} else {
+				migration.Files++
+			}
+			migration.Categories = append(migration.Categories,
+				StemRelativeSuffix(filepath.Base(mainArts[i]), strings.TrimSuffix(filepath.Base(mainPath), store.SessionTranscriptSuffix)))
 		}
 		pair := movedSidecar{recovery: recoveryArts[i], main: mainArts[i]}
 		if _, statErr := os.Lstat(mainArts[i]); statErr == nil {
@@ -262,5 +279,39 @@ func PromoteRecoveryBranchToMain(recoveryPath, mainPath string) (archived string
 		slog.Warn("promote: branch meta identity reconciliation failed; the meta may stay on the copy's generation",
 			"err", reconcileErr)
 	}
+	// tl1442-ext 收口：副本 stem 下不得残留任何字节。static 换位清单不含
+	// glob 的 pre-repair 备份目录群，清单外的形态（外部修复 .bak 等）也不在
+	// 换位配对里——两类统一在此改嫁主名（副本身份的字节归到主身份下，跟
+	// consolidate 转正的同一纪律）。两把 save 锁此刻仍在手，锁三件与
+	// cleanup-pending 由各自机制处置，排除；promote-staging 中转名不在此轮
+	// 语义内（上面 moved[] 清理已收口）。
+	copyStem := strings.TrimSuffix(filepath.Base(recoveryPath), store.SessionTranscriptSuffix)
+	mainStem := strings.TrimSuffix(filepath.Base(mainPath), store.SessionTranscriptSuffix)
+	excluded := runtimeHandleNames(recoveryPath)
+	dir := filepath.Dir(recoveryPath)
+	if entries, readErr := os.ReadDir(dir); readErr == nil {
+		for _, entry := range entries {
+			name := entry.Name()
+			if excluded[name] || strings.HasSuffix(name, promoteStagingSuffix) ||
+				!strings.HasPrefix(name, copyStem+".") {
+				continue
+			}
+			dst := filepath.Join(dir, mainStem+strings.TrimPrefix(name, copyStem))
+			if err := os.Rename(filepath.Join(dir, name), dst); err != nil && !os.IsNotExist(err) {
+				slog.Warn("promote: copy-stem leftover could not follow onto the main identity",
+					"file", name, "err", err)
+				continue
+			}
+			migration.Stragglers = append(migration.Stragglers, name)
+		}
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		slog.Warn("promote: copy-stem leftover sweep could not read the session directory", "err", readErr)
+	}
+	if len(migration.Stragglers) > 0 {
+		slog.Warn("promote: recovery copy carried entries outside the sidecar inventory — extend store.SessionTrashSidecars",
+			"copy", filepath.Base(recoveryPath), "names", strings.Join(migration.Stragglers, ","))
+	}
+	LogTrashMoveCounts("agent: promoted recovery copy sidecars migrated onto the main identity",
+		dir, filepath.Base(mainPath), &migration)
 	return archived, nil
 }

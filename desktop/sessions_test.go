@@ -178,7 +178,7 @@ func TestDeleteSessionFile(t *testing.T) {
 	os.WriteFile(conflictLogPath, []byte(`{"outcome":"forked_recovery_branch"}`+"\n"), 0o644)
 	recoveryPath := store.SessionRecoveryState(sessionPath)
 	os.WriteFile(recoveryPath, []byte(`{"tasks":{"root":{"phase":"diagnosing"}}}`+"\n"), 0o600)
-	telemetryPath := sessionTelemetryPath(sessionPath)
+	telemetryPath := store.SessionTelemetry(sessionPath)
 	os.WriteFile(telemetryPath, []byte(`{"version":2,"readFiles":[]}`), 0o644)
 	lockPath := store.SessionLockFile(sessionPath)
 	os.WriteFile(lockPath, nil, 0o644)
@@ -381,7 +381,7 @@ func TestReconcileDesktopCleanupPendingDeleteMovesRemainingSidecars(t *testing.T
 	if err := os.WriteFile(goalPath, []byte(`{"goal":"finish"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	telemetryPath := sessionTelemetryPath(sessionPath)
+	telemetryPath := store.SessionTelemetry(sessionPath)
 	if err := os.WriteFile(telemetryPath, []byte(`{"version":2,"readFiles":[]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -523,7 +523,7 @@ func TestRestoreTrashedSessionFile(t *testing.T) {
 	if err := os.WriteFile(conflictLogPath, []byte(`{"outcome":"forked_recovery_branch"}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	telemetryPath := sessionTelemetryPath(sessionPath)
+	telemetryPath := store.SessionTelemetry(sessionPath)
 	if err := os.WriteFile(telemetryPath, []byte(`{"version":2,"readFiles":[]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -782,7 +782,7 @@ func TestPurgeTrashedSessionFile(t *testing.T) {
 	os.WriteFile(sessionPath, []byte("data"), 0o644)
 	goalPath := store.SessionGoalState(sessionPath)
 	os.WriteFile(goalPath, []byte(`{"goal":"purge"}`), 0o644)
-	telemetryPath := sessionTelemetryPath(sessionPath)
+	telemetryPath := store.SessionTelemetry(sessionPath)
 	os.WriteFile(telemetryPath, []byte(`{"version":2,"readFiles":[]}`), 0o644)
 	jobsDir := jobs.ArtifactDir(sessionPath)
 	if err := os.MkdirAll(jobsDir, 0o755); err != nil {
@@ -893,7 +893,7 @@ func TestRemoveDesktopSessionArtifactsRemovesOwnedSidecars(t *testing.T) {
 		store.SessionEventIndex(sessionPath),
 		store.SessionConflictLog(sessionPath),
 		store.SessionRecoveryState(sessionPath),
-		sessionTelemetryPath(sessionPath),
+		store.SessionTelemetry(sessionPath),
 		store.SessionLockFile(sessionPath),
 		store.SessionLeaseLock(sessionPath),
 		store.SessionLeaseInfo(sessionPath),
@@ -932,7 +932,7 @@ func TestRemoveDesktopSessionArtifactsRemovesOwnedSidecars(t *testing.T) {
 		store.SessionEventIndex(sessionPath),
 		store.SessionConflictLog(sessionPath),
 		store.SessionRecoveryState(sessionPath),
-		sessionTelemetryPath(sessionPath),
+		store.SessionTelemetry(sessionPath),
 		store.SessionLockFile(sessionPath),
 		store.SessionLeaseLock(sessionPath),
 		store.SessionLeaseInfo(sessionPath),
