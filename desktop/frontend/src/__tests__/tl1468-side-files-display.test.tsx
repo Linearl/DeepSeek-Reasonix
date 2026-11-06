@@ -357,6 +357,7 @@ function menuButtonByLabel(label: string): HTMLButtonElement | undefined {
   const dockRule = css.match(/\.workbench-dock__body > \.side-files--dock\s*\{[^}]*\}/)![0];
   eq(dockRule.includes("height: 100%"), true, "ratchet: dock panel fills the dock body");
   eq(dockRule.includes("overflow: auto"), true, "ratchet: dock panel remains the single scroll container");
+  eq(dockRule.includes("display: block"), true, "ratchet: dock panel stays block flow (grid compressed the group and overflow:hidden clipped rows without a scrollbar — real-Chromium verified)");
   // A direct ".side-files--dock .side-files__list" descendant selector (i.e.
   // NOT inside :not()) would re-cap the dock list — its absence is the
   // ratchet; the only dock mention beside the scoping rule is the tl1468
