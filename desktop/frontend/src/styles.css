@@ -11052,6 +11052,19 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
   font-size: var(--font-status, 11px);
 }
+/* tl1433 四缺口①：胶囊里的工作流 run 行——整行就是跳转按钮（复用已结束行的
+   div 容器 + row-main 按钮形态与状态胶囊），run 与它嵌套的子代理收在同一块。 */
+.capsule-panel__wf {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.capsule-panel__wf + .capsule-panel__wf {
+  margin-top: 2px;
+}
+.capsule-panel__row--workflow .capsule-panel__copy strong {
+  font-weight: 600;
+}
 .capsule-panel__stop {
   display: inline-flex;
   align-items: center;

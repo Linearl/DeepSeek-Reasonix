@@ -6774,6 +6774,11 @@ export default function App() {
               onCapsuleDeleteSubagent={capsuleDeleteSubagent}
               onCapsuleClearEndedSubagents={capsuleClearEndedSubagents}
               onCapsuleSendSubagentMessage={capsuleSendSubagentMessage}
+              /* tl1433 四缺口①: 左侧胶囊弹层并入工作流 run——与右侧任务面板
+                 同一喂单的 running 子集 + 同一跳转出口（胶囊据此渲染工作流组
+                 并计数）。 */
+              capsuleWorkflowRuns={workflowRunningRows}
+              onCapsuleOpenWorkflowRun={openWorkflowRunFromTasks}
               tabId={activeTabId} turnId={remoteSurfaceActive ? undefined : state.activeTurnId}
               effort={remoteSurfaceActive ? remoteSession.effort : state.effort}
               effortApplying={!remoteSurfaceActive && effortApplyingActive}
