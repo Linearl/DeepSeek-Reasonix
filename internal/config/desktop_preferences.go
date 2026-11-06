@@ -282,6 +282,13 @@ type DesktopConfig struct {
 	// restart. The in-session workflow-card entry lands with task 685's
 	// engine (handoff-686.md records the wait point).
 	ExperimentalWorkflowPanel bool `toml:"experimental_workflow_panel"`
+	// ExperimentalWorkflowTemplates (tl1454) is the workflowPanel family
+	// sub-key opening user-authored workflow templates: the panel's template
+	// view (edit/validate/save/run), the desktop write bridges, and the
+	// pre-overwrite version archive. Off by default (铁律 2): the panel, the
+	// bridges and the definition store behave exactly as before. Live-read
+	// (WorkflowTemplatesLive), so a settings save applies without a restart.
+	ExperimentalWorkflowTemplates bool `toml:"experimental_workflow_templates"`
 	// ExperimentalTabModeTint is the task-504 tab-mode-tint switch, retired to
 	// a legacy alias by task 651: it only applies while the replacement
 	// TabPermissionIndicator key is still empty (true = "background", false or

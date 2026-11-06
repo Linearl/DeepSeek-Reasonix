@@ -86,6 +86,7 @@ type RunRecord struct {
 	// resumableOK 是启动恢复时算好的可续判定（定义存在 + 指纹匹配）；resume
 	// 时还会重算（定义可能中途被 overwrite）。本进程产生的 run 恒 false。
 	resumableOK bool
+	tl          templateRunState // tl1454：面板运行边界 + 结构化失败
 }
 
 type nodeRecord struct {
@@ -105,6 +106,7 @@ type nodeRecord struct {
 	// ephemeral 派发、gate/join 节点），查看面按此降级。
 	subagentRefs       []string
 	subagentRefParents []string
+	obs                nodeObservation // tl1454：用量/失败原因/契约提示
 }
 
 // RunnerSource 按「调用方会话分支号」解析该会话的子代理基底。boot 注册；
@@ -137,6 +139,7 @@ func NewService(dir string) *Service {
 		dirty:      make(chan struct{}, 1),
 		persistDir: runsDir(dir),
 	}
+	s.store.archiveOn = func() bool { return templatesOn() }
 	return s
 }
 
@@ -237,7 +240,16 @@ func (s *Service) GetWorkflow(_ context.Context, name string) (builtin.WorkflowG
 // resumeRunID 非空（任务 1316）= 续跑该 interrupted run：断点后的节点继续，
 // 已完成节点不重跑；run 沿用原 runID，快照覆盖更新。
 func (s *Service) RunWorkflow(ctx context.Context, name string, resumeRunID string) (builtin.WorkflowRunResult, error) {
+	return s.runWorkflow(ctx, name, resumeRunID, nil)
+}
+
+// runWorkflow is the one execution path (tool runs, panel resumes and tl1454
+// panel template runs); panel carries the template-run boundary or is nil.
+func (s *Service) runWorkflow(ctx context.Context, name string, resumeRunID string, panel *TemplateRunOptions) (builtin.WorkflowRunResult, error) {
 	sessionID := jobs.SessionFromContext(ctx)
+	if panel != nil {
+		sessionID = panel.SessionID
+	}
 	s.mu.Lock()
 	wf, err := s.store.load(name)
 	if err != nil {
@@ -275,6 +287,9 @@ func (s *Service) RunWorkflow(ctx context.Context, name string, resumeRunID stri
 			nodes:          map[string]*nodeRecord{},
 			sessionID:      sessionID,
 		}
+		if panel != nil {
+			rec.tl = templateRunState{origin: RunOriginPanel, gateDir: panel.GateDir}
+		}
 		s.runs[runID] = rec
 		s.order = append(s.order, runID)
 	}
@@ -292,10 +307,13 @@ func (s *Service) RunWorkflow(ctx context.Context, name string, resumeRunID stri
 	rec.mu.Lock()
 	rec.cancel = cancel
 	rec.cancelled = false
+	rec.tl.failure = nil
+	gate := gateRunnerFor(rec.tl.origin, rec.tl.gateDir)
 	rec.mu.Unlock()
 	s.mu.Unlock()
 
-	eng := New(runner, nil, &recordingSink{svc: s, runID: runID, inner: sink})
+	eng := New(runner, gate, &recordingSink{svc: s, runID: runID, inner: sink})
+	eng.Observe = func(o NodeObservation) { s.recordObservation(runID, o) }
 	if s.persistDir != "" {
 		eng.Checkpoint = func(cd *CheckpointData) {
 			s.persistCheckpoint(runID, cd)
@@ -424,6 +442,8 @@ func (s *Service) buildSnapshotLocked(rec *RunRecord, nodes map[string]nodeSnaps
 		Cancelled:      rec.cancelled,
 		Nodes:          nodes,
 		SessionID:      rec.sessionID,
+		Origin:         rec.tl.origin,
+		GateDir:        rec.tl.gateDir,
 	}
 	if rec.lastCP != nil {
 		snap.Phase = rec.lastCP.Phase
@@ -579,6 +599,7 @@ type RunNodeSnapshot struct {
 	ChangedAt time.Time
 	// StartedAt 是本轮 running 起点（零值 = 未见 running，如排队即跳过）。
 	StartedAt time.Time
+	Usage     NodeUsageView // tl1454：用量/失败原因/契约提示
 	// SubagentRefs / SubagentRefParents 是 tl1434 的执行实例关联快照
 	// （append-only，执行序）。空=无关联，面板按降级显示。
 	SubagentRefs       []string
@@ -600,6 +621,7 @@ type RunSnapshot struct {
 	// Resumable（任务 1316）：面板「可续跑」徽章与续跑钮的判定（服务侧单一
 	// 真相；前端不算指纹）。interrupted + 定义存在 + 指纹匹配。
 	Resumable bool
+	Template  RunTemplateView // tl1454：版本/预算/失败定位（模板视图消费）
 }
 
 // Snapshot 返回全部运行（启动序）的快照。
@@ -623,6 +645,7 @@ func (s *Service) Snapshot() []RunSnapshot {
 			// 单一真相；前端不算指纹）。interrupted + 定义存在 + 指纹匹配。
 			// tl1447：用户停止也落 interrupted（cancelled 仅作来源标记），不再排除。
 			Resumable: rec.resumableOK && rec.State == RunInterrupted,
+			Template:  templateViewLocked(rec),
 		}
 		for _, nid := range rec.order {
 			nr := rec.nodes[nid]
@@ -637,6 +660,7 @@ func (s *Service) Snapshot() []RunSnapshot {
 				Detail:             nr.detail,
 				ChangedAt:          nr.changedAt,
 				StartedAt:          nr.startedAt,
+				Usage:              NodeUsageView{Tokens: nr.obs.tokens, Requests: nr.obs.requests, Reason: nr.obs.reason, Contract: nr.obs.contract},
 				SubagentRefs:       append([]string(nil), nr.subagentRefs...),
 				SubagentRefParents: append([]string(nil), nr.subagentRefParents...),
 			})
@@ -672,6 +696,7 @@ func (s *Service) finishRun(runID string, report *WorkflowReport, runErr error) 
 	cancelled := rec.cancelled
 	rec.EndedAt = time.Now()
 	rec.Report = report
+	rec.tl.failure = failureFrom(runErr)
 	switch {
 	case runErr != nil && cancelled && errors.Is(runErr, context.Canceled):
 		// tl1447：用户停止落「可续态」而非 failed——停止≠失败（RunState 语义
@@ -741,6 +766,7 @@ func (s *Service) restoreFromDisk() {
 			nodes:          map[string]*nodeRecord{},
 			Err:            snap.Err,
 			sessionID:      snap.SessionID, // tl1434：回填发起会话，恢复后仍可回放
+			tl:             templateRunState{origin: snap.Origin, gateDir: snap.GateDir},
 		}
 		for _, nid := range snap.NodeOrder {
 			ns, ok := snap.Nodes[nid]
@@ -913,59 +939,4 @@ func (s *Service) runViewLocked(rec *RunRecord) builtin.WorkflowRunView {
 		view.Report = reportView(rec.Report)
 	}
 	return view
-}
-
-func reportView(r *WorkflowReport) *builtin.WorkflowReportView {
-	out := &builtin.WorkflowReportView{
-		Conclusion: r.Conclusion,
-		Verified:   r.Verified,
-		NotCovered: r.NotCovered,
-		Findings:   make([]builtin.WorkflowFindingView, 0, len(r.Findings)),
-	}
-	for _, f := range r.Findings {
-		out.Findings = append(out.Findings, builtin.WorkflowFindingView{
-			Where: f.Where, What: f.What, Evidence: f.Evidence, Status: f.Status, Severity: f.Severity,
-		})
-	}
-	return out
-}
-
-func summarize(wf Workflow) builtin.WorkflowSummary {
-	sum := builtin.WorkflowSummary{
-		Name:          wf.Name,
-		Description:   wf.Description,
-		SchemaVersion: wf.Version,
-		Nodes:         len(wf.Nodes),
-		Edges:         len(wf.Edges),
-	}
-	for i := range wf.Nodes {
-		switch wf.Nodes[i].Type {
-		case NodeSubagent:
-			sum.Subagents++
-		case NodeGate:
-			sum.Gates++
-			if wf.Nodes[i].Loop != nil {
-				sum.LoopGates++
-			}
-		case NodeJoin:
-			sum.Joins++
-		case NodePhase:
-			sum.Phases++
-		case NodeConfirm:
-			sum.Confirms++
-		}
-	}
-	return sum
-}
-
-func defineResult(wf *Workflow, created bool) builtin.WorkflowDefineResult {
-	sum := summarize(*wf)
-	return builtin.WorkflowDefineResult{
-		Name:      wf.Name,
-		Created:   created,
-		Nodes:     sum.Nodes,
-		Edges:     sum.Edges,
-		Gates:     sum.Gates,
-		LoopGates: sum.LoopGates,
-	}
 }

@@ -1215,6 +1215,24 @@ func (c *Config) SetExperimentalWorkflowPanel(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalWorkflowTemplates toggles the tl1454 user workflow templates
+// (workflowPanel family sub-key; live-read, no restart).
+func (c *Config) SetExperimentalWorkflowTemplates(enabled bool) error {
+	c.Desktop.ExperimentalWorkflowTemplates = enabled
+	return nil
+}
+
+// WorkflowTemplatesLive is the package-level read of the tl1454 switch
+// (READ-ONLY user-config read, RangesCompactLive precedent): the workflow
+// service consults it per template write/run and per definition overwrite.
+func WorkflowTemplatesLive() bool {
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Desktop.ExperimentalWorkflowTemplates
+}
+
 // SetExperimentalTabCompress toggles the tab-strip adaptive compression (task
 // 506): tiered tab-width reduction once more than 8 tabs are open, floor 84px,
 // with hover keeping the full annotated title. Opt-in: with it off the strip

@@ -63,6 +63,32 @@ type GateRunner func(ctx context.Context, command string, timeout time.Duration)
 // timeout classification, bounded output, cancellation, Windows codepage
 // decoding).
 func ShellGateRunner(ctx context.Context, command string, timeout time.Duration) (GateResult, error) {
+	return runShellGate(ctx, "", command, timeout)
+}
+
+// ShellGateRunnerIn is ShellGateRunner pinned to a working directory (tl1454
+// panel runs: the gate executes in the target session's workspace root
+// instead of the desktop process cwd).
+func ShellGateRunnerIn(dir string) GateRunner {
+	return func(ctx context.Context, command string, timeout time.Duration) (GateResult, error) {
+		return runShellGate(ctx, dir, command, timeout)
+	}
+}
+
+// GuardedGateRunner refuses a command its guard rejects before anything runs
+// (tl1454: the user's permission deny rules bite on panel-run gates).
+func GuardedGateRunner(guard func(command string) error, inner GateRunner) GateRunner {
+	return func(ctx context.Context, command string, timeout time.Duration) (GateResult, error) {
+		if guard != nil {
+			if err := guard(command); err != nil {
+				return GateResult{}, err
+			}
+		}
+		return inner(ctx, command, timeout)
+	}
+}
+
+func runShellGate(ctx context.Context, dir, command string, timeout time.Duration) (GateResult, error) {
 	if timeout <= 0 {
 		timeout = DefaultGateTimeout
 	}
@@ -70,6 +96,7 @@ func ShellGateRunner(ctx context.Context, command string, timeout time.Duration)
 	argv, _ := sandbox.Command(sandbox.Spec{}, sh, command)
 	res := shellrun.RunForeground(ctx, shellrun.Request{
 		Argv:      argv,
+		Dir:       dir,
 		Timeout:   timeout,
 		ShellKind: sh.Kind.String(),
 		ShellPath: sh.Path,

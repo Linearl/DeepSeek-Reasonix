@@ -43,6 +43,9 @@ type store struct {
 	dir string
 	// mem 在 dir 为空时兜底（按 slug 键）；dir 非空时恒 nil。
 	mem map[string][]byte
+	// archiveOn（tl1454）：覆盖写前把旧 head 原字节归档进 versions/；nil 或
+	// 返回 false = 不归档（与 tl1454 之前逐字节相同）。
+	archiveOn func() bool
 }
 
 func newStore(dir string) *store {
@@ -93,6 +96,9 @@ func (s *store) save(doc []byte, overwrite bool) (bool, *Workflow, error) {
 	exists := err == nil
 	if exists && !overwrite {
 		return false, nil, ErrExists(wf.Name)
+	}
+	if exists && s.archiveOn != nil && s.archiveOn() && s.headVersion(wf.Name) != defFingerprint(wf) {
+		s.archiveVersion(wf.Name)
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, raw, 0o644); err != nil {

@@ -84,11 +84,15 @@ type runSnapshot struct {
 	GateRound  int    `json:"gateRound,omitempty"`
 
 	// NodeOrder 是节点首见序（= 文档声明序），恢复 RunRecord.order 用。
-	NodeOrder []string `json:"nodeOrder,omitempty"`
+	NodeOrder []string                `json:"nodeOrder,omitempty"`
 	Nodes     map[string]nodeSnapshot `json:"nodes,omitempty"`
 	// SessionID 是发起会话分支号（tl1434）：重启恢复后「工作过程」按它定位
 	// transcript 归属。旧快照/面板续跑（无会话）为空=恢复后降级。
 	SessionID string `json:"sessionId,omitempty"`
+	// Origin/GateDir（tl1454）：面板模板运行的安全边界随 run 落盘，重启后续跑
+	// 仍在会话工作区执行 gate 并过 deny 守卫。工具路径的 run 为空（形状不变）。
+	Origin  string `json:"origin,omitempty"`
+	GateDir string `json:"gateDir,omitempty"`
 
 	Bag    []Finding `json:"bag,omitempty"`
 	Verifs []string  `json:"verifs,omitempty"`
