@@ -324,6 +324,59 @@ func TestCrashReportFromPerformanceDetail(t *testing.T) {
 	}
 }
 
+// tl1417 (issue #82 gap 2) — upload outlet pin. The activity lane and the
+// max-task / sampling sections travel in the performance payload's Message
+// (frontendCrashPayload has no field for them, so text is the only route);
+// Message goes through sanitizeCrashText, which must scrub them like every
+// other line. The frontend already collapses non-token names to "other"; this
+// is the second belt, proving the outlet itself scrubs.
+func TestCrashReportFromPerformanceDetailScrubsActivitySection(t *testing.T) {
+	payload := frontendCrashPayload{
+		SchemaVersion: 2,
+		Kind:          "performance",
+		Source:        "frontend.performance",
+		Label:         "performance.longtask",
+		Message: "[performance.longtask]\n\n--- performance context ---\n" +
+			"reason: long task 7 in 60s, max 16587ms, total 20145ms\n" +
+			"max long task 16587ms @ 3713.5s top frames (sampled 0.0s..0.3s of 16.6s, 10 samples):\n" +
+			"  10x fullScan (C:\\Users\\yinji\\app\\assets\\index.js:131)\n" +
+			"profiler sampling: nominal 10ms, measured ~31ms between samples, 2 traces, 4210 samples covering 3650.1s..3734.4s, 24 in long-task windows\n" +
+			"recent activity (names only, coalesced; @ uptime):\n" +
+			"  @ 3700.8s ui pointerdown\n" +
+			"  @ 3700.9s bridge.done C:\\Users\\yinji\\secret api_key=sk-proj-abcdefghijklmnopqrstu\n" +
+			"last activity before max long task @ 3713.5s: @ 3713.5s stream session_changed (0.0s earlier)",
+		ErrorType:    "PerformancePressure",
+		ErrorMessage: "UI responsiveness degraded because the app observed long tasks, event-loop lag, or high JS heap pressure.",
+		TopFrame:     "frontend.performance",
+	}
+	detail, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := crashReportFromDetail("performance", string(detail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"yinji", "sk-proj-abcdefghijklmnopqrstu"} {
+		if strings.Contains(r.Message, secret) {
+			t.Fatalf("upload message leaks %q: %s", secret, r.Message)
+		}
+	}
+	for _, kept := range []string{
+		"max long task 16587ms @ 3713.5s top frames (sampled 0.0s..0.3s of 16.6s, 10 samples):",
+		"  10x fullScan (C:\\Users\\_\\app\\assets\\index.js:131)",
+		"profiler sampling: nominal 10ms, measured ~31ms between samples",
+		"recent activity (names only, coalesced; @ uptime):",
+		"  @ 3700.8s ui pointerdown",
+		"  @ 3700.9s bridge.done C:\\Users\\_\\secret api_key=[redacted]",
+		"last activity before max long task @ 3713.5s: @ 3713.5s stream session_changed (0.0s earlier)",
+	} {
+		if !strings.Contains(r.Message, kept) {
+			t.Fatalf("upload message lost %q:\n%s", kept, r.Message)
+		}
+	}
+}
+
 func TestCrashReportFromBotDetail(t *testing.T) {
 	token := "abcdefghijklmnopqrstuvwxyz1234567890ABCDE"
 	payload := frontendCrashPayload{

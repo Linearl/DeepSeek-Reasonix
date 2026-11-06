@@ -419,8 +419,12 @@ export const en = {
   "rightDock.todoEmpty": "No tasks for this session",
   // 893-B: the dock's empty todos area must not read as "the agent tracks
   // nothing" once a task list existed; sealed = turn-level recycling happened.
-  "rightDock.todoSealed": "The task list was sealed when the turn ended",
-  "rightDock.todoSealedCount": "The task list was sealed when the turn ended ({count} tasks)",
+  // tl1353: the sealed copy no longer reads as data loss — the previous list
+  // is saved and collapsed (the canonical snapshot is intact); the read-only
+  // expand affordance lives in todoSealedExpand.
+  "rightDock.todoSealed": "The previous turn's task list is saved and collapsed",
+  "rightDock.todoSealedCount": "The previous turn's task list ({count} tasks) is saved and collapsed",
+  "rightDock.todoSealedExpand": "Previous turn's list ({count})",
 
   // topic bar
   "topicBar.renameSession": "Rename session",
@@ -5529,6 +5533,24 @@ export const en = {
   "notice.compactionNoSummary": "Context was compacted without a generated summary.",
   "notice.goalNotReady": "Goal is not ready to complete yet; continuing the remaining work.",
   "notice.goalUnfinished": "Goal still has unfinished task state; continuing the remaining work.",
+  // tl1459: Goal lifecycle notices (goal_* codes) and their localized causes.
+  "notice.goalComplete": "Goal complete.",
+  "notice.goalBlocked": "Goal blocked: {cause}. Give it what it needs, then use Resume goal.",
+  "notice.goalPaused": "Goal paused: {cause}. Use Resume goal when you want it to continue.",
+  "notice.goalStopped": "Goal stopped: {cause}. It will not continue on its own — turn the goal on again to restart it.",
+  "notice.goalCleared": "Goal cleared.",
+  "notice.goalAutoContinueHalted": "Goal auto-continue stopped after an error. The goal is still on — send a message to continue.",
+  "notice.goalCause.reportBlocked": "the assistant reported it cannot continue without you",
+  "notice.goalCause.evaluatorBlocked": "the completion check judged it blocked",
+  "notice.goalCause.budgetSpend": "the spend budget was reached",
+  "notice.goalCause.evaluatorUnavailable": "the completion check could not judge this turn",
+  "notice.goalCause.recoveryPaused": "automatic recovery paused",
+  "notice.goalCause.askUnanswered": "a question went unanswered",
+  "notice.goalCause.manual": "you paused it",
+  "notice.goalCause.autopilotTimeLimit": "the autopilot time limit was reached",
+  "notice.goalCause.durabilityFailure": "saving the conversation failed, so the turn was interrupted",
+  "notice.goalCause.stopRequested": "a stop was requested",
+  "notice.goalCause.contextCancelled": "the turn ended before the goal could continue",
   "notice.snapshotInternalError": "Session save hit an internal serialization error; details are in the logs.",
   "notice.backgroundJobFailed": "Background {kind} needs attention.",
   "notice.jobArtifactMigrationFailed": "Job artifact migration failed.",

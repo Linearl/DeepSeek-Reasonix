@@ -35,7 +35,11 @@ const (
 	forkTriggerTakeover        = "takeover"
 	forkTriggerShutdown        = "shutdown"
 	forkTriggerACP             = "acp"
-	forkTriggerOther           = "other"
+	// forkTriggerListingRepair (tl1459): the session-catalog listing repair
+	// bumped the CAS ledger without a save. It only ever names a peer (the
+	// writer of the disk revision), never the failing save itself.
+	forkTriggerListingRepair = "listing_repair"
+	forkTriggerOther         = "other"
 )
 
 // Fork entry classes: the controller save API that issued the failing save.
@@ -115,6 +119,7 @@ var forkTriggerRows = []forkFrameRow{
 	{"(*Server).reclaimMirroredLocked", forkTriggerTakeover},
 	{"(*Server).snapshotForeground", forkTriggerTakeover},
 	{"snapshotACPController", forkTriggerACP},
+	{"commitSessionListingReplay", forkTriggerListingRepair},
 }
 
 var forkEntryRows = []forkFrameRow{

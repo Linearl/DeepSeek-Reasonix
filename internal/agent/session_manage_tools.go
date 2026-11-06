@@ -92,8 +92,10 @@ func (t renameSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if title == "" {
 		return "", fmt.Errorf("title is required")
 	}
-	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
-	id, err := ResolveTarget(ids, p.Target)
+	// tl1363b: shared organization-face resolution — a registry shell resolves
+	// through the same fallback delete_session runs instead of dead-ending on
+	// "not in the contact directory".
+	id, err := ResolveTargetOrRegistryShell(t.cfg, p.Target)
 	if err != nil {
 		return "", err
 	}
@@ -182,8 +184,9 @@ func (t renameTopicTool) Execute(_ context.Context, args json.RawMessage) (strin
 	if ref == "" {
 		ref = topicID
 	}
-	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
-	id, err := ResolveTarget(ids, ref)
+	// tl1363b: shared organization-face resolution (registry-shell fallback,
+	// same ladder as delete_session).
+	id, err := ResolveTargetOrRegistryShell(t.cfg, ref)
 	if err != nil {
 		return "", err
 	}
@@ -264,8 +267,9 @@ func (t moveTopicToGroupTool) Execute(_ context.Context, args json.RawMessage) (
 	if group == "" && groupID == "" {
 		return "", fmt.Errorf("group is required")
 	}
-	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
-	id, err := ResolveTarget(ids, p.Target)
+	// tl1363b: shared organization-face resolution (registry-shell fallback,
+	// same ladder as delete_session).
+	id, err := ResolveTargetOrRegistryShell(t.cfg, p.Target)
 	if err != nil {
 		return "", err
 	}

@@ -12,7 +12,7 @@ var goalStateKnownFields = map[string]struct{}{
 	"turnsUsed": {}, "turnsLimit": {}, "tokensUsed": {}, "requestsUsed": {},
 	"workDurationMs": {},
 	"tokensLimit":    {}, "noProgressTurns": {}, "noProgressLimit": {},
-	"lastContinuationReason": {}, "lastEvaluatorReason": {}, "stopCause": {},
+	"lastContinuationReason": {}, "lastEvaluatorReason": {}, "stopCause": {}, "lastStopCause": {},
 	"budgetExtensions": {}, "progressEvidence": {},
 }
 

@@ -1740,6 +1740,32 @@ func normalizeCollabRef(s string) string {
 	return strings.TrimRight(b.String(), "_")
 }
 
+// ResolveTargetOrRegistryShell is the one identity resolution the session
+// ORGANIZATION faces share (tl1363b): ResolveTarget on the disk-transcript
+// scan first, then the host's registry-shell probe as the fallback — the same
+// ladder delete_session runs (task 1145 / tl-1144). A registry shell (the tree
+// lists it, the directory cannot see it, the probe's heartbeatTopicIsShell
+// verdict says no real history) resolves to a topic-id identity with no
+// session path, so archive/rename/move can act on it instead of dead-ending
+// on "not in the contact directory" — the 2026-11-05 feedback had to hand-edit
+// desktop-projects.json to clear one 0-byte shell. Content faces
+// (talk_to_session, read_session_tail, get_session_info, subscribe_session,
+// mail) keep the bare ResolveTarget: a shell has no transcript to read or
+// message, and their refusal is the correct answer.
+func ResolveTargetOrRegistryShell(cfg SessionCollabConfig, ref string) (sessioncollab.Identity, error) {
+	ids := scanAddressable(cfg.SessionDir, cfg.WorkspaceRoot)
+	id, err := ResolveTarget(ids, ref)
+	if err == nil {
+		return id, nil
+	}
+	if cfg.RegistryShellProbe != nil {
+		if shellID, shellTitle, ok := cfg.RegistryShellProbe(strings.TrimSpace(ref)); ok {
+			return sessioncollab.Identity{TopicID: shellID, Title: shellTitle}, nil
+		}
+	}
+	return sessioncollab.Identity{}, err
+}
+
 func ResolveTarget(ids []sessioncollab.Identity, ref string) (sessioncollab.Identity, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {

@@ -585,18 +585,15 @@ func (a *App) ResumeSessionForTab(tabID, path string) ([]HistoryMessage, error) 
 	return a.resumeSessionForTab(tabID, path, true)
 }
 
-// ResumeSessionForTabExact is ResumeSessionForTab without the continuation
-// heuristic (tl1415c): an explicit version switch names the exact transcript
-// the user clicked. The heuristic redirected a switch BACK to the main file
-// onto the unique linear leaf, so with the tab sitting on a recovery copy the
-// "switch to main" hot-switch silently kept the tab on the copy while the
-// preference and head_switch marker landed on the main file — a silent wrong
-// switch, exactly the shape tl1430 forbids. Ordinary open/restore keeps the
-// heuristic through ResumeSessionForTab.
-func (a *App) ResumeSessionForTabExact(tabID, path string) ([]HistoryMessage, error) {
-	return a.resumeSessionForTab(tabID, path, false)
-}
-
+// resumeSessionForTab with followContinuation=false is the exact form (tl1415c):
+// an explicit version switch names the exact transcript the user clicked. The
+// heuristic redirected a switch BACK to the main file onto the unique linear
+// leaf, so with the tab sitting on a recovery copy the "switch to main"
+// hot-switch silently kept the tab on the copy while the preference and
+// head_switch marker landed on the main file — a silent wrong switch, exactly
+// the shape tl1430 forbids. Ordinary open/restore keeps the heuristic through
+// ResumeSessionForTab. Unexported on purpose: only the switch path needs it, and
+// an exported App method becomes a Wails binding that bridge.ts must declare.
 func (a *App) resumeSessionForTab(tabID, path string, followContinuation bool) ([]HistoryMessage, error) {
 	tab, ctrl := a.tabAndCtrlByID(tabID)
 	if tab == nil || ctrl == nil {

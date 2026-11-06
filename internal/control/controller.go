@@ -1972,10 +1972,8 @@ func (c *Controller) runSubagentSkillSlash(sk skill.Skill, task, raw, display st
 	})
 }
 
-func (c *Controller) stopGoal(status string) {
-	path, data, ok := c.goals.stop(status, c.goalTodos())
-	c.persistGoalState(path, data, ok)
-}
+// stopGoal lives in goal_notice.go (tl1459: a host stop requires a cause and
+// emits a goal_stopped notice).
 
 // lastAssistantText returns the content of the most recent assistant message with
 // non-empty text — the model's final answer for the turn (its plan, in plan mode).
@@ -4343,6 +4341,7 @@ func (c *Controller) SetGoal(goal string) {
 // SetGoalDurable updates the Goal only when its sidecar can be replaced
 // atomically.
 func (c *Controller) SetGoalDurable(goal string) error {
+	wasActive := c.goals.active()
 	snapshot := c.goals.capture()
 	legacySnapshot, hadLegacySnapshot := c.legacyRestoreSnapshot()
 	resolved, setup := c.resolveGoalText(goal, GoalResearchAuto)
@@ -4374,10 +4373,14 @@ func (c *Controller) SetGoalDurable(goal string) error {
 	if setup.blockReason != "" {
 		c.notice("legacy research archive resume failed: " + setup.blockReason)
 	}
+	if wasActive && strings.TrimSpace(resolved) == "" {
+		c.noticeGoalCleared()
+	}
 	return nil
 }
 
 func (c *Controller) SetGoalWithResearchMode(goal string, researchMode GoalResearchMode) {
+	wasActive := c.goals.active()
 	resolved, setup := c.resolveGoalText(goal, researchMode)
 	if setup.notice != "" {
 		c.notice(setup.notice)
@@ -4394,6 +4397,9 @@ func (c *Controller) SetGoalWithResearchMode(goal string, researchMode GoalResea
 		c.replaceLegacyRestore(legacyGoalRestore{})
 	}
 	c.persistGoalState(path, data, ok)
+	if wasActive && strings.TrimSpace(resolved) == "" {
+		c.noticeGoalCleared()
+	}
 }
 
 // goalSetSetup is the resolved objective and budget class after archive lookup.
@@ -4449,7 +4455,8 @@ func (c *Controller) PauseGoal() bool {
 	}
 	path, data, ok := c.goals.pauseFor(stopCauseManual, i18n.M.GoalPausedReason, c.goalTodos())
 	c.persistGoalState(path, data, ok)
-	c.notice(i18n.M.GoalPaused)
+	c.emitGoalNotice(event.NoticeCodeGoalPaused, event.LevelInfo, i18n.M.GoalPaused,
+		goalNoticeDetail(stopCauseManual, GoalStatusBlocked, ""))
 	return true
 }
 

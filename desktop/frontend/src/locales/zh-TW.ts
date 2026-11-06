@@ -323,8 +323,11 @@ export const zhTW: Record<DictKey, string> = {
   "rightDock.terminal": "終端機",
   "rightDock.todoEmpty": "目前會話暫無任務",
   // 893-B: 會話曾有任務清單、回合結束後被回收時不再誤顯「暫無任務」。
-  "rightDock.todoSealed": "任務列表已按回合封存",
-  "rightDock.todoSealedCount": "任務列表已按回合封存（上一回合 {count} 項）",
+  // tl1353: 封存態文案不再像丟資料——列表只是收起保存，資料沒丟
+  // （canonicalTodos 快照完好）；展開入口鍵 todoSealedExpand。
+  "rightDock.todoSealed": "上一回合的任務列表已收起保存",
+  "rightDock.todoSealedCount": "上一回合的任務列表已收起保存（{count} 項）",
+  "rightDock.todoSealedExpand": "上一回合列表（{count} 項）",
 
   // 話題欄
   "topicBar.renameSession": "重新命名會話",
@@ -3988,6 +3991,24 @@ export const zhTW: Record<DictKey, string> = {
   "notice.compactionNoSummary": "上下文已壓縮，但未產生摘要。",
   "notice.goalNotReady": "目標暫未達到完成條件，繼續處理剩餘工作。",
   "notice.goalUnfinished": "目標還有未完成的任務狀態，繼續處理。",
+  // tl1459: Goal lifecycle notices (goal_* codes) and their localized causes.
+  "notice.goalComplete": "目標已完成。",
+  "notice.goalBlocked": "目標已阻塞：{cause}。補齊它需要的資訊後，點「恢復目標」。",
+  "notice.goalPaused": "目標已暫停：{cause}。想繼續時點「恢復目標」。",
+  "notice.goalStopped": "目標已停止：{cause}。它不會再自動繼續——重新開啟目標即可重新開始。",
+  "notice.goalCleared": "目標已清除。",
+  "notice.goalAutoContinueHalted": "目標的自動續跑因錯誤停下了。目標仍處於開啟狀態——傳送一則訊息即可繼續。",
+  "notice.goalCause.reportBlocked": "助手回報需要你介入才能繼續",
+  "notice.goalCause.evaluatorBlocked": "完成度檢查判定為阻塞",
+  "notice.goalCause.budgetSpend": "已達到花費預算",
+  "notice.goalCause.evaluatorUnavailable": "完成度檢查無法判定本輪",
+  "notice.goalCause.recoveryPaused": "自動恢復已暫停",
+  "notice.goalCause.askUnanswered": "有問題未得到回答",
+  "notice.goalCause.manual": "由你暫停",
+  "notice.goalCause.autopilotTimeLimit": "已達到自動駕駛時限",
+  "notice.goalCause.durabilityFailure": "會話保存失敗，本輪被中斷",
+  "notice.goalCause.stopRequested": "收到了停止請求",
+  "notice.goalCause.contextCancelled": "本輪在目標繼續之前就結束了",
   "notice.snapshotInternalError": "會話保存遇到內部序列化錯誤，詳情見日誌。",
   "notice.backgroundJobFailed": "背景 {kind} 需要處理。",
   "notice.jobArtifactMigrationFailed": "任務產物遷移失敗。",

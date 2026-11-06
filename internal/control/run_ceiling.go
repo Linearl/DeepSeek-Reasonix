@@ -14,6 +14,11 @@ import (
 func (c *Controller) bindTurnScope(ctx context.Context, continuation *goalContinuationSnapshot) context.Context {
 	goalScopeID, goalScoped := c.goals.goalScopeIDForTurn(continuation)
 	if !goalScoped {
+		// tl1459: a turn that is not a Goal turn because the Goal stopped or
+		// was cleared tells update_goal why, instead of a bare refusal.
+		if reason := c.goals.goalTurnUnavailableReason(); reason != "" {
+			ctx = tool.WithGoalTurnUnavailableReason(ctx, reason)
+		}
 		return ctx
 	}
 	ctx = agent.WithTaskBudget(ctx, c.goalTaskBudget())
