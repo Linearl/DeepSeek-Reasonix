@@ -10,10 +10,9 @@ import (
 	"time"
 )
 
-// tl1454 acceptance chain through the real service + store + engine (the
-// panel template path): new → located rejection → fix → save → version →
-// run → node failure located → timeout / cancel / budget → edit → version
-// change → history; plus the off-state, the deny boundary and invalid files.
+// tl1454 acceptance through the real service + store + engine: create → located
+// rejection → fix → save → run → located failure → timeout/cancel/budget →
+// edit → new version → history; plus off-state, deny boundary, invalid files.
 
 func templateHome(t *testing.T, enabled bool) string {
 	t.Helper()

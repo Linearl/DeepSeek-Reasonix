@@ -36,7 +36,8 @@ import { historyMessagesToItems } from "../lib/useController";
 import type { HistoryMessage } from "../lib/types";
 import { app } from "../lib/bridge";
 import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
-import { budgetReadout, reasonKey, settleStaleRunning } from "../lib/workflowTemplates";
+import { budgetReadout, settleStaleRunning } from "../lib/workflowTemplates";
+import { RunFailureBanner, templateExtraRows, templateExtrasFor, type NodeTemplateExtras } from "./WorkflowRunExtras";
 import {
   liveRunSnapshot,
   runsNewestFirst,
@@ -90,16 +91,6 @@ const LazyTranscript = lazy(async () => ({ default: (await import("./Transcript"
 // tl1454: 模板视图独立 chunk——只在 workflowTemplates 开关开且用户点开时加载
 // （开关关闭时不渲染切换钮，chunk 永不加载，面板逐字节不变）。
 const LazyTemplatesView = lazy(async () => ({ default: (await import("./WorkflowTemplatesView")).WorkflowTemplatesView }));
-
-/** tl1454: 模板视图开启时节点详情附加面（失败原因双轨 + 用量 + 契约提示）。 */
-interface NodeTemplateExtras {
-  reason?: string;
-  detail?: string;
-  tokens?: number;
-  requests?: number;
-  contract?: string;
-  stale?: boolean;
-}
 
 /** 「工作过程」一次打开的读取态（只读；失败/等待/空态各自显式文案）。 */
 interface NodeTraceState {
@@ -283,18 +274,7 @@ function NodeDetailPane({ node, run, live, runId, extras }: {
   if (detail?.tokens !== undefined) {
     rows.push({ label: t("workflowPanel.detail.tokens"), value: formatTokens(detail.tokens) });
   }
-  if (extras?.stale) rows.push({ label: t("workflowPanel.detail.reason"), value: t("workflowPanel.detail.stopped") });
-  if (extras?.reason) {
-    rows.push({ label: t("workflowPanel.detail.reason"), value: t(reasonKey(extras.reason)) });
-    if (extras.detail) rows.push({ label: t("workflowPanel.templates.technical"), value: extras.detail, mono: true });
-  }
-  if (extras?.tokens || extras?.requests) {
-    rows.push({
-      label: t("workflowPanel.detail.usage"),
-      value: t("workflowPanel.detail.usageValue", { tokens: formatTokens(extras.tokens), requests: String(extras.requests ?? 0) }),
-    });
-  }
-  if (extras?.contract) rows.push({ label: t("workflowPanel.detail.contract"), value: extras.contract, mono: true });
+  rows.push(...templateExtraRows(extras, t, formatTokens));
   const traceTerminal = run.state === "done" || run.state === "unconfirmed" || run.state === "failed";
   return (
     <div className="wf-panel__detail">
@@ -689,19 +669,7 @@ export function WorkflowPanel({
   const liveRun = liveView?.run;
   const failure = templatesEnabled ? liveRun?.failure : undefined;
   const budgetParts = templatesEnabled && liveRun ? budgetReadout(liveRun) : [];
-  const selectedExtras = (() => {
-    if (!templatesEnabled || !liveRun || !selected) return undefined;
-    const wire = liveRun.nodes.find((n) => n.nodeId === selected.id);
-    const extras: NodeTemplateExtras = {
-      reason: wire?.reason,
-      detail: failure && failure.nodeId === selected.id ? failure.detail : undefined,
-      tokens: wire?.tokens,
-      requests: wire?.requests,
-      contract: wire?.contract,
-      stale: settled?.stale.has(selected.id),
-    };
-    return extras;
-  })();
+  const selectedExtras = templatesEnabled ? templateExtrasFor(liveRun, selected?.id, settled?.stale) : undefined;
 
   return (
     <div className="drawer-backdrop wf-panel-backdrop" onPointerDown={onBackdropPointerDown} data-state={status}>
@@ -809,17 +777,7 @@ export function WorkflowPanel({
           </div>
         </header>
 
-        {failure && !showTemplates && (
-          <div className="wf-panel__failure" role="status" data-testid="wf-run-failure">
-            <strong>
-              {failure.nodeId
-                ? t(failure.reason === "budget" ? "workflowPanel.failure.titleAfter" : "workflowPanel.failure.title", { node: failure.nodeId })
-                : t("workflowPanel.failure.titleNoNode")}
-            </strong>
-            <span>{t(reasonKey(failure.reason))}</span>
-            <span className="wf-panel__failure-tech">{t("workflowPanel.templates.technical")}: {failure.detail}</span>
-          </div>
-        )}
+        {failure && !showTemplates && <RunFailureBanner failure={failure} />}
 
         {phases.length > 0 && !showTemplates && (
           <div className="wf-panel__legend">

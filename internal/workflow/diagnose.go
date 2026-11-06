@@ -98,8 +98,8 @@ func Diagnose(src []byte) (*Workflow, *Diagnostic) {
 		}
 		if key, ok := unknownJSONField(msg); ok {
 			d.Line, d.Column = locateKey(src, key)
-		}
-		if d.Line == 0 || !strings.Contains(msg, "field") {
+			d.Kind = DiagField
+		} else if d.Line == 0 || !strings.Contains(msg, "field") {
 			d.Kind = DiagSyntax
 		}
 	}
@@ -111,16 +111,17 @@ func Diagnose(src []byte) (*Workflow, *Diagnostic) {
 
 func unknownJSONField(msg string) (string, bool) {
 	const marker = `json: unknown field "`
-	i := strings.Index(msg, marker)
-	if i < 0 {
+	// The message may carry a "workflow: parse: " wrap before the decoder's
+	// own text, so match the marker anywhere rather than only as a prefix.
+	_, rest, ok := strings.Cut(msg, marker)
+	if !ok {
 		return "", false
 	}
-	rest := msg[i+len(marker):]
-	j := strings.Index(rest, `"`)
-	if j < 0 {
+	field, _, found := strings.Cut(rest, `"`)
+	if !found {
 		return "", false
 	}
-	return rest[:j], true
+	return field, true
 }
 
 func offsetToLineCol(src []byte, off int64) (int, int) {
@@ -159,7 +160,7 @@ type pathStep struct {
 // splitPath turns "nodes[2].result[0].name" into key/index steps.
 func splitPath(path string) []pathStep {
 	var steps []pathStep
-	for _, part := range strings.Split(path, ".") {
+	for part := range strings.SplitSeq(path, ".") {
 		if part == "" {
 			continue
 		}

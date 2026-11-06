@@ -12,10 +12,9 @@ import (
 	"reasonix/internal/tool/builtin"
 )
 
-// tl1454 —— 用户自定义模板的服务面（桌面模板视图经 desktop 桥调用）。执行
-// 走与 workflow_run 完全相同的 runWorkflow → Engine 路径；本文件只有编辑面
-// （清单/校验/保存/历史）与面板运行的安全边界（gate 在会话工作区执行、过
-// 用户 deny 规则）。
+// tl1454 —— 用户模板服务面：执行走与 workflow_run 同一 runWorkflow→Engine；
+// 本文件只有编辑面（清单/校验/保存/历史）与面板运行边界（gate 在会话工作区
+// 执行、过用户 deny 规则）。
 
 // RunOriginPanel 标记由桌面模板视图发起的运行（安全边界随 run 持久化，续跑
 // 同样生效）。

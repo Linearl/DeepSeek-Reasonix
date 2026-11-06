@@ -15,12 +15,9 @@ import (
 	"reasonix/internal/fileutil"
 )
 
-// tl1454 —— 模板编辑面（桌面模板视图 + 桥的存储侧）。同一份 store、同一份
-// schema 契约；本文件只加三件事：覆盖前历史归档、无效文件可见列表、并发
-// 覆盖保护。开关关闭时不归档（存储行为与 tl1454 之前逐字节一致）。
-//
-// 版本号 = 内容指纹前 12 位（defFingerprint 的派生投影，不新增第二真相源）；
-// run 登记早已携带 defFingerprint，「这次运行跑的是哪一版」由此可追溯。
+// tl1454 —— 模板编辑面的存储侧：覆盖前历史归档、无效文件可见清单、并发覆盖
+// 保护（同一 store 同一 schema；开关关不归档）。版本号=defFingerprint 前 12 位
+// 的派生投影，不新增第二真相源。
 
 // versionsDirName 是定义目录下的历史侧车目录。
 const versionsDirName = "versions"
