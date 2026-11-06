@@ -668,9 +668,19 @@ export function RecoveryCopiesSection() {
       // 任务 1039r2:后端 nil 切片会以 null 到达(全候选被非限额错误跳过时
       // chains 为 null)——落进 state 前归一成空数组,渲染树的 .length 读数
       // 才有定义(实测 chains:null 直通让分区横幅报 null.length)。
-      setChains((current) => new Map(current).set(mainPath, { ...set, chains: set.chains ?? [] }));
+      const normalized = { ...set, chains: set.chains ?? [] };
+      // tl1448 移植(b 类回植):chainsRef 是删除路径校验三闸的主线指针镜像
+      // (preferredMainPathOf 读它),这里同步写穿——清理入口对「从未展开」的
+      // 折叠会话补拉指针(见 cleanupNonMainCopies)后,同一函数体内立刻要读,
+      // 等不到渲染提交后的 effect 同步。
+      chainsRef.current = new Map(chainsRef.current).set(mainPath, normalized);
+      setChains((current) => new Map(current).set(mainPath, normalized));
     } catch (err) {
-      setChains((current) => new Map(current).set(mainPath, degradedChainSet(mainPath)));
+      // 拉取失败落降级集:指针镜像与 state 同步写穿(降级行 path=扫描起点,
+      // preferredMainPathOf 据它回落扫描起点——「无指针可读」的诚实形态)。
+      const degraded = degradedChainSet(mainPath);
+      chainsRef.current = new Map(chainsRef.current).set(mainPath, degraded);
+      setChains((current) => new Map(current).set(mainPath, degraded));
       setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
     }
   }, []);
@@ -1006,8 +1016,21 @@ export function RecoveryCopiesSection() {
   // tl1448 删除路径校验:「非主线」是这条入口的名字承诺,过滤必须认识主线
   // 指针——采纳后的主线文件仍在副本清单里,此前它照样入选(点一次清掉当前
   // 主线)。逐条发请求前再复核一次(最终闸)。
+  // tl1448 移植(b 类回植,tl1415b-2 惰性加载形态):链清单只在会话行展开时
+  // 惰性加载(本文件 chainNeededPaths effect),而清理入口在折叠态就可达——
+  // 会话勾选框在会话行上,不展开也能勾。指针镜像缺席时 preferredMainPathOf
+  // 回落扫描起点,采纳来的主线文件(Selected 已在副本文件上)就会作为普通
+  // 副本混进清理目标集——tl1448 事故形态借惰性加载复活。与 synthesizeHeads
+  // 的「入口不再要求该会话行展开过,链清单缺席时现拉」同一机制:过滤前把
+  // 选中会话的链清单补齐(loadChains 同步写穿 chainsRef),过滤与最终闸读到
+  // 同一份指针。
   const cleanupNonMainCopies = async () => {
     const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+    for (const group of chosen) {
+      if (!chainsRef.current.has(group.mainPath)) {
+        await loadChains(group.mainPath);
+      }
+    }
     const targets = chosen.flatMap((group) =>
       group.copies
         .filter((copy) => !copy.orphan && !sameSessionPath(copy.path, preferredMainPathOf(group)))
