@@ -359,6 +359,9 @@ eq(shouldPromptForPerformanceLabel(false, 11 * 60_000, false, false), false, "ne
     visibilityState: "visible",
     hasFocus: () => focused,
     addEventListener: () => {},
+    // tl1464 gates the prompt face on isNotifyKindEnabled, whose first call
+    // writes the <html data-notify-banners> flag — the stub needs a root.
+    documentElement: { dataset: {} },
     getElementById: () => {
       promptPainted = true;
       return null;
