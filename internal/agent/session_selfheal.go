@@ -64,16 +64,19 @@ var sessionBackupAllowlist = map[string]struct{}{
 	"recovery.json":        {},
 	// tl1371：pinned-context 是会话数据侧车（desktop 钉住上下文归属），转正/
 	// 自愈置换主文件侧车前必须先归档——白名单缺它 = 被逐下的钉住列表零归档。
-	"pinned-context.json":         {},
-	"display-index.json":          {},
-	"event-index.json":            {},
-	"conflicts.jsonl":             {},
-	"guardian.jsonl":              {},
-	"guardian.jsonl.meta":         {},
-	"guardian.events.jsonl":       {},
-	"guardian.display-index.json": {},
-	"guardian.event-index.json":   {},
-	"guardian.cursor.json":        {},
+	// tl1424：guardian 行的尾缀改走 store 常量拼写（键值逐字节不变，守卫
+	// TestSessionPathSpellingsSingleSource）；「guardian」前缀本身是
+	// SessionGuardianTranscript 的 stem 相对段，不是后缀常量的一部分。
+	"pinned-context.json":                        {},
+	"display-index.json":                         {},
+	"event-index.json":                           {},
+	"conflicts.jsonl":                            {},
+	"guardian.jsonl":                             {},
+	"guardian" + store.SessionMetaFileSuffix:     {},
+	"guardian" + store.SessionEventLogSuffix:     {},
+	"guardian" + store.SessionDisplayIndexSuffix: {},
+	"guardian" + store.SessionEventIndexSuffix:   {},
+	"guardian.cursor.json":                       {},
 }
 
 // SelfHealOptions picks which repair steps run. Every step is independent and
