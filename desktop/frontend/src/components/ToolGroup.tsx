@@ -9,9 +9,9 @@ import { useWorkProcessPresentation } from "../lib/sessionExperience";
 
 type ToolItem = Extract<Item, { kind: "tool" }>;
 
-// tl1450: the explore/modify/delegate grouping kinds were creation-only (the
-// grouping pass ran behind creationMode); the surviving feature is the shell
-// tool batch, available in every layout behind the task-668 grouping toggle.
+// tl1450: the explore/modify/delegate grouping kinds were reachable only from
+// the retired creation layout; the surviving feature is the shell tool batch,
+// available in every layout behind the task-668 grouping toggle.
 export type ToolGroupKind = "shell";
 
 const SHELL_TOOLS = new Set(["bash", "bash_output", "wait", "waitJob", "kill_shell"]);

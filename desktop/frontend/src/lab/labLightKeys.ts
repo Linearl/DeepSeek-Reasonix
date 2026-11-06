@@ -21,7 +21,7 @@ export const LAB_LIGHT_KEYS = {
   // 甄别确认非缺口）——补灯：审批回投开 = 卡亮。
   experimentalCascadeApproval: (s: SettingsView) => Boolean(s.experimentalCascadeApproval),
   experimentalFullAccess: (s: SettingsView) => Boolean(s.experimentalFullAccess),
-  experimentalDream: (s: SettingsView) => Boolean(s.experimentalDream),
+  // tl1453：experimentalDream 谓词随 dream/distill 实验退役摘除。
   // 任务 801：决策模式自动提取+固化（默认关）。
   experimentalDecisionPatterns: (s: SettingsView) => Boolean(s.experimentalDecisionPatterns),
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，默认关）。

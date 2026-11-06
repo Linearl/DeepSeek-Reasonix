@@ -215,9 +215,11 @@ function nativeFileDropEvent(): Event {
 }
 
 async function waitFor(label: string, predicate: () => boolean) {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  // ComposerGuidanceShelf mounts through React.lazy: the dynamic import needs
+  // wall-clock time, so poll on a real 10ms cadence instead of zero-delay turns.
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     await act(async () => {
-      await flushTimers();
+      await flushTimers(10);
     });
     if (predicate()) return;
   }
@@ -1074,6 +1076,7 @@ console.log("\ncomposer goal toggle");
     guidanceQueuePreviewItems: ["confirm the send lifecycle", "keep steer protocol unchanged", "add a hanging submit regression"],
   });
 
+  await waitFor("running guidance preview shows a compact queue preview", () => document.querySelectorAll(".composer-guidance-item").length === 2);
   let guidanceItems = Array.from(document.querySelectorAll(".composer-guidance-item"));
   eq(guidanceItems.length, 2, "running guidance preview shows a compact queue preview");
   ok(guidanceItems[0]?.textContent?.includes("confirm the send lifecycle") === true, "guidance preview shows the first seeded item");
@@ -1118,18 +1121,33 @@ console.log("\ncomposer goal toggle");
 }
 
 {
+  // Running steer, updated for task 258 (e8e58767a): an admitted steer/follow-up
+  // retires its shelf row at receipt time and renders as a transcript bubble —
+  // the shelf keeps a row only for a paused queue (or the finishing window),
+  // where guide/dismiss stay available. The old pins asserted a row for every
+  // running steer, which the 258 receipt-time retirement replaced.
   const dom = installDom();
   let nextInboxID = 0;
+  let snapshotItems: Array<{ id: string; intent: string; state: string; preview: string; byteSize: number; position: number }> = [];
+  const steerTurnIDs: string[] = [];
   const steerItemIDs: string[] = [];
   const deletedItemIDs: string[] = [];
+  const bubbles: Array<{ text: string; itemId?: string }> = [];
   mockApp({
     InboxSnapshot: async () => ({
-      revision: 0, paused: false, recovered: false, items: [], itemsCount: 0,
+      revision: 0, paused: false, recovered: false, items: snapshotItems, itemsCount: snapshotItems.length,
       bytes: 0, maxItems: 64, maxBytes: 64 * 1024 * 1024,
     }),
-    EnqueueInboxFollowup: async () => ({
-      itemId: `durable-${++nextInboxID}`, disposition: "queued_followup", position: nextInboxID, paused: false,
+    ListTabs: async () => [{ id: "tab-a", turnId: "turn-a" }],
+    EnqueueInboxSteer: async () => ({
+      itemId: `durable-${++nextInboxID}`, disposition: "steer_accepted", position: nextInboxID, paused: false,
     }),
+    EnqueueInboxSteerForTurn: async (_tabID, turnID) => {
+      steerTurnIDs.push(turnID);
+      return {
+        itemId: `durable-${++nextInboxID}`, disposition: "steer_accepted", position: nextInboxID, paused: false,
+      };
+    },
     SteerInboxItem: async (_tabID, itemID) => {
       steerItemIDs.push(itemID);
       return { itemId: itemID, disposition: "steer_accepted", position: 1, paused: false };
@@ -1140,6 +1158,7 @@ console.log("\ncomposer goal toggle");
   });
   const { root, calls, rerender } = await renderComposer({
     running: true,
+    onQueueGuidanceBubble: (text, itemId) => bubbles.push({ text, itemId }),
     onSend: (displayText, submitText) => {
       calls.send.push(displayText);
       calls.submit.push(submitText);
@@ -1162,12 +1181,25 @@ console.log("\ncomposer goal toggle");
     sendButton.click();
     await flushTimers();
   });
+  // The submit path dynamically imports inboxGuidanceSubmit before the durable
+  // receipt lands, so wait for the settle (draft cleared) instead of asserting
+  // one flush after the click; an enqueue failure keeps the draft and times out.
+  await waitFor("queued running guidance clears the composer draft", () => textarea.value === "");
 
   eq(calls.send.join(","), "", "running composer queues guidance without sending it immediately");
   eq(textarea.value, "", "queued running guidance clears the composer draft");
+  eq(steerTurnIDs.join(","), "turn-a", "running steer crosses the exact-turn channel with the resolved active turn");
+  ok(document.querySelector(".composer-guidance-item") === null, "admitted steer retires its shelf row at receipt time (task 258)");
+  eq(bubbles.map((bubble) => `${bubble.text}:${bubble.itemId}`).join(","), "keep the files small:durable-1", "receipt-time bubble carries the full text and the durable item id");
+
+  // Snapshot-loaded durable rows keep guide/dismiss available while running.
+  // Switch the inbox scope to re-run the snapshot refresh with a queued row.
+  snapshotItems = [{ id: "durable-2", intent: "followup", state: "queued", preview: "hold this one for me", byteSize: 128, position: 1 }];
+  await rerender({ inboxSessionPath: "session-b" });
+  await waitFor("snapshot steer row renders", () => document.querySelector(".composer-guidance-item") !== null);
   const guidanceItem = document.querySelector(".composer-guidance-item") as HTMLElement | null;
   if (!guidanceItem) throw new Error("running guidance chip did not render");
-  ok(guidanceItem.textContent?.includes("keep the files small") === true, "running guidance chip shows queued text");
+  ok(guidanceItem.textContent?.includes("hold this one for me") === true, "snapshot steer row shows queued text");
   ok(document.querySelector(".composer-guidance-head")?.textContent?.includes("Queued guidance 1") === true, "running guidance shelf shows queued count");
 
   const guideButton = guidanceItem.querySelector(".composer-guidance-item__guide") as HTMLButtonElement | null;
@@ -1176,15 +1208,13 @@ console.log("\ncomposer goal toggle");
     guideButton.click();
     await flushTimers();
   });
-  eq(steerItemIDs.join(","), "durable-1", "guide attempts admission with the existing durable item ID");
+  eq(steerItemIDs.join(","), "durable-2", "guide attempts admission with the existing durable item ID");
   eq(calls.send.join(","), "", "guide never opens a duplicate frontend submit");
-  ok(document.querySelector(".composer-guidance-item") === null, "accepted durable steer clears after backend admission");
+  ok(document.querySelector(".composer-guidance-item") === null, "guided steer clears its shelf row after backend admission");
 
-  await rerender({ insertRequest: { id: 5, text: "prefer the smaller diff", mode: "replace" } });
-  await act(async () => {
-    sendButton.click();
-    await flushTimers();
-  });
+  snapshotItems = [{ id: "durable-3", intent: "followup", state: "queued", preview: "prefer the smaller diff", byteSize: 128, position: 1 }];
+  await rerender({ inboxSessionPath: "session-c" });
+  await waitFor("dismissible guidance chip renders", () => document.querySelector(".composer-guidance-item") !== null);
   const dismissibleGuidanceItem = document.querySelector(".composer-guidance-item") as HTMLElement | null;
   if (!dismissibleGuidanceItem) throw new Error("dismissible guidance chip did not render");
   const dismissButton = Array.from(dismissibleGuidanceItem.querySelectorAll<HTMLButtonElement>(".composer-guidance-item__action")).at(-1) ?? null;
@@ -1193,25 +1223,18 @@ console.log("\ncomposer goal toggle");
     dismissButton.click();
     await flushTimers();
   });
-  eq(deletedItemIDs.join(","), "durable-2", "dismiss deletes the durable backend item before clearing the shelf");
+  eq(deletedItemIDs.join(","), "durable-3", "dismiss deletes the durable backend item before clearing the shelf");
   ok(document.querySelector(".composer-guidance-item") === null, "running guidance chip can be dismissed");
 
-  await rerender({ insertRequest: { id: 6, text: "prefer the smaller diff", mode: "replace" } });
-  await act(async () => {
-    sendButton.click();
-    await flushTimers();
-  });
-  ok(document.querySelector(".composer-guidance-item") !== null, "running guidance chip renders again after another queued item");
-
-  await rerender({ guidanceConsumedKey: "s1", guidanceConsumedText: "prefer the smaller diff" });
-  ok(document.querySelector(".composer-guidance-item") === null, "running guidance chip clears when steer is consumed");
-
+  // An empty snapshot plus running=false re-runs the inbox refresh and clears
+  // the preview queue (durable rows would survive, but none are left here).
+  snapshotItems = [];
   await rerender({ insertRequest: { id: 7, text: "then stop showing the chip", mode: "replace" } });
   await act(async () => {
     sendButton.click();
     await flushTimers();
   });
-  ok(document.querySelector(".composer-guidance-item") !== null, "running guidance chip renders before turn stop");
+  ok(document.querySelector(".composer-guidance-item") === null, "admitted follow-up stays retired at turn end");
 
   await rerender({ running: false });
   ok(document.querySelector(".composer-guidance-item") === null, "running guidance chip clears when the turn stops");
@@ -1223,8 +1246,13 @@ console.log("\ncomposer goal toggle");
 }
 
 {
+  // Queuing while the controller is activating (submitDisabled): task 258
+  // moved dispatch ownership to the Controller — the receipt retires the row
+  // and fires a bubble, so the old guide-the-row step no longer applies to a
+  // freshly enqueued item (guide stays for snapshot-loaded rows, covered by
+  // composer-inbox-recovery.test.tsx).
   const dom = installDom();
-  const steerItemIDs: string[] = [];
+  const bubbles: Array<{ text: string; itemId?: string }> = [];
   mockApp({
     InboxSnapshot: async () => ({
       revision: 0, paused: false, recovered: false, items: [], itemsCount: 0,
@@ -1233,14 +1261,11 @@ console.log("\ncomposer goal toggle");
     EnqueueInboxFollowup: async () => ({
       itemId: "durable-activating", disposition: "queued_followup", position: 1, paused: false,
     }),
-    SteerInboxItem: async (_tabID, itemID) => {
-      steerItemIDs.push(itemID);
-      return { itemId: itemID, disposition: "steer_accepted", position: 1, paused: false };
-    },
   });
   const { root, calls, rerender } = await renderComposer({
     running: true,
     submitDisabled: true,
+    onQueueGuidanceBubble: (text, itemId) => bubbles.push({ text, itemId }),
     onSend: (displayText) => {
       calls.send.push(displayText);
     },
@@ -1256,16 +1281,12 @@ console.log("\ncomposer goal toggle");
     sendButton.click();
     await flushTimers();
   });
+  const queueTextarea = document.querySelector("textarea") as HTMLTextAreaElement | null;
+  await waitFor("activating-window queue settles", () => queueTextarea?.value === "");
 
   eq(calls.send.join(","), "", "running guidance queues while controllerReady is false");
-  const guideButton = document.querySelector(".composer-guidance-item__guide") as HTMLButtonElement | null;
-  if (!guideButton) throw new Error("running guidance guide button did not render");
-  await act(async () => {
-    guideButton.click();
-    await flushTimers();
-  });
-
-  eq(steerItemIDs.join(","), "durable-activating", "queued durable item can be guided while controllerReady is false");
+  ok(document.querySelector(".composer-guidance-item") === null, "queued follow-up retires its shelf row at receipt time (task 258)");
+  eq(bubbles.map((bubble) => `${bubble.text}:${bubble.itemId}`).join(","), "steer while activating:durable-activating", "receipt-time bubble fires while controllerReady is false");
   eq(calls.send.join(","), "", "controllerReady gap does not create a duplicate submit");
 
   await act(async () => {
@@ -1275,12 +1296,13 @@ console.log("\ncomposer goal toggle");
 }
 
 {
-  // A backend steer rejection means the turn crossed its final admission
-  // boundary. The same durable item becomes a follow-up; the Controller, not
-  // the browser, owns its later FIFO dispatch and ack.
+  // The turn crossed its final admission boundary: the composer's session-level
+  // steer degrades to a durable follow-up (fork degrade in inboxGuidanceSubmit)
+  // and, since task 258, the receipt retires the row into a transcript bubble.
+  // The Controller, not the browser, owns the later FIFO dispatch and ack.
   const dom = installDom();
-  let steerAttempts = 0;
   let backendQueued = false;
+  const bubbles: Array<{ text: string; itemId?: string }> = [];
   mockApp({
     InboxSnapshot: async () => ({
       revision: backendQueued ? 1 : 2,
@@ -1298,13 +1320,10 @@ console.log("\ncomposer goal toggle");
       backendQueued = true;
       return { itemId: "durable-late", disposition: "queued_followup", position: 1, paused: false };
     },
-    SteerInboxItem: async (_tabID, itemID) => {
-      steerAttempts += 1;
-      return { itemId: itemID, disposition: "queued_followup", position: 1, paused: false };
-    },
   });
   const { root, calls, rerender } = await renderComposer({
     running: true,
+    onQueueGuidanceBubble: (text, itemId) => bubbles.push({ text, itemId }),
     onSend: (displayText, submitText) => {
       calls.send.push(displayText);
       calls.submit.push(submitText);
@@ -1319,17 +1338,12 @@ console.log("\ncomposer goal toggle");
     sendButton.click();
     await flushTimers();
   });
-  const guidanceItem = document.querySelector(".composer-guidance-item") as HTMLElement | null;
-  const guideButton = guidanceItem?.querySelector(".composer-guidance-item__guide") as HTMLButtonElement | null;
-  if (!guideButton) throw new Error("late guidance guide button did not render");
-  await act(async () => {
-    guideButton.click();
-    await flushTimers();
-  });
+  const lateTextarea = document.querySelector("textarea") as HTMLTextAreaElement | null;
+  await waitFor("late guidance queue settles", () => lateTextarea?.value === "");
 
-  eq(steerAttempts, 1, "late guidance attempts one strict steer admission");
-  eq(calls.send.length, 0, "rejected steer does not open a provider turn");
-  ok(document.querySelector(".composer-guidance-item") !== null, "rejected steer remains queued");
+  eq(calls.send.length, 0, "late guidance does not open a provider turn");
+  ok(document.querySelector(".composer-guidance-item") === null, "queued follow-up retires its shelf row at receipt time (task 258)");
+  eq(bubbles.map((bubble) => `${bubble.text}:${bubble.itemId}`).join(","), "preserve this late guidance:durable-late", "receipt-time bubble preserves the late guidance text");
 
   backendQueued = false; // Controller dispatched and durably acked after TurnDone.
   await rerender({ running: false });
@@ -1348,6 +1362,7 @@ console.log("\ncomposer goal toggle");
   // reconcile the eventual durable ack and never call onSend itself.
   const dom = installDom();
   let backendQueued = false;
+  const bubbles: Array<{ text: string; itemId?: string }> = [];
   mockApp({
     InboxSnapshot: async () => ({
       revision: backendQueued ? 1 : 2,
@@ -1368,6 +1383,7 @@ console.log("\ncomposer goal toggle");
   });
   const { root, calls, rerender } = await renderComposer({
     running: true,
+    onQueueGuidanceBubble: (text, itemId) => bubbles.push({ text, itemId }),
     onSend: (displayText, submitText) => {
       calls.send.push(displayText);
       calls.submit.push(submitText);
@@ -1383,9 +1399,12 @@ console.log("\ncomposer goal toggle");
     sendButton.click();
     await flushTimers();
   });
+  const naturalTextarea = document.querySelector("textarea") as HTMLTextAreaElement | null;
+  await waitFor("natural queue settles", () => naturalTextarea?.value === "");
 
   eq(calls.send.length, 0, "queuing while running does not send immediately");
-  ok(document.querySelector(".composer-guidance-item") !== null, "queued message shows in the guidance shelf");
+  ok(document.querySelector(".composer-guidance-item") === null, "queued message retires its shelf row at receipt time (task 258)");
+  eq(bubbles.map((bubble) => `${bubble.text}:${bubble.itemId}`).join(","), "keep going after this finishes:durable-natural", "queued message carries into the receipt-time bubble");
 
   backendQueued = false; // Controller completed and acked the next FIFO turn.
   await rerender({ running: false });
@@ -1401,18 +1420,21 @@ console.log("\ncomposer goal toggle");
 }
 
 {
-  // Stop passes only this Composer's durable IDs to the controller, then folds
-  // their visible text back into the draft instead of leaving a hidden turn
-  // that could run after cancellation.
+  // Stop passes only this Composer's owned durable IDs to the controller, then
+  // folds their visible text back into the draft instead of leaving a hidden
+  // turn that could run after cancellation. Task 258: a just-enqueued receipt
+  // retires its row (the backend owns it, stop must not discard it), so the
+  // discard contract is exercised through a desktop-source snapshot row — the
+  // shape the Composer visibly owns on the shelf.
   const dom = installDom();
   let cancelledItemIDs: string[] = [];
   mockApp({
     InboxSnapshot: async () => ({
-      revision: 0, paused: false, recovered: false, items: [], itemsCount: 0,
-      bytes: 0, maxItems: 64, maxBytes: 64 * 1024 * 1024,
-    }),
-    EnqueueInboxFollowup: async () => ({
-      itemId: "durable-cancel", disposition: "queued_followup", position: 1, paused: false,
+      revision: 1, paused: false, recovered: false,
+      items: [{
+        id: "durable-cancel", intent: "followup", state: "queued", preview: "keep cancelled follow-up", byteSize: 128, position: 1, source: "desktop",
+      }],
+      itemsCount: 1, bytes: 128, maxItems: 64, maxBytes: 64 * 1024 * 1024,
     }),
   });
   const { root, rerender } = await renderComposer({
@@ -1423,13 +1445,7 @@ console.log("\ncomposer goal toggle");
     },
   });
 
-  await rerender({ insertRequest: { id: 81, text: "keep cancelled follow-up", mode: "replace" } });
-  const sendButton = document.querySelector(".composer__btn--send") as HTMLButtonElement | null;
-  if (!sendButton) throw new Error("running composer send button did not render");
-  await act(async () => {
-    sendButton.click();
-    await flushTimers();
-  });
+  await waitFor("owned durable row renders before stop", () => document.querySelector(".composer-guidance-item") !== null);
 
   const stopButton = document.querySelector(".composer__btn--stop") as HTMLButtonElement | null;
   if (!stopButton) throw new Error("running composer stop button did not render");
@@ -1453,6 +1469,7 @@ console.log("\ncomposer goal toggle");
   // the durable item remains visible until an authoritative consume/ack event.
   const dom = installDom();
   let backendReadyQueued = false;
+  const bubbles: Array<{ text: string; itemId?: string }> = [];
   mockApp({
     InboxSnapshot: async () => ({
       revision: backendReadyQueued ? 1 : 0,
@@ -1474,6 +1491,7 @@ console.log("\ncomposer goal toggle");
   const { root, calls, rerender } = await renderComposer({
     running: true,
     submitDisabled: false,
+    onQueueGuidanceBubble: (text, itemId) => bubbles.push({ text, itemId }),
     onSend: (displayText, submitText) => {
       calls.send.push(displayText);
       calls.submit.push(submitText);
@@ -1489,26 +1507,32 @@ console.log("\ncomposer goal toggle");
     sendButton.click();
     await flushTimers();
   });
-  ok(document.querySelector(".composer-guidance-item") !== null, "queued message shows in the guidance shelf");
+  const readyTextarea = document.querySelector("textarea") as HTMLTextAreaElement | null;
+  await waitFor("ready-window queue settles", () => readyTextarea?.value === "");
+  ok(document.querySelector(".composer-guidance-item") === null, "queued message retires its shelf row at receipt time (task 258)");
+  eq(bubbles.map((bubble) => `${bubble.text}:${bubble.itemId}`).join(","), "keep going once ready:durable-ready", "queued message carries into the receipt-time bubble");
 
   // Turn ends, but the controller is still not ready to accept a submit —
-  // matches a rebuild/hydration window right after the turn finishes.
+  // matches a rebuild/hydration window right after the turn finishes. Task 258
+  // phase 1: a receipt-retired row stays retired across snapshot refreshes in
+  // the same scope (the flash-and-return fix), so the message lives in the
+  // transcript bubble — never back on the shelf, and never browser-dispatched.
   await rerender({ running: false, submitDisabled: true });
   await act(async () => {
     await flushTimers();
   });
   eq(calls.send.length, 0, "auto-send does not fire while the controller is still activating");
-  ok(document.querySelector(".composer-guidance-item") !== null, "queued message stays on the shelf while not ready");
+  ok(document.querySelector(".composer-guidance-item") === null, "receipt-retired message stays off the shelf while not ready (task 258)");
 
   await rerender({ submitDisabled: false });
   await act(async () => {
     await flushTimers();
   });
   eq(calls.send.length, 0, "controller readiness never triggers frontend auto-submit");
-  ok(document.querySelector(".composer-guidance-item") !== null, "durable item remains until backend consume/ack");
+  ok(document.querySelector(".composer-guidance-item") === null, "durable item stays retired until the backend ack (task 258)");
 
   await rerender({ guidanceConsumedKey: "durable-ready-acked", guidanceConsumedText: "keep going once ready" });
-  ok(document.querySelector(".composer-guidance-item") === null, "backend consume event clears the acknowledged item");
+  ok(document.querySelector(".composer-guidance-item") === null, "backend consume event keeps the acknowledged item retired");
 
   await act(async () => {
     root.unmount();
@@ -2301,6 +2325,7 @@ console.log("\ncomposer goal toggle");
   // Entity-only input must remain structured while queued during a run.
   const dom = installDom();
   let queued: { submit?: string; invocations?: StructuredInvocationSubmit["invocations"] } = {};
+  const bubbles: Array<{ text: string; itemId?: string }> = [];
   mockApp({
     Commands: async () => [
       { name: "superpowers:writing-plans", description: "Write a plan", kind: "skill", plugin: "superpowers" },
@@ -2316,7 +2341,7 @@ console.log("\ncomposer goal toggle");
       return { itemId: "durable-entity", disposition: "queued_followup", position: 1, paused: false };
     },
   });
-  const { root, calls, rerender } = await renderComposer();
+  const { root, calls, rerender } = await renderComposer({ onQueueGuidanceBubble: (text, itemId) => bubbles.push({ text, itemId }) });
   await replaceComposerDraft(rerender, 4000, "/writing-plans");
   await waitFor("skill menu for the running-queue entity", () => Boolean(document.querySelector(".slashmenu")));
   const queueTextarea = document.querySelector("textarea") as HTMLTextAreaElement | null;
@@ -2333,12 +2358,19 @@ console.log("\ncomposer goal toggle");
     await flushTimers();
   });
   eq(calls.send.length, 0, "an entity-only submit while running queues instead of sending");
+  // Task 258: the queued entity retires its shelf row at receipt time and
+  // carries the serialized slash form into the transcript bubble.
   ok(
-    document.querySelector(".composer-guidance-item__text")?.textContent?.includes("/superpowers:writing-plans") === true,
-    "the queued guidance shows the entity's slash form instead of dropping it silently",
+    document.querySelector(".composer-guidance-item") === null,
+    "the queued entity retires its shelf row at receipt time (task 258)",
+  );
+  ok(
+    bubbles.some((bubble) => bubble.text.includes("/superpowers:writing-plans") && bubble.itemId === "durable-entity"),
+    "the receipt-time bubble shows the entity's slash form instead of dropping it silently",
   );
   eq(`${queued.invocations?.[0]?.name}:${queued.invocations?.[0]?.kind}`, "superpowers:writing-plans:skill", "queued guidance preserves the selected skill invocation");
   eq(queued.submit, "", "entity-only guidance keeps an empty explicit task instead of degrading to slash text");
+  await waitFor("entity-only queue settles", () => document.querySelector(".composer__rich-input") === null);
   ok(document.querySelector(".composer__rich-input") === null, "queueing an entity-only submit clears the draft");
   await act(async () => {
     root.unmount();

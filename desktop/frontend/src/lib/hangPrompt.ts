@@ -11,8 +11,16 @@ import { t } from "./i18n";
 import { analyzeEntryButton, copyButton, type CrashPayload } from "./crash";
 import { buildCrashIssueSkeleton } from "./crashIssue";
 import { snapshotBreadcrumbs } from "./breadcrumbs";
+import { isNotifyKindEnabled } from "./notifyDisplayPrefs";
 import { recordNotification } from "./notifyArchive";
-import { rtNoticeHead, rtNoticeHost, rtNoticeMount } from "./rtNotice";
+import {
+  RT_NOTICE_WARN_AUTO_DISMISS_MS,
+  armRtNoticeAutoDismiss,
+  clearRtNoticeAutoDismiss,
+  rtNoticeHead,
+  rtNoticeHost,
+  rtNoticeMount,
+} from "./rtNotice";
 import type { HangAnalysisAvailabilityReport } from "./types";
 
 declare const __BUILD_COMMIT__: string;
@@ -84,11 +92,14 @@ function buildHangIssuePayload(report: HangAnalysisAvailabilityReport): CrashPay
 
 function paintHangPrompt(report: HangAnalysisAvailabilityReport): void {
   if (typeof document === "undefined") return;
+  // tl1458：卡顿提示落通知留档（warn 档）。留档≠拦截——展示闸门（tl1464 C 类
+  // 开关）关闭时留档照写，只跳过下面的 rt-notice 面。
+  recordNotification({ level: "warn", source: "rt-notice", text: t("hangPrompt.title"), detail: report.verdict });
+  // tl1464 C 类开关：关闭 = 不展示（留档照写）。alreadyShowing 判定以 DOM 为准，
+  // 不展示即不占用，冷却语义不受影响。
+  if (!isNotifyKindEnabled("diagnosticAlerts")) return;
   // 任务 910：卡顿=warn 档（黄，警戒非故障——语义固定，见 rtNotice.ts）。
   const host = rtNoticeHost("hang-analysis-prompt", "warn");
-  // tl1458：卡顿提示落通知留档（warn 档）。留档≠拦截——下方 rt-notice 面
-  // paint 通路原样（存储层同源同文案去重窗口兜住重复 paint）。
-  recordNotification({ level: "warn", source: "rt-notice", text: t("hangPrompt.title"), detail: report.verdict });
   const title = document.createElement("div");
   title.className = "hang-analysis__title rt-notice__title";
   title.textContent = t("hangPrompt.title");
@@ -111,7 +122,10 @@ function paintHangPrompt(report: HangAnalysisAvailabilityReport): void {
   dismiss.className = "hang-analysis__dismiss rt-btn";
   dismiss.textContent = t("performanceReport.dismiss");
   // 头行关闭 × 与动作行「关闭」走同一收口（demo 提案节两处并存）。
+  // tl1464：自动消失（30s，见 rtNotice.RT_NOTICE_WARN_AUTO_DISMISS_MS）也归并
+  // 进这一收口——记同一份 10min 冷却，否则 90s 轮询会在自动消失后立刻重弹。
   const closePrompt = () => {
+    clearRtNoticeAutoDismiss(host);
     lastDismissedAt = Date.now();
     host.remove();
   };
@@ -125,6 +139,11 @@ function paintHangPrompt(report: HangAnalysisAvailabilityReport): void {
   actions.append(dismiss);
   const head = rtNoticeHead(title, "warn", t("common.close"), closePrompt);
   rtNoticeMount(host, head, intro, body, actions, analysisNote);
+  // tl1464：warn 档补 30s 自动消失（过去只能手动关）。到期走 closePrompt 同一
+  // 收口（冷却 + 移除）；hover 不暂停计时（对齐 useToast 轻通知的固定定时器，
+  // ask 后台 toast 的 hover 重置是后端窗口耦合语义，不通用）。error/danger 档
+  // （崩溃入口）保持手动关闭，不 arm。
+  armRtNoticeAutoDismiss(host, RT_NOTICE_WARN_AUTO_DISMISS_MS, closePrompt);
 }
 
 /** Test seam: paint the prompt directly — the watch path is timer-gated

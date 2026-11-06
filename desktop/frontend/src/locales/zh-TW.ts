@@ -307,8 +307,11 @@ export const zhTW: Record<DictKey, string> = {
   "rightDock.terminal": "終端機",
   "rightDock.todoEmpty": "目前會話暫無任務",
   // 893-B: 會話曾有任務清單、回合結束後被回收時不再誤顯「暫無任務」。
-  "rightDock.todoSealed": "任務列表已按回合封存",
-  "rightDock.todoSealedCount": "任務列表已按回合封存（上一回合 {count} 項）",
+  // tl1353: 封存態文案不再像丟資料——列表只是收起保存，資料沒丟
+  // （canonicalTodos 快照完好）；展開入口鍵 todoSealedExpand。
+  "rightDock.todoSealed": "上一回合的任務列表已收起保存",
+  "rightDock.todoSealedCount": "上一回合的任務列表已收起保存（{count} 項）",
+  "rightDock.todoSealedExpand": "上一回合列表（{count} 項）",
 
   // 話題欄
   "topicBar.renameSession": "重新命名會話",
@@ -2223,7 +2226,6 @@ export const zhTW: Record<DictKey, string> = {
 "settings.traceAsStateHint": "將先前軌跡前置注入——軌跡在前、問題居中、閱讀材料在後，模型表現優於常規的問題在前順序。啟用後壓縮摘要攜帶推理痕跡，卡點路由時可重讀原文。對應 [agent] trace_as_state。實驗特性，預設關閉；關閉時壓縮路徑與上游一致。",
 "settings.traceAsState.on": "開",
 "settings.traceAsState.off": "關",
-"settings.dream": "Dream 記憶整理",
 "settings.perfMonitor": "效能監控",
 "settings.perfMonitorHint": "開啟後每 5 秒取樣一次：行程記憶體/IO、工作階段庫與事件日誌位元組量、關鍵檔案大小，寫入 logs/perf/perf-sample-<日期>.jsonl（保留 7 天、單檔上限 20MB）；同時每 60 秒輸出一份 Go heap profile（保留最近 3 份）。實驗開關「閾值高峰快照」開啟後，記憶體越過閾值（預設 6GB）會立即多輸出一份 heap-high-<MB>MB-<時間>.pprof，保留 7 天、不受 3 份滾動覆蓋。記憶體或磁碟異常時可直接用這些資料定位。需重啟生效。",
 "settings.perfMonitorMode.on": "開啟",
@@ -2260,23 +2262,14 @@ export const zhTW: Record<DictKey, string> = {
 "settings.autoLoadOlderHint": "fork 實驗：在對話頂部繼續向上滑動即載入更早訊息。預設關閉——關閉時改用「載入更早的訊息」按鈕，該按鈕不受此開關影響。",
 "settings.autoLoadOlder.on": "開",
 "settings.autoLoadOlder.off": "關",
-"settings.dreamHint": "啟用 dream / distill 記憶整理工具（[agent] experimental_dream）。預設關閉；關閉時不會註冊相關工具。開啟後需重啟 Reasonix 生效（工具在行程啟動時註冊）。",
-"settings.dream.on": "開",
-"settings.dream.off": "關",
 "settings.stalledIntentNudge": "模型提前結束續輪提醒",
 "settings.stalledIntentNudgeHint": "啟用模型提前結束判定器（[agent] stalled_intent_nudge）：當模型宣告下一步但沒有實際發出工具調用就停下時，追加一次續輪提醒。預設關閉；關閉時行為與現況完全一致。開啟後需重啟 Reasonix 生效（讀取啟動快照）。",
 "settings.stalledIntentNudge.on": "開",
 "settings.stalledIntentNudge.off": "關",
 // 任務 1099：實驗室 pane 功能族分組卡標題（首期試點 smartAutomation 三族）。
-"settings.lab.family.dream": "夢境",
-"settings.lab.family.dreamHint": "夢境整理與自動任務：開啟整理工具後可一鍵建立每日定時任務。",
 "settings.lab.family.decisionPatterns": "決策模式",
 "settings.lab.family.decisionPatternsHint": "決策模式的自動擷取、固化與門檻設定。",
 "settings.lab.family.backgroundContinuation": "背景與續跑",
-"settings.dreamCreateTask": "建立自動任務",
-"settings.dreamCreateTaskHint": "在自動化面板建立一條預設的 dream 定時任務（每日一輪）。建立後可在自動化面板調整頻率、作用範圍與提示詞。",
-"settings.dreamCreateTaskAction": "建立 dream 自動任務",
-"settings.dreamCreateTaskDone": "已建立/啟用 dream 自動任務。請到自動化面板檢視並按需調整參數。",
 "settings.decisionPatterns": "決策模式提取",
 "settings.decisionPatternsHint": "壓縮事件觸發提取裁決輪次（使用者否定/修正 AI 的輪次）寫入正常記憶，心跳任務定期整合固化到決策模式檔案。預設關閉；關閉時零行為。開啟後需重啟 Reasonix 生效（工具在行程啟動時註冊）。",
 "settings.decisionPatterns.on": "開",
@@ -3064,6 +3057,16 @@ export const zhTW: Record<DictKey, string> = {
   "settings.general.sectionConversation": "會話體驗",
   "settings.general.sectionSystem": "系統行為",
   "settings.general.sectionSystemHint": "控制視窗、審批、聲音和狀態資訊。",
+  // tl1464：全局通知類型開關（設定 → 通用 → 通知）。預設全開；關閉只抑制展示，
+  // 通知留檔照寫；錯誤提示不受開關影響（不可靜默）。
+  "settings.notify.section": "通知",
+  "settings.notify.sectionHint": "三類通知預設全開；關閉只停止對應類的展示，歷史仍寫入通知欄（協作中心 → 通知）。錯誤提示始終展示，不設開關。",
+  "settings.notify.actionFeedback": "操作回饋（右下角）",
+  "settings.notify.actionFeedbackHint": "操作成功的瞬時回饋（複製/匯出/已套用）與背景提問提醒。",
+  "settings.notify.statusBanners": "狀態橫幅",
+  "settings.notify.statusBannersHint": "會話頂部/輸入區上方的持續狀態（復原、更新、復原重做）。建議保持開啟——橫幅承載進行中的狀態，不是一次性事件。",
+  "settings.notify.diagnosticAlerts": "診斷告警（右下角）",
+  "settings.notify.diagnosticAlertsHint": "效能、卡頓與崩潰入口提示。warn 檔 30 秒後自動消失；崩潰入口保留至手動處理。",
   "settings.pageDesc.model-stats": "查看模型呼叫量與費用統計。",
   "settings.pageDesc.models": "預設模型、規劃模型與執行上限。",
   "settings.pageDesc.providers": "管理模型供應商、API 位址、金鑰與可用模型。",
@@ -3418,6 +3421,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersions.longerTag": "更長（{messages} 條 / {turns} 輪）",
   "settings.sessionVersions.newerTag": "更新（最後活動 {date}）",
   "settings.sessionVersions.activate": "切換到此版本",
+  // tl1415c B3: 兩條啟用拒絕的三語人話(按後端機器碼 reasonix_error:recovery_* 對應,
+  // 技術原文保留在句後,不隱藏不虛構)。
+  "settings.sessionVersions.activateAlreadyMain": "這個版本已是當前主線，沒有發生切換。若面板顯示的主線與實際不一致，重新整理一次即可對齊。",
+  "settings.sessionVersions.activateActiveWork": "當前主線正在產生回覆，暫時不能切換。等這一輪回覆結束後，再點一次「切換到此版本」。",
   "settings.sessionVersions.check": "檢查健康",
   "settings.sessionVersions.repair": "修復",
   "settings.sessionVersions.repairDiet": "修復並瘦身（剝圖+摺疊）",
@@ -3533,6 +3540,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesColOps": "行內操作",
   "settings.recoveryCopiesKindSession": "會話",
   "settings.recoveryCopiesKindVersion": "版本",
+  // tl1415c B1: 降級列(列舉被拒的佔位列/後端降級讀數列)的類型名——不再與正常副本/版本同標籤。
+  "settings.recoveryCopiesKindDegraded": "降級副本",
   // tl1448：同 stem 雙行——副本檔案被採納為目前主線後，它在表裡同時渲染主線行
   // 與副本行；副本行亮「目前選中」徽標（本鍵為懸停說明），勾選與刪除入口收回。
   "settings.recoveryCopiesMainFileHint": "該副本檔案就是目前主線（已採納）——主線本體不提供勾選與刪除入口；先把其他版本「切換到此版本」，它才會回到可刪副本",
@@ -4951,7 +4960,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.inputSelectionHint": "輸入與選區合併卡（任務 782）：輸入框草稿持久化 + 選區快捷操作兩行合一。卡內兩行各自獨立開關、各讀各的設定鍵；右側 rail 徽章取卡內最高檔（可選）。",
 "settings.viewLayout": "檢視版面",
 "settings.smartAutomation": "智慧自動化",
-"settings.smartAutomationHint": "智慧自動化合併卡（任務 961）：Dream 記憶整理 + 決策模式擷取 + 心跳任務背景化三行合一。卡內三行各自獨立開關、各讀各的設定鍵；右側 rail 徽章取卡內最高檔（可選）。",
+"settings.smartAutomationHint": "智慧自動化合併卡（任務 961）：決策模式擷取 + 心跳任務背景化等行合一。卡內各行各自獨立開關、各讀各的設定鍵；右側 rail 徽章取卡內最高檔。",
 "settings.interactionPresentation": "互動與呈現",
 "settings.interactionPresentationHint": "互動與呈現合併卡（任務 961）：快捷指令 + 軌跡狀態 + 回答風格三行合一。卡內三行各自獨立開關、各讀各的設定鍵；右側 rail 徽章取卡內最高檔（推薦）。",
 "settings.viewLayoutHint": "檢視版面合併卡（任務 782）：分欄 + 軌跡檢視兩行合一；後隨任務 826 左右側邊欄 hover 展開、任務 940 權限選擇器形態、任務 1024 改寫按鈕陸續入卡。卡內各行各自獨立開關、各讀各的設定鍵；右側 rail 徽章取卡內最高檔（可選）。",
@@ -6215,6 +6224,10 @@ export const zhTW: Record<DictKey, string> = {
   "collabGroup.chat.detail": "詳情",
   "collabGroup.chat.closeDetail": "收起",
   "collabGroup.chat.sendPlaceholder": "輸入訊息，Enter 傳送，Shift+Enter 換行",
+  "collabGroup.chat.attachmentChips": "待傳送圖片",
+  "collabGroup.chat.savingImage": "圖片儲存中…",
+  "collabGroup.chat.removeImage": "移除圖片",
+  "collabGroup.chat.clipboardImage": "剪貼簿圖片",
   "collabGroup.chat.send": "傳送",
   "collabGroup.chat.you": "我",
   "collabGroup.chat.typeSession": "會話",

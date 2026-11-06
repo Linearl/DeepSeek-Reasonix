@@ -30365,6 +30365,60 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-sm);
 }
 
+/* tl1353: the sealed empty state keeps a read-only window into the previous
+   turn's list — collapsed by default, expanding never mutates anything. The
+   wrapper scrolls internally (max-height: 100%) so the centered empty-state
+   flex never clips the top of a long expanded list. */
+.workbench-dock__todo-sealed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 0 4px;
+  text-align: left;
+}
+.workbench-dock__todo-sealed-copy {
+  overflow-wrap: anywhere;
+}
+.workbench-dock__todo-sealed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.workbench-dock__todo-sealed-toggle:hover {
+  color: var(--fg);
+}
+.workbench-dock__todo-sealed-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fg-dim);
+}
+.workbench-dock__todo-sealed-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.workbench-dock__todo-sealed-item-icon {
+  flex: 0 0 auto;
+}
+.workbench-dock__todo-sealed-item-text {
+  min-width: 0;
+}
+
 /* Task 495: right-dock subagent directory (running/ended sections, folded
    rows, 20-per-page reveal). Theme-token contract: same variable set as the
    sibling dock panels above. */
@@ -35417,22 +35471,11 @@ button.statusbar__mcp:focus-visible {
 
 /* ── Ask background toast (任务991) ────────────────────────────────────
    右下角限时提醒：后台 tab 的 ask 用户看不见也摸不着，autopilot 会替答。
-   与 .toast 家族同 token（info 严重度），但位置右下、寿命与后端
-   askWaitFor 同源（组件内联 opacity 渐隐，不经 CSS 动画时钟）。 */
-.ask-bg-toast-container {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: var(--z-toast);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  pointer-events: none;
-}
-:root[data-platform="darwin"] .ask-bg-toast-container {
-  bottom: 24px;
-}
+   与 .toast 家族同 token（info 严重度），寿命与后端 askWaitFor 同源、下限
+   10s（tl1464），组件内联 opacity 渐隐（不经 CSS 动画时钟）。
+   tl1464：独立 .ask-bg-toast-container 容器退役——条目经 portal 进右下
+   统一堆叠 #rt-notice-stack（与 toast info 档 / rt-notice 同住，data-kind
+   区分），条目样式类 .ask-bg-toast 原样保留。 */
 .ask-bg-toast {
   pointer-events: auto;
   cursor: pointer;
@@ -35495,6 +35538,25 @@ button.statusbar__mcp:focus-visible {
 .ask-bg-toast__close:focus-visible {
   opacity: 1;
   outline: none;
+}
+
+/* ── tl1464 全局通知类型开关（设置 → 通用 → 通知）──────────────────────
+   B 状态横幅开关的展示闸门：<html data-notify-banners="off"> 时隐藏 B 族
+   展示面。只打在 6 个族根选择器上，避免误伤共用 .banner--warning 类的
+   配置告警/供应商提示等非 B 族横幅：
+     .composer-inbox-recovery                    = InboxRecoveryBanner
+     .composer-guidance-shelf[role="status"]     = UnfiledInputsBanner（同
+       类名的 ComposerGuidanceShelf 队列架无 role，不命中）
+     .recovery-wait-banner                       = RecoveryWaitBanner
+     .session-recovery                           = SessionRecoveryBanner
+     .undo-rewind                                = UndoRewindBanner
+     .banner--update:not(.banner--error)         = UpdateBanner（错误态例外
+       ——错误不受开关静默；设置页内的更新错误卡同此豁免）
+   RemoteReclaimBanner 根节点与配置告警共用 .banner--warning.banner--actionable
+   且无独立钩子类（banner 组件零改动验收），本开关不覆盖。开关只影响展示；
+   默认 on（无此属性 = 全部照常），横幅为持续状态语义、不落留档。 */
+:root[data-notify-banners="off"] :is(.composer-inbox-recovery, .composer-guidance-shelf[role="status"], .recovery-wait-banner, .session-recovery, .undo-rewind, .banner--update:not(.banner--error)) {
+  display: none;
 }
 
 /* Empty session: Creation and Workbench share a centered headline/composer stack. */
@@ -42105,6 +42167,61 @@ button.statusbar__mcp:focus-visible {
   gap: 6px;
   border-top: 1px solid var(--border);
   padding-top: 6px;
+}
+/* tl1465 D：群聊输入框粘图 chip 条——pending 占位（落盘中）→ 缩略图；
+   与群聊 tab Composer 的附件 chip 同语义的轻量形态（Hub 面板输入区无
+   Composer 壳，只承载 chip 条 + 粘贴监听，不造第二套预览组件）。 */
+.channel-chat__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 2px;
+}
+.channel-chat__chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 160px;
+  padding: 2px 18px 2px 4px;
+  border: 1px solid var(--border-soft, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated, var(--bg));
+  font-size: var(--text-xs);
+}
+.channel-chat__chip--pending {
+  opacity: 0.6;
+  border-style: dashed;
+}
+.channel-chat__chipthumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 4px);
+  display: block;
+}
+.channel-chat__chipname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-chat__chippending {
+  color: var(--fg-dim);
+}
+.channel-chat__chipremove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  line-height: 14px;
+  font-size: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated, var(--bg));
+  color: var(--fg-dim);
+  cursor: pointer;
 }
 .channel-chat__input {
   flex: 1;

@@ -45,14 +45,38 @@ func (a *App) SaveChannelAttachment(dataURL string) (string, error) {
 	return filepath.Join(globalWorkspaceRoot(), filepath.FromSlash(rel)), nil
 }
 
+// SaveChannelClipboardImage reads the native OS clipboard image and stores it
+// under the global workspace .reasonix/attachments (tl1465 D: the group-chat
+// paste fallback chain — clipboard hints without file payload — previously
+// anchored at the ACTIVE session workspace, so the chip previewed but the
+// group message referenced a file outside the channel home). Same contract as
+// SaveChannelAttachment: the ABSOLUTE path, ready to embed as @<path>.
+func (a *App) SaveChannelClipboardImage() (string, error) {
+	rel, err := control.SaveClipboardImageIn(globalWorkspaceRoot())
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(globalWorkspaceRoot(), filepath.FromSlash(rel)), nil
+}
+
 // ChannelAttachmentDataURL reads a channel attachment image back as a preview
 // data URL. tl1421 probe discipline: the path must resolve INSIDE the channel
 // attachment root (global workspace .reasonix/attachments); absolute paths are
 // canonical (what the send chain embeds), the relative form is accepted as the
 // storage primitive's native shape. Escapes are rejected, not widened.
+// tl1465: message bodies reference attachments with the @-token grammar, and
+// the renderer passes the token verbatim — normalize the leading @ away HERE,
+// before any validation, so the containment check sees the bare path. The @
+// strip is a prefix trim only; everything after it still has to clear the
+// relative/containment/symlink gauntlet, so an "@.." escape gains nothing.
 func (a *App) ChannelAttachmentDataURL(path string) (string, error) {
 	root := globalWorkspaceRoot()
 	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", errChannelAttachmentEmpty
+	}
+	trimmed = strings.TrimPrefix(trimmed, "@")
+	trimmed = strings.TrimSpace(trimmed)
 	if trimmed == "" {
 		return "", errChannelAttachmentEmpty
 	}

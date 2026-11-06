@@ -15,8 +15,8 @@ import (
 )
 
 // 任务 229 G6（transcript 解析单一信源）: `reasonix export-transcript` turns a
-// session into normalized JSONL so external consumers (distill scanner, error
-// statistics, ad-hoc scripts) stop maintaining their own transcript parsers.
+// session into normalized JSONL so external consumers (error statistics, ad-hoc
+// scripts) stop maintaining their own transcript parsers.
 // The loader (agent.LoadSession) stays the only parser — including the
 // legacy event-log migration and damaged-tail salvage — so a host format
 // change can never silently fork the parse results (the "双形态教训" behind

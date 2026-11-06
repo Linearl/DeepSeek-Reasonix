@@ -195,8 +195,7 @@ export interface SettingsView {
   experimentalCacheTuning?: boolean;
   // Task 60: Trace-as-State compaction experiment.
   experimentalTraceAsState?: boolean;
-  // Task 115: dream/distill memory-curation experiment.
-  experimentalDream?: boolean;
+  // tl1453: experimentalDream removed with the retired dream/distill experiment.
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117 首落地，
   // 本件补实验室设置页入口，默认关）。
   stalledIntentNudge?: boolean;

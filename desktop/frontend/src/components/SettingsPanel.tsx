@@ -25,7 +25,7 @@ import { SettingsPageShell, settingsTabLabel, type SectionProps } from "./Settin
 import { LAB_LAYOUT_FOR_SEARCH, type ExperimentFeatureId } from "../lab/labPaneRegistry";
 import { normalizeDesktopLayoutStyle, type DesktopLayoutStyle } from "../lib/desktopLayoutStyle";
 const ExperimentalSection = lazy(() => import("./ExperimentalLabSection").then((module) => ({ default: module.ExperimentalSection })));
-import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
+import { ArrowRight, Bell, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, Activity, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, PanelTop, Play, Power, QrCode, RefreshCw, Send, ShieldCheck, SlidersHorizontal, Trash2, Volume2 } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -77,6 +77,9 @@ import {
 } from "../lib/fontFamily";
 import { SessionExperienceSettings } from "./SessionExperienceSettings";
 import { SettingsField, SettingsSection } from "./SettingsForm";
+// tl1464：全局通知类型开关（A 操作反馈 / B 状态横幅 / C 诊断告警；默认全开，
+// 关闭只抑制展示、留档照写，错误提示不受开关影响）。
+import { readNotifyDisplayPrefs, setNotifyKindEnabled, subscribeNotifyDisplayPrefs, type NotifyKindKey } from "../lib/notifyDisplayPrefs";
 // 任务 562: lab three-tier badges — the tier source is lib/experimentTiers
 // (display mirror of the Go labFeatureTiers register in internal/config/render.go,
 // xlsx 表A 47 items as of 任务 677). The rail, every pane switch and the
@@ -1815,6 +1818,9 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
   const [attentionPref, setAttentionPref] = useState<SoundWavPref>(getAttentionPreference());
   const [notificationVolume, setNotificationVolume] = useState(getNotificationVolume);
   const [soundExpanded, setSoundExpanded] = useState(false);
+  // tl1464：通知类型开关的本地镜像（订阅模块广播，多入口切换实时联动）。
+  const [notifyPrefs, setNotifyPrefs] = useState(readNotifyDisplayPrefs);
+  useEffect(() => subscribeNotifyDisplayPrefs((next) => setNotifyPrefs(next)), []);
   const statusBarStyle = normalizeStatusBarStyle(s.statusBarStyle);
   const statusBarItems = normalizeStatusBarItems(s.statusBarItems);
   const soundStatus = summarizeSoundStatus(genMusicPreset, soundPref, attentionPref, notificationVolume);
@@ -1923,6 +1929,32 @@ function GeneralSection({ s, busy, apply, agentRunning }: SectionProps & { agent
           ))}
         </SettingsOptions>
       </SettingsField>
+      </SettingsSection>
+
+      {/* tl1464：全局通知类型开关。默认全开 = 默认行为零变化；关闭只抑制对应
+          类的展示，通知留档（协作中心 → 通知栏）照写；错误提示不设开关。 */}
+      <SettingsSection title={t("settings.notify.section")} description={t("settings.notify.sectionHint")}>
+        <SettingsField label={t("settings.notify.actionFeedback")} hint={t("settings.notify.actionFeedbackHint")} icon={<Bell size={18} />}>
+          <ToggleSegment
+            value={notifyPrefs.actionFeedback}
+            disabled={false}
+            onChange={(value) => setNotifyKindEnabled("actionFeedback" satisfies NotifyKindKey, value)}
+          />
+        </SettingsField>
+        <SettingsField label={t("settings.notify.statusBanners")} hint={t("settings.notify.statusBannersHint")} icon={<PanelTop size={18} />}>
+          <ToggleSegment
+            value={notifyPrefs.statusBanners}
+            disabled={false}
+            onChange={(value) => setNotifyKindEnabled("statusBanners" satisfies NotifyKindKey, value)}
+          />
+        </SettingsField>
+        <SettingsField label={t("settings.notify.diagnosticAlerts")} hint={t("settings.notify.diagnosticAlertsHint")} icon={<Activity size={18} />}>
+          <ToggleSegment
+            value={notifyPrefs.diagnosticAlerts}
+            disabled={false}
+            onChange={(value) => setNotifyKindEnabled("diagnosticAlerts" satisfies NotifyKindKey, value)}
+          />
+        </SettingsField>
       </SettingsSection>
 
       <SessionExperienceSettings snapshot={s} busy={busy} apply={apply} />

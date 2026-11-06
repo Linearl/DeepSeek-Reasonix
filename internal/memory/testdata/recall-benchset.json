@@ -1,5 +1,5 @@
 {
-  "description": "记忆召回基准集（tl-1210）：真实口语问句 → 必须命中的记忆 name。标注原则：查询模拟用户/agent 实际问法，通用词与条目用词刻意错开，专有名词保留自然形态；expected 为该查询下应当被召回（top8）的条目，按相关度排序。语料：活库全量 36 条（global+project+项目库联合，检索池最保守口径）。覆盖：方法论/纪律/环境/偏好/项目。",
+  "description": "记忆召回基准集（tl-1210 立项，tl1399③ 扩）：真实口语问句 → 必须命中的记忆 name。标注原则：查询模拟用户/agent 实际问法，通用词与条目用词刻意错开，专有名词保留自然形态；expected 为该查询下应当被召回（top8）的条目，按相关度排序。语料口径：活库联合池最保守口径——memory 根+一级子目录（global/project）+ 全部新式项目库 projects/<slug>/memory（tl1399③ 补入；文件名冲突跳过并计数）。类目：方法论/纪律/环境/偏好保留专有名词锚点；换词改写（tl1399③ 新增）= 查询完全避开条目判别词（专名/领域词），只共享高频通用词，测同义改写缺口的真实水平。",
   "cases": [
     {"id": "m01", "kind": "方法论", "query": "写论文之前的文献调研应该怎么做", "expected": ["paper-research-methodology"]},
     {"id": "m02", "kind": "方法论", "query": "想看看别的 agent 框架是怎么实现这个功能的，怎么找参考", "expected": ["open-source-option-research-method"]},
@@ -29,6 +29,14 @@
     {"id": "m26", "kind": "方法论", "query": "发布新版本时 tag 推不上去，跟旧 release 有关吗", "expected": ["gh-release-cleanup-tag-删除重推tag陷阱"]},
     {"id": "m27", "kind": "环境", "query": "专利检索平台的账号密码放哪了", "expected": ["innojoy-login-credentials"]},
     {"id": "m28", "kind": "方法论", "query": "找某个配置文件，项目里翻遍了都没有", "expected": ["project-root-vs-version-dir"]},
-    {"id": "m29", "kind": "环境", "query": "这台机器跑大任务顶不顶得住，硬件什么水平", "expected": ["computer-use-system-profile"]}
+    {"id": "m29", "kind": "环境", "query": "这台机器跑大任务顶不顶得住，硬件什么水平", "expected": ["computer-use-system-profile"]},
+    {"id": "p01", "kind": "换词改写", "query": "出门在外想连回家里那台存储的机器，之前弄过一次，怎么弄来着", "expected": ["nas-reasonix-serve-direct-method"]},
+    {"id": "p02", "kind": "换词改写", "query": "放后台跑的命令一启动就没影了，是不是这台机器不支持", "expected": ["bash-run-in-background-任务立即被回收-本环境不可用"]},
+    {"id": "p03", "kind": "换词改写", "query": "命令输出看着是通过了，怎么确认它是真成功不是装样子", "expected": ["bash-假绿判据三坑-fallback-echo-包装-fatal-tail-1-吞-exit-链真绿判据"]},
+    {"id": "p04", "kind": "换词改写", "query": "往脚本里嵌一段多行文本，里面的引号符号要不要加转义", "expected": ["bash-heredoc-写-markdown-反引号绝不需要反斜杠转义-三次手误复盘-20260921"]},
+    {"id": "p05", "kind": "换词改写", "query": "改动落地之后，怎么证明它在真实环境里确实能跑起来", "expected": ["agent-自验工具链-截图-交互-契约-门禁-出包后-a-b-验证分工"]},
+    {"id": "p06", "kind": "换词改写", "query": "内网那台戴尔机架服务器，登录方式记录在哪了", "expected": ["10-49-3-10-服务器连接信息-poweredge-r740-tailscale-subnet-router-可达"]},
+    {"id": "p07", "kind": "换词改写", "query": "那个 AI 助手的桌面程序，能不能把界面语言换成中文", "expected": ["claude-desktop-no-chinese-ui"]},
+    {"id": "p08", "kind": "换词改写", "query": "每星期要交的那份工作汇总，写多细比较合适", "expected": ["weekly-report-granularity"]}
   ]
 }

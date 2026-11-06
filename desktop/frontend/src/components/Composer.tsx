@@ -1035,7 +1035,9 @@ export function Composer({
       const path = channelMode
         ? await app.SaveChannelAttachment(dataUrl)
         : await app.SaveScreenshotAttachment(dataUrl);
-      const previewUrl = await app.AttachmentDataURL(path);
+      // tl1465 D：预览读回与落盘同路由——channelMode 路径是绝对路径，
+      // AttachmentDataURL 的相对契约会拒收（截图挂通道在此断过）。
+      const previewUrl = await attachmentPreviewRouted(path);
       const key = { hash: await dataURLHash(previewUrl), source: `screenshot:${path}` };
       if (!attachmentSeenInDraft(sourceDraftKey, key)) {
         addAttachmentToDraft(sourceDraftKey, { path, previewUrl }, key);
@@ -1828,7 +1830,10 @@ export function Composer({
   }, [draftKey, guidanceConsumedIds]);
   const collapseInboxQueue = useCallback(() => setGuidanceExpanded(false), []);
   const refreshInboxQueue = useCallback(() => setGuidanceRetryNonce((value) => value + 1), []);
-  useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue, runtimeState.state?.revision);
+  // tl1465 ②：channelMode（群聊 tab）没有所属会话——enabled=false 结构性
+  // 不拉 inbox 队列，引导架不挂（否则 InboxSnapshot("") 落到 Go 侧活动会话，
+  // 把那个会话的引导消息渲染进群聊 tab）。群聊只显示成员消息。
+  useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue, runtimeState.state?.revision, !channelMode);
 
   // Task 336 hydrate reconciliation: the transcript's ↪ receipts can land
   // AFTER the inbox snapshot applied (tab round-trip, history reload). Re-run
@@ -2765,6 +2770,28 @@ export function Composer({
     draftsBySessionRef.current[targetDraftKey] = draft;
   };
 
+  // tl1465 D：回填缺预览的附件 chip 缩略图——持久化层只存 path（群聊 Hub
+  // 面板写入/重启恢复的 chip 均无 previewUrl），channelMode 下用群读桥补齐，
+  // 切 tab 后粘图以缩略图在场（此前是文件名 chip）。会话模式的恢复形态
+  // （文件名 chip）保持不变，本效果只作用于群聊。
+  useEffect(() => {
+    if (!channelMode) return;
+    if (typeof app.ChannelAttachmentDataURL !== "function") return;
+    const missing = attachments.filter((a) => !a.previewUrl);
+    if (missing.length === 0) return;
+    let alive = true;
+    for (const item of missing) {
+      attachmentPreviewRouted(item.path).then((url) => {
+        if (!alive || !url) return;
+        if (attachmentsRef.current.some((a) => a.path === item.path && a.previewUrl)) return;
+        const next = attachmentsRef.current.map((a) => (a.path === item.path ? { ...a, previewUrl: url } : a));
+        attachmentsRef.current = next;
+        setAttachments(next);
+      }).catch(() => { /* 缺预览=文件名 chip，不阻断 */ });
+    }
+    return () => { alive = false; };
+  }, [attachments, channelMode, attachmentPreviewRouted]);
+
   const clearSubmittedDraft = (targetDraftKey: string) => {
     clearComposerEditHistory(targetDraftKey);
     if (targetDraftKey === activeDraftKeyRef.current) {
@@ -3598,8 +3625,11 @@ export function Composer({
     if (!attachmentInputEnabled) return;
     updatePendingPasteForDraft(sourceDraftKey, 1);
     try {
-      const path = await app.SaveClipboardImage();
-      const previewUrl = await app.AttachmentDataURL(path);
+      // tl1465 D：channelMode 走群聊附件目录（全局工作区锚点）——此前原生
+      // 剪贴板回退分支锚活动会话工作区，chip 有预览但群消息引用了群外文件，
+      // 接收方永远读不到。
+      const path = channelMode ? await app.SaveChannelClipboardImage() : await app.SaveClipboardImage();
+      const previewUrl = await attachmentPreviewRouted(path);
       const key = { hash: await dataURLHash(previewUrl), source: `native-clipboard:${path}` };
       if (attachmentSeenInDraft(sourceDraftKey, key)) return;
       addAttachmentToDraft(sourceDraftKey, { path, previewUrl }, key);

@@ -332,7 +332,10 @@ type DesktopConfig struct {
 	ExperimentalPathRules bool `toml:"experimental_path_rules"`
 	// ExperimentalTraceAsState mirrored Agent.TraceAsState (task 60).
 	ExperimentalTraceAsState bool `toml:"experimental_trace_as_state"`
-	// ExperimentalDream mirrored Agent.ExperimentalDream (task 115).
+	// Deprecated: ExperimentalDream mirrored Agent.ExperimentalDream (task
+	// 115); the tools were retired by tl1453 (constitution Q1). Tombstone
+	// field, kept only so old configs still decode; never folded, never
+	// rendered — a leftover line vanishes on the next save.
 	ExperimentalDream bool `toml:"experimental_dream"`
 	// ExperimentalSessionCollab mirrored Agent.ExperimentalSessionCollab
 	// (task 19).

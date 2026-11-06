@@ -4,7 +4,7 @@ import { BrainCircuit, ChevronDown, ExternalLink, FileText, FolderOpen, GitBranc
 import { Markdown } from "./Markdown";
 import { CopyButton } from "./CopyButton";
 import { ComposerContextCard } from "./ComposerContextCard";
-import { formatAttachmentRefForDisplay, formatAttachmentRefForSubmit, parseAttachmentRefsForDisplay, sortDisplayAttachments } from "../lib/attachmentDisplay";
+import { formatAttachmentRefForDisplay, formatAttachmentRefForSubmit, isChannelAttachmentRef, parseAttachmentRefsForDisplay, sortDisplayAttachments } from "../lib/attachmentDisplay";
 import type { DisplayAttachment } from "../lib/attachmentDisplay";
 import { app } from "../lib/bridge";
 import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactNames";
@@ -510,18 +510,28 @@ export const UserMessage = memo(function UserMessage({
   const editRef = useRef<HTMLTextAreaElement>(null);
   const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
   const [imageViewer, setImageViewer] = useState<{ open: boolean; url: string; name: string }>({ open: false, url: "", name: "" });
+  // tl1465: absolute cross-session attachment refs read through the channel
+  // bridge (global-attachments anchor); the workspace-scoped AttachmentDataURL
+  // contract is relative-only and would reject them.
+  const loadAttachmentImage = useCallback((path: string): Promise<string> => {
+    if (isChannelAttachmentRef(path) && typeof app.ChannelAttachmentDataURL === "function") {
+      return app.ChannelAttachmentDataURL(path);
+    }
+    return app.AttachmentDataURL(path);
+  }, []);
+
   const openImageViewer = useCallback(async (path: string, name: string) => {
     let url = imagePreviews[path];
     if (!url) {
       try {
-        url = await app.AttachmentDataURL(path);
+        url = await loadAttachmentImage(path);
         setImagePreviews((prev) => (prev[path] ? prev : { ...prev, [path]: url }));
       } catch {
         return;
       }
     }
     setImageViewer({ open: true, url, name });
-  }, [imagePreviews]);
+  }, [imagePreviews, loadAttachmentImage]);
 
   const closeImageViewer = useCallback(() => {
     setImageViewer((prev) => (prev.open ? { ...prev, open: false } : prev));
@@ -692,7 +702,7 @@ export const UserMessage = memo(function UserMessage({
     let cancelled = false;
     for (const path of paths) {
       if (imagePreviews[path]) continue;
-      app.AttachmentDataURL(path)
+      loadAttachmentImage(path)
         .then((url) => {
           if (cancelled) return;
           setImagePreviews((prev) => (prev[path] ? prev : { ...prev, [path]: url }));
@@ -702,7 +712,7 @@ export const UserMessage = memo(function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [imagePreviewKey]);
+  }, [imagePreviewKey, loadAttachmentImage]);
   return (
     <div
       className={`msg msg--user${imSource ? " msg--im-source" : ""}${failed ? " msg--user-failed" : ""}`}

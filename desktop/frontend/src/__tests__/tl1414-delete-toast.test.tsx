@@ -73,7 +73,12 @@ function bodyText(): string {
 }
 
 function toastText(): string {
-  return document.querySelector(".toast-container")?.textContent ?? "";
+  // tl1464：info 档 toast 迁右下统一堆叠（#rt-notice-stack），warn/error 档仍
+  // 顶部 .toast-container。删除成功走 info 档（迁右下），失败走 warn/error（留
+  // 顶部）——两处同读，断言语义不变（只关心文案出现与否）。
+  const top = document.querySelector(".toast-container")?.textContent ?? "";
+  const corner = document.querySelector("#rt-notice-stack")?.textContent ?? "";
+  return top + corner;
 }
 
 const MAIN_PATH = "/sessions/gc.jsonl";

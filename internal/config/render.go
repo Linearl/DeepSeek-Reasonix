@@ -63,11 +63,11 @@ var labFeatureTiers = []labFeatureTier{
 	{"autopilot", LabTierStable, []string{"autopilot", "experimental_autopilot_ask_timeout", "authorize_outbound_send", "authorize_data_migration_delete", "authorize_destructive_change", "authorize_new_tech_route", "authorize_paid_quota_alloc", "experimental_ask_round_limit", "ask_round_limit"}}, // ask-timeout 为 task 477 家族子键；authorize_* 与 ask_round_limit 为 task 1084 家族子键
 	{"sessionCollab", LabTierStable, []string{"experimental_session_collab"}},
 	{"fullAccess", LabTierStable, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
-	{"dream", LabTierOptional, []string{"experimental_dream"}},
 	// 任务 801：决策模式自动提取（提取链+固化链，默认关）。归自动化组——产物
-	// 服务于 autopilot 的决策边界（决策模式文件+注入），与 dream 同为记忆
-	// 整理族；档位按 550 口径可选（不开启零行为）。三个键同卡渲染：
-	// 文件位置/阈值/跳过人工批准为 801 家族子键（477 ask-timeout 先例）。
+	// 服务于 autopilot 的决策边界（决策模式文件+注入）；档位按 550 口径可选
+	// （不开启零行为）。三个键同卡渲染：文件位置/阈值/跳过人工批准为 801
+	// 家族子键（477 ask-timeout 先例）。tl1453：同族的 dream 卡随
+	// experimental_dream 实验退役（宪法 Q1），出表。
 	{"decisionPatterns", LabTierOptional, []string{"experimental_decision_patterns", "decision_pattern_file_path", "decision_pattern_threshold", "decision_pattern_auto_approve"}},
 	// 任务 1070：Standard 流续跑总闸（hostContinuationEnabled 解除专用流限制）。
 	// 与 1069（stalledIntent 判定器改造）同实验室-自动化族；默认关=关态逐字
@@ -624,14 +624,16 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "markdown_budget_mb = %d   # desktop: markdown parse-cache ceiling in MiB (task 161; 0 = default 256)\n", c.Desktop.MarkdownBudgetMb)
 		fmt.Fprintf(&b, "experimental_cache_tuning = %v   # desktop: expose Settings → 缓存大小调整 (task 161); off = user values ignored, defaults apply\n", c.Desktop.ExperimentalCacheTuning)
 		// Task 473: the [desktop] settings-view mirrors of the lab boolean
-		// switches (trace_as_state / dream / session_collab / auto_load_older /
+		// switches (trace_as_state / session_collab / auto_load_older /
 		// perf_monitor / heap_high_profile / idle_terminate / loop_streak_note /
 		// event_wait_recheck / orphan_handling / model_capability_filter /
 		// runtime_reuse / collab_guidance_merge) are retired — the [agent] key
 		// is the single source of truth and the [desktop] field folds into it
 		// at load (migrateLabMirrorKeysToAgent), so no mirror row is rendered
-		// here anymore. The two task-244 orphan legacy keys below stay rendered
-		// per task 449 so an older binary sees the migrated-off state.
+		// here anymore. tl1453: experimental_dream left the set entirely (the
+		// retired feature's tombstone field never renders). The two task-244
+		// orphan legacy keys below stay rendered per task 449 so an older
+		// binary sees the migrated-off state.
 
 		// Task 449: legacy keys are read-only (folded into
 		// experimental_orphan_handling at load) but still rendered so an older
@@ -851,9 +853,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	} else {
 		b.WriteString("# approval_tier = \"guardian\"   # unattended approval decision-maker: guardian|parent|human\n")
 	}
-	// Always render so turning the experiment off is recorded (same lesson as
-	// the desktop experimental_* switches: omit-on-off springs back to true).
-	fmt.Fprintf(&b, "experimental_dream = %v   # task 115: enable dream/distill memory-curation tools\n", c.Agent.ExperimentalDream)
+	// tl1453: experimental_dream no longer renders — the dream/distill tools
+	// were retired (constitution Q1) and the tombstone field is decode-only
+	// (go_mem_limit_mb precedent), so a leftover line vanishes on the next
+	// save instead of pinning a dead switch.
 	// 任务 801：决策模式自动提取（MVP 提取链）。显式渲染——omit-on-off 会在
 	// 下一次渲染时把已保存的开关静默弹回（81/123 丢档教训）。三个键同源渲染：
 	// 固化文件位置（空=默认路径）、整合阈值（0=默认 5）、跳过人工批准（默认关）。

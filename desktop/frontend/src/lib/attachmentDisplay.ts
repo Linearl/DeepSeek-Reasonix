@@ -149,13 +149,29 @@ export function sortDisplayAttachments<T extends { kind: "image" | "file" | "fol
 
 function isDisplayReference(path: string): boolean {
   if (path.startsWith(".reasonix/attachments/")) return true;
+  if (isChannelAttachmentRef(path)) return true;
   if (path.endsWith("/")) return true;
   if (path.includes("/")) return true;
   return attachmentExt(path) !== "";
 }
 
+const ATTACHMENTS_MARK = ".reasonix/attachments/";
+
+/**
+ * tl1465：跨会话通道到达的附件引用是绝对路径（群聊附件落全局工作区，
+ * SaveChannelAttachment 返回绝对路径进消息体）。含附件目录标记的绝对路径
+ * 与相对形态同属附件存储——归 attachment 源渲染内联图，而不是「工作区
+ * 引用」文件卡片。只做形状识别，读侧边界由 Go 读桥把守（越出全局附件
+ * 目录的绝对路径会被拒，预览失败退化为图标卡，不放大任何读取面）。
+ */
+export function isChannelAttachmentRef(path: string): boolean {
+  if (path.startsWith(ATTACHMENTS_MARK)) return false; // 相对形态走原生分支
+  if (!/[A-Za-z]:[\\/]|^\\\\|^\//.test(path)) return false; // 仅绝对路径
+  return path.replace(/\\/gu, "/").toLowerCase().includes(`/${ATTACHMENTS_MARK}`);
+}
+
 function displayAttachment(path: string, name: string): DisplayAttachment {
-  if (path.startsWith(".reasonix/attachments/")) {
+  if (path.startsWith(ATTACHMENTS_MARK) || isChannelAttachmentRef(path)) {
     const kind = isImageAttachmentRef(path) ? "image" : "file";
     return {
       path,

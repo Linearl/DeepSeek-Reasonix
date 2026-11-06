@@ -17,9 +17,14 @@
 // tick 全新——这是验收第 3 步「送达已读逐成员正确」的硬前提；未打开频道
 // 零消息拉取，列表未读用 messages 总数差（localStorage 记账）。
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { app as appBridge } from "../lib/bridge";
+// tl1465 D：群聊输入框粘图——@ 引用组装复用 refToken 同一语法层（escapeRefPath
+// 处理路径空格），草稿持久化复用 composerDraftPersistence 同一存储（键=
+// channel:<ref>，与群聊 tab 的 Composer 同一份草稿，跨面板切换粘图仍在）。
+import { escapeRefPath } from "../lib/refToken";
+import { loadPersistedComposerDraft, persistComposerDraft } from "../lib/composerDraftPersistence";
 import type { CollabSessionDirectoryRow } from "./CollabInboxPanel";
 // tl1441 ①：抽屉本体抽取为 ChannelDetailDrawer（群聊 tab 工作区同用一只，
 // tl1369 缺陷C 显式关闭钮在抽取件内部）；打开标签页经 channelTabStore
@@ -70,7 +75,23 @@ export type ChannelChatBindings = {
   ListAddressableSessions(): Promise<CollabSessionDirectoryRow[]>;
   /** tl1441 ③：群聊附件预览读回（内嵌视图同样渲染成员侧图片；缺省=纯文本）。 */
   ChannelAttachmentDataURL?(path: string): Promise<string>;
+  /** tl1465 D：群聊粘图落盘（全局工作区锚点，返回绝对路径；缺省=无粘图能力）。 */
+  SaveChannelAttachment?(dataUrl: string): Promise<string>;
+  /** tl1465 D：原生剪贴板图片（无文件载荷的 image-hint 粘贴）同锚全局目录。 */
+  SaveChannelClipboardImage?(): Promise<string>;
 };
+
+/**
+ * tl1465 D：群聊输入框粘图 chip——pending=落盘中的占位（即时反馈），落盘成功
+ * 后补 path/previewUrl 变缩略图；发送时以 @<绝对路径> 并入消息体（与群聊 tab
+ * Composer 提交链同一组装形态）。
+ */
+interface ChannelDraftChip {
+  path?: string;
+  previewUrl?: string;
+  displayName?: string;
+  pending: boolean;
+}
 
 function readLastSeenCounts(): Record<string, number> {
   try {
@@ -115,6 +136,10 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
   // 用后端回执的 deputyless 注记驱动（不猜群状态）；下一条消息/切群即清。
   const [deputylessHint, setDeputylessHint] = useState(false);
   const [draft, setDraft] = useState("");
+  // tl1465 D：粘图 chip 队列（pending=落盘中的占位——即时反馈；成功后补
+  // path/previewUrl 变缩略图）。与草稿同键 channel:<ref> 持久化，切群聊 tab
+  // 后 Composer 冷启动恢复同一份（粘图不丢）。
+  const [chips, setChips] = useState<ChannelDraftChip[]>([]);
   const [sending, setSending] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   // tl1441：邀请框子状态受控上提（勾选/检索跨抽屉卸载存活——856⑥「勾选
@@ -380,6 +405,12 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
     setDetailOpen(false);
     setInviteOpen(false);
     setAtOpen(false);
+    // tl1465 D：与群聊 tab 的 Composer 同一份持久化草稿（channel:<ref>）——
+    // 打开群时恢复文本+粘图 chip，两面板接力不丢（tab 发送后草稿清空=这里
+    // 恢复出空态，天然一致）。
+    const persisted = loadPersistedComposerDraft(`channel:${id}`);
+    setDraft(persisted?.text ?? "");
+    setChips((persisted?.attachments ?? []).map((a) => ({ path: a.path, displayName: a.displayName, pending: false })));
     void refresh();
   }, [refresh]);
 
@@ -394,17 +425,38 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
     setInviteOpen(false);
     setAtOpen(false);
     setDeputylessHint(false); // tl1406：关群清零投递提示
+    setDraft("");
+    setChips([]); // tl1465 D：本地态清空；持久化层保留（切回 tab/重开即恢复）
   }, []);
 
-  const send = useCallback(async () => {
-    const body = draft.trim();
+  // tl1465 D：草稿持久化（文本+粘图 chip）——与群聊 tab Composer 同键
+  // channel:<ref>，两面板共享一份草稿；空草稿由持久化层自行判空删键。
+  useEffect(() => {
     const ref = openIdRef.current;
+    if (!ref) return;
+    const saved = chips.filter((c) => !c.pending && c.path);
+    persistComposerDraft(`channel:${ref}`, {
+      text: draft,
+      pastedBlocks: [],
+      attachments: saved.map((c) => ({ path: c.path!, ...(c.displayName ? { displayName: c.displayName } : {}) })),
+      attachmentDedupKeys: Object.fromEntries(saved.map((c) => [c.path!, { hash: "", source: `channel-hub:${c.path}` }])),
+      workspaceRefs: [],
+    });
+  }, [draft, chips]);
+
+  const send = useCallback(async () => {
+    const ref = openIdRef.current;
+    // tl1465 D：发送体=文本+粘图 @引用（与群聊 tab Composer 提交链同一组装
+    // 形态：`@${path}`，空格经 escapeRefPath 转义存活 @-token 语法）。
+    const refs = chips.filter((c) => !c.pending && c.path).map((c) => `@${escapeRefPath(c.path!)}`);
+    const body = [draft.trim(), ...refs].filter(Boolean).join(" ");
     if (!body || !ref || sending) return;
     setSending(true);
     setActionError(null);
     try {
       const msg = await b.ChannelSendFromHuman(ref, body);
       setDraft("");
+      setChips([]); // tl1465 D：随发送清空粘图（与清空文本同口径）
       // tl1406：零投递分支如实提示（后端路由注记，非本地猜测）。
       setDeputylessHint(Boolean(msg.deputyless));
       // 乐观上屏 + 立刻对账（refresh 同时刷新群列表计数与自己的未读记账）。
@@ -419,7 +471,95 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
     } finally {
       setSending(false);
     }
-  }, [b, draft, refresh, sending]);
+  }, [b, draft, chips, refresh, sending]);
+
+  // ── tl1465 D：粘图链——文件载荷走 SaveChannelAttachment（全局工作区锚点，
+  // 返回绝对路径）；无文件载荷的 image-hint（截图工具等）走
+  // SaveChannelClipboardImage 原生读口。占位 chip 先上屏（即时反馈），落盘
+  // 成功换缩略图，失败撤占位并在错误条如实透出（发送体不受影响）。
+  const readFileAsChannelDataURL = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const attachChannelImageFiles = async (files: File[]) => {
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0 || typeof b.SaveChannelAttachment !== "function") return;
+    for (const file of images) {
+      const chipId = `chip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setChips((prev) => [...prev, { pending: true, displayName: file.name || "image", path: chipId }]);
+      try {
+        const dataUrl = await readFileAsChannelDataURL(file);
+        const path = await b.SaveChannelAttachment(dataUrl);
+        let previewUrl: string | undefined;
+        try {
+          previewUrl = await b.ChannelAttachmentDataURL?.(path);
+        } catch { /* 预览失败=文件名 chip，缩略图不阻断 */ }
+        setChips((prev) => prev.map((c) => (c.path === chipId ? { ...c, pending: false, path, previewUrl } : c)));
+      } catch (err) {
+        setChips((prev) => prev.filter((c) => c.path !== chipId));
+        setActionError(`${t("composer.attachImageFailed")}${err ? `: ${String(err)}` : ""}`);
+      }
+    }
+  };
+
+  const attachChannelClipboardImage = async () => {
+    if (typeof b.SaveChannelClipboardImage !== "function") return;
+    const chipId = `chip-${Date.now()}-clip`;
+    setChips((prev) => [...prev, { pending: true, displayName: t("collabGroup.chat.clipboardImage"), path: chipId }]);
+    try {
+      const path = await b.SaveChannelClipboardImage();
+      let previewUrl: string | undefined;
+      try {
+        previewUrl = await b.ChannelAttachmentDataURL?.(path);
+      } catch { /* 预览失败=文件名 chip */ }
+      setChips((prev) => prev.map((c) => (c.path === chipId ? { ...c, pending: false, path, previewUrl } : c)));
+    } catch (err) {
+      setChips((prev) => prev.filter((c) => c.path !== chipId));
+      setActionError(`${t("composer.pasteImageFailed")}${err ? `: ${String(err)}` : ""}`);
+    }
+  };
+
+  const onChannelPaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (files.some((f) => f.type.startsWith("image/"))) {
+      e.preventDefault();
+      void attachChannelImageFiles(files);
+      return;
+    }
+    const text = e.clipboardData?.getData("text") ?? "";
+    const hasImageHint = Array.from(e.clipboardData?.items ?? []).some((i) => i.type.startsWith("image/"));
+    if (hasImageHint || text === "") {
+      e.preventDefault();
+      void attachChannelClipboardImage();
+      return;
+    }
+    // tl1465 D：文本粘贴手动插入（Composer 同款理由——受控输入下浏览器默认
+    // 粘贴会与 React 受控值更新竞态丢字符；这里同步 splice 进 draft）。
+    e.preventDefault();
+    const el = e.currentTarget;
+    const start = el.selectionStart ?? draft.length;
+    const end = el.selectionEnd ?? start;
+    const next = draft.slice(0, start) + text + draft.slice(end);
+    setDraft(next);
+    requestAnimationFrame(() => {
+      const caret = start + text.length;
+      try { el.setSelectionRange(caret, caret); } catch { /* 受控值未就位时静默 */ }
+    });
+  };
+
+  // tl1465：附件预览读回回调必须引用稳定——ChannelAttachmentImage 的
+  // useEffect 以 [path, preview] 为依赖，此前内联箭头每渲染换一次身份，
+  // 宿主任意重渲染都会重发读桥调用；读失败时形成「每次渲染重试一次」的
+  // WARN 刷屏循环（desktop-alerts.log 每秒多条）。useCallback 钉住身份，
+  // 读回只在路径真正变化时发生。
+  const channelAttachmentPreview = useCallback(
+    (path: string) => b.ChannelAttachmentDataURL!(path),
+    [b],
+  );
 
   const cancelMessage = useCallback(async (messageId: string) => {
     const ref = openIdRef.current;
@@ -679,9 +819,33 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
                 directoryTitle={directoryTitle}
                 onBubbleContextMenu={(point) => setMenu(point)}
                 onMentionClick={() => onViewDirectChains?.()}
-                attachmentPreview={b.ChannelAttachmentDataURL ? (path) => b.ChannelAttachmentDataURL!(path) : undefined}
+                attachmentPreview={b.ChannelAttachmentDataURL ? channelAttachmentPreview : undefined}
               />
             </div>
+
+            {/* tl1465 D：粘图 chip 条——pending 占位（即时反馈）→ 缩略图；
+                × 移除；chip 与文本同入持久化草稿，切群聊 tab 后仍在。 */}
+            {chips.length > 0 && (
+              <div className="channel-chat__chips" aria-label={t("collabGroup.chat.attachmentChips")}>
+                {chips.map((chip, i) => (
+                  <span key={chip.path ?? `pending-${i}`} className={`channel-chat__chip${chip.pending ? " channel-chat__chip--pending" : ""}`} title={chip.path || chip.displayName}>
+                    {chip.pending
+                      ? <span className="channel-chat__chippending">{t("collabGroup.chat.savingImage")}</span>
+                      : chip.previewUrl
+                        ? <img className="channel-chat__chipthumb" src={chip.previewUrl} alt={chip.displayName || chip.path} draggable={false} />
+                        : <span className="channel-chat__chipname">{chip.displayName || chip.path}</span>}
+                    <button
+                      type="button"
+                      className="channel-chat__chipremove"
+                      aria-label={t("collabGroup.chat.removeImage")}
+                      onClick={() => setChips((prev) => prev.filter((_, index) => index !== i))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
 
             <div className="channel-chat__composer">
               {/* 任务 856 ⑥：@ 选人浮层——输入 @ 触发，↑↓ 选择、Enter 确认、
@@ -711,6 +875,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
                 value={draft}
                 rows={2}
                 placeholder={t("collabGroup.chat.sendPlaceholder")}
+                onPaste={onChannelPaste}
                 onChange={(event) => {
                   setDraft(event.target.value);
                   // ⑥：光标处 @ 触发浮层（简化口径：以 @ 结尾即弹，demo 同款）。
@@ -752,7 +917,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
               <button
                 type="button"
                 className="btn channel-chat__send"
-                disabled={!draft.trim() || sending}
+                disabled={(!draft.trim() && !chips.some((c) => !c.pending && c.path)) || sending}
                 onClick={() => void send()}
               >
                 {t("collabGroup.chat.send")}

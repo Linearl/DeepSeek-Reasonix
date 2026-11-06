@@ -2817,8 +2817,6 @@ export interface DesktopStartupSettingsView {
   experimentalPathRules?: boolean;
   /** Trace-as-State compaction experiment (task 60); off unless the user opts in. */
   experimentalTraceAsState?: boolean;
-  /** dream/distill memory-curation experiment (task 115); off unless the user opts in. */
-  experimentalDream?: boolean;
   /** Task 801: decision-pattern extraction + solidification; off unless the user opts in. */
   experimentalDecisionPatterns?: boolean;
   /** Task 801: resolved decision-patterns file path (default global-workspace/docs). */

@@ -399,8 +399,11 @@ export const zh: Record<DictKey, string> = {
   "rightDock.terminal": "终端",
   "rightDock.todoEmpty": "当前会话暂无任务",
   // 893-B: 会话曾有任务清单、回合结束后被回收时不再误显「暂无任务」。
-  "rightDock.todoSealed": "任务列表已按回合封存",
-  "rightDock.todoSealedCount": "任务列表已按回合封存（上一回合 {count} 项）",
+  // tl1353: 封存态文案不再像丢数据——列表只是收起保存，数据没丢
+  // （canonicalTodos 快照完好）；展开入口键 todoSealedExpand。
+  "rightDock.todoSealed": "上一回合的任务列表已收起保存",
+  "rightDock.todoSealedCount": "上一回合的任务列表已收起保存（{count} 项）",
+  "rightDock.todoSealedExpand": "上一回合列表（{count} 项）",
 
   // 话题栏
   "topicBar.renameSession": "重命名会话",
@@ -2871,7 +2874,6 @@ export const zh: Record<DictKey, string> = {
 "settings.traceAsStateHint": "将先前轨迹前置注入——轨迹在前、问题居中、阅读材料在后，模型表现优于常规的问题在前顺序。启用后压缩摘要携带推理痕迹，卡点路由时可重读原文。对应 [agent] trace_as_state。实验特性，默认关闭；关闭时压缩路径与上游一致。",
 "settings.traceAsState.on": "开",
 "settings.traceAsState.off": "关",
-"settings.dream": "梦境整理",
 "settings.perfMonitor": "性能监控",
 "settings.perfMonitorHint": "开启后每 5 秒采样一次：进程内存/IO、会话库与事件日志字节量、关键文件大小，写入 logs/perf/perf-sample-<日期>.jsonl（保留 7 天、单文件上限 20MB）；同时每 60 秒落一份 Go heap profile（保留最近 3 份）。实验开关「阈值高峰快照」开启后，内存越过阈值（默认 6GB）会立即多落一份 heap-high-<MB>MB-<时间>.pprof，保留 7 天、不受 3 份滚动覆盖。内存或磁盘异常时直接用这些数据定位。需重启生效。",
 "settings.perfMonitorMode.on": "开启",
@@ -2908,23 +2910,14 @@ export const zh: Record<DictKey, string> = {
 "settings.autoLoadOlderHint": "fork 实验：在对话顶部继续向上滚动即加载更早消息。默认关闭——关闭时用「加载更早的消息」按钮，该按钮不受此开关影响。",
 "settings.autoLoadOlder.on": "开",
 "settings.autoLoadOlder.off": "关",
-"settings.dreamHint": "启用 dream / distill 记忆整理工具（[agent] experimental_dream）。默认关闭；关闭时不会注册相关工具。打开后需重启 Reasonix 生效（工具在进程启动时注册）。",
-"settings.dream.on": "开",
-"settings.dream.off": "关",
 "settings.stalledIntentNudge": "模型提前结束续轮提醒",
 "settings.stalledIntentNudgeHint": "启用模型提前结束判定器（[agent] stalled_intent_nudge）：当模型宣布下一步但没有实际发出工具调用就停下时，追加一次续轮提醒。默认关闭；关闭时行为与现状完全一致。打开后需重启 Reasonix 生效（读取启动快照）。",
 "settings.stalledIntentNudge.on": "开",
 "settings.stalledIntentNudge.off": "关",
 // 任务 1099：实验室 pane 功能族分组卡标题（首期试点 smartAutomation 三族）。
-"settings.lab.family.dream": "梦境",
-"settings.lab.family.dreamHint": "梦境整理与自动任务：开启整理工具后可一键创建每日定时任务。",
 "settings.lab.family.decisionPatterns": "决策模式",
 "settings.lab.family.decisionPatternsHint": "决策模式的自动提取、固化与阈值设置。",
 "settings.lab.family.backgroundContinuation": "后台与续跑",
-"settings.dreamCreateTask": "创建自动任务",
-"settings.dreamCreateTaskHint": "在自动化面板创建一条默认的 dream 定时任务（每日一轮）。创建后可在自动化面板调整频率、作用域与提示词。",
-"settings.dreamCreateTaskAction": "创建 dream 自动任务",
-"settings.dreamCreateTaskDone": "已创建/启用 dream 自动任务。请到自动化面板查看并按需调整参数。",
 "settings.decisionPatterns": "决策模式提取",
 "settings.decisionPatternsHint": "压缩事件触发提取裁决轮次（用户否定/修正 AI 的轮次）写入正常记忆，心跳任务定期整合固化到决策模式文件。默认关闭；关闭时零行为。打开后需重启 Reasonix 生效（工具在进程启动时注册）。",
 "settings.decisionPatterns.on": "开",
@@ -3452,7 +3445,7 @@ export const zh: Record<DictKey, string> = {
 "settings.inputSelectionHint": "输入与选区合并卡（任务 782）：输入框草稿持久化 + 选区快捷操作两行合一。卡内两行各自独立开关、各读各的配置键；右侧 rail 徽章取卡内最高档（可选）。",
 "settings.viewLayout": "视图布局",
 "settings.smartAutomation": "智能自动化",
-"settings.smartAutomationHint": "智能自动化合并卡（任务 961）：梦境整理 + 决策模式提取 + 心跳任务后台化三行合一。卡内三行各自独立开关、各读各的配置键；右侧 rail 徽章取卡内最高档（可选）。",
+"settings.smartAutomationHint": "智能自动化合并卡（任务 961）：决策模式提取 + 心跳任务后台化等行合一。卡内各行各自独立开关、各读各的配置键；右侧 rail 徽章取卡内最高档。",
 "settings.interactionPresentation": "交互与呈现",
 "settings.interactionPresentationHint": "交互与呈现合并卡（任务 961）：快捷指令 + 轨迹状态 + 回答风格三行合一。卡内三行各自独立开关、各读各的配置键；右侧 rail 徽章取卡内最高档（推荐）。",
 "settings.viewLayoutHint": "视图布局合并卡（任务 782）：分栏 + 轨迹视图两行合一；后随任务 826 左右边栏 hover 展开、任务 940 权限选择器形态、任务 1024 改写按钮陆续入卡。卡内各行各自独立开关、各读各的配置键；右侧 rail 徽章取卡内最高档（可选）。",
@@ -4502,6 +4495,16 @@ export const zh: Record<DictKey, string> = {
   "settings.general.sectionConversation": "会话体验",
   "settings.general.sectionSystem": "系统行为",
   "settings.general.sectionSystemHint": "控制窗口、审批、声音和状态信息。",
+  // tl1464：全局通知类型开关（设置 → 通用 → 通知）。默认全开；关闭只抑制展示，
+  // 通知留档照写；错误提示不受开关影响（不可静默）。
+  "settings.notify.section": "通知",
+  "settings.notify.sectionHint": "三类通知默认全开；关闭只停止对应类的展示，历史仍写入通知栏（协作中心 → 通知）。错误提示始终展示，不设开关。",
+  "settings.notify.actionFeedback": "操作反馈（右下角）",
+  "settings.notify.actionFeedbackHint": "操作成功的瞬时反馈（复制/导出/已应用）与后台提问提醒。",
+  "settings.notify.statusBanners": "状态横幅",
+  "settings.notify.statusBannersHint": "会话顶部/输入区上方的持续状态（恢复、更新、撤销重做）。建议保持开启——横幅承载进行中的状态，不是一次性事件。",
+  "settings.notify.diagnosticAlerts": "诊断告警（右下角）",
+  "settings.notify.diagnosticAlertsHint": "性能、卡顿与崩溃入口提示。warn 档 30 秒后自动消失；崩溃入口保留至手动处理。",
   "settings.pageDesc.model-stats": "查看模型调用量与费用统计。",
   "settings.pageDesc.models": "默认模型、规划模型与运行上限。",
   "settings.pageDesc.providers": "管理模型供应商、API 地址、密钥与可用模型。",
@@ -4909,6 +4912,10 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.longerTag": "更长（{messages} 条 / {turns} 轮）",
   "settings.sessionVersions.newerTag": "更新（最后活动 {date}）",
   "settings.sessionVersions.activate": "切换到此版本",
+  // tl1415c B3: 两条激活拒绝的三语人话(按后端机器码 reasonix_error:recovery_* 映射,
+  // 技术原文保留在句后,不隐藏不虚构)。
+  "settings.sessionVersions.activateAlreadyMain": "这个版本已是当前主线，没有发生切换。若面板显示的主线与实际不一致，刷新一次即可对齐。",
+  "settings.sessionVersions.activateActiveWork": "当前主线正在生成回复，暂时不能切换。等这一轮回复结束后，再点一次「切换到此版本」。",
   "settings.sessionVersions.check": "检查健康",
   "settings.sessionVersions.repair": "修复",
   "settings.sessionVersions.repairDiet": "修复并瘦身（剥图+折叠）",
@@ -5024,6 +5031,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesColOps": "行内操作",
   "settings.recoveryCopiesKindSession": "会话",
   "settings.recoveryCopiesKindVersion": "版本",
+  // tl1415c B1: 降级行(枚举被拒的占位行/后端降级读数行)的类型名——不再与正常副本/版本同标签。
+  "settings.recoveryCopiesKindDegraded": "降级副本",
   // tl1448：同 stem 双行——副本文件被采纳为当前主线后，它在表里同时渲染主线行
   // 与副本行；副本行亮「当前选中」徽标（本键为悬停说明），勾选与删除入口收回。
   "settings.recoveryCopiesMainFileHint": "该副本文件就是当前主线（已采纳）——主线本体不提供勾选与删除入口；先把其他版本「切换到此版本」，它才会回到可删副本",
@@ -6219,6 +6228,10 @@ export const zh: Record<DictKey, string> = {
   "collabGroup.chat.detail": "详情",
   "collabGroup.chat.closeDetail": "收起",
   "collabGroup.chat.sendPlaceholder": "输入消息，Enter 发送，Shift+Enter 换行",
+  "collabGroup.chat.attachmentChips": "待发送图片",
+  "collabGroup.chat.savingImage": "图片保存中…",
+  "collabGroup.chat.removeImage": "移除图片",
+  "collabGroup.chat.clipboardImage": "剪贴板图片",
   "collabGroup.chat.send": "发送",
   "collabGroup.chat.you": "我",
   "collabGroup.chat.typeSession": "会话",

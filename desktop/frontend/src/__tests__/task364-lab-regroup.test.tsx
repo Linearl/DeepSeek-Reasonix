@@ -74,7 +74,8 @@ ok(!panel.includes("SetExperimentalFullAccess") === false, "full-access switch w
 
 // ④ remaining render-table entries all still present (no silent drop).
 {
-  const ids = ["autopilot", "dream", "sessionCollab", "fullAccess", "splitView", "todoSidebar"];
+  // tl1453：dream 随实验退役出布局，缺席由退役面覆盖，清单不再单列。
+  const ids = ["autopilot", "sessionCollab", "fullAccess", "splitView", "todoSidebar"];
   const missing = ids.filter((id) => !labDefault.includes(`id: "${id}"`));
   ok(missing.length === 0, `render-table entries intact (missing: ${missing.join(", ") || "none"})`);
 }

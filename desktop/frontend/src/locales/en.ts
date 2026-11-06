@@ -403,8 +403,12 @@ export const en = {
   "rightDock.todoEmpty": "No tasks for this session",
   // 893-B: the dock's empty todos area must not read as "the agent tracks
   // nothing" once a task list existed; sealed = turn-level recycling happened.
-  "rightDock.todoSealed": "The task list was sealed when the turn ended",
-  "rightDock.todoSealedCount": "The task list was sealed when the turn ended ({count} tasks)",
+  // tl1353: the sealed copy no longer reads as data loss — the previous list
+  // is saved and collapsed (the canonical snapshot is intact); the read-only
+  // expand affordance lives in todoSealedExpand.
+  "rightDock.todoSealed": "The previous turn's task list is saved and collapsed",
+  "rightDock.todoSealedCount": "The previous turn's task list ({count} tasks) is saved and collapsed",
+  "rightDock.todoSealedExpand": "Previous turn's list ({count})",
 
   // topic bar
   "topicBar.renameSession": "Rename session",
@@ -2886,7 +2890,6 @@ export const en = {
 "settings.traceAsStateHint": "Injects prior traces before the question — trace, then question, then reading material — which improves model performance over the usual question-first order. Compaction summaries carry reasoning traces, and bottleneck routes may re-read the original transcript. Maps to [agent] trace_as_state. Experimental, off by default; with it off the compaction path matches upstream.",
 "settings.traceAsState.on": "On",
 "settings.traceAsState.off": "Off",
-"settings.dream": "Dream memory curation",
 "settings.perfMonitor": "Performance monitor",
 "settings.perfMonitorHint": "Samples every 5s while on: process memory/IO, session-store and event-log bytes, and key file sizes, appended to logs/perf/perf-sample-<date>.jsonl (7-day retention, 20MB per file); a Go heap profile is also dumped every 60s (newest 3 kept). With the experimental threshold heap snapshot on, crossing the threshold (default 6GB) additionally writes a heap-high-<MB>MB-<time>.pprof immediately (kept 7 days, never rotated away by the 3-file pool). Use them to pin down a memory or disk anomaly. Takes effect after a restart.",
 "settings.perfMonitorMode.on": "on",
@@ -2923,23 +2926,14 @@ export const en = {
 "settings.autoLoadOlderHint": "Fork task 160 (experiment): keep scrolling up at the top of the conversation to load older history. Off by default — with the switch off, use the \"Load earlier messages\" button, which this setting does not affect.",
 "settings.autoLoadOlder.on": "On",
 "settings.autoLoadOlder.off": "Off",
-"settings.dreamHint": "Enables the dream / distill memory-curation tools ([agent] experimental_dream). Off by default; with it off the tools are not registered. Takes effect after restarting Reasonix (tools are registered at process start).",
-"settings.dream.on": "On",
-"settings.dream.off": "Off",
 "settings.stalledIntentNudge": "Stalled-intent nudge",
 "settings.stalledIntentNudgeHint": "Enables the stalled-intent detector ([agent] stalled_intent_nudge): when the model announces the next step but stops without issuing any tool call, one follow-up nudge round is appended. Off by default; with it off behavior is byte-identical to before. Takes effect after restarting Reasonix (reads the boot snapshot).",
 "settings.stalledIntentNudge.on": "On",
 "settings.stalledIntentNudge.off": "Off",
 // 任务 1099：实验室 pane 功能族分组卡标题（首期试点 smartAutomation 三族）。
-"settings.lab.family.dream": "Dream",
-"settings.lab.family.dreamHint": "Dream curation and its scheduled task: turn the curation tools on, then create the daily task in one click.",
 "settings.lab.family.decisionPatterns": "Decision patterns",
 "settings.lab.family.decisionPatternsHint": "Automatic extraction, solidification and threshold settings for decision patterns.",
 "settings.lab.family.backgroundContinuation": "Background & continuation",
-"settings.dreamCreateTask": "Create scheduled task",
-"settings.dreamCreateTaskHint": "Creates a default daily dream task in the automation panel. Adjust frequency, scope and prompt there afterwards.",
-"settings.dreamCreateTaskAction": "Create dream scheduled task",
-"settings.dreamCreateTaskDone": "Dream scheduled task created/enabled. Open the automation panel to review and tune it.",
 "settings.decisionPatterns": "Decision-pattern extraction",
 "settings.decisionPatternsHint": "Compaction events trigger a ruling-round scan (user corrections of AI behaviour) persisted as ordinary memories; a heartbeat task periodically consolidates them into the decision-patterns file. Off by default; off means zero behaviour. Takes effect after restarting Reasonix (tools are registered at process start).",
 "settings.decisionPatterns.on": "On",
@@ -3468,7 +3462,7 @@ export const en = {
 "settings.inputSelectionHint": "Input & selection merged card (task 782): composer draft persistence + selection quick actions in one card. Each row keeps its own switch and its own config key; the rail badge shows the highest member tier (optional).",
 "settings.viewLayout": "View Layout",
 "settings.smartAutomation": "Smart Automation",
-"settings.smartAutomationHint": "Smart automation merged card (task 961): dream curation + decision-pattern extraction + background heartbeat mode in one card. Each row keeps its own switch and its own config key; the rail badge shows the highest member tier (optional).",
+"settings.smartAutomationHint": "Smart automation merged card (task 961): decision-pattern extraction + background heartbeat mode and more in one card. Each row keeps its own switch and its own config key; the rail badge shows the highest member tier.",
 "settings.interactionPresentation": "Interaction & Presentation",
 "settings.interactionPresentationHint": "Interaction & presentation merged card (task 961): quick commands + trace-as-state + answer style in one card. Each row keeps its own switch and its own config key; the rail badge shows the highest member tier (recommended).",
 "settings.viewLayoutHint": "View layout merged card (task 782): split view + trajectory view in one card, later joined by sidebar hover expand (826), approval picker shape (940) and the draft-rewrite button (1024). Each row keeps its own switch and its own config key; the rail badge shows the highest member tier (optional).",
@@ -4518,6 +4512,16 @@ export const en = {
   "settings.general.sectionConversation": "Conversation experience",
   "settings.general.sectionSystem": "System behavior",
   "settings.general.sectionSystemHint": "Control startup, approvals, sound, and status information.",
+  // tl1464：全局通知类型开关（设置 → 通用 → 通知）。默认全开；关闭只抑制展示，
+  // 通知留档照写；错误提示不受开关影响（不可静默）。
+  "settings.notify.section": "Notifications",
+  "settings.notify.sectionHint": "Three notification kinds, all on by default. Switching one off only hides its display — history still lands in the notification center (Collaboration hub → Notifications). Error alerts are always shown and cannot be switched off.",
+  "settings.notify.actionFeedback": "Action feedback (bottom-right)",
+  "settings.notify.actionFeedbackHint": "Transient feedback toasts (copy/export/applied) and background-question reminders.",
+  "settings.notify.statusBanners": "Status banners",
+  "settings.notify.statusBannersHint": "Persistent session state above the transcript/composer (recovery, updates, undo). Recommended to keep on — these carry ongoing state, not one-off events.",
+  "settings.notify.diagnosticAlerts": "Diagnostic alerts (bottom-right)",
+  "settings.notify.diagnosticAlertsHint": "Performance, hang, and pending-crash prompts. Warn-level prompts auto-dismiss after 30s; crash entry points stay until handled.",
   "settings.pageDesc.model-stats": "Review model usage and costs.",
   "settings.pageDesc.models": "Default models, planning models, and runtime limits.",
   "settings.pageDesc.providers": "Manage model providers, API endpoints, keys, and available models.",
@@ -4929,6 +4933,10 @@ export const en = {
   "settings.sessionVersions.longerTag": "longer ({messages} messages / {turns} turns)",
   "settings.sessionVersions.newerTag": "newer (last activity {date})",
   "settings.sessionVersions.activate": "switch to this version",
+  // tl1415c B3: human copy for the two activation refusals (mapped from the
+  // reasonix_error:recovery_* machine codes; the technical cause stays verbatim).
+  "settings.sessionVersions.activateAlreadyMain": "This version is already the conversation's main line — nothing was switched. If the panel still shows an older main line, refresh once to align.",
+  "settings.sessionVersions.activateActiveWork": "The current main line is still generating its reply — wait for this turn to finish, then click switch to this version again.",
   "settings.sessionVersions.check": "check health",
   "settings.sessionVersions.repair": "repair",
   "settings.sessionVersions.repairDiet": "repair and diet (strip images + fold)",
@@ -5048,6 +5056,8 @@ export const en = {
   "settings.recoveryCopiesColOps": "row actions",
   "settings.recoveryCopiesKindSession": "session",
   "settings.recoveryCopiesKindVersion": "version",
+  // tl1415c B1: degraded rows (refused-enumeration placeholder / backend degraded readings) get their own type name.
+  "settings.recoveryCopiesKindDegraded": "degraded copy",
   // tl1448: same-stem dual row — after a copy file is adopted as the current
   // main line it renders both a main row and a copy row; the copy row carries
   // the "selected" badge (this key is its hover note) and loses its delete and
@@ -6253,6 +6263,10 @@ export const en = {
   "collabGroup.chat.detail": "Details",
   "collabGroup.chat.closeDetail": "Close",
   "collabGroup.chat.sendPlaceholder": "Type a message; Enter to send, Shift+Enter for a new line",
+  "collabGroup.chat.attachmentChips": "Images to send",
+  "collabGroup.chat.savingImage": "Saving image…",
+  "collabGroup.chat.removeImage": "Remove image",
+  "collabGroup.chat.clipboardImage": "Clipboard image",
   "collabGroup.chat.send": "Send",
   "collabGroup.chat.you": "You",
   "collabGroup.chat.typeSession": "Session",

@@ -8,7 +8,7 @@ import type { InvocationRequest } from "./invocationDisplay";
 import type { PlanUsageResult } from "./planUsage";
 import type { FollowupBindings } from "./pendingFollowup";
 import type { ACPListenStatusView, OutputStyleListView, QuickCommandEntry } from "./settingsViewTypes";
-import { addBreadcrumb } from "./breadcrumbs";
+import { addBreadcrumb, noteActivity } from "./breadcrumbs";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
 import { makeMockHistoryCatalogBindings, type HistoryCatalogBindings } from "./historyCatalogBridge";
@@ -1557,6 +1557,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
    *  路径（消息体 @引用需跨工作区可解析）。契约对齐 desktop
    *  App.SaveChannelAttachment（wails generate 禁用，手写声明）。 */
   SaveChannelAttachment(dataUrl: string): Promise<string>;
+  /** tl1465 D：原生剪贴板图片落群聊附件目录（全局工作区锚点）——粘贴链的
+   *  无文件载荷回退分支（截图工具等 image-hint 剪贴板）此前锚活动会话工作
+   *  区，chip 有预览但群消息引用了群外文件。返回绝对路径，契约对齐 desktop
+   *  App.SaveChannelClipboardImage（手写声明）。 */
+  SaveChannelClipboardImage(): Promise<string>;
   /** tl1441 ③：群聊附件预览读回——只认解析后落在全局工作区
    *  .reasonix/attachments 内的路径（tl1421 探针惯例，逃出即拒）。契约对齐
    *  desktop App.ChannelAttachmentDataURL（手写声明）。 */
@@ -1892,8 +1897,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetColdCacheCompactIdleMinutes(minutes: number): Promise<void>;
   // Task 60: Trace-as-State compaction (experimental).
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
-  // Task 115: dream/distill memory-curation tools (experimental).
-  SetExperimentalDream(enabled: boolean): Promise<void>;
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，默认关）。
   SetStalledIntentNudge(enabled: boolean): Promise<void>;
   // Task 801: decision-pattern extraction + solidification (experimental).
@@ -2006,9 +2009,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetSessionPurpose(sessionPath: string, purpose: string): Promise<void>;
   // Task 19: run one collaboration delivery pass.
   DrainSessionCollabMail(): Promise<{ delivered: number; refused: number; targets: { tabId: string; contactId: string; delivered: number; refused: number; error?: string }[] }>;
-  // Task 115: ensure a scheduled dream pass exists in the automation panel.
-  // Returns true when a new task was appended.
-  CreateDreamHeartbeatTask(): Promise<boolean>;
   // Task 801: ensure the daily decision-pattern consolidation heartbeat exists
   // (reuse-session mode). Returns true when a new task was appended.
   CreateDecisionPatternHeartbeatTask(): Promise<boolean>;
@@ -2888,29 +2888,69 @@ export const app: AppBindings = new Proxy({} as AppBindings, {
       const method = String(prop), crumb = bridgeBreadcrumb(method);
       const startedAt = crumb ? (typeof performance !== "undefined" ? performance.now() : Date.now()) : 0;
       if (crumb) addBreadcrumb("bridge", crumb);
+      // tl1417: every call, name only, into the activity lane — the curated
+      // crumb above stays as it is; this is what fills the 33s gap of issue #82.
+      noteActivity("bridge", method);
       try {
         const result = maybeShare(method, args, () => (v as (...a: unknown[]) => unknown).apply(target, args));
         if (result && typeof (result as Promise<unknown>).then === "function") {
           return (result as Promise<unknown>).then(
             (value) => {
               if (crumb) addBreadcrumb("bridge", `${crumb} done ms=${elapsedMs(startedAt)}`);
+              noteActivity("bridge.done", method);
               return value;
             },
             (err) => {
               if (crumb) addBreadcrumb("bridge.error", `${method} ms=${elapsedMs(startedAt)}`);
+              noteActivity("bridge.error", method);
               throw err;
             },
           );
         }
         if (crumb) addBreadcrumb("bridge", `${crumb} done ms=${elapsedMs(startedAt)}`);
+        noteActivity("bridge.done", method);
         return result;
       } catch (err) {
         if (crumb) addBreadcrumb("bridge.error", `${method} ms=${elapsedMs(startedAt)}`);
+        noteActivity("bridge.error", method);
         throw err;
       }
     };
   },
 });
+
+// tl1417: one subscription per runtime channel feeding the activity lane with
+// the event kind (agent:event) or the channel name — never the payload. Taps
+// are installed once, by the performance monitor, and only when the Wails
+// runtime is present; the dev mock has no runtime and gets nothing.
+const ACTIVITY_TAP_CHANNELS = [
+  "agent:ready", "ask:background", "effort:applying", "model:applying", "project-tree:changed",
+  "remote:forwards", "remote:server", "remote:status", "runtime:rebuilt", "session:active-version-changed",
+  "session:consolidated", "session:recovered", "session:recovery-failed", "tab:backend-activated", "tab:meta",
+  "tabs:restored", "terminal:exit", "terminal:output", "topic:activation", "updater:progress",
+] as const;
+let streamActivityTapInstalled = false;
+
+export function installStreamActivityTap(): void {
+  if (streamActivityTapInstalled || typeof window === "undefined" || !window.runtime?.EventsOn) return;
+  streamActivityTapInstalled = true;
+  try {
+    window.runtime.EventsOn(EVENT_CHANNEL, (payload) => {
+      const kind = (payload as { kind?: unknown } | undefined)?.kind;
+      noteActivity("stream", typeof kind === "string" && kind ? kind : "event");
+    });
+    for (const channel of ACTIVITY_TAP_CHANNELS) {
+      window.runtime.EventsOn(channel, () => noteActivity("stream", channel));
+    }
+  } catch {
+    // A tap must never break the app; the lane simply stays empty for streams.
+  }
+}
+
+/** Test seam: the tap is install-once module state. */
+export function resetStreamActivityTapForTest(): void {
+  streamActivityTapInstalled = false;
+}
 
 // openExternal opens a URL in the system browser (so links in rendered markdown
 // don't navigate the webview away from the app). Falls back to window.open in the
@@ -6423,6 +6463,12 @@ function makeMockApp(): AppBindings {
       mockAttachmentDataURLs.set(path, dataUrl);
       return path;
     },
+    // tl1465 D mock：原生剪贴板图片同锚全局附件目录（绝对形状路径）。
+    async SaveChannelClipboardImage() {
+      const path = `/mock-global/.reasonix/attachments/clipboard-${mockAttachmentDataURLs.size + 1}.png`;
+      mockAttachmentDataURLs.set(path, mockPreviewImageDataURL);
+      return path;
+    },
     async ChannelAttachmentDataURL(path: string) {
       return mockAttachmentDataURLs.get(path) ?? mockPreviewImageDataURL;
     },
@@ -6991,7 +7037,6 @@ function makeMockApp(): AppBindings {
     async SetColdCacheCompactMinBytes() {},
     async SetColdCacheCompactIdleMinutes() {},
     async SetExperimentalTraceAsState() {},
-    async SetExperimentalDream() {},
     async SetStalledIntentNudge() {},
     async SetExperimentalDecisionPatterns() {},
     async SetExperimentalPinnedIndex() {},
@@ -7087,7 +7132,6 @@ function makeMockApp(): AppBindings {
       else mockSessionPurposes.delete(key);
     },
     async DrainSessionCollabMail() { return { delivered: 0, refused: 0, targets: [] }; },
-    async CreateDreamHeartbeatTask() { return false; },
     async CreateDecisionPatternHeartbeatTask() { return false; },
     async SetServePoolPort() {},
     async ListFeedbackEntries() { return []; },

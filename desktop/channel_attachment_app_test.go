@@ -81,6 +81,55 @@ func TestChannelAttachmentDataURLRoundTripAndEscape(t *testing.T) {
 	}
 }
 
+// tl1465：@ 前缀规范化——消息体以 @-token 语法引用附件（@C:\… 或
+// @.reasonix/attachments/…），渲染端历史上有原样透传的形态；读桥必须把
+// 前导 @ 剥掉再校验，否则文件明明在目录内被判「outside」。规范化只剥前缀，
+// 剥完仍要过 相对/包含/symlink 全套闸门，逃逸增益为零。
+func TestChannelAttachmentDataURLNormalizesAtPrefix(t *testing.T) {
+	app := newChannelAttachmentTestApp(t)
+	root := globalWorkspaceRoot()
+	t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(root, ".reasonix")) })
+
+	png := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+	abs, err := app.SaveChannelAttachment(png)
+	if err != nil {
+		t.Fatalf("SaveChannelAttachment: %v", err)
+	}
+
+	// 带前导 @ 的绝对路径（用户实测事故形态）必须读回成功。
+	dataURL, err := app.ChannelAttachmentDataURL("@" + abs)
+	if err != nil {
+		t.Fatalf("ChannelAttachmentDataURL(@abs): %v", err)
+	}
+	if !strings.HasPrefix(dataURL, "data:image/") {
+		t.Fatal("@-prefixed absolute path must round-trip as an image data URL")
+	}
+	// @ + 相对形态（存储原语原生形状的 @ 引用）同样放行。
+	if _, err := app.ChannelAttachmentDataURL("@"+filepath.ToSlash(filepath.Join(".reasonix", "attachments", filepath.Base(abs)))); err != nil {
+		t.Fatalf("ChannelAttachmentDataURL(@relative): %v", err)
+	}
+	// @ 剥掉后仍是逃逸路径 → 照拒：目录外绝对路径、.. 穿越、兄弟工作区、
+	// 其他盘符、裸 @、@..。
+	if _, err := app.ChannelAttachmentDataURL("@" + filepath.Join(root, "secret.png")); err == nil {
+		t.Fatal("@-prefixed path outside the attachments root must stay rejected")
+	}
+	if _, err := app.ChannelAttachmentDataURL("@.reasonix/attachments/../../secret.png"); err == nil {
+		t.Fatal("@-prefixed .. traversal must stay rejected")
+	}
+	if _, err := app.ChannelAttachmentDataURL("@" + filepath.Join(filepath.Dir(root), "elsewhere", ".reasonix", "attachments", "x.png")); err == nil {
+		t.Fatal("@-prefixed sibling-workspace path must stay rejected")
+	}
+	if _, err := app.ChannelAttachmentDataURL("@Q:\\elsewhere\\.reasonix\\attachments\\x.png"); err == nil {
+		t.Fatal("@-prefixed other-drive path must stay rejected")
+	}
+	if _, err := app.ChannelAttachmentDataURL("@"); err == nil {
+		t.Fatal("a bare @ must be rejected")
+	}
+	if _, err := app.ChannelAttachmentDataURL("@   "); err == nil {
+		t.Fatal("an @-only whitespace token must be rejected")
+	}
+}
+
 func TestRewriteDraftForChannelEmptyAndBorrowEmpty(t *testing.T) {
 	app := newChannelAttachmentTestApp(t)
 	// 空草稿=快速空串（契约：静默降级为「不改写」）。

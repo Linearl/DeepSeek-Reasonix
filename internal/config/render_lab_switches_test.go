@@ -22,7 +22,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.ExperimentalSessionCollab = true     // sessionCollab (M8 standalone)
 	orig.Agent.ExperimentalFullAccess = true        // fullAccess (M8 standalone)
 	orig.Sandbox.OptimisticWrite = true             // optimisticParallel (M8 standalone)
-	orig.Agent.ExperimentalDream = true             // dream
+	// tl1453：experimental_dream 随 dream/distill 实验退役，不再入往返面。
 	orig.Agent.ExperimentalSafetyCostControl = true // 任务 517 合并键（B1/B2/B3）
 	// 任务 722：细粒度子开关显式覆盖往返（true/false 各半，nil 键不落盘）。
 	orig.Agent.SafetyIdleTerminate = boolPtr(true)
@@ -162,7 +162,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_local_server = true",
 		"experimental_cache_tuning = true",
 		"trace_as_state = true", // task 473: [agent] spelling (renamed from experimental_trace_as_state)
-		"experimental_dream = true",
 		"experimental_session_collab = true",
 		"experimental_auto_load_older = true",
 		"experimental_perf_monitor = true",
@@ -240,7 +239,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"agent.experimental_session_collab":          got.Agent.ExperimentalSessionCollab,
 		"agent.experimental_pinned_index":            got.Agent.ExperimentalPinnedIndex, // tl1193b：memory-context 组往返
 		"agent.experimental_full_access":             got.Agent.ExperimentalFullAccess,
-		"agent.experimental_dream":                   got.Agent.ExperimentalDream,
 		"agent.experimental_safety_cost_control":     got.Agent.ExperimentalSafetyCostControl,
 		"agent.safety_idle_terminate":                got.Agent.SafetyIdleTerminate != nil && *got.Agent.SafetyIdleTerminate,
 		"agent.safety_loop_streak_note":              got.Agent.SafetyLoopStreakNote != nil && !*got.Agent.SafetyLoopStreakNote,

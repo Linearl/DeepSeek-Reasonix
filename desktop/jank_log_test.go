@@ -104,6 +104,58 @@ func TestReportJankRecordScrubsPathsAndSecrets(t *testing.T) {
 	}
 }
 
+// tl1417 (issue #82) — local outlet pin. The new structured fields
+// (recentActivity entries, the max-task bucket, the sampling summary) ride the
+// snapshot into the jank record; scrubJankStrings walks nested arrays and maps,
+// so a path or secret that somehow reached a name or label is scrubbed on disk
+// while the numbers survive untouched.
+func TestReportJankRecordScrubsActivityAndMaxTask(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	record := `{"label":"performance.longtask","reason":"long task 7 in 60s, max 16587ms, total 20145ms",` +
+		`"snapshot":{"reason":"long task 7 in 60s, max 16587ms, total 20145ms",` +
+		`"longTaskMaxFrames":{"startMs":3713500,"durationMs":16587,"samples":10,"sampledFromMs":0,"sampledToMs":310,` +
+		`"frames":[{"label":"fullScan (C:\\Users\\yinji\\app\\assets\\index.js:131)","samples":10}]},` +
+		`"profilerSampling":{"nominalIntervalMs":10,"medianGapMs":30.6,"traces":2,"samples":4210,"inWindow":24},` +
+		`"recentActivity":[{"t":3700800,"last":3700800,"kind":"ui","name":"pointerdown","n":1},` +
+		`{"t":3700900,"last":3700900,"kind":"bridge.done","name":"C:\\Users\\yinji\\secret token=sk-proj-abcdefghijklmnopqrstu","n":1}]},` +
+		`"breadcrumbs":[]}`
+	app.ReportJankRecord(record)
+	raw, err := os.ReadFile(jankDayPath(time.Now()))
+	if err != nil {
+		t.Fatalf("jank file missing: %v", err)
+	}
+	for _, secret := range []string{"yinji", "sk-proj-abcdefghijklmnopqrstu"} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatalf("jank file leaks %q: %s", secret, raw)
+		}
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(raw))), &decoded); err != nil {
+		t.Fatalf("line is not json: %v", err)
+	}
+	snapshot := decoded["snapshot"].(map[string]any)
+	maxTask := snapshot["longTaskMaxFrames"].(map[string]any)
+	if maxTask["durationMs"] != float64(16587) || maxTask["sampledToMs"] != float64(310) {
+		t.Fatalf("max-task numbers must survive scrubbing: %v", maxTask)
+	}
+	frame := maxTask["frames"].([]any)[0].(map[string]any)
+	if frame["label"] != `fullScan (C:\Users\_\app\assets\index.js:131)` {
+		t.Fatalf("max-task frame label not scrubbed: %v", frame["label"])
+	}
+	sampling := snapshot["profilerSampling"].(map[string]any)
+	if sampling["medianGapMs"] != 30.6 || sampling["inWindow"] != float64(24) {
+		t.Fatalf("sampling numbers must survive scrubbing: %v", sampling)
+	}
+	activity := snapshot["recentActivity"].([]any)
+	if got := activity[0].(map[string]any)["name"]; got != "pointerdown" {
+		t.Fatalf("plain activity name altered: %v", got)
+	}
+	if got := activity[1].(map[string]any)["name"]; got != `C:\Users\_\secret token=[redacted]` {
+		t.Fatalf("activity name not scrubbed: %v", got)
+	}
+}
+
 func TestReportJankRecordCapsOversizePayload(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	app := NewApp()

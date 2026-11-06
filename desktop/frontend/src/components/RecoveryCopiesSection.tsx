@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { useT, type Translator } from "../lib/i18n";
+import { formatRecoveryActivateError } from "../lib/recoveryActivateError";
 import { formatSessionBusyError } from "../lib/sessionBusyError";
 import { useToast } from "../lib/toast";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -34,6 +35,13 @@ import { useConfirmDialog } from "./ConfirmDialog";
  *  部③由此可用），行内「合成」按钮删除——合成钮唯一、留底部，头合成形态
  *  由底部按会话形态自动路由；④版本行错排根治（.rc-chain 旧 flex 布局挂在
  *  tr 上拆掉单元格栅格，CSS 收敛为表格行安全形态）。
+ *
+ *  tl1415c 三轮打回返修（20261106，用户裁定）：主线标识统一到权威源——Go
+ *  侧 ListRecoveryChains 的 Selected 改读 recoveryAuthorityMainPath（tab 当前
+ *  路径→显式偏好，与切换闸同源，见 recovery_chains.go/recovery_lineage.go），
+ *  本组件的行标/去重/删除闸全部经由 buildSessionChainModel 读这一个源；
+ *  B2 同 path 去重——主线本体文件不再以副本行重复出现（tl1448 双行形态收敛
+ *  为单行，其删除安全保证由函数级闸 preferredMainPathOf 继续承担）。
  */
 
 /** bytes → a short human size. */
@@ -371,15 +379,23 @@ function ChainPreviewBody({ preview }: { preview: RecoveryChainPreview }) {
   );
 }
 
+/** SyntheticChainSet marks the enumeration-refused placeholder set so the row
+ *  model can tell it apart from a backend degraded enumeration (tl1415c B1).
+ *  The placeholder must never be promoted to the main row — a zero-count
+ *  placeholder wearing the 主线 tag is exactly the type confusion the user
+ *  flagged (slot ①). */
+type SyntheticChainSet = RecoveryChainSet & { synthetic?: true };
+
 /** degradedChainSet is the local stand-in for a conversation whose chain
  *  enumeration was refused (任务 1039r). The backend's own degradation (1019/1039)
  *  turns a replay refusal into a Degraded row, but a rejection that still escapes
  *  it - a directory read error, a non-refusal replay failure - used to leave the
  *  expanded area an empty table with a bare error line. Rendering one zero-count
  *  degraded row keeps the same face as the backend degradation: the row exists,
- *  carries no counts, and is never the recommended chain.
- */
-function degradedChainSet(mainPath: string): RecoveryChainSet {
+ *  carries no counts, and is never the recommended chain. tl1415c B1: the set
+ *  carries `synthetic`, so the row renders in the 版本 area under the 降级副本
+ *  type tag with the file stem as its identity — never as 主线. */
+function degradedChainSet(mainPath: string): SyntheticChainSet {
   const row: RecoveryChainView = {
     path: mainPath,
     headId: "",
@@ -394,7 +410,7 @@ function degradedChainSet(mainPath: string): RecoveryChainSet {
     preview: "",
     degraded: true,
   };
-  return { mainPath, mainLabel: "", chains: [row], longestPath: "", longestHead: "", newestPath: "", newestHead: "" };
+  return { mainPath, mainLabel: "", chains: [row], longestPath: "", longestHead: "", newestPath: "", newestHead: "", synthetic: true };
 }
 
 /** One session's fully derived row model: the current main chain (tl1430b:
@@ -413,19 +429,18 @@ type SessionChainModel = {
 
 function buildSessionChainModel(
   group: RecoveryCopyGroupView,
-  chains: RecoveryChainSet | undefined,
+  chains: RecoveryChainSet | SyntheticChainSet | undefined,
   loading: boolean,
 ): SessionChainModel {
   const chainRows = chains?.chains ?? [];
-  // 任务 1146 返修2(协调线 2120):「当前主线」只标当前激活的那条链——主转录
-  // 文件内、后端标记为当前选中的 head(RecoveryChainView.Selected,与版本表
-  // 「当前选中」同源)才算;无任何 Selected 读数(降级行/schema-1 整文件行)
-  // 时退回旧行为——单行场景不回归。
-  // tl1430b:Selected 是「当前主线」的单一真相源,不再限定 path===mainPath
-  // ——显式采纳副本后 Selected 移到副本文件上,主线行必须跟着换(包 78 现场:
-  // 回执闪了但主线行纹丝不动,就是这里把主线钉死在扫描起点 mainPath 上)。
-  // 无任何 Selected 读数时退回旧行为:mainPath 行恰一行则按旧口径取它。
-  const mainFileRows = chainRows.filter((c) => c.path === group.mainPath);
+  // tl1415c B1(槽点①): 枚举被拒的合成占位集永远不升格为主线行——零计数
+  // 占位行顶着「主线」类型标签正是用户指认的类型混淆(第3行=降级链行)。占
+  // 位行走版本区降级形态:类型名「降级副本」+文件 stem 身份+原因横幅(挂
+  // loadChains 的 errors)。后端真实降级枚举(非 synthetic)不受此限——降级
+  // 读数的主线文件仍按 Selected/单主线回退升格,主线行带「已降级」徽标,
+  // 那是诚实形态(主线行只有一行,不产生同 path 重复)。
+  const synthetic = Boolean((chains as SyntheticChainSet | undefined)?.synthetic);
+  const mainFileRows = synthetic ? [] : chainRows.filter((c) => c.path === group.mainPath);
   const selectedRow = chainRows.find((c) => c.selected);
   const currentMainChain =
     selectedRow ??
@@ -784,7 +799,9 @@ export function RecoveryCopiesSection() {
   };
 
   // tl1430b 衔接点:activate 本体与 tl1430b 返修共用,本组件只把按钮摆上副本
-  // 行/版本行(逻辑零改动)。
+  // 行/版本行(逻辑零改动)。tl1415c B3:拒绝文案走 formatRecoveryActivateError
+  // ——already-main/热切被拒两类按后端机器码出三语人话(下一步说清),技术原
+  // 文保留;同弹 toast(tl1414 反馈对称:点击失败不能只活在面板横幅里)。
   const activate = async (chain: RecoveryChainView) => {
     setActivating(chain.path);
     try {
@@ -793,7 +810,9 @@ export function RecoveryCopiesSection() {
       setSwitchedNote(t("settings.sessionVersions.activated").replace("{name}", label));
       await load();
     } catch (e) {
-      setErrors((current) => [...current, e instanceof Error ? e.message : String(e)]);
+      const detail = formatRecoveryActivateError(e);
+      setErrors((current) => [...current, detail]);
+      showToast(detail, "error");
     } finally {
       setActivating(null);
     }
@@ -1899,11 +1918,18 @@ export function RecoveryCopiesSection() {
     const model = buildSessionChainModel(group, chains.get(group.mainPath), chainLoads.has(group.mainPath) && !chains.has(group.mainPath));
     const { byCopy, leftover } = bindCopyChains(model.candidates, group.copies);
     // tl1448: 当前主线**文件**的路径(采纳后 Selected 指向副本文件;无采纳时即
-    // 扫描起点)。同 stem 双行的锚点——同一份文件在表里渲染为主线行与副本行两
-    // 行,副本行的勾选/删除入口必须以这条路径校验收回(后端 DeleteRecoveryBranch
-    // 对副本路径没有「选中」概念,recovery_branch_delete.go 1064 约束①明文
-    // 「前端负责禁用主线本身」——20261106 用户实测点副本删除删掉了主线文件)。
+    // 扫描起点)。B2 去重的锚点——副本清单里与它同 path 的行不再渲染(tl1415c
+    // 验收③:同 path 不重复行),tl1448 的双行形态(主线行+副本行并存靠徽标区
+    // 分)由用户 tl1415c 裁定收敛为单行。tl1448 的安全保证不受影响:主线文件
+    // 不进任何删除/清理目标集(勾选残留由 deleteBranches/cleanup 的函数级闸
+    // preferredMainPathOf 复核,入口层的渲染收回升格为「行不存在」)。
     const mainFilePath = model.currentMainChain?.path ?? group.mainPath;
+    // tl1415c B2: 同 path 去重——主线行已升格收走当前主线文件,该文件不再以
+    // 副本行重复出现。行的编号用去重后的可见序号(标签连续),「更长胜出」徽
+    // 标仍按原始 copyIndex 对位(预测胜者按整份副本清单算,与渲染无关)。
+    const visibleCopies = group.copies
+      .map((copy, copyIndex) => ({ copy, copyIndex }))
+      .filter(({ copy }) => !sameSessionPath(copy.path, mainFilePath));
     // tl1430 验收①:主线行换到采纳来的文件时亮短标识,让「主线行换了」立即可辨识。
     const mainChainShortName =
       model.currentMainChain && model.currentMainChain.path !== group.mainPath
@@ -2076,21 +2102,18 @@ export function RecoveryCopiesSection() {
         </tr>
 
         {/* ── 副本行(类型列=副本;候选链数据并入——消息·轮次/尾部预览/更长·
-            更新标签;操作=预览+②切换到此版本+删除) ── */}
-        {group.copies.map((copy, index) => {
-          const wins = winner ? !winner.isMain && winner.copyIndex === index : false;
-          // tl1448: 同 stem 双行判据——该副本文件就是当前主线本体(已采纳)。
-          // 行↔文件映射以 path 为唯一键(byCopy 以副本路径为键),主线本体行的
-          // 链数据也在自身文件上(它就是 currentMainChain,被主线行升格收走了
-          // 候选池,这里显式还绑),预览/标签/徽标照常归属,勾选与删除入口收回。
-          const isMainFile = sameSessionPath(copy.path, mainFilePath);
-          const chain = byCopy.get(copy.path) ?? (isMainFile ? model.currentMainChain : undefined);
+            更新标签;操作=预览+②切换到此版本+删除)。tl1415c B2:与主线同
+            path 的副本文件不进这里(主线行已收走,同 path 不重复行)——所以
+            tl1448 的 isMainFile 徽标/入口收回整段退役,双行形态消失。 ── */}
+        {visibleCopies.map(({ copy, copyIndex }, visibleIndex) => {
+          const wins = winner ? !winner.isMain && winner.copyIndex === copyIndex : false;
+          const chain = byCopy.get(copy.path);
           const tags = chain ? chainTagInfo(chain, model.chains) : { isLonger: false, isNewer: false };
           // tl1415 点12: 文件名短标识(recovery-<8 hex>)——用户要能把面板行
           // 对回磁盘上的 recovery-5df6de18 文件;悬停 title 给完整文件名。
           const shortName = recoveryShortName(copy.path);
           const copyTitle = chain
-            ? `${t("settings.recoveryCopiesCopy")} ${index + 1}${shortName ? ` · ${copy.path}` : ""}｜${tailPreviewText(chain)}`
+            ? `${t("settings.recoveryCopiesCopy")} ${visibleIndex + 1}${shortName ? ` · ${copy.path}` : ""}｜${tailPreviewText(chain)}`
             : shortName
               ? copy.path
               : undefined;
@@ -2099,30 +2122,27 @@ export function RecoveryCopiesSection() {
               <td className="rc-detail__check">
                 {/* 任务 1064:副本行的复选框+删除入口。孤立副本(orphan,主线
                     已缺失)没有「另一条链可以兜底」的前提,删除即真正丢内容,
-                    因此不提供删除入口——它只能被合并(作为新主线)而非删除。
-                    tl1448:主线本体副本行(同 stem 双行)同理收回勾选——主线
-                    文件没有「分支」身份可删,勾了就是批量删除里的一颗雷。 */}
-                {!copy.orphan && !isMainFile && (
+                    因此不提供删除入口——它只能被合并(作为新主线)而非删除。 */}
+                {!copy.orphan && (
                   <input
                     type="checkbox"
                     checked={branchesSelected.has(copy.path)}
                     disabled={busy}
                     onChange={() => toggleBranch(copy.path)}
-                    aria-label={`${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`}
+                    aria-label={`${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${visibleIndex + 1}`}
                     title={t("settings.recoveryCopiesBranchCheckHint")}
                   />
                 )}
               </td>
               <td className="rc-col-kind">
-                <span className="rc-kindtag rc-kindtag--copy">{t("settings.recoveryCopiesCopy")}</span>
-                {/* tl1448: 同 stem 双行区分——该副本文件就是当前主线本体(已采纳)
-                    时亮「当前选中」徽标(与主线行同款读数),两行同指一份文件的
-                    事实在行上可辨识;悬停说明为什么不提供删除。 */}
-                {isMainFile && (
-                  <span className="rc-kindtag rc-kindtag--cur" title={t("settings.recoveryCopiesMainFileHint")}>
-                    {t("settings.sessionVersions.selected")}
-                  </span>
-                )}
+                {/* tl1415c B1(槽点①④): 链读数降级的行类型名改「降级副本」
+                    ——降级身份在类型列可读,不再与正常副本同标签;悬停给原因。 */}
+                <span
+                  className="rc-kindtag rc-kindtag--copy"
+                  title={chain?.degraded ? t("settings.sessionVersions.degradedHint") : undefined}
+                >
+                  {chain?.degraded ? t("settings.recoveryCopiesKindDegraded") : t("settings.recoveryCopiesCopy")}
+                </span>
                 {/* 选定 HEAD(合成③的落点)——demo v5 未画徽标,但「选了哪条」
                     必须在行上可辨识(1065 钉:预览确认后徽标落在该行)。 */}
                 {chain && pickedChain[group.mainPath] === chain.path ? (
@@ -2131,7 +2151,7 @@ export function RecoveryCopiesSection() {
               </td>
               <td className="rc-col-name" title={copyTitle}>
                 <div className="rc-clip1">
-                  {t("settings.recoveryCopiesCopy")} {index + 1}
+                  {t("settings.recoveryCopiesCopy")} {visibleIndex + 1}
                   {shortName ? (
                     <span className="rc-copy__shortname" title={copy.path}>
                       {shortName}
@@ -2160,7 +2180,7 @@ export function RecoveryCopiesSection() {
                   )}
                 </div>
                 {chain ? (
-                  <div className="rc-sub2 rc-clip3 rc-chain__preview" title={previewTitle(chain, `${t("settings.recoveryCopiesCopy")} ${index + 1}${shortName ? ` · ${copy.path}` : ""}`)}>
+                  <div className="rc-sub2 rc-clip3 rc-chain__preview" title={previewTitle(chain, `${t("settings.recoveryCopiesCopy")} ${visibleIndex + 1}${shortName ? ` · ${copy.path}` : ""}`)}>
                     <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                     {tailPreviewText(chain)}
                   </div>
@@ -2197,33 +2217,32 @@ export function RecoveryCopiesSection() {
                         : t("settings.recoveryCopiesPreviewBtn")}
                   </button>
                   {/* 口径⑤第②步:切换到此版本(主线行跟随/热切——tl1430 语义,
-                      activate 本体未动)。当前主线行不提供切换(口径⑦);tl1448:
-                      主线本体副本行(同 stem 双行)同理——它就是当前主线,提供
-                      切换只会复现 tl1430 的「把主线设为主线」静默 no-op 形态。 */}
-                  {!isMainFile && (
-                    <button
-                      className="btn btn--secondary btn--small"
-                      type="button"
-                      title={
-                        chain?.covered
-                          ? t("settings.sessionVersionsActivateCoveredHint")
-                          : t("settings.recoveryCopiesStepActivateHint")
-                      }
-                      disabled={busy || activating !== null || !chain || Boolean(chain?.covered)}
-                      onClick={() => chain && void activate(chain)}
-                    >
-                      {activating === copy.path ? "…" : t("settings.sessionVersions.activate")}
-                    </button>
-                  )}
-                  {/* tl1448:主线本体副本行(同 stem 双行)不提供删除入口——删
-                      副本≠删主线,该行的删除请求在渲染层就走不到后端。 */}
-                  {!copy.orphan && !isMainFile && (
+                      activate 本体未动)。当前主线行不提供切换(口径⑦);B2 去
+                      重后主线本体文件连副本行都不会有,能点到切换的行必然不
+                      是当前主线文件。 */}
+                  <button
+                    className="btn btn--secondary btn--small"
+                    type="button"
+                    title={
+                      chain?.covered
+                        ? t("settings.sessionVersionsActivateCoveredHint")
+                        : t("settings.recoveryCopiesStepActivateHint")
+                    }
+                    disabled={busy || activating !== null || !chain || Boolean(chain?.covered)}
+                    onClick={() => chain && void activate(chain)}
+                  >
+                    {activating === copy.path ? "…" : t("settings.sessionVersions.activate")}
+                  </button>
+                  {/* 任务 1064:非孤立副本行的删除入口(确认+回收语义;B2 后主
+                      线本体文件不再有副本行,「删副本≠删主线」的渲染层防线升
+                      格为行不存在,函数级闸见 deleteBranchOne 的指针复核)。 */}
+                  {!copy.orphan && (
                     <button
                       className="btn btn--secondary btn--small rc-delete"
                       type="button"
                       title={t("settings.recoveryCopiesDeleteHint")}
                       disabled={busy}
-                      onClick={() => void deleteBranchOne(group, copy.path, index)}
+                      onClick={() => void deleteBranchOne(group, copy.path, visibleIndex)}
                     >
                       {t("settings.recoveryCopiesDelete")}
                     </button>
@@ -2251,7 +2270,14 @@ export function RecoveryCopiesSection() {
             <tr key={`${c.path}|${c.headId}|${leftover.indexOf(c)}`} className={`rc-child rc-chain${tags.isLonger ? " rc-chain--recommended" : ""}`}>
               <td className="rc-detail__check" />
               <td className="rc-col-kind">
-                <span className="rc-kindtag rc-kindtag--version">{t("settings.recoveryCopiesKindVersion")}</span>
+                {/* tl1415c B1(槽点①④): 降级行类型名「降级副本」——枚举被拒
+                    的占位行/后端降级行不再顶着「版本」标签;悬停给原因。 */}
+                <span
+                  className="rc-kindtag rc-kindtag--version"
+                  title={c.degraded ? t("settings.sessionVersions.degradedHint") : undefined}
+                >
+                  {c.degraded ? t("settings.recoveryCopiesKindDegraded") : t("settings.recoveryCopiesKindVersion")}
+                </span>
                 {isPicked ? <span className="rc-chain__picked-badge">{t("settings.recoveryCopiesPickedBadge")}</span> : null}
               </td>
               <td
@@ -2264,12 +2290,14 @@ export function RecoveryCopiesSection() {
                       前 8 位。tl1448:整文件行的路径就是扫描起点主文件时(采纳
                       后被取代的旧主线降级而来;降级兜底行同路径),行身份亮文件
                       stem——它此前落进泛化「副本」标签,正是用户把主线文件行当
-                      副本删掉的身份错乱源头之一。 */}
+                      副本删掉的身份错乱源头之一。tl1415c B1(槽点④): 降级行无
+                      hash 的替代标识落到文件 stem 兜底——stem 恒存在,任何行都
+                      不再以裸「副本」标签示人。 */}
                   {c.headId
                     ? c.headId.slice(0, 8)
                     : sameSessionPath(c.path, group.mainPath)
                       ? fileStemOf(c.path)
-                      : recoveryShortName(c.path) || t("settings.recoveryCopiesCopy")}
+                      : recoveryShortName(c.path) || fileStemOf(c.path)}
                   {/* 任务 1039r:降级行必须说自己是降级。 */}
                   {c.degraded && (
                     <span className="sv-degraded" title={t("settings.sessionVersions.degradedHint")}>

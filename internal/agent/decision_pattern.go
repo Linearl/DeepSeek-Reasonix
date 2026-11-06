@@ -31,7 +31,7 @@ const (
 	// 两次提取之间至少间隔这么多条用户消息（含未触发压缩的长会话）。
 	decisionExtractMinTurnsDefault = 50
 	// decisionExtractTextMinLen/MaxLen 过滤明显不是「用户裁决」的输入：
-	// 过短（一个词）与超长（粘贴的代码块/日志）都不构成决策信号。dream 同款口径。
+	// 过短（一个词）与超长（粘贴的代码块/日志）都不构成决策信号。
 	decisionExtractTextMinLen = 8
 	decisionExtractTextMaxLen = 400
 )
@@ -54,7 +54,7 @@ var decisionRulingMarkers = []string{
 type DecisionExtractOptions struct {
 	// Enabled 来自实验室开关 experimental_decision_patterns（默认关）。
 	Enabled bool
-	// Memory 是写入目标的记忆仓库（与 remember/dream 同一 Store）。零 Store
+	// Memory 是写入目标的记忆仓库（与 remember 同一 Store）。零 Store
 	// 视为不可用，提取静默跳过。
 	Memory memory.Store
 	// MinTurns 是最低 turn 间隔兜底阈值；<=0 用 decisionExtractMinTurnsDefault。
@@ -198,7 +198,7 @@ func decisionRulingCandidate(text string) bool {
 	return false
 }
 
-// decisionFactName 与 dreamFactName 同款：可读 slug + 6 位内容 hash，同一句话
+// decisionFactName：可读 slug + 6 位内容 hash，同一句话
 // 重跑得到同名（天然去重），不同内容得到不同名（不吞真不同条目）。
 func decisionFactName(text string) string {
 	words := strings.Fields(strings.ToLower(text))

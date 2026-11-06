@@ -1516,15 +1516,6 @@ func (c *Config) SetExperimentalTraceAsState(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalDream toggles the dream/distill memory-curation tools (task 115).
-// Single-writes the [agent] key (task 473); the [desktop] mirror is retired
-// and only cleared here.
-func (c *Config) SetExperimentalDream(enabled bool) error {
-	c.Agent.ExperimentalDream = enabled
-	c.Desktop.ExperimentalDream = false
-	return nil
-}
-
 // SetExperimentalDecisionPatterns toggles the task-801 decision-pattern
 // extraction + solidification lab switch. Applies on restart (boot snapshot),
 // like every boot-resolved switch.

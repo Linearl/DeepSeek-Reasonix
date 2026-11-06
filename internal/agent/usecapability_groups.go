@@ -105,10 +105,12 @@ var capabilityGroups = []capabilityGroup{
 		Example:  "move_file/ls",
 	},
 	{
-		Key: "memory", Title: "记忆/蒸馏组",
-		Scenario: "记忆蒸馏与决策模式固化",
-		Members:  []string{"distill", "dream", "decision_pattern_solidify"},
-		Example:  "distill/dream",
+		// tl1453：dream/distill 记忆整理工具随 experimental_dream 实验退役
+		// （宪法 Q1），本组只剩决策模式固化一件。
+		Key: "memory", Title: "记忆固化组",
+		Scenario: "决策模式固化",
+		Members:  []string{"decision_pattern_solidify"},
+		Example:  "decision_pattern_solidify",
 	},
 }
 

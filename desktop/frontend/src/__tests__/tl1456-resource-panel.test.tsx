@@ -496,7 +496,7 @@ console.log("\ntl1456 resource manager: palette reachability + render honesty + 
   ok(closes === 1, "Escape closes the panel");
 
   // 点 backdrop（非面板本体）关闭。
-  const backdrop = document.querySelector<HTMLElement>(".res-panel-backdrop");
+  const backdrop = document.querySelector<HTMLElement>(".wf-panel-backdrop");
   await act(async () => {
     backdrop?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     await flush();

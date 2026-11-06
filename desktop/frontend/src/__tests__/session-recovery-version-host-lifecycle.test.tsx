@@ -91,9 +91,26 @@ await act(async () => {
   await flushMicrotasks();
 });
 
-if ((handlers.get("session:recovered")?.size ?? 0) !== 1 || (handlers.get("project-tree:changed-v2")?.size ?? 0) !== 1) {
-  throw new Error("recovery runtime did not install exactly one subscription pair");
+// dd21eafa3 added session:active-version-changed as the runtime's third
+// subscription (active-version changes refresh the recovery runtime); the
+// count pins below guard all three so a locale-change restart still fails.
+function subscriptionsSingle() {
+  return (handlers.get("session:recovered")?.size ?? 0) === 1
+    && (handlers.get("project-tree:changed-v2")?.size ?? 0) === 1
+    && (handlers.get("session:active-version-changed")?.size ?? 0) === 1;
 }
+// 6c87e0650 starts the runtime through a dynamic import inside a mount effect,
+// so the subscriptions settle after the module load, not within microtasks.
+async function waitForRuntimeSubscriptions(label: string) {
+  for (let waited = 0; waited <= 2000; waited += 10) {
+    if (subscriptionsSingle()) return;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+  }
+  throw new Error(`${label}: recovery runtime must hold exactly one subscription per event`);
+}
+await waitForRuntimeSubscriptions("recovery runtime did not install exactly one subscription per event");
 
 await act(async () => {
   emit("session:recovered", {
@@ -111,7 +128,7 @@ await act(async () => {
   setLocale?.("zh");
   await flushMicrotasks();
 });
-if ((handlers.get("session:recovered")?.size ?? 0) !== 1 || (handlers.get("project-tree:changed-v2")?.size ?? 0) !== 1) {
+if (!subscriptionsSingle()) {
   throw new Error("locale change restarted the recovery runtime and lost pending state");
 }
 

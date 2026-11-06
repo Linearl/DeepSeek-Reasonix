@@ -1843,9 +1843,13 @@ type AgentConfig struct {
 	// sub-agents (task 118). 0 keeps the formula max(parent*2/3, 12); an
 	// explicit task max_steps argument still wins.
 	SubagentDefaultSteps int `toml:"subagent_default_steps"`
-	// ExperimentalDream enables the dream/distill memory-curation tools
-	// (task 115). Off by default: both tools rewrite project memory or
-	// nominate skills from session traces, so they stay behind an opt-in.
+	// Deprecated: ExperimentalDream gated the task-115 dream/distill
+	// memory-curation tools, retired by tl1453 (constitution Q1 ruling: the
+	// periodic-reflection goal is served by plain scheduled tasks, not a
+	// product mechanism). The tombstone field survives only so old configs
+	// carrying experimental_dream still decode silently; it is never read,
+	// never rendered, and the line vanishes on the next save (fixed-key-set
+	// render). go_mem_limit_mb (tl1286) precedent.
 	ExperimentalDream bool `toml:"experimental_dream"`
 	// ExperimentalDecisionPatterns enables the task-801 decision-pattern
 	// extraction (MVP Phase 1): after each successful compaction (plus a

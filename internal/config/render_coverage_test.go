@@ -69,6 +69,10 @@ var desktopRenderOmissions = map[string]string{
 	// configs decode and the one-shot migration hint can name the value; the
 	// replacement dial [agent] gc_percent renders in the [agent] face.
 	"go_mem_limit_mb": "tl1286: retired key, accepted on read (migration hint), never rendered",
+	// tl1453: the dream/distill curation feature was retired (constitution Q1);
+	// the [desktop] experimental_dream mirror is a tombstone field now — the
+	// [agent] render row is gone with it, decode-only, never rendered.
+	"experimental_dream": "tl1453: retired with the dream/distill feature (constitution Q1); tombstone field, decode-only, never rendered",
 }
 
 // TestDesktopRenderTableCoversEveryKey is the single guard against that class of bug:
