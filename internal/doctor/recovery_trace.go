@@ -86,22 +86,20 @@ func collectRecoveryForks(dirs []string) ForkCensusReport {
 	return report
 }
 
-// forkCensusDescends limits the walk to where conflict logs live: the session
-// dir itself, trashed session items, and self-heal backups. Checkpoint, inbox
-// and job dirs hold thousands of files and never a conflict log.
+// forkCensusDescends limits the walk to where conflict logs live: trashed
+// session items and self-heal backups, at any depth below those two roots — a
+// trashed item can itself carry .pre-repair-* copies, and a backup can nest
+// session subdirs, so a fixed two-level shape (the old rule) silently dropped
+// unique lines that survive only in the deeper copy. Checkpoint, inbox and job
+// dirs hold thousands of files and never a conflict log, so everything outside
+// these two subtrees stays closed.
 func forkCensusDescends(root, path string) bool {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		return false
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
-	switch len(parts) {
-	case 1:
-		return parts[0] == ".trash" || strings.Contains(parts[0], ".pre-repair-")
-	case 2:
-		return parts[0] == ".trash"
-	}
-	return false
+	return parts[0] == ".trash" || strings.Contains(parts[0], ".pre-repair-")
 }
 
 func (r *ForkCensusReport) scanRecoveryForkFile(path string, seenLines map[string]bool) {
