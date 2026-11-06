@@ -28,6 +28,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/store"
@@ -176,5 +177,44 @@ func TestAcquireTopicArchiveOwnershipDuplicateSpellingTakesOneGuard(t *testing.T
 	guard.Release()
 	if agent.SessionLeaseLockHeldInProcess(sessionPath) {
 		t.Fatal("guard release left the registry entry behind")
+	}
+}
+
+// 拒绝日志打点(tl1429c):进程内持有者不再打 holder_pid=0——holder_scope=
+// in_process + kind/since 才是一眼可读的身份;真未知形态(无登记证据)保持
+// holder_pid=0 的诚实零身份。
+func TestHolderLogAttrsInProcessHolderNamesScopeNotPidZero(t *testing.T) {
+	evidence := []agent.SessionLockHolderEvidence{
+		{Kind: "removal_guard", AcquiredAt: time.Now().UTC()},
+	}
+	attrs := sessionLeaseHolderLogAttrsWithEvidence(nil, evidence)
+	values := map[string]any{}
+	for i := 0; i+1 < len(attrs); i += 2 {
+		values[attrs[i].(string)] = attrs[i+1]
+	}
+	if values["holder_scope"] != "in_process" {
+		t.Fatalf("holder_scope = %v, want in_process", values["holder_scope"])
+	}
+	if values["holder_lock_kind"] != "removal_guard" {
+		t.Fatalf("holder_lock_kind = %v, want removal_guard", values["holder_lock_kind"])
+	}
+	if _, ok := values["holder_lock_since"]; !ok {
+		t.Fatal("holder_lock_since missing — 登记时刻未 dump")
+	}
+	if _, ok := values["holder_pid"]; ok {
+		t.Fatalf("in-process holder still logs holder_pid=%v — pid=0 被读成「身份未知」的误读回潮", values["holder_pid"])
+	}
+
+	// 对照:无登记证据的真未知形态保持 holder_pid=0(诚实零身份)。
+	unknown := sessionLeaseHolderLogAttrsWithEvidence(nil, nil)
+	unknownValues := map[string]any{}
+	for i := 0; i+1 < len(unknown); i += 2 {
+		unknownValues[unknown[i].(string)] = unknown[i+1]
+	}
+	if unknownValues["holder_pid"] != 0 {
+		t.Fatalf("unidentified holder pid = %v, want the honest 0", unknownValues["holder_pid"])
+	}
+	if _, ok := unknownValues["holder_scope"]; ok {
+		t.Fatal("unidentified holder must not claim holder_scope=in_process")
 	}
 }
