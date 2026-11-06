@@ -192,14 +192,15 @@ console.log("\ncomposer run strip");
   eq(document.querySelector(".composer__btn--stop"), null, "idle composer renders no stop button");
   ok(document.querySelector(".composer__btn--send") !== null, "idle composer keeps the send button");
   eq(document.querySelector(".composer-toolbar--status-only"), null, "floating status pill is gone");
+  // Upstream v1.24.x (graft root 8e55fc49f; streamline commit be45fd729) replaced
+  // the approval menu with a persistent three-button modebar: Yolo sits beside
+  // Ask/Auto and is directly clickable, no menu and no menuitemradio role.
+  const approvalItems = Array.from(document.querySelectorAll<HTMLButtonElement>(".composer-meta__control--approval .composer-modebar__item"));
+  ok(approvalItems.length === 3, "approval bar exposes Ask/Auto/Yolo as three direct controls");
+  const yolo = approvalItems.find((button) => button.classList.contains("composer-modebar__item--yolo"));
+  if (!yolo) throw new Error("visible Yolo control did not render");
   await act(async () => {
-    document.querySelector<HTMLButtonElement>(".composer-meta__control--approval button")?.click();
-    await flushTimers();
-  });
-  const yolo = document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')[2];
-  ok(yolo !== null, "approval menu exposes Yolo alongside Ask and Auto");
-  await act(async () => {
-    yolo?.click();
+    yolo.click();
     await flushTimers();
   });
   eq(calls.approvalModes.at(-1), "yolo", "the visible Yolo option selects Yolo approval");
@@ -288,7 +289,9 @@ console.log("\ncomposer run strip");
   const send = document.querySelector<HTMLButtonElement>(".composer__btn--send");
   eq(document.querySelector(".composer-profile-trigger"), null, "runtime transition has no execution-setting control");
   ok(Boolean(task?.disabled), "runtime transition disables Goal mode changes");
-  ok(approvals.length === 1 && approvals.every((button) => button.disabled), "runtime transition disables Ask/Auto/Yolo changes");
+  // Modebar shape: all three approval controls must report disabled (a length
+  // pin keeps an empty render from passing vacuously).
+  ok(approvals.length === 3 && approvals.every((button) => button.disabled), "runtime transition disables Ask/Auto/Yolo changes");
   ok(Boolean(send?.disabled), "runtime transition disables submit");
 
   await act(async () => {
@@ -342,7 +345,9 @@ console.log("\ncomposer run strip");
   eq(document.querySelector(".composer-glowring"), null, "waiting removes the trace rather than running an invisible animation");
 
   const modeButtons = [...document.querySelectorAll(".composer-meta__control--approval button")] as HTMLButtonElement[];
-  ok(modeButtons.length === 1 && modeButtons.every((b) => !b.disabled), "approval bar stays usable while its own prompt disables the composer");
+  // Modebar shape: all three controls stay enabled while the pending approval
+  // disables the composer (length pin guards the vacuous-empty-array case).
+  ok(modeButtons.length === 3 && modeButtons.every((b) => !b.disabled), "approval bar stays usable while its own prompt disables the composer");
 
   await rerender({ pendingApprovalLabel: null, pendingAsk: true });
   eq(
@@ -378,7 +383,18 @@ console.log("\ncomposer run strip");
     guidanceQueuePreviewItems: ["数到一半改用英文", "最后给出一句总结"],
   });
 
-  ok(document.querySelector(".composer-guidance-shelf") !== null, "queued guidance renders in the shelf");
+  // ComposerGuidanceShelf is React.lazy (upstream code-split): the first render
+  // suspends into fallback=null and the dynamic import settles a few event-loop
+  // turns later than a single setTimeout(0) flush, so poll for the mount.
+  let shelf: Element | null = null;
+  for (let waited = 0; waited <= 2000; waited += 20) {
+    shelf = document.querySelector(".composer-guidance-shelf");
+    if (shelf) break;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+  ok(shelf !== null, "queued guidance renders in the shelf");
 
   const stop = document.querySelector(".composer__btn--stop") as HTMLButtonElement | null;
   if (!stop) throw new Error("stop button did not render");

@@ -168,7 +168,7 @@ async function run() {
       <LocaleProvider initialLocale="en">
         <ToastProvider>
           <WorkspaceTreeMenu
-            target={{ x: 10, y: 10, path: "unpinned_file.ts", isDir: false }}
+            target={{ x: 10, y: 10, path: "unpinned_file.ts", isDir: false, paths: ["unpinned_file.ts"] }}
             workspaceTabId="tab-1"
             isScopeCurrent={() => true}
             onClose={() => {}}
@@ -200,7 +200,7 @@ async function run() {
       <LocaleProvider initialLocale="en">
         <ToastProvider>
           <WorkspaceTreeMenu
-            target={{ x: 10, y: 10, path: "too_large.dat", isDir: false }}
+            target={{ x: 10, y: 10, path: "too_large.dat", isDir: false, paths: ["too_large.dat"] }}
             workspaceTabId="tab-1"
             isScopeCurrent={() => true}
             onClose={() => {}}
@@ -232,7 +232,7 @@ async function run() {
       <LocaleProvider initialLocale="en">
         <ToastProvider>
           <WorkspaceTreeMenu
-            target={{ x: 10, y: 10, path: "already_pinned.md", isDir: false }}
+            target={{ x: 10, y: 10, path: "already_pinned.md", isDir: false, paths: ["already_pinned.md"] }}
             workspaceTabId="tab-1"
             isScopeCurrent={() => true}
             onClose={() => {}}
