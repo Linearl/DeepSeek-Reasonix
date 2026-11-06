@@ -22,6 +22,11 @@ export function useComposerInboxRefresh(
   collapse: () => void,
   bump: () => void,
   runtimeRevision?: number,
+  // tl1465 ②：群聊 tab 的 Composer（channelMode）没有所属会话——tabId 空会
+  // 落到 InboxSnapshot("")=Go 侧活动会话的收件箱，把那个会话的引导消息渲染
+  // 进群聊 tab。enabled=false = 结构性不拉队列（队列恒空，引导架不挂），
+  // 而非渲染层藏。
+  enabled = true,
 ) {
   const inboxSessionKeyRef = useRef(inboxSessionKey);
   const appliedRevisionRef = useRef<{ scope: string; revision: number }>({ scope: inboxSessionKey, revision: -1 });
@@ -33,14 +38,19 @@ export function useComposerInboxRefresh(
     clearQueue();
   }, [draftKey, inboxSessionKey, clearQueue]);
   useEffect(() => onInboxChanged((changed) => {
+    if (!enabled) return;
     if (changed.tabId && tabId && changed.tabId !== tabId) return;
     if (!inboxSnapshotBelongsToScope(changed.sessionPath, inboxSessionKey)) return;
     if (changed.revision !== undefined
       && appliedRevisionRef.current.scope === inboxSessionKey
       && changed.revision <= appliedRevisionRef.current.revision) return;
     bump();
-  }), [tabId, inboxSessionKey, bump]);
+  }), [tabId, inboxSessionKey, bump, enabled]);
   useEffect(() => {
+    if (!enabled) {
+      clearQueue();
+      return;
+    }
     if (guidanceDraftKey !== draftKey) return;
     let live = true;
     const fallback = localGuidanceFallback(previewKey);
@@ -67,5 +77,5 @@ export function useComposerInboxRefresh(
       if (live) applyQueue(localGuidanceFallback(previewKey));
     });
     return () => { live = false; };
-  }, [draftKey, guidanceDraftKey, previewKey, running, tabId, retryNonce, inboxSessionKey, applyQueue, collapse, runtimeRevision]);
+  }, [draftKey, guidanceDraftKey, previewKey, running, tabId, retryNonce, inboxSessionKey, applyQueue, collapse, runtimeRevision, enabled, clearQueue]);
 }

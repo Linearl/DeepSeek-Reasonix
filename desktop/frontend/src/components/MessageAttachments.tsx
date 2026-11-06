@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FileText, Folder, Image } from "lucide-react";
 import { app } from "../lib/bridge";
-import { sortDisplayAttachments, type DisplayAttachment } from "../lib/attachmentDisplay";
+import { isChannelAttachmentRef, sortDisplayAttachments, type DisplayAttachment } from "../lib/attachmentDisplay";
 import { useT } from "../lib/i18n";
 import { ImageViewer } from "./ImageViewer";
 import { Tooltip } from "./Tooltip";
@@ -22,6 +22,13 @@ function loadPreview(tabId: string, attachment: DisplayAttachment): Promise<stri
       mime,
       (id, nextDigest, offset) => app.ReadSessionAttachmentForTab!(id, nextDigest, offset),
     ));
+  }
+  // tl1465: cross-session borne references are absolute (channel attachments
+  // anchor at the global workspace) — AttachmentDataURL's relative-only
+  // contract would reject them, so route through the channel read bridge
+  // (its Go side enforces the global-attachments containment boundary).
+  if (isChannelAttachmentRef(path) && typeof app.ChannelAttachmentDataURL === "function") {
+    return app.ChannelAttachmentDataURL(path);
   }
   // Task 234: per-tab reader is optional on this fork; fall back to the
   // workspace-scoped data URL the composer already uses.
