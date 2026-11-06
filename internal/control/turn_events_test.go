@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/turnevent"
@@ -42,11 +41,7 @@ func TestTurnAdmissionIsDurableBeforeRunnerStarts(t *testing.T) {
 	t.Cleanup(c.Close)
 
 	c.Submit("run")
-	select {
-	case <-runner.started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("runner did not start")
-	}
+	waitForSignal(t, "runner did not start", runner.started)
 	records, err := c.TurnEventsAfter(0)
 	if err != nil {
 		t.Fatalf("TurnEventsAfter: %v", err)
@@ -55,11 +50,7 @@ func TestTurnAdmissionIsDurableBeforeRunnerStarts(t *testing.T) {
 		t.Fatalf("admission prefix = %+v, want queued then durable in_progress start", records)
 	}
 	close(runner.release)
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("turn did not finish")
-	}
+	waitForValue(t, "turn did not finish", done)
 	records, err = c.TurnEventsAfter(0)
 	if err != nil {
 		t.Fatalf("TurnEventsAfter terminal: %v", err)
@@ -95,13 +86,9 @@ func TestTurnAdmissionLedgerFailureDoesNotRunProvider(t *testing.T) {
 	t.Cleanup(c.Close)
 
 	c.Submit("must not reach provider")
-	select {
-	case terminal := <-done:
-		if !errors.Is(terminal.Err, turnevent.ErrTurnLedgerUnavailable) {
-			t.Fatalf("terminal error = %v, want explicit ledger admission failure", terminal.Err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("failed admission did not terminate")
+	terminal := waitForValue(t, "failed admission did not terminate", done)
+	if !errors.Is(terminal.Err, turnevent.ErrTurnLedgerUnavailable) {
+		t.Fatalf("terminal error = %v, want explicit ledger admission failure", terminal.Err)
 	}
 	if got := runner.calls.Load(); got != 0 {
 		t.Fatalf("runner calls = %d, want provider side effects blocked", got)
@@ -155,18 +142,10 @@ func TestAsyncStreamLedgerFailureCancelsTurnWithoutPublishingChunk(t *testing.T)
 	}
 	close(release)
 
-	select {
-	case <-cancelled:
-	case <-time.After(5 * time.Second):
-		t.Fatal("asynchronous stream persistence failure did not cancel the turn")
-	}
-	select {
-	case terminal := <-done:
-		if terminal.Status != event.TurnFailed || terminal.Err == nil {
-			t.Fatalf("control-plane terminal = %+v, want explicit storage failure", terminal)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("storage failure did not release frontend running state")
+	waitForSignal(t, "asynchronous stream persistence failure did not cancel the turn", cancelled)
+	terminal := waitForValue(t, "storage failure did not release frontend running state", done)
+	if terminal.Status != event.TurnFailed || terminal.Err == nil {
+		t.Fatalf("control-plane terminal = %+v, want explicit storage failure", terminal)
 	}
 	if got := publishedText.Load(); got != 0 {
 		t.Fatalf("published text chunks = %d, want none before durable append", got)

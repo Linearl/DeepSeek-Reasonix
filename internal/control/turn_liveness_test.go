@@ -37,13 +37,9 @@ func TestStalledTurnWarnsOncePerSilence(t *testing.T) {
 	})
 	<-started
 
-	select {
-	case n := <-notices:
-		if n.Level != event.LevelWarn || n.Text == "" {
-			t.Fatalf("stall notice = %+v, want a warn-level explanation", n)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("silent running turn never produced a stall notice")
+	n := waitForValue(t, "silent running turn never produced a stall notice", notices)
+	if n.Level != event.LevelWarn || n.Text == "" {
+		t.Fatalf("stall notice = %+v, want a warn-level explanation", n)
 	}
 	select {
 	case <-notices:
@@ -52,11 +48,7 @@ func TestStalledTurnWarnsOncePerSilence(t *testing.T) {
 	}
 
 	c.sink.Emit(event.Event{Kind: event.Text, Text: "still working"})
-	select {
-	case <-notices:
-	case <-time.After(5 * time.Second):
-		t.Fatal("renewed silence after progress did not warn again")
-	}
+	waitForValue(t, "renewed silence after progress did not warn again", notices)
 	c.Cancel()
 }
 
