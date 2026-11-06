@@ -4946,6 +4946,11 @@ export const en = {
   "settings.recoveryCopiesColOps": "row actions",
   "settings.recoveryCopiesKindSession": "session",
   "settings.recoveryCopiesKindVersion": "version",
+  // tl1448: same-stem dual row — after a copy file is adopted as the current
+  // main line it renders both a main row and a copy row; the copy row carries
+  // the "selected" badge (this key is its hover note) and loses its delete and
+  // checkbox entries.
+  "settings.recoveryCopiesMainFileHint": "this copy file IS the current main line (adopted) — the main line itself has no checkbox or delete entry; switch another version to be the main line first and it becomes a deletable copy again",
   "settings.recoveryCopiesPhaseTodo": "Pending",
   "settings.recoveryCopiesPhaseTodoHint": "conversations with copies or candidates to process",
   "settings.recoveryCopiesGroupExpandTip": "click to expand this group",
