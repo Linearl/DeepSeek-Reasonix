@@ -7,8 +7,11 @@
 // 事件在此被吞时零打点、零恢复——「到了但被吞」与「根本没到」不可分辨，人
 // 在场也无法处理。修复后：
 //   ① fence 规则逐字保留（judgePromptFenceArrival 只增不改）；
-//   ② prompt 类事件（ask/approval/mcp）被 fence 丢弃时标记 reconcile——
-//      调用方据此刷新 meta 并请求后端权威重放（自愈）；
+//   ② 事件被 fence 丢弃时标记 reconcile——调用方据此刷新 meta 并请求后端
+//      权威重放（自愈）。469 时只有 prompt 类事件对账（普通事件纯丢弃）；
+//      tl1444 把对账扩展到全部事件：超限态身份翻动（投影重建/CAS fork/恢复
+//      晋升）下 turn 的内容事件被纯吞 = 整轮输出不可见，对账后由 projector
+//      既有 seq-gap 权威重放回填漏接增量。
 //   ③ projector 修复失败/放弃导致 prompt 滞留 gap 队列时经 onPromptsStranded
 //      上报，同样走权威重放（重放事件无 seq，绕开卡住的序列）。
 
@@ -46,10 +49,11 @@ expectDrop(
   "epoch-fence", true, "approval 事件丢弃同样触发对账",
 );
 
-// 普通事件（text）epoch 不一致 → 丢但不对账（行为与 469 之前逐字一致）。
+// 普通事件（text）epoch 不一致 → 丢 + 对账（tl1444：超限态身份翻动下 turn
+// 内容事件被纯吞会整轮不可见，对账重挂身份后由 seq-gap 权威重放回填漏接）。
 expectDrop(
   judgePromptFenceArrival({ promptEvent: false, acceptedEpoch: "epoch-old", eventEpoch: "epoch-new" }),
-  "epoch-fence", false, "普通事件维持纯丢弃，不触发对账",
+  "epoch-fence", true, "普通事件丢弃也触发对账（tl1444 流式接线自愈）",
 );
 
 // epoch 一致 / 本地无锚 → 放行。
@@ -70,7 +74,7 @@ expectAdmit(judgePromptFenceArrival({ promptEvent: true, localGeneration: 3, eve
 expectAdmit(judgePromptFenceArrival({ promptEvent: true, localGeneration: 3 }), "事件不带代（代 0 omitted）放行");
 expectDrop(
   judgePromptFenceArrival({ promptEvent: false, eventGeneration: 3 }),
-  "generation-fence", false, "普通事件缺代丢弃不对账（行为不变）",
+  "generation-fence", true, "普通事件缺代丢弃也触发对账（tl1444 流式接线自愈）",
 );
 
 // epoch 与 generation 同时违规 → epoch 优先（与 handleWireEvent 判定顺序一致）。

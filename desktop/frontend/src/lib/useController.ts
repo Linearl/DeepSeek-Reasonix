@@ -3280,7 +3280,12 @@ export function useController() {
   const stalePromptReconcileTimers = useRef(new Map<string, number>());
   // 任务469: per-tab debounce for the authoritative reconcile scheduled when a
   // prompt-kind wire event is dropped by a stale epoch/generation fence.
+  // tl1444: every fenced event reconciles now, so the debounce serves all
+  // kinds; fenceEpisodeReportedByTab rate-limits the CONTENT drop report to
+  // one line per fence episode (cleared when an event admits again), while
+  // prompt drops keep their per-event 469 report.
   const promptFenceReconcileTimers = useRef(new Map<string, number>());
+  const fenceEpisodeReportedByTab = useRef(new Set<string>());
   // Task 161: activation recency for the LRU tab-state prune. Bumped on every
   // tab switch/activation so commitSingleSurfaceNavigation keeps the newest
   // maxCachedTabs states and releases only the oldest beyond the limit.
@@ -3616,10 +3621,13 @@ export function useController() {
     if (meta !== undefined) dispatchTo(tabId, { type: "meta", meta });
     return meta;
   }, [dispatchTo, loadMetaForTab]);
-  // 任务469: a prompt-kind event (ask/approval/mcp) dropped by a stale wire
-  // fence used to simply vanish — the fences sit upstream of the 428 gate and
-  // the P16 receipt row, so a swallowed popup left no trace and no recovery
-  // until the next navigation. One debounced authoritative reconcile per tab:
+  // 任务469: an event dropped by a stale wire fence used to simply vanish —
+  // the fences sit upstream of the 428 gate and the P16 receipt row, so a
+  // swallowed popup left no trace and no recovery until the next navigation.
+  // 469 reconciled prompt-kind drops; tl1444 extends the same debounced
+  // reconcile to every fenced event (超限态身份翻动会整轮吞掉 turn 内容，
+  // projector 的 seq-gap 权威重放负责回填漏接增量). One debounced
+  // authoritative reconcile per tab:
   // refresh the tab meta first (it re-arms runtimeEpochByTabRef and
   // meta.sessionGeneration so the replay can pass the fences), then ask the
   // backend to replay whatever prompt is genuinely still pending there. The
@@ -4960,12 +4968,14 @@ export function useController() {
       // and no recovery — the exact "ask arrived at the webview but the panel
       // never mounted" shape. judgePromptFenceArrival keeps every fence rule
       // byte-for-byte (promptFenceReconcile report lines: Report 4.1) and adds
-      // one consequence for prompt-kind drops: a logged verdict plus one
-      // debounced authoritative reconcile (meta refresh + backend replay).
+      // one consequence for drops: a logged verdict plus one debounced
+      // authoritative reconcile (meta refresh; prompt replay for prompt kinds,
+      // durable seq-gap back-fill for content kinds per tl1444).
       const acceptedEpoch = runtimeEpochByTabRef.current.get(targetTabId);
       const currentMeta = statesRef.current.get(targetTabId)?.meta;
+      const isPromptEvent = e.kind === "ask_request" || e.kind === "approval_request" || e.kind === "mcp_interaction";
       const fence = judgePromptFenceArrival({
-        promptEvent: e.kind === "ask_request" || e.kind === "approval_request" || e.kind === "mcp_interaction",
+        promptEvent: isPromptEvent,
         acceptedEpoch,
         eventEpoch: e.runtimeEpoch,
         localGeneration: currentMeta?.sessionGeneration,
@@ -4978,17 +4988,36 @@ export function useController() {
         if (fence.reason === "generation-fence" && e.runtimeEpoch && !acceptedEpoch) {
           runtimeEpochByTabRef.current.set(targetTabId, e.runtimeEpoch);
         }
+        // tl1444: a fenced event reconciles regardless of kind. Prompt cards
+        // keep the per-event 469 report; turn-content events (text/reasoning/
+        // tool/turn lifecycle) report once per fence episode — the collab
+        // scene had a whole turn swallowed in silence while the runtime
+        // projection kept saying "running", and only a tab reopen recovered
+        // it. The reconcile (refreshMetaOnlyForTab) re-arms the epoch anchor
+        // and meta generation; the deltas dropped before it lands are
+        // back-filled by the projector's durable seq-gap replay.
         if (fence.reconcile) {
-          reportFrontendLog(
-            "ask-panel",
-            "prompt dropped by stale fence",
-            `reason=${fence.reason} tab=${targetTabId} kind=${e.kind} prompt=${e.promptId ?? e.ask?.id ?? e.approval?.id ?? e.mcpInteraction?.id ?? "-"} turn=${e.turnId ?? "-"} event_epoch=${e.runtimeEpoch ?? "-"} local_epoch=${acceptedEpoch ?? "-"} event_gen=${e.sessionGeneration ?? "-"} local_gen=${currentMeta?.sessionGeneration ?? "-"}`,
-            "warn",
-          );
+          if (isPromptEvent) {
+            reportFrontendLog(
+              "ask-panel",
+              "prompt dropped by stale fence",
+              `reason=${fence.reason} tab=${targetTabId} kind=${e.kind} prompt=${e.promptId ?? e.ask?.id ?? e.approval?.id ?? e.mcpInteraction?.id ?? "-"} turn=${e.turnId ?? "-"} event_epoch=${e.runtimeEpoch ?? "-"} local_epoch=${acceptedEpoch ?? "-"} event_gen=${e.sessionGeneration ?? "-"} local_gen=${currentMeta?.sessionGeneration ?? "-"}`,
+              "warn",
+            );
+          } else if (!fenceEpisodeReportedByTab.current.has(targetTabId)) {
+            fenceEpisodeReportedByTab.current.add(targetTabId);
+            reportFrontendLog(
+              "stream-fence",
+              "turn content dropped by stale fence; reconciling surface identity",
+              `reason=${fence.reason} tab=${targetTabId} kind=${e.kind} turn=${e.turnId ?? "-"} event_epoch=${e.runtimeEpoch ?? "-"} local_epoch=${acceptedEpoch ?? "-"} event_gen=${e.sessionGeneration ?? "-"} local_gen=${currentMeta?.sessionGeneration ?? "-"}`,
+              "warn",
+            );
+          }
           schedulePromptFenceReconcile(targetTabId);
         }
         return;
       }
+      fenceEpisodeReportedByTab.current.delete(targetTabId);
       if (e.runtimeEpoch && !acceptedEpoch) runtimeEpochByTabRef.current.set(targetTabId, e.runtimeEpoch);
       if (e.sessionGeneration !== undefined && (!currentMeta || currentMeta.sessionGeneration === undefined || e.sessionGeneration !== currentMeta.sessionGeneration)) return;
       if (!turnEventProjector.acceptLive(targetTabId, e, acceptedEpoch)) return;

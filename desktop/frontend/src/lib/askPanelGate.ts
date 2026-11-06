@@ -114,6 +114,15 @@ export function decideActivationPrompt(state: ActivationPromptView): ActivationP
  * 人在场也无法处理，只能关闭重开。
  *
  * 判定抽成纯函数：丢弃决策、诊断打点与对账触发读同一份结论，永不漂移。
+ *
+ * tl1444：被丢的不再只限 prompt 卡片。469 当时把普通事件维持纯丢弃（行为
+ * 不变），但超限会话（投影重建/自动瘦身 → CAS fork/恢复晋升 → 代际盖章翻
+ * 动）恰恰在 turn 进行中翻动身份：turn 的 text/reasoning/tool 事件被 fence
+ * 纯吞后没有任何自愈入口——轮次照跑（runtime 投影是另一条通道）、输出一行
+ * 不显示，直到关 tab 重开（2026-11-06 collab 会话实录）。丢的后果对两类事
+ * 件统一为 reconcile：丢弃规则逐字不变（内容不跨代泄漏），对账只是刷新本
+ * tab meta（重挂 epoch 锚与新代），漏接的增量随后经 projector 既有 seq-gap
+ * 权威重放回填——流式接续不断，无需重开。
  */
 export interface PromptFenceView {
   /** 是否 prompt 卡片类事件（ask_request / approval_request / mcp_interaction）。 */
@@ -139,20 +148,22 @@ export type PromptFenceVerdict =
  * - fence 拒绝规则与既有行为逐字等价（epoch 双方非空且不同 → 丢；事件带
  *   会话代而本地 meta 缺失/无代/代不同 → 丢）——本判定不放宽任何一道门，
  *   跨会话/跨 runtime 的内容泄漏防护原样保留；
- * - 唯一的差别在「丢」的后果：prompt 卡片类事件被丢时 reconcile=true——
- *   调用方据此走权威对账（刷新 meta + 后端重放）。重放只重发当前
- *   controller 真实挂起的 prompt（无僵尸风险），且重放事件不带 seq，
- *   可绕开卡住的 projector 序列；普通事件维持纯丢弃（行为不变）。
+ * - 「丢」的后果：reconcile=true——调用方据此走权威对账（刷新 meta，重挂
+ *   epoch 锚与新代）。prompt 卡片事件（469）随后由后端权威重放真实挂起的
+ *   prompt（无僵尸风险，重放事件不带 seq 可绕开卡住的序列）；其余事件
+ *   （tl1444）由 projector 既有 seq-gap 修复从持久账本回填漏接的增量——
+ *   fence 被吞的 text/tool 增量从未推进 projector 游标，对账后下一条放行
+ *   事件必然暴露缺口并触发重放。两类事件共用同一次去抖对账。
  */
 export function judgePromptFenceArrival(view: PromptFenceView): PromptFenceVerdict {
   if (view.eventEpoch && view.acceptedEpoch && view.acceptedEpoch !== view.eventEpoch) {
-    return { action: "drop", reason: "epoch-fence", reconcile: view.promptEvent };
+    return { action: "drop", reason: "epoch-fence", reconcile: true };
   }
   if (
     view.eventGeneration !== undefined &&
     (view.localGeneration === undefined || view.localGeneration !== view.eventGeneration)
   ) {
-    return { action: "drop", reason: "generation-fence", reconcile: view.promptEvent };
+    return { action: "drop", reason: "generation-fence", reconcile: true };
   }
   return { action: "admit" };
 }
