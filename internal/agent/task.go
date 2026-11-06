@@ -897,6 +897,14 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 			defer mutationObserver.UnregisterWriter(recoveryTaskID)
 		}
 		prompt := composeChildTaskPrompt(spec)
+		// tl1434 追加：工作流派发（ctx 显式装载标记）在子代理运行期间周期快照
+		// transcript——运行中节点的「工作过程」靠它做到已写盘部分即时可读。
+		// stop 先于本闭包返回，因此终态 SaveOutcome（两个调用方都在 runSession
+		// 返回之后）永远没有并发写者；普通委派无标记，落盘形态逐字节不变。
+		if subagentTranscriptAutosaveFrom(runCtx) && run.Ref != "" && run.store != nil {
+			stopAutosave := run.store.startTranscriptAutosave(run)
+			defer stopAutosave()
+		}
 		// 任务616: a continued transcript receives everything that arrived in
 		// the source ref's mailbox while the sub-agent was not running. The
 		// drain happens at run start so messages sent in the park window are
