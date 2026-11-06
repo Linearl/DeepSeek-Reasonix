@@ -45,7 +45,7 @@ export function testPlan(scripts, discovered) {
     // Same runner face as every explicit invocation (768b ③): the main
     // tsconfig.json excludes src/__tests__, so the tsx default would split
     // JSX transpile behavior for exactly these files.
-    if (!explicit.has(key)) add(["tsx", "--tsconfig", "tsconfig.tsx-runner.json", "--import", "./scripts/css-stub-register.mjs", key]);
+    if (!explicit.has(key)) add(["tsx", "--tsconfig", "tsconfig.tsx-runner.json", "--import", "./scripts/css-stub-register.mjs", "--import", "./scripts/svg-stub-register.mjs", key]);
   }
   return [...explicit.values()];
 }
