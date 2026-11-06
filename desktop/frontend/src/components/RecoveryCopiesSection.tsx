@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { useT, type Translator } from "../lib/i18n";
+import { formatRecoveryActivateError } from "../lib/recoveryActivateError";
 import { formatSessionBusyError } from "../lib/sessionBusyError";
 import { useToast } from "../lib/toast";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -798,7 +799,9 @@ export function RecoveryCopiesSection() {
   };
 
   // tl1430b 衔接点:activate 本体与 tl1430b 返修共用,本组件只把按钮摆上副本
-  // 行/版本行(逻辑零改动)。
+  // 行/版本行(逻辑零改动)。tl1415c B3:拒绝文案走 formatRecoveryActivateError
+  // ——already-main/热切被拒两类按后端机器码出三语人话(下一步说清),技术原
+  // 文保留;同弹 toast(tl1414 反馈对称:点击失败不能只活在面板横幅里)。
   const activate = async (chain: RecoveryChainView) => {
     setActivating(chain.path);
     try {
@@ -807,7 +810,9 @@ export function RecoveryCopiesSection() {
       setSwitchedNote(t("settings.sessionVersions.activated").replace("{name}", label));
       await load();
     } catch (e) {
-      setErrors((current) => [...current, e instanceof Error ? e.message : String(e)]);
+      const detail = formatRecoveryActivateError(e);
+      setErrors((current) => [...current, detail]);
+      showToast(detail, "error");
     } finally {
       setActivating(null);
     }

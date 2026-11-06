@@ -298,6 +298,12 @@ func TestSetActiveSessionVersionRefusesRunningTabExplicitly(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "working") {
 		t.Fatalf("running-tab switch error = %v, want an explicit busy refusal", err)
 	}
+	// tl1415c B3: the active-work refusal carries the stable machine code so
+	// the frontend maps it to the localized human copy (cause stays verbatim
+	// after the code).
+	if !strings.Contains(err.Error(), recoveryActiveWorkCode) {
+		t.Fatalf("active-work refusal %q lacks the machine code prefix %q", err, recoveryActiveWorkCode)
+	}
 	if !sameRecoveryLineagePath(tab.Ctrl.SessionPath(), root) {
 		t.Fatalf("running tab was switched anyway: %q", tab.Ctrl.SessionPath())
 	}

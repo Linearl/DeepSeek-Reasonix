@@ -3435,6 +3435,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersions.longerTag": "更長（{messages} 條 / {turns} 輪）",
   "settings.sessionVersions.newerTag": "更新（最後活動 {date}）",
   "settings.sessionVersions.activate": "切換到此版本",
+  // tl1415c B3: 兩條啟用拒絕的三語人話(按後端機器碼 reasonix_error:recovery_* 對應,
+  // 技術原文保留在句後,不隱藏不虛構)。
+  "settings.sessionVersions.activateAlreadyMain": "這個版本已是當前主線，沒有發生切換。若面板顯示的主線與實際不一致，重新整理一次即可對齊。",
+  "settings.sessionVersions.activateActiveWork": "當前主線正在產生回覆，暫時不能切換。等這一輪回覆結束後，再點一次「切換到此版本」。",
   "settings.sessionVersions.check": "檢查健康",
   "settings.sessionVersions.repair": "修復",
   "settings.sessionVersions.repairDiet": "修復並瘦身（剝圖+摺疊）",

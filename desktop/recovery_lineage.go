@@ -11,6 +11,15 @@ import (
 	"reasonix/internal/sessioncatalog"
 )
 
+// tl1415c B3（tl1446 双轨标准补 Go 面）：两条激活拒绝跨 Wails 边界带稳定
+// 机器码（同 topic_archive.go 的 "reasonix_error:" 通道），前端按码出三语
+// 人话（lib/recoveryActivateError.ts）；人话不虚构、技术原文保留在码后——
+// 旧前端直出原文时句子的可读部分原样还在，不损失任何信息。
+const (
+	recoveryAlreadyMainCode = "reasonix_error:recovery_already_main: "
+	recoveryActiveWorkCode  = "reasonix_error:recovery_active_work: "
+)
+
 type RecoveryLineageMember struct {
 	Path            string `json:"path"`
 	VersionKind     string `json:"versionKind,omitempty"`
@@ -244,7 +253,7 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 	// test-caught defect).
 	if (tabFromPath != "" && sameRecoveryLineagePath(tabFromPath, req.Path)) ||
 		(memberPreferred != "" && sameRecoveryLineagePath(memberPreferred, req.Path)) {
-		return errors.New("this version is already the conversation's main line")
+		return errors.New(recoveryAlreadyMainCode + "this version is already the conversation's main line")
 	}
 	if tabID != "" {
 		// tl1430 hot-switch gating: an idle tab rehydrates onto the new main
@@ -256,7 +265,7 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 		a.mu.RUnlock()
 		if runningTab != nil && runningTab.Ctrl != nil {
 			if state := controllerRuntimeState(runningTab.Ctrl); state.ActiveWork() {
-				return errors.New("the current main line is still working; wait for its turn to finish, then switch again")
+				return errors.New(recoveryActiveWorkCode + "the current main line is still working; wait for its turn to finish, then switch again")
 			}
 		}
 		if _, err := a.ResumeSessionForTabExact(tabID, req.Path); err != nil {

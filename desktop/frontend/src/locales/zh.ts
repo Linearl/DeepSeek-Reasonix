@@ -4894,6 +4894,10 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.longerTag": "更长（{messages} 条 / {turns} 轮）",
   "settings.sessionVersions.newerTag": "更新（最后活动 {date}）",
   "settings.sessionVersions.activate": "切换到此版本",
+  // tl1415c B3: 两条激活拒绝的三语人话(按后端机器码 reasonix_error:recovery_* 映射,
+  // 技术原文保留在句后,不隐藏不虚构)。
+  "settings.sessionVersions.activateAlreadyMain": "这个版本已是当前主线，没有发生切换。若面板显示的主线与实际不一致，刷新一次即可对齐。",
+  "settings.sessionVersions.activateActiveWork": "当前主线正在生成回复，暂时不能切换。等这一轮回复结束后，再点一次「切换到此版本」。",
   "settings.sessionVersions.check": "检查健康",
   "settings.sessionVersions.repair": "修复",
   "settings.sessionVersions.repairDiet": "修复并瘦身（剥图+折叠）",

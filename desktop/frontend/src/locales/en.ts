@@ -4914,6 +4914,10 @@ export const en = {
   "settings.sessionVersions.longerTag": "longer ({messages} messages / {turns} turns)",
   "settings.sessionVersions.newerTag": "newer (last activity {date})",
   "settings.sessionVersions.activate": "switch to this version",
+  // tl1415c B3: human copy for the two activation refusals (mapped from the
+  // reasonix_error:recovery_* machine codes; the technical cause stays verbatim).
+  "settings.sessionVersions.activateAlreadyMain": "This version is already the conversation's main line — nothing was switched. If the panel still shows an older main line, refresh once to align.",
+  "settings.sessionVersions.activateActiveWork": "The current main line is still generating its reply — wait for this turn to finish, then click switch to this version again.",
   "settings.sessionVersions.check": "check health",
   "settings.sessionVersions.repair": "repair",
   "settings.sessionVersions.repairDiet": "repair and diet (strip images + fold)",

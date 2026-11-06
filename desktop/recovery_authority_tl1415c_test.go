@@ -79,10 +79,15 @@ func TestRecoveryChainSelectedMatchesSwitchGateOnTabVsCanonical(t *testing.T) {
 
 	// ② Gate verdict on the SAME fixture: the tab's line is already the main
 	// line — refused, explicitly, even though the catalog canonical names the
-	// other file.
+	// other file. tl1415c B3: the refusal carries the stable machine code over
+	// the Wails boundary (frontend renders the localized human copy from it)
+	// with the human-readable cause kept verbatim after the code.
 	err = app.SetActiveSessionVersion(RecoveryPreferenceRequest{Path: fork})
 	if err == nil || !strings.Contains(err.Error(), "already") {
 		t.Fatalf("switch to the tab's line = %v, want an already-main refusal", err)
+	}
+	if !strings.Contains(err.Error(), recoveryAlreadyMainCode) {
+		t.Fatalf("already-main refusal %q lacks the machine code prefix %q (frontend cannot map it to human copy)", err, recoveryAlreadyMainCode)
 	}
 
 	// ③ Gate verdict: the row the OLD panel marked as main (the scan origin)
