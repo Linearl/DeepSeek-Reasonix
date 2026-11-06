@@ -4314,6 +4314,7 @@ export const en = {
   "palette.group.tools": "Tools & diagnostics",
   "palette.group.help": "Help & support",
   "palette.cmd.newSession": "New session",
+  "palette.cmd.collabHub": "Collaboration Hub",
   "palette.cmd.trash": "Trash",
   "palette.cmd.settings": "Settings",
   "palette.cmd.appearance": "Appearance",

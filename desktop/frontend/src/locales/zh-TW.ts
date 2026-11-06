@@ -5527,6 +5527,7 @@ export const zhTW: Record<DictKey, string> = {
   "palette.group.tools": "工具與診斷",
   "palette.group.help": "說明與支援",
   "palette.cmd.newSession": "新建會話",
+  "palette.cmd.collabHub": "協作中心",
   "palette.cmd.trash": "回收站",
   "palette.cmd.settings": "設定",
   "palette.cmd.appearance": "外觀",

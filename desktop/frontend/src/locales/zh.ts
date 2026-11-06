@@ -4298,6 +4298,7 @@ export const zh: Record<DictKey, string> = {
   "palette.group.tools": "工具与诊断",
   "palette.group.help": "帮助与支持",
   "palette.cmd.newSession": "新建会话",
+  "palette.cmd.collabHub": "协作中心",
   "palette.cmd.trash": "回收站",
   "palette.cmd.settings": "设置",
   "palette.cmd.appearance": "外观",
