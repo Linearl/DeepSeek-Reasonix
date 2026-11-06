@@ -588,8 +588,30 @@ func (e *HeartbeatEngine) resolveHeartbeatTopic(t HeartbeatTask, scope, workspac
 	// is often the user's own working session and must keep its grouping.
 	stampOrigin := true
 	createdForResume := false
+	// tl1363b: a binding to a DELETED topic is a dead binding. Reusing the
+	// tombstoned id made the run reopen the conversation, the open mint a
+	// fresh session file under it, and the tab-build repair clear the
+	// tombstone + prepend the id back into the sidebar index — the deleted
+	// conversation's organization reference bounced into topicOrder[0] about
+	// a minute later (the 2026-11-05 feedback, delete_session reported
+	// trashed=true yet the entry came back). A dead binding falls through to
+	// the first-run path: this run creates a fresh topic and the task binding
+	// moves to it. The deleted topic stays deleted.
+	bindingDead := func(id string) bool {
+		if strings.TrimSpace(id) == "" {
+			return true
+		}
+		if topicDeletedTombstoned(id) {
+			log.Printf("[heartbeat] bound topic %q was deleted; starting a fresh conversation for %q", id, t.Title)
+			return true
+		}
+		return false
+	}
 	if heartbeatReuseMode(t) {
 		topicID = t.TopicID
+		if bindingDead(topicID) {
+			topicID = ""
+		}
 		if topicID == "" {
 			meta, err := e.app.CreateTopic(scope, workspaceRoot, title)
 			if err != nil {
@@ -628,6 +650,9 @@ func (e *HeartbeatEngine) resolveHeartbeatTopic(t HeartbeatTask, scope, workspac
 		}
 	} else {
 		topicID = t.TopicID
+		if bindingDead(topicID) {
+			topicID = ""
+		}
 		if topicID == "" {
 			meta, err := e.app.CreateTopic(scope, workspaceRoot, title)
 			if err != nil {
