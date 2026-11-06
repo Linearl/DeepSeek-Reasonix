@@ -29,6 +29,10 @@ type Engine struct {
 	// 禁用重发；更大值按字面生效。只挂 subagent 节点：confirm 节点解析失败
 	// 的语义是「未确认」（保留 findings 继续跑），不报废也不重发。
 	ResultParseRetries int
+	// Observe（tl1454）在单写者上接收逐节点观测：每次派发执行的用量、节点
+	// 中止时的失败原因码、非致命契约提示。nil = 不关心（与 Checkpoint 同款
+	// 宿主侧通道；686 六态事件契约不受影响）。
+	Observe func(NodeObservation)
 }
 
 // DefaultResultParseRetries is the directed-retry budget when
@@ -116,6 +120,10 @@ type runState struct {
 	phase      string // 工作流分区标签：只由 phase 节点在串行扫描段写（tl1326 G4：并发波次共享「最近进入的分区」，原义不变）
 	failedNode string
 	gateRound  int // current gate attempt, so a world-failure reports its round
+
+	// meter is the tl1454 run budget (nil when the document declares none).
+	// Set once at construction; the concurrent segment receives it captured.
+	meter *budgetMeter
 }
 
 // Run executes the whole workflow sequentially in topological order. It
@@ -140,6 +148,8 @@ func (e *Engine) RunWithID(ctx context.Context, wf *Workflow, runID string) (*Wo
 	// runID 随 ctx 下行（tl1324 G6）：任务面板登记 id（wf:<runId>:<nodeID>）
 	// 由 sub-agent runner 在节点执行时组装，外部钉定与自动生成两条路都覆盖。
 	ctx = withRunID(ctx, s.runID)
+	ctx, cancel := withWallBudget(ctx, wf.Budget)
+	defer cancel()
 	s.emitAll(event.WorkflowNodeQueued, 0, "")
 	err := s.runAll(ctx)
 	return s.buildReport(err), err
@@ -163,6 +173,8 @@ func (e *Engine) ResumeWithID(ctx context.Context, wf *Workflow, snap *runSnapsh
 	// 兜底——续跑行与 run 脱钩、跨 run 同名节点共用 jobID，并发重叠时 recorder
 	// 配对表串线留僵尸 alive 行（persist_resume_monitor_test 钉 A/B）。
 	ctx = withRunID(ctx, s.runID)
+	ctx, cancel := withWallBudget(ctx, wf.Budget)
+	defer cancel()
 	s.replayTerminalEvents(snap)
 	runErr := s.runAll(ctx)
 	return s.buildReport(runErr), runErr
@@ -359,6 +371,7 @@ func newRunState(e *Engine, wf *Workflow) *runState {
 		output:     make(map[string]string, len(wf.Nodes)),
 		result:     make(map[string]any, len(wf.Nodes)),
 		findings:   make(map[string][]Finding, len(wf.Nodes)),
+		meter:      newBudgetMeter(wf.Budget),
 	}
 	addEdge := func(from, to, when string) {
 		if when == "" {
@@ -429,7 +442,12 @@ func newRunID() string {
 func (s *runState) runAll(ctx context.Context) error {
 	for {
 		if err := ctx.Err(); err != nil {
-			return err
+			return stopCause(ctx)
+		}
+		// tl1454: a spent token/rounds budget stops the run before the next
+		// node is dispatched (the node that crossed keeps its result).
+		if over := s.meter.exceeded(); over != nil {
+			return over
 		}
 		// ---- serial scan: skip cascade, inline nodes, wave collection ----
 		var calls []*nodeCall
