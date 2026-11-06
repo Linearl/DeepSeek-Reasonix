@@ -81,6 +81,13 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 		if localOwners[key] != nil {
 			continue
 		}
+		// tl1429c: ownership is per canonical session. A duplicate spelling of
+		// an already-owned target must reuse the batch's guard, never take a
+		// second one — the second take used to refuse on the first (the
+		// 2026-11-06 17:46 self-lock form) and wedge the whole archive.
+		if _, owned := batch.byPath[key]; owned {
+			continue
+		}
 		if sessionTrashTargetFileMissing(target.sessionPath) {
 			// tl1383: no transcript on disk to protect or move — refusing to
 			// archive a session whose file does not exist protects nobody and
@@ -126,6 +133,13 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 		key := sessionRuntimeKey(target.sessionPath)
 		tab := localOwners[key]
 		if tab == nil {
+			continue
+		}
+		// tl1429c: same idempotence as loop 1 — a duplicate spelling must not
+		// re-enter the lease conversion (the second pass would find no lease
+		// left and fall back to a guard acquire against the batch's own
+		// converted guard).
+		if _, owned := batch.byPath[key]; owned {
 			continue
 		}
 		lease := takeTopicArchiveSessionLease(tab, target.sessionPath)

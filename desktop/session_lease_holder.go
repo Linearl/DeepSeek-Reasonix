@@ -139,9 +139,14 @@ func sessionLeaseHolderLogAttrsWithEvidence(info *agent.SessionLeaseInfo, eviden
 			return append(attrs, "holder_pid", 0)
 		}
 		// tl1429 registry identity replaces the bare pid=0: which runtime/op
-		// holds the lock and since when. Logged values still name no session
-		// path — the evidence type is redacted by construction.
-		attrs = append(attrs, "holder_pid", 0, "holder_lock_kind", evidence[0].Kind)
+		// holds the lock and since when. tl1429c: an in-process holder no
+		// longer logs holder_pid=0 at all — a pid field that reads "identity
+		// unknown" for a holder the registry can name is the misreading the
+		// field log kept tripping on. holder_scope=in_process says the holder
+		// lives inside this process; the kind/since pair says which flow.
+		// Logged values still name no session path — the evidence type is
+		// redacted by construction.
+		attrs = append(attrs, "holder_scope", "in_process", "holder_lock_kind", evidence[0].Kind)
 		if !evidence[0].AcquiredAt.IsZero() {
 			attrs = append(attrs, "holder_lock_since", evidence[0].AcquiredAt.UTC().Format(time.RFC3339))
 		}
