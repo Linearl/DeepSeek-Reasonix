@@ -4,6 +4,12 @@ import { createPortal } from "react-dom";
 import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { useT, type Translator } from "../lib/i18n";
 import { formatRecoveryActivateError } from "../lib/recoveryActivateError";
+// tl1415d9: 会话行展开态的持久化记忆(重挂载/采纳换主线后仍保持——用户二轮裁决)。
+import {
+  readExpandedSessionKeys,
+  sessionExpandKey,
+  toggleExpandedSessionKey,
+} from "../lib/recoveryExpandedMemory";
 import { formatSessionBusyError } from "../lib/sessionBusyError";
 import { useToast } from "../lib/toast";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -494,16 +500,18 @@ export function RecoveryCopiesSection() {
   const [mergedOpen, setMergedOpen] = useState(false);
   // tl1415b-2（用户二轮装机实测）：组段展开不再等于子行平铺——会话行恢复
   // 默认折叠（点开才见主线/副本/版本子行），否则几十个会话全平铺找会话不便。
-  // 展开态按 mainPath 记；load() 重取不清空——1146 钉的「原地反馈不因重取
-  // 折行」同样适用于会话级展开（合成/合并后重取，展开着的会话不塌）。
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // tl1415d9（用户二轮裁决 20261107）：展开是用户状态，刷新不重置——默认折叠
+  // 只是「开面板时」的行为。原 useState 实现红基线实测两条丢失路径：①组件
+  // 重挂载（设置面板关开/tab 回切/边界重试）整体重置；②按完整 mainPath 记，
+  // 采纳副本后主线换成副本文件（tl1430 语义：文件不搬、组 preferred path
+  // 变），旧 path 永久失配。现持久化在 lib/recoveryExpandedMemory（模块级
+  // Set + localStorage 写穿，tl1439 面板记忆同模式），键=目录+lineage stem
+  // （剥 -recovery-<16hex> 后缀），跨采纳稳定。未动过的行开面板仍默认折叠
+  // （裁决「默认收起语义不变」面）；load() 重取不清空——1146 钉的「原地反
+  // 馈不因重取折行」同样适用于会话级展开（合成/合并后重取，展开着的会话不塌）。
+  const [expanded, setExpanded] = useState<Set<string>>(() => readExpandedSessionKeys());
   const toggleExpanded = (path: string) =>
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
+    setExpanded(() => toggleExpandedSessionKey(sessionExpandKey(path)));
   // 会话级动作的回执面（tl1415b 沉底后收在分区层，渲染在表格下方）：
   // 健康报告、修复回执、切换回执。行随重载折叠会丢行内状态（1064b 教训），
   // 分区层只有一份，不随行消失。
@@ -710,12 +718,13 @@ export function RecoveryCopiesSection() {
     const out: string[] = [];
     if (todoOpen) {
       for (const g of phased.todo) {
-        if (expanded.has(g.mainPath)) out.push(g.mainPath);
+        // tl1415d9: 展开态键=目录+lineage stem(跨采纳稳定),不再按 mainPath 直记。
+        if (expanded.has(sessionExpandKey(g.mainPath))) out.push(g.mainPath);
       }
     }
     if (mergedOpen) {
       for (const g of phased.merged) {
-        if (!expanded.has(g.mainPath)) continue;
+        if (!expanded.has(sessionExpandKey(g.mainPath))) continue;
         const headCount = versionGroups.get(g.mainPath)?.headCount ?? 0;
         if (g.copies.length > 0 || headCount > 1) out.push(g.mainPath);
       }
@@ -1950,7 +1959,9 @@ export function RecoveryCopiesSection() {
       `${t("settings.recoveryCopiesColModified")} ${formatWhen(group.mainModified)}`,
     ].join("｜");
     // tl1415b-2（点2）：会话行默认折叠，点名称格的展开钮才渲染子行。
-    const isOpen = expanded.has(group.mainPath);
+    // tl1415d9: isOpen 读持久化记忆键(目录+lineage stem)——采纳换主线后同一
+    // 会话的键不变,展开态跟会话走,不跟文件名走。
+    const isOpen = expanded.has(sessionExpandKey(group.mainPath));
 
     return (
       <Fragment key={group.mainPath}>
