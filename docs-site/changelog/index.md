@@ -4,7 +4,7 @@
 
 **两类版本的区别**：标 <span class="vtag vtag-release">正式 Release</span> 的是发布到 GitHub Releases 的版本，可从 Release 页直接下载安装；标 <span class="vtag vtag-internal">内部包</span> 的是持续集成的开发快照，未经发布流程，仅供内部验证与升级链路使用。本 fork 的开发节奏是每个工作日可能出多个内部包，正式 Release 按里程碑单独发布。
 
-**统计**（更新至 2026-11-05）：10-12 起共 46 个包（内部包 45、正式 Release 1），按月分页列出；另有早期正式 Release 10 个（v1.31.3 ~ 2026-09-21）见归档页。更早的内部开发包不逐包列出，细节见仓库 [`release-notes/`](https://github.com/Linearl/DeepSeek-Reasonix/tree/main-v2-stable/release-notes)。
+**统计**（更新至 2026-11-06）：10-12 起共 47 个包（内部包 46、正式 Release 1），按月分页列出；另有早期正式 Release 10 个（v1.31.3 ~ 2026-09-21）见归档页。更早的内部开发包不逐包列出，细节见仓库 [`release-notes/`](https://github.com/Linearl/DeepSeek-Reasonix/tree/main-v2-stable/release-notes)。
 
 ## 分页
 
