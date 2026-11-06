@@ -573,9 +573,10 @@ export const zh: Record<DictKey, string> = {
   "workspace.deletePermanentConfirmTitle": "彻底删除",
   "workspace.deletePermanentConfirmMessage": "即将彻底删除选中的 {count} 项。文件夹会递归删除其中全部内容。这些项不会进入回收站，操作不可撤销。",
   "workspace.deletePermanentConfirmLabel": "彻底删除",
-  "workspace.fileOpFailed": "操作失败：{detail}",
-  "workspace.fileOpsFailedCount": "{count} 项失败：{detail}",
-  "workspace.renameFailed": "重命名失败：{detail}",
+  // tl1446-5: 模板尾部补「怎么办」常见原因指引；技术 detail 原样保留（双轨不隐藏）。
+  "workspace.fileOpFailed": "操作失败：{detail}。若文件被占用或不存在，请关闭占用它的程序或刷新文件树后重试。",
+  "workspace.fileOpsFailedCount": "{count} 项失败：{detail}。被占用或不存在的条目，关闭占用程序或刷新文件树后重试即可。",
+  "workspace.renameFailed": "重命名失败：{detail}。请关闭占用该文件的程序后重试。",
   "workspace.refreshTree": "刷新文件树",
   "workspace.refreshChanges": "刷新改动",
   "workspace.watchDegraded": "工作区实时监听受限；如有需要可手动刷新当前资源。",

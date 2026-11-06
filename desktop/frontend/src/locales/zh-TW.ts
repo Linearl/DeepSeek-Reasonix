@@ -432,9 +432,10 @@ export const zhTW: Record<DictKey, string> = {
   "workspace.deletePermanentConfirmTitle": "徹底刪除",
   "workspace.deletePermanentConfirmMessage": "即將徹底刪除選中的 {count} 項。資料夾會遞迴刪除其中全部內容。這些項不會進入回收站，操作無法復原。",
   "workspace.deletePermanentConfirmLabel": "徹底刪除",
-  "workspace.fileOpFailed": "操作失敗：{detail}",
-  "workspace.fileOpsFailedCount": "{count} 項失敗：{detail}",
-  "workspace.renameFailed": "重新命名失敗：{detail}",
+  // tl1446-5: 模板尾部補「怎麼辦」常見原因指引；技術 detail 原樣保留（雙軌不隱藏）。
+  "workspace.fileOpFailed": "操作失敗：{detail}。若檔案被占用或不存在，請關閉占用它的程式或重新整理檔案樹後重試。",
+  "workspace.fileOpsFailedCount": "{count} 項失敗：{detail}。被占用或不存在的條目，關閉占用程式或重新整理檔案樹後重試即可。",
+  "workspace.renameFailed": "重新命名失敗：{detail}。請關閉占用該檔案的程式後重試。",
   "workspace.refreshTree": "重新整理檔案樹",
   "workspace.refreshChanges": "重新整理變更",
   "workspace.watchDegraded": "工作區即時監看受限；如有需要可手動重新整理目前資源。",

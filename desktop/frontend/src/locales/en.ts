@@ -577,9 +577,10 @@ export const en = {
   "workspace.deletePermanentConfirmTitle": "Permanently delete",
   "workspace.deletePermanentConfirmMessage": "About to permanently delete {count} selected item(s). Folders are removed recursively with ALL of their contents. These items will NOT go to the Trash — this cannot be undone.",
   "workspace.deletePermanentConfirmLabel": "Delete Permanently",
-  "workspace.fileOpFailed": "Operation failed: {detail}",
-  "workspace.fileOpsFailedCount": "{count} items failed: {detail}",
-  "workspace.renameFailed": "Rename failed: {detail}",
+  // tl1446-5: guidance tail added; the technical detail stays verbatim (dual-track).
+  "workspace.fileOpFailed": "Operation failed: {detail}. If the file is locked or missing, close the program using it or refresh the tree, then retry.",
+  "workspace.fileOpsFailedCount": "{count} items failed: {detail}. Locked or missing entries recover once you close the program using them or refresh the tree.",
+  "workspace.renameFailed": "Rename failed: {detail}. Close the program using the file, then rename again.",
   "workspace.refreshTree": "Refresh file tree",
   "workspace.refreshChanges": "Refresh changes",
   "workspace.watchDegraded": "Live workspace watching is limited; refresh visible resources manually if needed.",
