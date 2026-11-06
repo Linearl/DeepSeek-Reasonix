@@ -94,6 +94,14 @@ type SessionsReport struct {
 // RecoveryLifecycleReport contains aggregate-only local diagnostics. It never
 // copies session paths, topic IDs, titles, previews, or message content from
 // the per-session conflict logs into a shareable doctor report.
+//
+// Scope and dedup: the report covers every session root on this machine (the
+// global sessions dir plus every project's, same list as the fork census) and
+// counts each distinct conflict-log line once, no matter how many byte-copies
+// survive across live logs, .trash items and .pre-repair-* backups. That keeps
+// it comparable to the fork census: Events == census Records and
+// PhysicalVersionsCreated == census Forks on the same disk. File-level facts
+// (UnreadEntries, ScanAborts) stay per physical file and are not deduped.
 type RecoveryLifecycleReport struct {
 	Events                    int `json:"events"`
 	PhysicalVersionsCreated   int `json:"physical_versions_created"`
@@ -159,6 +167,12 @@ func Collect(opts Options) Report {
 	}
 	cwd, _ := os.Getwd()
 	sourcePath := config.SourcePath()
+	// One scan-scope list feeds every recovery diagnostic (old lifecycle stats
+	// and the tl1443 fork census alike): the global sessions dir plus every
+	// project's. The lifecycle stats used to read the global dir only, so on a
+	// machine whose forks all live under projects/ it reported 4 events while
+	// the census counted 206 records — same disk, two answers.
+	recoveryDirs := append([]string{config.SessionDir()}, config.AllProjectSessionDirs()...)
 	// Settings UIs and `reasonix config` edit the user-level config, but a
 	// project reasonix.toml outranks it. Users who toggle the sandbox off in
 	// Settings while the project file pins [sandbox] read the no-op as "bash is
@@ -205,8 +219,8 @@ func Collect(opts Options) Report {
 			Enabled: cfg.LSP.Enabled,
 			Servers: len(cfg.LSP.Servers),
 		},
-		Sessions: collectSessions(config.SessionDir()),
-		Forks:    collectRecoveryForks(append([]string{config.SessionDir()}, config.AllProjectSessionDirs()...)),
+		Sessions: collectSessions(config.SessionDir(), recoveryDirs),
+		Forks:    collectRecoveryForks(recoveryDirs),
 		Sandbox: SandboxReport{
 			Bash:              cfg.BashMode(),
 			Network:           cfg.Sandbox.Network,
@@ -323,7 +337,7 @@ func RenderText(r Report) string {
 	fmt.Fprintf(&b, "  saved        %d\n", r.Sessions.Count)
 	fmt.Fprintf(&b, "  bytes        %d\n", r.Sessions.Bytes)
 	fmt.Fprintf(&b, "  log format   dag:%d (schema-2 sealed leftovers; reads serve the flat JSONL, everything else is flat schema-1)\n", r.Sessions.DAGLogs)
-	fmt.Fprintf(&b, "  recovery     %d events, %d versions created, %d disk adoptions, %d shutdown recoveries\n",
+	fmt.Fprintf(&b, "  recovery     %d events, %d versions created, %d disk adoptions, %d shutdown recoveries (all workspaces; the sessions row above is the global dir only)\n",
 		r.Sessions.Recovery.Events, r.Sessions.Recovery.PhysicalVersionsCreated,
 		r.Sessions.Recovery.DiskAdoptions, r.Sessions.Recovery.ShutdownRecoveries)
 	if classified := r.Sessions.Recovery.ClassifiedCovered + r.Sessions.Recovery.ClassifiedAdopted +
@@ -373,7 +387,10 @@ func RenderText(r Report) string {
 	return b.String()
 }
 
-func collectSessions(dir string) SessionsReport {
+// collectSessions profiles the global sessions dir (count, bytes, log format)
+// and, from recoveryDirs, the recovery lifecycle stats spanning every session
+// root on the machine.
+func collectSessions(dir string, recoveryDirs []string) SessionsReport {
 	r := SessionsReport{Dir: dir}
 	if dir == "" {
 		return r
@@ -402,7 +419,7 @@ func collectSessions(dir string) SessionsReport {
 	}); err != nil && !os.IsNotExist(err) {
 		r.Error = err.Error()
 	}
-	r.Recovery = collectRecoveryLifecycle(dir)
+	r.Recovery = collectRecoveryLifecycle(recoveryDirs)
 	// tl1173s2: reuse the tl-1220 census classifier (probe.dag semantics live
 	// in one place) for the log-format marker. Read-only: the census classifies
 	// log heads without materializing, repairing, or decompressing to disk.
@@ -418,30 +435,53 @@ type recoveryLifecycleRecord struct {
 	Repeated         bool   `json:"repeated_in_process"`
 }
 
-func collectRecoveryLifecycle(dir string) RecoveryLifecycleReport {
+// collectRecoveryLifecycle reads the conflict logs of every dir in dirs — the
+// same roots, descent rule and line dedup as the fork census, so the old
+// lifecycle stats and the tl1443 census answer from one shared reading of the
+// same disk.
+func collectRecoveryLifecycle(dirs []string) RecoveryLifecycleReport {
 	report := RecoveryLifecycleReport{}
-	// tl1323: walk/open/scan failures used to vanish into bare `return nil`s,
-	// so a half-read tree reported the same all-zero counts as a clean one.
-	// They now land in UnreadEntries / ScanAborts — still aggregate-only
-	// counts, no paths or content.
-	_ = filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			report.UnreadEntries++
-			return nil
+	seenDirs := map[string]bool{}
+	seenLines := map[string]bool{}
+	for _, dir := range dirs {
+		dir = strings.TrimSpace(dir)
+		key := strings.ToLower(filepath.Clean(dir))
+		if dir == "" || seenDirs[key] {
+			continue
 		}
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), store.SessionConflictLogSuffix) {
-			return nil
+		seenDirs[key] = true
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			continue
 		}
-		// countRecoveryLifecycleFile owns the handle: the defer releases it at
-		// this callback's return instead of piling one fd per conflict log
-		// until the whole walk finishes.
-		countRecoveryLifecycleFile(path, &report)
-		return nil
-	})
+		// tl1323: walk/open/scan failures used to vanish into bare `return nil`s,
+		// so a half-read tree reported the same all-zero counts as a clean one.
+		// They now land in UnreadEntries / ScanAborts — still aggregate-only
+		// counts, no paths or content.
+		_ = filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				report.UnreadEntries++
+				return nil
+			}
+			if entry.IsDir() {
+				if path != dir && !forkCensusDescends(dir, path) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(entry.Name(), store.SessionConflictLogSuffix) {
+				return nil
+			}
+			// countRecoveryLifecycleFile owns the handle: the defer releases it at
+			// this callback's return instead of piling one fd per conflict log
+			// until the whole walk finishes.
+			countRecoveryLifecycleFile(path, &report, seenLines)
+			return nil
+		})
+	}
 	return report
 }
 
-func countRecoveryLifecycleFile(path string, report *RecoveryLifecycleReport) {
+func countRecoveryLifecycleFile(path string, report *RecoveryLifecycleReport, seenLines map[string]bool) {
 	file, err := os.Open(path)
 	if err != nil {
 		report.UnreadEntries++
@@ -450,8 +490,15 @@ func countRecoveryLifecycleFile(path string, report *RecoveryLifecycleReport) {
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
+		// Byte-identical copies of a line (live log vs .trash vs .pre-repair-*
+		// backups) are one logical event: count the first, skip the rest.
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || seenLines[line] {
+			continue
+		}
+		seenLines[line] = true
 		var record recoveryLifecycleRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil || strings.TrimSpace(record.Outcome) == "" {
+		if err := json.Unmarshal([]byte(line), &record); err != nil || strings.TrimSpace(record.Outcome) == "" {
 			report.InvalidRecords++
 			continue
 		}

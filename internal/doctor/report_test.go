@@ -126,7 +126,7 @@ func TestCollectRecoveryLifecycleAggregatesWithoutLeakingSessionData(t *testing.
 		t.Fatal(err)
 	}
 
-	report := collectSessions(dir)
+	report := collectSessions(dir, []string{dir})
 	if report.Recovery.Events != 11 || report.Recovery.PhysicalVersionsCreated != 1 ||
 		report.Recovery.DiskAdoptions != 1 || report.Recovery.ShutdownRecoveries != 1 ||
 		report.Recovery.RepeatedEvents != 2 || report.Recovery.MaxTopicOccurrences != 3 ||
@@ -167,7 +167,7 @@ func TestCollectRecoveryLifecycleTracesUnreadAndAbortedScans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report := collectSessions(dir)
+	report := collectSessions(dir, []string{dir})
 	if report.Recovery.Events != 1 {
 		t.Fatalf("records before the over-long line must still count, events = %d (%+v)", report.Recovery.Events, report.Recovery)
 	}
@@ -184,7 +184,7 @@ func TestCollectRecoveryLifecycleTracesUnreadAndAbortedScans(t *testing.T) {
 	}
 
 	var helperReport RecoveryLifecycleReport
-	countRecoveryLifecycleFile(filepath.Join(dir, "vanished.conflicts.jsonl"), &helperReport)
+	countRecoveryLifecycleFile(filepath.Join(dir, "vanished.conflicts.jsonl"), &helperReport, map[string]bool{})
 	if helperReport.UnreadEntries != 1 {
 		t.Fatalf("unopenable conflict log must count as unread entry: %+v", helperReport)
 	}
@@ -285,7 +285,7 @@ func TestCollectSessionsReportsLogFormatDAGLeftovers(t *testing.T) {
 	writeLog("sealed-dag.events.jsonl", `{"schema_version":2,"type":"dag_append","at":"2026-01-01T00:00:00Z"}`)
 	writeLog("flat-two.events.jsonl", `{"schema_version":1,"type":"append","at":"2026-01-01T00:00:00Z","message_index":0,"messages":[]}`)
 
-	report := collectSessions(dir)
+	report := collectSessions(dir, []string{dir})
 	if report.DAGLogs != 1 {
 		t.Fatalf("DAGLogs = %d, want 1 (one sealed schema-2 leftover among flat logs)", report.DAGLogs)
 	}
@@ -310,5 +310,46 @@ func TestCollectSessionsReportsLogFormatDAGLeftovers(t *testing.T) {
 	allFlat := RenderText(Report{Sessions: SessionsReport{}})
 	if !strings.Contains(allFlat, "log format   dag:0") {
 		t.Fatalf("all-flat dir should read dag:0:\n%s", allFlat)
+	}
+}
+
+// TestCollectRecoveryLifecycleMatchesForkCensusAcrossWorkspaces pins the
+// two-caliber contract on one disk: the old sessions.recovery lifecycle stats
+// and the tl1443 fork census share the same scan roots (global + every
+// project's session dir), the same descent rule and the same line dedup, so
+// Events == census Records and PhysicalVersionsCreated == census Forks. The
+// fixture's unique lines live under projects/ and inside deep .trash and
+// .pre-repair-* copies — exactly the shapes the old global-only scan without
+// dedup miscounted (it read 4 events while the census read 206 records on the
+// machine that surfaced this).
+func TestCollectRecoveryLifecycleMatchesForkCensusAcrossWorkspaces(t *testing.T) {
+	global, project := writeDeepForkFixture(t)
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, "projects", "test-project"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(global, filepath.Join(home, "sessions")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(project, filepath.Join(home, "projects", "test-project", "sessions")); err != nil {
+		t.Fatal(err)
+	}
+
+	report := Collect(Options{Version: "test", Config: config.Default()})
+	recovery, forks := report.Sessions.Recovery, report.Forks
+	if forks.SessionDirs != 2 || forks.Records != 5 || forks.Forks != 3 {
+		t.Fatalf("census = %+v, want 2 dirs / 5 records / 3 forks", forks)
+	}
+	if recovery.Events != 5 || recovery.PhysicalVersionsCreated != 3 || recovery.InvalidRecords != 0 {
+		t.Fatalf("lifecycle = %+v, want 5 events / 3 versions / 0 invalid", recovery)
+	}
+	if recovery.Events != forks.Records || recovery.PhysicalVersionsCreated != forks.Forks {
+		t.Fatalf("calibers disagree: lifecycle events=%d versions=%d vs census records=%d forks=%d",
+			recovery.Events, recovery.PhysicalVersionsCreated, forks.Records, forks.Forks)
+	}
+	text := RenderText(report)
+	if !strings.Contains(text, "shutdown recoveries (all workspaces") {
+		t.Fatalf("lifecycle line must be marked all-workspaces:\n%s", text)
 	}
 }
