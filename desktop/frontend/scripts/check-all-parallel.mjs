@@ -32,7 +32,7 @@ const checks = [
     "src/styles.css",
     "src/styles/mode-classic.css",
     "src/styles/mode-workbench.css",
-    "src/styles/mode-creation.css",
+    
     "src/components/RemoteConnectWizard.css",
     "src/components/TranscriptSelectionMenu.css",
     "src/components/MCPInteractionCard.css",
@@ -44,7 +44,7 @@ const checks = [
     "src/styles.css",
     "src/styles/mode-classic.css",
     "src/styles/mode-workbench.css",
-    "src/styles/mode-creation.css",
+    
     "src/components/RemoteConnectWizard.css",
   ]],
   ["check:theme-token", "node", ["scripts/check-theme-token-contract.mjs"]],
