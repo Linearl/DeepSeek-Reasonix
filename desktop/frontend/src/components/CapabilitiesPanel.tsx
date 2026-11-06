@@ -810,7 +810,7 @@ function FailedServersNotice({
                 <span className="cap-dot cap-dot--failed" />
                 <div className="cap-failure__text">
                   <div className="cap-failure__name">{s.name}</div>
-                  <div className="cap-failure__summary">{s.authStatus === "required" ? t("caps.authRequiredSummary") : summarizeServerError(error)}</div>
+                  <div className="cap-failure__summary">{localizedServerErrorFace(s, t)}</div>
                 </div>
               </div>
               <div className="cap-failure__actions">
@@ -1418,6 +1418,32 @@ function failureGroupLabel(kind: FailureKind, count: number, t: ReturnType<typeo
     default:
       return t("caps.failureGroupOther", { count });
   }
+}
+
+// tl1446-7: known failure kinds speak first — the localized human hint is
+// placed ahead of the compressed technical summary (both visible; the raw
+// log stays wherever it already rendered). "other" has no known face and
+// keeps the summary only — no invented copy.
+function failureKindHint(kind: FailureKind, t: ReturnType<typeof useT>): string {
+  switch (kind) {
+    case "auth":
+      return t("caps.failureHintAuth");
+    case "missing-command":
+      return t("caps.failureHintMissingCommand");
+    case "command-unavailable":
+      return t("caps.failureHintCommandUnavailable");
+    case "network":
+      return t("caps.failureHintNetwork");
+    default:
+      return "";
+  }
+}
+
+export function localizedServerErrorFace(server: ServerView, t: ReturnType<typeof useT>): string {
+  if (server.authStatus === "required") return t("caps.authRequiredSummary");
+  const hint = failureKindHint(failureKind(server), t);
+  const summary = summarizeServerError(server.error || t("caps.failed"));
+  return hint ? `${hint} — ${summary}` : summary;
 }
 
 function canBulkRemoveFailure(server: ServerView): boolean {
@@ -2445,7 +2471,7 @@ function mcpServerSchemaIssueCount(server: ServerView): number {
 
 function mcpSettingsServerSummary(server: ServerView, t: ReturnType<typeof useT>): string {
 	if (server.status === "failed") {
-		return server.authStatus === "required" ? t("caps.authRequiredSummary") : summarizeServerError(server.error || t("caps.failed"));
+		return localizedServerErrorFace(server, t);
 	}
 	if (server.status !== "connected") return serverStatusLabel(server, t);
 	const unavailable = mcpServerSchemaIssueCount(server);
@@ -3281,7 +3307,7 @@ export function MCPServersSettingsPage() {
 					<MCPSettingsSubpageHeader title={selectedServer.name} description={t("caps.serverDetailsHint")} onBack={() => setScreen({ kind: "list" })} />
 					{selectedServer.error && (
 						<div className="cap-mcp-detail-error">
-							<div className="banner banner--error">{summarizeServerError(selectedServer.error)}</div>
+							<div className="banner banner--error">{localizedServerErrorFace(selectedServer, t)}</div>
 							<details>
 								<summary>{t("caps.rawLog")}</summary>
 								<pre>{selectedServer.error}</pre>

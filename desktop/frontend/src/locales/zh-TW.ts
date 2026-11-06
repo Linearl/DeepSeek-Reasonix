@@ -4363,6 +4363,11 @@ export const zhTW: Record<DictKey, string> = {
   "caps.failureGroupCommandUnavailable": "{count} 個命令不可用",
   "caps.failureGroupNetwork": "{count} 個網路/權限異常",
   "caps.failureGroupOther": "{count} 個其他異常",
+  // tl1446-7: 已知失敗類別人話提示——排在壓縮摘要之前（人話在上摘要在下）。
+  "caps.failureHintAuth": "認證被拒——請檢查 API key 或重新授權",
+  "caps.failureHintMissingCommand": "未設定啟動指令——請在該伺服器的設定中填寫指令",
+  "caps.failureHintCommandUnavailable": "找不到可執行檔——指令不存在或不在 PATH 中",
+  "caps.failureHintNetwork": "連線失敗或被拒——請檢查網路、代理或 API key",
   "welcome.title": "一個編碼智慧體",
   "welcome.ex4": "找出並修復這個專案裡的一個 bug",
   "composer.normalMode": "對話模式",

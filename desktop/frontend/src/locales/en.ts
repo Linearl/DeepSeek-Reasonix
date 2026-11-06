@@ -645,6 +645,12 @@ export const en = {
   "caps.failureGroupCommandUnavailable": "{count} command unavailable",
   "caps.failureGroupNetwork": "{count} network/auth issue",
   "caps.failureGroupOther": "{count} other issue",
+  // tl1446-7: localized human hints for known failure kinds — placed ahead of
+  // the compressed technical summary (human line first, summary below).
+  "caps.failureHintAuth": "Authentication was rejected — check the API key or sign in again",
+  "caps.failureHintMissingCommand": "No start command is configured — set the command in this server's settings",
+  "caps.failureHintCommandUnavailable": "The executable was not found — the command does not exist or is not on PATH",
+  "caps.failureHintNetwork": "The connection failed or was refused — check the network, proxy, or API key",
   "caps.showLog": "Show log",
   "caps.rawLog": "Raw log",
   "caps.copyLog": "Copy log",

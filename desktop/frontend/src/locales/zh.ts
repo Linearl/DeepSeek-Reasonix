@@ -641,6 +641,11 @@ export const zh: Record<DictKey, string> = {
   "caps.failureGroupCommandUnavailable": "{count} 个命令不可用",
   "caps.failureGroupNetwork": "{count} 个网络/权限异常",
   "caps.failureGroupOther": "{count} 个其他异常",
+  // tl1446-7: 已知失败类别人话提示——排在压缩摘要之前(人话在上摘要在下)。
+  "caps.failureHintAuth": "认证被拒——请检查 API key 或重新授权",
+  "caps.failureHintMissingCommand": "未配置启动命令——请在该服务器的设置中填写命令",
+  "caps.failureHintCommandUnavailable": "找不到可执行文件——命令不存在或不在 PATH 中",
+  "caps.failureHintNetwork": "连接失败或被拒——请检查网络、代理或 API key",
   "caps.showLog": "查看日志",
   "caps.rawLog": "原始日志",
   "caps.copyLog": "复制日志",
