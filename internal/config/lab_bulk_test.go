@@ -23,8 +23,9 @@ func TestLabBulkScopeBoundary(t *testing.T) {
 	// 可选及以上：推荐+可选全进，未稳定/已退役绝不进。
 	p := PlanLabBulk(LabBulkScopeOptional, true, stable, true)
 	got := planIDs(p)
-	if !got["sessionWall"] || !got["dream"] {
-		t.Fatalf("optional scope should include recommended(sessionWall) and optional(dream): %v", p.Targets)
+	// tl1453：dream 退役后，可选档样例换 decisionPatterns（同可选、可批量）。
+	if !got["sessionWall"] || !got["decisionPatterns"] {
+		t.Fatalf("optional scope should include recommended(sessionWall) and optional(decisionPatterns): %v", p.Targets)
 	}
 	for _, id := range p.Targets {
 		f := findLabFeatureTier(t, id)
@@ -39,7 +40,7 @@ func TestLabBulkScopeBoundary(t *testing.T) {
 	if !got["sessionWall"] {
 		t.Fatalf("recommended scope should include recommended-tier sessionWall")
 	}
-	if got["dream"] || got["splitView"] {
+	if got["decisionPatterns"] || got["splitView"] {
 		t.Fatalf("recommended scope must NOT include optional-tier features: %v", p.Targets)
 	}
 

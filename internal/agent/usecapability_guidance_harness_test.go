@@ -31,7 +31,7 @@ func guidanceFrontend(t *testing.T, groupsOn bool) *UseCapabilityTool {
 	return groupTestFrontend(t, []string{
 		"rename_session", "search_sessions", "get_task_card",
 		"qq", "weixin", "channel_send",
-		"mailbox", "dream",
+		"mailbox", "decision_pattern_solidify",
 	}, groupsOn)
 }
 

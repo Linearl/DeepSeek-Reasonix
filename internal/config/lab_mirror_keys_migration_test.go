@@ -25,9 +25,8 @@ var labMirrorCases = []struct {
 	{"experimental_trace_as_state", "trace_as_state",
 		func(c *Config) *bool { return &c.Agent.TraceAsState },
 		func(c *Config) *bool { return &c.Desktop.ExperimentalTraceAsState }},
-	{"experimental_dream", "experimental_dream",
-		func(c *Config) *bool { return &c.Agent.ExperimentalDream },
-		func(c *Config) *bool { return &c.Desktop.ExperimentalDream }},
+	// tl1453: experimental_dream left the fold table with its feature — the
+	// tombstone fields decode and are ignored (retired_experimental_dream_test).
 	{"experimental_session_collab", "experimental_session_collab",
 		func(c *Config) *bool { return &c.Agent.ExperimentalSessionCollab },
 		func(c *Config) *bool { return &c.Desktop.ExperimentalSessionCollab }},
@@ -104,11 +103,11 @@ func TestLabMirrorKeysFoldDoubleWriteWithoutDrift(t *testing.T) {
 // nothing changes.
 func TestLabMirrorKeysMirrorFalseKeepsAgentOff(t *testing.T) {
 	path := writeLabMirrorConfig(t, `[desktop]
-experimental_dream = false
+experimental_auto_load_older = false
 experimental_perf_monitor = false
 `)
 	cfg := LoadForEdit(path)
-	if cfg.Agent.ExperimentalDream || cfg.Desktop.ExperimentalDream {
+	if cfg.Agent.ExperimentalAutoLoadOlder || cfg.Desktop.ExperimentalAutoLoadOlder {
 		t.Fatal("mirror false must not turn the [agent] key on")
 	}
 	if cfg.Agent.ExperimentalPerfMonitor || cfg.Desktop.ExperimentalPerfMonitor {
@@ -127,18 +126,14 @@ func TestLabMirrorKeysOffSurvivesSaveRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(`[desktop]
-experimental_dream = true
 experimental_session_collab = true
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	cfg := LoadForEdit(path)
-	if !cfg.Agent.ExperimentalDream || !cfg.Agent.ExperimentalSessionCollab {
-		t.Fatal("precondition: the fold must turn both switches on")
-	}
-	if err := cfg.SetExperimentalDream(false); err != nil {
-		t.Fatal(err)
+	if !cfg.Agent.ExperimentalSessionCollab {
+		t.Fatal("precondition: the fold must turn the switch on")
 	}
 	if err := cfg.SetExperimentalSessionCollab(false); err != nil {
 		t.Fatal(err)
@@ -152,15 +147,11 @@ experimental_session_collab = true
 		t.Fatal(err)
 	}
 	text := string(raw)
-	if strings.Contains(text, "experimental_dream = true") ||
-		strings.Contains(text, "experimental_session_collab = true") {
+	if strings.Contains(text, "experimental_session_collab = true") {
 		t.Fatalf("save must not carry a stale on state:\n%s", text)
 	}
 
 	reloaded := LoadForEdit(path)
-	if reloaded.Agent.ExperimentalDream || reloaded.Desktop.ExperimentalDream {
-		t.Fatal("off must survive the reload (no resurrection from a stale mirror true)")
-	}
 	if reloaded.Agent.ExperimentalSessionCollab || reloaded.Desktop.ExperimentalSessionCollab {
 		t.Fatal("off must survive the reload (no resurrection from a stale mirror true)")
 	}
@@ -240,7 +231,8 @@ func TestLabMirrorKeysRenderExactlyOnce(t *testing.T) {
 	}
 	for _, want := range []string{
 		"trace_as_state = false",
-		"experimental_dream = false",
+		// (experimental_dream absent: tl1453 retired the feature; the tombstone
+		// field never renders — retired_experimental_dream_test pins that.)
 		"experimental_session_collab = false",
 		"experimental_auto_load_older = false",
 		"experimental_perf_monitor = false",
@@ -263,7 +255,7 @@ func TestLabMirrorKeysRenderExactlyOnce(t *testing.T) {
 // and clear the retired [desktop] mirror, so a save drops the legacy key.
 func TestLabMirrorSettersSingleWrite(t *testing.T) {
 	c := &Config{}
-	c.Desktop.ExperimentalDream = true // pre-473 leftover, not yet normalized
+	c.Desktop.ExperimentalSessionCollab = true // pre-473 leftover, not yet normalized
 	setters := []struct {
 		name    string
 		apply   func(bool) error
@@ -273,9 +265,6 @@ func TestLabMirrorSettersSingleWrite(t *testing.T) {
 		{"SetExperimentalTraceAsState", c.SetExperimentalTraceAsState,
 			func() bool { return c.Agent.TraceAsState },
 			func() bool { return c.Desktop.ExperimentalTraceAsState }},
-		{"SetExperimentalDream", c.SetExperimentalDream,
-			func() bool { return c.Agent.ExperimentalDream },
-			func() bool { return c.Desktop.ExperimentalDream }},
 		{"SetExperimentalSessionCollab", c.SetExperimentalSessionCollab,
 			func() bool { return c.Agent.ExperimentalSessionCollab },
 			func() bool { return c.Desktop.ExperimentalSessionCollab }},

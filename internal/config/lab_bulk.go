@@ -149,8 +149,7 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// ── observability ──
 	"monitoring":  func(c *Config, on bool) error { return c.SetExperimentalSessionMonitor(on) },
 	"subagentTps": func(c *Config, on bool) error { return c.SetExperimentalSubagentTps(on) },
-	// ── automation（记忆整理族）──
-	"dream":            func(c *Config, on bool) error { return c.SetExperimentalDream(on) },
+	// ── automation（自动化族；tl1453：dream 随 experimental_dream 实验退役出批量面）──
 	"decisionPatterns": func(c *Config, on bool) error { return c.SetExperimentalDecisionPatterns(on) },
 	// 任务 1070：Standard 流续跑总闸（默认关；见 render.go lab 表注释）。
 	"standardContinuation": func(c *Config, on bool) error { return c.SetStandardContinuation(on) },

@@ -186,11 +186,13 @@ var groupCatalog = []GroupDef{
 		Triggers: []string{"移动文件", "删除区间", "delete_range", "move_file"},
 	},
 	{
+		// tl1453：dream/distill 记忆整理工具随 experimental_dream 实验退役
+		// （宪法 Q1），触发词与本组只剩决策模式固化一件。
 		Name:     "memory",
-		Scenario: "记忆/蒸馏：dream/distill 记忆整理与决策模式固化",
-		Members:  []string{"distill", "dream", "decision_pattern_solidify"},
-		Example:  "dream",
-		Triggers: []string{"蒸馏", "dream", "做梦", "记忆整理", "decision_pattern"},
+		Scenario: "记忆固化：决策模式固化",
+		Members:  []string{"decision_pattern_solidify"},
+		Example:  "decision_pattern_solidify",
+		Triggers: []string{"决策模式", "decision_pattern"},
 	},
 }
 

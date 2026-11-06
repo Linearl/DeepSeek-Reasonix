@@ -889,7 +889,9 @@ func migrateLabMirrorKeysToAgent(c *Config) bool {
 		}
 	}
 	fold(&c.Agent.TraceAsState, &c.Desktop.ExperimentalTraceAsState)
-	fold(&c.Agent.ExperimentalDream, &c.Desktop.ExperimentalDream)
+	// tl1453: the dream fold is gone with the feature — both tombstone fields
+	// decode and are ignored (a stale mirror true stays inert; nothing consumes
+	// either side anymore).
 	fold(&c.Agent.ExperimentalSessionCollab, &c.Desktop.ExperimentalSessionCollab)
 	fold(&c.Agent.ExperimentalAutoLoadOlder, &c.Desktop.ExperimentalAutoLoadOlder)
 	fold(&c.Agent.ExperimentalPerfMonitor, &c.Desktop.ExperimentalPerfMonitor)

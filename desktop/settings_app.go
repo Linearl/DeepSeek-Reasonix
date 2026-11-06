@@ -571,7 +571,6 @@ type SettingsView struct {
 	HistoryBodyBudgetMb     int  `json:"historyBodyBudgetMb"`
 	MarkdownBudgetMb        int  `json:"markdownBudgetMb"`
 	ExperimentalCacheTuning bool `json:"experimentalCacheTuning"`
-	ExperimentalDream       bool `json:"experimentalDream"`
 	// 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117 首落地，
 	// 本件补实验室设置页入口）。
 	StalledIntentNudge      bool `json:"stalledIntentNudge"`
@@ -932,8 +931,6 @@ type DesktopStartupSettingsView struct {
 	ExperimentalMultiEditSkipFailed     bool `json:"experimentalMultiEditSkipFailed"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
-	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
-	ExperimentalDream bool `json:"experimentalDream"`
 	// 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge）readback。
 	// 该键原为纯 TOML（117），本件补实验室设置页入口后纳入 SettingsView。
 	StalledIntentNudge      bool `json:"stalledIntentNudge"`
@@ -1786,7 +1783,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalMultiEditEvidenceNarrow = cfg.Agent.ExperimentalMultiEditEvidenceNarrow
 		view.ExperimentalMultiEditSkipFailed = cfg.Agent.ExperimentalMultiEditSkipFailed
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
-		view.ExperimentalDream = cfg.Agent.ExperimentalDream
 		// 任务 1069：模型提前结束判定器续轮提醒 readback（stalled_intent_nudge）。
 		view.StalledIntentNudge = cfg.Agent.StalledIntentNudge
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
@@ -2085,7 +2081,6 @@ func (a *App) Settings() SettingsView {
 		ExperimentalMultiEditEvidenceNarrow: cfg.Agent.ExperimentalMultiEditEvidenceNarrow,
 		ExperimentalMultiEditSkipFailed:     cfg.Agent.ExperimentalMultiEditSkipFailed,
 		ExperimentalTraceAsState:            cfg.Agent.TraceAsState,
-		ExperimentalDream:                   cfg.Agent.ExperimentalDream,
 		// 任务 1069：模型提前结束判定器续轮提醒 readback。
 		StalledIntentNudge: cfg.Agent.StalledIntentNudge,
 		// Task 801: decision-pattern readback (empty path resolves to default).

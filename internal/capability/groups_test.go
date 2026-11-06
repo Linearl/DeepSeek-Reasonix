@@ -7,12 +7,14 @@ import (
 
 // appendixA53 is the task-951 report appendix A list (53 L1 tool entries,
 // 78 Name() registrations − the 24 L0 tools), extended by task 934 with the
-// five workflow_* management tools. The group tagging must cover it exactly —
+// five workflow_* management tools. tl1453 retired the experimental dream /
+// distill curation tools (constitution Q1), so they leave the appendix and
+// the group tagging together. The group tagging must cover it exactly —
 // every tool in exactly one group, no phantom members.
 var appendixA53 = []string{
 	"adopt_session_version", "channel_cancel", "channel_list", "channel_read", "channel_send",
 	"claim_check", "code_index", "create_task_card", "create_worktree", "decision_pattern_solidify",
-	"delete_range", "delete_session", "delete_symbol", "dingtalk", "distill", "drain_inbox", "dream",
+	"delete_range", "delete_session", "delete_symbol", "dingtalk", "drain_inbox",
 	"event_wait", "feishu", "get_session_info", "get_task_card", "heartbeat_task_enable",
 	"heartbeat_task_list", "heartbeat_task_upsert", "inspect_worktree_merge", "list_session_versions",
 	"list_task_cards", "ls", "mailbox", "manage_sessions", "merge_worktree_back", "move_file",
@@ -165,16 +167,16 @@ func TestRouteSuggestsGroupByTrigger(t *testing.T) {
 // attribution and other renderers.
 func TestToolGroupLookup(t *testing.T) {
 	cases := map[string]string{
-		"rename_session":      "session",
-		"qq":                  "im",
-		"mailbox":             "inbox",
-		"create_worktree":     "worktree",
-		"screenshot":          "system",
-		"heartbeat_task_list": "heartbeat",
-		"move_file":           "files",
-		"dream":               "memory",
-		"grep":                "", // L0 tool, untagged
-		"not_a_real_tool":     "",
+		"rename_session":            "session",
+		"qq":                        "im",
+		"mailbox":                   "inbox",
+		"create_worktree":           "worktree",
+		"screenshot":                "system",
+		"heartbeat_task_list":       "heartbeat",
+		"move_file":                 "files",
+		"decision_pattern_solidify": "memory",
+		"grep":                      "", // L0 tool, untagged
+		"not_a_real_tool":           "",
 	}
 	for tool, want := range cases {
 		if got := ToolGroup(tool); got != want {

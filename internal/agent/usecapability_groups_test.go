@@ -128,7 +128,7 @@ func TestGroupInspectCardIM(t *testing.T) {
 // TestGroupInspectDirectoryOnlyGroups: the six non-first-batch groups return a
 // compact directory payload with a note, never a fabricated card.
 func TestGroupInspectDirectoryOnlyGroups(t *testing.T) {
-	frontend := groupTestFrontend(t, []string{"mailbox", "dream"}, true)
+	frontend := groupTestFrontend(t, []string{"mailbox", "decision_pattern_solidify"}, true)
 	for _, id := range []string{"tool:group/inbox", "tool:group/memory"} {
 		out, err := frontend.Execute(context.Background(), json.RawMessage(`{"action":"inspect","capability_id":"`+id+`"}`))
 		if err != nil {

@@ -41,9 +41,7 @@ lab_flags:
   completionSummary:
     switch: experimentalCompletionSummary
     tier: optional
-  dream:
-    switch: experimentalDream
-    tier: optional
+  # tl1453: dream retired with the experimental_dream switch (constitution Q1).
   heartbeatBackground:
     switch: experimentalHeartbeatBackground
     tier: optional
