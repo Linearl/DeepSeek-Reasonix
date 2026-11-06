@@ -14,18 +14,20 @@ import {
   buildJankRecord,
   buildPerformancePayload,
   formatPerformanceContext,
-  type Breadcrumb,
   type PerformanceSnapshot,
 } from "../lib/crash";
 import {
   activityCapacity,
+  installBreadcrumbConsoleHook,
   noteActivity,
   resetActivityForTest,
   snapshotActivity,
-  type ActivityEntry,
+  type Breadcrumb,
 } from "../lib/breadcrumbs";
 import { app, resetStreamActivityTapForTest, installStreamActivityTap } from "../lib/bridge";
-import { installBreadcrumbConsoleHook } from "../lib/breadcrumbs";
+
+// The proxy is exercised with ad-hoc binding names that AppBindings does not declare.
+const anyApp = app as unknown as Record<string, (...args: unknown[]) => unknown>;
 
 let passed = 0;
 let failed = 0;
@@ -181,16 +183,16 @@ console.log("\ncrash activity lane (tl1417 gap 2)");
   const g = globalThis as any;
   const prevGo = g.window?.go;
   g.window = { ...(g.window ?? {}), go: { main: { App: { GetStatus: () => Promise.resolve({ ok: true }), FailingCall: () => Promise.reject(new Error("boom")), SyncCall: () => 42 } } } };
-  await app.GetStatus();
-  await app.GetStatus().catch(() => {});
+  await anyApp.GetStatus();
+  await (anyApp.GetStatus() as Promise<unknown>).catch(() => {});
   let lane = snapshotActivity();
   eq(lane.map((e) => [e.kind, e.name, e.n].join(":")), ["bridge:GetStatus:2", "bridge.done:GetStatus:2"], "proxy notes call and done (name only); a repeated call coalesces at depth 2");
   resetActivityForTest();
-  await app.FailingCall().catch(() => {});
+  await (anyApp.FailingCall() as Promise<unknown>).catch(() => {});
   lane = snapshotActivity();
   eq(lane.map((e) => e.kind), ["bridge", "bridge.error"], "rejections note bridge.error");
   resetActivityForTest();
-  app.SyncCall();
+  anyApp.SyncCall();
   lane = snapshotActivity();
   eq(lane.map((e) => e.kind), ["bridge", "bridge.done"], "sync results note done too");
   ok(!JSON.stringify(lane).includes("boom"), "the error message never enters the lane");
