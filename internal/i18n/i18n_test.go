@@ -24,6 +24,42 @@ func TestCatalogsComplete(t *testing.T) {
 	}
 }
 
+// TestProviderStatusMessageGatewayFamily pins the 502/504 gateway statuses to
+// their localized explanations. Before tl1446 the switch had no cases for them,
+// so errmsg.go fell through to the raw url.Error and the user-facing turn-done
+// error was a bare English transport failure (tl1436 report, gap #11).
+func TestProviderStatusMessageGatewayFamily(t *testing.T) {
+	catalogs := []struct {
+		tag     string
+		catalog Messages
+	}{
+		{"en", English},
+		{"zh", Chinese},
+		{"zh-TW", ChineseTraditional},
+	}
+	for _, cat := range catalogs {
+		t.Run(cat.tag, func(t *testing.T) {
+			for status, want := range map[int]string{
+				502: "(HTTP 502)",
+				504: "(HTTP 504)",
+			} {
+				got := cat.catalog.ProviderStatusMessage(status)
+				if got == "" {
+					t.Fatalf("ProviderStatusMessage(%d) = \"\", want gateway guidance", status)
+				}
+				if !strings.Contains(got, want) {
+					t.Errorf("ProviderStatusMessage(%d) = %q, want it to contain %q", status, got, want)
+				}
+			}
+		})
+	}
+	// Unknown / previously unmapped statuses must keep returning "" so
+	// errmsg.go keeps its fall-through-to-raw behavior.
+	if got := English.ProviderStatusMessage(418); got != "" {
+		t.Errorf("ProviderStatusMessage(418) = %q, want \"\"", got)
+	}
+}
+
 // TestCatalogsAgreeOnPlaceholders catches translations that silently drop or
 // gain %s/%d/%q placeholders — a class of bug that only blows up when the
 // affected message is rendered. Compares the count per format verb across

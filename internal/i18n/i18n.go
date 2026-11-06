@@ -641,6 +641,8 @@ type Messages struct {
 	ProviderErrRateLimited         string // 429
 	ProviderErrServer              string // 500
 	ProviderErrServerBusy          string // 503
+	ProviderErrBadGateway          string // 502
+	ProviderErrGatewayTimeout      string // 504
 	ProviderErrWaitExhaustedFmt    string // total time waited before giving up
 
 	// selection menus
@@ -722,8 +724,12 @@ func (m Messages) ProviderStatusMessage(status int) string {
 		return m.ProviderErrRateLimited
 	case 500:
 		return m.ProviderErrServer
+	case 502:
+		return m.ProviderErrBadGateway
 	case 503:
 		return m.ProviderErrServerBusy
+	case 504:
+		return m.ProviderErrGatewayTimeout
 	}
 	return ""
 }
