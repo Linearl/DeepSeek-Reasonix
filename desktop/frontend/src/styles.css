@@ -11052,6 +11052,29 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
   font-size: var(--font-status, 11px);
 }
+/* tl1433 四缺口①：胶囊里的工作流 run 行——整行就是跳转按钮（复用已结束行的
+   div 容器 + row-main 按钮形态与状态胶囊），run 与它嵌套的子代理收在同一块。 */
+.capsule-panel__wf {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.capsule-panel__wf + .capsule-panel__wf {
+  margin-top: 2px;
+}
+.capsule-panel__row--workflow .capsule-panel__copy strong {
+  font-weight: 600;
+}
+/* tl1433 四缺口③：工作流派发的子代理缩进挂在 run 行下，左侧引导线标出归属
+   （「子代理」徽标样式与任务面板共用，见 .subagents-panel__sub-badge）。 */
+.capsule-panel__wf-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0 14px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
 .capsule-panel__stop {
   display: inline-flex;
   align-items: center;
@@ -30439,6 +30462,38 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--fg-dim);
+}
+
+/* tl1433 四缺口③：子代理层级——归属到工作流 run 的运行中子代理缩进挂在 run 行
+   之下。run 行的 row-wrap 是可折行的 flex 容器（tl1209），嵌套列表像行内详情
+   一样独占一整行；左侧引导线标出「这些属于上面那个工作流」。 */
+.subagents-panel__wf-children {
+  flex: 1 1 100%;
+  min-width: 0;
+  list-style: none;
+  margin: 0 0 0 16px;
+  padding: 0;
+  border-top: 1px solid var(--border-soft);
+  border-left: 1px solid var(--border-soft);
+}
+
+/* 「子代理」徽标（任务面板嵌套行 + 胶囊嵌套行共用一处）。 */
+.subagents-panel__sub-badge,
+.capsule-panel__sub-badge {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--fg-dim);
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+/* tl1433 四缺口④：「最近工作流」段的终态 run 行读作历史——不加粗（运行中的
+   run 行由 .subagents-panel__row--workflow 加粗；双类选择器压过它）。 */
+.subagents-panel__row--workflow.subagents-panel__row--workflow-ended {
+  font-weight: 400;
 }
 
 .subagents-panel__detailview {

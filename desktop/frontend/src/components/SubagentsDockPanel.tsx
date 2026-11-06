@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -38,6 +38,7 @@ import {
   mergeEndedSubagentRecords,
   mergePersistedRunningSubagents,
   mergeRegistryRunningSubagents,
+  sidecarOnlyRunningEntries,
   subagentChildTools,
   subagentSilenceMs,
   type SubagentDirectory,
@@ -45,7 +46,7 @@ import {
   type SubagentDirectoryItem,
 } from "../lib/subagentDirectory";
 import type { SubagentArtifactView, SubagentSendReceiptView } from "../lib/types";
-import { runningWorkflowRuns, workflowRunRowView, type WorkflowRunRowView } from "../lib/workflowRunRows";
+import { runningWorkflowRuns, workflowRunRowView, attributeWorkflowChildren, endedWorkflowRunStateKey, type WorkflowRunRowView } from "../lib/workflowRunRows";
 import type { WireWorkflowRun } from "../lib/workflowTypes";
 
 // 任务440: the dock detail's live transcript loads lazily — the same pattern
@@ -150,13 +151,17 @@ function childToolLabel(tool: SubagentDirectoryItem): string {
  *  switch, asks the panel to open the read-only detail view.
  *  tl1209: a running row may carry its own terminate button next to the row
  *  body — same per-child cancel the capsule's running rows use; ended rows
- *  never do. */
+ *  never do.
+ *  tl1433 四缺口③: `nested` renders the same row indented under its workflow
+ *  run row with a 「子代理」 badge — the row keeps every affordance (detail,
+ *  inline preview, terminate); only its placement and the badge change. */
 const DirectoryRow = memo(function DirectoryRow({
   entry,
   onSelect,
   onTerminate,
   now,
   onContinue,
+  nested = false,
 }: {
   entry: SubagentDirectoryEntry;
   onSelect?: () => void;
@@ -169,6 +174,8 @@ const DirectoryRow = memo(function DirectoryRow({
   /** tl1447 缺陷②: 「继续」续轮桥（App ContinueSubagentForSession，已绑定
    *  sessionPath）。仅静默越阈的运行行渲染入口；两步确认（先确认后继续）。 */
   onContinue?: (ref: string) => Promise<SubagentSendReceiptView>;
+  /** tl1433 四缺口③: placed under a workflow run row (hierarchy view). */
+  nested?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -235,7 +242,7 @@ const DirectoryRow = memo(function DirectoryRow({
     setOpen((value) => !value);
   };
   return (
-    <li className="subagents-panel__row-wrap">
+    <li className="subagents-panel__row-wrap" data-wf-child={nested ? ref ?? entry.item.id : undefined}>
       <button
         type="button"
         className={`subagents-panel__row${open ? " subagents-panel__row--open" : ""}`}
@@ -243,6 +250,7 @@ const DirectoryRow = memo(function DirectoryRow({
         onClick={handleClick}
       >
         <StatusIcon entry={entry} />
+        {nested && <span className="subagents-panel__sub-badge">{t("workflowPanel.kind.subagent")}</span>}
         {/* 任务1033: native title clipped long command subjects — wrap-mode
             Tooltip shows the full text on hover instead. */}
         <Tooltip label={title} wrap>
@@ -337,32 +345,60 @@ function workflowRowElapsed(view: WorkflowRunRowView, now: number, t: ReturnType
   return formatDurationLabel(Math.max(0, Math.round((now - view.startedAt) / 1000)), t);
 }
 
+// tl1433 四缺口④：终态 run 行的时长是定值（起止差），不随墙钟走；任一端缺
+// 失显示 —（不拿 now 冒充终点）。终态徽章键见 endedWorkflowRunStateKey
+// （lib/workflowRunRows，与胶囊共用）。
+function workflowRowDuration(view: WorkflowRunRowView, t: ReturnType<typeof useT>): string {
+  if (view.startedAt === undefined || view.endedAt === undefined) return "—";
+  return formatDurationLabel(Math.max(0, Math.round((view.endedAt - view.startedAt) / 1000)), t);
+}
+
+function EndedRunGlyph({ state }: { state: WorkflowRunRowView["state"] }) {
+  if (state === "completed") {
+    return <CheckCircle2 size={13} aria-hidden="true" className="subagents-panel__icon subagents-panel__icon--done" />;
+  }
+  if (state === "failed") {
+    return <CircleAlert size={13} aria-hidden="true" className="subagents-panel__icon subagents-panel__icon--failed" />;
+  }
+  return <CircleAlert size={13} aria-hidden="true" className="subagents-panel__icon" />;
+}
+
 /** tl1433: 任务面板「运行中」列表并入的工作流 run 行（运行中的工作流作为一
  *  种任务类型）。行本体 = 状态图标（旋转）+ 工作流名 + 元行（当前节点 ·
  *  已完成/总节点 · 时长）+ 状态徽章 + 跳出图标；点击经 onOpenWorkflowRun
  *  跳工作流面板并选中该 run（App 注入；无回调时不渲染行——数据与出口同
- *  源注入，备用视图不传即 byte-for-byte 原面板）。 */
+ *  源注入，备用视图不传即 byte-for-byte 原面板）。
+ *  四缺口③：children = 归属到本 run 的运行中子代理行（DirectoryRow nested），
+ *  缩进挂在 run 行之下（层级）；四缺口④：variant="ended" 是「最近」段的终态
+ *  形态（终态图标 + 定值时长 + 终态徽章，点击同一出口）。 */
 const WorkflowRunRow = memo(function WorkflowRunRow({
   view,
   now,
   onOpen,
+  variant = "running",
+  children,
 }: {
   view: WorkflowRunRowView;
   now: number;
   onOpen?: (runId: string) => void;
+  variant?: "running" | "ended";
+  children?: ReactNode;
 }) {
   const t = useT();
   if (!onOpen) return null;
+  const ended = variant === "ended";
+  const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
   return (
     <li className="subagents-panel__row-wrap">
       <button
         type="button"
-        className="subagents-panel__row subagents-panel__row--workflow"
+        className={`subagents-panel__row subagents-panel__row--workflow${ended ? " subagents-panel__row--workflow-ended" : ""}`}
         data-workflow-run={view.runId}
+        data-wf-run-state={view.state}
         aria-label={`${t("workflowPanel.title")} ${view.workflow}`}
         onClick={() => onOpen(view.runId)}
       >
-        <LoaderCircle size={13} aria-hidden="true" className="subagents-panel__spin" />
+        {ended ? <EndedRunGlyph state={view.state} /> : <LoaderCircle size={13} aria-hidden="true" className="subagents-panel__spin" />}
         <span className="subagents-panel__row-main">
           <Tooltip label={view.workflow} wrap>
             <span className="subagents-panel__row-title">{view.workflow}</span>
@@ -373,12 +409,17 @@ const WorkflowRunRow = memo(function WorkflowRunRow({
             <span>
               {t("workflowPanel.progress", { done: String(view.doneCount), total: String(view.totalCount) })}
             </span>
-            <span>{workflowRowElapsed(view, now, t)}</span>
+            <span>{ended ? workflowRowDuration(view, t) : workflowRowElapsed(view, now, t)}</span>
           </span>
         </span>
-        <span className="subagents-panel__row-status">{t("workflowPanel.run.running")}</span>
+        <span className="subagents-panel__row-status">{ended ? t(endedWorkflowRunStateKey(view.state)) : t("workflowPanel.run.running")}</span>
         <ExternalLink size={12} aria-hidden="true" className="subagents-panel__chevron" />
       </button>
+      {hasChildren && (
+        <ul className="subagents-panel__wf-children" data-wf-run-children={view.runId}>
+          {children}
+        </ul>
+      )}
     </li>
   );
 });
@@ -656,6 +697,7 @@ export function SubagentsDockPanel({
   transcriptItems,
   registryRunning,
   workflowRuns,
+  workflowRecentRuns,
   onOpenWorkflowRun,
 }: {
   directory: SubagentDirectory;
@@ -705,6 +747,11 @@ export function SubagentsDockPanel({
    *  纯展示数据）。在列时作为任务行并入「运行中」列表；不传即无 run 行，
    *  面板 byte-for-byte 原样（备用视图不传）。 */
   workflowRuns?: readonly WireWorkflowRun[];
+  /** tl1433 四缺口④：刚结束的工作流 run（同一喂单经 recentEndedWorkflowRuns
+   *  投影：终态、30 分钟内、最多 3 条）。非空时面板多一个「最近」段——run
+   *  结束后不再凭空消失，点击走同一出口跳工作流面板选中该 run。不传即无该
+   *  段（备用视图不传，byte-for-byte）。 */
+  workflowRecentRuns?: readonly WireWorkflowRun[];
   /** tl1433: run 行点击出口——App 据此跳工作流面板并选中该 run。数据与出口
    *  同源注入：有数据无出口（不应出现）时行不渲染，不产生死行。 */
   onOpenWorkflowRun?: (runId: string) => void;
@@ -879,11 +926,36 @@ export function SubagentsDockPanel({
   // 行时跳（15s），静止面板零定时器。入列条件在本面板再过滤一道（App 下发
   // 前已过滤——防御面：completed/interrupted 落进来也不渲染成说谎的行）。
   const workflowViews = useMemo(() => runningWorkflowRuns(workflowRuns ?? []).map(workflowRunRowView), [workflowRuns]);
+  // tl1433 四缺口④：刚结束的 run 进「最近」段（App 经 recentEndedWorkflowRuns
+  // 投影下发）。面板同样再过滤一道：running 落进来不渲染成终态行（终态徽章
+  // 对运行中的 run 是说谎）。
+  const recentWorkflowViews = useMemo(
+    () => (workflowRecentRuns ?? []).filter((run) => run.state !== "running").map(workflowRunRowView),
+    [workflowRecentRuns],
+  );
+  // tl1433 四缺口③：子代理层级——工作流派发的运行中子代理（仅 sidecar 可见
+  // 的那类，tl1435 把它们并进了运行区但平铺在顶层）归到所属 run 行下缩进
+  // 渲染。只在 run 行真会渲染时归属（有跳转出口）：否则归走的行会随不渲染
+  // 的 run 行一起消失。归不上的（多 run 并发派发等）照旧留顶层。运行分区计
+  // 数不变——嵌套行仍在 running 里，只是换了位置。
+  const workflowChildren = useMemo(() => {
+    if (!onOpenWorkflowRun || workflowViews.length === 0) {
+      return { byRun: new Map<string, SubagentDirectoryEntry[]>(), topLevel: running };
+    }
+    const { byRun } = attributeWorkflowChildren(
+      sidecarOnlyRunningEntries(running, registryRunning),
+      workflowRuns ?? [],
+      (entry) => ({ ref: entry.ref, startedAt: entry.item.startedAt }),
+    );
+    if (byRun.size === 0) return { byRun, topLevel: running };
+    const nestedIds = new Set<string>();
+    for (const list of byRun.values()) for (const entry of list) nestedIds.add(entry.item.id);
+    return { byRun, topLevel: running.filter((entry) => !nestedIds.has(entry.item.id)) };
+  }, [onOpenWorkflowRun, workflowViews.length, running, registryRunning, workflowRuns]);
   // tl1447: 墙钟条件放宽到「有任何运行行」——子代理行静默时长也随时钟增长
   // （15s 粒度足够 5 分钟级阈值；静止面板仍然零定时器）。
   const wallNow = useWorkflowWallClock(workflowViews.length > 0 || running.length > 0);
   const hasWorkflowRows = workflowViews.length > 0;
-  const empty = running.length === 0 && ended.length === 0 && !hasWorkflowRows;
   // tl1447 缺陷②: 续轮桥绑定 sessionPath（身份面在面板，行只管 ref）。
   // 桥缺席（备用视图形态）→ 行拿 undefined：不出「继续」入口（byte-for-byte）。
   const continueSubagent = useCallback(
@@ -891,6 +963,21 @@ export function SubagentsDockPanel({
     [onContinueSubagent, sessionPath],
   );
   const continueBridge = onContinueSubagent && sessionPath ? continueSubagent : undefined;
+  // 四缺口④：「最近」段只在 App 注入了跳转出口时成立（数据与出口同源，
+  // 无出口的行不渲染——不产生点了没反应的死行）。
+  const recentSection = onOpenWorkflowRun && recentWorkflowViews.length > 0 ? (
+    <section className="subagents-panel__section" data-wf-recent="true">
+      <h3 className="subagents-panel__section-title">
+        {t("workspace.workflowRecent")} · {recentWorkflowViews.length}
+      </h3>
+      <ul className="subagents-panel__list">
+        {recentWorkflowViews.map((view) => (
+          <WorkflowRunRow key={`wf-recent:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun} variant="ended" />
+        ))}
+      </ul>
+    </section>
+  ) : null;
+  const empty = running.length === 0 && ended.length === 0 && !hasWorkflowRows && !recentSection;
   const selected = selectedId
     ? running.find((entry) => entry.item.id === selectedId)
       ?? ended.find((entry) => entry.item.id === selectedId)
@@ -953,11 +1040,16 @@ export function SubagentsDockPanel({
               <p className="subagents-panel__section-empty">{t("subagentPanel.runningEmpty")}</p>
             ) : (
               <ul className="subagents-panel__list">
-                {/* tl1433: 运行中的工作流 run 行并入运行列表（编排任务排在子代理行前）。 */}
+                {/* tl1433: 运行中的工作流 run 行并入运行列表（编排任务排在子代理行前）；
+                    四缺口③：归属到该 run 的子代理行缩进挂在其下（层级）。 */}
                 {workflowViews.map((view) => (
-                  <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun} />
+                  <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun}>
+                    {workflowChildren.byRun.get(view.runId)?.map((entry) => (
+                      <DirectoryRow key={entry.item.id} entry={entry} nested onSelect={() => setSelectedId(entry.item.id)} onTerminate={onTerminateSubagent} now={wallNow} onContinue={continueBridge} />
+                    ))}
+                  </WorkflowRunRow>
                 ))}
-                {running.map((entry) => (
+                {workflowChildren.topLevel.map((entry) => (
                   <DirectoryRow
                     key={entry.item.id}
                     entry={entry}
@@ -991,6 +1083,8 @@ export function SubagentsDockPanel({
               </div>
             )}
           </section>
+          {/* tl1433 四缺口④：刚结束的工作流 run（历史入口）。 */}
+          {recentSection}
         </div>
         {/* tl1426③: 列表↔详情拖拽分隔条——拖动实时改 --subagents-list-width，
             松手/键盘持久化，双击回默认 200。绝对定位钉在列表列右边界上
@@ -1038,11 +1132,24 @@ export function SubagentsDockPanel({
         ) : (
           <ul className="subagents-panel__list">
             {/* tl1433: 运行中的工作流 run 行并入运行列表（点击跳出详情语义，
-                与子代理行的行内展开/详情不同，走 onOpenWorkflowRun）。 */}
+                与子代理行的行内展开/详情不同，走 onOpenWorkflowRun）。
+                四缺口③：归属到该 run 的子代理行缩进挂在其下（层级）。 */}
             {workflowViews.map((view) => (
-              <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun} />
+              <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun}>
+                {workflowChildren.byRun.get(view.runId)?.map((entry) => (
+                  <DirectoryRow
+                    key={entry.item.id}
+                    entry={entry}
+                    nested
+                    onSelect={detailEnabled ? () => setSelectedId(entry.item.id) : undefined}
+                    onTerminate={onTerminateSubagent}
+                    now={wallNow}
+                    onContinue={continueBridge}
+                  />
+                ))}
+              </WorkflowRunRow>
             ))}
-            {running.map((entry) => (
+            {workflowChildren.topLevel.map((entry) => (
               <DirectoryRow
                 key={entry.item.id}
                 entry={entry}
@@ -1080,6 +1187,8 @@ export function SubagentsDockPanel({
           </div>
         )}
       </section>
+      {/* tl1433 四缺口④：刚结束的工作流 run（历史入口）。 */}
+      {recentSection}
     </div>
   );
 }

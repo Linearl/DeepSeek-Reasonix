@@ -69,7 +69,7 @@ import { insertWorkflowPanelEntry } from "./lib/workflowPanelEntry";
 // 喂单（workflowRunFeed：拉推合流单例），App 只订阅+过滤 running 并下发展示；
 // 跳转锚定经 focus 透传给面板。
 import { workflowRunFeed } from "./lib/workflowRunFeed";
-import { runningWorkflowRuns } from "./lib/workflowRunRows";
+import { recentEndedWorkflowRuns, runningWorkflowRuns } from "./lib/workflowRunRows";
 import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
@@ -993,6 +993,10 @@ export default function App() {
   // focus（runId+nonce）透传面板，nonce 让同一 run 的重复点击也能重新落点。
   const workflowFeedRuns = useSyncExternalStore(workflowRunFeed.subscribe, workflowRunFeed.getRuns, workflowRunFeed.getRuns);
   const workflowRunningRows = useMemo(() => runningWorkflowRuns(workflowFeedRuns), [workflowFeedRuns]);
+  // tl1433 四缺口④: run 结束后不再凭空消失——同一喂单再取「刚结束」子集（终态、
+  // 30 分钟内、最多 3 条）下发任务面板与胶囊的「最近工作流」段（历史入口：
+  // 点击走同一跳转出口）。窗口随喂单变化重算，不另开定时器。
+  const workflowRecentRows = useMemo(() => recentEndedWorkflowRuns(workflowFeedRuns), [workflowFeedRuns]);
   const [workflowPanelFocus, setWorkflowPanelFocus] = useState<{ runId: string; nonce: number } | null>(null);
   const workflowPanelFocusNonceRef = useRef(0);
   const openWorkflowRunFromTasks = useCallback((runId: string) => {
@@ -6781,6 +6785,12 @@ export default function App() {
               onCapsuleDeleteSubagent={capsuleDeleteSubagent}
               onCapsuleClearEndedSubagents={capsuleClearEndedSubagents}
               onCapsuleSendSubagentMessage={capsuleSendSubagentMessage}
+              /* tl1433 四缺口①②④: 左侧胶囊弹层并入工作流 run——与右侧任务面板
+                 同一喂单的 running/刚结束子集 + 同一跳转出口（胶囊据此计数、
+                 渲染工作流组与最近段）。 */
+              capsuleWorkflowRuns={workflowRunningRows}
+              capsuleWorkflowRecentRuns={workflowRecentRows}
+              onCapsuleOpenWorkflowRun={openWorkflowRunFromTasks}
               tabId={activeTabId} turnId={remoteSurfaceActive ? undefined : state.activeTurnId}
               effort={remoteSurfaceActive ? remoteSession.effort : state.effort}
               effortApplying={!remoteSurfaceActive && effortApplyingActive}
@@ -7046,6 +7056,8 @@ export default function App() {
                     /* tl1433: 运行中的工作流 run 并入「运行中」列表（同一喂单
                        的 running 子集）；点击跳工作流面板并选中该 run。 */
                     workflowRuns={workflowRunningRows}
+                    /* tl1433 四缺口④: 刚结束的 run 进「最近工作流」段（历史入口）。 */
+                    workflowRecentRuns={workflowRecentRows}
                     onOpenWorkflowRun={openWorkflowRunFromTasks}
                     detailEnabled={subagentDetailEnabled}
                     wide={subagentsWide}
