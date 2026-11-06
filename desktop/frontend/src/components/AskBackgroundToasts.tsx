@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { app, onAskBackground, onEvent, type AskBackgroundNotice } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { recordNotification } from "../lib/notifyArchive";
 
 // 任务991: 后台 tab 的 ask 感知 toast。面板挂在一个用户看不见的 tab 里时，
 // 806/844/849 的交互信号整体失效（鼠标够不着），45s 一到 autopilot 就替答——
@@ -61,6 +62,14 @@ export function AskBackgroundToasts({ activeTabId, onSwitchTab }: {
       if (!notice?.tabId || !notice?.askId) return;
       const key = toastKey(notice.tabId, notice.askId);
       const waitMs = Number(notice.waitMs) || 0;
+      // tl1458：后台 ask 落通知留档（warn 档——需要用户处置的挂起问题）。
+      // 留档≠拦截：下方 toast 通路原样（计时/hover/点击语义零变化）。
+      recordNotification({
+        level: "warn",
+        source: "ask-bg",
+        text: String(notice.summary ?? "") || t("ask.bgToast"),
+        detail: `tab ${notice.tabId} · ask ${notice.askId}`,
+      });
       setItems((current) => {
         const next = current.filter((item) => item.key !== key);
         next.push({

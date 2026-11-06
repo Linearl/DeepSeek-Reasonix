@@ -33,19 +33,24 @@ import {
   syncCollabGroupOpen,
 } from "./CollabGroupPanel";
 import { CollabChatView } from "./CollabChatView";
+import { CollabNotificationsPanel } from "./CollabNotificationsPanel";
 import { useT } from "../lib/i18n";
 
 /** 聊天视图（P1 骨架 = 群聊 + 协作动态浮层；P3 挂对话链通道）。 */
 export { CollabChatView };
 
-export type CollabHubView = "mail" | "chat";
+/** 通知视图（tl1458：历史通知留档——数据面见 lib/notifyArchive.ts）。 */
+export { CollabNotificationsPanel };
+
+export type CollabHubView = "mail" | "chat" | "notifications";
 
 /** 视图持久化键（856 计划 ①钦定：collabHub.view）。 */
 const VIEW_STORE_KEY = "collabHub.view";
 
 function readStoredView(): CollabHubView {
   try {
-    return window.localStorage.getItem(VIEW_STORE_KEY) === "chat" ? "chat" : "mail";
+    const stored = window.localStorage.getItem(VIEW_STORE_KEY);
+    return stored === "chat" || stored === "notifications" ? stored : "mail";
   } catch {
     return "mail";
   }
@@ -170,6 +175,16 @@ export function CollabHubPanel({ inboxBindings }: { inboxBindings?: CollabInboxB
           >
             {t("collabHub.view.chat")}
           </button>
+          {/* tl1458：通知视图 = 历史通知留档（四族数据面已接入，展示面照旧）。 */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "notifications"}
+            className={`collab-hub-panel__view${view === "notifications" ? " collab-hub-panel__view--on" : ""}`}
+            onClick={() => switchView("notifications")}
+          >
+            {t("collabHub.view.notifications")}
+          </button>
         </div>
         <button type="button" className="btn btn--small collab-hub-panel__close" onClick={() => setCollabHubOpen(false)}>
           {t("collabHub.close")}
@@ -179,7 +194,9 @@ export function CollabHubPanel({ inboxBindings }: { inboxBindings?: CollabInboxB
       <div className="collab-hub-panel__body">
         {view === "mail"
           ? <CollabInboxPanel embedded bindings={inboxBindings} />
-          : <CollabChatView />}
+          : view === "notifications"
+            ? <CollabNotificationsPanel />
+            : <CollabChatView />}
       </div>
     </div>,
     document.body,

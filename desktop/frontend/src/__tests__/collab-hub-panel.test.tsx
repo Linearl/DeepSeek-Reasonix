@@ -51,7 +51,9 @@ await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 assert.ok(hub(), "the hub panel renders once opened");
 assert.ok(document.querySelector(".collab-inbox-panel"), "the mail view embeds the inbox panel");
 assert.equal(document.querySelector(".collab-inbox-panel__head"), null, "the embedded inbox hides its own shell head (the hub owns the chrome)");
-assert.equal(segButtons().length, 2, "the hub shell renders exactly two view tabs");
+// tl1458：第三视图「通知」加入后钉死值 2→3（通知 tab 断言归 tl1458 专属 harness，
+// 这里只钉总数防幽灵 tab 回归）。
+assert.equal(segButtons().length, 3, "the hub shell renders exactly three view tabs (mail/chat/notifications)");
 
 // ① 切到聊天：ChannelChatPanel 原样挂载（802 复用面）；持久化键落 localStorage。
 await act(async () => { segButtons().find((b) => b.textContent === "Chat")!.click(); });

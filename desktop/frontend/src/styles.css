@@ -42454,6 +42454,145 @@ button.statusbar__mcp:focus-visible {
   overflow: auto;
 }
 
+/* tl1458：通知留档视图（CollabNotificationsPanel）——嵌入 Hub 壳体；列表
+   滚动容器 = 面板根本体（overflow:auto，信件面板同形）。级别分档色源全部
+   走主题 token（error=danger / warn=warn / info=info），与 rt-notice 四档
+   语义同族（见 .rt-notice[data-level] 规则）。 */
+.collab-notif-panel {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+.collab-notif-panel__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+  flex: none;
+}
+.collab-notif-panel__levels {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-elevated, var(--bg));
+}
+.collab-notif-panel__level {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: var(--text-sm);
+  color: var(--text-muted, inherit);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.collab-notif-panel__level--on {
+  background: var(--bg-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+.collab-notif-panel__levelicon {
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+.collab-notif-panel__level[data-level="error"] .collab-notif-panel__levelicon { color: var(--danger); }
+.collab-notif-panel__level[data-level="warn"] .collab-notif-panel__levelicon { color: var(--warn); }
+.collab-notif-panel__level[data-level="info"] .collab-notif-panel__levelicon { color: var(--info); }
+.collab-notif-panel__clear {
+  margin-left: auto;
+}
+.collab-notif-panel__empty {
+  margin: auto;
+  padding: 24px 16px;
+  font-size: var(--text-sm);
+  color: var(--text-muted, inherit);
+  text-align: center;
+}
+.collab-notif-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+.collab-notif-panel__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.collab-notif-panel__row:last-child {
+  border-bottom: none;
+}
+.collab-notif-panel__icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  line-height: 1;
+  margin-top: 1px;
+}
+.collab-notif-panel__row[data-level="error"] .collab-notif-panel__icon {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.collab-notif-panel__row[data-level="warn"] .collab-notif-panel__icon {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+.collab-notif-panel__row[data-level="info"] .collab-notif-panel__icon {
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+}
+.collab-notif-panel__main {
+  flex: 1;
+  min-width: 0;
+}
+.collab-notif-panel__text {
+  font-size: var(--text-sm);
+  color: var(--text);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.collab-notif-panel__detail {
+  margin-top: 2px;
+  font-size: var(--text-xs, var(--text-sm));
+  color: var(--text-muted, inherit);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.collab-notif-panel__time {
+  flex: none;
+  font-size: var(--text-xs, var(--text-sm));
+  color: var(--text-muted, inherit);
+  white-space: nowrap;
+}
+.collab-notif-panel__more {
+  padding: 10px 12px 14px;
+  text-align: center;
+  font-size: var(--text-xs, var(--text-sm));
+  color: var(--text-muted, inherit);
+}
+.collab-notif-panel__confirmnote {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted, inherit);
+}
+
 /* 聊天视图（CollabChatView）：工具行 + 群聊本体 + 协作动态浮层 */
 .collab-chat-view {
   position: relative;
