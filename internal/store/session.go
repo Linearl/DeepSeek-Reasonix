@@ -48,6 +48,12 @@ const (
 	SessionRepairLogSuffix    = ".repairlog.jsonl"
 	SessionEventIndexSuffix   = ".event-index.json"
 	SessionDisplayIndexSuffix = ".display-index.json"
+	// SessionGuardianTranscriptSuffix 是 guardian 伴随转录的尾缀
+	// （<stem>.guardian.jsonl）。它是会话形态的伴随文件：经同一会话层存取、带
+	// 自己的 meta/events/index 侧车，但不进会话列表（IsSessionTranscriptName
+	// 显式排除）。单一来源：构造器 SessionGuardianTranscript 与分类函数
+	// IsGuardianTranscriptName 都从这里拼写。
+	SessionGuardianTranscriptSuffix = ".guardian.jsonl"
 	// SessionMetaFileSuffix is the full classification tail of SessionMeta
 	// (which appends ".meta" to the whole transcript path, historical layout).
 	SessionMetaFileSuffix  = SessionTranscriptSuffix + ".meta"
@@ -67,7 +73,30 @@ func IsSessionTranscriptName(name string) bool {
 		!strings.HasSuffix(name, SessionTurnEventLogSuffix) &&
 		!strings.HasSuffix(name, SessionConflictLogSuffix) &&
 		!strings.HasSuffix(name, SessionRepairLogSuffix) &&
-		!strings.HasSuffix(name, ".guardian.jsonl")
+		!strings.HasSuffix(name, SessionGuardianTranscriptSuffix)
+}
+
+// IsGuardianTranscriptName reports whether name is a guardian companion
+// transcript (<stem>.guardian.jsonl). The companion is session-shaped — it
+// saves and loads through the same session layer as a primary transcript —
+// but it is deliberately NOT IsSessionTranscriptName: session-list discovery
+// must keep treating it as a sidecar so it never surfaces as a session row
+// (TestIsSessionTranscriptName pins that).
+func IsGuardianTranscriptName(name string) bool {
+	name = strings.TrimSpace(name)
+	return strings.HasSuffix(name, SessionGuardianTranscriptSuffix)
+}
+
+// IsLoadableSessionTranscriptName reports whether name may be opened as a
+// session by agent.LoadSession: primary transcripts plus the guardian
+// companion transcript. tl1424: the task-1071 load gate used to key directly
+// on IsSessionTranscriptName, which also rejected the guardian companion —
+// guardian restore then failed silently on every restart (conversation lost,
+// delta cursor never restored). Audit/derived sidecars (event / turn /
+// conflict / repair logs) stay excluded either way, so 1071's "a sidecar is
+// never load-rewritten" intent is intact.
+func IsLoadableSessionTranscriptName(name string) bool {
+	return IsSessionTranscriptName(name) || IsGuardianTranscriptName(name)
 }
 
 // SessionRecoveryState is the persisted Auto-mode recovery checkpoint state
@@ -138,7 +167,7 @@ func SessionGuardianTranscript(sessionPath string) string {
 	if sessionPath == "" {
 		return ""
 	}
-	return sessionStem(sessionPath) + ".guardian.jsonl"
+	return sessionStem(sessionPath) + SessionGuardianTranscriptSuffix
 }
 
 // SessionGuardianCursor is the guardian replay cursor sidecar

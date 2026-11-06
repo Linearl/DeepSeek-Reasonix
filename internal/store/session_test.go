@@ -88,6 +88,40 @@ func TestIsSessionTranscriptName(t *testing.T) {
 	}
 }
 
+// TestIsLoadableSessionTranscriptName (tl1424) pins the LoadSession gate
+// classification: primary transcripts AND the guardian companion transcript
+// are loadable sessions; audit/derived sidecars (event / turn / conflict /
+// repair logs) stay excluded, so task 1071's "a sidecar is never
+// load-rewritten" intent survives the guardian allowance. Session-list
+// discovery keeps using IsSessionTranscriptName — the companion must still
+// classify as a non-transcript there and never surface as a session row.
+func TestIsLoadableSessionTranscriptName(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"session.jsonl", true},
+		{"session.guardian.jsonl", true},
+		{"session.repairlog.jsonl", false},
+		{"session.events.jsonl", false},
+		{"session.turns.jsonl", false},
+		{"session.conflicts.jsonl", false},
+		{"session.guardian.events.jsonl", false},
+		{"session.guardian.cursor.json", false},
+		{"notes.txt", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := IsLoadableSessionTranscriptName(c.name); got != c.want {
+			t.Errorf("IsLoadableSessionTranscriptName(%q) = %v, want %v", c.name, got, c.want)
+		}
+	}
+	// The load allowance must not leak into discovery classification.
+	if IsSessionTranscriptName("session.guardian.jsonl") {
+		t.Error("IsSessionTranscriptName(session.guardian.jsonl) = true — the guardian companion is loadable but must not surface in session lists")
+	}
+}
+
 // TestIsSessionTranscriptNameRepairLogNoSidecar (task 1071) pins the
 // classification that caused the original bug: the self-heal repair log
 // (<stem>.repairlog.jsonl) must never classify as a transcript, so no

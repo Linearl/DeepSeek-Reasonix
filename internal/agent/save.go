@@ -1974,7 +1974,13 @@ func LoadSession(path string) (*Session, error) {
 	// 会话加载——一旦加载，后续任何一次 Save 都会把它重写成只剩 role 字段的
 	// 消息行（writeSessionMessages 原子覆盖），审计内容即被清空。分类闸门在
 	// 锁之前：不给侧车文件留任何被「顺手保存」的机会。
-	if path != "" && !store.IsSessionTranscriptName(filepath.Base(path)) {
+	// tl1424：闸门走「可加载」口径（主转录 + guardian 伴随转录），不再直接用
+	// IsSessionTranscriptName。guardian 伴随转录是会话形态（同一会话层存取，
+	// 1071 闸门误拒后 guardian Load 自 2026-10-22 起静默失败：跨重启丢对话、
+	// 增量游标不恢复）。repairlog 等审计/派生侧车仍在拒绝集内——钉：
+	// Test1071RepairLogLoadSessionRefuses / TestLoadSessionGateSidecarsRefused；
+	// 会话列表发现仍用 IsSessionTranscriptName，guardian 伴随不进列表。
+	if path != "" && !store.IsLoadableSessionTranscriptName(filepath.Base(path)) {
 		return nil, fmt.Errorf("load session: %s is not a session transcript", filepath.Base(path))
 	}
 	unlock, err := lockSessionSavePath(path)
