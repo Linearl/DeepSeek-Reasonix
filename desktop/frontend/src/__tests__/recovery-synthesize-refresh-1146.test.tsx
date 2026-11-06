@@ -55,6 +55,9 @@ async function flush() {
 
 function installDom(): HTMLElement {
   document.getElementById("root")?.remove();
+  // tl1415d9: 会话行展开态现在跨挂载持久(用户二轮裁决)。每个场景声明
+  // 全新档案——上一场景的展开不得流进下一场景的「默认折叠」钉。
+  window.localStorage.clear();
   const root = document.createElement("div");
   root.id = "root";
   document.body.appendChild(root);
