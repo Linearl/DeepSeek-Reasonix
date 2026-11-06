@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
-	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
@@ -32,11 +31,7 @@ func TestTurnDoneLeavesHeadReferenceEmptyForSchemaOne(t *testing.T) {
 	t.Cleanup(c.Close)
 	for _, input := range []string{"first", "second"} {
 		c.Submit(input)
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Fatalf("turn %q did not finish", input)
-		}
+		waitForValue(t, "turn did not finish: "+input, done)
 	}
 	records, err := c.TurnEventsAfter(0)
 	if err != nil {

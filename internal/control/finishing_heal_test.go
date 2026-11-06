@@ -49,11 +49,7 @@ func wedgeFinishingWindow(t *testing.T, release chan struct{}) *Controller {
 		return nil
 	})
 	<-started
-	select {
-	case <-entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("turn done never reached the fan-out")
-	}
+	waitForSignal(t, "turn done never reached the fan-out", entered)
 	return c
 }
 
@@ -114,11 +110,7 @@ func TestHealStuckFinishingReopensWedgedGate(t *testing.T) {
 	}); got != turnStarted {
 		t.Fatalf("admission after heal = %v, want turnStarted", got)
 	}
-	select {
-	case <-bodyRan:
-	case <-time.After(5 * time.Second):
-		t.Fatal("body did not run after the heal")
-	}
+	waitForSignal(t, "body did not run after the heal", bodyRan)
 	waitIdleAdmission(t, c)
 }
 
@@ -194,12 +186,7 @@ func TestStaleFinisherCleanupSkippedAfterHeal(t *testing.T) {
 	})
 	<-t1Started
 
-	var gen uint64
-	select {
-	case gen = <-healedGen:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the heal never fired from the fan-out")
-	}
+	gen := waitForValue(t, "the heal never fired from the fan-out", healedGen)
 	if gen == 0 {
 		t.Fatal("heal must bump the turn generation")
 	}

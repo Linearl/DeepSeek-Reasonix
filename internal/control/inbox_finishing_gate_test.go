@@ -71,11 +71,7 @@ func wedgeFinishingGate(t *testing.T, c *Controller, entered <-chan struct{}) {
 		return nil
 	})
 	<-started
-	select {
-	case <-entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("turn done never reached the fan-out")
-	}
+	waitForSignal(t, "turn done never reached the fan-out", entered)
 	if st := c.RuntimeStatus(); !st.Running || !st.Finishing {
 		t.Fatalf("wedge setup failed: %+v", st)
 	}
@@ -177,11 +173,7 @@ func TestUnownedClaimRequeuedAtFinishingGateClose(t *testing.T) {
 		bodyRan <- struct{}{}
 		return nil
 	})
-	select {
-	case <-bodyRan:
-	case <-time.After(5 * time.Second):
-		t.Fatal("turn body never ran")
-	}
+	waitForSignal(t, "turn body never ran", bodyRan)
 	waitForInboxTurnDone(t, c, done)
 	input := waitForInboxDispatch(t, c, runner)
 	if !strings.Contains(input, "无主认领-807") {

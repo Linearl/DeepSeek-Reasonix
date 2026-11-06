@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/mcpinteraction"
@@ -32,14 +31,7 @@ func blockPromptTestLedger(t *testing.T, c *Controller, root string) {
 
 func awaitPromptLedgerTest[T any](t *testing.T, ch <-chan T, description string) T {
 	t.Helper()
-	select {
-	case result := <-ch:
-		return result
-	case <-time.After(5 * time.Second):
-		t.Fatalf("timed out waiting for %s", description)
-		var zero T
-		return zero
-	}
+	return waitForValue(t, "timed out waiting for "+description, ch)
 }
 
 func TestCancelLedgerFailureReturnsAndCancelsTurn(t *testing.T) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
@@ -84,11 +83,7 @@ func TestSubagentSkillGoalRejectsStaleWorkDuration(t *testing.T) {
 		"inspect the notes",
 		[]InvocationRequest{{Name: "research", Kind: "subagent", Offset: 0}},
 	)
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("subagent skill did not start")
-	}
+	waitForSignal(t, "subagent skill did not start", started)
 
 	c.SetGoalWithResearchMode("replacement goal", GoalResearchOff)
 	close(release)

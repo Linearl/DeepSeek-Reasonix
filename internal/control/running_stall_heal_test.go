@@ -90,7 +90,7 @@ func TestHealStalledRunningReopensWedgedTurn(t *testing.T) {
 	c, prov, done := newWedgedRunningController(t)
 
 	c.Submit("carry the interrupted work to completion")
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(controlTestReceiveWindow)
 	for {
 		c.mu.Lock()
 		entered := prov.entered
@@ -155,11 +155,7 @@ func TestHealStalledRunningReopensWedgedTurn(t *testing.T) {
 	}); got != turnStarted {
 		t.Fatalf("admission after heal = %v, want turnStarted", got)
 	}
-	select {
-	case <-bodyRan:
-	case <-time.After(5 * time.Second):
-		t.Fatal("fresh body did not run after the heal")
-	}
+	waitForSignal(t, "fresh body did not run after the heal", bodyRan)
 	waitIdleAdmission(t, c)
 }
 

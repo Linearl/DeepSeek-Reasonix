@@ -73,12 +73,7 @@ func TestPreflightStallWatchdogAbortsTurnTerminalFailed(t *testing.T) {
 	})
 	<-started
 
-	var td event.Event
-	select {
-	case td = <-doneEvents:
-	case <-time.After(5 * time.Second):
-		t.Fatal("preflight-stalled turn was never auto-aborted (still running)")
-	}
+	td := waitForValue(t, "preflight-stalled turn was never auto-aborted (still running)", doneEvents)
 	var abortErr *TurnPreflightStallAbortError
 	if !errors.As(td.Err, &abortErr) {
 		t.Fatalf("TurnDone.Err = %v, want *TurnPreflightStallAbortError", td.Err)
@@ -174,12 +169,7 @@ func TestUserStopDuringWatchdogWaitStaysInterrupted(t *testing.T) {
 	// 用户点停止（与 Stop 按钮同一入口）。
 	c.Cancel()
 
-	var td event.Event
-	select {
-	case td = <-doneEvents:
-	case <-time.After(5 * time.Second):
-		t.Fatal("user stop did not end the turn during the watchdog wait")
-	}
+	td := waitForValue(t, "user stop did not end the turn during the watchdog wait", doneEvents)
 	if !td.Cancelled {
 		t.Fatalf("user stop TurnDone.Cancelled = false, want a plain interruption (event %+v)", td)
 	}

@@ -22,7 +22,7 @@ func (s *runtimeStateTestSink) RuntimeStateChanged(state event.RuntimeStateSnaps
 
 func runtimeStateAwait(t *testing.T, states <-chan event.RuntimeStateSnapshot, accept func(event.RuntimeStateSnapshot) bool) event.RuntimeStateSnapshot {
 	t.Helper()
-	timer := time.NewTimer(5 * time.Second)
+	timer := time.NewTimer(controlTestReceiveWindow)
 	defer timer.Stop()
 	var last event.RuntimeStateSnapshot
 	for {
@@ -39,11 +39,7 @@ func runtimeStateAwait(t *testing.T, states <-chan event.RuntimeStateSnapshot, a
 
 func runtimeStateSignal(t *testing.T, signal <-chan struct{}, description string) {
 	t.Helper()
-	select {
-	case <-signal:
-	case <-time.After(5 * time.Second):
-		t.Fatal(description)
-	}
+	waitForSignal(t, description, signal)
 }
 
 func assertRuntimeStateSameVersion(t *testing.T, published, current event.RuntimeStateSnapshot) {
