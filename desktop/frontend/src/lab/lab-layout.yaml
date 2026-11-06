@@ -281,7 +281,7 @@ groups:
       - id: sessionTaskPanels
         labelKey: settings.sessionTaskPanels
         tier: recommended
-        onKeys: [experimentalSessionWall, experimentalWorkflowPanel, experimentalCompletionSummary]
+        onKeys: [experimentalSessionWall, experimentalWorkflowPanel, experimentalWorkflowTemplates, experimentalCompletionSummary]
         members:
           - id: sessionWall
             labelKey: settings.sessionWall

@@ -1569,6 +1569,30 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* tl1454 附属行：用户自定义工作流模板（workflowPanel 家族子键，
+                  不挂独立徽章）。模板视图住在工作流面板里，面板关闭时本行
+                  禁用开启并给出依赖说明（已开着的仍可关闭）。服务端写面现读
+                  开关，保存即生效。 */}
+              <SettingsField label={t("settings.workflowTemplates")} hint={t("settings.workflowTemplatesHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalWorkflowTemplates) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy || (on && !s.experimentalWorkflowPanel)}
+                      title={on && !s.experimentalWorkflowPanel ? t("settings.workflowTemplatesDepNote") : undefined}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalWorkflowTemplates(on);
+                      })}
+                    >
+                      {t(on ? "settings.workflowTemplates.on" : "settings.workflowTemplates.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+                {!s.experimentalWorkflowPanel && (
+                  <div className="set-lab-dep-note" role="note">{t("settings.workflowTemplatesDepNote")}</div>
+                )}
+              </SettingsField>
               {/* 成员行 3：任务完成摘要（原 ui 独立卡，可选档——每轮结果卡）。 */}
               <SettingsField label={labLabel("completionSummary", t("settings.completionSummary"))} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">

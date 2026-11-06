@@ -292,7 +292,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           id: "sessionTaskPanels",
           labelKey: "settings.sessionTaskPanels",
           tier: "recommended",
-          onKeys: ["experimentalSessionWall", "experimentalWorkflowPanel", "experimentalCompletionSummary"],
+          onKeys: ["experimentalSessionWall", "experimentalWorkflowPanel", "experimentalWorkflowTemplates", "experimentalCompletionSummary"],
           members: [
             { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended" },
             // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎

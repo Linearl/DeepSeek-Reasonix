@@ -16,7 +16,7 @@
 //     运行时即 686 原始行为，有真运行时经「演示」按钮切换过去。
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { GitBranch, Play, RotateCcw, Square, X } from "lucide-react";
+import { GitBranch, LayoutTemplate, Play, RotateCcw, Square, X } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { formatDurationLabel } from "../lib/durationFormat";
 import type { DictKey } from "../locales/en";
@@ -35,6 +35,8 @@ import { SUBAGENT_SILENCE_ALERT_MS } from "../lib/subagentDirectory";
 import { historyMessagesToItems } from "../lib/useController";
 import type { HistoryMessage } from "../lib/types";
 import { app } from "../lib/bridge";
+import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
+import { budgetReadout, reasonKey, settleStaleRunning } from "../lib/workflowTemplates";
 import {
   liveRunSnapshot,
   runsNewestFirst,
@@ -84,6 +86,20 @@ function formatTokens(tokens?: number): string {
 // tl1434: 子代理 transcript 的懒加载渲染器（capsule 只读详情同款管线——
 // historyMessagesToItems + Transcript，无输入/无续写入口）。
 const LazyTranscript = lazy(async () => ({ default: (await import("./Transcript")).Transcript }));
+
+// tl1454: 模板视图独立 chunk——只在 workflowTemplates 开关开且用户点开时加载
+// （开关关闭时不渲染切换钮，chunk 永不加载，面板逐字节不变）。
+const LazyTemplatesView = lazy(async () => ({ default: (await import("./WorkflowTemplatesView")).WorkflowTemplatesView }));
+
+/** tl1454: 模板视图开启时节点详情附加面（失败原因双轨 + 用量 + 契约提示）。 */
+interface NodeTemplateExtras {
+  reason?: string;
+  detail?: string;
+  tokens?: number;
+  requests?: number;
+  contract?: string;
+  stale?: boolean;
+}
 
 /** 「工作过程」一次打开的读取态（只读；失败/等待/空态各自显式文案）。 */
 interface NodeTraceState {
@@ -234,13 +250,15 @@ function NodeWorkProcessSection({ runId, nodeId, kind, refs, running, terminal }
 }
 
 /** 节点详情下钻面（四类信息 + 耗时/tokens；缺失段不渲染）。 */
-function NodeDetailPane({ node, run, live, runId }: {
+function NodeDetailPane({ node, run, live, runId, extras }: {
   node: WorkflowDagNode;
   run: ReturnType<WorkflowRunStore["getSnapshot"]>["nodes"][string];
   /** tl1434: 是否真运行视图（demo/fixture 无关联数据，过程段不渲染）。 */
   live: boolean;
   /** 真运行 id（只读回放桥按 runId+nodeId+occurrence 归属校验）。 */
   runId: string | null;
+  /** tl1454: 模板视图开启时才传入（默认视图 undefined，行集合不变）。 */
+  extras?: NodeTemplateExtras;
 }) {
   const t = useT();
   const detail = run.detail;
@@ -265,6 +283,18 @@ function NodeDetailPane({ node, run, live, runId }: {
   if (detail?.tokens !== undefined) {
     rows.push({ label: t("workflowPanel.detail.tokens"), value: formatTokens(detail.tokens) });
   }
+  if (extras?.stale) rows.push({ label: t("workflowPanel.detail.reason"), value: t("workflowPanel.detail.stopped") });
+  if (extras?.reason) {
+    rows.push({ label: t("workflowPanel.detail.reason"), value: t(reasonKey(extras.reason)) });
+    if (extras.detail) rows.push({ label: t("workflowPanel.templates.technical"), value: extras.detail, mono: true });
+  }
+  if (extras?.tokens || extras?.requests) {
+    rows.push({
+      label: t("workflowPanel.detail.usage"),
+      value: t("workflowPanel.detail.usageValue", { tokens: formatTokens(extras.tokens), requests: String(extras.requests ?? 0) }),
+    });
+  }
+  if (extras?.contract) rows.push({ label: t("workflowPanel.detail.contract"), value: extras.contract, mono: true });
   const traceTerminal = run.state === "done" || run.state === "unconfirmed" || run.state === "failed";
   return (
     <div className="wf-panel__detail">
@@ -327,6 +357,11 @@ export function WorkflowPanel({
   const t = useT();
   const { mounted, status } = useMountTransition(open, 200);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // tl1454: 模板视图开关（家族子键，保存即生效）。关 = 不渲染切换钮/附加面。
+  const [templatesEnabled, setTemplatesEnabled] = useState(() => labFlagEnabled("workflowTemplates"));
+  useEffect(() => onLabFlagsChange(() => setTemplatesEnabled(labFlagEnabled("workflowTemplates"))), []);
+  const [view, setView] = useState<"flow" | "templates">("flow");
+  const showTemplates = templatesEnabled && view === "templates";
   const stopDemoRef = useRef<(() => void) | null>(null);
   const [demoPlaying, setDemoPlaying] = useState(false);
   // store 内收：无外部源时自持一份（fixture DAG 底）。store 本体与 fixture
@@ -352,7 +387,13 @@ export function WorkflowPanel({
   }, [demoPlaying, liveRuns, selectedRunId]);
 
   const storeSnapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const snapshot = liveView ? liveView.snapshot : storeSnapshot;
+  // tl1454: 模板视图开启时，已终止运行里仍停在 running 的在途节点投影为
+  // 「未完成」；关闭时不经此投影（默认视图逐字节不变）。
+  const settled = useMemo(
+    () => (templatesEnabled && liveView ? settleStaleRunning(liveView.snapshot, liveView.run.state) : null),
+    [templatesEnabled, liveView],
+  );
+  const snapshot = settled ? settled.snapshot : liveView ? liveView.snapshot : storeSnapshot;
   const activeDag = liveView ? liveView.dag : dag;
   // tl1447 缺陷①: 节点静默判定的墙钟（15s 一跳，仅 live run 运行中跳）。
   // 卡死形态恰是零推送（无事件无 workflow:runs），没有这跳钟徽章永远不会亮。
@@ -645,6 +686,22 @@ export function WorkflowPanel({
 
   const selected = selectedId ? nodeById.get(selectedId) : undefined;
   const phases = activeDag.phases ?? [];
+  const liveRun = liveView?.run;
+  const failure = templatesEnabled ? liveRun?.failure : undefined;
+  const budgetParts = templatesEnabled && liveRun ? budgetReadout(liveRun) : [];
+  const selectedExtras = (() => {
+    if (!templatesEnabled || !liveRun || !selected) return undefined;
+    const wire = liveRun.nodes.find((n) => n.nodeId === selected.id);
+    const extras: NodeTemplateExtras = {
+      reason: wire?.reason,
+      detail: failure && failure.nodeId === selected.id ? failure.detail : undefined,
+      tokens: wire?.tokens,
+      requests: wire?.requests,
+      contract: wire?.contract,
+      stale: settled?.stale.has(selected.id),
+    };
+    return extras;
+  })();
 
   return (
     <div className="drawer-backdrop wf-panel-backdrop" onPointerDown={onBackdropPointerDown} data-state={status}>
@@ -674,6 +731,11 @@ export function WorkflowPanel({
             {progress.unconfirmed > 0 && (
               <span className="wf-panel__stat wf-panel__stat--unconfirmed">
                 {t("workflowPanel.unconfirmed", { value: String(progress.unconfirmed) })}
+              </span>
+            )}
+            {budgetParts.length > 0 && (
+              <span className="wf-panel__stat" data-testid="wf-budget">
+                {t("workflowPanel.budget.label")} {budgetParts.map((part) => t(part.key, part.vars)).join(" · ")}
               </span>
             )}
           </div>
@@ -729,13 +791,37 @@ export function WorkflowPanel({
                 {t("workflowPanel.action.reset")}
               </button>
             )}
+            {templatesEnabled && (
+              <button
+                type="button"
+                className={view === "templates" ? "wf-panel__action wf-panel__action--on" : "wf-panel__action"}
+                aria-pressed={view === "templates"}
+                onClick={() => setView((v) => (v === "templates" ? "flow" : "templates"))}
+                data-testid="wf-templates-toggle"
+              >
+                <LayoutTemplate size={13} aria-hidden="true" />
+                {t(view === "templates" ? "workflowPanel.templates.toggleBack" : "workflowPanel.templates.toggle")}
+              </button>
+            )}
             <button type="button" className="wf-panel__action wf-panel__action--close" onClick={close} aria-label={t("common.close")}>
               <X size={14} aria-hidden="true" />
             </button>
           </div>
         </header>
 
-        {phases.length > 0 && (
+        {failure && !showTemplates && (
+          <div className="wf-panel__failure" role="status" data-testid="wf-run-failure">
+            <strong>
+              {failure.nodeId
+                ? t("workflowPanel.failure.title", { node: failure.nodeId })
+                : t("workflowPanel.failure.titleNoNode")}
+            </strong>
+            <span>{t(reasonKey(failure.reason))}</span>
+            <span className="wf-panel__failure-tech">{t("workflowPanel.templates.technical")}: {failure.detail}</span>
+          </div>
+        )}
+
+        {phases.length > 0 && !showTemplates && (
           <div className="wf-panel__legend">
             {phases.map((phase, index) => (
               <span key={phase} className="wf-panel__legend-item">
@@ -767,7 +853,19 @@ export function WorkflowPanel({
           </div>
         )}
 
-        <div className="wf-panel__body">
+        {showTemplates && (
+          <div className="wf-panel__body">
+            <Suspense fallback={<p className="wf-panel__detail-empty">{t("workflowPanel.detail.processLoading")}</p>}>
+              <LazyTemplatesView
+                onRunStarted={(runId) => {
+                  setSelectedRunId(runId);
+                  setView("flow");
+                }}
+              />
+            </Suspense>
+          </div>
+        )}
+        <div className="wf-panel__body" hidden={showTemplates}>
           <div
             className={panning ? "wf-panel__canvas-scroll wf-panel__canvas-scroll--panning" : "wf-panel__canvas-scroll"}
             ref={setViewRef}
@@ -851,6 +949,7 @@ export function WorkflowPanel({
               run={snapshot.nodes[selected.id] ?? { state: "queued" }}
               live={liveView !== null}
               runId={liveView?.run.runId ?? null}
+              extras={selectedExtras}
             />
           )}
         </div>

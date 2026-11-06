@@ -56,6 +56,11 @@ export interface WireRunNode {
    *  occurrence）。缺省 = 无关联（老 run/ephemeral 派发/非子代理节点），
    *  详情面「工作过程」入口按此降级。 */
   subagentRefs?: string[];
+  /** tl1454: 节点用量 / 失败原因码 / 非致命契约提示（模板视图开启时渲染）。 */
+  tokens?: number;
+  requests?: number;
+  reason?: WorkflowFailureReason;
+  contract?: string;
 }
 
 /** 一次运行的完整 wire 快照（desktop workflowRunWire 镜像）。 */
@@ -70,4 +75,111 @@ export interface WireWorkflowRun {
   nodes: WireRunNode[];
   /** 任务1316：服务侧可续判定（interrupted+定义在+指纹匹配）。续跑钮可见性权威。 */
   resumable?: boolean;
+  /** tl1454：模板版本 / 发起来源 / 预算与用量 / 失败定位（模板视图消费）。 */
+  version?: string;
+  origin?: string;
+  budget?: { tokens?: number; rounds?: number; wallMs?: number };
+  usedTokens?: number;
+  usedRequests?: number;
+  failure?: { nodeId?: string; reason: WorkflowFailureReason; detail: string };
+}
+
+/** tl1454: 引擎失败原因码（internal/workflow/budget.go Reason* 镜像）。 */
+export type WorkflowFailureReason =
+  | "timeout"
+  | "cancelled"
+  | "budget"
+  | "subagent_error"
+  | "result_contract"
+  | "gate_failed"
+  | "gate_error"
+  | "gate_denied"
+  | "internal";
+
+/** tl1454: 校验诊断类别（internal/workflow/diagnose.go Diag* 镜像）。 */
+export type WorkflowDiagnosticKind = "syntax" | "field" | "structure" | "reference" | "version";
+
+export interface WorkflowTemplateDiagnostic {
+  kind: WorkflowDiagnosticKind;
+  message: string;
+  path?: string;
+  nodeId?: string;
+  line?: number;
+  column?: number;
+}
+
+export interface WorkflowTemplateSummary {
+  name: string;
+  description?: string;
+  version: string;
+  fingerprint: string;
+  nodes: number;
+  edges: number;
+  gates: number;
+  subagents: number;
+  confirms: number;
+  hasBudget?: boolean;
+}
+
+export interface WorkflowTemplateInvalidFile {
+  file: string;
+  kind: WorkflowDiagnosticKind;
+  message: string;
+  path?: string;
+  line?: number;
+  column?: number;
+}
+
+export interface WorkflowTemplateList {
+  templates: WorkflowTemplateSummary[];
+  invalid?: WorkflowTemplateInvalidFile[];
+}
+
+export interface WorkflowNodeContract {
+  id: string;
+  type: string;
+  inputs?: string;
+  outputs?: string;
+  failure: string;
+  limits?: string;
+}
+
+export interface WorkflowTemplateValidation {
+  ok: boolean;
+  diagnostic?: WorkflowTemplateDiagnostic;
+  summary?: WorkflowTemplateSummary;
+  contracts?: WorkflowNodeContract[];
+}
+
+export interface WorkflowTemplateSource {
+  document: string;
+  version: string;
+}
+
+export interface WorkflowTemplateSaveResult {
+  name: string;
+  created: boolean;
+  version: string;
+  fingerprint: string;
+}
+
+export interface WorkflowTemplateHistoryEntry {
+  version: string;
+  fingerprint: string;
+  savedAt: string;
+}
+
+export interface WorkflowTemplateRunPreview {
+  name: string;
+  version: string;
+  workspace: string;
+  gates: Array<{ nodeId: string; command: string; denied: boolean; reason?: string }>;
+  subagents: Array<{ nodeId: string; type: string; tools?: string[]; allTools: boolean; readOnly: boolean; timeout?: string; maxSteps?: number }>;
+  budget?: { tokens?: number; rounds?: number; wall?: string };
+  blocked: boolean;
+}
+
+export interface WorkflowTemplateRunStart {
+  runId: string;
+  state: string;
 }

@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "startupSplash";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "workflowTemplates" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "startupSplash";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -52,6 +52,11 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // and the panel chunk never loads — the palette is byte-for-byte unchanged.
   // A flip applies on settings save (no restart).
   workflowPanel: false,
+  // tl1454: user workflow templates (workflowPanel family sub-key) ship off
+  // (铁律 2). With it off the workflow panel renders exactly as before — no
+  // template toggle, no template chunk, no run extras. A flip applies on
+  // settings save (no restart).
+  workflowTemplates: false,
   // 任务 932: 概览面板最下方 events 文件大小行（可观测性展示件）挂在既有
   // 【实验室-可观测性-监控】perf monitor 行（experimental_perf_monitor）下——
   // 不新增独立开关（932 立项约束：倾向并入）。默认关（铁律 2：关闭时概览
@@ -117,7 +122,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} smoothScrollFollow=${flags.smoothScrollFollow} draftRewrite=${flags.draftRewrite} startupSplash=${flags.startupSplash}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} workflowTemplates=${flags.workflowTemplates} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} smoothScrollFollow=${flags.smoothScrollFollow} draftRewrite=${flags.draftRewrite} startupSplash=${flags.startupSplash}`,
   );
   for (const listener of listeners) listener();
 }

@@ -110,6 +110,8 @@ export interface SettingsView {
   // 任务 686: workflow visualization panel (palette entry opening the DAG flow
   // view; default off, pure frontend gate — settings save re-applies).
   experimentalWorkflowPanel?: boolean;
+  // tl1454: user workflow templates (workflowPanel family sub-key; live-read).
+  experimentalWorkflowTemplates?: boolean;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; default off). The engine reads the switch at call time.
   experimentalHeartbeatBackground?: boolean;
