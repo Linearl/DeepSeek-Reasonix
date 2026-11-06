@@ -229,7 +229,10 @@ console.log("\ntl1435 persisted running subagents (dock single-source convergenc
     });
     const initial = host.textContent ?? "";
     ok(initial.includes("独立复核证据链"), "live: initial persisted pull surfaces the running row");
-    ok(fired.length === 1, "live: the poll interval is armed while the panel is mounted");
+    // tl1447: 面板上还可能有第二个合法定时器（运行行墙钟 15s，tl1433 同款
+    // 扩展到子代理行）；本断言的意图=轮询已武装（fired[0] 按声明序即轮询），
+    // 不再钉「全场恰好一个 interval」。
+    ok(fired.length >= 1, "live: the poll interval is armed while the panel is mounted");
 
     views = [persistedView({ status: "completed", outcome: "completed", hasTranscript: true })];
     await act(async () => {

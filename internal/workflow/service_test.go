@@ -307,10 +307,12 @@ func TestServiceCancelRun(t *testing.T) {
 		t.Fatal("cancel must hit the live run")
 	}
 	// 取消后引擎在节点边界返回：释放挡板让子代理调用返回，运行归终态。
+	// tl1447：停止落 interrupted（可续态）而非 failed——停止≠失败；Error 空
+	// （没有真实失败），断点在盘即点亮 resumable。
 	close(runner.release)
 	waitFor(t, 2*time.Second, func() bool {
 		st, err := svc.WorkflowStatus(ctx, res.RunID)
-		return err == nil && len(st.Runs) == 1 && st.Runs[0].State == string(RunFailed) && st.Runs[0].Error == "cancelled"
+		return err == nil && len(st.Runs) == 1 && st.Runs[0].State == string(RunInterrupted) && st.Runs[0].Error == ""
 	})
 	if svc.CancelRun(res.RunID) {
 		t.Fatal("cancel of a finished run still reports true")

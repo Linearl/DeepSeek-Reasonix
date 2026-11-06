@@ -15563,6 +15563,12 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
 }
 /* 运行中脉冲点：reduced-motion 下退化为静态点（全局规则归零动画）。 */
+/* tl1447: 运行中节点静默越阈（疑似卡死）——警示描边，行内 title 给处置口径。 */
+.wf-node--silent {
+  outline: 1px solid var(--warn, transparent);
+  outline-offset: 1px;
+}
+
 .wf-node__spinner {
   position: absolute;
   top: 7px;
@@ -30219,6 +30225,64 @@ button.statusbar__mcp:focus-visible {
 
 .subagents-panel__terminate:hover {
   background: var(--bg-soft);
+  color: var(--danger, var(--fg-dim));
+}
+
+/* tl1447: 心跳警示徽章（静默越阈的运行行）+「继续」续轮入口。 */
+.subagents-panel__silent {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--warn, var(--fg-dim));
+  border: 1px solid color-mix(in srgb, var(--warn, var(--fg-dim)) 45%, transparent);
+  animation: subagent-silent-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes subagent-silent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.subagents-panel__continue {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-left: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--warn, var(--fg-dim));
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.subagents-panel__continue:hover {
+  background: var(--bg-soft);
+  color: var(--warn, var(--fg-dim));
+}
+
+.subagents-panel__continue--confirm {
+  color: var(--fg);
+  border: 1px solid var(--warn, var(--fg-dim));
+  border-radius: 4px;
+  margin-left: 4px;
+}
+
+.subagents-panel__continue-receipt {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 0 9px 6px 29px;
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+
+.subagents-panel__continue-receipt[data-subagent-continue-disposition="error"] {
   color: var(--danger, var(--fg-dim));
 }
 

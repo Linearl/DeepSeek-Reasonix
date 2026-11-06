@@ -624,12 +624,13 @@ func TestServiceResumeRefusalMatrix(t *testing.T) {
 		t.Fatalf("completed must refuse: %v", err)
 	}
 
-	// cancelled：盘上 failed+cancelled。
+	// cancelled：盘上 failed+cancelled（tl1447 前的 legacy 形态——旧版停止落
+	// failed）。仍不可续，文案点名「旧版停止记录」给重跑下一步。
 	save("wf-cancel", string(RunFailed), true)
 	svc.restoreFromDisk()
 	_, err = svc.RunWorkflow(ctx, "resume-chain", "wf-cancel")
-	if err == nil || !strings.Contains(err.Error(), "cancelled on purpose") {
-		t.Fatalf("cancelled must refuse with purpose semantics: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "stopped by an earlier build") {
+		t.Fatalf("legacy failed+cancelled must refuse with legacy-stop semantics: %v", err)
 	}
 
 	// 未知 run。

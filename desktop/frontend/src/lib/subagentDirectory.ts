@@ -39,6 +39,24 @@ export const SUBAGENT_DIRECTORY_PAGE_SIZE = 20;
  *  panel polls its store (TaskMonitorPanel POLL_INTERVAL_MS). */
 export const SUBAGENTS_PERSISTED_POLL_MS = 5000;
 
+/** tl1447（缺陷①）：运行行静默警示阈值——超过该时长无任何可观测活动（进度
+ *  管道零事件）即视为「疑似失活」，行内出心跳警示徽章（异常先发声）。默认
+ *  5 分钟，与 tl1447 验收口径（建议 5-10 分钟静默）取下限；panel/测试可经
+ *  now 注入与 props 覆盖，不设后端开关（纯展示判定面，前端单一真相）。 */
+export const SUBAGENT_SILENCE_ALERT_MS = 5 * 60 * 1000;
+
+/** 子代理运行行的静默时长（ms）。无活跃面（lastActivityAt 缺省）返回 0——
+ *  「不知道它静默多久」不等于「静默」，绝不虚报。 */
+export function subagentSilenceMs(entry: Pick<SubagentDirectoryEntry, "lastActivityAt">, now: number): number {
+  if (!entry.lastActivityAt) return 0;
+  return Math.max(0, now - entry.lastActivityAt);
+}
+
+/** 是否越静默警示阈值（仅运行行应调用；终态行调用方自行排除）。 */
+export function isSubagentEntrySilent(entry: Pick<SubagentDirectoryEntry, "lastActivityAt">, now: number): boolean {
+  return subagentSilenceMs(entry, now) >= SUBAGENT_SILENCE_ALERT_MS;
+}
+
 export type SubagentDirectoryEntry = {
   item: SubagentDirectoryItem;
   running: boolean;
@@ -61,6 +79,12 @@ export type SubagentDirectoryEntry = {
    *  whose transcript card is missing still gets the live work-process
    *  stream. */
   callId?: string;
+  /** tl1447: 子代理最后一次可观测活动的时刻（unix ms，desktop 前台登记表
+   *  维护——lifecycle 活相打起点，进度事件逐次刷新）。运行行静默时长 =
+   *  now - lastActivityAt，越 SUBAGENT_SILENCE_ALERT_MS 即心跳警示徽章。
+   *  transcript 卡经 mergeRegistryRunningSubagents 与登记孪行碰撞时继承
+   *  该值；缺省（job 行/transcript 卡无孪行）= 无活跃面，不参与静默判定。 */
+  lastActivityAt?: number;
 };
 
 export type SubagentDirectory = {
@@ -269,7 +293,7 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
   const out: SubagentDirectoryEntry[] = [];
   if (!source) return out;
   const seen = new Set<string>();
-  const push = (id: string, label: string, startedAt: number | undefined, ref: string | undefined, callId?: string) => {
+  const push = (id: string, label: string, startedAt: number | undefined, ref: string | undefined, callId?: string, lastActivityAt?: number) => {
     if (!id || seen.has(id)) return;
     seen.add(id);
     const item: SubagentDirectoryItem = {
@@ -284,7 +308,16 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
       startedAt: startedAt || undefined,
       subject: label || undefined,
     };
-    out.push({ item, running: true, status: "running", ...(ref ? { ref } : {}), ...(callId ? { callId } : {}) });
+    out.push({
+      item,
+      running: true,
+      status: "running",
+      ...(ref ? { ref } : {}),
+      ...(callId ? { callId } : {}),
+      // tl1447: 活跃面只来自前台登记行（Go lastActivity 权威）；job 行无此面，
+      // 不参与静默判定（后台任务自有一族看门狗链）。
+      ...(lastActivityAt ? { lastActivityAt } : {}),
+    });
   };
   for (const job of source.jobs ?? []) {
     if (!job || job.kind === "bash") continue;
@@ -295,7 +328,7 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
     // Only the active tab's rows belong in this session's directory; foreign
     // tabs carry their origin in the capsule instead (task 557 contract).
     if (tabId && entry.tabId && entry.tabId !== tabId) continue;
-    push(`registry:fg:${entry.ref}`, entry.description || entry.name || entry.ref, entry.startedAt, entry.ref, entry.parentToolCallId || undefined);
+    push(`registry:fg:${entry.ref}`, entry.description || entry.name || entry.ref, entry.startedAt, entry.ref, entry.parentToolCallId || undefined, entry.lastActivityAt);
   }
   return out;
 }
@@ -307,11 +340,30 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
  *  (the dispatch call id) also dedupes against a transcript card's item id —
  *  a card that lost its progress-preview ref (hydration window) still means
  *  "this child is represented", so the registry twin must not double the
- *  row. Pure: returns the input directory when there is nothing to add. */
+ *  row. tl1447: 碰撞时存活卡继承登记孪行的 lastActivityAt（登记表是活跃面
+ *  唯一权威——转录卡自身无时间戳，静默判定因此覆盖有卡子代理）。纯函数：
+ *  无新增行且无活跃面可继承时原样返回输入。 */
 export function mergeRegistryRunningSubagents(directory: SubagentDirectory, registry: readonly SubagentDirectoryEntry[] | undefined): SubagentDirectory {
   if (!registry || registry.length === 0) return directory;
+  const twinByKey = new Map<string, SubagentDirectoryEntry>();
+  for (const entry of registry) {
+    if (entry.ref) twinByKey.set(entry.ref, entry);
+    if (entry.callId) twinByKey.set(entry.callId, entry);
+    twinByKey.set(entry.item.id, entry);
+  }
+  let enriched = false;
+  const running = directory.running.map((entry) => {
+    const twin = (entry.ref && twinByKey.get(entry.ref))
+      || (entry.callId && twinByKey.get(entry.callId))
+      || twinByKey.get(entry.item.id);
+    if (twin?.lastActivityAt && twin.lastActivityAt !== entry.lastActivityAt) {
+      enriched = true;
+      return { ...entry, lastActivityAt: twin.lastActivityAt };
+    }
+    return entry;
+  });
   const known = new Set<string>();
-  for (const entry of directory.running) {
+  for (const entry of running) {
     if (entry.ref) known.add(entry.ref);
     known.add(entry.item.id);
   }
@@ -320,6 +372,6 @@ export function mergeRegistryRunningSubagents(directory: SubagentDirectory, regi
     if (entry.callId && known.has(entry.callId)) return false;
     return !known.has(entry.item.id);
   });
-  if (extra.length === 0) return directory;
-  return { running: [...extra, ...directory.running], ended: directory.ended };
+  if (extra.length === 0 && !enriched) return directory;
+  return { running: [...extra, ...running], ended: directory.ended };
 }

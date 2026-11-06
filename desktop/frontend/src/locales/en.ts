@@ -3265,6 +3265,12 @@ export const en = {
 "subagentPanel.splitResize": "Resize the list column",
 "subagentPanel.liveTools": "Work in progress (tool calls)",
 "subagentPanel.widen": "Widen preview",
+  // tl1447: subagent heartbeat (silence alert) + continue (resume-turn) entry.
+  "subagentPanel.silentBadge": "silent {n}",
+  "subagentPanel.continueSent": "Send continue nudge",
+  "subagentPanel.continueConfirm": "Confirm continue?",
+  "subagentPanel.continueSending": "Sending…",
+  "workflowPanel.nodeSilent": "Silent {n}: possibly stuck; stop the run, then resume from the checkpoint",
 "subagentPanel.narrow": "Restore width",
 "settings.dockTabVisibility": "Dock tab visibility",
 "settings.dockTabVisibilityHint": "Choose which right-dock tabs are shown; keep at least one. Applies immediately.",
