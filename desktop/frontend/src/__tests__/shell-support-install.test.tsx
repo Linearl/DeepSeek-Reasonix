@@ -125,6 +125,9 @@ function windowsSettings(overrides: {
           settingsCalls += 1;
           return windowsSettings({ manualUrl: "https://evil.example/?next=https://git-scm.com/download/win" });
         },
+        // 任务 915 write-on-show 播种 effect(experimentalToolOptimizations 为
+        // null 时首载即调用);产品侧 wails 绑定与 dev mock 均已实现(task603 钉)。
+        SetExperimentalToolOptimizations: async () => {},
         SetShellPreference: async () => {},
         InstallShellSupport: async () => {
           installCalls += 1;
@@ -192,6 +195,8 @@ function windowsSettings(overrides: {
     main: {
       App: {
         Settings: async () => linuxSettings,
+        // 同上:任务 915 播种 effect 的 mock 缺口。
+        SetExperimentalToolOptimizations: async () => {},
         SetShellPreference: async () => {},
         InstallShellSupport: async () => ({ status: "unsupported_platform" }),
         CancelShellInstall: async () => {},
@@ -257,6 +262,8 @@ function windowsSettings(overrides: {
     main: {
       App: {
         Settings: async () => macSettings,
+        // 同上:任务 915 播种 effect 的 mock 缺口。
+        SetExperimentalToolOptimizations: async () => {},
         SetShellPreference: async () => {},
         InstallShellSupport: async () => ({ status: "unsupported_platform" }),
         CancelShellInstall: async () => {},

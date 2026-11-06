@@ -99,6 +99,9 @@ window.go = {
   main: {
     App: {
       Settings: async () => settingsSnapshots[Math.min(settingsCalls++, settingsSnapshots.length - 1)],
+      // 任务 915 write-on-show 播种 effect(experimentalToolOptimizations 为
+      // null 时首载即调用);产品侧 wails 绑定与 dev mock 均已实现(task603 钉)。
+      SetExperimentalToolOptimizations: async () => {},
       SetDisplayMode: async () => {
         setDisplayModeCalls += 1;
       },
@@ -213,6 +216,8 @@ window.go = {
   main: {
     App: {
       Settings: async () => compactSettings,
+      // 同上:任务 915 播种 effect 的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       FetchAllProviderModelCatalogs: async () => ({}),
       SetCompactRatio: async (ratio: number) => {
         compactRatioCalls.push(ratio);
@@ -392,9 +397,12 @@ window.go = {
         if (failingSettingsCalls === 1) throw new Error("/Users/example/.reasonix/settings.toml: permission denied");
         return baseSettings("standard");
       },
+      // 同上:任务 915 播种 effect 的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
     } as Partial<AppBindings> as AppBindings,
   },
 };
+
 
 await act(async () => {
   retryRoot.render(
@@ -437,6 +445,8 @@ let windowsSetSandboxCalls = 0;
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       // Deliberately return a stale enforce value: the Windows UI must still
       // render the effective immutable off state.
       Settings: async () => baseSettings("standard"),
@@ -481,6 +491,8 @@ const savedZoomFactors: number[] = [];
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => baseSettings("standard"),
       GetDesktopZoomFactor: async () => persistedZoom,
       SetDesktopZoomFactor: async (factor: number) => {
@@ -570,6 +582,8 @@ botsSettings.bot.connections = [
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => botsSettings,
     } as Partial<AppBindings> as AppBindings,
   },
@@ -641,6 +655,8 @@ let dingtalkTestCalls = 0;
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => dingtalkSettings,
       SetBotSettings: async (next: typeof dingtalkSettings) => {
         dingtalkSettings = next;
@@ -696,7 +712,8 @@ notEnabledSettings.bot.dingtalk = {
   requireMention: true,
 };
 window.go = {
-  main: { App: { Settings: async () => notEnabledSettings } } as Partial<AppBindings> as AppBindings,
+  main: { App: { // 任务 915 播种 effect 的 mock 缺口。
+    SetExperimentalToolOptimizations: async () => {}, Settings: async () => notEnabledSettings } } as Partial<AppBindings> as AppBindings,
 };
 await act(async () => {
   notEnabledRoot.render(
@@ -721,7 +738,8 @@ await act(async () => {
   notEnabledRoot.unmount();
 });
 window.go = {
-  main: { App: { Settings: async () => botsSettings } } as Partial<AppBindings> as AppBindings,
+  main: { App: { // 任务 915 播种 effect 的 mock 缺口。
+    SetExperimentalToolOptimizations: async () => {}, Settings: async () => botsSettings } } as Partial<AppBindings> as AppBindings,
 };
 
 await act(async () => {
@@ -775,6 +793,8 @@ let providerCatalogSaveCalls = 0;
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => providerRaceSettings,
       FetchAllProviderModelCatalogs: async () => {
         providerBatchCalls += 1;
@@ -855,6 +875,8 @@ providerRefreshCancelSettings.providers = [{
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => providerRefreshCancelSettings,
       FetchAllProviderModelCatalogs: async () => ({}),
       FetchProviderModelCatalog: async () => ["deepseek-v4-flash", "deepseek-v4-pro"].map((model) => ({ model, inputModalities: ["text"], state: "unsupported", source: "adapter" })),
@@ -936,6 +958,8 @@ let upgradeFailureChanged: SettingsView | undefined;
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => {
         upgradeFailureSettingsCalls += 1;
         return upgradeFailureSettings;

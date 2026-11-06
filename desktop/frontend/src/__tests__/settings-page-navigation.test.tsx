@@ -10,7 +10,10 @@ globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.windo
 window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList;
 window.scrollTo = () => {};
 const settings = baseSettings("standard");
-(window as unknown as { go: unknown }).go = { main: { App: { Settings: async () => settings, FetchAllProviderModels: async () => ({}) } } };
+// SetExperimentalToolOptimizations: 任务 915 write-on-show 播种 effect 在
+// experimentalToolOptimizations 为 null 时首载即调用,部分 mock 必须补齐该方法
+// (产品侧 wails 绑定与 dev mock 都已实现,task603 有钉)。
+(window as unknown as { go: unknown }).go = { main: { App: { Settings: async () => settings, FetchAllProviderModels: async () => ({}), SetExperimentalToolOptimizations: async () => {} } } };
 const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { useManagementWorkspace } = await import("../lib/useManagementWorkspace");
