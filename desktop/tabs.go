@@ -1543,6 +1543,13 @@ func (s *tabEventSink) Emit(e event.Event) {
 		if e.Kind == event.TurnStarted || e.Kind == event.TurnDone {
 			app.clearForegroundSubagents(tabID)
 		}
+		// tl1447: 子代理活跃性——进度管道的每个事件（带 SubagentRef 的
+		// ToolProgress）刷新前台登记行的 lastActivity，运行行静默时长由此
+		// 可判（越阈值=心跳警示徽章）。仅刷新既有行：无主 ref 是 no-op，
+		// 本钩子永远不凭活动事件造行。
+		if e.Kind == event.ToolProgress && e.Tool.SubagentRef != "" {
+			app.noteSubagentActivity(tabID, e.Tool.SubagentRef)
+		}
 		switch e.Kind {
 		case event.TurnStarted:
 			s.resetDisplayTurn()
