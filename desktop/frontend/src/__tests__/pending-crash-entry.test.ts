@@ -129,28 +129,17 @@ ok(
 ok(clearBtn.textContent === "Clear all", "the clear button carries the en locale copy");
 
 analyze.click();
-// The availability probe and the spend-confirmation are both async; the click
-// handler awaits two ticks before the confirm button lands in the note.
+// Task 674 (d8bd8959f) removed the spend confirmation from analyzeEntryButton:
+// the availability probe is the only async gate and the click then starts the
+// analysis directly — "say what is about to happen and go". One click, one
+// start; the queued payload travels to StartCrashAnalysis verbatim.
 await tick();
 await tick();
 await tick();
 await tick();
-ok((host?.querySelector(".pending-crash__note")?.textContent ?? "").includes("consumes token quota"), "the entry reaches the shared spend confirmation");
-ok(startCalls.length === 0, "the confirmation alone does not start the analysis");
-
-// NOTE (pre-existing red, NOT task 1051): this block asserts a spend-confirmation
-// step that task 674 removed from analyzeEntryButton (the copy "consumes token
-// quota" is gone from en.ts). Verified against a clean HEAD checkout of this same
-// file — the two assertions below fail there too. Guarded with ?. so the crash
-// does not halt the rest of the suite (the clear-path checks further down run
-// regardless).
-const go = host?.querySelector(".pending-crash__note button") as HTMLButtonElement | null;
-go?.click();
-await tick();
-await tick();
-ok(startCalls.length === 1, "confirming starts exactly one analysis (pre-existing red)");
-ok(startCalls[0]?.[0] === "crash", "the started analysis carries the crash kind (pre-existing red)");
-ok(startCalls[0]?.[1] === newestPayload, "the queued payload travels to StartCrashAnalysis verbatim (pre-existing red)");
+ok(startCalls.length === 1, "the analyze click starts exactly one analysis (task 674 removed the spend confirmation)");
+ok(startCalls[0]?.[0] === "crash", "the started analysis carries the crash kind");
+ok(startCalls[0]?.[1] === newestPayload, "the queued payload travels to StartCrashAnalysis verbatim");
 
 // Task 694: the banner paints before LocaleProvider settles the locale at boot
 // (imperative DOM, painted once), so it must re-render when <html lang> flips.
