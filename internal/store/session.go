@@ -103,6 +103,66 @@ func SessionPinnedContext(sessionPath string) string {
 	return sessionStem(sessionPath) + ".pinned-context.json"
 }
 
+// SessionTelemetry is the desktop tab telemetry snapshot sidecar
+// (<id>.jsonl.telemetry.json). Like the lock files it spells against the full
+// transcript path, not the stem. Before tl1442 the deletion chains hand-spelled
+// this suffix (desktop sessionTelemetryPath / a bare literal in the recovery
+// trash move); the constructor is the single source now.
+func SessionTelemetry(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionPath + ".telemetry.json"
+}
+
+// SessionToolStats is the tool-error statistics sidecar
+// (<id>.jsonl.toolstats.json), written by the agent runtime for every session
+// it runs. Also spelled against the full transcript path. tl1442: every
+// deletion chain missed it — it is the most common single-file residue in the
+// 2026-11-05 field measurement.
+func SessionToolStats(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionPath + ".toolstats.json"
+}
+
+// SessionGuardianTranscript is the guardian companion session file
+// (<stem>.guardian.jsonl). The guardian transcript is session-shaped — it saves
+// through the same session layer as a main transcript and carries its own
+// sidecars (meta / event log / indexes) derived from this path.
+func SessionGuardianTranscript(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + ".guardian.jsonl"
+}
+
+// SessionGuardianCursor is the guardian replay cursor sidecar
+// (<stem>.guardian.cursor.json).
+func SessionGuardianCursor(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + ".guardian.cursor.json"
+}
+
+// SessionImagePackDir is the legacy image-extraction directory
+// (<stem>.jsonl.imgpack) that pre-P19 builds wrote beside sessions. No current
+// writer produces it, but field directories still carry it, and a deleted
+// session must not leave it behind (tl1442).
+func SessionImagePackDir(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionPath + ".imgpack"
+}
+
 // sessionStem strips the .jsonl suffix so a sidecar sits beside the session as
 // <id>.<kind> rather than <id>.jsonl.<kind>.
 func sessionStem(sessionPath string) string {

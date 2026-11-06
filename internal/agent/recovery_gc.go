@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -931,7 +932,8 @@ func prepareRecoveryTrashStage(path, key, stageDir string) error {
 }
 
 func finishRecoveryTrashStage(dir, path, key, stageDir string, guard *SessionRemovalGuard) error {
-	if err := moveRecoveryTrashArtifacts(dir, path, stageDir); err != nil {
+	report, err := moveRecoveryTrashArtifacts(dir, path, stageDir)
+	if err != nil {
 		return err
 	}
 	itemDir, err := publishRecoveryTrashStage(dir, key, stageDir)
@@ -949,7 +951,27 @@ func finishRecoveryTrashStage(dir, path, key, stageDir string, guard *SessionRem
 	if err := clearRecoveryTrashPending(itemDir); err != nil {
 		return err
 	}
+	logRecoveryTrashMove(dir, key, report)
+	if err := ClearCleanupPending(path); err != nil {
+		return err
+	}
 	return guard.RemoveSidecarsAndRelease()
+}
+
+// logRecoveryTrashMove is the deletion log's counting line (tl1442 requirement
+// 3): the trash move itself answers 删了几文件/几目录/几侧车类别, for every
+// caller of the family (desktop branch delete, conversation delete, background
+// GC, CLI catalog) in one place. Stragglers already carried a Warn of their own
+// when the sweep caught any.
+func logRecoveryTrashMove(dir, key string, report recoveryTrashMoveReport) {
+	slog.Info("agent: recovery branch artifacts trashed",
+		"key", key,
+		"dir", dir,
+		"files", report.Files,
+		"dirs", report.Dirs,
+		"categories", len(report.Categories),
+		"category_names", strings.Join(report.Categories, ","),
+		"stragglers", len(report.Stragglers))
 }
 
 func publishRecoveryTrashStage(dir, key, stageDir string) (string, error) {
@@ -1041,7 +1063,8 @@ func finishRecoveryTrashMove(dir, path, key, itemDir string, guard *SessionRemov
 	if err := os.MkdirAll(itemDir, 0o755); err != nil {
 		return err
 	}
-	if err := moveRecoveryTrashArtifacts(dir, path, itemDir); err != nil {
+	report, err := moveRecoveryTrashArtifacts(dir, path, itemDir)
+	if err != nil {
 		return err
 	}
 	if err := writeRecoveryTrashMeta(itemDir, key); err != nil {
@@ -1053,16 +1076,161 @@ func finishRecoveryTrashMove(dir, path, key, itemDir string, guard *SessionRemov
 	if err := ClearCleanupPending(path); err != nil {
 		return err
 	}
+	logRecoveryTrashMove(dir, key, report)
 	return guard.RemoveSidecarsAndRelease()
 }
 
-func moveRecoveryTrashArtifacts(dir, path, itemDir string) error {
+func moveRecoveryTrashArtifacts(dir, path, itemDir string) (recoveryTrashMoveReport, error) {
+	var report recoveryTrashMoveReport
+	seen := make(map[string]bool)
+	key := filepath.Base(path)
+	stem := strings.TrimSuffix(key, store.SessionTranscriptSuffix)
 	for _, src := range recoveryTrashSidecars(path) {
-		if err := moveRecoveryTrashPath(src, filepath.Join(itemDir, filepath.Base(src))); err != nil {
-			return err
+		moved, err := moveRecoveryTrashCounted(src, stem, itemDir, &report)
+		if err != nil {
+			return report, err
+		}
+		if moved {
+			seen[filepath.Base(src)] = true
 		}
 	}
-	return moveRecoverySubagentArtifacts(dir, path, itemDir)
+	// The stage protocol owns the transcript: prepareRecoveryTrashStage moved
+	// it before this function ran, so it never matches the sweep below.
+	seen[key] = true
+	swept, err := sweepRecoveryTrashStragglers(dir, stem, runtimeHandleNames(path), itemDir, seen, &report)
+	if err != nil {
+		return report, err
+	}
+	if swept > 0 {
+		// A straggler means the explicit inventory above missed a shape the
+		// session directory actually carried — the same blacklist-style lesson
+		// sessionBackupAllowlist recorded (task 1116). The sweep keeps deletion
+		// correct; this line keeps the inventory honest.
+		slog.Warn("agent: recovery branch trash swept stem-prefixed stragglers not in the sidecar inventory — extend recoveryTrashSidecars",
+			"key", key, "dir", dir, "names", strings.Join(report.Stragglers, ","))
+	}
+	if err := moveRecoverySubagentArtifacts(dir, path, itemDir, &report); err != nil {
+		return report, err
+	}
+	sort.Strings(report.Categories)
+	return report, nil
+}
+
+// recoveryTrashMoveReport counts what one recovery-trash move actually
+// relocated, so the deletion log can answer 删了几文件/几目录/几侧车类别
+// (tl1442 requirement 3) instead of a bare "deleted".
+type recoveryTrashMoveReport struct {
+	// Files counts regular-file entries moved out of the session directory
+	// (sidecars, straggler sweeps, and subagent transcripts included).
+	Files int
+	// Dirs counts directory artifacts moved (checkpoints, jobs, inbox,
+	// reminders, pre-repair backups, imgpack).
+	Dirs int
+	// Categories lists the distinct stem-relative suffixes that moved
+	// ("jsonl.meta", "guardian.jsonl", "pre-repair-20261105T020006", …), so
+	// the log names which sidecar families the branch actually carried.
+	Categories []string
+	// Stragglers names the stem-prefixed entries the catch-all sweep moved
+	// because the explicit inventory did not list them. Empty in the steady
+	// state; every non-empty run is an inventory gap to close.
+	Stragglers []string
+}
+
+// moveRecoveryTrashCounted moves src beside the staged transcript when it
+// exists, classifying it into the report. Missing sources are the normal case
+// (a branch carries only the sidecars its life produced) and count nothing.
+// stem is the owning session stem used to name the category; an artifact whose
+// base does not start with "stem." (defensive: should not happen for paths the
+// inventory derives) falls back to its full base name.
+func moveRecoveryTrashCounted(src, stem, itemDir string, report *recoveryTrashMoveReport) (bool, error) {
+	info, err := os.Lstat(src)
+	if os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	if err := moveRecoveryTrashPath(src, filepath.Join(itemDir, filepath.Base(src))); err != nil {
+		return false, err
+	}
+	if info.IsDir() {
+		report.Dirs++
+	} else {
+		report.Files++
+	}
+	report.Categories = append(report.Categories, stemRelativeSuffix(filepath.Base(src), stem))
+	return true, nil
+}
+
+// sweepRecoveryTrashStragglers moves every remaining session-directory entry
+// that shares the branch's stem prefix ("stem." followed by anything) into the
+// trash entry. The explicit inventory above covers every shape observed on
+// disk or produced by code; the sweep is the structural guarantee that "deleted"
+// means zero residue even for a shape invented after this list was written —
+// the repair-time ".jsonl.bak-<stamp>-<tag>" copies the 2026-11-05 field
+// measurement found are exactly such a shape. Runtime handles are excluded:
+// the removal guard owns the lock/lease files (deleted atomically with its
+// release) and the delayed-cleanup marker (cleared by ClearCleanupPending at
+// the end of both finish paths).
+//
+// The stem+"." anchor cannot reach a sibling session: generated names continue
+// with "-recovery-<hash>" or nothing, never with a dot, so another transcript
+// (or its sidecars) never matches this prefix.
+// runtimeHandleNames names the stem-prefixed entries the catch-all sweep must
+// leave alone because a live owner manages them: the two lock files the removal
+// guard holds (deleted atomically with its release), the lease identity record
+// it deletes, and the delayed-cleanup marker ClearCleanupPending removes at the
+// end of both finish paths.
+func runtimeHandleNames(sessionPath string) map[string]bool {
+	base := func(p string) string { return filepath.Base(p) }
+	return map[string]bool{
+		base(store.SessionLockFile(sessionPath)):       true,
+		base(store.SessionLeaseLock(sessionPath)):      true,
+		base(store.SessionLeaseInfo(sessionPath)):      true,
+		base(store.SessionCleanupPending(sessionPath)): true,
+	}
+}
+
+func sweepRecoveryTrashStragglers(dir, stem string, excluded map[string]bool, itemDir string, seen map[string]bool, report *recoveryTrashMoveReport) (int, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	swept := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if seen[name] || excluded[name] {
+			continue
+		}
+		if !strings.HasPrefix(name, stem+".") {
+			continue
+		}
+		src := filepath.Join(dir, name)
+		moved, moveErr := moveRecoveryTrashCounted(src, stem, itemDir, report)
+		if moveErr != nil {
+			return swept, moveErr
+		}
+		if moved {
+			report.Stragglers = append(report.Stragglers, name)
+			swept++
+		}
+	}
+	return swept, nil
+}
+
+// stemRelativeSuffix names an artifact by what follows its owning session stem:
+// "<stem>.jsonl.meta" -> "jsonl.meta". This is the deletion log's category
+// vocabulary — stable, self-maintaining, and equal to the rel keys
+// sessionBackupAllowlist already uses. A base that does not carry the stem
+// prefix falls back to the full name so the log never loses the entry.
+func stemRelativeSuffix(base, stem string) string {
+	prefix := stem + "."
+	if strings.HasPrefix(base, prefix) && len(base) > len(prefix) {
+		return base[len(prefix):]
+	}
+	return base
 }
 
 func prepareRecoveryTrashEntry(path, key, itemDir string) error {
@@ -1093,28 +1261,60 @@ func writeRecoveryTrashMetaExisting(itemDir, key string) error {
 	return os.WriteFile(filepath.Join(itemDir, recoveryTrashMetaFile), b, 0o644)
 }
 
+// recoveryTrashSidecars lists every session-owned artifact that follows the
+// transcript into the recoverable .trash. tl1442 (2026-11-05 用户实测 5 删 4 例
+// 残留): the pre-1442 list was the SessionSidecarFiles core plus telemetry and
+// three directories, which missed the shapes the field actually carries — the
+// toolstats counter, the whole guardian family (the guardian companion saves
+// through the same session layer and carries its own sidecars), the self-heal
+// pre-repair backup directories, the reminders queue, and the legacy imgpack
+// directory. Those misses are the residue. The catch-all stem-prefix sweep in
+// moveRecoveryTrashArtifacts is the structural guarantee for shapes invented
+// after this list; this list is the documented inventory the deletion log's
+// category counters and the inventory test pin read.
+//
+// Runtime handles (lock/lease files, cleanup-pending) and the staged
+// transcript itself are intentionally not here — the removal guard and the
+// stage protocol own them.
 func recoveryTrashSidecars(path string) []string {
 	artifacts := append([]string(nil), store.SessionSidecarFiles(path)...)
+	// The guardian companion is a session-shaped transcript in its own right;
+	// its sidecars derive from its own path, and the replay cursor rides with
+	// the family.
+	guardianPath := store.SessionGuardianTranscript(path)
+	artifacts = append(artifacts, guardianPath, store.SessionGuardianCursor(path))
+	artifacts = append(artifacts, store.SessionSidecarFiles(guardianPath)...)
 	artifacts = append(artifacts,
-		path+".telemetry.json",
+		store.SessionTelemetry(path),
+		store.SessionToolStats(path),
+		// Directory artifacts.
 		store.SessionCheckpointDir(path),
 		store.SessionJobsDir(path),
 		store.SessionInboxDir(path),
+		store.SessionRemindersDir(path),
+		store.SessionImagePackDir(path),
 	)
+	// Self-heal backups: one ".pre-repair-<UTC compact stamp>" directory per
+	// repair run, so a repeatedly repaired session carries several. The glob
+	// keeps the stamp out of this inventory's business.
+	if backups, err := filepath.Glob(strings.TrimSuffix(path, store.SessionTranscriptSuffix) + selfHealBackupSuffix + "*"); err == nil {
+		artifacts = append(artifacts, backups...)
+	}
 	return artifacts
 }
 
-func moveRecoverySubagentArtifacts(dir, path, itemDir string) error {
+func moveRecoverySubagentArtifacts(dir, path, itemDir string, report *recoveryTrashMoveReport) error {
 	artifacts, err := ListSubagentsByParent(dir, BranchID(path))
 	if err != nil {
 		return err
 	}
 	targetDir := filepath.Join(itemDir, "subagents")
 	for _, artifact := range artifacts {
+		stem := strings.TrimSuffix(filepath.Base(artifact.SessionPath), store.SessionTranscriptSuffix)
 		paths := []string{artifact.SessionPath, artifact.MetaPath}
 		paths = append(paths, store.SessionSidecarFiles(artifact.SessionPath)...)
 		for _, src := range paths {
-			if err := moveRecoveryTrashPath(src, filepath.Join(targetDir, filepath.Base(src))); err != nil {
+			if _, err := moveRecoveryTrashCounted(src, stem, targetDir, report); err != nil {
 				return err
 			}
 		}

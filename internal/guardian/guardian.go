@@ -15,6 +15,7 @@ import (
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/nilutil"
 	"reasonix/internal/provider"
+	"reasonix/internal/store"
 	"reasonix/internal/tool"
 )
 
@@ -344,19 +345,17 @@ func (gs *Session) review(ctx context.Context, toolName string, args json.RawMes
 }
 
 // PathFor returns the guardian session file path for a given main session path.
+// The spelling is store's (tl1442: the deletion-side inventories must derive
+// the same guardian family without importing this package — agent cannot,
+// guardian imports agent — so the constructor lives in the leaf authority and
+// this wrapper only forwards).
 func PathFor(sessionPath string) string {
-	if sessionPath == "" {
-		return ""
-	}
-	return strings.TrimSuffix(sessionPath, ".jsonl") + ".guardian.jsonl"
+	return store.SessionGuardianTranscript(sessionPath)
 }
 
 // CursorPathFor returns the guardian cursor sidecar path for a main session path.
 func CursorPathFor(sessionPath string) string {
-	if sessionPath == "" {
-		return ""
-	}
-	return cursorPathForGuardianPath(PathFor(sessionPath))
+	return store.SessionGuardianCursor(sessionPath)
 }
 
 func cursorPathForGuardianPath(path string) string {
