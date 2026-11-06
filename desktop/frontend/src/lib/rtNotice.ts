@@ -17,6 +17,51 @@
 /** 四档严重度，与 styles.css 的 .rt-notice[data-level] 规则一一对应。 */
 export type RtNoticeLevel = "info" | "warn" | "danger" | "accent";
 
+/**
+ * tl1464 warn 档自动消失窗口：卡顿提示（本族唯一的 warn 常驻面）挂出 30s 后
+ * 自动收走——过去 warn 档无超时，只能手动关；error/danger（崩溃入口/全屏
+ * overlay）保持手动关闭不设时限。30s 内 hover 不暂停计时（与 useToast 轻通知
+ * 的固定定时器对齐；ask 后台 toast 的 hover 重置是后端窗口耦合语义，不通用）。
+ */
+export const RT_NOTICE_WARN_AUTO_DISMISS_MS = 30_000;
+
+/**
+ * warn 档自动消失的收口回调：宿主仍连着文档才执行（手动已关/已换面则静默）。
+ * 返回 void；宿主移除由本模块完成。
+ */
+type RtNoticeAutoDismissAction = () => void;
+
+const autoDismissTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
+/**
+ * tl1464：为宿主装一枚自动消失定时器（重复 arm 即重置；手动关闭走
+ * clearRtNoticeAutoDismiss）。到期回调先于移除执行，供调用方把「自动消失」
+ * 归并进手动关闭的同一收口（hangPrompt 记 10min 冷却，防止 90s 轮询立刻重弹）。
+ */
+export function armRtNoticeAutoDismiss(
+  host: HTMLElement,
+  ms: number = RT_NOTICE_WARN_AUTO_DISMISS_MS,
+  onExpire?: RtNoticeAutoDismissAction,
+): void {
+  clearRtNoticeAutoDismiss(host);
+  const timer = setTimeout(() => {
+    autoDismissTimers.delete(host);
+    if (!host.isConnected) return;
+    onExpire?.();
+    if (host.isConnected) host.remove();
+  }, ms);
+  autoDismissTimers.set(host, timer);
+}
+
+/** 撤销自动消失定时器（手动关闭路径调用；未 arm 过则空操作）。 */
+export function clearRtNoticeAutoDismiss(host: HTMLElement): void {
+  const timer = autoDismissTimers.get(host);
+  if (timer) {
+    clearTimeout(timer);
+    autoDismissTimers.delete(host);
+  }
+}
+
 /** 图标徽章字形（语言中立，对齐 demo 提案节的四档示例）。 */
 const ICONS: Record<RtNoticeLevel, string> = {
   info: "i",
@@ -30,11 +75,12 @@ export function rtNoticeIcon(level: RtNoticeLevel): string {
 }
 
 /**
- * 取或建右下角堆叠容器与弹窗宿主。宿主挂 .rt-notice + data-level，
- * 后续 paint 用 replaceChildren 重排内容；crash-face--collapsed 等既有
- * 状态类在重复 paint 时保留（classList.add 幂等，不整体覆写 className）。
+ * 取或建右下角统一堆叠容器（#rt-notice-stack）。tl1464 起它是 A/C 两类共用的
+ * 唯一右下容器：C 类（.rt-notice，data-kind="diagnostic"）由 rtNoticeHost 挂入，
+ * A 类（toast 轻通知 / ask 后台 toast，data-kind="action"）由 React 侧
+ * createPortal 挂入同一容器——堆叠 column-reverse 按到达次序交错，后到者在上。
  */
-export function rtNoticeHost(id: string, level: RtNoticeLevel): HTMLElement {
+export function ensureRtNoticeStack(): HTMLElement {
   let stack = document.getElementById("rt-notice-stack");
   if (!stack) {
     stack = document.createElement("div");
@@ -42,6 +88,18 @@ export function rtNoticeHost(id: string, level: RtNoticeLevel): HTMLElement {
     stack.className = "rt-notice-stack";
     document.body.appendChild(stack);
   }
+  return stack;
+}
+
+/**
+ * 取或建弹窗宿主。宿主挂 .rt-notice + data-level + data-kind="diagnostic"
+ * （tl1464：与 A 类操作反馈同住右下堆叠，靠 data-kind 区分——C 类诊断告警
+ * 走 rt-notice 骨架，A 类走 toast 轻量样式，互不混用）。后续 paint 用
+ * replaceChildren 重排内容；crash-face--collapsed 等既有状态类在重复 paint
+ * 时保留（classList.add 幂等，不整体覆写 className）。
+ */
+export function rtNoticeHost(id: string, level: RtNoticeLevel): HTMLElement {
+  const stack = ensureRtNoticeStack();
   let host = document.getElementById(id);
   if (!host) {
     host = document.createElement("div");
@@ -56,6 +114,7 @@ export function rtNoticeHost(id: string, level: RtNoticeLevel): HTMLElement {
     host.classList.add("rt-notice");
   }
   host.dataset.level = level;
+  host.dataset.kind = "diagnostic";
   return host;
 }
 
