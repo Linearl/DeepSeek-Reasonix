@@ -23,6 +23,17 @@
 // 1100px 从未真正渲染（恒 440px），源码锚点全绿但装机不变。修法同 .rc-modal /
 // .reasonix-confirm-dialog--wide 先例：width 与 max-width 双写。
 //  8) .provider-dialog--wide 必须双写 max-width: min(1100px, 100vw-32px)。
+//
+// tl1345 验收：管理弹窗垂直链（条目 20+ 时弹窗不超屏、列表区滚动）。真实
+// Chromium 读数（bench/quick-commands-dialog-height.mjs，1280x800）：
+// 24 行时弹窗 h=738px ≤ 752px 外壳上限、bottom=769 < 800，列表区
+// scrollHeight=2135 / clientHeight=640 实滚——限高与滚动形态在基线已成立
+// （面板限高 = styles.css .settings-quick-commands--panel，656 定形）。
+// 源码锚点钉两处，防上游 merge 顶掉：
+//  9) .settings-quick-commands--panel 必须同时携带 overflow-y: auto——
+//     max-height 只截断，没有滚动形态条目多时底部不可达；
+// 10) .provider-dialog 外壳必须自带 max-height: calc(100dvh - 48px) +
+//     overflow: auto——面板限高被顶掉时弹窗仍是最后一道限高。
 
 import { JSDOM } from "jsdom";
 import { act } from "react";
@@ -141,6 +152,10 @@ console.log("\n任务 278 + 656 快捷指令弹窗宽度链");
     "quick-commands content fills the wide shell (no inner width floor to fight it)");
   ok(/\.settings-quick-commands--panel\s*\{[^{}]*max-height:\s*calc\(100dvh - 160px\)/.test(stylesCss),
     "panel grows vertically to the shell limit (100dvh-160px), scroll stays as fallback [656]");
+  ok(/\.settings-quick-commands--panel\s*\{[^{}]*overflow-y:\s*auto/.test(stylesCss),
+    "panel list scrolls once capped (overflow-y: auto) [tl1345]");
+  ok(/\{[^{}]*max-height:\s*calc\(100dvh - 48px\)[^{}]*overflow:\s*auto/.test(shellCss.split(".provider-dialog ")[1] ?? ""),
+    "dialog shell keeps its own viewport cap + scroll fallback [tl1345]");
   ok(/settings-quick-commands__row > textarea\.mem-input\s*\{[^{}]*min-width:\s*0/.test(stylesCss),
     "row content column is shrinkable (min-width:0) so long tokens cannot reintroduce h-scroll");
   ok(/ProviderDialog title=\{t\("settings\.quickCommandsManage"\)\}[\s\S]{0,80}?wide>/.test(managerSrc.replace(/\n\s*/g, " ")),
