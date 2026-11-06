@@ -9,7 +9,9 @@ import {
   CircleDashed,
   ExternalLink,
   FoldHorizontal,
+  HeartPulse,
   LoaderCircle,
+  Play,
   Square,
   UnfoldHorizontal,
 } from "lucide-react";
@@ -32,15 +34,17 @@ import type { HistoryMessage } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
   SUBAGENTS_PERSISTED_POLL_MS,
+  isSubagentEntrySilent,
   mergeEndedSubagentRecords,
   mergePersistedRunningSubagents,
   mergeRegistryRunningSubagents,
   subagentChildTools,
+  subagentSilenceMs,
   type SubagentDirectory,
   type SubagentDirectoryEntry,
   type SubagentDirectoryItem,
 } from "../lib/subagentDirectory";
-import type { SubagentArtifactView } from "../lib/types";
+import type { SubagentArtifactView, SubagentSendReceiptView } from "../lib/types";
 import { runningWorkflowRuns, workflowRunRowView, type WorkflowRunRowView } from "../lib/workflowRunRows";
 import type { WireWorkflowRun } from "../lib/workflowTypes";
 
@@ -151,22 +155,47 @@ const DirectoryRow = memo(function DirectoryRow({
   entry,
   onSelect,
   onTerminate,
+  now,
+  onContinue,
 }: {
   entry: SubagentDirectoryEntry;
   onSelect?: () => void;
   /** tl1209: per-child terminate bridge for RUNNING rows (App
    *  CancelSubagentForTab). Absent (or ended) keeps the row byte-for-byte. */
   onTerminate?: (ref: string) => Promise<boolean>;
+  /** tl1447: 面板级墙钟（15s 一跳，仅运行行在列时跳）。静默时长随时钟增长，
+   *  越阈值出心跳警示徽章；缺省（终态行不传）= 无静默判定，行原样。 */
+  now?: number;
+  /** tl1447 缺陷②: 「继续」续轮桥（App ContinueSubagentForSession，已绑定
+   *  sessionPath）。仅静默越阈的运行行渲染入口；两步确认（先确认后继续）。 */
+  onContinue?: (ref: string) => Promise<SubagentSendReceiptView>;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [terminating, setTerminating] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [continuing, setContinuing] = useState(false);
+  const [receipt, setReceipt] = useState<SubagentSendReceiptView | null>(null);
+  const [continueError, setContinueError] = useState<string | null>(null);
   const title = rowTitle(entry);
   const summary = entry.item.summary || entry.item.error || "";
   const durationSeconds = entryDurationSeconds(entry);
   const startedClock = entryStartedClock(entry);
   const ref = entry.ref;
   const canTerminate = Boolean(onTerminate && ref && entry.running);
+  // tl1447 缺陷①: 静默判定只作用于运行行 + 有活跃面的行（lastActivityAt 由
+  // 前台登记表权威供给，转录卡经 merge 继承）；时钟缺省 = 永不示警。
+  const silent = entry.running && now !== undefined && isSubagentEntrySilent(entry, now);
+  const silenceLabel = silent
+    ? formatDurationLabel(Math.round(subagentSilenceMs(entry, now ?? 0) / 1000), t)
+    : "";
+  const canContinue = Boolean(onContinue && ref && silent);
+  // 两步确认：第一步只置确认态，4s 无第二步自动回落（误触不留死状态）。
+  useEffect(() => {
+    if (!confirming) return;
+    const timer = window.setTimeout(() => setConfirming(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirming]);
   const terminate = async () => {
     if (!onTerminate || !ref || terminating) return;
     setTerminating(true);
@@ -176,6 +205,28 @@ const DirectoryRow = memo(function DirectoryRow({
       setTerminating(false);
     }
   };
+  // 缺陷②: 「继续」= 固定载荷的续轮唤醒（persist-first，回执即落盘）。
+  // steered=注入运行轮；queued/parked=排队等 continue_from 续轮送达。
+  const sendContinue = async () => {
+    if (!onContinue || !ref || continuing) return;
+    setContinuing(true);
+    setContinueError(null);
+    try {
+      setReceipt(await onContinue(ref));
+    } catch (e) {
+      setReceipt(null);
+      setContinueError(String((e as Error)?.message ?? e));
+    } finally {
+      setContinuing(false);
+      setConfirming(false);
+    }
+  };
+  const receiptKey: DictKey | null = receipt
+    ? receipt.disposition === "steered" ? "composer.capsuleMailSteered"
+    : receipt.disposition === "queued" ? "composer.capsuleMailQueued"
+    : receipt.disposition === "parked" ? "composer.capsuleMailParked"
+    : "composer.capsuleMailDisabled"
+    : null;
   const handleClick = () => {
     if (onSelect) {
       onSelect();
@@ -197,6 +248,14 @@ const DirectoryRow = memo(function DirectoryRow({
         <Tooltip label={title} wrap>
           <span className="subagents-panel__row-title">{title}</span>
         </Tooltip>
+        {/* tl1447 缺陷①: 心跳警示徽章——静默越阈即「异常先发声」（行内提示，
+            不新增面板不弹窗）；徽章只是提示面，处置走旁边的「继续」/停止。 */}
+        {silent && (
+          <span className="subagents-panel__silent" data-subagent-silent="true" title={t("subagentPanel.silentBadge", { n: silenceLabel })}>
+            <HeartPulse size={11} aria-hidden="true" />
+            {t("subagentPanel.silentBadge", { n: silenceLabel })}
+          </span>
+        )}
         <span className="subagents-panel__row-status">{t(statusLabelKey(entry))}</span>
         <ChevronRight size={12} aria-hidden="true" className="subagents-panel__chevron" />
       </button>
@@ -212,6 +271,39 @@ const DirectoryRow = memo(function DirectoryRow({
         >
           <Square size={10} fill="currentColor" aria-hidden="true" />
         </button>
+      )}
+      {/* tl1447 缺陷②: 「继续」续轮入口（先确认后继续）。只给静默越阈的
+          运行行——正常子代理零打扰（验收⑤）；两步确认防误触。 */}
+      {canContinue && (
+        confirming ? (
+          <button
+            type="button"
+            className="subagents-panel__continue subagents-panel__continue--confirm"
+            data-subagent-confirm-continue={ref}
+            disabled={continuing}
+            onClick={() => void sendContinue()}
+          >
+            {continuing ? t("subagentPanel.continueSending") : t("subagentPanel.continueConfirm")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="subagents-panel__continue"
+            data-subagent-continue={ref}
+            aria-label={`${t("subagentPanel.continueSent")} ${title}`}
+            title={t("subagentPanel.continueSent")}
+            onClick={() => setConfirming(true)}
+          >
+            <Play size={10} aria-hidden="true" />
+          </button>
+        )
+      )}
+      {(receiptKey !== null || continueError !== null) && (
+        <div className="subagents-panel__continue-receipt" role="status" data-subagent-continue-disposition={continueError ? "error" : receipt?.disposition}>
+          {continueError !== null
+            ? `${t("composer.capsuleMailError")} ${continueError}`
+            : receiptKey !== null ? t(receiptKey) : null}
+        </div>
       )}
       {open && (
         <div className="subagents-panel__detail">
@@ -555,6 +647,7 @@ export function SubagentsDockPanel({
   onListPersisted,
   onOpenInMain,
   onTerminateSubagent,
+  onContinueSubagent,
   transcriptItems,
   registryRunning,
   workflowRuns,
@@ -589,6 +682,10 @@ export function SubagentsDockPanel({
    * a cancelled outcome while the turn keeps running. Without it the rows
    * render without the terminate button, byte-for-byte the pre-1209 panel. */
   onTerminateSubagent?: (ref: string) => Promise<boolean>;
+  /** tl1447 缺陷②: 「继续」续轮桥（App ContinueSubagentForSession）。
+   *  (sessionPath, ref) 形态由面板绑定 sessionPath 后下发给行；不传即行内
+   *  不渲染「继续」入口，byte-for-byte 原面板。 */
+  onContinueSubagent?: (sessionPath: string, ref: string) => Promise<SubagentSendReceiptView>;
   /** tl1361: the session transcript items for the running detail's live
    * tool-call stream. Optional for the same byte-for-byte rule as the other
    * optional props — the 备用视图 (WorkspaceDockRegion) passes only
@@ -777,9 +874,18 @@ export function SubagentsDockPanel({
   // 行时跳（15s），静止面板零定时器。入列条件在本面板再过滤一道（App 下发
   // 前已过滤——防御面：completed/interrupted 落进来也不渲染成说谎的行）。
   const workflowViews = useMemo(() => runningWorkflowRuns(workflowRuns ?? []).map(workflowRunRowView), [workflowRuns]);
-  const wallNow = useWorkflowWallClock(workflowViews.length > 0);
+  // tl1447: 墙钟条件放宽到「有任何运行行」——子代理行静默时长也随时钟增长
+  // （15s 粒度足够 5 分钟级阈值；静止面板仍然零定时器）。
+  const wallNow = useWorkflowWallClock(workflowViews.length > 0 || running.length > 0);
   const hasWorkflowRows = workflowViews.length > 0;
   const empty = running.length === 0 && ended.length === 0 && !hasWorkflowRows;
+  // tl1447 缺陷②: 续轮桥绑定 sessionPath（身份面在面板，行只管 ref）。
+  // 桥缺席（备用视图形态）→ 行拿 undefined：不出「继续」入口（byte-for-byte）。
+  const continueSubagent = useCallback(
+    (ref: string) => (onContinueSubagent && sessionPath ? onContinueSubagent(sessionPath, ref) : Promise.reject(new Error("continue bridge unavailable"))),
+    [onContinueSubagent, sessionPath],
+  );
+  const continueBridge = onContinueSubagent && sessionPath ? continueSubagent : undefined;
   const selected = selectedId
     ? running.find((entry) => entry.item.id === selectedId)
       ?? ended.find((entry) => entry.item.id === selectedId)
@@ -847,7 +953,14 @@ export function SubagentsDockPanel({
                   <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun} />
                 ))}
                 {running.map((entry) => (
-                  <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} onTerminate={onTerminateSubagent} />
+                  <DirectoryRow
+                    key={entry.item.id}
+                    entry={entry}
+                    onSelect={() => setSelectedId(entry.item.id)}
+                    onTerminate={onTerminateSubagent}
+                    now={wallNow}
+                    onContinue={continueBridge}
+                  />
                 ))}
               </ul>
             )}
@@ -930,6 +1043,8 @@ export function SubagentsDockPanel({
                 entry={entry}
                 onSelect={detailEnabled ? () => setSelectedId(entry.item.id) : undefined}
                 onTerminate={onTerminateSubagent}
+                now={wallNow}
+                onContinue={continueBridge}
               />
             ))}
           </ul>

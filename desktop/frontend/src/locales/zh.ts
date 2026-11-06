@@ -3254,6 +3254,12 @@ export const zh: Record<DictKey, string> = {
 "subagentPanel.splitResize": "调整列表宽度",
 "subagentPanel.liveTools": "工作过程（工具调用）",
 "subagentPanel.widen": "加宽预览",
+  // tl1447：子代理心跳（静默警示）与「继续」续轮入口。
+  "subagentPanel.silentBadge": "静默 {n}",
+  "subagentPanel.continueSent": "发继续唤醒",
+  "subagentPanel.continueConfirm": "确认继续？",
+  "subagentPanel.continueSending": "发送中…",
+  "workflowPanel.nodeSilent": "静默 {n}：疑似卡死；停止后可从断点续跑",
 "subagentPanel.narrow": "还原宽度",
 "settings.dockTabVisibility": "侧栏标签显示",
 "settings.dockTabVisibilityHint": "勾选右侧边栏显示哪些标签页，至少保留一个；改动立即生效。",

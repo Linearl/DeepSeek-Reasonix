@@ -1971,6 +1971,12 @@ export default function App() {
     (sessionPath: string, ref: string, summary: string, text: string) => app.SendSubagentMessage(sessionPath, ref, summary, text),
     [],
   );
+  // tl1447 缺陷②: 「继续」续轮桥（App ContinueSubagentForSession）——静默
+  // 子代理的活性处置入口，固定载荷 persist-first；不挂消息开关。
+  const continueSubagentForSession = useCallback(
+    (sessionPath: string, ref: string) => app.ContinueSubagentForSession(sessionPath, ref),
+    [],
+  );
   const composerSessionKey = useMemo(() => {
     return composerDraftKeyForTab(activeTab, activeTabId);
   }, [activeTab, activeTabId]);
@@ -6989,6 +6995,8 @@ export default function App() {
                        桥（App CancelSubagentForTab）。子代理以 cancelled 结局收束，
                        主对话继续；ref 缺失（临时运行）的行不出按钮。 */
                     onTerminateSubagent={(ref) => cancelSubagent(activeTabId ?? "", ref)}
+                    /* tl1447: 「继续」续轮桥——静默越阈的运行行出两步确认入口。 */
+                    onContinueSubagent={continueSubagentForSession}
                   />
                 </Suspense>
               ) : effectiveRightDockMode === "remote" ? (

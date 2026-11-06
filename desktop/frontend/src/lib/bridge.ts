@@ -1095,6 +1095,9 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // 任务616 capsule: persist-first message send into one sub-agent's mailbox,
   // steered immediately when that sub-agent is running in this process.
   SendSubagentMessage(sessionPath: string, ref: string, summary: string, text: string): Promise<SubagentSendReceiptView>;
+  // tl1447 缺陷②: 「继续」续轮桥——静默子代理的活性处置通道（固定载荷
+  // persist-first；不挂 experimental_subagent_messaging 开关）。
+  ContinueSubagentForSession(sessionPath: string, ref: string): Promise<SubagentSendReceiptView>;
 }
 
 export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
@@ -5419,6 +5422,10 @@ function makeMockApp(): AppBindings {
     // send reports disabled so the composer renders the switch-off notice.
     async SendSubagentMessage() {
       return { messageId: "", disposition: "disabled" };
+    },
+    // tl1447: dev mock——无运行句柄，回 parked（排队语义），不谎报 steered。
+    async ContinueSubagentForSession() {
+      return { messageId: "", disposition: "parked" };
     },
     async DeleteSession(path: string) {
       const i = sessions.findIndex((s) => s.path === path);

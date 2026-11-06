@@ -31,6 +31,7 @@ import {
   type WorkflowRunStore,
   type WorkflowRunState,
 } from "../lib/workflowEvents";
+import { SUBAGENT_SILENCE_ALERT_MS } from "../lib/subagentDirectory";
 import { historyMessagesToItems } from "../lib/useController";
 import type { HistoryMessage } from "../lib/types";
 import { app } from "../lib/bridge";
@@ -293,6 +294,14 @@ export function WorkflowPanel({
   const storeSnapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const snapshot = liveView ? liveView.snapshot : storeSnapshot;
   const activeDag = liveView ? liveView.dag : dag;
+  // tl1447 缺陷①: 节点静默判定的墙钟（15s 一跳，仅 live run 运行中跳）。
+  // 卡死形态恰是零推送（无事件无 workflow:runs），没有这跳钟徽章永远不会亮。
+  const [wallNow, setWallNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (liveView?.run.state !== "running") return;
+    const timer = window.setInterval(() => setWallNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, [liveView?.run.state]);
 
   const layout = useMemo(() => layoutWorkflowDag(activeDag), [activeDag]);
   const nodeById = useMemo(() => new Map(activeDag.nodes.map((n) => [n.id, n])), [activeDag]);
@@ -734,10 +743,23 @@ export function WorkflowPanel({
                 if (!node) return null;
                 const run = snapshot.nodes[placement.id] ?? { state: "queued" as const };
                 const phaseIndex = phases.indexOf(node.phase ?? "");
+                // tl1447 缺陷①: 运行中节点的静默判定——changedAt 是六态最后一次
+                // 变迁时刻，running 且久无变迁 = 节点疑似卡死（triage 30 分钟零
+                // 更新形态）。行内警示（类名+title），处置走面板停止→断点续跑。
+                const nodeSilent =
+                  run.state === "running" &&
+                  typeof run.changedAt === "number" &&
+                  run.changedAt > 0 &&
+                  wallNow - run.changedAt >= SUBAGENT_SILENCE_ALERT_MS;
+                const silentTitle = nodeSilent
+                  ? t("workflowPanel.nodeSilent", {
+                      n: formatDurationLabel(Math.round((wallNow - (run.changedAt ?? 0)) / 1000), t),
+                    })
+                  : undefined;
                 const className =
-                  phaseIndex >= 0
+                  (phaseIndex >= 0
                     ? `wf-node ${NODE_STATE_CLASS[run.state]} wf-node--phase-${phaseIndex % 4}`
-                    : `wf-node ${NODE_STATE_CLASS[run.state]}`;
+                    : `wf-node ${NODE_STATE_CLASS[run.state]}`) + (nodeSilent ? " wf-node--silent" : "");
                 return (
                   <button
                     key={node.id}
@@ -745,6 +767,8 @@ export function WorkflowPanel({
                     className={className}
                     style={{ left: placement.x, top: placement.y, width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT }}
                     aria-pressed={selectedId === node.id}
+                    title={silentTitle}
+                    data-silent-node={nodeSilent ? node.id : undefined}
                     onClick={() => setSelectedId((prev) => (prev === node.id ? null : node.id))}
                   >
                     <span className="wf-node__kind" aria-hidden="true">
