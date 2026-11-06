@@ -145,10 +145,12 @@ function installDom() {
 {
   const here = dirname(fileURLToPath(import.meta.url));
   const read = (rel: string) => readFileSync(resolve(here, rel), "utf8");
-  const channelPanel = read("../components/ChannelChatPanel.tsx");
+  // 群聊消息流从 ChannelChatPanel 抽到 ChannelMessageStream（tl1441 tab 形态共用），
+  // formatTime 随之搬家，钉跟到实际渲染处。
+  const channelStream = read("../components/ChannelMessageStream.tsx");
   const collabChatView = read("../components/CollabChatView.tsx");
-  ok(channelPanel.includes("formatMessageTimestamp(date, new Date(), getLocale())"),
-    "ChannelChatPanel.formatTime 走共享三档函数（不再裸 toLocaleString）");
+  ok(channelStream.includes("formatMessageTimestamp(date, new Date(), getLocale())"),
+    "ChannelMessageStream.formatTime 走共享三档函数（不再裸 toLocaleString）");
   ok(collabChatView.includes("formatMessageTimestamp(new Date(e.at), new Date(), getLocale())"),
     "CollabChatView 回放时间戳走共享三档函数（不再裸 toLocaleString）");
 }
