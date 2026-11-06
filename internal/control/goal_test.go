@@ -728,7 +728,7 @@ func TestGoalAdvanceResultCannotCrossGoalLifecycle(t *testing.T) {
 	t.Run("stop and resume invalidates result", func(t *testing.T) {
 		var g goalMachine
 		res := newResult(t, &g)
-		g.stop(GoalStatusStopped, nil)
+		g.stop(GoalStatusStopped, goalCauseStopRequested, nil)
 		if _, _, _, resumed := g.resume(nil); !resumed {
 			t.Fatal("test setup: goal did not resume")
 		}
@@ -980,7 +980,7 @@ func TestGoalSidecarRoundTripPreservesBlockedDeliveryCheckpoint(t *testing.T) {
 	}
 	statePath, data, persist := c.goals.setDeliveryCheckpoint(cp, nil)
 	c.persistGoalState(statePath, data, persist)
-	c.stopGoal(GoalStatusBlocked)
+	c.stopGoal(GoalStatusBlocked, goalCauseStopRequested, "")
 
 	freshExec := agent.New(nil, nil, agent.NewSession("sys"), agent.Options{}, event.Discard)
 	fresh := New(Options{Executor: freshExec, SessionDir: dir, Label: "fresh"})

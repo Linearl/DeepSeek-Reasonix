@@ -56,3 +56,37 @@ func GoalTurnRecorderFromContext(ctx context.Context) (GoalTurnRecorder, bool) {
 	r, ok := ctx.Value(goalTurnRecorderKey{}).(GoalTurnRecorder)
 	return r, ok && r != nil
 }
+
+type goalTurnUnavailableKey struct{}
+
+// WithGoalTurnUnavailableReason (tl1459) records why a turn that carries no
+// goal recorder is not a goal turn: the Goal stopped, paused, or was cleared.
+// update_goal returns it to the model instead of a bare refusal, so the model
+// can tell the user what happened rather than retry blindly. Plain chat leaves
+// it empty.
+func WithGoalTurnUnavailableReason(ctx context.Context, reason string) context.Context {
+	if reason == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, goalTurnUnavailableKey{}, reason)
+}
+
+// GoalTurnUnavailableReason returns the reason set by
+// WithGoalTurnUnavailableReason, or "".
+func GoalTurnUnavailableReason(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	reason, _ := ctx.Value(goalTurnUnavailableKey{}).(string)
+	return reason
+}
+
+// UpdateGoalUnavailableMessage is the one refusal text for update_goal outside
+// a goal turn; the provider-visibility gate and the tool itself both use it.
+func UpdateGoalUnavailableMessage(ctx context.Context) string {
+	msg := "update_goal is only available while an active goal turn is running — no goal state was changed"
+	if reason := GoalTurnUnavailableReason(ctx); reason != "" {
+		msg += " (" + reason + ")"
+	}
+	return msg
+}

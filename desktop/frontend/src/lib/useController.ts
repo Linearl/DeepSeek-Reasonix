@@ -44,6 +44,7 @@ import {
   appendNoticeItem,
   deliveryReadinessDetail,
   errorMessage,
+  isGoalLifecycleNotice,
   isNotActiveTurnRejection,
   isTurnAlreadyRunningRejection,
   readinessMissingIds,
@@ -5040,6 +5041,14 @@ export function useController() {
       }
       if (e.kind === "turn_done" || e.kind === "context_maintenance") {
         void app.ContextUsageForTab(targetTabId).then((context) => dispatchTo(targetTabId, { type: "context", context })).catch(() => {});
+      }
+      if (e.kind === "notice" && isGoalLifecycleNotice(e.code)) {
+        // tl1459: a goal_* notice means the backend Goal FSM just changed
+        // state. Refresh the tab meta so the Goal control reflects it in the
+        // same frame — during the 2026-11-06 early-stop incident the FSM was
+        // already stopped while the control kept showing the Goal as on.
+        invalidateSharedQuery("MetaForTab", [targetTabId]);
+        void refreshMetaForTab(targetTabId);
       }
       if (e.kind === "turn_done") {
         // tl1303 ③: the supervision window closes with the turn; a steer that

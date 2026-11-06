@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,7 +128,24 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 	if handled || err != nil {
 		return result, err
 	}
+	// tl1459: the replay branch exists to rewrite the CAS ledger and costs a
+	// full transcript decode. A session with a live lease holder owns its
+	// ledger (see commitSessionListingReplay) and republishes its own listing
+	// on its next save, so it is parked as busy before the decode — without
+	// this, every 30s busy retry re-decoded an open multi-megabyte session.
+	// The commit-side check stays as the guard against a lease acquired
+	// between here and the locked write.
+	if sessionLedgerOwnedByLiveWriter(path) {
+		return SessionListingRepairResult{}, ErrSessionListingRepairBusy
+	}
 	return repairSessionListingFromReplay(ctx, path, meta, result)
+}
+
+// sessionLedgerOwnedByLiveWriter reports whether a live runtime — this process
+// or another — holds path's session lease. A crashed holder's OS lock is free,
+// so its session reads as unowned and the repair heals it as before.
+func sessionLedgerOwnedByLiveWriter(path string) bool {
+	return SessionLeaseHeldByCurrentRuntime(path) || SessionLeaseHeldByOtherRuntime(path)
 }
 
 func lockSessionListingRepair(path string) (func(), error) {
@@ -251,6 +269,20 @@ func commitSessionListingReplay(ctx context.Context, path string, meta BranchMet
 		ledgerCurrent = false
 	}
 	ledgerRepaired := !ledgerCurrent
+	if ledgerRepaired && sessionLedgerOwnedByLiveWriter(path) {
+		// tl1459: a live writer holds this session's lease, so its in-memory
+		// transcript is the authoritative side of any digest disagreement and
+		// its own saves heal a stale ledger (save's ledgerStale path). Bumping
+		// the CAS revision under it revoked the "write authority + unchanged
+		// revision" ownership its next rewrite relied on: the 2026-11-06
+		// early-stop incident logged four "dead writer" takeovers and one fork,
+		// all with disk_writer=self_process, all caused by this repair. Yield
+		// without writing anything; the catalog parks the row as busy and
+		// repairs it once the session is released.
+		slog.Debug("session: listing repair yields the ledger to a live writer",
+			"path", path, "revision", meta.Revision)
+		return SessionListingRepairResult{}, ErrSessionListingRepairBusy
+	}
 	if ledgerRepaired {
 		meta.Revision = max(int64(1), meta.Revision+1)
 		meta.ContentDigest = state.DigestHex
@@ -281,6 +313,14 @@ func commitSessionListingReplay(ctx context.Context, path string, meta BranchMet
 	}
 	if err := saveBranchMetaContext(ctx, path, meta, false); err != nil {
 		return SessionListingRepairResult{}, err
+	}
+	if ledgerRepaired {
+		// tl1459: a repaired ledger is a CAS revision this process wrote
+		// without a save. Record it in the tl1443 commit trace so a live
+		// writer that later conflicts on this revision names the repair
+		// (peer_trigger=listing_repair) instead of "not_traced" — the
+		// 2026-11-06 early-stop incident spent a day on exactly that blank.
+		noteLedgerCommit(path, meta.Revision, state.Digest)
 	}
 	return SessionListingRepairResult{
 		Status: SessionListingRepairApplied, Preview: preview, Turns: turns, LedgerRepaired: ledgerRepaired,

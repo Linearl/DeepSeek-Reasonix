@@ -179,7 +179,10 @@ func (c *Controller) applyPendingRecoveryPromotion() bool {
 	appendSnapshotConflictDiagnostic(pending.mainPath, "promotion", "promoted_recovery_branch_to_main", nil, pending.mainPath, false)
 	slog.Warn("controller: recovery branch promoted back to the main file after the main file stayed quiet",
 		"main", pending.mainPath, "recovery", pending.copyPath, "archived", archived,
-		"topic", agent.RecoveryTopicRootID(pending.mainPath))
+		"topic", agent.RecoveryTopicRootID(pending.mainPath),
+		// tl1459: the promotion is a save-path facility; logging the Goal
+		// binding next to it lets one grep prove it left business state alone.
+		"goal_status", goalStatusLabel(c.goals.statusForDisplay()), "goal_epoch", c.goals.continuationToken())
 	// tl1403: the host surface (tab SessionPath / lease / write authority /
 	// frontend identity) was moved onto the copy at fork time by
 	// OnSessionRecovered; the promotion just moved the writer back to the main

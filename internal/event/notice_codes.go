@@ -166,6 +166,19 @@ const (
 	// durable queue keeps the item (it runs as the next turn's input), and the
 	// model never sees the notice.
 	NoticeCodeSteerDegraded = "steer_degraded"
+	// Goal lifecycle notices (tl1459): every transition that takes a running
+	// Goal out of running, plus the one that keeps it running while its
+	// auto-continue stops, carries one of these codes. Text stays the English
+	// technical line; Detail carries cause=<cause> (and reason/err when known).
+	// Frontends localize the human half by Code, keep Detail visible, and
+	// refresh the Goal state on any goal_* notice — the 2026-11-06 incident left
+	// the Goal control showing "on" for a FSM that had already stopped.
+	NoticeCodeGoalComplete           = "goal_complete"
+	NoticeCodeGoalBlocked            = "goal_blocked"
+	NoticeCodeGoalPaused             = "goal_paused"
+	NoticeCodeGoalStopped            = "goal_stopped"
+	NoticeCodeGoalCleared            = "goal_cleared"
+	NoticeCodeGoalAutoContinueHalted = "goal_auto_continue_halted"
 	// NoticeCodeReasoningOnlyContinuation (tl-1166 B): a final carried ONLY
 	// reasoning with an empty visible answer; the host injected ONE reminder
 	// asking the model to answer directly (its thinking stays in history).

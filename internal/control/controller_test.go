@@ -2024,7 +2024,7 @@ func TestAdoptEmptyHistoryRestoresPersistedGoalState(t *testing.T) {
 	oldExec := agent.New(nil, nil, agent.NewSession(""), agent.Options{}, event.Discard)
 	old := New(Options{Executor: oldExec, SessionDir: dir, SessionPath: path, Label: "old"})
 	old.SetGoal("preserve the zero-turn goal")
-	old.stopGoal(GoalStatusBlocked)
+	old.stopGoal(GoalStatusBlocked, goalCauseStopRequested, "")
 
 	newExec := agent.New(nil, nil, agent.NewSession(""), agent.Options{}, event.Discard)
 	replacement := New(Options{Executor: newExec, SessionDir: dir, Label: "replacement", DisableColdResumePrune: true})

@@ -64,6 +64,24 @@ const (
 	maxAutopilotEvaluatorFails = 2
 )
 
+// Goal transition causes (tl1459): why a running Goal left running. They are
+// observational — recorded as lastStopCause, carried by the goal_* notices and
+// the exit log — and no decision reads them, so stopCause keeps its resume
+// semantics untouched. A FSM branch that leaves running without one of these is
+// caught by TestGoalStatusTransitionsDeclareACause.
+const (
+	goalCauseComplete         = "complete"
+	goalCauseCompletePartial  = "complete_partial"
+	goalCauseReportBlocked    = "report_blocked"
+	goalCauseEvaluatorBlocked = "evaluator_blocked"
+	goalCauseTimeLimit        = "autopilot_time_limit"
+	// Host stops: the loop stopped the Goal because the turn context died.
+	goalCauseDurability    = "durability_failure" // a durable write failed and cancelled the turn
+	goalCauseStopRequested = "stop_requested"     // the user (or a remote stop) asked to stop
+	goalCauseCancelled     = "context_cancelled"  // the turn context ended without a stop request
+	goalCauseCleared       = "cleared"            // the Goal was cleared or replaced by an empty Goal
+)
+
 // budgetClassForLegacyMode translates old sidecars and deprecated CLI flags at
 // the compatibility boundary. The active Goal runtime stores only budgetClass.
 func budgetClassForLegacyMode(goal string, researchMode GoalResearchMode) string {
@@ -119,8 +137,12 @@ type goalMachine struct {
 	launch                 goalLaunchState
 	lastEvaluatorReason    string
 	stopCause              string
-	budgetExtensions       int // deprecated historical sidecar field
-	progressEvidence       []string
+	// lastStopCause (tl1459) is why the Goal last left running (a goalCause*
+	// or stopCause* value). Observational only; cleared when a Goal is
+	// installed or resumed.
+	lastStopCause    string
+	budgetExtensions int // deprecated historical sidecar field
+	progressEvidence []string
 	// evaluatorFailTurns counts consecutive uncertain/failed evaluator verdicts
 	// under autopilot so a flaky evaluator does not kill the run on the first
 	// blip and cannot spin forever (task 109 B7).
@@ -169,6 +191,7 @@ type goalState struct {
 	LastContinuationReason string   `json:"lastContinuationReason,omitempty"`
 	LastEvaluatorReason    string   `json:"lastEvaluatorReason,omitempty"`
 	StopCause              string   `json:"stopCause,omitempty"`
+	LastStopCause          string   `json:"lastStopCause,omitempty"`
 	BudgetExtensions       int      `json:"budgetExtensions,omitempty"`
 	ProgressEvidence       []string `json:"progressEvidence,omitempty"`
 
@@ -211,9 +234,11 @@ type goalAdvanceResult struct {
 	interceptNotice   string
 	cont              bool
 	continuationEpoch uint64
-	path              string
-	data              []byte
-	ok                bool
+	// cause (tl1459) is set whenever this step took the Goal out of running.
+	cause string
+	path  string
+	data  []byte
+	ok    bool
 }
 
 // goalContinuationSnapshot binds a continuation to the exact Goal lifecycle
@@ -341,6 +366,7 @@ func (g *goalMachine) setLegacyArchiveBlockedWithTaskID(goal, preferredBudgetCla
 	g.installGoalLocked(goal, preferredBudgetClass)
 	if goal != "" {
 		g.status = GoalStatusBlocked
+		g.lastStopCause = stopCauseLegacyArchive
 	}
 	g.stopCause = stopCauseLegacyArchive
 	g.block = clipGoalReason(reason)
@@ -349,7 +375,11 @@ func (g *goalMachine) setLegacyArchiveBlockedWithTaskID(goal, preferredBudgetCla
 }
 
 func (g *goalMachine) installGoalLocked(goal, preferredBudgetClass string) {
-	g.continuationEpoch++
+	if goal == "" {
+		g.bumpEpochLocked(goalEpochClear)
+	} else {
+		g.bumpEpochLocked(goalEpochInstall)
+	}
 	g.turnsUsed, g.tokensUsed, g.requestsUsed, g.noProgressTurns = 0, 0, 0, 0
 	g.workDurationMs = 0
 	g.block = ""
@@ -358,6 +388,9 @@ func (g *goalMachine) installGoalLocked(goal, preferredBudgetClass string) {
 	g.budgetExtensions = 0
 	g.progressEvidence = nil
 	if goal == "" {
+		if strings.TrimSpace(g.goal) != "" {
+			g.lastStopCause = goalCauseCleared
+		}
 		g.goal, g.status = "", GoalStatusStopped
 		g.budgetClass = ""
 		g.turnsLimit = 0
@@ -366,6 +399,7 @@ func (g *goalMachine) installGoalLocked(goal, preferredBudgetClass string) {
 		g.deliveryCheckpoint = evidence.DeliveryCheckpoint{}
 	} else {
 		g.goal, g.status = goal, GoalStatusRunning
+		g.lastStopCause = ""
 		g.scopeID = newGoalScopeID()
 		g.deliveryCheckpoint = evidence.DeliveryCheckpoint{ScopeID: g.scopeID}
 		g.budgetClass = preferredBudgetClass
@@ -384,9 +418,6 @@ func (g *goalMachine) setStrict(strict bool, todos []evidence.TodoItem) (string,
 	return g.buildStateLocked(todos)
 }
 
-// stop transitions a running goal to the given terminal status and clears the
-// transient runtime bookkeeping. stopCause is cleared: a host stop is not a
-// safe pause.
 // autopilotDeadline returns the instant an unattended run must stop, or the zero
 // time when the run is interactive. A non-positive runtime yields the zero time as
 // well: the CLI already refuses --autopilot without --max-runtime, and this is the
@@ -413,16 +444,24 @@ func (g *goalMachine) autopilotDeadlineReached(now time.Time) bool {
 	return g.autopilot && !g.deadline.IsZero() && !now.Before(g.deadline)
 }
 
-func (g *goalMachine) stop(status string, todos []evidence.TodoItem) (string, []byte, bool) {
+// stop transitions a running goal to the given terminal status and clears the
+// transient runtime bookkeeping. stopCause is cleared: a host stop is not a
+// safe pause. cause (tl1459) is required and recorded as lastStopCause; left
+// reports whether a running Goal actually left running, which is what decides
+// whether the controller owes the user a notice.
+func (g *goalMachine) stop(status, cause string, todos []evidence.TodoItem) (path string, data []byte, ok, left bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochStop)
 	if strings.TrimSpace(g.goal) != "" && g.status == GoalStatusRunning {
 		g.status = status
+		g.lastStopCause = cause
+		left = true
 	}
 	g.stopCause = ""
 	g.noProgressTurns = 0
-	return g.buildStateLocked(todos)
+	path, data, ok = g.buildStateLocked(todos)
+	return path, data, ok, left
 }
 
 // pauseFor transitions a running goal to a safe pause: status blocked plus a
@@ -430,9 +469,10 @@ func (g *goalMachine) stop(status string, todos []evidence.TodoItem) (string, []
 func (g *goalMachine) pauseFor(stopCause, reason string, todos []evidence.TodoItem) (string, []byte, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochPause)
 	if strings.TrimSpace(g.goal) != "" && g.status == GoalStatusRunning {
 		g.status = GoalStatusBlocked
+		g.lastStopCause = stopCause
 	}
 	g.stopCause = stopCause
 	if reason != "" {
@@ -457,8 +497,9 @@ func (g *goalMachine) resume(todos []evidence.TodoItem) (path string, data []byt
 	// A user-selected spend pause grants one fresh configured slice. Usage
 	// remains cumulative; only the absolute threshold moves forward.
 	spentBudget := g.stopCause == stopCauseBudgetSpend
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochResume)
 	g.status = GoalStatusRunning
+	g.lastStopCause = ""
 	g.block = ""
 	g.stopCause = ""
 	g.noProgressTurns = 0
@@ -545,13 +586,16 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	if strings.TrimSpace(g.goal) == "" || g.status != GoalStatusRunning {
 		return goalAdvanceResult{cont: false}
 	}
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochAdvance)
 	// A top-level goal turn (the first turn or a synthetic continuation) counts
 	// as an observational statistic; the in-Run model/tool loop is not re-counted.
 	g.turnsUsed++
 	var notice string
 	var intercept string
 	var interceptNotice string
+	// cause (tl1459) names why a terminal branch took the Goal out of
+	// running; every such branch must set it (AST-guarded).
+	var cause string
 	evaluatorComplete := in.evaluator != nil && in.evaluator.outcome == goaleval.OutcomeComplete
 	evaluatorBlocked := in.evaluator != nil && in.evaluator.outcome == goaleval.OutcomeBlocked
 	// Terminal dispositions first, then evaluator fail-closed; otherwise continue.
@@ -568,6 +612,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 		// disposition: the model may still believe it is making progress, but nobody
 		// is there to extend the budget - that decision was made in advance.
 		g.status = GoalStatusTimeLimitReached
+		cause = goalCauseTimeLimit
 		g.stopCause = ""
 		g.lastContinuationReason = "autopilot time limit reached"
 		notice = "goal stopped: autopilot time limit reached"
@@ -579,6 +624,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 			reason = "blocked"
 		}
 		g.status = GoalStatusBlocked
+		cause = goalCauseReportBlocked
 		g.block = reason
 		g.stopCause = ""
 		g.lastContinuationReason = clipGoalReason(in.report.reason)
@@ -589,6 +635,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 			reason = "blocked"
 		}
 		g.status = GoalStatusBlocked
+		cause = goalCauseEvaluatorBlocked
 		g.block = reason
 		g.stopCause = ""
 		g.lastEvaluatorReason = clipGoalReason(in.evaluator.reason)
@@ -596,6 +643,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	case complete.accept:
 		g.goal = ""
 		g.status = GoalStatusComplete
+		cause = goalCauseComplete
 		g.block = ""
 		g.stopCause = ""
 		g.progressEvidence = nil
@@ -604,6 +652,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	case g.tokensLimit > 0 && g.tokensUsed >= g.tokensLimit:
 		reason := fmt.Sprintf("token budget reached (%d/%d tokens used)", g.tokensUsed, g.tokensLimit)
 		g.stopCause = stopCauseBudgetSpend
+		cause = stopCauseBudgetSpend
 		g.block = clipGoalReason(reason)
 		if g.autopilot {
 			// Nobody is around to top the budget up, so this is terminal rather than a
@@ -643,6 +692,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 				return res
 			}
 			g.status = GoalStatusFailed
+			cause = stopCauseEvaluator
 			g.stopCause = stopCauseEvaluator
 			g.block = clipGoalReason(reason)
 			g.lastEvaluatorReason = clipGoalReason(reason)
@@ -650,6 +700,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 			break
 		}
 		g.status = GoalStatusBlocked
+		cause = stopCauseEvaluator
 		g.stopCause = stopCauseEvaluator
 		g.block = clipGoalReason(reason)
 		g.lastEvaluatorReason = clipGoalReason(reason)
@@ -660,6 +711,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 			reason = "the current Goal run reached a recoverable execution boundary"
 		}
 		g.stopCause = in.pauseCause
+		cause = in.pauseCause
 		g.block = clipGoalReason(reason)
 		if g.autopilot && (in.pauseCause == stopCauseRecoveryPaused || in.pauseCause == stopCauseAskUnanswered) {
 			// Nobody is here to send "continue" after Auto recovery paused the
@@ -680,6 +732,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 		// Partial. Do not replay the same intercept forever.
 		g.goal = ""
 		g.status = GoalStatusComplete
+		cause = goalCauseCompletePartial
 		g.block = ""
 		g.stopCause = ""
 		g.progressEvidence = nil
@@ -698,6 +751,10 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 		interceptNotice:   interceptNotice,
 		cont:              notice == "",
 		continuationEpoch: g.continuationEpoch,
+	}
+	if g.status != GoalStatusRunning {
+		g.lastStopCause = cause
+		res.cause = cause
 	}
 	res.path, res.data, res.ok = g.buildStateLocked(in.todos)
 	return res
@@ -803,6 +860,7 @@ func (g *goalMachine) buildStateLocked(todos []evidence.TodoItem) (path string, 
 		LastContinuationReason: g.lastContinuationReason,
 		LastEvaluatorReason:    g.lastEvaluatorReason,
 		StopCause:              g.stopCause,
+		LastStopCause:          g.lastStopCause,
 		BudgetExtensions:       g.budgetExtensions,
 		ProgressEvidence:       append([]string(nil), g.progressEvidence...),
 		Autopilot:              g.autopilot,
@@ -976,6 +1034,7 @@ func (g *goalMachine) restoreFromState(sessionPath string) (path string, data []
 	g.block = state.Block
 	g.strict = state.Strict
 	g.stopCause = state.StopCause
+	g.lastStopCause = state.LastStopCause
 	g.budgetExtensions = state.BudgetExtensions
 	g.progressEvidence, _ = mergeGoalProgressEvidence(nil, state.ProgressEvidence)
 	g.lastContinuationReason = state.LastContinuationReason
@@ -1003,7 +1062,7 @@ func (g *goalMachine) restoreFromState(sessionPath string) (path string, data []
 	if g.normalizeContinuousState(state.ResearchMode, legacy.taskID) {
 		migrated = true
 	}
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochRestore)
 	legacy.epoch = g.continuationEpoch
 	pendingLegacyGoal := legacy.taskID != "" && g.goal == ""
 	if migrated && !pendingLegacyGoal {
@@ -1152,7 +1211,7 @@ func (r *goalTurnRecorder) RecordGoalReport(report tool.GoalReport) (string, err
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.machine.turnActive(r.scopeID, r.epoch) {
-		return "", fmt.Errorf("update_goal: the active goal changed during this turn — report ignored; no goal state was changed")
+		return "", fmt.Errorf("update_goal: report ignored because %s — no goal state was changed", r.machine.turnInactiveReason(r.scopeID, r.epoch))
 	}
 	// The wire status "continue" maps to the FSM's internal "running" state;
 	// retain the wire value for user-facing acknowledgements and errors.

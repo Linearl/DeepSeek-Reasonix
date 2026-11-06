@@ -107,6 +107,13 @@ type forkTrace struct {
 	reason         string
 	recovery       string
 	existing       bool
+	// tl1459: the Goal binding as this controller saw it when the decision
+	// was logged, so a fork/rewrite line answers "did recovery move the Goal
+	// epoch" without a second log stream. goalKnown=false for traces that run
+	// without a controller (checkpoint escalations).
+	goalKnown  bool
+	goalStatus string
+	goalEpoch  uint64
 }
 
 func newForkTrace(path, mode string, saveErr error) *forkTrace {
@@ -198,6 +205,9 @@ func (c *Controller) finishForkTrace(t *forkTrace, outcome conflictOutcome, err 
 		c.forkObs.windowConflicts = 0
 		c.mu.Unlock()
 	}
+	t.goalKnown = true
+	t.goalStatus = goalStatusLabel(c.goals.statusForDisplay())
+	t.goalEpoch = c.goals.continuationToken()
 	t.emit(err)
 }
 
@@ -285,6 +295,9 @@ func (t *forkTrace) logAttrs(err error) []any {
 	}
 	if t.recovery != "" {
 		attrs = append(attrs, "recovery", t.recovery, "existing", t.existing)
+	}
+	if t.goalKnown {
+		attrs = append(attrs, "goal_status", t.goalStatus, "goal_epoch", t.goalEpoch)
 	}
 	attrs = append(attrs, "elapsed_ms", time.Since(t.started).Milliseconds(), "caller", t.origin.caller)
 	if err != nil {
