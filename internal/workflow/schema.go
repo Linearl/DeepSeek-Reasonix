@@ -57,12 +57,37 @@ var (
 
 // Workflow is one declarative orchestration document.
 type Workflow struct {
-	Version     int        `json:"version" yaml:"version"`
-	Name        string     `json:"name" yaml:"name"`
-	Description string     `json:"description,omitempty" yaml:"description,omitempty"`
-	Nodes       []Node     `json:"nodes" yaml:"nodes"`
-	Edges       []Edge     `json:"edges,omitempty" yaml:"edges,omitempty"`
-	Report      ReportSpec `json:"report,omitempty" yaml:"report,omitempty"`
+	Version     int    `json:"version" yaml:"version"`
+	Name        string `json:"name" yaml:"name"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	// Budget (tl1454) bounds the whole run; nil keeps the pre-tl1454 document
+	// byte-identical (canonical JSON and fingerprint unchanged).
+	Budget *Budget    `json:"budget,omitempty" yaml:"budget,omitempty"`
+	Nodes  []Node     `json:"nodes" yaml:"nodes"`
+	Edges  []Edge     `json:"edges,omitempty" yaml:"edges,omitempty"`
+	Report ReportSpec `json:"report,omitempty" yaml:"report,omitempty"`
+}
+
+// Budget is the run-level spend ceiling (tl1454). Every axis is optional; zero
+// means unbounded on that axis. Tokens and Rounds sum every sub-agent dispatch
+// of the run (directed re-asks, fixer rounds and confirmers included); Wall is
+// the wall clock of one execution segment (a resume starts a fresh segment).
+type Budget struct {
+	Tokens int    `json:"tokens,omitempty" yaml:"tokens,omitempty"`
+	Rounds int    `json:"rounds,omitempty" yaml:"rounds,omitempty"`
+	Wall   string `json:"wall,omitempty" yaml:"wall,omitempty"`
+}
+
+// WallDuration parses Wall; zero when unset (validation rejects bad values).
+func (b *Budget) WallDuration() time.Duration {
+	if b == nil {
+		return 0
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(b.Wall))
+	if err != nil || d <= 0 {
+		return 0
+	}
+	return d
 }
 
 // ResultField describes one typed-result field. Its Description is the field
@@ -96,7 +121,8 @@ type Node struct {
 	Effort        string        `json:"effort,omitempty" yaml:"effort,omitempty"`
 	MaxSteps      int           `json:"max_steps,omitempty" yaml:"max_steps,omitempty"`
 
-	// gate
+	// gate (Timeout is also legal on subagent/confirm since tl1454: there it
+	// bounds one whole node execution, directed re-asks included)
 	Command string    `json:"command,omitempty" yaml:"command,omitempty"`
 	Timeout string    `json:"timeout,omitempty" yaml:"timeout,omitempty"`
 	Tier    string    `json:"tier,omitempty" yaml:"tier,omitempty"`
@@ -160,7 +186,7 @@ func Parse(data []byte) (*Workflow, error) {
 // nodeFieldKeys maps each node type to the full set of keys legal on that
 // node (common keys plus the type's own).
 var nodeFieldKeys = map[string]map[string]bool{
-	NodeSubagent: keys("id", "type", "prompt", "description", "result", "findings_field", "tools", "model", "effort", "max_steps"),
+	NodeSubagent: keys("id", "type", "prompt", "description", "result", "findings_field", "tools", "model", "effort", "max_steps", "timeout"),
 	NodeGate:     keys("id", "type", "command", "timeout", "tier", "loop"),
 	NodePhase:    keys("id", "type", "label"),
 	NodeJoin:     keys("id", "type"),
@@ -168,7 +194,7 @@ var nodeFieldKeys = map[string]map[string]bool{
 	// carries it into the dispatch (SubagentRequest.Description), and after the
 	// persistence fix the confirm child's sidecar meta + right-dock panel row
 	// label read it; without it every confirmer row renders bare "task".
-	NodeConfirm: keys("id", "type", "target", "prompt", "description"),
+	NodeConfirm: keys("id", "type", "target", "prompt", "description", "timeout"),
 }
 
 func keys(names ...string) map[string]bool {
@@ -197,10 +223,10 @@ func rejectForeignNodeFields(data []byte, isJSON bool) error {
 	if !ok {
 		return nil
 	}
-	topKeys := keys("version", "name", "description", "nodes", "edges", "report")
+	topKeys := keys("version", "name", "description", "budget", "nodes", "edges", "report")
 	for k := range root {
 		if !topKeys[k] {
-			return fmt.Errorf("workflow: unknown top-level field %q", k)
+			return verr(DiagField, k, "", "workflow: unknown top-level field %q", k)
 		}
 	}
 	list, ok := root["nodes"].([]any)
@@ -217,22 +243,36 @@ func rejectForeignNodeFields(data []byte, isJSON bool) error {
 		if !known {
 			continue // the strict decoder plus Validate will reject it
 		}
+		id, _ := m["id"].(string)
 		for k := range m {
 			if !allowed[k] {
-				return fmt.Errorf("workflow: node %d: field %q is not valid on a %s node", i+1, k, nodeType)
+				return verr(DiagField, nodePath(i, k), id, "workflow: node %d: field %q is not valid on a %s node", i+1, k, nodeType)
 			}
 		}
 	}
 	return nil
 }
 
-// Timeout parses the gate timeout field, defaulting to DefaultGateTimeout.
+// TimeoutDuration parses the gate timeout field, defaulting to DefaultGateTimeout.
 func (n *Node) TimeoutDuration() time.Duration {
 	d, err := time.ParseDuration(strings.TrimSpace(n.Timeout))
 	if err != nil || d <= 0 {
 		return DefaultGateTimeout
 	}
 	return d
+}
+
+// ExecutionTimeout is the subagent/confirm node wall-clock limit (tl1454);
+// ok is false when the node declares none (pre-tl1454 behavior: unbounded).
+func (n *Node) ExecutionTimeout() (time.Duration, bool) {
+	if strings.TrimSpace(n.Timeout) == "" {
+		return 0, false
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(n.Timeout))
+	if err != nil || d <= 0 {
+		return 0, false
+	}
+	return d, true
 }
 
 // ResultField looks up a declared typed-result field.
