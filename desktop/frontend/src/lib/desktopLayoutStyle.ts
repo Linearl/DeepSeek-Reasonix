@@ -7,17 +7,19 @@ import classicStylesheetURL from "../styles/mode-classic.css?url";
 import workbenchStylesheetURL from "../styles/mode-workbench.css?url";
 import creationStylesheetURL from "../styles/mode-creation.css?url";
 
+// tl1450: the union keeps "creation" transiently (read compat, one version)
+// so the not-yet-deleted layout branches in App.tsx still typecheck; the
+// producers below already fold every legacy value to "workbench", so a
+// creation config renders workbench from the first paint. Next version drops
+// the literal together with the branches.
 export type DesktopLayoutStyle = "classic" | "workbench" | "creation";
 
 export function normalizeDesktopLayoutStyle(style: string | undefined): DesktopLayoutStyle {
   if (style === "classic") return "classic";
-  // Creation was dropped upstream (9deafd5eb) and its picker restored in
-  // 2ed751a46, but this normalizer kept the drop: every read of
-  // sandbox-style "creation" folded back to workbench, so the restored seg
-  // silently snapped back to Workbench, App never gained app--creation, and
-  // the settings bench stalled waiting for that class. Keep the restored
-  // picker honest — accept what the picker and App.tsx both offer.
-  if (style === "creation") return "creation";
+  // tl1450: the creation layout is retired — every read (snapshot, first-paint
+  // cache) folds to workbench. The authoritative mapping lives in Go
+  // normalizeDesktopLayoutStyle (internal/config/config.go), which also rewrites
+  // the stored value at startup; this is its read-only frontend projection.
   return "workbench";
 }
 

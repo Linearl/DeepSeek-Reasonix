@@ -407,8 +407,14 @@ func normalizeDesktopLayoutStyle(style string) string {
 		return "classic"
 	case "workbench", "workspace":
 		return "workbench"
+	// tl1450 read compat (one version): the creation layout is retired and the
+	// startup migration (ApplyUserConfigUpgradesOnStartup) rewrites the stored
+	// value to workbench; this mapping only covers hand-edited or multi-machine
+	// synced configs that re-introduce the raw value between startups. Delete
+	// this case next version — the default arm already folds unknowns to
+	// workbench.
 	case "creation":
-		return "creation"
+		return "workbench"
 	default:
 		return "workbench"
 	}

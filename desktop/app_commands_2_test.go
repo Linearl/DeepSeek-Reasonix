@@ -371,9 +371,11 @@ func TestWorkbenchLayoutQuickClicksSerializeWorkspaceRebuild(t *testing.T) {
 	runQuickClickWorkspaceReconcileTest(t, "workbench")
 }
 
-func TestCreationLayoutQuickClicksSerializeWorkspaceRebuild(t *testing.T) {
-	runQuickClickWorkspaceReconcileTest(t, "creation")
-}
+// tl1450: the creation-layout sibling of this test was deleted with the layout
+// itself — it pinned "creation is a settable single-surface layout", which no
+// longer exists. The shared guarantee (single-surface layouts serialize
+// workspace rebuilds; classic does not) stays covered by the workbench and
+// classic cases above.
 
 func runQuickClickWorkspaceReconcileTest(t *testing.T, layoutStyle string) {
 	t.Helper()

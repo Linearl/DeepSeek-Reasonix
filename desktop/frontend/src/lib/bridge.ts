@@ -2994,10 +2994,12 @@ function browserPlatformOverride(): "darwin" | "windows" | "linux" | "" {
   return value === "darwin" || value === "windows" || value === "linux" ? value : "";
 }
 
-function browserMockDesktopLayoutStyle(): "classic" | "workbench" | "creation" {
+function browserMockDesktopLayoutStyle(): "classic" | "workbench" {
   if (typeof window === "undefined" || window.go?.main?.App) return "workbench";
   const value = new URLSearchParams(window.location.search).get("layout");
-  return value === "classic" || value === "creation" ? value : "workbench";
+  // tl1450: creation retired — the legacy ?layout=creation preview param reads
+  // as workbench, mirroring the Go normalize mapping.
+  return value === "classic" ? "classic" : "workbench";
 }
 
 function browserPreviewBashSandboxMode(): "enforce" | "off" {
@@ -7739,7 +7741,9 @@ function makeMockApp(): AppBindings {
           return "";
         },
         async SetDesktopLayoutStyle(style: string) {
-          settings.desktopLayoutStyle = style === "workbench" || style === "creation" ? style : "classic";
+          // tl1450: creation retired — the mock mirrors the Go setter, which
+          // persists only classic|workbench.
+          settings.desktopLayoutStyle = style === "classic" ? "classic" : "workbench";
         },
         async SetDesktopZoomFactor(factor: number) {
           mockDesktopZoomFactor = Math.min(2.0, Math.max(0.5, Number.isFinite(factor) ? factor : 1.0));

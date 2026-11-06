@@ -629,8 +629,9 @@ func TestRemoteStatusRefreshRejectsSnapshotOlderThanTurnDone(t *testing.T) {
 	}
 }
 
-// TestSingleSurfaceTabsFileCollapsesRemote: workbench/creation layouts keep
-// exactly one surface across local and remote tabs, preferring the active one.
+// TestSingleSurfaceTabsFileCollapsesRemote: the workbench layout (the only
+// single-surface layout since tl1450 retired creation) keeps exactly one
+// surface across local and remote tabs, preferring the active one.
 func TestSingleSurfaceTabsFileCollapsesRemote(t *testing.T) {
 	f := desktopTabsFile{
 		Tabs:       []desktopTabEntry{{ID: "l1"}, {ID: "l2"}},

@@ -38,7 +38,10 @@ try {
   await act(async () => root.render(<LocaleProvider><Probe /></LocaleProvider>));
   assert.equal(requests, 1);
   await act(async () => { resolveStartup(snapshot); await import("../lib/themeExperience"); });
-  assert.equal(current.desktopLayoutStyle, "creation");
+  // tl1450: the snapshot deliberately carries the retired creation value — the
+  // preference layer must fold it to workbench (one-version read compat), not
+  // error and not fall back to classic.
+  assert.equal(current.desktopLayoutStyle, "workbench");
   assert.equal(getSessionExperience(), "deep", "backend wins over an old localStorage mirror");
   assert.deepEqual(current.configLoadWarnings, ["warning"]);
   await act(async () => { listeners.get("config:load-warnings")?.(["stale"], 2); });
