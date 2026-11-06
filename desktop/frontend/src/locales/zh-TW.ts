@@ -3498,6 +3498,11 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesStepPreviewHint": "第②步輔助：查看該副本的尾部訊息預覽（結尾優先，判斷它合併後會在底部添加什麼）",
   "settings.recoveryCopiesStepMainPreviewHint": "查看主線的尾部訊息預覽（結尾優先：尾部置頂，開頭降為摘要）；唯讀",
   "settings.recoveryCopiesBranchCheckHint": "勾選該副本分支參與底部的「刪除所選」；隨時可取消，勾選本身不動資料",
+  // tl1415b-2（使用者二輪實機實測）：主線行加核取方塊——勾選=以目前主線為選
+  // 定 HEAD，底部第③步合成由此可用（不再只能繞預覽確認的隱藏路徑）。
+  "settings.recoveryCopiesMainPickHint": "勾選=以目前主線為選定 HEAD，供底部第③步「以選定 HEAD 合成最長鏈」使用；隨時可取消，勾選本身不動資料",
+  // tl1415b-2：勾選的對話沒有可處理內容（無副本、單版本）時給誠實回執，不再靜默跳過。
+  "settings.recoveryCopiesIdleBlocked": "沒有可處理的內容——無副本且單版本，未做任何變更",
   "settings.recoveryCopiesRescanHint": "重新掃描該對話（若仍有多個副本會回到待處理組）",
   "settings.recoveryCopiesMergeFlowBtn": "以選定 HEAD 合成最長鏈",
   "settings.recoveryCopiesStepMergeHint": "第③步：以勾選的版本為 HEAD，與目前主線合成一條最長鏈（保留全部事件）——成功後該對話自動移入已合入組",
