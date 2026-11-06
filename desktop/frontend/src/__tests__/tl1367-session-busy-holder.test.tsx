@@ -249,7 +249,10 @@ console.log("\ntl1367 ④b all archive/delete toast chains go through formatSess
   ok(orgSource.includes("const firstMessage = formatSessionBusyError(first.error)"),
     "ProjectTreeOrganization: delete-group-sessions failure toast renders localized busy copy");
   const recoverySource = readFileSync(resolve(frontendRoot, "src/components/RecoveryCopiesSection.tsx"), "utf8");
-  ok(recoverySource.includes("onError(formatSessionBusyError(e))"),
+  // 钉语义不钉字面:tl1414 把 onError(formatSessionBusyError(e)) 拆成 detail 变量
+  // (toast+横幅共用),tl1415b 又把处理器搬进主组件改走 setErrors——本地化仍在,
+  // 旧字面钉却红了。改钉「版本头删除调用之后的 catch 走 formatSessionBusyError」。
+  ok(/DeleteSessionVersionHead\([\s\S]{0,800}?formatSessionBusyError\(e\)/.test(recoverySource),
     "RecoveryCopiesSection: version-head delete failure renders localized busy copy");
   ok(recoverySource.includes("detail: formatSessionBusyError(err)"),
     "RecoveryCopiesSection: conversation delete failure lines render localized busy copy");
