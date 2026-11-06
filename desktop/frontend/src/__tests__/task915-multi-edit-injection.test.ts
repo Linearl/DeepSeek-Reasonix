@@ -73,7 +73,9 @@ console.log("\ntask 915 multi_edit injection (extras channel + panel-layer defau
 
 // ④ frontend default-on display + first-load write.
 {
-  const panel = read("components/SettingsPanel.tsx");
+  // 45381165f(任务1134)后工具优化卡行在 ExperimentalLabSection(拼接读源);
+  // 首载播种 effect 仍留在 SettingsPanel(挂载即跑,不随实验室懒加载)。
+  const panel = read("components/SettingsPanel.tsx") + read("components/ExperimentalLabSection.tsx");
   ok(panel.includes("(s.experimentalToolOptimizations ?? true) === on"), "card renders the default-on state for an absent key");
   ok(panel.includes("void app.SetExperimentalToolOptimizations(true)"), "first-load effect materializes the key by writing true");
   ok(panel.includes("s.experimentalToolOptimizations != null"), "the write only fires while the key is absent");

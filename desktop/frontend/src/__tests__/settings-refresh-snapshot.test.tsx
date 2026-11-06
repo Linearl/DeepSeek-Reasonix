@@ -99,6 +99,9 @@ window.go = {
   main: {
     App: {
       Settings: async () => settingsSnapshots[Math.min(settingsCalls++, settingsSnapshots.length - 1)],
+      // 任务 915 write-on-show 播种 effect(experimentalToolOptimizations 为
+      // null 时首载即调用);产品侧 wails 绑定与 dev mock 均已实现(task603 钉)。
+      SetExperimentalToolOptimizations: async () => {},
       SetDisplayMode: async () => {
         setDisplayModeCalls += 1;
       },
@@ -213,6 +216,8 @@ window.go = {
   main: {
     App: {
       Settings: async () => compactSettings,
+      // 同上:任务 915 播种 effect 的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       FetchAllProviderModelCatalogs: async () => ({}),
       SetCompactRatio: async (ratio: number) => {
         compactRatioCalls.push(ratio);
@@ -232,7 +237,10 @@ await act(async () => {
 });
 ok(compactRootEl.textContent?.includes("Advanced context management") === false, "compaction preference has no redundant advanced disclosure");
 ok(compactRootEl.textContent?.includes("Automatic compaction threshold") === true, "compaction preference is visible without expanding a disclosure");
-ok(compactRootEl.textContent?.includes("80,000 tokens") === false, "compact ratio avoids a redundant token estimate under the selected row");
+// f0345224c(unify settings controls)后压缩行带 impact 一行文案:「The default
+// model compacts at about {tokens} tokens...」(settings.compactRatioImpactWithTokens)。
+// 原钉「不得出现冗余 token 估算」的意图收窄为:估算恰好出现一次(不多不少)。
+eq(compactRootEl.textContent?.split("80,000 tokens").length, 2, "compact ratio impact renders exactly one token estimate");
 ok(compactRootEl.textContent?.includes("Balance continuity and cache reuse") === true, "compact ratio explains the recommended preset consequence");
 ok(compactRootEl.textContent?.includes("effective threshold is 75%") === true, "project override shows the active effective threshold");
 const recommendedCompactButton = compactRootEl.querySelector('input[type="radio"][aria-label="80% · Recommended"]') as HTMLInputElement | null;
@@ -389,13 +397,29 @@ window.go = {
     App: {
       Settings: async () => {
         failingSettingsCalls += 1;
-        if (failingSettingsCalls === 1) throw new Error("/Users/example/.reasonix/settings.toml: permission denied");
+        // tl1307:失败 ≠ 终态——上限(3 次)内全部失败才落横幅;前 3 次
+        // 都拒绝,手动 Retry 重置预算后第 4 次成功。
+        if (failingSettingsCalls <= 3) throw new Error("/Users/example/.reasonix/settings.toml: permission denied");
         return baseSettings("standard");
       },
+      // 同上:任务 915 播种 effect 的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
     } as Partial<AppBindings> as AppBindings,
   },
 };
 
+// tl1307 自动退避(400/1200ms)会拖过本文件的 microtask waitFor;
+// 收缩退避到真实定时器量级(tl1307 自家测试同款做法),语义不变。
+// 等待也改墙钟有界轮询(退避是真定时器,microtask flush 推不动它)。
+const { settingsLoadRetry } = await import("../lib/settingsLoadRetry");
+settingsLoadRetry.delaysMs = [20, 30];
+const waitForWallClock = async (label: string, predicate: () => boolean) => {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
+    if (predicate()) return;
+  }
+  throw new Error(`timed out waiting for ${label}`);
+};
 await act(async () => {
   retryRoot.render(
     <LocaleProvider>
@@ -409,7 +433,7 @@ await act(async () => {
   );
   await flushPromises();
 });
-await waitFor("settings load failure", () => Boolean(document.querySelector(".banner--error")));
+await waitForWallClock("settings load failure", () => Boolean(document.querySelector(".banner--error")));
 
 ok(document.body.textContent?.includes("Settings could not be loaded.") === true, "failed initial settings load shows a visible error");
 ok(document.body.textContent?.includes("Loading…") === false, "failed initial settings load stops showing the loading state");
@@ -421,9 +445,10 @@ await act(async () => {
   retryButton.click();
   await flushPromises();
 });
-await waitFor("settings retry success", () => Boolean(Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Deep")));
+await waitForWallClock("settings retry success", () => Boolean(Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Deep")));
 
-eq(failingSettingsCalls, 2, "settings retry calls Settings again");
+// 3 次自动重试封顶 + 手动 Retry 重置预算后第 4 次成功。
+eq(failingSettingsCalls, 4, "settings retry calls Settings again");
 ok(document.body.textContent?.includes("Settings could not be loaded.") === false, "settings retry clears the load error");
 
 await act(async () => {
@@ -437,6 +462,8 @@ let windowsSetSandboxCalls = 0;
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       // Deliberately return a stale enforce value: the Windows UI must still
       // render the effective immutable off state.
       Settings: async () => baseSettings("standard"),
@@ -481,6 +508,8 @@ const savedZoomFactors: number[] = [];
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => baseSettings("standard"),
       GetDesktopZoomFactor: async () => persistedZoom,
       SetDesktopZoomFactor: async (factor: number) => {
@@ -570,6 +599,8 @@ botsSettings.bot.connections = [
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => botsSettings,
     } as Partial<AppBindings> as AppBindings,
   },
@@ -641,6 +672,8 @@ let dingtalkTestCalls = 0;
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => dingtalkSettings,
       SetBotSettings: async (next: typeof dingtalkSettings) => {
         dingtalkSettings = next;
@@ -696,7 +729,8 @@ notEnabledSettings.bot.dingtalk = {
   requireMention: true,
 };
 window.go = {
-  main: { App: { Settings: async () => notEnabledSettings } } as Partial<AppBindings> as AppBindings,
+  main: { App: { // 任务 915 播种 effect 的 mock 缺口。
+    SetExperimentalToolOptimizations: async () => {}, Settings: async () => notEnabledSettings } } as Partial<AppBindings> as AppBindings,
 };
 await act(async () => {
   notEnabledRoot.render(
@@ -721,7 +755,8 @@ await act(async () => {
   notEnabledRoot.unmount();
 });
 window.go = {
-  main: { App: { Settings: async () => botsSettings } } as Partial<AppBindings> as AppBindings,
+  main: { App: { // 任务 915 播种 effect 的 mock 缺口。
+    SetExperimentalToolOptimizations: async () => {}, Settings: async () => botsSettings } } as Partial<AppBindings> as AppBindings,
 };
 
 await act(async () => {
@@ -775,6 +810,8 @@ let providerCatalogSaveCalls = 0;
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => providerRaceSettings,
       FetchAllProviderModelCatalogs: async () => {
         providerBatchCalls += 1;
@@ -855,6 +892,8 @@ providerRefreshCancelSettings.providers = [{
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => providerRefreshCancelSettings,
       FetchAllProviderModelCatalogs: async () => ({}),
       FetchProviderModelCatalog: async () => ["deepseek-v4-flash", "deepseek-v4-pro"].map((model) => ({ model, inputModalities: ["text"], state: "unsupported", source: "adapter" })),
@@ -936,6 +975,8 @@ let upgradeFailureChanged: SettingsView | undefined;
 window.go = {
   main: {
     App: {
+      // 任务 915 播种 effect(experimentalToolOptimizations 为 null 首载即调用)的 mock 缺口。
+      SetExperimentalToolOptimizations: async () => {},
       Settings: async () => {
         upgradeFailureSettingsCalls += 1;
         return upgradeFailureSettings;

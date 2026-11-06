@@ -65,11 +65,20 @@ ok(
     && !contextPanelSource.includes('t("context.maintenanceCheckpoint")'),
   "ContextPanel must not expose canonical, model-visible, or checkpoint details",
 );
+// 668f118ca(任务549 切片2)把主读数改为 projected(实际发送量)并在投影失效
+// 时以可见「投影失效中」标注回退 canonical 全量——canonicalTokens/projectedTokens
+// 自此是主读数的合法来源(可见、有标注),不再是「隐藏 checkpoint 呈现状态」。
+// 本钉收窄为只禁 checkpointState(旧隐藏块的状态机名),并正向钉 549 的可见语义:
+// 主读数读 projected、失效标注读 canonical 且走同一人话键。
 ok(
-  !contextPanelSource.includes("checkpointState")
-    && !contextPanelSource.includes("canonicalTokens")
-    && !contextPanelSource.includes("projectedTokens"),
+  !contextPanelSource.includes("checkpointState"),
   "ContextPanel must not derive hidden checkpoint presentation state",
+);
+ok(
+  contextPanelSource.includes("context?.maintenance?.projectedTokens")
+    && contextPanelSource.includes('t("context.projectionInvalidTitle"')
+    && contextPanelSource.includes("context.maintenance?.canonicalTokens"),
+  "ContextPanel main readout uses projected tokens and labels projection-invalid state visibly (任务549)",
 );
 ok(
   !contextPanelSource.includes("snipTrigger") && !contextPanelSource.includes("forceTrigger"),

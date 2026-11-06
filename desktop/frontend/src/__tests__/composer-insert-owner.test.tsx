@@ -89,7 +89,11 @@ try {
   assert.deepEqual(toasts, ["terminal.noOutput"], "blank terminal output reports once");
 
   await act(async () => { await states.addTerminalOutputToComposer("term-boom"); });
-  assert.deepEqual(toasts, ["terminal.noOutput", "bridge down"], "a failed terminal read reports the error");
+  // 8274010ff(tl1446-3)裸错误 toast 收口 formatActionError:错误路径改走
+  // 「{动作}失败:{原始信息}」人话模板(模块级 i18n t 解析,不受测试注入的
+  // t 影响);原始错误文本保留=双轨不隐藏,仍作为子串断言钉住。
+  assert.deepEqual(toasts, ["terminal.noOutput", "Insert terminal output failed: bridge down"], "a failed terminal read reports the labelled error");
+  assert.ok(toasts[1]?.includes("bridge down"), "labelled error keeps the raw error text");
 
   await act(async () => { states.setInsertTarget("composer"); });
   await act(async () => { states.addWorkspaceTextToComposer("plain again"); });

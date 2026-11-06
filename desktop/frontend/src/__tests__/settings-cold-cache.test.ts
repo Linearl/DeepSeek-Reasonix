@@ -9,7 +9,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const panel = readFileSync(resolve(testDir, "../components/SettingsPanel.tsx"), "utf8");
+// 任务724/1134:布局树在 lab/labLayoutDefault、union 在 lab/labPaneRegistry、
+// 卡行在 ExperimentalLabSection(拼接读源,1134 判例)。
+const panel = [
+  "../components/SettingsPanel.tsx",
+  "../components/ExperimentalLabSection.tsx",
+  "../lab/labLayoutDefault.ts",
+  "../lab/labLightKeys.ts",
+  "../lab/labPaneRegistry.ts",
+].map((rel) => readFileSync(resolve(testDir, rel), "utf8")).join("\n");
 const viewTypes = readFileSync(resolve(testDir, "../lib/settingsViewTypes.ts"), "utf8");
 const bridge = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
 const zh = readFileSync(resolve(testDir, "../locales/zh.ts"), "utf8");
@@ -24,10 +32,13 @@ function ok(condition: unknown, label: string) {
 
 // Render table: task 427 merged the cold-cache entry into the compress-opt
 // card; task 561 M3 folds that card into contextGovernance (efficiency) —
-// the family light still reads the switch.
+// the family light still reads the switch. 任务724 后布局数据驱动:条目在
+// labLayoutDefault(efficiency 组),灯读数在 labLightKeys 谓词表。
 ok(
-  panel.includes('{ id: "contextGovernance", group: "efficiency",') &&
-    panel.includes("Boolean(s.experimentalColdCacheCompact)"),
+  panel.includes('key: "efficiency"') &&
+    panel.includes('id: "contextGovernance"') &&
+    panel.includes('"experimentalColdCacheCompact"') &&
+    panel.includes("experimentalColdCacheCompact: (s: SettingsView) => Boolean(s.experimentalColdCacheCompact)"),
   "render table carries the contextGovernance family entry in the efficiency group",
 );
 ok(panel.includes('| "contextGovernance"'), "the detail-card union includes the family id");

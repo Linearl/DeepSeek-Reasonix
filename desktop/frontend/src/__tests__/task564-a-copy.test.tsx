@@ -30,7 +30,14 @@ function ok(value: boolean, label: string) {
   else { process.stdout.write(`  FAIL  ${label}\n`); failed += 1; }
 }
 
-const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
+// 任务724/1134:布局树在 lab/labLayoutDefault、union 在 lab/labPaneRegistry、
+// 卡分支在 ExperimentalLabSection;四处拼接读源(1134 判例)。
+const panel = [
+  "../components/SettingsPanel.tsx",
+  "../components/ExperimentalLabSection.tsx",
+  "../lab/labLayoutDefault.ts",
+  "../lab/labPaneRegistry.ts",
+].map((rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8")).join("\n");
 const en = readFileSync(fileURLToPath(new URL("../locales/en.ts", import.meta.url)), "utf8");
 const zh = readFileSync(fileURLToPath(new URL("../locales/zh.ts", import.meta.url)), "utf8");
 const zhTW = readFileSync(fileURLToPath(new URL("../locales/zh-TW.ts", import.meta.url)), "utf8");
@@ -45,17 +52,18 @@ console.log("\ntask 564 A-level copy fixes + retired-key read-only retention");
 
 // ① pathRules retired read-only (551 paradigm, UI side).
 {
-  // 任务 961：后继分支由 traceAsState 随迁为 orphanHandling（traceAsState
-  // 独立 pane 退役并入「交互与呈现」卡——旧 marker 不存在会让 paneSlice
-  // 返回空、测试假红）。
-  const pane = paneSlice('{selected === "pathRules" && (', '{selected === "orphanHandling" && (');
+  // 任务 961:后继分支 marker 曾随 traceAsState 退役改为 orphanHandling;
+  // orphanHandling 独立 pane 亦已并入合并卡(tl1309),现后继分支 marker 为
+  // safetyCostControl(labSection 内 pathRules 之后紧邻的 pane 分支;
+  // 用紧邻分支保证负钉(无 setter/无 set-seg)不越过卡边界)。
+  const pane = paneSlice('{selected === "pathRules" && (', '{selected === "safetyCostControl" && (');
   ok(pane.includes('t("settings.pathRules.retired")') && pane.includes('t("settings.pathRules.value"'),
     "pathRules pane renders the retired read-only block (hint + stored value)");
   ok(pane.includes("Task 564") && pane.includes("task 551 paradigm"),
     "pathRules pane carries the 564/551 retirement comment");
   ok(!pane.includes("SetExperimentalPathRules") && !pane.includes("set-seg"),
     "pathRules pane has no setter and no toggle segment");
-  ok(panel.includes('{ id: "pathRules", group: "infra"') && panel.includes('| "pathRules"'),
+  ok(panel.includes('{ id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] }') && panel.includes('| "pathRules"'),
     "pathRules keeps its rail entry and union member (page kept, display only)");
   ok((panel.match(/SetExperimentalPathRules\(/g) ?? []).length === 0,
     "panel-wide: zero app.SetExperimentalPathRules( call sites (negative, M2 pattern)");

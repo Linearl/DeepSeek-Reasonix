@@ -30,6 +30,19 @@ const panel = fs.readFileSync(
   path.join(frontendRoot, "src/components/SettingsPanel.tsx"),
   "utf8",
 );
+// 任务724/1134 后实验室布局数据驱动(同 settings-cdp-debug-port 的读源口径)。
+const labLayout = fs.readFileSync(
+  path.join(frontendRoot, "src/lab/labLayoutDefault.ts"),
+  "utf8",
+);
+const labLightKeys = fs.readFileSync(
+  path.join(frontendRoot, "src/lab/labLightKeys.ts"),
+  "utf8",
+);
+const labSection = fs.readFileSync(
+  path.join(frontendRoot, "src/components/ExperimentalLabSection.tsx"),
+  "utf8",
+);
 const view = fs.readFileSync(path.join(frontendRoot, "src/lib/settingsViewTypes.ts"), "utf8");
 const viewTypes = fs.readFileSync(path.join(frontendRoot, "src/lib/types.ts"), "utf8");
 const bridge = fs.readFileSync(path.join(frontendRoot, "src/lib/bridge.ts"), "utf8");
@@ -48,24 +61,28 @@ const edit = fs.readFileSync(path.join(repoRoot, "internal/config/edit.go"), "ut
 // 1. Render table: task 561 M5 folds the entry into the devDebug card; the
 // family light still reads the boot-snapshot switch.
 ok(
-  panel.includes('{ id: "devDebug", group: "dev-debug"'),
+  labLayout.includes('id: "devDebug"') &&
+    labLayout.includes('key: "dev-debug"') &&
+    labLayout.includes('"experimentalLifecycleNoiseGate"'),
   "lab rail hosts the devDebug family entry in the dev-debug group",
 );
 ok(
-  panel.includes("on: Boolean(s.experimentalCDPDebugPort) || Boolean(s.experimentalLifecycleNoiseGate)"),
-  "devDebug entry light reads s.experimentalLifecycleNoiseGate",
+  labLightKeys.includes(
+    "experimentalLifecycleNoiseGate: (s: SettingsView) => Boolean(s.experimentalLifecycleNoiseGate)",
+  ),
+  "devDebug entry light reads s.experimentalLifecycleNoiseGate (labLightKeys predicate)",
 );
 
 // 2. The devDebug detail card wires the toggle to the backend setter and
 // raises the restart banner (startup diagnostics read the gate once per
 // process).
 ok(
-  panel.includes('selected === "devDebug" && ('),
+  labSection.includes('selected === "devDebug" && ('),
   "detail card renders for the devDebug family",
 );
 ok(
-  panel.includes("app.SetExperimentalLifecycleNoiseGate(on)") &&
-    panel.includes("setRestartNeeded(true)"),
+  labSection.includes("app.SetExperimentalLifecycleNoiseGate(on)") &&
+    labSection.includes("setRestartNeeded(true)"),
   "toggle persists through SetExperimentalLifecycleNoiseGate and raises restartNeeded",
 );
 

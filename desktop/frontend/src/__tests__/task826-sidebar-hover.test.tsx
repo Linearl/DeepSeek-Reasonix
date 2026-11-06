@@ -150,7 +150,9 @@ console.log("\ntask 826 sidebar hover-to-expand + delayed re-collapse");
   const labLightKeys = readFileSync(`${frontendRoot}/src/lab/labLightKeys.ts`, "utf8");
   const yamlText = readFileSync(`${frontendRoot}/src/lab/lab-layout.yaml`, "utf8");
   const labDefault = readFileSync(`${frontendRoot}/src/lab/labLayoutDefault.ts`, "utf8");
-  const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8");
+  // 任务724/1134:两行 labLabel 开关迁 ExperimentalLabSection(拼接读源,1134 判例)。
+const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8")
+  + readFileSync(`${frontendRoot}/src/components/ExperimentalLabSection.tsx`, "utf8");
   const app = readFileSync(`${frontendRoot}/src/App.tsx`, "utf8");
   const styles = readFileSync(`${frontendRoot}/src/styles.css`, "utf8");
 
@@ -203,9 +205,15 @@ console.log("\ntask 826 sidebar hover-to-expand + delayed re-collapse");
   // 2026-10-19 随 1005 窗口补同步，961 并卡时漏跟）。任务 959：①
   // tableWrap + ② sendTargetSelect 入卡 → 八键（同一随卡演进授权）。任务
   // 1072：renderArtifact 整功能移除出卡 → 七键（含 draftRewrite 时九键）。
-  ok(yamlText.includes("onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalDraftRewrite]") &&
-     labDefault.includes('onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalDraftRewrite"]'),
-    "② layout data: the viewLayout card light covers all eight keys in yaml AND the built-in default");
+  // 卡灯随成员并卡/迁出演进(940/961/959/1072 均有先例):tl1165-2(524742fbc,
+  // 2026-10-26)smoothScrollFollow 入卡补灯;tl1309 卡②(eb5b9069b,2026-11-01)
+  // trajectoryView 迁出本卡入「运行可观测」卡,灯键随迁出。现八键:
+  // splitView/sidebarHover 双键/approvalSelect/tableWrap/sendTargetSelect/
+  // smoothScrollFollow/draftRewrite。yaml 与内置默认同构同值(724 硬约束)。
+  const expected826 = ["experimentalSplitView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite"];
+  ok(yamlText.includes("onKeys: [" + expected826.join(", ") + "]") &&
+     labDefault.includes('onKeys: [' + expected826.map((k) => '"' + k + '"').join(", ") + "]"),
+    "② layout data: the viewLayout card light covers its eight current keys in yaml AND the built-in default");
   ok(yamlText.includes('- id: sidebarHoverLeft') && yamlText.includes('- id: sidebarHoverRight') &&
      labDefault.includes('{ id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" }') &&
      labDefault.includes('{ id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" }'),

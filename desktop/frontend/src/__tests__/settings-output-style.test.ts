@@ -26,7 +26,14 @@ const frontendRoot = path.resolve(here, "..", "..");
 const repoRoot = path.resolve(frontendRoot, "..", "..");
 const read = (...parts: string[]) => fs.readFileSync(path.join(...parts), "utf8");
 
-const panel = read(frontendRoot, "src/components/SettingsPanel.tsx");
+// 任务724/1134/961 后:布局树在 src/lab/(yaml+内置默认),卡行/setter 在
+// ExperimentalLabSection;读源拼接三者(1134 判例:源级断言读现状承接面)。
+const panel = [
+  "src/components/SettingsPanel.tsx",
+  "src/components/ExperimentalLabSection.tsx",
+  "src/lab/labLayoutDefault.ts",
+  "src/lab/labLightKeys.ts",
+].map((rel) => read(frontendRoot, rel)).join("\n");
 const view = read(frontendRoot, "src/lib/settingsViewTypes.ts");
 const types = read(frontendRoot, "src/lib/types.ts");
 const bridge = read(frontendRoot, "src/lib/bridge.ts");
@@ -38,12 +45,15 @@ const render = read(repoRoot, "internal/config/render.go");
 // 1. Render table + rail entry: the gate is a config key that renders, and
 // the rail light reads both the gate and the persisted style.
 ok(
-  panel.includes('{ id: "outputStyle", group: "efficiency"'),
-  "lab rail hosts the outputStyle entry in the efficiency group",
+  panel.includes('id: "interactionPresentation"') &&
+    panel.includes('{ id: "outputStyle", labelKey: "settings.outputStyle", tier: "optional" }'),
+  "lab rail hosts the outputStyle member row (961 interactionPresentation merged card)",
 );
 ok(
-  panel.includes('Boolean(s.experimentalOutputStyleUI) || (s.outputStyle ?? "") !== ""'),
-  "entry light reads the gate and the persisted style",
+  panel.includes(
+    "outputStyleActive: (s: SettingsView) => Boolean(s.experimentalOutputStyleUI) || (s.outputStyle ?? \"\") !== \"\"",
+  ),
+  "entry light reads the gate and the persisted style (labLightKeys outputStyleActive)",
 );
 ok(
   render.includes("experimental_output_style_ui = %v"),

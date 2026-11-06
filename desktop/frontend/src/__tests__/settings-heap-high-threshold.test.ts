@@ -8,7 +8,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const settings = readFileSync(resolve(testDir, "../components/SettingsPanel.tsx"), "utf8");
+// 45381165f(任务1134)后 perfHeapHighThreshold 输入行迁 ExperimentalLabSection(拼接读源)。
+const settings = readFileSync(resolve(testDir, "../components/SettingsPanel.tsx"), "utf8")
+  + readFileSync(resolve(testDir, "../components/ExperimentalLabSection.tsx"), "utf8");
 const settingsViewTypes = readFileSync(resolve(testDir, "../lib/settingsViewTypes.ts"), "utf8");
 const bridge = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
 const configEdit = readFileSync(resolve(testDir, "../../../../internal/config/edit.go"), "utf8");

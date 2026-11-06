@@ -96,7 +96,10 @@ const locales = { zh: locale("zh"), "zh-TW": locale("zh-TW"), en: locale("en") }
   const footer = appSrc.slice(footerStart, footerEnd);
   ok((footer.match(/openPage\(\{ kind: "automation" \}\)/g) || []).length === 1, "#8 sidebar utility-row has exactly one automation button");
   ok(!footer.includes("sidebar.automation"), "#8 utility-row no longer references sidebar.automation");
-  ok(/title: t\("heartbeat\.scheduler"\)[^\n]*openPage\(\{ kind: "automation" \}\)/.test(appSrc), "#8 palette command (cmd-automation) uses heartbeat.scheduler as its title");
+  // a8b79f079(1101,2026-10-24)命令面板升级后 palette item 改多行对象字面量;
+  // 「cmd-automation 标题=heartbeat.scheduler 且 run 打开 automation」单行正则
+  // 过期,改跨行匹配同一 cmd-automation 块内两行齐备。
+  ok(/id: "cmd-automation"[\s\S]{0,200}?title: t\("heartbeat\.scheduler"\)[\s\S]{0,200}?run: \(\) => openPage\(\{ kind: "automation" \}\)/.test(appSrc), "#8 palette command (cmd-automation) uses heartbeat.scheduler as its title");
   ok(/label=\{t\("heartbeat\.scheduler"\)\} onClick=\{props\.onOpenAutomation\}/.test(paletteSrc) || /t\("heartbeat\.scheduler"\)/.test(paletteSrc), "#8 palette source (unmounted composition half) stays on heartbeat.scheduler");
 }
 

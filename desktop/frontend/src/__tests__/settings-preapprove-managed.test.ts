@@ -24,7 +24,13 @@ function ok(condition: unknown, label: string) {
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const panel = readFileSync(join(root, "components/SettingsPanel.tsx"), "utf8").replace(/\n\s*/g, " ");
+// 任务724/1134:preapprove 子块迁 ExperimentalLabSection、union 迁
+// lab/labPaneRegistry(拼接读源,1134 判例)。
+const panel = [
+  "components/SettingsPanel.tsx",
+  "components/ExperimentalLabSection.tsx",
+  "lab/labPaneRegistry.ts",
+].map((rel) => readFileSync(join(root, rel), "utf8")).join("").replace(/\n\s*/g, " ");
 const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8");
 const en = readFileSync(join(root, "locales/en.ts"), "utf8");
 const zh = readFileSync(join(root, "locales/zh.ts"), "utf8");

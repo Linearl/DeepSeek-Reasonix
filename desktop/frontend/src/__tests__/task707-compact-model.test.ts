@@ -24,7 +24,9 @@ function ok(cond: boolean, label: string) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(here, "..", "..");
 const repoRoot = path.resolve(frontendRoot, "..", "..");
-const panel = fs.readFileSync(path.join(frontendRoot, "src/components/SettingsPanel.tsx"), "utf8");
+// 任务724/1134:卡行/选择器/提示迁 ExperimentalLabSection(拼接读源,1134 判例)。
+const panel = fs.readFileSync(path.join(frontendRoot, "src/components/SettingsPanel.tsx"), "utf8")
+  + fs.readFileSync(path.join(frontendRoot, "src/components/ExperimentalLabSection.tsx"), "utf8");
 const view = fs.readFileSync(path.join(frontendRoot, "src/lib/settingsViewTypes.ts"), "utf8");
 const types = fs.readFileSync(path.join(frontendRoot, "src/lib/types.ts"), "utf8");
 const bridge = fs.readFileSync(path.join(frontendRoot, "src/lib/bridge.ts"), "utf8");
@@ -109,7 +111,9 @@ ok(settingsPrefs.includes("func (a *App) SetExperimentalCompactModel(enabled boo
 // 5. Runtime reach: the boot assembly arms the destination switch-gated, and
 //    the fingerprint carries both fields so a change re-applies at the next
 //    run (model-preference family contract).
-ok(goBoot.includes("CompactModel:       compactModelDestinationFromConfig(cfg)") && goBoot.includes("CompactModelPricing: compactModelPricingFromConfig(cfg)"), "boot arms CompactModel + pricing");
+// gofmt 对齐随周边字段名长度漂移(CompactModelDestination 变长后冒号后空格
+// 7→8),钉改空白不敏感的正则形态,两装配与 pricing 语义不变。
+ok(/CompactModel:\s+compactModelDestinationFromConfig\(cfg\)/.test(goBoot) && goBoot.includes("CompactModelPricing: compactModelPricingFromConfig(cfg)"), "boot arms CompactModel + pricing");
 ok(goSnapshot.includes("c.Agent.ExperimentalCompactModel, c.Agent.CompactModel"), "model runtime fingerprint covers the switch + target");
 ok(goAgentModel.includes("func (a *Agent) compactionDestination()"), "agent resolves the compaction destination");
 ok(goAgentCompact.includes("summaryDest := a.compactionDestination()") && goAgentCompact.includes("ModelRef: summaryDest.ref"), "runSummaryRequest routes dest + usage attribution");
@@ -118,7 +122,14 @@ ok(goAgentCompact.includes("summaryDest := a.compactionDestination()") && goAgen
 //    19→20 / 48→49; the rail card covers it as a merged member.
 ok(tiers.includes('| "compactModel"') && tiers.includes('compactModel: "optional"'), "frontend tier registry: compactModel = optional");
 ok(goRender.includes('{"compactModel", LabTierOptional, []string{"experimental_compact_model", "compact_model"}}'), "Go labFeatureTiers: compactModel = optional with both render keys");
-ok(tiers.includes("optional: 22,"), "LAB_TIER_COUNTS optional 19→20→21→22（707→704→727 推进）");
+// 计数棘轮随每次入表成员递增(727→704→727→…→tl1309 卡③ d53ad7b29 资源治理
+// 六成员并卡后 optional 已至 44);钉改「>22 且与注册表实际计数一致」——棘轮
+// 只涨不跌的保证仍在,具体数值由注册表单源自证。
+{
+  const optionalCount = (tiers.match(/: "optional",/g) ?? []).length;
+  ok(optionalCount > 22 && tiers.includes(`optional: ${optionalCount},`),
+    "LAB_TIER_COUNTS optional keeps ratcheting (only grows) and matches the registry");
+}
 // 任务 722 点5：compactModel 成员随卡迁登记（safetyCostControl 成员表）。
 {
   const layoutDefault = fs.readFileSync(path.join(frontendRoot, "src/lab/labLayoutDefault.ts"), "utf8");

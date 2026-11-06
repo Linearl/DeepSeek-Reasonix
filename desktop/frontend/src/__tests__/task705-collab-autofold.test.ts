@@ -25,7 +25,9 @@ function ok(cond: boolean, label: string) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(here, "..", "..");
 const repoRoot = path.resolve(frontendRoot, "..", "..");
-const panel = fs.readFileSync(path.join(frontendRoot, "src/components/SettingsPanel.tsx"), "utf8");
+// 任务724/1134:卡行/setter 迁 ExperimentalLabSection(1134 判例拼接读源)。
+const panel = fs.readFileSync(path.join(frontendRoot, "src/components/SettingsPanel.tsx"), "utf8")
+  + fs.readFileSync(path.join(frontendRoot, "src/components/ExperimentalLabSection.tsx"), "utf8");
 const view = fs.readFileSync(path.join(frontendRoot, "src/lib/settingsViewTypes.ts"), "utf8");
 const types = fs.readFileSync(path.join(frontendRoot, "src/lib/types.ts"), "utf8");
 const bridge = fs.readFileSync(path.join(frontendRoot, "src/lib/bridge.ts"), "utf8");

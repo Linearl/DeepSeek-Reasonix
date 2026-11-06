@@ -32,7 +32,10 @@ function ok(condition: unknown, label: string) {
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const panel = readFileSync(join(root, "components/SettingsPanel.tsx"), "utf8").replace(/\n\s*/g, " ");
+// 45381165f(任务1134)后 usageMonitoring 卡(开关门+ErrorBoundary+Go 行)在
+// ExperimentalLabSection;拼接读源(1134 判例),union 摘除负钉在拼接源上仍成立。
+const panel = (readFileSync(join(root, "components/SettingsPanel.tsx"), "utf8")
+  + readFileSync(join(root, "components/ExperimentalLabSection.tsx"), "utf8")).replace(/\n\s*/g, " ");
 const card = readFileSync(join(root, "components/SettingsOpenCodeGoUsageCard.tsx"), "utf8").replace(/\n\s*/g, " ");
 const sidebar = readFileSync(join(root, "components/OpenCodeGoUsageSidebarCard.tsx"), "utf8").replace(/\n\s*/g, " ");
 const styles = readFileSync(join(root, "styles.css"), "utf8");

@@ -27,7 +27,13 @@ const repoRoot = `${frontendRoot}/../..`;
 const read = (rel: string) => readFileSync(`${frontendRoot}/${rel}`, "utf8");
 const readRepo = (rel: string) => readFileSync(`${repoRoot}/${rel}`, "utf8");
 
-const panel = read("src/components/SettingsPanel.tsx");
+// 任务724/1134:卡分支(pane branch)与开关行迁 ExperimentalLabSection,
+// LAB_PANE_IDS 白名单迁 lab/labPaneRegistry(读源拼接,1134 判例)。
+const panel = [
+  "src/components/SettingsPanel.tsx",
+  "src/components/ExperimentalLabSection.tsx",
+].map(read).join("");
+const paneRegistry = read("src/lab/labPaneRegistry.ts");
 const bridge = read("src/lib/bridge.ts");
 const viewTypes = read("src/lib/settingsViewTypes.ts");
 const startupTypes = read("src/lib/types.ts");
@@ -73,10 +79,11 @@ console.log("\n任务 895 sentinel 穿透封堵开关（UI 面）");
 
 // ② 卡片结构不动：成员/灯不含本键（条目级追加）。
 {
-  // 白名单取自 SettingsPanel 的 LAB_PANE_IDS（与 722 验收同法）。
+  // 白名单取自 lab/labPaneRegistry 的 LAB_PANE_IDS(1134 自 SettingsPanel 下沉,
+  // 与 722 验收同法)。
   const paneIds = new Set<string>();
-  const m = panel.match(/const LAB_PANE_IDS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\);/);
-  ok(Boolean(m), "SettingsPanel declares the LAB_PANE_IDS whitelist");
+  const m = paneRegistry.match(/const LAB_PANE_IDS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\);/);
+  ok(Boolean(m), "labPaneRegistry declares the LAB_PANE_IDS whitelist");
   if (m) for (const id of m[1].matchAll(/"([a-zA-Z]+)"/g)) paneIds.add(id[1]);
   const resolved = resolveLabLayout(yamlText, { allowedEntryIds: paneIds });
   ok(resolved.source === "yaml", "lab-layout.yaml still resolves as the layout source");

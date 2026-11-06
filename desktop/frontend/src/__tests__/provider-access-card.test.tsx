@@ -290,6 +290,9 @@ window.go = {
   main: {
     App: {
       Settings: async () => defaultCustomSettings,
+      // 任务 915 write-on-show 播种 effect(experimentalToolOptimizations 为
+      // null 时首载即调用);产品侧 wails 绑定与 dev mock 均已实现(task603 钉)。
+      SetExperimentalToolOptimizations: async () => {},
       ApplyModelSettings: async (change) => {
         if (change.kind !== "access_remove") throw new Error("unexpected settings operation");
         const names = change.names;

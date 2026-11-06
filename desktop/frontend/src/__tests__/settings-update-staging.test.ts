@@ -22,7 +22,10 @@ function ok(condition: unknown, label: string) {
 const testDir = dirname(fileURLToPath(import.meta.url));
 const root = join(testDir, "..");
 const repoRoot = join(root, "..", "..", "..");
-const panel = readFileSync(join(root, "components/SettingsPanel.tsx"), "utf8").replace(/\n\s*/g, " ");
+// 45381165f(任务1134)后 staging 输入行(blur 提交+重置钮)迁 ExperimentalLabSection
+// (拼接读源);三条写链保证不变。
+const panel = (readFileSync(join(root, "components/SettingsPanel.tsx"), "utf8")
+  + readFileSync(join(root, "components/ExperimentalLabSection.tsx"), "utf8")).replace(/\n\s*/g, " ");
 const bridge = readFileSync(join(root, "lib/bridge.ts"), "utf8");
 const viewTypes = readFileSync(join(root, "lib/settingsViewTypes.ts"), "utf8");
 const goPrefs = readFileSync(join(repoRoot, "desktop", "settings_preferences.go"), "utf8");

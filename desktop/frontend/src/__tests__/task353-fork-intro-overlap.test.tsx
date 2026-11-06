@@ -44,11 +44,16 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 
 // ── structure guards (task 282 invariants kept) ─────────────────────────────
 {
-  const panel = read("../components/SettingsPanel.tsx");
+  // 45381165f(任务1134)整列迁 ExperimentalLabSection + 任务379(0929)入口从
+  // 内联横幅改为模态入口钮+对话框:「intro 在 lab 列内、先于 rail 与 pane、
+  // 无幽灵详情分支」不变,锚点跟到现承载面(入口钮+对话框挂载)。
+  const panel = read("../components/ExperimentalLabSection.tsx");
   const navIdx = panel.indexOf("</nav>");
-  const introIdx = panel.indexOf("<ForkFeaturesIntro");
+  const introIdx = panel.indexOf("experimental-lab__intro-toggle");
+  const dialogIdx = panel.indexOf("{introOpen ? <ForkFeaturesIntroDialog");
   const paneIdx = panel.indexOf('className="experimental-pane"');
-  ok(navIdx > 0 && introIdx > 0 && introIdx < navIdx && paneIdx > introIdx, "intro renders in the lab column above the rail and before the pane (task 359 moved it to the top banner)");
+  ok(navIdx > 0 && introIdx > 0 && introIdx < navIdx && dialogIdx > introIdx && paneIdx > introIdx,
+    "intro entry + dialog mount live in the lab column above the rail and before the pane (359 顶部入口,379 模态化)");
   ok(panel.includes("selected === \"forkFeaturesIntro\"") === false, "no phantom detail branch — intro is a plain in-flow section");
 
   const lib = read("../lib/forkFeaturesIntro.ts");

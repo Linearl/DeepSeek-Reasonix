@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 import {LocaleProvider} from '../lib/i18n';
 import type {ProviderView} from '../lib/types';
 const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});
+// 锁定 en 语区(理由同 provider-editor-compact:aria-label/文案按英文断言)。
+Object.defineProperty(dom.window.navigator, "language", { configurable: true, value: "en-US" });
+Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 Object.assign(globalThis,{window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage,IS_REACT_ACT_ENVIRONMENT:true});
 const {createRoot}=await import('react-dom/client');
 const {ProviderEditor,providerAccessGroups}=await import('../components/SettingsPanel');

@@ -135,12 +135,15 @@ const at = (y: number, m: number, d: number, hh: number, mm: number): number => 
     ];
     for (const c of steerCases) {
       await render(<SteerCard id={`s-${c.label}`} text={`${STEER_NOTICE_PREFIX}改用 Pillow 10 验证`} createdAt={c.createdAt} />);
-      eq(timeText(".steer-line__time"), c.expected, `${c.label} = ${c.expected}`);
+      // tl1122(5b01ae46e 波次,2026-10-24)时间戳移出气泡(.steer-line__time 退役),
+      // 统一放卡片下方 meta-time 行(内层 msg-meta__time,与用户消息同位同款);
+      // 998 的三档保证跟到现位置钉。
+      eq(timeText(".steer-meta--time .msg-meta__time"), c.expected, `${c.label} = ${c.expected}`);
     }
 
     // deferred 占位（723 折叠态）也有时间戳。
     await render(<SteerCard id="s-def" text={`${STEER_NOTICE_PREFIX}看看 723 的截图`} deferred={true} createdAt={at(2026, 10, 19, 22, 9)} />);
-    eq(timeText(".steer-line__time"), "22:09", "deferred steer 占位显示时间戳");
+    eq(timeText(".steer-meta--time .msg-meta__time"), "22:09", "deferred steer 占位显示时间戳");
 
     // 未应用 steer notice 块（NoticeCard）。
     const warnItem: NoticeItem = {

@@ -93,10 +93,15 @@ for (const [name, owner] of OWNED_ELSEWHERE) {
   }
 }
 
-// CSS is a browser asset, not executable Node code. All discovered component
-// graphs share this loader contract, including transitive imports after region
-// extraction. CSS/layout correctness remains owned by syntax and browser gates.
-const assetArgs = ["--import", pathToFileURL(resolve(SCRIPTS_DIR, "css-stub-register.mjs")).href];
+// CSS/SVG/PNG are browser assets, not executable Node code. All discovered
+// component graphs share this loader contract (css-stub + svg-stub, same face
+// test:remote uses for asset-pulling suites), including transitive imports
+// after region extraction. CSS/layout correctness remains owned by syntax and
+// browser gates.
+const assetArgs = [
+  "--import", pathToFileURL(resolve(SCRIPTS_DIR, "css-stub-register.mjs")).href,
+  "--import", pathToFileURL(resolve(SCRIPTS_DIR, "svg-stub-register.mjs")).href,
+];
 
 // 768b ③: every discovered suite runs through tsconfig.tsx-runner.json (same
 // face test:motion has been explicit about since task 745). The main
