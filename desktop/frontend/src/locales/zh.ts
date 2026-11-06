@@ -104,6 +104,10 @@ export const zh: Record<DictKey, string> = {
   "action.diagExport": "导出诊断信息",
   "action.folderPick": "选择文件夹",
   "action.goalOperation": "目标操作",
+  // tl1446-4: 发送失败 notice 并入 M1 折叠范式——人话行是正文，原始后端错误进可展开详情。
+  "notice.submitRejected": "消息在开轮前被拒。可展开详情查看具体原因，然后重发。",
+  "notice.sendFailedMessage": "消息未能发送。可展开详情查看具体原因，然后重发。",
+  "notice.sendFailedCommand": "命令未能运行。可展开详情查看具体原因。",
   "tooltip.truncated": "…（已截断，共 {n} 行）",
   "tooltip.copyFull": "复制全文",
   "tooltip.copied": "已复制",

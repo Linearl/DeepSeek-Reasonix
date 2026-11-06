@@ -81,12 +81,17 @@ const citedAssistant = textThenCitationFinal.items.find((it) => it.kind === "ass
 eq(citedAssistant?.kind === "assistant" && citedAssistant.text, "done", "memory citations preserve existing assistant text");
 eq(citedAssistant?.kind === "assistant" && citedAssistant.memoryCitations?.length, 1, "memory citations attach to real assistant content");
 
-const failedState = reducer(sent, { type: "send_failed", submissionId: "send-0", error: "Send failed: bridge unavailable" });
+const failedState = reducer(sent, { type: "send_failed", submissionId: "send-0", error: "The message could not be sent. Expand the detail for the exact reason, then resend.", detail: "bridge unavailable" });
 const failedBubble = failedState.items.find((it) => it.kind === "user");
 eq(failedBubble?.kind === "user" && failedBubble.failed, true, "send_failed marks the bubble failed");
 const notice = failedState.items[failedState.items.length - 1];
 eq(notice.kind, "notice", "send_failed appends a notice");
 eq(notice.kind === "notice" && notice.level, "warn", "the notice is a warning");
+// tl1446-4: M1 folded form — the human line is the text, the raw backend
+// error lands in the expandable detail (mirror of the retryExhausted branch).
+eq(notice.kind === "notice" && notice.text, "The message could not be sent. Expand the detail for the exact reason, then resend.", "the notice text is the localized human line");
+eq(notice.kind === "notice" && notice.detail, "bridge unavailable", "the raw backend error moves into the expandable detail");
+eq(notice.kind === "notice" && notice.text.includes("bridge unavailable"), false, "the notice text no longer bakes in the raw error");
 eq(failedState.running, false, "send_failed stops the running indicator");
 eq(failedState.pendingUser, undefined, "send_failed clears the pending marker");
 
@@ -102,7 +107,8 @@ const collidingSubmit = reducer(waitingAsk, { type: "user", text: "continue", se
 const rejectedCollision = reducer(collidingSubmit, {
   type: "turn_submit_rejected",
   submissionId: "send-collision",
-  error: "Send failed: turn already running",
+  error: "The message was refused before the turn started. Expand the detail for the exact reason, then resend.",
+  detail: "turn already running",
 });
 eq(rejectedCollision.items.some((item) => item.kind === "user" && item.failed), true, "rejected admission marks the exact optimistic bubble failed");
 eq(rejectedCollision.running, true, "rejected admission stays conservatively running until reconciliation");
@@ -247,10 +253,12 @@ eq(uncertainUser?.kind === "user" && Boolean(uncertainUser.failed), false, "comp
 eq(completionUncertain.running, false, "completion_uncertain frees the composer");
 
 const shellSent = reducer({ ...initialState }, { type: "user", text: "!ls", seq: 0, submissionId: "shell-0" });
-const shellFailed = reducer(shellSent, { type: "send_failed", submissionId: "shell-0", error: "Command failed: workspace is still starting" });
+const shellFailed = reducer(shellSent, { type: "send_failed", submissionId: "shell-0", error: "The command could not be run. Expand the detail for the exact reason.", detail: "workspace is still starting" });
 const shellNotice = shellFailed.items[shellFailed.items.length - 1];
 eq(shellNotice.kind, "notice", "rejected shell command appends a visible notice");
-eq(shellNotice.kind === "notice" && shellNotice.text.includes("workspace is still starting"), true, "shell rejection notice includes the backend error");
+// tl1446-4: the raw backend error lives in the detail, not the text.
+eq(shellNotice.kind === "notice" && shellNotice.text.includes("workspace is still starting"), false, "shell rejection text stays human");
+eq(shellNotice.kind === "notice" && shellNotice.detail, "workspace is still starting", "shell rejection carries the backend error in the detail");
 
 const lateFailure = reducer(confirmed, { type: "send_failed", submissionId: "send-0", error: "Send failed: late" });
 eq(lateFailure, confirmed, "send_failed after backend confirmation is a no-op");

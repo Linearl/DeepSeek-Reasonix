@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { t } from "./i18n";
 import { useRuntimeSession } from "./useRuntimeState";
 import { app, onRemoteTabEvent, onRemoteTabState } from "./bridge";
 import type { CancelOutcome } from "./inboxCancel";
@@ -585,8 +586,9 @@ export function useRemoteSession(tabId: string | undefined, initial?: RemoteTabS
     } catch (e) {
       // Roll the optimistic running flag back — a refused/failed submit must
       // never leave the pill spinning (same contract as the local send path).
-      const error = `Send failed: ${e instanceof Error ? e.message : String(e)}`;
-      setTranscript((s) => reducer(s, { type: "send_failed", submissionId, error }));
+      // tl1446-4: M1 folded form — localized human line, raw error in detail.
+      const error = t("notice.sendFailedMessage");
+      setTranscript((s) => reducer(s, { type: "send_failed", submissionId, error, detail: e instanceof Error ? e.message : String(e) }));
       throw e;
     }
   }, [tabId, runtimeState.state]);

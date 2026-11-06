@@ -106,6 +106,11 @@ export const en = {
   "action.diagExport": "Export diagnostics",
   "action.folderPick": "Choose folder",
   "action.goalOperation": "Goal action",
+  // tl1446-4: send-failure notices enter the M1 folded form — the human line
+  // is the notice text, the raw backend error moves into the expandable detail.
+  "notice.submitRejected": "The message was refused before the turn started. Expand the detail for the exact reason, then resend.",
+  "notice.sendFailedMessage": "The message could not be sent. Expand the detail for the exact reason, then resend.",
+  "notice.sendFailedCommand": "The command could not be run. Expand the detail for the exact reason.",
   "tooltip.truncated": "… (truncated, {n} lines total)",
   "tooltip.copyFull": "Copy full text",
   "tooltip.copied": "Copied",

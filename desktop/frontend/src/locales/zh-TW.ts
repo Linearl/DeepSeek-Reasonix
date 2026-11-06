@@ -104,6 +104,10 @@ export const zhTW: Record<DictKey, string> = {
   "action.diagExport": "匯出診斷資訊",
   "action.folderPick": "選擇資料夾",
   "action.goalOperation": "目標操作",
+  // tl1446-4: 傳送失敗 notice 併入 M1 摺疊範式——人話行是正文，原始後端錯誤進可展開詳情。
+  "notice.submitRejected": "訊息在開輪前被拒。可展開詳情查看具體原因，然後重發。",
+  "notice.sendFailedMessage": "訊息未能傳送。可展開詳情查看具體原因，然後重發。",
+  "notice.sendFailedCommand": "指令未能執行。可展開詳情查看具體原因。",
   "tooltip.truncated": "…（已截斷，共 {n} 行）",
   "tooltip.copyFull": "複製全文",
   "tooltip.copied": "已複製",
