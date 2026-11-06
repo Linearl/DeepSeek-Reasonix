@@ -1,9 +1,9 @@
 // Last-resort crash surface: a React render error with no boundary unmounts the
 // whole tree (blank window), and global errors/rejections leave no trace either.
 
-import { addBreadcrumb, dumpBreadcrumbs, snapshotBreadcrumbs, type Breadcrumb } from "./breadcrumbs";
+import { addBreadcrumb, dumpBreadcrumbs, snapshotActivity, snapshotBreadcrumbs, type ActivityEntry, type Breadcrumb } from "./breadcrumbs";
 import { writeClipboardText } from "./clipboard";
-import { app } from "./bridge";
+import { app, installStreamActivityTap } from "./bridge";
 import { t } from "./i18n";
 import { sessionPipelineDiagnostics, type SessionPipelineDiagnostics } from "./sessionDiagnostics";
 import { isWailsRuntimeOnlyCrashEvent } from "./wailsRuntimeCrash";
@@ -45,6 +45,19 @@ export type PerformanceSnapshot = {
     recent: { startMs: number; durationMs: number; attribution?: string }[];
   };
   longTaskFrames?: { label: string; samples: number }[];
+  // tl1417 (issue #82 gap 1): the max-duration window gets its own frame bucket so
+  // a 16s stall is not blended with the six 100ms tasks around it. Additive: the
+  // merged longTaskFrames above keeps its meaning for every existing consumer.
+  longTaskMaxFrames?: LongTaskMaxProfile;
+  // tl1417: honest sampling density. Chromium coerces the nominal 10ms interval
+  // (16ms on the API, ~30ms measured on Windows) and a buffer that fills mid-task
+  // stops sampling silently — the reader must see how much of the window was
+  // actually covered instead of assuming 10ms precision.
+  profilerSampling?: ProfilerSamplingSummary;
+  // tl1417 (issue #82 gap 2): what the app was doing right before the trigger —
+  // bridge method names, stream event kinds and DOM event types with uptime
+  // stamps, coalesced. Never arguments, payloads or content (breadcrumbs.ts).
+  recentActivity?: ActivityEntry[];
   connection?: {
     effectiveType?: string;
     downlinkMbps?: number;
@@ -113,6 +126,39 @@ type ProfilerLike = {
 
 type ProfilerConstructor = new (options: { sampleInterval: number; maxBufferSize: number }) => ProfilerLike;
 
+export type LongTaskFrame = { label: string; samples: number };
+
+// tl1417: self-time frames of the single longest window, with the slice of that
+// window the sampler actually covered (offsets from the task start). A 16587ms
+// task "sampled 0ms..310ms" says the buffer filled 0.3s in — the frames describe
+// the opening of the stall, not the whole of it.
+export type LongTaskMaxProfile = {
+  startMs: number;
+  durationMs: number;
+  samples: number;
+  sampledFromMs?: number;
+  sampledToMs?: number;
+  frames: LongTaskFrame[];
+};
+
+export type ProfilerSamplingSummary = {
+  nominalIntervalMs: number;
+  // Median gap between consecutive samples in the collected traces — the real
+  // cadence (≈30ms on Windows), not the configured one.
+  medianGapMs?: number;
+  traces: number;
+  samples: number;
+  firstMs?: number;
+  lastMs?: number;
+  inWindow: number;
+};
+
+export type LongTaskProfileSummary = {
+  frames: LongTaskFrame[];
+  maxTask?: LongTaskMaxProfile;
+  sampling: ProfilerSamplingSummary;
+};
+
 type BrowserPerformanceMemory = {
   usedJSHeapSize?: number;
   totalJSHeapSize?: number;
@@ -148,10 +194,47 @@ let lastPerformancePromptAt = 0;
 
 // Rolling self-profiling sampler (Chromium WebViews only; requires the asset server
 // to send `Document-Policy: js-profiling`, see jsProfilingMiddleware on the Go side).
-// ~10ms native sampling; the buffer covers the same 60s window as longTasks.
+//
+// tl1417 (issue #82, bench/profiler-density.mjs on Chromium 147/Windows): the
+// nominal 10ms is NOT the cadence the trace carries. Chromium coerces it to 16ms
+// (the Profiler's sampleInterval attribute reads 16) and the Windows timer
+// granularity stretches the real gap to ~30ms, idle time is sampled too (stackless
+// samples still take buffer slots), so the 6000-slot buffer fills every ~3 minutes
+// regardless of load. A full buffer stops sampling SILENTLY, and when it fills in
+// the middle of a long task the samplebufferfull event — queued behind the stall —
+// runs before the longtask observer callback: the rollover below threw the full
+// trace away and the report collected a fresh, empty profiler (0 in-window
+// samples, measured). That is how a 20s stall came back with 24 samples.
+//
+// Fix: roll the profiler over on a timer instead of on buffer-full. A timer
+// callback only runs when the main thread is free, so by construction it never
+// lands inside a long task; the buffer (6000 × 16ms = 96s at the API interval)
+// comfortably holds one 45s period plus the longest stall that may start at its
+// end. The previous period's trace is kept (one trace, bounded) so a report still
+// attributes tasks that happened before the last rollover — two periods cover the
+// 60s long-task window. samplebufferfull stays as the backstop for stalls longer
+// than the remaining room; it now keeps the full trace too instead of dropping it.
 const PROFILER_SAMPLE_INTERVAL_MS = 10;
 const PROFILER_MAX_BUFFER_SAMPLES = LONG_TASK_WINDOW_MS / PROFILER_SAMPLE_INTERVAL_MS;
+const PROFILER_ROLLOVER_MS = 45_000;
 let activeProfiler: ProfilerLike | null = null;
+// Trace of the previous rollover period (or of the profiler a backstop rollover
+// just stopped). A promise because stop() resolves off-thread and the next
+// report can arrive one task later.
+let previousTrace: Promise<ProfilerTrace | null> | null = null;
+// tl1417: the stop() a collect is currently awaiting. After every big stall two
+// triggers arrive back to back — the overdue 1s lag tick and the longtask
+// observer callback — and whichever came second used to find activeProfiler
+// null and report with no frames at all (issue #37's contention, one pair
+// left). The second trigger now re-aggregates the same traces for its own
+// windows instead of giving up.
+let inFlightTraces: Promise<ProfilerTrace[] | null> | null = null;
+
+/** True when a report can still obtain frames: a live profiler, or a collect
+ * in flight whose traces the report can share. */
+function longTaskProfileAvailable(): boolean {
+  return activeProfiler !== null || inFlightTraces !== null;
+}
 
 function startLongTaskProfiler(): void {
   const ProfilerCtor = (globalThis as { Profiler?: ProfilerConstructor }).Profiler;
@@ -161,12 +244,12 @@ function startLongTaskProfiler(): void {
       sampleInterval: PROFILER_SAMPLE_INTERVAL_MS,
       maxBufferSize: PROFILER_MAX_BUFFER_SAMPLES,
     });
-    // A full buffer stops sampling silently; drop the stale trace and roll over.
+    // Backstop only (see the timer rollover above): a full buffer has already
+    // stopped sampling, so roll over — but keep the trace, it holds the opening
+    // of whatever stall filled it.
     profiler.addEventListener?.("samplebufferfull", () => {
       if (activeProfiler !== profiler) return;
-      activeProfiler = null;
-      void profiler.stop().catch(() => {});
-      startLongTaskProfiler();
+      rolloverLongTaskProfiler();
     });
     activeProfiler = profiler;
   } catch {
@@ -175,19 +258,47 @@ function startLongTaskProfiler(): void {
   }
 }
 
+function rolloverLongTaskProfiler(): void {
+  const profiler = activeProfiler;
+  activeProfiler = null;
+  if (profiler) previousTrace = profiler.stop().catch(() => null);
+  startLongTaskProfiler();
+}
+
 async function collectLongTaskFrames(
   windows: { startMs: number; durationMs: number }[],
-): Promise<{ label: string; samples: number }[]> {
+): Promise<LongTaskProfileSummary | null> {
   const profiler = activeProfiler;
-  if (!profiler) return [];
+  if (!profiler) {
+    // A sibling trigger is already stopping the profiler: share its traces.
+    const shared = inFlightTraces ? await inFlightTraces : null;
+    return shared ? aggregateLongTaskProfiles(shared, windows) : null;
+  }
   activeProfiler = null;
+  const previous = previousTrace;
+  previousTrace = null;
+  const collecting = (async (): Promise<ProfilerTrace[] | null> => {
+    try {
+      const [current, prior] = await Promise.all([profiler.stop(), previous ?? Promise.resolve(null)]);
+      // The current trace becomes the "previous" of the restarted profiler so a
+      // second trigger moments later (lag after long task) still sees these windows.
+      previousTrace = Promise.resolve(current);
+      const traces: ProfilerTrace[] = [];
+      if (prior) traces.push(prior);
+      traces.push(current);
+      return traces;
+    } catch {
+      return null;
+    } finally {
+      startLongTaskProfiler();
+    }
+  })();
+  inFlightTraces = collecting;
   try {
-    const trace = await profiler.stop();
-    return aggregateLongTaskProfile(trace, windows);
-  } catch {
-    return [];
+    const traces = await collecting;
+    return traces ? aggregateLongTaskProfiles(traces, windows) : null;
   } finally {
-    startLongTaskProfiler();
+    if (inFlightTraces === collecting) inFlightTraces = null;
   }
 }
 
@@ -383,6 +494,7 @@ function performanceSnapshot(reason: string, currentLagMs = 0): PerformanceSnaps
   const nav = typeof navigator === "undefined" ? undefined : (navigator as BrowserNavigator);
   const doc = typeof document === "undefined" ? undefined : document;
   const pipeline = sessionPipelineDiagnostics();
+  const recentActivity = snapshotActivity();
   return {
     reason,
     uptimeMs: typeof performance !== "undefined" ? performance.now() : 0,
@@ -396,6 +508,7 @@ function performanceSnapshot(reason: string, currentLagMs = 0): PerformanceSnaps
     longTasks: typeof performance !== "undefined" ? longTaskSummary() : undefined,
     connection: networkSnapshot(),
     sessionPipeline: Object.keys(pipeline).length > 0 ? pipeline : undefined,
+    recentActivity: recentActivity.length > 0 ? recentActivity : undefined,
   };
 }
 
@@ -436,6 +549,45 @@ export function formatPerformanceContext(snapshot: PerformanceSnapshot): string 
   if (snapshot.longTaskFrames?.length) {
     lines.push("long task top frames (sampled):");
     for (const frame of snapshot.longTaskFrames) lines.push(`  ${frame.samples}x ${frame.label}`);
+  }
+  // tl1417: the longest window on its own, with the slice of it the sampler covered.
+  const maxTask = snapshot.longTaskMaxFrames;
+  if (maxTask) {
+    const covered =
+      maxTask.sampledFromMs !== undefined && maxTask.sampledToMs !== undefined
+        ? `sampled ${fmtNumber(maxTask.sampledFromMs / 1000, 1)}s..${fmtNumber(maxTask.sampledToMs / 1000, 1)}s of ${fmtNumber(maxTask.durationMs / 1000, 1)}s, ${maxTask.samples} samples`
+        : "no samples inside it";
+    lines.push(`max long task ${fmtNumber(maxTask.durationMs)}ms @ ${fmtNumber(maxTask.startMs / 1000, 1)}s top frames (${covered}):`);
+    for (const frame of maxTask.frames) lines.push(`  ${frame.samples}x ${frame.label}`);
+  }
+  const sampling = snapshot.profilerSampling;
+  if (sampling) {
+    const parts = [`nominal ${sampling.nominalIntervalMs}ms`];
+    if (sampling.medianGapMs !== undefined) parts.push(`measured ~${fmtNumber(sampling.medianGapMs)}ms between samples`);
+    parts.push(`${sampling.traces} trace${sampling.traces === 1 ? "" : "s"}`);
+    const span =
+      sampling.firstMs !== undefined && sampling.lastMs !== undefined
+        ? `${sampling.samples} samples covering ${fmtNumber(sampling.firstMs / 1000, 1)}s..${fmtNumber(sampling.lastMs / 1000, 1)}s`
+        : `${sampling.samples} samples`;
+    parts.push(span, `${sampling.inWindow} in long-task windows`);
+    lines.push(`profiler sampling: ${parts.join(", ")}`);
+  }
+  // tl1417: the activity lane, then the one line a triage actually wants — what
+  // ran last before the longest stall began (the trigger-source question #82
+  // could not answer from a 33s crumb gap).
+  const activity = snapshot.recentActivity;
+  if (activity?.length) {
+    lines.push("recent activity (names only, coalesced; @ uptime):");
+    for (const entry of activity) lines.push(`  ${formatActivityEntry(entry)}`);
+    const maxStart = maxLongTaskStartMs(snapshot);
+    if (maxStart !== undefined) {
+      const before = lastActivityBefore(activity, maxStart);
+      lines.push(
+        before
+          ? `last activity before max long task @ ${fmtNumber(maxStart / 1000, 1)}s: ${formatActivityEntry(before)} (${fmtNumber(Math.max(0, maxStart - Math.min(before.last, maxStart)) / 1000, 1)}s earlier)`
+          : `no recorded activity before max long task @ ${fmtNumber(maxStart / 1000, 1)}s`,
+      );
+    }
   }
   if (snapshot.connection) {
     const parts = [
@@ -485,6 +637,35 @@ export function formatPerformanceContext(snapshot: PerformanceSnapshot): string 
     );
   }
   return lines.join("\n");
+}
+
+function formatActivityEntry(entry: ActivityEntry): string {
+  const span = entry.n > 1 ? `..${fmtNumber(entry.last / 1000, 1)}s` : "";
+  const count = entry.n > 1 ? ` x${entry.n}` : "";
+  return `@ ${fmtNumber(entry.t / 1000, 1)}s${span} ${entry.kind} ${entry.name}${count}`;
+}
+
+function maxLongTaskStartMs(snapshot: PerformanceSnapshot): number | undefined {
+  if (snapshot.longTaskMaxFrames) return snapshot.longTaskMaxFrames.startMs;
+  const recent = snapshot.longTasks?.recent;
+  if (!recent?.length) return undefined;
+  let longest = recent[0];
+  for (const task of recent) if (task.durationMs > longest.durationMs) longest = task;
+  return longest.startMs;
+}
+
+// The event that triggered a stall is noted at the stall's START (its handler
+// IS the stall), so entries up to a short slack past the start still count as
+// "before"; among those, the one that ran latest wins.
+const ACTIVITY_TRIGGER_SLACK_MS = 50;
+
+export function lastActivityBefore(activity: readonly ActivityEntry[], startMs: number): ActivityEntry | undefined {
+  let best: ActivityEntry | undefined;
+  for (const entry of activity) {
+    if (entry.t > startMs + ACTIVITY_TRIGGER_SLACK_MS) continue;
+    if (!best || entry.last > best.last) best = entry;
+  }
+  return best;
 }
 
 export function performanceLabelForReason(reason: string): string {
@@ -575,23 +756,113 @@ export function aggregateLongTaskProfile(
   trace: ProfilerTrace,
   windows: { startMs: number; durationMs: number }[],
   maxFrames = 8,
-): { label: string; samples: number }[] {
+): LongTaskFrame[] {
   if (!windows.length) return [];
-  const counts = new Map<number, number>();
+  return topFrames(leafCountsByLabel(trace, windows), maxFrames);
+}
+
+type LongTaskWindow = { startMs: number; durationMs: number };
+
+function sampleInWindows(timestamp: number, windows: readonly LongTaskWindow[]): boolean {
+  for (const w of windows) {
+    if (timestamp >= w.startMs && timestamp <= w.startMs + w.durationMs) return true;
+  }
+  return false;
+}
+
+// Leaf-frame counts keyed by the formatted label (not the per-trace frame id) so
+// counts from two traces — whose frame tables are independent — can be merged.
+function leafCountsByLabel(
+  trace: ProfilerTrace,
+  windows: readonly LongTaskWindow[],
+  into = new Map<string, number>(),
+): Map<string, number> {
+  const byFrame = new Map<number, number>();
   for (const sample of trace.samples ?? []) {
     if (sample.stackId === undefined) continue;
-    const inWindow = windows.some(
-      (w) => sample.timestamp >= w.startMs && sample.timestamp <= w.startMs + w.durationMs,
-    );
-    if (!inWindow) continue;
+    if (!sampleInWindows(sample.timestamp, windows)) continue;
     const stack = trace.stacks?.[sample.stackId];
     if (!stack) continue;
-    counts.set(stack.frameId, (counts.get(stack.frameId) ?? 0) + 1);
+    byFrame.set(stack.frameId, (byFrame.get(stack.frameId) ?? 0) + 1);
   }
+  for (const [frameId, samples] of byFrame) {
+    const label = formatProfilerFrame(trace, frameId);
+    into.set(label, (into.get(label) ?? 0) + samples);
+  }
+  return into;
+}
+
+function topFrames(counts: Map<string, number>, maxFrames: number): LongTaskFrame[] {
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, maxFrames)
-    .map(([frameId, samples]) => ({ label: formatProfilerFrame(trace, frameId), samples }));
+    .map(([label, samples]) => ({ label, samples }));
+}
+
+// tl1417 (issue #82 gap 1): one aggregation over every trace the sampler kept
+// (previous period + current), producing (a) the merged frame list every
+// consumer already reads, (b) a separate bucket for the single longest window —
+// the 16587ms stall no longer shares its top-8 with the 100ms tasks around it —
+// and (c) the sampling density so the reader can tell "the stall was idle-free
+// React work" from "the buffer filled 0.3s in and nothing after was sampled".
+export function aggregateLongTaskProfiles(
+  traces: readonly ProfilerTrace[],
+  windows: readonly LongTaskWindow[],
+  maxFrames = 8,
+): LongTaskProfileSummary {
+  const sampling: ProfilerSamplingSummary = {
+    nominalIntervalMs: PROFILER_SAMPLE_INTERVAL_MS,
+    traces: traces.length,
+    samples: 0,
+    inWindow: 0,
+  };
+  const gaps: number[] = [];
+  for (const trace of traces) {
+    let prev: number | undefined;
+    for (const sample of trace.samples ?? []) {
+      sampling.samples += 1;
+      sampling.firstMs = sampling.firstMs === undefined ? sample.timestamp : Math.min(sampling.firstMs, sample.timestamp);
+      sampling.lastMs = sampling.lastMs === undefined ? sample.timestamp : Math.max(sampling.lastMs, sample.timestamp);
+      if (prev !== undefined && sample.timestamp > prev) gaps.push(sample.timestamp - prev);
+      prev = sample.timestamp;
+      if (sample.stackId !== undefined && sampleInWindows(sample.timestamp, windows)) sampling.inWindow += 1;
+    }
+  }
+  if (gaps.length) {
+    gaps.sort((a, b) => a - b);
+    sampling.medianGapMs = Math.round(gaps[Math.floor(gaps.length / 2)] * 10) / 10;
+  }
+  if (!windows.length) return { frames: [], sampling };
+
+  const merged = new Map<string, number>();
+  for (const trace of traces) leafCountsByLabel(trace, windows, merged);
+
+  let longest = windows[0];
+  for (const w of windows) if (w.durationMs > longest.durationMs) longest = w;
+  const maxWindow: LongTaskWindow[] = [longest];
+  const maxCounts = new Map<string, number>();
+  let maxSamples = 0;
+  let sampledFrom: number | undefined;
+  let sampledTo: number | undefined;
+  for (const trace of traces) {
+    leafCountsByLabel(trace, maxWindow, maxCounts);
+    for (const sample of trace.samples ?? []) {
+      if (sample.stackId === undefined || !sampleInWindows(sample.timestamp, maxWindow)) continue;
+      maxSamples += 1;
+      const offset = sample.timestamp - longest.startMs;
+      sampledFrom = sampledFrom === undefined ? offset : Math.min(sampledFrom, offset);
+      sampledTo = sampledTo === undefined ? offset : Math.max(sampledTo, offset);
+    }
+  }
+  const maxTask: LongTaskMaxProfile = {
+    startMs: longest.startMs,
+    durationMs: longest.durationMs,
+    samples: maxSamples,
+    ...(sampledFrom !== undefined ? { sampledFromMs: Math.round(sampledFrom) } : {}),
+    ...(sampledTo !== undefined ? { sampledToMs: Math.round(sampledTo) } : {}),
+    frames: topFrames(maxCounts, maxFrames),
+  };
+  return { frames: topFrames(merged, maxFrames), maxTask, sampling };
 }
 
 function formatProfilerFrame(trace: ProfilerTrace, frameId: number): string {
@@ -1281,7 +1552,7 @@ function promptPerformanceReport(reason: string, currentLagMs = 0): void {
     const nowMs = performance.now();
     windows.push({ startMs: Math.max(0, nowMs - currentLagMs), durationMs: currentLagMs });
   }
-  if (!activeProfiler) {
+  if (!longTaskProfileAvailable()) {
     // Task 692: no self-profiling in this WebView — both paths finish
     // synchronously with empty frames (same face as before the shared
     // collection below).
@@ -1295,8 +1566,15 @@ function promptPerformanceReport(reason: string, currentLagMs = 0): void {
   // archive kept its sampled frames while the reported payload lost all of
   // them. One trigger now collects once and shares the frames.
   void collectLongTaskFrames(windows)
-    .then((frames) => {
-      if (frames.length) snapshot.longTaskFrames = frames;
+    .then((profile) => {
+      if (profile) {
+        // longTaskFrames keeps its pre-tl1417 meaning (merged over every window)
+        // for the jank archive, the upload text and the prompt face alike; the
+        // max-task bucket and the sampling density ride along as new fields.
+        if (profile.frames.length) snapshot.longTaskFrames = profile.frames;
+        if (profile.maxTask) snapshot.longTaskMaxFrames = profile.maxTask;
+        snapshot.profilerSampling = profile.sampling;
+      }
       if (recordDue) writeJankRecord(label, snapshot, suppressed, now);
       if (promptDue) paintPerformancePrompt(buildPerformancePayload(snapshot), snapshot);
     })
@@ -1328,6 +1606,8 @@ export function installPerformancePressureMonitor() {
   if (performanceMonitorInstalled || typeof window === "undefined" || typeof performance === "undefined") return;
   if (!window.runtime) return;
   performanceMonitorInstalled = true;
+  // tl1417: stream taps for the activity lane live with the monitor that reads them.
+  installStreamActivityTap();
   const startedAt = performance.now();
   const graceUntil = startedAt + STARTUP_GRACE_MS;
   const isHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
@@ -1354,6 +1634,10 @@ export function installPerformancePressureMonitor() {
   };
 
   startLongTaskProfiler();
+  // tl1417: timer-driven rollover — see the profiler section for why buffer-full
+  // rollover lost the stall it was meant to capture. The interval only runs when
+  // the main thread is free, so it cannot split a long task.
+  if (activeProfiler) window.setInterval(rolloverLongTaskProfiler, PROFILER_ROLLOVER_MS);
 
   // Blur/hide park the timestamps at +Infinity so a stale read before the matching
   // resume listener has run can never satisfy the grace windows.
