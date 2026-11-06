@@ -36,6 +36,8 @@ import type {
 import { getLocale, useT } from "../lib/i18n";
 // 任务1012：消息列表时间戳补日期——与消息气泡同一三档契约（lib/messageTimestamp.ts）。
 import { formatMessageTimestamp } from "../lib/messageTimestamp";
+// tl1439 修②：「上次打开的群」记忆落盘（读侧恢复由 CollabChatView 注入初值）。
+import { writeCollabChatLastChannelId } from "../lib/collabChatMemory";
 
 /** 803 定稿：桌面端单用户固定身份（collabchannel.HumanLocal）。 */
 export const HUMAN_LOCAL = "human:local";
@@ -113,7 +115,7 @@ function inviteWorkspaceLabel(root: string): string {
   return parts[parts.length - 1] || trimmed;
 }
 
-export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }: { bindings?: ChannelChatBindings; onOpenSession?: (contactId: string) => void; onViewDirectChains?: () => void } = {}) {
+export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, initialOpenChannelId }: { bindings?: ChannelChatBindings; onOpenSession?: (contactId: string) => void; onViewDirectChains?: () => void; initialOpenChannelId?: string | null } = {}) {
   const t = useT();
   const b: ChannelChatBindings = bindings ?? appBridge;
 
@@ -150,6 +152,8 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
 
   // refs：轮询闭包里要读「当前打开的群」与最新退避状态，不作为渲染依赖。
   const openIdRef = useRef<string | null>(null);
+  // tl1439 修②：「上次打开的群」待恢复记忆（挂载注入一次；恢复或判失即消费）。
+  const pendingRestoreRef = useRef<string | null>(initialOpenChannelId ?? null);
   const retryRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; attempt: number }>({ timer: null, attempt: 0 });
   const refreshRef = useRef<() => void>(() => {});
   const lastSeenRef = useRef<Record<string, number> | null>(null);
@@ -195,6 +199,19 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
         }
       }
       if (seenChanged) writeLastSeenCounts(lastSeenRef.current);
+
+      // tl1439 修②：「上次打开的群」恢复——群列表就绪后校验记忆目标仍在列表
+      // 里才恢复打开；已被删除/解散/归档 → 丢弃记忆，回落默认列表视图（验收③：
+      // 不报错不空白）。恢复在同 tick 尾窗拉取之前生效，打开群的消息一并就位；
+      // 只消费一次（重试/轮询不重复代开）。
+      const pendingRestore = pendingRestoreRef.current;
+      if (pendingRestore && !openIdRef.current) {
+        pendingRestoreRef.current = null;
+        if (list.some((c) => c.id === pendingRestore || c.name === pendingRestore)) {
+          setOpenId(pendingRestore);
+          openIdRef.current = pendingRestore;
+        }
+      }
 
       // 打开中的频道：拉尾窗（最新 50 条），已读标注每 tick 全新；
       // 打开群的消息即视为已见（UI 可见即已读，803 ⑥在侧）。
@@ -394,6 +411,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   const openChannel = useCallback((id: string) => {
     setOpenId(id);
     openIdRef.current = id;
+    writeCollabChatLastChannelId(id); // tl1439 修②：落「上次打开」记忆
     setChat(null);
     setActionError(null);
     setDeputylessHint(false); // tl1406：切群清零投递提示
@@ -407,6 +425,9 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   const closeChannel = useCallback(() => {
     setOpenId(null);
     openIdRef.current = null;
+    // tl1439 修②：显式回到群列表（返回键/退群/解散成功）即清记忆——重开面板
+    // 尊重用户最后一次动作（列表态），不再代开。
+    writeCollabChatLastChannelId(null);
     setChat(null);
     setDetailOpen(false);
     setInviteOpen(false);
