@@ -213,7 +213,9 @@ console.log("\ntask 940 composer approval-select dropdown");
   const labLightKeys = readFileSync(`${frontendRoot}/src/lab/labLightKeys.ts`, "utf8");
   const yamlText = readFileSync(`${frontendRoot}/src/lab/lab-layout.yaml`, "utf8");
   const labDefault = readFileSync(`${frontendRoot}/src/lab/labLayoutDefault.ts`, "utf8");
-  const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8");
+  // 任务 1134 (45381165f) split the lab card out of SettingsPanel into the
+  // lazily mounted ExperimentalLabSection chunk; the lab-row pins read there.
+  const labSection = readFileSync(`${frontendRoot}/src/components/ExperimentalLabSection.tsx`, "utf8");
   const app = readFileSync(`${frontendRoot}/src/App.tsx`, "utf8");
   const composer = readFileSync(`${frontendRoot}/src/components/Composer.tsx`, "utf8");
   const styles = readFileSync(`${frontendRoot}/src/styles.css`, "utf8");
@@ -269,8 +271,8 @@ console.log("\ntask 940 composer approval-select dropdown");
   ok(EXPERIMENT_FEATURE_TIERS.approvalSelect === "optional",
     "④ tier badges: the feature carries the optional tier");
   // 实验室卡片：二选一行（读自己的键写自己的 setter）。
-  ok(panel.includes('labLabel("approvalSelect", t("settings.approvalSelect"))') &&
-     panel.includes("app.SetExperimentalApprovalSelect(on)"),
+  ok(labSection.includes('labLabel("approvalSelect", t("settings.approvalSelect"))') &&
+     labSection.includes("app.SetExperimentalApprovalSelect(on)"),
     "④ lab card: the viewLayout row reads its own key and writes its own setter");
   // App 接线：applyLabFlags 喂值。
   ok(app.includes("approvalSelect: settings.experimentalApprovalSelect ?? false"),
