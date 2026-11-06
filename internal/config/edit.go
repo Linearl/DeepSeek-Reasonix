@@ -306,17 +306,17 @@ func (c *Config) SetDesktopTerminalTheme(theme string) error {
 }
 
 // SetDesktopLayoutStyle sets the desktop layout style. UI-only; it must not
-// affect CLI output or provider-visible request data.
+// affect CLI output or provider-visible request data. The creation layout is
+// retired (tl1450) and is no longer writable; reads of a legacy raw value map
+// to workbench (normalizeDesktopLayoutStyle, one-version compat).
 func (c *Config) SetDesktopLayoutStyle(style string) error {
 	switch strings.ToLower(strings.TrimSpace(style)) {
 	case "classic":
 		c.Desktop.LayoutStyle = "classic"
 	case "", "workbench", "workspace":
 		c.Desktop.LayoutStyle = "workbench"
-	case "creation":
-		c.Desktop.LayoutStyle = "creation"
 	default:
-		return fmt.Errorf("desktop layout style %q: must be classic|workbench|creation", style)
+		return fmt.Errorf("desktop layout style %q: must be classic|workbench", style)
 	}
 	return nil
 }

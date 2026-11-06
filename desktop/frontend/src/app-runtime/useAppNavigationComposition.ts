@@ -69,7 +69,7 @@ export function useAppNavigationComposition(input: AppNavigationCompositionInput
   const {
     managementActive, desktopPlatform, windowsFramelessChrome, singleSurfaceLayout, sidebarCollapsed,
     openPage, returnToWorkspace, enterConversation,
-    setSettingsTarget, setSettingsFocus, setSidebarSearchOpen, setSidebarSearchFocusSignal, setProviderSetupNeeded,
+    setSettingsTarget, setSettingsFocus, setProviderSetupNeeded,
   } = shell;
   const { reload: reloadDesktopPreferences } = shell.preferences;
   const {
@@ -193,8 +193,6 @@ export function useAppNavigationComposition(input: AppNavigationCompositionInput
     clearImDetail: () => setSidebarImDetailConnectionId(""),
     setSettingsFocus,
     setSettingsTarget,
-    setSidebarSearchOpen,
-    setSidebarSearchFocusSignal,
     refreshMeta,
     refreshProviderSetupState,
     reloadDesktopPreferences: (settings) => reloadDesktopPreferences(settings),

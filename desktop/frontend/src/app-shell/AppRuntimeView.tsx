@@ -101,7 +101,7 @@ export type AppRuntimeViewProps = {
 export function AppRuntimeView(props: AppRuntimeViewProps) {
   const { core, shell, session, navigation, runtime, local, trajectory } = props;
   const { state, activeTab, activeTabId, t, locale } = core;
-  const { sidebarWorkbench, sidebarCreation, windowsFramelessChrome, managementActive, mainWindowMaximised } = shell;
+  const { sidebarWorkbench, windowsFramelessChrome, managementActive, mainWindowMaximised } = shell;
   const {
     conversationView, visibleRuntimeState, sidebarImDetailConnection,
     surfaceWorkspacePanelRenderable, surfaceWorkspacePanelGridOpen, surfaceWorkspacePanelOverlay, terminalSurfaceOpen,
@@ -112,9 +112,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
   const runtimeTransitioning = core.surface.transitioning;
   const browserPreviewChrome = navigation.browserPreviewChrome;
 
-  // Creation keeps the classic sidebar/chat structure while gating chrome tweaks
-  // behind its own style flag so classic/workbench remain unchanged.
-  const appChromeHidden = sidebarWorkbench || sidebarCreation;
+  const appChromeHidden = sidebarWorkbench;
   const workbenchChromeHidden = sidebarWorkbench;
   const sidebarClassName = [
     "sidebar",
@@ -140,7 +138,6 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
     windowsFrameless: windowsFramelessChrome,
     browserPreview: browserPreviewChrome,
     workbench: sidebarWorkbench,
-    creation: sidebarCreation,
     imDetailActive: Boolean(sidebarImDetailConnection),
     sidebarCollapsed: shell.sidebarCollapsed,
     sidebarResizing: shell.sidebarResizing,
@@ -256,14 +253,13 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
         <SidebarRegion {...buildSidebarRegionProps({
           automation: shell.page.kind === "automation",
           className: sidebarClassName,
-          toggleTitle: navigation.sidebarToggleTitle,
           shell,
           t,
           geometry: shellGeometry,
           projectTree: {
             activeTab, imTopicSources: shell.preferences.imTopicSources, refreshSignal: local.projectRevision,
             timeFilter: local.topicTimeFilter, onTimeFilterChange: local.setTopicTimeFilter,
-            searchExpanded: !sidebarCreation || shell.sidebarSearchOpen, searchFocusSignal: shell.sidebarSearchFocusSignal,
+            searchExpanded: true, searchFocusSignal: shell.sidebarSearchFocusSignal,
             showShortcutBadges: navigation.topicShortcuts.showTopicBadges, shortcutPlatform: shell.desktopPlatform,
             onVisibleTopicsChange: navigation.topicShortcuts.handleVisibleTopicsChange,
           },
@@ -273,8 +269,6 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
             onOpenTrash: () => void navigation.historyCommands.openTrash(),
             onOpenAutomation: () => shell.openPage({ kind: "automation" }),
             onOpenSettings: chromeCommands.openSidebarSettings,
-            onToggleSearch: chromeCommands.toggleSidebarSearch,
-            onToggle: shellGeometry.toggleSidebar,
             onOpenTopic: navigationCommands.handleOpenTopic,
           },
         })} />
@@ -282,7 +276,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
         <section className={`chat-pane${session.transcript.emptyHero ? " chat-pane--creation-empty" : ""}`}>
           <TopicbarRegion view={buildTopicbarView({
             t, locale, activeTab, cwd: state.meta?.cwd, imDetail: sidebarImDetailConnection, imTopicSources: shell.preferences.imTopicSources,
-            creation: sidebarCreation, chromeHidden: workbenchChromeHidden, automationReturn: shell.automationReturn,
+            chromeHidden: workbenchChromeHidden, automationReturn: shell.automationReturn,
             sidebar: { title: navigation.sidebarToggleTitle, blocked: navigation.sidebarExpandBlocked, pressed: shell.sidebarTogglePressed, collapsed: shell.sidebarCollapsed },
             rename: { editing: navigation.projectTopicCommands.topicbarEditing, draft: navigation.projectTopicCommands.topicTitleDraft },
           })} commands={{
@@ -310,8 +304,6 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
               setTasksOpen={local.setTasksOpen}
               onCloseTasks={() => local.setTasksOpen(false)}
               onOpenTaskSession={navigationCommands.openTaskMonitorSession}
-              creation={sidebarCreation}
-              dockToggle={<DockToggleButton renderable={surfaceWorkspacePanelRenderable} t={t} onToggle={session.workspacePanelCommands.toggleWorkspacePanel} />}
             />
           </TopicbarRegion>
 
@@ -355,7 +347,6 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
               controllerReady,
               hydratePlaceholderActive: session.hydratePlaceholderActive,
               clearContextPending: session.clearCommands.clearContextPending,
-              creation: sidebarCreation,
               emptyHero: session.transcript.emptyHero,
               availability: session.transcript.availability,
               rewind: { stateActive: session.sessionUndo.rewindState != null, committing: session.sessionUndo.rewindCommitting, signal: session.sessionUndo.rewindSignal },
@@ -388,7 +379,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
 
           <DecisionFooterRegion
             hidden={Boolean(sidebarImDetailConnection)}
-            className={["footer", terminalSurfaceOpen && !sidebarCreation ? "footer--compact" : "", visibleDecisionSurface ? "footer--decision" : "", runtimeTransitioning ? "footer--navigation-hidden" : ""].filter(Boolean).join(" ")}
+            className={["footer", terminalSurfaceOpen ? "footer--compact" : "", visibleDecisionSurface ? "footer--decision" : "", runtimeTransitioning ? "footer--navigation-hidden" : ""].filter(Boolean).join(" ")}
             footerRef={footerRef}
             style={core.surface.surface?.phase === "source-retained" && footerHeight > 0 ? { height: footerHeight, minHeight: footerHeight, boxSizing: "border-box" } : undefined}
             todo={footerTodo}
@@ -408,7 +399,6 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
                 controllerReady: controllerReady && session.transcript.availability.kind === "ready",
                 submitDisabledReason: session.transcript.availability.kind !== "ready" && session.transcript.availability.source !== "runtime"
                   ? t("sessionRecovery.sendAfterRecovery") : undefined,
-                showContextWindowRing: sidebarCreation,
               },
               base: conversationView.composer,
               tab: activeTab,
@@ -443,7 +433,6 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
 
         <WorkspaceDockRegion {...buildWorkspaceDockProps({
           surface: { renderable: surfaceWorkspacePanelRenderable, overlay: surfaceWorkspacePanelOverlay, gridOpen: surfaceWorkspacePanelGridOpen },
-          creation: sidebarCreation,
           remoteAvailable: shell.remoteHosts.length > 0,
           showContext: SHOW_CONTEXT_DOCK,
           remote: core.remoteSurfaceActive,

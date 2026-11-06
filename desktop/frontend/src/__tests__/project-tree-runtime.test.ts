@@ -353,31 +353,21 @@ eq(
 );
 
 eq(
-  projectTreeShouldRenderTopicActions(false, "workbench", false),
+  // tl1450: the variant parameter went away with the creation layout — both
+  // survivors share one rule.
+  projectTreeShouldRenderTopicActions(false, false),
   true,
-  "read workbench topic renders hover actions",
+  "read topic renders hover actions (workbench and classic alike)",
 );
 
 eq(
-  projectTreeShouldRenderTopicActions(false, "classic", false),
-  true,
-  "read classic topic renders hover actions",
-);
-
-eq(
-  projectTreeShouldRenderTopicActions(false, "classic", true),
+  projectTreeShouldRenderTopicActions(false, true),
   false,
-  "unread classic topic reserves the action column for unread attention",
+  "unread topic reserves the action column for unread attention",
 );
 
 eq(
-  projectTreeShouldRenderTopicActions(false, "creation", false),
-  false,
-  "creation topic keeps hover actions disabled",
-);
-
-eq(
-  projectTreeShouldRenderTopicActions(true, "classic", false),
+  projectTreeShouldRenderTopicActions(true, false),
   false,
   "runtime session rows do not render topic hover actions",
 );
@@ -720,11 +710,6 @@ eq(
   "workbench context menu keeps the pin entry",
 );
 
-eq(
-  projectTreeTopicMenuOffersPin("creation"),
-  false,
-  "creation context menu hides pin so the shared ordering stays untouched",
-);
 
 eq(
   projectTreeFolderDisclosure(false, false, true),

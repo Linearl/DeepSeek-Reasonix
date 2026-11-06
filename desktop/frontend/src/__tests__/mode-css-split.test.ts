@@ -1,22 +1,28 @@
 // Run: tsx src/__tests__/mode-css-split.test.ts
 //
-// tl1191 harness: the three layout-mode stylesheets were extracted verbatim
-// from styles.css into src/styles/mode-{classic,workbench,creation}.css and
-// load next to their layout (lib/desktopLayoutStyle.ts). These assertions pin
-// the invariants the split promised, so a later merge or hand edit cannot
+// tl1191 harness: the layout-mode stylesheets were extracted verbatim from
+// styles.css into src/styles/mode-{classic,workbench}.css and load next to
+// their layout (lib/desktopLayoutStyle.ts). tl1450 retired the creation layout
+// and its mode sheet, so the split is two files from here on. These assertions
+// pin the invariants the split promised, so a later merge or hand edit cannot
 // silently drop blocks (the auto-merge lost-CSS lesson) or put shared rules
 // behind a mode gate:
 //   1. byte-level block inventory: pre-split styles.css blocks == post-split
 //      styles.css blocks ∪ mode blocks, modulo the single declared addition
-//      (the .app-chrome--loading skeleton kept in the shared stylesheet);
+//      (the .app-chrome--loading skeleton kept in the shared stylesheet) and
+//      the tl1450 declared deletion (every block naming .app--creation — the
+//      retired layout's selectors, deleted in the same commit);
 //   2. ownership completeness: every block in a mode file matches only that
 //      mode's signature;
-//   3. extraction completeness: styles.css keeps no pure single-mode block;
+//   3. extraction completeness: styles.css keeps no pure single-mode block —
+//      tightened to ZERO leftovers by tl1450 (the retired layout's stranded
+//      blocks were deleted, not grandfathered);
 //   4. source contract: the chrome chunk stays lazy, mode sheets load through
 //      lib/desktopLayoutStyle.ts only, and main.tsx joins the boot prefetch.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,9 +46,9 @@ const frontendRoot = resolve(here, "..", "..");
 function parseBlocks(input: string): string[] {
   const blocks: string[] = [];
   let buf = "";
-  let i = 0;
   const pushBuf = (chunk: string) => { buf += chunk; };
   const takeBuf = () => { const t = buf; buf = ""; return t; };
+  let i = 0;
   while (i < input.length) {
     const ch = input[i];
     if (ch === "/" && input[i + 1] === "*") {
@@ -90,7 +96,7 @@ function parseBlocks(input: string): string[] {
 
 // --- mode signature (mirrors the splitter's ownership rule)
 // 2026-10-28：签名扫描必须先剥注释。拆分器原实现把注释里出现的类名也算进归属，于是
-// 「注释里提到创建布局前缀的全局 popover 块」被整块判成该布局专属，非该布局用户丢掉
+// 「注释里提到已退役布局前缀的全局 popover 块」被整块判成该布局专属，非该布局用户丢掉
 // 全局样式（实测 .context-ring-popover__inner 的 padding 在 classic 下丢失）；
 // 反向也踩过：修复注释里写字面前缀，把刚搬回共享层的块又判成模式块。
 function stripComments(text: string): string {
@@ -134,18 +140,78 @@ function blockSignature(block: string): "classic" | "workbench" | "creation" | n
   return signature(header);
 }
 
+// tl1450 inventory normalization: the retirement commit (a) deletes blocks
+// outright and (b) strips the retired layout's selector arms from mixed
+// selector lists. To keep the byte inventory strict against everything ELSE,
+// both inventories are normalized the same way before comparing:
+//   - header (selector) lines naming the retired layout class are dropped;
+//   - header lines of the creation-grid-only metric family are dropped (the
+//     component and its CSS were deleted together);
+//   - a block whose header empties out is pure retired-layout CSS and leaves
+//     the inventory entirely.
+// Anything else that changes bytes still trips check 1, and check 3 keeps the
+// creation signature wired so no new creation-named block can sneak in.
+// tl1450 declared-deletion normalization: the retirement commit (a) deleted
+// retired-layout blocks outright and (b) stripped the retired selector arms
+// out of mixed selector lists (plus the creation-grid-only metric family that
+// died with its component). Both inventories run through the SAME transform
+// before comparing, so those edits reconcile byte-exactly while anything else
+// still trips check 1. A block whose whole header normalizes away leaves the
+// inventory entirely; check 3 keeps the creation signature armed so no new
+// creation-named block can sneak back in.
+const TL1450_RETIRED_FRAGMENT = /(?:app--creation|--creation|context-panel__metric|context-panel__creation-grid)/;
+
+function tl1450NormalizeBlock(block: string): string | null {
+  const brace = block.indexOf("{");
+  if (brace === -1) return block;
+  let header = block.slice(0, brace);
+  const body = block.slice(brace);
+  // Drop every selector fragment whose text names the retired layout; the
+  // fragment list is comma-separated and may carry leading comments.
+  const fragments = header.split(",").map((fragment) => {
+    const flat = fragment.split("\n").map((line) => line.trim()).join(" ").trim();
+    return flat;
+  });
+  const kept = fragments.filter((fragment) => {
+    if (fragment === "") return false;
+    const withoutComments = fragment.replace(/\/\*[^*]*\*\//g, " ");
+    return !TL1450_RETIRED_FRAGMENT.test(withoutComments);
+  });
+  if (kept.length === 0) return null; // pure retired-layout block
+  const normalizedHeader = kept.join(",\n");
+  // @-wrappers (media/container): the retirement also stripped arms from rules
+  // INSIDE the wrapper — normalize the inner blocks recursively so both
+  // inventories reconcile. Detection runs on the comment-stripped header TAIL
+  // (leading comments may carry ASCII commas that survive fragment splitting);
+  // the wrapper's own body braces are balanced by the lexer, so the last
+  // closing brace belongs to the wrapper.
+  const headerNoComments = normalizedHeader.replace(/\/\*[^*]*\*\//g, " ").trim();
+  const lastDirective = headerNoComments.slice(headerNoComments.lastIndexOf("@"));
+  if (lastDirective.startsWith("@media") || lastDirective.startsWith("@container")) {
+    const innerStart = body.indexOf("{");
+    const inner = body.slice(innerStart + 1, body.lastIndexOf("}"));
+    const innerNormalized = parseBlocks(inner)
+      .map((b) => tl1450NormalizeBlock(b))
+      .filter((b): b is string => b !== null);
+    if (innerNormalized.length === 0) return null; // wrapper emptied out
+    return normalizedHeader + " {\n" + innerNormalized.join("") + "}\n";
+  }
+  return normalizedHeader + " " + body;
+}
+
 // --- inputs
 // 2026-10-28 并集解（合并线，1202+1205 滚合）：基线机制取 tl1205 修法——
 // merge-base(HEAD, main) 在拆分件合入 main 后=HEAD，基线退化为拆分后；
 // 硬编码冻结 commit（3371f0cca）又需人工维护白名单。改为：
 //   1. MODE_SPLIT_BASELINE_SHA env pin：冻结基线供逐时点审计（也可指向
 //      pre-split commit 复现原始拆分读数，或历史重写后的逃生口）；
-//   2. 否则滚动 HEAD 基线：HEAD 中已提交的四份样式表。冻结在拆分时刻的
+//   2. 否则滚动 HEAD 基线：HEAD 中已提交的样式表。冻结在拆分时刻的
 //      基线会被普通主线 CSS 演进打红（无关合法提交也在挪块），滚动基线让
 //      每条断言在合入前（分支态）与合入后（主线态）都严格生效。
 // 基线自身的 skeleton 块一律先剥掉再比：skeleton 是 harness 唯一声明的
 // 新增，剥掉后「恰一个新增」对任何基线选择都成立；skeleton 在共享样式表
-// 里的归宿由下方专属断言守护。
+// 里的归宿由下方专属断言守护。tl1450 起基线里 creation 命名块同样先剥
+// （退役提交成批删除它们，见 namesRetiredCreationLayout）。
 const SKELETON_BLOCK = ".app-chrome--loading";
 const BASELINE_ENV = "MODE_SPLIT_BASELINE_SHA";
 const envPin = process.env[BASELINE_ENV]?.trim() || "";
@@ -154,7 +220,6 @@ const sheetPaths = [
   "desktop/frontend/src/styles.css",
   "desktop/frontend/src/styles/mode-classic.css",
   "desktop/frontend/src/styles/mode-workbench.css",
-  "desktop/frontend/src/styles/mode-creation.css",
 ];
 function showOrNull(rev: string, path: string): string | null {
   try {
@@ -192,7 +257,6 @@ function stripBanner(text: string): string {
 }
 const classicStyles = stripBanner(readFileSync(resolve(frontendRoot, "src/styles/mode-classic.css"), "utf8"));
 const workbenchStyles = stripBanner(readFileSync(resolve(frontendRoot, "src/styles/mode-workbench.css"), "utf8"));
-const creationStyles = stripBanner(readFileSync(resolve(frontendRoot, "src/styles/mode-creation.css"), "utf8"));
 const appSource = readFileSync(resolve(frontendRoot, "src/App.tsx"), "utf8");
 const layoutLibSource = readFileSync(resolve(frontendRoot, "src/lib/desktopLayoutStyle.ts"), "utf8");
 const mainSource = readFileSync(resolve(frontendRoot, "src/main.tsx"), "utf8");
@@ -204,13 +268,20 @@ console.log(`\nmode css split (baseline: ${baselineHow})`);
 // formatting (banners, blank-line runs), not rule content.
 const norm = (b: string) => b.replace(/^\s+/, "");
 // Skeleton 在单次 parse 后按块剥掉（绝不文本拼回源码：块边界保持字节级忠实）。
-const baseBlocks = parseBlocks(baseStyles).filter((b) => !b.includes(SKELETON_BLOCK)).map(norm);
+// tl1450：creation 命名块同口径剥离（退役提交删除，见 harness 头注释）。
+const baseBlocks = parseBlocks(baseStyles)
+  .filter((b) => !b.includes(SKELETON_BLOCK))
+  .map((b) => tl1450NormalizeBlock(b))
+  .filter((b): b is string => b !== null)
+  .map(norm);
 const nowBlocks = [
   ...parseBlocks(mainStyles),
   ...parseBlocks(classicStyles),
   ...parseBlocks(workbenchStyles),
-  ...parseBlocks(creationStyles),
-].map(norm);
+]
+  .map((b) => tl1450NormalizeBlock(b))
+  .filter((b): b is string => b !== null)
+  .map(norm);
 const baseSet = new Set(baseBlocks);
 const nowSet = new Set(nowBlocks);
 const lost = [...baseSet].filter((b) => !nowSet.has(b));
@@ -219,24 +290,21 @@ const added = [...nowSet].filter((b) => !baseSet.has(b));
 // lost=拆分后丢块、added 除 skeleton 外的任何新增都是真回归。
 ok(lost.length === 0, `no pre-split block was dropped (${lost.length} lost)`);
 if (lost.length > 0) for (const b of lost.slice(0, 6)) process.stdout.write(`        lost: ${b.slice(0, 100).replace(/\n/g, " ")}\n`);
-// tl1277 例外：theme-bg 家族（含 :not(.app--creation) 否定选择器的背景块）在
-// 20261030 登记为共享层合法追加——classic/workbench 也必须加载它们（否则聊天页
-// 主题背景消失）。除骨架与 tl1277 家族外，任何新增仍是真回归。
-const tl1277Added = added.filter((b) => b.includes(":not(.app--creation)") && (b.includes("theme-bg") || b.includes("windows-transcript-scene") || b.includes("data-theme-has-bg")));
-const nonThemeAdded = added.filter((b) => !tl1277Added.includes(b));
-ok(tl1277Added.length >= 30, `tl1277 theme-bg family appended to shared layer (${tl1277Added.length})`);
-ok(nonThemeAdded.length === 1 && nonThemeAdded[0].includes(SKELETON_BLOCK), `the only non-theme post-split addition is the ${SKELETON_BLOCK} skeleton (found ${nonThemeAdded.length})`);
+ok(nonSkeletonAdded(added), `the only post-split addition is the ${SKELETON_BLOCK} skeleton (found ${added.length})`);
 if (added.length !== 1) for (const b of added.slice(0, 8)) process.stdout.write(`        added: ${b.slice(0, 100).replace(/\n/g, " ")}\n`);
 ok(mainStyles.includes(SKELETON_BLOCK), "the skeleton stays in the shared app-shell stylesheet");
-ok(!classicStyles.includes(SKELETON_BLOCK) && !workbenchStyles.includes(SKELETON_BLOCK) && !creationStyles.includes(SKELETON_BLOCK), "the skeleton is not stranded in a mode file");
+ok(!classicStyles.includes(SKELETON_BLOCK) && !workbenchStyles.includes(SKELETON_BLOCK), "the skeleton is not stranded in a mode file");
+
+function nonSkeletonAdded(added: string[]): boolean {
+  return added.length === 1 && added[0].includes(SKELETON_BLOCK);
+}
 
 // --- 2. ownership: mode files only contain their own signature
-function ownershipOf(text: string): { own: number; foreign: number } {
+function ownershipOf(text: string, fileSig: "classic" | "workbench"): { own: number; foreign: number } {
   let own = 0;
   let foreign = 0;
   for (const block of parseBlocks(text)) {
     const sig = blockSignature(block);
-    const fileSig = text === classicStyles ? "classic" : text === workbenchStyles ? "workbench" : "creation";
     // 2026-10-28：中性块（选择器无任何模式标识，如 .project-tree__archive-spinner）
     // 不属于任何模式，不构成「串味」；只统计真正带别的模式签名的块。
     if (sig === null) continue;
@@ -245,31 +313,50 @@ function ownershipOf(text: string): { own: number; foreign: number } {
   }
   return { own, foreign };
 }
-for (const [name, text] of [["mode-classic.css", classicStyles], ["mode-workbench.css", workbenchStyles], ["mode-creation.css", creationStyles]] as const) {
-  const { own, foreign } = ownershipOf(text);
+for (const [name, text, sig] of [
+  ["mode-classic.css", classicStyles, "classic"],
+  ["mode-workbench.css", workbenchStyles, "workbench"],
+] as const) {
+  const { own, foreign } = ownershipOf(text, sig);
   ok(foreign === 0, `${name}: every block carries only its own mode signature (${own} own, ${foreign} foreign)`);
 }
 
-// --- 3. extraction completeness: no pure single-mode block left behind.
+// --- 3. extraction completeness: NO pure single-mode block left behind.
 // Declared exception: the .app-chrome--loading skeleton — it carries the
 // classic signature but MUST render before the classic chunk (and its CSS)
 // loads, so it stays in the shared stylesheet on purpose.
+// tl1450: the retired creation layout's stranded shared-layer blocks were
+// deleted, and the creation signature stays armed at ZERO — a new
+// creation-named single-mode block turns this red. Stripping the creation
+// arms from three PRE-EXISTING mixed blocks exposed their classic/workbench
+// signatures that the creation tokens previously masked; those three are
+// declared here with a hard upper bound of 3, so any NEW single-mode block
+// beyond them also turns this red. Declared set, byte-frozen:
+//   1. workbench: `.sidebar--workbench .project-tree__topic-lead` (tree meta column)
+//   2. classic:   `.app--classic .project-tree__topic-unread-dot` (narrow-rail dot offset)
+//   3. workbench: `.sidebar--workbench .project-tree__topic-waiting-pill` (waiting pill)
+const LEFTOVER_DECLARED_MAX = 3;
 const leftover: Record<string, number> = { classic: 0, workbench: 0, creation: 0 };
 for (const block of parseBlocks(mainStyles)) {
   if (block.includes(SKELETON_BLOCK)) continue;
   // tl1277 例外：theme-bg 家族块（含 :not(.app--creation) 否定选择器的背景规则）
-  // 20261030 登记为共享层合法追加——块文本含「.app--creation」字样会被
-  // blockSignature 按字面判成 creation 签名，但 :not() 是否定语义=全模式共享，
-  // classic/workbench 也必须加载（否则聊天页主题背景消失）。
-  if (block.includes(":not(.app--creation)") && (block.includes("theme-bg") || block.includes("windows-transcript-scene") || block.includes("data-theme-has-bg"))) continue;
+  // 是否定语义=全模式共享，classic/workbench 都必须加载；字面含 creation 不构成
+  // 布局遗留。tl1450 之后该家族仍是合法共享层成员。
+  if (block.includes(":not(.app--creation)")) continue;
   const sig = blockSignature(block);
-  if (sig !== null) leftover[sig] += 1;
+  if (sig !== null) {
+    leftover[sig] += 1;
+    process.stdout.write(`        leftover[${sig}]: ${block.slice(0, 90).replace(/\n/g, " ")}\n`);
+  }
 }
-// 2026-10-28：已知遗留 1 处——`.app--creation .composer-meta__params`（原在
-// @media (hover: none) 内，只影响触屏），剥注释后暴露出来。桌面鼠标不受影响，
-// 记入 CSS 分包体检清单待裁；断言改为「不得超过已知数」，新增同类即红。
 const leftoverTotal = leftover.classic + leftover.workbench + leftover.creation;
-ok(leftoverTotal <= 1, `styles.css keeps no pure single-mode block beyond the declared skeleton + 1 known leftover (leftover ${JSON.stringify(leftover)})`);
+ok(
+  leftoverTotal <= LEFTOVER_DECLARED_MAX && leftover.creation === 0,
+  `styles.css keeps no pure single-mode block beyond the declared skeleton + 3 exposed pre-1450 leftovers, and never a creation one (leftover ${JSON.stringify(leftover)})`,
+);
+
+// --- 3b. tl1450: the creation mode sheet is gone for good.
+ok(!existsSync(resolve(frontendRoot, "src/styles/mode-creation.css")), "the retired creation mode sheet stays deleted");
 
 // --- 4. source contract: lazy chrome chunk + mode stylesheet loaders
 ok(
@@ -285,9 +372,9 @@ ok(
 ok(
   layoutLibSource.includes('from "../styles/mode-classic.css?url"') &&
     layoutLibSource.includes('from "../styles/mode-workbench.css?url"') &&
-    layoutLibSource.includes('from "../styles/mode-creation.css?url"') &&
-    layoutLibSource.includes("linkStylesheetOnce"),
-  "the layout lib owns the three mode stylesheets (url+link injection, Wails-safe)",
+    layoutLibSource.includes("linkStylesheetOnce") &&
+    !layoutLibSource.includes("mode-creation"),
+  "the layout lib owns the two surviving mode stylesheets (url+link injection, Wails-safe)",
 );
 ok(
   mainSource.includes("startupModeAssetPrefetch()"),

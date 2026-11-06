@@ -250,7 +250,6 @@ export type ComposerSurfaceInput = {
     decisionActive: boolean;
     runtimeTransitioning: boolean;
     controllerReady: boolean;
-    showContextWindowRing: boolean;
     submitDisabledReason?: string;
   };
   base: ComposerBase;
@@ -338,8 +337,6 @@ export function buildComposerSurface(input: ComposerSurfaceInput): DecisionFoote
       guidanceConsumedItemId: input.guidance?.itemId,
       guidanceConsumedText: input.guidance?.text,
       guidanceQueuePreviewItems: input.guidanceQueuePreviewItems,
-      showContextWindowRing: view.showContextWindowRing,
-      heroMode: view.hero && view.showContextWindowRing,
     },
   };
 }

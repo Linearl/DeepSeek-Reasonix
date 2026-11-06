@@ -12,8 +12,6 @@ export type AppChromeCommandsInput = {
   clearImDetail: () => void;
   setSettingsFocus: Dispatch<SetStateAction<SettingsInitialFocus | null>>;
   setSettingsTarget: Dispatch<SetStateAction<SettingsTab | null>>;
-  setSidebarSearchOpen: Dispatch<SetStateAction<boolean>>;
-  setSidebarSearchFocusSignal: Dispatch<SetStateAction<number>>;
   refreshMeta: () => Promise<unknown>;
   refreshProviderSetupState: () => Promise<unknown>;
   reloadDesktopPreferences: (settings?: SettingsView | null) => Promise<unknown>;
@@ -73,11 +71,6 @@ export function useAppChromeCommands(input: AppChromeCommandsInput) {
     input.closeTransientOverlays();
     input.setSettingsTarget(tab);
   });
-  const toggleSidebarSearch = useCommittedCommand(() => {
-    input.setSidebarSearchOpen((open) => !open);
-    input.setSidebarSearchFocusSignal((signal) => signal + 1);
-  });
-
   return {
     openBotSettings,
     openBotAllowlistSettings,
@@ -88,6 +81,5 @@ export function useAppChromeCommands(input: AppChromeCommandsInput) {
     closeSettings,
     handleSettingsChanged,
     openSidebarSettings,
-    toggleSidebarSearch,
   };
 }

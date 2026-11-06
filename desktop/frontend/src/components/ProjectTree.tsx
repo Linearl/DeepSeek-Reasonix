@@ -261,7 +261,6 @@ export function ProjectTree({
   const t = useT();
   const { showToast } = useToast();
   const compactTopics = variant === "workbench";
-  const creationTopics = variant === "creation";
   const [tree, setTree] = useState<ProjectNode[]>([]);
   // Task 403 (upstream #10957→#10963): stays false until the first project-tree
   // read settles, so the sidebar paints a loading row instead of the "no
@@ -455,7 +454,7 @@ export function ProjectTree({
     const pageState = topicPageStateRef.current[key];
     const cursor = append ? pageState?.nextCursor ?? "" : "";
     if (append && !cursor) return;
-    const sortMode = creationTopics ? "updated" : workbenchSortModeRef.current;
+    const sortMode = workbenchSortModeRef.current;
     const limit = timeFilter === "10" ? 10 : timeFilter === "20" ? 20 : 50;
     const requestSignature = projectTreeTopicPageSignature(query, timeFilter, sortMode, limit);
     // Last-query-wins: stale completions cannot overwrite a newer first page.
@@ -543,7 +542,7 @@ export function ProjectTree({
         showToast(message, "error", { durationMs: 6000 });
       }
     }
-  }, [applyRuntimeProjection, creationTopics, currentArchiveTombstones, query, showToast, timeFilter, updateTopicPageState]);
+  }, [applyRuntimeProjection, currentArchiveTombstones, query, showToast, timeFilter, updateTopicPageState]);
   loadProjectTopicsRef.current = loadProjectTopics;
 
   const selectWorkbenchSortMode = useCallback((sortMode: WorkbenchSortMode) => {
@@ -1616,9 +1615,8 @@ export function ProjectTree({
       .map(filterNode)
       .filter((node): node is ProjectNode => node !== null);
     if (compactTopics) return arrangeWorkbenchTree(filtered, workbenchOrganizeMode, workbenchSortMode);
-    if (creationTopics) return arrangeWorkbenchTree(filtered, "project", "updated");
     return arrangeClassicProjectTree(filtered, workbenchSortMode);
-  }, [compactTopics, creationTopics, query, colorFilter, timeFilter, treeWithRemoteSessions, workbenchOrganizeMode, workbenchSortMode]);
+  }, [compactTopics, query, colorFilter, timeFilter, treeWithRemoteSessions, workbenchOrganizeMode, workbenchSortMode]);
 
   const lastColorFilterLog = useRef("");
   useEffect(() => {
@@ -1633,11 +1631,10 @@ export function ProjectTree({
   }, [colorFilter, visibleTree]);
 
   const pinnedTreeSections = useMemo<PinnedTreeSections>(() => {
-    if (creationTopics) return { pinned: [], projects: visibleTree };
     return splitPinnedProjectTree(visibleTree, workbenchSortMode, compactTopics);
-  }, [compactTopics, creationTopics, visibleTree, workbenchSortMode]);
+  }, [compactTopics, visibleTree, workbenchSortMode]);
 
-  const classicTopics = !compactTopics && !creationTopics;
+  const classicTopics = !compactTopics;
 	const [foldExcessSessions, setFoldExcessSessions] = useState(() => loadFoldExcessSessions());
 	useEffect(() => onFoldExcessSessionsChanged(() => setFoldExcessSessions(loadFoldExcessSessions())), []);
 	// Task 102: with the preference off, expanded projects list all sessions at startup - no
@@ -2302,7 +2299,7 @@ export function ProjectTree({
           </button>
           {unread && <span className="project-tree__topic-unread-dot" aria-hidden="true" />}
           {/* tl1240: hover actions yield to the checkbox in batch mode. */}
-          {!batchEntry && projectTreeShouldRenderTopicActions(isSessionNode, variant, unread) && !(node.remoteSession && !node.remoteSession.name) && (
+          {!batchEntry && projectTreeShouldRenderTopicActions(isSessionNode, unread) && !(node.remoteSession && !node.remoteSession.name) && (
             <span
               className="project-tree__topic-actions"
               aria-label={t("projectTree.topicActions")}

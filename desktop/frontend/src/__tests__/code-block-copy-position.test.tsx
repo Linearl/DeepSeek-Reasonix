@@ -66,27 +66,10 @@ const css = [
   "../styles.css",
   "../styles/mode-classic.css",
   "../styles/mode-workbench.css",
-  "../styles/mode-creation.css",
 ].map((p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8")).join("\n");
 
 ok(selectorPresent(css, ".code-block__wrap:hover .code-block__copy"), "hover reveal targets the wrapper");
 notOk(selectorPresent(css, ".code:hover .code-block__copy"), "hover reveal no longer depends on pre descendants");
-ok(
-  selectorPresent(css, ".app--creation .msg--assistant .md .code:not([data-lang]) + .code-block__copy"),
-  "creation unlabelled code button styles target sibling copy buttons",
-);
-notOk(
-  selectorPresent(css, ".app--creation .msg--assistant .md .code:not([data-lang]) .code-block__copy"),
-  "creation unlabelled code styles do not target descendants inside pre",
-);
-ok(
-  selectorPresent(css, '.app--creation .msg--assistant .md .code[data-lang="bash"] + .code-block__copy'),
-  "creation shell code button styles target sibling copy buttons",
-);
-notOk(
-  selectorPresent(css, '.app--creation .msg--assistant .md .code[data-lang="bash"] .code-block__copy'),
-  "creation shell code styles do not target descendants inside pre",
-);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

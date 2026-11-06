@@ -10174,11 +10174,6 @@ body > .mermaid-diagram--fullscreen {
     width: 34px;
   }
 
-  .app--creation .composer-meta .composer-meta__params,
-  :root[data-theme-style] .app--creation .composer-meta .composer-meta__params {
-    gap: 4px;
-  }
-
   .composer-meta__control--model {
     flex: 1 1 50px;
     min-width: 42px;
@@ -29437,9 +29432,7 @@ button.statusbar__mcp:focus-visible {
 }
 /* Workbench and creation pin their own topic paddings; the grid column is a
    classic-tree geometry and must not add width there. */
-.sidebar--workbench .project-tree__topic-lead,
-.app--creation .project-tree__topic-lead,
-:root[data-theme-style] .app--creation .project-tree__topic-lead {
+.sidebar--workbench .project-tree__topic-lead {
   display: none;
 }
 
@@ -31128,21 +31121,16 @@ button.statusbar__mcp:focus-visible {
    挤裁。断点 319px：低于它单列（每列拿到全部行宽），达到即恢复多列（宽态
    720px 与中间拖宽态观感不变）。 */
 @container context-panel-body (max-width: 319px) {
-  .context-panel__summary-rows,
-  /* creation 覆写段（.app--creation 前缀）特异性更高，窄容器单列须同规则
-     对齐，否则 creation 布局下仍被钉在 2 列。 */
-  .app--creation .context-panel__summary-rows {
+  .context-panel__summary-rows {
     grid-template-columns: minmax(0, 1fr);
   }
 
   /* 单列后奇偶项的左右 padding / 分隔竖线不再有意义，恢复对称行。 */
-  .context-panel__mini-stat:nth-child(odd),
-  .app--creation .context-panel__mini-stat:nth-child(odd) {
+  .context-panel__mini-stat:nth-child(odd) {
     padding-right: 0;
   }
 
-  .context-panel__mini-stat:nth-child(even),
-  .app--creation .context-panel__mini-stat:nth-child(even) {
+  .context-panel__mini-stat:nth-child(even) {
     padding-left: 0;
     border-left: 0;
   }
@@ -31657,10 +31645,6 @@ button.statusbar__mcp:focus-visible {
   margin-top: 0;
 }
 
-.context-panel__creation-grid {
-  display: none;
-}
-
 .context-panel__mini-stat {
   min-height: 40px;
   min-width: 0;
@@ -31893,61 +31877,6 @@ button.statusbar__mcp:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   padding-top: 10px;
   border-top: 1px solid var(--border-soft);
-}
-
-.context-panel__metric--wide {
-  grid-column: 1 / -1;
-}
-
-.context-panel__metric {
-  min-height: 54px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-  padding: 9px 11px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  overflow: hidden;
-}
-
-.context-panel__metric span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-dim);
-  font-size: var(--text-sm);
-}
-
-.context-panel__metric strong {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg);
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.context-panel__metric--accent strong {
-  color: var(--accent);
-}
-
-.context-panel__metric--good strong {
-  color: var(--ok);
-}
-
-.context-panel__metric--notice strong {
-  color: var(--warn);
-}
-
-.context-panel__metric--warn strong {
-  color: var(--err);
 }
 
 .context-panel__runtime-card {
@@ -34849,7 +34778,6 @@ button.statusbar__mcp:focus-visible {
   animation: graphite-message-in var(--dur-slow) var(--ease-out) both;
 }
 
-:root[data-theme-style] .context-panel__metric,
 :root[data-theme-style] .context-panel__section {
   border-color: var(--border);
   border-radius: var(--radius-md);
@@ -35121,8 +35049,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 .sidebar--workbench .project-tree__topic-unread-dot,
-.app--classic .project-tree__topic-unread-dot,
-.app--creation .project-tree__topic-unread-dot {
+.app--classic .project-tree__topic-unread-dot {
   position: absolute;
   top: 50%;
   right: 18px;
@@ -35139,13 +35066,11 @@ button.statusbar__mcp:focus-visible {
   transition: opacity var(--dur-fast), transform var(--dur-fast);
 }
 
-.app--classic .project-tree__topic-unread-dot,
-.app--creation .project-tree__topic-unread-dot {
+.app--classic .project-tree__topic-unread-dot {
   right: 10px;
 }
 .project-tree__topic-waiting-pill,
-.sidebar--workbench .project-tree__topic-waiting-pill,
-.app--creation .project-tree__topic-waiting-pill {
+.sidebar--workbench .project-tree__topic-waiting-pill {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
@@ -36261,27 +36186,6 @@ button.statusbar__mcp:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* Emergency only: when the dock is forced below the Creation default (viewport
-/* Emergency only: when the dock is forced below the Creation default (viewport
-   squeeze), drop labels. Equal columns remain so icons stay self-centered. */
-@container (max-width: 250px) {
-  .app--creation .workbench-dock__tab,
-  :root[data-theme-style] .app--creation .workbench-dock__tab {
-    padding: 0;
-    gap: 0;
-  }
-
-  .app--creation .workbench-dock__tab-label,
-  :root[data-theme-style] .app--creation .workbench-dock__tab-label {
-    display: none;
-  }
-
-  .app--creation .workbench-dock__tab--active::after,
-  :root[data-theme-style] .app--creation .workbench-dock__tab--active::after {
-    width: 18px;
-  }
-}
-
 /* Topic shortcut badges (Cmd/Ctrl+1-9 overlay) */
 
 .project-tree__topic-shortcut {
@@ -36415,9 +36319,7 @@ button.statusbar__mcp:focus-visible {
   }
 
   .app .layout--workbench-chrome-hidden.layout--terminal-drawer-open .terminal-drawer,
-  :root[data-theme-style] .app .layout--workbench-chrome-hidden.layout--terminal-drawer-open .terminal-drawer,
-  .app--creation .layout--creation-chrome-hidden.layout--terminal-drawer-open .terminal-drawer,
-  :root[data-theme-style] .app--creation .layout--creation-chrome-hidden.layout--terminal-drawer-open .terminal-drawer {
+  :root[data-theme-style] .app .layout--workbench-chrome-hidden.layout--terminal-drawer-open .terminal-drawer {
     grid-row: 2;
   }
 

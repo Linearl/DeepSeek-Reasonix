@@ -12,7 +12,7 @@ import { isBatchedReadOnlyTool, isSteerNoticeText, type ExtensionItem, type Item
 import { appendTurnActionCopyText } from "./turnActionCopy";
 // 任务 1155：回合尾部统计复用输入框状态行的同一计数库（同库同口径，勿另算）。
 import { turnTally, turnTailInfo, type TurnTailInfo, type TurnTally } from "./turnToolTally";
-import { isCreationGroupableTool, toolGroupKind, type ToolGroupKind } from "../components/ToolGroup";
+import { toolGroupKind, type ToolGroupKind } from "../components/ToolGroup";
 import type { SessionExperience } from "./sessionExperience";
 import type { ProcessFoldPreference } from "./processFoldPreference";
 import type { ResolvedReasoningDisplayMode } from "./reasoningDisplayPreference";
@@ -692,13 +692,14 @@ export function userRowKey(itemId: string): string {
   return `u:${itemId}`;
 }
 
-/** Body rows of one expanded process fold: read-only batches, creation tool
+/** Body rows of one expanded process fold: read-only batches, shell tool
  *  groups, single tool cards, phases, info notices, compactions, reasoning.
  *  `groupingEnabled` is the task-668 user toggle: false renders every tool as
- *  its own card (render layer only — the call layer is untouched either way). */
+ *  its own card (render layer only — the call layer is untouched either way).
+ *  tl1450: the creation-only explore/modify/delegate grouping pass and its
+ *  single-item group rendering were removed with the creation layout. */
 function processBodyRows(
   segment: SegmentModel,
-  creationMode: boolean,
   sessionExperience: SessionExperience,
   subcallsByParent: ReadonlyMap<string, readonly ToolItem[]>,
   groupingEnabled: boolean,
@@ -726,7 +727,7 @@ function processBodyRows(
   };
   const flushToolBatch = () => {
     if (!toolBatchKind || toolBatch.length === 0) return;
-    if (creationMode || toolBatch.length >= 2) {
+    if (toolBatch.length >= 2) {
       rows.push({ kind: "tool-group", key: `tg:${toolBatch[0].id}`, items: [...toolBatch], groupKind: toolBatchKind, layoutVariant: sessionExperience === "deep" ? "tool-group-expanded" : "tool-group-collapsed" });
     } else {
       pushToolRow(toolBatch[0]);
@@ -735,22 +736,12 @@ function processBodyRows(
     toolBatchKind = null;
   };
   for (const it of segment.displayItems) {
-    if (creationMode && groupingEnabled && it.kind === "tool" && isCreationGroupableTool(it as ToolItem)) {
-      const kind = toolGroupKind(it as ToolItem);
-      if (kind) {
-        if (toolBatchKind && toolBatchKind !== kind) flushToolBatch();
-        toolBatchKind = kind;
-        toolBatch.push(it as ToolItem);
-        continue;
-      }
-    }
     if (it.kind !== "tool") {
       flushToolBatch();
       flushRO();
     }
     if (
-      !creationMode
-      && groupingEnabled
+      groupingEnabled
       && it.kind === "tool"
       && it.status === "done"
       && !it.fileDiff
@@ -763,8 +754,7 @@ function processBodyRows(
     }
     if (it.kind === "tool") flushToolBatch();
     if (
-      !creationMode
-      && groupingEnabled
+      groupingEnabled
       && it.kind === "tool"
       && it.status !== "running"
       && isBatchedReadOnlyTool(it.name, it.readOnly)
@@ -822,7 +812,6 @@ export interface BuildRowsOptions {
   /** @deprecated Compatibility for non-production row-model callers. */
   foldPreference?: ProcessFoldPreference;
   hasOlderHistory: boolean;
-  creationMode: boolean;
   /** Checkpoint-aware turn number for a user item (questionTurnsById). */
   turnForUser: (item: UserItem) => number | undefined;
   /** A checkpoint may make a turn actionable even without assistant text. */
@@ -901,7 +890,7 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
       if (segment.displayItems.length > 0) {
         const open = options.folds.get(segment.key)?.open ?? defaultFoldOpen(segment, foldExperience);
         modelRows.push({ kind: "process-header", key: `ph:${segment.key}`, segment, open, layoutVariant: "static" });
-        if (open) modelRows.push(...processBodyRows(segment, options.creationMode, renderExperience, subcallsByParent, groupingEnabled));
+        if (open) modelRows.push(...processBodyRows(segment, renderExperience, subcallsByParent, groupingEnabled));
       }
       for (const item of segment.outsideItems) {
         if (item.kind === "extension") {

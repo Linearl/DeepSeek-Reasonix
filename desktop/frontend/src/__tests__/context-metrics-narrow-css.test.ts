@@ -17,8 +17,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const styles = [
   readFileSync(resolve(testDir, "../styles.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),,
 ].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
 let passed = 0;
@@ -57,9 +56,6 @@ ok(/overflow-wrap:\s*anywhere/.test(miniStrong), "mini-stat 数值列允许任�
 ok(!/white-space:\s*nowrap/.test(miniStrong), "mini-stat 数值列不再 nowrap（「费用不可估算」「196分5秒」不硬裁）");
 ok(!/text-overflow:\s*ellipsis/.test(miniStrong), "mini-stat 数值列不再省略号截断");
 
-const creationMiniStrong = matchingBlocks(".app--creation .context-panel__mini-stat strong").join("\n");
-ok(/overflow-wrap:\s*anywhere/.test(creationMiniStrong), "creation 覆写段数值列同步允许断行");
-ok(!/white-space:\s*nowrap/.test(creationMiniStrong), "creation 覆写段数值列不再 nowrap");
 
 const sourceStrong = matchingBlocks(".context-panel__source-metric strong").join("\n");
 ok(/overflow-wrap:\s*anywhere/.test(sourceStrong), "用量分析数值列（总计/输入/输出）允许断行");
@@ -84,7 +80,6 @@ const containerQuery = styles.match(/@container context-panel-body \(max-width:\
 ok(containerQuery !== null, "@container ≤319px 单列规则块存在");
 const containerBody = containerQuery ? containerQuery[0] : "";
 ok(/\.context-panel__summary-rows/.test(containerBody), "容器查询覆盖会话指标网格（summary-rows）");
-ok(/\.app--creation \.context-panel__summary-rows/.test(containerBody), "creation 高特异性覆写在容器查询内对齐（否则 creation 仍钉 2 列）");
 ok(/\.context-panel__source-summary/.test(containerBody), "容器查询覆盖用量分析三列摘要（source-summary）");
 ok(/\.context-panel__source-metrics/.test(containerBody), "容器查询覆盖明细展开四列（source-metrics）");
 ok(/\.context-panel__source-legend/.test(containerBody), "容器查询覆盖来源图例（source-legend）");

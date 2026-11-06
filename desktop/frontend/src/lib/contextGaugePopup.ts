@@ -15,16 +15,10 @@ import type { ContextCompositionInfo } from "./types";
  */
 export const OPEN_CONTEXT_OVERVIEW_EVENT = "reasonix:open-context-overview";
 
-export type ContextOverviewTarget = "right-dock" | "settings-usage";
-
-/**
- * The creation layout hides the right dock's 概览 tab (App coerces "context"
- * back to "files" there), so 「更多」in that layout goes to the settings usage
- * page instead — every other layout opens the right dock's overview.
- */
-export function contextOverviewTarget(layoutStyle: string): ContextOverviewTarget {
-  return layoutStyle === "creation" ? "settings-usage" : "right-dock";
-}
+// tl1450: the creation-only "settings usage page" detour went away with the
+// layout that hid the 概览 tab — every layout opens the right dock's overview,
+// so the destination decision collapsed into the App listener and only the
+// event contract stays here.
 
 export function requestContextOverview(): void {
   if (typeof window === "undefined") return;

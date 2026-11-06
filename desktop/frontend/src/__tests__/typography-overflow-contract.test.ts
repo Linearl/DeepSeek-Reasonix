@@ -12,8 +12,7 @@ const styles = [
   readFileSync(resolve(testDir, "../styles.css"), "utf8"),
   // tl1191: mode-scoped rules live in src/styles/mode-*.css now.
   readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),,
   readFileSync(resolve(testDir, "../components/CompactRatioSettings.css"), "utf8"),
 ].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
@@ -178,8 +177,7 @@ eq(finalDeclaration(".transcript--empty", "padding"), "16px 32px", "empty transc
   const stylesheet = [
     readFileSync(resolve(testDir, "../styles.css"), "utf8"),
     readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
-    readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
-    readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+    readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),,
   ].join("\n");
   const dom = new JSDOM(
     `<!doctype html><html><head><style>${stylesheet}</style></head><body>

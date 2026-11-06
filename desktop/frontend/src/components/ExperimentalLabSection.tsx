@@ -38,7 +38,6 @@ import type { SettingsView } from "../lib/types";
 import { chimeLocalAssetsEnabled, normalizeUpdateChimeTune, UPDATE_CHIME_TUNES } from "../lib/sound";
 import { SettingsPageShell, type SectionProps } from "./SettingsPageShell";
 import { LAB_PANE_IDS, type ExperimentFeatureId } from "../lab/labPaneRegistry";
-import { normalizeDesktopLayoutStyle } from "../lib/desktopLayoutStyle";
 
 const DEFAULT_AUTOPILOT_MAX_RUNTIME = "8h";
 
@@ -324,7 +323,8 @@ export function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps
   // tabs that can actually render, so it needs the live remote-host presence
   // and the configured layout.
   const remoteAvailable = useRemoteStore((state) => state.hosts.length > 0);
-  const desktopLayoutStyle = normalizeDesktopLayoutStyle(s.desktopLayoutStyle);
+  // tl1453 退役了梦境族卡(dreamTaskCreated 随卡删除);tl1450 退役了 creation
+  // 布局(desktopLayoutStyle 唯一消费者——last-tab 守护的 creation 门——随之删除)。
   // 任务 801：决策模式卡的本地草稿态（阈值数字输入与文件路径文本框），提交
   // 走 onBlur 保存；初始值随设置快照填充。
   const [decisionTaskCreated, setDecisionTaskCreated] = useState(false);
@@ -1801,7 +1801,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       todoSidebar: Boolean(s.experimentalTodoSidebar),
                       subagentsPanel: Boolean(s.experimentalSubagentPanel),
                       remoteAvailable,
-                      creation: desktopLayoutStyle === "creation",
                     });
                     return (
                       <label key={tabId} className={`set-gates__item${locked ? " set-gates__item--locked" : ""}`}>

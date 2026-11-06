@@ -292,7 +292,7 @@ labFlags.applyLabFlags({});
 {
   // tl1191: tabbar 规则移入 mode-classic.css，合并四文件源（五档选择器仍在
   // 同一 mode 文件内保持原相对顺序）。
-  const css = ["../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css", "../styles/mode-creation.css"]
+  const css = ["../styles.css", "../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css"]
     .map((p) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), p), "utf8")).join("\n");
   const palette: Array<[string, string]> = [];
   for (const match of css.matchAll(/\.tabbar \.tabbar__tab\[data-mode-tint="([a-z]+)"\] \{ --tab-tint-color: ([^;]+); \}/g)) {

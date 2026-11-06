@@ -183,9 +183,6 @@ console.log("\ntodo sidebar dock (task 259)");
   eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: true, remoteAvailable: false, creation: false })),
     JSON.stringify(["context", "files", "changed", "todos", "artifacts", "references"]),
     "renderable set: no remote host drops the remote tab");
-  eq(JSON.stringify(dockTabs2.renderableDockTabs({ todoSidebar: true, remoteAvailable: false, creation: true })),
-    JSON.stringify(["files", "changed", "todos", "artifacts", "references"]),
-    "renderable set: creation drops the overview too");
 
   // The reported break: no remote host, everything but "todos" hidden. The old
   // static-DOCK_TAB_IDS guard kept the switch unlocked (remote was "visible")
@@ -285,7 +282,7 @@ console.log("\ntodo sidebar dock (task 259)");
   const path = await import("node:path");
   const url = await import("node:url");
   // tl1191: mode-scoped rules live in src/styles/mode-*.css now.
-  const stylesSource = ["../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css", "../styles/mode-creation.css"]
+  const stylesSource = ["../styles.css", "../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css"]
     .map((p) => fs.readFileSync(path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), p), "utf8")).join("\n")
     .replace(/\/\*[\s\S]*?\*\//g, "");
 

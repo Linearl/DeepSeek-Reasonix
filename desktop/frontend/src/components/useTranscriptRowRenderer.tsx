@@ -22,11 +22,9 @@ export function useTranscriptRowRenderer({
   tabId,
   checkpoints,
   subcallsByParent,
-  creationMode,
   running,
   actionPending,
   rewindDisabled,
-  actionHoverMenus,
   turnStartAt,
   lastTurn,
   onFoldToggle,
@@ -47,11 +45,9 @@ export function useTranscriptRowRenderer({
   tabId?: string;
   checkpoints: readonly CheckpointMeta[];
   subcallsByParent: ReadonlyMap<string, ToolItem[]>;
-  creationMode: boolean;
   running: boolean;
   actionPending: boolean;
   rewindDisabled: boolean;
-  actionHoverMenus: boolean;
   turnStartAt?: number;
   lastTurn: number | undefined;
   onFoldToggle: (segmentKey: string, open: boolean) => void;
@@ -122,7 +118,7 @@ export function useTranscriptRowRenderer({
       case "process-notice": return <div className="turn-collapse__body">{isHostProtocolNoticeText(row.item.text) ? <HostProtocolNoticeCard item={row.item} /> : <NoticeCard item={row.item} />}</div>;
       case "compaction": return <div className="turn-collapse__body"><CompactionCard item={row.item} /></div>;
       case "answer": return <LiveAssistantMessage
-        item={assistantAnswerOnly(row.item)} creationMode={creationMode}
+        item={assistantAnswerOnly(row.item)}
         explicitFold={reasoningFoldIntent(row.item.id)}
         onExplicitFoldChange={(open) => onReasoningFoldIntent(row.item.id, open)}
       />;
@@ -167,14 +163,14 @@ export function useTranscriptRowRenderer({
           tally={row.tally} tail={row.tail}
           onOpenMenu={(menu) => setOpenAction(menu ? { turn: row.turn, menu } : null)}
           checkpoint={checkpointsByTurn.get(row.turn)} actionPending={actionPending}
-          rewindDisabled={rewindDisabled} hoverMenus={actionHoverMenus}
+          rewindDisabled={rewindDisabled}
           isLastTurn={row.turn === lastTurn}
           onRewind={(turn, scope) => { onRewind?.(turn, scope); setOpenAction(null); }}
         />;
       }
     }
   }, [
-    actionHoverMenus, actionPending, checkpointsByTurn, creationMode, lastTurn,
+    actionPending, checkpointsByTurn, lastTurn,
     onAcceptDelivery, onDeliveryContinue, onEditPrompt, onFoldToggle, onOpenChanges, onReasoningFoldIntent, onResendPrompt,
     onOpenVerification, onPrompt, onReasoningManualOpen, onRewind, onViewVersions, openAction,
     reasoningFoldIntent, rewindDisabled, running, subcallsByParent, t, tabId, turnStartAt,

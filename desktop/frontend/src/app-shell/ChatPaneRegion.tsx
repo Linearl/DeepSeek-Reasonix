@@ -31,7 +31,6 @@ export type ChatPaneTranscriptInput = {
   controllerReady: boolean;
   hydratePlaceholderActive: boolean;
   clearContextPending: boolean;
-  creation: boolean;
   emptyHero?: boolean;
   availability: SessionAvailability;
   rewind: {
@@ -162,9 +161,7 @@ export function ChatPaneRegion(props: ChatPaneRegionProps) {
                 turnStartAt={state.turnStartAt}
                 contentRevision={state.historyLayoutRevision}
                 historyMutation={state.historyMutation}
-                welcomeVariant={transcript.creation || transcript.emptyHero ? "creation" : "default"}
-                creationMode={transcript.creation}
-                actionHoverMenus={transcript.creation && !transcript.hydratePlaceholderActive && !transitioning}
+                welcomeVariant={transcript.emptyHero ? "creation" : "default"}
                 rewindSignal={rewind.signal}
                 revealSignal={transcript.revealSignal}
                 hydrating={transcript.transcriptHydrating || (transitioning && !transcript.navigationDataReady)}

@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type CSSProperties,
 } from "react";
 import { ArrowDown, Loader2 } from "lucide-react";
 const ToolRecoveryPanel = lazy(() => import("./ToolRecoveryPanel").then(m => ({ default: m.ToolRecoveryPanel })));
@@ -72,7 +71,6 @@ import type { TranscriptQuestionNavigatorHandle } from "./TranscriptQuestionNavi
 import { useTranscriptQuestions } from "../lib/useTranscriptQuestionNavigation";
 import { useTranscriptSelectableRows } from "../lib/useTranscriptSelectableRows";
 import { useTranscriptSelectionRetention } from "../lib/useTranscriptSelectionRetention";
-import { useCreationTranscriptScrollbar } from "../lib/useCreationTranscriptScrollbar";
 import { hasTranscriptScrollableRange } from "../lib/transcriptScrollGeometry";
 import { attachNestedScrollHandoff } from "../lib/nestedScrollHandoff";
 import { assessTranscriptBlank, blankSentinelState, rollBlankSentinelSurface, TRANSCRIPT_BLANK_CHECK_INTERVAL_MS, TRANSCRIPT_BLANK_RECOVERY_LIMIT } from "../lib/transcriptBlankSentinel";
@@ -141,8 +139,6 @@ export type TranscriptProps = {
   /** Bumped by every Ctrl+F; forwarded so a repeat chord re-selects the query. */
   findPulse?: number;
   welcomeVariant?: "default" | "creation";
-  creationMode?: boolean;
-  actionHoverMenus?: boolean;
   rewindSignal?: number;
   revealSignal?: number;
   hydrating?: boolean;
@@ -169,7 +165,7 @@ export function Transcript(props: TranscriptProps) {
     rewindDisabled = false, running = false, questionNavigator = true,
     questionSearchOpen = false, onCloseQuestionSearch,
     findOpen = false, onCloseFind, findPulse = 0,
-    welcomeVariant = "default", creationMode = false, actionHoverMenus = false,
+    welcomeVariant = "default",
     rewindSignal = 0, revealSignal = 0, hydrating = false, hasOlderHistory = false,
     historyStartTurn = 0, historyTotalTurns = 0, loadingOlderHistory = false,
     olderHistoryError, olderHistoryExhausted, onLoadOlderHistory, turnStartAt, contentRevision = 0,
@@ -208,7 +204,7 @@ export function Transcript(props: TranscriptProps) {
   const autoLoadOlder = useAutoLoadOlderEnabled();
   const requestOlderAtTopRef = useRef<(() => void) | null>(null);
   const { kernel: transcriptKernel, setScroller: setKernelScroller, snapshot,
-    beginGesture, beginStructural, scrollElement, scrollToBottom, scheduleTailSync, safeMode, scrollRef, setScrollMode, writeOffset, jumpToBlock, onScroll, endGesture, commitViewportGeometry, restoreLanding, onWheelCapture, isAtBottom, intent, onTouchStartCapture, onTouchEndCapture, onKeyDownCapture, onPointerDownCapture, beginAnchorRestore,
+    beginGesture, beginStructural, scrollElement, scrollToBottom, scheduleTailSync, safeMode, scrollRef, setScrollMode, writeOffset, jumpToBlock, onScroll, commitViewportGeometry, restoreLanding, onWheelCapture, isAtBottom, intent, onTouchStartCapture, onTouchEndCapture, onKeyDownCapture, onPointerDownCapture, beginAnchorRestore,
   } = useTranscriptKernel({
     sessionKey: surfaceKey,
     geometryRevision: `${contentRevision}:${footerHeight}:${experience}:${toolGrouping}:${historyMutation?.seq ?? 0}`,
@@ -311,12 +307,11 @@ export function Transcript(props: TranscriptProps) {
     folds,
     sessionExperience: experience,
     hasOlderHistory: false,
-    creationMode,
     turnForUser,
     hasCheckpointForTurn: (turn) => checkpointsByTurn.has(turn),
     subcallsByParent,
     toolGroupingEnabled: toolGrouping,
-  }, [checkpointsByTurn, creationMode, experience, folds, subcallsByParent, toolGrouping, turnForUser]);
+  }, [checkpointsByTurn, experience, folds, subcallsByParent, toolGrouping, turnForUser]);
   const projection = useMemo(() => projectTranscriptTimeline(blocks, hasOlderHistory), [blocks, hasOlderHistory]);
   const renderMode = transcriptRenderMode(projection.completedBlocks.length, safeMode);
   const allRows = useMemo(() => blocks.flatMap((block) => block.rows), [blocks]);
@@ -519,8 +514,8 @@ export function Transcript(props: TranscriptProps) {
     };
   }, [handleCollapseAll, handleExpandAll]);
   const renderRow = useTranscriptRowRenderer({
-    tabId, checkpoints, subcallsByParent, creationMode, running, actionPending,
-    rewindDisabled, actionHoverMenus, turnStartAt, lastTurn,
+    tabId, checkpoints, subcallsByParent, running, actionPending,
+    rewindDisabled, turnStartAt, lastTurn,
     onFoldToggle: handleFoldToggle, onReasoningManualOpen: handleReasoningManualOpen,
     reasoningFoldIntent, onReasoningFoldIntent,
     onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification, onConsolidateRecovery,
@@ -582,33 +577,6 @@ export function Transcript(props: TranscriptProps) {
     // 任务 448（B1 预取）：到顶 64px 改为两个视口（`olderHistoryTriggerPx`），
     // 读者抵达边界前一页已在本地；请求侧的 in-flight 复用与 loading 闸照旧单飞。
     if (towardHistory && element && element.scrollTop <= olderHistoryTriggerPx(element.clientHeight)) void requestOlder(undefined, "viewport-user");
-  });
-  const {
-    state: creationScrollbar,
-    handleScroll: handleCreationScroll,
-    onThumbPointerDown: handleCreationScrollbarThumbPointerDown,
-    onRailPointerDown: handleCreationScrollbarRailPointerDown,
-  } = useCreationTranscriptScrollbar({
-    enabled: creationMode,
-    contentRevision,
-    scrollRef: scrollRef,
-    onScroll: handleScroll,
-    setScrollMode: setScrollMode,
-    writeOffset: writeOffset,
-    finishProgrammaticScroll: endGesture,
-    // 任务 1096：「已加载」区段比例 = 已加载轮次 / 全部轮次。口径（与后端
-    // desktop/app_history.go `historyPageFromMessages` 对齐）：totalTurns =
-    // 全部可见 user 轮次，startTurn = 本页最老的轮次编号（1-based；0 = 无）。
-    // 轮次 [startTurn, totalTurns] 已加载 ⇒ 分子 = totalTurns − startTurn + 1。
-    // 分母为 0（尚未翻页/legacy history）⇒ undefined，rail 上不画区段。
-    historyLoadedRatio: historyTotalTurns > 0 && historyStartTurn > 0
-      ? (historyTotalTurns - historyStartTurn + 1) / historyTotalTurns
-      : undefined,
-    // hasOlderHistory 由调用方传入并已含「rewindState / runtimeTransitioning
-    // 时置 false」语义；此时比例语义上不可信，因此 exhausted 只在 totalTurns
-    // 可信（>0）时成立，过渡态维持 partial 观感。
-    historyExhausted: !hasOlderHistory && historyTotalTurns > 0 && historyStartTurn > 0,
-    historyLoadingOlder: loadingOlderHistory,
   });
 
   const setScroller = useMemo(() => composeDomRef(setKernelScroller, entranceRef), [setKernelScroller, entranceRef]);
@@ -820,7 +788,7 @@ export function Transcript(props: TranscriptProps) {
       <div className={`transcript-shell${tableWrapOn ? " transcript-shell--table-wrap" : ""}`} aria-busy={loadingOlderHistory || undefined} data-protected-blocks={protectedBlockKeys.size}>
         {tabId && <Suspense fallback={null}><ToolRecoveryPanel key={resolvedSessionKey} tabId={tabId} sessionKey={resolvedSessionKey} running={running} refreshKey={items.length} /></Suspense>}
         {empty ? (
-          <div className={`transcript transcript--empty${creationMode ? " transcript--creation-scrollbar" : ""}`} ref={setScroller} aria-busy={hydrating || undefined}>
+          <div className="transcript transcript--empty" ref={setScroller} aria-busy={hydrating || undefined}>
             {hydrating ? <div className="transcript__loading" role="status" aria-live="polite"><Loader2 className="transcript__loading-icon" aria-hidden="true" /><span>{t("common.loading")}</span></div>
               : <Welcome onPrompt={onPrompt} variant={welcomeVariant} />}
           </div>
@@ -828,14 +796,14 @@ export function Transcript(props: TranscriptProps) {
           <LiveStreamContext.Provider value={live}>
             <div
               ref={setScroller}
-              className={`transcript${creationMode ? " transcript--creation-scrollbar" : ""}${creationMode && creationScrollbar.hot ? " transcript--scrollbar-hot" : ""}`}
+              className="transcript"
               data-transcript-hydrating={hydrating ? "true" : "false"}
               data-transcript-generation={transcriptKernel.generation}
               data-transcript-intent={intent}
               data-transcript-row-count={allRows.length}
               data-transcript-block-count={blocks.length}
               data-scroll-mode={selectionSnapshot.mode !== "none" ? "selection" : intent === "tail" ? "tail-follow" : "manual"}
-              onScroll={creationMode ? handleCreationScroll : handleScroll}
+              onScroll={handleScroll}
               onWheelCapture={() => onWheelCapture()}
               onTouchStartCapture={() => onTouchStartCapture()}
               onTouchEndCapture={() => onTouchEndCapture()}
@@ -869,19 +837,6 @@ export function Transcript(props: TranscriptProps) {
             </div>
           </LiveStreamContext.Provider>
         )}
-        {creationMode && creationScrollbar.visible && <div className={`transcript__scrollbar${creationScrollbar.hot ? " transcript__scrollbar--hot" : ""}`} onPointerDown={handleCreationScrollbarRailPointerDown} aria-hidden="true">
-          {/* 任务 1096：rail 上叠「已加载」区段（深色）+ 未加载留白（rail 自身
-              浅色）。phase 决定观感：partial = 深色段按比例；loading = 同高度
-              虚线态（在途，不假装完成）；exhausted = 整条变深 + 顶端收口标记，
-              与「还能加载」可区分。 */}
-          {creationScrollbar.loadedHeight > 0 && (
-            <div
-              className={`transcript__scrollbar-loaded transcript__scrollbar-loaded--${creationScrollbar.loadedPhase}`}
-              style={{ height: creationScrollbar.loadedHeight } as CSSProperties}
-            />
-          )}
-          <div className="transcript__scrollbar-thumb" style={{ top: creationScrollbar.thumbTop, height: creationScrollbar.thumbHeight } as CSSProperties} onPointerDown={handleCreationScrollbarThumbPointerDown} />
-        </div>}
         {!empty && showQuestionNav && <Suspense fallback={null}><TranscriptQuestionNavigator ref={questionNavigatorRef} kernel={transcriptKernel}
           requestOlder={requestOlder} loadingOlderHistory={loadingOlderHistory} loadedByTurn={loadedByTurn}
           jump={jumpToLoadedQuestion} questions={questions} totalQuestions={totalQuestions} activeTurn={activeQuestion} /></Suspense>}

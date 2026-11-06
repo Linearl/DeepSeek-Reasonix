@@ -11,7 +11,7 @@ import type { WorkspaceDockRegionProps } from "./WorkspaceDockRegion";
 import type { AppBottomRegionsProps } from "./AppBottomRegions";
 import type { ComposerProfile } from "../lib/composerProfile";
 import type { RightDockMode } from "../store/layout";
-import { defaultCreationRightDockTreeWidth, defaultRightDockTreeWidth, TERMINAL_DEFAULT_HEIGHT, TERMINAL_MIN_HEIGHT } from "../store/layout";
+import { defaultRightDockTreeWidth, TERMINAL_DEFAULT_HEIGHT, TERMINAL_MIN_HEIGHT } from "../store/layout";
 
 type ShellGeometry = ReturnType<typeof useShellGeometry>;
 type WorkspacePanelApi = ReturnType<typeof useWorkspacePanelCommands>;
@@ -24,7 +24,6 @@ type StatusBarProps = NonNullable<AppBottomRegionsProps["status"]>;
 
 export function buildWorkspaceDockProps(input: {
   surface: { renderable: boolean; overlay: boolean; gridOpen: boolean };
-  creation: boolean;
   remoteAvailable: boolean;
   showContext: boolean;
   remote: boolean;
@@ -64,15 +63,12 @@ export function buildWorkspaceDockProps(input: {
   onOpenInTerminal: WorkspaceDockRegionProps["workspace"]["onOpenInTerminal"];
 }): WorkspaceDockRegionProps {
   const { surface, geometry, panels } = input;
-  const workspacePanelResetWidth = input.creation
-    ? defaultCreationRightDockTreeWidth()
-    : defaultRightDockTreeWidth();
+  const workspacePanelResetWidth = defaultRightDockTreeWidth();
   const workspacePanelResizeMinWidth = workspacePanelAriaMinWidth(geometry.workspacePanelMinWidth, geometry.workspacePanelRenderWidth);
   return {
     visible: surface.renderable,
     overlay: surface.overlay,
     mode: input.mode,
-    creation: input.creation,
     remoteAvailable: input.remoteAvailable,
     showContext: input.showContext,
     todoSidebar: input.todoSidebar,
@@ -109,7 +105,7 @@ export function buildWorkspaceDockProps(input: {
       sessionItems: input.sessionItems,
       sessionPath: input.meta?.sessionPath, onDismissTurnResult: input.verification.closeTurnResult,
       verificationRevealRequest: input.verification.verificationRevealRequest, qualityFloor: input.qualityFloor,
-      showViewTabs: false, creationMode: input.creation,
+      showViewTabs: false,
     },
     resizer: surface.gridOpen ? {
       min: workspacePanelResizeMinWidth,

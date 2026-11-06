@@ -2,18 +2,12 @@ import { useEffect, useRef, type KeyboardEvent, type PointerEvent as ReactPointe
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { createPointerResizeLifecycle, createRafResizeUpdater } from "../lib/resizeDrag";
 import { availableWorkspacePanelWidth, resolveLiveWorkspacePanelWidth, resolveWorkspacePanelPlacement } from "../lib/workspaceLayout";
-import { useDesktopPreferences } from "./useDesktopPreferences";
 import { useOverlayStore } from "../store/overlays";
 import { useWindowChromeStore } from "../store/windowChrome";
 import {
-  clampCreationRightDockTreeWidth,
-  clampCreationSidebarWidth,
   clampRightDockTreeWidth,
   clampSidebarWidth,
   clampTerminalHeight,
-  CREATION_RIGHT_DOCK_MIN_RENDER_WIDTH,
-  CREATION_RIGHT_DOCK_TREE_MIN_WIDTH,
-  CREATION_SIDEBAR_MIN_WIDTH,
   RIGHT_DOCK_MIN_RENDER_WIDTH,
   RIGHT_DOCK_TREE_MIN_WIDTH,
   saveRightDockTreeWidth,
@@ -40,7 +34,6 @@ const WORKSPACE_RESIZER_WIDTH = 8;
  */
 export function useShellGeometry(input: { appRef: RefObject<HTMLDivElement | null>; layoutRef: RefObject<HTMLDivElement | null> }) {
   const { appRef, layoutRef } = input;
-  const { desktopLayoutStyle } = useDesktopPreferences();
   const viewportWidth = useWindowChromeStore((state) => state.viewportWidth);
   const viewportHeight = useWindowChromeStore((state) => state.viewportHeight);
   const sidebarCollapsed = useLayoutStore((state) => state.sidebarCollapsed);
@@ -50,7 +43,6 @@ export function useShellGeometry(input: { appRef: RefObject<HTMLDivElement | nul
   const liveWorkspacePanelRenderWidth = useLayoutStore((state) => state.liveWorkspacePanelRenderWidth);
   const workspacePanelOpen = useLayoutStore((state) => state.workspacePanelOpen);
   const workspacePanelMaximized = useLayoutStore((state) => state.workspacePanelMaximized);
-  const workspacePreviewActive = useLayoutStore((state) => state.workspacePreviewActive);
   const rightDockMode = useLayoutStore((state) => state.rightDockMode);
   const terminalPanelOpen = useLayoutStore((state) => state.terminalPanelOpen);
   const terminalHeight = useLayoutStore((state) => state.terminalHeight);
@@ -71,19 +63,18 @@ export function useShellGeometry(input: { appRef: RefObject<HTMLDivElement | nul
     setTransientOverlayDismissSignal((signal) => signal + 1);
   });
 
-  const rightDockDetailActive = rightDockMode !== "context" && workspacePreviewActive;
   // The dock keeps one width across tab switches (context/files/changed):
   // the tree width is the single source so toggling tabs never resizes the
   // sidebar. Preview detail stays inside the dock without widening it.
   const preferredWorkspacePanelWidth = rightDockTreeWidth;
-  const rightDockTreeMinWidth = desktopLayoutStyle === "creation" ? CREATION_RIGHT_DOCK_TREE_MIN_WIDTH : RIGHT_DOCK_TREE_MIN_WIDTH;
-  const rightDockTreeWidthClamp = desktopLayoutStyle === "creation" ? clampCreationRightDockTreeWidth : clampRightDockTreeWidth;
-  // tl1118 回归修复：与 App.tsx 的三态公式对齐——渲染门槛不得超过本路径的
-  // min 宽度，否则 storedWidth(可低至 246/252) < 280 时 placement 恒进
+  const rightDockTreeMinWidth = RIGHT_DOCK_TREE_MIN_WIDTH;
+  const rightDockTreeWidthClamp = clampRightDockTreeWidth;
+  // tl1118 回归修复：与 App.tsx 的公式对齐——渲染门槛不得超过本路径的
+  // min 宽度，否则 storedWidth(可低至 246) < 280 时 placement 恒进
   // overlay，dock 网格形态（layout--workspace-open）永不挂载。
-  const rightDockMinRenderWidth = desktopLayoutStyle === "creation" && !rightDockDetailActive
-    ? CREATION_RIGHT_DOCK_MIN_RENDER_WIDTH
-    : Math.min(RIGHT_DOCK_MIN_RENDER_WIDTH, rightDockTreeMinWidth);
+  // tl1450: the creation-only tighter floors (252/236) went away with the
+  // layout — both paths use the workbench floors.
+  const rightDockMinRenderWidth = Math.min(RIGHT_DOCK_MIN_RENDER_WIDTH, rightDockTreeMinWidth);
   const workspacePanelMinWidth = rightDockTreeMinWidth;
   const chatReservedWidth = CHAT_MIN_WIDTH;
   const workspacePanelAvailableWidth = availableWorkspacePanelWidth({
@@ -118,9 +109,9 @@ export function useShellGeometry(input: { appRef: RefObject<HTMLDivElement | nul
       minWidth: workspacePanelMinWidth,
     }));
 
-  const sidebarWidthClamp = desktopLayoutStyle === "creation" ? clampCreationSidebarWidth : clampSidebarWidth;
+  const sidebarWidthClamp = clampSidebarWidth;
   const sidebarRenderWidth = liveSidebarWidth ?? sidebarWidth;
-  const sidebarResizeMinWidth = desktopLayoutStyle === "creation" ? CREATION_SIDEBAR_MIN_WIDTH : SIDEBAR_MIN_WIDTH;
+  const sidebarResizeMinWidth = SIDEBAR_MIN_WIDTH;
   const terminalRenderHeight = clampTerminalHeight(terminalHeight, viewportHeight);
   const terminalResizeMaxHeight = terminalMaxHeight(viewportHeight);
 

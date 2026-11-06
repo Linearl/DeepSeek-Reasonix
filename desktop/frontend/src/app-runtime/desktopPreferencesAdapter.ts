@@ -7,20 +7,24 @@ import { applyConversationWidth } from "../lib/conversationWidth";
 import { hydrateReasoningDisplayMode } from "../lib/reasoningDisplayPreference";
 import { hydrateSessionExperience } from "../lib/sessionExperience";
 import { applyLayoutStyleDefaults } from "../store/layout";
+import type { DesktopLayoutStyle } from "../lib/desktopLayoutStyle";
 import { loadBotRuntimeStatus } from "./botRuntimeAdapter";
 import type { CommandAuthority } from "../lib/commandOutcome";
 import type { BotRuntimeStatusView, DesktopStartupSettingsView, SettingsView } from "../lib/types";
 
 export type DesktopPreferencesSnapshot = DesktopStartupSettingsView | SettingsView;
-export function layoutStyleFromSnapshot(style?: string) {
-  return style === "creation" ? "creation" : style === "classic" ? "classic" : "workbench";
+// tl1450: the creation layout is retired — a legacy snapshot value folds to
+// workbench here (the authoritative mapping lives in Go
+// normalizeDesktopLayoutStyle; this is its read-only frontend projection).
+export function layoutStyleFromSnapshot(style?: string): DesktopLayoutStyle {
+  return style === "classic" ? "classic" : "workbench";
 }
 export function applyPreferencesAppearance(settings: DesktopPreferencesSnapshot) {
   const theme = normalizeThemePreference(settings.desktopTheme);
   applyConfiguredBaseAppearance(theme, normalizeThemeStyleForTheme(settings.desktopThemeStyle, theme));
   applyTerminalThemePreference(settings.desktopTerminalTheme);
   applyConversationWidth(settings.conversationWidth);
-  applyLayoutStyleDefaults(layoutStyleFromSnapshot(settings.desktopLayoutStyle));
+  applyLayoutStyleDefaults();
   // Task 753 (R2): a snapshot WITHOUT the field (older backend, migration
   // window) must not normalize to "standard" and overwrite the localStorage
   // mirror that is still the startup authority. Only an explicitly present

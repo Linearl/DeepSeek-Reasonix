@@ -309,6 +309,22 @@ func ApplyUserConfigUpgradesOnStartup(path string) (bool, error) {
 	if header.ConfigVersion > defaultVersion {
 		return false, nil
 	}
+	// tl1450 (2026-11-06 ruling, CONSTITUTION N5/Q5): the creation layout is
+	// retired. A leftover layout_style = "creation" is by definition a
+	// pre-retirement leftover — the setter has refused creation since tl1450 —
+	// so rewrite it to workbench at startup. This runs BEFORE the same-version
+	// fast return and the version-gated fast paths above, so a legacy value
+	// cannot slip through either. Value-gated (not version-gated): idempotent,
+	// and a config synced back from another machine self-heals on the next
+	// start. The version marker is deliberately NOT bumped here: an older
+	// config still needs the version-gated migrations below, which run on the
+	// next startup now that the layout value is legal. Read compat runs one
+	// version: normalizeDesktopLayoutStyle still maps a hand-edited or synced
+	// "creation" to workbench; that mapping may be deleted next version.
+	rewritten, err := migrateRetiredCreationLayoutFileLocked(path, header.Desktop.LayoutStyle)
+	if err != nil || rewritten {
+		return rewritten, err
+	}
 	// Fork: the classic desktop layout is a retained fork feature — the
 	// upstream startup migration that rewrote layout_style "classic" to
 	// "workbench" is deliberately not applied, so a user's explicit classic
@@ -365,6 +381,22 @@ func ApplyUserConfigUpgradesOnStartup(path string) (bool, error) {
 	if header.ConfigVersion < defaultVersion {
 		cfg.ConfigVersion = defaultVersion
 	}
+	if err := cfg.SaveTo(path); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// migrateRetiredCreationLayoutFileLocked rewrites the retired creation layout
+// (tl1450) to workbench. Caller holds the config edit lock. Returns changed =
+// true only when the file was rewritten; an empty, classic or workbench value
+// passes through untouched.
+func migrateRetiredCreationLayoutFileLocked(path string, rawStyle string) (bool, error) {
+	if strings.ToLower(strings.TrimSpace(rawStyle)) != "creation" {
+		return false, nil
+	}
+	cfg := LoadForEdit(path)
+	cfg.Desktop.LayoutStyle = "workbench"
 	if err := cfg.SaveTo(path); err != nil {
 		return false, err
 	}

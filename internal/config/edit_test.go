@@ -241,8 +241,10 @@ func TestDesktopLayoutStyleNormalizes(t *testing.T) {
 		{"classic", "classic", false},
 		{" workbench ", "workbench", false},
 		{"workspace", "workbench", false},
-		{"creation", "creation", false},
-		{" Creation ", "creation", false},
+		// tl1450: the creation layout is retired — the setter refuses it, the
+		// untouched zero value reads back as the workbench default.
+		{"creation", "workbench", true},
+		{" Creation ", "workbench", true},
 		{"later", "workbench", true},
 	} {
 		c := Default()

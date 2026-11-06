@@ -15,7 +15,9 @@ type desktopRemoteTabEntry struct {
 
 func singleSurfaceLayoutStyle(style string) bool {
 	switch strings.ToLower(strings.TrimSpace(style)) {
-	case "workbench", "creation":
+	// tl1450: workbench is the only single-surface layout — creation is retired
+	// (config normalize maps the legacy raw value to workbench before this runs).
+	case "workbench":
 		return true
 	default:
 		return false

@@ -2895,7 +2895,7 @@ export interface DesktopStartupSettingsView {
   experimentalSelectionActions?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
-  desktopLayoutStyle: string; // "classic" | "workbench" | "creation"
+  desktopLayoutStyle: string; // "classic" | "workbench" (tl1450: retired creation reads as workbench)
   desktopTheme: string; // "auto" | "dark" | "light"
   desktopThemeStyle: string;
   desktopTerminalTheme: string; // "auto" follows app | "dark" | "light"

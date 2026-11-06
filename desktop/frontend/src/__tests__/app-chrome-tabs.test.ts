@@ -32,8 +32,7 @@ const layoutStoreSource = readFileSync(resolve(testDir, "../store/layout.ts"), "
 const stylesSource = [
   readFileSync(resolve(testDir, "../styles.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),,
 ].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
 let passed = 0;
@@ -473,14 +472,6 @@ ok(/const transcriptHydrating = input\.hydrating && !input\.hydrateHistoryLoaded
 );
 
 
-ok(
-  /if \(heroMode\) \{[\s\S]*?const maxHeight = composerHeroInputMaxHeight\(\);[\s\S]*?setTextareaAutoHeight/.test(composerSource) &&
-    !/if \(heroMode\) \{\s*setTextareaAutoHeight\(20\);/.test(composerSource),
-  "Creation hero composer auto-grows multi-line drafts instead of clipping at 20px",
-);
-
-
-
 const navigationBlock = appSource.match(/const runNavigationRequest = useCallback\([\s\S]*?\n  \}, \[[^\]]*singleSurfaceLayout[^\]]*\]\);/)?.[0] ?? "";
 
 ok(
@@ -559,20 +550,6 @@ ok(
     finalDeclaration(".app--windows .sidebar", "--wails-draggable") === "no-drag" &&
     finalDeclaration(".sidebar-resizer", "--wails-draggable") === "no-drag",
   "Windows sidebar avoids native window drag without changing other platforms",
-);
-
-ok(
-  finalDeclaration(".app--windows.app--creation .topicbar", "position") === "relative" &&
-    finalDeclaration(".app--windows.app--creation .topicbar", "z-index") === "var(--z-app-chrome)" &&
-    finalDeclaration(".app--windows.app--creation .topicbar", "min-height") === "40px" &&
-    finalDeclaration(":root[data-theme-style] .app--windows.app--creation .topicbar", "min-height") === "40px" &&
-    finalDeclaration(".app--windows.app--creation .topicbar", "transform") === "none !important" &&
-    finalDeclaration(".app--windows.app--creation .topicbar__title-row", "transform") === "none" &&
-    finalDeclaration(".app--windows-frameless.app--creation", "--windows-window-controls-height") === "40px" &&
-    finalDeclaration(".app--creation .topicbar", "min-height") === "56px" &&
-    finalDeclaration(":root[data-theme-style] .app--creation .topicbar", "padding-top") === "14px" &&
-    finalDeclaration(".app--creation .topicbar__title-row", "transform") === "translateY(-3px)",
-  "Windows Creation stays 40px while macOS and Linux keep the shared Creation geometry",
 );
 
 for (const selector of [

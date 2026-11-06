@@ -5,7 +5,6 @@ import { useRemoteStore } from "../store/remote";
 
 type Input = {
   workspaceRoot: string;
-  creation: boolean;
   visible: boolean;
   closeOverlays: () => void;
   clearLiveWidth: (width: null) => void;
@@ -59,7 +58,7 @@ export function useWorkspacePanelCommands(input: Input) {
   const toggleWorkspacePanel = useCommittedCommand(() => {
     if (input.visible) { closeWorkspacePanel(); return; }
     const current = useLayoutStore.getState().rightDockMode;
-    openRightDockMode(input.creation ? current === "changed" ? "changed" : "files" : current);
+    openRightDockMode(current);
   });
   const toggleWorkspaceMaximized = useCommittedCommand(() => {
     input.closeOverlays();
@@ -88,12 +87,6 @@ export function useWorkspacePanelCommands(input: Input) {
     useLayoutStore.getState().setWorkspacePanelOpen(loadWorkspacePanelOpen(input.workspaceRoot));
     useLayoutStore.getState().setRightDockMode(loadRightDockMode(input.workspaceRoot));
   }, [input.workspaceRoot]);
-  useLayoutEffect(() => {
-    if (input.creation && mode === "context") {
-      useLayoutStore.getState().setRightDockMode("files");
-      saveRightDockMode("files", input.workspaceRoot);
-    }
-  }, [input.creation, input.workspaceRoot, mode]);
   useEffect(() => {
     if (!explorerOpen) return;
     openRightDockMode("remote");

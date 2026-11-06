@@ -24,7 +24,6 @@ const styles = [
   readFileSync(resolve(srcRoot, "styles.css"), "utf8"),
   readFileSync(resolve(srcRoot, "styles/mode-classic.css"), "utf8"),
   readFileSync(resolve(srcRoot, "styles/mode-workbench.css"), "utf8"),
-  readFileSync(resolve(srcRoot, "styles/mode-creation.css"), "utf8"),
 ].join("\n");
 const appTsx = readFileSync(resolve(srcRoot, "App.tsx"), "utf8");
 const sidebarRegion = readFileSync(resolve(srcRoot, "app-shell/SidebarRegion.tsx"), "utf8");
@@ -99,15 +98,13 @@ ok(/color:\s*var\(--fg-dim\)/.test(workbenchBlock), "workbench variant uses neut
 ok(/color-mix\(in srgb, var\(--sidebar-hover\)/.test(workbenchBlock), "workbench variant background derives from theme surfaces");
 ok(hardcodedHex(workbenchBlock).length === 0, "workbench variant block has no hardcoded colour");
 
-// 6. Creation variant derives from var(--accent) via color-mix.
-const creationBlock = stripComments(blockStartingWith(".app--creation .sidebar__new,"));
-ok(creationBlock.length > 0, "styles.css: creation .sidebar__new block exists");
-ok(/color-mix\(in srgb, var\(--accent\)/.test(creationBlock), "creation variant derives from var(--accent) via color-mix");
-ok(hardcodedHex(creationBlock).length === 0, "creation variant block has no hardcoded colour");
+// 6. tl1450: the creation variant died with the layout — no creation-scoped
+//    .sidebar__new block may return.
+ok(!styles.includes(".app--creation .sidebar__new"), "tl1450: no creation .sidebar__new block in any stylesheet");
 
 // 7. No block of the button carries the retired fixed brand blue (#0153e5,
 //    the pre-401 wordmark fill users saw in the task 358 screenshot).
-const allButtonBlocks = [baseBlock, hoverBlock, styleBlock, workbenchBlock, creationBlock].join("\n");
+const allButtonBlocks = [baseBlock, hoverBlock, styleBlock, workbenchBlock].join("\n");
 ok(!allButtonBlocks.includes("#0153e5"), "no sidebar__new block carries the retired fixed blue #0153e5");
 
 // 8. Theme-contrast matrix: at least two accents across light/dark, and the

@@ -49,11 +49,10 @@ const localPathLinksSource = readFileSync(resolve(here, "../lib/localPathLinks.t
 const i18nSource = readFileSync(resolve(here, "../lib/i18n.tsx"), "utf8");
 const mainSource = readFileSync(resolve(here, "../main.tsx"), "utf8");
 // tl1191: mode-scoped rules live in the per-mode sheets now; footer variants
-// assert against the combined source.
+// assert against the combined source. tl1450: the creation mode sheet is gone.
 const stylesSource = readFileSync(resolve(here, "../styles.css"), "utf8") +
   readFileSync(resolve(here, "../styles/mode-classic.css"), "utf8") +
-  readFileSync(resolve(here, "../styles/mode-workbench.css"), "utf8") +
-  readFileSync(resolve(here, "../styles/mode-creation.css"), "utf8");
+  readFileSync(resolve(here, "../styles/mode-workbench.css"), "utf8");
 
 console.log("\nbundle contract");
 
@@ -121,8 +120,9 @@ ok(
   "Workbench footer distributes its utility actions evenly on one adaptive row",
 );
 ok(
-  /\.app--creation\s+\.sidebar__nav,\s*:root\[data-theme-style\]\s+\.app--creation\s+\.sidebar__nav\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s.test(stylesSource),
-  "Creation footer distributes search, trash, and settings evenly",
+  // tl1450: the creation footer grid went away with the layout.
+  !/\.app--creation\s+\.sidebar__nav/.test(stylesSource),
+  "no retired creation footer grid remains in any stylesheet",
 );
 ok(
   !/import\s+\{[^}]*\b(?:MCPServersSettingsPage|SkillsSettingsPage|PluginsSettingsPage)\b[^}]*\}\s+from\s+["']\.\/CapabilitiesPanel["']/.test(settingsSource) &&

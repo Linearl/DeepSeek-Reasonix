@@ -6,10 +6,10 @@ import { app } from "../lib/bridge";
 import { contextWindowPercentages, capacityPinLayout } from "../lib/contextWindow";
 import { useI18n, type Locale, type Translator } from "../lib/i18n";
 import { formatMoneyLocalized } from "../lib/money";
-import { formatTokens, formatOptionalTokens } from "../lib/format";
+import { formatTokens } from "../lib/format";
 import { formatDurationLabel } from "../lib/durationFormat";
-import { appendRateBand, normalizeRateBand, rateBandLabel, type DisplayRateBand } from "../lib/costRateBand";
-import type { BalanceInfo, ContextInfo, ContextPanelInfo, UsageSourceStats, WireUsage } from "../lib/types";
+import { normalizeRateBand, rateBandLabel, type DisplayRateBand } from "../lib/costRateBand";
+import type { ContextInfo, ContextPanelInfo, UsageSourceStats, WireUsage } from "../lib/types";
 import { contextSessionCache } from "../lib/contextSessionCache";
 import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { PlanUsageCard } from "./PlanUsageCard";
@@ -29,10 +29,6 @@ interface ContextPanelProps {
   sessionCost?: number;
   sessionCurrency?: string;
   sessionTurns?: number;
-  turnTokens?: number;
-  turnCost?: number;
-  turnRateBand?: string;
-  balance?: BalanceInfo;
   sessionGen?: number;
   refreshKey?: number;
   // Monotonic counter bumped by EVERY usage event (executor and subagent).
@@ -70,13 +66,6 @@ export function formatMetricTokens(tokens: number | undefined, locale: Locale | 
   const tag = numberLocale(locale);
   const exact = tokens.toLocaleString(tag);
   return { display: exact, exact };
-}
-
-function fmtUsageCacheRate(usage?: WireUsage): string {
-  if (!usage) return "-";
-  const denom = usage.cacheHitTokens + usage.cacheMissTokens;
-  if (denom <= 0) return "-";
-  return `${((usage.cacheHitTokens / denom) * 100).toFixed(2)}%`;
 }
 
 export { formatCacheHitRate } from "../lib/contextPanelUtils";
@@ -434,10 +423,6 @@ export function ContextPanel({
   sessionTokens,
   sessionCost,
   sessionCurrency,
-  turnTokens,
-  turnCost,
-  turnRateBand,
-  balance,
   sessionGen,
   refreshKey,
   usageSeq,
@@ -617,11 +602,8 @@ export function ContextPanel({
     : t("compaction.failed");
   const capacityTone = compactionOverride ? (compactionOverride.phase === "running" ? "notice" : "warn") : windowStatus.tone;
   const capacityStatusLabel = compactionOverride ? compactionOverrideLabel : t(windowStatus.key);
-  const balanceLabel = balance?.available && balance.display ? balance.display : "-";
-  const turnEstimated = usage?.estimated === true || info?.estimated === true;
   const sessionEstimated = info?.sessionEstimated === true || context?.estimated === true;
   const markEstimated = (value: string, estimated: boolean) => estimated && value !== "-" ? `≈${value}` : value;
-  const turnCostLabel = appendRateBand(markEstimated(formatMoneyLocalized(turnCost, sessionCurrency, { locale, empty: "dash" }), turnEstimated), turnRateBand, t);
   const rawSessionCostLabel = cost.labelKind === "bucketed"
     ? t("context.sessionCostBucketed")
     : cost.labelKind === "unavailable"
@@ -639,7 +621,6 @@ export function ContextPanel({
           ? `${markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated)} (${t("context.sessionCostFallback")})`
           : markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
   const sessionCostLabel = rawSessionCostLabel;
-  const turnRateBandTitle = rateBandLabel(turnRateBand, t) ? t("billing.rateBand.tooltip") : undefined;
   const sessionRateBand = normalizeRateBand(info?.sessionCostQuote?.rateBand);
   const sessionRateBandTitle = sessionRateBand ? t("billing.rateBand.tooltip") : undefined;
   const sessionRateBandBadge = sessionRateBand
@@ -795,12 +776,6 @@ export function ContextPanel({
                 {sessionInfoState?.recovery && <MiniStat label={t("recovery.badge")} value={t(sessionInfoState.recovery.labelKey)} title={sessionInfoState.recovery.role} />}
               </div>
             </div>
-          </section>
-          <section className="context-panel__creation-grid" aria-label={t("context.overview")}>
-            <MetricCard label={t("status.cacheLabel")} value={fmtUsageCacheRate(usage)} tone="accent" />
-            <MetricCard label={t("status.turnTokensLabel")} value={formatOptionalTokens(turnTokens)} />
-            <MetricCard label={t("status.turnCostLabel")} value={turnCostLabel} valueTitle={turnRateBandTitle} />
-            <MetricCard label={t("status.balanceLabel")} value={balanceLabel} tone="accent" />
           </section>
           <section className="context-panel__section context-panel__analysis">
             <SectionHeading title={t("context.usageAnalysis")}>
@@ -1031,18 +1006,6 @@ function MiniStat({ label, value, title, tone, wide, badge }: { label: string; v
           </span>
         )}
       </div>
-      <strong title={exactTitle}>{value}</strong>
-    </div>
-  );
-}
-
-function MetricCard({ label, value, valueTitle, tone, wide }: { label: string; value: string; valueTitle?: string; tone?: "accent" | "good" | "notice" | "warn"; wide?: boolean }) {
-  const toneClass = tone ? ` context-panel__metric--${tone}` : "";
-  const wideClass = wide ? " context-panel__metric--wide" : "";
-  const exactTitle = valueTitle && valueTitle !== value ? valueTitle : undefined;
-  return (
-    <div className={`context-panel__metric${toneClass}${wideClass}`} aria-label={exactTitle ? `${label}: ${exactTitle}` : undefined}>
-      <span>{label}</span>
       <strong title={exactTitle}>{value}</strong>
     </div>
   );
