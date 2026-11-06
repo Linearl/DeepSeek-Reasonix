@@ -223,6 +223,12 @@ func (r *TaskSubagentRunner) runNode(ctx context.Context, req SubagentRequest) (
 	})
 	// tl1434 追加：派发期间周期快照 transcript——「工作过程」增量可见的写侧。
 	ctx = agent.WithSubagentTranscriptAutosave(ctx)
+	// tl1435(附): 同一布线点再装持久化声明——节点派发发生在 turn 外，子代理
+	// 没有会话转录卡，持久化 sidecar 目录是面板唯一可见源；confirm 节点的
+	// 只读路径默认被 read_only_task 钉成 ephemeral（无 meta 无 transcript 无
+	// ref），scan/triage 可见而 verify 漏显。标记让 ReadOnlyTaskTool 对本次
+	// 派发放弃 ephemeral（交互式 read_only_task 不装标记，契约不变）。
+	ctx = agent.WithSubagentTranscriptPersistence(ctx)
 	args := map[string]any{"prompt": req.Prompt}
 	set := func(key, v string) {
 		if v != "" {

@@ -96,3 +96,55 @@ func TestReadOnlyTaskStaysEphemeralOnTheUnifiedRunner(t *testing.T) {
 		t.Fatalf("read_only_task must not persist a transcript even under a parent session:\n%s", out)
 	}
 }
+
+// tl1435(附): the workflow confirm dispatch persists. A dispatch outside any
+// turn (workflow node execution) produces no session-transcript card, so an
+// ephemeral read-only run there is invisible everywhere — the right-dock
+// panel's ended section (fed by ListSubagentsByParent) showed scan/triage
+// children but never the confirmer. The dispatcher arms
+// WithSubagentTranscriptPersistence on the dispatch ctx; read_only_task
+// honors it by dropping the ephemeral override for that dispatch (read-only
+// tool grant untouched). The interactive contract above (no marker → no
+// transcript even under a parent session) stays byte-for-byte.
+func TestReadOnlyTaskWorkflowDispatchPersistsTranscript(t *testing.T) {
+	root := t.TempDir()
+	sessionDir := t.TempDir()
+	reg := tool.NewRegistry()
+	reg.Add(fakeReadFileTool{})
+	prov := &scriptedProvider{name: "p", turns: [][]provider.Chunk{
+		{{Type: provider.ChunkText, Text: "research done"}, {Type: provider.ChunkDone}},
+	}}
+	task := NewTaskTool(prov, nil, reg, 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+		WithTranscripts(NewSubagentStore(filepath.Join(sessionDir, "subagents")), root, "base", "high").
+		WithScheduler(NewSubagentScheduler(4, 4))
+
+	ctx := withCallContext(context.Background(), "call-1", event.Discard, nil, false)
+	ctx = WithParentSession(ctx, "sess-confirm")
+	ctx = WithSubagentTranscriptPersistence(ctx)
+	out, err := NewReadOnlyTaskTool(task).Execute(ctx, []byte(`{"prompt":"inspect the parser","description":"独立复核证据链"}`))
+	if err != nil {
+		t.Fatalf("read_only_task (workflow-dispatched): %v", err)
+	}
+	if !strings.Contains(out, "research done") {
+		t.Fatalf("answer = %q", out)
+	}
+	if !strings.Contains(out, "Subagent reference") {
+		t.Fatalf("workflow-dispatched read_only_task must persist a transcript and surface its ref:\n%s", out)
+	}
+	artifacts, err := ListSubagentsByParent(sessionDir, "sess-confirm")
+	if err != nil {
+		t.Fatalf("ListSubagentsByParent: %v", err)
+	}
+	if len(artifacts) != 1 {
+		t.Fatalf("persisted artifacts = %d, want 1 (the confirm dispatch must land its sidecar)", len(artifacts))
+	}
+	if artifacts[0].Meta.ParentSession != "sess-confirm" {
+		t.Fatalf("persisted parent = %q, want %q", artifacts[0].Meta.ParentSession, "sess-confirm")
+	}
+	if artifacts[0].Meta.Description != "独立复核证据链" {
+		t.Fatalf("persisted description = %q, want the dispatch description the panel row reads", artifacts[0].Meta.Description)
+	}
+	if artifacts[0].Meta.Status != SubagentCompleted {
+		t.Fatalf("persisted status = %q, want %q (terminal save flips the dispatch registration)", artifacts[0].Meta.Status, SubagentCompleted)
+	}
+}

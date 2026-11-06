@@ -623,7 +623,17 @@ func (r *ReadOnlyTaskTool) Execute(ctx context.Context, args json.RawMessage) (s
 		return "", err
 	}
 	spec.Worker.SystemPrompt = DefaultReadOnlyTaskSystemPrompt
-	spec.Context.Ephemeral = true
+	// tl1435(附): the ephemeral default IS the interactive read_only_task
+	// contract — but a dispatch that happens outside any turn (workflow confirm
+	// nodes are the live case) produces no session-transcript card, so an
+	// ephemeral run there is invisible everywhere: no sidecar meta, no
+	// transcript, no ref, and the right-dock panel's ended section (fed by
+	// ListSubagentsByParent) never sees the child scan/triage rows show. The
+	// dispatcher knows this shape and marks the ctx
+	// (WithSubagentTranscriptPersistence); honoring it only drops the ephemeral
+	// override — the read-only tool grant is untouched, and the interactive
+	// path (no marker) stays byte-for-byte ephemeral.
+	spec.Context.Ephemeral = !SubagentTranscriptPersistenceRequested(ctx)
 	return r.task.RunProfileSpec(ctx, spec)
 }
 

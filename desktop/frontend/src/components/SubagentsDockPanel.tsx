@@ -507,10 +507,15 @@ function SubagentDetailView({
           </button>
         )}
       </div>
-      {/* 任务1033: same native-title clipping as the row — wrap-mode Tooltip. */}
+      {/* 任务1033: same native-title clipping as the row — wrap-mode Tooltip.
+          tl1435(附): the hover card opens DOWNWARD — the head row (返回列表/
+          在主区打开) sits directly above the title, and the default top-side
+          card covered exactly those buttons on every hover. The Tooltip's own
+          edge flip still moves it back up near the window bottom, so the
+          downward preference cannot clip the card off-screen. */}
       <div className="subagents-panel__detailview-title">
         <StatusIcon entry={entry} />
-        <Tooltip label={title} wrap>
+        <Tooltip label={title} wrap side="bottom">
           <span className="subagents-panel__detailview-name">{title}</span>
         </Tooltip>
       </div>

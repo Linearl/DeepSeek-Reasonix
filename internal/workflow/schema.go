@@ -164,7 +164,11 @@ var nodeFieldKeys = map[string]map[string]bool{
 	NodeGate:     keys("id", "type", "command", "timeout", "tier", "loop"),
 	NodePhase:    keys("id", "type", "label"),
 	NodeJoin:     keys("id", "type"),
-	NodeConfirm:  keys("id", "type", "target", "prompt"),
+	// tl1435(附): description joins the legal set — confirmRequest already
+	// carries it into the dispatch (SubagentRequest.Description), and after the
+	// persistence fix the confirm child's sidecar meta + right-dock panel row
+	// label read it; without it every confirmer row renders bare "task".
+	NodeConfirm: keys("id", "type", "target", "prompt", "description"),
 }
 
 func keys(names ...string) map[string]bool {
