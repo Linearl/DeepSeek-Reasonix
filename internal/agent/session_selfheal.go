@@ -36,7 +36,8 @@ const (
 )
 
 // selfHealBackupSuffix 是备份目录的后缀形态：<stem>.pre-repair-<UTC 紧凑时间>。
-const selfHealBackupSuffix = ".pre-repair-"
+// 拼写单一来源在 store（tl1442-ext：清单与备份两侧共用同一常量）。
+const selfHealBackupSuffix = store.SessionPreRepairBackupSuffix
 
 // selfHealRepairLogSuffix 是修复记录文件的后缀：<stem>.repairlog.jsonl。
 // 单一源在 store（分类侧不得自行拼写，守卫 TestSessionPathSpellingsSingleSource）。
