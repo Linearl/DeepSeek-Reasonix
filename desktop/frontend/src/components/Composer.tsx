@@ -1843,7 +1843,10 @@ export function Composer({
   }, [draftKey, guidanceConsumedIds]);
   const collapseInboxQueue = useCallback(() => setGuidanceExpanded(false), []);
   const refreshInboxQueue = useCallback(() => setGuidanceRetryNonce((value) => value + 1), []);
-  useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue, runtimeState.state?.revision);
+  // tl1465 ②：channelMode（群聊 tab）没有所属会话——enabled=false 结构性
+  // 不拉 inbox 队列，引导架不挂（否则 InboxSnapshot("") 落到 Go 侧活动会话，
+  // 把那个会话的引导消息渲染进群聊 tab）。群聊只显示成员消息。
+  useComposerInboxRefresh(tabId, draftKey, guidanceDraftKey, inboxSessionKey, guidanceQueuePreviewKey, guidanceRetryNonce, running, applyInboxQueue, collapseInboxQueue, refreshInboxQueue, runtimeState.state?.revision, !channelMode);
 
   // Task 336 hydrate reconciliation: the transcript's ↪ receipts can land
   // AFTER the inbox snapshot applied (tab round-trip, history reload). Re-run
