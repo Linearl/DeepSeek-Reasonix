@@ -4886,7 +4886,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		SessionDir:                 sessionDir,
 		EffortOverride:             cloneStringPtr(buildEffort),
 		SharedHost:                 sharedHost,
-		CleanupPendingReconciler:   reconcileDesktopCleanupPending,
+		CleanupPendingReconciler:   a.reconcileDesktopCleanupPending,
 		SubagentParentLive:         a.subagentParentProbeForBuild(tab),
 		SessionRecoveryMeta:        a.tabSessionRecoveryMeta(tab),
 		PinnedContextLoader:        pinnedContextLoader(root),

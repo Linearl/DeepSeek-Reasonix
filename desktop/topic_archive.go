@@ -478,7 +478,7 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 		a.removeSessionCatalogPath(target.sessionPath, "topic_archived")
 		if timedOutTargets[i] {
 			guard := ownership.take(target.sessionPath)
-			go delayedDesktopTopicTrash(target.dir, target.sessionPath, target.key, guard, destroys)
+			go a.delayedDesktopTopicTrash(target.dir, target.sessionPath, target.key, guard, destroys)
 			continue
 		}
 		trace.phase = "move_artifacts"

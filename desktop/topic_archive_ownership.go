@@ -264,8 +264,21 @@ func (b *topicArchiveOwnershipBatch) release() {
 	}
 }
 
-func delayedDesktopTopicTrash(dir, sessionPath, key string, guard *agent.SessionRemovalGuard, destroys []control.SessionDestroyHandle) {
+// delayedDesktopTopicTrash is the destroy-timeout completion of a topic
+// archive: it waits for the runtime teardowns to settle, then trashes the
+// session artifacts under the guard the archive handed over. tl1429b-2: the
+// trash itself takes a.sessionRemovalMu. The goroutine can hold its removal
+// guard for an unbounded teardown wait, and without the mutex every later
+// guard acquirer for this session (a boot-time cleanup-pending reconcile, a
+// user's next archive) used to be refused by this LIVE handle and heal past
+// it by evicting the guard — two destructive flows on one session. With the
+// mutex, later flows serialize behind this trash (or honestly report busy);
+// the in-flight guard stays exactly that. The wait happens BEFORE the mutex
+// so a slow teardown never blocks the removal flows.
+func (a *App) delayedDesktopTopicTrash(dir, sessionPath, key string, guard *agent.SessionRemovalGuard, destroys []control.SessionDestroyHandle) {
 	waitAllDestroyHandles(destroys)
+	a.sessionRemovalMu.Lock()
+	defer a.sessionRemovalMu.Unlock()
 	if err := trashSessionArtifactsWithGuard(dir, sessionPath, key, guard); err != nil {
 		slog.Warn("desktop: delayed topic archive cleanup remains pending")
 	}

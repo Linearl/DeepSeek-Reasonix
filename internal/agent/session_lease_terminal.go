@@ -85,6 +85,21 @@ func ForceReleaseInProcessSessionLease(path string) (released bool) {
 		if !held {
 			return released
 		}
+		// tl1429b-2: an in-flight removal guard is a live owner with a
+		// goroutine behind it (a previous attempt's delayed trash, a
+		// concurrent reconcile). Force-releasing it would set two destructive
+		// flows loose on the same session — the terminal's own trash runs
+		// serialized behind the archive mutex, so the in-flight op either
+		// already finished (guard gone) or converges the artifacts afterwards
+		// (the committed cleanup-pending form). Leave it and let the terminal
+		// degrade to its guard-less path.
+		if sessionLeaseLockHeldByInFlightRemovalGuard(path) {
+			slog.Warn("session: terminal archive left an in-flight removal guard in place",
+				"session_base", filepath.Base(path),
+				"holder_kind", evidenceHolderKind(evidence),
+				"held_since", evidenceHoldSince(evidence))
+			return released
+		}
 		evicted := takeRegisteredSessionLock(store.SessionLeaseLock(path))
 		if evicted != nil {
 			_ = evicted.RemoveAndUnlock()

@@ -494,7 +494,62 @@ func trashSessionArtifacts(dir, sessionPath, key string) error {
 	return trashSessionArtifactsBeforeMove(dir, sessionPath, key, nil)
 }
 
-func reconcileDesktopCleanupPending(dir string) error {
+// sessionRemovalMuWaitBudget bounds how long a background reconcile waits for
+// the session-removal mutex before giving this pass up (tl1429b-2). The mutex
+// holders are bounded operations (an archive's trash phase, a restore
+// preflight), so a short wait almost always succeeds; on timeout the
+// cleanup-pending markers simply persist and the next boot/reconcile retries.
+// Var: tests shorten it (same seam convention as deferredRebuildRetryInterval).
+var sessionRemovalMuWaitBudget = 5 * time.Second
+
+// sessionRemovalMuPollInterval paces the bounded mutex wait the same way the
+// terminal archive paces its gate waits.
+const sessionRemovalMuPollInterval = 25 * time.Millisecond
+
+// lockSessionRemovalMuBounded takes a.sessionRemovalMu, waiting up to
+// sessionRemovalMuWaitBudget. It reports false when the mutex stayed busy for
+// the whole budget — callers skip their pass instead of racing the in-flight
+// removal flow. Lock order note: callers may already hold runtimeRebuildMu
+// (controller boot reconciles run under it), which matches the documented
+// runtimeRebuildMu → sessionRemovalMu order; nothing takes runtimeRebuildMu
+// while holding sessionRemovalMu.
+func (a *App) lockSessionRemovalMuBounded() bool {
+	deadline := time.Now().Add(sessionRemovalMuWaitBudget)
+	for {
+		if a.sessionRemovalMu.TryLock() {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(sessionRemovalMuPollInterval)
+	}
+}
+
+// reconcileDesktopCleanupPending is the controller-boot reconciler entry
+// (CleanupPendingReconciler). tl1429b-2: the reconcile takes the session's
+// removal guard per pending session, so it MUST serialize with the archive /
+// restore / delayed-trash flows on a.sessionRemovalMu — an unserialized
+// reconcile raced an in-flight removal guard, got refused, healed past it by
+// evicting the LIVE guard's handles (the sweep treated an in-flight removal
+// guard as an orphan), and trashed the same session concurrently — the
+// 2026-11-06 08:26 refuse→heal(cleared=1)→refuse loop with double trash
+// records. Busy for the whole budget: skip this pass; the markers persist and
+// the next reconcile point retries.
+func (a *App) reconcileDesktopCleanupPending(dir string) error {
+	if !a.lockSessionRemovalMuBounded() {
+		slog.Warn("desktop: cleanup-pending reconcile skipped this pass; a removal flow holds the session mutex",
+			"dir_base", filepath.Base(dir))
+		return nil
+	}
+	defer a.sessionRemovalMu.Unlock()
+	return reconcileDesktopCleanupPendingLocked(dir)
+}
+
+// reconcileDesktopCleanupPendingLocked runs the cleanup-pending reconcile for
+// one session dir. Caller holds a.sessionRemovalMu (the restore preflight
+// calls this variant from inside its own held mutex).
+func reconcileDesktopCleanupPendingLocked(dir string) error {
 	return agent.ReconcileCleanupPending(dir, func(item agent.CleanupPendingInfo) error {
 		if strings.TrimSpace(item.Meta.Operation) == "delete" {
 			sessionPath, key, err := validateSessionPath(dir, item.SessionPath)

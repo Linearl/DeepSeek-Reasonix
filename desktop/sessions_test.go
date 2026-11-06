@@ -324,8 +324,8 @@ func TestReconcileDesktopCleanupPendingDeleteMovesArtifactsToTrash(t *testing.T)
 		t.Fatal(err)
 	}
 
-	if err := reconcileDesktopCleanupPending(dir); err != nil {
-		t.Fatalf("reconcileDesktopCleanupPending: %v", err)
+	if err := reconcileDesktopCleanupPendingLocked(dir); err != nil {
+		t.Fatalf("reconcileDesktopCleanupPendingLocked: %v", err)
 	}
 
 	trashPath := filepath.Join(dir, sessionTrashDir, "pending.jsonl", "pending.jsonl")
@@ -359,8 +359,8 @@ func TestReconcileDesktopCleanupPendingDeleteReusesExistingTrashDir(t *testing.T
 		t.Fatal(err)
 	}
 
-	if err := reconcileDesktopCleanupPending(dir); err != nil {
-		t.Fatalf("reconcileDesktopCleanupPending: %v", err)
+	if err := reconcileDesktopCleanupPendingLocked(dir); err != nil {
+		t.Fatalf("reconcileDesktopCleanupPendingLocked: %v", err)
 	}
 
 	if _, err := os.Stat(filepath.Join(itemDir, "partial.jsonl")); err != nil {
@@ -411,8 +411,8 @@ func TestReconcileDesktopCleanupPendingDeleteMovesRemainingSidecars(t *testing.T
 		t.Fatal(err)
 	}
 
-	if err := reconcileDesktopCleanupPending(dir); err != nil {
-		t.Fatalf("reconcileDesktopCleanupPending: %v", err)
+	if err := reconcileDesktopCleanupPendingLocked(dir); err != nil {
+		t.Fatalf("reconcileDesktopCleanupPendingLocked: %v", err)
 	}
 
 	for _, p := range []string{

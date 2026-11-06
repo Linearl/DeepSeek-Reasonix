@@ -93,10 +93,13 @@ func listTopicArchiveMetadataPending() ([]topicArchiveMetadataPending, error) {
 	return pending, nil
 }
 
-func reconcileTopicArchiveMetadataPending(deleteTopic func(string) error) error {
-	if deleteTopic == nil {
-		return fmt.Errorf("topic archive metadata reconciler is unavailable")
-	}
+// reconcileTopicArchiveMetadataPending converges the topic-archive metadata
+// markers at startup (app_tabs.go). tl1429b-2: the per-target trash now runs
+// under a.sessionRemovalMu (bounded wait, skip-on-busy) — same discipline as
+// reconcileDesktopCleanupPending: an unserialized trash here raced in-flight
+// removal guards and double-trashed sessions. A target that stays busy is
+// left marked; the next startup retries.
+func (a *App) reconcileTopicArchiveMetadataPending() error {
 	pending, err := listTopicArchiveMetadataPending()
 	if err != nil {
 		return err
@@ -110,14 +113,19 @@ func reconcileTopicArchiveMetadataPending(deleteTopic func(string) error) error 
 				err = agent.MarkCleanupPending(sessionPath, "delete")
 			}
 			if err == nil {
-				err = reconcileDesktopTrashSessionArtifacts(target.Dir, sessionPath, key)
+				if !a.lockSessionRemovalMuBounded() {
+					err = fmt.Errorf("session removal flows hold the mutex; retry at the next startup")
+				} else {
+					err = reconcileDesktopTrashSessionArtifacts(target.Dir, sessionPath, key)
+					a.sessionRemovalMu.Unlock()
+				}
 			}
 			if err != nil {
 				errs = append(errs, err)
 				itemFailed = true
 			}
 		}
-		if err := deleteTopic(item.TopicID); err != nil {
+		if err := a.deleteTopic(item.TopicID); err != nil {
 			errs = append(errs, err)
 			itemFailed = true
 		}
