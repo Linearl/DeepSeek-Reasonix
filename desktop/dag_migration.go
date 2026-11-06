@@ -25,11 +25,12 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/store"
 )
 
 // dagMigrationEventsSuffix 与读取端 probe 的后缀口径一致（main/guardian/
 // repairlog 三种 sidecar 都以它结尾）。
-const dagMigrationEventsSuffix = ".events.jsonl"
+const dagMigrationEventsSuffix = store.SessionEventLogSuffix
 
 // dagMigrationProgressEvent 前端订阅的进度事件名。
 const dagMigrationProgressEvent = "dag-migration:progress"

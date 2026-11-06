@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/store"
 )
 
 type summary struct {
@@ -191,7 +192,7 @@ func run() int {
 	}
 	sum.Total = len(targets)
 	if len(targets) == 0 {
-		logf("nothing to do: no *.events.jsonl under %s (filter %q)", *root, *only)
+		logf("nothing to do: no *%s under %s (filter %q)", store.SessionEventLogSuffix, *root, *only)
 		sum.ElapsedMs = time.Since(started).Milliseconds()
 		sum.FinishedAt = time.Now().Format(time.RFC3339)
 		writeReport(sum)
@@ -501,8 +502,8 @@ func humanBytes(n int64) string {
 }
 
 // sessionEventsSuffix matches every sidecar variant the reader probes: main,
-// guardian and repairlog event logs all end in ".events.jsonl".
-const sessionEventsSuffix = ".events.jsonl"
+// guardian and repairlog event logs all end in the store event-log suffix.
+const sessionEventsSuffix = store.SessionEventLogSuffix
 
 // sessionTranscriptFor maps an event-log path back to the transcript path the
 // migration API expects (it re-derives the sidecars from it).
