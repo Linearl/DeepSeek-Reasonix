@@ -133,6 +133,18 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 			anyPreferred = true
 		}
 	}
+	// tl1415c A：Selected 升级为权威源同源——优先取 recoveryAuthorityMainPath
+	// 的裁决（打开的 tab 当前转录 → 显式偏好，与 already-main 闸门读的同一对
+	// 权威），meta 直读降为其后的回退。此前两条线各判各的（这里=目录内 meta
+	// preferred + 扫描起点回退；切换闸=tab 路径 + catalog 偏好）：tab 停在副
+	// 本文件上而目录里无显式偏好时，闸门认为副本是主线、面板却把扫描起点标
+	// 成主线——用户实测「下面那个是主线为何还能切换到此版本」的分裂现场。
+	// catalog 拿不到（路径未入册/目录未建组）时保留旧判定，不为入不了册的
+	// 路径发明裁决。
+	authorityPath := ""
+	if catalog := a.sessionCatalog.Load(); catalog != nil {
+		authorityPath = a.recoveryAuthorityMainPath(catalog, mainPath)
+	}
 	for _, path := range candidates {
 		info, statErr := os.Stat(path)
 		var bytes int64
@@ -140,7 +152,10 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 			bytes = info.Size()
 		}
 		isMain := samePath(path, mainPath)
-		selected := preferredRows[path] || (!anyPreferred && isMain)
+		// tl1415c A：selected 与切换闸同源——权威路径命中即选中；权威缺席时
+		// 才落到 tl1430b 的旧判定（meta preferred → 扫描起点回退）。
+		selected := samePath(path, authorityPath) ||
+			(authorityPath == "" && (preferredRows[path] || (!anyPreferred && isMain)))
 		scan := scanByPath[path]
 		if !scan.Readable {
 			// 降级行：整文件读不出（超字节/时间预算、tolerant 也拒、文件消

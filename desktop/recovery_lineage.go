@@ -259,7 +259,7 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 				return errors.New("the current main line is still working; wait for its turn to finish, then switch again")
 			}
 		}
-		if _, err := a.ResumeSessionForTab(tabID, req.Path); err != nil {
+		if _, err := a.ResumeSessionForTabExact(tabID, req.Path); err != nil {
 			return err
 		}
 	}
@@ -279,6 +279,69 @@ func (a *App) SetActiveSessionVersion(req RecoveryPreferenceRequest) error {
 		CanContinue: true, RequiresChoice: false,
 	})
 	return nil
+}
+
+// recoveryAuthorityMainPath resolves a conversation's authoritative main line
+// from the same two authorities the already-main gate above reads (tl1415c A):
+// the open tab's current transcript when one holds this topic, else the
+// group's explicit preferred member. The panel's chain inventory (Selected,
+// recovery_chains.go) reads THIS resolver instead of re-deriving its own
+// answer, so the visual main line and the system main line can no longer
+// split — the split the user实测 reported as "下面那个是主线为何还能切换
+// 到此版本" (tab on a copy file, panel still marking the scan origin).
+//
+// Returns "" when no authority resolves here: the path is not filed in the
+// catalog, or the group has no tab on it and no explicit preference. Callers
+// keep their pre-tl1415c fallback (meta preferred → scan-origin main) for
+// that shape — unfiled paths are exactly the cases the catalog cannot speak
+// for, and inventing a verdict would be the second source of truth again.
+func (a *App) recoveryAuthorityMainPath(catalog *sessioncatalog.Catalog, mainPath string) string {
+	resolveCtx, cancel := a.catalogReadContext()
+	record, found, err := catalog.GetSession(resolveCtx, mainPath)
+	cancel()
+	if err != nil || !found || strings.TrimSpace(record.LogicalTopicID) == "" {
+		return ""
+	}
+	scope, workspaceRoot := normalizeDesktopTopicScope(record.Scope, record.WorkspaceRoot)
+	topicID := strings.TrimSpace(record.LogicalTopicID)
+	topic, ok, err := catalog.GetTopic(a.bootContext(), sessioncatalog.TopicKey{Scope: scope, WorkspaceRoot: workspaceRoot, TopicID: topicID})
+	if err != nil || !ok {
+		return ""
+	}
+	groupID, _, ok := recoveryLineageSelection(topic, mainPath)
+	if !ok || groupID == "" {
+		return ""
+	}
+	// Same tab rule as the switch gate: the tab holding this topic whose
+	// current transcript belongs to this group names the line the user is
+	// actually on — authority #1.
+	a.mu.RLock()
+	authPath := ""
+	for _, tab := range a.runtimeTabsLocked() {
+		if tab == nil || tab.TopicID != topicID || tab.Scope != scope ||
+			(scope == "project" && tab.WorkspaceRoot != workspaceRoot) {
+			continue
+		}
+		if candidate := strings.TrimSpace(tab.currentSessionPath()); candidate != "" && recoveryTopicHasGroupMember(topic, groupID, candidate) {
+			authPath = candidate
+		}
+		break
+	}
+	a.mu.RUnlock()
+	if authPath != "" {
+		return authPath
+	}
+	// Authority #2: the explicit preference at filing level (same predicate as
+	// memberPreferred in SetActiveSessionVersion).
+	for _, member := range topic.Sessions {
+		if !recoveryRecordBelongsToGroup(member, groupID) {
+			continue
+		}
+		if member.RecoveryPreferred || member.RecoveryRole == sessioncatalog.RecoveryRolePreferred {
+			return member.Path
+		}
+	}
+	return ""
 }
 
 // RetrySessionRecovery re-arms a pending recovery version after its lease
