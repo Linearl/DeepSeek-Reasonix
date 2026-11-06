@@ -139,3 +139,42 @@ func TestTrashTopicSurvivesDuplicateTargetSpelling(t *testing.T) {
 	}
 	reattach.Release()
 }
+
+// ownership 层(纵深防御):重复拼写的目标只拿一把 guard,第二个拼写复用批内
+// 所有权。修复前第二个 acquire 撞上第一个(同秒自撞)→ busy 拒绝 → 整批失败;
+// 将来任何调用面再出现重复目标,这一层保证不再自撞。
+func TestAcquireTopicArchiveOwnershipDuplicateSpellingTakesOneGuard(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("canonical session identity case-folds on Windows only; the duplicate-spelling form cannot be modeled portably")
+	}
+	dir := t.TempDir()
+	sessionPath := filepath.Join(dir, "tl1429c-own.jsonl")
+	if err := os.WriteFile(sessionPath, []byte("own"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	variant := caseVariantPath(sessionPath)
+	targets := []topicTrashTarget{
+		{dir: dir, sessionPath: sessionPath, key: filepath.Base(sessionPath)},
+		{dir: dir, sessionPath: variant, key: filepath.Base(variant)},
+	}
+
+	batch, err := acquireTopicArchiveOwnership(nil, targets, nil, false)
+	if err != nil {
+		t.Fatalf("ownership for duplicate spellings = %v, want one guard serving both (17:46 自撞)", err)
+	}
+	t.Cleanup(batch.release)
+	if len(batch.entries) != 1 {
+		t.Fatalf("batch entries = %d, want 1 per canonical session", len(batch.entries))
+	}
+	guard := batch.take(sessionPath)
+	if guard == nil {
+		t.Fatal("batch did not keep a guard for the target")
+	}
+	if !agent.SessionLeaseLockHeldInProcess(sessionPath) {
+		t.Fatal("the single guard does not hold the session's lease lock")
+	}
+	guard.Release()
+	if agent.SessionLeaseLockHeldInProcess(sessionPath) {
+		t.Fatal("guard release left the registry entry behind")
+	}
+}
