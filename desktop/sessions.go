@@ -1239,6 +1239,11 @@ func validateTrashedSessionPath(dir, sessionPath string) (string, string, string
 	}
 	parts := strings.Split(rel, string(filepath.Separator))
 	if len(parts) != 2 {
+		// tl1429b-2 .trash 白名单:结构不符的路径落到统一兜底(见下方),不再
+		// 直接判死——清空/恢复本就是 .trash 内的销毁/取回语义。
+		if accepted, abs, item := acceptTrashContainedSessionPath(root, absPath, fmt.Errorf("invalid trash session path: %s", sessionPath)); accepted {
+			return abs, filepath.Base(abs), item, nil
+		}
 		return "", "", "", fmt.Errorf("invalid trash session path: %s", sessionPath)
 	}
 	if parts[0] != parts[1] {
@@ -1261,6 +1266,11 @@ func validateTrashedSessionPath(dir, sessionPath string) (string, string, string
 			// the target file really sits in the bucket instead of wedging
 			// on metadata.
 			if _, statErr := os.Lstat(filepath.Join(root, parts[0], parts[1])); statErr != nil {
+				// tl1429b-2 .trash 白名单:meta 与直读都救不回时,同样落到
+				// 统一兜底(真实在桶内即放行),兜底不接再按原错误判死。
+				if accepted, abs, item := acceptTrashContainedSessionPath(root, absPath, fmt.Errorf("invalid trash session path: %s", sessionPath)); accepted {
+					return abs, filepath.Base(abs), item, nil
+				}
 				return "", "", "", fmt.Errorf("invalid trash session path: %s", sessionPath)
 			}
 		}
@@ -1285,6 +1295,36 @@ func validateTrashedSessionPath(dir, sessionPath string) (string, string, string
 		return "", "", "", err
 	}
 	return absPath, filepath.Base(absPath), filepath.Dir(absPath), nil
+}
+
+// acceptTrashContainedSessionPath is the tl1429b-2 last-resort whitelist for a
+// trashed-session path that failed the strict structural checks: accept it
+// when the target PROVABLY sits inside this trash root — a transcript-named,
+// existing file at least one bucket level below .trash with no ".." escape
+// (the earlier checks already rejected non-transcript names and raw escapes).
+// Purge/restore are destructive flows scoped to this directory by
+// construction; a wedge here is the "trashed session path outside known
+// session dirs" dead end the 2026-11-06 package-79 scene reported for the
+// stuck second record. The strict error rides the log line so the next field
+// report carries the WHY without another package round-trip.
+func acceptTrashContainedSessionPath(root, absPath string, strictErr error) (bool, string, string) {
+	if !store.IsSessionTranscriptName(filepath.Base(absPath)) {
+		return false, "", ""
+	}
+	rel, err := filepath.Rel(root, absPath)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+		return false, "", ""
+	}
+	if len(strings.Split(rel, string(filepath.Separator))) < 2 {
+		return false, "", "" // directly inside .trash root: no bucket, refuse
+	}
+	info, err := os.Lstat(absPath)
+	if err != nil || info.IsDir() {
+		return false, "", ""
+	}
+	slog.Info("desktop: accepted a trash-contained session path through the whitelist fallback",
+		"session_base", filepath.Base(absPath), "strict_error", strictErr.Error())
+	return true, absPath, filepath.Dir(absPath)
 }
 
 type sessionDisplayMap map[string]map[string]string
