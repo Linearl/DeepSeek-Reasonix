@@ -5306,6 +5306,28 @@ export default function App() {
         keywords: ["docs", "documentation", "help", "manual", "文档", "帮助", "说明书"],
         run: () => openProductDocs(),
       },
+      // tl1462：协作中心接入命令面板（Ctrl+K 是键盘主入口，此前只有侧栏左下
+      // 角图标入口且纯键盘用户不可达）。两处与侧栏入口严格同源：
+      //   - 同一开关 collabHubEntryEnabled（labFlagEnabled("collabHub")，951 行
+      //     同一 state——开关关 = 本项不进面板，与 802 零痕迹策略一致；cmd-goto-tab
+      //     的 lab 门控插条 tl1175 同款写法，不新造注册机制）；
+      //   - 同一打开函数 setCollabHubOpen（CollabHubPanel 模块单例，5980 行侧栏
+      //     图标 onClick 用的就是它），不复制逻辑。
+      // 追加在 toolsCmds 字面量末尾（tl1456 资源管理器同组并行加项，追加式便于
+      // 主会话合并）。
+      ...(collabHubEntryEnabled
+        ? [
+            {
+              id: "cmd-collab-hub",
+              group: t("palette.group.tools"),
+              title: t("palette.cmd.collabHub"),
+              icon: <MessagesSquare size={15} />,
+              compact: true,
+              keywords: ["collab", "hub", "collaboration", "mail", "letter", "chat", "group", "协作", "协作中心", "信件", "聊天", "群聊"],
+              run: () => setCollabHubOpen(true),
+            } satisfies PaletteItem,
+          ]
+        : []),
     ];
     // 帮助与支持组（tl 1101 新增）：产品文档 / 问题反馈 / 提需求 / 提交漏洞 /
     // 关于·版本 / 导出日志 / 打开日志目录。跳转目标走 GitHub 仓库对应入口
@@ -5462,7 +5484,7 @@ export default function App() {
       },
     );
     return cmdsWithWorkflow;
-  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled, questionSearchEnabled, desktopPlatform]);
+  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled, questionSearchEnabled, collabHubEntryEnabled, desktopPlatform]);
   // Delete / rename act on disk, then re-fetch so the panel reflects the change.
   const onDeleteSession = useCallback(
     async (path: string) => {
