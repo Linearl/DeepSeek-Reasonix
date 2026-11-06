@@ -142,9 +142,16 @@ async function openAndExpand(): Promise<Root> {
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
   // tl1415b: v3-only 会话(无副本,headCount=2)落在已合入组(默认折叠)——
-  // 点组段行展开,合成入口(会话行)随之可见。
+  // 点组段行展开,子行随之可见。
   const mergedRow = document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement;
   await act(async () => { mergedRow.click(); });
+  await flush();
+  // tl1415b-2(点2): 会话行恢复默认折叠——点开会话行展开钮等链清单落地。
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
   await flush();
   return root;
 }
@@ -152,10 +159,15 @@ async function openAndExpand(): Promise<Root> {
 type Root = ReturnType<typeof createRoot>;
 
 async function runSynthesizeToCompletion() {
-  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
+  // tl1415b-2(点3): 合成唯一入口在底部③——勾选会话行,点底部「以选定 HEAD
+  // 合成最长链」;无副本+多 heads 的会话由底部按形态自动路由到头合成。
+  const checkbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
+  await act(async () => { checkbox?.click(); });
+  await flush();
+  const mergeBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
+    (b) => b.textContent?.includes("Merge into longest chain"),
   );
-  await act(async () => { synthBtn?.click(); });
+  await act(async () => { mergeBtn?.click(); });
   await flush();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
     .find((b) => b.textContent?.trim() === "Start synthesis");

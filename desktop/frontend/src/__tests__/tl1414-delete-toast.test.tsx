@@ -156,12 +156,17 @@ async function runSingleDeleteFlow(spies: { listCalls: number; deleted: string[]
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  // tl1415b-2(点2): 会话行默认折叠——展开钮点开子行(副本行)。基线预存红
+  // 顺手清零:旧 .rc-toggle 选择器一轮已不存在,此处当时已崩。
+  const toggle = document.querySelector<HTMLButtonElement>("tr.rc-session .rc-session__toggle");
+  if (!toggle) throw new Error("session expand toggle missing");
+  await act(async () => { toggle.click(); });
+  await flush();
   await flush();
   const listCallsBefore = spies.listCalls;
-  // tl1415 合并表：副本行删除按钮住在 ops 次行，表内第一个 .rc-delete 即
+  // tl1415 合并表：副本行删除按钮住行内,副本行内第一个 .rc-delete 即
   // 副本 1 的删除（副本行先于候选链行渲染，与 1064 harness 同口径）。
-  const deleteBtn = document.querySelector<HTMLButtonElement>(".rc-versions__table .rc-delete");
+  const deleteBtn = document.querySelector<HTMLButtonElement>(".rc-versions__table .rc-row--copy .rc-delete");
   if (!deleteBtn) throw new Error("copy-row delete button missing");
   await act(async () => { deleteBtn.click(); });
   await flush();
@@ -185,11 +190,16 @@ async function runBatchDeleteFlow(spies: { listCalls: number; deleted: string[] 
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  // tl1415b-2(点2): 会话行默认折叠——展开钮点开子行。
+  const toggle = document.querySelector<HTMLButtonElement>("tr.rc-session .rc-session__toggle");
+  if (!toggle) throw new Error("session expand toggle missing");
+  await act(async () => { toggle.click(); });
+  await flush();
   await flush();
   const listCallsBefore = spies.listCalls;
-  // tl1415 合并表：副本复选框住在 ops 次行，按表口径取（1064 harness 同款）。
-  const box = document.querySelector<HTMLInputElement>(".rc-versions__table input[type=checkbox]");
+  // tl1415b-2: 副本复选框按副本行圈定——主线行自本轮起也带复选框(选定 HEAD
+  // 语义),泛取表内第一个会误勾主线行。
+  const box = document.querySelector<HTMLInputElement>(".rc-versions__table .rc-row--copy input[type=checkbox]");
   if (!box) throw new Error("copy checkbox missing");
   await act(async () => { box.click(); });
   await flush();
@@ -267,8 +277,8 @@ console.log("\ntl1414 copy-delete feedback toasts");
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
+  // tl1415b-2: 整对话删除走会话行勾选(会话行恒可见,无需展开子行);旧
+  // .rc-toggle 展开步随选择器退役。
   const listCallsBefore = spies.listCalls;
   const groupBox = document.querySelector<HTMLInputElement>(".rc-row--group input[type=checkbox]");
   if (!groupBox) throw new Error("group checkbox missing");
@@ -308,8 +318,7 @@ console.log("\ntl1414 copy-delete feedback toasts");
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
+  // tl1415b-2: 同④——会话行勾选无需展开子行。
   const groupBox = document.querySelector<HTMLInputElement>(".rc-row--group input[type=checkbox]");
   await act(async () => { groupBox?.click(); });
   await flush();

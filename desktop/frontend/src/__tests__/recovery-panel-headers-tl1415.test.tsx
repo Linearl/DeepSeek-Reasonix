@@ -3,9 +3,8 @@
 // tsx-runner files; see recovery-branch-delete-1064.test.tsx for the pattern.)
 //
 // tl1415 harness:「对话版本管理」面板表格化改造的验收钉。
-// tl1415b 二轮形态（demo v5，docs/drafts/版本面板三表合一-demo-20261106.html）
-// 全文件按新形态改写——选择器改表口径（与 1064 同款先例），并新增 demo v5
-// 五项形态断言（单表/折叠组/步骤号按钮/清理非主线副本/尾部预览）。覆盖:
+// tl1415b 一轮（demo v5，docs/drafts/版本面板三表合一-demo-20261106.html）
+// 全文件按新形态改写——选择器改表口径（与 1064 同款先例）。覆盖:
 //  ① 唯一表头(.rc-maintable__head th)sticky + 不透明背景 + 保持完整(用户
 //     截图实证的「表头下滑与内容重叠」修复;tl1415b: 全页一张表,表头随表)。
 //  ② 全页唯一一张表且表头列名语义化(「消息数 · 轮次」合并列/类型列/行内
@@ -24,6 +23,18 @@
 //  ⑩ tl1415b 形态断言:单表/组段折叠(已合入默认折叠+计数徽章)/步骤号按钮
 //     (①扫描②切换③合成)+hintline/清理非主线副本按钮/尾部预览(sub2 带
 //     「尾部」徽章+弹窗开头摘要行)。
+//
+// tl1415b-2 二轮返修（20261106 用户装机实测四点打回）新增钉:
+//  A(点1) 行内尾部预览 3 行截断(rc-clip3,原 rc-clip2 2 行退役)+预览行 hover
+//     title 给行内没有的信息(路径/更新时间/读数/体积——不再复读行内文本)。
+//  B(点2) 会话行恢复默认折叠——组段展开≠子行平铺,点会话行展开钮
+//     (.rc-session__toggle, aria-expanded)才见主线/副本/版本子行。
+//  C(点3) 主线行复选框=选定 HEAD(底部③「以选定 HEAD 合成最长链」由此可用);
+//     行内「合成」按钮删除——合成钮唯一、留底部(用户裁决)。
+//  D(点4) 版本行(tr.rc-chain)错排根治——旧链行 flex 布局(display:flex/gap/
+//     padding)挂在 tr 上拆掉单元格栅格:CSS 静态断言 display 级属性退役、
+//     「更长」高亮挂 td、预览行布局归 rc-sub2+rc-clip3;DOM 断言版本行 9 格
+//     完整入栅格。
 
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
@@ -31,7 +42,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { AppBindings } from "../lib/bridge";
 
-// ─── ① 静态样式断言(JSDOM 无布局引擎;command-palette-css.test.ts 模具) ───
+// ─── 静态样式断言(JSDOM 无布局引擎;command-palette-css.test.ts 模具) ───
 
 const stylesRaw = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 // 去注释后解析,声明匹配不吃到注释散文。
@@ -58,7 +69,7 @@ function selectorBlocks(source: string, selector: string): string[] {
   return blocks;
 }
 
-console.log("\nrecovery panel header/hover contract (tl1415 + tl1415b form)");
+console.log("\nrecovery panel header/hover contract (tl1415 + tl1415b + tl1415b-2)");
 
 // ① 唯一表头 sticky + 不透明背景(tl1415b: 表头随单表走 .rc-maintable__head th)。
 {
@@ -71,7 +82,25 @@ console.log("\nrecovery panel header/hover contract (tl1415 + tl1415b form)");
   ok(!/(^|[;\n])opacity:\s*0?\.72/.test(headBlocks), "① the header row no longer dims via row-level opacity");
 }
 
-// ─── 组件渲染断言(② 单表+列名;③ hover title;⑩ 形态) ───
+// A(点1) 预览行 3 行截断:rc-clip3 上位,rc-clip2 退役。
+{
+  const clip3Blocks = selectorBlocks(styles, ".rc-clip3").join("\n");
+  ok(/-webkit-line-clamp:\s*3/.test(clip3Blocks), "A① the inline tail preview clamps to three lines (rc-clip3)");
+  ok(clip3Blocks.length > 0, "A① the three-line clip class exists");
+  ok(selectorBlocks(styles, ".rc-clip2").length === 0, "A① the two-line clip class is retired (用户实测 2 行浪费空间)");
+}
+
+// D(点4) 版本行错排根治:tr.rc-chain 不再携带旧链行 flex 布局;高亮挂 td。
+{
+  const chainBlocks = selectorBlocks(styles, ".rc-chain").join("\n");
+  ok(chainBlocks.length > 0, "D④ the version-row class (tr.rc-chain) keeps its identity (回归套件钉)");
+  ok(!/display:\s*flex/.test(chainBlocks), "D④ the version row drops the old flex layout (错排根因: flex-on-tr 拆栅格)");
+  ok(!/flex-wrap|gap:/.test(chainBlocks), "D④ the version row drops the old flex gap/wrap");
+  ok(selectorBlocks(styles, ".rc-chain--recommended > td").length > 0, "D④ the longer-chain highlight hangs on the cells (行级 box-shadow 在表格行不可靠)");
+  ok(selectorBlocks(styles, ".rc-chain__preview").join("\n").trim() === "", "D④ the preview line's old flex/nowrap styles are retired (布局归 rc-sub2+rc-clip3)");
+}
+
+// ─── 组件渲染断言(② 单表+列名;③ hover title;⑩ 形态;A-D 四点) ───
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { pretendToBeVisual: true, url: "http://localhost/" });
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -112,8 +141,8 @@ function buttonByText(text: string): HTMLButtonElement | undefined {
   );
 }
 
-/** openPanel 打开面板;tl1415b 无行内展开——待处理组默认展开,子行直接在表
- *  内。需要已合入组的场景用 openPanelWithMerged(点已合入组段行展开)。 */
+/** openPanel 打开面板;tl1415b-2 会话行默认折叠——子行(主线/副本/版本)要点
+ *  会话行展开钮才出现(点2)。需要子行的场景接着调 expandSession()。 */
 async function openPanel(): Promise<ReturnType<typeof createRoot>> {
   stubBridge({});
   const root = createRoot(installDom());
@@ -124,6 +153,15 @@ async function openPanel(): Promise<ReturnType<typeof createRoot>> {
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
   return root;
+}
+
+/** expandSession 点开第 index 个会话行(点2 的展开钮);链清单是展开后惰性
+ *  加载的,双 flush 等它落地。 */
+async function expandSession(index = 0): Promise<void> {
+  const toggle = document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle")[index];
+  await act(async () => { toggle?.click(); });
+  await flush();
+  await flush();
 }
 
 const MAIN_PATH = "/sessions/gc.jsonl";
@@ -224,8 +262,8 @@ async function checkSessionRow(): Promise<void> {
   await flush();
 }
 
-// ②+⑩ 单表到底:模态内唯一一张 table;thead 列名语义化(demo v5 列编排:
-// 类型/会话分支/最后活动/大小/消息数·轮次/副本/独有/行内操作)。
+// ②+⑩+B 单表到底:模态内唯一一张 table;会话行默认折叠(点2),展开钮点开
+//   才见子行;thead 列名语义化(demo v5 列编排)。
 {
   const root = await openPanel();
   const tables = document.querySelectorAll(".rc-modal table");
@@ -252,10 +290,28 @@ async function checkSessionRow(): Promise<void> {
   const mergedCaret = groupRows[1]?.querySelector(".rc-caret")?.textContent || "";
   ok(mergedCaret.trim() === "▸", "⑩ the merged group starts collapsed (caret points to ▸)");
 
+  // B(点2) 会话行默认折叠:子行(主线/副本/版本)不渲染;展开钮带 aria-expanded。
+  ok(document.querySelectorAll("tr.rc-row--copy").length === 0, "B② session rows start collapsed (copy rows hidden until expanded)");
+  ok(document.querySelectorAll("tr.rc-detail__row--main").length === 0, "B② session rows start collapsed (main row hidden until expanded)");
+  ok(document.querySelectorAll("tr.rc-chain").length === 0, "B② session rows start collapsed (version rows hidden until expanded)");
+  const sessionToggle = sessionRows[0]?.querySelector<HTMLButtonElement>(".rc-session__toggle");
+  ok(Boolean(sessionToggle), "B② the session row carries its expand toggle");
+  ok(sessionToggle?.getAttribute("aria-expanded") === "false", "B② the toggle reports aria-expanded=false while collapsed");
+  await expandSession();
+  ok(document.querySelectorAll("tr.rc-row--copy").length === 1, "B② clicking the session toggle reveals the child rows");
+  ok(sessionRows[0]?.querySelector<HTMLButtonElement>(".rc-session__toggle")?.getAttribute("aria-expanded") === "true", "B② the toggle reports aria-expanded=true once expanded");
+
   // ④ 会话行「消息数 · 轮次」列放实测读数 "12 · 6"(不再拿消息数冒充轮次)。
   const sessionCells = Array.from(sessionRows[0]?.querySelectorAll("td") ?? []).map((td) => (td.textContent || "").trim());
   ok(sessionCells[5] === "12 · 6", `④ the session row's messages·turns cell shows measured readings (got: ${sessionCells[5]})`);
   ok(sessionCells[6] === "×1", `④ the session row's copies cell counts the copies (got: ${sessionCells[6]})`);
+
+  // A(点1) 会话行 hover 真信息:label 之外补路径与更新时间(clip1 未截断时
+  //   纯 label 的 hover 与可见文本相同 = 无效 hover)。时间走本机时区渲染,
+  //   断言形如 YYYY-MM-DD HH:mm 而非固定 UTC 串。
+  const sessionTitle = sessionRows[0]?.querySelector(".rc-col-name")?.getAttribute("title") || "";
+  ok(sessionTitle.includes(MAIN_PATH), "A① the session row's hover carries the file path (行内没有的信息)");
+  ok(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(sessionTitle), "A① the session row's hover carries the modified time");
 
   // ③ hover:行内扫描按钮(第①步说明含 read-only)。
   const scanBtn = sessionRows[0]?.querySelector<HTMLButtonElement>(".rc-ops button");
@@ -273,7 +329,7 @@ async function checkSessionRow(): Promise<void> {
   ok(Boolean(dietBtn), "③ the repair+diet button's hover names both of its actions (strip payloads + fold)");
 
   // ⑤+⑥ 链行(headId deadbeef,未被副本行并走——fixture 副本无链数据)带短
-  // 标识所在副本行;「forked」预览在版本行 sub2。先断言副本行存在。
+  //   标识所在副本行;「forked」预览在版本行 sub2。
   const copyRow = document.querySelector("tr.rc-row--copy");
   ok(Boolean(copyRow), "④ the copy row renders inline in the single table");
   const copyCells = Array.from(copyRow?.querySelectorAll("td") ?? []).map((td) => (td.textContent || "").trim());
@@ -285,10 +341,28 @@ async function checkSessionRow(): Promise<void> {
   ok(((shortName as HTMLElement)?.title || "").endsWith("gc-recovery-0123456789abcdef.jsonl"), "⑤ the short signature's hover title carries the full filename");
 
   // ⑥ 候选链(preview: "forked")行内预览文本在版本行 sub2,不再是「无预览
-  //    文本」占位。
-  const previewSpan = Array.from(document.querySelectorAll(".rc-chain .rc-chain__preview"))[0];
+  //    文本」占位。D(点4):版本行 9 格完整入栅格,类型标签在格内(错排修复
+  //    后的结构面)。
+  const versionRow = document.querySelector("tr.rc-chain");
+  ok(Boolean(versionRow), "D④ the version row renders in the single table");
+  ok(versionRow?.querySelectorAll("td").length === 9, "D④ the version row renders exactly 9 cells in the grid (错排修复:每列一格)");
+  ok(Boolean(versionRow?.querySelector("td.rc-col-kind .rc-kindtag--version")), "D④ the version kind tag lives inside its cell (不再孤悬)");
+  const previewSpan = versionRow?.querySelector(".rc-chain__preview");
   ok((previewSpan?.textContent || "").includes("forked"), `⑥ the head row shows the inline preview text (got: ${previewSpan?.textContent})`);
   ok((previewSpan?.querySelector(".rc-tailtag")?.textContent || "") === "tail", "⑩ the inline preview line carries the tail badge (预览=尾部消息)");
+
+  // A(点1) 预览行 hover 真信息:三行类行(主线/副本/版本)的 sub2 title 都要
+  //   比行内文本多给信息(路径/更新时间/读数/体积),不再复读行内文本。
+  const mainSub2 = document.querySelector("tr.rc-detail__row--main .rc-sub2");
+  const mainSub2Title = mainSub2?.getAttribute("title") || "";
+  ok(mainSub2Title.includes(MAIN_PATH), "A① the main row's preview hover carries the file path");
+  ok(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(mainSub2Title), "A① the main row's preview hover carries the modified time");
+  ok(mainSub2Title.includes("messages · turns 12 · 6"), "A① the main row's preview hover carries the message/turns readings");
+  ok(mainSub2Title.includes("1.0 KB"), "A① the main row's preview hover carries the size reading");
+  ok(mainSub2Title.length > (mainSub2?.textContent || "").length + 20, "A① the preview hover gives strictly more than the inline text (不复读行内)");
+  const versionSub2Title = previewSpan?.getAttribute("title") || "";
+  ok(versionSub2Title.includes(MAIN_PATH), "A① the version row's preview hover carries the file path");
+  ok(versionSub2Title.length > (previewSpan?.textContent || "").length + 20, "A① the version row's preview hover gives more than the inline text");
 
   // ⑦ 清空合并历史:未勾选会话时底部入口禁用(fixture 无 versionGroups)。
   const clearBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
@@ -317,19 +391,63 @@ async function checkSessionRow(): Promise<void> {
   await act(async () => root.unmount());
 }
 
-// ⑩ 步骤号按钮:②切换到此版本(副本行,hover 带第②步)+③合成(hover 第③步)。
+// B(点2) 折叠可逆:点展开钮收起子行,aria-expanded 跟随。
 {
   const root = await openPanel();
+  await expandSession();
+  ok(document.querySelectorAll("tr.rc-row--copy").length === 1, "B② expanded once: the child rows render");
+  const toggle = document.querySelector<HTMLButtonElement>("tr.rc-session .rc-session__toggle");
+  await act(async () => { toggle?.click(); });
+  await flush();
+  ok(document.querySelectorAll("tr.rc-row--copy").length === 0, "B② clicking the toggle again re-hides the child rows");
+  ok(toggle?.getAttribute("aria-expanded") === "false", "B② aria-expanded flips back to false");
+  await act(async () => root.unmount());
+}
+
+// C(点3) 主线行复选框=选定 HEAD;行内合成钮删除、底部合成钮唯一。
+{
+  const root = await openPanel();
+  await expandSession();
+  const mainCheck = document.querySelector<HTMLInputElement>("tr.rc-detail__row--main input[type=checkbox]");
+  ok(Boolean(mainCheck), "C③ the main row carries a checkbox (主线行可选中)");
+  ok((mainCheck?.title || "").includes("merge HEAD"), "C③ the main-row checkbox hover names the HEAD-pick semantics");
+  ok(mainCheck?.checked === false, "C③ the main-row checkbox starts unpicked");
+  await act(async () => { mainCheck?.click(); });
+  await flush();
+  ok(mainCheck?.checked === true, "C③ ticking the main row picks it as the merge HEAD");
+  await act(async () => { mainCheck?.click(); });
+  await flush();
+  ok(mainCheck?.checked === false, "C③ unticking clears the HEAD pick again");
+
+  // C(点3) 合成钮唯一:行内(会话行)合成按钮删除,底部③保留。
+  const sessionSynthBtns = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session button")).filter(
+    (b) => b.textContent?.includes("Synthesize"),
+  );
+  ok(sessionSynthBtns.length === 0, "C③ the session row no longer carries an inline synthesize button (用户裁决:删行内)");
+  const footSynthBtns = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).filter(
+    (b) => b.textContent?.includes("Merge into longest chain"),
+  );
+  ok(footSynthBtns.length === 1, "C③ exactly one synthesize entry remains, in the footer (保留底部)");
+  ok((footSynthBtns[0]?.title || "").includes("Step ③"), "C③ the kept footer button still carries the step-③ hover");
+  // 全局面唯一:匹配任一合成文案(底部按钮读作 "Merge into longest chain",
+  // 行内旧钮读作 "Synthesize ..."——两者并计恰为 1 才算重复消除)。
+  const allSynthEntries = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal button")).filter(
+    (b) => b.textContent?.includes("Synthesize") || b.textContent?.includes("Merge into longest chain"),
+  );
+  ok(allSynthEntries.length === 1, "C③ the whole panel renders exactly one synthesize entry (行内+底部重复消除)");
+  await act(async () => root.unmount());
+}
+
+// ⑩+A 步骤号按钮:②切换到此版本(副本行,hover 带第②步)——子行需先展开。
+{
+  const root = await openPanel();
+  await expandSession();
   const copyRow = document.querySelector("tr.rc-row--copy");
   const switchBtn = Array.from(copyRow?.querySelectorAll<HTMLButtonElement>("button") ?? []).find(
     (b) => b.textContent?.includes("switch to this version"),
   );
   ok(Boolean(switchBtn), "⑩ the copy row carries the switch-to-this-version button (第②步)");
   ok((switchBtn?.title || "").includes("Step ②"), "⑩ the switch button's hover carries the step-② marker");
-  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session button") ?? []).find(
-    (b) => b.textContent?.includes("Synthesize longest chain"),
-  );
-  ok(Boolean(synthBtn), "⑩ the session row keeps the head-synthesis entry (事件日志头合成)");
   const footMerge = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
     (b) => b.textContent?.includes("Merge into longest chain"),
   );
@@ -355,6 +473,7 @@ async function checkSessionRow(): Promise<void> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
+  await expandSession();
   const copyRow = document.querySelector("tr.rc-row--copy");
   const copyCells = Array.from(copyRow?.querySelectorAll("td") ?? []).map((td) => (td.textContent || "").trim());
   ok(copyCells[5] === "unmeasured", `④b an unscanned copy's messages·turns cell names the state (got: ${copyCells[5]})`);
@@ -394,6 +513,7 @@ async function checkSessionRow(): Promise<void> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
+  await expandSession();
   const copyRow = document.querySelector("tr.rc-row--copy");
   const sub2 = copyRow?.querySelector(".rc-sub2")?.textContent || "";
   ok(sub2.includes("readings degraded"), `⑥b a degraded copy's inline preview says the readings are degraded (got: ${sub2})`);
@@ -549,6 +669,7 @@ async function checkSessionRow(): Promise<void> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
+  await expandSession();
   const copyRow = document.querySelector("tr.rc-row--copy");
   const previewBtn = Array.from(copyRow?.querySelectorAll<HTMLButtonElement>("button") ?? []).find(
     (b) => b.textContent?.includes("Preview"),
@@ -565,6 +686,14 @@ async function checkSessionRow(): Promise<void> {
   ok(Boolean(startNode && tailNode), "⑩ both the tail section and the start summary render");
   // 结尾优先:尾部区在 DOM 序上先于开头摘要行。
   ok(!!(startNode && tailNode && (tailNode.compareDocumentPosition(startNode) & Node.DOCUMENT_POSITION_FOLLOWING)), "⑩ the tail section precedes the start summary (结尾置顶)");
+  // A(点1):该 fixture 的副本行有链数据(sub2 渲染)——hover title 补行内没有
+  //   的路径/时间,不复读行内文本。
+  const copySub2 = copyRow?.querySelector(".rc-sub2");
+  const copySub2Title = copySub2?.getAttribute("title") || "";
+  ok(copySub2Title.includes(COPY_PATH), "A① the copy row's preview hover carries the file path");
+  ok(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(copySub2Title), "A① the copy row's preview hover carries the modified time");
+  ok(copySub2Title.includes("2.0 KB"), "A① the copy row's preview hover carries the size reading");
+  ok(copySub2Title.length > (copySub2?.textContent || "").length + 20, "A① the copy row's preview hover gives more than the inline text");
   await act(async () => root.unmount());
 }
 

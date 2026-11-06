@@ -40182,8 +40182,28 @@ button.statusbar__mcp:focus-visible {
 .rc-session > td { font-weight: 600; }
 .rc-child > td { opacity: 0.98; }
 .rc-child td.rc-col-name { padding-left: 30px; }
-/* 口径⑧: 栏限宽——名称单行省略号/预览两行折行截断,hover title 给全文
-   (title 由组件挂在 td/摘要行上)。 */
+/* tl1415b-2（点2）：会话行的子行展开钮——caret+label 一体按钮，恢复「点开
+   见子行」的折叠形态（组段展开不再等于子行平铺）。按钮在单元格内铺满可用
+   宽度，截断交给内部 rc-clip1。 */
+.rc-session__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rc-session__toggle .rc-clip1 { min-width: 0; }
+/* 口径⑧: 栏限宽——名称单行省略号/预览折行截断,hover title 给全文(title
+   由组件挂在 td/摘要行上)。tl1415b-2(点1):预览行改 3 行截断——用户实测
+   2 行浪费空间,3 行在多数屏上正好一行读数。 */
 .rc-clip1 {
   min-width: 0;
   overflow: hidden;
@@ -40195,13 +40215,13 @@ button.statusbar__mcp:focus-visible {
   font-size: 0.92em;
   margin-top: 2px;
 }
-.rc-clip2 {
+.rc-clip3 {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-all;
-  max-height: 2.9em;
+  max-height: 4.4em;
 }
 /* 口径⑥: 行内预览行的「尾部」徽章——预览=尾部消息,不是开头。 */
 .rc-tailtag {
@@ -40478,17 +40498,19 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
 }
 .rc-chains__synth-hint { font-size: 0.86em; opacity: 0.7; }
+/* tl1415b-2（用户装机实测点4 根因修复）：版本行（tr.rc-chain）在单表里是
+   表格行——旧链行的 flex 布局（display:flex/gap/padding）挂在 <tr> 上会拆
+   掉单元格栅格，实测形态=类型标签孤悬、时间/大小/轮次竖排错列。display
+   级属性全部退役，只留行字号；「更长」高亮改挂 td（行级 box-shadow 在
+   border-collapse 表格上渲染不可靠）。类名保留：多个回归套件把 tr.rc-chain
+   钉为版本行身份。 */
 .rc-chain {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 14px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
   font-size: 0.94em;
 }
-.rc-chain--recommended {
+.rc-chain--recommended > td {
   background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.rc-chain--recommended > td:first-child {
   box-shadow: inset 3px 0 0 0 var(--accent, currentColor);
 }
 .rc-chain__name { min-width: 90px; font-weight: 600; }
@@ -40582,28 +40604,13 @@ button.statusbar__mcp:focus-visible {
   flex: none;
 }
 
-/* Each candidate chain's own preview text - the last thing that branch said. Numbers
-   tell you which chain is longest; the preview tells you which one you want. */
-.rc-chain__preview {
-  flex: 1 1 240px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.72;
-  font-size: 0.94em;
-}
-
-/* A chain the user has picked to win. Clickable rows need affordance, and the
-   pick must survive alongside the recommendation badge without reading as one. */
-.rc-chain--picked {
-  outline: 1px solid var(--accent, #4c8dff);
-  background: color-mix(in srgb, var(--accent, #4c8dff) 12%, transparent);
-  cursor: pointer;
-}
-.rc-chain:not(.rc-chain--picked) {
-  cursor: pointer;
-}
+/* tl1415b-2（点4 同类排查收口）：旧 .rc-chain__preview 的 flex 基数与
+   white-space:nowrap 会把副本/版本行的行内预览压回单行、并参与旧链行 flex
+   布局——预览行的布局统一归 rc-sub2 + rc-clip3（3 行截断）管，本类不再有
+   样式。类名保留在 DOM（1065 harness 存在性钉）。
+   同批退役：.rc-chain--picked 与 .rc-chain:not(--picked) 的 pointer 手势——
+   行级点击（旧链行整行可点选）已随单表形态消失，行上操作全在按钮里，行级
+   pointer 手势只剩误导。 */
 
 /* Wide confirm dialog - chain previews and other content-heavy asks. Both the
    width and the max-width are set because the generic .modal max-width wins

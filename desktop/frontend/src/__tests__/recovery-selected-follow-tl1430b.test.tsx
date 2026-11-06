@@ -132,9 +132,16 @@ async function openAndExpand(): Promise<Root | null> {
     Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent?.includes("Review and merge"))?.click();
   });
   await flush();
-  // tl1415b: copies 空的多 head 会话落在已合入组(默认折叠)——点组段行展开,
-  // 子行(主线行/版本行)随之渲染(chains 惰性重放由展开驱动)。
+  // tl1415b: copies 空的多 head 会话落在已合入组(默认折叠)——点组段行展开。
   await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement).click(); });
+  await flush();
+  // tl1415b-2(点2): 会话行恢复默认折叠——子行(主线行/版本行)随会话行展开
+  // 渲染(chains 惰性重放由展开驱动)。
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
   await flush();
   return root;
 }

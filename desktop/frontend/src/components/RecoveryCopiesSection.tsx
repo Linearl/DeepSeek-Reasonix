@@ -26,6 +26,14 @@ import { useConfirmDialog } from "./ConfirmDialog";
  *  轮次/尾部预览）并入副本行；两组列表——待处理默认展开、已合入默认折叠
  *  （组头为表内可折叠分组行+计数徽章）；预览=尾部消息（尾部徽章+结尾优先
  *  弹窗）；会话级操作全部沉底横排，修复记录等次要内容进「更多▾」弹窗。
+ *
+ *  tl1415b-2 三轮返修（20261106，用户装机实测四点打回，优先于 demo 原样）：
+ *  ①行内尾部预览 3 行截断（原 2 行浪费空间），hover title 给行内没有的信息
+ *  （路径/时间/读数/体积，不再复读行内文本）；②会话行恢复默认折叠（组段
+ *  展开≠子行平铺，点会话行展开钮才见子行）；③主线行复选框=选定 HEAD（底
+ *  部③由此可用），行内「合成」按钮删除——合成钮唯一、留底部，头合成形态
+ *  由底部按会话形态自动路由；④版本行错排根治（.rc-chain 旧 flex 布局挂在
+ *  tr 上拆掉单元格栅格，CSS 收敛为表格行安全形态）。
  */
 
 /** bytes → a short human size. */
@@ -442,6 +450,18 @@ export function RecoveryCopiesSection() {
   // 折叠;组头是表内可折叠分组行,点击切换。
   const [todoOpen, setTodoOpen] = useState(true);
   const [mergedOpen, setMergedOpen] = useState(false);
+  // tl1415b-2（用户二轮装机实测）：组段展开不再等于子行平铺——会话行恢复
+  // 默认折叠（点开才见主线/副本/版本子行），否则几十个会话全平铺找会话不便。
+  // 展开态按 mainPath 记；load() 重取不清空——1146 钉的「原地反馈不因重取
+  // 折行」同样适用于会话级展开（合成/合并后重取，展开着的会话不塌）。
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (path: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
   // 会话级动作的回执面（tl1415b 沉底后收在分区层，渲染在表格下方）：
   // 健康报告、修复回执、切换回执。行随重载折叠会丢行内状态（1064b 教训），
   // 分区层只有一份，不随行消失。
@@ -491,9 +511,11 @@ export function RecoveryCopiesSection() {
   // means "let the engine take the fullest one". Keyed per conversation so a pick
   // in one group never leaks into another.
   const [pickedChain, setPickedChain] = useState<Record<string, string>>({});
-  // 任务 1065：选 HEAD 反向合成——pickedChain（HEAD）+ 合成结果/进度各自成
-  // 线：合成中报「正在合成第 N/M 条」，完成后报合成前后读数（并集可核对）。
-  const [synthesizing, setSynthesizing] = useState<Record<string, string>>({});
+  // 任务 1065：选 HEAD 反向合成——pickedChain（HEAD）+ 合成结果各自成线：
+  // 完成后报合成前后读数（并集可核对）。
+  // tl1415b-2：行内「合成」按钮删除后（用户裁决：合成钮唯一、留底部），进度
+  // 徽章无处可挂——运行中反馈走底部状态行（setStatus 的「正在合成 N/M」），
+  // synthesizing state 整个退役。
   const [synthesisOutcomes, setSynthesisOutcomes] = useState<SynthesisOutcome[]>([]);
   // 任务 1064：复选框批量选中——勾选的是**分支**（副本文件），不是会话行本身。
   // 会话行左侧的复选框仍是「勾选要合并的会话」，两套选择互不干扰：批量删除
@@ -627,21 +649,27 @@ export function RecoveryCopiesSection() {
   }, []);
 
   // Chain inventory is lazy: it replays every log for the conversation, so it
-  // loads only for conversations whose child rows are on screen. tl1415b: there
-  // is no per-row expansion any more——待处理组展开 ⇒ 整组需要;已合入组展开 ⇒
-  // 只有仍带内容(副本或 heads)的会话需要。chainLoads guards concurrent repeats.
+  // loads only for conversations whose child rows are on screen. tl1415b-2:
+  // 子行随会话行折叠（点开才渲染）——只有「所在组段展开 **且** 会话行展开」
+  // 的会话需要链清单（一次重放一份日志，折叠态不重放是实打实的性能收益，
+  // 28 个已合入会话一次性全量重放是实测过的坑）。chainLoads guards repeats.
   const [chainLoads, setChainLoads] = useState<Set<string>>(new Set());
   const chainNeededPaths = useMemo(() => {
     const out: string[] = [];
-    if (todoOpen) for (const g of phased.todo) out.push(g.mainPath);
+    if (todoOpen) {
+      for (const g of phased.todo) {
+        if (expanded.has(g.mainPath)) out.push(g.mainPath);
+      }
+    }
     if (mergedOpen) {
       for (const g of phased.merged) {
+        if (!expanded.has(g.mainPath)) continue;
         const headCount = versionGroups.get(g.mainPath)?.headCount ?? 0;
         if (g.copies.length > 0 || headCount > 1) out.push(g.mainPath);
       }
     }
     return out;
-  }, [todoOpen, mergedOpen, phased, versionGroups]);
+  }, [todoOpen, mergedOpen, phased, versionGroups, expanded]);
   useEffect(() => {
     for (const path of chainNeededPaths) {
       if (chains.has(path) || chainLoads.has(path)) continue;
@@ -1008,18 +1036,64 @@ export function RecoveryCopiesSection() {
     }
   };
 
+  /** mergeSelected is the bottom step-③ entry — since tl1415b-2 the ONLY
+   *  synthesis entry (用户裁决：合成钮唯一、留底部，行内钮删除). The checked
+   *  conversations are routed by their shape:
+   *  - copies present → the file-level copies merge below (unchanged engine);
+   *  - no copies but several event-log heads（v3-only 形态，1146返修2 生效面）
+   *    → head synthesis (synthesizeHeads, its own confirm chain);
+   *  - neither → an honest blocked receipt instead of a silent no-op.
+   *  A mixed shape (copies AND heads) takes the file merge first; once the
+   *  copies are gone the next click routes to head synthesis — two clicks
+   *  cover both, the 1065 capability survives the button's removal.
+   *  Cancelling the file confirm aborts the whole run (no head synthesis after
+   *  a cancel); cancelling one head synthesis skips that conversation and the
+   *  batch moves on — per-session confirms stay independent. */
   const mergeSelected = async () => {
-    const chosen = (groups ?? []).filter((g) => selected.has(g.mainPath));
+    // tl1415b-2: 读 composedGroups 而非 groups——v3-only 会话(无副本文件)只
+    // 存在于合成视图(1085 补行),底部③路由要对它们生效(头合成分支)必须能
+    // 看见;读 groups 会让勾选静默无效(1146r2 harness 实测抓到)。
+    const chosen = composedGroups.filter((g) => selected.has(g.mainPath));
     if (!chosen.length) return;
 
+    const headCountOf = (g: RecoveryCopyGroupView) => versionGroups.get(g.mainPath)?.headCount ?? 0;
+    const headTargets = chosen.filter((g) => g.copies.length === 0 && headCountOf(g) > 1);
+    const fileTargets = chosen.filter((g) => g.copies.length > 0);
+    const idleTargets = chosen.filter((g) => g.copies.length === 0 && headCountOf(g) <= 1);
+    // 无事可做的勾选会话先落 blocked 回执；后续文件级结果在其上追加（同一份
+    // collected，不会被逐会话 setOutcomes 覆盖掉）。
+    let collected: Outcome[] = idleTargets.map((g) => ({
+      label: g.mainLabel,
+      kind: "blocked" as const,
+      detail: t("settings.recoveryCopiesIdleBlocked"),
+    }));
+    setOutcomes(collected);
+    if (fileTargets.length > 0) {
+      const fileResult = await mergeFileTargets(fileTargets, collected);
+      if (fileResult === null) return;
+      collected = fileResult;
+    }
+    for (const group of headTargets) {
+      await synthesizeHeads(group.mainPath, group.mainLabel);
+    }
+  };
+
+  /** mergeFileTargets is the file-level copies merge over the checked
+   *  conversations (the pre-tl1415b-2 body of mergeSelected, extracted so the
+   *  bottom button can route around it). Returns the accumulated outcomes, or
+   *  null when the user cancelled the confirmation — a cancel ends the whole
+   *  run instead of falling through to head synthesis. */
+  const mergeFileTargets = async (
+    fileTargets: RecoveryCopyGroupView[],
+    collected: Outcome[],
+  ): Promise<Outcome[] | null> => {
     setBusy(true);
     setErrors([]);
-    setOutcomes([]);
     try {
       // Measure anything unmeasured here rather than sending the user back to press
       // Scan. The preview is built out of these counts, so it cannot be shown first.
       const measured: RecoveryCopyGroupView[] = [];
-      for (const group of chosen) {
+      for (const group of fileTargets) {
         if (copiesNeedingMeasurement(group).length > 0) {
           setStatus(`${t("settings.recoveryCopiesMeasuring")} ${group.mainLabel}`);
           const fresh = await scanOne(group.mainPath);
@@ -1071,9 +1145,8 @@ export function RecoveryCopiesSection() {
         cancelLabel: t("common.cancel"),
         tone: "danger",
       });
-      if (!ok) return;
+      if (!ok) return null;
 
-      const collected: Outcome[] = [];
       // Report per conversation as it finishes. A merge over a dozen copies takes long
       // enough that a silent run reads as "nothing happened", and the per-conversation
       // result is what tells the user whether it worked.
@@ -1193,6 +1266,7 @@ export function RecoveryCopiesSection() {
       // no longer exist as copies, so the next run starts neutral.
       setPickedChain({});
       await load();
+      return collected;
     } finally {
       setStatus("");
       setBusy(false);
@@ -1200,7 +1274,9 @@ export function RecoveryCopiesSection() {
   };
 
   const scanningAll = scanning.size > 0;
-  const selectedGroups = (groups ?? []).filter((g) => selected.has(g.mainPath));
+  // tl1415b-2: 同 mergeSelected——勾选语义按合成视图算,v3-only 会话勾选后
+  // 「清空合并历史」等底部入口才能识别它们。
+  const selectedGroups = composedGroups.filter((g) => selected.has(g.mainPath));
   const needingCount = selectedGroups.reduce((n, g) => n + copiesNeedingMeasurement(g).length, 0);
   const anyMerged = outcomes.some((o) => o.kind === "merged" || o.kind === "forced");
 
@@ -1439,12 +1515,25 @@ export function RecoveryCopiesSection() {
    *  chain row offers the tail preview that lets a user judge which branch to
    *  keep as the HEAD before pressing synthesize.
    *
-   *  tl1415b: 入口仍在会话行（事件日志头合成是会话级动作,与文件级合并=底部
-   *  ③「以选定 HEAD 合成最长链」是两个引擎、两条确认链,harness 钉死各自
-   *  语义——见交付报告的衔接说明）。 */
+   *  tl1415b-2: 行内按钮删除（用户裁决：合成钮唯一、留底部），本函数改为由
+   *  底部③按会话形态路由调用（无副本但日志多 heads 的会话走这里，文件级
+   *  合并照走原路）——两个引擎、两条确认链保留，只是入口合一。路由后入口
+   *  不再要求该会话行展开过，链清单可能不在内存：缺席时现拉（拉不到落降级
+   *  集，participants 判定照旧）。 */
   const synthesizeHeads = async (mainPath: string, groupLabel: string) => {
     const headId = pickedChain[mainPath] ?? "";
-    const participants = (chains.get(mainPath)?.chains ?? []).filter(
+    let chainRows = chains.get(mainPath)?.chains;
+    if (!chainRows) {
+      try {
+        const set = await app.ListRecoveryChains(mainPath);
+        chainRows = set.chains ?? [];
+        setChains((current) => new Map(current).set(mainPath, { ...set, chains: chainRows ?? [] }));
+      } catch {
+        chainRows = degradedChainSet(mainPath).chains;
+        setChains((current) => new Map(current).set(mainPath, degradedChainSet(mainPath)));
+      }
+    }
+    const participants = (chainRows ?? []).filter(
       (c) => !(c.path === mainPath && c.headId === (headId || "")),
     );
     if (participants.length === 0) {
@@ -1478,7 +1567,6 @@ export function RecoveryCopiesSection() {
     });
     if (!okToSynthesize) return;
     setBusy(true);
-    setSynthesizing((current) => ({ ...current, [mainPath]: `0/${participants.length}` }));
     setStatus(`${t("settings.recoveryCopiesSynthesizing")} 0/${participants.length} · ${groupLabel}`);
     try {
       // The backend call is one atomic synthesis; the progress line the panel
@@ -1487,7 +1575,6 @@ export function RecoveryCopiesSection() {
       // merge never did either - the report arrives whole, then the panel
       // reloads and shows what changed).
       const report = await app.SynthesizeSessionHeads(mainPath, headId);
-      setSynthesizing((current) => ({ ...current, [mainPath]: `${participants.length}/${participants.length}` }));
       // 任务 1117：report.items 为空（无副本、无其余 heads）说明这次调用其实
       // 没合成任何东西——此时必须走「失败」分支并展示 locale 化文案，而不是
       // 照常渲染「已合成」成功横幅。成功与失败的 outcome 互斥：走 failed 就
@@ -1618,11 +1705,6 @@ export function RecoveryCopiesSection() {
       ]);
       showToast(failureText, "error");
     } finally {
-      setSynthesizing((current) => {
-        const next = { ...current };
-        delete next[mainPath];
-        return next;
-      });
       // 任务 1146：busy 保持到列表重取完成。原先在这里先关 busy 再 await
       // load()，全量列表还在飞行时面板已呈「就绪」相——按钮可点、无加载
       // 指示，用户看到的就是成功横幅配一整套旧列表（旧链/旧版本表/旧分
@@ -1665,6 +1747,21 @@ export function RecoveryCopiesSection() {
         ? t("settings.recoveryCopiesPreviewUnreadable")
         : t("settings.recoveryCopiesPreviewEmpty");
 
+  /** previewTitle is the hover title for the inline tail-preview line
+   *  (tl1415b-2 用户二轮实测：行内已显示尾部文本，title 复读同一句 = 无效
+   *  hover）。title 必须比行内多给信息：类型｜路径｜更新时间｜消息·轮次｜
+   *  体积｜尾部全文（行内 3 行截断由 CSS 管，title 永远给全文）。
+   *  kindLabel 由调用方按行类型给（主线/副本 N·短名/版本 head）。 */
+  const previewTitle = (c: RecoveryChainView, kindLabel: string): string =>
+    [
+      kindLabel,
+      c.path,
+      `${t("settings.recoveryCopiesColModified")} ${formatWhen(c.lastActivity)}`,
+      `${t("settings.recoveryCopiesColMsgTurns")} ${c.messageCount} · ${c.turns}`,
+      `${t("settings.recoveryCopiesColSize")} ${formatBytes(c.bytes)}`,
+      tailPreviewText(c),
+    ].join("｜");
+
   const renderSessionBlock = (group: RecoveryCopyGroupView, phase: Phase) => {
     const isScanning = scanning.has(group.mainPath);
     const headCount = versionGroups.get(group.mainPath)?.headCount ?? 0;
@@ -1682,14 +1779,23 @@ export function RecoveryCopiesSection() {
     const mainModified = model.currentMainChain ? model.currentMainChain.lastActivity : group.mainModified;
     const mainBytes = model.currentMainChain ? model.currentMainChain.bytes : group.mainBytes;
     const winner = measured ? predictedWinner(group) : null;
-    const sessionTitleText =
+    // tl1415b-2（点1 同族）：会话行 hover 也要比行内多给信息——label 之外补
+    // 路径与更新时间（clip1 未截断时纯 label 的 hover 与可见文本相同，无效）。
+    const sessionTitleText = [
       headCount > 1
         ? `${group.mainLabel}（${t("settings.recoveryCopiesVersionsBadge").replace("{count}", String(headCount))}）`
-        : group.mainLabel;
+        : group.mainLabel,
+      group.mainPath,
+      `${t("settings.recoveryCopiesColModified")} ${formatWhen(group.mainModified)}`,
+    ].join("｜");
+    // tl1415b-2（点2）：会话行默认折叠，点名称格的展开钮才渲染子行。
+    const isOpen = expanded.has(group.mainPath);
 
     return (
       <Fragment key={group.mainPath}>
-        {/* ── 会话行(类型列=会话;勾选=参与底部合并;操作=①扫描) ── */}
+        {/* ── 会话行(类型列=会话;勾选=参与底部合并;展开钮=子行开关;操作=①扫描。
+            tl1415b-2: 行内「合成」按钮删除——合成钮唯一、留底部③(用户二轮实测:
+            行内+底部重复),头合成形态由底部按会话形态自动路由) ── */}
         <tr className="rc-session rc-row--group">
           <td className="rc-detail__check">
             <input
@@ -1705,7 +1811,16 @@ export function RecoveryCopiesSection() {
             <span className="rc-kindtag rc-kindtag--session">{t("settings.recoveryCopiesKindSession")}</span>
           </td>
           <td className="rc-col-name" title={sessionTitleText}>
-            <div className="rc-clip1">{group.mainLabel}</div>
+            <button
+              className="rc-session__toggle"
+              type="button"
+              aria-expanded={isOpen}
+              title={sessionTitleText}
+              onClick={() => toggleExpanded(group.mainPath)}
+            >
+              <span className="rc-caret">{isOpen ? "▾" : "▸"}</span>
+              <span className="rc-clip1">{group.mainLabel}</span>
+            </button>
           </td>
           <td>{formatWhen(group.mainModified)}</td>
           <td className="rc-num">{formatBytes(group.mainBytes)}</td>
@@ -1735,24 +1850,36 @@ export function RecoveryCopiesSection() {
               >
                 {isScanning ? "…" : t("settings.recoveryCopiesScan")}
               </button>
-              <button
-                className="btn btn--secondary btn--small"
-                type="button"
-                title={t("settings.recoveryCopiesSynthesizeBtnHint")}
-                disabled={busy || scanningAll || Boolean(synthesizing[group.mainPath])}
-                onClick={() => void synthesizeHeads(group.mainPath, group.mainLabel)}
-              >
-                {synthesizing[group.mainPath]
-                  ? `${t("settings.recoveryCopiesSynthesizing")} ${synthesizing[group.mainPath]}`
-                  : t("settings.recoveryCopiesSynthesizeBtn")}
-              </button>
             </div>
           </td>
         </tr>
 
-        {/* ── 主线行(类型列=主线;无切换钮——主线就是当前,只有预览) ── */}
+        {isOpen ? (
+        <>
+        {/* ── 主线行(类型列=主线;复选框=选定 HEAD(底部③落点);无切换钮——
+            主线就是当前,只有预览)。tl1415b-2(点3):主线行可选中——勾选=以此
+            主线为选定 HEAD,底部「以选定 HEAD 合成最长链」由此可用(此前只能
+            走预览确认的隐藏路径,用户实测「不可选中⇒按钮不可用」) ── */}
         <tr className="rc-child rc-detail__row rc-detail__row--main">
-          <td className="rc-detail__check" />
+          <td className="rc-detail__check">
+            <input
+              type="checkbox"
+              checked={Boolean(model.currentMainChain) && pickedChain[group.mainPath] === model.currentMainChain?.path}
+              disabled={busy || !model.currentMainChain}
+              onChange={() => {
+                const chain = model.currentMainChain;
+                if (!chain) return;
+                setPickedChain((current) => {
+                  const next = { ...current };
+                  if (next[group.mainPath] === chain.path) delete next[group.mainPath];
+                  else next[group.mainPath] = chain.path;
+                  return next;
+                });
+              }}
+              aria-label={`${group.mainLabel} · ${t("settings.recoveryCopiesMain")}`}
+              title={t("settings.recoveryCopiesMainPickHint")}
+            />
+          </td>
           <td className="rc-col-kind">
             <span className="rc-kindtag rc-kindtag--main">{t("settings.recoveryCopiesMain")}</span>
             {model.currentMainChain?.selected ? (
@@ -1785,7 +1912,7 @@ export function RecoveryCopiesSection() {
               )}
             </div>
             {model.currentMainChain ? (
-              <div className="rc-sub2 rc-clip2" title={tailPreviewText(model.currentMainChain)}>
+              <div className="rc-sub2 rc-clip3" title={previewTitle(model.currentMainChain, t("settings.recoveryCopiesMain"))}>
                 <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                 {tailPreviewText(model.currentMainChain)}
               </div>
@@ -1883,7 +2010,7 @@ export function RecoveryCopiesSection() {
                   )}
                 </div>
                 {chain ? (
-                  <div className="rc-sub2 rc-clip2 rc-chain__preview" title={tailPreviewText(chain)}>
+                  <div className="rc-sub2 rc-clip3 rc-chain__preview" title={previewTitle(chain, `${t("settings.recoveryCopiesCopy")} ${index + 1}${shortName ? ` · ${copy.path}` : ""}`)}>
                     <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                     {tailPreviewText(chain)}
                   </div>
@@ -1999,7 +2126,7 @@ export function RecoveryCopiesSection() {
                     </span>
                   )}
                 </div>
-                <div className="rc-sub2 rc-clip2 rc-chain__preview" title={tailPreviewText(c)}>
+                <div className="rc-sub2 rc-clip3 rc-chain__preview" title={previewTitle(c, c.headId ? c.headId.slice(0, 8) : recoveryShortName(c.path) || t("settings.recoveryCopiesKindVersion"))}>
                   <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                   {tailPreviewText(c)}
                 </div>
@@ -2054,6 +2181,8 @@ export function RecoveryCopiesSection() {
             </tr>
           );
         })}
+        </>
+        ) : null}
       </Fragment>
     );
   };
@@ -2083,7 +2212,12 @@ export function RecoveryCopiesSection() {
    *  merged group's many ×0 rows never trigger chain replays. */
   const renderSessionBlockPlain = (group: RecoveryCopyGroupView) => {
     const isScanning = scanning.has(group.mainPath);
-    const sessionTitleText = group.mainLabel;
+    // tl1415b-2（点1 同族）：纯行 hover 同样补路径与更新时间。
+    const sessionTitleText = [
+      group.mainLabel,
+      group.mainPath,
+      `${t("settings.recoveryCopiesColModified")} ${formatWhen(group.mainModified)}`,
+    ].join("｜");
     return (
       <tr key={group.mainPath} className="rc-session rc-row--group">
         <td className="rc-detail__check">

@@ -155,7 +155,7 @@ const SYNTHESIS_REPORT: HeadSynthesisReport = {
   skipped: [],
 };
 
-function stubBridge(overrides: Partial<AppBindings>, spies: { synthCalls: { mainPath: string; headId: string }[]; listCalls: number }) {
+function stubBridge(overrides: Partial<AppBindings>, spies: { synthCalls: { mainPath: string; headId: string }[]; listCalls: number; consolidateCalls?: { mainPath: string; winnerPath: string }[] }) {
   const base = {
     ListRecoveryCopyGroups: async () => {
       spies.listCalls += 1;
@@ -167,6 +167,27 @@ function stubBridge(overrides: Partial<AppBindings>, spies: { synthCalls: { main
     SynthesizeSessionHeads: async (mainPath: string, headId: string) => {
       spies.synthCalls.push({ mainPath, headId });
       return SYNTHESIS_REPORT;
+    },
+    // tl1415b-2(点3): 有副本的会话在底部③按形态路由到文件级合并引擎——
+    // 选定 HEAD 以 winnerPath 落地(Go 端 SynthesizeSessionHeads 的数据层前身
+    // 就是同一个 Consolidate 引擎,选定 HEAD 的采纳语义不变)。
+    // IsConversationDualOpen: 合并前的 203 双开检查,合并路由的必经门。
+    IsConversationDualOpen: async () => false,
+    ConsolidateSessionRecoveryCopies: async (mainPath: string, winnerPath: string) => {
+      spies.consolidateCalls?.push({ mainPath, winnerPath });
+      return {
+        mainPath: MAIN_PATH,
+        winnerPath: COPY_PATH,
+        promoted: true,
+        blockedByDivergence: false,
+        normalizedMain: false,
+        mainMessageCount: 12,
+        winnerMessageCount: 16,
+        trashed: [COPY_PATH],
+        skippedNotCovered: [],
+        skippedUnloadable: [],
+        prefixed: 2,
+      };
     },
     PreviewRecoveryChain: async () => ({
       path: COPY_PATH,
@@ -198,56 +219,69 @@ async function openAndExpand(): Promise<Root | null> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  // tl1415b: 待处理组默认展开——副本行的链清单由子行可见性驱动,无需点行展开。
+  // tl1415b-2(点2): 会话行恢复默认折叠——副本行的链清单由会话行展开驱动,
+  // 点开展开钮,双 flush 等链清单落地。
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
   await flush();
   return root;
+}
+
+/** tl1415b-2(点3): 合成唯一入口在底部③——勾选会话行,点底部「以选定 HEAD
+ *  合成最长链」;本套件的会话带副本,底部按形态路由到文件级合并引擎(选定
+ *  HEAD 以 winnerPath 采纳),确认链走合并预览确认。 */
+async function synthesizeViaFooter(): Promise<void> {
+  const checkbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
+  await act(async () => { checkbox?.click(); });
+  await flush();
+  const mergeBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
+    (b) => b.textContent?.includes("Merge into longest chain"),
+  );
+  await act(async () => { mergeBtn?.click(); });
+  await flush();
 }
 
 type Root = ReturnType<typeof createRoot>;
 
 console.log("\nrecovery head synthesis pick-HEAD + one-key merge (1065)");
 
-// ① 每条候选链自带「以此为 HEAD 合成」入口。
+// ① 底部③是唯一合成入口;推荐标记与链预览保留。
 {
-  const spies = { synthCalls: [] as { mainPath: string; headId: string }[], listCalls: 0 };
+  const spies = { synthCalls: [] as { mainPath: string; headId: string }[], listCalls: 0, consolidateCalls: [] as { mainPath: string; winnerPath: string }[] };
   stubBridge({}, spies);
   const root = await openAndExpand();
-  const synthButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).filter((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
+  const synthEntries = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal button")).filter((b) =>
+    b.textContent?.includes("Merge into longest chain"),
   );
-  ok(synthButtons.length === 1, "① the chain block offers the one-key synthesis entry (整表级一键操作)");
+  ok(synthEntries.length === 1, "① the footer offers exactly one synthesis entry (整表级一键操作,tl1415b-2 行内钮删除)");
   const recommendedRows = document.querySelectorAll(".rc-chain--recommended");
-  const recommendedText = Array.from(document.querySelectorAll<HTMLSpanElement>(".rc-chain__badge")).map((b) => b.textContent || "").join("|");
-  console.log("PROBE recommended rows:", recommendedRows.length, "badges:", recommendedText);
   ok(recommendedRows.length === 1, "① exactly one chain carries the recommendation (1.34 turn-priority rule kept)");
   ok(Boolean(document.querySelector(".rc-chain__preview")), "① the chain preview column is still there (tail preview rule kept)");
   await act(async () => root?.unmount());
 }
 
-// ② 合成先弹确认并列出参与分支；未确认不得调用 SynthesizeSessionHeads。
+// ② 合成先弹确认；未确认不得调用后端。
 {
-  const spies = { synthCalls: [] as { mainPath: string; headId: string }[], listCalls: 0 };
+  const spies = { synthCalls: [] as { mainPath: string; headId: string }[], listCalls: 0, consolidateCalls: [] as { mainPath: string; winnerPath: string }[] };
   stubBridge({}, spies);
   const root = await openAndExpand();
-  const synthButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).filter((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
-  );
-  await act(async () => { synthButtons[0].click(); });
-  await flush();
+  await synthesizeViaFooter();
   ok(Boolean(document.querySelector(".reasonix-confirm-dialog")), "② synthesis asks for confirmation first");
-  ok(bodyText().includes("forked") || bodyText().includes("hello"), "② the confirmation lists the participating branches with their previews");
-  ok(spies.synthCalls.length === 0, "② no synthesis happens before the user confirms");
+  ok(spies.consolidateCalls.length === 0 && spies.synthCalls.length === 0, "② no synthesis happens before the user confirms");
   await act(async () => root?.unmount());
 }
 
-// ③ 确认后调用携带选定 HEAD；结果区记录参与分支数/独有合计/合成后读数。
+// ③ 确认后调用携带选定 HEAD(winnerPath)；结果区记录合并读数。
 {
-  const spies = { synthCalls: [] as { mainPath: string; headId: string }[], listCalls: 0 };
+  const spies = { synthCalls: [] as { mainPath: string; headId: string }[], listCalls: 0, consolidateCalls: [] as { mainPath: string; winnerPath: string }[] };
   stubBridge({}, spies);
   const root = await openAndExpand();
 
   // Pick the copy chain as the HEAD first (the preview dialog's confirm),
-  // then press synthesize from the copy's row.
+  // then run the footer synthesis entry.
   // tl1415b: 候选链数据并入副本行——副本行(tr.rc-row--copy)的 sub2 带尾部
   // 预览文本,预览/切换/删除都在同一行的操作列;picked 徽标也落在该行。
   const copyRow = Array.from(document.querySelectorAll("tr.rc-row--copy")).find((el) =>
@@ -266,23 +300,18 @@ console.log("\nrecovery head synthesis pick-HEAD + one-key merge (1065)");
   ok(Boolean(copyRow?.querySelector(".rc-chain__picked-badge")), "③ the picked HEAD is marked on its chain row");
 
   const listCallsBefore = spies.listCalls;
-  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
+  await synthesizeViaFooter();
+  const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button")).find(
+    (b) => b.classList.contains("btn--danger"),
   );
-  await act(async () => { synthBtn?.click(); });
-  await flush();
-  const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
-    .find((b) => b.textContent?.trim() === "Start synthesis");
   ok(Boolean(confirmBtn), "③ the synthesis confirmation offers a start action");
   await act(async () => { confirmBtn?.click(); });
   await flush();
 
-  ok(spying(spies), "③ the synthesis call carries the picked HEAD");
-  function spying(s: typeof spies) {
-    return s.synthCalls.length === 1 && s.synthCalls[0].mainPath === MAIN_PATH && s.synthCalls[0].headId === COPY_PATH;
-  }
+  ok(spies.consolidateCalls.length === 1 && spies.consolidateCalls[0].mainPath === MAIN_PATH && spies.consolidateCalls[0].winnerPath === COPY_PATH,
+    "③ the synthesis call carries the picked HEAD (winnerPath)");
   ok(spies.listCalls > listCallsBefore, "③ the list reloads immediately after synthesis");
-  ok(bodyText().includes("Synthesized"), "③ the outcome record reports the synthesis");
+  ok(bodyText().includes("Merged"), "③ the outcome record reports the merge");
   ok(bodyText().includes("16"), "③ the outcome shows the post-synthesis message reading (并集可核对)");
   ok(!bodyText().includes("Selected as main line"), "③ the picked HEAD is reset after synthesis (next run re-picks)");
   await act(async () => root?.unmount());

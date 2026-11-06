@@ -165,6 +165,13 @@ async function openAndExpand(): Promise<Root> {
   // 修复/瘦身沉底为批量入口,作用于勾选会话,这里顺手勾上。
   await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement).click(); });
   await flush();
+  // tl1415b-2(点2): 会话行默认折叠——主线行(体积读数所在)随会话行展开渲染。
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
+  await flush();
   const sessionCheckbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
   await act(async () => { sessionCheckbox?.click(); });
   await flush();

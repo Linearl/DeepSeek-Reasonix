@@ -4955,6 +4955,13 @@ export const en = {
   "settings.recoveryCopiesStepPreviewHint": "Step ② aid: preview this copy's tail messages (ending first) to judge what a merge would add at the end",
   "settings.recoveryCopiesStepMainPreviewHint": "previews the main line's tail messages (ending first); read-only",
   "settings.recoveryCopiesBranchCheckHint": "checks this copy branch into the delete-selected action at the bottom; untick any time — ticking itself changes nothing",
+  // tl1415b-2 (round-2 user testing): the main row gained a checkbox — it picks
+  // the current main as the merge HEAD, which is what makes the bottom step-③
+  // button usable without going through the preview-confirm detour.
+  "settings.recoveryCopiesMainPickHint": "picks the current main as the merge HEAD for the bottom step-③ synthesize; untick any time — ticking itself changes nothing",
+  // tl1415b-2: checked conversations with nothing to process (no copies, single
+  // version) get this honest receipt instead of a silent no-op merge.
+  "settings.recoveryCopiesIdleBlocked": "nothing to process — no copies and a single version; nothing was changed",
   "settings.recoveryCopiesRescanHint": "re-scans this conversation (if it still holds several copies it returns to the Pending group)",
   "settings.recoveryCopiesMergeFlowBtn": "Merge into longest chain (checked)",
   "settings.recoveryCopiesStepMergeHint": "Step ③: synthesize the longest chain with the checked version as the HEAD (keeps every event) — on success the conversation moves into the Merged group",

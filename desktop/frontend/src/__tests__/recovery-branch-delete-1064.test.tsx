@@ -50,6 +50,17 @@ async function flush() {
   });
 }
 
+// tl1415b-2(点2): 会话行恢复默认折叠——子行(主线/副本/版本)要点会话行展开
+// 钮才渲染;链清单是展开后惰性加载的,双 flush 等它落地。
+async function expandSessions(): Promise<void> {
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
+  await flush();
+}
+
 function installDom(): HTMLElement {
   document.getElementById("root")?.remove();
   const root = document.createElement("div");
@@ -196,8 +207,9 @@ console.log("\nrecovery branch delete single + batch (1064)");
   const open = buttonByText("Review and merge");
   await act(async () => { open?.click(); });
   await flush();
+  await expandSessions();
 
-  // tl1415b: 无行内展开——待处理组默认展开,会话行直接在单表里。
+  // tl1415b-2: 待处理组默认展开+会话行展开后,子行在单表里。
   const sessionRows = document.querySelectorAll("tr.rc-session");
   ok(sessionRows.length === 1, "① one conversation row is listed");
   await flush();
@@ -236,9 +248,10 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  // tl1415b: 无行内展开——待处理子行(副本/版本)随面板打开即渲染。
+  await expandSessions();
+  // tl1415b-2: 会话行展开后,副本/版本子行随渲染。
 
-  const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-delete"));
+  const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-row--copy .rc-delete, tr.rc-chain .rc-delete"));
   await act(async () => { deleteButtons[0].click(); });
   await flush();
   ok(Boolean(document.querySelector(".reasonix-confirm-dialog")), "② single delete asks for confirmation first");
@@ -258,7 +271,8 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  // tl1415b: 无行内展开——待处理子行(副本/版本)随面板打开即渲染。
+  await expandSessions();
+  // tl1415b-2: 会话行展开后,副本/版本子行随渲染。
 
   // tl1415 点3: the heads live in the merged table as chain rows (tr.rc-chain,
   // the current main promoted to the table's first row); counting by chain row
@@ -291,10 +305,12 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  // tl1415b: 无行内展开——待处理子行(副本/版本)随面板打开即渲染。
+  await expandSessions();
 
   const listCallsBefore = spies.listCalls;
-  const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-delete"));
+  // tl1415b-2: 选择器圈定子行内的删除入口(底部「清理非主线副本」/「整对话删
+  // 除」也带 rc-delete 类,不能误点)。
+  const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-row--copy .rc-delete, tr.rc-chain .rc-delete"));
   await act(async () => { deleteButtons[0].click(); });
   await flush();
   // Confirm dialog's confirm button (the danger-toned primary in the dialog).
