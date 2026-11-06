@@ -552,8 +552,14 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (gr
 		return 0, 0, fmt.Errorf("recovery copy meta is missing for %s", winnerPath)
 	}
 
-	// 1) Archive the previous main (transcript + sidecars) as one recoverable
-	// trash entry, staged atomically like every other recovery trash move.
+	// 1) Archive the previous main (transcript + full sidecar set) as one
+	// recoverable trash entry, staged atomically like every other recovery
+	// trash move. tl1442-ext (2026-11-07 用户裁决 A): the sidecar side goes
+	// through moveRecoveryTrashArtifacts — the same store single-source
+	// inventory + stem-prefix catch-all sweep + subagent artifacts + counting
+	// report the branch-trash chain runs — so the displaced main leaves zero
+	// residue (its toolstats/guardian family/pre-repair dirs/reminders/imgpack
+	// and unlisted shapes all ride along) and logs the same counting line.
 	key := filepath.Base(mainPath)
 	if !validRecoveryTrashKey(key) {
 		return 0, 0, fmt.Errorf("invalid main session path for trash staging: %s", mainPath)
@@ -565,13 +571,12 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (gr
 	if err := writeRecoveryTrashPending(stageDir, key); err != nil {
 		return 0, 0, err
 	}
-	if err := moveRecoveryTrashPath(mainPath, filepath.Join(stageDir, key)); err != nil {
+	if err := prepareRecoveryTrashStage(mainPath, key, stageDir); err != nil {
 		return 0, 0, err
 	}
-	for _, src := range recoveryTrashSidecars(mainPath) {
-		if err := moveRecoveryTrashPath(src, filepath.Join(stageDir, filepath.Base(src))); err != nil {
-			return 0, 0, err
-		}
+	report, err := moveRecoveryTrashArtifacts(dir, mainPath, stageDir)
+	if err != nil {
+		return 0, 0, err
 	}
 	itemDir, err := publishRecoveryTrashStage(dir, key, stageDir)
 	if err != nil {
@@ -584,6 +589,13 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (gr
 		// Published entries may already have been restored or purged.
 	}
 	if err := clearRecoveryTrashPending(itemDir); err != nil {
+		return 0, 0, err
+	}
+	logRecoveryTrashMove(dir, key, report)
+	// Same stage-protocol closing discipline as finishRecoveryTrashStage: a
+	// leftover delayed-cleanup marker would name the PROMOTED session for
+	// teardown once the winner takes the main identity.
+	if err := ClearCleanupPending(mainPath); err != nil {
 		return 0, 0, err
 	}
 
@@ -608,13 +620,14 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (gr
 		filepath.Base(store.SessionEventLogDamaged(winnerPath)):     true,
 		filepath.Base(store.SessionTurnEventLogDamaged(winnerPath)): true,
 	}
-	artifacts := append([]string{}, store.SessionSidecarFiles(winnerPath)...)
-	artifacts = append(artifacts,
-		winnerPath+".telemetry.json",
-		store.SessionCheckpointDir(winnerPath),
-		store.SessionJobsDir(winnerPath),
-		store.SessionInboxDir(winnerPath),
-	)
+	// tl1442-ext: the winner's FULL sidecar set migrates onto the main
+	// identity — the same store inventory every deletion chain reads (here the
+	// identity-swap form; derived indexes still drop and rebuild). The old
+	// core-plus-three-dirs list left the winner's toolstats, guardian family,
+	// reminders and imgpack stranded under its dead stem: exactly the residue
+	// this task closes.
+	artifacts := store.SessionTrashSidecars(winnerPath)
+	var migration recoveryTrashMoveReport
 	for _, src := range artifacts {
 		base := filepath.Base(src)
 		if dropSidecar[base] {
@@ -624,8 +637,12 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (gr
 			continue
 		}
 		dst := filepath.Join(dir, strings.Replace(base, winnerStem, mainStem, 1))
-		if err := moveRecoveryTrashPath(src, dst); err != nil {
+		moved, err := MoveTrashArtifactTo(src, dst, mainStem, &migration)
+		if err != nil {
 			return 0, 0, err
+		}
+		if !moved {
+			continue
 		}
 		// The pinned-context sidecar embeds the session identity it was created
 		// under. After the rename that identity is the winner copy's, which
@@ -639,6 +656,32 @@ func promoteRecoveryCopyToMain(mainPath, winnerPath, dir string, force bool) (gr
 			}
 		}
 	}
+	// Unlisted winner-stem shapes (external repair ".bak-<stamp>" copies and
+	// any future form) follow the same identity swap: rename onto the main
+	// stem, never strand under the dead copy stem. The winner's removal guard
+	// is still held, so its lock files are the only exclusions.
+	swept := 0
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, entry := range entries {
+			name := entry.Name()
+			if runtimeHandleNames(winnerPath)[name] || !strings.HasPrefix(name, winnerStem+".") {
+				continue
+			}
+			dst := filepath.Join(dir, mainStem+strings.TrimPrefix(name, winnerStem))
+			if err := os.Rename(filepath.Join(dir, name), dst); err != nil && !os.IsNotExist(err) {
+				return 0, 0, err
+			}
+			migration.Stragglers = append(migration.Stragglers, name)
+			swept++
+		}
+	} else if !os.IsNotExist(err) {
+		return 0, 0, err
+	}
+	if swept > 0 {
+		slog.Warn("promote: winner-copy stem carried entries outside the sidecar inventory — extend store.SessionTrashSidecars",
+			"winner", filepath.Base(winnerPath), "names", strings.Join(migration.Stragglers, ","))
+	}
+	LogTrashMoveCounts("agent: promoted copy sidecars migrated onto the main identity", dir, filepath.Base(mainPath), &migration)
 
 	// 3) Recover the losing chain's head onto the new main.
 	//
