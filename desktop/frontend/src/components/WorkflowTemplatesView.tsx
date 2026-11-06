@@ -10,7 +10,7 @@ import { FilePlus2, History, Play, ShieldAlert, ShieldCheck } from "lucide-react
 import { useT } from "../lib/i18n";
 import { app } from "../lib/bridge";
 import { reportFrontendLog } from "../lib/frontendLog";
-import { diagKindKey, lineColumnOffset, NEW_TEMPLATE_SKELETON } from "../lib/workflowTemplates";
+import { contractFailureKey, diagKindKey, lineColumnOffset, NEW_TEMPLATE_SKELETON } from "../lib/workflowTemplates";
 import type {
   WorkflowTemplateHistoryEntry,
   WorkflowTemplateList,
@@ -328,7 +328,7 @@ export function WorkflowTemplatesView({ onRunStarted }: { onRunStarted: (runId: 
                         <td>{c.id} <span className="wf-tpl__item-meta">{c.type}</span></td>
                         <td>{c.inputs || "—"}</td>
                         <td>{c.outputs || "—"}</td>
-                        <td>{c.failure}</td>
+                        <td>{contractFailureKey(c.failure) ? t(contractFailureKey(c.failure)!) : c.failure}</td>
                         <td>{c.limits || "—"}</td>
                       </tr>
                     ))}

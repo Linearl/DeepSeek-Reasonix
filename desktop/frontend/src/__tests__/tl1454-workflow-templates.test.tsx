@@ -68,7 +68,7 @@ const mockApp = {
       return { ok: false, diagnostic: { kind: "field", message: "workflow: subagent node \"scan\": prompt is required", path: "nodes[0].prompt", nodeId: "scan", line: 4, column: 5 } };
     }
     return { ok: true, summary: { name: "audit", version: "v·bbbbbbbbbbbb", fingerprint: "b".repeat(64), nodes: 1, edges: 0, gates: 0, subagents: 1, confirms: 0 },
-      contracts: [{ id: "scan", type: "subagent", failure: "子代理报错 ⇒ 整跑停止", limits: "timeout 10m" }] };
+      contracts: [{ id: "scan", type: "subagent", failure: "abort_run", limits: "timeout 10m" }] };
   },
   async WorkflowTemplateSave(doc: string, expected: string) {
     calls.push(`save:${expected}`);
@@ -97,7 +97,7 @@ const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { LocaleProvider } = await import("../lib/i18n");
 const { applyLabFlags, labFlagEnabled } = await import("../lib/labFlags");
-const { reasonKey, diagKindKey, lineColumnOffset, settleStaleRunning, budgetReadout } = await import("../lib/workflowTemplates");
+const { reasonKey, diagKindKey, lineColumnOffset, settleStaleRunning, budgetReadout, contractFailureKey } = await import("../lib/workflowTemplates");
 const { WorkflowPanel } = await import("../components/WorkflowPanel");
 const { WorkflowTemplatesView } = await import("../components/WorkflowTemplatesView");
 type WireWorkflowRun = import("../lib/workflowTypes").WireWorkflowRun;
@@ -138,6 +138,8 @@ console.log("\ntl1454 workflow templates: 关闭态等价 + 模板视图 + 运�
   ok(parts.length === 3 && parts[0].vars.used === "1.4k" && parts[0].vars.limit === "1.0k" && parts[1].vars.used === "7" && parts[2].vars.limit === "30m",
     "budgetReadout renders tokens/rounds/wall readouts");
   ok(budgetReadout({ runId: "r", workflow: "w", state: "running", nodes: [] }).length === 0, "no budget declared → no readout");
+  ok(contractFailureKey("keep_unconfirmed") === "workflowPanel.templates.contract.failure.keep_unconfirmed" && contractFailureKey("nope") === undefined,
+    "contract failure codes map to localized keys (unknown code falls back to the raw code)");
 }
 
 // ── ②③ 面板真渲染：关闭态等价 vs 开启态附加面 ─────────────────────────
@@ -163,6 +165,8 @@ const failedRun: WireWorkflowRun = {
   ok(document.querySelector(".wf-panel") !== null, "the panel renders the live run");
   ok(byTest("wf-templates-toggle") === null, "switch off: no Templates toggle in the toolbar");
   ok(byTest("wf-run-failure") === null, "switch off: no failure banner (default view unchanged)");
+  const offTokens = Array.from(document.querySelectorAll('[data-testid="wf-progress"] span')).map((el) => el.textContent ?? "");
+  ok(offTokens.some((txt) => txt.startsWith("—")), "switch off: the tokens slot keeps its legacy dash for live runs");
   ok(byTest("wf-budget") === null, "switch off: no budget readout");
   const nodeB = Array.from(document.querySelectorAll(".wf-node")).find((n) => n.textContent?.includes("b"));
   ok(nodeB?.className.includes("wf-node--running") === true, "switch off: a stale running node keeps its legacy rendering (no projection)");
@@ -172,8 +176,10 @@ const failedRun: WireWorkflowRun = {
   await settle(20);
   ok(byTest("wf-templates-toggle") !== null, "switch on: the Templates toggle appears (live, no restart)");
   const banner = byTest("wf-run-failure");
-  ok(banner?.textContent?.includes("Over budget") === true && banner.textContent.includes("workflow budget exceeded: tokens 1400") && banner.textContent.includes("a"),
-    "switch on: failure banner names the node with the plain reason and the technical detail");
+  ok(banner?.textContent?.includes("Run stopped after node a") === true && banner.textContent.includes("Over budget") && banner.textContent.includes("workflow budget exceeded: tokens 1400"),
+    "switch on: failure banner names the crossing node with the plain reason and the technical detail");
+  const tokensSlot = Array.from(document.querySelectorAll('[data-testid="wf-progress"] span')).map((el) => el.textContent ?? "");
+  ok(tokensSlot.some((txt) => txt.startsWith("1.4k")), "switch on: the existing tokens slot shows the run's real usage");
   ok(byTest("wf-budget")?.textContent?.includes("tokens 1.4k/1.0k") === true, "switch on: budget readout shows used/limit");
   const nodeB2 = Array.from(document.querySelectorAll(".wf-node")).find((n) => n.textContent?.includes("b"));
   ok(nodeB2?.className.includes("wf-node--queued") === true, "switch on: the in-flight node of the terminated run renders as not finished");
@@ -218,7 +224,8 @@ const failedRun: WireWorkflowRun = {
   await act(async () => { setNativeValue(editor, VALID_DOC); });
   await settle(450);
   ok(byTest("wf-tpl-valid")?.textContent?.includes("v·bbbbbbbbbbbb") === true, "a fixed template validates and previews its version");
-  ok(byTest("wf-tpl-contracts")?.textContent?.includes("scan") === true, "the node contract summary renders");
+  ok(byTest("wf-tpl-contracts")?.textContent?.includes("scan") === true && byTest("wf-tpl-contracts")?.textContent?.includes("An error stops the run") === true,
+    "the node contract summary renders, failure semantics localized from the server code");
   await act(async () => { (byTest("wf-tpl-save") as HTMLButtonElement).click(); });
   await settle();
   ok(calls.includes("save:") && byTest("wf-tpl-notice")?.textContent?.includes("Saved as v·bbbbbbbbbbbb") === true, "save creates the template and reports the new version");

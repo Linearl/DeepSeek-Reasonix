@@ -722,7 +722,7 @@ export function WorkflowPanel({
               {t("workflowPanel.progress", { done: String(progress.done), total: String(progress.total) })}
             </span>
             <span>{t("workflowPanel.elapsed", { value: formatElapsed(progress.elapsedMs, t) })}</span>
-            <span>{t("workflowPanel.tokens", { value: formatTokens(progress.tokens) })}</span>
+            <span>{t("workflowPanel.tokens", { value: formatTokens(templatesEnabled && liveRun?.usedTokens ? liveRun.usedTokens : progress.tokens) })}</span>
             {progress.failed > 0 && (
               <span className="wf-panel__stat wf-panel__stat--failed">
                 {t("workflowPanel.failed", { value: String(progress.failed) })}
@@ -813,7 +813,7 @@ export function WorkflowPanel({
           <div className="wf-panel__failure" role="status" data-testid="wf-run-failure">
             <strong>
               {failure.nodeId
-                ? t("workflowPanel.failure.title", { node: failure.nodeId })
+                ? t(failure.reason === "budget" ? "workflowPanel.failure.titleAfter" : "workflowPanel.failure.title", { node: failure.nodeId })
                 : t("workflowPanel.failure.titleNoNode")}
             </strong>
             <span>{t(reasonKey(failure.reason))}</span>

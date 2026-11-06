@@ -103,6 +103,9 @@ func TestTL1454TemplateAcceptanceChain(t *testing.T) {
 	if !good.OK || good.Summary == nil || len(good.Contracts) != 2 || good.Contracts[1].Inputs != "scan" {
 		t.Fatalf("fixed template must validate with contracts: %+v", good)
 	}
+	if good.Contracts[0].Failure != ContractFailureAbortRun || good.Contracts[1].Failure != ContractFailureBranchOrAbort {
+		t.Fatalf("contracts must carry failure-semantics codes (UI localizes them): %+v", good.Contracts)
+	}
 	saved, err := svc.SaveTemplate(tplFixed, "")
 	if err != nil || !saved.Created || saved.Version != good.Summary.Version || !strings.HasPrefix(saved.Version, "v·") {
 		t.Fatalf("save: %+v err=%v", saved, err)

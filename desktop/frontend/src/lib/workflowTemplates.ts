@@ -36,6 +36,19 @@ export function diagKindKey(kind: string | undefined): DictKey {
   return DIAG_KEYS[(kind ?? "field") as WorkflowDiagnosticKind] ?? DIAG_KEYS.field;
 }
 
+const CONTRACT_FAILURE_KEYS: Record<string, DictKey> = {
+  abort_run: "workflowPanel.templates.contract.failure.abort_run",
+  branch_or_abort: "workflowPanel.templates.contract.failure.branch_or_abort",
+  keep_unconfirmed: "workflowPanel.templates.contract.failure.keep_unconfirmed",
+  aggregate: "workflowPanel.templates.contract.failure.aggregate",
+  marker: "workflowPanel.templates.contract.failure.marker",
+};
+
+/** 契约失败语义码 → 文案键（服务端只给码；未知码返回 undefined，原码兜底显示）。 */
+export function contractFailureKey(code: string): DictKey | undefined {
+  return CONTRACT_FAILURE_KEYS[code];
+}
+
 /** 1-based 行/列 → 文本字符偏移（越界钳到文本范围，编辑器据此放光标）。 */
 export function lineColumnOffset(text: string, line: number | undefined, column: number | undefined): number {
   if (!line || line < 1) return 0;

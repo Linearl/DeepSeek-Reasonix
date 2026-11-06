@@ -80,14 +80,24 @@ type TemplateValidateResult struct {
 }
 
 // NodeContract 是一个节点的契约摘要（tl1454 五项之一在编辑面的呈现）。
+// Failure 是失败语义码（文案由前端按语言渲染，服务端不出本地化散文）。
 type NodeContract struct {
 	ID      string `json:"id"`
 	Type    string `json:"type"`
-	Inputs  string `json:"inputs,omitempty"`  // 引用的上游节点/字段
+	Inputs  string `json:"inputs,omitempty"`  // 上游节点（可插值引用的祖先）
 	Outputs string `json:"outputs,omitempty"` // 声明的 typed result 字段
-	Failure string `json:"failure"`           // 该类型的失败语义
+	Failure string `json:"failure"`           // ContractFailure* 码
 	Limits  string `json:"limits,omitempty"`  // timeout / max_steps / loop
 }
+
+// Node failure-semantics codes (the contract column; one per node type).
+const (
+	ContractFailureAbortRun        = "abort_run"        // subagent: error stops the run, findings kept
+	ContractFailureBranchOrAbort   = "branch_or_abort"  // gate: exit≠0 is a branch value; no receiver stops the run
+	ContractFailureKeepUnconfirmed = "keep_unconfirmed" // confirm: not reproduced keeps findings unconfirmed, run goes on
+	ContractFailureAggregate       = "aggregate"        // join: merges active upstream, never fails
+	ContractFailureMarker          = "marker"           // phase: section marker, never executes work
+)
 
 // TemplateSaveResult 是保存回执。
 type TemplateSaveResult struct {
@@ -166,18 +176,18 @@ func nodeContracts(wf *Workflow) []NodeContract {
 		}
 		switch n.Type {
 		case NodeSubagent:
-			c.Failure = "子代理报错 ⇒ 整跑停止（此前发现保留）；声明字段缺失仅提示"
+			c.Failure = ContractFailureAbortRun
 			c.Limits = describeLimits(n.Timeout, n.MaxSteps, "")
 		case NodeGate:
-			c.Failure = "exit≠0 是分支值（pass/fail）；无 fail 承接 ⇒ 整跑停止"
+			c.Failure = ContractFailureBranchOrAbort
 			c.Limits = describeLimits(n.Timeout, 0, gateLoopText(n))
 		case NodeConfirm:
-			c.Failure = "未复现 ⇒ 发现标 unconfirmed，运行继续（只读）"
+			c.Failure = ContractFailureKeepUnconfirmed
 			c.Limits = describeLimits(n.Timeout, n.MaxSteps, "")
 		case NodeJoin:
-			c.Failure = "聚合活跃上游输出，不失败"
+			c.Failure = ContractFailureAggregate
 		case NodePhase:
-			c.Failure = "仅分区标记，不执行"
+			c.Failure = ContractFailureMarker
 		}
 		out = append(out, c)
 	}

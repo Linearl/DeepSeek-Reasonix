@@ -15738,7 +15738,12 @@ button.statusbar__mcp:focus-visible {
   font-size: 10px;
   color: var(--fg-dim);
 }
-/* tl1454：工作流模板视图（实验开关开启才挂载；关闭时这些类无 DOM 引用）。 */
+/* tl1454：工作流模板视图（实验开关开启才挂载；关闭时这些类无 DOM 引用）。
+   画布在模板视图期间保持挂载（视口/滚轮监听不丢），用 hidden 收起——作者
+   样式 display:flex 会压过 UA 的 [hidden]，需显式归零。 */
+.wf-panel__body[hidden] {
+  display: none;
+}
 .wf-panel__action--on {
   color: var(--fg);
   border-color: var(--accent);
