@@ -237,7 +237,10 @@ await act(async () => {
 });
 ok(compactRootEl.textContent?.includes("Advanced context management") === false, "compaction preference has no redundant advanced disclosure");
 ok(compactRootEl.textContent?.includes("Automatic compaction threshold") === true, "compaction preference is visible without expanding a disclosure");
-ok(compactRootEl.textContent?.includes("80,000 tokens") === false, "compact ratio avoids a redundant token estimate under the selected row");
+// f0345224c(unify settings controls)后压缩行带 impact 一行文案:「The default
+// model compacts at about {tokens} tokens...」(settings.compactRatioImpactWithTokens)。
+// 原钉「不得出现冗余 token 估算」的意图收窄为:估算恰好出现一次(不多不少)。
+eq(compactRootEl.textContent?.split("80,000 tokens").length, 2, "compact ratio impact renders exactly one token estimate");
 ok(compactRootEl.textContent?.includes("Balance continuity and cache reuse") === true, "compact ratio explains the recommended preset consequence");
 ok(compactRootEl.textContent?.includes("effective threshold is 75%") === true, "project override shows the active effective threshold");
 const recommendedCompactButton = compactRootEl.querySelector('input[type="radio"][aria-label="80% · Recommended"]') as HTMLInputElement | null;
@@ -394,7 +397,9 @@ window.go = {
     App: {
       Settings: async () => {
         failingSettingsCalls += 1;
-        if (failingSettingsCalls === 1) throw new Error("/Users/example/.reasonix/settings.toml: permission denied");
+        // tl1307:失败 ≠ 终态——上限(3 次)内全部失败才落横幅;前 3 次
+        // 都拒绝,手动 Retry 重置预算后第 4 次成功。
+        if (failingSettingsCalls <= 3) throw new Error("/Users/example/.reasonix/settings.toml: permission denied");
         return baseSettings("standard");
       },
       // 同上:任务 915 播种 effect 的 mock 缺口。
@@ -403,7 +408,18 @@ window.go = {
   },
 };
 
-
+// tl1307 自动退避(400/1200ms)会拖过本文件的 microtask waitFor;
+// 收缩退避到真实定时器量级(tl1307 自家测试同款做法),语义不变。
+// 等待也改墙钟有界轮询(退避是真定时器,microtask flush 推不动它)。
+const { settingsLoadRetry } = await import("../lib/settingsLoadRetry");
+settingsLoadRetry.delaysMs = [20, 30];
+const waitForWallClock = async (label: string, predicate: () => boolean) => {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
+    if (predicate()) return;
+  }
+  throw new Error(`timed out waiting for ${label}`);
+};
 await act(async () => {
   retryRoot.render(
     <LocaleProvider>
@@ -417,7 +433,7 @@ await act(async () => {
   );
   await flushPromises();
 });
-await waitFor("settings load failure", () => Boolean(document.querySelector(".banner--error")));
+await waitForWallClock("settings load failure", () => Boolean(document.querySelector(".banner--error")));
 
 ok(document.body.textContent?.includes("Settings could not be loaded.") === true, "failed initial settings load shows a visible error");
 ok(document.body.textContent?.includes("Loading…") === false, "failed initial settings load stops showing the loading state");
@@ -429,9 +445,10 @@ await act(async () => {
   retryButton.click();
   await flushPromises();
 });
-await waitFor("settings retry success", () => Boolean(Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Deep")));
+await waitForWallClock("settings retry success", () => Boolean(Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Deep")));
 
-eq(failingSettingsCalls, 2, "settings retry calls Settings again");
+// 3 次自动重试封顶 + 手动 Retry 重置预算后第 4 次成功。
+eq(failingSettingsCalls, 4, "settings retry calls Settings again");
 ok(document.body.textContent?.includes("Settings could not be loaded.") === false, "settings retry clears the load error");
 
 await act(async () => {
