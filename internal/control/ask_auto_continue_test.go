@@ -77,13 +77,7 @@ func (s *askACRecorder) Emit(e event.Event) {
 
 func (s *askACRecorder) waitAsk(t *testing.T) string {
 	t.Helper()
-	select {
-	case id := <-s.asks:
-		return id
-	case <-time.After(5 * time.Second):
-		t.Fatal("ask request never arrived")
-		return ""
-	}
+	return waitForValue(t, "ask request never arrived", s.asks)
 }
 
 func (s *askACRecorder) noticeCount(code string) int {

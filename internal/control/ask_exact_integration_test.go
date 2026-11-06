@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"time"
 
 	"reasonix/internal/event"
 )
@@ -39,12 +38,7 @@ func TestAskExactResolutionDeliversOnceAfterReplay(t *testing.T) {
 		}
 		return nil
 	})
-	var request event.Event
-	select {
-	case request = <-asks:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Ask was not published")
-	}
+	request := waitForValue(t, "Ask was not published", asks)
 	identity := PromptIdentity{PromptID: request.Ask.ID, TurnID: request.TurnID, RuntimeEpoch: "runtime-ask", Kind: PromptAsk}
 	if identity.TurnID == "" || identity.TurnID != c.RuntimeStatus().TurnID {
 		t.Fatalf("Ask has no current turn identity: %+v", identity)
@@ -89,13 +83,9 @@ func TestAskExactResolutionDeliversOnceAfterReplay(t *testing.T) {
 	if succeeded != 1 || duplicate != 1 {
 		t.Fatalf("answer results: %d successes, %d duplicates", succeeded, duplicate)
 	}
-	select {
-	case got := <-answers:
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("Ask returned %+v, want %+v", got, want)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("accepted answer did not unblock Ask")
+	got := waitForValue(t, "accepted answer did not unblock Ask", answers)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Ask returned %+v, want %+v", got, want)
 	}
 	if pending := c.PendingPromptIdentities(); len(pending) != 0 {
 		t.Fatalf("resolved Ask remains pending: %+v", pending)
@@ -136,12 +126,7 @@ func TestAskExactSkipCancelsTurn(t *testing.T) {
 	c.runner = &askBlockingRunner{c: c}
 	c.SetTurnEventRoutingMetadata("runtime-skip", "")
 	c.Send("ask user")
-	var request event.Event
-	select {
-	case request = <-asks:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Ask was not published")
-	}
+	request := waitForValue(t, "Ask was not published", asks)
 	identity := PromptIdentity{PromptID: request.Ask.ID, TurnID: request.TurnID, RuntimeEpoch: "runtime-skip", Kind: PromptAsk}
 	if err := c.ResolvePromptExact(identity, PromptAnswer{}); err != nil {
 		t.Fatalf("skip Ask: %v", err)

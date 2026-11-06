@@ -143,11 +143,7 @@ func TestCascadeHopBoundKeepsPromptLocal(t *testing.T) {
 			t.Errorf("bounded local wait must end with an error, got %v", err)
 		}
 	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("hop-exhausted prompt must not block past the local bound")
-	}
+	waitForSignal(t, "hop-exhausted prompt must not block past the local bound", done)
 	if stub.calls.Load() != 0 {
 		t.Fatalf("delegate calls = %d, want 0 once the hop bound is reached", stub.calls.Load())
 	}
@@ -236,11 +232,7 @@ func cascadeWaitLedgerFixture(t *testing.T) (*Controller, *turnEventGateRunner, 
 	})
 	t.Cleanup(c.Close)
 	c.Submit("run")
-	select {
-	case <-runner.started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("runner did not start")
-	}
+	waitForSignal(t, "runner did not start", runner.started)
 	ledger := c.turnEventLedger()
 	if ledger == nil {
 		t.Fatal("controller did not open a turn ledger")
@@ -303,11 +295,7 @@ func TestCascadeWaitLedgerMarksWaitingUserDuringDelegateWait(t *testing.T) {
 	}
 
 	cancel()
-	select {
-	case <-askDone:
-	case <-time.After(5 * time.Second):
-		t.Fatal("ask did not return after the delegate wait was cancelled")
-	}
+	waitForSignal(t, "ask did not return after the delegate wait was cancelled", askDone)
 	// The restore stamp lands before Ask returns to its caller.
 	deadline = time.Now().Add(5 * time.Second)
 	for ledger.CurrentStatus() != event.TurnInProgress {
@@ -317,11 +305,7 @@ func TestCascadeWaitLedgerMarksWaitingUserDuringDelegateWait(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	close(runner.release)
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("turn did not finish")
-	}
+	waitForValue(t, "turn did not finish", done)
 }
 
 // A delegate answer must hand back a turn whose ledger reads in_progress
@@ -366,9 +350,5 @@ func TestCascadeWaitLedgerRestoresWhenDelegateAnswers(t *testing.T) {
 		t.Fatalf("wait window trail incomplete: flipped=%v restored=%v, want both turn_status stamps", flipped, restored)
 	}
 	close(runner.release)
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("turn did not finish")
-	}
+	waitForValue(t, "turn did not finish", done)
 }
