@@ -211,6 +211,12 @@ func (r *TaskSubagentRunner) runNode(ctx context.Context, req SubagentRequest) (
 	// tl1434: 同一派发 ctx 再装 ref sink——TaskTool 在 transcript ref 生成处
 	// 登记进来，Execute 返回后交给 run 级 recorder 落 nodeId→执行实例关联。
 	ctx = agent.WithSubagentRefSink(ctx)
+	// tl1435(附): 同一布线点再装持久化声明——节点派发发生在 turn 外，子代理
+	// 没有会话转录卡，持久化 sidecar 目录是面板唯一可见源；confirm 节点的
+	// 只读路径默认被 read_only_task 钉成 ephemeral（无 meta 无 transcript 无
+	// ref），scan/triage 可见而 verify 漏显。标记让 ReadOnlyTaskTool 对本次
+	// 派发放弃 ephemeral（交互式 read_only_task 不装标记，契约不变）。
+	ctx = agent.WithSubagentTranscriptPersistence(ctx)
 	args := map[string]any{"prompt": req.Prompt}
 	set := func(key, v string) {
 		if v != "" {
