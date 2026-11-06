@@ -245,7 +245,7 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 		EffortOverride:             &effort,
 		SharedHost:                 sharedHost,
 		MCPHostProfile:             plugin.HostProfileDesktopApps,
-		CleanupPendingReconciler:   reconcileDesktopCleanupPending,
+		CleanupPendingReconciler:   a.reconcileDesktopCleanupPending,
 		SubagentParentLive:         a.subagentParentProbeForBuild(tab),
 		SessionRecoveryMeta:        a.tabSessionRecoveryMeta(tab),
 		PinnedContextLoader:        pinnedContextLoader(snap.workspaceRoot),

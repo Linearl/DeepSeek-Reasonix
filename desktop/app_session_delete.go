@@ -151,7 +151,7 @@ func removeDesktopSessionArtifacts(path string) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
-	guard, err := acquireSessionRemovalGuard(path)
+	guard, err := acquireSessionRemovalGuardForOp("session_delete", path)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (a *App) clearSessionBuildOptions(tab *WorkspaceTab, snap tabRuntimeSnapsho
 		EffortOverride:             cloneStringPtr(snap.effort),
 		SharedHost:                 sharedHost,
 		MCPHostProfile:             plugin.HostProfileDesktopApps,
-		CleanupPendingReconciler:   reconcileDesktopCleanupPending,
+		CleanupPendingReconciler:   a.reconcileDesktopCleanupPending,
 		SubagentParentLive:         a.subagentParentProbeForBuild(tab),
 		SessionRecoveryMeta:        a.tabSessionRecoveryMeta(tab),
 		PinnedContextLoader:        pinnedContextLoader(snap.workspaceRoot),
@@ -204,7 +204,7 @@ func (a *App) clearSessionBuildOptions(tab *WorkspaceTab, snap tabRuntimeSnapsho
 		OnSessionReopen:            a.collabSessionReopen,
 		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
-		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
+		OnCascadeSourceCapability:  cascadeSourceCapabilityFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRegistryShellProbe:       a.resolveRegistryShell,

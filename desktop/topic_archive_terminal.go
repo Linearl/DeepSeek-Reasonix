@@ -187,7 +187,7 @@ func (a *App) terminalArchiveOwnershipReclaim(key string) {
 //     immediately while the whole error chain stays reachable.
 func (a *App) terminalArchiveGuardAfterReclaim(sessionPath, key string, cause error) (*agent.SessionRemovalGuard, error) {
 	a.terminalArchiveOwnershipReclaim(key)
-	guard, err := acquireSessionRemovalGuard(sessionPath)
+	guard, err := acquireSessionRemovalGuardForOp("terminal_archive", sessionPath)
 	if err == nil {
 		return guard, nil
 	}

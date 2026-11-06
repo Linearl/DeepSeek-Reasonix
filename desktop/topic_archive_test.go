@@ -154,7 +154,7 @@ func TestTrashTopicForeignLeaseFailsBeforeCleanupCommit(t *testing.T) {
 	if got := loadTopicTitle(projectRoot, topicID); got != "Foreign lease" {
 		t.Fatalf("rejected archive topic title = %q", got)
 	}
-	if err := reconcileDesktopCleanupPending(dir); err != nil {
+	if err := reconcileDesktopCleanupPendingLocked(dir); err != nil {
 		t.Fatalf("reconcile without marker: %v", err)
 	}
 	if _, err := os.Stat(sessionPath); err != nil {
@@ -162,7 +162,7 @@ func TestTrashTopicForeignLeaseFailsBeforeCleanupCommit(t *testing.T) {
 	}
 
 	release()
-	if err := reconcileDesktopCleanupPending(dir); err != nil {
+	if err := reconcileDesktopCleanupPendingLocked(dir); err != nil {
 		t.Fatalf("reconcile after foreign release: %v", err)
 	}
 	if _, err := os.Stat(sessionPath); err != nil {
@@ -287,7 +287,7 @@ func TestTrashTopicCommittedCleanupFailureReconcilesWithoutFailureResponse(t *te
 	}
 
 	topicArchiveCleanupHookForTest = nil
-	if err := reconcileDesktopCleanupPending(dir); err != nil {
+	if err := reconcileDesktopCleanupPendingLocked(dir); err != nil {
 		t.Fatalf("reconcile committed cleanup: %v", err)
 	}
 	if agent.IsCleanupPending(sessionPath) {
@@ -379,7 +379,7 @@ func TestTopicArchiveIntentCompletesSessionsAndMetadataAfterRestart(t *testing.T
 	}
 
 	app := NewApp()
-	if err := reconcileTopicArchiveMetadataPending(app.deleteTopic); err != nil {
+	if err := app.reconcileTopicArchiveMetadataPending(); err != nil {
 		t.Fatalf("reconcile archive intent: %v", err)
 	}
 	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {

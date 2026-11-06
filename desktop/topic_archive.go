@@ -478,7 +478,7 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 		a.removeSessionCatalogPath(target.sessionPath, "topic_archived")
 		if timedOutTargets[i] {
 			guard := ownership.take(target.sessionPath)
-			go delayedDesktopTopicTrash(target.dir, target.sessionPath, target.key, guard, destroys)
+			go a.delayedDesktopTopicTrash(target.dir, target.sessionPath, target.key, guard, destroys)
 			continue
 		}
 		trace.phase = "move_artifacts"
@@ -543,6 +543,14 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 	if err := a.deleteTopic(topicID); err != nil {
 		if retryErr := a.deleteTopic(topicID); retryErr != nil {
 			slog.Warn("desktop: topic archive metadata cleanup remains pending")
+			// tl1429b-2: the startup metadata reconcile only runs at the NEXT
+			// launch, so the topic sat in the sidebar until the user archived
+			// again (the package-79 residual). Settle it in-process: a bounded
+			// background retry chain (each success also clears the marker and
+			// emits the tree event). Permanent failure keeps the marker for the
+			// startup reconcile backstop — same semantics as before, just with
+			// a same-session convergence window instead of restart-or-rearchive.
+			go a.settleTopicArchiveMetadataDelete(topicID)
 		} else if clearErr := clearTopicArchiveMetadataPending(topicID); clearErr != nil {
 			slog.Warn("desktop: topic archive metadata marker cleanup remains pending")
 		}
@@ -550,6 +558,52 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 		slog.Warn("desktop: topic archive metadata marker cleanup remains pending")
 	}
 	return fallback, changedDirs, nil
+}
+
+// topicArchiveMetadataDeleteSettleAttempts / Interval bound the in-process
+// settle chain for a topic-archive metadata delete that lost both in-place
+// attempts (tl1429b-2).
+var (
+	topicArchiveMetadataDeleteSettleAttempts = 4
+	topicArchiveMetadataDeleteSettleInterval = 2 * time.Second
+)
+
+// settleTopicArchiveMetadataDelete retries the failed topic-metadata delete on
+// a bounded backoff until it converges or the attempts run out. deleteTopic
+// already emits the sidebar tree event on success, so the entry disappears
+// without any user action. The metadata-pending marker is only cleared here
+// when the delete truly succeeded; a permanent failure leaves it for the
+// startup reconcile (pre-existing backstop).
+func (a *App) settleTopicArchiveMetadataDelete(topicID string) {
+	a.settleTopicArchiveMetadataDeleteWith(a.deleteTopic, topicID)
+}
+
+func (a *App) settleTopicArchiveMetadataDeleteWith(delete func(string) error, topicID string) {
+	if retryTopicMetadataDeleteUntilSettled(delete, topicID, topicArchiveMetadataDeleteSettleAttempts, topicArchiveMetadataDeleteSettleInterval) {
+		if err := clearTopicArchiveMetadataPending(topicID); err != nil {
+			slog.Warn("desktop: topic archive metadata marker cleanup remains pending")
+		}
+		slog.Info("desktop: topic archive metadata delete settled after the in-process retry chain",
+			"topic_base", topicID)
+	}
+}
+
+// retryTopicMetadataDeleteUntilSettled runs delete(topicID) up to attempts
+// times, sleeping interval between tries. It reports whether some attempt
+// succeeded (no success → the caller keeps the metadata-pending marker).
+func retryTopicMetadataDeleteUntilSettled(delete func(string) error, topicID string, attempts int, interval time.Duration) bool {
+	if delete == nil || attempts <= 0 {
+		return false
+	}
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			time.Sleep(interval)
+		}
+		if err := delete(topicID); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func markTopicArchiveCleanupPending(topicID string, targets []topicTrashTarget) (func(), error) {

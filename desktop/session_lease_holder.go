@@ -166,7 +166,9 @@ func sessionLeaseHolderLogAttrsWithEvidence(info *agent.SessionLeaseInfo, eviden
 // logSessionLeaseHolderRefusal emits one structured WARN for a lease refusal
 // with the full holder identity. Logged values name the holder PROCESS, never
 // the session path (same sanitization line as the pre-existing refusal logs).
-func logSessionLeaseHolderRefusal(msg string, err error) {
+// op is the acquiring flow's tag (tl1429b-2): pairing it with the acquire-side
+// success line turns an 08:26-style loop into an attributable timeline.
+func logSessionLeaseHolderRefusal(msg string, err error, op string) {
 	var leaseErr *agent.SessionLeaseError
 	info := (*agent.SessionLeaseInfo)(nil)
 	var evidence []agent.SessionLockHolderEvidence
@@ -174,7 +176,8 @@ func logSessionLeaseHolderRefusal(msg string, err error) {
 		info = leaseErr.Info
 		evidence = leaseErr.HeldInProcess
 	}
-	slog.Warn(msg, sessionLeaseHolderLogAttrsWithEvidence(info, evidence)...)
+	attrs := append([]any{"op", op}, sessionLeaseHolderLogAttrsWithEvidence(info, evidence)...)
+	slog.Warn(msg, attrs...)
 }
 
 // sessionLeaseHeldBusyErrorFromProbe converts a boolean

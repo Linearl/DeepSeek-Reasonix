@@ -370,7 +370,39 @@ func sessionLeaseBusyClassification(err error) error {
 // reclaim failing, so nothing is ever grabbed silently; a refusal that
 // survives the heal keeps the original error (identity, sentinel, forceable
 // mark) unchanged.
+// acquireSessionRemovalGuard is the op-tag-free form kept for existing
+// callers and tests; production flows use acquireSessionRemovalGuardForOp so
+// the field log can pair acquire/refuse/heal timelines per component
+// (tl1429b-2: the 08:26 loop was unattributable because only refusals logged).
 func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard, error) {
+	return acquireSessionRemovalGuardForOp("archive", sessionPath)
+}
+
+// acquireSessionRemovalGuardForOp wraps agent.TryAcquireSessionRemovalGuard
+// with the sanitized busy error. The guard holds the session's save and lease
+// locks across the destructive operation and deletes the lock files
+// atomically with the release — a one-shot busy probe followed by RemoveAll
+// would let another process acquire the lease in between and then lose its
+// freshly locked lease file, breaking cross-process mutual exclusion.
+//
+// tl1383: a refusal whose lease error carries NO usable holder identity
+// (holder_class=unknown pid=0, the 2026-11-04 08:23/09:08 archive refusals)
+// is healed once through the lock-arbitrated reclaim primitive instead of
+// refusing forever. The lease doctrine (TryReclaimCurrentProcessSessionLease)
+// already says a missing or unreadable identity record with a free lock is a
+// leftover, not a holder — the removal-guard path just never invoked it, so
+// the leftover kept wedging archives and force-archive had no lever either.
+// The OS lock stays the arbiter: a live holder of the lock file keeps the
+// reclaim failing, so nothing is ever grabbed silently; a refusal that
+// survives the heal keeps the original error (identity, sentinel, forceable
+// mark) unchanged.
+//
+// tl1429b-2: both outcomes log the acquiring op (op= tag) — the success line
+// is the acquire-side timestamp the field log pairs against the refusal and
+// heal lines to answer "who took the lock when" without another package
+// round-trip.
+func acquireSessionRemovalGuardForOp(op, sessionPath string) (*agent.SessionRemovalGuard, error) {
+	started := time.Now()
 	guard, err := withSessionLeaseContentionRetry(func() (*agent.SessionRemovalGuard, error) {
 		return agent.TryAcquireSessionRemovalGuard(sessionPath)
 	})
@@ -385,16 +417,20 @@ func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard,
 			// image path, hostname, acquire time, writer id) so a retry leaves
 			// a complete traceable holder record even after the toast is gone.
 			// Logged values name the holder process only — never the path.
-			logSessionLeaseHolderRefusal("desktop: session removal guard refused by lease holder", err)
+			logSessionLeaseHolderRefusal("desktop: session removal guard refused by lease holder", err, op)
 			if healed, healErr := healUnidentifiedLeaseHolder(sessionPath, err); healErr == nil {
 				slog.Info("desktop: removal guard healed an unidentified lease holder via reclaim",
-					"session_base", filepath.Base(sessionPath))
+					"op", op, "session_base", filepath.Base(sessionPath),
+					"waited_ms", time.Since(started).Milliseconds())
 				return healed, nil
 			}
 			return nil, &sessionLeaseHeldBusyError{cause: err}
 		}
 		return nil, err
 	}
+	slog.Info("desktop: session removal guard acquired",
+		"op", op, "session_base", filepath.Base(sessionPath),
+		"waited_ms", time.Since(started).Milliseconds())
 	return guard, nil
 }
 
@@ -494,7 +530,62 @@ func trashSessionArtifacts(dir, sessionPath, key string) error {
 	return trashSessionArtifactsBeforeMove(dir, sessionPath, key, nil)
 }
 
-func reconcileDesktopCleanupPending(dir string) error {
+// sessionRemovalMuWaitBudget bounds how long a background reconcile waits for
+// the session-removal mutex before giving this pass up (tl1429b-2). The mutex
+// holders are bounded operations (an archive's trash phase, a restore
+// preflight), so a short wait almost always succeeds; on timeout the
+// cleanup-pending markers simply persist and the next boot/reconcile retries.
+// Var: tests shorten it (same seam convention as deferredRebuildRetryInterval).
+var sessionRemovalMuWaitBudget = 5 * time.Second
+
+// sessionRemovalMuPollInterval paces the bounded mutex wait the same way the
+// terminal archive paces its gate waits.
+const sessionRemovalMuPollInterval = 25 * time.Millisecond
+
+// lockSessionRemovalMuBounded takes a.sessionRemovalMu, waiting up to
+// sessionRemovalMuWaitBudget. It reports false when the mutex stayed busy for
+// the whole budget — callers skip their pass instead of racing the in-flight
+// removal flow. Lock order note: callers may already hold runtimeRebuildMu
+// (controller boot reconciles run under it), which matches the documented
+// runtimeRebuildMu → sessionRemovalMu order; nothing takes runtimeRebuildMu
+// while holding sessionRemovalMu.
+func (a *App) lockSessionRemovalMuBounded() bool {
+	deadline := time.Now().Add(sessionRemovalMuWaitBudget)
+	for {
+		if a.sessionRemovalMu.TryLock() {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(sessionRemovalMuPollInterval)
+	}
+}
+
+// reconcileDesktopCleanupPending is the controller-boot reconciler entry
+// (CleanupPendingReconciler). tl1429b-2: the reconcile takes the session's
+// removal guard per pending session, so it MUST serialize with the archive /
+// restore / delayed-trash flows on a.sessionRemovalMu — an unserialized
+// reconcile raced an in-flight removal guard, got refused, healed past it by
+// evicting the LIVE guard's handles (the sweep treated an in-flight removal
+// guard as an orphan), and trashed the same session concurrently — the
+// 2026-11-06 08:26 refuse→heal(cleared=1)→refuse loop with double trash
+// records. Busy for the whole budget: skip this pass; the markers persist and
+// the next reconcile point retries.
+func (a *App) reconcileDesktopCleanupPending(dir string) error {
+	if !a.lockSessionRemovalMuBounded() {
+		slog.Warn("desktop: cleanup-pending reconcile skipped this pass; a removal flow holds the session mutex",
+			"dir_base", filepath.Base(dir))
+		return nil
+	}
+	defer a.sessionRemovalMu.Unlock()
+	return reconcileDesktopCleanupPendingLocked(dir)
+}
+
+// reconcileDesktopCleanupPendingLocked runs the cleanup-pending reconcile for
+// one session dir. Caller holds a.sessionRemovalMu (the restore preflight
+// calls this variant from inside its own held mutex).
+func reconcileDesktopCleanupPendingLocked(dir string) error {
 	return agent.ReconcileCleanupPending(dir, func(item agent.CleanupPendingInfo) error {
 		if strings.TrimSpace(item.Meta.Operation) == "delete" {
 			sessionPath, key, err := validateSessionPath(dir, item.SessionPath)
@@ -702,7 +793,7 @@ func trashSessionArtifactsBeforeMove(dir, sessionPath, key string, beforeMove fu
 	}
 	// Acquired after prepareSessionTrashTarget: the duplicate-trash path in
 	// there takes its own removal guard, and the guard is not reentrant.
-	guard, err := acquireSessionRemovalGuard(sessionPath)
+	guard, err := acquireSessionRemovalGuardForOp("session_trash_move", sessionPath)
 	if err != nil {
 		return err
 	}
@@ -1148,6 +1239,11 @@ func validateTrashedSessionPath(dir, sessionPath string) (string, string, string
 	}
 	parts := strings.Split(rel, string(filepath.Separator))
 	if len(parts) != 2 {
+		// tl1429b-2 .trash 白名单:结构不符的路径落到统一兜底(见下方),不再
+		// 直接判死——清空/恢复本就是 .trash 内的销毁/取回语义。
+		if accepted, abs, item := acceptTrashContainedSessionPath(root, absPath, fmt.Errorf("invalid trash session path: %s", sessionPath)); accepted {
+			return abs, filepath.Base(abs), item, nil
+		}
 		return "", "", "", fmt.Errorf("invalid trash session path: %s", sessionPath)
 	}
 	if parts[0] != parts[1] {
@@ -1170,6 +1266,11 @@ func validateTrashedSessionPath(dir, sessionPath string) (string, string, string
 			// the target file really sits in the bucket instead of wedging
 			// on metadata.
 			if _, statErr := os.Lstat(filepath.Join(root, parts[0], parts[1])); statErr != nil {
+				// tl1429b-2 .trash 白名单:meta 与直读都救不回时,同样落到
+				// 统一兜底(真实在桶内即放行),兜底不接再按原错误判死。
+				if accepted, abs, item := acceptTrashContainedSessionPath(root, absPath, fmt.Errorf("invalid trash session path: %s", sessionPath)); accepted {
+					return abs, filepath.Base(abs), item, nil
+				}
 				return "", "", "", fmt.Errorf("invalid trash session path: %s", sessionPath)
 			}
 		}
@@ -1194,6 +1295,36 @@ func validateTrashedSessionPath(dir, sessionPath string) (string, string, string
 		return "", "", "", err
 	}
 	return absPath, filepath.Base(absPath), filepath.Dir(absPath), nil
+}
+
+// acceptTrashContainedSessionPath is the tl1429b-2 last-resort whitelist for a
+// trashed-session path that failed the strict structural checks: accept it
+// when the target PROVABLY sits inside this trash root — a transcript-named,
+// existing file at least one bucket level below .trash with no ".." escape
+// (the earlier checks already rejected non-transcript names and raw escapes).
+// Purge/restore are destructive flows scoped to this directory by
+// construction; a wedge here is the "trashed session path outside known
+// session dirs" dead end the 2026-11-06 package-79 scene reported for the
+// stuck second record. The strict error rides the log line so the next field
+// report carries the WHY without another package round-trip.
+func acceptTrashContainedSessionPath(root, absPath string, strictErr error) (bool, string, string) {
+	if !store.IsSessionTranscriptName(filepath.Base(absPath)) {
+		return false, "", ""
+	}
+	rel, err := filepath.Rel(root, absPath)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+		return false, "", ""
+	}
+	if len(strings.Split(rel, string(filepath.Separator))) < 2 {
+		return false, "", "" // directly inside .trash root: no bucket, refuse
+	}
+	info, err := os.Lstat(absPath)
+	if err != nil || info.IsDir() {
+		return false, "", ""
+	}
+	slog.Info("desktop: accepted a trash-contained session path through the whitelist fallback",
+		"session_base", filepath.Base(absPath), "strict_error", strictErr.Error())
+	return true, absPath, filepath.Dir(absPath)
 }
 
 type sessionDisplayMap map[string]map[string]string
