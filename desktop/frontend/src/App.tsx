@@ -61,6 +61,9 @@ import { buildSubagentDirectory, registryRunningEntries, subagentsTabLabel } fro
 // initial 面（首版实测炸 initial 线的教训）。
 import { openProductDocs } from "./lib/docsSite";
 import { WorkflowPanelBoundary } from "./components/WorkflowPanelBoundary";
+// tl1456：资源管理器面板（命令面板 → 工具与诊断）。直接 import——组件轻
+//（无图表库/无独立 store），不值得为一次 palette 入口切 lazy chunk。
+import { ResourcePanel } from "./components/ResourcePanel";
 // tl 1101：命令面板分组后仍沿用两条既有 lab 门控插条（task 505 / 任务 686）——
 // flag 关 = 原数组逐字节不变，flag 开 = 在「重载运行时」后插入对应入口。
 import { insertSessionWallEntry } from "./lib/sessionWall";
@@ -1006,6 +1009,9 @@ export default function App() {
     setWorkflowPanelOpen(true);
     reportFrontendLog("workflowPanel", "open requested", "tasks panel run row");
   }, []);
+  // tl1456：资源管理器开关态。非 lab 门控（诊断面属常驻能力），只在命令
+  // 面板「工具与诊断」组可达；开才挂载，关即卸载（面板内 interval 同步清）。
+  const [resourcePanelOpen, setResourcePanelOpen] = useState(false);
   // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
   // global shortcut can't double-fire in split view; pulse re-selects the
   // query when the chord repeats while the bar is already open.
@@ -5300,6 +5306,17 @@ export default function App() {
         },
       },
       { id: "cmd-trash", group: t("palette.group.tools"), title: t("palette.cmd.trash"), icon: <Trash2 size={15} />, compact: true, keywords: ["trash", "回收站"], run: () => void openTrash() },
+      // tl1456：资源管理器（内存总览 + 本产品形态进程表）。追加式注册，
+      // 不动既有项顺序。
+      {
+        id: "cmd-resource-manager",
+        group: t("palette.group.tools"),
+        title: t("palette.cmd.resourceManager"),
+        icon: <Cpu size={15} />,
+        compact: true,
+        keywords: ["resource", "manager", "memory", "process", "资源", "管理器", "内存", "进程"],
+        run: () => setResourcePanelOpen(true),
+      },
       // 任务 1102：命令面板「产品文档」——打开产品文档静态站（GitHub Pages）。
       // 与 F1 快捷键（help.docs.open）同源，都走 openProductDocs()。
       {
@@ -7416,6 +7433,12 @@ export default function App() {
             />
           </WorkflowPanelBoundary>
         </Suspense>
+      )}
+
+      {/* tl1456：资源管理器——开才挂载、关即卸载；快照轮询 interval 挂在
+          面板的 [open, refreshMs] 上，关闭后零定时器零在途请求。 */}
+      {resourcePanelOpen && (
+        <ResourcePanel open onClose={() => setResourcePanelOpen(false)} />
       )}
 
       <ShortcutsCheatsheet

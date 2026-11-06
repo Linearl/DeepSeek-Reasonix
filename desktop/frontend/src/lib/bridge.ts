@@ -255,6 +255,52 @@ export interface HeapBreakdownView {
   categories: HeapCategory[];
 }
 
+// tl1456 资源管理器（命令面板 → 工具与诊断）的桥契约。字段以
+// desktop/resource_snapshot.go 为准；Measured/Available=false 的语义是
+// 「平台没答上来」，不是 0——面板照此显示「—/未提供」。
+export interface ResourceProcessRow {
+  name: string;
+  pid: number;
+  memoryBytes: number;
+  uptimeSeconds: number;
+  kind: string; // "main" | "child"
+  measured: boolean;
+}
+
+export interface ResourceRuntimeMemory {
+  heapAllocBytes: number;
+  heapSysBytes: number;
+  heapObjects: number;
+  sysBytes: number;
+  goroutines: number;
+  numGC: number;
+  lastGCPauseMs: number;
+}
+
+export interface ResourceSystemMemory {
+  totalBytes: number;
+  availableBytes: number;
+  available: boolean;
+}
+
+export interface ResourceSubagentRow {
+  ref: string;
+  name?: string;
+  description?: string;
+  origin?: string;
+  startedAt: number; // unix milliseconds
+}
+
+export interface ResourceSnapshotView {
+  ts: string;
+  uptimeSeconds: number;
+  main: ResourceProcessRow;
+  children: ResourceProcessRow[];
+  runtime: ResourceRuntimeMemory;
+  system: ResourceSystemMemory;
+  subagents: ResourceSubagentRow[];
+}
+
 // ConsolidationReport summarizes one "merge recovery copies" run.
 export interface ConsolidationReport {
   mainPath: string;
@@ -1874,6 +1920,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   PerfTimeSeries(windowMinutes: number): Promise<PerfTimeSeriesView>;
   SampleHeapBreakdown(): Promise<HeapBreakdownView>;
   HeapBreakdownPath(): Promise<string>;
+  // tl1456 资源管理器：一次按需读内存总览+本产品形态进程表（面板开着才轮询，
+  // 关闭即零成本——Go 侧无采样器无定时器）。
+  ResourceSnapshot(): Promise<ResourceSnapshotView>;
   // Task 19: multi-session collaboration tools (experimental).
   SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
   // 任务 517: merged safety/cost switch (one knob for task-244 B1/B2/B3).
@@ -6964,6 +7013,20 @@ function makeMockApp(): AppBindings {
       ] };
     },
     async HeapBreakdownPath() { return ""; },
+    // tl1456 mock: one honest static frame (browser dev shell has no real
+    // process table); available=false keeps the system strip in its
+    // "platform didn't answer" state instead of fake numbers.
+    async ResourceSnapshot() {
+      return {
+        ts: new Date().toISOString(),
+        uptimeSeconds: 0,
+        main: { name: "reasonix (dev)", pid: 0, memoryBytes: 0, uptimeSeconds: 0, kind: "main", measured: false },
+        children: [],
+        runtime: { heapAllocBytes: 0, heapSysBytes: 0, heapObjects: 0, sysBytes: 0, goroutines: 0, numGC: 0, lastGCPauseMs: 0 },
+        system: { totalBytes: 0, availableBytes: 0, available: false },
+        subagents: [],
+      };
+    },
     async SetExperimentalSessionCollab() {},
     async SetExperimentalSafetyCostControl() {},
     async SetSafetyIdleTerminate() {},
