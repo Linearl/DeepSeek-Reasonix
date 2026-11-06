@@ -10,8 +10,7 @@ const themeSource = readFileSync(resolve(testDir, "../lib/theme.ts"), "utf8");
 const stylesSource = [
   readFileSync(resolve(testDir, "../styles.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),,
 ].join("\n");
 
 let passed = 0;
@@ -100,24 +99,6 @@ ok(
   workbenchLightBlock.includes("--workspace-files-bg: #f1f4f8;") &&
     workbenchAutoLightBlock.includes("--workspace-files-bg: #f1f4f8;"),
   "auto light mode keeps workbench panel surfaces aligned with forced light mode",
-);
-
-const creationAssistantLightRule = ':root[data-theme="light"] .app--creation .msg--assistant .msg__body';
-const creationAssistantAutoLightRule = ':root:not([data-theme]) .app--creation .msg--assistant .msg__body';
-const creationAssistantLightIndex = stylesSource.indexOf(creationAssistantLightRule);
-const creationAssistantAutoLightIndex = stylesSource.indexOf(creationAssistantAutoLightRule);
-const creationAssistantLightBlock = blockAfter(stylesSource, creationAssistantLightRule);
-const creationAssistantAutoLightBlock = blockAfter(stylesSource, creationAssistantAutoLightRule);
-
-ok(creationAssistantLightIndex >= 0, "creation assistant text has an explicit light-mode color adjustment");
-ok(
-  creationAssistantAutoLightIndex > creationAssistantLightIndex,
-  "creation assistant text mirrors the light-mode color adjustment for auto light mode",
-);
-ok(
-  creationAssistantLightBlock.includes("color-mix(in srgb, var(--fg) 90%, var(--bg))") &&
-    creationAssistantAutoLightBlock.includes("color-mix(in srgb, var(--fg) 90%, var(--bg))"),
-  "creation assistant auto light text color matches forced light mode",
 );
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);

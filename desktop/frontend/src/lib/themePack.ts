@@ -118,17 +118,17 @@ export type ThemeScene = "home" | "task";
 
 const PACK_STYLE_ID = "reasonix-theme-pack-overlay";
 
-// tl1343: the creation layout re-declares the whole token vocabulary on
-// `.app--creation` (styles/mode-creation.css). An element-level declaration
-// shadows everything the pack overlay writes on :root, so a pack (e.g.
-// Broadsheet Rose's #FFF1E5 background) never reached the creation UI. The
-// overlay therefore re-asserts pack tokens ON the registered sites with one
-// extra attribute in each selector, so they win regardless of stylesheet
-// injection order. Layout-local tuning the pack does not own (--button-bg,
-// --pill-bg, --accent-title-grad, …) is not re-asserted and still comes from
-// the mode sheet. The mode-css contract test fails when a new full-token
-// shadow site appears without registering here.
-const PACK_TOKEN_ELEMENT_SCOPES = [".app--creation"] as const;
+// Element-level token-shadow sites: a layout that re-declares the whole token
+// vocabulary on an element (the retired creation sheet did on `.app--creation`)
+// shadows everything the pack overlay writes on :root, so the overlay
+// re-asserts pack tokens ON the registered sites with one extra attribute in
+// each selector, so they win regardless of stylesheet injection order.
+// Layout-local tuning the pack does not own (--button-bg, --pill-bg,
+// --accent-title-grad, …) is not re-asserted and still comes from the mode
+// sheet. tl1450 emptied the registry with the creation layout; the mechanism
+// stays for any future full-token shadow site — the mode-css contract test
+// fails when one appears without registering here.
+const PACK_TOKEN_ELEMENT_SCOPES: readonly string[] = [];
 const TOKEN_KEYS = [
   "bg",
   "bgSoft",

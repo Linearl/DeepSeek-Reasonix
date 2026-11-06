@@ -17,8 +17,7 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const styles = [
   readFileSync(resolve(testDir, "../styles.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),,
 ].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 const composerSource = readFileSync(resolve(testDir, "../components/Composer.tsx"), "utf8");
 
@@ -74,11 +73,6 @@ eq(finalDeclaration(".composer-card--auto-overflow .composer__input", "scrollbar
 eq(finalDeclaration(".composer-card--auto-overflow .composer__input::-webkit-scrollbar", "display"), "block", "overflowing autosize textarea restores the webkit scrollbar");
 eq(finalDeclaration(".composer-card--auto-overflow .composer__input::-webkit-scrollbar", "width"), "6px", "overflowing autosize scrollbar matches the resized-card width");
 eq(
-  finalDeclaration(".app--creation .composer-wrap--hero .composer__input", "max-height"),
-  "min(30vh, 160px) !important",
-  "hero input cap is min(30vh, 160px) instead of the 96px hard clip",
-);
-eq(
   finalDeclaration(".composer__input.composer__input--measure", "position"),
   "absolute",
   "autosize mirror stays outside the composer layout flow",
@@ -93,10 +87,6 @@ ok(
   /composerAutoOverflow = composerHeight === null && textareaAutoOverflow/.test(composerSource)
     && /composerAutoOverflow \? " composer-card--auto-overflow" : ""/.test(composerSource),
   "Composer wires the auto-overflow modifier to the autosize overflow state",
-);
-ok(
-  /Math\.min\(Math\.floor\(window\.innerHeight \* 0\.3\), 160\)/.test(composerSource),
-  "hero input JS cap is min(30vh, 160px)",
 );
 ok(
   /const measureTaRef = useRef<HTMLTextAreaElement>\(null\)/.test(composerSource)

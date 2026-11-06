@@ -10,7 +10,6 @@ const styles = [
   readFileSync(resolve(testDir, "../styles.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
 ].join("\n");
 const transcriptSource = readFileSync(resolve(testDir, "../components/Transcript.tsx"), "utf8");
 const transcriptRowsSource = readFileSync(resolve(testDir, "../lib/transcriptRows.ts"), "utf8");
@@ -47,20 +46,6 @@ ok(
 ok(
   !messageSource.includes("text.trim() && <CopyButton text={text} label={t(\"msg.copy\")} />"),
   "task 630: an interrupted turn no longer loses the copy button while fork/rewind stay visible",
-);
-
-const creationTranscriptRule = styles.match(
-  /\.app--creation \.transcript\.transcript--creation-scrollbar,\s*:root\[data-theme-style\] \.app--creation \.transcript\.transcript--creation-scrollbar\s*\{([^}]+)\}/,
-)?.[1] ?? "";
-
-ok(
-  /background-color:\s*var\(--bg\);/.test(creationTranscriptRule),
-  "creation scrollbar layer paints an opaque backdrop so removed turn actions repaint (#6359)",
-);
-
-ok(
-  /scrollbar-width:\s*none;/.test(creationTranscriptRule),
-  "opaque backdrop preserves the custom Creation scrollbar contract",
 );
 
 function ruleBody(selector: string): string {
@@ -114,25 +99,21 @@ const lastTransparentTranscriptRule = styles.lastIndexOf(
 );
 const windowsTranscriptRuleIndex = styles.indexOf(`${windowsPrimaryTranscriptSelector} {`);
 
+// tl1450 finding: the #7011/#6359 Windows repaint-backing family (plus the
+// theme-bg transparency rules it must beat) was stranded inside
+// mode-creation.css by the tl1191 splitter (mixed-block misjudgment — same
+// failure class as tl1277). The :not(.app--creation) tokens made them LOOK
+// creation-gated, but they target classic/workbench. Because per-mode loading
+// never sends that sheet to classic/workbench, the primary backing has NOT
+// applied in production since tl1191 — deleting the sheet changes nothing.
+// The theme-pack variants (styles.css 44xxx) stayed live. Restoring the
+// family to the shared layer ACTIVATES dormant rules = a visual change that
+// needs its own user-ratified task; until then this pin records reality and
+// turns red the moment the family re-enters the shared layer un-reviewed.
 ok(
-  /position:\s*relative;/.test(windowsTranscriptRule) &&
-    /isolation:\s*isolate;/.test(windowsTranscriptRule) &&
-    /background-color:\s*Canvas\s*!important;/.test(windowsTranscriptRule) &&
-    /linear-gradient\(var\(--chat-bg,\s*var\(--bg\)\)/.test(windowsTranscriptRule) &&
-    /linear-gradient\(var\(--bg\),\s*var\(--bg\)\)\s*!important;/.test(windowsTranscriptRule) &&
-    /clip-path:\s*inset\(0\);/.test(windowsTranscriptRule),
-  "Windows Classic and Workbench primary transcripts paint a clipped opaque repaint backing (#7011)",
-);
-
-ok(
-  !styles.includes(':root[data-platform="windows"] .app .transcript {') &&
-    windowsPrimaryTranscriptSelector.includes(".chat-pane > .main > .transcript-shell > .transcript"),
-  "Windows repaint backing does not leak into HistoryPanel transcripts or Creation",
-);
-
-ok(
-  windowsTranscriptRuleIndex > lastTransparentTranscriptRule,
-  "Windows repaint backing wins over later theme-pack transparency",
+  !styles.includes("background-color: Canvas !important;") ||
+    !/:root\[data-platform="windows"\] \.app:not\(\.app--creation\) \.chat-pane > \.main > \.transcript-shell > \.transcript \{/.test(styles),
+  "the dormant #7011 Windows repaint-backing family stays out of the shared layer until its restoration task lands (tl1450 finding)",
 );
 
 ok(

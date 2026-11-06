@@ -11,7 +11,7 @@ export type TopicbarView = {
   sidebar: { title: string; blocked: boolean; pressed: boolean; collapsed: boolean };
   title: {
     text: string; hover: string; renameLabel: string; editing: boolean;
-    draft: string; editSize?: number; canRename: boolean; workspaceLabel?: string;
+    draft: string; canRename: boolean; workspaceLabel?: string;
   };
   subtitle: {
     visible: boolean; title: string; worktreeTabId?: string;
@@ -56,7 +56,7 @@ export function TopicbarRegion({ view, commands, children }: {
       <div className="topicbar__title-row">
         {title.editing ? <div className="topicbar__title-edit">
           <input autoFocus className="topicbar__title-input" aria-label={title.renameLabel}
-            size={title.editSize} value={title.draft}
+            value={title.draft}
             onChange={event => commands.setTitleDraft(event.target.value)}
             onFocus={event => event.currentTarget.select()}
             onKeyDown={event => {

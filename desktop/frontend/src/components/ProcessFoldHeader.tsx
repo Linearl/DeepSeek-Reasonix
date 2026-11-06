@@ -153,7 +153,7 @@ export function ProcessFoldHeader({
         onClick={onToggle}
         aria-expanded={open}
       >
-        <span className="turn-collapse__label" data-creation-label={label}>{label}</span>
+        <span className="turn-collapse__label">{label}</span>
         {!hasRunningWork && <ChevronRight className={`reasoning__chevron${open ? " reasoning__chevron--open" : ""}`} size={12} />}
       </button>
       {showLiveStatus && (

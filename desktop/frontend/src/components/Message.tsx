@@ -1266,13 +1266,11 @@ export function TurnActions({
 export const AssistantMessage = memo(function AssistantMessage({
   item,
   defaultExpanded = false,
-  creationMode = false,
   explicitFold,
   onExplicitFoldChange,
 }: {
   item: AssistantItem;
   defaultExpanded?: boolean;
-  creationMode?: boolean;
   /** 任务 765: persisted user fold intent for the reasoning panel. */
   explicitFold?: boolean;
   onExplicitFoldChange?: (open: boolean) => void;
@@ -1302,7 +1300,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           {hasText && (
             <Markdown
               text={item.text}
-              plainStatusBlocks={creationMode}
+              plainStatusBlocks={false}
               streaming={item.streaming}
               cacheKey={item.id}
               wasStreamed={item.wasStreamed}

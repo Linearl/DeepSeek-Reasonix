@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentProps, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import { AlarmClock, Brain, Command, MessageSquare, MessagesSquare, PanelLeft, PanelRight, Search, Settings, SquarePen, Trash2 } from "lucide-react";
+import { AlarmClock, MessageSquare, MessagesSquare, Settings, SquarePen, Trash2 } from "lucide-react";
 // NOTE: the monitor/feedback entry points were removed from this rail — the
 // settings pane is the single entry point now (task 121/123). The panels
 // themselves are mounted at the App root (App.tsx), not here.
@@ -16,13 +16,9 @@ const ProjectTree = lazy(() => import("../components/ProjectTree").then((module)
 export type SidebarRegionProps = {
   className: string;
   workbench: boolean;
-  creation: boolean;
   automation?: boolean;
   collapsed: boolean;
   navTooltipDisabled: boolean;
-  searchOpen: boolean;
-  togglePressed: boolean;
-  toggleTitle: string;
   resize: {
     min: number;
     max: number;
@@ -37,11 +33,9 @@ export type SidebarRegionProps = {
   onOpenTrash: () => void;
   onOpenAutomation: () => void;
   onOpenSettings: (tab: SettingsTab) => void;
-  onToggleSearch: () => void;
-  onToggle: () => void;
 };
 
-/** Sidebar presentation shared by classic, workbench and creation layouts. */
+/** Sidebar presentation shared by classic and workbench layouts. */
 export function SidebarRegion(props: SidebarRegionProps) {
   const { t } = props;
   // Task 140: hydrate experiment flags from the host on mount so the buttons
@@ -69,89 +63,37 @@ export function SidebarRegion(props: SidebarRegionProps) {
               <span role="img" aria-label="Reasonix" className="sidebar__brand-logo" />
             </div>
             <button className="sidebar__new" onClick={props.onNewSession}>
-              <SquarePen size={18} /><span>{props.creation ? t("creation.sidebar.newChat") : t("topbar.newSession")}</span>
+              <SquarePen size={18} /><span>{t("topbar.newSession")}</span>
             </button>
           </>
-        )}
-        {props.creation && (
-          <section className="sidebar-feature-zone" aria-label={t("settings.title")}>
-            <div className="sidebar-feature-zone__title">{t("creation.sidebar.features")}</div>
-            <div className="sidebar-feature-zone__items">
-              <FeatureButton icon={<Command size={14} />} label={t("creation.sidebar.skills")} onClick={() => props.onOpenSettings("skills")} />
-              <FeatureButton icon={<Brain size={14} />} label={t("settings.tab.memory")} onClick={() => props.onOpenSettings("memory")} />
-              <FeatureButton icon={<MessageSquare size={14} />} label={t("creation.sidebar.messageChannels")} onClick={() => props.onOpenSettings("bots")} />
-              <FeatureButton active={props.automation} icon={<AlarmClock size={14} />} label={t("heartbeat.scheduler")} onClick={props.onOpenAutomation} />
-            </div>
-          </section>
         )}
         <section className="sidebar__section sidebar__section--projects">
           <Suspense fallback={null}><ProjectTree {...props.projectTree} /></Suspense>
         </section>
-        {props.workbench ? (
-          <nav className="sidebar__nav sidebar__nav--footer">
-            <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
-              <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
-              {/* 452L→856：收件站/群聊两键融合为协作中心一键（App.tsx 四位行
-                  同步）：回收站 → 协作中心 → 自动化 → 设置。未读徽标属挂载侧
-                  动态状态（useCollabInboxUnreadCount），本卸载树不接；复挂时
-                  如需徽标再补 count 接线。 */}
-              <UtilityButton label={t("sidebar.collabHub")} icon={<MessagesSquare size={16} />} onClick={() => setCollabHubOpen(true)} />
-              <UtilityButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
-              <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
-            </div>
-          </nav>
-        ) : props.creation ? (
-          <nav className="sidebar__nav">
-            {props.creation && (
-              <Tooltip label={t("projectTree.searchPlaceholder")} fill side="right" disabled={props.navTooltipDisabled}>
-                <button className={`sidebar__navitem sidebar__navitem--search${props.searchOpen ? " sidebar__navitem--active" : ""}`} type="button"
-                  aria-label={t("projectTree.searchPlaceholder")} aria-pressed={props.searchOpen} onClick={props.onToggleSearch}>
-                  <Search size={15} /><span>{t("tabBar.commandSearchCompact")}</span>
-                </button>
-              </Tooltip>
-            )}
-            <NavButton label={t("sidebar.trash")} icon={<Trash2 size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={props.onOpenTrash} />
-            <NavButton label={t("topbar.settings")} icon={<Settings size={15} />} disabledTooltip={props.navTooltipDisabled} onClick={() => props.onOpenSettings("general")} />
-          </nav>
-        ) : (
-          // Task 412: classic (non-creation) previously rendered the three
-          // utility entries as a vertical NavButton list at the sidebar foot —
-          // the workbench bottom-rail revamp (task 383 verdict 5) never synced
-          // here, which is what the user's v1520 screenshot shows. Align to
-          // the workbench layout: one horizontal .sidebar__utility-row of
-          // icon-only UtilityButtons with hover tooltips.
-          <nav className="sidebar__nav sidebar__nav--footer">
-            <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
-              <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
-              {/* 452L→856：同融合一键，与挂载侧 4 位行对齐（说明见 workbench 分支注释）。 */}
-              <UtilityButton label={t("sidebar.collabHub")} icon={<MessagesSquare size={16} />} onClick={() => setCollabHubOpen(true)} />
-              <UtilityButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
-              <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
-            </div>
-          </nav>
-        )}
+        {/* Shared classic/workbench footer utility row (the task-412 rework
+            aligned the two; tl1450 removed the last differing creation branch).
+            452L→856：收件站/群聊两键融合为协作中心一键（App.tsx 四位行同步）：
+            回收站 → 协作中心 → 自动化 → 设置。未读徽标属挂载侧动态状态
+            （useCollabInboxUnreadCount），本卸载树不接；复挂时如需徽标再补
+            count 接线。 */}
+        <nav className="sidebar__nav sidebar__nav--footer">
+          <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
+            <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
+            <UtilityButton label={t("sidebar.collabHub")} icon={<MessagesSquare size={16} />} onClick={() => setCollabHubOpen(true)} />
+            <UtilityButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
+            <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
+          </div>
+        </nav>
       </aside>
       <button className="sidebar-resizer" type="button" role="separator" aria-orientation="vertical" aria-label={t("sidebar.resize")}
         aria-valuemin={props.resize.min} aria-valuemax={props.resize.max} aria-valuenow={props.resize.value}
         onPointerDown={props.resize.onPointerDown} onKeyDown={props.resize.onKeyDown} onDoubleClick={props.resize.onReset} />
-      {props.creation && !props.automation && (
-        <button className={`sidebar-collapse-toggle${props.collapsed ? " sidebar-collapse-toggle--collapsed" : ""}${props.togglePressed ? " sidebar-collapse-toggle--pressed" : ""}`}
-          type="button" onClick={props.onToggle} aria-label={props.toggleTitle} aria-pressed={!props.collapsed} title={props.toggleTitle}>
-          {props.collapsed ? <PanelRight size={14} /> : <PanelLeft size={14} />}
-        </button>
-      )}
     </>
   );
-}
-
-function FeatureButton({ icon, label, onClick, active }: { icon: ReactNode; label: string; onClick: () => void; active?: boolean }) {
-  return <button className={`sidebar-feature-zone__item${active ? " sidebar-feature-zone__item--active" : ""}`} aria-current={active ? "page" : undefined} type="button" onClick={onClick}>{icon}<span>{label}</span></button>;
 }
 
 function UtilityButton({ icon, label, onClick, active }: { icon: ReactNode; label: string; onClick: () => void; active?: boolean }) {
   return <Tooltip label={label} fill side="top"><button className={`sidebar__utility-button${active ? " sidebar__utility-button--active" : ""}`} aria-current={active ? "page" : undefined} type="button" onClick={onClick}>{icon}<span className="sr-only">{label}</span></button></Tooltip>;
 }
 
-function NavButton({ icon, label, disabledTooltip, onClick, active }: { icon: ReactNode; label: string; disabledTooltip: boolean; onClick: () => void; active?: boolean }) {
-  return <Tooltip label={label} fill side="right" disabled={disabledTooltip}><button className={`sidebar__navitem${active ? " sidebar__navitem--active" : ""}`} aria-current={active ? "page" : undefined} onClick={onClick}>{icon}<span>{label}</span></button></Tooltip>;
-}
+

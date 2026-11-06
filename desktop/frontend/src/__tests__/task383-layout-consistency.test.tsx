@@ -79,7 +79,9 @@ const locales = { zh: locale("zh"), "zh-TW": locale("zh-TW"), en: locale("en") }
 // harness (both App.tsx and SidebarRegion paths); here only the guard that
 // this file's subject stayed put ─────────────────────────────────────────────
 {
-  ok(appSrc.includes('{(sidebarWorkbench || !sidebarCreation) ? (\n            <nav className="sidebar__nav sidebar__nav--footer">'), "#5 App.tsx footer ternary still sends classic down the utility-row path (task412 rework guard)");
+  // tl1450: the ternary collapsed — one unconditional footer nav serves both
+  // survivors (task412 rework guard, updated).
+  ok(appSrc.includes('<nav className="sidebar__nav sidebar__nav--footer">'), "#5 App.tsx footer nav still sends classic down the utility-row path (task412 rework guard)");
 }
 
 // ── Verdict #8: automation/heartbeat dual-name gone ─────────────────────────
@@ -91,7 +93,7 @@ const locales = { zh: locale("zh"), "zh-TW": locale("zh-TW"), en: locale("en") }
   // The sidebar footer utility-row (live classic+workbench path in App.tsx)
   // holds exactly one automation button — the dual-name was one button
   // answering to two labels, the dedupe is one label total.
-  const footerStart = appSrc.indexOf('{(sidebarWorkbench || !sidebarCreation) ? (');
+  const footerStart = appSrc.indexOf('<nav className="sidebar__nav sidebar__nav--footer">');
   const footerEnd = appSrc.indexOf('</nav>', footerStart);
   const footer = appSrc.slice(footerStart, footerEnd);
   ok((footer.match(/openPage\(\{ kind: "automation" \}\)/g) || []).length === 1, "#8 sidebar utility-row has exactly one automation button");
@@ -100,20 +102,23 @@ const locales = { zh: locale("zh"), "zh-TW": locale("zh-TW"), en: locale("en") }
   ok(/label=\{t\("heartbeat\.scheduler"\)\} onClick=\{props\.onOpenAutomation\}/.test(paletteSrc) || /t\("heartbeat\.scheduler"\)/.test(paletteSrc), "#8 palette source (unmounted composition half) stays on heartbeat.scheduler");
 }
 
-// ── Verdict #10: desktopLayoutStyle comment matches the three canonical
-// values the Go normalizer actually produces ─────────────────────────────────
+// ── Verdict #10: desktopLayoutStyle comment matches the two canonical values
+// the Go normalizer actually produces ─────────────────────────────────
 {
-  const canonical = ["classic", "workbench", "creation"];
+  const canonical = ["classic", "workbench"];
   const comment = (src: string) => src.match(/desktopLayoutStyle: string; \/\/ ([^\n]*)/)?.[1] ?? "";
   for (const [file, src] of [["lib/types.ts", typesSrc], ["lib/settingsViewTypes.ts", settingsTypesSrc]] as const) {
     const c = comment(src);
-    ok(canonical.every((value) => c.includes(`"${value}"`)), `#10 ${file} comment carries all three canonical values`);
+    ok(canonical.every((value) => c.includes(`"${value}"`)), `#10 ${file} comment carries both canonical values`);
     ok(!/workspace/.test(c), `#10 ${file} comment omits the retired alias`);
+    ok(!c.replace("retired creation", "").includes("creation"), `#10 ${file} comment only names creation as retired`);
   }
-  // Go side is the source of truth: normalizeDesktopLayoutStyle returns exactly
-  // classic / workbench / creation (workspace folds into workbench).
+  // Go side is the source of truth: normalizeDesktopLayoutStyle emits exactly
+  // classic / workbench, with the retired creation raw value folding into
+  // workbench behind an explicit one-version compat case.
   const fn = goConfigSrc.match(/func normalizeDesktopLayoutStyle\(style string\) string \{[\s\S]*?\n\}/)?.[0] ?? "";
-  ok(/case "classic":/.test(fn) && /case "workbench", "workspace":/.test(fn) && /case "creation":/.test(fn), "#10 Go normalizer emits exactly the three canonical values");
+  ok(/case "classic":/.test(fn) && /case "workbench", "workspace":/.test(fn) && !/return "creation"/.test(fn), "#10 Go normalizer emits exactly the two canonical values");
+  ok(/case "creation":\s*\n\s*return "workbench"/.test(fn), "#10 Go normalizer folds the retired creation value into workbench (read compat)");
 }
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);

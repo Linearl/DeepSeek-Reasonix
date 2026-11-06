@@ -25,7 +25,6 @@ export type WorkspaceDockRegionProps = {
   visible: boolean;
   overlay: boolean;
   mode: RightDockMode;
-  creation: boolean;
   remoteAvailable: boolean;
   showContext: boolean;
   /** Task 259: the experimental todo-sidebar switch, snapshotted at boot. */
@@ -55,9 +54,9 @@ export type WorkspaceDockRegionProps = {
   };
 };
 
-/** Shared workbench/creation dock; layout variants change data, not component identity. */
+/** Shared workbench dock; layout variants change data, not component identity. */
 export function WorkspaceDockRegion(props: WorkspaceDockRegionProps) {
-  const { visible, overlay, mode, creation, remoteAvailable, showContext, todoSidebar, t, onMode, onRemote } = props;
+  const { visible, overlay, mode, remoteAvailable, showContext, todoSidebar, t, onMode, onRemote } = props;
   // Task 259: tab visibility applies live while the switch is on; with the
   // switch off the tab row is the original literal list, byte for byte.
   const [hiddenTabs, setHiddenTabs] = useState<readonly DockTabId[]>(loadHiddenDockTabs);
@@ -80,7 +79,7 @@ export function WorkspaceDockRegion(props: WorkspaceDockRegionProps) {
             <div className={["workbench-dock__tabs", todoSidebar ? "workbench-dock__tabs--wrap" : ""].filter(Boolean).join(" ")} role="tablist" aria-label={t("rightDock.views")}>
               {todoSidebar ? (
                 <>
-                  {showContext && !creation && tabVisible("context") && <DockTab active={mode === "context"} onClick={() => onMode("context")} icon={<Activity size={13} />} label={t("rightDock.overview")} />}
+                  {showContext && tabVisible("context") && <DockTab active={mode === "context"} onClick={() => onMode("context")} icon={<Activity size={13} />} label={t("rightDock.overview")} />}
                   {tabVisible("files") && <DockTab active={mode === "files"} onClick={() => onMode("files")} icon={<FileText size={13} />} label={t("workspace.filesTab")} />}
                   {tabVisible("changed") && <DockTab active={mode === "changed"} onClick={() => onMode("changed")} icon={<GitBranch size={13} />} label={t("workspace.changedTab")} />}
                   {remoteAvailable && tabVisible("remote") && <DockTab active={mode === "remote"} onClick={onRemote} icon={<Server size={13} />} label={t("rightDock.remote")} />}
@@ -89,7 +88,7 @@ export function WorkspaceDockRegion(props: WorkspaceDockRegionProps) {
                 </>
               ) : (
                 <>
-                  {showContext && !creation && <DockTab active={mode === "context"} onClick={() => onMode("context")} icon={<Activity size={13} />} label={t("rightDock.overview")} />}
+                  {showContext && <DockTab active={mode === "context"} onClick={() => onMode("context")} icon={<Activity size={13} />} label={t("rightDock.overview")} />}
                   <DockTab active={mode === "files"} onClick={() => onMode("files")} icon={<FileText size={13} />} label={t("workspace.filesTab")} />
                   <DockTab active={mode === "changed"} onClick={() => onMode("changed")} icon={<GitBranch size={13} />} label={t("workspace.changedTab")} />
                   {remoteAvailable && <DockTab active={mode === "remote"} onClick={onRemote} icon={<Server size={13} />} label={t("rightDock.remote")} />}
@@ -116,7 +115,7 @@ export function WorkspaceDockRegion(props: WorkspaceDockRegionProps) {
               )
             ) : mode === "remote" ? (
               <Suspense fallback={null}><RemotePanel {...props.remote} /></Suspense>
-            ) : mode === "context" && !creation ? (
+            ) : mode === "context" ? (
               <Suspense fallback={null}><ContextPanel {...props.context} /></Suspense>
             ) : (
               <Suspense fallback={null}><WorkspacePanel key={props.workspaceKey} {...props.workspace} /></Suspense>

@@ -452,14 +452,6 @@ function composerMaxHeight(): number {
   return Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, Math.floor(window.innerHeight * COMPOSER_MAX_VIEWPORT_RATIO)));
 }
 
-// Hero (creation) input cap: the old 96px hard cap clipped longer drafts
-// before the card autosize took over; give the hero min(30vh, 160px) so a
-// visible scrollbar takes over instead (#8494/#8742/#9019).
-function composerHeroInputMaxHeight(): number {
-  if (typeof window === "undefined") return 160;
-  return Math.min(Math.floor(window.innerHeight * 0.3), 160);
-}
-
 // The rendered card includes the run strip while a turn runs; subtract it to
 // recover the user's logical height when measuring from the DOM.
 function composerLogicalHeight(card: HTMLElement): number {
@@ -689,8 +681,6 @@ export function Composer({
   guidanceConsumedText,
   guidanceConsumedIds,
   guidanceQueuePreviewItems,
-  showContextWindowRing = false,
-  heroMode = false,
   // tl1441 ②：群聊模式——会话专属槽位（模型/effort/权限档/计划目标/autopilot/
   // 分屏目标/胶囊/上下文环）结构性隐藏；通用能力（粘图/表情/草稿/截图/
   // 历史提示词/快捷指令）保留；发送由挂载点桥接（onSend 注入 channel_send），
@@ -866,10 +856,6 @@ export function Composer({
   // the shelf re-filters snapshots with it so consumed rows never return.
   guidanceConsumedIds?: ReadonlySet<string>;
   guidanceQueuePreviewItems?: readonly string[];
-  showContextWindowRing?: boolean;
-  // Creation empty-session hero: slim centered composer under the welcome
-  // headline (hides task/approval chrome; keeps model + effort).
-  heroMode?: boolean;
   /** tl1441 ②：群聊模式（会话专属槽位结构性隐藏；挂载点桥接 channel_send）。 */
   channelMode?: boolean;
   /** tl1441 ③：改写草稿上下文提供者（channelMode 用群尾窗当上下文；缺省走
@@ -1210,7 +1196,6 @@ export function Composer({
   const intentCloseTimerRef = useRef<number | null>(null);
   // Creation chrome: hover-open task menus (same pattern as ContextWindowRing).
   const intentHoverTimerRef = useRef<number | null>(null);
-  const creationChrome = showContextWindowRing;
   const wasRunningByDraftRef = useRef<Record<string, boolean>>({ [draftKey]: running });
   const pastChatSearchComposingRef = useRef(false);
   const pastChatSearchLastCompositionEndAt = useRef(0);
@@ -2850,21 +2835,6 @@ export function Composer({
     clearHoverTimer(intentHoverTimerRef);
   }, [clearIntentCloseTimer]);
 
-  const onIntentHoverLeave = useCallback(() => {
-    if (!creationChrome) return;
-    clearHoverTimer(intentHoverTimerRef);
-    if (!intentMenuOpen && !intentMenuClosing) return;
-    intentHoverTimerRef.current = window.setTimeout(() => {
-      intentHoverTimerRef.current = null;
-      closeIntentMenu();
-    }, 140);
-  }, [closeIntentMenu, creationChrome, intentMenuClosing, intentMenuOpen]);
-
-  const onIntentPopoverEnter = useCallback(() => {
-    if (!creationChrome) return;
-    clearHoverTimer(intentHoverTimerRef);
-  }, [creationChrome]);
-
   const fileDedupKey = async (file: File): Promise<AttachmentDedupKey> => ({
     hash: await sha256(file),
     source: `file:${file.name}:${file.size}:${file.lastModified}`,
@@ -4301,23 +4271,6 @@ export function Composer({
   }, []);
 
   const measureTextareaAutoHeight = useCallback(() => {
-    // Creation empty hero starts single-line but must grow so multi-line drafts
-    // stay readable before send (review: fixed 20px + overflow:hidden clipped).
-    if (heroMode) {
-      const measureNode = measureTaRef.current;
-      if (!measureNode) {
-        setTextareaAutoHeight(20);
-        setTextareaAutoOverflow(false);
-        return;
-      }
-      const scrollHeight = measureNode.scrollHeight || 20;
-      const maxHeight = composerHeroInputMaxHeight();
-      const nextHeight = Math.min(Math.max(scrollHeight, 20), maxHeight);
-      const nextOverflow = scrollHeight > maxHeight + 1;
-      setTextareaAutoHeight((current) => (current === nextHeight ? current : nextHeight));
-      setTextareaAutoOverflow((current) => (current === nextOverflow ? current : nextOverflow));
-      return;
-    }
     const richHeight = invocationsRef.current.length > 0 ? richInputRef.current?.scrollHeight() : 0;
     const scrollHeight = richHeight || measureTaRef.current?.scrollHeight || 0;
     if (!scrollHeight) return;
@@ -4329,7 +4282,7 @@ export function Composer({
     });
     setTextareaAutoHeight((current) => (current === sizing.inputHeight ? current : sizing.inputHeight));
     setTextareaAutoOverflow((current) => (current === sizing.overflow ? current : sizing.overflow));
-  }, [composerHeight, heroMode, invocations.length]);
+  }, [composerHeight, invocations.length]);
 
   useLayoutEffect(() => {
     measureTextareaAutoHeight();
@@ -5379,7 +5332,6 @@ export function Composer({
       className={[
         "composer-wrap",
         decisionPending ? "composer-wrap--decision-pending" : "",
-        heroMode ? "composer-wrap--hero" : "",
       ].filter(Boolean).join(" ")}
       style={attachmentInputEnabled ? { "--wails-drop-target": "drop" } as CSSProperties : undefined}
       onDropCapture={onFileDropCapture}
@@ -5399,7 +5351,7 @@ export function Composer({
           requestActiveDraftFrame(() => taRef.current?.focus());
         }}
       />
-      {!heroMode && <AnchoredPopover
+      <AnchoredPopover
         // Task 594: the popover stays reachable mid-turn — pure text inserts
         // (quick commands, @/#/ triggers) must stay available while running;
         // per-item gates own the rest instead of a blanket close.
@@ -5434,8 +5386,6 @@ export function Composer({
           className="composer-access-menu__section"
           role="menu"
           aria-label={t("composer.intentMenuTitle")}
-          onMouseEnter={creationChrome ? onIntentPopoverEnter : undefined}
-          onMouseLeave={creationChrome ? onIntentHoverLeave : undefined}
         >
           <div className="composer-access-menu__label">{t("composer.intentMenuTitle")}</div>
           <button
@@ -5555,7 +5505,7 @@ export function Composer({
             ))}
           </div>
         )}
-      </AnchoredPopover>}
+      </AnchoredPopover>
       {menuMode === "slash" && (
         <SlashMenu
           items={slashMatches}
@@ -6114,7 +6064,7 @@ export function Composer({
         />
         <div className={composerMetaClass}>
           <div className="composer-meta__params">
-            {!heroMode && !channelMode && (
+            {!channelMode && (
               <div className="composer-meta__control composer-meta__control--capsule">
                 {/* 任务 447 胶囊：悬浮窗面板——运行中任务 + 已结束子代理目录 + 子代理历史查看。
                     任务 440：面板列出全部运行中子代理/后台命令（跨 tab+分离会话）并按 tab 停止。 */}
@@ -6137,7 +6087,7 @@ export function Composer({
                 />
               </div>
             )}
-            {!heroMode && !channelMode && (
+            {!channelMode && (
               <div className="composer-meta__control composer-meta__control--content">
                 <Tooltip label={t("composer.contentMenuTitle")} disabled={contentMenuOpen}>
                   <button
@@ -6160,7 +6110,7 @@ export function Composer({
             )}
             {/* 任务 465 两维矩阵：徽章只标第二维（计划/目标）。第一维 autopilot
                 在右侧模式条第四档呈现；两维同开时徽章与档位同时可见。 */}
-            {!heroMode && !channelMode && (planModeOn || goalModeOn) && (
+            {!channelMode && (planModeOn || goalModeOn) && (
               <div className="composer-meta__control composer-meta__control--intent">
                 <Tooltip label={taskModeTooltipLabel} disabled={intentMenuOpen || intentMenuClosing}>
                   <button
@@ -6170,7 +6120,7 @@ export function Composer({
                     onClick={() => { if (goalModeOn && activeGoal) stopGoalMode(); else chooseTaskMode("normal"); }}
                     disabled={disabled || running}
                     aria-label={taskModeTriggerLabel}
-                    title={intentMenuOpen || intentMenuClosing || creationChrome ? undefined : taskModeTriggerLabel}
+                    title={intentMenuOpen || intentMenuClosing ? undefined : taskModeTriggerLabel}
                   >
                     <span className="composer-task-mode-trigger__icon"><TaskModeIcon size={16} aria-hidden="true" /><X className="composer-task-mode-trigger__remove" size={14} aria-hidden="true" /></span>
                     <span className="composer-task-mode-trigger__value">{t(taskModeShortKey)}</span>
@@ -6178,7 +6128,7 @@ export function Composer({
                 </Tooltip>
               </div>
             )}
-            {!heroMode && !channelMode && (
+            {!channelMode && (
               <div className={`composer-meta__control composer-meta__control--approval${approvalSelectOn ? " composer-meta__control--approval--select" : ""}`}>
                 {/* A pending tool approval disables the composer, but the approval
                     bar stays usable so mode changes remain possible mid-prompt;
@@ -6269,7 +6219,7 @@ export function Composer({
                 )}
               </div>
             )}
-            {!heroMode && !channelMode && splitActive && (
+            {!channelMode && splitActive && (
               <div className={`composer-meta__control composer-meta__control--target${sendTargetSelectOn ? " composer-meta__control--target--select" : ""}`}>
                 {/* One composer, three targets (task 70, B) -- the same three-state
                     capsule the approval bar uses, so styling and keyboard behaviour are
@@ -6328,7 +6278,7 @@ export function Composer({
                 )}
               </div>
             )}
-            {!heroMode && !channelMode && qualityFloor === "delivery" && (
+            {!channelMode && qualityFloor === "delivery" && (
               <div className="composer-meta__control composer-meta__control--delivery">
                 <Tooltip label={`${t("common.close")} ${t("composer.qualityFloorDelivery")}`}>
                   <button type="button"
@@ -6376,7 +6326,7 @@ export function Composer({
             {/* tl1441 ②：模型/effort/上下文环是会话专属槽位——群聊模式整块
                 隐藏（验收 3「零展示」是结构性门控，不依赖挂载点不传 props）。 */}
             {!channelMode && <div className="composer-meta__control composer-meta__control--model">
-              {!heroMode && (
+              {(
                 <ContextWindowRing
                   enabled
                   turnMetrics={runMetrics ?? undefined}
@@ -6396,7 +6346,7 @@ export function Composer({
               }} /></Suspense>
               {/* tl1389：fallback 重建在飞（recovery-fork 会话实测 12.3s）——模型名旁过渡态提示，落定由 tab:meta 推送/runtime:rebuilt 清除。复用 effort 的 applying 样式类，零新 UI 载体。 */}
               {modelApplying && <span className="composer-effort-applying" role="status">{t("composer.modelApplying")}</span>}
-              {hasEffort && !heroMode && <div className="composer-effort-control">
+              {hasEffort && <div className="composer-effort-control">
                 <ComposerChoice key={`effort-${tabId}`} label={effortLabel(currentEffort)}
                   ariaLabel={`${t("status.effortTitle")}: ${effortLabel(currentEffort)}`}
                   icon={<Brain size={16} />} showChevron
@@ -6411,7 +6361,7 @@ export function Composer({
               {/* 任务 869：emoji 面板入口。与历史提示词时钟同一弹层语义
                   （AnchoredPopover portal 到 body，Esc/外点关闭）；面板 lazy
                   加载，首开有一次 Suspense 占位。 */}
-              {!heroMode && (
+              {(
                 <div className="composer-emoji-picker">
                   <Tooltip label={t("composer.emojiPickerTitle")} disabled={emojiPickerOpen}>
                     <button
@@ -6449,7 +6399,7 @@ export function Composer({
                   点击 → 后端抓鼠标所在屏全屏 → 覆盖层框选+标注 → 双击确认进附件。
                   与上面的「+」菜单同族：draft-only 编辑动作，运行中仍可用。
                   tl 1130：从左侧「+」号旁移到输入栏右侧（emoji 按钮右边）。 */}
-              {attachmentInputEnabled && !heroMode && (
+              {attachmentInputEnabled && (
                 <div className="composer-screenshot-picker">
                   <Tooltip label={t("composer.screenshotButtonHint")}>
                     <button

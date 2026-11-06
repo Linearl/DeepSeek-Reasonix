@@ -138,8 +138,10 @@ function renderHeader(compactionItem: Item) {
 }
 
 function headerLabel(): string {
-  const el = container.querySelector("[data-creation-label]");
-  return el ? el.getAttribute("data-creation-label") ?? "" : "";
+  // tl1450: the data-creation-label attribute went away with the layout —
+  // probe the real label element instead (same text node).
+  const el = container.querySelector(".turn-collapse__label, .readonly-batch__label");
+  return el ? el.textContent ?? "" : "";
 }
 
 try {

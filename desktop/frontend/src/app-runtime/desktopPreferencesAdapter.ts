@@ -16,8 +16,6 @@ export type DesktopPreferencesSnapshot = DesktopStartupSettingsView | SettingsVi
 // tl1450: the creation layout is retired — a legacy snapshot value folds to
 // workbench here (the authoritative mapping lives in Go
 // normalizeDesktopLayoutStyle; this is its read-only frontend projection).
-// The declared return stays the (transiently three-valued) DesktopLayoutStyle
-// union until the layout branches are removed.
 export function layoutStyleFromSnapshot(style?: string): DesktopLayoutStyle {
   return style === "classic" ? "classic" : "workbench";
 }
@@ -26,7 +24,7 @@ export function applyPreferencesAppearance(settings: DesktopPreferencesSnapshot)
   applyConfiguredBaseAppearance(theme, normalizeThemeStyleForTheme(settings.desktopThemeStyle, theme));
   applyTerminalThemePreference(settings.desktopTerminalTheme);
   applyConversationWidth(settings.conversationWidth);
-  applyLayoutStyleDefaults(layoutStyleFromSnapshot(settings.desktopLayoutStyle));
+  applyLayoutStyleDefaults();
   // Task 753 (R2): a snapshot WITHOUT the field (older backend, migration
   // window) must not normalize to "standard" and overwrite the localStorage
   // mirror that is still the startup authority. Only an explicitly present

@@ -5,14 +5,12 @@
 import { loadCachedLayoutStyle } from "./layoutPreferences";
 import classicStylesheetURL from "../styles/mode-classic.css?url";
 import workbenchStylesheetURL from "../styles/mode-workbench.css?url";
-import creationStylesheetURL from "../styles/mode-creation.css?url";
 
-// tl1450: the union keeps "creation" transiently (read compat, one version)
-// so the not-yet-deleted layout branches in App.tsx still typecheck; the
-// producers below already fold every legacy value to "workbench", so a
-// creation config renders workbench from the first paint. Next version drops
-// the literal together with the branches.
-export type DesktopLayoutStyle = "classic" | "workbench" | "creation";
+// tl1450: the creation layout retired — the union is the two survivors. The
+// one-version read compat lives in Go normalizeDesktopLayoutStyle (the stored
+// raw value maps to workbench there); this type only carries what the app can
+// resolve at runtime.
+export type DesktopLayoutStyle = "classic" | "workbench";
 
 export function normalizeDesktopLayoutStyle(style: string | undefined): DesktopLayoutStyle {
   if (style === "classic") return "classic";
@@ -49,8 +47,6 @@ export function loadModeStylesheet(mode: DesktopLayoutStyle): Promise<unknown> {
   switch (mode) {
     case "classic":
       return linkStylesheetOnce(classicStylesheetURL);
-    case "creation":
-      return linkStylesheetOnce(creationStylesheetURL);
     default:
       return linkStylesheetOnce(workbenchStylesheetURL);
   }

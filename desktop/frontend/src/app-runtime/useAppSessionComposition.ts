@@ -616,7 +616,7 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
     // cwd never shards it (the old `?? state.meta?.cwd ?? ""` fallback flipped
     // the dock on every Global tab switch).
     workspaceRoot: workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot),
-    creation: desktopLayoutStyle === "creation", visible: surfaceWorkspacePanelRenderable,
+    visible: surfaceWorkspacePanelRenderable,
     closeOverlays: closeTransientOverlays, clearLiveWidth: setLiveWorkspacePanelRenderWidth,
     availableWidth: workspacePanelAvailableWidth, clampTreeWidth: rightDockTreeWidthClamp, setTreeWidth: setRightDockTreeWidth,
   });
@@ -672,7 +672,7 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
     preserved: preservedTranscriptSurface,
     singleSurface: singleSurfaceLayout,
     controllerReady,
-    heroLayout: desktopLayoutStyle === "creation" || desktopLayoutStyle === "workbench",
+    heroLayout: desktopLayoutStyle === "workbench",
     availability,
     sessionActivity: Boolean(conversationView.runtime.running || conversationView.runtime.pendingPrompt
       || conversationView.runtime.approval || conversationView.runtime.ask || conversationView.runtime.extensionForm

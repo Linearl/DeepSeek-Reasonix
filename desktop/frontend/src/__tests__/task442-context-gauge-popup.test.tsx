@@ -20,7 +20,6 @@ import type { ContextPanelInfo } from "../lib/types";
 import {
   OPEN_CONTEXT_OVERVIEW_EVENT,
   compositionSegments,
-  contextOverviewTarget,
   isOpencodeGoProvider,
   normalizeShares,
   requestContextOverview,
@@ -221,9 +220,9 @@ console.log("\ntask 442 — context gauge popup");
   eq(isOpencodeGoProvider("zhipu/bigmodel"), false, "zhipu does not qualify");
   eq(isOpencodeGoProvider(undefined), false, "an unknown provider does not qualify");
 
-  eq(contextOverviewTarget("classic"), "right-dock", "classic opens the right dock overview");
-  eq(contextOverviewTarget("workbench"), "right-dock", "workbench opens the right dock overview");
-  eq(contextOverviewTarget("creation"), "settings-usage", "creation has no 概览 tab — settings usage page instead");
+  // tl1450: the settings-usage detour died with the creation layout — the
+  // destination decision collapsed into the App listener and only the event
+  // contract stays in lib/contextGaugePopup.
 
   const dom = installDom();
   let events = 0;

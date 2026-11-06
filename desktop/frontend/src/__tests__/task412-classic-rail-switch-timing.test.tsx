@@ -41,14 +41,14 @@ console.log("\ntask 412 classic rail + switch timing");
   const { LocaleProvider } = await import("../lib/i18n");
 
   const base = {
-    className: "sidebar", workbench: false, creation: false, collapsed: false,
-    navTooltipDisabled: true, searchOpen: false, togglePressed: false, toggleTitle: "toggle",
+    className: "sidebar", workbench: false, collapsed: false,
+    navTooltipDisabled: true,
     automation: true,
     resize: { min: 200, max: 500, value: 300, onPointerDown: () => {}, onKeyDown: () => {}, onReset: () => {} },
     projectTree: { t: (k: string) => k } as never,
     t: (k: string) => k,
     onNewSession: () => {}, onOpenTrash: () => {}, onOpenAutomation: () => {},
-    onOpenSettings: () => {}, onToggleSearch: () => {}, onToggle: () => {},
+    onOpenSettings: () => {},
   };
   const render = (overrides: Partial<typeof base>) =>
     renderToStaticMarkup(createElement(LocaleProvider, null, createElement(SidebarRegion, { ...base, ...overrides })));
@@ -69,15 +69,13 @@ console.log("\ntask 412 classic rail + switch timing");
   ok((workbench.match(/sidebar__utility-button/g) || []).length >= 5, "workbench rail unchanged (five utility buttons after 452L sync)");
   ok(workbench.includes("sidebar__utility-button--active"), "workbench scheduler button carries the same active marker");
 
-  // creation keeps its nav rows (zero regression for the third layout)
-  const creation = render({ creation: true });
-  ok(/sidebar__navitem/.test(creation), "creation layout keeps its NavButton rows (out of scope, zero regression)");
+  // tl1450: the third layout is gone — both survivors render the same rail.
 }
 
 // ── Part 1b: classic-scoped CSS mirrors the workbench rail ──────────────────
 {
   // tl1191: mode-scoped rules live in src/styles/mode-*.css now.
-  const css = ["../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css", "../styles/mode-creation.css"]
+  const css = ["../styles.css", "../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css"]
     .map((p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8")).join("\n");
   const classicRule = css.match(/\.sidebar:not\(\.sidebar--workbench\) \.sidebar__nav--footer \.sidebar__utility-row\s*\{[^}]*\}/);
   // 任务 320 UI 规格（20261002）：行内加入收件箱（邮箱图标）；任务 409 群聊入行。
@@ -108,11 +106,10 @@ console.log("\ntask 412 classic rail + switch timing");
 //    exactly the user's screenshot). Both render paths must now reach it.
 {
   const app = readFileSync(fileURLToPath(new URL("../App.tsx", import.meta.url)), "utf8");
-  ok(app.includes("{(sidebarWorkbench || !sidebarCreation) ? (\n            <nav className=\"sidebar__nav sidebar__nav--footer\">"), "App.tsx footer ternary sends classic (non-creation) down the utility-row path");
-  // condition semantics: workbench ✓, classic ✓, creation ✗
-  const cond = (w: boolean, c: boolean) => w || !c;
-  ok(cond(false, false) && cond(true, false) && !cond(false, true), "condition truth table: classic→row, workbench→row, creation→nav");
-  ok(/\{sidebarCreation && \(\s*<Tooltip label=\{t\("projectTree\.searchPlaceholder"\)\}/.test(app), "App.tsx creation nav rows kept (search + labeled buttons unchanged)");
+  // tl1450: the footer ternary collapsed — classic and workbench share one
+  // unconditional utility-row nav (the creation nav branch was removed).
+  ok(app.includes("<nav className=\"sidebar__nav sidebar__nav--footer\">"), "App.tsx sends classic down the utility-row path (unconditional after tl1450)");
+  ok(!app.includes("sidebarCreation"), "App.tsx carries no creation layout branch anymore");
 }
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);

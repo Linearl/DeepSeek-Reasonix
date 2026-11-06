@@ -47,7 +47,6 @@ const stylesSource = [
   readFileSync(resolve(testDir, "../styles.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
-  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
 ].join("\n");
 const appViewSource = readFileSync(resolve(testDir, "../app-shell/AppRuntimeView.tsx"), "utf8");
 const exportOwnerSource = readFileSync(resolve(testDir, "../app-runtime/useSessionExportCommands.ts"), "utf8");
@@ -239,16 +238,11 @@ for (const style of THEME_STYLES) {
     );
   }
 }
-for (const mode of ["dark", "light"] as const) {
-  ok(
-    Object.values(codeReadabilityRatios(deriveCreationCodeReadabilityPalette(mode))).every((ratio) => ratio >= 4.5),
-    `Creation ${mode} code palette reaches WCAG AA`,
-  );
-}
+// tl1450: the Creation code palette died with the layout — the shared layer
+// must not grow a new full-token shadow site for it.
 ok(
-  baseReadabilityCSS.includes(':root[data-theme-style="graphite"]') &&
-    baseReadabilityCSS.includes('.app--creation{--code-bg:'),
-  "base stylesheet installs complete root and Creation code palettes",
+  !baseReadabilityCSS.includes('.app--creation{--code-bg:'),
+  "base stylesheet installs the root code palette with no retired Creation shadow site",
 );
 
 ok(isSafeBackgroundURL("/__reasonix_theme_asset/my-theme/abc/background.png"), "asset URL allowed");
@@ -303,8 +297,8 @@ ok(styleText("reasonix-theme-pack-overlay").includes("--r:14px"), "applies round
 const gradDecl = "--grad:linear-gradient(120deg, var(--accent), var(--accent-strong))";
 const overlayCss = styleText("reasonix-theme-pack-overlay");
 ok(overlayCss.includes(gradDecl), "task 706: pack overlay re-derives --grad from accent");
-// tl1343: 4 root chunks + 4 element-scoped (.app--creation) chunks.
-ok(overlayCss.split(gradDecl).length - 1 === 8, "task 706 + tl1343: --grad re-derived across root and scope chunks");
+// tl1343: 4 root chunks; tl1450 emptied the element-scope registry.
+ok(overlayCss.split(gradDecl).length - 1 === 4, "task 706 + tl1343: --grad re-derived across root chunks (scope registry empty after tl1450)");
 
 applyThemePack(draftPackView({
   id: "accentless-pack",
@@ -314,10 +308,10 @@ applyThemePack(draftPackView({
 }));
 ok(!styleText("reasonix-theme-pack-overlay").includes("--grad:"), "task 706: no --grad re-derivation when the pack sets no accent");
 
-// tl1343: packs must reach the creation layout. mode-creation.css re-declares
-// the token set on .app--creation, which shadows :root — the overlay mirrors
-// its chunks onto the registered scopes one specificity tier higher, split by
-// resolved mode, so the salmon #FFF1E5 background lands in creation too.
+// tl1343 + tl1450: the pack overlay mirrors its chunks onto REGISTERED
+// element-level token-shadow sites. mode-creation.css re-declared the token
+// set on .app--creation and the registry carried it; with the layout retired
+// the registry is empty and the overlay stays :root-only.
 applyThemePack(draftPackView({
   id: "media-broadsheet-rose",
   name: "Financial Times",
@@ -333,24 +327,12 @@ applyThemePack(draftPackView({
 const roseOverlay = styleText("reasonix-theme-pack-overlay");
 ok(roseOverlay.includes(':root[data-theme="light"][data-theme-pack="media-broadsheet-rose"]{--bg:#fff1e5'), "root light chunk carries the salmon background");
 ok(
-  roseOverlay.includes(':root[data-theme="light"][data-theme-style][data-theme-pack="media-broadsheet-rose"] .app--creation{--bg:#fff1e5'),
-  "creation scope light chunk carries the salmon background above the mode sheet",
-);
-ok(
-  roseOverlay.includes('@media (prefers-color-scheme: dark){:root:not([data-theme])[data-theme-style][data-theme-pack="media-broadsheet-rose"] .app--creation{--bg:#1b1614'),
-  "creation scope auto-dark chunk carries the pack dark background",
-);
-ok(
-  roseOverlay.includes(':root[data-theme="dark"][data-theme-style][data-theme-pack="media-broadsheet-rose"] .app--creation{--bg:#1b1614'),
-  "creation scope forced-dark chunk carries the pack dark background",
-);
-ok(
-  roseOverlay.includes('.app--creation{--bg:#fff1e5') && roseOverlay.includes(';--accent-soft: color-mix(in srgb, #990f3d 12%, transparent)'),
-  "creation scope chunks carry the derived soft accent",
+  !roseOverlay.includes(".app--creation"),
+  "tl1450: no retired creation scope chunk in the pack overlay",
 );
 
-// tl1362: every media preset must reach both the root and the creation-scope
-// overlay in its light and dark skins. Values mirror the Go-side
+// tl1362: every media preset must reach the root overlay in its light and
+// dark skins (tl1450: the creation-scope mirror is gone with the registry). Values mirror the Go-side
 // TestMediaThemeTokenDesign ledger (tokens arrive lowercased from the shell).
 const MEDIA_TOKEN_DESIGNS: Array<[string, string, string]> = [
   ["media-no44-cream", "#fff5f0", "#241b15"],
@@ -371,14 +353,6 @@ for (const [id, lightBg, darkBg] of MEDIA_TOKEN_DESIGNS) {
   const overlay = styleText("reasonix-theme-pack-overlay");
   ok(overlay.includes(`:root[data-theme="light"][data-theme-pack="${id}"]{--bg:${lightBg}`), `${id} root light chunk carries its paper color`);
   ok(overlay.includes(`:root[data-theme="dark"][data-theme-pack="${id}"]{--bg:${darkBg}`), `${id} root dark chunk carries its dark inversion`);
-  ok(
-    overlay.includes(`:root[data-theme="light"][data-theme-style][data-theme-pack="${id}"] .app--creation{--bg:${lightBg}`),
-    `${id} creation scope light chunk carries its paper color`,
-  );
-  ok(
-    overlay.includes(`:root[data-theme="dark"][data-theme-style][data-theme-pack="${id}"] .app--creation{--bg:${darkBg}`),
-    `${id} creation scope dark chunk carries its dark inversion`,
-  );
 }
 
 // tl1343: the media group exists beside official/user/base/plugin. tl1362
@@ -585,11 +559,14 @@ const unguardedTransparencySelectors = transparencySlice
   .split("\n")
   .filter((line) => line.includes(":root[data-theme-pack]") && !line.includes('[data-theme-has-bg="true"]'));
 ok(unguardedTransparencySelectors.length === 0, "token-only packs keep opaque layout surfaces");
+// tl1450 finding: the extended pane-transparency family (this slice plus the
+// block-code/diff/md-code split) was stranded in mode-creation.css by the
+// tl1191 splitter and has NOT applied to classic/workbench since; deleting
+// the sheet removed the dead copy. Its restoration is a user-ratified task —
+// until then this pin keeps the slice free of retired creation tokens.
 ok(
-  !transparencySlice.includes(".app:not(.app--creation) .code,") &&
-    !transparencySlice.includes(".app:not(.app--creation) .diff,") &&
-    transparencySlice.includes(".app:not(.app--creation) .md-code,"),
-  "pane transparency keeps block code and diff opaque while preserving inline-code styling",
+  !transparencySlice.includes("app--creation"),
+  "tl1450: the shared transparency slice carries no retired creation tokens",
 );
 ok(stylesSource.includes("var(--theme-pane-card-pct, 88%)"), "home cards consume pane opacity tier");
 ok(stylesSource.includes("var(--theme-pane-task-card-pct, 88%)"), "task cards consume pane opacity tier");
@@ -662,25 +639,11 @@ ok(/<SettingsOptions\s+layout="field"/.test(overviewSource), "overview choices u
 ok(!overviewSource.includes('<div\n            className="set-seg'), "overview does not retain standalone segmented controls");
 ok(/settings-options--field\s*\{\s*width: 424px;\s*max-width: 100%/.test(readFileSync(resolve(testDir, "../components/SettingsOptions.css"), "utf8")), "overview choices share the bounded responsive field width");
 ok(stylesSource.includes(".appearance-overview__segmented { justify-self: stretch; width: 100%; }"), "overview segmented controls expand on narrow screens");
-const creationCardSwatchRule =
-  stylesSource.match(/:root\[data-theme-style\] \.app--creation \.theme-card \.theme-card__swatches \{([^}]*)\}/)?.[1] ?? "";
-const creationHeroRule =
-  stylesSource.match(/:root\[data-theme-style\] \.app--creation \.appearance-overview__thumb-base\.theme-card__swatches \{([^}]*)\}/)?.[1] ?? "";
-const creationHeroSwatchRule =
-  stylesSource.match(/:root\[data-theme-style\] \.app--creation \.appearance-overview__thumb-base \.theme-card__swatch \{([^}]*)\}/)?.[1] ?? "";
-const creationGraphiteAccentRule =
-  stylesSource.match(/:root\[data-theme-style\] \.app--creation \.theme-card__swatches\[data-theme-style-card="graphite"\] \.theme-card__swatch--accent \{([^}]*)\}/)?.[1] ?? "";
+// tl1450: the creation-gated gallery styling died with the layout — the
+// shared layer must not grow a new creation-scoped site.
 ok(
-  creationCardSwatchRule.includes("height: 7px") && !/^\.app--creation \.theme-card__swatches,$/m.test(stylesSource),
-  "Creation compact swatches stay scoped to real theme cards",
-);
-ok(
-  creationHeroRule.includes("min-height: 108px") && creationHeroSwatchRule.includes("flex: 1"),
-  "Creation appearance hero keeps readable swatch dimensions",
-);
-ok(
-  creationGraphiteAccentRule.includes("linear-gradient(128deg, #604116") && creationGraphiteAccentRule.includes("#f3d77b"),
-  "Creation Graphite appearance hero keeps the gold accent palette",
+  !stylesSource.includes(".app--creation .theme-card"),
+  "tl1450: no retired creation gallery styling in any stylesheet",
 );
 ok(
   overviewSource.includes('fontFamily === "custom"') && overviewSource.includes("onCustomFontNameChange(e.target.value)"),
@@ -862,19 +825,21 @@ ok(
 ok(localeZh.includes('"settings.themeEditor.safeArea": "界面内容区域"') && localeZh.includes('"settings.themeEditor.safeAreaHint": "选择文字和卡片主要显示的位置；建议避开图片主体。"'), "Chinese content-area copy explains foreground placement");
 
 // tl1343 contract: the pack overlay stays at :root EXCEPT for the registered
-// element-level token-shadow sites (creation mode re-declares tokens on
-// .app--creation, which would otherwise shadow every pack token). The overlay
-// may target ONLY those registered layout scopes — any other layout-scoped
-// selector stays forbidden — and every full-token shadow site in the mode
-// stylesheets must be registered (new site without registration = red).
-const PACK_TOKEN_ELEMENT_SCOPES = [".app--creation"];
+// element-level token-shadow sites (a layout that re-declares tokens on an
+// element would otherwise shadow every pack token). The overlay may target
+// ONLY those registered layout scopes — any other layout-scoped selector
+// stays forbidden — and every full-token shadow site in the mode stylesheets
+// must be registered (new site without registration = red). tl1450 emptied
+// the registry with the creation layout; a future full-token shadow site must
+// register itself and extend this local mirror.
+const PACK_TOKEN_ELEMENT_SCOPES: string[] = [];
 const declaredScopes = (packSource.match(/PACK_TOKEN_ELEMENT_SCOPES = \[([^\]]*)\]/)?.[1] ?? "")
   .split(",")
   .map((raw) => raw.trim().replace(/^["']|["']$/g, ""))
   .filter(Boolean);
 ok(
-  declaredScopes.length > 0 && declaredScopes.every((s) => /^\.app--[a-z-]+$/.test(s)),
-  `pack overlay scope list only contains layout-scoped token-shadow sites (got ${JSON.stringify(declaredScopes)})`,
+  declaredScopes.every((s) => /^\.app--[a-z-]+$/.test(s)),
+  `pack overlay scope list only contains layout-scoped token-shadow sites (empty registry is valid since tl1450; got ${JSON.stringify(declaredScopes)})`,
 );
 const fullShadowSites = new Set<string>();
 for (const chunk of stylesSource.split("}")) {

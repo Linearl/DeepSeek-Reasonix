@@ -127,12 +127,6 @@ export function deriveCodeReadabilityPalette(
   };
 }
 
-export function deriveCreationCodeReadabilityPalette(mode: CodeReadabilityMode): CodeReadabilityPalette {
-  return deriveCodeReadabilityPalette(mode, "graphite", mode === "light"
-    ? { bg: "#f6f4f1", bgSoft: "#f0eeeb", fg: "#18181b", borderSoft: "#18181b14" }
-    : { bg: "#090c10", bgSoft: "#0b0e12", fg: "#e4e6ea", borderSoft: "#ffffff12" });
-}
-
 export function codeReadabilityDecls(palette: CodeReadabilityPalette): string {
   return [
     `--code-bg:${palette.background}`,
@@ -179,11 +173,6 @@ export function baseCodeReadabilityStylesheet(styles: readonly string[]): string
     rules.push(`@media (prefers-color-scheme: light){:root:not([data-theme])[data-theme-style="${style}"]{${lightDecls}}}`);
   }
 
-  const creationDark = codeReadabilityDecls(deriveCreationCodeReadabilityPalette("dark"));
-  const creationLight = codeReadabilityDecls(deriveCreationCodeReadabilityPalette("light"));
-  rules.push(`:root[data-theme-style] .app--creation{${creationDark}}`);
-  rules.push(`:root[data-theme="light"][data-theme-style] .app--creation{${creationLight}}`);
-  rules.push(`@media (prefers-color-scheme: light){:root:not([data-theme])[data-theme-style] .app--creation{${creationLight}}}`);
   return rules.join("\n");
 }
 

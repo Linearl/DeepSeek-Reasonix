@@ -76,8 +76,6 @@ export type DockTabRenderContext = {
   todoSidebar: boolean;
   /** Remote hosts exist, so the remote tab can actually render. */
   remoteAvailable: boolean;
-  /** Creation layout hides the overview tab. */
-  creation: boolean;
   /** Task 495: the subagent panel switch (its tab renders only with it on). */
   subagentsPanel?: boolean;
 };
@@ -86,7 +84,7 @@ export type DockTabRenderContext = {
  * Task 259 (audit-2 minor c): the tabs that can actually render right now.
  *
  * The "keep at least one tab" guard must count only renderable tabs — hidden
- * but gated-off tabs (remote with no hosts, overview in creation) must not
+ * but gated-off tabs (remote with no hosts) must not
  * satisfy it, otherwise the user can hide everything that is really shown and
  * the dock ends up with zero tabs. Consumers: the settings pane's last-tab
  * checkbox lock, and tests.
@@ -94,7 +92,9 @@ export type DockTabRenderContext = {
 export function renderableDockTabs(ctx: DockTabRenderContext): DockTabId[] {
   if (!ctx.todoSidebar) return [];
   const out: DockTabId[] = [];
-  if (CONTEXT_TAB_GATE && !ctx.creation) out.push("context");
+  // tl1450: the overview tab renders in every surviving layout (the
+  // creation-only hide went away with the layout).
+  if (CONTEXT_TAB_GATE) out.push("context");
   out.push("files", "changed");
   if (ctx.remoteAvailable) out.push("remote");
   out.push("todos");

@@ -53,7 +53,6 @@ const cssSource = [
   resolve(dir, "../styles.css"),
   resolve(dir, "../styles/mode-classic.css"),
   resolve(dir, "../styles/mode-workbench.css"),
-  resolve(dir, "../styles/mode-creation.css"),
 ].map((p) => readFileSync(p, "utf8")).join("\n");
 const libSource = readFileSync(resolve(dir, "../lib/projectGroups.ts"), "utf8");
 

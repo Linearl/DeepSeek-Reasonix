@@ -88,7 +88,7 @@ export function AssistantReasoningPanel({
     <div className="reasoning">
       <button type="button" className="reasoning__head" data-running={running ? "" : undefined} onClick={toggle} aria-expanded={open}>
         <ProcessBrainIcon size={12} />
-        <span data-creation-label={t("creation.reasoningLabel")}>{running ? t("msg.thinkingRunning") : t("msg.thinking")}</span>
+        <span>{running ? t("msg.thinkingRunning") : t("msg.thinking")}</span>
         {meta && <span className="reasoning__meta">{meta}</span>}
         <ChevronRight className={`reasoning__chevron${open ? " reasoning__chevron--open" : ""}`} size={12} />
       </button>

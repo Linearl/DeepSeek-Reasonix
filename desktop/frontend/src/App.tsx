@@ -15,10 +15,8 @@ import { flushSync } from "react-dom";
 import { ShellExpandProvider, useShellExpand } from "./lib/shellExpand";
 import {
   Activity,
-  Command,
   Copy as RestoreIcon,
   Minus,
-  Search,
   Server,
   Square,
   SquarePen,
@@ -85,7 +83,7 @@ import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, useI18n, us
 import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { publishNavigationIntent } from "./lib/useNavigationIntentFence";
 import { consumedGuidanceIdsFromItems } from "./lib/composerInboxQueue";
-import { OPEN_CONTEXT_OVERVIEW_EVENT, contextOverviewTarget } from "./lib/contextGaugePopup";
+import { OPEN_CONTEXT_OVERVIEW_EVENT } from "./lib/contextGaugePopup";
 import { RemoteNavigationContext, type RemoteNavigationCommand } from "./lib/remoteNavigationCommands";
 import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item, type SendTurnOutcome } from "./lib/useController";
@@ -157,7 +155,7 @@ const RemoteSessionSurface = lazy(() => import("./components/RemoteSessionSurfac
 const TrajectoryView = lazy(() => import("./components/TrajectoryView").then((module) => ({ default: module.TrajectoryView })));
 // tl1191: the window chrome (top tab bar) only renders in the classic layout
 // (`!appChromeHidden`), so its subtree is a classic-only lazy chunk — workbench
-// and creation users never download it. Prefetched below for classic users so
+// download it. Prefetched below for classic users so
 // the first paint mounts the real header without a skeleton flash.
 const AppChrome = lazy(() => import("./components/AppChrome").then((module) => ({ default: module.AppChrome })));
 const TabOverviewPanel = lazy(() => import("./components/TabOverviewPanel").then((module) => ({ default: module.TabOverviewPanel })));
@@ -269,9 +267,6 @@ import {
   type RestorableToolApprovalMode,
 } from "./lib/toolApprovalMode";
 import {
-  CREATION_RIGHT_DOCK_MIN_RENDER_WIDTH,
-  CREATION_RIGHT_DOCK_TREE_MIN_WIDTH,
-  CREATION_SIDEBAR_MIN_WIDTH,
   RIGHT_DOCK_MIN_RENDER_WIDTH,
   RIGHT_DOCK_TREE_MIN_WIDTH,
   RIGHT_DOCK_TREE_NARROW_WIDTH,
@@ -284,13 +279,9 @@ import {
   TERMINAL_DEFAULT_HEIGHT,
   TERMINAL_MIN_HEIGHT,
   applyLayoutStyleDefaults,
-  clampCreationRightDockTreeWidth,
-  clampCreationSidebarWidth,
   clampRightDockTreeWidth,
   clampSidebarWidth,
   clampTerminalHeight,
-  defaultCreationRightDockTreeWidth,
-  defaultCreationSidebarWidth,
   defaultRightDockTreeWidth,
   defaultSidebarWidth,
   saveRightDockTreeWidth,
@@ -1131,7 +1122,7 @@ export default function App() {
       console.error("failed to load layout stylesheet", error);
     });
   }, [desktopLayoutStyle]);
-  const singleSurfaceLayout = desktopLayoutStyle === "workbench" || desktopLayoutStyle === "creation";
+  const singleSurfaceLayout = desktopLayoutStyle === "workbench";
   const { configLoadWarnings, applySnapshot: applyConfigWarningSnapshot, reload: reloadConfigWarnings, dismiss: dismissConfigWarnings } = useConfigLoadWarnings();
   // History/trash overlay: one value for the entry point and the compositions that
   // refresh it (task 38).
@@ -1420,11 +1411,6 @@ export default function App() {
   }, []);
   const topicExportOpen = useOverlayStore((s) => s.topicExportOpen);
   const setTopicExportOpen = useOverlayStore((s) => s.setTopicExportOpen);
-  const sidebarSearchOpen = useOverlayStore((s) => s.sidebarSearchOpen);
-  const setSidebarSearchOpen = useOverlayStore((s) => s.setSidebarSearchOpen);
-
-  const sidebarSearchFocusSignal = useOverlayStore((s) => s.sidebarSearchFocusSignal);
-  const setSidebarSearchFocusSignal = useOverlayStore((s) => s.setSidebarSearchFocusSignal);
   // Same value the layout store already owns; the sidebar toggle animation reads it
   // from there (task 38).
   const sidebarTogglePressed = useLayoutStore((s) => s.sidebarTogglePressed);
@@ -1622,7 +1608,7 @@ export default function App() {
       setDesktopLayoutStyle(nextLayoutStyle);
       saveCachedLayoutStyle(nextLayoutStyle);
       saveCachedAppearance(nextTheme, nextStyle);
-      applyLayoutStyleDefaults(nextLayoutStyle);
+      applyLayoutStyleDefaults();
       setLocalePref(normalizeLangPref(settings.desktopLanguage));
       setRestartUpdateEnabled(Boolean(settings.experimentalRestartUpdate));
       // Task 123: the monitor board is opt-in; disabling it also closes the panel.
@@ -1894,18 +1880,18 @@ export default function App() {
   // tl1108: 窄态收回到 246（关最后文件复位 246 的落地点）—— min 随态取值，
   // 否则 300 的旧地板会把「回到 246」顶掉。
   const rightDockTreeMinWidth = sideDockWideActive
-    ? (desktopLayoutStyle === "creation" ? CREATION_RIGHT_DOCK_TREE_MIN_WIDTH : RIGHT_DOCK_TREE_MIN_WIDTH)
+    ? RIGHT_DOCK_TREE_MIN_WIDTH
     : RIGHT_DOCK_TREE_NARROW_WIDTH;
-  const rightDockTreeWidthClamp = desktopLayoutStyle === "creation" ? clampCreationRightDockTreeWidth : clampRightDockTreeWidth;
+  const rightDockTreeWidthClamp = clampRightDockTreeWidth;
   // tl1118 回归修复（v1.38.3-20261024-1102）：minRenderWidth 同样要随态取值。
   // tl1108 把窄态 rail 压到 246 却保留了 280 的渲染门槛，导致
   // resolvedWidth(246) < minRenderWidth(280) 恒成立——placement 永远进
   // overlay 分支，layout--workspace-open 永不挂载，右侧 dock（概览/文件/
   // 改动/任务）整体打不开。窄态门槛取 min(280, 246)=246，宽态维持 280。
+  // tl1450: the creation-only tighter floors (236/252) went away with the
+  // layout — both paths use the classic/workbench floors.
   const rightDockMinRenderWidth = sideDockWideActive
-    ? (desktopLayoutStyle === "creation" && !rightDockDetailActive
-        ? CREATION_RIGHT_DOCK_MIN_RENDER_WIDTH
-        : RIGHT_DOCK_MIN_RENDER_WIDTH)
+    ? RIGHT_DOCK_MIN_RENDER_WIDTH
     : Math.min(RIGHT_DOCK_MIN_RENDER_WIDTH, RIGHT_DOCK_TREE_NARROW_WIDTH);
   const workspacePanelMinWidth = rightDockTreeMinWidth;
   const chatReservedWidth = CHAT_MIN_WIDTH;
@@ -3145,45 +3131,26 @@ export default function App() {
     pulseSidebarToggle();
     anchorAppScrollToChat();
     const nextCollapsed = !sidebarCollapsed;
-    if (nextCollapsed) setSidebarSearchOpen(false);
     leftSidebarHover.markManual();
     setSidebarCollapsed(nextCollapsed);
     saveSidebarCollapsed(nextCollapsed);
   }, [anchorAppScrollToChat, closeTransientOverlays, pulseSidebarToggle, sidebarCollapsed, leftSidebarHover]);
 
-  const sidebarWidthClamp = desktopLayoutStyle === "creation" ? clampCreationSidebarWidth : clampSidebarWidth;
+  const sidebarWidthClamp = clampSidebarWidth;
   const sidebarRenderWidth = liveSidebarWidth ?? sidebarWidth;
-  const sidebarResizeMinWidth = desktopLayoutStyle === "creation" ? CREATION_SIDEBAR_MIN_WIDTH : SIDEBAR_MIN_WIDTH;
+  const sidebarResizeMinWidth = SIDEBAR_MIN_WIDTH;
 
   useEffect(() => {
-    if (desktopLayoutStyle === "creation" || sidebarWidth >= SIDEBAR_MIN_WIDTH) return;
+    if (sidebarWidth >= SIDEBAR_MIN_WIDTH) return;
     setSidebarWidth(SIDEBAR_MIN_WIDTH);
     saveSidebarWidth(SIDEBAR_MIN_WIDTH);
-  }, [desktopLayoutStyle, sidebarWidth]);
+  }, [sidebarWidth]);
 
   useEffect(() => {
-    if (desktopLayoutStyle === "creation") {
-      if (rightDockTreeWidth >= CREATION_RIGHT_DOCK_TREE_MIN_WIDTH) return;
-      setRightDockTreeWidth(CREATION_RIGHT_DOCK_TREE_MIN_WIDTH);
-      saveRightDockTreeWidth(CREATION_RIGHT_DOCK_TREE_MIN_WIDTH);
-      return;
-    }
     if (rightDockTreeWidth >= RIGHT_DOCK_TREE_MIN_WIDTH) return;
     setRightDockTreeWidth(RIGHT_DOCK_TREE_MIN_WIDTH);
     saveRightDockTreeWidth(RIGHT_DOCK_TREE_MIN_WIDTH);
-  }, [desktopLayoutStyle, rightDockTreeWidth]);
-
-  // Creation no longer exposes the overview tab. If a previous session left
-  // rightDockMode on "context", coerce it to files so 文件 stays selected.
-  // Task 245: write through the same domain-scoped key as the rest of the
-  // dock memory, so a Global tab no longer stamps a ghost workspace path.
-  const creationCoerceWorkspaceRoot = workspacePanelMemoryRoot(activeTab?.scope, activeTab?.workspaceRoot);
-  useEffect(() => {
-    if (desktopLayoutStyle !== "creation") return;
-    if (rightDockMode !== "context") return;
-    setRightDockMode("files");
-    saveRightDockMode("files", creationCoerceWorkspaceRoot);
-  }, [creationCoerceWorkspaceRoot, desktopLayoutStyle, rightDockMode, setRightDockMode]);
+  }, [rightDockTreeWidth]);
 
   const setExpandedSidebarWidth = useCallback((width: number) => {
     closeTransientOverlays("sidebar resize");
@@ -3539,16 +3506,10 @@ export default function App() {
       closeWorkspacePanel();
       return;
     }
-    // Creation hides the overview tab; never reopen into the invisible "context"
-    // mode or neither 文件/改动 will show an active selection.
-    if (desktopLayoutStyle === "creation") {
-      openWorkspacePanel(rightDockMode === "changed" ? "changed" : "files");
-      return;
-    }
     // Reopen with the previously active tab (rightDockMode is kept in the
     // store across close/open) instead of forcing "context".
     openWorkspacePanel();
-  }, [closeWorkspacePanel, desktopLayoutStyle, rightDockHover, workspacePanelRenderable, openWorkspacePanel, rightDockMode]);
+  }, [closeWorkspacePanel, rightDockHover, workspacePanelRenderable, openWorkspacePanel]);
 
   const openRightDockMode = useCallback(
     (mode: RightDockMode) => {
@@ -3603,19 +3564,15 @@ export default function App() {
 
   // Task 442: the composer gauge popup's 「更多 >」 entry. The gauge lives
   // inside the composer, so the request travels as a window event; this spot
-  // is the one that knows both the dock opener and the layout's rules — the
-  // creation layout hides the 概览 tab, so it goes to the settings usage page.
+  // owns the dock opener. tl1450: the creation-only settings-usage detour is
+  // gone — every layout opens the right dock's overview.
   useEffect(() => {
     const onOpenContextOverview = () => {
-      if (contextOverviewTarget(desktopLayoutStyle) === "settings-usage") {
-        useAppNavigationStore.getState().setSettingsTarget("model-stats");
-        return;
-      }
       openRightDockMode("context");
     };
     window.addEventListener(OPEN_CONTEXT_OVERVIEW_EVENT, onOpenContextOverview);
     return () => window.removeEventListener(OPEN_CONTEXT_OVERVIEW_EVENT, onOpenContextOverview);
-  }, [desktopLayoutStyle, openRightDockMode]);
+  }, [openRightDockMode]);
 
   const verificationRevealSequenceRef = useRef(0);
   const [verificationRevealRequest, setVerificationRevealRequest] = useState<WorkspaceVerificationRevealRequest | null>(null);
@@ -4141,18 +4098,6 @@ export default function App() {
     state.hydratePlaceholderItems?.length,
   );
   const transcriptHydrating = state.hydrating && !state.hydrateHistoryLoaded && !state.items.length;
-  // Creation hero only after history hydration settles on a truly empty session.
-  // Avoid flash while switching tabs: items may be empty while placeholders show.
-  // Exclude IM/Bot detail: hero CSS collapses .main, which also hosts that panel.
-  // (desktopLayoutStyle is available here; sidebarCreation is declared later.)
-  const creationEmptyHero =
-    desktopLayoutStyle === "creation" &&
-    !runtimeTransitioning &&
-    !sidebarImDetailConnection &&
-    !sessionHasContent &&
-    !transcriptHydrating &&
-    !hydratePlaceholderActive &&
-    !state.hydrateError;
   const transcriptItems = hydratePlaceholderActive ? state.hydratePlaceholderItems! : state.items;
   const handleLoadOlderHistory = useCallback((targetTurn?: number) => (
     activeTabId ? loadOlderHistory(activeTabId, targetTurn) : Promise.resolve(false)
@@ -5635,13 +5580,10 @@ export default function App() {
   const sidebarToggleTitle = sidebarCollapsed
       ? t("sidebar.expand")
       : t("sidebar.collapse");
-  const sidebarNavTooltipDisabled = !sidebarCollapsed;
   const browserPreviewChrome = typeof window !== "undefined" && !window.runtime;
   const browserMockScenario = browserPreviewChrome ? browserMockScenarioParam() : "";
   const guidanceQueueMockItems = isGuidanceMockScenario(browserMockScenario) ? GUIDANCE_QUEUE_MOCK_ITEMS : undefined;
-  const workspacePanelResetWidth = desktopLayoutStyle === "creation"
-    ? defaultCreationRightDockTreeWidth()
-    : defaultRightDockTreeWidth();
+  const workspacePanelResetWidth = defaultRightDockTreeWidth();
   // tl1426（需求①）：双击复位——子代理详情态回到 1:1 默认（清该态用户指示，
   // 默认公式重新接管、随视口自适应）；其余态维持 workspacePanelResetWidth
   // 既有语义。顺序敏感：先走 setSavedWorkspacePanelWidth（会把当前详情态
@@ -5668,7 +5610,6 @@ export default function App() {
   );
   const workspacePanelResizeMinWidth = workspacePanelAriaMinWidth(workspacePanelMinWidth, workspacePanelRenderWidth);
   const workspacePanelResizeMaxWidth = workspacePanelAvailableWidth;
-  const sidebarCreation = desktopLayoutStyle === "creation";
   // tl 1101：命令面板入口迁到 tab 栏右侧（AppChrome/TabBar），topicbar 不再显示
   // ⌘K 标签，commandPaletteShortcut 的展示位置随之移到 palette 角标（hover）。
   // Dock collapse/expand toggle. Rendered in the dock's own tools row when the
@@ -5698,12 +5639,11 @@ export default function App() {
     ? sidebarImDetailConnection.platformLabel
     : topicbarImSource ? t("msg.fromIm", { source: topicbarImSource.label }) : "";
   const topicbarImSourcePlatform = sidebarImDetailConnection?.platform ?? topicbarImSource?.platform;
-  const topicbarSubtitleVisible = !sidebarCreation && Boolean(activeTab?.isolatedWorktree || topicbarImSourceLabel);
+  const topicbarSubtitleVisible = Boolean(activeTab?.isolatedWorktree || topicbarImSourceLabel);
   const topicbarSubtitleTitle = sidebarImDetailConnection
     ? [topicbarWorkspaceLabel, topicbarImSourceLabel, sidebarImScopeLabel(sidebarImDetailConnection, t)].filter(Boolean).join(" · ")
     : [topicbarWorkspacePath || topicbarWorkspaceLabel, topicbarImSourceLabel].filter(Boolean).join(" · ");
   const topicbarCanRename = !sidebarImDetailConnection && Boolean(activeTab?.topicId);
-  const topicbarTitleEditSize = Math.min(56, Math.max(4, topicTitleDraft.length || topicbarTitle.length || 1));
   const sidebarWorkbench = desktopLayoutStyle === "workbench";
   // The Wails drag runtime ignores anything with detail !== 1, so a double click
   // on a --wails-draggable region never reaches the OS. Both platforms that hide
@@ -5721,9 +5661,7 @@ export default function App() {
       .then(() => window.setTimeout(syncMainWindowMaximised, 80))
       .catch(() => undefined);
   }, [chromeDoubleClickZooms, desktopPlatform, syncMainWindowMaximised]);
-  // Creation keeps the classic sidebar/chat structure while gating chrome tweaks
-  // behind its own style flag so classic/workbench remain unchanged.
-  const appChromeHidden = sidebarWorkbench || sidebarCreation;
+  const appChromeHidden = sidebarWorkbench;
   const workbenchChromeHidden = sidebarWorkbench;
   // 任务 704: the trajectory surface replaces the primary transcript while the
   // lab switch is on and this session's persisted view is "trajectory" — local
@@ -5766,8 +5704,7 @@ export default function App() {
         windowsFramelessChrome ? "app--windows-frameless" : "",
         browserPreviewChrome ? "app--browser-preview" : "",
         sidebarWorkbench ? "app--workbench" : "",
-        sidebarCreation ? "app--creation" : "",
-        !sidebarWorkbench && !sidebarCreation ? "app--classic" : "",
+        !sidebarWorkbench ? "app--classic" : "",
         uiSettled ? "app--ui-settled" : "",
       ].filter(Boolean).join(" ")}
     >
@@ -5779,7 +5716,6 @@ export default function App() {
           "layout",
           sidebarWorkbench ? "layout--workbench" : "",
           workbenchChromeHidden ? "layout--workbench-chrome-hidden" : "",
-          sidebarCreation ? "layout--creation-chrome-hidden" : "",
           sidebarImDetailConnection ? "layout--statusbar-hidden" : "",
           sidebarCollapsed ? "layout--sidebar-collapsed" : "",
           sidebarResizing ? "layout--resizing layout--sidebar-resizing" : "",
@@ -5914,59 +5850,11 @@ export default function App() {
                 }}
               >
                 <SquarePen size={18} />
-                <span>{sidebarCreation ? t("creation.sidebar.newChat") : t("topbar.newSession")}</span>
+                <span>{t("topbar.newSession")}</span>
               </button>
             </>
           )}
 
-          {sidebarCreation && (
-            <section className="sidebar-feature-zone" aria-label={t("settings.title")}>
-              <div className="sidebar-feature-zone__title">{t("creation.sidebar.features")}</div>
-              <div className="sidebar-feature-zone__items">
-                <button
-                  className="sidebar-feature-zone__item"
-                  type="button"
-                  onClick={() => {
-                    closeTransientOverlays("sidebar feature zone: skills");
-                    setSettingsTarget("skills");
-                  }}
-                >
-                  <Command size={14} aria-hidden="true" />
-                  <span>{t("creation.sidebar.skills")}</span>
-                </button>
-                <button
-                  className="sidebar-feature-zone__item"
-                  type="button"
-                  onClick={() => {
-                    closeTransientOverlays("sidebar feature zone: memory");
-                    setSettingsTarget("memory");
-                  }}
-                >
-                  <Brain size={14} aria-hidden="true" />
-                  <span>{t("settings.tab.memory")}</span>
-                </button>
-                <button
-                  className="sidebar-feature-zone__item"
-                  type="button"
-                  onClick={() => {
-                    closeTransientOverlays("sidebar feature zone: bots");
-                    setSettingsTarget("bots");
-                  }}
-                >
-                  <MessageSquare size={14} aria-hidden="true" />
-                  <span>{t("creation.sidebar.messageChannels")}</span>
-                </button>
-                <button
-                  className="sidebar-feature-zone__item"
-                  type="button"
-                  onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); openPage({ kind: "automation" }); }}
-                >
-                  <AlarmClock size={14} aria-hidden="true" />
-                  <span>{t("heartbeat.scheduler")}</span>
-                </button>
-              </div>
-            </section>
-          )}
 
           <section className="sidebar__section sidebar__section--projects">
             <Suspense fallback={null}><ProjectTree
@@ -5987,9 +5875,8 @@ export default function App() {
                 }}
                 timeFilter={topicTimeFilter}
                 onTimeFilterChange={setTopicTimeFilter}
-                variant={sidebarWorkbench ? "workbench" : sidebarCreation ? "creation" : "classic"}
-                searchExpanded={!sidebarCreation || sidebarSearchOpen}
-                searchFocusSignal={sidebarSearchFocusSignal}
+                variant={sidebarWorkbench ? "workbench" : "classic"}
+                searchExpanded
                 showShortcutBadges={showTopicBadges}
                 shortcutPlatform={desktopPlatform}
                 onVisibleTopicsChange={handleVisibleTopicsChange}
@@ -5997,8 +5884,7 @@ export default function App() {
               /></Suspense>
           </section>
 
-          {(sidebarWorkbench || !sidebarCreation) ? (
-            <nav className="sidebar__nav sidebar__nav--footer">
+          <nav className="sidebar__nav sidebar__nav--footer">
               <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
                 <Tooltip label={t("sidebar.trash")} fill side="top">
                   <button
@@ -6060,61 +5946,6 @@ export default function App() {
                 </Tooltip>
               </div>
             </nav>
-          ) : (
-            <nav className="sidebar__nav">
-              {sidebarCreation && (
-                <Tooltip label={t("projectTree.searchPlaceholder")} fill side="right" disabled={sidebarNavTooltipDisabled}>
-                  <button
-                    className={`sidebar__navitem sidebar__navitem--search${sidebarSearchOpen ? " sidebar__navitem--active" : ""}`}
-                    type="button"
-                    aria-label={t("projectTree.searchPlaceholder")}
-                    aria-pressed={sidebarSearchOpen}
-                    onClick={() => {
-                      setSidebarSearchOpen((open) => !open);
-                      setSidebarSearchFocusSignal((signal) => signal + 1);
-                    }}
-                  >
-                    <Search size={15} />
-                    <span>{t("tabBar.commandSearchCompact")}</span>
-                  </button>
-                </Tooltip>
-              )}
-              <Tooltip label={t("sidebar.trash")} fill side="right" disabled={sidebarNavTooltipDisabled}>
-                <button
-                  className="sidebar__navitem"
-                  onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); void openTrash(); }}
-                >
-                  <Trash2 size={15} />
-                  {sidebarCreation ? <span>{t("sidebar.trash")}</span> : <span className="sr-only">{t("sidebar.trash")}</span>}
-                </button>
-              </Tooltip>
-              {!sidebarCreation && (
-                <Tooltip label={t("heartbeat.scheduler")} fill side="right" disabled={sidebarNavTooltipDisabled}>
-                  <button
-                    className="sidebar__navitem"
-                    onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); openPage({ kind: "automation" }); }}
-                  >
-                    <AlarmClock size={15} />
-                    <span className="sr-only">{t("heartbeat.scheduler")}</span>
-                  </button>
-                </Tooltip>
-              )}
-              <Tooltip label={t("topbar.settings")} fill side="right" disabled={sidebarNavTooltipDisabled}>
-                <button
-                  className="sidebar__navitem"
-                  onClick={(event) => {
-                    event.currentTarget.focus({ preventScroll: true });
-                    closeTransientOverlays("sidebar settings nav");
-                    setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget);
-                  }}
-                >
-                  <SettingsIcon size={15} />
-                  {sidebarCreation ? <span>{t("topbar.settings")}</span> : <span className="sr-only">{t("topbar.settings")}</span>}
-                </button>
-              </Tooltip>
-            </nav>
-          )}
-
         </aside>
         <button
           className="sidebar-resizer"
@@ -6127,22 +5958,9 @@ export default function App() {
           aria-valuenow={sidebarRenderWidth}
           onPointerDown={startSidebarResize}
           onKeyDown={resizeSidebarWithKeyboard}
-          onDoubleClick={() => setExpandedSidebarWidth(desktopLayoutStyle === "creation" ? defaultCreationSidebarWidth() : defaultSidebarWidth())}
+          onDoubleClick={() => setExpandedSidebarWidth(defaultSidebarWidth())}
         />
-        {sidebarCreation && (
-          <button
-            className={`sidebar-collapse-toggle${sidebarCollapsed ? " sidebar-collapse-toggle--collapsed" : ""}${sidebarTogglePressed ? " sidebar-collapse-toggle--pressed" : ""}`}
-            type="button"
-            onClick={toggleSidebar}
-            aria-label={sidebarToggleTitle}
-            aria-pressed={!sidebarCollapsed}
-            title={sidebarToggleTitle}
-          >
-            {sidebarCollapsed ? <PanelRight size={14} /> : <PanelLeft size={14} />}
-          </button>
-        )}
-
-        <section className={`chat-pane${creationEmptyHero ? " chat-pane--creation-empty" : ""}`}>
+        <section className="chat-pane">
           {/* tl1441 ①：群聊 tab 工作区（升级口径：群聊=会话 tab 同型实体、
               数据源换 channel）。激活时以叠层占据会话工作区同位面——顶部栏
               （详情/成员/返回列表）+ 消息流 + 输入区；Go 侧活动会话 tab 与
@@ -6190,7 +6008,6 @@ export default function App() {
                       autoFocus
                       className="topicbar__title-input"
                       aria-label={t("topicBar.renameSession")}
-                      size={sidebarCreation ? topicbarTitleEditSize : undefined}
                       value={topicTitleDraft}
                       onChange={(event) => setTopicTitleDraft(event.target.value)}
                       onFocus={(event) => event.currentTarget.select()}
@@ -6273,7 +6090,6 @@ export default function App() {
                   openers={topicbarOpenersView}
                 />
               )}
-              {sidebarCreation && dockToggleButton}
               {tasksOpen && (
                 <div className="taskmonitor-popover" role="dialog" aria-label={t("summary.session")}>
                   <Suspense fallback={null}>
@@ -6476,9 +6292,7 @@ export default function App() {
                       running={state.running || rewindCommitting}
                       turnStartAt={state.turnStartAt}
                       contentRevision={state.historyLayoutRevision}
-                      welcomeVariant={sidebarCreation ? "creation" : "default"}
-                      creationMode={sidebarCreation}
-                      actionHoverMenus={sidebarCreation && !hydratePlaceholderActive && !runtimeTransitioning}
+                      welcomeVariant="default"
                       rewindSignal={rewindSignal}
                       revealSignal={transcriptRevealSignal}
                       hydrating={runtimeTransitioning || transcriptHydrating}
@@ -6572,7 +6386,7 @@ export default function App() {
           </main>
 
           {!sidebarImDetailConnection && (
-          <footer className={["footer", terminalPanelOpen && !sidebarCreation ? "footer--compact" : "", visibleDecisionSurface ? "footer--decision" : ""].filter(Boolean).join(" ")} ref={footerRef}>
+          <footer className={["footer", terminalPanelOpen ? "footer--compact" : "", visibleDecisionSurface ? "footer--decision" : ""].filter(Boolean).join(" ")} ref={footerRef}>
             {!runtimeTransitioning && showTodos && !todoSidebarEnabled && (
               <TodoPanel
                 key={scopedTodoBatch}
@@ -6764,15 +6578,11 @@ export default function App() {
               className={[
                 "composer-decision-host",
                 composerSurfaceHidden ? "composer-decision-host--hidden" : "",
-                creationEmptyHero ? "composer-decision-host--creation-hero" : "",
               ].filter(Boolean).join(" ")}
               hidden={composerSurfaceHidden || undefined}
               inert={composerSurfaceHidden ? true : undefined}
               aria-hidden={composerSurfaceHidden ? true : undefined}
             >
-            {creationEmptyHero && (
-              <h2 className="welcome-creation__headline">{t("welcome.creation.title")}</h2>
-            )}
             <Composer
               running={state.running || rewindCommitting}
               stopLevel={state.stopLevel}
@@ -6886,8 +6696,6 @@ export default function App() {
               guidanceConsumedText={latestGuidanceConsumed?.text}
               guidanceConsumedIds={consumedGuidanceIds}
               guidanceQueuePreviewItems={guidanceQueueMockItems}
-              showContextWindowRing={sidebarCreation}
-              heroMode={creationEmptyHero}
               context={state.context}
               turnCost={state.turnCost}
               turnRateBand={state.turnRateBand}
@@ -6940,7 +6748,7 @@ export default function App() {
           >
             <div className={["workbench-dock__tools", todoSidebarEnabled ? "workbench-dock__tools--wrap" : ""].filter(Boolean).join(" ")}>
               <div className={["workbench-dock__tabs", todoSidebarEnabled ? "workbench-dock__tabs--wrap" : ""].filter(Boolean).join(" ")} role="tablist" aria-label={t("rightDock.views")}>
-                {SHOW_CONTEXT_DOCK && desktopLayoutStyle !== "creation" && (todoSidebarEnabled ? dockTabVisible("context") : true) && (
+                {SHOW_CONTEXT_DOCK && (todoSidebarEnabled ? dockTabVisible("context") : true) && (
                   <button
                     type="button"
                     role="tab"
@@ -7151,7 +6959,7 @@ export default function App() {
                 <Suspense fallback={null}>
                   <RemotePanel onClose={() => setWorkspacePanel(false)} />
                 </Suspense>
-              ) : effectiveRightDockMode === "context" && desktopLayoutStyle !== "creation" ? (
+              ) : effectiveRightDockMode === "context" ? (
                 <Suspense fallback={null}>
                   <ContextPanel
                     tabId={remoteSurfaceActive ? undefined : activeTabId}
@@ -7162,10 +6970,6 @@ export default function App() {
                     sessionCost={visibleRuntimeState.sessionCost}
                     sessionCurrency={visibleRuntimeState.sessionCurrency}
                     sessionTurns={sessionTurns}
-                    turnTokens={state.turnTotalTokens}
-                    turnCost={state.turnCost}
-                    turnRateBand={state.turnRateBand}
-                    balance={state.balance}
                     sessionGen={state.sessionGen}
                     refreshKey={dockRefreshKey + state.contextPanelSeq}
                     usageSeq={state.usageSeq}
@@ -7221,7 +7025,6 @@ export default function App() {
                     verificationRevealRequest={verificationRevealRequest}
                     qualityFloor={composerProfile.qualityFloor}
                     showViewTabs={false}
-                    creationMode={sidebarCreation}
                   />
                 </Suspense>
               )}

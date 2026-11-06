@@ -185,16 +185,6 @@ const keys = (rows: TranscriptRow[]) => rows.map((row) => row.key).join(",");
 }
 
 {
-  // Creation mode groups groupable tools into ToolGroup rows instead of
-  // read-only batches.
-  const models = buildTurnModels(fixture);
-  const rows = buildTranscriptRows(models, { ...rowOptions(EMPTY_FOLDS, "expanded"), creationMode: true });
-  const group = rows.find((row) => row.kind === "tool-group");
-  ok(group && "items" in group && group.items.length === 2 && group.groupKind === "explore", "creation mode batches groupable read tools into a ToolGroup row");
-  ok(!rows.some((row) => row.kind === "tool-batch"), "creation mode never emits read-only batches");
-}
-
-{
   const models = buildTurnModels([
     { kind: "user", id: "u-shell", text: "run checks" },
     { kind: "tool", id: "shell-a", name: "bash", args: "{}", readOnly: false, status: "done" },
