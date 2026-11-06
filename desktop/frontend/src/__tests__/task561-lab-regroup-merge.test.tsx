@@ -98,7 +98,7 @@ console.log("\ntask 561 lab regroup + merged cards");
 // 任务 944：renderArtifact（对话内产物卡片）入 ui 组——两件先后入布局，
 // 合并态总数 38→40，组分布 ui 10→11、tool-opt 1→2（6/8/11/2/1/4/6/2）。
 // 任务 961：automation 三散条（dream/decisionPatterns/heartbeatBackground）
-// 并「智能自动化」卡、efficiency 三散条（quickCommands/traceAsState/
+// 并「智能自动化」卡（tl1453 后 dream 行随实验退役）、efficiency 三散条（quickCommands/traceAsState/
 // outputStyle）并「交互与呈现」卡、ui renderArtifact 并入视图布局卡——
 // 条目级合并净 -5 +2 容器 = 40→35，组分布 4/6/10/2/1/4/6/2。
 // 任务 971：multiEditInjection 独立卡退役并入工具优化聚合页（restartUpdate
@@ -277,7 +277,7 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // quickCommands/traceAsState/outputStyle 并「交互与呈现」。各成员行读
   // 自己的键、写自己的 setter；聚合徽章断言在 562 测试。
   { id: "smartAutomation", endMarker: '{selected === "searchHistory" && (', members: [
-    { label: "961 dream", field: "s.experimentalDream", setter: "app.SetExperimentalDream(on)" },
+    // tl1453：dream 成员行随 dream/distill 实验退役（宪法 Q1）摘除。
     { label: "961 decisionPatterns", field: "s.experimentalDecisionPatterns", setter: "app.SetExperimentalDecisionPatterns(on)" },
     { label: "961 heartbeatBackground", field: "s.experimentalHeartbeatBackground", setter: "app.SetExperimentalHeartbeatBackground(on)" },
   ] },
@@ -367,8 +367,8 @@ for (const id of [
   // 承载，SettingsOpenCodeGoUsageCard 整体搬入卡内）。
   "opencodeGoUsage",
   // 任务 961：三处条目级收编——七个独立入口/pane/union id 摘除（成员行+
-  // 成员徽章承载，742/782 先例）。
-  "dream",
+  // 成员徽章承载，742/782 先例）。tl1453：dream 连成员行一并退役
+  // （宪法 Q1），缺席断言由布局数据覆盖，此处不再单列。
   "decisionPatterns",
   "heartbeatBackground",
   "quickCommands",

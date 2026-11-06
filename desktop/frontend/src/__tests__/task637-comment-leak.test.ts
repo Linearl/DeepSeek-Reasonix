@@ -63,7 +63,6 @@ console.log("\ntask 637 comment-leak guard");
     "settings.toolOptimizationsHint",
     "settings.traceAsStateHint",
     "settings.autoLoadOlderHint",
-    "settings.dreamHint",
     "settings.sessionCollabHint",
     "settings.autonomousIdleTerminateHint",
     "settings.loopStreakNoteHint",

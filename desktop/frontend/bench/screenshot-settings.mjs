@@ -148,7 +148,8 @@ async function passSettings() {
       await ensureSettingsHealthy(page, "lab open");
       const railLabels = await page.locator(".experimental-rail__label").allTextContents();
       console.log("LAB features:", JSON.stringify(railLabels));
-      for (const card of ["Optimistic parallel writes", "Autopilot", "Dream"]) {
+      // tl1453: the Dream card retired with the experimental_dream switch.
+      for (const card of ["Optimistic parallel writes", "Autopilot"]) {
         const item = page.locator(".experimental-rail__item").filter({ hasText: card });
         if ((await item.count()) === 0) {
           console.log(`SKIP lab card ${card} (feature not present)`);

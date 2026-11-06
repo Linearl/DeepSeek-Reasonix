@@ -105,10 +105,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.smartAutomation",
           tier: "optional",
           // 任务 1070：补第四行「Standard 流续跑总闸」（默认关）。
-          onKeys: ["experimentalDream", "experimentalDecisionPatterns", "experimentalHeartbeatBackground", "stalledIntentNudge", "standardContinuation"],
+          // tl1453：experimentalDream 随 dream/distill 实验退役，onKeys/成员摘除。
+          onKeys: ["experimentalDecisionPatterns", "experimentalHeartbeatBackground", "stalledIntentNudge", "standardContinuation"],
           members: [
-            // 梦境整理（原 automation 独立卡，961 并卡）。
-            { id: "dream", labelKey: "settings.dream", tier: "optional" },
             // 任务 801→961：决策模式自动提取+固化——压缩触发提取裁决轮次
             // 写记忆，心跳定期整合固化 decision-patterns.md。默认关=零行为。
             { id: "decisionPatterns", labelKey: "settings.decisionPatterns", tier: "optional" },

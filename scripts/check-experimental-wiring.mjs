@@ -183,7 +183,7 @@ for (const file of configFiles) {
 
 const camel = (field) => field.charAt(0).toLowerCase() + field.slice(1);
 
-// Settings toggle rows: `{ id: "dream", group: ..., label: t("settings.dream"), on: Boolean(s.experimentalDream) }`
+// Settings toggle rows: `{ id: "todoSidebar", group: ..., label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) }`
 const rowRe = /\{ id: "([A-Za-z0-9_]+)"[^{}]*?s\.(experimental[A-Za-z0-9]+)/g;
 const camelToId = new Map();
 for (const { source } of uiSources) {

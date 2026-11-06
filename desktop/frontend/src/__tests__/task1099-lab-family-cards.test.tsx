@@ -1,12 +1,13 @@
 // Run: npx tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/task1099-lab-family-cards.test.tsx
 // 任务 1099 acceptance harness（实验室 pane 子项按功能族聚合成卡片容器，首期
 // smartAutomation 试点）：
-//  ① 分组呈现：smartAutomation pane 恰好出现 3 个 LabSectionCard（任务书验收
-//     划两族「梦境」「决策模式」；卡内实存第三块「后台与续跑」收纳 961 心跳
-//     后台化 + 1069 续轮提醒 + 1070 续跑总闸三条，全部子项有明确族归属），
+//  ① 分组呈现：smartAutomation pane 恰好出现 2 个 LabSectionCard（任务书验收
+//     原划「梦境」「决策模式」两族 + 「后台与续跑」第三块；tl1453 梦境族卡随
+//     experimental_dream 实验退役摘除，余「决策模式」「后台与续跑」两卡，
+//     收纳 961 心跳后台化 + 1069 续轮提醒 + 1070 续跑总闸等条目），
 //     标题分别来自三语 locale 键；
 //  ② 成员归属逐项断言：每个成员行落在指定族卡体内（不只看卡片数量）；
-//  ③ 徽章语义不变：成员徽章（labLabel）仍留在各自成员行（dream/
+//  ③ 徽章语义不变：成员徽章（labLabel）仍留在各自成员行（tl1453 后余
 //     decisionPatterns/heartbeatBackground/stalledIntentNudge/
 //     standardContinuation 各恰好一次）、卡头 smartAutomation 徽章恰好一次
 //     （621 + 774 非回归）；
@@ -46,12 +47,12 @@ console.log("\ntask 1099 lab family section cards");
 const smartCard = cardSlice('{selected === "smartAutomation" && (', '{selected === "searchHistory" && (');
 ok(smartCard.length > 0, "smartAutomation pane branch located");
 
-// ① 三个分组卡 + 标题键各出现一次。
+// ① 两个分组卡（tl1453 后）+ 标题键各出现一次。
 {
   const opens = smartCard.match(/<LabSectionCard\b/g) ?? [];
   const closes = smartCard.match(/<\/LabSectionCard>/g) ?? [];
-  ok(opens.length === 3 && closes.length === 3, `smartAutomation pane renders exactly 3 LabSectionCard containers (open ${opens.length}, close ${closes.length})`);
-  for (const key of ["settings.lab.family.dream", "settings.lab.family.decisionPatterns", "settings.lab.family.backgroundContinuation"]) {
+  ok(opens.length === 2 && closes.length === 2, `smartAutomation pane renders exactly 2 LabSectionCard containers (open ${opens.length}, close ${closes.length})`);
+  for (const key of ["settings.lab.family.decisionPatterns", "settings.lab.family.backgroundContinuation"]) {
     ok(smartCard.includes(`title={t("${key}")}`), `family card titled from locale key ${key}`);
   }
 }
@@ -66,10 +67,7 @@ function familySlice(titleKey: string): string {
   return smartCard.slice(start, end);
 }
 {
-  const dream = familySlice("settings.lab.family.dream");
-  ok(dream.includes('label={labLabel("dream", t("settings.dream"))}'), "dream family card hosts the 梦境整理 row");
-  ok(dream.includes('label={t("settings.dreamCreateTask")}'), "dream family card hosts the 创建自动任务 row");
-
+  // tl1453：梦境族卡（整理开关 + 创建自动任务两行）随实验退役，切片断言摘除。
   const dp = familySlice("settings.lab.family.decisionPatterns");
   ok(dp.includes('label={labLabel("decisionPatterns", t("settings.decisionPatterns"))}'), "decision family card hosts the 决策模式提取 row");
   ok(dp.includes('label={t("settings.decisionPatternsCreateTask")}'), "decision family card hosts the 创建自动任务 row");
@@ -85,7 +83,7 @@ function familySlice(titleKey: string): string {
 
 // ③ 徽章语义不变（源码计数，621 口径：成员徽章各恰一次；卡头恰一次）。
 {
-  for (const id of ["dream", "decisionPatterns", "heartbeatBackground", "stalledIntentNudge", "standardContinuation", "smartAutomation"]) {
+  for (const id of ["decisionPatterns", "heartbeatBackground", "stalledIntentNudge", "standardContinuation", "smartAutomation"]) {
     const n = (smartCard.match(new RegExp(`labLabel\\("${id}"`, "g")) ?? []).length;
     ok(n === 1, `member badge stays exactly once on its own row (${id} × ${n})`);
   }
@@ -94,7 +92,6 @@ function familySlice(titleKey: string): string {
 // ④ 键/setter 接线不变（561 合同的 1099 面复核——聚合容器不得改写读写路径）。
 {
   const wirings: Array<[string, string]> = [
-    ["dream", "app.SetExperimentalDream(on)"],
     ["decisionPatterns", "app.SetExperimentalDecisionPatterns(on)"],
     ["heartbeatBackground", "app.SetExperimentalHeartbeatBackground(on)"],
     ["stalledIntentNudge", "app.SetStalledIntentNudge(on)"],
@@ -136,7 +133,8 @@ function familySlice(titleKey: string): string {
 
 // ⑦ 三语 locale。
 {
-  const keys = ["settings.lab.family.dream", "settings.lab.family.dreamHint", "settings.lab.family.decisionPatterns", "settings.lab.family.decisionPatternsHint", "settings.lab.family.backgroundContinuation"];
+  // tl1453：family.dream / family.dreamHint 两键随梦境族卡退役同删。
+  const keys = ["settings.lab.family.decisionPatterns", "settings.lab.family.decisionPatternsHint", "settings.lab.family.backgroundContinuation"];
   for (const [dialect, text] of [["zh", zh], ["en", en], ["zh-TW", zhTW]] as const) {
     const missing = keys.filter((k) => !text.includes(`"${k}"`));
     ok(missing.length === 0, `${dialect} carries all family-card keys (missing: ${JSON.stringify(missing)})`);

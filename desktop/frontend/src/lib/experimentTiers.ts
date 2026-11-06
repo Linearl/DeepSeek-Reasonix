@@ -29,7 +29,7 @@ export type TierFeatureId =
   | "sessionCollab"
   | "fullAccess"
   | "optimisticParallel"
-  | "dream"
+  // tl1453："dream" 随 dream/distill 实验退役（宪法 Q1），出类型与档位表。
   // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
   | "decisionPatterns"
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117 首落地，
@@ -215,7 +215,7 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   autopilot: "stable",
   sessionCollab: "stable",
   fullAccess: "stable",
-  dream: "optional",
+  // tl1453：dream 出表（原可选档）——dream/distill 实验退役（宪法 Q1）。
   // 任务 801：决策模式（提取链+固化链）。归自动化组，档位可选。
   decisionPatterns: "optional",
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge）——归自动化
@@ -490,11 +490,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 按推荐档入表——推荐 23→24、总数 86→87（Go 渲染表无条目，同 tabManagement 豁免）。
  * tl1338：sessionStorage（会话存储档位面）未稳定→稳定（用户 2026-11-01 拍板：
  * fork 已锁 v3，卡内余项皆迁移工具）——稳定 5→6、未稳定 12→11、总数不变 87
- * （Go 渲染表同步 LabTierStable，条目数不变 73）。 */
+ * （Go 渲染表同步 LabTierStable，条目数不变 73）。
+ * tl1453：dream（可选档）随 dream/distill 实验退役（宪法 Q1）——可选 45→44、
+ * 总数 87→86（Go 渲染表同步 73→72）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 6,
   recommended: 24,
-  optional: 45,
+  optional: 44,
   unstable: 11,
   retired: 1,
 };
