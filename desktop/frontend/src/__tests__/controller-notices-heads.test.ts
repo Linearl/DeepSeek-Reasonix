@@ -62,3 +62,16 @@ assert.ok(!lag.includes("{"), `lag notice fully interpolated: ${lag}`);
 const behindNoDetail = localizedNoticeText("backend english text", "session_selected_head_behind");
 assert.equal(behindNoDetail, "backend english text", "a missing Detail keeps the backend text verbatim (no unfilled placeholders)");
 console.log("  PASS  task-1010 lag notices interpolate readings and never leak head ids");
+
+// tl1446-2: the diverged-terminal notice (session_recovery_suspended, tl1409)
+// localizes by code instead of leaking the backend's English long sentence
+// into a warn-colored notice line.
+const suspended = localizedNoticeText(
+  "the session file conflicts with another writer and could not be auto-repaired; sending is paused for this session — reopen it (history is safe) and send your message again",
+  "session_recovery_suspended",
+);
+assert.ok(!suspended.includes("(history is safe)"), `suspended notice must not show the backend English sentence: ${suspended}`);
+assert.ok(suspended.startsWith("The session file conflicts"), `suspended notice renders the localized copy: ${suspended}`);
+const suspendedItem = appendNoticeItem([], 0, "n3", "warn", "the session file conflicts with another writer and could not be auto-repaired; sending is paused for this session — reopen it (history is safe) and send your message again", undefined, "session_recovery_suspended").items[0];
+assert.equal(suspendedItem.kind === "notice" && suspendedItem.action, undefined, "suspended notice stays action-free (reopen is manual by design)");
+console.log("  PASS  tl1446-2 session_recovery_suspended localizes instead of the English long sentence");

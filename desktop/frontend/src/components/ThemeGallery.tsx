@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from "react-dom";
 import { ArrowLeft, Check, CircleHelp, Copy, Download, ImagePlus, MoreHorizontal, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useT } from "../lib/i18n";
 import { THEME_STYLES, type ThemeStyle, isThemeStyle } from "../lib/theme";
 import {
@@ -264,7 +265,7 @@ export function ThemeGallery({
       const list = await app.ListThemePacks();
       setPacks(list || []);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeLoad", err), "error");
     } finally {
       setLoading(false);
     }
@@ -376,7 +377,7 @@ export function ThemeGallery({
       setPreviewingId(null);
       await reload();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeApply", err), "error");
     } finally {
       setBusy(false);
     }
@@ -401,7 +402,7 @@ export function ThemeGallery({
       setTab("user");
       setSelected(selectionFromPack(created));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeCopy", err), "error");
     } finally {
       setBusy(false);
     }
@@ -433,7 +434,7 @@ export function ThemeGallery({
       applyExperienceToDOM(view);
       onExperienceChange(view);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeDelete", err), "error");
     } finally {
       setBusy(false);
       setMenuOpen(false);
@@ -453,7 +454,7 @@ export function ThemeGallery({
       const path = await app.ExportThemePack(selectedPack.id, "");
       if (path) showToast(t("settings.themeLibrary.exported"), "info");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeExport", err), "error");
     }
     setMenuOpen(false);
   };
@@ -521,7 +522,7 @@ export function ThemeGallery({
       setPreviewingId(null);
       setTab("user");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeImport", err), "error");
     } finally {
       setBusy(false);
     }
@@ -568,7 +569,7 @@ export function ThemeGallery({
       setTab("user");
       setSelected(selectionFromPack(saved));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeSave", err), "error");
     } finally {
       setBusy(false);
     }
@@ -995,7 +996,7 @@ function ThemeEditorInline({
         });
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeBackgroundPick", err), "error");
     }
   };
 

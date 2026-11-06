@@ -7,6 +7,7 @@
 // in would change behavior, so this owner keeps the direct bridge port and
 // revisits when the operations pipeline lands.
 import { useCallback, useRef, useState } from "react";
+import { formatActionError } from "../lib/actionErrors";
 import { formatTerminalOutputForComposer } from "../lib/terminalOutput";
 import { formatSelectionReference, type SelectedTextInsertRequest } from "../lib/selectedTextContext";
 import type { ComposerInsertRequest } from "../lib/types";
@@ -99,7 +100,7 @@ export function useComposerInsertOwner(input: ComposerInsertOwnerInput) {
       }
       addWorkspaceTextToComposer(formatted);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), "error");
+      showToast(formatActionError("action.terminalInsert", error), "error");
     }
   }, [activeTabId, addWorkspaceTextToComposer, ports, showToast, t]);
 

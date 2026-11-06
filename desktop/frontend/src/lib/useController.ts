@@ -1011,8 +1011,11 @@ type Action =
   | { type: "resent_failed_turn"; turn: number }
   | { type: "management_confirmed"; submissionId: string }
   | { type: "turn_admitted"; turnId: string; submissionId: string }
-  | { type: "turn_submit_rejected"; submissionId: string; error: string }
-  | { type: "send_failed"; submissionId: string; error: string }
+  // tl1446-4: `error` is the localized human line; `detail` carries the raw
+  // backend error for the M1 folded form (same shape as the retryExhausted
+  // branch — human text first, technical raw in the expandable detail).
+  | { type: "turn_submit_rejected"; submissionId: string; error: string; detail?: string }
+  | { type: "send_failed"; submissionId: string; error: string; detail?: string }
   // 任务461-P6: a "turn already running" rejection degrades into the durable
   // guidance queue — the bubble stays delivered, the notice names the
   // destination, and the turn face keeps the authoritative running facts.
@@ -2766,7 +2769,7 @@ export function reducer(s: State, a: Action): State {
         ? { ...s, activeTurnId: a.turnId }
         : s;
     case "turn_submit_rejected":
-    case "send_failed": return reduceSubmitFailure(s, a.submissionId, a.error, a.type === "turn_submit_rejected", promptEventClock());
+    case "send_failed": return reduceSubmitFailure(s, a.submissionId, a.error, a.type === "turn_submit_rejected", promptEventClock(), a.detail);
     case "submit_degraded": return reduceSubmitDegraded(s, a.submissionId, a.text, a.inboxItemId, a.turnId, a.queued);
     case "turn_interrupted": {
       return withRemoteTurnInterrupted(s);
@@ -5317,7 +5320,9 @@ export function useController() {
 
   const rejectTurnSubmission = useCallback((tabId: string, submissionId: string, error: unknown) => {
     if (statesRef.current.get(tabId)?.pendingSubmissionId !== submissionId) return;
-    dispatchTo(tabId, { type: "turn_submit_rejected", submissionId, error: `Send failed: ${errorMessage(error)}` });
+    // tl1446-4: M1 folded form — the human line is the notice text, the raw
+    // rejection lands in the expandable detail (mirror of retryExhausted).
+    dispatchTo(tabId, { type: "turn_submit_rejected", submissionId, error: t("notice.submitRejected"), detail: errorMessage(error) });
     // Task 272 G5: a rejected send used to live only in reducer state —
     // nothing reached the log channel, so the incident's "cannot send" had
     // no frontend trace at all. Stale/runtime-switch rejections stay quiet.
@@ -5586,7 +5591,8 @@ export function useController() {
       await app.RunShellForTab(tabId, command);
       dispatchTo(tabId, { type: "send_confirmed", submissionId });
     } catch (error) {
-      dispatchTo(tabId, { type: "send_failed", submissionId, error: `Command failed: ${error instanceof Error ? error.message : String(error)}` });
+      // tl1446-4: M1 folded form — localized human line, raw error in detail.
+      dispatchTo(tabId, { type: "send_failed", submissionId, error: t("notice.sendFailedCommand"), detail: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }, [dispatchTo]);

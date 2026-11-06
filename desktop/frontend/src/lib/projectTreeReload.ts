@@ -1,3 +1,4 @@
+import { formatActionError } from "./actionErrors";
 import type { ProjectTreeRefresh } from "./projectTreeArchive";
 import type { ToastContextValue } from "./toast";
 import type { Translator } from "./i18n";
@@ -31,7 +32,7 @@ export async function runProjectTreeReload({
     const result = await bindings.ReloadProjectTreeSessions?.(scope, workspaceRoot);
     removed = result?.removedTopicIds?.length ?? 0;
   } catch (err) {
-    showToast(err instanceof Error ? err.message : String(err), "error");
+    showToast(formatActionError("action.sessionListReload", err), "error");
   }
   await refresh({
     reloadTopicKeys: folderKey ? [folderKey] : undefined,

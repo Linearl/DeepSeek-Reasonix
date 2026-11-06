@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { formatActionError } from "./actionErrors";
 import { useToast } from "./toast";
 
 export type GoalAction = () => void | Promise<void>;
@@ -19,7 +20,7 @@ export function runGoalAction(action: GoalAction, onError: (error: unknown) => v
 export function useGoalActionHandler() {
   const { showToast } = useToast();
   const handleGoalActionError = useCallback((error: unknown) => {
-    showToast(error instanceof Error ? error.message : String(error), "error");
+    showToast(formatActionError("action.goalOperation", error), "error");
   }, [showToast]);
   const runHandledGoalAction = useCallback((action: GoalAction) => {
     runGoalAction(action, handleGoalActionError);

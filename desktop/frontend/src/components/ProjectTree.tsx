@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, FileJson, FileText, ListChecks, ListCollapse, ListRestart, MessageSquare, Pin, MoreHorizontal, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server, Settings2 } from "lucide-react";
 import { asArray } from "../lib/array";
+import { formatActionError } from "../lib/actionErrors";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
 import { writeClipboardText } from "../lib/clipboard";
@@ -1370,7 +1371,7 @@ export function ProjectTree({
     try {
       await onCreateIsolatedWorktree?.(workspaceRoot);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error", { durationMs: 6000 });
+      showToast(formatActionError("action.worktreeCreate", err), "error", { durationMs: 6000 });
     } finally {
       setIsolatingProject(null);
     }
@@ -1437,7 +1438,7 @@ export function ProjectTree({
       await refresh();
       if (!onRenameTopic) await onTopicsChanged?.();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.renameSession", err), "error");
     }
   };
 
@@ -1449,7 +1450,7 @@ export function ProjectTree({
       await onTopicsChanged?.();
       if (title) showToast(t("projectTree.aiRenameDone", { title }));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.renameSession", err), "error");
     } finally {
       setAiRenamingTopic(null);
     }
@@ -1463,7 +1464,7 @@ export function ProjectTree({
       if (!await renameRemoteProjectTitle(root, title)) await app.RenameProject(root, title);
       await refresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.renameProject", err), "error");
     }
   };
 
@@ -1476,7 +1477,7 @@ export function ProjectTree({
       await refresh();
       await onTopicsChanged?.();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.pinUpdate", err), "error");
     }
   };
 
@@ -1489,7 +1490,7 @@ export function ProjectTree({
       await refresh();
       await onTopicsChanged?.();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.pinUpdate", err), "error");
     }
   };
 
@@ -1511,7 +1512,7 @@ export function ProjectTree({
       setConfirmRemoveProject(null);
       await refresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("projectTree.removeProject", err), "error");
     }
   };
 
@@ -1763,7 +1764,7 @@ export function ProjectTree({
       await refresh({ reloadAllTopics: true });
       await onTopicsChanged?.();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.batchArchive", err), "error");
     } finally {
       setBatchBusy(false);
     }
@@ -1784,7 +1785,7 @@ export function ProjectTree({
       setOrganizationRevision((n) => n + 1);
       await onTopicsChanged?.();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.batchMove", err), "error");
     } finally {
       setBatchBusy(false);
     }

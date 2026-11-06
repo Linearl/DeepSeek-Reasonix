@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { RemoteConnectionTimeoutError, useRemoteStore, waitForRemoteConnection } from "../store/remote";
 import { RemoteWorkspaceLaunchGate, resolveRemoteWorkspace } from "../lib/remoteWorkspace";
@@ -34,7 +35,7 @@ export function useRemoteWorkspaceCommands(input: RemoteWorkspaceCommandsInput) 
   const openRemoteWorkspaceFromStatus = useCommittedCommand((host: RemoteHostView) => {
     const requestSeq = remoteWorkspaceLaunchGate.current.begin(host.id);
     void launchRemoteWorkspace(host, requestSeq).catch((err) => {
-      showToast(err instanceof Error ? err.message : String(err), "error", { durationMs: 6000 });
+      showToast(formatActionError("action.remoteWorkspaceOpen", err), "error", { durationMs: 6000 });
     });
   });
 
@@ -74,7 +75,7 @@ export function useRemoteWorkspaceCommands(input: RemoteWorkspaceCommandsInput) 
       try {
         await launchRemoteWorkspace(host, requestSeq);
       } catch (err) {
-        showToast(err instanceof Error ? err.message : String(err), "error", { durationMs: 6000 });
+        showToast(formatActionError("action.remoteWorkspaceOpen", err), "error", { durationMs: 6000 });
       }
     })();
   });

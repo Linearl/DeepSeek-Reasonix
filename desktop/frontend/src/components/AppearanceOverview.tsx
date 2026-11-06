@@ -3,6 +3,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Copy, Images, LockKeyhole, Minus, Plus, RotateCcw } from "lucide-react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useT, type DictKey } from "../lib/i18n";
 import { THEME_STYLES, type Theme, type ThemeStyle, isThemeStyle } from "../lib/theme";
 import type { TerminalThemePreference } from "../lib/terminalTheme";
@@ -223,7 +224,7 @@ export function AppearanceOverview({
       showToast(t("settings.themeLibrary.copied", { name: created.name }), "info");
       setView("gallery");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeCopy", err), "error");
     } finally {
       setBusy(false);
     }
@@ -237,7 +238,7 @@ export function AppearanceOverview({
       onThemeStyle(isThemeStyle(exp.baseStyle) ? exp.baseStyle : "graphite");
       showToast(t("settings.themeGallery.disabled"), "info");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeDisable", err), "error");
     } finally {
       setBusy(false);
     }
@@ -250,7 +251,7 @@ export function AppearanceOverview({
       setExperience(exp);
       onThemeStyle(style);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.baseStyleChange", err), "error");
     } finally {
       setBusy(false);
     }
@@ -267,7 +268,7 @@ export function AppearanceOverview({
       const exp = await setThemeMode(mode);
       setExperience(exp);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), "error");
+      showToast(formatActionError("action.themeModeChange", err), "error");
     }
   };
 
@@ -637,7 +638,7 @@ export function AppearanceOverview({
                   onThemeStyle("graphite");
                   showToast(t("settings.themeGallery.restoredGraphite"), "info");
                 } catch (err) {
-                  showToast(err instanceof Error ? err.message : String(err), "error");
+                  showToast(formatActionError("action.appearanceRestore", err), "error");
                 } finally {
                   setBusy(false);
                 }

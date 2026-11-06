@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, FileText, FolderOpen, MessageSquarePlus, PenLine, Pin, PinOff, TerminalSquare, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useT } from "../lib/i18n";
 import type { PinnedFileInfo } from "../lib/pinnedContextBridge";
 import { useToast } from "../lib/toast";
@@ -182,11 +183,11 @@ export function WorkspaceTreeMenu({
                     closeThen(() => {
                       if (isPinned) {
                         void app.UnpinFileForTab(workspaceTabId, target.path).catch((err: unknown) => {
-                          showToast(String((err as Error)?.message || err), "error");
+                          showToast(formatActionError("workspace.unpinFileFromContext", err), "error");
                         });
                       } else {
                         void app.PinFileForTab(workspaceTabId, target.path).catch((err: unknown) => {
-                          showToast(String((err as Error)?.message || err), "error");
+                          showToast(formatActionError("workspace.pinFileToContext", err), "error");
                         });
                       }
                     }),

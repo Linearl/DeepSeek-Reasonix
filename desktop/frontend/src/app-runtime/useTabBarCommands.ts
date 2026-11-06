@@ -1,5 +1,6 @@
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { app } from "../lib/bridge";
+import { formatActionError } from "../lib/actionErrors";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { guardBackendNavigationResult } from "../lib/navigationSurfaceTransition";
 import { enqueueNavigationRequest, type PendingNavigationRequest } from "../lib/openTopicCoalescing";
@@ -116,7 +117,7 @@ export function useTabBarCommands(input: TabBarCommandsInput) {
         { afterMutation: true },
       );
     } catch (err) {
-      if (ports.isNavigationIntentCurrent(navigationIntentSeq)) showToast(err instanceof Error ? err.message : String(err), "error");
+      if (ports.isNavigationIntentCurrent(navigationIntentSeq)) showToast(formatActionError("action.tabSwitch", err), "error");
     } finally {
       ports.settleNavigationSurface(navigationIntentSeq);
     }
@@ -223,7 +224,7 @@ export function useTabBarCommands(input: TabBarCommandsInput) {
         { afterMutation: true },
       );
     } catch (err) {
-      if (ports.isNavigationIntentCurrent(navigationIntentSeq)) showToast(err instanceof Error ? err.message : String(err), "error");
+      if (ports.isNavigationIntentCurrent(navigationIntentSeq)) showToast(formatActionError("action.tabSwitch", err), "error");
     } finally {
       ports.settleNavigationSurface(navigationIntentSeq);
     }
@@ -240,7 +241,7 @@ export function useTabBarCommands(input: TabBarCommandsInput) {
       await ports.createIsolatedWorktree(root, navigationIntentSeq);
       await ports.refreshTabMetas(undefined, { afterMutation: true });
     } catch (err) {
-      if (ports.isNavigationIntentCurrent(navigationIntentSeq)) showToast(err instanceof Error ? err.message : String(err), "error");
+      if (ports.isNavigationIntentCurrent(navigationIntentSeq)) showToast(formatActionError("action.worktreeCreate", err), "error");
     } finally {
       ports.settleNavigationSurface(navigationIntentSeq);
     }

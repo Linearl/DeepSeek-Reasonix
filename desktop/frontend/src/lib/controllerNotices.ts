@@ -109,6 +109,10 @@ const noticeCodeKeys: Record<string, DictKey> = {
   // Task 203: an in-process second tab on the same conversation — the real
   // dual writer — gets its own phrasing instead of blaming another window.
   session_concurrent_dual_tab: "recovery.noticeConcurrentDualTab",
+  // tl1446-2: diverged 终局（tl1409 引入的 code）——重试耗尽后发送暂停。
+  // 此前无码映射，英文长句直出 warn 条；文案与 recovery.divergedToast 家族
+  // 同源补齐 notice 半边（说清冲突/影响/下一步，历史不丢）。
+  session_recovery_suspended: "recovery.noticeRecoverySuspended",
   session_head_switched: "recovery.noticeHeadSwitched",
   session_head_selected: "recovery.noticeHeadSelected",
   // 任务 1116 件 1：修复回填了检查点但 diet 没跑、投影仍超窗——面板告警。
