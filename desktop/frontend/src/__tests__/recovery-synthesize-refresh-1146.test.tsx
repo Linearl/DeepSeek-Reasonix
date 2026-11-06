@@ -273,7 +273,30 @@ async function openAndExpand(): Promise<Root | null> {
   // 案例④(带副本)在待处理组,多点的这次展开对它无害(已合入组为空)。
   await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement).click(); });
   await flush();
+  // tl1415b-2(点2): 会话行恢复默认折叠——本套件全部断言都在子行(主线行/版
+  // 本行/副本行)上,逐个点开会话行展开钮;链清单是展开后惰性加载的,双 flush
+  // 等它落地。
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
+  await flush();
   return root;
+}
+
+/** tl1415b-2(点3): 行内「合成」按钮删除,合成唯一入口在底部③——先勾选会话
+ *  行,再点底部「以选定 HEAD 合成最长链」;无副本+多 heads 的会话由底部按形
+ *  态自动路由到头合成(确认链不变,仍是「Start synthesis」)。 */
+async function synthesizeViaFooter(): Promise<void> {
+  const checkbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
+  await act(async () => { checkbox?.click(); });
+  await flush();
+  const mergeBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
+    (b) => b.textContent?.includes("Merge into longest chain"),
+  );
+  await act(async () => { mergeBtn?.click(); });
+  await flush();
 }
 
 console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
@@ -290,11 +313,8 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   ok(chainsBefore === 1 && Boolean(mainRowBefore), "① before synthesis the table shows both chains (main row + fork head row)");
   const chainCallsBefore = spies.chainCalls;
 
-  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
-  );
-  await act(async () => { synthBtn?.click(); });
-  await flush();
+  // tl1415b-2(点3): 合成走底部唯一入口(勾选会话→底部③,按形态路由到头合成)。
+  await synthesizeViaFooter();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
     .find((b) => b.textContent?.trim() === "Start synthesis");
   await act(async () => { confirmBtn?.click(); });
@@ -322,11 +342,8 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   const spies = freshSpies(2); // 第二次 ListRecoveryCopyGroups（合成后的重取）挂起
   stubBridge({}, spies);
   const root = await openAndExpand();
-  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
-  );
-  await act(async () => { synthBtn?.click(); });
-  await flush();
+  // tl1415b-2(点3): 合成走底部唯一入口(勾选会话→底部③,按形态路由到头合成)。
+  await synthesizeViaFooter();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
     .find((b) => b.textContent?.trim() === "Start synthesis");
   await act(async () => { confirmBtn?.click(); });
@@ -436,11 +453,8 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   stubBridge({}, spies);
   const root = await openAndExpand();
   // 先走一轮合成刷新，刷新落地后再按扫描。
-  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
-  );
-  await act(async () => { synthBtn?.click(); });
-  await flush();
+  // tl1415b-2(点3): 合成走底部唯一入口(勾选会话→底部③,按形态路由到头合成)。
+  await synthesizeViaFooter();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
     .find((b) => b.textContent?.trim() === "Start synthesis");
   await act(async () => { confirmBtn?.click(); });
@@ -480,11 +494,8 @@ const V3_ONLY_REPORT: HeadSynthesisReport = {
   ok(document.querySelectorAll(".rc-chain").length === 1
     && Boolean(document.querySelector(".rc-versions__table tbody tr.rc-detail__row--main")),
     "⑥ the v3-only conversation shows both head readings (main row + fork head row)");
-  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
-  );
-  await act(async () => { synthBtn?.click(); });
-  await flush();
+  // tl1415b-2(点3): 合成走底部唯一入口(勾选会话→底部③,按形态路由到头合成)。
+  await synthesizeViaFooter();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
     .find((b) => b.textContent?.trim() === "Start synthesis");
   await act(async () => { confirmBtn?.click(); });
@@ -515,11 +526,8 @@ const STALLED_REPORT: HeadSynthesisReport = {
   const spies = freshSpies();
   stubBridge({ SynthesizeSessionHeads: async () => { spies.synthCalls += 1; return STALLED_REPORT; } }, spies);
   const root = await openAndExpand();
-  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
-    b.textContent?.includes("Synthesize longest chain"),
-  );
-  await act(async () => { synthBtn?.click(); });
-  await flush();
+  // tl1415b-2(点3): 合成走底部唯一入口(勾选会话→底部③,按形态路由到头合成)。
+  await synthesizeViaFooter();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
     .find((b) => b.textContent?.trim() === "Start synthesis");
   await act(async () => { confirmBtn?.click(); });

@@ -127,6 +127,17 @@ async function openPanel(): Promise<Root> {
   return root;
 }
 
+// tl1415b-2(点2): 会话行恢复默认折叠——子行(主线行/版本行)要点会话行展开钮
+// 才渲染;链清单是展开后惰性加载的,双 flush 等它落地。
+async function expandSessions(): Promise<void> {
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
+  await flush();
+}
+
 type Root = ReturnType<typeof createRoot>;
 
 console.log("\nv3-only session gets a full row (1085)");
@@ -144,11 +155,15 @@ console.log("\nv3-only session gets a full row (1085)");
   ok((mergedRow?.querySelector(".rc-grouprow__count")?.textContent || "") === "1", "① the merged group badge counts the v3-only conversation");
   await act(async () => { mergedRow.click(); });
   await flush();
+  await expandSessions();
   const sessionRow = document.querySelector("tr.rc-session");
   ok(Boolean(sessionRow && sessionRow.textContent?.includes("GC v3")), "① the row carries the conversation's label (展开后)");
   ok((sessionRow?.querySelector("td.rc-col-name")?.getAttribute("title") || "").includes("2 v3 versions"), "① the row's hover title carries the v3 version count (demo v5: 计数进名称格 hover)");
-  const synthBtn = buttonByText("Synthesize longest chain");
-  ok(Boolean(synthBtn), "② the 1065 synthesis entry (one-key) is visible on the session row");
+  // tl1415b-2(点3): 行内合成钮删除,合成唯一入口在底部③(用户裁决)。
+  const synthEntries = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).filter((b) =>
+    b.textContent?.includes("Merge into longest chain"),
+  );
+  ok(synthEntries.length === 1, "② the 1065 synthesis entry lives in the footer, exactly once (tl1415b-2 行内钮删除)");
   // 1064 单版本删除——当前选中行不可删，降级行也不可删，
   // 但非当前、非降级、有 headId 的行必须有删除按钮（单表内版本行的行内操作列）。
   const versionDeleteBtns = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-versions__table tr.rc-chain button")).filter((b) =>

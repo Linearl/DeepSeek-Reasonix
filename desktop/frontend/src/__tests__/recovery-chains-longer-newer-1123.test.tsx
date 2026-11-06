@@ -169,7 +169,13 @@ async function openAndExpand(): Promise<Root> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  // tl1415b: 待处理组默认展开——链行(主线行+版本行)随面板打开渲染。
+  // tl1415b-2(点2): 会话行恢复默认折叠——链行(主线行+版本行)随会话行展开
+  // 渲染,点开展开钮,双 flush 等链清单落地。
+  const toggles = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session .rc-session__toggle"));
+  for (const tgl of toggles) {
+    await act(async () => { tgl.click(); });
+  }
+  await flush();
   await flush();
   return root;
 }
