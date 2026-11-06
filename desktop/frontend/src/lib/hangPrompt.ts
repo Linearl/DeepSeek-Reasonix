@@ -11,6 +11,7 @@ import { t } from "./i18n";
 import { analyzeEntryButton, copyButton, type CrashPayload } from "./crash";
 import { buildCrashIssueSkeleton } from "./crashIssue";
 import { snapshotBreadcrumbs } from "./breadcrumbs";
+import { isNotifyKindEnabled } from "./notifyDisplayPrefs";
 import { recordNotification } from "./notifyArchive";
 import {
   RT_NOTICE_WARN_AUTO_DISMISS_MS,
@@ -91,11 +92,14 @@ function buildHangIssuePayload(report: HangAnalysisAvailabilityReport): CrashPay
 
 function paintHangPrompt(report: HangAnalysisAvailabilityReport): void {
   if (typeof document === "undefined") return;
+  // tl1458：卡顿提示落通知留档（warn 档）。留档≠拦截——展示闸门（tl1464 C 类
+  // 开关）关闭时留档照写，只跳过下面的 rt-notice 面。
+  recordNotification({ level: "warn", source: "rt-notice", text: t("hangPrompt.title"), detail: report.verdict });
+  // tl1464 C 类开关：关闭 = 不展示（留档照写）。alreadyShowing 判定以 DOM 为准，
+  // 不展示即不占用，冷却语义不受影响。
+  if (!isNotifyKindEnabled("diagnosticAlerts")) return;
   // 任务 910：卡顿=warn 档（黄，警戒非故障——语义固定，见 rtNotice.ts）。
   const host = rtNoticeHost("hang-analysis-prompt", "warn");
-  // tl1458：卡顿提示落通知留档（warn 档）。留档≠拦截——下方 rt-notice 面
-  // paint 通路原样（存储层同源同文案去重窗口兜住重复 paint）。
-  recordNotification({ level: "warn", source: "rt-notice", text: t("hangPrompt.title"), detail: report.verdict });
   const title = document.createElement("div");
   title.className = "hang-analysis__title rt-notice__title";
   title.textContent = t("hangPrompt.title");

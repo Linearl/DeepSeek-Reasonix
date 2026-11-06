@@ -17,6 +17,7 @@
 
 import { tFor, type Locale } from "./i18n";
 import { analyzeEntryButton } from "./crash";
+import { isNotifyKindEnabled } from "./notifyDisplayPrefs";
 import { recordNotification } from "./notifyArchive";
 import { rtNoticeHead, rtNoticeHost, rtNoticeMount } from "./rtNotice";
 import type { PendingCrashSnapshotReport } from "./types";
@@ -183,18 +184,21 @@ function installLocaleFlipWatch(): void {
 
 function paintPendingCrashPrompt(report: PendingCrashSnapshotReport): void {
   if (typeof document === "undefined") return;
-  visibleReport = report;
-  // 任务 910：崩溃=danger 档，挂进统一右下角堆叠（见 rtNotice.ts）。
-  const host = rtNoticeHost("pending-crash-entry", "danger");
   // tl1458：上次运行崩溃入口落通知留档（error 档）。只在 paint 时记一次——
   // locale flip 的重渲染走 renderPendingCrashBanner，不经过这里，重复翻语言
-  // 不会重复落档。留档≠拦截：下方 banner 通路原样。
+  // 不会重复落档。留档≠拦截：tl1464 C 类开关关闭时留档照写，只跳过展示面。
   recordNotification({
     level: "error",
     source: "rt-notice",
     text: `${tFor(localeFromHtmlLang())("pendingCrash.title")}（${report.count}）`,
     detail: pendingCrashPreview(report),
   });
+  // tl1464 C 类开关：关闭 = 不展示。visibleReport 不置位——locale flip 的重
+  // 渲染也不得把被关掉的展示面带回来；下次启动 probe 照常走（留档照写）。
+  if (!isNotifyKindEnabled("diagnosticAlerts")) return;
+  visibleReport = report;
+  // 任务 910：崩溃=danger 档，挂进统一右下角堆叠（见 rtNotice.ts）。
+  const host = rtNoticeHost("pending-crash-entry", "danger");
   renderPendingCrashBanner(host, report);
 }
 

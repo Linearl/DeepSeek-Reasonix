@@ -215,5 +215,128 @@ console.log("\n【A】toast info→右下统一堆叠，warn/error 留顶部原�
   diag.remove();
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// 【开关段】全局通知类型开关：默认全开；关闭只抑制展示，留档照写；
+// 错误提示不设开关（不可静默）。
+// ────────────────────────────────────────────────────────────────────────
+console.log("\n【开关】通知类型开关：默认全开，关展示不关留档");
+{
+  const { act } = await import("react");
+  const { createRoot } = await import("react-dom/client");
+  const { ToastProvider, useToast } = await import("../lib/toast");
+  const { paintHangPromptForTest, resetHangWatchForTest } = await import("../lib/hangPrompt");
+  const {
+    isNotifyKindEnabled,
+    setNotifyKindEnabled,
+    resetNotifyDisplayPrefsForTest,
+    subscribeNotifyDisplayPrefs,
+  } = await import("../lib/notifyDisplayPrefs");
+  const { resetNotifyArchiveForTest, listNotifications } = await import("../lib/notifyArchive");
+
+  // 默认全开（清存储后读默认值 + 文档旗标回 on）。
+  dom.window.localStorage.clear();
+  resetNotifyDisplayPrefsForTest();
+  ok(
+    isNotifyKindEnabled("actionFeedback") && isNotifyKindEnabled("statusBanners") && isNotifyKindEnabled("diagnosticAlerts"),
+    "默认全开（零变化基线）",
+  );
+  ok(document.documentElement.dataset.notifyBanners !== "off", "默认文档旗标不关横幅");
+  ok(!document.documentElement.dataset.notifyBanners, "默认不写 data-notify-banners 属性（零痕迹）");
+
+  // A 类开关关：info toast 不展示但留档照写；error toast 照常展示。
+  let latest: { actionFeedback: boolean; statusBanners: boolean; diagnosticAlerts: boolean } | null = null;
+  subscribeNotifyDisplayPrefs((prefs) => { latest = prefs; });
+  let fired: Array<{ text: string; level: "info" | "warn" | "error" }> = [];
+  function Fixture() {
+    const { showToast } = useToast();
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          for (const item of fired) showToast(item.text, item.level);
+        }}
+      >
+        fire
+      </button>
+    );
+  }
+  const root2 = createRoot(document.getElementById("root")!);
+  await act(async () => {
+    root2.render(
+      <ToastProvider>
+        <Fixture />
+      </ToastProvider>,
+    );
+  });
+  const fire = async (...items: Array<{ text: string; level: "info" | "warn" | "error" }>) => {
+    fired = items;
+    await act(async () => {
+      (document.getElementById("root")!.querySelector("button") as HTMLButtonElement).click();
+    });
+  };
+  await act(async () => setNotifyKindEnabled("actionFeedback", false));
+  ok(latest !== null && latest.actionFeedback === false, "切换广播（订阅面实时联动）");
+  resetNotifyArchiveForTest();
+  await fire({ text: "muted-info", level: "info" }, { text: "still-error", level: "error" });
+  ok(document.querySelectorAll("#rt-notice-stack [data-kind='action'].toast").length === 0, "A 类关：info toast 不展示");
+  ok(document.querySelector(".toast-container")?.textContent?.includes("still-error"), "A 类关：error toast 照常展示（错误不可静默）");
+  ok(listNotifications().some((e) => e.source === "toast" && e.text === "muted-info"), "A 类关：info toast 留档照写");
+  await act(async () => setNotifyKindEnabled("actionFeedback", true));
+  await fire({ text: "back-info", level: "info" });
+  ok(
+    Array.from(document.querySelectorAll<HTMLElement>("#rt-notice-stack [data-kind='action'].toast")).some((el) => el.textContent?.includes("back-info")),
+    "A 类开：info toast 恢复展示（含关期间留在 provider state 的存量条目）",
+  );
+
+  // C 类开关关：hang paint 跳过展示但留档照写；开回后可再挂。
+  await act(async () => setNotifyKindEnabled("diagnosticAlerts", false));
+  resetNotifyArchiveForTest();
+  paintHangPromptForTest({ sessionPath: "…", verdict: "silent", detail: "ledger silent 8m", hung: true, ready: true } as never);
+  ok(document.getElementById("hang-analysis-prompt") === null, "C 类关：卡顿提示不展示");
+  ok(listNotifications().some((e) => e.source === "rt-notice" && e.level === "warn"), "C 类关：卡顿留档照写");
+  await act(async () => setNotifyKindEnabled("diagnosticAlerts", true));
+  paintHangPromptForTest({ sessionPath: "…", verdict: "silent", detail: "ledger silent 8m", hung: true, ready: true } as never);
+  ok(document.getElementById("hang-analysis-prompt") !== null, "C 类开：卡顿提示恢复展示");
+  const hangClose = document.querySelector("#hang-analysis-prompt .rt-notice__close") as HTMLButtonElement;
+  hangClose?.click();
+  resetHangWatchForTest();
+
+  // B 类开关：文档旗标 + CSS 隐藏规则钉（6 个族根选择器；错误态豁免）。
+  await act(async () => setNotifyKindEnabled("statusBanners", false));
+  ok(document.documentElement.dataset.notifyBanners === "off", "B 类关：<html data-notify-banners=off>");
+  await act(async () => setNotifyKindEnabled("statusBanners", true));
+  ok(document.documentElement.dataset.notifyBanners === undefined, "B 类开：属性删除（零痕迹=开）");
+  const stylesRaw = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const bannerRule = stylesRaw.match(/:root\[data-notify-banners="off"\][^{]*\{[^}]*\}/)?.[0] ?? "";
+  for (const selector of [".composer-inbox-recovery", ".composer-guidance-shelf[role=\"status\"]", ".recovery-wait-banner", ".session-recovery", ".undo-rewind", ".banner--update:not(.banner--error)"]) {
+    ok(bannerRule.includes(selector), `B 类隐藏规则覆盖族根 ${selector}`);
+  }
+  ok(!bannerRule.includes(".banner--warning.banner--actionable") || bannerRule.includes(":not(.banner--error)"), "B 类规则不误伤共用类横幅（配置告警等）");
+
+  // 设置页接线（源码钉）：既有「通用」分组的三个开关行 + 错误不可静默写进提示文案。
+  const panelSource = sourceOf("../components/SettingsPanel.tsx");
+  for (const key of ["settings.notify.section", "settings.notify.actionFeedback", "settings.notify.statusBanners", "settings.notify.diagnosticAlerts"]) {
+    ok(panelSource.includes(`t("${key}")`), `设置页接线 ${key}`);
+  }
+  ok(panelSource.includes("setNotifyKindEnabled(\"actionFeedback\"") && panelSource.includes("setNotifyKindEnabled(\"statusBanners\"") && panelSource.includes("setNotifyKindEnabled(\"diagnosticAlerts\""), "三个开关行都写回 notifyDisplayPrefs（localStorage 持久化）");
+  ok((panelSource.match(/settings\.notify\./g) ?? []).length >= 8, "通知分组无新增页面（挂在设置页既有分组内）");
+  const prefsSource = sourceOf("../lib/notifyDisplayPrefs.ts");
+  ok(!prefsSource.includes("\"error\"") && !prefsSource.includes("'error'"), "开关键集只有三类——错误不设开关（不可静默）");
+  for (const file of ["zh.ts", "zh-TW.ts", "en.ts"]) {
+    const localeSrc = sourceOf(`../locales/${file}`);
+    ok(
+      ["settings.notify.section", "settings.notify.sectionHint", "settings.notify.actionFeedback", "settings.notify.actionFeedbackHint", "settings.notify.statusBanners", "settings.notify.statusBannersHint", "settings.notify.diagnosticAlerts", "settings.notify.diagnosticAlertsHint"].every((key) => localeSrc.includes(`"${key}"`)),
+      `${file} 三语键齐（8 键）`,
+    );
+  }
+
+  await act(async () => root2.unmount());
+  dom.window.localStorage.clear();
+  resetNotifyDisplayPrefsForTest();
+  resetNotifyArchiveForTest();
+  document.documentElement.dataset.notifyBanners = "";
+  delete document.documentElement.dataset.notifyBanners;
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

@@ -35362,6 +35362,25 @@ button.statusbar__mcp:focus-visible {
   outline: none;
 }
 
+/* ── tl1464 全局通知类型开关（设置 → 通用 → 通知）──────────────────────
+   B 状态横幅开关的展示闸门：<html data-notify-banners="off"> 时隐藏 B 族
+   展示面。只打在 6 个族根选择器上，避免误伤共用 .banner--warning 类的
+   配置告警/供应商提示等非 B 族横幅：
+     .composer-inbox-recovery                    = InboxRecoveryBanner
+     .composer-guidance-shelf[role="status"]     = UnfiledInputsBanner（同
+       类名的 ComposerGuidanceShelf 队列架无 role，不命中）
+     .recovery-wait-banner                       = RecoveryWaitBanner
+     .session-recovery                           = SessionRecoveryBanner
+     .undo-rewind                                = UndoRewindBanner
+     .banner--update:not(.banner--error)         = UpdateBanner（错误态例外
+       ——错误不受开关静默；设置页内的更新错误卡同此豁免）
+   RemoteReclaimBanner 根节点与配置告警共用 .banner--warning.banner--actionable
+   且无独立钩子类（banner 组件零改动验收），本开关不覆盖。开关只影响展示；
+   默认 on（无此属性 = 全部照常），横幅为持续状态语义、不落留档。 */
+:root[data-notify-banners="off"] :is(.composer-inbox-recovery, .composer-guidance-shelf[role="status"], .recovery-wait-banner, .session-recovery, .undo-rewind, .banner--update:not(.banner--error)) {
+  display: none;
+}
+
 /* Empty session: Creation and Workbench share a centered headline/composer stack. */
 :is(.app--creation, .app--workbench) .chat-pane--creation-empty {
   --creation-hero-col: min(100%, 720px);

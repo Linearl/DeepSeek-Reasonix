@@ -4503,6 +4503,16 @@ export const en = {
   "settings.general.sectionConversation": "Conversation experience",
   "settings.general.sectionSystem": "System behavior",
   "settings.general.sectionSystemHint": "Control startup, approvals, sound, and status information.",
+  // tl1464：全局通知类型开关（设置 → 通用 → 通知）。默认全开；关闭只抑制展示，
+  // 通知留档照写；错误提示不受开关影响（不可静默）。
+  "settings.notify.section": "Notifications",
+  "settings.notify.sectionHint": "Three notification kinds, all on by default. Switching one off only hides its display — history still lands in the notification center (Collaboration hub → Notifications). Error alerts are always shown and cannot be switched off.",
+  "settings.notify.actionFeedback": "Action feedback (bottom-right)",
+  "settings.notify.actionFeedbackHint": "Transient feedback toasts (copy/export/applied) and background-question reminders.",
+  "settings.notify.statusBanners": "Status banners",
+  "settings.notify.statusBannersHint": "Persistent session state above the transcript/composer (recovery, updates, undo). Recommended to keep on — these carry ongoing state, not one-off events.",
+  "settings.notify.diagnosticAlerts": "Diagnostic alerts (bottom-right)",
+  "settings.notify.diagnosticAlertsHint": "Performance, hang, and pending-crash prompts. Warn-level prompts auto-dismiss after 30s; crash entry points stay until handled.",
   "settings.pageDesc.model-stats": "Review model usage and costs.",
   "settings.pageDesc.models": "Default models, planning models, and runtime limits.",
   "settings.pageDesc.providers": "Manage model providers, API endpoints, keys, and available models.",

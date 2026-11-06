@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { recordNotification } from "./notifyArchive";
+import { isNotifyKindEnabled, subscribeNotifyDisplayPrefs } from "./notifyDisplayPrefs";
 import { ensureRtNoticeStack } from "./rtNotice";
 
 export interface Toast {
@@ -69,8 +70,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // 反馈（sendFailed / inbox 错误 / 截图与附件失败等），迁右下会把本该醒目的
   // 失败挪走；info 档全量核对均为成功/中性反馈（导出成功、主题应用、复制成
   // 功等），才收编进右下角 A 类瞬时面。
+  // A 类开关只管 info 档的展示（右下）；开关关闭时右下面隐藏，留档照写
+  // （showToast 里的 recordNotification 在路由之前），错误/警告不受开关影响。
+  const actionFeedbackOn = useSyncExternalStore(subscribeNotifyDisplayPrefs, () =>
+    isNotifyKindEnabled("actionFeedback"),
+  );
   const topToasts = toasts.filter((t) => t.level === "warn" || t.level === "error");
-  const cornerToasts = toasts.filter((t) => t.level === "info");
+  const cornerToasts = actionFeedbackOn ? toasts.filter((t) => t.level === "info") : [];
 
   const renderToastBody = (t: Toast) => (
     <>

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { app, onAskBackground, onEvent, type AskBackgroundNotice } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { recordNotification } from "../lib/notifyArchive";
+import { isNotifyKindEnabled, subscribeNotifyDisplayPrefs } from "../lib/notifyDisplayPrefs";
 import { ensureRtNoticeStack } from "../lib/rtNotice";
 
 // 任务991: 后台 tab 的 ask 感知 toast。面板挂在一个用户看不见的 tab 里时，
@@ -93,6 +94,8 @@ export function AskBackgroundToasts({ activeTabId, onSwitchTab }: {
   }, [items.length === 0]);
 
   // 后端通知到达：新增或刷新（同 key 只更新到期时刻，不重复堆叠）。
+  // tl1464：A 类开关关闭时只跳过展示态的堆叠（留档在上面照写——留档≠展示）；
+  // 渲染处的实时闸门负责「开着时弹出的 toast 在关闭后立即隐藏」。
   useEffect(() => {
     return onAskBackground((notice: AskBackgroundNotice) => {
       if (!notice?.tabId || !notice?.askId) return;
@@ -106,6 +109,7 @@ export function AskBackgroundToasts({ activeTabId, onSwitchTab }: {
         text: String(notice.summary ?? "") || t("ask.bgToast"),
         detail: `tab ${notice.tabId} · ask ${notice.askId}`,
       });
+      if (!isNotifyKindEnabled("actionFeedback")) return;
       setItems((current) => {
         const next = current.filter((item) => item.key !== key);
         next.push({
@@ -186,7 +190,11 @@ export function AskBackgroundToasts({ activeTabId, onSwitchTab }: {
 
   // tl1464：迁入右下统一堆叠（#rt-notice-stack）。每条自带 role="status" 保留
   // 原容器 aria-live=polite 的播报语义；data-kind="action" 与 C 类区分。
-  if (fades.length === 0 || !stackEl) return null;
+  // A 类开关实时闸门（useSyncExternalStore 订阅）：关闭 = 不展示，留档照写。
+  const actionFeedbackOn = useSyncExternalStore(subscribeNotifyDisplayPrefs, () =>
+    isNotifyKindEnabled("actionFeedback"),
+  );
+  if (fades.length === 0 || !stackEl || !actionFeedbackOn) return null;
   return createPortal(
     fades.map(({ item, opacity }) => (
       <div
