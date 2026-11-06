@@ -142,8 +142,10 @@ async function openAndExpand(): Promise<Root> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  const toggle = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
-  await act(async () => { toggle?.click(); });
+  // tl1415b: v3-only 会话(无副本,headCount=2)落在已合入组(默认折叠)——
+  // 点组段行展开,合成入口随之可见。
+  const mergedRow = document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement;
+  await act(async () => { mergedRow.click(); });
   await flush();
   return root;
 }
@@ -226,7 +228,9 @@ const EN_CHAIN_CANDIDATE = "chain";
   stubBridge({}, single);
   const root = await openAndExpand();
   const mainRow = document.querySelector(".rc-versions__table tbody tr.rc-detail__row--main");
-  ok(Boolean(mainRow?.classList.contains("rc-chain")), `F 单 head 场景主线行存在且带链读数（rc-chain），不回归`);
+  // tl1415b: 主线行类名为 rc-detail__row--main（rc-chain 保留给版本行）——
+  // 单 head 回退判定的语义面=主线行存在、读数来自唯一链、无采纳短标识。
+  ok(Boolean(mainRow) && !(mainRow?.querySelector(".rc-copy__shortname")), `F 单 head 场景主线行存在且无采纳短标识，不回归`);
   ok((mainRow?.textContent || "").includes("12"), "F 主线行读数来自唯一链（12 messages）");
   await act(async () => root?.unmount());
 }

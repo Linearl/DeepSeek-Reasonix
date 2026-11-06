@@ -3,22 +3,27 @@
 // tsx-runner files; see recovery-branch-delete-1064.test.tsx for the pattern.)
 //
 // tl1415 harness:「对话版本管理」面板表格化改造的验收钉。
-//
-// 本文件随 tl1415 各 commit 逐步扩充;当前覆盖:
-//  ① 概要表头(.rc-row--head)sticky + 不透明背景 + 保持完整(用户截图实证的
-//     「表头下滑与内容重叠」修复)——JSDOM 无布局引擎,静态样式断言锁定声明。
-//  ② 面板内所有表格有表头且列名语义化(候选链行「5396 · 215 交互轮次 …」
-//     无表头读不懂——合并表渲染 thead 且含「条数」「交互轮次」列名)。
+// tl1415b 二轮形态（demo v5，docs/drafts/版本面板三表合一-demo-20261106.html）
+// 全文件按新形态改写——选择器改表口径（与 1064 同款先例），并新增 demo v5
+// 五项形态断言（单表/折叠组/步骤号按钮/清理非主线副本/尾部预览）。覆盖:
+//  ① 唯一表头(.rc-maintable__head th)sticky + 不透明背景 + 保持完整(用户
+//     截图实证的「表头下滑与内容重叠」修复;tl1415b: 全页一张表,表头随表)。
+//  ② 全页唯一一张表且表头列名语义化(「消息数 · 轮次」合并列/类型列/行内
+//     操作列——demo v5 列编排)。
 //  ③ 全部操作按钮带 hover 功能说明(title 属性)——含「修复并瘦身」的两动作
 //     说明(剥离图片 payload + 折叠超窗旧消息)。
-//  ④ 交互轮次列实测(tl1360 缺陷①):概要行轮次列放实测轮次(不再拿消息数
-//     冒充)、副本行轮次随扫描实测、未扫描给「unmeasured」状态而非裸「—」。
-//  ⑤ 副本/文件链行的文件名短标识 recovery-<8hex>(tl1360 缺陷③)。
-//  ⑥ 降级行预览空态与「无预览文本」区分(tl1360 缺陷②)。
-//  ⑦ 清空合并历史入口(点9):headCount>1 时展开区出现入口,确认后调用后端。
-//  ⑧ 清理多余副本一键(点8):unique=0 副本存在时表格底部出现,确认后逐份
-//     DeleteRecoveryBranch。
+//  ④ 「消息数 · 轮次」列实测(会话行 "12 · 6"/副本行 "3 · 2"),未扫描给
+//     「unmeasured」状态而非裸「—」。
+//  ⑤ 副本行的文件名短标识 recovery-<8hex>。
+//  ⑥ 降级/空预览的行内空态与「无预览文本」区分(tl1360 缺陷②)。
+//  ⑦ 清空合并历史入口(点9→tl1415b 批量沉底):勾选会话后底部入口可用,
+//     确认后调用后端。
+//  ⑧ 清理非主线副本(点8→tl1415b 改形):勾选会话后底部入口可用,二次确认
+//     后逐份 DeleteRecoveryBranch(回收语义,主线保留)。
 //  ⑨ 设置页入口文案(点7):标题「Conversation version management」+描述。
+//  ⑩ tl1415b 形态断言:单表/组段折叠(已合入默认折叠+计数徽章)/步骤号按钮
+//     (①扫描②切换③合成)+hintline/清理非主线副本按钮/尾部预览(sub2 带
+//     「尾部」徽章+弹窗开头摘要行)。
 
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
@@ -53,20 +58,20 @@ function selectorBlocks(source: string, selector: string): string[] {
   return blocks;
 }
 
-console.log("\nrecovery panel header/hover contract (tl1415)");
+console.log("\nrecovery panel header/hover contract (tl1415 + tl1415b form)");
 
-// ① 概要表头 sticky + 不透明背景。
+// ① 唯一表头 sticky + 不透明背景(tl1415b: 表头随单表走 .rc-maintable__head th)。
 {
-  const headBlocks = selectorBlocks(styles, ".rc-row--head").join("\n");
-  ok(/position:\s*sticky/.test(headBlocks), "① the summary header row is sticky");
-  ok(/z-index:\s*var\(--z-inline-sticky\)/.test(headBlocks), "① the summary header row raises above rows");
-  ok(/background:\s*var\(--bg-elev\)/.test(headBlocks), "① the summary header carries the opaque modal background");
-  ok(!/background:\s*inherit/.test(headBlocks), "① the summary header no longer inherits a transparent background");
+  const headBlocks = selectorBlocks(styles, ".rc-maintable__head th").join("\n");
+  ok(/position:\s*sticky/.test(headBlocks), "① the single-table header is sticky");
+  ok(/z-index:\s*var\(--z-inline-sticky\)/.test(headBlocks), "① the single-table header raises above rows");
+  ok(/background:\s*var\(--bg-elev\)/.test(headBlocks), "① the single-table header carries the opaque modal background");
+  ok(!/background:\s*inherit/.test(headBlocks), "① the header no longer inherits a transparent background");
   // 整行 opacity 会把背景一起半透明化(透出下方滚动内容)——文字弱化必须走 color。
   ok(!/(^|[;\n])opacity:\s*0?\.72/.test(headBlocks), "① the header row no longer dims via row-level opacity");
 }
 
-// ─── 组件渲染断言(② 表头存在性/列名语义化;③ hover title) ───
+// ─── 组件渲染断言(② 单表+列名;③ hover title;⑩ 形态) ───
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { pretendToBeVisual: true, url: "http://localhost/" });
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -105,6 +110,20 @@ function buttonByText(text: string): HTMLButtonElement | undefined {
   return Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
     b.textContent?.includes(text),
   );
+}
+
+/** openPanel 打开面板;tl1415b 无行内展开——待处理组默认展开,子行直接在表
+ *  内。需要已合入组的场景用 openPanelWithMerged(点已合入组段行展开)。 */
+async function openPanel(): Promise<ReturnType<typeof createRoot>> {
+  stubBridge({});
+  const root = createRoot(installDom());
+  await act(async () => {
+    root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
+  });
+  await flush();
+  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await flush();
+  return root;
 }
 
 const MAIN_PATH = "/sessions/gc.jsonl";
@@ -199,78 +218,127 @@ function stubBridge(overrides: Partial<AppBindings>) {
   } as typeof window.go;
 }
 
-async function openPanelAndExpandRow(): Promise<ReturnType<typeof createRoot>> {
-  stubBridge({});
-  const root = createRoot(installDom());
-  await act(async () => {
-    root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
-  });
+async function checkSessionRow(): Promise<void> {
+  const checkbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
+  await act(async () => { checkbox?.click(); });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
-  await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
-  return root;
 }
 
-// ② 展开区合并表:thead 存在,列名语义化(含「条数」「交互轮次」的英文列名)。
+// ②+⑩ 单表到底:模态内唯一一张 table;thead 列名语义化(demo v5 列编排:
+// 类型/会话分支/最后活动/大小/消息数·轮次/副本/独有/行内操作)。
 {
-  const root = await openPanelAndExpandRow();
-  const thead = document.querySelector(".rc-versions__table thead");
-  ok(Boolean(thead), "② the merged detail table renders a thead");
+  const root = await openPanel();
+  const tables = document.querySelectorAll(".rc-modal table");
+  ok(tables.length === 1, "② the whole panel renders exactly ONE table (tl1415b 单表到底)");
+  const thead = document.querySelector(".rc-maintable thead");
+  ok(Boolean(thead), "② the single table renders a thead");
   const headerTexts = Array.from(thead?.querySelectorAll("th") ?? []).map((th) => (th.textContent || "").trim());
-  // 列名语义化:「条数」「交互轮次」进表头(en locale:messages / turns),不再裸数字拼列。
-  ok(headerTexts.includes("messages"), "② the detail header names the message-count column");
-  ok(headerTexts.includes("turns"), "② the detail header names the turns column");
-  ok(headerTexts.includes("size"), "② the detail header names the size column");
-  ok(headerTexts.includes("modified"), "② the detail header names the modified column");
+  ok(headerTexts.includes("kind"), "② the header names the kind column (类型列)");
+  ok(headerTexts.includes("messages · turns"), "② the header merges message count and turns into one named column");
+  ok(headerTexts.includes("size"), "② the header names the size column");
+  ok(headerTexts.includes("modified"), "② the header names the modified column");
+  ok(headerTexts.includes("row actions"), "② the header names the row-actions column");
 
-  // ④ 概要行轮次列放实测轮次(6),不再拿消息数(12)冒充列名「交互轮次」。
-  const summaryRow = document.querySelector(".rc-row--group");
-  const summarySpans = Array.from(summaryRow?.querySelectorAll(":scope > span") ?? []).map((s) => (s.textContent || "").trim());
-  // 行内普通 span 顺序: modified, size, turns, ×N, unique, action。
-  ok(summarySpans[2] === "6", `④ the summary row's turns cell shows the measured turns (got: ${summarySpans[2]})`);
+  // ⑩ 组段行:两组(待处理默认展开/已合入默认折叠)+计数徽章。
+  const groupRows = Array.from(document.querySelectorAll("tr.rc-grouprow"));
+  ok(groupRows.length === 2, "⑩ two collapsible group rows render inside the table (待处理/已合入)");
+  ok((groupRows[0]?.textContent || "").includes("Pending"), "⑩ the first group row is the Pending group");
+  ok((groupRows[1]?.textContent || "").includes("Merged"), "⑩ the second group row is the Merged group");
+  ok(Boolean(groupRows[0]?.querySelector(".rc-grouprow__count")), "⑩ the group row carries a count badge");
+  const sessionRows = document.querySelectorAll("tr.rc-session");
+  ok(sessionRows.length === 1, "⑩ the Pending group is expanded by default (session row visible)");
+  ok(Boolean(document.querySelector("tr.rc-session .rc-kindtag--session")), "⑩ the session row carries the session kind tag (类型列)");
+  // 已合入组默认折叠:该 fixture 无已合入会话,组段行的 caret 指向折叠态(▸)。
+  const mergedCaret = groupRows[1]?.querySelector(".rc-caret")?.textContent || "";
+  ok(mergedCaret.trim() === "▸", "⑩ the merged group starts collapsed (caret points to ▸)");
 
-  // ④ 副本行轮次实测(2)——原恒「—」。
-  const copyRow = document.querySelector(".rc-versions__table tr.rc-row--copy");
+  // ④ 会话行「消息数 · 轮次」列放实测读数 "12 · 6"(不再拿消息数冒充轮次)。
+  const sessionCells = Array.from(sessionRows[0]?.querySelectorAll("td") ?? []).map((td) => (td.textContent || "").trim());
+  ok(sessionCells[5] === "12 · 6", `④ the session row's messages·turns cell shows measured readings (got: ${sessionCells[5]})`);
+  ok(sessionCells[6] === "×1", `④ the session row's copies cell counts the copies (got: ${sessionCells[6]})`);
+
+  // ③ hover:行内扫描按钮(第①步说明含 read-only)。
+  const scanBtn = sessionRows[0]?.querySelector<HTMLButtonElement>(".rc-ops button");
+  ok((scanBtn?.title || "").includes("Step ①"), "⑩ the row scan button's hover carries the step-① marker");
+  ok((scanBtn?.title || "").includes("read-only"), "③ the row scan button carries a hover description");
+
+  // ③ 点5 覆盖收口:会话行的合并勾选框也带 hover 说明(勾选语义)。
+  const mergeCheckbox = document.querySelector<HTMLInputElement>("tr.rc-session input[type=checkbox]");
+  ok((mergeCheckbox?.title || "").includes("merge-selected"), "③ the merge checkbox carries a hover description");
+
+  // ③ hover:底部修复并瘦身按钮(两动作说明)。
+  const dietBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
+    (b) => (b.title || "").includes("strip image payloads"),
+  );
+  ok(Boolean(dietBtn), "③ the repair+diet button's hover names both of its actions (strip payloads + fold)");
+
+  // ⑤+⑥ 链行(headId deadbeef,未被副本行并走——fixture 副本无链数据)带短
+  // 标识所在副本行;「forked」预览在版本行 sub2。先断言副本行存在。
+  const copyRow = document.querySelector("tr.rc-row--copy");
+  ok(Boolean(copyRow), "④ the copy row renders inline in the single table");
   const copyCells = Array.from(copyRow?.querySelectorAll("td") ?? []).map((td) => (td.textContent || "").trim());
-  ok(copyCells[3] === "2", `④ the copy row's turns cell shows the measured turns (got: ${copyCells[3]})`);
+  ok(copyCells[5] === "3 · 2", `④ the copy row's messages·turns cell shows measured readings (got: ${copyCells[5]})`);
 
   // ⑤ 副本行带文件名短标识 recovery-<8hex>(用户把面板行对回磁盘文件的锚点)。
   const shortName = copyRow?.querySelector(".rc-copy__shortname");
   ok((shortName?.textContent || "") === "recovery-01234567", `⑤ the copy row carries the short filename signature (got: ${shortName?.textContent})`);
   ok(((shortName as HTMLElement)?.title || "").endsWith("gc-recovery-0123456789abcdef.jsonl"), "⑤ the short signature's hover title carries the full filename");
 
-  // ③+⑥ hover 说明与预览空态:链行操作区(合并表 ops 行)。主线行也带 rc-chain
-  //   类,故全局找 ops 行内的预览 span(CHAIN_SET 里候选链的 preview="forked")。
-  const previewSpan = Array.from(document.querySelectorAll(".rc-versions__table .rc-chain__preview"))[0];
-  // 候选链(preview: "forked")显示内联预览文本,不再是「无预览文本」占位。
-  ok((previewSpan?.textContent || "") === "forked", `⑥ the chain row shows the inline preview text (got: ${previewSpan?.textContent})`);
+  // ⑥ 候选链(preview: "forked")行内预览文本在版本行 sub2,不再是「无预览
+  //    文本」占位。
+  const previewSpan = Array.from(document.querySelectorAll(".rc-chain .rc-chain__preview"))[0];
+  ok((previewSpan?.textContent || "").includes("forked"), `⑥ the head row shows the inline preview text (got: ${previewSpan?.textContent})`);
+  ok((previewSpan?.querySelector(".rc-tailtag")?.textContent || "") === "tail", "⑩ the inline preview line carries the tail badge (预览=尾部消息)");
 
-  // ③ hover title:行内扫描按钮+底部修复并瘦身按钮。
-  const scanBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-row--group .rc-action button"))[0];
-  ok((scanBtn?.title || "").includes("read-only"), "③ the row scan button carries a hover description");
-  const dietBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-versions__actions button")).find(
-    (b) => (b.title || "").includes("strip image payloads"),
-  );
-  ok(Boolean(dietBtn), "③ the repair+diet button's hover names both of its actions (strip payloads + fold)");
-
-  // ③ 点5 覆盖收口:概要行的合并勾选框(最后一个无可操作说明的控件)也带
-  //   hover 说明——说明勾选语义(参与合并所选,勾选本身不动数据)。
-  const mergeCheckbox = document.querySelector<HTMLInputElement>(".rc-row--group input[type=checkbox]");
-  ok((mergeCheckbox?.title || "").includes("merge-selected"), "③ the merge checkbox carries a hover description");
-
-  // ⑦ 清空合并历史:ListSessionVersionGroups 报 headCount=3 时,展开区操作行
-  // 出现「Clear merge history」入口;点击出确认框,确认后调用后端。
-  const clearBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-versions__actions button")).find(
+  // ⑦ 清空合并历史:未勾选会话时底部入口禁用(fixture 无 versionGroups)。
+  const clearBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
     (b) => b.textContent?.includes("Clear merge history"),
   );
-  ok(!clearBtn, "⑦ no clear-merge-history entry when the version list carries no group");
+  ok(Boolean(clearBtn?.disabled), "⑦ the clear-merge-history entry is disabled without an eligible checked conversation");
+
+  // ⑧ 清理非主线副本入口在底部横排(清空合并历史左边,tl1415b 新按钮)。
+  const cleanupBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
+    (b) => b.textContent?.includes("Clean up non-main copies"),
+  );
+  ok(Boolean(cleanupBtn), "⑧ the clean-up-non-main-copies entry sits in the sunk footer row");
+  ok(Boolean(cleanupBtn?.disabled), "⑧ it is disabled while no conversation is checked");
+  const cleanupIdx = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).indexOf(cleanupBtn!);
+  const clearIdx = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).indexOf(clearBtn!);
+  ok(cleanupIdx >= 0 && clearIdx > cleanupIdx, "⑩ the cleanup button sits left of clear-merge-history (demo v5 编排)");
+
+  // ⑩ 三步流程提示线在底部。
+  const hintline = document.querySelector(".rc-modal__foot .rc-foot__hintline");
+  ok((hintline?.textContent || "").includes("① Scan"), "⑩ the footer carries the three-step flow hintline (① Scan → ② pick → ③ merge)");
+
+  // ⑨ 设置页入口与面板标题(点7)。
+  const title = document.querySelector(".settings-section__title")?.textContent || "";
+  ok(title === "Conversation version management", `⑨ the settings entry reads as conversation version management (got: ${title})`);
 
   await act(async () => root.unmount());
 }
 
-// ④b 未扫描副本的轮次格给「unmeasured」状态而非裸「—」。
+// ⑩ 步骤号按钮:②切换到此版本(副本行,hover 带第②步)+③合成(hover 第③步)。
+{
+  const root = await openPanel();
+  const copyRow = document.querySelector("tr.rc-row--copy");
+  const switchBtn = Array.from(copyRow?.querySelectorAll<HTMLButtonElement>("button") ?? []).find(
+    (b) => b.textContent?.includes("switch to this version"),
+  );
+  ok(Boolean(switchBtn), "⑩ the copy row carries the switch-to-this-version button (第②步)");
+  ok((switchBtn?.title || "").includes("Step ②"), "⑩ the switch button's hover carries the step-② marker");
+  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("tr.rc-session button") ?? []).find(
+    (b) => b.textContent?.includes("Synthesize longest chain"),
+  );
+  ok(Boolean(synthBtn), "⑩ the session row keeps the head-synthesis entry (事件日志头合成)");
+  const footMerge = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
+    (b) => b.textContent?.includes("Merge into longest chain"),
+  );
+  ok(Boolean(footMerge), "⑩ the footer's step-③ merge button reads as the demo label");
+  ok((footMerge?.title || "").includes("Step ③"), "⑩ the merge button's hover carries the step-③ marker");
+  await act(async () => root.unmount());
+}
+
+// ④b 未扫描副本的「消息数 · 轮次」格给「unmeasured」状态而非裸「—」。
 {
   stubBridge({
     ListRecoveryCopyGroups: async () => [
@@ -287,16 +355,15 @@ async function openPanelAndExpandRow(): Promise<ReturnType<typeof createRoot>> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
-  const copyRow = document.querySelector(".rc-versions__table tr.rc-row--copy");
+  const copyRow = document.querySelector("tr.rc-row--copy");
   const copyCells = Array.from(copyRow?.querySelectorAll("td") ?? []).map((td) => (td.textContent || "").trim());
-  ok(copyCells[3] === "unmeasured", `④b an unscanned copy's turns cell names the state (got: ${copyCells[3]})`);
-  ok((copyRow?.querySelector("td:nth-child(4) span")?.getAttribute("title") || "").includes("Scan"), "④b the unmeasured cell's hover points at Scan");
+  ok(copyCells[5] === "unmeasured", `④b an unscanned copy's messages·turns cell names the state (got: ${copyCells[5]})`);
+  ok((copyRow?.querySelector("td:nth-child(6) span")?.getAttribute("title") || "").includes("Scan"), "④b the unmeasured cell's hover points at Scan");
   await act(async () => root.unmount());
 }
 
-// ⑥b 降级行(degraded+无预览)的空态是「读数降级」,不冒充「该分支无预览文本」。
+// ⑥b 降级副本行(链枚举返回 degraded 行)的空态是「读数降级」,不冒充
+//     「该分支无预览文本」——tl1415b: 降级链数据并入副本行的 sub2。
 {
   stubBridge({
     ListRecoveryChains: async () => ({
@@ -327,21 +394,46 @@ async function openPanelAndExpandRow(): Promise<ReturnType<typeof createRoot>> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
-  const degradedRows = Array.from(document.querySelectorAll(".rc-versions__table tr.rc-chain"));
-  const degradedOps = degradedRows
-    .map((row) => row.nextElementSibling?.textContent || "")
-    .find((text) => text.includes("readings degraded"));
-  ok(Boolean(degradedOps), "⑥b a degraded chain without preview says the readings are degraded");
-  ok(
-    !(degradedOps || "").includes("no preview text"),
-    "⑥b the degraded empty state does not claim the branch has no preview text",
-  );
+  const copyRow = document.querySelector("tr.rc-row--copy");
+  const sub2 = copyRow?.querySelector(".rc-sub2")?.textContent || "";
+  ok(sub2.includes("readings degraded"), `⑥b a degraded copy's inline preview says the readings are degraded (got: ${sub2})`);
+  ok(!sub2.includes("no preview text"), "⑥b the degraded empty state does not claim the branch has no preview text");
   await act(async () => root.unmount());
 }
 
-// ⑦ 清空合并历史(点9):版本清单有该会话(headCount=3)时入口出现,确认后调后端。
+// ⑩ 组迁移语义:已合入组默认折叠——点组段行展开,再点收起(计数徽章随组)。
+//   fixture: 副本 unique=0(被主线覆盖)+ headCount=3(有合并历史)→ 已合入组。
+{
+  stubBridge({
+    ListRecoveryCopyGroups: async () => [
+      { ...GROUP, copies: [{ ...GROUP.copies[0], unique: 0, shared: 3 }] },
+    ],
+    ListSessionVersionGroups: async () => [
+      { mainPath: MAIN_PATH, mainLabel: "GC", directory: "/sessions", headCount: 3, selected: "", heads: [] },
+    ],
+  });
+  const root = createRoot(installDom());
+  await act(async () => {
+    root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
+  });
+  await flush();
+  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await flush();
+  const groupRows = Array.from(document.querySelectorAll("tr.rc-grouprow"));
+  const mergedRow = groupRows[1];
+  ok((mergedRow?.querySelector(".rc-grouprow__count")?.textContent || "") === "1", "⑩ the merged group's badge counts its conversations");
+  ok(document.querySelectorAll("tr.rc-session").length === 0, "⑩ the merged group starts collapsed (no session rows visible)");
+  await act(async () => { (mergedRow as HTMLElement)?.click(); });
+  await flush();
+  ok(document.querySelectorAll("tr.rc-session").length === 1, "⑩ clicking the group row expands the merged group");
+  await act(async () => { (mergedRow as HTMLElement)?.click(); });
+  await flush();
+  ok(document.querySelectorAll("tr.rc-session").length === 0, "⑩ clicking the group row again collapses it");
+  await act(async () => root.unmount());
+}
+
+// ⑦ 清空合并历史(点9→tl1415b 批量):勾选 headCount>1 的会话后入口可用,
+//   确认后按会话路径调用后端。
 {
   const cleared: string[] = [];
   stubBridge({
@@ -359,12 +451,12 @@ async function openPanelAndExpandRow(): Promise<ReturnType<typeof createRoot>> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
-  const clearBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-versions__actions button")).find(
+  const clearBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
     (b) => b.textContent?.includes("Clear merge history"),
   );
-  ok(Boolean(clearBtn), "⑦ the clear-merge-history entry appears for a headCount>1 conversation");
+  // fixture: unique=2 副本 → 待处理组;勾选后批量入口按 headCount>1 启用。
+  await checkSessionRow();
+  ok(!clearBtn?.disabled, "⑦ the clear-merge-history entry enables for a checked headCount>1 conversation");
   ok((clearBtn?.title || "").includes("bookkeeping"), "⑦ the entry's hover says it is a bookkeeping reset");
   await act(async () => { clearBtn?.click(); });
   await flush();
@@ -378,8 +470,8 @@ async function openPanelAndExpandRow(): Promise<ReturnType<typeof createRoot>> {
   await act(async () => root.unmount());
 }
 
-// ⑧ 清理多余副本(点8):unique=0 的已测副本存在时,表格底部出现一键入口;
-//   确认后逐份 DeleteRecoveryBranch(回收语义)。
+// ⑧ 清理非主线副本(点8→tl1415b 改形):勾选会话后入口可用;二次确认后
+//   逐份 DeleteRecoveryBranch(回收语义;孤立副本不在目标里)。
 {
   const deleted: string[] = [];
   stubBridge({
@@ -397,25 +489,59 @@ async function openPanelAndExpandRow(): Promise<ReturnType<typeof createRoot>> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  const cleanupBtn = document.querySelector<HTMLButtonElement>(".rc-cleanup button");
-  ok(Boolean(cleanupBtn), "⑧ the one-click cleanup appears at the table bottom for covered copies");
-  ok((cleanupBtn?.textContent || "").includes("(1)"), "⑧ the cleanup button names the copy count");
+  await checkSessionRow();
+  const cleanupBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
+    (b) => b.textContent?.includes("Clean up non-main copies"),
+  );
+  ok(Boolean(cleanupBtn && !cleanupBtn.disabled), "⑧ the cleanup enables once a conversation is checked");
   ok((cleanupBtn?.title || "").includes("recoverable trash"), "⑧ the cleanup hover names the recycle semantics");
   await act(async () => { cleanupBtn?.click(); });
   await flush();
-  ok(Boolean(document.querySelector(".reasonix-confirm-dialog")), "⑧ cleanup asks for confirmation first");
+  ok(Boolean(document.querySelector(".reasonix-confirm-dialog")), "⑧ cleanup asks for confirmation first (二次确认)");
   ok(deleted.length === 0, "⑧ nothing is deleted before the user confirms");
   await act(async () => {
     (document.querySelector(".reasonix-confirm-dialog .btn--danger") as HTMLButtonElement)?.click();
   });
   await flush();
-  ok(deleted.length === 1 && deleted[0] === COPY_PATH, "⑧ confirming archives the covered copy through the branch-delete path");
+  ok(deleted.length === 1 && deleted[0] === COPY_PATH, "⑧ confirming archives the non-main copy through the branch-delete path (主线保留)");
   await act(async () => root.unmount());
 }
 
-// ⑧b 无多余副本(未测量/有独有内容)时一键入口不渲染。
+// ⑩ 尾部预览弹窗:结尾优先(尾部区在开头摘要行之前)。
 {
-  stubBridge({});
+  stubBridge({
+    ListRecoveryChains: async () => ({
+      ...CHAIN_SET,
+      chains: [
+        ...CHAIN_SET.chains,
+        {
+          path: COPY_PATH,
+          headId: "",
+          label: "GC copy 1",
+          isMain: false,
+          selected: false,
+          covered: false,
+          messageCount: 3,
+          turns: 2,
+          lastActivity: "2026-10-21T01:00:00Z",
+          bytes: 2048,
+          preview: "copy tail",
+        },
+      ],
+    }),
+    PreviewRecoveryChain: async () => ({
+      path: COPY_PATH,
+      isMain: false,
+      messageCount: 12,
+      turns: 6,
+      firstUserText: "hello from the start",
+      tailLines: ["tail line 1", "tail line 2"],
+      sharedWithMain: 10,
+      uniqueToChain: 2,
+      lastActivity: "2026-10-21T00:33:00Z",
+      degraded: false,
+    }),
+  });
   const root = createRoot(installDom());
   await act(async () => {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
@@ -423,28 +549,22 @@ async function openPanelAndExpandRow(): Promise<ReturnType<typeof createRoot>> {
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  ok(!document.querySelector(".rc-cleanup"), "⑧b no cleanup entry when no copy is fully covered");
-  await act(async () => root.unmount());
-}
-
-// ⑨ 设置页入口文案(点7):标题与描述改「对话版本管理」句。
-{
-  stubBridge({});
-  const root = createRoot(installDom());
-  await act(async () => {
-    root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
-  });
+  const copyRow = document.querySelector("tr.rc-row--copy");
+  const previewBtn = Array.from(copyRow?.querySelectorAll<HTMLButtonElement>("button") ?? []).find(
+    (b) => b.textContent?.includes("Preview"),
+  );
+  await act(async () => { previewBtn?.click(); });
   await flush();
-  const title = document.querySelector(".settings-section__title")?.textContent || "";
-  const desc = document.querySelector(".settings-section__desc")?.textContent || "";
-  ok(title === "Conversation version management", `⑨ the settings entry reads as conversation version management (got: ${title})`);
-  ok(desc.includes("versions and copies") && desc.includes("restoring the main line"), `⑨ the entry description states the purpose (got: ${desc})`);
-  const modalTitle = (await (async () => {
-    await act(async () => { buttonByText("Review and merge")?.click(); });
-    await flush();
-    return document.querySelector(".rc-modal__title")?.textContent || "";
-  })());
-  ok(modalTitle === "Conversation version management", `⑨ the panel title carries the same wording (got: ${modalTitle})`);
+  const dialog = document.querySelector(".rc-preview");
+  ok(Boolean(dialog), "⑩ the preview dialog opens from the copy row");
+  const bodyText = document.body.textContent || "";
+  ok(bodyText.includes("tail line 1"), "⑩ the dialog shows the tail messages");
+  ok(bodyText.includes("hello from the start"), "⑩ the dialog demotes the opening to a summary line (开头降为摘要)");
+  const startNode = dialog?.querySelector(".rc-preview__start");
+  const tailNode = dialog?.querySelector(".rc-preview__section--tail");
+  ok(Boolean(startNode && tailNode), "⑩ both the tail section and the start summary render");
+  // 结尾优先:尾部区在 DOM 序上先于开头摘要行。
+  ok(!!(startNode && tailNode && (tailNode.compareDocumentPosition(startNode) & Node.DOCUMENT_POSITION_FOLLOWING)), "⑩ the tail section precedes the start summary (结尾置顶)");
   await act(async () => root.unmount());
 }
 

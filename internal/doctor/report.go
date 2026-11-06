@@ -39,6 +39,7 @@ type Report struct {
 	Plugins    []PluginReport   `json:"plugins,omitempty"`
 	LSP        LSPReport        `json:"lsp"`
 	Sessions   SessionsReport   `json:"sessions"`
+	Forks      ForkCensusReport `json:"recovery_forks"` // tl1443: global + every project session dir
 	Sandbox    SandboxReport    `json:"sandbox"`
 	Network    NetworkReport    `json:"network"`
 	Permission PermissionReport `json:"permission"`
@@ -205,6 +206,7 @@ func Collect(opts Options) Report {
 			Servers: len(cfg.LSP.Servers),
 		},
 		Sessions: collectSessions(config.SessionDir()),
+		Forks:    collectRecoveryForks(append([]string{config.SessionDir()}, config.AllProjectSessionDirs()...)),
 		Sandbox: SandboxReport{
 			Bash:              cfg.BashMode(),
 			Network:           cfg.Sandbox.Network,
@@ -343,6 +345,7 @@ func RenderText(r Report) string {
 	if r.Sessions.Error != "" {
 		fmt.Fprintf(&b, "  warning      %s\n", r.Sessions.Error)
 	}
+	renderRecoveryForks(&b, r.Forks)
 
 	fmt.Fprintf(&b, "\nsandbox\n")
 	bashLine := r.Sandbox.Bash

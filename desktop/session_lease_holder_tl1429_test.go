@@ -1,13 +1,15 @@
 package main
 
-// tl1429 拒绝日志 identity 钉(18:39 口径:日志必须给 identity,禁止恒 pid=0):
-// 普通归档撞上自锁形态(登记在册句柄+pid=0 记录)时,removal-guard 拒绝日志
-// 必须带 holder_class=self_lock + 登记条目的 kind 与时刻;登记摘除(模型化
-// 真外部)时回到 unknown 保守态。布景 helper 复用 topic_archive_tl1429_test.go。
+// tl1429 拒绝日志 identity 钉(18:39 口径:日志必须给 identity,禁止恒 pid=0)。
+// tl1429b 行为更新:普通归档撞上自锁形态(登记在册句柄+pid=0 记录)不再永久
+// 拒绝——heal 链的 sweep 撤掉本进程句柄后 retry reclaim 自愈(端到端钉见
+// topic_archive_tl1429b_test.go 验收①);本钉随之更新为——归档成功,且过程中
+// 的 removal-guard 拒绝日志仍带 holder_class=self_lock + 登记条目 kind/时刻
+// (heal 在拒绝日志之后发生,过程留痕=事后归因依据)。登记摘除(模型化真外部)
+// 时归档保持拒绝且日志回到 unknown 保守态。
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -15,24 +17,23 @@ import (
 	"reasonix/internal/agent"
 )
 
-// 验收 b:拒绝日志直接给出持有者 identity。
+// 验收 b(identity 日志,tl1429b 更新态):归档成功+过程日志给 self_lock 身份。
 func TestArchiveRefusalLogNamesSelfLockHolderIdentity(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	logs := captureSlog(t)
 	topicID := "topic_tl1429_refusal_log"
-	sessionPath, _, release := stageSelfLockScene(t, "tl1429-log.jsonl", topicID, "TL1429 refusal log")
+	sessionPath, projectRoot, release := stageSelfLockScene(t, "tl1429-log.jsonl", topicID, "TL1429 refusal log")
 	t.Cleanup(release)
 
-	err := NewApp().TrashTopic(topicID)
-	if err == nil {
-		t.Fatal("regular archive against a held lock must refuse")
+	// tl1429b:正常归档对自锁形态自愈成功(不再要求用户升级 force)。
+	if err := NewApp().TrashTopic(topicID); err != nil {
+		t.Fatalf("normal TrashTopic against a booked self-lock = %v, want success (heal 自愈)", err)
 	}
-	if !errors.Is(err, agent.ErrSessionLeaseHeld) {
-		t.Fatalf("refusal = %v, want the lease-held family", err)
+	if _, statErr := os.Stat(sessionPath); !os.IsNotExist(statErr) {
+		t.Fatalf("session transcript survived the archive: %v", statErr)
 	}
-	// 普通(非 force)归档对该形态保持拒绝——只有 force/终局才撕锁。
-	if _, statErr := os.Stat(sessionPath); statErr != nil {
-		t.Fatalf("refused archive removed the session: %v", statErr)
+	if got := loadTopicTitle(projectRoot, topicID); got != "" {
+		t.Fatalf("archived topic title = %q, want cleared", got)
 	}
 
 	var refusalHasIdentity bool

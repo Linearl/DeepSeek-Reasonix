@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/control"
 )
 
 // 任务 1024（草稿优化）：输入栏改写按钮的桌面绑定面。
@@ -31,9 +32,49 @@ func (a *App) RewriteDraftForTab(tabID, draft, contextTail string, contextBudget
 	if ctrl == nil || a.tabIsReadOnly(tab) {
 		return ""
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, draftRewriteTimeout)
+	return rewriteDraftViaCtrl(a.ctx, ctrl, draft, contextTail, contextBudgetKB)
+}
+
+// RewriteDraftForChannel is the tl1441 ③ channel face of 任务 1024 draft
+// rewrite. A channel tab owns no session controller, but the rewrite is a pure
+// auxiliary-model call (contextTail is passed in explicitly; nothing from the
+// owning session leaks into the prompt), so it borrows the first live session
+// controller instead of adding a second aux-model plumbing route. Same contract
+// as the tab face: failure/timeout/empty silently returns "" and the frontend
+// degrades to "no rewrite".
+func (a *App) RewriteDraftForChannel(draft, contextTail string, contextBudgetKB int) string {
+	draft = strings.TrimSpace(draft)
+	if draft == "" {
+		return ""
+	}
+	a.mu.RLock()
+	ctrl := a.borrowReadyRewriteCtrlLocked()
+	a.mu.RUnlock()
+	if ctrl == nil {
+		return ""
+	}
+	return rewriteDraftViaCtrl(a.ctx, ctrl, draft, contextTail, contextBudgetKB)
+}
+
+// borrowReadyRewriteCtrlLocked picks the controller to host a channel rewrite:
+// the active tab first (the one the user is most likely to consider "current"),
+// then any other ready, writable tab. Callers must hold a.mu (read).
+func (a *App) borrowReadyRewriteCtrlLocked() control.SessionAPI {
+	if tab := a.tabs[a.activeTabID]; tab != nil && tab.Ctrl != nil && tab.Ready && !tab.ReadOnly {
+		return tab.Ctrl
+	}
+	for _, id := range a.orderedTabIDsLocked() {
+		if tab := a.tabs[id]; tab != nil && tab.Ctrl != nil && tab.Ready && !tab.ReadOnly {
+			return tab.Ctrl
+		}
+	}
+	return nil
+}
+
+func rewriteDraftViaCtrl(ctx context.Context, ctrl control.SessionAPI, draft, contextTail string, contextBudgetKB int) string {
+	rewriteCtx, cancel := context.WithTimeout(ctx, draftRewriteTimeout)
 	defer cancel()
-	out, err := ctrl.RewriteDraft(ctx, draft, contextTail, contextBudgetKB)
+	out, err := ctrl.RewriteDraft(rewriteCtx, draft, contextTail, contextBudgetKB)
 	if err != nil || strings.TrimSpace(out) == "" {
 		return ""
 	}

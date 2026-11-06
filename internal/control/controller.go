@@ -116,6 +116,7 @@ type Controller struct {
 	// forks that split one conversation across copies), so the controller
 	// adopts the disk transcript instead of forking again.
 	lastSnapshotForkAt time.Time
+	forkObs            forkObservation // tl1443 observe-only recovery counters; guarded by mu
 	// tl1383 追加面：同一冲突指纹（path+kind+base+disk）连续复燃是「账本与
 	// 内容互不相认」的错代形态签名——真分歧的指纹每次保存都会变化。 strikes
 	// 计连续同指纹次数；达到阈值先做一次 meta 身份/账位对齐（具名升级路径，
@@ -5332,7 +5333,15 @@ func updateSessionListingProjection(s *agent.Session, path, modelRef, preview st
 }
 
 func (c *Controller) recoverExternallyRemovedSession(path string, saveErr error) (string, error) {
+	trace := c.beginForkTrace(path, "external-removal", saveErr)
+	recoveredPath, err := c.recoverExternallyRemovedSessionTraced(trace, path, saveErr)
+	c.finishForkTrace(trace, conflictForkedBranch, err)
+	return recoveredPath, err
+}
+
+func (c *Controller) recoverExternallyRemovedSessionTraced(trace *forkTrace, path string, saveErr error) (string, error) {
 	if c.executor == nil || strings.TrimSpace(path) == "" {
+		trace.decide(forkDecisionError, forkReasonNoTarget)
 		return "", saveErr
 	}
 	const reason = "session removed while open"
@@ -5347,12 +5356,16 @@ func (c *Controller) recoverExternallyRemovedSession(path string, saveErr error)
 		BranchMeta:   meta,
 	})
 	if err != nil {
+		trace.decide(forkDecisionError, forkReasonSaveFailed)
 		return "", fmt.Errorf("preserve externally removed session: %w", err)
 	}
 	if err := c.commitRecoveredSession(path, reason, info); err != nil {
+		trace.decide(forkDecisionError, forkReasonCommitFailed)
 		return "", err
 	}
-	appendSnapshotConflictDiagnostic(path, "external-removal", "moved_to_stable_recovery", saveErr, info.Path, info.Existing)
+	trace.decide(forkDecisionFork, forkReasonExternalRemoval)
+	trace.forked(info)
+	appendTracedConflictDiagnostic(trace, path, "external-removal", "moved_to_stable_recovery", saveErr, info.Path, info.Existing)
 	slog.Warn("controller: active session was removed externally; moved runtime to stable recovery path",
 		"path", path, "recovery", info.Path, "existing", info.Existing)
 	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryForked,
@@ -5491,14 +5504,29 @@ func (c *Controller) reconcileWrongGenerationMetaOnRepeat(path string, saveErr e
 }
 
 func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRewrite bool) (string, conflictOutcome, error) {
+	mode := "snapshot"
+	if forceRewrite {
+		mode = "rewrite"
+	}
+	trace := c.beginForkTrace(path, mode, saveErr)
+	recoveredPath, outcome, err := c.recoverSnapshotConflictLadder(trace, path, saveErr, forceRewrite)
+	c.finishForkTrace(trace, outcome, err)
+	return recoveredPath, outcome, err
+}
+
+func (c *Controller) recoverSnapshotConflictLadder(trace *forkTrace, path string, saveErr error, forceRewrite bool) (string, conflictOutcome, error) {
 	if c.executor == nil || strings.TrimSpace(path) == "" {
+		trace.decide(forkDecisionError, forkReasonNoTarget)
 		return "", conflictDropped, saveErr
 	}
 	// tl1383 追加面：同一冲突指纹连续复燃，先做一次错代 meta 对齐再走既有
 	// 梯子——2026-11-04 9318b1f6 转正事故里 base/disk 指纹每 15s 原样复燃、
 	// persist admission 循环拒绝、会话不可写；真分歧的指纹每次保存都会变化，
 	// 原样复燃几乎总是账本与内容互不相认（转正/改名把别代 meta 搬了进来）。
-	if c.reconcileWrongGenerationMetaOnRepeat(path, saveErr) {
+	reconciled := c.reconcileWrongGenerationMetaOnRepeat(path, saveErr)
+	c.noteConflictStrikes(trace)
+	if reconciled {
+		trace.decide(forkDecisionAdopt, forkReasonMetaReconciled)
 		return path, conflictAdoptedDisk, nil
 	}
 	mode := "snapshot"
@@ -5518,7 +5546,7 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 	// and the disk-still-stale re-verification live inside
 	// agent.SaveAdoptOverStaleDisk, so a shape it declines here falls through
 	// to the pre-existing ladder unchanged.
-	if c.takeoverDivergedRevLag(path, saveErr, mode) {
+	if c.takeoverDivergedRevLag(trace, path, saveErr, mode) {
 		return path, conflictTookOver, nil
 	}
 	// Fork: avalanche brake. When this controller already forked a recovery
@@ -5529,36 +5557,43 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 	// the race is already preserved in the copy the first fork created.
 	if c.withinSnapshotForkBrakeWindow() {
 		if c.adoptDiskSession(path) {
-			appendSnapshotConflictDiagnostic(path, mode, "adopted_disk_within_fork_brake", saveErr, "", true)
+			trace.decide(forkDecisionAdopt, forkReasonBrake)
+			appendTracedConflictDiagnostic(trace, path, mode, "adopted_disk_within_fork_brake", saveErr, "", true)
 			slog.Warn("controller: snapshot conflict inside the fork brake window; adopted disk transcript instead of forking again", logAttrs...)
 			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
 				"session changed on disk again right after a recovery copy was created; adopted the disk transcript to stop splitting the history"))
 			return path, conflictAdoptedDisk, nil
 		}
+		trace.fall(forkFellBrakeAdoptFailed)
 	}
 	if kind, ok := agent.SnapshotConflictKind(saveErr); ok && kind == agent.SessionSnapshotConflictStalePrefix {
 		if c.adoptDiskSession(path) {
-			appendSnapshotConflictDiagnostic(path, mode, "adopted_newer_disk_transcript", saveErr, "", false)
+			trace.decide(forkDecisionAdopt, forkReasonStalePrefix)
+			appendTracedConflictDiagnostic(trace, path, mode, "adopted_newer_disk_transcript", saveErr, "", false)
 			slog.Warn("controller: snapshot conflict; adopted newer disk transcript", logAttrs...)
 			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
 				"session changed on disk; adopted the newer transcript"))
 			return path, conflictAdoptedDisk, nil
 		}
+		trace.fall(forkFellStaleAdoptFailed)
 	}
 	// tl1352 B：fork 总量闸。每个 logical topic（剥到非副本根 stem）生命周期内
 	// 现存副本数到达 SnapshotForkQuotaPerTopic 即拒绝再 fork：强制 adopt 盘上
 	// 转录并 fail-loud——20261031 现场 2 分钟刹车窗挡不住跨重启的副本风暴
 	// （23:19/23:34/23:53/00:03/00:05 全部落在窗外），副本总数才是硬上限。
 	forkCount := agent.RecoveryForkCountForTopic(path)
+	trace.topicForks = forkCount
 	if forkCount >= agent.SnapshotForkQuotaPerTopic {
 		if c.adoptDiskSession(path) {
-			appendSnapshotConflictDiagnostic(path, mode, "adopted_disk_fork_quota_exhausted", saveErr, "", true)
+			trace.decide(forkDecisionAdopt, forkReasonQuota)
+			appendTracedConflictDiagnostic(trace, path, mode, "adopted_disk_fork_quota_exhausted", saveErr, "", true)
 			slog.Warn("controller: snapshot conflict; fork quota exhausted for this topic; adopted the disk transcript and dropped the unsaved local copy",
 				append(logAttrs, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount, "fork_quota", agent.SnapshotForkQuotaPerTopic)...)
 			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
 				"this conversation has hit its recovery-copy limit; the on-disk transcript was adopted and unsaved local changes were dropped so the copies stop growing"))
 			return path, conflictAdoptedDisk, nil
 		}
+		trace.fall(forkFellQuotaAdoptFailed)
 	}
 	reason := "snapshot conflict"
 	if forceRewrite {
@@ -5580,7 +5615,8 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 	if err != nil {
 		if errors.Is(err, agent.ErrSessionRecoveryNotNeeded) {
 			if c.adoptDiskSession(path) {
-				appendSnapshotConflictDiagnostic(path, mode, "recovery_not_needed_adopted_disk_transcript", saveErr, "", false)
+				trace.decide(forkDecisionAdopt, forkReasonCovered)
+				appendTracedConflictDiagnostic(trace, path, mode, "recovery_not_needed_adopted_disk_transcript", saveErr, "", false)
 				slog.Warn("controller: snapshot conflict; recovery not needed, adopted disk transcript", logAttrs...)
 				c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdoptedCovered,
 					"session changed on disk; adopted the newer transcript (local changes already covered)"))
@@ -5589,17 +5625,22 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 			// Nothing was recovered AND the disk transcript could not be
 			// adopted: the snapshot is silently dropped. Leave a trace so
 			// "my last turns vanished" reports can be tied to this path.
-			appendSnapshotConflictDiagnostic(path, mode, "recovery_not_needed_adopt_failed", saveErr, "", false)
+			trace.decide(forkDecisionDrop, forkReasonCoveredDropped)
+			appendTracedConflictDiagnostic(trace, path, mode, "recovery_not_needed_adopt_failed", saveErr, "", false)
 			slog.Warn("controller: snapshot conflict; recovery not needed but disk transcript could not be adopted", logAttrs...)
 			return "", conflictDropped, nil
 		}
+		trace.decide(forkDecisionError, forkReasonSaveFailed)
 		return "", conflictDropped, fmt.Errorf("recover stale session snapshot: %w", err)
 	}
 	if err := c.commitRecoveredSession(path, reason, info); err != nil {
+		trace.decide(forkDecisionError, forkReasonCommitFailed)
 		return "", conflictDropped, err
 	}
 	c.markSnapshotFork()
-	appendSnapshotConflictDiagnostic(path, mode, "forked_recovery_branch", saveErr, info.Path, info.Existing)
+	trace.decide(forkDecisionFork, forkReasonDiverged)
+	trace.forked(info)
+	appendTracedConflictDiagnostic(trace, path, mode, "forked_recovery_branch", saveErr, info.Path, info.Existing)
 	slog.Warn("controller: snapshot conflict; forked recovery branch",
 		append(logAttrs, "recovery", info.Path, "existing", info.Existing, "topic", agent.RecoveryTopicRootID(path), "fork_count", forkCount+1)...)
 	// tl1352 A：fork 先按既有契约隔离（另一写者可能仍在写主文件），同时登记
@@ -5614,7 +5655,15 @@ func (c *Controller) recoverSnapshotConflict(path string, saveErr error, forceRe
 }
 
 func (c *Controller) recoverShutdownSnapshot(path string, saveErr error) (string, error) {
+	trace := c.beginForkTrace(path, "shutdown", saveErr)
+	recoveredPath, err := c.recoverShutdownSnapshotTraced(trace, path, saveErr)
+	c.finishForkTrace(trace, conflictForkedBranch, err)
+	return recoveredPath, err
+}
+
+func (c *Controller) recoverShutdownSnapshotTraced(trace *forkTrace, path string, saveErr error) (string, error) {
 	if c.executor == nil || strings.TrimSpace(path) == "" {
+		trace.decide(forkDecisionError, forkReasonNoTarget)
 		return "", saveErr
 	}
 	const reason = "shutdown session file lock timeout"
@@ -5629,12 +5678,16 @@ func (c *Controller) recoverShutdownSnapshot(path string, saveErr error) (string
 		BranchMeta:   meta,
 	})
 	if err != nil {
+		trace.decide(forkDecisionError, forkReasonSaveFailed)
 		return "", fmt.Errorf("save shutdown recovery branch: %w", err)
 	}
 	if err := c.commitRecoveredSession(path, reason, info); err != nil {
+		trace.decide(forkDecisionError, forkReasonCommitFailed)
 		return "", err
 	}
-	appendSnapshotConflictDiagnostic(path, "shutdown", "forked_file_lock_recovery", saveErr, info.Path, info.Existing)
+	trace.decide(forkDecisionFork, forkReasonShutdownLock)
+	trace.forked(info)
+	appendTracedConflictDiagnostic(trace, path, "shutdown", "forked_file_lock_recovery", saveErr, info.Path, info.Existing)
 	slog.Warn("controller: shutdown snapshot lock timed out; forked recovery branch",
 		"path", path, "recovery", info.Path, "existing", info.Existing)
 	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionShutdownRecoveryForked,

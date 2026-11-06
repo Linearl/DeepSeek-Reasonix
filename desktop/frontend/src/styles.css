@@ -7849,7 +7849,7 @@ body > .mermaid-diagram--fullscreen {
   max-height: 76vh;
   object-fit: contain;
   border-radius: var(--radius-sm);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-2);
 }
 .image-annotation__canvas {
   position: absolute;
@@ -8392,6 +8392,54 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-faint);
   margin-top: 3px;
 }
+/* tl1438: use_capability inspect 的机器 schema 层——可折叠参数表,默认收起,prose 输出不受影响 */
+.tool__schema {
+  margin-top: 4px;
+  font-size: var(--font-caption);
+}
+.tool__schema > summary {
+  cursor: pointer;
+  color: var(--accent);
+  user-select: none;
+  line-height: 1.6;
+}
+.tool__schema > summary:hover {
+  text-decoration: underline;
+}
+.tool__schema-note {
+  margin-top: 3px;
+  color: var(--fg-faint);
+}
+.tool__schema-table {
+  margin-top: 4px;
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-code-family);
+  font-size: var(--font-caption);
+}
+.tool__schema-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--fg-faint);
+  padding: 2px 8px 2px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.tool__schema-table td {
+  vertical-align: top;
+  padding: 2px 8px 2px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.tool__schema-name {
+  color: var(--fg);
+  white-space: nowrap;
+}
+.tool__schema-required {
+  color: var(--err);
+  margin-left: 2px;
+}
+
 .tool__showall {
   display: inline-block;
   margin-top: 4px;
@@ -15245,6 +15293,20 @@ button.statusbar__mcp:focus-visible {
   border-bottom: 1px solid var(--border);
   flex: none;
 }
+/* tl1433: 任务面板 run 行跳转落点反馈——工具条短暂脉冲一次（info token
+   渐隐），常态样式零改动；data-wf-focus-run 由落点效果挂摘，供 harness
+   断言。 */
+.wf-panel__toolbar--focus {
+  animation: wf-toolbar-focus 1.6s var(--ease-out, ease-out) 1;
+}
+@keyframes wf-toolbar-focus {
+  0% {
+    background: color-mix(in srgb, var(--info) 16%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
 .wf-panel__title {
   display: flex;
   align-items: center;
@@ -15586,6 +15648,47 @@ button.statusbar__mcp:focus-visible {
 .wf-panel__detail-value--mono {
   font-family: var(--mono);
   font-size: 10px;
+}
+/* tl1434: 节点详情「工作过程」段——逐次执行入口 + 只读回放视图 + 只读声明。 */
+.wf-panel__trace {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wf-panel__trace-runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wf-panel__trace-open {
+  --wails-draggable: no-drag;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: transparent;
+  cursor: pointer;
+}
+.wf-panel__trace-open:hover { border-color: var(--fg-faint); }
+.wf-panel__trace-open--active {
+  color: var(--fg);
+  border-color: var(--fg-faint);
+  background: var(--bg-soft);
+}
+.wf-panel__trace-view {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+.wf-panel__trace-readonly {
+  font-size: 10px;
+  color: var(--fg-faint);
 }
 .drawer {
   position: relative;
@@ -30229,6 +30332,46 @@ button.statusbar__mcp:focus-visible {
   border-color: var(--fg-faint);
 }
 
+/* tl1433: 工作流 run 行并入「运行中」列表——标题下挂一行元信息（类型/
+   当前节点/进度/时长），全部走既有主题 token，视觉重量与子代理行的展开
+   元行（detail-meta）同级。row-main 占据标题槽位（title 的 flex 行为上移
+   到列容器），右侧状态徽章与跳出图标的位置不变。 */
+.subagents-panel__row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subagents-panel__row-main .tooltip-trigger {
+  flex: none;
+  min-width: 0;
+}
+
+.subagents-panel__wf-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.subagents-panel__wf-kind {
+  flex: none;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
+.subagents-panel__wf-node {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-dim);
+}
+
 .subagents-panel__detailview {
   display: flex;
   flex-direction: column;
@@ -39952,22 +40095,65 @@ button.statusbar__mcp:focus-visible {
 .rc-modal__foot {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 12px 22px;
   border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
 }
-
-.rc-table { display: flex; flex-direction: column; }
-.rc-row {
-  display: grid;
-  grid-template-columns: 26px minmax(200px, 2fr) 138px 92px 84px 68px 84px 92px;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
+/* tl1415b: 沉底横排(demo v5 footer)——[已选 N] 标签 / 分隔竖线 / 弹性空隙 /
+   三步流程提示线(独占一行)。 */
+.rc-foot__label { font-size: 0.88em; opacity: 0.72; white-space: nowrap; }
+.rc-foot__sep { width: 1px; height: 22px; background: color-mix(in srgb, currentColor 16%, transparent); }
+.rc-foot__spacer { flex: 1 1 auto; }
+.rc-foot__hintline {
+  width: 100%;
+  margin-top: -2px;
+  font-size: 0.84em;
+  opacity: 0.72;
 }
-.rc-row--head {
+/* 更多▾(口径⑨): 修复记录等次要内容与次要入口的收纳弹层。 */
+.rc-more { position: relative; }
+.rc-more > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.88em;
+  padding: 4px 11px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  white-space: nowrap;
+  user-select: none;
+}
+.rc-more > summary::-webkit-details-marker { display: none; }
+.rc-more > summary:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
+.rc-more__popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: var(--z-popover);
+  width: 430px;
+  max-width: 70vw;
+  background: var(--bg-elev);
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow-color, #000) 13%, transparent);
+  padding: 12px 14px;
+  font-size: 0.88em;
+  font-weight: 400;
+}
+.rc-more__popover h4 { margin: 0 0 8px; font-size: 0.95em; }
+.rc-more__popover .rc-ops { margin-bottom: 8px; }
+.rc-more__hint { margin: 4px 0 0; opacity: 0.7; }
+
+/* tl1415b: 全页一张表(demo v5)——类型列替代一切分组横条与小表,唯一表头
+   sticky+不透明背景。列宽参照 demo:v5 的 c-sel/c-kind/c-name 34%/12%/7%/9%/
+   7%/6%/17% 配比,行内操作列右对齐。 */
+.rc-maintable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.rc-maintable__head th {
   position: sticky;
   top: 0;
   z-index: var(--z-inline-sticky);
@@ -39981,56 +40167,145 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   color: color-mix(in srgb, currentColor 72%, transparent);
   border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-}
-.rc-row--group { font-weight: 600; }
-.rc-row--group:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
-.rc-row--main {
-  margin-top: 2px;
-  background: color-mix(in srgb, currentColor 9%, transparent);
-}
-.rc-row--copy { opacity: 0.94; }
-
-.rc-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
   text-align: left;
-  cursor: pointer;
 }
-.rc-caret { flex: 0 0 auto; opacity: 0.7; }
-.rc-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-maintable__head th.rc-num { text-align: right; }
+.rc-maintable__head th.rc-col-ops { text-align: right; }
+.rc-maintable th.rc-detail__hcheck { width: 30px; }
+.rc-maintable th.rc-col-kind { width: 76px; }
+.rc-maintable th.rc-col-name { width: 32%; }
+.rc-maintable th.rc-col-when { width: 12%; }
+.rc-maintable td.rc-col-name { min-width: 0; }
+.rc-maintable tbody td { vertical-align: top; }
+.rc-session td { padding-top: 8px; }
+.rc-session:hover > td { background: color-mix(in srgb, currentColor 5%, transparent); }
+.rc-session > td { font-weight: 600; }
+.rc-child > td { opacity: 0.98; }
+.rc-child td.rc-col-name { padding-left: 30px; }
+/* 口径⑧: 栏限宽——名称单行省略号/预览两行折行截断,hover title 给全文
+   (title 由组件挂在 td/摘要行上)。 */
+.rc-clip1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rc-sub2 {
+  color: color-mix(in srgb, currentColor 62%, transparent);
+  font-size: 0.92em;
+  margin-top: 2px;
+}
+.rc-clip2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+  max-height: 2.9em;
+}
+/* 口径⑥: 行内预览行的「尾部」徽章——预览=尾部消息,不是开头。 */
+.rc-tailtag {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 600;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  white-space: nowrap;
+}
+/* 类型列(会话/主线/副本/版本)——demo v5 的 k-session/k-main/k-copy 三色 +
+   版本行的中性第四色。 */
+.rc-kindtag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.rc-kindtag--session {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.rc-kindtag--main {
+  color: var(--accent, #3d7a52);
+  border-color: color-mix(in srgb, var(--accent, #3d7a52) 40%, transparent);
+  background: color-mix(in srgb, var(--accent, #3d7a52) 10%, transparent);
+}
+.rc-kindtag--copy {
+  color: color-mix(in srgb, currentColor 78%, transparent);
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+.rc-kindtag--version {
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  background: transparent;
+}
+.rc-kindtag--cur {
+  color: var(--bg-elev);
+  background: var(--accent, #3d7a52);
+  border-color: var(--accent, #3d7a52);
+}
+/* 组段行(表内可折叠分组行):待处理默认展开/已合入默认折叠,计数徽章+提示。 */
+.rc-grouprow > td {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.92em;
+  font-weight: 700;
+  padding: 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+}
+.rc-grouprow:hover > td { background: color-mix(in srgb, currentColor 12%, transparent); }
+.rc-grouprow .rc-caret { margin-right: 4px; }
+.rc-grouprow__count {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 8px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elev);
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 0.88em;
+  font-weight: 600;
+  text-align: center;
+}
+.rc-grouprow__note {
+  margin-left: 10px;
+  font-weight: 400;
+  font-size: 0.88em;
+  opacity: 0.62;
+}
+.rc-grouprow__tip {
+  float: right;
+  font-weight: 400;
+  font-size: 0.88em;
+  opacity: 0.55;
+}
+.rc-caret { display: inline-block; opacity: 0.7; }
 .rc-muted { opacity: 0.5; }
 .rc-unique { font-weight: 700; }
-.rc-action { display: flex; justify-content: flex-end; }
+.rc-ops {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
 .rc-note { margin-left: auto; opacity: 0.8; }
 
 .rc-preview { margin: 8px 0; padding-left: 20px; }
 .rc-preview__warn { margin: 8px 0 0; opacity: 0.8; }
+/* tl1415b 口径⑥: 预览弹窗结尾优先——开头降为一行摘要,收在尾部区之后。 */
+.rc-preview__start {
+  margin-top: 8px;
+  font-size: 0.88em;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.rc-phase { margin-top: 14px; }
-.rc-phase:first-child { margin-top: 0; }
-.rc-phase__head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 8px 10px 6px;
-  font-size: 0.9em;
-}
-.rc-phase__title { font-weight: 700; }
-.rc-phase__count {
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  text-align: center;
-}
-.rc-phase__hint { opacity: 0.6; }
 .rc-errors { margin: 0; padding-left: 20px; }
 /* 任务 1039：失败横幅上的后端原因——比横幅文案小一号、可换行，长错误
    （重放超限带 resource=value/limit）不撑破横幅。 */
@@ -40122,6 +40397,22 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
 }
 .rc-versions__health { margin-top: 6px; }
+.rc-detail { padding-top: 4px; }
+.rc-detail__hcheck { width: 28px; }
+.rc-detail__check { width: 28px; }
+.rc-detail__row--main { background: color-mix(in srgb, currentColor 5%, transparent); }
+.rc-detail__group td {
+  font-weight: 600;
+  opacity: 0.72;
+  font-size: 0.9em;
+  padding-top: 10px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+.rc-detail__ops td { border-bottom: none; padding-top: 0; }
+.rc-detail__ops-cell { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.rc-detail__ops-cell .btn--small { margin: 2px 0; }
+.rc-detail__loading td { opacity: 0.6; font-style: italic; }
+
 .rc-versions__issues { margin: 0; padding-left: 18px; }
 /* 任务 1064：删除入口——危险动作用 danger 色区分于普通次级按钮，但按钮本体
    仍是常规尺寸（面板里的行内操作，不做大红块）。副本行的操作格里复选框与
@@ -40129,16 +40420,6 @@ button.statusbar__mcp:focus-visible {
 .rc-delete {
   color: var(--danger, #e5484d);
   border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, transparent);
-}
-.rc-action { gap: 8px; }
-/* tl1415 点8: 表格底部的「清理多余副本」一行——按钮+短说明并排。 */
-.rc-cleanup {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent);
 }
 .rc-result {
   margin-bottom: 10px;
@@ -42500,6 +42781,118 @@ button.statusbar__mcp:focus-visible {
   color: var(--text-muted, inherit);
 }
 
+/* ─── tl1441 ①：群聊 tab 工作区（ChannelWorkspacePanel）──────────────
+   会话工作区同型实体、数据源换 channel：激活时以绝对定位叠层占据
+   .chat-pane 全位面（.chat-pane 已 position:relative），顶部栏承载群聊
+   特有功能（返回列表/详情/成员）。消息流/抽屉/气泡全复用 channel-chat
+   族既有类，这里只补工作区骨架。token 全主题变量，无硬编码色。 */
+.channel-workspace {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-local-raised);
+  display: flex;
+  flex-direction: column;
+  background: var(--chat-bg);
+  min-height: 0;
+}
+.channel-workspace__topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  min-width: 0;
+}
+.channel-workspace__backlist {
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex: none;
+}
+.channel-workspace__name {
+  font-weight: 600;
+  font-size: var(--text-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.channel-workspace__topic {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.channel-workspace__meta {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  white-space: nowrap;
+  flex: none;
+}
+/* tl1369 同款点外关闭守卫锚点：零自有样式，仅稳定锚点。 */
+.channel-workspace__detailtoggle {
+  /* JS 豁免锚点，无自有样式 */
+}
+.channel-workspace__detailtoggle--on {
+  color: var(--accent);
+}
+.channel-workspace__body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 8px 12px 10px;
+}
+.channel-workspace__placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}
+.channel-workspace__stream {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  min-height: 0;
+}
+.channel-workspace__composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex: none;
+}
+/* tl1441 ③：气泡内附件缩略图（成员侧可见图）——token 全主题变量；
+   失败静默不占位（读回成功才挂载 img）。 */
+.channel-chat__attpics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.channel-chat__attpic {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  object-fit: cover;
+  display: block;
+}
+
 /* tl 1087 桌面截图覆盖层：全屏选区 + 标注画布 + 浮动工具条。挂载在
    document.body（createPortal），z-index 沿用 --z-onboarding（最高档），
    与 image-viewer 同族，保证盖过 app chrome / popover / toast。 */
@@ -43490,3 +43883,12 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-soft);
   color: var(--fg);
 }
+
+/* --- check:css assert1 补定义（20261106 包79 出包门禁，代 zcode 补齐交付面） --- */
+.channel-chat__opentab { flex-shrink: 0; }
+.channel-workspace__errorstrip {
+  border-color: color-mix(in srgb, var(--danger, #c0504d) 45%, transparent);
+}
+.rc-row--group > td { background: color-mix(in srgb, currentColor 4%, transparent); }
+.rc-detail__row > td { padding-top: 6px; padding-bottom: 6px; }
+.subagents-panel__row--workflow { font-weight: 500; }

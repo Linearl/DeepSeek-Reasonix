@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"reasonix/internal/event"
+	"reasonix/internal/i18n"
 )
 
 // execute runs one INLINE node to a terminal and resolves its out-edges —
@@ -80,9 +81,22 @@ func (s *runState) beginNode(ctx context.Context, n *Node) *nodeCall {
 	default: // NodeSubagent
 		req = s.subagentRequest(n)
 	}
+	// tl1432 B 预算在 serial head 解析（读 Engine 字段），并发段只捕获值。
+	retries := 0
+	if n.Type == NodeSubagent && len(n.Result) > 0 {
+		retries = s.eng.resultParseRetries()
+	}
 	return &nodeCall{
 		call: func() (string, error) {
-			return s.eng.runSubagent(ctx, req)
+			answer, err := s.eng.runSubagent(ctx, req)
+			if err != nil || retries == 0 {
+				return answer, err
+			}
+			// 容错提取也失败才重发；可解析（含三级容错）原样返回。
+			if _, perr := parseResultJSON(answer); perr == nil {
+				return answer, nil
+			}
+			return directedJSONRetry(ctx, s.eng, req, answer, retries)
 		},
 		complete: func(answer string, err error) error {
 			if n.Type == NodeConfirm {
@@ -91,6 +105,45 @@ func (s *runState) beginNode(ctx context.Context, n *Node) *nodeCall {
 			return s.completeSubagent(n, answer, err)
 		},
 	}
+}
+
+// directedRetryInstruction is the directive appended to the ORIGINAL prompt
+// for the re-ask (tl1432 B): the node's typed-result contract (resultHint)
+// already sits at the end of that prompt, so "the contract above" resolves.
+const directedRetryInstruction = "Your previous answer could not be parsed as a JSON object. Answer again with ONLY one JSON object matching the contract above — no prose before or after it, no markdown fences, no other text."
+
+// directedJSONRetry re-asks the model up to retries times (tl1432 B, default
+// 1): the original prompt plus the directive, each attempt under the NEXT
+// Occurrence so the task panel registers a fresh row per execution (tl1324 ⑤:
+// an id is never reused — plain nodes run at Occurrence 0/1, so the first
+// re-ask takes 2; a fixer at round N would take N+1). A world failure
+// (timeout / launch / cancel) is NOT retried — it returns immediately, same
+// fail-fast semantics as the first call. When every attempt still fails to
+// parse, the returned error carries the first AND last output summaries so
+// the failure is diagnosable without rerunning the node.
+func directedJSONRetry(ctx context.Context, eng *Engine, req SubagentRequest, first string, retries int) (string, error) {
+	answer := first
+	next := req.Occurrence
+	if next < 1 {
+		next = 1
+	}
+	for attempt := 1; attempt <= retries; attempt++ {
+		retry := req
+		next++
+		retry.Occurrence = next
+		retry.Prompt = req.Prompt + "\n\n" + directedRetryInstruction
+		var err error
+		answer, err = eng.runSubagent(ctx, retry)
+		if err != nil {
+			return "", err
+		}
+		if _, perr := parseResultJSON(answer); perr == nil {
+			return answer, nil
+		}
+	}
+	return "", fmt.Errorf("%s detail: first output: %s | retry output: %s",
+		fmt.Sprintf(i18n.M.WorkflowTypedResultRetryExhaustedFmt, retries),
+		truncate(first, 120), truncate(answer, 120))
 }
 
 // subagentRequest builds one subagent node's dispatch (serial head: reads n

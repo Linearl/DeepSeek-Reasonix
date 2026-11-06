@@ -535,8 +535,17 @@ func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarg
 		}
 	}
 	trace.phase = "delete_topic_metadata"
+	// tl1429b: a first deleteTopic attempt can lose a metadata file lock to a
+	// concurrent sidebar/catalog refresh; the loser left the topic sitting in
+	// the sidebar until the user archived again (or restarted). One immediate
+	// retry settles the transient contention in-place; a real failure still
+	// keeps the metadata-pending marker for the startup reconcile.
 	if err := a.deleteTopic(topicID); err != nil {
-		slog.Warn("desktop: topic archive metadata cleanup remains pending")
+		if retryErr := a.deleteTopic(topicID); retryErr != nil {
+			slog.Warn("desktop: topic archive metadata cleanup remains pending")
+		} else if clearErr := clearTopicArchiveMetadataPending(topicID); clearErr != nil {
+			slog.Warn("desktop: topic archive metadata marker cleanup remains pending")
+		}
 	} else if err := clearTopicArchiveMetadataPending(topicID); err != nil {
 		slog.Warn("desktop: topic archive metadata marker cleanup remains pending")
 	}

@@ -13,8 +13,11 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/workflow"
 )
 
@@ -57,6 +60,10 @@ type workflowRunNodeWire struct {
 	// NodeStartedAt 是本轮 running 起点（unix ms；0 = 未见 running）。
 	// 终态节点 changedAt - nodeStartedAt 即单节点耗时（934 块③指标面）。
 	NodeStartedAt int64 `json:"nodeStartedAt,omitempty"`
+	// SubagentRefs 是 tl1434 的节点执行实例关联（transcript ref，执行序，
+	// 下标+1=occurrence）。空=无关联（老 run/ephemeral 派发/非子代理节点），
+	// 面板「工作过程」入口按此降级。append-only 新字段，旧快照不受影响。
+	SubagentRefs []string `json:"subagentRefs,omitempty"`
 }
 
 // workflowRunWire 是一次运行的完整 wire 快照。
@@ -153,6 +160,9 @@ func workflowRunsWire() []workflowRunWire {
 			if !n.StartedAt.IsZero() {
 				node.NodeStartedAt = n.StartedAt.UnixMilli()
 			}
+			if len(n.SubagentRefs) > 0 {
+				node.SubagentRefs = n.SubagentRefs
+			}
 			wire.Nodes = append(wire.Nodes, node)
 		}
 		out = append(out, wire)
@@ -221,4 +231,62 @@ func (a *App) WorkflowResumeRun(runID string) (workflowResumeWire, error) {
 		return workflowResumeWire{}, err
 	}
 	return workflowResumeWire{RunID: res.RunID, State: res.State}, nil
+}
+
+// ReadWorkflowNodeSubagent（tl1434）回放工作流节点第 occurrence 次（1-based）
+// 子代理执行的过程 transcript。只读铁律：整条路径只读——归属证明（ref 必须
+// 在 run 的登记表内 + 命中该父会话的 artifact 清单）→ previewSessionMessages
+// 纯读投影；不触碰子代理会话的任何写面（不唤醒、不续写、不派生）。
+//
+// 降级语义：未知 run/节点、无登记关联（legacy run / ephemeral 派发 /
+// resume-from-panel 的非持久化子代理）、越界 occurrence 都返回明确错误，
+// 面板按错误降级显示，绝不猜路径。transcript 已被清理（会话归档/删除）时
+// 返回「尚未保存或已被清理」级错误。
+func (a *App) ReadWorkflowNodeSubagent(runID, nodeID string, occurrence int) ([]HistoryMessage, error) {
+	return readWorkflowNodeSubagentMessages(workflow.Global(), runID, nodeID, occurrence, a.knownSessionDirs())
+}
+
+// readWorkflowNodeSubagentMessages 是查看桥的可测内核（svc 与目录表注入）。
+// 归属证明两道闸：① service 登记表（ref 只能来自引擎派发登记）；② 父会话
+// artifact 清单（ref 真实归属该会话，与 ReadSubagentSession 同款证明），
+// 防 traversal 形 ref 只能落在「not found」上。
+func readWorkflowNodeSubagentMessages(svc *workflow.Service, runID, nodeID string, occurrence int, sessionDirs []string) ([]HistoryMessage, error) {
+	ref, parentSession, err := svc.SubagentRefForNode(runID, nodeID, occurrence)
+	if err != nil {
+		return nil, err
+	}
+	if parentSession == "" {
+		return nil, fmt.Errorf("node %q execution %d was dispatched without a parent session (panel resume); its transcript was not persisted", nodeID, occurrence)
+	}
+	if len(sessionDirs) == 0 {
+		return nil, fmt.Errorf("no session directories are known to this window; the transcript of %q cannot be located", ref)
+	}
+	var notFound error
+	for _, dir := range sessionDirs {
+		// parentSession 已是分支号（controller.parentSessionID = BranchID(会话
+		// 路径)，与 meta.ParentSession 同一身份），直接作归属键——subagents
+		// 目录按会话根聚拢，分支号区分归属（与 subagents_app.go 同一身份链）。
+		artifacts, err := agent.ListSubagentsByParent(dir, parentSession)
+		if err != nil {
+			notFound = err
+			continue
+		}
+		for _, artifact := range artifacts {
+			if artifact.Ref != ref {
+				continue
+			}
+			if _, err := os.Stat(artifact.SessionPath); err != nil {
+				if os.IsNotExist(err) {
+					notFound = fmt.Errorf("subagent transcript %q has not been saved yet or was cleaned up", ref)
+					continue
+				}
+				return nil, err
+			}
+			return previewSessionMessages(dir, artifact.SessionPath)
+		}
+	}
+	if notFound == nil {
+		notFound = fmt.Errorf("subagent %q does not belong to this run's session", ref)
+	}
+	return nil, notFound
 }

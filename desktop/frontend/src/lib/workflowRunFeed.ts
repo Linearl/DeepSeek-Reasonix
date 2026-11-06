@@ -132,6 +132,9 @@ function ingestNodeEventInternal(event: { runId: string; nodeId: string; state: 
     detail: event.detail ?? prevNode?.detail,
     changedAt,
     nodeStartedAt: event.state === "running" ? changedAt : prevNode?.nodeStartedAt,
+    // tl1434: 节点事件不携带关联——保留最近快照登记的 refs（节点事件就地
+    // 点亮不得抹掉「工作过程」入口）。
+    subagentRefs: prevNode?.subagentRefs,
   };
   const others = run.nodes.filter((n) => n.nodeId !== event.nodeId);
   const next: WireWorkflowRun = { ...run, nodes: [...others, node] };
@@ -201,6 +204,10 @@ export function liveRunSnapshot(run: WireWorkflowRun): WorkflowRunSnapshot {
   for (const n of run.nodes) {
     const state = SIX_TO_PANEL_STATE[n.state] ?? "queued";
     let detail: WorkflowNodeDetail | undefined = n.detail ? { diagnostic: n.detail } : undefined;
+    if (n.subagentRefs?.length) {
+      // tl1434: 执行实例关联随详情下钻（「工作过程」只读回放入口的数据源）。
+      detail = { ...detail, subagentRefs: [...n.subagentRefs] };
+    }
     if (n.nodeStartedAt && n.changedAt && TERMINAL_WIRE_STATES.has(n.state)) {
       const durationMs = Math.max(0, n.changedAt - n.nodeStartedAt);
       detail = { ...detail, durationMs };

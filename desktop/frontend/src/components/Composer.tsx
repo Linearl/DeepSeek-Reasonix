@@ -691,6 +691,12 @@ export function Composer({
   guidanceQueuePreviewItems,
   showContextWindowRing = false,
   heroMode = false,
+  // tl1441 ②：群聊模式——会话专属槽位（模型/effort/权限档/计划目标/autopilot/
+  // 分屏目标/胶囊/上下文环）结构性隐藏；通用能力（粘图/表情/草稿/截图/
+  // 历史提示词/快捷指令）保留；发送由挂载点桥接（onSend 注入 channel_send），
+  // draft 按 sessionKey（channel:<ref>）分键；附件/改写经 channel 桥路由（③）。
+  channelMode = false,
+  rewriteContextProvider,
   context,
   turnCost,
   turnRateBand,
@@ -861,6 +867,11 @@ export function Composer({
   // Creation empty-session hero: slim centered composer under the welcome
   // headline (hides task/approval chrome; keeps model + effort).
   heroMode?: boolean;
+  /** tl1441 ②：群聊模式（会话专属槽位结构性隐藏；挂载点桥接 channel_send）。 */
+  channelMode?: boolean;
+  /** tl1441 ③：改写草稿上下文提供者（channelMode 用群尾窗当上下文；缺省走
+   *  会话 HistoryPageForTab 链）。 */
+  rewriteContextProvider?: () => Promise<string>;
   context?: ContextInfo;
   turnCost?: number;
   turnRateBand?: string;
@@ -915,6 +926,14 @@ export function Composer({
   const [sendTargetSelectOn, setSendTargetSelectOn] = useState(() => labFlagEnabled("sendTargetSelect"));
   useEffect(() => onLabFlagsChange(() => setSendTargetSelectOn(labFlagEnabled("sendTargetSelect"))), []);
   const draftKey = sessionKey || tabId || DEFAULT_COMPOSER_DRAFT_KEY;
+  // tl1441 ③：附件落盘路由——channelMode 锚定全局工作区（群聊自己的家），
+  // 会话链锚定活动工作区（withActiveWorkspace）；两链并存互不污染。预览
+  // 读回同路由（ChannelAttachmentDataURL 只认全局附件目录内路径，tl1421
+  // 探针惯例：逃出即拒）。
+  const savePastedImageRouted = useCallback((dataUrl: string): Promise<string> =>
+    channelMode ? app.SaveChannelAttachment(dataUrl) : app.SavePastedImage(dataUrl), [channelMode]);
+  const attachmentPreviewRouted = useCallback((path: string): Promise<string> =>
+    channelMode ? app.ChannelAttachmentDataURL(path) : app.AttachmentDataURL(path), [channelMode]);
   const runtimeState = useRuntimeSession(tabId, inboxSessionPath);
   // 任务461-P7 三级终止: the stop button mirrors the escalation level. The
   // first click goes through handleCancel (guidance cleanup + L1); the mirror
@@ -1016,7 +1035,10 @@ export function Composer({
     const sourceDraftKey = activeDraftKeyRef.current;
     updatePendingPasteForDraft(sourceDraftKey, 1);
     try {
-      const path = await app.SaveScreenshotAttachment(dataUrl);
+      // tl1441 ③：channelMode 下截图落全局附件目录（群聊自己的家）。
+      const path = channelMode
+        ? await app.SaveChannelAttachment(dataUrl)
+        : await app.SaveScreenshotAttachment(dataUrl);
       const previewUrl = await app.AttachmentDataURL(path);
       const key = { hash: await dataURLHash(previewUrl), source: `screenshot:${path}` };
       if (!attachmentSeenInDraft(sourceDraftKey, key)) {
@@ -1047,8 +1069,8 @@ export function Composer({
       const sourceDraftKey = activeDraftKeyRef.current;
       updatePendingPasteForDraft(sourceDraftKey, 1);
       try {
-        const path = await app.SavePastedImage(dataUrl);
-        const previewUrl = await app.AttachmentDataURL(path);
+        const path = await savePastedImageRouted(dataUrl);
+        const previewUrl = await attachmentPreviewRouted(path);
         const key = { hash: await dataURLHash(previewUrl), source: `annotated:${path}` };
         if (!attachmentSeenInDraft(sourceDraftKey, key)) {
           addAttachmentToDraft(sourceDraftKey, { path, previewUrl, displayName: name }, key);
@@ -2869,15 +2891,26 @@ export function Composer({
     if (!current) return;
     setDraftRewriting(true);
     try {
-      // 取本 tab 最近若干条消息的文本尾巴：前端按所选档位裁剪（与 Go 侧
-      // DraftRewriteMaxBudgetBytes 同一数字口径的第二道闸，0=默认 10KB）。
-      const page = await app.HistoryPageForTab(tabId ?? "", 0, 8);
       const budgetBytes = (contextBudgetKB > 0 ? contextBudgetKB : 10) * 1024;
-      const recent = (page.messages ?? [])
-        .map((m) => (m.role === "user" ? `用户：${m.content}` : `助手：${m.content}`))
+      // tl1441 ③：channelMode 走群聊改写链——上下文=群尾窗（rewriteContextProvider
+      // 提供），辅助模型借首个就绪会话控制器（RewriteDraftForChannel）；失败
+      // 静默降级为「不改写」，与既有合同一致。
+      let recent = "";
+      let rewritten = "";
+      if (channelMode) {
+        recent = rewriteContextProvider ? await rewriteContextProvider() : "";
+        if (recent.length > budgetBytes) recent = recent.slice(-budgetBytes);
+        rewritten = await app.RewriteDraftForChannel(current, recent, contextBudgetKB);
+      } else {
+        // 取本 tab 最近若干条消息的文本尾巴：前端按所选档位裁剪（与 Go 侧
+        // DraftRewriteMaxBudgetBytes 同一数字口径的第二道闸，0=默认 10KB）。
+        const page = await app.HistoryPageForTab(tabId ?? "", 0, 8);
+        recent = (page.messages ?? [])
+          .map((m) => (m.role === "user" ? `用户：${m.content}` : `助手：${m.content}`))
         .join("\n")
-        .slice(-budgetBytes);
-      const rewritten = await app.RewriteDraftForTab(tabId ?? "", current, recent, contextBudgetKB);
+          .slice(-budgetBytes);
+        rewritten = await app.RewriteDraftForTab(tabId ?? "", current, recent, contextBudgetKB);
+      }
       if (typeof rewritten === "string" && rewritten.trim() && rewritten.trim() !== current) {
         setText(rewritten);
       }
@@ -3502,8 +3535,8 @@ export function Composer({
         const key = await fileDedupKey(file);
         if (attachmentSeenInDraft(sourceDraftKey, key)) continue;
         const dataUrl = await readFileAsDataURL(file);
-        const path = await app.SavePastedImage(dataUrl);
-        const previewUrl = await app.AttachmentDataURL(path);
+        const path = await savePastedImageRouted(dataUrl);
+        const previewUrl = await attachmentPreviewRouted(path);
         addAttachmentToDraft(sourceDraftKey, { path, previewUrl, displayName: file.name }, key);
       } catch (error) {
         console.warn("[composer] failed to attach pasted image", error);
@@ -3519,6 +3552,9 @@ export function Composer({
   // 大于 4MiB 给 999 口径的软提醒（不阻断）。
   const attachAudioFiles = async (files: File[], sourceDraftKey: string) => {
     if (!attachmentInputEnabled) return;
+    // tl1441 ③：音频不在群聊六件能力清单内，且会话保存链锚活动工作区——
+    // 群聊态直接跳过（无文案=无不可兑现承诺）。
+    if (channelMode) return;
     const audios = files.filter(isAudioFile);
     if (audios.length === 0) return;
     for (const file of audios) {
@@ -3548,6 +3584,8 @@ export function Composer({
   // the kernel stores them and we reference the saved path — attached, not ignored.
   const attachOtherFiles = async (files: File[], sourceDraftKey: string) => {
     if (!attachmentInputEnabled) return;
+    // tl1441 ③：普通文件同音频口径——不在群聊六件清单内，群聊态跳过。
+    if (channelMode) return;
     const others = files.filter((f) => !f.type.startsWith("image/") && !isAudioFile(f));
     if (others.length === 0) return;
     for (const file of others) {
@@ -6066,7 +6104,7 @@ export function Composer({
         />
         <div className={composerMetaClass}>
           <div className="composer-meta__params">
-            {!heroMode && (
+            {!heroMode && !channelMode && (
               <div className="composer-meta__control composer-meta__control--capsule">
                 {/* 任务 447 胶囊：悬浮窗面板——运行中任务 + 已结束子代理目录 + 子代理历史查看。
                     任务 440：面板列出全部运行中子代理/后台命令（跨 tab+分离会话）并按 tab 停止。 */}
@@ -6086,7 +6124,7 @@ export function Composer({
                 />
               </div>
             )}
-            {!heroMode && (
+            {!heroMode && !channelMode && (
               <div className="composer-meta__control composer-meta__control--content">
                 <Tooltip label={t("composer.contentMenuTitle")} disabled={contentMenuOpen}>
                   <button
@@ -6109,7 +6147,7 @@ export function Composer({
             )}
             {/* 任务 465 两维矩阵：徽章只标第二维（计划/目标）。第一维 autopilot
                 在右侧模式条第四档呈现；两维同开时徽章与档位同时可见。 */}
-            {!heroMode && (planModeOn || goalModeOn) && (
+            {!heroMode && !channelMode && (planModeOn || goalModeOn) && (
               <div className="composer-meta__control composer-meta__control--intent">
                 <Tooltip label={taskModeTooltipLabel} disabled={intentMenuOpen || intentMenuClosing}>
                   <button
@@ -6127,7 +6165,7 @@ export function Composer({
                 </Tooltip>
               </div>
             )}
-            {!heroMode && (
+            {!heroMode && !channelMode && (
               <div className={`composer-meta__control composer-meta__control--approval${approvalSelectOn ? " composer-meta__control--approval--select" : ""}`}>
                 {/* A pending tool approval disables the composer, but the approval
                     bar stays usable so mode changes remain possible mid-prompt;
@@ -6218,7 +6256,7 @@ export function Composer({
                 )}
               </div>
             )}
-            {!heroMode && splitActive && (
+            {!heroMode && !channelMode && splitActive && (
               <div className={`composer-meta__control composer-meta__control--target${sendTargetSelectOn ? " composer-meta__control--target--select" : ""}`}>
                 {/* One composer, three targets (task 70, B) -- the same three-state
                     capsule the approval bar uses, so styling and keyboard behaviour are
@@ -6277,7 +6315,7 @@ export function Composer({
                 )}
               </div>
             )}
-            {!heroMode && qualityFloor === "delivery" && (
+            {!heroMode && !channelMode && qualityFloor === "delivery" && (
               <div className="composer-meta__control composer-meta__control--delivery">
                 <Tooltip label={`${t("common.close")} ${t("composer.qualityFloorDelivery")}`}>
                   <button type="button"
@@ -6322,7 +6360,9 @@ export function Composer({
                 </Tooltip>
               </div>
             )}
-            <div className="composer-meta__control composer-meta__control--model">
+            {/* tl1441 ②：模型/effort/上下文环是会话专属槽位——群聊模式整块
+                隐藏（验收 3「零展示」是结构性门控，不依赖挂载点不传 props）。 */}
+            {!channelMode && <div className="composer-meta__control composer-meta__control--model">
               {!heroMode && (
                 <ContextWindowRing
                   enabled
@@ -6353,7 +6393,7 @@ export function Composer({
                 {/* 任务1301：fallback 重建在飞（recovery-fork 会话实测 ~2.4s）——控件旁过渡态提示，重建完成由 settle/runtime:rebuilt 清除。 */}
                 {effortApplying && <span className="composer-effort-applying" role="status">{t("composer.effortApplying")}</span>}
               </div>}
-            </div>
+            </div>}
             <div className={`composer-toolbar-send${submitUnavailableHint ? " composer-toolbar-send--unavailable" : ""}`}>
               {/* 任务 869：emoji 面板入口。与历史提示词时钟同一弹层语义
                   （AnchoredPopover portal 到 body，Esc/外点关闭）；面板 lazy

@@ -17,12 +17,16 @@
 // tick 全新——这是验收第 3 步「送达已读逐成员正确」的硬前提；未打开频道
 // 零消息拉取，列表未读用 messages 总数差（localStorage 记账）。
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { app as appBridge } from "../lib/bridge";
 import type { CollabSessionDirectoryRow } from "./CollabInboxPanel";
-// tl1369 缺陷C：详情抽屉显式关闭钮复用 modal 家族 × 基件（ProviderDialog 同款）。
-import { ModalCloseButton } from "./ModalCloseButton";
+// tl1441 ①：抽屉本体抽取为 ChannelDetailDrawer（群聊 tab 工作区同用一只，
+// tl1369 缺陷C 显式关闭钮在抽取件内部）；打开标签页经 channelTabStore
+// （App 层接线伪 tab 实体）；消息流渲染抽取为 ChannelMessageStream 共用件。
+import { ChannelDetailDrawer } from "./ChannelDetailDrawer";
+import { ChannelMessageStream } from "./ChannelMessageStream";
+import { openChannelTab } from "../lib/channelTabStore";
 import {
   COLLAB_GROUP_POLL_MS,
   collabGroupRetryDelaysMs,
@@ -33,9 +37,7 @@ import type {
   CollabChannelMessageView,
   CollabChannelView,
 } from "../lib/bridge";
-import { getLocale, useT } from "../lib/i18n";
-// 任务1012：消息列表时间戳补日期——与消息气泡同一三档契约（lib/messageTimestamp.ts）。
-import { formatMessageTimestamp } from "../lib/messageTimestamp";
+import { useT } from "../lib/i18n";
 
 /** 803 定稿：桌面端单用户固定身份（collabchannel.HumanLocal）。 */
 export const HUMAN_LOCAL = "human:local";
@@ -64,6 +66,8 @@ export type ChannelChatBindings = {
   ChannelUnsetDeputy(ref: string): Promise<CollabChannelView>;
   ChannelCancelFromHuman(ref: string, messageID: string): Promise<CollabChannelCancelResultView>;
   ListAddressableSessions(): Promise<CollabSessionDirectoryRow[]>;
+  /** tl1441 ③：群聊附件预览读回（内嵌视图同样渲染成员侧图片；缺省=纯文本）。 */
+  ChannelAttachmentDataURL?(path: string): Promise<string>;
 };
 
 function readLastSeenCounts(): Record<string, number> {
@@ -93,26 +97,6 @@ function writeLastSeenCounts(counts: Record<string, number>): void {
   }
 }
 
-function formatTime(ms: number): string {
-  if (!ms) return "";
-  const date = new Date(ms);
-  // 任务1012：三档（同日 HH:mm / 跨天 MM-DD HH:mm / 跨年 YYYY-MM-DD HH:mm），
-  // 完整本地化日期留给 title 悬浮兜底。
-  return formatMessageTimestamp(date, new Date(), getLocale());
-}
-
-function shortId(id: string): string {
-  return id.length > 18 ? `${id.slice(0, 17)}…` : id;
-}
-
-/** 工作区路径的短名（末段）——层级浏览的分组标题（tl1216）。 */
-function inviteWorkspaceLabel(root: string): string {
-  const trimmed = root.replace(/[\\/]+$/, "").trim();
-  if (!trimmed) return trimmed;
-  const parts = trimmed.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || trimmed;
-}
-
 export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }: { bindings?: ChannelChatBindings; onOpenSession?: (contactId: string) => void; onViewDirectChains?: () => void } = {}) {
   const t = useT();
   const b: ChannelChatBindings = bindings ?? appBridge;
@@ -130,6 +114,8 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  // tl1441：邀请框子状态受控上提（勾选/检索跨抽屉卸载存活——856⑥「勾选
+  // 不丢失」口径；开关随抽屉关闭回 false，重开显示邀请按钮，与原实现同价）。
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invitePicked, setInvitePicked] = useState<string[]>([]);
   const [inviteQuery, setInviteQuery] = useState("");
@@ -142,8 +128,6 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   const [menu, setMenu] = useState<{ messageId: string; sender: string; x: number; y: number } | null>(null);
   // 任务 856 ⑤：副管理员操作（详情抽屉成员行）。
   const [deputyBusy, setDeputyBusy] = useState(false);
-  // tl1217：解散确认态（两击确认的第一击武装，第二击执行）。
-  const [dissolveArmed, setDissolveArmed] = useState(false);
   // 任务 856 ⑥：@ 选人浮层（↑↓ 选择 / Enter 确认 / Esc 关闭）。
   const [atOpen, setAtOpen] = useState(false);
   const [atIndex, setAtIndex] = useState(0);
@@ -284,31 +268,8 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   // unmount cleanup: no directory retry timer may outlive the panel.
   useEffect(() => cancelDirectoryRetry, [cancelDirectoryRetry]);
 
-  // 任务 856 ⑥：邀请框点外部区域自动关闭（捕获阶段拦截内部点击；勾选保留）。
-  // tl1242：补 mousedown 通道，对齐既有面板 house 形态（CollabHubPanel/
-  // topicbar export 同款 mousedown+closest 守卫）——拖拽起始等路径 click 可能
-  // 不派发，mousedown 先行兜底，让「点卡片外部空白稳定关闭」；卡片内部点击
-  // 仍被 closest 豁免（勾选/检索不受影响）。双通道重复置 false 幂等无副作用。
-  useEffect(() => {
-    if (!inviteOpen) return;
-    const isOutside = (event: MouseEvent) => {
-      const target = event.target as Element | null;
-      return !target?.closest(".channel-chat__invitebox");
-    };
-    const onDocMouseDown = (event: MouseEvent) => {
-      if (isOutside(event)) setInviteOpen(false);
-    };
-    const onDocClick = (event: MouseEvent) => {
-      if (isOutside(event)) setInviteOpen(false);
-    };
-    document.addEventListener("mousedown", onDocMouseDown, true);
-    document.addEventListener("click", onDocClick, true);
-    return () => {
-      document.removeEventListener("mousedown", onDocMouseDown, true);
-      document.removeEventListener("click", onDocClick, true);
-    };
-  }, [inviteOpen]);
-
+  // 任务 856 ⑥：邀请框点外部区域自动关闭——tl1441 抽取后由 ChannelDetailDrawer
+  // 内部承担（同一 house 形态守卫，类名不变，行为同价）。
   // tl1369 缺陷A（用户 20261103 报）：详情抽屉点外部关闭——此前必须点右上角
   // 被 300px 宽抽屉（inset 44px 起、右侧锚定）盖住的「详情」toggle 才能关，
   // 唯一关闭路不可达。形态照 980/1242 家族 house 形态（mousedown+click 双通道、
@@ -400,7 +361,6 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     setDetailOpen(false);
     setInviteOpen(false);
     setAtOpen(false);
-    setDissolveArmed(false); // 切群解除解散确认（防跨群误带武装态）
     void refresh();
   }, [refresh]);
 
@@ -411,7 +371,6 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     setDetailOpen(false);
     setInviteOpen(false);
     setAtOpen(false);
-    setDissolveArmed(false);
     setDeputylessHint(false); // tl1406：关群清零投递提示
   }, []);
 
@@ -470,17 +429,11 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     }
   }, [b, closeChannel, refresh]);
 
-  // tl1217：解散群聊（群主专用出口——退群被后端拒绝，此前既不能邀人也不能
-  // 销毁）。两击确认防误触：第一击只武装确认态，第二击才发口；切群/关详情
-  // 即解除武装。成功后关详情回到群列表（群已不存在）。
+  // tl1217：解散群聊（群主专用出口）。tl1441 抽取后两击武装态在抽屉内部，
+  // 这里只承担第二击的执行面。成功后关详情回到群列表（群已不存在）。
   const dissolve = useCallback(async () => {
     const ref = openIdRef.current;
     if (!ref) return;
-    if (!dissolveArmed) {
-      setDissolveArmed(true);
-      return;
-    }
-    setDissolveArmed(false);
     setActionError(null);
     try {
       await b.ChannelDissolveForHuman(ref);
@@ -489,7 +442,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     } catch (err) {
       setActionError(String(err));
     }
-  }, [b, closeChannel, refresh, dissolveArmed]);
+  }, [b, closeChannel, refresh]);
 
   const removeMember = useCallback(async (contactId: string) => {
     const ref = openIdRef.current;
@@ -504,21 +457,22 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     }
   }, [b, refresh]);
 
-  const invite = useCallback(async () => {
+  // tl1441：勾选清单由抽屉内部持有——契约=onInvite 失败 reject（抽屉保留
+  // 勾选原状，错误条由这里透出）、成功 resolve（抽屉自关邀请框+清勾选，
+  // 与既有行为同价：详情抽屉保持打开）。
+  const invite = useCallback(async (picked: string[]) => {
     const ref = openIdRef.current;
-    if (!ref || invitePicked.length === 0) return;
+    if (!ref || picked.length === 0) return;
     setActionError(null);
     try {
-      const updated = await b.ChannelInvite(ref, invitePicked);
-      setInviteOpen(false);
-      setInvitePicked([]);
-      setInviteQuery("");
+      const updated = await b.ChannelInvite(ref, picked);
       setChat((prev) => (prev && (prev.channel.id === updated.id || prev.channel.name === updated.name) ? { ...prev, channel: updated } : prev));
       await refresh();
     } catch (err) {
       setActionError(String(err));
+      throw err;
     }
-  }, [b, invitePicked, refresh]);
+  }, [b, refresh]);
 
   // 任务 856 ⑤：任命/撤销副管理员（仅 human 群主可见入口；失败原样透出）。
   const setDeputy = useCallback(async (contactId: string) => {
@@ -586,42 +540,6 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
   const memberDetails: CollabChannelMemberView[] = openCh?.memberDetails
     ?? (openCh?.members ?? []).map((contact) => ({ contact, type: "session", joinedAt: 0 }));
 
-  // 任务 856 ⑥：气泡内 @名字 渲染为「查看对话链」快捷入口（点 @ 名字 →
-  // 切到协作中心的对话链通道，衔接 ④；v2 口径：不再有「与该会话的单聊」）。
-  // 普通函数（非 hook）：定义处于 loading 早退之后，hook 规则不允许。
-  const renderBody = (body: string): ReactNode => {
-    if (!body.includes("@")) return body;
-    const parts: ReactNode[] = [];
-    let rest = body;
-    let key = 0;
-    for (const m of memberDetails) {
-      const name = m.contact === HUMAN_LOCAL ? t("collabGroup.chat.you") : directoryTitle(m.contact);
-      const needle = `@${name}`;
-      for (;;) {
-        const idx = rest.indexOf(needle);
-        if (idx < 0) break;
-        if (idx > 0) parts.push(rest.slice(0, idx));
-        parts.push(
-          <span
-            key={`m:${key++}`}
-            className="channel-chat__mention"
-            title={t("collabGroup.chat.mentionHint")}
-            role="link"
-            tabIndex={0}
-            onClick={() => onViewDirectChains?.()}
-            onKeyDown={(e) => { if (e.key === "Enter") onViewDirectChains?.(); }}
-          >
-            {needle}
-          </span>,
-        );
-        rest = rest.slice(idx + needle.length);
-      }
-    }
-    if (rest) parts.push(rest);
-    return parts;
-  };
-
-
   const lastSeenNow = lastSeenRef.current ?? {};
   const unreadOf = (c: CollabChannelView): number =>
     Math.max(0, c.messages - (lastSeenNow[c.id] ?? c.messages));
@@ -633,61 +551,6 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
     setDraft((prev) => prev.replace(/@$/, `@${name} `));
     setAtOpen(false);
   };
-
-  // 邀请候选（tl1216）：先排除已在群成员；关键字匹配 title/purpose/topicId/
-  // contactId（大小写不敏感；topicId 兜底 title 缺失/异名的会话）。普通函数
-  // （非 hook）：定义处于 loading 早退之后，hook 规则不允许。
-  const inviteCandidates = (directory ?? [])
-    .filter((row) => !memberDetails.some((m) => m.contact === row.contactId))
-    .filter((row) => {
-      const q = inviteQuery.trim().toLowerCase();
-      if (!q) return true;
-      return `${row.title ?? ""} ${row.purpose ?? ""} ${row.topicId ?? ""} ${row.contactId}`.toLowerCase().includes(q);
-    });
-
-  // 层级逐步定位（tl1216 预期方式②）：空查询=浏览模式，按 全局 → 项目 →
-  // 归档 分组（项目内按工作区名稳定排序），逐组扫读选人；有关键字=平铺命中。
-  const inviteSections: { key: string; label: string; rows: CollabSessionDirectoryRow[] }[] = (() => {
-    if (inviteQuery.trim()) return [];
-    const global: CollabSessionDirectoryRow[] = [];
-    const archive: CollabSessionDirectoryRow[] = [];
-    const byProject = new Map<string, CollabSessionDirectoryRow[]>();
-    for (const row of inviteCandidates) {
-      if (row.archived) archive.push(row);
-      else if (row.scope === "project") {
-        const root = row.workspaceRoot || "";
-        const bucket = byProject.get(root);
-        if (bucket) bucket.push(row);
-        else byProject.set(root, [row]);
-      } else global.push(row);
-    }
-    const sections: { key: string; label: string; rows: CollabSessionDirectoryRow[] }[] = [];
-    if (global.length) sections.push({ key: "global", label: t("collabGroup.chat.inviteScopeGlobal"), rows: global });
-    for (const root of [...byProject.keys()].sort((a, b) => inviteWorkspaceLabel(a).localeCompare(inviteWorkspaceLabel(b)))) {
-      const rows = byProject.get(root)!;
-      sections.push({ key: root || "?", label: t("collabGroup.chat.inviteScopeProject", { workspace: inviteWorkspaceLabel(root) }), rows });
-    }
-    if (archive.length) sections.push({ key: "archive", label: t("collabGroup.chat.inviteScopeArchive"), rows: archive });
-    return sections;
-  })();
-
-  // 候选行（检索平铺与层级分组共用）；key 兜底 sessionPath——未登记 contact_id
-  // 的会话同现时避免重复 key。
-  const inviteRow = (row: CollabSessionDirectoryRow) => (
-    <label key={row.contactId || row.sessionPath} className="channel-chat__invitecandidate">
-      <input
-        type="checkbox"
-        checked={invitePicked.includes(row.contactId)}
-        onChange={(event) => {
-          setInvitePicked((prev) => event.target.checked
-            ? [...prev, row.contactId]
-            : prev.filter((id) => id !== row.contactId));
-        }}
-      />
-      <span className="channel-chat__invitecandidatename">{row.title || row.purpose || row.contactId}</span>
-      <span className="channel-chat__invitecandidateid">{shortId(row.contactId)}</span>
-    </label>
-  );
 
   return (
     <div className="channel-chat" aria-label={t("collabGroup.chat.title")}>
@@ -753,6 +616,15 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
               <span className="channel-chat__chatname" title={openCh.name}>{openCh.name}</span>
               {openCh.topic && <span className="channel-chat__chattopic">{openCh.topic}</span>}
               <span className="channel-chat__chatmeta">{t("collabGroup.membersCount", { n: openCh.members?.length ?? 0 })}</span>
+              {/* tl1441 ①「打开标签页」：把当前群聊升级为 tab 工作区实体
+                  （标签栏出现群聊 tab，数据源换 channel）。打开即激活。 */}
+              <button
+                type="button"
+                className="btn btn--small channel-chat__opentab"
+                onClick={() => openChannelTab({ ref: openIdRef.current || openCh.id || openCh.name, name: openCh.name })}
+              >
+                {t("collabGroup.chat.openTab")}
+              </button>
               {/* tl1369：触发 toggle 挂稳定类供点外关闭守卫豁免（不豁免则
                   mousedown 先关、click 再开，按钮关不掉抽屉）。 */}
               <button type="button" className="btn btn--small channel-chat__detailtoggle" onClick={() => setDetailOpen((v) => !v)}>
@@ -777,63 +649,16 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
             )}
 
             <div className="channel-chat__stream">
-              {messages.length === 0 && (
-                <div className="channel-chat__empty">{t("collabGroup.chat.emptyStream")}</div>
-              )}
-              {messages.map((m) => {
-                const own = m.sender === HUMAN_LOCAL;
-                if (m.cancelledAt) {
-                  return (
-                    <div key={m.id} className="channel-chat__tombstone">
-                      {t("collabGroup.chat.recalled", { sender: own ? t("collabGroup.chat.you") : directoryTitle(m.sender), time: formatTime(m.cancelledAt) })}
-                    </div>
-                  );
-                }
-                // 钉钉口径：已读显示、回执（delivered/queued）不显示；
-                // 失败行是诚实错误，保留；标注只出现在自己的消息上。
-                const readMembers = own
-                  ? (m.fanout ?? []).filter((cell) => cell.readAt)
-                  : [];
-                const failedMembers = own
-                  ? (m.fanout ?? []).filter((cell) => cell.state === "failed")
-                  : [];
-                return (
-                  <div key={m.id} className={`channel-chat__row${own ? " channel-chat__row--own" : ""}`}>
-                    <div className="channel-chat__rowmeta">
-                      <span className={`channel-chat__sender${own ? " channel-chat__sender--own" : ""}`}>
-                        {own ? t("collabGroup.chat.you") : directoryTitle(m.sender)}
-                      </span>
-                      <span className={`channel-chat__typebadge channel-chat__typebadge--${own ? "human" : "session"}`}>
-                        {own ? t("collabGroup.identity.human") : t("collabGroup.chat.typeSession")}
-                      </span>
-                      <span className="channel-chat__time" title={new Date(m.at).toLocaleString()}>{formatTime(m.at)}</span>
-                    </div>
-                    <div
-                      className="channel-chat__bubble"
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        setMenu({ messageId: m.id, sender: m.sender, x: event.clientX, y: event.clientY });
-                      }}
-                    >
-                      {renderBody(m.body)}
-                    </div>
-                    {(readMembers.length > 0 || failedMembers.length > 0) && (
-                      <div className="channel-chat__receipts">
-                        {readMembers.map((cell) => (
-                          <span key={`r:${cell.member}`} className="channel-chat__receipt channel-chat__receipt--read">
-                            {t("collabGroup.chat.readBy", { member: directoryTitle(cell.member) })}
-                          </span>
-                        ))}
-                        {failedMembers.map((cell) => (
-                          <span key={`f:${cell.member}`} className="channel-chat__receipt channel-chat__receipt--failed">
-                            {t("collabGroup.chat.failedTo", { member: directoryTitle(cell.member) })}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {/* tl1441：消息流渲染抽取为 ChannelMessageStream 共用件（tab
+                  工作区同用）；右键菜单本体仍归本面板（portal 挂载点相关）。 */}
+              <ChannelMessageStream
+                messages={messages}
+                memberDetails={memberDetails}
+                directoryTitle={directoryTitle}
+                onBubbleContextMenu={(point) => setMenu(point)}
+                onMentionClick={() => onViewDirectChains?.()}
+                attachmentPreview={b.ChannelAttachmentDataURL ? (path) => b.ChannelAttachmentDataURL!(path) : undefined}
+              />
             </div>
 
             <div className="channel-chat__composer">
@@ -915,133 +740,35 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
         )}
       </div>
 
-      {/* 详情抽屉（②）：成员列表/邀请/移除/退群 */}
+      {/* 详情抽屉（②）：成员列表/邀请/移除/退群——tl1441 抽取为共用件
+          ChannelDetailDrawer（群聊 tab 工作区 ChannelWorkspacePanel 同挂一只，
+          单一实现杜绝双写）。行为契约逐行同价：DOM 类名/文案/两击解散/
+          勾选保留全部不变。 */}
       {detailOpen && openCh && (
-        <div className="channel-chat__detail">
-          <div className="channel-chat__detailhead">
-            <span className="channel-chat__detailtitle">{openCh.name}</span>
-            {openCh.ownerId && (
-              <span className="channel-chat__detailowner">
-                {t("collabGroup.chat.ownerLabel", {
-                  owner: openCh.ownerId === HUMAN_LOCAL ? t("collabGroup.chat.you") : directoryTitle(openCh.ownerId),
-                })}
-              </span>
-            )}
-            {/* tl1369 缺陷C：显式关闭钮（modal 家族 × 基件）——面板关闭不再
-                依赖点外关闭或被抽屉遮挡的原触发钮（用户 20261103 截图报）。
-                aria-label 零新键，复用既有 collabGroup.chat.closeDetail。 */}
-            <ModalCloseButton
-              className="channel-chat__detailclose"
-              label={t("collabGroup.chat.closeDetail")}
-              onClick={() => setDetailOpen(false)}
-            />
-          </div>
-          {openCh.topic && <div className="channel-chat__detailtopic">{openCh.topic}</div>}
-
-          <div className="channel-chat__members">
-            {memberDetails.map((m) => {
-              const isHuman = m.type === "human";
-              const isOwnerMember = Boolean(openCh.ownerId && openCh.ownerId === m.contact);
-              const isDeputyMember = Boolean(openCh.deputyId && openCh.deputyId === m.contact);
-              const removable = iAmOwner && hasOwner && m.contact !== HUMAN_LOCAL && !isOwnerMember;
-              // 任务 856 ⑤：设为副管理员——两条件同现才渲染（群主=human:local、
-              // 目标=session 成员）；已设时徽标+撤销入口。
-              const deputyAssignable = iAmOwner && hasOwner && !isHuman && !isOwnerMember && m.type === "session";
-              return (
-                <div key={m.contact} className="channel-chat__member">
-                  <span className="channel-chat__membername" title={m.contact === HUMAN_LOCAL ? undefined : directoryTitle(m.contact)}>
-                    {m.contact === HUMAN_LOCAL ? t("collabGroup.chat.you") : directoryTitle(m.contact)}
-                  </span>
-                  <span className={`channel-chat__typebadge channel-chat__typebadge--${isHuman ? "human" : "session"}`}>
-                    {isHuman ? t("collabGroup.identity.human") : t("collabGroup.chat.typeSession")}
-                  </span>
-                  {isOwnerMember && <span className="channel-chat__ownerbadge channel-chat__ownerbadge--me">{t("collabGroup.chat.ownerBadge")}</span>}
-                  {isDeputyMember && <span className="channel-chat__deputybadge">{t("collabGroup.chat.deputyBadge")}</span>}
-                  {deputyAssignable && !isDeputyMember && (
-                    <button type="button" className="btn btn--secondary btn--small" disabled={deputyBusy} onClick={() => void setDeputy(m.contact)}>
-                      {t("collabGroup.chat.setDeputy")}
-                    </button>
-                  )}
-                  {isDeputyMember && (
-                    <button type="button" className="btn btn--secondary btn--small" disabled={deputyBusy} onClick={() => void unsetDeputy()}>
-                      {t("collabGroup.chat.unsetDeputy")}
-                    </button>
-                  )}
-                  {removable && (
-                    <button type="button" className="btn btn--secondary btn--small" onClick={() => void removeMember(m.contact)}>
-                      {t("collabGroup.chat.remove")}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {iAmOwner && (
-            <div className="channel-chat__invited">
-              {/* 任务 856 ⑥：打开不再清空勾选——点外关闭后重开保留已选
-                  （demo v2 钦定「勾选不丢失」）；邀请成功后仍清空。 */}
-              {!inviteOpen ? (
-                <button type="button" className="btn btn--small" onClick={() => { setInviteOpen(true); ensureDirectoryRef.current(); }}>
-                  {t("collabGroup.chat.invite")}
-                </button>
-              ) : (
-                <div className="channel-chat__invitebox">
-                  <input
-                    className="channel-chat__invitequery"
-                    value={inviteQuery}
-                    placeholder={t("collabGroup.chat.inviteSearch")}
-                    onChange={(event) => setInviteQuery(event.target.value)}
-                  />
-                  <div className="channel-chat__invitecandidates">
-                    {!directory && directoryFailed && (
-                      <div className="channel-chat__empty">{t("collabGroup.chat.inviteUnavailable")}</div>
-                    )}
-                    {directory && inviteCandidates.length === 0 && <div className="channel-chat__empty">{t("collabGroup.chat.inviteEmpty")}</div>}
-                    {inviteQuery.trim()
-                      ? inviteCandidates.map(inviteRow)
-                      : inviteSections.map((section) => (
-                        <div key={section.key || "unknown"} className="channel-chat__invitegroup">
-                          <div className="channel-chat__invitegrouphead">{section.label} · {section.rows.length}</div>
-                          {section.rows.map(inviteRow)}
-                        </div>
-                      ))}
-                  </div>
-                  <div className="channel-chat__inviteactions">
-                    <button type="button" className="btn btn--small" disabled={invitePicked.length === 0} onClick={() => void invite()}>
-                      {t("collabGroup.chat.inviteConfirm", { n: invitePicked.length })}
-                    </button>
-                    {/* tl1369 缺陷C：补显式关闭钮（此前 856⑥ demo v2 只给点外
-                        关闭+提示文案；tl1369 口径=浮层一律有可见关闭钮，不依赖
-                        点外关闭）。行为与点外关闭同款：invitePicked 不清空=已
-                        勾选保留，重开不丢。零新键（复用 collabGroup.close）。 */}
-                    <button type="button" className="btn btn--secondary btn--small" onClick={() => setInviteOpen(false)}>
-                      {t("collabGroup.close")}
-                    </button>
-                    <span className="channel-chat__invitedismiss">{t("collabGroup.chat.inviteDismissHint")}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="channel-chat__detailfoot">
-            <button type="button" className="btn btn--secondary btn--small" onClick={() => void leave()}>
-              {t("collabGroup.chat.leave")}
-            </button>
-            {/* tl1217：解散群聊——群主专用出口（后端 Dissolve owner-only），
-                两击确认防误触；第一击换通用危险钮色示警+确认文案，第二击执行。 */}
-            {iAmOwner && hasOwner && (
-              <button
-                type="button"
-                className={`btn btn--small ${dissolveArmed ? "btn--danger" : "btn--secondary"}`}
-                onClick={() => void dissolve()}
-              >
-                {dissolveArmed ? t("collabGroup.chat.dissolveConfirm") : t("collabGroup.chat.dissolve")}
-              </button>
-            )}
-          </div>
-        </div>
+        <ChannelDetailDrawer
+          channel={openCh}
+          memberDetails={memberDetails}
+          directory={directory}
+          directoryFailed={directoryFailed}
+          directoryTitle={directoryTitle}
+          iAmOwner={iAmOwner}
+          hasOwner={hasOwner}
+          deputyBusy={deputyBusy}
+          onClose={() => setDetailOpen(false)}
+          onRemoveMember={(contactId) => void removeMember(contactId)}
+          onInvite={(picked) => invite(picked)}
+          onSetDeputy={(contactId) => void setDeputy(contactId)}
+          onUnsetDeputy={() => void unsetDeputy()}
+          onLeave={() => void leave()}
+          onDissolve={() => void dissolve()}
+          onEnsureDirectory={() => ensureDirectoryRef.current()}
+          inviteOpen={inviteOpen}
+          onInviteOpenChange={setInviteOpen}
+          invitePicked={invitePicked}
+          onInvitePickedChange={setInvitePicked}
+          inviteQuery={inviteQuery}
+          onInviteQueryChange={setInviteQuery}
+        />
       )}
 
       {/* 建群对话框（①）：人类建群即群主 */}

@@ -59,6 +59,11 @@ type nodeSnapshot struct {
 	OutputTruncated bool            `json:"outputTruncated,omitempty"`
 	Result          json.RawMessage `json:"result,omitempty"`
 	Findings        []Finding       `json:"findings,omitempty"`
+	// SubagentRefs / SubagentRefParents 是 tl1434 的 nodeId→子代理执行实例
+	// 关联（append-only，执行序）。旧快照无此字段=无关联（查看面降级），
+	// 新字段向后兼容不改 schemaVersion。
+	SubagentRefs       []string `json:"subagentRefs,omitempty"`
+	SubagentRefParents []string `json:"subagentRefParents,omitempty"`
 }
 
 // runSnapshot 是一次运行的完整恢复面（run.json 的盘上形态）。
@@ -79,8 +84,11 @@ type runSnapshot struct {
 	GateRound  int    `json:"gateRound,omitempty"`
 
 	// NodeOrder 是节点首见序（= 文档声明序），恢复 RunRecord.order 用。
-	NodeOrder []string                `json:"nodeOrder,omitempty"`
+	NodeOrder []string `json:"nodeOrder,omitempty"`
 	Nodes     map[string]nodeSnapshot `json:"nodes,omitempty"`
+	// SessionID 是发起会话分支号（tl1434）：重启恢复后「工作过程」按它定位
+	// transcript 归属。旧快照/面板续跑（无会话）为空=恢复后降级。
+	SessionID string `json:"sessionId,omitempty"`
 
 	Bag    []Finding `json:"bag,omitempty"`
 	Verifs []string  `json:"verifs,omitempty"`

@@ -63,8 +63,12 @@ func (r *runtimeEventRecorder) snapshot() []capturedRuntimeEvent {
 }
 
 func (r *runtimeEventRecorder) count(name string) int {
+	return countRuntimeEvents(r.snapshot(), name)
+}
+
+func countRuntimeEvents(events []capturedRuntimeEvent, name string) int {
 	n := 0
-	for _, e := range r.snapshot() {
+	for _, e := range events {
 		if e.name == name {
 			n++
 		}
@@ -176,8 +180,10 @@ func TestSetModelForTabRebuildEmitsApplyingThenMeta(t *testing.T) {
 	if err := app.SetModelForTab(tab.ID, "prov-b/model-b1"); err != nil {
 		t.Fatalf("rebuild switch: %v", err)
 	}
+	// Judge the snapshot waitFor returns, not a fresher one: a live count could
+	// see tab:meta that the returned events slice does not hold yet.
 	events := rec.waitFor(t, "model:applying + tab:meta", func(events []capturedRuntimeEvent) bool {
-		return rec.count("model:applying") > 0 && rec.count(tabMetaRefreshEventChannel) > 0
+		return countRuntimeEvents(events, "model:applying") > 0 && countRuntimeEvents(events, tabMetaRefreshEventChannel) > 0
 	})
 	applyingIdx, metaIdx := -1, -1
 	for i, e := range events {

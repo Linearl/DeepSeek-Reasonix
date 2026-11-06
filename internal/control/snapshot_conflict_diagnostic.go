@@ -39,6 +39,28 @@ type snapshotConflictDiagnostic struct {
 	// write lease (task 67). Combined with Caller it answers whether a conflict
 	// came from a multi-instance write rather than an in-process race.
 	ForeignLease bool `json:"foreign_lease,omitempty"`
+	// tl1443 recovery trace: the decision, the write path that met the
+	// conflict, both sides' digests and who recorded the disk revision.
+	Decision         string `json:"decision,omitempty"`
+	Reason           string `json:"reason,omitempty"`
+	Trigger          string `json:"trigger,omitempty"`
+	Entry            string `json:"entry,omitempty"`
+	Chain            string `json:"chain,omitempty"`
+	SnapshotDigest   string `json:"snapshot_digest,omitempty"`
+	BaseDigest       string `json:"base_digest,omitempty"`
+	DiskDigest       string `json:"disk_digest,omitempty"`
+	LedgerDigest     string `json:"ledger_digest,omitempty"`
+	DiskWriter       string `json:"disk_writer,omitempty"`
+	DiskWriterPID    int    `json:"disk_writer_pid,omitempty"`
+	PeerTrigger      string `json:"peer_trigger,omitempty"`
+	PeerChain        string `json:"peer_chain,omitempty"`
+	PeerAgeMs        int64  `json:"peer_age_ms,omitempty"`
+	BrakeActive      bool   `json:"brake_active,omitempty"`
+	BrakeSeq         int    `json:"brake_seq,omitempty"`
+	BrakeRemainingMs int64  `json:"brake_remaining_ms,omitempty"`
+	SinceLastForkMs  int64  `json:"since_last_fork_ms,omitempty"`
+	RewritePending   bool   `json:"rewrite_pending,omitempty"`
+	Fallthrough      string `json:"fallthrough,omitempty"`
 }
 
 // conflictDiagDedup bounds repeated conflict event log lines for the same
@@ -77,6 +99,16 @@ func snapshotConflictCaller() string {
 }
 
 func appendSnapshotConflictDiagnostic(path, mode, outcome string, saveErr error, recoveryPath string, existing bool) {
+	writeSnapshotConflictDiagnostic(snapshotConflictCaller(), nil, path, mode, outcome, saveErr, recoveryPath, existing)
+}
+
+// appendTracedConflictDiagnostic is appendSnapshotConflictDiagnostic for a
+// recovery decision that carries a fork trace; the record gains its fields.
+func appendTracedConflictDiagnostic(trace *forkTrace, path, mode, outcome string, saveErr error, recoveryPath string, existing bool) {
+	writeSnapshotConflictDiagnostic(snapshotConflictCaller(), trace, path, mode, outcome, saveErr, recoveryPath, existing)
+}
+
+func writeSnapshotConflictDiagnostic(caller string, trace *forkTrace, path, mode, outcome string, saveErr error, recoveryPath string, existing bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return
@@ -91,7 +123,7 @@ func appendSnapshotConflictDiagnostic(path, mode, outcome string, saveErr error,
 		BranchID:     agent.BranchID(path),
 		Mode:         mode,
 		Outcome:      outcome,
-		Caller:       snapshotConflictCaller(),
+		Caller:       caller,
 		ForeignLease: agent.SessionLeaseHeldByOtherRuntime(path),
 	}
 	createsPhysicalRecovery := diagnosticCreatesPhysicalRecovery(outcome)
@@ -126,6 +158,7 @@ func appendSnapshotConflictDiagnostic(path, mode, outcome string, saveErr error,
 		rec.RecoveryBranchID = agent.BranchID(recoveryPath)
 		rec.ExistingRecovery = existing
 	}
+	trace.fillDiagnostic(&rec)
 	data, err := json.Marshal(rec)
 	if err != nil {
 		return

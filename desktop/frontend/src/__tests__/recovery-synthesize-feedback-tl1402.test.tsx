@@ -127,7 +127,11 @@ function toastTexts(): string[] {
 async function openPanelAndSynthesize(report: HeadSynthesisReport | Error): Promise<ReturnType<typeof createRoot> | null> {
   const stub = {
     ListRecoveryCopyGroups: async () => [GROUP],
-    ListSessionVersionGroups: async () => [],
+    // tl1415b: CHAINS 描述了双 head 会话,版本清单照实报 headCount=2——否则
+    // 该会话按「×0 且单版本」渲染成纯行,heads 子行(与合成链读数)不可达。
+    ListSessionVersionGroups: async () => [
+      { mainPath: MAIN_PATH, mainLabel: "GC", directory: "/sessions", headCount: 2, selected: "", heads: [] },
+    ],
     ListRecoveryChains: async () => CHAINS,
     ListSessionRepairRecordsFor: async () => [],
     ScanRecoveryCopyGroup: async () => GROUP,
@@ -150,9 +154,9 @@ async function openPanelAndSynthesize(report: HeadSynthesisReport | Error): Prom
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  // The synthesis button lives in the chain block, which renders only once the
-  // conversation row is expanded (the 1146 harness's same step).
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement)?.click(); });
+  // The synthesis button lives on the session row, which renders once the
+  // merged group expands (tl1415b: v3-only 会话在已合入组,默认折叠)。
+  await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement)?.click(); });
   await flush();
   const synthBtn = buttonByText("Synthesize longest chain");
   await act(async () => { synthBtn?.click(); });

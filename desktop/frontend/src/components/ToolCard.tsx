@@ -8,6 +8,7 @@ import { DiffView } from "./DiffView";
 import { useT } from "../lib/i18n";
 import { formatDurationLabel, formatRelativeAgeLabel } from "../lib/durationFormat";
 import { diffsFor, languageForToolArgs, subjectOf, summarize, summarizeFileDiff } from "../lib/tools";
+import { capabilityInspectSchema } from "../lib/capabilityInspect";
 import { useShellExpand } from "../lib/shellExpand";
 import { app } from "../lib/bridge";
 import type { MCPAppInstanceView, MCPAppPresentation } from "../lib/types";
@@ -348,6 +349,10 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   const isShellCard = Boolean(item.isShell || item.name === "bash" || execution);
   const shellCommand = isShellCard ? subjectOf("bash", effectiveArgs) : "";
   const displayOutput = isWebSearch || toolOutputDuplicatesError(effectiveOutput, item.error) ? undefined : effectiveOutput;
+  // tl1438: a use_capability inspect output carries the machine schema layer
+  // (per-param rows derived from the engine's registered schema). Rendered as
+  // its own collapsible block above the raw output; the prose stays untouched.
+  const inspectSchema = displayOutput ? capabilityInspectSchema(item.name, effectiveArgs, displayOutput) : undefined;
   const previewDiff = item.fileDiff?.diff ? item.fileDiff : undefined;
   const diffs = previewDiff || archivedWithoutFullData ? [] : diffsFor(item.name, effectiveArgs);
   const subject = fullData ? subjectOf(item.name, effectiveArgs) : item.subject || subjectOf(item.name, effectiveArgs);
@@ -608,6 +613,41 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
         {!isWebSearch && hasArgsOrOutput && (
           <>
             {effectiveArgs && !shellCommand && <CodeViewer value={pretty(effectiveArgs)} language="json" maxHeight={180} />}
+            {inspectSchema && (
+              <details className="tool__schema">
+                <summary>
+                  {inspectSchema.params.length > 0
+                    ? t("tool.schemaParams", { n: inspectSchema.params.length })
+                    : t("tool.schemaMissing")}
+                </summary>
+                {inspectSchema.note && <div className="tool__schema-note">{inspectSchema.note}</div>}
+                {inspectSchema.params.length > 0 && (
+                  <table className="tool__schema-table">
+                    <thead>
+                      <tr>
+                        <th>{t("tool.schemaParamName")}</th>
+                        <th>{t("tool.schemaParamType")}</th>
+                        <th>{t("tool.schemaParamConstraint")}</th>
+                        <th>{t("tool.schemaParamDescription")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inspectSchema.params.map((param) => (
+                        <tr key={param.name}>
+                          <td className="tool__schema-name">
+                            {param.name}
+                            {param.required && <span className="tool__schema-required" title={t("tool.schemaRequired")}>*</span>}
+                          </td>
+                          <td>{param.type || "—"}</td>
+                          <td>{param.enum?.length ? t("tool.schemaEnum", { values: param.enum.map((v) => String(v)).join(", ") }) : ""}</td>
+                          <td>{param.description || ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </details>
+            )}
             {!shellPreview && displayOutput && (
               <>
                 <CodeViewer value={displayOutput} maxHeight={280} />

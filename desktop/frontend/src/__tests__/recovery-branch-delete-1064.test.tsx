@@ -197,9 +197,9 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await act(async () => { open?.click(); });
   await flush();
 
-  const toggles = document.querySelectorAll<HTMLButtonElement>(".rc-modal .rc-toggle");
-  ok(toggles.length === 1, "① one conversation row is listed");
-  await act(async () => { (toggles[0] as HTMLButtonElement).click(); });
+  // tl1415b: 无行内展开——待处理组默认展开,会话行直接在单表里。
+  const sessionRows = document.querySelectorAll("tr.rc-session");
+  ok(sessionRows.length === 1, "① one conversation row is listed");
   await flush();
 
   // tl1368: the whole-conversation delete button also carries the rc-delete
@@ -210,7 +210,9 @@ console.log("\nrecovery branch delete single + batch (1064)");
   // inside the same table, so one selector now covers both shapes.
   const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-row--copy .rc-delete, .rc-versions__table .rc-delete"));
   ok(deleteButtons.length === 3, "① both copy rows and the non-current version row render a delete entry");
-  const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>(".rc-versions__table input[type=checkbox]"));
+  // tl1415b: 会话行勾选(合并所选)与副本行勾选(删除所选)都在同一张表里——
+  // 批量删除的勾选面按副本行圈定。
+  const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>("tr.rc-row--copy input[type=checkbox]"));
   ok(checkboxes.length === 2, "① both copy rows render a selection checkbox");
   ok(!batchDeleteButton(), "① no batch button before anything is checked");
 
@@ -234,8 +236,7 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
+  // tl1415b: 无行内展开——待处理子行(副本/版本)随面板打开即渲染。
 
   const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-delete"));
   await act(async () => { deleteButtons[0].click(); });
@@ -257,22 +258,24 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
+  // tl1415b: 无行内展开——待处理子行(副本/版本)随面板打开即渲染。
 
   // tl1415 点3: the heads live in the merged table as chain rows (tr.rc-chain,
   // the current main promoted to the table's first row); counting by chain row
   // keeps the assertion on "both heads are listed" rather than on the table's
   // total row count (group/ops rows now share the tbody).
+  // tl1415b: 当前主线升格为主线行(rc-detail__row--main,带「selected」徽标),
+  // 其余 head 为版本行(rc-chain)——两行读数都在单表里。
   const headRows = Array.from(document.querySelectorAll<HTMLTableRowElement>(".rc-versions__table tbody tr.rc-chain"));
-  ok(headRows.length === 2, "③ the v3 block lists both heads");
-  const selectedRow = headRows.find((r) => r.textContent?.includes("selected"));
-  const unselectedRow = headRows.find((r) => !r.textContent?.includes("selected"));
-  ok(Boolean(selectedRow), "③ the selected head row is identifiable");
+  const mainRow = document.querySelector<HTMLTableRowElement>(".rc-versions__table tbody tr.rc-detail__row--main");
+  ok(headRows.length === 1 && Boolean(mainRow), "③ the v3 block lists both heads (main row + fork head row)");
+  const selectedRow = mainRow;
+  const unselectedRow = headRows[0];
+  ok(Boolean(selectedRow?.textContent?.includes("selected")), "③ the selected head row is identifiable");
   ok(Boolean(unselectedRow), "③ an unselected head row exists");
   ok(!selectedRow?.querySelector(".rc-delete"), "③ the current version row has no delete entry");
-  // tl1415 点3: the delete entry lives on the branch's sibling ops row.
-  ok(Boolean(unselectedRow?.nextElementSibling?.querySelector(".rc-delete")), "③ a non-current version row has a delete entry");
+  // tl1415b: 操作列并入行内(两行制废止),删除入口就在版本行本行。
+  ok(Boolean(unselectedRow?.querySelector(".rc-delete")), "③ a non-current version row has a delete entry");
 
   await act(async () => root.unmount());
 }
@@ -288,8 +291,7 @@ console.log("\nrecovery branch delete single + batch (1064)");
   await flush();
   await act(async () => { buttonByText("Review and merge")?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
-  await flush();
+  // tl1415b: 无行内展开——待处理子行(副本/版本)随面板打开即渲染。
 
   const listCallsBefore = spies.listCalls;
   const deleteButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-delete"));

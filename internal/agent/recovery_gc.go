@@ -103,12 +103,20 @@ func SessionContentCovers(coveringPath, coveredPath string) bool {
 // RecoveryPreferenceCurrent proves that the branch still has the exact content
 // the user selected. Continued or externally edited branches fall back to an
 // unresolved lineage until the user chooses again.
+//
+// tl1430b: a damaged-tail branch is no longer rejected up front. The tolerant
+// replay is deterministic (same readable prefix every time), so a digest
+// recorded against exactly those messages proves "this is what the user
+// chose" just as well as on a clean log - refusing damaged logs up front
+// silently voided explicit adoptions (the switch receipt fired while every
+// downstream read stayed on the old line). Only a load failure or a digest
+// mismatch (content drifted) voids the preference now.
 func RecoveryPreferenceCurrent(path string, meta BranchMeta) bool {
 	if !meta.RecoveryPreferred || strings.TrimSpace(meta.RecoveryPreferredDigest) == "" {
 		return false
 	}
 	session, err := LoadSession(path)
-	if err != nil || session == nil || session.normalizedDirty || session.eventLogDamaged {
+	if err != nil || session == nil {
 		return false
 	}
 	digest, err := digestSessionMessages(session.Snapshot())

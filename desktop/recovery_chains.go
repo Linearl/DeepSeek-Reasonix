@@ -120,6 +120,19 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 	for _, scan := range scans {
 		scanByPath[scan.Path] = scan
 	}
+	// tl1430b 环②：「当前主线」行必须跟着显式切换走。Selected 原先恒等于
+	// isMain（扫描起点=面板展开的主线文件），用户采纳副本后表内主线行纹丝
+	// 不动——回执闪了一下、表行照旧正是包 78 现场。单一真相源=meta 的
+	// RecoveryPreferred（与重开读取的 promote 判定同源）；无任何显式选择时
+	// 退回 isMain（单主线场景零回归）。
+	preferredRows := make(map[string]bool, len(candidates))
+	anyPreferred := false
+	for _, path := range candidates {
+		if meta, ok, err := agent.LoadBranchMeta(path); err == nil && ok && meta.RecoveryPreferred {
+			preferredRows[path] = true
+			anyPreferred = true
+		}
+	}
 	for _, path := range candidates {
 		info, statErr := os.Stat(path)
 		var bytes int64
@@ -127,6 +140,7 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 			bytes = info.Size()
 		}
 		isMain := samePath(path, mainPath)
+		selected := preferredRows[path] || (!anyPreferred && isMain)
 		scan := scanByPath[path]
 		if !scan.Readable {
 			// 降级行：整文件读不出（超字节/时间预算、tolerant 也拒、文件消
@@ -135,7 +149,7 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 			// 不解析 JSON，~0.1s/86MB），轮次/预览不可得。
 			set.Chains = append(set.Chains, RecoveryChainView{
 				Path: path, Label: recoveryDisplayName(path), IsMain: isMain,
-				Selected:     isMain,
+				Selected:     selected,
 				MessageCount: scan.MessageCount,
 				LastActivity: scan.LastActivity.UTC().Format("2006-01-02T15:04:05Z"),
 				Bytes:        bytes, Degraded: true,
@@ -146,10 +160,10 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 			Path:    path,
 			Label:   recoveryDisplayName(path),
 			IsMain:  isMain,
-			// 无 DAG 时「会话正开在哪」= 主转录本身；副本行的激活按钮
-			// （headId 为空）走既有的副本采纳路径（SetActiveSessionVersion
+			// tl1430b：Selected 跟随显式采纳（preferredRows）；副本行的激活
+			// 按钮（headId 为空）走既有的副本采纳路径（SetActiveSessionVersion
 			// 的 catalog lineage 校验），与恒空 heads 时代副本行的行为一致。
-			Selected:     isMain,
+			Selected:     selected,
 			Covered:      scan.CoveredBy != "",
 			MessageCount: scan.MessageCount,
 			Turns:        scan.Turns,
