@@ -97,3 +97,18 @@ site/.generated/
 
 # tl 1163: per-boot startup breakdown (cwd-relative, one line per launch)
 /startup-metrics.log
+
+# scratch artifacts (2026-11-06 cleanup guard)
+/tmp/*
+!/tmp/.gitkeep
+/tmp_build_*.log
+/desktop/frontend/*.tmp.mjs
+/desktop/frontend/cdp-*.png
+/desktop/frontend/vm*.png
+/desktop/frontend/v80*.png
+/desktop/frontend/min*.png
+/desktop/frontend/bg*.png
+/desktop/frontend/userbg-*.png
+/desktop/frontend/demo-verify.png
+/.ms38c/
+/_recycle-*/
