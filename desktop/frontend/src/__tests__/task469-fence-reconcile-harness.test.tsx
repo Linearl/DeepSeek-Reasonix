@@ -7,8 +7,10 @@
 //   修复前：静默丢弃，无打点、无恢复，面板永不挂载；
 //   修复后：丢时落 [ask-panel] warn 行 + 调度一次防抖权威对账（刷新该 tab
 //   meta → 请求 ReplayPendingPromptsForTab）→ 后端重放的 ask 携新 epoch 到
-//   达 → 通过 fence → 面板挂载。普通事件（text）被 fence 丢弃维持纯丢弃，
-//   不触发对账（行为与 469 之前一致）。
+//   达 → 通过 fence → 面板挂载。tl1444：普通事件（text）被 fence 丢弃同样
+//   触发对账——超限态身份翻动下内容事件被纯吞=整轮输出不可见，对账重挂
+//   身份后由 projector 既有 seq-gap 权威重放回填漏接增量（丢弃规则本身
+//   逐字不变，内容仍不跨 runtime 泄漏）。
 
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
@@ -189,7 +191,10 @@ await act(async () => {
 });
 assert.equal(controller?.state.ask?.id, "a1", "重放的 ask 通过刷新后的 fence，面板挂起");
 
-// 4) 普通事件被 fence 丢弃维持纯丢弃：不再触发对账。
+// 4) 普通事件被 fence 丢弃也触发对账（tl1444）：丢弃规则不变（stale text
+//    不上屏），但身份翻动下的内容黑洞必须有自愈入口——对账重挂身份，漏接
+//    增量由 projector seq-gap 权威重放回填。
+const metaFetchesBeforeText = metaFetches;
 const replayCallsBeforeText = scopedReplayCalls;
 await act(async () => {
   for (const handler of eventHandlers) {
@@ -198,7 +203,12 @@ await act(async () => {
   await new Promise((resolvePromise) => setTimeout(resolvePromise, 450));
   await flushPromises();
 });
-assert.equal(scopedReplayCalls - replayCallsBeforeText, 0, "text 被 fence 丢弃不触发对账（行为不变）");
+assert.equal(controller?.state.items.some((item) => item.kind === "assistant" && (item as { text?: string }).text?.includes("stale")), false, "stale text 仍被丢弃不上屏（丢弃规则不变）");
+assert.ok(
+  metaFetches > metaFetchesBeforeText,
+  `text 被 fence 丢弃必须触发 meta 对账（tl1444，baseline=${metaFetchesBeforeText} now=${metaFetches}）`,
+);
+assert.equal(scopedReplayCalls - replayCallsBeforeText, 1, "text 被 fence 丢弃走同一次去抖对账（恰好一次权威重放入口）");
 
 await act(async () => {
   root.unmount();
