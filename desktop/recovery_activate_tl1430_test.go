@@ -404,10 +404,16 @@ func TestSetActiveSessionVersionRepresentativeAndChainSelectedFollowSwitch(t *te
 }
 
 // The field-reported conversation ("人类专属调研员1") carries damage history.
-// A damaged tail must not silently void the user's explicit adoption: the
-// switch receipt fired, yet preferred without a digest is refused by
-// RecoveryPreferenceCurrent at promote time, so representative/reopen never
-// moved. This test pins whatever behavior the fix lands on.
+// A damaged tail must not silently void the user's explicit adoption at ANY
+// downstream read. Two rounds of field reports pin the two halves:
+//   - tl1430b: preferred without a digest is refused by RecoveryPreferenceCurrent
+//     at promote time (receipt fired, nothing moved);
+//   - tl1430-2 (package 79): the digest was written, but the catalog projection
+//     re-proved the choice through the strict snapshot
+//     (LoadSessionContentSnapshot fail-closes on damaged/dirty logs), dropped
+//     the flag, and representative/reopen kept the old line.
+// The write side, the promote check, AND the projection must accept the same
+// tolerant-replay proof. Hard assertions: any half slipping fails here.
 func TestSetActiveSessionVersionAdoptsForkWithDamagedTail(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	// Root stays the LONGER line on purpose: with a longer fork the linear-
@@ -440,20 +446,95 @@ func TestSetActiveSessionVersionAdoptsForkWithDamagedTail(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("fork meta after switch: ok=%v err=%v", ok, err)
 	}
-	t.Logf("damaged fork preferred=%v digestEmpty=%v", meta.RecoveryPreferred, meta.RecoveryPreferredDigest == "")
+	if !meta.RecoveryPreferred || strings.TrimSpace(meta.RecoveryPreferredDigest) == "" {
+		t.Fatalf("damaged fork preference after switch: preferred=%v digestEmpty=%v, want flag+digest (write side)", meta.RecoveryPreferred, meta.RecoveryPreferredDigest == "")
+	}
 
+	// Ring 4 (tl1430-2): the projection must keep the adoption. The next
+	// background scan reconciles the directory again; every read below runs on
+	// that reconciled catalog.
 	if err := catalog.ReconcileDirectory(context.Background(), sessioncatalog.DirectoryTarget{Path: filepath.Dir(root), Scope: "global"}); err != nil {
 		t.Fatal(err)
+	}
+	record, ok, err := catalog.GetSession(context.Background(), fork)
+	if err != nil || !ok {
+		t.Fatalf("fork catalog row after reconcile: ok=%v err=%v", ok, err)
+	}
+	// The projection persists the preference as filing role (the bare scan-time
+	// flag is consumed in-memory by promoteCanonicalLeaves), so preferred+
+	// canonical IS the persisted form of the explicit choice.
+	if record.RecoveryRole != sessioncatalog.RecoveryRolePreferred || !record.RecoveryCanonical {
+		t.Fatalf("catalog projection role after damaged-fork switch = %s canonical=%v, want preferred+canonical (projection dropped the tolerant-proof preference): %+v", record.RecoveryRole, record.RecoveryCanonical, record)
 	}
 	topic, ok, err := catalog.GetTopic(context.Background(), sessioncatalog.TopicKey{Scope: "global", TopicID: "topic"})
 	if err != nil || !ok {
 		t.Fatalf("topic: ok=%v err=%v", ok, err)
 	}
-	rep := strings.TrimSpace(topic.RepresentativePath)
-	if !sameRecoveryLineagePath(rep, fork) {
-		t.Logf("DIAG: representative after damaged-fork switch = %q (fork=%q) — adoption voided at promote time", rep, fork)
-	} else {
-		t.Logf("DIAG: representative followed the damaged-fork adoption")
+	if rep := strings.TrimSpace(topic.RepresentativePath); !sameRecoveryLineagePath(rep, fork) {
+		t.Fatalf("representative after damaged-fork switch = %q (fork=%q) — adoption voided downstream", rep, fork)
+	}
+
+	// Ring 1 surface: the versions table the user watches. State and mainline
+	// row must move in place, immediately, from the reconciled catalog.
+	view := app.GetRecoveryLineage(ProjectTopicKey{Scope: "global", TopicID: "topic", Path: fork})
+	if view.State != "preferred" {
+		t.Fatalf("lineage state after damaged-fork switch = %+v, want preferred", view)
+	}
+	for _, member := range view.Members {
+		if member.Canonical != sameRecoveryLineagePath(member.Path, fork) {
+			t.Fatalf("canonical member after damaged-fork switch = %+v, want only the adopted fork", member)
+		}
+	}
+}
+
+// tl1430-2 reopen nail: the same switch, observed the way the user checks it -
+// a brand-new app instance (new tab or full restart) must land on the adopted
+// line, both at the open-target resolution (the first decision of every topic
+// open) and at the actual transcript a fresh controller loads. The stale-path
+// shape (sidebar still carrying the old row's path) is the one that shipped in
+// package 79.
+func TestSetActiveSessionVersionDamagedForkReopenFollowsAdoption(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	root, fork, catalog := activateTestSetup(t,
+		[]string{"shared question", "shared answer", "root unique", "root answer", "root tail", "root answer 2"},
+		[]string{"shared question", "shared answer", "fork unique", "fork answer"})
+	f, err := os.OpenFile(store.SessionEventLog(fork), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("{\"schema_version\":1,\"type\":\"append\",\"trunc"); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	app := activateTestApp(catalog)
+	if err := app.SetActiveSessionVersion(RecoveryPreferenceRequest{Path: fork}); err != nil {
+		t.Fatalf("activate damaged fork: %v", err)
+	}
+	if err := catalog.ReconcileDirectory(context.Background(), sessioncatalog.DirectoryTarget{Path: filepath.Dir(root), Scope: "global"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A fresh instance: empty tabs, same catalog - the restart shape.
+	reopened := activateTestApp(catalog)
+	if _, sessionPath := reopened.resolveOpenTopicSessionPath("global", "", root); !sameRecoveryLineagePath(sessionPath, fork) {
+		t.Fatalf("reopen (stale sidebar path %q) resolved to %q, want the adopted fork", root, sessionPath)
+	}
+	// The startup-restore retarget (retargetOpenTabsToContinuations) asks the
+	// same predicate; the restored old-mainline tab must fold onto the fork.
+	if continued := reopened.continuePathForOpen(root); !sameRecoveryLineagePath(continued, fork) {
+		t.Fatalf("continuation for restored tab %q = %q, want the adopted fork", root, continued)
+	}
+	// What a fresh controller instance actually loads on that resolution.
+	// The replay counts the seeded system message: 1 system + 4 fork contents.
+	// The torn tail must not leak extra messages into the readable prefix.
+	loaded, err := agent.LoadSession(fork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := loaded.Snapshot()
+	if len(snapshot) != 5 || snapshot[len(snapshot)-1].Content != "fork answer" {
+		t.Fatalf("reopen replay = %d messages (last %q), want the adopted fork's readable prefix (system+4) ending at %q", len(snapshot), snapshot[len(snapshot)-1].Content, "fork answer")
 	}
 }
 
