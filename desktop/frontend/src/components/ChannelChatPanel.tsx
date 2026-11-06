@@ -37,9 +37,7 @@ import type {
   CollabChannelMessageView,
   CollabChannelView,
 } from "../lib/bridge";
-import { getLocale, useT } from "../lib/i18n";
-// 任务1012：消息列表时间戳补日期——与消息气泡同一三档契约（lib/messageTimestamp.ts）。
-import { formatMessageTimestamp } from "../lib/messageTimestamp";
+import { useT } from "../lib/i18n";
 // tl1439 修②：「上次打开的群」记忆落盘（读侧恢复由 CollabChatView 注入初值）。
 import { writeCollabChatLastChannelId } from "../lib/collabChatMemory";
 
@@ -101,26 +99,7 @@ function writeLastSeenCounts(counts: Record<string, number>): void {
   }
 }
 
-function formatTime(ms: number): string {
-  if (!ms) return "";
-  const date = new Date(ms);
-  // 任务1012：三档（同日 HH:mm / 跨天 MM-DD HH:mm / 跨年 YYYY-MM-DD HH:mm），
-  // 完整本地化日期留给 title 悬浮兜底。
-  return formatMessageTimestamp(date, new Date(), getLocale());
-}
-
-function shortId(id: string): string {
-  return id.length > 18 ? `${id.slice(0, 17)}…` : id;
-}
-
 /** 工作区路径的短名（末段）——层级浏览的分组标题（tl1216）。 */
-function inviteWorkspaceLabel(root: string): string {
-  const trimmed = root.replace(/[\\/]+$/, "").trim();
-  if (!trimmed) return trimmed;
-  const parts = trimmed.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || trimmed;
-}
-
 export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, initialOpenChannelId }: { bindings?: ChannelChatBindings; onOpenSession?: (contactId: string) => void; onViewDirectChains?: () => void; initialOpenChannelId?: string | null } = {}) {
   const t = useT();
   const b: ChannelChatBindings = bindings ?? appBridge;

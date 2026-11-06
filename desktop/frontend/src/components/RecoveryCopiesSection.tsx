@@ -1912,7 +1912,7 @@ export function RecoveryCopiesSection() {
               )}
             </div>
             {model.currentMainChain ? (
-              <div className="rc-sub2 rc-clip3" title={previewTitle(model.currentMainChain, t("settings.recoveryCopiesMain"))}>
+              <div className="rc-sub2 rc-clip3 rc-chain__preview" title={previewTitle(model.currentMainChain, t("settings.recoveryCopiesMain"))}>
                 <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                 {tailPreviewText(model.currentMainChain)}
               </div>
@@ -1926,7 +1926,7 @@ export function RecoveryCopiesSection() {
           <td className="rc-col-ops">
             <div className="rc-ops">
               <button
-                className="btn btn--secondary btn--small rc-chain__preview-btn"
+                className="btn btn--secondary btn--small"
                 type="button"
                 title={t("settings.recoveryCopiesStepMainPreviewHint")}
                 disabled={busy || scanningAll || !model.currentMainChain}
@@ -2034,7 +2034,7 @@ export function RecoveryCopiesSection() {
               <td className="rc-col-ops">
                 <div className="rc-ops">
                   <button
-                    className="btn btn--secondary btn--small rc-chain__preview-btn"
+                    className="btn btn--secondary btn--small"
                     type="button"
                     title={t("settings.recoveryCopiesStepPreviewHint")}
                     disabled={busy || scanningAll || !chain}
@@ -2139,7 +2139,7 @@ export function RecoveryCopiesSection() {
               <td className="rc-col-ops">
                 <div className="rc-ops">
                   <button
-                    className="btn btn--secondary btn--small rc-chain__preview-btn"
+                    className="btn btn--secondary btn--small"
                     type="button"
                     title={t("settings.recoveryCopiesPreviewBtnHint")}
                     disabled={busy || scanningAll}

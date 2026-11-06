@@ -97,7 +97,8 @@ console.log("\nrecovery panel header/hover contract (tl1415 + tl1415b + tl1415b-
   ok(!/display:\s*flex/.test(chainBlocks), "D④ the version row drops the old flex layout (错排根因: flex-on-tr 拆栅格)");
   ok(!/flex-wrap|gap:/.test(chainBlocks), "D④ the version row drops the old flex gap/wrap");
   ok(selectorBlocks(styles, ".rc-chain--recommended > td").length > 0, "D④ the longer-chain highlight hangs on the cells (行级 box-shadow 在表格行不可靠)");
-  ok(selectorBlocks(styles, ".rc-chain__preview").join("\n").trim() === "", "D④ the preview line's old flex/nowrap styles are retired (布局归 rc-sub2+rc-clip3)");
+  ok(!/display:\s*flex/.test(selectorBlocks(styles, ".rc-chain__preview").join("")), "D1446b the preview line drops the old flex layout (class name stays as hook, color-only rule)");
+  ok(!/white-space:\s*nowrap/.test(selectorBlocks(styles, ".rc-chain__preview").join("")), "D1446b the preview line drops the old nowrap (layout moved to rc-sub2+rc-clip3)");
 }
 
 // ─── 组件渲染断言(② 单表+列名;③ hover title;⑩ 形态;A-D 四点) ───

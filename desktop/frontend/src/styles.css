@@ -40417,6 +40417,9 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
 }
 .rc-versions__health { margin-top: 6px; }
+/* tl1415b-2: 旧 .rc-chain__preview flex/nowrap 样式已退役(类名保留作 hook,样式归 rc-sub2/rc-clip3)。 */
+.rc-chain__preview { color: inherit; }
+
 .rc-detail { padding-top: 4px; }
 .rc-detail__hcheck { width: 28px; }
 .rc-detail__check { width: 28px; }
