@@ -243,8 +243,12 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
 
   ok(!forkCopyRow?.querySelector("input[type=checkbox]"), "② the main-file copy row has no delete-selection checkbox");
   ok(!forkCopyRow?.querySelector(".rc-delete"), "② the main-file copy row has no delete entry (删副本≠删主线)");
+  ok(!Array.from(forkCopyRow?.querySelectorAll("button") ?? []).some((b) => b.textContent?.includes("switch to this version")),
+    "② the main-file copy row offers no switch-to-this-version (它就是当前主线,口径⑦/防 tl1430 no-op 形态)");
   ok(Boolean(plainCopyRow?.querySelector("input[type=checkbox]")), "② the regular copy row keeps its checkbox");
   ok(Boolean(plainCopyRow?.querySelector(".rc-delete")), "② the regular copy row keeps its delete entry");
+  ok(Array.from(plainCopyRow?.querySelectorAll("button") ?? []).some((b) => b.textContent?.includes("switch to this version")),
+    "② the regular copy row keeps its switch entry");
 
   const demotedMainVersionRow = Array.from(document.querySelectorAll<HTMLTableRowElement>("tr.rc-chain")).find(
     (r) => r.querySelector(".rc-clip1")?.textContent === "gc",

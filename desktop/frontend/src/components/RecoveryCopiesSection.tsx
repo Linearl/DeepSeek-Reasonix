@@ -2047,20 +2047,24 @@ export function RecoveryCopiesSection() {
                         : t("settings.recoveryCopiesPreviewBtn")}
                   </button>
                   {/* 口径⑤第②步:切换到此版本(主线行跟随/热切——tl1430 语义,
-                      activate 本体未动)。当前主线行不提供切换(口径⑦)。 */}
-                  <button
-                    className="btn btn--secondary btn--small"
-                    type="button"
-                    title={
-                      chain?.covered
-                        ? t("settings.sessionVersionsActivateCoveredHint")
-                        : t("settings.recoveryCopiesStepActivateHint")
-                    }
-                    disabled={busy || activating !== null || !chain || Boolean(chain?.covered)}
-                    onClick={() => chain && void activate(chain)}
-                  >
-                    {activating === copy.path ? "…" : t("settings.sessionVersions.activate")}
-                  </button>
+                      activate 本体未动)。当前主线行不提供切换(口径⑦);tl1448:
+                      主线本体副本行(同 stem 双行)同理——它就是当前主线,提供
+                      切换只会复现 tl1430 的「把主线设为主线」静默 no-op 形态。 */}
+                  {!isMainFile && (
+                    <button
+                      className="btn btn--secondary btn--small"
+                      type="button"
+                      title={
+                        chain?.covered
+                          ? t("settings.sessionVersionsActivateCoveredHint")
+                          : t("settings.recoveryCopiesStepActivateHint")
+                      }
+                      disabled={busy || activating !== null || !chain || Boolean(chain?.covered)}
+                      onClick={() => chain && void activate(chain)}
+                    >
+                      {activating === copy.path ? "…" : t("settings.sessionVersions.activate")}
+                    </button>
+                  )}
                   {/* tl1448:主线本体副本行(同 stem 双行)不提供删除入口——删
                       副本≠删主线,该行的删除请求在渲染层就走不到后端。 */}
                   {!copy.orphan && !isMainFile && (
