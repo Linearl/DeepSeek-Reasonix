@@ -81,6 +81,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalSessionWall: (s: SettingsView) => Boolean(s.experimentalSessionWall),
   // 任务 686：工作流可视化面板（默认关）。
   experimentalWorkflowPanel: (s: SettingsView) => Boolean(s.experimentalWorkflowPanel),
+  // tl1454：工作流面板家族子键（用户自定义模板视图）。
+  experimentalWorkflowTemplates: (s: SettingsView) => Boolean(s.experimentalWorkflowTemplates),
   experimentalSubagentPanel: (s: SettingsView) => Boolean(s.experimentalSubagentPanel),
   experimentalSubagentDetail: (s: SettingsView) => Boolean(s.experimentalSubagentDetail),
   experimentalSubagentPolicy: (s: SettingsView) => Boolean(s.experimentalSubagentPolicy),

@@ -200,7 +200,8 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   ok(goEdit.includes("func (c *Config) SetExperimentalWorkflowPanel(enabled bool) error"), "Go config carries the setter");
   const goRender = readFileSync(`${repoRoot}/internal/config/render.go`, "utf8");
   ok(goRender.includes('experimental_workflow_panel = %v'), "render.go writes the key unconditionally (fixed-key-set rule)");
-  ok(goRender.includes('{"workflowPanel", LabTierUnstable, []string{"experimental_workflow_panel"}}'), "labFeatureTiers registers workflowPanel at the unstable tier");
+  // tl1454：工作流面板家族子键 experimental_workflow_templates 随特性登记（档位不变）。
+  ok(goRender.includes('{"workflowPanel", LabTierUnstable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}}'), "labFeatureTiers registers workflowPanel at the unstable tier");
 
   // desktop 快照层：双视图 + 双映射（81/123 两视图课）+ App setter。
   const settingsApp = readFileSync(`${repoRoot}/desktop/settings_app.go`, "utf8");
@@ -225,7 +226,8 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   // 成员行形态（容器 sessionTaskPanels，成员 tier unstable；键零变化）。
   ok(layoutDefault.includes('id: "sessionTaskPanels"') && layoutDefault.includes('{ id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable" }'), "built-in lab layout carries the card (sessionTaskPanels member since tl1309)");
   const layoutYaml = read("src/lab/lab-layout.yaml");
-  ok(layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalSessionWall, experimentalWorkflowPanel, experimentalCompletionSummary]"), "lab-layout.yaml mirrors the card (724 同构, sessionTaskPanels member since tl1309)");
+  // tl1454：卡片灯追加家族子键 experimentalWorkflowTemplates（附属行，非成员）。
+  ok(layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalSessionWall, experimentalWorkflowPanel, experimentalWorkflowTemplates, experimentalCompletionSummary]"), "lab-layout.yaml mirrors the card (724 同构, sessionTaskPanels member since tl1309)");
   // 预存红修复（tl933）：pane 分支已从 SettingsPanel.tsx 迁至实验室卡片面
   // ExperimentalLabSection.tsx（tl1193b 重构欠账），断言随迁。
   const labSection = read("src/components/ExperimentalLabSection.tsx");

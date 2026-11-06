@@ -8,6 +8,15 @@ import type { InvocationRequest } from "./invocationDisplay";
 import type { PlanUsageResult } from "./planUsage";
 import type { FollowupBindings } from "./pendingFollowup";
 import type { ACPListenStatusView, OutputStyleListView, QuickCommandEntry } from "./settingsViewTypes";
+import type {
+  WorkflowTemplateHistoryEntry,
+  WorkflowTemplateList,
+  WorkflowTemplateRunPreview,
+  WorkflowTemplateRunStart,
+  WorkflowTemplateSaveResult,
+  WorkflowTemplateSource,
+  WorkflowTemplateValidation,
+} from "./workflowTypes";
 import { addBreadcrumb, noteActivity } from "./breadcrumbs";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
@@ -1378,6 +1387,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ListTrashedSessions(): Promise<SessionMeta[]>;
   ResumeSession(path: string): Promise<HistoryMessage[]>;
   ResumeSessionForTab(tabID: string, path: string): Promise<HistoryMessage[]>;
+  // tl1415c exported this Go method (recovery lineage switch) without a TS
+  // counterpart; freshly generated bindings fail _CheckGenToApp until declared.
+  ResumeSessionForTabExact(tabID: string, path: string): Promise<HistoryMessage[]>;
   ResumeSessionPage(path: string, limit: number): Promise<HistoryPage>;
   ResumeSessionPageForTab(tabID: string, path: string, limit: number): Promise<HistoryPage>;
   OpenChannelSessionForTab(tabID: string, path: string): Promise<HistoryMessage[]>;
@@ -1779,6 +1791,18 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // tl1434: 节点详情「工作过程」——只读回放某节点第 occurrence 次（1-based）
   // 子代理执行的 transcript（服务侧两道归属证明；只读，绝不唤醒子代理会话）。
   ReadWorkflowNodeSubagent(runId: string, nodeId: string, occurrence: number): Promise<HistoryMessage[]>;
+  // tl1454: user workflow templates (workflowPanel family sub-key). Writes and
+  // runs self-check the switch server-side; runs bind to the active tab session.
+  SetExperimentalWorkflowTemplates(enabled: boolean): Promise<void>;
+  WorkflowTemplates(): Promise<WorkflowTemplateList>;
+  WorkflowTemplateSource(name: string): Promise<WorkflowTemplateSource>;
+  WorkflowTemplateInvalidSource(file: string): Promise<string>;
+  WorkflowTemplateValidate(doc: string): Promise<WorkflowTemplateValidation>;
+  WorkflowTemplateSave(doc: string, expectedVersion: string): Promise<WorkflowTemplateSaveResult>;
+  WorkflowTemplateHistory(name: string): Promise<WorkflowTemplateHistoryEntry[]>;
+  WorkflowTemplateVersionSource(name: string, version: string): Promise<string>;
+  WorkflowTemplateRunPreview(name: string): Promise<WorkflowTemplateRunPreview>;
+  WorkflowTemplateRun(name: string): Promise<WorkflowTemplateRunStart>;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; call-time gate, next scheduled run applies it).
   SetExperimentalHeartbeatBackground(enabled: boolean): Promise<void>;
@@ -5475,6 +5499,9 @@ function makeMockApp(): AppBindings {
 	    async ResumeSessionForTab(_tabID: string, path: string) {
 	      return this.ResumeSession(path);
 	    },
+	    async ResumeSessionForTabExact(_tabID: string, path: string) {
+	      return this.ResumeSession(path);
+	    },
 	    async ResumeSessionPage(path: string, limit = 60) {
 	      return mockHistoryPage(await this.ResumeSession(path), 0, limit);
 	    },
@@ -6951,6 +6978,35 @@ function makeMockApp(): AppBindings {
     // 「无已登记记录」降级文案，不伪造过程回放。
     async ReadWorkflowNodeSubagent() {
       return [] as HistoryMessage[];
+    },
+    // tl1454：浏览器 dev mock 无工作流服务——清单诚实空表，写/运行明确拒绝。
+    async SetExperimentalWorkflowTemplates() {},
+    async WorkflowTemplates() {
+      return { templates: [], invalid: [] } as WorkflowTemplateList;
+    },
+    async WorkflowTemplateSource() {
+      throw new Error("workflow templates are not available in this preview");
+    },
+    async WorkflowTemplateInvalidSource() {
+      throw new Error("workflow templates are not available in this preview");
+    },
+    async WorkflowTemplateValidate() {
+      return { ok: false, diagnostic: { kind: "syntax", message: "workflow templates are not available in this preview" } } as WorkflowTemplateValidation;
+    },
+    async WorkflowTemplateSave() {
+      throw new Error("workflow templates are not available in this preview");
+    },
+    async WorkflowTemplateHistory() {
+      return [] as WorkflowTemplateHistoryEntry[];
+    },
+    async WorkflowTemplateVersionSource() {
+      throw new Error("workflow templates are not available in this preview");
+    },
+    async WorkflowTemplateRunPreview() {
+      throw new Error("workflow templates are not available in this preview");
+    },
+    async WorkflowTemplateRun() {
+      throw new Error("workflow templates are not available in this preview");
     },
     async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},

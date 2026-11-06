@@ -64,6 +64,25 @@ type workflowRunNodeWire struct {
 	// 下标+1=occurrence）。空=无关联（老 run/ephemeral 派发/非子代理节点），
 	// 面板「工作过程」入口按此降级。append-only 新字段，旧快照不受影响。
 	SubagentRefs []string `json:"subagentRefs,omitempty"`
+	// tl1454：节点用量/失败原因码/非致命契约提示（模板视图开启时渲染）。
+	Tokens   int    `json:"tokens,omitempty"`
+	Requests int    `json:"requests,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	Contract string `json:"contract,omitempty"`
+}
+
+// workflowRunBudgetWire 是运行级预算上限（tl1454；未声明的轴为 0）。
+type workflowRunBudgetWire struct {
+	Tokens int   `json:"tokens,omitempty"`
+	Rounds int   `json:"rounds,omitempty"`
+	WallMs int64 `json:"wallMs,omitempty"`
+}
+
+// workflowRunFailureWire 是运行失败的结构化定位（tl1454）。
+type workflowRunFailureWire struct {
+	NodeID string `json:"nodeId,omitempty"`
+	Reason string `json:"reason"`
+	Detail string `json:"detail"`
 }
 
 // workflowRunWire 是一次运行的完整 wire 快照。
@@ -79,6 +98,14 @@ type workflowRunWire struct {
 	// Resumable（任务 1316）：服务侧可续判定（interrupted+定义在+指纹匹配）。
 	// 面板「续跑」钮的可见性权威；前端不算指纹。
 	Resumable bool `json:"resumable,omitempty"`
+	// tl1454：模板版本 / 发起来源 / 预算与用量 / 失败定位（模板视图消费，
+	// 默认视图忽略）。
+	Version      string                  `json:"version,omitempty"`
+	Origin       string                  `json:"origin,omitempty"`
+	Budget       *workflowRunBudgetWire  `json:"budget,omitempty"`
+	UsedTokens   int                     `json:"usedTokens,omitempty"`
+	UsedRequests int                     `json:"usedRequests,omitempty"`
+	Failure      *workflowRunFailureWire `json:"failure,omitempty"`
 }
 
 // workflowDagWireFromDef 把引擎定义映射成面板 DAG 视图。节点名即节点 id
@@ -145,6 +172,7 @@ func workflowRunsWire() []workflowRunWire {
 			DAG:       workflowDagWireFromDef(s.Def),
 			Resumable: s.Resumable,
 		}
+		applyTemplateRunWire(&wire, s.Template)
 		if !s.EndedAt.IsZero() {
 			wire.EndedAt = s.EndedAt.UnixMilli()
 		}
@@ -163,6 +191,7 @@ func workflowRunsWire() []workflowRunWire {
 			if len(n.SubagentRefs) > 0 {
 				node.SubagentRefs = n.SubagentRefs
 			}
+			node.Tokens, node.Requests, node.Reason, node.Contract = n.Usage.Tokens, n.Usage.Requests, n.Usage.Reason, n.Usage.Contract
 			wire.Nodes = append(wire.Nodes, node)
 		}
 		out = append(out, wire)
@@ -289,4 +318,16 @@ func readWorkflowNodeSubagentMessages(svc *workflow.Service, runID, nodeID strin
 		notFound = fmt.Errorf("subagent %q does not belong to this run's session", ref)
 	}
 	return nil, notFound
+}
+
+// applyTemplateRunWire 投影 tl1454 的运行附加面（零值字段 omitempty 省略）。
+func applyTemplateRunWire(wire *workflowRunWire, t workflow.RunTemplateView) {
+	wire.Version, wire.Origin = t.Version, t.Origin
+	wire.UsedTokens, wire.UsedRequests = t.UsedTokens, t.UsedRequests
+	if t.Budget != nil {
+		wire.Budget = &workflowRunBudgetWire{Tokens: t.Budget.Tokens, Rounds: t.Budget.Rounds, WallMs: t.Budget.WallDuration().Milliseconds()}
+	}
+	if t.Failure != nil {
+		wire.Failure = &workflowRunFailureWire{NodeID: t.Failure.NodeID, Reason: t.Failure.Reason, Detail: t.Failure.Detail}
+	}
 }

@@ -15733,6 +15733,265 @@ button.statusbar__mcp:focus-visible {
   font-size: 10px;
   color: var(--fg-dim);
 }
+/* tl1454：工作流模板视图（实验开关开启才挂载；关闭时这些类无 DOM 引用）。
+   画布在模板视图期间保持挂载（视口/滚轮监听不丢），用 hidden 收起——作者
+   样式 display:flex 会压过 UA 的 [hidden]，需显式归零。 */
+.wf-panel__body[hidden] {
+  display: none;
+}
+.wf-panel__action--on {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.wf-panel__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.wf-panel__failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 6px 14px;
+  font-size: var(--text-xs);
+  color: var(--fg);
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-elev));
+}
+.wf-panel__failure strong {
+  color: var(--danger);
+}
+.wf-panel__failure-tech {
+  font-family: var(--mono);
+  color: var(--fg-dim);
+  overflow-wrap: anywhere;
+}
+.wf-tpl {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.wf-tpl__list {
+  flex: none;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-elev);
+  overflow-y: auto;
+}
+.wf-tpl__new {
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.wf-tpl__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.wf-tpl__item:hover,
+.wf-tpl__item--active {
+  color: var(--fg);
+  background: var(--bg-soft);
+  border-color: var(--border);
+}
+.wf-tpl__item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wf-tpl__item-meta {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+}
+.wf-tpl__badge {
+  flex: none;
+  font-size: var(--text-2xs);
+  color: var(--danger);
+}
+.wf-tpl__main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  overflow-y: auto;
+}
+.wf-tpl__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.wf-tpl__bar-name {
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+.wf-tpl__spacer {
+  flex: 1;
+}
+.wf-tpl__dirty {
+  font-size: var(--text-2xs);
+  color: var(--warn);
+}
+.wf-tpl__editor {
+  flex: 1;
+  min-height: 220px;
+  resize: none;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  tab-size: 2;
+}
+.wf-tpl__status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-xs);
+}
+.wf-tpl__diag {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-elev));
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.wf-tpl__diag-human {
+  color: var(--danger);
+}
+.wf-tpl__diag-where {
+  color: var(--fg-dim);
+}
+.wf-tpl__diag-tech {
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+  overflow-wrap: anywhere;
+}
+.wf-tpl__ok {
+  color: var(--ok);
+}
+.wf-tpl__err {
+  color: var(--danger);
+}
+.wf-tpl__warn {
+  font-size: var(--text-xs);
+  color: var(--warn);
+}
+.wf-tpl__note,
+.wf-tpl__empty {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+.wf-tpl__history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+}
+.wf-tpl__history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wf-tpl__contracts {
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+.wf-tpl__contracts table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+.wf-tpl__contracts th,
+.wf-tpl__contracts td {
+  padding: 3px 6px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+.wf-tpl__confirm {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 92%);
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  font-size: var(--text-xs);
+  color: var(--fg);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--bg) 60%, transparent);
+}
+.wf-tpl__confirm h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.wf-tpl__confirm-section {
+  margin-top: 4px;
+  color: var(--fg-dim);
+}
+.wf-tpl__gate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.wf-tpl__gate code {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+.wf-tpl__gate--denied {
+  color: var(--danger);
+}
+.wf-tpl__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.wf-tpl__primary {
+  color: var(--fg);
+  border-color: var(--accent);
+}
 
 /* ── tl1456：资源管理器面板（命令面板 → 工具与诊断）────────────────
     复用 wf-panel 骨架（drawer-backdrop 定位/层级 + 工具条/关放动画），

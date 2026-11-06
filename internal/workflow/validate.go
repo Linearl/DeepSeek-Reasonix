@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -10,16 +10,20 @@ import (
 // per-type required fields, edges, acyclicity, interpolation safety, fixer
 // isolation, and the strong-gate dominance rule. A workflow that starts and
 // then discovers it cannot finish has already spent tokens — so all of this
-// happens up front.
+// happens up front. Every failure is a *ValidationError (tl1454) whose text is
+// the historical message and whose Path locates it for the template editor.
 func (wf *Workflow) Validate() error {
 	if wf.Version != SchemaVersion {
-		return fmt.Errorf("workflow: version %d unsupported (want %d)", wf.Version, SchemaVersion)
+		return verr(DiagVersion, "version", "", "workflow: version %d unsupported (want %d)", wf.Version, SchemaVersion)
 	}
 	if strings.TrimSpace(wf.Name) == "" {
-		return fmt.Errorf("workflow: name is required")
+		return verr(DiagField, "name", "", "workflow: name is required")
 	}
 	if len(wf.Nodes) == 0 {
-		return fmt.Errorf("workflow: at least one node is required")
+		return verr(DiagStructure, "nodes", "", "workflow: at least one node is required")
+	}
+	if err := wf.validateBudget(); err != nil {
+		return err
 	}
 	index, err := wf.validateNodes()
 	if err != nil {
@@ -29,7 +33,7 @@ func (wf *Workflow) Validate() error {
 	if err != nil {
 		return err
 	}
-	if err := detectCycle(wf, deps); err != nil {
+	if err := detectCycle(wf, deps, index); err != nil {
 		return err
 	}
 	if err := wf.validateFixers(index); err != nil {
@@ -41,6 +45,32 @@ func (wf *Workflow) Validate() error {
 	return wf.validateStrongGates(index, deps)
 }
 
+// validateBudget checks the tl1454 run budget: non-negative axes, a positive
+// wall duration, and at least one axis actually set (an empty block would
+// silently bound nothing).
+func (wf *Workflow) validateBudget() error {
+	b := wf.Budget
+	if b == nil {
+		return nil
+	}
+	if b.Tokens < 0 {
+		return verr(DiagField, "budget.tokens", "", "workflow: budget.tokens must be >= 0")
+	}
+	if b.Rounds < 0 {
+		return verr(DiagField, "budget.rounds", "", "workflow: budget.rounds must be >= 0")
+	}
+	if w := strings.TrimSpace(b.Wall); w != "" {
+		d, err := time.ParseDuration(w)
+		if err != nil || d <= 0 {
+			return verr(DiagField, "budget.wall", "", "workflow: budget.wall %q is not a positive Go duration", b.Wall)
+		}
+	}
+	if b.Tokens == 0 && b.Rounds == 0 && strings.TrimSpace(b.Wall) == "" {
+		return verr(DiagField, "budget", "", "workflow: budget sets no limit; declare tokens, rounds or wall (or drop the budget block)")
+	}
+	return nil
+}
+
 // validateNodes checks id shape/uniqueness and per-type required fields, and
 // returns the id → node index.
 func (wf *Workflow) validateNodes() (map[string]int, error) {
@@ -48,71 +78,86 @@ func (wf *Workflow) validateNodes() (map[string]int, error) {
 	for i := range wf.Nodes {
 		n := &wf.Nodes[i]
 		if !nodeIDPattern.MatchString(n.ID) {
-			return nil, fmt.Errorf("workflow: node %d: id %q must match %s", i+1, n.ID, nodeIDPattern)
+			return nil, verr(DiagField, nodePath(i, "id"), "", "workflow: node %d: id %q must match %s", i+1, n.ID, nodeIDPattern)
 		}
 		if prior, dup := index[n.ID]; dup {
-			return nil, fmt.Errorf("workflow: node %d: id %q already used by node %d", i+1, n.ID, prior+1)
+			return nil, verr(DiagStructure, nodePath(i, "id"), n.ID, "workflow: node %d: id %q already used by node %d", i+1, n.ID, prior+1)
 		}
 		index[n.ID] = i
-		if err := validateNodeType(n); err != nil {
+		if err := validateNodeType(n, i); err != nil {
 			return nil, err
 		}
 	}
 	return index, nil
 }
 
-func validateNodeType(n *Node) error {
+func validateNodeType(n *Node, i int) error {
 	switch n.Type {
 	case NodeSubagent:
 		if strings.TrimSpace(n.Prompt) == "" {
-			return fmt.Errorf("workflow: subagent node %q: prompt is required", n.ID)
+			return verr(DiagField, nodePath(i, "prompt"), n.ID, "workflow: subagent node %q: prompt is required", n.ID)
 		}
-		for _, f := range n.Result {
+		for j, f := range n.Result {
 			if !fieldPattern.MatchString(f.Name) {
-				return fmt.Errorf("workflow: subagent node %q: result field name %q must match %s", n.ID, f.Name, fieldPattern)
+				return verr(DiagField, nodePath(i, "result["+strconv.Itoa(j)+"].name"), n.ID, "workflow: subagent node %q: result field name %q must match %s", n.ID, f.Name, fieldPattern)
 			}
 		}
 		if n.FindingsField != "" {
 			if _, ok := n.ResultField(n.FindingsField); !ok {
-				return fmt.Errorf("workflow: subagent node %q: findings_field %q is not a declared result field", n.ID, n.FindingsField)
+				return verr(DiagReference, nodePath(i, "findings_field"), n.ID, "workflow: subagent node %q: findings_field %q is not a declared result field", n.ID, n.FindingsField)
 			}
 		}
+		return validateExecutionTimeout(n, i)
 	case NodeGate:
 		if strings.TrimSpace(n.Command) == "" {
-			return fmt.Errorf("workflow: gate node %q: command is required", n.ID)
+			return verr(DiagField, nodePath(i, "command"), n.ID, "workflow: gate node %q: command is required", n.ID)
 		}
 		if strings.Contains(n.Command, "{{") {
-			return fmt.Errorf("workflow: gate node %q: command is a literal and may not contain interpolations", n.ID)
+			return verr(DiagField, nodePath(i, "command"), n.ID, "workflow: gate node %q: command is a literal and may not contain interpolations", n.ID)
 		}
 		if n.Tier != "" && n.Tier != TierFast && n.Tier != TierStrong {
-			return fmt.Errorf("workflow: gate node %q: tier %q must be %s or %s", n.ID, n.Tier, TierFast, TierStrong)
+			return verr(DiagField, nodePath(i, "tier"), n.ID, "workflow: gate node %q: tier %q must be %s or %s", n.ID, n.Tier, TierFast, TierStrong)
 		}
 		if t := strings.TrimSpace(n.Timeout); t != "" {
 			d, err := time.ParseDuration(t)
 			if err != nil || d <= 0 {
-				return fmt.Errorf("workflow: gate node %q: timeout %q is not a positive Go duration", n.ID, n.Timeout)
+				return verr(DiagField, nodePath(i, "timeout"), n.ID, "workflow: gate node %q: timeout %q is not a positive Go duration", n.ID, n.Timeout)
 			}
 		}
 		if n.Loop != nil {
 			if !nodeIDPattern.MatchString(n.Loop.Fixer) {
-				return fmt.Errorf("workflow: gate node %q: loop.fixer %q must be a node id", n.ID, n.Loop.Fixer)
+				return verr(DiagField, nodePath(i, "loop.fixer"), n.ID, "workflow: gate node %q: loop.fixer %q must be a node id", n.ID, n.Loop.Fixer)
 			}
 			if n.Loop.MaxRounds < 1 {
-				return fmt.Errorf("workflow: gate node %q: loop.max_rounds must be >= 1", n.ID)
+				return verr(DiagField, nodePath(i, "loop.max_rounds"), n.ID, "workflow: gate node %q: loop.max_rounds must be >= 1", n.ID)
 			}
 		}
 	case NodePhase:
 		if strings.TrimSpace(n.Label) == "" {
-			return fmt.Errorf("workflow: phase node %q: label is required", n.ID)
+			return verr(DiagField, nodePath(i, "label"), n.ID, "workflow: phase node %q: label is required", n.ID)
 		}
 	case NodeJoin:
 		// no per-type fields
 	case NodeConfirm:
 		if !nodeIDPattern.MatchString(n.Target) {
-			return fmt.Errorf("workflow: confirm node %q: target %q must be a node id", n.ID, n.Target)
+			return verr(DiagField, nodePath(i, "target"), n.ID, "workflow: confirm node %q: target %q must be a node id", n.ID, n.Target)
 		}
+		return validateExecutionTimeout(n, i)
 	default:
-		return fmt.Errorf("workflow: node %q: unknown type %q", n.ID, n.Type)
+		return verr(DiagField, nodePath(i, "type"), n.ID, "workflow: node %q: unknown type %q", n.ID, n.Type)
+	}
+	return nil
+}
+
+// validateExecutionTimeout checks the tl1454 subagent/confirm timeout.
+func validateExecutionTimeout(n *Node, i int) error {
+	t := strings.TrimSpace(n.Timeout)
+	if t == "" {
+		return nil
+	}
+	d, err := time.ParseDuration(t)
+	if err != nil || d <= 0 {
+		return verr(DiagField, nodePath(i, "timeout"), n.ID, "workflow: %s node %q: timeout %q is not a positive Go duration", n.Type, n.ID, n.Timeout)
 	}
 	return nil
 }
@@ -130,25 +175,25 @@ func (wf *Workflow) validateEdges(index map[string]int) (map[string][]string, er
 	for i, e := range wf.Edges {
 		from, ok := index[e.From]
 		if !ok {
-			return nil, fmt.Errorf("workflow: edge %d: unknown from %q", i+1, e.From)
+			return nil, verr(DiagReference, edgePath(i, "from"), "", "workflow: edge %d: unknown from %q", i+1, e.From)
 		}
 		if _, ok := index[e.To]; !ok {
-			return nil, fmt.Errorf("workflow: edge %d: unknown to %q", i+1, e.To)
+			return nil, verr(DiagReference, edgePath(i, "to"), "", "workflow: edge %d: unknown to %q", i+1, e.To)
 		}
 		if e.From == e.To {
-			return nil, fmt.Errorf("workflow: edge %d: self edge on %q", i+1, e.From)
+			return nil, verr(DiagStructure, edgePath(i, ""), e.From, "workflow: edge %d: self edge on %q", i+1, e.From)
 		}
 		switch e.When {
 		case "", WhenAlways:
 		case WhenPass, WhenFail:
 			if wf.Nodes[from].Type != NodeGate {
-				return nil, fmt.Errorf("workflow: edge %d: when=%s requires a gate source, %q is %s", i+1, e.When, e.From, wf.Nodes[from].Type)
+				return nil, verr(DiagStructure, edgePath(i, "when"), e.From, "workflow: edge %d: when=%s requires a gate source, %q is %s", i+1, e.When, e.From, wf.Nodes[from].Type)
 			}
 		default:
-			return nil, fmt.Errorf("workflow: edge %d: unknown when %q", i+1, e.When)
+			return nil, verr(DiagField, edgePath(i, "when"), "", "workflow: edge %d: unknown when %q", i+1, e.When)
 		}
 		if fixers[e.From] || fixers[e.To] {
-			return nil, fmt.Errorf("workflow: edge %d: fixer node %q may not carry edges (it runs only inside its gate loop)", i+1, e.From)
+			return nil, verr(DiagStructure, edgePath(i, ""), e.From, "workflow: edge %d: fixer node %q may not carry edges (it runs only inside its gate loop)", i+1, e.From)
 		}
 		deps[e.To] = append(deps[e.To], e.From)
 	}
@@ -160,10 +205,10 @@ func (wf *Workflow) validateEdges(index map[string]int) (map[string][]string, er
 		if n.Type == NodeGate && n.Loop != nil {
 			ti, ok := index[n.Loop.Fixer]
 			if !ok {
-				return nil, fmt.Errorf("workflow: gate node %q: loop.fixer %q matches no node", n.ID, n.Loop.Fixer)
+				return nil, verr(DiagReference, nodePath(i, "loop.fixer"), n.ID, "workflow: gate node %q: loop.fixer %q matches no node", n.ID, n.Loop.Fixer)
 			}
 			if wf.Nodes[ti].Type != NodeSubagent {
-				return nil, fmt.Errorf("workflow: gate node %q: loop.fixer %q must be a subagent node", n.ID, n.Loop.Fixer)
+				return nil, verr(DiagReference, nodePath(i, "loop.fixer"), n.ID, "workflow: gate node %q: loop.fixer %q must be a subagent node", n.ID, n.Loop.Fixer)
 			}
 			if !fixers[n.Loop.Fixer] {
 				fixers[n.Loop.Fixer] = true
@@ -172,13 +217,13 @@ func (wf *Workflow) validateEdges(index map[string]int) (map[string][]string, er
 		if n.Type == NodeConfirm {
 			ti, ok := index[n.Target]
 			if !ok {
-				return nil, fmt.Errorf("workflow: confirm node %q: target %q matches no node", n.ID, n.Target)
+				return nil, verr(DiagReference, nodePath(i, "target"), n.ID, "workflow: confirm node %q: target %q matches no node", n.ID, n.Target)
 			}
 			if wf.Nodes[ti].Type != NodeSubagent {
-				return nil, fmt.Errorf("workflow: confirm node %q: target %q must be a subagent node", n.ID, n.Target)
+				return nil, verr(DiagReference, nodePath(i, "target"), n.ID, "workflow: confirm node %q: target %q must be a subagent node", n.ID, n.Target)
 			}
 			if fixers[n.Target] {
-				return nil, fmt.Errorf("workflow: confirm node %q: target %q is a fixer node", n.ID, n.Target)
+				return nil, verr(DiagReference, nodePath(i, "target"), n.ID, "workflow: confirm node %q: target %q is a fixer node", n.ID, n.Target)
 			}
 			// The engine adds target→confirm as an implicit dependency.
 			deps[n.ID] = append(deps[n.ID], n.Target)
@@ -203,7 +248,7 @@ func (wf *Workflow) fixerSet(index map[string]int) map[string]bool {
 
 // detectCycle rejects any dependency cycle — the graph must stay a DAG so the
 // 686 panel can draw the whole plan before the run starts.
-func detectCycle(wf *Workflow, deps map[string][]string) error {
+func detectCycle(wf *Workflow, deps map[string][]string, index map[string]int) error {
 	const (
 		white = 0
 		grey  = 1
@@ -216,7 +261,7 @@ func detectCycle(wf *Workflow, deps map[string][]string) error {
 		case black:
 			return nil
 		case grey:
-			return fmt.Errorf("workflow: dependency cycle: %s", strings.Join(append(path, id), " -> "))
+			return verr(DiagStructure, nodePath(index[id], ""), id, "workflow: dependency cycle: %s", strings.Join(append(path, id), " -> "))
 		}
 		color[id] = grey
 		for _, d := range deps[id] {
@@ -249,7 +294,7 @@ func (wf *Workflow) validateFixers(index map[string]int) error {
 		}
 		refs := refPattern.FindAllStringSubmatch(n.Prompt, -1)
 		if len(refs) > 0 {
-			return fmt.Errorf("workflow: fixer node %q: fixer prompts may not interpolate {{refs}} (no ancestors; feedback is appended by the gate)", n.ID)
+			return verr(DiagReference, nodePath(i, "prompt"), n.ID, "workflow: fixer node %q: fixer prompts may not interpolate {{refs}} (no ancestors; feedback is appended by the gate)", n.ID)
 		}
 	}
 	return nil
@@ -270,34 +315,36 @@ func (wf *Workflow) validateInterpolation(index map[string]int, deps map[string]
 			continue // checked in validateFixers
 		}
 		for _, ref := range refPattern.FindAllStringSubmatch(n.Prompt, -1) {
-			if err := wf.checkRef(index, ancestors, n.ID, ref[1], ref[2], "prompt"); err != nil {
+			if err := wf.checkRef(index, ancestors, i, ref[1], ref[2], "prompt"); err != nil {
 				return err
 			}
 		}
 	}
 	for _, ref := range refPattern.FindAllStringSubmatch(wf.Report.Conclusion, -1) {
 		if _, ok := index[ref[1]]; !ok {
-			return fmt.Errorf("workflow: report.conclusion: unknown node %q", ref[1])
+			return verr(DiagReference, "report.conclusion", "", "workflow: report.conclusion: unknown node %q", ref[1])
 		}
 		if ref[2] != "" && wf.Nodes[index[ref[1]]].Type == NodeSubagent {
 			if _, declared := wf.Nodes[index[ref[1]]].ResultField(ref[2]); !declared {
-				return fmt.Errorf("workflow: report.conclusion: node %q has no result field %q", ref[1], ref[2])
+				return verr(DiagReference, "report.conclusion", "", "workflow: report.conclusion: node %q has no result field %q", ref[1], ref[2])
 			}
 		}
 	}
 	return nil
 }
 
-func (wf *Workflow) checkRef(index map[string]int, ancestors map[string]map[string]bool, from, target, field, where string) error {
+func (wf *Workflow) checkRef(index map[string]int, ancestors map[string]map[string]bool, i int, target, field, where string) error {
+	from := wf.Nodes[i].ID
+	path := nodePath(i, where)
 	if _, ok := index[target]; !ok {
-		return fmt.Errorf("workflow: %s node %q: %s references unknown node %q", where, from, where, target)
+		return verr(DiagReference, path, from, "workflow: %s node %q: %s references unknown node %q", where, from, where, target)
 	}
 	if !ancestors[from][target] {
-		return fmt.Errorf("workflow: %s node %q: %s references %q which is not an ancestor", where, from, where, target)
+		return verr(DiagReference, path, from, "workflow: %s node %q: %s references %q which is not an ancestor", where, from, where, target)
 	}
 	if field != "" && wf.Nodes[index[target]].Type == NodeSubagent {
 		if _, declared := wf.Nodes[index[target]].ResultField(field); !declared {
-			return fmt.Errorf("workflow: %s node %q: node %q has no result field %q", where, from, target, field)
+			return verr(DiagReference, path, from, "workflow: %s node %q: node %q has no result field %q", where, from, target, field)
 		}
 	}
 	return nil
@@ -360,7 +407,7 @@ func (wf *Workflow) validateStrongGates(index map[string]int, deps map[string][]
 				continue
 			}
 			if reachableWithout(deps, sink, n.ID) {
-				return fmt.Errorf("workflow: strong gate %q does not dominate sink %q: delivery could complete without this check running", n.ID, sink)
+				return verr(DiagStructure, nodePath(i, "tier"), n.ID, "workflow: strong gate %q does not dominate sink %q: delivery could complete without this check running", n.ID, sink)
 			}
 		}
 	}

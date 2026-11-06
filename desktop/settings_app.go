@@ -468,6 +468,8 @@ type SettingsView struct {
 	// the DAG flow view). Rendered in both views for the 81/123 two-view
 	// lesson; pure frontend gate, settings save re-applies.
 	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
+	// tl1454: user workflow templates (workflowPanel family sub-key; live-read).
+	ExperimentalWorkflowTemplates bool `json:"experimentalWorkflowTemplates"`
 	// Task 495: subagent panel package (dock tab + ended-card collapse);
 	// boot snapshot, restart to apply.
 	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
@@ -843,6 +845,8 @@ type DesktopStartupSettingsView struct {
 	// 任务 686: the workflow visualization panel gate, rendered in this view
 	// too (81/123 two-view lesson); pure frontend gate, no restart needed.
 	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
+	// tl1454: user workflow templates, rendered in this view too (81/123).
+	ExperimentalWorkflowTemplates bool `json:"experimentalWorkflowTemplates"`
 	// ExperimentalSubagentPanel gates the subagent panel package (task 495);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
@@ -1731,6 +1735,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalDraftRewrite = cfg.Agent.ExperimentalDraftRewrite
 		// 任务 686: workflow visualization panel readback (two-view lesson).
 		view.ExperimentalWorkflowPanel = cfg.Desktop.ExperimentalWorkflowPanel
+		view.ExperimentalWorkflowTemplates = cfg.Desktop.ExperimentalWorkflowTemplates
 		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel
 		view.ExperimentalSessionWall = cfg.Desktop.ExperimentalSessionWall
 		view.ExperimentalPromptHistoryPicker = cfg.Desktop.ExperimentalPromptHistoryPicker
@@ -2034,6 +2039,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalStartupSplash: cfg.Desktop.ExperimentalStartupSplash,
 		// 任务 686: workflow visualization panel readback (two-view lesson).
 		ExperimentalWorkflowPanel:       cfg.Desktop.ExperimentalWorkflowPanel,
+		ExperimentalWorkflowTemplates:   cfg.Desktop.ExperimentalWorkflowTemplates,
 		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
 		ExperimentalSessionWall:         cfg.Desktop.ExperimentalSessionWall,
 		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,

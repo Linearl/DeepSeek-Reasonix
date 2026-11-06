@@ -18,10 +18,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig := Default()
 
 	// automation（自动化）
-	orig.Desktop.Autopilot = true                   // autopilot (M8 standalone)
-	orig.Agent.ExperimentalSessionCollab = true     // sessionCollab (M8 standalone)
-	orig.Agent.ExperimentalFullAccess = true        // fullAccess (M8 standalone)
-	orig.Sandbox.OptimisticWrite = true             // optimisticParallel (M8 standalone)
+	orig.Desktop.Autopilot = true               // autopilot (M8 standalone)
+	orig.Agent.ExperimentalSessionCollab = true // sessionCollab (M8 standalone)
+	orig.Agent.ExperimentalFullAccess = true    // fullAccess (M8 standalone)
+	orig.Sandbox.OptimisticWrite = true         // optimisticParallel (M8 standalone)
 	// tl1453：experimental_dream 随 dream/distill 实验退役，不再入往返面。
 	orig.Agent.ExperimentalSafetyCostControl = true // 任务 517 合并键（B1/B2/B3）
 	// 任务 722：细粒度子开关显式覆盖往返（true/false 各半，nil 键不落盘）。
@@ -73,6 +73,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalStartupSplash = true // startupSplash
 	// 任务 686：工作流可视化面板（默认关）。
 	orig.Desktop.ExperimentalWorkflowPanel = true              // workflowPanel
+	orig.Desktop.ExperimentalWorkflowTemplates = true          // workflowPanel family (tl1454)
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
 	orig.Agent.ExperimentalAutoLoadOlder = true                // autoLoadOlder ([agent] authoritative after task 473)
 	orig.Desktop.ExperimentalSplitView = true                  // splitView
@@ -150,6 +151,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_startup_splash = true",
 		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
 		"experimental_workflow_panel = true",
+		"experimental_workflow_templates = true",
 		"experimental_question_search = true",
 		"experimental_subagent_tps", // rendered from the nil-means-on helper; presence only
 		"experimental_completion_summary = true",

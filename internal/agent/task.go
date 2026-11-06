@@ -785,6 +785,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		if backgroundHandoff {
 			return
 		}
+		RecordSubagentUsage(ctx, trk.usageSummary())
 		if p := recover(); p != nil {
 			trk.finish(nil, fmt.Errorf("panic: %v", p))
 			panic(p)

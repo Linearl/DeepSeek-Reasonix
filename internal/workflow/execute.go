@@ -37,7 +37,7 @@ func (s *runState) execute(ctx context.Context, n *Node) error {
 	case NodeJoin:
 		err = s.runJoin(n)
 	default:
-		err = fmt.Errorf("workflow: node %q: unknown type %q", n.ID, n.Type)
+		err = withReason(ReasonInternal, fmt.Errorf("workflow: node %q: unknown type %q", n.ID, n.Type))
 	}
 	if err != nil {
 		round := 0
@@ -53,19 +53,42 @@ func (s *runState) execute(ctx context.Context, n *Node) error {
 // (single writer): abort status, failed-node stamp, failed event, and the
 // 1316 checkpoint——崩溃前的最后一次投影把已完成节点全部落袋（abort 节点
 // 本身不落，恢复时重跑）。
+//
+// tl1454: the returned error is a *NodeError carrying the node and the
+// classified failure reason (same text, same Unwrap chain), and the reason
+// reaches the host through Engine.Observe.
 func (s *runState) abortNode(n *Node, err error, round int) error {
 	s.status[n.ID] = stAborted
 	s.failedNode = n.ID
 	s.emit(n, event.WorkflowNodeFailed, round, truncate(err.Error(), 240))
+	reason := reasonOf(err)
+	s.observe(NodeObservation{NodeID: n.ID, Reason: reason})
 	s.checkpoint()
-	return err
+	return &NodeError{NodeID: n.ID, Reason: reason, Err: err}
+}
+
+// observe forwards one observation to the host (nil hook = zero cost).
+func (s *runState) observe(o NodeObservation) {
+	if s.eng == nil || s.eng.Observe == nil {
+		return
+	}
+	s.eng.Observe(o)
+}
+
+// callOutcome is what a dispatched node's concurrent segment hands back to
+// the single writer: the answer or classified error, plus the spend of every
+// execution it made (first call and directed re-asks).
+type callOutcome struct {
+	answer string
+	err    error
+	spend
 }
 
 // nodeCall is one dispatched node: the concurrent segment (call) plus the
 // single-writer completion (complete) for the aggregation pass.
 type nodeCall struct {
-	call     func() (string, error)
-	complete func(answer string, err error) error
+	call     func() callOutcome
+	complete func(callOutcome) error
 }
 
 // beginNode is the serial head of a dispatched node (tl1326 G4): running
@@ -94,23 +117,35 @@ func (s *runState) beginNode(ctx context.Context, n *Node) *nodeCall {
 	if n.Type == NodeSubagent && len(n.Result) > 0 {
 		retries = s.eng.resultParseRetries()
 	}
+	// tl1454：节点超时与运行预算计量器同样在 serial head 解析，并发段只捕获值。
+	eng, meter := s.eng, s.meter
+	timeout, bounded := n.ExecutionTimeout()
+	nodeID := n.ID
 	return &nodeCall{
-		call: func() (string, error) {
-			answer, err := s.eng.runSubagent(ctx, req)
-			if err != nil || retries == 0 {
-				return answer, err
+		call: func() callOutcome {
+			callCtx := ctx
+			if bounded {
+				var cancel context.CancelFunc
+				callCtx, cancel = context.WithTimeoutCause(ctx, timeout, &NodeTimeoutError{NodeID: nodeID, Timeout: timeout})
+				defer cancel()
 			}
-			// 容错提取也失败才重发；可解析（含三级容错）原样返回。
-			if _, perr := parseResultJSON(answer); perr == nil {
-				return answer, nil
+			var out callOutcome
+			answer, used, err := eng.meteredCall(callCtx, meter, req)
+			out.spend = used
+			if err == nil && retries > 0 {
+				// 容错提取也失败才重发；可解析（含三级容错）原样返回。
+				if _, perr := parseResultJSON(answer); perr != nil {
+					answer, err = directedJSONRetry(callCtx, eng, meter, req, answer, retries, &out.spend)
+				}
 			}
-			return directedJSONRetry(ctx, s.eng, req, answer, retries)
+			out.answer, out.err = answer, classifyCallError(callCtx, err)
+			return out
 		},
-		complete: func(answer string, err error) error {
+		complete: func(out callOutcome) error {
 			if n.Type == NodeConfirm {
-				return s.completeConfirm(n, answer, err)
+				return s.completeConfirm(n, out)
 			}
-			return s.completeSubagent(n, answer, err, cands)
+			return s.completeSubagent(n, out, cands)
 		},
 	}
 }
@@ -129,19 +164,28 @@ const directedRetryInstruction = "Your previous answer could not be parsed as a 
 // fail-fast semantics as the first call. When every attempt still fails to
 // parse, the returned error carries the first AND last output summaries so
 // the failure is diagnosable without rerunning the node.
-func directedJSONRetry(ctx context.Context, eng *Engine, req SubagentRequest, first string, retries int) (string, error) {
+//
+// tl1454: every re-ask is metered like the first call (used accumulates
+// tokens/requests), and a spent run budget stops the re-asking — the node
+// then fails on the budget instead of burning past it.
+func directedJSONRetry(ctx context.Context, eng *Engine, meter *budgetMeter, req SubagentRequest, first string, retries int, used *spend) (string, error) {
 	answer := first
 	next := req.Occurrence
 	if next < 1 {
 		next = 1
 	}
 	for attempt := 1; attempt <= retries; attempt++ {
+		if over := meter.exceeded(); over != nil {
+			return "", over
+		}
 		retry := req
 		next++
 		retry.Occurrence = next
 		retry.Prompt = req.Prompt + "\n\n" + directedRetryInstruction
 		var err error
-		answer, err = eng.runSubagent(ctx, retry)
+		var got spend
+		answer, got, err = eng.meteredCall(ctx, meter, retry)
+		used.plus(got)
 		if err != nil {
 			return "", err
 		}
@@ -149,9 +193,9 @@ func directedJSONRetry(ctx context.Context, eng *Engine, req SubagentRequest, fi
 			return answer, nil
 		}
 	}
-	return "", fmt.Errorf("%s detail: first output: %s | retry output: %s",
+	return "", withReason(ReasonResultContract, fmt.Errorf("%s detail: first output: %s | retry output: %s",
 		fmt.Sprintf(i18n.M.WorkflowTypedResultRetryExhaustedFmt, retries),
-		truncate(first, 120), truncate(answer, 120))
+		truncate(first, 120), truncate(answer, 120)))
 }
 
 // subagentRequest builds one subagent node's dispatch (serial head: reads n
@@ -216,25 +260,23 @@ func (s *runState) confirmRequest(n *Node) SubagentRequest {
 // (write claims / DefaultMaxParallelWriters) — the engine adds no second
 // concurrency limit and creates no new concurrency semantics.
 func (s *runState) dispatchAndCollect(calls []*nodeCall) error {
-	type answer struct {
-		i      int
-		answer string
-		err    error
+	type indexed struct {
+		i   int
+		out callOutcome
 	}
-	ch := make(chan answer, len(calls))
+	ch := make(chan indexed, len(calls))
 	for i, c := range calls {
-		go func(i int, call func() (string, error)) {
-			a, err := call()
-			ch <- answer{i: i, answer: a, err: err}
+		go func(i int, call func() callOutcome) {
+			ch <- indexed{i: i, out: call()}
 		}(i, c.call)
 	}
-	got := make([]answer, len(calls))
+	got := make([]callOutcome, len(calls))
 	for range calls {
 		a := <-ch
-		got[a.i] = a
+		got[a.i] = a.out
 	}
 	for i, c := range calls {
-		if err := c.complete(got[i].answer, got[i].err); err != nil {
+		if err := c.complete(got[i]); err != nil {
 			return err
 		}
 	}
@@ -247,21 +289,26 @@ func (s *runState) dispatchAndCollect(calls []*nodeCall) error {
 // echo-miss rewrites re-keyed onto their producer serial), stamp the
 // terminal. cands is the serial head's value snapshot of the serials this
 // node's prompt actually carried (upstreamCandidates).
-func (s *runState) completeSubagent(n *Node, answer string, err error, cands map[string]Finding) error {
-	if err != nil {
-		return s.abortNode(n, fmt.Errorf("workflow: subagent %q: %w", n.ID, err), 0)
+func (s *runState) completeSubagent(n *Node, out callOutcome, cands map[string]Finding) error {
+	s.observe(NodeObservation{NodeID: n.ID, Tokens: out.tokens, Requests: out.requests})
+	answer := out.answer
+	if out.err != nil {
+		return s.abortNode(n, fmt.Errorf("workflow: subagent %q: %w", n.ID, out.err), 0)
 	}
 	s.output[n.ID] = answer
 	if len(n.Result) > 0 {
 		obj, err := parseResultJSON(answer)
 		if err != nil {
-			return s.abortNode(n, fmt.Errorf("workflow: subagent %q: typed result: %w", n.ID, err), 0)
+			return s.abortNode(n, withReason(ReasonResultContract, fmt.Errorf("workflow: subagent %q: typed result: %w", n.ID, err)), 0)
 		}
 		s.result[n.ID] = obj
+		if missing := missingResultFields(n, obj); len(missing) > 0 {
+			s.observe(NodeObservation{NodeID: n.ID, Contract: "missing declared result fields: " + strings.Join(missing, ", ")})
+		}
 		if n.FindingsField != "" {
 			fs, err := extractFindings(obj, n.FindingsField, n.ID)
 			if err != nil {
-				return s.abortNode(n, fmt.Errorf("workflow: subagent %q: %w", n.ID, err), 0)
+				return s.abortNode(n, withReason(ReasonResultContract, fmt.Errorf("workflow: subagent %q: %w", n.ID, err)), 0)
 			}
 			merged, skippedMulti, ghost := mergeEchoedFindings(n.ID, n.FindingsField, obj, fs, cands)
 			if merged > 0 || ghost > 0 {
@@ -301,11 +348,25 @@ func (s *runState) finish(n *Node, state event.WorkflowNodeState, t terminal, de
 
 // runFixer executes the loop's repair sub-agent with the gate's failing
 // output appended as feedback (the stderr feedback loop of point 3).
+//
+// tl1454: each round is one execution — metered against the run budget and
+// bounded by the fixer node's own timeout when it declares one.
 func (s *runState) runFixer(ctx context.Context, fixer *Node, feedback string, round int) (string, error) {
 	s.status[fixer.ID] = stRunning
 	s.emit(fixer, event.WorkflowNodeRunning, round, "")
+	if over := s.meter.exceeded(); over != nil {
+		s.status[fixer.ID] = stAborted
+		s.emit(fixer, event.WorkflowNodeFailed, round, truncate(over.Error(), 240))
+		return "", fmt.Errorf("workflow: fixer %q: %w", fixer.ID, over)
+	}
+	callCtx := ctx
+	if timeout, ok := fixer.ExecutionTimeout(); ok {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeoutCause(ctx, timeout, &NodeTimeoutError{NodeID: fixer.ID, Timeout: timeout})
+		defer cancel()
+	}
 	prompt := fixer.Prompt + "\n\n" + feedback
-	answer, err := s.eng.runSubagent(ctx, SubagentRequest{
+	answer, used, err := s.eng.meteredCall(callCtx, s.meter, SubagentRequest{
 		NodeID:      fixer.ID,
 		Prompt:      prompt,
 		Description: fixer.Description,
@@ -317,9 +378,11 @@ func (s *runState) runFixer(ctx context.Context, fixer *Node, feedback string, r
 		// 不复用（tl1324 ⑤）。
 		Occurrence: round,
 	})
-	if err != nil {
+	s.observe(NodeObservation{NodeID: fixer.ID, Tokens: used.tokens, Requests: used.requests})
+	if err = classifyCallError(callCtx, err); err != nil {
 		s.status[fixer.ID] = stAborted
 		s.emit(fixer, event.WorkflowNodeFailed, round, truncate(err.Error(), 240))
+		s.observe(NodeObservation{NodeID: fixer.ID, Reason: reasonOf(err)})
 		return "", fmt.Errorf("workflow: fixer %q: %w", fixer.ID, err)
 	}
 	s.status[fixer.ID] = stDone
@@ -343,7 +406,7 @@ func (s *runState) runGate(ctx context.Context, n *Node) error {
 		res, err := s.eng.gate()(ctx, n.Command, timeout)
 		if err != nil {
 			// World failure (timeout/launch/cancel): not a branch value.
-			return fmt.Errorf("workflow: gate %q: %w", n.ID, err)
+			return fmt.Errorf("workflow: gate %q: %w", n.ID, gateWorldError(ctx, err))
 		}
 		last = res
 		if res.ExitCode == 0 {
@@ -374,7 +437,7 @@ func (s *runState) runGate(ctx context.Context, n *Node) error {
 	s.gatePassed[n.ID] = false
 	s.output[n.ID] = last.Output
 	if !s.hasFailReceiver(n.ID) {
-		return fmt.Errorf("workflow: gate %q failed (exit %d) and no fail branch receives it", n.ID, last.ExitCode)
+		return withReason(ReasonGateFailed, fmt.Errorf("workflow: gate %q failed (exit %d) and no fail branch receives it", n.ID, last.ExitCode))
 	}
 	s.status[n.ID] = stDone
 	s.term[n.ID] = termGateFailed
@@ -412,7 +475,7 @@ func (s *runState) runJoin(n *Node) error {
 	}
 	raw, err := json.Marshal(joined)
 	if err != nil {
-		return fmt.Errorf("workflow: join %q: %w", n.ID, err)
+		return withReason(ReasonInternal, fmt.Errorf("workflow: join %q: %w", n.ID, err))
 	}
 	s.result[n.ID] = joined
 	s.output[n.ID] = string(raw)
@@ -458,7 +521,9 @@ When the evidence contains findings entries carrying an "id" key, also return a 
 // completeConfirm is the independent confirmation protocol's tail (point 4):
 // failure KEEPS every finding and labels it unconfirmed — never drops, never
 // self-confirms (the confirmer is a distinct node from the finder).
-func (s *runState) completeConfirm(n *Node, answer string, err error) error {
+func (s *runState) completeConfirm(n *Node, out callOutcome) error {
+	s.observe(NodeObservation{NodeID: n.ID, Tokens: out.tokens, Requests: out.requests})
+	answer, err := out.answer, out.err
 	if err != nil || !parseConfirmed(answer) {
 		// Confirmation failed (confirmer error or verdict false): KEEP the
 		// findings, label unconfirmed, keep the run going — a suspicion worth
