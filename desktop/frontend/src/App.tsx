@@ -6849,12 +6849,15 @@ export default function App() {
             </div>
             <div className="workbench-dock__body">
               {effectiveRightDockMode === "artifacts" || effectiveRightDockMode === "references" ? (
-                /* Task 260: read-only session side-files lists; references can inject into the composer. */
+                /* Task 260: read-only session side-files lists; references can inject into the composer.
+                   tl1437/tl1445: the active tab id scopes the dock rows' interactions (selection / row menu
+                   bridges — same ForTab convention the file tree uses), now for both variants. */
                 <Suspense fallback={null}>
                   <SideFilesDockPanel
                     items={exportItems}
                     variant={effectiveRightDockMode === "artifacts" ? "artifacts" : "references"}
                     onInjectReferences={addWorkspaceTextToComposer}
+                    tabId={activeTabId}
                   />
                 </Suspense>
               ) : effectiveRightDockMode === "todos" ? (
