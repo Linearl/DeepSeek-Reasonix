@@ -4519,6 +4519,16 @@ export const zh: Record<DictKey, string> = {
   "settings.general.sectionConversation": "会话体验",
   "settings.general.sectionSystem": "系统行为",
   "settings.general.sectionSystemHint": "控制窗口、审批、声音和状态信息。",
+  // tl1464：全局通知类型开关（设置 → 通用 → 通知）。默认全开；关闭只抑制展示，
+  // 通知留档照写；错误提示不受开关影响（不可静默）。
+  "settings.notify.section": "通知",
+  "settings.notify.sectionHint": "三类通知默认全开；关闭只停止对应类的展示，历史仍写入通知栏（协作中心 → 通知）。错误提示始终展示，不设开关。",
+  "settings.notify.actionFeedback": "操作反馈（右下角）",
+  "settings.notify.actionFeedbackHint": "操作成功的瞬时反馈（复制/导出/已应用）与后台提问提醒。",
+  "settings.notify.statusBanners": "状态横幅",
+  "settings.notify.statusBannersHint": "会话顶部/输入区上方的持续状态（恢复、更新、撤销重做）。建议保持开启——横幅承载进行中的状态，不是一次性事件。",
+  "settings.notify.diagnosticAlerts": "诊断告警（右下角）",
+  "settings.notify.diagnosticAlertsHint": "性能、卡顿与崩溃入口提示。warn 档 30 秒后自动消失；崩溃入口保留至手动处理。",
   "settings.pageDesc.model-stats": "查看模型调用量与费用统计。",
   "settings.pageDesc.models": "默认模型、规划模型与运行上限。",
   "settings.pageDesc.providers": "管理模型供应商、API 地址、密钥与可用模型。",

@@ -3081,6 +3081,16 @@ export const zhTW: Record<DictKey, string> = {
   "settings.general.sectionConversation": "會話體驗",
   "settings.general.sectionSystem": "系統行為",
   "settings.general.sectionSystemHint": "控制視窗、審批、聲音和狀態資訊。",
+  // tl1464：全局通知類型開關（設定 → 通用 → 通知）。預設全開；關閉只抑制展示，
+  // 通知留檔照寫；錯誤提示不受開關影響（不可靜默）。
+  "settings.notify.section": "通知",
+  "settings.notify.sectionHint": "三類通知預設全開；關閉只停止對應類的展示，歷史仍寫入通知欄（協作中心 → 通知）。錯誤提示始終展示，不設開關。",
+  "settings.notify.actionFeedback": "操作回饋（右下角）",
+  "settings.notify.actionFeedbackHint": "操作成功的瞬時回饋（複製/匯出/已套用）與背景提問提醒。",
+  "settings.notify.statusBanners": "狀態橫幅",
+  "settings.notify.statusBannersHint": "會話頂部/輸入區上方的持續狀態（復原、更新、復原重做）。建議保持開啟——橫幅承載進行中的狀態，不是一次性事件。",
+  "settings.notify.diagnosticAlerts": "診斷告警（右下角）",
+  "settings.notify.diagnosticAlertsHint": "效能、卡頓與崩潰入口提示。warn 檔 30 秒後自動消失；崩潰入口保留至手動處理。",
   "settings.pageDesc.model-stats": "查看模型呼叫量與費用統計。",
   "settings.pageDesc.models": "預設模型、規劃模型與執行上限。",
   "settings.pageDesc.providers": "管理模型供應商、API 位址、金鑰與可用模型。",

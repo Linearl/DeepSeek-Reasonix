@@ -9,6 +9,7 @@ import { sessionPipelineDiagnostics, type SessionPipelineDiagnostics } from "./s
 import { isWailsRuntimeOnlyCrashEvent } from "./wailsRuntimeCrash";
 import { buildCrashIssueSkeleton } from "./crashIssue";
 import { recordNotification } from "./notifyArchive";
+import { isNotifyKindEnabled } from "./notifyDisplayPrefs";
 // 任务 910：性能/卡顿/崩溃入口三面共用的 .rt-notice 骨架挂载器。
 import { rtNoticeHead, rtNoticeHost, rtNoticeMount } from "./rtNotice";
 import type { CrashAnalysisAvailabilityReport } from "./types";
@@ -983,11 +984,12 @@ export function copyButton(text: string, className: string): HTMLButtonElement {
 
 function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnapshot) {
   if (typeof document === "undefined") return;
+  // tl1458：性能提示落通知留档（accent=非故障强调 → info 档）。留档≠拦截——
+  // tl1464 C 类开关关闭时留档照写，只跳过下面的 rt-notice 面。
+  recordNotification({ level: "info", source: "rt-notice", text: t("performanceReport.title") });
+  if (!isNotifyKindEnabled("diagnosticAlerts")) return;
   // 任务 910：性能强调=accent 档（橙，非故障强调——语义固定，见 rtNotice.ts）。
   const host = rtNoticeHost("performance-report-prompt", "accent");
-  // tl1458：性能提示落通知留档（accent=非故障强调 → info 档）。留档≠拦截——
-  // 下方 rt-notice 面 paint 通路原样（存储层去重窗口兜住阈值内重复 paint）。
-  recordNotification({ level: "info", source: "rt-notice", text: t("performanceReport.title") });
   const title = document.createElement("div");
   title.className = "performance-report__title rt-notice__title";
   title.textContent = t("performanceReport.title");
