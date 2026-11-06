@@ -495,6 +495,12 @@ func (a *App) SetExperimentalWorkflowPanel(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalWorkflowPanel(enabled) })
 }
 
+// SetExperimentalWorkflowTemplates toggles the tl1454 user workflow templates
+// (template view + write bridges + version archive; live-read, no restart).
+func (a *App) SetExperimentalWorkflowTemplates(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalWorkflowTemplates(enabled) })
+}
+
 // SetExperimentalSubagentPanel toggles the subagent panel package (task 495):
 // the right-dock subagent tab plus default-collapsed ended subagent cards in
 // deep mode. The frontend snapshots the flag at boot, so the change shows up
