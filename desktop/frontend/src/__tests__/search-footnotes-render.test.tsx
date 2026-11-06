@@ -72,7 +72,14 @@ await act(async () => {
 });
 
 const body = document.querySelector(".msg__body");
-const panel = document.querySelector(".msg-search-sources");
+// aa82b2f94(2026-08-22,#9264)把 SearchSourcesPanel 改成 React.lazy(Suspense
+// fallback=null):首个 act flush 内动态 import 未落定,面板尚未挂载。与
+// tl1424c composer-goal-toggle 同款修法:墙钟有界轮询等挂载,断言不变。
+let panel = document.querySelector(".msg-search-sources");
+for (let attempt = 0; attempt < 300 && !panel; attempt += 1) {
+  await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+  panel = document.querySelector(".msg-search-sources");
+}
 const toggle = panel?.querySelector<HTMLButtonElement>(".msg-search-sources__toggle");
 ok(Boolean(body?.textContent?.includes("answer only")), "answer body keeps the model text");
 ok(Boolean(panel), "sources panel renders under the answer");
