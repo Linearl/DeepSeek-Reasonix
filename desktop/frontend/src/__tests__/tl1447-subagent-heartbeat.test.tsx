@@ -287,6 +287,8 @@ console.log("\ntl1447 subagent heartbeat: 活跃性判定 → 静默徽章 → �
   const dock = read("src/components/SubagentsDockPanel.tsx");
   ok(dock.includes("isSubagentEntrySilent") && dock.includes("data-subagent-silent"), "接线：行静默判定走单一阈值常量并带可测标记");
   ok(dock.includes("data-subagent-confirm-continue"), "接线：两步确认有独立可测标记（先确认后继续）");
+  ok(dock.includes("useWorkflowWallClock(workflowViews.length > 0 || running.length > 0)"), "接线：运行行墙钟随运行行在列武装（静默时长随时钟增长；静止面板零定时器）");
+  ok(dock.includes("onContinueSubagent && sessionPath ? continueSubagent : undefined"), "接线：桥缺席时行拿 undefined——不出继续入口（byte-for-byte）");
 
   const wfPanel = read("src/components/WorkflowPanel.tsx");
   ok(wfPanel.includes("SUBAGENT_SILENCE_ALERT_MS") && wfPanel.includes("data-silent-node"), "接线：工作流节点静默判定与子代理行同源阈值");
