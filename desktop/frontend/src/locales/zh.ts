@@ -5009,6 +5009,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesColOps": "行内操作",
   "settings.recoveryCopiesKindSession": "会话",
   "settings.recoveryCopiesKindVersion": "版本",
+  // tl1415c B1: 降级行(枚举被拒的占位行/后端降级读数行)的类型名——不再与正常副本/版本同标签。
+  "settings.recoveryCopiesKindDegraded": "降级副本",
   // tl1448：同 stem 双行——副本文件被采纳为当前主线后，它在表里同时渲染主线行
   // 与副本行；副本行亮「当前选中」徽标（本键为悬停说明），勾选与删除入口收回。
   "settings.recoveryCopiesMainFileHint": "该副本文件就是当前主线（已采纳）——主线本体不提供勾选与删除入口；先把其他版本「切换到此版本」，它才会回到可删副本",

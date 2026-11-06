@@ -5033,6 +5033,8 @@ export const en = {
   "settings.recoveryCopiesColOps": "row actions",
   "settings.recoveryCopiesKindSession": "session",
   "settings.recoveryCopiesKindVersion": "version",
+  // tl1415c B1: degraded rows (refused-enumeration placeholder / backend degraded readings) get their own type name.
+  "settings.recoveryCopiesKindDegraded": "degraded copy",
   // tl1448: same-stem dual row — after a copy file is adopted as the current
   // main line it renders both a main row and a copy row; the copy row carries
   // the "selected" badge (this key is its hover note) and loses its delete and

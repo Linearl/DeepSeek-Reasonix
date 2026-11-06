@@ -378,15 +378,23 @@ function ChainPreviewBody({ preview }: { preview: RecoveryChainPreview }) {
   );
 }
 
+/** SyntheticChainSet marks the enumeration-refused placeholder set so the row
+ *  model can tell it apart from a backend degraded enumeration (tl1415c B1).
+ *  The placeholder must never be promoted to the main row — a zero-count
+ *  placeholder wearing the 主线 tag is exactly the type confusion the user
+ *  flagged (slot ①). */
+type SyntheticChainSet = RecoveryChainSet & { synthetic?: true };
+
 /** degradedChainSet is the local stand-in for a conversation whose chain
  *  enumeration was refused (任务 1039r). The backend's own degradation (1019/1039)
  *  turns a replay refusal into a Degraded row, but a rejection that still escapes
  *  it - a directory read error, a non-refusal replay failure - used to leave the
  *  expanded area an empty table with a bare error line. Rendering one zero-count
  *  degraded row keeps the same face as the backend degradation: the row exists,
- *  carries no counts, and is never the recommended chain.
- */
-function degradedChainSet(mainPath: string): RecoveryChainSet {
+ *  carries no counts, and is never the recommended chain. tl1415c B1: the set
+ *  carries `synthetic`, so the row renders in the 版本 area under the 降级副本
+ *  type tag with the file stem as its identity — never as 主线. */
+function degradedChainSet(mainPath: string): SyntheticChainSet {
   const row: RecoveryChainView = {
     path: mainPath,
     headId: "",
@@ -401,7 +409,7 @@ function degradedChainSet(mainPath: string): RecoveryChainSet {
     preview: "",
     degraded: true,
   };
-  return { mainPath, mainLabel: "", chains: [row], longestPath: "", longestHead: "", newestPath: "", newestHead: "" };
+  return { mainPath, mainLabel: "", chains: [row], longestPath: "", longestHead: "", newestPath: "", newestHead: "", synthetic: true };
 }
 
 /** One session's fully derived row model: the current main chain (tl1430b:
@@ -420,19 +428,18 @@ type SessionChainModel = {
 
 function buildSessionChainModel(
   group: RecoveryCopyGroupView,
-  chains: RecoveryChainSet | undefined,
+  chains: RecoveryChainSet | SyntheticChainSet | undefined,
   loading: boolean,
 ): SessionChainModel {
   const chainRows = chains?.chains ?? [];
-  // 任务 1146 返修2(协调线 2120):「当前主线」只标当前激活的那条链——主转录
-  // 文件内、后端标记为当前选中的 head(RecoveryChainView.Selected,与版本表
-  // 「当前选中」同源)才算;无任何 Selected 读数(降级行/schema-1 整文件行)
-  // 时退回旧行为——单行场景不回归。
-  // tl1430b:Selected 是「当前主线」的单一真相源,不再限定 path===mainPath
-  // ——显式采纳副本后 Selected 移到副本文件上,主线行必须跟着换(包 78 现场:
-  // 回执闪了但主线行纹丝不动,就是这里把主线钉死在扫描起点 mainPath 上)。
-  // 无任何 Selected 读数时退回旧行为:mainPath 行恰一行则按旧口径取它。
-  const mainFileRows = chainRows.filter((c) => c.path === group.mainPath);
+  // tl1415c B1(槽点①): 枚举被拒的合成占位集永远不升格为主线行——零计数
+  // 占位行顶着「主线」类型标签正是用户指认的类型混淆(第3行=降级链行)。占
+  // 位行走版本区降级形态:类型名「降级副本」+文件 stem 身份+原因横幅(挂
+  // loadChains 的 errors)。后端真实降级枚举(非 synthetic)不受此限——降级
+  // 读数的主线文件仍按 Selected/单主线回退升格,主线行带「已降级」徽标,
+  // 那是诚实形态(主线行只有一行,不产生同 path 重复)。
+  const synthetic = Boolean((chains as SyntheticChainSet | undefined)?.synthetic);
+  const mainFileRows = synthetic ? [] : chainRows.filter((c) => c.path === group.mainPath);
   const selectedRow = chainRows.find((c) => c.selected);
   const currentMainChain =
     selectedRow ??
@@ -2123,7 +2130,14 @@ export function RecoveryCopiesSection() {
                 )}
               </td>
               <td className="rc-col-kind">
-                <span className="rc-kindtag rc-kindtag--copy">{t("settings.recoveryCopiesCopy")}</span>
+                {/* tl1415c B1(槽点①④): 链读数降级的行类型名改「降级副本」
+                    ——降级身份在类型列可读,不再与正常副本同标签;悬停给原因。 */}
+                <span
+                  className="rc-kindtag rc-kindtag--copy"
+                  title={chain?.degraded ? t("settings.sessionVersions.degradedHint") : undefined}
+                >
+                  {chain?.degraded ? t("settings.recoveryCopiesKindDegraded") : t("settings.recoveryCopiesCopy")}
+                </span>
                 {/* 选定 HEAD(合成③的落点)——demo v5 未画徽标,但「选了哪条」
                     必须在行上可辨识(1065 钉:预览确认后徽标落在该行)。 */}
                 {chain && pickedChain[group.mainPath] === chain.path ? (
@@ -2251,7 +2265,14 @@ export function RecoveryCopiesSection() {
             <tr key={`${c.path}|${c.headId}|${leftover.indexOf(c)}`} className={`rc-child rc-chain${tags.isLonger ? " rc-chain--recommended" : ""}`}>
               <td className="rc-detail__check" />
               <td className="rc-col-kind">
-                <span className="rc-kindtag rc-kindtag--version">{t("settings.recoveryCopiesKindVersion")}</span>
+                {/* tl1415c B1(槽点①④): 降级行类型名「降级副本」——枚举被拒
+                    的占位行/后端降级行不再顶着「版本」标签;悬停给原因。 */}
+                <span
+                  className="rc-kindtag rc-kindtag--version"
+                  title={c.degraded ? t("settings.sessionVersions.degradedHint") : undefined}
+                >
+                  {c.degraded ? t("settings.recoveryCopiesKindDegraded") : t("settings.recoveryCopiesKindVersion")}
+                </span>
                 {isPicked ? <span className="rc-chain__picked-badge">{t("settings.recoveryCopiesPickedBadge")}</span> : null}
               </td>
               <td
@@ -2264,12 +2285,14 @@ export function RecoveryCopiesSection() {
                       前 8 位。tl1448:整文件行的路径就是扫描起点主文件时(采纳
                       后被取代的旧主线降级而来;降级兜底行同路径),行身份亮文件
                       stem——它此前落进泛化「副本」标签,正是用户把主线文件行当
-                      副本删掉的身份错乱源头之一。 */}
+                      副本删掉的身份错乱源头之一。tl1415c B1(槽点④): 降级行无
+                      hash 的替代标识落到文件 stem 兜底——stem 恒存在,任何行都
+                      不再以裸「副本」标签示人。 */}
                   {c.headId
                     ? c.headId.slice(0, 8)
                     : sameSessionPath(c.path, group.mainPath)
                       ? fileStemOf(c.path)
-                      : recoveryShortName(c.path) || t("settings.recoveryCopiesCopy")}
+                      : recoveryShortName(c.path) || fileStemOf(c.path)}
                   {/* 任务 1039r:降级行必须说自己是降级。 */}
                   {c.degraded && (
                     <span className="sv-degraded" title={t("settings.sessionVersions.degradedHint")}>
