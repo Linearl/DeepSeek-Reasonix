@@ -222,6 +222,19 @@ let activeProfiler: ProfilerLike | null = null;
 // just stopped). A promise because stop() resolves off-thread and the next
 // report can arrive one task later.
 let previousTrace: Promise<ProfilerTrace | null> | null = null;
+// tl1417: the stop() a collect is currently awaiting. After every big stall two
+// triggers arrive back to back — the overdue 1s lag tick and the longtask
+// observer callback — and whichever came second used to find activeProfiler
+// null and report with no frames at all (issue #37's contention, one pair
+// left). The second trigger now re-aggregates the same traces for its own
+// windows instead of giving up.
+let inFlightTraces: Promise<ProfilerTrace[] | null> | null = null;
+
+/** True when a report can still obtain frames: a live profiler, or a collect
+ * in flight whose traces the report can share. */
+function longTaskProfileAvailable(): boolean {
+  return activeProfiler !== null || inFlightTraces !== null;
+}
 
 function startLongTaskProfiler(): void {
   const ProfilerCtor = (globalThis as { Profiler?: ProfilerConstructor }).Profiler;
@@ -256,23 +269,36 @@ async function collectLongTaskFrames(
   windows: { startMs: number; durationMs: number }[],
 ): Promise<LongTaskProfileSummary | null> {
   const profiler = activeProfiler;
-  if (!profiler) return null;
+  if (!profiler) {
+    // A sibling trigger is already stopping the profiler: share its traces.
+    const shared = inFlightTraces ? await inFlightTraces : null;
+    return shared ? aggregateLongTaskProfiles(shared, windows) : null;
+  }
   activeProfiler = null;
   const previous = previousTrace;
   previousTrace = null;
+  const collecting = (async (): Promise<ProfilerTrace[] | null> => {
+    try {
+      const [current, prior] = await Promise.all([profiler.stop(), previous ?? Promise.resolve(null)]);
+      // The current trace becomes the "previous" of the restarted profiler so a
+      // second trigger moments later (lag after long task) still sees these windows.
+      previousTrace = Promise.resolve(current);
+      const traces: ProfilerTrace[] = [];
+      if (prior) traces.push(prior);
+      traces.push(current);
+      return traces;
+    } catch {
+      return null;
+    } finally {
+      startLongTaskProfiler();
+    }
+  })();
+  inFlightTraces = collecting;
   try {
-    const [current, prior] = await Promise.all([profiler.stop(), previous ?? Promise.resolve(null)]);
-    // The current trace becomes the "previous" of the restarted profiler so a
-    // second trigger moments later (lag after long task) still sees these windows.
-    previousTrace = Promise.resolve(current);
-    const traces: ProfilerTrace[] = [];
-    if (prior) traces.push(prior);
-    traces.push(current);
-    return aggregateLongTaskProfiles(traces, windows);
-  } catch {
-    return null;
+    const traces = await collecting;
+    return traces ? aggregateLongTaskProfiles(traces, windows) : null;
   } finally {
-    startLongTaskProfiler();
+    if (inFlightTraces === collecting) inFlightTraces = null;
   }
 }
 
@@ -1526,7 +1552,7 @@ function promptPerformanceReport(reason: string, currentLagMs = 0): void {
     const nowMs = performance.now();
     windows.push({ startMs: Math.max(0, nowMs - currentLagMs), durationMs: currentLagMs });
   }
-  if (!activeProfiler) {
+  if (!longTaskProfileAvailable()) {
     // Task 692: no self-profiling in this WebView — both paths finish
     // synchronously with empty frames (same face as before the shared
     // collection below).

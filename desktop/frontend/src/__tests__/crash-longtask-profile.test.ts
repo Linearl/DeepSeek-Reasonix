@@ -179,6 +179,8 @@ console.log("\ncrash long-task profile (tl1417 gap 1)");
     trace: ProfilerTrace = {};
     stopped = false;
     listeners = new Map<string, Listener>();
+    holdStop = false;
+    private resolveStop?: (trace: ProfilerTrace) => void;
     constructor(public opts: { sampleInterval: number; maxBufferSize: number }) {
       FakeProfiler.instances.push(this);
     }
@@ -187,7 +189,11 @@ console.log("\ncrash long-task profile (tl1417 gap 1)");
     }
     stop() {
       this.stopped = true;
-      return Promise.resolve(this.trace);
+      if (!this.holdStop) return Promise.resolve(this.trace);
+      return new Promise<ProfilerTrace>((resolve) => { this.resolveStop = resolve; });
+    }
+    releaseStop() {
+      this.resolveStop?.(this.trace);
     }
   }
   const intervals: { cb: () => void; ms: number }[] = [];
@@ -208,7 +214,7 @@ console.log("\ncrash long-task profile (tl1417 gap 1)");
     setInterval: (cb: () => void, ms: number) => { intervals.push({ cb, ms }); return intervals.length; },
   };
   g.localStorage = {
-    getItem: (key: string) => (key === "reasonix:perf-reported" ? JSON.stringify({ build: "dev", labels: ["performance.longtask"] }) : null),
+    getItem: (key: string) => (key === "reasonix:perf-reported" ? JSON.stringify({ build: "dev", labels: ["performance.longtask", "performance.lag"] }) : null),
     setItem: () => {},
   };
   g.document = {
@@ -233,6 +239,10 @@ console.log("\ncrash long-task profile (tl1417 gap 1)");
 
   // Period 1: three click tasks at 20.0s..20.7s on "dispatch".
   FakeProfiler.instances[0].trace = denseTrace([{ name: "dispatch", fromMs: 20_000, toMs: 20_700 }]);
+  // The 1s lag sampler primes on its first settled tick (expected := 41.0s).
+  const lagTick = intervals.find((i) => i.ms === 1000)!.cb;
+  now = 40_000;
+  lagTick();
   now = 44_000;
   rollover!.cb();
   eq(FakeProfiler.instances.length, 2, "e2e: rollover started a second profiler");
@@ -240,6 +250,7 @@ console.log("\ncrash long-task profile (tl1417 gap 1)");
 
   // Period 2: the stall at 50.0s; its samples stop 0.3s in (buffer full there).
   FakeProfiler.instances[1].trace = denseTrace([{ name: "fullScan", fromMs: 50_000, toMs: 50_300 }], [{ fromMs: 45_000, toMs: 49_000 }]);
+  FakeProfiler.instances[1].holdStop = true; // collect in flight — the #37 contention window
   now = 70_000;
   const entries = [
     { startTime: 20_000, duration: 100, name: "self" },
@@ -248,18 +259,32 @@ console.log("\ncrash long-task profile (tl1417 gap 1)");
     { startTime: 50_000, duration: 16_587, name: "self" },
   ];
   observers[0].cb({ getEntries: () => entries });
-  // collect() awaits two stop() promises then writes the record.
-  for (let i = 0; i < 10 && records.length === 0; i += 1) await new Promise((r) => setTimeout(r, 0));
-  eq(records.length, 1, "e2e: one jank record written for the trigger");
-  const record = JSON.parse(records[0] ?? "{}") as { snapshot: PerformanceSnapshot };
-  const snap = record.snapshot;
+  // The overdue 1s tick fires while trigger 1's stop() is still pending: after
+  // every big stall this is exactly the order (lag tick next to the PO
+  // callback). The lag trigger must share the traces instead of reporting empty.
+  now = 72_300;
+  lagTick(); // 72.3s − 41.0s expected = 31.3s lag, corroborated by the stall → lag trigger
+  FakeProfiler.instances[1].releaseStop();
+  // collect() awaits two stop() promises then writes the records.
+  for (let i = 0; i < 10 && records.length < 2; i += 1) await new Promise((r) => setTimeout(r, 0));
+  eq(records.length, 2, "e2e: both triggers wrote a record (longtask first, lag shared)");
+  const longtaskRecord = JSON.parse(records[0] ?? "{}") as { snapshot: PerformanceSnapshot; label: string };
+  const lagRecord = JSON.parse(records[1] ?? "{}") as { snapshot: PerformanceSnapshot; label: string };
+  eq(longtaskRecord.label, "performance.longtask", "e2e: record 0 is the longtask trigger");
+  const snap = longtaskRecord.snapshot;
   eq(snap.longTaskFrames?.map((f) => f.label.split(" ")[0]), ["dispatch", "fullScan"], "e2e: merged frames span both periods (previous trace survived the rollover)");
   eq(snap.longTaskMaxFrames?.frames.map((f) => f.label.split(" ")[0]), ["fullScan"], "e2e: max bucket isolates the stall");
   eq([snap.longTaskMaxFrames?.startMs, snap.longTaskMaxFrames?.durationMs, snap.longTaskMaxFrames?.sampledToMs], [50_000, 16_587, 270], "e2e: max bucket shows the stall was only sampled 0.27s in");
   eq(snap.profilerSampling?.traces, 2, "e2e: two traces merged");
   eq(snap.profilerSampling?.medianGapMs, 30, "e2e: measured cadence reported");
-  eq(FakeProfiler.instances.length, 3, "e2e: collect restarted the profiler");
+  eq(FakeProfiler.instances.length, 3, "e2e: collect restarted the profiler once (the shared trigger did not start another)");
   ok(FakeProfiler.instances[1].stopped, "e2e: collect stopped the active profiler");
+  // The lag trigger that arrived mid-collect: same traces, its own windows.
+  eq(lagRecord.label, "performance.lag", "e2e: record 1 is the lag trigger");
+  ok(lagRecord.snapshot.reason.startsWith("event loop lag 31300ms"), `e2e: lag reason carries the measured lag (${lagRecord.snapshot.reason})`);
+  eq(lagRecord.snapshot.longTaskMaxFrames?.frames.map((f) => f.label.split(" ")[0]), ["fullScan"], "e2e: lag record shares the traces — max bucket present instead of empty");
+  eq(lagRecord.snapshot.profilerSampling?.traces, 2, "e2e: lag record reports the shared traces");
+  eq(lagRecord.snapshot.longTaskFrames?.map((f) => f.label.split(" ")[0]), ["dispatch", "fullScan"], "e2e: lag record merged frames too (its windows include the long tasks)");
 
   g.window = prev.window; g.document = prev.document; g.performance = prev.performance;
   g.PerformanceObserver = prev.PerformanceObserver; g.Profiler = prev.Profiler; g.localStorage = prev.localStorage;

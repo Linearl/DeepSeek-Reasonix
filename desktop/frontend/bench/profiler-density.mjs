@@ -205,6 +205,25 @@ window.__probe = {
     await Promise.race([done, sleep(1500)]);
     return { maxBufferSize, taskStartMs: +t0.toFixed(1), taskEndMs: +taskEnd.toFixed(1), order: log, collected };
   },
+  // E7: setTimeout 宏任务里的纯 JS 忙循环, 新 profiler 全程覆盖——检验宏任务形态下
+  // 样本是否带 stackId (E6b 的 collected=0 可能混淆了 rollover 与宏任务两个变量)。
+  async e7MacrotaskBusy(ms) {
+    const p = new Profiler({ sampleInterval: 10, maxBufferSize: 6000 });
+    const win = await new Promise((resolve) => {
+      const po = new PerformanceObserver((list) => {
+        const entries = list.getEntries().map((e) => ({ startMs: e.startTime, durationMs: e.duration }));
+        const w = entries.find((e2) => e2.durationMs >= ms * 0.9);
+        if (!w) return;
+        po.disconnect();
+        resolve(w);
+      });
+      po.observe({ entryTypes: ["longtask"] });
+      setTimeout(() => { const t0 = performance.now(); busyJs(ms); resolve({ startMs: t0, durationMs: performance.now() - t0 }); }, 0);
+      setTimeout(() => resolve(null), ms + 2000);
+    });
+    const trace = await p.stop();
+    return { longTaskWindow: win ? { startMs: +win.startMs.toFixed(1), durationMs: +win.durationMs.toFixed(1) } : null, ...inWindowStats(trace, win || { startMs: 0, durationMs: 1e9 }), traceSamples: (trace.samples || []).length };
+  },
 };
 </script></body></html>`;
 
@@ -234,6 +253,7 @@ try {
   out("E4.bufferFullMidTask", await page.evaluate(([ms, cap]) => window.__probe.e4BufferFullMidTask(ms, cap), [3000, 40]));
   out("E6.productionSequence", await page.evaluate(([ms, cap]) => window.__probe.e6ProductionSequence(ms, cap), [4000, 60]));
   out("E6b.productionSequenceMacrotask", await page.evaluate(([ms, cap]) => window.__probe.e6bProductionSequence(ms, cap), [4000, 60]));
+  out("E7.macrotaskBusy", await page.evaluate((ms) => window.__probe.e7MacrotaskBusy(ms), 3000));
   // E5: 生产常量推算 (不实跑 60s): 空闲也采样 ⇒ 缓冲寿命 = 6000 × 有效间隔, 与负载无关。
   const e1 = await page.evaluate((ms) => window.__probe.e1Idle(ms), 1000);
   const effective = e1.effectiveIntervalMs || 10;
