@@ -292,7 +292,7 @@ func TestAskAutoContinueExcludesUserCancel(t *testing.T) {
 	done := runAskACTurn(c)
 	askID := rec.waitAsk(t)
 	c.Cancel()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(controlTestReceiveWindow)
 	for c.Running() && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}

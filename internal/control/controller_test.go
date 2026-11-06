@@ -2930,7 +2930,7 @@ func TestRegisterMCPServerOnDemandDefersConnectionUntilFirstUse(t *testing.T) {
 	if _, err := connect.Execute(context.Background(), json.RawMessage(`{}`)); err == nil || !strings.Contains(err.Error(), "initializing on first use") {
 		t.Fatalf("first-use connect result = %v, want initializing guidance", err)
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(controlTestReceiveWindow)
 	for !host.HasClient("on-demand") && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}

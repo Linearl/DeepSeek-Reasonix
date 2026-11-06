@@ -259,7 +259,7 @@ func TestCascadeWaitLedgerMarksWaitingUserDuringDelegateWait(t *testing.T) {
 
 	// Mid-wait: the delegate is blocked, no local ask exists, and the ledger
 	// must say waiting_user — exactly the state the doctor reads.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(controlTestReceiveWindow)
 	for ledger.CurrentStatus() != event.TurnWaitingUser {
 		if time.Now().After(deadline) {
 			t.Fatalf("ledger status during cascade wait = %q, want waiting_user", ledger.CurrentStatus())
@@ -297,7 +297,7 @@ func TestCascadeWaitLedgerMarksWaitingUserDuringDelegateWait(t *testing.T) {
 	cancel()
 	waitForSignal(t, "ask did not return after the delegate wait was cancelled", askDone)
 	// The restore stamp lands before Ask returns to its caller.
-	deadline = time.Now().Add(5 * time.Second)
+	deadline = time.Now().Add(controlTestReceiveWindow)
 	for ledger.CurrentStatus() != event.TurnInProgress {
 		if time.Now().After(deadline) {
 			t.Fatalf("ledger status after the delegate wait = %q, want the in_progress restore", ledger.CurrentStatus())

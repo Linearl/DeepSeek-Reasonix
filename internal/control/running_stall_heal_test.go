@@ -90,7 +90,7 @@ func TestHealStalledRunningReopensWedgedTurn(t *testing.T) {
 	c, prov, done := newWedgedRunningController(t)
 
 	c.Submit("carry the interrupted work to completion")
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(controlTestReceiveWindow)
 	for {
 		c.mu.Lock()
 		entered := prov.entered

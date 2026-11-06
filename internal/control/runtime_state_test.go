@@ -22,7 +22,7 @@ func (s *runtimeStateTestSink) RuntimeStateChanged(state event.RuntimeStateSnaps
 
 func runtimeStateAwait(t *testing.T, states <-chan event.RuntimeStateSnapshot, accept func(event.RuntimeStateSnapshot) bool) event.RuntimeStateSnapshot {
 	t.Helper()
-	timer := time.NewTimer(5 * time.Second)
+	timer := time.NewTimer(controlTestReceiveWindow)
 	defer timer.Stop()
 	var last event.RuntimeStateSnapshot
 	for {

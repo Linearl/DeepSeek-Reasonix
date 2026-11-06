@@ -268,7 +268,7 @@ func TestInterruptedAutoResumeExcludesUserCancel(t *testing.T) {
 	done := runIRTurn(c)
 	// Cancel while the first (interrupted) call is in flight.
 	c.Cancel()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(controlTestReceiveWindow)
 	for c.Running() && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
