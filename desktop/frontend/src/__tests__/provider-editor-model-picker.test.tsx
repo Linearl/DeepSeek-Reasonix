@@ -356,7 +356,14 @@ const webSearchSwitch = rootEl.querySelector<HTMLInputElement>('input[role="swit
 ok(rootEl.textContent?.includes("Server-side web search") === true, "DeepSeek Responses editor separates service capabilities from model selection");
 ok(webSearchSwitch?.checked === true, "curated DeepSeek Responses capability is enabled in the editor");
 ok(rootEl.querySelectorAll('.provider-model-draft__option input[type="checkbox"]').length === 1, "DeepSeek Responses exposes one model-selection checkbox");
-ok(rootEl.textContent?.includes("No image input") !== true, "DeepSeek Responses editor does not use the read-only image-unsupported label");
+// a05ecf898(model image capabilities explicit,2026-09-05)+fork 5c048217b(去 SKU 硬表)
+// 后,图像输入不再是只读标签而是 ModelImageInputControl 三态控件:metadata 判
+// unsupported → 状态行如实显示「No image input」,但档位仍可手动开(用户覆写决定)。
+// 原钉「不出现只读 image-unsupported 标签」的意图(配置性不丢失)改钉控件三形态。
+const deepseekImageMode = rootEl.querySelector<HTMLInputElement>('input[type="radio"][value="on"][name]:not(.sr-only), .provider-image-input input[value="on"]');
+ok(Boolean(rootEl.querySelector('.provider-image-input')), "DeepSeek Responses editor renders the image-input tri-state control");
+ok(deepseekImageMode?.disabled === false, "DeepSeek Responses image input stays user-decidable despite unsupported metadata");
+ok(rootEl.textContent?.includes("No image input") === true, "unsupported metadata is reported honestly in the status line");
 
 await act(async () => {
   root.render(renderProviderEditor(longCatAnthropicProvider));
@@ -376,7 +383,11 @@ ok(
 const displayedRequestURL = (input: HTMLInputElement | null) =>
   input?.value;
 const customProviderUrlInput = rootEl.querySelector<HTMLInputElement>(".provider-url-input");
-ok(rootEl.querySelectorAll('input[type="radio"]').length === 0, "existing custom providers no longer expose an address mode selector");
+// 地址模式选择器退场的保证仍在:可见 radio 数为 0。sr-only radio 现归属
+// ModelImageInputControl 的三态 radiogroup(a05ecf898),不是地址模式选择器,
+// 故改钉可见 radio(排除 sr-only)并正向钉控件自身的 radiogroup 存在。
+ok(rootEl.querySelectorAll('input[type="radio"]:not(.sr-only)').length === 0, "existing custom providers no longer expose a visible address mode selector");
+ok(Boolean(rootEl.querySelector('.provider-image-input [role="radiogroup"]')), "the only radios are the image-input mode group");
 ok(customProviderUrlInput?.value === "https://eu.deepseek.com/v1/chat/completions", "legacy base-only providers display their previously effective request URL");
 ok(rootEl.querySelector<HTMLInputElement>(".provider-name-input")?.disabled === false, "existing connection display name remains editable");
 ok(rootEl.querySelector("code")?.textContent === backendUnsupportedCustomProvider.name, "stable provider identity remains separate from display name");
