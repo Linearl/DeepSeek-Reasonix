@@ -48,7 +48,7 @@ func (g *goalMachine) blockLegacyRestore(expectedEpoch uint64, reason string) (u
 	g.status = GoalStatusBlocked
 	g.stopCause = stopCauseLegacyArchive
 	g.block = clipGoalReason(reason)
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochLegacyBlock)
 	return g.continuationEpoch, true
 }
 
@@ -65,7 +65,7 @@ func (g *goalMachine) failLegacyRestorePersistence(expectedEpoch uint64, reason 
 	g.status = GoalStatusBlocked
 	g.stopCause = stopCauseLegacyArchive
 	g.block = clipGoalReason(reason)
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochLegacyBlock)
 	return g.continuationEpoch, true
 }
 
@@ -148,7 +148,7 @@ func (g *goalMachine) fillGoalTextIfEmpty(expectedEpoch uint64, goal string) (ui
 		g.scopeID = newGoalScopeID()
 		g.deliveryCheckpoint = evidence.DeliveryCheckpoint{ScopeID: g.scopeID}
 	}
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochLegacyFill)
 	return g.continuationEpoch, true
 }
 
@@ -178,6 +178,6 @@ func (g *goalMachine) resumeLegacyArchive(expectedEpoch uint64, goal string) (ui
 		g.scopeID = newGoalScopeID()
 		g.deliveryCheckpoint = evidence.DeliveryCheckpoint{ScopeID: g.scopeID}
 	}
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochLegacyResume)
 	return g.continuationEpoch, true
 }

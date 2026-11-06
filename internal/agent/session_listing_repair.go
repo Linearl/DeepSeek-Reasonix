@@ -282,6 +282,14 @@ func commitSessionListingReplay(ctx context.Context, path string, meta BranchMet
 	if err := saveBranchMetaContext(ctx, path, meta, false); err != nil {
 		return SessionListingRepairResult{}, err
 	}
+	if ledgerRepaired {
+		// tl1459: a repaired ledger is a CAS revision this process wrote
+		// without a save. Record it in the tl1443 commit trace so a live
+		// writer that later conflicts on this revision names the repair
+		// (peer_trigger=listing_repair) instead of "not_traced" — the
+		// 2026-11-06 early-stop incident spent a day on exactly that blank.
+		noteLedgerCommit(path, meta.Revision, state.Digest)
+	}
 	return SessionListingRepairResult{
 		Status: SessionListingRepairApplied, Preview: preview, Turns: turns, LedgerRepaired: ledgerRepaired,
 	}, nil

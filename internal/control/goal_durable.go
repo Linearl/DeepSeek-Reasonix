@@ -79,7 +79,7 @@ func (g *goalMachine) restore(snapshot goalMachineSnapshot) {
 	g.budgetExtensions = snapshot.budgetExtensions
 	g.progressEvidence = append([]string(nil), snapshot.progressEvidence...)
 	g.stateExtra = cloneGoalStateExtra(snapshot.stateExtra)
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochRollback)
 	g.mu.Unlock()
 }
 

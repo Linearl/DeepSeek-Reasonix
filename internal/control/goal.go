@@ -349,7 +349,11 @@ func (g *goalMachine) setLegacyArchiveBlockedWithTaskID(goal, preferredBudgetCla
 }
 
 func (g *goalMachine) installGoalLocked(goal, preferredBudgetClass string) {
-	g.continuationEpoch++
+	if goal == "" {
+		g.bumpEpochLocked(goalEpochClear)
+	} else {
+		g.bumpEpochLocked(goalEpochInstall)
+	}
 	g.turnsUsed, g.tokensUsed, g.requestsUsed, g.noProgressTurns = 0, 0, 0, 0
 	g.workDurationMs = 0
 	g.block = ""
@@ -416,7 +420,7 @@ func (g *goalMachine) autopilotDeadlineReached(now time.Time) bool {
 func (g *goalMachine) stop(status string, todos []evidence.TodoItem) (string, []byte, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochStop)
 	if strings.TrimSpace(g.goal) != "" && g.status == GoalStatusRunning {
 		g.status = status
 	}
@@ -430,7 +434,7 @@ func (g *goalMachine) stop(status string, todos []evidence.TodoItem) (string, []
 func (g *goalMachine) pauseFor(stopCause, reason string, todos []evidence.TodoItem) (string, []byte, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochPause)
 	if strings.TrimSpace(g.goal) != "" && g.status == GoalStatusRunning {
 		g.status = GoalStatusBlocked
 	}
@@ -457,7 +461,7 @@ func (g *goalMachine) resume(todos []evidence.TodoItem) (path string, data []byt
 	// A user-selected spend pause grants one fresh configured slice. Usage
 	// remains cumulative; only the absolute threshold moves forward.
 	spentBudget := g.stopCause == stopCauseBudgetSpend
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochResume)
 	g.status = GoalStatusRunning
 	g.block = ""
 	g.stopCause = ""
@@ -545,7 +549,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	if strings.TrimSpace(g.goal) == "" || g.status != GoalStatusRunning {
 		return goalAdvanceResult{cont: false}
 	}
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochAdvance)
 	// A top-level goal turn (the first turn or a synthetic continuation) counts
 	// as an observational statistic; the in-Run model/tool loop is not re-counted.
 	g.turnsUsed++
@@ -1003,7 +1007,7 @@ func (g *goalMachine) restoreFromState(sessionPath string) (path string, data []
 	if g.normalizeContinuousState(state.ResearchMode, legacy.taskID) {
 		migrated = true
 	}
-	g.continuationEpoch++
+	g.bumpEpochLocked(goalEpochRestore)
 	legacy.epoch = g.continuationEpoch
 	pendingLegacyGoal := legacy.taskID != "" && g.goal == ""
 	if migrated && !pendingLegacyGoal {
