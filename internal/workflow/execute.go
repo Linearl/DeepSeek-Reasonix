@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"reasonix/internal/event"
@@ -81,6 +82,13 @@ func (s *runState) beginNode(ctx context.Context, n *Node) *nodeCall {
 	default: // NodeSubagent
 		req = s.subagentRequest(n)
 	}
+	// tl1440 候选池在 serial head 收集：插值后的 prompt 是「该节点看得见哪些
+	// 来源序号」的权威边界（复核看不见的序号不可归并，扫描节点的纯任务
+	// prompt 一个都不含）。cands 是值快照，并发段不碰 runState。
+	var cands map[string]Finding
+	if n.Type == NodeSubagent {
+		cands = s.upstreamCandidates(req.Prompt)
+	}
 	// tl1432 B 预算在 serial head 解析（读 Engine 字段），并发段只捕获值。
 	retries := 0
 	if n.Type == NodeSubagent && len(n.Result) > 0 {
@@ -102,7 +110,7 @@ func (s *runState) beginNode(ctx context.Context, n *Node) *nodeCall {
 			if n.Type == NodeConfirm {
 				return s.completeConfirm(n, answer, err)
 			}
-			return s.completeSubagent(n, answer, err)
+			return s.completeSubagent(n, answer, err, cands)
 		},
 	}
 }
@@ -235,9 +243,11 @@ func (s *runState) dispatchAndCollect(calls []*nodeCall) error {
 
 // completeSubagent is a dispatched subagent node's tail on the single writer
 // (the runSubagent body after the runner call): store the answer, parse the
-// typed result, land findings (tl1326 B1 stamped with source serials), stamp
-// the terminal.
-func (s *runState) completeSubagent(n *Node, answer string, err error) error {
+// typed result, land findings (tl1326 B1 stamped with source serials, tl1440
+// echo-miss rewrites re-keyed onto their producer serial), stamp the
+// terminal. cands is the serial head's value snapshot of the serials this
+// node's prompt actually carried (upstreamCandidates).
+func (s *runState) completeSubagent(n *Node, answer string, err error, cands map[string]Finding) error {
 	if err != nil {
 		return s.abortNode(n, fmt.Errorf("workflow: subagent %q: %w", n.ID, err), 0)
 	}
@@ -252,6 +262,18 @@ func (s *runState) completeSubagent(n *Node, answer string, err error) error {
 			fs, err := extractFindings(obj, n.FindingsField, n.ID)
 			if err != nil {
 				return s.abortNode(n, fmt.Errorf("workflow: subagent %q: %w", n.ID, err), 0)
+			}
+			merged, skippedMulti, ghost := mergeEchoedFindings(n.ID, n.FindingsField, obj, fs, cands)
+			if merged > 0 || ghost > 0 {
+				// Degradation made visible (tl1440): the model did not echo
+				// the source serials (echo was the primary merge mechanism),
+				// the engine recovered by deterministic where-matching; or
+				// the output carried ghost (empty-where) entries. Either way
+				// this must never happen silently — a silent fallback is how
+				// the +43% duplicate inflation went unnoticed for a full run.
+				slog.Warn("workflow: findings merge fallback engaged (source-id echo contract not fully honored)",
+					"run", s.runID, "node", n.ID,
+					"merged_by_where", merged, "skipped_multi_where", skippedMulti, "ghost_where", ghost)
 			}
 			for _, f := range fs {
 				s.bag.add(f)

@@ -59,9 +59,18 @@ type WorkflowReport struct {
 // a lock — so a run that dies at node twelve still hands back the eleven
 // nodes' worth of reported work (SKILL.md §10 "salvage by report": the array
 // you accumulate at the end is the array you lose).
+//
+// rawReported counts every add() call (tl1440): the gap between it and
+// len(findings) is exactly how many reports were merged away (same-source
+// rewrites, echoed or where-fallback re-keyed). It feeds the report's
+// conclusion-counting note so a reader never sees "N findings" next to a
+// conclusion that counted fewer, with no explanation of the difference. It
+// lives only on the in-memory bag — snapshots persist []Finding, so run.json
+// keeps its shape and old runs replay untouched.
 type reportBag struct {
-	mu       sync.Mutex
-	findings []Finding
+	mu          sync.Mutex
+	findings    []Finding
+	rawReported int
 }
 
 // add appends one finding immediately. Idempotent per the shared key
@@ -75,6 +84,7 @@ func (b *reportBag) add(f Finding) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.rawReported++
 	for i := range b.findings {
 		have := &b.findings[i]
 		if !sameFinding(*have, f) {
@@ -102,6 +112,14 @@ func (b *reportBag) snapshot() []Finding {
 	out := make([]Finding, len(b.findings))
 	copy(out, b.findings)
 	return out
+}
+
+// reportedTotal is the raw number of add() calls so far (tl1440): the dedup
+// baseline the conclusion's counting note compares len(findings) against.
+func (b *reportBag) reportedTotal() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.rawReported
 }
 
 // promote flips unconfirmed findings matching the shared key (sameFinding)
