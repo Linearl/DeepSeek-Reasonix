@@ -392,9 +392,18 @@ export function CapsuleIndicator({
     () => (onOpenWorkflowRun ? runningWorkflowRuns(workflowRuns ?? []).map(workflowRunRowView) : []),
     [workflowRuns, onOpenWorkflowRun],
   );
-  // tl1433 四缺口①: a listed run is running work — it counts toward the
-  // trigger, so a run row never sits under a greyed capsule.
-  const runningCount = runningEntries.length + workflowViews.length;
+  // tl1433 四缺口② (557 同族): workflow-dispatched sub-agents never register as
+  // jobs nor in the foreground registry (tl1435), so the three sources above
+  // cannot see them and the capsule read idle (greyed, no badge) while a
+  // workflow was visibly working. Each running run counts once plus each of
+  // its running sub-agent-kind nodes — counted from the feed's live node
+  // states, so a closed capsule needs no background poll (447c2 rule kept).
+  // Disjoint from runningEntries by construction (no job / registry twin).
+  const workflowRunningCount = useMemo(
+    () => workflowViews.reduce((sum, view) => sum + 1 + view.runningSubagents, 0),
+    [workflowViews],
+  );
+  const runningCount = runningEntries.length + workflowRunningCount;
   const hasRunning = runningCount > 0;
   // Task 447c2 event-driven refresh: the controller pushes a fresh jobs
   // snapshot on notice/turn_done events, so the value-keyed running identity

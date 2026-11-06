@@ -263,6 +263,47 @@ section("① 左侧胶囊弹层：工作流 run 入列（同一喂单 running �
   const css = read("src/styles.css");
   ok(css.includes(".capsule-panel__wf {") && css.includes(".capsule-panel__row--workflow"), "样式：胶囊工作流行类有定义（类契约）");
 }
+// ===== GAP 2 =====
+section("② 胶囊计数面补工作流子代理（557 同族；关闭态即计数、不轮询）");
+{
+  const { runningSubagentNodeCount, workflowRunRowView } = await import("../lib/workflowRunRows");
+  const busy = makeRun({
+    nodes: [
+      node("plan", "subagent", "completed"),
+      node("read-facts", "subagent", "running"),
+      node("confirm", "confirm", "running"),
+      node("gate-tests", "gate", "running"),
+    ],
+  });
+  eq(runningSubagentNodeCount(busy), 2, "计数：running 的 subagent + confirm 节点计入，gate 不计");
+  eq(workflowRunRowView(busy).runningSubagents, 2, "投影：行视图携带同一计数");
+  eq(runningSubagentNodeCount(makeRun({ nodes: [node("plan", "subagent", "running"), node("plan", "subagent", "completed")] })), 0,
+    "计数：节点表后见覆盖——同节点跑完即不计");
+  eq(runningSubagentNodeCount(makeRun({ nodes: [node("report", "", "running")] })), 1, "计数：种类以 DAG 定义为准（节点事件就地点亮的 nodeType 为空也认）");
+  eq(runningSubagentNodeCount(makeRun({ dag: undefined, nodes: [node("x", "subagent", "running"), node("g", "gate", "running")] })), 1, "计数：缺 DAG 退节点表 nodeType");
+
+  listCalls.length = 0;
+  await mount(capsule({ workflowRuns: [busy], onOpenWorkflowRun: () => {} }));
+  eq(capsuleCount(), "3", "计数面：关闭态即计入（run 1 + 正在跑的子代理型节点 2）");
+  ok(trigger().classList.contains("capsule__trigger--active"), "置灰修复：工作流子代理在跑时触发器 active 而非 idle");
+  eq(document.querySelector('[data-capsule-badge="running"]')?.textContent ?? null, "3", "徽标：显示计数面总数");
+  eq(listCalls.length, 0, "关闭态不后台轮询 sidecar（447c2 规则保持——计数取自喂单节点态）");
+
+  await mount(capsule({ jobs: [job({ id: "task-1", kind: "task", label: "后台调研" })], subagents: [fg()], workflowRuns: [busy], onOpenWorkflowRun: () => {} }));
+  eq(capsuleCount(), "5", "计数面：三源（job 1 + 前台子代理 1）+ 工作流（1 + 2）合计 5，互不双计");
+
+  await mount(capsule({ workflowRuns: [makeRun({ nodes: [node("gate-tests", "gate", "running")] })], onOpenWorkflowRun: () => {} }));
+  eq(capsuleCount(), "1", "计数面：run 在跑门节点（无子代理在跑）只计 run 本身");
+
+  await mount(capsule({ jobs: [job()] }));
+  eq(capsuleCount(), "1", "兼容：无工作流时计数面 = 原三源");
+  await unmount();
+
+  const capsuleSrc = read("src/components/CapsulePanel.tsx");
+  ok(capsuleSrc.includes("sum + 1 + view.runningSubagents") && capsuleSrc.includes("runningEntries.length + workflowRunningCount"),
+    "接线：计数面 = 三源 + Σ(run 1 + 子代理型节点)");
+  ok(capsuleSrc.includes('data-capsule-badge="running"') && !capsuleSrc.includes("data-capsule-badge={"), "兼容：徽标仍只以 running 态渲染（任务 497 契约不动）");
+}
 // ===== SUMMARY =====
 
 console.log(`\n${passed} passed, ${failed} failed`);
