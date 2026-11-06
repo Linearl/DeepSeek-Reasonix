@@ -13632,7 +13632,16 @@ button.statusbar__mcp:focus-visible {
 .side-files__group > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; background: var(--bg-soft); font-size: var(--text-sm); font-weight: 600; color: var(--fg); }
 .side-files__group > summary::-webkit-details-marker { display: none; }
 .side-files__meta { font-weight: 400; color: var(--fg-dim); font-size: var(--text-xs); }
-.side-files__list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow: auto; }
+.side-files__list { list-style: none; margin: 0; padding: 0; }
+/* tl1468: the 240px cap stays ONLY on the combined task-114 panel (no taller
+   ancestor to scroll in — the same reasoning as Task 270's todobar fix). The
+   dock variant lifts it: its panel (.workbench-dock__body >
+   .side-files--dock) is height:100% + overflow:auto, so the fixed cap forced
+   an inner scrollbar plus a "show more" fold while the dock body below was
+   still empty (user screenshot 20261106; tl1428 is the same complaint).
+   Scrolling now belongs to the dock panel alone and only when its content
+   truly overflows. */
+.side-files:not(.side-files--dock) .side-files__list { max-height: 240px; overflow: auto; }
 .side-files__item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--border-soft); font-size: var(--text-xs); color: var(--fg); }
 .side-files__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, ui-monospace, monospace); }
 .side-files__foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border-soft); }
