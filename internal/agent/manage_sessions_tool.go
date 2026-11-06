@@ -127,14 +127,17 @@ func (t manageSessionsTool) forwardArgs(action string, args json.RawMessage) (js
 	if err := json.Unmarshal(args, &p); err != nil {
 		return nil, fmt.Errorf("invalid args: %w", err)
 	}
-	// resolve maps the caller's target reference onto the directory identity,
-	// exactly like rename_session/move_topic_to_group already do.
+	// resolve maps the caller's target reference onto the directory identity —
+	// the shared organization-face resolution (tl1363b): the directory scan
+	// first, then the same registry-shell fallback delete_session runs, so
+	// archive/rename/move/reorder reach a registry shell instead of
+	// dead-ending on "not in the contact directory" (the 2026-11-05 feedback
+	// had to hand-edit desktop-projects.json to clear one 0-byte shell).
 	resolve := func() (sessioncollab.Identity, error) {
 		if strings.TrimSpace(p.Target) == "" {
 			return sessioncollab.Identity{}, fmt.Errorf("target is required (%s)", action)
 		}
-		ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
-		return ResolveTarget(ids, p.Target)
+		return ResolveTargetOrRegistryShell(t.cfg, p.Target)
 	}
 	switch action {
 	case "list", "op_log":
