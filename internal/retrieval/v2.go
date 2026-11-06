@@ -108,6 +108,15 @@ type V2Hit struct {
 // frequencies accumulate per field scaled by field weight, then the standard
 // saturation applies once per term (the F in BM25F), with length
 // normalization over the weighted document length.
+//
+// tl1399① measured note: query-side CJK unigram de-dilution (dropping
+// bigram-member lone runes) was tried and REJECTED — on the 780-entry live
+// pool it regressed V2 Hit@1 0.541→0.459 (paraphrase 0.500→0.375). The lone
+// runes carry real weak signal (e.g. 翻/遍 matching the fact that literally
+// says 翻遍了); dropping them homogenizes correct entries against noise. The
+// fake-discriminator effect (怎 df 18 < 怎么 df 17 on mixed corpora, amplified
+// by field weights) is real but cannot be fixed by dropping unigrams — the
+// same noise channels exist in V1 and V1 lives with them.
 func RankV2(query string, docs []FieldedDoc) []V2Hit {
 	queryTerms := Unique(TokensV2(query))
 	if len(queryTerms) == 0 || len(docs) == 0 {
