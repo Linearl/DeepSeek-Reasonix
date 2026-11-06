@@ -21,6 +21,14 @@
 // - panel: when the meta flips terminal the same view renders as an ended row
 //   (已结束 · 1) and the running count drops to zero — the「运行中→已结束」move;
 // - panel: a transcript running card dedupes against its persisted twin.
+// tl1435(附) 装机缺陷两件:
+// - confirm 节点子代理的已结束区显示: the backend now persists read-only
+//   (confirm) dispatches (agent.WithSubagentTranscriptPersistence), so the
+//   confirmer's terminal sidecar rides the same ListSubagentsByParent feed —
+//   the ended section renders its row like scan/triage rows already did;
+// - detail-title hover card opens DOWNWARD: the head row (返回列表/在主区
+//   打开) sits directly above the title, and the default top-side tooltip
+//   covered exactly those buttons on every hover.
 
 import assert from "node:assert/strict";
 import { createElement } from "react";
@@ -240,6 +248,89 @@ console.log("\ntl1435 persisted running subagents (dock single-source convergenc
     ok(!(host.querySelector("[data-subagent-terminate]")), "live: the moved row no longer offers terminate");
   } finally {
     (globalThis.window as unknown as { setInterval: typeof setInterval }).setInterval = originalSetInterval;
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  }
+}
+
+// 9. tl1435(附) 缺陷①: the confirm node's child (read-only dispatch) shows
+// in the ended section. Post-fix backend contract: the confirmer's sidecar
+// lands with the dispatch and flips terminal at completion — the same feed
+// scan/triage rows already rode. Assert the terminal view renders as an
+// ended row with the dispatch-description label and no terminate bridge.
+{
+  const confirmView = persistedView({
+    ref: "sa_confirm1",
+    status: "completed",
+    outcome: "reproduced: unguarded index at src/a.go:42",
+    description: "独立复核缺陷",
+    createdAt: 10_000,
+    updatedAt: 65_000,
+    hasTranscript: true,
+  });
+  const merged = mergeEndedSubagentRecords(buildSubagentDirectory([]), [confirmView]);
+  eq(merged.ended.length, 1, "confirm(ended): the terminal confirmer view joins the ended section");
+  eq(merged.ended[0]!.item.id, "persisted:sa_confirm1", "confirm(ended): row id stays persisted:<ref> (detail/read bridges key on ref)");
+  eq(merged.ended[0]!.ref, "sa_confirm1", "confirm(ended): the row carries the child ref (transcript read bridge)");
+  const markup = renderPanel({ directory: merged });
+  // jsdom navigator.language = en-US, so the section header/status resolve to
+  // the en dict (the same strings the panel-dock tests see).
+  ok(markup.includes("Ended · 1"), "confirm(ended): the ended section header counts the confirmer");
+  ok(markup.includes("独立复核缺陷"), "confirm(ended): the dispatch description renders as the row title (not bare task)");
+  ok(markup.includes(">completed<"), "confirm(ended): the row renders the terminal status label");
+  ok(!markup.includes("data-subagent-terminate="), "confirm(ended): ended rows never carry the terminate bridge");
+  ok(!(markup.match(/subagents-panel__row-wrap/g) ?? []).includes(undefined) && (markup.match(/subagents-panel__row-wrap/g) ?? []).length === 1, "confirm(ended): exactly one row renders");
+}
+
+// 10. tl1435(附) 缺陷②: the detail-title hover card opens DOWNWARD. Live
+// mount in split mode, click the ended row to open the detail view, hover
+// the title trigger, and assert the portal card renders with the bottom
+// side class (and never the top class) — the head row (返回列表/在主区
+// 打开) stays clear. jsdom has no layout, so the Tooltip's edge flip keeps
+// the declared side: zero-size rects leave bottom space larger than the
+// card's zero height, no flip happens, and the class reflects the wiring.
+{
+  const { createRoot } = await import("react-dom/client");
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  const ended = mergeEndedSubagentRecords(buildSubagentDirectory([]), [
+    persistedView({ ref: "sa_confirm1", status: "completed", outcome: "reproduced", description: "独立复核缺陷" }),
+  ]);
+  try {
+    await act(async () => {
+      root.render(
+        createElement(LocaleProvider, null, createElement(SubagentsDockPanel, {
+          directory: ended,
+          detailEnabled: true,
+          sessionPath: "/tmp/session.jsonl",
+          onOpenInMain: () => {},
+          onReadSubagent: async () => [],
+        } as never)),
+      );
+    });
+    const rowButton = host.querySelector<HTMLElement>(".subagents-panel__row");
+    ok(rowButton !== null, "hover(split): the ended row renders in the list pane");
+    await act(async () => {
+      rowButton!.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    });
+    ok(host.textContent?.includes("Back to list"), "hover(split): the detail head (返回列表/back) is present above the title");
+    ok(host.querySelector("[data-subagent-open-main]"), "hover(split): the detail head (在主区打开) is present above the title");
+    const titleTrigger = host.querySelector<HTMLElement>(".subagents-panel__detailview-name")?.closest(".tooltip-trigger") as HTMLElement | null;
+    ok(titleTrigger !== null, "hover(split): the detail title carries a hover trigger");
+    await act(async () => {
+      // React synthesizes onMouseEnter from mouseover; bubble it so the
+      // delegated root handler sees it, then wait out the 180ms show delay.
+      titleTrigger!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    const card = document.body.querySelector<HTMLElement>(".tooltip");
+    ok(card !== null, "hover(direction): the hover card renders on title hover");
+    ok(card?.classList.contains("tooltip--bottom") === true, "hover(direction): the card opens DOWNWARD (tooltip--bottom)");
+    ok(card?.classList.contains("tooltip--top") !== true, "hover(direction): the card never opens upward over the head buttons");
+  } finally {
     await act(async () => {
       root.unmount();
     });
