@@ -251,7 +251,14 @@ const entries = [
   eq(app.includes("historyPickerEnabled={promptHistoryPickerEnabled}"), true, "wiring: App passes the boot-snapshot flag to Composer");
   eq(app.includes("setPromptHistoryPickerEnabled(Boolean(settings.experimentalPromptHistoryPicker))"), true, "wiring: App reads the flag from the settings view");
 
-  const settings = readFileSync(new URL("../components/SettingsPanel.tsx", import.meta.url), "utf8");
+  // 45381165f(任务1134)后 promptHistoryPicker 为 searchHistory 合并卡成员行:
+  // 布局行在 labLayoutDefault、卡行/setter/重启横幅在 ExperimentalLabSection
+  // (拼接读源);三条保证逐一保留。
+  const settings = [
+    "../components/SettingsPanel.tsx",
+    "../components/ExperimentalLabSection.tsx",
+    "../lab/labLayoutDefault.ts",
+  ].map((rel) => readFileSync(new URL(rel, import.meta.url), "utf8")).join("");
   eq(settings.includes('id: "promptHistoryPicker"'), true, "wiring: the lab shelf lists the switch");
   eq(settings.includes("app.SetExperimentalPromptHistoryPicker(on)"), true, "wiring: the toggle persists through the new bridge method");
   eq(settings.includes("setRestartNeeded(true)"), true, "wiring: the boot-snapshot switch raises the restart banner");

@@ -29,7 +29,8 @@ function ok(value: boolean, label: string) {
 }
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
-const panel = read("../components/SettingsPanel.tsx");
+// 45381165f(任务1134)整列迁 ExperimentalLabSection:入口钮+对话框挂载在 labSection。
+const panel = read("../components/ExperimentalLabSection.tsx");
 const dialog = read("../components/ForkFeaturesIntroDialog.tsx");
 const intro = read("../components/ForkFeaturesIntro.tsx");
 const yamlText = read("../../public/fork-features.yaml");

@@ -230,7 +230,9 @@ const readSrc = (p: string) => readFileSync(resolve(here, "..", p), "utf8");
 }
 
 {
-  const panelSrc = readSrc("components/SettingsPanel.tsx");
+  // 45381165f(任务1134):白名单下沉 labPaneRegistry、卡分支迁 ExperimentalLabSection;
+  // 保证不变(id 在白名单+卡分支渲染+行写自己的 setter),读源跟到现承载面。
+  const panelSrc = readSrc("components/SettingsPanel.tsx") + readSrc("components/ExperimentalLabSection.tsx") + readSrc("lab/labPaneRegistry.ts");
   ok(panelSrc.includes('"startupLoading"') && panelSrc.includes('selected === "startupLoading"'),
     "SettingsPanel whitelists and renders the startupLoading card branch");
   ok(panelSrc.includes("app.SetExperimentalStartupSplash(on)"),

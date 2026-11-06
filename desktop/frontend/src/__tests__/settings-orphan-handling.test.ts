@@ -13,7 +13,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const panel = readFileSync(resolve(testDir, "../components/SettingsPanel.tsx"), "utf8");
+// 任务724/1134/tl1309卡③:orphanHandling 并入 infra 组 resourceGovernance 合并卡
+// (成员行,union 在 labPaneRegistry、布局行在 labLayoutDefault、卡行在
+// ExperimentalLabSection);拼接读源,「单一入口」语义不变。
+const panel = [
+  "../components/SettingsPanel.tsx",
+  "../components/ExperimentalLabSection.tsx",
+  "../lab/labLayoutDefault.ts",
+  "../lab/labPaneRegistry.ts",
+].map((rel) => readFileSync(resolve(testDir, rel), "utf8")).join("\n");
 const viewTypes = readFileSync(resolve(testDir, "../lib/settingsViewTypes.ts"), "utf8");
 const startupTypes = readFileSync(resolve(testDir, "../lib/types.ts"), "utf8");
 const bridge = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
@@ -27,13 +35,19 @@ function ok(condition: unknown, label: string) {
   passed++;
 }
 
-// Render table: exactly one misc-group entry, reading the merged view field.
+// Render table: exactly one entry for the merged switch, reading the merged
+// view field. tl1309 卡③(d53ad7b29)后为 resourceGovernance 合并卡成员行:
+// 布局条目 id=resourceGovernance、onKeys 含 experimentalOrphanHandling、
+// 成员行 id=orphanHandling(infra 组)。
 ok(
-  panel.includes('{ id: "orphanHandling", group: "infra",') &&
+  panel.includes('id: "resourceGovernance"') &&
+    panel.includes('{ id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended" }') &&
     panel.includes("Boolean(s.experimentalOrphanHandling)"),
-  "render table carries the single merged entry in the misc group",
+  "render table carries the single merged entry in the infra resourceGovernance card",
 );
-ok(panel.includes('| "orphanHandling"'), "the detail-card union includes the merged id");
+// tl1309 卡③:独立 pane 退役,union id 同步摘除(961 monitoring 同款先例,
+// labPaneRegistry 注释即规格);成员行承载(上方正钉)保证入口仍单一见可。
+ok(!panel.includes('| "orphanHandling"'), "the standalone detail-card union id is gone (tl1309 卡③)");
 ok(
   !panel.includes('"orphanLeaseReclaim"') && !panel.includes('"recoveryOrphanSweep"'),
   "the two pre-449 entries are gone from the render table (lab shows one switch)",
@@ -46,11 +60,13 @@ ok(
     !panel.includes("app.SetExperimentalRecoveryOrphanSweep("),
   "the merged card does not call the pre-449 setters",
 );
+// tl1309 卡③后独立 pane 分支退役(并入 resourceGovernance 卡,成员行承载):
+// 「恰好一张孤儿卡」的保证改钉为分支不存在+卡行恰一处(上方 setter 钉)。
 ok(
-  panel.indexOf('selected === "orphanHandling"') >= 0 &&
+  !panel.includes('selected === "orphanHandling"') &&
     !panel.includes('selected === "orphanLeaseReclaim"') &&
     !panel.includes('selected === "recoveryOrphanSweep"'),
-  "exactly one orphan detail card mounts",
+  "exactly one orphan card face: no standalone pane branches (merged member row only)",
 );
 
 // View fields (effective-value readout) on both view types + bridge surface.

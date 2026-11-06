@@ -27,7 +27,8 @@ const frontendSrc = fileURLToPath(new URL("../", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../../..", import.meta.url));
 const read = (p: string) => readFileSync(`${frontendSrc}${p}`, "utf8");
 
-const panel = read("components/SettingsPanel.tsx");
+// 45381165f(任务1134)后 capabilityGroups 卡行在 ExperimentalLabSection(拼接读源)。
+const panel = read("components/SettingsPanel.tsx") + read("components/ExperimentalLabSection.tsx");
 const bridge = read("lib/bridge.ts");
 const viewTypes = read("lib/settingsViewTypes.ts");
 const types = read("lib/types.ts");

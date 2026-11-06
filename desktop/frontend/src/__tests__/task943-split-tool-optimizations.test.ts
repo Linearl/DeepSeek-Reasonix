@@ -68,7 +68,9 @@ console.log("\ntask 943 split: readBack × multi_edit injection as independent s
   const boot = readRepo("internal/boot/boot.go");
   ok(boot.includes(`if cfg.MultiEditInjectionEnabled() {
 		extras = append(extras, "multi_edit")`), "extras gate reads the split injection helper");
-  ok(boot.includes(`fileWriteReceipt, cfg.ToolOptimizationsEnabled())`),
+  // 1ec3f5af3(tl1218,2026-10-28)给 readBack 调用追加第三参 multiEditSkipFailed;
+  // 保证不变:readBack 仍经族键 ToolOptimizationsEnabled() 解析。
+  ok(boot.includes(`fileWriteReceipt, cfg.ToolOptimizationsEnabled(), cfg.MultiEditSkipFailedEnabled())`),
     "readBack face still resolves through the family key");
   const ws = readRepo("internal/tool/builtin/workspace.go");
   ok(ws.includes("readBack: w.ToolOptimizations}"),
@@ -120,7 +122,10 @@ console.log("\ntask 943 split: readBack × multi_edit injection as independent s
 // 语义断言（独立键/setter/回落链/档位/灯）逐条保持，结构断言（独立 pane/
 // rail 入口）随聚合更新。
 {
-  const panel = read("components/SettingsPanel.tsx");
+  // 45381165f(任务1134)后 multiEditInjection/toolOptimizations 卡行迁
+// ExperimentalLabSection(拼接读源);971 退役面的三个「不再含」负钉在拼接源上
+// 仍成立(labSection 亦不含 union/白名单/独立卡分支字面)。
+const panel = read("components/SettingsPanel.tsx") + read("components/ExperimentalLabSection.tsx");
   // 971：独立 pane 退役——union 与 whitelist 均不再含 multiEditInjection。
   ok(!panel.includes(`  | "multiEditInjection"`), "pane id union retired multiEditInjection (971 aggregation)");
   ok(!panel.includes(`  "multiEditInjection",`), "pane whitelist retired multiEditInjection (971 aggregation)");

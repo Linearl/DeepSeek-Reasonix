@@ -46,8 +46,10 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
   ok(members.length === 2, "usageMonitoring carries exactly two members");
   ok(members[0]?.id === "glmPlanUsage" && members[0]?.tier === "recommended",
     "member 1 glmPlanUsage is recommended (live, read-only row)");
-  ok(members[1]?.id === "opencodeGoUsage" && members[1]?.tier === "unstable",
-    "member 2 opencodeGoUsage keeps its unstable tier (switch row)");
+  // c52a73ccd(783 同任务后半)裁决:readBack(编辑读回)tier 未稳定→推荐,
+  // 前端注册表+Go 渲染表同步翻;内置默认与 yaml 均为 recommended。
+  ok(members[1]?.id === "opencodeGoUsage" && members[1]?.tier === "recommended",
+    "member 2 opencodeGoUsage carries the readBack row at recommended tier (783 final ruling)");
   // 782④ 的另一半：opencodeGoUsage 不再出现在界面组。
   const ui = LAB_LAYOUT_DEFAULT_DATA.groups.find((g: { key: string }) => g.key === "ui");
   ok(!(ui!.entries.some((e: { id: string }) => e.id === "opencodeGoUsage")),

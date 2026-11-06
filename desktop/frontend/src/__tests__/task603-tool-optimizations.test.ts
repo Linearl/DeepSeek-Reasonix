@@ -66,8 +66,12 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
   // 任务 979：capabilityGroups（能力组披露+session_hub 聚合件）真开关入卡。
   // 任务 992：editEvidenceRelaxed 升可选、restartUpdate 归位回 updateFeedback
   // 卡——卡灯三键、成员三行（本 pin 2026-10-19 随 1005 窗口补同步）。
-  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalCapabilityGroups"], members: [\n          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "optional" },\n          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },\n          { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional" },\n        ] }'),
-    "rail entry reads its three switches and hosts the 789/943/979 member rows (81/123 lost-save rule; 992 现值)");
+  // tl-1218 给卡再加三成员(multi_edit 三增强,各自独立开关);原整块字面钉
+  // 按行拆钉:条目头(三开关)+六成员行逐条在。
+  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalCapabilityGroups"], members: [')
+    && ["editEvidenceRelaxed", "multiEditInjection", "capabilityGroups", "multiEditErrorDetail", "multiEditEvidenceNarrow", "multiEditSkipFailed"]
+      .every((id) => layoutDefault.includes(`{ id: "${id}", labelKey: "settings.${id}", tier: "optional" }`)),
+    "rail entry reads its three switches and hosts the 789/943/979/1218 member rows (81/123 lost-save rule; 992 现值)");
   ok(panel.includes("on: labEntryLightOn(entry, s)"), "panel derives each rail light from its own onKeys (81/123 lost-save rule)");
   ok(panel.includes('{selected === "toolOptimizations" && ('), "pane card located");
   ok(panel.includes('app.SetExperimentalToolOptimizations(on)'), "card writes through its own setter");

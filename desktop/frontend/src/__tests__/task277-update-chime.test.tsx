@@ -112,7 +112,13 @@ async function runCase(
   ok(sound.includes('"./sounds/nokia-tune.wav"'), "chime uses the bundled nokia wav (task 512 tune dial)");
   ok(sound.includes("new AudioContext()"), "same system-output audio path as notification chimes (system mute applies)");
 
-  const panel = read("../components/SettingsPanel.tsx");
+  // 任务724/1134:实验室卡片行/setter 迁 ExperimentalLabSection,布局树迁 src/lab/;
+  // 读源拼接(1134 判例),保证不变:chime 开关写自己的 setter、住 updateFeedback 卡。
+  const panel = [
+    "../components/SettingsPanel.tsx",
+    "../components/ExperimentalLabSection.tsx",
+    "../lab/labLayoutDefault.ts",
+  ].map(read).join("");
   ok(panel.includes("app.SetUpdateChime(on)"), "lab switch calls SetUpdateChime");
   // Task 561 M6: the update family folded into the updateFeedback card.
   ok(panel.includes('selected === "updateFeedback"'), "switch lives in the updateFeedback family card");

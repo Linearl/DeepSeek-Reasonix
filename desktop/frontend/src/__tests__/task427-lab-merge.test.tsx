@@ -106,12 +106,17 @@ ok(panel.includes('{selected === "contextGovernance" && ('), "pane branch render
   // 灯读数键 = 恰好七个成员开关（布局数据源，722 起 rail 灯读数即此表；
   // 815 补第七键 experimentalActiveTabResident——Task 347 附属行，Go 侧
   // cacheTuning renderKeys 家族早已含它，灯补齐后开了卡会亮）。
+  // tl1378 增量1/2(2af2b72b9/9db097837,2026-11-04)再补两附属行灯:
+  // experimentalCurateContext(细粒度档) + experimentalReviewHint(提示层),
+  // 均 compressOpt 附属行、默认关——与 815 同款「Go 渲染表家族已含,前端灯补齐」。
   const expected = [
     "experimentalCompactionParallel",
     "experimentalContextBudget",
     "experimentalResearchBudget",
     "experimentalProactiveCompact",
     "experimentalColdCacheCompact",
+    "experimentalCurateContext",
+    "experimentalReviewHint",
     "experimentalCacheTuning",
     "experimentalActiveTabResident",
     // tl1309 卡①：optimisticParallel 并卡，两键随迁入灯（九键并集）。
@@ -119,7 +124,7 @@ ok(panel.includes('{selected === "contextGovernance" && ('), "pane branch render
     "experimentalBashHeavyGuard",
   ];
   ok(JSON.stringify(familyEntry?.entry.onKeys ?? []) === JSON.stringify(expected),
-    "family entry onKeys are exactly the seven member switches + tl1309 optimistic pair");
+    "family entry onKeys are exactly the member switches + tl1309 optimistic pair + tl1378附属行两灯");
   // lightKeys 谓词逐键读原配置键（④ 的「原名读取」在灯侧同样成立）。
   // tl1309 卡①：optimisticWrite 是嵌套字段派生谓词（s.sandbox?.optimisticWrite，
   // 724「判亮规则收拢在谓词里」的非布尔键先例）——单独钉派生形态。

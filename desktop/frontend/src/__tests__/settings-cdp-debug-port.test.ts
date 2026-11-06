@@ -23,8 +23,22 @@ function ok(cond: boolean, label: string) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(here, "..", "..");
 const repoRoot = path.resolve(frontendRoot, "..", "..");
+// 任务724/1134 后实验室布局数据驱动:布局树在 src/lab/(yaml+内置默认双份),
+// 卡内分支/setter 在 ExperimentalLabSection.tsx;SettingsPanel 只留挂载点。
 const panel = fs.readFileSync(
   path.join(frontendRoot, "src/components/SettingsPanel.tsx"),
+  "utf8",
+);
+const labLayout = fs.readFileSync(
+  path.join(frontendRoot, "src/lab/labLayoutDefault.ts"),
+  "utf8",
+);
+const labLightKeys = fs.readFileSync(
+  path.join(frontendRoot, "src/lab/labLightKeys.ts"),
+  "utf8",
+);
+const labSection = fs.readFileSync(
+  path.join(frontendRoot, "src/components/ExperimentalLabSection.tsx"),
   "utf8",
 );
 const view = fs.readFileSync(path.join(frontendRoot, "src/lib/settingsViewTypes.ts"), "utf8");
@@ -45,23 +59,27 @@ const render = fs.readFileSync(
 // 1. Render table: task 561 M5 folds the entry into the devDebug card; the
 // family light still reads the boot-snapshot switch.
 ok(
-  panel.includes('{ id: "devDebug", group: "dev-debug"'),
+  labLayout.includes('id: "devDebug"') &&
+    labLayout.includes('key: "dev-debug"') &&
+    labLayout.includes('"experimentalCDPDebugPort"'),
   "lab rail hosts the devDebug family entry in the dev-debug group",
 );
 ok(
-  panel.includes("on: Boolean(s.experimentalCDPDebugPort) || Boolean(s.experimentalLifecycleNoiseGate)"),
-  "devDebug entry light reads s.experimentalCDPDebugPort",
+  labLightKeys.includes(
+    "experimentalCDPDebugPort: (s: SettingsView) => Boolean(s.experimentalCDPDebugPort)",
+  ),
+  "devDebug entry light reads s.experimentalCDPDebugPort (labLightKeys predicate)",
 );
 
 // 2. The devDebug detail card wires the toggle to the backend setter and
 // raises the restart banner (the WebView2 env is created once per process).
 ok(
-  panel.includes('selected === "devDebug" && ('),
+  labSection.includes('selected === "devDebug" && ('),
   "detail card renders for the devDebug family",
 );
 ok(
-  panel.includes("app.SetExperimentalCDPDebugPort(on)") &&
-    panel.includes("setRestartNeeded(true)"),
+  labSection.includes("app.SetExperimentalCDPDebugPort(on)") &&
+    labSection.includes("setRestartNeeded(true)"),
   "toggle persists through SetExperimentalCDPDebugPort and raises restartNeeded",
 );
 

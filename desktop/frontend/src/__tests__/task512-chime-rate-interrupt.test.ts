@@ -285,7 +285,11 @@ function teardown(): void {
   ok(guardIdx >= 0 && loaderCallIdx > guardIdx && importIdx >= 0, "sound: mario asset only reachable through the local-assets guard");
   ok(!sound.includes('playWav("positive", volume, playSynthSuccess)'), "sound: update chime no longer rides the old positive wav");
 
-  const panel = read("../components/SettingsPanel.tsx");
+  // 45381165f(任务1134)后更新提示音 tune 下拉迁 ExperimentalLabSection(拼接读源)。
+  const panel = [
+    "../components/SettingsPanel.tsx",
+    "../components/ExperimentalLabSection.tsx",
+  ].map(read).join("");
   ok(panel.includes("app.SetUpdateChimeTune(value)"), "panel: tune select calls SetUpdateChimeTune");
   ok(panel.includes('t("settings.updateChimeTune")') && panel.includes('settings.updateChimeTune.${tune}'), "panel: tune labels are locale-driven");
   ok(panel.includes('chimeLocalAssetsEnabled() ? UPDATE_CHIME_TUNES : ["nokia"] as const'), "panel: public builds list Nokia only");

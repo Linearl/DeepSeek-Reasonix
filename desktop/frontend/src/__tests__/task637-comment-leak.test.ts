@@ -52,8 +52,14 @@ console.log("\ntask 637 comment-leak guard");
   ok(!/(^|\n)\s*\/\/ Task 277: update-complete chime/.test(src), "SettingsPanel: Task 277 block is no longer bare JSX text");
   ok(!/(^|\n)\s*\/\/ Task 342: WebView2 CDP debug endpoint/.test(src), "SettingsPanel: Task 342 block is no longer bare JSX text");
   ok(!/(^|\n)\s*\/\/ Task 377: crash-report lifecycle noise triage/.test(src), "SettingsPanel: Task 377 block is no longer bare JSX text");
-  ok(src.includes("{/* Task 342: WebView2 CDP debug endpoint."), "SettingsPanel: Task 342 note kept as {/* */} comment");
-  ok(src.includes("{/* Task 377: crash-report lifecycle noise triage."), "SettingsPanel: Task 377 note kept as {/* */} comment");
+  // 45381165f(任务1134)实验室二级 chunk 拆分后,Task 342/377 两个注释块随
+  // devDebug 卡迁入 ExperimentalLabSection.tsx;{/* */} 形态保证改在现承载面钉。
+  const labSource = (await import("node:fs")).readFileSync(
+    fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)),
+    "utf8",
+  );
+  ok(labSource.includes("{/* Task 342: WebView2 CDP debug endpoint."), "ExperimentalLabSection: Task 342 note kept as {/* */} comment");
+  ok(labSource.includes("{/* Task 377: crash-report lifecycle noise triage."), "ExperimentalLabSection: Task 377 note kept as {/* */} comment");
 }
 
 // ④ 三语文案锚定：17 个被清理键不以任务号署名开头（R3 清零的字面锚定）。

@@ -158,7 +158,11 @@ async function threeLiveTabs(store: TranscriptStore): Promise<void> {
   const monitorSource = readFileSync(join(thisDir, "../lib/sessionMonitor.ts"), "utf8");
   const controllerSource = readFileSync(join(thisDir, "../lib/useController.ts"), "utf8").replace(/\n\s*/g, " ");
   const prefsSource = readFileSync(join(thisDir, "../app-runtime/useDesktopPreferences.ts"), "utf8").replace(/\n\s*/g, " ");
-  const panel = readFileSync(join(thisDir, "../components/SettingsPanel.tsx"), "utf8").replace(/\n\s*/g, " ");
+  // 45381165f(任务1134)后 cacheTuning 卡(含 activeTabResident 块与 LRU 容量
+  // 字段)在 ExperimentalLabSection;拼接读源,负钉(misc 退役/union 摘除)在拼接
+  // 源上仍成立。
+  const panel = (readFileSync(join(thisDir, "../components/SettingsPanel.tsx"), "utf8")
+    + readFileSync(join(thisDir, "../components/ExperimentalLabSection.tsx"), "utf8")).replace(/\n\s*/g, " ");
   const en = readFileSync(join(thisDir, "../locales/en.ts"), "utf8");
   const zh = readFileSync(join(thisDir, "../locales/zh.ts"), "utf8");
   const zhTW = readFileSync(join(thisDir, "../locales/zh-TW.ts"), "utf8");

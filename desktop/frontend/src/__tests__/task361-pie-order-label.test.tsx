@@ -31,7 +31,8 @@ function ok(value: boolean, label: string) {
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 const section = read("../components/PerfMemorySection.tsx");
 const css = read("../components/PerfMemorySection.css");
-const panel = read("../components/SettingsPanel.tsx");
+// 45381165f(任务1134)后排序开关(display-order switch)迁 ExperimentalLabSection。
+const panel = read("../components/ExperimentalLabSection.tsx");
 
 console.log("\ntask 361 pie overflow + order-switch label");
 

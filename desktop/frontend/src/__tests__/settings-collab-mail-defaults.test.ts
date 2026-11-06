@@ -46,7 +46,9 @@ expectContains("bridge mock", bridge, "async SetSessionCollabMailDefaults() {}")
 
 // 4. Panel: the field calls the setter and renders both checkboxes and the
 // delivery select with its two options.
-const panel = readFileSync(join(src, "components", "SettingsPanel.tsx"), "utf8");
+// 45381165f(任务1134)后邮箱默认值三件套行迁 ExperimentalLabSection(拼接读源)。
+const panel = readFileSync(join(src, "components", "SettingsPanel.tsx"), "utf8")
+  + readFileSync(join(src, "components", "ExperimentalLabSection.tsx"), "utf8");
 expectContains("panel field", panel, 'label={t("settings.sessionCollabMailDefaults")}');
 expectContains("panel idempotent checkbox", panel, "sessionCollabMailIdempotentDefault");
 expectContains("panel receipt checkbox", panel, "sessionCollabMailReceiptDefault");
