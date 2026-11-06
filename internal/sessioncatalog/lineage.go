@@ -62,8 +62,20 @@ func listSessionOrderWithContent(dir string, content *recoveryContentCache) ([]a
 		if !meta.RecoveryPreferred || digest == "" {
 			return false
 		}
-		_, ok := content.load(path, digest)
-		return ok
+		if _, ok := content.load(path, digest); ok {
+			return true
+		}
+		// tl1430-2 (package-79 field report): the strict snapshot fail-closes
+		// on damaged or normalization-dirty logs, so this resolver silently
+		// voided an adoption the write side had just persisted - the switch
+		// receipt fired while representative/reopen kept the old line. An
+		// explicit user choice is proven by the same tolerant replay
+		// SetRecoveryPreferred digested, so fall back to the
+		// RecoveryPreferenceCurrent proof (digest guards content drift) instead
+		// of dropping the flag at projection time. Content-derived roles
+		// (adopted/covered-copy/cleanup) keep the strict load above; only the
+		// filing-level preference loosens.
+		return agent.RecoveryPreferenceCurrent(path, meta)
 	})
 }
 
