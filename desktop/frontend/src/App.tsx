@@ -102,6 +102,7 @@ import { useRuntimeTransitionFocusRestore } from "./app-runtime/useLocalUiLifecy
 import { useConsolidatedSessionReload } from "./app-runtime/useConsolidatedSessionReload";
 import { useNavigationSurfaceTimeoutWatch } from "./app-runtime/navigationSurfaceTimeoutWatch";
 import { app, onBackendTabActivated, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
+import { installNoticeEventArchive } from "./lib/notifyArchive";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
 import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent, turnDoneChimeChoice } from "./lib/sound";
@@ -1136,6 +1137,9 @@ export default function App() {
   // WorkspacePanel listens to resource-level workspace revisions instead.
   useEffect(() => {
     startTerminalEventBridge();
+    // tl1458：agent:event 通知事件落通知留档（Go 侧全部 notice 的单点接入，
+    // tab 级 + operator 级一次覆盖）。只是追加一个订阅者，既有事件通路零变化。
+    const unsubNotifyArchive = installNoticeEventArchive(onEvent);
     const unsub = onEvent((e) => {
       recordFrontendDiagnostic("runtime", "runtime.event", {
         action: e.kind,
@@ -1185,6 +1189,7 @@ export default function App() {
     // produce no agent events (e.g. a lease-blocked startup). Refresh the list
     // so the takeover banner/button render even when the active tab differs.
     return () => {
+      unsubNotifyArchive();
       unsub();
       unsubReady();
       unsubRebuilt();

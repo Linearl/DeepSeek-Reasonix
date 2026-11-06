@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
+import { recordNotification } from "./notifyArchive";
 
 export interface Toast {
   id: number;
@@ -33,6 +34,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showToast = useCallback((text: string, level: Toast["level"] = "info", options: ToastOptions = {}) => {
     const id = nextId++;
+    // tl1458：toast 落通知留档（本 provider 是 28 个 useToast 消费者的单点汇
+    // 合处，一处接入全族覆盖）。留档≠拦截——下面的 setToasts/timer 通路原样，
+    // toast 照常弹出、照常自动消失。
+    recordNotification({ level, source: "toast", text });
     setToasts((prev) => [...prev, { id, text, level, actionLabel: options.actionLabel, onAction: options.onAction }]);
     const timer = setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
