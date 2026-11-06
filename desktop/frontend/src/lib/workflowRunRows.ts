@@ -86,3 +86,63 @@ export function workflowRunRowView(run: WireWorkflowRun): WorkflowRunRowView {
     runningSubagents: runningSubagentNodeCount(run),
   };
 }
+
+// ── tl1433 四缺口③：工作流子代理归属（层级展示）──────────────────────
+//
+// 工作流派发的子代理只在 sidecar（ListSubagentsByParent，tl1435）里可见，
+// 运行中时 sidecar 不带 runId；而 run 的 subagentRefs（tl1434）只在节点执行
+// **成功返回后**才登记（runner.go runNode：Execute 返回后 ReportSubagentRef），
+// 运行中的子代理 ref 不在里面。所以归属按可信度递减取两条，归不上就留顶层
+// ——宁可平铺，不错挂：
+//   ① ref 命中某运行中 run 的 subagentRefs（节点已完成登记、sidecar 5s 轮询
+//      尚未翻终态的窗口——精确）；
+//   ② 恰好一个运行中 run 有正在跑的子代理型节点 → 归它（sidecar-only 运行
+//      子代理只来自工作流派发；若派发时刻早于该 run 起点则不是它的子代理）。
+// 多个 run 同时在派子代理时 ② 不成立：按派发时刻贴近节点起点去配会在并发
+// 起跑时配错（两 run 节点相差几百毫秒即可颠倒），故不做——留顶层。
+
+/** 归属探针：子代理的 ref 与派发时刻（sidecar createdAt，unix ms）。 */
+export interface WorkflowChildProbe {
+  ref?: string;
+  startedAt?: number;
+}
+
+/** 派发时刻与 run 起点的比较容差（同为后端时钟，只吸收毫秒取整）。 */
+const WORKFLOW_CHILD_START_SLACK_MS = 1000;
+
+/** 把候选子代理（调用方已筛成「仅 sidecar 可见的运行中子代理」）归到运行
+ *  中的工作流 run 下。返回 runId → 子代理（保持输入序）与归不上的顶层余项。 */
+export function attributeWorkflowChildren<T>(
+  children: readonly T[],
+  runs: readonly WireWorkflowRun[],
+  probe: (child: T) => WorkflowChildProbe,
+): { byRun: Map<string, T[]>; flat: T[] } {
+  const byRun = new Map<string, T[]>();
+  const live = runningWorkflowRuns(runs);
+  if (live.length === 0 || children.length === 0) return { byRun, flat: [...children] };
+  const refOwner = new Map<string, string>();
+  for (const run of live) {
+    for (const node of run.nodes) {
+      for (const ref of node.subagentRefs ?? []) refOwner.set(ref, run.runId);
+    }
+  }
+  const dispatching = live.filter((run) => runningSubagentNodeCount(run) > 0);
+  const sole = dispatching.length === 1 ? dispatching[0] : undefined;
+  const flat: T[] = [];
+  for (const child of children) {
+    const { ref, startedAt } = probe(child);
+    let owner = ref ? refOwner.get(ref) : undefined;
+    if (!owner && sole) {
+      const predates = startedAt !== undefined && sole.startedAt !== undefined && startedAt < sole.startedAt - WORKFLOW_CHILD_START_SLACK_MS;
+      if (!predates) owner = sole.runId;
+    }
+    if (!owner) {
+      flat.push(child);
+      continue;
+    }
+    const list = byRun.get(owner);
+    if (list) list.push(child);
+    else byRun.set(owner, [child]);
+  }
+  return { byRun, flat };
+}

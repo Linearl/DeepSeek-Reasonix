@@ -34,7 +34,9 @@ import { InlineConfirmButton } from "./InlineConfirmButton";
 import { Tooltip } from "./Tooltip";
 import { useT, type DictKey } from "../lib/i18n";
 import { historyMessagesToItems } from "../lib/useController";
+import { hasJobTwin } from "../lib/subagentDirectory";
 import {
+  attributeWorkflowChildren,
   runningWorkflowRuns,
   workflowRunRowView,
   type WorkflowRunRowView,
@@ -415,9 +417,16 @@ export function CapsuleIndicator({
   // ids, not array identity) keeps same-set re-renders from re-pulling.
   // Task 440: the identity spans every runtime's jobs, so a detached tab's
   // job finishing also refreshes the directory while the panel is open.
+  // tl1433 四缺口③: a workflow's progress (a node finishing, a child starting
+  // or ending) joins the identity, so an open panel re-lists the sidecar and
+  // the nested workflow children follow along. Without workflow rows the
+  // joined string is byte-for-byte the pre-1433 key.
   const runningKey = useMemo(
-    () => runningEntries.map((entry) => `${entry.tabId}:${entry.job.id}`).join("\n"),
-    [runningEntries],
+    () => [
+      ...runningEntries.map((entry) => `${entry.tabId}:${entry.job.id}`),
+      ...workflowViews.map((view) => `wf:${view.runId}:${view.doneCount}:${view.runningSubagents}`),
+    ].join("\n"),
+    [runningEntries, workflowViews],
   );
 
   // Load the ended directory every time the panel opens and whenever the
@@ -682,8 +691,30 @@ export function CapsuleIndicator({
   // 任务616: ref-bearing rows for this session's RUNNING sub-agents — the
   // only targets a mid-turn message can reach. Same open affordance as the
   // ended rows; the detail composer does the sending.
-  const runningArtifactRows = runningArtifacts.map((view) => (
-    <div className="capsule-panel__row capsule-panel__row--ended" key={view.ref} data-capsule-running-id={view.ref}>
+  // tl1433 四缺口③: a workflow-dispatched child (a running sidecar record with
+  // no job / registry twin — tl1435's class) nests under its workflow run row
+  // with a 「子代理」 badge instead of sitting flat in this group. Same row,
+  // same open/mail affordance; attribution is the shared conservative rule
+  // (attributeWorkflowChildren): exact ref, else the one run dispatching
+  // sub-agents right now — anything ambiguous stays flat.
+  const workflowChildren = useMemo(() => {
+    const byRun = new Map<string, SubagentArtifactView[]>();
+    const nested = new Set<string>();
+    if (workflowViews.length === 0 || runningArtifacts.length === 0) return { byRun, nested };
+    const representedRefs = new Set<string>();
+    const jobStarts: number[] = [];
+    for (const entry of runningEntries) {
+      if (entry.job.kind === "subagent") representedRefs.add(entry.job.id);
+      else if (entry.job.kind !== "bash") jobStarts.push(entry.job.startedAt);
+    }
+    const candidates = runningArtifacts.filter((view) => !representedRefs.has(view.ref) && !hasJobTwin(view.createdAt, jobStarts));
+    const attributed = attributeWorkflowChildren(candidates, workflowRuns ?? [], (view) => ({ ref: view.ref, startedAt: view.createdAt }));
+    for (const list of attributed.byRun.values()) for (const view of list) nested.add(view.ref);
+    return { byRun: attributed.byRun, nested };
+  }, [workflowViews.length, runningArtifacts, runningEntries, workflowRuns]);
+
+  const renderRunningArtifactRow = (view: SubagentArtifactView, nested: boolean) => (
+    <div className="capsule-panel__row capsule-panel__row--ended" key={view.ref} data-capsule-running-id={view.ref} data-capsule-wf-child={nested ? view.ref : undefined}>
         <button
           type="button"
           className="capsule-panel__row-main"
@@ -694,6 +725,7 @@ export function CapsuleIndicator({
           <span className="capsule-panel__row-icon" aria-hidden="true">
             {view.kind === "skill" ? <Sparkles size={14} /> : <Bot size={14} />}
           </span>
+          {nested && <span className="capsule-panel__sub-badge">{t("workflowPanel.kind.subagent")}</span>}
           <span className="capsule-panel__copy">
             <strong>{view.description || view.name || view.kind || view.ref}</strong>
             <small>{[t("subagent.phase.running"), view.model, capsuleTimeLabel(view.createdAt)].filter(Boolean).join(" · ")}</small>
@@ -705,12 +737,16 @@ export function CapsuleIndicator({
         )}
       </button>
     </div>
-  ));
+  );
+  const runningArtifactRows = runningArtifacts
+    .filter((view) => !workflowChildren.nested.has(view.ref))
+    .map((view) => renderRunningArtifactRow(view, false));
 
-  // tl1433 四缺口①: one workflow run row — live elapsed and current node. The
-  // whole row opens the workflow panel with this run selected — the same exit
-  // the right-dock task panel uses. Elapsed uses the capsule's own clock
-  // format so the row reads like its neighbours.
+  // tl1433 四缺口①: one workflow run row — live elapsed, current node and
+  // (四缺口③) its nested workflow children. The whole row opens the workflow
+  // panel with this run selected — the same exit the right-dock task panel
+  // uses. Elapsed uses the capsule's own clock format so the row reads like
+  // its neighbours.
   const renderWorkflowRow = (view: WorkflowRunRowView) => {
     const elapsed = view.startedAt !== undefined ? formatCapsuleElapsed(view.startedAt, now) : "";
     const meta = [
@@ -718,6 +754,7 @@ export function CapsuleIndicator({
       t("workflowPanel.progress", { done: String(view.doneCount), total: String(view.totalCount) }),
       elapsed,
     ].filter(Boolean).join(" · ");
+    const children = workflowChildren.byRun.get(view.runId);
     return (
       <div className="capsule-panel__wf" key={`wf:${view.runId}`} data-capsule-workflow-run={view.runId} data-capsule-workflow-state={view.state}>
         <div className="capsule-panel__row capsule-panel__row--ended capsule-panel__row--workflow">
@@ -739,6 +776,11 @@ export function CapsuleIndicator({
             <span className="capsule-panel__outcome">{t("workflowPanel.run.running")}</span>
           </button>
         </div>
+        {children && children.length > 0 && (
+          <div className="capsule-panel__wf-children" data-capsule-wf-children={view.runId}>
+            {children.map((child) => renderRunningArtifactRow(child, true))}
+          </div>
+        )}
       </div>
     );
   };
@@ -813,7 +855,8 @@ export function CapsuleIndicator({
                     </div>
                   )}
                   {/* tl1433 四缺口①: running workflow runs lead (orchestration
-                      before its children — the task panel's order). */}
+                      before its children — the task panel's order); 四缺口③:
+                      each run carries its nested workflow children. */}
                   {workflowViews.length > 0 && (
                     <div className="capsule-panel__group" data-capsule-group="workflow">
                       <div className="capsule-panel__group-title">{t("workflowPanel.title")}</div>

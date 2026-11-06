@@ -130,11 +130,15 @@ export function buildSubagentDirectory(items: readonly Item[] | undefined): Suba
 // the dock rows/detail already read (subject → title, summary → outcome,
 // startedAt/durationMs from the sidecar timestamps). The "persisted:" id
 // prefix namespaces it away from real card ids.
+// tl1433: the prefix is a named constant — sidecarOnlyRunningEntries keys on
+// it, so the projection and the predicate must share one source of truth.
+const PERSISTED_ENTRY_ID_PREFIX = "persisted:";
+
 function persistedDirectoryEntry(view: SubagentArtifactView): SubagentDirectoryEntry {
   const status: ToolStatus = view.status === "failed" ? "error" : view.status === "interrupted" ? "stopped" : "done";
   const item: SubagentDirectoryItem = {
     kind: "tool",
-    id: `persisted:${view.ref}`,
+    id: `${PERSISTED_ENTRY_ID_PREFIX}${view.ref}`,
     // tl1209: description-first — the persisted sidecar's Name is the
     // profile/skill name ("ask", "task"), which makes every row read the
     // same; the dispatch description is what tells them apart. A record
@@ -186,7 +190,7 @@ export function mergeEndedSubagentRecords(directory: SubagentDirectory, views: r
 function persistedRunningDirectoryEntry(view: SubagentArtifactView): SubagentDirectoryEntry {
   const item: SubagentDirectoryItem = {
     kind: "tool",
-    id: `persisted:${view.ref}`,
+    id: `${PERSISTED_ENTRY_ID_PREFIX}${view.ref}`,
     // tl1209 semantics, same as the ended twin: the dispatch description
     // distinguishes same-profile children; the profile name is the fallback.
     name: view.description || view.name || view.kind || "task",
@@ -251,6 +255,10 @@ export interface RegistryRunningSource {
   foreground?: readonly ForegroundSubagentView[];
 }
 
+// tl1433: named so the job-twin guard (sidecarOnlyRunningEntries) keys on the
+// same string the projection below writes.
+const REGISTRY_JOB_ID_PREFIX = "registry:job:";
+
 /** One registry-projected running entry. `ref` is stamped only for
  *  foreground rows (the child's real transcript ref — the same string
  *  CancelSubagentForTab and ReadSubagentSession take); background job rows
@@ -288,7 +296,7 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
   };
   for (const job of source.jobs ?? []) {
     if (!job || job.kind === "bash") continue;
-    push(`registry:job:${job.id}`, job.label, job.startedAt, undefined, job.parentToolCallId || undefined);
+    push(`${REGISTRY_JOB_ID_PREFIX}${job.id}`, job.label, job.startedAt, undefined, job.parentToolCallId || undefined);
   }
   for (const entry of source.foreground ?? []) {
     if (!entry) continue;
@@ -322,4 +330,40 @@ export function mergeRegistryRunningSubagents(directory: SubagentDirectory, regi
   });
   if (extra.length === 0) return directory;
   return { running: [...extra, ...directory.running], ended: directory.ended };
+}
+
+// tl1433 四缺口③：「仅 sidecar 可见」的运行中条目——工作流派发的子代理就是
+// 这一类（tl1435：不进会话转录、不进轮次登记表，只有 sidecar running meta）。
+// 判定 = 由 sidecar 投影（persisted: 前缀）+ 不是会话自己派发的孪生：
+//   - 前台登记表里有同 ref 的（转录卡片缺窗的前台子代理）不算；
+//   - 后台 job 行不带 ref，按「同一次派发同时落 job 与 sidecar meta」认孪生：
+//     有运行中的非 bash job 起点与该条目派发时刻相差在窗口内，就当它是那个
+//     job 的子代理（宁可平铺，不错挂到工作流下）。
+
+/** job 与其 sidecar meta 同次派发落地的时刻差上限（jobs.Manager 起 job →
+ *  goroutine 内 PrepareFresh 落 meta，实测毫秒级；取 3s 容余，误差方向只会
+ *  让工作流子代理留在顶层，不会错挂）。 */
+export const JOB_TWIN_WINDOW_MS = 3000;
+
+/** 派发时刻是否贴着某个运行中后台 job 的起点（= 该 job 的孪生记录）。 */
+export function hasJobTwin(createdAt: number | undefined, jobStarts: readonly number[]): boolean {
+  if (!createdAt) return false;
+  return jobStarts.some((start) => Boolean(start) && Math.abs(start - createdAt) <= JOB_TWIN_WINDOW_MS);
+}
+
+export function sidecarOnlyRunningEntries(
+  running: readonly SubagentDirectoryEntry[],
+  registry: readonly SubagentDirectoryEntry[] | undefined,
+): SubagentDirectoryEntry[] {
+  const registryRefs = new Set<string>();
+  const jobStarts: number[] = [];
+  for (const entry of registry ?? []) {
+    if (entry.ref) registryRefs.add(entry.ref);
+    if (entry.item.id.startsWith(REGISTRY_JOB_ID_PREFIX) && entry.item.startedAt) jobStarts.push(entry.item.startedAt);
+  }
+  return running.filter((entry) =>
+    entry.running
+    && entry.item.id.startsWith(PERSISTED_ENTRY_ID_PREFIX)
+    && !(entry.ref && registryRefs.has(entry.ref))
+    && !hasJobTwin(entry.item.startedAt, jobStarts));
 }

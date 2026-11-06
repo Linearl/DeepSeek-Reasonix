@@ -11065,6 +11065,16 @@ button.statusbar__mcp:focus-visible {
 .capsule-panel__row--workflow .capsule-panel__copy strong {
   font-weight: 600;
 }
+/* tl1433 四缺口③：工作流派发的子代理缩进挂在 run 行下，左侧引导线标出归属
+   （「子代理」徽标样式与任务面板共用，见 .subagents-panel__sub-badge）。 */
+.capsule-panel__wf-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0 14px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
 .capsule-panel__stop {
   display: inline-flex;
   align-items: center;
@@ -30383,6 +30393,32 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--fg-dim);
+}
+
+/* tl1433 四缺口③：子代理层级——归属到工作流 run 的运行中子代理缩进挂在 run 行
+   之下。run 行的 row-wrap 是可折行的 flex 容器（tl1209），嵌套列表像行内详情
+   一样独占一整行；左侧引导线标出「这些属于上面那个工作流」。 */
+.subagents-panel__wf-children {
+  flex: 1 1 100%;
+  min-width: 0;
+  list-style: none;
+  margin: 0 0 0 16px;
+  padding: 0;
+  border-top: 1px solid var(--border-soft);
+  border-left: 1px solid var(--border-soft);
+}
+
+/* 「子代理」徽标（任务面板嵌套行 + 胶囊嵌套行共用一处）。 */
+.subagents-panel__sub-badge,
+.capsule-panel__sub-badge {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--fg-dim);
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
 }
 
 .subagents-panel__detailview {

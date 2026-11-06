@@ -304,6 +304,120 @@ section("② 胶囊计数面补工作流子代理（557 同族；关闭态即计
     "接线：计数面 = 三源 + Σ(run 1 + 子代理型节点)");
   ok(capsuleSrc.includes('data-capsule-badge="running"') && !capsuleSrc.includes("data-capsule-badge={"), "兼容：徽标仍只以 running 态渲染（任务 497 契约不动）");
 }
+// ===== GAP 3 =====
+section("③ 子代理层级：工作流派发的运行中子代理缩进挂在 run 行下 + 「子代理」徽标");
+{
+  const { attributeWorkflowChildren } = await import("../lib/workflowRunRows");
+  const { sidecarOnlyRunningEntries, hasJobTwin, JOB_TWIN_WINDOW_MS, mergePersistedRunningSubagents, registryRunningEntries } = await import("../lib/subagentDirectory");
+  const probe = (child: { ref?: string; startedAt?: number }) => child;
+  const dispatching = makeRun({ runId: "wf-a", startedAt: NOW - 120_000, nodes: [node("read-facts", "subagent", "running")] });
+  const other = makeRun({ runId: "wf-b", startedAt: NOW - 100_000, nodes: [node("plan", "subagent", "running")] });
+  const child = { ref: "sa_triage", startedAt: NOW - 60_000 };
+
+  let result = attributeWorkflowChildren([child], [dispatching], probe);
+  eq(result.byRun.get("wf-a")?.length ?? 0, 1, "归属②：唯一在派子代理的 run 收下 sidecar-only 子代理");
+  eq(result.flat.length, 0, "归属②：归上的不再留顶层");
+  result = attributeWorkflowChildren([child], [dispatching, other], probe);
+  eq(result.flat.length, 1, "歧义：两个 run 同时在派子代理 → 不猜，留顶层（宁可平铺不错挂）");
+  const otherWithRef = { ...other, nodes: [...other.nodes, node("report", "subagent", "completed", { subagentRefs: ["sa_triage"] })] };
+  result = attributeWorkflowChildren([child], [dispatching, otherWithRef], probe);
+  eq(result.byRun.get("wf-b")?.length ?? 0, 1, "归属①：ref 命中某 run 的 subagentRefs → 精确归它（并发也不歧义）");
+  result = attributeWorkflowChildren([{ ref: "sa_old", startedAt: NOW - 600_000 }], [dispatching], probe);
+  eq(result.flat.length, 1, "保守：派发时刻早于该 run 起点的不归它");
+  result = attributeWorkflowChildren([child], [makeRun({ runId: "wf-g", nodes: [node("gate-tests", "gate", "running")] })], probe);
+  eq(result.flat.length, 1, "保守：run 只在跑门节点（没有子代理在跑）且 ref 不中 → 留顶层");
+  result = attributeWorkflowChildren([child], [makeRun({ state: "completed", endedAt: NOW })], probe);
+  eq(result.flat.length, 1, "保守：没有运行中的 run → 全部留顶层");
+
+  // 候选面：只取「仅 sidecar 可见」的运行中条目；会话自己派发的孪生排除。
+  const persistedDir = mergePersistedRunningSubagents(buildSubagentDirectory([]), [
+    sidecar({ ref: "sa_triage" }),
+    sidecar({ ref: "sa_fgtwin", description: "前台孪生" }),
+    sidecar({ ref: "sa_jobtwin", description: "后台孪生", createdAt: NOW - 50_000 }),
+  ]);
+  const registry = registryRunningEntries({ jobs: [job({ id: "job-1", kind: "task", startedAt: NOW - 50_000 + 800 })], foreground: [fg({ ref: "sa_fgtwin" })] }, "");
+  eq(sidecarOnlyRunningEntries(persistedDir.running, registry).map((entry) => entry.ref).join(","), "sa_triage",
+    "候选：只剩真正仅 sidecar 可见的（前台 ref 孪生、后台 job 时刻孪生都排除）");
+  const transcriptEntry = { item: { kind: "tool" as const, id: "call_1", name: "task", args: "", readOnly: true, status: "running" as const }, running: true, status: "running" as const, ref: "sa_card" };
+  eq(sidecarOnlyRunningEntries([transcriptEntry], []).length, 0, "候选：会话转录卡片投影的条目不算（非 persisted: 投影）");
+  ok(hasJobTwin(NOW, [NOW + JOB_TWIN_WINDOW_MS]), "job 孪生：窗口边界内算孪生");
+  ok(!hasJobTwin(NOW, [NOW + JOB_TWIN_WINDOW_MS + 1]), "job 孪生：窗口外不算");
+  ok(!hasJobTwin(undefined, [NOW]), "job 孪生：无派发时刻不判孪生");
+
+  // 任务面板（右侧）：分诊子代理缩进挂到 run 行下。
+  const runA = makeRun({ nodes: [node("plan", "subagent", "completed"), node("read-facts", "subagent", "running")] });
+  const triage = sidecar({ ref: "sa_triage", description: "分诊" });
+  const dock = (extra: Record<string, unknown>) => (
+    <LocaleProvider>
+      <SubagentsDockPanel
+        directory={buildSubagentDirectory([])}
+        sessionPath="sess-1433"
+        onListPersisted={async () => [triage]}
+        onTerminateSubagent={async () => true}
+        {...extra}
+      />
+    </LocaleProvider>
+  );
+  await mount(dock({ workflowRuns: [runA], onOpenWorkflowRun: () => {} }));
+  const nested = host?.querySelector('[data-wf-run-children="wf-1433"] [data-wf-child="sa_triage"]') ?? null;
+  ok(nested !== null, "任务面板层级：分诊子代理缩进挂在工作流 run 行之下");
+  ok(SUBAGENT_BADGE_TEXT.includes(nested?.querySelector(".subagents-panel__sub-badge")?.textContent ?? ""), "任务面板徽标：嵌套行标「子代理」（复用 workflowPanel.kind.subagent 三语键）");
+  ok((nested?.textContent ?? "").includes("分诊"), "任务面板：嵌套行保留人话名（sidecar description）");
+  const topList = host?.querySelector(".subagents-panel__list");
+  eq(topList ? topList.children.length : -1, 1, "任务面板层级：顶层只剩 run 行（子代理不再与工作流平铺同级）");
+  ok((host?.querySelectorAll(".subagents-panel__section-title")[0]?.textContent ?? "").includes("2"), "任务面板计数：运行分区仍计 run + 子代理（嵌套只换位置不改口径）");
+  ok(nested?.querySelector('[data-subagent-terminate="sa_triage"]') !== null, "能力保留：嵌套行仍带终止按钮（tl1209 不因换位丢失）");
+
+  await mount(dock({ workflowRuns: [runA], onOpenWorkflowRun: () => {}, detailEnabled: true }));
+  ok(host?.querySelector('[data-wf-run-children="wf-1433"] [data-wf-child="sa_triage"]') !== null, "任务面板 split 形态同样嵌套");
+
+  await mount(dock({ workflowRuns: [runA] }));
+  eq(host?.querySelector("[data-wf-child]") ?? null, null, "无跳转出口（run 行不渲染）→ 不归属");
+  ok([...(host?.querySelectorAll(".subagents-panel__row-title") ?? [])].some((el) => el.textContent === "分诊"), "无出口时子代理仍在顶层可见（不随不渲染的 run 行消失）");
+
+  await mount(dock({ workflowRuns: [runA, makeRun({ runId: "wf-b", workflow: "wf-beta", nodes: [node("plan", "subagent", "running")] })], onOpenWorkflowRun: () => {} }));
+  eq(host?.querySelectorAll("[data-workflow-run]").length ?? 0, 2, "并发前提：两个 run 行都在列");
+  eq(host?.querySelector("[data-wf-child]") ?? null, null, "任务面板：两个 run 同时在派子代理 → 不猜，留顶层");
+  ok([...(host?.querySelectorAll(".subagents-panel__row-title") ?? [])].some((el) => el.textContent === "分诊"), "并发时子代理仍在顶层可见");
+
+  // 胶囊（左侧）：同一归属规则，嵌套后不再在「运行中子代理」平铺组重复出现。
+  listResult = [triage];
+  await mount(capsule({ workflowRuns: [runA], onOpenWorkflowRun: () => {} }));
+  await openCapsule();
+  const capsuleNested = document.querySelector('[data-capsule-wf-children="wf-1433"] [data-capsule-wf-child="sa_triage"]');
+  ok(capsuleNested !== null, "胶囊层级：分诊子代理缩进挂在工作流 run 行下");
+  ok(SUBAGENT_BADGE_TEXT.includes(capsuleNested?.querySelector(".capsule-panel__sub-badge")?.textContent ?? ""), "胶囊徽标：嵌套行标「子代理」");
+  eq(document.querySelector('[data-capsule-group="running-subagents"] [data-capsule-running-id="sa_triage"]'), null, "胶囊：嵌套后不在平铺组重复出现");
+
+  await mount(capsule({ subagents: [fg({ ref: "sa_triage" })], workflowRuns: [runA], onOpenWorkflowRun: () => {} }));
+  await openCapsule();
+  ok(document.querySelector('[data-capsule-workflow-run="wf-1433"]') !== null, "孪生前提：工作流 run 行在列");
+  eq(document.querySelector("[data-capsule-wf-child]"), null, "胶囊：前台登记表有同 ref 孪生 → 不归工作流");
+
+  await mount(capsule({ jobs: [job({ id: "task-9", kind: "task", label: "后台", startedAt: triage.createdAt + 500 })], workflowRuns: [runA], onOpenWorkflowRun: () => {} }));
+  await openCapsule();
+  eq(document.querySelector("[data-capsule-wf-child]"), null, "胶囊：后台 job 时刻孪生 → 不归工作流");
+  ok(document.querySelector('[data-capsule-group="running-subagents"] [data-capsule-running-id="sa_triage"]') !== null, "胶囊：孪生留在原平铺组（不丢行）");
+  listResult = [];
+  await unmount();
+
+  const dockSrc = read("src/components/SubagentsDockPanel.tsx");
+  ok(dockSrc.includes("sidecarOnlyRunningEntries(running, registryRunning)") && dockSrc.includes("attributeWorkflowChildren("), "接线：任务面板走共享候选面 + 共享归属规则");
+  ok(dockSrc.includes('t("workflowPanel.kind.subagent")'), "文案：任务面板徽标复用既有三语键（不新增文案）");
+  const capsuleSrc = read("src/components/CapsulePanel.tsx");
+  ok(capsuleSrc.includes("attributeWorkflowChildren(candidates") && capsuleSrc.includes("hasJobTwin(view.createdAt, jobStarts)"), "接线：胶囊走同一归属规则 + 同一 job 孪生判定");
+  ok(capsuleSrc.includes('t("workflowPanel.kind.subagent")'), "文案：胶囊徽标复用既有三语键");
+  const css = read("src/styles.css");
+  ok(css.includes(".subagents-panel__wf-children {") && css.includes(".capsule-panel__wf-children {") && css.includes(".subagents-panel__sub-badge,\n.capsule-panel__sub-badge {"),
+    "样式：嵌套容器与「子代理」徽标有定义（两处共用一条徽标规则）");
+  const hierarchyRules = [
+    /\.subagents-panel__wf-children\s*\{[^}]*\}/,
+    /\.subagents-panel__sub-badge,\s*\.capsule-panel__sub-badge\s*\{[^}]*\}/,
+    /\.capsule-panel__wf-children\s*\{[^}]*\}/,
+  ].map((re) => css.match(re)?.[0] ?? "");
+  ok(hierarchyRules.every((rule) => rule.length > 0 && rule.includes("var(--") && !/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/.test(rule)),
+    "样式：层级三条规则只用主题 token（无硬编码颜色）");
+}
 // ===== SUMMARY =====
 
 console.log(`\n${passed} passed, ${failed} failed`);

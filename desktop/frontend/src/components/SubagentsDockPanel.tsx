@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -35,13 +35,14 @@ import {
   mergeEndedSubagentRecords,
   mergePersistedRunningSubagents,
   mergeRegistryRunningSubagents,
+  sidecarOnlyRunningEntries,
   subagentChildTools,
   type SubagentDirectory,
   type SubagentDirectoryEntry,
   type SubagentDirectoryItem,
 } from "../lib/subagentDirectory";
 import type { SubagentArtifactView } from "../lib/types";
-import { runningWorkflowRuns, workflowRunRowView, type WorkflowRunRowView } from "../lib/workflowRunRows";
+import { runningWorkflowRuns, workflowRunRowView, attributeWorkflowChildren, type WorkflowRunRowView } from "../lib/workflowRunRows";
 import type { WireWorkflowRun } from "../lib/workflowTypes";
 
 // 任务440: the dock detail's live transcript loads lazily — the same pattern
@@ -146,17 +147,23 @@ function childToolLabel(tool: SubagentDirectoryItem): string {
  *  switch, asks the panel to open the read-only detail view.
  *  tl1209: a running row may carry its own terminate button next to the row
  *  body — same per-child cancel the capsule's running rows use; ended rows
- *  never do. */
+ *  never do.
+ *  tl1433 四缺口③: `nested` renders the same row indented under its workflow
+ *  run row with a 「子代理」 badge — the row keeps every affordance (detail,
+ *  inline preview, terminate); only its placement and the badge change. */
 const DirectoryRow = memo(function DirectoryRow({
   entry,
   onSelect,
   onTerminate,
+  nested = false,
 }: {
   entry: SubagentDirectoryEntry;
   onSelect?: () => void;
   /** tl1209: per-child terminate bridge for RUNNING rows (App
    *  CancelSubagentForTab). Absent (or ended) keeps the row byte-for-byte. */
   onTerminate?: (ref: string) => Promise<boolean>;
+  /** tl1433 四缺口③: placed under a workflow run row (hierarchy view). */
+  nested?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -184,7 +191,7 @@ const DirectoryRow = memo(function DirectoryRow({
     setOpen((value) => !value);
   };
   return (
-    <li className="subagents-panel__row-wrap">
+    <li className="subagents-panel__row-wrap" data-wf-child={nested ? ref ?? entry.item.id : undefined}>
       <button
         type="button"
         className={`subagents-panel__row${open ? " subagents-panel__row--open" : ""}`}
@@ -192,6 +199,7 @@ const DirectoryRow = memo(function DirectoryRow({
         onClick={handleClick}
       >
         <StatusIcon entry={entry} />
+        {nested && <span className="subagents-panel__sub-badge">{t("workflowPanel.kind.subagent")}</span>}
         {/* 任务1033: native title clipped long command subjects — wrap-mode
             Tooltip shows the full text on hover instead. */}
         <Tooltip label={title} wrap>
@@ -249,18 +257,23 @@ function workflowRowElapsed(view: WorkflowRunRowView, now: number, t: ReturnType
  *  种任务类型）。行本体 = 状态图标（旋转）+ 工作流名 + 元行（当前节点 ·
  *  已完成/总节点 · 时长）+ 状态徽章 + 跳出图标；点击经 onOpenWorkflowRun
  *  跳工作流面板并选中该 run（App 注入；无回调时不渲染行——数据与出口同
- *  源注入，备用视图不传即 byte-for-byte 原面板）。 */
+ *  源注入，备用视图不传即 byte-for-byte 原面板）。
+ *  四缺口③：children = 归属到本 run 的运行中子代理行（DirectoryRow nested），
+ *  缩进挂在 run 行之下（层级）。 */
 const WorkflowRunRow = memo(function WorkflowRunRow({
   view,
   now,
   onOpen,
+  children,
 }: {
   view: WorkflowRunRowView;
   now: number;
   onOpen?: (runId: string) => void;
+  children?: ReactNode;
 }) {
   const t = useT();
   if (!onOpen) return null;
+  const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
   return (
     <li className="subagents-panel__row-wrap">
       <button
@@ -287,6 +300,11 @@ const WorkflowRunRow = memo(function WorkflowRunRow({
         <span className="subagents-panel__row-status">{t("workflowPanel.run.running")}</span>
         <ExternalLink size={12} aria-hidden="true" className="subagents-panel__chevron" />
       </button>
+      {hasChildren && (
+        <ul className="subagents-panel__wf-children" data-wf-run-children={view.runId}>
+          {children}
+        </ul>
+      )}
     </li>
   );
 });
@@ -777,6 +795,25 @@ export function SubagentsDockPanel({
   // 行时跳（15s），静止面板零定时器。入列条件在本面板再过滤一道（App 下发
   // 前已过滤——防御面：completed/interrupted 落进来也不渲染成说谎的行）。
   const workflowViews = useMemo(() => runningWorkflowRuns(workflowRuns ?? []).map(workflowRunRowView), [workflowRuns]);
+  // tl1433 四缺口③：子代理层级——工作流派发的运行中子代理（仅 sidecar 可见
+  // 的那类，tl1435 把它们并进了运行区但平铺在顶层）归到所属 run 行下缩进
+  // 渲染。只在 run 行真会渲染时归属（有跳转出口）：否则归走的行会随不渲染
+  // 的 run 行一起消失。归不上的（多 run 并发派发等）照旧留顶层。运行分区计
+  // 数不变——嵌套行仍在 running 里，只是换了位置。
+  const workflowChildren = useMemo(() => {
+    if (!onOpenWorkflowRun || workflowViews.length === 0) {
+      return { byRun: new Map<string, SubagentDirectoryEntry[]>(), topLevel: running };
+    }
+    const { byRun } = attributeWorkflowChildren(
+      sidecarOnlyRunningEntries(running, registryRunning),
+      workflowRuns ?? [],
+      (entry) => ({ ref: entry.ref, startedAt: entry.item.startedAt }),
+    );
+    if (byRun.size === 0) return { byRun, topLevel: running };
+    const nestedIds = new Set<string>();
+    for (const list of byRun.values()) for (const entry of list) nestedIds.add(entry.item.id);
+    return { byRun, topLevel: running.filter((entry) => !nestedIds.has(entry.item.id)) };
+  }, [onOpenWorkflowRun, workflowViews.length, running, registryRunning, workflowRuns]);
   const wallNow = useWorkflowWallClock(workflowViews.length > 0);
   const hasWorkflowRows = workflowViews.length > 0;
   const empty = running.length === 0 && ended.length === 0 && !hasWorkflowRows;
@@ -842,11 +879,16 @@ export function SubagentsDockPanel({
               <p className="subagents-panel__section-empty">{t("subagentPanel.runningEmpty")}</p>
             ) : (
               <ul className="subagents-panel__list">
-                {/* tl1433: 运行中的工作流 run 行并入运行列表（编排任务排在子代理行前）。 */}
+                {/* tl1433: 运行中的工作流 run 行并入运行列表（编排任务排在子代理行前）；
+                    四缺口③：归属到该 run 的子代理行缩进挂在其下（层级）。 */}
                 {workflowViews.map((view) => (
-                  <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun} />
+                  <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun}>
+                    {workflowChildren.byRun.get(view.runId)?.map((entry) => (
+                      <DirectoryRow key={entry.item.id} entry={entry} nested onSelect={() => setSelectedId(entry.item.id)} onTerminate={onTerminateSubagent} />
+                    ))}
+                  </WorkflowRunRow>
                 ))}
-                {running.map((entry) => (
+                {workflowChildren.topLevel.map((entry) => (
                   <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} onTerminate={onTerminateSubagent} />
                 ))}
               </ul>
@@ -920,11 +962,22 @@ export function SubagentsDockPanel({
         ) : (
           <ul className="subagents-panel__list">
             {/* tl1433: 运行中的工作流 run 行并入运行列表（点击跳出详情语义，
-                与子代理行的行内展开/详情不同，走 onOpenWorkflowRun）。 */}
+                与子代理行的行内展开/详情不同，走 onOpenWorkflowRun）。
+                四缺口③：归属到该 run 的子代理行缩进挂在其下（层级）。 */}
             {workflowViews.map((view) => (
-              <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun} />
+              <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun}>
+                {workflowChildren.byRun.get(view.runId)?.map((entry) => (
+                  <DirectoryRow
+                    key={entry.item.id}
+                    entry={entry}
+                    nested
+                    onSelect={detailEnabled ? () => setSelectedId(entry.item.id) : undefined}
+                    onTerminate={onTerminateSubagent}
+                  />
+                ))}
+              </WorkflowRunRow>
             ))}
-            {running.map((entry) => (
+            {workflowChildren.topLevel.map((entry) => (
               <DirectoryRow
                 key={entry.item.id}
                 entry={entry}
