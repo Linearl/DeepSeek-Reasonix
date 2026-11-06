@@ -35293,22 +35293,11 @@ button.statusbar__mcp:focus-visible {
 
 /* ── Ask background toast (任务991) ────────────────────────────────────
    右下角限时提醒：后台 tab 的 ask 用户看不见也摸不着，autopilot 会替答。
-   与 .toast 家族同 token（info 严重度），但位置右下、寿命与后端
-   askWaitFor 同源（组件内联 opacity 渐隐，不经 CSS 动画时钟）。 */
-.ask-bg-toast-container {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: var(--z-toast);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  pointer-events: none;
-}
-:root[data-platform="darwin"] .ask-bg-toast-container {
-  bottom: 24px;
-}
+   与 .toast 家族同 token（info 严重度），寿命与后端 askWaitFor 同源、下限
+   10s（tl1464），组件内联 opacity 渐隐（不经 CSS 动画时钟）。
+   tl1464：独立 .ask-bg-toast-container 容器退役——条目经 portal 进右下
+   统一堆叠 #rt-notice-stack（与 toast info 档 / rt-notice 同住，data-kind
+   区分），条目样式类 .ask-bg-toast 原样保留。 */
 .ask-bg-toast {
   pointer-events: auto;
   cursor: pointer;
