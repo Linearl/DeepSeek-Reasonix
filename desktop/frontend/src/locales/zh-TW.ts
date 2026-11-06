@@ -323,8 +323,11 @@ export const zhTW: Record<DictKey, string> = {
   "rightDock.terminal": "終端機",
   "rightDock.todoEmpty": "目前會話暫無任務",
   // 893-B: 會話曾有任務清單、回合結束後被回收時不再誤顯「暫無任務」。
-  "rightDock.todoSealed": "任務列表已按回合封存",
-  "rightDock.todoSealedCount": "任務列表已按回合封存（上一回合 {count} 項）",
+  // tl1353: 封存態文案不再像丟資料——列表只是收起保存，資料沒丟
+  // （canonicalTodos 快照完好）；展開入口鍵 todoSealedExpand。
+  "rightDock.todoSealed": "上一回合的任務列表已收起保存",
+  "rightDock.todoSealedCount": "上一回合的任務列表已收起保存（{count} 項）",
+  "rightDock.todoSealedExpand": "上一回合列表（{count} 項）",
 
   // 話題欄
   "topicBar.renameSession": "重新命名會話",

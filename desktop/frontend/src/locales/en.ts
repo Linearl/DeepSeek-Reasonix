@@ -419,8 +419,12 @@ export const en = {
   "rightDock.todoEmpty": "No tasks for this session",
   // 893-B: the dock's empty todos area must not read as "the agent tracks
   // nothing" once a task list existed; sealed = turn-level recycling happened.
-  "rightDock.todoSealed": "The task list was sealed when the turn ended",
-  "rightDock.todoSealedCount": "The task list was sealed when the turn ended ({count} tasks)",
+  // tl1353: the sealed copy no longer reads as data loss — the previous list
+  // is saved and collapsed (the canonical snapshot is intact); the read-only
+  // expand affordance lives in todoSealedExpand.
+  "rightDock.todoSealed": "The previous turn's task list is saved and collapsed",
+  "rightDock.todoSealedCount": "The previous turn's task list ({count} tasks) is saved and collapsed",
+  "rightDock.todoSealedExpand": "Previous turn's list ({count})",
 
   // topic bar
   "topicBar.renameSession": "Rename session",
