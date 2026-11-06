@@ -421,6 +421,16 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
     }
   }, [b, draft, refresh, sending]);
 
+  // tl1465：附件预览读回回调必须引用稳定——ChannelAttachmentImage 的
+  // useEffect 以 [path, preview] 为依赖，此前内联箭头每渲染换一次身份，
+  // 宿主任意重渲染都会重发读桥调用；读失败时形成「每次渲染重试一次」的
+  // WARN 刷屏循环（desktop-alerts.log 每秒多条）。useCallback 钉住身份，
+  // 读回只在路径真正变化时发生。
+  const channelAttachmentPreview = useCallback(
+    (path: string) => b.ChannelAttachmentDataURL!(path),
+    [b],
+  );
+
   const cancelMessage = useCallback(async (messageId: string) => {
     const ref = openIdRef.current;
     if (!ref) return;
@@ -679,7 +689,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
                 directoryTitle={directoryTitle}
                 onBubbleContextMenu={(point) => setMenu(point)}
                 onMentionClick={() => onViewDirectChains?.()}
-                attachmentPreview={b.ChannelAttachmentDataURL ? (path) => b.ChannelAttachmentDataURL!(path) : undefined}
+                attachmentPreview={b.ChannelAttachmentDataURL ? channelAttachmentPreview : undefined}
               />
             </div>
 

@@ -73,16 +73,20 @@ export function ChannelMessageStream({
   // 附件引用提取：空白分隔 token 以 @ 开头、归一化分隔符后落在
   // .reasonix/attachments/ 内、图片扩展名结尾；拒绝包含 .. 的 token（tl1421
   // 同款保守判据——这里只挑预览候选，真正的越界拒绝在 Go 读桥）。
+  // tl1465：推入候选前剥掉 @ 前缀——预览读桥收裸路径（读桥侧 tl1465 也做
+  // @ 规范化兜底，双端一致）；此前原样推入带 @ 的 token，绝对路径 @C:\…
+  // 过不了 IsAbs 分支被当相对路径拒收，图片静默丢失 + WARN 刷屏。
   const attachmentRefsOf = (body: string): string[] => {
     if (!attachmentPreview || !body.includes("@")) return [];
     const out: string[] = [];
     for (const raw of body.split(/\s+/u)) {
       if (!raw.startsWith("@") || raw.length > 512) continue;
-      const norm = raw.slice(1).replace(/\\/gu, "/");
+      const bare = raw.slice(1);
+      const norm = bare.replace(/\\/gu, "/");
       if (norm.includes("..")) continue;
       if (!norm.toLowerCase().includes(".reasonix/attachments/")) continue;
       if (!/\.(?:png|jpe?g|gif|webp)$/iu.test(norm)) continue;
-      if (!out.includes(raw)) out.push(raw);
+      if (!out.includes(bare)) out.push(bare);
     }
     return out;
   };

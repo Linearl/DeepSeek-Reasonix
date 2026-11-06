@@ -50,9 +50,19 @@ func (a *App) SaveChannelAttachment(dataURL string) (string, error) {
 // attachment root (global workspace .reasonix/attachments); absolute paths are
 // canonical (what the send chain embeds), the relative form is accepted as the
 // storage primitive's native shape. Escapes are rejected, not widened.
+// tl1465: message bodies reference attachments with the @-token grammar, and
+// the renderer passes the token verbatim — normalize the leading @ away HERE,
+// before any validation, so the containment check sees the bare path. The @
+// strip is a prefix trim only; everything after it still has to clear the
+// relative/containment/symlink gauntlet, so an "@.." escape gains nothing.
 func (a *App) ChannelAttachmentDataURL(path string) (string, error) {
 	root := globalWorkspaceRoot()
 	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", errChannelAttachmentEmpty
+	}
+	trimmed = strings.TrimPrefix(trimmed, "@")
+	trimmed = strings.TrimSpace(trimmed)
 	if trimmed == "" {
 		return "", errChannelAttachmentEmpty
 	}
