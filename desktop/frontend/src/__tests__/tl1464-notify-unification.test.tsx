@@ -128,5 +128,92 @@ console.log("\n【C】rt-notice data-kind 与 warn 档自动消失");
   resetHangWatchForTest();
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// 【A 段】toast info 档迁右下统一堆叠；warn/error 档顶部原样（修正1）
+// ────────────────────────────────────────────────────────────────────────
+console.log("\n【A】toast info→右下统一堆叠，warn/error 留顶部原样");
+{
+  const { act } = await import("react");
+  const { createRoot } = await import("react-dom/client");
+  const { ToastProvider, useToast } = await import("../lib/toast");
+  const { rtNoticeHost } = await import("../lib/rtNotice");
+
+  const fired: Array<{ text: string; level: "info" | "warn" | "error" }> = [];
+  function Fixture() {
+    const { showToast } = useToast();
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          for (const item of fired) showToast(item.text, item.level);
+        }}
+      >
+        fire
+      </button>
+    );
+  }
+  const root = createRoot(document.getElementById("root")!);
+  await act(async () => {
+    root.render(
+      <ToastProvider>
+        <Fixture />
+      </ToastProvider>,
+    );
+  });
+  const fire = async (...items: Array<{ text: string; level: "info" | "warn" | "error" }>) => {
+    fired.splice(0, fired.length, ...items);
+    await act(async () => {
+      (document.getElementById("root")!.querySelector("button") as HTMLButtonElement).click();
+    });
+  };
+  const topToasts = () => Array.from(document.querySelectorAll<HTMLElement>(".toast-container .toast"));
+  const cornerToasts = () => Array.from(document.querySelectorAll<HTMLElement>("#rt-notice-stack [data-kind='action'].toast"));
+
+  await fire({ text: "info-feedback", level: "info" }, { text: "warn-notice", level: "warn" }, { text: "error-bad", level: "error" });
+  ok(cornerToasts().length === 1 && cornerToasts()[0].textContent?.includes("info-feedback"), "info 档进右下统一堆叠（data-kind=action）");
+  ok(cornerToasts()[0].getAttribute("role") === "status", "info 档逐条保留 role=status 播报语义");
+  ok(topToasts().length === 2, "warn/error 档仍渲染在顶部 .toast-container（修正1：错误态原样）");
+  ok(topToasts().some((el) => el.classList.contains("toast--warn") && el.textContent?.includes("warn-notice")), "warn 档样式类未动（toast--warn）");
+  ok(topToasts().some((el) => el.classList.contains("toast--error") && el.textContent?.includes("error-bad")), "error 档样式类未动（toast--error）");
+  ok(!topToasts()[0].hasAttribute("data-kind"), "顶部 toast 不带 data-kind（错误/警告通路 DOM 零变化）");
+
+  // A/C 同住：先挂一条 C 类 rt-notice 再发 info toast——同一容器、data-kind 区分、
+  // column-reverse 按到达次序交错（后到者在上）。
+  const diag = rtNoticeHost("tl1464-coexist-diag", "danger");
+  await fire({ text: "second-info", level: "info" });
+  const stack = document.getElementById("rt-notice-stack")!;
+  ok(diag.parentElement === stack && cornerToasts().length === 2, "A/C 同住 #rt-notice-stack");
+  ok(
+    stack.children[stack.children.length - 1] === cornerToasts().at(-1) &&
+      cornerToasts().at(-1)?.previousElementSibling === diag,
+    "到达次序交错：后到的 toast 排在既有诊断条目之上（column-reverse 语义）",
+  );
+  ok(
+    cornerToasts().every((el) => el.dataset.kind === "action") && diag.dataset.kind === "diagnostic",
+    "data-kind 区分：A=action / C=diagnostic",
+  );
+
+  // 时长零变化：info 档 2.5s 默认自动消失（右下与顶部同一套 timer 逻辑）。
+  await fire({ text: "short-lived-info", level: "info" });
+  ok(cornerToasts().some((el) => el.textContent?.includes("short-lived-info")), "info toast 即时上屏（右下）");
+  await act(async () => {
+    await sleep(2600);
+  });
+  ok(!cornerToasts().some((el) => el.textContent?.includes("short-lived-info")), "info toast 2.5s 默认自动消失（时长逻辑未动）");
+
+  // 错误态原样的源码/样式双钉（修正1）。
+  const toastSource = sourceOf("../lib/toast.tsx");
+  ok(toastSource.includes("options.durationMs ?? (options.actionLabel ? 8000 : 2500)"), "toast 时长逻辑零变化（带动作 8s / 轻通知 2.5s）");
+  ok((toastSource.match(/toast--\$\{t\.level\}/g) ?? []).length >= 2, "分级类名接线未动（info/warn/error 三档共用模板）");
+  ok(toastSource.includes(`t.level === "warn" || t.level === "error"`) && toastSource.includes(`t.level === "info"`), "路由钉死：仅 info 档迁右下，warn/error 留顶部");
+  const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+  const containerRule = styles.match(/\.toast-container\s*\{([^{}]*)\}/)?.[1] ?? "";
+  ok(containerRule.includes("top: 16px") && containerRule.includes("left: 50%") && containerRule.includes("translateX(-50%)"), ".toast-container 顶部居中规则零变化（error/warn 位置原样）");
+  ok(containerRule.includes("var(--z-toast)"), ".toast-container z 层未动");
+
+  await act(async () => root.unmount());
+  diag.remove();
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
