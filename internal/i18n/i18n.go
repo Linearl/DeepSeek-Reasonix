@@ -712,6 +712,14 @@ type Messages struct {
 	CLITelemetryConsentSaveFailedFmt    string
 	CLITelemetryConsentCleanupFailedFmt string
 
+	// SentinelDisabledRulesRestored (tl1400): positive follow-up to the
+	// disabled-rules notice — the process previously announced a non-empty
+	// [sentinel].disabled_rules set and that set is now empty, so every
+	// hard-forbidden rule is protected again. The Detail names the restored
+	// rule ids via SentinelDisabledRulesRestoredFmt.
+	SentinelDisabledRulesRestored    string
+	SentinelDisabledRulesRestoredFmt string // %s = restored rule ids, comma-joined
+
 	// usage / help
 	UsageBody string // full multi-line help text
 }

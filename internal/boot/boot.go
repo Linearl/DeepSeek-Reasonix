@@ -501,16 +501,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// 852 调研改进建议 #2：装配期 WARN（上方 sentinel 装配处）之后，这里补
 	// 会话内通知一条，让用户在会话里看见「哪些硬底线被配置关掉了」——静默
 	// 关底线是配置面最危险的态。只在非空时发；内容与 WARN 同源。
-	if rules := cfg.Sentinel.DisabledRules; len(rules) > 0 {
-		sink.Emit(event.Event{
-			Kind:  event.Notice,
-			Level: event.LevelWarn,
-			Text:  "Sentinel 硬规则已被配置禁用。",
-			Detail: fmt.Sprintf("[sentinel].disabled_rules 当前禁用了这些硬底线规则：%s。"+
-				"这些规则本应在任何审批模式（含 yolo）下都拦截；如非有意，请删除配置中对应 id 恢复保护。",
-				strings.Join(rules, ", ")),
-		})
-	}
+	// tl1400：通知按进程去重——同一 disabled_rules 集合只在首次装配发一条
+	// 会话 Notice，集合变化（增/删 id）或非空→空（恢复保护）才再发；装配期
+	// WARN 不去重，日志可检索性不受影响。机制见 sentinel_disabled_rules.go。
+	emitSentinelDisabledRulesNotice(sink, cfg.Sentinel.DisabledRules)
 
 	// Extension preflight (stages 5b/7): start the installed, enabled v2 runtime
 	// packages ONCE, here, before model resolution, so plugin-namespaced refs
