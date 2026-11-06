@@ -139,7 +139,7 @@ export function ResourcePanel({
   const snapshotTsMs = snapshot ? Date.parse(snapshot.ts) : 0;
 
   return (
-    <div className="drawer-backdrop wf-panel-backdrop res-panel-backdrop" data-state={status} onPointerDown={onBackdropPointerDown}>
+    <div className="drawer-backdrop wf-panel-backdrop" data-state={status} onPointerDown={onBackdropPointerDown}>
       <div className="wf-panel res-panel" role="dialog" aria-modal="true" aria-label={t("resourcePanel.title")} data-testid="res-panel">
         <div className="wf-panel__toolbar">
           <span className="wf-panel__title">

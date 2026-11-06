@@ -5105,7 +5105,14 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 				// its origin stamp back so the 定时任务 filing finds it again
 				// (the stamp died with the lost topic state).
 				indexTopicTitle = sessionRepairTopicTitle(indexTopicTitle)
-				if err := ensureTopicIndexed(indexScope, indexRoot, indexTopicID, indexTopicTitle, loadTopicTitleSource(topicTitleRoot(indexScope, indexRoot), indexTopicID)); err == nil {
+				// tl1363b: the runtime rebuild chain must not resurrect a
+				// DELETED topic — a tombstoned id reaching this repair (stale
+				// heartbeat binding, a tab restored across the delete) used to
+				// clear the tombstone and prepend the id back into the sidebar
+				// index, which saveProjectsFile mirrors into the organization
+				// sidecar (the topicOrder[0] bounce). Only the explicit restore
+				// path (restoreSessionTopicIndex) may clear tombstones.
+				if err := a.repairTopicIndexAfterBuild(indexScope, indexRoot, indexTopicID, indexTopicTitle, loadTopicTitleSource(topicTitleRoot(indexScope, indexRoot), indexTopicID)); err == nil {
 					restoreHeartbeatTopicOrigin(indexScope, indexTopicID, indexTopicTitle)
 					a.emitProjectTreeChangedForSessionDirs(ctrl.SessionDir())
 				}
@@ -7603,6 +7610,32 @@ func ensureTopicIndexed(scope, workspaceRoot, topicID, title, source string) err
 
 func ensureTopicIndexedWithCreatedAt(scope, workspaceRoot, topicID, title, source string, createdAt int64) error {
 	return ensureTopicIndexedState(scope, workspaceRoot, topicID, title, source, createdAt)
+}
+
+// topicDeletedTombstoned reports whether the topic id sits in DeletedTopics —
+// the one deleteTopic leaves behind precisely so scans and repairs cannot
+// resurrect it. tl1363b: the runtime write-back faces (tab-build repair, the
+// heartbeat bound-topic reuse) consult this instead of re-reading the projects
+// file by hand.
+func topicDeletedTombstoned(topicID string) bool {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" {
+		return false
+	}
+	return containsDesktopString(loadProjectsFile().DeletedTopics, topicID)
+}
+
+// repairTopicIndexAfterBuild is the tab-build completion's sidebar index
+// repair (the old inline ensureTopicIndexed call), gated for deleted topics:
+// a runtime rebuild that still carries a tombstoned topic id must NOT clear
+// the tombstone or re-register the id (tl1363b ①-B). Explicit restores keep
+// calling ensureTopicIndexed directly — that path is the user bringing the
+// conversation back, and its tombstone-clearing semantics are unchanged.
+func (a *App) repairTopicIndexAfterBuild(scope, workspaceRoot, topicID, title, source string) error {
+	if topicDeletedTombstoned(topicID) {
+		return fmt.Errorf("topic %q is deleted (tombstoned) — the runtime index repair must not resurrect it", topicID)
+	}
+	return ensureTopicIndexed(scope, workspaceRoot, topicID, title, source)
 }
 
 // resolveTopicIndexTarget 是 tl1283 的唯一归属改道口：global 补登先问注册
