@@ -3,7 +3,7 @@
 
 import { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, Cog, FileSearch, GitBranch, Info, MessageSquare, TriangleAlert } from "lucide-react";
-import { getLocale, useT } from "../lib/i18n";
+import { getLocale, useT, type DictKey, type Translator } from "../lib/i18n";
 import type { CompactionItem, NoticeItem } from "../lib/transcriptRows";
 import type { WireCompletionSummary } from "../lib/types";
 import { turnChangeText, turnCheckState, turnCheckText } from "../lib/turnResult";
@@ -455,10 +455,29 @@ export function HostProtocolNoticeCard({ item }: { item: NoticeItem }) {
   );
 }
 
+// tl1446-6: exact-match map over the backend's closed failure-reason set
+// (internal/agent/context_receipt.go compactionFailureReason). A reason
+// outside the set renders verbatim — the technical track never hides.
+const compactionFailureReasonKeys: Record<string, DictKey> = {
+  "context changed during compaction; the pass was discarded and will retry": "compaction.reasonContextChanged",
+  "summarizer output was truncated": "compaction.reasonTruncated",
+  "compaction candidate did not reduce the context": "compaction.reasonNoReduction",
+  "compaction was cancelled": "compaction.reasonCancelled",
+  "summarizer request failed": "compaction.reasonRequestFailed",
+};
+
+function localizedCompactionFailureReason(t: Translator, reason: string): string {
+  const key = compactionFailureReasonKeys[reason.trim()];
+  return key ? t(key) : reason;
+}
+
 export function CompactionCard({ item }: { item: CompactionItem }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const beginUserResize = useTranscriptUserResizeIntent();
+  // tl1446-6: the failed card's reason localizes by exact match against the
+  // backend's closed reason set (internal/agent compactionFailureReason);
+  // unknown reasons keep the backend text verbatim (dual-track, M3 form).
   // 任务 973: the pending card is the user's primary compaction surface (the
   // static「正在压缩对话…」block from the screenshot) — it now carries the
   // same live readout as the fold header:「已 Xs · XX tokens · X t/s」, fed by
@@ -485,7 +504,7 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
       <div className="compaction compaction--failed" data-entrance={item.id} data-transcript-layout-variant="static" role="status">
         <ProcessCompactIcon size={12} />
         <span>{attempt > 0 ? t("compaction.failedAttempt", { n: attempt }) : t("compaction.failed")}</span>
-        {item.reason ? <span className="compaction__meta">{item.reason}</span> : null}
+        {item.reason ? <span className="compaction__meta">{localizedCompactionFailureReason(t, item.reason)}</span> : null}
       </div>
     );
   }

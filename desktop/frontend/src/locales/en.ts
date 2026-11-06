@@ -5385,6 +5385,14 @@ export const en = {
   "compaction.hideSummary": "hide summary",
   "compaction.failed": "Context compaction failed",
   "compaction.failedAttempt": "Context compaction failed (attempt {n}) — this pass stopped, the context keeps recording, and it retries automatically later",
+  // tl1446-6: the backend's closed set of compaction failure reasons
+  // (internal/agent context_receipt.go compactionFailureReason) localized by
+  // exact match; unknown reasons stay verbatim.
+  "compaction.reasonContextChanged": "the context changed during compaction; this pass was discarded and will retry",
+  "compaction.reasonTruncated": "the summarizer output was truncated",
+  "compaction.reasonNoReduction": "the compaction candidate did not reduce the context",
+  "compaction.reasonCancelled": "the compaction was cancelled",
+  "compaction.reasonRequestFailed": "the summarizer request failed",
   "rewind.label": "Message actions",
   "rewind.disabledRunning": "Wait for the current action to finish",
   "rewind.disabledNoCheckpoint": "This message has no restore point",

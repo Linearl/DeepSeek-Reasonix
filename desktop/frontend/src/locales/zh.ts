@@ -5364,6 +5364,13 @@ export const zh: Record<DictKey, string> = {
   "compaction.hideSummary": "收起摘要",
   "compaction.failed": "上下文压缩失败",
   "compaction.failedAttempt": "上下文压缩失败（第 {n} 次）——已停止本次压缩，上下文继续记录，稍后自动重试",
+  // tl1446-6: 后端闭集失败原因（internal/agent context_receipt.go
+  // compactionFailureReason）按原文精确匹配本地化；未知原因保留原文。
+  "compaction.reasonContextChanged": "压缩期间上下文发生了变化，本轮已被丢弃并将自动重试",
+  "compaction.reasonTruncated": "摘要输出被截断",
+  "compaction.reasonNoReduction": "压缩候选未能减小上下文体积",
+  "compaction.reasonCancelled": "压缩已被取消",
+  "compaction.reasonRequestFailed": "摘要请求失败",
   "rewind.label": "消息操作",
   "rewind.disabledRunning": "等待当前操作结束",
   "rewind.disabledNoCheckpoint": "这条消息没有可恢复点",
