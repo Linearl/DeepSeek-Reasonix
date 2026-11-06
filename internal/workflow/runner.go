@@ -207,10 +207,22 @@ func wfMonitorLabel(runID string, req SubagentRequest) string {
 // runNode is the un-monitored node execution (identical behavior to
 // pre-tl1324 Run when no recorder is assembled).
 func (r *TaskSubagentRunner) runNode(ctx context.Context, req SubagentRequest) (string, error) {
+	// dispatchCtx 带 run 级 recorder 与会话身份——mint 时回调经它上报，让
+	// nodeId→ref 关联在节点运行中即落登记表（tl1434 追加）。
+	dispatchCtx := ctx
 	ctx = agent.WithSubagentRawAnswerSink(ctx)
 	// tl1434: 同一派发 ctx 再装 ref sink——TaskTool 在 transcript ref 生成处
 	// 登记进来，Execute 返回后交给 run 级 recorder 落 nodeId→执行实例关联。
 	ctx = agent.WithSubagentRefSink(ctx)
+	// tl1434 追加：ref mint 处即时上报——运行中节点在面板即时出现「第 N 次」
+	// 入口并读到已落盘内容（此前要等 Execute 返回）。Execute 返回后的兜底
+	// 上报保留（模拟 runner / 无观察者宿主同契约）；登记层对同节点尾部相同
+	// ref 幂等去重，重复上报不翻倍 occurrence。
+	ctx = agent.OnSubagentRefRecorded(ctx, func(ref string) {
+		ReportSubagentRef(dispatchCtx, req, ref)
+	})
+	// tl1434 追加：派发期间周期快照 transcript——「工作过程」增量可见的写侧。
+	ctx = agent.WithSubagentTranscriptAutosave(ctx)
 	args := map[string]any{"prompt": req.Prompt}
 	set := func(key, v string) {
 		if v != "" {

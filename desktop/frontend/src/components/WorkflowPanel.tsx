@@ -85,41 +85,89 @@ function formatTokens(tokens?: number): string {
 // historyMessagesToItems + Transcript，无输入/无续写入口）。
 const LazyTranscript = lazy(async () => ({ default: (await import("./Transcript")).Transcript }));
 
-/** 「工作过程」一次打开的读取态（只读；失败/空态各自显式文案）。 */
+/** 「工作过程」一次打开的读取态（只读；失败/等待/空态各自显式文案）。 */
 interface NodeTraceState {
   occurrence: number;
-  loading: boolean;
-  failed: boolean;
+  status: "loading" | "ready" | "failed" | "empty" | "waiting";
   messages: HistoryMessage[];
 }
 
-const EMPTY_TRACE: NodeTraceState = { occurrence: 0, loading: false, failed: false, messages: [] };
+// tl1434 追加：运行中节点的增量跟进节拍。轮询而非事件驱动的理由（取舍记
+// 录）：读取桥每次返回当前完整投影，重拉即增量，零新接口、零新事件契约；
+// 事件驱动需为 ref 级 delta 新建跨层推送面（agent→workflow→desktop→前端），
+// 违背先用现有机制。窗口仅限「查看面已打开 && 节点运行中」，面板关/节点
+// 翻终态（workflow:runs 推送已订阅）/切换 occurrence 即停。
+const WORKFLOW_TRACE_POLL_MS = 2000;
+
+// 后端「transcript 尚未落盘」哨兵短语（desktop 桥的文件缺失错误文案）：
+// 运行中打开据此显示等待跟进态，而非失败态。
+const TRANSCRIPT_PENDING_MARKER = "has not been saved yet";
+
+function isTranscriptPending(err: unknown): boolean {
+  return String(err).includes(TRANSCRIPT_PENDING_MARKER);
+}
 
 /**
  * 节点详情「工作过程」段（tl1434）：子代理/确认节点的执行实例只读回放入口。
  * 仅真运行（live）渲染——demo 视图无关联数据，保持逐字节原状。
  *   refs 非空：逐次执行列出「第 N 次 · 查看」；打开即经只读桥拉 transcript，
  *     全程无写入面（不唤醒/不续写子代理会话）。
+ *   节点运行中（tl1434 追加）：已打开的查看面轮询跟进——已写盘部分即时可读，
+ *     新写入每 WORKFLOW_TRACE_POLL_MS 重拉一次自动出现（写侧由工作流派发的
+ *     运行中快照 autosave 落盘）。
  *   refs 为空且节点已终态：降级说明行（老 run / ephemeral 派发无持久化
- *     transcript，如实告知而非假装可看）。
+ *     transcript，如实告知而非假装可看）；refs 为空且运行中同样不渲染入口
+ *     （ref 未 mint / 未登记时无身份可读，降级保留）。
  */
-function NodeWorkProcessSection({ runId, nodeId, kind, refs, terminal }: {
+function NodeWorkProcessSection({ runId, nodeId, kind, refs, running, terminal }: {
   runId: string;
   nodeId: string;
   kind: WorkflowDagNode["kind"];
   refs: string[];
+  /** 节点本轮执行未终态（六态之 running）。 */
+  running: boolean;
   terminal: boolean;
 }) {
   const t = useT();
   const [trace, setTrace] = useState<NodeTraceState | null>(null);
-  if (kind !== "subagent" && kind !== "confirm") return null;
+  const read = (occurrence: number) => app.ReadWorkflowNodeSubagent(runId, nodeId, occurrence);
+  const statusFor = (messages: HistoryMessage[]): NodeTraceState["status"] =>
+    messages.length === 0 ? "empty" : "ready";
   const open = (occurrence: number) => {
-    setTrace({ ...EMPTY_TRACE, occurrence, loading: true });
-    app
-      .ReadWorkflowNodeSubagent(runId, nodeId, occurrence)
-      .then((messages) => setTrace({ occurrence, loading: false, failed: false, messages }))
-      .catch(() => setTrace({ occurrence, loading: false, failed: true, messages: [] }));
+    setTrace({ occurrence, status: "loading", messages: [] });
+    read(occurrence)
+      .then((messages) => setTrace({ occurrence, status: statusFor(messages), messages }))
+      .catch((err) =>
+        setTrace({ occurrence, status: isTranscriptPending(err) ? "waiting" : "failed", messages: [] }));
   };
+  // 增量跟进：纯读桥重入（fetch 在 updater 外调度，updater 只做纯归约）。
+  // 已有内容时瞬时失败静默保旧（旧内容仍有效）；首次未落盘（pending 哨兵）
+  // 保持等待态，落盘后下一个节拍自动显示。
+  // （effect 在 kind 早退之前挂——hook 顺序不得随节点类型漂移。）
+  const openOccurrence = trace?.occurrence ?? 0;
+  useEffect(() => {
+    if (!running || openOccurrence === 0) return;
+    let busy = false;
+    const iv = setInterval(() => {
+      if (busy) return;
+      busy = true;
+      read(openOccurrence)
+        .then((messages) =>
+          setTrace((c) => (c && c.occurrence === openOccurrence
+            ? { occurrence: openOccurrence, status: statusFor(messages), messages }
+            : c)))
+        .catch((err) =>
+          setTrace((c) => {
+            if (!c || c.occurrence !== openOccurrence) return c;
+            if (c.messages.length > 0) return c;
+            if (isTranscriptPending(err)) return { ...c, status: "waiting" };
+            return c.status === "loading" ? c : { ...c, status: "failed" };
+          }))
+        .finally(() => { busy = false; });
+    }, WORKFLOW_TRACE_POLL_MS);
+    return () => clearInterval(iv);
+  }, [running, openOccurrence, runId, nodeId]);
+  if (kind !== "subagent" && kind !== "confirm") return null;
   if (refs.length === 0) {
     // 降级显示：终态但无已登记关联（legacy run / 非持久化派发）。
     if (!terminal) return null;
@@ -130,9 +178,11 @@ function NodeWorkProcessSection({ runId, nodeId, kind, refs, terminal }: {
       </div>
     );
   }
-  const traceItems = trace && !trace.loading && !trace.failed
+  const traceItems = trace && trace.status === "ready"
     ? historyMessagesToItems(trace.messages, "wf-trace").items
     : [];
+  // 等待跟进在节点翻终态后如实转失败态（不再有「稍后落盘」的可能）。
+  const viewStatus = trace?.status === "waiting" && !running ? "failed" : trace?.status;
   return (
     <div className="wf-panel__trace" data-testid="wf-node-trace">
       <div className="wf-panel__detail-label">{t("workflowPanel.detail.process")}</div>
@@ -154,13 +204,17 @@ function NodeWorkProcessSection({ runId, nodeId, kind, refs, terminal }: {
         <div
           className="wf-panel__trace-view"
           data-testid="wf-node-trace-view"
-          data-wf-trace-state={trace.loading ? "loading" : trace.failed ? "failed" : traceItems.length === 0 ? "empty" : "ready"}
+          data-wf-trace-state={viewStatus}
         >
-          {trace.loading ? (
+          {viewStatus === "loading" ? (
             <p className="wf-panel__detail-empty">{t("workflowPanel.detail.processLoading")}</p>
-          ) : trace.failed ? (
+          ) : viewStatus === "failed" ? (
             <p className="wf-panel__detail-empty">{t("workflowPanel.detail.processFailed")}</p>
-          ) : traceItems.length === 0 ? (
+          ) : viewStatus === "waiting" ? (
+            <p className="wf-panel__detail-empty" data-testid="wf-node-trace-waiting">
+              {t("workflowPanel.detail.processLive")}
+            </p>
+          ) : viewStatus === "empty" ? (
             <p className="wf-panel__detail-empty">{t("workflowPanel.detail.processEmpty")}</p>
           ) : (
             <Suspense fallback={<p className="wf-panel__detail-empty">{t("workflowPanel.detail.processLoading")}</p>}>
@@ -168,6 +222,11 @@ function NodeWorkProcessSection({ runId, nodeId, kind, refs, terminal }: {
             </Suspense>
           )}
         </div>
+      )}
+      {running && trace && (viewStatus === "ready" || viewStatus === "empty") && (
+        <p className="wf-panel__trace-live" data-testid="wf-node-trace-live">
+          {t("workflowPanel.detail.processLive")}
+        </p>
       )}
       <p className="wf-panel__trace-readonly">{t("workflowPanel.detail.processReadOnly")}</p>
     </div>
@@ -232,6 +291,7 @@ function NodeDetailPane({ node, run, live, runId }: {
           nodeId={node.id}
           kind={node.kind}
           refs={detail?.subagentRefs ?? []}
+          running={run.state === "running"}
           terminal={traceTerminal}
         />
       )}

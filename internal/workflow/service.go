@@ -516,6 +516,12 @@ func (s *Service) ResumeRunFromPanel(ctx context.Context, runID string) (builtin
 // recordSubagentRef 是 tl1434 的登记落点（runner 派发尾经 runCtx 闭包调
 // 用，任意 goroutine）：append-only 追加该节点的执行实例关联，不触碰既有
 // 六态/输出记录（并发安全口径与 recordNode 相同——rec.mu 串行化）。
+//
+// tl1434 追加：幂等去重——同节点尾部相同 ref 视为同一执行实例的重复上报
+// （运行中 mint 即时登记 + Execute 返回兜底各报一次），不重复 append。
+// occurrence 的语义=不同执行实例（transcript），不是不同次上报；ref 由
+// PrepareFresh 每次 mint 唯一 id，同一节点合法地再现同 ref 只可能是上报
+// 重复，故只比尾部即可。
 func (s *Service) recordSubagentRef(runID string, req SubagentRequest, ref, parentSession string) {
 	s.mu.Lock()
 	rec, ok := s.runs[runID]
@@ -529,6 +535,10 @@ func (s *Service) recordSubagentRef(runID string, req SubagentRequest, ref, pare
 		nr = &nodeRecord{}
 		rec.nodes[req.NodeID] = nr
 		rec.order = append(rec.order, req.NodeID)
+	}
+	if n := len(nr.subagentRefs); n > 0 && nr.subagentRefs[n-1] == ref {
+		rec.mu.Unlock()
+		return
 	}
 	nr.subagentRefs = append(nr.subagentRefs, ref)
 	nr.subagentRefParents = append(nr.subagentRefParents, parentSession)

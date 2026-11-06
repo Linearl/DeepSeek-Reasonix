@@ -40,7 +40,9 @@ func WithSubagentRefSink(ctx context.Context) context.Context {
 // RecordSubagentRef stores the persisted transcript ref minted for this run.
 // A no-op when ctx carries no sink (ordinary delegation: nobody is listening)
 // or when ref is empty (ephemeral runs never persist a transcript — there is
-// nothing to replay, see EphemeralSubagentRun).
+// nothing to replay, see EphemeralSubagentRun). When ctx carries an observer
+// (OnSubagentRefRecorded), it fires after the sink is written — the mint-time
+// hook the workflow runner uses for mid-run registration (tl1434 追加).
 func RecordSubagentRef(ctx context.Context, ref string) {
 	sink, ok := ctx.Value(subagentRefKey{}).(*subagentRefSink)
 	if !ok || ref == "" {
@@ -49,6 +51,9 @@ func RecordSubagentRef(ctx context.Context, ref string) {
 	sink.mu.Lock()
 	sink.ref = ref
 	sink.mu.Unlock()
+	if fn := subagentRefObserverFrom(ctx); fn != nil {
+		fn(ref)
+	}
 }
 
 // SubagentRef returns the persisted transcript ref recorded during the run,
@@ -62,4 +67,28 @@ func SubagentRef(ctx context.Context) string {
 	sink.mu.Lock()
 	defer sink.mu.Unlock()
 	return sink.ref
+}
+
+// subagentRefObserverKey is the ctx key for the mint-time ref observer
+// (tl1434 追加). Unexported: the only door in is OnSubagentRefRecorded.
+type subagentRefObserverKey struct{}
+
+// OnSubagentRefRecorded registers fn to run at the moment RecordSubagentRef
+// stores the ref — i.e. mid-dispatch, BEFORE Execute returns. The workflow
+// runner uses this to register the nodeId→ref association while the node is
+// still running, so the panel can list the in-flight execution and follow its
+// transcript incrementally; the post-Execute report stays as the fallback for
+// mock runners and hosts that never install the observer. fn runs on the
+// dispatch goroutine and must be cheap and non-blocking (it is called once per
+// dispatch, synchronously at the ref mint point).
+func OnSubagentRefRecorded(ctx context.Context, fn func(ref string)) context.Context {
+	if fn == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, subagentRefObserverKey{}, func(ref string) { fn(ref) })
+}
+
+func subagentRefObserverFrom(ctx context.Context) func(ref string) {
+	fn, _ := ctx.Value(subagentRefObserverKey{}).(func(ref string))
+	return fn
 }
