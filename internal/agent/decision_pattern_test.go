@@ -33,6 +33,21 @@ func userLine(text string) string {
 	return fmt.Sprintf(`{"role":"user","content":%q,"ts":%q}`, text, time.Now().UTC().Format(time.RFC3339))
 }
 
+// writeSession drops one transcript file into dir and returns its path. The
+// scanner reads by explicit path, so the mtime bump is just hygiene.
+func writeSession(t *testing.T, dir, name string, lines ...string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err := os.Chtimes(path, now, now); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestDecisionRulingCandidateWordlist(t *testing.T) {
 	hits := []string{
 		"不对，应该用 worktree 才对",

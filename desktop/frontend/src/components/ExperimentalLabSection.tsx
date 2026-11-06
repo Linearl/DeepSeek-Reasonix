@@ -325,7 +325,6 @@ export function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps
   // and the configured layout.
   const remoteAvailable = useRemoteStore((state) => state.hosts.length > 0);
   const desktopLayoutStyle = normalizeDesktopLayoutStyle(s.desktopLayoutStyle);
-  const [dreamTaskCreated, setDreamTaskCreated] = useState(false);
   // 任务 801：决策模式卡的本地草稿态（阈值数字输入与文件路径文本框），提交
   // 走 onBlur 保存；初始值随设置快照填充。
   const [decisionTaskCreated, setDecisionTaskCreated] = useState(false);
@@ -1834,48 +1833,17 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               各写各的 setter；行级徽章经 labLabel 保留，rail 卡头聚合徽章取
               成员最高档（可选）。已存偏好零迁移：三键原样保留。
               任务 1099（首期试点）：卡内子项按功能族聚合成 LabSectionCard
-              容器——梦境族 / 决策模式族 / 后台与续跑族三张分组卡，卡片边框
+              容器——决策模式族 / 后台与续跑族两张分组卡（梦境族卡随
+              tl1453 实验退役摘除），卡片边框
               即族边界（替代细分割线的弱分组）。纯视觉分组：各成员行仍读
               自己的键、写自己的 setter，徽章语义不变（621 成员徽章留行、
               774 rail 聚合徽章不动）。 */}
           {selected === "smartAutomation" && (
             <>
               <SettingsField label={labLabel("smartAutomation", t("settings.smartAutomation"))} hint={t("settings.smartAutomationHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              {/* 族 1：梦境——整理开关 + 创建自动任务（任务书 1.3 红框 1）。 */}
-              <LabSectionCard title={t("settings.lab.family.dream")} hint={t("settings.lab.family.dreamHint")}>
-                <SettingsField label={labLabel("dream", t("settings.dream"))} hint={t("settings.dreamHint")} icon={<Sparkles size={18} />}>
-                  <SettingsOptions layout="field" className="set-seg">
-                    {[false, true].map((on) => (
-                      <button
-                        key={String(on)}
-                        className={`set-seg__btn${Boolean(s.experimentalDream) === on ? " set-seg__btn--on" : ""}`}
-                        disabled={busy}
-                        onClick={() => void apply(() => app.SetExperimentalDream(on))}
-                      >
-                        {t(on ? "settings.dream.on" : "settings.dream.off")}
-                      </button>
-                    ))}
-                  </SettingsOptions>
-                </SettingsField>
-                <SettingsField label={t("settings.dreamCreateTask")} hint={t("settings.dreamCreateTaskHint")} icon={<Sparkles size={18} />}>
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--small"
-                    disabled={busy || !Boolean(s.experimentalDream)}
-                    onClick={() => void apply(async () => {
-                      const created = await app.CreateDreamHeartbeatTask();
-                      if (created) setDreamTaskCreated(true);
-                    })}
-                  >
-                    {t("settings.dreamCreateTaskAction")}
-                  </button>
-                </SettingsField>
-                {dreamTaskCreated ? (
-                  <div className="banner settings-restart-banner" role="status">
-                    <span>{t("settings.dreamCreateTaskDone")}</span>
-                  </div>
-                ) : null}
-              </LabSectionCard>
+              {/* tl1453：梦境族卡随 experimental_dream 实验退役（宪法 Q1），
+                  卡内两行（整理开关 + 创建 dream 自动任务）一并摘除；
+                  「后台与续跑」族卡原样保留。 */}
               {/* 族 2：决策模式——提取开关 + 创建自动任务 + 阈值 + 文件位置 +
                   跳过人工批准（任务书 1.3 红框 2）。 */}
               <LabSectionCard title={t("settings.lab.family.decisionPatterns")} hint={t("settings.lab.family.decisionPatternsHint")}>

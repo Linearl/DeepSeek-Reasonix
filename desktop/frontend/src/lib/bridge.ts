@@ -1897,8 +1897,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetColdCacheCompactIdleMinutes(minutes: number): Promise<void>;
   // Task 60: Trace-as-State compaction (experimental).
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
-  // Task 115: dream/distill memory-curation tools (experimental).
-  SetExperimentalDream(enabled: boolean): Promise<void>;
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，默认关）。
   SetStalledIntentNudge(enabled: boolean): Promise<void>;
   // Task 801: decision-pattern extraction + solidification (experimental).
@@ -2011,9 +2009,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetSessionPurpose(sessionPath: string, purpose: string): Promise<void>;
   // Task 19: run one collaboration delivery pass.
   DrainSessionCollabMail(): Promise<{ delivered: number; refused: number; targets: { tabId: string; contactId: string; delivered: number; refused: number; error?: string }[] }>;
-  // Task 115: ensure a scheduled dream pass exists in the automation panel.
-  // Returns true when a new task was appended.
-  CreateDreamHeartbeatTask(): Promise<boolean>;
   // Task 801: ensure the daily decision-pattern consolidation heartbeat exists
   // (reuse-session mode). Returns true when a new task was appended.
   CreateDecisionPatternHeartbeatTask(): Promise<boolean>;
@@ -7000,7 +6995,6 @@ function makeMockApp(): AppBindings {
     async SetColdCacheCompactMinBytes() {},
     async SetColdCacheCompactIdleMinutes() {},
     async SetExperimentalTraceAsState() {},
-    async SetExperimentalDream() {},
     async SetStalledIntentNudge() {},
     async SetExperimentalDecisionPatterns() {},
     async SetExperimentalPinnedIndex() {},
@@ -7096,7 +7090,6 @@ function makeMockApp(): AppBindings {
       else mockSessionPurposes.delete(key);
     },
     async DrainSessionCollabMail() { return { delivered: 0, refused: 0, targets: [] }; },
-    async CreateDreamHeartbeatTask() { return false; },
     async CreateDecisionPatternHeartbeatTask() { return false; },
     async SetServePoolPort() {},
     async ListFeedbackEntries() { return []; },

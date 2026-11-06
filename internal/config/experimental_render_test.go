@@ -25,7 +25,6 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	// Task 473: the lab mirror set is single-source now — the [agent] key
 	// carries the value and the render face has only the [agent] row.
 	c.Agent.TraceAsState = true
-	c.Agent.ExperimentalDream = true
 	c.Agent.ExperimentalSessionCollab = true
 	// 任务 517：合并键往返；legacy B1/B2/B3 键不再是可写面（见 off 断言）。
 	c.Agent.ExperimentalSafetyCostControl = true
@@ -52,7 +51,6 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_prompt_history_picker = true",
 		"experimental_path_rules = true",
 		"trace_as_state = true",
-		"experimental_dream = true",
 		"experimental_session_collab = true",
 		"experimental_safety_cost_control = true",
 		"experimental_orphan_lease_reclaim = true",
@@ -82,8 +80,8 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_todo_sidebar = false",
 		"experimental_path_rules = false",
 		// Task 473: the [desktop] mirror spelling is gone; the [agent] key
-		// (trace_as_state) is asserted further down the list.
-		"experimental_dream = false", // [agent] row only — single source (task 473)
+		// (trace_as_state) is asserted further down the list. tl1453:
+		// experimental_dream left the render face with its feature.
 		"experimental_session_collab = false",
 		"experimental_safety_cost_control = false",
 		// 任务 517：legacy B1/B2/B3 键保持渲染（迁移后读 false），关态可记录。
@@ -106,14 +104,6 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 	}
 }
 
-func TestExperimentalDreamRoundTripThroughRender(t *testing.T) {
-	c := &Config{}
-	c.Agent.ExperimentalDream = true
-	out := RenderTOMLForScope(c, RenderScopeUser)
-	if !strings.Contains(out, "experimental_dream = true") {
-		t.Fatalf("rendered user config is missing experimental_dream = true\n---\n%s", out)
-	}
-}
 
 // 任务 506: tab-strip adaptive compression is a plain default-off desktop
 // bool. An untouched config must render false (ships off, 铁律 2), enabling

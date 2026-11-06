@@ -1767,21 +1767,6 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	addMemoryTools()
 	agentToolsPrepMs := time.Since(agentToolsStart).Milliseconds()
 
-	// Task 115 dream/distill: experimental memory curation, off by default.
-	// Both tools only read project sessions and write project memory / a
-	// nomination draft — no global memory, no skill auto-install.
-	if cfg.Agent.ExperimentalDream {
-		projectSessions := config.ProjectSessionDir(root)
-		dreamCfg := agent.DreamDistillConfig{
-			Enabled:       true,
-			WorkspaceRoot: root,
-			SessionDir:    projectSessions,
-			Memory:        memory.StoreFor(config.MemoryUserDir(), root),
-		}
-		reg.Add(agent.NewDreamTool(dreamCfg))
-		reg.Add(agent.NewDistillTool(dreamCfg))
-	}
-
 	// 任务 801（决策模式固化链 Phase 2）：实验室开关默认关；关闭时工具不注册，
 	// 心跳对话里调用会得到「不可用」说明而不是半失败。文件位置可指定（修订七，
 	// 空=默认 global-workspace/docs/decision-patterns.md）；阈值默认 5；数据源

@@ -1023,9 +1023,6 @@
     "internal/agent/drain_inbox_two_phase_test.go": {
       "narrative": 3
     },
-    "internal/agent/dream_distill.go": {
-      "essay": 6
-    },
     "internal/agent/duplicate_result.go": {
       "essay": 1
     },

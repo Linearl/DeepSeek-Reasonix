@@ -76,13 +76,13 @@ func TestFinishToolRecoveryFailedWriterIsNotCompleted(t *testing.T) {
 // checkpoint landed, the finish update was lost to a mid-tool crash / ledger
 // reopen) while the transcript itself already carries the paired tool result.
 func recoverySessionWithPairedResult(recordState provider.ToolRunState, resultContent string, resultState provider.ToolRunState) (*Session, *provider.ToolCallRecord) {
-	r := &provider.ToolCallRecord{Identity: provider.ActionIdentity{AttemptID: "attempt-1", CallID: "call-1", CanonicalTool: "dream"}, State: recordState, ReadOnly: true}
+	r := &provider.ToolCallRecord{Identity: provider.ActionIdentity{AttemptID: "attempt-1", CallID: "call-1", CanonicalTool: "journal"}, State: recordState, ReadOnly: true}
 	s := NewSession("")
 	s.Messages = []provider.Message{
-		{Role: provider.RoleAssistant, ID: "turn-1", Content: "", ToolCalls: []provider.ToolCall{{ID: "call-1", Name: "dream", Arguments: `{}`, Recovery: r}}},
+		{Role: provider.RoleAssistant, ID: "turn-1", Content: "", ToolCalls: []provider.ToolCall{{ID: "call-1", Name: "journal", Arguments: `{}`, Recovery: r}}},
 		{Role: provider.RoleUser, Content: "汇报一下"},
 	}
-	result := provider.Message{Role: provider.RoleTool, ToolCallID: "call-1", Name: "dream", Content: resultContent}
+	result := provider.Message{Role: provider.RoleTool, ToolCallID: "call-1", Name: "journal", Content: resultContent}
 	if resultState != "" {
 		result.ToolRunState = resultState
 	}
@@ -143,21 +143,21 @@ func TestSettlePairedTranscriptResultsRestampsStaleRecord(t *testing.T) {
 func TestNewTurnSettlesStaleRecordOfPairedCompletedCall(t *testing.T) {
 	reg := tool.NewRegistry()
 	var calls int32
-	reg.Add(fakeTool{name: "dream", readOnly: true, calls: &calls})
+	reg.Add(fakeTool{name: "journal", readOnly: true, calls: &calls})
 	prov := &scriptedProvider{name: "p", turns: [][]provider.Chunk{
-		{toolCallChunk("c1", "dream", `{}`), {Type: provider.ChunkDone}},
-		{{Type: provider.ChunkText, Text: "本轮 dream 已保存 5 条。"}, {Type: provider.ChunkDone}},
+		{toolCallChunk("c1", "journal", `{}`), {Type: provider.ChunkDone}},
+		{{Type: provider.ChunkText, Text: "本轮 journal 已保存 5 条。"}, {Type: provider.ChunkDone}},
 		{{Type: provider.ChunkText, Text: "继续。"}, {Type: provider.ChunkDone}},
 	}}
 	s := NewSession("")
 	a := New(prov, reg, s, Options{}, event.Discard)
 	ctx := withNoClosedLoop(context.Background())
-	if err := a.Run(ctx, "跑一轮 dream"); err != nil {
+	if err := a.Run(ctx, "跑一轮 journal"); err != nil {
 		t.Fatalf("Run turn 1: %v", err)
 	}
 	rec := s.toolRecoveryRecord("c1")
 	if rec == nil || rec.State != provider.ToolRunCompleted {
-		t.Fatalf("successful dream call must settle completed, got %+v", rec)
+		t.Fatalf("successful journal call must settle completed, got %+v", rec)
 	}
 	// 模拟中断误标形态：finish 更新丢失，记录回退为 started（重载复活）。
 	stale := *rec
