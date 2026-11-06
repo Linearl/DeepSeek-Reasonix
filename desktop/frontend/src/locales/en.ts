@@ -1783,6 +1783,7 @@ export const en = {
   "recovery.previewCleanup": "Review safe cleanup",
   "recovery.noticeConcurrentWriter": "Another Reasonix window or process added to this conversation. Its content is kept as a separate version; select the conversation in the history panel and use View versions to switch.",
   "recovery.noticeConcurrentDualTab": "This conversation is open in two tabs of this window and both wrote to it; the extra content is kept as a separate version — close one tab before continuing.",
+  "recovery.noticeRecoverySuspended": "The session file conflicts with another writer and could not be auto-repaired, so sending is paused for this session. History is safe — reopen the session and send your message again.",
   "settings.recoveryCopiesDualOpen": "This conversation is open in two tabs of this window — merging is paused. Close one tab (resolve the dual writer) and run the merge again.",
   "recovery.noticeAlsoOpen": "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.",
   "recovery.noticeHeadSwitched": "Opened the newest version of this conversation. Other saved versions are available in View versions.",
