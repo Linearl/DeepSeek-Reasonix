@@ -235,7 +235,6 @@ var labFeatureTiers = []labFeatureTier{
 	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
 	// tl1487 二组①：标签权限指示未稳定→可选（用户 20261107 八组清单；前端同步）。
 	{"tabModeTint", LabTierOptional, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
-	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierRecommended, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键；任务 992：随复用池升推荐（用户 1018）
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
 	// ── tool-opt（工具优化，4 项；815 登记窗口：789 证据门宽松转正入表；
@@ -244,19 +243,20 @@ var labFeatureTiers = []labFeatureTier{
 	{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动）；任务 783④：编辑读回（readBack）随 22.5 交付转正，未稳定→推荐（前端注册表同步升档，562 两侧一致断言守护）；任务 943：族拆两键后本键只管 readBack 面
 	// 任务 789/815：编辑证据门宽松模式（工具优化卡成员行，未稳定档默认关）。
 	// 789 先行（Go 侧开关+前端登记半程），815 登记窗口补齐设置页入口后转正入表。
-	{"editEvidenceRelaxed", LabTierOptional, []string{"experimental_edit_evidence_relaxed"}}, // 任务 992：用户 1018 升可选（原 789/815 未稳定档）
+	// tl1487 七组②：工具优化五项全部可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"editEvidenceRelaxed", LabTierRecommended, []string{"experimental_edit_evidence_relaxed"}},
 	// 任务 943：multi_edit 直注独立卡（原族键第二效果拆出，可选档——550 口径：
 	// 不开启只小幅影响，multi_edit 仍可经 use_capability 调用）。
-	{"multiEditInjection", LabTierOptional, []string{"experimental_multi_edit_injection"}},
+	{"multiEditInjection", LabTierRecommended, []string{"experimental_multi_edit_injection"}},
 	// 任务 979：能力组披露 + session_hub 聚合件 + 常驻目录组归属（953/954/955
 	// 三件共用一键，config.go 用户拍板「提效类可选档」）——979 补设置页入口
 	// 自豁免表转正；工具优化聚合页成员行，重启生效（boot 快照三处门控）。
-	{"capabilityGroups", LabTierOptional, []string{"experimental_capability_groups"}},
+	{"capabilityGroups", LabTierRecommended, []string{"experimental_capability_groups"}},
 	// tl-1218：multi_edit 三条增强（工具优化聚合页成员行，可选档，默认关
 	// 重启生效）。①错误详情增强 ②证据门连坐收窄 ③跳过失败项模式。
-	{"multiEditErrorDetail", LabTierOptional, []string{"experimental_multi_edit_error_detail"}},
-	{"multiEditEvidenceNarrow", LabTierOptional, []string{"experimental_multi_edit_evidence_narrow"}},
-	{"multiEditSkipFailed", LabTierOptional, []string{"experimental_multi_edit_skip_failed"}},
+	{"multiEditErrorDetail", LabTierRecommended, []string{"experimental_multi_edit_error_detail"}},
+	{"multiEditEvidenceNarrow", LabTierRecommended, []string{"experimental_multi_edit_evidence_narrow"}},
+	{"multiEditSkipFailed", LabTierRecommended, []string{"experimental_multi_edit_skip_failed"}},
 	// ── network（网络，1 项）────────────────────────────────────
 	// 任务 1056：网络重试预算分级（dial 短超时快退避 + MaxRetries/DialTimeout
 	// 配置化 + 强制重解析 DNS + turn 级 wall-clock 上限）。未稳定档默认关——
@@ -632,7 +632,6 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_acp_listen = %v   # desktop: resident ACP listener (task 790; loopback-only TCP, one client surface per connection; restart to apply)\n", c.Desktop.ExperimentalACPListen)
 		fmt.Fprintf(&b, "acp_listen_port = %d   # desktop: resident ACP listener port on 127.0.0.1 (task 790; 0 = default 8790)\n", c.Desktop.ACPListenPort)
-		fmt.Fprintf(&b, "experimental_path_rules = %v   # desktop: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md, task 134)\n", c.Desktop.ExperimentalPathRules)
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
 		// Task 846: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.

@@ -537,10 +537,12 @@ groups:
           - id: idleReleaseMinutes
             labelKey: settings.detachedIdleRelease
             tier: recommended
-          # GC 策略旋钮（原存储组 kind:param 参数卡，tl1286；可选档）。
+          # GC 策略旋钮（原存储组 kind:param 参数卡，tl1286）。
+          # tl1487 七组①：可选→推荐，建议值 100（用户 20261107 八组清单；
+          # 显示层 gcPercentForView 已把 0=跟随默认渲染为等效 100）。
           - id: gcPercent
             labelKey: settings.gcPercent
-            tier: optional
+            tier: recommended
           # ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
           - id: acpListen
             labelKey: settings.acpListen
@@ -549,12 +551,11 @@ groups:
           - id: localServer
             labelKey: settings.localServer
             tier: unstable
-      # 任务 564：路径规则——已退役只读展示行（551 范式），非资源生命周期面，
-      # 维持独立卡不入资源治理卡（tl1309 卡③范围裁决）。
-      - id: pathRules
-        labelKey: settings.pathRules
-        tier: unstable
-        onKeys: [experimentalPathRules]
+      # tl134/tl1487 七组③：路径规则整卡移除——结构化路径作用域判定为过时
+      # 技术（zh 文案自证「未接线：开关开/关均无效果」，生产走 confine+
+      # allow_write+写入审批），用户 20261107 20:17 裁决移除；机制存档见
+      # docs/archive/路径作用域规则tl134-机制存档-20261107.md。loader
+      # （internal/rules）测试在跑，代码按最小改动保留，只撤配置面。
       # 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原
       # 独立 tool-opt 组退役）；restartUpdate 归位回界面组 updateFeedback 卡
       # （本文件随 1005 一并补同步——卡灯三键，restartUpdate 不再入灯/入卡）。
@@ -566,30 +567,33 @@ groups:
         labelKey: settings.toolOptHub
         tier: recommended
         onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalCapabilityGroups]
+        # tl1487 七组②：工具优化五项（编辑证据门宽松/multi_edit 直注、能力组
+        # 披露与 session_hub 聚合、multi_edit 错误详情、证据门连坐收窄、跳过
+        # 失败项）全部可选→推荐（用户 20261107 八组清单）。
         members:
-          # 任务 789/992：编辑证据门宽松模式（992 升可选——1005 补同步）。
+          # 任务 789/992：编辑证据门宽松模式。
           - id: editEvidenceRelaxed
             labelKey: settings.editEvidenceRelaxed
-            tier: optional
-          # 任务 943：multi_edit 直注（原族卡第二效果拆出，可选档）。
+            tier: recommended
+          # 任务 943：multi_edit 直注（原族卡第二效果拆出）。
           - id: multiEditInjection
             labelKey: settings.multiEditInjection
-            tier: optional
+            tier: recommended
           # 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键，
           # 默认关=零行为，重启生效）。
           - id: capabilityGroups
             labelKey: settings.capabilityGroups
-            tier: optional
+            tier: recommended
           # tl-1218：multi_edit 三条增强（各自独立开关，默认关重启生效）。
           - id: multiEditErrorDetail
             labelKey: settings.multiEditErrorDetail
-            tier: optional
+            tier: recommended
           - id: multiEditEvidenceNarrow
             labelKey: settings.multiEditEvidenceNarrow
-            tier: optional
+            tier: recommended
           - id: multiEditSkipFailed
             labelKey: settings.multiEditSkipFailed
-            tier: optional
+            tier: recommended
 
   # ── 记忆与上下文（1 项；tl1193b 增 pinnedIndex 卡——pinned 常驻层索引化；tl1256 落位基础设施组后）──
   - key: memory-context

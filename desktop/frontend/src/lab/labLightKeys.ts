@@ -104,7 +104,6 @@ export const LAB_LIGHT_KEYS = {
   experimentalLifecycleNoiseGate: (s: SettingsView) => Boolean(s.experimentalLifecycleNoiseGate),
   experimentalRuntimeReuse: (s: SettingsView) => Boolean(s.experimentalRuntimeReuse),
   experimentalACPListen: (s: SettingsView) => Boolean(s.experimentalACPListen),
-  experimentalPathRules: (s: SettingsView) => Boolean(s.experimentalPathRules),
   experimentalOrphanHandling: (s: SettingsView) => Boolean(s.experimentalOrphanHandling),
   experimentalLocalServer: (s: SettingsView) => Boolean(s.experimentalLocalServer),
   // 任务 915：键未写入（null/undefined）按面板层默认开判亮——与卡片开态

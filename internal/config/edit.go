@@ -1484,14 +1484,6 @@ func (c *Config) SetExperimentalParallelFullAccess(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalPathRules toggles the structured path-scope evaluation order
-// (task 134, docs/PATH_SCOPE_RULES.md). Off by default so production keeps
-// the existing confine + allow_write + write-access model.
-func (c *Config) SetExperimentalPathRules(enabled bool) error {
-	c.Desktop.ExperimentalPathRules = enabled
-	return nil
-}
-
 // SetExperimentalLifecycleNoiseGate toggles the task-377 lifecycle noise
 // triage. Off by default: every dead-process lifecycle record keeps writing
 // its crash-pending report; on skips only the clean-shutdown phases

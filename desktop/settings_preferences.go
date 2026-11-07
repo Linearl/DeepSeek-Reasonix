@@ -791,11 +791,6 @@ func (a *App) SetExperimentalJsonlZstd(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalJsonlZstd(enabled) })
 }
 
-// SetExperimentalPathRules toggles structured path-scope evaluation (task 134).
-func (a *App) SetExperimentalPathRules(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPathRules(enabled) })
-}
-
 // SetExperimentalLifecycleNoiseGate toggles the task-377 lifecycle noise
 // triage (skip crash reports for clean-shutdown residue). The gate is read
 // once at startup diagnostics setup, so the flip lands on restart; off

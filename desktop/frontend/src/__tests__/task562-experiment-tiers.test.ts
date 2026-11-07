@@ -158,11 +158,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 可选→推荐——推荐 39（含 inputSelection 容器）、可选 32，总数不变 87。
   // tl1487 五/六/八组：cdpDebugPort 未稳定→稳定、jsonlZstd 可选→推荐、
   // pinnedIndex 未稳定→可选——稳定 9、推荐 40、可选 32、未稳定 6，总数不变 87。
-  ok(counts.stable === 9 && counts.recommended === 40 && counts.optional === 32 && counts.unstable === 6 && counts.retired === 0,
-    `register counts are 9 稳定/40/32/6/0 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 87, `register holds exactly 87 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 40 && LAB_TIER_COUNTS.optional === 32 && LAB_TIER_COUNTS.unstable === 6 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/40/32/6/0");
+  // tl1487 七组：gcPercent + 工具优化六键可选→推荐（推荐 47、可选 25）；
+  // pathRules（未稳定）随 tl134 整卡移除出表——未稳定 5、总数 87→86。
+  ok(counts.stable === 9 && counts.recommended === 47 && counts.optional === 25 && counts.unstable === 5 && counts.retired === 0,
+    `register counts are 9 稳定/47/25/5/0 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 86, `register holds exactly 86 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 47 && LAB_TIER_COUNTS.optional === 25 && LAB_TIER_COUNTS.unstable === 5 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/47/25/5/0");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -242,8 +244,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 不增减条目；coldCacheCompact 为前端独有新条目）。二组：翻档仍不增减
   // 条目；workflowTemplates（工作流模板）为前端独有新条目（Go 侧仍为
   // workflowPanel 家族子键）。四组：opencodeGoUsage 渲染表条目随键退役移除
-  // ——Go 表 74→73（前端转 feOnly 展示行，用量查询常开无门）。
-  ok(Object.keys(goTiers).length === 73, `Go registry parses to 73 entries (got ${Object.keys(goTiers).length})`);
+  // ——Go 表 74→73（前端转 feOnly 展示行，用量查询常开无门）。tl1487 七组：
+  // pathRules 条目随键退役移除——Go 表 73→72。
+  ok(Object.keys(goTiers).length === 72, `Go registry parses to 72 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -325,7 +328,8 @@ console.log("\ntask 562 lab three-tier badges");
   // tl-1218：multi_edit 三条增强叠加入表 → 80（基线 77 口径 +3）；
   // 并集解回调（58c19737d jsonlZstd 已计入主线 78 口径）→ 78+3=81。
   // tl1193b：pinnedIndex 独立 rail 入口计入（记忆与上下文新组）→ 82。
-  ok(covered.size === 87, "rail entries cover all 87 features (tl1487 二组 workflowTemplates 入表)");
+  // tl1487 七组：pathRules 出表（union/registry 同撤）→ covered 87→86。
+  ok(covered.size === 86, "rail entries cover all 86 features (tl1487: +workflowTemplates, -pathRules)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
@@ -374,10 +378,10 @@ console.log("\ntask 562 lab three-tier badges");
   // → 卡头单枚 推荐。
   ok(JSON.stringify(railTiersForDefault("runtimeObservability")) === JSON.stringify(["recommended", "optional"]) && agg("runtimeObservability") === "recommended",
     `runtimeObservability: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("runtimeObservability"))} → ${String(agg("runtimeObservability"))})`);
-  // tl1309 卡③：资源治理卡聚合输入 [稳定(复用池), 推荐(孤儿回收/闲置释放),
-  // 可选(GC), 未稳定(监听/本地服务)] → 卡头单枚 稳定。
-  ok(JSON.stringify(railTiersForDefault("resourceGovernance")) === JSON.stringify(["stable", "recommended", "optional", "unstable"]) && agg("resourceGovernance") === "stable",
-    `resourceGovernance: four-tier member input aggregates to the single 稳定 badge (got ${JSON.stringify(railTiersForDefault("resourceGovernance"))} → ${String(agg("resourceGovernance"))})`);
+  // tl1309 卡③：资源治理卡聚合输入 [稳定(复用池), 推荐(孤儿回收/闲置释放/
+  // GC—tl1487 七组①升推荐), 未稳定(监听/本地服务)] → 卡头单枚 稳定。
+  ok(JSON.stringify(railTiersForDefault("resourceGovernance")) === JSON.stringify(["stable", "recommended", "unstable"]) && agg("resourceGovernance") === "stable",
+    `resourceGovernance: three-tier member input after tl1487 七组 aggregates to the single 稳定 badge (got ${JSON.stringify(railTiersForDefault("resourceGovernance"))} → ${String(agg("resourceGovernance"))})`);
   // tl1309 卡④：标签页管理（推荐容器+推荐成员）单枚推荐；会话与任务面板
   // 聚合输入 tl1487 二组⑤ 后 [稳定(工作流), 推荐(图墙/完成摘要)] → 卡头单枚 稳定。
   ok(JSON.stringify(railTiersForDefault("tabManagement")) === JSON.stringify(["recommended"]) && agg("tabManagement") === "recommended",

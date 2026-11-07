@@ -2142,19 +2142,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "pathRules" && (
-            /* Task 564: retired (task 551 paradigm, UI side) — the structured
-               path-scope evaluation never wired into the runtime (zero
-               consumers; production keeps confine + allow_write + write
-               approval). Read-only display like the M2 modelCapabilityFilter
-               block: stored value shows, no setter, config key still renders
-               (nothing silently dropped on save). */
-            <SettingsField label={labLabel("pathRules", t("settings.pathRules"))} hint={t("settings.pathRules.retired")} icon={<FolderLock size={18} />} stacked>
-              <p className="settings-field__hint-line">
-                {t("settings.pathRules.value", { value: t(Boolean(s.experimentalPathRules) ? "settings.pathRules.on" : "settings.pathRules.off") })}
-              </p>
-            </SettingsField>
-          )}
+          {/* tl134/tl1487 七组③：pathRules pane（564/551 retired 只读展示块）
+              随整卡移除——结构化路径作用域判定为过时技术（从未接线，生产走
+              confine+allow_write+写入审批），用户 20261107 裁决移除；机制存档
+              docs/archive/路径作用域规则tl134-机制存档-20261107.md。 */}
                     {/* 任务 961：traceAsState 独立 pane 退役——并入「交互与呈现」合并卡
               （interactionPresentation，卡内成员行承载）。
               tl1309 卡③：orphanHandling/runtimeReuse 两独立 pane 同款退役——

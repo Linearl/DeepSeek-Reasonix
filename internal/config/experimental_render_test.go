@@ -21,7 +21,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalParallelFullAccess = true
 	c.Desktop.ExperimentalTodoSidebar = true
 	c.Desktop.ExperimentalPromptHistoryPicker = true
-	c.Desktop.ExperimentalPathRules = true
+	// tl1487 七组③：ExperimentalPathRules 随键退役移出 fixture。
 	// Task 473: the lab mirror set is single-source now — the [agent] key
 	// carries the value and the render face has only the [agent] row.
 	c.Agent.TraceAsState = true
@@ -49,7 +49,6 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_parallel_full_access = true",
 		"experimental_todo_sidebar = true",
 		"experimental_prompt_history_picker = true",
-		"experimental_path_rules = true",
 		"trace_as_state = true",
 		"experimental_session_collab = true",
 		"experimental_safety_cost_control = true",
@@ -78,7 +77,6 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_feedback = false",
 		"experimental_parallel_full_access = false",
 		"experimental_todo_sidebar = false",
-		"experimental_path_rules = false",
 		// Task 473: the [desktop] mirror spelling is gone; the [agent] key
 		// (trace_as_state) is asserted further down the list. tl1453:
 		// experimental_dream left the render face with its feature.

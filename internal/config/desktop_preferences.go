@@ -330,10 +330,9 @@ type DesktopConfig struct {
 	// desktop transcript. Off silences the notice; the dock entry points and
 	// the CLI receipt card are unaffected.
 	ExperimentalCompletionSummary *bool `toml:"experimental_completion_summary"`
-	// ExperimentalPathRules enables the structured path-scope evaluation order
-	// documented in docs/PATH_SCOPE_RULES.md (task 134). Ships off: production
-	// keeps the existing confine + allow_write + write-access approval model.
-	ExperimentalPathRules bool `toml:"experimental_path_rules"`
+	// tl1487 七组③：ExperimentalPathRules（task-134 结构化路径作用域判定）
+	// 随实验室整卡移除退役——过时技术（从未接线，生产走 confine+allow_write+
+	// 写入审批），用户 20261107 裁决；存量键走 config_key_warn deprecated 清单。
 	// ExperimentalTraceAsState mirrored Agent.TraceAsState (task 60).
 	ExperimentalTraceAsState bool `toml:"experimental_trace_as_state"`
 	// Deprecated: ExperimentalDream mirrored Agent.ExperimentalDream (task

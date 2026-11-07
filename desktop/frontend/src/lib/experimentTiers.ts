@@ -100,7 +100,8 @@ export type TierFeatureId =
   // tl1487 一组③：modelCapabilityFilter（模型能力过滤）随只读展示行一并
   // 出表出类型——用户 20261107 八组清单「移除（不展示）」；Go 配置键仍存在
   // （退役面，render 表早已无条目），本件只摘前端展示与档位登记。
-  | "pathRules"
+  // tl1487 七组③：pathRules 随 tl134 整卡移除出表出类型（未稳定档；配置键
+  // 整链退役，存量键走 deprecated 清单）。
   | "orphanHandling"
   | "localServer"
   // 任务 603:「工具优化」族首件 (edit readBack + evidence gate linkage).
@@ -348,12 +349,11 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   runtimeReuse: "stable",
   acpListen: "unstable",
   // 任务 789: 编辑证据门宽松模式（放宽 evidence gate 属行为变更；
-  // toolOptimizations 卡成员）。任务 992：用户 1018 升可选——本注册表
-  // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
-  editEvidenceRelaxed: "optional",
+  // toolOptimizations 卡成员）。tl1487 七组②：可选→推荐（用户 20261107
+  // 八组清单「工具优化五项→全部推荐」）。
+  editEvidenceRelaxed: "recommended",
   // tl1487 一组③：modelCapabilityFilter 出表（原 retired 档独苗）——只读
   // 展示行随清单移除（不展示），档位登记同步退役。
-  pathRules: "unstable",
   // 任务 992：orphanHandling 随复用池升推荐（用户 1018）——本注册表
   // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
   orphanHandling: "recommended",
@@ -363,21 +363,17 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // （Go 渲染表同步升档，562 两侧一致断言守护）。任务 943：本 id 收窄
   // 为 readBack 面（含 789 证据门联动成员）。
   toolOptimizations: "recommended",
-  // 任务 943：multi_edit 直注独立卡（原族卡第二效果拆出）。可选档——按
-  // 550 口径：不开启只小幅影响（multi_edit 仍可经 use_capability 调用，
-  // edit_file 批量编辑引导降级），非体验缺口。
-  multiEditInjection: "optional",
-  // 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键）。用户
-  // 拍板提效类可选档（config.go 注释原文）；默认关=零行为（铁律 2），九件
-  // 协作工具保持直挂。toolOptimizations 聚合页成员行，重启生效。
-  capabilityGroups: "optional",
+  // tl1487 七组②：multi_edit 直注可选→推荐（用户 20261107 八组清单）。
+  multiEditInjection: "recommended",
+  // 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键）。
+  // tl1487 七组②：可选→推荐。默认关=零行为（铁律 2）不变，重启生效。
+  capabilityGroups: "recommended",
   // tl-1218：multi_edit 三条增强（①错误详情增强 ②证据门连坐收窄 ③跳过
-  // 失败项模式）。可选档——不开启只小幅影响（拦截信息少附行内容/连坐维持/
-  // 单点失败即整批中止）；默认关=与基线逐字节一致（铁律 2）。聚合页成员
-  // 行，重启生效。
-  multiEditErrorDetail: "optional",
-  multiEditEvidenceNarrow: "optional",
-  multiEditSkipFailed: "optional",
+  // 失败项模式）。tl1487 七组②：可选→推荐。默认关=与基线逐字节一致
+  // （铁律 2），重启生效。
+  multiEditErrorDetail: "recommended",
+  multiEditEvidenceNarrow: "recommended",
+  multiEditSkipFailed: "recommended",
   // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
   // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
   heartbeatRotation: "optional",
@@ -433,9 +429,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1309 卡③：「资源治理」合并卡容器档 = 成员最高档（运行时复用池稳定
   // 压过闲置释放/孤儿回收两推荐 → 稳定）。合并是入口层组织，不降级成员。
   resourceGovernance: "stable",
-  // tl1309 卡③：两参数卡成员档随迁（gcPercent 可选 / idleReleaseMinutes
-  // 推荐——与原独立参数卡 rail 徽章一致，展示零变化）。
-  gcPercent: "optional",
+  // tl1309 卡③：两参数卡成员档随迁（与原独立参数卡 rail 徽章一致）。
+  // tl1487 七组①：gcPercent 可选→推荐，建议值 100（用户 20261107 八组清单）。
+  gcPercent: "recommended",
   idleReleaseMinutes: "recommended",
   // tl1309 卡④：「会话与任务面板」合并卡容器档 = 成员最高档（图墙推荐压过
   // 工作流未稳定 → 推荐）。
@@ -544,12 +540,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 可选→推荐，inputSelection 容器档=成员最高档随之升推荐——推荐 38→39、
  * 可选 33→32，总数不变 87。
  * 五/六/八组步进：cdpDebugPort 未稳定→稳定、jsonlZstd 可选→推荐、
- * pinnedIndex 未稳定→可选——稳定 9、推荐 40、可选 32、未稳定 6，总数不变 87。 */
+ * pinnedIndex 未稳定→可选——稳定 9、推荐 40、可选 32、未稳定 6，总数不变 87。
+ * 七组步进：gcPercent + 工具优化六键（宽松/直注/能力组/错误详情/连坐/跳过）
+ * 可选→推荐，pathRules（未稳定）随 tl134 移除出表——推荐 47、可选 25、
+ * 未稳定 5、总数 87→86。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
-  recommended: 40,
-  optional: 32,
-  unstable: 6,
+  recommended: 47,
+  optional: 25,
+  unstable: 5,
   retired: 0,
 };
 

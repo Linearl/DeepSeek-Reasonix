@@ -122,7 +122,8 @@ console.log("\ntask 561 lab regroup + merged cards");
   // tl1309 卡③：infra 四散条 + storage 两参数卡并「资源治理」卡 → 36−6+1=31。
   // tl1309 卡④：todoSidebar 并 tabManagement、三面板并 sessionTaskPanels
   // → 31−4+1=28。
-  ok(defEntries.length === 28, `default layout carries exactly 28 rail entries (got ${defEntries.length})`);
+  // tl1487 七组③：pathRules 整卡移除 → 28→27。
+  ok(defEntries.length === 27, `default layout carries exactly 27 rail entries (tl1487: pathRules removed; got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -155,10 +156,11 @@ console.log("\ntask 561 lab regroup + merged cards");
   // tl1309 卡③：storage 5→3、infra 6→3（七项并「资源治理」卡）。tl1309 卡④：
   // ui 11→8（todoSidebar 并 tabManagement、三面板并 sessionTaskPanels）
   // → 4/5/8/3/1/3/3/1。
+  // tl1487 七组③：infra 3→2（pathRules 移除）→ 4/5/8/3/1/3/2/1。
   ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 8 &&
-     groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 3 &&
+     groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 2 &&
      groups["memory-context"] === 1,
-    `group counts are 4/5/8/3/1/3/3/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 4/5/8/3/1/3/2/1 (tl1487; got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。

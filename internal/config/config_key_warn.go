@@ -32,6 +32,9 @@ var deprecatedConfigKeys = map[string]string{
 	// tl1487 四组：OpenCode Go 用量「不提供开关、始终打开」——用量查询不再
 	// 有门，本键退役（agent 段 task-163 键）。
 	"agent.experimental_opencode_go_usage": "retired key (tl1487): the OpenCode Go usage query is now always on — the switch was removed",
+	// tl1487 七组③：路径规则（task-134）整卡移除——过时技术，生产沿用
+	// confine + allow_write + 写入审批；机制存档 docs/archive/。
+	"desktop.experimental_path_rules": "retired key (tl1487): the task-134 path-scope rules card was removed (never wired; confine + allow_write + approval unchanged)",
 }
 
 // unknownKeyWarned tracks which unrecognized keys this process has already

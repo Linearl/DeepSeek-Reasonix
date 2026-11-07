@@ -57,7 +57,7 @@ console.log("\ntask 943 split: readBack × multi_edit injection as independent s
     "render is conditional (absent key never bakes the fallback)");
   ok(render.includes("experimental_multi_edit_injection = %v"),
     "render table emits the new key (81/123 lost-save rule)");
-  ok(render.includes(`{"multiEditInjection", LabTierOptional, []string{"experimental_multi_edit_injection"}}`),
+  ok(render.includes(`{"multiEditInjection", LabTierRecommended, []string{"experimental_multi_edit_injection"}}`),
     "Go tier register carries multiEditInjection at the optional tier");
   ok(render.includes(`{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}`),
     "family tier entry stays recommended (783④ 转正不变)");
@@ -147,7 +147,7 @@ const panel = read("components/SettingsPanel.tsx") + read("components/Experiment
     "lab light predicate matches the fallback chain");
   const layoutDefault = read("lab/labLayoutDefault.ts");
   // 971：multiEditInjection 转为 toolOptimizations 聚合页成员行（optional 档）。
-  ok(layoutDefault.includes('{ id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" }') &&
+  ok(layoutDefault.includes('{ id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "recommended" }') &&
      layoutDefault.indexOf('{ id: "multiEditInjection"') > layoutDefault.indexOf('{ id: "toolOptimizations"'),
     "built-in default layout hosts multiEditInjection as a member row of the hub");
   const yaml = read("lab/lab-layout.yaml");
@@ -155,13 +155,14 @@ const panel = read("components/SettingsPanel.tsx") + read("components/Experiment
     "lab-layout.yaml carries multiEditInjection as a member row");
   // 徽章注册表（前端镜像）——语义不变。
   ok(isTierFeatureId("multiEditInjection"), "multiEditInjection is a registered TierFeatureId");
-  ok(EXPERIMENT_FEATURE_TIERS.multiEditInjection === "optional", "multiEditInjection badges as OPTIONAL");
+  // tl1487 七组②：multiEditInjection 可选→推荐（聚合页全体成员升推荐）。
+  ok(EXPERIMENT_FEATURE_TIERS.multiEditInjection === "recommended", "multiEditInjection badges as RECOMMENDED (tl1487 七组②)");
   ok(EXPERIMENT_FEATURE_TIERS.toolOptimizations === "recommended", "toolOptimizations keeps the RECOMMENDED badge");
-  // 971：multiEditInjection 不再是独立 rail 入口，其 optional 档并入聚合页
-  // 卡头聚合输入（toolOptimizations tiers 含 optional）。
+  // 971：multiEditInjection 不再是独立 rail 入口，其推荐档并入聚合页
+  // 卡头聚合输入（toolOptimizations tiers 收敛为单枚 recommended）。
   const tiers = railTiersForDefault("toolOptimizations");
-  ok(tiers.includes("optional") && tiers[0] === "recommended",
-    `hub badge aggregates to 推荐 while carrying the optional member (got ${JSON.stringify(tiers)})`);
+  ok(!tiers.includes("optional") && tiers[0] === "recommended",
+    `hub badge aggregates the all-recommended input to 推荐 (tl1487, got ${JSON.stringify(tiers)})`);
 }
 
 // ⑤ locale keys in all three dialects + family hint narrowed.

@@ -555,7 +555,6 @@ type SettingsView struct {
 	// triage; the gate is read once at startup diagnostics, restart to apply.
 	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
 	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
-	ExperimentalPathRules          bool `json:"experimentalPathRules"`
 	ExperimentalTraceAsState       bool `json:"experimentalTraceAsState"`
 	// Task 846: change-data-home lab switch; gates the wizard's write path.
 	ExperimentalHomePointer bool `json:"experimentalHomePointer"`
@@ -1023,8 +1022,6 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalLifecycleNoiseGate is the task-377 crash-report noise
 	// triage; the gate is read once at startup diagnostics, restart to apply.
 	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
-	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
-	ExperimentalPathRules bool `json:"experimentalPathRules"`
 	// Task 161: transcript cache tuning (max resident tab states + the two
 	// transcript budgets). Applied by the frontend on startup; changes take
 	// effect after a restart.
@@ -1817,7 +1814,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
 		// Task 377: noise-triage readback (boot snapshot).
 		view.ExperimentalLifecycleNoiseGate = cfg.Desktop.ExperimentalLifecycleNoiseGate
-		view.ExperimentalPathRules = cfg.Desktop.ExperimentalPathRules
 		return view
 	}
 	cfg, path, err := a.loadDesktopUserConfigForView()
@@ -2159,7 +2155,6 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSelectionActions:    cfg.Agent.ExperimentalSelectionActions,
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalLifecycleNoiseGate:  cfg.Desktop.ExperimentalLifecycleNoiseGate,
-		ExperimentalPathRules:           cfg.Desktop.ExperimentalPathRules,
 		ExperimentalHomePointer:         cfg.Desktop.ExperimentalHomePointer,
 		ExperimentalJsonlZstd:           cfg.Desktop.ExperimentalJsonlZstd,
 		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,

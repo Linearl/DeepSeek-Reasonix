@@ -515,29 +515,31 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended" },
             // 后台会话闲置释放（原存储组 kind:param 参数卡，775 首批；推荐档）。
             { id: "idleReleaseMinutes", labelKey: "settings.detachedIdleRelease", tier: "recommended" },
-            // GC 策略旋钮（原存储组 kind:param 参数卡，tl1286；可选档）。
-            { id: "gcPercent", labelKey: "settings.gcPercent", tier: "optional" },
+            // GC 策略旋钮（原存储组 kind:param 参数卡，tl1286）。
+            // tl1487 七组①：可选→推荐，建议值 100（显示层 gcPercentForView
+            // 已把 0=跟随默认渲染为等效 100）。
+            { id: "gcPercent", labelKey: "settings.gcPercent", tier: "recommended" },
             // ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
             { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable" },
             // 本地服务（原 infra 独立卡，未稳定档）。
             { id: "localServer", labelKey: "settings.localServer", tier: "unstable" },
           ],
         },
-        // 任务 564：路径规则——已退役只读展示行（551 范式），非资源生命周期面，
-        // 维持独立卡不入资源治理卡（tl1309 卡③范围裁决）。
-        { id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] },
+        // tl134/tl1487 七组③：路径规则整卡移除（过时技术，用户裁决；存档
+        // docs/archive/路径作用域规则tl134-机制存档-20261107.md）。
         // 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原独立
         // tool-opt 组退役，labGroup.toolOpt 不再引用）；restartUpdate 归位回界面组
         // updateFeedback 卡（971 迁入撤销，onKeys/members 同步回迁）；宽松模式升可选。
         // 卡灯三键（readBack/直注/能力组），restartUpdate 不再入灯。
+        // tl1487 七组②：工具优化五项全部可选→推荐（用户 20261107 八组清单）。
         { id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalCapabilityGroups"], members: [
-          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "optional" },
-          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },
-          { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional" },
+          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "recommended" },
+          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "recommended" },
+          { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "recommended" },
           // tl-1218：multi_edit 三条增强（各自独立开关，默认关重启生效）。
-          { id: "multiEditErrorDetail", labelKey: "settings.multiEditErrorDetail", tier: "optional" },
-          { id: "multiEditEvidenceNarrow", labelKey: "settings.multiEditEvidenceNarrow", tier: "optional" },
-          { id: "multiEditSkipFailed", labelKey: "settings.multiEditSkipFailed", tier: "optional" },
+          { id: "multiEditErrorDetail", labelKey: "settings.multiEditErrorDetail", tier: "recommended" },
+          { id: "multiEditEvidenceNarrow", labelKey: "settings.multiEditEvidenceNarrow", tier: "recommended" },
+          { id: "multiEditSkipFailed", labelKey: "settings.multiEditSkipFailed", tier: "recommended" },
         ] },
       ],
     },

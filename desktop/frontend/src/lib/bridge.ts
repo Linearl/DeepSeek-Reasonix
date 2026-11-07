@@ -1903,8 +1903,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalHomePointer(enabled: boolean): Promise<void>;
   // tl-1174: cold-session transcript zstd archive gate (experimental; sweep reads per tick).
   SetExperimentalJsonlZstd(enabled: boolean): Promise<void>;
-  // Task 134: structured path-scope evaluation (experimental).
-  SetExperimentalPathRules(enabled: boolean): Promise<void>;
   // Task 161: transcript cache-size tuning (experimental).
   SetExperimentalCacheTuning(enabled: boolean): Promise<void>;
   SetTranscriptCacheTuning(maxCachedTabs: number, historyBodyBudgetMb: number, markdownBudgetMb: number): Promise<void>;
@@ -7079,7 +7077,6 @@ function makeMockApp(): AppBindings {
     async SetExperimentalLocalServer() {},
     async SetExperimentalHomePointer() {},
     async SetExperimentalJsonlZstd() {},
-    async SetExperimentalPathRules() {},
     async SetExperimentalCacheTuning() {},
     async SetTranscriptCacheTuning() {},
     async SetDagGraphCacheCapacity() {},

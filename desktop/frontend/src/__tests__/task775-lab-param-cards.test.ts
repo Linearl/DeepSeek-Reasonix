@@ -69,8 +69,8 @@ const paneIds = new Set<string>();
   const mem = gov?.members?.find((m) => m.id === "gcPercent");
   ok(idle?.tier === "recommended" && idle.labelKey === "settings.detachedIdleRelease",
     "idleReleaseMinutes rides resourceGovernance as a recommended member (tier/label unchanged)");
-  ok(mem?.tier === "optional" && mem.labelKey === "settings.gcPercent",
-    "gcPercent rides resourceGovernance as an optional member (tier/label unchanged)");
+  ok(mem?.tier === "recommended" && mem.labelKey === "settings.gcPercent",
+    "gcPercent rides resourceGovernance as a recommended member (tl1487 七组①, label unchanged)");
   ok(gov?.members?.length === 6,
     "resourceGovernance carries exactly six members (runtimeReuse/orphanHandling/idleReleaseMinutes/gcPercent/acpListen/localServer)");
   ok(Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance")) &&

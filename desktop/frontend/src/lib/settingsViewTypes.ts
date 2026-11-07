@@ -185,8 +185,6 @@ export interface SettingsView {
   experimentalHomePointer?: boolean;
   /** tl-1174: cold-session transcript zstd archive (storage group, optional tier, default off). */
   experimentalJsonlZstd?: boolean;
-  // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).
-  experimentalPathRules?: boolean;
   // Task 161: transcript cache tuning (experimental; user values ignored while off).
   maxCachedTabs?: number;
   // Task 347: effective replayed-graph cache LRU capacity (task 196fix2;
