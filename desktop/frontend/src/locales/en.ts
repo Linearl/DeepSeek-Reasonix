@@ -5481,6 +5481,13 @@ export const en = {
   "sideFiles.showMore": "Show {count} more",
   "sideFiles.artifactsHint": "Artifacts: files this session wrote (created or modified)",
   "sideFiles.referencesHint": "References: files this session read",
+  // tl1468b: confirmations for the destructive items the dock row menu gains
+  // when it catches up with the file-tree menu — the wording must say the row
+  // is a REAL file on disk; delete-permanent is heavier than the tree's (no
+  // Trash, cannot be undone).
+  "sideFiles.rowTrashConfirmTitle": "Move to Trash",
+  "sideFiles.rowTrashConfirmMessage": "\"{path}\" is a real file on disk. It goes to the Trash and can be restored from there.",
+  "sideFiles.rowDeletePermanentConfirmMessage": "\"{path}\" is a real file on disk. Deleting permanently removes the file from disk right away — it does NOT go to the Trash and cannot be undone.",
   "completion.gaps": "Verification gaps: {gaps}",
   "completion.gapStaleCheck": "stale checks",
   "completion.constraintsLimited": "Turn verification limited",

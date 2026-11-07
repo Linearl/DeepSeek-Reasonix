@@ -5455,6 +5455,11 @@ export const zh: Record<DictKey, string> = {
   "sideFiles.showMore": "再显示 {count} 项",
   "sideFiles.artifactsHint": "产物：会话写过的文件（含新建与修改）",
   "sideFiles.referencesHint": "参考：会话读过的文件",
+  // tl1468b: dock 行菜单对齐文件树后的破坏性操作确认——确认文案必须说明
+  // 「这是磁盘上的真实文件」，彻底删除的措辞比树更重（不进回收站、无法撤销）。
+  "sideFiles.rowTrashConfirmTitle": "移到回收站",
+  "sideFiles.rowTrashConfirmMessage": "「{path}」是磁盘上的真实文件。移到回收站后可在系统回收站还原。",
+  "sideFiles.rowDeletePermanentConfirmMessage": "「{path}」是磁盘上的真实文件。彻底删除会把文件从磁盘直接移除——不经过回收站、无法撤销。",
   "notice.deliveryIncompleteMissing": "仍需完成：{items}",
   "notice.deliveryRequirementSeparator": "、",
   "notice.deliveryRequirementProjectCheck": "项目检查",
