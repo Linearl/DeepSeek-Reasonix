@@ -100,3 +100,30 @@ func TestProbeRewindWriteDeniedMissingParent(t *testing.T) {
 		t.Fatalf("missing target under an unwritable parent must be denied")
 	}
 }
+
+// Pins the PrepareRewind wiring: a populated plan must carry the per-file
+// classification, not just the bare file list (tl1476). Removing the hook in
+// PrepareRewind turns this red.
+func TestPrepareRewindPopulatesFileSafety(t *testing.T) {
+	root := t.TempDir()
+	a := filepath.Join(root, "a.txt")
+	write(t, a, "a0")
+	s := New("", root)
+	s.Begin(0, "edit a", 0)
+	s.Snapshot(diffChange(a, "a0"))
+	write(t, a, "a1")
+
+	plan, err := s.PrepareRewind(0, RewindCode, 1, 0, false)
+	if err != nil {
+		t.Fatalf("PrepareRewind: %v", err)
+	}
+	if len(plan.Files) != 1 || plan.Files[0] != "a.txt" {
+		t.Fatalf("fixture drift: expected one rewind target, got %v", plan.Files)
+	}
+	if len(plan.FileSafety) != 1 {
+		t.Fatalf("PrepareRewind must populate FileSafety for file plans, got %+v", plan.FileSafety)
+	}
+	if plan.FileSafety[0].Path != "a.txt" || !plan.FileSafety[0].Safe || plan.FileSafety[0].Reason != "" {
+		t.Fatalf("conflict-free writable target must classify safe, got %+v", plan.FileSafety[0])
+	}
+}
