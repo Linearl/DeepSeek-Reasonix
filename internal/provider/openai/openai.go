@@ -1142,15 +1142,15 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			// Progress ticks while a large argument payload streams (a 30KB
 			// write_file body can take a minute-plus): one chunk per 2KB bucket
 			// so the consumer can show liveness without per-delta spam.
-			if started[tc.Index] {
-				if bucket := len(cur.Arguments) / 2048; bucket > argBucket[tc.Index] {
-					argBucket[tc.Index] = bucket
-					emitted = true
-					if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: cur.ID, Name: cur.Name}, ArgChars: len(cur.Arguments)}) {
-						return emitted, ctx.Err()
+				if started[tc.Index] {
+					if bucket := len(cur.Arguments) / 2048; bucket > argBucket[tc.Index] {
+						argBucket[tc.Index] = bucket
+						emitted = true
+						if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: cur.ID, Name: cur.Name}, ArgChars: len(cur.Arguments), ArgsPreview: provider.ArgsPreviewExcerpt(cur.Arguments)}) {
+							return emitted, ctx.Err()
+						}
 					}
 				}
-			}
 		}
 	}
 

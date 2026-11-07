@@ -309,6 +309,13 @@ type Tool struct {
 	// Partial dispatch — a liveness signal while a large payload streams. Zero
 	// on the initial start dispatch and on full dispatches.
 	ArgChars int
+	// ArgsPreview is a bounded head+tail excerpt (provider.ArgsPreviewExcerpt)
+	// of a Partial dispatch's still-streaming arguments (tl1475), sampled for
+	// a live pending-card preview. Display-only: frontends must not parse it
+	// as complete JSON, never persist it as tool input, and drop it when the
+	// full dispatch arrives. Empty on the initial start dispatch and on full
+	// dispatches.
+	ArgsPreview string
 	// TokensPerSec is the sub-agent progress heartbeat: estimated streaming
 	// output tokens per second over a rolling window, sampled when the
 	// SubagentProgress status event was emitted. Zero means no measurable

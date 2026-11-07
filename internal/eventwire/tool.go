@@ -27,6 +27,7 @@ type Tool struct {
 	EndedAt           int64                 `json:"endedAt,omitempty"`
 	Partial           bool                  `json:"partial,omitempty"`
 	ArgChars          int                   `json:"argChars,omitempty"`
+	ArgsPreview       string                `json:"argsPreview,omitempty"` // tl1475: bounded head+tail excerpt of still-streaming args; display-only
 	Refreshed         bool                  `json:"refreshed,omitempty"`
 	ParentID          string                `json:"parentId,omitempty"`
 	AttemptID         string                `json:"attemptId,omitempty"` // host-local stream_attempt id for speculative partials
@@ -54,6 +55,7 @@ func toWireTool(in event.Tool) *Tool {
 		DurationMs: in.DurationMs, Partial: in.Partial,
 		StartedAt: in.StartedAt, EndedAt: in.EndedAt,
 		ArgChars: in.ArgChars, Refreshed: in.Refreshed,
+		ArgsPreview: in.ArgsPreview,
 		ParentID: in.ParentID, AttemptID: in.AttemptID,
 		Diff: in.Diff, Added: in.Added, Removed: in.Removed,
 		SubagentRef: in.SubagentRef, SubagentStatus: in.SubagentStatus,

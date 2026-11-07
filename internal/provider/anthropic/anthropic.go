@@ -618,7 +618,7 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 					// per 2KB bucket (see the openai provider for rationale).
 					if bucket := len(tc.Arguments) / 2048; bucket > argBuckets[ev.Index] {
 						argBuckets[ev.Index] = bucket
-						if !send(provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: tc.ID, Name: tc.Name}, ArgChars: len(tc.Arguments)}) {
+						if !send(provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: tc.ID, Name: tc.Name}, ArgChars: len(tc.Arguments), ArgsPreview: provider.ArgsPreviewExcerpt(tc.Arguments)}) {
 							return
 						}
 					}

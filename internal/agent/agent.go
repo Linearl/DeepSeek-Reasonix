@@ -3167,16 +3167,19 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 		case provider.ChunkToolCallArgsDelta:
 			partialToolStarted = true
 			// Liveness ticks while a large argument payload streams: re-emit the
-			// partial dispatch with the cumulative size (time-throttled) so the
-			// UI can show progress instead of a dead counter for the duration of
-			// a 30KB write_file body.
+			// partial dispatch with the cumulative size and a bounded preview of
+			// the arguments themselves (tl1475), time-throttled to 1s so the UI
+			// refreshes the pending card at a steady once-a-second cadence (the
+			// first delta still fires immediately because lastArgProgress starts
+			// at zero) instead of a dead counter for the duration of a 30KB
+			// write_file body.
 			if chunk.ArgChars > maxArgChars {
 				maxArgChars = chunk.ArgChars
 			}
-			if tc := chunk.ToolCall; tc != nil && time.Since(lastArgProgress) >= 250*time.Millisecond {
+			if tc := chunk.ToolCall; tc != nil && time.Since(lastArgProgress) >= 1*time.Second {
 				partialCalls = upsertPartialToolCall(partialCalls, *tc)
 				lastArgProgress = time.Now()
-				ev := event.Tool{ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, ArgChars: chunk.ArgChars, AttemptID: attemptID}
+				ev := event.Tool{ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, ArgChars: chunk.ArgChars, ArgsPreview: chunk.ArgsPreview, AttemptID: attemptID}
 				applySafetyMeta(&ev, tc.Name)
 				sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
 			}
