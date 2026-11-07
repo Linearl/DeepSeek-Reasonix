@@ -67,16 +67,20 @@ export function trajectoryKindLabel(kind: string, t: Translator): string {
 }
 
 /** Row shape after 1112 projection: full record, or a collapsed turn/calls
- * summary row that expands on click. */
+ * summary row that expands on click. tl1478: the summary row survives as a
+ * persistent group header when expanded (aria-expanded="true") — otherwise the
+ * collapse affordance would vanish with the fold. */
 type TrajectoryRowEntry =
   | { type: "record"; record: TrajectoryRecord }
-  | { type: "turn"; turn: number; turnLabel?: number; steps: number; tools: number }
-  | { type: "calls"; assistantId: string; calls: number; names: string };
+  | { type: "turn"; turn: number; turnLabel?: number; steps: number; tools: number; expanded?: boolean }
+  | { type: "calls"; assistantId: string; calls: number; names: string; expanded?: boolean };
 
 /** 投影（1112）：按工具栏开关 + 搜索/聚焦命中集，把台账记录折叠成行条目。
  * 折叠语义（DSH 同款）：collapsedTurns 时每轮收成一行「N 步 · M 工具调用」；
  * collapsedCalls 时每条助手记录下的连续工具调用收成一行「M 个工具调用」。
- * 顺序：先调用折叠、再整轮折叠（否则轮内首条 user 行会顶开折叠窗口）。 */
+ * 顺序：先调用折叠、再整轮折叠（否则轮内首条 user 行会顶开折叠窗口）。
+ * tl1478 批量展开：expandedTurns/expandedCalls 单项覆盖全局开关；展开时摘要
+ * 行保留为组头（expanded=true），组内记录随后逐行铺开——收回只需再点组头。 */
 export function projectTrajectoryRows(records: TrajectoryRecord[], options: TrajectoryLedgerProjectionOptions): TrajectoryRowEntry[] {
   const kept = (record: TrajectoryRecord): boolean =>
     (options.searchMatchIds == null || options.searchMatchIds.has(record.id)) &&
@@ -90,18 +94,23 @@ export function projectTrajectoryRows(records: TrajectoryRecord[], options: Traj
     const record = records[index];
     if (!kept(record)) { index += 1; continue; }
     // tl1478 批量展开：expandedCalls 单项覆盖 collapsedCalls（点摘要行只展开该组）。
-    if (options.collapsedCalls && !(options.expandedCalls?.has(record.id) ?? false) && record.kind === "assistant") {
+    if (options.collapsedCalls && record.kind === "assistant") {
       let end = index + 1;
       while (end < records.length && records[end].kind === "tool" && kept(records[end])) end += 1;
       if (end > index + 1) {
+        const expanded = options.expandedCalls?.has(record.id) ?? false;
         pass1.push({
           type: "calls",
           assistantId: record.id,
           calls: end - index - 1,
           names: records.slice(index + 1, end).map((tool) => tool.title).join(" · "),
+          expanded,
         });
-        index = end;
-        continue;
+        if (!expanded) {
+          index = end;
+          continue;
+        }
+        // 展开态：组头保留，助手与工具记录随后逐行铺开（index 只步进 1）。
       }
     }
     pass1.push({ type: "record", record });
@@ -109,17 +118,22 @@ export function projectTrajectoryRows(records: TrajectoryRecord[], options: Traj
   }
   if (!options.collapsedTurns) return pass1;
   // Pass 2: fold each turn's non-user records into one summary row; the turn's
-  // leading user record (the turn label carrier) stays visible.
+  // leading user record (the turn label carrier) stays visible. tl1478: an
+  // expanded turn keeps its summary row as the group header and flows the
+  // turn's entries individually.
   const entries: TrajectoryRowEntry[] = [];
   let cursor = 0;
   while (cursor < pass1.length) {
     const entry = pass1[cursor];
-    // tl1478 批量展开：expandedTurns 单项覆盖 collapsedTurns（点摘要行只展开该轮）。
-    if (entry.type === "record" && entry.record.turnStart && !(options.expandedTurns?.has(entry.record.turn) ?? false)) {
+    if (entry.type === "record" && entry.record.turnStart) {
       const turn = entry.record.turn;
+      const expanded = options.expandedTurns?.has(turn) ?? false;
       let end = cursor + 1;
       while (end < pass1.length) {
         const candidate = pass1[end];
+        // tl1478：调用组头（pass1 顺序生成，必属当前轮）一并纳入本轮折叠区间——
+        // 旧扫描在首个非 record 行截断，两开关同开时轮头计数恒 0·0（假头）。
+        if (candidate.type === "calls") { end += 1; continue; }
         if (candidate.type !== "record" || candidate.record.turn !== turn) break;
         end += 1;
       }
@@ -130,10 +144,18 @@ export function projectTrajectoryRows(records: TrajectoryRecord[], options: Traj
           if (folded.record.kind === "assistant") steps += 1;
           if (folded.record.kind === "tool") tools += 1;
         } else if (folded.type === "calls") {
-          tools += folded.calls;
+          // 调用组 = 一步助手 + 其工具；展开态组内工具已按 record 逐行计数，
+          // 组头不再重复累加。
+          steps += 1;
+          if (!folded.expanded) tools += folded.calls;
         }
       }
-      entries.push(entry, { type: "turn", turn, turnLabel: entry.record.turnLabel, steps, tools });
+      if (!expanded) {
+        entries.push(entry, { type: "turn", turn, turnLabel: entry.record.turnLabel, steps, tools });
+        cursor = end;
+        continue;
+      }
+      entries.push(entry, { type: "turn", turn, turnLabel: entry.record.turnLabel, steps, tools, expanded: true }, ...pass1.slice(cursor + 1, end));
       cursor = end;
       continue;
     }
