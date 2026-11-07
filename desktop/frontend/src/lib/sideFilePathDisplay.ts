@@ -101,6 +101,32 @@ function tailDisplay(path: string): string {
 }
 
 /**
+ * tl1468b: the OPERATION-layer gate + path for the side-files row ops the
+ * file-tree menu has and the workspace fences (integrated terminal, rename,
+ * trash, delete-permanent). A row is workspace-managed when its canonical
+ * path is a workspace-relative shape (the tree's own rows look exactly like
+ * this) or an absolute path contained in the workspace root — only then do
+ * those four menu items render; anything else (session-directory siblings,
+ * absolute paths outside the workspace) keeps the read-only item set, because
+ * the backend workspaceEntryAbsoluteForTab fence rejects outside paths for
+ * the destructive family and CreateTerminalForTab refuses absolute shapes.
+ *
+ * Returns the workspace-relative slice to act on (relative shapes pass
+ * through untouched — the same canonical bytes the display rule shows; an
+ * absolute-inside path yields its root-relative slice with the entry's own
+ * separators, which is what the terminal bridge accepts), or "" when the row
+ * is not workspace-managed. The containment rule is the SAME folded
+ * segment-match the display layer uses (relativeUnderBase), so display and
+ * operation layers can never disagree about what counts as "inside".
+ */
+export function sideFileWorkspaceRelativePath(path: string, workspaceRoot: string): string {
+  const value = path.trim();
+  if (!value) return "";
+  if (!looksAbsolutePath(value)) return value;
+  return relativeUnderBase(value, workspaceRoot.trim());
+}
+
+/**
  * The string a side-files row renders for `path`. See the module header for
  * the per-source rules; workspace beats session directory when both contain
  * the entry (the workspace context is the more informative frame).
