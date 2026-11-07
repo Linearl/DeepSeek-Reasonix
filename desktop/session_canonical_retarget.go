@@ -166,7 +166,30 @@ func (a *App) continuePathForOpen(path string) string {
 	if err != nil || !ok {
 		return ""
 	}
-	return sessioncatalog.OrdinaryContinuePath(topic.Sessions, path)
+	continued := sessioncatalog.OrdinaryContinuePath(topic.Sessions, path)
+	// tl1415e: open/restore reconciles against the panel's main-line authority
+	// (recoveryAuthorityMainPath — the same resolver Selected and the
+	// already-main gate read). tl1415c unified the panel verdict but left the
+	// ordinary open on the linear-leaf heuristic, so the tab landed on a copy
+	// file while the panel marked the adopted recovery line as Selected (the
+	// user's retest: panel marks recovery-7fa1f7e5, tab renders the 10-18
+	// collab copy). Reconciliation rules:
+	//   ① only a catalog-filed NON-recovered request redirects — explicitly
+	//     opening a recovery member stays inspection (OrdinaryContinuePath
+	//     already keeps those put, and so does this guard);
+	//   ② an absent authority (unfiled path, no preference, no tab) keeps the
+	//     heuristic untouched — conversations without recovery groups keep
+	//     their exact open/restore semantics (the resolver returns "" for
+	//     unfiled paths, so the no-op is structural, not incidental);
+	//   ③ an authority that names a different member wins — the open target
+	//     and the panel's Selected row now read one resolver and cannot split
+	//     by construction.
+	if !rec.Recovered {
+		if authority := a.recoveryAuthorityMainPath(catalog, rec.Path); authority != "" && !sameRecoveryLineagePath(authority, rec.Path) {
+			return authority
+		}
+	}
+	return continued
 }
 
 func (a *App) continuePathForMissingParent(ctx context.Context, catalog *sessioncatalog.Catalog, path string) string {

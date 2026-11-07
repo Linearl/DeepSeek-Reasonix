@@ -97,6 +97,21 @@ function recoveryShortName(path: string): string {
   return m ? `recovery-${m[1].slice(0, 8).toLowerCase()}` : "";
 }
 
+/** tl1415e: the row identity's three-level chain — headId → recoveryShortName
+ *  → file stem. recoveryShortName only recognizes "-recovery-<hex>.jsonl"
+ *  names, so a normally-named degraded copy (20261005-…-collab.jsonl, the
+ *  retest's field shape) produced an empty identity even though tl1415c B1
+ *  had landed the type tag and the reason badge: the identity span silently
+ *  vanished because every consumer stopped at level two. The stem level
+ *  always exists (zero IO; the row's hover title already carries the full
+ *  path), so every row can now show a stable on-disk identity — the retest's
+ *  hard acceptance "hash 列每行有值". The headId level comes first where a
+ *  row actually has one (version rows), matching the old version-row chain. */
+function chainIdentityOf(path: string, headId: string): string {
+  if (headId) return headId.slice(0, 8);
+  return recoveryShortName(path) || fileStemOf(path);
+}
+
 /** fileStemOf is a transcript file's bare stem (basename without .jsonl) — the
  *  identity a panel row must fall back to when the path is not a recovery copy
  *  (tl1448: the scan-origin main file demoted to a 版本行 used to render the
@@ -815,7 +830,10 @@ export function RecoveryCopiesSection() {
     setActivating(chain.path);
     try {
       await app.SetActiveSessionVersion({ scope: "", topicId: "", path: chain.path, headId: "" });
-      const label = recoveryShortName(chain.path) || chain.label || chain.path;
+      // tl1415e: the receipt names the file identity (headId → recovery
+      // short name → stem) — the same chain every row renders, so the note
+      // matches a panel row even for normally-named copies.
+      const label = chainIdentityOf(chain.path, chain.headId);
       setSwitchedNote(t("settings.sessionVersions.activated").replace("{name}", label));
       await load();
     } catch (e) {
@@ -1098,7 +1116,7 @@ export function RecoveryCopiesSection() {
         // tl1448:最终闸——请求前以最新主线指针复核(确认框悬停期间指针可能
         // 已被采纳/合并改写)。
         if (sameSessionPath(copy.path, preferredMainPathOf(group))) {
-          failures.push(`${copy.label}: ${t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", recoveryShortName(copy.path) || fileStemOf(copy.path))}`);
+          failures.push(`${copy.label}: ${t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", chainIdentityOf(copy.path, ""))}`);
           continue;
         }
         try {
@@ -1396,7 +1414,7 @@ export function RecoveryCopiesSection() {
    *  mid-reload). Failure mode analysis: over-restriction only blocks a delete
    *  (safe), letting one through deletes the main line — the 20261106 incident. */
   const refuseMainDelete = (groupLabel: string, targetPath: string) => {
-    const name = recoveryShortName(targetPath) || fileStemOf(targetPath);
+    const name = chainIdentityOf(targetPath, "");
     const detail = t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", name);
     setErrors((current) => [...current, `${groupLabel} · ${detail}`]);
     showToast(detail, "error");
@@ -1459,7 +1477,7 @@ export function RecoveryCopiesSection() {
       setStatus(`${t("settings.recoveryCopiesDeleting")} ${index + 1}/${deletable.length} · ${item.label}`);
       // 发请求前逐条复核（确认框悬停期间主线指针可能已改写）——最终闸。
       if (sameSessionPath(item.path, preferredMainPathOf(item.group))) {
-        collected.push({ label: item.label, kind: "failed", detail: t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", recoveryShortName(item.path) || fileStemOf(item.path)) });
+        collected.push({ label: item.label, kind: "failed", detail: t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", chainIdentityOf(item.path, "")) });
         setDeletedOutcomes([...collected]);
         continue;
       }
@@ -1511,7 +1529,9 @@ export function RecoveryCopiesSection() {
       refuseMainDelete(group.mainLabel, copyPath);
       return;
     }
-    const shortName = recoveryShortName(copyPath);
+    // tl1415e: three-level identity — the confirm box names the file for
+    // normally-named copies too (the stem level always exists).
+    const shortName = chainIdentityOf(copyPath, "");
     const okToDelete = await confirm({
       title: t("settings.recoveryCopiesDeleteTitle"),
       message: (
@@ -1942,7 +1962,7 @@ export function RecoveryCopiesSection() {
     // tl1430 验收①:主线行换到采纳来的文件时亮短标识,让「主线行换了」立即可辨识。
     const mainChainShortName =
       model.currentMainChain && model.currentMainChain.path !== group.mainPath
-        ? recoveryShortName(model.currentMainChain.path)
+        ? chainIdentityOf(model.currentMainChain.path, model.currentMainChain.headId)
         : "";
     const mainMessages = model.currentMainChain ? model.currentMainChain.messageCount : group.mainMessages;
     const mainTurns = model.currentMainChain ? model.currentMainChain.turns : group.mainTurns;
@@ -2122,7 +2142,7 @@ export function RecoveryCopiesSection() {
           const tags = chain ? chainTagInfo(chain, model.chains) : { isLonger: false, isNewer: false };
           // tl1415 点12: 文件名短标识(recovery-<8 hex>)——用户要能把面板行
           // 对回磁盘上的 recovery-5df6de18 文件;悬停 title 给完整文件名。
-          const shortName = recoveryShortName(copy.path);
+          const shortName = chainIdentityOf(copy.path, chain?.headId ?? "");
           const copyTitle = chain
             ? `${t("settings.recoveryCopiesCopy")} ${visibleIndex + 1}${shortName ? ` · ${copy.path}` : ""}｜${tailPreviewText(chain)}`
             : shortName
@@ -2304,11 +2324,7 @@ export function RecoveryCopiesSection() {
                       副本删掉的身份错乱源头之一。tl1415c B1(槽点④): 降级行无
                       hash 的替代标识落到文件 stem 兜底——stem 恒存在,任何行都
                       不再以裸「副本」标签示人。 */}
-                  {c.headId
-                    ? c.headId.slice(0, 8)
-                    : sameSessionPath(c.path, group.mainPath)
-                      ? fileStemOf(c.path)
-                      : recoveryShortName(c.path) || fileStemOf(c.path)}
+                  {chainIdentityOf(c.path, c.headId)}
                   {/* 任务 1039r:降级行必须说自己是降级。 */}
                   {c.degraded && (
                     <span className="sv-degraded" title={t("settings.sessionVersions.degradedHint")}>
@@ -2328,7 +2344,7 @@ export function RecoveryCopiesSection() {
                     </span>
                   )}
                 </div>
-                <div className="rc-sub2 rc-clip3 rc-chain__preview" title={previewTitle(c, c.headId ? c.headId.slice(0, 8) : recoveryShortName(c.path) || t("settings.recoveryCopiesKindVersion"))}>
+                <div className="rc-sub2 rc-clip3 rc-chain__preview" title={previewTitle(c, chainIdentityOf(c.path, c.headId))}>
                   <span className="rc-tailtag">{t("settings.recoveryCopiesTailTag")}</span>
                   {tailPreviewText(c)}
                 </div>

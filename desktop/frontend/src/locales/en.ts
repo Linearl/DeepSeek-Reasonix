@@ -5027,7 +5027,11 @@ export const en = {
   "settings.sessionVersions.volumeDelta": "size {before} → {after}",
   "settings.sessionVersions.volumeUnchanged": "size unchanged",
   "settings.sessionVersions.repairLog": "Repair log:",
-  "settings.sessionVersions.degraded": "Degraded",
+  // tl1415e word table: "Degraded" read as "demoted from main line" while the
+  // badge sits on the main row — the semantic is a degraded reading (replay
+  // refused), not a change of line identity. Table in the delivery report:
+  // four type words + exclusive state words, no shared stems.
+  "settings.sessionVersions.degraded": "degraded readings",
   "settings.sessionVersions.degradedHint": "Reading this conversation's event log was refused or failed (for example a replay beyond the safety budget): in-row counts are unavailable; other sections are unaffected.",
   "settings.recoveryCopiesHint": "One view of every conversation's versions and copies, for restoring the main line when something goes wrong.",
   "settings.recoveryCopiesEmpty": "No recovery copies found.",
@@ -5056,7 +5060,10 @@ export const en = {
   "settings.recoveryCopiesPreviewFeedGap": "{n} more messages in between - click to load",
   "settings.recoveryCopiesPreviewBtn": "Preview",
   "settings.recoveryCopiesUnpick": "Unpick",
-  "settings.recoveryCopiesPickedBadge": "Picked as main",
+  // tl1415e word table: "Picked as main" clashed with "selected" and "main" —
+  // the badge marks the bottom synthesis's chosen HEAD (the base), not a
+  // main-line verdict.
+  "settings.recoveryCopiesPickedBadge": "synthesis base",
   "settings.recoveryCopiesPreviewDegraded": "This branch is unnormalized or damaged; the numbers above come from the summary pass. The merge normalizes it in place; share/unique stats are unavailable",
   "settings.recoveryCopiesColMessages": "messages",
   "settings.recoveryCopiesPreviewShared": "shared with main",
@@ -5171,7 +5178,10 @@ export const en = {
   "settings.recoveryCopiesChainCandidate": "chain",
   "settings.recoveryCopiesRecommended": "recommended",
   "settings.recoveryCopiesColWinner": "after merge",
-  "settings.recoveryCopiesWins": "will win",
+  // tl1415e word table: "will win" promised a copy the main-line identity,
+  // directly clashing with the main row's "main". The winner's honest
+  // semantic: this transcript is the one kept after the merge (rest archived).
+  "settings.recoveryCopiesWins": "kept after merge",
   "settings.recoveryCopiesWinnerMain": "main stays",
   "settings.recoveryCopiesReopen": "The merge has taken effect. Reopen that conversation from its project (or reload the tab) to see the merged content - the previous transcript is still in the trash.",
   "settings.recoveryCopiesMeasuring": "measuring",
