@@ -291,15 +291,19 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   workflowPanel: "stable",
   // tl1487 二组⑤：工作流模板（面板家族子键的 pane 附属行）独立登记推荐档。
   workflowTemplates: "recommended",
-  subagentPanel: "optional",
-  subagentDetail: "optional",
+  // tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107 八组
+  // 清单；Go 渲染表同步翻）。
+  subagentPanel: "recommended",
+  subagentDetail: "recommended",
   // tl1487 二组⑤：任务完成摘要可选→推荐（用户 20261107 八组清单）。
   completionSummary: "recommended",
   // tl1487 二组⑥：自动加载可选→推荐（用户 20261107 八组清单）。
   autoLoadOlder: "recommended",
   splitView: "optional",
-  draftPersistence: "optional",
-  selectionActions: "optional",
+  // tl1487 三组②：草稿持久化、选区快捷操作可选→推荐（用户 20261107 八组
+  // 清单；Go 渲染表同步翻）。
+  draftPersistence: "recommended",
+  selectionActions: "recommended",
   questionSearch: "recommended",
   opencodeGoUsage: "recommended",
   feedback: "optional",
@@ -388,10 +392,11 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // （普通对话永不自动续跑）；开启后才有界续跑。可选档。
   standardContinuation: "optional",
   // 任务 782：界面组三张条目级合并卡的容器档 = 卡内成员最高档（774 聚合
-  // 语义同源：searchHistory 三成员 两推荐一可选 → 推荐；inputSelection /
-  // viewLayout 全可选成员 → 可选）。合并是入口层组织，不降级任何成员特性。
+  // 语义同源：searchHistory 三成员 两推荐一可选 → 推荐；viewLayout 推荐
+  // 容器压过可选成员 → 推荐）。tl1487 三组②：inputSelection 两成员升推荐，
+  // 容器档=成员最高档随之升推荐。合并是入口层组织，不降级任何成员特性。
   searchHistory: "recommended",
-  inputSelection: "optional",
+  inputSelection: "recommended",
   // tl 1125：视图布局合并卡升「推荐」（tl 1125 同指令，与 tabManagement 一并）。
   viewLayout: "recommended",
   // 任务 826：左右边栏 hover 展开（左右各一行，独立开关，默认关）。
@@ -532,11 +537,14 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 二组步进：tabModeTint 未稳定→可选、workflowPanel 未稳定→稳定、
  * workflowTemplates（推荐）入表、completionSummary/autoLoadOlder/tableWrap/
  * approvalSelect/sidebarHover×2/smoothScrollFollow/draftRewrite 可选→推荐
- * ——稳定 7→8、推荐 25→34、可选 44→37、未稳定 10→8、总数 86→87。 */
+ * ——稳定 7→8、推荐 25→34、可选 44→37、未稳定 10→8、总数 86→87。
+ * 三组步进：subagentPanel/subagentDetail/draftPersistence/selectionActions
+ * 可选→推荐，inputSelection 容器档=成员最高档随之升推荐——推荐 38→39、
+ * 可选 33→32，总数不变 87。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 8,
-  recommended: 34,
-  optional: 37,
+  recommended: 39,
+  optional: 32,
   unstable: 8,
   retired: 0,
 };

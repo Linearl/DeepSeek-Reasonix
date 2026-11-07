@@ -175,15 +175,19 @@ var labFeatureTiers = []labFeatureTier{
 	// tl1454：experimental_workflow_templates 为家族子键（用户自定义模板视图，
 	// 面板行下的附属行；工作流面板关闭时禁用）。
 	{"workflowPanel", LabTierStable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}},
-	{"subagentPanel", LabTierOptional, []string{"experimental_subagent_panel"}},
-	{"subagentDetail", LabTierOptional, []string{"experimental_subagent_detail"}},
+	// tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107 八组
+	// 清单；前端同步）。
+	{"subagentPanel", LabTierRecommended, []string{"experimental_subagent_panel"}},
+	{"subagentDetail", LabTierRecommended, []string{"experimental_subagent_detail"}},
 	// tl1487 二组⑤/⑥：任务完成摘要、自动加载更早消息可选→推荐（用户
 	// 20261107 八组清单；前端同步）。
 	{"completionSummary", LabTierRecommended, []string{"experimental_completion_summary"}},
 	{"autoLoadOlder", LabTierRecommended, []string{"experimental_auto_load_older"}},
 	{"splitView", LabTierOptional, []string{"experimental_split_view"}},
-	{"draftPersistence", LabTierOptional, []string{"experimental_composer_draft"}},
-	{"selectionActions", LabTierOptional, []string{"experimental_selection_actions"}},
+	// tl1487 三组②：草稿持久化、选区快捷操作可选→推荐（用户 20261107 八组
+	// 清单；前端同步）。
+	{"draftPersistence", LabTierRecommended, []string{"experimental_composer_draft"}},
+	{"selectionActions", LabTierRecommended, []string{"experimental_selection_actions"}},
 	{"questionSearch", LabTierRecommended, []string{"experimental_question_search"}},
 	{"opencodeGoUsage", LabTierRecommended, []string{"experimental_opencode_go_usage"}},
 	{"feedback", LabTierOptional, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键

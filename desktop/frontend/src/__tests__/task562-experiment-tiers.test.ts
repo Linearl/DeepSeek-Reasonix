@@ -154,11 +154,13 @@ console.log("\ntask 562 lab three-tier badges");
   // tabModeTint 未稳定→可选；workflowPanel 未稳定→稳定；completionSummary/
   // autoLoadOlder/tableWrap/approvalSelect/sidebarHover×2/smoothScrollFollow/
   // draftRewrite 八项可选→推荐——稳定 8、推荐 34、可选 37、未稳定 8。
-  ok(counts.stable === 8 && counts.recommended === 34 && counts.optional === 37 && counts.unstable === 8 && counts.retired === 0,
-    `register counts are 8 稳定/34/37/8/0 (got ${JSON.stringify(counts)})`);
+  // tl1487 三组：subagentPanel/subagentDetail/draftPersistence/selectionActions
+  // 可选→推荐——推荐 39（含 inputSelection 容器）、可选 32，总数不变 87。
+  ok(counts.stable === 8 && counts.recommended === 39 && counts.optional === 32 && counts.unstable === 8 && counts.retired === 0,
+    `register counts are 8 稳定/39/32/8/0 (got ${JSON.stringify(counts)})`);
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 87, `register holds exactly 87 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 8 && LAB_TIER_COUNTS.recommended === 34 && LAB_TIER_COUNTS.optional === 37 && LAB_TIER_COUNTS.unstable === 8 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 8 稳定/34/37/8/0");
+  ok(LAB_TIER_COUNTS.stable === 8 && LAB_TIER_COUNTS.recommended === 39 && LAB_TIER_COUNTS.optional === 32 && LAB_TIER_COUNTS.unstable === 8 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 8 稳定/39/32/8/0");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -173,10 +175,10 @@ console.log("\ntask 562 lab three-tier badges");
   for (const id of picks) pickCounts[EXPERIMENT_FEATURE_TIERS[id as TierFeatureId]] += 1;
   // 任务 1005：autopilot / sessionCollab / fullAccess 三 pick 转稳定档——
   // 图墙收录清单不变（W1 人工收录口径），pick 档位拆分 12+4 → 3 稳定 + 9 推荐 + 4 可选。
-  // tl1487：completionSummary（二组⑤）可选→推荐——pick 拆分 3 稳定 + 10 推荐
-  // + 3 可选；commit3 后 subagentPanel/selectionActions 随清单升推荐 → 3/12/1。
-  ok(pickCounts.stable === 3 && pickCounts.recommended === 10 && pickCounts.optional === 3,
-    `pick tier split is 稳定 3 + 推荐 10 + 可选 3 (got ${JSON.stringify(pickCounts)})`);
+  // tl1487：completionSummary（二组⑤）+ subagentPanel/selectionActions
+  // （三组）可选→推荐——pick 拆分 3 稳定 + 12 推荐 + 1 可选（splitView）。
+  ok(pickCounts.stable === 3 && pickCounts.recommended === 12 && pickCounts.optional === 1,
+    `pick tier split is 稳定 3 + 推荐 12 + 可选 1 (got ${JSON.stringify(pickCounts)})`);
   ok(new Set(picks).size === 16, "no duplicate picks");
 }
 
@@ -343,10 +345,10 @@ console.log("\ntask 562 lab three-tier badges");
   // 子项=可选）卡头只显示「稳定」一枚（1005 批1 转档后推荐>可选、稳定>推荐）。
   ok(JSON.stringify(railTiersForDefault("sessionCollab")) === JSON.stringify(["stable", "optional"]) && agg("sessionCollab") === "stable",
     `sessionCollab shows exactly one 稳定 badge, its auto-fold member's 可选 stays in-card (got ${String(agg("sessionCollab"))})`);
-  // 任务 774 验收件②：子代理套件（无自有档，成员 可选×3+未稳定）按最高档
-  // 单枚——可选压过未稳定。
-  ok(JSON.stringify(railTiersForDefault("subagentSuite")) === JSON.stringify(["optional", "unstable"]) && agg("subagentSuite") === "optional",
-    `subagentSuite aggregates to the single 可选 badge over its unstable member (got ${String(agg("subagentSuite"))})`);
+  // 任务 774 验收件②：子代理套件（无自有档）按最高档单枚。tl1487 三组①：
+  // 成员 [推荐×2, 可选, 未稳定] → 单枚 推荐。
+  ok(JSON.stringify(railTiersForDefault("subagentSuite")) === JSON.stringify(["recommended", "optional", "unstable"]) && agg("subagentSuite") === "recommended",
+    `subagentSuite aggregates to the single 推荐 badge after tl1487 三组 (got ${String(agg("subagentSuite"))})`);
   // 其余合并卡逐卡钉聚合终值（722 布局现值）。
   // 任务 971：restartUpdate 迁至工具优化聚合页——updateFeedback 仅余 feedback
   // （可选档），聚合终值 推荐→可选。任务 992（用户 1018 21:34）：restartUpdate
@@ -389,8 +391,8 @@ console.log("\ntask 562 lab three-tier badges");
     `searchHistory: tl1487 all-recommended input aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("searchHistory"))} → ${String(agg("searchHistory"))})`);
   ok(JSON.stringify(railTiersForDefault("viewLayout")) === JSON.stringify(["recommended", "optional"]) && agg("viewLayout") === "recommended",
     `viewLayout: tl 1125 推荐 container + optional members aggregate to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("viewLayout"))} → ${String(agg("viewLayout"))})`);
-  ok(JSON.stringify(railTiersForDefault("inputSelection")) === JSON.stringify(["optional"]) && agg("inputSelection") === "optional",
-    `inputSelection: all-optional members aggregate to 可选 (got ${JSON.stringify(railTiersForDefault("inputSelection"))})`);
+  ok(JSON.stringify(railTiersForDefault("inputSelection")) === JSON.stringify(["recommended"]) && agg("inputSelection") === "recommended",
+    `inputSelection: tl1487 三组 all-recommended members aggregate to 推荐 (got ${JSON.stringify(railTiersForDefault("inputSelection"))})`);
   // 任务 961：automation/efficiency 两张合并卡钉聚合终值——容器徽章 =
   // 成员最高档（smartAutomation 全可选 → 可选；interactionPresentation
   // [推荐,可选,可选] → 推荐）。viewLayout 并入 renderArtifact（可选）后

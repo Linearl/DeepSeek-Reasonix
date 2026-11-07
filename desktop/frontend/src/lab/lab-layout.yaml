@@ -335,12 +335,14 @@ groups:
         labelKey: settings.subagentSuite
         onKeys: [experimentalSubagentPanel, experimentalSubagentDetail, experimentalSubagentPolicy, experimentalSubagentTps]
         members:
+          # tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107
+          # 八组清单）。
           - id: subagentPanel
             labelKey: settings.subagentPanel
-            tier: optional
+            tier: recommended
           - id: subagentDetail
             labelKey: settings.subagentDetail
-            tier: optional
+            tier: recommended
           - id: subagentPolicy
             labelKey: settings.subagentPolicy
             tier: unstable
@@ -352,15 +354,17 @@ groups:
       # 档 = 成员最高档（可选）。
       - id: inputSelection
         labelKey: settings.inputSelection
-        tier: optional
+        # tl1487 三组②：草稿持久化、选区快捷操作可选→推荐（用户 20261107
+        # 八组清单）；容器档=成员最高档，随成员升至推荐。
+        tier: recommended
         onKeys: [experimentalComposerDraft, experimentalSelectionActions]
         members:
           - id: draftPersistence
             labelKey: settings.draftPersistence
-            tier: optional
+            tier: recommended
           - id: selectionActions
             labelKey: settings.selectionActions
-            tier: optional
+            tier: recommended
       # 任务 782④：opencodeGoUsage 迁出界面组（→任务 783 可观测性组
       # 「用量监测」卡成员；迁出瞬间 pane 分支保留，入口随 783 落卡恢复）。
       # 任务 992（用户 1018 21:34）：restartUpdate 归位回本卡——本文件随

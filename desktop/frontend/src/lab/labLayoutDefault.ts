@@ -338,23 +338,25 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalSubagentTps",
           ],
           members: [
-            { id: "subagentPanel", labelKey: "settings.subagentPanel", tier: "optional" },
-            { id: "subagentDetail", labelKey: "settings.subagentDetail", tier: "optional" },
+            // tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107
+            // 八组清单）。
+            { id: "subagentPanel", labelKey: "settings.subagentPanel", tier: "recommended" },
+            { id: "subagentDetail", labelKey: "settings.subagentDetail", tier: "recommended" },
             { id: "subagentPolicy", labelKey: "settings.subagentPolicy", tier: "unstable" },
             { id: "subagentTps", labelKey: "settings.subagentTps", tier: "optional" },
           ],
         },
         // tl1309 卡④：completionSummary 散条迁出——并入「会话与任务面板」卡。
         // 任务 782：输入与选区（合并卡）——草稿持久化 + 选区快捷操作。容器
-        // 档 =成员最高档（可选）。
+        // 档 =成员最高档。tl1487 三组②：两成员可选→推荐，容器随之升推荐。
         {
           id: "inputSelection",
           labelKey: "settings.inputSelection",
-          tier: "optional",
+          tier: "recommended",
           onKeys: ["experimentalComposerDraft", "experimentalSelectionActions"],
           members: [
-            { id: "draftPersistence", labelKey: "settings.draftPersistence", tier: "optional" },
-            { id: "selectionActions", labelKey: "settings.selectionActions", tier: "optional" },
+            { id: "draftPersistence", labelKey: "settings.draftPersistence", tier: "recommended" },
+            { id: "selectionActions", labelKey: "settings.selectionActions", tier: "recommended" },
           ],
         },
         {
