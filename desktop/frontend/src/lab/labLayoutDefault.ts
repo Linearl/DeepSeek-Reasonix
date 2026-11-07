@@ -402,12 +402,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // OpenCode Go 用量（自界面组迁入，782④ 同一动作的落卡半程）。
         // 扩展点：coding plan preset 家族（GLM CN / Z.AI Global / Qwen
         // CN·Global / Kimi 等 7+ 家）未来按需在 members 加行即成一子项，
-        // 不改容器结构；卡灯 = OpenCode Go 开关（家族唯一非默认键）。
+        // 不改容器结构。tl1487 四组：OpenCode Go 用量「不提供开关、始终
+        // 打开」——卡灯键清空（行同 glmPlanUsage 为无开关展示行）。
         {
           id: "usageMonitoring",
           labelKey: "settings.usageMonitoring",
           tier: "recommended",
-          onKeys: ["experimentalOpenCodeGoUsage"],
+          onKeys: [],
           members: [
             { id: "glmPlanUsage", labelKey: "settings.glmPlanUsage", tier: "recommended" },
             { id: "opencodeGoUsage", labelKey: "settings.opencodeGoUsage", tier: "recommended" },

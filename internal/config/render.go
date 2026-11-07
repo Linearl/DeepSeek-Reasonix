@@ -189,7 +189,9 @@ var labFeatureTiers = []labFeatureTier{
 	{"draftPersistence", LabTierRecommended, []string{"experimental_composer_draft"}},
 	{"selectionActions", LabTierRecommended, []string{"experimental_selection_actions"}},
 	{"questionSearch", LabTierRecommended, []string{"experimental_question_search"}},
-	{"opencodeGoUsage", LabTierRecommended, []string{"experimental_opencode_go_usage"}},
+	// tl1487 四组：opencodeGoUsage 渲染表条目随「不提供开关、始终打开」移除
+	// （config 键整链退役，存量键走 deprecated 清单）；前端注册表保留
+	// recommended 展示行（783 成员行同 glmPlanUsage 口径，562 ③ feOnly 豁免）。
 	{"feedback", LabTierOptional, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键
 	// 任务 1024：composer 草稿优化（改写按钮）。
 	// tl1487 二组④：可选→推荐（用户 20261107 八组清单；前端同步）。
@@ -931,9 +933,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// 0 keeps the built-in defaults (2048/1024 MiB).
 	fmt.Fprintf(&b, "dag_graph_cache_max_mb = %d   # task 499: replayed-graph cache total byte ceiling, MiB (0 = built-in 2048; closed-session graphs evict LRU above it)\n", c.Agent.DagGraphCacheMaxMB)
 	fmt.Fprintf(&b, "dag_graph_cache_entry_max_mb = %d   # task 499: per-entry admission ceiling, MiB (0 = built-in 1024; a single graph above it is not cached)\n", c.Agent.DagGraphCacheEntryMaxMB)
-	// Task 163: explicit render — omit-on-off would silently disable a
-	// saved-on usage card on the next render (81/123 lost-save lesson).
-	fmt.Fprintf(&b, "experimental_opencode_go_usage = %v   # task 163: OpenCode Go subscription usage card (5h/7d/month windows; no query while off)\n", c.Agent.ExperimentalOpenCodeGoUsage)
+	// tl1487 四组：experimental_opencode_go_usage 键随「不提供开关、始终打开」
+	// 裁决移除（用量查询不再有门）；存量键由 config_key_warn deprecated 清单
+	// 承接，渲染表不再输出（键已不在 struct）。
 	// Task 603: explicit render of a SET value — omit-on-off would silently
 	// spring a saved-on switch back off on the next render (81/123 lost-save
 	// lesson). Task 915: the field is a *bool; nil (key absent) renders

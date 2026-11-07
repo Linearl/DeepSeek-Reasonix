@@ -3,9 +3,9 @@
 // 任务 783 验收套——可观测性组「用量监测」合并卡 + OpenCode Go 用量侧栏化 +
 // 编辑读回（readBack）转正：
 //  ① 布局：usageMonitoring 卡在 observability 组，tier=recommended，成员
-//     glmPlanUsage（推荐，只读展示行）+ opencodeGoUsage（未稳定，开关行）；
-//     卡灯 = experimentalOpenCodeGoUsage（家族唯一非默认键）；ts 默认与
-//     yaml 同构同值（含扩展点注释）。
+//     glmPlanUsage（推荐，只读展示行）+ opencodeGoUsage（推荐，展示行——
+//     tl1487 四组「不提供开关、始终打开」后开关行退役为展示行）；卡灯键
+//     清空（tl1487）；ts 默认与 yaml 同构同值（含扩展点注释）。
 //  ② 侧栏化：ContextPanel 在 PlanUsageCard 之后挂 OpenCodeGoUsageSidebarCard；
 //     渲染门 = labFlags 的 opencodeGoUsage 旗标（关 = 不渲染、零网络请求，
 //     163 前端门延伸到边栏——铁律 2）；开启后与 GLM 卡同套 plan-usage 视觉
@@ -40,8 +40,8 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
     | undefined;
   ok(Boolean(card), "usageMonitoring entry exists in the observability group");
   ok(card!.tier === "recommended", "usageMonitoring container tier is recommended");
-  ok(JSON.stringify(card!.onKeys) === JSON.stringify(["experimentalOpenCodeGoUsage"]),
-    "card light keys onto experimentalOpenCodeGoUsage only (family's single non-default key)");
+  ok(JSON.stringify(card!.onKeys) === JSON.stringify([]),
+    "tl1487: the card light is empty — the OpenCode Go switch (family's single gate key) is retired");
   const members = card!.members ?? [];
   ok(members.length === 2, "usageMonitoring carries exactly two members");
   ok(members[0]?.id === "glmPlanUsage" && members[0]?.tier === "recommended",
@@ -78,7 +78,8 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
   const contextPanel = readFileSync(fileURLToPath(new URL("../components/ContextPanel.tsx", import.meta.url)), "utf8");
   ok(panel.includes('{selected === "usageMonitoring" && ('), "usageMonitoring pane branch exists in SettingsPanel");
   ok(!panel.includes('{selected === "opencodeGoUsage" && ('), "the standalone opencodeGoUsage pane branch is gone");
-  ok(panel.includes("app.SetExperimentalOpenCodeGoUsage(on)"), "Go usage switch still saves through its own setter (零键变化)");
+  ok(!panel.includes("SetExperimentalOpenCodeGoUsage") && panel.includes("<SettingsOpenCodeGoUsageCard />"),
+    "tl1487: the switch setter is gone — the member renders as a prop-less display card");
   const planIdx = contextPanel.indexOf("<PlanUsageCard tabId={tabId} />");
   const goIdx = contextPanel.indexOf("<OpenCodeGoUsageSidebarCard tabId={tabId} />");
   ok(planIdx >= 0 && goIdx > planIdx, "ContextPanel mounts the sidebar card right after PlanUsageCard (tab-following, task 799)");
@@ -110,24 +111,12 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
       },
     },
   });
-  const { applyLabFlags, labFlagEnabled } = await import("../lib/labFlags");
   const { OpenCodeGoUsageSidebarCard } = await import("../components/OpenCodeGoUsageSidebarCard");
   const { LocaleProvider } = await import("../lib/i18n");
 
-  // 闸门初态（lab flags 默认全关）= 不渲染、零请求。
-  applyLabFlags({});
-  ok(labFlagEnabled("opencodeGoUsage") === false, "sidebar gate defaults to off");
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root: Root = createRoot(container);
-  await act(async () => {
-    root.render(<LocaleProvider><OpenCodeGoUsageSidebarCard /></LocaleProvider>);
-  });
-  await act(async () => { await Promise.resolve(); });
-  ok(queries === 0, "gate off: zero network calls (163 前端门延伸到边栏)");
-  ok(container.querySelector('[data-testid="opencode-go-usage-sidebar"]') === null, "gate off: no DOM at all");
-
-  // 开闸：查询一次、按 plan-usage 视觉渲染三窗口（与 GLM 卡同类名）。
+  // tl1487 四组：用量查询「始终打开」——开关门退役，卡常显（仅剩 799 的
+  // provider family 门，本场景桩返回 opencode-go）。挂载即查询一次、按
+  // plan-usage 视觉渲染三窗口（与 GLM 卡同类名）。
   payload = {
     tiers: [
       { window: "rolling", percent: 42.4, resetsAt: new Date(Date.now() + 3600_000).toISOString() },
@@ -136,23 +125,42 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
     ],
     note: "",
   };
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root: Root = createRoot(container);
   await act(async () => {
-    applyLabFlags({ opencodeGoUsage: true });
+    root.render(<LocaleProvider><OpenCodeGoUsageSidebarCard /></LocaleProvider>);
   });
   await act(async () => { await Promise.resolve(); });
-  ok(queries === 1, "gate on: queries once on mount");
+  ok(queries === 1, "always-on: queries once on mount (no lab switch gate)");
   const section = container.querySelector('[data-testid="opencode-go-usage-sidebar"]');
-  ok(section !== null, "gate on: the sidebar card renders");
-  ok(section!.classList.contains("plan-usage"), "gate on: same plan-usage visual system as the GLM card");
-  ok(container.querySelectorAll("[data-window]").length === 3, "gate on: three usage windows render");
-  ok(container.querySelector('[data-window="rolling"] strong')?.textContent === "42%", "gate on: percent rounds like the GLM card");
+  ok(section !== null, "always-on: the sidebar card renders without any lab switch");
+  ok(section!.classList.contains("plan-usage"), "always-on: same plan-usage visual system as the GLM card");
+  ok(container.querySelectorAll("[data-window]").length === 3, "always-on: three usage windows render");
+  ok(container.querySelector('[data-window="rolling"] strong')?.textContent === "42%", "always-on: percent rounds like the GLM card");
+
+  // family 门（799）仍在：family 不对时不渲染、不发用量请求。
+  {
+    const before = queries;
+    const hidden = document.createElement("div");
+    document.body.appendChild(hidden);
+    const hiddenRoot: Root = createRoot(hidden);
+    const stub = (window as unknown as { go: { main: { App: { GetActivePlanFamily: () => Promise<string> } } } }).go.main.App;
+    stub.GetActivePlanFamily = async () => "glm";
+    await act(async () => {
+      hiddenRoot.render(<LocaleProvider><OpenCodeGoUsageSidebarCard /></LocaleProvider>);
+    });
+    await act(async () => { await Promise.resolve(); });
+    ok(hidden.querySelector('[data-testid="opencode-go-usage-sidebar"]') === null,
+      "family gate (799) survives tl1487: non-opencode-go family renders nothing");
+    ok(queries === before, "family gate (799): no usage query for a foreign family");
+    await act(async () => { await hiddenRoot.unmount(); });
+    hidden.remove();
+    stub.GetActivePlanFamily = async () => "opencode-go";
+  }
 
   // 线格式畸形（Go nil slice → tiers: null）不崩、走空态分支。
   payload = { tiers: null, note: "" };
-  await act(async () => {
-    applyLabFlags({ opencodeGoUsage: false });
-    applyLabFlags({ opencodeGoUsage: true });
-  });
   await act(async () => { await Promise.resolve(); });
   ok(container.querySelector('[data-testid="opencode-go-usage-sidebar"]') !== null,
     "null tiers payload renders the empty branch without throwing");
@@ -160,8 +168,7 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
   // 网络错误降级为 network note（不抛出）。
   payload = new Error("boom");
   await act(async () => {
-    applyLabFlags({ opencodeGoUsage: false });
-    applyLabFlags({ opencodeGoUsage: true });
+    root.render(<LocaleProvider><OpenCodeGoUsageSidebarCard /></LocaleProvider>);
   });
   await act(async () => { await Promise.resolve(); });
   ok(container.querySelector('[data-testid="opencode-go-usage-sidebar"]') !== null,

@@ -151,12 +151,11 @@ const flushPlanUsage = async (view: PlanUsageResult) => {
   });
 };
 
-const { applyLabFlags } = await import("../lib/labFlags");
 const { LocaleProvider } = await import("../lib/i18n");
 const { PlanUsageCard } = await import("../components/PlanUsageCard");
 const { OpenCodeGoUsageSidebarCard } = await import("../components/OpenCodeGoUsageSidebarCard");
 
-applyLabFlags({ opencodeGoUsage: true });
+// tl1487 四组：用量查询「始终打开」——lab 旗标门退役，挂载即按 family 门渲染。
 const container = document.createElement("div");
 document.body.appendChild(container);
 let root: Root | null = null;

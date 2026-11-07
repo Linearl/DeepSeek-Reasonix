@@ -15,11 +15,12 @@
 //       hint may not claim "enables the tool";
 //     - autonomousIdleTerminate: evaluateIdleStreak has no production call
 //       site (desktop/heartbeat.go), so the hint says reserved / not wired;
-//     - opencodeGoUsage keeps its "off keeps network behavior unchanged"
-//       promise — now backed by the task-564 backend gate
-//       (desktop/opencode_go_usage.go openCodeGoUsageSwitchOn);
+//     - opencodeGoUsage: the gated-query promise is RETIRED by tl1487 四组
+//       (「不提供开关、始终打开」) — the hint now states the always-on
+//       behavior and the off-gate wording is banned;
 //  ④ the superseded hint keys are gone from every locale
-//     (settings.pathRulesHint, settings.modelCapabilityFilterHint).
+//     (settings.pathRulesHint, settings.modelCapabilityFilterHint), and the
+//     retired on/off switch labels (tl1487 四组) are gone too.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -113,19 +114,26 @@ console.log("\ntask 564 A-level copy fixes + retired-key read-only retention");
     ok(!src.includes('"settings.pathRulesHint"'), `${name} no longer carries settings.pathRulesHint`);
     ok(!src.includes('"settings.modelCapabilityFilterHint"'), `${name} no longer carries settings.modelCapabilityFilterHint`);
   }
+  // tl1487 四组: the retired on/off switch labels are gone (switch removed).
+  for (const [name, src] of pairs) {
+    ok(!src.includes('"settings.opencodeGoUsage.on"') && !src.includes('"settings.opencodeGoUsage.off"'),
+      `${name} drops the retired opencodeGoUsage on/off labels`);
+  }
 
-  // opencodeGoUsage: the promise stays and is now true (backend gate).
+  // opencodeGoUsage: tl1487 四组 flips the promise — always on, switch gone.
   for (const [name, src] of pairs) {
     const hint = src.match(/"settings\.opencodeGoUsageHint": "([^"]+)"/)?.[1] ?? "";
-    ok(/only while this switch is on|仅开关开启时|僅開關開啟時/.test(hint), `${name} opencodeGoUsageHint keeps the gated-query promise`);
+    ok(/Always on|始终开启|始終開啟/.test(hint), `${name} opencodeGoUsageHint states the always-on behavior (tl1487 四组)`);
+    ok(!/only while this switch is on|仅开关开启时|僅開關開啟時/.test(hint), `${name} opencodeGoUsageHint drops the retired gated-query promise`);
   }
 }
 
-// ④ the Go-side gate exists (copy is backed by code).
+// ④ tl1487 四组: the Go-side switch gate is RETIRED — the query is always on
+// (official-host + key gates remain), no lab switch read anywhere.
 {
   const go = readFileSync(fileURLToPath(new URL("../../../opencode_go_usage.go", import.meta.url)), "utf8");
-  ok(go.includes("openCodeGoUsageSwitchOn") && go.includes("ExperimentalOpenCodeGoUsage"),
-    "GetOpenCodeGoUsage consults the lab switch before any network I/O");
+  ok(!go.includes("openCodeGoUsageSwitchOn") && !go.includes("ExperimentalOpenCodeGoUsage"),
+    "tl1487: GetOpenCodeGoUsage no longer consults any lab switch (always on)");
 }
 
 console.log(`\ntask564: ${passed} passed, ${failed} failed`);

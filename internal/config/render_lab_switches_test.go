@@ -80,7 +80,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.ExperimentalComposerDraft = true                // draftPersistence
 	orig.Agent.ExperimentalSelectionActions = true             // selectionActions
 	orig.Desktop.ExperimentalQuestionSearch = boolPtr(true)    // questionSearch (*bool, nil means on)
-	orig.Agent.ExperimentalOpenCodeGoUsage = true              // opencodeGoUsage
+	// tl1487 四组：opencodeGoUsage fixture 行随键退役移除。
 	orig.Desktop.ExperimentalRestartUpdate = true              // M6
 	orig.Desktop.ExperimentalFeedback = true                   // M6
 
@@ -196,7 +196,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_review_hint = true",
 		"experimental_composer_draft = true",
 		"experimental_selection_actions = true",
-		"experimental_opencode_go_usage = true",
+		// tl1487 四组：experimental_opencode_go_usage 键随「不提供开关、始终
+		// 打开」退役，渲染表不再输出（fixed-key-set 集合随键收缩）。
 	} {
 		if !strings.Contains(rendered, key) {
 			t.Errorf("render table lost %q — a settings save would silently drop it (81/123 lesson)\n---\n%s", key, rendered)
@@ -250,7 +251,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"agent.experimental_high_speed_model":        got.Agent.ExperimentalHighSpeedModel,
 		"agent.experimental_composer_draft":          got.Agent.ExperimentalComposerDraft,
 		"agent.experimental_selection_actions":       got.Agent.ExperimentalSelectionActions,
-		"agent.experimental_opencode_go_usage":       got.Agent.ExperimentalOpenCodeGoUsage,
 		"agent.experimental_runtime_reuse":           got.Agent.ExperimentalRuntimeReuse,
 		"agent.experimental_orphan_handling":         got.Agent.ExperimentalOrphanHandling,
 		"desktop.experimental_cache_tuning":          got.Desktop.ExperimentalCacheTuning,

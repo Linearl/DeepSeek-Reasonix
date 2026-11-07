@@ -93,7 +93,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalComposerDraft: (s: SettingsView) => Boolean(s.experimentalComposerDraft),
   experimentalSelectionActions: (s: SettingsView) => Boolean(s.experimentalSelectionActions),
   experimentalQuestionSearch: (s: SettingsView) => Boolean(s.experimentalQuestionSearch),
-  experimentalOpenCodeGoUsage: (s: SettingsView) => Boolean(s.experimentalOpenCodeGoUsage),
+  // tl1487 四组：experimentalOpenCodeGoUsage 谓词随「不提供开关、始终打开」
+  // 退役摘除（usageMonitoring 卡灯键随之清空）。
   experimentalRestartUpdate: (s: SettingsView) => Boolean(s.experimentalRestartUpdate),
   experimentalFeedback: (s: SettingsView) => Boolean(s.experimentalFeedback),
   forkNotice: (s: SettingsView) => Boolean(s.forkNotice),

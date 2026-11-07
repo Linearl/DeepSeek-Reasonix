@@ -1825,9 +1825,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalBashHeavyGuard(enabled: boolean): Promise<void>;
   // tl-1166: reasoning-only final repair (ships on; restart to apply).
   SetExperimentalReasoningOnlyContinuation(enabled: boolean): Promise<void>;
-  // Task 163: OpenCode Go usage card switch + the usage query itself. baseUrl
-  // is allow-listed host-side; off (the default) never reaches either call.
-  SetExperimentalOpenCodeGoUsage(enabled: boolean): Promise<void>;
+  // tl1487 四组：OpenCode Go 用量「不提供开关、始终打开」——setter 随键退役；
+  // 用量查询保留（baseUrl host 侧白名单，无键时不发网络请求）。
   GetOpenCodeGoUsage(baseUrl: string): Promise<{ tiers: { window: string; percent: number | null; resetsAt: string }[]; note: string }>;
   // Task 287: provider plan usage (coding/token plan quota). Task 666: the
   // arg is the visible tab's id — the Go side resolves the provider behind
@@ -7025,7 +7024,6 @@ function makeMockApp(): AppBindings {
     async SetExperimentalActiveTabResident() {},
     async SetExperimentalBashHeavyGuard() {},
     async SetExperimentalReasoningOnlyContinuation() {},
-    async SetExperimentalOpenCodeGoUsage() {},
     async GetOpenCodeGoUsage() { return { tiers: [], note: "no-key" }; },
     // Task 287: unsupported in the browser mock — plan surfaces stay hidden.
     async GetProviderPlanUsage(_tabID?: string) { return { supported: false, provider: "", region: "", windows: [], note: "unsupported", queriedAt: 0 }; },

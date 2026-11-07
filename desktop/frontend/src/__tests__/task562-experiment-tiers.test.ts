@@ -239,8 +239,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1487 一组：Go 表条目数不变 74（collabHub 翻档、outputStyle 翻档均
   // 不增减条目；coldCacheCompact 为前端独有新条目）。二组：翻档仍不增减
   // 条目；workflowTemplates（工作流模板）为前端独有新条目（Go 侧仍为
-  // workflowPanel 家族子键）。
-  ok(Object.keys(goTiers).length === 74, `Go registry parses to 74 entries (got ${Object.keys(goTiers).length})`);
+  // workflowPanel 家族子键）。四组：opencodeGoUsage 渲染表条目随键退役移除
+  // ——Go 表 74→73（前端转 feOnly 展示行，用量查询常开无门）。
+  ok(Object.keys(goTiers).length === 73, `Go registry parses to 73 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -257,8 +258,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 豁免）三者加入。tl1487 一组：modelCapabilityFilter 出表（feOnly 收回）；
   // coldCacheCompact（冷缓存压缩，compressOpt 附属键族，Go 无独立条目）入表。
   // tl1487 二组：workflowTemplates（工作流模板，Go 侧为 workflowPanel 家族
-  // 子键）入表。
-  ok(JSON.stringify(feOnly) === JSON.stringify(["coldCacheCompact", "gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "resourceGovernance", "runtimeObservability", "searchHistory", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout", "workflowTemplates"]),
+  // 子键）入表。tl1487 四组：opencodeGoUsage（用量展示行，配置键整链退役）
+  // 转入 feOnly。
+  ok(JSON.stringify(feOnly) === JSON.stringify(["coldCacheCompact", "gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "opencodeGoUsage", "resourceGovernance", "runtimeObservability", "searchHistory", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout", "workflowTemplates"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {

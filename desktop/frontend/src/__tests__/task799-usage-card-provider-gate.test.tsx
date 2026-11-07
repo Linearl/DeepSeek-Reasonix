@@ -78,7 +78,6 @@ usagePayload = {
   note: "",
 };
 
-const { applyLabFlags } = await import("../lib/labFlags");
 const { OpenCodeGoUsageSidebarCard } = await import("../components/OpenCodeGoUsageSidebarCard");
 const { LocaleProvider } = await import("../lib/i18n");
 
@@ -99,16 +98,11 @@ async function unmount() {
 }
 const sidebar = () => container.querySelector('[data-testid="opencode-go-usage-sidebar"]');
 
-// lab 旗标默认关 → 连 family 查询都不发（163 零请求契约在 799 下保持）。
-applyLabFlags({});
+// tl1487 四组：用量查询「始终打开」——lab 旗标门退役，仅剩 799 的 family
+// 门。未挂载时零查询的断言保留（无组件即无门）。
 ok(familyQueries === 0 && usageQueries === 0, "before mounting: no gate runs while nothing is mounted");
-await mount();
-ok(familyQueries === 0 && usageQueries === 0, "lab off: zero family lookups and zero usage requests");
-ok(sidebar() === null, "lab off: no DOM at all");
-await unmount();
 
 // ── ② 回归钉：GLM 地址（family=zhipu）下无卡、零用量请求 ──
-applyLabFlags({ opencodeGoUsage: true });
 familyAnswer = "zhipu";
 familyQueries = 0; usageQueries = 0;
 await mount("tab-a");

@@ -29,6 +29,9 @@ var deprecatedConfigKeys = map[string]string{
 	"agent.compact_force_ratio":    "retired multi-threshold compaction key; agent.compact_ratio is the single knob",
 	"agent.cold_resume_prune":      "retired key; stale tool results are no longer elided through a config switch",
 	"agent.context_editing":        "retired key; native tool clearing is no longer an auto path",
+	// tl1487 四组：OpenCode Go 用量「不提供开关、始终打开」——用量查询不再
+	// 有门，本键退役（agent 段 task-163 键）。
+	"agent.experimental_opencode_go_usage": "retired key (tl1487): the OpenCode Go usage query is now always on — the switch was removed",
 }
 
 // unknownKeyWarned tracks which unrecognized keys this process has already

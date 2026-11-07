@@ -3314,12 +3314,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <SettingsField label={labLabel("glmPlanUsage", t("settings.glmPlanUsage"))} icon={<Activity size={18} />} stacked>
                 <p className="settings-field__hint">{t("settings.glmPlanUsageHint")}</p>
               </SettingsField>
+              {/* tl1487 四组：OpenCode Go 用量「不提供开关、始终打开」——开关行
+                  退役为展示行（glmPlanUsage 同款），查询常开（门在侧栏卡 family）。 */}
               <ErrorBoundary>
-                <SettingsOpenCodeGoUsageCard
-                  enabled={Boolean(s.experimentalOpenCodeGoUsage)}
-                  busy={busy}
-                  onToggle={(on) => void apply(() => app.SetExperimentalOpenCodeGoUsage(on))}
-                />
+                <SettingsOpenCodeGoUsageCard />
               </ErrorBoundary>
             </>
           )}

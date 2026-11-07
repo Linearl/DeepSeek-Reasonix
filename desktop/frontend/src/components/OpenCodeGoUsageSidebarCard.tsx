@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { app } from "../lib/bridge";
 import { ACTIVE_MODEL_CHANGED_EVENT } from "../lib/activeModelChanged";
-import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { useI18n, type DictKey } from "../lib/i18n";
 import {
   OPENCODE_GO_OFFICIAL_BASE,
@@ -12,10 +11,10 @@ import {
   type OpenCodeGoUsageResult,
 } from "../lib/opencodeGoUsage";
 
-// 任务 783 — OpenCode Go usage in the right-dock overview (PlanUsageCard
-// 体系). 与 GLM Plan 卡同位同级、同一套 plan-usage 视觉（验收：右侧边栏显示
-// 与 GLM 卡一致）；显示门 = 实验开关 experimentalOpenCodeGoUsage（163 前端门
-// 延伸到边栏——关 = 不渲染、零网络请求，铁律 2）。
+// tl1487 四组 — OpenCode Go usage in the right-dock overview (PlanUsageCard
+// 体系). 与 GLM Plan 卡同位同级、同一套 plan-usage 视觉。原 783 实验开关门
+// （experimentalOpenCodeGoUsage）随「不提供开关、始终打开」裁决移除——卡与
+// 轮询常在，仅剩 799 的 provider family 门（family 不对连请求都不发）。
 //
 // 任务 799 — 第二道显示门：provider 匹配，对齐 GLM 卡的任务 666 条件。显示
 // 还要求当前 tab 的 CURRENT model 解析到 opencode-go family（Go 侧
@@ -43,9 +42,8 @@ const COUNTDOWN_TICK_MS = 30_000;
 
 export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
   const { t } = useI18n();
-  const [enabled, setEnabled] = useState(() => labFlagEnabled("opencodeGoUsage"));
   // Task 799: the plan family of the tab's current provider, from
-  // GetActivePlanFamily. undefined = not queried yet (lab off or in flight) —
+  // GetActivePlanFamily. undefined = not queried yet (in flight) —
   // the card renders nothing until the answer says opencode-go.
   const [family, setFamily] = useState<string | undefined>(undefined);
   const [usage, setUsage] = useState<OpenCodeGoUsageResult | null>(null);
@@ -56,9 +54,6 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
   // and re-queries the new model immediately.
   const [epoch, setEpoch] = useState(0);
 
-  // Lab switch gate — same module gate the settings save re-applies, so the
-  // card flips live without a restart.
-  useEffect(() => onLabFlagsChange(() => setEnabled(labFlagEnabled("opencodeGoUsage"))), []);
 
   // 任务 872: forget the outgoing provider's family answer the moment the
   // switch lands (a late answer must not resurrect this card beside the
@@ -85,19 +80,13 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
     }
   }, []);
 
-  // Shared 60s poll for both gates: the family lookup first (zero-I/O config
-  // scan), and the usage request only fires when this card may actually show.
+  // Shared 60s poll: the family lookup first (zero-I/O config scan), and the
+  // usage request only fires when this card may actually show.
   // A tabId change re-queries immediately so a tab switch never shows the
   // previous tab's provider card; an epoch bump (任务 872) does the same for a
   // hot model switch within the tab; a transport failure keeps the last family
-  // and retries on the next tick. While the lab switch is off: no family
-  // query, no usage fetch, no timer, no DOM (163 zero-regression contract).
+  // and retries on the next tick.
   useEffect(() => {
-    if (!enabled) {
-      setFamily(undefined);
-      setUsage(null);
-      return;
-    }
     let cancelled = false;
     const pollOnce = async () => {
       try {
@@ -120,18 +109,18 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
       cancelled = true;
       window.clearInterval(poll);
     };
-  }, [enabled, tabId, refresh, epoch]);
+  }, [tabId, refresh, epoch]);
 
   // Countdown lines re-render every 30s off the same fetched resetsAt values
   // (same cadence as the GLM plan card).
   const hasResets = (usage?.tiers ?? []).some((tier) => tier.resetsAt);
   useEffect(() => {
-    if (!enabled || !hasResets) return;
+    if (!hasResets) return;
     const timer = window.setInterval(() => setTick((value) => value + 1), COUNTDOWN_TICK_MS);
     return () => window.clearInterval(timer);
-  }, [enabled, hasResets]);
+  }, [hasResets]);
 
-  if (!enabled || family !== "opencode-go") return null;
+  if (family !== "opencode-go") return null;
 
   // Same payload normalization as the settings detail card (Go nil slice can
   // marshal as null — fall to the note/empty branch instead of throwing).

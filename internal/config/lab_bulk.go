@@ -195,23 +195,22 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 //   - sessionStorage（tl1338 升稳定后进入批量范围）：主开关是模式键
 //     session_storage（v3_only|dual_write_read_v3|…），且 fork 已锁 v3（916）
 //     ——「开」没有唯一布尔语义，批量更不得触碰存储档位面；
-//   - opencodeGoUsage：用量监测卡成员行（783 定档 recommended），无批量写入器
-//     ——开关走卡片行内 setter，纯展示侧栏卡的配置面，批量无独立语义。
 //   - collabHub（tl1487 升稳定档后进入批量范围）：开有关联前置（sessionCollab
 //     必须先开，LAB_FEATURE_DEPS/856③ 前置门）——批量直写会绕过依赖门，
 //     交单项走既有拒绝路径（autopilot precondition 同款）；
 //   - tabModeTint（tl1487 二组① 自 unstable 升可选后进入批量范围）：主开关
 //     是模式键 tab_permission_indicator（badge|off|background），「开」没有
 //     唯一布尔语义，批量盲写会破坏语义（messageMerge/eventsRotation 同款）。
+//   - tl1487 四组：opencodeGoUsage 排除条目随键退役移除（Go 渲染表无条目，
+//     前端转 feOnly 展示行，无批量面）。
 var labBulkExcluded = map[string]string{
-	"fullAccess":      LabBulkSkipDangerGate,
-	"autopilot":       LabBulkSkipPrecondition,
-	"collabHub":       LabBulkSkipPrecondition,
-	"tabModeTint":     LabBulkSkipNotBool,
-	"messageMerge":    LabBulkSkipNotBool,
-	"eventsRotation":  LabBulkSkipNotBool,
-	"sessionStorage":  LabBulkSkipNotBool,
-	"opencodeGoUsage": LabBulkSkipNoSetter,
+	"fullAccess":     LabBulkSkipDangerGate,
+	"autopilot":      LabBulkSkipPrecondition,
+	"collabHub":      LabBulkSkipPrecondition,
+	"tabModeTint":    LabBulkSkipNotBool,
+	"messageMerge":   LabBulkSkipNotBool,
+	"eventsRotation": LabBulkSkipNotBool,
+	"sessionStorage": LabBulkSkipNotBool,
 }
 
 // ParseLabBulkScope 校验范围串（未知值报错，前端传参 typo 不静默落空集）。

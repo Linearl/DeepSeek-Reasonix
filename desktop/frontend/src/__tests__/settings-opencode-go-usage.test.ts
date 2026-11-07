@@ -1,9 +1,11 @@
 // Run: tsx src/__tests__/settings-opencode-go-usage.test.ts
 //
 // Task 163 — OpenCode Go usage card (source guards + formatting): the
-// render-table entry exists (81/123 lost-save lesson), the query gate lives
-// in the sidebar card (off = no call, zero regression), the three locales
+// render-table entry exists (81/123 lost-save lesson), the three locales
 // ship the same key set, and the countdown/note helpers behave.
+// tl1487 四组 — the switch is REMOVED (「不提供开关、始终打开」): the settings
+// row is a plain display row, the sidebar card owns the always-on query with
+// only the 799 provider-family gate left.
 //
 // 任务 800 — the settings-side usage row is a plain member switch: the
 // in-card detail, its single-column layout overrides (tasks 337/346) and the
@@ -67,18 +69,18 @@ ok(styles.includes("grid-template-columns: minmax(180px, 260px) minmax(320px, 1f
 
 ok(panel.includes('{selected === "usageMonitoring" && (') && !panel.includes('| "opencodeGoUsage"'),
   "任务 783：the standalone pane id is retired — the card lives inside the usageMonitoring merged card (member row, union id dropped)");
-ok(panel.includes("Boolean(s.experimentalOpenCodeGoUsage)") && panel.includes("<SettingsOpenCodeGoUsageCard"),
-  "the merged card renders the switch component gated by the switch value");
-ok(bridge.includes("GetOpenCodeGoUsage(baseUrl: string): Promise<") && bridge.includes("SetExperimentalOpenCodeGoUsage(enabled: boolean): Promise<void>;"),
-  "bridge exposes the query and the setter");
+ok(!panel.includes("experimentalOpenCodeGoUsage") && panel.includes("<SettingsOpenCodeGoUsageCard"),
+  "tl1487: the switch wiring is gone from the merged card — the row renders as a plain display card");
+ok(bridge.includes("GetOpenCodeGoUsage(baseUrl: string): Promise<") && !bridge.includes("SetExperimentalOpenCodeGoUsage"),
+  "tl1487: bridge keeps the query and drops the retired setter");
 
 // ── 任务 800：设置卡内零查询——明细权威位在侧栏卡（783），family 门在侧栏（799）──
-ok(!card.includes("GetOpenCodeGoUsage") && !card.includes("useState") && !card.includes("useEffect"),
-  "the settings card keeps no query, no state, no effect — a plain switch row (任务 800)");
+ok(!card.includes("GetOpenCodeGoUsage") && !card.includes("useState") && !card.includes("useEffect") && !card.includes("SettingsOptions"),
+  "tl1487: the settings card keeps no query, no state, no effect, no toggle — a plain display row");
 ok(!card.includes('data-testid="opencode-go-usage-card"') && !card.includes("data-window"),
   "the in-card usage detail DOM is retired (任务 800)");
-ok(sidebar.includes("app.GetOpenCodeGoUsage(OPENCODE_GO_OFFICIAL_BASE)") && sidebar.includes("if (!enabled) {"),
-  "the sidebar card owns the query behind the switch gate (163 contract moved whole)");
+ok(sidebar.includes("app.GetOpenCodeGoUsage(OPENCODE_GO_OFFICIAL_BASE)") && !sidebar.includes("labFlagEnabled") && !sidebar.includes("labFlags") && sidebar.includes('family !== "opencode-go"'),
+  "tl1487: the sidebar card owns the always-on query with only the provider-family gate (the lab switch gate is gone)");
 
 // ── malformed wire payloads can never crash render (opencodefix) ───────────
 // The Go side used to marshal a nil Tiers slice as "tiers": null and render
@@ -117,8 +119,6 @@ ok(true, "note mapping covers 403/401/no-key distinctly");
 const keys = [
   "settings.opencodeGoUsage",
   "settings.opencodeGoUsageHint",
-  "settings.opencodeGoUsage.on",
-  "settings.opencodeGoUsage.off",
   "settings.opencodeGoUsage.window.rolling",
   "settings.opencodeGoUsage.window.weekly",
   "settings.opencodeGoUsage.window.monthly",
@@ -148,16 +148,15 @@ ok(/設定\s*→\s*模型服務\s*→\s*OpenCode Go/.test(noKeyLine(zhTW)) && no
 ok(/Settings → Model services → OpenCode Go/.test(noKeyLine(en)) && noKeyLine(en).includes("OPENCODE_GO_API_KEY"),
   "en no-key note carries the same guidance");
 
-// ── 任务 800 layout: plain member row + spread intro slot ──────────────────
-// The single-column override (task 337/346) is retired: the Go row renders
-// like every other member row of a merged card (copy left / switch right),
-// the merged-card head spreads its intro across the right intro slot, and
-// the GLM row's duplicated hint (left tooltip + right paragraph) is deduped.
+// ── tl1487 layout: plain display row + spread intro slot ───────────────────
+// The single-column override (task 337/346) is retired and the switch is gone
+// (tl1487 四组): the Go row renders like the glmPlanUsage display row (copy +
+// hint paragraph), the merged-card head spreads its intro across the right
+// intro slot, and the GLM row's duplicated hint is deduped (任务 800).
 ok(!card.includes("settings-field--opencode-usage") && !card.includes("settings-field--wrapped"),
   "the Go row uses the default settings-field grid (no layout override class, 任务 800)");
-const segAt = card.indexOf("<SettingsOptions");
-ok(segAt >= 0 && card.indexOf("<SettingsField") >= 0 && card.indexOf("<SettingsField") < segAt,
-  "the row renders its copy (SettingsField) around the switch segment");
+ok(card.includes('t("settings.opencodeGoUsageHint")') && card.includes("EXPERIMENT_FEATURE_TIERS.opencodeGoUsage"),
+  "the display row keeps its hint copy and tier badge (562 ⑤ exemption contract)");
 ok(panel.includes('className="settings-field__hint">{t("settings.usageMonitoringHint")}'),
   "the merged-card head spreads its intro across the right intro slot (任务 800)");
 ok(!panel.includes('className="settings-field__hint-line">{t("settings.glmPlanUsageHint")}'),
@@ -169,6 +168,6 @@ function eqCountdown(iso: string, expected: string, label: string) {
   else ok(false, `countdown: ${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 }
 
-assert.ok(passed >= 70, `expected at least 70 checks, got ${passed}`);
+assert.ok(passed >= 60, `expected at least 60 checks, got ${passed} (tl1487 四组: 6 retired switch-label key checks removed)`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

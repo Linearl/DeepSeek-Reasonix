@@ -263,13 +263,14 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
     { label: "782 draftPersistence", field: "s.experimentalComposerDraft", setter: "app.SetExperimentalComposerDraft(on)" },
     { label: "782 selectionActions", field: "s.experimentalSelectionActions", setter: "app.SetExperimentalSelectionActions(on)" },
   ] },
-  // 任务 783：用量监测卡——GLM Plan 行只读（无键）；Go 用量成员行经
-  // SettingsOpenCodeGoUsageCard 读自己的开关键、写自己的 setter。
+  // 任务 783：用量监测卡——GLM Plan 行只读（无键）；tl1487 四组：Go 用量行
+  // 亦退役为只读展示行（「不提供开关、始终打开」，SettingsOpenCodeGoUsageCard
+  // 无 props 渲染）。
   // 任务 961：quickCommands 独立 pane 退役并入「交互与呈现」卡——本卡
   // endMarker 随迁到后继分支 interactionPresentation（旧 marker 不存在会
   // 让 cardSlice 返回空、测试假红/假绿）。
   { id: "usageMonitoring", endMarker: '{selected === "interactionPresentation" && (', members: [
-    { label: "783 opencodeGoUsage", field: "s.experimentalOpenCodeGoUsage", setter: "app.SetExperimentalOpenCodeGoUsage(on)" },
+    { label: "tl1487 opencodeGoUsage (read-only row)", field: "settings.opencodeGoUsageHint", setter: "" },
     { label: "783 glmPlanUsage (read-only row)", field: "settings.glmPlanUsageHint", setter: "" },
   ] },
   // 任务 961：automation/efficiency 两张条目级合并卡（742/782 先例）——

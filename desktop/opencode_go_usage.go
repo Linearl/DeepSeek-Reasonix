@@ -146,24 +146,11 @@ func (a *App) openCodeGoUsageKey() string {
 	})
 }
 
-// openCodeGoUsageSwitchOn reads the task-163 lab switch at call time, so a
-// settings flip applies without a restart (same call-time shape as the
-// heartbeat idle-terminate gate). Load failures degrade to off — the usage
-// query is a nice-to-have and never worth network I/O on a broken config.
-func (a *App) openCodeGoUsageSwitchOn() bool {
-	cfg, _, err := a.loadDesktopUserConfigForView()
-	if err != nil || cfg == nil {
-		return false
-	}
-	return cfg.Agent.ExperimentalOpenCodeGoUsage
-}
-
 // GetOpenCodeGoUsage queries the subscription usage endpoint for the settings
 // card (task 163). baseUrl is the provider the card belongs to; anything off
-// the official host returns before any network I/O. Task 564: the lab switch
-// gates the request itself — with experimental_opencode_go_usage off no
-// caller (settings card or the task-442 context-ring popup) reaches the
-// network; the empty view renders no quota block anywhere.
+// the official host returns before any network I/O. tl1487 四组：用量查询
+// 「不提供开关、始终打开」——task 564 时代的实验开关门随键退役移除；请求
+// 仍受官方端点与密钥两道前置门约束（无键依旧零网络请求）。
 func (a *App) GetOpenCodeGoUsage(baseUrl string) (OpenCodeGoUsageView, error) {
 	if !isOfficialOpenCodeGoBase(baseUrl) {
 		return usageView("unsupported-endpoint"), nil
@@ -171,9 +158,6 @@ func (a *App) GetOpenCodeGoUsage(baseUrl string) (OpenCodeGoUsageView, error) {
 	key := a.openCodeGoUsageKey()
 	if key == "" {
 		return usageView("no-key"), nil
-	}
-	if !a.openCodeGoUsageSwitchOn() {
-		return usageView(""), nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), openCodeGoUsageTimeout)
 	defer cancel()

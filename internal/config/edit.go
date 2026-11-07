@@ -1367,13 +1367,6 @@ func (c *Config) SetExperimentalMultiEditSkipFailed(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalOpenCodeGoUsage toggles the task-163 usage card. Ships off:
-// the zero value keeps the settings page and network behavior unchanged.
-func (c *Config) SetExperimentalOpenCodeGoUsage(enabled bool) error {
-	c.Agent.ExperimentalOpenCodeGoUsage = enabled
-	return nil
-}
-
 // SetExperimentalQuestionSearch toggles the topic-bar question-search entry
 // (task 265). It ships on; off hides the entry and the panel.
 func (c *Config) SetExperimentalQuestionSearch(enabled bool) error {
