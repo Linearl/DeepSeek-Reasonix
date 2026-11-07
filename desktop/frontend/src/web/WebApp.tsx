@@ -7,6 +7,13 @@ import {
 	type WebSessionEntry,
 	type WebStreamEvent,
 } from "./serveClient";
+import {
+	addPending,
+	clearPending,
+	loadPending,
+	removePending,
+	type PendingMsg,
+} from "./pendingStore";
 
 // 样式在入口 main.tsx 引入（组件保持无 CSS 依赖，便于纯逻辑测试）。
 // 任务 701：移动优先降级布局见 web.css。
@@ -194,6 +201,18 @@ function Shell() {
 	const [turnActive, setTurnActive] = useState(false);
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [error, setError] = useState("");
+	// GC-21：跨端输入队列——发送前登记 pending，202 响应即 ACK 移除；
+	// 失败保留（localStorage 跨刷新），重试前经 /history 对账防双发
+	const [pending, setPending] = useState<PendingMsg[]>([]);
+	useEffect(() => {
+		const { alive, expired } = loadPending();
+		setPending(alive);
+		if (expired.length > 0) {
+			// 24h 收口：显式提示后丢弃（zcode discarded 语义）
+			expired.forEach((m) => removePending(m.id));
+			setError(`${expired.length} 条消息超 24h 未发送，已丢弃`);
+		}
+	}, []);
 
 	const reloadSessions = useCallback(async () => {
 		try {
@@ -284,17 +303,67 @@ function Shell() {
 	const send = useCallback(
 		async (input: string) => {
 			setTurnActive(true);
+			// GC-21：发送前登记——202=ACK 移除；失败保留供重试/对账
+			const p = addPending(input);
+			setPending(loadPending().alive);
 			try {
 				await webServe.submit(input);
+				removePending(p.id);
+				setPending(loadPending().alive);
 				// 用户消息立即可见：本地乐观行，转录以 turn_done 后重载为准。
 				setHistory((prev) => [...prev, { role: "user", content: input }]);
 			} catch (err) {
 				setTurnActive(false);
-				setError(err instanceof Error ? err.message : String(err));
+				const msg = err instanceof Error ? err.message : String(err);
+				setError(`${msg}（消息未发出，可在下方重试）`);
 			}
 		},
 		[],
 	);
+
+	// GC-21：重试——先对账（/history user 尾部序列 vs pending FIFO，已送达
+	// 前缀移除防双发），未达逐条重发。残余窗口：响应已达但转录未落时对账
+	// 漏判→重发双发；HTTP 同步 202 使该窗口极小（zcode 的 reservation 是
+	// 协议级解法，本件免 serve 改动的代价）。
+	const retryPending = useCallback(async () => {
+		const { alive } = loadPending();
+		if (alive.length === 0) return;
+		setTurnActive(true);
+		try {
+			let remaining = alive;
+			const hist = await webServe.history().catch(() => null);
+			if (hist) {
+				const userTail = hist
+					.filter((m) => m.role === "user")
+					.map((m) => m.content);
+				const deliveredIds: string[] = [];
+				let ti = userTail.length - 1;
+				for (let i = alive.length - 1; i >= 0 && ti >= 0; i--) {
+					if (userTail[ti] !== alive[i].input) break;
+					deliveredIds.push(alive[i].id);
+					ti--;
+				}
+				deliveredIds.forEach((id) => removePending(id));
+				remaining = alive.filter((m) => !deliveredIds.includes(m.id));
+			}
+			for (const m of remaining) {
+				await webServe.submit(m.input);
+				removePending(m.id);
+			}
+			setPending(loadPending().alive);
+			setTurnActive(false);
+			setError("");
+		} catch (err) {
+			setTurnActive(false);
+			setPending(loadPending().alive);
+			setError(err instanceof Error ? err.message : String(err));
+		}
+	}, []);
+
+	const discardPending = useCallback(() => {
+		clearPending();
+		setPending([]);
+	}, []);
 
 	const stop = useCallback(async () => {
 		try {
@@ -353,6 +422,17 @@ function Shell() {
 				)}
 				<main className="web-main">
 					<Transcript history={history} live={live} turnActive={turnActive} />
+					{pending.length > 0 && (
+						<div className="web-pending" role="status">
+							<span>⚠ {pending.length} 条消息未发送</span>
+							<button type="button" onClick={() => void retryPending()}>
+								重试
+							</button>
+							<button type="button" onClick={discardPending}>
+								丢弃
+							</button>
+						</div>
+					)}
 					<Composer onSend={send} onStop={stop} turnActive={turnActive} />
 				</main>
 			</div>

@@ -157,6 +157,31 @@ button {
 	font-size: 16px;
 }
 
+/* GC-21：未发送消息条（pending 队列，贴 composer 上方） */
+.web-pending {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	background: color-mix(in srgb, var(--w-accent) 14%, transparent);
+	border-top: 1px solid var(--w-border);
+	font-size: 13px;
+	color: var(--w-fg);
+}
+
+.web-pending span {
+	flex: 1;
+}
+
+.web-pending button {
+	padding: 4px 10px;
+	border: 1px solid var(--w-border);
+	border-radius: 6px;
+	background: var(--w-panel-2);
+	color: var(--w-fg);
+	font-size: 13px;
+}
+
 /* ─── 主体：移动优先（侧栏抽屉） ─── */
 
 .web-body {
