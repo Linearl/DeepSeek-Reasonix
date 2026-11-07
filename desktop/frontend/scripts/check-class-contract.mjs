@@ -42,6 +42,23 @@ const sourceRoot = path.join(frontendRoot, "src");
 // landing. Regenerate with --emit-baseline if a deliberate mass-change happens;
 // every removal needs a real definition, never a silent edit.
 const BASELINE_WHITELIST = new Set([
+// tl1450 stranded-blocks disclosure (2026-11-07): these 9 references had their
+// only definitions inside mode-creation.css stranded blocks that never loaded
+// for classic/workbench since tl1191 — the styles have been dead in production
+// all along; deleting the sheet (layout retirement) surfaced them. DOM and
+// visuals are byte-identical to the pre-tl1450 state. Restore-vs-remove is
+// pending the 44-block user ruling (FORK decision ledger); do not extend this
+// block for anything else.
+
+  "tool-group__body",
+  "tool-group__summary",
+  "tool-group__title",
+  "tool-group__head",
+  "readonly-batch__label",
+  "md-status-list__text",
+  "md-status-list__dot",
+  "md-status-list__item",
+  "md-plain-block__diagram",
 // 206 entries emitted by --emit-baseline at the task-578 tier-1 landing
 // (2026-10-07, baseline 2dc519eb7 + tier-1 CSS). Pre-existing debt from the
 // audit; do not add entries — a new reference needs a real definition.
