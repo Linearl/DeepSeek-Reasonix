@@ -2003,6 +2003,9 @@ export default function App() {
     (sessionPath: string, ref: string, summary: string, text: string) => app.SendSubagentMessage(sessionPath, ref, summary, text),
     [],
   );
+  // tl1479 capsule: the bash output detail's data exit — App.JobOutputForTab,
+  // the non-consuming snapshot read (bash_output's cursor stays untouched).
+  const capsuleJobOutput = useCallback((tabId: string, jobID: string) => app.JobOutputForTab(tabId, jobID), []);
   // tl1447 缺陷②: 「继续」续轮桥（App ContinueSubagentForSession）——静默
   // 子代理的活性处置入口，固定载荷 persist-first；不挂消息开关。
   const continueSubagentForSession = useCallback(
@@ -6636,6 +6639,7 @@ export default function App() {
               onCapsuleCancelJob={cancelJob}
               onCapsuleCancelRuntimeJob={cancelRuntimeJob}
               onCapsuleCancelSubagent={cancelSubagent}
+              onCapsuleJobOutput={capsuleJobOutput}
               capsuleSessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}
               onCapsuleListSubagents={capsuleListSubagents}
               onCapsuleReadSubagent={capsuleReadSubagent}

@@ -119,6 +119,7 @@ import type {
   BackgroundRuntimeView,
   ForegroundSubagentView,
   JobCancelBatchView,
+  JobOutputView,
   WorkspaceConflictView,
   MCPMarketplaceEntry,
   MCPServerInput,
@@ -1456,6 +1457,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   CancelJob(jobID: string): Promise<boolean>;
   CancelJobForTab(tabID: string, jobID: string): Promise<boolean>;
   CancelJobsForTab(tabID: string, jobIDs: string[]): Promise<JobCancelBatchView>;
+  // tl1479: one background job's recent output for the capsule's bash output
+  // detail — the non-consuming snapshot read (bash_output's cursor untouched).
+  JobOutputForTab(tabID: string, jobID: string): Promise<JobOutputView>;
   // tl1209: terminate ONE running foreground (synchronous) sub-agent by
   // transcript ref; the child unwinds with a cancelled outcome while the turn
   // keeps running. Background jobs keep stopping through CancelJobForTab.
@@ -5734,6 +5738,11 @@ function makeMockApp(): AppBindings {
         },
         async CancelJobsForTab(_tabID, jobIDs) {
           return { cancelled: [], notRunning: [...jobIDs] };
+        },
+        async JobOutputForTab() {
+          // Browser dev mock has no background jobs: report the job as gone so
+          // the output detail closes quietly instead of showing a fake log.
+          return { text: "", status: "done", found: false };
         },
         async CancelSubagentForTab() {
           return false; // browser dev mock has no live sub-agent runs

@@ -6398,4 +6398,13 @@ export const zhTW: Record<DictKey, string> = {
   "composer.screenshotButton": "截圖",
   "composer.screenshotButtonHint": "擷取螢幕、框選區域、標註並插入附件",
   "composer.screenshotFailed": "截圖失敗",
+  // tl1479 後台 bash 輸出詳情（命名空間鍵，末尾追加）
+  "composer.bashOutputOpen": "輸出",
+  "composer.bashOutputFollow": "跟隨捲動",
+  "composer.bashOutputCopied": "已複製",
+  "composer.bashOutputEmpty": "暫無輸出",
+  "composer.bashOutputLoading": "讀取輸出中…",
+  "composer.bashOutputFailed": "讀取輸出失敗",
+  "composer.bashOutputTruncated": "輸出過長，僅顯示末尾 {n} 個字元",
+  "composer.bashOutputStatusKilled": "已終止",
 };
