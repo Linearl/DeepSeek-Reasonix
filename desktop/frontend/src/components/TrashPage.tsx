@@ -6,6 +6,7 @@ import type { SessionMeta } from "../lib/types";
 import { useT } from "../lib/i18n";
 import { useManagementT } from "../lib/managementLocale";
 import { useToast } from "../lib/toast";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { ManagementPageShell } from "./ManagementPageShell";
 import { HistoryPanel } from "./HistoryPanel";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -43,10 +44,12 @@ export function TrashPage({ active, onBack, list, restore, purge }: {
       const value = await list();
       if (generation !== seq.current) return;
       setSessions(value); setLoadFailed(false);
-    } catch {
+    } catch (err) {
       if (generation !== seq.current) return;
       setLoadFailed(true);
       if (afterMutation) setNotice(m("refreshedFailed"));
+      // tl1449（症状④）：列表加载失败此前连 err 都丢弃——横幅关掉后零痕迹可查。
+      reportFrontendLog("trash-page", "trash list load failed", err instanceof Error ? err.message : String(err), "error");
     } finally { if (generation === seq.current) setLoading(false); }
   }, [list, m]);
   useEffect(() => { if (active && !busyRef.current) void refresh(); }, [active, refresh]);
@@ -66,6 +69,10 @@ export function TrashPage({ active, onBack, list, restore, purge }: {
       setSessions((current) => current.filter((item) => !removed.has(item.path)));
       setFailedPaths(result.failed);
       setFailures(result.failures.map((item) => ({ ...item, name: names.get(item.path) ?? item.path })));
+      // tl1449（症状④）：清空/恢复批次失败此前只在页内展示明细——页面被关掉（或
+      // 被 ManagementSurface 看门狗误杀卸载）后，desktop.log 与前端日志环零痕迹。
+      if (result.failed.length > 0) reportFrontendLog("trash-page", `${kind} batch finished with failures`,
+        `${result.failed.length}/${targets.length} failed — first: ${result.failures[0]?.path} (${result.failures[0]?.reason})`, "warn");
       const summary = targets.length > 1 ? m("batchResult", { success: result.succeeded.length, failed: result.failed.length })
         : result.failed.length ? m("operationFailed") : m(kind === "restore" ? "restored" : "deleted");
       setNotice(summary);
