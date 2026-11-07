@@ -235,7 +235,32 @@ func (a *App) ListTrashedSessions() []SessionMeta {
 			if title == "" {
 				title = titles[filepath.Base(path)]
 			}
-			out = append(out, sessionMetaFromInfo(infos[0], title, false, false, deletedAt, dir))
+			meta := sessionMetaFromInfo(infos[0], title, false, false, deletedAt, dir)
+			// tl1429d: 回收站里同族主线桶与 recovery 副本桶各出一条记录(桶是
+			// 还原/清除的单桶语义,按族去重会让「还原哪条=还原哪个桶」对不上)。
+			// 但归档级联(tl1442-ext 后)会把整族一起搬进 .trash,十几条副本记录
+			// 与主线同名同标题,用户分不清哪条是主线。修法=标题带副本标识(用户
+			// 裁决的选项 B):主线是唯一不带 (副本 recovery-<hex>) 后缀的记录。
+			// 刻意不动 RecoveryCopy——它的契约是「已证明未被续写且被母本覆盖,
+			// 可安全清理」(22b334f22,TestTrashMarksLegacyRecoverySessionsAs-
+			// Recovered 钉死);副本桶内没有母本,coverage 证明必败,形状推断
+			// 不够格,批量清空/分组语义必须保持逐条记录原状。
+			if tag := trashedRecoveryCopyTag(filepath.Base(path)); tag != "" {
+				// 标题基准接住 TopicTitle/Preview:现网副本的标题通常来自
+				// topic_title(CustomTitle 与 legacy titles map 常为空),只用
+				// title 会让标识吃掉原名。标识同时落 Title 与 TopicTitle——
+				// 前端显示优先 topicTitle,title 兜底,只落一处会被吞。
+				base := title
+				if base == "" {
+					base = strings.TrimSpace(infos[0].TopicTitle)
+				}
+				if base == "" {
+					base = strings.TrimSpace(infos[0].Preview)
+				}
+				meta.Title = strings.TrimSpace(base + " " + tag)
+				meta.TopicTitle = meta.Title
+			}
+			out = append(out, meta)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -245,6 +270,23 @@ func (a *App) ListTrashedSessions() []SessionMeta {
 		return out[i].DeletedAt > out[j].DeletedAt
 	})
 	return out
+}
+
+// trashedRecoveryCopyTag 是回收站副本记录的标题标识(tl1429d):从桶的
+// transcript 名剥出 recovery 尾号(16 hex,取前 8 位足够在同族副本间互异),
+// 拼成可读后缀;非 recovery 形状返回空串(调用方按形状判定先行)。
+func trashedRecoveryCopyTag(key string) string {
+	stem := strings.TrimSuffix(key, store.SessionTranscriptSuffix)
+	const marker = "-recovery-"
+	idx := strings.LastIndex(stem, marker)
+	if idx < 0 || idx+len(marker) >= len(stem) {
+		return ""
+	}
+	hex := stem[idx+len(marker):]
+	if len(hex) > 8 {
+		hex = hex[:8]
+	}
+	return "(副本 recovery-" + hex + ")"
 }
 
 func (a *App) trashedSessionDir(path string) (string, error) {
