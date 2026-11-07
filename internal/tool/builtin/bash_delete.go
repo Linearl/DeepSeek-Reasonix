@@ -4,6 +4,8 @@ package builtin
 // bash 工具在启动任何 shell 进程之前审一遍命令里的递归删除：目标必须是字面
 // 路径、严格位于授予的写根之内（工作区 + additional_write_dirs + 会话私有
 // 临时目录），home / 文件系统根 / 工作区自身及其祖先在任何审批模式下都拒绝。
+// full access（task 257；tl1471）豁免且仅豁免 out-of-scope 拒绝：非 home 的
+// 越界目标放行（恢复 2026-09-24~10-15 行为），home 子树与上述锚点保护不减。
 // 这是执行前护栏、不是 OS 沙箱：脚本文件、任意程序、文件系统竞态不在其范围。
 //
 // 拒绝码沿用上游语义（bash.<cause> → 此处 shell.<cause>）：
@@ -11,6 +13,7 @@ package builtin
 //	shell.delete_sequence     递归删除前只能是字面 cd；赋值/嵌套控制流不建立安全性
 //	shell.delete_nonliteral   目标含变量/展开/通配/管道输入，不可静态界定
 //	shell.destructive_target  目标不在任何授予根内，或是 home/根/工作区祖先
+//	                          （fullAccess 豁免非 home 的越界，见文件头）
 //	shell.delete_option       删除选项无法识别
 //	shell.syntax_error        命令语法错误，无法分析
 //	shell.parser_unavailable  宿主 PowerShell 解析进程不可用
@@ -166,7 +169,7 @@ func (b bash) judgeDelete(ctx context.Context, sh sandbox.Shell, command string,
 				scoped := b
 				scoped.workDir = dir
 				if !scoped.boundedDeleteTarget(target) {
-					return refuseDelete(CodeDestructiveTarget, "Use a target strictly inside the workspace or granted write roots; home, filesystem roots, workspace ancestors and out-of-scope paths are protected in every approval mode.")
+					return refuseDelete(CodeDestructiveTarget, "Use a target strictly inside the workspace or granted write roots; home, filesystem roots and workspace ancestors are protected in every approval mode, and remaining out-of-scope targets need granted write roots or full access.")
 				}
 			}
 		}
@@ -224,6 +227,10 @@ func (b bash) deleteCwd() string {
 // ancestor of home, the workspace itself or any ancestor of it, a granted
 // root itself (children only), and anything outside every root. Symlinks are
 // resolved before the comparison so a link cannot smuggle the delete out.
+// Full access (task 257; tl1471) exempts exactly the last item: with the
+// session's root set unbounded, a target outside every root is allowed unless
+// it sits inside the home subtree — home itself, home's ancestors and the
+// workspace anchors stay refused in every mode.
 func (b bash) boundedDeleteTarget(target string) bool {
 	if target == "" || strings.ContainsAny(target, "$%~*?[]`\x00") {
 		return false
@@ -273,6 +280,16 @@ func (b bash) boundedDeleteTarget(target string) bool {
 		if within(root, resolved) && !withinFold(resolved, root) {
 			return true
 		}
+	}
+	// Full access (task 257; tl1471 restores the 2026-09-24~10-15 behavior the
+	// 2026-10-15 guard regressed): an unbounded session may recurse-delete a
+	// literal target outside every granted root — unless it lives in the home
+	// subtree, which stays protected in every mode just like home itself and
+	// home's ancestors (both refused above). rootSet is nil for unbound tools
+	// (init-time defaults, `reasonix review`): the guard stays full-strength
+	// there, matching a session without the lab switch.
+	if b.rootSet != nil && b.rootSet.Unbounded() && !withinFold(home, resolved) {
+		return true
 	}
 	return false
 }

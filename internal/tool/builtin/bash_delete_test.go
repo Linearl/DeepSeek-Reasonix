@@ -317,8 +317,13 @@ func deleteGateFixture(t *testing.T) (workspace, home, probe string) {
 // deleteGateFullAccess returns the boot-shaped bash for the full-access
 // matrix: the live root set bound the same way boot binds it
 // (BindWriteRootSet), carrying the task-257 unbounded flag the guard reads.
+// A nil terminal stays a nil interface so the foreground path launches the
+// real shell (a typed-nil TerminalRunner would divert it to the stub).
 func deleteGateFullAccess(shell sandbox.Shell, root string, terminal *deleteGateTerminal, unbounded bool) bash {
 	b := deleteBash(shell, root, terminal)
+	if terminal == nil {
+		b.terminal = nil
+	}
 	set := sandbox.NewWritableRootSet([]string{root})
 	set.SetUnbounded(unbounded)
 	b.rootSet = set
