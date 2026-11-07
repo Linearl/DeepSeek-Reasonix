@@ -13662,6 +13662,12 @@ button.statusbar__mcp:focus-visible {
 }
 .side-files__row:hover { background: var(--tree-row-hover-bg); }
 .side-files__row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.side-files__row--renaming {
+  /* tl1468b: inline rename row — visually lift the row so the editing state reads. */
+  background: var(--bg-soft);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
 .side-files__row--selected,
 .side-files__row--selected:hover { background: var(--tree-row-current-bg); color: var(--tree-row-current-fg); }
 /* tl1445: the references dock rows mount the same interactive list, so the
