@@ -409,7 +409,10 @@
 }
 
 .traj-timeline__span--search-dim,
-.traj-timeline__marker--search-dim {
+.traj-timeline__marker--search-dim,
+/* tl1478 类目过滤联动：隐藏类目的 span/marker 与搜索未命中同幅降透明。 */
+.traj-timeline__span--filter-dim,
+.traj-timeline__marker--filter-dim {
   opacity: 0.14;
 }
 
@@ -540,6 +543,72 @@
 .traj__search:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* ── tl1478 类目过滤菜单：触发钮复用 traj__toggle，面板为工具栏下挂弹出层 ── */
+
+.traj__filter {
+  position: relative;
+  display: inline-flex;
+}
+
+.traj__filter-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  background: transparent;
+  border: none;
+}
+
+.traj__filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 4;
+  min-width: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.traj__filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--text-2xs);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.traj__filter-item:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.traj__filter-check {
+  flex: none;
+  width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.traj__filter-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 行可读摘要（③）：类型彩色标签 + 单行摘要 + 耗时（任务 1112） */

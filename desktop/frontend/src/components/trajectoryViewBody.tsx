@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import type { HistoryLoadTrigger, Item } from "../lib/useController";
 import type { Translator } from "../lib/i18n";
 import type { DictKey } from "../lib/i18n";
@@ -50,7 +50,9 @@ export type TrajectoryViewProps = {
  * offscreen rows cheap. */
 const WINDOW_TURNS = 12;
 
-const KIND_LABEL_KEYS: Record<TrajectoryKind, DictKey> = {
+/** tl1478 开放式类目标签：已知 kind 给译名键；未知 kind（并行线扩展，如
+ * promptEnhance）回退为原始 kind 字符串——菜单枚举不封口，也不因新 kind 崩溃。 */
+const KIND_LABEL_KEYS: Partial<Record<TrajectoryKind, DictKey>> = {
   user: "trajectory.kind.user",
   assistant: "trajectory.kind.assistant",
   tool: "trajectory.kind.tool",
@@ -58,6 +60,11 @@ const KIND_LABEL_KEYS: Record<TrajectoryKind, DictKey> = {
   notice: "trajectory.kind.notice",
   phase: "trajectory.kind.phase",
 };
+
+export function trajectoryKindLabel(kind: string, t: Translator): string {
+  const key = KIND_LABEL_KEYS[kind as TrajectoryKind];
+  return key ? t(key) : kind;
+}
 
 /** Row shape after 1112 projection: full record, or a collapsed turn/calls
  * summary row that expands on click. */
@@ -73,7 +80,9 @@ type TrajectoryRowEntry =
 export function projectTrajectoryRows(records: TrajectoryRecord[], options: TrajectoryLedgerProjectionOptions): TrajectoryRowEntry[] {
   const kept = (record: TrajectoryRecord): boolean =>
     (options.searchMatchIds == null || options.searchMatchIds.has(record.id)) &&
-    (options.focusIds == null || options.focusIds.has(record.id));
+    (options.focusIds == null || options.focusIds.has(record.id)) &&
+    // tl1478 类目过滤：命中隐藏类目的记录整行移除（先于折叠统计，摘要计数随之诚实）。
+    !(options.hiddenKinds != null && options.hiddenKinds.size > 0 && options.hiddenKinds.has(record.kind));
   // Pass 1: record rows (+ collapsed tool-call summary rows).
   const pass1: TrajectoryRowEntry[] = [];
   let index = 0;
@@ -218,7 +227,7 @@ function TrajectoryRow({ entry, selected, dimmed, expanded = false, onToggle, on
       <span className="traj-row__time" title={record.at != null ? formatTrajectoryClock(record.at) : undefined}>{time}</span>
       <span className="traj-row__kind">
         {record.turnStart && <span className="traj-row__turn">T{record.turnLabel ?? record.turn}</span>}
-        <span className={`traj-row__tag traj-row__tag--${record.kind}`}>{t(KIND_LABEL_KEYS[record.kind])}</span>
+        <span className={`traj-row__tag traj-row__tag--${record.kind}`}>{trajectoryKindLabel(record.kind, t)}</span>
       </span>
       {record.kind === "tool" && <span className="traj-row__name">{record.title}</span>}
       <span className="traj-row__preview">{record.preview}</span>
@@ -280,13 +289,15 @@ const LANE_LABEL_KEYS: DictKey[] = ["trajectory.lane.input", "trajectory.lane.mo
  * line; spans carry precise titles; running records draw a start marker.
  * Span rectangles are normalized here once via trajectorySpanRect (DSH 渲染层
  * 同款换算); minimum visible width is pure CSS (min-width), never JS. */
-function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searchMatchIds, t }: {
+function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searchMatchIds, hiddenKinds, t }: {
   model: TrajectoryTimelineModel;
   mode: "sequence" | "duration";
   focus: TrajectoryTimelineModel["focus"];
   onFocus: (focus: TrajectoryTimelineModel["focus"]) => void;
   onSpanClick: (recordId: string) => void;
   searchMatchIds: Set<string> | null;
+  /** tl1478 类目过滤联动：隐藏类目的 span/marker 同步降透明（DSH 同款语义）。 */
+  hiddenKinds?: Set<string> | null;
   t: Translator;
 }) {
   const barRef = useRef<HTMLDivElement | null>(null);
@@ -353,7 +364,7 @@ function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searc
       }
     }
     if (span.running) parts.push(t("trajectory.running"));
-    return parts.length > 0 ? parts.join(" · ") : t(KIND_LABEL_KEYS[span.kind]);
+    return parts.length > 0 ? parts.join(" · ") : trajectoryKindLabel(span.kind, t);
   };
 
   const focusLeft = focus ? leftPct(focus.start) : 0;
@@ -380,7 +391,7 @@ function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searc
           return (
             <span
               key={span.recordId}
-              className={`traj-timeline__span traj-timeline__span--${span.kind}${span.running ? " traj-timeline__span--running" : ""}${span.failed ? " traj-timeline__span--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(span.recordId) ? " traj-timeline__span--search-dim" : ""}`}
+              className={`traj-timeline__span traj-timeline__span--${span.kind}${span.running ? " traj-timeline__span--running" : ""}${span.failed ? " traj-timeline__span--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(span.recordId) ? " traj-timeline__span--search-dim" : ""}${hiddenKinds?.has(span.kind) ? " traj-timeline__span--filter-dim" : ""}`}
               style={{ left: `${rect.leftPct}%`, width: `max(2px, calc(${rect.widthPct}% - 2px))`, top: `calc(var(--traj-lane-pitch) * ${span.lane} + var(--traj-lane-span-top))` }}
               title={spanTitle(span)}
               onClick={(event) => { event.stopPropagation(); onSpanClick(span.recordId); }}
@@ -394,7 +405,7 @@ function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searc
         {model.markers.map((marker) => (
           <span
             key={marker.recordId}
-            className={`traj-timeline__marker traj-timeline__marker--${marker.kind}${marker.failed ? " traj-timeline__marker--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(marker.recordId) ? " traj-timeline__marker--search-dim" : ""}`}
+            className={`traj-timeline__marker traj-timeline__marker--${marker.kind}${marker.failed ? " traj-timeline__marker--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(marker.recordId) ? " traj-timeline__marker--search-dim" : ""}${hiddenKinds?.has(marker.kind) ? " traj-timeline__marker--filter-dim" : ""}`}
             style={{ left: `${leftPct(marker.start)}%`, top: `calc(var(--traj-lane-pitch) * ${marker.lane} + var(--traj-lane-marker-top))` }}
             title={spanTitle(marker)}
             onClick={(event) => { event.stopPropagation(); onSpanClick(marker.recordId); }}
@@ -430,9 +441,9 @@ function TrajectoryInspector({ record, item, onClose, t }: { record: TrajectoryR
   if (record.durationMs != null) timingLines.push(formatTrajectoryDuration(record.durationMs));
   if (record.ttftMs != null) timingLines.push(`TTFT ${formatTrajectoryDuration(record.ttftMs)}`);
   return (
-    <aside className="traj-inspector" role="dialog" aria-label={t(KIND_LABEL_KEYS[record.kind])}>
+    <aside className="traj-inspector" role="dialog" aria-label={trajectoryKindLabel(record.kind, t)}>
       <div className="traj-inspector__head">
-        <span className="traj-inspector__title">{t(KIND_LABEL_KEYS[record.kind])}{record.kind === "tool" ? ` · ${record.title}` : ""}</span>
+        <span className="traj-inspector__title">{trajectoryKindLabel(record.kind, t)}{record.kind === "tool" ? ` · ${record.title}` : ""}</span>
         <button type="button" className="traj-inspector__close" aria-label={t("trajectory.inspector.close")} onClick={onClose}>
           <X size={14} />
         </button>
@@ -474,6 +485,9 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
   // tl1478 批量展开收起：摘要行点击的单项展开覆盖（键 = turn 序号 / assistant id）。
   const [expandedTurns, setExpandedTurns] = useState<Set<number>>(new Set());
   const [expandedCalls, setExpandedCalls] = useState<Set<string>>(new Set());
+  // tl1478 类目过滤：隐藏类目集合（空 = 全部显示）；类目枚举按数据动态生成。
+  const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
   const anchorHeightRef = useRef<number | null>(null);
@@ -505,9 +519,20 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
     [focus, timelineModel],
   );
   const rows = useMemo(
-    () => projectTrajectoryRows(windowedRecords, { equalWidth: true, collapsedTurns: turnsCollapsed, collapsedCalls: callsCollapsed, searchMatchIds, focusIds, expandedTurns, expandedCalls }),
-    [windowedRecords, turnsCollapsed, callsCollapsed, searchMatchIds, focusIds, expandedTurns, expandedCalls],
+    () => projectTrajectoryRows(windowedRecords, {
+      equalWidth: true, collapsedTurns: turnsCollapsed, collapsedCalls: callsCollapsed, searchMatchIds, focusIds,
+      hiddenKinds: hiddenKinds.size > 0 ? hiddenKinds : null,
+      expandedTurns, expandedCalls,
+    }),
+    [windowedRecords, turnsCollapsed, callsCollapsed, searchMatchIds, focusIds, hiddenKinds, expandedTurns, expandedCalls],
   );
+  // tl1478 类目菜单数据源：窗口内记录的 kind 集合按首现序动态枚举（开放式，
+  // 不硬编码 kind 列表——并行线新增 kind 自动出现在菜单里）。
+  const kindCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const record of windowedRecords) counts.set(record.kind, (counts.get(record.kind) ?? 0) + 1);
+    return [...counts.entries()].map(([kind, count]) => ({ kind, count }));
+  }, [windowedRecords]);
 
   // Tail anchor: re-pin to the newest record while the reader sits at the
   // bottom (mount, new records, streaming growth). Scrolling up unpins. When
@@ -557,6 +582,13 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
       return next;
     });
   };
+  const toggleKind = (kind: string): void => {
+    setHiddenKinds((current) => {
+      const next = new Set(current);
+      if (next.has(kind)) next.delete(kind); else next.add(kind);
+      return next;
+    });
+  };
 
   const loadOlderFromBackend = (): void => {
     if (!hasOlderHistory || loadingOlderHistory) return;
@@ -574,45 +606,46 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
     ? <div className="traj__placeholder">{t("common.loading")}</div>
     : ledger.records.length === 0
       ? <div className="traj__empty">{t("trajectory.empty")}</div>
-      : (
-        <ol className="traj__ledger">
-          {hiddenCount > 0 && (
-            <li className="traj__load-older-row">
-              <button type="button" className="traj__load-older" onClick={expandWindow}>
-                {t("trajectory.loadOlder.window", { count: hiddenCount })}
-              </button>
-              {/* tl1478 批量展开：窗口剩余轮次一键铺满（步进式加载保留在旁）。 */}
-              {hiddenCount > WINDOW_TURNS && (
-                <button type="button" className="traj__load-older" onClick={expandAllWindow}>
-                  {t("trajectory.loadOlder.all", { count: hiddenCount })}
+      : rows.length === 0
+        ? <div className="traj__empty">{t("trajectory.filter.empty")}</div>
+        : (
+          <ol className="traj__ledger">
+            {hiddenCount > 0 && (
+              <li className="traj__load-older-row">
+                <button type="button" className="traj__load-older" onClick={expandWindow}>
+                  {t("trajectory.loadOlder.window", { count: hiddenCount })}
                 </button>
-              )}
-            </li>
-          )}
-          {hiddenCount === 0 && hasOlderHistory && !olderHistoryExhausted && (
-            <li className="traj__load-older-row">
-              <button type="button" className="traj__load-older" disabled={loadingOlderHistory} onClick={loadOlderFromBackend}>
-                {loadingOlderHistory ? t("common.loading") : t("trajectory.loadOlder.history")}
-              </button>
-            </li>
-          )}
-          {rows.map((entry) => {
-            if (entry.type === "turn" || entry.type === "calls") {
-              return <TrajectoryRow
-                key={`${entry.type}-${entry.type === "turn" ? entry.turn : entry.assistantId}`}
-                entry={entry} selected={false} dimmed={false} onSelect={setSelectedId} t={t}
-                expanded={entry.type === "turn" ? expandedTurns.has(entry.turn) : expandedCalls.has(entry.assistantId)}
-                onToggle={entry.type === "turn" ? () => toggleTurnGroup(entry.turn) : () => toggleCallGroup(entry.assistantId)}
-              />;
-            }
-            return (
-              <TrajectoryRow key={entry.record.id} entry={entry} selected={entry.record.id === selectedId}
-                dimmed={(focusIds != null && !focusIds.has(entry.record.id)) || (searchMatchIds != null && !searchMatchIds.has(entry.record.id))}
-                onSelect={setSelectedId} t={t} />
-            );
-          })}
-        </ol>
-      );
+                {hiddenCount > WINDOW_TURNS && (
+                  <button type="button" className="traj__load-older" onClick={expandAllWindow}>
+                    {t("trajectory.loadOlder.all", { count: hiddenCount })}
+                  </button>
+                )}
+              </li>
+            )}
+            {hiddenCount === 0 && hasOlderHistory && !olderHistoryExhausted && (
+              <li className="traj__load-older-row">
+                <button type="button" className="traj__load-older" disabled={loadingOlderHistory} onClick={loadOlderFromBackend}>
+                  {loadingOlderHistory ? t("common.loading") : t("trajectory.loadOlder.history")}
+                </button>
+              </li>
+            )}
+            {rows.map((entry) => {
+              if (entry.type === "turn" || entry.type === "calls") {
+                return <TrajectoryRow
+                  key={`${entry.type}-${entry.type === "turn" ? entry.turn : entry.assistantId}`}
+                  entry={entry} selected={false} dimmed={false} onSelect={setSelectedId} t={t}
+                  expanded={entry.type === "turn" ? expandedTurns.has(entry.turn) : expandedCalls.has(entry.assistantId)}
+                  onToggle={entry.type === "turn" ? () => toggleTurnGroup(entry.turn) : () => toggleCallGroup(entry.assistantId)}
+                />;
+              }
+              return (
+                <TrajectoryRow key={entry.record.id} entry={entry} selected={entry.record.id === selectedId}
+                  dimmed={(focusIds != null && !focusIds.has(entry.record.id)) || (searchMatchIds != null && !searchMatchIds.has(entry.record.id))}
+                  onSelect={setSelectedId} t={t} />
+              );
+            })}
+          </ol>
+        );
 
   return (
     <div className={`traj${selectedRecord ? " traj--inspecting" : ""}`} role="region" aria-label={t("trajectory.label")}>
@@ -629,6 +662,54 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
         <button type="button" className="traj__toggle" aria-pressed={callsCollapsed} onClick={() => { setCallsCollapsed((on) => !on); setExpandedCalls(new Set()); }}>
           {callsCollapsed ? "⊟" : "⊞"} {t("trajectory.toolbar.calls")}
         </button>
+        {/* tl1478 类目过滤菜单：类目 = 窗口内数据动态枚举（开放式），勾选隐藏、
+            计数直读；「全部」一键复位。 */}
+        <div className="traj__filter">
+          <button
+            type="button"
+            className="traj__toggle traj__filter-trigger"
+            aria-haspopup="menu"
+            aria-expanded={filterMenuOpen}
+            onClick={() => setFilterMenuOpen((open) => !open)}
+          >
+            <span className="traj__toggle-icon" aria-hidden="true">▽</span>
+            {t("trajectory.filter.label")}{hiddenKinds.size > 0 ? ` · ${hiddenKinds.size}` : ""}
+          </button>
+          {filterMenuOpen && (
+            <>
+              <div className="traj__filter-backdrop" aria-hidden="true" onClick={() => setFilterMenuOpen(false)} />
+              <div className="traj__filter-menu" role="menu" aria-label={t("trajectory.filter.label")}>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={hiddenKinds.size === 0}
+                  className="traj__filter-item"
+                  onClick={() => setHiddenKinds(new Set())}
+                >
+                  <span className="traj__filter-check" aria-hidden="true">{hiddenKinds.size === 0 ? <Check size={13} /> : null}</span>
+                  {t("trajectory.filter.all")}
+                </button>
+                {kindCounts.map(({ kind, count }) => {
+                  const visible = !hiddenKinds.has(kind);
+                  return (
+                    <button
+                      key={kind}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={visible}
+                      className="traj__filter-item"
+                      onClick={() => toggleKind(kind)}
+                    >
+                      <span className="traj__filter-check" aria-hidden="true">{visible ? <Check size={13} /> : null}</span>
+                      <span className={`traj-row__tag traj-row__tag--${kind}`}>{trajectoryKindLabel(kind, t)}</span>
+                      <span className="traj__filter-count">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
         <input
           type="search"
           className="traj__search"
@@ -638,7 +719,7 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      {timelineModel && <TrajectoryTimelineBar model={timelineModel} mode={durationOn ? "duration" : "sequence"} focus={focus} onFocus={setFocus} onSpanClick={setSelectedId} searchMatchIds={searchMatchIds} t={t} />}
+      {timelineModel && <TrajectoryTimelineBar model={timelineModel} mode={durationOn ? "duration" : "sequence"} focus={focus} onFocus={setFocus} onSpanClick={setSelectedId} searchMatchIds={searchMatchIds} hiddenKinds={hiddenKinds.size > 0 ? hiddenKinds : null} t={t} />}
       <div className="traj__scroll" ref={scrollRef} onScroll={handleScroll}>
         <div className="traj__head">
           <span className="traj__head-title">{t("trajectory.label")}</span>
