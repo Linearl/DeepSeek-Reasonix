@@ -121,6 +121,7 @@ import { formatGoalWorkTime } from "../lib/goalRuntime";
 import { ComposerContentMenuActions } from "./ComposerContentMenuActions";
 import { useTick } from "../lib/workStatus";
 import { DraftRewriteBudgetDialog } from "./DraftRewriteBudgetDialog";
+import { traceDraftRewrite } from "../lib/draftRewriteTraceBridge";
 
 interface Attachment {
   path: string;
@@ -1172,6 +1173,10 @@ export function Composer({
   const [draftRewriteOn, setDraftRewriteOn] = useState(() => labFlagEnabled("draftRewrite"));
   useEffect(() => onLabFlagsChange(() => setDraftRewriteOn(labFlagEnabled("draftRewrite"))), []);
   const [draftRewriting, setDraftRewriting] = useState(false);
+  // tl1427：增强中可取消——请求代际。取消=代际失效（在途结果回来即丢弃，
+  // 防旧结果覆盖用户新输入）；再次发起=新一轮代际。startedAt 供轨迹记录算耗时。
+  const draftRewriteSeqRef = useRef(0);
+  const draftRewriteStartedAtRef = useRef(0);
   // 任务 1052：点击改写先弹上下文长度档位弹窗（2KB/5KB/10KB/20KB 四档 + 取消，
   // 用户拍板便利性换成本/延时；选档后才发起改写、取消=零请求）；档位持久化
   // localStorage（首次默认 10KB，与 1024 旧行为一致）。
@@ -2892,10 +2897,18 @@ export function Composer({
   // 结果回填输入框、绝不自动发送（用户确认后才走正常 submit）。原稿被 setText
   // 覆盖即持久化层已接管；改写失败/超时/空结果一律静默降级为「不改写」。
   // 任务 1052：入口改为先弹档位弹窗，选档后带 contextBudgetKB 发起改写。
+  // tl1427：请求带代际（draftRewriteSeqRef）——取消/新一轮发起后，迟到的旧
+  // 结果按代际校验丢弃（绝不覆盖用户新输入）；取消不打断在途网络层（Wails
+  // 调用不可 abort，Go 侧 60s 超时自然收口），只是前端不再消费。收尾经
+  // traceDraftRewrite 落一条 trajectoryOnly 轨迹记录（只进轨迹台账，不进
+  // transcript，记录不含草稿正文）。
   const rewriteDraft = async (contextBudgetKB: number) => {
     if (!draftRewriteOn || draftRewriting) return;
     const current = textRef.current.trim();
     if (!current) return;
+    const seq = ++draftRewriteSeqRef.current;
+    const startedAt = Date.now();
+    draftRewriteStartedAtRef.current = startedAt;
     setDraftRewriting(true);
     try {
       const budgetBytes = (contextBudgetKB > 0 ? contextBudgetKB : 10) * 1024;
@@ -2918,21 +2931,45 @@ export function Composer({
           .slice(-budgetBytes);
         rewritten = await app.RewriteDraftForTab(tabId ?? "", current, recent, contextBudgetKB);
       }
+      // tl1427 竞态钉：本请求已被取消（或已有新一轮在途）时，迟到结果整体
+      // 丢弃——不回填、不记轨迹（取消路径已记）、不复位按钮态。
+      if (seq !== draftRewriteSeqRef.current) return;
       if (typeof rewritten === "string" && rewritten.trim() && rewritten.trim() !== current) {
         setText(rewritten);
       }
+      traceDraftRewrite(tabId, "done", Date.now() - startedAt);
     } catch {
-      // 静默降级：草稿保持原样，不打断输入。
+      if (seq === draftRewriteSeqRef.current) {
+        // 静默降级：草稿保持原样，不打断输入。轨迹记一次失败调用。
+        traceDraftRewrite(tabId, "failed", Date.now() - startedAt);
+      }
     } finally {
-      setDraftRewriting(false);
+      if (seq === draftRewriteSeqRef.current) setDraftRewriting(false);
     }
   };
 
-  // 任务 1052：改写按钮点击——空草稿保持 1024 的静默不发；有草稿弹档位选择
-  // 弹窗（选档才改写，取消=零请求）。档位读写在弹窗组件内（localStorage 持久化）。
+  // tl1427：增强中可取消（对齐 zcode「Cancel enhance」双态第二态）——取消=
+  // 代际失效（在途结果回来即丢弃）+ 恢复输入态；草稿不丢；不改写已发生的
+  // 网络/后端状态，只是前端不再消费。给一条 toast 确认（对齐 zcode
+  // cancelled 提示语义）与一条轨迹记录。
+  const cancelDraftRewrite = () => {
+    if (!draftRewriting) return;
+    draftRewriteSeqRef.current += 1;
+    setDraftRewriting(false);
+    showToast(t("composer.rewriteCancelled"), "info");
+    traceDraftRewrite(tabId, "cancelled", Date.now() - draftRewriteStartedAtRef.current);
+  };
+
+  // 任务 1052：改写按钮点击——空草稿弹提示不发请求（tl1427：从静默 return
+  // 改为提示，语义对齐 zcode "Type a prompt before enhancing it"，走我方三语
+  // toast 体系）；有草稿弹档位选择弹窗（选档才改写，取消=零请求）。档位读写
+  // 在弹窗组件内（localStorage 持久化）。
   const openDraftRewritePicker = () => {
     if (!draftRewriteOn || draftRewriting) return;
-    if (!textRef.current.trim()) return;
+    if (!textRef.current.trim()) {
+      showToast(t("composer.rewriteDraftEmpty"), "info");
+      return;
+    }
     setDraftRewritePickerOpen(true);
   };
 
@@ -6492,13 +6529,13 @@ export function Composer({
                   框；不自动发送。tl 1115：与停止按钮位置互换——改写在左、
                   停止紧邻发送键（用户 2026-10-24 要求）。 */}
               {draftRewriteOn && (
-                <Tooltip label={t("composer.rewriteDraft")}>
+                <Tooltip label={t(draftRewriting ? "composer.rewriteDraftCancel" : "composer.rewriteDraft")}>
                   <button
-                    className="composer__btn composer__btn--rewrite"
+                    className={`composer__btn composer__btn--rewrite${draftRewriting ? " composer__btn--rewrite-cancel" : ""}`}
                     type="button"
-                    onClick={openDraftRewritePicker}
-                    disabled={draftRewriting || readOnly}
-                    aria-label={t("composer.rewriteDraft")}
+                    onClick={draftRewriting ? cancelDraftRewrite : openDraftRewritePicker}
+                    disabled={readOnly}
+                    aria-label={t(draftRewriting ? "composer.rewriteDraftCancel" : "composer.rewriteDraft")}
                   >
                     {draftRewriting ? <RefreshCw size={14} className="composer__rewrite-spin" /> : <Wand2 size={14} />}
                   </button>
