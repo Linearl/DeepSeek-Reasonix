@@ -6447,6 +6447,14 @@ export const en = {
   "composer.screenshotButton": "Screenshot",
   "composer.screenshotButtonHint": "Capture the screen, select a region, annotate, and attach",
   "composer.screenshotFailed": "Screenshot failed",
+  // tl1477: subagent child tool-call rows — single-line summary + read-only detail.
+  "subagentPanel.toolDetailArgs": "Arguments",
+  "subagentPanel.toolDetailOutput": "Output",
+  "subagentPanel.toolDetailError": "Error",
+  "subagentPanel.toolArgsTruncated": "Arguments incomplete (transmission truncated) — raw text shown as-is, no values inferred",
+  "subagentPanel.toolArgsReceiving": "receiving arguments ↓ {n}…",
+  "subagentPanel.toolArgsEmpty": "No arguments",
+  "subagentPanel.toolRowTruncated": "arguments truncated",
 };
 
 export type DictKey = keyof typeof en;

@@ -30,6 +30,7 @@ import {
 import { Tooltip } from "./Tooltip";
 import { historyMessagesToItems, type Item } from "../lib/useController";
 import { subjectOf } from "../lib/tools";
+import { formatToolArgChars, toolCallArgsDetailText, toolCallArgsState, toolCallSummaryLine } from "../lib/toolCallSummary";
 import type { HistoryMessage } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
@@ -139,12 +140,79 @@ function ChildToolGlyph({ status }: { status: SubagentDirectoryItem["status"] })
   }
 }
 
-// tl1361: the running detail's live tool-call stream row label. Same fallback
-// chain the row title uses (stamped subject → parsed subject → resolved name →
-// tool name), so a tool without a parseable subject still reads as something.
-function childToolLabel(tool: SubagentDirectoryItem): string {
-  return tool.subject || subjectOf(tool.name, tool.args) || tool.resolvedName || tool.name;
-}
+// tl1477: one child tool call = a single-line summary (tool name + key params)
+// that expands into a READ-ONLY detail block (args JSON / output / error).
+// Truncation discipline: params are only extracted from COMPLETE args JSON —
+// a half-streamed JSON payload never yields "values" (半截 JSON 不猜默认值):
+// the row shows an explicit truncation badge and the detail prints the raw
+// text verbatim; a still-streaming call (argChars only) shows a receiving
+// note instead of pretending the args exist.
+const ChildToolRow = memo(function ChildToolRow({ tool }: { tool: SubagentDirectoryItem }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const argsState = useMemo(() => toolCallArgsState(tool.args, tool.argChars), [tool.args, tool.argChars]);
+  const line = useMemo(() => toolCallSummaryLine(tool), [tool]);
+  const argsText = useMemo(() => toolCallArgsDetailText(argsState), [argsState]);
+  const receivingLabel = argsState.kind === "receiving"
+    ? t("subagentPanel.toolArgsReceiving", { n: formatToolArgChars(argsState.chars ?? 0) })
+    : "";
+  return (
+    <li className="subagents-panel__livetool" data-subagents-livetool-status={tool.status}>
+      <button
+        type="button"
+        className="subagents-panel__livetool-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ChildToolGlyph status={tool.status} />
+        {/* 任务1033 convention: wrap-mode Tooltip carries the full
+            label; the row itself stays one ellipsized line. */}
+        <Tooltip label={line} wrap>
+          <span className="subagents-panel__livetool-subject">{line}</span>
+        </Tooltip>
+        {argsState.kind === "truncated" && (
+          <span className="subagents-panel__livetool-flag" data-subagents-livetool-truncated="true" title={t("subagentPanel.toolArgsTruncated")}>
+            <CircleAlert size={11} aria-hidden="true" />
+            {t("subagentPanel.toolRowTruncated")}
+          </span>
+        )}
+        {argsState.kind === "receiving" && (
+          <span className="subagents-panel__livetool-flag" data-subagents-livetool-receiving="true">{receivingLabel}</span>
+        )}
+        <ChevronRight size={11} aria-hidden="true" className="subagents-panel__chevron" />
+      </button>
+      {open && (
+        <div className="subagents-panel__livetool-detail" data-subagents-livetool-detail="true">
+          {argsState.kind === "truncated" ? (
+            <p className="subagents-panel__livetool-note" data-subagents-livetool-truncated="true">{t("subagentPanel.toolArgsTruncated")}</p>
+          ) : argsState.kind === "receiving" ? (
+            <p className="subagents-panel__livetool-note" data-subagents-livetool-receiving="true">{receivingLabel}</p>
+          ) : argsState.kind === "empty" ? (
+            <p className="subagents-panel__livetool-note" data-subagents-livetool-empty="true">{t("subagentPanel.toolArgsEmpty")}</p>
+          ) : null}
+          {argsText ? (
+            <>
+              <div className="subagents-panel__detailview-label">{t("subagentPanel.toolDetailArgs")}</div>
+              <pre className="subagents-panel__livetool-pre">{argsText}</pre>
+            </>
+          ) : null}
+          {tool.output ? (
+            <>
+              <div className="subagents-panel__detailview-label">{t("subagentPanel.toolDetailOutput")}</div>
+              <pre className="subagents-panel__livetool-pre">{tool.output}</pre>
+            </>
+          ) : null}
+          {tool.error ? (
+            <>
+              <div className="subagents-panel__detailview-label">{t("subagentPanel.toolDetailError")}</div>
+              <pre className="subagents-panel__livetool-pre">{tool.error}</pre>
+            </>
+          ) : null}
+        </div>
+      )}
+    </li>
+  );
+});
 
 /** One folded row (requirement 495 ①: ended subagents default to the row
  *  state); clicking expands the inline detail — or, under the 507 plan-A
@@ -609,19 +677,9 @@ function SubagentDetailView({
             <div className="subagents-panel__livetools" data-subagents-livetools="true">
               <div className="subagents-panel__detailview-label">{t("subagentPanel.liveTools")}</div>
               <ul className="subagents-panel__livetool-list">
-                {childTools.map((tool) => {
-                  const label = childToolLabel(tool);
-                  return (
-                    <li key={tool.id} className="subagents-panel__livetool" data-subagents-livetool-status={tool.status}>
-                      <ChildToolGlyph status={tool.status} />
-                      {/* 任务1033 convention: wrap-mode Tooltip carries the full
-                          label; the row itself stays one ellipsized line. */}
-                      <Tooltip label={label} wrap>
-                        <span className="subagents-panel__livetool-subject">{label}</span>
-                      </Tooltip>
-                    </li>
-                  );
-                })}
+                {childTools.map((tool) => (
+                  <ChildToolRow key={tool.id} tool={tool} />
+                ))}
               </ul>
             </div>
           ) : null}

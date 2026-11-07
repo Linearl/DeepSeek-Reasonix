@@ -6402,4 +6402,12 @@ export const zh: Record<DictKey, string> = {
   "composer.screenshotButton": "截图",
   "composer.screenshotButtonHint": "抓取屏幕、框选区域、标注并插入附件",
   "composer.screenshotFailed": "截图失败",
+  // tl1477：子代理工具调用行——单行摘要 + 只读详情。
+  "subagentPanel.toolDetailArgs": "参数",
+  "subagentPanel.toolDetailOutput": "输出",
+  "subagentPanel.toolDetailError": "错误",
+  "subagentPanel.toolArgsTruncated": "参数不完整（传输截断）——按原文显示，不推断取值",
+  "subagentPanel.toolArgsReceiving": "参数接收中 ↓{n}…",
+  "subagentPanel.toolArgsEmpty": "无参数",
+  "subagentPanel.toolRowTruncated": "参数已截断",
 };

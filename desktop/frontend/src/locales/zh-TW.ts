@@ -6398,4 +6398,12 @@ export const zhTW: Record<DictKey, string> = {
   "composer.screenshotButton": "截圖",
   "composer.screenshotButtonHint": "擷取螢幕、框選區域、標註並插入附件",
   "composer.screenshotFailed": "截圖失敗",
+  // tl1477：子代理工具呼叫列——單行摘要 + 唯讀詳情。
+  "subagentPanel.toolDetailArgs": "參數",
+  "subagentPanel.toolDetailOutput": "輸出",
+  "subagentPanel.toolDetailError": "錯誤",
+  "subagentPanel.toolArgsTruncated": "參數不完整（傳輸截斷）——按原文顯示，不推斷取值",
+  "subagentPanel.toolArgsReceiving": "參數接收中 ↓{n}…",
+  "subagentPanel.toolArgsEmpty": "無參數",
+  "subagentPanel.toolRowTruncated": "參數已截斷",
 };
