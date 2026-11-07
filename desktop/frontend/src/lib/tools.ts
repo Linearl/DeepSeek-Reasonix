@@ -91,6 +91,98 @@ export function subjectOf(name: string, args: string): string {
   }
 }
 
+// tl1475: while a call's arguments are still streaming, the payload is half-
+// written JSON — subjectOf's strict parse yields nothing and the pending card
+// would show no subject at all. streamingToolSubject scans the excerpt's HEAD
+// segment (everything before the backend's "\n…" head/tail separator, so
+// content fragments in the tail can never masquerade as a subject key) for the
+// tool's subject key and reads the string value tolerantly: a value whose
+// closing quote is still in flight counts too, rendered as far as it got.
+// Best-effort by design — anything ambiguous yields "" (missing subject), a
+// wrong subject is never shown.
+export function streamingToolSubject(name: string, preview: string): string {
+  const head = preview.split("\n…", 1)[0] ?? preview;
+  for (const key of streamingSubjectKeys(name)) {
+    const value = partialStringField(head, key);
+    if (value) return value;
+  }
+  return "";
+}
+
+// Mirrors subjectOf's key mapping for the streaming phase.
+function streamingSubjectKeys(name: string): string[] {
+  switch (name) {
+    case "bash": return ["command"];
+    case "grep":
+    case "glob": return ["pattern", "path"];
+    case "web_fetch": return ["url"];
+    case "web_search": return ["query"];
+    case "task": return ["description", "prompt"];
+    case "run_skill": return ["name"];
+    case "move_file": return ["source_path", "destination_path"];
+    case "remember": return ["name", "description"];
+    case "todo_write":
+    case "exit_plan_mode": return []; // dedicated cards, no subject line
+    case "use_capability": return ["capability_id", "action"];
+    default: return ["path", "file_path"];
+  }
+}
+
+// partialStringField reads `"key"` : "value…" out of possibly-truncated JSON.
+// Every candidate match must be shaped like a real field (closing quote,
+// optional whitespace, colon, optional whitespace, opening quote) before its
+// value is read, so keys that merely appear inside an earlier value are
+// rejected. Standard JSON escapes are decoded; a truncated \u sequence yields
+// only the decoded prefix. Returns "" when no shaped field is present.
+function partialStringField(head: string, key: string): string {
+  const token = `"${key}"`;
+  let from = 0;
+  while (from <= head.length - token.length) {
+    const at = head.indexOf(token, from);
+    if (at < 0) return "";
+    from = at + token.length;
+    let cursor = from;
+    while (cursor < head.length && (head[cursor] === " " || head[cursor] === "\t")) cursor += 1;
+    if (head[cursor] !== ":") continue;
+    cursor += 1;
+    while (cursor < head.length && (head[cursor] === " " || head[cursor] === "\t")) cursor += 1;
+    if (head[cursor] !== '"') continue;
+    cursor += 1;
+    let out = "";
+    while (cursor < head.length) {
+      const ch = head[cursor];
+      if (ch === '"') return out;
+      if (ch === "\\") {
+        const esc = head[cursor + 1];
+        if (esc === undefined) return out; // truncated escape: show what decoded
+        switch (esc) {
+          case '"': out += '"'; cursor += 2; break;
+          case "\\": out += "\\"; cursor += 2; break;
+          case "/": out += "/"; cursor += 2; break;
+          case "n": out += "\n"; cursor += 2; break;
+          case "t": out += "\t"; cursor += 2; break;
+          case "r": out += "\r"; cursor += 2; break;
+          case "b": out += "\b"; cursor += 2; break;
+          case "f": out += "\f"; cursor += 2; break;
+          case "u": {
+            const hex = head.slice(cursor + 2, cursor + 6);
+            if (hex.length < 4 || !/^[0-9a-fA-F]{4}$/.test(hex)) return out; // truncated \u
+            out += String.fromCharCode(parseInt(hex, 16));
+            cursor += 6;
+            break;
+          }
+          default: return out; // unknown escape in flight: stop at the safe prefix
+        }
+        continue;
+      }
+      out += ch;
+      cursor += 1;
+    }
+    return out; // unterminated value: still streaming — return the prefix
+  }
+  return "";
+}
+
 // diffsFor returns the before/after pairs a writer tool's card renders inline:
 // edit_file is one pair, write_file is an all-add (empty original), multi_edit is
 // one pair per step. Returns [] for non-writers, so the card folds args/output
