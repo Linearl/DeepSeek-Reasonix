@@ -125,7 +125,7 @@ func TestInteractiveQuestionStillWaits(t *testing.T) {
 func TestUnattendedApprovalRefusesWhenNothingCanDecide(t *testing.T) {
 	c := unattendedController(t)
 	started := time.Now()
-	allow, _, err := c.requestApprovalWithReason(context.Background(), "write_file", "main.go",
+	allow, _, _, err := c.requestApprovalWithReason(context.Background(), "write_file", "main.go",
 		json.RawMessage(`{"path":"main.go"}`), "edit the entry point")
 	if err != nil {
 		t.Fatalf("approval err = %v, want a refusal", err)

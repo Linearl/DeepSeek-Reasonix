@@ -158,7 +158,7 @@ func TestCascadeApprovalAllowsFromSourceAnswer(t *testing.T) {
 	stub := &cascadeStubAsker{answers: []event.AskAnswer{{QuestionID: "approval-write_file", Selected: []string{"Allow"}}}}
 	c := cascadeAskFixture(t, stub)
 
-	allow, _, err := c.requestApproval(context.Background(), "write_file", "/tmp/x", nil)
+	allow, _, _, err := c.requestApproval(context.Background(), "write_file", "/tmp/x", nil)
 	if err != nil {
 		t.Fatalf("approval: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestCascadeApprovalDenyAndFallback(t *testing.T) {
 
 	deny := &cascadeStubAsker{answers: []event.AskAnswer{{QuestionID: "approval-push", Selected: []string{"Deny"}}}}
 	cDeny := cascadeAskFixture(t, deny)
-	allow, _, err := cDeny.requestApproval(context.Background(), "push", "origin main", nil)
+	allow, _, _, err := cDeny.requestApproval(context.Background(), "push", "origin main", nil)
 	if err != nil {
 		t.Fatalf("denied approval: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestCascadeApprovalDenyAndFallback(t *testing.T) {
 	parentCtx, cancelParent := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancelParent()
 	start := time.Now()
-	_, _, err = cDead.requestApproval(parentCtx, "write_file", "/tmp/y", nil)
+	_, _, _, err = cDead.requestApproval(parentCtx, "write_file", "/tmp/y", nil)
 	if err == nil {
 		t.Fatal("unreachable source must end bounded with the local-prompt timeout, not silently allow")
 	}
