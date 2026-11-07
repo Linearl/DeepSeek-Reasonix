@@ -143,6 +143,12 @@ console.log("\nmcp failure advice: level 2 — chip click opens the advice popov
   ok(opened, "popover footer still opens the MCP management page");
   await settle();
   ok(advicePopover() == null, "opening the manager closes the advice popover");
+
+  await act(async () => { failedButton()?.click(); });
+  ok(advicePopover() != null, "chip click reopens the advice popover");
+  await act(async () => { failedButton()?.click(); });
+  await settle();
+  ok(advicePopover() == null, "clicking the chip again toggles the advice popover closed");
 }
 
 console.log("\nmcp failure advice: level 3 — error details one hop below");

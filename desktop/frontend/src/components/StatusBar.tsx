@@ -628,7 +628,7 @@ function McpStatusBarItem({ summary, onOpen }: { summary: McpStatusSummary & { s
             ref={adviceAnchorRef}
             type="button"
             className="stat statusbar__mcp statusbar__mcp--failed"
-            onClick={() => setAdviceOpen(true)}
+            onClick={() => setAdviceOpen((value) => !value)}
             aria-haspopup="dialog"
             aria-expanded={adviceOpen}
             aria-label={title}
