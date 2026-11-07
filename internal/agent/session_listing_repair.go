@@ -295,6 +295,11 @@ func commitSessionListingReplay(ctx context.Context, path string, meta BranchMet
 	meta.Turns = turns
 	meta.SchemaVersion = BranchMetaCountsVersion
 	stampSessionListingProjection(&meta)
+	// tl1485: the repair replay decodes the transcript anyway — heal existing
+	// frozen UpdatedAt values with the same message-derived activity the commit
+	// funnel publishes, so a session the user has not touched since the bug
+	// repairs its sidebar time instead of waiting for its next message.
+	raiseSessionListingActivity(&meta, msgs)
 
 	// The display index ranges describe the compatibility JSONL exactly, so
 	// refresh it from this single authoritative replay before publishing meta.
