@@ -6416,4 +6416,10 @@ export const zhTW: Record<DictKey, string> = {
   "subagentPanel.toolArgsReceiving": "參數接收中 ↓{n}…",
   "subagentPanel.toolArgsEmpty": "無參數",
   "subagentPanel.toolRowTruncated": "參數已截斷",
+  // tl1478 軌跡檢視器互動補強（命名空間鍵末尾追加）
+  "trajectory.loadOlder.all": "展開全部 {count} 條",
+  "trajectory.row.toggleHint": "點擊展開或收起該分組",
+  "trajectory.filter.label": "類別",
+  "trajectory.filter.all": "全部類別",
+  "trajectory.filter.empty": "沒有符合當前篩選條件的記錄",
 };

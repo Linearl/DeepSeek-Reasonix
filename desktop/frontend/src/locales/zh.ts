@@ -6420,4 +6420,10 @@ export const zh: Record<DictKey, string> = {
   "subagentPanel.toolArgsReceiving": "参数接收中 ↓{n}…",
   "subagentPanel.toolArgsEmpty": "无参数",
   "subagentPanel.toolRowTruncated": "参数已截断",
+  // tl1478 轨迹查看器交互补强（命名空间键末尾追加）
+  "trajectory.loadOlder.all": "展开全部 {count} 条",
+  "trajectory.row.toggleHint": "点击展开或收起该分组",
+  "trajectory.filter.label": "类目",
+  "trajectory.filter.all": "全部类目",
+  "trajectory.filter.empty": "没有符合当前筛选条件的记录",
 };

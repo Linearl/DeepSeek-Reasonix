@@ -6465,6 +6465,12 @@ export const en = {
   "subagentPanel.toolArgsReceiving": "receiving arguments ↓ {n}…",
   "subagentPanel.toolArgsEmpty": "No arguments",
   "subagentPanel.toolRowTruncated": "arguments truncated",
+  // tl1478 trajectory viewer interaction hardening (namespace keys appended at EOF)
+  "trajectory.loadOlder.all": "Show all {count}",
+  "trajectory.row.toggleHint": "Click to expand or collapse this group",
+  "trajectory.filter.label": "Categories",
+  "trajectory.filter.all": "All categories",
+  "trajectory.filter.empty": "No records match the current filters",
 };
 
 export type DictKey = keyof typeof en;

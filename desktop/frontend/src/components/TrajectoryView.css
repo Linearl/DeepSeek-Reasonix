@@ -11,7 +11,13 @@
   color: var(--text);
 }
 
+/* tl1478 sticky 摘要头：汇总条随台账进入滚动容器，滚动时钉在滚动区顶部
+   （position: sticky + 不透明背景，行内容从其下方滚过）；工具栏/时间线仍在
+   滚动区外，不需要 sticky。 */
 .traj__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: var(--space-2, 8px);
@@ -19,6 +25,7 @@
   border-bottom: 1px solid var(--border-soft);
   font-size: var(--text-xs);
   color: var(--text-3);
+  background: var(--chat-bg);
 }
 
 .traj__head-title {
@@ -201,6 +208,8 @@
   overflow-y: auto;
   background: var(--bg-elev);
   border-left: 1px solid var(--border-soft);
+  /* tl1478：sticky 摘要头（z-index:1）入滚动容器后，检查器面板必须整体压其上。 */
+  z-index: 5;
 }
 
 .traj-inspector__head {
@@ -293,6 +302,29 @@
   opacity: 0.3;
 }
 
+/* ── tl1478 批量展开收起：轮次/调用摘要行可点击，单项展开该组 ── */
+
+.traj-row--toggle {
+  cursor: pointer;
+}
+
+.traj-row--toggle:hover {
+  background: var(--sidebar-hover);
+}
+
+.traj-row--expanded .traj-row__preview {
+  color: var(--text-2);
+}
+
+.traj-row__expand {
+  flex: none;
+  width: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  text-align: center;
+}
+
 /* ── 时间线总览（②）：台账上方固定条，start/duration 左右投影 ──
    tl-1131 返修（装机实测「标签三排挤压/内容四排溢出」）：几何全部收口到
    --traj-lane-* 变量——22px 统一行高（DSH 对照 20-24px/行）、标签列 44px
@@ -377,7 +409,10 @@
 }
 
 .traj-timeline__span--search-dim,
-.traj-timeline__marker--search-dim {
+.traj-timeline__marker--search-dim,
+/* tl1478 类目过滤联动：隐藏类目的 span/marker 与搜索未命中同幅降透明。 */
+.traj-timeline__span--filter-dim,
+.traj-timeline__marker--filter-dim {
   opacity: 0.14;
 }
 
@@ -510,6 +545,78 @@
   border-color: var(--accent);
 }
 
+/* ── tl1478 类目过滤菜单：触发钮基样式复用 traj__toggle，面板为工具栏下挂弹出层 ── */
+
+.traj__filter {
+  position: relative;
+  display: inline-flex;
+}
+
+/* 弹出层的定位锚是 .traj__filter；触发钮自身保持流内布局（class-contract：
+   JSX 引用的每个类必须有真实定义块）。 */
+.traj__filter-trigger {
+  position: static;
+}
+
+.traj__filter-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  background: transparent;
+  border: none;
+}
+
+.traj__filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 4;
+  min-width: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.traj__filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--text-2xs);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.traj__filter-item:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.traj__filter-check {
+  flex: none;
+  width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.traj__filter-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 行可读摘要（③）：类型彩色标签 + 单行摘要 + 耗时（任务 1112） */
 .traj-row__tag {
   display: inline-flex;
@@ -569,6 +676,7 @@
 .traj__load-older-row {
   display: flex;
   justify-content: center;
+  gap: var(--space-2, 8px);
   padding: 8px 14px;
 }
 
