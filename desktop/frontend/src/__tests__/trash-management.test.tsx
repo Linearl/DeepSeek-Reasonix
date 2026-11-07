@@ -9,6 +9,8 @@ const { createRoot } = await import("react-dom/client");
 const { LocaleProvider } = await import("../lib/i18n");
 const { ToastProvider } = await import("../lib/toast");
 const { TrashPage } = await import("../components/TrashPage");
+// tl1449（症状④）：前端日志走既有 reportFrontendLog 的内存环（网关断连也留痕），测试从环里取证。
+const { drainFrontendLogRing } = await import("../lib/frontendLog");
 const session = (id: string, recoveryCopy = false): SessionMeta => ({ path: id, title: id, preview: id, turns: 0, createdAt: 1, lastActivityAt: 1, modTime: 1, deletedAt: Date.now(), current: false, open: false, recoveryCopy });
 let sessions = [session("a"), session("b"), session("protected", true)];
 let latePreview!: () => void;
@@ -48,6 +50,9 @@ await act(async () => root.render(render(false)));
 assert.equal(document.querySelector(".toast"), null, "no completion toast while the batch is still running");
 await act(async () => { releaseB(); });
 await act(async () => {});
+// tl1449（症状④）：清空批次失败必须落前端日志（页内明细会随页面卸载消失，环里留痕）。
+const batchFailLogs = drainFrontendLogRing().filter((line) => line.startsWith("[frontend:trash-page] purge batch finished with failures"));
+assert.ok(batchFailLogs.some((line) => line.includes("1/2 failed") && line.includes("b (busy)")), `purge batch failures land in the frontend log ring (got ${JSON.stringify(batchFailLogs)})`);
 // tl1306 断言②摘要：完成后 toast + 页内摘要都在，失败项带原因明细；进度条隐藏。
 const toast = document.querySelector(".toast");
 assert.ok(toast, "completion toast appears when the user is away from the trash page");
@@ -64,6 +69,9 @@ await act(async () => button("Retry failed items").click());
 assert.deepEqual(calls, ["a", "b", "b"], "explicit retry only targets failures");
 await act(async () => button("Restore").click());
 assert.ok(document.body.textContent?.includes("Operation completed, but the list could not refresh."));
+// tl1449（症状④）：列表加载失败此前连 err 都丢弃，横幅关掉后零痕迹——必须落前端日志。
+const listFailLogs = drainFrontendLogRing().filter((line) => line.startsWith("[frontend:trash-page] trash list load failed"));
+assert.ok(listFailLogs.some((line) => line.includes("read failure")), `trash list load failure lands in the frontend log ring (got ${JSON.stringify(listFailLogs)})`);
 assert.equal(document.querySelectorAll('.hist-item').length, 0, "successful restore is retained locally when refresh fails");
 assert.ok(sessions.some((item) => item.path === "protected"));
 await act(async () => root.render(render(false)));
