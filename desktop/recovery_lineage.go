@@ -341,7 +341,19 @@ func (a *App) recoveryAuthorityMainPath(catalog *sessioncatalog.Catalog, mainPat
 		return authPath
 	}
 	// Authority #2: the explicit preference at filing level (same predicate as
-	// memberPreferred in SetActiveSessionVersion).
+	// memberPreferred in SetActiveSessionVersion). Shared with the open/restore
+	// funnel's resolver (recoveryAuthorityMainPathForOpen) so the switch gate,
+	// the panel Selected and the open cannot disagree on what "explicit
+	// preference" means.
+	return preferredGroupMemberPathOfGroup(topic, groupID)
+}
+
+// preferredGroupMemberPathOfGroup resolves the explicit preference at filing
+// level: the member the catalog filed as preferred (RecoveryPreferred is
+// digest-validated at reconcile time via agent.RecoveryPreferenceCurrent) or
+// carrying the preferred role (promoteCanonicalLeaves translates the validated
+// flag into RecoveryRolePreferred).
+func preferredGroupMemberPathOfGroup(topic sessioncatalog.TopicRecord, groupID string) string {
 	for _, member := range topic.Sessions {
 		if !recoveryRecordBelongsToGroup(member, groupID) {
 			continue

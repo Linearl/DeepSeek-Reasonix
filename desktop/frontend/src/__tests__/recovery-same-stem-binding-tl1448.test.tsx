@@ -399,7 +399,24 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
   await flush();
 
   ok(spies.deleted.length === 0, "⑥ the adopted main file is never offered to the cleanup (名字承诺「非主线」)");
-  ok(!document.querySelector(".reasonix-confirm-dialog"), "⑥ no cleanup confirmation for a main-file-only target set");
+  // tl1415f supersession: the target set is no longer main-file-only. The
+  // demoted scan-origin file (MAIN_PATH, adopted away) and the copy file the
+  // chain inventory knows about are both genuine non-main copies — the
+  // cleanup's name promise now reaches them (包 82 打回: 降级副本行「清理非
+  // 主线副本」够不着). The confirmation opens for the non-empty set; the
+  // adopted main file (FORK_PATH) must never be in it or in the calls.
+  {
+    const dialog = document.querySelector(".reasonix-confirm-dialog");
+    ok(Boolean(dialog), "⑥ the cleanup confirms before deleting (non-main copies are real targets)");
+    ok(!dialog?.textContent?.includes(FORK_PATH), "⑥ the confirmation never names the adopted main file");
+    const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
+      .find((b) => b.textContent?.trim() === "Clean up");
+    await act(async () => { confirmBtn?.click(); });
+    await flush();
+    const deletedSet = new Set(spies.deleted);
+    ok(deletedSet.has(MAIN_PATH), "⑥ the confirmed cleanup deletes the demoted scan-origin file");
+    ok(!deletedSet.has(FORK_PATH), "⑥ the adopted main file is never in the delete calls");
+  }
 
   await act(async () => root.unmount());
 }
@@ -423,7 +440,20 @@ console.log("\nsame-stem dual rows + delete path validation (tl1448)");
   await flush();
 
   ok(spies.deleted.length === 0, "⑥b the adopted main file is never offered to the cleanup (expanded path)");
-  ok(!document.querySelector(".reasonix-confirm-dialog"), "⑥b no cleanup confirmation for a main-file-only target set (expanded path)");
+  // tl1415f supersession (expanded path): same contract as ⑥ — the demoted
+  // scan-origin file is offered, the adopted main never is.
+  {
+    const dialog = document.querySelector(".reasonix-confirm-dialog");
+    ok(Boolean(dialog), "⑥b the cleanup confirms before deleting (expanded path)");
+    ok(!dialog?.textContent?.includes(FORK_PATH), "⑥b the confirmation never names the adopted main file (expanded path)");
+    const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
+      .find((b) => b.textContent?.trim() === "Clean up");
+    await act(async () => { confirmBtn?.click(); });
+    await flush();
+    const deletedSet = new Set(spies.deleted);
+    ok(deletedSet.has(MAIN_PATH), "⑥b the confirmed cleanup deletes the demoted scan-origin file (expanded path)");
+    ok(!deletedSet.has(FORK_PATH), "⑥b the adopted main file is never in the delete calls (expanded path)");
+  }
 
   await act(async () => root.unmount());
 }

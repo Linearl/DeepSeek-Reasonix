@@ -1077,11 +1077,21 @@ export function RecoveryCopiesSection() {
         await loadChains(group.mainPath);
       }
     }
-    const targets = chosen.flatMap((group) =>
-      group.copies
+    const targets = chosen.flatMap((group) => {
+      // tl1415f: 版本区的文件形行(采纳后被降级的扫描起点主线)也是「非主线副
+      // 本」——采纳前它就是 preferredMainPathOf 本身(闸排除,零变化),采纳后
+      // 主线指针落到 Selected 行,降级文件不再被扫(此前一键清理永远够不着
+      // 它)。折叠读与渲染同一模型源;headId 行(文件内 DAG 头)不属文件级清理。
+      const model = buildSessionChainModel(group, chainsRef.current.get(group.mainPath), false);
+      const { leftover } = bindCopyChains(model.candidates, group.copies);
+      const copyTargets = group.copies
         .filter((copy) => !copy.orphan && !sameSessionPath(copy.path, preferredMainPathOf(group)))
-        .map((copy) => ({ group, copy })),
-    );
+        .map((copy) => ({ group, path: copy.path, label: `${copy.label}` }));
+      const fileTargets = leftover
+        .filter((c) => !c.headId && !c.selected && !sameSessionPath(c.path, preferredMainPathOf(group)))
+        .map((c) => ({ group, path: c.path, label: chainIdentityOf(c.path, "") }));
+      return [...copyTargets, ...fileTargets];
+    });
     if (targets.length === 0) return;
     const perGroup = new Map<string, number>();
     for (const { group } of targets) {
@@ -1112,18 +1122,18 @@ export function RecoveryCopiesSection() {
     try {
       let archived = 0;
       const failures: string[] = [];
-      for (const { group, copy } of targets) {
+      for (const { group, path, label } of targets) {
         // tl1448:最终闸——请求前以最新主线指针复核(确认框悬停期间指针可能
         // 已被采纳/合并改写)。
-        if (sameSessionPath(copy.path, preferredMainPathOf(group))) {
-          failures.push(`${copy.label}: ${t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", chainIdentityOf(copy.path, ""))}`);
+        if (sameSessionPath(path, preferredMainPathOf(group))) {
+          failures.push(`${label}: ${t("settings.recoveryCopiesDeleteRefusedMain").replace("{name}", chainIdentityOf(path, ""))}`);
           continue;
         }
         try {
-          await app.DeleteRecoveryBranch(copy.path);
+          await app.DeleteRecoveryBranch(path);
           archived += 1;
         } catch (err) {
-          failures.push(`${copy.label}: ${err instanceof Error ? err.message : String(err)}`);
+          failures.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
       if (failures.length === targets.length) {
@@ -1428,8 +1438,20 @@ export function RecoveryCopiesSection() {
    *  vocabulary: "merged" reads as success-with-counts elsewhere, so a dedicated
    *  kind keeps the delete result honest ("deleted", not "merged"). */
   const deleteBranches = async () => {
+    // tl1415f: 勾选集现在还可能含版本区的文件形行(降级主线等,tl1415f 新增
+    // 勾选)——折叠读与渲染同一个模型源(buildSessionChainModel+bindCopyChains),
+    // 副本行与文件形版本行都按 path 收集;headId 行(文件内 DAG 头)不进批量
+    // (head 删除是另一条入口,文件级批量不含它,与此前一致)。
     const chosen = (groups ?? [])
-      .flatMap((g) => g.copies.map((c) => ({ path: c.path, group: g, label: `${g.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${g.copies.indexOf(c) + 1}` })))
+      .flatMap((g) => {
+        const model = buildSessionChainModel(g, chainsRef.current.get(g.mainPath), false);
+        const { leftover } = bindCopyChains(model.candidates, g.copies);
+        const copyRows = g.copies.map((c) => ({ path: c.path, group: g, label: `${g.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${g.copies.indexOf(c) + 1}` }));
+        const fileRows = leftover
+          .filter((c) => !c.headId && !c.selected)
+          .map((c) => ({ path: c.path, group: g, label: `${g.mainLabel} · ${chainIdentityOf(c.path, "")}` }));
+        return [...copyRows, ...fileRows];
+      })
       .filter((c) => branchesSelected.has(c.path));
     // tl1448 删除路径校验（批量面）：勾选可能产生于采纳之前、随刷新残留——
     // 勾选集中的当前主线文件在这里整批剔除，确认清单与后端请求都只见可删
@@ -1523,8 +1545,11 @@ export function RecoveryCopiesSection() {
    *  tl1448 删除路径校验:入口先以当前主线指针复核删除对象(删副本≠删主线
    *  ——渲染层的入口抑制之外,这里是函数级防线,防行刷新间隙/同 stem 行点击
    *  的残余路径);确认框明示删除对象文件(stem+完整路径),不再只说「副本 N」
-   *  ——用户要能把确认框对回磁盘上那份文件(20261106 误删事故验收①)。 */
-  const deleteBranchOne = async (group: RecoveryCopyGroupView, copyPath: string, index: number) => {
+   *  ——用户要能把确认框对回磁盘上那份文件(20261106 误删事故验收①)。
+   *  tl1415f: identity 参数供版本区的文件形行(降级主线等)复用同一条闸——
+   *  它们的行身份是文件 stem 而非「副本 N」,确认框与结果行据实称呼,闸与
+   *  回收语义与副本单删完全同源(不另起删除路径)。 */
+  const deleteBranchOne = async (group: RecoveryCopyGroupView, copyPath: string, index: number, identity?: string) => {
     if (sameSessionPath(copyPath, preferredMainPathOf(group))) {
       refuseMainDelete(group.mainLabel, copyPath);
       return;
@@ -1532,13 +1557,14 @@ export function RecoveryCopiesSection() {
     // tl1415e: three-level identity — the confirm box names the file for
     // normally-named copies too (the stem level always exists).
     const shortName = chainIdentityOf(copyPath, "");
+    const rowLabel = identity || `${t("settings.recoveryCopiesCopy")} ${index + 1}`;
     const okToDelete = await confirm({
       title: t("settings.recoveryCopiesDeleteTitle"),
       message: (
         <div>
           <p>
-            {t("settings.recoveryCopiesDeleteLead")}：{group.mainLabel} · {t("settings.recoveryCopiesCopy")} {index + 1}
-            {shortName ? `（${shortName}）` : ""}
+            {t("settings.recoveryCopiesDeleteLead")}：{group.mainLabel} · {rowLabel}
+            {shortName && !identity ? `（${shortName}）` : ""}
           </p>
           <p>
             {t("settings.recoveryCopiesDeleteTarget").replace("{path}", copyPath)}
@@ -1562,7 +1588,7 @@ export function RecoveryCopiesSection() {
       await app.DeleteRecoveryBranch(copyPath);
       setDeletedOutcomes((current) => [
         ...current,
-        { label: `${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`, kind: "deleted" },
+        { label: `${group.mainLabel} · ${rowLabel}`, kind: "deleted" },
       ]);
       // tl1414 反馈对称（20261105 用户实测：点确认后静默无反应）：outcome 行
       // 只有展开面板才可见，成功同弹 toast——离开面板也在。
@@ -1574,7 +1600,7 @@ export function RecoveryCopiesSection() {
       setDeletedOutcomes((current) => [
         ...current,
         {
-          label: `${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`,
+          label: `${group.mainLabel} · ${rowLabel}`,
           kind: "failed",
           detail,
         },
@@ -2297,9 +2323,25 @@ export function RecoveryCopiesSection() {
         {leftover.map((c) => {
           const tags = chainTagInfo(c, model.chains);
           const isPicked = pickedChain[group.mainPath] === c.path;
+          // tl1415f: 文件形版本行(采纳后被降级的扫描起点主线等,headId 恒空,
+          // tl1355)参与清理勾选——此前该格恒空,降级主线行选不进「删除所选」,
+          // 用户只能看着它不可操作(包 82 打回的第②点:「降级副本行无删除入口
+          // +复选框不可选中」)。当前选中行不提供勾选与删除(后端同样拒)。
+          const fileShaped = !c.headId && !c.selected;
           return (
             <tr key={`${c.path}|${c.headId}|${leftover.indexOf(c)}`} className={`rc-child rc-chain${tags.isLonger ? " rc-chain--recommended" : ""}`}>
-              <td className="rc-detail__check" />
+              <td className="rc-detail__check">
+                {fileShaped && (
+                  <input
+                    type="checkbox"
+                    checked={branchesSelected.has(c.path)}
+                    disabled={busy}
+                    onChange={() => toggleBranch(c.path)}
+                    aria-label={`${group.mainLabel} · ${chainIdentityOf(c.path, c.headId)}`}
+                    title={t("settings.recoveryCopiesBranchCheckHint")}
+                  />
+                )}
+              </td>
               <td className="rc-col-kind">
                 {/* tl1415c B1(槽点①④): 降级行类型名「降级副本」——枚举被拒
                     的占位行/后端降级行不再顶着「版本」标签;悬停给原因。 */}
@@ -2382,8 +2424,13 @@ export function RecoveryCopiesSection() {
                   )}
                   {/* 任务 1064:非当前版本行加删除入口——当前选中版本不可选不
                       可删(后端也拒绝),删除走确认+回收语义。降级行没有 head
-                      身份可言,不提供删除。 */}
-                  {!c.selected && !c.degraded && c.headId && (
+                      身份可言,不提供删除。
+                      tl1415f: 文件形行(降级主线等,headId 恒空)此前两种删除
+                      都够不着——head 删除要 headId,副本单删只在副本行渲染,
+                      降级主线行无删除入口。现走 deleteBranchOne 同一条闸
+                      (主线指针两道复核+确认框明示文件+回收语义),identity
+                      按文件 stem 称呼,不另起删除路径。 */}
+                  {!c.selected && c.headId && !c.degraded && (
                     <button
                       className="btn btn--secondary btn--small rc-delete"
                       type="button"
@@ -2392,6 +2439,17 @@ export function RecoveryCopiesSection() {
                       onClick={() => void deleteHead(group.mainPath, c.headId)}
                     >
                       {deletingHead === c.headId ? "…" : t("settings.recoveryCopiesDelete")}
+                    </button>
+                  )}
+                  {fileShaped && (
+                    <button
+                      className="btn btn--secondary btn--small rc-delete"
+                      type="button"
+                      title={t("settings.recoveryCopiesDeleteHint")}
+                      disabled={busy}
+                      onClick={() => void deleteBranchOne(group, c.path, leftover.indexOf(c), chainIdentityOf(c.path, ""))}
+                    >
+                      {t("settings.recoveryCopiesDelete")}
                     </button>
                   )}
                 </div>
