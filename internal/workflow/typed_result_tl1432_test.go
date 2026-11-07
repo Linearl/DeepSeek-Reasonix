@@ -9,7 +9,9 @@ package workflow
 // 排查。截断嫌疑的判定与提取共用一个扫描器（jsonutil.scanTopLevelObjects）。
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -336,4 +338,119 @@ func TestParseResultJSONTolerant_TL1432(t *testing.T) {
 			t.Fatal("截断对象应失败")
 		}
 	})
+}
+
+// TestTypedResultFixtureTable_TL1432：任务书失败形态夹具表（表驱动，A2 补全
+// 尾逗号级）。wantMethod 断言「哪一级救回」——分级管线的每一级都必须有钉，
+// 否则撤掉某级时表不会红。单引号行按设计不修复（引号改写会改写语义，
+// 伪造成本 > 收益，该形态走 tl1432 B 定向重发治疗）；截断行永不抢救。
+func TestTypedResultFixtureTable_TL1432(t *testing.T) {
+	fence := "```"
+	cases := []struct {
+		name       string
+		answer     string
+		wantOK     bool
+		wantMethod string // wantOK 时断言救回的级
+		check      func(t *testing.T, obj map[string]any)
+	}{
+		{"纯JSON(一级strict现状回归)", `{"findings":[],"count":0}`, true, parseMethodStrict, nil},
+		{"围栏+前后散文(二级朴素切片)", "分析如下。\n\n" + fence + "json\n{\"findings\":[],\"count\":1}\n" + fence + "\n以上。", true, parseMethodSlice, nil},
+		{"前散文含示例对象(三级平衡扫描取最后)", `我考虑过 {"outcome":"retry"}，最终：{"count":2}`, true, parseMethodScan, nil},
+		{"尾逗号_对象内(四级宽松修复)", `{"findings":[],"count":3,}`, true, parseMethodLenient, func(t *testing.T, obj map[string]any) {
+			if obj["count"].(float64) != 3 {
+				t.Fatalf("修复后 count 应为 3，实际 %v", obj["count"])
+			}
+		}},
+		{"尾逗号_数组内(四级宽松修复)", `{"findings":[{"where":"a"}],}`, true, parseMethodLenient, func(t *testing.T, obj map[string]any) {
+			if len(obj["findings"].([]any)) != 1 {
+				t.Fatalf("修复后 findings 应为 1 条，实际 %v", obj["findings"])
+			}
+		}},
+		{"尾逗号+围栏+前后散文(三级提取失败四级修复兜住)", "说明。\n" + fence + "json\n{\"count\":4,}\n" + fence + "\n尾注。", true, parseMethodLenient, nil},
+		{"尾逗号+前噪括号(朴素切片报废、平衡扫描候选被修复)", `noise {"x":1} 最终：{"count":5,}`, true, parseMethodLenient, func(t *testing.T, obj map[string]any) {
+			if obj["count"].(float64) != 5 {
+				t.Fatalf("应取到尾部真答案 count=5，实际 %v", obj["count"])
+			}
+		}},
+		{"单引号_按设计不修复(留给B定向重发)", `{'findings':[],'count':6}`, false, "", nil},
+		{"截断_永不抢救且错误点名", `{"findings":[{"where":"c"}],"count":7,"cov":[1,2`, false, "", nil},
+		{"纯散文_失败", "没找到任何问题。", false, "", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			obj, method, err := parseResultJSONWithMethod(tc.answer)
+			if tc.wantOK {
+				if err != nil {
+					t.Fatalf("应提取成功: %v", err)
+				}
+				if method != tc.wantMethod {
+					t.Fatalf("救回的级应为 %s，实际 %s", tc.wantMethod, method)
+				}
+				if tc.check != nil {
+					tc.check(t, obj)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("应判失败，实际解出 %v", obj)
+			}
+			if !strings.Contains(err.Error(), "answer is not a JSON object") {
+				t.Fatalf("错误文案主干应保留: %q", err.Error())
+			}
+			if strings.Contains(tc.answer, "cov") && !strings.Contains(err.Error(), "truncated") {
+				t.Fatalf("截断行错误应点名截断嫌疑: %q", err.Error())
+			}
+		})
+	}
+}
+
+// TestTypedResultRescueLog_TL1432：容错提取防静默钉（tl1432 A2）——非严格级
+// 救回时 completeSubagent 必须落一条含「容错提取」的 WARN（含 node 与 method），
+// 且恰好一条（重发预检走静默 wrapper，完成尾是唯一权威日志点）；严格解析成功
+// 不落此日志。
+func TestTypedResultRescueLog_TL1432(t *testing.T) {
+	cases := []struct {
+		name       string
+		answer     string
+		wantMethod string // 非空 = 断言出现 WARN 且含该 method；空 = 断言无 WARN
+	}{
+		{"围栏救回_tolerant-slice", "说明。\n```json\n{\"findings\":[],\"count\":1}\n```", "tolerant-slice"},
+		{"尾逗号救回_tolerant-lenient-comma", `{"findings":[],"count":2,}`, "tolerant-lenient-comma"},
+		{"严格解析成功_无WARN", `{"findings":[],"count":3}`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+			defer slog.SetDefault(prev)
+			runner := &sequenceRunner{answers: []string{tc.answer}}
+			if _, err := tl1432BRun(t, runner, nil); err != nil {
+				t.Fatalf("runAll 不应失败: %v", err)
+			}
+			logs := buf.String()
+			if tc.wantMethod == "" {
+				if strings.Contains(logs, "容错提取") {
+					t.Fatalf("严格成功不应落容错提取 WARN，实际: %s", logs)
+				}
+				return
+			}
+			// 按行计数：日志文案本身含「容错提取」两次（容错提取——…容错提取
+			// 成功），按子串数会把一条钉成两条。
+			n := 0
+			for _, ln := range strings.Split(logs, "\n") {
+				if strings.Contains(ln, "容错提取") {
+					n++
+				}
+			}
+			if n != 1 {
+				t.Fatalf("容错提取 WARN 应恰好一条（防重复/防静默），实际 %d 条: %s", n, logs)
+			}
+			for _, frag := range []string{tc.wantMethod, "node=finder", "WARN"} {
+				if !strings.Contains(logs, frag) {
+					t.Fatalf("WARN 应含 %q，实际: %s", frag, logs)
+				}
+			}
+		})
+	}
 }

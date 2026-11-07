@@ -111,9 +111,31 @@ func resultHint(n *Node) string {
 	return b.String()
 }
 
+// Typed-result parse stage names (tl1432 A2): the completion tail logs any
+// non-strict rescue (容错提取防静默), so the stage that produced the object
+// must be observable, not guessed.
+const (
+	parseMethodStrict  = "strict"                 // stage 1: the whole body parses as-is
+	parseMethodSlice   = "tolerant-slice"         // stage 2: naive first-{ … last-} slice
+	parseMethodScan    = "tolerant-scan"          // stage 3: last balanced top-level object
+	parseMethodLenient = "tolerant-lenient-comma" // stage 4: trailing-comma repair (tl1432 A2)
+)
+
 // parseResultJSON decodes a typed result, escalating through tolerant
 // extractions before giving up (tl1432 A — the audit found the single strict
-// parse "overly strict": one embellished answer used to scrap the whole node):
+// parse "overly strict": one embellished answer used to scrap the whole node).
+// See parseResultJSONWithMethod for the stage ladder; this wrapper keeps the
+// historical signature for the retry pre-check paths (which must stay silent —
+// the completion tail owns the one authoritative rescue log).
+func parseResultJSON(answer string) (map[string]any, error) {
+	obj, _, err := parseResultJSONWithMethod(answer)
+	return obj, err
+}
+
+// parseResultJSONWithMethod is parseResultJSON plus the name of the stage
+// that produced the object (one of the parseMethod* constants above).
+//
+// Stage ladder — first strict pass wins, then one lenient pass:
 //
 //  1. the whole answer after "Final answer:" (the task substrate may wrap the
 //     final answer with a reference block — prefer the text after the marker
@@ -123,35 +145,72 @@ func resultHint(n *Node) string {
 //     goaleval uses). Markdown fences, surrounding prose and stray braces are
 //     noise the balanced scan skips by construction; "last" (not first)
 //     because thinking models routinely quote example objects before the real
-//     answer.
+//     answer;
+//  4. the same candidates after jsonutil.RemoveTrailingCommas (tl1432 A2) —
+//     a trailing comma is invalid JSON that models still emit; every
+//     extraction stage above rejects it, so the repair is the last chance
+//     before the node fails. Only this rewrite is performed: quoting fixes,
+//     comment stripping or truncation completion would rewrite meaning.
 //
 // Truncated output is never salvaged — an object that never closes is
 // incomplete data, and guessing a completion would fabricate results. The
 // error names that case so the directed retry (tl1432 B) and the reader can
 // tell it apart from mere noise.
-func parseResultJSON(answer string) (map[string]any, error) {
+func parseResultJSONWithMethod(answer string) (map[string]any, string, error) {
 	trimmed := finalAnswerBody(answer)
+	candidates := resultCandidates(trimmed)
 	var obj map[string]any
-	if err := json.Unmarshal([]byte(trimmed), &obj); err == nil {
-		return obj, nil
-	}
-	start := strings.Index(trimmed, "{")
-	end := strings.LastIndex(trimmed, "}")
-	if start >= 0 && end > start {
-		if err := json.Unmarshal([]byte(trimmed[start:end+1]), &obj); err == nil {
-			return obj, nil
+	methods := []string{parseMethodStrict, parseMethodSlice, parseMethodScan}
+	seen := make(map[string]bool, len(candidates))
+	for i, c := range candidates {
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
+		if err := json.Unmarshal([]byte(c), &obj); err == nil {
+			return obj, methods[i], nil
 		}
 	}
-	if candidate, ok := jsonutil.LastJSONObject(trimmed); ok {
-		if err := json.Unmarshal([]byte(candidate), &obj); err == nil {
-			return obj, nil
+	// tl1432 A2 stage 4: lenient trailing-comma repair per distinct candidate.
+	// Runs only after every candidate failed strict parse; a candidate the
+	// fixer leaves untouched (nothing to repair) is skipped — its failure is
+	// already known.
+	repairedSeen := make(map[string]bool, len(candidates))
+	for _, c := range candidates {
+		if repairedSeen[c] {
+			continue
+		}
+		repairedSeen[c] = true
+		repaired := jsonutil.RemoveTrailingCommas(c)
+		if repaired == c {
+			continue
+		}
+		if err := json.Unmarshal([]byte(repaired), &obj); err == nil {
+			return obj, parseMethodLenient, nil
 		}
 	}
 	msg := fmt.Sprintf("answer is not a JSON object: %s", truncate(trimmed, 120))
 	if jsonutil.HasUnclosedObject(trimmed) {
 		msg += " (output looks truncated — an object never closes)"
 	}
-	return nil, errors.New(msg)
+	return nil, "", errors.New(msg)
+}
+
+// resultCandidates returns the ordered extraction candidates for one answer:
+// [whole body, naive slice, balanced scan]. Later entries may equal earlier
+// ones (a clean object makes all three identical); callers dedupe.
+func resultCandidates(trimmed string) []string {
+	out := make([]string, 0, 3)
+	out = append(out, trimmed)
+	if start := strings.Index(trimmed, "{"); start >= 0 {
+		if end := strings.LastIndex(trimmed, "}"); end > start {
+			out = append(out, trimmed[start:end+1])
+		}
+	}
+	if last, ok := jsonutil.LastJSONObject(trimmed); ok {
+		out = append(out, last)
+	}
+	return out
 }
 
 // extractFindings pulls the findings array out of a typed result, stamping
