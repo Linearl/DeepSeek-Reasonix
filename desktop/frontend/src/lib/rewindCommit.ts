@@ -1,5 +1,7 @@
 import { app } from "./bridge";
 import { t } from "./i18n";
+import { presentRewindPreflight } from "./rewindPreflight";
+import { classifyRewindFiles } from "./rewindSafety";
 import type { RewindResultView, TabMeta } from "./types";
 
 export async function commitRewindWithPreview(
@@ -16,6 +18,16 @@ export async function commitRewindWithPreview(
         ? plan?.canConversation && plan?.canFiles
         : plan?.canFiles;
     if (!plan?.ok || !canCommit) {
+      // tl1476: per-file precheck failures surface the preflight dialog with
+      // the unsafe files and their reasons visible (confirm disabled — the
+      // user can only cancel). The refusal result below is unchanged, so the
+      // downstream notices stay byte-identical to the pre-preflight behavior.
+      if (plan && scope !== "conversation") {
+        const blocked = classifyRewindFiles(plan);
+        if (blocked.some((file) => !file.safe)) {
+          await presentRewindPreflight({ turn, scope, files: blocked });
+        }
+      }
       return {
         ok: false,
         error: plan?.error
@@ -24,6 +36,18 @@ export async function commitRewindWithPreview(
           || "rewind unavailable",
         conflicts: plan?.conflicts,
       };
+    }
+    // tl1476: clean full-coverage file rewinds confirm through the preflight
+    // dialog first — one screen listing the files (all safe, confirm enabled)
+    // or the unsafe classification with confirm disabled. Coverage-warning
+    // plans (legacy / expired / gaps) keep their existing window.confirm flow
+    // untouched, and no-file plans skip the dialog entirely (zero change).
+    if (scope !== "conversation" && !rewindNeedsCoverageConfirm(plan)) {
+      const files = classifyRewindFiles(plan);
+      if (files.length > 0) {
+        const proceed = await presentRewindPreflight({ turn, scope, files });
+        if (!proceed) return { ok: false, error: "rewind cancelled" };
+      }
     }
     if (scope !== "conversation" && rewindNeedsCoverageConfirm(plan)) {
       const gaps = (plan.coverageGaps || []).filter((gap) => !isScratchCoverageGap(gap)).join("\n");

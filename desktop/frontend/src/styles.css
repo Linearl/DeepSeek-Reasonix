@@ -44650,3 +44650,13 @@ button.statusbar__mcp:focus-visible {
 .rc-row--group > td { background: color-mix(in srgb, currentColor 4%, transparent); }
 .rc-detail__row > td { padding-top: 6px; padding-bottom: 6px; }
 .subagents-panel__row--workflow { font-weight: 500; }
+
+/* --- tl1476 rewind preflight dialog --- */
+.rewind-preflight { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; }
+.rewind-preflight__group { display: flex; flex-direction: column; gap: 4px; }
+.rewind-preflight__heading { font-size: 0.85rem; font-weight: 600; opacity: 0.85; }
+.rewind-preflight__heading--unsafe { color: var(--danger, #c0504d); }
+.rewind-preflight__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rewind-preflight__file { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 0.8rem; word-break: break-all; }
+.rewind-preflight__file--unsafe { color: var(--danger, #c0504d); }
+.rewind-preflight__reason { flex-shrink: 0; opacity: 0.75; }

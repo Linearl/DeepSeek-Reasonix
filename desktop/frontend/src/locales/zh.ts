@@ -6402,4 +6402,14 @@ export const zh: Record<DictKey, string> = {
   "composer.screenshotButton": "截图",
   "composer.screenshotButtonHint": "抓取屏幕、框选区域、标注并插入附件",
   "composer.screenshotFailed": "截图失败",
+  // tl1476 撤销前文件预检弹窗（reason 键映射见 lib/rewindSafety.ts）
+  "rewindPreflight.title": "撤销前文件检查",
+  "rewindPreflight.confirm": "回退 {n} 个文件",
+  "rewindPreflight.cancel": "取消",
+  "rewindPreflight.safeHeading": "将恢复到检查点状态（{n}）",
+  "rewindPreflight.unsafeHeading": "存在不安全项，已禁止回退（{n}）",
+  "rewindPreflight.reason.outsideWorkspace": "位于工作区之外",
+  "rewindPreflight.reason.missingPayload": "检查点载荷已删除或已过期",
+  "rewindPreflight.reason.permissionDenied": "权限不足，无法写入该文件",
+  "rewindPreflight.reason.changed": "与检查点之后的状态不一致",
 };

@@ -1,5 +1,7 @@
 import { ManagementSurface } from "./components/ManagementSurface";
 import { useConfirmDialog } from "./components/ConfirmDialog";
+import { RewindPreflightList } from "./components/RewindPreflightList";
+import { registerRewindPreflightPresenter } from "./lib/rewindPreflight";
 import { VersionSwitchDialog, type VersionEntry } from "./components/VersionSwitchDialog";
 import { ForkNoticeDialog } from "./components/ForkNoticeDialog";
 import type { ForkNoticeState } from "./lib/bridge";
@@ -4198,6 +4200,23 @@ export default function App() {
     });
   }, [confirmTakeover]);
 
+  // tl1476: rewind preflight dialog. Every live rewind path (message actions
+  // and the session-undo hook) funnels through commitRewindWithPreview, which
+  // awaits this shared presenter before mutating anything. Unsafe files keep
+  // the confirm button disabled; the visible reason list is the explanation.
+  const { confirm: confirmRewindPreflight, dialog: rewindPreflightDialog } = useConfirmDialog();
+  useEffect(() => {
+    registerRewindPreflightPresenter(async (request) => confirmRewindPreflight({
+      title: t("rewindPreflight.title"),
+      message: <RewindPreflightList files={request.files} />,
+      confirmLabel: t("rewindPreflight.confirm", { n: request.files.filter((file) => file.safe).length }),
+      cancelLabel: t("rewindPreflight.cancel"),
+      wide: true,
+      confirmDisabled: request.files.some((file) => !file.safe),
+    }));
+    return () => registerRewindPreflightPresenter(null);
+  }, [confirmRewindPreflight, t]);
+
   // Task 539: yield lifecycle banner — 让渡中（sticky until settled）、移交完成、
   // 让渡取消、强制接管。The Go side emits app:takeover-yield {kind, path, detail}.
   const [takeoverYieldNotice, setTakeoverYieldNotice] = useState<{
@@ -7341,6 +7360,7 @@ export default function App() {
       )}
       {restartUpdateDialog}
       {takeoverDialog}
+      {rewindPreflightDialog}
       {takeoverYieldNotice && (
         <div
           style={{
