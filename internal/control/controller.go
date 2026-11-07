@@ -543,10 +543,14 @@ type Controller struct {
 }
 
 type approvalReply struct {
-	allow      bool
-	session    bool
-	persist    bool // true = write "always allow" rule to config
-	onceDirs   []string
+	allow    bool
+	session  bool
+	persist  bool // true = write "always allow" rule to config
+	onceDirs []string
+	// feedback is the tl1480 optional deny reason typed on the card; empty =
+	// pure deny (legacy byte-identical). Composition happens at each deny
+	// text site via withUserFeedback / permission.UserDeclinedFeedback.
+	feedback   string
 	persistErr error
 }
 
@@ -3086,7 +3090,7 @@ type plannerPlanApprover struct {
 
 func (p plannerPlanApprover) RunWithPlannerApproval(ctx context.Context, plan string, run func(context.Context) error) error {
 	c := p.c
-	allow, _, err := c.requestApprovalWithReason(ctx, planApprovalTool, "", nil, "Planner requested host approval before execution.")
+	allow, _, _, err := c.requestApprovalWithReason(ctx, planApprovalTool, "", nil, "Planner requested host approval before execution.")
 	if err != nil {
 		return err
 	}
@@ -7458,6 +7462,31 @@ func combineApprovalReasons(reasons ...string) string {
 	return strings.Join(kept, "\n")
 }
 
+// tl1480 bound for the optional deny feedback typed on an approval card. The
+// frontend clamps the input at the same bound; the controller clamps again so
+// a hand-called bridge cannot smuggle an unbounded string into a tool_result.
+const maxDenyFeedback = 1000
+
+// clampDenyFeedback trims and rune-clamps the deny feedback to maxDenyFeedback.
+func clampDenyFeedback(feedback string) string {
+	feedback = strings.TrimSpace(feedback)
+	if len(feedback) > maxDenyFeedback*4 {
+		// Byte pre-trim keeps huge inputs from allocating a rune slice; the
+		// boundary is re-encoded so a split rune cannot leak U+FFFD.
+		feedback = strings.ToValidUTF8(feedback[:maxDenyFeedback*4], "")
+	}
+	if runes := []rune(feedback); len(runes) > maxDenyFeedback {
+		return string(runes[:maxDenyFeedback])
+	}
+	return feedback
+}
+
+// withUserFeedback appends the tl1480 deny feedback to a refusal sentence.
+// Empty feedback keeps base byte-identical (纯拒绝 = 现行为零变化).
+func withUserFeedback(base, feedback string) string {
+	return base + permission.UserFeedbackSuffix(feedback)
+}
+
 func (g gateApprover) approveWithPolicyReason(ctx context.Context, tool, subject string, args json.RawMessage, policyReason string) (bool, bool, string, error) {
 	if tool == memoryRememberTool && g.c.allowLowRiskRemember(args) {
 		return true, false, "", nil
@@ -7483,22 +7512,41 @@ func (g gateApprover) approveWithPolicyReason(ctx context.Context, tool, subject
 			return true, false, "", nil
 		}
 		reason = combineApprovalReasons(policyReason, reason)
-		humanAllow, remember, err := g.c.requestApprovalWithReason(ctx, tool, subject, args, reason)
+		humanAllow, remember, feedback, err := g.c.requestApprovalWithReason(ctx, tool, subject, args, reason)
 		if err != nil {
 			return false, false, reason, err
 		}
 		if !humanAllow {
+			// tl1480: a deny with card feedback folds it into the refusal the
+			// model sees; no feedback keeps the legacy reason byte-identical.
+			if feedback != "" {
+				reason = combineApprovalReasons(reason, permission.UserDeclinedFeedback(feedback))
+			}
 			return false, false, reason, nil
 		}
 		return true, remember, "", nil
 	}
 	if requireHuman {
 		reason := combineApprovalReasons(policyReason, dynamicBashApprovalReason)
-		allow, remember, err := g.c.requestApprovalWithReasonOptions(ctx, tool, subject, args, reason, approvalDecisionOptions{requireHuman: true})
-		return allow, remember, "", err
+		allow, _, feedback, err := g.c.requestApprovalWithReasonOptions(ctx, tool, subject, args, reason, approvalDecisionOptions{requireHuman: true})
+		if err != nil {
+			return false, false, "", err
+		}
+		if !allow {
+			return false, false, permission.UserDeclinedFeedback(feedback), nil
+		}
+		return true, false, "", nil
 	}
-	allow, remember, err := g.c.requestApprovalWithReason(ctx, tool, subject, args, policyReason)
-	return allow, remember, "", err
+	allow, _, feedback, err := g.c.requestApprovalWithReason(ctx, tool, subject, args, policyReason)
+	if err != nil {
+		return false, false, "", err
+	}
+	if !allow {
+		// tl1480: empty feedback returns UserDeclinedReason — the same sentence
+		// Gate.Check would default to, so the no-feedback text is unchanged.
+		return false, false, permission.UserDeclinedFeedback(feedback), nil
+	}
+	return true, false, "", nil
 }
 
 type planModeReadOnlyTrustApprover struct{ c *Controller }
@@ -7521,7 +7569,7 @@ func (s sandboxEscapeApprover) ApproveSandboxEscape(ctx context.Context, req san
 		return false, "approval aborted", err
 	}
 	if !reply.allow {
-		return false, i18n.M.SandboxEscapeDeclined, nil
+		return false, withUserFeedback(i18n.M.SandboxEscapeDeclined, reply.feedback), nil
 	}
 	if reply.session {
 		s.c.approval.grantSession(SandboxEscapeApprovalTool, subject)
@@ -7572,7 +7620,7 @@ func (m managedConfigWriteApprover) ApproveManagedConfigWrite(ctx context.Contex
 		return false, "approval aborted", err
 	}
 	if !reply.allow {
-		return false, i18n.M.ConfigWriteDeclined, nil
+		return false, withUserFeedback(i18n.M.ConfigWriteDeclined, reply.feedback), nil
 	}
 	if reply.session {
 		m.c.approval.grantSession(ManagedConfigWriteApprovalTool, subject)
@@ -7611,7 +7659,7 @@ func (p planModeReadOnlyTrustApprover) checkBashReadOnlyCommandTrust(ctx context
 		return false, "approval aborted", err
 	}
 	if !reply.allow {
-		return false, i18n.M.PlanModeBashTrustDeclined, nil
+		return false, withUserFeedback(i18n.M.PlanModeBashTrustDeclined, reply.feedback), nil
 	}
 	if reply.session {
 		p.c.approval.grantPlanModeReadOnlyCommand(prefix)
@@ -7789,18 +7837,18 @@ func parseRewind(args string, cps []checkpoint.Meta) (int, RewindScope, error) {
 // the same approval scope short-circuits. The approvalManager's promptMu
 // serialises outstanding prompts; this method keeps the I/O (events, hooks,
 // remember) that the manager deliberately stays out of.
-func (c *Controller) requestApproval(ctx context.Context, tool, subject string, args json.RawMessage) (bool, bool, error) {
+func (c *Controller) requestApproval(ctx context.Context, tool, subject string, args json.RawMessage) (bool, bool, string, error) {
 	return c.requestApprovalWithReason(ctx, tool, subject, args, "")
 }
 
-func (c *Controller) requestApprovalWithReason(ctx context.Context, tool, subject string, args json.RawMessage, reason string) (bool, bool, error) {
+func (c *Controller) requestApprovalWithReason(ctx context.Context, tool, subject string, args json.RawMessage, reason string) (bool, bool, string, error) {
 	return c.requestApprovalWithReasonOptions(ctx, tool, subject, args, reason, approvalDecisionOptions{})
 }
 
-func (c *Controller) requestApprovalWithReasonOptions(ctx context.Context, tool, subject string, args json.RawMessage, reason string, opts approvalDecisionOptions) (bool, bool, error) {
+func (c *Controller) requestApprovalWithReasonOptions(ctx context.Context, tool, subject string, args json.RawMessage, reason string, opts approvalDecisionOptions) (bool, bool, string, error) {
 	r, err := c.requestApprovalDecisionWithOptions(ctx, tool, subject, args, reason, opts)
 	if err != nil {
-		return false, false, err
+		return false, false, "", err
 	}
 	// Plan approvals are one-shot — never persist a session grant for them, or
 	// every future plan would auto-approve.
@@ -7810,7 +7858,7 @@ func (c *Controller) requestApprovalWithReasonOptions(ctx context.Context, tool,
 	if r.allow && r.persist && !requiresFreshApprovalTool(tool) && c.onRemember != nil {
 		c.emitRememberResult(c.onRemember(permission.RememberRuleForScope(tool, subject)))
 	}
-	return r.allow, false, nil
+	return r.allow, false, r.feedback, nil
 }
 
 func (c *Controller) requestFreshApprovalDecision(ctx context.Context, tool, subject string, args json.RawMessage, reason string) (approvalReply, error) {
