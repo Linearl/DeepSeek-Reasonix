@@ -5006,7 +5006,8 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.volumeDelta": "体积 {before} → {after}",
   "settings.sessionVersions.volumeUnchanged": "体积无变化",
   "settings.sessionVersions.repairLog": "修复记录：",
-  "settings.sessionVersions.degraded": "已降级",
+  // tl1415e 词表统一：旧词「已降级」读作「这行从主线降下来了」，与它挂在主线行上自相矛盾——语义是读数降级（重放被拒），不是线身份变化。词表对照见交付报告：类型四词（主线/副本/版本/降级副本）+状态词互斥，词干零重叠。
+  "settings.sessionVersions.degraded": "读取降级",
   "settings.sessionVersions.degradedHint": "该会话的事件日志读取被拒或失败（如重放超出安全预算）：行内计数不可用，其余分区不受影响。",
   "settings.recoveryCopiesHint": "汇总各会话的版本与副本，用于异常时恢复主线。",
   "settings.recoveryCopiesEmpty": "没有发现 recovery 副本。",
@@ -5035,7 +5036,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreviewFeedGap": "中间还有 {n} 条消息，点击加载",
   "settings.recoveryCopiesPreviewBtn": "预览",
   "settings.recoveryCopiesUnpick": "取消选中",
-  "settings.recoveryCopiesPickedBadge": "已选为主线",
+  // tl1415e 词表统一：旧词「已选为主线」与「当前选中」「主线」三词打架——这枚徽标的语义是底部③合成的选定 HEAD（合成基底），不改变主线判定。
+  "settings.recoveryCopiesPickedBadge": "合成基底",
   "settings.recoveryCopiesPreviewDegraded": "该分支为未归一化或受损副本，以上为摘要信息；合并时会自动归一化，统计对比不可用",
   "settings.recoveryCopiesColMessages": "消息数",
   "settings.recoveryCopiesPreviewShared": "与主线共享",
@@ -5142,7 +5144,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesChainCandidate": "候选链",
   "settings.recoveryCopiesRecommended": "推荐",
   "settings.recoveryCopiesColWinner": "合并后主线",
-  "settings.recoveryCopiesWins": "将成为主线",
+  // tl1415e 词表统一：旧词「将成为主线」向副本承诺主线身份，与主线行的「主线」正面冲突；胜者的真实语义是合并后这份转录被保留（其余归档）。
+  "settings.recoveryCopiesWins": "合并后保留",
   "settings.recoveryCopiesWinnerMain": "保持主线",
   "settings.recoveryCopiesReopen": "合并已生效。请到项目中重新打开该会话（或刷新标签页）才能看到合并后的内容——旧内容还留在回收站里。",
   "settings.recoveryCopiesMeasuring": "正在测量",
