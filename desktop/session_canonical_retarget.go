@@ -185,11 +185,84 @@ func (a *App) continuePathForOpen(path string) string {
 	//     and the panel's Selected row now read one resolver and cannot split
 	//     by construction.
 	if !rec.Recovered {
-		if authority := a.recoveryAuthorityMainPath(catalog, rec.Path); authority != "" && !sameRecoveryLineagePath(authority, rec.Path) {
+		if authority := a.recoveryAuthorityMainPathForOpen(catalog, rec); authority != "" && !sameRecoveryLineagePath(authority, rec.Path) {
 			return authority
 		}
 	}
 	return continued
+}
+
+// recoveryAuthorityMainPathForOpen is the open/restore funnel's view of the
+// panel's main-line authority (tl1415f package-82 field reversal). It differs
+// from recoveryAuthorityMainPath — the resolver the switch gate and the panel
+// Selected read — in exactly two ways, both dictated by what an open request
+// is:
+//
+//   - The open tab's current transcript (recoveryAuthorityMainPath authority
+//     #1) is skipped here. That authority answers "which line is the user on
+//     right now" for an already-main refusal; consulted from the open funnel
+//     it self-answers: a restored or scan-handed tab sitting on a demoted copy
+//     names that copy as its own authority and the reconciliation can never
+//     fire (the restart-restore half of the user's field scene).
+//   - A third authority is appended: the single recovery group member whose
+//     file meta carries RecoveryPreferred. The catalog's filed preference
+//     (authority #2) is digest-validated at reconcile time
+//     (agent.RecoveryPreferenceCurrent), so a system rewrite of the adopted
+//     file — repair, tolerant replay, damaged-tail re-save — voids the filing
+//     while the panel (recovery_chains.go preferredRows, tl1430b) keeps
+//     rendering the same flag as Selected. When the two disagree, the panel is
+//     the product truth the open must follow: the user's field scene had the
+//     panel on recovery-7fa1f7e5 and the first open on the 10-18 collab copy,
+//     with the linear-leaf heuristic dead too (turns regression). Multiple
+//     flagged members fail closed, mirroring promoteCanonicalLeaves.
+//
+// Authority #2 keeps one shared predicate with recoveryAuthorityMainPath
+// (preferredGroupMemberPathOfGroup) so the two resolvers cannot drift apart
+// again.
+func (a *App) recoveryAuthorityMainPathForOpen(catalog *sessioncatalog.Catalog, rec sessioncatalog.SessionRecord) string {
+	resolveCtx, cancel := a.catalogReadContext()
+	record, found, err := catalog.GetSession(resolveCtx, rec.Path)
+	cancel()
+	if err != nil || !found || strings.TrimSpace(record.LogicalTopicID) == "" {
+		return ""
+	}
+	scope, workspaceRoot := normalizeDesktopTopicScope(record.Scope, record.WorkspaceRoot)
+	topicID := strings.TrimSpace(record.LogicalTopicID)
+	topic, ok, err := catalog.GetTopic(a.bootContext(), sessioncatalog.TopicKey{Scope: scope, WorkspaceRoot: workspaceRoot, TopicID: topicID})
+	if err != nil || !ok {
+		return ""
+	}
+	groupID, _, ok := recoveryLineageSelection(topic, record.Path)
+	if !ok || groupID == "" {
+		return ""
+	}
+	if path := preferredGroupMemberPathOfGroup(topic, groupID); path != "" {
+		return path
+	}
+	return a.preferredMetaFlagPathOfGroup(topic, groupID)
+}
+
+// preferredMetaFlagPathOfGroup resolves authority #3: the one member of the
+// recovery group whose file meta still carries the explicit RecoveryPreferred
+// flag — the same undigested source the panel's Selected fallback reads
+// (recovery_chains.go preferredRows). Exactly one flag wins; zero or several
+// return "" (ambiguous authority must not invent a verdict).
+func (a *App) preferredMetaFlagPathOfGroup(topic sessioncatalog.TopicRecord, groupID string) string {
+	flagged := ""
+	for _, member := range topic.Sessions {
+		if !recoveryRecordBelongsToGroup(member, groupID) {
+			continue
+		}
+		meta, ok, err := agent.LoadBranchMeta(member.Path)
+		if err != nil || !ok || !meta.RecoveryPreferred {
+			continue
+		}
+		if flagged != "" {
+			return ""
+		}
+		flagged = member.Path
+	}
+	return flagged
 }
 
 func (a *App) continuePathForMissingParent(ctx context.Context, catalog *sessioncatalog.Catalog, path string) string {
