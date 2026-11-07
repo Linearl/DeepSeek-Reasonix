@@ -112,12 +112,13 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
 
 // ── ③ 结构与徽章不变式（渲染表层）──
 {
-  // 卡头三档徽章 = 成员最高档（774 聚合，任务书原则③同款）。
+  // 卡头三档徽章 = 成员最高档（774 聚合，任务书原则③同款）。tl1487 二组⑤：
+  // sessionTaskPanels 随 workflowPanel 升稳定，聚合终值 推荐→稳定。
   const agg = (id: string) => labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, id);
   ok(agg("contextGovernance") === "recommended" && agg("runtimeObservability") === "recommended" &&
      agg("resourceGovernance") === "stable" && agg("tabManagement") === "recommended" &&
-     agg("sessionTaskPanels") === "recommended",
-    "③ card-head badges aggregate to the strongest member tier (774)");
+     agg("sessionTaskPanels") === "stable",
+    "③ card-head badges aggregate to the strongest member tier (774; tl1487 sessionTaskPanels → stable)");
   // 配置键零变化的反面钉：成员 id 都仍注册在档位表（562 主守卫继续钉全量），
   // 这里钉四张新/扩卡的存在性与 pane 白名单一一对应。
   for (const id of ["runtimeObservability", "resourceGovernance", "sessionTaskPanels"]) {

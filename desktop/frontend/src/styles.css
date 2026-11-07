@@ -9909,12 +9909,16 @@ body > .mermaid-diagram--fullscreen {
   background: color-mix(in srgb, var(--mode-autopilot-bg) 55%, var(--surface-2));
 }
 /* 任务 959 ②：开关开＝发送目标下拉框（复用 940 形态机制的紧凑形态——
-   同高度/胶囊圆角/阴影族，菜单承载三目标）。关（默认）时本组规则零命中，
-   三按钮组样式与引入前逐字节一致（铁律 2）。 */
-.composer-meta__control--target--select {
-  min-width: 132px;
-  max-width: 200px;
-  flex: 0 0 auto;
+   同高度/胶囊圆角/阴影族，菜单承载三目标）。tl1487 二组③：下拉框自 meta
+   控制行迁至分栏下方独立条（.composer-send-target-strip），meta 行内的
+   --select 修饰规则随迁出删除；关（默认）时按钮组留在 meta 行原位，样式
+   与引入前逐字节一致（铁律 2）。 */
+.composer-send-target-strip {
+  --wails-draggable: no-drag;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 6px 12px 0;
 }
 
 .composer-send-target-select {

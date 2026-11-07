@@ -5961,6 +5961,27 @@ export function Composer({
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
         >
+          {/* tl1487 二组③：发送目标下拉框位置改分栏下方——959② 开启态的下拉
+              框自底部 meta 控制行迁至分栏（聊天主/副栏）正下方的独立条，紧贴
+              它所靶向的栏；目标语义与 onSplitTargetChange 回调同链路不变。
+              铁律 2：默认按钮组态（开关关）渲染路径零变化——按钮组仍留在
+              meta 控制行原位（下方 !sendTargetSelectOn 分支）。 */}
+          {!channelMode && splitActive && sendTargetSelectOn && (
+            <div className="composer-send-target-strip">
+              <SettingsSelect
+                className="composer-send-target-select"
+                value={splitTarget}
+                title={t("composer.splitTargetMenuTitle")}
+                aria-label={t("composer.splitTargetMenuTitle")}
+                onValueChange={(next) => onSplitTargetChange?.(next as "primary" | "secondary" | "both")}
+                options={[
+                  { value: "primary", label: t("composer.splitTargetPrimary") },
+                  { value: "secondary", label: t("composer.splitTargetSecondary") },
+                  { value: "both", label: t("composer.splitTargetBoth") },
+                ]}
+              />
+            </div>
+          )}
           <div className="composer__input-row">
             <span className="composer__caret">{shellModeActive ? "$" : "›"}</span>
             <div className="composer__content" onMouseDown={focusComposerFromContentBlank}>
@@ -6249,29 +6270,16 @@ export function Composer({
                 )}
               </div>
             )}
-            {!channelMode && splitActive && (
-              <div className={`composer-meta__control composer-meta__control--target${sendTargetSelectOn ? " composer-meta__control--target--select" : ""}`}>
+            {!channelMode && splitActive && !sendTargetSelectOn && (
+              <div className="composer-meta__control composer-meta__control--target">
                 {/* One composer, three targets (task 70, B) -- the same three-state
                     capsule the approval bar uses, so styling and keyboard behaviour are
                     the ones already in the app. */}
                 {/* 任务 959 ②两态：开关开＝下拉框（复用 940 形态机制——仓内
-                    select 家族 SettingsSelect，不新造组件）。目标语义与按钮组
-                    同链路（同一 onSplitTargetChange 回调）。开关关（默认）＝
-                    下方三按钮组逐字节零变化（铁律 2）。 */}
-                {sendTargetSelectOn ? (
-                  <SettingsSelect
-                    className="composer-send-target-select"
-                    value={splitTarget}
-                    title={t("composer.splitTargetMenuTitle")}
-                    aria-label={t("composer.splitTargetMenuTitle")}
-                    onValueChange={(next) => onSplitTargetChange?.(next as "primary" | "secondary" | "both")}
-                    options={[
-                      { value: "primary", label: t("composer.splitTargetPrimary") },
-                      { value: "secondary", label: t("composer.splitTargetSecondary") },
-                      { value: "both", label: t("composer.splitTargetBoth") },
-                    ]}
-                  />
-                ) : (
+                    select 家族 SettingsSelect，不新造组件）。tl1487 二组③：开启
+                    态下拉框迁至分栏下方独立条（composer-send-target-strip，见
+                    composer 根部）；本行只剩默认按钮组态（开关关），渲染路径
+                    与引入前逐字节一致（铁律 2）。 */}
                 <div className="composer-modebar composer-modebar--split-target" data-target={splitTarget}>
                   <span className="composer-modebar__thumb" aria-hidden="true" />
                   <button
@@ -6305,7 +6313,6 @@ export function Composer({
                     <span>{t("composer.splitTargetBoth")}</span>
                   </button>
                 </div>
-                )}
               </div>
             )}
             {!channelMode && qualityFloor === "delivery" && (

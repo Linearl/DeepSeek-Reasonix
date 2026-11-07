@@ -199,11 +199,15 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 //     ——开关走卡片行内 setter，纯展示侧栏卡的配置面，批量无独立语义。
 //   - collabHub（tl1487 升稳定档后进入批量范围）：开有关联前置（sessionCollab
 //     必须先开，LAB_FEATURE_DEPS/856③ 前置门）——批量直写会绕过依赖门，
-//     交单项走既有拒绝路径（autopilot precondition 同款）。
+//     交单项走既有拒绝路径（autopilot precondition 同款）；
+//   - tabModeTint（tl1487 二组① 自 unstable 升可选后进入批量范围）：主开关
+//     是模式键 tab_permission_indicator（badge|off|background），「开」没有
+//     唯一布尔语义，批量盲写会破坏语义（messageMerge/eventsRotation 同款）。
 var labBulkExcluded = map[string]string{
 	"fullAccess":      LabBulkSkipDangerGate,
 	"autopilot":       LabBulkSkipPrecondition,
 	"collabHub":       LabBulkSkipPrecondition,
+	"tabModeTint":     LabBulkSkipNotBool,
 	"messageMerge":    LabBulkSkipNotBool,
 	"eventsRotation":  LabBulkSkipNotBool,
 	"sessionStorage":  LabBulkSkipNotBool,

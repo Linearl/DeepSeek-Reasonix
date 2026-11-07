@@ -132,27 +132,28 @@ var labFeatureTiers = []labFeatureTier{
 	// 550 口径定档可选——不开启时标题栏与转录视图与引入前完全一致（铁律 2，
 	// 默认关）。
 	{"trajectoryView", LabTierOptional, []string{"experimental_trajectory_view"}},
-	// 任务 1165：流式滚动跟随改原生平滑动画（对齐 DSH ScrollFollow）。展示形态
-	// 开关按 550 口径定档可选——不开启时流式滚动与引入前逐字节一致（铁律 2，默认关）。
-	{"smoothScrollFollow", LabTierOptional, []string{"experimental_smooth_scroll_follow"}},
+	// 任务 1165：流式滚动跟随改原生平滑动画（对齐 DSH ScrollFollow）。
+	// tl1487 二组④：可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"smoothScrollFollow", LabTierRecommended, []string{"experimental_smooth_scroll_follow"}},
 	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
 	// 任务 826：左右边栏 hover 展开（300ms 防误触）+ 离开 15s 延时折叠（只回收
 	// hover 自动展开，手动展开不回收）。两键左右独立（各写各的 setter），按 550
 	// 口径定档可选——不开启时不渲染任何热区、不挂任何事件，左右栏行为与引入前
 	// 完全一致（铁律 2，默认关）。
-	{"sidebarHoverLeft", LabTierOptional, []string{"experimental_sidebar_hover_left"}},
-	{"sidebarHoverRight", LabTierOptional, []string{"experimental_sidebar_hover_right"}},
+	// tl1487 二组②：左/右边栏悬停展开、对话权限下拉框、表格按栏宽换行
+	// 可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"sidebarHoverLeft", LabTierRecommended, []string{"experimental_sidebar_hover_left"}},
+	{"sidebarHoverRight", LabTierRecommended, []string{"experimental_sidebar_hover_right"}},
 	// 任务 940：对话权限选择器形态二选一（composer 权限档位：按钮组 vs 下拉框，
-	// zcode 同款下拉省空间）。展示形态开关按 550 口径定档可选——不开启时
-	// composer 权限区与引入前逐字节一致（铁律 2，默认关）。
-	{"approvalSelect", LabTierOptional, []string{"experimental_approval_select"}},
+	// zcode 同款下拉省空间）。
+	{"approvalSelect", LabTierRecommended, []string{"experimental_approval_select"}},
 	// 任务 959 ①：对话 markdown 表格按栏宽自动换行（分栏拖窄后随新宽度
-	// 重排，不再横向溢出）。展示形态开关按 550 口径定档可选——不开启时
-	// 转录表格与引入前逐字节一致（铁律 2，默认关）。
-	{"tableWrap", LabTierOptional, []string{"experimental_table_wrap"}},
+	// 重排，不再横向溢出）。
+	{"tableWrap", LabTierRecommended, []string{"experimental_table_wrap"}},
 	// 任务 959 ②：composer 分栏发送目标选择器形态二选一（按钮组 vs 下拉框，
 	// 复用 940 形态机制）。展示形态开关按 550 口径定档可选——不开启时
 	// composer 发送目标区与引入前逐字节一致（铁律 2，默认关）。
+	// tl1487 二组③：开启态下拉框位置改分栏下方（渲染面 Composer.tsx）。
 	{"sendTargetSelect", LabTierOptional, []string{"experimental_send_target_select"}},
 	// tl 1132：启动遮罩（DSH 式启动画面，logo+副文案+点动画，核心 UI 挂载
 	// 完成后淡出）。展示类开关按 550 口径定档可选——默认关（用户 2026-10-24
@@ -168,24 +169,27 @@ var labFeatureTiers = []labFeatureTier{
 	{"restartUpdate", LabTierRecommended, []string{"experimental_restart_update", "experimental_autonomous_update"}}, // autonomous_update 为 task 254 家族子键
 	{"sessionWall", LabTierRecommended, []string{"experimental_session_wall"}},
 	// 任务 686：工作流可视化面板（DAG 流程图 + 运行进展动态点亮，palette 入口；
-	// 后端 685 编排引擎未落地，当前为前端 fixture 预览）。定档未稳定——开启
-	// 可能看到的是演示数据（铁律 2 默认关，不开启时 palette 逐字节不变）。
+	// 后端 685 编排引擎未落地，当前为前端 fixture 预览）。
+	// tl1487 二组⑤：未稳定→稳定（用户 20261107 八组清单；工作流模板升推荐
+	// 走前端注册表独立登记，Go 侧仍以本条家族子键承载，无独立条目）。
 	// tl1454：experimental_workflow_templates 为家族子键（用户自定义模板视图，
 	// 面板行下的附属行；工作流面板关闭时禁用）。
-	{"workflowPanel", LabTierUnstable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}},
+	{"workflowPanel", LabTierStable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}},
 	{"subagentPanel", LabTierOptional, []string{"experimental_subagent_panel"}},
 	{"subagentDetail", LabTierOptional, []string{"experimental_subagent_detail"}},
-	{"completionSummary", LabTierOptional, []string{"experimental_completion_summary"}},
-	{"autoLoadOlder", LabTierOptional, []string{"experimental_auto_load_older"}},
+	// tl1487 二组⑤/⑥：任务完成摘要、自动加载更早消息可选→推荐（用户
+	// 20261107 八组清单；前端同步）。
+	{"completionSummary", LabTierRecommended, []string{"experimental_completion_summary"}},
+	{"autoLoadOlder", LabTierRecommended, []string{"experimental_auto_load_older"}},
 	{"splitView", LabTierOptional, []string{"experimental_split_view"}},
 	{"draftPersistence", LabTierOptional, []string{"experimental_composer_draft"}},
 	{"selectionActions", LabTierOptional, []string{"experimental_selection_actions"}},
 	{"questionSearch", LabTierRecommended, []string{"experimental_question_search"}},
 	{"opencodeGoUsage", LabTierRecommended, []string{"experimental_opencode_go_usage"}},
 	{"feedback", LabTierOptional, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键
-	// 任务 1024：composer 草稿优化（改写按钮）。展示类开关按 550 口径定档
-	// 可选——关闭时不渲染按钮、composer 布局零变化（铁律 2，默认关）。
-	{"draftRewrite", LabTierOptional, []string{"experimental_draft_rewrite"}},
+	// 任务 1024：composer 草稿优化（改写按钮）。
+	// tl1487 二组④：可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"draftRewrite", LabTierRecommended, []string{"experimental_draft_rewrite"}},
 	// ── observability（可观测性，2 项）───────────────────────────
 	{"monitoring", LabTierRecommended, []string{"experimental_session_monitor", "experimental_perf_monitor", "experimental_heap_high_profile"}}, // heap_high_profile 为 task 501 家族子键（rides perf_monitor）
 	{"subagentTps", LabTierOptional, []string{"experimental_subagent_tps"}},
@@ -220,7 +224,8 @@ var labFeatureTiers = []labFeatureTier{
 	// tl-1048：zcodeTaskBus 卡随 8787 任务总线退役（原 unstable，键 experimental_zcode_task_bus）。
 	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}},               // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
 	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
-	{"tabModeTint", LabTierUnstable, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
+	// tl1487 二组①：标签权限指示未稳定→可选（用户 20261107 八组清单；前端同步）。
+	{"tabModeTint", LabTierOptional, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierRecommended, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键；任务 992：随复用池升推荐（用户 1018）
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},

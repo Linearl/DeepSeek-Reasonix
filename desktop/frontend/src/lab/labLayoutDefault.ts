@@ -273,18 +273,22 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           onKeys: ["experimentalSplitView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
-            { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" },
-            { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" },
-            { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" },
+            // tl1487 二组②：以下四行可选→推荐（用户 20261107 八组清单；
+            // todoSidebar 已是推荐，无动作）。
+            { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "recommended" },
+            { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "recommended" },
+            { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "recommended" },
             // 任务 959 ①：对话表格按栏宽自动换行（默认关=宽表横滚不变）。
-            { id: "tableWrap", labelKey: "settings.tableWrap", tier: "optional" },
+            { id: "tableWrap", labelKey: "settings.tableWrap", tier: "recommended" },
             // 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。
+            // tl1487 二组③：开启态下拉框位置改分栏下方（渲染面 Composer）。
             { id: "sendTargetSelect", labelKey: "settings.sendTargetSelect", tier: "optional" },
             // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线；默认
-            // 关=瞬移定位逐字节不变）。
-            { id: "smoothScrollFollow", labelKey: "settings.smoothScrollFollow", tier: "optional" },
+            // 关=瞬移定位逐字节不变）。tl1487 二组④：可选→推荐。
+            { id: "smoothScrollFollow", labelKey: "settings.smoothScrollFollow", tier: "recommended" },
             // 任务 1024：composer 草稿优化（默认关=改写按钮不出现、布局零变化）。
-            { id: "draftRewrite", labelKey: "settings.draftRewrite", tier: "optional" },
+            // tl1487 二组④：可选→推荐。
+            { id: "draftRewrite", labelKey: "settings.draftRewrite", tier: "recommended" },
           ],
         },
         // tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
@@ -299,10 +303,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           members: [
             { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended" },
             // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎
-            // 未落地，当前为前端 fixture 预览+演示回放）。未稳定档。
-            { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable" },
+            // 未落地，当前为前端 fixture 预览+演示回放）。
+            // tl1487 二组⑤：未稳定→稳定、任务完成摘要可选→推荐（用户
+            // 20261107 八组清单；工作流模板升推荐走前端注册表独立登记）。容器
+            // 档=成员最高档：随 workflowPanel 升至稳定。
+            { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "stable" },
             // 任务 782 验收⑤曾钉「保持独立」——tl1309 分析结论按面板面归卡。
-            { id: "completionSummary", labelKey: "settings.completionSummary", tier: "optional" },
+            { id: "completionSummary", labelKey: "settings.completionSummary", tier: "recommended" },
           ],
         },
         // 任务 782：检索与历史（合并卡）——历史提问选择器 + 搜索历史提问 +
@@ -315,7 +322,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           members: [
             { id: "promptHistoryPicker", labelKey: "settings.promptHistoryPicker", tier: "recommended" },
             { id: "questionSearch", labelKey: "settings.questionSearch", tier: "recommended" },
-            { id: "autoLoadOlder", labelKey: "settings.autoLoadOlder", tier: "optional" },
+            // tl1487 二组⑥：自动加载可选→推荐（用户 20261107 八组清单）。
+            { id: "autoLoadOlder", labelKey: "settings.autoLoadOlder", tier: "recommended" },
           ],
         },
         // tl1309 卡④：sessionWall/workflowPanel/completionSummary 三散条迁出——

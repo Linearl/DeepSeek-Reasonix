@@ -231,8 +231,8 @@ console.log("\ntask 940 composer approval-select dropdown");
   // 渲染表：键无条件渲染（fixed-key-set rule）+ 档位登记可选档。
   ok(goRender.includes('fmt.Fprintf(&b, "experimental_approval_select = %v'),
     "④ render table: the key renders unconditionally (81/123 fixed-key-set rule)");
-  ok(goRender.includes('{"approvalSelect", LabTierOptional, []string{"experimental_approval_select"}}'),
-    "④ tier register: approvalSelect tagged optional in labFeatureTiers");
+  ok(goRender.includes('{"approvalSelect", LabTierRecommended, []string{"experimental_approval_select"}}'),
+    "④ tier register: approvalSelect tagged recommended in labFeatureTiers (tl1487 二组②)");
   // settings view 双侧字段 + 双侧注入（81/123 两视图教训）。
   ok(goSettingsApp.split('ExperimentalApprovalSelect bool `json:"experimentalApprovalSelect"`').length === 3,
     "④ settings views: the field is declared in BOTH SettingsView and DesktopStartupSettingsView");
@@ -263,13 +263,13 @@ console.log("\ntask 940 composer approval-select dropdown");
      labDefault.includes('"experimentalApprovalSelect", "experimentalTableWrap"'),
     "④ layout data: the viewLayout card light covers the new key in yaml AND the built-in default");
   ok(yamlText.includes("- id: approvalSelect") &&
-     labDefault.includes('{ id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" }'),
-    "④ layout data: the member row is present with the optional tier");
+     labDefault.includes('{ id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "recommended" }'),
+    "④ layout data: the member row is present with the recommended tier (tl1487 二组②)");
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     "④ layout data: default layout tiers agree with the register (no drift)");
   // 前端档位注册表（562 徽章对位）。
-  ok(EXPERIMENT_FEATURE_TIERS.approvalSelect === "optional",
-    "④ tier badges: the feature carries the optional tier");
+  ok(EXPERIMENT_FEATURE_TIERS.approvalSelect === "recommended",
+    "④ tier badges: the feature carries the recommended tier (tl1487 二组②)");
   // 实验室卡片：二选一行（读自己的键写自己的 setter）。
   ok(labSection.includes('labLabel("approvalSelect", t("settings.approvalSelect"))') &&
      labSection.includes("app.SetExperimentalApprovalSelect(on)"),

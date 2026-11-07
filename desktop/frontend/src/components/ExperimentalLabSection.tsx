@@ -1573,7 +1573,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   不挂独立徽章）。模板视图住在工作流面板里，面板关闭时本行
                   禁用开启并给出依赖说明（已开着的仍可关闭）。服务端写面现读
                   开关，保存即生效。 */}
-              <SettingsField label={t("settings.workflowTemplates")} hint={t("settings.workflowTemplatesHint")} icon={<Sparkles size={18} />}>
+              {/* tl1487 二组⑤：工作流模板升独立表A 条目（推荐档）——附属行
+                  起挂自己的徽章（用户 20261107 八组清单「工作流模板→推荐」，
+                  与面板主键分档；621 单徽章口径不破——主行 workflowPanel 仍
+                  只挂自己的）。 */}
+              <SettingsField label={labLabel("workflowTemplates", t("settings.workflowTemplates"))} hint={t("settings.workflowTemplatesHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button

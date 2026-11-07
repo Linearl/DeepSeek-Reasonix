@@ -64,8 +64,10 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // tl1487 一组（20261107 八组清单）：collabHub 未稳定→稳定（稳定 +1、未稳定
   // -1）、outputStyle 可选→推荐（推荐 +1、可选 -1）、coldCacheCompact 入表
   // 可选（+1）、modelCapabilityFilter retired 独苗出表（退役 1→0）。
-  ok(LAB_TIER_COUNTS.stable === 7 && LAB_TIER_COUNTS.recommended === 25 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 10 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 7 稳定/25 推荐/44 可选/10 未稳定/0 退役 (tl1487 一组步进)");
+  // tl1487 二组：workflowPanel 未稳定→稳定（稳定 +1）、workflowTemplates
+  // 推荐入表（+1）；tabModeTint 未稳定→可选；八项可选→推荐。
+  ok(LAB_TIER_COUNTS.stable === 8 && LAB_TIER_COUNTS.recommended === 34 && LAB_TIER_COUNTS.optional === 37 && LAB_TIER_COUNTS.unstable === 8 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 8 稳定/34 推荐/37 可选/8 未稳定/0 退役 (tl1487 一二组步进)");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");

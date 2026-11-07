@@ -186,9 +186,15 @@ export type TierFeatureId =
   // 不变）。界面组「视图布局」卡成员。
   | "smoothScrollFollow"
   // 任务 686: 工作流可视化面板（DAG 流程图 + 运行进展点亮，palette 入口；
-  // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。未稳定档（开发
-  // 测试中），默认关=palette 逐字节不变。
+  // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。
+  // tl1487 二组⑤：未稳定→稳定（用户 20261107 八组清单；默认关与 fixture
+  // 预览语义不变，档位只表达成熟度裁决）。
   | "workflowPanel"
+  // tl1487 二组⑤：工作流模板（tl1454 工作流面板家族子键的 pane 附属行）升
+  // 独立登记推荐档——用户 20261107 八组清单「工作流模板→推荐」（与面板主键
+  // 分档：面板稳定、模板推荐）。Go 渲染表无独立条目（键仍为 workflowPanel
+  // 家族子键，562 ③ 前端独有豁免清单收录）。
+  | "workflowTemplates"
   // 任务 961: automation/efficiency 两张条目级合并卡容器 id（742/782 先例，
   // 纯前端容器、无自有配置键，卡内各行各写各的键；Go 渲染表无条目，同
   // tabManagement 豁免）——smartAutomation（智能自动化：梦境整理+决策模式
@@ -268,8 +274,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 默认关）。
   trajectoryView: "optional",
   // ── ui（界面，14 项）────────────────────────────────────────
-  // 任务 1024：composer 草稿优化。镜像 Go 档位——可选（默认关，输入栏零变化）。
-  draftRewrite: "optional",
+  // 任务 1024：composer 草稿优化。tl1487 二组④：可选→推荐（用户 20261107
+  // 八组清单；镜像 Go 档位同步翻）。
+  draftRewrite: "recommended",
   // tl 1132：启动遮罩。镜像 Go 档位——可选（默认关，用户 steer A/B 对比）。
   startupSplash: "optional",
   // tl 1132：「启动与加载」合并卡容器（纯前端 rail 卡，成员最高档=可选）。
@@ -280,12 +287,16 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   restartUpdate: "recommended",
   sessionWall: "recommended",
   // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎未落地
-  // 为前端 fixture 预览）。镜像 Go 档位——未稳定（开发测试中）。
-  workflowPanel: "unstable",
+  // 为前端 fixture 预览）。tl1487 二组⑤：未稳定→稳定（Go 渲染表同步翻）。
+  workflowPanel: "stable",
+  // tl1487 二组⑤：工作流模板（面板家族子键的 pane 附属行）独立登记推荐档。
+  workflowTemplates: "recommended",
   subagentPanel: "optional",
   subagentDetail: "optional",
-  completionSummary: "optional",
-  autoLoadOlder: "optional",
+  // tl1487 二组⑤：任务完成摘要可选→推荐（用户 20261107 八组清单）。
+  completionSummary: "recommended",
+  // tl1487 二组⑥：自动加载可选→推荐（用户 20261107 八组清单）。
+  autoLoadOlder: "recommended",
   splitView: "optional",
   draftPersistence: "optional",
   selectionActions: "optional",
@@ -295,7 +306,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 621：tabModeTint（任务 504 标签模式色调）在 Go labFeatureTiers 一直
   // 有档（unstable），但前端注册表漏收——实验室页渲染却无徽章，621 验收
   // 「每项特性有且仅有一个徽章」不允许。档位镜像 Go 侧。
-  tabModeTint: "unstable",
+  // tl1487 二组①：标签权限指示未稳定→可选（用户 20261107 八组清单
+  // 「标签页管理/标签权限指示→可选」；Go 渲染表同步翻）。
+  tabModeTint: "optional",
   // ── observability（可观测性，2 项；tl 1097 增 logManagement 参数卡）──
   monitoring: "recommended",
   subagentTps: "optional",
@@ -381,24 +394,26 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   inputSelection: "optional",
   // tl 1125：视图布局合并卡升「推荐」（tl 1125 同指令，与 tabManagement 一并）。
   viewLayout: "recommended",
-  // 任务 826：左右边栏 hover 展开（左右各一行，独立开关，默认关）。按 550
-  // 口径定可选——不开启时不渲染任何热区、不挂任何事件，左右栏行为与引入前
-  // 完全一致（铁律 2）。
-  sidebarHoverLeft: "optional",
-  sidebarHoverRight: "optional",
-  // 任务 940：composer 权限选择器形态二选一（默认关=现按钮组）。展示形态
-  // 开关按 550 口径定可选——不开启时 composer 权限区与引入前逐字节一致
-  // （铁律 2）。
-  approvalSelect: "optional",
-  // 任务 959 ①：表格按栏宽自动换行（默认关）。展示形态开关按 550 口径定
-  // 可选——不开启时转录表格与引入前逐字节一致（铁律 2）。
-  tableWrap: "optional",
+  // 任务 826：左右边栏 hover 展开（左右各一行，独立开关，默认关）。
+  // tl1487 二组②：可选→推荐（用户 20261107 八组清单「左/右边栏悬停展开→
+  // 推荐」；Go 渲染表同步翻）。
+  sidebarHoverLeft: "recommended",
+  sidebarHoverRight: "recommended",
+  // 任务 940：composer 权限选择器形态二选一（默认关=现按钮组）。
+  // tl1487 二组②：可选→推荐（用户 20261107 八组清单「对话权限下拉框→
+  // 推荐」；Go 渲染表同步翻）。
+  approvalSelect: "recommended",
+  // 任务 959 ①：表格按栏宽自动换行（默认关）。
+  // tl1487 二组②：可选→推荐（用户 20261107 八组清单「表格按栏宽换行→
+  // 推荐」；Go 渲染表同步翻）。
+  tableWrap: "recommended",
   // 任务 959 ②：composer 发送目标形态二选一（默认关=三按钮组）。展示形态
   // 开关按 550 口径定可选——不开启时发送目标区与引入前逐字节一致（铁律 2）。
   sendTargetSelect: "optional",
-  // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线）。展示形态
-  // 开关按 550 口径定可选——不开启时流式滚动与引入前逐字节一致（铁律 2）。
-  smoothScrollFollow: "optional",
+  // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线）。
+  // tl1487 二组④：可选→推荐（用户 20261107 八组清单「流式滚动平滑跟随→
+  // 推荐」；Go 渲染表同步翻）。
+  smoothScrollFollow: "recommended",
   // 任务 961：automation/efficiency 两张条目级合并卡容器档 = 成员最高档
   // （782 合并卡语义同源：smartAutomation 三成员全可选 → 可选；
   // interactionPresentation 快捷指令推荐压过两可选 → 推荐）。合并是入口层
@@ -513,12 +528,16 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 独苗）出表——退役 1→0、总数 86→85；②coldCacheCompact（冷缓存压缩，可选）
  * 入表——可选 +1、总数 85→86；③collabHub 未稳定→稳定、outputStyle 可选→
  * 推荐——稳定 6→7、推荐 24→25、未稳定 11→10、可选不变 44。后续八组各步进
- * 见各自注释；每步 LAB_TIER_COUNTS 与活注册表同跳（562/1005 计数钉同步）。 */
+ * 见各自注释；每步 LAB_TIER_COUNTS 与活注册表同跳（562/1005 计数钉同步）。
+ * 二组步进：tabModeTint 未稳定→可选、workflowPanel 未稳定→稳定、
+ * workflowTemplates（推荐）入表、completionSummary/autoLoadOlder/tableWrap/
+ * approvalSelect/sidebarHover×2/smoothScrollFollow/draftRewrite 可选→推荐
+ * ——稳定 7→8、推荐 25→34、可选 44→37、未稳定 10→8、总数 86→87。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  stable: 7,
-  recommended: 25,
-  optional: 44,
-  unstable: 10,
+  stable: 8,
+  recommended: 34,
+  optional: 37,
+  unstable: 8,
   retired: 0,
 };
 
