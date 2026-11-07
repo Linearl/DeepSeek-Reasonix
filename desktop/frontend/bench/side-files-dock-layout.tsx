@@ -33,12 +33,18 @@ declare global {
 // Minimal host stub (tl1437 harness shape): the dock list only touches the
 // bridge from the row menu, which this fixture never opens — but a defined
 // window.go keeps lib/bridge's host detection deterministic in plain Chromium.
+// tl1468b: the stub grew the tree file-ops family (truthy probe + trash/
+// delete-permanent/rename mocks) so the aligned row menu renders in full and
+// its confirms can be screenshotted without bridge errors.
 (window as unknown as { go: unknown }).go = {
   main: { App: {
-    ResolveOpenablePathForTab: async () => "",
+    ResolveOpenablePathForTab: async (_tab: string, path: string) => path,
     ResolveWorkspacePathForTab: async (_tab: string, path: string) => path,
     OpenLocalPath: async () => {},
     RevealPath: async () => {},
+    TrashWorkspaceEntriesForTab: async (_tab: string, paths: string[]) => ({ succeeded: [...paths], failed: [] }),
+    DeleteWorkspaceEntriesPermanentForTab: async (_tab: string, paths: string[]) => ({ succeeded: [...paths], failed: [] }),
+    RenameWorkspaceEntryForTab: async (_tab: string, path: string, newName: string) => path.replace(/[^\\/]+$/, newName),
   } },
 };
 
@@ -82,6 +88,8 @@ function Fixture() {
             tabId="bench-tab"
             workspaceRoot={WORKSPACE_ROOT}
             sessionPath={SESSION_PATH}
+            onOpenInTerminal={() => {}}
+            onInjectReferences={() => {}}
           />
         </LocaleProvider>
       </div>
