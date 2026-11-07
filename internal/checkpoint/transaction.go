@@ -125,6 +125,11 @@ func (s *Store) PrepareRewind(turn int, scope RewindScope, sessionRev int64, bou
 				plan.DisabledReason = "file conflicts detected"
 			}
 		}
+		// tl1476: advisory per-file classification for the confirmation dialog.
+		// Never mutates CanFiles/Conflicts — the commit path is unchanged.
+		if len(files) > 0 {
+			plan.FileSafety = s.preflightFileSafety(files, plan.Conflicts)
+		}
 	}
 
 	// both requires both sides to pass precheck.

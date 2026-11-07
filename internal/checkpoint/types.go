@@ -147,7 +147,23 @@ const (
 	ConflictBoundaryInvalid = "boundary_invalid"
 	ConflictCoverageLegacy  = "legacy_unverified"
 	ConflictExpired         = "expired_payload"
+	// ConflictPermissionDenied marks a rewind target whose write access is
+	// currently denied (read-only file or read-only parent). It is a preflight
+	// classification only: it never feeds plan.Conflicts or CanFiles, so the
+	// commit path keeps its existing semantics (tl1476).
+	ConflictPermissionDenied = "permission_denied"
 )
+
+// RewindFileSafety is the per-file preflight classification for the rewind
+// confirmation dialog (tl1476). Safe files will be restored/removed as part of
+// the rewind; unsafe files carry a reason from the conflict-reason vocabulary
+// plus ConflictPermissionDenied. Classification is advisory: commit re-runs
+// the authoritative precheck.
+type RewindFileSafety struct {
+	Path   string `json:"path"`
+	Safe   bool   `json:"safe"`
+	Reason string `json:"reason,omitempty"`
+}
 
 // FileStage records per-file progress through a rewind transaction.
 type FileStage struct {
@@ -174,13 +190,17 @@ type RewindPlan struct {
 	Conflicts          []RewindConflict `json:"conflicts,omitempty"`
 	Files              []string         `json:"files,omitempty"`
 	FileCount          int              `json:"fileCount"`
-	ActiveWriters      []ActiveWriter   `json:"activeWriters,omitempty"`
-	SessionRevision    int64            `json:"sessionRevision"`
-	WorkspaceToken     string           `json:"workspaceToken,omitempty"`
-	BoundaryIndex      int              `json:"boundaryIndex,omitempty"`
-	HasBoundary        bool             `json:"hasBoundary"`
-	CreatedAt          time.Time        `json:"createdAt"`
-	ConversationAction string           `json:"conversationAction,omitempty"`
+	// FileSafety is the tl1476 preflight classification (safe/unsafe per file,
+	// with reasons) for the confirmation dialog. Empty for conversation-only
+	// plans and plans without file targets.
+	FileSafety         []RewindFileSafety `json:"fileSafety,omitempty"`
+	ActiveWriters      []ActiveWriter     `json:"activeWriters,omitempty"`
+	SessionRevision    int64              `json:"sessionRevision"`
+	WorkspaceToken     string             `json:"workspaceToken,omitempty"`
+	BoundaryIndex      int                `json:"boundaryIndex,omitempty"`
+	HasBoundary        bool               `json:"hasBoundary"`
+	CreatedAt          time.Time          `json:"createdAt"`
+	ConversationAction string             `json:"conversationAction,omitempty"`
 	// Single-file revert extras.
 	Path               string `json:"path,omitempty"`
 	ConflictResolution string `json:"conflictResolution,omitempty"`

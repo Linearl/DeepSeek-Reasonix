@@ -26,6 +26,13 @@ export type ConfirmDialogRequest = {
    * cancel button.
    */
   autoCancelAfterMs?: number;
+  /**
+   * tl1476: disables the confirm button while it would be unsafe to proceed
+   * (e.g. a rewind preflight with unsafe files). The dialog message stays the
+   * place where the visible reason lives; cancel remains the only way out.
+   * Omit/undefined keeps the existing always-clickable behavior.
+   */
+  confirmDisabled?: boolean;
 };
 
 type PendingConfirmation = ConfirmDialogRequest & {
@@ -131,6 +138,7 @@ function ConfirmDialog({ request, onResolve }: { request: ConfirmDialogRequest; 
             ref={confirmRef}
             className={`btn btn--small ${request.tone === "danger" ? "btn--danger" : "btn--primary"}`}
             type="button"
+            disabled={request.confirmDisabled === true}
             onClick={() => onResolve(true)}
           >
             {confirmText}

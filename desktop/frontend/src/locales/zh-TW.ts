@@ -6398,4 +6398,14 @@ export const zhTW: Record<DictKey, string> = {
   "composer.screenshotButton": "截圖",
   "composer.screenshotButtonHint": "擷取螢幕、框選區域、標註並插入附件",
   "composer.screenshotFailed": "截圖失敗",
+  // tl1476 撤銷前檔案預檢彈窗（reason 鍵映射見 lib/rewindSafety.ts）
+  "rewindPreflight.title": "復原前檔案檢查",
+  "rewindPreflight.confirm": "回退 {n} 個檔案",
+  "rewindPreflight.cancel": "取消",
+  "rewindPreflight.safeHeading": "將恢復到檢查點狀態（{n}）",
+  "rewindPreflight.unsafeHeading": "存在不安全項目，已禁止回退（{n}）",
+  "rewindPreflight.reason.outsideWorkspace": "位於工作區之外",
+  "rewindPreflight.reason.missingPayload": "檢查點裝載已刪除或已過期",
+  "rewindPreflight.reason.permissionDenied": "權限不足，無法寫入該檔案",
+  "rewindPreflight.reason.changed": "與檢查點之後的狀態不一致",
 };

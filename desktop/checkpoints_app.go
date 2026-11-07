@@ -27,26 +27,37 @@ type CheckpointMeta struct {
 	DisabledReason     string   `json:"disabledReason,omitempty"`
 }
 
+// RewindFileSafetyView is the desktop-facing per-file preflight verdict
+// (tl1476): safe files restore cleanly, unsafe files carry a stable reason key
+// for the confirmation dialog (which disables its confirm button while any
+// unsafe entry exists).
+type RewindFileSafetyView struct {
+	Path   string `json:"path"`
+	Safe   bool   `json:"safe"`
+	Reason string `json:"reason,omitempty"`
+}
+
 // RewindPlanView is the desktop-facing prepare result.
 type RewindPlanView struct {
-	PlanID             string   `json:"planId"`
-	Turn               int      `json:"turn"`
-	Scope              string   `json:"scope"`
-	Coverage           string   `json:"coverage,omitempty"`
-	CoverageGaps       []string `json:"coverageGaps,omitempty"`
-	Legacy             bool     `json:"legacy,omitempty"`
-	ExpiredFilePayload bool     `json:"expiredFilePayload,omitempty"`
-	CanFiles           bool     `json:"canFiles"`
-	CanConversation    bool     `json:"canConversation"`
-	DisabledReason     string   `json:"disabledReason,omitempty"`
-	Conflicts          []string `json:"conflicts,omitempty"`
-	Files              []string `json:"files,omitempty"`
-	FileCount          int      `json:"fileCount"`
-	ActiveWriters      int      `json:"activeWriters,omitempty"`
-	Path               string   `json:"path,omitempty"`
-	ConversationAction string   `json:"conversationAction,omitempty"`
-	OK                 bool     `json:"ok"`
-	Error              string   `json:"error,omitempty"`
+	PlanID             string                 `json:"planId"`
+	Turn               int                    `json:"turn"`
+	Scope              string                 `json:"scope"`
+	Coverage           string                 `json:"coverage,omitempty"`
+	CoverageGaps       []string               `json:"coverageGaps,omitempty"`
+	Legacy             bool                   `json:"legacy,omitempty"`
+	ExpiredFilePayload bool                   `json:"expiredFilePayload,omitempty"`
+	CanFiles           bool                   `json:"canFiles"`
+	CanConversation    bool                   `json:"canConversation"`
+	DisabledReason     string                 `json:"disabledReason,omitempty"`
+	Conflicts          []string               `json:"conflicts,omitempty"`
+	Files              []string               `json:"files,omitempty"`
+	FileCount          int                    `json:"fileCount"`
+	FileSafety         []RewindFileSafetyView `json:"fileSafety,omitempty"`
+	ActiveWriters      int                    `json:"activeWriters,omitempty"`
+	Path               string                 `json:"path,omitempty"`
+	ConversationAction string                 `json:"conversationAction,omitempty"`
+	OK                 bool                   `json:"ok"`
+	Error              string                 `json:"error,omitempty"`
 }
 
 // RewindResultView is the desktop-facing commit/undo result.
@@ -304,10 +315,22 @@ func rewindPlanToView(plan checkpoint.RewindPlan, scope string) RewindPlanView {
 		Conflicts:          conflictStrings(plan),
 		Files:              plan.Files,
 		FileCount:          plan.FileCount,
+		FileSafety:         rewindFileSafetyToView(plan.FileSafety),
 		ActiveWriters:      len(plan.ActiveWriters),
 		Path:               plan.Path,
 		ConversationAction: plan.ConversationAction,
 	}
+}
+
+func rewindFileSafetyToView(safety []checkpoint.RewindFileSafety) []RewindFileSafetyView {
+	if safety == nil {
+		return nil
+	}
+	out := make([]RewindFileSafetyView, 0, len(safety))
+	for _, entry := range safety {
+		out = append(out, RewindFileSafetyView{Path: entry.Path, Safe: entry.Safe, Reason: entry.Reason})
+	}
+	return out
 }
 
 func conflictStrings(plan checkpoint.RewindPlan) []string {

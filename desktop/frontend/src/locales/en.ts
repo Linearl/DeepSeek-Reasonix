@@ -6447,6 +6447,16 @@ export const en = {
   "composer.screenshotButton": "Screenshot",
   "composer.screenshotButtonHint": "Capture the screen, select a region, annotate, and attach",
   "composer.screenshotFailed": "Screenshot failed",
+  // tl1476 rewind preflight dialog (reason keys map from lib/rewindSafety.ts)
+  "rewindPreflight.title": "Rewind file check",
+  "rewindPreflight.confirm": "Rewind {n} file(s)",
+  "rewindPreflight.cancel": "Cancel",
+  "rewindPreflight.safeHeading": "Will be restored to the checkpoint state ({n})",
+  "rewindPreflight.unsafeHeading": "Unsafe — rewind blocked ({n})",
+  "rewindPreflight.reason.outsideWorkspace": "Outside the workspace",
+  "rewindPreflight.reason.missingPayload": "Checkpoint payload deleted or expired",
+  "rewindPreflight.reason.permissionDenied": "Insufficient permission to write this file",
+  "rewindPreflight.reason.changed": "Changed since the checkpoint",
 };
 
 export type DictKey = keyof typeof en;
