@@ -38,6 +38,7 @@ import { applyLiveSegments, coalesceStreamDeltas, completeLiveReasoning, type St
 import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems } from "./assistantItems";
 import { getTranscriptStore } from "./transcriptStore";
 import { recordFrontendDiagnostic } from "./frontendDiagnosticBridge";
+import { setDraftRewriteTraceSink } from "./draftRewriteTraceBridge";
 import { uiPerfTracker } from "./uiPerf";
 import { getLocale, t } from "./i18n";
 import {
@@ -334,7 +335,7 @@ export type Item =
   | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; createdAt?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[]; turnDoneAt?: number; turnUsage?: import("./turnToolTally").TurnUsageSnapshot }
   | { kind: "phase"; id: string; text: string }
-  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; suggestion?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions" | "retry_reasoning_only"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean; createdAt?: number }
+  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; suggestion?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions" | "retry_reasoning_only"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean; createdAt?: number; /** tl1427: trajectory-ledger-only record — the chat row projection skips it; the trajectory view still consumes it. */ trajectoryOnly?: boolean }
   | {
       kind: "compaction";
       id: string;
@@ -1053,6 +1054,9 @@ type Action =
   | { type: "history_older_error"; error?: string }
   | { type: "history_older_exhausted" }
   | { type: "local_notice"; level: "info" | "warn"; text: string; preserveRuntime?: boolean }
+  // tl1427：草稿优化（增强）调用轨迹——只进轨迹台账，不进聊天行投影、不经
+  // 后端事件（不进持久化 transcript）。文案不含草稿正文与改写结果。
+  | { type: "draft_rewrite_trace"; id: string; outcome: "done" | "cancelled" | "failed"; elapsedMs: number; createdAt: number }
   // Task 258: a queued steer/follow-up renders its transcript bubble at
   // receipt time (the durable hand-off already happened); inboxItemId dedupes
   // against the agent's consume-time steer event. createdAt（任务998）来自
@@ -3077,6 +3081,19 @@ export function reducer(s: State, a: Action): State {
       return changed ? { ...s, items: next, historyLayoutRevision: s.historyLayoutRevision + 1, historyMutation: { seq: s.historyMutation.seq + 1, kind: "patch" } } : s;
     }
     case "local_notice": return { ...s, running: a.preserveRuntime ? s.running : false, turnActive: a.preserveRuntime ? s.turnActive : false, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `n${s.seq}`, level: a.level, text: a.text }] };
+    case "draft_rewrite_trace": {
+      // tl1427：增强调用轨迹（对齐 zcode modelTrajectory.source.promptEnhance）。
+      // 只进轨迹台账（trajectoryOnly：聊天行投影跳过、后端零感知=不进持久化
+      // transcript）；记录只含结果与耗时，不含草稿正文与改写结果。纯内存记录，
+      // 绝不打断 running/turnActive（增强可与 turn 并行）。
+      const seconds = (Math.max(0, a.elapsedMs) / 1000).toFixed(1);
+      const text = a.outcome === "done"
+        ? t("composer.rewriteTrace.done", { n: seconds })
+        : a.outcome === "cancelled"
+          ? t("composer.rewriteTrace.cancelled")
+          : t("composer.rewriteTrace.failed");
+      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: a.id, level: "info", code: "promptEnhance", trajectoryOnly: true, text, createdAt: a.createdAt }] };
+    }
     case "guidance_bubble": {
       // Receipt first, event later: the same inboxItemId keeps a single bubble.
       if (a.inboxItemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === a.inboxItemId)) return s;
@@ -3436,6 +3453,22 @@ export function useController() {
       if (!streamDeltaOnly) bump();
     }
   }, [bump, notifyLiveListeners]);
+  // tl1427：增强调用轨迹 sink——Composer 任意挂载点（App 主树 / decision
+  // footer / channel 面板）经 draftRewriteTraceBridge 通报一次增强收尾，这里
+  // 落成 trajectoryOnly notice。dispatchTo 稳定，effect 只挂一次；目标 tab 由
+  // 调用方传入（split view 双 Composer 各自归属正确的 tab state）。
+  useEffect(() => {
+    setDraftRewriteTraceSink((tabId, outcome, elapsedMs) => {
+      dispatchTo(tabId, {
+        type: "draft_rewrite_trace",
+        id: `drt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        outcome,
+        elapsedMs,
+        createdAt: Date.now(),
+      });
+    });
+    return () => setDraftRewriteTraceSink(undefined);
+  }, [dispatchTo]);
   const clearBalanceForTab = useCallback((tabId: string): void => {
     invalidateSharedQuery("BalanceForTab", [tabId]);
     invalidateSharedQuery("MetaForTab", [tabId]);

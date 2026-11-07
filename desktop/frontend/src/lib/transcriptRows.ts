@@ -269,6 +269,12 @@ export function buildTurnModels(
     if (item.kind === "user") {
       flush();
       currentUser = item;
+    } else if (item.kind === "notice" && item.trajectoryOnly) {
+      // tl1427：增强调用轨迹记录只属于轨迹台账（轨迹视图经 buildTrajectoryLedger
+      // 消费同一 item）——聊天行投影在唯一的 items 入口跳过它，折叠分段、
+      // 行构建、Ctrl+F 行模型搜索、复制载荷全都看不到它，「不进 transcript」
+      // 的展示侧纪律由此单点成立。
+      continue;
     } else {
       currentItems.push(item);
     }
