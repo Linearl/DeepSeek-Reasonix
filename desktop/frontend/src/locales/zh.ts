@@ -6402,4 +6402,9 @@ export const zh: Record<DictKey, string> = {
   "composer.screenshotButton": "截图",
   "composer.screenshotButtonHint": "抓取屏幕、框选区域、标注并插入附件",
   "composer.screenshotFailed": "截图失败",
+  // tl1480 deny with feedback
+  "approval.denyFeedbackTrigger": "拒绝并附反馈",
+  "approval.denyFeedbackLabel": "给模型的反馈说明",
+  "approval.denyFeedbackPlaceholder": "说明拒绝原因（可选；Enter 拒绝，Esc 取消）",
+  "approval.denyFeedbackSubmit": "拒绝并发送",
 };

@@ -6398,4 +6398,9 @@ export const zhTW: Record<DictKey, string> = {
   "composer.screenshotButton": "截圖",
   "composer.screenshotButtonHint": "擷取螢幕、框選區域、標註並插入附件",
   "composer.screenshotFailed": "截圖失敗",
+  // tl1480 deny with feedback
+  "approval.denyFeedbackTrigger": "拒絕並附回饋",
+  "approval.denyFeedbackLabel": "給模型的回饋說明",
+  "approval.denyFeedbackPlaceholder": "說明拒絕原因（可選；Enter 拒絕，Esc 取消）",
+  "approval.denyFeedbackSubmit": "拒絕並送出",
 };

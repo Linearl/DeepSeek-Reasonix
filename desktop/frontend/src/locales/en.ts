@@ -6447,6 +6447,11 @@ export const en = {
   "composer.screenshotButton": "Screenshot",
   "composer.screenshotButtonHint": "Capture the screen, select a region, annotate, and attach",
   "composer.screenshotFailed": "Screenshot failed",
+  // tl1480 deny with feedback
+  "approval.denyFeedbackTrigger": "Deny with feedback",
+  "approval.denyFeedbackLabel": "Feedback for the model",
+  "approval.denyFeedbackPlaceholder": "Tell the model why you declined (optional; Enter to deny, Esc to cancel)",
+  "approval.denyFeedbackSubmit": "Deny & send",
 };
 
 export type DictKey = keyof typeof en;

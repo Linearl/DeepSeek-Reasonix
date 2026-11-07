@@ -137,6 +137,10 @@ function localizePlanModeApprovalReason(tool: string, reason: string, t: Transla
 }
 
 const RECOVERY_FEEDBACK_MAX = 1000;
+// tl1480: the optional deny reason shares the recovery guidance bound; the
+// controller clamps again so the tool_result can never carry an unbounded
+// string even from a hand-called bridge.
+const DENY_FEEDBACK_MAX = 1000;
 
 function recoveryReasonText(
   changeKind: string | undefined,
@@ -224,7 +228,7 @@ export function ApprovalModal({
   toolApprovalMode,
 }: {
   approval: WireApproval;
-  onAnswer: (allow: boolean, session: boolean, persist: boolean) => void;
+  onAnswer: (allow: boolean, session: boolean, persist: boolean, feedback?: string) => void;
   onResolveRecovery?: (action: "continue" | "continue_task" | "revise", feedback?: string) => void;
   onRevisePlan?: (text: string) => void;
   onExitPlan?: () => void;
@@ -279,6 +283,8 @@ export function ApprovalModal({
   const [revisionText, setRevisionText] = useState("");
   const [recoveryGuidanceOpen, setRecoveryGuidanceOpen] = useState(false);
   const [recoveryGuidanceText, setRecoveryGuidanceText] = useState("");
+  const [denyFeedbackOpen, setDenyFeedbackOpen] = useState(false);
+  const [denyFeedbackText, setDenyFeedbackText] = useState("");
   const [grantSimilarForTask, setGrantSimilarForTask] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const instanceId = useId();
@@ -286,6 +292,7 @@ export function ApprovalModal({
   const shelfRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const recoveryGuidanceRef = useRef<HTMLTextAreaElement | null>(null);
+  const denyFeedbackRef = useRef<HTMLInputElement | null>(null);
   const recoveryGuidanceTriggerRef = useRef<HTMLButtonElement | null>(null);
   const consumedInsertIdRef = useRef(0);
   const onRevisionActiveChangeRef = useRef(onRevisionActiveChange);
@@ -470,6 +477,8 @@ export function ApprovalModal({
     setRevisionText("");
     setRecoveryGuidanceOpen(false);
     setRecoveryGuidanceText("");
+    setDenyFeedbackOpen(false);
+    setDenyFeedbackText("");
     setGrantSimilarForTask(false);
     setReasonOpen(isRecoveryApproval ? false : Boolean(reason) && reason.length <= 160);
     setSelectedIndex(isPlanApproval || isRecoveryApproval ? -1 : 0);
@@ -576,12 +585,18 @@ export function ApprovalModal({
         setSelectedIndex(index);
       } else if (event.key === "Escape") {
         event.preventDefault();
+        // tl1480: an open deny-feedback box owns Escape (cancel the box)
+        // instead of stopping the whole task.
+        if (denyFeedbackOpen) {
+          closeDenyFeedback();
+          return;
+        }
         answerWithExit(onStop);
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [actionCount, activateAction, confirmSelected, onStop, submitting, isPlanApproval, isRecoveryApproval, isRecoveryPlanChange, recoveryGuidanceOpen, toolActions]);
+  }, [actionCount, activateAction, confirmSelected, onStop, submitting, isPlanApproval, isRecoveryApproval, isRecoveryPlanChange, recoveryGuidanceOpen, denyFeedbackOpen, toolActions]);
 
   useEffect(() => {
     revisionActiveRef.current = revisionOpen;
@@ -682,6 +697,44 @@ export function ApprovalModal({
     answerWithExit(() => resolveRecovery("revise", text));
   };
 
+  const openDenyFeedback = () => {
+    setDenyFeedbackOpen(true);
+    requestAnimationFrame(() => {
+      denyFeedbackRef.current?.focus();
+    });
+  };
+
+  const closeDenyFeedback = () => {
+    setDenyFeedbackOpen(false);
+    setDenyFeedbackText("");
+    requestAnimationFrame(() => {
+      cardRef.current?.focus();
+    });
+  };
+
+  // tl1480: Enter submits the deny — empty text is the pure deny (现行为零
+  // 变化); Esc cancels back to the undecided card.
+  const submitDenyFeedback = () => {
+    const text = denyFeedbackText.trim().slice(0, DENY_FEEDBACK_MAX);
+    answerWithExit(() => onAnswer(false, false, false, text || undefined));
+  };
+
+  const onDenyFeedbackKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      submitDenyFeedback();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeDenyFeedback();
+      return;
+    }
+    event.stopPropagation();
+  };
+
   const onRecoveryGuidanceKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
@@ -770,6 +823,11 @@ export function ApprovalModal({
             {!isPlanApproval && !isRecoveryApproval && hasToolDetails && reason && (
               <PromptHeaderAction onClick={() => setReasonOpen((open) => !open)} disabled={submitting}>
                 {t(reasonOpen ? "approval.hideDetails" : "approval.details")}
+              </PromptHeaderAction>
+            )}
+            {!isPlanApproval && !isRecoveryApproval && (
+              <PromptHeaderAction onClick={openDenyFeedback} disabled={submitting}>
+                {t("approval.denyFeedbackTrigger")}
               </PromptHeaderAction>
             )}
             {!isPlanApproval && !isRecoveryApproval && (
@@ -917,7 +975,7 @@ export function ApprovalModal({
       >
         {(approvalModeRelaxed ||
           isRecoveryApproval ||
-          (!isPlanApproval && !isRecoveryApproval && (subject || isWriteAccessApproval || (reasonOpen && reason))) ||
+          (!isPlanApproval && !isRecoveryApproval && (subject || isWriteAccessApproval || (reasonOpen && reason) || denyFeedbackOpen)) ||
           (isPlanApproval && revisionOpen)) && (
           <>
             {approvalModeRelaxed && !isRecoveryApproval && (
@@ -994,6 +1052,36 @@ export function ApprovalModal({
               <div className="approval-details">
                 <pre className="approval-subject">{subject}</pre>
                 {reasonOpen && reason && <div className="approval-reason">{reason}</div>}
+              </div>
+            )}
+            {!isPlanApproval && !isRecoveryApproval && denyFeedbackOpen && (
+              <div className="recovery-guidance">
+                <input
+                  ref={denyFeedbackRef}
+                  className="plan-revision__input recovery-guidance__input"
+                  type="text"
+                  value={denyFeedbackText}
+                  maxLength={DENY_FEEDBACK_MAX}
+                  aria-label={t("approval.denyFeedbackLabel")}
+                  placeholder={t("approval.denyFeedbackPlaceholder")}
+                  onChange={(event) => setDenyFeedbackText(event.target.value.slice(0, DENY_FEEDBACK_MAX))}
+                  onKeyDown={onDenyFeedbackKeyDown}
+                  disabled={submitting}
+                  autoFocus
+                />
+                <div className="recovery-guidance__actions">
+                  <button className="btn" type="button" onClick={closeDenyFeedback} disabled={submitting}>
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    className="btn btn--primary"
+                    type="button"
+                    onClick={submitDenyFeedback}
+                    disabled={submitting}
+                  >
+                    {t("approval.denyFeedbackSubmit")}
+                  </button>
+                </div>
               </div>
             )}
             {isPlanApproval && revisionOpen && (

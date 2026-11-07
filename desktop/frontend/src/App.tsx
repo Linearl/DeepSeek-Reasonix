@@ -6441,7 +6441,7 @@ export default function App() {
                 workspaceScopeKey={workspaceScopeKey}
                 insertRequest={activePlanRevisionInsertRequest}
                 onRevisionActiveChange={handleRevisionActiveChange}
-                onAnswer={async (allow, session, persist) => {
+                onAnswer={async (allow, session, persist, feedback) => {
                   // Approving an exit_plan_mode plan leaves plan mode; await the
                   // mode switch before sending the approval so the controller
                   // observes the updated state before it unblocks.
@@ -6454,7 +6454,7 @@ export default function App() {
                     }
                     return;
                   }
-                  approve(state.approval!.id, allow, session, persist);
+                  approve(state.approval!.id, allow, session, persist, feedback ?? "");
                 }}
                 onResolveRecovery={(action, feedback) => {
                   resolveRecovery(state.approval!.id, action, feedback ?? "");

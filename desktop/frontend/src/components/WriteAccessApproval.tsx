@@ -15,7 +15,7 @@ export type DecisionAction = {
 
 export function writeAccessDecisionActions(
   t: Translator,
-  onAnswer: (allow: boolean, session: boolean, persist: boolean) => void,
+  onAnswer: (allow: boolean, session: boolean, persist: boolean, feedback?: string) => void,
 ): DecisionAction[] {
   return [
     {

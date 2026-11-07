@@ -1274,8 +1274,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   InterruptTurnForTab?(tabID: string, turnID: string): Promise<void>;
   InterruptTurnWithInboxItemsForTab?(tabID: string, turnID: string, itemIDs: string[]): Promise<{ discardedItemIds: string[]; warning?: string }>;
   TurnEventsForTab?(tabID: string, afterSeq: number): Promise<TurnEventReplayView>;
-  Approve(id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
-  ApproveTab(tabID: string, id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
+  Approve(id: string, allow: boolean, session: boolean, persist: boolean, feedback?: string): Promise<void>;
+  ApproveTab(tabID: string, id: string, allow: boolean, session: boolean, persist: boolean, feedback?: string): Promise<void>;
   ApproveTabForTurn?(tabID: string, turnID: string, runtimeEpoch: string, id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
   ResolvePlanDecision(id: string, action: "start_execution" | "revise_plan" | "exit_plan"): Promise<void>;
   ResolvePlanDecisionTab(tabID: string, id: string, action: "start_execution" | "revise_plan" | "exit_plan"): Promise<void>;
@@ -5103,19 +5103,20 @@ function makeMockApp(): AppBindings {
           await withMockTabScope(_tabID, () => this.Cancel());
         },
         async CancelTabWithInboxItemsResult(_tabID, itemIDs) { await withMockTabScope(_tabID, () => this.Cancel()); return { discardedItemIds: [...itemIDs] }; },
-        async Approve(_id, allow, session, persist) {
+        async Approve(_id, allow, session, persist, feedback?: string) {
           if (!pendingApprovalPreview) return;
           pendingApprovalPreview = false;
           pendingApprovalPreviewPrompt = undefined;
           const suffix = persist ? "grant saved" : session ? "grant active this session" : "allowed once";
+          const detail = allow ? suffix : feedback ? `denied with feedback: ${feedback}` : "denied";
           emit({
             kind: "message",
-            text: `approval preview answered: ${allow ? suffix : "denied"}`,
+            text: `approval preview answered: ${detail}`,
           });
           emitMockTurnDone();
         },
-        async ApproveTab(_tabID, id, allow, session, persist) {
-          await withMockTabScope(_tabID, () => this.Approve(id, allow, session, persist));
+        async ApproveTab(_tabID, id, allow, session, persist, feedback?: string) {
+          await withMockTabScope(_tabID, () => this.Approve(id, allow, session, persist, feedback));
         },
         async ResolvePlanDecision(id, action) {
           const active = mockTabs.find((tab) => tab.active);
@@ -5189,7 +5190,7 @@ function makeMockApp(): AppBindings {
         async ResolvePromptForTab(tabID, promptID, _turnID, _runtimeEpoch, kind, answer) {
           await withMockTabScope(tabID, async () => {
             if (kind === "ask") return this.AnswerQuestion(promptID, answer.questions ?? []);
-            if (kind === "approval") return this.Approve(promptID, Boolean(answer.allow), Boolean(answer.session), Boolean(answer.persist));
+            if (kind === "approval") return this.Approve(promptID, Boolean(answer.allow), Boolean(answer.session), Boolean(answer.persist), answer.feedback);
             if (kind === "plan") return this.ResolvePlanDecisionTab(tabID, promptID, (answer.action ?? "exit_plan") as "start_execution" | "revise_plan" | "exit_plan");
             if (kind === "recovery") return this.ResolveRecoveryTab(tabID, promptID, answer.action ?? "revise", answer.feedback ?? "");
             if (kind === "mcp") return this.AnswerMCPInteractionForTab(tabID, promptID, (answer.action ?? "cancel") as "accept" | "decline" | "cancel", answer.content ?? null);
