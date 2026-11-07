@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"reasonix/internal/agent"
@@ -215,74 +216,134 @@ func (a *App) listSessionsFromDir(dir, active string) []SessionMeta {
 	return out
 }
 
+// tl1474TrashListWorkers bounds the parallel per-bucket assembly. Bucket reads
+// are small-syscall IO (dir walks, sidecar loads, transcript stats) plus the
+// recovery-coverage proof on first proof per content identity — IO-bound work
+// that parallelizes cleanly. 8 covers the reporting machine's trash (93
+// buckets, cold open) without a goroutine per bucket on huge trash dirs; the
+// per-bucket order is re-derived by the deterministic sort below, so assembly
+// order never leaks into the output.
+const tl1474TrashListWorkers = 8
+
 // ListTrashedSessions returns sessions that were moved to the local trash,
 // newest-deleted first. These can be previewed, restored, or permanently purged.
+//
+// tl1474 load chain: the old shape walked the listing sequentially and paid
+// per bucket a full agent.ListSessions (whose recovery-preference proof can
+// replay a transcript) plus a duplicate trash-meta read, and the
+// RecoveryCopy classification re-proved coverage per record with zero caching
+// — measured 14.0s of coverage proofs alone across 25 recovery buckets on the
+// 2026-11-07 reporting machine. The observable semantics (record per bucket,
+// empty-shell synthesis, copy tags, RecoveryCopy contract) are pinned by the
+// tl1429b/1429d/1449 suites and the tl1474 equivalence pin; what changed is
+// how each bucket is read: metadata-only listing reads, one trash-meta read
+// per bucket, coverage proofs memoized per content identity (internal/agent),
+// and the per-bucket assembly running on a bounded worker pool.
 func (a *App) ListTrashedSessions() []SessionMeta {
-	out := []SessionMeta{}
+	type trashBucketWork struct {
+		dir    string
+		titles map[string]string
+		bucket trashedBucketRecord
+	}
+	var work []trashBucketWork
 	for _, dir := range a.knownSessionDirs() {
-		paths, err := listTrashedSessionFiles(dir)
+		buckets, err := listTrashedSessionBuckets(dir)
 		if err != nil {
 			continue
 		}
 		titles := loadSessionTitles(dir)
-		for _, path := range paths {
-			infos, err := agent.ListSessions(filepath.Dir(path))
-			if err != nil {
-				continue
-			}
-			deletedAt := trashedSessionDeletedAt(path)
-			if len(infos) == 0 {
-				// tl1449: 空壳桶(结构性记录在、transcript 已消失)不再静默漏——
-				// 漏掉的桶不可见也不可清,清空后永远躺在磁盘上(症状②③)。合成
-				// 一条最小记录让清空够得到它;标题留空,前端 emptySession 兜底。
-				out = append(out, SessionMeta{
-					Path:           path,
-					TurnsState:     "unknown",
-					DeletedAt:      deletedAt,
-					LastActivityAt: deletedAt,
-					ModTime:        deletedAt,
-				})
-				continue
-			}
-			title := strings.TrimSpace(infos[0].CustomTitle)
-			if title == "" {
-				title = titles[filepath.Base(path)]
-			}
-			meta := sessionMetaFromInfo(infos[0], title, false, false, deletedAt, dir)
-			// tl1429d: 回收站里同族主线桶与 recovery 副本桶各出一条记录(桶是
-			// 还原/清除的单桶语义,按族去重会让「还原哪条=还原哪个桶」对不上)。
-			// 但归档级联(tl1442-ext 后)会把整族一起搬进 .trash,十几条副本记录
-			// 与主线同名同标题,用户分不清哪条是主线。修法=标题带副本标识(用户
-			// 裁决的选项 B):主线是唯一不带 (副本 recovery-<hex>) 后缀的记录。
-			// 刻意不动 RecoveryCopy——它的契约是「已证明未被续写且被母本覆盖,
-			// 可安全清理」(22b334f22,TestTrashMarksLegacyRecoverySessionsAs-
-			// Recovered 钉死);副本桶内没有母本,coverage 证明必败,形状推断
-			// 不够格,批量清空/分组语义必须保持逐条记录原状。
-			if tag := trashedRecoveryCopyTag(filepath.Base(path)); tag != "" {
-				// 标题基准接住 TopicTitle/Preview:现网副本的标题通常来自
-				// topic_title(CustomTitle 与 legacy titles map 常为空),只用
-				// title 会让标识吃掉原名。标识同时落 Title 与 TopicTitle——
-				// 前端显示优先 topicTitle,title 兜底,只落一处会被吞。
-				base := title
-				if base == "" {
-					base = strings.TrimSpace(infos[0].TopicTitle)
-				}
-				if base == "" {
-					base = strings.TrimSpace(infos[0].Preview)
-				}
-				meta.Title = strings.TrimSpace(base + " " + tag)
-				meta.TopicTitle = meta.Title
-			}
-			out = append(out, meta)
+		for _, bucket := range buckets {
+			work = append(work, trashBucketWork{dir: dir, titles: titles, bucket: bucket})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].DeletedAt == out[j].DeletedAt {
-			return out[i].LastActivityAt > out[j].LastActivityAt
+
+	out := make([]SessionMeta, len(work))
+	ok := make([]bool, len(work))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, tl1474TrashListWorkers)
+	for i, item := range work {
+		wg.Add(1)
+		go func(i int, item trashBucketWork) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			meta, assembled := a.assembleTrashedSessionMeta(item.dir, item.titles, item.bucket)
+			out[i] = meta
+			ok[i] = assembled
+		}(i, item)
+	}
+	wg.Wait()
+
+	assembled := make([]SessionMeta, 0, len(work))
+	for i := range work {
+		if ok[i] {
+			assembled = append(assembled, out[i])
 		}
-		return out[i].DeletedAt > out[j].DeletedAt
+	}
+	sort.Slice(assembled, func(i, j int) bool {
+		if assembled[i].DeletedAt == assembled[j].DeletedAt {
+			return assembled[i].LastActivityAt > assembled[j].LastActivityAt
+		}
+		return assembled[i].DeletedAt > assembled[j].DeletedAt
 	})
-	return out
+	return assembled
+}
+
+// assembleTrashedSessionMeta builds one trash record from one bucket. This is
+// the per-bucket logic from the pre-tl1474 sequential loop, kept verbatim —
+// including the tl1449 empty-shell synthesis and the tl1429d copy tag — with
+// two read-mode swaps: agent.ListSessionsMetadataOnly instead of
+// agent.ListSessions (display fields identical, no transcript replay), and
+// deletedAt folded into the bucket record (no second trash-meta read).
+func (a *App) assembleTrashedSessionMeta(dir string, titles map[string]string, bucket trashedBucketRecord) (SessionMeta, bool) {
+	path := bucket.Path
+	infos, err := agent.ListSessionsMetadataOnly(filepath.Dir(path))
+	if err != nil {
+		return SessionMeta{}, false
+	}
+	deletedAt := bucket.DeletedAt
+	if len(infos) == 0 {
+		// tl1449: 空壳桶(结构性记录在、transcript 已消失)不再静默漏——
+		// 漏掉的桶不可见也不可清,清空后永远躺在磁盘上(症状②③)。合成
+		// 一条最小记录让清空够得到它;标题留空,前端 emptySession 兜底。
+		return SessionMeta{
+			Path:           path,
+			TurnsState:     "unknown",
+			DeletedAt:      deletedAt,
+			LastActivityAt: deletedAt,
+			ModTime:        deletedAt,
+		}, true
+	}
+	title := strings.TrimSpace(infos[0].CustomTitle)
+	if title == "" {
+		title = titles[filepath.Base(path)]
+	}
+	meta := sessionMetaFromInfo(infos[0], title, false, false, deletedAt, dir)
+	// tl1429d: 回收站里同族主线桶与 recovery 副本桶各出一条记录(桶是
+	// 还原/清除的单桶语义,按族去重会让「还原哪条=还原哪个桶」对不上)。
+	// 但归档级联(tl1442-ext 后)会把整族一起搬进 .trash,十几条副本记录
+	// 与主线同名同标题,用户分不清哪条是主线。修法=标题带副本标识(用户
+	// 裁决的选项 B):主线是唯一不带 (副本 recovery-<hex>) 后缀的记录。
+	// 刻意不动 RecoveryCopy——它的契约是「已证明未被续写且被母本覆盖,
+	// 可安全清理」(22b334f22,TestTrashMarksLegacyRecoverySessionsAs-
+	// Recovered 钉死);副本桶内没有母本,coverage 证明必败,形状推断
+	// 不够格,批量清空/分组语义必须保持逐条记录原状。
+	if tag := trashedRecoveryCopyTag(filepath.Base(path)); tag != "" {
+		// 标题基准接住 TopicTitle/Preview:现网副本的标题通常来自
+		// topic_title(CustomTitle 与 legacy titles map 常为空),只用
+		// title 会让标识吃掉原名。标识同时落 Title 与 TopicTitle——
+		// 前端显示优先 topicTitle,title 兜底,只落一处会被吞。
+		base := title
+		if base == "" {
+			base = strings.TrimSpace(infos[0].TopicTitle)
+		}
+		if base == "" {
+			base = strings.TrimSpace(infos[0].Preview)
+		}
+		meta.Title = strings.TrimSpace(base + " " + tag)
+		meta.TopicTitle = meta.Title
+	}
+	return meta, true
 }
 
 // trashedRecoveryCopyTag 是回收站副本记录的标题标识(tl1429d):从桶的

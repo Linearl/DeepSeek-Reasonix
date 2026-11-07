@@ -2935,6 +2935,16 @@ func ListSessions(dir string) ([]SessionInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	return sessionsFromOrder(ordered), nil
+}
+
+// sessionsFromOrder applies the shared listing projection: the single source
+// of the drop rules (stale projection without content → dropped; stale
+// projection with content → counts unknown; fresh projection with zero user
+// turns → dropped) and the "History is being indexed" placeholder preview.
+// ListSessions and ListSessionsMetadataOnly both route through here so the
+// two read modes can never drift apart (tl1474).
+func sessionsFromOrder(ordered []SessionOrderInfo) []SessionInfo {
 	var out []SessionInfo
 	for _, session := range ordered {
 		preview, turns := session.Preview, session.Turns
@@ -2955,7 +2965,29 @@ func ListSessions(dir string) ([]SessionInfo, error) {
 		}
 		out = append(out, sessionInfoFromOrder(session, preview, turns, true))
 	}
-	return out, nil
+	return out
+}
+
+// ListSessionsMetadataOnly is ListSessions with the recovery-preference proof
+// skipped: it never replays a transcript, so a sidecar carrying
+// RecoveryPreferred + digest cannot trigger a full LoadSession + digest cycle
+// per record (tl1474: the trash listing paid that per recovery bucket, in the
+// hundreds of milliseconds each on large transcripts). The listing projection
+// (drop rules, ordering, preview, counts identity) is the exact shared
+// sessionsFromOrder, so every display field matches ListSessions byte for
+// byte; only SessionInfo.RecoveryPreferred differs — it stays false because
+// the proof never ran. Callers must therefore not use this variant's
+// RecoveryPreferred for lineage decisions; the trash cards (its first
+// consumer) render title/preview/times only and classify recovery copies via
+// the sidecar fields + filename shape.
+func ListSessionsMetadataOnly(dir string) ([]SessionInfo, error) {
+	ordered, err := ListSessionOrderWithRecoveryPreferenceResolver(dir, func(sessionPath string, meta BranchMeta) bool {
+		return false // proof skipped by contract; see doc comment
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sessionsFromOrder(ordered), nil
 }
 
 // SessionPreview returns the same preview and user-turn count used by
