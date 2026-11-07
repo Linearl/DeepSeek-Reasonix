@@ -29436,6 +29436,36 @@ button.statusbar__mcp:focus-visible {
   width: 48%;
 }
 
+/* tl1474: trash page first-paint skeleton — same pulse idiom as the project
+   tree skeleton. Shown only while the trash listing loads with nothing to
+   render yet; a refresh over an existing list never replays it. */
+.trash-page__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 8px 0;
+}
+
+.trash-page__skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trash-page__skeleton-bar {
+  display: block;
+  height: 12px;
+  width: 68%;
+  border-radius: var(--radius-sm);
+  background: var(--fg-faint);
+  opacity: 0.16;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.trash-page__skeleton-bar--short {
+  width: 42%;
+}
+
 .project-tree__header-actions .project-tree__add-project:focus-visible,
 .project-tree__header-actions .project-tree__collapse-all:focus-visible,
 .project-tree__header-actions .project-tree__header-action-btn:focus-visible {

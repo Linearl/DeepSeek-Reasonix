@@ -107,6 +107,18 @@ export function TrashPage({ active, onBack, list, restore, purge }: {
       </div>
     </div>}
     {loading && <div className="management-notice" role="status">{m("loading")}</div>}
+    {/* tl1474：首屏加载显示骨架行（project-tree skeleton 同款 pulse 惯用法），
+        加载不再是空白面板；刷新已有列表时不重放骨架，避免闪烁。 */}
+    {loading && sessions.length === 0 && !loadFailed && (
+      <div className="trash-page__skeleton" aria-hidden="true">
+        {[0, 1, 2, 3, 4].map((row) => (
+          <div key={row} className="trash-page__skeleton-row">
+            <span className="trash-page__skeleton-bar" />
+            <span className="trash-page__skeleton-bar trash-page__skeleton-bar--short" />
+          </div>
+        ))}
+      </div>
+    )}
     <div style={{ display: sessions.length === 0 && (loading || loadFailed) ? "none" : "contents" }}><HistoryPanel presentation="page" active={active} sessions={sessions} kind="trash" running={false} busy={busy}
       onClose={onBack} onResume={noop} onDelete={noop} onRename={noop}
       onPreview={async (path) => (await app.PreviewSession(path)) ?? []}
