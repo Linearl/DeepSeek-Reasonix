@@ -6447,6 +6447,9 @@ export const en = {
   "composer.screenshotButton": "Screenshot",
   "composer.screenshotButtonHint": "Capture the screen, select a region, annotate, and attach",
   "composer.screenshotFailed": "Screenshot failed",
+  // tl1478 trajectory viewer interaction hardening (namespace keys appended at EOF)
+  "trajectory.loadOlder.all": "Show all {count}",
+  "trajectory.row.toggleHint": "Click to expand or collapse this group",
 };
 
 export type DictKey = keyof typeof en;

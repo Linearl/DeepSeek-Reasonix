@@ -59,4 +59,8 @@ export interface TrajectoryLedgerProjectionOptions {
   searchMatchIds: Set<string> | null;
   /** 拖选聚焦区间（null = 不过滤）。 */
   focusIds: Set<string> | null;
+  /** tl1478 批量展开：单独展开的轮次（窗口内 turn 序号），优先于 collapsedTurns。 */
+  expandedTurns?: Set<number> | null;
+  /** tl1478 批量展开：单独展开的工具调用组（assistant 记录 id），优先于 collapsedCalls。 */
+  expandedCalls?: Set<string> | null;
 }

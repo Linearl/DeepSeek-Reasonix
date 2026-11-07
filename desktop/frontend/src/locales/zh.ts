@@ -6402,4 +6402,7 @@ export const zh: Record<DictKey, string> = {
   "composer.screenshotButton": "截图",
   "composer.screenshotButtonHint": "抓取屏幕、框选区域、标注并插入附件",
   "composer.screenshotFailed": "截图失败",
+  // tl1478 轨迹查看器交互补强（命名空间键末尾追加）
+  "trajectory.loadOlder.all": "展开全部 {count} 条",
+  "trajectory.row.toggleHint": "点击展开或收起该分组",
 };

@@ -80,7 +80,8 @@ export function projectTrajectoryRows(records: TrajectoryRecord[], options: Traj
   while (index < records.length) {
     const record = records[index];
     if (!kept(record)) { index += 1; continue; }
-    if (options.collapsedCalls && record.kind === "assistant") {
+    // tl1478 批量展开：expandedCalls 单项覆盖 collapsedCalls（点摘要行只展开该组）。
+    if (options.collapsedCalls && !(options.expandedCalls?.has(record.id) ?? false) && record.kind === "assistant") {
       let end = index + 1;
       while (end < records.length && records[end].kind === "tool" && kept(records[end])) end += 1;
       if (end > index + 1) {
@@ -104,7 +105,8 @@ export function projectTrajectoryRows(records: TrajectoryRecord[], options: Traj
   let cursor = 0;
   while (cursor < pass1.length) {
     const entry = pass1[cursor];
-    if (entry.type === "record" && entry.record.turnStart) {
+    // tl1478 批量展开：expandedTurns 单项覆盖 collapsedTurns（点摘要行只展开该轮）。
+    if (entry.type === "record" && entry.record.turnStart && !(options.expandedTurns?.has(entry.record.turn) ?? false)) {
       const turn = entry.record.turn;
       let end = cursor + 1;
       while (end < pass1.length) {
@@ -132,12 +134,28 @@ export function projectTrajectoryRows(records: TrajectoryRecord[], options: Traj
   return entries;
 }
 
-function TrajectoryRow({ entry, selected, dimmed, onSelect, t }: { entry: TrajectoryRowEntry; selected: boolean; dimmed: boolean; onSelect: (id: string) => void; t: Translator }) {
+/** tl1478 批量展开收起：turn/calls 摘要行可点击（aria-expanded + 单项覆盖
+ * 投影折叠开关）；onToggle 缺省时保持旧只读行为。 */
+function TrajectoryRow({ entry, selected, dimmed, expanded = false, onToggle, onSelect, t }: { entry: TrajectoryRowEntry; selected: boolean; dimmed: boolean; expanded?: boolean; onToggle?: () => void; onSelect: (id: string) => void; t: Translator }) {
   if (entry.type === "turn") {
     return (
-      <li className={`traj-row traj-row--turn${dimmed ? " traj-row--dimmed" : ""}`}>
+      <li
+        className={`traj-row traj-row--turn traj-row--toggle${expanded ? " traj-row--expanded" : ""}${dimmed ? " traj-row--dimmed" : ""}`}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        title={`${t("trajectory.turn.label", { turn: entry.turnLabel ?? entry.turn })} · ${t("trajectory.row.toggleHint")}`}
+        onClick={() => onToggle?.()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggle?.();
+          }
+        }}
+      >
         <span className="traj-row__time" />
         <span className="traj-row__kind">
+          <span className="traj-row__expand" aria-hidden="true">{expanded ? "−" : "+"}</span>
           <span className="traj-row__turn">T{entry.turnLabel ?? entry.turn}</span>
           <span className="traj-row__tag traj-row__tag--user">{t("trajectory.kind.turn")}</span>
         </span>
@@ -147,9 +165,23 @@ function TrajectoryRow({ entry, selected, dimmed, onSelect, t }: { entry: Trajec
   }
   if (entry.type === "calls") {
     return (
-      <li className={`traj-row traj-row--calls${dimmed ? " traj-row--dimmed" : ""}`}>
+      <li
+        className={`traj-row traj-row--calls traj-row--toggle${expanded ? " traj-row--expanded" : ""}${dimmed ? " traj-row--dimmed" : ""}`}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        title={t("trajectory.row.toggleHint")}
+        onClick={() => onToggle?.()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggle?.();
+          }
+        }}
+      >
         <span className="traj-row__time" />
         <span className="traj-row__kind">
+          <span className="traj-row__expand" aria-hidden="true">{expanded ? "−" : "+"}</span>
           <span className="traj-row__tag traj-row__tag--tool">{t("trajectory.kind.calls")}</span>
         </span>
         <span className="traj-row__preview traj-row__placeholder">{t("trajectory.calls.collapsed", { count: entry.calls })}{entry.names ? ` · ${entry.names}` : ""}</span>
@@ -439,6 +471,9 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
   const [durationOn, setDurationOn] = useState(false);
   const [turnsCollapsed, setTurnsCollapsed] = useState(false);
   const [callsCollapsed, setCallsCollapsed] = useState(false);
+  // tl1478 批量展开收起：摘要行点击的单项展开覆盖（键 = turn 序号 / assistant id）。
+  const [expandedTurns, setExpandedTurns] = useState<Set<number>>(new Set());
+  const [expandedCalls, setExpandedCalls] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
   const anchorHeightRef = useRef<number | null>(null);
@@ -470,8 +505,8 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
     [focus, timelineModel],
   );
   const rows = useMemo(
-    () => projectTrajectoryRows(windowedRecords, { equalWidth: true, collapsedTurns: turnsCollapsed, collapsedCalls: callsCollapsed, searchMatchIds, focusIds }),
-    [windowedRecords, turnsCollapsed, callsCollapsed, searchMatchIds, focusIds],
+    () => projectTrajectoryRows(windowedRecords, { equalWidth: true, collapsedTurns: turnsCollapsed, collapsedCalls: callsCollapsed, searchMatchIds, focusIds, expandedTurns, expandedCalls }),
+    [windowedRecords, turnsCollapsed, callsCollapsed, searchMatchIds, focusIds, expandedTurns, expandedCalls],
   );
 
   // Tail anchor: re-pin to the newest record while the reader sits at the
@@ -500,6 +535,29 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
     setWindowTurns((turns) => turns + WINDOW_TURNS);
   };
 
+  // tl1478 批量展开：一键铺满窗口内剩余全部轮次（千条级一次到位，滚动锚定保位）。
+  const expandAllWindow = (): void => {
+    anchorHeightRef.current = scrollRef.current?.scrollHeight ?? null;
+    setWindowTurns(ledger.turnCount);
+  };
+
+  // tl1478 批量展开收起：摘要行点击 = 单独展开/收起该组；工具栏两开关仍是全量
+  // 批量（切换时清掉单项覆盖，语义回到「全部收起/全部展开」）。
+  const toggleTurnGroup = (turn: number): void => {
+    setExpandedTurns((current) => {
+      const next = new Set(current);
+      if (next.has(turn)) next.delete(turn); else next.add(turn);
+      return next;
+    });
+  };
+  const toggleCallGroup = (assistantId: string): void => {
+    setExpandedCalls((current) => {
+      const next = new Set(current);
+      if (next.has(assistantId)) next.delete(assistantId); else next.add(assistantId);
+      return next;
+    });
+  };
+
   const loadOlderFromBackend = (): void => {
     if (!hasOlderHistory || loadingOlderHistory) return;
     // Keep the current window covering the whole feed so freshly paged-in
@@ -523,6 +581,12 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
               <button type="button" className="traj__load-older" onClick={expandWindow}>
                 {t("trajectory.loadOlder.window", { count: hiddenCount })}
               </button>
+              {/* tl1478 批量展开：窗口剩余轮次一键铺满（步进式加载保留在旁）。 */}
+              {hiddenCount > WINDOW_TURNS && (
+                <button type="button" className="traj__load-older" onClick={expandAllWindow}>
+                  {t("trajectory.loadOlder.all", { count: hiddenCount })}
+                </button>
+              )}
             </li>
           )}
           {hiddenCount === 0 && hasOlderHistory && !olderHistoryExhausted && (
@@ -534,7 +598,12 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
           )}
           {rows.map((entry) => {
             if (entry.type === "turn" || entry.type === "calls") {
-              return <TrajectoryRow key={`${entry.type}-${entry.type === "turn" ? entry.turn : entry.assistantId}`} entry={entry} selected={false} dimmed={false} onSelect={setSelectedId} t={t} />;
+              return <TrajectoryRow
+                key={`${entry.type}-${entry.type === "turn" ? entry.turn : entry.assistantId}`}
+                entry={entry} selected={false} dimmed={false} onSelect={setSelectedId} t={t}
+                expanded={entry.type === "turn" ? expandedTurns.has(entry.turn) : expandedCalls.has(entry.assistantId)}
+                onToggle={entry.type === "turn" ? () => toggleTurnGroup(entry.turn) : () => toggleCallGroup(entry.assistantId)}
+              />;
             }
             return (
               <TrajectoryRow key={entry.record.id} entry={entry} selected={entry.record.id === selectedId}
@@ -554,10 +623,10 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
           <span className="traj__toggle-icon" aria-hidden="true">⏱</span>
           {t("trajectory.toolbar.duration")}
         </button>
-        <button type="button" className="traj__toggle" aria-pressed={turnsCollapsed} onClick={() => setTurnsCollapsed((on) => !on)}>
+        <button type="button" className="traj__toggle" aria-pressed={turnsCollapsed} onClick={() => { setTurnsCollapsed((on) => !on); setExpandedTurns(new Set()); }}>
           {turnsCollapsed ? "⊟" : "⊞"} {t("trajectory.toolbar.turns")}
         </button>
-        <button type="button" className="traj__toggle" aria-pressed={callsCollapsed} onClick={() => setCallsCollapsed((on) => !on)}>
+        <button type="button" className="traj__toggle" aria-pressed={callsCollapsed} onClick={() => { setCallsCollapsed((on) => !on); setExpandedCalls(new Set()); }}>
           {callsCollapsed ? "⊟" : "⊞"} {t("trajectory.toolbar.calls")}
         </button>
         <input

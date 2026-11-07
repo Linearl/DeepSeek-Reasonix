@@ -6398,4 +6398,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.screenshotButton": "截圖",
   "composer.screenshotButtonHint": "擷取螢幕、框選區域、標註並插入附件",
   "composer.screenshotFailed": "截圖失敗",
+  // tl1478 軌跡檢視器互動補強（命名空間鍵末尾追加）
+  "trajectory.loadOlder.all": "展開全部 {count} 條",
+  "trajectory.row.toggleHint": "點擊展開或收起該分組",
 };

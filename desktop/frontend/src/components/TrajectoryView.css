@@ -302,6 +302,29 @@
   opacity: 0.3;
 }
 
+/* ── tl1478 批量展开收起：轮次/调用摘要行可点击，单项展开该组 ── */
+
+.traj-row--toggle {
+  cursor: pointer;
+}
+
+.traj-row--toggle:hover {
+  background: var(--sidebar-hover);
+}
+
+.traj-row--expanded .traj-row__preview {
+  color: var(--text-2);
+}
+
+.traj-row__expand {
+  flex: none;
+  width: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  text-align: center;
+}
+
 /* ── 时间线总览（②）：台账上方固定条，start/duration 左右投影 ──
    tl-1131 返修（装机实测「标签三排挤压/内容四排溢出」）：几何全部收口到
    --traj-lane-* 变量——22px 统一行高（DSH 对照 20-24px/行）、标签列 44px
@@ -578,6 +601,7 @@
 .traj__load-older-row {
   display: flex;
   justify-content: center;
+  gap: var(--space-2, 8px);
   padding: 8px 14px;
 }
 
