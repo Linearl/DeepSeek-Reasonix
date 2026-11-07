@@ -298,6 +298,143 @@ func TestDeleteParserNeverEvaluates(t *testing.T) {
 	}
 }
 
+// deleteGateFixture re-homes the process for the full-access matrix: the
+// Windows test temp root lives under the real user profile, so a probe that
+// is "outside home" must be judged against a fixture home. The fixture home,
+// the workspace root and the out-of-scope probe are sibling t.TempDir
+// directories, so the probe is outside every granted root AND outside the
+// (fixture) home subtree.
+func deleteGateFixture(t *testing.T) (workspace, home, probe string) {
+	t.Helper()
+	home = t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	workspace = t.TempDir()
+	probe = t.TempDir()
+	return workspace, home, probe
+}
+
+// deleteGateFullAccess returns the boot-shaped bash for the full-access
+// matrix: the live root set bound the same way boot binds it
+// (BindWriteRootSet), carrying the task-257 unbounded flag the guard reads.
+func deleteGateFullAccess(shell sandbox.Shell, root string, terminal *deleteGateTerminal, unbounded bool) bash {
+	b := deleteBash(shell, root, terminal)
+	set := sandbox.NewWritableRootSet([]string{root})
+	set.SetUnbounded(unbounded)
+	b.rootSet = set
+	return b
+}
+
+// TestDeleteGateFullAccessAllowsOutOfScopeNonHome pins decision A (tl1471):
+// the 2026-10-15 guard (task 903) refused every out-of-scope recursive delete
+// in every approval mode, which broke the 2026-09-24~10-15 full-access window.
+// With full access on, a literal recursive-delete target outside every
+// granted root is allowed again — as long as it stays outside the home
+// subtree.
+func TestDeleteGateFullAccessAllowsOutOfScopeNonHome(t *testing.T) {
+	secrets.SetFilterSubprocessEnv(false)
+	t.Cleanup(func() { secrets.SetFilterSubprocessEnv(false) })
+	root, _, probe := deleteGateFixture(t)
+	terminal := &deleteGateTerminal{}
+	b := deleteGateFullAccess(bashShell(), root, terminal, true)
+	args, _ := json.Marshal(map[string]string{"command": `rm -rf '` + filepath.ToSlash(probe) + `'`})
+	if _, err := b.ExecuteDetailed(t.Context(), args); err != nil {
+		t.Fatalf("full-access out-of-scope delete refused: %v", err)
+	}
+	if terminal.calls != 1 {
+		t.Fatalf("command did not reach execution: calls=%d", terminal.calls)
+	}
+}
+
+// TestDeleteGateFullAccessEndToEndProbeDelete is the acceptance case from the
+// task: with full access on, `rm -rf <probe>` on a literal out-of-scope,
+// non-home directory actually launches and actually deletes the probe.
+func TestDeleteGateFullAccessEndToEndProbeDelete(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	secrets.SetFilterSubprocessEnv(false)
+	t.Cleanup(func() { secrets.SetFilterSubprocessEnv(false) })
+	root, _, probe := deleteGateFixture(t)
+	if err := os.WriteFile(filepath.Join(probe, "keep.txt"), []byte("probe"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b := deleteGateFullAccess(bashShell(), root, nil, true)
+	args, _ := json.Marshal(map[string]string{"command": `rm -rf '` + filepath.ToSlash(probe) + `'`})
+	res, err := b.ExecuteDetailed(t.Context(), args)
+	if err != nil {
+		t.Fatalf("full-access probe delete failed: %v (output: %.200s)", err, res.Output)
+	}
+	if _, serr := os.Stat(probe); !os.IsNotExist(serr) {
+		t.Fatal("probe directory survived the full-access delete")
+	}
+}
+
+// TestDeleteGateFullAccessStillProtectsHomeAndAnchors is the protection pin
+// of decision A: full access lifts only the out-of-scope refusal for non-home
+// targets. Home itself, the home subtree, home ancestors, the workspace and
+// its ancestors, and filesystem roots stay refused with full access on.
+func TestDeleteGateFullAccessStillProtectsHomeAndAnchors(t *testing.T) {
+	root, home, _ := deleteGateFixture(t)
+	b := deleteGateFullAccess(bashShell(), root, nil, true)
+	homeSubtree := filepath.Join(home, "AppData", "Local", "Temp", "probe")
+	cases := []struct {
+		name    string
+		command string
+	}{
+		{"home itself", `rm -rf '` + filepath.ToSlash(home) + `'`},
+		{"home subtree", `rm -rf '` + filepath.ToSlash(homeSubtree) + `'`},
+		{"home ancestor", `rm -rf '` + filepath.ToSlash(filepath.Dir(home)) + `'`},
+		{"workspace ancestor", `rm -rf ..`},
+		{"filesystem root", `rm -rf /`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			args, _ := json.Marshal(map[string]string{"command": tc.command})
+			if _, err := b.ExecuteDetailed(t.Context(), args); err == nil {
+				t.Fatal("full access did not keep the protection")
+			} else if code, _ := deleteRefusalCode(err); code != CodeDestructiveTarget {
+				t.Fatalf("refusal = %v, want %s", err, CodeDestructiveTarget)
+			}
+		})
+	}
+}
+
+// TestDeleteGateFullAccessOffUnchanged is the zero-change pin: the same
+// out-of-scope non-home delete that full access allows stays refused when the
+// root set is bound but the lab switch is off — the exact shape boot builds
+// for a session without full access.
+func TestDeleteGateFullAccessOffUnchanged(t *testing.T) {
+	root, _, probe := deleteGateFixture(t)
+	terminal := &deleteGateTerminal{}
+	b := deleteGateFullAccess(bashShell(), root, terminal, false)
+	args, _ := json.Marshal(map[string]string{"command": `rm -rf '` + filepath.ToSlash(probe) + `'`})
+	if _, err := b.ExecuteDetailed(t.Context(), args); err == nil {
+		t.Fatal("out-of-scope delete passed with full access off")
+	} else if code, _ := deleteRefusalCode(err); code != CodeDestructiveTarget {
+		t.Fatalf("refusal = %v, want %s", err, CodeDestructiveTarget)
+	}
+	if terminal.calls != 0 {
+		t.Fatalf("command reached execution with full access off: calls=%d", terminal.calls)
+	}
+}
+
+// TestDeleteGateFullAccessKeepsBoundedRootAllowed is the reverse pin: full
+// access must not have made the guard stricter — literal in-root recursive
+// deletes still reach execution.
+func TestDeleteGateFullAccessKeepsBoundedRootAllowed(t *testing.T) {
+	root := t.TempDir()
+	terminal := &deleteGateTerminal{}
+	b := deleteGateFullAccess(bashShell(), root, terminal, true)
+	args, _ := json.Marshal(map[string]string{"command": `rm -rf child`})
+	if _, err := b.ExecuteDetailed(t.Context(), args); err != nil {
+		t.Fatalf("in-root delete refused under full access: %v", err)
+	}
+	if terminal.calls != 1 {
+		t.Fatalf("command did not reach execution: calls=%d", terminal.calls)
+	}
+}
+
 // TestDeletePowerShellUnicode: literal targets survive the JSON round trip
 // through the host parser, so a unicode directory name is judged as itself.
 func TestDeletePowerShellUnicode(t *testing.T) {
