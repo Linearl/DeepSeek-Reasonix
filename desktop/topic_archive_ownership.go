@@ -97,9 +97,29 @@ func acquireTopicArchiveOwnership(a *App, targets []topicTrashTarget, removed []
 			// trash step skips straight to marker cleanup. A lease whose
 			// handle is still live keeps its lock, so a real writer of a
 			// not-yet-created file is never stripped.
+			//
+			// tl1383-1392: when the tear gives up because the OS lock is still
+			// held, the holder may be the in-process orphan (registry/handle
+			// alive, disk identity torn) — the form whose lock survives every
+			// later acquire and wedges the path behind a "successfully"
+			// archived entry. Sweep it with the same force-path primitive: the
+			// sweep's own evidence gate (identity missing/torn/pid-less while
+			// this process books the path) keeps a genuinely held session
+			// untouched, so this only ever ADDS a success form.
+			clearedRecord := false
 			if cleared, err := agent.ClearStaleSessionLeaseInfo(key); err == nil && cleared {
+				clearedRecord = true
 				slog.Info("desktop: topic archive tore a leftover lease record for a missing session file",
 					"session_base", filepath.Base(target.sessionPath))
+			}
+			if !clearedRecord {
+				if cleared, sweepErr := agent.SweepOrphanInProcessSessionLease(key); sweepErr != nil {
+					slog.Warn("desktop: topic archive orphan sweep failed for a missing session file",
+						"session_base", filepath.Base(target.sessionPath), "err", sweepErr)
+				} else if cleared > 0 {
+					slog.Info("desktop: topic archive swept an orphan in-process lease holder for a missing session file",
+						"session_base", filepath.Base(target.sessionPath), "cleared", cleared)
+				}
 			}
 			batch.add(target, nil, nil)
 			continue

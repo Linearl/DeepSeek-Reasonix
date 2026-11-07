@@ -464,23 +464,30 @@ func TestTrashTopicForceCompletesWithUnboundOrphanLeaseHolder(t *testing.T) {
 	}
 
 	app := NewApp()
-	// The regular archive refuses: the in-process owner entry blocks the
-	// removal guard (the loop's first half).
-	if err := app.TrashTopic(topicID); !errors.Is(err, agent.ErrSessionLeaseHeld) {
-		t.Fatalf("regular TrashTopic against an unbound orphan = %v, want the lease-held family", err)
-	}
-	if _, err := os.Stat(sessionPath); err != nil {
-		t.Fatalf("refused archive removed the session: %v", err)
+	// The regular archive either self-heals in one call (tl1383-1392: the heal
+	// gate now crosses the torn-record form, so the orphan is swept and the
+	// archive converges without escalating) or refuses with the lease-held
+	// family — in which case ONE force call must complete the archive (the
+	// package-73 loop's first half). Both roads end in the same assertions
+	// below: transcript gone, lease state clean.
+	if err := app.TrashTopic(topicID); err != nil {
+		if !errors.Is(err, agent.ErrSessionLeaseHeld) {
+			t.Fatalf("regular TrashTopic against an unbound orphan = %v, want the lease-held family", err)
+		}
+		if _, err := os.Stat(sessionPath); err != nil {
+			t.Fatalf("refused archive removed the session: %v", err)
+		}
 	}
 
-	// ONE force call: the orphan sweep releases the registered object (its
-	// lock goes with it), discards the entry, and the archive completes. No
-	// second click, no restart, no loop.
+	// ONE force call (only reached when the regular archive refused): the
+	// orphan sweep releases the registered object (its lock goes with it),
+	// discards the entry, and the archive completes. No second click, no
+	// restart, no loop.
 	if err := app.TrashTopicForce(topicID); err != nil {
 		t.Fatalf("TrashTopicForce against an unbound orphan lease: %v", err)
 	}
 	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
-		t.Fatalf("force archive left the session in place: %v", err)
+		t.Fatalf("archive left the session in place: %v", err)
 	}
 	// If any orphan state survived (owner entry or lock handle), this very
 	// reacquire would bounce off it — the loop's exact shape. Success here is
