@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"strings"
+	"time"
 
 	"reasonix/internal/provider"
 )
@@ -83,11 +84,41 @@ func persistSessionListingProjection(path string, msgs []provider.Message, revis
 		meta.SchemaVersion = BranchMetaCountsVersion
 		meta.ListingRevision = revision
 		meta.ListingContentDigest = contentDigest
+		// tl1485: the activity stamp must follow the transcript itself. The
+		// sidecar's only activity-stamping writer (SnapshotActivity /
+		// markActivity=true) lost its callers, so collab/detached/cross-session
+		// appends left UpdatedAt frozen at an old meta-only stamp and the
+		// sidebar showed "1个月" for days-old messages. Every commit holds the
+		// committed messages right here — publish their newest timestamp.
+		raiseSessionListingActivity(meta, msgs)
 		return nil
 	}); err != nil {
 		// JSONL/event log already committed. Listing metadata is a repairable
 		// projection and must never turn a successful transcript save into an
 		// application error.
 		slog.Warn("session: listing metadata update deferred", "path", path, "err", err)
+	}
+}
+
+// SessionListingActivityTime returns the transcript's own last-message time:
+// the newest non-zero CreatedAt across msgs (unix ms; legacy rows may carry
+// none, in which case the caller preserves the sidecar's existing value).
+func SessionListingActivityTime(msgs []provider.Message) time.Time {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if at := msgs[i].CreatedAt; at > 0 {
+			return time.UnixMilli(at)
+		}
+	}
+	return time.Time{}
+}
+
+// raiseSessionListingActivity stamps the sidecar's UpdatedAt with the
+// transcript's own last-message time, raise-only: a commit replaying older
+// messages (rewind, recovery graft) never drags the displayed activity
+// backward, matching the catalog's keep-max upsert (exact_index) and the
+// #8694 discipline of not regressing a known sidecar value.
+func raiseSessionListingActivity(meta *BranchMeta, msgs []provider.Message) {
+	if at := SessionListingActivityTime(msgs); at.After(meta.UpdatedAt) {
+		meta.UpdatedAt = at
 	}
 }
