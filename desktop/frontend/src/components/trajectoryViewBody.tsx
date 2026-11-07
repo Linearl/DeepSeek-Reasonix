@@ -22,6 +22,10 @@ import { buildTrajectorySearchIndex, trajectorySearchMatches, type TrajectoryLed
 //   删除系统类记录的像素直排第四排兜底与 marker 垂直半身位上提——装机实测
 //   「标签三排挤压/内容四排溢出」的三个溢出源。模式面（sequence 等宽满铺/
 //   耗时占比换算）不动。
+// tl1478 — 交互补强（数据层不动，纯 UI）：① sticky 摘要头（汇总条移入滚动
+//   容器，滚动时钉在台账顶部）；② 批量展开收起（轮次/调用摘要行可点击单独
+//   展开 + 窗口「全部展开」一键铺满剩余轮次）；③ 类目过滤菜单（类目枚举按
+//   数据动态生成，不封口——并行线的扩展类目自动出现在菜单里）。
 //
 // 纯投影视图：只消费 transcript 读投影（items），不碰存储（597 纪律）。
 // 四层 = 工具栏（1112，三开关 + 搜索）+ 时间线总览（三行泳道，1112）+
@@ -543,13 +547,8 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
 
   return (
     <div className={`traj${selectedRecord ? " traj--inspecting" : ""}`} role="region" aria-label={t("trajectory.label")}>
-      <div className="traj__head">
-        <span className="traj__head-title">{t("trajectory.label")}</span>
-        <span className="traj__head-meta">
-          {t("trajectory.summary", { turns: summary.turns, assistants: summary.assistants, tools: summary.tools, failed: summary.failed })}
-        </span>
-        {running && <span className="traj__live-dot" aria-hidden="true" title={t("trajectory.running")} />}
-      </div>
+      {/* tl1478 sticky 摘要头：汇总条移入滚动容器（滚动时钉在台账顶部，不再
+          常驻占一行 chrome），工具栏/时间线仍是滚动区外的固定控制面。 */}
       <div className="traj__toolbar">
         <button type="button" className="traj__toggle" aria-pressed={durationOn} onClick={() => { setDurationOn((on) => !on); setFocus(null); }}>
           <span className="traj__toggle-icon" aria-hidden="true">⏱</span>
@@ -572,6 +571,13 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
       </div>
       {timelineModel && <TrajectoryTimelineBar model={timelineModel} mode={durationOn ? "duration" : "sequence"} focus={focus} onFocus={setFocus} onSpanClick={setSelectedId} searchMatchIds={searchMatchIds} t={t} />}
       <div className="traj__scroll" ref={scrollRef} onScroll={handleScroll}>
+        <div className="traj__head">
+          <span className="traj__head-title">{t("trajectory.label")}</span>
+          <span className="traj__head-meta">
+            {t("trajectory.summary", { turns: summary.turns, assistants: summary.assistants, tools: summary.tools, failed: summary.failed })}
+          </span>
+          {running && <span className="traj__live-dot" aria-hidden="true" title={t("trajectory.running")} />}
+        </div>
         {body}
       </div>
       {selectedRecord && <TrajectoryInspector record={selectedRecord} item={selectedItem} onClose={() => setSelectedId(null)} t={t} />}

@@ -11,7 +11,13 @@
   color: var(--text);
 }
 
+/* tl1478 sticky 摘要头：汇总条随台账进入滚动容器，滚动时钉在滚动区顶部
+   （position: sticky + 不透明背景，行内容从其下方滚过）；工具栏/时间线仍在
+   滚动区外，不需要 sticky。 */
 .traj__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: var(--space-2, 8px);
@@ -19,6 +25,7 @@
   border-bottom: 1px solid var(--border-soft);
   font-size: var(--text-xs);
   color: var(--text-3);
+  background: var(--chat-bg);
 }
 
 .traj__head-title {
@@ -201,6 +208,8 @@
   overflow-y: auto;
   background: var(--bg-elev);
   border-left: 1px solid var(--border-soft);
+  /* tl1478：sticky 摘要头（z-index:1）入滚动容器后，检查器面板必须整体压其上。 */
+  z-index: 5;
 }
 
 .traj-inspector__head {
