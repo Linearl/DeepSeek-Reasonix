@@ -6412,4 +6412,12 @@ export const zh: Record<DictKey, string> = {
   "rewindPreflight.reason.missingPayload": "检查点载荷已删除或已过期",
   "rewindPreflight.reason.permissionDenied": "权限不足，无法写入该文件",
   "rewindPreflight.reason.changed": "与检查点之后的状态不一致",
+  // tl1477：子代理工具调用行——单行摘要 + 只读详情。
+  "subagentPanel.toolDetailArgs": "参数",
+  "subagentPanel.toolDetailOutput": "输出",
+  "subagentPanel.toolDetailError": "错误",
+  "subagentPanel.toolArgsTruncated": "参数不完整（传输截断）——按原文显示，不推断取值",
+  "subagentPanel.toolArgsReceiving": "参数接收中 ↓{n}…",
+  "subagentPanel.toolArgsEmpty": "无参数",
+  "subagentPanel.toolRowTruncated": "参数已截断",
 };

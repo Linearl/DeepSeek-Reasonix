@@ -6457,6 +6457,14 @@ export const en = {
   "rewindPreflight.reason.missingPayload": "Checkpoint payload deleted or expired",
   "rewindPreflight.reason.permissionDenied": "Insufficient permission to write this file",
   "rewindPreflight.reason.changed": "Changed since the checkpoint",
+  // tl1477: subagent child tool-call rows — single-line summary + read-only detail.
+  "subagentPanel.toolDetailArgs": "Arguments",
+  "subagentPanel.toolDetailOutput": "Output",
+  "subagentPanel.toolDetailError": "Error",
+  "subagentPanel.toolArgsTruncated": "Arguments incomplete (transmission truncated) — raw text shown as-is, no values inferred",
+  "subagentPanel.toolArgsReceiving": "receiving arguments ↓ {n}…",
+  "subagentPanel.toolArgsEmpty": "No arguments",
+  "subagentPanel.toolRowTruncated": "arguments truncated",
 };
 
 export type DictKey = keyof typeof en;

@@ -6408,4 +6408,12 @@ export const zhTW: Record<DictKey, string> = {
   "rewindPreflight.reason.missingPayload": "檢查點裝載已刪除或已過期",
   "rewindPreflight.reason.permissionDenied": "權限不足，無法寫入該檔案",
   "rewindPreflight.reason.changed": "與檢查點之後的狀態不一致",
+  // tl1477：子代理工具呼叫列——單行摘要 + 唯讀詳情。
+  "subagentPanel.toolDetailArgs": "參數",
+  "subagentPanel.toolDetailOutput": "輸出",
+  "subagentPanel.toolDetailError": "錯誤",
+  "subagentPanel.toolArgsTruncated": "參數不完整（傳輸截斷）——按原文顯示，不推斷取值",
+  "subagentPanel.toolArgsReceiving": "參數接收中 ↓{n}…",
+  "subagentPanel.toolArgsEmpty": "無參數",
+  "subagentPanel.toolRowTruncated": "參數已截斷",
 };

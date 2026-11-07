@@ -31099,12 +31099,46 @@ button.statusbar__mcp:focus-visible {
 }
 
 .subagents-panel__livetool {
+  /* tl1477: the li is now a column wrapper — the toggle row above, the
+     read-only detail block below it when expanded. */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+}
+
+/* tl1477: the single-line summary row (tool name + key params) as a real
+   button — same hover/chevron language as the directory rows. */
+.subagents-panel__livetool-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: var(--text-xs);
-  color: var(--fg-dim);
+  margin: 0;
+  padding: 1px 2px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.subagents-panel__livetool-toggle:hover {
+  background: var(--bg-soft);
+}
+
+.subagents-panel__livetool-toggle:focus-visible {
+  outline: 1px solid var(--fg-faint);
+  outline-offset: 1px;
+}
+
+.subagents-panel__livetool-toggle[aria-expanded="true"] .subagents-panel__chevron {
+  transform: rotate(90deg);
 }
 
 .subagents-panel__livetool-subject {
@@ -31112,6 +31146,48 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* tl1477: the truncation/receiving flags — shrink-to-fit markers that never
+   push the subject line wider than the pane. */
+.subagents-panel__livetool-flag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+.subagents-panel__livetool-flag[data-subagents-livetool-truncated] {
+  color: var(--warn, var(--fg-dim));
+}
+
+/* tl1477: the read-only detail block — pre-formatted raw text, no input
+   surface (the detail view itself is read-only by design). */
+.subagents-panel__livetool-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 4px 6px;
+  border-left: 2px solid var(--border, var(--bg-soft));
+}
+
+.subagents-panel__livetool-note {
+  margin: 0;
+  color: var(--fg-faint);
+}
+
+.subagents-panel__livetool-pre {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .subagents-panel__detailview-text {
