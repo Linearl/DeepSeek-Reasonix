@@ -834,26 +834,47 @@ func trashSessionArtifactsBeforeMove(dir, sessionPath, key string, beforeMove fu
 	return nil
 }
 
-func listTrashedSessionFiles(dir string) ([]string, error) {
+// trashedBucketRecord is one listing-valid trash bucket with its trash-meta
+// fields folded in (tl1474). The old chain read `.trash-meta.json` twice per
+// record — once for the key inside the listing walk, once more via
+// trashedSessionDeletedAt during assembly — and on the reporting machine each
+// of those tiny reads cost ~10ms cold. One read now feeds both.
+type trashedBucketRecord struct {
+	Path      string // validated transcript path inside the bucket
+	DeletedAt int64  // from the same meta bytes the key came from; 0 when absent/unparseable
+}
+
+// listTrashedSessionBuckets is the folded form of listTrashedSessionFiles:
+// identical bucket walk, identical key selection, identical validation — with
+// deletedAt captured from the same meta read instead of a second file read
+// per record. Restore/purge/clear keep consuming listTrashedSessionFiles.
+func listTrashedSessionBuckets(dir string) ([]trashedBucketRecord, error) {
 	root := sessionTrashPath(dir)
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []string{}, nil
+			return []trashedBucketRecord{}, nil
 		}
 		return nil, err
 	}
-	paths := []string{}
+	records := []trashedBucketRecord{}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		itemDir := filepath.Join(root, e.Name())
 		keys := []string{}
+		deletedAt := int64(0)
 		if b, err := readFileUTF8(filepath.Join(itemDir, sessionTrashMetaFile)); err == nil {
 			var meta trashedSessionMeta
-			if json.Unmarshal(b, &meta) == nil && store.IsSessionTranscriptName(meta.Key) {
-				keys = append(keys, meta.Key)
+			if json.Unmarshal(b, &meta) == nil {
+				// Same bytes, same decode: deletedAt rides the key read
+				// (trashedSessionDeletedAt's semantics — unparseable/missing
+				// meta yields 0 — preserved).
+				deletedAt = meta.DeletedAt
+				if store.IsSessionTranscriptName(meta.Key) {
+					keys = append(keys, meta.Key)
+				}
 			}
 		}
 		if store.IsSessionTranscriptName(e.Name()) {
@@ -895,9 +916,21 @@ func listTrashedSessionFiles(dir string) ([]string, error) {
 			if statErr == nil && info.IsDir() {
 				continue
 			}
-			paths = append(paths, validPath)
+			records = append(records, trashedBucketRecord{Path: validPath, DeletedAt: deletedAt})
 			break
 		}
+	}
+	return records, nil
+}
+
+func listTrashedSessionFiles(dir string) ([]string, error) {
+	records, err := listTrashedSessionBuckets(dir)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, len(records))
+	for i, record := range records {
+		paths[i] = record.Path
 	}
 	return paths, nil
 }
