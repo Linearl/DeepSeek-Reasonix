@@ -88,7 +88,8 @@ var labFeatureTiers = []labFeatureTier{
 	// 验段+实验室卡）。档位=未稳定——开启即换掉常驻层的注入契约（body 退
 	// 出常驻转按需召回、预算换成条数上限），默认关=常驻注入与引入前逐字节
 	// 一致（铁律 2）。boot 快照消费（capabilityGroups 先例），重启生效。
-	{"pinnedIndex", LabTierUnstable, []string{"experimental_pinned_index"}},
+	// tl1487 八组：置顶记忆索引化未稳定→可选（用户 20261107 八组清单；前端同步）。
+	{"pinnedIndex", LabTierOptional, []string{"experimental_pinned_index"}},
 	// ── efficiency（提效，11 项；任务 517 B3 并入 safetyCostControl；────
 	//    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
 	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write", "experimental_bash_heavy_guard"}}, // bash_heavy_guard 为 task 575 家族子键（815 补实验室入口：optimistic-parallel 卡成员行）
@@ -200,7 +201,8 @@ var labFeatureTiers = []labFeatureTier{
 	{"monitoring", LabTierRecommended, []string{"experimental_session_monitor", "experimental_perf_monitor", "experimental_heap_high_profile"}}, // heap_high_profile 为 task 501 家族子键（rides perf_monitor）
 	{"subagentTps", LabTierOptional, []string{"experimental_subagent_tps"}},
 	// ── dev-debug（开发调试，2 项）───────────────────────────────
-	{"cdpDebugPort", LabTierUnstable, []string{"experimental_cdp_debug_port"}},
+	// tl1487 五组：CDP 调试端口未稳定→稳定（默认关语义不变，前端同步）。
+	{"cdpDebugPort", LabTierStable, []string{"experimental_cdp_debug_port"}},
 	{"lifecycleNoiseGate", LabTierUnstable, []string{"experimental_lifecycle_noise_gate"}},
 	// ── storage（存储，4 项；846 增 homePointer，tl-1174 增 jsonlZstd）───────
 	// tl 1172：experimental_events_slim_oversize 以家族子键并入本卡（477
@@ -222,7 +224,8 @@ var labFeatureTiers = []labFeatureTier{
 	// 未来稳定后再考虑提升到推荐）——不开启时会话文件与引入前逐字节一致
 	// （铁律 2，默认关）：不压、不建归档、无额外文件，空闲 sweep 每 tick
 	// 现读开关（921 先例），翻转免重启。
-	{"jsonlZstd", LabTierOptional, []string{"experimental_jsonl_zstd"}},
+	// tl1487 六组：冷会话 zstd 归档可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"jsonlZstd", LabTierRecommended, []string{"experimental_jsonl_zstd"}},
 	// ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
 	// 任务 1005 批1 转档：runtimeReuse 随 autopilot/sessionCollab/fullAccess
 	// 一同入「稳定」档（992 刚升推荐的四项中的第四项，用户 1018 拍板批1）。

@@ -156,11 +156,13 @@ console.log("\ntask 562 lab three-tier badges");
   // draftRewrite 八项可选→推荐——稳定 8、推荐 34、可选 37、未稳定 8。
   // tl1487 三组：subagentPanel/subagentDetail/draftPersistence/selectionActions
   // 可选→推荐——推荐 39（含 inputSelection 容器）、可选 32，总数不变 87。
-  ok(counts.stable === 8 && counts.recommended === 39 && counts.optional === 32 && counts.unstable === 8 && counts.retired === 0,
-    `register counts are 8 稳定/39/32/8/0 (got ${JSON.stringify(counts)})`);
+  // tl1487 五/六/八组：cdpDebugPort 未稳定→稳定、jsonlZstd 可选→推荐、
+  // pinnedIndex 未稳定→可选——稳定 9、推荐 40、可选 32、未稳定 6，总数不变 87。
+  ok(counts.stable === 9 && counts.recommended === 40 && counts.optional === 32 && counts.unstable === 6 && counts.retired === 0,
+    `register counts are 9 稳定/40/32/6/0 (got ${JSON.stringify(counts)})`);
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 87, `register holds exactly 87 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 8 && LAB_TIER_COUNTS.recommended === 39 && LAB_TIER_COUNTS.optional === 32 && LAB_TIER_COUNTS.unstable === 8 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 8 稳定/39/32/8/0");
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 40 && LAB_TIER_COUNTS.optional === 32 && LAB_TIER_COUNTS.unstable === 6 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/40/32/6/0");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -382,7 +384,8 @@ console.log("\ntask 562 lab three-tier badges");
     `tabManagement: recommended container + recommended member stays the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("tabManagement"))})`);
   ok(JSON.stringify(railTiersForDefault("sessionTaskPanels")) === JSON.stringify(["stable", "recommended"]) && agg("sessionTaskPanels") === "stable",
     `sessionTaskPanels: tl1487 input [稳定,推荐] aggregates to the single 稳定 badge (got ${JSON.stringify(railTiersForDefault("sessionTaskPanels"))})`);
-  ok(agg("devDebug") === "unstable", `devDebug aggregates to 未稳定 (got ${String(agg("devDebug"))})`);
+  // tl1487 五组：cdpDebugPort 升稳定——聚合终值 未稳定→稳定（lifecycleNoiseGate 仍未稳定）。
+  ok(agg("devDebug") === "stable", `devDebug aggregates to 稳定 after tl1487 五组 (got ${String(agg("devDebug"))})`);
   // 任务 782：界面组三张合并卡逐卡钉聚合终值——容器徽章 = 成员最高档
   // （searchHistory 三成员 tl1487 二组⑥ 后全推荐 → 推荐；inputSelection
   // 全可选成员 → 可选）。

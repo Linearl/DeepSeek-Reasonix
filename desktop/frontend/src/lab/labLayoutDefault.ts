@@ -439,7 +439,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.devDebug",
           onKeys: ["experimentalCDPDebugPort", "experimentalLifecycleNoiseGate"],
           members: [
-            { id: "cdpDebugPort", labelKey: "settings.cdpDebugPort", tier: "unstable" },
+            // tl1487 五组：CDP 调试端口未稳定→稳定（默认关语义不变）。
+            { id: "cdpDebugPort", labelKey: "settings.cdpDebugPort", tier: "stable" },
             { id: "lifecycleNoiseGate", labelKey: "settings.lifecycleNoiseGate", tier: "unstable" },
           ],
         },
@@ -480,7 +481,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "jsonlZstd",
           labelKey: "settings.jsonlZstd",
-          tier: "optional",
+          // tl1487 六组：可选→推荐。
+          tier: "recommended",
           onKeys: ["experimentalJsonlZstd"],
         },
         // tl1287：DAG 迁移卡已转正迁出实验室——pane 与扫描/执行动作改宿主
@@ -550,7 +552,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "pinnedIndex",
           labelKey: "settings.pinnedIndex",
-          tier: "unstable",
+          // tl1487 八组：未稳定→可选（默认关=铁律 2 不变）。
+          tier: "optional",
           onKeys: ["experimentalPinnedIndex"],
         },
       ],

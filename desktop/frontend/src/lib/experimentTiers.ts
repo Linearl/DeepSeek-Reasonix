@@ -240,9 +240,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   safetyCostControl: "optional",
   subagentPolicy: "unstable",
   // ── memory-context（记忆/上下文，1 项；tl1193b 增 pinnedIndex）──────
-  // tl1193b: pinned 常驻层索引化——镜像 Go 渲染表 LabTierUnstable（562 门禁
-  // 双侧一致）。boot 快照消费，重启生效。
-  pinnedIndex: "unstable",
+  // tl1193b: pinned 常驻层索引化——boot 快照消费，重启生效。
+  // tl1487 八组：未稳定→可选（用户 20261107 八组清单；默认关=铁律 2 不变，
+  // Go 渲染表同步翻）。
+  pinnedIndex: "optional",
   // ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl；────
   //    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
   optimisticParallel: "recommended",
@@ -327,7 +328,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 显示、666 显示条件）——已上线能力按推荐档登记（无开关，展示行）。
   glmPlanUsage: "recommended",
   // ── dev-debug（开发调试，2 项）───────────────────────────────
-  cdpDebugPort: "unstable",
+  // tl1487 五组：CDP 调试端口未稳定→稳定（默认关语义不变）。
+  cdpDebugPort: "stable",
   lifecycleNoiseGate: "unstable",
   // ── storage（存储，4 项；846 增 homePointer，tl-1174 增 jsonlZstd）────
   eventsRotation: "optional",
@@ -338,9 +340,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 原因码（与 messageMerge/eventsRotation 同机制），永不盲写。
   sessionStorage: "stable",
   homePointer: "unstable",
-  // tl 1174: 冷会话 transcript zstd 归档——档位与 Go 渲染表 LabTierOptional
-  // 双侧一致（562 门禁）。
-  jsonlZstd: "optional",
+  // tl 1174: 冷会话 transcript zstd 归档——档位与 Go 渲染表双侧一致（562
+  // 门禁）。tl1487 六组：可选→推荐（用户 20261107 八组清单）。
+  jsonlZstd: "recommended",
   // ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
   // 任务 1005 批1 转档：runtimeReuse 升「稳定」（992 刚升推荐的四项之一）。
   runtimeReuse: "stable",
@@ -540,12 +542,14 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * ——稳定 7→8、推荐 25→34、可选 44→37、未稳定 10→8、总数 86→87。
  * 三组步进：subagentPanel/subagentDetail/draftPersistence/selectionActions
  * 可选→推荐，inputSelection 容器档=成员最高档随之升推荐——推荐 38→39、
- * 可选 33→32，总数不变 87。 */
+ * 可选 33→32，总数不变 87。
+ * 五/六/八组步进：cdpDebugPort 未稳定→稳定、jsonlZstd 可选→推荐、
+ * pinnedIndex 未稳定→可选——稳定 9、推荐 40、可选 32、未稳定 6，总数不变 87。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  stable: 8,
-  recommended: 39,
+  stable: 9,
+  recommended: 40,
   optional: 32,
-  unstable: 8,
+  unstable: 6,
   retired: 0,
 };
 

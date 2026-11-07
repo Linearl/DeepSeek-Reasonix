@@ -455,7 +455,10 @@ groups:
         members:
           - id: cdpDebugPort
             labelKey: settings.cdpDebugPort
-            tier: unstable
+            # tl1487 五组：CDP 调试端口未稳定→稳定（用户 20261107 八组清单；
+            # 默认关语义不变——稳定档在此只表达成熟度，pane 开关不接
+            # labStableLocked，与 sessionStorage tl1338 特例同口径）。
+            tier: stable
           - id: lifecycleNoiseGate
             labelKey: settings.lifecycleNoiseGate
             tier: unstable
@@ -497,7 +500,8 @@ groups:
       # 现读开关（921 先例），保存即生效免重启。
       - id: jsonlZstd
         labelKey: settings.jsonlZstd
-        tier: optional
+        # tl1487 六组：冷会话归档（zstd）可选→推荐（用户 20261107 八组清单）。
+        tier: recommended
         onKeys: [experimentalJsonlZstd]
       # tl1309 卡③：GC 策略（tl1286）与闲置释放（775）两参数卡迁出本组——
       # 入基础设施组「资源治理」卡成员行（同为内存/资源生命周期面；字段绑定
@@ -597,5 +601,7 @@ groups:
       # 消费（capabilityGroups 先例），重启生效。
       - id: pinnedIndex
         labelKey: settings.pinnedIndex
-        tier: unstable
+        # tl1487 八组：置顶记忆索引化未稳定→可选（用户 20261107 八组清单；
+        # 默认关=铁律 2 不变）。
+        tier: optional
         onKeys: [experimentalPinnedIndex]
