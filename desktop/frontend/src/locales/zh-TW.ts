@@ -3945,6 +3945,11 @@ export const zhTW: Record<DictKey, string> = {
   "sideFiles.showMore": "再顯示 {count} 項",
   "sideFiles.artifactsHint": "產物：會話寫過的檔案（含新建與修改）",
   "sideFiles.referencesHint": "參考：會話讀過的檔案",
+  // tl1468b: dock 列選單對齊檔案樹後的破壞性操作確認——確認文案必須說明
+  // 「這是磁碟上的真實檔案」，徹底刪除的措辭比樹更重（不進回收站、無法復原）。
+  "sideFiles.rowTrashConfirmTitle": "移到回收站",
+  "sideFiles.rowTrashConfirmMessage": "「{path}」是磁碟上的真實檔案。移到回收站後可在系統回收站還原。",
+  "sideFiles.rowDeletePermanentConfirmMessage": "「{path}」是磁碟上的真實檔案。徹底刪除會把檔案從磁碟直接移除——不經過回收站、無法復原。",
   "notice.deliveryIncompleteMissing": "仍需完成：{items}",
   "notice.deliveryRequirementSeparator": "、",
   "notice.deliveryRequirementProjectCheck": "專案檢查",
