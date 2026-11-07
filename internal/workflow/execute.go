@@ -297,9 +297,18 @@ func (s *runState) completeSubagent(n *Node, out callOutcome, cands map[string]F
 	}
 	s.output[n.ID] = answer
 	if len(n.Result) > 0 {
-		obj, err := parseResultJSON(answer)
+		obj, method, err := parseResultJSONWithMethod(answer)
 		if err != nil {
 			return s.abortNode(n, withReason(ReasonResultContract, fmt.Errorf("workflow: subagent %q: typed result: %w", n.ID, err)), 0)
+		}
+		if method != parseMethodStrict {
+			// Rescue made visible (tl1432 A2): the strict parse failed and a
+			// tolerant stage salvaged the answer — it flows on as a normal
+			// result, but never silently (a silent fallback is how the
+			// strict-parse whole-run scrapes went unnoticed; same principle
+			// as the tl1440 merge fallback below).
+			slog.Warn("workflow: typed result 容错提取——严格解析失败，容错提取成功按正常结果走",
+				"run", s.runID, "node", n.ID, "method", method)
 		}
 		s.result[n.ID] = obj
 		if missing := missingResultFields(n, obj); len(missing) > 0 {
