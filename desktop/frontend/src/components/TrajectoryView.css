@@ -545,11 +545,17 @@
   border-color: var(--accent);
 }
 
-/* ── tl1478 类目过滤菜单：触发钮复用 traj__toggle，面板为工具栏下挂弹出层 ── */
+/* ── tl1478 类目过滤菜单：触发钮基样式复用 traj__toggle，面板为工具栏下挂弹出层 ── */
 
 .traj__filter {
   position: relative;
   display: inline-flex;
+}
+
+/* 弹出层的定位锚是 .traj__filter；触发钮自身保持流内布局（class-contract：
+   JSX 引用的每个类必须有真实定义块）。 */
+.traj__filter-trigger {
+  position: static;
 }
 
 .traj__filter-backdrop {
