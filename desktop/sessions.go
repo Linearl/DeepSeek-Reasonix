@@ -448,6 +448,13 @@ func sessionLeaseHolderIdentityMissing(err error) bool {
 // missing record is an orphaned entry, and the reclaim's lock take stays the
 // arbiter: a still-live handle (a holder whose record was quarantined but
 // whose lock lives) keeps the heal failing and the refusal intact.
+//
+// tl1383-1392: a TORN record (present but undecodable) is the same residue —
+// the orphan sweep's own evidence gate already reads corrupt like missing,
+// but the heal gate used to accept only the missing form, so the self-backfill
+// identity (tl1367-fix defect A) masked the tear and the orphan survived every
+// archive attempt with a "close that session's tab" refusal no unbound orphan
+// can act on.
 func sessionLeaseHealCandidate(sessionPath string, cause error) bool {
 	if sessionLeaseHolderIdentityMissing(cause) {
 		return true
@@ -460,7 +467,7 @@ func sessionLeaseHealCandidate(sessionPath string, cause error) bool {
 		return false
 	}
 	_, infoErr := agent.LoadSessionLeaseInfo(sessionPath)
-	return os.IsNotExist(infoErr)
+	return os.IsNotExist(infoErr) || agent.SessionLeaseIdentityUnreadable(infoErr)
 }
 
 // healUnidentifiedLeaseHolder is the tl1383 one-shot repair for a removal-guard

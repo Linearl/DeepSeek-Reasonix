@@ -885,6 +885,16 @@ func writeSessionLeaseInfo(leaseLock *sessionLockFile, info SessionLeaseInfo) er
 // let the lock decide" instead of "no holder".
 var errSessionLeaseInfoCorrupt = errors.New("session lease info corrupt")
 
+// SessionLeaseIdentityUnreadable reports whether err means the session's
+// lease identity record exists but cannot be decoded (torn write, AV
+// quarantine, byte damage) — the "identity hidden" residue form. The orphan
+// sweep treats it exactly like a missing record (evidence the in-process
+// holder outlived its identity); callers outside the agent package share that
+// judgment through this predicate instead of string-matching.
+func SessionLeaseIdentityUnreadable(err error) bool {
+	return errors.Is(err, errSessionLeaseInfoCorrupt)
+}
+
 // LoadSessionLeaseInfo reports the holder identity for path. New writers
 // publish it inside .lease.lock; the .lease.json sidecar is a read-only
 // compatibility source for sessions last held by older builds. An empty or
