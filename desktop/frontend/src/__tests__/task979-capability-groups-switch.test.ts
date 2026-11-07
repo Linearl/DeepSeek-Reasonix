@@ -83,20 +83,20 @@ console.log("\ntask 979 capability-groups switch: UI entry → config write → 
 
 // ── ③ lab 登记（档位/灯/yaml/渲染表）──
 {
-  ok(tiers.includes('| "capabilityGroups"') && tiers.includes('capabilityGroups: "optional",'),
-    "tier register carries capabilityGroups at the optional tier (用户拍板提效类可选档)");
+  ok(tiers.includes('| "capabilityGroups"') && tiers.includes('capabilityGroups: "recommended",'),
+    "tier register carries capabilityGroups at the recommended tier (tl1487 七组②)");
   ok(lightKeys.includes("experimentalCapabilityGroups: (s: SettingsView) => Boolean(s.experimentalCapabilityGroups)"),
     "light predicate wired");
   ok(yaml.includes("- id: capabilityGroups") && yaml.includes("labelKey: settings.capabilityGroups"),
     "lab-layout.yaml carries the capabilityGroups member row");
-  ok(labDefault.includes('id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional"'),
+  ok(labDefault.includes('id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "recommended"'),
     "built-in default mirrors the member row (724 fallback is seamless)");
   // 任务 992：restartUpdate 归位回 updateFeedback 卡——卡灯回落三键（本 pin
   // 2026-10-19 随 1005 窗口补同步，992 归位时漏跟）。
   ok(yaml.includes("onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalCapabilityGroups]") &&
      labDefault.includes('onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalCapabilityGroups"]'),
     "hub card light covers the third key in both layout sources (992 现值)");
-  ok(goRender.includes('{"capabilityGroups", LabTierOptional, []string{"experimental_capability_groups"}}'),
+  ok(goRender.includes('{"capabilityGroups", LabTierRecommended, []string{"experimental_capability_groups"}}'),
     "Go render table registers the entry in 表A (tool-opt section)");
   ok(!goRender.includes('"experimental_capability_groups":'),
     "the labNonFeatureKeys exemption is dropped (registered features cannot stay exempt)");

@@ -1367,13 +1367,6 @@ func (c *Config) SetExperimentalMultiEditSkipFailed(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalOpenCodeGoUsage toggles the task-163 usage card. Ships off:
-// the zero value keeps the settings page and network behavior unchanged.
-func (c *Config) SetExperimentalOpenCodeGoUsage(enabled bool) error {
-	c.Agent.ExperimentalOpenCodeGoUsage = enabled
-	return nil
-}
-
 // SetExperimentalQuestionSearch toggles the topic-bar question-search entry
 // (task 265). It ships on; off hides the entry and the panel.
 func (c *Config) SetExperimentalQuestionSearch(enabled bool) error {
@@ -1488,14 +1481,6 @@ func (c *Config) SetOutputStyle(name string) error {
 // unchanged; on only widens confine to those roots, never globally.
 func (c *Config) SetExperimentalParallelFullAccess(enabled bool) error {
 	c.Desktop.ExperimentalParallelFullAccess = enabled
-	return nil
-}
-
-// SetExperimentalPathRules toggles the structured path-scope evaluation order
-// (task 134, docs/PATH_SCOPE_RULES.md). Off by default so production keeps
-// the existing confine + allow_write + write-access model.
-func (c *Config) SetExperimentalPathRules(enabled bool) error {
-	c.Desktop.ExperimentalPathRules = enabled
 	return nil
 }
 

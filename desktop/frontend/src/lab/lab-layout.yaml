@@ -40,6 +40,12 @@
 #   tl1193b 新增「记忆与上下文」组：pinnedIndex 卡（plan E pinned 常驻层
 #       索引化，未稳定档，默认关，boot 快照重启生效）。tl1256 调序：本组
 #       移基础设施组之后（原 automation 后 efficiency 前，用户 20261029 令）。
+#   tl1487 八组批量档位调整（用户 20261107 逐条裁决清单）：collabHub→稳定、
+#       回答风格→推荐、模型能力过滤只读行移除（不展示）、冷缓存压缩+下限+
+#       闲置时长三行并一卡（可选徽章）、界面/子代理/存储/基础设施/记忆多批
+#       升推荐、工作流面板与 CDP 调试端口→稳定、OpenCode Go 用量撤开关常开、
+#       tl134 路径规则整卡移除（过时技术，存档已入 docs/archive）——逐条
+#       注释见各条目。
 
 version: 1
 groups:
@@ -181,12 +187,16 @@ groups:
             labelKey: settings.traceAsState
             tier: optional
           # 回答风格（原 efficiency 独立卡；灯=门控开或已选非默认风格，961 并卡）。
+          # tl1487 一组②：回答风格行可选→推荐（用户 20261107 八组清单「交互
+          # 与呈现/回答风格→推荐」；容器档仍=成员最高档推荐）。
           - id: outputStyle
             labelKey: settings.outputStyle
-            tier: optional
+            tier: recommended
       - id: collabHub
         labelKey: settings.collabHub
-        tier: unstable
+        # tl1487 一组①：协作中心入口 unstable→稳定（用户 20261107 八组清单；
+        # 前置依赖 sessionCollab 语义不变，LAB_FEATURE_DEPS 仍单条）。
+        tier: stable
         onKeys: [experimentalCollabHub]
 
   # ── 界面（11 项；任务 742：tab 二开关合并为「标签页管理」；任务 782：
@@ -246,33 +256,38 @@ groups:
           - id: splitView
             labelKey: settings.splitView
             tier: optional
+          # tl1487 二组②：以下四行可选→推荐（用户 20261107 八组清单「侧栏
+          # 标签显示、表格按栏宽换行、对话权限下拉框、右边栏悬停展开、左边栏
+          # 悬停展开→推荐」；todoSidebar 已是推荐，无动作）。
           - id: sidebarHoverLeft
             labelKey: settings.sidebarHoverLeft
-            tier: optional
+            tier: recommended
           - id: sidebarHoverRight
             labelKey: settings.sidebarHoverRight
-            tier: optional
+            tier: recommended
           - id: approvalSelect
             labelKey: settings.approvalSelect
-            tier: optional
+            tier: recommended
           # 任务 959 ①：对话表格按栏宽自动换行（默认关=宽表横滚不变）。
           - id: tableWrap
             labelKey: settings.tableWrap
-            tier: optional
+            tier: recommended
           # 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。
+          # tl1487 二组③：开启态下拉框位置改分栏下方（渲染面 Composer）。
           - id: sendTargetSelect
             labelKey: settings.sendTargetSelect
             tier: optional
           # tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线；默认
-          # 关=瞬移定位逐字节不变）。
+          # 关=瞬移定位逐字节不变）。tl1487 二组④：可选→推荐。
           - id: smoothScrollFollow
             labelKey: settings.smoothScrollFollow
-            tier: optional
+            tier: recommended
           # 任务 1024：composer 草稿优化（改写按钮）——发送左侧新增改写入口，
           # 辅助模型改写草稿回填输入框，不自动发送。默认关=按钮不出现、布局零变化。
+          # tl1487 二组④：可选→推荐。
           - id: draftRewrite
             labelKey: settings.draftRewrite
-            tier: optional
+            tier: recommended
       # tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
       # 会话图墙（palette 会话网格墙）+ 工作流面板（palette DAG 面板）+ 任务
       # 完成摘要（每轮结果卡）三散条并卡：三者同为「运行状态/产出的可视化
@@ -286,12 +301,16 @@ groups:
           - id: sessionWall
             labelKey: settings.sessionWall
             tier: recommended
+          # tl1487 二组⑤：工作流面板 unstable→稳定、任务完成摘要可选→推荐
+          # （用户 20261107 八组清单；工作流模板为 pane 附属行，同清单升推荐
+          # ——前端注册表独立登记，Go 渲染表仍以 workflowPanel 家族子键承载）。
+          # 容器档=成员最高档：随 workflowPanel 升至稳定。
           - id: workflowPanel
             labelKey: settings.workflowPanel
-            tier: unstable
+            tier: stable
           - id: completionSummary
             labelKey: settings.completionSummary
-            tier: optional
+            tier: recommended
       # 任务 782：检索与历史（合并卡）——历史提问选择器 + 搜索历史提问 +
       # 自动加载更早消息。容器档 = 成员最高档（推荐）。
       - id: searchHistory
@@ -305,21 +324,25 @@ groups:
           - id: questionSearch
             labelKey: settings.questionSearch
             tier: recommended
+          # tl1487 二组⑥：自动加载可选→推荐（用户 20261107 八组清单
+          # 「检索与历史/自动加载→推荐」）。
           - id: autoLoadOlder
             labelKey: settings.autoLoadOlder
-            tier: optional
+            tier: recommended
       # tl1309 卡④：sessionWall/workflowPanel/completionSummary 三散条迁出——
       # 并入上方「会话与任务面板」合并卡（sessionTaskPanels）。
       - id: subagentSuite
         labelKey: settings.subagentSuite
         onKeys: [experimentalSubagentPanel, experimentalSubagentDetail, experimentalSubagentPolicy, experimentalSubagentTps]
         members:
+          # tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107
+          # 八组清单）。
           - id: subagentPanel
             labelKey: settings.subagentPanel
-            tier: optional
+            tier: recommended
           - id: subagentDetail
             labelKey: settings.subagentDetail
-            tier: optional
+            tier: recommended
           - id: subagentPolicy
             labelKey: settings.subagentPolicy
             tier: unstable
@@ -331,15 +354,17 @@ groups:
       # 档 = 成员最高档（可选）。
       - id: inputSelection
         labelKey: settings.inputSelection
-        tier: optional
+        # tl1487 三组②：草稿持久化、选区快捷操作可选→推荐（用户 20261107
+        # 八组清单）；容器档=成员最高档，随成员升至推荐。
+        tier: recommended
         onKeys: [experimentalComposerDraft, experimentalSelectionActions]
         members:
           - id: draftPersistence
             labelKey: settings.draftPersistence
-            tier: optional
+            tier: recommended
           - id: selectionActions
             labelKey: settings.selectionActions
-            tier: optional
+            tier: recommended
       # 任务 782④：opencodeGoUsage 迁出界面组（→任务 783 可观测性组
       # 「用量监测」卡成员；迁出瞬间 pane 分支保留，入口随 783 落卡恢复）。
       # 任务 992（用户 1018 21:34）：restartUpdate 归位回本卡——本文件随
@@ -390,12 +415,13 @@ groups:
       # （PlanUsageCard 已上线，provider 解析显示，无开关展示行）+ OpenCode Go
       # 用量（自界面组迁入，782④ 同一动作的落卡半程）。
       # 扩展点：coding plan preset 家族（GLM CN / Z.AI Global / Qwen CN·Global /
-      # Kimi 等 7+ 家）未来按需在 members 加行即成一子项，不改容器结构；
-      # 卡灯 = OpenCode Go 开关（家族唯一非默认键）。
+      # Kimi 等 7+ 家）未来按需在 members 加行即成一子项，不改容器结构。
+      # tl1487 四组：OpenCode Go 用量「不提供开关、始终打开」——卡灯键清空
+      # （用量查询常开，行同 glmPlanUsage 为无开关展示行）。
       - id: usageMonitoring
         labelKey: settings.usageMonitoring
         tier: recommended
-        onKeys: [experimentalOpenCodeGoUsage]
+        onKeys: []
         members:
           - id: glmPlanUsage
             labelKey: settings.glmPlanUsage
@@ -429,7 +455,10 @@ groups:
         members:
           - id: cdpDebugPort
             labelKey: settings.cdpDebugPort
-            tier: unstable
+            # tl1487 五组：CDP 调试端口未稳定→稳定（用户 20261107 八组清单；
+            # 默认关语义不变——稳定档在此只表达成熟度，pane 开关不接
+            # labStableLocked，与 sessionStorage tl1338 特例同口径）。
+            tier: stable
           - id: lifecycleNoiseGate
             labelKey: settings.lifecycleNoiseGate
             tier: unstable
@@ -471,7 +500,8 @@ groups:
       # 现读开关（921 先例），保存即生效免重启。
       - id: jsonlZstd
         labelKey: settings.jsonlZstd
-        tier: optional
+        # tl1487 六组：冷会话归档（zstd）可选→推荐（用户 20261107 八组清单）。
+        tier: recommended
         onKeys: [experimentalJsonlZstd]
       # tl1309 卡③：GC 策略（tl1286）与闲置释放（775）两参数卡迁出本组——
       # 入基础设施组「资源治理」卡成员行（同为内存/资源生命周期面；字段绑定
@@ -507,10 +537,12 @@ groups:
           - id: idleReleaseMinutes
             labelKey: settings.detachedIdleRelease
             tier: recommended
-          # GC 策略旋钮（原存储组 kind:param 参数卡，tl1286；可选档）。
+          # GC 策略旋钮（原存储组 kind:param 参数卡，tl1286）。
+          # tl1487 七组①：可选→推荐，建议值 100（用户 20261107 八组清单；
+          # 显示层 gcPercentForView 已把 0=跟随默认渲染为等效 100）。
           - id: gcPercent
             labelKey: settings.gcPercent
-            tier: optional
+            tier: recommended
           # ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
           - id: acpListen
             labelKey: settings.acpListen
@@ -519,12 +551,11 @@ groups:
           - id: localServer
             labelKey: settings.localServer
             tier: unstable
-      # 任务 564：路径规则——已退役只读展示行（551 范式），非资源生命周期面，
-      # 维持独立卡不入资源治理卡（tl1309 卡③范围裁决）。
-      - id: pathRules
-        labelKey: settings.pathRules
-        tier: unstable
-        onKeys: [experimentalPathRules]
+      # tl134/tl1487 七组③：路径规则整卡移除——结构化路径作用域判定为过时
+      # 技术（zh 文案自证「未接线：开关开/关均无效果」，生产走 confine+
+      # allow_write+写入审批），用户 20261107 20:17 裁决移除；机制存档见
+      # docs/archive/路径作用域规则tl134-机制存档-20261107.md。loader
+      # （internal/rules）测试在跑，代码按最小改动保留，只撤配置面。
       # 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原
       # 独立 tool-opt 组退役）；restartUpdate 归位回界面组 updateFeedback 卡
       # （本文件随 1005 一并补同步——卡灯三键，restartUpdate 不再入灯/入卡）。
@@ -536,30 +567,33 @@ groups:
         labelKey: settings.toolOptHub
         tier: recommended
         onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalCapabilityGroups]
+        # tl1487 七组②：工具优化五项（编辑证据门宽松/multi_edit 直注、能力组
+        # 披露与 session_hub 聚合、multi_edit 错误详情、证据门连坐收窄、跳过
+        # 失败项）全部可选→推荐（用户 20261107 八组清单）。
         members:
-          # 任务 789/992：编辑证据门宽松模式（992 升可选——1005 补同步）。
+          # 任务 789/992：编辑证据门宽松模式。
           - id: editEvidenceRelaxed
             labelKey: settings.editEvidenceRelaxed
-            tier: optional
-          # 任务 943：multi_edit 直注（原族卡第二效果拆出，可选档）。
+            tier: recommended
+          # 任务 943：multi_edit 直注（原族卡第二效果拆出）。
           - id: multiEditInjection
             labelKey: settings.multiEditInjection
-            tier: optional
+            tier: recommended
           # 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键，
           # 默认关=零行为，重启生效）。
           - id: capabilityGroups
             labelKey: settings.capabilityGroups
-            tier: optional
+            tier: recommended
           # tl-1218：multi_edit 三条增强（各自独立开关，默认关重启生效）。
           - id: multiEditErrorDetail
             labelKey: settings.multiEditErrorDetail
-            tier: optional
+            tier: recommended
           - id: multiEditEvidenceNarrow
             labelKey: settings.multiEditEvidenceNarrow
-            tier: optional
+            tier: recommended
           - id: multiEditSkipFailed
             labelKey: settings.multiEditSkipFailed
-            tier: optional
+            tier: recommended
 
   # ── 记忆与上下文（1 项；tl1193b 增 pinnedIndex 卡——pinned 常驻层索引化；tl1256 落位基础设施组后）──
   - key: memory-context
@@ -571,5 +605,7 @@ groups:
       # 消费（capabilityGroups 先例），重启生效。
       - id: pinnedIndex
         labelKey: settings.pinnedIndex
-        tier: unstable
+        # tl1487 八组：置顶记忆索引化未稳定→可选（用户 20261107 八组清单；
+        # 默认关=铁律 2 不变）。
+        tier: optional
         onKeys: [experimentalPinnedIndex]

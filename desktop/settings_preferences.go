@@ -752,14 +752,6 @@ func (a *App) SetExperimentalMultiEditSkipFailed(enabled bool) error {
 	})
 }
 
-// SetExperimentalOpenCodeGoUsage toggles the task-163 usage card (ships off;
-// the frontend gate issues no usage query while it is off).
-func (a *App) SetExperimentalOpenCodeGoUsage(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error {
-		return c.SetExperimentalOpenCodeGoUsage(enabled)
-	})
-}
-
 // SetExperimentalQuestionSearch toggles the topic-bar question-search entry (265).
 func (a *App) SetExperimentalQuestionSearch(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalQuestionSearch(enabled) })
@@ -797,11 +789,6 @@ func (a *App) SetExperimentalHomePointer(enabled bool) error {
 // restart.
 func (a *App) SetExperimentalJsonlZstd(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalJsonlZstd(enabled) })
-}
-
-// SetExperimentalPathRules toggles structured path-scope evaluation (task 134).
-func (a *App) SetExperimentalPathRules(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPathRules(enabled) })
 }
 
 // SetExperimentalLifecycleNoiseGate toggles the task-377 lifecycle noise

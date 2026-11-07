@@ -39,13 +39,12 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
   ok(EXPERIMENT_FEATURE_TIERS.toolOptimizations === "recommended", "toolOptimizations badges as RECOMMENDED (783④ 转正)");
   // 任务 789：editEvidenceRelaxed 以成员行入卡——卡头聚合 = max(卡, 成员)。
   // 任务 971：聚合页扩员——multiEditInjection + restartUpdate 转成员行。
-  // 任务 979：capabilityGroups 真开关入卡。任务 992：editEvidenceRelaxed 升
-  // 可选、restartUpdate 归位回 updateFeedback 卡（卡灯/成员均去 restartUpdate）
-  // ——聚合输入 = [recommended, optional]，卡头仍单枚 推荐（本 pin 2026-10-19
-  // 随 1005 窗口补同步，992 升档/归位时漏跟）。
+  // 任务 979：capabilityGroups 真开关入卡。任务 992：restartUpdate 归位回
+  // updateFeedback 卡。tl1487 七组②：全部成员可选→推荐——聚合输入收敛为
+  // [recommended]，卡头仍单枚 推荐。
   const tiers = railTiersForDefault("toolOptimizations");
-  ok(JSON.stringify(tiers) === JSON.stringify(["recommended", "optional"]) && tiers[0] === "recommended",
-    `rail entry aggregates [recommended, optional] to the single 推荐 badge (got ${JSON.stringify(tiers)})`);
+  ok(JSON.stringify(tiers) === JSON.stringify(["recommended"]) && tiers[0] === "recommended",
+    `rail entry aggregates the all-recommended input to the single 推荐 badge after tl1487 七组 (got ${JSON.stringify(tiers)})`);
 }
 
 // ② SettingsPanel wiring（722 起 rail 分组/条目数据驱动：组词表在
@@ -70,8 +69,8 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
   // 按行拆钉:条目头(三开关)+六成员行逐条在。
   ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalCapabilityGroups"], members: [')
     && ["editEvidenceRelaxed", "multiEditInjection", "capabilityGroups", "multiEditErrorDetail", "multiEditEvidenceNarrow", "multiEditSkipFailed"]
-      .every((id) => layoutDefault.includes(`{ id: "${id}", labelKey: "settings.${id}", tier: "optional" }`)),
-    "rail entry reads its three switches and hosts the 789/943/979/1218 member rows (81/123 lost-save rule; 992 现值)");
+      .every((id) => layoutDefault.includes(`{ id: "${id}", labelKey: "settings.${id}", tier: "recommended" }`)),
+    "rail entry reads its three switches and hosts the 789/943/979/1218 member rows at recommended (81/123 lost-save rule; tl1487 七组②)");
   ok(panel.includes("on: labEntryLightOn(entry, s)"), "panel derives each rail light from its own onKeys (81/123 lost-save rule)");
   ok(panel.includes('{selected === "toolOptimizations" && ('), "pane card located");
   ok(panel.includes('app.SetExperimentalToolOptimizations(on)'), "card writes through its own setter");

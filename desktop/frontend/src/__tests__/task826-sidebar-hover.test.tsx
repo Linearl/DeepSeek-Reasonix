@@ -171,10 +171,10 @@ const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "
   ok(goRender.includes('fmt.Fprintf(&b, "experimental_sidebar_hover_left = %v') &&
      goRender.includes('fmt.Fprintf(&b, "experimental_sidebar_hover_right = %v'),
     "② render table: both keys render unconditionally (81/123 fixed-key-set rule)");
-  // 档位注册表：两条可选档（562 门禁对位）。
-  ok(goRender.includes('{"sidebarHoverLeft", LabTierOptional, []string{"experimental_sidebar_hover_left"}}') &&
-     goRender.includes('{"sidebarHoverRight", LabTierOptional, []string{"experimental_sidebar_hover_right"}}'),
-    "② tier register: sidebarHoverLeft/Right tagged optional in labFeatureTiers");
+  // 档位注册表：tl1487 二组② 可选→推荐（562 门禁对位）。
+  ok(goRender.includes('{"sidebarHoverLeft", LabTierRecommended, []string{"experimental_sidebar_hover_left"}}') &&
+     goRender.includes('{"sidebarHoverRight", LabTierRecommended, []string{"experimental_sidebar_hover_right"}}'),
+    "② tier register: sidebarHoverLeft/Right tagged recommended in labFeatureTiers (tl1487 二组②)");
   // settings view 双侧字段 + 双侧注入（81/123 两视图教训）。
   // 任务 940 注：struct 字面量注入点断言改为对齐无关的正则（gofmt 的对齐组
   // 宽度随邻近字段名长度变化——940 插入 ExperimentalApprovalSelect 后该组
@@ -215,14 +215,14 @@ const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "
      labDefault.includes('onKeys: [' + expected826.map((k) => '"' + k + '"').join(", ") + "]"),
     "② layout data: the viewLayout card light covers its eight current keys in yaml AND the built-in default");
   ok(yamlText.includes('- id: sidebarHoverLeft') && yamlText.includes('- id: sidebarHoverRight') &&
-     labDefault.includes('{ id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" }') &&
-     labDefault.includes('{ id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" }'),
-    "② layout data: both member rows present with the optional tier");
+     labDefault.includes('{ id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "recommended" }') &&
+     labDefault.includes('{ id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "recommended" }'),
+    "② layout data: both member rows present with the recommended tier (tl1487 二组②)");
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     "② layout data: default layout tiers agree with the register (no drift)");
   // 前端档位注册表（562 徽章对位）。
-  ok(EXPERIMENT_FEATURE_TIERS.sidebarHoverLeft === "optional" && EXPERIMENT_FEATURE_TIERS.sidebarHoverRight === "optional",
-    "② tier badges: both features carry the optional tier");
+  ok(EXPERIMENT_FEATURE_TIERS.sidebarHoverLeft === "recommended" && EXPERIMENT_FEATURE_TIERS.sidebarHoverRight === "recommended",
+    "② tier badges: both features carry the recommended tier (tl1487 二组②)");
   // 实验室卡片：两行开关（labLabel 各恰好一次的纪律由 task621 兜底，这里钉存在）。
   ok(panel.includes('labLabel("sidebarHoverLeft", t("settings.sidebarHoverLeft"))') &&
      panel.includes('labLabel("sidebarHoverRight", t("settings.sidebarHoverRight"))') &&

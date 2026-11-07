@@ -55,8 +55,8 @@ export type ExperimentFeatureId =
   // traceAsState/outputStyle 三散条并卡，独立 pane 退役为卡内成员行。
   | "interactionPresentation"
   // tl1309 卡③：localServer 独立 pane 退役——并入「资源治理」合并卡成员行
-  // （union id 同步摘除）。
-  | "pathRules"
+  // （union id 同步摘除）。tl134/tl1487 七组③：pathRules pane/union id 随
+  // 整卡移除摘除（pane 分支与白名单登记同撤）。
   | "sessionCollab"
   // Task 244 B4/B5, merged into one switch by task 449.
   // tl1309 卡③：orphanHandling 独立 pane 退役——并入「资源治理」合并卡
@@ -188,7 +188,6 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   // localServer/idleReleaseMinutes/gcPercent 六独立 pane 退役为成员行，
   // 容器 id 入表——961 先例）。
   "resourceGovernance",
-  "pathRules",
   "toolOptimizations",
   // 任务 971：multiEditInjection 独立 pane 退役（聚合页成员行，943 语义不变）。
   // 任务 775：kind:param 参数卡 id——pane 由通用参数渲染器承接（无独立

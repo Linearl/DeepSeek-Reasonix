@@ -1573,7 +1573,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   不挂独立徽章）。模板视图住在工作流面板里，面板关闭时本行
                   禁用开启并给出依赖说明（已开着的仍可关闭）。服务端写面现读
                   开关，保存即生效。 */}
-              <SettingsField label={t("settings.workflowTemplates")} hint={t("settings.workflowTemplatesHint")} icon={<Sparkles size={18} />}>
+              {/* tl1487 二组⑤：工作流模板升独立表A 条目（推荐档）——附属行
+                  起挂自己的徽章（用户 20261107 八组清单「工作流模板→推荐」，
+                  与面板主键分档；621 单徽章口径不破——主行 workflowPanel 仍
+                  只挂自己的）。 */}
+              <SettingsField label={labLabel("workflowTemplates", t("settings.workflowTemplates"))} hint={t("settings.workflowTemplatesHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2138,19 +2142,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "pathRules" && (
-            /* Task 564: retired (task 551 paradigm, UI side) — the structured
-               path-scope evaluation never wired into the runtime (zero
-               consumers; production keeps confine + allow_write + write
-               approval). Read-only display like the M2 modelCapabilityFilter
-               block: stored value shows, no setter, config key still renders
-               (nothing silently dropped on save). */
-            <SettingsField label={labLabel("pathRules", t("settings.pathRules"))} hint={t("settings.pathRules.retired")} icon={<FolderLock size={18} />} stacked>
-              <p className="settings-field__hint-line">
-                {t("settings.pathRules.value", { value: t(Boolean(s.experimentalPathRules) ? "settings.pathRules.on" : "settings.pathRules.off") })}
-              </p>
-            </SettingsField>
-          )}
+          {/* tl134/tl1487 七组③：pathRules pane（564/551 retired 只读展示块）
+              随整卡移除——结构化路径作用域判定为过时技术（从未接线，生产走
+              confine+allow_write+写入审批），用户 20261107 裁决移除；机制存档
+              docs/archive/路径作用域规则tl134-机制存档-20261107.md。 */}
                     {/* 任务 961：traceAsState 独立 pane 退役——并入「交互与呈现」合并卡
               （interactionPresentation，卡内成员行承载）。
               tl1309 卡③：orphanHandling/runtimeReuse 两独立 pane 同款退役——
@@ -2870,8 +2865,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           )}
           {/* ── Task 265 lab intake: 9 fork features + task 262 quick commands ── */}
           {/* Task 561 M2 模型策略族: highSpeedModel keeps its writable switch;
-              modelCapabilityFilter is retired (task 551/564 domain) and
-              renders read-only below — stored value displays, no setter. */}
+              tl1487 一组③：modelCapabilityFilter（模型能力过滤）只读展示行随
+              用户 20261107 八组清单「移除（不展示）」整体摘除——564/551 的
+              retired 只读范式于此收尾，Go 配置键本体不动。 */}
           {selected === "modelStrategy" && (
             <>
               <SettingsField label={labLabel("highSpeedModel", t("settings.highSpeedModel"))} hint={t("settings.highSpeedModelLabHint")} icon={<Sparkles size={18} />}>
@@ -2910,15 +2906,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     </button>
                   ))}
                 </SettingsOptions>
-              </SettingsField>
-              {/* Task 551/564: retired key — read-only display only (task 561
-                  M2 keeps it visible without a setter; 564 owns the copy). */}
-              {/* 任务 722 点2：已退役徽章移除（rail 成员表与卡内行都不再挂
-                  「已退役」档位徽章）——行本体保留只读展示（564 口径）。 */}
-              <SettingsField label={t("settings.modelCapabilityFilter")} hint={t("settings.modelCapabilityFilter.retired")} icon={<Sparkles size={18} />} stacked>
-                <p className="settings-field__hint-line">
-                  {t("settings.modelCapabilityFilter.value", { value: t(Boolean(s.experimentalModelCapabilityFilter) ? "settings.modelCapabilityFilter.on" : "settings.modelCapabilityFilter.off") })}
-                </p>
               </SettingsField>
             </>
           )}
@@ -3014,9 +3001,14 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   />
                 </SettingsField>
-                {/* 任务 621：coldCacheCompact 是 compressOpt 的附属开关——徽章只在
-                    主控开关行（proactiveCompact），附属行不重复挂。 */}
-                <SettingsField label={t("settings.coldCacheCompact")} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
+                {/* tl1487 一组④（卡片化合并）：冷缓存压缩主开关 + 触发上下文
+                    下限 + 闲置触发时长三行并一卡（1124 聚合子卡先例
+                    .set-highrisk-authorize / .set-coldcache-card）——三行各读
+                    各键各写各 setter，配置键零变化；主行自此挂独立可选徽章
+                    （tl1487「冷缓存压缩→可选」，621 单徽章口径：徽章只在
+                    主控行，两个参数行不重复挂）。 */}
+                <div className="set-coldcache-card">
+                <SettingsField label={labLabel("coldCacheCompact", t("settings.coldCacheCompact"))} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -3060,6 +3052,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   />
                   <span> h</span>
                 </SettingsField>
+                </div>
                 {/* tl1378：curateContext 是 compressOpt 的附属开关（细粒度注记档）——
                     徽章只在主控行（proactiveCompact），附属行不重复挂。 */}
                 <SettingsField label={t("settings.curateContext")} hint={t("settings.curateContextHint")} icon={<Sparkles size={18} />}>
@@ -3312,12 +3305,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <SettingsField label={labLabel("glmPlanUsage", t("settings.glmPlanUsage"))} icon={<Activity size={18} />} stacked>
                 <p className="settings-field__hint">{t("settings.glmPlanUsageHint")}</p>
               </SettingsField>
+              {/* tl1487 四组：OpenCode Go 用量「不提供开关、始终打开」——开关行
+                  退役为展示行（glmPlanUsage 同款），查询常开（门在侧栏卡 family）。 */}
               <ErrorBoundary>
-                <SettingsOpenCodeGoUsageCard
-                  enabled={Boolean(s.experimentalOpenCodeGoUsage)}
-                  busy={busy}
-                  onToggle={(on) => void apply(() => app.SetExperimentalOpenCodeGoUsage(on))}
-                />
+                <SettingsOpenCodeGoUsageCard />
               </ErrorBoundary>
             </>
           )}

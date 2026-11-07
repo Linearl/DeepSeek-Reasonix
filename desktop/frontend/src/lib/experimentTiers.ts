@@ -62,6 +62,11 @@ export type TierFeatureId =
   | "traceAsState"
   | "outputStyle"
   | "cacheTuning"
+  // tl1487 一组④：冷缓存压缩（compressOpt 主开关的附属开关行，pane 内
+  // 冷缓存压缩+触发上下文下限+闲置触发时长三行并一卡；本件起主行挂独立
+  // 可选徽章——用户 20261107 八组清单「冷缓存压缩→可选」）。Go 渲染表无
+  // 条目（附属键随 compressOpt 族，562 测试 ③ 前端独有豁免清单收录）。
+  | "coldCacheCompact"
   | "tabCompress"
   | "todoSidebar"
   | "promptHistoryPicker"
@@ -92,8 +97,11 @@ export type TierFeatureId =
   | "runtimeReuse"
   // 任务 790: ACP 常驻监听（loopback TCP，每连接独立 client 面，默认关）。
   | "acpListen"
-  | "modelCapabilityFilter"
-  | "pathRules"
+  // tl1487 一组③：modelCapabilityFilter（模型能力过滤）随只读展示行一并
+  // 出表出类型——用户 20261107 八组清单「移除（不展示）」；Go 配置键仍存在
+  // （退役面，render 表早已无条目），本件只摘前端展示与档位登记。
+  // tl1487 七组③：pathRules 随 tl134 整卡移除出表出类型（未稳定档；配置键
+  // 整链退役，存量键走 deprecated 清单）。
   | "orphanHandling"
   | "localServer"
   // 任务 603:「工具优化」族首件 (edit readBack + evidence gate linkage).
@@ -113,7 +121,10 @@ export type TierFeatureId =
   | "multiEditEvidenceNarrow"
   | "multiEditSkipFailed"
   // 任务 677→856 ③: 协作中心入口总开关（信件中心+群聊两图标合一；原
-  // 「群聊入口」开关 collabGroupView 随语义一次性迁移为 collabHub，未稳定档沿用）。
+  // 「群聊入口」开关 collabGroupView 随语义一次性迁移为 collabHub，未稳定档
+  // 沿用）。tl1487 一组①：升稳定档（用户 20261107 八组清单；前置依赖
+  // sessionCollab 不变——稳定档语义「默认开启」在此特例豁免：collabHub 默认
+  // 关+开有关前置门控，档位只表达成熟度，pane 开关不接 labStableLocked）。
   | "collabHub"
   // 任务 705: 超长跨会话消息自动折叠（默认关=全量展示，可选档）。
   | "sessionCollabAutoFold"
@@ -176,9 +187,15 @@ export type TierFeatureId =
   // 不变）。界面组「视图布局」卡成员。
   | "smoothScrollFollow"
   // 任务 686: 工作流可视化面板（DAG 流程图 + 运行进展点亮，palette 入口；
-  // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。未稳定档（开发
-  // 测试中），默认关=palette 逐字节不变。
+  // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。
+  // tl1487 二组⑤：未稳定→稳定（用户 20261107 八组清单；默认关与 fixture
+  // 预览语义不变，档位只表达成熟度裁决）。
   | "workflowPanel"
+  // tl1487 二组⑤：工作流模板（tl1454 工作流面板家族子键的 pane 附属行）升
+  // 独立登记推荐档——用户 20261107 八组清单「工作流模板→推荐」（与面板主键
+  // 分档：面板稳定、模板推荐）。Go 渲染表无独立条目（键仍为 workflowPanel
+  // 家族子键，562 ③ 前端独有豁免清单收录）。
+  | "workflowTemplates"
   // 任务 961: automation/efficiency 两张条目级合并卡容器 id（742/782 先例，
   // 纯前端容器、无自有配置键，卡内各行各写各的键；Go 渲染表无条目，同
   // tabManagement 豁免）——smartAutomation（智能自动化：梦境整理+决策模式
@@ -224,9 +241,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   safetyCostControl: "optional",
   subagentPolicy: "unstable",
   // ── memory-context（记忆/上下文，1 项；tl1193b 增 pinnedIndex）──────
-  // tl1193b: pinned 常驻层索引化——镜像 Go 渲染表 LabTierUnstable（562 门禁
-  // 双侧一致）。boot 快照消费，重启生效。
-  pinnedIndex: "unstable",
+  // tl1193b: pinned 常驻层索引化——boot 快照消费，重启生效。
+  // tl1487 八组：未稳定→可选（用户 20261107 八组清单；默认关=铁律 2 不变，
+  // Go 渲染表同步翻）。
+  pinnedIndex: "optional",
   // ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl；────
   //    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
   optimisticParallel: "recommended",
@@ -237,11 +255,16 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   highSpeedModel: "optional",
   compactionParallel: "optional",
   traceAsState: "optional",
-  outputStyle: "optional",
+  // tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单）。
+  outputStyle: "recommended",
   cacheTuning: "optional",
+  // tl1487 一组④：冷缓存压缩独立可选档（compressOpt 附属行起挂自己的徽章；
+  // 用户 20261107 八组清单「冷缓存压缩→可选」）。
+  coldCacheCompact: "optional",
   // 任务 677→856 ③：协作中心入口总开关（677 群聊入口开关随两图标合一迁移
-  // 改名，未稳定档默认关沿用）。
-  collabHub: "unstable",
+  // 改名）。tl1487 一组①：未稳定→稳定（用户 20261107 八组清单；默认关+
+  // 开有关前置门控不变，档位只表达成熟度，pane 开关不接 labStableLocked）。
+  collabHub: "stable",
   // 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关按 550
   // 口径定档可选——不开启只影响长消息的阅读密度，不动任何协作行为。
   sessionCollabAutoFold: "optional",
@@ -253,8 +276,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 默认关）。
   trajectoryView: "optional",
   // ── ui（界面，14 项）────────────────────────────────────────
-  // 任务 1024：composer 草稿优化。镜像 Go 档位——可选（默认关，输入栏零变化）。
-  draftRewrite: "optional",
+  // 任务 1024：composer 草稿优化。tl1487 二组④：可选→推荐（用户 20261107
+  // 八组清单；镜像 Go 档位同步翻）。
+  draftRewrite: "recommended",
   // tl 1132：启动遮罩。镜像 Go 档位——可选（默认关，用户 steer A/B 对比）。
   startupSplash: "optional",
   // tl 1132：「启动与加载」合并卡容器（纯前端 rail 卡，成员最高档=可选）。
@@ -265,22 +289,32 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   restartUpdate: "recommended",
   sessionWall: "recommended",
   // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎未落地
-  // 为前端 fixture 预览）。镜像 Go 档位——未稳定（开发测试中）。
-  workflowPanel: "unstable",
-  subagentPanel: "optional",
-  subagentDetail: "optional",
-  completionSummary: "optional",
-  autoLoadOlder: "optional",
+  // 为前端 fixture 预览）。tl1487 二组⑤：未稳定→稳定（Go 渲染表同步翻）。
+  workflowPanel: "stable",
+  // tl1487 二组⑤：工作流模板（面板家族子键的 pane 附属行）独立登记推荐档。
+  workflowTemplates: "recommended",
+  // tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107 八组
+  // 清单；Go 渲染表同步翻）。
+  subagentPanel: "recommended",
+  subagentDetail: "recommended",
+  // tl1487 二组⑤：任务完成摘要可选→推荐（用户 20261107 八组清单）。
+  completionSummary: "recommended",
+  // tl1487 二组⑥：自动加载可选→推荐（用户 20261107 八组清单）。
+  autoLoadOlder: "recommended",
   splitView: "optional",
-  draftPersistence: "optional",
-  selectionActions: "optional",
+  // tl1487 三组②：草稿持久化、选区快捷操作可选→推荐（用户 20261107 八组
+  // 清单；Go 渲染表同步翻）。
+  draftPersistence: "recommended",
+  selectionActions: "recommended",
   questionSearch: "recommended",
   opencodeGoUsage: "recommended",
   feedback: "optional",
   // 任务 621：tabModeTint（任务 504 标签模式色调）在 Go labFeatureTiers 一直
   // 有档（unstable），但前端注册表漏收——实验室页渲染却无徽章，621 验收
   // 「每项特性有且仅有一个徽章」不允许。档位镜像 Go 侧。
-  tabModeTint: "unstable",
+  // tl1487 二组①：标签权限指示未稳定→可选（用户 20261107 八组清单
+  // 「标签页管理/标签权限指示→可选」；Go 渲染表同步翻）。
+  tabModeTint: "optional",
   // ── observability（可观测性，2 项；tl 1097 增 logManagement 参数卡）──
   monitoring: "recommended",
   subagentTps: "optional",
@@ -295,7 +329,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 显示、666 显示条件）——已上线能力按推荐档登记（无开关，展示行）。
   glmPlanUsage: "recommended",
   // ── dev-debug（开发调试，2 项）───────────────────────────────
-  cdpDebugPort: "unstable",
+  // tl1487 五组：CDP 调试端口未稳定→稳定（默认关语义不变）。
+  cdpDebugPort: "stable",
   lifecycleNoiseGate: "unstable",
   // ── storage（存储，4 项；846 增 homePointer，tl-1174 增 jsonlZstd）────
   eventsRotation: "optional",
@@ -306,19 +341,19 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 原因码（与 messageMerge/eventsRotation 同机制），永不盲写。
   sessionStorage: "stable",
   homePointer: "unstable",
-  // tl 1174: 冷会话 transcript zstd 归档——档位与 Go 渲染表 LabTierOptional
-  // 双侧一致（562 门禁）。
-  jsonlZstd: "optional",
+  // tl 1174: 冷会话 transcript zstd 归档——档位与 Go 渲染表双侧一致（562
+  // 门禁）。tl1487 六组：可选→推荐（用户 20261107 八组清单）。
+  jsonlZstd: "recommended",
   // ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
   // 任务 1005 批1 转档：runtimeReuse 升「稳定」（992 刚升推荐的四项之一）。
   runtimeReuse: "stable",
   acpListen: "unstable",
   // 任务 789: 编辑证据门宽松模式（放宽 evidence gate 属行为变更；
-  // toolOptimizations 卡成员）。任务 992：用户 1018 升可选——本注册表
-  // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
-  editEvidenceRelaxed: "optional",
-  modelCapabilityFilter: "retired",
-  pathRules: "unstable",
+  // toolOptimizations 卡成员）。tl1487 七组②：可选→推荐（用户 20261107
+  // 八组清单「工具优化五项→全部推荐」）。
+  editEvidenceRelaxed: "recommended",
+  // tl1487 一组③：modelCapabilityFilter 出表（原 retired 档独苗）——只读
+  // 展示行随清单移除（不展示），档位登记同步退役。
   // 任务 992：orphanHandling 随复用池升推荐（用户 1018）——本注册表
   // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
   orphanHandling: "recommended",
@@ -328,21 +363,17 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // （Go 渲染表同步升档，562 两侧一致断言守护）。任务 943：本 id 收窄
   // 为 readBack 面（含 789 证据门联动成员）。
   toolOptimizations: "recommended",
-  // 任务 943：multi_edit 直注独立卡（原族卡第二效果拆出）。可选档——按
-  // 550 口径：不开启只小幅影响（multi_edit 仍可经 use_capability 调用，
-  // edit_file 批量编辑引导降级），非体验缺口。
-  multiEditInjection: "optional",
-  // 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键）。用户
-  // 拍板提效类可选档（config.go 注释原文）；默认关=零行为（铁律 2），九件
-  // 协作工具保持直挂。toolOptimizations 聚合页成员行，重启生效。
-  capabilityGroups: "optional",
+  // tl1487 七组②：multi_edit 直注可选→推荐（用户 20261107 八组清单）。
+  multiEditInjection: "recommended",
+  // 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键）。
+  // tl1487 七组②：可选→推荐。默认关=零行为（铁律 2）不变，重启生效。
+  capabilityGroups: "recommended",
   // tl-1218：multi_edit 三条增强（①错误详情增强 ②证据门连坐收窄 ③跳过
-  // 失败项模式）。可选档——不开启只小幅影响（拦截信息少附行内容/连坐维持/
-  // 单点失败即整批中止）；默认关=与基线逐字节一致（铁律 2）。聚合页成员
-  // 行，重启生效。
-  multiEditErrorDetail: "optional",
-  multiEditEvidenceNarrow: "optional",
-  multiEditSkipFailed: "optional",
+  // 失败项模式）。tl1487 七组②：可选→推荐。默认关=与基线逐字节一致
+  // （铁律 2），重启生效。
+  multiEditErrorDetail: "recommended",
+  multiEditEvidenceNarrow: "recommended",
+  multiEditSkipFailed: "recommended",
   // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
   // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
   heartbeatRotation: "optional",
@@ -359,30 +390,33 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // （普通对话永不自动续跑）；开启后才有界续跑。可选档。
   standardContinuation: "optional",
   // 任务 782：界面组三张条目级合并卡的容器档 = 卡内成员最高档（774 聚合
-  // 语义同源：searchHistory 三成员 两推荐一可选 → 推荐；inputSelection /
-  // viewLayout 全可选成员 → 可选）。合并是入口层组织，不降级任何成员特性。
+  // 语义同源：searchHistory 三成员 两推荐一可选 → 推荐；viewLayout 推荐
+  // 容器压过可选成员 → 推荐）。tl1487 三组②：inputSelection 两成员升推荐，
+  // 容器档=成员最高档随之升推荐。合并是入口层组织，不降级任何成员特性。
   searchHistory: "recommended",
-  inputSelection: "optional",
+  inputSelection: "recommended",
   // tl 1125：视图布局合并卡升「推荐」（tl 1125 同指令，与 tabManagement 一并）。
   viewLayout: "recommended",
-  // 任务 826：左右边栏 hover 展开（左右各一行，独立开关，默认关）。按 550
-  // 口径定可选——不开启时不渲染任何热区、不挂任何事件，左右栏行为与引入前
-  // 完全一致（铁律 2）。
-  sidebarHoverLeft: "optional",
-  sidebarHoverRight: "optional",
-  // 任务 940：composer 权限选择器形态二选一（默认关=现按钮组）。展示形态
-  // 开关按 550 口径定可选——不开启时 composer 权限区与引入前逐字节一致
-  // （铁律 2）。
-  approvalSelect: "optional",
-  // 任务 959 ①：表格按栏宽自动换行（默认关）。展示形态开关按 550 口径定
-  // 可选——不开启时转录表格与引入前逐字节一致（铁律 2）。
-  tableWrap: "optional",
+  // 任务 826：左右边栏 hover 展开（左右各一行，独立开关，默认关）。
+  // tl1487 二组②：可选→推荐（用户 20261107 八组清单「左/右边栏悬停展开→
+  // 推荐」；Go 渲染表同步翻）。
+  sidebarHoverLeft: "recommended",
+  sidebarHoverRight: "recommended",
+  // 任务 940：composer 权限选择器形态二选一（默认关=现按钮组）。
+  // tl1487 二组②：可选→推荐（用户 20261107 八组清单「对话权限下拉框→
+  // 推荐」；Go 渲染表同步翻）。
+  approvalSelect: "recommended",
+  // 任务 959 ①：表格按栏宽自动换行（默认关）。
+  // tl1487 二组②：可选→推荐（用户 20261107 八组清单「表格按栏宽换行→
+  // 推荐」；Go 渲染表同步翻）。
+  tableWrap: "recommended",
   // 任务 959 ②：composer 发送目标形态二选一（默认关=三按钮组）。展示形态
   // 开关按 550 口径定可选——不开启时发送目标区与引入前逐字节一致（铁律 2）。
   sendTargetSelect: "optional",
-  // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线）。展示形态
-  // 开关按 550 口径定可选——不开启时流式滚动与引入前逐字节一致（铁律 2）。
-  smoothScrollFollow: "optional",
+  // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线）。
+  // tl1487 二组④：可选→推荐（用户 20261107 八组清单「流式滚动平滑跟随→
+  // 推荐」；Go 渲染表同步翻）。
+  smoothScrollFollow: "recommended",
   // 任务 961：automation/efficiency 两张条目级合并卡容器档 = 成员最高档
   // （782 合并卡语义同源：smartAutomation 三成员全可选 → 可选；
   // interactionPresentation 快捷指令推荐压过两可选 → 推荐）。合并是入口层
@@ -395,9 +429,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1309 卡③：「资源治理」合并卡容器档 = 成员最高档（运行时复用池稳定
   // 压过闲置释放/孤儿回收两推荐 → 稳定）。合并是入口层组织，不降级成员。
   resourceGovernance: "stable",
-  // tl1309 卡③：两参数卡成员档随迁（gcPercent 可选 / idleReleaseMinutes
-  // 推荐——与原独立参数卡 rail 徽章一致，展示零变化）。
-  gcPercent: "optional",
+  // tl1309 卡③：两参数卡成员档随迁（与原独立参数卡 rail 徽章一致）。
+  // tl1487 七组①：gcPercent 可选→推荐，建议值 100（用户 20261107 八组清单）。
+  gcPercent: "recommended",
   idleReleaseMinutes: "recommended",
   // tl1309 卡④：「会话与任务面板」合并卡容器档 = 成员最高档（图墙推荐压过
   // 工作流未稳定 → 推荐）。
@@ -492,13 +526,30 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * fork 已锁 v3，卡内余项皆迁移工具）——稳定 5→6、未稳定 12→11、总数不变 87
  * （Go 渲染表同步 LabTierStable，条目数不变 73）。
  * tl1453：dream（可选档）随 dream/distill 实验退役（宪法 Q1）——可选 45→44、
- * 总数 87→86（Go 渲染表同步 73→72）。 */
+ * 总数 87→86（Go 渲染表同步 73→72）。
+ * tl1487（用户 20261107 八组清单）本件步进：①modelCapabilityFilter（retired
+ * 独苗）出表——退役 1→0、总数 86→85；②coldCacheCompact（冷缓存压缩，可选）
+ * 入表——可选 +1、总数 85→86；③collabHub 未稳定→稳定、outputStyle 可选→
+ * 推荐——稳定 6→7、推荐 24→25、未稳定 11→10、可选不变 44。后续八组各步进
+ * 见各自注释；每步 LAB_TIER_COUNTS 与活注册表同跳（562/1005 计数钉同步）。
+ * 二组步进：tabModeTint 未稳定→可选、workflowPanel 未稳定→稳定、
+ * workflowTemplates（推荐）入表、completionSummary/autoLoadOlder/tableWrap/
+ * approvalSelect/sidebarHover×2/smoothScrollFollow/draftRewrite 可选→推荐
+ * ——稳定 7→8、推荐 25→34、可选 44→37、未稳定 10→8、总数 86→87。
+ * 三组步进：subagentPanel/subagentDetail/draftPersistence/selectionActions
+ * 可选→推荐，inputSelection 容器档=成员最高档随之升推荐——推荐 38→39、
+ * 可选 33→32，总数不变 87。
+ * 五/六/八组步进：cdpDebugPort 未稳定→稳定、jsonlZstd 可选→推荐、
+ * pinnedIndex 未稳定→可选——稳定 9、推荐 40、可选 32、未稳定 6，总数不变 87。
+ * 七组步进：gcPercent + 工具优化六键（宽松/直注/能力组/错误详情/连坐/跳过）
+ * 可选→推荐，pathRules（未稳定）随 tl134 移除出表——推荐 47、可选 25、
+ * 未稳定 5、总数 87→86。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  stable: 6,
-  recommended: 24,
-  optional: 44,
-  unstable: 11,
-  retired: 1,
+  stable: 9,
+  recommended: 47,
+  optional: 25,
+  unstable: 5,
+  retired: 0,
 };
 
 // 任务 722/724：合并卡的成员表（card id → 表A member ids）移交实验室布局

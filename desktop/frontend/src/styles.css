@@ -9915,12 +9915,16 @@ body > .mermaid-diagram--fullscreen {
   background: color-mix(in srgb, var(--mode-autopilot-bg) 55%, var(--surface-2));
 }
 /* 任务 959 ②：开关开＝发送目标下拉框（复用 940 形态机制的紧凑形态——
-   同高度/胶囊圆角/阴影族，菜单承载三目标）。关（默认）时本组规则零命中，
-   三按钮组样式与引入前逐字节一致（铁律 2）。 */
-.composer-meta__control--target--select {
-  min-width: 132px;
-  max-width: 200px;
-  flex: 0 0 auto;
+   同高度/胶囊圆角/阴影族，菜单承载三目标）。tl1487 二组③：下拉框自 meta
+   控制行迁至分栏下方独立条（.composer-send-target-strip），meta 行内的
+   --select 修饰规则随迁出删除；关（默认）时按钮组留在 meta 行原位，样式
+   与引入前逐字节一致（铁律 2）。 */
+.composer-send-target-strip {
+  --wails-draggable: no-drag;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 6px 12px 0;
 }
 
 .composer-send-target-select {
@@ -23000,6 +23004,21 @@ button.statusbar__mcp:focus-visible {
    783 起右侧边栏卡是权威展示位，799 起按 plan family 门控；设置卡只留
    开关行，走 settings-field 默认双列（说明左/开关右），346/337/163 三代
    卡内专属布局规则随之删除。 */
+
+/* tl1487：上下文治理卡内「冷缓存压缩」卡片化合并（1124 聚合子卡
+   .set-highrisk-authorize 先例）——冷缓存压缩主开关（可选徽章）+ 触发
+   上下文下限 + 闲置触发时长三行装进同一张边界子卡；各行仍各读各键各写
+   各 setter（配置键零变化），tokens only 无新色板。 */
+.set-coldcache-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 2px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
 
 /* ─── 任务287：右侧概览 Plan 用量卡（ContextPanel 显示位） ───── */
 .plan-usage {

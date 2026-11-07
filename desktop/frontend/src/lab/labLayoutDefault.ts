@@ -211,11 +211,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 轨迹状态（原 efficiency 独立卡，961 并卡）。
             { id: "traceAsState", labelKey: "settings.traceAsState", tier: "optional" },
             // 回答风格（原 efficiency 独立卡；灯=门控开或已选非默认风格，
-            // 961 并卡）。
-            { id: "outputStyle", labelKey: "settings.outputStyle", tier: "optional" },
+            // 961 并卡）。tl1487 一组②：可选→推荐（用户 20261107 八组清单；
+            // 容器档仍=成员最高档推荐）。
+            { id: "outputStyle", labelKey: "settings.outputStyle", tier: "recommended" },
           ],
         },
-        { id: "collabHub", labelKey: "settings.collabHub", tier: "unstable", onKeys: ["experimentalCollabHub"] },
+        // tl1487 一组①：协作中心入口 unstable→稳定（用户 20261107 八组清单；
+        // 前置依赖 sessionCollab 语义不变，LAB_FEATURE_DEPS 仍单条）。
+        { id: "collabHub", labelKey: "settings.collabHub", tier: "stable", onKeys: ["experimentalCollabHub"] },
       ],
     },
     {
@@ -270,18 +273,22 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           onKeys: ["experimentalSplitView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
-            { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" },
-            { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" },
-            { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" },
+            // tl1487 二组②：以下四行可选→推荐（用户 20261107 八组清单；
+            // todoSidebar 已是推荐，无动作）。
+            { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "recommended" },
+            { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "recommended" },
+            { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "recommended" },
             // 任务 959 ①：对话表格按栏宽自动换行（默认关=宽表横滚不变）。
-            { id: "tableWrap", labelKey: "settings.tableWrap", tier: "optional" },
+            { id: "tableWrap", labelKey: "settings.tableWrap", tier: "recommended" },
             // 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。
+            // tl1487 二组③：开启态下拉框位置改分栏下方（渲染面 Composer）。
             { id: "sendTargetSelect", labelKey: "settings.sendTargetSelect", tier: "optional" },
             // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线；默认
-            // 关=瞬移定位逐字节不变）。
-            { id: "smoothScrollFollow", labelKey: "settings.smoothScrollFollow", tier: "optional" },
+            // 关=瞬移定位逐字节不变）。tl1487 二组④：可选→推荐。
+            { id: "smoothScrollFollow", labelKey: "settings.smoothScrollFollow", tier: "recommended" },
             // 任务 1024：composer 草稿优化（默认关=改写按钮不出现、布局零变化）。
-            { id: "draftRewrite", labelKey: "settings.draftRewrite", tier: "optional" },
+            // tl1487 二组④：可选→推荐。
+            { id: "draftRewrite", labelKey: "settings.draftRewrite", tier: "recommended" },
           ],
         },
         // tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
@@ -296,10 +303,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           members: [
             { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended" },
             // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎
-            // 未落地，当前为前端 fixture 预览+演示回放）。未稳定档。
-            { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable" },
+            // 未落地，当前为前端 fixture 预览+演示回放）。
+            // tl1487 二组⑤：未稳定→稳定、任务完成摘要可选→推荐（用户
+            // 20261107 八组清单；工作流模板升推荐走前端注册表独立登记）。容器
+            // 档=成员最高档：随 workflowPanel 升至稳定。
+            { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "stable" },
             // 任务 782 验收⑤曾钉「保持独立」——tl1309 分析结论按面板面归卡。
-            { id: "completionSummary", labelKey: "settings.completionSummary", tier: "optional" },
+            { id: "completionSummary", labelKey: "settings.completionSummary", tier: "recommended" },
           ],
         },
         // 任务 782：检索与历史（合并卡）——历史提问选择器 + 搜索历史提问 +
@@ -312,7 +322,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           members: [
             { id: "promptHistoryPicker", labelKey: "settings.promptHistoryPicker", tier: "recommended" },
             { id: "questionSearch", labelKey: "settings.questionSearch", tier: "recommended" },
-            { id: "autoLoadOlder", labelKey: "settings.autoLoadOlder", tier: "optional" },
+            // tl1487 二组⑥：自动加载可选→推荐（用户 20261107 八组清单）。
+            { id: "autoLoadOlder", labelKey: "settings.autoLoadOlder", tier: "recommended" },
           ],
         },
         // tl1309 卡④：sessionWall/workflowPanel/completionSummary 三散条迁出——
@@ -327,23 +338,25 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalSubagentTps",
           ],
           members: [
-            { id: "subagentPanel", labelKey: "settings.subagentPanel", tier: "optional" },
-            { id: "subagentDetail", labelKey: "settings.subagentDetail", tier: "optional" },
+            // tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107
+            // 八组清单）。
+            { id: "subagentPanel", labelKey: "settings.subagentPanel", tier: "recommended" },
+            { id: "subagentDetail", labelKey: "settings.subagentDetail", tier: "recommended" },
             { id: "subagentPolicy", labelKey: "settings.subagentPolicy", tier: "unstable" },
             { id: "subagentTps", labelKey: "settings.subagentTps", tier: "optional" },
           ],
         },
         // tl1309 卡④：completionSummary 散条迁出——并入「会话与任务面板」卡。
         // 任务 782：输入与选区（合并卡）——草稿持久化 + 选区快捷操作。容器
-        // 档 =成员最高档（可选）。
+        // 档 =成员最高档。tl1487 三组②：两成员可选→推荐，容器随之升推荐。
         {
           id: "inputSelection",
           labelKey: "settings.inputSelection",
-          tier: "optional",
+          tier: "recommended",
           onKeys: ["experimentalComposerDraft", "experimentalSelectionActions"],
           members: [
-            { id: "draftPersistence", labelKey: "settings.draftPersistence", tier: "optional" },
-            { id: "selectionActions", labelKey: "settings.selectionActions", tier: "optional" },
+            { id: "draftPersistence", labelKey: "settings.draftPersistence", tier: "recommended" },
+            { id: "selectionActions", labelKey: "settings.selectionActions", tier: "recommended" },
           ],
         },
         {
@@ -389,12 +402,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // OpenCode Go 用量（自界面组迁入，782④ 同一动作的落卡半程）。
         // 扩展点：coding plan preset 家族（GLM CN / Z.AI Global / Qwen
         // CN·Global / Kimi 等 7+ 家）未来按需在 members 加行即成一子项，
-        // 不改容器结构；卡灯 = OpenCode Go 开关（家族唯一非默认键）。
+        // 不改容器结构。tl1487 四组：OpenCode Go 用量「不提供开关、始终
+        // 打开」——卡灯键清空（行同 glmPlanUsage 为无开关展示行）。
         {
           id: "usageMonitoring",
           labelKey: "settings.usageMonitoring",
           tier: "recommended",
-          onKeys: ["experimentalOpenCodeGoUsage"],
+          onKeys: [],
           members: [
             { id: "glmPlanUsage", labelKey: "settings.glmPlanUsage", tier: "recommended" },
             { id: "opencodeGoUsage", labelKey: "settings.opencodeGoUsage", tier: "recommended" },
@@ -425,7 +439,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.devDebug",
           onKeys: ["experimentalCDPDebugPort", "experimentalLifecycleNoiseGate"],
           members: [
-            { id: "cdpDebugPort", labelKey: "settings.cdpDebugPort", tier: "unstable" },
+            // tl1487 五组：CDP 调试端口未稳定→稳定（默认关语义不变）。
+            { id: "cdpDebugPort", labelKey: "settings.cdpDebugPort", tier: "stable" },
             { id: "lifecycleNoiseGate", labelKey: "settings.lifecycleNoiseGate", tier: "unstable" },
           ],
         },
@@ -466,7 +481,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "jsonlZstd",
           labelKey: "settings.jsonlZstd",
-          tier: "optional",
+          // tl1487 六组：可选→推荐。
+          tier: "recommended",
           onKeys: ["experimentalJsonlZstd"],
         },
         // tl1287：DAG 迁移卡已转正迁出实验室——pane 与扫描/执行动作改宿主
@@ -499,29 +515,31 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended" },
             // 后台会话闲置释放（原存储组 kind:param 参数卡，775 首批；推荐档）。
             { id: "idleReleaseMinutes", labelKey: "settings.detachedIdleRelease", tier: "recommended" },
-            // GC 策略旋钮（原存储组 kind:param 参数卡，tl1286；可选档）。
-            { id: "gcPercent", labelKey: "settings.gcPercent", tier: "optional" },
+            // GC 策略旋钮（原存储组 kind:param 参数卡，tl1286）。
+            // tl1487 七组①：可选→推荐，建议值 100（显示层 gcPercentForView
+            // 已把 0=跟随默认渲染为等效 100）。
+            { id: "gcPercent", labelKey: "settings.gcPercent", tier: "recommended" },
             // ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
             { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable" },
             // 本地服务（原 infra 独立卡，未稳定档）。
             { id: "localServer", labelKey: "settings.localServer", tier: "unstable" },
           ],
         },
-        // 任务 564：路径规则——已退役只读展示行（551 范式），非资源生命周期面，
-        // 维持独立卡不入资源治理卡（tl1309 卡③范围裁决）。
-        { id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] },
+        // tl134/tl1487 七组③：路径规则整卡移除（过时技术，用户裁决；存档
+        // docs/archive/路径作用域规则tl134-机制存档-20261107.md）。
         // 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原独立
         // tool-opt 组退役，labGroup.toolOpt 不再引用）；restartUpdate 归位回界面组
         // updateFeedback 卡（971 迁入撤销，onKeys/members 同步回迁）；宽松模式升可选。
         // 卡灯三键（readBack/直注/能力组），restartUpdate 不再入灯。
+        // tl1487 七组②：工具优化五项全部可选→推荐（用户 20261107 八组清单）。
         { id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalCapabilityGroups"], members: [
-          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "optional" },
-          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },
-          { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional" },
+          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "recommended" },
+          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "recommended" },
+          { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "recommended" },
           // tl-1218：multi_edit 三条增强（各自独立开关，默认关重启生效）。
-          { id: "multiEditErrorDetail", labelKey: "settings.multiEditErrorDetail", tier: "optional" },
-          { id: "multiEditEvidenceNarrow", labelKey: "settings.multiEditEvidenceNarrow", tier: "optional" },
-          { id: "multiEditSkipFailed", labelKey: "settings.multiEditSkipFailed", tier: "optional" },
+          { id: "multiEditErrorDetail", labelKey: "settings.multiEditErrorDetail", tier: "recommended" },
+          { id: "multiEditEvidenceNarrow", labelKey: "settings.multiEditEvidenceNarrow", tier: "recommended" },
+          { id: "multiEditSkipFailed", labelKey: "settings.multiEditSkipFailed", tier: "recommended" },
         ] },
       ],
     },
@@ -536,7 +554,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "pinnedIndex",
           labelKey: "settings.pinnedIndex",
-          tier: "unstable",
+          // tl1487 八组：未稳定→可选（默认关=铁律 2 不变）。
+          tier: "optional",
           onKeys: ["experimentalPinnedIndex"],
         },
       ],

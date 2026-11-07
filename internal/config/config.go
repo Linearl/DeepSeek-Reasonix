@@ -2094,11 +2094,9 @@ type AgentConfig struct {
 	// worst real log (728 MB, task 196) stays under the 1024 default. The
 	// reader clamps into 16..65536 and never above the total cap.
 	DagGraphCacheEntryMaxMB int64 `toml:"dag_graph_cache_entry_max_mb"`
-	// ExperimentalOpenCodeGoUsage is the task-163 subscription usage card:
-	// off (default) hides the card and issues no usage query at all (zero
-	// regression); on shows the three rolling windows with reset countdowns
-	// in the settings detail card (铁律 2 — default-off experimental).
-	ExperimentalOpenCodeGoUsage bool `toml:"experimental_opencode_go_usage"`
+	// tl1487 四组：ExperimentalOpenCodeGoUsage（task-163 用量卡开关）随
+	// 「不提供开关、始终打开」裁决整键移除——用量查询不再有门，存量键由
+	// config_key_warn 的 deprecated 清单承接（加载不阻断）。
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.

@@ -61,8 +61,19 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // tl1338：sessionStorage（会话存储档位面）未稳定→稳定——稳定 5→6、
   // 未稳定 12→11、总数不变 87。
   // tl1453：dream（可选档）随实验退役（宪法 Q1）——可选 45→44、总数 87→86。
-  ok(LAB_TIER_COUNTS.stable === 6 && LAB_TIER_COUNTS.recommended === 24 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 11 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 6 稳定/24 推荐/44 可选/11 未稳定/1 退役 (tl1453 步进)");
+  // tl1487 一组（20261107 八组清单）：collabHub 未稳定→稳定（稳定 +1、未稳定
+  // -1）、outputStyle 可选→推荐（推荐 +1、可选 -1）、coldCacheCompact 入表
+  // 可选（+1）、modelCapabilityFilter retired 独苗出表（退役 1→0）。
+  // tl1487 二组：workflowPanel 未稳定→稳定（稳定 +1）、workflowTemplates
+  // 推荐入表（+1）；tabModeTint 未稳定→可选；八项可选→推荐。
+  // tl1487 三组：subagentPanel/subagentDetail/draftPersistence/selectionActions
+  // 可选→推荐。
+  // tl1487 五/六/八组：cdpDebugPort 未稳定→稳定、jsonlZstd 可选→推荐、
+  // pinnedIndex 未稳定→可选（全八组步进收口）。
+  // tl1487 七组：gcPercent + 工具优化六键可选→推荐；pathRules 随 tl134
+  // 整卡移除出表（全八组步进收口）。
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 47 && LAB_TIER_COUNTS.optional === 25 && LAB_TIER_COUNTS.unstable === 5 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/47 推荐/25 可选/5 未稳定/0 退役 (tl1487 全八组步进收口)");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");

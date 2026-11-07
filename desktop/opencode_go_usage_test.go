@@ -104,9 +104,9 @@ func TestGetOpenCodeGoUsageWithoutKeyMakesNoRequest(t *testing.T) {
 
 func TestGetOpenCodeGoUsageEndToEnd(t *testing.T) {
 	t.Setenv("OPENCODE_GO_API_KEY", "test-key")
-	// Task 564: the switch gate reads the saved config — isolate and turn the
-	// lab switch on so the end-to-end paths stay hermetic on any machine.
-	enableOpenCodeGoUsageSwitch(t)
+	// tl1487 四组：用量查询「始终打开」无开关——隔离 config home 保持端到端
+	// 密钥面 hermetic（不读真实用户配置），开关播种随之退役。
+	isolateUsageKeyEnvironment(t)
 
 	t.Run("bearer and three windows", func(t *testing.T) {
 		hits, restore := withUsageEndpoint(t, func(w http.ResponseWriter, r *http.Request) {
@@ -238,10 +238,8 @@ func TestGetOpenCodeGoUsageWireNeverNullsTiers(t *testing.T) {
 		// Task 337: config is a key source — keep the empty-explicit variants
 		// hermetic so a configured dev machine cannot flip them live.
 		isolateUsageKeyEnvironment(t)
-		// Task 564: the on-path variants must pin the lab switch on — the gate
-		// reads the saved config and the no-key/unsupported variants below
-		// short-circuit before it, so enabling here is harmless for them.
-		seedOpenCodeGoUsageSwitchConfig(t)
+		// tl1487 四组：用量查询无开关门——task 564 的开关播种随之退役，
+		// 各 note 路径直接可达。
 		var restore func()
 		if v.handler != nil {
 			_, restore = withUsageEndpoint(t, v.handler)
@@ -272,7 +270,6 @@ func TestGetOpenCodeGoUsageWireNeverNullsTiers(t *testing.T) {
 	// httptest server: a restore there would repoint the var back at the real
 	// opencode.ai host and the request would succeed with a 401.
 	t.Setenv("OPENCODE_GO_API_KEY", "k")
-	seedOpenCodeGoUsageSwitchConfig(t) // task 564: keep the request-firing path past the switch gate
 	previousEndpoint := openCodeGoUsageEndpoint
 	openCodeGoUsageEndpoint = "http://127.0.0.1:1/usage"
 	view, err := app.GetOpenCodeGoUsage("https://opencode.ai/zen/go/v1")
@@ -302,84 +299,9 @@ func isolateUsageKeyEnvironment(t *testing.T) {
 	t.Setenv("REASONIX_CACHE_HOME", filepath.Join(home, "cache"))
 }
 
-// seedOpenCodeGoUsageSwitchConfig writes a user config with the task-163 lab
-// switch turned on into the CURRENT config home. The task-564 switch gate in
-// GetOpenCodeGoUsage reads the saved config on every call, so the on-path
-// tests must pin the switch instead of leaning on the developer machine's
-// real config. Call after isolateUsageKeyEnvironment.
-func seedOpenCodeGoUsageSwitchConfig(t *testing.T) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(config.UserConfigPath()), 0o755); err != nil {
-		t.Fatalf("mkdir config dir: %v", err)
-	}
-	if err := os.WriteFile(config.UserConfigPath(), []byte("[agent]\nexperimental_opencode_go_usage = true\n"), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-}
-
-// enableOpenCodeGoUsageSwitch isolates the config home AND seeds the lab
-// switch on — one call for tests that need both.
-func enableOpenCodeGoUsageSwitch(t *testing.T) {
-	t.Helper()
-	isolateUsageKeyEnvironment(t)
-	seedOpenCodeGoUsageSwitchConfig(t)
-}
-
-// TestGetOpenCodeGoUsageSwitchGatesRequest pins the task-564 wiring: with the
-// lab switch off the query returns before any network I/O from every caller
-// (the task-442 context-ring popup included) — empty note, non-nil empty
-// tiers (the settings-card wire contract forbids null), zero hits. With the
-// switch on the same setup reaches the endpoint exactly once.
-func TestGetOpenCodeGoUsageSwitchGatesRequest(t *testing.T) {
-	t.Setenv("OPENCODE_GO_API_KEY", "test-key")
-
-	t.Run("off makes no request", func(t *testing.T) {
-		isolateUsageKeyEnvironment(t) // empty home: switch defaults to off
-		hits, restore := withUsageEndpoint(t, func(http.ResponseWriter, *http.Request) {
-			t.Error("a switched-off usage query must not reach the network")
-		})
-		defer restore()
-
-		app := &App{}
-		view, err := app.GetOpenCodeGoUsage("https://opencode.ai/zen/go/v1")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if view.Note != "" || len(view.Tiers) != 0 {
-			t.Fatalf("view = %+v, want empty note and zero tiers", view)
-		}
-		payload, err := json.Marshal(view)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		if !strings.Contains(string(payload), `"tiers":[]`) || strings.Contains(string(payload), `"tiers":null`) {
-			t.Errorf("wire = %s, want \"tiers\":[] (a null crashed the settings card)", payload)
-		}
-		if *hits != 0 {
-			t.Fatalf("hits = %d, want 0 (switch gate must short-circuit before I/O)", *hits)
-		}
-	})
-
-	t.Run("on reaches the endpoint", func(t *testing.T) {
-		enableOpenCodeGoUsageSwitch(t)
-		hits, restore := withUsageEndpoint(t, func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized)
-		})
-		defer restore()
-
-		app := &App{}
-		view, err := app.GetOpenCodeGoUsage("https://opencode.ai/zen/go/v1")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if view.Note != "auth-failed" {
-			t.Fatalf("note = %q, want auth-failed (request must have fired)", view.Note)
-		}
-		if *hits != 1 {
-			t.Fatalf("hits = %d, want 1", *hits)
-		}
-	})
-}
+// tl1487 四组：seed/enableOpenCodeGoUsageSwitchConfig 与
+// TestGetOpenCodeGoUsageSwitchGatesRequest 随「不提供开关、始终打开」退役
+// ——用量查询不再有开关门，开关播种与门控子测试一并移除。
 
 // TestResolveOpenCodeGoUsageKeyPriorityChain locks task 337's resolution
 // order as a pure function: explicit env first, then the OpenCode Go
@@ -488,16 +410,9 @@ func TestOpenCodeGoUsageKeyAndWireNeverLeakSecrets(t *testing.T) {
 	const sentinel = "sk-SENTINEL-task337-DO-NOT-LEAK"
 	t.Setenv("OPENCODE_GO_API_KEY", sentinel)
 
-	// 任务 564: the request itself is gated behind the task-163 lab switch.
-	// Isolate the user dirs and switch it on in the test-owned config, so the
-	// request fires hermetically regardless of what the developer's real
-	// config.toml happens to hold.
-	home := isolateDesktopUserDirs(t)
-	cfg := config.LoadForEdit(config.UserConfigPath())
-	cfg.Agent.ExperimentalOpenCodeGoUsage = true
-	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
-		t.Fatalf("seed lab-switch config under %s: %v", home, err)
-	}
+	// tl1487 四组：用量查询「始终打开」无开关门——只需隔离用户目录（不读
+	// 开发机真实 config），请求即可 hermetic 发出。
+	isolateDesktopUserDirs(t)
 
 	hits, restore := withUsageEndpoint(t, func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+sentinel {

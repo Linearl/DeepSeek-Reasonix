@@ -2798,8 +2798,7 @@ export interface DesktopStartupSettingsView {
   experimentalActiveTabResident?: boolean;
   /** Task 575: heavy-bash write guard under optimistic_write; ships off. Task 815: lab optimistic-parallel card entry. */
   experimentalBashHeavyGuard?: boolean;
-  /** Task 163: OpenCode Go usage card; ships off; boot snapshot. */
-  experimentalOpenCodeGoUsage?: boolean;
+  /** tl1487 四组：OpenCode Go 用量开关随「不提供开关、始终打开」退役移除。 */
   /** Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped; ships off; restart to apply. */
   experimentalFullAccess?: boolean;
   /** 任务 603: 工具优化 family (edit readBack + gate linkage + 任务 915 multi_edit 直注); restart to apply. 任务 915：*bool——键未写入时 JSON 报 null，面板默认开渲染并自动写入 true。任务 943：族拆两卡——本键收窄为 readBack 面。 */
@@ -2818,8 +2817,6 @@ export interface DesktopStartupSettingsView {
   experimentalLocalServer?: boolean;
   /** Task 846: change-data-home lab switch; gates the migration wizard write path. */
   experimentalHomePointer?: boolean;
-  /** Path-scope rules experiment switch (task 134); off unless the user opts in. */
-  experimentalPathRules?: boolean;
   /** Trace-as-State compaction experiment (task 60); off unless the user opts in. */
   experimentalTraceAsState?: boolean;
   /** Task 801: decision-pattern extraction + solidification; off unless the user opts in. */

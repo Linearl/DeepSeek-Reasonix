@@ -88,7 +88,8 @@ var labFeatureTiers = []labFeatureTier{
 	// 验段+实验室卡）。档位=未稳定——开启即换掉常驻层的注入契约（body 退
 	// 出常驻转按需召回、预算换成条数上限），默认关=常驻注入与引入前逐字节
 	// 一致（铁律 2）。boot 快照消费（capabilityGroups 先例），重启生效。
-	{"pinnedIndex", LabTierUnstable, []string{"experimental_pinned_index"}},
+	// tl1487 八组：置顶记忆索引化未稳定→可选（用户 20261107 八组清单；前端同步）。
+	{"pinnedIndex", LabTierOptional, []string{"experimental_pinned_index"}},
 	// ── efficiency（提效，11 项；任务 517 B3 并入 safetyCostControl；────
 	//    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
 	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write", "experimental_bash_heavy_guard"}}, // bash_heavy_guard 为 task 575 家族子键（815 补实验室入口：optimistic-parallel 卡成员行）
@@ -113,13 +114,17 @@ var labFeatureTiers = []labFeatureTier{
 	// 「单次收益限+滑动窗口」替代（约束①②）。窗口两键为家族子键（477
 	// 先例）：参数化预留，调参等 tl1397 观测面出数。
 	{"modelRangesCompact", LabTierUnstable, []string{"experimental_model_ranges_compact", "model_ranges_fold_window_minutes", "model_ranges_fold_window_max"}},
-	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
+	// tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"outputStyle", LabTierRecommended, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
 	// 任务 856 ③：collabGroupView 语义升级为「协作中心」入口总开关（信件中心+
 	// 群聊两图标合一），键随语义一次性迁移 collabHub（首次读取继承旧值，见
 	// decode.go inheritLegacyCollabHubKey；旧键随 fixed-key-set 渲染淘汰，
 	// render_coverage_test.go 豁免表登记）。
-	{"collabHub", LabTierUnstable, []string{"experimental_collab_hub"}},
+	// tl1487 一组①：协作中心入口未稳定→稳定（用户 20261107 八组清单；默认关
+	// 与 sessionCollab 前置门控不变——批量面无 setter/无排除条目，plan 时以
+	// no_bulk_setter 原因码如实上报）。
+	{"collabHub", LabTierStable, []string{"experimental_collab_hub"}},
 	// 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关归提效
 	// 组（同 messageMerge 的跨会话展示族先例）；档位按 550 口径建议可选。
 	{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}},
@@ -128,27 +133,28 @@ var labFeatureTiers = []labFeatureTier{
 	// 550 口径定档可选——不开启时标题栏与转录视图与引入前完全一致（铁律 2，
 	// 默认关）。
 	{"trajectoryView", LabTierOptional, []string{"experimental_trajectory_view"}},
-	// 任务 1165：流式滚动跟随改原生平滑动画（对齐 DSH ScrollFollow）。展示形态
-	// 开关按 550 口径定档可选——不开启时流式滚动与引入前逐字节一致（铁律 2，默认关）。
-	{"smoothScrollFollow", LabTierOptional, []string{"experimental_smooth_scroll_follow"}},
+	// 任务 1165：流式滚动跟随改原生平滑动画（对齐 DSH ScrollFollow）。
+	// tl1487 二组④：可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"smoothScrollFollow", LabTierRecommended, []string{"experimental_smooth_scroll_follow"}},
 	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
 	// 任务 826：左右边栏 hover 展开（300ms 防误触）+ 离开 15s 延时折叠（只回收
 	// hover 自动展开，手动展开不回收）。两键左右独立（各写各的 setter），按 550
 	// 口径定档可选——不开启时不渲染任何热区、不挂任何事件，左右栏行为与引入前
 	// 完全一致（铁律 2，默认关）。
-	{"sidebarHoverLeft", LabTierOptional, []string{"experimental_sidebar_hover_left"}},
-	{"sidebarHoverRight", LabTierOptional, []string{"experimental_sidebar_hover_right"}},
+	// tl1487 二组②：左/右边栏悬停展开、对话权限下拉框、表格按栏宽换行
+	// 可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"sidebarHoverLeft", LabTierRecommended, []string{"experimental_sidebar_hover_left"}},
+	{"sidebarHoverRight", LabTierRecommended, []string{"experimental_sidebar_hover_right"}},
 	// 任务 940：对话权限选择器形态二选一（composer 权限档位：按钮组 vs 下拉框，
-	// zcode 同款下拉省空间）。展示形态开关按 550 口径定档可选——不开启时
-	// composer 权限区与引入前逐字节一致（铁律 2，默认关）。
-	{"approvalSelect", LabTierOptional, []string{"experimental_approval_select"}},
+	// zcode 同款下拉省空间）。
+	{"approvalSelect", LabTierRecommended, []string{"experimental_approval_select"}},
 	// 任务 959 ①：对话 markdown 表格按栏宽自动换行（分栏拖窄后随新宽度
-	// 重排，不再横向溢出）。展示形态开关按 550 口径定档可选——不开启时
-	// 转录表格与引入前逐字节一致（铁律 2，默认关）。
-	{"tableWrap", LabTierOptional, []string{"experimental_table_wrap"}},
+	// 重排，不再横向溢出）。
+	{"tableWrap", LabTierRecommended, []string{"experimental_table_wrap"}},
 	// 任务 959 ②：composer 分栏发送目标选择器形态二选一（按钮组 vs 下拉框，
 	// 复用 940 形态机制）。展示形态开关按 550 口径定档可选——不开启时
 	// composer 发送目标区与引入前逐字节一致（铁律 2，默认关）。
+	// tl1487 二组③：开启态下拉框位置改分栏下方（渲染面 Composer.tsx）。
 	{"sendTargetSelect", LabTierOptional, []string{"experimental_send_target_select"}},
 	// tl 1132：启动遮罩（DSH 式启动画面，logo+副文案+点动画，核心 UI 挂载
 	// 完成后淡出）。展示类开关按 550 口径定档可选——默认关（用户 2026-10-24
@@ -164,29 +170,39 @@ var labFeatureTiers = []labFeatureTier{
 	{"restartUpdate", LabTierRecommended, []string{"experimental_restart_update", "experimental_autonomous_update"}}, // autonomous_update 为 task 254 家族子键
 	{"sessionWall", LabTierRecommended, []string{"experimental_session_wall"}},
 	// 任务 686：工作流可视化面板（DAG 流程图 + 运行进展动态点亮，palette 入口；
-	// 后端 685 编排引擎未落地，当前为前端 fixture 预览）。定档未稳定——开启
-	// 可能看到的是演示数据（铁律 2 默认关，不开启时 palette 逐字节不变）。
+	// 后端 685 编排引擎未落地，当前为前端 fixture 预览）。
+	// tl1487 二组⑤：未稳定→稳定（用户 20261107 八组清单；工作流模板升推荐
+	// 走前端注册表独立登记，Go 侧仍以本条家族子键承载，无独立条目）。
 	// tl1454：experimental_workflow_templates 为家族子键（用户自定义模板视图，
 	// 面板行下的附属行；工作流面板关闭时禁用）。
-	{"workflowPanel", LabTierUnstable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}},
-	{"subagentPanel", LabTierOptional, []string{"experimental_subagent_panel"}},
-	{"subagentDetail", LabTierOptional, []string{"experimental_subagent_detail"}},
-	{"completionSummary", LabTierOptional, []string{"experimental_completion_summary"}},
-	{"autoLoadOlder", LabTierOptional, []string{"experimental_auto_load_older"}},
+	{"workflowPanel", LabTierStable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}},
+	// tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107 八组
+	// 清单；前端同步）。
+	{"subagentPanel", LabTierRecommended, []string{"experimental_subagent_panel"}},
+	{"subagentDetail", LabTierRecommended, []string{"experimental_subagent_detail"}},
+	// tl1487 二组⑤/⑥：任务完成摘要、自动加载更早消息可选→推荐（用户
+	// 20261107 八组清单；前端同步）。
+	{"completionSummary", LabTierRecommended, []string{"experimental_completion_summary"}},
+	{"autoLoadOlder", LabTierRecommended, []string{"experimental_auto_load_older"}},
 	{"splitView", LabTierOptional, []string{"experimental_split_view"}},
-	{"draftPersistence", LabTierOptional, []string{"experimental_composer_draft"}},
-	{"selectionActions", LabTierOptional, []string{"experimental_selection_actions"}},
+	// tl1487 三组②：草稿持久化、选区快捷操作可选→推荐（用户 20261107 八组
+	// 清单；前端同步）。
+	{"draftPersistence", LabTierRecommended, []string{"experimental_composer_draft"}},
+	{"selectionActions", LabTierRecommended, []string{"experimental_selection_actions"}},
 	{"questionSearch", LabTierRecommended, []string{"experimental_question_search"}},
-	{"opencodeGoUsage", LabTierRecommended, []string{"experimental_opencode_go_usage"}},
+	// tl1487 四组：opencodeGoUsage 渲染表条目随「不提供开关、始终打开」移除
+	// （config 键整链退役，存量键走 deprecated 清单）；前端注册表保留
+	// recommended 展示行（783 成员行同 glmPlanUsage 口径，562 ③ feOnly 豁免）。
 	{"feedback", LabTierOptional, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键
-	// 任务 1024：composer 草稿优化（改写按钮）。展示类开关按 550 口径定档
-	// 可选——关闭时不渲染按钮、composer 布局零变化（铁律 2，默认关）。
-	{"draftRewrite", LabTierOptional, []string{"experimental_draft_rewrite"}},
+	// 任务 1024：composer 草稿优化（改写按钮）。
+	// tl1487 二组④：可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"draftRewrite", LabTierRecommended, []string{"experimental_draft_rewrite"}},
 	// ── observability（可观测性，2 项）───────────────────────────
 	{"monitoring", LabTierRecommended, []string{"experimental_session_monitor", "experimental_perf_monitor", "experimental_heap_high_profile"}}, // heap_high_profile 为 task 501 家族子键（rides perf_monitor）
 	{"subagentTps", LabTierOptional, []string{"experimental_subagent_tps"}},
 	// ── dev-debug（开发调试，2 项）───────────────────────────────
-	{"cdpDebugPort", LabTierUnstable, []string{"experimental_cdp_debug_port"}},
+	// tl1487 五组：CDP 调试端口未稳定→稳定（默认关语义不变，前端同步）。
+	{"cdpDebugPort", LabTierStable, []string{"experimental_cdp_debug_port"}},
 	{"lifecycleNoiseGate", LabTierUnstable, []string{"experimental_lifecycle_noise_gate"}},
 	// ── storage（存储，4 项；846 增 homePointer，tl-1174 增 jsonlZstd）───────
 	// tl 1172：experimental_events_slim_oversize 以家族子键并入本卡（477
@@ -208,7 +224,8 @@ var labFeatureTiers = []labFeatureTier{
 	// 未来稳定后再考虑提升到推荐）——不开启时会话文件与引入前逐字节一致
 	// （铁律 2，默认关）：不压、不建归档、无额外文件，空闲 sweep 每 tick
 	// 现读开关（921 先例），翻转免重启。
-	{"jsonlZstd", LabTierOptional, []string{"experimental_jsonl_zstd"}},
+	// tl1487 六组：冷会话 zstd 归档可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"jsonlZstd", LabTierRecommended, []string{"experimental_jsonl_zstd"}},
 	// ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
 	// 任务 1005 批1 转档：runtimeReuse 随 autopilot/sessionCollab/fullAccess
 	// 一同入「稳定」档（992 刚升推荐的四项中的第四项，用户 1018 拍板批1）。
@@ -216,8 +233,8 @@ var labFeatureTiers = []labFeatureTier{
 	// tl-1048：zcodeTaskBus 卡随 8787 任务总线退役（原 unstable，键 experimental_zcode_task_bus）。
 	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}},               // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
 	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
-	{"tabModeTint", LabTierUnstable, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
-	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
+	// tl1487 二组①：标签权限指示未稳定→可选（用户 20261107 八组清单；前端同步）。
+	{"tabModeTint", LabTierOptional, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
 	{"orphanHandling", LabTierRecommended, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键；任务 992：随复用池升推荐（用户 1018）
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
 	// ── tool-opt（工具优化，4 项；815 登记窗口：789 证据门宽松转正入表；
@@ -226,19 +243,20 @@ var labFeatureTiers = []labFeatureTier{
 	{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动）；任务 783④：编辑读回（readBack）随 22.5 交付转正，未稳定→推荐（前端注册表同步升档，562 两侧一致断言守护）；任务 943：族拆两键后本键只管 readBack 面
 	// 任务 789/815：编辑证据门宽松模式（工具优化卡成员行，未稳定档默认关）。
 	// 789 先行（Go 侧开关+前端登记半程），815 登记窗口补齐设置页入口后转正入表。
-	{"editEvidenceRelaxed", LabTierOptional, []string{"experimental_edit_evidence_relaxed"}}, // 任务 992：用户 1018 升可选（原 789/815 未稳定档）
+	// tl1487 七组②：工具优化五项全部可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"editEvidenceRelaxed", LabTierRecommended, []string{"experimental_edit_evidence_relaxed"}},
 	// 任务 943：multi_edit 直注独立卡（原族键第二效果拆出，可选档——550 口径：
 	// 不开启只小幅影响，multi_edit 仍可经 use_capability 调用）。
-	{"multiEditInjection", LabTierOptional, []string{"experimental_multi_edit_injection"}},
+	{"multiEditInjection", LabTierRecommended, []string{"experimental_multi_edit_injection"}},
 	// 任务 979：能力组披露 + session_hub 聚合件 + 常驻目录组归属（953/954/955
 	// 三件共用一键，config.go 用户拍板「提效类可选档」）——979 补设置页入口
 	// 自豁免表转正；工具优化聚合页成员行，重启生效（boot 快照三处门控）。
-	{"capabilityGroups", LabTierOptional, []string{"experimental_capability_groups"}},
+	{"capabilityGroups", LabTierRecommended, []string{"experimental_capability_groups"}},
 	// tl-1218：multi_edit 三条增强（工具优化聚合页成员行，可选档，默认关
 	// 重启生效）。①错误详情增强 ②证据门连坐收窄 ③跳过失败项模式。
-	{"multiEditErrorDetail", LabTierOptional, []string{"experimental_multi_edit_error_detail"}},
-	{"multiEditEvidenceNarrow", LabTierOptional, []string{"experimental_multi_edit_evidence_narrow"}},
-	{"multiEditSkipFailed", LabTierOptional, []string{"experimental_multi_edit_skip_failed"}},
+	{"multiEditErrorDetail", LabTierRecommended, []string{"experimental_multi_edit_error_detail"}},
+	{"multiEditEvidenceNarrow", LabTierRecommended, []string{"experimental_multi_edit_evidence_narrow"}},
+	{"multiEditSkipFailed", LabTierRecommended, []string{"experimental_multi_edit_skip_failed"}},
 	// ── network（网络，1 项）────────────────────────────────────
 	// 任务 1056：网络重试预算分级（dial 短超时快退避 + MaxRetries/DialTimeout
 	// 配置化 + 强制重解析 DNS + turn 级 wall-clock 上限）。未稳定档默认关——
@@ -614,7 +632,6 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_acp_listen = %v   # desktop: resident ACP listener (task 790; loopback-only TCP, one client surface per connection; restart to apply)\n", c.Desktop.ExperimentalACPListen)
 		fmt.Fprintf(&b, "acp_listen_port = %d   # desktop: resident ACP listener port on 127.0.0.1 (task 790; 0 = default 8790)\n", c.Desktop.ACPListenPort)
-		fmt.Fprintf(&b, "experimental_path_rules = %v   # desktop: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md, task 134)\n", c.Desktop.ExperimentalPathRules)
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
 		// Task 846: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.
@@ -918,9 +935,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// 0 keeps the built-in defaults (2048/1024 MiB).
 	fmt.Fprintf(&b, "dag_graph_cache_max_mb = %d   # task 499: replayed-graph cache total byte ceiling, MiB (0 = built-in 2048; closed-session graphs evict LRU above it)\n", c.Agent.DagGraphCacheMaxMB)
 	fmt.Fprintf(&b, "dag_graph_cache_entry_max_mb = %d   # task 499: per-entry admission ceiling, MiB (0 = built-in 1024; a single graph above it is not cached)\n", c.Agent.DagGraphCacheEntryMaxMB)
-	// Task 163: explicit render — omit-on-off would silently disable a
-	// saved-on usage card on the next render (81/123 lost-save lesson).
-	fmt.Fprintf(&b, "experimental_opencode_go_usage = %v   # task 163: OpenCode Go subscription usage card (5h/7d/month windows; no query while off)\n", c.Agent.ExperimentalOpenCodeGoUsage)
+	// tl1487 四组：experimental_opencode_go_usage 键随「不提供开关、始终打开」
+	// 裁决移除（用量查询不再有门）；存量键由 config_key_warn deprecated 清单
+	// 承接，渲染表不再输出（键已不在 struct）。
 	// Task 603: explicit render of a SET value — omit-on-off would silently
 	// spring a saved-on switch back off on the next render (81/123 lost-save
 	// lesson). Task 915: the field is a *bool; nil (key absent) renders

@@ -80,7 +80,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.ExperimentalComposerDraft = true                // draftPersistence
 	orig.Agent.ExperimentalSelectionActions = true             // selectionActions
 	orig.Desktop.ExperimentalQuestionSearch = boolPtr(true)    // questionSearch (*bool, nil means on)
-	orig.Agent.ExperimentalOpenCodeGoUsage = true              // opencodeGoUsage
+	// tl1487 四组：opencodeGoUsage fixture 行随键退役移除。
 	orig.Desktop.ExperimentalRestartUpdate = true              // M6
 	orig.Desktop.ExperimentalFeedback = true                   // M6
 
@@ -104,7 +104,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.ExperimentalRuntimeReuse = true            // runtimeReuse
 	orig.Desktop.ExperimentalACPListen = true             // acpListen (task 790)
 	orig.Desktop.ACPListenPort = 8791                     // acpListen family key
-	orig.Desktop.ExperimentalPathRules = true             // pathRules
+	// tl1487 七组③：pathRules fixture 行随键退役移除。
 	orig.Agent.ExperimentalOrphanHandling = true          // orphanHandling
 	orig.Desktop.ExperimentalLocalServer = true           // localServer
 	orig.Desktop.ExperimentalModelCapabilityFilter = true // modelCapabilityFilter (retired, read-only in M2)
@@ -160,7 +160,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_output_style_ui = true",
 		"experimental_acp_listen = true",
 		"acp_listen_port = 8791",
-		"experimental_path_rules = true",
+		// tl1487 七组③：experimental_path_rules 键随整卡移除退役，渲染表
+		// 不再输出（fixed-key-set 集合随键收缩）。
 		"experimental_local_server = true",
 		"experimental_cache_tuning = true",
 		"trace_as_state = true", // task 473: [agent] spelling (renamed from experimental_trace_as_state)
@@ -196,7 +197,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_review_hint = true",
 		"experimental_composer_draft = true",
 		"experimental_selection_actions = true",
-		"experimental_opencode_go_usage = true",
+		// tl1487 四组：experimental_opencode_go_usage 键随「不提供开关、始终
+		// 打开」退役，渲染表不再输出（fixed-key-set 集合随键收缩）。
 	} {
 		if !strings.Contains(rendered, key) {
 			t.Errorf("render table lost %q — a settings save would silently drop it (81/123 lesson)\n---\n%s", key, rendered)
@@ -250,7 +252,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"agent.experimental_high_speed_model":        got.Agent.ExperimentalHighSpeedModel,
 		"agent.experimental_composer_draft":          got.Agent.ExperimentalComposerDraft,
 		"agent.experimental_selection_actions":       got.Agent.ExperimentalSelectionActions,
-		"agent.experimental_opencode_go_usage":       got.Agent.ExperimentalOpenCodeGoUsage,
 		"agent.experimental_runtime_reuse":           got.Agent.ExperimentalRuntimeReuse,
 		"agent.experimental_orphan_handling":         got.Agent.ExperimentalOrphanHandling,
 		"desktop.experimental_cache_tuning":          got.Desktop.ExperimentalCacheTuning,
@@ -279,7 +280,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"desktop.experimental_cdp_debug_port":       got.Desktop.ExperimentalCDPDebugPort,
 		"desktop.experimental_lifecycle_noise_gate": got.Desktop.ExperimentalLifecycleNoiseGate,
 		"desktop.experimental_acp_listen":           got.Desktop.ExperimentalACPListen,
-		"desktop.experimental_path_rules":           got.Desktop.ExperimentalPathRules,
 		"desktop.experimental_local_server":         got.Desktop.ExperimentalLocalServer,
 		// (desktop.experimental_model_capability_filter retired from render — task 551.)
 	} {

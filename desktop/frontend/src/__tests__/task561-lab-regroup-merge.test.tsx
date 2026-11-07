@@ -122,7 +122,8 @@ console.log("\ntask 561 lab regroup + merged cards");
   // tl1309 卡③：infra 四散条 + storage 两参数卡并「资源治理」卡 → 36−6+1=31。
   // tl1309 卡④：todoSidebar 并 tabManagement、三面板并 sessionTaskPanels
   // → 31−4+1=28。
-  ok(defEntries.length === 28, `default layout carries exactly 28 rail entries (got ${defEntries.length})`);
+  // tl1487 七组③：pathRules 整卡移除 → 28→27。
+  ok(defEntries.length === 27, `default layout carries exactly 27 rail entries (tl1487: pathRules removed; got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -155,10 +156,11 @@ console.log("\ntask 561 lab regroup + merged cards");
   // tl1309 卡③：storage 5→3、infra 6→3（七项并「资源治理」卡）。tl1309 卡④：
   // ui 11→8（todoSidebar 并 tabManagement、三面板并 sessionTaskPanels）
   // → 4/5/8/3/1/3/3/1。
+  // tl1487 七组③：infra 3→2（pathRules 移除）→ 4/5/8/3/1/3/2/1。
   ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 8 &&
-     groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 3 &&
+     groups["observability"] === 3 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 2 &&
      groups["memory-context"] === 1,
-    `group counts are 4/5/8/3/1/3/3/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 4/5/8/3/1/3/2/1 (tl1487; got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -263,13 +265,14 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
     { label: "782 draftPersistence", field: "s.experimentalComposerDraft", setter: "app.SetExperimentalComposerDraft(on)" },
     { label: "782 selectionActions", field: "s.experimentalSelectionActions", setter: "app.SetExperimentalSelectionActions(on)" },
   ] },
-  // 任务 783：用量监测卡——GLM Plan 行只读（无键）；Go 用量成员行经
-  // SettingsOpenCodeGoUsageCard 读自己的开关键、写自己的 setter。
+  // 任务 783：用量监测卡——GLM Plan 行只读（无键）；tl1487 四组：Go 用量行
+  // 亦退役为只读展示行（「不提供开关、始终打开」，SettingsOpenCodeGoUsageCard
+  // 无 props 渲染）。
   // 任务 961：quickCommands 独立 pane 退役并入「交互与呈现」卡——本卡
   // endMarker 随迁到后继分支 interactionPresentation（旧 marker 不存在会
   // 让 cardSlice 返回空、测试假红/假绿）。
   { id: "usageMonitoring", endMarker: '{selected === "interactionPresentation" && (', members: [
-    { label: "783 opencodeGoUsage", field: "s.experimentalOpenCodeGoUsage", setter: "app.SetExperimentalOpenCodeGoUsage(on)" },
+    { label: "tl1487 opencodeGoUsage (read-only row)", field: "settings.opencodeGoUsageHint", setter: "" },
     { label: "783 glmPlanUsage (read-only row)", field: "settings.glmPlanUsageHint", setter: "" },
   ] },
   // 任务 961：automation/efficiency 两张条目级合并卡（742/782 先例）——
@@ -314,13 +317,14 @@ for (const family of families) {
     "tl1309 eventsRotation: rotation panel mounts inside the runtimeObservability card (its setters live in SessionEventsPanel)");
 }
 
-// ② M2 specifics: modelCapabilityFilter renders READ-ONLY (no setter call in
-//    the whole panel — the key is retired, 551/564 domain).
+// ② M2 specifics: modelCapabilityFilter（模型能力过滤）——tl1487 一组③
+//    （用户 20261107 八组清单「移除（不展示）」）只读展示行整体摘除，
+//    551/564 的 retired 只读范式收尾；无 setter 调用的负钉继续成立。
 {
   const card = cardSlice('{selected === "modelStrategy" && (', '{selected === "contextGovernance" && (');
-  ok(card.includes("s.experimentalModelCapabilityFilter"), "M2 card displays the retired modelCapabilityFilter value");
-  ok(card.includes("settings.modelCapabilityFilter.retired"), "M2 card carries the retired hint");
-  ok(!panel.includes("app.SetExperimentalModelCapabilityFilter("), "retired key has NO setter call anywhere (read-only)");
+  ok(!card.includes("s.experimentalModelCapabilityFilter"), "tl1487: the retired modelCapabilityFilter display row is gone from the M2 card");
+  ok(!card.includes("settings.modelCapabilityFilter.retired"), "tl1487: the retired hint is gone from the M2 card");
+  ok(!panel.includes("app.SetExperimentalModelCapabilityFilter("), "retired key has NO setter call anywhere (read-only, still)");
 }
 
 // ③ M8 standalone entries（任务 722/724 修订）：rail 入口断言读布局默认

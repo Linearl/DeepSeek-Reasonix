@@ -156,8 +156,8 @@ export interface SettingsView {
   // fallback body). Readback is the resolved gate (config nil = on), so the
   // toggle always writes an explicit value. Restart to apply.
   reasoningOnlyContinuation?: boolean;
-  // Task 163: OpenCode Go subscription usage card (ships off; no query while off).
-  experimentalOpenCodeGoUsage?: boolean;
+  // tl1487 四组：OpenCode Go 用量「不提供开关、始终打开」——快照字段随键退役
+  // 移除（用量数据仍经 GetOpenCodeGoUsage 拉取，侧栏卡常显）。
   // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
   experimentalFullAccess?: boolean;
   // 任务 603: 工具优化 family (edit readBack + evidence gate linkage + 任务
@@ -185,8 +185,6 @@ export interface SettingsView {
   experimentalHomePointer?: boolean;
   /** tl-1174: cold-session transcript zstd archive (storage group, optional tier, default off). */
   experimentalJsonlZstd?: boolean;
-  // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).
-  experimentalPathRules?: boolean;
   // Task 161: transcript cache tuning (experimental; user values ignored while off).
   maxCachedTabs?: number;
   // Task 347: effective replayed-graph cache LRU capacity (task 196fix2;

@@ -527,8 +527,6 @@ type SettingsView struct {
 	// fallback body). Readback is the RESOLVED gate (config nil = on), so the
 	// toggle always writes an explicit value.
 	ReasoningOnlyContinuation bool `json:"reasoningOnlyContinuation"`
-	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
-	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
@@ -557,7 +555,6 @@ type SettingsView struct {
 	// triage; the gate is read once at startup diagnostics, restart to apply.
 	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
 	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
-	ExperimentalPathRules          bool `json:"experimentalPathRules"`
 	ExperimentalTraceAsState       bool `json:"experimentalTraceAsState"`
 	// Task 846: change-data-home lab switch; gates the wizard's write path.
 	ExperimentalHomePointer bool `json:"experimentalHomePointer"`
@@ -907,8 +904,6 @@ type DesktopStartupSettingsView struct {
 	// fallback body). Readback is the RESOLVED gate (config nil = on), so the
 	// toggle always writes an explicit value.
 	ReasoningOnlyContinuation bool `json:"reasoningOnlyContinuation"`
-	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
-	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
@@ -1027,8 +1022,6 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalLifecycleNoiseGate is the task-377 crash-report noise
 	// triage; the gate is read once at startup diagnostics, restart to apply.
 	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
-	// ExperimentalPathRules enables structured path-scope evaluation (task 134).
-	ExperimentalPathRules bool `json:"experimentalPathRules"`
 	// Task 161: transcript cache tuning (max resident tab states + the two
 	// transcript budgets). Applied by the frontend on startup; changes take
 	// effect after a restart.
@@ -1775,7 +1768,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// tl-1166: resolved readback (nil config key reads as on).
 		view.ReasoningOnlyContinuation = cfg.ReasoningOnlyContinuationEnabled()
 		// Task 163: usage card switch readback.
-		view.ExperimentalOpenCodeGoUsage = cfg.Agent.ExperimentalOpenCodeGoUsage
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
 		// Task 603: 工具优化 family readback. 任务 943：族拆两键（readBack 面
 		// + multi_edit 直注独立键，后者缺省回落族键由 Go 侧解析）。
@@ -1822,7 +1814,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
 		// Task 377: noise-triage readback (boot snapshot).
 		view.ExperimentalLifecycleNoiseGate = cfg.Desktop.ExperimentalLifecycleNoiseGate
-		view.ExperimentalPathRules = cfg.Desktop.ExperimentalPathRules
 		return view
 	}
 	cfg, path, err := a.loadDesktopUserConfigForView()
@@ -2112,8 +2103,6 @@ func (a *App) Settings() SettingsView {
 		SafetyEventWaitRecheck: cfg.Agent.SafetyEventWaitRecheck,
 		// 任务 895: 穿透封堵开关生效值（缺省跟随 sentinel.PenetrationGuardDefault）。
 		SentinelPenetrationGuard: sentinelPenetrationGuardForView(cfg),
-		// Task 163: usage card switch readback.
-		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
 		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).
 		ExperimentalOrphanHandling:     cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling,
 		ExperimentalRuntimeReuse:       cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
@@ -2166,7 +2155,6 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSelectionActions:    cfg.Agent.ExperimentalSelectionActions,
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalLifecycleNoiseGate:  cfg.Desktop.ExperimentalLifecycleNoiseGate,
-		ExperimentalPathRules:           cfg.Desktop.ExperimentalPathRules,
 		ExperimentalHomePointer:         cfg.Desktop.ExperimentalHomePointer,
 		ExperimentalJsonlZstd:           cfg.Desktop.ExperimentalJsonlZstd,
 		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,

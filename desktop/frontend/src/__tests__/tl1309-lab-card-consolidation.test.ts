@@ -71,14 +71,15 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
   // 剩余独立卡逐项点名（任务书范围外的既有语义，不属散条）：
   //   automation: autopilot/fullAccess（稳定主卡，任务书未列 automation 组）；
   //   efficiency: collabHub（协作中心入口，自带依赖联动）；
-  //   infra: pathRules（任务 551 已退役只读展示行，策略域非资源面——卡③范围裁决）；
+  //   infra: pathRules 已随 tl1487 七组③（tl134 用户裁决）整卡移除——组内
+  //     仅余资源治理/工具优化两卡；
   //   storage: homePointer（846 独立迁移向导 pane）/jsonlZstd（冷压缩独立开关）；
   //   dev-debug / memory-context：单卡组（任务书⑤维持现状）。
   ok(entryIdsOf("dev-debug").join(",") === "devDebug" && entryIdsOf("memory-context").join(",") === "pinnedIndex",
     "① dev-debug/memory-context stay single-card groups (任务书⑤)");
-  ok(entryIdsOf("infra").join(",") === "resourceGovernance,pathRules,toolOptimizations" &&
+  ok(entryIdsOf("infra").join(",") === "resourceGovernance,toolOptimizations" &&
      entryIdsOf("storage").join(",") === "sessionStore,homePointer,jsonlZstd",
-    "① infra/storage residual standalone entries are the declared scope leftovers (pathRules/homePointer/jsonlZstd)");
+    "① infra/storage residual standalone entries (tl1487: pathRules removed; homePointer/jsonlZstd remain)");
 }
 
 // ── ② 卡内关联说明完整（依赖/派生）──
@@ -112,12 +113,13 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
 
 // ── ③ 结构与徽章不变式（渲染表层）──
 {
-  // 卡头三档徽章 = 成员最高档（774 聚合，任务书原则③同款）。
+  // 卡头三档徽章 = 成员最高档（774 聚合，任务书原则③同款）。tl1487 二组⑤：
+  // sessionTaskPanels 随 workflowPanel 升稳定，聚合终值 推荐→稳定。
   const agg = (id: string) => labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, id);
   ok(agg("contextGovernance") === "recommended" && agg("runtimeObservability") === "recommended" &&
      agg("resourceGovernance") === "stable" && agg("tabManagement") === "recommended" &&
-     agg("sessionTaskPanels") === "recommended",
-    "③ card-head badges aggregate to the strongest member tier (774)");
+     agg("sessionTaskPanels") === "stable",
+    "③ card-head badges aggregate to the strongest member tier (774; tl1487 sessionTaskPanels → stable)");
   // 配置键零变化的反面钉：成员 id 都仍注册在档位表（562 主守卫继续钉全量），
   // 这里钉四张新/扩卡的存在性与 pane 白名单一一对应。
   for (const id of ["runtimeObservability", "resourceGovernance", "sessionTaskPanels"]) {

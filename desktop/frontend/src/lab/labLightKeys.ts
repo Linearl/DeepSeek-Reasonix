@@ -93,7 +93,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalComposerDraft: (s: SettingsView) => Boolean(s.experimentalComposerDraft),
   experimentalSelectionActions: (s: SettingsView) => Boolean(s.experimentalSelectionActions),
   experimentalQuestionSearch: (s: SettingsView) => Boolean(s.experimentalQuestionSearch),
-  experimentalOpenCodeGoUsage: (s: SettingsView) => Boolean(s.experimentalOpenCodeGoUsage),
+  // tl1487 四组：experimentalOpenCodeGoUsage 谓词随「不提供开关、始终打开」
+  // 退役摘除（usageMonitoring 卡灯键随之清空）。
   experimentalRestartUpdate: (s: SettingsView) => Boolean(s.experimentalRestartUpdate),
   experimentalFeedback: (s: SettingsView) => Boolean(s.experimentalFeedback),
   forkNotice: (s: SettingsView) => Boolean(s.forkNotice),
@@ -103,7 +104,6 @@ export const LAB_LIGHT_KEYS = {
   experimentalLifecycleNoiseGate: (s: SettingsView) => Boolean(s.experimentalLifecycleNoiseGate),
   experimentalRuntimeReuse: (s: SettingsView) => Boolean(s.experimentalRuntimeReuse),
   experimentalACPListen: (s: SettingsView) => Boolean(s.experimentalACPListen),
-  experimentalPathRules: (s: SettingsView) => Boolean(s.experimentalPathRules),
   experimentalOrphanHandling: (s: SettingsView) => Boolean(s.experimentalOrphanHandling),
   experimentalLocalServer: (s: SettingsView) => Boolean(s.experimentalLocalServer),
   // 任务 915：键未写入（null/undefined）按面板层默认开判亮——与卡片开态

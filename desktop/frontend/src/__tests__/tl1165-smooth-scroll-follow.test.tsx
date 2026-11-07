@@ -95,12 +95,12 @@ function animateFrames(el: HTMLElement, from: number, to: number): number[] {
 
 // ── ⑥ lab surface registration ───────────────────────────────
 {
-  eq(EXPERIMENT_FEATURE_TIERS.smoothScrollFollow, "optional", "lab register carries smoothScrollFollow at the optional tier (界面组三档徽章「可选」)");
+  eq(EXPERIMENT_FEATURE_TIERS.smoothScrollFollow, "recommended", "lab register carries smoothScrollFollow at the recommended tier (tl1487 二组④ 可选→推荐)");
   const viewLayout = LAB_LAYOUT_DEFAULT_DATA.groups
     .find((group) => group.key === "ui")?.entries
     .find((entry) => entry.id === "viewLayout");
   const member = viewLayout?.members?.find((m) => m.id === "smoothScrollFollow");
-  eq(member?.tier, "optional", "视图布局卡 renders a smoothScrollFollow member row");
+  eq(member?.tier, "recommended", "视图布局卡 renders a smoothScrollFollow member row (tl1487 二组④)");
   ok(viewLayout?.onKeys?.includes("experimentalSmoothScrollFollow") === true, "viewLayout card light reads experimentalSmoothScrollFollow");
   eq(labFlagEnabled("smoothScrollFollow"), false, "the switch ships off (默认关)");
 }

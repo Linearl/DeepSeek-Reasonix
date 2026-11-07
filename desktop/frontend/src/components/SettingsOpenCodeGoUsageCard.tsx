@@ -1,7 +1,6 @@
 import { Activity } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { SettingsField } from "./SettingsForm";
-import { SettingsOptions } from "./SettingsOptions";
 import { TierBadge } from "./TierBadge";
 import { EXPERIMENT_FEATURE_TIERS } from "../lib/experimentTiers";
 
@@ -10,21 +9,13 @@ import { EXPERIMENT_FEATURE_TIERS } from "../lib/experimentTiers";
 // 任务 800 — the in-card usage detail (three window rows + refresh + notes)
 // is retired: since 783 the right-dock sidebar card (OpenCodeGoUsageSidebarCard)
 // is the authoritative display, and since 799 it additionally gates on the
-// active plan family. This row is now a plain member switch — label/hint on
-// the left, the on/off segment on the right, the same layout as every other
-// member row of a merged card (no single-column override, no query, no state).
-// All network I/O and the 163 "switch off = zero requests" gate live in the
-// sidebar card alone.
-
-export function SettingsOpenCodeGoUsageCard({
-  enabled,
-  busy,
-  onToggle,
-}: {
-  enabled: boolean;
-  busy: boolean;
-  onToggle: (on: boolean) => void;
-}) {
+// active plan family.
+//
+// tl1487 四组 — the switch row itself retires with the「不提供开关、始终打开」
+// ruling: the row is now a plain display row (glmPlanUsage 同款形态), the
+// usage query is always on and lives entirely in the sidebar card. Badge stays
+// on the row title (562 ⑤ exemption contract).
+export function SettingsOpenCodeGoUsageCard() {
   const { t } = useI18n();
   return (
     <SettingsField
@@ -35,21 +26,10 @@ export function SettingsOpenCodeGoUsageCard({
           <TierBadge tier={EXPERIMENT_FEATURE_TIERS.opencodeGoUsage} translator={t} />
         </>
       }
-      hint={t("settings.opencodeGoUsageHint")}
       icon={<Activity size={18} />}
+      stacked
     >
-      <SettingsOptions layout="field" className="set-seg">
-        {[false, true].map((on) => (
-          <button
-            key={String(on)}
-            className={`set-seg__btn${enabled === on ? " set-seg__btn--on" : ""}`}
-            disabled={busy}
-            onClick={() => onToggle(on)}
-          >
-            {t(on ? "settings.opencodeGoUsage.on" : "settings.opencodeGoUsage.off")}
-          </button>
-        ))}
-      </SettingsOptions>
+      <p className="settings-field__hint">{t("settings.opencodeGoUsageHint")}</p>
     </SettingsField>
   );
 }

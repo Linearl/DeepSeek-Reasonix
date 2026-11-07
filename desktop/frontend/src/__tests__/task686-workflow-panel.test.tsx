@@ -200,8 +200,10 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   ok(goEdit.includes("func (c *Config) SetExperimentalWorkflowPanel(enabled bool) error"), "Go config carries the setter");
   const goRender = readFileSync(`${repoRoot}/internal/config/render.go`, "utf8");
   ok(goRender.includes('experimental_workflow_panel = %v'), "render.go writes the key unconditionally (fixed-key-set rule)");
-  // tl1454：工作流面板家族子键 experimental_workflow_templates 随特性登记（档位不变）。
-  ok(goRender.includes('{"workflowPanel", LabTierUnstable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}}'), "labFeatureTiers registers workflowPanel at the unstable tier");
+  // tl1454：工作流面板家族子键 experimental_workflow_templates 随特性登记。
+  // tl1487 二组⑤：未稳定→稳定（用户 20261107 八组清单；工作流模板升推荐
+  // 走前端注册表独立登记，Go 侧仍以本条家族子键承载）。
+  ok(goRender.includes('{"workflowPanel", LabTierStable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}}'), "labFeatureTiers registers workflowPanel at the stable tier (tl1487 二组⑤)");
 
   // desktop 快照层：双视图 + 双映射（81/123 两视图课）+ App setter。
   const settingsApp = readFileSync(`${repoRoot}/desktop/settings_app.go`, "utf8");
@@ -223,8 +225,9 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   ok(lightKeys.includes("experimentalWorkflowPanel: (s: SettingsView) => Boolean(s.experimentalWorkflowPanel)"), "lab light predicate reads the switch");
   const layoutDefault = read("src/lab/labLayoutDefault.ts");
   // tl1309 卡④：workflowPanel 散条并入「会话与任务面板」卡——布局断言随迁
-  // 成员行形态（容器 sessionTaskPanels，成员 tier unstable；键零变化）。
-  ok(layoutDefault.includes('id: "sessionTaskPanels"') && layoutDefault.includes('{ id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable" }'), "built-in lab layout carries the card (sessionTaskPanels member since tl1309)");
+  // 成员行形态（容器 sessionTaskPanels；键零变化）。tl1487 二组⑤：成员 tier
+  // 未稳定→稳定（档位翻档，键零变化）。
+  ok(layoutDefault.includes('id: "sessionTaskPanels"') && layoutDefault.includes('{ id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "stable" }'), "built-in lab layout carries the card (sessionTaskPanels member since tl1309; tl1487 二组⑤ stable)");
   const layoutYaml = read("src/lab/lab-layout.yaml");
   // tl1454：卡片灯追加家族子键 experimentalWorkflowTemplates（附属行，非成员）。
   ok(layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalSessionWall, experimentalWorkflowPanel, experimentalWorkflowTemplates, experimentalCompletionSummary]"), "lab-layout.yaml mirrors the card (724 同构, sessionTaskPanels member since tl1309)");
