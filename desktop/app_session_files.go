@@ -227,10 +227,23 @@ func (a *App) ListTrashedSessions() []SessionMeta {
 		titles := loadSessionTitles(dir)
 		for _, path := range paths {
 			infos, err := agent.ListSessions(filepath.Dir(path))
-			if err != nil || len(infos) == 0 {
+			if err != nil {
 				continue
 			}
 			deletedAt := trashedSessionDeletedAt(path)
+			if len(infos) == 0 {
+				// tl1449: 空壳桶(结构性记录在、transcript 已消失)不再静默漏——
+				// 漏掉的桶不可见也不可清,清空后永远躺在磁盘上(症状②③)。合成
+				// 一条最小记录让清空够得到它;标题留空,前端 emptySession 兜底。
+				out = append(out, SessionMeta{
+					Path:           path,
+					TurnsState:     "unknown",
+					DeletedAt:      deletedAt,
+					LastActivityAt: deletedAt,
+					ModTime:        deletedAt,
+				})
+				continue
+			}
 			title := strings.TrimSpace(infos[0].CustomTitle)
 			if title == "" {
 				title = titles[filepath.Base(path)]

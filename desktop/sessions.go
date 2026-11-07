@@ -856,9 +856,10 @@ func listTrashedSessionFiles(dir string) ([]string, error) {
 			// tl1429b: a meta-less unique bucket (crash between the artifact
 			// move and the meta write) used to vanish from this listing while
 			// its bytes sat in the trash forever. Offer its transcript-named
-			// entries — exactly one, so the record is never a guess — and
-			// validateTrashedSessionPath's meta-less fallback accepts the
-			// pair, keeping the record visible AND clearable.
+			// entries and validateTrashedSessionPath's meta-less fallback
+			// accepts the pair, keeping the record visible AND clearable.
+			// tl1449: 从「恰 1」放宽为「取第一个」——多 transcript 桶此前整桶
+			// 静默漏列。桶是还原/清除的单桶语义,一条记录足以代表整桶。
 			inner, _ := os.ReadDir(itemDir)
 			named := []string{}
 			for _, fe := range inner {
@@ -866,20 +867,29 @@ func listTrashedSessionFiles(dir string) ([]string, error) {
 					named = append(named, fe.Name())
 				}
 			}
-			if len(named) == 1 {
+			if len(named) > 0 {
 				keys = append(keys, named[0])
 			}
 		}
+		// tl1449: 每桶至多出一条;transcript 已消失的空壳桶(meta 在、内容没了,
+		// restore/purge 半途失败的中间态)此前因 os.Stat 失败被静默跳过——不可
+		// 见即不可清,清空后永远躺在磁盘上(症状②③的磁盘残留面)。结构性有效
+		// (validate 放行)即出记录;transcript 的存在与否不再决定列与不列。
 		for _, key := range keys {
 			path := filepath.Join(itemDir, key)
 			validPath, _, _, err := validateTrashedSessionPath(dir, path)
 			if err != nil {
 				continue
 			}
-			if info, err := os.Stat(validPath); err == nil && !info.IsDir() {
-				paths = append(paths, validPath)
-				break
+			info, statErr := os.Stat(validPath)
+			if statErr != nil && !os.IsNotExist(statErr) {
+				continue
 			}
+			if statErr == nil && info.IsDir() {
+				continue
+			}
+			paths = append(paths, validPath)
+			break
 		}
 	}
 	return paths, nil
