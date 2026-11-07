@@ -454,7 +454,101 @@ func acquireRecoveryParentGuard(path, parentDir string, skipCoverage bool) (*Ses
 	return guard, nil
 }
 
+// recoveryCoverageMemo memoizes recoveryBranchCoveredByParent verdicts per
+// content identity (tl1474). The proof replays transcripts by design ("reads
+// both transcripts instead of trusting listing sidecars", task 22b334f22), and
+// the trash listing pays that once per recovery bucket — measured 14.0s across
+// 25 buckets on the 2026-11-07 reporting machine (avg 560ms, large
+// transcripts), paid on EVERY listing because the old chain cached nothing.
+// This is the tl1315 fight (catalog scans re-parsing 40-55MB transcripts per
+// reconcile) one layer down; the snapshot cache could not be reused here
+// because a 45-bucket working set would pin hundreds of MB of message slices
+// in RAM, so only the tiny bool verdict is memoized.
+//
+// Fence: the key carries the branch transcript/event-log/sidecar stamps, the
+// decisive sidecar fields, and the parent path plus its transcript/event-log
+// stamps — any write on either side, a parent appearing or disappearing, or a
+// sidecar rewrite lands on a fresh key and re-proves. The 30s TTL bounds the
+// one residue the stamps cannot see: a transient I/O failure with unchanged
+// bytes would otherwise pin its conservative false for the process lifetime;
+// with the TTL it re-proves like the pre-memo code after 30s. Entries are
+// two small strings + a bool; the FIFO bound only caps a pathological
+// directory, mirroring contentSnapshotRefusals.
+var recoveryCoverageMemo = struct {
+	sync.Mutex
+	entries map[string]recoveryCoverageMemoEntry
+	order   []string
+}{entries: map[string]recoveryCoverageMemoEntry{}}
+
+type recoveryCoverageMemoEntry struct {
+	verdict   bool
+	expiresAt time.Time
+}
+
+const (
+	recoveryCoverageMemoTTL      = 30 * time.Second
+	recoveryCoverageMemoTTLLimit = 512
+)
+
+func recoveryCoverageMemoStamp(path string) string {
+	return contentSnapshotFileStamp(path)
+}
+
+func recoveryCoverageMemoKey(path, parentDir string, meta BranchMeta) string {
+	parentID := strings.TrimSpace(meta.ParentID)
+	parentDir = strings.TrimSpace(parentDir)
+	if parentDir == "" {
+		parentDir = filepath.Dir(path)
+	}
+	parentPath := filepath.Join(parentDir, parentID+".jsonl")
+	var b strings.Builder
+	b.WriteString(path)
+	b.WriteString("|")
+	b.WriteString(recoveryCoverageMemoStamp(path))
+	b.WriteString("|")
+	b.WriteString(recoveryCoverageMemoStamp(SessionEventLogPath(path)))
+	b.WriteString("|")
+	b.WriteString(recoveryCoverageMemoStamp(BranchMetaPath(path)))
+	b.WriteString("|")
+	b.WriteString(fmt.Sprintf("%t:%s:%s", meta.Recovered, strings.TrimSpace(meta.RecoveryDigest), parentID))
+	b.WriteString("|")
+	b.WriteString(parentPath)
+	b.WriteString("|")
+	b.WriteString(recoveryCoverageMemoStamp(parentPath))
+	b.WriteString("|")
+	b.WriteString(recoveryCoverageMemoStamp(SessionEventLogPath(parentPath)))
+	return b.String()
+}
+
 func recoveryBranchCoveredByParent(path, parentDir string, meta BranchMeta) bool {
+	key := recoveryCoverageMemoKey(path, parentDir, meta)
+	now := time.Now()
+	recoveryCoverageMemo.Lock()
+	if entry, ok := recoveryCoverageMemo.entries[key]; ok && now.Before(entry.expiresAt) {
+		recoveryCoverageMemo.Unlock()
+		return entry.verdict
+	}
+	recoveryCoverageMemo.Unlock()
+
+	verdict := recoveryBranchCoveredByParentCompute(path, parentDir, meta)
+
+	recoveryCoverageMemo.Lock()
+	if _, ok := recoveryCoverageMemo.entries[key]; !ok {
+		recoveryCoverageMemo.order = append(recoveryCoverageMemo.order, key)
+		for len(recoveryCoverageMemo.order) > recoveryCoverageMemoTTLLimit {
+			oldest := recoveryCoverageMemo.order[0]
+			recoveryCoverageMemo.order = recoveryCoverageMemo.order[1:]
+			delete(recoveryCoverageMemo.entries, oldest)
+		}
+	}
+	recoveryCoverageMemo.entries[key] = recoveryCoverageMemoEntry{verdict: verdict, expiresAt: time.Now().Add(recoveryCoverageMemoTTL)}
+	recoveryCoverageMemo.Unlock()
+	return verdict
+}
+
+// recoveryBranchCoveredByParentCompute is the unmemoized proof; the memo
+// wrapper above owns every call site (trash listing, purge gates, GC scans).
+func recoveryBranchCoveredByParentCompute(path, parentDir string, meta BranchMeta) bool {
 	parentID := strings.TrimSpace(meta.ParentID)
 	if parentID == "" {
 		return false
