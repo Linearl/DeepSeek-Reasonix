@@ -40,6 +40,12 @@
 #   tl1193b 新增「记忆与上下文」组：pinnedIndex 卡（plan E pinned 常驻层
 #       索引化，未稳定档，默认关，boot 快照重启生效）。tl1256 调序：本组
 #       移基础设施组之后（原 automation 后 efficiency 前，用户 20261029 令）。
+#   tl1487 八组批量档位调整（用户 20261107 逐条裁决清单）：collabHub→稳定、
+#       回答风格→推荐、模型能力过滤只读行移除（不展示）、冷缓存压缩+下限+
+#       闲置时长三行并一卡（可选徽章）、界面/子代理/存储/基础设施/记忆多批
+#       升推荐、工作流面板与 CDP 调试端口→稳定、OpenCode Go 用量撤开关常开、
+#       tl134 路径规则整卡移除（过时技术，存档已入 docs/archive）——逐条
+#       注释见各条目。
 
 version: 1
 groups:
@@ -181,12 +187,16 @@ groups:
             labelKey: settings.traceAsState
             tier: optional
           # 回答风格（原 efficiency 独立卡；灯=门控开或已选非默认风格，961 并卡）。
+          # tl1487 一组②：回答风格行可选→推荐（用户 20261107 八组清单「交互
+          # 与呈现/回答风格→推荐」；容器档仍=成员最高档推荐）。
           - id: outputStyle
             labelKey: settings.outputStyle
-            tier: optional
+            tier: recommended
       - id: collabHub
         labelKey: settings.collabHub
-        tier: unstable
+        # tl1487 一组①：协作中心入口 unstable→稳定（用户 20261107 八组清单；
+        # 前置依赖 sessionCollab 语义不变，LAB_FEATURE_DEPS 仍单条）。
+        tier: stable
         onKeys: [experimentalCollabHub]
 
   # ── 界面（11 项；任务 742：tab 二开关合并为「标签页管理」；任务 782：

@@ -113,13 +113,17 @@ var labFeatureTiers = []labFeatureTier{
 	// 「单次收益限+滑动窗口」替代（约束①②）。窗口两键为家族子键（477
 	// 先例）：参数化预留，调参等 tl1397 观测面出数。
 	{"modelRangesCompact", LabTierUnstable, []string{"experimental_model_ranges_compact", "model_ranges_fold_window_minutes", "model_ranges_fold_window_max"}},
-	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
+	// tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单；前端同步）。
+	{"outputStyle", LabTierRecommended, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
 	// 任务 856 ③：collabGroupView 语义升级为「协作中心」入口总开关（信件中心+
 	// 群聊两图标合一），键随语义一次性迁移 collabHub（首次读取继承旧值，见
 	// decode.go inheritLegacyCollabHubKey；旧键随 fixed-key-set 渲染淘汰，
 	// render_coverage_test.go 豁免表登记）。
-	{"collabHub", LabTierUnstable, []string{"experimental_collab_hub"}},
+	// tl1487 一组①：协作中心入口未稳定→稳定（用户 20261107 八组清单；默认关
+	// 与 sessionCollab 前置门控不变——批量面无 setter/无排除条目，plan 时以
+	// no_bulk_setter 原因码如实上报）。
+	{"collabHub", LabTierStable, []string{"experimental_collab_hub"}},
 	// 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关归提效
 	// 组（同 messageMerge 的跨会话展示族先例）；档位按 550 口径建议可选。
 	{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}},

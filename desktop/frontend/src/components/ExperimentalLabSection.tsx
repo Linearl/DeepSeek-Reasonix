@@ -2870,8 +2870,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           )}
           {/* ── Task 265 lab intake: 9 fork features + task 262 quick commands ── */}
           {/* Task 561 M2 模型策略族: highSpeedModel keeps its writable switch;
-              modelCapabilityFilter is retired (task 551/564 domain) and
-              renders read-only below — stored value displays, no setter. */}
+              tl1487 一组③：modelCapabilityFilter（模型能力过滤）只读展示行随
+              用户 20261107 八组清单「移除（不展示）」整体摘除——564/551 的
+              retired 只读范式于此收尾，Go 配置键本体不动。 */}
           {selected === "modelStrategy" && (
             <>
               <SettingsField label={labLabel("highSpeedModel", t("settings.highSpeedModel"))} hint={t("settings.highSpeedModelLabHint")} icon={<Sparkles size={18} />}>
@@ -2910,15 +2911,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     </button>
                   ))}
                 </SettingsOptions>
-              </SettingsField>
-              {/* Task 551/564: retired key — read-only display only (task 561
-                  M2 keeps it visible without a setter; 564 owns the copy). */}
-              {/* 任务 722 点2：已退役徽章移除（rail 成员表与卡内行都不再挂
-                  「已退役」档位徽章）——行本体保留只读展示（564 口径）。 */}
-              <SettingsField label={t("settings.modelCapabilityFilter")} hint={t("settings.modelCapabilityFilter.retired")} icon={<Sparkles size={18} />} stacked>
-                <p className="settings-field__hint-line">
-                  {t("settings.modelCapabilityFilter.value", { value: t(Boolean(s.experimentalModelCapabilityFilter) ? "settings.modelCapabilityFilter.on" : "settings.modelCapabilityFilter.off") })}
-                </p>
               </SettingsField>
             </>
           )}
@@ -3014,9 +3006,14 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   />
                 </SettingsField>
-                {/* 任务 621：coldCacheCompact 是 compressOpt 的附属开关——徽章只在
-                    主控开关行（proactiveCompact），附属行不重复挂。 */}
-                <SettingsField label={t("settings.coldCacheCompact")} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
+                {/* tl1487 一组④（卡片化合并）：冷缓存压缩主开关 + 触发上下文
+                    下限 + 闲置触发时长三行并一卡（1124 聚合子卡先例
+                    .set-highrisk-authorize / .set-coldcache-card）——三行各读
+                    各键各写各 setter，配置键零变化；主行自此挂独立可选徽章
+                    （tl1487「冷缓存压缩→可选」，621 单徽章口径：徽章只在
+                    主控行，两个参数行不重复挂）。 */}
+                <div className="set-coldcache-card">
+                <SettingsField label={labLabel("coldCacheCompact", t("settings.coldCacheCompact"))} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -3060,6 +3057,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   />
                   <span> h</span>
                 </SettingsField>
+                </div>
                 {/* tl1378：curateContext 是 compressOpt 的附属开关（细粒度注记档）——
                     徽章只在主控行（proactiveCompact），附属行不重复挂。 */}
                 <SettingsField label={t("settings.curateContext")} hint={t("settings.curateContextHint")} icon={<Sparkles size={18} />}>

@@ -211,11 +211,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 轨迹状态（原 efficiency 独立卡，961 并卡）。
             { id: "traceAsState", labelKey: "settings.traceAsState", tier: "optional" },
             // 回答风格（原 efficiency 独立卡；灯=门控开或已选非默认风格，
-            // 961 并卡）。
-            { id: "outputStyle", labelKey: "settings.outputStyle", tier: "optional" },
+            // 961 并卡）。tl1487 一组②：可选→推荐（用户 20261107 八组清单；
+            // 容器档仍=成员最高档推荐）。
+            { id: "outputStyle", labelKey: "settings.outputStyle", tier: "recommended" },
           ],
         },
-        { id: "collabHub", labelKey: "settings.collabHub", tier: "unstable", onKeys: ["experimentalCollabHub"] },
+        // tl1487 一组①：协作中心入口 unstable→稳定（用户 20261107 八组清单；
+        // 前置依赖 sessionCollab 语义不变，LAB_FEATURE_DEPS 仍单条）。
+        { id: "collabHub", labelKey: "settings.collabHub", tier: "stable", onKeys: ["experimentalCollabHub"] },
       ],
     },
     {

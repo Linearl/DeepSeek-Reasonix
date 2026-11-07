@@ -62,6 +62,11 @@ export type TierFeatureId =
   | "traceAsState"
   | "outputStyle"
   | "cacheTuning"
+  // tl1487 一组④：冷缓存压缩（compressOpt 主开关的附属开关行，pane 内
+  // 冷缓存压缩+触发上下文下限+闲置触发时长三行并一卡；本件起主行挂独立
+  // 可选徽章——用户 20261107 八组清单「冷缓存压缩→可选」）。Go 渲染表无
+  // 条目（附属键随 compressOpt 族，562 测试 ③ 前端独有豁免清单收录）。
+  | "coldCacheCompact"
   | "tabCompress"
   | "todoSidebar"
   | "promptHistoryPicker"
@@ -92,7 +97,9 @@ export type TierFeatureId =
   | "runtimeReuse"
   // 任务 790: ACP 常驻监听（loopback TCP，每连接独立 client 面，默认关）。
   | "acpListen"
-  | "modelCapabilityFilter"
+  // tl1487 一组③：modelCapabilityFilter（模型能力过滤）随只读展示行一并
+  // 出表出类型——用户 20261107 八组清单「移除（不展示）」；Go 配置键仍存在
+  // （退役面，render 表早已无条目），本件只摘前端展示与档位登记。
   | "pathRules"
   | "orphanHandling"
   | "localServer"
@@ -113,7 +120,10 @@ export type TierFeatureId =
   | "multiEditEvidenceNarrow"
   | "multiEditSkipFailed"
   // 任务 677→856 ③: 协作中心入口总开关（信件中心+群聊两图标合一；原
-  // 「群聊入口」开关 collabGroupView 随语义一次性迁移为 collabHub，未稳定档沿用）。
+  // 「群聊入口」开关 collabGroupView 随语义一次性迁移为 collabHub，未稳定档
+  // 沿用）。tl1487 一组①：升稳定档（用户 20261107 八组清单；前置依赖
+  // sessionCollab 不变——稳定档语义「默认开启」在此特例豁免：collabHub 默认
+  // 关+开有关前置门控，档位只表达成熟度，pane 开关不接 labStableLocked）。
   | "collabHub"
   // 任务 705: 超长跨会话消息自动折叠（默认关=全量展示，可选档）。
   | "sessionCollabAutoFold"
@@ -237,11 +247,16 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   highSpeedModel: "optional",
   compactionParallel: "optional",
   traceAsState: "optional",
-  outputStyle: "optional",
+  // tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单）。
+  outputStyle: "recommended",
   cacheTuning: "optional",
+  // tl1487 一组④：冷缓存压缩独立可选档（compressOpt 附属行起挂自己的徽章；
+  // 用户 20261107 八组清单「冷缓存压缩→可选」）。
+  coldCacheCompact: "optional",
   // 任务 677→856 ③：协作中心入口总开关（677 群聊入口开关随两图标合一迁移
-  // 改名，未稳定档默认关沿用）。
-  collabHub: "unstable",
+  // 改名）。tl1487 一组①：未稳定→稳定（用户 20261107 八组清单；默认关+
+  // 开有关前置门控不变，档位只表达成熟度，pane 开关不接 labStableLocked）。
+  collabHub: "stable",
   // 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关按 550
   // 口径定档可选——不开启只影响长消息的阅读密度，不动任何协作行为。
   sessionCollabAutoFold: "optional",
@@ -317,7 +332,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // toolOptimizations 卡成员）。任务 992：用户 1018 升可选——本注册表
   // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
   editEvidenceRelaxed: "optional",
-  modelCapabilityFilter: "retired",
+  // tl1487 一组③：modelCapabilityFilter 出表（原 retired 档独苗）——只读
+  // 展示行随清单移除（不展示），档位登记同步退役。
   pathRules: "unstable",
   // 任务 992：orphanHandling 随复用池升推荐（用户 1018）——本注册表
   // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
@@ -492,13 +508,18 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * fork 已锁 v3，卡内余项皆迁移工具）——稳定 5→6、未稳定 12→11、总数不变 87
  * （Go 渲染表同步 LabTierStable，条目数不变 73）。
  * tl1453：dream（可选档）随 dream/distill 实验退役（宪法 Q1）——可选 45→44、
- * 总数 87→86（Go 渲染表同步 73→72）。 */
+ * 总数 87→86（Go 渲染表同步 73→72）。
+ * tl1487（用户 20261107 八组清单）本件步进：①modelCapabilityFilter（retired
+ * 独苗）出表——退役 1→0、总数 86→85；②coldCacheCompact（冷缓存压缩，可选）
+ * 入表——可选 +1、总数 85→86；③collabHub 未稳定→稳定、outputStyle 可选→
+ * 推荐——稳定 6→7、推荐 24→25、未稳定 11→10、可选不变 44。后续八组各步进
+ * 见各自注释；每步 LAB_TIER_COUNTS 与活注册表同跳（562/1005 计数钉同步）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  stable: 6,
-  recommended: 24,
+  stable: 7,
+  recommended: 25,
   optional: 44,
-  unstable: 11,
-  retired: 1,
+  unstable: 10,
+  retired: 0,
 };
 
 // 任务 722/724：合并卡的成员表（card id → 表A member ids）移交实验室布局

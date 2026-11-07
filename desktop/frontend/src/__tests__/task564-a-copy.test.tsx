@@ -4,9 +4,10 @@
 //  ① pathRules retires UI-side (task 551 paradigm): rail entry stays, the
 //     pane renders the M2-style read-only block — stored value shows, the
 //     setter disappears panel-wide (a dead toggle must not look toggleable);
-//  ② the 561 M2 modelStrategy card keeps its retired modelCapabilityFilter
-//     read-only block intact (no setter anywhere — user ruling: keep the
-//     page, display only);
+//  ② the 561 M2 modelStrategy card: the retired modelCapabilityFilter
+//     read-only block was REMOVED by tl1487 一组③（用户 20261107 八组清单
+//     「移除（不展示）」）——the writable highSpeedModel member and the
+//     zero-setter negative pin remain;
 //  ③ the A-level hint copy matches audited code behavior in all three
 //     locales:
 //     - feedback: the submit_feedback tool registers unconditionally
@@ -69,11 +70,13 @@ console.log("\ntask 564 A-level copy fixes + retired-key read-only retention");
     "panel-wide: zero app.SetExperimentalPathRules( call sites (negative, M2 pattern)");
 }
 
-// ② 561 M2 card survives: modelCapabilityFilter read-only block untouched.
+// ② M2 card: modelCapabilityFilter（模型能力过滤）只读块已随 tl1487 一组③
+//    （用户 20261107 八组清单「移除（不展示）」）整体摘除——564 时代的
+//    retired 只读范式收尾；可写成员行与零 setter 负钉保持。
 {
   const m2 = paneSlice('{selected === "modelStrategy" && (', '{selected === "contextGovernance" && (');
-  ok(m2.includes('t("settings.modelCapabilityFilter.retired")') && m2.includes('t("settings.modelCapabilityFilter.value"'),
-    "M2 card still renders the modelCapabilityFilter retired block");
+  ok(!m2.includes('t("settings.modelCapabilityFilter.retired")') && !m2.includes('t("settings.modelCapabilityFilter.value"'),
+    "tl1487: the modelCapabilityFilter retired block is gone from the M2 card");
   ok(m2.includes("SetExperimentalHighSpeedModel(on)"),
     "M2 card keeps the highSpeedModel setter (writable member intact)");
   ok((panel.match(/SetExperimentalModelCapabilityFilter\(/g) ?? []).length === 0,

@@ -5,8 +5,9 @@
 //     2026-10-08：单特性多设置项时徽章只挂主控开关行);
 //  ② the acceptance sample rows are pinned verbatim: autopilot secondaries
 //     (ask 超时/自动续跑/守护自建/守护间隔) and the multi-switch siblings
-//     (perfMonitor / researchBudget / coldCacheCompact / collabGuidanceMerge)
-//     render bare labels, while their master switch rows keep the badge;
+//     (perfMonitor / researchBudget / collabGuidanceMerge) render bare labels,
+//     while their master switch rows keep the badge (tl1487：coldCacheCompact
+//     自附属裸行升独立表A 条目后移入 badged 清单——用户 20261107 八组清单)。
 //  ③ the 「（实验）/（實驗）/(experimental)」 marker is GONE from all three
 //     locales — the tier badge replaces it;
 //  ④ the badge tooltip (任务 621 ①): TierBadge renders a `title` from
@@ -71,6 +72,9 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
     'labLabel("budgetControl", t("settings.contextBudget"))',
     'labLabel("compressOpt", t("settings.proactiveCompact"))',
     'labLabel("messageMerge", t("settings.collabInboxMerge"))',
+    // tl1487 一组④：冷缓存压缩升独立表A 条目（可选档）——主行自此挂徽章，
+    // 三行卡片化合并后两个参数行（下限/闲置时长）仍为裸行（621 单徽章口径）。
+    'labLabel("coldCacheCompact", t("settings.coldCacheCompact"))',
   ];
   const bare = [
     // autopilot 附属行（抽查清单：ask 超时提帧/超时秒数…）
@@ -82,7 +86,6 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
     // 多开关特性的兄弟开关行
     'label={t("settings.perfMonitor")}',
     'label={t("settings.researchBudget")}',
-    'label={t("settings.coldCacheCompact")}',
     'label={t("settings.collabGuidanceMerge")}',
     // 非表A/域内附属块
     'label={t("settings.perfMonitor.heapHigh")}',

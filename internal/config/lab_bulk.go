@@ -197,9 +197,13 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 //     ——「开」没有唯一布尔语义，批量更不得触碰存储档位面；
 //   - opencodeGoUsage：用量监测卡成员行（783 定档 recommended），无批量写入器
 //     ——开关走卡片行内 setter，纯展示侧栏卡的配置面，批量无独立语义。
+//   - collabHub（tl1487 升稳定档后进入批量范围）：开有关联前置（sessionCollab
+//     必须先开，LAB_FEATURE_DEPS/856③ 前置门）——批量直写会绕过依赖门，
+//     交单项走既有拒绝路径（autopilot precondition 同款）。
 var labBulkExcluded = map[string]string{
 	"fullAccess":      LabBulkSkipDangerGate,
 	"autopilot":       LabBulkSkipPrecondition,
+	"collabHub":       LabBulkSkipPrecondition,
 	"messageMerge":    LabBulkSkipNotBool,
 	"eventsRotation":  LabBulkSkipNotBool,
 	"sessionStorage":  LabBulkSkipNotBool,

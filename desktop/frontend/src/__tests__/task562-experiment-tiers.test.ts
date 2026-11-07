@@ -145,12 +145,16 @@ console.log("\ntask 562 lab three-tier badges");
   // 板：fork 已锁 v3，卡内余项皆迁移工具非实验能力）——稳定 5→6、未稳定
   // 12→11、总数不变 87；Go 渲染表同步 LabTierStable（条目数不变 73）。
   // tl1453：dream（可选档）随 dream/distill 实验退役（宪法 Q1）出表——
-  // 可选 45→44、总数 87→86（Go 渲染表同步 75→74）。
-  ok(counts.stable === 6 && counts.recommended === 24 && counts.optional === 44 && counts.unstable === 11 && counts.retired === 1,
-    `register counts are 6 稳定/24/44/11/1 (got ${JSON.stringify(counts)})`);
+  // 可选 45→44、总数 87→86（Go 渲染表同步 73→72）。
+  // tl1487 一组（20261107 八组清单）：modelCapabilityFilter（retired 独苗）
+  // 出表（退役 1→0、总数 -1）+ coldCacheCompact（冷缓存压缩，可选）入表
+  // （可选 +1、总数 +1）→ 总数 86 不变；collabHub 未稳定→稳定（稳定 +1、
+  // 未稳定 -1）、outputStyle 可选→推荐（推荐 +1、可选 -1）。
+  ok(counts.stable === 7 && counts.recommended === 25 && counts.optional === 44 && counts.unstable === 10 && counts.retired === 0,
+    `register counts are 7 稳定/25/44/10/0 (got ${JSON.stringify(counts)})`);
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 86, `register holds exactly 86 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 6 && LAB_TIER_COUNTS.recommended === 24 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 11 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 6 稳定/24/44/11/1");
+  ok(LAB_TIER_COUNTS.stable === 7 && LAB_TIER_COUNTS.recommended === 25 && LAB_TIER_COUNTS.optional === 44 && LAB_TIER_COUNTS.unstable === 10 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 7 稳定/25/44/10/0");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -224,6 +228,8 @@ console.log("\ntask 562 lab three-tier badges");
   // 口径计入 Go-only config-only 豁免（后续设置页入口补前端注册时两侧转共享，
   // 此处同步收回）——tl1424② 预存红清理。
   // tl1453：dream（optional）随实验退役出 Go 表——75→74。
+  // tl1487 一组：Go 表条目数不变 74（collabHub 翻档、outputStyle 翻档均
+  // 不增减条目；coldCacheCompact 为前端独有新条目）。
   ok(Object.keys(goTiers).length === 74, `Go registry parses to 74 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
@@ -238,8 +244,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 同 tabManagement 豁免）加入 feOnly。tl1309 卡②：runtimeObservability 加入。
   // tl1309 卡③：resourceGovernance（容器）+ gcPercent/idleReleaseMinutes（参数
   // 卡成员 id，字段绑定在 labParamFields，Go 渲染表无条目——775 参数卡同款
-  // 豁免）三者加入。
-  ok(JSON.stringify(feOnly) === JSON.stringify(["gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "modelCapabilityFilter", "resourceGovernance", "runtimeObservability", "searchHistory", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout"]),
+  // 豁免）三者加入。tl1487 一组：modelCapabilityFilter 出表（feOnly 收回）；
+  // coldCacheCompact（冷缓存压缩，compressOpt 附属键族，Go 无独立条目）入表。
+  ok(JSON.stringify(feOnly) === JSON.stringify(["coldCacheCompact", "gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "resourceGovernance", "runtimeObservability", "searchHistory", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {

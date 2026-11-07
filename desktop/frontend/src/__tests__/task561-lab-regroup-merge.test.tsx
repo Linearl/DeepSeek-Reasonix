@@ -314,13 +314,14 @@ for (const family of families) {
     "tl1309 eventsRotation: rotation panel mounts inside the runtimeObservability card (its setters live in SessionEventsPanel)");
 }
 
-// ② M2 specifics: modelCapabilityFilter renders READ-ONLY (no setter call in
-//    the whole panel — the key is retired, 551/564 domain).
+// ② M2 specifics: modelCapabilityFilter（模型能力过滤）——tl1487 一组③
+//    （用户 20261107 八组清单「移除（不展示）」）只读展示行整体摘除，
+//    551/564 的 retired 只读范式收尾；无 setter 调用的负钉继续成立。
 {
   const card = cardSlice('{selected === "modelStrategy" && (', '{selected === "contextGovernance" && (');
-  ok(card.includes("s.experimentalModelCapabilityFilter"), "M2 card displays the retired modelCapabilityFilter value");
-  ok(card.includes("settings.modelCapabilityFilter.retired"), "M2 card carries the retired hint");
-  ok(!panel.includes("app.SetExperimentalModelCapabilityFilter("), "retired key has NO setter call anywhere (read-only)");
+  ok(!card.includes("s.experimentalModelCapabilityFilter"), "tl1487: the retired modelCapabilityFilter display row is gone from the M2 card");
+  ok(!card.includes("settings.modelCapabilityFilter.retired"), "tl1487: the retired hint is gone from the M2 card");
+  ok(!panel.includes("app.SetExperimentalModelCapabilityFilter("), "retired key has NO setter call anywhere (read-only, still)");
 }
 
 // ③ M8 standalone entries（任务 722/724 修订）：rail 入口断言读布局默认
