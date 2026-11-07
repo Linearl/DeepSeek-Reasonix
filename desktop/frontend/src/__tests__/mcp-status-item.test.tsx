@@ -167,8 +167,15 @@ console.log("\nmcp status chip: interactive click-through");
   ok(refreshCalls >= 1, "chip refreshes the snapshot when it becomes visible");
   const failedButton = document.querySelector<HTMLButtonElement>("button.statusbar__mcp--failed");
   ok(failedButton != null && html.includes("<button"), "failed chip renders as a button");
+  // tl1481: the click now drills into the failure-advice popover first; the
+  // management page moved one hop down into the popover footer.
   await act(async () => { failedButton?.click(); });
-  ok(opened, "clicking the failed chip opens the MCP management page");
+  ok(document.querySelector(".mcp-advice-popover") != null, "clicking the failed chip opens the failure-advice popover");
+  ok(!opened, "clicking the failed chip no longer opens the management page directly");
+  const managerButton = document.querySelector<HTMLButtonElement>(".mcp-advice-popover__footer button");
+  ok(managerButton != null, "the advice popover keeps the management page reachable");
+  await act(async () => { managerButton?.click(); });
+  ok(opened, "the popover footer opens the MCP management page");
 
   await act(async () => { useMcpStatusStore.setState({ servers: [server({ name: "a" })] }); });
   const settled = await renderChip(["mcp"], () => { opened = true; });

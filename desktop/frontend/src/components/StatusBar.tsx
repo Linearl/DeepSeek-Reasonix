@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, PieChart, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap, CircleAlert } from "lucide-react";
 import { labFlagEnabled } from "../lib/labFlags";
 import { AnchoredPopover } from "./AnchoredPopover";
+import { McpFailureAdvicePopover } from "./McpFailureAdvicePopover";
 import { RemoteConnectionErrorDialog } from "./RemoteConnectionErrorDialog";
 import { Tooltip } from "./Tooltip";
 import { contextWindowPercentages } from "../lib/contextWindow";
@@ -593,9 +594,17 @@ function ExtensionStatusBarChips({ statuses }: { statuses: ExtensionStatusEntry[
 // fully settled: a spinner with "连接中 n/N" while servers are connecting, a
 // clickable ⚠ "MCP 失败 m" entry when any failed. Whether to render at all is
 // decided in StatusBar's item record (hidden when everything is connected).
+// tl1481: a failed-fleet click opens the failure-advice popover (suggestions
+// per failure kind, then raw error details one hop down); the management
+// page stays reachable from the popover footer, so the display itself and
+// the reachable actions are unchanged — only the click now drills first.
 function McpStatusBarItem({ summary, onOpen }: { summary: McpStatusSummary & { state: "connecting" | "failed" }; onOpen?: () => void }) {
   const { t } = useI18n();
   const refresh = useMcpStatusStore((state) => state.refresh);
+  const servers = useMcpStatusStore((state) => state.servers);
+  const [adviceOpen, setAdviceOpen] = useState(false);
+  const adviceAnchorRef = useRef<HTMLButtonElement>(null);
+  const failedServers = servers.filter((server) => server.status === "failed");
   // Controlled refresh: a fixed cadence only while the chip is visible
   // (connecting polls faster than a failed fleet). Nothing polls per
   // conversation turn; the store additionally floors overlapping re-reads.
@@ -605,22 +614,38 @@ function McpStatusBarItem({ summary, onOpen }: { summary: McpStatusSummary & { s
     const id = window.setInterval(() => void refresh(), pollMs);
     return () => window.clearInterval(id);
   }, [pollMs, refresh]);
+  useEffect(() => {
+    // A fleet that settles (or a snapshot without failures) must not leave an
+    // advice popover anchored to a chip that no longer renders.
+    if (failedServers.length === 0) setAdviceOpen(false);
+  }, [failedServers.length]);
   if (summary.state === "failed") {
     const title = t("status.mcpFailedTitle");
     return (
-      <Tooltip label={title} className="statusbar__metric">
-        <button
-          type="button"
-          className="stat statusbar__mcp statusbar__mcp--failed"
-          onClick={onOpen}
-          disabled={!onOpen}
-          aria-label={title}
-          title={title}
-        >
-          <CircleAlert size={12} aria-hidden="true" />
-          <b>{t("status.mcpFailed", { count: summary.failed })}</b>
-        </button>
-      </Tooltip>
+      <>
+        <Tooltip label={title} className="statusbar__metric">
+          <button
+            ref={adviceAnchorRef}
+            type="button"
+            className="stat statusbar__mcp statusbar__mcp--failed"
+            onClick={() => setAdviceOpen((value) => !value)}
+            aria-haspopup="dialog"
+            aria-expanded={adviceOpen}
+            aria-label={title}
+            title={title}
+          >
+            <CircleAlert size={12} aria-hidden="true" />
+            <b>{t("status.mcpFailed", { count: summary.failed })}</b>
+          </button>
+        </Tooltip>
+        <McpFailureAdvicePopover
+          open={adviceOpen}
+          anchorRef={adviceAnchorRef}
+          onClose={() => setAdviceOpen(false)}
+          servers={failedServers}
+          onOpenManager={onOpen}
+        />
+      </>
     );
   }
   const connectingTitle = t("status.mcpConnectingTitle", { connected: summary.connected, total: summary.total });

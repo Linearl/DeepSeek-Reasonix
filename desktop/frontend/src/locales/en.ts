@@ -1354,7 +1354,7 @@ export const en = {
   "status.mcpConnecting": "connecting {connecting}/{total}",
   "status.mcpConnectingTitle": "Connecting to MCP servers ({connected}/{total} ready)",
   "status.mcpFailed": "MCP failed {count}",
-  "status.mcpFailedTitle": "MCP servers failed to connect; click to manage them",
+  "status.mcpFailedTitle": "MCP servers failed to connect; click for handling advice",
   "status.jobsLabel": "jobs",
   "status.plan": "PLAN",
   "status.switchModel": "Switch model",
@@ -6475,6 +6475,21 @@ export const en = {
   "approval.denyFeedbackLabel": "Feedback for the model",
   "approval.denyFeedbackPlaceholder": "Tell the model why you declined (optional; Enter to deny, Esc to cancel)",
   "approval.denyFeedbackSubmit": "Deny & send",
+  // tl1481 MCP failure-advice popover: status chip → advice (per failure kind) → raw error details.
+  "mcp.advice.title": "MCP failure advice ({count})",
+  "mcp.advice.openManager": "Open management panel",
+  "mcp.advice.details": "Error details",
+  "mcp.advice.copied": "Copied",
+  "mcp.advice.kindAuth": "Authentication",
+  "mcp.advice.kindMissingCommand": "Config error",
+  "mcp.advice.kindCommandUnavailable": "Executable missing",
+  "mcp.advice.kindNetwork": "Connection failure",
+  "mcp.advice.kindOther": "Other failure",
+  "mcp.advice.suggestAuth": "Authorization expired or missing — authenticate this server again, then reconnect.",
+  "mcp.advice.suggestMissingCommand": "The config has no start command — edit this server's config to set command or URL.",
+  "mcp.advice.suggestCommandUnavailable": "The executable was not found — install it, or point command at a full path.",
+  "mcp.advice.suggestNetwork": "Check the network and proxy, confirm the address and port are reachable, then retry.",
+  "mcp.advice.suggestOther": "Cause not classified — expand the error details to diagnose, or retry the connection.",
 };
 
 export type DictKey = keyof typeof en;
