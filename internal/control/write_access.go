@@ -109,7 +109,7 @@ func (c *Controller) CheckWriteAccess(ctx context.Context, req agent.WriteAccess
 	if !grant.Allow {
 		reason := strings.TrimSpace(grant.Reason)
 		if reason == "" {
-			reason = "the user declined to extend write access — do not retry it; ask how they would like to proceed or choose another approach."
+			reason = writeAccessDeclinedReason
 		}
 		return agent.WriteAccessDecision{Allow: false, Reason: reason}, nil
 	}
@@ -199,6 +199,11 @@ func (c *Controller) bashEnforcesSandbox() bool {
 	return c != nil && c.writeAccess.bashSandboxEnforced && sandbox.Available()
 }
 
+// writeAccessDeclinedReason is the refusal used when the user denies a
+// write-access card without feedback; with feedback it gains the shared
+// " User feedback:" suffix (tl1480) via withUserFeedback.
+const writeAccessDeclinedReason = "the user declined to extend write access — do not retry it; ask how they would like to proceed or choose another approach."
+
 type writeAccessReply struct {
 	Allow   bool
 	Reason  string
@@ -233,6 +238,11 @@ func (c *Controller) requestWriteAccess(ctx context.Context, req agent.WriteAcce
 		return writeAccessReply{Reason: reply.persistErr.Error()}, nil
 	}
 	if !reply.allow {
+		// tl1480: deny feedback folds into the refusal; empty keeps the legacy
+		// flow (Reason empty → the decision site fills the default sentence).
+		if feedback := strings.TrimSpace(reply.feedback); feedback != "" {
+			return writeAccessReply{Reason: withUserFeedback(writeAccessDeclinedReason, feedback)}, nil
+		}
 		return writeAccessReply{}, nil
 	}
 	return writeAccessReply{Allow: true, PerCall: append([]string(nil), reply.onceDirs...)}, nil
@@ -276,13 +286,20 @@ func (c *Controller) requestWriteAccessDecision(ctx context.Context, toolName, s
 
 // ResolveApproval answers a pending approval with an explicit scope.
 func (c *Controller) ResolveApproval(id string, allow bool, scope sandbox.ApprovalScope) error {
+	return c.ResolveApprovalWithFeedback(id, allow, scope, "")
+}
+
+// ResolveApprovalWithFeedback is the tl1480 deny arm of ResolveApproval:
+// feedback rides the reply to the refusal composition at the decision site.
+// Empty feedback is the pure deny (behavior unchanged).
+func (c *Controller) ResolveApprovalWithFeedback(id string, allow bool, scope sandbox.ApprovalScope, feedback string) error {
 	defer c.refreshRuntimeState(event.Event{})
 	c.promptResolveMu.Lock()
 	defer c.promptResolveMu.Unlock()
-	return c.resolveApprovalLocked(id, allow, scope)
+	return c.resolveApprovalLocked(id, allow, scope, feedback)
 }
 
-func (c *Controller) resolveApprovalLocked(id string, allow bool, scope sandbox.ApprovalScope) error {
+func (c *Controller) resolveApprovalLocked(id string, allow bool, scope sandbox.ApprovalScope, feedback string) error {
 	if c == nil {
 		return fmt.Errorf("controller is nil")
 	}
@@ -290,6 +307,7 @@ func (c *Controller) resolveApprovalLocked(id string, allow bool, scope sandbox.
 	if id == "" {
 		return fmt.Errorf("empty approval id")
 	}
+	feedback = clampDenyFeedback(feedback)
 	c.mu.Lock()
 	gate := c.recoveryGate
 	c.mu.Unlock()
@@ -298,7 +316,7 @@ func (c *Controller) resolveApprovalLocked(id string, allow bool, scope sandbox.
 		if allow {
 			action = agent.RecoveryActionContinue
 		}
-		return c.resolveRecoveryLocked(id, action, "")
+		return c.resolveRecoveryLocked(id, action, feedback)
 	}
 	pending := c.approval.peek(id)
 	if pending.reply == nil {
@@ -317,14 +335,14 @@ func (c *Controller) resolveApprovalLocked(id string, allow bool, scope sandbox.
 			return fmt.Errorf("approval %q is no longer pending", id)
 		}
 		c.promptOwner.Remove(id)
-		return c.resolveWriteAccess(pending, allow, scope)
+		return c.resolveWriteAccess(pending, allow, scope, feedback)
 	}
 	session := allow && (scope == sandbox.ApprovalScopeSession || scope == sandbox.ApprovalScopeProject)
 	persist := allow && scope == sandbox.ApprovalScopeProject
-	return c.approveChecked(id, allow, session, persist)
+	return c.approveCheckedWithFeedback(id, allow, session, persist, feedback)
 }
 
-func (c *Controller) resolveWriteAccess(pending pendingApproval, allow bool, scope sandbox.ApprovalScope) error {
+func (c *Controller) resolveWriteAccess(pending pendingApproval, allow bool, scope sandbox.ApprovalScope, feedback string) error {
 	if pending.reply == nil {
 		return fmt.Errorf("write access approval is no longer pending")
 	}
@@ -332,7 +350,7 @@ func (c *Controller) resolveWriteAccess(pending pendingApproval, allow bool, sco
 		c.recordDecisionReceipt(pending, "deny")
 		// 任务 408: the durable card closes with the deny (批完).
 		c.settlePendingCard(pending.id, pendingcards.StateResolved, "deny")
-		pending.reply <- approvalReply{}
+		pending.reply <- approvalReply{feedback: feedback}
 		return nil
 	}
 	dirs := []string{}

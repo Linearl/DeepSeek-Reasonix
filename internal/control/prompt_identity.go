@@ -228,7 +228,9 @@ func (c *Controller) registerOwnedPrompt(id string, kind PromptKind) {
 		case PromptAsk:
 			return c.answerQuestionCheckedLocked(id, answer.Questions)
 		case PromptApproval:
-			return c.resolveApprovalLocked(id, answer.Allow, scopeFromApprove(answer.Allow, answer.Session, answer.Persist))
+			// tl1480: answer.Feedback carries the optional deny reason typed on
+			// the approval card; empty feedback is the pure deny.
+			return c.resolveApprovalLocked(id, answer.Allow, scopeFromApprove(answer.Allow, answer.Session, answer.Persist), answer.Feedback)
 		case PromptPlan:
 			return c.resolvePlanDecisionWithFeedbackLocked(id, PlanDecisionAction(answer.Action), answer.Feedback)
 		case PromptRecovery:

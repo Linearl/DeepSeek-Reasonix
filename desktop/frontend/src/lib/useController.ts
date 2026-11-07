@@ -5760,7 +5760,7 @@ export function useController() {
   const isPromptCurrentForTab = useCallback((tabId: string, kind: "approval" | "ask" | "mcpInteraction", id: string) => (
     statesRef.current.get(tabId)?.[kind]?.id === id
   ), []);
-  const approveForTab = useCallback((tabId: string, id: string, allow: boolean, session: boolean, persist: boolean) => {
+  const approveForTab = useCallback((tabId: string, id: string, allow: boolean, session: boolean, persist: boolean, feedback = "") => {
     if (!tabId) return;
     const promptState = statesRef.current.get(tabId);
     // Pin the failure callback to the prompt-id epoch the RPC was issued in:
@@ -5769,11 +5769,14 @@ export function useController() {
     // numeric id (#6432 round 4).
     const epoch = statesRef.current.get(tabId)?.promptEpoch ?? 0;
     dispatchTo(tabId, { type: "clearApproval" });
-    resolvePromptForTab(app, tabId, id, "approval", { allow, session, persist }, promptState?.approval?.turnId ?? promptState?.activeTurnId, promptState?.approval?.runtimeEpoch ?? runtimeEpochByTabRef.current.get(tabId)).catch((error) => handlePromptFailure(dispatchTo, tabId, id, epoch, error, "approval"));
+    // tl1480: deny feedback rides the same exact-identity resolve; empty
+    // feedback keeps the wire object byte-identical to the pure deny.
+    const answer = feedback ? { allow, session, persist, feedback } : { allow, session, persist };
+    resolvePromptForTab(app, tabId, id, "approval", answer, promptState?.approval?.turnId ?? promptState?.activeTurnId, promptState?.approval?.runtimeEpoch ?? runtimeEpochByTabRef.current.get(tabId)).catch((error) => handlePromptFailure(dispatchTo, tabId, id, epoch, error, "approval"));
   }, [dispatchTo]);
 
-  const approve = useCallback((id: string, allow: boolean, session: boolean, persist: boolean) => {
-    if (activeTabId) approveForTab(activeTabId, id, allow, session, persist);
+  const approve = useCallback((id: string, allow: boolean, session: boolean, persist: boolean, feedback = "") => {
+    if (activeTabId) approveForTab(activeTabId, id, allow, session, persist, feedback);
   }, [activeTabId, approveForTab]);
 
   const resolvePlanDecisionForTab = useCallback((tabId: string, id: string, action: "start_execution" | "revise_plan" | "exit_plan") => {

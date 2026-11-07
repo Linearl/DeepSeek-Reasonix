@@ -6428,4 +6428,9 @@ export const zhTW: Record<DictKey, string> = {
   "trajectory.filter.label": "類別",
   "trajectory.filter.all": "全部類別",
   "trajectory.filter.empty": "沒有符合當前篩選條件的記錄",
+  // tl1480 deny with feedback
+  "approval.denyFeedbackTrigger": "拒絕並附回饋",
+  "approval.denyFeedbackLabel": "給模型的回饋說明",
+  "approval.denyFeedbackPlaceholder": "說明拒絕原因（可選；Enter 拒絕，Esc 取消）",
+  "approval.denyFeedbackSubmit": "拒絕並送出",
 };

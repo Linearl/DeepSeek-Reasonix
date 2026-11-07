@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -705,6 +706,29 @@ type Gate struct {
 // NewGate wires a Policy to an Approver (nil for non-interactive use).
 func NewGate(p Policy, a Approver) *Gate { return &Gate{Policy: p, Approver: a} }
 
+// UserDeclinedReason is the tool_result refusal for a user deny without
+// feedback. tl1480: approvers that carry optional feedback must keep the
+// no-feedback text byte-identical to this sentence.
+const UserDeclinedReason = "the user declined this tool call — do not retry it; ask how they would like to proceed or choose another approach."
+
+// UserDeclinedFeedback renders the refusal for a deny with user feedback.
+// Empty feedback returns UserDeclinedReason unchanged (纯拒绝零变化).
+func UserDeclinedFeedback(feedback string) string {
+	return UserDeclinedReason + UserFeedbackSuffix(feedback)
+}
+
+// UserFeedbackSuffix appends " User feedback: <quoted>" for non-empty input;
+// empty input yields "" so callers composing other refusal sentences (tl1480
+// write-access / sandbox / config / plan-trust declines) reuse the same shape
+// without branching.
+func UserFeedbackSuffix(feedback string) string {
+	feedback = strings.TrimSpace(feedback)
+	if feedback == "" {
+		return ""
+	}
+	return " User feedback: " + strconv.Quote(feedback)
+}
+
 // Check decides whether a tool call may run. It is the method the agent's Gate
 // interface expects. A denied or refused call returns allow=false with a short
 // reason the agent feeds back to the model.
@@ -732,7 +756,7 @@ func (g *Gate) Check(ctx context.Context, toolName string, args json.RawMessage,
 			return false, "approval aborted", err
 		}
 		if !allow {
-			reason := "the user declined this tool call — do not retry it; ask how they would like to proceed or choose another approach."
+			reason := UserDeclinedReason
 			if approverReason != "" {
 				reason = approverReason
 			}

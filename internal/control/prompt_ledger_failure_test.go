@@ -82,7 +82,7 @@ func TestResolvePromptExactLedgerFailureCancelsWithoutAnswer(t *testing.T) {
 		{
 			name: "approval", kind: PromptApproval, answer: PromptAnswer{Allow: true},
 			wait: func(ctx context.Context, c *Controller) (bool, error) {
-				allow, _, err := c.requestApprovalWithReason(ctx, "bash", "echo test", nil, "test")
+				allow, _, _, err := c.requestApprovalWithReason(ctx, "bash", "echo test", nil, "test")
 				return allow, err
 			},
 		},

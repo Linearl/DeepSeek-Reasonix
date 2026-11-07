@@ -6432,4 +6432,9 @@ export const zh: Record<DictKey, string> = {
   "trajectory.filter.label": "类目",
   "trajectory.filter.all": "全部类目",
   "trajectory.filter.empty": "没有符合当前筛选条件的记录",
+  // tl1480 deny with feedback
+  "approval.denyFeedbackTrigger": "拒绝并附反馈",
+  "approval.denyFeedbackLabel": "给模型的反馈说明",
+  "approval.denyFeedbackPlaceholder": "说明拒绝原因（可选；Enter 拒绝，Esc 取消）",
+  "approval.denyFeedbackSubmit": "拒绝并发送",
 };

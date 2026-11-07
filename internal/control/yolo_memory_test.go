@@ -24,7 +24,7 @@ func TestMemoryApprovalStillPromptsUnderAsk(t *testing.T) {
 	done := make(chan bool, 1)
 	errs := make(chan error, 1)
 	go func() {
-		allow, _, err := c.requestApproval(context.Background(), "remember", "", nil)
+		allow, _, _, err := c.requestApproval(context.Background(), "remember", "", nil)
 		if err != nil {
 			errs <- err
 			return
@@ -76,7 +76,7 @@ func TestAutoAndYoloAllowMemoryWithoutPrompt(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			for _, toolName := range []string{"remember", "forget"} {
-				allow, remember, err := c.requestApproval(ctx, toolName, "", feedback)
+				allow, remember, _, err := c.requestApproval(ctx, toolName, "", feedback)
 				if err != nil || !allow || remember {
 					t.Fatalf("requestApproval(%s) in %s = (%v,%v,%v), want allow without persist", toolName, mode, allow, remember, err)
 				}
@@ -187,7 +187,7 @@ func TestSetAutoApproveToolsDrainsPendingMemoryApproval(t *testing.T) {
 	done := make(chan bool, 1)
 	errs := make(chan error, 1)
 	go func() {
-		allow, _, err := c.requestApproval(context.Background(), "forget", "", nil)
+		allow, _, _, err := c.requestApproval(context.Background(), "forget", "", nil)
 		if err != nil {
 			errs <- err
 			return
@@ -227,7 +227,7 @@ func TestToolApprovalModeAutoDrainsPendingMemoryFallback(t *testing.T) {
 
 	done := make(chan bool, 1)
 	go func() {
-		allow, _, _ := c.requestApproval(context.Background(), "forget", "", nil)
+		allow, _, _, _ := c.requestApproval(context.Background(), "forget", "", nil)
 		done <- allow
 	}()
 	var approval event.Approval
@@ -264,7 +264,7 @@ func TestToolApprovalModeAutoKeepsPendingExplicitMemoryAsk(t *testing.T) {
 
 	done := make(chan bool, 1)
 	go func() {
-		allow, _, _ := c.requestApproval(context.Background(), "forget", "", nil)
+		allow, _, _, _ := c.requestApproval(context.Background(), "forget", "", nil)
 		done <- allow
 	}()
 	var approval event.Approval

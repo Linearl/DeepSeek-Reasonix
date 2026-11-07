@@ -103,7 +103,7 @@ func TestRequestApprovalHonorsAutoApproveTools(t *testing.T) {
 
 	done := make(chan bool, 1)
 	go func() {
-		allow, _, err := c.requestApproval(context.Background(), "multi_edit", "/tmp/file", nil)
+		allow, _, _, err := c.requestApproval(context.Background(), "multi_edit", "/tmp/file", nil)
 		if err != nil {
 			t.Errorf("requestApproval: %v", err)
 		}
@@ -190,7 +190,7 @@ func TestToolApprovalModeAutoDrainsPendingFallbackApproval(t *testing.T) {
 	done := make(chan bool, 1)
 	errs := make(chan error, 1)
 	go func() {
-		allow, _, err := c.requestApproval(context.Background(), "multi_edit", "/tmp/file", nil)
+		allow, _, _, err := c.requestApproval(context.Background(), "multi_edit", "/tmp/file", nil)
 		if err != nil {
 			errs <- err
 			return
@@ -235,7 +235,7 @@ func TestToolApprovalModeAutoDoesNotDrainPendingExplicitAsk(t *testing.T) {
 	done := make(chan bool, 1)
 	errs := make(chan error, 1)
 	go func() {
-		allow, _, err := c.requestApproval(context.Background(), "bash", "git commit -m x", nil)
+		allow, _, _, err := c.requestApproval(context.Background(), "bash", "git commit -m x", nil)
 		if err != nil {
 			errs <- err
 			return
@@ -280,7 +280,7 @@ func TestToolApprovalModeYoloBypassesApprovalPrompts(t *testing.T) {
 	if !c.AutoApproveTools() {
 		t.Fatal("YOLO mode should satisfy legacy AutoApproveTools")
 	}
-	allow, remember, err := c.requestApproval(context.Background(), "bash", "go test ./...", nil)
+	allow, remember, _, err := c.requestApproval(context.Background(), "bash", "go test ./...", nil)
 	if err != nil || !allow || remember {
 		t.Fatalf("requestApproval in YOLO = (%v,%v,%v), want allow without remember", allow, remember, err)
 	}
@@ -300,7 +300,7 @@ func TestPlanApprovalIgnoresAutoApproveTools(t *testing.T) {
 	done := make(chan bool, 1)
 	errs := make(chan error, 1)
 	go func() {
-		allow, _, err := c.requestApproval(context.Background(), planApprovalTool, "", nil)
+		allow, _, _, err := c.requestApproval(context.Background(), planApprovalTool, "", nil)
 		if err != nil {
 			errs <- err
 			return
@@ -348,7 +348,7 @@ func TestSetAutoApproveToolsAllowsPendingApproval(t *testing.T) {
 	done := make(chan bool, 1)
 	errs := make(chan error, 1)
 	go func() {
-		allow, _, err := c.requestApproval(context.Background(), "multi_edit", "/tmp/file", nil)
+		allow, _, _, err := c.requestApproval(context.Background(), "multi_edit", "/tmp/file", nil)
 		if err != nil {
 			errs <- err
 			return
@@ -461,7 +461,7 @@ func TestSetAutoApproveToolsDoesNotDrainPendingPlanApproval(t *testing.T) {
 	done := make(chan bool, 1)
 	errs := make(chan error, 1)
 	go func() {
-		allow, _, err := c.requestApproval(context.Background(), planApprovalTool, "", nil)
+		allow, _, _, err := c.requestApproval(context.Background(), planApprovalTool, "", nil)
 		if err != nil {
 			errs <- err
 			return
@@ -569,7 +569,7 @@ func TestSetModeYoloDrainsPendingApproval(t *testing.T) {
 
 	done := make(chan bool, 1)
 	go func() {
-		allow, _, _ := c.requestApproval(context.Background(), "multi_edit", "/tmp/file", nil)
+		allow, _, _, _ := c.requestApproval(context.Background(), "multi_edit", "/tmp/file", nil)
 		done <- allow
 	}()
 

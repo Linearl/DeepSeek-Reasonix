@@ -240,7 +240,7 @@ func TestPendingCardApprovalEnqueuesAndSettlesOnDecision(t *testing.T) {
 	}
 	done := make(chan approvalResult, 1)
 	go func() {
-		allow, _, err := c.requestApprovalWithReason(context.Background(), "bash", "rm -rf /", nil, "test")
+		allow, _, _, err := c.requestApprovalWithReason(context.Background(), "bash", "rm -rf /", nil, "test")
 		done <- approvalResult{allow, err}
 	}()
 
@@ -320,7 +320,7 @@ func TestPendingCardWithdrawApproval(t *testing.T) {
 
 	allowed := make(chan bool, 1)
 	go func() {
-		allow, _, _ := c.requestApprovalWithReason(context.Background(), "write_file", "/tmp/x", nil, "test")
+		allow, _, _, _ := c.requestApprovalWithReason(context.Background(), "write_file", "/tmp/x", nil, "test")
 		allowed <- allow
 	}()
 	waitFor(t, "approval request", func() bool {

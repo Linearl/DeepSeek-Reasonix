@@ -30,8 +30,17 @@ func (c *Controller) Approve(id string, allow, session, persist bool) {
 }
 
 func (c *Controller) approveChecked(id string, allow, session, persist bool) error {
+	return c.approveCheckedWithFeedback(id, allow, session, persist, "")
+}
+
+// approveCheckedWithFeedback is the tl1480 deny arm: feedback (the reason the
+// user typed on the card) rides the approvalReply to the gate, which folds it
+// into the tool_result refusal. Empty feedback is the pure deny — behavior
+// byte-identical to before.
+func (c *Controller) approveCheckedWithFeedback(id string, allow, session, persist bool, feedback string) error {
+	feedback = clampDenyFeedback(feedback)
 	if pending := c.approval.peek(id); pending.reply != nil && pending.kind == writeAccessKind {
-		return c.ResolveApproval(id, allow, scopeFromApprove(allow, session, persist))
+		return c.ResolveApprovalWithFeedback(id, allow, scopeFromApprove(allow, session, persist), feedback)
 	}
 	c.mu.Lock()
 	gate := c.recoveryGate
@@ -41,7 +50,7 @@ func (c *Controller) approveChecked(id string, allow, session, persist bool) err
 		if allow {
 			action = agent.RecoveryActionContinue
 		}
-		return c.ResolveRecovery(id, action, "")
+		return c.ResolveRecovery(id, action, feedback)
 	}
 	pending, ok, err := c.approval.resolveAfter(id, func(p pendingApproval) error {
 		return c.emitTurnEventChecked(event.Event{Kind: event.PromptAnswered, ItemID: id, Status: event.TurnInProgress})
@@ -72,7 +81,7 @@ func (c *Controller) approveChecked(id string, allow, session, persist bool) err
 	c.recordDecisionReceipt(pending, outcome)
 	// 任务 408: the durable card closes with the decision (批完 allow/deny).
 	c.settlePendingCard(id, pendingcards.StateResolved, outcome)
-	pending.reply <- approvalReply{allow: allow, session: session, persist: persist}
+	pending.reply <- approvalReply{allow: allow, session: session, persist: persist, feedback: feedback}
 	return nil
 }
 

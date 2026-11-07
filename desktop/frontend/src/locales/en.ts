@@ -6477,6 +6477,11 @@ export const en = {
   "trajectory.filter.label": "Categories",
   "trajectory.filter.all": "All categories",
   "trajectory.filter.empty": "No records match the current filters",
+  // tl1480 deny with feedback
+  "approval.denyFeedbackTrigger": "Deny with feedback",
+  "approval.denyFeedbackLabel": "Feedback for the model",
+  "approval.denyFeedbackPlaceholder": "Tell the model why you declined (optional; Enter to deny, Esc to cancel)",
+  "approval.denyFeedbackSubmit": "Deny & send",
 };
 
 export type DictKey = keyof typeof en;
