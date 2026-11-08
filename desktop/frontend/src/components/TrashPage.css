@@ -33,3 +33,26 @@
   .history-page .history-preview { grid-column: 2; grid-row: 1 / 3; }
 }
 @media (max-width: 959px) { .history-page .history-manager:has(.history-content[data-detail="true"]) > .history-toolbar { display: none; } }
+
+/* tl1429d2：同族多桶合并行——副本计数徽标（主体行下方的小胶囊）与展开明细。
+   默认视图只多这一个胶囊；明细是二级展开，缩进+左侧描边标识从属关系。
+   hist-item 默认横排（主按钮 flex:1），族行改纵排让徽标/明细落到行下方。 */
+.hist-item--family { flex-direction: column; align-items: stretch; }
+.trash-family__toggle {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  margin: 0 0 4px 12px;
+  padding: 1px 9px;
+  font-size: 11px;
+  color: var(--text-3);
+  background: none;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.trash-family__toggle:hover { color: var(--text-2); border-color: var(--border); }
+.trash-family__toggle[aria-expanded="true"] { color: var(--text-2); }
+.trash-family__children { display: flex; flex-direction: column; margin: 2px 0 6px 0; }
+.trash-family__children .hist-item { margin-left: 14px; border-left: 2px solid var(--border-soft); }

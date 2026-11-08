@@ -6490,6 +6490,10 @@ export const en = {
   "mcp.advice.suggestCommandUnavailable": "The executable was not found — install it, or point command at a full path.",
   "mcp.advice.suggestNetwork": "Check the network and proxy, confirm the address and port are reachable, then retry.",
   "mcp.advice.suggestOther": "Cause not classified — expand the error details to diagnose, or retry the connection.",
+  // tl1429d2 trash family merge: mainline row + collapsed copy detail (namespace keys appended at EOF)
+  "history.trashFamilyCopies": "+{n} copies",
+  "history.trashFamilyCollapse": "Hide copies",
+  "history.trashFamilyCopyRole": "copy",
 };
 
 export type DictKey = keyof typeof en;

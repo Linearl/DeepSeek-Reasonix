@@ -15,6 +15,7 @@ import { ModalCloseButton } from "./ModalCloseButton";
 import { HistoryFilterSelect } from "./HistoryFilterSelect";
 import { normalizeRecoveryLineageView, userVisibleRecoveryVersions } from "../lib/sessionRecoveryVersions";
 import { requestTopicVersionsForSession } from "../lib/sessionRecoveryVersionHostBridge";
+import { trashFamilyCopyBadge, trashFamilyRows, type TrashFamilyRow } from "../lib/trashFamily";
 
 type HistoryScopeFilter = "all" | "project" | "global";
 type HistoryStatusFilter = "all" | "current" | "open";
@@ -66,6 +67,8 @@ export function HistoryPanel({
   const [statusFilter, setStatusFilter] = useState<HistoryStatusFilter>("all");
   const [dateFilter, setDateFilter] = useState<HistoryDateFilter>("all");
   const [showSystemRecoveryData, setShowSystemRecoveryData] = useState(false);
+  // tl1429d2：同族合并行的展开状态，按主体桶 path 记（刷新后保持展开）。
+  const [expandedFamilies, setExpandedFamilies] = useState<string[]>([]);
   const [selectedVersions, setSelectedVersions] = useState<RecoveryLineageView | null>(null);
   const [searchContext, setSearchContext] = useState<{ hit: HistorySearchHit; lines: HistorySearchContextLine[]; loading: boolean } | null>(null);
   const { sessions, nextCursor, partial: catalogPartial, progress: catalogProgress, searchHits, loadMore } = useHistoryCatalog({
@@ -179,18 +182,32 @@ export function HistoryPanel({
       return [s.title, s.preview, s.path, s.topicTitle, s.workspaceRoot].some((part) => (part ?? "").toLowerCase().includes(q));
     });
   }, [dateFilter, isTrash, query, scopeFilter, sessions, statusFilter]);
+  // tl1429d2：同族多桶渲染层合并。回收站模式把（过滤后的）非 recoveryCopy
+  // 记录按 trashFamilyKey 归组：主线记录为主体占一行，副本/同键旧记录进
+  // children——默认视图行数=族数，明细走主体行上的计数徽标展开。桶仍是
+  // 还原/清除的单桶语义：children 每条都可单独还原/清除。
+  const trashFamilies = useMemo(
+    () => (isTrash ? trashFamilyRows(filteredSessions.filter((session) => !session.recoveryCopy)) : []),
+    [filteredSessions, isTrash],
+  );
+  const familyByBodyPath = useMemo(
+    () => new Map(trashFamilies.map((row) => [row.body.path, row])),
+    [trashFamilies],
+  );
   const displayedSessions = useMemo(
-    () => filteredSessions.filter((session) => !session.recoveryCopy),
-    [filteredSessions],
+    () => isTrash ? trashFamilies.map((row) => row.body) : filteredSessions.filter((session) => !session.recoveryCopy),
+    [filteredSessions, isTrash, trashFamilies],
   );
   const systemRecoverySessions = useMemo(
     () => isTrash ? filteredSessions.filter((session) => session.recoveryCopy) : [],
     [filteredSessions, isTrash],
   );
-  const selectableSessions = useMemo(
-    () => isTrash && showSystemRecoveryData ? [...displayedSessions, ...systemRecoverySessions] : displayedSessions,
-    [displayedSessions, isTrash, showSystemRecoveryData, systemRecoverySessions],
-  );
+  const selectableSessions = useMemo(() => {
+    if (!isTrash) return displayedSessions;
+    // 副本明细行也可预览/还原/清除，必须可选中（preview 反查用）。
+    const familyMembers = trashFamilies.flatMap((row) => [row.body, ...row.children]);
+    return showSystemRecoveryData ? [...familyMembers, ...systemRecoverySessions] : familyMembers;
+  }, [displayedSessions, isTrash, showSystemRecoveryData, systemRecoverySessions, trashFamilies]);
 
   // Sessions arrive newest-first; bucket consecutive ones under a day heading
   // (Today / Yesterday / a date) while preserving that order.
@@ -282,6 +299,12 @@ export function HistoryPanel({
     setMenuPoint(null);
     setBlankMenuPoint(null);
     setMenuConfirmTarget(null);
+  };
+  // tl1429d2：同族合并行的副本明细开合。
+  const toggleFamily = (bodyPath: string) => {
+    setExpandedFamilies((current) => (
+      current.includes(bodyPath) ? current.filter((path) => path !== bodyPath) : [...current, bodyPath]
+    ));
   };
   const deleteHistorySession = (s: SessionMeta) => {
     closeHistoryMenus();
@@ -417,11 +440,15 @@ export function HistoryPanel({
     else setMenuConfirmTarget({ kind: "purge", path: selectedSession.path });
   };
 
-  const renderSessionItem = (session: SessionMeta) => {
+  const renderSessionItem = (session: SessionMeta, family?: TrashFamilyRow) => {
     const selected = preview?.path === session.path;
+    // tl1429d2：副本明细行的区分徽标——recovery-<hex8> 对得上桶名。
+    const copyBadge = trashFamilyCopyBadge(session);
+    const familyExpanded = family ? expandedFamilies.includes(family.body.path) : false;
+    const familyRow = family && family.children.length > 0;
     return (
       <div
-        className={`hist-item${session.current ? " hist-item--current" : ""}${selected ? " hist-item--selected" : ""}`}
+        className={`hist-item${session.current ? " hist-item--current" : ""}${selected ? " hist-item--selected" : ""}${familyRow ? " hist-item--family" : ""}`}
         key={session.path}
         onContextMenu={(event) => openSessionMenu(event, session)}
       >
@@ -457,6 +484,7 @@ export function HistoryPanel({
               {!isTrash && session.current && <span className="hist-item__badge hist-item__badge--current">{tr("history.current")}</span>}
               {!isTrash && !session.current && session.open && <span className="hist-item__badge hist-item__badge--open">{tr("history.open")}</span>}
               {isTrash && <span className="hist-item__badge hist-item__badge--deleted">{tr("history.deleted")}</span>}
+              {isTrash && copyBadge && <span className="hist-item__badge hist-item__badge--copy">{tr("history.trashFamilyCopyRole")} {copyBadge}</span>}
               {sessionLocation(session, tr) && <span className="hist-item__scope">{sessionLocation(session, tr)}</span>}
               <span className="hist-item__metaspacer" />
               <span className="hist-item__stat">
@@ -474,6 +502,23 @@ export function HistoryPanel({
               )}
             </div>
           </button>
+        )}
+        {family && familyRow && (
+          <>
+            <button
+              type="button"
+              className="trash-family__toggle"
+              aria-expanded={familyExpanded}
+              onClick={(event) => { event.stopPropagation(); toggleFamily(family.body.path); }}
+            >
+              {familyExpanded ? tr("history.trashFamilyCollapse") : tr("history.trashFamilyCopies", { n: family.children.length })}
+            </button>
+            {familyExpanded && (
+              <div className="trash-family__children">
+                {family.children.map((child) => renderSessionItem(child))}
+              </div>
+            )}
+          </>
         )}
       </div>
     );
@@ -600,7 +645,8 @@ export function HistoryPanel({
                     <span>{g.label}</span>
                     <span className="hist-group__count">{g.items.length}</span>
                   </div>
-                  {g.items.map(renderSessionItem)}
+                  {/* tl1429d2：主体行带上自己的族（副本徽标+展开明细）。 */}
+                  {g.items.map((session) => renderSessionItem(session, familyByBodyPath.get(session.path)))}
                 </section>
               ))}
               {isTrash && systemRecoverySessions.length > 0 && (
@@ -616,7 +662,7 @@ export function HistoryPanel({
                   </button>
                   {showSystemRecoveryData && (
                     <div className="history-system-recovery__items" aria-label={tr("history.systemRecoveryData")}>
-                      {systemRecoverySessions.map(renderSessionItem)}
+                      {systemRecoverySessions.map((session) => renderSessionItem(session))}
                     </div>
                   )}
                 </section>

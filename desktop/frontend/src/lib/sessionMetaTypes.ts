@@ -32,6 +32,8 @@ export interface SessionMeta {
   recoveryGroupId?: string;
   recoveryRole?: string; // normal|covered_copy|adopted|diverged
   recoveryCanonical?: boolean;
+  trashFamilyKey?: string; // tl1429d2: trash-only family grouping key (mainline stem; recovery copies peel to the same key)
+  trashFamilyCopy?: boolean; // tl1429d2: this bucket is a recovery-shaped copy (naming-shape only, not the RecoveryCopy contract)
   versionKind?: "normal" | "recovery" | "subagent" | string;
   versionState?: "active" | "pending" | "resolved" | "trashed" | string;
   parentVersionId?: string;
