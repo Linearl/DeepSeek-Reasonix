@@ -71,6 +71,8 @@ func RunSubAgentWithSession(ctx context.Context, prov provider.Provider, reg *to
 	ctx = WithoutTurnContextBundle(ctx)
 	// Isolate temporary files for this run before any tool execution.
 	ctx = tool.WithoutGoalTurnRecorder(ctx)
+	// tl1472: read-only sub-agents must not create goals either.
+	ctx = tool.WithoutGoalCreator(ctx)
 	if opts.MemoryQueue != nil {
 		ctx = memory.WithQueue(ctx, opts.MemoryQueue)
 	} else {

@@ -95,6 +95,7 @@ var acceptsDefaultSnip = map[string]bool{
 	"workflow_run":    true,
 	"workflow_status": true,
 	"view_image":      true, // visual summary, not a text body a head/tail split would help
+	"create_goal":     true, // tl1472: short host-bookkeeping receipt; generic head/tail split is fine
 	"update_goal":     true,
 	"wait":            true,
 	"write_file":      true,

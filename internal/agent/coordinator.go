@@ -337,6 +337,8 @@ func (c *Coordinator) Run(ctx context.Context, input string) error {
 	}
 	c.sink.Emit(event.Event{Kind: event.Phase, Text: c.planner.Name() + " · planning", Detail: routeDetail, Source: event.UsageSourcePlanner})
 	plannerCtx := tool.WithoutGoalTurnRecorder(ctx)
+	// tl1472: the planner never creates goals for the session.
+	plannerCtx = tool.WithoutGoalCreator(plannerCtx)
 	plannerInput := plannerTurnInput(input, decision)
 	outcome, err := c.plan(plannerCtx, plannerInput)
 	if err != nil {
