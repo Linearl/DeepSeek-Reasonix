@@ -1,8 +1,11 @@
 package main
 
 import (
+	"log/slog"
 	"strings"
 	"time"
+
+	"reasonix/internal/control"
 )
 
 // Task 889: the observed reconcile twins (extracted from tabs.go, pure move
@@ -18,6 +21,10 @@ type reconcileObservation struct {
 	memoMs  time.Duration
 	memoHit bool
 	walkMs  time.Duration
+	// stale (tl1500 刀①) marks the entry-level snapshot fallback: a writer
+	// held or queued on a.mu, so the entry answered "binding unchanged" from
+	// the tab's own session path without probing (no memo, no walk, no apply).
+	stale bool
 }
 
 func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool) {
@@ -45,13 +52,22 @@ func (a *App) reconcileTabWithPinnedSessionMetaObserved(tab *WorkspaceTab, mark 
 		return "", false, obs
 	}
 	start := time.Now()
-	a.mu.RLock()
-	current := a.tabs[tab.ID]
-	sessionPath := strings.TrimSpace(tab.SessionPath)
-	ctrl := tab.Ctrl
-	scope := tab.Scope
-	workspaceRoot := tab.WorkspaceRoot
-	a.mu.RUnlock()
+	sessionPath, ctrl, scope, workspaceRoot, current, entryFresh := a.readReconcileEntry(tab)
+	if !entryFresh {
+		// tl1500 刀①: 写锁被持有/排队时不排队应答——「无法探测变更」按
+		// 「绑定未变」处理：tab 自身的绑定路径原样作为 settled 结果返回
+		// （与 memo 命中同形状），绝不进入走 a.mu 的 memo/apply 后段。无
+		// 绑定路径则按无绑定应答。切 tab 绑定/文件/记忆等读者在保存家族
+		// 占锁期间由此保持 <100ms 返回（2026-11-08 装机挂死主链）。
+		obs.stale = true
+		slog.Warn("desktop: session reconcile stale fallback (writer holds a.mu; tl1500 刀①)",
+			"tab", tab.ID, "cause", "binding_snapshot_stale")
+		a.logSlowSessionReconcile(tab, start, "stale_snapshot", time.Since(start))
+		if sessionPath != "" {
+			return sessionPath, true, obs
+		}
+		return "", false, obs
+	}
 	if current != tab {
 		return "", false, obs
 	}
@@ -131,6 +147,29 @@ func (a *App) reconcileTabWithPinnedSessionMetaObserved(tab *WorkspaceTab, mark 
 
 func (a *App) reconcileTabWithSessionPath(tab *WorkspaceTab, sessionPath string) (string, bool) {
 	return a.reconcileTabWithSessionPathMarked(tab, sessionPath, nil)
+}
+
+// readReconcileEntry reads the reconcile inputs (tab identity + binding
+// fields). tl1500 刀①: TryRLock first — on success this is the exact locked
+// read the old entry did, plus a binding-snapshot publish; when a writer holds
+// or queues on a.mu, fresh=false and only the tab's own session path is
+// served, letting the caller treat "cannot probe for changes" as "binding
+// unchanged" instead of joining the reader convoy. The lock-free field read in
+// the stale arm follows the activeWorkspaceRoot precedent (binding reads may
+// be served outside a.mu when the probing lock is unavailable).
+func (a *App) readReconcileEntry(tab *WorkspaceTab) (sessionPath string, ctrl control.SessionAPI, scope, workspaceRoot string, current *WorkspaceTab, fresh bool) {
+	if a.mu.TryRLock() {
+		current = a.tabs[tab.ID]
+		sessionPath = strings.TrimSpace(tab.SessionPath)
+		ctrl = tab.Ctrl
+		scope = tab.Scope
+		workspaceRoot = tab.WorkspaceRoot
+		a.publishBindingSnapshotLocked()
+		a.mu.RUnlock()
+		return sessionPath, ctrl, scope, workspaceRoot, current, true
+	}
+	// Stale: caller must skip the memo/walk/apply legs.
+	return strings.TrimSpace(tab.SessionPath), nil, "", "", nil, false
 }
 
 // reconcileTabWithSessionPathMarked is the instrumented twin of

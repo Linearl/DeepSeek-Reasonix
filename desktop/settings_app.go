@@ -2993,12 +2993,27 @@ func configDeclaresProviderAccess(path string) bool {
 	return false
 }
 
+// tl1500 刀①: snapshot read. This is the root step of loadDesktopUserConfigForView
+// — the lock taken HERE sits before config parsing on every settings/usage
+// read (诊断报告 §2.1 的车队点), so under a write-lock holder it must answer
+// from the binding snapshot instead of queueing: fresh (uncontended) keeps the
+// old semantics verbatim — activeTab + reconcile + live-field read; stale
+// serves the snapshot root without the reconcile (which would take a.mu again).
 func (a *App) activeWorkspaceRoot() string {
-	tab := a.activeTab()
-	if tab != nil {
-		a.reconcileTabWithPinnedSessionMeta(tab)
-		if strings.TrimSpace(tab.WorkspaceRoot) != "" {
-			return tab.WorkspaceRoot
+	snap, fresh := a.bindingSnapshotNow()
+	if snap != nil && snap.present && snap.tab != nil {
+		if fresh {
+			a.reconcileTabWithPinnedSessionMeta(snap.tab)
+			// Lock-free field read: the uncontended pattern this function always
+			// had (reconcile publishes binding updates under a.mu, the read here
+			// mirrors the pre-existing post-reconcile read).
+			if root := strings.TrimSpace(snap.tab.WorkspaceRoot); root != "" {
+				return root
+			}
+			return "."
+		}
+		if snap.root != "" {
+			return snap.root
 		}
 	}
 	return "."
