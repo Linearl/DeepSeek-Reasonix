@@ -243,16 +243,24 @@ func recordFromOrder(target DirectoryTarget, info agent.SessionOrderInfo) Sessio
 		turnsState = TurnsUnknown
 	}
 	// tl1485b: counts can be fully current while the sidecar's UpdatedAt sits
-	// hours ahead of the transcript (the dead meta-only pump's stock). Such a
-	// row must reach the repair queue like any other listing defect, so the
-	// cheap tail probe de-certifies it here; the exact correction happens in
-	// the repair replay against the full decode. The probe reports false on
-	// missing evidence, so a failed read never parks a healthy row.
+	// hours ahead of the transcript (the dead meta-only pump's stock).
+	// tl1485c: the mirror form — a stamp frozen BELOW the transcript's own
+	// newest message (collab/detached appends whose UpdatedAt never moved) —
+	// leaves the sidebar stuck on "1 个月" for days-old messages, and no path
+	// reached it: the row stays valid, so the repair queue (which claims
+	// turns_state='unknown' rows only) never picked it up, and the commit
+	// funnel's raise only fires on the session's next save. Such a row must
+	// reach the repair queue like any other listing defect, so the cheap
+	// two-way tail probe de-certifies it here; the exact correction happens in
+	// the repair replay against the full decode (raise-only for behind,
+	// drop-to-message for ahead). The probe reports false on missing evidence,
+	// so a failed read never parks a healthy row.
 	activityStale := false
-	if turnsState == TurnsValid &&
-		agent.SessionListingActivityAheadOfTranscript(info.Path, info.LastActivityAt) {
-		activityStale = true
-		turnsState = TurnsUnknown
+	if turnsState == TurnsValid {
+		if behind, ahead := agent.SessionListingActivityMismatch(info.Path, info.LastActivityAt); behind || ahead {
+			activityStale = true
+			turnsState = TurnsUnknown
+		}
 	}
 	createdAt := unixMilli(info.CreatedAt)
 	lastActivityAt := unixMilli(info.LastActivityAt)
