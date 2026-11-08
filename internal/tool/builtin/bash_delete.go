@@ -169,7 +169,7 @@ func (b bash) judgeDelete(ctx context.Context, sh sandbox.Shell, command string,
 				scoped := b
 				scoped.workDir = dir
 				if !scoped.boundedDeleteTarget(target) {
-					return refuseDelete(CodeDestructiveTarget, "Use a target strictly inside the workspace or granted write roots; home, filesystem roots and workspace ancestors are protected in every approval mode, and remaining out-of-scope targets need granted write roots or full access.")
+					return refuseDelete(CodeDestructiveTarget, "Use a target strictly inside the workspace or granted write roots; home, filesystem roots and workspace ancestors are protected in every approval mode, and remaining out-of-scope targets need granted write roots or full access. Scripted batch deletion has no dry-run: enumerate the batch as literal targets inside the granted roots and each one gets the same audit.")
 				}
 			}
 		}
