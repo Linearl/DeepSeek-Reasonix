@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"unicode"
+	"unicode/utf8"
 
 	"reasonix/internal/nilutil"
 )
@@ -891,10 +892,74 @@ type Chunk struct {
 	ReasoningStatus string            // ChunkReasoning: final reasoning item status ("completed")
 	ToolCall        *ToolCall         // ChunkToolCallStart (ID+Name only), ChunkToolCallArgsDelta (ID+Name), ChunkToolCall (complete)
 	ArgChars        int               // ChunkToolCallArgsDelta: cumulative argument characters received for this call
-	ResponsesItem   json.RawMessage   // ChunkResponsesItem: opaque validated Responses API output item
+	// ArgsPreview rides ChunkToolCallArgsDelta: a bounded tail of the call's
+	// cumulative arguments (tl1475) so the UI can render a live preview of what
+	// the model is still writing. Purely display-only: never parsed, never
+	// executed, and never persisted as tool input.
+	ArgsPreview   string          // ChunkToolCallArgsDelta: bounded tail of the cumulative arguments
+	ResponsesItem json.RawMessage // ChunkResponsesItem: opaque validated Responses API output item
 	ServerSearch    *ServerSearchCall // ChunkServerSearch: display card + replay payload
 	Usage           *Usage            // ChunkUsage
 	Err             error             // ChunkError
+}
+
+// Streaming argument preview budget (tl1475), in bytes. The excerpt carries
+// the HEAD of the arguments (where subject keys like "path"/"command" live —
+// the UI reads them for the pending card's collapsed line) and the TAIL (the
+// newest characters, so a long write_file visibly fills as it streams). The
+// bound keeps the per-tick cost constant no matter how large the call grows.
+const (
+	ArgsPreviewHeadBytes = 384
+	ArgsPreviewTailBytes = 800
+	// argsPreviewSeparator joins head and tail when the payload is truncated.
+	// Raw newlines only occur between JSON tokens (string values escape them
+	// as \n), so this marker is rare inside real arguments; the frontend
+	// treats everything before the FIRST marker as the scan region for
+	// subject keys. Worst case on collision is a missed subject — never a
+	// wrong one.
+	argsPreviewSeparator = "\n…"
+)
+
+// ArgsPreviewExcerpt renders the display excerpt of still-streaming arguments:
+// the payload as-is when it fits, otherwise head + separator + tail. Both cuts
+// are rune-safe and O(limit) — no scan of the whole accumulated payload, so
+// per-delta emission sites can call it cheaply. tl1475.
+func ArgsPreviewExcerpt(s string) string {
+	if s == "" {
+		return ""
+	}
+	budget := ArgsPreviewHeadBytes + ArgsPreviewTailBytes
+	if len(s) <= budget {
+		return s
+	}
+	return cutRuneSafe(s, 0, ArgsPreviewHeadBytes) + argsPreviewSeparator + tailRuneSafe(s, ArgsPreviewTailBytes)
+}
+
+// cutRuneSafe returns s[:end] backed up to a UTF-8 rune boundary.
+func cutRuneSafe(s string, from, end int) string {
+	if end >= len(s) {
+		return s[from:]
+	}
+	for end > from && !utf8.RuneStart(s[end]) {
+		end--
+	}
+	return s[from:end]
+}
+
+// tailRuneSafe returns the last limit bytes of s, cut on a rune boundary.
+func tailRuneSafe(s string, limit int) string {
+	if limit <= 0 || s == "" {
+		return ""
+	}
+	if len(s) <= limit {
+		return s
+	}
+	start := len(s) - limit
+	// Back up to a rune boundary so the tail never begins mid-rune.
+	for start > 0 && !utf8.RuneStart(s[start]) {
+		start--
+	}
+	return s[start:]
 }
 
 // Fixed stream-interrupt reasons for observability. Values are a closed enumand must never carry URLs,

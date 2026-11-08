@@ -626,7 +626,7 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			call := callForItem(event.ItemID)
 			call.arguments += event.Delta
 			call.argChars += len(event.Delta)
-			if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: call.id, Name: call.name}, ArgChars: call.argChars}) {
+			if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: call.id, Name: call.name}, ArgChars: call.argChars, ArgsPreview: provider.ArgsPreviewExcerpt(call.arguments)}) {
 				return
 			}
 		case "response.function_call_arguments.done":

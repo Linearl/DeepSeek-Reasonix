@@ -400,6 +400,7 @@ export type Item =
       parentId?: string; // a sub-agent call nests under the `task` call with this id
       profile?: { model?: string; effort?: string }; // subagent model/effort from tool event
       argChars?: number; // args still streaming from the model: cumulative chars received
+      argsPreview?: string; // tl1475: bounded head+tail excerpt of the still-streaming args (display-only); cleared by the full dispatch
       subagentProgress?: SubagentProgress; // in-memory-only preview, never hydrated from history
       verifying?: boolean; // Host-confirmed check execution; never inferred from prose.
     }
@@ -2076,7 +2077,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
           const it = next[idx];
           if (it.kind === "tool" && it.status === "running" && !it.args) {
             const prior = it;
-            next[idx] = { ...it, argChars: t.argChars || it.argChars };
+            next[idx] = { ...it, argChars: t.argChars || it.argChars, argsPreview: t.argsPreview || it.argsPreview };
             return noteToolInJournal({ ...activeState, items: next, turnArgChars }, id, true, prior, {
               attemptId: t.attemptId, parentId: t.parentId, partial: true,
             });
@@ -2087,7 +2088,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
           ...activeState,
           turnArgChars,
           seq: activeState.seq + 1,
-          items: [...activeState.items, { kind: "tool", id, name: t.name, args: "", readOnly: t.readOnly, resolvedName: t.resolvedName, capabilityId: t.capabilityId, status: "running", startedAt: Date.now(), argChars: t.argChars || undefined, parentId: t.parentId, subagentProgress: SUBAGENT_PROGRESS_TOOLS.has(t.name) ? freshSubagentProgress() : undefined }],
+          items: [...activeState.items, { kind: "tool", id, name: t.name, args: "", readOnly: t.readOnly, resolvedName: t.resolvedName, capabilityId: t.capabilityId, status: "running", startedAt: Date.now(), argChars: t.argChars || undefined, argsPreview: t.argsPreview || undefined, parentId: t.parentId, subagentProgress: SUBAGENT_PROGRESS_TOOLS.has(t.name) ? freshSubagentProgress() : undefined }],
         }, id, false, undefined, { attemptId: t.attemptId, parentId: t.parentId, partial: true });
       }
       const settled = t.parentId ? s : settleCurrentAssistant(s);
@@ -2100,7 +2101,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
           const args = t.args ? t.args : it.args;
           const fileDiff = fileDiffFromWire(t);
           const summary = summarizeFileDiff(fileDiff) || summarize(t.name, args) || (t.name === it.name && args === it.args ? it.summary : undefined);
-          next[idx] = { ...it, name: t.name, args, readOnly: t.readOnly, resolvedName: t.resolvedName ?? it.resolvedName, capabilityId: t.capabilityId ?? it.capabilityId, profile: t.profile ?? it.profile, summary, fileDiff, argChars: undefined, isShell: it.isShell || t.name === "bash" || id.startsWith("shell-"), execution: t.execution ?? it.execution, subagentProgress: it.subagentProgress ?? (SUBAGENT_PROGRESS_TOOLS.has(t.name) ? freshSubagentProgress() : undefined) };
+          next[idx] = { ...it, name: t.name, args, readOnly: t.readOnly, resolvedName: t.resolvedName ?? it.resolvedName, capabilityId: t.capabilityId ?? it.capabilityId, profile: t.profile ?? it.profile, summary, fileDiff, argChars: undefined, argsPreview: undefined, isShell: it.isShell || t.name === "bash" || id.startsWith("shell-"), execution: t.execution ?? it.execution, subagentProgress: it.subagentProgress ?? (SUBAGENT_PROGRESS_TOOLS.has(t.name) ? freshSubagentProgress() : undefined) };
         }
         if (t.parentId) touchSubagentParent(next, t.parentId);
         return { ...settled, items: next };

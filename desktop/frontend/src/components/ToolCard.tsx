@@ -7,7 +7,7 @@ import { CodeViewer } from "./CodeViewer";
 import { DiffView } from "./DiffView";
 import { useT } from "../lib/i18n";
 import { formatDurationLabel, formatRelativeAgeLabel } from "../lib/durationFormat";
-import { diffsFor, languageForToolArgs, subjectOf, summarize, summarizeFileDiff } from "../lib/tools";
+import { diffsFor, languageForToolArgs, streamingToolSubject, subjectOf, summarize, summarizeFileDiff } from "../lib/tools";
 import { capabilityInspectSchema } from "../lib/capabilityInspect";
 import { useShellExpand } from "../lib/shellExpand";
 import { app } from "../lib/bridge";
@@ -325,7 +325,12 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
     setAppInstance((current) => current?.instanceToken === instanceToken ? null : current);
   }, []);
   const archivedWithoutFullData = Boolean(item.dataArchived && !fullData);
-  const effectiveArgs = archivedWithoutFullData ? "" : fullData?.args ?? item.args;
+  // tl1475: while this call's arguments are still streaming (partial dispatch,
+  // no full args yet), the pending card's args surface falls back to the
+  // backend-sampled head+tail excerpt so the body visibly fills as the model
+  // writes. Cleared the moment the full dispatch lands (args take over).
+  const streamingPreview = item.status === "running" && !item.args && !fullData ? item.argsPreview || "" : "";
+  const effectiveArgs = archivedWithoutFullData ? "" : (fullData?.args ?? (item.args || streamingPreview));
   const effectiveOutput = fullData?.output ?? item.output;
   const execution = fullData?.execution ?? item.execution;
   const isWebSearch = item.name === "web_search";
@@ -355,7 +360,9 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
   const inspectSchema = displayOutput ? capabilityInspectSchema(item.name, effectiveArgs, displayOutput) : undefined;
   const previewDiff = item.fileDiff?.diff ? item.fileDiff : undefined;
   const diffs = previewDiff || archivedWithoutFullData ? [] : diffsFor(item.name, effectiveArgs);
-  const subject = fullData ? subjectOf(item.name, effectiveArgs) : item.subject || subjectOf(item.name, effectiveArgs);
+  const subject = fullData
+    ? subjectOf(item.name, effectiveArgs)
+    : item.subject || subjectOf(item.name, effectiveArgs) || (streamingPreview ? streamingToolSubject(item.name, streamingPreview) : "");
   const shellName = isShellCard ? shellDisplayName(execution) : (displayName ?? item.name);
   const shellSummary = execution && item.status !== "running" ? shellSettledSummary(t, execution, item.durationMs) : "";
   const verificationLabel = shellVerificationLabel(t, execution?.verification);

@@ -152,6 +152,7 @@ export interface WireTool {
   durationMs?: number;
   partial?: boolean; // an early dispatch (name only) — a full one with args follows
   argChars?: number; // partial only: cumulative argument chars streamed so far
+  argsPreview?: string; // tl1475 partial only: bounded head+tail excerpt of the still-streaming args; display-only, dropped when the full dispatch lands
   refreshed?: boolean; // same-ID full dispatch with a preview recomputed after an earlier write
 	parentId?: string; // set on a sub-agent's calls — the parent `task` call's id
   /** Host-local stream_attempt id for speculative parent partials only. */
