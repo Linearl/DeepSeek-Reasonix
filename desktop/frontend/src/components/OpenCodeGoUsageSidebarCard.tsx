@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { app } from "../lib/bridge";
 import { ACTIVE_MODEL_CHANGED_EVENT } from "../lib/activeModelChanged";
@@ -25,6 +25,13 @@ import {
 // 任务 872 — 热切换（ACTIVE_MODEL_CHANGED_EVENT）立即重查：epoch 递增让
 // 在途的旧 provider family 查询作废（迟到答案不得复活旧卡），并立刻对新
 // 模型重查——GLM↔OpenCode Go 来回切时本卡与 GLM 卡都不会同屏并存。
+//
+// fix-provider-poll-bound 刀② 按需查询（用户 2026-11-08 裁定）：family 答案
+// 改为按事件刷新（挂载/换 tab/切模型/目录变更），已知非 opencode-go（含无
+// 活跃 tab 的 family=""）时 60s tick 零调用——既不发用量请求，也不每 tick
+// 重发 family 查询。Go 侧每次 family/用量查询都要解析全量 config（弃用键按
+// 次 WARN），无相关活跃会话时的空转就是慢性重读源；事件面已覆盖 family 的
+// 一切变化来源。刀① 失败有界由同主题后续 commit 落地。
 //
 // 数据面与 GLM 卡一致：60s 轮询（ensurePlanUsagePolling 同节奏）+ 手动刷新
 // + 30s 倒计时 tick。任务 800 起本卡是明细的权威展示位：设置卡
@@ -53,19 +60,27 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
   // down (its cancelled flag drops in-flight answers for the outgoing model)
   // and re-queries the new model immediately.
   const [epoch, setEpoch] = useState(0);
-
+  // 刀②：family 答案的内存门槛（事件刷新，tick 不重查——见 pollOnce）。
+  const familyRef = useRef<string | undefined>(undefined);
 
   // 任务 872: forget the outgoing provider's family answer the moment the
   // switch lands (a late answer must not resurrect this card beside the
   // other provider's card) and re-query the new model right away.
+  // 刀②：目录变更（设置页改默认模型/连接编辑）同样能翻转 family——同走
+  // 这条「作废门槛 + 立即重查」的事件路径。
   useEffect(() => {
-    const onModelChanged = () => {
+    const onQueryContextChanged = () => {
+      familyRef.current = undefined;
       setFamily(undefined);
       setUsage(null);
       setEpoch((value) => value + 1);
     };
-    window.addEventListener(ACTIVE_MODEL_CHANGED_EVENT, onModelChanged);
-    return () => window.removeEventListener(ACTIVE_MODEL_CHANGED_EVENT, onModelChanged);
+    window.addEventListener(ACTIVE_MODEL_CHANGED_EVENT, onQueryContextChanged);
+    window.addEventListener("reasonix:model-catalog-changed", onQueryContextChanged);
+    return () => {
+      window.removeEventListener(ACTIVE_MODEL_CHANGED_EVENT, onQueryContextChanged);
+      window.removeEventListener("reasonix:model-catalog-changed", onQueryContextChanged);
+    };
   }, []);
 
   const refresh = useCallback(async () => {
@@ -80,26 +95,38 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
     }
   }, []);
 
-  // Shared 60s poll: the family lookup first (zero-I/O config scan), and the
-  // usage request only fires when this card may actually show.
+  // Shared 60s poll with the 刀② on-demand gate. Per tick:
+  //   family 已知非 opencode-go（含无活跃 tab 的 ""）→ 零调用零 config 读
+  //     （family 只经事件变化——换 tab / 切模型 / 目录变更都会立即重查，
+  //     见 onQueryContextChanged——tick 无需反复验证）；
+  //   family 未定（新查询上下文首个 tick）→ 一次 family 查询定门，之后
+  //     本上下文内不再重发；
+  //   family = opencode-go → 照常查用量（tl1487「常开」= 功能不撤，活跃
+  //     相关会话下 60s 节拍保持）。
   // A tabId change re-queries immediately so a tab switch never shows the
   // previous tab's provider card; an epoch bump (任务 872) does the same for a
-  // hot model switch within the tab; a transport failure keeps the last family
-  // and retries on the next tick.
+  // hot model switch within the tab.
   useEffect(() => {
     let cancelled = false;
+    // 新查询上下文（挂载/换 tab/epoch bump）：重置门槛。
+    familyRef.current = undefined;
     const pollOnce = async () => {
-      try {
-        const active = await app.GetActivePlanFamily(tabId ?? "");
-        if (cancelled) return;
-        setFamily(active);
-        if (active !== "opencode-go") {
+      if (familyRef.current !== undefined && familyRef.current !== "opencode-go") return;
+      if (familyRef.current === undefined) {
+        try {
+          const active = await app.GetActivePlanFamily(tabId ?? "");
+          if (cancelled) return;
+          familyRef.current = active;
+          setFamily(active);
+        } catch {
+          // family 查询瞬时失败：保住旧门槛，下个 tick 重试
+          // （它自身零网络 I/O，不计入用量调用）。
+          return;
+        }
+        if (familyRef.current !== "opencode-go") {
           setUsage(null);
           return;
         }
-      } catch {
-        // Keep the last family (and its card) through a transient failure;
-        // the next tick retries.
       }
       await refresh();
     };

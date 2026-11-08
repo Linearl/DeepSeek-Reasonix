@@ -19,6 +19,15 @@
 // frame the switch lands (switching flag drives a skeleton), so its card can
 // never coexist with the incoming provider's card while the new answer is in
 // flight.
+//
+// fix-provider-poll-bound 刀② 按需查询（用户 2026-11-08 裁定）——tick 走
+// 门槛判定（全部内存态，零额外查询）：
+//  ① tabId undefined（无可见活跃面）→ 零桥调用（Go 侧不再被空转调用）；
+//  ② 最近答案 unsupported（当前 tab 当前模型非 plan 家族）→ tick 零调用，
+//     家族只会经事件改变（换 tab / 切模型 / 目录变更），事件路径强制重查；
+//  ③ 对照语义不变：plan 家族活跃会话照常 60s 轮询（tl1487「常开」= 功能
+//     不撤，不是无会话空转）。
+// 刀① 失败有界由同主题后续 commit 落地。
 
 import { create } from "zustand";
 
@@ -40,6 +49,10 @@ type PlanUsageState = {
   switching: boolean;
   /** The visible tab's id, as reported by the mounted surfaces. */
   tabId: string | undefined;
+  /** fix-provider-poll-bound 刀②: whether the last answer was plan-capable.
+   * false = the visible tab's current model resolved to a non-plan provider —
+   * ticks stay silent until an event re-verifies. undefined = never queried. */
+  lastAnswerSupported: boolean | undefined;
   /** Report the visible tab. Idempotent; a change re-queries immediately so a
    * tab switch never shows the previous tab's quota. */
   reportTab: (tabId: string | undefined) => void;
@@ -62,9 +75,11 @@ export const usePlanUsageStore = create<PlanUsageState>((set, get) => ({
   loading: false,
   switching: false,
   tabId: undefined,
+  lastAnswerSupported: undefined,
   reportTab: (tabId) => {
     if (get().tabId === tabId) return;
-    set({ tabId });
+    // New query context: the unsupported gate must not leak into it.
+    set({ tabId, lastAnswerSupported: undefined });
     void get().refresh();
   },
   invalidateForModelSwitch: () => {
@@ -72,7 +87,7 @@ export const usePlanUsageStore = create<PlanUsageState>((set, get) => ({
     // snapshot — both synchronously, so nothing can slip in between. The
     // refresh below re-queries the tab's now-active (incoming) model.
     refreshSeq++;
-    set({ view: null, switching: true });
+    set({ view: null, switching: true, lastAnswerSupported: undefined });
     void get().refresh();
   },
   refresh: async () => {
@@ -82,12 +97,15 @@ export const usePlanUsageStore = create<PlanUsageState>((set, get) => ({
     try {
       const view = await app.GetProviderPlanUsage(tabId ?? "");
       if (seq !== refreshSeq) return;
-      set({ view });
+      // 刀②: record the supported gate with the answer (unsupported → ticks
+      // stay silent until an event re-verifies).
+      set({ view, lastAnswerSupported: view.supported });
     } catch {
       if (seq !== refreshSeq) return;
-      // Network/transport failures keep the last snapshot; the polling cadence
-      // will retry and the note surfaces through the view when the backend
-      // degraded gracefully. Never throws out of a status read.
+      // Network/transport failures keep the last snapshot and the last gate —
+      // the polling cadence will retry and the note surfaces through the view
+      // when the backend degraded gracefully. Never throws out of a status
+      // read.
     } finally {
       if (seq === refreshSeq) set({ loading: false, switching: false });
     }
@@ -99,7 +117,13 @@ let pollTimer: number | null = null;
 
 function tick() {
   if (typeof document !== "undefined" && document.hidden) return;
-  void usePlanUsageStore.getState().refresh();
+  const state = usePlanUsageStore.getState();
+  // 刀② on-demand gate — all in-memory state, zero extra queries per tick:
+  //   no visible surface (tabId undefined) → zero bridge calls;
+  //   known non-plan family → zero calls until an event re-verifies.
+  if (state.tabId === undefined) return;
+  if (state.lastAnswerSupported === false) return;
+  void state.refresh();
 }
 
 /** 任务 872: a hot model switch invalidates the snapshot instead of merely
@@ -109,9 +133,21 @@ function onActiveModelChanged() {
   usePlanUsageStore.getState().invalidateForModelSwitch();
 }
 
+/** fix-provider-poll-bound: a model-catalog change (settings-driven default
+ * or connection edits) can flip the plan family of the visible tab — clear
+ * the gate and force one re-verification immediately (a tab with no visible
+ * surface only resets the gate; the next reportTab re-queries). */
+function onModelCatalogChanged() {
+  usePlanUsageStore.setState({ lastAnswerSupported: undefined });
+  if (usePlanUsageStore.getState().tabId === undefined) return;
+  void usePlanUsageStore.getState().refresh();
+}
+
 /** ensurePlanUsagePolling starts the 60s poll once for the app lifetime.
  * Idempotent; the desktop app never tears it down (the status bar remounts
  * across layouts and the bridge call is free when no plan provider exists).
+ * 刀②: the first beat goes through the gated tick — with no visible surface
+ * it issues zero bridge calls; a surface's reportTab starts the querying.
  * A model-catalog change (settings-driven default or connection edits)
  * re-queries so the surfaces follow the new current model without waiting a
  * full interval; a hot model switch (ACTIVE_MODEL_CHANGED_EVENT) takes the
@@ -119,9 +155,9 @@ function onActiveModelChanged() {
 export function ensurePlanUsagePolling(): void {
   if (polling) return;
   polling = true;
-  void usePlanUsageStore.getState().refresh();
+  tick();
   pollTimer = window.setInterval(tick, PLAN_USAGE_POLL_MS);
-  window.addEventListener("reasonix:model-catalog-changed", tick);
+  window.addEventListener("reasonix:model-catalog-changed", onModelCatalogChanged);
   window.addEventListener(ACTIVE_MODEL_CHANGED_EVENT, onActiveModelChanged);
 }
 
@@ -131,9 +167,9 @@ export function stopPlanUsagePollingForTest(): void {
     window.clearInterval(pollTimer);
     pollTimer = null;
   }
-  window.removeEventListener("reasonix:model-catalog-changed", tick);
+  window.removeEventListener("reasonix:model-catalog-changed", onModelCatalogChanged);
   window.removeEventListener(ACTIVE_MODEL_CHANGED_EVENT, onActiveModelChanged);
   polling = false;
   refreshSeq++;
-  usePlanUsageStore.setState({ view: null, loading: false, switching: false, tabId: undefined });
+  usePlanUsageStore.setState({ view: null, loading: false, switching: false, tabId: undefined, lastAnswerSupported: undefined });
 }
