@@ -59,17 +59,22 @@ var deepSeekRequestEffortVocabulary = []string{"disabled", "low", "high", "max"}
 // instead of the probe admitting a level the next request rejects; GLM gets
 // its canonical five-level set under the same condition — an explicit list
 // stays the probe face because internal/config's NormalizeEffort emits from it
-// verbatim; the MiniMax M3.1 family gets its reasoning_effort domain under
-// the same condition (task 1031); official DeepSeek endpoints get their
-// canonical depth set (task 1161b, host-gated like MiMo/Zhipu — a third-party
-// gateway that merely declares the deepseek protocol keeps its derived
-// vocabulary, since its per-request contract is unverified); every other
-// endpoint keeps the configured/derived vocabulary unchanged.
-func requestEffortVocabularyFor(baseURL, model string, configured []string) []string {
+// verbatim. The GLM gate is protocol-scoped, not host-scoped (task 1388): the
+// fork's whole GLM wire layer keys on the declared reasoning_protocol
+// (c.zhipu := protocol == "glm" || IsZhipu — the strength mapping and the
+// Stream bypass in admitsGLMStrengthOverride fire on the declaration alone),
+// so a gateway that declares the GLM protocol gets the same probe face as the
+// official hosts instead of an empty vocabulary that declined every switch
+// into a full runtime rebuild. DeepSeek stays host-gated (task 1161b's
+// conservative default: a third-party gateway that merely declares the
+// deepseek protocol keeps its derived vocabulary); the MiniMax M3.1 family
+// gets its reasoning_effort domain under the same condition (task 1031);
+// every other endpoint keeps the configured/derived vocabulary unchanged.
+func requestEffortVocabularyFor(baseURL, model, protocol string, configured []string) []string {
 	if IsMiMo(baseURL) && !hasExplicitSupportedEfforts(configured) {
 		return mimoRequestEffortVocabulary
 	}
-	if IsZhipu(baseURL) && !hasExplicitSupportedEfforts(configured) {
+	if (protocol == "glm" || IsZhipu(baseURL)) && !hasExplicitSupportedEfforts(configured) {
 		return zhipuRequestEffortVocabulary
 	}
 	if IsMiniMax(baseURL) && IsMiniMaxM31(model) && !hasExplicitSupportedEfforts(configured) {

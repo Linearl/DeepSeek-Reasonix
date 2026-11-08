@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
-	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
@@ -181,15 +180,59 @@ func TestSetEffortForTabLeaseHeldKeepsOldControllerAlive(t *testing.T) {
 		tab.releaseSessionLease()
 	})
 
-	err = app.SetEffortForTab(tab.ID, "max")
-	if !errors.Is(err, agent.ErrSessionLeaseHeld) {
-		t.Fatalf("SetEffortForTab err = %v, want ErrSessionLeaseHeld", err)
+	// tl1388: the fallback rebuild runs on the background goroutine, so the
+	// lease failure no longer rides the call's error return — the call is
+	// accepted instantly, the rebuild fails in the background, and the failure
+	// surfaces as the tab's warn notice (redacted) plus the effort:settled
+	// clear. Same guarantee as before: the old controller stays alive.
+	var mu sync.Mutex
+	var eventNames []string
+	record := func(_ context.Context, name string, _ ...any) {
+		mu.Lock()
+		eventNames = append(eventNames, name)
+		mu.Unlock()
 	}
-	if strings.Contains(err.Error(), sessionPath) || strings.Contains(err.Error(), "held by") {
-		t.Fatalf("SetEffortForTab surfaced raw lease details: %v", err)
+	app.runtimeEvents.emit = record
+	tab.sink = &tabEventSink{tabID: tab.ID, app: app, ctx: context.Background()}
+	tab.sink.runtimeEvents.emit = record
+	notices := make(chan string, 8)
+	tab.sink.SetBotSink(event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Notice {
+			select {
+			case notices <- e.Text:
+			default:
+			}
+		}
+	}))
+
+	if err := app.SetEffortForTab(tab.ID, "max"); err != nil {
+		t.Fatalf("SetEffortForTab with a held lease must be accepted (the rebuild fails in the background): %v", err)
 	}
+	waitForEffortSettled(t, app, tab.ID)
 	if tab.Ctrl != oldCtrl {
-		t.Fatal("tab controller changed after failed effort switch")
+		t.Fatal("tab controller changed after the failed async effort rebuild")
+	}
+	close(notices)
+	warn := ""
+	for text := range notices {
+		warn += text + "\n"
+	}
+	if warn == "" {
+		t.Fatal("no warn notice after the failed async effort rebuild")
+	}
+	if strings.Contains(warn, sessionPath) || strings.Contains(warn, "held by") {
+		t.Fatalf("async effort failure surfaced raw lease details: %s", warn)
+	}
+	mu.Lock()
+	hasSettled := false
+	for _, name := range eventNames {
+		if name == "effort:settled" {
+			hasSettled = true
+		}
+	}
+	mu.Unlock()
+	if !hasSettled {
+		t.Fatalf("effort:settled missing after the failed rebuild: %v", eventNames)
 	}
 
 	// The failed switch must leave the old runtime alive: after the other
@@ -200,6 +243,7 @@ func TestSetEffortForTabLeaseHeldKeepsOldControllerAlive(t *testing.T) {
 	if err := app.SetEffortForTab(tab.ID, "max"); err != nil {
 		t.Fatalf("SetEffortForTab retry after lease release: %v", err)
 	}
+	waitForEffortSettled(t, app, tab.ID)
 	if tab.Ctrl == oldCtrl {
 		t.Fatal("retry did not rebuild the controller")
 	}
@@ -290,6 +334,9 @@ func TestSetEffortForTabReanchorsDepthCapRecoveryBranch(t *testing.T) {
 	if err := app.SetEffortForTab(tab.ID, "max"); err != nil {
 		t.Fatalf("SetEffortForTab: %v", err)
 	}
+	// tl1388: the rebuild runs in the background; wait for the swap before
+	// asserting on the isolated branch.
+	waitForEffortSettled(t, app, tab.ID)
 	isolatedPath := tab.Ctrl.SessionPath()
 	if isolatedPath == recoveryPath || !strings.Contains(isolatedPath, "-recovery-") {
 		t.Fatalf("session path after effort switch = %q, want an isolated recovery branch", isolatedPath)
@@ -391,12 +438,13 @@ func TestSetEffortForTabSameLevelShortCircuit(t *testing.T) {
 	if err := app.SetEffortForTab(tab.ID, "max"); err != nil {
 		t.Fatalf("SetEffortForTab max: %v", err)
 	}
+	// tl1388: the first switch takes the fallback rebuild in the background;
+	// wait for the swap so the short-circuit assertions below compare against
+	// a quiescent tab.
+	waitForEffortSettled(t, app, tab.ID)
 	if tab.effort == nil || *tab.effort != "max" {
 		t.Fatalf("tab effort after switch = %v, want max", tab.effort)
 	}
-	// Let any post-rebuild async settle so the short-circuit assertion below
-	// compares against a quiescent tab.
-	time.Sleep(500 * time.Millisecond)
 	rebuilt := tab.Ctrl
 	t.Logf("before-second: ctrl=%p rebuilt=%p", tab.Ctrl, rebuilt)
 
@@ -484,10 +532,11 @@ func TestSetEffortForTabMiMoVocabularyFastPath(t *testing.T) {
 	if err := app.SetEffortForTab(tab.ID, "medium"); err != nil {
 		t.Fatalf("SetEffortForTab medium: %v", err)
 	}
+	// tl1388: that first switch rebuilds in the background; wait for the swap.
+	waitForEffortSettled(t, app, tab.ID)
 	if tab.effort == nil || *tab.effort != "medium" {
 		t.Fatalf("tab effort after medium switch = %v, want medium", tab.effort)
 	}
-	time.Sleep(500 * time.Millisecond)
 	built := tab.Ctrl
 
 	// Medium→high on the real MiMo client: the four-level probe admits it,

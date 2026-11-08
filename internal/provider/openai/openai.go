@@ -313,7 +313,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		visionDetail:    visionDetail,
 		maxOutputTokens: maxOutputTokens,
 		effort:          effort,
-		requestEfforts:  requestEffortVocabularyFor(cfg.BaseURL, cfg.Model, supportedEfforts), // task 354: MiMo probes its canonical four-level set; task 1031: M3.1 probes its reasoning_effort domain.
+		requestEfforts:  requestEffortVocabularyFor(cfg.BaseURL, cfg.Model, protocol, supportedEfforts), // task 354: MiMo probes its canonical four-level set; task 1031: M3.1 probes its reasoning_effort domain; task 1388: GLM's gate is protocol-scoped, so a protocol-declaring gateway probes the canonical set too.
 		http:            httpClient,
 		idleTimeout:     defaultStreamIdleTimeout,
 		// The official OpenCode Go chat gateway 400s any message-level `name`

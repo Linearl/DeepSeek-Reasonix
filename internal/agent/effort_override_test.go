@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"reasonix/internal/event"
@@ -48,6 +51,44 @@ func TestSetSessionEffortOverrideNonVaryingProvider(t *testing.T) {
 	}
 	if got := a.effortOverrideForRequest(); got != "" {
 		t.Fatalf("override = %q, want empty", got)
+	}
+}
+
+// Task 1388: every decline line carries path=fallback so a slow switch
+// reconciles against the desktop's runtime-build-end path=fallback line, and
+// the vocabulary branch names what the probe saw — the gateway entries fixed
+// by the protocol-scoped GLM probe declined as exactly this branch with an
+// empty vocabulary.
+func TestSetSessionEffortOverrideDeclineLogsCarryFallbackPath(t *testing.T) {
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	// Decline ②: the provider exposes no per-request probe.
+	a := New(&fakeProvider{}, nil, NewSession("s"), Options{}, event.Discard)
+	if a.SetSessionEffortOverride("max") {
+		t.Fatal("non-varying provider accepted a per-request override")
+	}
+	// Decline ③: the probe is present but the level missed it.
+	v := New(&varyingProvider{efforts: []string{"low"}}, nil, NewSession("s"), Options{}, event.Discard)
+	if v.SetSessionEffortOverride("max") {
+		t.Fatal("level outside the vocabulary accepted")
+	}
+
+	logs := buf.String()
+	for _, want := range []string{
+		"reason=provider-not-effort-varying",
+		"reason=level-not-in-vocabulary",
+		"level=max",
+		"vocabulary=low",
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("decline log missing %q in:\n%s", want, logs)
+		}
+	}
+	if strings.Count(logs, "path=fallback") != 2 {
+		t.Fatalf("each decline log must carry path=fallback, got:\n%s", logs)
 	}
 }
 

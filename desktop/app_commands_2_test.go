@@ -351,6 +351,22 @@ reasoning_protocol = "none"
 	if err := app.SubmitToTab(tab.ID, "/effort max"); err != nil {
 		t.Fatalf("SubmitToTab(/effort max): %v", err)
 	}
+	// tl1388: the /effort switch lands via the background rebuild, and the
+	// submit pipeline itself dispatches the command asynchronously — poll for
+	// the landed depth instead of asserting synchronously.
+	landed := time.Now().Add(30 * time.Second)
+	for {
+		app.mu.RLock()
+		ok := tab.effort != nil && *tab.effort == "max"
+		app.mu.RUnlock()
+		if ok {
+			break
+		}
+		if time.Now().After(landed) {
+			t.Fatalf("tab effort = %#v, want max from pinned project A provider", tab.effort)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	waitNotRunning(t, tab.Ctrl)
 	if tab.effort == nil || *tab.effort != "max" {
 		t.Fatalf("tab effort = %#v, want max from pinned project A provider", tab.effort)

@@ -2,12 +2,16 @@
 //
 // Task 1301 (P3 desktop): an effort switch that took the fallback rebuild
 // path (recovery-forked sessions; ~2.4s measured) used to leave the composer
-// with zero feedback — it read as frozen. This suite covers the transition
-// state end to end at the FE layer:
+// with zero feedback — it read as frozen. tl1388 moved that rebuild to the
+// background (the SetEffortForTab call returns at once), so the transition
+// now outlives the call: it clears on the rebuild's runtime:rebuilt fence or
+// the backend's effort:settled event, never on the call settle alone. This
+// suite covers the transition state end to end at the FE layer:
 //   1. appear: effortApplying=true renders the localized hint beside the
 //      effort control and locks the control (出现);
-//   2. settle-clear: the SetEffortForTab call settling clears the state on
-//      both exit paths — applied and failed (消退双路);
+//   2. async lifecycle: a settle over a marked hint keeps it up; the
+//      effort:settled event clears it; a sync failure (never marked) leaves
+//      no residue and still surfaces the notice (异步生命周期);
 //   3. guarded mark: a late "effort:applying" event for a settled switch is
 //      ignored, so the hint can never stick;
 //   4. locale parity: en / zh / zh-TW all carry composer.effortApplying.
@@ -26,6 +30,7 @@ import {
   beginEffortSwitch,
   endEffortSwitch,
   handleEffortApplyingEvent,
+  handleEffortSettledEvent,
   clearEffortApplying,
 } from "../store/effortApplying";
 import { en } from "../locales/en";
@@ -187,11 +192,13 @@ function storeApplying(tabId: string): boolean {
   dom.window.close();
 }
 
-// ── 2. settle-clear through setEffortForTab (both exit paths) ───────────────
+// ── 2. async lifecycle through setEffortForTab (tl1388) ─────────────────────
 {
   // Dev-mock bridge: app.SetEffortForTab resolves; the guarded mark/ingress is
-  // exercised below at the store level, here we prove the command wrapper's
-  // finally-clear runs on success and on failure.
+  // exercised below at the store level. Since tl1388 the rebuild runs in the
+  // background: a settle while the hint is marked keeps it up (the fence /
+  // effort:settled own that clear), and a sync failure (no applying event —
+  // the backend declined before spawning) still clears through the finally.
   const notices: string[] = [];
   const ports = {
     statesRef: { current: new Map() },
@@ -208,23 +215,26 @@ function storeApplying(tabId: string): boolean {
   };
   const { setEffortForTab } = createControllerModelCommands(ports);
 
-  // applied: the mock backend resolves → applying must be gone.
-  beginEffortSwitch("tab-applied");
-  handleEffortApplyingEvent("tab-applied");
-  ok(storeApplying("tab-applied"), "marked while the fallback call is in flight");
-  await setEffortForTab("tab-applied", "high");
-  ok(!storeApplying("tab-applied"), "settle (applied) clears the applying state");
+  // async rebuild: the backend emitted effort:applying, then the call settled
+  // (it returns at once now) — the hint must STAY for the background rebuild
+  // and clear only on effort:settled.
+  beginEffortSwitch("tab-async");
+  handleEffortApplyingEvent("tab-async");
+  ok(storeApplying("tab-async"), "marked while the fallback rebuild is in flight");
+  await setEffortForTab("tab-async", "high");
+  ok(storeApplying("tab-async"), "settle over a marked hint keeps it up (the rebuild continues in the background)");
+  handleEffortSettledEvent("tab-async");
+  ok(!storeApplying("tab-async"), "effort:settled clears the applying state");
 
-  // failed: a rejecting backend must clear through the same finally. The app
-  // binding resolves at call time via window.go.main.App — install a stub
-  // whose SetEffortForTab rejects (the bridge Proxy reads through it).
-  const stubApp = { SetEffortForTab: async () => { throw new Error("rebuild failed"); } };
+  // failed synchronously: a usage error returns before the backend ever
+  // emitted effort:applying, so the settle sees no marked hint and clears.
+  // The app binding resolves at call time via window.go.main.App — install a
+  // stub whose SetEffortForTab rejects (the bridge Proxy reads through it).
+  const stubApp = { SetEffortForTab: async () => { throw new Error("unsupported level"); } };
   (window as unknown as { go?: unknown }).go = { main: { App: stubApp } };
   beginEffortSwitch("tab-failed");
-  handleEffortApplyingEvent("tab-failed");
-  ok(storeApplying("tab-failed"), "marked before a failing call settles");
   await setEffortForTab("tab-failed", "low");
-  ok(!storeApplying("tab-failed"), "settle (failed) clears the applying state");
+  ok(!storeApplying("tab-failed"), "sync failure (never marked) leaves no applying state");
   ok(notices.length === 1, "failure still surfaces the warn notice");
   delete (window as unknown as { go?: unknown }).go;
 }
@@ -239,7 +249,18 @@ function storeApplying(tabId: string): boolean {
   handleEffortApplyingEvent("tab-live");
   ok(storeApplying("tab-live"), "event for an in-flight switch marks the hint");
   endEffortSwitch("tab-live");
-  ok(!storeApplying("tab-live"), "endEffortSwitch clears the hint");
+  ok(storeApplying("tab-live"), "settle over a marked hint keeps it up (tl1388: the rebuild continues)");
+  handleEffortSettledEvent("tab-live");
+  ok(!storeApplying("tab-live"), "effort:settled clears the hint");
+
+  // effort:settled also empties the in-flight guard: a later event for the
+  // same tab cannot re-light a switch that already settled.
+  beginEffortSwitch("tab-settled-guard");
+  handleEffortApplyingEvent("tab-settled-guard");
+  handleEffortSettledEvent("tab-settled-guard");
+  handleEffortApplyingEvent("tab-settled-guard");
+  ok(!storeApplying("tab-settled-guard"), "applying event after effort:settled is dropped (registry cleared)");
+
   // runtime:rebuilt backstop.
   beginEffortSwitch("tab-backstop");
   handleEffortApplyingEvent("tab-backstop");
@@ -257,24 +278,31 @@ function storeApplying(tabId: string): boolean {
   beginEffortSwitch("tab-dup");
   handleEffortApplyingEvent("tab-dup");
   endEffortSwitch("tab-dup");
+  ok(storeApplying("tab-dup"), "duplicate scenario: settle keeps the marked hint up");
   handleEffortApplyingEvent("tab-dup");
-  ok(!storeApplying("tab-dup"), "late duplicate for a settled switch is dropped");
+  ok(storeApplying("tab-dup"), "duplicate applying event is idempotent while marked");
+  handleEffortSettledEvent("tab-dup");
+  ok(!storeApplying("tab-dup"), "effort:settled clears the duplicate scenario");
 
   // KNOWN GAP (task 1303 line owns the fix): the runtime:rebuilt backstop
   // (clearEffortApplying) clears only the store, not the in-flight registry,
-  // so a late event after a backstop-only clear re-lights the hint with
-  // nothing left to clear it. Flip this assertion when clearEffortApplying
-  // also drops the registry id.
+  // so a late event after a backstop-only clear re-lights the hint. tl1388:
+  // a settle-kept hint no longer hangs forever in this state — the backend's
+  // effort:settled (emitted on every background exit) clears it — but the
+  // registry drop still belongs to the task-1303 line. Flip this assertion
+  // when clearEffortApplying also drops the registry id.
   beginEffortSwitch("tab-gap");
   clearEffortApplying("tab-gap");
   handleEffortApplyingEvent("tab-gap");
   ok(storeApplying("tab-gap"), "documented gap: late event after backstop-only clear re-lights (task 1303 line)");
-  endEffortSwitch("tab-gap");
-  ok(!storeApplying("tab-gap"), "cleanup after the gap pin leaves no residue");
+  handleEffortSettledEvent("tab-gap");
+  ok(!storeApplying("tab-gap"), "effort:settled cleanup after the gap pin leaves no residue");
 
   // Empty/whitespace ids are inert.
   handleEffortApplyingEvent(undefined);
   handleEffortApplyingEvent("  ");
+  handleEffortSettledEvent(undefined);
+  handleEffortSettledEvent("  ");
   ok(Object.keys(useEffortApplyingStore.getState().applying).length === 0, "store is empty at the end of the store block");
 }
 

@@ -326,6 +326,10 @@ func TestGoalDeliveryYoloSurvivesEveryControllerRebuildPath(t *testing.T) {
 			if err := tc.rebuild(app, tab); err != nil {
 				t.Fatalf("rebuild: %v", err)
 			}
+			// tl1388: the effort fallback rebuild runs in the background; wait
+			// for it before asserting on the swapped controller (no-op for the
+			// other paths).
+			waitForEffortSettled(t, app, tab.ID)
 
 			ctrl := app.controllerForTab(tab)
 			if ctrl == nil {

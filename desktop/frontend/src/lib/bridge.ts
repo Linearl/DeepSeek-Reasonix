@@ -2676,11 +2676,28 @@ export function onRuntimeRebuilt(cb: (tabId?: string, runtimeEpoch?: string) => 
 
 // onEffortApplying fires when an effort switch took the fallback rebuild path
 // (task 1301): the composer shows the "applying reasoning effort" transition
-// beside the effort control until the SetEffortForTab call settles. The fast
+// beside the effort control. Since tl1388 the rebuild runs in the background
+// (the call returns at once), so the transition stays up until the rebuild's
+// runtime:rebuilt fence or the effort:settled event clears it. The fast
 // paths never emit, so normal sessions never see the transition.
 export function onEffortApplying(cb: (tabId?: string) => void): () => void {
   if (realApp() && typeof window !== "undefined" && window.runtime) {
     return window.runtime.EventsOn("effort:applying", (tabId?: unknown) =>
+      cb(typeof tabId === "string" ? tabId : undefined)
+    );
+  }
+  return () => {};
+}
+
+// onEffortSettled fires when a tab's background effort rebuild finished one
+// way or another (tl1388): the swap's runtime:rebuilt fence is the primary
+// clear, but an exit that never swaps — the switch turned out already
+// applied, or the rebuild failed — emits no fence and would leave the
+// "applying reasoning effort" transition lit forever. This event is that
+// exit's settle signal; the listener clears unconditionally.
+export function onEffortSettled(cb: (tabId?: string) => void): () => void {
+  if (realApp() && typeof window !== "undefined" && window.runtime) {
+    return window.runtime.EventsOn("effort:settled", (tabId?: unknown) =>
       cb(typeof tabId === "string" ? tabId : undefined)
     );
   }
@@ -2952,7 +2969,7 @@ export const app: AppBindings = new Proxy({} as AppBindings, {
 // are installed once, by the performance monitor, and only when the Wails
 // runtime is present; the dev mock has no runtime and gets nothing.
 const ACTIVITY_TAP_CHANNELS = [
-  "agent:ready", "ask:background", "effort:applying", "model:applying", "project-tree:changed",
+  "agent:ready", "ask:background", "effort:applying", "effort:settled", "model:applying", "project-tree:changed",
   "remote:forwards", "remote:server", "remote:status", "runtime:rebuilt", "session:active-version-changed",
   "session:consolidated", "session:recovered", "session:recovery-failed", "tab:backend-activated", "tab:meta",
   "tabs:restored", "terminal:exit", "terminal:output", "topic:activation", "updater:progress",

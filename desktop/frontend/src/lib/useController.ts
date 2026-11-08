@@ -9,8 +9,8 @@ import { asArray } from "./array";
 import { createControllerModelCommands } from "./controllerModelCommands";
 import { compactArchivedToolItems } from "./archivedToolItems";
 import { addBreadcrumb } from "./breadcrumbs";
-import { app, onEffortApplying, onEvent, onModelApplying, onReady, onRuntimeRebuilt, onTabMeta, onTabsRestored, onTopicActivation } from "./bridge";
-import { clearEffortApplying, handleEffortApplyingEvent } from "../store/effortApplying";
+import { app, onEffortApplying, onEffortSettled, onEvent, onModelApplying, onReady, onRuntimeRebuilt, onTabMeta, onTabsRestored, onTopicActivation } from "./bridge";
+import { clearEffortApplying, handleEffortApplyingEvent, handleEffortSettledEvent } from "../store/effortApplying";
 import { clearModelApplying, handleModelApplyingEvent } from "../store/modelApplying";
 import { invalidateCache } from "./composerHistory";
 import { formatInboxCancelError } from "./inboxError";
@@ -5147,10 +5147,17 @@ export function useController() {
       }
     });
     // Task 1301: the backend emits effort:applying when an effort switch took
-    // the fallback rebuild path; the composer shows the applying transition
-    // until the SetEffortForTab call settles. Guarded by the in-flight
-    // registry (store), so a late event for a settled switch cannot stick it.
+    // the fallback rebuild path; the composer shows the applying transition.
+    // tl1388: that rebuild now runs in the background (the call returns at
+    // once), so the transition stays up until the rebuild's runtime:rebuilt
+    // fence or the effort:settled event below clears it. Both ingresses are
+    // guarded by the in-flight registry (store), so a late event for a
+    // settled switch cannot stick it.
     const offEffortApplying = onEffortApplying(handleEffortApplyingEvent);
+    // tl1388: the background rebuild's settle — an exit that never swaps
+    // (stale decline, failure) emits no runtime:rebuilt fence and would leave
+    // the transition lit; this clears it unconditionally.
+    const offEffortSettled = onEffortSettled(handleEffortSettledEvent);
     // tl1389: the model-side twin — the backend emits "model:applying" when a
     // model switch took the fallback rebuild; the composer shows the applying
     // transition until the call settles (guarded by the in-flight registry in
@@ -5232,6 +5239,7 @@ export function useController() {
       offReady();
       offRebuilt();
       offEffortApplying();
+      offEffortSettled();
       offModelApplying();
       offTopicActivation();
       offTabMeta();

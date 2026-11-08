@@ -46,7 +46,10 @@ func (a *Agent) SetSessionEffortOverride(level string) bool {
 		if meta, ok, err := LoadBranchMeta(path); err == nil && ok && meta.Recovered {
 			// Task 334: name why the fast path declined — this is one of the
 			// two documented fallback causes (recovery fork keeps reanchor).
-			slog.Info("agent: effort override declined", "reason", "recovery-fork")
+			// Task 1388: "path" carries the switch path the decline hands off
+			// to, pairing this line with the desktop's runtime-build-end
+			// path=fallback line so a slow switch reconciles across both logs.
+			slog.Info("agent: effort override declined", "reason", "recovery-fork", "path", "fallback")
 			return false
 		}
 	}
@@ -57,16 +60,21 @@ func (a *Agent) SetSessionEffortOverride(level string) bool {
 	if !ok {
 		// Task 334: provider exposes no per-request vocabulary probe — the
 		// other documented fallback cause (e.g. non-openai adapters).
-		slog.Info("agent: effort override declined", "reason", "provider-not-effort-varying")
+		slog.Info("agent: effort override declined", "reason", "provider-not-effort-varying", "path", "fallback")
 		return false
 	}
-	for _, l := range varying.PerRequestEfforts() {
+	available := varying.PerRequestEfforts()
+	for _, l := range available {
 		if strings.EqualFold(strings.TrimSpace(l), level) {
 			a.sessionEffort.Store(level)
 			return true
 		}
 	}
-	slog.Info("agent: effort override declined", "reason", "level-not-in-vocabulary", "level", level)
+	// Task 1388: log the vocabulary the probe saw, so a decline is
+	// distinguishable between "provider exposes no probe" (previous branch)
+	// and "probe present but the level missed it" — the gateway entries fixed
+	// by the protocol-scoped GLM gate surfaced as exactly the latter.
+	slog.Info("agent: effort override declined", "reason", "level-not-in-vocabulary", "level", level, "vocabulary", strings.Join(available, "|"), "path", "fallback")
 	return false
 }
 

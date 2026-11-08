@@ -96,10 +96,13 @@ export function createControllerModelCommands(ports: Ports) {
 
   const setEffortForTab = async (tabId: string, level: string) => {
     if (!tabId) return;
-    // Task 1301: the in-flight window brackets the backend call. The fallback
-    // rebuild emits "effort:applying" mid-call (marked only inside this
-    // window); when the call settles — applied or failed — the transition
-    // must go, so the clear runs on both exit paths.
+    // Task 1301, carried into the tl1388 async world: the in-flight window
+    // brackets the backend call, and the fallback rebuild emits
+    // "effort:applying" (marked only inside this window). The call now returns
+    // while the rebuild still runs in the background — a settle over a marked
+    // hint keeps it up (endEffortSwitch), and the rebuild's runtime:rebuilt
+    // fence or effort:settled event owns the clear. A sync failure (usage
+    // error, never marked) still clears through the finally.
     beginEffortSwitch(tabId);
     try {
       await app.SetEffortForTab(tabId, level);

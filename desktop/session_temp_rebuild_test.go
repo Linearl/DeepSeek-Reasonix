@@ -68,6 +68,10 @@ func TestDesktopHotRebuildPathsKeepSessionTemp(t *testing.T) {
 			if err := tc.rebuild(app, tab); err != nil {
 				t.Fatalf("rebuild: %v", err)
 			}
+			// tl1388: the effort fallback rebuild runs in the background; wait
+			// for it before asserting on the swapped controller (no-op for the
+			// model/token-mode paths).
+			waitForEffortSettled(t, app, tab.ID)
 
 			newAPI := app.controllerForTab(tab)
 			newCtrl, ok := newAPI.(*control.Controller)

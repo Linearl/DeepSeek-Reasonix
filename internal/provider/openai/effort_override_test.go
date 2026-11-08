@@ -439,3 +439,54 @@ func TestPerRequestEffortsDeepSeekDeclaredRule(t *testing.T) {
 	}
 	assertRejectedEffort(t, c, "max")
 }
+
+// Task 1388: the GLM probe gate is protocol-scoped, not host-scoped. A
+// third-party gateway that declares reasoning_protocol="glm" drives the same
+// fork wire layer as the official hosts (c.zhipu and the Stream strength
+// bypass key on the declaration alone — the protocol is the user's explicit
+// assertion of the GLM request shape), so it must probe the canonical
+// five-level set too: off-host, the probe used to come up empty and every
+// /effort switch on a gateway entry declined as level-not-in-vocabulary and
+// paid the full runtime rebuild. Unlike DeepSeek (see
+// TestPerRequestEffortsDeepSeekProtocolOffHostStaysDerived), the fork's GLM
+// wire contract is verified against the declared protocol itself, so the
+// probe face follows it. Every probe-admitted strength must also pass the
+// request gate exactly as Stream evaluates it (Validate, or the fork GLM
+// bypass), so a fast-path switch can never arm a value the next request
+// rejects.
+func TestPerRequestEffortsGLMProtocolGatewayGetsCanonical(t *testing.T) {
+	cfg := provider.Config{Name: "gw", BaseURL: "https://gateway.example.com/v1", Model: "glm-5.3-flash", APIKey: "k", Extra: map[string]any{"reasoning_protocol": "glm"}}
+	p, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c := p.(*client)
+	if got := c.PerRequestEfforts(); !slices.Equal(got, zhipuRequestEffortVocabulary) {
+		t.Fatalf("protocol-declared gateway PerRequestEfforts = %v, want %v", got, zhipuRequestEffortVocabulary)
+	}
+	for _, level := range c.PerRequestEfforts() {
+		if err := c.reasoning.Validate(c.model, level); err != nil && !c.admitsGLMStrengthOverride(level) {
+			t.Fatalf("probe level %q rejected by the request gates: %v", level, err)
+		}
+	}
+}
+
+// The conservative default stays: a gateway that serves GLM models WITHOUT
+// declaring the protocol keeps the derived (empty) vocabulary, and the wire
+// agrees — c.zhipu is false, so admitsGLMStrengthOverride rejects strengths
+// and applyReasoning would never emit reasoning_effort. The probe must not
+// advertise a level the wire would silently drop.
+func TestPerRequestEffortsGLMGatewayWithoutProtocolStaysDerived(t *testing.T) {
+	cfg := provider.Config{Name: "gw", BaseURL: "https://gateway.example.com/v1", Model: "glm-5.3-flash", APIKey: "k"}
+	p, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c := p.(*client)
+	if got := c.PerRequestEfforts(); len(got) != 0 {
+		t.Fatalf("undeclared gateway PerRequestEfforts = %v, want empty (derived)", got)
+	}
+	if c.admitsGLMStrengthOverride("max") {
+		t.Fatal("undeclared gateway admitted a GLM strength override at the request gate")
+	}
+}

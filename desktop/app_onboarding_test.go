@@ -679,6 +679,8 @@ func TestSetEffortRebuildsController(t *testing.T) {
 	if err := app.SetEffort("max"); err != nil {
 		t.Fatalf("SetEffort(max): %v", err)
 	}
+	// tl1388: the rebuild runs in the background; wait for the swap.
+	waitForEffortSettled(t, app, app.activeTab().ID)
 	if c := app.activeCtrl(); c == nil {
 		t.Fatal("SetEffort should leave a rebuilt controller")
 	}
@@ -724,6 +726,9 @@ func TestSetEffortMigratesStaleOfficialDeepSeekTabModel(t *testing.T) {
 	if err := app.SetEffort("max"); err != nil {
 		t.Fatalf("SetEffort(max): %v", err)
 	}
+	// tl1388: the rebuild runs in the background; wait for the swap before
+	// asserting on the migrated model ref.
+	waitForEffortSettled(t, app, app.activeTab().ID)
 	tab := app.activeTab()
 	if tab == nil {
 		t.Fatal("active tab missing")

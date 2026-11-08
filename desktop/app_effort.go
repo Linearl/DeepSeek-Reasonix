@@ -12,6 +12,7 @@ import (
 	"reasonix/internal/control"
 	"reasonix/internal/plugin"
 	"reasonix/internal/provider"
+	"reasonix/internal/secrets"
 )
 
 func (a *App) Effort() EffortInfo {
@@ -84,31 +85,182 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		}
 		return fmt.Errorf("tab %q not found", tabID)
 	}
-	// Build+swap path; serialize with the other rebuild paths (see
-	// runtimeRebuildMu). The tab==nil branch above goes through
-	// applyProviderEffortConfig → rebuildSetting, which takes the lock itself. switchStarted feeds the fast-path elapsed_ms lines (task 148) so an effort-vs-model fast-path comparison reads from logs directly; the fallback path keeps its own runtime build end line.
+	// tl1388: resolve the effective tab id once — the "" alias means "the
+	// active tab" and must not leak into the async bookkeeping (in-flight map
+	// key, logs, test waits) as an empty key.
+	tabID = tab.ID
+	// Fast paths serialize with the other rebuild paths (see runtimeRebuildMu):
+	// the per-request override must not land on a controller an in-flight
+	// rebuild is about to replace, so even a fast-path-capable switch waits out
+	// a running rebuild. switchStarted feeds the fast-path elapsed_ms lines
+	// (task 148) so an effort-vs-model fast-path comparison reads from logs
+	// directly; the fallback path keeps its own runtime build end line.
 	switchStarted := time.Now()
+	a.runtimeRebuildMu.Lock()
+	tab.turnStartMu.Lock()
+	handled, err := a.tryEffortFastPaths(tab, tabID, level, switchStarted)
+	if err != nil || handled {
+		a.runtimeRebuildMu.Unlock()
+		tab.turnStartMu.Unlock()
+		return err
+	}
+	a.runtimeRebuildMu.Unlock()
+	tab.turnStartMu.Unlock()
+	// Keep the active-work refusal synchronous (the pre-tl1388 contract): the
+	// guard read is cheap, and the caller formats this error into the composer's
+	// busy hint — deferring it to the background rebuild would turn an
+	// immediate "finish or cancel the turn" answer into a silent accept. The
+	// goroutine re-checks under the locks, so a turn starting after this read
+	// still refuses the rebuild; the pre-check only makes refusals faster, it
+	// never admits a build the guard would decline.
+	if err := rebuildControllerActiveWorkErrorFor(a.controllerForTab(tab), "effort"); err != nil {
+		return err
+	}
+	// Task 1301, made asynchronous by tl1388: reaching this point = both fast
+	// paths declined (a recovery-forked session keeps its reanchor semantics,
+	// or the provider cannot vary depth per request) and the fallback used to
+	// hold this call — and the composer with it — for the full runtime
+	// rebuild, seconds on recovery forks. The rebuild now runs on a background
+	// goroutine (spawnAsyncEffortRebuild): this call returns at once, the
+	// "applying" transition lights now and settles when the rebuild lands
+	// (runtime:rebuilt is the fence, effort:settled the backstop for exits
+	// that never swap). Fast paths never emit, so normal sessions keep their
+	// instant no-feedback behavior.
+	a.notifyTabEffortApplying(tab)
+	a.spawnAsyncEffortRebuild(tab, tabID, level, switchStarted)
+	return nil
+}
+
+// asyncEffortRebuildState tracks one tab's background effort rebuild loop
+// (tl1388). latest holds a level requested while a rebuild was already in
+// flight; the running loop rebuilds for it after the in-flight swap lands.
+// Guarded by App.asyncEffortMu.
+type asyncEffortRebuildState struct {
+	latest string
+}
+
+// spawnAsyncEffortRebuild runs the fallback rebuild for an effort switch on a
+// background goroutine (tl1388). A switch arriving while a rebuild is already
+// running for the same tab coalesces onto it (latest level wins) instead of
+// stacking goroutines or blocking on the rebuild mutex: the second
+// SetEffortForTab call returns immediately and the loop rebuilds for the new
+// level after the first swap lands.
+func (a *App) spawnAsyncEffortRebuild(tab *WorkspaceTab, tabID, level string, switchStarted time.Time) {
+	a.asyncEffortMu.Lock()
+	if st, ok := a.asyncEffortRebuild[tabID]; ok {
+		st.latest = level
+		a.asyncEffortMu.Unlock()
+		slog.Info("desktop: effort switch", "tab", tabID, "path", "fallback-async-coalesced", "level", level, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 148/tl1388: the running rebuild lands at this level afterwards; elapsed_ms: task 148.
+		return
+	}
+	st := &asyncEffortRebuildState{latest: level}
+	if a.asyncEffortRebuild == nil {
+		a.asyncEffortRebuild = make(map[string]*asyncEffortRebuildState)
+	}
+	a.asyncEffortRebuild[tabID] = st
+	a.asyncEffortMu.Unlock()
+	slog.Info("desktop: effort switch", "tab", tabID, "path", "fallback-async", "level", level, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 148/tl1388: the call returns here and the rebuild settles later (paired against the runtime build end path=fallback line); elapsed_ms: task 148.
+	a.goSafe("async-effort-rebuild", func() { a.runAsyncEffortRebuild(tab, tabID, st, switchStarted) })
+}
+
+// runAsyncEffortRebuild drains one tab's background effort rebuild loop: each
+// iteration rebuilds for the latest requested level and exits when no new
+// request arrived while the last rebuild ran. The consume and the map-entry
+// removal happen under asyncEffortMu together, so a request arriving around
+// the exit decision either lands in the entry before its removal (and is
+// drained by this loop) or finds no entry and spawns a fresh goroutine.
+func (a *App) runAsyncEffortRebuild(tab *WorkspaceTab, tabID string, st *asyncEffortRebuildState, switchStarted time.Time) {
+	for {
+		a.asyncEffortMu.Lock()
+		level := st.latest
+		st.latest = ""
+		if level == "" {
+			delete(a.asyncEffortRebuild, tabID)
+			a.asyncEffortMu.Unlock()
+			return
+		}
+		a.asyncEffortMu.Unlock()
+		// The tab may have been closed (or torn down and recreated) while a
+		// rebuild queued; rebuilding into a stale tab would only fail
+		// authorization late and noisy. Drop the pending request with the tab.
+		// Shutdown is NOT an exit condition here: the synchronous path ran with
+		// a nil App.ctx (bootContext falls back) and boot.Build drives its own
+		// cancellation, so only the tab identity gates this exit.
+		a.mu.RLock()
+		gone := tab.removed || a.tabs[tab.ID] != tab
+		a.mu.RUnlock()
+		if gone {
+			a.asyncEffortMu.Lock()
+			st.latest = ""
+			delete(a.asyncEffortRebuild, tabID)
+			a.asyncEffortMu.Unlock()
+			return
+		}
+		handled, err := a.rebuildTabEffortFallback(tab, tabID, level, switchStarted)
+		switch {
+		case handled && err == nil:
+			// A fast path served the switch after all (the caller's decline
+			// went stale) — no rebuild, no runtime:rebuilt fence; settle the
+			// applying transition explicitly.
+			a.notifyTabEffortSettled(tab)
+		case err != nil:
+			// Same failure surface the synchronous path had via the call's
+			// error return, just delivered through the tab sink now that no
+			// call is in flight to carry it: redact (effort rebuild errors can
+			// echo provider config), warn, settle the applying transition.
+			// The warn/settled precede the in-flight deregistration so a waiter
+			// that sees the entry gone has also seen the failure land.
+			text := secrets.RedactError(err)
+			slog.Warn("desktop: async effort rebuild failed", "tab", tabID, "level", level, "err", text)
+			a.warnForTab(tabID, "effort: "+text)
+			a.notifyTabEffortSettled(tab)
+			a.asyncEffortMu.Lock()
+			st.latest = ""
+			delete(a.asyncEffortRebuild, tabID)
+			a.asyncEffortMu.Unlock()
+			return
+		}
+		// Swap landed: swapEffortController already emitted the runtime:rebuilt
+		// fence (the primary clear of the applying transition). Loop for any
+		// coalesced switch.
+	}
+}
+
+// effortRebuildInFlight reports whether a background effort rebuild is queued
+// or running for tabID (tl1388). Tests wait it out before asserting on the
+// swapped controller; nothing in production polls it.
+func (a *App) effortRebuildInFlight(tabID string) bool {
+	a.asyncEffortMu.Lock()
+	defer a.asyncEffortMu.Unlock()
+	_, ok := a.asyncEffortRebuild[tabID]
+	return ok
+}
+
+// rebuildTabEffortFallback is the fallback rebuild for an effort switch: both
+// fast paths declined, so the tab's controller is rebuilt around the new
+// depth. It acquires the rebuild locks itself so it can run on the background
+// goroutine (tl1388); callers must NOT hold runtimeRebuildMu or
+// tab.turnStartMu. It reports whether a fast path ended up serving the switch
+// (see the re-check below) and, otherwise, the rebuild/swap error.
+func (a *App) rebuildTabEffortFallback(tab *WorkspaceTab, tabID, level string, switchStarted time.Time) (bool, error) {
 	pendingSequence := a.deferredRebuildSequence(tab.ID)
 	a.runtimeRebuildMu.Lock()
 	defer a.runtimeRebuildMu.Unlock()
 	tab.turnStartMu.Lock()
 	defer tab.turnStartMu.Unlock()
-	handled, err := a.tryEffortFastPaths(tab, tabID, level, switchStarted)
-	if err != nil {
-		return err
-	}
-	if handled {
-		return nil
+	// Re-check under the locks: the caller's decline can be stale by the time
+	// this goroutine acquires them — an overlapping path may have applied the
+	// level meanwhile. A same-level or per-request hit settles without a
+	// pointless build (which would also leave the applying transition waiting
+	// on a swap that never changes anything).
+	if handled, err := a.tryEffortFastPaths(tab, tabID, level, switchStarted); err != nil || handled {
+		return handled, err
 	}
 	// Task 1301: reaching this point = both fast paths declined (a
 	// recovery-forked session keeps its reanchor semantics, or the provider
-	// cannot vary depth per request) and this call will hold for the full
-	// runtime rebuild — seconds on recovery forks, which reads as a frozen
-	// composer. Tell the frontend now so the effort control shows its
-	// "applying" transition; the settling call clears it (runtime:rebuilt is
-	// the backstop). Fast paths never emit, so normal sessions keep their
-	// instant no-feedback behavior.
-	a.notifyTabEffortApplying(tab)
+	// cannot vary depth per request); the applying transition was lit by the
+	// caller before this goroutine spawned, and the swap's runtime:rebuilt
+	// fence settles it.
 	prevPath := a.reconciledSessionPathForTab(tab)
 	if prevPath == "" {
 		prevPath = a.currentSessionPathFor(tab)
@@ -119,10 +271,10 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		a.attachExistingSessionRuntime(tab, prevPath, a.ctx)
 	}
 	if err := rebuildControllerActiveWorkErrorFor(a.controllerForTab(tab), "effort"); err != nil {
-		return err
+		return false, err
 	}
 	if err := a.ensureTabControllerWorkspace(tab); err != nil {
-		return err
+		return false, err
 	}
 	prevPath = a.reconciledSessionPathForTab(tab)
 	if prevPath == "" {
@@ -134,19 +286,19 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 			prevPath = a.currentSessionPathFor(tab)
 		}
 		if err := rebuildControllerActiveWorkErrorFor(a.controllerForTab(tab), "effort"); err != nil {
-			return err
+			return false, err
 		}
 	}
 	snap := a.tabRuntimeSnapshot(tab)
 	runtime := snap.normalizedRuntime()
 	entry, err := a.currentProviderEntryForTab(tabID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	modelRef := entry.Name + "/" + entry.Model
 	effort, err := config.NormalizeEffort(entry, level)
 	if err != nil {
-		return err
+		return false, err
 	}
 	var carried []provider.Message
 	oldCtrl := a.controllerForTab(tab)
@@ -155,10 +307,10 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 			prevPath = oldCtrl.SessionPath()
 		}
 		if err := a.ensureTabSessionLeaseForRebuild(tab, prevPath, "effort"); err != nil {
-			return err
+			return false, err
 		}
 		if err := a.snapshotTabForAction(tab, "changing effort"); err != nil {
-			return err
+			return false, err
 		}
 		prevPath = sessionPathAfterSnapshot(oldCtrl, prevPath)
 		carried = oldCtrl.History()
@@ -169,9 +321,9 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	defer logRuntimeBuildEnd("set-effort", runtimeBuildStart, sharedHost != nil, "path", "fallback")                                                 // task 334: reaching the build = both fast paths declined; reason rides the agent: effort override declined line.
 	newCtrl, err := a.buildEffortController(tab, tabID, modelRef, effort, snap, runtime, oldCtrl, sharedHost)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return a.swapEffortController(tab, newCtrl, oldCtrl, modelRef, effort, prevPath, runtime, pendingSequence, carried)
+	return false, a.swapEffortController(tab, newCtrl, oldCtrl, modelRef, effort, prevPath, runtime, pendingSequence, carried)
 }
 
 // tryEffortFastPaths attempts the same-level short circuit and the

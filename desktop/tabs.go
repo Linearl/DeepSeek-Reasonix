@@ -2016,6 +2016,30 @@ func (a *App) notifyTabEffortApplying(tab *WorkspaceTab) {
 	a.emitRuntimeEvent("effort:applying", tabID)
 }
 
+// notifyTabEffortSettled tells the frontend a tab's background effort rebuild
+// finished one way or another (tl1388): the swap's runtime:rebuilt fence is
+// the primary clear of the "applying reasoning effort" transition, but an
+// exit that never swaps — the switch turned out already applied (stale
+// decline), or the rebuild failed — emits no fence and would leave the
+// transition lit. This event is that exit's settle signal; it clears
+// unconditionally, so it is harmless when the fence already cleared. Same
+// delivery ladder as notifyTabEffortApplying — tab sink first, App-level emit
+// only when the sink cannot deliver.
+func (a *App) notifyTabEffortSettled(tab *WorkspaceTab) {
+	if tab == nil {
+		return
+	}
+	a.mu.RLock()
+	sink := tab.sink
+	tabID := tab.ID
+	a.mu.RUnlock()
+	if sink != nil && sink.context() != nil {
+		sink.emitRuntimeEvent("effort:settled", tabID)
+		return
+	}
+	a.emitRuntimeEvent("effort:settled", tabID)
+}
+
 // notifyTabModelApplying tells the frontend a tab's model switch took the
 // fallback rebuild path (tl1389, the task-1301 effort seam carried to the
 // model side): both fast paths declined, so SetModelForTab stays in flight

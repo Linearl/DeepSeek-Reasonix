@@ -380,6 +380,16 @@ type App struct {
 	// could not refresh because the session lease was held by another process.
 	deferredRebuild deferredRebuildState
 
+	// asyncEffort tracks tabs whose effort switch took the fallback rebuild
+	// path (tl1388): the rebuild runs on a background goroutine so the
+	// SetEffortForTab call returns at once and the composer never freezes.
+	// Entries are added when a switch spawns the goroutine and removed when it
+	// exits; a switch arriving mid-rebuild coalesces onto the running
+	// goroutine (latest level wins). Same lazy-init contract as
+	// foregroundSubagents: guarded by its own mutex, never held with a.mu.
+	asyncEffortMu      sync.Mutex
+	asyncEffortRebuild map[string]*asyncEffortRebuildState
+
 	// collabParkWaiters tracks the per-tab deferred-park goroutines (task 738):
 	// collaboration stand-up tabs whose park attempt raced the async controller
 	// build. The waiter parks the tab once the runtime publishes; entries are
