@@ -186,6 +186,17 @@ func repairSessionListingFromIndex(path string, meta BranchMeta) (SessionListing
 	if !ok {
 		return SessionListingRepairResult{}, false, nil
 	}
+	// tl1485b: counts can be perfectly current while the activity stamp is
+	// still hours ahead of the transcript (the dead meta-only pump). The index
+	// branch has no message-level times for either of its outcomes — the
+	// AlreadyCurrent short-circuit and the counts fix alike — so the probe
+	// hands the row to the replay branch, whose full decode settles the stamp
+	// exactly; the probe only gates whether the decode is worth it. Skipping
+	// this on the counts-fix outcome left a first repair that certified new
+	// counts but preserved an inflated stamp (2026-11-08 live stock run).
+	if SessionListingActivityAheadOfTranscript(path, meta.UpdatedAt) {
+		return SessionListingRepairResult{}, false, nil
+	}
 	if sessionListingProjectionFresh(meta.SchemaVersion, meta.Turns, meta.Revision,
 		meta.ListingRevision, meta.ContentDigest, meta.ListingContentDigest) &&
 		meta.Preview == preview && meta.Turns == turns {
@@ -299,7 +310,12 @@ func commitSessionListingReplay(ctx context.Context, path string, meta BranchMet
 	// frozen UpdatedAt values with the same message-derived activity the commit
 	// funnel publishes, so a session the user has not touched since the bug
 	// repairs its sidebar time instead of waiting for its next message.
-	raiseSessionListingActivity(&meta, msgs)
+	// tl1485b: settle extends the same full-decode evidence to the stock heal
+	// of the other direction — stamps the dead meta-only pump inflated hours
+	// above the transcript drop back to the newest message time. Raise-only in
+	// the save funnel stays untouched: a commit carries fresh messages and
+	// their raise already overwrites any older inflation.
+	settleSessionListingActivity(&meta, msgs)
 
 	// The display index ranges describe the compatibility JSONL exactly, so
 	// refresh it from this single authoritative replay before publishing meta.

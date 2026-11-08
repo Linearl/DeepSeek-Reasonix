@@ -1,10 +1,14 @@
 package agent
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
+	"os"
 	"strings"
 	"time"
 
@@ -121,4 +125,134 @@ func raiseSessionListingActivity(meta *BranchMeta, msgs []provider.Message) {
 	if at := SessionListingActivityTime(msgs); at.After(meta.UpdatedAt) {
 		meta.UpdatedAt = at
 	}
+}
+
+// sessionListingActivityRepairSlack separates the two UpdatedAt-vs-transcript
+// mismatches the repair path must tell apart. Legitimate meta-only activity
+// writes (in-flight turn markers, collab receipts, projection saves) trail the
+// newest message by write latency: seconds to a few minutes — the 2026-11-08
+// live scan measured that population decaying smoothly (103 rows at >10m,
+// 28 at >30m, 13 at >1h across 464 sessions) with no natural gap. The dead
+// meta-only pump (touch=true stamps now) left clusters hours to weeks ahead
+// of the transcript. One hour keeps the entire benign tail untouched while
+// capturing every pump wave; the baseline is message-level CreatedAt only —
+// file mtime is banned (the 2026-10-29 maintenance wave inflated 95/261
+// mtimes, #8694 discipline).
+const sessionListingActivityRepairSlack = time.Hour
+
+// settleSessionListingActivity is the repair-channel final say on UpdatedAt.
+// It keeps tl1485's raise-only behavior for fresh evidence and adds the
+// tl1485b stock heal: a stamp clearly ahead of the transcript's own last
+// message drops to that message time, so sessions the old meta-only pump
+// inflated converge without waiting for a new message.
+//  1. no message-level timestamps (empty shell / legacy all-zero): untouched —
+//     no evidence, no write;
+//  2. transcript newer than the stamp: raised (tl1485);
+//  3. stamp less than slack ahead: untouched — legitimate activity-write lag;
+//  4. stamp slack or more ahead: lowered to the transcript's newest message.
+func settleSessionListingActivity(meta *BranchMeta, msgs []provider.Message) {
+	at := SessionListingActivityTime(msgs)
+	if at.IsZero() {
+		return
+	}
+	if at.After(meta.UpdatedAt) {
+		meta.UpdatedAt = at
+		return
+	}
+	if meta.UpdatedAt.Sub(at) >= sessionListingActivityRepairSlack {
+		meta.UpdatedAt = at
+	}
+}
+
+// sessionListingActivityProbeWindow is the tail window the cheap too-new probe
+// starts with. Complete JSONL lines inside the window carry real CreatedAt
+// values; the window only has to cover enough recent lines to make a one-hour
+// overshoot obvious. Normal sessions are decided by the first read.
+const sessionListingActivityProbeWindow = 64 << 10
+
+// sessionListingActivityProbeMaxWindow caps the probe's growth. Real stock
+// rows showed the timestamps living far above the tail: a 2-34MB transcript
+// whose last 64KB is one huge tool-result line without CreatedAt missed the
+// trigger entirely (2026-11-08 live run, 4/18 survivors). When the first
+// window holds no evidence the read backs off 4x up to this cap — big files
+// with head-only timestamps pay a bounded extra read, and a read that still
+// finds nothing reports false: the probe prefers missing a row over
+// fabricating evidence, and a partial read can never manufacture a newer
+// timestamp (the replay re-checks with the full decode before touching
+// anything).
+const sessionListingActivityProbeMaxWindow = 16 << 20
+
+// SessionListingActivityAheadOfTranscript is the cheap trigger predicate for
+// the too-new stock form: it compares the sidecar's UpdatedAt against the
+// message-level CreatedAt values visible in the transcript tail, without a
+// full decode. Read failures, empty transcripts, and timestamp-less lines all
+// report false — the trigger prefers missing a row over fabricating evidence.
+// Exported for the sessioncatalog scan, which must flag inflated rows so the
+// existing repair queue picks them up; the exact correction itself always
+// happens inside RepairSessionListingProjection against the full decode.
+func SessionListingActivityAheadOfTranscript(path string, updatedAt time.Time) bool {
+	if updatedAt.IsZero() {
+		return false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.IsDir() || info.Size() <= 0 {
+		return false
+	}
+	size := info.Size()
+	window := int64(sessionListingActivityProbeWindow)
+	for {
+		if window > size {
+			window = size
+		}
+		if newest, ok := probeTailCreatedAt(file, size, window); ok {
+			return updatedAt.Sub(time.UnixMilli(newest)) >= sessionListingActivityRepairSlack
+		}
+		if window >= size || window >= sessionListingActivityProbeMaxWindow {
+			return false
+		}
+		window *= 4
+	}
+}
+
+// probeTailCreatedAt reads the trailing window of the transcript and returns
+// the newest message-level CreatedAt among complete JSONL lines. The first
+// chunk is dropped when the window starts mid-line: a truncated line is not
+// evidence.
+func probeTailCreatedAt(file *os.File, size, window int64) (int64, bool) {
+	offset := int64(0)
+	dropFirstLine := false
+	if size > window {
+		offset = size - window
+		dropFirstLine = true
+	}
+	buf := make([]byte, window)
+	n, err := file.ReadAt(buf, offset)
+	if err != nil && err != io.EOF {
+		return 0, false
+	}
+	var newest int64
+	for _, line := range bytes.Split(buf[:n], []byte{'\n'}) {
+		if dropFirstLine {
+			dropFirstLine = false
+			continue
+		}
+		var stamp struct {
+			CreatedAt int64 `json:"createdAt"`
+		}
+		if json.Unmarshal(line, &stamp) != nil || stamp.CreatedAt <= 0 {
+			continue
+		}
+		if stamp.CreatedAt > newest {
+			newest = stamp.CreatedAt
+		}
+	}
+	if newest <= 0 {
+		return 0, false
+	}
+	return newest, true
 }
