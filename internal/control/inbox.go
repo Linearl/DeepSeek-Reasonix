@@ -995,7 +995,7 @@ func (c *Controller) onInboxTurnDone(generation uint64) {
 	if snapshotCompletion != nil {
 		durable, serr = snapshotCompletion()
 	} else {
-		durable, serr = c.snapshotWithDurability(true, false, false, false)
+		durable, serr = c.snapshotWithDurability(true, false, false, false, false)
 	}
 	if serr != nil && !durable {
 		slog.Warn("controller: inbox turn snapshot", "err", serr)
