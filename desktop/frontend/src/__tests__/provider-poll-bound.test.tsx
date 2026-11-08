@@ -91,6 +91,15 @@ dom.window.setInterval = ((cb: () => void, ms?: number) => {
 }) as typeof dom.window.setInterval;
 
 const flush = async () => { await act(async () => { await Promise.resolve(); }); };
+// 顺序节拍：触发一个 60s tick 并等答案完全落地（宏任务排空全部微任务）。
+// 不能背靠背连发——store 的 refreshSeq 守卫会正确丢弃重叠的过期答案，
+// 连败计数只记最新一拍；真实 60s 节拍下查询从不重叠，钉也必须一拍一拍来。
+const tickOnce = async () => {
+  await act(async () => {
+    shim.firePoll(1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+};
 
 const { LocaleProvider } = await import("../lib/i18n");
 
@@ -292,14 +301,15 @@ async function unmountPlanCard() {
   usePlanUsageStore.getState().reportTab("tab-a");
   await flush();
   ok(planUsageQueries === 1, "刀①铺垫：首次查询失败（network note）");
-  shim.firePoll(2);
-  await flush();
+  await tickOnce();
+  await tickOnce();
   ok(planUsageQueries === 3, "刀①铺垫：tick 失败第 2、3 次");
   const paused = usePlanUsageStore.getState().paused;
   ok(paused === true, `刀①红→绿：连续失败 3 次 store.paused=true（实测 ${String(paused)}）`);
   // 暂停后 tick 零调用。
-  shim.firePoll(3);
-  await flush();
+  await tickOnce();
+  await tickOnce();
+  await tickOnce();
   ok(planUsageQueries === 3, `刀①红→绿：暂停后 tick 零调用（修前 =6；实测 ${planUsageQueries}）`);
   // 无快照（windows 空且 note）场景也要能看见标记：渲染卡 → 暂停标记在。
   await mountPlanCard();
@@ -312,8 +322,7 @@ async function unmountPlanCard() {
   await flush();
   ok(planUsageQueries === 4, "刀①：换 tab 立即重查（第 4 次）");
   ok(usePlanUsageStore.getState().paused === false, "刀①红→绿：换 tab 解除暂停（修前无 paused 字段）");
-  shim.firePoll(1);
-  await flush();
+  await tickOnce();
   ok(planUsageQueries === 5, "刀①：恢复后节拍照常");
   await unmountPlanCard();
 }

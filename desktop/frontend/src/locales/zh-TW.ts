@@ -6454,4 +6454,8 @@ export const zhTW: Record<DictKey, string> = {
   "composer.bashOutputFailed": "讀取輸出失敗",
   "composer.bashOutputTruncated": "輸出過長，僅顯示末尾 {n} 個字元",
   "composer.bashOutputStatusKilled": "已終止",
+  // fix-provider-poll-bound 輪詢失敗有界化暫停標記（鍵追加在 EOF）
+  "planUsage.paused": "查詢已暫停（連續失敗 {count} 次）——開啟會話、切換模型或點重新整理重試。",
+  "planUsage.pausedShort": "查詢暫停",
+  "settings.opencodeGoUsage.paused": "查詢已暫停（連續失敗 {count} 次）——點重新整理或切換模型後重試。",
 };

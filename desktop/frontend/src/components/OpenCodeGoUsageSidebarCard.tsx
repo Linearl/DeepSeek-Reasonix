@@ -26,12 +26,16 @@ import {
 // 在途的旧 provider family 查询作废（迟到答案不得复活旧卡），并立刻对新
 // 模型重查——GLM↔OpenCode Go 来回切时本卡与 GLM 卡都不会同屏并存。
 //
-// fix-provider-poll-bound 刀② 按需查询（用户 2026-11-08 裁定）：family 答案
-// 改为按事件刷新（挂载/换 tab/切模型/目录变更），已知非 opencode-go（含无
-// 活跃 tab 的 family=""）时 60s tick 零调用——既不发用量请求，也不每 tick
-// 重发 family 查询。Go 侧每次 family/用量查询都要解析全量 config（弃用键按
-// 次 WARN），无相关活跃会话时的空转就是慢性重读源；事件面已覆盖 family 的
-// 一切变化来源。刀① 失败有界由同主题后续 commit 落地。
+// fix-provider-poll-bound 两刀（用户 2026-11-08 裁定）：
+//  刀② 按需查询——family 答案按事件刷新（挂载/换 tab/切模型/目录变更），
+//    已知非 opencode-go（含无活跃 tab 的 family=""）时 60s tick 零调用：
+//    既不发用量请求，也不每 tick 重发 family 查询。Go 侧每次 family/用量
+//    查询都要解析全量 config（弃用键按次 WARN），无相关活跃会话时空转
+//    就是慢性重读源；事件面已覆盖 family 的一切变化来源。
+//  刀① 失败有界——用量查询连续失败达 POLL_FAILURE_LIMIT（3 次）即停止
+//    本轮轮询（tick 零调用）并显示暂停标记（三语）；手动刷新仍可单发，
+//    成功即清零恢复节拍；换 tab / 切模型 / 目录变更事件立即重查并解除
+//    暂停。防「失败→重读 config→再失败」紧循环。
 //
 // 数据面与 GLM 卡一致：60s 轮询（ensurePlanUsagePolling 同节奏）+ 手动刷新
 // + 30s 倒计时 tick。任务 800 起本卡是明细的权威展示位：设置卡
@@ -46,6 +50,8 @@ const WINDOW_LABEL_KEY: Record<string, string> = {
 
 const POLL_INTERVAL_MS = 60_000;
 const COUNTDOWN_TICK_MS = 30_000;
+// 刀①：连续失败上限（次）——达到即停本轮轮询，等事件或手动刷新恢复。
+const POLL_FAILURE_LIMIT = 3;
 
 export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
   const { t } = useI18n();
@@ -60,17 +66,31 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
   // down (its cancelled flag drops in-flight answers for the outgoing model)
   // and re-queries the new model immediately.
   const [epoch, setEpoch] = useState(0);
+  // fix-provider-poll-bound 刀①：连续失败计数与暂停态。ref 持权威值（轮询
+  // 回调闭包内读写无过期问题），state 只驱动暂停标记渲染。
+  const [paused, setPaused] = useState(false);
+  const [failStreak, setFailStreak] = useState(0);
+  const failStreakRef = useRef(0);
+  const pausedRef = useRef(false);
   // 刀②：family 答案的内存门槛（事件刷新，tick 不重查——见 pollOnce）。
   const familyRef = useRef<string | undefined>(undefined);
+
+  const resetFailureStreak = useCallback(() => {
+    failStreakRef.current = 0;
+    pausedRef.current = false;
+    setPaused(false);
+    setFailStreak(0);
+  }, []);
 
   // 任务 872: forget the outgoing provider's family answer the moment the
   // switch lands (a late answer must not resurrect this card beside the
   // other provider's card) and re-query the new model right away.
-  // 刀②：目录变更（设置页改默认模型/连接编辑）同样能翻转 family——同走
-  // 这条「作废门槛 + 立即重查」的事件路径。
+  // fix-provider-poll-bound：两个事件同为一个新查询上下文——作废 family
+  // 门槛、清失败计数并解除暂停（刀① 的「事件恢复」路径）。
   useEffect(() => {
     const onQueryContextChanged = () => {
       familyRef.current = undefined;
+      resetFailureStreak();
       setFamily(undefined);
       setUsage(null);
       setEpoch((value) => value + 1);
@@ -81,24 +101,46 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
       window.removeEventListener(ACTIVE_MODEL_CHANGED_EVENT, onQueryContextChanged);
       window.removeEventListener("reasonix:model-catalog-changed", onQueryContextChanged);
     };
-  }, []);
+  }, [resetFailureStreak]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const result = await app.GetOpenCodeGoUsage(OPENCODE_GO_OFFICIAL_BASE);
       setUsage(result);
+      // 刀①：note 为空 = 干净答案（Go 端约定 note 是「唯一非成功原因」，
+      // 空 tiers 但无 note 也是成功），清零并恢复；任何降级 note
+      // （no-key / auth-failed / http-* / network…）计一次失败——每次失败
+      // 背后都是一次全量 config 解析，达上限即停本轮轮询。
+      if (!result.note) {
+        resetFailureStreak();
+      } else {
+        failStreakRef.current += 1;
+        setFailStreak(failStreakRef.current);
+        if (failStreakRef.current >= POLL_FAILURE_LIMIT) {
+          pausedRef.current = true;
+          setPaused(true);
+        }
+      }
     } catch {
       setUsage({ tiers: [], note: "network" });
+      failStreakRef.current += 1;
+      setFailStreak(failStreakRef.current);
+      if (failStreakRef.current >= POLL_FAILURE_LIMIT) {
+        pausedRef.current = true;
+        setPaused(true);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resetFailureStreak]);
 
-  // Shared 60s poll with the 刀② on-demand gate. Per tick:
+  // Shared 60s poll with the 刀② on-demand gate and the 刀① bounded-retry
+  // pause. Per tick:
+  //   暂停中 → 零调用（刀①：停止本轮轮询，等事件/手动刷新恢复）；
   //   family 已知非 opencode-go（含无活跃 tab 的 ""）→ 零调用零 config 读
-  //     （family 只经事件变化——换 tab / 切模型 / 目录变更都会立即重查，
-  //     见 onQueryContextChanged——tick 无需反复验证）；
+  //     （刀②：family 只经事件变化——换 tab / 切模型 / 目录变更都会立即
+  //     重查，见 onQueryContextChanged——tick 无需反复验证）；
   //   family 未定（新查询上下文首个 tick）→ 一次 family 查询定门，之后
   //     本上下文内不再重发；
   //   family = opencode-go → 照常查用量（tl1487「常开」= 功能不撤，活跃
@@ -108,9 +150,11 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
   // hot model switch within the tab.
   useEffect(() => {
     let cancelled = false;
-    // 新查询上下文（挂载/换 tab/epoch bump）：重置门槛。
+    // 新查询上下文（挂载/换 tab/epoch bump）：重置门槛与暂停态。
     familyRef.current = undefined;
+    resetFailureStreak();
     const pollOnce = async () => {
+      if (pausedRef.current) return;
       if (familyRef.current !== undefined && familyRef.current !== "opencode-go") return;
       if (familyRef.current === undefined) {
         try {
@@ -120,7 +164,7 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
           setFamily(active);
         } catch {
           // family 查询瞬时失败：保住旧门槛，下个 tick 重试
-          // （它自身零网络 I/O，不计入用量调用）。
+          // （不计入用量失败计数——它自身零网络 I/O）。
           return;
         }
         if (familyRef.current !== "opencode-go") {
@@ -136,7 +180,7 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
       cancelled = true;
       window.clearInterval(poll);
     };
-  }, [tabId, refresh, epoch]);
+  }, [tabId, refresh, epoch, resetFailureStreak]);
 
   // Countdown lines re-render every 30s off the same fetched resetsAt values
   // (same cadence as the GLM plan card).
@@ -172,6 +216,11 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
           <RefreshCw size={13} data-tick={tick} />
         </button>
       </header>
+      {paused && (
+        <p className="plan-usage__note plan-usage__note--paused" data-testid="opencode-go-usage-paused">
+          {t("settings.opencodeGoUsage.paused", { count: failStreak })}
+        </p>
+      )}
       {noteText && windows.length === 0 ? (
         <p className="plan-usage__note">{noteText}</p>
       ) : windows.length > 0 ? (

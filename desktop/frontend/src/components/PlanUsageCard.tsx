@@ -32,6 +32,11 @@ export function PlanUsageCard({ tabId }: { tabId?: string }) {
   const view = usePlanUsageStore((s) => s.view);
   const loading = usePlanUsageStore((s) => s.loading);
   const switching = usePlanUsageStore((s) => s.switching);
+  // fix-provider-poll-bound 刀①：暂停态与失败计数——轮询连续失败达上限后
+  // store.paused=true（tick 零调用），本卡渲染三语暂停标记；换 tab /
+  // 切模型 / 目录变更事件 / 手动刷新成功即恢复。
+  const paused = usePlanUsageStore((s) => s.paused);
+  const failStreak = usePlanUsageStore((s) => s.failStreak);
   const refresh = usePlanUsageStore((s) => s.refresh);
   const reportTab = usePlanUsageStore((s) => s.reportTab);
 
@@ -72,7 +77,32 @@ export function PlanUsageCard({ tabId }: { tabId?: string }) {
     );
   }
 
-  if (!view || !view.supported) return null;
+  // fix-provider-poll-bound 刀①：查询暂停时标记必须可见——即使尚无任何
+  // 受支持快照（首轮即连续失败，view 为空）也不静默消失，改渲染只含标题 +
+  // 暂停行 + 手动刷新入口的暂停壳（独立 testid，不冒充配额卡）。
+  if (!view || !view.supported) {
+    if (!paused) return null;
+    return (
+      <section className="context-panel__section plan-usage" data-testid="plan-usage-card-paused">
+        <header className="context-panel__section-head">
+          <h3>{t("planUsage.title")}</h3>
+          <button
+            type="button"
+            className="plan-usage__refresh"
+            disabled={loading}
+            aria-label={t("planUsage.refresh")}
+            title={t("planUsage.refresh")}
+            onClick={() => void refresh()}
+          >
+            <RefreshCw size={13} />
+          </button>
+        </header>
+        <p className="plan-usage__note plan-usage__note--paused" data-testid="plan-usage-paused">
+          {t("planUsage.paused", { count: failStreak })}
+        </p>
+      </section>
+    );
+  }
 
   const windows = PLAN_USAGE_WINDOW_KEYS
     .map((key) => view.windows.find((w) => w.window === key))
@@ -97,6 +127,11 @@ export function PlanUsageCard({ tabId }: { tabId?: string }) {
           <RefreshCw size={13} data-tick={tick} />
         </button>
       </header>
+      {paused && (
+        <p className="plan-usage__note plan-usage__note--paused" data-testid="plan-usage-paused">
+          {t("planUsage.paused", { count: failStreak })}
+        </p>
+      )}
       {noteText && windows.length === 0 ? (
         <p className="plan-usage__note">{noteText}</p>
       ) : windows.length > 0 ? (
