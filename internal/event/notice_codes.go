@@ -299,3 +299,16 @@ const (
 	// loop early instead of burning every remaining attempt.
 	NoticeCodeHeaderTimeoutGiveup = "header_timeout_giveup"
 )
+
+// tl1460 默认停止审查层（非 Goal 会话也生效）: the turn-end review's two
+// visible actions. stop_review_continued is the per-round 「因 X 继续
+// （第 N/5）」 line; stop_review_capped is the budget stop that fires when the
+// work is STILL unfinished after the configured continuation ceiling — it
+// carries the pending list in its Text and rules=/continuation= in Detail.
+// Same dual-track contract as the goal_* codes: Text is the English technical
+// line, Detail carries cause=stop_review plus the matched rule tokens;
+// frontends localize the human half by Code.
+const (
+	NoticeCodeStopReviewContinued = "stop_review_continued"
+	NoticeCodeStopReviewCapped    = "stop_review_capped"
+)

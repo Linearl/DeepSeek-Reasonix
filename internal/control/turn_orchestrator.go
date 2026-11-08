@@ -42,7 +42,16 @@ func newTurnOrchestrator(c *Controller) *turnOrchestrator {
 }
 
 func (o *turnOrchestrator) runTurnWithRawDisplay(ctx context.Context, input, raw, display string) error {
-	return o.runOrchestratedTurn(ctx, orchestratedTurn{input: input, raw: raw, display: display})
+	// tl1460: this entry bypasses continueGoal, so the default stop review
+	// hooks at its clean end; the ordinary-turn gate inside
+	// runStopReviewContinuations (enabled + no turn error) and the loop's own
+	// gate (no recorder binding, no live goal) keep goal/synthetic/errored
+	// ends on their existing paths.
+	err := o.runOrchestratedTurn(ctx, orchestratedTurn{input: input, raw: raw, display: display})
+	if err != nil {
+		return err
+	}
+	return o.runStopReviewContinuations(ctx, nil)
 }
 
 func (o *turnOrchestrator) runTurnWithImageRefsRawDisplay(ctx context.Context, input, raw, imageRefs, display string) error {
@@ -314,6 +323,9 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	// only within one host-owned execution round.
 	if !turn.synthetic {
 		c.beginRecoveryEpisode()
+		// tl1460: a real user turn always opens a fresh work segment — the
+		// stop-review continuation streak must never leak across it.
+		c.resetStopReviewStreak()
 	}
 	err = c.runModelTurn(ctx, modelInput)
 	c.captureGoalRunWorkDuration(startMessages)
@@ -556,9 +568,18 @@ func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.
 func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuationEpoch uint64, firstTurnErr error) error {
 	c := o.c
 	turnErr := firstTurnErr
+	// tl1460: an ordinary turn binds no goal recorder and leaves no live goal —
+	// its end is where the default stop review holds or releases the stop (非
+	// Goal 会话也生效). Goal turns stay with the FSM loop below; a completed
+	// or blocked goal left running=false, but it was still a goal turn, so the
+	// recorder binding is what separates the two.
+	ordinaryTurn := c.goalUsageTee.activeRecorder() == nil && !c.goals.active()
 	for {
 		res := o.advanceGoalAfterTurn(ctx, expectedContinuationEpoch, turnErr)
 		if !res.cont {
+			if ordinaryTurn {
+				return o.runStopReviewContinuations(ctx, turnErr)
+			}
 			return nil
 		}
 		if err := ctx.Err(); err != nil {
@@ -733,14 +754,19 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 		report = recorder.validReport(expectedContinuationEpoch)
 	}
 
-	// The bounded evaluator runs once, only when the model gave no report and
-	// readiness has no definite missing list. Failures fail closed in the FSM.
+	// The bounded evaluator (判定层③ LLM 复核) runs once, only when the rules
+	// RELEASED the stop: no update_goal report, no readiness gap and — tl1460
+	// — no incomplete canonical todos. 规则说继续就禁止 LLM 否决（单向
+	// fail-open）：todos 未清时①层已裁决继续，评估器不介入，也就永远不会把
+	// 一个「规则说继续」翻转成停。Failures fail closed in the FSM.
 	// tl1472: the create-goal turn owes no evaluator verdict — the goal was
 	// just installed mid-turn — and a disarmed goal is not under pursuit, so
 	// no verdict is owed there either (the FSM's disarmed halt owns the exit).
+	reviewTodos := c.goalTodos()
 	var evaluator *goalEvaluatorVerdict
 	var evaluatorFailed string
 	if !runPaused && report == nil && len(readiness.Missing) == 0 &&
+		len(evidence.IncompleteTodos(reviewTodos)) == 0 &&
 		!(createdThisTurn && !recorderValid) && c.goals.armedForAutoContinue() {
 		if c.evaluator == nil {
 			evaluatorFailed = "goal evaluator unavailable"
@@ -761,7 +787,7 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 		readiness:        readiness,
 		evaluator:        evaluator,
 		evaluatorFailed:  evaluatorFailed,
-		todos:            c.goalTodos(),
+		todos:            reviewTodos,
 		progressEvidence: progressEvidence,
 		pauseCause:       pauseCause,
 		pauseReason:      pauseReason,
