@@ -4,11 +4,30 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
 )
+
+// tl1500 刀③（装机全局挂死修复件）：启动恢复 in_flight_turn 的 age 上限。
+// 诊断报告（worktrees/tl1493/docs/reports-diag/装机挂死诊断-20261108.md）§2.2：
+// 失控回合的标记持久化在 meta 里，每次启动加载会话都重新触发「裁剪+快照」
+// 恢复机器并撞保存锁面——「重启无效」的机理。超龄阈值取远超任何单回合正常
+// 时长的 2 小时（心跳 30 分钟周期、最长实况回合 36.7 分钟，都远在界内）；
+// 零 StartedAt（老 sidecar，年龄未知）不判超龄，保持既有行为。var 形态便于
+// 测试压缩时钟（save.go sessionFileLockWait 同例）。
+const staleInFlightTurnRecoveredCause = "stale_in_flight_turn_recovered"
+
+var staleInFlightTurnRecoverMaxAge = 2 * time.Hour
+
+func staleInFlightTurnMarkerStale(marker *agent.InFlightTurnMeta) bool {
+	if marker == nil || marker.StartedAt.IsZero() {
+		return false
+	}
+	return time.Since(marker.StartedAt) > staleInFlightTurnRecoverMaxAge
+}
 
 // concurrentDualTabProbe answers "is this conversation open in two live tabs
 // of this window?" (task 203). The host registers one probe at startup — the
@@ -153,6 +172,24 @@ func (c *Controller) recoverInterruptedTurn(path string) {
 			}
 			return
 		}
+	}
+	// tl1500 刀③: 超龄标记不再走「裁剪+启动期快照」恢复机器——终止态收尾：
+	// 转录原样保留（与既有「后续回合穿越」分支同一数据安全取向：宁可多留
+	// 消息，不动已落盘内容）、CAS 清标记、落 cause 打点 + 可见 notice。宁可
+	// 不续，不挂死。
+	if staleInFlightTurnMarkerStale(marker) {
+		slog.Warn("controller: stale in-flight turn terminated at open (no resume, no recovery strip)",
+			"cause", staleInFlightTurnRecoveredCause,
+			"path", filepath.Base(path),
+			"age", time.Since(marker.StartedAt).Round(time.Second).String(),
+			"marker_id", marker.ID,
+			"start_message_index", marker.StartMessageIndex)
+		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
+			Text: "Session recovery found a stale unfinished-turn marker far past any sane turn duration; it was terminated in place (no resume, transcript preserved). cause=" + staleInFlightTurnRecoveredCause})
+		if _, err := agent.ClearSessionInFlightTurnIfMatch(path, *marker); err != nil {
+			slog.Warn("controller: clear stale in-flight turn marker (age cap)", "err", err)
+		}
+		return
 	}
 	start, found := resolveInterruptedTurnStart(msgs, marker.StartMessageIndex, marker.PreserveUser, marker.StartedAt, provider.Message{})
 	if found && interruptedTurnCrossesLaterTurn(msgs, start) {
