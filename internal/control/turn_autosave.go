@@ -92,17 +92,34 @@ func (c *Controller) autosaveWhileRunning(ctx context.Context) {
 // midTurnAutosaveSnapshot is the save call behind each mid-turn tick. It is a
 // named method so the conflict-recovery contract of exactly this path is
 // pinnable (tl1491): the tick runs while a turn body is executing, so its
-// snapshot may not swap the executor session (SetSession is an idle-only
-// seam) — see the deferConflictRecovery argument of snapshotWithDurability.
-// A deferred conflict reports nil (the cause is recorded in the conflict
-// diagnostic log and one WARN line, not re-reported by the tick loop). The
-// stall watchdog keeps its own cadence in autosaveWhileRunning.
+// snapshot carries deferConflictRecovery — a conflict keeps the live session
+// object and is deferred to the turn boundary instead of running the
+// adopt/fork ladder here (SetSession is an idle-only seam, and a mid-turn
+// fork would rebind path/checkpoints under the running turn). A deferred
+// conflict reports nil: the cause is recorded by deferMidTurnConflictRecovery
+// and must not re-surface through the tick loop's own warn. The stall
+// watchdog keeps its own cadence in autosaveWhileRunning.
 func (c *Controller) midTurnAutosaveSnapshot() error {
-	_, err := c.snapshotWithDurability(false, false, false, true)
+	_, err := c.snapshotWithDurability(false, false, false, true, true)
 	if err != nil && !errors.Is(err, errSavePathBusy) {
 		slog.Warn("controller: mid-turn snapshot", "err", err)
 	}
 	return err
+}
+
+// deferMidTurnConflictRecovery records a snapshot conflict that the mid-turn
+// autosave tick declined to resolve (tl1491). Every ladder verdict swaps or
+// rebinds the session (adopt → executor.SetSession; fork → commitRecovered
+// Session), and the turn boundary already reruns the identical ladder on its
+// blocking snapshot, so mid-turn the only correct move is to keep the live
+// transcript and leave a cause trail: one diagnostic record (deduped per
+// {path, outcome, disk revision}) plus one WARN line per conflicted tick.
+func (c *Controller) deferMidTurnConflictRecovery(path string, saveErr error) {
+	appendSnapshotConflictDiagnostic(path, "midturn-autosave", "conflict_recovery_deferred_turn_running", saveErr, "", false)
+	base, disk := snapshotConflictRevisions(saveErr)
+	kind, _ := agent.SnapshotConflictKind(saveErr)
+	slog.Warn("controller: mid-turn autosave hit a snapshot conflict; recovery deferred to the turn boundary; keeping the live transcript",
+		"path", path, "kind", string(kind), "base_revision", base, "disk_revision", disk)
 }
 
 // executorSession returns the live session, or nil while the executor is

@@ -5128,7 +5128,7 @@ var errSavePathBusy = errors.New("session save path busy")
 // true for the quiet no-op cases (nothing to persist); false strictly means
 // "the save path was busy, the flush still owes the caller".
 func (c *Controller) SnapshotIfSavePathFree() (attempted bool, err error) {
-	_, err = c.snapshotWithDurability(false, false, false, true)
+	_, err = c.snapshotWithDurability(false, false, false, true, false)
 	if errors.Is(err, errSavePathBusy) {
 		return false, nil
 	}
@@ -5151,7 +5151,7 @@ func (c *Controller) SnapshotRewrite() error {
 }
 
 func (c *Controller) snapshot(markActivity, forceRewrite, shutdownRecovery bool) error {
-	_, err := c.snapshotWithDurability(markActivity, forceRewrite, shutdownRecovery, false)
+	_, err := c.snapshotWithDurability(markActivity, forceRewrite, shutdownRecovery, false, false)
 	return err
 }
 
@@ -5163,7 +5163,15 @@ func (c *Controller) snapshot(markActivity, forceRewrite, shutdownRecovery bool)
 // nonBlocking (SnapshotIfSavePathFree) declines the save with errSavePathBusy
 // when the save path is busy instead of queueing on the save-path mutex; the
 // pre-persist no-op branches above are unaffected and still count as done.
-func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdownRecovery, nonBlocking bool) (bool, error) {
+//
+// deferConflictRecovery (tl1491) is the mid-turn autosave tick's flag: the
+// tick runs while a turn body is executing, and conflict recovery resolves by
+// adopting the disk transcript (executor.SetSession) or moving the session to
+// a recovery branch — both are rotation-grade swaps that the turn boundary
+// owns. On a conflict this form keeps the live session object, records the
+// cause, and reports nil; the turn-end snapshot reruns the full ladder at the
+// boundary, where the swap is legal.
+func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdownRecovery, nonBlocking, deferConflictRecovery bool) (bool, error) {
 	c.snapshotMu.Lock()
 	defer c.snapshotMu.Unlock()
 
@@ -5268,6 +5276,16 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 	if err != nil {
 		if !errors.Is(err, agent.ErrSessionSnapshotConflict) {
 			return false, err
+		}
+		// tl1491: the mid-turn autosave tick never resolves a conflict itself.
+		// Every ladder verdict is a session swap (adopt: executor.SetSession) or
+		// a rebind (fork: commitRecoveredSession moves path/checkpoints) — fine
+		// at a turn boundary, but mid-turn it yanks the session out from under
+		// the running turn and drops its unsaved tail. Keep the live object,
+		// record the cause, let the turn-end snapshot rerun the ladder.
+		if deferConflictRecovery {
+			c.deferMidTurnConflictRecovery(path, err)
+			return false, nil
 		}
 		recoveredPath, outcome, recoverErr := c.recoverSnapshotConflict(path, err, forceRewrite)
 		if recoverErr != nil {
@@ -6117,7 +6135,7 @@ func (c *Controller) snapshotActivityIfChanged(startMessages int) (bool, error) 
 	if c.messageCount() <= startMessages {
 		return true, nil
 	}
-	return c.snapshotWithDurability(true, false, false, false)
+	return c.snapshotWithDurability(true, false, false, false, false)
 }
 
 // SetSessionPath rebinds auto-save without changing the current session
