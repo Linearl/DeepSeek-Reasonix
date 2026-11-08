@@ -201,8 +201,87 @@ func TestOpenSessionAuthorityVerdictMarksColdWindow(t *testing.T) {
 // 组未建），用户不等待直接点击树行首开。修前：权威全空+启发式双死，停在主
 // 线（错误副本）；修后：点击路径先对该目录做一次有界 reconcile（与启动恢复
 // 路径 retargetOpenTabsToContinuations 排在 reconcile 之后的排序语义对齐），
-// 组建成、权威#3 命中，首开落副本。随刀② commit。
-// ④ 超时兜底：reconcile 预算耗尽时按既有降级路径走+Warn 落日志。随刀② commit。
+// 组建成、权威#3 命中，首开落副本。
+func TestOpenSessionWindowReconcileLandsAdoptedCopyOnFirstOpen(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(dir, "verdict-1415h-window-main.jsonl")
+	copyPath := filepath.Join(dir, "verdict-1415h-window-main-recovery-0123456789abcdef.jsonl")
+	t.Cleanup(func() {
+		for _, p := range []string{mainPath, copyPath, mainPath + ".meta", copyPath + ".meta"} {
+			_ = os.Remove(p)
+		}
+	})
+	// 与取证现场同形：主线轮次更多（副本轮次回归），用户显式采纳副本（旗
+	// 标），filing 验证不过——唯一权威=meta 旗标（权威#3）。
+	saveVerdictFixture(t, mainPath, 3, "topic_verdict_1415h_window")
+	saveVerdictFixture(t, copyPath, 1, "topic_verdict_1415h_window")
+	stampAdoptedFlag(t, copyPath, mainPath)
+
+	app := openVerdictApp(t, openVerdictColdCatalog(t))
+
+	logs := captureVerdictLogs(t, func() {
+		_, got := app.resolveOpenTopicSessionPath("global", "", mainPath)
+		if !sameRecoveryLineagePath(got, copyPath) {
+			t.Fatalf("first open inside the cold window must land on the adopted copy after the bounded window reconcile, got %s", got)
+		}
+	})
+	for _, want := range []string{
+		"desktop: open session authority verdict",
+		"windowReady=true",
+		"windowReconciled=true",
+		"redirected=true",
+		"authorityKind=meta_flag",
+		"groupMembers=2",
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("window-reconciled open verdict must name %q; log:\n%s", want, logs)
+		}
+	}
+}
+
+// ④ 超时兜底：reconcile 预算耗尽时，点击打开按既有降级路径走（保持原路径），
+// Warn 落日志（兜底可见），不挂起不扩面。
+func TestOpenSessionWindowReconcileTimeoutFallsBack(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(dir, "verdict-1415h-timeout-main.jsonl")
+	copyPath := filepath.Join(dir, "verdict-1415h-timeout-main-recovery-0123456789abcdef.jsonl")
+	t.Cleanup(func() {
+		for _, p := range []string{mainPath, copyPath, mainPath + ".meta", copyPath + ".meta"} {
+			_ = os.Remove(p)
+		}
+	})
+	saveVerdictFixture(t, mainPath, 2, "topic_verdict_1415h_timeout")
+	saveVerdictFixture(t, copyPath, 1, "topic_verdict_1415h_timeout")
+	stampAdoptedFlag(t, copyPath, mainPath)
+
+	prev := openSessionWindowReconcileBudget
+	openSessionWindowReconcileBudget = time.Nanosecond
+	t.Cleanup(func() { openSessionWindowReconcileBudget = prev })
+
+	app := openVerdictApp(t, openVerdictColdCatalog(t))
+
+	logs := captureVerdictLogs(t, func() {
+		_, got := app.resolveOpenTopicSessionPath("global", "", mainPath)
+		// 超时兜底=既有降级路径：保持原路径（旧行为），绝不因收口失败而挂起。
+		if got != mainPath {
+			t.Fatalf("a timed-out window reconcile must fall back to the pre-existing path, got %s", got)
+		}
+	})
+	if !strings.Contains(logs, "desktop: open session window reconcile") {
+		t.Fatalf("a timed-out reconcile must leave a Warn trace; log:\n%s", logs)
+	}
+	if !strings.Contains(logs, "windowReconciled=true") {
+		t.Fatalf("the attempted (timed-out) reconcile must be visible in the verdict; log:\n%s", logs)
+	}
+}
 
 // ⑤ 日志量控制：resume/retarget 复用的 continuePathForOpen 零日志——裁决行
 // 只在打开动作（resolveOpenTopicSessionPath）触发，非热路径。

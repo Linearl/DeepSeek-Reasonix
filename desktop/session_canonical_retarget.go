@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -56,6 +58,10 @@ type openSessionAuthorityVerdict struct {
 	Redirected     bool
 	WindowReady    bool
 	LiveController bool
+	// tl1415h 刀②：窗口收口读数——点击打开在窗口形态时对目录做的按需
+	// reconcile 是否执行/是否失败（超时兜底按既有降级走并落日志）。
+	WindowReconciled   bool
+	WindowReconcileErr string
 }
 
 func (v openSessionAuthorityVerdict) logFields(scope, workspaceRoot string) []any {
@@ -75,6 +81,12 @@ func (v openSessionAuthorityVerdict) logFields(scope, workspaceRoot string) []an
 	}
 	if v.Authority != "" {
 		fields = append(fields, "authority", v.Authority, "authorityKind", v.AuthorityKind)
+	}
+	if v.WindowReconciled {
+		fields = append(fields, "windowReconciled", true)
+		if v.WindowReconcileErr != "" {
+			fields = append(fields, "windowReconcileErr", v.WindowReconcileErr)
+		}
 	}
 	return fields
 }
@@ -218,9 +230,20 @@ func (a *App) continuePathForOpenVerdict(path string) (string, openSessionAuthor
 	ctx := context.Background()
 	rec, ok, err := catalog.GetSession(ctx, path)
 	if err != nil || !ok {
-		// 投影行不在册——冷机窗口的第一形态（目录 reconcile 未跑）。
+		// tl1415h 刀②：投影行不在册——冷机窗口的第一形态（目录 reconcile
+		// 未跑）。与启动恢复路径的排序语义对齐：判权威前先对该目录做一次有
+		// 界 reconcile，再重试一次入册读；超时/失败按既有降级路径走（落
+		// reconcileOpenWindow 的 Warn）。
 		verdict.WindowReady = false
-		return a.continuePathForMissingParent(ctx, catalog, path), verdict
+		if a.reconcileOpenWindow(catalog, filepath.Dir(path), &verdict) {
+			if rec, ok, err = catalog.GetSession(ctx, path); err == nil && ok {
+				verdict.WindowReady = true
+			} else {
+				return a.continuePathForMissingParent(ctx, catalog, path), verdict
+			}
+		} else {
+			return a.continuePathForMissingParent(ctx, catalog, path), verdict
+		}
 	}
 	verdict.Filed = true
 	if rec.TopicID == "" {
@@ -252,8 +275,18 @@ func (a *App) continuePathForOpenVerdict(path string) (string, openSessionAuthor
 	if !rec.Recovered {
 		authority, kind, detail, resolved := a.recoveryAuthorityForOpenVerdict(catalog, rec)
 		if resolved && !detail.GroupReady {
-			// 有行但组未界定——冷机窗口的第二形态（副本行未被组分类）。
+			// tl1415h 刀②：有行但组未界定——冷机窗口的第二形态（副本行未被
+			// 组分类，recoveryTopicHasGroup 落空，权威#1/#2/#3 全空）。同窗口
+			// 第一形态：有界 reconcile 后重判一次权威；仍落空才按既有降级走。
 			verdict.WindowReady = false
+			if a.reconcileOpenWindow(catalog, filepath.Dir(path), &verdict) {
+				if authority2, kind2, detail2, resolved2 := a.recoveryAuthorityForOpenVerdict(catalog, rec); resolved2 {
+					authority, kind, detail = authority2, kind2, detail2
+					if detail2.GroupReady {
+						verdict.WindowReady = true
+					}
+				}
+			}
 		}
 		verdict.TopicID = detail.TopicID
 		verdict.GroupID = detail.GroupID
@@ -366,6 +399,70 @@ func (a *App) preferredMetaFlagPathOfGroup(topic sessioncatalog.TopicRecord, gro
 		flagged = member.Path
 	}
 	return flagged
+}
+
+// openSessionWindowReconcileBudget 是点击打开路径对未就绪目录做按需 reconcile
+// 的超时兜底（tl1415h 刀②，取证报告修复建议②）。var 仅为测试可注入；生产代
+// 码不得改写。
+var openSessionWindowReconcileBudget = 2 * time.Second
+
+// reconcileDirectoryForOpenWindow 在冷机窗口（路径未入册/组未建）时对该目录
+// 做一次有界目录 reconcile。启动路径（session_catalog_lifecycle.go）把
+// retargetOpenTabsToContinuations 显式排在目录 reconcile 之后，而用户点击打
+// 开路径没有这个排序保证——树行来自 topic 注册表，先于 reconcile 可见可点，
+// 窗口内首开会因组未建落错主线（取证报告 Q3 定案）。本函数把同一条排序语义
+// 补到点击路径上：只做目录级对账（ReconcileDirectory 自带 directorySignature
+// 未变跳过与目录锁），不做全量重扫。
+//
+// target 取自 sessionCatalogTargets（目录归属的 scope/root 与启动 reconcile
+// 同源）；不在已知目录集里的路径不碰（与 sessionDirForPath 的 known-dirs 门
+// 同一保守边界）。返回 attempted=是否发起了 reconcile；超时/失败按既有降级
+// 路径走（attempted 仍为 true，错误由调用方落日志）。
+func (a *App) reconcileDirectoryForOpenWindow(catalog *sessioncatalog.Catalog, dir string) (bool, error) {
+	dir = filepath.Clean(strings.TrimSpace(dir))
+	if dir == "" || catalog == nil {
+		return false, nil
+	}
+	target := sessioncatalog.DirectoryTarget{}
+	known := false
+	for _, candidate := range a.sessionCatalogTargets() {
+		if sameOpenWindowDir(candidate.Path, dir) {
+			target = candidate
+			known = true
+			break
+		}
+	}
+	if !known {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), openSessionWindowReconcileBudget)
+	defer cancel()
+	err := catalog.ReconcileDirectory(ctx, target)
+	return true, err
+}
+
+// reconcileOpenWindow 执行窗口 reconcile 并把读数写进裁决（tl1415h 刀②）。
+// 返回是否真的发起了 reconcile；失败落一行 Warn（超时兜底可见），随后调用方
+// 按既有降级路径走。
+func (a *App) reconcileOpenWindow(catalog *sessioncatalog.Catalog, dir string, verdict *openSessionAuthorityVerdict) bool {
+	attempted, err := a.reconcileDirectoryForOpenWindow(catalog, dir)
+	verdict.WindowReconciled = verdict.WindowReconciled || attempted
+	if err != nil {
+		verdict.WindowReconcileErr = err.Error()
+		slog.Warn("desktop: open session window reconcile", "dir", dir, "err", err.Error())
+	}
+	return attempted
+}
+
+// sameOpenWindowDir compares two cleaned directory spellings as the same
+// session directory. Windows folds case (the disk real name and the catalog
+// spelling legitimately differ — tl1415 四轮取证附记一), other platforms
+// compare bytes.
+func sameOpenWindowDir(left, right string) bool {
+	if left == right {
+		return true
+	}
+	return runtime.GOOS == "windows" && strings.EqualFold(left, right)
 }
 
 func (a *App) continuePathForMissingParent(ctx context.Context, catalog *sessioncatalog.Catalog, path string) string {
