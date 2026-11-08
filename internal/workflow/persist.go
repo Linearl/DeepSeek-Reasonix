@@ -73,7 +73,7 @@ type runSnapshot struct {
 	Workflow      string `json:"workflow"`
 	// DefFingerprint 是装载定义的指纹；resume 时与现定义重算值比对，不匹配拒绝。
 	DefFingerprint string     `json:"defFingerprint"`
-	State          string     `json:"state"` // running | completed | failed
+	State          string     `json:"state"` // running | completed | failed | interrupted | paused（tl1335）
 	StartedAt      time.Time  `json:"startedAt"`
 	EndedAt        *time.Time `json:"endedAt,omitempty"`
 	Err            string     `json:"err,omitempty"`

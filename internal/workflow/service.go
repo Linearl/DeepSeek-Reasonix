@@ -30,18 +30,22 @@ import (
 // 携带发起会话的 sink，节点事件嵌进发起会话的事件流（面板由此点亮）。
 
 // RunState 是一次运行的服务侧状态（工具与面板共读）。语义边界（tl1447 收口，
-// failed≠interrupted）：
+// failed≠interrupted；tl1335 补 paused）：
 //
 //	running     — 运行中（本进程活着，未终态）。
 //	completed   — 全部节点完成，终态，不可续（没有可续的东西）。
 //	interrupted — 运行被中断（进程重启丢态、或用户经面板停止 tl1447），断点
 //	              在盘即「可续」；续跑只对本态开放。
+//	paused      — 用户主动暂停（tl1335）：引擎在节点边界优雅挂起（正在执行的
+//	              节点完整跑完、checkpoint 落盘），区别于 stop 的立即砍——
+//	              「我还会回来」的显式挂起态，与 interrupted 同享可续资格。
 //	failed      — 真实失败（引擎节点报错终态），不可续——定义已漂移或执行已
 //	              失败到断点不可信的程度，从头重跑才是明确下一步。
 //
 // 停止（用户主动 cancel）落 interrupted 而非 failed（tl1447：停止≠失败）——
 // 停止只是「现在别跑了」，断点仍是有效进度；旧版本落 failed 的盘上快照保持
-// failed 语义不翻案（重跑），仅新停止落可续态。
+// failed 语义不翻案（重跑），仅新停止落可续态。暂停（PauseRun）与停止的分界：
+// pause 等当前节点跑完再挂起（工作不丢），cancel 立即砍（运行中执行终止）。
 type RunState string
 
 const (
@@ -49,7 +53,14 @@ const (
 	RunCompleted   RunState = "completed"
 	RunFailed      RunState = "failed"
 	RunInterrupted RunState = "interrupted"
+	RunPaused      RunState = "paused"
 )
+
+// resumableState 报告一个 run 态是否持有续跑资格（tl1335：paused 与
+// interrupted 同享；failed/completed/running 永不）。
+func resumableState(st RunState) bool {
+	return st == RunInterrupted || st == RunPaused
+}
 
 // workflowMaxFinishedRuns 是终态 run 的保留窗口（内存与磁盘同边界，任务
 // 1316 §7 收口 service.go 无 delete 的无界增长）。running/interrupted 永不
@@ -78,6 +89,10 @@ type RunRecord struct {
 	def       *Workflow
 	cancel    context.CancelFunc
 	cancelled bool
+	// pauseReq 是主动暂停请求（tl1335）：引擎 PauseCheck 每个节点边界查询，
+	// true 即在下一边界优雅挂起（当前节点跑完、checkpoint 落盘）——不砍运行
+	// 中的执行，与 cancelled 的立即 cancel ctx 互补。resume 起跑时清零。
+	pauseReq bool
 	// lastCP 是引擎最后一次 checkpoint 投影（1316）；finishRun 用它落终态
 	// 快照。持久化关闭（dir 空）时为 nil。
 	lastCP *CheckpointData
@@ -307,6 +322,7 @@ func (s *Service) runWorkflow(ctx context.Context, name string, resumeRunID stri
 	rec.mu.Lock()
 	rec.cancel = cancel
 	rec.cancelled = false
+	rec.pauseReq = false
 	rec.tl.failure = nil
 	gate := gateRunnerFor(rec.tl.origin, rec.tl.gateDir)
 	rec.mu.Unlock()
@@ -314,6 +330,13 @@ func (s *Service) runWorkflow(ctx context.Context, name string, resumeRunID stri
 
 	eng := New(runner, gate, &recordingSink{svc: s, runID: runID, inner: sink})
 	eng.Observe = func(o NodeObservation) { s.recordObservation(runID, o) }
+	// tl1335：主动暂停钩子——引擎每个节点边界查一次 pauseReq（runAll 单写者
+	// 串行调用；rec.mu 保护布尔，无并发面）。
+	eng.PauseCheck = func() bool {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		return rec.pauseReq
+	}
 	if s.persistDir != "" {
 		eng.Checkpoint = func(cd *CheckpointData) {
 			s.persistCheckpoint(runID, cd)
@@ -344,8 +367,8 @@ func (s *Service) runWorkflow(ctx context.Context, name string, resumeRunID stri
 }
 
 // prepareResumeLocked 校验并翻新待续跑的 run（调用方持 s.mu）：只允许
-// interrupted 且非用户主动取消的 run；定义指纹必须与快照匹配（拿旧断点配
-// 新图是错误的续跑）。返回翻新后的登记行与盘上快照。
+// interrupted / paused（tl1335）且非用户主动取消的 run；定义指纹必须与快照
+// 匹配（拿旧断点配新图是错误的续跑）。返回翻新后的登记行与盘上快照。
 func (s *Service) prepareResumeLocked(runID string, wf *Workflow) (*RunRecord, *runSnapshot, error) {
 	rec, ok := s.runs[runID]
 	if !ok {
@@ -361,7 +384,7 @@ func (s *Service) prepareResumeLocked(runID string, wf *Workflow) (*RunRecord, *
 	if state == RunCompleted {
 		return nil, nil, fmt.Errorf("run %q already completed; there is nothing to resume", runID)
 	}
-	if state != RunInterrupted {
+	if !resumableState(state) {
 		// failed 终态不可续（tl1447 语义边界：failed=真实失败，断点不可信，
 		// 从头重跑是明确下一步）。tl1447 后用户停止已落 interrupted（可续），
 		// 走到这里的 cancelled 行只剩旧版本盘上快照的 legacy 形态——文案按
@@ -514,6 +537,30 @@ func (s *Service) CancelRun(runID string) bool {
 	return true
 }
 
+// PauseRun 主动暂停一次运行（tl1335，面板暂停钮的承接面）：只设暂停请求，
+// 不取消 ctx——引擎在下一个节点边界优雅挂起（正在执行的节点完整跑完、
+// checkpoint 落盘后不再启动新节点），run 落 RunPaused 可续态。与 CancelRun
+// 的分界：pause 保住运行中节点的工作（等待生效），cancel 立即砍（运行中执行
+// 终止）；要立即停就用停止钮。pause 请求后仍可 cancel（更强意图优先，落
+// interrupted）。返回是否命中（未知名或非 running = false）。
+func (s *Service) PauseRun(runID string) bool {
+	s.mu.Lock()
+	rec, ok := s.runs[runID]
+	s.mu.Unlock()
+	if !ok {
+		return false
+	}
+	rec.mu.Lock()
+	if rec.State != RunRunning {
+		rec.mu.Unlock()
+		return false
+	}
+	rec.pauseReq = true
+	rec.mu.Unlock()
+	s.touch()
+	return true
+}
+
 // ResumeRunFromPanel（任务 1316）是面板续跑钮的承接面：面板没有调用方会话
 // 身份，sessionID 传空串，由 boot 注册的回退 RunnerSource（仅对空 sessionID
 // 命中）解析最新装配的子代理基底——工具路径（workflow_run resume_run_id）
@@ -642,9 +689,10 @@ func (s *Service) Snapshot() []RunSnapshot {
 			Report:    rec.Report,
 			Def:       rec.def,
 			// Resumable（任务 1316）：面板「可续跑」徽章与续跑钮的判定（服务侧
-			// 单一真相；前端不算指纹）。interrupted + 定义存在 + 指纹匹配。
+			// 单一真相；前端不算指纹）。可续态（interrupted/paused，tl1335 并列）
+			// + 定义存在 + 指纹匹配。
 			// tl1447：用户停止也落 interrupted（cancelled 仅作来源标记），不再排除。
-			Resumable: rec.resumableOK && rec.State == RunInterrupted,
+			Resumable: rec.resumableOK && resumableState(rec.State),
 			Template:  templateViewLocked(rec),
 		}
 		for _, nid := range rec.order {
@@ -703,6 +751,14 @@ func (s *Service) finishRun(runID string, report *WorkflowReport, runErr error) 
 		// 表）。断点随节点终态已落盘；有断点即标可续（prepareResume 读盘校验
 		// 兜底），面板续跑钮（resumable）由此点亮，卡死处置不再只能整跑重来。
 		rec.State = RunInterrupted
+		rec.Err = ""
+		rec.resumableOK = rec.lastCP != nil && s.persistDir != ""
+	case runErr != nil && errors.Is(runErr, errWorkflowPaused):
+		// tl1335：主动暂停落 paused——「我还会回来」的显式挂起态，与
+		// interrupted 同享可续资格（resumableState）。pause 请求后用户改点
+		// 停止时引擎先收到 ctx 取消，走上面的 interrupted 分支（cancel 优先，
+		// 语义不被 pause 掩盖）。pause 不设 cancelled 标记：它不是取消。
+		rec.State = RunPaused
 		rec.Err = ""
 		rec.resumableOK = rec.lastCP != nil && s.persistDir != ""
 	case runErr != nil:
@@ -801,6 +857,10 @@ func (s *Service) restoreFromDisk() {
 			// cancelled 随行保留来源标记；可续判定与 running→interrupted 同口。
 			rec.State = RunInterrupted
 			rec.cancelled = snap.Cancelled
+		case string(RunPaused):
+			// tl1335：用户主动暂停的可续态快照，重启后保持挂起语义（不是中断
+			// ——面板仍按 paused 呈现「我暂停的」），可续判定与 interrupted 同口。
+			rec.State = RunPaused
 		case string(RunCompleted):
 			rec.State = RunCompleted
 		case string(RunFailed):
@@ -814,7 +874,7 @@ func (s *Service) restoreFromDisk() {
 			rec.EndedAt = *snap.EndedAt
 		}
 		rec.Report = snap.Report
-		if rec.State == RunInterrupted {
+		if resumableState(rec.State) {
 			if wf, err := s.store.load(snap.Workflow); err == nil && defFingerprint(wf) == snap.DefFingerprint {
 				rec.def = wf
 				rec.resumableOK = true
@@ -829,8 +889,8 @@ func (s *Service) restoreFromDisk() {
 }
 
 // pruneLocked 收口终态保留窗口（任务 1316 §7；调用方持 s.mu）：只有
-// completed/failed 可逐出，running/interrupted 永不逐出；内存行与盘上目录
-// 同步消失（单一边界，两层真相会腐化）。
+// completed/failed 可逐出，running/interrupted/paused（tl1335）永不逐出；
+// 内存行与盘上目录同步消失（单一边界，两层真相会腐化）。
 func (s *Service) pruneLocked() {
 	var finished []string
 	for _, id := range s.order {
