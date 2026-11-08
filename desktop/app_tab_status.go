@@ -12,12 +12,20 @@ import (
 	"reasonix/internal/evidence"
 )
 
-// ContextUsage returns the latest context-window gauge numbers.
-func (a *App) ContextUsage() ContextInfo {
-	return a.ContextUsageForTab("")
-}
-
-func (a *App) ContextUsageForTab(tabID string) ContextInfo {
+// tabAndCtrlForUsage resolves the tab/controller pair for the gauge reads.
+// tl1500 刀①: the active-tab cases (empty tabID = ContextUsage, or the
+// explicit current-tab ID the frontend poll sends) answer from the binding
+// snapshot, so a write-lock holder cannot queue the 60s usage poll and the
+// right-rail gauge behind the save family (诊断报告 §2.3: 指标全「-」的机理).
+// Other explicit tab IDs keep the old blocking read — non-active-tab status
+// reads are not the convoy surface.
+func (a *App) tabAndCtrlForUsage(tabID string) (*WorkspaceTab, control.SessionAPI) {
+	snap, _ := a.bindingSnapshotNow()
+	if snap != nil && snap.present {
+		if tabID == "" || snap.activeTabID == tabID {
+			return snap.tab, snap.ctrl
+		}
+	}
 	a.mu.RLock()
 	tab := a.tabByIDLocked(tabID)
 	var ctrl control.SessionAPI
@@ -25,7 +33,16 @@ func (a *App) ContextUsageForTab(tabID string) ContextInfo {
 		ctrl = tab.Ctrl
 	}
 	a.mu.RUnlock()
+	return tab, ctrl
+}
 
+// ContextUsage returns the latest context-window gauge numbers.
+func (a *App) ContextUsage() ContextInfo {
+	return a.ContextUsageForTab("")
+}
+
+func (a *App) ContextUsageForTab(tabID string) ContextInfo {
+	tab, ctrl := a.tabAndCtrlForUsage(tabID)
 	var info ContextInfo
 	var snap tabTelemetrySnapshot
 	if tab != nil {

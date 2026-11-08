@@ -1031,6 +1031,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 308-O4: detached idle runtime release threshold. Unconditional
 	// render — omit-on-default would let a hand-added line vanish on the next save.
 	fmt.Fprintf(&b, "detached_idle_release_minutes = %d   # task 308-O4: release a detached session's runtime after this many idle minutes (0 = never, clamped 0..10080; env REASONIX_DETACHED_IDLE_RELEASE_MINUTES overrides)\n", c.Agent.DetachedIdleReleaseMinutes)
+	// tl1500 刀②: detached/background turn wall-clock cap. Unconditional
+	// render (fixed-key-set rule) — 0 keeps the default cap on.
+	fmt.Fprintf(&b, "detached_turn_wall_clock_minutes = %d   # tl1500 刀②: bound one detached/background heartbeat turn's wall clock; past it the turn is cancelled via the existing cancel path (cause=detached_turn_wall_clock_exceeded). 0 = default 30; negative disables the cap; env REASONIX_DETACHED_TURN_WALL_CLOCK_SECONDS (seconds) overrides\n", c.Agent.DetachedTurnWallClockMinutes)
 	// tl1286: GC-strategy dial (debug.SetGCPercent), replacing the retired
 	// 308-O3 soft memory limit. Unconditional render — omit-on-default would
 	// let a hand-added line vanish on the next save.

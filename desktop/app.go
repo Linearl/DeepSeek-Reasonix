@@ -256,6 +256,12 @@ type App struct {
 	tabOrder    []string
 	activeTabID string
 	readyHook   func()
+	// bindingSnap（tl1500 刀①）is the lock-free mirror of the active binding
+	// (active tab pointer, its controller, workspace root). Published on every
+	// uncontended reader pass; while a writer holds or queues on mu, UI binding
+	// readers answer from this snapshot instead of joining the reader convoy.
+	// See app_binding_snapshot.go for the contract.
+	bindingSnap atomic.Pointer[appBindingSnapshot]
 	// tabSelectionMu serializes cross-registry activation. A remote selection
 	// must not overtake the local-session snapshot that makes switching safe.
 	tabSelectionMu sync.Mutex

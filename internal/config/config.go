@@ -2108,6 +2108,12 @@ type AgentConfig struct {
 	// values are clamped into [0, 10080] on write. The
 	// REASONIX_DETACHED_IDLE_RELEASE_MINUTES env overrides for one process.
 	DetachedIdleReleaseMinutes int `toml:"detached_idle_release_minutes"`
+	// DetachedTurnWallClockMinutes bounds one detached/background turn's wall
+	// clock (tl1500 刀②, 缺陷修复非新特性——诊断报告 §4 最小档②）：超时走
+	// 既有取消路径收尾（cause=detached_turn_wall_clock_exceeded）。0 = 默认
+	// 30 分钟；负值显式关闭该上限（逃生口）。REASONIX_DETACHED_TURN_WALL_
+	// CLOCK_SECONDS env（秒，测试/单进程调试粒度）优先于本键。
+	DetachedTurnWallClockMinutes int `toml:"detached_turn_wall_clock_minutes"`
 	// GCPercent is the tl1286 GC-strategy dial (debug.SetGCPercent): the
 	// percentage of freshly allocated data versus live data that triggers a
 	// collection. 0 (default) follows the Go default (equivalent to 100) and

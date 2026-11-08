@@ -5732,13 +5732,18 @@ func sessionBindingFromMeta(path string, meta agent.BranchMeta) (sessionBinding,
 
 // activeTab returns the currently active tab (nil when there are no tabs).
 // Self-locking; safe to call from any goroutine without external lock.
+//
+// tl1500 刀①: snapshot read. When a writer holds or queues on a.mu, the last
+// published binding snapshot answers (possibly stale, logged) instead of
+// joining the reader convoy — the 2026-11-08 installed-build hang had every
+// UI binding reader queued behind the save family's write lock. Locked
+// critical sections still go through activeTabLocked (unchanged).
 func (a *App) activeTab() *WorkspaceTab {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if a.activeTabID == "" {
+	snap, _ := a.bindingSnapshotNow()
+	if snap == nil || !snap.present {
 		return nil
 	}
-	return a.tabs[a.activeTabID]
+	return snap.tab
 }
 
 // activeTabLocked is like activeTab but assumes the caller already holds a.mu
@@ -5753,10 +5758,13 @@ func (a *App) activeTabLocked() *WorkspaceTab {
 
 // activeCtrl returns the controller of the active tab, or nil.
 // Self-locking; safe to call from any goroutine without external lock.
+// tl1500 刀①: snapshot read, same contract as activeTab above.
 func (a *App) activeCtrl() control.SessionAPI {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.activeCtrlLocked()
+	snap, _ := a.bindingSnapshotNow()
+	if snap == nil || !snap.present {
+		return nil
+	}
+	return snap.ctrl
 }
 
 // activeCtrlLocked is like activeCtrl but assumes the caller already holds a.mu.

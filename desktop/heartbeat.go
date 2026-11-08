@@ -1041,6 +1041,12 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	// keeps only the active-tab one; a refusal still arms the deferred park so
 	// the tab leaves the strip once its turn goes idle.
 	if background && !visibleBefore {
+		// tl1500 刀②: detached 后台回合墙钟上限——无人值守回合失控（2026-11-08
+		// 装机挂死的车队源头）不再无界。到期走既有取消路径收尾，见
+		// detached_turn_wallclock.go。ctrl 形参是窄接口（heartbeatRuntimeStatus），
+		// 看门狗要的 RuntimeStatus/Cancel 从 tab 的完整控制器取；必须先于 park
+		// 武装——park 之后 tab 离开 tabs 注册表，ctrlByTabID 就取不到了。
+		e.app.armDetachedTurnWallClock(t.ID, tabMeta.ID, e.app.ctrlByTabID(tabMeta.ID))
 		if err := e.app.parkTabAsDetachedOwned(tabMeta.ID); err != nil {
 			log.Printf("[heartbeat] background park for %q: %s (tab stays visible)", t.Title, secrets.RedactError(err))
 			e.app.deferHeartbeatPark(tabMeta.ID)
