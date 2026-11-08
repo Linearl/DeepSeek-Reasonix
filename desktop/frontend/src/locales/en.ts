@@ -6494,6 +6494,14 @@ export const en = {
   "history.trashFamilyCopies": "+{n} copies",
   "history.trashFamilyCollapse": "Hide copies",
   "history.trashFamilyCopyRole": "copy",
+  "goal.objectTitle": "Goal",
+  "goal.activation.armed": "armed",
+  "goal.activation.disarmed": "disarmed",
+  "goal.phase.active": "active",
+  "goal.phase.paused": "paused",
+  "goal.phase.blocked": "blocked",
+  "goal.phase.complete": "complete",
+  "goal.phase.budgetLimited": "budget limited",
 };
 
 export type DictKey = keyof typeof en;

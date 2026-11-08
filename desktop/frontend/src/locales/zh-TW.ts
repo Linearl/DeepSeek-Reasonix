@@ -6445,4 +6445,12 @@ export const zhTW: Record<DictKey, string> = {
   "history.trashFamilyCopies": "+{n} 個副本",
   "history.trashFamilyCollapse": "收起副本",
   "history.trashFamilyCopyRole": "副本",
-};
+  "goal.objectTitle": "目標",
+  "goal.activation.armed": "自動續跑開啟",
+  "goal.activation.disarmed": "自動續跑已解除",
+  "goal.phase.active": "進行中",
+  "goal.phase.paused": "已暫停",
+  "goal.phase.blocked": "已阻塞",
+  "goal.phase.complete": "已完成",
+  "goal.phase.budgetLimited": "預算到限",
+}
