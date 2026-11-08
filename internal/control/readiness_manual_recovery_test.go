@@ -56,7 +56,12 @@ func TestStandardStopsAfterOneVisibleTurn(t *testing.T) {
 	}
 }
 
-func TestStandardStartReplyContinuesCurrentTodoInsideVisibleTurn(t *testing.T) {
+// tl1460 语义更新（原 TestStandardStartReplyContinuesCurrentTodoInsideVisibleTurn）：
+// 旧契约=可见轮结束后有未清 todo 也不续（静默停）；tl1460 验收第一条改为
+// 「非 Goal 会话有待办未完成时轮末不静默停」——审查层显式续一轮（带
+// 「因 X 继续」notice），续轮把 todo 清掉后放行停。本钉改为守护新契约：
+// 剩余 todo 恰好被审查续轮完成，然后干净停止。
+func TestStandardStartLeftoverTodoContinuesViaStopReview(t *testing.T) {
 	c, prov := manualReadinessController(t, [][]provider.Chunk{
 		{toolCallChunk("todo-1", "todo_write", `{"todos":[{"content":"重写第 4 节","status":"in_progress"}]}`), {Type: provider.ChunkDone}},
 		textTurn("让我先列出待办，接下来会重写。"),
@@ -75,15 +80,26 @@ func TestStandardStartReplyContinuesCurrentTodoInsideVisibleTurn(t *testing.T) {
 	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "开始", "开始", "开始"); err != nil {
 		t.Fatalf("standard start reply returned %v", err)
 	}
-	if prov.call != 2 {
-		t.Fatalf("provider calls = %d, want a clean final with no ordinary todo continuation", prov.call)
+	// 可见轮 2 次调用（todo_write 轮 + 文本轮）+ 审查续轮 2 次（write/todo_write
+	// 轮 + 文本轮）= 4；续轮清掉 todo 后审查放行，不再续。
+	if prov.call != 4 {
+		t.Fatalf("provider calls = %d, want 4 (visible turn + one review continuation that clears the todo)", prov.call)
 	}
-	if got := syntheticUserTurnCount(c.executor.Session().Snapshot()); got != 0 {
-		t.Fatalf("synthetic user turns = %d, want none on the ordinary Agent path", got)
+	for _, td := range c.executor.CanonicalTodoState() {
+		if td.Status != "completed" {
+			t.Fatalf("todo %q = %s after the review continuation, want completed", td.Content, td.Status)
+		}
+	}
+	if got := c.stopReviewStreak; got != 0 {
+		t.Fatalf("stop review streak = %d after a clean release, want 0", got)
 	}
 }
 
-func TestStandardStartWithoutConversationDoesNotArmTodoContinuation(t *testing.T) {
+// tl1460 语义更新（原 TestStandardStartWithoutConversationDoesNotArmTodoContinuation）：
+// 旧契约=无前文就不续；tl1460 下 todo 是模型本轮自己写下的工作清单，未清
+// 即审查判据，与是否有前文无关。续轮每次都被 scripted 末元素重复消费、todo
+// 恒不清 → 连续续到上限 5 轮后到顶转停（预算兜底可见）。
+func TestStandardStartPendingTodosRunToReviewCap(t *testing.T) {
 	c, prov := manualReadinessController(t, [][]provider.Chunk{
 		{toolCallChunk("todo-1", "todo_write", `{"todos":[{"content":"重写第 4 节","status":"in_progress"}]}`), {Type: provider.ChunkDone}},
 		textTurn("等待下一步。"),
@@ -93,11 +109,23 @@ func TestStandardStartWithoutConversationDoesNotArmTodoContinuation(t *testing.T
 	if err := newTurnOrchestrator(c).runGoalLoopWithRawDisplay(context.Background(), "开始", "开始", "开始"); err != nil {
 		t.Fatalf("standard start reply returned %v", err)
 	}
-	if prov.call != 2 {
-		t.Fatalf("provider calls = %d, want no continuation without prior context", prov.call)
+	// 可见轮 2 次 + 5 轮审查续轮（每轮 1 次调用）= 7；到顶转停后不再调用。
+	if prov.call != 7 {
+		t.Fatalf("provider calls = %d, want 7 (visible turn + 5 capped review continuations)", prov.call)
+	}
+	if got := c.stopReviewStreak; got != 0 {
+		t.Fatalf("stop review streak = %d after the capped stop, want 0", got)
+	}
+	for _, td := range c.executor.CanonicalTodoState() {
+		if td.Status == "completed" {
+			t.Fatalf("todo %q = completed, want untouched pending work at the capped stop", td.Content)
+		}
 	}
 }
 
+// tl1460 保留原契约（让位于用户）：c.canceling=true 时审查层在续轮门前
+// 让位（runStopReviewContinuations 的 CancelRequested 门），待处理的用户
+// 工作优先于任何自动续跑。断言不变，只是守护方从旧机制换成 tl1460 审查层。
 func TestStandardTodoContinuationYieldsToPendingUserWork(t *testing.T) {
 	c, prov := manualReadinessController(t, [][]provider.Chunk{
 		{toolCallChunk("todo-1", "todo_write", `{"todos":[{"content":"重写第 4 节","status":"in_progress"}]}`), {Type: provider.ChunkDone}},
