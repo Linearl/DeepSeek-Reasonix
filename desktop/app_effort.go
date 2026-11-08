@@ -85,6 +85,10 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		}
 		return fmt.Errorf("tab %q not found", tabID)
 	}
+	// tl1388: resolve the effective tab id once — the "" alias means "the
+	// active tab" and must not leak into the async bookkeeping (in-flight map
+	// key, logs, test waits) as an empty key.
+	tabID = tab.ID
 	// Fast paths serialize with the other rebuild paths (see runtimeRebuildMu):
 	// the per-request override must not land on a controller an in-flight
 	// rebuild is about to replace, so even a fast-path-capable switch waits out
@@ -102,6 +106,16 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	}
 	a.runtimeRebuildMu.Unlock()
 	tab.turnStartMu.Unlock()
+	// Keep the active-work refusal synchronous (the pre-tl1388 contract): the
+	// guard read is cheap, and the caller formats this error into the composer's
+	// busy hint — deferring it to the background rebuild would turn an
+	// immediate "finish or cancel the turn" answer into a silent accept. The
+	// goroutine re-checks under the locks, so a turn starting after this read
+	// still refuses the rebuild; the pre-check only makes refusals faster, it
+	// never admits a build the guard would decline.
+	if err := rebuildControllerActiveWorkErrorFor(a.controllerForTab(tab), "effort"); err != nil {
+		return err
+	}
 	// Task 1301, made asynchronous by tl1388: reaching this point = both fast
 	// paths declined (a recovery-forked session keeps its reanchor semantics,
 	// or the provider cannot vary depth per request) and the fallback used to
@@ -169,10 +183,13 @@ func (a *App) runAsyncEffortRebuild(tab *WorkspaceTab, tabID string, st *asyncEf
 		// The tab may have been closed (or torn down and recreated) while a
 		// rebuild queued; rebuilding into a stale tab would only fail
 		// authorization late and noisy. Drop the pending request with the tab.
+		// Shutdown is NOT an exit condition here: the synchronous path ran with
+		// a nil App.ctx (bootContext falls back) and boot.Build drives its own
+		// cancellation, so only the tab identity gates this exit.
 		a.mu.RLock()
 		gone := tab.removed || a.tabs[tab.ID] != tab
 		a.mu.RUnlock()
-		if gone || a.ctx == nil {
+		if gone {
 			a.asyncEffortMu.Lock()
 			st.latest = ""
 			delete(a.asyncEffortRebuild, tabID)
