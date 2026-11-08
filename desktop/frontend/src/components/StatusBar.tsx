@@ -606,18 +606,35 @@ function McpStatusBarItem({ summary, onOpen }: { summary: McpStatusSummary & { s
   const { t } = useI18n();
   const refresh = useMcpStatusStore((state) => state.refresh);
   const servers = useMcpStatusStore((state) => state.servers);
+  // tl1496b（两裁定·失败有界）：连续失败达上限后 store 置 paused——固定节拍
+  // 停发，快照冻结在最后一次成功读数，tooltip 追加暂停标注；单发路径（焦点
+  // 重查 / 重挂载 / 管理页发布）不被 paused 拦截，任一次成功即恢复节拍。
+  const mcpPaused = useMcpStatusStore((state) => state.paused);
   const [adviceOpen, setAdviceOpen] = useState(false);
   const adviceAnchorRef = useRef<HTMLButtonElement>(null);
   const failedServers = servers.filter((server) => server.status === "failed");
   // Controlled refresh: a fixed cadence only while the chip is visible
   // (connecting polls faster than a failed fleet). Nothing polls per
   // conversation turn; the store additionally floors overlapping re-reads.
+  // tl1496b: the cadence itself is bounded — paused issues zero timed calls
+  // and only the mount/focus single-shots re-verify.
   const pollMs = summary.state === "connecting" ? 2500 : 10000;
   useEffect(() => {
     void refresh();
+    if (mcpPaused) return undefined;
     const id = window.setInterval(() => void refresh(), pollMs);
     return () => window.clearInterval(id);
-  }, [pollMs, refresh]);
+  }, [pollMs, refresh, mcpPaused]);
+  useEffect(() => {
+    // tl1496b: a paused cadence still needs an escape hatch that does not
+    // wait for a settings-page publish — one single-shot re-verify per
+    // window focus; a success clears the store's pause, a failure keeps it.
+    const onFocus = () => {
+      if (useMcpStatusStore.getState().paused) void refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refresh]);
   useEffect(() => {
     // A fleet that settles (or a snapshot without failures) must not leave an
     // advice popover anchored to a chip that no longer renders.
@@ -627,7 +644,7 @@ function McpStatusBarItem({ summary, onOpen }: { summary: McpStatusSummary & { s
     const title = t("status.mcpFailedTitle");
     return (
       <>
-        <Tooltip label={title} className="statusbar__metric">
+        <Tooltip label={<span className="statusbar__tooltip-stack"><span>{title}</span>{mcpPaused && <span>{t("status.mcpPaused")}</span>}</span>} className="statusbar__metric">
           <button
             ref={adviceAnchorRef}
             type="button"
@@ -654,7 +671,7 @@ function McpStatusBarItem({ summary, onOpen }: { summary: McpStatusSummary & { s
   }
   const connectingTitle = t("status.mcpConnectingTitle", { connected: summary.connected, total: summary.total });
   return (
-    <Tooltip label={connectingTitle} className="statusbar__metric">
+    <Tooltip label={<span className="statusbar__tooltip-stack"><span>{connectingTitle}</span>{mcpPaused && <span>{t("status.mcpPaused")}</span>}</span>} className="statusbar__metric">
       <span className="stat statusbar__mcp" title={connectingTitle}>
         <RefreshCw size={12} aria-hidden="true" className="statusbar__mcp-spinner" />
         <b>{t("status.mcpConnecting", { connecting: summary.connecting, total: summary.total })}</b>
