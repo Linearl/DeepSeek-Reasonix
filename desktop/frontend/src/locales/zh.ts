@@ -6458,4 +6458,6 @@ export const zh: Record<DictKey, string> = {
   "composer.bashOutputFailed": "读取输出失败",
   "composer.bashOutputTruncated": "输出过长，仅显示末尾 {n} 个字符",
   "composer.bashOutputStatusKilled": "已终止",
+  // tl1357 形态③：重启恢复门自动继续（有人/无人值守一体）
+  "notice.restartGateAutoContinue": "重启恢复门已自动解除，重启前的排队消息将按原顺序继续处理；可在 /queue 查看队列。",
 };

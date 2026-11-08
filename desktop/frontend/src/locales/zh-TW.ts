@@ -6454,4 +6454,6 @@ export const zhTW: Record<DictKey, string> = {
   "composer.bashOutputFailed": "讀取輸出失敗",
   "composer.bashOutputTruncated": "輸出過長，僅顯示末尾 {n} 個字元",
   "composer.bashOutputStatusKilled": "已終止",
+  // tl1357 形態③：重啟恢復門自動繼續（有人/無人值守一體）
+  "notice.restartGateAutoContinue": "重啟恢復門已自動解除，重啟前的排隊訊息將按原順序繼續處理；可在 /queue 查看佇列。",
 };

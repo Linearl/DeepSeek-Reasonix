@@ -3224,12 +3224,41 @@ func (c *Controller) refreshInteractiveGate() {
 }
 
 // TrySteer queues mid-turn guidance only when the active agent turn accepts it.
+//
+// tl1357 形态①（受理即落盘，根治令）：本入口受理的用户消息必须先落持久层
+// 再返回受理——历史实现把文本直接推进 agent 的内存 steerQueue
+// （agent.SteerItem），在「回合被 cancel/中断后 transcript 快照未落盘」的
+// 窗口里消息蒸发：无 manifest 行、无 jsonl 记录、无 events，无法找回
+// （20261102 实测三形态之一）。现在先走 TryEnqueueAndSteer 的持久化通道
+// （blob+manifest 双提交，拒绝注入自动降级 queued follow-up 并由收尾 kick
+// 派发，与 composer/ACP/bot 主路径同一语义），只有持久化本身失败（典型：
+// 尚无 session path，此时也不存在任何持久层）才回退原内存 face。
+// 返回值契约同步收紧：持久行成立（steer_accepted 或 queued_followup）一律
+// true，否则调用方按「作为新回合投递」重试会把同一指令送成两份。
 func (c *Controller) TrySteer(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
 	c.mu.Lock()
 	exec := c.executor
 	running := c.running
 	c.mu.Unlock()
-	return running && exec != nil && exec.Steer(text)
+	if !running {
+		return false
+	}
+	if c.SessionPath() != "" {
+		if _, err := c.TryEnqueueAndSteer(InboxRequest{
+			Intent:  sessioninbox.IntentSteer,
+			Display: text,
+			Raw:     text,
+			Submit:  text,
+			Source:  "steer",
+		}); err == nil {
+			return true
+		}
+	}
+	return exec != nil && exec.Steer(text)
 }
 
 // Steer is the compatibility path for callers that cannot observe admission.

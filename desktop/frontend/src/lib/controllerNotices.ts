@@ -134,8 +134,13 @@ const noticeCodeKeys: Record<string, DictKey> = {
   // 任务 731 异常态自动续轮：一次续轮注入留痕 + 连续预算用尽的停止告警。
   autopilot_resume_fired: "notice.autopilotResumeFired",
   autopilot_resume_exhausted: "notice.autopilotResumeExhausted",
-  // 任务 868 无人值守恢复门自动继续：恢复点的自动决策留痕（有人会话不触发）。
+  // 任务 868 无人值守恢复门自动继续：恢复点的自动决策留痕（tl1357 起有
+  // 人会话同样触发，见下方 restart_gate_auto_continue）。
   unattended_gate_auto_continue: "notice.unattendedGateAutoContinue",
+  // tl1357 形态③：重启恢复门自动继续（有人/无人值守一体）——重启前的
+  // 排队消息自动重放，不再等「继续执行」点击；用户暂停/dial=off/纯检视架/
+  // 中断工具四道保留闸不触发本码。
+  restart_gate_auto_continue: "notice.restartGateAutoContinue",
   // 任务999：单条 >4MiB 软提醒——已入队、无需行动，只作提示（不打断、不注入模型）。
   inbox_large_item: "notice.inboxLargeItem",
   // 任务1094缺陷B：本会话 composer 引导降级为排队 follow-up——语义与跨会话

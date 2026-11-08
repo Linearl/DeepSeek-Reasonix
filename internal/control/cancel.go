@@ -83,6 +83,18 @@ func (c *Controller) cancelTurnLocked() (string, bool, cancelTurnOutcome) {
 	if cancel != nil {
 		c.canceling = true
 	}
+	// tl1357 形态②（cancel 不丢引导）：在 cancel() 信号发出【之前】快照本回合
+	// 已受理（steer_accepted）的持久 steer 行。取消后的 unwind 会跑 agent 的
+	// flushSteerQueue，把未消费行的 loader 再拉一遍（把行翻成 steer_consumed）
+	// 并发 unapplied 通知——若在快照之后再读状态，窗口内翻动的行会被漏掉。
+	// 快照集合由 TurnDone 的 tl-1213 requeue 通道消费（SetState queued +
+	// ConvertIntent follow-up），这些消息回到重放队列，按 FIFO 作为下一轮
+	// 输入被派发，不再依赖 desktop 侧任何内存队列存活。用户 Stop / 停止升级 /
+	// 跨会话 stop 钩子都汇入本入口，语义自动对齐；watchdog abort 路径
+	// （maybeAbortPreflightStalledTurn）在更早处已自带同款武装，canceling 位
+	// 保证两者不会双写。正常完成不经过本入口，「steer 迟到」既有语义
+	// （Uncertain 人工检视，防 #7045 过期指令重放）保持不变。
+	requeueGeneration := c.turnGeneration
 	c.mu.Unlock()
 	if cancel == nil {
 		outcome := cancelTurnIdle
@@ -91,6 +103,7 @@ func (c *Controller) cancelTurnLocked() (string, bool, cancelTurnOutcome) {
 		}
 		return "", false, outcome
 	}
+	c.armSteerRequeue(requeueGeneration)
 	turnID := ""
 	if ledgerRef != nil {
 		turnID = ledgerRef.ActiveTurnID()
