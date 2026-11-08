@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"reasonix/internal/config"
 	"reasonix/internal/event"
@@ -365,6 +366,64 @@ func TestRangesFoldCoexistsWithFullCompression(t *testing.T) {
 	if len(sess.Messages) == 0 || len(sess.Messages) < canonicalBefore {
 		t.Fatalf("canonical transcript mutated: before=%d after=%d", canonicalBefore, len(sess.Messages))
 	}
+}
+
+// 验收①对照面:同一构造的长历史下,旧全量路径与新 ranges 路径的摘要请求
+// 规模直接对照(「压缩耗时不随历史长度线性涨」的两路径读数)。
+//
+// 构造边界:钉内无网络,provider 秒回;真实压缩耗时的大头是 provider 对摘
+// 要输入的预填充/计费,随输入线性涨——故主判据=摘要请求输入规模(计费尺,
+// requestInputTokens),墙钟只含本地组装+fake 流耗,作为参考读数 t.Logf 输
+// 出、不设硬阈值(防 flaky)。两 arm 共用同一 seed 历史(120 轮),靠 est 与
+// 触发线的相对位置分道(与真实生产的分道几何一致):增量推过 0.8 触发线 →
+// 旧全量通道(摘要输入=整段折叠区,O(历史));增量停在触发线下但跨 delta
+// 下限 → 新 ranges 通道(笔记输入=增量段+窗口恒定尾,O(窗口) 不是
+// O(历史))。首跑读数(2026-11-09):full=57295 / ranges=19242 冷尺 tokens
+// (比值 3.0x;full 侧已被 preFold 预算 39181 钳住,seed 再大也不再涨——
+// 钳前它要付 O(历史) 的 elide/drop 工作,钳后输入=窗口预算,历史长度仍
+// 决定「多少工作被丢弃」)。断言 ranges < full 的 1/2(实测 33%,留 17pt
+// 余量;更紧的系数会擦边)。
+func TestRangesFoldVersusFullCompactionScaling(t *testing.T) {
+	isolateRangesConfig(t, true)
+	run := func(deltaExchanges int) (inputTokens int, wall time.Duration) {
+		// 回复按 arm 次序供给(队列按请求次序弹出):第二条 = 本 arm 接管通道
+		// 自己的摘要回复——全量 arm 用 F8000(压力摘要),ranges arm 用 n600
+		// (小段笔记);错位会让笔记吃到全量回复而膨胀破线(首跑实测)。
+		second := strings.Repeat("F", 8000) // 压力全量摘要(比折叠区小才能过装门)
+		if deltaExchanges < 10 {
+			second = strings.Repeat("n", 600) // ranges 小段笔记
+		}
+		prov := &rangesScriptProvider{replies: []string{
+			strings.Repeat("D", 30000), // 基线摘要(几何门要保头前缀占主导)
+			second,
+		}}
+		sess := rangesSeedSession(120)
+		a := New(prov, tool.NewRegistry(), sess, Options{
+			ContextWindow: 50_000, CompactRatio: 0.8, RecentKeep: 2,
+		}, event.Discard)
+		if err := a.compact(context.Background(), CompactionTriggerManual, "", true); err != nil {
+			t.Fatalf("baseline compact: %v", err)
+		}
+		addRangesDelta(sess, deltaExchanges)
+		start := time.Now()
+		if err := a.PrepareContext(context.Background()); err != nil {
+			t.Fatalf("PrepareContext: %v", err)
+		}
+		wall = time.Since(start)
+		reqs := prov.requests()
+		if len(reqs) < 2 {
+			t.Fatalf("expected baseline digest + maintenance requests, got %d", len(reqs))
+		}
+		return requestInputTokens(reqs[len(reqs)-1]), wall
+	}
+
+	fullTokens, fullWall := run(55)    // 增量推过触发线(基线后 est≈11.6k+55×~0.6k≈45k ∈ [fold 40k, hard 50k]):旧全量通道接管
+	rangesTokens, rangesWall := run(2) // 增量停在触发线下(est≈12.9k):新 ranges 通道接管
+	if rangesTokens >= fullTokens/2 {
+		t.Fatalf("ranges summarizer input not bounded by the segment: ranges=%d tokens vs full=%d tokens", rangesTokens, fullTokens)
+	}
+	t.Logf("same-seed(120 turns) scaling: full-path input=%d tokens (wall %v), ranges-path input=%d tokens (wall %v)",
+		fullTokens, fullWall, rangesTokens, rangesWall)
 }
 
 // 观测面(三约束③预留):ranges 折叠的遥测必须带 ranges_fold 读数,
