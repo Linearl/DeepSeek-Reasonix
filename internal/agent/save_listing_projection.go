@@ -183,7 +183,8 @@ const sessionListingActivityProbeWindow = 64 << 10
 const sessionListingActivityProbeMaxWindow = 16 << 20
 
 // SessionListingActivityAheadOfTranscript is the cheap trigger predicate for
-// the too-new stock form: it compares the sidecar's UpdatedAt against the
+// the too-new stock form (kept as a thin wrapper over the two-way probe for
+// existing callers): it compares the sidecar's UpdatedAt against the
 // message-level CreatedAt values visible in the transcript tail, without a
 // full decode. Read failures, empty transcripts, and timestamp-less lines all
 // report false — the trigger prefers missing a row over fabricating evidence.
@@ -191,17 +192,54 @@ const sessionListingActivityProbeMaxWindow = 16 << 20
 // existing repair queue picks them up; the exact correction itself always
 // happens inside RepairSessionListingProjection against the full decode.
 func SessionListingActivityAheadOfTranscript(path string, updatedAt time.Time) bool {
+	_, ahead := SessionListingActivityMismatch(path, updatedAt)
+	return ahead
+}
+
+// SessionListingActivityMismatch probes BOTH directions of the
+// UpdatedAt-vs-transcript divergence in one tail read:
+//
+//   - ahead = the stamp sits slack or more ABOVE the newest tail message (the
+//     dead meta-only pump's inflation, tl1485b);
+//   - behind = the newest tail message sits slack or more ABOVE the stamp (the
+//     frozen-stamp stock tl1485 originally fixed only through the commit
+//     funnel: collab/detached/serve appends whose UpdatedAt never moved. A
+//     session the user has not saved again after installing the fix still
+//     displays "1 个月" for days-old messages — the 2026-11-08 二轮打回现场).
+//
+// One shared tail probe serves both triggers so a catalog scan pays a single
+// bounded read per row, not two. Read failures, empty transcripts, and
+// timestamp-less lines report false in both directions — the trigger prefers
+// missing a row over fabricating evidence, and a partial read can never
+// manufacture a verdict (the replay re-checks with the full decode before
+// touching anything). Exported for the sessioncatalog scan and the repair
+// index branch.
+func SessionListingActivityMismatch(path string, updatedAt time.Time) (behind, ahead bool) {
 	if updatedAt.IsZero() {
-		return false
+		return false, false
 	}
+	newest, ok := probeTranscriptTailNewestCreatedAt(path)
+	if !ok {
+		return false, false
+	}
+	behind = time.UnixMilli(newest).Sub(updatedAt) >= sessionListingActivityRepairSlack
+	ahead = updatedAt.Sub(time.UnixMilli(newest)) >= sessionListingActivityRepairSlack
+	return behind, ahead
+}
+
+// probeTranscriptTailNewestCreatedAt returns the newest message-level CreatedAt
+// visible in the transcript tail, growing the read window with backoff (see
+// sessionListingActivityProbeWindow / sessionListingActivityProbeMaxWindow).
+// ok is false when no tail line carries a usable CreatedAt.
+func probeTranscriptTailNewestCreatedAt(path string) (int64, bool) {
 	file, err := os.Open(path)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil || info.IsDir() || info.Size() <= 0 {
-		return false
+		return 0, false
 	}
 	size := info.Size()
 	window := int64(sessionListingActivityProbeWindow)
@@ -210,10 +248,10 @@ func SessionListingActivityAheadOfTranscript(path string, updatedAt time.Time) b
 			window = size
 		}
 		if newest, ok := probeTailCreatedAt(file, size, window); ok {
-			return updatedAt.Sub(time.UnixMilli(newest)) >= sessionListingActivityRepairSlack
+			return newest, true
 		}
 		if window >= size || window >= sessionListingActivityProbeMaxWindow {
-			return false
+			return 0, false
 		}
 		window *= 4
 	}

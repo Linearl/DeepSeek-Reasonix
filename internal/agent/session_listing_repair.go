@@ -187,14 +187,18 @@ func repairSessionListingFromIndex(path string, meta BranchMeta) (SessionListing
 		return SessionListingRepairResult{}, false, nil
 	}
 	// tl1485b: counts can be perfectly current while the activity stamp is
-	// still hours ahead of the transcript (the dead meta-only pump). The index
-	// branch has no message-level times for either of its outcomes — the
-	// AlreadyCurrent short-circuit and the counts fix alike — so the probe
-	// hands the row to the replay branch, whose full decode settles the stamp
-	// exactly; the probe only gates whether the decode is worth it. Skipping
-	// this on the counts-fix outcome left a first repair that certified new
-	// counts but preserved an inflated stamp (2026-11-08 live stock run).
-	if SessionListingActivityAheadOfTranscript(path, meta.UpdatedAt) {
+	// still hours ahead of the transcript (the dead meta-only pump).
+	// tl1485c: the mirror stock form is equally real — a stamp frozen BELOW the
+	// transcript's own newest message (collab/detached appends whose UpdatedAt
+	// never moved). The index branch has no message-level times for any of its
+	// outcomes — the AlreadyCurrent short-circuit and the counts fix alike — so
+	// the two-way probe hands the row to the replay branch, whose full decode
+	// settles the stamp exactly in whichever direction it diverges (raise-only
+	// for behind, drop-to-message for ahead); the probe only gates whether the
+	// decode is worth it. Without the behind arm the AlreadyCurrent short-
+	// circuit certified counts while preserving the frozen "1 个月" stamp
+	// forever (2026-11-08 二轮打回).
+	if behind, ahead := SessionListingActivityMismatch(path, meta.UpdatedAt); behind || ahead {
 		return SessionListingRepairResult{}, false, nil
 	}
 	if sessionListingProjectionFresh(meta.SchemaVersion, meta.Turns, meta.Revision,

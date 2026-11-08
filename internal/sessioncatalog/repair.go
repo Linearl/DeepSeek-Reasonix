@@ -644,6 +644,17 @@ func (c *Catalog) preserveKnownSourceStates(ctx context.Context, directory strin
 		if !ok || records[i].TurnsState != TurnsUnknown {
 			continue
 		}
+		// tl1485c: an activity-stale finding is a measured defect — the two-way
+		// tail probe compared the stamp against the transcript itself, not a
+		// transient legacy read. Its own meta counts are exactly what the
+		// preserved row would offer, and restoring the known state here would
+		// wash the unknown back to valid before enqueueRepair looks at the row
+		// (the same carve-out the exact path has had since tl1485b). The stamp
+		// defect would otherwise sit unqueued until the next meta write — the
+		// 二轮打回 form that left installed sessions on "1 个月" forever.
+		if records[i].ActivityStale {
+			continue
+		}
 		if records[i].ContentFingerprint != state.contentFingerprint {
 			fillKnownCountHints(&records[i], state.preview, state.turns)
 			continue
