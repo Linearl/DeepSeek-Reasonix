@@ -1,0 +1,26 @@
+== ① 加载 ==
+环境初始化(dll+env): 100.0ms  session创建(含读盘): 199.0ms  合计: 300.8ms
+内存 WorkingSet: before=7.1MiB afterLoad=127.1MiB(+120.0) afterWarm=128.5MiB(+121.3)  Pagefile(afterWarm)=122.7MiB
+向量维度=512 输入=[input_ids attention_mask token_type_ids] 输出=last_hidden_state CLS pooling=true
+
+== ② 单条延迟 ==
+  ~100字档(实际100字/92tokens): P50=8.14ms P95=10.12ms min=7.21 max=11.05 mean=8.32 (n=60)
+  ~200字档(实际200字/174tokens): P50=14.02ms P95=16.75ms min=11.53 max=17.93 mean=14.04 (n=60)
+  ~300字档(实际300字/222tokens): P50=17.51ms P95=21.55ms min=14.95 max=23.40 mean=17.93 (n=60)
+  ~500字档(实际500字/434tokens): P50=39.97ms P95=63.32ms min=33.85 max=87.95 mean=43.11 (n=60)
+
+== ③ 批量吞吐(100条) ==
+  batch=100 单次推理(中位,5轮): 3247.7ms (31 条/s)
+  逐条串行(中位,3轮): 1752.6ms (57 条/s)
+
+== ④ 检索暴力扫粗估(dim=512) ==
+  N=100: 单核 36us/次  全核(16 workers) 26us/次
+  N=500: 单核 143us/次  全核(16 workers) 52us/次
+  N=2000: 单核 450us/次  全核(16 workers) 112us/次
+  N=5000: 单核 784us/次  全核(16 workers) 202us/次
+
+== 磁盘 ==
+  model.onnx=90.5MiB  onnxruntime.dll=16.5MiB  vocab.txt=107KiB
+  原始向量索引: 1.95MiB/千条(float32×512维, 暴力扫无需额外索引结构)
+
+原始读数已写 bench-result.json

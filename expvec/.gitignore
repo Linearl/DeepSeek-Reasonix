@@ -1,0 +1,5 @@
+# 大文件不入 git：模型/dll/头文件/工具链/编译产物，复现见报告附录 B
+models/
+tools/
+expvec.exe
+*.nupkg

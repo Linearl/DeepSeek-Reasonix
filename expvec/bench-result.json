@@ -1,0 +1,113 @@
+{
+  "env": {
+    "logical_cpus": 16,
+    "cpu_model": "AMD Ryzen AI 7 H 350 w/ Radeon 860M            ",
+    "go_version": "go1.26.3",
+    "execution_provider": "CPU (default, 1 thread ORT session default settings)"
+  },
+  "load": {
+    "dll_env_init_ms": 100,
+    "session_create_ms": 199,
+    "total_load_ms": 300.8328,
+    "workingset_before_mib": 7.14453125,
+    "workingset_after_load_mib": 127.109375,
+    "workingset_after_warm_mib": 128.45703125,
+    "delta_load_mib": 119.96484375,
+    "delta_after_warm_mib": 121.3125,
+    "pagefile_after_warm_mib": 122.66796875,
+    "embedding_dim": 512,
+    "input_names": [
+      "input_ids",
+      "attention_mask",
+      "token_type_ids"
+    ],
+    "output_name": "last_hidden_state",
+    "cls_pooling": true
+  },
+  "single_latency": [
+    {
+      "chars": 100,
+      "tokens": 92,
+      "p50_ms": 8.141,
+      "p95_ms": 10.115,
+      "min_ms": 7.206,
+      "max_ms": 11.049,
+      "mean_ms": 8.323283333333332,
+      "runs": 60
+    },
+    {
+      "chars": 200,
+      "tokens": 174,
+      "p50_ms": 14.021,
+      "p95_ms": 16.748,
+      "min_ms": 11.528,
+      "max_ms": 17.927,
+      "mean_ms": 14.035183333333334,
+      "runs": 60
+    },
+    {
+      "chars": 300,
+      "tokens": 222,
+      "p50_ms": 17.512,
+      "p95_ms": 21.555,
+      "min_ms": 14.946,
+      "max_ms": 23.399,
+      "mean_ms": 17.9286,
+      "runs": 60
+    },
+    {
+      "chars": 500,
+      "tokens": 434,
+      "p50_ms": 39.97,
+      "p95_ms": 63.323,
+      "min_ms": 33.849,
+      "max_ms": 87.949,
+      "mean_ms": 43.11371666666666,
+      "runs": 60
+    }
+  ],
+  "batch": {
+    "n": 100,
+    "batch_one_shot_ms_median": 3247.746,
+    "serial_total_ms_median": 1752.605,
+    "batch_throughput_texts_per_s": 30.790585224337125,
+    "serial_throughput_texts_per_s": 57.05792234987347,
+    "rounds": 5
+  },
+  "bruteforce_scan": [
+    {
+      "n": 100,
+      "dim": 512,
+      "single_core_us_mean": 36.23,
+      "all_core_us_mean": 26.22,
+      "runs": 100
+    },
+    {
+      "n": 500,
+      "dim": 512,
+      "single_core_us_mean": 142.79,
+      "all_core_us_mean": 51.6,
+      "runs": 100
+    },
+    {
+      "n": 2000,
+      "dim": 512,
+      "single_core_us_mean": 450.19,
+      "all_core_us_mean": 112.43,
+      "runs": 100
+    },
+    {
+      "n": 5000,
+      "dim": 512,
+      "single_core_us_mean": 784.46,
+      "all_core_us_mean": 201.57,
+      "runs": 100
+    }
+  ],
+  "disk": {
+    "model_onnx_mib": 90.4577989578247,
+    "onnxruntime_dll_mib": 16.454437255859375,
+    "vocab_kib": 106.97265625,
+    "index_raw_mib_per_1000_vecs": 1.953125
+  }
+}
