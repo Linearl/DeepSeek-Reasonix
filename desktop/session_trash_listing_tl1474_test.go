@@ -3,7 +3,7 @@ package main
 // tl1474 pins for the trash listing rewrite.
 //
 //  1. Equivalence: on one fixture exercising every bucket shape the real
-//     trash exhibits (titled, recovery-copy-tagged, meta-less, empty shell,
+//     trash exhibits (titled, recovery-copy-shaped, meta-less, empty shell,
 //     multi-transcript, meta-key≠dirname, covered copy with a live parent),
 //     the tl1474 chain must produce EXACTLY the records the pre-tl1474
 //     sequential chain produced — field for field. The old chain is
@@ -72,6 +72,8 @@ func tl1474SortByPath(in []SessionMeta) []SessionMeta {
 // tl1474OldListTrashedSessions replicates the pre-tl1474 sequential chain
 // verbatim (agent.ListSessions per bucket, trashedSessionDeletedAt re-reads,
 // same skip rules, same sort) so the equivalence pin has a real baseline.
+// tl1429d2: the replica tracks the one assembly change since (title tag →
+// family grouping fields) so both chains stay field-for-field comparable.
 func tl1474OldListTrashedSessions(app *App) []SessionMeta {
 	out := []SessionMeta{}
 	for _, dir := range app.knownSessionDirs() {
@@ -87,12 +89,15 @@ func tl1474OldListTrashedSessions(app *App) []SessionMeta {
 			}
 			deletedAt := trashedSessionDeletedAt(path)
 			if len(infos) == 0 {
+				shellKey, shellIsCopy := trashedFamilyKey(filepath.Base(path))
 				out = append(out, SessionMeta{
-					Path:           path,
-					TurnsState:     "unknown",
-					DeletedAt:      deletedAt,
-					LastActivityAt: deletedAt,
-					ModTime:        deletedAt,
+					Path:            path,
+					TurnsState:      "unknown",
+					DeletedAt:       deletedAt,
+					LastActivityAt:  deletedAt,
+					ModTime:         deletedAt,
+					TrashFamilyKey:  shellKey,
+					TrashFamilyCopy: shellIsCopy,
 				})
 				continue
 			}
@@ -101,17 +106,10 @@ func tl1474OldListTrashedSessions(app *App) []SessionMeta {
 				title = titles[filepath.Base(path)]
 			}
 			meta := sessionMetaFromInfo(infos[0], title, false, false, deletedAt, dir)
-			if tag := trashedRecoveryCopyTag(filepath.Base(path)); tag != "" {
-				base := title
-				if base == "" {
-					base = strings.TrimSpace(infos[0].TopicTitle)
-				}
-				if base == "" {
-					base = strings.TrimSpace(infos[0].Preview)
-				}
-				meta.Title = strings.TrimSpace(base + " " + tag)
-				meta.TopicTitle = meta.Title
-			}
+			// tl1429d2: 标题后缀标识(原 tl1429d 修法,用户打回)换成了同族归组
+			// 只读字段;等价基线同步换装,两条链逐字段对齐(含 TrashFamilyKey/
+			// TrashFamilyCopy)。
+			meta.TrashFamilyKey, meta.TrashFamilyCopy = trashedFamilyKey(filepath.Base(path))
 			out = append(out, meta)
 		}
 	}
@@ -140,7 +138,7 @@ func TestTL1474TrashListingEquivalenceAcrossBucketShapes(t *testing.T) {
 		t.Fatalf("save branch meta: %v", err)
 	}
 
-	// 2. recovery-copy-shaped bucket (tl1429d tag path).
+	// 2. recovery-copy-shaped bucket (tl1429d2 family-field path).
 	copyKey := "20261024-011346.045066400-tl1474-titled-recovery-aabbccdd11223344.jsonl"
 	tl1474StageBucket(t, dir, copyKey, []byte(`{"role":"user","content":"copy turn"}`+"\n"), true)
 
@@ -216,8 +214,15 @@ func TestTL1474TrashListingEquivalenceAcrossBucketShapes(t *testing.T) {
 	for _, record := range newChain {
 		byPath[record.Path] = record
 	}
-	if tag := byPath[copyPathFor(t, dir, copyKey)]; !strings.Contains(tag.Title, "(副本 recovery-aabbccdd)") {
-		t.Fatalf("copy tag missing on copy record: %q", tag.Title)
+	// tl1429d2: 副本形状走归组字段而非标题标识(打回的旧修法不得回潮)。
+	if rec := byPath[copyPathFor(t, dir, copyKey)]; !rec.TrashFamilyCopy || rec.TrashFamilyKey != "20261024-011346.045066400-tl1474-titled" {
+		t.Fatalf("copy record lost family grouping fields: copy=%v key=%q", rec.TrashFamilyCopy, rec.TrashFamilyKey)
+	}
+	if rec := byPath[copyPathFor(t, dir, copyKey)]; strings.Contains(rec.Title, "(副本 recovery-") {
+		t.Fatalf("copy record title %q carries the rejected copy tag — tl1429d 标识回潮", rec.Title)
+	}
+	if rec := byPath[titledPath]; rec.TrashFamilyCopy || rec.TrashFamilyKey != "20261024-011346.045066400-tl1474-titled" {
+		t.Fatalf("mainline bucket mis-grouped: copy=%v key=%q", rec.TrashFamilyCopy, rec.TrashFamilyKey)
 	}
 	if rec := byPath[coveredPath]; rec.RecoveryCopy {
 		t.Fatalf("digest-mismatched copy marked RecoveryCopy — 无 coverage 证明不得标记 (22b334f22)")
