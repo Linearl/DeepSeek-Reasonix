@@ -30,8 +30,16 @@ const detachedIdleReleaseTick = 5 * time.Minute
 // detachedIdleReleaseMinutes resolves the idle threshold: the config value is
 // authoritative (task-308-O4 settings key); the env override still wins for
 // one-process debugging, and 0 keeps the never-release behaviour.
+//
+// tl1496b（provider-poll 同类面 扩展，用户 2026-11-08 两裁定）：这是一处
+// config 重读面——5 分钟 tick 过去每拍都付一次完整桌面用户配置加载（凭据
+// store + 迁移 + user/project 合并，task-609 遥测实测 431-1350ms）。现改读
+// task-609 的 config 快照（cachedConfigForRoot）：热拍只剩两次 os.Stat 新鲜
+// 度检查；配置变更（设置保存或外部编辑，写入路径不变）使指纹失效，下一拍
+// 即见新档位——与 provider-poll 刀③的档位缓存同语义，但由仓内既有共享缓存
+// 承载，不再造第二套（SSOT）。env 覆盖读取路径逐字节保留。
 func (a *App) detachedIdleReleaseMinutes() int {
-	if cfg, _, err := a.loadDesktopUserConfigForView(); err == nil && cfg != nil {
+	if cfg, err := a.cachedConfigForRoot(a.activeWorkspaceRoot()); err == nil && cfg != nil {
 		if cfg.Agent.DetachedIdleReleaseMinutes > 0 {
 			return cfg.Agent.DetachedIdleReleaseMinutes
 		}
