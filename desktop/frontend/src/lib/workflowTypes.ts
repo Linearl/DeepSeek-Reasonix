@@ -14,8 +14,9 @@ export interface WireWorkflowNode {
 }
 
 /** 任务934: 运行级状态（服务侧 RunState 的 wire 镜像）。
- * 任务1316 增 interrupted：进程重启后从磁盘恢复的未完 run（可续跑）。 */
-export type WorkflowRunLiveState = "running" | "completed" | "failed" | "interrupted";
+ * 任务1316 增 interrupted：进程重启后从磁盘恢复的未完 run（可续跑）。
+ * tl1335 增 paused：用户主动暂停（节点边界优雅挂起，可续跑）。 */
+export type WorkflowRunLiveState = "running" | "completed" | "failed" | "interrupted" | "paused";
 
 /** DAG 节点 wire（WorkflowDagNode 镜像；kind 五类全开）。 */
 export interface WireRunDagNode {

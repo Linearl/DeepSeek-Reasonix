@@ -16,7 +16,7 @@
 //     运行时即 686 原始行为，有真运行时经「演示」按钮切换过去。
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { GitBranch, LayoutTemplate, Play, RotateCcw, Square, X } from "lucide-react";
+import { GitBranch, LayoutTemplate, Pause, Play, RotateCcw, Square, X } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { formatDurationLabel } from "../lib/durationFormat";
 import type { DictKey } from "../locales/en";
@@ -410,6 +410,14 @@ export function WorkflowPanel({
     reportFrontendLog("workflowPanel", "cancel requested", liveView.run.runId);
   }, [liveView]);
 
+  // tl1335：主动暂停（running 态可见，与停止并列）。暂停等当前节点跑完在
+  // 节点边界挂起（落 paused 可续态）；要立即砍就用停止钮（落 interrupted）。
+  const pauseLiveRun = useCallback(() => {
+    if (!liveView) return;
+    void app.WorkflowPauseRun(liveView.run.runId).catch(() => {});
+    reportFrontendLog("workflowPanel", "pause requested", liveView.run.runId);
+  }, [liveView]);
+
   // 任务1316：断点续跑（interrupted + 服务侧 resumable 判定）。成功后运行态
   // 经 workflow:runs 推送自然翻转到 running，无需本地状态。
   const resumeLiveRun = useCallback(() => {
@@ -721,19 +729,31 @@ export function WorkflowPanel({
                     {`${run.workflow} · ${run.runId} · ${t(
                       run.state === "interrupted"
                         ? "workflowPanel.run.interrupted"
-                        : RUN_STATE_KEY[liveRunStateToPanelRunKey(run.state)],
+                        : run.state === "paused"
+                          ? "workflowPanel.run.paused"
+                          : RUN_STATE_KEY[liveRunStateToPanelRunKey(run.state)],
                     )}`}
                   </option>
                 ))}
               </select>
             )}
             {liveView && liveView.run.state === "running" && (
-              <button type="button" className="wf-panel__action" onClick={stopLiveRun} data-testid="wf-stop-live">
-                <Square size={13} aria-hidden="true" />
-                {t("workflowPanel.action.stop")}
-              </button>
+              <>
+                {/* tl1335：暂停（节点边界优雅挂起，在飞节点工作不丢）与停止
+                    （立即砍）并列——语义互补，不合并为一个按钮。 */}
+                <button type="button" className="wf-panel__action" onClick={pauseLiveRun} data-testid="wf-pause-live">
+                  <Pause size={13} aria-hidden="true" />
+                  {t("workflowPanel.action.pause")}
+                </button>
+                <button type="button" className="wf-panel__action" onClick={stopLiveRun} data-testid="wf-stop-live">
+                  <Square size={13} aria-hidden="true" />
+                  {t("workflowPanel.action.stop")}
+                </button>
+              </>
             )}
-            {liveView && liveView.run.state === "interrupted" && liveView.run.resumable && (
+            {/* tl1335：paused 与 interrupted 同享可续资格（服务侧 resumable
+                判定；前端不算指纹）。 */}
+            {liveView && (liveView.run.state === "interrupted" || liveView.run.state === "paused") && liveView.run.resumable && (
               <button type="button" className="wf-panel__action" onClick={resumeLiveRun} data-testid="wf-resume-live">
                 <Play size={13} aria-hidden="true" />
                 {t("workflowPanel.action.resume")}
@@ -917,13 +937,16 @@ export function WorkflowPanel({
 }
 
 // liveRunStateToPanelRunKey：选择器选项文案的运行态徽章键（复用 RUN_STATE_KEY
-// 的三态，failed → errored 徽章与主徽章同口径）。
+// 的三态，failed → errored 徽章与主徽章同口径）。interrupted/paused 在调用点
+// 单独走专属文案键（可续态的显式命名），不经此函数。
 function liveRunStateToPanelRunKey(state: WireWorkflowRun["state"]): WorkflowRunState {
   switch (state) {
     case "running":
       return "running";
     case "completed":
       return "completed";
+    case "paused":
+      return "stopped";
     default:
       return "errored";
   }

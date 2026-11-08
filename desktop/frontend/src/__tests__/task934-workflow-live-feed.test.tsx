@@ -201,24 +201,33 @@ console.log("\ntask 934 workflow live feed: 真事件接面板 + fixture 降为�
   ok(kept.state === "interrupted" && kept.resumable === true, "merge keeps the interrupted state and the resumable flag");
 
   const panel = read("src/components/WorkflowPanel.tsx");
-  ok(panel.includes('liveView.run.state === "interrupted" && liveView.run.resumable'), "resume button only renders for interrupted+resumable runs (默认视图零改动)");
+  // tl1335：可续集扩为 interrupted+paused（服务侧 resumableState 单一真相），
+  // resume 钮条件随之扩大；stopped/failed/completed 仍不渲染续跑钮。
+  ok(panel.includes('(liveView.run.state === "interrupted" || liveView.run.state === "paused") && liveView.run.resumable'), "resume button renders for resumable runs (interrupted+paused，tl1335 并入；默认视图零改动)");
   ok(panel.includes("wf-resume-live"), "resume button carries its test id");
   ok(panel.includes("WorkflowResumeRun"), "panel wires the resume binding");
   ok(panel.includes('"workflowPanel.run.interrupted"'), "picker option names the interrupted state");
+  ok(panel.includes("wf-pause-live"), "pause button carries its test id (tl1335 暂停与停止并列)");
+  ok(panel.includes("WorkflowPauseRun"), "panel wires the pause binding");
+  ok(panel.includes('"workflowPanel.run.paused"'), "picker option names the paused state");
 
   const bridge = read("src/lib/bridge.ts");
   ok(bridge.includes("WorkflowResumeRun(runId: string): Promise<boolean>;"), "bridge declares the resume binding");
   ok(bridge.includes("async WorkflowResumeRun()"), "bridge mock implements resume");
+  ok(bridge.includes("WorkflowPauseRun(runId: string): Promise<boolean>;"), "bridge declares the pause binding");
+  ok(bridge.includes("async WorkflowPauseRun()"), "bridge mock implements pause");
 
   const feedSrc = read("src/lib/workflowRunFeed.ts");
   ok(feedSrc.includes('case "interrupted"'), "feed maps the interrupted wire state");
+  ok(feedSrc.includes('case "paused"'), "feed maps the paused wire state (tl1335: stopped 徽章，非报错)");
 
   const types = read("src/lib/workflowTypes.ts");
-  ok(types.includes('"running" | "completed" | "failed" | "interrupted"'), "wire run state union opens interrupted");
+  ok(types.includes('"running" | "completed" | "failed" | "interrupted" | "paused"'), "wire run state union opens interrupted and paused (tl1335)");
   ok(types.includes("resumable?: boolean"), "wire run carries the resumable flag");
 
   const goHub = readFileSync(`${repoRoot}/desktop/workflow_runs_app.go`, "utf8");
   ok(goHub.includes("func (a *App) WorkflowResumeRun("), "desktop App exposes the resume binding");
+  ok(goHub.includes("func (a *App) WorkflowPauseRun("), "desktop App exposes the pause binding");
   ok(goHub.includes("ResumeRunFromPanel"), "App delegates to the panel resume entry");
 
   const goBoot = readFileSync(`${repoRoot}/internal/boot/boot.go`, "utf8");

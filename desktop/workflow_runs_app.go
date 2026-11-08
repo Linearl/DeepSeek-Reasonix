@@ -89,7 +89,7 @@ type workflowRunFailureWire struct {
 type workflowRunWire struct {
 	RunID     string                `json:"runId"`
 	Workflow  string                `json:"workflow"`
-	State     string                `json:"state"` // running | completed | failed | interrupted（任务 1316）
+	State     string                `json:"state"` // running | completed | failed | interrupted | paused（tl1335）
 	StartedAt int64                 `json:"startedAt,omitempty"`
 	EndedAt   int64                 `json:"endedAt,omitempty"`
 	Error     string                `json:"error,omitempty"`
@@ -242,6 +242,13 @@ func (a *App) WorkflowRunsSnapshot() []workflowRunWire {
 // WorkflowCancelRun 中止一次运行（面板停止钮）。未知名或已终态返回 false。
 func (a *App) WorkflowCancelRun(runID string) bool {
 	return workflow.Global().CancelRun(runID)
+}
+
+// WorkflowPauseRun 主动暂停一次运行（tl1335，面板暂停钮）。与停止钮的分界：
+// 暂停等当前节点跑完再挂起（在飞执行的工作不丢），run 落 paused 可续态；
+// 停止立即砍运行中执行落 interrupted。非 running 或未知名返回 false。
+func (a *App) WorkflowPauseRun(runID string) bool {
+	return workflow.Global().PauseRun(runID)
 }
 
 // workflowResumeWire 是续跑请求的回执（面板凭 runId 继续选中该运行）。

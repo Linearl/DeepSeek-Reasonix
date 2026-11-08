@@ -190,6 +190,10 @@ export function liveRunStateToPanelState(state: WorkflowRunLiveState): WorkflowR
     // 由行内「续跑」钮表达——面板五态模型不动。
     case "interrupted":
       return "errored";
+    // tl1335: paused 落 stopped 徽章（用户主动挂起的停驻态，非报错），可续
+    // 跑性同由行内「续跑」钮表达——面板五态模型不动。
+    case "paused":
+      return "stopped";
     default:
       return "errored";
   }
