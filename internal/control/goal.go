@@ -854,6 +854,23 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 			res.path, res.data, res.ok = g.buildStateLocked(in.todos)
 			return res
 		}
+		// tl1460 瘦身：继续判定下沉到默认停止审查层（stop_review.go）。规则
+		// 函数是唯一判定词汇表，非 Goal 路径（runStopReviewContinuations）与
+		// 这里消费同一套——不迁移红线「不得两套并存」在此收口。armed 目标的
+		// goal_in_pursuit 规则必然命中（1472 契约：armed+running ⇒ 下轮必须
+		// 自动续），所以下面的继续就是审查层的裁决，行为与 1460 之前的无条件
+		// 继续一致，只是判定点与理由归一。
+		review := stopReviewContinuationRules(stopReviewFacts{
+			TodosPending:     evidence.IncompleteTodos(in.todos),
+			ReadinessMissing: in.readiness.Missing,
+			PlanStepsPending: stopReviewPlanStepsOf(evidence.IncompleteTodos(in.todos)),
+			GoalInPursuit:    true, // armed ⇒ the standing order itself continues
+		})
+		if len(review) == 0 {
+			// 不可达（armed ⇒ goal_in_pursuit 必命中）；真到达说明规则表被改
+			// 坏——按 1472 契约 fail-open 续跑并显式留痕，绝不新增静默停。
+			slog.Warn("controller: stop review produced no rule for an armed goal; continuing per the armed contract")
+		}
 		intercept, interceptNotice = g.applyContinue(in, reportComplete, evaluatorComplete, complete)
 	}
 	// An unattended run leaves nobody to ask what happened, so every terminal notice
