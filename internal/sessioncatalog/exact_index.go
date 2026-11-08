@@ -82,7 +82,14 @@ func (c *Catalog) prepareExactPathProjection(ctx context.Context, raw SessionRec
 		if existing.ContentFingerprint == record.ContentFingerprint {
 			record.Preview = existing.Preview
 			record.Turns = existing.Turns
-			record.TurnsState = existing.TurnsState
+			// tl1485b: an activity-stale row is a deliberate defect finding
+			// (the tail probe measured the sidecar hours ahead of the
+			// transcript), not a transient legacy read. Keep the certified
+			// counts as display hints, but let the row stay unknown so the
+			// repair queue can claim it and settle the stamp.
+			if !record.ActivityStale {
+				record.TurnsState = existing.TurnsState
+			}
 		} else {
 			fillKnownCountHints(&record, existing.Preview, existing.Turns)
 		}
