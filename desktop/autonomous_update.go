@@ -9,9 +9,22 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/control"
 	"reasonix/internal/installlayout"
 	"reasonix/internal/tool"
 )
+
+// refuseMidTurnHostRestart is the tl1500 刀④ refusal: a heartbeat-driven
+// (unattended) turn may not kill the host from inside its own turn. 诊断 §7
+// 定案第一因：心跳回合 T28 于 11:03:45 执行 restart_update execute 把宿主拦腰
+// 打断 → 未决状态残留 → 恢复链 35.4 分钟失败（recovery_required）→ 续跑回合
+// 11:41 再次派发 restart_update + 3 bash 全部零回执 → 权威保存边界停摆 →
+// §2 的 a.mu 读者车队。出包装机使命不变（§7.3）：回合干净收尾落盘后，下一轮
+// （心跳周期 ≤30 分钟）再执行装机重启。前台 autopilot 的 task-254 设计面
+// （带 resume 机器、有 attended 档位）不受此门约束——守卫只认心跳回合戳。
+func refuseMidTurnHostRestart(action string) error {
+	return fmt.Errorf("restart_update %s rejected mid-turn (cause=mid_turn_host_restart_refused, tl1500 刀④): 回合进行中不可重启宿主——请先结束当前回合，装机重启放到回合结束后的下一轮执行。/ Host restart is refused while the unattended turn is running: finish the turn first; the next round can perform the restart. / 回合進行中不可重啟宿主：請先結束當前回合，下一輪再執行裝機重啟。", action)
+}
 
 // Task 254: the host side of the restart_update tool. Listing and target
 // staging are read-only or pointer-free; execution reuses the task-81/210
@@ -159,10 +172,15 @@ func (c autonomousUpdateController) SetTarget(_ context.Context, target string) 
 // restart is meant to end that very turn (auto-resume marks it beforehand).
 // Returns once the swap is committed — the restart follows and a success must
 // never be retried.
-func (c autonomousUpdateController) ExecuteTarget(_ context.Context, callerSession string) (string, error) {
+func (c autonomousUpdateController) ExecuteTarget(ctx context.Context, callerSession string) (string, error) {
 	a := c.app
 	if a == nil {
 		return "", fmt.Errorf("restart: no app")
+	}
+	// tl1500 刀④: 心跳回合内拒绝宿主自重启。放在消费 pending 之前——拒绝
+	// 不掉 staged 目标，回合结束后下一轮仍可执行同一目标（诊断 §7.3 修复落点）。
+	if control.IsHeartbeatTurn(ctx) {
+		return "", refuseMidTurnHostRestart("execute")
 	}
 	a.autonomousMu.Lock()
 	pending := a.autonomousPending
@@ -236,10 +254,14 @@ const restartMarkerReasonToolRestart = "restart"
 // the restart-and-update experiment; the tool itself only exists behind
 // experimental_autonomous_update. Returns once the relaunch is committed; a
 // success must never be retried (that would be another restart).
-func (c autonomousUpdateController) RestartOnly(_ context.Context, callerSession string) (string, error) {
+func (c autonomousUpdateController) RestartOnly(ctx context.Context, callerSession string) (string, error) {
 	a := c.app
 	if a == nil {
 		return "", fmt.Errorf("restart: no app")
+	}
+	// tl1500 刀④: 同族守卫——纯重启（task 520）同样把宿主拦腰打断。
+	if control.IsHeartbeatTurn(ctx) {
+		return "", refuseMidTurnHostRestart("restart")
 	}
 	report, err := a.restartActiveVersionExempt(callerSession, restartMarkerReasonToolRestart)
 	if err != nil {
