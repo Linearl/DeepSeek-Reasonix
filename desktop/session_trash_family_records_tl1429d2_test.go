@@ -1,14 +1,15 @@
 package main
 
-// tl1429d 回归钉:回收站「同名多条」修复面。
+// tl1429d2 回归钉:回收站「同名多条」返修面(首修 tl1429d 的标题后缀标识被
+// 用户打回——打错靶:用户要的是渲染层去重,不是标识)。
 // 现场(包 81 装机实测 2026-11-07 10:17 desktop.log):一次归档级联把主线桶
 // +17 个 recovery 副本桶搬进 .trash,ListTrashedSessions 逐桶出条且标题同源
-// ——用户看到十几条同名记录,分不清哪条是主线、哪条能还原什么。
-// 修 = 副本形状的记录标题带 (副本 recovery-<hex>) 标识(用户裁决的选项 B):
-// 主线是唯一不带后缀的记录。还原/清除保持单桶语义,还原哪条=还原哪个桶。
-// 刻意不动 RecoveryCopy:它的契约是「已证明未被续写且被母本覆盖,可安全清
-// 理」(22b334f22;TestTrashMarksLegacyRecoverySessionsAsRecovered 钉死)——
-// 副本桶内没有母本,coverage 证明必败,形状推断不够格。
+// ——用户看到十几条同名记录占独立多行。
+// 修 = 数据层补只读同族归组字段(TrashFamilyKey/TrashFamilyCopy)+前端渲染
+// 层按族合并(主线一行为主体,副本进计数徽标+展开明细)。数据层约束:桶仍
+// 逐条出记录(桶=还原/清除的单桶语义,还原哪条=还原哪个桶),字段只读,
+// 不碰 RecoveryCopy 的 coverage 契约(22b334f22,
+// TestTrashMarksLegacyRecoverySessionsAsRecovered 钉死),不碰还原/清除路径。
 
 import (
 	"encoding/json"
@@ -59,20 +60,23 @@ func stageTl1429dTrashBucket(t *testing.T, dir, key string) string {
 	return transcriptPath
 }
 
-// 主钉:同族(主线桶+副本桶)在回收站里逐桶出条,唯一不带副本标识的是主线;
-// 每条副本凭 recovery-<hex> 互异可辨;还原主线不动副本桶,逐桶清除对得上;
-// 记录数=桶数(计数属性:逐条记录与徽章/清空链的输入一致)。
-func TestTrashedRecoveryFamilyCopiesAreIdentifiedPerBucket(t *testing.T) {
+const tl1429dMainKey = "20261024-011346.045066400-tl1429d-family.jsonl"
+
+// 主钉:同族(主线桶+副本桶)在回收站里仍逐桶出记录(数据层计数=桶数,
+// tl1442-ext 的多桶现场不丢桶);主线与每条副本带同族归组键=主线 stem,
+// 副本形状单独落 TrashFamilyCopy;标题不再带 (副本 recovery-) 后缀(打回的
+// 旧修法不得回潮);RecoveryCopy 契约不变。还原主线只动主线桶、副本原样
+// 留站;逐桶清除对得上桶。
+func TestTrashedRecoveryFamilyCopiesCarryGroupingFieldsPerBucket(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	dir := config.SessionDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir sessions: %v", err)
 	}
-	mainKey := "20261024-011346.045066400-tl1429d-family.jsonl"
-	mainBucketPath := stageTl1429dTrashBucket(t, dir, mainKey)
+	mainBucketPath := stageTl1429dTrashBucket(t, dir, tl1429dMainKey)
 	copyHexes := []string{"29384636d8d4c0b2", "c4e94f82676c9547", "fd8f06a5a1ecf671"}
 	copyBucketPaths := map[string]string{}
-	mainStem := strings.TrimSuffix(mainKey, store.SessionTranscriptSuffix)
+	mainStem := strings.TrimSuffix(tl1429dMainKey, store.SessionTranscriptSuffix)
 	for _, hex := range copyHexes {
 		copyKey := mainStem + "-recovery-" + hex + store.SessionTranscriptSuffix
 		copyBucketPaths[hex] = stageTl1429dTrashBucket(t, dir, copyKey)
@@ -89,23 +93,23 @@ func TestTrashedRecoveryFamilyCopiesAreIdentifiedPerBucket(t *testing.T) {
 	copies := 0
 	for i := range listed {
 		record := &listed[i]
-		if filepath.Base(record.Path) == mainKey {
+		if record.TrashFamilyKey != mainStem {
+			t.Fatalf("record %s family key %q != mainline stem %q — 同族归组键失配", filepath.Base(record.Path), record.TrashFamilyKey, mainStem)
+		}
+		if filepath.Base(record.Path) == tl1429dMainKey {
 			mainline = record
-			if strings.Contains(record.Title, "(副本 recovery-") {
-				t.Fatalf("mainline record title %q carries a copy tag — 主线被误标", record.Title)
+			if record.TrashFamilyCopy {
+				t.Fatalf("mainline record flagged TrashFamilyCopy — 主线被误标为副本")
 			}
-			continue
+		} else {
+			copies++
+			if !record.TrashFamilyCopy {
+				t.Fatalf("copy record %s carries no TrashFamilyCopy flag — 渲染层无从识别副本", filepath.Base(record.Path))
+			}
 		}
-		copies++
-		if !strings.Contains(record.Title, "(副本 recovery-") {
-			t.Fatalf("copy record title %q carries no copy tag — 同名淹没回潮", record.Title)
-		}
-		if !strings.Contains(record.Title, tl1429dFamilyTitle) {
-			t.Fatalf("copy record title %q lost the family title %q", record.Title, tl1429dFamilyTitle)
-		}
-		// 前端显示优先 topicTitle(title 兜底),副本标识必须两处都落。
-		if record.TopicTitle != record.Title {
-			t.Fatalf("copy record topicTitle %q != tagged title %q — 标识会被显示优先级吞掉", record.TopicTitle, record.Title)
+		// 被打回的标题标识不得回潮:主线与副本的标题都保持原样。
+		if strings.Contains(record.Title, "(副本 recovery-") || strings.Contains(record.TopicTitle, "(副本 recovery-") {
+			t.Fatalf("record %s title %q carries the rejected copy tag — tl1429d 标识回潮", filepath.Base(record.Path), record.Title)
 		}
 		// RecoveryCopy 契约不变:无 coverage 证明不得标记(22b334f22)。
 		if record.RecoveryCopy {
@@ -116,28 +120,18 @@ func TestTrashedRecoveryFamilyCopiesAreIdentifiedPerBucket(t *testing.T) {
 		t.Fatal("mainline record missing from the trash list")
 	}
 	if copies != len(copyHexes) {
-		t.Fatalf("tagged copy records = %d, want %d", copies, len(copyHexes))
+		t.Fatalf("copy-flagged records = %d, want %d", copies, len(copyHexes))
 	}
-	// 每个副本的 hex 标识互异且对得上自己的桶。
-	for _, hex := range copyHexes {
-		tag := "(副本 recovery-" + hex[:8] + ")"
-		found := false
-		for i := range listed {
-			if strings.Contains(listed[i].Title, tag) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("no copy record tagged %s — 副本与桶名对不上", tag)
-		}
+	if mainline.Title != "" && !strings.Contains(mainline.Title, tl1429dFamilyTitle) {
+		t.Fatalf("mainline title %q lost the family title %q", mainline.Title, tl1429dFamilyTitle)
 	}
 
-	// 还原主线:主线桶整体回位,副本桶原样留站(还原哪条=还原哪个桶)。
+	// 还原主线:主线桶整体回位,副本桶原样留站(还原哪条=还原哪个桶),
+	// 副本记录的归组字段不受还原影响。
 	if err := app.RestoreSession(mainline.Path); err != nil {
 		t.Fatalf("RestoreSession(mainline) = %v, want success", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, mainKey)); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, tl1429dMainKey)); err != nil {
 		t.Fatalf("mainline transcript not restored to the session dir: %v", err)
 	}
 	if _, err := os.Stat(mainBucketPath); !os.IsNotExist(err) {
@@ -148,8 +142,11 @@ func TestTrashedRecoveryFamilyCopiesAreIdentifiedPerBucket(t *testing.T) {
 		t.Fatalf("post-restore trash = %d records, want %d copies", len(after), len(copyHexes))
 	}
 	for i := range after {
-		if !strings.Contains(after[i].Title, "(副本 recovery-") {
-			t.Fatalf("post-restore record %s lost its copy tag", filepath.Base(after[i].Path))
+		if !after[i].TrashFamilyCopy {
+			t.Fatalf("post-restore record %s lost its TrashFamilyCopy flag", filepath.Base(after[i].Path))
+		}
+		if after[i].TrashFamilyKey != mainStem {
+			t.Fatalf("post-restore record %s family key %q drifted", filepath.Base(after[i].Path), after[i].TrashFamilyKey)
 		}
 	}
 
@@ -167,8 +164,8 @@ func TestTrashedRecoveryFamilyCopiesAreIdentifiedPerBucket(t *testing.T) {
 }
 
 // meta-less 兜底(tl1429b)不回归:无 meta 的 unique 桶仍可见可清;副本形状
-// 的 meta-less 桶同样拿到标识(标识只看文件名形状,不依赖 meta)。
-func TestMetaLessRecoveryShapedBucketStillIdentified(t *testing.T) {
+// 的 meta-less 桶同样拿到归组字段(归组只看文件名形状,不依赖 meta)。
+func TestMetaLessRecoveryShapedBucketStillGrouped(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	dir := config.SessionDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -189,8 +186,11 @@ func TestMetaLessRecoveryShapedBucketStillIdentified(t *testing.T) {
 	if len(listed) != 1 {
 		t.Fatalf("ListTrashedSessions = %d records, want the meta-less bucket listed", len(listed))
 	}
-	if !strings.Contains(listed[0].Title, "(副本 recovery-01234567)") {
-		t.Fatalf("meta-less bucket title %q carries no copy tag", listed[0].Title)
+	if !listed[0].TrashFamilyCopy {
+		t.Fatalf("meta-less copy-shaped bucket carries no TrashFamilyCopy flag")
+	}
+	if want := "20261024-011346-tl1429d-metaless"; listed[0].TrashFamilyKey != want {
+		t.Fatalf("meta-less bucket family key %q, want %q", listed[0].TrashFamilyKey, want)
 	}
 	if err := app.PurgeTrashedSession(listed[0].Path); err != nil {
 		t.Fatalf("PurgeTrashedSession on meta-less bucket = %v, want success", err)

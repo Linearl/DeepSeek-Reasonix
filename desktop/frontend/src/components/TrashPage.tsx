@@ -7,6 +7,7 @@ import { useT } from "../lib/i18n";
 import { useManagementT } from "../lib/managementLocale";
 import { useToast } from "../lib/toast";
 import { reportFrontendLog } from "../lib/frontendLog";
+import { trashFamilyRows } from "../lib/trashFamily";
 import { ManagementPageShell } from "./ManagementPageShell";
 import { HistoryPanel } from "./HistoryPanel";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -91,7 +92,9 @@ export function TrashPage({ active, onBack, list, restore, purge }: {
       confirmLabel: m("confirm"), cancelLabel: m("cancel"), tone: "danger" })) await mutate(snapshot, "purge");
   };
   const [lastKind, setLastKind] = useState<"restore" | "purge">("purge");
-  return <ManagementPageShell active={active} onBack={onBack} title={`${t("history.trashTitle")} · ${sessions.filter((item) => !item.recoveryCopy).length}`}
+  // tl1429d2：标题计数与默认视图一致——同族多桶合并后按族计（副本桶不再各占一行）。
+  const familyCount = trashFamilyRows(sessions.filter((item) => !item.recoveryCopy)).length;
+  return <ManagementPageShell active={active} onBack={onBack} title={`${t("history.trashTitle")} · ${familyCount}`}
     description={m("trashDescription")} actions={<><button className="btn btn--small" disabled={busy || loading || sessions.length === 0} onClick={() => { const paths = sessions.map((item) => item.path); setLastKind("restore"); void mutate(paths, "restore"); }}>{m("restoreAll")}{sessions.length > 0 ? ` (${sessions.length})` : ""}</button><button className="btn btn--small" disabled={busy || loading} onClick={() => void refresh()}><RotateCw size={14} />{m("refresh")}</button><button className="btn btn--small btn--danger history-clear" disabled={busy || !sessions.some((item) => !item.recoveryCopy)} onClick={() => void requestPurge(sessions.filter((item) => !item.recoveryCopy).map((item) => item.path), true)}>{t("history.clearTrash")}</button></>}>
     {loadFailed && <div className="management-notice" role="alert">{m("loadFailed")}<button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void refresh()}>{m("retry")}</button></div>}
     {notice && <div className="management-notice" role="status">{notice}{failedPaths.length > 0 && <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void mutate(failedPaths, lastKind)}>{m("retryFailed")}</button>}</div>}

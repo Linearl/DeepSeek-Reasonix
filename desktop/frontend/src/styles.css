@@ -20469,6 +20469,9 @@ button.statusbar__mcp:focus-visible {
 .hist-item__badge--current::before { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .hist-item__badge--open::before { background: #3b82f6; }
 .hist-item__badge--deleted::before { background: var(--fg-faint); }
+/* tl1429d2: trash 同族合并明细里的副本徽标（recovery-<hex8> 区分各副本桶）。 */
+.hist-item__badge--copy { color: var(--accent); }
+.hist-item__badge--copy::before { background: var(--accent); }
 .hist-item__rename {
   flex: 1;
   min-width: 0;

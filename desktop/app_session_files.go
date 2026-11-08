@@ -234,11 +234,12 @@ const tl1474TrashListWorkers = 8
 // RecoveryCopy classification re-proved coverage per record with zero caching
 // — measured 14.0s of coverage proofs alone across 25 recovery buckets on the
 // 2026-11-07 reporting machine. The observable semantics (record per bucket,
-// empty-shell synthesis, copy tags, RecoveryCopy contract) are pinned by the
-// tl1429b/1429d/1449 suites and the tl1474 equivalence pin; what changed is
-// how each bucket is read: metadata-only listing reads, one trash-meta read
-// per bucket, coverage proofs memoized per content identity (internal/agent),
-// and the per-bucket assembly running on a bounded worker pool.
+// empty-shell synthesis, family grouping fields, RecoveryCopy contract) are
+// pinned by the tl1429b/1429d2/1449 suites and the tl1474 equivalence pin;
+// what changed is how each bucket is read: metadata-only listing reads, one
+// trash-meta read per bucket, coverage proofs memoized per content identity
+// (internal/agent), and the per-bucket assembly running on a bounded worker
+// pool.
 func (a *App) ListTrashedSessions() []SessionMeta {
 	type trashBucketWork struct {
 		dir    string
@@ -291,8 +292,8 @@ func (a *App) ListTrashedSessions() []SessionMeta {
 
 // assembleTrashedSessionMeta builds one trash record from one bucket. This is
 // the per-bucket logic from the pre-tl1474 sequential loop, kept verbatim —
-// including the tl1449 empty-shell synthesis and the tl1429d copy tag — with
-// two read-mode swaps: agent.ListSessionsMetadataOnly instead of
+// including the tl1449 empty-shell synthesis and the tl1429d2 family grouping
+// fields — with two read-mode swaps: agent.ListSessionsMetadataOnly instead of
 // agent.ListSessions (display fields identical, no transcript replay), and
 // deletedAt folded into the bucket record (no second trash-meta read).
 func (a *App) assembleTrashedSessionMeta(dir string, titles map[string]string, bucket trashedBucketRecord) (SessionMeta, bool) {
@@ -306,12 +307,17 @@ func (a *App) assembleTrashedSessionMeta(dir string, titles map[string]string, b
 		// tl1449: 空壳桶(结构性记录在、transcript 已消失)不再静默漏——
 		// 漏掉的桶不可见也不可清,清空后永远躺在磁盘上(症状②③)。合成
 		// 一条最小记录让清空够得到它;标题留空,前端 emptySession 兜底。
+		// tl1429d2: 空壳同样带同族归组字段——副本桶的空壳仍归到主线的
+		// 族里,不因合成路径漏掉归组线索。
+		key, isCopy := trashedFamilyKey(filepath.Base(path))
 		return SessionMeta{
 			Path:           path,
 			TurnsState:     "unknown",
 			DeletedAt:      deletedAt,
 			LastActivityAt: deletedAt,
 			ModTime:        deletedAt,
+			TrashFamilyKey:  key,
+			TrashFamilyCopy: isCopy,
 		}, true
 	}
 	title := strings.TrimSpace(infos[0].CustomTitle)
@@ -319,48 +325,27 @@ func (a *App) assembleTrashedSessionMeta(dir string, titles map[string]string, b
 		title = titles[filepath.Base(path)]
 	}
 	meta := sessionMetaFromInfo(infos[0], title, false, false, deletedAt, dir)
-	// tl1429d: 回收站里同族主线桶与 recovery 副本桶各出一条记录(桶是
-	// 还原/清除的单桶语义,按族去重会让「还原哪条=还原哪个桶」对不上)。
-	// 但归档级联(tl1442-ext 后)会把整族一起搬进 .trash,十几条副本记录
-	// 与主线同名同标题,用户分不清哪条是主线。修法=标题带副本标识(用户
-	// 裁决的选项 B):主线是唯一不带 (副本 recovery-<hex>) 后缀的记录。
-	// 刻意不动 RecoveryCopy——它的契约是「已证明未被续写且被母本覆盖,
-	// 可安全清理」(22b334f22,TestTrashMarksLegacyRecoverySessionsAs-
-	// Recovered 钉死);副本桶内没有母本,coverage 证明必败,形状推断
-	// 不够格,批量清空/分组语义必须保持逐条记录原状。
-	if tag := trashedRecoveryCopyTag(filepath.Base(path)); tag != "" {
-		// 标题基准接住 TopicTitle/Preview:现网副本的标题通常来自
-		// topic_title(CustomTitle 与 legacy titles map 常为空),只用
-		// title 会让标识吃掉原名。标识同时落 Title 与 TopicTitle——
-		// 前端显示优先 topicTitle,title 兜底,只落一处会被吞。
-		base := title
-		if base == "" {
-			base = strings.TrimSpace(infos[0].TopicTitle)
-		}
-		if base == "" {
-			base = strings.TrimSpace(infos[0].Preview)
-		}
-		meta.Title = strings.TrimSpace(base + " " + tag)
-		meta.TopicTitle = meta.Title
-	}
+	// tl1429d2: 同族归组改走只读字段(tl1429d 的标题后缀标识被用户打回——
+	// 打错靶:同族副本桶不该在列表占独立多行,渲染层合并才是修法,标题
+	// 污染不是)。桶仍逐条出记录(桶=还原/清除的单桶语义),归组键/副本
+	// 形状落在 TrashFamilyKey/TrashFamilyCopy,由前端合并渲染。刻意不动
+	// RecoveryCopy——契约是「已证明未被续写且被母本覆盖,可安全清理」
+	// (22b334f22,TestTrashMarksLegacyRecoverySessionsAsRecovered 钉死);
+	// 副本桶内没有母本,coverage 证明必败,形状推断不够格。
+	meta.TrashFamilyKey, meta.TrashFamilyCopy = trashedFamilyKey(filepath.Base(path))
 	return meta, true
 }
 
-// trashedRecoveryCopyTag 是回收站副本记录的标题标识(tl1429d):从桶的
-// transcript 名剥出 recovery 尾号(16 hex,取前 8 位足够在同族副本间互异),
-// 拼成可读后缀;非 recovery 形状返回空串(调用方按形状判定先行)。
-func trashedRecoveryCopyTag(key string) string {
-	stem := strings.TrimSuffix(key, store.SessionTranscriptSuffix)
-	const marker = "-recovery-"
-	idx := strings.LastIndex(stem, marker)
-	if idx < 0 || idx+len(marker) >= len(stem) {
-		return ""
+// trashedFamilyKey 返回桶 transcript 名的同族归组键(tl1429d2):主线桶=
+// stem 本身;recovery 副本桶=剥掉 -recovery-<16hex> 尾号(嵌套则剥到底)后
+// 的根 stem,恰为对应主线桶的键。第二个返回值=是否副本形状(纯命名判据,
+// 与 agent.LooksLikeRecoveryFilename 的家族判据同源,不依赖 meta 与
+// coverage 证明)。
+func trashedFamilyKey(key string) (string, bool) {
+	if root, ok := agent.RecoveryFilenameRootID(key); ok {
+		return root, true
 	}
-	hex := stem[idx+len(marker):]
-	if len(hex) > 8 {
-		hex = hex[:8]
-	}
-	return "(副本 recovery-" + hex + ")"
+	return strings.TrimSuffix(key, store.SessionTranscriptSuffix), false
 }
 
 func (a *App) trashedSessionDir(path string) (string, error) {

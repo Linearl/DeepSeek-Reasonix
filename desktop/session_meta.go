@@ -38,6 +38,14 @@ type SessionMeta struct {
 	RecoveryGroupID   string `json:"recoveryGroupId,omitempty"`
 	RecoveryRole      string `json:"recoveryRole,omitempty"` // normal|covered_copy|adopted|diverged
 	RecoveryCanonical bool   `json:"recoveryCanonical,omitempty"`
+	// tl1429d2: 回收站同族归组的只读线索,仅回收站装配路径填充(其余 listing
+	// 留空)。TrashFamilyKey=同族归组键(主线桶=transcript stem;recovery 副本
+	// 桶=剥掉 -recovery-<16hex> 后的根 stem,与主线桶同键);TrashFamilyCopy=
+	// 该桶是否副本形状(纯命名判据,不碰 RecoveryCopy 的 coverage 契约)。
+	// 渲染层据此把同族多桶合并为一行(主线为主体,副本进展开明细);桶本身
+	// 仍是还原/清除的单桶语义,这两个字段不参与任何还原/清除判定。
+	TrashFamilyKey  string `json:"trashFamilyKey,omitempty"`
+	TrashFamilyCopy bool   `json:"trashFamilyCopy,omitempty"`
 }
 
 func sessionMetaFromInfo(s agent.SessionInfo, title string, current, open bool, deletedAt int64, parentDir string) SessionMeta {

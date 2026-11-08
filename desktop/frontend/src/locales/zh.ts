@@ -6445,4 +6445,8 @@ export const zh: Record<DictKey, string> = {
   "mcp.advice.suggestCommandUnavailable": "找不到可执行程序——先安装它，或把 command 改成完整路径。",
   "mcp.advice.suggestNetwork": "检查网络与代理，确认地址端口可达后再重试连接。",
   "mcp.advice.suggestOther": "原因未归类——展开错误详情定位问题，或重试连接。",
+  // tl1429d2 回收站同族合并：主线一行 + 副本计数徽标/展开明细（键追加在 EOF）
+  "history.trashFamilyCopies": "+{n} 个副本",
+  "history.trashFamilyCollapse": "收起副本",
+  "history.trashFamilyCopyRole": "副本",
 };

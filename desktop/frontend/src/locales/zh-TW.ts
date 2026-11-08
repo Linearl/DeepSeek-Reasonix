@@ -6441,4 +6441,8 @@ export const zhTW: Record<DictKey, string> = {
   "mcp.advice.suggestCommandUnavailable": "找不到可執行程式——先安裝它，或把 command 改成完整路徑。",
   "mcp.advice.suggestNetwork": "檢查網路與代理，確認位址埠可達後再重試連線。",
   "mcp.advice.suggestOther": "原因未歸類——展開錯誤詳情定位問題，或重試連線。",
+  // tl1429d2 回收站同族合併：主線一行 + 副本計數徽標/展開明細（鍵追加在 EOF）
+  "history.trashFamilyCopies": "+{n} 個副本",
+  "history.trashFamilyCollapse": "收起副本",
+  "history.trashFamilyCopyRole": "副本",
 };
