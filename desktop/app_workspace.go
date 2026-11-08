@@ -190,9 +190,22 @@ func (a *App) removeWorkspaceSessions(dir string) (*WorkspaceTab, error) {
 		a.mu.Unlock()
 
 		snapshotted := make(map[string]*WorkspaceTab, len(candidates))
+		// tl1502: the user can delete the workspace folder outside the app while
+		// its tabs are still open. The pre-unlink snapshot then has nothing left
+		// to save FOR — the workspace is being removed either way — so a root
+		// that no longer exists must skip the snapshot instead of failing the
+		// whole removal with "save current session before removing workspace".
+		// Removal is a registry eviction (forgetWorkspace + removeProject below,
+		// both pure JSON and already idempotent toward missing paths); a missing
+		// disk path must not block it.
+		rootGone := !existingDirectory(dir)
 		for _, candidate := range candidates {
 			id, tab := candidate.id, candidate.tab
 			snapshotted[id] = tab
+			if rootGone {
+				slog.Warn("desktop: skip snapshot before removing workspace; root no longer exists", "tab", id, "workspace", dir)
+				continue
+			}
 			if err := a.snapshotTabDurable(tab); err != nil {
 				slog.Warn("desktop: snapshot before removing workspace failed", "tab", id, "workspace", dir, "err", err)
 				return fmt.Errorf("save current session before removing workspace: %w", err)
