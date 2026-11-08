@@ -17,15 +17,66 @@ func (a *App) resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath stri
 	if scope == "global" {
 		actualRoot = globalWorkspaceRoot()
 	}
+	// tl1415h 刀①：打开漏斗的裁决日志行。取证报告（tl1415四轮取证-20261108）
+	// 定案「打开漏斗正常路径零日志」是首开错切当场实例无法百分百归因的唯一
+	// 缺口（open_session_trace 只记入参 sessionPath，不记闸后裁决；正常路径
+	// 零日志）。本行只在打开动作（树行点击）落一次：选了哪个权威/组员几条/
+	// 窗口未就绪标记/最终裁决全在字段里。resume 翻页与启动 retarget 仍走
+	// continuePathForOpen 的无日志包装，日志量不随热路径增长。
+	continued, verdict := a.continuePathForOpenVerdict(sessionPath)
+	verdict.LiveController = continued != "" && a.sessionHasLiveController(sessionPath)
+	slog.Info("desktop: open session authority verdict", verdict.logFields(scope, workspaceRoot)...)
 	// Keep a live controller on this path (including paused). Opening a
 	// different ordinary session of the same topic must still switch.
-	if continued := a.continuePathForOpen(sessionPath); continued != "" {
-		if a.sessionHasLiveController(sessionPath) {
+	if continued != "" {
+		if verdict.LiveController {
 			return actualRoot, sessionPath
 		}
 		sessionPath = continued
 	}
 	return actualRoot, sessionPath
+}
+
+// openSessionAuthorityVerdict 是打开漏斗一次裁决的完整读数（tl1415h 刀①）。
+// 字段口径对齐取证报告 Q1/Q3 的逐门走查：filed=投影行在册；groupReady=组界定
+// 成立（recoveryTopicHasGroup——它被目录 reconcile 建立，是权威#3 的时序前
+// 提）；authority/authorityKind=权威#2（catalog filing）或权威#3（meta 旗标）
+// 的命中；windowReady=false 即取证报告定义的冷机窗口形态（首开落在窗口内的
+// 观测标记）。
+type openSessionAuthorityVerdict struct {
+	Requested      string
+	TopicID        string
+	Filed          bool
+	GroupID        string
+	GroupMembers   int
+	GroupReady     bool
+	Authority      string
+	AuthorityKind  string // catalog_preferred | meta_flag
+	Continued      string
+	Redirected     bool
+	WindowReady    bool
+	LiveController bool
+}
+
+func (v openSessionAuthorityVerdict) logFields(scope, workspaceRoot string) []any {
+	fields := []any{
+		"scope", scope,
+		"workspaceRoot", workspaceRoot,
+		"sessionPath", v.Requested,
+		"topicId", v.TopicID,
+		"filed", v.Filed,
+		"windowReady", v.WindowReady,
+		"redirected", v.Redirected,
+		"continued", v.Continued,
+		"liveController", v.LiveController,
+	}
+	if v.GroupID != "" {
+		fields = append(fields, "groupId", v.GroupID, "groupMembers", v.GroupMembers, "groupReady", v.GroupReady)
+	}
+	if v.Authority != "" {
+		fields = append(fields, "authority", v.Authority, "authorityKind", v.AuthorityKind)
+	}
+	return fields
 }
 
 // findTopicSessionAcrossScopes resolves a topic id to its best session file
@@ -146,27 +197,41 @@ func (a *App) skipContinuationRebind(tab *WorkspaceTab, target string) bool {
 }
 
 func (a *App) continuePathForOpen(path string) string {
+	continued, _ := a.continuePathForOpenVerdict(path)
+	return continued
+}
+
+// continuePathForOpenVerdict 是 continuePathForOpen 的裁决读数版（tl1415h 刀①）：
+// 打开动作（resolveOpenTopicSessionPath）经它落裁决日志；resume/retarget 走
+// 无日志包装，行为与日志面都保持原样。
+func (a *App) continuePathForOpenVerdict(path string) (string, openSessionAuthorityVerdict) {
 	path = strings.TrimSpace(path)
+	verdict := openSessionAuthorityVerdict{Requested: path, WindowReady: true}
 	if path == "" {
-		return ""
+		return "", verdict
 	}
 	catalog := a.sessionCatalog.Load()
 	if catalog == nil {
-		return ""
+		verdict.WindowReady = false
+		return "", verdict
 	}
 	ctx := context.Background()
 	rec, ok, err := catalog.GetSession(ctx, path)
 	if err != nil || !ok {
-		return a.continuePathForMissingParent(ctx, catalog, path)
+		// 投影行不在册——冷机窗口的第一形态（目录 reconcile 未跑）。
+		verdict.WindowReady = false
+		return a.continuePathForMissingParent(ctx, catalog, path), verdict
 	}
+	verdict.Filed = true
 	if rec.TopicID == "" {
-		return ""
+		return "", verdict
 	}
 	topic, ok, err := catalog.GetTopic(ctx, sessioncatalog.TopicKey{Scope: rec.Scope, WorkspaceRoot: rec.WorkspaceRoot, TopicID: rec.TopicID})
 	if err != nil || !ok {
-		return ""
+		return "", verdict
 	}
 	continued := sessioncatalog.OrdinaryContinuePath(topic.Sessions, path)
+	verdict.Continued = continued
 	// tl1415e: open/restore reconciles against the panel's main-line authority
 	// (recoveryAuthorityMainPath — the same resolver Selected and the
 	// already-main gate read). tl1415c unified the panel verdict but left the
@@ -185,11 +250,23 @@ func (a *App) continuePathForOpen(path string) string {
 	//     and the panel's Selected row now read one resolver and cannot split
 	//     by construction.
 	if !rec.Recovered {
-		if authority := a.recoveryAuthorityMainPathForOpen(catalog, rec); authority != "" && !sameRecoveryLineagePath(authority, rec.Path) {
-			return authority
+		authority, kind, detail, resolved := a.recoveryAuthorityForOpenVerdict(catalog, rec)
+		if resolved && !detail.GroupReady {
+			// 有行但组未界定——冷机窗口的第二形态（副本行未被组分类）。
+			verdict.WindowReady = false
+		}
+		verdict.TopicID = detail.TopicID
+		verdict.GroupID = detail.GroupID
+		verdict.GroupMembers = detail.GroupMembers
+		verdict.GroupReady = detail.GroupReady
+		verdict.Authority = authority
+		verdict.AuthorityKind = kind
+		if authority != "" && !sameRecoveryLineagePath(authority, rec.Path) {
+			verdict.Redirected = true
+			return authority, verdict
 		}
 	}
-	return continued
+	return continued, verdict
 }
 
 // recoveryAuthorityMainPathForOpen is the open/restore funnel's view of the
@@ -220,26 +297,52 @@ func (a *App) continuePathForOpen(path string) string {
 // (preferredGroupMemberPathOfGroup) so the two resolvers cannot drift apart
 // again.
 func (a *App) recoveryAuthorityMainPathForOpen(catalog *sessioncatalog.Catalog, rec sessioncatalog.SessionRecord) string {
+	authority, _, _, _ := a.recoveryAuthorityForOpenVerdict(catalog, rec)
+	return authority
+}
+
+// recoveryAuthorityForOpenVerdict 是 recoveryAuthorityMainPathForOpen 的裁决
+// 读数版（tl1415h 刀①）：返回值在权威路径与命中类别（catalog_preferred=权威
+// #2 / meta_flag=权威 #3）之外，带出组界定读数（组 ID/组员数/组是否已建立）
+// 供打开裁决日志与窗口判定使用。逐门语义与原函数逐字节一致——纯观测改造，
+// 权威裁决行为零变化。
+func (a *App) recoveryAuthorityForOpenVerdict(catalog *sessioncatalog.Catalog, rec sessioncatalog.SessionRecord) (string, string, openSessionAuthorityVerdict, bool) {
+	detail := openSessionAuthorityVerdict{Requested: rec.Path, WindowReady: true}
 	resolveCtx, cancel := a.catalogReadContext()
 	record, found, err := catalog.GetSession(resolveCtx, rec.Path)
 	cancel()
 	if err != nil || !found || strings.TrimSpace(record.LogicalTopicID) == "" {
-		return ""
+		detail.WindowReady = false
+		return "", "", detail, false
 	}
+	detail.Filed = true
+	detail.TopicID = strings.TrimSpace(record.LogicalTopicID)
 	scope, workspaceRoot := normalizeDesktopTopicScope(record.Scope, record.WorkspaceRoot)
-	topicID := strings.TrimSpace(record.LogicalTopicID)
-	topic, ok, err := catalog.GetTopic(a.bootContext(), sessioncatalog.TopicKey{Scope: scope, WorkspaceRoot: workspaceRoot, TopicID: topicID})
+	topic, ok, err := catalog.GetTopic(a.bootContext(), sessioncatalog.TopicKey{Scope: scope, WorkspaceRoot: workspaceRoot, TopicID: detail.TopicID})
 	if err != nil || !ok {
-		return ""
+		return "", "", detail, false
 	}
 	groupID, _, ok := recoveryLineageSelection(topic, record.Path)
 	if !ok || groupID == "" {
-		return ""
+		detail.WindowReady = false
+		return "", "", detail, true
+	}
+	detail.GroupID = groupID
+	detail.GroupReady = true
+	for _, member := range topic.Sessions {
+		if recoveryRecordBelongsToGroup(member, groupID) {
+			detail.GroupMembers++
+		}
 	}
 	if path := preferredGroupMemberPathOfGroup(topic, groupID); path != "" {
-		return path
+		detail.Authority, detail.AuthorityKind = path, "catalog_preferred"
+		return path, detail.AuthorityKind, detail, true
 	}
-	return a.preferredMetaFlagPathOfGroup(topic, groupID)
+	path := a.preferredMetaFlagPathOfGroup(topic, groupID)
+	if path != "" {
+		detail.Authority, detail.AuthorityKind = path, "meta_flag"
+	}
+	return path, detail.AuthorityKind, detail, true
 }
 
 // preferredMetaFlagPathOfGroup resolves authority #3: the one member of the
