@@ -83,12 +83,26 @@ func (c *Controller) autosaveWhileRunning(ctx context.Context) {
 			} else {
 				timer.Reset(base)
 			}
-			if _, err := c.snapshotWithDurability(false, false, false, true); err != nil && !errors.Is(err, errSavePathBusy) {
-				slog.Warn("controller: mid-turn snapshot", "err", err)
-			}
+			c.midTurnAutosaveSnapshot()
 			c.warnIfTurnStalled(time.Now())
 		}
 	}
+}
+
+// midTurnAutosaveSnapshot is the save call behind each mid-turn tick. It is a
+// named method so the conflict-recovery contract of exactly this path is
+// pinnable (tl1491): the tick runs while a turn body is executing, so its
+// snapshot may not swap the executor session (SetSession is an idle-only
+// seam) — see the deferConflictRecovery argument of snapshotWithDurability.
+// A deferred conflict reports nil (the cause is recorded in the conflict
+// diagnostic log and one WARN line, not re-reported by the tick loop). The
+// stall watchdog keeps its own cadence in autosaveWhileRunning.
+func (c *Controller) midTurnAutosaveSnapshot() error {
+	_, err := c.snapshotWithDurability(false, false, false, true)
+	if err != nil && !errors.Is(err, errSavePathBusy) {
+		slog.Warn("controller: mid-turn snapshot", "err", err)
+	}
+	return err
 }
 
 // executorSession returns the live session, or nil while the executor is
