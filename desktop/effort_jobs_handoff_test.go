@@ -69,6 +69,9 @@ func TestSetEffortForTabBackgroundJobsSurviveRebuild(t *testing.T) {
 	if err := app.SetEffortForTab(tab.ID, "low"); err != nil {
 		t.Fatalf("effort switch with a background job (running=false) refused: %v", err)
 	}
+	// tl1388: the fallback rebuild runs in the background; wait for the swap
+	// before asserting on the replacement's handoff.
+	waitForEffortSettled(t, app, tab.ID)
 
 	newCtrl, ok := tab.Ctrl.(*control.Controller)
 	if !ok {
@@ -106,6 +109,10 @@ func TestSetEffortForTabBackgroundJobsSurviveRebuild(t *testing.T) {
 		if err := app.SetEffortForTab(tab.ID, level); err != nil {
 			t.Fatalf("effort switch to %q with a background job refused: %v", level, err)
 		}
+		// tl1388: a tier switch that ever declines the fast paths rebuilds in
+		// the background; wait before asserting on tab.effort (no-op when the
+		// per-request path served it).
+		waitForEffortSettled(t, app, tab.ID)
 		entry, err := app.currentProviderEntryForTab(tab.ID)
 		if err != nil {
 			t.Fatalf("resolve entry after switching to %q: %v", level, err)

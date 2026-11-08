@@ -50,6 +50,9 @@ func TestSetEffortForTabIsTabLocal(t *testing.T) {
 	if err := app.SetEffortForTab(tabA.ID, "max"); err != nil {
 		t.Fatalf("SetEffortForTab: %v", err)
 	}
+	// tl1388: the fallback rebuild runs in the background; wait for it so the
+	// read below sees the landed depth.
+	waitForEffortSettled(t, app, tabA.ID)
 	// Task 611: deterministic oracle (same read path, no 2s wall-clock cap).
 	if got := effortDirectRead(app, tabA.ID).Current; got != "max" {
 		t.Fatalf("tab A effort = %q, want max", got)
