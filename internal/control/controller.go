@@ -182,6 +182,14 @@ type Controller struct {
 	// sends a message to open the next round. Off (the zero value) keeps the
 	// pre-1105 idle stop byte-for-byte.
 	interruptedAutoResume bool
+	// stopReview (tl1460) carries the default stop-review layer's boot
+	// posture: master switch + continuation ceiling. Fixed at construction
+	// (restart to apply); the rules and the iron law live in stop_review.go.
+	stopReview StopReviewOptions
+	// stopReviewStreak (tl1460, guarded by mu) counts consecutive
+	// review-driven continuations in the current work segment. Reset on every
+	// real user turn, on a released stop, and on the capped stop.
+	stopReviewStreak int
 	// explicitAskGranted is the task-806b explicit ask grant: the user said,
 	// in this session, that the run must ask them instead of deciding alone —
 	// revoking the unattended premise every autopilot auto-answer rests on.
@@ -813,6 +821,13 @@ type Options struct {
 	// the user manually opens the next round. Off keeps the pre-1105 idle
 	// stop byte-for-byte.
 	InterruptedAutoResume bool
+	// StopReview (tl1460) carries the default stop-review layer's posture:
+	// master switch + continuation ceiling (see stop_review.go for the
+	// layered rules and the one-way iron law). The zero value keeps the
+	// review ON — this is a defect remedy for the diagnosed silent
+	// early-stop family, not an opt-in feature; Disabled flips it off and
+	// MaxContinuations overrides the placeholder ceiling (候校准, tl1469).
+	StopReview StopReviewOptions
 	// PreapproveManaged carries the task-231 master switch, its four category
 	// checkboxes, and the three home-derived paths the classifier matches on.
 	// Boot resolves it from config; the zero value keeps every approval prompt
@@ -1109,6 +1124,7 @@ func New(opts Options) *Controller {
 		autopilotAskAutoContinue:   opts.AutopilotAskAutoContinue,
 		standardContinuation:       opts.StandardContinuation,
 		interruptedAutoResume:      opts.InterruptedAutoResume,
+		stopReview:                 normalizeStopReviewOptions(opts.StopReview),
 		preapproveManaged:          opts.PreapproveManaged,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
