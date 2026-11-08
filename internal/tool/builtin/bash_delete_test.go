@@ -405,6 +405,43 @@ func TestDeleteGateFullAccessStillProtectsHomeAndAnchors(t *testing.T) {
 	}
 }
 
+// TestDeleteGateHomeSubtreeRefusalMessageGuidance pins the refusal text for a
+// home-subpath target (tl1471b, 包86 实测欠账): the "protected in every
+// approval mode" claim stays scoped to home / filesystem roots / workspace
+// ancestors — ruling A kept it because the full-access exemption never lifts
+// those — while the pre-tl1471 "out-of-scope paths are protected" wording
+// stays gone, and the refusal carries the scripted-batch next step: no dry-run
+// exists, so a batch must be enumerated as literal targets inside the granted
+// roots (each audited the same way).
+func TestDeleteGateHomeSubtreeRefusalMessageGuidance(t *testing.T) {
+	root, home, _ := deleteGateFixture(t)
+	b := deleteGateFullAccess(bashShell(), root, nil, true)
+	homeSubtree := filepath.Join(home, "AppData", "Local", "Temp", "tl1471b-probe")
+	if err := os.MkdirAll(homeSubtree, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]string{"command": `rm -rf '` + filepath.ToSlash(homeSubtree) + `'`})
+	_, err := b.ExecuteDetailed(t.Context(), args)
+	if err == nil {
+		t.Fatal("home-subpath recursive delete was not refused under full access")
+	}
+	if code, _ := deleteRefusalCode(err); code != CodeDestructiveTarget {
+		t.Fatalf("refusal = %v, want %s", err, CodeDestructiveTarget)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "protected in every approval mode") {
+		t.Fatalf("refusal message lost the scoped approval-mode claim: %s", msg)
+	}
+	if strings.Contains(msg, "out-of-scope paths are protected") {
+		t.Fatalf("refusal message regressed to the pre-tl1471 false claim: %s", msg)
+	}
+	for _, want := range []string{"no dry-run", "literal targets inside the granted roots"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("refusal message %q misses the scripted-batch guidance %q", msg, want)
+		}
+	}
+}
+
 // TestDeleteGateFullAccessOffUnchanged is the zero-change pin: the same
 // out-of-scope non-home delete that full access allows stays refused when the
 // root set is bound but the lab switch is off — the exact shape boot builds
