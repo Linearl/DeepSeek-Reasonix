@@ -342,3 +342,71 @@ func TestFullLogWriterDefaultParamsUnchanged(t *testing.T) {
 			desktopLogMaxSizeBytes, desktopLogMaxBackups)
 	}
 }
+
+// fix-provider-poll-bound 刀②（alert 清理器）验收钉——每分钟节流清理路径
+// 零 config 读。旧链路 maybePruneAlertLog → pruneAlertLogNow →
+// config.LoadUserConfigReadOnly 每分钟解析全量 config.toml：弃用键 WARN 写回
+// 告警日志 → 再触发清理 → 「写→清理→读 config→再写」自反馈环（装机挂死
+// 诊断 §2.4 慢性重读源②）。新实现：档位只在 install 与两个设置 setter 处
+// 读 config 一次并写透缓存（alertLogLoadConfig 计数锚点）；每分钟路径只消费
+// 缓存档位（行为钉：7 天默认档删 8 天前滚动份、改 30 天后保留）。
+// 修前红：baseline 无 alertLogLoadConfig/alertLogDir 接缝，编译即红（已录得：
+// 基线首跑 FAIL reasonix/desktop [build failed]，undefined: alertLogLoadConfig /
+// alertLogDir）；绿态要求 loads 计数在两次每分钟清理中保持不变。
+func TestMaybePruneAlertLogRunsZeroConfigLoads(t *testing.T) {
+	dir := t.TempDir()
+	loads := 0
+	origLoad := alertLogLoadConfig
+	origDir := alertLogDir
+	origState := desktopAlertLog
+	alertLogLoadConfig = func() (*config.Config, error) { loads += 1; return config.Default(), nil }
+	alertLogDir = func() string { return dir }
+	t.Cleanup(func() {
+		alertLogLoadConfig = origLoad
+		alertLogDir = origDir
+		desktopAlertLog = origState
+	})
+
+	// ① install/设置变更路径：读一次 config 并写透缓存（默认档 7 天 / 100MB）。
+	pruneAlertLogNow()
+	if loads != 1 {
+		t.Fatalf("settings-refresh path config loads = %d, want 1", loads)
+	}
+
+	// ② 每分钟节流路径：清零节流窗口模拟到期 → maybePrune 必须零 config 读，
+	//    且用缓存档位（7 天）删掉 8 天前的滚动份。
+	writeTestAlertFile(t, dir, desktopAlertLogFileName+".1", 1<<10, 8*24*time.Hour)
+	desktopAlertLog.mu.Lock()
+	desktopAlertLog.lastPruneAt = time.Time{}
+	desktopAlertLog.mu.Unlock()
+	desktopAlertLog.maybePruneAlertLog()
+	if loads != 1 {
+		t.Fatalf("per-minute path must not read config; loads = %d, want still 1", loads)
+	}
+	if listFamilyNames(t, dir)[desktopAlertLogFileName+".1"] {
+		t.Fatalf("cached default retention (7d) should prune the 8-day-old rolled file")
+	}
+
+	// ③ 设置变更：档位改 30 天 → pruneAlertLogNow 刷新缓存（第 2 次 config 读）；
+	//    之后每分钟路径再触发，8 天前文件存活、loads 仍停在 2。
+	cfg := config.Default()
+	if err := cfg.SetDesktopAlertLogRetentionDays(30); err != nil {
+		t.Fatalf("set retention 30: %v", err)
+	}
+	alertLogLoadConfig = func() (*config.Config, error) { loads += 1; return cfg, nil }
+	pruneAlertLogNow()
+	if loads != 2 {
+		t.Fatalf("settings change refresh loads = %d, want 2", loads)
+	}
+	writeTestAlertFile(t, dir, desktopAlertLogFileName+".2", 1<<10, 8*24*time.Hour)
+	desktopAlertLog.mu.Lock()
+	desktopAlertLog.lastPruneAt = time.Time{}
+	desktopAlertLog.mu.Unlock()
+	desktopAlertLog.maybePruneAlertLog()
+	if loads != 2 {
+		t.Fatalf("per-minute path after settings change must not read config; loads = %d, want still 2", loads)
+	}
+	if !listFamilyNames(t, dir)[desktopAlertLogFileName+".2"] {
+		t.Fatalf("cached retention=30 must keep the 8-day-old rolled file")
+	}
+}

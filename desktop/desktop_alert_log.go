@@ -273,21 +273,36 @@ func alertLineIsWarnOrError(p []byte) bool {
 }
 
 // alertLogState 持有告警 writer 句柄与最近一次清理时间（防止高频 WARN 爆发
-// 时每次写都触发目录扫描）。
+// 时每次写都触发目录扫描）。fix-provider-poll-bound：另存保留档位的写透
+// 缓存——唯一写点是 installDesktopAlertLogging 与两个设置 setter（都立即调
+// pruneAlertLogNow 刷新缓存），每分钟节流路径只消费缓存、零 config 读。
 type alertLogState struct {
 	mu            sync.Mutex
 	w             *rollingLogWriter
 	lastPruneAt   time.Time
 	pruneInterval time.Duration
+	// 缓存的清理档位（effective 值）。settingsCached=false 表示从未成功
+	// 读到配置（启动读失败且用户从未动过设置），每分钟路径按内置默认档
+	// 清理（与 cfg==nil 的既有回落完全一致）。
+	cachedRetentionDays int
+	cachedMaxTotalBytes int64
+	settingsCached      bool
 }
 
 var desktopAlertLog alertLogState
+
+// fix-provider-poll-bound：config 读取与日志目录的测试接缝（每分钟路径
+// 「零 config 读」的行为钉靠 alertLogLoadConfig 计数；目录可注入 temp dir）。
+var (
+	alertLogLoadConfig = config.LoadUserConfigReadOnly
+	alertLogDir        = alertLogDirPath
+)
 
 // installDesktopAlertLogging 在 installDesktopLogging 之后调用：把 WARN/
 // ERROR 分流 writer 挂上。配置读取失败时静默跳过（与 installDesktopLogging
 // 同款「诊断不阻塞启动」口径）。
 func installDesktopAlertLogging() {
-	dir := alertLogDirPath()
+	dir := alertLogDir()
 	w := newRollingLogWriterWithMax(filepath.Join(dir, desktopAlertLogFileName), desktopAlertLogMaxSizeBytes, desktopAlertLogMaxBackups)
 	if err := w.ensureLocked(); err != nil {
 		return
@@ -304,21 +319,41 @@ func installDesktopAlertLogging() {
 	pruneAlertLogNow()
 }
 
-// pruneAlertLogNow 立即执行一次双维度清理（供安装时、设置变更后调用）。
+// pruneAlertLogNow 立即执行一次双维度清理（供安装时、设置变更后调用）：
+// 读一次 config 并把保留档位写透进缓存——这是每分钟路径档位的唯一来源，
+// 档位变化只能经设置 setter（settings_preferences.go 两个 Dial）走到这里。
 func pruneAlertLogNow() {
-	cfg, err := config.LoadUserConfigReadOnly()
+	cfg, err := alertLogLoadConfig()
 	if err != nil {
 		return
 	}
+	retentionDays := desktopAlertLogRetentionDaysEffective(cfg)
+	maxTotalBytes := desktopAlertLogMaxTotalBytesEffective(cfg)
 	desktopAlertLog.mu.Lock()
 	desktopAlertLog.lastPruneAt = time.Now()
+	desktopAlertLog.cachedRetentionDays = retentionDays
+	desktopAlertLog.cachedMaxTotalBytes = maxTotalBytes
+	desktopAlertLog.settingsCached = true
 	desktopAlertLog.mu.Unlock()
-	_, _ = pruneAlertLogFamily(
-		alertLogDirPath(),
-		desktopAlertLogRetentionDaysEffective(cfg),
-		desktopAlertLogMaxTotalBytesEffective(cfg),
-		time.Now(),
-	)
+	_, _ = pruneAlertLogFamily(alertLogDir(), retentionDays, maxTotalBytes, time.Now())
+}
+
+// pruneAlertLogWithCachedSettings 每分钟节流路径：只消费缓存档位，零
+// config 读。这一刀打破「WARN 写入 → 触发清理 → 每分钟 LoadUserConfigReadOnly
+// → 弃用键按次 WARN → 又写回告警日志」的自反馈环（装机挂死诊断 §2.4 慢性
+// 重读源②）：清理本身不再产生任何 config 加载。缓存未建立时按内置默认档
+// 清理（7 天 / 100MB，与 cfg==nil 回落一致），下次设置变更或重启自动修正。
+func pruneAlertLogWithCachedSettings() {
+	desktopAlertLog.mu.Lock()
+	retentionDays := desktopAlertLog.cachedRetentionDays
+	maxTotalBytes := desktopAlertLog.cachedMaxTotalBytes
+	cached := desktopAlertLog.settingsCached
+	desktopAlertLog.mu.Unlock()
+	if !cached {
+		retentionDays = 7 // 内置默认时间档
+		maxTotalBytes = 100 << 20 // 内置默认大小档
+	}
+	_, _ = pruneAlertLogFamily(alertLogDir(), retentionDays, maxTotalBytes, time.Now())
 }
 
 // maybePruneAlertLog 由 alertLogWriter 在写入前调用，节流触发清理。
@@ -334,7 +369,7 @@ func (s *alertLogState) maybePruneAlertLog() {
 	}
 	s.lastPruneAt = time.Now()
 	s.mu.Unlock()
-	pruneAlertLogNow()
+	pruneAlertLogWithCachedSettings()
 }
 
 // compositeSlogHandler 把一条 slog 记录同时交给全量 handler 与告警 handler。
