@@ -122,6 +122,16 @@ type App struct {
 	// with, or wait behind, tab state.
 	autonomousMu      sync.Mutex
 	autonomousPending pendingUpdateTarget
+	// autonomousBoundaryRestart is the tl1500 刀④返修 pending-restart slot
+	// (2026-11-09 用户拍板二轮①): a heartbeat-turn restart_update execute/restart
+	// call no longer refuses mid-turn — it stages here and the turn-boundary
+	// waiter fires the existing restart path once the turn finishes (transcript
+	// durable, TurnDone delivered). nil = nothing queued; dedup key is the slot
+	// itself (同回合第二次调用只提示不再入队). Guarded by autonomousMu together
+	// with autonomousPending. Memory-only: a crash loses the queue, which is
+	// acceptable — the staged build stays on disk and the next heartbeat round
+	// re-issues the same target. See autonomous_update.go.
+	autonomousBoundaryRestart *boundaryRestartRequest
 
 	// crashAnalysisMu guards the task-663 one-click analysis state: which
 	// session hosts the running analysis (CrashAnalysisProgress read model)
