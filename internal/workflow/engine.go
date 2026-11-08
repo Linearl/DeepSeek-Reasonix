@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"reasonix/internal/event"
@@ -33,7 +34,19 @@ type Engine struct {
 	// 中止时的失败原因码、非致命契约提示。nil = 不关心（与 Checkpoint 同款
 	// 宿主侧通道；686 六态事件契约不受影响）。
 	Observe func(NodeObservation)
+	// PauseCheck（tl1335）是主动暂停的引擎钩子：runAll 在每个节点边界（循环
+	// 头）查询，返回 true 即不再启动任何新节点、以 errWorkflowPaused 收场——
+	// 当前节点（含其 gate 修复环）完整跑完、checkpoint 已落盘后挂起，与
+	// cancel 的「立即砍掉运行中执行」互补。宿主侧语义：pause=保留执行状态可
+	// 恢复的挂起（RunPaused），cancel=中断（RunInterrupted）。nil = 永不暂停
+	// （既有调用方零影响；runAll 每轮一次串行调用，无并发面）。
+	PauseCheck func() bool
 }
+
+// errWorkflowPaused 是主动暂停的哨兵收场（tl1335）：宿主以 errors.Is 识别并
+// 分类落 RunPaused（可续态），与 context.Canceled→interrupted 的分类并列。
+// 引擎自身不感知状态机——它只如实报告「run 因暂停请求在节点边界停下」。
+var errWorkflowPaused = errors.New("workflow: run paused by request at a node boundary")
 
 // DefaultResultParseRetries is the directed-retry budget when
 // ResultParseRetries is left at its zero value (tl1432 B): exactly one
@@ -448,6 +461,14 @@ func (s *runState) runAll(ctx context.Context) error {
 		// node is dispatched (the node that crossed keeps its result).
 		if over := s.meter.exceeded(); over != nil {
 			return over
+		}
+		// tl1335: 主动暂停在节点边界生效——上一波次的节点已全部完成并
+		// checkpoint，本波次尚未派发任何执行。挂起点即恢复点（checkpoint 在
+		// 盘，ResumeWithID 从这里继续）。取消优先于暂停：ctx 已取消时上面的
+		// 分支先返回， cancelled 语义不被 pause 掩盖。
+		if s.eng != nil && s.eng.PauseCheck != nil && s.eng.PauseCheck() {
+			s.checkpoint()
+			return errWorkflowPaused
 		}
 		// ---- serial scan: skip cascade, inline nodes, wave collection ----
 		var calls []*nodeCall
