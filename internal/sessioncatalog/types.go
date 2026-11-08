@@ -161,6 +161,14 @@ type SessionRecord struct {
 	// OrdinaryVisible is true only for the single logical representative that
 	// may appear in the ordinary project tree.
 	OrdinaryVisible bool `json:"ordinaryVisible,omitempty"`
+	// ActivityStale marks a scan-time finding (tl1485b): the sidecar's UpdatedAt
+	// is hours ahead of the transcript's own message times — the dead meta-only
+	// pump's stock disease. Such a row must land unknown and enter the repair
+	// queue even though its counts are current, so prepareExactPathProjection
+	// may not re-certify it from the previous valid row. In-memory only: the
+	// durable trace is the row's unknown turns state plus the repair that
+	// heals the sidecar.
+	ActivityStale bool `json:"activityStale,omitempty"`
 	// LogFormat is 2 for sessions whose event log is the append-only DAG; the
 	// head fields mirror its selected head and are zero for schema 1.
 	LogFormat          int    `json:"logFormat,omitempty"`

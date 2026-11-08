@@ -242,6 +242,18 @@ func recordFromOrder(target DirectoryTarget, info agent.SessionOrderInfo) Sessio
 	if heads.stale {
 		turnsState = TurnsUnknown
 	}
+	// tl1485b: counts can be fully current while the sidecar's UpdatedAt sits
+	// hours ahead of the transcript (the dead meta-only pump's stock). Such a
+	// row must reach the repair queue like any other listing defect, so the
+	// cheap tail probe de-certifies it here; the exact correction happens in
+	// the repair replay against the full decode. The probe reports false on
+	// missing evidence, so a failed read never parks a healthy row.
+	activityStale := false
+	if turnsState == TurnsValid &&
+		agent.SessionListingActivityAheadOfTranscript(info.Path, info.LastActivityAt) {
+		activityStale = true
+		turnsState = TurnsUnknown
+	}
 	createdAt := unixMilli(info.CreatedAt)
 	lastActivityAt := unixMilli(info.LastActivityAt)
 	// File mtime fills a missing clock. Do not raise a known sidecar UpdatedAt:
@@ -268,6 +280,7 @@ func recordFromOrder(target DirectoryTarget, info agent.SessionOrderInfo) Sessio
 		Preview:            info.Preview,
 		Turns:              info.Turns,
 		TurnsState:         turnsState,
+		ActivityStale:      activityStale,
 		Recovered:          info.Recovered,
 		RecoveryReason:     info.RecoveryReason,
 		RecoveryDigest:     info.RecoveryDigest,

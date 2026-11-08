@@ -148,21 +148,25 @@ ON CONFLICT(path_key) DO UPDATE SET `
 const repairScheduleUpdateSQL = `
     repair_state=CASE
         WHEN excluded.turns_state<>'unknown' THEN 'complete'
+        WHEN catalog_sessions.turns_state<>'unknown' THEN 'pending'
         WHEN catalog_sessions.repair_source_fingerprint<>excluded.repair_source_fingerprint
           OR catalog_sessions.repair_engine_version<>excluded.repair_engine_version THEN 'pending'
         ELSE catalog_sessions.repair_state END,
     repair_attempts=CASE
         WHEN excluded.turns_state<>'unknown'
+          OR catalog_sessions.turns_state<>'unknown'
           OR catalog_sessions.repair_source_fingerprint<>excluded.repair_source_fingerprint
           OR catalog_sessions.repair_engine_version<>excluded.repair_engine_version THEN 0
         ELSE catalog_sessions.repair_attempts END,
     repair_retry_at=CASE
         WHEN excluded.turns_state<>'unknown'
+          OR catalog_sessions.turns_state<>'unknown'
           OR catalog_sessions.repair_source_fingerprint<>excluded.repair_source_fingerprint
           OR catalog_sessions.repair_engine_version<>excluded.repair_engine_version THEN 0
         ELSE catalog_sessions.repair_retry_at END,
     repair_error_kind=CASE
         WHEN excluded.turns_state<>'unknown'
+          OR catalog_sessions.turns_state<>'unknown'
           OR catalog_sessions.repair_source_fingerprint<>excluded.repair_source_fingerprint
           OR catalog_sessions.repair_engine_version<>excluded.repair_engine_version THEN ''
         ELSE catalog_sessions.repair_error_kind END,
