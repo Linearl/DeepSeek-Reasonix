@@ -143,6 +143,10 @@ func (g *goalMachine) fillGoalTextIfEmpty(expectedEpoch uint64, goal string) (ui
 	g.budgetClass = budgetClassResearch
 	g.turnsLimit = unlimitedGoalTurns
 	g.noProgressLimit = 0
+	// tl1472: an archive recovery is a human direct request — re-arm and grant
+	// its first user turn.
+	g.setActivationLocked(true, goalActivationActorUser, "legacy_resume")
+	g.armGrant = true
 	if g.tokenBudget > 0 && g.tokensLimit <= g.tokensUsed {
 		g.tokensLimit = g.tokensUsed + g.tokenBudget
 	}
@@ -173,6 +177,10 @@ func (g *goalMachine) resumeLegacyArchive(expectedEpoch uint64, goal string) (ui
 	g.budgetClass = budgetClassResearch
 	g.turnsLimit = unlimitedGoalTurns
 	g.noProgressLimit = 0
+	// tl1472: an archive recovery is a human direct request — re-arm and grant
+	// its first user turn.
+	g.setActivationLocked(true, goalActivationActorUser, "legacy_resume")
+	g.armGrant = true
 	if g.tokenBudget > 0 && g.tokensLimit <= g.tokensUsed {
 		g.tokensLimit = g.tokensUsed + g.tokenBudget
 	}

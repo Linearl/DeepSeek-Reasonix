@@ -112,6 +112,18 @@ type goalMachine struct {
 	block              string
 	strict             bool
 	continuationEpoch  uint64
+	// activation (tl1472) is the armed/disarmed switch: the goal object is the
+	// session's pursuit contract, and this field alone admits or refuses the
+	// host's auto-continue loop. Zero reads as armed (goal_object.go).
+	activation string
+	// armGrant (tl1472, runtime-only) is the current armed stint's one-shot
+	// user-turn grant: the first user message after an explicit human install
+	// or resume belongs to the stint instead of disarming it. Never persisted.
+	armGrant bool
+	// summary (tl1472) is the 整理后摘要 for transparent display — a digest,
+	// never the raw input text. Set at goal creation (derived) or by the
+	// model's create_goal call.
+	summary string
 
 	tokenBudget int // configured ceiling for an unattended loop; 0 = unbounded
 
@@ -200,6 +212,13 @@ type goalState struct {
 	// was started with: turning the setting off later must not adopt an old goal,
 	// and turning it on must not resurrect an interactive one.
 	Autopilot bool `json:"autopilot,omitempty"`
+
+	// Activation (tl1472) is the armed/disarmed switch; omitted means armed
+	// (the historical default — pre-1472 running goals could auto-continue).
+	Activation string `json:"activation,omitempty"`
+	// Summary (tl1472) is the 整理后摘要 shown in the sidebar; the raw goal
+	// text stays in Goal.
+	Summary string `json:"summary,omitempty"`
 }
 
 // goalAdvanceInput carries everything the FSM needs for one continuation step,
@@ -216,6 +235,10 @@ type goalAdvanceInput struct {
 	pauseCause       string   // explicit spend boundary reported by the Agent
 	pauseReason      string
 	expectedEpoch    *uint64
+	// createdThisTurn (tl1472) marks the turn that installed a model-authored
+	// goal: no update_goal report exists for it and no evaluator verdict is
+	// owed — the goal was just created, so the loop continues straight away.
+	createdThisTurn bool
 }
 
 // goalEvaluatorVerdict is the bounded evaluator's structured outcome.
@@ -236,9 +259,14 @@ type goalAdvanceResult struct {
 	continuationEpoch uint64
 	// cause (tl1459) is set whenever this step took the Goal out of running.
 	cause string
-	path  string
-	data  []byte
-	ok    bool
+	// halted (tl1472) names why an in-pursuit goal stopped auto-continuing
+	// without leaving running: "disarmed" (a user message took over) or
+	// "no_progress" (连续 N 轮无进展，disarm 全集⑤). Observational; the
+	// activation log line carries the same fact with its actor.
+	halted string
+	path   string
+	data   []byte
+	ok     bool
 }
 
 // goalContinuationSnapshot binds a continuation to the exact Goal lifecycle
@@ -387,6 +415,7 @@ func (g *goalMachine) installGoalLocked(goal, preferredBudgetClass string) {
 	g.stopCause = ""
 	g.budgetExtensions = 0
 	g.progressEvidence = nil
+	g.summary = ""
 	if goal == "" {
 		if strings.TrimSpace(g.goal) != "" {
 			g.lastStopCause = goalCauseCleared
@@ -397,6 +426,8 @@ func (g *goalMachine) installGoalLocked(goal, preferredBudgetClass string) {
 		g.noProgressLimit = 0
 		g.scopeID = ""
 		g.deliveryCheckpoint = evidence.DeliveryCheckpoint{}
+		g.armGrant = false
+		g.setActivationLocked(false, goalActivationActorUser, "clear")
 	} else {
 		g.goal, g.status = goal, GoalStatusRunning
 		g.lastStopCause = ""
@@ -406,6 +437,11 @@ func (g *goalMachine) installGoalLocked(goal, preferredBudgetClass string) {
 		g.turnsLimit = unlimitedGoalTurns
 		g.tokensLimit = g.tokenBudget
 		g.noProgressLimit = 0
+		// tl1472: a fresh install arms the object and grants its first user
+		// turn; the digest derives from the goal text until create_goal stores
+		// an explicit one.
+		g.setActivationLocked(true, goalActivationActorUser, "install")
+		g.armGrant = true
 	}
 	// Installing a normal Goal always abandons any pending legacy migration.
 	g.legacyTaskID = ""
@@ -458,6 +494,9 @@ func (g *goalMachine) stop(status, cause string, todos []evidence.TodoItem) (pat
 		g.lastStopCause = cause
 		left = true
 	}
+	// tl1472 disarm 全集②: an explicit stop always withdraws the auto-continue
+	// permit, even when the interactive goal stays running for its scope.
+	g.setActivationLocked(false, goalActivationActorHost, cause)
 	g.stopCause = ""
 	g.noProgressTurns = 0
 	path, data, ok = g.buildStateLocked(todos)
@@ -474,6 +513,9 @@ func (g *goalMachine) pauseFor(stopCause, reason string, todos []evidence.TodoIt
 		g.status = GoalStatusBlocked
 		g.lastStopCause = stopCause
 	}
+	// tl1472 disarm 全集②④: a pause (manual or budget boundary) withdraws the
+	// auto-continue permit; resume() re-arms it.
+	g.setActivationLocked(false, goalActivationActorHost, stopCause)
 	g.stopCause = stopCause
 	if reason != "" {
 		g.block = reason
@@ -506,6 +548,10 @@ func (g *goalMachine) resume(todos []evidence.TodoItem) (path string, data []byt
 	g.turnsLimit = unlimitedGoalTurns
 	g.noProgressLimit = 0
 	g.budgetExtensions = 0
+	// tl1472: /goal resume is a human direct request — it re-arms the object
+	// and grants its first user turn (权限分层：resume 须人类直接请求).
+	g.setActivationLocked(true, goalActivationActorUser, "resume")
+	g.armGrant = true
 	g.grantSpendSliceLocked(spentBudget)
 	if g.scopeID == "" {
 		g.scopeID = newGoalScopeID()
@@ -606,6 +652,40 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	if in.evaluatorFailed == "" && (in.evaluator == nil || in.evaluator.outcome != goaleval.OutcomeUncertain) {
 		g.evaluatorFailTurns = 0
 	}
+	// tl1472 disarm 全集⑤: goalNoProgressDisarmTurns consecutive turns with no
+	// new host progress evidence withdraw the auto-continue permit. The naive
+	// criterion reads the same progress window the FSM already tracks; tl1460
+	// owns the smarter judgement layer and must remain the only progress anchor
+	// (不迁移红线：不得两套并存).
+	if g.noProgressTurns >= goalNoProgressDisarmTurns {
+		g.setActivationLocked(false, goalActivationActorFSM, "no_progress")
+	}
+	// The activation gate: only an armed goal admits a synthetic continuation
+	// turn (续跑准入 = active + armed). Terminal branches below still apply to
+	// a disarmed goal — a user-takeover turn can legitimately report complete.
+	armed := g.activationLocked() == GoalActivationArmed
+	// tl1472: a disarmed goal is no longer under pursuit — the user drives.
+	// With nothing to judge (no report, no readiness gap, no pause boundary,
+	// no evaluator input) the turn ends the loop without FSM side effects: no
+	// fail-closed evaluator pause, no budget/deadline transition. The goal
+	// object stays active+visible with the armed permit withdrawn. Terminal
+	// shapes (report, readiness partial, pause) still fall through to the
+	// switch below so a takeover turn can legitimately complete the goal.
+	if !armed && in.report == nil && len(in.readiness.Missing) == 0 &&
+		in.pauseCause == "" && in.evaluatorFailed == "" && in.evaluator == nil {
+		halted := "disarmed"
+		if g.noProgressTurns >= goalNoProgressDisarmTurns {
+			halted = "no_progress"
+		}
+		res := goalAdvanceResult{
+			notice:            "",
+			cont:              false,
+			halted:            halted,
+			continuationEpoch: g.continuationEpoch,
+		}
+		res.path, res.data, res.ok = g.buildStateLocked(in.todos)
+		return res
+	}
 	switch {
 	case g.autopilotDeadlineReachedLocked():
 		// An unattended run that has used its wall clock stops before any other
@@ -675,7 +755,7 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 			// Unattended: a single uncertain verdict must not kill a long run
 			// (API blips), and must not spin forever either (task 109 B7).
 			g.evaluatorFailTurns++
-			if g.evaluatorFailTurns <= maxAutopilotEvaluatorFails {
+			if g.evaluatorFailTurns <= maxAutopilotEvaluatorFails && armed {
 				g.lastEvaluatorReason = clipGoalReason(reason)
 				notice = ""
 				// Fall through to continue below via applyContinue.
@@ -686,6 +766,19 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 					intercept:         intercept,
 					interceptNotice:   interceptNotice,
 					cont:              notice == "",
+					continuationEpoch: g.continuationEpoch,
+				}
+				res.path, res.data, res.ok = g.buildStateLocked(in.todos)
+				return res
+			}
+			if g.evaluatorFailTurns <= maxAutopilotEvaluatorFails {
+				// Disarmed: keep the fail-tolerance counter semantics but halt
+				// the loop without a terminal transition (牌=disarmed ⇒ 必不续).
+				g.lastEvaluatorReason = clipGoalReason(reason)
+				res := goalAdvanceResult{
+					notice:            "",
+					cont:              false,
+					halted:            "disarmed",
 					continuationEpoch: g.continuationEpoch,
 				}
 				res.path, res.data, res.ok = g.buildStateLocked(in.todos)
@@ -738,7 +831,29 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 		g.progressEvidence = nil
 		g.lastContinuationReason, g.lastEvaluatorReason = "", ""
 		notice = goalCompleteNotice
+	case in.createdThisTurn && armed:
+		// tl1472: the turn that installed a model-authored goal had no report
+		// and owes no evaluator verdict — the loop continues straight away with
+		// the standard continuation prompt (plus readiness guidance if todos
+		// are outstanding).
+		intercept, interceptNotice = g.applyContinue(in, false, false, completeDecision{})
 	default:
+		if !armed {
+			// 牌=disarmed ⇒ 必不续 (状态一致性契约). The goal object stays
+			// active for visibility and scope; the loop halts instead.
+			halted := "disarmed"
+			if g.noProgressTurns >= goalNoProgressDisarmTurns {
+				halted = "no_progress"
+			}
+			res := goalAdvanceResult{
+				notice:            "",
+				cont:              false,
+				halted:            halted,
+				continuationEpoch: g.continuationEpoch,
+			}
+			res.path, res.data, res.ok = g.buildStateLocked(in.todos)
+			return res
+		}
 		intercept, interceptNotice = g.applyContinue(in, reportComplete, evaluatorComplete, complete)
 	}
 	// An unattended run leaves nobody to ask what happened, so every terminal notice
@@ -755,6 +870,10 @@ func (g *goalMachine) advance(in goalAdvanceInput) goalAdvanceResult {
 	if g.status != GoalStatusRunning {
 		g.lastStopCause = cause
 		res.cause = cause
+		// tl1472 disarm 全集③④: every terminal transition withdraws the
+		// auto-continue permit in one place (consolidated rather than per-branch
+		// so a newly added terminal state cannot ship armed).
+		g.setActivationLocked(false, goalActivationActorFSM, cause)
 	}
 	res.path, res.data, res.ok = g.buildStateLocked(in.todos)
 	return res
@@ -864,6 +983,8 @@ func (g *goalMachine) buildStateLocked(todos []evidence.TodoItem) (path string, 
 		BudgetExtensions:       g.budgetExtensions,
 		ProgressEvidence:       append([]string(nil), g.progressEvidence...),
 		Autopilot:              g.autopilot,
+		Activation:             g.activation,
+		Summary:                g.summary,
 	}
 	// GoalResearchOff is a downgrade fence for ordinary Goal sidecars. A
 	// fail-closed legacy migration keeps its task identity and compatibility mode
@@ -1036,6 +1157,13 @@ func (g *goalMachine) restoreFromState(sessionPath string) (path string, data []
 	g.stopCause = state.StopCause
 	g.lastStopCause = state.LastStopCause
 	g.budgetExtensions = state.BudgetExtensions
+	// tl1472: activation defaults to armed when the field is absent — a
+	// pre-1472 running sidecar keeps its historical auto-continue permit.
+	g.activation = state.Activation
+	if g.activation == "" {
+		g.activation = GoalActivationArmed
+	}
+	g.summary = strings.TrimSpace(state.Summary)
 	g.progressEvidence, _ = mergeGoalProgressEvidence(nil, state.ProgressEvidence)
 	g.lastContinuationReason = state.LastContinuationReason
 	g.lastEvaluatorReason = state.LastEvaluatorReason
@@ -1218,6 +1346,16 @@ func (r *goalTurnRecorder) RecordGoalReport(report tool.GoalReport) (string, err
 	wireStatus := report.Status
 	if report.Status == "continue" {
 		report.Status = GoalStatusRunning
+	}
+	// tl1472 权限分层：blocked 模型可报但有最小轮次门槛——刚立的目标第一轮
+	// 就喊 blocked 视为逃逸，退回 continue 语义继续工作。
+	if report.Status == GoalStatusBlocked {
+		turnNumber, active := r.machine.turnNumberForReport(r.scopeID, r.epoch)
+		if active && turnNumber < goalBlockedMinTurns {
+			return "", fmt.Errorf(
+				"update_goal: blocked requires at least %d goal turns of work (this is turn %d) — no goal state was changed. Keep working on what you can, or report continue with the blocker in reason; only the user can lift a genuine blocker, so give them the specifics",
+				goalBlockedMinTurns, turnNumber)
+		}
 	}
 	switch {
 	case r.terminal:

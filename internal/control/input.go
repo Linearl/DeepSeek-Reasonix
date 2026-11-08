@@ -159,19 +159,21 @@ func (c *Controller) Compose(text string) string {
 
 func (c *Controller) compose(text, source string, includeHookContext bool) string {
 	goal, goalStatus := c.goals.snapshot()
+	activation := c.goals.activationValue()
 	return c.composeWithGoal(
 		text,
 		source,
 		includeHookContext,
 		goal,
 		goalStatus,
+		activation,
 	)
 }
 
 func (c *Controller) composeWithGoal(
 	text, source string,
 	includeHookContext bool,
-	goal, goalStatus string,
+	goal, goalStatus, activation string,
 ) string {
 	c.mu.Lock()
 	plan := c.sessionSettings.planMode
@@ -182,7 +184,7 @@ func (c *Controller) composeWithGoal(
 	notes := c.memory.drainPending()
 
 	if strings.TrimSpace(goal) != "" && goalStatus == GoalStatusRunning {
-		prefix := activeGoalBlock(goal)
+		prefix := activeGoalBlock(goal, activation)
 		text = prefix + "\n\n" + text
 	}
 	if plan {
@@ -328,7 +330,7 @@ func (c *Controller) ComposeSynthetic(text string) string {
 	return agent.WithReasoningLanguageForSource(text, lang, text)
 }
 
-func activeGoalBlock(goal string) string {
+func activeGoalBlock(goal, activation string) string {
 	goal = strings.TrimSpace(goal)
 	goal = strings.ReplaceAll(goal, activeGoalClose, "<\\/active-goal>")
 	var b strings.Builder
@@ -336,10 +338,23 @@ func activeGoalBlock(goal string) string {
 	b.WriteString("\n")
 	b.WriteString(goal)
 	b.WriteString("\n\n")
+	// tl1472: the activation line states the armed/disarmed contract so the
+	// model never assumes continuation the host will not run (状态牌与续跑
+	// 解耦——prompt 面同步).
+	b.WriteString(goalActivationInstructions(activation))
+	b.WriteString("\n")
 	b.WriteString(goalTaskContractInstructions)
 	b.WriteString("\n")
 	b.WriteString(activeGoalClose)
 	return b.String()
+}
+
+// goalActivationInstructions renders the per-state continuation contract.
+func goalActivationInstructions(activation string) string {
+	if activation == GoalActivationDisarmed {
+		return "Activation: disarmed — a new user message paused auto-continue. The goal stays visible in the sidebar, but this turn will NOT be followed by automatic goal continuation. Answer the user; they can re-arm with /goal resume. A report of complete still ends the goal."
+	}
+	return "Activation: armed — after each turn the host validates your update_goal disposition and automatically continues pursuing this goal; the sidebar shows the armed state."
 }
 
 const goalTaskContractInstructions = `Goal mode: pursue this goal autonomously. Treat the user's goal as a task contract:

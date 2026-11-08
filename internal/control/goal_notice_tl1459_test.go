@@ -294,6 +294,8 @@ func TestGoalAdvanceNoticeCarriesCodeAndCause(t *testing.T) {
 	ag := agent.New(nil, nil, agent.NewSession(""), agent.Options{}, event.Discard)
 	c := New(Options{Executor: ag, Sink: rec.sink()})
 	c.SetGoal("ship the release")
+	// tl1472 blocked 最小轮次门槛：先走完一轮（第 1 轮），blocked 在第 2 轮申报。
+	c.goals.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusRunning, reason: "work"}})
 	scope, _, _ := c.goals.deliveryScope()
 	recorder := c.goals.newTurnRecorder(scope, c.goals.continuationToken())
 	c.goalUsageTee.setActiveRecorder(recorder)

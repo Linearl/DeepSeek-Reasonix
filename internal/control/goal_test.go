@@ -130,7 +130,7 @@ func toolCallChunk(id, name, args string) provider.Chunk {
 }
 
 func TestActiveGoalBlockCarriesTaskContractAndPausePolicy(t *testing.T) {
-	block := activeGoalBlock("fix the parser")
+	block := activeGoalBlock("fix the parser", GoalActivationArmed)
 	for _, want := range []string{
 		"Treat the user's goal as a task contract",
 		"Context, Request, Output format, Constraints",
@@ -486,7 +486,10 @@ func TestCancelStopsIdleGoalWithIncompleteTodos(t *testing.T) {
 }
 
 func TestGoalRepeatedBlockedStopsAfterThreeTurns(t *testing.T) {
+	// tl1472 blocked 最小轮次门槛：blocked 从第 2 轮起可报——第一轮先 continue，
+	// 第二轮的 blocked 照旧一锤定音（无三确认仪式、无 intercept）。
 	prov := &scriptedTurns{turns: flattenTurns(
+		goalToolTurn(GoalStatusRunning, "warming up", "check credentials"),
 		goalToolTurn(GoalStatusBlocked, "Needs credentials.", ""),
 	)}
 	ag := agent.New(prov, goalRegistry(), agent.NewSession(""), agent.Options{}, event.Discard)
@@ -504,8 +507,8 @@ func TestGoalRepeatedBlockedStopsAfterThreeTurns(t *testing.T) {
 	c.Submit("/goal deploy the service")
 	waitForTurnDone(t, events)
 
-	if prov.call != 2 {
-		t.Fatalf("provider calls = %d, want 1 goal turn (report + final answer)", prov.call)
+	if prov.call != 4 {
+		t.Fatalf("provider calls = %d, want 2 goal turns (report + final answer each)", prov.call)
 	}
 	if got := c.GoalStatus(); got != GoalStatusBlocked {
 		t.Fatalf("GoalStatus() = %q, want blocked", got)
@@ -891,15 +894,24 @@ func TestCompleteRemainingGoalTodosEdgeCases(t *testing.T) {
 }
 
 // TestRepeatedCompleteWithIncompleteTodosKeepsWorking verifies that readiness
-// rejection cannot be converted into a numeric pause.
+// rejection cannot be converted into a numeric pause, and (tl1472 disarm 全集⑤)
+// that a complete-claim loop with no host-observable progress disarms instead
+// of looping forever: the goal object stays running, the loop stops.
 func TestRepeatedCompleteWithIncompleteTodosKeepsWorking(t *testing.T) {
 	g := &goalMachine{goal: "fix everything", status: GoalStatusRunning, turnsLimit: unlimitedGoalTurns}
 	todos := []evidence.TodoItem{{Content: "Fix the parser", Status: "in_progress"}}
-	for i := range 101 {
+	for i := range goalNoProgressDisarmTurns - 1 {
 		res := g.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusComplete}, todos: todos})
 		if !res.cont || g.status != GoalStatusRunning || g.stopCause != "" {
 			t.Fatalf("readiness rejection paused at turn %d: result=%+v runtime=%+v", i+1, res, g.runtimeView())
 		}
+	}
+	res := g.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusComplete}, todos: todos})
+	if res.cont || res.halted != "no_progress" || g.status != GoalStatusRunning || g.stopCause != "" {
+		t.Fatalf("stuck complete-claim loop must disarm at turn %d, not pause: result=%+v runtime=%+v", goalNoProgressDisarmTurns, res, g.runtimeView())
+	}
+	if g.activationValue() != GoalActivationDisarmed {
+		t.Fatalf("activation = %q, want disarmed", g.activationValue())
 	}
 }
 

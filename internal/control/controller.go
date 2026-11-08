@@ -194,6 +194,11 @@ type Controller struct {
 	// summary for the task-544 continuation prompt. Cleared at orchestrated
 	// turn start; consumed one-shot by the task-544 continuation trigger.
 	turnAskAnsweredSummary string
+	// goalCreatedByModelThisTurn (tl1472, guarded by mu) marks that the running
+	// turn installed a model-authored goal via create_goal; the goal loop's
+	// advance step consumes it one-shot to treat that turn as the goal's first
+	// turn instead of a recorder-less gate exit.
+	goalCreatedByModelThisTurn bool
 	// preapproveManaged is the task-231 snapshot (master switch + four
 	// checkboxes + home paths) fixed at construction; see preapprove_managed.go.
 	preapproveManaged PreapproveManagedOptions
@@ -2176,6 +2181,8 @@ func (c *Controller) SubmitEditedDisplay(display, input, original string) {
 // commands. It still resolves references, so callers can submit trusted
 // user-authored prompt text without expanding the command surface.
 func (c *Controller) SubmitUserTurn(input, display string) {
+	// tl1472 disarm 全集①: programmatic user turns are user messages too.
+	c.disarmGoalForIncomingMessage("user_turn")
 	c.runRefTurn(input, display)
 }
 
@@ -2192,6 +2199,10 @@ func (c *Controller) submit(input, display, editedOriginal string) {
 	if c.applyGoalCommand(trimmed, display) {
 		return
 	}
+	// tl1472 disarm 全集①: a real user message withdraws the goal's
+	// auto-continue permit before the turn runs (用户接管 ⇒ 旧目标不再自动续).
+	// /goal commands return above — explicit goal control keeps its semantics.
+	c.disarmGoalForIncomingMessage("composer")
 	// tl1274: "!!" at the head is the desktop quick-command picker trigger
 	// (task 593), not a shell command. When the picker did not consume the
 	// token (no match, picker disabled, or the raw line sent as-is), the text
@@ -2222,6 +2233,9 @@ func (c *Controller) submitHTTPWithFormat(input, display, format string) {
 	if c.applyGoalCommand(trimmed, display) {
 		return
 	}
+	// tl1472 disarm 全集①: same as the local composer path — remote/HTTP
+	// submissions are user messages too (群聊/远程入口含在内).
+	c.disarmGoalForIncomingMessage("remote_composer")
 	// tl1274: "!!" is the quick-command picker trigger (task 593), not shell —
 	// it goes through as a normal turn, matching the Submit path.
 	if strings.HasPrefix(trimmed, "!") && !strings.HasPrefix(trimmed, "!!") {
@@ -3229,7 +3243,13 @@ func (c *Controller) TrySteer(text string) bool {
 	exec := c.executor
 	running := c.running
 	c.mu.Unlock()
-	return running && exec != nil && exec.Steer(text)
+	if !(running && exec != nil && exec.Steer(text)) {
+		return false
+	}
+	// tl1472 disarm 全集①: an accepted steer is the user driving mid-turn —
+	// the goal's auto-continue permit is withdrawn (turn end honours it).
+	c.disarmGoalForIncomingMessage("steer")
+	return true
 }
 
 // Steer is the compatibility path for callers that cannot observe admission.

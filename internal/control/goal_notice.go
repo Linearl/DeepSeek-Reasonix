@@ -137,16 +137,21 @@ func (c *Controller) noticeGoalCleared() {
 }
 
 // noticeGoalAutoContinueHalted reports exit ②: a Goal turn ended on an error
-// the FSM does not own. The Goal stays running — the next message continues
-// it — but its auto-continue stopped, which before tl1459 looked like a Goal
-// control that was "on" and did nothing.
+// the FSM does not own. The Goal stays running — the next message keeps the
+// scope — but its auto-continue stopped, which before tl1459 looked like a
+// Goal control that was "on" and did nothing. tl1472: the halt now also
+// withdraws the armed permit (打点+persist), so the sidebar's armed/disarmed
+// state mirrors reality instead of the 1459 mirror ("显示 running 其实早已
+// disarmed"). /goal resume re-arms.
 func (o *turnOrchestrator) noticeGoalAutoContinueHalted(recorder *goalTurnRecorder, err error) {
 	if o == nil || o.c == nil || recorder == nil || !o.c.goals.active() {
 		return
 	}
 	o.c.emitGoalNotice(event.NoticeCodeGoalAutoContinueHalted, event.LevelWarn,
-		"goal auto-continue stopped after a turn error; the goal is still active and the next message continues it",
+		"goal auto-continue stopped after a turn error; the goal stays active but disarmed (/goal resume re-arms it)",
 		goalNoticeDetail("turn_error", GoalStatusRunning, goalTraceErr(err)))
+	path, data, ok := o.c.goals.disarm(goalActivationActorHost, "turn_error", o.c.goalTodos())
+	o.c.persistGoalState(path, data, ok)
 }
 
 // turnInactiveReason explains why a recorder bound to (scopeID, epoch) is no

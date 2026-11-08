@@ -21,8 +21,8 @@ const (
 	NoticeCodeProviderRejectionRewrite = "provider_rejection_rewrite"
 	NoticeCodeProviderRejectionDegrade = "provider_rejection_degrade"
 	NoticeCodeFallbackModelSwitched    = "fallback_model_switched"
-	NoticeCodeReadinessAdvisory     = "readiness_advisory"
-	NoticeCodeExecutorHandoff       = "executor_handoff"
+	NoticeCodeReadinessAdvisory        = "readiness_advisory"
+	NoticeCodeExecutorHandoff          = "executor_handoff"
 	// NoticeCodeStalledIntent (任务 1069)：模型「宣布下一步就停」触发的续轮
 	// 提醒——此前复用 executor_handoff，日志/前端无法单独检索本类事件，现独立
 	// 成码（executor-handoff 自身的 run_loop 279/300/682 三处不变）。
@@ -179,6 +179,13 @@ const (
 	NoticeCodeGoalStopped            = "goal_stopped"
 	NoticeCodeGoalCleared            = "goal_cleared"
 	NoticeCodeGoalAutoContinueHalted = "goal_auto_continue_halted"
+	// tl1472 目标对象化: goal_created reports the model channel's create_goal
+	// install (双通道创建); goal_disarmed reports disarm 全集① — a user message
+	// withdrew the auto-continue permit while the goal object stays active.
+	// Same dual-track contract as the codes above: Text is the English
+	// technical line, Detail carries cause=; frontends refresh the Goal state.
+	NoticeCodeGoalCreated  = "goal_created"
+	NoticeCodeGoalDisarmed = "goal_disarmed"
 	// NoticeCodeReasoningOnlyContinuation (tl-1166 B): a final carried ONLY
 	// reasoning with an empty visible answer; the host injected ONE reminder
 	// asking the model to answer directly (its thinking stays in history).
