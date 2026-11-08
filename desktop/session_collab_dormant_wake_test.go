@@ -16,8 +16,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -553,5 +555,133 @@ func TestDormantWiringUsesLiveRuntimeGuard(t *testing.T) {
 	}
 	if n := strings.Count(body, "app.sessionHasLiveRuntimeForPath"); n < 2 {
 		t.Fatalf("want >=2 wired call sites (collectDormant seam + build-time re-check), got %d", n)
+	}
+}
+
+// ---- tl1339 刀②：dormant probe 对 claimed 无主队首可见化（零行为，只加痕）----
+
+// heldHeadRows writes rows with the given states through the real Store path
+// (enqueue → SetState), leaving behind the durable shape a vanished runtime
+// would: claimed rows stranded in the manifest. Row bodies MUST be unique:
+// with no explicit idempotency key the content fingerprint IS the key
+// (task 309), so two identical rows would silently dedup onto one manifest row
+// and the fixture would quietly not contain the rows it claims to.
+func heldHeadRows(t *testing.T, path string, states ...sessioninbox.InboxState) {
+	t.Helper()
+	st, err := sessioninbox.Open(path, sessioninbox.Limits{})
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+	for i, state := range states {
+		text := fmt.Sprintf("tl1339 held-head row %d", i)
+		rec, err := st.Enqueue(sessioninbox.EnqueueRequest{
+			Intent: sessioninbox.IntentFollowup,
+			Envelope: sessioninbox.PromptEnvelope{
+				DisplayText: text,
+				RawText:     text,
+				SubmitText:  text,
+			},
+		})
+		if err != nil {
+			t.Fatalf("enqueue row %d: %v", i, err)
+		}
+		if rec.Idempotent {
+			t.Fatalf("row %d deduped onto an existing manifest row — fixture rows must have unique bodies", i)
+		}
+		if state != sessioninbox.StateQueued {
+			if err := st.SetState(rec.ItemID, state, ""); err != nil {
+				t.Fatalf("set row %d to %s: %v", i, state, err)
+			}
+		}
+	}
+}
+
+// 修前红：队首被 ClaimItem 认领成 running/steer_accepted 后 runtime 消失时，
+// probe 直接 continue——零候选、零日志、零计数，「未转 exhausted 也无处查」
+// （tl1339 报告 §2.2#13）。修后绿：每轮 probe 一条痕 + DormantOrphanClaims
+// 计数，而候选面与修前逐字节一致（零行为对照钉）：
+//   - claimed 无主（认领行在前且无 queued）不生成候选（不变）；
+//   - uncertain（796 H4 人审架）不生成候选也不留痕（不变）；
+//   - queued 正常生成候选（不变）；认领行在前、queued 在后（mixed）仍按既有
+//     语义生成候选（queued 反查命中；认领行的复位属 807 reconciliation 面，
+//     本刀不碰，见交付报告 blocked 项）。
+func TestDormantProbeLeavesTraceForClaimedOwnerlessHead(t *testing.T) {
+	dir := t.TempDir()
+	runningPath := filepath.Join(dir, "running.jsonl")
+	heldHeadRows(t, runningPath, sessioninbox.StateRunning)
+	steerPath := filepath.Join(dir, "steer.jsonl")
+	heldHeadRows(t, steerPath, sessioninbox.StateSteerAccepted)
+	uncertainPath := filepath.Join(dir, "uncertain.jsonl")
+	heldHeadRows(t, uncertainPath, sessioninbox.StateUncertain)
+	queuedPath := filepath.Join(dir, "queued.jsonl")
+	heldHeadRows(t, queuedPath, sessioninbox.StateQueued)
+	mixedPath := filepath.Join(dir, "mixed.jsonl")
+	heldHeadRows(t, mixedPath, sessioninbox.StateRunning, sessioninbox.StateQueued)
+
+	type sighting struct {
+		contact string
+		head    sessioninbox.InboxItemMeta
+	}
+	var mu sync.Mutex
+	var sightings []sighting
+	prev := dormantHeldHeadSink
+	dormantHeldHeadSink = func(contact, _ string, head sessioninbox.InboxItemMeta) {
+		mu.Lock()
+		defer mu.Unlock()
+		sightings = append(sightings, sighting{contact, head})
+	}
+	t.Cleanup(func() { dormantHeldHeadSink = prev })
+	claimsBefore := sessioninbox.Metrics().DormantOrphanClaims
+
+	roster := dormantRoster(
+		"running", runningPath,
+		"steer", steerPath,
+		"uncertain", uncertainPath,
+		"queued", queuedPath,
+		"mixed", mixedPath,
+	)
+	cands := collectDormant(roster, nil,
+		func(string) bool { return false }, // no tab surface anywhere
+		sessioninbox.ProbeSnapshot,
+		func(_, _ string, err error) { t.Fatalf("probe must not fail: %v", err) },
+	)
+
+	// 零行为对照钉：候选面与修前一致——只有 queued 与 mixed 生成候选。
+	contacts := make([]string, 0, len(cands))
+	for _, c := range cands {
+		contacts = append(contacts, c.id.ContactID)
+	}
+	sort.Strings(contacts)
+	if len(contacts) != 2 || contacts[0] != "mixed" || contacts[1] != "queued" {
+		t.Fatalf("visibility patch must not change the candidate set, got %v", contacts)
+	}
+
+	// 留痕：running / steer 各一条（head 即被认领的行）；uncertain/queued/mixed
+	// 不留痕。
+	mu.Lock()
+	got := append([]sighting(nil), sightings...)
+	mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("claimed-ownerless heads must leave exactly 2 sightings, got %d (%+v)", len(got), got)
+	}
+	byContact := map[string]sessioninbox.InboxItemMeta{}
+	for _, s := range got {
+		byContact[s.contact] = s.head
+	}
+	if h, ok := byContact["running"]; !ok || h.State != sessioninbox.StateRunning {
+		t.Fatalf("running head must be sighted, got %+v", byContact["running"])
+	}
+	if h, ok := byContact["steer"]; !ok || h.State != sessioninbox.StateSteerAccepted {
+		t.Fatalf("steer_accepted head must be sighted, got %+v", byContact["steer"])
+	}
+	for _, contact := range []string{"uncertain", "queued", "mixed"} {
+		if _, ok := byContact[contact]; ok {
+			t.Fatalf("%s must not be sighted (by-design silent), got a sighting", contact)
+		}
+	}
+	// 计数打点：计数在检测点、与 sink 无关——2 个 claimed 无主 = 恰好 +2。
+	if delta := sessioninbox.Metrics().DormantOrphanClaims - claimsBefore; delta != 2 {
+		t.Fatalf("claimed-ownerless sightings must be counted, delta = %d", delta)
 	}
 }

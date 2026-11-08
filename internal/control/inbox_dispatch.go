@@ -150,6 +150,7 @@ func (c *Controller) dispatchInboxOnce() inboxDispatchResult {
 	}
 	meta, ok, err := c.nextInboxDispatchItem()
 	if err != nil {
+		c.setDispatchRetryFailure("", err)
 		slog.Warn("controller: open inbox for dispatch", "err", err)
 		return inboxDispatchRetry
 	}
@@ -162,10 +163,16 @@ func (c *Controller) dispatchInboxOnce() inboxDispatchResult {
 	beforeSubmit := c.inbox.beforeDispatchSubmit
 	c.inbox.mu.Unlock()
 	if !ok {
+		// tl1339 刀①: "empty" and "paused/readonly hides queued work" used to
+		// fold into the same silent idle. Leave a trail (zero behavior) when
+		// the queue was actually gate-held.
+		c.traceInboxGateHeld()
 		return inboxDispatchIdle
 	}
+	c.clearInboxDispatchGateHeld()
 	if beforeSubmit != nil {
 		if err := beforeSubmit(meta.ID); err != nil {
+			c.setDispatchRetryFailure(meta.ID, err)
 			slog.Warn("controller: inbox dispatch hook", "err", err, "id", meta.ID)
 			return inboxDispatchRetry
 		}
@@ -198,6 +205,7 @@ func (c *Controller) dispatchInboxOnce() inboxDispatchResult {
 				"id", meta.ID, "source", meta.Source)
 			return inboxDispatchRuntimePending
 		}
+		c.setDispatchRetryFailure(meta.ID, err)
 		slog.Warn("controller: dispatch inbox item", "err", err, "id", meta.ID)
 		return inboxDispatchRetry
 	}
@@ -278,8 +286,27 @@ func (c *Controller) dispatchQueuedAtToolGap() {
 
 func (c *Controller) scheduleInboxDispatchRetry() {
 	c.inbox.mu.Lock()
-	if c.inbox.dispatchRetryScheduled || c.inbox.dispatchRetryAttempts >= maxInboxDispatchRetryAttempts {
+	if c.inbox.dispatchRetryScheduled {
 		c.inbox.mu.Unlock()
+		return
+	}
+	if c.inbox.dispatchRetryAttempts >= maxInboxDispatchRetryAttempts {
+		// tl1339 刀①（报告 §2.1 #6/#9）: after the 3 bounded retries this
+		// boundary used to stop dead silent — the gate-held condition persisted
+		// with no exhaustion trail at all (the per-attempt WARNs above end at
+		// 3; unlike the 579④ runtime path there was no budget-spent report).
+		// One WARN per episode + counter, zero behavior: the budget still
+		// stands down, the item stays queued, the gate owner still owns the
+		// next kick.
+		lastID, lastErr := c.inbox.dispatchRetryLastID, c.inbox.dispatchRetryLastErr
+		first := !c.inbox.dispatchRetryExhaustedLogged
+		c.inbox.dispatchRetryExhaustedLogged = true
+		c.inbox.mu.Unlock()
+		sessioninbox.NoteRetryExhausted()
+		if first {
+			slog.Warn("controller: inbox dispatch retries exhausted; gate-held condition persists (item stays queued; budget stands down until a kick stops failing)",
+				"id", lastID, "attempts", maxInboxDispatchRetryAttempts, "last_err", lastErr)
+		}
 		return
 	}
 	attempt := c.inbox.dispatchRetryAttempts
@@ -305,6 +332,74 @@ func (c *Controller) scheduleInboxDispatchRetry() {
 func (c *Controller) resetInboxDispatchRetries() {
 	c.inbox.mu.Lock()
 	c.inbox.dispatchRetryAttempts = 0
+	// tl1339 刀①: a kick that stops failing (started turn or benign empty
+	// scan) ends the retry-exhaustion episode — a later re-exhaustion earns a
+	// fresh exhaustion WARN. The gate-held WARN flag (gateHeldLogged) is
+	// intentionally untouched here: every idle scan lands in this reset, and
+	// only the gate itself lifting ends that episode (cleared in
+	// traceInboxGateHeld / clearInboxDispatchGateHeld).
+	c.inbox.dispatchRetryExhaustedLogged = false
+	c.inbox.dispatchRetryLastID = ""
+	c.inbox.dispatchRetryLastErr = nil
+	c.inbox.mu.Unlock()
+}
+
+// traceInboxGateHeld is the tl1339 刀① visibility patch for the pump's silent
+// gate-held stop (调研报告 §2.1 #5). NextQueued answers "empty" both for a
+// truly empty queue and when the manifest gate (Paused / schema readonly)
+// hides queued follow-ups — the two used to fold into one unobservable idle,
+// so a multi-hour parked backlog looked identical to a quiet session and
+// burned no budget anywhere. This trace changes NO dispatch behavior (the
+// gate owner — user resume or the 709 auto-resume — still owns the next
+// kick): it leaves one transition-gated WARN per gate-held episode plus a
+// per-cycle counter, with paused provenance (user vs automatic) in the line.
+func (c *Controller) traceInboxGateHeld() {
+	st, err := c.ensureInbox()
+	if err != nil {
+		return
+	}
+	// CachedSnapshot: owner-local in-memory read, no cross-process disk lock —
+	// the dispatch loop must not grow a lock-wait because of a log line.
+	snap := st.CachedSnapshot()
+	queued := 0
+	for _, item := range snap.Items {
+		if item.State == sessioninbox.StateQueued {
+			queued++
+		}
+	}
+	c.inbox.mu.Lock()
+	if queued == 0 || (!snap.Paused && !snap.Readonly) {
+		// Benign empty scan, or the gate lifted between NextQueued and this
+		// snapshot: the episode is over — re-arm the transition WARN.
+		c.inbox.gateHeldLogged = false
+		c.inbox.mu.Unlock()
+		return
+	}
+	first := !c.inbox.gateHeldLogged
+	c.inbox.gateHeldLogged = true
+	c.inbox.mu.Unlock()
+	sessioninbox.NoteGateHeldSkip()
+	if first {
+		slog.Warn("controller: inbox dispatch gate-held; queued followups parked (item stays queued; no retry armed — the gate owner owns the next kick)",
+			"queued", queued, "paused", snap.Paused, "user_paused", snap.UserPaused, "readonly", snap.Readonly)
+	}
+}
+
+// clearInboxDispatchGateHeld ends a gate-held episode from the success side: a
+// scan admitted real work, so nothing is parked behind the gate anymore.
+func (c *Controller) clearInboxDispatchGateHeld() {
+	c.inbox.mu.Lock()
+	c.inbox.gateHeldLogged = false
+	c.inbox.mu.Unlock()
+}
+
+// setDispatchRetryFailure pins the retry-class failure for the budget-
+// exhaustion WARN (tl1339 刀①): the spent-budget line must name the item and
+// error that kept failing, not just the fact of standing down.
+func (c *Controller) setDispatchRetryFailure(id string, err error) {
+	c.inbox.mu.Lock()
+	c.inbox.dispatchRetryLastID = id
+	c.inbox.dispatchRetryLastErr = err
 	c.inbox.mu.Unlock()
 }
 

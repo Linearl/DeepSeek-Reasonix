@@ -51,6 +51,22 @@ import (
 // promise. Var so tests can drive probe rounds deterministically.
 var dormantProbeInterval = 15 * time.Second
 
+// dormantHeldHeadSink is the tl1339 刀② visibility seam for a claimed-but-
+// ownerless head: a manifest whose leading row sits in StateRunning /
+// StateSteerAccepted with no queued row anywhere (the row was claimed, then
+// the runtime vanished mid-turn). The probe must NOT wake such a session
+// (zero behavior change — the 807 reconciliation面 owns recovery), but it used
+// to be a total blind spot: no candidate, no log, no counter, so a
+// claim-then-vanish wedge was indistinguishable from an empty roster. Var so
+// tests can capture sightings; nil disables the log only (the counter still
+// tallies — it lives at the detection site).
+var dormantHeldHeadSink = func(contact, sessionPath string, head sessioninbox.InboxItemMeta) {
+	// Rate is bounded by the probe interval itself (≤1 line / 15s per stuck
+	// session), same cadence contract as the probe-failure log below.
+	log.Printf("[session-collab] dormant probe: claimed-ownerless head — contact %s (%s) head %s state %s has no runtime in this process; dormant wake cannot see it until a runtime returns",
+		contact, sessionPath, head.ID, head.State)
+}
+
 // dormantWakeCtrlTimeout bounds one wake's wait for the stood-up runtime to
 // publish its controller: cold builds measured 3-5s, the worst observed
 // (lease-blocked rebuild retrying every 2s) ~30s (task 738), so 60s covers it
@@ -127,6 +143,21 @@ func collectDormant(
 		}
 		if !hasQueued {
 			// 验收④：uncertain/blocked 队列是人审架（796 H4），不拉起。
+			// tl1339 刀②（可见化，零行为）：claimed 无主队首留痕——队首被
+			// ClaimItem 认领成 running/steer_accepted 后 runtime 消失
+			// （claim-then-vanish）时，本进程所有拉起路都看不见它。候选仍
+			// 不生成（行为与此前逐字节一致），但每轮 probe 留一条痕 + 计数，
+			// 关掉「未转 exhausted 也无处查」的观测盲区（tl1339 报告
+			// §2.2#13）。uncertain/blocked 仍不留痕：那是人审架，非静默停滞。
+			for _, item := range snap.Items {
+				if item.State == sessioninbox.StateRunning || item.State == sessioninbox.StateSteerAccepted {
+					sessioninbox.NoteDormantOrphanClaim()
+					if dormantHeldHeadSink != nil {
+						dormantHeldHeadSink(contact, id.SessionPath, item)
+					}
+					break
+				}
+			}
 			continue
 		}
 		out = append(out, dormantQueuedTarget{

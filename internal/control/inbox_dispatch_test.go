@@ -1,12 +1,15 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -499,5 +502,183 @@ func TestInboxRuntimeRetryBudgetRearmsAfterEpisode(t *testing.T) {
 		}
 	case <-time.After(inboxDispatchTestTimeout):
 		failInboxDispatchWait(t, c, "episode two first retry")
+	}
+}
+
+// ---- tl1339 刀①：paused 类 gate-held 静默停补口（可见化，零行为）----
+
+// captureControllerLogs swaps the default slog logger for a buffer so the
+// WARN trails the tl1339 patches leave are assertable. Restored via cleanup;
+// tests using it must not call t.Parallel (the default logger is global).
+func captureControllerLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+// 修前红：manifest 暂停把 queued follow-up 从 NextQueued 背后藏起来时，泵把这
+// 一枪静默归为 idle——无 WARN、无计数、无预算。修后绿：一条 WARN（每 episode
+// 一条）+ GateHeldSkips 计数，且行为逐字节不变（零行为对照钉）：item 仍
+// queued、不开轮、不装 retry；resume 后照常消费（放行语义未被本刀改动）。
+func TestInboxDispatchGateHeldPausedLeavesTrace(t *testing.T) {
+	logs := captureControllerLogs(t)
+	c, runner, done := newInboxDispatchController(t)
+	if _, err := c.EnqueueInbox(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "parked behind pause"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetInboxPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	gateBefore := sessioninbox.Metrics().GateHeldSkips
+
+	// 修前：这一枪无声。修后：一条 WARN + 计数 +1。
+	c.maybeDispatchInbox()
+	c.autosaveWG.Wait()
+
+	if delta := sessioninbox.Metrics().GateHeldSkips - gateBefore; delta != 1 {
+		t.Fatalf("gate-held skip must be counted (tl1339 刀①), delta = %d", delta)
+	}
+	if !strings.Contains(logs.String(), "gate-held") {
+		t.Fatalf("gate-held dispatch must leave a WARN trail, logs = %q", logs.String())
+	}
+
+	// 零行为对照钉①：item 原位（queued、不挪动），未开轮。
+	snap := c.InboxSnapshot()
+	if len(snap.Items) != 1 || snap.Items[0].State != sessioninbox.StateQueued {
+		t.Fatalf("visibility patch must not move the item, snapshot = %+v", snap)
+	}
+	select {
+	case got := <-runner.inputs:
+		t.Fatalf("gate-held trace must not open a turn, got %q", got)
+	default:
+	}
+	// 零行为对照钉②：不装 retry——「gate owner owns the next kick」契约不变。
+	c.inbox.mu.Lock()
+	attempts, scheduled := c.inbox.dispatchRetryAttempts, c.inbox.dispatchRetryScheduled
+	c.inbox.mu.Unlock()
+	if attempts != 0 || scheduled {
+		t.Fatalf("gate-held trace must not arm retries: attempts=%d scheduled=%t", attempts, scheduled)
+	}
+
+	// 同 episode 第二枪：计数照加、WARN 不重复（transition-gated）。
+	c.maybeDispatchInbox()
+	c.autosaveWG.Wait()
+	if delta := sessioninbox.Metrics().GateHeldSkips - gateBefore; delta != 2 {
+		t.Fatalf("each gate-held cycle tallies, delta = %d", delta)
+	}
+	if n := strings.Count(logs.String(), "gate-held"); n != 1 {
+		t.Fatalf("gate-held WARN must be once per episode, got %d lines", n)
+	}
+
+	// 回归锚：放行语义未变——resume 后照常消费这条排队消息。
+	if err := c.SetInboxPaused(false); err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForInboxDispatch(t, c, runner); got != "parked behind pause" {
+		t.Fatalf("resume must dispatch exactly as before the patch, got %q", got)
+	}
+	waitForInboxTurnDone(t, c, done)
+}
+
+// 自动暂停形态（709 恢复暂停，UserPaused=false）走同一补口；WARN 必须携带
+// user_paused=false 溯源字段（20261023 诊断的「自动暂停无任何日志」形状）。
+func TestInboxDispatchGateHeldAutoPausedLeavesTrace(t *testing.T) {
+	logs := captureControllerLogs(t)
+	c, runner, _ := newInboxDispatchController(t)
+	if _, err := c.EnqueueInbox(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "auto-paused backlog"}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := c.ensureInbox()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Store 级 SetPaused：只置 Paused，不带 UserPaused——自动暂停形状。
+	if err := st.SetPaused(true); err != nil {
+		t.Fatal(err)
+	}
+
+	c.maybeDispatchInbox()
+	c.autosaveWG.Wait()
+
+	if !strings.Contains(logs.String(), "gate-held") {
+		t.Fatalf("auto-paused gate must leave a WARN trail, logs = %q", logs.String())
+	}
+	if !strings.Contains(logs.String(), "user_paused=false") {
+		t.Fatalf("gate-held WARN must carry user_paused provenance, logs = %q", logs.String())
+	}
+	select {
+	case got := <-runner.inputs:
+		t.Fatalf("no turn may open behind the gate, got %q", got)
+	default:
+	}
+}
+
+// 修前红：通用 admission 失败 3 振（50/200/500ms）后静默停——预算耗尽点无痕
+// （对照 579④ runtime 路径有耗尽报告，这条通用路径一条都没有）。修后绿：耗
+// 尽点一条 WARN/episode + RetryExhausted 计数，且零行为：预算仍封存、item 仍
+// queued、无 turn。
+func TestInboxDispatchRetryExhaustionLeavesTrace(t *testing.T) {
+	logs := captureControllerLogs(t)
+	c, runner, _ := newInboxDispatchController(t)
+	retryReady := make(chan func(), 8)
+	c.inbox.mu.Lock()
+	c.inbox.beforeDispatchSubmit = func(string) error { return errors.New("permanent admission failure") }
+	c.inbox.scheduleDispatchRetry = func(_ time.Duration, retry func()) { retryReady <- retry }
+	c.inbox.mu.Unlock()
+	if _, err := c.EnqueueInbox(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "stuck on a failing gate"}); err != nil {
+		t.Fatal(err)
+	}
+	exhaustedBefore := sessioninbox.Metrics().RetryExhausted
+
+	c.maybeDispatchInbox()
+	for i := 0; i < maxInboxDispatchRetryAttempts; i++ {
+		var retry func()
+		select {
+		case retry = <-retryReady:
+		case <-time.After(inboxDispatchTestTimeout):
+			failInboxDispatchWait(t, c, fmt.Sprintf("dispatch retry %d", i+1))
+		}
+		retry()
+	}
+	c.autosaveWG.Wait()
+
+	// 第 3 振烧完预算：耗尽点（这次失败的 scheduleInboxDispatchRetry）补痕。
+	if delta := sessioninbox.Metrics().RetryExhausted - exhaustedBefore; delta != 1 {
+		t.Fatalf("budget exhaustion must be counted (tl1339 刀①), delta = %d", delta)
+	}
+	if !strings.Contains(logs.String(), "retries exhausted") {
+		t.Fatalf("exhaustion must leave a WARN trail, logs = %q", logs.String())
+	}
+	// 耗尽行必须点名持续失败的 item 与错误（last_err 透传）。
+	if !strings.Contains(logs.String(), "permanent admission failure") {
+		t.Fatalf("exhaustion WARN must carry the persisting failure, logs = %q", logs.String())
+	}
+
+	// 预算封存语义不变：再踢一脚仍走耗尽分支——计数照加、WARN 不重发。
+	c.maybeDispatchInbox()
+	c.autosaveWG.Wait()
+	if delta := sessioninbox.Metrics().RetryExhausted - exhaustedBefore; delta != 2 {
+		t.Fatalf("persisting gate-held cycle tallies, delta = %d", delta)
+	}
+	if n := strings.Count(logs.String(), "retries exhausted"); n != 1 {
+		t.Fatalf("exhaustion WARN must be once per episode, got %d lines", n)
+	}
+	c.inbox.mu.Lock()
+	attempts := c.inbox.dispatchRetryAttempts
+	c.inbox.mu.Unlock()
+	if attempts != maxInboxDispatchRetryAttempts {
+		t.Fatalf("budget must stay spent (no new arming), attempts = %d", attempts)
+	}
+	snap := c.InboxSnapshot()
+	if len(snap.Items) != 1 || snap.Items[0].State != sessioninbox.StateQueued {
+		t.Fatalf("exhausted item must stay queued, snapshot = %+v", snap)
+	}
+	select {
+	case got := <-runner.inputs:
+		t.Fatalf("exhaustion trace must not open a turn, got %q", got)
+	default:
 	}
 }
