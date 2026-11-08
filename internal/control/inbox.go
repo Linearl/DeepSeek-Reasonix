@@ -170,6 +170,24 @@ type inboxState struct {
 	beforeDispatchSubmit func(itemID string) error
 	// scheduleDispatchRetry replaces the production timer in deterministic tests.
 	scheduleDispatchRetry func(delay time.Duration, retry func())
+	// tl1339 刀①: gate-held visibility bookkeeping (all guarded by mu; pure
+	// observation — none of these alter dispatch decisions).
+	// gateHeldLogged arms the once-per-episode WARN of traceInboxGateHeld:
+	// queued follow-ups parked behind the Paused/readonly manifest gate. It is
+	// deliberately NOT reset by resetInboxDispatchRetries (which fires on every
+	// idle scan) — only the gate actually lifting ends the episode.
+	gateHeldLogged bool
+	// dispatchRetryLastID/Err pin the failure the retry budget is being burned
+	// on, so the budget-exhausted WARN can name the item that kept failing
+	// (the per-attempt WARNs already do; the exhaustion point previously
+	// carried nothing).
+	dispatchRetryLastID  string
+	dispatchRetryLastErr error
+	// dispatchRetryExhaustedLogged arms the once-per-episode WARN at the
+	// scheduleInboxDispatchRetry stand-down boundary (报告 §2.1 #6/#9). Reset
+	// by resetInboxDispatchRetries: a kick that stops failing ends the
+	// episode, and a later re-exhaustion earns a fresh WARN.
+	dispatchRetryExhaustedLogged bool
 }
 
 func (s *inboxState) trackActive(id string) {
