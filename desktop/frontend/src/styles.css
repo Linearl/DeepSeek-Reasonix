@@ -11215,6 +11215,101 @@ button.statusbar__mcp:focus-visible {
   padding: 16px 10px;
   color: var(--fg-faint);
 }
+/* tl1479: 后台 bash 行的「输出」入口——与停止按钮同族的轻量按钮。 */
+.capsule-panel__output {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: var(--font-status, 11px);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.capsule-panel__output:hover,
+.capsule-panel__output:focus-visible {
+  outline: none;
+  color: var(--fg);
+  border-color: var(--border);
+  background: var(--bg-soft);
+}
+/* tl1479: 后台 bash 输出详情——详情态的输出视图（跟随滚动开关 / 复制 /
+   去噪文本）。高度与 .capsule-panel__history 对齐，文本自动换行不横向爆。 */
+.capsule-bash-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.capsule-bash-detail__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.capsule-bash-detail__status {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  font-size: var(--font-status, 11px);
+}
+.capsule-bash-detail__toggle,
+.capsule-bash-detail__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: var(--font-status, 11px);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.capsule-bash-detail__copy {
+  margin-left: 0;
+}
+.capsule-bash-detail__toggle:hover,
+.capsule-bash-detail__copy:hover,
+.capsule-bash-detail__toggle:focus-visible,
+.capsule-bash-detail__copy:focus-visible {
+  outline: none;
+  color: var(--fg);
+  border-color: var(--border);
+  background: var(--bg-soft);
+}
+.capsule-bash-detail__toggle[aria-pressed="true"] {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+.capsule-bash-detail__copy:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.capsule-bash-detail__text {
+  height: 340px;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--fg-dim);
+  font-size: var(--font-status, 11px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overscroll-behavior: contain;
+}
+.capsule-bash-detail__notice {
+  color: var(--fg-faint);
+  font-size: var(--font-status, 11px);
+}
 .statusbar__item,
 .statusbar__item .tooltip-trigger {
   display: inline-flex;

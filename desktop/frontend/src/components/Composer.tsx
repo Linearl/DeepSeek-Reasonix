@@ -702,6 +702,7 @@ export function Composer({
   onCapsuleCancelJob,
   onCapsuleCancelRuntimeJob,
   onCapsuleCancelSubagent,
+  onCapsuleJobOutput,
   capsuleSessionPath,
   onCapsuleListSubagents,
   onCapsuleReadSubagent,
@@ -888,6 +889,9 @@ export function Composer({
   onCapsuleCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
   // tl1209: per-child terminate chain for the foreground sub-agent rows.
   onCapsuleCancelSubagent?: (tabId: string, ref: string) => Promise<boolean>;
+  // tl1479: the bash output detail's data exit (App.JobOutputForTab, the
+  // non-consuming snapshot read). Pass-through only; absent = pre-1479 rows.
+  onCapsuleJobOutput?: (tabId: string, jobID: string) => Promise<import("../lib/types").JobOutputView>;
   capsuleSessionPath?: string;
   // Stable wrappers over the read-only subagent Wails surface (task 447).
   onCapsuleListSubagents?: (sessionPath: string) => Promise<import("../lib/types").SubagentArtifactView[]>;
@@ -6163,6 +6167,7 @@ export function Composer({
                   onCancelJob={onCapsuleCancelJob}
                   onCancelRuntimeJob={onCapsuleCancelRuntimeJob}
                   onCancelSubagent={onCapsuleCancelSubagent}
+                  onJobOutput={onCapsuleJobOutput}
                   sessionPath={capsuleSessionPath}
                   onListSubagents={onCapsuleListSubagents}
                   onReadSubagent={onCapsuleReadSubagent}

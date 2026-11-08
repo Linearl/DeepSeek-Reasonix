@@ -64,6 +64,11 @@ const ALLOWED_RAW_SCROLLTOP = new Set([
   // never the transcript viewport itself.
   "components/WorkflowPanel.tsx",
   "lib/workflowViewport.ts",
+  // components/BashJobOutputDetail.tsx (tl 1479): the background-bash output
+  // detail tab's own scroller — an independent surface beside the transcript
+  // (follow-toggle pins viewport to bottom on new content), never the
+  // transcript viewport itself.
+  "components/BashJobOutputDetail.tsx",
 ]);
 const IMPERATIVE_SCROLL_RE = /\.scroll(?:To|By)\s*\(|\.scrollTo(?:Offset|Index)\s*\(/;
 const RAW_SCROLLTOP_WRITE_RE = /\.scrollTop\s*=(?!=)/;

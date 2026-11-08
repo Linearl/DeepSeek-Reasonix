@@ -7222,6 +7222,19 @@ func (c *Controller) CancelJob(id string) bool {
 	return c.jobs.KillForSession(c.parentSessionID(), id)
 }
 
+// JobOutput returns one background job's recent output for UI surfaces
+// (tl1479). Non-consuming: bash_output's incremental cursor is untouched, so
+// a polling UI can never steal output the agent has not read yet.
+// (text, status, ok); ok is false when background jobs are disabled or the id
+// is unknown.
+func (c *Controller) JobOutput(id string) (string, string, bool) {
+	if c == nil || c.jobs == nil {
+		return "", "", false
+	}
+	text, st, ok := c.jobs.SnapshotOutputForSession(c.parentSessionID(), id)
+	return text, string(st), ok
+}
+
 // CancelSubagent terminates one running foreground (synchronous) sub-agent by
 // transcript ref (tl1209). The child unwinds through the same cancelled-outcome
 // path a background job's Kill uses, while the turn itself keeps running — the

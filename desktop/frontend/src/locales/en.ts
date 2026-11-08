@@ -6494,6 +6494,15 @@ export const en = {
   "history.trashFamilyCopies": "+{n} copies",
   "history.trashFamilyCollapse": "Hide copies",
   "history.trashFamilyCopyRole": "copy",
+  // tl1479 background bash output detail (namespace keys, appended at the end)
+  "composer.bashOutputOpen": "Output",
+  "composer.bashOutputFollow": "Follow output",
+  "composer.bashOutputCopied": "Copied",
+  "composer.bashOutputEmpty": "No output yet",
+  "composer.bashOutputLoading": "Reading output…",
+  "composer.bashOutputFailed": "Failed to read output",
+  "composer.bashOutputTruncated": "Output too large — showing the last {n} characters",
+  "composer.bashOutputStatusKilled": "Killed",
 };
 
 export type DictKey = keyof typeof en;

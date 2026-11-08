@@ -2318,6 +2318,17 @@ export interface JobView {
   parentToolCallId?: string;
 }
 
+// tl1479: one background job's recent output for the capsule's bash output
+// detail (desktop/job_output_app.go JobOutputForTab). Text is the bounded
+// tail snapshot the jobs manager serves — non-consuming, so bash_output's
+// incremental cursor is untouched. found=false means the id is unknown (the
+// job already left the manager or the tab has no controller).
+export interface JobOutputView {
+  text: string;
+  status: string;
+  found: boolean;
+}
+
 // SubagentArtifactView is one persisted sub-agent transcript owned by the
 // current session (desktop/subagents_app.go ListSubagentsByParent, task 447
 // capsule). Whitelisted projection of the on-disk sidecar metadata.

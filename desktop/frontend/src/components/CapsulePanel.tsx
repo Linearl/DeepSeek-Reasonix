@@ -32,6 +32,7 @@ import { Activity, ArrowLeft, Bot, ChevronDown, GitBranch, SendHorizontal, Spark
 import { AnchoredPopover } from "./AnchoredPopover";
 import { InlineConfirmButton } from "./InlineConfirmButton";
 import { Tooltip } from "./Tooltip";
+import { BashJobOutputDetail } from "./BashJobOutputDetail";
 import { useT, type DictKey } from "../lib/i18n";
 import { historyMessagesToItems } from "../lib/useController";
 import { hasJobTwin } from "../lib/subagentDirectory";
@@ -43,7 +44,7 @@ import {
   type WorkflowRunRowView,
 } from "../lib/workflowRunRows";
 import type { WireWorkflowRun } from "../lib/workflowTypes";
-import type { BackgroundRuntimeView, ForegroundSubagentView, HistoryMessage, JobView, SubagentArtifactView, SubagentSendReceiptView } from "../lib/types";
+import type { BackgroundRuntimeView, ForegroundSubagentView, HistoryMessage, JobOutputView, JobView, SubagentArtifactView, SubagentSendReceiptView } from "../lib/types";
 
 // Transcript loads lazily: the capsule only mounts it once a transcript is
 // actually opened, and the static import would drag the full transcript
@@ -301,6 +302,7 @@ export function CapsuleIndicator({
   workflowRuns,
   workflowRecentRuns,
   onOpenWorkflowRun,
+  onJobOutput,
 }: {
   jobs?: readonly JobView[];
   // Task 440: every process-local runtime's running jobs (visible and
@@ -355,6 +357,11 @@ export function CapsuleIndicator({
   // feed) — a 「最近工作流」 group so a run no longer vanishes when it ends.
   workflowRecentRuns?: readonly WireWorkflowRun[];
   onOpenWorkflowRun?: (runId: string) => void;
+  // tl1479: the bash output detail's data exit (App.JobOutputForTab — the
+  // non-consuming snapshot read). Injected like the other bridge calls so the
+  // panel stays a pure component. Absent = the bash rows render without the
+  // output affordance, byte-for-byte the pre-1479 capsule.
+  onJobOutput?: (tabId: string, jobID: string) => Promise<JobOutputView>;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -367,6 +374,10 @@ export function CapsuleIndicator({
   const [endedLoaded, setEndedLoaded] = useState(false);
   const [selected, setSelected] = useState<SubagentArtifactView | null>(null);
   const [detail, setDetail] = useState<CapsuleDetailState>(EMPTY_DETAIL);
+  // tl1479: the open bash output detail (one running command row). Mutually
+  // exclusive with `selected` (the subagent transcript detail) — opening one
+  // closes the other, and both live in the same popover surface.
+  const [bashDetail, setBashDetail] = useState<CapsuleWorkEntry | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const detailSeq = useRef(0);
   // Task 558 default collapse rule: ended sub-agents start collapsed (a
@@ -493,6 +504,7 @@ export function CapsuleIndicator({
       setOpen(false);
       setSelected(null);
       setDetail(EMPTY_DETAIL);
+      setBashDetail(null);
     }
   }, [open, endedLoaded, hasRunning, ended.length, hasRecentWorkflows]);
 
@@ -501,6 +513,7 @@ export function CapsuleIndicator({
     hadContentRef.current = false;
     setSelected(null);
     setDetail(EMPTY_DETAIL);
+    setBashDetail(null);
     setRecordError(null);
   };
 
@@ -546,6 +559,7 @@ export function CapsuleIndicator({
     if (!view.hasTranscript) return;
     const seq = ++detailSeq.current;
     setSelected(view);
+    setBashDetail(null);
     setDetail({ loading: true, failed: false, messages: [] });
     onReadSubagent?.(sessionPath ?? "", view.ref).then((messages) => {
         if (seq !== detailSeq.current) return;
@@ -639,6 +653,26 @@ export function CapsuleIndicator({
                 >
                   <Square size={10} fill="currentColor" aria-hidden="true" />
                   {pending ? t("status.jobStopping") : t("status.jobStop")}
+                </button>
+              )}
+              {/* tl1479: 后台 bash 行的「输出」入口——打开输出详情（实时/历史
+                  输出，非消费快照读）。无数据出口（onJobOutput 未注入）时不
+                  渲染，行保持 pre-1479 形态。task/subagent 行不在此列：它们
+                  各有轨迹/转录视图。 */}
+              {entry.job.kind === "bash" && onJobOutput && (
+                <button
+                  type="button"
+                  className="capsule-panel__output"
+                  aria-label={`${t("composer.bashOutputOpen")} ${entry.job.label || entry.job.id}`}
+                  data-capsule-bash-open={entry.job.id}
+                  data-capsule-bash-open-tab={entry.tabId}
+                  onClick={() => {
+                    setSelected(null);
+                    setDetail(EMPTY_DETAIL);
+                    setBashDetail(entry);
+                  }}
+                >
+                  {t("composer.bashOutputOpen")}
                 </button>
               )}
             </div>
@@ -824,9 +858,16 @@ export function CapsuleIndicator({
           </span>
         )}
       </button>
-      <AnchoredPopover open={open} anchorRef={triggerRef} onClose={close} className={`capsule-panel${selected ? " capsule-panel--detail" : ""}`} align="start">
+      <AnchoredPopover open={open} anchorRef={triggerRef} onClose={close} className={`capsule-panel${selected || bashDetail ? " capsule-panel--detail" : ""}`} align="start">
         <section role="dialog" aria-label={t("composer.capsuleTitle")}>
-          {selected ? (
+          {bashDetail ? (
+            <BashJobOutputDetail
+              job={bashDetail.job}
+              tabId={bashDetail.tabId}
+              onJobOutput={onJobOutput}
+              onBack={() => setBashDetail(null)}
+            />
+          ) : selected ? (
             <>
               <header className="capsule-panel__header capsule-panel__header--detail">
                 <button type="button" className="capsule-panel__back" aria-label={t("composer.capsuleBack")} onClick={() => { setSelected(null); setDetail(EMPTY_DETAIL); }}>
