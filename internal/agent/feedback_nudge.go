@@ -2,21 +2,34 @@ package agent
 
 import (
 	"strings"
+
+	"reasonix/internal/tool"
 )
 
 // Task 172 feedback touchpoints ("意见箱触达策略"). One mechanism, one switch,
 // two triggers:
 //
 //   - T1 (completion): after a turn reaches a clean final answer, the host
-//     appends ONE host-generated user message inviting the model to point the
-//     user at the feedback inbox. Costs one extra model round — that is the
+//     appends ONE host-generated user message telling the model how to route
+//     what the session surfaced. Costs one extra model round — that is the
 //     documented overhead the settings hint names.
 //   - T2 (mid-turn steer): when a user steer is consumed mid-turn, the host
-//     appends ONE short guidance note telling the model it may mention the
-//     inbox at the end of the correction turn. The model judges on its own;
-//     the current task is never interrupted.
+//     appends ONE short guidance note for the correction turn. The model
+//     judges on its own; the current task is never interrupted.
 //
-// Anti-loop gates (at least two, all three implemented):
+// Classification contract (tl1350, user rules ①②): the inbox invitation is no
+// longer offered for anything reportable. The host copy sorts the session's
+// takeaways into three buckets —
+//
+//  1. reusable know-how (including anything rooted OUTSIDE Reasonix: upstream
+//     model/API behavior, prompt wording, the user's own workflow) → the model
+//     records it itself via memory:remember and must NOT mention the inbox;
+//  2. a defect Reasonix itself can fix (built-in tool behavior/output,
+//     host-appended text, rendering/UI, config defaults, apparent fork bugs)
+//     → the only bucket that earns the ONE-sentence inbox invitation;
+//  3. nothing worth recording → both skip.
+//
+// Anti-loop gates (at least two, all four implemented):
 //
 //  1. per-turn flag (turnruntime.feedbackNudges, hard cap 1): the turn a nudge
 //     produced ends inside the same Run, so the very next final answer hits the
@@ -26,7 +39,13 @@ import (
 //     this also blocks T1 from stacking onto a turn T2 already touched;
 //  3. marker recognition (FeedbackNudgeMarker): an input that itself carries
 //     the marker (replayed history, queued guidance quoting the nudge) is
-//     skipped, so a nudge can never seed another nudge across turns.
+//     skipped, so a nudge can never seed another nudge across turns;
+//  4. remember-receipt skip (tl1350 optional filter): a successful remember
+//     receipt inside the current evidence window means the process knowledge
+//     is already recorded — the whole touchpoint stays silent instead of
+//     manufacturing noise on top of it. Receipts reset between user turns and
+//     carry across one delivery scope, so the window reads "recorded this
+//     turn / current scope".
 //
 // The dial arrives pre-ANDed via Options.FeedbackNudge (boot passes
 // config.FeedbackNudgeEnabled, parent switch wins). Off = zero messages, zero
@@ -46,27 +65,37 @@ const feedbackNudgeCooldownTurns = 10
 // per turn — a nudge-produced answer can never trigger a second question.
 const feedbackNudgeMaxPerTurn = 1
 
-// feedbackNudgeCompletionGuidance is the T1 host message. It asks for one
-// short invitation and lets the model skip when there is nothing worth
-// reporting, so a routine success does not manufacture fake feedback.
+// feedbackNudgeCompletionGuidance is the T1 host message. Per the tl1350
+// classification contract it routes the session's takeaways: reusable
+// know-how (even when rooted outside Reasonix) goes to memory:remember with
+// no inbox mention; only a defect Reasonix itself can fix earns the one
+// short inbox invitation; nothing to record skips both, so a routine success
+// does not manufacture fake feedback.
 func feedbackNudgeCompletionGuidance() string {
 	return FeedbackNudgeMarker + " task-172 T1]\n" +
-		"The user's task has just been completed. If this session surfaced anything worth reporting — a bug, a rough edge, or a suggestion about Reasonix itself — end your reply with ONE short sentence inviting the user to record it in the feedback inbox (the submit_feedback tool can write it). " +
-		"If there is nothing worth reporting, or the user already gave feedback this session, skip the invitation entirely. Do not repeat this request, and do not let it change the task's outcome."
+		"The user's task has just been completed. Sort what this session surfaced into exactly one of three buckets before ending.\n" +
+		"1. Reusable know-how — a practice, workaround, or lesson future sessions would benefit from, INCLUDING anything whose root cause lies outside Reasonix (upstream model or API behavior, prompt wording, the user's own workflow): record it yourself by calling the memory:remember tool (description + body). Do NOT mention the feedback inbox for this.\n" +
+		"2. A defect Reasonix itself can fix — built-in tool behavior or output, host-appended text, rendering or UI, configuration defaults, or an apparent bug in this fork: end your reply with ONE short sentence inviting the user to record it in the feedback inbox (the submit_feedback tool can write it).\n" +
+		"3. Nothing worth recording: skip both — no remember call, no invitation.\n" +
+		"Do not repeat this request, and do not let it change the task's outcome."
 }
 
 // feedbackNudgeSteerGuidance is the T2 host note appended right after a
-// consumed mid-turn steer. Guidance only: the model weaves it into the
-// correction turn if and only if the correction exposed something reportable.
+// consumed mid-turn steer. Guidance only: the model routes the correction's
+// takeaways under the same tl1350 contract — know-how to memory:remember
+// without an inbox mention, and only a fork-fixable defect may earn the
+// closing inbox mention.
 func feedbackNudgeSteerGuidance() string {
 	return FeedbackNudgeMarker + " task-172 T2]\n" +
-		"The user just sent a corrective mid-turn message. If working through that correction exposes a reportable problem with Reasonix itself, you may briefly mention at the end of your final answer that the feedback inbox (submit_feedback) can record it. " +
-		"Judge on your own; do not interrupt or delay the current task for this, and stay silent when there is nothing to report."
+		"The user just sent a corrective mid-turn message. If working through that correction surfaces reusable know-how — a practice or lesson future sessions would benefit from, including anything whose root cause lies outside Reasonix (upstream model or API behavior, prompt wording, the user's own workflow) — record it yourself via the memory:remember tool, and do NOT mention the feedback inbox for it.\n" +
+		"Only if the correction exposed a defect Reasonix itself can fix (built-in tool behavior or output, host-appended text, rendering or UI, configuration defaults, or an apparent bug in this fork) may you briefly mention at the end of your final answer that the feedback inbox (submit_feedback) can record it.\n" +
+		"Judge on your own; do not interrupt or delay the current task for this, and stay silent when neither applies."
 }
 
 // feedbackNudgeAllowed reports whether the shared gates permit one injection
 // right now: dial on (boot pre-ANDed the parent switch), per-turn cap free,
-// input not a nudge echo (gate 3), cooldown elapsed (gate 2).
+// input not a nudge echo (gate 3), remember not already successful in the
+// current evidence window (gate 4), cooldown elapsed (gate 2).
 func (a *Agent) feedbackNudgeAllowed(state *turnRuntime, input string) bool {
 	if !a.svc.feedbackNudge {
 		return false
@@ -75,6 +104,14 @@ func (a *Agent) feedbackNudgeAllowed(state *turnRuntime, input string) bool {
 		return false
 	}
 	if strings.Contains(input, FeedbackNudgeMarker) {
+		return false
+	}
+	// Gate 4 (tl1350): a successful remember receipt in the current evidence
+	// window means the process knowledge is already recorded — an inbox nudge
+	// would only duplicate it. Receipts reset between user turns and carry
+	// across one delivery scope, so the window reads "recorded this turn /
+	// current scope". Nil-safe when no ledger exists.
+	if a.task.ledger.HasSuccessfulToolReceipt(tool.HostRemember) {
 		return false
 	}
 	last := a.feedbackNudgeLastTurn.Load()
