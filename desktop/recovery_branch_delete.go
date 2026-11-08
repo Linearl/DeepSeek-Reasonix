@@ -35,6 +35,51 @@ import (
 // the conversation's current version.
 var errSessionVersionNotDeletable = errors.New("the current version cannot be deleted; switch to another version first")
 
+// demotedMainlineDeleteVerdict 是刀③的降级主线通道判定（tl1415h）：一个非
+// recovery 命名的转录能否经面板分支删除入口归档。
+//
+// 背景：tl1415f 把「采纳后被降级的扫描起点主线」纳入了面板「清理非主线副本」
+// 入口（版本区文件形行——RecoveryCopiesSection cleanupNonMainCopies 的
+// fileTargets）。它在 catalog 投影里是普通行（classifyRecoveryLineage 对
+// 非 recovered 记录恒给 normal role）、磁盘上是普通命名文件（无 -recovery-
+// 后缀），而本入口守卫只认 LooksLikeRecoveryFilename——入口放行的行形态与
+// 守卫认的形态脱节，用户点到即拒「not a recovery copy」（2026-11-08 用户
+// 现场实报）。取证与语义核对（tl1415 四轮取证 + tl1429d2 回收站同族归组语
+// 义）裁定守卫扩认而非入口收窄：这条行正是「用户已显式采纳别的成员后失去
+// 主线身份的原主线」，与 1064「用户的判断本身就是覆盖证明」同构。
+//
+// 三道防线保证「非副本不被误删」：
+//  ① 组在——路径必须仍在 catalog 投影的 recovery 组里（recoveryLineageSelection
+//     成立，组内有 recovered 组员）；普通独立会话（无组）拒绝。
+//  ② 权威指别处——打开漏斗权威（recoveryAuthorityMainPathForOpen：权威#2
+//     filing 偏好 / 权威#3 meta 旗标，与面板 Selected 同源）必须命中另一成
+//     员；无显式采纳证据（无旗标无 filing）拒绝。权威解析刻意用 ForOpen 版
+//     而非 recoveryAuthorityMainPath：后者权威#1 是 tab 当前路径，tab 停在
+//     降级文件上时它自命权威、删除永远放不开——正是取证现场「面板标对、
+//     打开选错」分裂的同款机制。
+//  ③ 仍是现任主线拒绝——权威=自己时返回 currentMain，调用方给
+//     errSessionVersionNotDeletable（下一步明确：先切到别的版本）。
+//
+// 返回 authority=命中的权威路径（空=拒绝，reason 说明原因）。
+func (a *App) demotedMainlineDeleteVerdict(catalog *sessioncatalog.Catalog, sessionPath string) (authority string, currentMain bool, reason string) {
+	if catalog == nil {
+		return "", false, "no session catalog"
+	}
+	// 打开漏斗权威判定只需要路径（其内部第一步就是按路径重读投影行，与
+	// continuePathForOpen 的读法同源）。
+	path, _, detail, resolved := a.recoveryAuthorityForOpenVerdict(catalog, sessioncatalog.SessionRecord{Path: sessionPath})
+	if !resolved || path == "" {
+		if resolved && detail.Filed {
+			return "", false, "the lineage has no explicit main-line choice"
+		}
+		return "", false, "path is not filed in a recovery lineage"
+	}
+	if sameRecoveryLineagePath(path, sessionPath) {
+		return "", true, "still the current main line"
+	}
+	return path, false, ""
+}
+
 // DeleteRecoveryBranch archives one recovery-copy branch the user has discarded
 // in the versions panel. Unlike DeleteRecoveryCopy it does not require the
 // branch to be covered by its parent: the user has seen its unique-content
@@ -57,9 +102,25 @@ func (a *App) DeleteRecoveryBranch(path string) error {
 		return err
 	}
 	if !agent.LooksLikeRecoveryFilename(sessionPath) {
-		slog.Warn("desktop: recovery branch delete refused", "reason", "not a recovery copy filename",
-			"path", sessionPath)
-		return fmt.Errorf("not a recovery copy: only discarded branches may be deleted here")
+		// tl1415h 刀③：非 recovery 命名不再一票拒绝——tl1415f 的面板入口把
+		// 「采纳后被降级的扫描起点主线」（普通命名、投影 normal 行）纳入了清
+		// 理目标，守卫的文件名形态闸与入口的行形态判定脱节（用户现场：
+		// 「not a recovery copy: only discarded branches may be deleted here」
+		// 打回）。降级主线通道按 recovery 组语义重新对齐：组内 + 权威命中另
+		// 一成员才放行（走同一条 TrashRecoveryBranchForced 的 .trash 可恢复
+		// 协议）；无组、无权威、仍是现任主线一律维持拒绝。
+		authority, currentMain, reason := a.demotedMainlineDeleteVerdict(a.sessionCatalog.Load(), sessionPath)
+		if authority == "" {
+			if currentMain {
+				slog.Warn("desktop: recovery branch delete refused", "reason", reason, "path", sessionPath)
+				return errSessionVersionNotDeletable
+			}
+			slog.Warn("desktop: recovery branch delete refused", "reason", "not a recovery copy: "+reason,
+				"path", sessionPath)
+			return fmt.Errorf("not a recovery copy: only discarded branches may be deleted here")
+		}
+		slog.Info("desktop: recovery branch delete admits demoted mainline",
+			"path", sessionPath, "authority", authority)
 	}
 	if err := func() error {
 		defer a.lockRuntimeMutation("delete-recovery-branch")()

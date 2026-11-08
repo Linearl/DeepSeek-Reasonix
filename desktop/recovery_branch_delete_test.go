@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/sessioncatalog"
 )
 
 // 任务 1064：面板手动删除分支的两条后端路径。
@@ -161,7 +163,9 @@ func TestDeleteRecoveryBranchEveryPathLeavesALogTrace(t *testing.T) {
 		}
 	}
 
-	// ② 非 recovery 文件名拒：主线走副本删除入口被拒且留痕。
+	// ② 非 recovery 文件名拒：主线走副本删除入口被拒且留痕。tl1415h 刀③后
+	// 该闸改名降级主线通道：无 catalog（无法证明组内+权威指别处）仍拒，reason
+	// 携带通道判定原因。
 	{
 		mainPath, _ := writeRecoveryCopyFixture(t, dir, "sess-branch-del-4.jsonl", "sess-branch-del-4-recovery-0123456789abcdef.jsonl")
 		t.Cleanup(func() { _ = os.Remove(mainPath) })
@@ -170,7 +174,7 @@ func TestDeleteRecoveryBranchEveryPathLeavesALogTrace(t *testing.T) {
 				t.Fatal("deleting the main transcript through the branch path must be refused")
 			}
 		})
-		for _, want := range []string{"recovery branch delete refused", "not a recovery copy filename"} {
+		for _, want := range []string{"recovery branch delete refused", "not a recovery copy: no session catalog"} {
 			if !strings.Contains(logs, want) {
 				t.Fatalf("filename-gate refusal must leave a trace naming the reason %q; log:\n%s", want, logs)
 			}
@@ -203,5 +207,152 @@ func TestDeleteRecoveryBranchEveryPathLeavesALogTrace(t *testing.T) {
 		if !strings.Contains(logs, "recovery branch deleted") {
 			t.Fatalf("a successful delete must leave a trace; log:\n%s", logs)
 		}
+	}
+}
+
+// ── tl1415h 刀③：删除入口与守卫形态对齐 ──
+//
+// 用户现场（2026-11-08）：tl1415f 把「采纳后被降级的扫描起点主线」（普通命
+// 名、投影 normal 行）纳入面板「清理非主线副本」入口后，点到该行即拒——
+// 「not a recovery copy: only discarded branches may be deleted here」。入口
+// 放行的行形态（版本区文件形行）与守卫认的形态（-recovery- 命名）脱节。
+// 裁定：守卫扩认（降级主线通道），入口不动。四枚钉：
+//  ① 降级主线（组内+权威#3 指副本）可删——同一条 .trash 可恢复协议；
+//  ② 现任主线（权威=自己）拒 errSessionVersionNotDeletable（下一步明确）；
+//  ③ 无显式采纳证据（组在、无旗标无 filing）拒——防线②；
+//  ④ catalog 开着但路径未入册（组未建）仍拒——防线①的窗口面。
+
+// writeDemotedLineageFixture 落一份主线+副本+可选旗标位的族 fixture，并按
+// 暖机形态 reconcile 进测试 catalog（组分类完成）。flagCopy=true 时旗标落在
+// 副本（用户采纳副本的取证现场形态）；false 时无旗标（无显式采纳证据）。
+func writeDemotedLineageFixture(t *testing.T, stem, topicID string, flagCopy bool) (mainPath, copyPath string, catalog *sessioncatalog.Catalog) {
+	t.Helper()
+	isolateDesktopUserDirs(t)
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainPath = filepath.Join(dir, stem+".jsonl")
+	copyPath = filepath.Join(dir, stem+"-recovery-0123456789abcdef.jsonl")
+	t.Cleanup(func() {
+		for _, p := range []string{mainPath, copyPath, mainPath + ".meta", copyPath + ".meta"} {
+			_ = os.Remove(p)
+		}
+	})
+	saveVerdictFixture(t, mainPath, 3, topicID)
+	saveVerdictFixture(t, copyPath, 1, topicID)
+	if err := agent.UpdateBranchMeta(copyPath, false, func(meta *agent.BranchMeta) error {
+		meta.Recovered = true
+		meta.ParentID = agent.BranchID(mainPath)
+		if flagCopy {
+			meta.RecoveryPreferred = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("stamp copy meta: %v", err)
+	}
+	catalog = openVerdictWarmCatalog(t, dir)
+	return mainPath, copyPath, catalog
+}
+
+// ① 降级主线可删：用户采纳副本（旗标）后，被降级的原主线（普通命名文件）
+// 走分支删除入口成功归档——「not a recovery copy」拒绝消失，且仍是可恢复
+// 的 .trash 归档，不是硬删。
+func TestDeleteRecoveryBranchAllowsDemotedMainlineOfAdoptedLineage(t *testing.T) {
+	mainPath, copyPath, catalog := writeDemotedLineageFixture(t, "demoted-1415h-adopted", "topic_demoted_1415h", true)
+	app := newBranchDeleteApp(t)
+	app.sessionCatalog.Store(catalog)
+
+	logs := captureVerdictLogs(t, func() {
+		if err := app.DeleteRecoveryBranch(mainPath); err != nil {
+			t.Fatalf("the demoted mainline of an adopted lineage must be deletable (tl1415f 入口承诺): %v", err)
+		}
+	})
+	if _, err := os.Stat(mainPath); !os.IsNotExist(err) {
+		t.Fatalf("the demoted mainline must be gone from the live directory, stat err=%v", err)
+	}
+	if _, err := os.Stat(copyPath); err != nil {
+		t.Fatalf("the adopted copy (current main) must be untouched: %v", err)
+	}
+	trashHits := 0
+	_ = filepath.Walk(config.SessionDir(), func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if filepath.Base(p) == filepath.Base(mainPath) {
+			trashHits++
+		}
+		return nil
+	})
+	if trashHits == 0 {
+		t.Fatal("the demoted mainline must remain recoverable somewhere under the session directory")
+	}
+	if !strings.Contains(logs, "admits demoted mainline") {
+		t.Fatalf("the demoted-mainline admission must leave a trace; log:\n%s", logs)
+	}
+}
+
+// ② 现任主线拒：权威=自己（旗标在自己身上）时给 errSessionVersionNotDeletable
+// ——下一步明确（先切换到别的版本），不是模糊的形态拒。
+func TestDeleteRecoveryBranchRefusesCurrentMainline(t *testing.T) {
+	mainPath, _, catalog := writeDemotedLineageFixture(t, "demoted-1415h-current", "topic_demoted_1415h_current", false)
+	// 旗标落在主线上=权威#3 命中主线自己：它是现任主线，不是降级行。
+	if err := agent.UpdateBranchMeta(mainPath, false, func(meta *agent.BranchMeta) error {
+		meta.RecoveryPreferred = true
+		return nil
+	}); err != nil {
+		t.Fatalf("stamp mainline flag: %v", err)
+	}
+	app := newBranchDeleteApp(t)
+	app.sessionCatalog.Store(catalog)
+
+	if err := app.DeleteRecoveryBranch(mainPath); !errors.Is(err, errSessionVersionNotDeletable) {
+		t.Fatalf("the current mainline must be refused with errSessionVersionNotDeletable, got %v", err)
+	}
+	if _, err := os.Stat(mainPath); err != nil {
+		t.Fatalf("the refused mainline must survive: %v", err)
+	}
+}
+
+// ③ 无显式采纳证据拒：组在（副本 recovered 入组）但无旗标无 filing——权威
+// 空，删除拒绝（防线②：没有「用户已选了别的成员」的证据不删主线文件）。
+func TestDeleteRecoveryBranchRefusesUnprovenLineageMainline(t *testing.T) {
+	mainPath, _, catalog := writeDemotedLineageFixture(t, "demoted-1415h-unproven", "topic_demoted_1415h_unproven", false)
+	app := newBranchDeleteApp(t)
+	app.sessionCatalog.Store(catalog)
+
+	if err := app.DeleteRecoveryBranch(mainPath); err == nil {
+		t.Fatal("a lineage mainline with no explicit adoption evidence must be refused")
+	}
+	if _, err := os.Stat(mainPath); err != nil {
+		t.Fatalf("the refused mainline must survive: %v", err)
+	}
+}
+
+// ④ catalog 开着但路径未入册（目录未 reconcile、组未建）仍拒——删除入口不
+// 做窗口 reconcile（那是打开漏斗的刀②），冷机形态保守拒绝。
+func TestDeleteRecoveryBranchRefusesUnfiledPathEvenWithCatalog(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(dir, "demoted-1415h-unfiled.jsonl")
+	t.Cleanup(func() {
+		for _, p := range []string{mainPath, mainPath + ".meta"} {
+			_ = os.Remove(p)
+		}
+	})
+	saveVerdictFixture(t, mainPath, 1, "topic_demoted_1415h_unfiled")
+
+	app := openVerdictApp(t, openVerdictColdCatalog(t))
+
+	logs := captureVerdictLogs(t, func() {
+		if err := app.DeleteRecoveryBranch(mainPath); err == nil {
+			t.Fatal("an unfiled path must stay refused even with a live catalog")
+		}
+	})
+	if !strings.Contains(logs, "not a recovery copy: path is not filed") {
+		t.Fatalf("the unfiled refusal must name the channel reason; log:\n%s", logs)
 	}
 }
