@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useT } from "../lib/i18n";
 import type { Todo } from "../lib/tools";
+import type { GoalObjectInfo } from "../lib/types";
+import { goalActivationLabel, goalPhaseLabel } from "../lib/goalObjectLabels";
 import {
   shouldOpenTodoPanelByDefault,
   todoFocusGroupTodos,
@@ -98,6 +100,7 @@ export function TodoPanel({
   onDismiss,
   defaultOpen,
   archive,
+  goal,
 }: {
   stateKey: string;
   todos: Todo[];
@@ -113,6 +116,12 @@ export function TodoPanel({
   defaultOpen?: boolean;
   /** Task 152: earlier fully-terminal batches, newest first. Undefined keeps the single-batch behaviour. */
   archive?: TodoBatch[];
+  /**
+   * tl1472 目标对象化: the objectified goal rendered below the todo list —
+   * the tidied summary plus phase AND activation together. Undefined hides
+   * the section entirely (no goal object in this session).
+   */
+  goal?: GoalObjectInfo;
 }) {
   const t = useT();
   const currentRef = useRef<HTMLLIElement | null>(null);
@@ -175,7 +184,28 @@ export function TodoPanel({
       {open && archive && archive.length > 0 && (
         <TodoArchive batches={archive} />
       )}
+      {open && goal && <GoalObjectCard goal={goal} />}
     </PromptShelf>
+  );
+}
+
+// GoalObjectCard (tl1472) renders the objectified goal's digest line: summary
+// plus phase AND activation together — the activation badge is the half that
+// prevents the 1459 mirror ("显示 running 其实早已 disarmed"). Shared by the
+// todo shelf's tail and the dock's goal-without-todos state.
+export function GoalObjectCard({ goal }: { goal: GoalObjectInfo }) {
+  const t = useT();
+  return (
+    <div className="todobar__goal" data-phase={goal.phase} data-activation={goal.activation}>
+      <div className="todobar__goal-head">
+        <span className="todobar__goal-title">{t("goal.objectTitle")}</span>
+        <span className={`todobar__goal-badge todobar__goal-badge--${goal.activation}`}>
+          {goalActivationLabel(t, goal.activation)}
+        </span>
+        <span className="todobar__goal-phase">{goalPhaseLabel(t, goal.phase)}</span>
+      </div>
+      <div className="todobar__goal-summary">{goal.summary || goal.goal}</div>
+    </div>
   );
 }
 

@@ -77,6 +77,7 @@ func HostControlToolNames() []string {
 	return []string{
 		"ask",
 		"update_goal",
+		"create_goal", // tl1472 双通道创建·模型通道：无目标模式也可立 goal
 		"todo_write",
 		"complete_step",
 		// 任务482（fence 退役）: the former "tool_recovery" host-control entry is

@@ -434,22 +434,28 @@ type Messages struct {
 
 	// in-chat memory/model/rewind notices.
 
-	MemoryEditHint               string
-	ForgetUsage                  string
-	ForgetDoneFmt                string
-	QuickRememberEmpty           string
-	QuickRememberDoneFmt         string
-	GoalEmpty                    string
-	GoalCurrentFmt               string
-	GoalSetFmt                   string
-	GoalCleared                  string
-	GoalNotRunning               string
-	GoalNotPaused                string
-	GoalPaused                   string
-	GoalPausedReason             string
-	GoalPausedFmt                string // %s = stop cause
-	GoalRuntimeFmt               string // turns, requests, tokens, work duration
-	GoalRuntimeLastReason        string
+	MemoryEditHint        string
+	ForgetUsage           string
+	ForgetDoneFmt         string
+	QuickRememberEmpty    string
+	QuickRememberDoneFmt  string
+	GoalEmpty             string
+	GoalCurrentFmt        string
+	GoalSetFmt            string
+	GoalCleared           string
+	GoalNotRunning        string
+	GoalNotPaused         string
+	GoalPaused            string
+	GoalPausedReason      string
+	GoalPausedFmt         string // %s = stop cause
+	GoalRuntimeFmt        string // turns, requests, tokens, work duration
+	GoalRuntimeLastReason string
+	// tl1472 目标对象化（双通道创建 + activation）:
+	// GoalCreatedFmt reports the model channel's create_goal install (%s = summary).
+	GoalCreatedFmt string
+	// GoalDisarmed reports disarm 全集① — a new user message paused
+	// auto-continue while the goal object stays active (/goal resume re-arms).
+	GoalDisarmed                 string
 	ModelSwitchUnavailable       string
 	ModelSwitchBusy              string
 	ModelAlreadyOnFmt            string

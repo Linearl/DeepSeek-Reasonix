@@ -6460,4 +6460,13 @@ export const zh: Record<DictKey, string> = {
   "composer.bashOutputStatusKilled": "已终止",
   // tl1357 形态③：重启恢复门自动继续（有人/无人值守一体）
   "notice.restartGateAutoContinue": "重启恢复门已自动解除，重启前的排队消息将按原顺序继续处理；可在 /queue 查看队列。",
+  // tl1472 目标对象化：边栏 goal 卡（对象标题/activation/phase）
+  "goal.objectTitle": "目标",
+  "goal.activation.armed": "自动续跑开启",
+  "goal.activation.disarmed": "自动续跑已解除",
+  "goal.phase.active": "进行中",
+  "goal.phase.paused": "已暂停",
+  "goal.phase.blocked": "已阻塞",
+  "goal.phase.complete": "已完成",
+  "goal.phase.budgetLimited": "预算到限",
 };

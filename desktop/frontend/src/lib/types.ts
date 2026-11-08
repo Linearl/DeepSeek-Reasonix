@@ -1299,8 +1299,20 @@ export interface Meta extends RemoteSessionMetaFields {
   goal?: string;
   goalStatus?: GoalStatus;
   goalRuntime?: GoalRuntime;
+  /** tl1472 目标对象化：对象视图（整理后摘要 + phase + activation 双显）。 */
+  goalObject?: GoalObjectInfo;
   canonicalTodos?: Todo[]; dismissedTodoBatches?: string[]; pinnedFiles?: PinnedFileInfo[];
 }
+/** tl1472 目标对象化 wire form（desktop Meta.goalObject）。 */
+export interface GoalObjectInfo {
+  goal?: string;
+  summary?: string;
+  phase: GoalPhase;
+  activation: GoalActivation;
+  stopCause?: string;
+}
+export type GoalPhase = "active" | "paused" | "blocked" | "complete" | "budget_limited" | "";
+export type GoalActivation = "armed" | "disarmed" | "";
 export type CollaborationMode = "normal" | "plan" | "goal" | "autopilot";
 export type ToolApprovalMode = "ask" | "auto" | "yolo";
 // SubagentPolicy is the per-session sub-agent delegation tier (fork, #9004

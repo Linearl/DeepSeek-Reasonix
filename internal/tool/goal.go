@@ -90,3 +90,44 @@ func UpdateGoalUnavailableMessage(ctx context.Context) string {
 	}
 	return msg
 }
+
+// GoalCreator (tl1472 双通道创建·模型通道) installs a session goal on the
+// host's goal object. The controller implements it; the host binds it to every
+// orchestrated turn so create_goal works with or without goal mode. Sub-agent
+// contexts strip it: a child session must not hijack the parent's goal slot.
+type GoalCreator interface {
+	// CreateGoal installs the goal (active+armed) and returns the tool-result
+	// text. An error refuses with the readable cause (占位锁: a live goal can
+	// only be replaced by the model after it completed).
+	CreateGoal(text, summary string) (string, error)
+}
+
+type goalCreatorKey struct{}
+
+// noGoalCreator shadows an ancestor creator in child contexts.
+type noGoalCreator struct{}
+
+// WithGoalCreator stamps ctx with the host goal creator so the create_goal
+// tool can reach it from inside the run loop.
+func WithGoalCreator(ctx context.Context, r GoalCreator) context.Context {
+	if r == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, goalCreatorKey{}, r)
+}
+
+// WithoutGoalCreator returns a child context that cannot create goals for the
+// parent session. Other values and cancellation flow through normally.
+func WithoutGoalCreator(ctx context.Context) context.Context {
+	return context.WithValue(ctx, goalCreatorKey{}, noGoalCreator{})
+}
+
+// GoalCreatorFromContext returns the host goal creator, if any. Sub-agent
+// contexts carry the noGoalCreator shadow, which reads as absent.
+func GoalCreatorFromContext(ctx context.Context) (GoalCreator, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	r, ok := ctx.Value(goalCreatorKey{}).(GoalCreator)
+	return r, ok && r != nil
+}

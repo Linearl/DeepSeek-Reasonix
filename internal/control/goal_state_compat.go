@@ -14,6 +14,8 @@ var goalStateKnownFields = map[string]struct{}{
 	"tokensLimit":    {}, "noProgressTurns": {}, "noProgressLimit": {},
 	"lastContinuationReason": {}, "lastEvaluatorReason": {}, "stopCause": {}, "lastStopCause": {},
 	"budgetExtensions": {}, "progressEvidence": {},
+	// tl1472 目标对象化 fields.
+	"activation": {}, "summary": {},
 }
 
 func goalStateUnknownFields(raw []byte) map[string]json.RawMessage {

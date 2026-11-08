@@ -690,4 +690,8 @@ var ChineseTraditional = Messages{
 	UpgradeApplying:            "正在替換二進位制檔案…",
 	UpgradeApplyFailed:         "應用更新失敗：%v",
 	UpgradeSuccessFmt:          "已更新 %s → %s",
+
+	// tl1472 目標物件化（雙通道建立 + activation）
+	GoalCreatedFmt: "目標已建立（模型自立）→ %s",
+	GoalDisarmed:   "目標已解除自動續跑：有新訊息進入，自動續跑暫停（目標保持 active，用 /goal resume 重新開啟）",
 }

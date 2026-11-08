@@ -697,4 +697,8 @@ var Chinese = Messages{
   密钥通过 api_key_env 从环境变量注入（如 DEEPSEEK_API_KEY）。
   运行 'reasonix setup' 生成配置；详见 docs/SPEC.md。
 `,
+
+	// tl1472 目标对象化（双通道创建 + activation）
+	GoalCreatedFmt: "目标已创建（模型自立）→ %s",
+	GoalDisarmed:   "目标已解除自动续跑：有新消息进入，自动续跑暂停（目标保持 active，用 /goal resume 重新开启）",
 }

@@ -198,6 +198,11 @@ type Meta struct {
 	Goal        string           `json:"goal,omitempty"`
 	GoalStatus  string           `json:"goalStatus,omitempty"`
 	GoalRuntime *GoalRuntimeView `json:"goalRuntime,omitempty"`
+	// GoalObject (tl1472) is the objectified goal's visibility carrier: the
+	// tidied summary plus phase AND activation together (only showing the
+	// running half would replicate the 1459 mirror incident). Nil when the
+	// session holds no goal.
+	GoalObject *GoalObjectWire `json:"goalObject,omitempty"`
 	// Nil means no authoritative snapshot; non-nil empty means clear the panel.
 	CanonicalTodos *[]evidence.TodoItem `json:"canonicalTodos,omitempty"`
 	// Closed completed todo fingerprints from this session and its lineage.
@@ -240,6 +245,40 @@ func goalRuntimeViewFromController(ctrl control.SessionAPI) *GoalRuntimeView {
 		LastReason:       rt.LastReason,
 		StopCause:        rt.StopCause,
 		BudgetExtensions: rt.BudgetExtensions,
+	}
+}
+
+// GoalObjectWire is the desktop wire form of the tl1472 goal object view.
+type GoalObjectWire struct {
+	Goal       string `json:"goal,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	Phase      string `json:"phase"`
+	Activation string `json:"activation"`
+	StopCause  string `json:"stopCause,omitempty"`
+}
+
+// goalObjectFromController probes the optional tl1472 object port so builds
+// whose controller predates the objectification keep compiling (the same
+// capability-probe shape as ImageInputSnapshot above). Present only when a
+// goal object actually exists, so the sidebar card stays hidden otherwise.
+func goalObjectFromController(ctrl control.SessionAPI) *GoalObjectWire {
+	if ctrl == nil {
+		return nil
+	}
+	probe, ok := ctrl.(interface{ GoalObject() control.GoalObjectView })
+	if !ok {
+		return nil
+	}
+	view := probe.GoalObject()
+	if view.Goal == "" && view.Phase == "" {
+		return nil
+	}
+	return &GoalObjectWire{
+		Goal:       view.Goal,
+		Summary:    view.Summary,
+		Phase:      view.Phase,
+		Activation: view.Activation,
+		StopCause:  view.StopCause,
 	}
 }
 
@@ -346,6 +385,7 @@ func (a *App) MetaForTab(tabID string) Meta {
 		Goal:                  goal,
 		GoalStatus:            goalStatus,
 		GoalRuntime:           goalRuntimeViewFromController(snap.ctrl),
+		GoalObject:            goalObjectFromController(snap.ctrl),
 		CanonicalTodos:        ctrlTodos(snap.ctrl),
 		DismissedTodoBatches:  a.dismissedTodoBatchesForSession(sessionPath),
 		PinnedFiles:           buildPinnedContext(snap.workspaceRoot, tab.GetPinnedFiles()).Infos,

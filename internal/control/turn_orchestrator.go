@@ -209,6 +209,12 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	// every turn start so a marker left by a previous turn can never fire a
 	// continuation for this one.
 	c.clearTurnAskAnswered()
+	// tl1472: the same one-turn lifetime for the create_goal marker — a stale
+	// marker from an errored create turn must not fire a later continuation.
+	c.consumeGoalCreatedByModel()
+	// tl1472: and for the armed stint's user-turn grant — the goal-command
+	// start turn consumes it so later interjections disarm per ①.
+	c.goals.armForUserTurnGrant()
 	c.maybeSessionStart(ctx)
 	parentSession := c.parentSessionID()
 	ctx = agent.WithParentSession(ctx, parentSession)
@@ -229,6 +235,9 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 			false,
 			continuation.goal,
 			GoalStatusRunning,
+			// Continuation turns are admitted only while armed (admitContinuation),
+			// so the prompt states the armed contract.
+			GoalActivationArmed,
 		)
 	} else {
 		input = c.compose(turn.input, turn.raw, !turn.synthetic)
@@ -662,18 +671,28 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 	c := o.c
 	recorder := c.goalUsageTee.activeRecorder()
 	defer c.goalUsageTee.setActiveRecorder(nil)
+	// tl1472: a turn that installed a model-authored goal (create_goal) had no
+	// recorder bound at turn start — the goal did not exist yet. Consume the
+	// one-shot marker and treat that turn as the goal's first turn.
+	createdThisTurn := c.consumeGoalCreatedByModel()
+	recorderValid := recorder != nil && recorder.epoch == expectedContinuationEpoch &&
+		c.goals.turnActive(recorder.scopeID, recorder.epoch)
 	// Only active Goal turns bind a recorder. Ordinary and edited non-Goal
 	// turns still pass through the shared turn wrapper, but must not enter the
 	// Goal FSM or pay for an isolated completion evaluation.
-	if recorder == nil || recorder.epoch != expectedContinuationEpoch ||
-		!c.goals.turnActive(recorder.scopeID, recorder.epoch) {
+	if !recorderValid && !createdThisTurn {
 		// tl1459 exit ①. A nil recorder on a machine with no running Goal is an
 		// ordinary turn, not a Goal exit — it stays silent.
 		if recorder != nil || c.goals.active() {
 			c.traceGoalExit(goalExitGate, goalSiteAdvance, expectedContinuationEpoch, recorder,
-				"gate_reason", goalGateReason(recorder, expectedContinuationEpoch))
+				"gate_reason", goalGateReason(recorder, expectedContinuationEpoch),
+				"created_this_turn", createdThisTurn)
 		}
 		return goalAdvanceResult{cont: false}
+	}
+	if createdThisTurn && !recorderValid {
+		// The install moved the revision; judge against the goal's current one.
+		expectedContinuationEpoch = c.goals.continuationToken()
 	}
 
 	var readiness agent.ReadinessResult
@@ -716,9 +735,13 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 
 	// The bounded evaluator runs once, only when the model gave no report and
 	// readiness has no definite missing list. Failures fail closed in the FSM.
+	// tl1472: the create-goal turn owes no evaluator verdict — the goal was
+	// just installed mid-turn — and a disarmed goal is not under pursuit, so
+	// no verdict is owed there either (the FSM's disarmed halt owns the exit).
 	var evaluator *goalEvaluatorVerdict
 	var evaluatorFailed string
-	if !runPaused && report == nil && len(readiness.Missing) == 0 {
+	if !runPaused && report == nil && len(readiness.Missing) == 0 &&
+		!(createdThisTurn && !recorderValid) && c.goals.armedForAutoContinue() {
 		if c.evaluator == nil {
 			evaluatorFailed = "goal evaluator unavailable"
 		} else if verdict, err := c.evaluator.Evaluate(ctx, c.goalEvaluatorEvidence()); err != nil {
@@ -743,6 +766,7 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 		pauseCause:       pauseCause,
 		pauseReason:      pauseReason,
 		expectedEpoch:    &expectedContinuationEpoch,
+		createdThisTurn:  createdThisTurn && !recorderValid,
 	})
 	c.traceGoalAdvance(expectedContinuationEpoch, recorder, res, report, evaluator, evaluatorFailed, pauseCause)
 	c.persistGoalState(res.path, res.data, res.ok)

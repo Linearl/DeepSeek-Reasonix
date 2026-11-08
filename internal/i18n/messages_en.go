@@ -696,4 +696,7 @@ Configuration:
   Secrets come from the environment via api_key_env (e.g. DEEPSEEK_API_KEY).
   Run 'reasonix setup' to scaffold a config; see docs/SPEC.md.
 `,
+	// tl1472 目标对象化（双通道创建 + activation）
+	GoalCreatedFmt: "goal created (by the model) → %s",
+	GoalDisarmed:   "goal disarmed: a new message paused auto-continue — the goal stays active (/goal resume re-arms it)",
 }

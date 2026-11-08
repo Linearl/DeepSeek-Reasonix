@@ -5464,7 +5464,7 @@ func TestComposeSubagentPolicyInjection(t *testing.T) {
 	if err := ctrl.SetSubagentPolicy("balanced"); err != nil {
 		t.Fatalf("SetSubagentPolicy: %v", err)
 	}
-	text := ctrl.composeWithGoal("do the thing", "user", false, "", "")
+	text := ctrl.composeWithGoal("do the thing", "user", false, "", "", GoalActivationArmed)
 	if !strings.Contains(text, "<subagent-policy>balanced") {
 		t.Fatalf("composed text must carry the transient block: %q", text)
 	}
@@ -5477,7 +5477,7 @@ func TestComposeSubagentPolicyInjection(t *testing.T) {
 	}
 	// 默认 light：不注入
 	ctrl2 := &Controller{memory: memoryManager{}}
-	if got := ctrl2.composeWithGoal("do the thing", "user", false, "", ""); strings.Contains(got, "subagent-policy") {
+	if got := ctrl2.composeWithGoal("do the thing", "user", false, "", "", GoalActivationArmed); strings.Contains(got, "subagent-policy") {
 		t.Fatalf("default must not inject: %q", got)
 	}
 }

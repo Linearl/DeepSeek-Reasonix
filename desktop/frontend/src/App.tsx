@@ -133,7 +133,7 @@ import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { QuickCommandsManagerDialog } from "./components/QuickCommandsManagerDialog";
 import type { QuickCommandEntry } from "./lib/settingsViewTypes";
-import { TodoPanel } from "./components/TodoPanel";
+import { TodoPanel, GoalObjectCard } from "./components/TodoPanel";
 import { TodoDockEmptyState } from "./components/TodoDockEmptyState";
 import { PendingCardsBadge } from "./components/PendingCardsBadge";
 import { ApprovalModal } from "./components/ApprovalModal";
@@ -6420,6 +6420,7 @@ export default function App() {
                 pendingPrompt={state.pendingPrompt}
                 onDismiss={dismissTodos}
                 archive={todoArchive}
+                goal={state.meta?.goalObject}
               />
             )}
             {!runtimeTransitioning && (
@@ -6905,20 +6906,30 @@ export default function App() {
                       onDismiss={dismissTodos}
                       defaultOpen
                       archive={todoArchive}
+                      goal={state.meta?.goalObject}
                     />
                   </div>
                 ) : (
                   /* 893-B: distinguish "never had tasks" from "tasks sealed at
                      the turn boundary" so the empty panel stops reading as
                      "the agent is tracking nothing". */
-                  <TodoDockEmptyState
-                    t={t}
-                    todos={todos}
-                    archive={todoArchive}
-                    items={state.items}
-                    dismissedBatches={state.meta?.dismissedTodoBatches}
-                    canonicalTodos={metaTodos}
-                  />
+                  <>
+                    <TodoDockEmptyState
+                      t={t}
+                      todos={todos}
+                      archive={todoArchive}
+                      items={state.items}
+                      dismissedBatches={state.meta?.dismissedTodoBatches}
+                      canonicalTodos={metaTodos}
+                    />
+                    {/* tl1472: 无待办但有目标对象时，边栏仍在待办区展示 goal
+                        摘要 + phase + activation（透明展示位，无新入口）。 */}
+                    {state.meta?.goalObject && (
+                      <div className="workbench-dock__todo">
+                        <GoalObjectCard goal={state.meta.goalObject} />
+                      </div>
+                    )}
+                  </>
                 )
               ) : effectiveRightDockMode === "subagents" ? (
                 /* Task 495: the subagent directory panel; keyed per session so

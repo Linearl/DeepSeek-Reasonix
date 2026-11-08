@@ -6456,4 +6456,13 @@ export const zhTW: Record<DictKey, string> = {
   "composer.bashOutputStatusKilled": "已終止",
   // tl1357 形態③：重啟恢復門自動繼續（有人/無人值守一體）
   "notice.restartGateAutoContinue": "重啟恢復門已自動解除，重啟前的排隊訊息將按原順序繼續處理；可在 /queue 查看佇列。",
+  // tl1472 目標物件化：邊欄 goal 卡（物件標題/activation/phase）
+  "goal.objectTitle": "目標",
+  "goal.activation.armed": "自動續跑開啟",
+  "goal.activation.disarmed": "自動續跑已解除",
+  "goal.phase.active": "進行中",
+  "goal.phase.paused": "已暫停",
+  "goal.phase.blocked": "已阻塞",
+  "goal.phase.complete": "已完成",
+  "goal.phase.budgetLimited": "預算到限",
 };

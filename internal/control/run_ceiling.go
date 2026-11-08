@@ -10,8 +10,11 @@ import (
 // bindTurnScope binds a Goal turn's spend budget and its usage recorder, the
 // latter active until the FSM commits. Neither chat nor Goal gets a round
 // ceiling: rounds carry no information the spend axes lack. An explicit
-// max_steps still owns either turn.
+// max_steps still owns either turn. tl1472: every orchestrated turn also
+// carries the host goal creator so the model's create_goal works with or
+// without goal mode (双通道创建·模型通道).
 func (c *Controller) bindTurnScope(ctx context.Context, continuation *goalContinuationSnapshot) context.Context {
+	ctx = tool.WithGoalCreator(ctx, goalCreatorForController(c))
 	goalScopeID, goalScoped := c.goals.goalScopeIDForTurn(continuation)
 	if !goalScoped {
 		// tl1459: a turn that is not a Goal turn because the Goal stopped or
@@ -35,4 +38,20 @@ func (c *Controller) goalTaskBudget() agent.TaskBudget {
 	b := c.taskBudget
 	b.Tokens = c.goalTokenBudget
 	return b
+}
+
+// goalCreatorForController adapts the controller to the tool.GoalCreator
+// port. Separate method so the adaptation stays lock-free and trivially
+// testable.
+func goalCreatorForController(c *Controller) tool.GoalCreator {
+	if c == nil {
+		return nil
+	}
+	return controllerGoalCreator{c: c}
+}
+
+type controllerGoalCreator struct{ c *Controller }
+
+func (g controllerGoalCreator) CreateGoal(text, summary string) (string, error) {
+	return g.c.CreateGoalByModel(text, summary)
 }

@@ -32,11 +32,25 @@ func TestGoalTurnsAndNoProgressAreObservationalOnly(t *testing.T) {
 	for _, class := range []string{budgetClassSimple, budgetClassWrite, budgetClassResearch} {
 		t.Run(class, func(t *testing.T) {
 			g := &goalMachine{goal: "keep working", status: GoalStatusRunning, budgetClass: class, turnsLimit: unlimitedGoalTurns}
-			for i := range 101 {
+			// tl1472 disarm 全集⑤: 前两轮照常续跑，第三轮无进展即解除续跑
+			// （状态牌与续跑解耦——目标对象保持 running，只是不再自动续）。
+			for i := range goalNoProgressDisarmTurns - 1 {
 				res := g.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusRunning, reason: "continue"}})
 				if !res.cont || g.status != GoalStatusRunning || g.stopCause != "" {
 					t.Fatalf("Goal paused at turn %d: result=%+v runtime=%+v", i+1, res, g.runtimeView())
 				}
+			}
+			res := g.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusRunning, reason: "continue"}})
+			if res.cont || res.halted != "no_progress" || g.status != GoalStatusRunning || g.stopCause != "" {
+				t.Fatalf("turn %d must disarm without a terminal pause: result=%+v runtime=%+v", goalNoProgressDisarmTurns, res, g.runtimeView())
+			}
+			if g.activationValue() != GoalActivationDisarmed {
+				t.Fatalf("activation = %q, want disarmed", g.activationValue())
+			}
+			// The counters stay observational and keep counting while the loop
+			// is driven past the halt (turn quota stays gone).
+			for range 98 {
+				g.advance(goalAdvanceInput{report: &goalTurnReport{status: GoalStatusRunning, reason: "continue"}})
 			}
 			if g.turnsUsed != 101 || g.noProgressTurns != 101 || g.runtimeView().TurnsLimit != 0 || g.runtimeView().NoProgressLimit != 0 {
 				t.Fatalf("observational counters = %+v", g.runtimeView())
@@ -58,8 +72,14 @@ func TestGoalResumeNeverExtendsNumericQuota(t *testing.T) {
 }
 
 func TestWireContinueWithRepeatedEvidenceKeepsRunning(t *testing.T) {
+	// tl1472 disarm 全集⑤: repeated wire continues with NO new evidence keep
+	// the goal object running but disarm once the no-progress streak reaches
+	// goalNoProgressDisarmTurns — the loop stops instead of chasing its own
+	// tail forever. (The first turn's evidence is new, so the streak reaches N
+	// on the N+1-th turn.)
 	g := &goalMachine{goal: "repeat", status: GoalStatusRunning, turnsLimit: unlimitedGoalTurns, scopeID: newGoalScopeID()}
-	for i := range 100 {
+	var halted int
+	for i := 1; i <= goalNoProgressDisarmTurns+2; i++ {
 		epoch := g.continuationEpoch
 		rec := g.newTurnRecorder(g.scopeID, epoch)
 		if _, err := rec.RecordGoalReport(tool.GoalReport{Status: "continue", Reason: "same", NextAction: "repeat"}); err != nil {
@@ -67,11 +87,21 @@ func TestWireContinueWithRepeatedEvidenceKeepsRunning(t *testing.T) {
 		}
 		res := g.advance(goalAdvanceInput{report: rec.validReport(epoch), progressEvidence: []string{"same-read"}, expectedEpoch: &epoch})
 		if !res.cont {
-			t.Fatalf("wire continue paused at %d: %+v", i+1, res)
+			halted = i
+			if res.halted != "no_progress" {
+				t.Fatalf("wire continue halted without the no_progress mark at %d: %+v", i, res)
+			}
+			break
+		}
+		if i > goalNoProgressDisarmTurns {
+			t.Fatalf("wire continue kept running past the threshold at %d", i)
 		}
 	}
-	if g.status != GoalStatusRunning || g.stopCause != "" || g.noProgressTurns != 99 {
-		t.Fatalf("wire continue runtime: %+v", g.runtimeView())
+	if halted != goalNoProgressDisarmTurns+1 {
+		t.Fatalf("wire continue halted at turn %d, want %d", halted, goalNoProgressDisarmTurns+1)
+	}
+	if g.status != GoalStatusRunning || g.stopCause != "" || g.activationValue() != GoalActivationDisarmed || g.noProgressTurns != goalNoProgressDisarmTurns {
+		t.Fatalf("wire continue runtime after disarm: %+v activation=%q", g.runtimeView(), g.activationValue())
 	}
 }
 

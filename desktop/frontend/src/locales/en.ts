@@ -6505,6 +6505,14 @@ export const en = {
   "composer.bashOutputStatusKilled": "Killed",
   // tl1357 form ③: restart recovery gate auto-continue (attended + unattended)
   "notice.restartGateAutoContinue": "The restart recovery gate was cleared automatically; messages queued before the restart keep flowing in order. Review the queue any time with /queue.",
+  "goal.objectTitle": "Goal",
+  "goal.activation.armed": "armed",
+  "goal.activation.disarmed": "disarmed",
+  "goal.phase.active": "active",
+  "goal.phase.paused": "paused",
+  "goal.phase.blocked": "blocked",
+  "goal.phase.complete": "complete",
+  "goal.phase.budgetLimited": "budget limited",
 };
 
 export type DictKey = keyof typeof en;

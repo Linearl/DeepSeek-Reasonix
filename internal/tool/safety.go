@@ -73,9 +73,12 @@ var builtinSafety = map[string]SafetySpec{
 	"prepare_worktree_merge": {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
 	"read_file":              {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
 	"todo_read":              {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
-	"update_goal":            {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
-	"view_image":             {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
-	"web_fetch":              {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
+	// tl1472：create_goal 与 update_goal 同族——宿主簿记（目标对象安装），
+	// 只读、可并行、低风险。
+	"create_goal": {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
+	"update_goal": {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
+	"view_image":  {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
+	"web_fetch":   {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
 	// 任务 934：工作流目录与运行登记的只读面。
 	"workflow_get":    {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
 	"workflow_list":   {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},

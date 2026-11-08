@@ -1142,6 +1142,8 @@ func (t *TaskTool) prepareTranscriptRunWithPrompt(ctx context.Context, subReg *t
 
 func childToolIdentityContext(ctx context.Context) context.Context {
 	ctx = tool.WithoutGoalTurnRecorder(ctx)
+	// tl1472: a child session must not create goals for its parent.
+	ctx = tool.WithoutGoalCreator(ctx)
 	ctx = memory.WithoutQueue(ctx)
 	ctx = jobs.WithoutManager(ctx)
 	return planmode.WithActive(ctx, PlanModeFromContext(ctx))
