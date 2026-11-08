@@ -6472,5 +6472,10 @@ export const zhTW: Record<DictKey, string> = {
   // tl1335 工作流程主動暫停/續跑（鍵追加在 EOF）
   "workflowPanel.action.pause": "暫停",
   "workflowPanel.run.paused": "已暫停 · 可續跑",
+  // tl1496b provider-poll 同類面擴展：失敗有界暫停標記（狀態列 MCP 晶片/
+  // 設定頁模型套用橫幅/設定頁 bot runtime 狀態列）
+  "status.mcpPaused": "查詢已暫停（連續失敗）——聚焦視窗或開啟 MCP 管理頁重試。",
+  "settings.models.applyPaused": "自動查詢已暫停（連續失敗）——儲存設定或重新開啟頁面後自動重試。",
+  "settings.botRuntimePaused": "狀態查詢已暫停",
 
 };

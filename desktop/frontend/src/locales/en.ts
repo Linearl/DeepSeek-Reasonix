@@ -6520,6 +6520,11 @@ export const en = {
   // tl1335 workflow pause/resume (keys appended at EOF)
   "workflowPanel.action.pause": "Pause",
   "workflowPanel.run.paused": "Paused · resumable",
+  // tl1496b provider-poll same-face expansion: bounded-retry pause markers
+  // (status-bar MCP chip / settings model application / settings bot runtime)
+  "status.mcpPaused": "Query paused after repeated failures — refocus the window or open the MCP manager to retry.",
+  "settings.models.applyPaused": "Auto-refresh paused after repeated failures — saving settings or reopening the page retries automatically.",
+  "settings.botRuntimePaused": "status query paused",
 
 };
 

@@ -9,6 +9,13 @@ import { labFlagEnabled } from "../lib/labFlags";
 import { CopyButton } from "./CopyButton";
 import { reportFrontendLog } from "../lib/frontendLog";
 
+// tl1496b（provider-poll 同类面 扩展·两裁定）：设置页两个状态轮询面的失败
+// 有界档位——连续失败达上限即暂停定时重查（tick 零调用），单发路径（事件/
+// 焦点/保存后 reload）恢复。与 planUsage 刀①的 PLAN_USAGE_FAILURE_LIMIT=3
+// 同档。
+const MODEL_APPLICATION_FAILURE_LIMIT = 3;
+const BOT_RUNTIME_FAILURE_LIMIT = 3;
+
 export { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { ManagementPageShell } from "./ManagementPageShell";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
@@ -194,6 +201,14 @@ export function SettingsPanel({
   const [warning, setWarning] = useState<string | null>(null);
   const [modelApplication, setModelApplication] = useState<import("../lib/types").ModelSettingsResult | null>(null);
   const modelApplicationSeq = useRef(0);
+  // tl1496b（provider-poll 同类面 扩展，用户 2026-11-08 两裁定）：失败有界——
+  // GetModelSettingsApplication 连续失败达 MODEL_APPLICATION_FAILURE_LIMIT 即
+  // 暂停 2s 重查节拍（tick 零调用），横幅以暂停行标注；单发路径（runtime 重建
+  // 事件 / 窗口焦点 / 保存后 reload）不被 paused 拦截，任一次成功读数即恢复
+  // 节拍——planUsage 刀①同语义。无活跃不查由挂载承载：设置面板未开本组件不
+  // 挂载，天然零调用（核对结论，不另加门）。
+  const modelApplicationFailStreak = useRef(0);
+  const [modelApplicationPaused, setModelApplicationPaused] = useState(false);
   const settingsLoadSeq = useRef(0);
   const settingsApplySeq = useRef(0);
   const [theme, setThemeState] = useState<Theme>(getTheme());
@@ -290,7 +305,14 @@ export function SettingsPanel({
       labReloadStartRef.current = reloadStart;
       labFirstPaintPending.current = true;
       setS(next);
-      if (application && applicationSeq === modelApplicationSeq.current) setModelApplication(application);
+      if (application && applicationSeq === modelApplicationSeq.current) {
+        setModelApplication(application);
+        // tl1496b: a landed application read (e.g. the post-save reload) is
+        // success evidence — clears the bounded-retry pause exactly like the
+        // single-shot refresh path.
+        modelApplicationFailStreak.current = 0;
+        setModelApplicationPaused(false);
+      }
       return next;
     } catch (e) {
       // Task 163 fix (0926): the bare `catch {}` swallowed the rejection
@@ -355,8 +377,22 @@ export function SettingsPanel({
     const seq = ++modelApplicationSeq.current;
     try {
       const result = await app.GetModelSettingsApplication();
-      if (seq === modelApplicationSeq.current) setModelApplication(result);
-    } catch { /* Keep the last confirmed status until the next read. */ }
+      if (seq !== modelApplicationSeq.current) return;
+      setModelApplication(result);
+      // tl1496b: a landed read is success evidence — clears the bounded-retry
+      // gates; the 2s cadence resumes on its own (the timer effect re-runs on
+      // the paused flip).
+      modelApplicationFailStreak.current = 0;
+      setModelApplicationPaused(false);
+    } catch {
+      // tl1496b: keep the last confirmed status, but count the failure toward
+      // the bounded-retry pause. A stale answer (seq mismatch) never owns the
+      // verdict — only the newest query counts.
+      if (seq !== modelApplicationSeq.current) return;
+      const streak = modelApplicationFailStreak.current + 1;
+      modelApplicationFailStreak.current = streak;
+      if (streak >= MODEL_APPLICATION_FAILURE_LIMIT) setModelApplicationPaused(true);
+    }
   }, []);
   useEffect(() => {
     const refresh = () => { void refreshModelApplication(); };
@@ -369,10 +405,11 @@ export function SettingsPanel({
     };
   }, [refreshModelApplication]);
   useEffect(() => {
+    if (modelApplicationPaused) return; // tl1496b 失败有界: paused → tick 停发，零调用
     if (modelApplication?.application !== "pending" && modelApplication?.application !== "failed") return;
     const timer = window.setInterval(() => { void refreshModelApplication(); }, 2000);
     return () => window.clearInterval(timer);
-  }, [modelApplication?.application, refreshModelApplication]);
+  }, [modelApplication?.application, modelApplicationPaused, refreshModelApplication]);
   useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
@@ -640,6 +677,7 @@ export function SettingsPanel({
             {needsSettings && (tab === "models" || tab === "providers") && modelApplication && (modelApplication.application === "pending" || modelApplication.application === "failed") && (
               <div className="banner banner--warning" role="status">
                 <span>{t(modelApplication.application === "pending" ? "settings.models.savedPending" : "settings.models.savedApplyFailed")}</span>
+                {modelApplicationPaused && <span>{t("settings.models.applyPaused")}</span>}
                 {modelApplication.issues.map((issue, index) => <span key={`${issue.code}:${index}`}>{issue.message}</span>)}
                 {modelApplication.targets.filter(target => target.application === "failed").map(target => (
                   <button className="btn btn--secondary btn--small" key={target.tabId} type="button" onClick={() => void pageApply(() => app.RetryModelSettingsApplication(target.tabId))}>{t("settings.models.applyRetry")}{target.title ? ` · ${target.title}` : ""}</button>
@@ -2376,23 +2414,49 @@ function BotsSection({ s, busy, apply, initialFocus }: BotsSectionProps) {
     setTestTargets({});
   }, [s.bot]);
   // 轮询 bot runtime 的真实平台连接状态，用于 channel 在线徽章（如钉钉黄/绿点）。
+  // tl1496b（provider-poll 同类面 扩展，用户 2026-11-08 两裁定）：
+  //   无活跃不查——面板未开本组件不挂载（挂载即门）；无任何 bot 渠道面
+  //   （QQ 未启用、钉钉未启用、无自定义连接）时零调用；渠道面出现/消失
+  //   （增删连接、启用开关）作为新查询上下文单发重查。
+  //   失败有界——连续失败达 BOT_RUNTIME_FAILURE_LIMIT 即暂停 5s 节拍
+  //   （tick 零调用），徽章冻结在最后一次快照并以暂停行标注；渠道面变化
+  //   或任一次成功读数恢复节拍。
+  const hasBotRuntimeSurface = Boolean(draft.qq.enabled || draft.dingtalk.enabled || draft.connections.length > 0);
+  const [botRuntimePaused, setBotRuntimePaused] = useState(false);
+  const botRuntimeFailStreak = useRef(0);
   useEffect(() => {
+    if (!hasBotRuntimeSurface) {
+      botRuntimeFailStreak.current = 0;
+      setBotRuntimePaused(false);
+      return undefined;
+    }
     let cancelled = false;
     const refresh = () => {
       if (typeof app.BotRuntimeStatus !== "function") return;
       void app.BotRuntimeStatus()
         .then((status) => {
-          if (!cancelled) setRuntimePlatforms(status.platforms ?? {});
+          if (cancelled) return;
+          setRuntimePlatforms(status.platforms ?? {});
+          // tl1496b: a landed read clears the bounded-retry gates; the effect
+          // re-runs on the paused flip and resumes the cadence.
+          botRuntimeFailStreak.current = 0;
+          setBotRuntimePaused(false);
         })
-        .catch(() => {});
+        .catch(() => {
+          if (cancelled) return;
+          const streak = botRuntimeFailStreak.current + 1;
+          botRuntimeFailStreak.current = streak;
+          if (streak >= BOT_RUNTIME_FAILURE_LIMIT) setBotRuntimePaused(true);
+        });
     };
-    refresh();
+    refresh(); // 单发重查：新查询上下文（挂载/渠道面变化）不受 paused 拦截
+    if (botRuntimePaused) return () => { cancelled = true; };
     const id = window.setInterval(refresh, 5000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, []);
+  }, [hasBotRuntimeSurface, botRuntimePaused]);
   const focusAccessStep = () => {
     if (!expandedConnectionId && connectionItems.length > 0) {
       const first = connectionItems[0];
@@ -3012,7 +3076,7 @@ function BotsSection({ s, busy, apply, initialFocus }: BotsSectionProps) {
           </div>
           <div>
             <span>{t("settings.botConnectionColumnStatus")}</span>
-            <strong>{qqOnline ? t("settings.botConnectionConnected") : qqConfigured ? t("settings.botConnectionConfigured") : t("settings.botConnectionDisconnected")}</strong>
+            <strong>{qqOnline ? t("settings.botConnectionConnected") : qqConfigured ? t("settings.botConnectionConfigured") : t("settings.botConnectionDisconnected")}{botRuntimePaused ? ` · ${t("settings.botRuntimePaused")}` : ""}</strong>
           </div>
         </div>
       </section>
@@ -3191,7 +3255,7 @@ function BotsSection({ s, busy, apply, initialFocus }: BotsSectionProps) {
           </div>
           <div>
             <span>{t("settings.botConnectionColumnStatus")}</span>
-            <strong>{dingtalkOnline ? t("settings.botConnectionConnected") : dingtalkConfigured ? t("settings.botConnectionConfigured") : t("settings.botConnectionDisconnected")}</strong>
+            <strong>{dingtalkOnline ? t("settings.botConnectionConnected") : dingtalkConfigured ? t("settings.botConnectionConfigured") : t("settings.botConnectionDisconnected")}{botRuntimePaused ? ` · ${t("settings.botRuntimePaused")}` : ""}</strong>
           </div>
         </div>
       </section>

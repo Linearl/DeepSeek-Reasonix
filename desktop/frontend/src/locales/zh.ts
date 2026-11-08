@@ -6476,5 +6476,10 @@ export const zh: Record<DictKey, string> = {
   // tl1335 工作流主动暂停/续跑（键追加在 EOF）
   "workflowPanel.action.pause": "暂停",
   "workflowPanel.run.paused": "已暂停 · 可续跑",
+  // tl1496b provider-poll 同类面扩展：失败有界暂停标记（状态栏 MCP 芯片/
+  // 设置页模型应用横幅/设置页 bot runtime 状态行）
+  "status.mcpPaused": "查询已暂停（连续失败）——聚焦窗口或打开 MCP 管理页重试。",
+  "settings.models.applyPaused": "自动查询已暂停（连续失败）——保存设置或重开页面后自动重试。",
+  "settings.botRuntimePaused": "状态查询已暂停",
 
 };
