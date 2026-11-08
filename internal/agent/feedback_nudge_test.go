@@ -1,7 +1,11 @@
 package agent
 
 // Task 172 feedback touchpoints: T1 (completion) + T2 (mid-turn steer) with
-// the anti-loop gates. Every test below also pins the default-off contract:
+// the anti-loop gates. tl1350 adds the classification contract pins: the
+// inbox invitation only for a defect Reasonix itself can fix (criterion ①),
+// reusable know-how routed to memory:remember with no inbox mention
+// (criterion ②), and gate 4 skipping the touchpoint once remember already
+// succeeded this turn. Every test below also pins the default-off contract:
 // an agent constructed without Options.FeedbackNudge must be byte-for-byte
 // free of nudge messages and extra provider rounds.
 
@@ -176,5 +180,79 @@ func TestFeedbackNudgeSteerInjectsT2Once(t *testing.T) {
 	}
 	if nudges != 1 {
 		t.Fatalf("nudge messages = %d, want exactly 1 (T2 once, no T1 stacking)", nudges)
+	}
+}
+
+// TestFeedbackNudgeCopyClassifiesBeforeInviting pins the tl1350 copy contract
+// on both touchpoints. Criterion ①: the inbox invitation exists only inside a
+// bucket gated on "Reasonix itself can fix", with non-fixable roots (upstream
+// API, prompts, user workflow) named as out-of-scope. Criterion ②: reusable
+// know-how is routed to memory:remember with an explicit "do NOT mention the
+// feedback inbox" instruction, while the submit_feedback channel itself
+// survives for real fork-fixable defects.
+func TestFeedbackNudgeCopyClassifiesBeforeInviting(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		copy string
+	}{
+		{"T1 completion", feedbackNudgeCompletionGuidance()},
+		{"T2 steer", feedbackNudgeSteerGuidance()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Case-normalized: phrases appear mid-sentence in T2.
+			copy := strings.ToLower(tc.copy)
+			for _, want := range []string{
+				"reasonix itself can fix",           // criterion ①: the only invitation bucket
+				"outside reasonix",                  // criterion ①: non-fixable roots named
+				"memory:remember",                   // criterion ②: self-record guidance
+				"do not mention the feedback inbox", // criterion ②: no invite for know-how
+				"submit_feedback",                   // invitation channel kept for fork-fixable defects
+			} {
+				if !strings.Contains(copy, want) {
+					t.Fatalf("%s copy missing %q:\n%s", tc.name, want, tc.copy)
+				}
+			}
+		})
+	}
+}
+
+// rememberStubTool is the gate-4 trigger shape: the model records a lesson
+// via the remember tool mid-turn.
+type rememberStubTool struct{}
+
+func (r *rememberStubTool) Name() string        { return tool.HostRemember }
+func (r *rememberStubTool) Description() string { return "records a lesson" }
+func (r *rememberStubTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{}}`)
+}
+func (r *rememberStubTool) ReadOnly() bool { return true }
+func (r *rememberStubTool) Execute(context.Context, json.RawMessage) (string, error) {
+	return "remembered", nil
+}
+
+// TestFeedbackNudgeSkippedWhenTurnAlreadyRemembered pins gate 4 (the tl1350
+// optional filter): a turn whose ledger already holds a successful remember
+// receipt ends without any T1 invitation round — the knowledge is recorded,
+// so the inbox nudge would only duplicate it.
+func TestFeedbackNudgeSkippedWhenTurnAlreadyRemembered(t *testing.T) {
+	mp := testutil.NewMock("m",
+		testutil.Turn{ToolCalls: []provider.ToolCall{{ID: "r1", Name: "remember", Arguments: `{}`}}},
+		testutil.Turn{Text: "lesson recorded"},
+	)
+	reg := tool.NewRegistry()
+	reg.Add(&rememberStubTool{})
+	a := New(mp, reg, NewSession(""), Options{FeedbackNudge: true}, event.Discard)
+
+	if err := a.Run(context.Background(), "record the lesson"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !a.task.ledger.HasSuccessfulToolReceipt(tool.HostRemember) {
+		t.Fatal("test setup: remember receipt did not land; gate 4 was not exercised")
+	}
+	if got := mp.CallCount(); got != 2 {
+		t.Fatalf("provider calls = %d, want tool round + final (no invitation round)", got)
+	}
+	if got := countNudgeMessages(a); got != 0 {
+		t.Fatalf("nudge messages = %d, want 0 after a successful remember this turn", got)
 	}
 }
