@@ -303,6 +303,9 @@ export function StatusBar({
   // status bar is always mounted). A non-plan current model renders nothing:
   // hidden, never an error.
   const planView = usePlanUsageStore((s) => s.view);
+  // fix-provider-poll-bound 刀①：轮询连续失败暂停态——芯片在无窗口数据时
+  // 也要能显示暂停（provider 状态行可见标记，三语）。
+  const planPaused = usePlanUsageStore((s) => s.paused);
   const reportPlanUsageTab = usePlanUsageStore((s) => s.reportTab);
   useEffect(() => {
     ensurePlanUsagePolling();
@@ -464,7 +467,7 @@ export function StatusBar({
         </span>
       </Tooltip>
     ),
-    plan: planWindows.length === 0 ? null : (
+    plan: planWindows.length === 0 && !planPaused ? null : (
       <Tooltip
         label={
           <span className="statusbar__tooltip-stack">
@@ -476,6 +479,7 @@ export function StatusBar({
               </span>
             ))}
             {planExhausted && <span>{t("planUsage.exhausted")}</span>}
+            {planPaused && <span>{t("planUsage.pausedShort")}</span>}
           </span>
         }
         className="statusbar__metric statusbar__metric--plan"
@@ -483,7 +487,7 @@ export function StatusBar({
         <span className="stat stat--plan statusbar__plan">
           <MetricLabel style={metricLabelStyle} icon={<PieChart size={12} />} label={t("status.planLabel")} />
           <b className={[planTone ? `statusbar__plan-value--${planTone}` : undefined].filter(Boolean).join(" ") || undefined}>
-            {planPercent !== null ? `${Math.round(planPercent)}%` : "-"}
+            {planPercent !== null ? `${Math.round(planPercent)}%` : planPaused ? t("planUsage.pausedShort") : "-"}
           </b>
         </span>
       </Tooltip>

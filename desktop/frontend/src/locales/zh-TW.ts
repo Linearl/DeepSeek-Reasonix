@@ -6465,4 +6465,8 @@ export const zhTW: Record<DictKey, string> = {
   "goal.phase.blocked": "已阻塞",
   "goal.phase.complete": "已完成",
   "goal.phase.budgetLimited": "預算到限",
+  // fix-provider-poll-bound 輪詢失敗有界化暫停標記（鍵追加在 EOF）
+  "planUsage.paused": "查詢已暫停（連續失敗 {count} 次）——開啟會話、切換模型或點重新整理重試。",
+  "planUsage.pausedShort": "查詢暫停",
+  "settings.opencodeGoUsage.paused": "查詢已暫停（連續失敗 {count} 次）——點重新整理或切換模型後重試。",
 };

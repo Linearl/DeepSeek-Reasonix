@@ -6513,6 +6513,10 @@ export const en = {
   "goal.phase.blocked": "blocked",
   "goal.phase.complete": "complete",
   "goal.phase.budgetLimited": "budget limited",
+  // fix-provider-poll-bound bounded-retry pause marker (keys appended at EOF)
+  "planUsage.paused": "Query paused after {count} consecutive failures — open a session, switch models, or hit refresh to retry.",
+  "planUsage.pausedShort": "query paused",
+  "settings.opencodeGoUsage.paused": "Query paused after {count} consecutive failures — hit refresh or switch models to retry.",
 };
 
 export type DictKey = keyof typeof en;

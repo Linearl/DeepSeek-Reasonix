@@ -6469,4 +6469,8 @@ export const zh: Record<DictKey, string> = {
   "goal.phase.blocked": "已阻塞",
   "goal.phase.complete": "已完成",
   "goal.phase.budgetLimited": "预算到限",
+  // fix-provider-poll-bound 轮询失败有界化暂停标记（键追加在 EOF）
+  "planUsage.paused": "查询已暂停（连续失败 {count} 次）——打开会话、切换模型或点刷新重试。",
+  "planUsage.pausedShort": "查询暂停",
+  "settings.opencodeGoUsage.paused": "查询已暂停（连续失败 {count} 次）——点刷新或切换模型后重试。",
 };

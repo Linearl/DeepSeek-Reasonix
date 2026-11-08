@@ -23306,6 +23306,12 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-sm);
   line-height: 1.45;
 }
+/* fix-provider-poll-bound 刀①：轮询连续失败后的「查询已暂停」行——底色
+   沿用 note 的 --warn，仅加字重把它从普通降级提示里拎出来（暂停是状态
+   而非一次性错误）。 */
+.plan-usage__note--paused {
+  font-weight: 620;
+}
 .plan-usage__exhausted {
   margin: 0;
   color: var(--danger);
