@@ -6517,6 +6517,10 @@ export const en = {
   "planUsage.paused": "Query paused after {count} consecutive failures — open a session, switch models, or hit refresh to retry.",
   "planUsage.pausedShort": "query paused",
   "settings.opencodeGoUsage.paused": "Query paused after {count} consecutive failures — hit refresh or switch models to retry.",
+  // tl1335 workflow pause/resume (keys appended at EOF)
+  "workflowPanel.action.pause": "Pause",
+  "workflowPanel.run.paused": "Paused · resumable",
+
 };
 
 export type DictKey = keyof typeof en;

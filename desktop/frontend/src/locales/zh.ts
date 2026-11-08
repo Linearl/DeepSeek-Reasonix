@@ -6473,4 +6473,8 @@ export const zh: Record<DictKey, string> = {
   "planUsage.paused": "查询已暂停（连续失败 {count} 次）——打开会话、切换模型或点刷新重试。",
   "planUsage.pausedShort": "查询暂停",
   "settings.opencodeGoUsage.paused": "查询已暂停（连续失败 {count} 次）——点刷新或切换模型后重试。",
+  // tl1335 工作流主动暂停/续跑（键追加在 EOF）
+  "workflowPanel.action.pause": "暂停",
+  "workflowPanel.run.paused": "已暂停 · 可续跑",
+
 };

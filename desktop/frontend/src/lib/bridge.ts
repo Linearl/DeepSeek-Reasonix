@@ -1790,6 +1790,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 运行时通道）与运行中止。
   WorkflowRunsSnapshot(): Promise<WireWorkflowRun[]>;
   WorkflowCancelRun(runId: string): Promise<boolean>;
+  // tl1335: 面板暂停钮——节点边界优雅挂起（在飞节点跑完才生效），run 落
+  // paused 可续态；与停止钮（立即砍）互补。
+  WorkflowPauseRun(runId: string): Promise<boolean>;
   // 任务1316: 面板续跑钮——从断点续跑一次 interrupted run（服务侧校验可续性）。
   WorkflowResumeRun(runId: string): Promise<boolean>;
   // tl1434: 节点详情「工作过程」——只读回放某节点第 occurrence 次（1-based）
@@ -6979,6 +6982,10 @@ function makeMockApp(): AppBindings {
       return false;
     },
     async WorkflowCancelRun() {
+      return false;
+    },
+    // tl1335：浏览器 dev mock 无运行登记，暂停钮诚实返回未命中。
+    async WorkflowPauseRun() {
       return false;
     },
     // tl1434：浏览器 dev mock 无工作流运行登记，诚实给空表——详情面走

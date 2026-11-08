@@ -6469,4 +6469,8 @@ export const zhTW: Record<DictKey, string> = {
   "planUsage.paused": "查詢已暫停（連續失敗 {count} 次）——開啟會話、切換模型或點重新整理重試。",
   "planUsage.pausedShort": "查詢暫停",
   "settings.opencodeGoUsage.paused": "查詢已暫停（連續失敗 {count} 次）——點重新整理或切換模型後重試。",
+  // tl1335 工作流程主動暫停/續跑（鍵追加在 EOF）
+  "workflowPanel.action.pause": "暫停",
+  "workflowPanel.run.paused": "已暫停 · 可續跑",
+
 };
