@@ -11,14 +11,16 @@ import (
 	"reasonix/internal/store"
 )
 
-// 任务868 状态机级测试：恢复门 × 会话类型 × 条目类型。
+// 任务868 + tl1357 状态机级测试：恢复门 × 会话姿态 × 条目类型。
 //
 // 与 840 钉桌面调用顺序的 fake 不同，这里的桩（gateStoreController）包着一
 // 颗**真** sessioninbox.Store：跨进程重启用 store_test.go 同款手法模拟
 // （manifest 的 runId 改写后重开 → loadOrInitLocked 走 RunID 变更分支），
 // 门形态（Paused+Recovered、UserPaused 溯源位、ClaimItem 准入闸）全部是
 // manifest 状态机真身，不是手绘快照。桌面策略（autoContinueInboxGateForTab）
-// 在其上做矩阵断言。
+// 在其上做矩阵断言。tl1357 起清门不再区分值守姿态（形态③：有人值守重启后
+// 引导消息同样必须重放），四道保留闸（UserPaused / dial=off / 纯检视架 /
+// 中断工具）逐条保持。
 
 // gateStoreController bridges the desktop policy to a real Store. Only the
 // seams the policy touches are wired; everything else stays a nil-port stub.
@@ -181,9 +183,12 @@ func TestUnattendedRestartGateAutoContinues(t *testing.T) {
 	}
 }
 
-// TestAttendedRestartGateKept 是不回归面（868 验收②）：同样门形态的有人会话
-// 完全不被触碰——门、横幅数据、派发闸逐字节保持现状。
-func TestAttendedRestartGateKept(t *testing.T) {
+// TestAttendedRestartGateAutoContinues 是 tl1357 形态③ 的复现钉：普通
+// （有人值守）交互会话重启后，引导消息停在自动暂停门后等人点「继续执行」，
+// 会话侧永远收不到（20261102 实测 11:39 报告）。修前（868 原验收②）
+// 有人值守的门逐字节保留——即本钉的红面；修后清门不再区分值守姿态，
+// 队列重开、派发被踢、840 settle 顺序与无人值守面完全一致。
+func TestAttendedRestartGateAutoContinues(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	session := filepath.Join(t.TempDir(), "attended.session.jsonl")
 	st := restartGateFixture(t, session, 3)
@@ -195,14 +200,25 @@ func TestAttendedRestartGateKept(t *testing.T) {
 	app.autoContinueInboxGateForTab(tab)
 
 	after := st.Snapshot()
-	if !after.Paused || !after.Recovered {
-		t.Fatalf("an attended session's gate must stay untouched, got %+v", after)
+	if after.Paused || after.Recovered || after.RecoveredN != 0 {
+		t.Fatalf("the attended gate must be cleared too (tl1357 形态③), got %+v", after)
 	}
-	if got := ctrl.kickCount(); got != 0 {
-		t.Fatalf("an attended session must not be kicked, got %d kicks", got)
+	if after.UserPaused {
+		t.Fatal("auto-continue must not stamp user provenance")
 	}
-	if got := ctrl.settleCount(); got != 0 {
-		t.Fatalf("an attended session must not settle guidance, got %d settles", got)
+	if got := ctrl.kickCount(); got != 1 {
+		t.Fatalf("the dispatch kick must fire exactly once, got %d", got)
+	}
+	if got := ctrl.settleCount(); got != 1 {
+		t.Fatalf("the planned-restart guidance settle must fire exactly once, got %d", got)
+	}
+	order := ctrl.orderNow()
+	if len(order) < 2 || order[0] != "guidance" || order[1] != "resume" {
+		t.Fatalf("guidance settle must run BEFORE the gate clears (840 ordering), order = %v", order)
+	}
+	// 派发准入闸实证重开：队首可认领——「重启后会话收不到消息」的面被打开。
+	if err := st.ClaimItem(after.Items[0].ID); err != nil {
+		t.Fatalf("claiming the queue head after attended auto-continue: %v", err)
 	}
 }
 

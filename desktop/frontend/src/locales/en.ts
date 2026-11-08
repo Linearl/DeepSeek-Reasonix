@@ -6494,6 +6494,8 @@ export const en = {
   "history.trashFamilyCopies": "+{n} copies",
   "history.trashFamilyCollapse": "Hide copies",
   "history.trashFamilyCopyRole": "copy",
+  // tl1357 form ③: restart recovery gate auto-continue (attended + unattended)
+  "notice.restartGateAutoContinue": "The restart recovery gate was cleared automatically; messages queued before the restart keep flowing in order. Review the queue any time with /queue.",
 };
 
 export type DictKey = keyof typeof en;

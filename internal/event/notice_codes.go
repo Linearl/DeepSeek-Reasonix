@@ -146,6 +146,14 @@ const (
 	// user-visible trace of the automatic decision — attended tabs keep the
 	// gate and never emit this.
 	NoticeCodeUnattendedGateAutoContinue = "unattended_gate_auto_continue"
+	// NoticeCodeRestartGateAutoContinue (tl1357 形态③): the restart recovery
+	// gate (auto-paused queue left by a cross-process restart) is cleared at
+	// the restore point for EVERY tab posture — unattended (task 868) and now
+	// attended alike. The user's own pre-restart messages must replay instead
+	// of waiting behind a gate nobody answers (20261102 实测：重启后引导消息
+	// 还在但会话没收到). User-held pauses (UserPaused), dial=off, pure review
+	// shelves and interrupted-tool reviews keep their gates unchanged.
+	NoticeCodeRestartGateAutoContinue = "restart_gate_auto_continue"
 	// NoticeCodeCollabDeliverySilent (任务894): a cross-session delivery
 	// outcome that needs no sender action (injected / normal queued_followup /
 	// steer degraded to a queued follow-up) was demoted from an injected host
