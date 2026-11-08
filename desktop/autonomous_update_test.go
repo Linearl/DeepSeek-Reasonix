@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"reasonix/internal/config"
 	"reasonix/internal/control"
@@ -332,5 +335,245 @@ func TestResumeMarkerRoundTripsJSON(t *testing.T) {
 	}
 	if _, ok := parsed["sessions"]; !ok {
 		t.Fatalf("marker file must carry a sessions array: %s", raw)
+	}
+}
+
+// ── tl1500 刀④返修（2026-11-09 用户拍板二轮①）三钉 ─────────────────────────
+// 修前红 = 刀④拒绝语义（mid_turn_host_restart_refused）；修后绿 = 排队 +
+// 回合边界自动执行。钉③对照证明前台回合不受影响。
+
+// stubBoundaryRestartSeams swaps every process-lifecycle seam the queued
+// boundary restart can reach (publish/switch/plain-restart faces) for no-ops,
+// pointing the install root at the scratch layout. Returns the launcher
+// handoff counter — the observable effect of a committed restart path.
+//
+// The launcher/quit stubs are deliberately NOT restored: both restart paths
+// arm a delayed-quit goroutine (750ms-3s) that may fire AFTER the test
+// returned and Cleanup ran — restoring the real quitApp there would kill the
+// whole test process. Same convention as the pre-existing tests, which assign
+// these vars without restoring them; only the path seam (restartResolveInstallRoot)
+// is restored, since scratch roots must not leak into other tests.
+func stubBoundaryRestartSeams(t *testing.T, root string) *atomic.Int32 {
+	t.Helper()
+	origResolve := restartResolveInstallRoot
+	t.Cleanup(func() {
+		restartResolveInstallRoot = origResolve
+	})
+	var calls atomic.Int32
+	restartResolveInstallRoot = func(string) (string, error) { return root, nil }
+	restartStartLauncher = func(string, int) error { calls.Add(1); return nil }
+	restartQuit = func(*App) {}
+	versionSwitchStartLauncher = func(string, int) error { calls.Add(1); return nil }
+	versionSwitchQuit = func(*App) {}
+	// The plain-restart face launchability-checks the launcher before it will
+	// proceed; the scratch layout needs one to hand off to.
+	if err := os.WriteFile(filepath.Join(root, installlayout.LauncherBinaryName()), []byte("launcher"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return &calls
+}
+
+// waitForBoundaryRestart polls until cond holds — the turn-boundary waiter
+// runs on its own goroutine, so the test must synchronize on the observable
+// effect instead of sleeping.
+func waitForBoundaryRestart(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timeout waiting for %s", what)
+}
+
+// boundaryQueueSnapshot reads the pending-restart slot under its mutex.
+func boundaryQueueSnapshot(app *App) (pendingKind, queuedAction string, slotEmpty bool) {
+	app.autonomousMu.Lock()
+	defer app.autonomousMu.Unlock()
+	pendingKind = app.autonomousPending.kind
+	if app.autonomousBoundaryRestart != nil {
+		queuedAction = app.autonomousBoundaryRestart.action
+		return pendingKind, queuedAction, false
+	}
+	return pendingKind, "", true
+}
+
+// 钉①: heartbeat-turn execute queues instead of refusing — the staged target
+// is NOT consumed mid-turn (no swap, no launcher handoff), the note carries the
+// queued marker, and after the turn context ends the boundary waiter consumes
+// the staged target through the existing rollback path (pointer moved).
+func TestHeartbeatTurnExecuteQueuesForTurnBoundary(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	active := "v1.38.3-20260923-1010"
+	rollback := "v1.38.3-20260922-0900"
+	root := fakeInstallRoot(t, []string{active, rollback}, active)
+	addVersionTreeWithCLI(t, root, rollback, true)
+	fakeVersionedConfig(t, true)
+	launcherCalls := stubBoundaryRestartSeams(t, root)
+
+	app := &App{}
+	controller := newAutonomousUpdateController(app)
+	if _, err := controller.SetTarget(t.Context(), rollback); err != nil {
+		t.Fatal(err)
+	}
+
+	turnCtx, cancel := context.WithCancel(control.WithHeartbeatTurn(t.Context()))
+	note, err := controller.ExecuteTarget(turnCtx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(note, midTurnRestartQueuedMarker) {
+		t.Fatalf("queued note must carry the marker (修前红=refused): %q", note)
+	}
+	if !strings.Contains(note, "queued") {
+		t.Fatalf("note must tell the model the restart is queued: %q", note)
+	}
+	pendingKind, queuedAction, slotEmpty := boundaryQueueSnapshot(app)
+	if pendingKind != "installed" {
+		t.Fatalf("queued execute must NOT consume the staged target mid-turn, kind=%q", pendingKind)
+	}
+	if slotEmpty || queuedAction != "execute" {
+		t.Fatalf("slot must hold the execute request (empty=%v action=%q)", slotEmpty, queuedAction)
+	}
+	if ptr, ptrErr := installlayout.ReadCurrent(root); ptrErr != nil || ptr.ActiveVersion != active {
+		t.Fatalf("no swap may happen mid-turn: ptr=%+v err=%v", ptr, ptrErr)
+	}
+	if launcherCalls.Load() != 0 {
+		t.Fatalf("no launcher handoff mid-turn: %d", launcherCalls.Load())
+	}
+
+	// 回合结束（转录落盘、TurnDone 发出之后守卫才 cancel ctx——测试里直接
+	// cancel 模拟该边界）→ 排队者执行既有 rollback 路径。launcher 计数一并
+	// 入条件：startLauncher 在 writeUpdateRestartMarker 之后，条件成立即整条
+	// swap 链已走完，测试返回时不会有 goroutine 再触碰用户目录。
+	cancel()
+	waitForBoundaryRestart(t, "turn-boundary rollback execute", func() bool {
+		if launcherCalls.Load() == 0 {
+			return false
+		}
+		ptr, err := installlayout.ReadCurrent(root)
+		return err == nil && ptr.ActiveVersion == rollback
+	})
+	pendingKind, _, _ = boundaryQueueSnapshot(app)
+	if pendingKind != "" {
+		t.Fatalf("boundary execution must consume the staged target, kind=%q", pendingKind)
+	}
+	_, _, slotEmpty = boundaryQueueSnapshot(app)
+	if !slotEmpty {
+		t.Fatal("boundary execution must drain the queue slot")
+	}
+}
+
+// 钉①(restart 动作): heartbeat-turn RestartOnly queues the same way and the
+// boundary waiter runs the plain-restart core (launcher handoff observable).
+func TestHeartbeatTurnRestartQueuesAndRunsAtBoundary(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	active := "v1.38.3-20260923-1010"
+	root := fakeInstallRoot(t, []string{active}, active)
+	launcherCalls := stubBoundaryRestartSeams(t, root)
+
+	app := &App{}
+	controller := newAutonomousUpdateController(app)
+	turnCtx, cancel := context.WithCancel(control.WithHeartbeatTurn(t.Context()))
+	note, err := controller.RestartOnly(turnCtx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(note, midTurnRestartQueuedMarker) {
+		t.Fatalf("queued note must carry the marker: %q", note)
+	}
+	_, queuedAction, slotEmpty := boundaryQueueSnapshot(app)
+	if slotEmpty || queuedAction != "restart" {
+		t.Fatalf("slot must hold the restart request (empty=%v action=%q)", slotEmpty, queuedAction)
+	}
+	if launcherCalls.Load() != 0 {
+		t.Fatalf("no launcher handoff mid-turn: %d", launcherCalls.Load())
+	}
+
+	cancel()
+	waitForBoundaryRestart(t, "turn-boundary plain restart", func() bool {
+		return launcherCalls.Load() > 0
+	})
+	_, _, slotEmpty = boundaryQueueSnapshot(app)
+	if !slotEmpty {
+		t.Fatal("boundary execution must drain the queue slot")
+	}
+}
+
+// 钉②: a second restart_update call in the SAME turn only reports the
+// existing queue — the first request keeps owning the slot (restart first wins;
+// a later execute call does not overwrite it). The test CANCELS inside its body
+// and waits for the queued restart to run, so no waiter goroutine outlives the
+// test touching paths whose isolation has already been torn down.
+func TestHeartbeatTurnRestartQueueDedupesPerTurn(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	active := "v1.38.3-20260923-1010"
+	root := fakeInstallRoot(t, []string{active}, active)
+	launcherCalls := stubBoundaryRestartSeams(t, root)
+
+	app := &App{}
+	controller := newAutonomousUpdateController(app)
+	turnCtx, cancel := context.WithCancel(control.WithHeartbeatTurn(t.Context()))
+
+	first, err := controller.RestartOnly(turnCtx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(first, midTurnRestartQueuedMarker) {
+		t.Fatalf("first call must queue: %q", first)
+	}
+	second, err := controller.ExecuteTarget(turnCtx, "")
+	if err != nil {
+		t.Fatalf("the dedup face must not error the model into retrying: %v", err)
+	}
+	if !strings.Contains(second, midTurnRestartQueuedMarker) || !strings.Contains(second, "duplicate") {
+		t.Fatalf("second call must report the existing queue: %q", second)
+	}
+	_, queuedAction, slotEmpty := boundaryQueueSnapshot(app)
+	if slotEmpty || queuedAction != "restart" {
+		t.Fatalf("first request must keep owning the slot (empty=%v action=%q)", slotEmpty, queuedAction)
+	}
+
+	cancel()
+	waitForBoundaryRestart(t, "dedup boundary restart", func() bool {
+		return launcherCalls.Load() > 0
+	})
+}
+
+// 钉③(对照): a foreground (no heartbeat stamp) call keeps the pre-刀④
+// immediate semantics — swap committed right away, the queue slot untouched.
+func TestForegroundTurnExecuteRemainsImmediate(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	active := "v1.38.3-20260923-1010"
+	rollback := "v1.38.3-20260922-0900"
+	root := fakeInstallRoot(t, []string{active, rollback}, active)
+	addVersionTreeWithCLI(t, root, rollback, true)
+	fakeVersionedConfig(t, true)
+	launcherCalls := stubBoundaryRestartSeams(t, root)
+
+	app := &App{}
+	controller := newAutonomousUpdateController(app)
+	if _, err := controller.SetTarget(t.Context(), rollback); err != nil {
+		t.Fatal(err)
+	}
+	note, err := controller.ExecuteTarget(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(note, midTurnRestartQueuedMarker) {
+		t.Fatalf("foreground call must not queue: %q", note)
+	}
+	waitForBoundaryRestart(t, "immediate foreground rollback", func() bool {
+		if launcherCalls.Load() == 0 {
+			return false
+		}
+		ptr, err := installlayout.ReadCurrent(root)
+		return err == nil && ptr.ActiveVersion == rollback
+	})
+	_, _, slotEmpty := boundaryQueueSnapshot(app)
+	if !slotEmpty {
+		t.Fatal("the foreground path must never touch the queue slot")
 	}
 }

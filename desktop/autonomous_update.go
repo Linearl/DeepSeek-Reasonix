@@ -14,16 +14,108 @@ import (
 	"reasonix/internal/tool"
 )
 
-// refuseMidTurnHostRestart is the tl1500 刀④ refusal: a heartbeat-driven
-// (unattended) turn may not kill the host from inside its own turn. 诊断 §7
-// 定案第一因：心跳回合 T28 于 11:03:45 执行 restart_update execute 把宿主拦腰
-// 打断 → 未决状态残留 → 恢复链 35.4 分钟失败（recovery_required）→ 续跑回合
-// 11:41 再次派发 restart_update + 3 bash 全部零回执 → 权威保存边界停摆 →
-// §2 的 a.mu 读者车队。出包装机使命不变（§7.3）：回合干净收尾落盘后，下一轮
-// （心跳周期 ≤30 分钟）再执行装机重启。前台 autopilot 的 task-254 设计面
-// （带 resume 机器、有 attended 档位）不受此门约束——守卫只认心跳回合戳。
-func refuseMidTurnHostRestart(action string) error {
-	return fmt.Errorf("restart_update %s rejected mid-turn (cause=mid_turn_host_restart_refused, tl1500 刀④): 回合进行中不可重启宿主——请先结束当前回合，装机重启放到回合结束后的下一轮执行。/ Host restart is refused while the unattended turn is running: finish the turn first; the next round can perform the restart. / 回合進行中不可重啟宿主：請先結束當前回合，下一輪再執行裝機重啟。", action)
+// boundaryRestartRequest is one queued mid-turn restart (tl1500 刀④返修,
+// 2026-11-09 用户拍板二轮①): the heartbeat turn that called restart_update
+// keeps its reference here until the turn boundary fires the existing restart
+// path. action is "execute" (perform the staged target) or "restart"
+// (relaunch the current version).
+type boundaryRestartRequest struct {
+	action        string
+	callerSession string
+}
+
+// midTurnRestartQueuedMarker is the greppable token the queued note carries —
+// the 返修 replacement for the retired mid_turn_host_restart_refused cause.
+const midTurnRestartQueuedMarker = "mid_turn_host_restart_queued"
+
+// queueMidTurnHostRestartNote is the tool-facing result for a queued restart.
+// It must read as a SUCCESS (not a refusal): the model should finish the turn
+// normally and stop retrying, trusting the boundary to perform the restart.
+func queueMidTurnHostRestartNote(action string) string {
+	return fmt.Sprintf("restart_update %s queued (cause=%s, tl1500 刀④返修): 重启已排队，将在当前回合结束（转录落盘、TurnDone 发出）后的回合边界自动执行——请正常收尾本回合，不要重试、不要再次调用。/ The restart is queued and will run automatically at the turn boundary right after this turn finishes and its transcript is persisted; finish the turn normally and do not retry or call again. / 重啟已排隊，將在當前回合結束後自動執行——請正常收尾本回合，無需重試或再次調用。", action, midTurnRestartQueuedMarker)
+}
+
+// queueMidTurnHostRestartDuplicateNote is the dedup face (钉②): a second
+// restart_update call inside the SAME turn only informs — the first queued
+// request owns the single execution.
+func queueMidTurnHostRestartDuplicateNote(action string) string {
+	return fmt.Sprintf("restart_update %s already queued this turn (cause=%s_duplicate): 本回合已排过一次重启，回合边界只执行一次，重复调用不改变计划——请正常收尾本回合。/ A restart is already queued for this turn's boundary and will run exactly once; repeat calls do not change the plan — finish the turn normally. / 本回合已排隊一次重啟，回合邊界只執行一次，重複調用不改變計劃——請正常收尾本回合。", action, midTurnRestartQueuedMarker)
+}
+
+// queueBoundaryRestart is the tl1500 刀④返修 (2026-11-09 用户拍板二轮①) of the
+// 刀④ refusal: a heartbeat-driven (unattended) turn still must not kill the
+// host from inside its own turn, but the call now QUEUES instead of refusing.
+// 诊断 §7 定案第一因（心跳回合 T28 于 11:03:45 执行 restart_update execute 把
+// 宿主拦腰打断 → 恢复链 35.4 分钟失败 → a.mu 读者车队）的机理约束不变；改变
+// 的是处置——staged 目标不消费、不重启，回合边界后由既有重启路径自动执行，
+// 不再等下一轮心跳周期。
+//
+// 触发时机 = turnCtx.Done()：回合 ctx 由回合守卫在收尾完成后 cancel
+// （internal/control spawnGuardedTurn 的 defer 顺序——body 返回 → finishGuardedTurn
+// （in-flight 标记 CAS 清除、转录落盘、TurnDone fan-out）→ defer cancel），
+// 所以 Done 触发时回合已干净收尾。goal-loop 续跑轮共享同一顶层 ctx，整轮
+// 结束才触发——「回合」以守卫边界为准。
+//
+// 已知限制（返修口径明示）：回合异常终止（进程崩溃）时本排队（内存态）丢失，
+// 等待 goroutine 一并消亡——可接受，staged 构建仍在磁盘，下一轮心跳重新出包
+// 同一目标。
+func (c autonomousUpdateController) queueBoundaryRestart(turnCtx context.Context, action, callerSession string) (string, error) {
+	a := c.app
+	if a == nil {
+		return "", fmt.Errorf("restart: no app")
+	}
+	a.autonomousMu.Lock()
+	already := a.autonomousBoundaryRestart != nil
+	if !already {
+		a.autonomousBoundaryRestart = &boundaryRestartRequest{action: action, callerSession: callerSession}
+	}
+	a.autonomousMu.Unlock()
+	if already {
+		// 钉② 去重：同回合第二次调用只提示。第一排队者的等待 goroutine 拥有
+		// 唯一执行权；这里不再入队、不再起等待者。返回成功文案而非 error——
+		// 不给模型「调用失败请重试」的误导。
+		return queueMidTurnHostRestartDuplicateNote(action), nil
+	}
+	// The single turn-boundary waiter: fires the existing restart path once the
+	// turn context is cancelled (see the timing contract above).
+	go func() {
+		<-turnCtx.Done()
+		a.runQueuedBoundaryRestart()
+	}()
+	slog.Info("restart: mid-turn host restart queued for the turn boundary ("+midTurnRestartQueuedMarker+")", "action", action, "session", callerSession)
+	return queueMidTurnHostRestartNote(action), nil
+}
+
+// runQueuedBoundaryRestart drains the pending-restart slot and performs the
+// queued action through the existing restart paths. Runs on the turn-boundary
+// waiter goroutine — never mid-turn, so the grace window (clearRestartPath)
+// inside those paths sees an already-finished turn for the calling session.
+func (a *App) runQueuedBoundaryRestart() {
+	a.autonomousMu.Lock()
+	req := a.autonomousBoundaryRestart
+	a.autonomousBoundaryRestart = nil
+	a.autonomousMu.Unlock()
+	if req == nil {
+		return
+	}
+	c := autonomousUpdateController{app: a}
+	var msg string
+	var err error
+	switch req.action {
+	case "execute":
+		msg, err = c.executeStagedTarget(req.callerSession)
+	case "restart":
+		msg, err = c.restartOnlyBoundary(req.callerSession)
+	default:
+		err = fmt.Errorf("restart: unknown queued boundary action %q", req.action)
+	}
+	if err != nil {
+		// The queued target is not silently lost: the staged build stays on
+		// disk and the next heartbeat round can re-issue it.
+		slog.Warn("restart: queued boundary restart failed ("+midTurnRestartQueuedMarker+")", "action", req.action, "err", err)
+		return
+	}
+	slog.Info("restart: queued boundary restart committed", "action", req.action, "session", req.callerSession, "note", msg)
 }
 
 // Task 254: the host side of the restart_update tool. Listing and target
@@ -172,16 +264,28 @@ func (c autonomousUpdateController) SetTarget(_ context.Context, target string) 
 // restart is meant to end that very turn (auto-resume marks it beforehand).
 // Returns once the swap is committed — the restart follows and a success must
 // never be retried.
+//
+// tl1500 刀④返修（2026-11-09 用户拍板二轮①）：心跳回合内不再拒绝，改为排队
+// 到回合边界自动执行（queueBoundaryRestart）；前台回合（task-254 设计面）保持
+// 立即执行。
 func (c autonomousUpdateController) ExecuteTarget(ctx context.Context, callerSession string) (string, error) {
 	a := c.app
 	if a == nil {
 		return "", fmt.Errorf("restart: no app")
 	}
-	// tl1500 刀④: 心跳回合内拒绝宿主自重启。放在消费 pending 之前——拒绝
-	// 不掉 staged 目标，回合结束后下一轮仍可执行同一目标（诊断 §7.3 修复落点）。
+	// tl1500 刀④返修: 心跳回合内排队宿主自重启。放在消费 pending 之前——
+	// 排队不掉 staged 目标，回合边界由等待者消费并执行同一目标。
 	if control.IsHeartbeatTurn(ctx) {
-		return "", refuseMidTurnHostRestart("execute")
+		return c.queueBoundaryRestart(ctx, "execute", callerSession)
 	}
+	return c.executeStagedTarget(callerSession)
+}
+
+// executeStagedTarget is the guarded-free body of ExecuteTarget: it consumes
+// the staged target and commits the swap. The immediate (foreground) path and
+// the turn-boundary queued path share this body.
+func (c autonomousUpdateController) executeStagedTarget(callerSession string) (string, error) {
+	a := c.app
 	a.autonomousMu.Lock()
 	pending := a.autonomousPending
 	a.autonomousPending = pendingUpdateTarget{}
@@ -259,10 +363,18 @@ func (c autonomousUpdateController) RestartOnly(ctx context.Context, callerSessi
 	if a == nil {
 		return "", fmt.Errorf("restart: no app")
 	}
-	// tl1500 刀④: 同族守卫——纯重启（task 520）同样把宿主拦腰打断。
+	// tl1500 刀④返修: 同族排队——纯重启（task 520）同样不再回合内打断宿主。
 	if control.IsHeartbeatTurn(ctx) {
-		return "", refuseMidTurnHostRestart("restart")
+		return c.queueBoundaryRestart(ctx, "restart", callerSession)
 	}
+	return c.restartOnlyBoundary(callerSession)
+}
+
+// restartOnlyBoundary is the guarded-free body of RestartOnly: the existing
+// reload core with the tool-face resume staging. The immediate (foreground)
+// path and the turn-boundary queued path share this body.
+func (c autonomousUpdateController) restartOnlyBoundary(callerSession string) (string, error) {
+	a := c.app
 	report, err := a.restartActiveVersionExempt(callerSession, restartMarkerReasonToolRestart)
 	if err != nil {
 		return "", err
