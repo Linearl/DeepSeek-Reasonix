@@ -136,9 +136,11 @@ func NewHeadID() string {
 
 // sessionDAGChainDigest is the per-entry hash chain: sha256(parent digest,
 // identity JSON). Unlike the flat transcript digest it can be extended from
-// any ancestor, which is what a fork needs.
+// any ancestor, which is what a fork needs. tl1459F2: identity JSON comes from
+// normalizedIdentityMessage — the same encoding-normalized digest input as the
+// flat funnel (ruling in save_digest_normalize_tl1459f2.go).
 func sessionDAGChainDigest(parentDigest string, m provider.Message) (string, error) {
-	b, err := json.Marshal(messageForSessionIdentity(m))
+	b, err := digestInputLine(m)
 	if err != nil {
 		return "", err
 	}

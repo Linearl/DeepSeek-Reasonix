@@ -1520,6 +1520,12 @@ func messageForSessionIdentity(m provider.Message) provider.Message {
 	// CreatedAt and ID are local metadata. Keep them out of transcript identity
 	// so older builds that ignore the optional fields can share the same event-
 	// log revision and append without false conflicts.
+	// tl1459F2: the identity fold is where every digest byte stream starts (six
+	// surfaces). The digest input is normalizedIdentityMessage(m) — the fold
+	// PLUS encoding normalization; see the ruling in
+	// save_digest_normalize_tl1459f2.go and the pins in
+	// digest_normalize_tl1459f2_test.go. Hot equality paths
+	// (messagesEqualForStorage) and every storage writer keep the raw value.
 	m.CreatedAt = 0
 	m.ID = ""
 	return m
@@ -1625,7 +1631,9 @@ func (s *sessionTranscriptHasher) add(m provider.Message) provider.Message {
 	if s == nil || s.err != nil {
 		return m
 	}
-	b, err := json.Marshal(messageForSessionIdentity(m))
+	// tl1459F2: digest 输入经 digestInputLine（身份 fold + 编码规范化），与
+	// 全量/增量口径同一字节流（裁决见 save_digest_normalize_tl1459f2.go）。
+	b, err := digestInputLine(m)
 	if err != nil {
 		s.err = err
 		return m
@@ -1665,8 +1673,10 @@ func messagesPrefixDigestDepth(msgs []provider.Message, target [sha256.Size]byte
 	h := sha256.New()
 	sum := make([]byte, 0, sha256.Size)
 	for i, m := range msgs {
-		m = messageForSessionIdentity(m)
-		b, err := json.Marshal(m)
+		// tl1459F2: digest 输入经 digestInputLine（身份 fold + 编码规范化），
+		// 与全量/增量/解码侧口径同一字节流（裁决见
+		// save_digest_normalize_tl1459f2.go）。
+		b, err := digestInputLine(m)
 		if err != nil {
 			return -1
 		}

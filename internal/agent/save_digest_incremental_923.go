@@ -24,7 +24,6 @@ package agent
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"hash"
 
 	"reasonix/internal/provider"
@@ -48,16 +47,18 @@ func (s *Session) feedDigestAppendLocked(appended []provider.Message, preCount i
 		return
 	}
 	for _, m := range appended {
-		b, err := json.Marshal(messageForSessionIdentity(m))
+		// tl1459F2: 哈希走规范化线、size 走存储线，与全量口径同一 digest
+		// 字节流（裁决见 save_digest_normalize_tl1459f2.go）。
+		digestLine, storageLine, err := digestIdentityBytes(m)
 		if err != nil {
 			// Practically unreachable for provider.Message; fail open to the
 			// full pass rather than persist a truncated stream.
 			s.digestHash = nil
 			return
 		}
-		s.digestHash.Write(b)
+		s.digestHash.Write(digestLine)
 		s.digestHash.Write([]byte{'\n'})
-		s.digestSize += int64(len(b)) + 1
+		s.digestSize += int64(len(storageLine)) + 1
 	}
 	s.digestCount = len(s.Messages)
 	s.digestVersion = s.version
@@ -105,18 +106,19 @@ func digestAndSizeSessionMessagesState(msgs []provider.Message) ([sha256.Size]by
 	h := sha256.New()
 	size := int64(0)
 	for _, m := range msgs {
-		m = messageForSessionIdentity(m)
-		b, err := json.Marshal(m)
+		// tl1459F2: 哈希走规范化线、size 走存储线，与增量/解码侧口径同一
+		// digest 字节流（裁决见 save_digest_normalize_tl1459f2.go）。
+		digestLine, storageLine, err := digestIdentityBytes(m)
 		if err != nil {
 			return [sha256.Size]byte{}, 0, nil, err
 		}
-		if _, err := h.Write(b); err != nil {
+		if _, err := h.Write(digestLine); err != nil {
 			return [sha256.Size]byte{}, 0, nil, err
 		}
 		if _, err := h.Write([]byte{'\n'}); err != nil {
 			return [sha256.Size]byte{}, 0, nil, err
 		}
-		size += int64(len(b)) + 1
+		size += int64(len(storageLine)) + 1
 	}
 	var out [sha256.Size]byte
 	copy(out[:], h.Sum(nil))
