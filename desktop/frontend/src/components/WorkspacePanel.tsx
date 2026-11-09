@@ -10,6 +10,7 @@ import type {
 import {
   ChevronDown,
   ChevronRight,
+  ExternalLink,
   FileText,
   FolderTree,
   FolderX,
@@ -1002,6 +1003,7 @@ export function WorkspacePanel({
               <button
                 className="workspace-change"
                 type="button"
+                title={change.path}
                 onClick={() => selectFile(change.path)}
               >
                 <FileText size={14} />
@@ -1906,6 +1908,20 @@ export function WorkspacePanel({
           </div>
 
           <div className="workspace-preview__window-actions">
+            {/* tl1510: 选中文件后预览头有直接的「打开」入口——同一右键菜单的
+                OpenWorkspacePathForTab 通道（默认应用），不再只藏在右键菜单里。 */}
+            {selectedPath && (
+              <Tooltip label={t("workspace.openWithDefaultApp")}>
+                <button
+                  className="workspace-iconbtn"
+                  type="button"
+                  aria-label={t("workspace.openWithDefaultApp")}
+                  onClick={() => void app.OpenWorkspacePathForTab(workspaceTabId, selectedPath).catch(() => {})}
+                >
+                  <ExternalLink size={15} />
+                </button>
+              </Tooltip>
+            )}
             {codePreviewActive && (
               <Tooltip label={t("workspace.searchPlaceholder")}>
                 <button
@@ -1968,6 +1984,7 @@ export function WorkspacePanel({
                 <button
                   key={path}
                   type="button"
+                  title={path}
                   className={`workspace-recent-menu__item${path === selectedPath ? " workspace-recent-menu__item--active" : ""}`}
                   onClick={() => {
                     setSelectedFilePath(path);
@@ -2045,6 +2062,7 @@ export function WorkspacePanel({
                       key={change.key}
                       className="workspace-change"
                       type="button"
+                      title={change.path}
                       onClick={() => {
                         dismissedChangeListRequestIdRef.current = lastChangeListRequestIdRef.current;
                         setScopedChangeRows(null);
@@ -2142,6 +2160,7 @@ export function WorkspacePanel({
                                         <button
                                           key={file}
                                           className="workspace-git-history__file"
+                                          title={file}
                                           onClick={() => selectFile(file)}
                                         >
                                           <FileText size={14} /> {file}
@@ -2200,6 +2219,7 @@ export function WorkspacePanel({
                                     <button
                                       key={file}
                                       className="workspace-git-history__file"
+                                      title={file}
                                       onClick={() => selectFile(file)}
                                     >
                                       <FileText size={14} /> {file}
