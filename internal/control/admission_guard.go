@@ -59,22 +59,23 @@ const (
 // runGuarded runs body under a fresh context, guarding concurrent turns.
 // Finishing-window arrivals park instead of dropping (see admissionResult).
 func (c *Controller) runGuarded(body func(ctx context.Context) error) admissionResult {
-	return c.admitGuardedTurn(body, false, true, nil)
+	return c.admitGuardedTurn(body, false, true, nil, nil)
 }
 
 // runGuardedOrPark admits like runGuarded but parks the body while another
 // turn is running instead of using the deliberately-silent running drop.
 // Reserved for inputs that are the user's own words (the steer fallback):
 // the FIFO drain in finishGuardedTurn delivers them the moment the current
-// turn finishes.
+// turn finishes. Callers that hold the user's submitted text use
+// runGuardedOrParkReplay so the parked window keeps a durable replay row.
 func (c *Controller) runGuardedOrPark(body func(ctx context.Context) error) admissionResult {
-	return c.admitGuardedTurn(body, true, true, nil)
+	return c.admitGuardedTurn(body, true, true, nil, nil)
 }
 
 // runGuardedInbox admits a durable item without parking it in volatile memory.
 // onStart runs after admission is reserved and before its goroutine can finish.
 func (c *Controller) runGuardedInbox(body func(ctx context.Context) error, onStart func()) admissionResult {
-	return c.admitGuardedTurn(body, false, false, onStart)
+	return c.admitGuardedTurn(body, false, false, onStart, nil)
 }
 
 // turnStalledLocked reports whether the running turn is an abandoned interrupt
@@ -360,14 +361,24 @@ func (c *Controller) onCompactionSettled() {
 	c.canceling = false
 	parked := len(c.parkedTurns)
 	c.mu.Unlock()
-	slog.Info("control: parked turn drained after compaction settled", "parked_remaining", parked)
+	slog.Info("control: parked turn drained after compaction settled", "parked_remaining", parked, "source", "compaction_settle")
+	// tl1357b: parked entries carry their replay record on the entry (nil for
+	// plain bodies); spawnGuardedTurn runs entry.run and the wrapper settles
+	// the row (核销) at body start.
 	c.releaseUnownedInboxClaims("compaction_settle")
-	c.spawnGuardedTurn(ctx, cancel, next)
+	c.spawnGuardedTurn(ctx, cancel, next.run)
 	c.refreshRuntimeState(event.Event{})
 }
 
-func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, parkWhileRunning, parkWhileFinishing bool, onStart func()) admissionResult {
+// admitGuardedTurn is the shared admission gate. replay (tl1357b) carries the
+// durable replay record for park-path admissions: every site that appends to
+// parkedTurns persists it right after unlock (park 即落盘), a body that starts
+// without parking abandons it (nothing was parked, nothing to persist), and a
+// rejected admission abandons it too (no row was written; the caller reports
+// the rejection).
+func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, parkWhileRunning, parkWhileFinishing bool, onStart func(), replay *parkedTurnReplay) admissionResult {
 	if err := c.ensureWriteAuthorityReady(); err != nil {
+		replay.abandon()
 		slog.Warn("control: submit dropped", "reason", "write_authority_not_ready", "err", err)
 		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: noticeSessionNotWritable})
 		return turnDroppedWriteAuthority
@@ -375,17 +386,20 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
+		replay.abandon()
 		slog.Warn("control: submit dropped", "reason", "controller_closed")
 		return turnDroppedClosed
 	}
 	if c.rejectDrainingGenerationLocked() {
 		c.mu.Unlock()
+		replay.abandon()
 		slog.Warn("control: submit dropped", "reason", "draining_generation")
 		c.emitDrainingNotice()
 		return turnDroppedDraining
 	}
 	if c.rotating {
 		c.mu.Unlock()
+		replay.abandon()
 		slog.Warn("control: submit dropped", "reason", "session_rotating")
 		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "input was not accepted: the session is being switched — please resend"})
 		return turnDroppedRotating
@@ -424,8 +438,12 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 					c.cancel()
 				}
 			}
-			c.parkedTurns = append(c.parkedTurns, body)
+			c.parkedTurns = append(c.parkedTurns, parkedTurnEntry{run: body, replay: replay})
 			c.mu.Unlock()
+			// tl1357b park 即落盘: the durable replay row must exist before any
+			// restart can lose the in-memory body. Best-effort (see
+			// persistParkReplay); the drain-side wrapper waits for this write.
+			c.persistParkReplay(replay)
 			slog.Info("control: submit parked behind running turn", "interrupt_requested", !compacting, "compaction_in_flight", compacting)
 			return turnParked
 		}
@@ -435,9 +453,10 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 	}
 	if compacting {
 		if parkWhileRunning {
-			c.parkedTurns = append(c.parkedTurns, body)
+			c.parkedTurns = append(c.parkedTurns, parkedTurnEntry{run: body, replay: replay})
 			parked := len(c.parkedTurns)
 			c.mu.Unlock()
+			c.persistParkReplay(replay)
 			slog.Info("control: submit parked behind in-flight compaction", "parked", parked)
 			return turnParked
 		}
@@ -448,15 +467,17 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 	if c.finishing {
 		if !parkWhileFinishing {
 			c.mu.Unlock()
+			replay.abandon()
 			slog.Warn("control: submit dropped", "reason", "turn_finishing_window")
 			return turnDroppedRunning
 		}
-		c.parkedTurns = append(c.parkedTurns, body)
+		c.parkedTurns = append(c.parkedTurns, parkedTurnEntry{run: body, replay: replay})
 		// 748 race-A: len must be evaluated while holding c.mu — evaluating it
 		// in the slog call below (after Unlock) races with finishGuardedTurn's
 		// locked write to c.parkedTurns.
 		parked := len(c.parkedTurns)
 		c.mu.Unlock()
+		c.persistParkReplay(replay)
 		slog.Info("control: submit parked behind finishing turn", "parked", parked)
 		return turnParked
 	}
@@ -464,10 +485,12 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 	// bodies parked behind the compaction window lost their settle kick (hook
 	// rebind, controller rebuild). This submit joins the tail and the oldest
 	// parked body starts first, so order is preserved and nothing strands.
+	oursParked := false
 	if len(c.parkedTurns) > 0 {
-		c.parkedTurns = append(c.parkedTurns, body)
-		body = c.parkedTurns[0]
+		c.parkedTurns = append(c.parkedTurns, parkedTurnEntry{run: body, replay: replay})
+		body = c.parkedTurns[0].run
 		c.parkedTurns = c.parkedTurns[1:]
+		oursParked = true
 	}
 	ctx, cancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
 	// 任务461-P7 三级终止: the force half is an INDEPENDENT context (same base
@@ -481,6 +504,14 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 	c.running = true
 	c.canceling = false
 	c.mu.Unlock()
+	// tl1357b: our body either joined the parked tail (persist its replay row;
+	// the starting head body settles its own row) or starts right now (nothing
+	// was parked — release the wrapper's settle wait).
+	if oursParked {
+		c.persistParkReplay(replay)
+	} else {
+		replay.abandon()
+	}
 	if healedStalledFor > 0 {
 		// Surface the self-heal to the user: their previous reply is gone and
 		// this submit now owns the reopened gate (tell, don't silently swap).

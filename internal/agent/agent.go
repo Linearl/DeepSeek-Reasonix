@@ -675,6 +675,13 @@ type Agent struct {
 	// refresh has landed. Bind-time only, same nil discipline as
 	// compactionSettled: nil = no host hook.
 	hostStateRebuild func()
+	// unappliedSteerDock (tl1357b) fires for guidance recorded unapplied with
+	// NO durable inbox row behind it (empty itemID faces: the in-memory Steer
+	// fallback, flushSteerQueue legacy entries). The host controller docks a
+	// manifest row so the guidance survives a process exit as retrievable,
+	// resendable work instead of dying with the transcript archive. Bind-time
+	// only, same nil discipline as the other hooks.
+	unappliedSteerDock func(text string)
 	// maintaining (任务920) counts real maintenance transactions in flight —
 	// set once prepareOnce commits past the below-trigger fast path, cleared
 	// on return. Fast paths (below trigger, blocked/stuck views) never touch
@@ -1176,6 +1183,19 @@ func (a *Agent) SetHostStateRebuildHook(fn func()) {
 	a.hostStateRebuild = fn
 }
 
+// SetUnappliedSteerDockHook registers the host callback fired when guidance is
+// recorded unapplied with NO durable inbox row behind it (tl1357b). The hook
+// receives the raw guidance text (not the localized warning) so the docked row
+// carries exactly what the user authored; the host decides the dock face
+// (control parks it uncertain + resendable, never auto-dispatched). Bind-time
+// only; nil keeps the pre-tl1357b face.
+func (a *Agent) SetUnappliedSteerDockHook(fn func(text string)) {
+	if a == nil {
+		return
+	}
+	a.unappliedSteerDock = fn
+}
+
 // CompactionInFlight reports whether a real maintenance transaction is in
 // flight (任务920 压缩单飞门). The gate source is the maintaining counter set
 // past the below-trigger fast path, not compactionRunMu: the mutex is also
@@ -1336,6 +1356,14 @@ func (a *Agent) flushSteerQueue() {
 	if a != nil && a.sess.conversation != nil {
 		for _, d := range dropped {
 			a.recordUnappliedSteerArchive(d.text)
+			// tl1357b: legacy entries (no itemID) have NO durable row — dock
+			// each one so the batch survives a process exit as resendable work.
+			// Durable entries keep their existing row (the per-item restore-only
+			// signal below parks it via control's inbox sink); the merged
+			// summary never docks anything (it aggregates the items above).
+			if d.itemID == "" {
+				a.dockUnappliedSteer(d.text)
+			}
 		}
 		if len(dropped) == 1 {
 			// Single item: the pre-tl1303 face — one warning carrying the
@@ -1435,6 +1463,11 @@ func audienceForDetail(detail string) event.NoticeAudience {
 // flushSteerQueue batches its items instead (one counted notice + per-item
 // restore-only signals) so a dead run holding several guidance messages
 // cannot spam one transcript warning per message (tl1303).
+//
+// tl1357b: an empty itemID means NO durable row exists behind the guidance
+// (the in-memory Steer face) — the archive is a transcript record and the
+// notice a warning, both volatile across a process exit. The host hook docks
+// a manifest row so the guidance stays retrievable and resendable.
 func (a *Agent) RecordUnappliedSteer(text string, itemID ...string) {
 	if a == nil || a.sess.conversation == nil {
 		return
@@ -1445,6 +1478,19 @@ func (a *Agent) RecordUnappliedSteer(text string, itemID ...string) {
 	}
 	a.recordUnappliedSteerArchive(text)
 	a.emitUnappliedSteerNotice(text, id, "")
+	if id == "" {
+		a.dockUnappliedSteer(text)
+	}
+}
+
+// dockUnappliedSteer fires the host dock hook for guidance with no durable
+// row behind it (tl1357b). Best-effort by contract: a nil hook or a host-side
+// failure leaves the pre-tl1357b face (transcript archive + warning only).
+func (a *Agent) dockUnappliedSteer(text string) {
+	if a == nil || a.unappliedSteerDock == nil {
+		return
+	}
+	a.unappliedSteerDock(text)
 }
 
 func (a *Agent) steerQueueLen() int {
