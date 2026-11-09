@@ -496,7 +496,10 @@ type Controller struct {
 	// parkedTurns holds turn bodies that arrived during the finishing window,
 	// FIFO. finishGuardedTurn starts the oldest one as it closes the window
 	// (see runGuarded/finishGuardedTurn); close() discards any remainder.
-	parkedTurns []func(ctx context.Context) error
+	// tl1357b: each entry may carry a durable replay record (parkedTurnReplay)
+	// persisted at park time so a process exit during the parked window leaves
+	// a retrievable row instead of losing the user's words.
+	parkedTurns []parkedTurnEntry
 	// rotating is set under mu while NewSession/ClearSession swap the executor
 	// session out. Checking running once and then swapping later leaves a
 	// TOCTOU window: a turn can start (running=false at check time) during the
@@ -1783,7 +1786,9 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 		// the gate busy, so a window-era stray would strand through every
 		// window until the final one without this pass.
 		c.releaseUnownedInboxClaims("finish_close_parked")
-		c.spawnGuardedTurn(ctx, cancel, next)
+		// tl1357b: the entry's wrapper settles its replay row (核销) at body
+		// start — see runGuardedOrParkReplay / settleParkReplay.
+		c.spawnGuardedTurn(ctx, cancel, next.run)
 		c.refreshRuntimeState(event.Event{})
 	}()
 	c.inbox.mu.Lock()
@@ -2318,8 +2323,11 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 		c.runSessionVerb(c.ClearSession, "context cleared", "clear context failed: ")
 	case strings.HasPrefix(trimmed, "/mcp__"):
 		// 任务581: user-authored input parks behind a running turn instead of
-		// being dropped (see the runRefTurnWithFormat note above).
-		c.runGuardedOrPark(func(ctx context.Context) error {
+		// being dropped (see the runRefTurnWithFormat note above). tl1357b: the
+		// parked window keeps the user's line as a durable replay row; replay
+		// fidelity note — the row carries the raw line (the resolved prompt is
+		// only known inside the body), so a crash-replay runs it as a turn.
+		c.runGuardedOrParkReplay(func(ctx context.Context) error {
 			sent, found, err := c.MCPPrompt(ctx, trimmed)
 			if err != nil {
 				return err
@@ -2329,7 +2337,7 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 				return nil
 			}
 			return runGoalLoop(ctx, sent, sent, display)
-		})
+		}, newTurnParkReplay(trimmed, display, "mcp_prompt"))
 	case SlashCodeCommentLine(trimmed):
 		// Slash-prefixed code comments are prompt text, not slash commands.
 		runRefTurn(input, display)
@@ -2406,21 +2414,24 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 				}
 				return
 			}
-			c.runGuardedOrPark(func(ctx context.Context) error {
+			c.runGuardedOrParkReplay(func(ctx context.Context) error {
 				sent, err := docsCommandPrompt(ctx, query)
 				if err != nil {
 					return fmt.Errorf("docs: %w", err)
 				}
 				return runGoalLoop(ctx, sent, sent, display)
-			})
+			}, newTurnParkReplay(trimmed, display, "docs_slash"))
 			return
 		}
 		// A custom command wins over a skill of the same name; both resolve to a
 		// turn. Built-ins and their explicit Reasonix namespace are handled above.
 		if sent, ok := c.CustomCommand(trimmed); ok {
-			c.runGuardedOrPark(func(ctx context.Context) error {
+			// tl1357b: `sent` (the resolved command body) is known at admission
+			// time — the replay row carries it, so a crash-replay runs the same
+			// product the parked body would have.
+			c.runGuardedOrParkReplay(func(ctx context.Context) error {
 				return runGoalLoop(ctx, sent, sent, display)
-			})
+			}, newTurnParkReplay(sent, display, "custom_command"))
 			return
 		}
 		if sk, task, ok := c.resolveSkillInvocation(trimmed); ok {
@@ -2437,9 +2448,11 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 			// args" line — require routing, memory recall, and the transcript's
 			// raw content must not consume the rendered skill body.
 			sent := c.skills.renderPinned(sk, task)
-			c.runGuardedOrPark(func(ctx context.Context) error {
+			// tl1357b: replay row carries the rendered skill body (submit) with
+			// the user's raw line kept as raw — same triple the body would run.
+			c.runGuardedOrParkReplay(func(ctx context.Context) error {
 				return runGoalLoop(ctx, sent, trimmed, display)
-			})
+			}, newTurnParkReplay(sent, display, "skill_slash"))
 			return
 		}
 		// Unknown slash input is prose more often than a typo ("/etc/hosts
@@ -2760,39 +2773,39 @@ func (c *Controller) runRefTurn(input, display string) {
 // exactly the boundary the 580 diagnosis could not see (受理 but never appended).
 
 func (c *Controller) runRefTurnWithFormat(input, display, format string) {
-	c.runGuardedOrPark(func(ctx context.Context) error {
+	c.runGuardedOrParkReplay(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, "", c.ResolveRefs)
-	})
+	}, newTurnParkReplay(input, display, "ref_turn"))
 }
 
 func (c *Controller) runScopedRefTurnWithFormat(input, display, format string) {
-	c.runGuardedOrPark(func(ctx context.Context) error {
+	c.runGuardedOrParkReplay(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, "", c.ResolveScopedRefs)
-	})
+	}, newTurnParkReplay(input, display, "scoped_ref_turn"))
 }
 
 func (c *Controller) runRefTurnWithRefsFormat(input, refLine, display, format string) {
-	c.runGuardedOrPark(func(ctx context.Context) error {
+	c.runGuardedOrParkReplay(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, "", c.ResolveRefs)
-	})
+	}, newTurnParkReplay(input, display, "ref_turn"))
 }
 
 func (c *Controller) runScopedRefTurnWithRefsFormat(input, refLine, display, format string) {
-	c.runGuardedOrPark(func(ctx context.Context) error {
+	c.runGuardedOrParkReplay(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, "", c.ResolveScopedRefs)
-	})
+	}, newTurnParkReplay(input, display, "scoped_ref_turn"))
 }
 
 func (c *Controller) runEditedRefTurnWithFormat(input, display, original, format string) {
-	c.runGuardedOrPark(func(ctx context.Context) error {
+	c.runGuardedOrParkReplay(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, original, c.ResolveRefs)
-	})
+	}, newTurnParkReplay(input, display, "edited_ref_turn"))
 }
 
 func (c *Controller) runEditedRefTurnWithRefsFormat(input, refLine, display, original, format string) {
-	c.runGuardedOrPark(func(ctx context.Context) error {
+	c.runGuardedOrParkReplay(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, original, c.ResolveRefs)
-	})
+	}, newTurnParkReplay(input, display, "edited_ref_turn"))
 }
 
 // runRefTurnWithRefs resolves references from refLine while preserving input as
@@ -3318,13 +3331,21 @@ func (c *Controller) Steer(text string) {
 // unapplied guidance, not as a new task. This compatibility path deliberately
 // never opens a provider turn: replaying stale historical guidance as the
 // user's current request caused unintended code changes (#7045).
+//
+// tl1357b: the body carries a dock-kind replay record — the parked window gets
+// an uncertain (never auto-dispatched, resendable) manifest row at park time,
+// and the body passes the row's id to RecordUnappliedSteer so the unapplied
+// notice correlates with the EXISTING durable row instead of docking a second
+// copy (empty id after a failed park write falls back to the sink-side dock
+// face — see dockUnappliedSteerRow).
 func (c *Controller) submitSteerFallback(text string) admissionResult {
-	return c.runGuardedOrPark(func(context.Context) error {
+	replay := newDockParkReplay(text, "steer_fallback")
+	return c.runGuardedOrParkReplay(func(context.Context) error {
 		if c.executor != nil {
-			c.executor.RecordUnappliedSteer(text)
+			c.executor.RecordUnappliedSteer(text, replay.dockedRowID())
 		}
 		return nil
-	})
+	}, replay)
 }
 
 // SteerConsumed returns true when the steer queue is empty after the last consume.

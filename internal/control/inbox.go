@@ -50,6 +50,11 @@ type InboxRequest struct {
 	Extra            map[string]string
 	// FreezeRefs lists workspace-relative paths to freeze at enqueue time.
 	FreezeRefs []string
+	// InitialParkReason (tl1357b) writes the row UNCERTAIN with this block
+	// reason in the enqueue's own manifest commit — a parked replay row must
+	// never be dispatch-visible as queued, not even between two commits. Empty
+	// keeps the ordinary queued admission.
+	InitialParkReason string
 }
 
 // Inbox port on SessionAPI.
@@ -552,6 +557,16 @@ func (c *Controller) rebindInbox() {
 	}
 }
 
+// parkStateFor maps a tl1357b initial-park reason onto the store's initial
+// state: a reason means "born uncertain", empty means the ordinary queued
+// admission.
+func parkStateFor(initialParkReason string) sessioninbox.InboxState {
+	if strings.TrimSpace(initialParkReason) != "" {
+		return sessioninbox.StateUncertain
+	}
+	return sessioninbox.StateQueued
+}
+
 func (c *Controller) pauseInboxOnRotate() {
 	c.inbox.mu.Lock()
 	st := c.inbox.store
@@ -601,11 +616,13 @@ func (c *Controller) EnqueueInbox(req InboxRequest) (sessioninbox.InboxReceipt, 
 		intent = sessioninbox.IntentFollowup
 	}
 	rec, err := st.Enqueue(sessioninbox.EnqueueRequest{
-		Intent:      intent,
-		Envelope:    env,
-		Source:      req.Source,
-		Idempotency: req.Idempotency,
-		SessionID:   agent.BranchID(st.SessionPath()),
+		Intent:             intent,
+		Envelope:           env,
+		Source:             req.Source,
+		Idempotency:        req.Idempotency,
+		SessionID:          agent.BranchID(st.SessionPath()),
+		InitialState:       parkStateFor(req.InitialParkReason),
+		InitialBlockReason: req.InitialParkReason,
 	})
 	if err != nil {
 		if errors.Is(err, sessioninbox.ErrCapacityItems) || errors.Is(err, sessioninbox.ErrCapacityBytes) || errors.Is(err, sessioninbox.ErrItemTooLarge) {

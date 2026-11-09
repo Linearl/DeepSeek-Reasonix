@@ -453,11 +453,21 @@ func (s *Store) Enqueue(req EnqueueRequest) (InboxReceipt, error) {
 	id := newRandomID()
 	blobName := id
 	now := time.Now().UTC()
+	// tl1357b: a parked-face row is born parked in the same commit — never
+	// queued-first. Uncertain is invisible to NextQueued (dispatch) and to the
+	// tool-gap steer pump while being fully retrievable/resendable.
+	state := StateQueued
+	blockReason := ""
+	if req.InitialState == StateUncertain {
+		state = StateUncertain
+		blockReason = req.InitialBlockReason
+	}
 	meta := InboxItemMeta{
 		ID:          id,
 		SessionID:   firstNonEmpty(req.SessionID, agentBranchID(s.session)),
 		Intent:      intent,
-		State:       StateQueued,
+		State:       state,
+		BlockReason: blockReason,
 		Revision:    s.man.Revision + 1,
 		BlobName:    blobName,
 		Source:      source,

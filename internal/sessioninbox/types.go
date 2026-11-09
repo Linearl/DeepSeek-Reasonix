@@ -68,6 +68,14 @@ const (
 	// row was admitted into a turn of a PREVIOUS process (the planned-restart
 	// settle reads it as that admission evidence).
 	BlockReasonRestartOrphan = "in-flight owner is no longer active"
+	// BlockReasonParkedSubmit parks a tl1357b replay row whose in-memory body
+	// sits in the controller's parked FIFO and may never run (process exit
+	// while parked). The row must stay OFF every dispatch path while the body
+	// is alive — a queued twin would be steer-injected into the running turn
+	// (461-P9 pump) or dispatched as a duplicate turn — so it is written
+	// uncertain at park time and only the body's own start (write-off) or an
+	// explicit human RetryItem returns it to the queue.
+	BlockReasonParkedSubmit = "parked behind a busy gate; resend to run it"
 )
 
 // Disposition reports how an admission attempt settled.
@@ -272,6 +280,14 @@ type EnqueueRequest struct {
 	Source      string
 	Idempotency string
 	SessionID   string
+	// InitialState/InitialBlockReason (tl1357b) write the row's parked face in
+	// the SAME manifest commit as the enqueue. A park that landed as queued
+	// first and parked via a second SetState would leave a dispatch-visible
+	// queued window (the 461-P9 tool-gap pump scans NextQueued) — exactly the
+	// double-delivery the parked face exists to prevent. Only StateUncertain
+	// is accepted here; empty keeps the default queued admission.
+	InitialState       InboxState
+	InitialBlockReason string
 }
 
 // Limits configures capacity. Zero fields use defaults.
