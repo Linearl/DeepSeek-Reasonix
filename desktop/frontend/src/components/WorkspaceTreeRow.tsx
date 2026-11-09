@@ -86,6 +86,10 @@ export function WorkspaceTreeRow({
   onContextMenu: (event: MouseEvent<HTMLElement>, path: string, isDir: boolean) => void;
   renaming?: WorkspaceTreeRenameState;
 }) {
+  // tl1510: both row shapes carry title={path} — the tree ellipsizes long
+  // names and compact dir chains ("a / b / c"), search rows clip their dir
+  // tail; hovering shows the full workspace-relative path (native title,
+  // same face the session side-files dock rows use).
   const { path, depth, entry, isOpen, active, displayName = entry.name } = row;
   const rowClass = `workspace-tree__row${active ? " workspace-tree__row--active" : ""}`;
 
@@ -105,6 +109,7 @@ export function WorkspaceTreeRow({
       <button
         className={`${rowClass} workspace-tree__row--search`}
         data-workspace-path={path}
+        title={path}
         draggable
         onDragStart={(event) => onDragStart(event, path, entry.isDir)}
         onClick={(event) => onActivate(row, event)}
@@ -127,6 +132,7 @@ export function WorkspaceTreeRow({
     <button
       className={rowClass}
       data-workspace-path={path}
+      title={path}
       draggable
       onDragStart={(event) => onDragStart(event, path, entry.isDir)}
       onClick={(event) => onActivate(row, event)}
