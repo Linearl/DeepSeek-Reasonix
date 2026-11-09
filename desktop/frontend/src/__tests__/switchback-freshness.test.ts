@@ -8,12 +8,20 @@
 // a fingerprint check against a fresh branch-meta read (a sidecar file, NOT a
 // history decode): match keeps the fast path fast; mismatch/unknown drops back
 // to the bounded latest-page fetch.
+//
+// tl1518: 任务726 re-routed only the still-running case; a turn that had
+// already SETTLED behind the surface (reply in the jsonl, live rows never
+// applied) kept the caller-contract skip bypass (`skipHistory &&
+// !options.skipHistory`) — every switch-back served the pre-turn transcript
+// with zero fetches, and only closing/reopening the tab recovered. The gate
+// now also covers a caller skip over resident rows (Task 232's reset-emptied
+// peek, zero rows, keeps its fetch-free contract).
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fingerprintMatchesMeta, residentSurfaceFresh } from "../lib/hydrateHistoryApply";
+import { callerSkipOwesFreshnessGate, fingerprintMatchesMeta, hydratedHistoryApplyMode, residentSurfaceFresh } from "../lib/hydrateHistoryApply";
 
 let passed = 0;
 let failed = 0;
@@ -86,6 +94,97 @@ ok(
 ok(
   !/LoadSession\(/.test(readFileSync(join(root, "lib/hydrateHistoryApply.ts"), "utf8")),
   "the freshness gate introduces no full-session decode path",
+);
+
+console.log("\ntl1518: caller-contract skip still owes the freshness gate");
+
+// ── 4. gate scope predicate ──────────────────────────────────────────────────
+{
+  ok(callerSkipOwesFreshnessGate(true, 5), "a caller skip over resident rows owes the freshness gate");
+  ok(!callerSkipOwesFreshnessGate(true, 0), "Task 232's reset-emptied peek (zero rows) keeps its fetch-free contract");
+  ok(!callerSkipOwesFreshnessGate(false, 5), "no caller skip means the 任务580 reuse-branch gate already owns the decision");
+}
+
+// ── 5. repro: a settled turn behind the surface shows on switch-back ────────
+{
+  // The reply landed in the jsonl (sidecar revision moved 6→7) while the
+  // resident page kept the pre-turn rows. Before tl1518 this switch-back
+  // fetched nothing: the caller-contract skip bypassed the fingerprint gate.
+  const resident = {
+    items: [{ kind: "user" }, { kind: "assistant" }] as ReadonlyArray<{ kind: string; streaming?: boolean; status?: string }>,
+    historyRevision: 6,
+    historyDigest: "d6",
+  };
+  const freshMeta = { sessionRevision: 7, sessionDigest: "d7" };
+  ok(
+    callerSkipOwesFreshnessGate(true, resident.items.length) && !residentSurfaceFresh(resident, freshMeta),
+    "REPRO: caller skip over rows + moved fingerprint un-skips the fetch (pre-fix: zero fetches, stale forever)",
+  );
+  // The un-skipped bounded page carries the settled assistant row and
+  // replaces the idle stale surface through the existing apply-mode machinery
+  // — no new apply path.
+  const page = {
+    items: [{ kind: "user" }, { kind: "assistant" }, { kind: "assistant" }] as ReadonlyArray<{ kind: string; streaming?: boolean; status?: string }>,
+    revision: 7,
+    digest: "d7",
+  };
+  ok(
+    hydratedHistoryApplyMode(false, true, false, resident, page) === "replace",
+    "the reconciled page replaces the idle stale surface (the settled row renders on switch-back)",
+  );
+  ok(page.items.length > resident.items.length, "the settled assistant row is inside the applied page");
+  // Fast path stays fast: a fingerprint match keeps the fetch-free switch.
+  ok(
+    residentSurfaceFresh({ historyRevision: 7, historyDigest: "d7" }, freshMeta),
+    "a resident page at the fresh fingerprint keeps the zero-fetch switch (对账≠全量拉取)",
+  );
+}
+
+// ── 6. streaming mutual exclusion (switch-back while a turn is live) ────────
+{
+  const liveResident = {
+    items: [
+      { kind: "user" },
+      { kind: "assistant", streaming: true },
+    ] as ReadonlyArray<{ kind: string; streaming?: boolean; status?: string }>,
+    historyRevision: 6,
+    historyDigest: "d6",
+    historyTotalTurns: 12,
+    running: true,
+    turnActive: true,
+  };
+  const newerPage = {
+    items: [{ kind: "user" }, { kind: "assistant" }, { kind: "assistant" }] as ReadonlyArray<{ kind: string; streaming?: boolean; status?: string }>,
+    revision: 7,
+    digest: "d7",
+  };
+  ok(
+    hydratedHistoryApplyMode(false, true, true, liveResident, newerPage) === "rebase",
+    "a live turn over a provably staler page REBASES (任务726/316 stable-id union), never a plain replace",
+  );
+  const currentResident = { ...liveResident, historyRevision: 7, historyDigest: "d7" };
+  ok(
+    hydratedHistoryApplyMode(false, true, true, currentResident, newerPage) === "skip",
+    "an equal-fingerprint page during a live turn is skipped (no double-inject over the stream)",
+  );
+}
+
+// ── 7. source contract: the caller-contract skip joined the gate ─────────────
+ok(
+  /const gateApplies = !callerSkipRequested\s*\|\|\s*callerSkipOwesFreshnessGate\(/.test(controller),
+  "loadSessionDataForTab extends the freshness gate to the caller-contract skip",
+);
+ok(
+  !/if \(skipHistory && !options\.skipHistory\) \{/.test(controller),
+  "the old caller-skip bypass condition is gone",
+);
+ok(
+  /const hydrateDecisionReason = options\.skipHistory && skipHistory\s*\n\s*\? "caller"/.test(controller),
+  "an un-skipped caller skip is no longer mislabeled 'caller' in the hydrate decision log",
+);
+ok(
+  /skipHistory: residentSnapshot/.test(controller),
+  "Task 232's open-topic reset-emptied peek keeps its fetch-free contract (zero rows exempt the gate)",
 );
 
 assert.ok(true);
