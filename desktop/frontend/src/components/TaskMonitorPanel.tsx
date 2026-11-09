@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -12,9 +12,12 @@ import {
 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+// tl1483: task list refresh semantics (stale-while-revalidate + refresh
+// reason classification) live in this module so they stay unit-testable.
+import { applyTaskMonitorRefresh, sortTaskMonitorRows, type TaskListRefreshReason, type TaskListRow } from "../lib/taskMonitorList";
 import type { TaskEvent, TaskSnapshot } from "../lib/types";
 
-type CatalogTask = TaskSnapshot & { __projectKey: string; __projectLabel: string; __catalogKey: string };
+type CatalogTask = TaskListRow;
 
 function hasTaskCatalogBinding(): boolean {
   const bound = (window as unknown as { go?: { main?: { App?: { ListTaskPage?: unknown } } } }).go?.main?.App?.ListTaskPage;
@@ -159,7 +162,7 @@ export function TaskMonitorPanel({
   );
   const eventCursors = useRef<Map<string, number>>(new Map());
 
-  const fetchTasks = useCallback(async (cursor = "") => {
+  const fetchTasks = useCallback(async (cursor: string, reason: TaskListRefreshReason) => {
 	const seq = ++requestSeq.current;
     try {
       setError(null);
@@ -167,7 +170,7 @@ export function TaskMonitorPanel({
 				const legacy = await app.ListTasksForTab(tabID);
 				if (seq !== requestSeq.current) return;
 				const filtered = legacy.filter((task) => !query.trim() || [task.task_id, task.session_id, task.error_code, task.error_summary].some((value) => (value || "").toLowerCase().includes(query.trim().toLowerCase())));
-				setTasks(filtered.map((task) => ({ ...task, __projectKey: "", __projectLabel: "", __catalogKey: task.task_id })));
+				setTasks((current) => applyTaskMonitorRefresh(current, filtered.map((task) => ({ ...task, __projectKey: "", __projectLabel: "", __catalogKey: task.task_id })), reason));
 				setNextCursor("");
 				setIndexProgress({ indexed: filtered.length, total: filtered.length, partial: false });
 				return;
@@ -175,7 +178,9 @@ export function TaskMonitorPanel({
 			const page = await app.ListTaskPage({ scope, tabId: tabID, projectKey: "", states: [], query, cursor, limit: 50 });
 			if (seq !== requestSeq.current) return;
 			const decorated = (page.items ?? []).map((item: { projectKey: string; projectLabel: string; task: TaskSnapshot }) => ({ ...item.task, __projectKey: item.projectKey, __projectLabel: item.projectLabel, __catalogKey: `${item.projectKey}:${item.task.task_id}` }));
-			setTasks((current) => cursor ? [...current, ...decorated.filter((item: CatalogTask) => !current.some((existing) => existing.__catalogKey === item.__catalogKey))] : decorated);
+			setTasks((current) => cursor
+				? [...current, ...decorated.filter((item: CatalogTask) => !current.some((existing) => existing.__catalogKey === item.__catalogKey))]
+				: applyTaskMonitorRefresh(current, decorated, reason));
 			setNextCursor(page.nextCursor || "");
 			setIndexProgress({ indexed: page.status.indexed, total: page.status.total, partial: page.partial });
     } catch (e) {
@@ -233,11 +238,20 @@ export function TaskMonitorPanel({
     }
 	}, [tabID]);
 
-  // Initial fetch + periodic polling
+  // Initial fetch + periodic polling, classified by refresh reason (tl1483):
+  // the first tick of an input set paints as "mount", a scope/query/tab
+  // change re-runs as "filter", and the interval revalidates as "poll"
+  // (equal content → same-reference skip → zero repaint).
+  const refreshInputsRef = useRef({ query, scope, tabID });
   useEffect(() => {
-		void fetchTasks("");
+    const inputsChanged =
+      refreshInputsRef.current.query !== query ||
+      refreshInputsRef.current.scope !== scope ||
+      refreshInputsRef.current.tabID !== tabID;
+    refreshInputsRef.current = { query, scope, tabID };
+		void fetchTasks("", inputsChanged ? "filter" : "mount");
     const interval = setInterval(() => {
-			void fetchTasks("");
+			void fetchTasks("", "poll");
     }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
 	}, [fetchTasks]);
@@ -316,7 +330,7 @@ export function TaskMonitorPanel({
         setActionMessage(`Session: ${sessionID}`);
       } else {
         setActionMessage(result.idempotent ? "Already applied" : "Task updated");
-				await fetchTasks("");
+				await fetchTasks("", "action");
       }
     } catch (e) {
       setActionError(String(e));
@@ -325,10 +339,10 @@ export function TaskMonitorPanel({
     }
   };
 
-  const sorted = [...tasks].sort(
-    (a, b) =>
-      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-  );
+  // tl1483: deterministic recency order (updated_at desc, created_at desc,
+  // catalog key asc) — equal-recency rows keep their position regardless of
+  // the backend's row order, so polls stop flip-flopping ties (排序稳定钉).
+  const sorted = useMemo(() => sortTaskMonitorRows(tasks), [tasks]);
 
   return (
     <div className={`taskmonitor${popover ? " taskmonitor--popover" : ""}`}>
@@ -346,8 +360,9 @@ export function TaskMonitorPanel({
         <button
           className="taskmonitor__refresh"
 			onClick={() => {
-            setLoading(true);
-				void fetchTasks("");
+				// tl1483: SWR — never blank a painted list behind a loading
+				// branch; rows stay mounted until the fresh page applies.
+				void fetchTasks("", "manual");
           }}
           title={t("summary.refresh")}
           aria-label={t("summary.refresh")}
@@ -382,7 +397,7 @@ export function TaskMonitorPanel({
           {summaryMode && <div className="taskmonitor__category-title">{t("summary.tasks")}</div>}
           {actionError && <div className="taskmonitor__state taskmonitor__state--error">{actionError}</div>}
           {actionMessage && <div className="taskmonitor__state">{actionMessage}</div>}
-          {loading && (
+          {loading && sorted.length === 0 && (
             <div className="taskmonitor__state">
               <Loader2 size={16} className="taskmonitor__spinner" />
               <span>{t("common.loading")}</span>
@@ -403,8 +418,7 @@ export function TaskMonitorPanel({
             </div>
           )}
 
-          {!loading &&
-            sorted.map((task) => {
+          {sorted.map((task) => {
               const cfg = stateConfig(task.state, t);
               const runtime = runtimeConfig(task.runtime_state, t);
 				const taskKey = task.__catalogKey;
@@ -605,7 +619,7 @@ export function TaskMonitorPanel({
               );
             })}
 			{nextCursor && !loading && !error && (
-				<button className="taskmonitor__load-more" onClick={() => void fetchTasks(nextCursor)}>
+				<button className="taskmonitor__load-more" onClick={() => void fetchTasks(nextCursor, "manual")}>
 					Load more
 				</button>
 			)}
