@@ -148,8 +148,18 @@ const COMPOSER_MAX_HEIGHT = 360;
 // Height reserved for the in-card run strip while a turn runs; applied via a
 // CSS calc so --composer-height always stays in "logical height" space.
 const COMPOSER_RUN_STRIP_RESERVED = 30;
+// tl1508：状态行截断版展开后的预留高度（主行 30 + 明细行 ~26）；resized 定高
+// 卡靠它把展开层一并算进卡片高度，展开不挤压输入区。
+const COMPOSER_RUN_STRIP_EXPANDED_RESERVED = 56;
 const COMPOSER_MAX_VIEWPORT_RATIO = 0.4;
 const COMPOSER_AUTO_RESERVED_HEIGHT = 58;
+// tl1508：meta 行（按钮行）折行判定与预留高度换算的实测基准。判定用实测
+// offsetHeight > 56px 即两行——661px 实测教训：固定宽度阈值无法覆盖 lab 开关/
+// effort/审批档组合带来的内容宽差异，行高实测不依赖任何宽度假设。单行名义
+// 高度 = 控件 32px + meta 上下 padding 11px ≈ 43px；jsdom（offsetHeight 恒 0）
+// 走 COMPOSER_AUTO_RESERVED_HEIGHT 原值回退，既有测量读数不变。
+const COMPOSER_META_ONE_ROW_MAX_HEIGHT = 56;
+const COMPOSER_META_NOMINAL_HEIGHT = 43;
 const PROMPT_HISTORY_PREFETCH_REMAINING = 3;
 const FILE_REF_SEARCH_CACHE_TTL_MS = 5000;
 const ComposerGuidanceShelf = lazy(() => import("./ComposerGuidanceShelf").then((module) => ({ default: module.ComposerGuidanceShelf })));
@@ -1109,6 +1119,13 @@ export function Composer({
   const [composerResizing, setComposerResizing] = useState(false);
   const [textareaAutoHeight, setTextareaAutoHeight] = useState<number | null>(null);
   const [textareaAutoOverflow, setTextareaAutoOverflow] = useState(false);
+  // tl1508 修①：按钮行（meta 行）折两行的实测形态——measureComposerMetaWrap 以
+  // offsetHeight 判定并挂 .composer-meta--tworow（第二行右对齐）；只驱动自由空隙
+  // 分配，不回改条目宽度，无振荡面。
+  const [metaTworow, setMetaTworow] = useState(false);
+  // tl1508 修②：「⋯ 工具」二级菜单开合（窄折叠的展开层）+ 状态行截断版展开层。
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const [runStripExpanded, setRunStripExpanded] = useState(false);
   const [intentMenuOpen, setIntentMenuOpen] = useState(false);
   const [intentMenuClosing, setIntentMenuClosing] = useState(false);
   const [contentMenuOpen, setContentMenuOpen] = useState(false);
@@ -1193,6 +1210,8 @@ export function Composer({
   // 点选只插入光标处、面板保持打开支持连选，Esc/外点关闭交给弹层统一语义。
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const emojiPickerAnchorRef = useRef<HTMLButtonElement | null>(null);
+  // tl1508 修②：「⋯ 工具」折叠菜单锚点（窄折叠态里四个不常用钮的收口入口）。
+  const toolsMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
   const savedTextRef = useRef("");
   const taRef = useRef<HTMLTextAreaElement>(null);
   const measureTaRef = useRef<HTMLTextAreaElement>(null);
@@ -1201,6 +1220,9 @@ export function Composer({
   const editHistoryByDraftRef = useRef<Record<string, ComposerEditHistory>>({});
   const pendingNativeInputTypeRef = useRef<string | undefined>(undefined);
   const composerCardRef = useRef<HTMLDivElement>(null);
+  // tl1508 修①：meta 行（按钮行）元素——折行实测与 ResizeObserver 联动的观察对象；
+  // 分割线（.composer border-bottom）不压钮的 reservedHeight 也从它的实测高度来。
+  const composerMetaRef = useRef<HTMLDivElement | null>(null);
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const contentMenuAnchorRef = useRef<HTMLButtonElement>(null);
   const intentMenuAnchorRef = useRef<HTMLButtonElement>(null);
@@ -4345,15 +4367,32 @@ export function Composer({
     const richHeight = invocationsRef.current.length > 0 ? richInputRef.current?.scrollHeight() : 0;
     const scrollHeight = richHeight || measureTaRef.current?.scrollHeight || 0;
     if (!scrollHeight) return;
+    // tl1508 修①（分割线不压钮）：reservedHeight 不再是固定 58——meta 行折两行
+    // 时真实高度（≈81px）比单行名义值（≈43px）多出的部分必须从输入区可用高度
+    // 里扣掉，textarea 高度约束随实测收紧、overflow 翻 auto 内滚，文字不再越过
+    // 分割线压到按钮区（tl1333 只治了命中序，本修治几何根因）。jsdom 里
+    // offsetHeight 恒 0 → 回退原常量，既有测量读数逐字节不变。
+    const metaHeight = composerMetaRef.current?.offsetHeight ?? 0;
+    const reservedHeight = metaHeight > 0
+      ? COMPOSER_AUTO_RESERVED_HEIGHT + Math.max(0, metaHeight - COMPOSER_META_NOMINAL_HEIGHT)
+      : COMPOSER_AUTO_RESERVED_HEIGHT;
     const sizing = resolveComposerContentSizing({
       contentHeight: scrollHeight,
       manualLogicalHeight: composerHeight,
       maxLogicalHeight: composerMaxHeight(),
-      reservedHeight: COMPOSER_AUTO_RESERVED_HEIGHT,
+      reservedHeight,
     });
     setTextareaAutoHeight((current) => (current === sizing.inputHeight ? current : sizing.inputHeight));
     setTextareaAutoOverflow((current) => (current === sizing.overflow ? current : sizing.overflow));
   }, [composerHeight, invocations.length]);
+
+  // tl1508 修①：折行判定（实测 offsetHeight 形态，661px 教训——不设宽度阈值）。
+  const measureComposerMetaWrap = useCallback(() => {
+    const meta = composerMetaRef.current;
+    if (!meta) return;
+    const wrapped = meta.offsetHeight > COMPOSER_META_ONE_ROW_MAX_HEIGHT;
+    setMetaTworow((prev) => (prev === wrapped ? prev : wrapped));
+  }, []);
 
   useLayoutEffect(() => {
     measureTextareaAutoHeight();
@@ -4366,6 +4405,7 @@ export function Composer({
       frame = window.requestAnimationFrame(() => {
         frame = 0;
         measureTextareaAutoHeight();
+        measureComposerMetaWrap();
       });
     };
     window.addEventListener("resize", update);
@@ -4382,6 +4422,10 @@ export function Composer({
     // composerHeight 变化迫使本 effect 重跑并重测。补一个对卡片宽度的
     // ResizeObserver：只在宽度变化时重测——高度变化多是我们自己写出来的
     // 测量结果，忽略以避免「测量→写高度→再测量」回环。
+    // tl1508 修①联动：meta 行自身再挂一个观察者——右侧边栏自动展开等宽度突变
+    // 会立刻改变 meta 行的可用宽度，折行/收行即高度突变，此处不设宽度去抖、
+    // 每次回调都重测（measure 两个写路径都收敛：输入高度与 tworow 类均
+    // 「同值不写」，自身引发的回调二次进入时不再产生新写入，无回环）。
     const card = composerCardRef.current;
     let lastCardWidth = card ? Math.round(card.getBoundingClientRect().width) : 0;
     const sizeObserver = typeof ResizeObserver === "function" && card
@@ -4393,13 +4437,21 @@ export function Composer({
         })
       : null;
     if (sizeObserver && card) sizeObserver.observe(card);
+    const meta = composerMetaRef.current;
+    const metaObserver = typeof ResizeObserver === "function" && meta
+      ? new ResizeObserver(() => {
+          update();
+        })
+      : null;
+    if (metaObserver && meta) metaObserver.observe(meta);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", update);
       observer.disconnect();
+      metaObserver?.disconnect();
       sizeObserver?.disconnect();
     };
-  }, [composerHeight, measureTextareaAutoHeight]);
+  }, [composerHeight, measureTextareaAutoHeight, measureComposerMetaWrap]);
 
   const saveComposerHeight = (height: number) => {
     saveLayoutSize("composerHeight", height, clampComposerHeight);
@@ -5089,6 +5141,11 @@ export function Composer({
   // throughput readout (user-reported regression). Following upstream
   // 196dd3bae, the running strip returns and renders the readings inline.
   const showRunStrip = Boolean((running && !suspendedByDecision) || retry || connecting || waitingPrompt || finishing || runtimeState.unknown || runtimeState.kind === "background_job" || runtimeState.kind === "cancelling");
+  // tl1508 修②：状态行不在场时收起展开层——下一轮状态行默认收起，不残留
+  // 上一轮的展开态（零信息轮 detail 为空，展开与否无感，但语义要归位）。
+  useEffect(() => {
+    if (!showRunStrip) setRunStripExpanded(false);
+  }, [showRunStrip]);
   const effectiveComposerHeight = composerHeight === null
     ? null
     : resolveComposerContentSizing({
@@ -5101,7 +5158,9 @@ export function Composer({
     ? undefined
     : ({
         "--composer-height": `${effectiveComposerHeight}px`,
-        "--composer-run-strip-reserved": `${showRunStrip ? COMPOSER_RUN_STRIP_RESERVED : 0}px`,
+        // tl1508：状态行截断版展开层也占卡高——展开时预留 30→56，resized 定高
+        // 卡不出现「展开明细压输入区」的二次重叠。
+        "--composer-run-strip-reserved": `${showRunStrip ? (runStripExpanded ? COMPOSER_RUN_STRIP_EXPANDED_RESERVED : COMPOSER_RUN_STRIP_RESERVED) : 0}px`,
       } as CSSProperties);
   const textareaStyle = !composerResizing && textareaAutoHeight !== null
     ? ({ height: `${textareaAutoHeight}px`, overflowY: textareaAutoOverflow ? "auto" : "hidden" } as CSSProperties)
@@ -5327,10 +5386,21 @@ export function Composer({
             : planModeOn
               ? t("composer.planInputPlaceholder")
               : t("composer.placeholder");
+  // tl1508 修②：状态行截断版——主行只留状态词+最后事件；时长/tokens/速率
+  // （runMetrics）与工具/文件/检索汇总（任务1082 tally）收进「⋯ N」展开层。
+  // N = 展开层里的字段数（metrics 1-3 项 + tally 3 项），与 demo 定稿「⋯ 6」
+  // 同口径；零明细（纯对话短轮）不渲染入口。
+  const runStripDetailCount = (runMetrics && (runMetrics.tps || runMetrics.tokens)
+    ? 1 + (runMetrics.tokens ? 1 : 0) + (runMetrics.tps ? 1 : 0)
+    : 0)
+    + (runTallyLabel ? 3 : 0);
   const composerMetaClass = [
     "composer-meta composer-meta--unified",
     hasEffort ? "composer-meta--has-effort" : "composer-meta--no-effort",
-  ].join(" ");
+    // tl1508 修①：折两行实测形态（measureComposerMetaWrap 以 offsetHeight 判定）
+    // ——CSS 侧只做第二行右对齐（模型组 margin-left:auto），不改条目宽度。
+    metaTworow ? "composer-meta--tworow" : "",
+  ].filter(Boolean).join(" ");
 
   const inputSelection = getInputSelection();
   const hasInputSelection = inputSelection.from !== inputSelection.to;
@@ -5982,17 +6052,34 @@ export function Composer({
         {(readStatusText || (showRunStrip && runStateText)) && (
           <div className={`composer-run-strip${waitingPrompt ? " composer-run-strip--waiting" : ""}`}>
             {!finishing && !runtimeState.unknown && <span className="composer-run-strip__dot" aria-hidden="true" />}
-            <span className="composer-run-strip__text">{readStatusText || runStateText}
-              {/* Q1 2026-10-04: inline run readings restored (elapsed · tokens ·
-                  tps) beside the state word; the ring popover keeps the same
-                  numbers for completed turns. */}
-              {runMetrics && (runMetrics.tps || runMetrics.tokens) && <span className="composer-run-strip__metrics">{` · ${runMetrics.elapsed}${runMetrics.tokens ? ` · ${runMetrics.tokens}` : ""}${runMetrics.tps ? ` · ${runMetrics.tps}` : ""}`}</span>}
-            </span>
-            {/* 任务 1082：本轮工具/文件/检索汇总——折叠头之外的运行态可见面。
-                零工具轮（纯对话）runTallyLabel 为 null，整段不渲染。 */}
-            {runTallyLabel && (
-              <span className="composer-run-strip__tally" aria-hidden="true">{runTallyLabel}</span>
+            <span className="composer-run-strip__text">{readStatusText || runStateText}</span>
+            {/* tl1508 修②：状态行截断版——inline readings（Q1 2026-10-04 恢复的
+                elapsed · tokens · tps）与工具/文件/检索汇总（任务1082）从主行
+                移入「⋯ N」展开层；主行恒一行（ellipsis 兜底），展开层独占第二
+                行（flex-basis:100%），resized 定高卡的层高差由
+                --composer-run-strip-reserved 抬升吸收。环弹层（ContextWindowRing
+                popover）对已结束轮的读数链路不变。 */}
+            {runStripDetailCount > 0 && (
+              <button
+                type="button"
+                className="composer-run-strip__more"
+                aria-expanded={runStripExpanded}
+                aria-label={t("composer.runStripDetails")}
+                title={t("composer.runStripDetails")}
+                onClick={() => setRunStripExpanded((value) => !value)}
+              >
+                ⋯ {runStripDetailCount}
+              </button>
             )}
+            <div className="composer-run-strip__detail" hidden={!runStripExpanded}>
+              {runMetrics && (runMetrics.tps || runMetrics.tokens) && <span className="composer-run-strip__metrics">{`${runMetrics.elapsed}${runMetrics.tokens ? ` · ${runMetrics.tokens}` : ""}${runMetrics.tps ? ` · ${runMetrics.tps}` : ""}`}</span>}
+              {/* 任务 1082：本轮工具/文件/检索汇总。零工具轮（纯对话）
+                  runTallyLabel 为 null，整段不渲染。tl1508：移入展开层后是该
+                  信息的唯一在场，撤掉原 aria-hidden（折叠头之外的唯一可见面）。 */}
+              {runTallyLabel && (
+                <span className="composer-run-strip__tally">{runTallyLabel}</span>
+              )}
+            </div>
           </div>
         )}
         <span className="sr-only" role="status">{readStatusText || runStateText}</span>
@@ -6154,7 +6241,7 @@ export function Composer({
           ariaLabel={t("composer.inputActions")}
           onClose={() => setInputMenuPoint(null)}
         />
-        <div className={composerMetaClass}>
+        <div className={composerMetaClass} ref={composerMetaRef}>
           <div className="composer-meta__params">
             {!channelMode && (
               <div className="composer-meta__control composer-meta__control--capsule">
@@ -6437,6 +6524,81 @@ export function Composer({
               </div>}
             </div>}
             <div className={`composer-toolbar-send${submitUnavailableHint ? " composer-toolbar-send--unavailable" : ""}`}>
+              {/* tl1508 修②①：「⋯ 工具」折叠入口——窄（meta 容器 ≤559px，CSS
+                  容器断点）时表情/截图/历史/改写四钮 display:none 折进本菜单
+                  （demo 方案B 定稿）；宽屏入口不渲染显示（display:none 默认态）。
+                  菜单本体经 AnchoredPopover portal 到 body，不吃 meta 行
+                  overflow:hidden 的裁剪（任务529 同路线）；菜单项与平铺钮同一
+                  事件链，零新机制。 */}
+              {(
+                <div className="composer-tools-fold">
+                  <Tooltip label={t("composer.toolsMenu")} disabled={toolsMenuOpen}>
+                    <button
+                      ref={toolsMenuAnchorRef}
+                      type="button"
+                      className={`composer__btn${toolsMenuOpen ? " composer__btn--on" : ""}`}
+                      onClick={() => setToolsMenuOpen((open) => !open)}
+                      aria-label={t("composer.toolsMenu")}
+                      aria-haspopup="menu"
+                      aria-expanded={toolsMenuOpen}
+                    >
+                      <span aria-hidden="true" className="composer-tools-fold__glyph">⋯</span>
+                    </button>
+                  </Tooltip>
+                  <AnchoredPopover
+                    open={toolsMenuOpen}
+                    anchorRef={toolsMenuAnchorRef}
+                    onClose={() => setToolsMenuOpen(false)}
+                    className="composer-tools-menu composer-menu-surface"
+                    align="end"
+                  >
+                    <div className="composer-tools-menu__items" role="menu" aria-label={t("composer.toolsMenu")}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="composer-access-menu__item composer-tools-menu__item"
+                        onClick={() => { setToolsMenuOpen(false); setEmojiPickerOpen(true); }}
+                      >
+                        <Smile size={16} aria-hidden="true" />
+                        <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{t("composer.emojiPickerTitle")}</span></span>
+                      </button>
+                      {attachmentInputEnabled && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="composer-access-menu__item composer-tools-menu__item"
+                          onClick={() => { setToolsMenuOpen(false); setScreenshotOverlayOpen(true); }}
+                        >
+                          <Crop size={16} aria-hidden="true" />
+                          <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{t("composer.screenshotButton")}</span></span>
+                        </button>
+                      )}
+                      {historyPickerEnabled && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="composer-access-menu__item composer-tools-menu__item"
+                          onClick={() => { setToolsMenuOpen(false); openHistoryPicker(); }}
+                        >
+                          <Clock size={16} aria-hidden="true" />
+                          <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{t("composer.historyPicker")}</span></span>
+                        </button>
+                      )}
+                      {draftRewriteOn && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="composer-access-menu__item composer-tools-menu__item"
+                          onClick={() => { setToolsMenuOpen(false); openDraftRewritePicker(); }}
+                        >
+                          <Wand2 size={16} aria-hidden="true" />
+                          <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{t("composer.rewriteDraft")}</span></span>
+                        </button>
+                      )}
+                    </div>
+                  </AnchoredPopover>
+                </div>
+              )}
               {/* 任务 869：emoji 面板入口。与历史提示词时钟同一弹层语义
                   （AnchoredPopover portal 到 body，Esc/外点关闭）；面板 lazy
                   加载，首开有一次 Suspense 占位。 */}
