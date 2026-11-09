@@ -6,9 +6,10 @@ package control
 // 核销）：忙时 park 的用户提交闭包只活在内存里，进程退出即丢且无任何持久层
 // 可检索。本文件给 park 面补上持久副本：
 //
-//	park（四个 park 位点）→ manifest 重放行（blob+manifest 双提交，EnqueueInbox）
+//	park（四个 park 位点）→ manifest 重放行（blob+manifest 双提交，出生即
+//	uncertain 停靠——见下「两种行形态」）
 //	body 启动（FIFO drain 后闭包真正开跑）→ 核销该行（防双投）
-//	进程退出而 body 未启动 → 行留队列，重启后按普通 queued 行派发（可检索可重放）
+//	进程退出而 body 未启动 → 行留 shelf 停靠（可检索），Retry 重发即重放
 //
 // 两种行形态（park 时一律停靠 uncertain，绝不以 queued 形态伴随活体 parked
 // body——queued 行会被 461-P9 工具间隙泵注入运行中的轮、或在任何开门瞬间被派
