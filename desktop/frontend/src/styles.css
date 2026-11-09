@@ -45070,3 +45070,153 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-dim);
   opacity: 0.75;
 }
+
+/* ── tl1508 输入框按钮行折两行版 + 运行状态一行化（键/类追加在 EOF）────────
+   修① 折行判定 = 实测 meta 行 offsetHeight（>56px 即两行，.composer-meta--tworow
+   由 Composer 挂载）——661px 实测教训：固定宽度阈值无法覆盖 lab 开关/effort/
+   审批档组合带来的内容宽差异。该类只驱动第二行右对齐（自由空隙分配，不改任何
+   条目宽度），不存在「紧凑→不折行→再折行」的振荡面。
+   分割线（.composer 的 border-bottom）不压钮由 Composer 侧把实测 meta 高度计入
+   resolveComposerContentSizing 的 reservedHeight 承担（textarea 高度约束 +
+   overflow-y:auto + 卡片流式分层），CSS 侧无需新层。 */
+.composer-meta--tworow .composer-meta__control--model {
+  /* 方案E：折行后第二行右起——模型组（圆圈+模型+思考档）margin-left:auto 靠右。 */
+  margin-left: auto;
+}
+
+/* 修②① 「⋯ 工具」折叠：默认不渲染入口；窄时（meta 容器 ≤559px）表情/截图/
+   历史/改写四钮收进二级菜单（demo 方案B 定稿阈值 <~560px）。折叠触发走容器
+   断点（复用既有 520/560/650 断点族机制，单调于宽度、无 JS 测宽振荡）；菜单
+   本体走 AnchoredPopover portal 到 body，不受 .composer-meta overflow:hidden
+   裁剪（任务529 同教训）。 */
+.composer-tools-fold {
+  position: relative;
+  display: none;
+  align-items: center;
+}
+.composer-tools-fold__glyph {
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 1px;
+  margin-top: -4px; /* ⋯ 字形基线偏下，视觉居中微调 */
+}
+.composer-tools-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  min-width: 176px;
+}
+.composer-tools-menu__items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 176px;
+}
+.composer-tools-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.composer-tools-menu__item:hover {
+  background: var(--bg-elev);
+}
+@container (max-width: 559px) {
+  .composer-toolbar-send .composer-emoji-picker,
+  .composer-toolbar-send .composer-screenshot-picker,
+  .composer-toolbar-send .composer-history-picker,
+  .composer-toolbar-send .composer__btn--rewrite {
+    display: none;
+  }
+  .composer-toolbar-send .composer-tools-fold {
+    display: inline-flex;
+  }
+}
+
+/* 修②②③ 紧凑态（meta 容器 ≤619px，介于既有 650 与 560 断点之间）——
+   Autopilot 等档位图标化（图标+tooltip 承载档名，档位段宽约省 45%+）+ 权限↔
+   模型间弹性空隙收紧（gap 6→4、approval margin-inline-start 2→0、审批条收窄，
+   均为既有 520px 断点同值，不新造参数）。demo 的「⚡ 自动 ▾」短词方案不采用：
+   「自动」与既有审批 auto 档（composer.modeNormal=自动）撞名，图标化省宽更甚
+   且零撞车。 */
+@container (max-width: 619px) {
+  .composer-meta--unified .composer-modebar__item span {
+    display: none;
+  }
+  .composer-meta--unified .composer-meta__control--approval {
+    margin-inline-start: 0;
+  }
+  /* 只压按钮组形态（:not 豁免 940 下拉框形态——它有 tl1233 的固定 132px
+     同宽契约，压到 104 会让触发器文案截断成「Autop…」）。 */
+  .composer-meta--unified .composer-meta__control--approval:not(.composer-meta__control--approval--select) {
+    min-width: 96px;
+    max-width: 104px;
+  }
+  .composer-meta--unified .composer-meta__control--approval .composer-modebar--approval {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .composer-meta--unified .composer-meta__params {
+    gap: 4px;
+  }
+}
+
+/* 修② 状态行截断版：主行恒一行（状态词+最后事件，ellipsis 兜底），时长/
+   tokens/速率/工具汇总收进「⋯ N」展开层；展开行 flex-basis:100% 独占第二行，
+   不挤主行（展开层可达全部信息 + 不溢出裁切）。展开后卡片的
+   --composer-run-strip-reserved 由 Composer 同步抬升（resized 定高卡不重叠）。 */
+.composer-run-strip {
+  flex-wrap: wrap;
+}
+.composer-run-strip__more {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.composer-run-strip__more:hover,
+.composer-run-strip__more[aria-expanded="true"] {
+  color: var(--fg);
+  border-color: var(--border);
+  background: var(--bg-soft);
+}
+.composer-run-strip__more:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.composer-run-strip__detail {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 12px;
+  min-width: 0;
+  padding-bottom: 3px;
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+/* display:flex 会压掉 UA 的 [hidden] 兜底，必须显式回收。 */
+.composer-run-strip__detail[hidden] {
+  display: none;
+}
