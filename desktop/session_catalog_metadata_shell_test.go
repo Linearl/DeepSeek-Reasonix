@@ -22,8 +22,12 @@ import (
 // holds.
 func TestMetadataProjectTopicsCarriesCatalogLastActivityTL1485e(t *testing.T) {
 	isolateDesktopUserDirs(t)
+	configDir := desktopConfigDir()
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	projects := `{"globalTopics":["topic_tl1485e"]}`
-	if err := os.WriteFile(filepath.Join(desktopConfigDir(), desktopProjectsFile), []byte(projects), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, desktopProjectsFile), []byte(projects), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(desktopConfigDir(), "sessions")
