@@ -55,7 +55,7 @@ import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydrateFailureDetail, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { HISTORY_AUTO_RETRY_LIMIT, runBoundedAutoRetry } from "./historyAutoRetry";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fillChunkStartTurn, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, HISTORY_FILL_CHUNK_ITEMS, HISTORY_TAIL_FIRST_TURNS, hydratedHistoryApplyMode, planHistoryFillChunks, residentPageHeavy, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, callerSkipOwesFreshnessGate, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fillChunkStartTurn, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, HISTORY_FILL_CHUNK_ITEMS, HISTORY_TAIL_FIRST_TURNS, hydratedHistoryApplyMode, planHistoryFillChunks, residentPageHeavy, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
 import { prefetchMruTabs, type PrefetchCandidate } from "./transcriptPrefetch";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
@@ -3784,8 +3784,9 @@ export function useController() {
       // fingerprint against a fresh branch-meta read (sidecar file — no
       // history decode): a match keeps the fast path fast, a mismatch (or an
       // unreadable meta — freshness then unprovable) drops back to the bounded
-      // latest-page fetch. Callers that asked for skipHistory explicitly keep
-      // their contract (reset-surface local-snapshot path).
+      // latest-page fetch. Caller-contract skips keep that contract only while
+      // the surface holds no rows (Task 232's reset-emptied local-snapshot
+      // peek); over resident rows they reconcile too (tl1518).
       let freshMeta: Meta | undefined;
       let residentStale = false;
       // tl1332 (tl1083 §5.1 最小档): when the freshness gate un-skips a
@@ -3796,7 +3797,20 @@ export function useController() {
       // (任务831③) first paint. Small pages keep the byte-identical legacy
       // path; an evicted (non-resident) target is a cold open, out of scope.
       let tailFirstFill = false;
-      if (skipHistory && !options.skipHistory) {
+      // tl1518: the gate above used to run only for skip decisions made HERE
+      // (`!options.skipHistory`). switch-tab's caller-contract skip (the
+      // local-snapshot fast path) bypassed it entirely, so a turn that had
+      // already SETTLED behind the surface — reply in the jsonl, live rows
+      // never applied — kept serving the pre-turn transcript with zero
+      // fetches on every switch-back (任务726 re-routes only the
+      // still-running case), and closing/reopening the tab was the only
+      // recovery. The gate now also applies to a caller skip over resident
+      // rows; the reset-emptied peek (zero rows) keeps its fetch-free
+      // contract.
+      const callerSkipRequested = Boolean(options.skipHistory);
+      const gateApplies = !callerSkipRequested
+        || callerSkipOwesFreshnessGate(callerSkipRequested, statesRef.current.get(tabId)?.items.length ?? 0);
+      if (skipHistory && gateApplies) {
         const resident = statesRef.current.get(tabId);
         freshMeta = await loadMetaForTab(tabId);
         if (!sessionLoadCurrent(tabId, seq)) return;
@@ -3825,7 +3839,7 @@ export function useController() {
       const residentVeto = !options.skipHistory && !skipHistory && !resetSurface
         ? explainReusableCache(statesRef.current.get(tabId), sessionPath)
         : "";
-      const hydrateDecisionReason = options.skipHistory
+      const hydrateDecisionReason = options.skipHistory && skipHistory
         ? "caller"
         : skipHistory
           ? surfaceEmptyAtHydrate
@@ -6576,8 +6590,11 @@ export function useController() {
     // so returning to a previously opened conversation is instant. The 1.38.3
     // merge reverted this once (33b6c32ec); re-applied after the user reported
     // long conversations reloading on every back-and-forth tab switch
-    // (2026-09-13). Background tabs keep receiving live events, so a local
-    // snapshot can only miss messages that live delivery has already applied.
+    // (2026-09-13). tl1518: this trust is bounded, not blind — the shared
+    // hydrate chain reconciles the resident fingerprint against fresh branch
+    // meta on every switch-back that holds rows, so a turn whose live delivery
+    // MISSED the surface (rows only in the jsonl) still lands on the next
+    // switch-back; only the still-running case needs the 任务726 re-route.
     const hasLocalItems = Boolean(targetState?.items?.length);
     const preserveTargetSurface = hasLocalItems || sameSession || adoptUnboundLiveSurface;
     const placeholderItems = hasLocalItems ? targetState?.items : undefined;

@@ -172,6 +172,26 @@ export function residentSurfaceFresh(
   );
 }
 
+// ── tl1518: caller-contract skip still owes the tail reconcile ───────────────
+//
+// 任务580's freshness gate ran only for skip decisions made inside the reuse
+// branch (`skipHistory && !options.skipHistory`). switch-tab's caller-contract
+// skip — the local-snapshot fast path — bypassed it entirely: a turn that ran
+// and SETTLED while the surface was away left the new assistant rows in the
+// jsonl but never on the resident page, and every switch-back kept serving the
+// pre-turn transcript with zero fetches (任务726 re-routes only the
+// still-running case, so the settled case had no reconcile at all). "切走切回
+// 无效、关闭 tab 重开有效": the rebuild forces the fetch the reuse path
+// skipped. The gate applies to a caller-contract skip too, unless the surface
+// holds no rows — the Task-232 reset-emptied local-snapshot peek has nothing
+// to reconcile and keeps its fetch-free contract.
+export function callerSkipOwesFreshnessGate(
+  callerSkipHistory: boolean,
+  residentItemCount: number,
+): boolean {
+  return callerSkipHistory && residentItemCount > 0;
+}
+
 function sameHydrateFingerprint(state: HydrateLiveState | undefined, projection: HydrateProjection | undefined): boolean {
   if (!state || !projection) return false;
   const revision = projection.revision ?? 0;
