@@ -1576,6 +1576,14 @@ const CHECKS = [
   { feature: "任务1102 F1 快捷键定义（help.docs.open）", file: "desktop/frontend/src/lib/keyboardShortcuts.ts", patterns: ['action: "help.docs.open"', 'allPlatforms({ key: "F1" })'] },
   { feature: "任务1102 静态站发布链路（GitHub Pages workflow）", file: ".github/workflows/docs-site-pages.yml", patterns: ["docs-site/", "actions/deploy-pages"] },
 
+  // ── tl1485e（2026-11-10）：左栏「1 个月」显示链断环——注册表壳行必须携带
+  // catalog 活动值。FE 五处 lastActivityAt||createdAt 回落（topicActivityAt/
+  // projectTreeTopicMetaLine/hoverCard/topicActivityTime + ProjectTree.tsx:1905
+  // 行内联），壳行只带 createdAt 时按创建年龄显示（tl1485 现场形态）。merge
+  // 顶掉任一壳行的赋值即复发。
+  { feature: "tl1485e 壳行活动值一体取（GetTopic 单查询回 path+activity）", file: "desktop/session_catalog_runtime.go", patterns: ["func (a *App) catalogSessionShellForTopic", "LastActivityAt: shellActivity"] },
+  { feature: "tl1485e 置顶壳行同源修复", file: "desktop/session_catalog.go", patterns: ["shellPath, shellActivity := a.catalogSessionShellForTopic", "LastActivityAt: shellActivity"] },
+
 ];
 
 let failed = 0;
