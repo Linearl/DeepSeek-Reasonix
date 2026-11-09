@@ -45100,11 +45100,34 @@ button.statusbar__mcp:focus-visible {
   letter-spacing: 1px;
   margin-top: -4px; /* ⋯ 字形基线偏下，视觉居中微调 */
 }
+.composer-tools-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  min-width: 176px;
+}
 .composer-tools-menu__items {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 176px;
+}
+.composer-tools-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.composer-tools-menu__item:hover {
+  background: var(--bg-elev);
 }
 @container (max-width: 559px) {
   .composer-toolbar-send .composer-emoji-picker,
