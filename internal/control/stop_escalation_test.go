@@ -186,3 +186,52 @@ func TestGraceCountdownAutoFires(t *testing.T) {
 		t.Fatal("an expired countdown must fire the force signal")
 	}
 }
+
+// tl1514 面一: a plain Cancel() must arm the same escalation ladder — every
+// stop entry (cli/acp/bot/serve transports ride the bare Cancel) gets the 30s
+// 保底 and the automatic grace→force escalation, not only the CancelStop
+// entry. Before this, a turn that ignored the graceful cancel sat at L1
+// forever when the first press came through Cancel.
+func TestPlainCancelAutoEscalatesWithoutFurtherPresses(t *testing.T) {
+	shrinkStopEscalationForTest(t, 80*time.Millisecond, 70*time.Millisecond)
+	c, bodyCtx, _ := stopEscalationFixture(t)
+
+	c.Cancel() // the bare entry: no CancelStop anywhere in the test
+	waitStopLevel(t, c, StopLevelNormal, time.Second)
+	waitStopLevel(t, c, StopLevelGrace, 2*time.Second)
+	waitStopLevel(t, c, StopLevelForce, 2*time.Second)
+	select {
+	case <-agent.StopForceDone(bodyCtx):
+	default:
+		t.Fatal("the plain-cancel ladder must end in the executor force signal")
+	}
+}
+
+// tl1514 面一: the single-arm guard — CancelStop's L1 arm rides behind the
+// now-arming finishCancel, and the two must produce ONE fallback timer face,
+// not two (an extra timer is harmless-but-noisy; the pin keeps the ladder's
+// timer list at one entry per level).
+func TestCancelStopL1ArmsExactlyOneFallbackTimer(t *testing.T) {
+	shrinkStopEscalationForTest(t, time.Hour, time.Hour)
+	c := New(Options{Sink: event.Discard})
+	t.Cleanup(c.Close)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	c.runGuarded(func(ctx context.Context) error {
+		close(started)
+		<-ctx.Done()
+		<-release
+		return ctx.Err()
+	})
+	<-started
+
+	c.CancelStop()
+	waitStopLevel(t, c, StopLevelNormal, time.Second)
+	c.mu.Lock()
+	timers := len(c.stopTimers)
+	c.mu.Unlock()
+	if timers != 1 {
+		t.Fatalf("L1 stop armed %d fallback timers, want exactly 1", timers)
+	}
+}
