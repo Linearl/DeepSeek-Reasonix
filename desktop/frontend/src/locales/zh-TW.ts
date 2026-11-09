@@ -1578,9 +1578,8 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.projectAlreadyInGroup": "專案已在分組「{title}」中",
   "projectTree.renameProjectWorkbench": "重新命名專案",
   "projectTree.removeProject": "移出側邊欄",
-  "projectTree.confirmRemoveProject": "確認移出側邊欄",
+  // tl1502b：二段確認死鍵（confirmRemoveProject/Short）隨死狀態鏈一併退役——確認改彈窗。
   "projectTree.removeProjectShort": "移除",
-  "projectTree.confirmRemoveProjectShort": "確認移除",
   "projectTree.copyPath": "複製路徑",
   "projectTree.reloadSessions": "重載會話列表",
   "projectTree.reloadSessionsDone": "已清理 {n} 條殘留並重載列表",
@@ -6503,5 +6502,7 @@ export const zhTW: Record<DictKey, string> = {
   "workflowPanel.definitions.sourceReadOnly": "已存定義的唯讀檢視；編輯在範本檢視進行。",
   "workflowPanel.definitions.invalidHint": "該檔案無效。在範本檢視裡修復（原始檔保留進歷史）。",
   "workflowPanel.definitions.disabledHint": "執行/重新命名/刪除需要先開啟實驗室的 Workflow templates 開關（設定 → 實驗室）；下方列表為唯讀。",
+  // tl1502b「移出側邊欄」確認彈窗正文（二段確認死鍵 confirmRemoveProject/Short 已隨死狀態鏈退役）
+  "projectTree.removeProjectConfirmBody": "將「{title}」移出側邊欄？專案資料夾與會話不會被刪除，隨時可重新加入。",
 
 };
