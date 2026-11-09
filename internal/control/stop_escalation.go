@@ -94,6 +94,14 @@ func (c *Controller) armStopEscalation() {
 		c.refreshRuntimeState(event.Event{})
 		return
 	}
+	if c.stopLevel != StopLevelNone {
+		// tl1514: already armed — finishCancel now arms every live cancel (any
+		// entry), and CancelStop's own L1 arm rides right behind it. Never stack
+		// a second 30s fallback timer on the same level; the mirror is already
+		// refreshed by the caller.
+		c.mu.Unlock()
+		return
+	}
 	c.stopLevel = StopLevelNormal
 	c.stopDeadline = time.Time{}
 	c.stopTimers = append(c.stopTimers, time.AfterFunc(stopAutoGraceAfter, func() {

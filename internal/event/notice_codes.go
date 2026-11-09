@@ -312,3 +312,17 @@ const (
 	NoticeCodeStopReviewContinued = "stop_review_continued"
 	NoticeCodeStopReviewCapped    = "stop_review_capped"
 )
+
+// NoticeCodeLoopBreaker (tl1514 面二): the in-running loop breaker interrupted
+// a turn whose tool rounds kept repeating the SAME call shape with zero new
+// host evidence (writes/commands/unique reads/todo advances) past the
+// threshold — the 弱模型不转向 field shape (2026-11-06 deepseek-flash 现场确认
+// 图片路径→读取 51 次循环). The turn lands as recovery_paused with
+// StopReason=loop_breaker; this notice is the visible cause line (Text is the
+// English technical half, Detail carries cause=loop_breaker rounds=N/M
+// tools=…, same dual-track contract as the goal_*/stop_review_* codes).
+// Complementary to tl1460's turn-end review: that layer judges at the turn
+// boundary (轮末), this one inside a running turn (running 内).
+const (
+	NoticeCodeLoopBreaker = "loop_breaker"
+)

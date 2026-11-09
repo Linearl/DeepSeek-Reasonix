@@ -128,6 +128,16 @@ func (c *Controller) finishCancel(turnID string, cancelled bool, outcome cancelT
 	defer c.refreshRuntimeState(event.Event{})
 	if cancelled {
 		c.emitTurnStatus(event.TurnCancelling, turnID)
+		// tl1514 面一: every LIVE cancel opens the escalation ladder, not just
+		// the CancelStop entry. A plain Cancel() (cli/acp/bot/serve transports,
+		// and any host surface that predates the escalation entry) used to sit
+		// at L1 forever when the turn ignored the graceful cancel: no 30s 保底
+		// timer existed on this entry, so the automatic grace→force escalation
+		// never came (the tl1514 field shape: 点停止后回合永不收敛). The guard
+		// inside armStopEscalation keeps the CancelStop L1 path single-armed.
+		// finishGuardedTurn resets the ladder at turn end (controller.go 任务
+		// 461-P7 block), so a turn that ends normally drops the armed state.
+		c.armStopEscalation()
 		return
 	}
 	// tl1304 ③: the no-turn stop is an honest, coded receipt + mirror refresh

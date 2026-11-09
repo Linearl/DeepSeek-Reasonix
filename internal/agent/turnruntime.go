@@ -38,6 +38,18 @@ type turnRuntime struct {
 	// main-chain steps with zero dispatches gets exactly one transient nudge —
 	// a second one would nag without new information. Zeroed with the turn.
 	delegationReminderSent bool
+	// tl1514 面二 loop-breaker bookkeeping (see loop_breaker.go):
+	// loopBreakerSig is the previous round's call-shape signature, streak the
+	// consecutive same-shape zero-gain rounds, steerStep the step index whose
+	// gap consumed a mid-turn steer (-1 = none yet — the boost window keys off
+	// it, so beginRunTurn seeds -1 after the zero reset), and
+	// reads/todosCompleted are the gain baselines compared round over round.
+	// Zeroed with the turn.
+	loopBreakerSig           string
+	loopBreakerStreak        int
+	loopBreakerSteerStep     int
+	loopBreakerReads         int
+	loopBreakerTodosComplete int
 	// prefillNoticeShown (任务929 S3): one user-visible "model is processing a
 	// very large context" notice per turn. Each retry attempt re-arms the
 	// first-token watch, but a sentence the user already read would only repeat
