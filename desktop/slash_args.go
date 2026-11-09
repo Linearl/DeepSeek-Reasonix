@@ -6,6 +6,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/pluginpkg"
+	"reasonix/internal/workflow"
 )
 
 // SlashArgItem is one sub-command / argument suggestion for the composer's slash
@@ -51,6 +52,14 @@ func (a *App) SlashArgs(input string) SlashArgsResult {
 	if fields := strings.Fields(input); len(fields) > 0 && fields[0] == "/effort" {
 		if effort := a.EffortForTab(tabID); effort.Supported {
 			data.EffortLevels = append([]string(nil), effort.Levels...)
+		}
+	}
+	// tl1300：/workflow 补全列出已存定义名（按命令惰性填充，别的命令零开销）。
+	if fields := strings.Fields(input); len(fields) > 0 && fields[0] == "/workflow" {
+		if list := workflow.Global().Templates(); len(list.Templates) > 0 {
+			for _, tpl := range list.Templates {
+				data.WorkflowNames = append(data.WorkflowNames, tpl.Name)
+			}
 		}
 	}
 	if names, err := pluginpkg.InstalledNames(config.ReasonixHomeDir()); err == nil {

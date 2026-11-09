@@ -102,3 +102,15 @@ func (a *App) WorkflowTemplateRun(name string) (workflowTemplateRunWire, error) 
 	}
 	return workflowTemplateRunWire{RunID: res.RunID, State: res.State}, nil
 }
+
+// WorkflowTemplateDelete 删除一个模板（tl1300 定义目录管理面）：head 文件 +
+// 历史目录；服务端现读开关自检（写面与 Save 同一道门）。
+func (a *App) WorkflowTemplateDelete(name string) error {
+	return workflow.Global().DeleteTemplate(name)
+}
+
+// WorkflowTemplateRename 改名一个模板（tl1300）：head 改名 + 历史目录随迁；
+// 目标名已存在由服务端拒绝，绝不静默覆盖。
+func (a *App) WorkflowTemplateRename(name, newName string) error {
+	return workflow.Global().RenameTemplate(name, newName)
+}

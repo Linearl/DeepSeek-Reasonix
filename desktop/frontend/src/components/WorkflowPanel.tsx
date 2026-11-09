@@ -16,7 +16,7 @@
 //     运行时即 686 原始行为，有真运行时经「演示」按钮切换过去。
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { GitBranch, LayoutTemplate, Pause, Play, RotateCcw, Square, X } from "lucide-react";
+import { GitBranch, LayoutTemplate, List, Pause, Play, RotateCcw, Square, X } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { formatDurationLabel } from "../lib/durationFormat";
 import type { DictKey } from "../locales/en";
@@ -91,6 +91,10 @@ const LazyTranscript = lazy(async () => ({ default: (await import("./Transcript"
 // tl1454: 模板视图独立 chunk——只在 workflowTemplates 开关开且用户点开时加载
 // （开关关闭时不渲染切换钮，chunk 永不加载，面板逐字节不变）。
 const LazyTemplatesView = lazy(async () => ({ default: (await import("./WorkflowTemplatesView")).WorkflowTemplatesView }));
+
+// tl1300: 定义目录视图独立 chunk——面板打开即可切（读面无独立开关），点开才
+// 加载；写面（运行/删除/改名）随 workflowTemplates 开关（组件内自读）。
+const LazyDefinitionsView = lazy(async () => ({ default: (await import("./WorkflowDefinitionsView")).WorkflowDefinitionsView }));
 
 /** 「工作过程」一次打开的读取态（只读；失败/等待/空态各自显式文案）。 */
 interface NodeTraceState {
@@ -340,8 +344,11 @@ export function WorkflowPanel({
   // tl1454: 模板视图开关（家族子键，保存即生效）。关 = 不渲染切换钮/附加面。
   const [templatesEnabled, setTemplatesEnabled] = useState(() => labFlagEnabled("workflowTemplates"));
   useEffect(() => onLabFlagsChange(() => setTemplatesEnabled(labFlagEnabled("workflowTemplates"))), []);
-  const [view, setView] = useState<"flow" | "templates">("flow");
+  const [view, setView] = useState<"flow" | "templates" | "definitions">("flow");
   const showTemplates = templatesEnabled && view === "templates";
+  // tl1300: 定义页签——面板可见即可切（读面不设独立开关，写入面在组件内随
+  // workflowTemplates 开关降级为只读）。
+  const showDefinitions = view === "definitions";
   const stopDemoRef = useRef<(() => void) | null>(null);
   const [demoPlaying, setDemoPlaying] = useState(false);
   // store 内收：无外部源时自持一份（fixture DAG 底）。store 本体与 fixture
@@ -791,15 +798,26 @@ export function WorkflowPanel({
                 {t(view === "templates" ? "workflowPanel.templates.toggleBack" : "workflowPanel.templates.toggle")}
               </button>
             )}
+            {/* tl1300: 定义页签切换（面板可见即可见；读面无独立开关）。 */}
+            <button
+              type="button"
+              className={view === "definitions" ? "wf-panel__action wf-panel__action--on" : "wf-panel__action"}
+              aria-pressed={view === "definitions"}
+              onClick={() => setView((v) => (v === "definitions" ? "flow" : "definitions"))}
+              data-testid="wf-defs-toggle"
+            >
+              <List size={13} aria-hidden="true" />
+              {t(view === "definitions" ? "workflowPanel.definitions.toggleBack" : "workflowPanel.definitions.toggle")}
+            </button>
             <button type="button" className="wf-panel__action wf-panel__action--close" onClick={close} aria-label={t("common.close")}>
               <X size={14} aria-hidden="true" />
             </button>
           </div>
         </header>
 
-        {failure && !showTemplates && <RunFailureBanner failure={failure} />}
+        {failure && !showTemplates && !showDefinitions && <RunFailureBanner failure={failure} />}
 
-        {phases.length > 0 && !showTemplates && (
+        {phases.length > 0 && !showTemplates && !showDefinitions && (
           <div className="wf-panel__legend">
             {phases.map((phase, index) => (
               <span key={phase} className="wf-panel__legend-item">
@@ -843,7 +861,21 @@ export function WorkflowPanel({
             </Suspense>
           </div>
         )}
-        <div className="wf-panel__body" hidden={showTemplates}>
+        {/* tl1300: 定义页签体——运行回调与模板视图同口径（切回流程视图并选中
+            该 run，进度同 tab 可见；live 视图解析已内建缺席回退）。 */}
+        {showDefinitions && (
+          <div className="wf-panel__body">
+            <Suspense fallback={<p className="wf-panel__detail-empty">{t("workflowPanel.detail.processLoading")}</p>}>
+              <LazyDefinitionsView
+                onRunStarted={(runId) => {
+                  setSelectedRunId(runId);
+                  setView("flow");
+                }}
+              />
+            </Suspense>
+          </div>
+        )}
+        <div className="wf-panel__body" hidden={showTemplates || showDefinitions}>
           <div
             className={panning ? "wf-panel__canvas-scroll wf-panel__canvas-scroll--panning" : "wf-panel__canvas-scroll"}
             ref={setViewRef}

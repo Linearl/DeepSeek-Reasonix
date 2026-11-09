@@ -4,7 +4,7 @@
 
 import type { DictKey } from "../locales/en";
 import type { WorkflowRunSnapshot } from "./workflowEvents";
-import type { WorkflowDiagnosticKind, WorkflowFailureReason, WireWorkflowRun } from "./workflowTypes";
+import type { WorkflowDiagnosticKind, WorkflowFailureReason, WorkflowTemplateSummary, WireWorkflowRun } from "./workflowTypes";
 
 const REASON_KEYS: Record<WorkflowFailureReason, DictKey> = {
   timeout: "workflowPanel.reason.timeout",
@@ -139,3 +139,47 @@ nodes:
 edges:
   - {from: research, to: check}
 `;
+
+// ── tl1300 —— 定义目录管理（定义页签）纯函数层 ─────────────────────────────
+// 与 Go store.slug（internal/workflow/store.go fileNamePattern）同一折叠口径：
+// 非白名单字符段折叠成 "-"，两端 "-" 去除，空串兜底 "unnamed"。客户端用它
+// 在提交改名前预检 slug 冲突，与存储端判定一致（单一语义，两处实现同口径）。
+export function workflowSlug(name: string): string {
+  const s = name.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return s === "" ? "unnamed" : s;
+}
+
+/** 改名预检结论（定义页签在提交前给的原位反馈；提交后服务端仍权威复核）。 */
+export type RenameProblem = "empty" | "unchanged" | "taken";
+
+/**
+ * 改名校验：空名拒绝；与原名相同视为无操作；slug 折叠后与其它定义撞键
+ * （存储同名冲突）拒绝——slug 相同的不同写法（如 "A B" → "A-B"）只是显示名
+ * 变化，合法放行。
+ */
+export function validateRename(oldName: string, newName: string, allNames: readonly string[]): RenameProblem | null {
+  const next = newName.trim();
+  if (next === "") return "empty";
+  if (next === oldName) return "unchanged";
+  if (workflowSlug(next) !== workflowSlug(oldName)
+    && allNames.some((n) => n !== oldName && workflowSlug(n) === workflowSlug(next))) {
+    return "taken";
+  }
+  return null;
+}
+
+/** 卡片计数行的一个片段（标签是文案键的尾段，n 原样显示，0 也如实显示）。 */
+export interface DefinitionCounter {
+  kind: "nodes" | "gates" | "subagents" | "confirms";
+  n: number;
+}
+
+/** 摘要 → 卡片计数行片段（节点/门禁计数是拍板要求的必显项）。 */
+export function definitionCounters(summary: WorkflowTemplateSummary): DefinitionCounter[] {
+  return [
+    { kind: "nodes", n: summary.nodes },
+    { kind: "gates", n: summary.gates },
+    { kind: "subagents", n: summary.subagents },
+    { kind: "confirms", n: summary.confirms },
+  ];
+}

@@ -391,6 +391,13 @@ var Chinese = Messages{
 	ArgLanguageEn:       "English",
 	ArgLanguageZh:       "中文",
 
+	// tl1300：/workflow 斜杠命令。
+	CmdWorkflow:             "运行已存工作流",
+	SlashWorkflowEmpty:      "还没有已存工作流——在工作流面板的模板视图里创建一个，或直接让助手定义一个",
+	SlashWorkflowListHeader: "已存工作流：",
+	SlashWorkflowRunHint:    "用 /workflow <名称> 运行——进度显示在工作流面板",
+	SlashWorkflowStartedFmt: "工作流 %s 已以运行 %s 启动——进度显示在工作流面板",
+
 	ListModelsHeaderFmt: "模型（当前：%s）",
 	ListModelsHint:      "用底部的模型切换器，或输入 /model <provider/model>",
 	ListMemorySaved:     "保存的记忆",

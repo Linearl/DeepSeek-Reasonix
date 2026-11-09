@@ -349,3 +349,26 @@ func (s *Service) RunTemplate(ctx context.Context, name string, opts TemplateRun
 	}
 	return s.runWorkflow(ctx, name, "", &opts)
 }
+
+// DeleteTemplate 删除一个用户模板（tl1300 定义目录管理面）：head 文件 +
+// 历史目录一并移除（写面，与 SaveTemplate 同一道开关自检）。
+func (s *Service) DeleteTemplate(name string) error {
+	if !templatesOn() {
+		return ErrTemplatesDisabled
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.store.deleteFile(name)
+}
+
+// RenameTemplate 改名一个用户模板（tl1300）：文档内 name + 存储文件 +
+// 历史目录随迁；目标名已存在则拒绝（写面，同一道开关自检）。
+func (s *Service) RenameTemplate(oldName, newName string) error {
+	if !templatesOn() {
+		return ErrTemplatesDisabled
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.store.renameFile(oldName, newName)
+	return err
+}

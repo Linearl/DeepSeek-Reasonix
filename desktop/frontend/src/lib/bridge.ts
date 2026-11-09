@@ -1810,6 +1810,12 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   WorkflowTemplateVersionSource(name: string, version: string): Promise<string>;
   WorkflowTemplateRunPreview(name: string): Promise<WorkflowTemplateRunPreview>;
   WorkflowTemplateRun(name: string): Promise<WorkflowTemplateRunStart>;
+  // tl1300: definition catalogue management (definitions tab) — delete
+  // removes the head file + version history; rename rewrites the document
+  // name and moves the stored file + history. Server-side self-checks the
+  // workflow-templates switch (same write face as save).
+  WorkflowTemplateDelete(name: string): Promise<void>;
+  WorkflowTemplateRename(name: string, newName: string): Promise<void>;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; call-time gate, next scheduled run applies it).
   SetExperimentalHeartbeatBackground(enabled: boolean): Promise<void>;
@@ -7037,6 +7043,13 @@ function makeMockApp(): AppBindings {
       throw new Error("workflow templates are not available in this preview");
     },
     async WorkflowTemplateRun() {
+      throw new Error("workflow templates are not available in this preview");
+    },
+    // tl1300：浏览器 dev mock 无工作流存储——删除/改名明确拒绝（不伪造成功）。
+    async WorkflowTemplateDelete() {
+      throw new Error("workflow templates are not available in this preview");
+    },
+    async WorkflowTemplateRename() {
       throw new Error("workflow templates are not available in this preview");
     },
     async SetTabPermissionIndicator() {},

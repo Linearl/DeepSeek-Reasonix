@@ -390,6 +390,13 @@ var English = Messages{
 	ArgLanguageEn:       "English",
 	ArgLanguageZh:       "中文",
 
+	// tl1300: /workflow slash command.
+	CmdWorkflow:             "run a saved workflow",
+	SlashWorkflowEmpty:      "no saved workflows yet — create one in the workflow panel's Templates view, or ask the assistant to define a workflow",
+	SlashWorkflowListHeader: "saved workflows:",
+	SlashWorkflowRunHint:    "run one with /workflow <name> — progress shows up in the workflow panel",
+	SlashWorkflowStartedFmt: "workflow %s started as run %s — progress shows up in the workflow panel",
+
 	ListModelsHeaderFmt: "models (active: %s)",
 	ListModelsHint:      "switch with the model switcher, or type /model <provider/model>",
 	ListMemorySaved:     "saved memories",
