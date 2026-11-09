@@ -1830,7 +1830,7 @@ export const zh: Record<DictKey, string> = {
   "recovery.noticeRepairStillOverWindow": "这次修复把检查点补了回来，但会话仍超出模型窗口——请再跑一次修复并勾选 Diet（减肥），剥图折叠后即可恢复可用。",
   "recovery.noticeSelectedHeadBehind": "已打开一个较旧的版本（{selectedMessages} 条），另一版本更长且更新（{otherMessages} 条）；如需那条链，可在“查看版本”中手动切换。",
   "recovery.noticeMaterializationLag": "本会话有 {gap} 条历史未落入本地记录（事件日志 {eventChain} 条，本地记录 {materialized} 条）；可在「设置 → 存储与路径 → 工作阶段版本与副本」面板中找到该会话，展开后执行“修复”。",
-  "recovery.noticeSelfHealed": "会话已自动修复并恢复可用（{actions}）；原版本保留，可在「查看版本」中切回。",
+  "recovery.noticeSelfHealed": "打开会话时本地自愈检测到投影超出当前模型窗口，已自动瘦身（Diet）降载并恢复可用（本次动作 {actions}：strip_images=图片转占位引用省 token，fold=超出窗口的旧消息折叠为本地占位）；这是自动降载而非数据损坏修复——原版本未删，整目录备份在会话文件旁的 pre-repair 目录，可在「设置 → 存储与路径 → 工作阶段版本与副本」面板中切回。",
   "recovery.noticeCompactFailStreak": "上下文压缩已连续失败 {streak} 次，投影可能超出模型窗口；重新打开本会话可让本地自愈剥图并折叠旧消息。",
   "recovery.noticeHeadSelected": "已将此版本设为当前版本。",
   "recovery.headsSummary": "该会话共 {branches} 个版本",
