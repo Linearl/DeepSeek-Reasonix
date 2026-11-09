@@ -662,16 +662,21 @@ func (a *App) pinnedTopicShells(scope, workspaceRoot string, topicIDs, pinnedIDs
 		if index, ok := sortIndex[topicID]; ok {
 			shellSortOrder = index
 		}
+		shellPath, shellActivity := a.catalogSessionShellForTopic(scope, workspaceRoot, topicID)
 		out = append(out, ProjectNode{
 			Key: kind + "_" + topicID, Kind: kind,
 			Label: a.localizedTopicTitle(title, sources[topicID]), Root: workspaceRoot,
 			TopicID: topicID, ProjectColor: normalizeProjectColor(projectColor),
 			// Keep pinned shells actionable for session-scoped context-menu
 			// entries (e.g. "merge recovery copies") even while collapsed.
-			SessionPath: a.catalogSessionPathForTopic(scope, workspaceRoot, topicID),
+			SessionPath: shellPath,
 			CreatedAt:   topicCreatedAtForTree(created, topicID), Pinned: true,
-			SortOrder:  shellSortOrder,
-			TurnsState: string(sessioncatalog.TurnsUnknown), Health: string(sessioncatalog.HealthOK),
+			// tl1485e: same shell defect as metadataProjectTopics — without an
+			// activity value the FE createdAt fallback ages pinned rows by their
+			// creation time while the catalog row is fresh.
+			LastActivityAt: shellActivity,
+			SortOrder:      shellSortOrder,
+			TurnsState:     string(sessioncatalog.TurnsUnknown), Health: string(sessioncatalog.HealthOK),
 			Children: []ProjectNode{},
 		})
 	}

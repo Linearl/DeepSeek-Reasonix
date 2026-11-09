@@ -202,13 +202,18 @@ func (a *App) metadataProjectTopics(scope, workspaceRoot string) []ProjectNode {
 			kind = "global_topic"
 		}
 		overlay := topicOverlays[topicSummaryKey(scope, workspaceRoot, topicID)]
+		shellPath, shellActivity := a.catalogSessionShellForTopic(scope, workspaceRoot, topicID)
 		node := ProjectNode{
 			Key: kind + "_" + topicID, Kind: kind,
 			Label: a.localizedTopicTitle(title, sources[topicID]), Root: workspaceRoot,
 			TopicID: topicID, ProjectColor: projectColor,
-			SessionPath: a.catalogSessionPathForTopic(scope, workspaceRoot, topicID),
+			SessionPath: shellPath,
 			CreatedAt:   topicCreatedAtForTree(created, topicID), Pinned: containsDesktopString(pinnedIDs, topicID), SortOrder: sortOrder,
-			Open: overlay.open, Running: overlay.running, Status: overlay.status,
+			// tl1485e: without this the FE lastActivityAt||createdAt fallback
+			// displayed the topic's creation age forever (the "1 个月" form)
+			// while the catalog row was fresh.
+			LastActivityAt: shellActivity,
+			Open:           overlay.open, Running: overlay.running, Status: overlay.status,
 			TurnsState: string(sessioncatalog.TurnsUnknown), Health: string(sessioncatalog.HealthOK),
 			Children: []ProjectNode{},
 		}
@@ -1132,22 +1137,32 @@ func (a *App) ListProjectTree() []ProjectNode {
 }
 
 func (a *App) catalogSessionPathForTopic(scope, workspaceRoot, topicID string) string {
+	path, _ := a.catalogSessionShellForTopic(scope, workspaceRoot, topicID)
+	return path
+}
+
+// catalogSessionShellForTopic resolves a registry shell row's open target and
+// the catalog topic's last activity in one GetTopic. Registry rows only know
+// the topic id; whenever the catalog has the topic its last_activity_at is the
+// activity authority (tl1485e), and the shell falls back to zero so the FE
+// keeps its createdAt fallback for topics the catalog has never indexed.
+func (a *App) catalogSessionShellForTopic(scope, workspaceRoot, topicID string) (string, int64) {
 	if strings.TrimSpace(topicID) == "" {
-		return ""
+		return "", 0
 	}
 	catalog := a.sessionCatalog.Load()
 	if catalog == nil {
-		return ""
+		return "", 0
 	}
 	topic, ok, err := catalog.GetTopic(a.bootContext(), sessioncatalog.TopicKey{Scope: scope, WorkspaceRoot: workspaceRoot, TopicID: topicID})
 	if err != nil || !ok || len(topic.Sessions) == 0 {
-		return ""
+		return "", 0
 	}
 	if representative := strings.TrimSpace(topic.RepresentativePath); representative != "" {
-		return representative
+		return representative, topic.LastActivityAt
 	}
 	if canonical := sessioncatalog.CanonicalSessionPathForTopic(topic.Sessions, ""); canonical != "" {
-		return canonical
+		return canonical, topic.LastActivityAt
 	}
 	preferred := sessioncatalog.PreferredOrdinarySessionPaths(topic.Sessions)
 	sort.SliceStable(topic.Sessions, func(i, j int) bool {
@@ -1162,5 +1177,5 @@ func (a *App) catalogSessionPathForTopic(scope, workspaceRoot, topicID string) s
 		}
 		return topic.Sessions[i].LastActivityAt > topic.Sessions[j].LastActivityAt
 	})
-	return topic.Sessions[0].Path
+	return topic.Sessions[0].Path, topic.LastActivityAt
 }
