@@ -183,6 +183,9 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 	// old literal spelled out are already there from the reset at the top.
 	state = &a.turn
 	state.seenTodoProgress = make(map[string]struct{})
+	// tl1514: the loop breaker's steer-boost window keys off the consuming
+	// step index; -1 = no steer consumed yet this turn.
+	state.loopBreakerSteerStep = -1
 	state.executorHandoff = a.executorHandoffGuard && strings.Contains(input, executorHandoffMarker)
 	state.input = input
 	state.budget = runBudget{started: time.Now()}
@@ -231,6 +234,15 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 				Images: payload.Images,
 			})
 			a.svc.sink.Emit(event.Event{Kind: event.Steer, Text: payload.Text, ItemID: itemID})
+			// tl1514 验收④: a fresh steer is the direction change the user just
+			// asked for. The loop breaker's counting restarts here and its
+			// threshold tightens to the ≤2-boundary window: if the next two tool
+			// rounds are still the same shape with zero new evidence, the
+			// breaker interrupts instead of letting a weak model ignore the
+			// guidance for the rest of the turn.
+			state.loopBreakerSig = ""
+			state.loopBreakerStreak = 0
+			state.loopBreakerSteerStep = step
 			// Task 172 T2: a user steering mid-turn is the high-signal moment —
 			// append one optional inbox mention to the correction round. The
 			// shared cooldown consumed here keeps T1 from stacking onto the
@@ -415,9 +427,22 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 
 		// Invariant: executeBatch only ever receives tool calls from a
 		// committed sampling attempt (clean terminal + response intercept).
+		mark := 0
+		if a.task.ledger != nil {
+			mark = a.task.ledger.Len()
+		}
 		cont, terr := a.handleToolRound(ctx, state, step, text, reasoning, calls, usage)
 		if !cont {
 			return terr
+		}
+		// tl1514 面二: the in-running loop breaker judges at every tool-round
+		// boundary — the same seam 任务461-P9's guidance gap fires on. A run of
+		// same-shape rounds with zero new host evidence trips the breaker and
+		// interrupts the turn with a visible cause (the steer case tightens the
+		// window to ≤2 boundaries). ctx cancellation owns the exit when it has
+		// fired; the breaker never fights the stop ladder.
+		if pause := a.loopBreakerCheck(ctx, state, step, calls, mark); pause != nil {
+			return pause
 		}
 	}
 	// Only reached when a positive maxSteps guard is configured. The work so far
