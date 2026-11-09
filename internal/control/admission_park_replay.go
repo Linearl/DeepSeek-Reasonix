@@ -234,3 +234,41 @@ func (c *Controller) settleParkReplay(r *parkedTurnReplay) {
 func isRowGoneErr(err error) bool {
 	return err == nil || errors.Is(err, sessioninbox.ErrNotFound)
 }
+
+// dockUnappliedSteerRow is the tl1357b 必做2 host dock face: guidance recorded
+// unapplied with NO durable inbox row behind it (empty itemID — the in-memory
+// Steer face, flushSteerQueue legacy entries) gets a manifest row born
+// uncertain (single-commit park via InitialParkReason), so the guidance
+// survives a process exit as retrievable, resendable work on the shelf. The
+// row NEVER auto-dispatches (#7045: stale historical guidance must not run as
+// a task on its own); RetryItem is the only path back to the queue.
+//
+// Best-effort by contract: without a session path there is no durable layer at
+// all (the same conclusion tl1357 形态① drew for its memory fallback), and a
+// failed write keeps the pre-tl1357b face (transcript archive + warning).
+func (c *Controller) dockUnappliedSteerRow(text string) {
+	if c == nil {
+		return
+	}
+	submit := strings.TrimSpace(text)
+	if submit == "" {
+		return
+	}
+	if _, err := c.ensureInbox(); err != nil {
+		slog.Warn("control: unapplied steer dock skipped (no durable inbox)", "err", err)
+		return
+	}
+	rec, err := c.EnqueueInbox(InboxRequest{
+		Intent:            sessioninbox.IntentSteer,
+		Display:           submit,
+		Raw:               submit,
+		Submit:            submit,
+		Source:            "unapplied_steer_dock",
+		InitialParkReason: sessioninbox.BlockReasonSteerUnapplied,
+	})
+	if err != nil {
+		slog.Warn("control: unapplied steer dock persist failed", "err", err)
+		return
+	}
+	slog.Info("control: unapplied steer docked to the inbox shelf", "id", rec.ItemID)
+}

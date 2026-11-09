@@ -1251,6 +1251,10 @@ func New(opts Options) *Controller {
 		// live snapshot) from the same deferred release, strictly BEFORE the
 		// settle hook so released parked turns observe the refreshed state.
 		c.executor.SetHostStateRebuildHook(c.rebuildHostState)
+		// tl1357b 必做2: guidance recorded unapplied with no durable row behind
+		// it (in-memory Steer face / flush legacy entries) docks a manifest row
+		// so it survives a process exit as resendable work.
+		c.executor.SetUnappliedSteerDockHook(c.dockUnappliedSteerRow)
 	}
 	// Auto Guard is built into Auto. Ask and YOLO bypass it through the mode
 	// provider, so no separate enablement state is needed.
