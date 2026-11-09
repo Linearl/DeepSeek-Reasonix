@@ -5168,7 +5168,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPhaseMergedHint": "副本内容主线已全部包含，无需处理（合并成功后自动进入本组）",
   "settings.recoveryCopiesBlocked": "被分叉阻断",
   "settings.recoveryCopiesScanFirst": "请先「扫描」再合并",
-  "settings.recoveryCopiesOpen": "查看并合并会话副本…",
+  "settings.recoveryCopiesOpen": "管理会话副本",
   "settings.recoveryCopiesCopy": "副本",
   "settings.recoveryCopiesColLine": "会话 / 分支",
   "settings.recoveryCopiesColModified": "修改时间",

@@ -3673,7 +3673,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPhaseMergedHint": "副本內容主線已全部包含，無需處理（合併成功後自動進入本組）",
   "settings.recoveryCopiesBlocked": "被分叉阻斷",
   "settings.recoveryCopiesScanFirst": "請先「掃描」再合併",
-  "settings.recoveryCopiesOpen": "查看並合併工作階段副本…",
+  "settings.recoveryCopiesOpen": "管理會話副本",
   "settings.recoveryCopiesCopy": "副本",
   "settings.recoveryCopiesColLine": "工作階段 / 分支",
   "settings.recoveryCopiesColModified": "修改時間",

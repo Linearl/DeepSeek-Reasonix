@@ -5205,7 +5205,7 @@ export const en = {
   "settings.recoveryCopiesPhaseMergedHint": "copies' content is fully contained in the main line; nothing to process (conversations move here automatically after a successful merge)",
   "settings.recoveryCopiesBlocked": "blocked by divergence",
   "settings.recoveryCopiesScanFirst": "scan before merging",
-  "settings.recoveryCopiesOpen": "Review and merge session copies…",
+  "settings.recoveryCopiesOpen": "Manage session copies",
   "settings.recoveryCopiesCopy": "copy",
   "settings.recoveryCopiesColLine": "session / line",
   "settings.recoveryCopiesColModified": "modified",
