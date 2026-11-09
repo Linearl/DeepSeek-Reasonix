@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"reasonix/internal/config"
@@ -403,13 +404,20 @@ func (a *App) CancelTab(tabID string) {
 // CancelStopForTab drives the 任务461-P7 three-level stop escalation for one
 // tab: each press advances one level (graceful cancel → force grace → force).
 // Controllers without the escalation half (older builds, fakes) fall back to
-// the ordinary cancel.
+// the ordinary cancel. tl1514 验收③: the fallback is announced, never silent —
+// a log-only degradation used to be indistinguishable from "escalation
+// delivered", so a wedged turn whose presses all degraded kept its L1
+// semantics with no trace naming why.
 func (a *App) CancelStopForTab(tabID string) {
 	if ctrl := a.ctrlByTabID(tabID); ctrl != nil {
 		if esc, ok := ctrl.(interface{ CancelStop() }); ok {
 			esc.CancelStop()
 			return
 		}
+		slog.Warn("desktop: escalation interface missing; stop fell back to the plain cancel (tl1514 验收③)",
+			"tab_id", tabID,
+			"controller", fmt.Sprintf("%T", ctrl),
+			"action", "plain_cancel_no_ladder")
 		ctrl.Cancel()
 	}
 }

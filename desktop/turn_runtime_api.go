@@ -126,6 +126,8 @@ var errTurnNotRunning = &inboxCodedError{code: "turn_not_running", cause: errors
 // Grace → L3 force — so every press, from any surface, advances the same
 // state machine. Controllers without the escalation half (older builds,
 // fakes) keep the ordinary cancel, the same fallback CancelStopForTab uses.
+// tl1514 验收③: that fallback is logged, never silent — the degradation is
+// the one trace that explains a stop that stayed L1 forever.
 func (a *App) InterruptTurnForTab(tabID, turnID string) error {
 	ctrl, err := a.stoppableCtrl(tabID, turnID)
 	if err != nil {
@@ -135,6 +137,10 @@ func (a *App) InterruptTurnForTab(tabID, turnID string) error {
 		esc.CancelStop()
 		return nil
 	}
+	slog.Warn("desktop: escalation interface missing; stop fell back to the plain cancel (tl1514 验收③)",
+		"tab_id", tabID, "turn_id", turnID,
+		"controller", fmt.Sprintf("%T", ctrl),
+		"action", "plain_cancel_no_ladder")
 	ctrl.Cancel()
 	return nil
 }
