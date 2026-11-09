@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/provider"
 	"reasonix/internal/session"
@@ -674,14 +675,26 @@ func deterministicSessionID(agentPath string) string {
 	return "bridge-" + hex.EncodeToString(sum[:12])
 }
 
+// transcriptDigest is the bridge's own in-process change detector: it decides
+// whether the v4 mirror already holds the agent transcript's tail, so the next
+// sync appends only the new part (task 772 write-amplification fix). It hashes
+// raw field bytes — NOT the storage JSON — which made it the one digest point
+// outside the internal/agent identity-marshal funnel.
+//
+// tl1459F2（口径裁决见 internal/agent save_digest_normalize_tl1459f2.go）：
+// Content/ID 算前过 agent.NormalizeDigestInput。裸字节哈希会把「存内非法
+// UTF-8 视图」和「存储往返后的 U+FFFD 视图」算成两个指纹——一次保存/重载就
+// 让桥把同一转录误读为变化并重复 append 尾部。规范化后两者一致；差异面仅此
+// 一处且可解释：bridgeSyncState 是进程内 memo，不触任何持久化 digest。Role
+// 是四值枚举、恒为合法 ASCII，原样写入。
 func transcriptDigest(messages []provider.Message) string {
 	h := sha256.New()
 	for _, m := range messages {
-		_, _ = h.Write([]byte(m.ID))
+		_, _ = h.Write([]byte(agent.NormalizeDigestInput(m.ID)))
 		_, _ = h.Write([]byte{0})
 		_, _ = h.Write([]byte(m.Role))
 		_, _ = h.Write([]byte{0})
-		_, _ = h.Write([]byte(m.Content))
+		_, _ = h.Write([]byte(agent.NormalizeDigestInput(m.Content)))
 		_, _ = h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))

@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"encoding/json"
-
 	"reasonix/internal/provider"
 )
 
@@ -29,13 +27,17 @@ func (g PrefixGap) HasForkPoint() bool {
 	return g.ForkIndex >= 0
 }
 
-// messageFingerprint keys a message for set membership using the same
-// normalisation and serialisation that messagesEqualForStorage compares with.
-// Sharing the transformation is the point: a second notion of "same message"
-// would eventually disagree with the first, and the disagreement would show up
-// as a message that looks present but is treated as missing (or the reverse).
+// messageFingerprint keys a message for set membership. It shares the digest
+// funnel's transformation — the identity fold, and since tl1459F2 the digest
+// input encoding normalization (normalizedIdentityMessage, ruling in
+// save_digest_normalize_tl1459f2.go) — rather than a private notion of "same
+// message": a second notion would eventually disagree with the first, and the
+// disagreement would show up as a message that looks present but is treated as
+// missing (or the reverse). On valid UTF-8 the bytes equal what
+// messagesEqualForStorage compares; they differ only on invalid-UTF-8 content,
+// where the digest funnel's representation-stable form is the right key.
 func messageFingerprint(m provider.Message) string {
-	encoded, err := json.Marshal(messageForSessionIdentity(m))
+	encoded, err := digestInputLine(m)
 	if err != nil {
 		return ""
 	}
