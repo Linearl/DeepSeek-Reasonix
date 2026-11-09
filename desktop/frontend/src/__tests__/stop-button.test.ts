@@ -43,8 +43,15 @@ ok(stopButtonView({ stopLevel: 0, stopDeadlineUnix: 0, stopInitiatedAt: NOW - 40
 const grace = stopButtonView({ stopLevel: 2, stopDeadlineUnix: (NOW + 14_300) / 1000, stopInitiatedAt: null, running: true, now: NOW });
 ok(grace.phase === "grace", "backend L2 → grace");
 ok(grace.countdownSeconds === 15, `grace countdown ceils to 15, got ${grace.countdownSeconds}`);
-const graceLast = stopButtonView({ stopLevel: 2, stopDeadlineUnix: NOW / 1000, stopInitiatedAt: null, running: true, now: NOW });
-ok(graceLast.phase === "grace" && graceLast.countdownSeconds === 0, "an expired deadline clamps the countdown to 0");
+// tl1514 兜底分支: an expired deadline reads the TERMINAL tier, not a stuck
+// 「强制停止 · 0s」 — the backend normally pushes L3 at countdown zero, but a
+// wedged publish lane can swallow that push; the view must not sit in grace
+// past zero. The next click routes through onEscalateStop and the backend
+// (still at Grace) fires the force immediately.
+const graceExpired = stopButtonView({ stopLevel: 2, stopDeadlineUnix: NOW / 1000, stopInitiatedAt: null, running: true, now: NOW });
+ok(graceExpired.phase === "force" && graceExpired.countdownSeconds === null, "an expired grace deadline reads 已终止 (force), never 强制停止 · 0s");
+const graceLast = stopButtonView({ stopLevel: 2, stopDeadlineUnix: (NOW + 900) / 1000, stopInitiatedAt: null, running: true, now: NOW });
+ok(graceLast.phase === "grace" && graceLast.countdownSeconds === 1, "a deadline within the current second keeps the grace countdown at 1");
 const graceNoDeadline = stopButtonView({ stopLevel: 2, stopDeadlineUnix: 0, stopInitiatedAt: null, running: true, now: NOW });
 ok(graceNoDeadline.phase === "grace" && graceNoDeadline.countdownSeconds === null, "L2 without a deadline keeps the countdown hidden");
 

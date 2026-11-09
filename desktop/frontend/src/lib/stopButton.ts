@@ -68,6 +68,15 @@ export function stopButtonView(input: {
     const remaining = input.stopDeadlineUnix > 0
       ? Math.max(0, Math.ceil(input.stopDeadlineUnix - input.now / 1000))
       : null;
+    // tl1514 兜底分支: the countdown ran out but the backend's L3 push never
+    // landed (the publish lane wedges with the very turn being stopped —
+    // 2026-11-06 field shape: the view sat at 「强制停止 · 0s」 forever). The
+    // grace is over, so the view reads the terminal tier locally; the next
+    // click routes through onEscalateStop and the backend (still at Grace)
+    // fires the force immediately — one press, no re-press ladder.
+    if (remaining != null && remaining <= 0) {
+      return { phase: "force", countdownSeconds: null };
+    }
     return { phase: "grace", countdownSeconds: remaining };
   }
   const armed = input.stopInitiatedAt != null && input.now - input.stopInitiatedAt >= armAfterMs;
