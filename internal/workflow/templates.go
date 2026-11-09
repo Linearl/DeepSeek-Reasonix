@@ -379,6 +379,107 @@ func (s *store) headVersion(name string) string {
 	return defFingerprint(&wf)
 }
 
+// removeVersionsRoot 删掉某模板的历史目录（tl1300 删除面）。目录不存在=
+// 无历史，天然幂等；失败只跳过（与 archiveVersion 同口径：历史维护是增强
+// 不是门禁），head 文件的删除结果由调用方裁决。
+func (s *store) removeVersionsRoot(name string) {
+	if s.dir == "" {
+		return
+	}
+	_ = os.RemoveAll(s.versionsRoot(name))
+}
+
+// deleteFile 删掉一个模板（head 文件 + 历史目录，tl1300）。未知名返回
+// os.ErrNotExist 包裹错误（与 load 同口径，桥层原样透传）。内存目录同样
+// 支持（删键）。
+func (s *store) deleteFile(name string) error {
+	if s.mem != nil {
+		key := slug(name)
+		if _, ok := s.mem[key]; !ok {
+			return fmt.Errorf("workflow %q: %w", name, os.ErrNotExist)
+		}
+		delete(s.mem, key)
+		return nil
+	}
+	path := s.path(name)
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("workflow %q: %w", name, os.ErrNotExist)
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("workflow %q: remove: %w", name, err)
+	}
+	s.removeVersionsRoot(name)
+	return nil
+}
+
+// renameFile 改名一个模板：文档内 name 字段更新 + 存储文件（slug 键）迁移，
+// 历史目录随迁（tl1300）。名字折叠同 slug（如 "A B"→"A-B"）= 只改显示名，
+// 不动文件；目标 slug 已被别的定义占用则拒绝（ErrExists 同语义），绝不
+// 静默覆盖。改 name 会改指纹——interrupted run 的续跑会按既有口径拒绝
+// （「定义已变」），这是改名的固有语义，不是缺陷。
+func (s *store) renameFile(oldName, newName string) (*Workflow, error) {
+	trimmed := strings.TrimSpace(newName)
+	if trimmed == "" {
+		return nil, fmt.Errorf("workflow: the new name is empty; pass a non-empty name to rename %q", oldName)
+	}
+	wf, err := s.load(oldName)
+	if err != nil {
+		return nil, err
+	}
+	if s.mem != nil {
+		oldKey, newKey := slug(oldName), slug(trimmed)
+		if newKey != oldKey {
+			if _, exists := s.mem[newKey]; exists {
+				return nil, ErrExists(trimmed)
+			}
+			delete(s.mem, oldKey)
+		}
+		wf.Name = trimmed
+		fresh, err := json.MarshalIndent(wf, "", "  ")
+		if err != nil {
+			return nil, fmt.Errorf("workflow: encode: %w", err)
+		}
+		s.mem[newKey] = fresh
+		return wf, nil
+	}
+	oldPath := s.path(oldName)
+	newPath := s.path(trimmed)
+	if newPath != oldPath {
+		if _, err := os.Stat(newPath); err == nil {
+			return nil, ErrExists(trimmed)
+		}
+	}
+	wf.Name = trimmed
+	fresh, err := json.MarshalIndent(wf, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("workflow: encode: %w", err)
+	}
+	tmp := newPath + ".tmp"
+	if err := os.WriteFile(tmp, fresh, 0o644); err != nil {
+		return nil, fmt.Errorf("workflow: store: %w", err)
+	}
+	if err := os.Rename(tmp, newPath); err != nil {
+		_ = os.Remove(tmp)
+		return nil, fmt.Errorf("workflow: store: %w", err)
+	}
+	if newPath != oldPath {
+		if err := os.Remove(oldPath); err != nil {
+			return nil, fmt.Errorf("workflow %q: remove old file after rename: %w", oldName, err)
+		}
+		// 历史目录随迁：目标已存在（残留目录）则留在原地（孤儿无害，head
+		// 已就位）。
+		oldRoot, newRoot := s.versionsRoot(oldName), s.versionsRoot(trimmed)
+		if _, err := os.Stat(oldRoot); err == nil {
+			if _, err := os.Stat(newRoot); err != nil {
+				if err := os.MkdirAll(filepath.Dir(newRoot), 0o755); err == nil {
+					_ = os.Rename(oldRoot, newRoot)
+				}
+			}
+		}
+	}
+	return wf, nil
+}
+
 // invalidFiles 枚举目录里不可用的定义文件（定位错误，供清单显示）。
 // 名字保留 slug 文件名——原始 name 可能解不出来（这正是它无效的原因）。
 func (s *store) invalidFiles() []TemplateInvalidFile {
