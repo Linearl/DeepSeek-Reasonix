@@ -398,6 +398,13 @@ type Messages struct {
 	ArgLanguageEn       string // /language en
 	ArgLanguageZh       string // /language zh
 
+	// tl1300: /workflow slash command (definition catalogue + run receipt).
+	CmdWorkflow             string // /workflow
+	SlashWorkflowEmpty      string // /workflow with nothing saved yet
+	SlashWorkflowListHeader string // /workflow list header
+	SlashWorkflowRunHint    string // /workflow run hint footer
+	SlashWorkflowStartedFmt string // /workflow <name> started; %s = workflow name, %s = run id
+
 	// management listing notices (the Submit path: desktop / HTTP frontends)
 	ListModelsHeaderFmt string // "models (active: %s)"
 	ListModelsHint      string // how to switch

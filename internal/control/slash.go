@@ -42,6 +42,10 @@ type ArgData struct {
 	PluginNames     []string
 	MemoryRefs      []string
 	MemoryArchives  []string
+	// WorkflowNames (tl1300): saved workflow definition names for /workflow
+	// completion. Filled lazily by callers only when the typed command is
+	// /workflow, so other commands pay nothing.
+	WorkflowNames []string
 }
 
 // SlashArgItems completes the arguments of a management slash command
@@ -105,10 +109,27 @@ func SlashArgItemsLazy(line string, resolve func() ArgData) ([]SlashItem, int, b
 		raw = currencyArgItems(prior)
 	case "/memory":
 		raw = memoryArgItems(prior, data())
+	case "/workflow":
+		raw = workflowArgItems(prior, data())
 	default:
 		return nil, from, false
 	}
 	return filterSlash(raw, line, from, cur), from, true
+}
+
+// workflowArgItems (tl1300) completes "/workflow <name>" with the saved
+// workflow definitions; picking one and submitting starts the run on the
+// current session (managementNotice case below) — same run channel the
+// desktop panel uses.
+func workflowArgItems(prior []string, d ArgData) []SlashItem {
+	if len(prior) != 1 { // the single name arg is already placed
+		return nil
+	}
+	items := make([]SlashItem, 0, len(d.WorkflowNames))
+	for _, name := range d.WorkflowNames {
+		items = append(items, SlashItem{Label: name, Insert: name})
+	}
+	return items
 }
 
 func memoryArgItems(prior []string, d ArgData) []SlashItem {
@@ -543,6 +564,11 @@ func (c *Controller) managementNotice(trimmed string) bool {
 			return true
 		}
 		c.notice(c.mcpListText())
+	case "/workflow":
+		// tl1300：/workflow（无参数列已存定义；带参数以当前会话运行，进度进
+		// 工作流面板——与面板运行同一 RunTemplate 通道）。
+		args := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]))
+		c.notice(c.workflowSlashText(args))
 	default:
 		return false
 	}

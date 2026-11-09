@@ -377,6 +377,13 @@ var ChineseTraditional = Messages{
 	ArgLanguageEn:       "English",
 	ArgLanguageZh:       "中文",
 
+	// tl1300：/workflow 斜指令。
+	CmdWorkflow:             "執行已存工作流程",
+	SlashWorkflowEmpty:      "還沒有已存工作流程——在工作流程面板的範本檢視裡建立一個，或直接請助手定義一個",
+	SlashWorkflowListHeader: "已存工作流程：",
+	SlashWorkflowRunHint:    "用 /workflow <名稱> 執行——進度顯示在工作流程面板",
+	SlashWorkflowStartedFmt: "工作流程 %s 已以執行 %s 啟動——進度顯示在工作流程面板",
+
 	ListModelsHeaderFmt: "模型（當前：%s）",
 	ListModelsHint:      "用底部的模型切換器，或輸入 /model <provider/model>",
 	ListMemoryNone:      "暫無記憶 — 用 “/remember <內容>” 新增，或執行 /init 生成 AGENTS.md",

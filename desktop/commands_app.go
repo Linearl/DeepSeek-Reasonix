@@ -31,6 +31,9 @@ func (a *App) Commands() []CommandInfo {
 		{Name: "memory", Description: i18n.M.CmdMemory, Kind: "builtin", Group: "management"},
 		{Name: "migrate", Description: i18n.M.CmdMigrate, Kind: "builtin", Group: "management"},
 		{Name: "goal", Description: i18n.M.CmdGoal, Kind: "builtin", Group: "actions"},
+		// tl1300：/workflow 运行已存定义（输入 / 可见；选中后参数补全列定义名，
+		// 提交经 Controller.managementNotice 以当前会话运行，进度进工作流面板）。
+		{Name: "workflow", Description: i18n.M.CmdWorkflow, Hint: "<name>", Kind: "builtin", Group: "actions"},
 		{Name: "remember", Description: i18n.M.CmdRemember, Kind: "builtin", Group: "management"},
 		{Name: "mcp", Description: i18n.M.CmdMcp, Kind: "builtin", Group: "integrations"},
 		{Name: "hooks", Description: i18n.M.CmdHooks, Kind: "builtin", Group: "management"},
