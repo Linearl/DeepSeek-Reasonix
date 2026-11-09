@@ -135,7 +135,33 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 	// this, every 30s busy retry re-decoded an open multi-megabyte session.
 	// The commit-side check stays as the guard against a lease acquired
 	// between here and the locked write.
+	//
+	// tl1485d: the busy park has one hole that keeps an open conversation on
+	// "1 个月" for the whole life of its lease — the frozen-stamp stock (collab/
+	// detached appends whose UpdatedAt never moved) never reaches the replay
+	// settle, and the same appends mean the session never saves again, so the
+	// "its own saves heal it" assumption behind the yield never fires either.
+	// When the tail probe shows the stamp frozen BELOW the transcript (behind,
+	// with no ahead evidence), raise it with the same raise-only, message-level
+	// discipline the save funnel uses — zero ledger fields touched, so the
+	// tl1459 write-authority contract is unaffected. With a fresh listing
+	// projection the row certifies as applied (the same standard the index
+	// branch's AlreadyCurrent uses); with stale counts the stamp still settles
+	// but the row stays busy — the counts belong to the replay. Ahead rows
+	// keep the yield: dropping a stamp under a live writer without the full
+	// decode stays out of scope. Converges: once the stamp is settled the
+	// probe reports no mismatch and the cheap busy park resumes.
 	if sessionLedgerOwnedByLiveWriter(path) {
+		if behind, ahead := SessionListingActivityMismatch(path, meta.UpdatedAt); behind && !ahead {
+			settled, err := settleSessionListingActivityFromTail(path)
+			if err != nil {
+				return SessionListingRepairResult{}, err
+			}
+			if settled && sessionListingProjectionFresh(meta.SchemaVersion, meta.Turns, meta.Revision,
+				meta.ListingRevision, meta.ContentDigest, meta.ListingContentDigest) {
+				return SessionListingRepairResult{Status: SessionListingRepairApplied, Preview: meta.Preview, Turns: meta.Turns}, nil
+			}
+		}
 		return SessionListingRepairResult{}, ErrSessionListingRepairBusy
 	}
 	return repairSessionListingFromReplay(ctx, path, meta, result)
