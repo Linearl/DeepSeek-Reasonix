@@ -102,3 +102,23 @@ func (a *Agent) observedContextTokens(visible []provider.Message) (int, bool) {
 	}
 	return tokens, true
 }
+
+// TrustedObservedContextTokens is the host-facing face of the 任务 1183
+// real-usage anchor (tl1506): the provider-measured context size of the
+// agent's current provider-visible view, or ok=false when no trusted anchor
+// exists — no usage yet (fresh process before the first turn), reconstructed
+// (Estimated/Unknown) telemetry only, a view that shrank below the measured
+// request (a fold or rewind landed), or a hot model switch (the anchor keys to
+// the request destination). The open-session self-heal injects this reading as
+// HealthInspectOptions.ActualContextTokens so the over-window criterion judges
+// by the provider's own accounting before falling back to the local estimate —
+// 用户终裁 20261109（tl1506）：超窗判据有实账按实账判，无实账才退回估算。
+func (a *Agent) TrustedObservedContextTokens() (int, bool) {
+	if a == nil {
+		return 0, false
+	}
+	if a.Session() == nil {
+		return 0, false
+	}
+	return a.observedContextTokens(a.modelVisibleMessages())
+}

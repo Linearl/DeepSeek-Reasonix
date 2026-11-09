@@ -38,6 +38,15 @@ const (
 	// 1010 caliber: the 8KiB per-image byte cap at the ~4-chars-per-token cold
 	// rate. It is deliberately the conservative end so an unreadable header
 	// never under-prices a real screenshot.
+	//
+	// tl1506 核定（20261109，任务书「仅 2 处 base64÷4」扫描的第 2 处）：**保留**。
+	// 理由：① 它是带上限的计价兜底（每张不可读图 ≤2048 tokens），不是本件废除
+	// 的无界 len(base64)/4 判据——不会随 payload 长度无界膨胀，也就不会把含图
+	// 会话推过触发线（tl1506 现场：265.8K/1M 判据虚高 3.5 倍的根源是判据层
+	// 无封顶 len/4，不是这里）；② 嗅探失败时没有分辨率可折算，去掉兜底就回到
+	// 1010 之前「图片计零」的失明态（ai-passport 冻结事故的教训）；③ 任务 1025
+	// 已把它定位为保守端并由测试钉死（TestSniffRejectsUnreadableHeaders /
+	// TestImageEstimateIndependentOfEncodingLength）。
 	imageEstimateFallbackTokens = requestImageEstimateByteCap / 4
 )
 
@@ -46,13 +55,12 @@ const (
 // length. Data URLs are sniffed from their header bytes; anything unreadable
 // falls back to the 任务 1010 flat cap.
 //
-// 任务 1116 件 3-5d（口径互指，勿"统一"）：这里是**计价口径**（任务 1025/1040
-// 的显示读数：ContextUsedTokens 主读数用它）。与之相对，**判据口径**在
-// session_health.go 的 estimateProjectionTokens（Diet 触发、健康检查用
-// base64 ÷4 的保守上界）。两套口径用途不同、故意不同：计价要贴近 provider
-// 实账，判据要保守上界（宁高勿低）。改任何一套前先读另一套的注释，禁止把
-// 它们"统一"成一个数字——那会把 Diet 判据改盲（低估 ⇒ 超窗不触发）或把显示
-// 读数改虚高。
+// 任务 1506（用户终裁 20261109，推翻任务 1116 件 3-5d 的「口径互指勿统一」
+// 裁决，记档）：本函数是唯一的图片计价口径——计价（ContextUsedTokens 显示
+// 读数）、判据兜底估算（session_health.go estimateProjectionTokens）、准入
+// （output_budget.go imageEstimateTokensOf）三处共用。判据不再维护独立的
+// base64÷4 上界：有 provider 实账按实账判（任务 1183 锚），无实账时判据与
+// 显示同族（1025 分辨率计价），右栏读数与自愈判定不再打架。
 func imageEstimateTokens(imageRef string) int {
 	_, payload, ok := provider.ParseImageDataURL(imageRef)
 	if !ok {
