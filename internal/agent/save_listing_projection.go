@@ -127,6 +127,34 @@ func raiseSessionListingActivity(meta *BranchMeta, msgs []provider.Message) {
 	}
 }
 
+// settleSessionListingActivityFromTail raises a frozen UpdatedAt to the
+// newest message-level CreatedAt the bounded tail probe can see (tl1485d).
+// It is the repair-channel settle for sessions whose lease is held by a live
+// runtime: the replay decode is off the table for them (tl1459 yield), yet an
+// open conversation whose stock stamp sits below its transcript never saves
+// again on its own — the very appends that froze the stamp bypass the save
+// funnel — so the row would stay on "1 个月" for the whole life of the lease.
+// Evidence discipline matches the probe: message-level CreatedAt only, never
+// file mtime (#8694). Raise-only, like every other stamping writer; it
+// touches no ledger field, so a live writer's write authority is unaffected.
+// Returns whether the sidecar moved.
+func settleSessionListingActivityFromTail(path string) (bool, error) {
+	newest, ok := probeTranscriptTailNewestCreatedAt(path)
+	if !ok {
+		return false, nil
+	}
+	at := time.UnixMilli(newest)
+	settled := false
+	err := UpdateBranchMeta(path, false, func(meta *BranchMeta) error {
+		if at.After(meta.UpdatedAt) {
+			meta.UpdatedAt = at
+			settled = true
+		}
+		return nil
+	})
+	return settled, err
+}
+
 // sessionListingActivityRepairSlack separates the two UpdatedAt-vs-transcript
 // mismatches the repair path must tell apart. Legitimate meta-only activity
 // writes (in-flight turn markers, collab receipts, projection saves) trail the
