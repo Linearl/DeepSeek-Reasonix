@@ -45041,3 +45041,32 @@ button.statusbar__mcp:focus-visible {
 .rewind-preflight__file--safe { color: var(--fg); }
 .rewind-preflight__path { word-break: break-all; }
 .rewind-preflight__reason { flex-shrink: 0; opacity: 0.75; }
+
+/* --- tl1300 workflow definitions tab (cards inside .wf-tpl list; delete is
+   a two-step confirm — armed state tints danger until the second click). --- */
+.wf-def-card { display: flex; flex-direction: column; gap: 4px; }
+.wf-def-card__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.wf-def-card__desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-def-card__actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.wf-def-card__delete--armed { color: var(--danger, #c0504d); border-color: color-mix(in srgb, var(--danger, #c0504d) 45%, transparent); }
+.wf-def-rename { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.wf-def-rename__input { min-width: 0; flex: 1 1 120px; }
+.wf-def-source { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wf-def-source__bar { display: flex; align-items: center; gap: 8px; }
+.wf-def-source__pre {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  overflow: auto;
+  max-height: 100%;
+  font-size: var(--text-sm);
+  white-space: pre;
+}
+
+/* tl1300 定义页签:无效定义文件行(开关开时仅此形态可见,指向模板视图修复) */
+.wf-tpl__item--invalid {
+  color: var(--fg-dim);
+  opacity: 0.75;
+}
