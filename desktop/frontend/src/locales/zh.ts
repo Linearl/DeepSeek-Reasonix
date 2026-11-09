@@ -1970,9 +1970,8 @@ export const zh: Record<DictKey, string> = {
   "projectTree.status.error": "异常",
   "projectTree.status.divergedRecovery": "多个恢复分支",
   "projectTree.removeProject": "移出侧边栏",
-  "projectTree.confirmRemoveProject": "确认移出侧边栏",
+  // tl1502b：二段确认死键（confirmRemoveProject/Short）随死状态链一并退役——确认改弹窗。
   "projectTree.removeProjectShort": "移除",
-  "projectTree.confirmRemoveProjectShort": "确认移除",
   "projectTree.copyPath": "复制路径",
   "projectTree.reloadSessions": "重载会话列表",
   "projectTree.reloadSessionsDone": "已清理 {n} 条残留并重载列表",
@@ -6507,5 +6506,7 @@ export const zh: Record<DictKey, string> = {
   "workflowPanel.definitions.sourceReadOnly": "已存定义的只读查看；编辑在模板视图进行。",
   "workflowPanel.definitions.invalidHint": "该文件无效。在模板视图里修复（原文件保留进历史）。",
   "workflowPanel.definitions.disabledHint": "运行/重命名/删除需要先开启实验室的 Workflow templates 开关（设置 → 实验室）；下方列表为只读。",
+  // tl1502b「移出侧边栏」确认弹窗正文（二段确认死键 confirmRemoveProject/Short 已随死状态链退役）
+  "projectTree.removeProjectConfirmBody": "将「{title}」移出侧边栏？项目文件夹与会话不会被删除，随时可重新添加。",
 
 };

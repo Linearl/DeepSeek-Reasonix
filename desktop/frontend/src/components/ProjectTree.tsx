@@ -315,7 +315,6 @@ export function ProjectTree({
   // once per mount (the backend caches discovery for 15s) — the sidebar context
   // menu is built synchronously per row, so the menu reads this snapshot.
   const [externalOpeners, setExternalOpeners] = useState<ExternalOpenersView | null>(null);
-  const [confirmRemoveProject, setConfirmRemoveProject] = useState<string | null>(null);
   const [dragProjectRoot, setDragProjectRoot] = useState<string | null>(null);
   const [dropProject, setDropProject] = useState<{ root: string; position: ProjectDropPosition } | null>(null);
   // tl 1199 ②: the project-group header a project drag currently hovers — the
@@ -362,7 +361,6 @@ export function ProjectTree({
     setMenuProject(null);
     setMenuPoint(null);
     setConfirmArchiveTarget(null);
-    setConfirmRemoveProject(null);
     setWorkbenchHeaderMenu(null);
   }, []);
   const topicLoadSeqRef = useRef<Record<string, number>>({});
@@ -1197,6 +1195,12 @@ export function ProjectTree({
   // MessageDialog ignores the Buttons array, so the localized-label comparison
   // can never pass).
   const forceArchiveDialog = useConfirmDialog();
+  // tl1502b（用户 20261109 拍板）：「移出侧边栏」首击即弹显式确认弹窗。原二段
+  // 确认（confirmRemoveProject 状态切菜单文字）是死机制：ContextMenu 叶子点选
+  // 即整链关闭，重开菜单的 openProjectMenu/openTopicMenu/closeMenu 又把武装态
+  // 清零——确认文案永远不会出现，removeProject 从未被确认路径调到。改走应用内
+  // 确认弹窗（tl1249 同载体，danger tone），死状态链一并删除。
+  const removeProjectDialog = useConfirmDialog();
   const dissolveProjectGroup = useCallback((group: ProjectGroup) => {
     void (async () => {
       setGroupMenuId(null);
@@ -1321,7 +1325,6 @@ export function ProjectTree({
     setMenuNodeKey(null);
     setMenuProject(null);
     setConfirmArchiveTarget(null);
-    setConfirmRemoveProject(null);
     setFilterMenuOpen(false);
     setMenuPoint(contextMenuPointFromEvent(event));
     setWorkbenchHeaderMenu((value) => (value === menu ? null : menu));
@@ -1419,7 +1422,6 @@ export function ProjectTree({
     setMenuProject(null);
     setMenuNodeKey(null);
     setMenuPoint(null);
-    setConfirmRemoveProject(null);
     setEditingProject({ key, root });
     setProjectDraft(label);
   };
@@ -1508,11 +1510,29 @@ export function ProjectTree({
       await app.RemoveWorkspace(path);
       setMenuProject(null);
       setMenuPoint(null);
-      setConfirmRemoveProject(null);
       await refresh();
     } catch (err) {
       showToast(formatActionError("projectTree.removeProject", err), "error");
     }
+  };
+
+  // tl1502b: the single confirm path for "remove from sidebar" — first click
+  // opens the explicit danger dialog; confirming calls removeProject (backend
+  // RemoveWorkspace, rootGone fast-path already rolled on the Go side by
+  // tl1502). Cancelling does nothing. The menu leaf closes the menu by
+  // contract, so the dialog is the visible confirmation step.
+  const confirmRemoveProjectThen = (path: string, projectTitle: string) => {
+    void (async () => {
+      const confirmed = await removeProjectDialog.confirm({
+        title: t("projectTree.removeProject"),
+        message: t("projectTree.removeProjectConfirmBody", { title: projectTitle }),
+        confirmLabel: t("projectTree.removeProjectShort"),
+        cancelLabel: t("common.cancel"),
+        tone: "danger",
+      });
+      if (!confirmed) return;
+      await removeProject(path);
+    })();
   };
 
   const setProjectColor = async (path: string, color: string) => {
@@ -1941,7 +1961,6 @@ export function ProjectTree({
         event.preventDefault();
         event.stopPropagation();
         setMenuProject(null);
-        setConfirmRemoveProject(null);
         setMenuPoint(contextMenuPointFromEvent(event));
         setMenuNodeKey(key);
         setConfirmArchiveTarget(null);
@@ -2444,7 +2463,6 @@ export function ProjectTree({
       setConfirmArchiveTarget(null);
       setMenuPoint(contextMenuPointFromEvent(event));
       setMenuProject({ key, root: projectRoot, path: projectPath, scope, label: projectLabel });
-      setConfirmRemoveProject(null);
       if (scope === "project" && projectRoot) {
         void app.IsolatedWorktreeAvailability(projectRoot).then((availability) => {
           setWorktreeAvailability((current) => ({
@@ -2577,11 +2595,9 @@ export function ProjectTree({
               // tl 1200 ①:「移动到分组」已上移至颜色区之前。
               // tl 1252（用户已拍板）：尾段低频管理项收拢为一级「项目管理 ▸」
               // submenu（tl 1168 浮动二级面板基建，与「颜色 ▸」同形态）——
-              // relocate/versions/remove 三叶 key、落盘链、confirm 双击语义、
-              // danger 标注原样保留（零功能丢失）；仅层级下沉，不再占一级三行。
-              // 注意：1168 面板叶子点选即整链关闭，remove 的首次点击（武装确
-              // 认态）随之关菜单，重开菜单见确认文案再点执行——比一级形态多
-              // 一次重开，属收拢的预期代价（误触更难直达破坏项，更安全）。
+              // relocate/versions/remove 三叶 key、落盘链、danger 标注保留；
+              // tl1502b：remove 的确认改为首击弹应用内 danger 弹窗（原菜单文
+              // 字二段确认被菜单关闭+清态围剿成死机制，见 confirmRemoveProjectThen）。
               type: "submenu" as const,
               key: "project-manage",
               icon: <Settings2 size={13} />,
@@ -2617,12 +2633,9 @@ export function ProjectTree({
                 {
                   key: "remove",
                   icon: <XCircle size={13} />,
-                  label: confirmRemoveProject === key ? t("projectTree.confirmRemoveProject") : t("projectTree.removeProject"),
+                  label: t("projectTree.removeProject"),
                   danger: true,
-                  onSelect: () => {
-                    if (confirmRemoveProject === key) void removeProject(projectPath);
-                    else setConfirmRemoveProject(key);
-                  },
+                  onSelect: () => confirmRemoveProjectThen(projectPath, projectLabel),
                 },
               ],
             },
@@ -2698,8 +2711,9 @@ export function ProjectTree({
             },
             {
               // tl 1252：workbench 变体与 classic 同步收拢——relocate/versions/
-              // remove 三叶沉入「项目管理 ▸」submenu（同 key、同落盘链、同
-              // confirm/danger 语义；remove 短文案键保持 workbench 专属）。
+              // remove 三叶沉入「项目管理 ▸」submenu（同 key、同落盘链、
+              // 同 danger 语义；remove 短文案键保持 workbench 专属）。
+              // tl1502b：remove 确认与 classic 同走首击 danger 弹窗。
               type: "submenu" as const,
               key: "project-manage",
               icon: <Settings2 size={13} />,
@@ -2735,12 +2749,9 @@ export function ProjectTree({
                 {
                   key: "remove",
                   icon: <XCircle size={13} />,
-                  label: confirmRemoveProject === key ? t("projectTree.confirmRemoveProjectShort") : t("projectTree.removeProjectShort"),
+                  label: t("projectTree.removeProjectShort"),
                   danger: true,
-                  onSelect: () => {
-                    if (confirmRemoveProject === key) void removeProject(projectPath);
-                    else setConfirmRemoveProject(key);
-                  },
+                  onSelect: () => confirmRemoveProjectThen(projectPath, projectLabel),
                 },
               ],
             },
@@ -3714,6 +3725,8 @@ export function ProjectTree({
       {projectGroupDeleteDialog.dialog}
       {/* tl1249: the force-archive second confirm dialog — same carrier rule. */}
       {forceArchiveDialog.dialog}
+      {/* tl1502b: the remove-from-sidebar confirm dialog — same carrier rule. */}
+      {removeProjectDialog.dialog}
       {/* tl1367 line 1: the occupancy preflight dialog — same carrier rule. */}
       {occupancyDialog.dialog}
       <NewGroupPanel open={newGroupOpen} onClose={() => setNewGroupOpen(false)} onConfirm={handleAddGroup} />

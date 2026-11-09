@@ -1978,9 +1978,9 @@ export const en = {
   "projectTree.status.error": "error",
   "projectTree.status.divergedRecovery": "multiple recovery branches",
   "projectTree.removeProject": "Remove from sidebar",
-  "projectTree.confirmRemoveProject": "Confirm remove from sidebar",
+  // tl1502b: the two-stage confirm keys (confirmRemoveProject/Short) were
+  // retired with the dead state chain — the confirm is a dialog now.
   "projectTree.removeProjectShort": "Remove",
-  "projectTree.confirmRemoveProjectShort": "Confirm remove",
   "projectTree.copyPath": "Copy path",
   "projectTree.reloadSessions": "Reload session list",
   "projectTree.reloadSessionsDone": "Removed {n} leftover entries and reloaded",
@@ -6551,6 +6551,9 @@ export const en = {
   "workflowPanel.definitions.sourceReadOnly": "Read-only view of the stored definition; editing happens in the Templates view.",
   "workflowPanel.definitions.invalidHint": "This file is invalid. Fix it in the Templates view (the original is kept in history).",
   "workflowPanel.definitions.disabledHint": "Run, rename and delete need the Workflow templates switch (Settings → Lab); the list below is read-only.",
+  // tl1502b remove-from-sidebar confirm dialog body (the dead two-stage keys
+  // projectTree.confirmRemoveProject/Short were retired with the state chain).
+  "projectTree.removeProjectConfirmBody": "Remove “{title}” from the sidebar? The project folder and its sessions are not deleted — you can add it back any time.",
 
 };
 
