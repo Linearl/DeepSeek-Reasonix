@@ -95,7 +95,15 @@ func (c *Controller) SelfHealOpenSession(windowTokens int) SelfHealOpenOutcome {
 	// tl1280: the schema-2 gate and the head_lag promote left with the
 	// write-path slow lane; every session is flat now, so the diet criterion
 	// below is the only live action.
-	report := agent.InspectSessionHealth(path, agent.HealthInspectOptions{WindowTokens: windowTokens})
+	//
+	// tl1506（用户终裁 20261109）：超窗判据有实账按实账判——活 executor 持有
+	// 任务 1183 的实账锚时注入；无实账（冷启动首轮前/锚不可信）判据自动退回
+	// 计价口径估算（agent 侧三段选择器，见 healthProjectionCriterionTokens）。
+	opts := agent.HealthInspectOptions{WindowTokens: windowTokens}
+	if actual, ok := c.executor.TrustedObservedContextTokens(); ok {
+		opts.ActualContextTokens = actual
+	}
+	report := agent.InspectSessionHealth(path, opts)
 	if report.Healthy {
 		out.Healthy = true
 		return out
@@ -122,6 +130,8 @@ func (c *Controller) SelfHealOpenSession(windowTokens int) SelfHealOpenOutcome {
 				// 的保存锁窗内对落笔时刻的完整转录重算，与前台 checkpoint/
 				// autosave 序列化到同一条保存路径（消除「内存已折叠、盘上旧
 				// 字节」窗口里的同进程 baseline 竞态 → recovery 副本 fork）。
+				// tl1506：预检判据不变（计价口径估算）；实账触发但估算门判
+				// 「无需」时在 else 分支留痕，不静默 no-op。
 				_, actions, changed := agent.DietSessionMessages(s.Snapshot(), windowTokens)
 				if changed {
 					if err := s.RewriteAndSaveCompact(path, "selfheal_diet", func(complete []provider.Message) []provider.Message {
@@ -142,6 +152,13 @@ func (c *Controller) SelfHealOpenSession(windowTokens int) SelfHealOpenOutcome {
 							}
 						}
 					}
+				} else if report.TokenSource == agent.HealthTokenSourceUsageActual {
+					// tl1506：实账判超窗、计价估算判未超（两口径在估算器残差
+					// 带内可能分叉）。不静默 no-op——留痕说明判定来源分叉，
+					// 下次打开（无实账段或实账变化）会按当次口径重判。
+					out.Detail = strings.TrimPrefix(out.Detail+"&", "&") + "diet_skipped_estimate_below_line"
+					slog.Info("selfheal: actual usage flagged overflow but pricing estimate stays below the diet line; nothing rewritten",
+						"path", path, "actual_tokens", report.ProjectionTokens, "window_tokens", windowTokens)
 				}
 			}
 		}
