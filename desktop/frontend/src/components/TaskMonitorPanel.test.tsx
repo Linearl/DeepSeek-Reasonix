@@ -447,6 +447,64 @@ await check("does not present requeue age as elapsed runtime", async () => {
   return document.querySelector(".taskmonitor__time")?.textContent === "—";
 });
 
+// tl1483: stale-while-revalidate — a manual refresh keeps painted rows mounted
+// while the fetch is in flight (no clear→loading→backfill flash) and the
+// fresh page applies in place (same DOM nodes, key continuity).
+await check("keeps painted rows mounted across a manual refresh (SWR)", async () => {
+  const fresh = async () => [
+    snap({ task_id: "swr-aaa", updated_at: "2025-01-01T01:00:00Z" }),
+    snap({ task_id: "swr-bbb", updated_at: "2025-01-01T02:00:00Z" }),
+  ];
+  listTasksImpl = fresh;
+  await renderPanel();
+  await openPanel();
+  const rowsBefore = Array.from(document.querySelectorAll<HTMLElement>(".taskmonitor__task"));
+  let releaseFetch: (() => void) | null = null;
+  listTasksImpl = () => new Promise<Task[]>((resolve) => {
+    releaseFetch = () => resolve(fresh());
+  });
+  await act(async () => {
+    buttonByLabel("Refresh").click();
+    await flush();
+  });
+  const rowsInFlight = Array.from(document.querySelectorAll<HTMLElement>(".taskmonitor__task"));
+  const spinnerInFlight = document.querySelector(".taskmonitor__spinner");
+  await act(async () => {
+    releaseFetch?.();
+    await flush();
+  });
+  const rowsAfter = Array.from(document.querySelectorAll<HTMLElement>(".taskmonitor__task"));
+  return rowsBefore.length === 2
+    && rowsInFlight.length === 2
+    && rowsBefore.every((row) => rowsInFlight.includes(row))
+    && spinnerInFlight === null
+    && rowsAfter.length === 2
+    && rowsBefore.every((row) => rowsAfter.includes(row));
+});
+
+// tl1483: recency sort with stable identity — when a task jumps to the top it
+// is the SAME DOM node moving (key-based reconciliation), not a remount.
+await check("moves an updated task with its existing DOM node instead of remounting", async () => {
+  listTasksImpl = async () => [
+    snap({ task_id: "ord-aaa", updated_at: "2025-01-01T01:00:00Z" }),
+    snap({ task_id: "ord-bbb", updated_at: "2025-01-01T02:00:00Z" }),
+  ];
+  await renderPanel();
+  await openPanel();
+  const rowsBefore = Array.from(document.querySelectorAll<HTMLElement>(".taskmonitor__task"));
+  listTasksImpl = async () => [
+    snap({ task_id: "ord-aaa", updated_at: "2025-01-01T05:00:00Z" }),
+    snap({ task_id: "ord-bbb", updated_at: "2025-01-01T02:00:00Z" }),
+  ];
+  await click(buttonByLabel("Refresh"));
+  const rowsAfter = Array.from(document.querySelectorAll<HTMLElement>(".taskmonitor__task"));
+  return rowsBefore.length === 2
+    && rowsAfter.length === 2
+    && rowsAfter[0] === rowsBefore[1]
+    && rowsAfter[1] === rowsBefore[0]
+    && (rowsAfter[0]?.textContent?.includes("ord-aaa") ?? false);
+});
+
 dom.window.close();
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
