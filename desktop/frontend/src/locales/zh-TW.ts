@@ -6504,5 +6504,8 @@ export const zhTW: Record<DictKey, string> = {
   "workflowPanel.definitions.disabledHint": "執行/重新命名/刪除需要先開啟實驗室的 Workflow templates 開關（設定 → 實驗室）；下方列表為唯讀。",
   // tl1502b「移出側邊欄」確認彈窗正文（二段確認死鍵 confirmRemoveProject/Short 已隨死狀態鏈退役）
   "projectTree.removeProjectConfirmBody": "將「{title}」移出側邊欄？專案資料夾與會話不會被刪除，隨時可重新加入。",
+  // tl1508 輸入框工具摺疊選單 + 狀態列截斷展開層（鍵追加在 EOF）
+  "composer.toolsMenu": "工具",
+  "composer.runStripDetails": "執行詳情",
 
 };

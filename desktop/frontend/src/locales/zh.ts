@@ -6508,5 +6508,8 @@ export const zh: Record<DictKey, string> = {
   "workflowPanel.definitions.disabledHint": "运行/重命名/删除需要先开启实验室的 Workflow templates 开关（设置 → 实验室）；下方列表为只读。",
   // tl1502b「移出侧边栏」确认弹窗正文（二段确认死键 confirmRemoveProject/Short 已随死状态链退役）
   "projectTree.removeProjectConfirmBody": "将「{title}」移出侧边栏？项目文件夹与会话不会被删除，随时可重新添加。",
+  // tl1508 输入框工具折叠菜单 + 状态行截断展开层（键追加在 EOF）
+  "composer.toolsMenu": "工具",
+  "composer.runStripDetails": "运行详情",
 
 };

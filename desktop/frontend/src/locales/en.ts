@@ -6554,6 +6554,10 @@ export const en = {
   // tl1502b remove-from-sidebar confirm dialog body (the dead two-stage keys
   // projectTree.confirmRemoveProject/Short were retired with the state chain).
   "projectTree.removeProjectConfirmBody": "Remove “{title}” from the sidebar? The project folder and its sessions are not deleted — you can add it back any time.",
+  // tl1508 composer toolbar fold-in menu + truncated run-strip detail layer
+  // (keys appended at EOF)
+  "composer.toolsMenu": "Tools",
+  "composer.runStripDetails": "Run details",
 
 };
 
