@@ -8766,7 +8766,9 @@ body > .mermaid-diagram--fullscreen {
   align-items: center;
   gap: 8px;
   min-height: 24px;
-  padding: 4px 14px 0;
+  /* tl1522：4px 14px→2px 12px——垂直贴紧（高度 28→26，预留常量 30 仍有余量）、
+     左右对齐 meta 行 12px 沟（zcode 壳层 p-3=12px 基准）。 */
+  padding: 2px 12px 0;
   color: var(--accent);
   font-family: var(--sans);
   font-size: var(--text-sm);
@@ -9481,7 +9483,10 @@ body > .mermaid-diagram--fullscreen {
   cursor: default;
 }
 .composer-meta {
-  --composer-control-height: 32px;
+  /* tl1522：32→28，对照 zcode 工具行按钮 h-7/icon-md=28px 收敛（模型/任务档
+     触发器与 modebar 全走本 token，随动收缩；fold 判定 56px 阈值两侧裕量复核过：
+     单行 28+11=39 ≤ 56，折两行 ≈73 > 56）。 */
+  --composer-control-height: 28px;
   --composer-control-radius: 7px;
   --composer-control-font-size: var(--font-status);
   --composer-control-font-weight: 620;
@@ -9540,8 +9545,9 @@ body > .mermaid-diagram--fullscreen {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  /* tl1522：32→28 随 --composer-control-height 收敛（zcode icon-md=28）。 */
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--composer-control-radius);
@@ -33593,19 +33599,23 @@ button.statusbar__mcp:focus-visible {
 }
 
 .composer {
+  /* tl1522：10→8，对照 zcode 输入壳紧凑档 p-2=8px 收敛垂直留白。 */
   min-height: 58px;
-  padding: 10px;
+  padding: 8px;
 }
 
 .composer__btn {
-  width: 34px;
-  height: 34px;
+  /* tl1522：34→28，对照 zcode 发送钮 icon-md=size-7=28px。 */
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-md);
 }
 
 .composer-meta {
-  min-height: 42px;
-  padding: 5px 10px 10px 30px;
+  /* tl1522：42/5px 10px 10px 30px→38/5px 12px 6px——底距 10→6（zcode 工具行
+     无独立底 padding）、左沟 30→12 与 theme-style 档及 zcode 壳层 12px 对齐。 */
+  min-height: 38px;
+  padding: 5px 12px 6px;
 }
 
 .composer-modebar {
@@ -34587,7 +34597,8 @@ button.statusbar__mcp:focus-visible {
 
 :root[data-theme-style] .composer {
   min-height: 58px;
-  padding: 10px;
+  /* tl1522：10→8，与非 theme-style 档同收敛（zcode 紧凑档 p-2=8px）。 */
+  padding: 8px;
   border-bottom-color: var(--border-soft);
 }
 
@@ -34601,8 +34612,9 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-style] .composer__btn {
-  width: 34px;
-  height: 34px;
+  /* tl1522：34→28，同非 theme-style 档（zcode icon-md=28）。 */
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-md);
 }
 
@@ -34630,8 +34642,9 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-style] .composer-meta {
-  min-height: 42px;
-  padding: 5px 12px 10px;
+  /* tl1522：42/底距 10→38/6，与非 theme-style 档对齐（zcode 工具行无独立底 padding）。 */
+  min-height: 38px;
+  padding: 5px 12px 6px;
   color: var(--fg-dim);
 }
 
