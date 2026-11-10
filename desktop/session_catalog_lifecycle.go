@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -69,25 +70,23 @@ func (a *App) runSessionCatalog(ctx context.Context) {
 	targets = a.sessionCatalogTargets()
 	history.RegisterCatalogRoots(historyCatalogRoots(targets))
 	a.indexRestoredSessionPaths(ctx, catalog)
-	// Directory scans are independent and internally batched/resumable; keep
-	// startup work bounded so a large project set cannot starve the UI.
-	var reconcileGroup errgroup.Group
-	reconcileGroup.SetLimit(4)
-	for _, target := range targets {
-		if ctx.Err() != nil || a.shuttingDown.Load() {
-			return
-		}
-		reconcileGroup.Go(func() error {
+	// tl1526: the startup wave runs under a hard budget. Directory scans are
+	// internally batched and resumable (scan_cursor), so whatever the budget
+	// cannot cover degrades to the async reconcile queue instead of delaying
+	// the rest of the load chain (retarget, inventory, refresh loop).
+	_ = runStartupReconcileWave(ctx, sessionCatalogStartupReconcileBudget, targets,
+		func(waveCtx context.Context, target sessioncatalog.DirectoryTarget) error {
 			if migrated := migrateLegacySessionsIntoGlobalTopics(target.Path); len(migrated) > 0 {
-				_ = a.syncSessionCatalogMetadataBounded(ctx, catalog)
+				_ = a.syncSessionCatalogMetadataBounded(waveCtx, catalog)
 			}
-			if err := catalog.ReconcileDirectory(ctx, target); err != nil && !errors.Is(err, context.Canceled) {
-				slog.Debug("desktop: reconcile session catalog directory", "dir", target.Path, "err", err)
-			}
-			return nil
+			return catalog.ReconcileDirectory(waveCtx, target)
+		},
+		func(target sessioncatalog.DirectoryTarget) {
+			catalog.RequestReconcile(target)
 		})
+	if ctx.Err() != nil || a.shuttingDown.Load() {
+		return
 	}
-	_ = reconcileGroup.Wait()
 	if freshGeneration {
 		catalog.MarkRepairReason("generation_upgrade")
 	}
@@ -106,4 +105,63 @@ func (a *App) runSessionCatalog(ctx context.Context) {
 // periodic metadata/audit fallbacks instead of the unconditional loop.
 func (a *App) runSessionCatalogRefreshLoop(ctx context.Context, catalog *sessioncatalog.Catalog) {
 	a.watchSessionCatalog(ctx, catalog)
+}
+
+// sessionCatalogStartupReconcileBudget bounds the startup directory-reconcile
+// wave (tl1526; the 2026-11-09 incident measured one directory at 131s). var
+// only for test injection; production code never rewrites it.
+var sessionCatalogStartupReconcileBudget = 120 * time.Second
+
+// runStartupReconcileWave reconciles each target under one shared budget with
+// a 4-way scan concurrency. Targets the budget never reached, and targets
+// whose scan ended on the budget, go through onDeferred exactly once so the
+// caller can hand them to the async reconcile queue; the return value is the
+// deferred count. Budget-out degrades instead of blocking: a scan interrupted
+// by the deadline resumes from its stored scan_cursor on the queued pass.
+func runStartupReconcileWave(ctx context.Context, budget time.Duration, targets []sessioncatalog.DirectoryTarget,
+	reconcile func(context.Context, sessioncatalog.DirectoryTarget) error,
+	onDeferred func(sessioncatalog.DirectoryTarget)) int {
+	waveCtx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	var wave errgroup.Group
+	wave.SetLimit(4)
+	deferred := 0
+	var deferredMu sync.Mutex
+	countDeferred := func(target sessioncatalog.DirectoryTarget) {
+		deferredMu.Lock()
+		deferred++
+		deferredMu.Unlock()
+		onDeferred(target)
+	}
+	for _, target := range targets {
+		if ctx.Err() != nil || waveCtx.Err() != nil {
+			countDeferred(target)
+			continue
+		}
+		target := target
+		wave.Go(func() error {
+			err := reconcile(waveCtx, target)
+			if err == nil {
+				return nil
+			}
+			// Only budget-caused termination defers: a scan that reports its own
+			// deadline while the wave budget is still alive keeps the pre-budget
+			// semantics (debug-only, no re-queue).
+			if waveCtx.Err() != nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+				countDeferred(target)
+				return nil
+			}
+			if !errors.Is(err, context.Canceled) {
+				slog.Debug("desktop: reconcile session catalog directory", "dir", target.Path, "err", err)
+			}
+			return nil
+		})
+	}
+	_ = wave.Wait()
+	if deferred > 0 {
+		slog.Warn("desktop: startup session catalog reconcile budget exhausted; remaining directories deferred to the async reconcile queue",
+			"budget", budget.String(), "deferred", deferred,
+			"mode", "deferred_to_async_queue")
+	}
+	return deferred
 }

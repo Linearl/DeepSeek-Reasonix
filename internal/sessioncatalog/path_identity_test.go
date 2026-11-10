@@ -1,13 +1,16 @@
 package sessioncatalog
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"reasonix/internal/agent"
 )
@@ -416,5 +419,117 @@ func TestWorkspaceRootIdentityPreservesCaseDistinctProjects(t *testing.T) {
 		if len(page.Items) != 1 || len(page.Items[0].Sessions) != 1 || page.Items[0].Sessions[0].WorkspaceRoot != root {
 			t.Fatalf("case-distinct workspace %q topics = %#v", root, page.Items)
 		}
+	}
+}
+
+func sweepTL1526IdentityStateForTest() {
+	pathIdentityMu.Lock()
+	pathIdentityCache = map[string]pathIdentityEntry{}
+	pathIdentityMu.Unlock()
+	pathIdentityWarnMu.Lock()
+	pathIdentityWarnAt = time.Time{}
+	pathIdentitySuppressed = 0
+	pathIdentityWarnMu.Unlock()
+}
+
+func captureTL1526Warn(t *testing.T) (func(), *bytes.Buffer) {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	return func() { slog.SetDefault(previous) }, buf
+}
+
+// TestPathIdentityKeyTimeoutServesLexicalFallbackAndRefreshesInBackground is
+// the tl1526 pin: past the budget the caller gets the lexical key immediately
+// (one WARN with the elapsed time and the degrade mode), and the background
+// walk lands the resolved identity in the cache for later callers.
+func TestPathIdentityKeyTimeoutServesLexicalFallbackAndRefreshesInBackground(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	alt := filepath.Join(dir, "alt")
+	for _, path := range []string{real, alt} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatalf("create fixture dirs: %v", err)
+		}
+	}
+	previousEval := pathIdentityEvalSymlinks
+	pathIdentityEvalSymlinks = func(path string) (string, error) {
+		time.Sleep(40 * time.Millisecond)
+		if filepath.Clean(path) == real {
+			return alt, nil
+		}
+		return previousEval(path)
+	}
+	defer func() { pathIdentityEvalSymlinks = previousEval }()
+	previousTimeout := pathIdentityResolveTimeout
+	pathIdentityResolveTimeout = 5 * time.Millisecond
+	defer func() { pathIdentityResolveTimeout = previousTimeout }()
+	sweepTL1526IdentityStateForTest()
+	defer sweepTL1526IdentityStateForTest()
+	restoreLog, buf := captureTL1526Warn(t)
+	defer restoreLog()
+
+	target := filepath.Join(real, "leaf")
+	key := filepath.Clean(target)
+	wantFallback := lexicalPathIdentityKey(key)
+
+	started := time.Now()
+	got := PathIdentityKey(target)
+	if elapsed := time.Since(started); elapsed > 2*pathIdentityResolveBudget {
+		t.Fatalf("degrade must cut the caller off at the budget, took %v", elapsed)
+	}
+	if got != wantFallback {
+		t.Fatalf("degraded key = %q, want lexical fallback %q", got, wantFallback)
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, "canonical path identity degraded") || !strings.Contains(logged, "lexical_fallback") {
+		t.Fatalf("degrade WARN missing or wrong shape: %q", logged)
+	}
+
+	wantResolved := filepath.Clean(platformCatalogPathIdentity(filepath.Join(alt, "leaf")))
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		time.Sleep(15 * time.Millisecond)
+		if identity, ok := lookupPathIdentity(key); ok && identity == wantResolved {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background walk never landed the resolved identity for %q", key)
+		}
+	}
+}
+
+// TestPathIdentityKeyCacheAvoidsRepeatWalks pins the memoization: within the
+// TTL the second resolution must not touch the filesystem again — the
+// unbounded per-record syscall walk was the reconcile slowdown tl1526 targets.
+func TestPathIdentityKeyCacheAvoidsRepeatWalks(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatalf("create fixture dir: %v", err)
+	}
+	evalCalls := 0
+	var evalMu sync.Mutex
+	previousEval := pathIdentityEvalSymlinks
+	pathIdentityEvalSymlinks = func(path string) (string, error) {
+		evalMu.Lock()
+		evalCalls++
+		evalMu.Unlock()
+		return previousEval(path)
+	}
+	defer func() { pathIdentityEvalSymlinks = previousEval }()
+	sweepTL1526IdentityStateForTest()
+	defer sweepTL1526IdentityStateForTest()
+
+	first := PathIdentityKey(real)
+	second := PathIdentityKey(real)
+	if first != second {
+		t.Fatalf("cache must serve the same identity, got %q then %q", first, second)
+	}
+	evalMu.Lock()
+	defer evalMu.Unlock()
+	if evalCalls != 1 {
+		t.Fatalf("second resolution must be served from the cache, eval ran %d times", evalCalls)
 	}
 }

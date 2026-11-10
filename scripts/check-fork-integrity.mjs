@@ -520,6 +520,13 @@ const CHECKS = [
   { feature: "任务421 effort 补取超时上限+缓存兜底（入口包装）", file: "desktop/effort_fetch.go", patterns: ["effortReadTimeout = 2 * time.Second", "func (a *App) EffortForTab(tabID string) EffortInfo", "serving cached value"] },
   { feature: "任务421 直读函数让位包装（app.go 不再直连 binding）", file: "desktop/app_effort.go", patterns: ["func (a *App) effortForTabDirect(tabID string) EffortInfo"] },
   { feature: "任务421 三态测试（超时兜底/冷缓存缺省/正常刷新）", file: "desktop/effort_fetch_test.go", patterns: ["TestEffortForTabTimeoutServesCachedValue", "TestEffortForTabTimeoutWithoutCacheServesDefault", "TestEffortForTabNormalReadRefreshesCache"] },
+  // tl1526（2026-11-09 17:06 卡死定案三刀）：canonical 解析降级先行（fast-fail
+  // 窗口+后台补解析）、目录扫描身份键有界+缓存（逐组件 CreateFile 风暴消音）、
+  // 启动 reconcile 波预算打满 defer 异步队列。少任何一刀，饱和盘下加载链要么
+  // 每路径同步等 250ms、要么扫描无界、要么主界面等完整扫描。
+  { feature: "tl1526 sandbox canonical 降级先行（fast-fail 窗口）", file: "internal/sandbox/canonical.go", patterns: ["canonicalFastFailWindow", "canonical path resolution degraded-first armed", "degraded_first"] },
+  { feature: "tl1526 目录身份键有界+缓存（lexical 降级档）", file: "internal/sessioncatalog/path_identity.go", patterns: ["pathIdentityResolveBudget", "lexical_fallback", "pathIdentityWalkBounded"] },
+  { feature: "tl1526 启动 reconcile 波预算 defer 异步队列", file: "desktop/session_catalog_lifecycle.go", patterns: ["sessionCatalogStartupReconcileBudget", "deferred_to_async_queue", "runStartupReconcileWave"] },
   // 任务148/334 切换不重建运行时链路（effort+model 并集）。锚点锁「同族目标切换零重建、
   // 活跃 turn 不拒绝、轮内不换线」：agent 侧两道覆盖门（effort 词表门 / model 同族门+目的地
   // 覆盖）、请求冻结捕获目的地（切换轮间生效）、boot resolver 接缝（快路径构造与全量重建
