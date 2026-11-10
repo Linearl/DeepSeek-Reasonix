@@ -154,7 +154,8 @@ const COMPOSER_RUN_STRIP_RESERVED = 30;
 // 卡靠它把展开层一并算进卡片高度，展开不挤压输入区。
 const COMPOSER_RUN_STRIP_EXPANDED_RESERVED = 56;
 // tl1508b 修①：状态行单行/两行的实测判定基准。单行名义高 ≈ 30px
-// （COMPOSER_RUN_STRIP_RESERVED 同源：padding-top 4 + min-height 24 + 行高余量）；
+// （COMPOSER_RUN_STRIP_RESERVED 同源：tl1522 后 CSS 实际 padding-top 2 + min-height 24
+// = 26，常量 30 仍留行高余量故不动）；
 // detail 层折到第二行后 ≈ 56px。实测 offsetHeight > 40（两值中点留裕量）即判定
 // 折行——与 meta 行折行判定同构（offsetHeight 实测，661px 教训：固定宽度阈值
 // 覆盖不了语言/字号/读数组合带来的内容宽差异）。jsdom offsetHeight 恒 0 → 判
