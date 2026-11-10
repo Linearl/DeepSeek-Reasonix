@@ -6,13 +6,49 @@ import (
 	"encoding/binary"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
 
 func platformCatalogPathIdentity(path string) string {
 	path = stripWindowsCatalogExtendedPrefix(path)
-	return windowsCatalogPathIdentityBy(path, windowsCatalogDirectoryCaseInsensitive)
+	return windowsCatalogPathIdentityBy(path, windowsDirectoryCaseInsensitiveCached)
+}
+
+// tl1526: the per-component case probe opens the directory with CreateFile on
+// every identity resolution; a directory reconcile of a large store paid that
+// per session record. A 30s per-directory memo keeps the semantics (a flipped
+// case-sensitivity flag is picked up on the next TTL) at one probe per
+// directory per TTL.
+const windowsCaseCacheTTL = 30 * time.Second
+
+type windowsCaseEntry struct {
+	insensitive bool
+	known       bool
+	expiresAt   time.Time
+}
+
+var (
+	windowsCaseMu    sync.Mutex
+	windowsCaseCache = map[string]windowsCaseEntry{}
+	// Test seam: tests swap this to count real probes.
+	windowsCaseProbe = windowsCatalogDirectoryCaseInsensitive
+)
+
+func windowsDirectoryCaseInsensitiveCached(directory string) (bool, bool) {
+	windowsCaseMu.Lock()
+	if entry, ok := windowsCaseCache[directory]; ok && time.Now().Before(entry.expiresAt) {
+		windowsCaseMu.Unlock()
+		return entry.insensitive, entry.known
+	}
+	windowsCaseMu.Unlock()
+	insensitive, known := windowsCaseProbe(directory)
+	windowsCaseMu.Lock()
+	windowsCaseCache[directory] = windowsCaseEntry{insensitive: insensitive, known: known, expiresAt: time.Now().Add(windowsCaseCacheTTL)}
+	windowsCaseMu.Unlock()
+	return insensitive, known
 }
 
 // windowsCatalogPathIdentityBy folds each component according to the directory
