@@ -68,6 +68,12 @@ interface DockLiveTranscriptState {
 
 const EMPTY_DOCK_LIVE: DockLiveTranscriptState = { loading: false, failed: false, messages: [] };
 
+// tl1387 三轮（刀1）: stable empty map for the inline live-tools projection —
+// the 备用视图 (no transcriptItems) and the no-running-entries states share
+// this identity so every DirectoryRow's liveTools prop stays undefined and
+// those rows render byte-for-byte the pre-刀1 shape.
+const EMPTY_LIVE_TOOLS_MAP: ReadonlyMap<string, SubagentDirectoryItem[]> = new Map();
+
 // Task 495: right-dock "子代理" tab body, modeled on the zcode subagent
 // directory (SubagentDirectorySidePane): a running section and an ended
 // section, rows folded by default, click expands a small inline detail —
@@ -230,6 +236,7 @@ const DirectoryRow = memo(function DirectoryRow({
   now,
   onContinue,
   nested = false,
+  liveTools,
 }: {
   entry: SubagentDirectoryEntry;
   onSelect?: () => void;
@@ -244,6 +251,13 @@ const DirectoryRow = memo(function DirectoryRow({
   onContinue?: (ref: string) => Promise<SubagentSendReceiptView>;
   /** tl1433 四缺口③: placed under a workflow run row (hierarchy view). */
   nested?: boolean;
+  /** tl1387 三轮（刀1）: the running child's live tool-call stream, computed
+   *  by the panel body (the same lookup the plan-A detail view does — nested
+   *  events keyed by the dispatch call id). Rendered in the inline expansion
+   *  so the DEFAULT (plan-C) row click shows the work process too. Only
+   *  running rows receive it; ended rows and the 备用视图 never do — their
+   *  expansion stays byte-for-byte. */
+  liveTools?: readonly SubagentDirectoryItem[];
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -388,6 +402,22 @@ const DirectoryRow = memo(function DirectoryRow({
             {startedClock ? <span>{t("subagentPanel.startedAt", { time: startedClock })}</span> : null}
             {durationSeconds > 0 ? <span>{t("subagent.phase.elapsed", { n: formatDurationLabel(durationSeconds, t) })}</span> : null}
           </p>
+          {/* tl1387 三轮（刀1）: the running row's inline expansion carries the
+              same live tool-call stream the plan-A detail view projects —
+              the work process itself, not just the static summary/meta. Same
+              ChildToolRow markup and classes (零新 CSS); renders only while
+              the panel supplies tools (running rows with nested transcript
+              events), so ended rows and the 备用视图 stay byte-for-byte. */}
+          {liveTools && liveTools.length > 0 ? (
+            <div className="subagents-panel__livetools" data-subagents-livetools="true">
+              <div className="subagents-panel__detailview-label">{t("subagentPanel.liveTools")}</div>
+              <ul className="subagents-panel__livetool-list">
+                {liveTools.map((tool) => (
+                  <ChildToolRow key={tool.id} tool={tool} />
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       )}
     </li>
@@ -979,6 +1009,24 @@ export function SubagentsDockPanel({
     () => mergeRegistryRunningSubagents(withPersistedRunning, registryRunning).running,
     [withPersistedRunning, registryRunning],
   );
+  // tl1387 三轮（刀1）: the plan-C inline expansion projects the running
+  // child's live tool-call stream — the same lookup the plan-A detail view
+  // does (lib/subagentDirectory.subagentChildTools over the nested_sink
+  // re-parented events, keyed by the dispatch call id; a transcript card's
+  // item.id IS that id, registry rows carry it as entry.callId). Computed
+  // per transcript change for RUNNING entries only; ended rows and the
+  // 备用视图 (transcriptItems undefined → EMPTY_LIVE_TOOLS_MAP) never receive
+  // the prop, so their rows stay byte-for-byte.
+  const runningLiveTools = useMemo(() => {
+    if (!transcriptItems) return EMPTY_LIVE_TOOLS_MAP;
+    const map = new Map<string, SubagentDirectoryItem[]>();
+    for (const entry of running) {
+      if (!entry.running) continue;
+      const tools = subagentChildTools(transcriptItems, entry.callId ?? entry.item.id);
+      if (tools.length > 0) map.set(entry.item.id, tools);
+    }
+    return map;
+  }, [running, transcriptItems]);
   // tl1433: 运行中的工作流 run 行视图（纯投影）；行渲染与「运行中」计数、
   // 空态判定都要计入，工作流在跑时面板不再读「暂无」。时长墙钟只在有运行
   // 行时跳（15s），静止面板零定时器。入列条件在本面板再过滤一道（App 下发
@@ -1203,6 +1251,7 @@ export function SubagentsDockPanel({
                     onTerminate={onTerminateSubagent}
                     now={wallNow}
                     onContinue={continueBridge}
+                    liveTools={runningLiveTools.get(entry.item.id)}
                   />
                 ))}
               </WorkflowRunRow>
@@ -1215,6 +1264,7 @@ export function SubagentsDockPanel({
                 onTerminate={onTerminateSubagent}
                 now={wallNow}
                 onContinue={continueBridge}
+                liveTools={runningLiveTools.get(entry.item.id)}
               />
             ))}
           </ul>
