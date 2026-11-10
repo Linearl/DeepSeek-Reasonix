@@ -71,7 +71,12 @@ func TestForkTraceToolCheckpointConflict(t *testing.T) {
 	if err := other.SaveSnapshot(path); err != nil {
 		t.Fatal(err)
 	}
-	live.AddBatch(provider.Message{Role: "user", Content: "live3"}, provider.Message{Role: "assistant", Content: "live4"})
+	// tl1459 leftover B: one tail message keeps the live snapshot NOT strictly
+	// ahead of disk (4 vs 4), so the checkpoint's rev-lag takeover escalation
+	// declines and this pin keeps testing the terminal-conflict trace. The
+	// takeover-eligible shape (live strictly ahead) is pinned by
+	// TestCheckpointConflictRevLagTakeoverKeepsCheckpointAlive.
+	live.AddBatch(provider.Message{Role: "user", Content: "live3"})
 	c := newTakeoverLadderController(t, path, live)
 	if err := c.checkpointToolTranscript(); !errors.Is(err, agent.ErrSessionSnapshotConflict) {
 		t.Fatalf("checkpoint err = %v, want the snapshot conflict returned unchanged", err)
