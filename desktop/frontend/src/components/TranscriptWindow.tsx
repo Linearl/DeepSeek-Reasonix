@@ -127,6 +127,10 @@ export default function TranscriptWindow({
   const committedGeometryRef = useRef<TranscriptWindowGeometry<(typeof candidateItems)[number]> | undefined>(undefined);
   const pendingMeasurementCommit = useRef(false);
   const measurementNeedsRender = useRef(false);
+  // tl1512: the scroller viewport width observed by the previous measurement
+  // pass. A pass that sees a different width is measuring a REWRAP — every
+  // mounted block's real height changed at once.
+  const lastPassViewportWidthRef = useRef<number | null>(null);
   const structureRevision = `${split.cold.length}:${split.cold[0]?.key ?? ""}:${split.cold[split.cold.length - 1]?.key ?? ""}`;
   const geometry = commitTranscriptWindowGeometry({
     candidate: candidateItems,
@@ -251,6 +255,19 @@ export default function TranscriptWindow({
     const changes: Array<{ key: string; size: number }> = [];
     const firstMeasurements = new Set<string>();
     const viewport = scrollElement?.getBoundingClientRect();
+    // tl1512: a width change rewraps EVERY mounted block (sidebar/dock toggles,
+    // window resize). The sizes staged by this pass are fresh painted-DOM facts
+    // measured at the new width; holding their publication to the intent gate
+    // below strands the whole prefix/placements/extent in the old-width
+    // coordinate system — absolute placements drift from real heights
+    // (inter-block blank gaps on shrink, overlaps on growth) and the spacer
+    // extent keeps the stale total. Nothing retries that publication while
+    // intent stays "tail", so the blank persisted until an unrelated event
+    // flipped the intent (the "selecting text heals it" report). A rewrap pass
+    // therefore publishes like first measurements do: unconditional on intent.
+    const widthRewrap = viewport != null && lastPassViewportWidthRef.current != null
+      && Math.abs(viewport.width - lastPassViewportWidthRef.current) > 0.5;
+    lastPassViewportWidthRef.current = viewport?.width ?? null;
     const observedTop = scrollElement?.scrollTop ?? nativeViewport.scrollTop;
     const clientHeight = scrollElement?.clientHeight ?? nativeViewport.clientHeight;
     const domItems: Array<{ index: number; top: number }> = [];
@@ -307,7 +324,7 @@ export default function TranscriptWindow({
     });
     const published = measurementLedger.publishStaged((key) => {
       const index = coldIndexByKey.get(key);
-      return index != null && (firstMeasurements.has(key) || (kernel.intent === "reader" && (
+      return index != null && (firstMeasurements.has(key) || widthRewrap || (kernel.intent === "reader" && (
         !kernel.userGestureActive
         || (measurementBoundaryIndex != null && index >= measurementBoundaryIndex)
       )));
