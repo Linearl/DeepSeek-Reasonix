@@ -1,11 +1,11 @@
 // Run: tsx src/__tests__/effort-menu-tiers.test.ts
 //
-// Task 254 (user ruling on task 251): the settings UI offers FOUR honest
-// effort tiers (none/low/medium/high) while the kernel keeps accepting the
-// full eight-level wire set (minimal/xhigh/max/ultra are compatibility aliases
-// per the MiMo docs — normalizeMimoEffort on the Go side is untouched). A
-// stored alias must still render as the tier it means, and a hand-edited
-// unknown level must never be silently rewritten by the picker.
+// tl1538 (superseding the task 254 four-tier ruling): the settings UI offers
+// the SEVEN honest union tiers (none/minimal/low/medium/high/xhigh/max) of the
+// OpenAI/Anthropic documented vocabularies. The MiMo 8-level wire set stays a
+// kernel-side concern (normalizeMimoEffort untouched); its alias spellings
+// still fold for display behind the backend's MiMo identity mark, and a
+// hand-edited unknown level must never be silently rewritten by the picker.
 
 import { EFFORT_PRESETS, normalizeEffortForMenu } from "../lib/effortTiers";
 
@@ -22,10 +22,10 @@ function eq(a: unknown, b: unknown, label: string) {
   }
 }
 
-console.log("\neffort menu tiers (task 254)");
+console.log("\neffort menu tiers (tl1538)");
 
-// 1. The menu is the four honest tiers.
-eq(EFFORT_PRESETS, ["none", "low", "medium", "high"], "menu offers none/low/medium/high");
+// 1. The menu is the seven honest union tiers.
+eq(EFFORT_PRESETS, ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "menu offers the seven union tiers (tl1538)");
 
 // 2. The four tiers pass through unchanged (and stay selectable).
 eq(normalizeEffortForMenu("none"), "none", "none passes through");
