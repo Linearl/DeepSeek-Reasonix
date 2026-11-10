@@ -816,6 +816,14 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	openTr.describe(spec.Worker.Name, "")
 	ctx = withSubagentOpenTrace(ctx, openTr)
 
+	// tl1537: 普通派发也装载运行中 transcript autosave——透明不只在工作流节点
+	// （zcode 标杆全程可看）。门控语义保留：标记仍是 ctx opt-in 机制（工作流
+	// runner tl1434 的装载点原样不动，已装则不重复包一层），此处只给普通派发
+	// 补装；运行中快照仍受 run.Ref != "" 门（ephemeral 空 ref 照旧 preview-only）。
+	if !subagentTranscriptAutosaveFrom(ctx) {
+		ctx = WithSubagentTranscriptAutosave(ctx)
+	}
+
 	ctx, maxSteps := t.childMaxStepsForSpec(ctx, &spec)
 	childDepth, err := t.nextSubagentDepth(ctx)
 	if err != nil {
@@ -1028,6 +1036,10 @@ func (t *TaskTool) runBackgroundProfileSpec(ctx context.Context, spec ProfileExe
 		}
 		jobCtx = WithParentSession(jobCtx, parentSession)
 		jobCtx = withInheritedHostConstraints(ctx, jobCtx)
+		// tl1537: job ctx 派生自 jobs 管理器 root（start.go WithCancel(m.root)，
+		// 不经派发 ctx），RunProfileSpec 装的 autosave 标记不会自然流入——后台
+		// 子代理与前台同权装载（验收 b 的写侧；前台/工作流路径各只装一次）。
+		jobCtx = WithSubagentTranscriptAutosave(jobCtx)
 		jobCtx = evidence.WithLedger(jobCtx, backgroundEvidence)
 		// Task 557: this child is job-owned; its lifecycle events must never
 		// enter the desktop foreground-subagent registry (the job row already

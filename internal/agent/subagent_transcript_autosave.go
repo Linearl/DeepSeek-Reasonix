@@ -55,6 +55,16 @@ func subagentTranscriptAutosaveFrom(ctx context.Context) bool {
 // not merely a serialized one.
 func (s *SubagentStore) startTranscriptAutosave(run *SubagentRun) (stop func()) {
 	path := s.sessionPath(run.Ref)
+	// tl1537: 首个运行中快照落盘前先种子化 branch-meta sidecar——无 sidecar 的
+	// 首次 Session.Save 会把 CreatedAt 回填成保存时刻，autosave 之后那一刻是
+	// 运行中快照而非派发时刻（ensureBranchCreatedAt 为终态保存钉的同一条契约，
+	// 此处让运行中首写也守它）。幂等；失败按快照失败同一口径降级：warn 一次
+	// 即停，终态保存仍是权威。
+	if err := s.ensureBranchCreatedAt(run); err != nil {
+		slog.Warn("subagent transcript autosave skipped: branch meta seed failed; the terminal save remains authoritative",
+			"ref", run.Ref, "err", err)
+		return func() {}
+	}
 	done := make(chan struct{})
 	finished := make(chan struct{})
 	go func() {

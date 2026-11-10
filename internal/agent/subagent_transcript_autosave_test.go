@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/event"
+	"reasonix/internal/jobs"
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
 )
@@ -168,9 +171,9 @@ func TestWorkflowDispatchAutosavePersistsMidRun(t *testing.T) {
 	}
 }
 
-// ③ opt-in 边界：无标记的普通委派在运行中不落 transcript（终态才落盘，
-// 行为与追加前逐字节一致）。
-func TestPlainDispatchKeepsTerminalOnlyPersistence(t *testing.T) {
+// ③ tl1537 翻转钉：普通派发（ctx 无标记）现在也装载 autosave——运行中
+// transcript 已写盘可读（透明全派发），终态保存仍是权威。
+func TestPlainDispatchAutosavesMidRun(t *testing.T) {
 	old := subagentTranscriptAutosaveInterval
 	subagentTranscriptAutosaveInterval = 25 * time.Millisecond
 	t.Cleanup(func() { subagentTranscriptAutosaveInterval = old })
@@ -178,10 +181,10 @@ func TestPlainDispatchKeepsTerminalOnlyPersistence(t *testing.T) {
 	release := make(chan struct{})
 	task := newTestTaskTool(t, &gatedStreamProvider{release: release}, tool.NewRegistry(), "sys", "", "", nil)
 	rec := &recordSink{}
-	ctx := withCallContext(context.Background(), "task-1434-plain", rec, nil, false)
-	ctx = WithParentSession(ctx, "sess-1434-plain")
+	ctx := withCallContext(context.Background(), "task-1537-plain", rec, nil, false)
+	ctx = WithParentSession(ctx, "sess-1537-plain")
 	ctx = WithSubagentRefSink(ctx)
-	// 无 WithSubagentTranscriptAutosave。
+	// 无 WithSubagentTranscriptAutosave——RunProfileSpec 自装（tl1537）。
 
 	done := make(chan error, 1)
 	go func() {
@@ -198,17 +201,193 @@ func TestPlainDispatchKeepsTerminalOnlyPersistence(t *testing.T) {
 		return ref != ""
 	})
 	path := task.transcripts.sessionPath(ref)
+
+	// 运行中（provider 仍阻塞）：普通派发的 transcript 已落盘且含已发生的
+	// 对话内容（验收 a/b 的写侧；此前此窗口 .jsonl 不存在）。
+	waitForCond(t, 5*time.Second, func() bool {
+		loaded, err := LoadSession(path)
+		if err != nil {
+			return false
+		}
+		for _, m := range loaded.Snapshot() {
+			if strings.Contains(m.Content, "probe plain") {
+				return true
+			}
+		}
+		return false
+	})
+
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("RunProfileSpec after autosave: %v", err)
+	}
+	// 终态权威不变（验收 e）：final answer 在盘上，meta=completed。
+	waitForCond(t, 5*time.Second, func() bool {
+		loaded, err := LoadSession(path)
+		if err != nil {
+			return false
+		}
+		for _, m := range loaded.Snapshot() {
+			if strings.Contains(m.Content, "final answer") {
+				return true
+			}
+		}
+		return false
+	})
+	meta, err := task.transcripts.LoadMeta(ref)
+	if err != nil {
+		t.Fatalf("LoadMeta: %v", err)
+	}
+	if meta.Status != SubagentCompleted {
+		t.Fatalf("meta status after plain run = %q, want completed", meta.Status)
+	}
+}
+
+// ③ 范围钉：ephemeral（空 ref）派发运行中照旧零落盘——preview-only 形态
+// 逐字节保持（tl1537 范围边界）。
+func TestEphemeralDispatchNeverPersistsMidRun(t *testing.T) {
+	old := subagentTranscriptAutosaveInterval
+	subagentTranscriptAutosaveInterval = 25 * time.Millisecond
+	t.Cleanup(func() { subagentTranscriptAutosaveInterval = old })
+
+	release := make(chan struct{})
+	storeDir := t.TempDir()
+	task := NewTaskToolWithOptions(TaskToolOptions{
+		Provider:       &gatedStreamProvider{release: release},
+		ParentRegistry: tool.NewRegistry(),
+		MaxSteps:       20,
+		SysPrompt:      "sys",
+	}).WithTranscripts(NewSubagentStore(storeDir), t.TempDir(), "base-model", "base-effort")
+	rec := &recordSink{}
+	// 无 WithParentSession——ephemeral 形态（空 ref）。
+	ctx := withCallContext(context.Background(), "task-1537-ephemeral", rec, nil, false)
+	ctx = WithSubagentRefSink(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := task.RunProfileSpec(ctx, ProfileExecSpec{
+			Task: TaskSpec{Objective: "probe ephemeral"}, Grant: CapabilityGrant{AllowNoTools: true},
+			Worker: WorkerSpec{Kind: "task", Name: "task", SystemPrompt: "sys"},
+		})
+		done <- err
+	}()
+
+	// provider 阻塞即子代理运行中；此时 store 目录必须仍是空的。
 	time.Sleep(10 * subagentTranscriptAutosaveInterval)
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("plain dispatch must not persist mid-run (stat err=%v)", err)
+	entries, err := os.ReadDir(storeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("ephemeral dispatch must not persist mid-run, store has %d entries", len(entries))
+	}
+	if ref := SubagentRef(ctx); ref != "" {
+		t.Fatalf("ephemeral dispatch must not mint a ref, got %q", ref)
 	}
 
 	close(release)
 	if err := <-done; err != nil {
 		t.Fatalf("RunProfileSpec: %v", err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("terminal transcript missing after plain dispatch: %v", err)
+}
+
+// ③ 验收 b 写侧：后台派发（job ctx 派生自管理器 root，不经派发 ctx）运行中
+// 同样落盘——闭包内补装的标记必须生效。
+func TestBackgroundDispatchAutosavesMidRun(t *testing.T) {
+	old := subagentTranscriptAutosaveInterval
+	subagentTranscriptAutosaveInterval = 25 * time.Millisecond
+	t.Cleanup(func() { subagentTranscriptAutosaveInterval = old })
+
+	release := make(chan struct{})
+	storeDir := t.TempDir()
+	task := NewTaskToolWithOptions(TaskToolOptions{
+		Provider:       &gatedStreamProvider{release: release},
+		ParentRegistry: tool.NewRegistry(),
+		MaxSteps:       20,
+		SysPrompt:      "sys",
+	}).WithTranscripts(NewSubagentStore(storeDir), t.TempDir(), "base-model", "base-effort")
+	rec := &recordSink{}
+	jm := jobs.NewManager(event.Discard)
+	defer jm.Close()
+	ctx := jobs.WithManager(withCallContext(context.Background(), "task-1537-bg", rec, nil, false), jm)
+	ctx = jobs.WithSession(ctx, "sess-1537-bg")
+	ctx = WithParentSession(ctx, "sess-1537-bg")
+	ctx = WithSubagentRefSink(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := task.Execute(ctx, json.RawMessage(`{"prompt":"probe background","run_in_background":true,"description":"autosave bg"}`))
+		done <- err
+	}()
+
+	var ref string
+	waitForCond(t, 5*time.Second, func() bool {
+		ref = SubagentRef(ctx)
+		return ref != ""
+	})
+	path := filepath.Join(storeDir, ref+".jsonl")
+
+	// job 已在跑（provider 仍阻塞）：transcript 已落盘——root 派生的 job ctx
+	// 也装上了标记（tl1537 闭包补装点）。
+	waitForCond(t, 5*time.Second, func() bool {
+		loaded, err := LoadSession(path)
+		if err != nil {
+			return false
+		}
+		for _, m := range loaded.Snapshot() {
+			if strings.Contains(m.Content, "probe background") {
+				return true
+			}
+		}
+		return false
+	})
+
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		meta, err := task.transcripts.LoadMeta(ref)
+		return err == nil && meta.Status == SubagentCompleted
+	})
+}
+
+// tl1537 追加：autosave 首写前种子化 branch-meta——CreatedAt 保持派发时刻，
+// 不被首个运行中快照回填成保存时刻（ensureBranchCreatedAt 的终态契约对
+// 运行中首写同样成立）。
+func TestAutosaveSeedsBranchCreatedAtFromDispatch(t *testing.T) {
+	old := subagentTranscriptAutosaveInterval
+	subagentTranscriptAutosaveInterval = 25 * time.Millisecond
+	t.Cleanup(func() { subagentTranscriptAutosaveInterval = old })
+
+	dir := t.TempDir()
+	store := NewSubagentStore(dir)
+	ref := "sa_20261110_100000_000000000_000000000001"
+	created := time.Date(2026, 11, 10, 9, 59, 0, 0, time.UTC)
+	run := &SubagentRun{
+		Ref:     ref,
+		Session: NewSession("sys"),
+		Meta:    SubagentMeta{Ref: ref, CreatedAt: created},
+		store:   store,
+	}
+	path := store.sessionPath(run.Ref)
+
+	stop := store.startTranscriptAutosave(run)
+	t.Cleanup(stop)
+
+	waitForCond(t, 5*time.Second, func() bool {
+		_, err := os.Stat(path)
+		return err == nil
+	})
+	meta, ok, err := LoadBranchMeta(path)
+	if err != nil {
+		t.Fatalf("LoadBranchMeta: %v", err)
+	}
+	if !ok {
+		t.Fatal("autosave must seed the branch-meta sidecar before the first snapshot")
+	}
+	if !meta.CreatedAt.Equal(created) {
+		t.Fatalf("branch meta CreatedAt = %v, want dispatch time %v (must not be backfilled by the snapshot moment)", meta.CreatedAt, created)
 	}
 }
 
