@@ -2792,7 +2792,9 @@ func TestReasoningProtocolOverrideControlsEffortCapability(t *testing.T) {
 	if !cap.Supported {
 		t.Fatalf("reasoning_protocol=openai should expose OpenAI effort levels, got %+v", cap)
 	}
-	wantLevels := []string{"auto", "low", "medium", "high"}
+	// tl1538: the generic OpenAI protocol exposes the documented union across
+	// model generations instead of the old four-tier menu.
+	wantLevels := []string{"auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"}
 	if len(cap.Levels) != len(wantLevels) {
 		t.Fatalf("levels = %v, want %v", cap.Levels, wantLevels)
 	}
@@ -2801,8 +2803,12 @@ func TestReasoningProtocolOverrideControlsEffortCapability(t *testing.T) {
 			t.Fatalf("levels[%d] = %q, want %q", i, cap.Levels[i], want)
 		}
 	}
-	if _, err := NormalizeEffort(e, "max"); err == nil {
-		t.Fatal("OpenAI reasoning_protocol should reject max")
+	if _, err := NormalizeEffort(e, "max"); err != nil {
+		t.Fatalf("OpenAI reasoning_protocol should accept max (tl1538 union), got %v", err)
+	}
+	// "ultra" stays MiMo-exclusive and outside the generic union.
+	if _, err := NormalizeEffort(e, "ultra"); err == nil {
+		t.Fatal("OpenAI reasoning_protocol should reject ultra")
 	}
 	if got, err := NormalizeEffort(e, "medium"); err != nil || got != "medium" {
 		t.Fatalf("NormalizeEffort(medium) = %q/%v, want medium/nil", got, err)
