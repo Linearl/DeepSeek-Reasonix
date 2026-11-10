@@ -6511,5 +6511,10 @@ export const zh: Record<DictKey, string> = {
   // tl1508 输入框工具折叠菜单 + 状态行截断展开层（键追加在 EOF）
   "composer.toolsMenu": "工具",
   "composer.runStripDetails": "运行详情",
+  // tl1500 信息栏会话指标两芯片（键追加在 EOF）
+  "status.requestsLabel": "请求数",
+  "status.requestsTitle": "对话请求数——与右侧栏概览「会话指标」卡同读数",
+  "status.elapsedLabel": "运行时间",
+  "status.elapsedTitle": "会话运行时间——与右侧栏概览「会话指标」卡同读数",
 
 };

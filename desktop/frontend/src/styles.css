@@ -11437,6 +11437,15 @@ button.statusbar__mcp:focus-visible {
 .stat--plan {
   justify-content: flex-start;
 }
+/* tl1500：对话请求数/运行时间 chips——本体视觉由 .stat 承载，modifier 保留对齐钩子与紧凑收缩 */
+.statusbar__metric--requests,
+.statusbar__metric--elapsed {
+  justify-content: flex-start;
+}
+.statusbar__requests,
+.statusbar__elapsed {
+  min-width: 0;
+}
 .statusbar__plan b.statusbar__plan-value--notice {
   color: var(--warn);
   font-weight: 700;
@@ -31858,6 +31867,36 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
   font-size: 11.5px;
   line-height: 1.2;
+}
+
+/* tl1500: 会话指标卡折叠头——与 view-switch 同族的轻量点击件（token 全走
+   主题变量，七主题兼容）；只控制卡片本体显隐，默认展开，持久化见
+   lib/sessionMetricsFold.ts。 */
+.context-panel__fold {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.context-panel__fold:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+
+.context-panel__fold:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
 }
 
 .context-panel__view-switch {

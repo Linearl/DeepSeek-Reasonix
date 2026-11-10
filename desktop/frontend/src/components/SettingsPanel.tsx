@@ -1782,6 +1782,13 @@ function statusBarItemLabel(id: StatusBarItemId, t: ReturnType<typeof useT>): st
       return t("status.planLabel");
     case "mcp":
       return t("settings.statusBarItem.mcp");
+    // tl1500: the two session-metric entries reuse their chip label keys —
+    // the settings row, the status bar text style and the tooltip stay one
+    // wording (same reuse face as session_tokens → status.sessionTokensLabel).
+    case "session_requests":
+      return t("status.requestsLabel");
+    case "session_elapsed":
+      return t("status.elapsedLabel");
   }
 }
 

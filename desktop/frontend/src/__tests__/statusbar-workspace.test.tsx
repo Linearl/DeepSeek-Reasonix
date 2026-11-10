@@ -455,5 +455,46 @@ console.log("\nstatus bar workspace");
   dom.window.close();
 }
 
+// tl1500: 对话请求数 / 运行时间 join the managed status bar items — the same
+// registry + settings + render-condition contract task 559 established for mcp.
+{
+  const defaultItems = DEFAULT_STATUS_BAR_ITEMS as readonly string[];
+  ok(defaultItems.includes("session_requests") && defaultItems.includes("session_elapsed"),
+    "session requests and elapsed join the configurable defaults (same kind as session_tokens)");
+  ok(defaultItems.indexOf("session_requests") > defaultItems.indexOf("mcp"),
+    "the new items append after mcp so saved preference lists keep their order");
+  ok(normalizeStatusBarItems(["context", "cache"]).join(",") === "context,cache",
+    "saved lists predating the new items keep their exact order");
+  ok(normalizeStatusBarItems(["session_elapsed", "session_requests"]).join(",") === "session_elapsed,session_requests",
+    "saved lists may order the new items freely");
+}
+
+{
+  const html = renderStatusBar({
+    items: ["session_requests", "session_elapsed"],
+    sessionMetrics: { requestCount: 7, elapsedMs: 81_000 },
+  });
+  ok(html.includes('data-statusbar-item="session_requests"'), "requests chip renders when its item is configured");
+  ok(html.includes('data-statusbar-item="session_elapsed"'), "elapsed chip renders when its item is configured");
+  ok(html.includes(">7</b>"), "requests chip shows the injected session count");
+  ok(html.includes("1m 21s"), "elapsed chip renders the duration bands from the injected snapshot");
+  ok(html.includes("statusbar__requests") && html.includes("statusbar__elapsed"), "chips expose their modifier hooks");
+}
+
+{
+  const html = renderStatusBar({ items: ["session_requests", "session_elapsed"] });
+  ok((html.match(/stat__value--empty/g) || []).length === 2, "a missing snapshot renders both chips as empty dashes");
+  ok(!html.includes(">7</b>"), "no snapshot never fabricates a request count");
+}
+
+{
+  const html = renderStatusBar({
+    items: ["cache"],
+    sessionMetrics: { requestCount: 7, elapsedMs: 81_000 },
+  });
+  ok(!html.includes("statusbar__requests") && !html.includes("statusbar__elapsed"),
+    "both chips disappear from the bar when their items are disabled");
+}
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);

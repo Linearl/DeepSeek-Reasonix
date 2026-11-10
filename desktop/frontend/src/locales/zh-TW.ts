@@ -6507,5 +6507,10 @@ export const zhTW: Record<DictKey, string> = {
   // tl1508 輸入框工具摺疊選單 + 狀態列截斷展開層（鍵追加在 EOF）
   "composer.toolsMenu": "工具",
   "composer.runStripDetails": "執行詳情",
+  // tl1500 資訊欄會話指標兩晶片（鍵追加在 EOF）
+  "status.requestsLabel": "請求數",
+  "status.requestsTitle": "對話請求數——與右側欄概覽「會話指標」卡同讀數",
+  "status.elapsedLabel": "執行時間",
+  "status.elapsedTitle": "會話執行時間——與右側欄概覽「會話指標」卡同讀數",
 
 };
