@@ -1,10 +1,16 @@
 // Run: tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/composer-run-strip-oneline.test.tsx
 //
 // tl1508 修②：运行状态区一行化——截断版状态行 + 「⋯ 工具」折叠菜单。
+// tl1508b 语义更新（记忆+同排一行）：「⋯ N」开合改持久化偏好（本套件各 jsdom
+// 块首读空存储，行为读数与首版一致）；展开层不再强制独占第二行（宽态同排一行
+// 由 composer-run-strip-fold 套件实测钉 + composer-narrow-overflow-css 契约钉
+// 承载）。本套件 jsdom 常量高下展开态按悲观折行预留 56px——与首版读数逐字节
+// 一致，钉面保持。
 //   AC1 主行恒一行：时长/tokens/速率（runMetrics）不再内联在状态词后，收进
 //       detail 层（hidden 态在场，展开层可达全部信息）；
 //   AC2 「⋯ N」开合：aria-expanded 翻转、detail 显隐随之、resized 定高卡的
-//       --composer-run-strip-reserved 30→56px 同步抬升（展开不挤压输入区）；
+//       --composer-run-strip-reserved 30→56px 同步抬升（展开不挤压输入区；
+//       tl1508b 起为测量落地前的悲观值，实测同排时回落 30——见 fold 套件）；
 //   AC3 「⋯ 工具」折叠入口在场（窄态显隐由 CSS 容器断点管，DOM 恒在），
 //       菜单开合可用，菜单项与平铺钮同一事件链（未启用的能力不进菜单）。
 

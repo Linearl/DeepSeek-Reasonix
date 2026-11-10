@@ -16,6 +16,8 @@ import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEven
 import { ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Crop, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, RefreshCw, Search, Shield, ShieldAlert, ShieldCheck, Smile, Square, Target, Trash2, Users, Wand2, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
 import { useWorkProcessFoldAggregate } from "../lib/workProcessFoldState";
+// tl1508b 修①：状态行折叠/展开持久化偏好（localStorage 单键，跨刷新/重开保持）。
+import { setComposerRunStripExpanded, useComposerRunStripExpanded } from "../lib/composerRunStripPreference";
 import { asArray } from "../lib/array";
 import { foldEffortCurrent, foldEffortMenu } from "../lib/effortTiers";
 import { filterAtMatches } from "../lib/atMatches";
@@ -151,6 +153,13 @@ const COMPOSER_RUN_STRIP_RESERVED = 30;
 // tl1508：状态行截断版展开后的预留高度（主行 30 + 明细行 ~26）；resized 定高
 // 卡靠它把展开层一并算进卡片高度，展开不挤压输入区。
 const COMPOSER_RUN_STRIP_EXPANDED_RESERVED = 56;
+// tl1508b 修①：状态行单行/两行的实测判定基准。单行名义高 ≈ 30px
+// （COMPOSER_RUN_STRIP_RESERVED 同源：padding-top 4 + min-height 24 + 行高余量）；
+// detail 层折到第二行后 ≈ 56px。实测 offsetHeight > 40（两值中点留裕量）即判定
+// 折行——与 meta 行折行判定同构（offsetHeight 实测，661px 教训：固定宽度阈值
+// 覆盖不了语言/字号/读数组合带来的内容宽差异）。jsdom offsetHeight 恒 0 → 判
+// 未折行（连同「展开即按折行预留」的悲观初值，jsdom 读数与首版逐字节一致）。
+const COMPOSER_RUN_STRIP_ONE_ROW_MAX_HEIGHT = 40;
 const COMPOSER_MAX_VIEWPORT_RATIO = 0.4;
 const COMPOSER_AUTO_RESERVED_HEIGHT = 58;
 // tl1508：meta 行（按钮行）折行判定与预留高度换算的实测基准。判定用实测
@@ -1123,9 +1132,15 @@ export function Composer({
   // offsetHeight 判定并挂 .composer-meta--tworow（第二行右对齐）；只驱动自由空隙
   // 分配，不回改条目宽度，无振荡面。
   const [metaTworow, setMetaTworow] = useState(false);
-  // tl1508 修②：「⋯ 工具」二级菜单开合（窄折叠的展开层）+ 状态行截断版展开层。
+  // tl1508 修②：「⋯ 工具」二级菜单开合（窄折叠的展开层）。tl1508b 修①：状态行
+  // 折叠/展开改持久化偏好（useComposerRunStripExpanded，localStorage 单键惰性
+  // 水合），刷新/重开保持用户选择；组件不再持有本地 useState。
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
-  const [runStripExpanded, setRunStripExpanded] = useState(false);
+  const runStripExpanded = useComposerRunStripExpanded();
+  // tl1508b 修①：detail 层与主行是否同排一行（实测 offsetHeight ≤ 单行上限）。
+  // 悲观初值 false＝先按「折两行」预留（宁多勿少：预留不足会让 textarea 压过
+  // 分割线——tl1333 机制；预留偏多只是留白），测量立刻修正，宽态仅首帧过备。
+  const [runStripInline, setRunStripInline] = useState(false);
   const [intentMenuOpen, setIntentMenuOpen] = useState(false);
   const [intentMenuClosing, setIntentMenuClosing] = useState(false);
   const [contentMenuOpen, setContentMenuOpen] = useState(false);
@@ -4394,6 +4409,19 @@ export function Composer({
     setMetaTworow((prev) => (prev === wrapped ? prev : wrapped));
   }, []);
 
+  // tl1508b 修①：状态行 detail 同排/折行实测（与 measureComposerMetaWrap 同构；
+  // 须先于上方共用 rAF 重测 effect 声明——该 effect 的依赖数组在渲染期取值）。
+  // strip 是条件渲染元素，观察者 effect 以 showRunStrip 为键挂载（下方）。
+  const composerRunStripRef = useRef<HTMLDivElement | null>(null);
+  const measureRunStripInline = useCallback(() => {
+    const strip = composerRunStripRef.current;
+    if (!strip) return;
+    // offsetHeight > 0 守卫：jsdom 恒 0 → 判未同排（保持悲观预留），真实浏览器
+    // 单行实测 ≈30px ≤ 40 上限 → 同排一行；折行 ≈56px > 40 → 第二行。
+    const inline = strip.offsetHeight > 0 && strip.offsetHeight <= COMPOSER_RUN_STRIP_ONE_ROW_MAX_HEIGHT;
+    setRunStripInline((prev) => (prev === inline ? prev : inline));
+  }, []);
+
   useLayoutEffect(() => {
     measureTextareaAutoHeight();
   }, [text, measureTextareaAutoHeight]);
@@ -4406,6 +4434,8 @@ export function Composer({
         frame = 0;
         measureTextareaAutoHeight();
         measureComposerMetaWrap();
+        // tl1508b 修①：窗口宽度变化（不经卡片观察者的路径）也重测状态行同排形态。
+        measureRunStripInline();
       });
     };
     window.addEventListener("resize", update);
@@ -4451,7 +4481,7 @@ export function Composer({
       metaObserver?.disconnect();
       sizeObserver?.disconnect();
     };
-  }, [composerHeight, measureTextareaAutoHeight, measureComposerMetaWrap]);
+  }, [composerHeight, measureTextareaAutoHeight, measureComposerMetaWrap, measureRunStripInline]);
 
   const saveComposerHeight = (height: number) => {
     saveLayoutSize("composerHeight", height, clampComposerHeight);
@@ -5141,11 +5171,19 @@ export function Composer({
   // throughput readout (user-reported regression). Following upstream
   // 196dd3bae, the running strip returns and renders the readings inline.
   const showRunStrip = Boolean((running && !suspendedByDecision) || retry || connecting || waitingPrompt || finishing || runtimeState.unknown || runtimeState.kind === "background_job" || runtimeState.kind === "cancelling");
-  // tl1508 修②：状态行不在场时收起展开层——下一轮状态行默认收起，不残留
-  // 上一轮的展开态（零信息轮 detail 为空，展开与否无感，但语义要归位）。
+  // tl1508b 修①：撤掉首版「状态行不在场即收起展开层」的自动归位——展开/折叠
+  // 现在是持久化用户偏好，跨轮次/跨会话保持正是本修的验收语义；下一轮状态行
+  // 按用户上次选择呈现，不再被强制折回。观察者只挂在场时的 strip 上（条件渲染
+  // 元素，effect 以 showRunStrip/runStripExpanded 为键重挂；RO 初次 observe 即
+  // 回调当前尺寸，开合切换与轮次起落都会重测一次）。
   useEffect(() => {
-    if (!showRunStrip) setRunStripExpanded(false);
-  }, [showRunStrip]);
+    const strip = composerRunStripRef.current;
+    if (!strip || typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(() => measureRunStripInline());
+    observer.observe(strip);
+    measureRunStripInline();
+    return () => observer.disconnect();
+  }, [showRunStrip, runStripExpanded, measureRunStripInline]);
   const effectiveComposerHeight = composerHeight === null
     ? null
     : resolveComposerContentSizing({
@@ -5158,9 +5196,11 @@ export function Composer({
     ? undefined
     : ({
         "--composer-height": `${effectiveComposerHeight}px`,
-        // tl1508：状态行截断版展开层也占卡高——展开时预留 30→56，resized 定高
-        // 卡不出现「展开明细压输入区」的二次重叠。
-        "--composer-run-strip-reserved": `${showRunStrip ? (runStripExpanded ? COMPOSER_RUN_STRIP_EXPANDED_RESERVED : COMPOSER_RUN_STRIP_RESERVED) : 0}px`,
+        // tl1508：状态行截断版展开层也占卡高。tl1508b 修①：预留随「实测是否
+        // 折两行」走——展开且宽（detail 同排一行）只按单行 30 预留（不再多让
+        // 26px 空档）；展开且窄（detail 折到第二行）按 56 预留。测量落地前的
+        // 悲观值=按折两行预留（宁多勿少，预留不足=tl1333 的压线机制）。
+        "--composer-run-strip-reserved": `${showRunStrip ? (runStripExpanded && !runStripInline ? COMPOSER_RUN_STRIP_EXPANDED_RESERVED : COMPOSER_RUN_STRIP_RESERVED) : 0}px`,
       } as CSSProperties);
   const textareaStyle = !composerResizing && textareaAutoHeight !== null
     ? ({ height: `${textareaAutoHeight}px`, overflowY: textareaAutoOverflow ? "auto" : "hidden" } as CSSProperties)
@@ -6050,15 +6090,15 @@ export function Composer({
           onDoubleClick={resetComposerHeight}
         />
         {(readStatusText || (showRunStrip && runStateText)) && (
-          <div className={`composer-run-strip${waitingPrompt ? " composer-run-strip--waiting" : ""}`}>
+          <div ref={composerRunStripRef} className={`composer-run-strip${waitingPrompt ? " composer-run-strip--waiting" : ""}`}>
             {!finishing && !runtimeState.unknown && <span className="composer-run-strip__dot" aria-hidden="true" />}
             <span className="composer-run-strip__text">{readStatusText || runStateText}</span>
-            {/* tl1508 修②：状态行截断版——inline readings（Q1 2026-10-04 恢复的
-                elapsed · tokens · tps）与工具/文件/检索汇总（任务1082）从主行
-                移入「⋯ N」展开层；主行恒一行（ellipsis 兜底），展开层独占第二
-                行（flex-basis:100%），resized 定高卡的层高差由
-                --composer-run-strip-reserved 抬升吸收。环弹层（ContextWindowRing
-                popover）对已结束轮的读数链路不变。 */}
+            {/* tl1508b 修①：状态行折叠版迭代——「⋯ N」开合是持久化用户偏好
+                （localStorage 单键，刷新/重开保持）；展开层不再强制独占第二行，
+                CSS 侧 flex-basis 100% 改为可同排 flex 项：宽态（实测 offsetHeight
+                ≤ 单行上限）读数与主行同排一行，真窄才整块折到第二行，resized
+                定高卡的层高差由 --composer-run-strip-reserved 按实测抬升吸收。
+                环弹层（ContextWindowRing popover）对已结束轮的读数链路不变。 */}
             {runStripDetailCount > 0 && (
               <button
                 type="button"
@@ -6066,7 +6106,14 @@ export function Composer({
                 aria-expanded={runStripExpanded}
                 aria-label={t("composer.runStripDetails")}
                 title={t("composer.runStripDetails")}
-                onClick={() => setRunStripExpanded((value) => !value)}
+                onClick={() => {
+                  // tl1508b 修①：折叠→展开瞬间先把实测态归位悲观（按折两行预留）
+                  // ——上一轮折态测得的「同排」对展开态不再可信；窄态展开不出现
+                  // 「预留不足一帧压线」（tl1333 机制），宽态多让的一帧留白由
+                  // 观察者重测立即修正。展开→折叠方向无需处理（预留恒单行值）。
+                  if (!runStripExpanded) setRunStripInline(false);
+                  setComposerRunStripExpanded(!runStripExpanded);
+                }}
               >
                 ⋯ {runStripDetailCount}
               </button>
