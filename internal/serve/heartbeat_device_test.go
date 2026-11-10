@@ -150,3 +150,67 @@ func TestRemoteDeviceHoldsWriteBlocksSubmit(t *testing.T) {
 		t.Fatal("lease must be gone after release")
 	}
 }
+
+// tl1532: device identity exemption — the live lease holder's own submit
+// carries its device identity and must not be refused by its own heartbeat,
+// while every other (or absent) identity keeps the task 36 Phase 2 409 and
+// the exemption dies with the heartbeat that justified it.
+
+func TestSubmitDeviceIdentityExemption(t *testing.T) {
+	bc := NewBroadcaster()
+	// serve_lock_test's blockingRunner keeps the admitted turn Running until
+	// cancelled, so every later submit deterministically reaches the
+	// device-exclusion guard (the busy-session 409 lives behind it and must
+	// never be the asserted code).
+	ctrl := control.New(control.Options{Runner: blockingRunner{}, Sink: bc})
+	s := New(ctrl, bc, config.ServeConfig{})
+	t.Cleanup(func() { ctrl.Cancel(); ctrl.Close() })
+
+	post := func(body, deviceID string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest("POST", "/submit", strings.NewReader(body))
+		if deviceID != "" {
+			req.Header.Set(deviceIDHeader, deviceID)
+		}
+		rec := httptest.NewRecorder()
+		s.submit(rec, req)
+		return rec
+	}
+	beat := func(t *testing.T, deviceID string) {
+		t.Helper()
+		req := httptest.NewRequest("POST", "/heartbeat", strings.NewReader(`{"name":"held","device_id":`+strconv.Quote(deviceID)+`}`))
+		rec := httptest.NewRecorder()
+		s.heartbeat(rec, req)
+		if rec.Code != 204 {
+			t.Fatalf("heartbeat status = %d, want 204", rec.Code)
+		}
+	}
+	beat(t, "gc-a")
+
+	// ① The holder's own submit (same identity as its live heartbeat) is
+	// exempt: 202, the turn is admitted (held open by blockingRunner).
+	if rec := post(`{"input":"hello"}`, "gc-a"); rec.Code != 202 {
+		t.Fatalf("holder's own submit = %d %q, want 202 (self exemption)", rec.Code, rec.Body.String())
+	}
+	// ② A foreign device identity (never beat) keeps the task 36 Phase 2
+	// exclusion.
+	if rec := post(`{"input":"x"}`, "gc-zz"); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
+		t.Fatalf("foreign-device submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
+	}
+	// ③ No identity header (legacy client) keeps the exclusion.
+	if rec := post(`{"input":"x"}`, ""); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
+		t.Fatalf("legacy no-header submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
+	}
+	// ④ The exemption dies with the heartbeat: gc-b joins and holds, then
+	// gc-a ages out — gc-a's identity no longer exempts its submits.
+	beat(t, "gc-b")
+	s.heartbeatMu.Lock()
+	if entry := s.heartbeats["gc-a"]; entry != nil {
+		entry.lastBeat = time.Now().Add(-2 * heartbeatExpiry)
+	}
+	s.heartbeatMu.Unlock()
+	s.releaseExpiredHeartbeats()
+	if rec := post(`{"input":"x"}`, "gc-a"); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
+		t.Fatalf("expired-holder submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
+	}
+}

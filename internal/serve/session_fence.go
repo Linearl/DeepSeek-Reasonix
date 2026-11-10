@@ -14,6 +14,7 @@ const (
 	sessionPathHeader           = "X-Reasonix-Session-Path"
 	expectedSessionPathHeader   = "X-Reasonix-Expected-Session-Path"
 	expectedModelSettingsHeader = "X-Reasonix-Expected-Model-Settings"
+	deviceIDHeader              = "X-Reasonix-Device-Id"
 	foregroundMutationMaxBody   = 8 << 20
 )
 

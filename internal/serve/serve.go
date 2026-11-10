@@ -8,6 +8,7 @@ package serve
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -877,6 +878,31 @@ func (s *Server) remoteDeviceHoldsWrite() (string, bool) {
 	return "", false
 }
 
+// deviceIdentityExempt reports whether the submit request carries the device
+// identity of a live heartbeat holder (tl1532): the holder's own submits must
+// not be refused by the holder's own heartbeat. The identity rides in
+// deviceIDHeader and is read before any body parsing, so this guard still
+// refuses before parsing anything; a missing or empty header (legacy
+// clients) is never exempt. The comparison is constant-time — this is a
+// security gate, not a lookup — and iterates every live device rather than
+// stopping at the first match (the holder named in the 409 is an arbitrary
+// live entry once more than one device is beating).
+func (s *Server) deviceIdentityExempt(r *http.Request) bool {
+	caller := strings.TrimSpace(r.Header.Get(deviceIDHeader))
+	if caller == "" {
+		return false
+	}
+	s.heartbeatMu.Lock()
+	defer s.heartbeatMu.Unlock()
+	exempt := false
+	for id, entry := range s.heartbeats {
+		if time.Since(entry.lastBeat) <= heartbeatExpiry && subtle.ConstantTimeCompare([]byte(caller), []byte(id)) == 1 {
+			exempt = true
+		}
+	}
+	return exempt
+}
+
 // releaseDevice is GC's explicit onStop release: drop the device lease now
 // instead of waiting for expiry (task 36 Phase 2).
 func (s *Server) releaseDevice(w http.ResponseWriter, r *http.Request) {
@@ -892,7 +918,12 @@ func (s *Server) releaseDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
-	if deviceID, held := s.remoteDeviceHoldsWrite(); held {
+	// tl1532: the holder's own heartbeats must not lock out the holder's own
+	// turns — a submit carrying the live lease holder's device identity
+	// (deviceIDHeader) is the holder itself and is exempt. Every other
+	// identity, and every client that sends no header (pre-tl1532 clients),
+	// keeps the task 36 Phase 2 exclusion below verbatim.
+	if deviceID, held := s.remoteDeviceHoldsWrite(); held && !s.deviceIdentityExempt(r) {
 		http.Error(w, "write authority held by remote device "+deviceID+"; the desktop is read-only until the device releases (task 36 device-level exclusion)", http.StatusConflict)
 		return
 	}
