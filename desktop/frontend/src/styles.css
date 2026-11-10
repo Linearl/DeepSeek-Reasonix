@@ -31860,6 +31860,36 @@ button.statusbar__mcp:focus-visible {
   line-height: 1.2;
 }
 
+/* tl1500: 会话指标卡折叠头——与 view-switch 同族的轻量点击件（token 全走
+   主题变量，七主题兼容）；只控制卡片本体显隐，默认展开，持久化见
+   lib/sessionMetricsFold.ts。 */
+.context-panel__fold {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.context-panel__fold:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+
+.context-panel__fold:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
 .context-panel__view-switch {
   flex: 0 0 auto;
   display: inline-flex;

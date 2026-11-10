@@ -1,6 +1,7 @@
 // ContextPanel shows the active tab's context gauge and token usage.
 // All visible text is routed through the i18n dictionary.
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { asArray } from "../lib/array";
 import { app } from "../lib/bridge";
 import { contextWindowPercentages, capacityPinLayout } from "../lib/contextWindow";
@@ -18,6 +19,8 @@ import type { Item } from "../lib/useController";
 import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate, compactionWindowOverride } from "../lib/contextPanelUtils";
 import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
 import { normalizeRecoveryLineageView } from "../lib/sessionRecoveryVersions";
+// tl1500: 会话指标卡折叠偏好（纯前端、localStorage 单键、默认展开）。
+import { setSessionMetricsCollapsed, useSessionMetricsCollapsed } from "../lib/sessionMetricsFold";
 export { contextSessionCache } from "../lib/contextSessionCache";
 const McpListLayers = lazy(() => import("./McpListLayers").then((module) => ({ default: module.McpListLayers })));
 interface ContextPanelProps {
@@ -431,6 +434,11 @@ export function ContextPanel({
   const { locale, t } = useI18n();
   const [info, setInfo] = useState<ContextPanelInfo | null>(null);
   const [analysisView, setAnalysisView] = useState<UsageAnalysisView>("source");
+  // tl1500: 会话指标卡折叠——默认展开（不改默认体验），状态持久化在
+  // lib/sessionMetricsFold.ts（localStorage 单键）。收起只摘卡片本体，
+  // 上方数据链（refresh/usage 流）照常。
+  const sessionMetricsPanelId = useId();
+  const sessionMetricsCollapsed = useSessionMetricsCollapsed();
   const refreshSeq = useRef(0);
   const lastRefreshTime = useRef(0);
   const usageRefreshKey = contextUsageRefreshKey(usage);
@@ -764,8 +772,24 @@ export function ContextPanel({
             <McpListLayers items={items} t={t} />
           </Suspense>
           <section className="context-panel__section context-panel__session-section">
-            <SectionHeading title={t("context.sessionMetrics")} />
-            <div className="context-panel__session-metrics">
+            <SectionHeading title={t("context.sessionMetrics")}>
+              {/* tl1500: 最小折叠头——概览页其他卡没有折叠先例，形态对齐
+                  StatusBarItemsEditor / 声音编辑器的 aria-expanded + chevron
+                  范式；文案复用 common.expand/common.collapse。 */}
+              <button
+                type="button"
+                className="context-panel__fold"
+                aria-expanded={!sessionMetricsCollapsed}
+                aria-controls={sessionMetricsPanelId}
+                aria-label={t(sessionMetricsCollapsed ? "common.expand" : "common.collapse")}
+                title={t(sessionMetricsCollapsed ? "common.expand" : "common.collapse")}
+                onClick={() => setSessionMetricsCollapsed(!sessionMetricsCollapsed)}
+              >
+                {sessionMetricsCollapsed ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronUp size={14} aria-hidden="true" />}
+              </button>
+            </SectionHeading>
+            {!sessionMetricsCollapsed && (
+            <div className="context-panel__session-metrics" id={sessionMetricsPanelId}>
               <div className="context-panel__summary-rows">
                 <MiniStat label={t("status.cacheAvgLabel")} value={formatCacheHitRate(sessionCacheHit, sessionCacheMiss)} tone={cacheHitTone(sessionCacheHit, sessionCacheMiss)} />
                 <MiniStat label={t("context.sessionCost")} value={sessionCostLabel} title={sessionRateBandTitle} badge={sessionRateBandBadge} />
@@ -776,6 +800,7 @@ export function ContextPanel({
                 {sessionInfoState?.recovery && <MiniStat label={t("recovery.badge")} value={t(sessionInfoState.recovery.labelKey)} title={sessionInfoState.recovery.role} />}
               </div>
             </div>
+            )}
           </section>
           <section className="context-panel__section context-panel__analysis">
             <SectionHeading title={t("context.usageAnalysis")}>
