@@ -6558,6 +6558,11 @@ export const en = {
   // (keys appended at EOF)
   "composer.toolsMenu": "Tools",
   "composer.runStripDetails": "Run details",
+  // tl1500 status bar session-metric chips (keys appended at EOF)
+  "status.requestsLabel": "Requests",
+  "status.requestsTitle": "Session requests — same count as the overview's session metrics card",
+  "status.elapsedLabel": "Elapsed",
+  "status.elapsedTitle": "Session elapsed time — same readout as the overview's session metrics card",
 
 };
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, PieChart, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap, CircleAlert } from "lucide-react";
+import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, PieChart, Puzzle, RefreshCw, Repeat, RotateCw, Server, Settings, Square, Timer, Unplug, Wallet, Zap, CircleAlert } from "lucide-react";
 import { labFlagEnabled } from "../lib/labFlags";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { McpFailureAdvicePopover } from "./McpFailureAdvicePopover";
@@ -10,6 +10,8 @@ import { useI18n, type DictKey, type Translator } from "../lib/i18n";
 import { summarizeMcpServers, type McpStatusSummary } from "../lib/mcpStatus";
 import { formatMoneyLocalized } from "../lib/money";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
+import { useSessionMetricsSnapshot, type SessionMetricsSnapshot } from "../lib/sessionMetricsSnapshot";
+import { formatDurationLabel } from "../lib/durationFormat";
 import { appendRateBand, rateBandLabel } from "../lib/costRateBand";
 import { isRemoteDegradedWarning, isRemoteHostKeyMismatch, isRemoteTerminalFailure, remoteConnectionErrorSummaryKey } from "../lib/remoteErrors";
 import { planFiveHourExhausted, planUsageTone, planWindowLabelKey } from "../lib/planUsage";
@@ -79,6 +81,18 @@ function formatTps(tps?: number | null, estimated = false): string | null {
   const prefix = estimated ? "≈" : "";
   if (tps < 1) return `${prefix}<1 t/s`;
   return `${prefix}${Math.round(tps)} t/s`;
+}
+
+// tl1500: session elapsed for the status bar chip — same face as the overview
+// card's fmtDuration (components/ContextPanel.tsx): ms<=0 stays "-", seconds
+// quantize through lib/durationFormat so both surfaces render identical bands.
+function formatSessionElapsed(ms: number | undefined, t: Translator): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "-";
+  return formatDurationLabel(Math.max(1, Math.round(ms / 1_000)), t);
+}
+
+function formatSessionRequests(count: number | undefined): string {
+  return typeof count === "number" && Number.isFinite(count) && count > 0 ? String(count) : "-";
 }
 
 const STATUS_SOURCE_ORDER = ["executor", "planner", "subagent", "compaction", "classifier", "title"];
@@ -205,6 +219,7 @@ export function StatusBar({
   onRevealRuntime,
   extensionStatuses = [],
   tabId,
+  sessionMetrics: sessionMetricsOverride,
 }: {
   context: ContextInfo;
   usage?: WireUsage;
@@ -252,6 +267,11 @@ export function StatusBar({
   // Task 666: the visible tab — the plan usage poll targets its current
   // model so the quota shown always belongs to the provider actually in use.
   tabId?: string;
+  // tl1500: pre-fetched snapshot override for the session_requests/session_elapsed
+  // chips. Present = the chips render from it and no ContextPanel read is made
+  // (tests inject it; a future App-side feed can too). Absent = the gated
+  // self-fetch in lib/sessionMetricsSnapshot applies.
+  sessionMetrics?: SessionMetricsSnapshot;
 }) {
   const { locale, t } = useI18n();
   const pct = context.window > 0 ? contextWindowPercentages(context.used, context.window).raw : null;
@@ -332,6 +352,19 @@ export function StatusBar({
   const hasCacheTokens = typeof cacheHit === "number" || typeof cacheMiss === "number";
   const metricLabelStyle = labelStyle === "text" ? "text" : "icon";
   const visibleItems = normalizeStatusBarItems(items);
+  // tl1500: the two session-metric chips read the SAME ContextPanel snapshot
+  // as the right-dock overview card (identical RPC fields, no derived 口径).
+  // The gated fetch runs only while one of them is visible and no snapshot
+  // was injected — hidden chips cost zero IPC.
+  const sessionMetricsVisible = visibleItems.includes("session_requests") || visibleItems.includes("session_elapsed");
+  const liveSessionMetrics = useSessionMetricsSnapshot({
+    tabId,
+    enabled: sessionMetricsVisible && sessionMetricsOverride === undefined,
+    activity: context,
+  });
+  const sessionMetrics = sessionMetricsOverride ?? liveSessionMetrics;
+  const sessionRequestsLabel = formatSessionRequests(sessionMetrics?.requestCount);
+  const sessionElapsedLabel = formatSessionElapsed(sessionMetrics?.elapsedMs, t);
   // Task 559: the MCP chip renders only while the fleet is not fully settled.
   // The null must happen at this record level — an element is always truthy, so
   // a null returned INSIDE the component would still leave an empty wrapper.
@@ -493,6 +526,25 @@ export function StatusBar({
       </Tooltip>
     ),
     mcp: mcpSummary.state === "hidden" ? null : <McpStatusBarItem summary={mcpSummary} onOpen={onOpenMcp} />,
+    // tl1500: 对话请求数 / 运行时间 — same numbers as the overview card's
+    // 会话指标 card; empty reads stay "-" (stat__value--empty) like the
+    // other telemetry chips.
+    session_requests: (
+      <Tooltip label={t("status.requestsTitle")} className="statusbar__metric statusbar__metric--requests">
+        <span className="stat statusbar__requests">
+          <MetricLabel style={metricLabelStyle} icon={<Repeat size={12} />} label={t("status.requestsLabel")} />
+          <b className={sessionRequestsLabel === "-" ? "stat__value--empty" : undefined}>{sessionRequestsLabel}</b>
+        </span>
+      </Tooltip>
+    ),
+    session_elapsed: (
+      <Tooltip label={t("status.elapsedTitle")} className="statusbar__metric statusbar__metric--elapsed">
+        <span className="stat statusbar__elapsed">
+          <MetricLabel style={metricLabelStyle} icon={<Timer size={12} />} label={t("status.elapsedLabel")} />
+          <b className={sessionElapsedLabel === "-" ? "stat__value--empty" : undefined}>{sessionElapsedLabel}</b>
+        </span>
+      </Tooltip>
+    ),
   };
   const renderedItems = visibleItems
     .map((id) => ({ id, node: itemRenderers[id] }))

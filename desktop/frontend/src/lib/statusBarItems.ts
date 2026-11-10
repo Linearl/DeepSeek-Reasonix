@@ -18,6 +18,13 @@ export const STATUS_BAR_ITEM_IDS = [
   // preference lists keep their order; the chip itself stays hidden while the
   // MCP fleet is fully settled, so a default-on entry adds no standing noise.
   "mcp",
+  // tl1500: 对话请求数 / 运行时间 join the managed items — same append contract
+  // as the task-559 entry (saved preference lists keep their order; defaults
+  // follow the session_tokens/session_turns kind, i.e. default-visible). Both
+  // chips read the SAME ContextPanel snapshot the right-dock overview card
+  // shows, so bar and card can never disagree (see lib/sessionMetricsSnapshot).
+  "session_requests",
+  "session_elapsed",
 ] as const;
 
 export type StatusBarItemId = typeof STATUS_BAR_ITEM_IDS[number];
