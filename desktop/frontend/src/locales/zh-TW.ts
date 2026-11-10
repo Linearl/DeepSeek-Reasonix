@@ -2698,6 +2698,8 @@ export const zhTW: Record<DictKey, string> = {
 "subagentPanel.detailTitle": "子代理詳情",
 "subagentPanel.detailSummary": "結果摘要",
 "subagentPanel.detailReadOnly": "子代理詳情為唯讀記錄，不提供輸入",
+// tl1537：執行中詳情已寫入磁碟過程的即時跟進承諾（與 workflowPanel.detail.processLive 同款）。
+"subagentPanel.liveFollow": "子代理執行中：已寫入磁碟的過程即時可讀，新寫入自動跟進。",
 "subagentPanel.detailNoPreview": "暫無預覽內容：重啟後僅保留名稱與狀態",
 // tl1387 二輪: running entries never read the restart copy above — this is
 // their honest stand-in until the live tool stream (or the pending note)
@@ -4591,8 +4593,8 @@ export const zhTW: Record<DictKey, string> = {
   "composer.capsuleHistoryLoading": "正在讀取歷史…",
   "composer.capsuleHistoryEmpty": "該歷史沒有可顯示的內容",
   "composer.capsuleHistoryFailed": "讀取子代理歷史失敗。",
-  // tl1202：執行中子代理的轉錄僅在結束後落盤——詳情給佔位語義而非失敗紅字；讀取失敗可手動重試。
-  "composer.capsuleHistoryPending": "子代理執行中，轉錄將在其結束後可讀。",
+  // tl1202 原語義=結束後才可讀；tl1537 起普通派發執行中週期快照，此鍵只剩「首快照未落」窗口——佔位語義而非失敗紅字；讀取失敗可手動重試。
+  "composer.capsuleHistoryPending": "子代理執行中，工作過程轉錄產生中，即將可讀。",
   "composer.capsuleHistoryRetry": "重試",
   "composer.capsuleStatusRunning": "執行中",
   "composer.capsuleStatusCompleted": "已完成",

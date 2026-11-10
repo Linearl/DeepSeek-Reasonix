@@ -1089,9 +1089,8 @@ export const en = {
   "composer.capsuleHistoryLoading": "Loading transcript…",
   "composer.capsuleHistoryEmpty": "Nothing to show in this transcript",
   "composer.capsuleHistoryFailed": "Failed to load the sub-agent transcript.",
-  // tl1202: a running sub-agent's transcript lands only on completion — show a
-  // pending note instead of a failure red note; a failed read is retryable.
-  "composer.capsuleHistoryPending": "The sub-agent is still running; its transcript becomes readable once it finishes.",
+  // tl1202 originally meant "readable only after completion"; since tl1537 ordinary dispatches snapshot mid-run, so this key only covers the window before the first snapshot — a pending note instead of a failure red note; a failed read is retryable.
+  "composer.capsuleHistoryPending": "The sub-agent is running; its work transcript is being written and will appear shortly.",
   "composer.capsuleHistoryRetry": "Retry",
   "composer.capsuleStatusRunning": "running",
   "composer.capsuleStatusCompleted": "completed",
@@ -3370,6 +3369,8 @@ export const en = {
 "subagentPanel.detailTitle": "Subagent details",
 "subagentPanel.detailSummary": "Result summary",
 "subagentPanel.detailReadOnly": "Subagent details are a read-only record; there is no input.",
+// tl1537: live-follow promise for the running detail's on-disk process stream (same shape as workflowPanel.detail.processLive).
+"subagentPanel.liveFollow": "Sub-agent is running — work already written to disk shows here; new writes are followed automatically.",
 "subagentPanel.detailNoPreview": "No preview content: only the name and status survive a restart.",
 // tl1387 二轮: running entries never read the restart copy above — this is
 // their honest stand-in until the live tool stream (or the pending note)
