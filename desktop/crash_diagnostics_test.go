@@ -63,7 +63,10 @@ func TestWebView2NativeFailureClassification(t *testing.T) {
 		outcome  string
 		recovery string
 	}{
-		{name: "browser fatal", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryNotApplicable},
+		// tl1530 C 档: kind=0 always gets the restart flow (a browser process
+		// cannot be reloaded in place), so the report names it "restart"
+		// instead of the misleading not_applicable.
+		{name: "browser fatal", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryBrowserRestart},
 		{name: "renderer recovered", event: webView2NativeEvent{Kind: 1, Recovery: webView2RecoverySucceeded}, kind: "performance", outcome: "recovered", recovery: webView2RecoverySucceeded},
 		{name: "renderer recovery failed", event: webView2NativeEvent{Kind: 2, Recovery: webView2RecoveryFailed}, kind: "exception", outcome: "recovery_failed", recovery: webView2RecoveryFailed},
 		{name: "gpu degraded", event: webView2NativeEvent{Kind: 6}, kind: "performance", outcome: "degraded", recovery: webView2RecoveryNotApplicable},
@@ -72,9 +75,9 @@ func TestWebView2NativeFailureClassification(t *testing.T) {
 		// system shutdown/logoff or an external killer, not a WebView2 crash.
 		// Task 1041: these must stay out of the crash bucket so real browser
 		// crashes are not diluted.
-		{name: "browser terminated externally", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 0, ExitCode: exitCodeTerminatedExternally, ExitCodeAvailable: true}, kind: "performance", outcome: "terminated_externally", recovery: webView2RecoveryNotApplicable},
-		{name: "browser access violation", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3, ExitCode: -1073741819, ExitCodeAvailable: true}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryNotApplicable},
-		{name: "browser stack buffer overrun", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3, ExitCode: -1073740791, ExitCodeAvailable: true}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryNotApplicable},
+		{name: "browser terminated externally", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 0, ExitCode: exitCodeTerminatedExternally, ExitCodeAvailable: true}, kind: "performance", outcome: "terminated_externally", recovery: webView2RecoveryBrowserRestart},
+		{name: "browser access violation", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3, ExitCode: -1073741819, ExitCodeAvailable: true}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryBrowserRestart},
+		{name: "browser stack buffer overrun", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3, ExitCode: -1073740791, ExitCodeAvailable: true}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryBrowserRestart},
 		// Renderer terminations never carry the browser-kill code's meaning:
 		// the helper only reclassifies browser (kind 0) events.
 		{name: "renderer with external code stays classified", event: webView2NativeEvent{Kind: 1, ExitCode: exitCodeTerminatedExternally, ExitCodeAvailable: true, Recovery: webView2RecoverySucceeded}, kind: "performance", outcome: "recovered", recovery: webView2RecoverySucceeded},

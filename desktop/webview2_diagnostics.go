@@ -15,6 +15,14 @@ const (
 	webView2RecoveryFailed        = "reload_failed"
 	webView2RecoveryPending       = "reload_navigation_succeeded"
 	webView2RecoverySuppressed    = "reload_suppressed"
+	// webView2RecoveryBrowserRestart names the recovery a browser-process
+	// failure actually gets: the state machine answers kind 0 with the
+	// restart flow (webview2_recovery.go), because a browser process cannot
+	// be reloaded in place. tl1530 C 档: these reports used to say
+	// not_applicable — the renderer reload vocabulary leaking onto a kind it
+	// does not describe — which read as "nothing was done about this failure"
+	// while the host was tearing down for a relaunch.
+	webView2RecoveryBrowserRestart = "restart"
 
 	// exitCodeTerminatedExternally is Windows' DBG_TERMINATE_PROCESS: the
 	// process was force-terminated by TerminateProcess (session shutdown,
@@ -170,6 +178,14 @@ func webView2NativeFailureReport(event webView2NativeEvent, runtimeVersion strin
 	kind := webView2ProcessKindBucket(event.Kind)
 	reason := webView2ProcessReasonBucket(event.Reason, event.ReasonAvailable)
 	recovery := normalizeWebView2Recovery(event.Recovery)
+	if event.Kind == 0 {
+		// A browser-process exit has no in-place recovery: the state machine's
+		// answer is always the restart flow (suppressed only while the host is
+		// already exiting, which the recovery journal records separately).
+		// tl1530 C 档: report what actually happens instead of the renderer
+		// reload vocabulary's not_applicable.
+		recovery = webView2RecoveryBrowserRestart
+	}
 	runtimeVersion = sanitizeCrashField(runtimeVersion, 128)
 	if runtimeVersion == "" {
 		runtimeVersion = "unknown"

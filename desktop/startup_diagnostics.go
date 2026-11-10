@@ -55,7 +55,19 @@ func (a *App) recordPreviousRunDiagnostics() {
 	// Task 1002 并集（847 家族新形态）：非直接前任留下的记录不算本次「上次运行」
 	// 证据，单独退役计数（staleRetired）。归属判定（1002）与处置动作（计划退出
 	// 读后即清、异常相位写报告）正交，见下方循环内的前置分支。
-	updateRestart, cleanShutdown, abnormalPhase := 0, 0, 0
+	//
+	// Task tl1530 (issue #85): a WebView2-recovery relaunch is also a PLANNED
+	// exit — requestRestart stamps webview2_restarting and appends the
+	// journal's auto_restart line in the same call before quitting, and the
+	// fatal browser crash report that triggered the recovery was already
+	// written upstream (the native observer persists it before the restart
+	// decision runs), so the alternative sink ALWAYS exists. A fresh
+	// auto_restart line from the record's own PID vouches the residue — the
+	// update marker's PID-self-certification + fresh-window shape — and the
+	// boot no longer writes a second, "abnormal" report for one real fault.
+	// The vouch is phase-gated to webview2_restarting: wedged/unknown have no
+	// other sink and keep reporting (task 1018-fix2 stands).
+	updateRestart, cleanShutdown, abnormalPhase, webView2Restart := 0, 0, 0, 0
 	staleRetired := 0
 	for _, lifecycle := range a.lifecycle.previousRuns {
 		disposition := "abnormal_phase"
@@ -63,6 +75,9 @@ func (a *App) recordPreviousRunDiagnostics() {
 		case updateRestartMarkerFreshForLifecycle(lifecycle.PID):
 			disposition = "update_restart"
 			updateRestart++
+		case webView2RestartingResidueVouched(lifecycle):
+			disposition = "webview2_restart"
+			webView2Restart++
 		case lifecycleNoiseBenign(lifecycle.Phase):
 			disposition = "clean_shutdown"
 			cleanShutdown++
@@ -103,6 +118,8 @@ func (a *App) recordPreviousRunDiagnostics() {
 			switch disposition {
 			case "update_restart":
 				m.inc("desktop_exit_phase", "update_restart_suppressed")
+			case "webview2_restart":
+				m.inc("desktop_exit_phase", "webview2_restart_suppressed")
 			case "clean_shutdown":
 				if a.lifecycle.noiseGate {
 					m.inc("desktop_exit_phase", "noise_gate_suppressed")
@@ -113,9 +130,10 @@ func (a *App) recordPreviousRunDiagnostics() {
 			}
 		}
 	}
-	if total := updateRestart + cleanShutdown + abnormalPhase; total > 0 {
+	if total := updateRestart + cleanShutdown + abnormalPhase + webView2Restart; total > 0 {
 		slog.Info("desktop: lifecycle residue dispositioned",
 			"total", total, "update_restart_suppressed", updateRestart,
+			"webview2_restart_suppressed", webView2Restart,
 			"clean_shutdown", cleanShutdown, "abnormal_phase_reported", abnormalPhase)
 		if m := a.metrics.Load(); m != nil {
 			m.persist()
@@ -163,6 +181,20 @@ func lifecycleNoiseBenign(phase string) bool {
 		return true
 	}
 	return false
+}
+
+// webView2RestartingResidueVouched reports whether a webview2_restarting
+// residue is a planned recovery relaunch (tl1530): the phase gate plus the
+// journal vouch live together here so the exemption's full shape is visible
+// at the disposition switch, beside the other planned-exit cases. The phase
+// gate keeps the vouch from leaking onto any other phase — wedged/unknown
+// residue keeps its report even when a fresh journal line from the same PID
+// exists (a relaunch attempt is not a licence for the deaths that follow).
+func webView2RestartingResidueVouched(lifecycle desktopLifecycleObservation) bool {
+	if !strings.EqualFold(strings.TrimSpace(lifecycle.Phase), webview2RestartingPhase) {
+		return false
+	}
+	return webView2RestartJournalFreshForLifecycle(lifecycle.PID)
 }
 
 func previousRunReport(previous repair.PreviousRunObservation) crashReport {

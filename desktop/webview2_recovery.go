@@ -24,6 +24,11 @@ const (
 	webView2ReadyTimeout          = 10 * time.Second
 	webView2RestartGuardWindow    = 5 * time.Minute
 	webView2GuidanceRetention     = 24 * time.Hour
+	// webview2RestartingPhase is the lifecycle phase requestRestart stamps
+	// right before tearing down for the relaunch — the planned-exit evidence
+	// the next boot's disposition switch vouches with the journal's
+	// auto_restart line (tl1530).
+	webview2RestartingPhase = "webview2_restarting"
 )
 
 type webView2RecoveryPhase string
@@ -106,6 +111,13 @@ type webView2RecoveryJournalRecord struct {
 	Stage         string `json:"stage"`
 	Reason        string `json:"reason,omitempty"`
 	Version       string `json:"version,omitempty"`
+	// PID is the writer's own process id (tl1530). The journal is append-only
+	// history shared across process generations, so a residue vouch must pin
+	// the auto_restart line to its author — a record from any other PID is
+	// someone else's restart and never vouches (task 847's PID
+	// self-certification shape). Zero on pre-tl1530 records; those never
+	// vouch (fail-closed keeps reporting).
+	PID int `json:"pid,omitempty"`
 }
 
 type webView2RecoveryJournal struct {
@@ -133,6 +145,7 @@ func (j webView2RecoveryJournal) append(stage, reason string) error {
 		Stage:         stage,
 		Reason:        sanitizeCrashField(reason, 255),
 		Version:       sanitizeCrashField(version, 64),
+		PID:           os.Getpid(),
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
@@ -190,6 +203,49 @@ func (j webView2RecoveryJournal) automaticRestartAllowed(now time.Time) (bool, e
 		return now.Sub(at) >= webView2RestartGuardWindow, nil
 	}
 	return true, nil
+}
+
+// webView2RestartVouchWindow bounds how long after the planned relaunch an
+// auto_restart line may still vouch for a webview2_restarting lifecycle
+// record (tl1530). The launcher waits the old PID at most 90s and the
+// successor boots well inside a minute, so a planned handoff lands moments
+// after the line; ten minutes (the update-restart marker's window) leaves
+// slow-disk margin without ever letting a stale failed-relaunch line excuse a
+// later launch's evidence.
+const webView2RestartVouchWindow = 10 * time.Minute
+
+// webView2RestartJournalFreshForLifecycle reports whether the recovery
+// journal proves the dead PID's webview2_restarting record is a PLANNED exit
+// (tl1530, issue #85): the dying process writes the phase mark and the
+// auto_restart line inside one requestRestart call, so a fresh line from
+// that exact PID vouches the residue the same way the update-restart marker
+// vouches an update handoff (task 847's PID self-certification + fresh
+// window). Read-only by design: the journal is append-only history with no
+// consume-once semantics to disturb. Fail-closed everywhere — a missing,
+// unreadable, or pre-tl1530 (PID-less) line never vouches, and the residue
+// keeps reporting.
+func webView2RestartJournalFreshForLifecycle(deadPID int) bool {
+	if deadPID <= 0 {
+		return false
+	}
+	records, err := newWebView2RecoveryJournal().records()
+	if err != nil {
+		return false
+	}
+	windowStart := time.Now().Add(-webView2RestartVouchWindow)
+	for _, record := range records {
+		if record.Stage != "auto_restart" || record.PID != deadPID {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339Nano, record.At)
+		if err != nil {
+			continue
+		}
+		if at.After(windowStart) {
+			return true
+		}
+	}
+	return false
 }
 
 func (j webView2RecoveryJournal) pendingGuidance(now time.Time) (bool, error) {
@@ -316,7 +372,7 @@ func (c *webView2RecoveryCoordinator) requestRestart(reason string) {
 		if c.app != nil {
 			c.app.saveWindowStateSync()
 			c.app.snapshotAllTabs()
-			c.app.lifecycle.tracker.markAsync("webview2_restarting")
+			c.app.lifecycle.tracker.markAsync(webview2RestartingPhase)
 		}
 		if err := c.journal.append("auto_restart", reason); err != nil {
 			slog.Warn("desktop: append WebView2 restart journal", "err", err)
