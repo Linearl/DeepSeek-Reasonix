@@ -41101,6 +41101,13 @@ button.statusbar__mcp:focus-visible {
   text-align: left;
 }
 .rc-maintable__head th.rc-num { text-align: right; }
+/* tl1524: 正文数值列的右对齐必须带 .rc-maintable 前缀(0,2,1)——表同时挂
+   旧块 rc-versions__table(RecoveryCopiesSection 的 table 双类名),旧块
+   `.rc-versions__table td { text-align: left }`(0,1,1)按特异性压过裸
+   `.rc-num { text-align: right }`(0,1,0),形态=表头右对齐/数值左对齐
+   (用户截图的列头内容错位面)。CSS 特异性覆盖坑判例:同属性两规则胜负看
+   特异性与源序,与类名新旧/书写意图无关。 */
+.rc-maintable td.rc-num { text-align: right; }
 .rc-maintable__head th.rc-col-ops { text-align: right; }
 .rc-maintable th.rc-detail__hcheck { width: 30px; }
 .rc-maintable th.rc-col-kind { width: 76px; }

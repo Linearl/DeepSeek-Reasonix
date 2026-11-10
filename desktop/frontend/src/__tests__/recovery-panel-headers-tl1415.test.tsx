@@ -82,6 +82,18 @@ console.log("\nrecovery panel header/hover contract (tl1415 + tl1415b + tl1415b-
   ok(!/(^|[;\n])opacity:\s*0?\.72/.test(headBlocks), "① the header row no longer dims via row-level opacity");
 }
 
+// tl1524 数值列头/内容严格对齐:表挂双类名(rc-versions__table rc-maintable),
+// 旧块 `.rc-versions__table td { text-align: left }`(特异性 0,1,1)按特异性压过
+// 裸 `.rc-num { text-align: right }`(0,1,0)——CSS 特异性覆盖坑(同属性两规则
+// 胜负看特异性,与书写意图无关),形态=表头右对齐/数值左对齐错位。正文右对齐
+// 必须走带前缀的 0,2,1 规则,与表头覆写同形态;两条任一缺失即回潮。
+{
+  const headNumBlocks = selectorBlocks(styles, ".rc-maintable__head th.rc-num").join("\n");
+  ok(/text-align:\s*right/.test(headNumBlocks), "tl1524 the numeric column headers right-align");
+  const bodyNumBlocks = selectorBlocks(styles, ".rc-maintable td.rc-num").join("\n");
+  ok(/text-align:\s*right/.test(bodyNumBlocks), "tl1524 numeric body cells right-align via the 0,2,1 scoped rule (旧块压裸类判例)");
+}
+
 // A(点1) 预览行 3 行截断:rc-clip3 上位,rc-clip2 退役。
 {
   const clip3Blocks = selectorBlocks(styles, ".rc-clip3").join("\n");
