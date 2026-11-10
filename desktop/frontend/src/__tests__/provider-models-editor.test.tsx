@@ -138,30 +138,34 @@ assert.deepEqual(provider.models, ["existing", "manual", "remote"]);
 // changes 计数：添加手动模型 + 应用 existing 弹窗 + 发现添加 = 3 次 onChange。
 assert.equal(changes, 3);
 
-// tl 1053 验收：弹窗内 effort 编辑区——segmented 预设（EFFORT_PRESETS 渲染
-// 契约：none/low/medium/high 四档）+ 自定义等级输入（大小写/空白归一，永不存
-// auto）+ 已存词表预选 + apply 落 override.supportedEfforts（default 仍在
-// 词表内则保留）。
+// tl 1053 验收（tl1538 扩档）：弹窗内 effort 编辑区——segmented 预设
+// （EFFORT_PRESETS 渲染契约：none/minimal/low/medium/high/xhigh/max 七档，
+// OpenAI/Anthropic 两家官方词表并集）+ 自定义等级输入（大小写/空白归一，永
+// 不存 auto）+ 已存词表预选 + apply 落 override.supportedEfforts（default 仍
+// 在词表内则保留）。
 await act(async () => { optionsButton.click(); });
 for (let i = 0; i < 150 && !dialog(); i++) await new Promise((r) => setTimeout(r, 20));
 assert.ok(dialog(), "reopen the unified dialog for the effort editor");
 const segButtons = Array.from(dialog()!.querySelectorAll<HTMLButtonElement>(".provider-add-segmented .provider-add-segmented__item"));
-assert.deepEqual(segButtons.map((b) => b.textContent?.trim()), ["none", "low", "medium", "high"], "EFFORT_PRESETS contract: four segmented levels in the dialog");
+assert.deepEqual(segButtons.map((b) => b.textContent?.trim()), ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "EFFORT_PRESETS contract: the seven union tiers in the dialog (tl1538)");
 const highButton = segButtons.find((b) => b.textContent?.trim() === "high")!;
 assert.equal(highButton.getAttribute("aria-selected"), "true", "stored vocabulary preselects its levels");
 assert.ok(dialog()!.textContent?.includes("Custom levels — this model declares its own vocabulary."), "declared-vocabulary hint when a list is stored");
 const lowButton = segButtons.find((b) => b.textContent?.trim() === "low")!;
 await act(async () => lowButton.click());
 assert.equal(lowButton.getAttribute("aria-selected"), "true", "toggling a preset selects it");
+const xhighButton = segButtons.find((b) => b.textContent?.trim() === "xhigh")!;
+await act(async () => xhighButton.click());
+assert.equal(xhighButton.getAttribute("aria-selected"), "true", "tl1538: xhigh is an honest preset tier, toggleable like the rest");
 const customInput = dialog()!.querySelector<HTMLInputElement>('input[placeholder="Custom level (press Enter)"]')!;
 assert.ok(customInput, "custom effort level input present");
-await fill(customInput, "  XHigh  ");
+await fill(customInput, "  Ultra  ");
 await act(async () => customInput.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
-assert.ok(Array.from(dialog()!.querySelectorAll("label.set-check")).find((label) => label.textContent?.trim() === "xhigh"), "custom level normalized (lowercase/trim) and listed");
+assert.ok(Array.from(dialog()!.querySelectorAll("label.set-check")).find((label) => label.textContent?.trim() === "ultra"), "custom level normalized (lowercase/trim) and listed");
 assert.equal(Array.from(dialog()!.querySelectorAll("label.set-check")).some((label) => label.textContent?.trim() === "auto"), false, "auto is never stored as a level");
 await submit();
 const existingOverride = provider.modelOverrides?.find((m) => m.model === "existing");
-assert.deepEqual([...(existingOverride?.supportedEfforts ?? [])].sort(), ["high", "low", "xhigh"], "applied vocabulary lands on the override");
+assert.deepEqual([...(existingOverride?.supportedEfforts ?? [])].sort(), ["high", "low", "ultra", "xhigh"], "applied vocabulary lands on the override");
 assert.equal(existingOverride?.defaultEffort, "high", "in-vocabulary default survives the apply");
 // 空词表模型（manual 无声明、连接也无词表）→ 无预选 + 「未声明」提示。
 const manualRowButton = Array.from(document.querySelectorAll<HTMLButtonElement>('button[aria-label="Model settings: manual"]'))[0];

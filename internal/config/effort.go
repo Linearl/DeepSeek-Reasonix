@@ -620,8 +620,23 @@ func deepSeekSKU(e *ProviderEntry) string {
 	return m
 }
 
+// openAIEffortCapability is the config-layer OpenAI protocol default: the union
+// of the vendor's documented reasoning_effort vocabularies across model
+// generations (tl1538). The per-generation boundaries, for reference only —
+// this menu is a declaration vocabulary, not a per-model guarantee:
+//   - GPT-5.1 and newer: none|low|medium|high; "none" is the generation's
+//     default and replaced the old "minimal" spelling.
+//   - GPT-5 (older generation): minimal|low|medium|high — "minimal" survives
+//     here so GPT-5-era declarations stay expressible.
+//   - "xhigh" is the ceiling of generations before GPT-5.6; "max" first
+//     appears on GPT-5.6 and newer.
+//
+// A model that does not implement a level must not have it offered: narrow it
+// with the per-model supported_efforts declaration (missing tier = not
+// listed), the same mechanism every other family uses. "auto" stays the
+// composer-only alias for "send nothing" and keeps its existing semantics.
 func openAIEffortCapability() EffortCapability {
-	return EffortCapability{Supported: true, Levels: []string{"auto", "low", "medium", "high"}, Default: "auto"}
+	return EffortCapability{Supported: true, Levels: []string{"auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"}, Default: "auto"}
 }
 
 func glmEffortCapability() EffortCapability {

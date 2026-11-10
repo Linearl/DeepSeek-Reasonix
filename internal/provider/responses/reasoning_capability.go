@@ -15,7 +15,12 @@ func ReasoningForConfig(cfg provider.Config) provider.ReasoningCapability {
 		cap = provider.ReasoningOptions("", "none", "low", "medium", "high")
 	default:
 		if protocol == "openai" {
-			cap = provider.ReasoningOptions("", "low", "medium", "high")
+			// tl1538: mirror internal/config's openAIEffortCapability — the
+			// documented union across OpenAI's model generations (none is the
+			// GPT-5.1+ default, minimal the GPT-5-era spelling, xhigh/max the
+			// pre-5.6 / 5.6+ ceilings). Per-model narrowing stays with
+			// supported_efforts declarations.
+			cap = provider.ReasoningOptions("", "none", "minimal", "low", "medium", "high", "xhigh", "max")
 		}
 	}
 	return provider.DeclaredReasoning(cfg, cap)

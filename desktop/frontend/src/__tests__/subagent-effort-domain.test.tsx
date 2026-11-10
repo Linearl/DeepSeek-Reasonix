@@ -14,7 +14,9 @@
 //  ⑤ The default/inherited state renders the auto option and no hint;
 //  ⑥ A builtin subagent row's effort picker renders the SkillView domain
 //     (folding applied), and the profile form re-queries EffortDomainForRef
-//     as the picked model changes (inherit chain → explicit model with max).
+//     as the picked model changes (inherit chain → explicit model with max);
+//  ⑦ tl1538: the no-domain static fallback offers the seven honest union
+//     presets and displays a stored tier verbatim (no identity → no fold).
 
 import assert from "node:assert/strict";
 import { installDom, flush, waitFor } from "./capabilities-test-helpers";
@@ -238,6 +240,53 @@ const DEEPSEEK_DOMAIN = ["auto", "disabled", "low", "high", "max"];
   } else {
     ok(true, "new-profile entry not found in this surface; form re-query covered by the row assertion");
   }
+}
+
+// ── ⑧ tl1538: the no-domain fallback offers the seven honest presets and ────
+// displays a stored tier verbatim. Without a domain there is no identity to
+// fold by, and since tl1538 minimal/xhigh/max are honest presets themselves —
+// folding a stored xhigh onto "high" would misrender the tier (the task 331
+// defect class). EffortDomainForRef rejecting keeps the fallback in place.
+{
+  const skills = [
+    {
+      name: "fallback", description: "no domain declared", scope: "builtin", runAs: "subagent", enabled: true,
+      configuredModel: "", configuredEffort: "xhigh",
+      // no effortLevels → the row picker renders the static preset fallback
+    },
+  ];
+  window.go = {
+    main: {
+      App: {
+        SkillsSettings: async () => ({ skills, skillRoots: [], allowImplicitInvocation: true }),
+        AvailableSubagentTools: async () => [],
+        EffortDomainForRef: async () => { throw new Error("no domain for ref (tl1538 fixture)"); },
+        SetSubagentProfileEffort: async () => {},
+        SetSubagentProfileModel: async () => {},
+      } as Partial<AppBindings> as AppBindings,
+    },
+  } as never;
+
+  // Block ⑥ already mounted SubagentsSettingsPage on this root; React would
+  // reconcile the same tree and keep the old skills state (reload's effect
+  // deps are stable), so unmount and remount for a genuine fresh fetch.
+  await act(async () => root.unmount());
+  const fallbackRoot = createRoot(document.getElementById("root")!);
+  const view = { ...baseSettings(), defaultModel: "mimo/mimo-v2.6-flash" } as SettingsView;
+  await act(async () => fallbackRoot.render(
+    <LocaleProvider>
+      <SubagentsSettingsPage s={view} onUseInChat={() => {}} />
+    </LocaleProvider>,
+  ));
+  await waitFor("fallback skills list", () => Boolean(Array.from(document.querySelectorAll("button")).find((button) => (button.getAttribute("aria-label") ?? "").startsWith("fallback:"))));
+  const rowTrigger = await openSelect(["fallback: Reasoning effort", "fallback: 推理强度"]);
+  assert.deepEqual(optionValues(), ["", "none", "minimal", "low", "medium", "high", "xhigh", "max"],
+    "the no-domain fallback offers the seven union presets (tl1538)");
+  const selected = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'))
+    .find((option) => option.getAttribute("aria-selected") === "true" || option.dataset.selected === "true");
+  ok((selected?.dataset.value ?? "") === "xhigh",
+    "a stored xhigh displays verbatim in the fallback (no MiMo alias fold without a domain)");
+  await closeSelect(rowTrigger);
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

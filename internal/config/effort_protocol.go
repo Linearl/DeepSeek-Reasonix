@@ -8,11 +8,18 @@ func normalizeOpenAIReasoningEffort(e *ProviderEntry, level string) (string, err
 		// vocabulary); see normalizeMimoEffort in effort.go.
 		return normalizeMimoEffort(level)
 	}
+	// tl1538: the generic OpenAI protocol accepts the full documented union
+	// across the vendor's model generations (GPT-5.1+: none default replacing
+	// minimal; GPT-5 era: minimal; pre-5.6 ceiling: xhigh; GPT-5.6+: max).
+	// Every level passes through verbatim so the stored value equals the wire
+	// value; per-model narrowing is the supported_efforts declaration's job,
+	// not a silent adapter-side fold. MiMo keeps its own fold above — its wire
+	// vocabulary collapses aliases onto low/medium/high/none.
 	switch level {
-	case "low", "medium", "high":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max":
 		return level, nil
 	default:
-		return "", fmt.Errorf("usage: /effort auto|low|medium|high")
+		return "", fmt.Errorf("usage: /effort auto|none|minimal|low|medium|high|xhigh|max")
 	}
 }
 

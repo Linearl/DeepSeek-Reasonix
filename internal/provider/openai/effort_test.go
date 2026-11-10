@@ -181,18 +181,21 @@ func TestExplicitSupportedEffortsRejectUndeclaredEffort(t *testing.T) {
 }
 
 func TestImplicitOnlySupportedEffortsKeepBuiltInValidation(t *testing.T) {
+	// tl1538: "max" joined the built-in generic union, so the placeholder
+	// declaration must still keep a level outside that union rejected —
+	// "ultra" stays MiMo-exclusive and remains invalid without a declaration.
 	_, err := New(provider.Config{
 		Name:    "generic",
 		BaseURL: "https://gateway.example.com/v1",
 		Model:   "reasoning-model",
 		APIKey:  "k",
 		Extra: map[string]any{
-			"effort":            "max",
+			"effort":            "ultra",
 			"supported_efforts": []string{"", " auto ", " "},
 		},
 	})
 	if err == nil {
-		t.Fatal("an empty declaration must not enable or clamp max")
+		t.Fatal("an empty declaration must not enable ultra")
 	}
 }
 

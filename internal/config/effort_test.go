@@ -214,10 +214,15 @@ func TestMimoEffortSupportsNone(t *testing.T) {
 			t.Fatalf("MiMo %s = %q/%v, want %s/nil", level, got, err, level)
 		}
 	}
-	// A plain OpenAI endpoint keeps rejecting none.
+	// A plain OpenAI endpoint now accepts none verbatim (tl1538: "none" is the
+	// GPT-5.1+ generation default, no longer MiMo-exclusive), while "ultra"
+	// stays a MiMo-only spelling the generic union rejects.
 	plain := &ProviderEntry{Kind: "openai", BaseURL: "https://example.com/v1", ReasoningProtocol: ReasoningProtocolOpenAI}
-	if got, err := NormalizeEffort(plain, "none"); err == nil || got != "" {
-		t.Fatalf("plain OpenAI none = %q/%v, want error", got, err)
+	if got, err := NormalizeEffort(plain, "none"); err != nil || got != "none" {
+		t.Fatalf("plain OpenAI none = %q/%v, want none/nil", got, err)
+	}
+	if got, err := NormalizeEffort(plain, "ultra"); err == nil || got != "" {
+		t.Fatalf("plain OpenAI ultra = %q/%v, want error", got, err)
 	}
 }
 

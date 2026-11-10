@@ -9,6 +9,10 @@
 // vocabulary shape sniff. Unmarked families pass through byte-for-byte even
 // if their words look MiMo-ish; a marked MiMo entry still needs the shape as
 // a second line of defense before folding.
+// tl1538: EFFORT_PRESETS widened to the seven union tiers — the MiMo fold
+// target stays the FOUR-tier honest set (its wire aliases collapse server-side
+// and in normalizeMimoEffort), so the fold result is pinned explicitly instead
+// of against EFFORT_PRESETS, and the OpenAI union passes through unmarked.
 
 import { EFFORT_PRESETS, foldEffortCurrent, foldEffortMenu, normalizeEffortForMenu, isMiMoEffortVocabulary } from "../lib/effortTiers";
 
@@ -42,10 +46,23 @@ eq(foldEffortMenu(["auto", "disabled", "high", "max"]),
 
 // MiMo compatibility set WITH the identity mark (task 301 ruling still holds):
 // folds to the four honest tiers in preset order, aliases never offered.
+// tl1538: pinned explicitly — the presets are the seven union tiers now, but
+// the MiMo fold target remains its own four-tier honest set.
 const MIMO_EIGHT = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 eq(foldEffortMenu(MIMO_EIGHT, true),
-  EFFORT_PRESETS,
-  "identity-marked MiMo eight-level set folds to the four honest tiers");
+  ["none", "low", "medium", "high"],
+  "identity-marked MiMo eight-level set folds to its four honest tiers (tl1538: fold target unchanged)");
+
+// tl1538: the generic OpenAI union (the new EFFORT_PRESETS content) passes
+// through byte-for-byte unmarked — minimal/xhigh/max are honest tiers for that
+// family, never folded like MiMo aliases.
+const OPENAI_UNION = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+eq(foldEffortMenu(OPENAI_UNION),
+  OPENAI_UNION,
+  "unmarked seven-tier OpenAI union passes through untouched (tl1538)");
+eq(foldEffortMenu(["auto", ...OPENAI_UNION]),
+  ["auto", ...OPENAI_UNION],
+  "the union with auto passes through untouched (tl1538)");
 
 // The identity mark is the necessary trigger: same MiMo words, unmarked
 // (e.g. a config-declared vocabulary) stay verbatim.

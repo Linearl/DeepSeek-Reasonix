@@ -266,15 +266,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
 			}
 			break
 		}
-		// Non-DeepSeek backends use OpenAI's reasoning_effort scale (low/medium/
-		// high) by default. Without an explicit provider vocabulary, max remains
-		// clamped to the OpenAI ceiling because MiMo and similar backends reject it.
+		// Non-DeepSeek backends use OpenAI's reasoning_effort scale by default.
+		// tl1538: the built-in vocabulary is the documented union across model
+		// generations (none|minimal|low|medium|high|xhigh|max) and passes
+		// through verbatim — the legacy max-to-high clamp would silently
+		// downgrade a persisted level the menu legitimately offers. A model
+		// that rejects a depth is narrowed with a supported_efforts
+		// declaration, which keeps its explicit-override branch above.
 		switch effort {
-		case "max":
-			effort = "high"
-		case "low", "medium", "high":
+		case "none", "minimal", "low", "medium", "high", "xhigh", "max":
 		default:
-			return nil, fmt.Errorf("openai: provider %q: effort must be low, medium, or high", name)
+			return nil, fmt.Errorf("openai: provider %q: effort must be none, minimal, low, medium, high, xhigh, or max", name)
 		}
 	}
 

@@ -65,11 +65,15 @@ func ReasoningForConfig(cfg provider.Config) provider.ReasoningCapability {
 		// DeclaredReasoning — a declaration that excludes none stays authoritative.
 		cap = provider.ReasoningOptions("", "none", "low", "medium", "high")
 	case protocol == "openai":
-		// Generic OpenAI-compatible protocol with no known vendor effort
-		// scale: keep the three canonical levels. "none" stays out — a
-		// reasoning_effort of none is a MiMo vocabulary value, not a generic
-		// OpenAI-compatible one.
-		cap = provider.ReasoningOptions("", "low", "medium", "high")
+		// Generic OpenAI-compatible protocol: the union of OpenAI's documented
+		// reasoning_effort vocabularies across model generations (tl1538).
+		// "none" is no longer MiMo-exclusive — GPT-5.1 and newer use it as the
+		// generation's default (replacing the old "minimal" spelling), and
+		// xhigh/max are the documented pre-5.6 / 5.6+ depth ceilings. internal/
+		// config's openAIEffortCapability mirrors this table, and a level a
+		// specific model does not implement is narrowed the same way every
+		// other family narrows it: a per-model supported_efforts declaration.
+		cap = provider.ReasoningOptions("", "none", "minimal", "low", "medium", "high", "xhigh", "max")
 	default:
 		cap = provider.ReasoningOptions("")
 	}

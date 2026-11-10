@@ -6,8 +6,9 @@
 //     defaults") starts on the "Protocol defaults" behavior, its editor
 //     collapsed, and the save payload carries an empty list (no phantom
 //     levels);
-//  ② Picking "Customize levels" expands the editor, offers the four preset
-//     tiers plus a custom-entry input, and — critically — a level added
+//  ② Picking "Customize levels" expands the editor, offers the preset
+//     tiers (the seven union tiers since tl1538) plus a custom-entry input,
+//     and — critically — a level added
 //     through it lands in the saved ProviderView.supportedEfforts. This is
 //     the exact gap the issue reported: a non-built-in provider previously
 //     had NO way to declare an effort vocabulary at all (the read-only

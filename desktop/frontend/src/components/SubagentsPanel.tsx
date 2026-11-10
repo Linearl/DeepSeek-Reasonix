@@ -11,7 +11,7 @@ import type { MCPToolView, SettingsView, SkillView, SubagentProfileInput } from 
 
 import { InlineConfirmButton } from "./InlineConfirmButton";
 import { CopyButton } from "./CopyButton";
-import { allRefs, EFFORT_PRESETS, ModelPicker, normalizeEffortForMenu, toRef } from "./SettingsPanel";
+import { allRefs, EFFORT_PRESETS, ModelPicker, toRef } from "./SettingsPanel";
 import { foldEffortCurrent, foldEffortMenu } from "../lib/effortTiers";
 import { Tooltip } from "./Tooltip";
 
@@ -276,21 +276,25 @@ function EffortPicker({
   disabled: boolean;
   ariaLabel: string;
   onPick: (level: string) => void;
-  // 任务 1151：该 profile 生效模型的原始档位域（含 auto）；缺省回退静态四档。
+  // 任务 1151：该 profile 生效模型的原始档位域（含 auto）；缺省回退静态七档
+  // 预设（tl1538）。
   levels?: string[];
   aliasFold?: boolean;
 }) {
   const t = useT();
-  // 行内已有独立的 inherit 选项（= auto），域透传出的 auto 去重。
+  // 行内已有独立的 inherit 选项（= auto），域透传出的 auto 去重。tl1538：静态
+  // 回退即七档诚实预设（与 EFFORT_PRESETS 同表）。
   const menu = (Array.isArray(levels)
     ? foldEffortMenu(levels, Boolean(aliasFold))
     : [...EFFORT_PRESETS]
   ).filter((level) => level !== "auto");
   // 显示值按同一身份规则折叠：仅 MiMo 词表把兼容别名折到诚实档位，诚实词表
-  // （anthropic 族/声明 max）原样显示。
+  // （anthropic 族/声明 max）原样显示。tl1538：无域回退没有身份信息，且七档
+  // 后 minimal/xhigh/max 本身就是诚实档位——逐字显示，不再按 MiMo 别名折叠
+  // （存储 xhigh 却显示 high 的错档即 task 331 修的那类缺陷）。
   const current = Array.isArray(levels)
     ? foldEffortCurrent(levels, value, Boolean(aliasFold))
-    : normalizeEffortForMenu(value);
+    : value;
   return <div className="settings-model-picker subagents-effort-picker">
     <SettingsSelect value={current} disabled={disabled} aria-label={ariaLabel}
       title={t("subagents.effectiveValue", { value: value || inheritedValue })}
@@ -646,7 +650,9 @@ function SubagentProfileForm({
       />
 
       <label className="set-label">{t("settings.subagentEffort")}</label>
-      <SettingsSelect className="mem-select set-grow" value={normalizeEffortForMenu(effort)} disabled={busy} onValueChange={(value) => setEffort(value)}>
+      {/* tl1538：显示值逐字——MiMo 别名折叠只在带身份域的 foldEffortMenu 路径
+          生效；无域回退的七档预设本身是诚实档位，存储 xhigh 显示 xhigh。 */}
+      <SettingsSelect className="mem-select set-grow" value={effort} disabled={busy} onValueChange={(value) => setEffort(value)}>
         <option value="">{t("settings.subagentEffortDefault")}</option>
         {(effortDomain ? foldEffortMenu(effortDomain.levels, effortDomain.aliasFold) : [...EFFORT_PRESETS]).filter((level) => level !== "auto").map((level) => (
           <option key={level} value={level}>
