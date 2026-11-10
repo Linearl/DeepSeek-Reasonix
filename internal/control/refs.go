@@ -872,7 +872,7 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 				errs = append(errs, "@"+r.raw+" — "+err.Error())
 				continue
 			}
-			appendRefBlock(&b, "resource", `ref="@`+r.raw+`"`, text)
+			appendRefBlock(&b, "resource", `ref="@`+html.EscapeString(r.raw)+`"`, text)
 		case refFile:
 			baseDir := c.workspaceRoot
 			if r.baseDir != "" {
@@ -885,10 +885,10 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			if isAudioRef(r) {
 				if err := c.audioRefAvailable(r, baseDir); err != nil {
 					errs = append(errs, "@"+r.raw+" — "+err.Error())
-					appendRefBlock(&b, "audio", `path="`+r.path+`"`, audioAttachmentFailedNote(r.path, err))
+					appendRefBlock(&b, "audio", `path="`+html.EscapeString(r.path)+`"`, audioAttachmentFailedNote(r.path, err))
 					continue
 				}
-				appendRefBlock(&b, "audio", `path="`+r.path+`"`, audioFileRefNote(r.path, c.audioInputEnabled()))
+				appendRefBlock(&b, "audio", `path="`+html.EscapeString(r.path)+`"`, audioFileRefNote(r.path, c.audioInputEnabled()))
 				continue
 			}
 			text, isDir, err := readFileRefWithVision(r.path, baseDir, c.imageInputEnabled())
@@ -911,7 +911,7 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			if r.displayPath != "" {
 				displayPath = r.displayPath
 			}
-			appendRefBlock(&b, tag, `path="`+displayPath+`"`, text)
+			appendRefBlock(&b, tag, `path="`+html.EscapeString(displayPath)+`"`, text)
 		case refAudio:
 			// Task 1008: the note lands in the user-turn context block only. It
 			// never changes tools or the system prompt, so the audio capability
@@ -922,10 +922,10 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			}
 			if err := c.audioRefAvailable(r, refBaseDir); err != nil {
 				errs = append(errs, "@"+r.raw+" — "+err.Error())
-				appendRefBlock(&b, "audio", `path="`+r.path+`"`, audioAttachmentFailedNote(r.path, err))
+				appendRefBlock(&b, "audio", `path="`+html.EscapeString(r.path)+`"`, audioAttachmentFailedNote(r.path, err))
 				continue
 			}
-			appendRefBlock(&b, "audio", `path="`+r.path+`"`, audioAttachmentNote(r.path, c.audioInputEnabled()))
+			appendRefBlock(&b, "audio", `path="`+html.EscapeString(r.path)+`"`, audioAttachmentNote(r.path, c.audioInputEnabled()))
 		case refImage, refRemoteImage, refFileID:
 			// The note has to describe what actually happened. A reference whose
 			// bytes never reach the model must not be announced as "attached as
@@ -939,10 +939,10 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			}
 			if err := c.visionRefAvailable(r, refBaseDir); err != nil {
 				errs = append(errs, "@"+r.raw+" — "+err.Error())
-				appendRefBlock(&b, "image", `path="`+r.path+`"`, imageAttachmentFailedNote(r.path, err))
+				appendRefBlock(&b, "image", `path="`+html.EscapeString(r.path)+`"`, imageAttachmentFailedNote(r.path, err))
 				continue
 			}
-			appendRefBlock(&b, "image", `path="`+r.path+`"`, imageAttachmentNote(r.path, c.imageInputEnabled()))
+			appendRefBlock(&b, "image", `path="`+html.EscapeString(r.path)+`"`, imageAttachmentNote(r.path, c.imageInputEnabled()))
 		}
 	}
 	return b.String(), errs
