@@ -573,8 +573,12 @@ func stripMessageImages(msgs []provider.Message) []provider.Message {
 
 // foldProjectionTail keeps the newest messages whose estimated projection
 // tokens fit the budget and folds everything older into one local placeholder
-// message. No model is called: the placeholder names the count and where the
-// originals live (repair backup + pre-rewrite log segments).
+// message. No model is called: the placeholder names the count, where the
+// originals live (repair backup + pre-rewrite log segments) and the recovery
+// route — tl1516: the panel path wording mirrors the self-heal notice family
+// (recovery.noticeSelfHealed, tl1504) so every fold surface guides to the same
+// 「设置 → 存储与路径 → 工作阶段版本与副本」 entry instead of only naming a
+// location with no actionable route.
 //
 // tl1407: the leading system messages are never foldable. The old loop walked
 // down to i>=1 and placed the placeholder at index 0, so every fold on a
@@ -614,7 +618,7 @@ func foldProjectionTail(msgs []provider.Message, budgetTokens int) ([]provider.M
 	foldedCount := keep - sysEnd
 	placeholder := provider.Message{
 		Role:    provider.RoleUser,
-		Content: fmt.Sprintf("[本地折叠] 已省略 %d 条早期消息以恢复会话可用（投影超窗应急，纯本地操作，未调用模型）；原文在修复备份目录与本次改写前的日志段中。", foldedCount),
+		Content: fmt.Sprintf("[本地折叠] 已省略 %d 条早期消息以恢复会话可用（投影超窗应急，纯本地操作，未调用模型）；原文未删——整目录备份在会话文件旁的 pre-repair 目录（含改写前日志段），可在「设置 → 存储与路径 → 工作阶段版本与副本」面板中查看或切回。", foldedCount),
 	}
 	out := make([]provider.Message, 0, sysEnd+len(msgs)-keep+1)
 	out = append(out, msgs[:sysEnd]...)
