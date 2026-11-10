@@ -5,7 +5,9 @@
 //      带 [events-size] 前缀，可从 devtools console 查；
 //   2. 退避重试：首败后按 500ms/2s 退避重试（共 3 次尝试），重试成功即恢复
 //      正常显示（不再一次失败恒 '-'）；
-//   3. 重试耗尽：刀1 先钉「留痕 3 次 + 维持 '-'」，刀2 换成行内提示文案。
+//   3. 重试耗尽：行内显示「取数失败」提示文案，非裸 '-'；
+//   4. available=false（桥调用成功但窗口内无采样点）：行内显示「暂无采样
+//      数据」提示文案，且不触发重试（definitive answer 只调一次）。
 
 import { JSDOM } from "jsdom";
 
@@ -75,10 +77,14 @@ const mainApp: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
 let perfSeriesCalls = 0;
 let perfFailPlan: number[] = []; // 第 N 次调用失败（1-based）
 let perfAlwaysFail = false; // 之后的每一次调用都失败（重试耗尽场景）
+let perfAvailable = true; // false = 桥调用成功但 available=false（场景 4）
 let totalMb = 1423.4;
 mainApp.PerfTimeSeries = async () => {
   perfSeriesCalls += 1;
   if (perfAlwaysFail || perfFailPlan.includes(perfSeriesCalls)) throw new Error("bridge down (simulated)");
+  if (!perfAvailable) {
+    return { enabled: true, available: false, intervalSeconds: 5, points: [] };
+  }
   return {
     enabled: true,
     available: true,
@@ -142,7 +148,7 @@ const rowsRecovered = document.querySelectorAll('[data-testid="context-events-si
 eq(rowsRecovered[0]?.textContent ?? "", "1.4 GB", "after retry success the total row shows the real value (不再恒 '-')");
 eq(rowsRecovered[1]?.textContent ?? "", "147.6 MB", "after retry success the current row shows the real value");
 
-// --- 3. retries exhausted: 3 attempts, each logged; value stays '-' (刀2 换提示) --
+// --- 3. retries exhausted: 3 attempts, each logged; row shows hint text (非裸 '-') --
 
 perfAlwaysFail = true; // 之后所有调用都失败
 // 判例时序（探针实证）：act 的 async 回调内 root.render 的 effect 要等 act
@@ -162,9 +168,31 @@ eq(perfSeriesCalls, 5, "persistent failure stops at 3 attempts (initial + 2 back
 const exhaustedLogs = eventsSizeErrors().filter((args) => String(args[0]).includes("failed after"));
 ok(exhaustedLogs.length >= 1, "retry exhaustion logged with final 'failed after N attempt(s)' line");
 const rowsExhausted = document.querySelectorAll('[data-testid="context-events-size"] .context-panel__events-size-row strong');
-eq(rowsExhausted[0]?.textContent ?? "", "-", "刀1: exhausted total row keeps '-' (刀2 replaces with hint text)");
+eq(rowsExhausted[0]?.textContent ?? "", "取数失败", "exhausted total row shows the error hint text (非裸 '-')");
+ok(rowsExhausted[0]?.textContent !== "-", "exhausted total row is not a bare '-'");
 
 console.error = originalConsoleError;
+
+// --- 4. available=false: hint text, no retry (definitive answer) ----------------
+
+perfAlwaysFail = false;
+perfAvailable = false;
+await act(async () => {
+  root.render(
+    <LocaleProvider>
+      <EventsSizeCard tabId="tab-1528" refreshKey={2} />
+    </LocaleProvider>,
+  );
+  await wait(0);
+});
+await act(async () => {
+  await wait(1200); // 若误重试会在 +500ms 产生第二次调用
+});
+eq(perfSeriesCalls, 6, "available=false is a definitive answer: exactly one call, no retry");
+const rowsUnavailable = document.querySelectorAll('[data-testid="context-events-size"] .context-panel__events-size-row strong');
+eq(rowsUnavailable[0]?.textContent ?? "", "暂无采样数据", "available=false total row shows the unavailable hint text (非裸 '-')");
+ok(rowsUnavailable[0]?.textContent !== "-", "available=false total row is not a bare '-'");
+eq(rowsUnavailable[1]?.textContent ?? "", "147.6 MB", "current row unaffected by the total source's unavailable state");
 
 // --- summary ------------------------------------------------------------------
 
