@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+
+const QRCodeSVG = lazy(() => import("qrcode.react").then((module) => ({ default: module.QRCodeSVG })));
 
 type ServePoolStatus = {
   enabled: boolean;
@@ -11,7 +13,18 @@ type ServePoolStatus = {
   port: number;
   token: string;
   listen: string;
+  lan_hosts: string[];
 };
+
+/** Build the scannable serve connect URL for the GC mobile client (tl1536):
+ *  http://<host>:<port>?token=<gateway-token>. The query field is `token` —
+ *  the auth form internal/servepool gateway.go checkToken accepts (alongside
+ *  the Bearer header) and the one GrandCouncil's HttpClientFactory already
+ *  injects, so a scan-then-fill into the GC connection form's Base URL is a
+ *  complete pairing: no second secret field to type. */
+export function buildServeConnectURL(host: string, port: number, token: string): string {
+  return `http://${host}:${port}?token=${encodeURIComponent(token)}`;
+}
 
 /** ServeFailureKind splits a failed gateway operation into the four causes a user
  *  can act on, instead of echoing the raw error. The panel used to render whatever
@@ -47,8 +60,10 @@ export function LocalServerPage() {
   const [ko, setKo] = useState("");
   const [koRaw, setKoRaw] = useState("");
   const [copied, setCopied] = useState(false);
+  const [qrCopied, setQrCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [portDraft, setPortDraft] = useState("");
+  const [hostIdx, setHostIdx] = useState(0);
 
   // failWith renders the classified cause and keeps the raw text beside it: the
   // category is what the user acts on, the detail is what they paste in a report.
@@ -101,6 +116,17 @@ export function LocalServerPage() {
     }
   };
 
+  const copyConnectLink = async () => {
+    if (!qrURL) return;
+    try {
+      await navigator.clipboard.writeText(qrURL);
+      setQrCopied(true);
+      setTimeout(() => setQrCopied(false), 1500);
+    } catch {
+      setKo(t("localserver.copyFailed"));
+    }
+  };
+
   // Task 130: persist the port and restart the gateway when it is enabled.
   const savePort = async () => {
     if (!status || busy) return;
@@ -123,6 +149,12 @@ export function LocalServerPage() {
 
   const on = !!status?.enabled;
   const running = !!status?.running;
+  // tl1536: candidate hosts come from ServePoolStatus.lan_hosts (best-first,
+  // see lanHostsForQR). hostIdx may go stale after a refresh narrows the list,
+  // so clamp before reading.
+  const lanHosts: string[] = Array.isArray(status?.lan_hosts) ? status.lan_hosts : [];
+  const qrHost = lanHosts.length > 0 ? lanHosts[Math.min(hostIdx, lanHosts.length - 1)] : "";
+  const qrURL = running && status?.token && qrHost ? buildServeConnectURL(qrHost, status.port, status.token) : "";
 
   return (
     <div className="settings-page settings-page--localserver">
@@ -215,6 +247,45 @@ export function LocalServerPage() {
             </button>
           </div>
         </div>
+
+        {qrURL ? (
+          <div className="settings-field" data-testid="serve-qr">
+            <div className="settings-field__label">{t("localserver.qrTitle")}</div>
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  padding: 8, borderRadius: 8, background: "#fff",
+                  border: "1px solid color-mix(in srgb, var(--border, #888) 40%, transparent)",
+                }}
+              >
+                <Suspense fallback={<div style={{ width: 180, height: 180 }} />}>
+                  <QRCodeSVG value={qrURL} size={180} marginSize={1} />
+                </Suspense>
+              </div>
+              <div style={{ flex: 1, minWidth: 220, display: "flex", flexDirection: "column", gap: 8 }}>
+                {lanHosts.length > 1 ? (
+                  <select
+                    className="mem-input"
+                    value={Math.min(hostIdx, lanHosts.length - 1)}
+                    onChange={(e) => setHostIdx(Number(e.target.value))}
+                    aria-label={t("localserver.qrHostPick")}
+                  >
+                    {lanHosts.map((h, i) => (
+                      <option key={h} value={i}>{h}</option>
+                    ))}
+                  </select>
+                ) : null}
+                <code style={{ wordBreak: "break-all", fontSize: "var(--text-sm)" }}>{qrURL}</code>
+                <div className="settings-actions">
+                  <button className="btn btn--secondary btn--small" onClick={copyConnectLink} type="button">
+                    {qrCopied ? t("localserver.copied") : t("localserver.qrCopyLink")}
+                  </button>
+                </div>
+                <small>{t("localserver.qrHint")}</small>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="settings-field">
           <div className="settings-field__label">{t("localserver.grandCouncilTitle")}</div>

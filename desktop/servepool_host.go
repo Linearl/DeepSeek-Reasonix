@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -316,16 +317,87 @@ func (a *App) SetServePoolPort(port int) error {
 }
 
 // ServePoolStatus reports the gateway state for the settings panel.
+// lan_hosts (tl1536) lists the machine's phone-reachable IPv4 addresses so
+// the panel can render a scannable serve connect QR; the QR value is built
+// frontend-side as http://<host>:<port>?token=<gateway-token> — the query
+// auth form internal/servepool gateway.go checkToken accepts and the one
+// GrandCouncil's HttpClientFactory already injects.
 func (a *App) ServePoolStatus() map[string]any {
 	return map[string]any{
-		"enabled": servepoolEnabled(),
-		"running": a.gatewaySrv != nil,
-		"bind":    a.gatewayBind,
-		"addr":    a.gatewayAddr,
-		"port":    gatewayPort(),
-		"token":   loadOrCreateGatewayToken(),
-		"listen":  fmt.Sprintf("0.0.0.0:%d", gatewayPort()),
+		"enabled":   servepoolEnabled(),
+		"running":   a.gatewaySrv != nil,
+		"bind":      a.gatewayBind,
+		"addr":      a.gatewayAddr,
+		"port":      gatewayPort(),
+		"token":     loadOrCreateGatewayToken(),
+		"listen":    fmt.Sprintf("0.0.0.0:%d", gatewayPort()),
+		"lan_hosts": lanHostsForQR(),
 	}
+}
+
+// lanHostsForQR lists this machine's non-loopback IPv4 addresses a phone on
+// the LAN / Tailscale network could reach, best-first: private LAN ranges
+// (192.168/10/172.16-31) before CGNAT/Tailscale (100.64/10) before anything
+// else. Duplicate addresses across adapters collapse to one entry.
+func lanHostsForQR() []string {
+	ies, err := net.Interfaces()
+	if err != nil {
+		return []string{}
+	}
+	seen := map[string]bool{}
+	hosts := []string{}
+	for _, ie := range ies {
+		if ie.Flags&net.FlagUp == 0 || ie.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ie.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ipnet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip4 := ipnet.IP.To4()
+			if ip4 == nil || ip4.IsLoopback() || ip4.IsLinkLocalUnicast() {
+				continue
+			}
+			host := ip4.String()
+			if seen[host] {
+				continue
+			}
+			seen[host] = true
+			hosts = append(hosts, host)
+		}
+	}
+	sortLanHostsForQR(hosts)
+	return hosts
+}
+
+// sortLanHostsForQR orders candidates in place, best-first (see lanHostRank).
+func sortLanHostsForQR(hosts []string) {
+	sort.SliceStable(hosts, func(i, j int) bool {
+		return lanHostRank(hosts[i]) < lanHostRank(hosts[j])
+	})
+}
+
+// lanHostRank orders QR candidate hosts: 0 = private LAN (most likely the
+// phone's own network), 1 = CGNAT 100.64/10 (Tailscale), 2 = other public,
+// 3 = unparseable (kept last rather than dropped — the user can still judge).
+func lanHostRank(host string) int {
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil {
+		return 3
+	}
+	if ip.IsPrivate() {
+		return 0
+	}
+	ip4 := ip.To4()
+	if ip4[0] == 100 && ip4[1] >= 64 && ip4[1] < 128 {
+		return 1
+	}
+	return 2
 }
 
 // GatewayToken returns the persistent gateway token so the settings panel can

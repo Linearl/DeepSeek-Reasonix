@@ -1056,7 +1056,9 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // silently (the call sites use ?. so diagnostics never break features).
   ReportJankRecord?(record: string): Promise<void>;
   // Serve pool remote gateway (Settings → 集成与连接 → 本地服务器服务).
-  ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string }>;
+  // lan_hosts (tl1536): phone-reachable IPv4 addresses, best-first — the QR
+  // block builds http://<host>:<port>?token=<token> from these.
+  ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string; lan_hosts: string[] }>;
   SetServePoolEnabled(enabled: boolean): Promise<void>;
   GatewayToken(): Promise<string>;
   ServePoolAddress(): Promise<string>;
@@ -4420,7 +4422,7 @@ function makeMockApp(): AppBindings {
       throw new Error("DeleteInstalledVersion is unavailable in the preview build");
     },
     async ServePoolStatus() {
-      return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789" };
+      return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789", lan_hosts: ["192.168.1.10"] };
     },
     async SetServePoolEnabled() {
       // dev mock: no-op
