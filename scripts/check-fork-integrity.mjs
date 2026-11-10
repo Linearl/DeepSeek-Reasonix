@@ -53,8 +53,10 @@ const CHECKS = [
   // 渲染整体在侧栏卡（783 建卡，799 加 family 门），设置卡只留开关行；
   // 原 SettingsOpenCodeGoUsageCard.tsx 单锚点（GetOpenCodeGoUsage/
   // opencode-go-usage__row/resetCountdown）随之拆分迁移。
-  { feature: "task 163 OpenCode Go 用量明细（前端权威位=侧栏卡；任务 800 迁移）", file: "desktop/frontend/src/components/OpenCodeGoUsageSidebarCard.tsx", patterns: ["GetOpenCodeGoUsage", "plan-usage__row", "resetCountdown", "labFlagEnabled(\"opencodeGoUsage\")"] },
-  { feature: "task 163 OpenCode Go 用量开关行（前端设置卡；任务 800 明细退役）", file: "desktop/frontend/src/components/SettingsOpenCodeGoUsageCard.tsx", patterns: ["EXPERIMENT_FEATURE_TIERS.opencodeGoUsage", "settings.opencodeGoUsageHint", "set-seg__btn"] },
+  // tl1487（29fd8079e）：opencodeGoUsage 撤开关（始终打开）——labFlagEnabled
+  // 锚点与设置卡 set-seg__btn 分段钮随之失效，换代为撤开关后仍稳定的标识。
+  { feature: "task 163 OpenCode Go 用量明细（前端权威位=侧栏卡；任务 800 迁移）", file: "desktop/frontend/src/components/OpenCodeGoUsageSidebarCard.tsx", patterns: ["GetOpenCodeGoUsage", "plan-usage__row", "resetCountdown", "opencode-go-usage-sidebar"] },
+  { feature: "task 163 OpenCode Go 用量开关行（前端设置卡；任务 800 明细退役）", file: "desktop/frontend/src/components/SettingsOpenCodeGoUsageCard.tsx", patterns: ["EXPERIMENT_FEATURE_TIERS.opencodeGoUsage", "settings.opencodeGoUsageHint", "export function SettingsOpenCodeGoUsageCard"] },
   { feature: "task 287 Plan 用量查询（后端 GLM/Kimi/MiniMax）", file: "desktop/plan_usage.go", patterns: ["GetProviderPlanUsage", "parseZhipuPlanUsage", "parseKimiPlanUsage", "parseMinimaxPlanUsage", "no-key"] },
   { feature: "task 666 Plan 用量跟随当前模型（显示条件=当前模型 plan-capable；多 key 各查各的额度）", file: "desktop/plan_usage.go", patterns: ["activePlanUsageContext", "planUsageTargetForCurrentModel"] },
   { feature: "task 287 Plan 用量显示位（概览卡+statusBar 项+轮询 store）", file: "desktop/frontend/src/store/planUsage.ts", patterns: ["PLAN_USAGE_POLL_MS", "ensurePlanUsagePolling", "usePlanUsageStore"] },
