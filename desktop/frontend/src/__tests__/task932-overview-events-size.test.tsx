@@ -167,7 +167,9 @@ await act(async () => {
 });
 eq(document.querySelector('[data-testid="context-events-size"]'), null, "live flip off removes the card again");
 
-// Case 4: empty reading (sampler on but no points yet) — dash placeholders.
+// Case 4: empty reading (sampler on but no points yet) — tl1528 起
+// available=false（Go 侧=窗口内无采样点）行内显示「暂无采样数据」提示，
+// 不再裸 '-'（仍绝不假显 0.0 MB）；零字节当前对话维持 '-'。
 applyLabFlags({ perfMonitor: true });
 mainApp.PerfTimeSeries = async () => {
   perfSeriesCalls += 1;
@@ -189,7 +191,7 @@ const emptyCard = document.querySelector('[data-testid="context-events-size"]');
 ok(emptyCard !== null, "empty reading still renders the card");
 const emptyRows = emptyCard?.querySelectorAll(".context-panel__events-size-row strong") ?? [];
 eq(emptyRows.length, 2, "empty reading keeps both rows");
-eq(emptyRows[0]?.textContent ?? "", "-", "empty total shows dash placeholder");
+eq(emptyRows[0]?.textContent ?? "", "暂无采样数据", "empty total (available=false) shows the unavailable hint, never a fake number (tl1528)");
 eq(emptyRows[1]?.textContent ?? "", "-", "zero-byte current session shows dash, never a fake 0.0 MB");
 
 // Case 5: integration — full ContextPanel with gate off stays unchanged

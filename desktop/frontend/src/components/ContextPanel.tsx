@@ -928,40 +928,83 @@ export function ContextPanel({
 //     events 日志的单文件 stat（零遍历，可放心随保存刷新）。
 // 任务 997: 保存换态（refreshKey 随 turn_done 递增）时两项一并重取，满足
 // 「当前对话数值随保存更新」验收；挂载/开关翻转同样触发。
+// 任务 tl1528: 取数失败不再静默吞错——每次失败 console.error 留痕，并按
+// EVENTS_FETCH_RETRY_DELAYS_MS 退避重试（500ms/2s，共 3 次尝试）；耗尽后
+// 等下一次保存换态/tab 切换自然重取，不再「一次失败恒 '-' 直到 tab 重开」。
+// 刀2: 两数据源各带读取态（loading/ready/unavailable/error）——unavailable
+// （桥调用成功但 available=false，Go 侧=窗口内无采样点：采样器未跑或读盘
+// 失败）与 error（重试耗尽）行内显示提示文案，不再裸 '-'；ready 但最新点
+// 无 eventsMb 仍走原 '-' 语义（采样刚开属正常空态）。
+const EVENTS_FETCH_RETRY_DELAYS_MS = [500, 2000];
+
+type EventsSourceStatus = "loading" | "ready" | "unavailable" | "error";
+
 export function EventsSizeCard({ tabId, refreshKey }: { tabId?: string; refreshKey?: number }) {
   const { t } = useI18n();
   const [enabled, setEnabled] = useState(() => labFlagEnabled("perfMonitor"));
+  const [allStatus, setAllStatus] = useState<EventsSourceStatus>("loading");
   const [allMb, setAllMb] = useState<number | null>(null);
+  const [curStatus, setCurStatus] = useState<EventsSourceStatus>("loading");
   const [currentBytes, setCurrentBytes] = useState<number | null>(null);
 
   useEffect(() => onLabFlagsChange(() => setEnabled(labFlagEnabled("perfMonitor"))), []);
 
   useEffect(() => {
     if (!enabled) {
+      setAllStatus("loading");
       setAllMb(null);
+      setCurStatus("loading");
       setCurrentBytes(null);
       return;
     }
     let cancelled = false;
+    // callWithRetry: 桥调用失败留痕 + 退避重试。每次失败 console.error；
+    // 耗尽（或已取消）后抛给调用方收尾。cancelled 优先——面板卸载/换参
+    // 后不再重试、不再刷状态。
+    const callWithRetry = async <T,>(label: string, call: () => Promise<T>): Promise<T> => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await call();
+        } catch (err) {
+          if (cancelled || attempt >= EVENTS_FETCH_RETRY_DELAYS_MS.length) {
+            console.error(`[events-size] ${label} failed after ${attempt + 1} attempt(s)`, err);
+            throw err;
+          }
+          console.error(`[events-size] ${label} attempt ${attempt + 1} failed, retrying`, err);
+          await new Promise((resolve) => setTimeout(resolve, EVENTS_FETCH_RETRY_DELAYS_MS[attempt]));
+          if (cancelled) throw err;
+        }
+      }
+    };
     void (async () => {
       try {
         // 只取最新一点：短窗口（5 分钟）足够覆盖采样间隔（默认 5s，上限 300s）。
-        const view = await app.PerfTimeSeries(5);
+        const view = await callWithRetry("PerfTimeSeries", () => app.PerfTimeSeries(5));
         if (cancelled) return;
-        const last = view?.points?.[view.points.length - 1];
-        setAllMb(last && last.eventsMb > 0 ? last.eventsMb : null);
+        if (view && view.available === false) {
+          setAllStatus("unavailable");
+        } else {
+          const last = view?.points?.[view.points.length - 1];
+          setAllMb(last && last.eventsMb > 0 ? last.eventsMb : null);
+          setAllStatus("ready");
+        }
       } catch {
-        if (!cancelled) setAllMb(null);
+        if (!cancelled) setAllStatus("error");
       }
       try {
         if (!tabId) {
-          if (!cancelled) setCurrentBytes(null);
+          if (!cancelled) {
+            setCurrentBytes(null);
+            setCurStatus("ready");
+          }
           return;
         }
-        const bytes = await app.TabSessionEventsSize(tabId);
-        if (!cancelled) setCurrentBytes(bytes > 0 ? bytes : null);
+        const bytes = await callWithRetry("TabSessionEventsSize", () => app.TabSessionEventsSize(tabId));
+        if (cancelled) return;
+        setCurrentBytes(bytes > 0 ? bytes : null);
+        setCurStatus("ready");
       } catch {
-        if (!cancelled) setCurrentBytes(null);
+        if (!cancelled) setCurStatus("error");
       }
     })();
     return () => {
@@ -970,17 +1013,26 @@ export function EventsSizeCard({ tabId, refreshKey }: { tabId?: string; refreshK
   }, [enabled, tabId, refreshKey]);
 
   if (!enabled) return null;
+  const allValue =
+    allStatus === "ready" ? (allMb === null ? "-" : formatEventsSize(allMb))
+    : allStatus === "unavailable" ? t("context.eventsSizeUnavailable")
+    : allStatus === "error" ? t("context.eventsSizeError")
+    : "-"; // loading
+  const curValue =
+    curStatus === "ready" ? (currentBytes === null ? "-" : formatEventsSize(currentBytes / (1 << 20)))
+    : curStatus === "error" ? t("context.eventsSizeError")
+    : "-"; // loading / unavailable 不适用当前对话源
   return (
     <section className="context-panel__section context-panel__events-size-card" data-testid="context-events-size">
       <SectionHeading title={t("context.eventsSizeLabel")} />
       <div className="context-panel__events-size-rows">
         <div className="context-panel__events-size-row">
           <span>{t("context.eventsSizeAllLabel")}</span>
-          <strong>{allMb === null ? "-" : formatEventsSize(allMb)}</strong>
+          <strong>{allValue}</strong>
         </div>
         <div className="context-panel__events-size-row">
           <span>{t("context.eventsSizeCurrentLabel")}</span>
-          <strong>{currentBytes === null ? "-" : formatEventsSize(currentBytes / (1 << 20))}</strong>
+          <strong>{curValue}</strong>
         </div>
       </div>
     </section>

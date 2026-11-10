@@ -5893,6 +5893,8 @@ export const zhTW: Record<DictKey, string> = {
   "context.eventsSizeLabel": "events 檔案大小",
   "context.eventsSizeAllLabel": "全部對話 events",
   "context.eventsSizeCurrentLabel": "當前對話 events",
+  "context.eventsSizeUnavailable": "暫無取樣數據",
+  "context.eventsSizeError": "取數失敗",
   "context.mcpListTitle": "MCP tools/list",
   "context.mcpListSharedHost": "共享 Host",
   "context.mcpListDiskCache": "磁碟快取",

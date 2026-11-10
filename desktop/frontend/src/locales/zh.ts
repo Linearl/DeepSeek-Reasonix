@@ -5782,6 +5782,8 @@ export const zh: Record<DictKey, string> = {
   "context.eventsSizeLabel": "events 文件大小",
   "context.eventsSizeAllLabel": "全部对话 events",
   "context.eventsSizeCurrentLabel": "当前对话 events",
+  "context.eventsSizeUnavailable": "暂无采样数据",
+  "context.eventsSizeError": "取数失败",
   "context.mcpListTitle": "MCP tools/list",
   "context.mcpListSharedHost": "共享 Host",
   "context.mcpListDiskCache": "磁盘缓存",

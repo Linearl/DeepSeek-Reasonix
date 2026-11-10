@@ -5822,6 +5822,8 @@ export const en = {
   "context.eventsSizeLabel": "Events file size",
   "context.eventsSizeAllLabel": "All conversations events",
   "context.eventsSizeCurrentLabel": "Current conversation events",
+  "context.eventsSizeUnavailable": "No sampling data",
+  "context.eventsSizeError": "Read failed",
   "context.mcpListTitle": "MCP tools/list",
   "context.mcpListSharedHost": "Shared host",
   "context.mcpListDiskCache": "Disk cache",
