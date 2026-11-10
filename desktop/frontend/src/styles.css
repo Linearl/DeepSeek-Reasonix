@@ -45171,10 +45171,13 @@ button.statusbar__mcp:focus-visible {
   }
 }
 
-/* 修② 状态行截断版：主行恒一行（状态词+最后事件，ellipsis 兜底），时长/
-   tokens/速率/工具汇总收进「⋯ N」展开层；展开行 flex-basis:100% 独占第二行，
-   不挤主行（展开层可达全部信息 + 不溢出裁切）。展开后卡片的
-   --composer-run-strip-reserved 由 Composer 同步抬升（resized 定高卡不重叠）。 */
+/* 修② 状态行截断版（tl1508b 语义更新）：「⋯ N」开合改持久化用户偏好；
+   展开层不再独占第二行——flex-basis 100% 改 0 1 auto，detail 成为可同排 flex
+   项：宽态（实测 strip offsetHeight ≤ 40px，Composer 侧 measureRunStripInline）
+   读数与主行同排一行；真窄时 detail 作为整块 flex 项折到第二行（flex-wrap 在
+   换行判定阶段以 max-content 假想宽参与，不会被主行挤扁）。展开且折行时
+   --composer-run-strip-reserved 仍抬 56（resized 定高卡不重叠）；展开且同排
+   只按 30 预留，不再多让 26px 空档。 */
 .composer-run-strip {
   flex-wrap: wrap;
 }
@@ -45206,11 +45209,16 @@ button.statusbar__mcp:focus-visible {
   box-shadow: var(--focus-ring);
 }
 .composer-run-strip__detail {
-  flex: 1 1 100%;
+  /* tl1508b 修①：100% 基准改 0 1 auto——单个 flex 项要么整块同排、要么整块
+     折到第二行（flex-wrap 的换行判定按假想主尺寸进行，min-width:0 不影响换行
+     阈值），不再无条件占据第二行；折到第二行后自身宽度超限（极窄）由内部
+     flex-wrap 分行 + 子项 ellipsis 兜底。 */
+  flex: 0 1 auto;
   display: flex;
   flex-wrap: wrap;
   gap: 1px 12px;
   min-width: 0;
+  max-width: 100%;
   padding-bottom: 3px;
   color: var(--fg-dim);
   font-size: var(--text-xs);
@@ -45219,4 +45227,53 @@ button.statusbar__mcp:focus-visible {
 /* display:flex 会压掉 UA 的 [hidden] 兜底，必须显式回收。 */
 .composer-run-strip__detail[hidden] {
   display: none;
+}
+
+/* ── tl1508b 修②④ 窄态溢出清零（包 87 复验截图 232643）─────────────────────
+   扫描面 = 输入卡底部一行 + 状态行的全部文本承载元素（任务指定三类嫌疑：状态行
+   读数 / 提示语 / 计数徽标）。共同缺陷：white-space:nowrap 或 nowrap span 无
+   min-width:0/ellipsis 约束——flex 里 min-width:auto 的 nowrap 项拒不收缩，窄态
+   只能被 .composer-meta overflow:hidden 中途截断（半字形）或横向顶开邻项。
+   修法一律补 min-width:0 + overflow:hidden + text-overflow:ellipsis（不新造
+   机制，与 statusbar__extension-label/jobs-popover 等既有约束同款）。 */
+
+/* 状态行读数（同排一行形态下与主行共处，必须可收缩截断，不得顶开状态词）。 */
+.composer-run-strip__metrics,
+.composer-run-strip__tally {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 提示语①：composer__prompt（输入框下方瞬时提示；基础块只写 nowrap 无约束）——
+   窄态横向出格。 */
+.composer__prompt {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 提示语②：toolbar-send__hint（只读/不可发送说明；基础块只写 nowrap）——
+   宿主 .composer-toolbar-send 是 flex-shrink:0 的 order-5 项，窄态连换行兜底
+   都没有，只能被 meta 行硬裁。宿主放开收缩（唯一可收缩子项就是本提示；按钮
+   基类 .composer__btn 自带 flex-shrink:0 不受影响），提示项自身可收缩截断。 */
+.composer-toolbar-send {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.composer-toolbar-send__hint {
+  min-width: 0;
+  max-width: 100%; /* --unavailable 列态（flex-direction:column）下同样按宿主宽截断 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 提示语③：composer-effort-applying（fallback 重建在飞提示；基础块 nowrap
+   无约束）——窄态顶开模型组邻居。 */
+.composer-effort-applying {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
