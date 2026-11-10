@@ -1,7 +1,6 @@
 package serve
 
 import (
-	"context"
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
@@ -157,22 +156,15 @@ func TestRemoteDeviceHoldsWriteBlocksSubmit(t *testing.T) {
 // while every other (or absent) identity keeps the task 36 Phase 2 409 and
 // the exemption dies with the heartbeat that justified it.
 
-// blockingRunner holds the admitted turn open for the whole test, so every
-// later submit deterministically reaches the device-exclusion guard (the
-// busy-session 409 lives behind it and must never be the asserted code).
-type blockingRunner struct{ release chan struct{} }
-
-func (b blockingRunner) Run(_ context.Context, _ string) error {
-	<-b.release
-	return nil
-}
-
 func TestSubmitDeviceIdentityExemption(t *testing.T) {
 	bc := NewBroadcaster()
-	release := make(chan struct{})
-	ctrl := control.New(control.Options{Runner: blockingRunner{release: release}, Sink: bc})
+	// serve_lock_test's blockingRunner keeps the admitted turn Running until
+	// cancelled, so every later submit deterministically reaches the
+	// device-exclusion guard (the busy-session 409 lives behind it and must
+	// never be the asserted code).
+	ctrl := control.New(control.Options{Runner: blockingRunner{}, Sink: bc})
 	s := New(ctrl, bc, config.ServeConfig{})
-	t.Cleanup(func() { close(release); ctrl.Close() })
+	t.Cleanup(func() { ctrl.Cancel(); ctrl.Close() })
 
 	post := func(body, deviceID string) *httptest.ResponseRecorder {
 		t.Helper()
@@ -194,23 +186,24 @@ func TestSubmitDeviceIdentityExemption(t *testing.T) {
 		}
 	}
 	beat(t, "gc-a")
-	beat(t, "gc-b")
 
 	// ① The holder's own submit (same identity as its live heartbeat) is
 	// exempt: 202, the turn is admitted (held open by blockingRunner).
 	if rec := post(`{"input":"hello"}`, "gc-a"); rec.Code != 202 {
 		t.Fatalf("holder's own submit = %d %q, want 202 (self exemption)", rec.Code, rec.Body.String())
 	}
-	// ② A foreign device identity keeps the task 36 Phase 2 exclusion.
-	if rec := post(`{"input":"x"}`, "gc-b"); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
+	// ② A foreign device identity (never beat) keeps the task 36 Phase 2
+	// exclusion.
+	if rec := post(`{"input":"x"}`, "gc-zz"); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
 		t.Fatalf("foreign-device submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
 	}
 	// ③ No identity header (legacy client) keeps the exclusion.
 	if rec := post(`{"input":"x"}`, ""); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
 		t.Fatalf("legacy no-header submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
 	}
-	// ④ The exemption dies with the heartbeat: gc-a aged out while gc-b still
-	// holds — gc-a's identity no longer exempts its submits.
+	// ④ The exemption dies with the heartbeat: gc-b joins and holds, then
+	// gc-a ages out — gc-a's identity no longer exempts its submits.
+	beat(t, "gc-b")
 	s.heartbeatMu.Lock()
 	if entry := s.heartbeats["gc-a"]; entry != nil {
 		entry.lastBeat = time.Now().Add(-2 * heartbeatExpiry)
