@@ -262,14 +262,21 @@ async function mountPanel(props: Record<string, unknown>) {
   await panel.unmount();
 }
 
-// 8. 任务440 (as amended by tl1202): the transcript is written only on
-//    completion, so a RUNNING ref-bearing entry never fires a read (the
-//    1202 bug: a red "读取子代理历史失败" note for the whole run) — it keeps
-//    the near-live progress preview plus an explicit pending note; the
-//    running→ended transition triggers the one real read automatically; a
-//    failed ended-read surfaces copy plus a retry button; a ref-less entry
-//    stays byte-for-byte the 507 preview with zero reads.
+// 8. 任务440 (as amended by tl1202, then tl1537): ordinary dispatches now
+//    snapshot the transcript mid-run (backend write side), so a RUNNING
+//    ref-bearing entry polls the same read bridge — already-written work
+//    renders live with a follow hint; before the first snapshot lands the
+//    pending-sentinel read degrades to the pending note (never the red
+//    读取失败 note) and the poll heals it without manual action; the
+//    running→ended transition performs the one final read and stops the
+//    polling; a failed ended-read surfaces copy plus a retry button; a
+//    ref-less entry stays byte-for-byte the 507 preview with zero reads.
 {
+  const { SUBAGENT_DOCK_LIVE_POLL_MS, setDockLivePollMsForTests } = await import("../components/SubagentsDockPanel");
+  eq(SUBAGENT_DOCK_LIVE_POLL_MS, 2000, "live: production poll cadence is the 2s named constant");
+  setDockLivePollMsForTests(25);
+  const restorePoll = () => setDockLivePollMsForTests(2000);
+
   const flush = async (ms = 20) => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, ms));
@@ -313,29 +320,51 @@ async function mountPanel(props: Record<string, unknown>) {
   });
   await flush();
 
-  // Open the running entry: no live container, no transcript read — the
-  // pending note plus the progress preview carry the "what is it doing" view.
+  // Open the running entry: the live container mounts (tl1537) and the first
+  // read fires immediately; with no snapshot on disk yet (the bridge resolves
+  // empty) the detail shows the pending note — not the preview blocks, not a
+  // red failure.
   await act(async () => {
     (container.querySelector(".subagents-panel__row") as HTMLButtonElement).click();
   });
   await flush();
-  eq(container.querySelector(".subagents-panel__live") === null, true,
-    "live: a running entry never mounts the transcript read container");
-  eq(readCalls.length, 0,
-    "live: a running entry never fires a transcript read (tl1202)");
+  const liveEl = container.querySelector(".subagents-panel__live") as HTMLElement | null;
+  eq(liveEl !== null, true,
+    "live: a running entry mounts the transcript read container (tl1537)");
+  eq(liveEl!.getAttribute("data-subagents-live"), "running",
+    "live: the running container carries the running shape marker");
+  eq(readCalls.length >= 1 && readCalls[0][0] === "dock-parent.jsonl" && readCalls[0][1] === "sa_live_440", true,
+    "live: the running entry fires the read with the session path and the child ref");
+  eq(liveEl!.getAttribute("data-subagents-live-state"), "empty",
+    "live: an empty mid-run projection reads as the empty state");
   eq(container.querySelector("[data-subagents-live-pending]") !== null, true,
-    "live: the running detail carries the pending note (readable once finished)");
-  eq(container.querySelectorAll(".subagents-panel__detailview-text").length >= 1, true,
-    "live: the running detail still shows the progress preview blocks");
+    "live: the pre-first-snapshot running detail carries the pending note");
   eq((container.querySelector("[data-subagents-live-pending]") as HTMLElement).textContent!.length > 0, true,
     "live: the pending note carries user-readable copy");
+  eq(container.querySelectorAll(".subagents-panel__detailview-text").length, 0,
+    "live: the running detail swaps the memory preview blocks for the live container");
 
-  // The child ends: the parent re-render flips running→ended, the effect
-  // performs the one real read, and the transcript reaches the ready state.
+  // Polling follows the snapshots: once the bridge returns content, the next
+  // tick reaches the ready state with the follow hint, and the read count
+  // keeps growing while the child runs.
   readResult = Promise.resolve([
     { role: "user", content: "child prompt" },
     { role: "assistant", content: "child working" },
   ] as HistoryMessage[]);
+  await flush(120);
+  const readyEl = container.querySelector(".subagents-panel__live") as HTMLElement;
+  eq(readyEl.getAttribute("data-subagents-live-state"), "ready",
+    "live: a polled snapshot reaches the ready state while still running");
+  eq(container.querySelector("[data-subagents-live-follow]") !== null, true,
+    "live: the ready running view carries the live-follow hint");
+  eq(readCalls.length >= 3, true,
+    "live: the poll keeps re-pulling while the entry runs (readCalls=" + readCalls.length + ")");
+
+  // The child ends: the parent re-render flips running→ended, the effect
+  // re-subscribes and performs exactly one final read; with the poll interval
+  // parked far away, no further reads may fire afterwards.
+  setDockLivePollMsForTests(600_000);
+  const readsBeforeEnd = readCalls.length;
   const endedWithRef = { ...runningWithRef, status: "done" as const, subagentProgress: { ...runningWithRef.subagentProgress!, phase: "completed" as const } };
   await act(async () => {
     root.render(createElement(LocaleProvider, null, createElement(SubagentsDockPanel, {
@@ -346,19 +375,67 @@ async function mountPanel(props: Record<string, unknown>) {
     })));
   });
   await flush();
-  eq(readCalls.length === 1 && readCalls[0][0] === "dock-parent.jsonl" && readCalls[0][1] === "sa_live_440", true,
-    "live: the ended transition fires exactly one read with the session path and the child ref");
-  const liveEl = container.querySelector(".subagents-panel__live") as HTMLElement | null;
-  eq(liveEl !== null, true, "live: the ended entry mounts the live container");
-  eq(liveEl!.getAttribute("data-subagents-live-state"), "ready",
-    "live: a resolved read reaches the ready state");
+  eq(readCalls.length, readsBeforeEnd + 1,
+    "live: the ended transition fires exactly one final read");
+  eq((container.querySelector(".subagents-panel__live") as HTMLElement).getAttribute("data-subagents-live"), "ended",
+    "live: the ended container flips to the ended shape marker");
+  await flush(60);
+  eq(readCalls.length, readsBeforeEnd + 1,
+    "live: polling stops once the entry has ended (no further reads)");
+  await act(async () => { root.unmount(); });
+  container.remove();
+  restorePoll();
 
-  // A rejected read surfaces the failed state — with a retry button, not a
-  // dead red note; clicking retry re-reads and recovers. Fresh mount: the
-  // entry's first (and only automatic) read rejects.
+  // A pending-sentinel read while running degrades to the pending note (the
+  // backend bridge's not-yet-saved error), and the poll heals it to ready
+  // without any manual action. Fresh mount: every early read rejects pending.
+  setDockLivePollMsForTests(25);
+  readCalls.length = 0;
+  readResult = Promise.reject(new Error('subagent transcript "sa_live_440" has not been saved yet'));
+  readResult.catch(() => {});
+  const pendingContainer = document.createElement("div");
+  document.body.appendChild(pendingContainer);
+  const pendingRoot = createRoot(pendingContainer);
+  await act(async () => {
+    pendingRoot.render(createElement(LocaleProvider, null, createElement(SubagentsDockPanel, {
+      directory: liveDirectory,
+      detailEnabled: true,
+      sessionPath: "dock-parent.jsonl",
+      onReadSubagent,
+    })));
+  });
+  await act(async () => {
+    (pendingContainer.querySelector(".subagents-panel__row") as HTMLButtonElement).click();
+  });
+  await flush(60);
+  const pendingEl = pendingContainer.querySelector(".subagents-panel__live") as HTMLElement;
+  eq(readCalls.length >= 2, true,
+    "live: the pending-sentinel window keeps polling (readCalls=" + readCalls.length + ")");
+  eq(pendingEl.getAttribute("data-subagents-live-state"), "empty",
+    "live: a pending-sentinel error while running never reaches the failed state");
+  eq(pendingContainer.querySelector("[data-subagents-live-pending]") !== null, true,
+    "live: the pending-sentinel error renders the pending note");
+  eq(pendingContainer.querySelector("[data-subagents-retry]") === null, true,
+    "live: the pending window offers no retry button (nothing to retry — the poll heals)");
+  readResult = Promise.resolve([
+    { role: "user", content: "child prompt" },
+    { role: "assistant", content: "child working" },
+  ] as HistoryMessage[]);
+  await flush(120);
+  eq((pendingContainer.querySelector(".subagents-panel__live") as HTMLElement).getAttribute("data-subagents-live-state"), "ready",
+    "live: the poll recovers the pending window to ready without manual action");
+  await act(async () => { pendingRoot.unmount(); });
+  pendingContainer.remove();
+  restorePoll();
+
+  // A rejected ended-read surfaces the failed state — with a retry button, not
+  // a dead red note; clicking retry re-reads and recovers (tl1202 form
+  // unchanged). Fresh mount: the entry's first (and only automatic) read
+  // rejects — ended entries never poll.
+  setDockLivePollMsForTests(600_000);
+  readCalls.length = 0;
   readResult = Promise.reject(new Error("transcript read boom"));
   readResult.catch(() => {});
-  await act(async () => { root.unmount(); });
   const failedContainer = document.createElement("div");
   document.body.appendChild(failedContainer);
   const failedRoot = createRoot(failedContainer);
@@ -374,7 +451,9 @@ async function mountPanel(props: Record<string, unknown>) {
     (failedContainer.querySelector(".subagents-panel__list .subagents-panel__row") as HTMLButtonElement).click();
   });
   await flush();
-  eq(readCalls.length, 2, "live: the failed entry's first automatic read fires once");
+  eq(readCalls.length, 1, "live: the failed ended entry's automatic read fires once");
+  await flush(60);
+  eq(readCalls.length, 1, "live: an ended entry never polls (exactly one read)");
   eq((failedContainer.querySelector(".subagents-panel__live") as HTMLElement).getAttribute("data-subagents-live-state"), "failed",
     "live: a failed read reaches the failed state");
   eq(((failedContainer.querySelector(".subagents-panel__live") as HTMLElement).querySelector(".subagents-panel__detailview-note") as HTMLElement | null)?.textContent!.length! > 0, true,
@@ -387,12 +466,13 @@ async function mountPanel(props: Record<string, unknown>) {
   ] as HistoryMessage[]);
   await act(async () => { retryBtn!.click(); });
   await flush();
-  eq(readCalls.length, 3, "live: clicking retry fires another read");
+  eq(readCalls.length, 2, "live: clicking retry fires another read");
   eq((failedContainer.querySelector(".subagents-panel__live") as HTMLElement).getAttribute("data-subagents-live-state"), "ready",
     "live: a retried read recovers to the ready state");
 
   await act(async () => { failedRoot.unmount(); });
   failedContainer.remove();
+  restorePoll();
 
   // A ref-less running entry (ephemeral run) keeps the 507 preview blocks —
   // no pending note either (without a ref there is no transcript to await).
@@ -436,6 +516,7 @@ async function mountPanel(props: Record<string, unknown>) {
   eq(readCalls.length, 0, "live: a ref-less entry never fires a transcript read");
   await act(async () => { reflessRoot.unmount(); });
   reflessContainer.remove();
+  restorePoll();
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

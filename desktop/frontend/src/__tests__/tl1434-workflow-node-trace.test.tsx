@@ -178,7 +178,9 @@ console.log("\ntl1434 workflow node trace: nodeId→执行实例关联的只读�
   ok(autoSave.includes("run.Session.Save(path)"), "snapshots reuse the Session.Save CAS protocol (no bespoke bytes, Windows-safe by inheritance)");
   const autoSaveTest = readRepo("internal/agent/subagent_transcript_autosave_test.go");
   ok(autoSaveTest.includes("func TestWorkflowDispatchAutosavePersistsMidRun"), "Go harness: mid-run snapshot acceptance (simulated append → disk content follows)");
-  ok(autoSaveTest.includes("func TestPlainDispatchKeepsTerminalOnlyPersistence"), "Go harness: opt-in boundary (plain dispatch stays terminal-only)");
+  // tl1537: plain dispatch now installs the marker itself (全派发 autosave) —
+  // the old terminal-only boundary became the mid-run persistence pin.
+  ok(autoSaveTest.includes("func TestPlainDispatchAutosavesMidRun"), "Go harness: tl1537 boundary (plain dispatch autosaves mid-run)");
   ok(autoSaveTest.includes("func TestTranscriptAutosaveSnapshotsAndStopsCleanly"), "Go harness: stop contract (zero writes after stop) pinned");
 
   // 登记面 harness（mint 即时上报 + 重复上报幂等）。

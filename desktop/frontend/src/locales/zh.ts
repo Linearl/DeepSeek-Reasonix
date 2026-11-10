@@ -1082,8 +1082,8 @@ export const zh: Record<DictKey, string> = {
   "composer.capsuleHistoryLoading": "正在读取历史…",
   "composer.capsuleHistoryEmpty": "该历史没有可显示的内容",
   "composer.capsuleHistoryFailed": "读取子代理历史失败。",
-  // tl1202：运行中子代理的转录仅在结束后落盘——详情给占位语义而非失败红字；读取失败可手动重试。
-  "composer.capsuleHistoryPending": "子代理运行中，转录将在其结束后可读。",
+  // tl1202 原语义=结束后才可读；tl1537 起普通派发运行中周期快照，此键只剩「首快照未落」窗口——占位语义而非失败红字；读取失败可手动重试。
+  "composer.capsuleHistoryPending": "子代理运行中，工作过程转录生成中，即将可读。",
   "composer.capsuleHistoryRetry": "重试",
   "composer.capsuleStatusRunning": "运行中",
   "composer.capsuleStatusCompleted": "已完成",
@@ -3354,6 +3354,8 @@ export const zh: Record<DictKey, string> = {
 "subagentPanel.detailTitle": "子代理详情",
 "subagentPanel.detailSummary": "结果摘要",
 "subagentPanel.detailReadOnly": "子代理详情为只读记录，不提供输入",
+// tl1537：运行中详情已写盘过程流的实时跟进承诺（与 workflowPanel.detail.processLive 同款）。
+"subagentPanel.liveFollow": "子代理运行中：已写盘过程即时可读，新写入自动跟进。",
 "subagentPanel.detailNoPreview": "暂无预览内容：重启后仅保留名称与状态",
 // tl1387 二轮: running entries never read the restart copy above — this is
 // their honest stand-in until the live tool stream (or the pending note)
