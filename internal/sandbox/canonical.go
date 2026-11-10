@@ -44,10 +44,17 @@ const (
 // guards, and concurrent tabs booting in parallel — off the filesystem for
 // this long per path. Failed lookups are cached too, so a dead drive is
 // probed at most once per TTL (and the timeout warning stays low-frequency).
+//
+// canonicalFastFailWindow arms the degraded-first mode after a walk timeout
+// (tl1526). While armed, cache misses return the cleaned absolute path
+// immediately and re-resolve in the background, so a saturated disk costs the
+// load chain zero synchronous waits instead of one budget per path. Every
+// further timeout re-arms it; a quiet window lets normal walks resume.
 var (
 	canonicalEvalSymlinks   = filepath.EvalSymlinks
 	canonicalResolveTimeout = canonicalResolveTimeoutBudget
 	canonicalCacheTTL       = 30 * time.Second
+	canonicalFastFailWindow = 30 * time.Second
 
 	// Task 928 (residual ①): the TTL treadmill. Paths that are continuously
 	// re-canonicalized (every open tab's session file on the save/load/lock
@@ -80,7 +87,21 @@ var (
 	canonicalMu      sync.Mutex
 	canonicalCache   = map[string]canonicalEntry{}
 	canonicalFlights = map[string]*canonicalFlight{}
+	// canonicalFastFailUntil is the unix-nano deadline while the engine
+	// degrades first (tl1526). Atomic so the walker goroutine arms it without
+	// holding the map lock the fast path contends on.
+	canonicalFastFailUntil atomic.Int64
 )
+
+// armCanonicalFastFail extends the degraded-first window after a walk timeout
+// and reports whether this call armed a previously quiet engine, so the
+// degrade transition logs exactly once per storm.
+func armCanonicalFastFail() bool {
+	now := time.Now().UnixNano()
+	wasQuiet := canonicalFastFailUntil.Load() <= now
+	canonicalFastFailUntil.Store(now + canonicalFastFailWindow.Nanoseconds())
+	return wasQuiet
+}
 
 // Task 883 probe (read-only instrumentation, zero behavior change): counters
 // for sizing the 639 root fix. They answer, from desktop.log alone, how often
@@ -157,6 +178,35 @@ func resolveCanonicalPath(path string) (string, error) {
 		probeCalls.Add(1)
 		probeHits.Add(1)
 		return entry.resolved, nil
+	}
+	if canonicalFastFailUntil.Load() > time.Now().UnixNano() {
+		// tl1526 degraded-first: a timeout storm is active, so the caller gets
+		// the cleaned path now and the background walk refreshes the cache;
+		// an in-flight walk is joined without waiting by returning the same
+		// degraded value.
+		_, walking := canonicalFlights[key]
+		if !walking {
+			flight := &canonicalFlight{done: make(chan struct{})}
+			canonicalFlights[key] = flight
+			canonicalMu.Unlock()
+			go func() {
+				resolved, positive := canonicalWalkBounded(abs)
+				canonicalMu.Lock()
+				delete(canonicalFlights, key)
+				ttl := canonicalCacheTTL
+				if positive {
+					ttl = canonicalCachePositiveTTL
+				}
+				canonicalCacheStore(key, resolved, ttl)
+				canonicalMu.Unlock()
+				flight.resolved = resolved
+				close(flight.done)
+			}()
+		} else {
+			canonicalMu.Unlock()
+		}
+		probeCalls.Add(1)
+		return abs, nil
 	}
 	if flight, ok := canonicalFlights[key]; ok {
 		canonicalMu.Unlock()
@@ -287,6 +337,15 @@ func canonicalWalkBounded(abs string) (string, bool) {
 		// tell which one it actually was.
 		slog.Warn("canonical path resolution timed out; keeping cleaned path (slow disk or unreachable network drive?)",
 			"path", abs, "budget", canonicalResolveTimeout.String())
+		// tl1526: arming degraded-first is the observable degrade transition —
+		// one WARN per storm with the spent time and the mode the engine now
+		// serves further resolutions in.
+		if armed := armCanonicalFastFail(); armed {
+			slog.Warn("canonical path resolution degraded-first armed; further resolutions return the cleaned path and re-resolve in background",
+				"elapsed_ms", time.Since(walkStarted).Milliseconds(),
+				"budget", canonicalResolveTimeout.String(),
+				"mode", "degraded_first", "window", canonicalFastFailWindow.String())
+		}
 		return abs, false
 	}
 }
