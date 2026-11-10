@@ -48,17 +48,16 @@ func foldCooldownInterval() time.Duration {
 	return minExplicitFoldInterval
 }
 
-// visibleContextTokens estimates what the visible transcript costs in prompt
-// tokens, using the same calibration the compaction path uses.
+// visibleContextTokens is the compress tool's floor-gate read. tl1395: it
+// prices the view on the SAME calibrated ruler the trigger line, the install
+// gate and the SourceTokens report of this very flow speak
+// (estimatedVisibleRequestTokens). The old charsOfMessages×tokPerChar census
+// was blind to images: a screenshot-heavy session read "too short to fold" on
+// the gate while its billed size sat far above the floor, so the fold the
+// model asked for was refused and image pressure went back to waiting for the
+// 400 rescue (the 压前反升 entry lane).
 func (a *Agent) visibleContextTokens(snap explicitCompressionSnapshot) int {
-	chars := charsOfMessages(snap.visible)
-	if chars <= 0 {
-		return 0
-	}
-	if perChar := a.tokPerChar(); perChar > 0 {
-		return int(float64(chars) / perChar)
-	}
-	return chars
+	return a.estimatedVisibleRequestTokens(snap.visible)
 }
 
 func (a *Agent) CompressContext(ctx context.Context, req tool.CompressRequest) (tool.CompressResult, error) {

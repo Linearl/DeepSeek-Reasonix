@@ -168,3 +168,76 @@ func TestProjectionTokensMonotonicAcrossCompactions(t *testing.T) {
 		prev = now
 	}
 }
+
+// TestMessageTokensIsTheBillingRuler is the two-ruler agreement pin (同输入两尺
+// 读数相等): the per-message pricing tailStart's boundary walk consumes
+// (messageTokens) must read exactly the calibrated billing estimator for the
+// same message, across every content shape the census used to misprice —
+// ASCII, CJK, tool calls, and screenshots. A planning readout that drifts from
+// the billing readout is the tl1395 错位 itself, reintroduced one message at a
+// time.
+func TestMessageTokensIsTheBillingRuler(t *testing.T) {
+	a := &Agent{sess: sessionRuntime{output: outputBudgetState{}}}
+	img := pngDataURL(1920, 1080)
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "system prompt"},
+		{Role: provider.RoleUser, Origin: provider.MessageOriginUser, Content: "plain ascii turn"},
+		{Role: provider.RoleAssistant, Content: "中文逐字计价的回合，粗尺按字节会读高三倍。",
+			ToolCalls: []provider.ToolCall{{ID: "call1", Name: "edit_file", Arguments: `{"path":"a.go","body":"x"}`}}},
+		{Role: provider.RoleUser, Origin: provider.MessageOriginUser, Content: "screenshot", Images: []string{img}},
+		{Role: provider.RoleTool, ToolCallID: "call1", Name: "edit_file", Content: `ok`},
+	}
+	for _, m := range msgs {
+		plan, bill := a.messageTokens(m), a.estimatedPromptTokens([]provider.Message{m})
+		if plan != bill {
+			t.Fatalf("规划单价 %d ≠ 计费尺读数 %d（role=%s len=%d）——tailStart 的定界单价与计费尺脱钩，两尺错位回潮（tl1395）",
+				plan, bill, m.Role, len(m.Content))
+		}
+	}
+}
+
+// TestTailBoundaryUnderCoarseRulerLeavesImagesInTheTail is the 压前反升
+// mechanism repro, both halves in one fixture: pricing the boundary walk with
+// the image-blind census (the pre-tl1395 planning ruler) leaves every
+// screenshot in the protected tail and the billed tail far over its budget —
+// the shape that sent the installed projection over the window and started the
+// 400 → rescue → 反升 chain. The same input priced with the billing ruler
+// folds the images out and the tail fits. Red under the old ruler, green under
+// the unified one, same messages, same budget.
+func TestTailBoundaryUnderCoarseRulerLeavesImagesInTheTail(t *testing.T) {
+	const window = 40_000
+	a := agentOverForceWindow(t, &fakeProvider{reply: "digest"}, rulerSession(20), window)
+	msgs := a.sess.conversation.Snapshot()
+	head := a.pinnedPrefixLen(msgs)
+	budget := a.recentTailBudget()
+	census := func(m provider.Message) int {
+		return estimateMessagesTokens(provider.ModelMessages([]provider.Message{m}))
+	}
+
+	// 修前形状（错位在位）：粗尺对 20 张 1080p 只看见约几十个文本 token，
+	// 保护尾滞留全部图片，计费尺读数远超预算。
+	coarseStart := tailStart(msgs, head, budget, census, a.tailFloor())
+	coarseTail := a.estimatedPromptTokens(modelInputMessages(msgs[coarseStart:]))
+	if coarseTail <= budget {
+		t.Fatalf("fixture 失真：粗尺规划也把保护尾压进预算（计费 %d ≤ %d）——复现不出两尺错位", coarseTail, budget)
+	}
+	for i := head; i < coarseStart; i++ {
+		if len(msgs[i].Images) > 0 {
+			t.Fatalf("粗尺形状下图片（index %d）竟进了折叠区——fixture 不再复现错位", i)
+		}
+	}
+
+	// 修后形状（现状）：同一输入按计费尺定界，图片折出保护尾，尾区计费
+	// 读数不超预算——压缩产物不再超窗。
+	start := tailStart(msgs, head, budget, a.messageTokens, a.tailFloor())
+	if bill := a.estimatedPromptTokens(modelInputMessages(msgs[start:])); bill > budget {
+		t.Fatalf("计费尺规划把 %d 计费 tokens 留在保护尾（预算 %d）——统一失效（tl1395）", bill, budget)
+	}
+	foldedImages := 0
+	for i := head; i < start; i++ {
+		foldedImages += len(msgs[i].Images)
+	}
+	if foldedImages == 0 {
+		t.Fatal("计费尺规划没有折掉任何图片——图片滞留保护尾，错位形状仍在")
+	}
+}
