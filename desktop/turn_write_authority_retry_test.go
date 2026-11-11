@@ -26,6 +26,7 @@ import (
 type collectedWireEvent struct {
 	kind         string
 	text         string
+	code         string
 	submissionID string
 	turnID       string
 }
@@ -41,8 +42,10 @@ func (r *retryEventRecorder) add(payload any) {
 	case correlatedWireEventTab:
 		ev.kind, ev.text, ev.turnID = p.Kind, p.Text, p.TurnID
 		ev.submissionID = p.SubmissionID
+		ev.code = p.Code
 	case wireEventTab:
 		ev.kind, ev.text, ev.turnID = p.Kind, p.Text, p.TurnID
+		ev.code = p.Code
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -203,6 +206,13 @@ func TestSubmitToTabResultAutoHealsStaleWriteAuthorityAndRetries(t *testing.T) {
 	}
 	if n := rec.countEventually(t, 1, noticeMatching("restored automatically")); n != 1 {
 		t.Fatalf("auto-restored notices = %d, want exactly 1 (no retry storm)", n)
+	}
+	// tl1296：纠正行携带稳定 code，桌面前端按它取三语「应用崩溃后正在恢复」
+	// 文案。
+	for _, ev := range rec.snapshot() {
+		if ev.kind == "notice" && strings.Contains(ev.text, "restored automatically") && ev.code != noticeCodeWriteAuthorityRecovered {
+			t.Fatalf("auto-restored notice code = %q, want %q", ev.code, noticeCodeWriteAuthorityRecovered)
+		}
 	}
 	ev := rec.waitFor(t, 2*time.Second, func(e collectedWireEvent) bool {
 		return e.kind == "turn_started" && e.submissionID == "u-stale"

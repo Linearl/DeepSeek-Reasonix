@@ -111,3 +111,64 @@ func TestStaleWriteAuthorityComposerNoticeNamesTabReopen(t *testing.T) {
 		t.Fatalf("composer notice = %+v", e)
 	}
 }
+
+// tl1296 增强②：两个拒绝发射点（admission 闸门 + composer 侧）的 notice
+// 都必须携带稳定 code（session_write_authority_stale）——桌面端按 code 取
+// 三语「应用崩溃后正在恢复」文案；非桌面端继续直出英文全文（含 tl1296 追加
+// 的恢复期从句）。
+func TestStaleWriteAuthorityNoticeCarriesLocalizationCode(t *testing.T) {
+	newStale := func(t *testing.T) (*Controller, chan event.Event, string) {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "session.jsonl")
+		sess := agent.NewSession("sys")
+		exec := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
+		events := make(chan event.Event, 1)
+		c := New(Options{
+			Executor:    exec,
+			SessionPath: path,
+			Sink: event.FuncSink(func(e event.Event) {
+				select {
+				case events <- e:
+				default:
+				}
+			}),
+		})
+		lease, err := agent.TryAcquireSessionLease(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(lease.Release)
+		if err := c.BindSessionWriteAuthority(lease); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := lease.IssueWriteAuthority(agent.NextSessionWriteGeneration()); err != nil {
+			t.Fatal(err)
+		}
+		return c, events, path
+	}
+
+	// 发射点一：admission 闸门（admitGuardedTurn）。
+	c, events, _ := newStale(t)
+	ran := false
+	if got := c.runGuarded(func(context.Context) error { ran = true; return nil }); got != turnDroppedWriteAuthority {
+		t.Fatalf("admission = %v, want turnDroppedWriteAuthority", got)
+	}
+	if ran {
+		t.Fatal("turn body ran with stale authority")
+	}
+	e := <-events
+	if e.Code != noticeCodeWriteAuthorityStale {
+		t.Fatalf("admission refusal notice code = %q, want %q", e.Code, noticeCodeWriteAuthorityStale)
+	}
+	if !strings.Contains(e.Text, "app crash") {
+		t.Fatalf("refusal text lost the tl1296 crash-recovery clause: %q", e.Text)
+	}
+
+	// 发射点二：composer 侧（submitCommandOrTurn）。
+	c2, events2, _ := newStale(t)
+	c2.submitCommandOrTurn("hello", "hello", "hello", false, "", "")
+	e2 := <-events2
+	if e2.Code != noticeCodeWriteAuthorityStale {
+		t.Fatalf("composer refusal notice code = %q, want %q", e2.Code, noticeCodeWriteAuthorityStale)
+	}
+}

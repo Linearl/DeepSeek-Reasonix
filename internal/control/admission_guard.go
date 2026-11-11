@@ -380,7 +380,7 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 	if err := c.ensureWriteAuthorityReady(); err != nil {
 		replay.abandon()
 		slog.Warn("control: submit dropped", "reason", "write_authority_not_ready", "err", err)
-		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: noticeSessionNotWritable})
+		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Code: noticeCodeWriteAuthorityStale, Text: noticeSessionNotWritable})
 		return turnDroppedWriteAuthority
 	}
 	c.mu.Lock()

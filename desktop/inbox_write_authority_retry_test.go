@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -102,6 +103,13 @@ func TestRetryInboxItemAutoHealsStaleWriteAuthorityAndRedrives(t *testing.T) {
 	}
 	if n := rec.countEventually(t, 1, noticeMatching("restored automatically")); n != 1 {
 		t.Fatalf("auto-restored notices = %d, want exactly 1 (no retry storm)", n)
+	}
+	// tl1296：纠正行携带稳定 code（write_authority_auto_recovered），前端按
+	// 它取三语「应用崩溃后正在恢复」文案。
+	for _, ev := range rec.snapshot() {
+		if ev.kind == "notice" && strings.Contains(ev.text, "restored automatically") && ev.code != noticeCodeWriteAuthorityRecovered {
+			t.Fatalf("auto-restored notice code = %q, want %q", ev.code, noticeCodeWriteAuthorityRecovered)
+		}
 	}
 }
 

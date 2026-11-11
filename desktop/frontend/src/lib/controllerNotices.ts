@@ -151,6 +151,13 @@ const noticeCodeKeys: Record<string, DictKey> = {
   // 告警（warn，带重试按钮）。
   reasoning_only_continuation: "notice.reasoningOnlyContinuation",
   reasoning_only_final: "notice.reasoningOnlyFinal",
+  // tl1296：write authority stale 拒绝族——此前 Go 英文长句直出（无码不映
+  // 射），崩溃恢复期用户看到「close and reopen」不知所以。桌面端按 code 取
+  // 三语文案，补「应用崩溃后正在恢复」状态说明降低慌乱。
+  session_write_authority_stale: "notice.writeAuthorityStale",
+  // tl1296：自动恢复成功的纠正行（tl1342 提交面 + tl1296 引导重试面共用
+  // 一个 code）——崩溃恢复语境下的「已恢复、消息在跑/在投递」。
+  write_authority_auto_recovered: "notice.writeAuthorityRecovered",
 };
 
 // tl1459: Goal lifecycle notices. The backend emits one goal_* notice every

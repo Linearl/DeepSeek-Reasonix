@@ -25,7 +25,9 @@ import (
 // noticeInboxAuthorityAutoRetried is the stream correction for a healed inbox
 // retry: the refusal notice the refused dispatch emitted ("close and reopen")
 // is stale advice the moment the re-drive succeeds — the same correction shape
-// the tl1342 submit surface already uses.
+// the tl1342 submit surface already uses. tl1296: the code maps to the
+// localized crash-recovery copy (notice.writeAuthorityRecovered, three
+// languages); other frontends keep this English line.
 const noticeInboxAuthorityAutoRetried = "the session's write access had gone stale — it was restored automatically and your queued message is being delivered now"
 
 // inboxDispatchRedrive is the neutral kick that re-runs maybeDispatchInbox on
@@ -96,6 +98,6 @@ func (a *App) emitInboxAuthorityHealedNotice(tabID, id string, ctrl control.Sess
 	}
 	if tab := a.tabByID(tabID); tab != nil && tab.sink != nil {
 		tab.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
-			Text: noticeInboxAuthorityAutoRetried})
+			Code: noticeCodeWriteAuthorityRecovered, Text: noticeInboxAuthorityAutoRetried})
 	}
 }

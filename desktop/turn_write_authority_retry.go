@@ -31,7 +31,15 @@ var staleWriteAuthoritySubmitRetryCooldown = 300 * time.Millisecond
 // beat before running — the refusal notice the dropped first attempt already
 // emitted ("no longer writable — close and reopen") is stale advice the moment
 // the retry succeeds, so it must not be the last word on the stream.
+// tl1296: the code lets the desktop frontend replace it with the localized
+// copy that names the app-crash recovery state (notice.writeAuthorityRecovered,
+// en/zh/zh-TW); other frontends keep this English line.
 const noticeWriteAuthorityAutoRetried = "the session's write access had gone stale — it was restored automatically and your message is running now"
+
+// noticeCodeWriteAuthorityRecovered is the stable notice code shared by the
+// desktop auto-recovered corrections (tl1342 submit surface and the tl1296
+// inbox retry surface).
+const noticeCodeWriteAuthorityRecovered = "write_authority_auto_recovered"
 
 // submissionRefusedByStaleWriteAuthority reports whether the controller that
 // just swallowed a submission did so at its write-authority gate. The gates
@@ -113,7 +121,7 @@ func (a *App) retryTabTurnAfterStaleWriteAuthority(
 			"tab", tabID)
 		if retryTab := retryAdmission.tab; retryTab != nil && retryTab.sink != nil {
 			retryTab.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
-				Text: noticeWriteAuthorityAutoRetried})
+				Code: noticeCodeWriteAuthorityRecovered, Text: noticeWriteAuthorityAutoRetried})
 		}
 	}
 }
