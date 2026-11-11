@@ -177,36 +177,41 @@ func TestProjectTreeSessionChildRowsUseFriendlyLabels(t *testing.T) {
 }
 
 // tl1330 同机制面：新会话「复用最近会话目录」选项的来源行（TabBar newmenu）
-// 与历史面板索引占位卡也不再裸奔 transcript id。
+// 与历史面板索引占位卡也不再裸奔 transcript id。tl1547 (C2/C3) 签名扩至
+// preview 档 + 恢复后缀。
 func TestLatestSessionDisplayTitleNeverCarriesTranscriptID(t *testing.T) {
 	const stampName = "20261031-220415.123-mimo-token-plan-mimo-v2.6-flash-recovery-7503ae1e8c61e196.jsonl"
-	if got := latestSessionDisplayTitle("用户标题", "", "/x/"+stampName); got != "用户标题" {
+	if got := latestSessionDisplayTitle("用户标题", "", "", "/x/"+stampName, "", false); got != "用户标题" {
 		t.Fatalf("custom title = %q", got)
 	}
-	if got := latestSessionDisplayTitle("", "话题标题", "/x/"+stampName); got != "话题标题" {
+	if got := latestSessionDisplayTitle("", "话题标题", "", "/x/"+stampName, "", false); got != "话题标题" {
 		t.Fatalf("topic title = %q", got)
 	}
-	if got := latestSessionDisplayTitle("", "", "/x/"+stampName); got != "20261031 22:04" {
+	if got := latestSessionDisplayTitle("", "", "", "/x/"+stampName, "", false); got != "20261031 22:04" {
 		t.Fatalf("stamp fallback = %q, want 20261031 22:04", got)
 	}
 	// Unstampable name: empty — the FE omits the line, no id, no guess.
-	if got := latestSessionDisplayTitle("", "", "/x/session-a.jsonl"); got != "" {
+	if got := latestSessionDisplayTitle("", "", "", "/x/session-a.jsonl", "", false); got != "" {
 		t.Fatalf("no-info fallback = %q, want empty", got)
 	}
 }
 
+// tl1547 (C4) 改钉（原「History is being indexed」英文字面占位）：索引期
+// 占位文案走 FE 的 t("history.indexing")（三语），后端只供文件名时间戳
+// stamp——payload 里不再有未翻译英文字面；FE 用 turnsState==="unknown" 识别
+// 该态并拼 historyIndexedTitle。无可截取 stamp 时 preview 为空字符串。
 func TestSessionMetaFromCatalogIndexedPlaceholderIsFriendly(t *testing.T) {
 	record := sessioncatalog.SessionRecord{
 		Path:       "/x/20261031-220415.123-mimo-token-plan-mimo-v2.6-flash-recovery-7503ae1e8c61e196.jsonl",
 		TurnsState: sessioncatalog.TurnsUnknown,
 	}
 	meta := sessionMetaFromCatalog(record, false, false)
-	if meta.Preview != "History is being indexed — 20261031 22:04" {
-		t.Fatalf("indexed placeholder = %q, want the stamp form", meta.Preview)
+	if meta.Preview != "20261031 22:04" {
+		t.Fatalf("indexed placeholder = %q, want the bare stamp", meta.Preview)
 	}
 	record.Path = "/x/session-a.jsonl"
 	meta = sessionMetaFromCatalog(record, false, false)
-	if meta.Preview != "History is being indexed" {
-		t.Fatalf("indexed placeholder = %q, want plain status text", meta.Preview)
+	if meta.Preview != "" {
+		t.Fatalf("indexed placeholder = %q, want empty (FE renders the localized status alone)", meta.Preview)
 	}
 }

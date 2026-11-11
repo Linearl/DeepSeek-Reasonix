@@ -1,6 +1,7 @@
 // Run: tsx src/__tests__/session-title-contract.test.ts
 
 import {
+  historyIndexedTitle,
   historySearchHitDisplayTitle,
   historySessionDisplayTitle,
   paletteSessionDisplayTitle,
@@ -54,6 +55,10 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
 
 console.log("\nsession title contracts");
 
+// tl1547 (C1): both FE chains flipped to the Go sidebar order
+// (title > topicTitle > preview > fallback). Sessions carrying BOTH a custom
+// title and a topic title now show the same name in the sidebar, history
+// panel and command palette — the sidebar is the Go-side authority.
 {
   const hit = {
     sessionPath: "/sessions/version.jsonl",
@@ -61,7 +66,7 @@ console.log("\nsession title contracts");
     topicTitle: "Shared topic",
   };
   eq(
-    historySearchHitDisplayTitle(hit),
+    historySearchHitDisplayTitle(hit, "(empty session)"),
     "Shared topic",
     "History content search keeps physical-version notes out of the logical title",
   );
@@ -72,12 +77,29 @@ console.log("\nsession title contracts");
   );
 }
 
+// tl1547 (C5): the sessionPath tier is gone — a hit with neither title nor
+// topic title renders the caller's localized safe text, never the internal
+// transcript path.
+{
+  const bare = { sessionPath: "/home/user/.reasonix/sessions/store/t-9f2a.jsonl", sessionTitle: "", topicTitle: "" };
+  eq(
+    historySearchHitDisplayTitle(bare, "(empty session)"),
+    "(empty session)",
+    "Search hits with no title tier never leak the internal session path",
+  );
+  eq(
+    historySearchHitDisplayTitle({ ...bare, sessionTitle: "  ", topicTitle: undefined as unknown as string }, "Untitled"),
+    "Untitled",
+    "Whitespace-only titles fall through to the safe fallback too",
+  );
+}
+
 {
   const item = session();
   eq(
     paletteSessionDisplayTitle(item, "Untitled"),
-    "Shared topic",
-    "Cmd+K displays the topic title for topic-backed sessions",
+    "Renamed saved session",
+    "Cmd+K displays the custom title first (Go sidebar chain order, tl1547 C1)",
   );
   deepEq(
     paletteSessionKeywords(item),
@@ -95,8 +117,8 @@ console.log("\nsession title contracts");
   const item = session();
   eq(
     historySessionDisplayTitle(item, "Untitled"),
-    "Shared topic",
-    "History displays the logical topic title instead of a physical-version note",
+    "Renamed saved session",
+    "History displays the custom title first — same chain as the sidebar (tl1547 C1)",
   );
 }
 
@@ -127,6 +149,24 @@ console.log("\nsession title contracts");
     "Cmd+K skips duplicate title hints that repeat the visible topic title",
   );
 }
+
+// tl1547 (C4): the indexing placeholder is the localized status text plus the
+// backend stamp (the English literal left the payload).
+eq(
+  historyIndexedTitle("20261031 22:04", "正在整理历史"),
+  "正在整理历史 — 20261031 22:04",
+  "Indexed placeholder renders the localized status with the stamp",
+);
+eq(
+  historyIndexedTitle("", "正在整理历史"),
+  "正在整理历史",
+  "Indexed placeholder without a stamp is the localized status alone",
+);
+eq(
+  historyIndexedTitle("   ", "Indexing history"),
+  "Indexing history",
+  "Whitespace-only stamp does not add a dangling separator",
+);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

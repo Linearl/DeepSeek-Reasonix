@@ -61,6 +61,13 @@ type LatestSessionWorkspace struct {
 	LastActivityAt time.Time
 	CustomTitle    string
 	TopicTitle     string
+	// tl1547 (C2/C3): the reuse-directory source line needs the same naming
+	// chain tiers the sidebar already has — a first-message preview tier so a
+	// titleless session reads the same in both places, and the recovery flag
+	// so a recovered branch inheriting the parent's titles gets the
+	// 「（已恢复）」 disambiguator instead of colliding with its sibling.
+	Preview   string
+	Recovered bool
 }
 
 // LatestSessionWorkspaceRoot scans the given session stores (each a
@@ -121,6 +128,8 @@ func LatestSessionWorkspaceRoot(dirs []string) (LatestSessionWorkspace, bool) {
 			LastActivityAt: info.LastActivityAt,
 			CustomTitle:    info.CustomTitle,
 			TopicTitle:     info.TopicTitle,
+			Preview:        info.Preview,
+			Recovered:      info.Recovered,
 		}, true
 	}
 	return LatestSessionWorkspace{}, false
