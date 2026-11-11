@@ -172,7 +172,7 @@ export function LocalServerPage() {
           font-size: var(--text-sm); letter-spacing: 0.06em; word-break: break-all;
           color: var(--text, #222); text-align: left;
         }
-        .token-display__eye { font-size: 14px; opacity: .7; margin-left: 8px; flex: none; }
+        .token-display__eye { font-size: var(--text-base); opacity: .7; margin-left: 8px; flex: none; }
         .settings-field__link { color: var(--link, #4a9eff); font-size: var(--text-md); text-decoration: none; }
         .settings-field__link:hover { text-decoration: underline; }
       `}</style>

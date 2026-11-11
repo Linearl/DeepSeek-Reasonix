@@ -86,7 +86,7 @@
 .provider-technical-details > summary::after {
   content: "›";
   color: var(--fg-faint);
-  font-size: 15px;
+  font-size: var(--text-lg);
   line-height: 1;
 }
 .provider-technical-details[open] > summary::after {

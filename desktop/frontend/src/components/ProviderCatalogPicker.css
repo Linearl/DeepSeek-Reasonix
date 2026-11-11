@@ -6,7 +6,7 @@
 .provider-catalog__brand:hover { background: var(--bg-soft); }
 .provider-catalog__monogram { display: grid; place-items: center; flex: 0 0 26px; height: 26px; border-radius: 7px; background: var(--bg-soft); font-weight: 600; }
 .provider-catalog__detail { min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-.provider-catalog__title { font-size: 18px; }
+.provider-catalog__title { font-size: var(--text-xl); }
 .provider-catalog__options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .provider-catalog__field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .provider-catalog__field .mem-select, .provider-catalog__field .mem-input { width: 100%; min-width: 0; }
