@@ -166,7 +166,9 @@ async function openPanel(): Promise<ReturnType<typeof createRoot>> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  // tl1509: 入口按钮三语改名「管理会话副本」(en: Manage session copies)——
+  // 旧文案 "Review and merge…" 已退役,按钮 pointer 过时致面板打不开雪崩。
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   return root;
 }
@@ -487,7 +489,7 @@ async function checkSessionRow(): Promise<void> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   await expandSession();
   const copyRow = document.querySelector("tr.rc-row--copy");
@@ -527,7 +529,7 @@ async function checkSessionRow(): Promise<void> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   await expandSession();
   const copyRow = document.querySelector("tr.rc-row--copy");
@@ -553,7 +555,7 @@ async function checkSessionRow(): Promise<void> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   const groupRows = Array.from(document.querySelectorAll("tr.rc-grouprow"));
   const mergedRow = groupRows[1];
@@ -585,7 +587,7 @@ async function checkSessionRow(): Promise<void> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   const clearBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
     (b) => b.textContent?.includes("Clear merge history"),
@@ -623,7 +625,7 @@ async function checkSessionRow(): Promise<void> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   await checkSessionRow();
   const cleanupBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".rc-modal__foot button")).find(
@@ -683,7 +685,7 @@ async function checkSessionRow(): Promise<void> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   await expandSession();
   const copyRow = document.querySelector("tr.rc-row--copy");
