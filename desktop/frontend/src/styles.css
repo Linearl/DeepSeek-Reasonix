@@ -3093,6 +3093,28 @@ a[href] {
   letter-spacing: 0.05em;
   color: var(--fg-faint);
 }
+/* tl1543: degrade-state copy + retry affordance inside the splash card. Only
+   rendered after the Go budget-out event latches the degrade store; the
+   non-degraded splash markup and cascade are untouched. Hover recipe mirrors
+   the existing project-tree__catalog-rebuild button. */
+.startup-splash__sub[data-degraded="true"] {
+  letter-spacing: 0;
+  line-height: 1.5;
+}
+.startup-splash__retry {
+  margin-top: 16px;
+  padding: 6px 18px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.startup-splash__retry:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .startup-splash__dots {
   display: flex;
   gap: 8px;

@@ -1979,6 +1979,9 @@ export const zh: Record<DictKey, string> = {
   "projectTree.copyPath": "复制路径",
   "projectTree.reloadSessions": "重载会话列表",
   "projectTree.reloadSessionsDone": "已清理 {n} 条残留并重载列表",
+  // tl1543：启动目录扫描预算打满降级（后台继续扫描，界面可用）+ 可重试。
+  "projectTree.scanDegraded": "目录扫描仍在后台继续，界面已可正常使用",
+  "projectTree.scanDegradedRetry": "重新扫描",
   "projectTree.revealInFinder": "在 Finder 中显示",
   "projectTree.revealInExplorer": "在文件资源管理器中显示",
   "projectTree.revealInFileManager": "在文件管理器中显示",

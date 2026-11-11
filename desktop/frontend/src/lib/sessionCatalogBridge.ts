@@ -79,5 +79,8 @@ export function makeMockSessionCatalogBindings(cloneProjectTree: () => ProjectNo
     async ReloadProjectTreeSessions(scope: string, workspaceRoot: string): Promise<ProjectTreeReloadResult> {
       return { scope, workspaceRoot: workspaceRoot || undefined, removedTopicIds: [], skippedPinned: 0, skippedReferenced: 0, reconciledDirs: 0 };
     },
+    // tl1543 browser-dev mock: no backend queue behind the preview, the retry
+    // resolves without effect (same receipt-less shape as the Go endpoint).
+    async RetryStartupCatalogScan() {},
   };
 }

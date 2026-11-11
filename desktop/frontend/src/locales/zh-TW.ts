@@ -1587,6 +1587,9 @@ export const zhTW: Record<DictKey, string> = {
   "projectTree.copyPath": "複製路徑",
   "projectTree.reloadSessions": "重載會話列表",
   "projectTree.reloadSessionsDone": "已清理 {n} 條殘留並重載列表",
+  // tl1543：啟動目錄掃描預算打滿降級（背景繼續掃描，介面可用）+ 可重試。
+  "projectTree.scanDegraded": "目錄掃描仍在背景繼續，介面已可正常使用",
+  "projectTree.scanDegradedRetry": "重新掃描",
   "projectTree.revealInFinder": "在 Finder 中顯示",
   "projectTree.revealInExplorer": "在檔案總管中顯示",
   "projectTree.revealInFileManager": "在檔案管理器中顯示",

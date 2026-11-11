@@ -11,6 +11,8 @@ import { OpenerIcon } from "./ExternalOpener";
 import { cachedSessionPurpose, loadSessionPurpose, setCachedSessionPurpose, subscribeSessionPurposes } from "../lib/sessionPurpose";
 import { rememberLiveSessionModel, sessionModelHover, titleWithSessionModel } from "../lib/sessionModelHover";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
+import { installStartupDegradeListener, retryStartupCatalogScan } from "../lib/startupDegradeBridge";
+import { useStartupDegradeStore } from "../store/startupDegrade";
 import { catalogStatusSettlesRebuildFailure, createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
 import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicFirstPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreePageLoadFlipsIndicator, projectTreeBrowsePageContinues, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
@@ -641,6 +643,14 @@ export function ProjectTree({
       rebuildingCatalogRef.current = false;
     }
   }, [catalogStatus, refresh, showToast, t]);
+
+  // tl1543: budget-out degrade UX. The Go wave hands past-budget directories to
+  // the async reconcile queue and emits one "app:startup-degraded" event; the
+  // latch survives tree remounts (zustand), the listener is component-scoped.
+  // Without the event this component renders exactly the pre-tl1543 tree.
+  const startupScanDegraded = useStartupDegradeStore((s) => s.degraded);
+  const retryStartupScan = useCallback(() => { void retryStartupCatalogScan(); }, []);
+  useEffect(() => installStartupDegradeListener(), []);
 
   useEffect(() => {
     treeRef.current = tree;
@@ -3605,7 +3615,18 @@ export function ProjectTree({
           )}
         </label>
       )}
-      {visibleCatalogNotice && (
+      {/* tl1543: budget-out degrade banner takes the catalog-progress slot while
+          latched (one banner at a time — the degrade copy supersedes "indexing"
+          and the retry re-kicks the existing reconcile channel). Without the
+          Go event this slot renders the pre-tl1543 notices unchanged. */}
+      {startupScanDegraded ? (
+        <div className="project-tree__catalog-progress" role="status" data-degraded="true">
+          <span>{t("projectTree.scanDegraded")}</span>
+          <button type="button" className="project-tree__catalog-rebuild" onClick={retryStartupScan}>
+            {t("projectTree.scanDegradedRetry")}
+          </button>
+        </div>
+      ) : visibleCatalogNotice && (
         <div className="project-tree__catalog-progress" role="status">
           <span>{catalogNoticeText}</span>
           {visibleCatalogNotice === "rebuild" && (

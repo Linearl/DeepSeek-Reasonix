@@ -74,7 +74,10 @@ func (a *App) runSessionCatalog(ctx context.Context) {
 	// internally batched and resumable (scan_cursor), so whatever the budget
 	// cannot cover degrades to the async reconcile queue instead of delaying
 	// the rest of the load chain (retarget, inventory, refresh loop).
-	_ = runStartupReconcileWave(ctx, sessionCatalogStartupReconcileBudget, targets,
+	// tl1543: the deferred count also feeds the frontend degrade UX — the
+	// loading surface stops being a bare spinner once the wave hands
+	// directories to the async queue.
+	deferredDirs := runStartupReconcileWave(ctx, sessionCatalogStartupReconcileBudget, targets,
 		func(waveCtx context.Context, target sessioncatalog.DirectoryTarget) error {
 			if migrated := migrateLegacySessionsIntoGlobalTopics(target.Path); len(migrated) > 0 {
 				_ = a.syncSessionCatalogMetadataBounded(waveCtx, catalog)
@@ -84,6 +87,7 @@ func (a *App) runSessionCatalog(ctx context.Context) {
 		func(target sessioncatalog.DirectoryTarget) {
 			catalog.RequestReconcile(target)
 		})
+	a.emitStartupCatalogDegraded(deferredDirs)
 	if ctx.Err() != nil || a.shuttingDown.Load() {
 		return
 	}
@@ -111,6 +115,35 @@ func (a *App) runSessionCatalogRefreshLoop(ctx context.Context, catalog *session
 // wave (tl1526; the 2026-11-09 incident measured one directory at 131s). var
 // only for test injection; production code never rewrites it.
 var sessionCatalogStartupReconcileBudget = 120 * time.Second
+
+// startupCatalogDegradedEvent is the tl1543 runtime event that carries the
+// budget-out degrade to the frontend loading surface. Payload mirrors the
+// budget-out WARN's mode tag so log and UI stay one vocabulary.
+const startupCatalogDegradedEvent = "app:startup-degraded"
+
+// emitStartupCatalogDegraded tells the frontend the startup wave handed
+// directories to the async reconcile queue (tl1543). It rides the existing
+// runtime event bridge; zero deferred dirs stays silent so a normal startup
+// emits nothing (acceptance ② — the non-degraded path must be byte-identical).
+func (a *App) emitStartupCatalogDegraded(deferred int) {
+	if a == nil || deferred <= 0 {
+		return
+	}
+	a.emitRuntimeEvent(startupCatalogDegradedEvent, map[string]any{
+		"deferred": deferred,
+		"mode":     "deferred_to_async_queue",
+	})
+}
+
+// RetryStartupCatalogScan is the degrade banner's retry exit (tl1543). It
+// re-kicks every catalog directory through the existing reconcile channel —
+// requestProjectTreeCatalogRefresh, the same primitive the fsnotify watch loop
+// and the sidebar reload ride — and signals the sidebar with the tree event it
+// honors. Diagnostics stay on the existing doors: the「重载会话列表」 menu, the
+// rebuild button, and desktop.log; no new diagnostics surface.
+func (a *App) RetryStartupCatalogScan() {
+	a.emitProjectTreeChanged()
+}
 
 // runStartupReconcileWave reconciles each target under one shared budget with
 // a 4-way scan concurrency. Targets the budget never reached, and targets
