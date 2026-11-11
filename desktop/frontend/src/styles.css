@@ -457,7 +457,12 @@
     --mode-goal-fg: #0f766e;
     --mode-yolo-bg: #e5484d;
     --mode-yolo-border: #ed5d62;
-    --mode-yolo-fg: #fff;
+    /* tl1546/tl1377-V9：白字压语义红 #e5484d 仅 3.91:1（<AA 4.5），前景改深字
+       #2b0608 = 4.74:1——参照 614 autopilot 深字先例形态；614 字面值 #2b1503 对
+       红底仅 4.43 不达标，改用同深度红黑调。--danger-fg 亮色档同病同药
+       （白字 3.91，唯一消费者 --pill-yolo-fg），一并覆盖。 */
+    --mode-yolo-fg: #2b0608;
+    --danger-fg: #2b0608;
     /* 614 修色：亮背景同提饱和（#c05e12 L*≈45 棕色域 → #ea580c），深字保对比。 */
     --mode-autopilot-bg: #ea580c;
     --mode-autopilot-border: #f4772e;
@@ -541,7 +546,9 @@
   --mode-goal-fg: #0f766e;
   --mode-yolo-bg: #e5484d;
   --mode-yolo-border: #ed5d62;
-  --mode-yolo-fg: #fff;
+  /* tl1546/tl1377-V9：与上方 auto-light 档同值（forced light），白字 3.91→深字 #2b0608 = 4.74:1。 */
+  --mode-yolo-fg: #2b0608;
+  --danger-fg: #2b0608;
   /* 614 修色：亮背景同提饱和（#c05e12 L*≈45 棕色域 → #ea580c），深字保对比。 */
   --mode-autopilot-bg: #ea580c;
   --mode-autopilot-border: #f4772e;

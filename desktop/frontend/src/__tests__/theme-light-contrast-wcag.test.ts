@@ -153,5 +153,55 @@ ok(/\.ask-shelf__pager-button:disabled\s*\{[^}]*color:\s*var\(--fg-faint\)/.test
 ok(/\.typography-settings__undo:disabled\s*\{[^}]*color:\s*var\(--fg-faint\)/.test(stylesSource), "抽查: 排版设置撤销钮禁用态直引 var(--fg-faint)");
 ok(rootBlock.includes("--list-row-meta: var(--fg-faint);"), "抽查: 暗色 --list-row-meta 派生链未动");
 
+console.log("\ntl1546 danger/yolo foreground WCAG contract (V9)");
+
+// ---- ⑥亮色正钉：yolo / danger 前景深字 ≥4.5:1 ----
+
+// --danger 本体只在 :root 定义（暗色基准），亮色档不覆盖 → 从 rootBlock 提取底色。
+const dangerBase = extractColor(rootBlock, "--danger");
+
+for (const [label, block] of lightBlocks) {
+  const yoloFg = extractColor(block, "--mode-yolo-fg");
+  const yoloBg = extractColor(block, "--mode-yolo-bg");
+  const dangerFg = extractColor(block, "--danger-fg");
+
+  ok(yoloFg !== "" && yoloBg !== "", `${label}: --mode-yolo-fg/--mode-yolo-bg 可提取`);
+  ok(wcagContrast(yoloFg, yoloBg) >= 4.5, `${label}: yolo-fg ${yoloFg} vs yolo-bg ${yoloBg} = ${wcagContrast(yoloFg, yoloBg).toFixed(2)}:1 ≥ 4.5`);
+  ok(dangerFg !== "" && wcagContrast(dangerFg, dangerBase) >= 4.5, `${label}: danger-fg ${dangerFg} vs danger ${dangerBase} = ${wcagContrast(dangerFg, dangerBase).toFixed(2)}:1 ≥ 4.5`);
+  ok(yoloFg !== "#fff" && dangerFg !== "#fff", `${label}: 白字前景已退场`);
+}
+
+// ---- ⑦暗色负钉：danger/yolo/autopilot 暗色基准逐字节不变 ----
+
+ok(rootBlock.includes("--danger: #e5484d;") && rootBlock.includes("--danger-fg: #fff;"), "dark :root --danger/--danger-fg 逐字节不变");
+ok(
+  rootBlock.includes("--mode-yolo-bg: #f04b52;") &&
+    rootBlock.includes("--mode-yolo-border: #ff6268;") &&
+    rootBlock.includes("--mode-yolo-fg: #fff;"),
+  "dark :root yolo 三元组逐字节不变（暗色白字 3.6:1 ≥AA-large 现状保持）",
+);
+ok(
+  rootBlock.includes("--mode-autopilot-bg: #f97316;") && rootBlock.includes("--mode-autopilot-fg: #2b1503;"),
+  "dark :root autopilot 三元组不动（595/614 暗色档）",
+);
+ok(
+  autoLightBlock.includes("--mode-autopilot-bg: #ea580c;") && autoLightBlock.includes("--mode-autopilot-fg: #2b1503;"),
+  "light autopilot 先例（614）不动：#2b1503 vs #ea580c = 4.87 保持",
+);
+ok(wcagContrast("#ffffff", "#f04b52") >= 3, `dark yolo 白字读数保持 AA-large: ${wcagContrast("#ffffff", "#f04b52").toFixed(2)}:1 ≥ 3`);
+ok(rootBlock.includes("--pill-yolo-fg: var(--danger-fg);"), "pill 消费链 --pill-yolo-fg→var(--danger-fg) 未动");
+
+// ---- ⑧composer-approval-select 混合底连带面（yolo-fg 字直接铺 color-mix 底） ----
+
+ok(
+  /color-mix\(in srgb, var\(--mode-yolo-bg\) 55%, var\(--surface-2\)\)/.test(stylesSource),
+  ".composer-approval-select--yolo 混合底公式（55% yolo-bg + surface-2）未动",
+);
+const bgElev2Light = extractColor(forcedLightBlock, "--bg-elev-2");
+const yoloBgLight = extractColor(forcedLightBlock, "--mode-yolo-bg");
+const yoloFgLight = extractColor(forcedLightBlock, "--mode-yolo-fg");
+const selMix = mixOver(yoloBgLight, 55, bgElev2Light);
+ok(wcagContrast(yoloFgLight, selMix) >= 4.5, `approval-select--yolo 亮色混合底 ${selMix} 上前景 = ${wcagContrast(yoloFgLight, selMix).toFixed(2)}:1 ≥ 4.5（改前白字 2.24）`);
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
