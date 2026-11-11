@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"time"
 
 	"reasonix/internal/billing"
@@ -22,6 +23,12 @@ func (a *App) ClearSessionCost() error {
 // ClearSessionCostForTab resets the requested tab's accrued session cost
 // regardless of later focus changes. Idempotent: resetting an already-zero
 // session rewrites the same zero state and reports no error.
+//
+// tl1557: a reset is destructive, so the pre-reset value lands in the desktop
+// log (slog) for traceability — a deliberate reset of a non-zero cost writes
+// one line with the tab, the session path, and the previous amount; resetting
+// an already-zero session stays silent (idempotent rewrites do not spam the
+// log).
 func (a *App) ClearSessionCostForTab(tabID string) error {
 	tab := a.tabByID(tabID)
 	if tab == nil {
@@ -30,22 +37,49 @@ func (a *App) ClearSessionCostForTab(tabID string) error {
 	if a.tabIsReadOnly(tab) {
 		return readOnlyChannelErr()
 	}
-	tab.clearSessionCost()
+	prev := tab.clearSessionCost()
+	if prev != nil {
+		slog.Info("desktop: session cost reset",
+			"tab", tab.ID,
+			"session", tab.currentSessionPath(),
+			"prev_cost", prev.cost,
+			"prev_currency", prev.currency,
+			"prev_usd", prev.usd,
+		)
+	}
 	if path := tab.currentSessionPath(); path != "" {
 		_ = saveTelemetry(path+".telemetry.json", tab.telemetrySnapshot())
 	}
 	return nil
 }
 
+// resetCostSnapshot is the pre-reset cost trace (tl1557): nil when the session
+// was already zero so the idempotent rewrite stays unlogged, non-nil with the
+// cleared amount otherwise.
+type resetCostSnapshot struct {
+	cost     float64
+	currency string
+	usd      float64
+}
+
 // resetSessionCost zeroes the cost bookkeeping under the telemetry lock and
 // bumps the runtime generation so in-flight display hints cannot rebind a
-// stale quote onto the reset state.
-func (t *WorkspaceTab) clearSessionCost() {
+// stale quote onto the reset state. Returns the pre-reset cost trace for the
+// caller's log line (nil = already zero).
+func (t *WorkspaceTab) clearSessionCost() *resetCostSnapshot {
 	if t == nil {
-		return
+		return nil
 	}
 	t.telemMu.Lock()
 	defer t.telemMu.Unlock()
+	var prev *resetCostSnapshot
+	if t.usageTelemetry.SessionCost != 0 || t.usageTelemetry.SessionCostUsd != 0 || t.usageTelemetry.SessionCurrency != "" {
+		prev = &resetCostSnapshot{
+			cost:     t.usageTelemetry.SessionCost,
+			currency: t.usageTelemetry.SessionCurrency,
+			usd:      t.usageTelemetry.SessionCostUsd,
+		}
+	}
 	t.usageTelemetry.SessionCost = 0
 	t.usageTelemetry.SessionCurrency = ""
 	t.usageTelemetry.SessionCostUsd = 0
@@ -61,6 +95,7 @@ func (t *WorkspaceTab) clearSessionCost() {
 	}
 	t.runtimeCostQuote = nil
 	t.runtimeCostGeneration++
+	return prev
 }
 
 // resetZeroCostQuote is the explicit post-reset quote: a complete, matched zero

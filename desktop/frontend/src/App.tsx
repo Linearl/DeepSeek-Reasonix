@@ -786,6 +786,7 @@ export default function App() {
     reassertVisibleTabAfterStaleNavigation,
     syncActiveTab,
     reloadTranscriptsForConsolidatedSession,
+    refreshContextForTab,
     ensureBlankTab,
     ensureBlankSurface,
     itemsForTab,
@@ -7045,6 +7046,10 @@ export default function App() {
                     sessionGen={state.sessionGen}
                     refreshKey={dockRefreshKey + state.contextPanelSeq}
                     usageSeq={state.usageSeq}
+                    /* tl1557: 会话费用重置后的信息栏同步刷新——指标卡自身
+                       refresh() 之外，信息栏费用芯片读 reducer context 快照，
+                       走本出口一并归零（既有 dispatch 形态，零新分支）。 */
+                    refreshContextForTab={refreshContextForTab}
                   />
                 </Suspense>
               ) : (
