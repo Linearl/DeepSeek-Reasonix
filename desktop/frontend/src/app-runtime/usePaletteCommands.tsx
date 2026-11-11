@@ -12,6 +12,7 @@ import { useRemoteStore } from "../store/remote";
 import { activeTabMirror } from "./activeTabMirror";
 import type { RemoteHostView, SessionMeta } from "../lib/types";
 import type { Translator } from "../lib/i18n";
+import { formatCalendarDate } from "../lib/messageTimestamp";
 import type { PaletteItem } from "../components/CommandPalette";
 
 export type PaletteCommandsInput = {
@@ -146,7 +147,7 @@ export function usePaletteCommands(input: PaletteCommandsInput) {
       const days = Math.round((startOfDay(new Date()) - startOfDay(new Date(ms))) / 86_400_000);
       if (days <= 0) return t("history.today");
       if (days === 1) return t("history.yesterday");
-      return new Date(ms).toLocaleDateString();
+      return formatCalendarDate(ms);
     };
     const sessionItems: PaletteItem[] = paletteSessions.slice(0, 12).map((s) => ({
       id: `sess-${s.path}`,

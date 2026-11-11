@@ -4,6 +4,7 @@ import { Brain, Check, ChevronDown, Cpu, Search, Settings } from "lucide-react";
 import { asArray } from "../lib/array";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { modelRefDisplayLabel, registerModelRefLabels } from "../lib/modelRefLabel";
 import { providerDefaultLabel } from "../lib/providerLabel";
 import type { ModelInfo } from "../lib/types";
 import { AnchoredPopover } from "./AnchoredPopover";
@@ -61,8 +62,13 @@ export function ModelSwitcher({
     const seq = ++loadSeqRef.current;
     return (targetTabId ? app.ModelsForTab(targetTabId) : app.Models())
       .then((next) => {
+        const list = asArray(next).map(normalizeModelInfo);
+        // tl1547 (A1): every catalog snapshot feeds the display-name registry,
+        // so ref-holding surfaces elsewhere (sidebar hover, trigger label)
+        // resolve the same connection names the settings panel shows.
+        registerModelRefLabels(list);
         if (seq === loadSeqRef.current && currentTabKeyRef.current === targetKey) {
-          setModels(asArray(next).map(normalizeModelInfo));
+          setModels(list);
         }
       })
       .catch(() => {});
@@ -110,16 +116,23 @@ export function ModelSwitcher({
     return [...map.entries()]
       .map(([provider, items]) => ({
         provider,
-        label: items[0]?.displayName?.trim() || providerDefaultLabel(provider),
+        // tl1547 (A1): the group header is a CONNECTION name — it reads the
+        // backend-stamped providerLabel (settings displayName), never the
+        // first model's displayName that used to leak in here.
+        label: items[0]?.providerLabel?.trim() || providerDefaultLabel(provider),
         items,
       }));
   }, [filtered, t]);
 
   const currentProvider = useMemo(() => {
     const cur = models.find((m) => m.current) ?? models.find((m) => m.model === label || m.ref === label);
-    return cur ? (cur.displayName?.trim() || providerDefaultLabel(cur.provider)) : null;
+    return cur ? (cur.providerLabel?.trim() || providerDefaultLabel(cur.provider)) : null;
   }, [label, models, t]);
-  const triggerLabel = [label, currentProvider, detailLabel].filter(Boolean).join(" · ");
+  // tl1547 (A1/A3): the trigger used to render the raw routing ref; it now
+  // shows the display form (connection label / model display name) while the
+  // matching logic below keeps comparing the raw value.
+  const triggerModelLabel = modelRefDisplayLabel(label);
+  const triggerLabel = [triggerModelLabel, currentProvider, detailLabel].filter(Boolean).join(" · ");
 
   const pick = (model: ModelInfo) => {
     setOpen(false);
@@ -179,7 +192,7 @@ export function ModelSwitcher({
           onClick={() => setOpen((v) => !v)}
         >
           <Cpu size={14} className="modelsw__kind" />
-          <span className="modelsw__label">{label}{detailLabel && <span className="modelsw__detail"> · {detailLabel}</span>}</span>
+          <span className="modelsw__label">{triggerModelLabel}{detailLabel && <span className="modelsw__detail"> · {detailLabel}</span>}</span>
           <ChevronDown size={12} />
         </button>
       </Tooltip>
@@ -221,7 +234,9 @@ export function ModelSwitcher({
                   onClick={() => pick(m)}
                 >
                   <span className="modelsw__copy">
-                    <span className="modelsw__model">{m.model}</span>
+                    {/* tl1547 (A3): the per-model display name the backend
+                        already provides wins over the bare model id. */}
+                    <span className="modelsw__model">{m.displayName?.trim() || m.model}</span>
                   </span>
                   {m.contextWindow ? <span className="badge badge--neutral">{formatTokens(m.contextWindow)}</span> : null}
                   {m.vision && <span className="badge badge--neutral">{t("providerUI.image")}</span>}

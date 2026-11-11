@@ -21,6 +21,7 @@ import { useMountTransition } from "../lib/useMountTransition";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { paletteSessionDisplayTitle, paletteSessionHint, sessionActivityTime } from "../lib/session";
 import { topicActivityLabel } from "../lib/projectTreeTopic";
+import { formatCalendarDate } from "../lib/messageTimestamp";
 import {
   applySessionWallQuery,
   applySessionWallOpenOnly,
@@ -204,7 +205,7 @@ export function SessionWallPanel({
       const days = Math.round((startOfDay(new Date()) - startOfDay(new Date(ms))) / 86_400_000);
       if (days <= 0) return t("history.today");
       if (days === 1) return t("history.yesterday");
-      return new Date(ms).toLocaleDateString();
+      return formatCalendarDate(ms);
     },
     [t],
   );
@@ -302,9 +303,10 @@ export function SessionWallPanel({
         <div className="session-wall-hover-layer__meta">
           {[
             t(s.turns === 1 ? "history.turnOne" : "history.turnOther", { n: s.turns }),
-            // Past 7 days the relative label IS the date — showing both would
-            // repeat the same string (10/20 · 10/20).
-            relative !== date ? relative : "",
+            // tl1547 (B1): the relative label follows the 1299 contract and
+            // stays relative in every band, so it can no longer collapse into
+            // the calendar date — both lines always carry information.
+            relative,
             date,
           ]
             .filter(Boolean)

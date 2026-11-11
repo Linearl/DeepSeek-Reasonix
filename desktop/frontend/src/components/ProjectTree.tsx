@@ -10,6 +10,7 @@ import { writeClipboardText } from "../lib/clipboard";
 import { OpenerIcon } from "./ExternalOpener";
 import { cachedSessionPurpose, loadSessionPurpose, setCachedSessionPurpose, subscribeSessionPurposes } from "../lib/sessionPurpose";
 import { rememberLiveSessionModel, sessionModelHover, titleWithSessionModel } from "../lib/sessionModelHover";
+import { modelRefDisplayLabel } from "../lib/modelRefLabel";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
 import { installStartupDegradeListener, retryStartupCatalogScan } from "../lib/startupDegradeBridge";
 import { useStartupDegradeStore } from "../store/startupDegrade";
@@ -1917,9 +1918,9 @@ export function ProjectTree({
       // classic moved there too so turns and the exact date live in the hover
       // preview card and the accessible label instead of a second meta line.
       const sideTimeVisible = true;
-      const timeLabel = activityAt ? topicActivityLabel(activityAt, t, true) : topicUnknownTimeLabel(node, t);
+      const timeLabel = activityAt ? topicActivityLabel(activityAt, t) : topicUnknownTimeLabel(node, t);
       const exactTimeLabel = activityAt ? topicActivityDateLabel(activityAt) : "";
-      const metaFull = projectTreeTopicMetaLine(node, t, compactTopics);
+      const metaFull = projectTreeTopicMetaLine(node, t);
       const status = topicStatus(node);
       const statusLabel = topicStatusLabel(node, t);
       const archiveBlocked = projectTreeTopicArchiveBlocked(node);
@@ -1952,12 +1953,16 @@ export function ProjectTree({
       const rowPurpose = node.sessionPath ? cachedSessionPurpose(node.sessionPath) ?? "" : "";
       // tl1387: model hover — live (selector-source) > last known live >
       // creation-time (annotated). Remembered live values feed later fallbacks;
-      // the row itself never renders the model inline.
+      // the row itself never renders the model inline. tl1547 (A1): the hover
+      // value resolves through the display-name registry, so a renamed
+      // connection reads the same here as in the settings panel and the
+      // session-header trigger (falling back to the built-in vendor labels
+      // until the first catalog snapshot lands).
       const modelHoverKey = node.sessionPath || `${topicId ?? ""}\u0000${label}`;
       if (node.modelRef) rememberLiveSessionModel(modelHoverKey, node.modelRef);
       const modelHover = sessionModelHover(modelHoverKey, { modelRef: node.modelRef, metaModel: node.metaModel });
       const titleWithPurpose = [
-        titleWithSessionModel(title, modelHover, (key, values) => t(key, values)),
+        titleWithSessionModel(title, modelHover, (key, values) => t(key, { ...values, model: modelRefDisplayLabel(values.model) })),
         rowPurpose,
       ].filter(Boolean).join("\n");
       const topicMenuOpen = menuNodeKey === key;

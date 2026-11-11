@@ -23,6 +23,11 @@ type ModelInfo struct {
 	ContextWindow int    `json:"contextWindow,omitempty"`
 	Vision        bool   `json:"vision,omitempty"`
 	DisplayName   string `json:"displayName,omitempty"`
+	// ProviderLabel is the connection's display name (settings displayName),
+	// tl1547 (A1): display-only payload so ref-holding surfaces render the
+	// same connection name the settings panel resolves. Provider itself stays
+	// the stable routing identity and is never rewritten.
+	ProviderLabel string `json:"providerLabel,omitempty"`
 }
 
 type EffortInfo struct {

@@ -252,9 +252,12 @@ func (a *App) fillNodeModel(node *ProjectNode) {
 	}
 	contact := agent.SessionContactID(node.SessionPath)
 	if contact != "" {
-		if ref, prov, known := a.collabSessionInfo(contact); known {
+		// tl1547 (A2): the Provider stamp is gone with its last FE consumer —
+		// the row renders no inline provider tag anymore and the hover resolves
+		// display names from the ref itself. The provider half of the probe
+		// keeps feeding the collab SessionInfo tool face.
+		if ref, _, known := a.collabSessionInfo(contact); known {
 			node.ModelRef = ref
-			node.Provider = prov
 			return
 		}
 	}

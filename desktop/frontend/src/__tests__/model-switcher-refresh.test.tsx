@@ -344,9 +344,12 @@ if (nullSafeOptions.length !== 2) {
 }
 
 // Connection order and duplicate model IDs must survive selection and renaming.
+// tl1547 (A1): group headers read the CONNECTION label tier (providerLabel) —
+// the per-model displayName used to leak into this slot and could rename the
+// group after the first model of a connection changed.
 currentCatalog = [
-  { ref: "z/shared", provider: "z", displayName: "First connection", model: "shared", current: false },
-  { ref: "a/shared", provider: "a", displayName: "Second connection", model: "shared", current: true },
+  { ref: "z/shared", provider: "z", providerLabel: "First connection", model: "shared", current: false },
+  { ref: "a/shared", provider: "a", providerLabel: "Second connection", model: "shared", current: true },
 ];
 await act(async () => {
   window.dispatchEvent(new Event("reasonix:model-catalog-changed"));

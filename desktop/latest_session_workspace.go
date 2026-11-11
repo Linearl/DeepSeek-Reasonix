@@ -26,33 +26,47 @@ type LastSessionWorkspaceInfo struct {
 // projects, open/detached tabs). Remote-device sessions are not part of these
 // local stores, so a workspace root is never carried across machines.
 func (a *App) LatestSessionWorkspace() LastSessionWorkspaceInfo {
-	return lastSessionWorkspaceInfo(agent.LatestSessionWorkspaceRoot(a.knownSessionDirs()))
+	latest, ok := agent.LatestSessionWorkspaceRoot(a.knownSessionDirs())
+	return lastSessionWorkspaceInfo(latest, ok, a.recoveredSessionLabelSuffix())
 }
 
-func lastSessionWorkspaceInfo(latest agent.LatestSessionWorkspace, ok bool) LastSessionWorkspaceInfo {
+func lastSessionWorkspaceInfo(latest agent.LatestSessionWorkspace, ok bool, recoveredSuffix string) LastSessionWorkspaceInfo {
 	if !ok {
 		return LastSessionWorkspaceInfo{}
 	}
 	return LastSessionWorkspaceInfo{
 		Path:           latest.WorkspaceRoot,
 		Usable:         latest.Usable,
-		SessionTitle:   latestSessionDisplayTitle(latest.CustomTitle, latest.TopicTitle, latest.SessionPath),
+		SessionTitle:   latestSessionDisplayTitle(latest.CustomTitle, latest.TopicTitle, latest.Preview, latest.SessionPath, recoveredSuffix, latest.Recovered),
 		LastActivityAt: latest.LastActivityAt.UnixMilli(),
 	}
 }
 
 // latestSessionDisplayTitle picks a best-effort label so the user can confirm
 // whose directory they are about to reuse: the user-chosen title, then the
-// topic title, then a time label carved from the transcript name; an empty
-// result means "nothing worth showing" and the FE omits the line entirely
-// (tl1330: the raw transcript id never surfaces — it reads as a leaked model
-// string).
-func latestSessionDisplayTitle(customTitle, topicTitle, sessionPath string) string {
+// topic title, then the first-message preview, then a time label carved from
+// the transcript name; an empty result means "nothing worth showing" and the
+// FE omits the line entirely (tl1330: the raw transcript id never surfaces —
+// it reads as a leaked model string).
+//
+// tl1547 (C2/C3): the chain gains the preview tier and the localized
+// recovered suffix — a recovered branch inherits the parent's titles, so two
+// rows used to collide into the same unreadable name, exactly the sibling
+// collision tl1330 added the sidebar suffix for. Every tier carries the
+// suffix, mirroring sessionDisplayLabelForPath.
+func latestSessionDisplayTitle(customTitle, topicTitle, preview, sessionPath, recoveredSuffix string, recovered bool) string {
+	label := ""
 	if title := strings.TrimSpace(customTitle); title != "" {
-		return title
+		label = title
+	} else if title := strings.TrimSpace(topicTitle); title != "" {
+		label = title
+	} else if text := agent.UserPreviewText(strings.TrimSpace(preview)); text != "" {
+		label = text
+	} else {
+		label = sessionStampLabelFromBase(strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath)))
 	}
-	if title := strings.TrimSpace(topicTitle); title != "" {
-		return title
+	if label != "" && recovered {
+		label += recoveredSuffix
 	}
-	return sessionStampLabelFromBase(strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath)))
+	return label
 }

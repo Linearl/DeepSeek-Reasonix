@@ -7827,9 +7827,13 @@ type ProjectNode struct {
 	SessionPath string `json:"sessionPath,omitempty"`
 	// Task 274 ①: the session's current model on the sidebar row — same probe
 	// as the directory list (fillNodeModel), absent when the runtime is
-	// invisible (no guessing).
+	// invisible (no guessing). tl1547 (A2): the sibling Provider field is gone —
+	// its only consumer (the retired inline model tag, then the
+	// `provider || modelRef` full-ref fallback) died with tl1387's hover-only
+	// model surface, and a full-ref fallback next to short provider ids is
+	// exactly the row-width jitter the caliber review flagged. Display names
+	// resolve through the FE registry instead.
 	ModelRef string `json:"modelRef,omitempty"`
-	Provider string `json:"provider,omitempty"`
 	// tl1387: the session sidecar's creation-time model (BranchMeta.Model),
 	// stamped only when the runtime probe above could not see a live value.
 	// The row hover renders the live modelRef first and annotates this one

@@ -47,6 +47,7 @@ import { SettingsSelect } from "./SettingsSelect";
 import { sessionTurnsLabel } from "../lib/sessionTurnsPresentation";
 import { useI18n, type Translator } from "../lib/i18n";
 import { formatDurationLabel, formatRelativeAgeLabel } from "../lib/durationFormat";
+import { modelRefDisplayLabel } from "../lib/modelRefLabel";
 import { detectShortcutPlatform, formatShortcutCombo, isReservedComposerHistoryShortcut, matchesShortcut, useShortcutComboLabel } from "../lib/keyboardShortcuts";
 import { fallbackCopyText } from "../lib/clipboard";
 import {
@@ -6554,7 +6555,7 @@ export function Composer({
                   balance={balance}
                 />
               )}
-              <Suspense fallback={<span className="modelsw__label">{modelLabel}</span>}><ModelSwitcher composerMenu label={modelLabel} tabId={tabId} ready={ready} sessionKey={sessionKey} onPick={onSwitchModel} onManage={() => {
+              <Suspense fallback={<span className="modelsw__label">{modelRefDisplayLabel(modelLabel)}</span>}><ModelSwitcher composerMenu label={modelLabel} tabId={tabId} ready={ready} sessionKey={sessionKey} onPick={onSwitchModel} onManage={() => {
                 useAppNavigationStore.getState().setSettingsFocus({ target: "model-access" });
                 useAppNavigationStore.getState().setSettingsTarget("models");
               }} /></Suspense>

@@ -746,9 +746,10 @@ export interface ProjectNode extends RemoteProjectNodeFields {
   topicId?: string;
   recoveryPath?: string;
   sessionPath?: string;
-  /** Task 274 ①: the session's current model on the sidebar row (absent when the runtime is invisible). */
+  /** Task 274 ①: the session's current model on the sidebar row (absent when the runtime is invisible).
+   *  tl1547 (A2): the sibling `provider` field is gone — its inline-tag consumer retired with tl1387,
+   *  and the hover resolves display names from the ref itself. */
   modelRef?: string;
-  provider?: string;
   /** tl1387: the session sidecar's creation-time model, stamped only when the runtime probe saw no live value. Hover annotates it 「创建时」; never rendered inline. */
   metaModel?: string;
   preview?: string;
@@ -1824,6 +1825,9 @@ export interface MCPMarketplaceView {
 
 export interface ModelInfo {
   displayName?: string;
+  /** tl1547 (A1): the connection's display label (settings displayName);
+   *  display-only — `provider` stays the stable routing identity. */
+  providerLabel?: string;
   ref: string; // "provider/model" — pass to SetModel
   provider: string;
   model: string;

@@ -192,7 +192,9 @@ eq(
     topicId: "recent",
     createdAt: Date.now(),
   }, testT),
-  "projectTree.justNow",
+  // tl1547 (B1): the sidebar rides the 1299 vocabulary — the just-now tier
+  // moved from projectTree.justNow to time.relative.justNow.
+  "time.relative.justNow",
   "topic with a real recent timestamp still renders just-now meta",
 );
 
@@ -210,7 +212,7 @@ eq(
     sessionPath: "/s/stamped.jsonl",
     createdAt: Date.now(),
   }, testT),
-  "projectTree.justNow",
+  "time.relative.justNow",
   "session row with timestamps renders real time metadata, never the previously fallback",
 );
 
@@ -662,15 +664,22 @@ const day = 24 * 60 * 60 * 1000;
 
 eq(
   (() => {
+    const activityAt = Date.now() - 30 * day;
     const card = projectTreeTopicHoverCardModel(
-      { key: "topic_old", kind: "topic", label: "Old topic", root: "/repo", topicId: "old", turns: 3, lastActivityAt: Date.now() - 30 * day },
+      { key: "topic_old", kind: "topic", label: "Old topic", root: "/repo", topicId: "old", turns: 3, lastActivityAt: activityAt },
       testT,
       "my-project",
     );
-    return { exactTime: card.exactTime, metaHasTurns: card.metaLine.startsWith("3 turns · ") };
+    const d = new Date(activityAt);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const expectedDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return { exactIsHyphenDate: card.exactTime === expectedDate, metaHasTurns: card.metaLine.startsWith("3 turns · ") };
   })(),
-  { exactTime: "", metaHasTurns: true },
-  "hover card keeps a single calendar-date copy for week-old sessions",
+  // tl1547 (B1/B2): the meta line follows the 1299 contract and stays
+  // relative in the day band; the exact date is its own line and rides the
+  // hyphen YYYY-MM-DD convention (never locale slashes).
+  { exactIsHyphenDate: true, metaHasTurns: true },
+  "hover card pairs the relative meta line with the exact hyphen calendar date for month-old sessions",
 );
 
 eq(

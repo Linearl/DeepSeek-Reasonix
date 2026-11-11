@@ -1,5 +1,7 @@
 import { asArray } from "./array";
-import { getLocale, type DictKey, type Translator } from "./i18n";
+import { formatRelativeAgeLabel } from "./durationFormat";
+import { formatCalendarDate } from "./messageTimestamp";
+import type { DictKey, Translator } from "./i18n";
 import type { ProjectNode, ProjectTopicStatus } from "./types";
 
 // tl1450: the creation tree variant retired with the layout.
@@ -421,13 +423,13 @@ export function topicIsActive(node: ProjectNode, activeScope?: string, activeWor
   return Boolean(node.sessionPath && activeSessionPath && activeSessionPath === node.sessionPath);
 }
 
-export function projectTreeTopicMetaLine(node: ProjectNode, t: Translator, compact = false): string {
+export function projectTreeTopicMetaLine(node: ProjectNode, t: Translator): string {
   const parts: string[] = [];
   const turns = node.turns ?? 0;
   if (node.turnsState === "unknown") parts.push(t("history.indexing"));
   else if (turns > 0) parts.push(t(turns === 1 ? "history.turnOne" : "history.turnOther", { n: turns }));
   const activityAt = node.lastActivityAt || node.createdAt || 0;
-  if (activityAt) parts.push(topicActivityLabel(activityAt, t, compact));
+  if (activityAt) parts.push(topicActivityLabel(activityAt, t));
   if (parts.length === 0) parts.push(t("projectTree.previously"));
   return parts.join(" · ");
 }
@@ -588,52 +590,24 @@ export function projectTreeTopicMenuOffersPin(variant: ProjectTreeVariant): bool
   return variant === "classic" || variant === "workbench";
 }
 
-export function topicActivityLabel(ms: number, t: Translator, compact = false): string {
+// tl1547 (B1/B3): the sidebar used to run a second relative-time vocabulary
+// next to the 1299 durationFormat contract — compact rows dropped the 「前」
+// marker (`5 分钟` reads as a duration, not an age), the non-compact face
+// used Intl.RelativeTimeFormat spacing (`5 分钟前`), and ≥7d flipped to an
+// absolute date while the tool cards stayed relative. One vocabulary now:
+// this is a thin ms→s adapter over formatRelativeAgeLabel (刚/59秒前/
+// 12分钟前/2小时7分钟前/3天前), so a sidebar row and a tool card on the same
+// screen always read the same label. The old compact/月/年 tiers are gone —
+// the 1299 contract keeps ≥1d relative in the day band.
+export function topicActivityLabel(ms: number, t: Translator): string {
   if (ms <= 0) return "";
-  const delta = Date.now() - ms;
-  const locale = getLocale();
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const month = 30 * day;
-  const year = 365 * day;
-  if (delta < minute) return t("projectTree.justNow");
-  if (!compact) {
-    const rtfLocale = locale === "zh" ? "zh-CN" : locale === "zh-TW" ? "zh-TW" : "en";
-    const rtf = new Intl.RelativeTimeFormat(rtfLocale, { numeric: "auto" });
-    if (delta < hour) return rtf.format(-Math.max(1, Math.round(delta / minute)), "minute");
-    if (delta < day) return rtf.format(-Math.round(delta / hour), "hour");
-    if (delta < 7 * day) return rtf.format(-Math.round(delta / day), "day");
-    return topicActivityDateLabel(ms);
-  }
-  if (delta < hour) {
-    const value = Math.max(1, Math.round(delta / minute));
-    return locale === "zh" || locale === "zh-TW" ? `${value} 分钟` : `${value}m`;
-  }
-  if (delta < day) {
-    const value = Math.round(delta / hour);
-    return locale === "zh" || locale === "zh-TW" ? `${value} 小时` : `${value}h`;
-  }
-  if (delta < 7 * day) {
-    const value = Math.round(delta / day);
-    return locale === "zh" || locale === "zh-TW" ? `${value} 天` : `${value}d`;
-  }
-  if (delta < month) {
-    const value = Math.round(delta / day);
-    return locale === "zh" || locale === "zh-TW" ? `${value} 天` : `${value}d`;
-  }
-  if (delta < year) {
-    const value = Math.max(1, Math.round(delta / month));
-    return locale === "zh" || locale === "zh-TW" ? `${value} 个月` : `${value}mo`;
-  }
-  const value = Math.max(1, Math.round(delta / year));
-  return locale === "zh" || locale === "zh-TW" ? `${value} 年` : `${value}y`;
+  return formatRelativeAgeLabel(Math.max(0, Math.round((Date.now() - ms) / 1000)), t);
 }
 
+// tl1547 (B2): the absolute-date convention is the manual hyphen splice
+// (1012 contract) — YYYY-MM-DD, byte-identical across locales; the per-face
+// toLocaleDateString used to produce slashes (zh 2026/11/4, en 11/4/2026).
 export function topicActivityDateLabel(ms: number): string {
-  if (ms <= 0) return "";
-  const locale = getLocale();
-  const dateLocale = locale === "zh" ? "zh-CN" : locale === "zh-TW" ? "zh-TW" : "en";
-  return new Date(ms).toLocaleDateString(dateLocale);
+  return formatCalendarDate(ms);
 }
 

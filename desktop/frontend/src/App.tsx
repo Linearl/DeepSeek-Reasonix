@@ -77,6 +77,7 @@ import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsC
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
 import { clearWailsResizeEdge, useWailsResizeFix } from "./lib/useWailsResizeFix";
+import { formatCalendarDate } from "./lib/messageTimestamp";
 import { asArray } from "./lib/array";
 import { activeLeaseBlockedTab, createBoundedRefreshCoordinator, sameTabMetaLists, shouldRefreshTabMetaForEvent, TAB_META_MAX_IN_FLIGHT } from "./lib/tabMetaRefresh";
 import { useRuntimeStateSync } from "./lib/useRuntimeState";
@@ -5379,7 +5380,7 @@ export default function App() {
       const days = Math.round((startOfDay(new Date()) - startOfDay(new Date(ms))) / 86_400_000);
       if (days <= 0) return t("history.today");
       if (days === 1) return t("history.yesterday");
-      return new Date(ms).toLocaleDateString();
+      return formatCalendarDate(ms);
     };
     const sessionItems: PaletteItem[] = paletteSessions.slice(0, 12).map((s) => ({
       id: `sess-${s.path}`,
