@@ -169,7 +169,7 @@ async function openPanel(): Promise<Root> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   await act(async () => {
     document.querySelector<HTMLButtonElement>("tr.rc-session .rc-session__toggle")?.click();
