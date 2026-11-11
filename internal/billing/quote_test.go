@@ -163,3 +163,48 @@ func TestLedgerMixedOriginalBucketsContinueAccumulating(t *testing.T) {
 		t.Fatalf("ledger buckets = %+v", q)
 	}
 }
+
+// tl1556: a bucket that turns mixed must not keep the pre-mix Selected around
+// as a stale currency marker — the first quote's display pick (say CNY 1)
+// stops being a fact the moment a second currency joins the bucket.
+func TestLedgerMixedBucketClearsStaleSelected(t *testing.T) {
+	l := NewLedger()
+	first := CostQuote{
+		Original:     Money{Amount: "1", Currency: "CNY"},
+		Valuations:   map[string]Valuation{"CNY": {Money: Money{Amount: "1", Currency: "CNY"}, Basis: BasisIdentity}},
+		Selected:     &Money{Amount: "1", Currency: "CNY"},
+		CostComplete: true, DisplayComplete: true, Complete: true,
+		DisplayStatus: DisplayStatusMatched, ModelRef: "m", PricingFingerprint: "same",
+	}
+	second := CostQuote{
+		Original:     Money{Amount: "2", Currency: "USD"},
+		Valuations:   map[string]Valuation{"USD": {Money: Money{Amount: "2", Currency: "USD"}, Basis: BasisIdentity}},
+		Selected:     &Money{Amount: "2", Currency: "USD"},
+		CostComplete: true, DisplayComplete: true, Complete: true,
+		DisplayStatus: DisplayStatusMatched, ModelRef: "m", PricingFingerprint: "same",
+	}
+	l.Add(first, UsageTokens{PromptTokens: 1}, time.Time{})
+	l.Add(second, UsageTokens{PromptTokens: 1}, time.Time{})
+	for _, ent := range l.Entries {
+		if len(ent.Quote.OriginalTotals) == 0 {
+			t.Fatalf("expected bucketed entry, got %+v", ent.Quote)
+		}
+		if ent.Quote.Selected != nil {
+			t.Fatalf("stale Selected survived bucket mix: %+v", ent.Quote.Selected)
+		}
+		if ent.Quote.DisplayStatus != DisplayStatusBucketed || ent.Quote.IncompleteReason != "mixed_original_currencies" {
+			t.Fatalf("bucket status = %+v", ent.Quote)
+		}
+	}
+	// Total re-selection must not claim a matched single-currency sum from the
+	// CNY identity valuation — that shape used to swallow the USD bucket from
+	// Selected (tl1556 second form: wrong headline, not just "-"). Per-currency
+	// totals stay available for surfaces (frontend bucket rendering).
+	total := l.Total("CNY")
+	if total.Selected != nil || total.DisplayStatus != DisplayStatusBucketed || total.AggregateMode != AggregateModeCurrencyBuckets {
+		t.Fatalf("mixed total with display pref = %+v", total)
+	}
+	if len(total.OriginalTotals) != 2 || total.OriginalTotals[0].Amount != "1" || total.OriginalTotals[1].Amount != "2" {
+		t.Fatalf("mixed total buckets = %+v", total.OriginalTotals)
+	}
+}

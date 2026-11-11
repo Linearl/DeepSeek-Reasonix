@@ -100,6 +100,10 @@ func (l *Ledger) Add(q CostQuote, tokens UsageTokens, occurred time.Time) {
 			ent.Quote.DisplayStatus = DisplayStatusBucketed
 			ent.Quote.AggregateMode = AggregateModeCurrencyBuckets
 			ent.Quote.IncompleteReason = "mixed_original_currencies"
+			// tl1556: a bucketed entry no longer has one display amount, so a
+			// Selected left over from the pre-mix quote must not survive as a
+			// stale currency marker on re-read.
+			ent.Quote.Selected = nil
 		} else {
 			sum, err := AddMoney(ent.Quote.Original, q.Original)
 			if err != nil {
@@ -110,6 +114,8 @@ func (l *Ledger) Add(q CostQuote, tokens UsageTokens, occurred time.Time) {
 				ent.Quote.DisplayStatus = DisplayStatusBucketed
 				ent.Quote.AggregateMode = AggregateModeCurrencyBuckets
 				ent.Quote.IncompleteReason = "mixed_original_currencies"
+				// tl1556: same stale-Selected rule for the fresh mix transition.
+				ent.Quote.Selected = nil
 			} else {
 				ent.Quote.Original = sum
 			}
