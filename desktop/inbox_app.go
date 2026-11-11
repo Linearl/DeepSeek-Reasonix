@@ -531,11 +531,20 @@ func (a *App) SetInboxPaused(tabID string, paused bool) error {
 	if err := ctrl.SetInboxPaused(paused); err != nil {
 		return inboxWailsError(err)
 	}
+	// tl1296: only the resume leg re-drives a queue — heal there when the
+	// dispatch just bounced off a stale write authority. The pause leg never
+	// heals: pausing needs no write authority and must not rotate generations.
+	if !paused {
+		a.healInboxDispatchAfterStaleAuthority(tabID, ctrl)
+	}
 	a.emitInboxChanged(tabID)
 	return nil
 }
 
-// RetryInboxItem resets uncertain/blocked items to queued.
+// RetryInboxItem resets uncertain/blocked items to queued. tl1296: when the
+// dispatch leg lands on a refused write-authority gate, the shared heal
+// remounts the authority and re-drives the queue head once instead of leaving
+// the row stranded behind the "close and reopen" notice.
 func (a *App) RetryInboxItem(tabID, id string) error {
 	ctrl, err := a.inboxCtrl(tabID)
 	if err != nil {
@@ -543,6 +552,9 @@ func (a *App) RetryInboxItem(tabID, id string) error {
 	}
 	if err := ctrl.RetryInboxItem(id); err != nil {
 		return inboxWailsError(err)
+	}
+	if a.healInboxDispatchAfterStaleAuthority(tabID, ctrl) {
+		a.emitInboxAuthorityHealedNotice(tabID, id, ctrl)
 	}
 	a.emitInboxChanged(tabID)
 	return nil

@@ -108,6 +108,10 @@ export const zh: Record<DictKey, string> = {
   "notice.submitRejected": "消息在开轮前被拒。可展开详情查看具体原因，然后重发。",
   "notice.sendFailedMessage": "消息未能发送。可展开详情查看具体原因，然后重发。",
   "notice.sendFailedCommand": "命令未能运行。可展开详情查看具体原因。",
+  // tl1296：写权限失效拒绝 + 自动恢复纠正——文案点明「应用崩溃后正在恢复」
+  // 状态，避免崩溃后的拒绝被读成会话已死。
+  "notice.writeAuthorityStale": "消息未被受理：本会话的写权限已失效——通常是应用崩溃后正在恢复的过渡状态。关闭并重新打开本会话标签页后重试即可。",
+  "notice.writeAuthorityRecovered": "已恢复：会话写权限已自动恢复，你的消息正在运行——这通常发生在应用崩溃后的恢复期，消息不会丢失。",
   "tooltip.truncated": "…（已截断，共 {n} 行）",
   "tooltip.copyFull": "复制全文",
   "tooltip.copied": "已复制",

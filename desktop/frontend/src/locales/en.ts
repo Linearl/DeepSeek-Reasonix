@@ -111,6 +111,11 @@ export const en = {
   "notice.submitRejected": "The message was refused before the turn started. Expand the detail for the exact reason, then resend.",
   "notice.sendFailedMessage": "The message could not be sent. Expand the detail for the exact reason, then resend.",
   "notice.sendFailedCommand": "The command could not be run. Expand the detail for the exact reason.",
+  // tl1296: write authority stale refusal + auto-recovery correction — the
+  // copy names the app-crash recovery state so a post-crash refusal does not
+  // read like a dead session.
+  "notice.writeAuthorityStale": "Message not accepted: this session's write access went stale — usually a transitional state while the session is recovering right after an app crash. Close and reopen this session's tab and try again.",
+  "notice.writeAuthorityRecovered": "Recovered: the session's write access was restored automatically and your message is running now — a state that usually follows an app crash, and nothing was lost.",
   "tooltip.truncated": "… (truncated, {n} lines total)",
   "tooltip.copyFull": "Copy full text",
   "tooltip.copied": "Copied",

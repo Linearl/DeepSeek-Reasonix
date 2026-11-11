@@ -108,6 +108,10 @@ export const zhTW: Record<DictKey, string> = {
   "notice.submitRejected": "訊息在開輪前被拒。可展開詳情查看具體原因，然後重發。",
   "notice.sendFailedMessage": "訊息未能傳送。可展開詳情查看具體原因，然後重發。",
   "notice.sendFailedCommand": "指令未能執行。可展開詳情查看具體原因。",
+  // tl1296：寫入權限失效拒絕 + 自動恢復糾正——文案點明「應用程式當機後正在恢復」
+  // 狀態，避免當機後的拒絕被讀成會話已死。
+  "notice.writeAuthorityStale": "訊息未被受理：本會話的寫入權限已失效——通常是應用程式當機後正在恢復的過渡狀態。關閉並重新開啟本會話分頁後重試即可。",
+  "notice.writeAuthorityRecovered": "已恢復：會話寫入權限已自動恢復，你的訊息正在執行——這通常發生在應用程式當機後的恢復期，訊息不會遺失。",
   "tooltip.truncated": "…（已截斷，共 {n} 行）",
   "tooltip.copyFull": "複製全文",
   "tooltip.copied": "已複製",

@@ -53,12 +53,23 @@ func (c *Controller) WriteAuthorityGeneration() uint64 {
 // that re-acquires the lease and rebinds a fresh write authority
 // (desktop/tabs.go buildTabController → commitStartupWriteAuthorityLocked →
 // bindTabWriteAuthority); the abstract "reopen" alone left users without the
-// next step.
-const noticeSessionNotWritable = "input was not accepted: this session is no longer writable — close and reopen this session's tab and try again"
+// next step. tl1296: the trailing clause names the crash-recovery state the
+// 2026-10-31 crash loop kept producing — the refusal usually means the
+// session is mid-recovery after an app crash, not a dead session — and the
+// desktop frontend replaces this line wholesale through the notice code below
+// (localized copy, three languages).
+const noticeSessionNotWritable = "input was not accepted: this session is no longer writable — close and reopen this session's tab and try again (right after an app crash this is the recovery still settling; reopening completes it)"
+
+// noticeCodeWriteAuthorityStale is the stable notice code for the
+// stale/missing write authority refusal family (tl1296). The desktop frontend
+// maps it to a localized copy that carries the "recovering after an app
+// crash" state explanation (notice.writeAuthorityStale, en/zh/zh-TW); every
+// other frontend shows noticeSessionNotWritable verbatim.
+const noticeCodeWriteAuthorityStale = "session_write_authority_stale"
 
 func (c *Controller) submitCommandOrTurn(trimmed, input, display string, scopedRefsOnly bool, editedOriginal, format string) {
 	if err := c.ensureWriteAuthorityReady(); err != nil {
-		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: noticeSessionNotWritable})
+		c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Code: noticeCodeWriteAuthorityStale, Text: noticeSessionNotWritable})
 		return
 	}
 	c.submitCommandOrTurnReady(trimmed, input, display, scopedRefsOnly, editedOriginal, format)
