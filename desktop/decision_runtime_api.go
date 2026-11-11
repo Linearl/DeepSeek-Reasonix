@@ -51,6 +51,33 @@ func (a *App) ReplayPendingPromptIdentitiesForTab(tabID string) ([]PromptIdentit
 	return a.PendingPromptIdentitiesForTab(tabID)
 }
 
+// AcknowledgePendingPromptsForTab drops every pending prompt of the tab —
+// the tl1541「已确认 / 知道了」action. Each prompt dies through the shared
+// cancelOwnedPrompt choke point (PromptClosed emit), so the sidebar amber
+// pill, the tab-bar waiting marker and any open decision card all clear from
+// one source. A live turn blocked behind the dropped prompt is cancelled
+// foreground: approval/ask waits wake only on a reply or a cancelled
+// context, so dismissing without the cancel would wedge the turn (the same
+// pairing rule Controller.close documents for clearAll). Returns how many
+// prompts were still pending and were dropped.
+func (a *App) AcknowledgePendingPromptsForTab(tabID string) (int, error) {
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if ctrl == nil {
+		return 0, a.workspaceNotReadyErr(tab)
+	}
+	abandon, ok := ctrl.(interface{ AbandonPendingPrompts(reason string) int })
+	if !ok {
+		return 0, fmt.Errorf("this runtime cannot acknowledge pending prompts")
+	}
+	dropped := abandon.AbandonPendingPrompts("user-acknowledged")
+	if dropped > 0 {
+		if st := ctrl.RuntimeStatus(); st.Running || st.Finishing {
+			ctrl.Cancel()
+		}
+	}
+	return dropped, nil
+}
+
 // ResolvePromptForTab is the canonical exact-identity decision endpoint.
 func (a *App) ResolvePromptForTab(tabID, promptID, turnID, runtimeEpoch, kind string, answer PromptAnswerView) error {
 	tab, ctrl := a.tabAndCtrlByID(tabID)

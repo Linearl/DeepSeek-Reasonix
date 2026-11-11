@@ -3,6 +3,7 @@ package control
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"sort"
@@ -307,6 +308,37 @@ var (
 	ErrPromptAlreadyResolved = errors.New("prompt is already resolved")
 	ErrPromptNotPending      = errors.New("prompt is not pending")
 )
+
+// AbandonPendingPrompts drops every pending prompt (approval / ask / plan /
+// recovery / mcp interaction) through cancelOwnedPrompt — the same choke
+// point timeout, cancel and teardown use — so each one emits PromptClosed and
+// every badge / card surface keyed to it dies (tl1541「已确认」dismiss).
+// Durable decision cards are expired alongside, matching the autopilot
+// refusal pairing.
+//
+// It does NOT by itself unblock the turn waiting behind the prompt: approval
+// and ask waits wake only on a reply or a cancelled context (close() pairs
+// clearAll with the foreground cancellation for exactly this reason), so a
+// caller dismissing prompts of a LIVE turn must follow with Cancel. Returns
+// the number of prompts still pending at dismissal time.
+func (c *Controller) AbandonPendingPrompts(reason string) int {
+	if c == nil {
+		return 0
+	}
+	dropped := 0
+	for _, identity := range c.promptOwner.Identities() {
+		if _, ok := c.promptOwner.Prompt(identity.PromptID); !ok {
+			continue
+		}
+		c.cancelOwnedPrompt(identity.PromptID)
+		c.expirePendingCard(identity.PromptID)
+		dropped++
+	}
+	if dropped > 0 {
+		slog.Info("controller: pending prompts abandoned", "count", dropped, "reason", reason)
+	}
+	return dropped
+}
 
 // PromptAnswer is the transport-neutral union used by exact prompt resolve.
 type PromptAnswer struct {
