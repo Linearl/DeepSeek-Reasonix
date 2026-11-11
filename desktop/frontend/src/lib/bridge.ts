@@ -1364,6 +1364,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RewindForTab(tabID: string, turn: number, scope: string): Promise<void>;
   PreviewRewindForTab(tabID: string, turn: number, scope: string): Promise<import("./types").RewindPlanView>;
   CommitRewindForTab(tabID: string, planID: string, turn: number, scope: string): Promise<import("./types").RewindResultView>;
+  EditAndResendForTab(tabID: string, turn: number, display: string, input: string, original: string): Promise<{ ok: boolean; error?: string; branch?: string; tabId?: string; tab?: TabMeta }>;
   UndoRewindForTab(tabID: string, transactionID: string): Promise<import("./types").RewindResultView>;
   PreviewWorkspaceFileRevertForTab(tabID: string, path: string): Promise<import("./types").RewindPlanView>;
   CommitWorkspaceFileRevertForTab(tabID: string, planID: string, resolution: string): Promise<import("./types").RewindResultView>;
@@ -1779,6 +1780,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 1024: composer 草稿优化（发送左侧改写按钮；re-applied on settings
   // save, no restart）。
   SetExperimentalDraftRewrite(enabled: boolean): Promise<void>;
+  SetExperimentalEditResend(enabled: boolean): Promise<void>;
   // tl 1132: DSH 式启动遮罩（off = 不渲染，on = 核心区就绪后淡出；
   // re-applied on settings save, no restart）。
   SetExperimentalStartupSplash(enabled: boolean): Promise<void>;
@@ -5421,6 +5423,9 @@ function makeMockApp(): AppBindings {
     async CommitRewindForTab() {
       return { ok: true, undoAvailable: true, transactionId: "mock-tx" };
     },
+    async EditAndResendForTab() {
+      return { ok: true, branch: "mock-branch" };
+    },
     async UndoRewindForTab() {
       return { ok: true, undoAvailable: false };
     },
@@ -6996,6 +7001,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSendTargetSelect() {},
     async SetExperimentalSmoothScrollFollow() {},
     async SetExperimentalDraftRewrite() {},
+    async SetExperimentalEditResend() {},
     async SetExperimentalStartupSplash() {},
     async SetStandardContinuation() {},
     async SetExperimentalWorkflowPanel() {},

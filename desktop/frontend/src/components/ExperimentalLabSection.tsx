@@ -1488,6 +1488,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* tl1544：运行中编辑历史消息回溯重发——运行中点历史用户消息进入
+                  编辑即原子编排（中止→治理→fork 截断→编辑重发）。默认关=运行中
+                  编辑入口维持拒绝现状；回合后 rewind 链零变化。 */}
+              <SettingsField label={labLabel("editResend", t("settings.editResend"))} hint={t("settings.editResendHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalEditResend) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalEditResend(on))}
+                    >
+                      {t(on ? "settings.editResend.on" : "settings.editResend.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {selected === "collabHub" && (

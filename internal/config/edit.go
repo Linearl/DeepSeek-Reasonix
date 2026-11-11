@@ -1555,6 +1555,16 @@ func (c *Config) SetExperimentalDraftRewrite(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalEditResend toggles the tl1544 lab switch: the RUNNING-state
+// message-history edit entry routes through the EditAndResend atomic
+// orchestration. Config-only write (the frontend reads the live readback —
+// no boot snapshot involved), so a flip applies immediately; off = the
+// existing post-turn rewind chain byte-for-byte.
+func (c *Config) SetExperimentalEditResend(enabled bool) error {
+	c.Agent.ExperimentalEditResend = enabled
+	return nil
+}
+
 // SetStandardContinuation toggles the task-1070 Standard-flow continuation
 // total gate (lab switch standard_continuation, default off). Boot snapshot:
 // the agent reads it once at construction, so a flip applies to the next

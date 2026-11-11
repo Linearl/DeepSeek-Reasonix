@@ -25,7 +25,9 @@ function Probe({ readOnly = false, hydrating = false }: { readOnly?: boolean; hy
     activeTabId: "A", activeTabReadOnly: readOnly, items,
     hydratePlaceholderActive: hydrating, controllerReady: true, running: false,
     messageActionOpen: false, approvalOpen: false, askOpen: false, clearContextPending: false,
+    editResendEnabled: false,
     ports: {
+      editAndResendForTab: async () => { calls.push("editResend"); return { ok: true }; },
       rewindForTab: async () => { calls.push("rewind"); return true; },
       rewindForTabDetailed: async (tabId, turn, scope) => {
         calls.push(`detailed:${tabId}:${turn}:${scope}`);

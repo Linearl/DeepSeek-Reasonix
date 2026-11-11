@@ -449,6 +449,15 @@ func (a *App) SetExperimentalDraftRewrite(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDraftRewrite(enabled) })
 }
 
+// SetExperimentalEditResend toggles the tl1544 lab switch: while a turn is
+// RUNNING, the message-history edit entry stays usable and routes through the
+// EditAndResend atomic orchestration. Off (default) = running edits refused
+// exactly as today; the post-turn rewind chain is untouched either way.
+// Config-only flip, no restart needed.
+func (a *App) SetExperimentalEditResend(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalEditResend(enabled) })
+}
+
 // SetExperimentalStartupSplash toggles the DSH-style startup splash overlay
 // (tl 1132): off (default) never renders the splash, on shows it until the
 // core UI is mounted then fades it out. Pure frontend gate: the settings save
