@@ -5993,6 +5993,9 @@ export const zhTW: Record<DictKey, string> = {
   "compaction.progress": "分塊壓縮中 {done}/{total}",
   // 任務 556: 壓縮進行中的即時讀數（run-strip 同款觀感）
   "compaction.liveReadout": "{tokens} tokens · {tps} tokens/s",
+  // tl1559: 首個 token 估計到達前的佔位腿（摘要請求首 token 延遲空窗），
+  // 呼叫面經 compactionLiveReadout 的 options 顯式啟用。
+  "compaction.liveEstimating": "估算中…",
   "composer.subagentPolicyTrigger": "子代理委派",
   "composer.quickCommandsTitle": "快捷指令",
   "heartbeat.fieldModelOverride": "模型覆蓋",

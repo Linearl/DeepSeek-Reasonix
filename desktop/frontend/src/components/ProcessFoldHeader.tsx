@@ -82,7 +82,10 @@ export function ProcessFoldHeader({
   // the reducer's compaction_started stamp. The shared compactionLiveReadout
   // is the single formatting seam (fold header + compaction card); tps stays
   // hidden until the backend's 500ms noise floor passes (it sends 0).
-  const readout = compactionLiveReadout(compactionItem ?? {}, now, t);
+  // tl1559: 头条是用户注视点，首个 token 估计到达前（summarizer TTFT 空窗）
+  // 显式「估算中…」占位——裸秒数读作半截读数。数据源与语义零改动，仅降级
+  // 形态启用（压缩卡 973 不启用，输出逐字节不变）。
+  const readout = compactionLiveReadout(compactionItem ?? {}, now, t, { estimatingWhenEmpty: true });
   // Surface what the closed fold hides — a bare duration reads as pure timing
   // and users have no way to know process detail sits behind it. 任务 1082:
   // toolCount moves to the shared turnToolTally single source so the fold
