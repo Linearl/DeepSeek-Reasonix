@@ -8672,6 +8672,15 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg);
 }
 
+/* ── tl1541「已确认 / 知道了」：prompt 族决策卡下的显式确认动作条 ── */
+.decision-ack-row {
+  display: flex;
+  justify-content: flex-end;
+  max-width: var(--maxw);
+  margin: 0 auto 8px;
+  width: 100%;
+}
+
 /* ── undo-rewind banner (above composer after a rewind) ─────────────── */
 .undo-rewind {
   display: flex;

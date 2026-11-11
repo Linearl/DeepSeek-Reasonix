@@ -1305,6 +1305,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   }): Promise<void>;
   PendingPromptIdentitiesForTab?(tabID: string): Promise<Array<{ promptId: string; turnId: string; runtimeEpoch?: string; kind: string }>>;
   ReplayPendingPromptIdentitiesForTab?(tabID: string): Promise<Array<{ promptId: string; turnId: string; runtimeEpoch?: string; kind: string }>>;
+  /** tl1541「已确认/知道了」：放弃该 tab 全部 pending prompt（徽章+卡片同源清，活回合后端配对取消）。返回放弃数。 */
+  AcknowledgePendingPromptsForTab?(tabID: string): Promise<number>;
   ReplayPendingPrompts(): Promise<void>;
   ReplayPendingPromptsForTab(tabID: string): Promise<void>;
   // 任务408 异步决策点回访：持久待批卡片（回归汇总 + 撤回臂）。
@@ -5230,6 +5232,8 @@ function makeMockApp(): AppBindings {
         },
         async ReplayPendingPrompts() {},
         async ReplayPendingPromptsForTab(_tabID) {},
+        // tl1541 mock：dev shell 无后端 prompt 注册表，恒零放弃（同 PendingDecisionCardsForTab 先例）。
+        async AcknowledgePendingPromptsForTab(_tabID) { return 0; },
         // 任务408 mock：无持久队列，恒空 + 撤回 no-op。
         async PendingDecisionCardsForTab(_tabID) { return []; },
         async WithdrawPendingCardForTab(_tabID, _promptID) {},

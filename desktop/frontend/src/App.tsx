@@ -95,6 +95,7 @@ import { replayPendingPromptsForActiveTab } from "./lib/promptReplay";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { reportBootFirstPaint, reportBootUiStateApplied } from "./lib/bootTimeline";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
+import { DecisionAckRow } from "./components/DecisionAckRow";
 // 任务 856 ①：信件/群聊两面板的挂载与入口合一进 CollabHubPanel；App 侧仅
 // 保留未读徽标 hook（320 遗留 #1 接线）。设置页副入口仍直接调
 // setCollabInboxOpen/setCollabGroupOpen（经转发缝重定向到 Hub）。
@@ -789,6 +790,7 @@ export default function App() {
     ensureBlankSurface,
     itemsForTab,
     turnRuntimeState,
+    acknowledgePendingPrompts,
   } = useController();
   // 任务1301：当前 tab 的 effort 切换是否正走 fallback 重建（recovery-fork 会话
   // 实测 ~2.4s 无反馈像卡死）——传给 Composer 在力度控件旁渲染过渡态；
@@ -2179,6 +2181,17 @@ export default function App() {
   const visibleDecisionSurface = runtimeTransitioning ? null : decisionSurface;
   const composerSurfaceHidden = runtimeTransitioning || Boolean(decisionSurface);
   decisionSurfaceRef.current = decisionSurface;
+  // tl1541「已确认 / 知道了」：prompt 族决策卡（审批/计划/提问/mcp）旁的显式
+  // 确认入口。语义=用户已查看并放弃本次等待：后端清全部 pending prompt
+  // （侧栏 pill + tab 条琥珀同源消除），活回合由后端配对取消解除等待。失败
+  // toast 走 formatActionError 双轨（人话前缀 + 原始错误全文）。
+  const acknowledgeActivePrompts = useCallback(() => {
+    const tabId = activeTabId;
+    if (!tabId) return;
+    acknowledgePendingPrompts().catch((error) => {
+      showToast(formatActionError("action.acknowledgePendingPrompts", error), "error");
+    });
+  }, [acknowledgePendingPrompts, activeTabId, showToast]);
   useEffect(() => {
     // Close composer menus/popovers when a decision takes over the footer.
     if (decisionSurface) {
@@ -6601,6 +6614,9 @@ export default function App() {
                 }}
               />
             ) : null}
+            {/* tl1541「已确认 / 知道了」：prompt 族决策卡的显式确认动作（挂
+                现有 footer 决策区载体，不新增独立入口）。 */}
+            <DecisionAckRow surface={visibleDecisionSurface} onAcknowledge={acknowledgeActivePrompts} />
             {/* Composer stays mounted under a decision so per-session draft
                 caches (text, attachments, paste blocks, guidance) survive. */}
             <div
