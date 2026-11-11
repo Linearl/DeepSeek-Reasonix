@@ -6,7 +6,6 @@ package evidence
 
 import (
 	"context"
-	"strings"
 )
 
 // todoMatchAt is the one place a positive match is built, so every path reports
@@ -25,13 +24,22 @@ func todoMatchAt(index int, todo TodoItem) TodoStepMatch {
 // MatchStepID resolves a stable step id against the current list. It is the
 // exact path complete_step should prefer: unlike a title or a 1-based number, an
 // id survives the retitles and insertions a replan introduces.
+//
+// tl1553: both sides are sanitized before comparison (embedded control
+// characters stripped, outer whitespace trimmed) — storage bytes stay
+// untouched and the match reports the stored id as-is. The projection rescues
+// the two observed pollution shapes at once: a clean citation against a
+// legacy dirty baseline (pre-sanitize storage) and a dirty verbatim copy
+// against a clean list (tokenizer-emitted \r, the tl1310 mechanism family),
+// either of which previously missed the byte-exact compare and fed the
+// retry loop.
 func MatchStepID(stepID string, todos []TodoItem) (TodoStepMatch, bool) {
-	stepID = strings.TrimSpace(stepID)
+	stepID, _ = SanitizeStepID(stepID)
 	if stepID == "" {
 		return TodoStepMatch{}, false
 	}
 	for i, todo := range todos {
-		if todo.StepID == stepID {
+		if stored, _ := SanitizeStepID(todo.StepID); stored != "" && stored == stepID {
 			return todoMatchAt(i+1, todo), true
 		}
 	}
@@ -52,10 +60,15 @@ func TodoStepIDs(todos []TodoItem) []string {
 
 // sameTodoIdentity answers by stable id whenever both items carry one: an id is
 // identity, so a retitled step still matches and two steps that happen to share
-// wording no longer collide. Text is the fallback for freehand lists.
+// wording no longer collide. The id compare is projected through SanitizeStepID
+// (tl1553) so a legacy dirty stored id and its clean rewrite count as the same
+// identity instead of colliding into a false mismatch. Text is the fallback for
+// freehand lists.
 func sameTodoIdentity(a, b TodoItem) bool {
 	if a.StepID != "" && b.StepID != "" {
-		return a.StepID == b.StepID
+		cleanA, _ := SanitizeStepID(a.StepID)
+		cleanB, _ := SanitizeStepID(b.StepID)
+		return cleanA == cleanB
 	}
 	return sameStepText(a.Content, b.Content) || sameStepText(a.ActiveForm, b.ActiveForm)
 }

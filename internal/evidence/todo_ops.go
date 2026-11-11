@@ -33,20 +33,25 @@ type TodoOpItem struct {
 
 // toTodoItem converts an ops payload item into a baseline item, resolving an
 // omitted level to the fallback (the replace target's level, or 0 for insert).
+// tl1553: step_id and parent_id are sanitized on the way in (embedded control
+// characters stripped) so an ops-produced list stores clean identities — same
+// contract as the full-todos write path and the receipt parser.
 func (i *TodoOpItem) toTodoItem(levelFallback int) TodoItem {
 	level := levelFallback
 	if i.Level != nil {
 		level = *i.Level
 	}
+	stepID, _ := SanitizeStepID(i.StepID)
+	parentID, _ := SanitizeStepID(i.ParentID)
 	return TodoItem{
 		Content:    i.Content,
 		Status:     i.Status,
 		ActiveForm: i.ActiveForm,
 		Level:      level,
-		StepID:     i.StepID,
+		StepID:     stepID,
 		Owner:      i.Owner,
 		Running:    i.Running,
-		ParentID:   i.ParentID,
+		ParentID:   parentID,
 		PlanID:     i.PlanID,
 	}
 }
@@ -54,10 +59,10 @@ func (i *TodoOpItem) toTodoItem(levelFallback int) TodoItem {
 // TodoOp is one incremental edit against the host's current todo baseline.
 // The JSON shape mirrors the todo_write tool's ops items.
 type TodoOp struct {
-	Op          string       `json:"op"` // replace | insert | delete | move
-	StepID      string       `json:"step_id,omitempty"`
-	AfterStepID string       `json:"after_step_id,omitempty"`
-	Item        *TodoOpItem  `json:"item,omitempty"`
+	Op          string      `json:"op"` // replace | insert | delete | move
+	StepID      string      `json:"step_id,omitempty"`
+	AfterStepID string      `json:"after_step_id,omitempty"`
+	Item        *TodoOpItem `json:"item,omitempty"`
 }
 
 // ApplyTodoOps mutates a copy of baseline according to ops and returns the
@@ -69,12 +74,12 @@ func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
 		return list, nil
 	}
 	indexOf := func(stepID string) int {
-		id := strings.TrimSpace(stepID)
+		id, _ := SanitizeStepID(stepID)
 		if id == "" {
 			return -1
 		}
 		for i, it := range list {
-			if strings.TrimSpace(it.StepID) == id {
+			if stored, _ := SanitizeStepID(it.StepID); stored != "" && stored == id {
 				return i
 			}
 		}
@@ -116,8 +121,14 @@ func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
 			if strings.TrimSpace(next.StepID) == "" {
 				next.StepID = list[idx].StepID
 			}
-			if strings.TrimSpace(next.StepID) != strings.TrimSpace(list[idx].StepID) {
-				return nil, fmt.Errorf("ops[%d] replace: step_id must stay %q (got %q); use insert+delete to change identity", i, list[idx].StepID, next.StepID)
+			// tl1553: the must-stay check is projected through SanitizeStepID so
+			// a legacy dirty stored id and its clean rewrite count as the same
+			// identity (the payload arrives sanitized via toTodoItem; the stored
+			// entry may predate the write-side cleanup).
+			nextID, _ := SanitizeStepID(next.StepID)
+			storedID, _ := SanitizeStepID(list[idx].StepID)
+			if nextID != storedID {
+				return nil, fmt.Errorf("ops[%d] replace: step_id must stay %s (got %s); use insert+delete to change identity", i, VisibleStepID(list[idx].StepID), VisibleStepID(next.StepID))
 			}
 			if next.Content == "" {
 				return nil, fmt.Errorf("ops[%d] replace: item.content is required", i)
@@ -177,6 +188,11 @@ func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
 	return list, nil
 }
 
+// todoOpKnownIDs renders the current list's ids for an error message.
+// tl1553: ids render through VisibleStepIDJoin so a polluted stored id shows
+// its control characters as visible escapes instead of raw invisible bytes —
+// the model must be able to see the difference between what it sent and what
+// is stored, or it cannot repair (display==storage).
 func todoOpKnownIDs(list []TodoItem) string {
 	ids := make([]string, 0, len(list))
 	for _, it := range list {
@@ -187,7 +203,7 @@ func todoOpKnownIDs(list []TodoItem) string {
 	if len(ids) == 0 {
 		return ""
 	}
-	return "; current step_ids: " + strings.Join(ids, ", ")
+	return "; current step_ids: " + VisibleStepIDJoin(ids)
 }
 
 // ExpandTodoOpsReceipt fills a todo_write receipt's Todos from its ops payload
