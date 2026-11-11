@@ -217,7 +217,7 @@ async function openAndExpand(): Promise<Root | null> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b-2(点2): 会话行恢复默认折叠——副本行的链清单由会话行展开驱动,
   // 点开展开钮,双 flush 等链清单落地。

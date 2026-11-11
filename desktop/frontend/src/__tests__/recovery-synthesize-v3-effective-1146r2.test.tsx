@@ -143,7 +143,7 @@ async function openAndExpand(): Promise<Root> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b: v3-only 会话(无副本,headCount=2)落在已合入组(默认折叠)——
   // 点组段行展开,子行随之可见。

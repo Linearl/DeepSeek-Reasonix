@@ -207,7 +207,7 @@ console.log("\nrecovery branch delete single + batch (1064)");
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  const open = buttonByText("Review and merge");
+  const open = buttonByText("Manage session copies");
   await act(async () => { open?.click(); });
   await flush();
   await expandSessions();
@@ -249,7 +249,7 @@ console.log("\nrecovery branch delete single + batch (1064)");
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   await expandSessions();
   // tl1415b-2: 会话行展开后,副本/版本子行随渲染。
@@ -272,7 +272,7 @@ console.log("\nrecovery branch delete single + batch (1064)");
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   await expandSessions();
   // tl1415b-2: 会话行展开后,副本/版本子行随渲染。
@@ -306,7 +306,7 @@ console.log("\nrecovery branch delete single + batch (1064)");
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   await expandSessions();
 

@@ -132,7 +132,7 @@ async function openAndExpand(): Promise<Root | null> {
   });
   await flush();
   await act(async () => {
-    Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent?.includes("Review and merge"))?.click();
+    Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent?.includes("Manage session copies"))?.click();
   });
   await flush();
   // tl1415b: copies 空的多 head 会话落在已合入组(默认折叠)——点组段行展开。
