@@ -869,7 +869,7 @@
 .model-setting-help-popover { width: min(340px, calc(100vw - 32px)); padding: 14px 16px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev); color: var(--text); box-shadow: 0 8px 28px #0002; z-index: var(--z-popover); font-size: var(--text-md); line-height: 1.6; overflow-wrap: anywhere; }
 .model-setting-help-popover p { margin: 8px 0 0; color: var(--fg-dim); font-weight: normal; }
 :root .settings-center .settings-page .model-assignment-section > .settings-section__head .settings-section__title { font-size: 24px; line-height: 1.3; }
-:root .settings-center .model-preferences .settings-field__label { font-size: 14px; }
+:root .settings-center .model-preferences .settings-field__label { font-size: var(--text-base); }
 
 :root .settings-center .settings-page .model-preferences .settings-section__head { flex-direction: row; justify-content: flex-start; text-align: left; }
 
@@ -879,6 +879,6 @@
 .home-pointer-pane__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .home-pointer-pane__risks { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
 .home-pointer-pane__risks ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.home-pointer-pane__risk { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; color: var(--fg); }
+.home-pointer-pane__risk { display: flex; align-items: flex-start; gap: 8px; font-size: var(--text-md); line-height: 1.45; color: var(--fg); }
 .home-pointer-pane__risk input[type="checkbox"] { margin-top: 2px; flex: none; }
 .home-pointer-pane__risk--error span { color: var(--danger); }

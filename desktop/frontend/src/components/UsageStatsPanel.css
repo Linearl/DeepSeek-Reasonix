@@ -147,7 +147,7 @@
 /* The "most used model" card holds a long model name, so it uses a smaller
    value font and is allowed to wrap to a second line on narrow windows. */
 .usage-stats__card-value--sm {
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.35;
   padding-top: 3px;
   font-variant-numeric: tabular-nums;
@@ -260,7 +260,7 @@
 
 .usage-stats__axis {
   fill: var(--fg-faint);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 /* Invisible whole-column hover target — hovering anywhere on a bar shows the

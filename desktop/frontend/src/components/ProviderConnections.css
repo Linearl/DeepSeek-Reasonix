@@ -49,7 +49,7 @@
 
 /* Compact editor: one aligned form and one flat model list. */
 
-.provider-editor.provider-editor--compact { gap: 20px; background: var(--bg-elev); border: 0; box-shadow: none; padding: 0; font-size: 14px; }
+.provider-editor.provider-editor--compact { gap: 20px; background: var(--bg-elev); border: 0; box-shadow: none; padding: 0; font-size: var(--text-base); }
 .provider-connection-fields { display: flex; flex-direction: column; gap: 16px; padding: 12px 0 24px; border-bottom: 1px solid var(--border); }
 .provider-connection-fields h3 { margin: 0 0 4px; font-size: var(--font-control); }
 .provider-connection-field { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; }
@@ -85,14 +85,14 @@
 
 }
 
-.provider-editor--compact .set-label, .provider-editor--compact .mem-input, .provider-editor--compact .mem-select { font-size: 14px; }
+.provider-editor--compact .set-label, .provider-editor--compact .mem-input, .provider-editor--compact .mem-select { font-size: var(--text-base); }
 .provider-editor--compact .set-label { font-weight: 500; }
 .provider-editor--compact h3, .provider-editor--compact .provider-model-toolbar > strong { font-size: 16px; }
-.provider-editor--compact .provider-model-draft__option { font-size: 14px; }
+.provider-editor--compact .provider-model-draft__option { font-size: var(--text-base); }
 .provider-editor--compact .provider-editor-advanced__hint { display: none; }
 
 .provider-connection-field > .mem-select { max-width: none; }
-.provider-editor-footer .btn { min-height: 36px; padding-inline: 18px; font-size: 14px; }
+.provider-editor-footer .btn { min-height: 36px; padding-inline: 18px; font-size: var(--text-base); }
 
 .provider-model-dialog { width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 40px); box-sizing: border-box; padding: 28px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-elev); color: var(--fg); font: 14px var(--font-sans); }
 .provider-model-dialog::backdrop { background: #0008; }
@@ -104,7 +104,7 @@
 .provider-model-dialog__columns { display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; padding: 24px 0; border-block: 1px solid var(--border); }
 .provider-model-dialog__columns aside { border-left: 1px solid var(--border); padding-left: 24px; }
 .provider-model-dialog section label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; }
-.provider-model-dialog .mem-input, .provider-model-dialog .mem-select { width: 100%; box-sizing: border-box; font-size: 14px; min-height: 40px; }
+.provider-model-dialog .mem-input, .provider-model-dialog .mem-select { width: 100%; box-sizing: border-box; font-size: var(--text-base); min-height: 40px; }
 .provider-model-dialog section label .mem-input { grid-column: 1 / -1; }
 .provider-model-dialog p, .provider-model-dialog small { color: var(--fg-faint); line-height: 1.5; }
 .provider-model-dialog p { margin: 8px 0 20px; font-size: var(--text-sm); }
@@ -179,7 +179,7 @@
 .provider-connection-fields .set-label,
 .provider-connection-fields .provider-key-single > label {
   color: var(--fg-dim);
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 500;
   line-height: 1.4;
 }
