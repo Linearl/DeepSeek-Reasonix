@@ -152,7 +152,7 @@ async function openPanelAndSynthesize(report: HeadSynthesisReport | Error): Prom
     root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b: v3-only 会话在已合入组,默认折叠——点组段行展开。
   await act(async () => { (document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement)?.click(); });

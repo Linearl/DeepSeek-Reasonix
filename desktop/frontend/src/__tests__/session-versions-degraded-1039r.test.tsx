@@ -51,6 +51,9 @@ function ok(value: boolean, label: string) {
 
 function installDom(): HTMLElement {
   document.getElementById("root")?.remove();
+  // tl1415d9: 组段行/会话行展开态跨挂载持久(用户二轮裁决)——每个场景声明
+  // 全新档案,上一场景点开的组不得流进下一场景的默认折叠断言。
+  window.localStorage.clear();
   const root = document.createElement("div");
   root.id = "root";
   document.body.appendChild(root);
@@ -82,6 +85,21 @@ function buttonByText(text: string): HTMLButtonElement | undefined {
 
 function bodyText(): string {
   return document.body.textContent || "";
+}
+
+/** tl1415b 单表重构后的展开链路(旧 .rc-toggle 已退役):面板打开后先点已合入
+ *  组段行(本 harness 的 fixture 无副本+headCount>1 ⇒ phaseOf 归已合入,默认
+ *  折叠;组段行[0]是空的待处理组),再点第一个会话行展开钮;链清单惰性加载,
+ *  双 flush 等落定。 */
+async function expandIncidentRow(): Promise<void> {
+  const mergedGroupRow = document.querySelectorAll("tr.rc-grouprow")[1] as HTMLElement | undefined;
+  await act(async () => { mergedGroupRow?.click(); });
+  await flush();
+  await flush();
+  const toggle = document.querySelector<HTMLButtonElement>("tr.rc-session .rc-session__toggle");
+  await act(async () => { toggle?.click(); });
+  await flush();
+  await flush();
 }
 
 const GC_PATH = "/sessions/gc.jsonl";
@@ -138,19 +156,19 @@ console.log("\nsession versions degraded expand + section boundary (1039r)");
   const { root } = await renderPage(<StorageSettingsPage />);
   ok(Boolean(document.querySelector("input.mem-input")), "① storage path fields are on the page");
   // 任务 1063：v3 版本块并入副本面板的展开行——先开面板，再展开那一行。
-  const openBtn = buttonByText("Review and merge");
+  const openBtn = buttonByText("Manage session copies");
   ok(Boolean(openBtn), "① the copies panel open button renders");
   await act(async () => { openBtn!.click(); });
   await flush();
 
-  const expand = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
-  ok(Boolean(expand), "① expand button for the incident row exists");
-  await act(async () => { expand!.click(); });
-  await flush();
+  // tl1415b 单表重构:旧 .rc-toggle 退役,走组段行→会话行展开钮链路。
+  await expandIncidentRow();
+  const sessions = document.querySelectorAll("tr.rc-session");
+  ok(sessions.length > 0, "① expand button for the incident row exists");
 
   const text = bodyText();
   ok(text.includes(REAL_REPLAY_REFUSAL), "① failure banner carries the backend reason (not a dead generic line)");
-  ok(text.includes("Degraded"), "① a local Degraded row is rendered for the refused conversation");
+  ok(text.includes("degraded readings"), "① a local degraded row is rendered for the refused conversation");
   ok(Boolean(document.querySelector("input.mem-input")), "① storage path fields survive the failed expand");
   ok(!document.querySelector("[data-testid='settings-section-failure']"), "① the section boundary did not fire (rejection stays local to the panel)");
   await unmount(root);
@@ -173,15 +191,13 @@ console.log("\nsession versions degraded expand + section boundary (1039r)");
   });
 
   const { root } = await renderPage(<StorageSettingsPage />);
-  const openBtn = buttonByText("Review and merge");
+  const openBtn = buttonByText("Manage session copies");
   await act(async () => { openBtn!.click(); });
   await flush();
-  const expand = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
-  await act(async () => { expand!.click(); });
-  await flush();
+  await expandIncidentRow();
 
   const text = bodyText();
-  ok(text.includes("Degraded"), "② backend degraded row is labelled Degraded");
+  ok(text.includes("degraded readings"), "② backend degraded row is labelled degraded");
   ok(!text.includes("Suggested"), "② degraded row is never suggested as the longest chain");
   ok(!document.querySelector("[data-testid='settings-section-failure']"), "② a degraded row is not a failure");
   await unmount(root);

@@ -159,7 +159,7 @@ async function openAndExpand(): Promise<Root> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b: 该会话(无副本,headCount=2)在已合入组——点组段行展开;检查健康/
   // 修复/瘦身沉底为批量入口,作用于勾选会话,这里顺手勾上。

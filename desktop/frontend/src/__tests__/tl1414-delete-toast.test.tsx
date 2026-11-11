@@ -162,7 +162,7 @@ async function runSingleDeleteFlow(spies: { listCalls: number; deleted: string[]
     root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b-2(点2): 会话行默认折叠——展开钮点开子行(副本行)。基线预存红
   // 顺手清零:旧 .rc-toggle 选择器一轮已不存在,此处当时已崩。
@@ -196,7 +196,7 @@ async function runBatchDeleteFlow(spies: { listCalls: number; deleted: string[] 
     root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b-2(点2): 会话行默认折叠——展开钮点开子行。
   const toggle = document.querySelector<HTMLButtonElement>("tr.rc-session .rc-session__toggle");
@@ -283,7 +283,7 @@ console.log("\ntl1414 copy-delete feedback toasts");
     root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b-2: 整对话删除走会话行勾选(会话行恒可见,无需展开子行);旧
   // .rc-toggle 展开步随选择器退役。
@@ -324,7 +324,7 @@ console.log("\ntl1414 copy-delete feedback toasts");
     root.render(<LocaleProvider><ToastProvider><RecoveryCopiesSection /></ToastProvider></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b-2: 同④——会话行勾选无需展开子行。
   const groupBox = document.querySelector<HTMLInputElement>(".rc-row--group input[type=checkbox]");

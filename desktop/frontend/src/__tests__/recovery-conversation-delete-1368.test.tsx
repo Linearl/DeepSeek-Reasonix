@@ -139,7 +139,7 @@ async function openPanelWithSelection(spies: Spies, overrides: Partial<AppBindin
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   const row = document.querySelector<HTMLInputElement>(".rc-row--group input[type=checkbox]");
   ok(Boolean(row), "the conversation row renders its selection checkbox");
@@ -159,7 +159,7 @@ console.log("\nrecovery conversation delete with copies (1368 线2)");
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
 
   const refresh = buttonByText("Refresh");

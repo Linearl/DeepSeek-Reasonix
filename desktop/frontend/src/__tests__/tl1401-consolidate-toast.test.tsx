@@ -123,7 +123,7 @@ function checkboxByLabel(label: string): HTMLInputElement | undefined {
  *  tl1415b: 底部③按钮改名「Merge into longest chain (checked)」(demo v5 文案,
  *  hover 带第③步说明);确认框的 confirm 文案键(recoveryCopiesMerge)未动。 */
 async function runMergeFlow() {
-  const openBtn = buttonByText("Review and merge");
+  const openBtn = buttonByText("Manage session copies");
   if (!openBtn) throw new Error("panel open button missing");
   await act(async () => { openBtn.click(); });
   await flush();

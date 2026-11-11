@@ -135,7 +135,7 @@ console.log("\nrecovery nil-slice arrays never crash the section render (1039r2)
   });
 
   const { root } = await renderPage(<StorageSettingsPage />);
-  const openBtn = buttonByText("Review and merge");
+  const openBtn = buttonByText("Manage session copies");
   ok(Boolean(openBtn), "① the copies panel open button renders");
   await act(async () => { openBtn!.click(); });
   await flush();
@@ -163,7 +163,7 @@ console.log("\nrecovery nil-slice arrays never crash the section render (1039r2)
   } as Partial<AppBindings>);
 
   const { root } = await renderPage(<StorageSettingsPage />);
-  const openBtn = buttonByText("Review and merge");
+  const openBtn = buttonByText("Manage session copies");
   ok(Boolean(openBtn), "② the copies panel open button renders");
   await act(async () => { openBtn!.click(); });
   await flush();

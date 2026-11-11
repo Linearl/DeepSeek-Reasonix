@@ -270,7 +270,7 @@ async function openAndExpand(): Promise<Root | null> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   // tl1415b: 无副本会话(headCount=2)落在已合入组(默认折叠)——点组段行展开;
   // 案例④(带副本)在待处理组,多点的这次展开对它无害(已合入组为空)。

@@ -243,7 +243,7 @@ async function openPanel(expand = true): Promise<Root> {
     root.render(<LocaleProvider><RecoveryCopiesSection /></LocaleProvider>);
   });
   await flush();
-  await act(async () => { buttonByText("Review and merge")?.click(); });
+  await act(async () => { buttonByText("Manage session copies")?.click(); });
   await flush();
   if (expand) {
     // tl1415b-2 点2: 会话行默认折叠,子行(主线/副本/版本)点展开钮才渲染;

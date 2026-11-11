@@ -112,7 +112,7 @@ console.log("\nrecovery copies degraded + failure reason (1039)");
   };
 
   const { root } = await renderSection();
-  const openBtn = buttonByText("Review and merge");
+  const openBtn = buttonByText("Manage session copies");
   ok(Boolean(openBtn), "① panel renders the open button");
   await act(async () => { openBtn!.click(); });
   await flush();
@@ -142,7 +142,7 @@ console.log("\nrecovery copies degraded + failure reason (1039)");
   };
 
   const { root } = await renderSection();
-  const openBtn = buttonByText("Review and merge");
+  const openBtn = buttonByText("Manage session copies");
   ok(Boolean(openBtn), "② panel renders the open button");
   await act(async () => { openBtn!.click(); });
   await flush();
