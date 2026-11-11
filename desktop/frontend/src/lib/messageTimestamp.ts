@@ -48,3 +48,15 @@ export function formatMessageTimestamp(date: Date, now: Date, _locale: MessageTi
   }
   return hhmm;
 }
+
+// tl1547 (B2): one absolute-date convention for every face. The manual
+// hyphen splice above is byte-identical across zh / zh-TW / en, while
+// `toLocaleDateString` per face produced slashes (zh 「2026/11/4」, en
+// 「11/4/2026」) — two conventions on one screen. Calendar-date-only callers
+// (history "today/yesterday" tails, sidebar exact time) go through here so
+// the date half always reads YYYY-MM-DD.
+export function formatCalendarDate(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const date = new Date(ms);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
