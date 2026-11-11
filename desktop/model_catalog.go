@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"strings"
 	"time"
 
 	"reasonix/internal/config"
@@ -122,6 +123,13 @@ func (a *App) desktopModelCatalog(curModel, workspaceRoot string, ctrl control.S
 // resolver used by settings, without guessing capabilities for unknown models.
 func configuredModelInfo(cfg *config.Config, name, model string, current bool) ModelInfo {
 	info := ModelInfo{Ref: name + "/" + model, Provider: name, Model: model, Current: current}
+	// tl1547 (A1): carry the connection's display label so every surface that
+	// holds only a ref (session-header trigger, sidebar hover) can show the
+	// same name the settings panel does — display only; Provider stays the
+	// stable routing identity.
+	if p, ok := cfg.Provider(name); ok && p != nil {
+		info.ProviderLabel = strings.TrimSpace(p.DisplayName)
+	}
 	if entry, ok := cfg.ResolveModel(info.Ref); ok {
 		info.DisplayName = entry.DisplayName
 		info.ContextWindow = entry.ContextWindow

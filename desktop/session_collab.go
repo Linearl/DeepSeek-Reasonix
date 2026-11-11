@@ -2021,7 +2021,9 @@ func (a *App) collabSessionStatus(contactID string) (running bool, lastTurnAtMS 
 // simply omits the fields — never a stale guess. Only attached tabs carry a
 // model (detached runtimes expose none on RuntimeStatus), which is reported
 // honestly rather than fabricated. provider is the catalog prefix of the
-// modelRef ("provider/model"), matching what the switcher shows.
+// modelRef ("provider/model"), matching what the switcher shows; it still
+// feeds the SessionInfo tool face — the ProjectNode tree stamp that used to
+// share it is gone (tl1547 A2: rows render no inline provider tag anymore).
 func (a *App) collabSessionInfo(contactID string) (modelRef string, provider string, known bool) {
 	contactID = strings.TrimSpace(contactID)
 	if contactID == "" {
