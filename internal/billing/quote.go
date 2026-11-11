@@ -583,6 +583,14 @@ func (a *quoteAccumulator) add(quote CostQuote) {
 	} else {
 		a.addOriginal(quote.Original, originalCurrency)
 	}
+	// tl1556: a mixed-currency member only carries per-currency identity
+	// valuations (FX is gone and official tables are per-occurrence), so its
+	// Valuations[display] never covers every bucket. Without this gate the
+	// accumulator claims matched/common_valuation from a single-currency sum
+	// and silently drops the other buckets from Selected.
+	if len(quote.OriginalTotals) > 1 {
+		a.displayComplete = false
+	}
 	if a.display != "" {
 		_, found := quote.Valuations[a.display]
 		a.displayComplete = a.displayComplete && (found || originalCurrency == a.display)

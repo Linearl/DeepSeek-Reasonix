@@ -8,7 +8,7 @@ import { Tooltip } from "./Tooltip";
 import { contextWindowPercentages } from "../lib/contextWindow";
 import { useI18n, type DictKey, type Translator } from "../lib/i18n";
 import { summarizeMcpServers, type McpStatusSummary } from "../lib/mcpStatus";
-import { formatMoneyLocalized } from "../lib/money";
+import { formatMoneyBuckets, formatMoneyLocalized } from "../lib/money";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
 import { useSessionMetricsSnapshot, type SessionMetricsSnapshot } from "../lib/sessionMetricsSnapshot";
 import { formatDurationLabel } from "../lib/durationFormat";
@@ -302,7 +302,14 @@ export function StatusBar({
   // 状态栏空间有限，只上金额；「含 N 条」解释放在右栏与圆环弹层。
   const statusPartialPriced = statusQuote?.displayStatus === "partial_priced" || (statusQuote?.partialPricedCount ?? 0) > 0;
   const rawStatusCostLabel = statusBucketed
-    ? t("context.sessionCostBucketed")
+    ? // tl1556: 混合币种吞数字修复——状态栏同样上分桶金额（"$0.01 + ¥0.85"），
+      // 「多币种」降为前缀；旧宿主无 originalTotals 时回退纯文案。
+      (() => {
+        const bucketsLabel = formatMoneyBuckets(statusQuote?.originalTotals, { locale });
+        return bucketsLabel === "-"
+          ? t("context.sessionCostBucketed")
+          : `${t("context.sessionCostBucketed")} ${bucketsLabel}`;
+      })()
     : statusUnavailable
       ? "-"
       : Number.isFinite(statusSelectedAmount) && (statusSelectedAmount > 0 || (statusPartialPriced && statusQuote?.complete === true))

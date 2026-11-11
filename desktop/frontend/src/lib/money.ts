@@ -1,3 +1,5 @@
+import type { Money } from "./types";
+
 const DEFAULT_CURRENCY_SYMBOL = "\u00A5";
 
 export function currencySymbol(currency?: string): string {
@@ -81,4 +83,30 @@ export function formatMoneyLocalized(amount?: number, currency?: string, options
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(amount);
+}
+
+/**
+ * tl1556: render mixed-currency bucket totals without swallowing the amounts.
+ *
+ * A bucketed quote (`displayStatus === "bucketed"` / `aggregateMode ===
+ * "currency_buckets"`) carries its per-currency facts in `originalTotals`
+ * (e.g. USD legacy turns + CNY repriced turns in one session). Every valid
+ * bucket is formatted with its own symbol and the parts are joined with
+ * " + ", so the digits stay visible and each amount stays labeled with its
+ * currency — the display never collapses to a bare non-numeric label while a
+ * cost fact exists. Buckets with a missing or non-positive amount carry no
+ * display value and are skipped; when nothing survives, the requested empty
+ * marker is returned.
+ */
+export function formatMoneyBuckets(totals?: Money[], options: MoneyFormatOptions = {}, empty: "zero" | "dash" = "dash"): string {
+  const parts: string[] = [];
+  for (const bucket of totals ?? []) {
+    const amount = Number(bucket?.amount);
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) continue;
+    parts.push(formatMoneyLocalized(amount, bucket.currency, { locale: options.locale, empty: "dash" }));
+  }
+  if (parts.length === 0) {
+    return empty === "dash" ? "-" : formatMoney(0, undefined, empty);
+  }
+  return parts.join(" + ");
 }
