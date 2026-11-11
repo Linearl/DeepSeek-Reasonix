@@ -114,6 +114,10 @@ export interface SessionCatalogBindings {
    *  + 同步注册投影 + 重挂活会话 + 发 reason="metadata" v2 事件。可选：老
    *  mock/浏览器开发面没有该方法，调用点 typeof 守卫，失败照常全量重拉。 */
   ReloadProjectTreeSessions?(scope: string, workspaceRoot: string): Promise<ProjectTreeReloadResult>;
+  /** tl1543：降级横幅「重新扫描」出口——走既有 reconcile 通道（Go 侧
+   *  requestProjectTreeCatalogRefresh 同款原语：逐目录 requestSessionCatalogReconcile
+   *  + 元数据同步 + 侧栏唯一认的树事件）。可选：浏览器开发 mock 无后端队列。 */
+  RetryStartupCatalogScan?(): Promise<void>;
   /** desktop topic inventory 对账（desktop/topic_inventory.go）。可选方法：
    *  wails 生成物已含这两个绑定，TS 侧声明此前缺失，bridge.ts 的
    *  _CheckGenToApp 自检（AssertNever<Exclude<GeneratedAppKeys, keyof AppBindings>>）

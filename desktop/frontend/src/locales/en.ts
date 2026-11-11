@@ -1983,6 +1983,9 @@ export const en = {
   "projectTree.copyPath": "Copy path",
   "projectTree.reloadSessions": "Reload session list",
   "projectTree.reloadSessionsDone": "Removed {n} leftover entries and reloaded",
+  // tl1543: startup catalog scan degrade (background scan continues, UI usable) + retry.
+  "projectTree.scanDegraded": "Folder scanning continues in the background — the app is ready to use",
+  "projectTree.scanDegradedRetry": "Rescan",
   "projectTree.revealInFinder": "Show in Finder",
   "projectTree.revealInExplorer": "Show in File Explorer",
   "projectTree.revealInFileManager": "Show in file manager",
