@@ -401,7 +401,10 @@
     --border-soft: #e7ebf2;
     --fg: #111827;
     --fg-dim: #4b5563;
-    --fg-faint: #8a94a6;
+    /* tl1546/tl1377-V8：亮色 fg-faint #8a94a6 对 --bg #f7f8fb 仅 2.88:1（<WCAG AA 4.5:1），
+       压深至 #67717f = 4.66:1（候选 #6b7684 实算 4.35 不达标，就近再压一档保蓝灰色相）。
+       暗色档 #858b96（5.67:1）不动；--list-row-meta 同值异写连带对齐。 */
+    --fg-faint: #67717f;
     --accent: #2f5fa8;
     --accent-fg: #fff;
     --accent-soft: rgba(47, 95, 168, 0.12);
@@ -434,7 +437,7 @@
     --hl-builtin: #0550ae;
     --hl-meta: #6e7781;
     --list-row-title: #334155;
-    --list-row-meta: #8a94a6;
+    --list-row-meta: #67717f;
     --list-row-hover-bg: #e8edf4;
     --list-row-current-bg: #dde7f7;
     --list-row-current-title: #111827;
@@ -484,7 +487,8 @@
   --border-soft: #e7ebf2;
   --fg: #111827;
   --fg-dim: #4b5563;
-  --fg-faint: #8a94a6;
+  /* tl1546/tl1377-V8：与上方 auto-light 档同值（forced light），#8a94a6→#67717f 压深 ≥4.5:1。 */
+  --fg-faint: #67717f;
   --accent: #2f5fa8;
   --accent-fg: #fff;
   --accent-soft: rgba(47, 95, 168, 0.12);
@@ -517,7 +521,7 @@
   --hl-builtin: #0550ae;
   --hl-meta: #6e7781;
   --list-row-title: #334155;
-  --list-row-meta: #8a94a6;
+  --list-row-meta: #67717f;
   --list-row-hover-bg: #e8edf4;
   --list-row-current-bg: #dde7f7;
   --list-row-current-title: #111827;
@@ -3888,9 +3892,9 @@ a[href] {
   color: var(--warn, #d9a03f);
 }
 .lab-tier-badge--retired {
-  background: color-mix(in srgb, var(--fg-faint, #8a8f98) 14%, transparent);
-  border-color: color-mix(in srgb, var(--fg-faint, #8a8f98) 40%, transparent);
-  color: var(--fg-faint, #8a8f98);
+  background: color-mix(in srgb, var(--fg-faint, #67717f) 14%, transparent);
+  border-color: color-mix(in srgb, var(--fg-faint, #67717f) 40%, transparent);
+  color: var(--fg-faint, #67717f);
   text-decoration: line-through;
 }
 /* Rail rows: the badge rides at the row's right edge, off rows keep it dim. */
@@ -3916,7 +3920,7 @@ a[href] {
   gap: 12px;
 }
 .lab-picks-wall__card {
-  border: 1px solid color-mix(in srgb, var(--fg-faint, #8a8f98) 25%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg-faint, #67717f) 25%, transparent);
   border-radius: var(--radius-md);
   padding: 10px 12px;
   min-width: 0;
@@ -3962,7 +3966,7 @@ a[href] {
 }
 .lab-picks-wall__card-state {
   font-size: var(--text-xs);
-  color: var(--fg-faint, #8a8f98);
+  color: var(--fg-faint, #67717f);
 }
 .lab-picks-wall__card-state[data-on="true"] {
   color: var(--ok);
@@ -4029,7 +4033,7 @@ a[href] {
 }
 .lab-pick-dialog__state {
   font-size: var(--text-sm);
-  color: var(--fg-faint, #8a8f98);
+  color: var(--fg-faint, #67717f);
 }
 .lab-pick-dialog__state[data-on="true"] {
   color: var(--ok);
@@ -4070,7 +4074,7 @@ a[href] {
   font-size: var(--text-sm);
 }
 .lab-pick-dialog__path-label {
-  color: var(--fg-faint, #8a8f98);
+  color: var(--fg-faint, #67717f);
   flex-shrink: 0;
 }
 .lab-pick-dialog__path-seg {
@@ -4080,7 +4084,7 @@ a[href] {
   color: var(--fg);
 }
 .lab-pick-dialog__path-arrow {
-  color: var(--fg-faint, #8a8f98);
+  color: var(--fg-faint, #67717f);
 }
 
 /* 任务 1006：批量开关弹窗（复用 lab-pick-dialog 壳；轴选择/警示/重启两选项）。 */
@@ -4101,7 +4105,7 @@ a[href] {
   padding: 0 6px;
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--fg-faint, #8a8f98);
+  color: var(--fg-faint, #67717f);
 }
 .lab-bulk-dialog__option {
   display: inline-flex;
@@ -4117,7 +4121,7 @@ a[href] {
   font-size: var(--text-md);
   color: var(--fg);
 }
-.lab-bulk-dialog__summary[data-empty="true"] { color: var(--fg-faint, #8a8f98); }
+.lab-bulk-dialog__summary[data-empty="true"] { color: var(--fg-faint, #67717f); }
 .lab-bulk-dialog__warn { margin: 0 0 10px; border-color: color-mix(in srgb, var(--warn) 45%, transparent); color: var(--warn); }
 .lab-bulk-dialog__skip-note { margin: 0 0 10px; }
 .lab-bulk-dialog__skips {
