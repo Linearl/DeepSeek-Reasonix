@@ -27,6 +27,17 @@ function formatElapsedShort(ms: number, t: Translator): string {
   return formatDurationLabel(Math.floor(Math.max(0, ms) / 1000), t);
 }
 
+// tl1559: 首个 token 估计到达前的降级形态。后端 gate 不卡首帧（compact_live.go
+// 的首个 emission 绕过节流间隔），数据空窗 = summarizer 请求的 TTFT（排队+首
+// token 延迟，可达数秒）——这期间 pending 卡有 startedAt 却没有 tokens，读数
+// 只剩裸秒数，用户读作「半截读数」。estimatingWhenEmpty 让调用面（折叠头条、
+// 容量卡）在此窗口显式补「估算中…」占位腿；压缩卡（973）不启用，其输出保持
+// 逐字节不变（973 的精确串钉不受影响）。水合 pending 卡无戳（内存戳约定），
+// 两态都维持空串零残值。
+export interface CompactionLiveReadoutOptions {
+  estimatingWhenEmpty?: boolean;
+}
+
 // compactionLiveReadout renders the " · 40s · 12.3K tokens · 45 tokens/s"
 // suffix for a PENDING compaction item, or "" when there is nothing live to
 // show (resolved card / no data yet). Elapsed leads because it appears the
@@ -37,11 +48,13 @@ export function compactionLiveReadout(
   item: CompactionLiveSource,
   now: number,
   t: Translator,
+  opts?: CompactionLiveReadoutOptions,
 ): string {
   if (!item.pending) return "";
   const parts: string[] = [];
-  if (item.startedAt && item.startedAt > 0) {
-    parts.push(formatElapsedShort(now - item.startedAt, t));
+  const hasStamp = Boolean(item.startedAt && item.startedAt > 0);
+  if (hasStamp) {
+    parts.push(formatElapsedShort(now - item.startedAt!, t));
   }
   const tokens = item.tokens ?? 0;
   const tps = item.tokensPerSec ?? 0;
@@ -51,6 +64,8 @@ export function compactionLiveReadout(
         ? t("compaction.liveReadout", { tokens: formatTokens(tokens), tps })
         : `${formatTokens(tokens)} ${t("status.tokens")}`,
     );
+  } else if (opts?.estimatingWhenEmpty && hasStamp) {
+    parts.push(t("compaction.liveEstimating"));
   }
   return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
 }

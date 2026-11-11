@@ -6040,6 +6040,9 @@ export const en = {
   "compaction.progress": "Compacting chunk {done}/{total}",
   // 任务 556: live compaction readout (run-strip look)
   "compaction.liveReadout": "{tokens} tokens · {tps} tokens/s",
+  // tl1559: placeholder leg before the first token estimate lands (summarizer
+  // TTFT window) — surfaces opt in via compactionLiveReadout's options.
+  "compaction.liveEstimating": "estimating…",
   "composer.subagentPolicyTrigger": "Sub-agent delegation",
   "composer.quickCommandsTitle": "Quick commands",
   "heartbeat.fieldModelOverride": "Model override",
