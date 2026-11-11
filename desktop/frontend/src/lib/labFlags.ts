@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "workflowTemplates" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "startupSplash";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "workflowTemplates" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "editResend" | "startupSplash";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -86,6 +86,8 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // 任务 1024：composer 草稿优化（发送左侧改写按钮）。默认关（铁律 2）——
   // 关闭时 composer 工具栏与引入前逐字节一致；保存即换态免重启。
   draftRewrite: false,
+  // tl1544: 运行中编辑历史消息回溯重发（默认关=运行中编辑入口维持拒绝现状）。
+  editResend: false,
   // tl 1132：DSH 式启动遮罩（logo+副文案+点动画，核心 UI 挂载完成后淡出）。
   // 默认关（铁律 2 + 用户 2026-10-24 steer「做成实验特性，允许开关，方便
   // 对比」）——关闭时 splash 不渲染，启动行为与引入前一致；保存即换态。
@@ -118,7 +120,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} workflowTemplates=${flags.workflowTemplates} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} smoothScrollFollow=${flags.smoothScrollFollow} draftRewrite=${flags.draftRewrite} startupSplash=${flags.startupSplash}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} workflowTemplates=${flags.workflowTemplates} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} smoothScrollFollow=${flags.smoothScrollFollow} draftRewrite=${flags.draftRewrite} editResend=${flags.editResend} startupSplash=${flags.startupSplash}`,
   );
   for (const listener of listeners) listener();
 }

@@ -37,6 +37,8 @@ export type TierFeatureId =
   | "stalledIntentNudge"
   // 任务 1024：composer 草稿优化（改写按钮，默认关）。
   | "draftRewrite"
+  // tl1544：运行中编辑历史消息回溯重发（默认关——运行中编辑入口维持拒绝现状）。
+  | "editResend"
   // tl 1132: DSH 式启动遮罩（默认关——关时 splash 不渲染，启动行为与
   // 引入前一致）。落 config.toml experimental_startup_splash，Go 渲染表
   // 同档登记（可选）。
@@ -279,6 +281,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 1024：composer 草稿优化。tl1487 二组④：可选→推荐（用户 20261107
   // 八组清单；镜像 Go 档位同步翻）。
   draftRewrite: "recommended",
+  // tl1544：运行中编辑历史消息回溯重发（可选档，默认关——off 时运行中编辑
+  // 入口维持拒绝现状，回合后 rewind 链零变化；镜像 Go 渲染表同步 +1）。
+  editResend: "optional",
   // tl 1132：启动遮罩。镜像 Go 档位——可选（默认关，用户 steer A/B 对比）。
   startupSplash: "optional",
   // tl 1132：「启动与加载」合并卡容器（纯前端 rail 卡，成员最高档=可选）。
@@ -543,11 +548,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * pinnedIndex 未稳定→可选——稳定 9、推荐 40、可选 32、未稳定 6，总数不变 87。
  * 七组步进：gcPercent + 工具优化六键（宽松/直注/能力组/错误详情/连坐/跳过）
  * 可选→推荐，pathRules（未稳定）随 tl134 移除出表——推荐 47、可选 25、
- * 未稳定 5、总数 87→86。 */
+ * 未稳定 5、总数 87→86。
+ * tl1544：editResend（运行中编辑历史消息回溯重发）按可选档入表——可选
+ * 25→26、总数 86→87（Go 渲染表同步 72→73）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 47,
-  optional: 25,
+  optional: 26,
   unstable: 5,
   retired: 0,
 };

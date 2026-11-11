@@ -18,6 +18,7 @@ export function useAppRuntimeAdapter() {
     },
     composer: {
       sendToTab: controller.sendToTab,
+      editAndResendForTab: controller.editAndResendForTab,
       runShellForTab: controller.runShellForTab,
       steerForTab: controller.steerForTab,
       cancel: controller.cancel,

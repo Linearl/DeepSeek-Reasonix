@@ -1888,6 +1888,16 @@ type AgentConfig struct {
 	// this field landed — no compat shim: the env var was a merge-line
 	// evaluation gate that never shipped in a release build.
 	ExperimentalPinnedIndex bool `toml:"experimental_pinned_index"`
+	// ExperimentalEditResend is the tl1544 lab switch: while a turn is RUNNING,
+	// the message-history edit entry stays usable and routes through the
+	// EditAndResend atomic orchestration (stop → parked/guidance treatment →
+	// fork truncation → edited resend). Ships OFF (铁律 2): off = the existing
+	// post-turn rewind+prefill+resend chain byte-for-byte (running edits stay
+	// refused exactly as today). Only the running-state frontend entry reads
+	// this switch — the controller API itself is ungated; the desktop flip is
+	// a config-only write (no restart) because nothing default-on hides
+	// behind the boot snapshot.
+	ExperimentalEditResend bool `toml:"experimental_edit_resend"`
 	// ExperimentalDraftRewrite (任务 1024 草稿优化) enables the composer's
 	// rewrite button: the auxiliary model rewrites the user's draft into a
 	// structured, unambiguous version that fills the input box — never sent

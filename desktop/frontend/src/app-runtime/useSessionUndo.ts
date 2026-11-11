@@ -15,12 +15,17 @@ export type SessionUndoInput = {
   approvalOpen: boolean;
   askOpen: boolean;
   clearContextPending: boolean;
+  // tl1544: the lab-switch state for the RUNNING-state edit entry. Off
+  // (default) keeps the existing refuse-while-running behaviour byte-for-byte.
+  editResendEnabled: boolean;
   ports: {
     rewindForTab(tabId: string, turn: number, scope: string): Promise<boolean>;
     rewindForTabDetailed(tabId: string, turn: number, scope: string): Promise<RewindResultView>;
     refreshTabMetas(): void;
     undoRewindForTab(tabId: string, transactionId: string): Promise<boolean>;
     sendToTab(tabId: string, display: string, submit: string, original: string): Promise<void>;
+    // tl1544: the atomic edit-resend bridge (stop → treatment → fork → resend).
+    editAndResendForTab(tabId: string, turn: number, display: string, submit: string, original: string): Promise<{ ok: boolean; error?: string; branch?: string }>;
     composeInsert(tabId: string, text: string): void;
     refreshDock(): void;
     refreshProject(): void;
@@ -200,12 +205,56 @@ export function useSessionUndo(input: SessionUndoInput) {
 
   const handleEditPrompt = useCommittedCommand(async (turn: number, displayText: string, submitText?: string): Promise<boolean> => {
     const sourceTabId = activeTabId;
+    // tl1544: with the lab switch ON the running gate opens into the atomic
+    // edit-resend (stop + treatment + fork-at-turn + resend in one call).
+    // Every other gate keeps its meaning; with the switch OFF this branch is
+    // unreachable and the behaviour below is byte-for-byte the old chain.
+    if (input.running) {
+      if (!sourceTabId || input.editResendEnabled !== true || input.activeTabReadOnly
+        || !input.controllerReady || input.hydratePlaceholderActive
+        || input.messageActionOpen || input.approvalOpen || input.askOpen
+        || input.clearContextPending) return false;
+      const nextRunning = displayText.trim();
+      if (!nextRunning) return false;
+      const submitRunning = (submitText ?? displayText).trim();
+      const originalRunning = originalPromptForTurn(turn);
+      if (!originalRunning) return false;
+      try {
+        const outcome = await ports.editAndResendForTab(sourceTabId, turn, nextRunning, submitRunning, originalRunning);
+        if (!outcome.ok) return false;
+        bumpRewindSignal();
+        ports.refreshDock();
+        ports.refreshProject();
+        return true;
+      } catch {
+        return false;
+      }
+    }
     if (!sourceTabId || input.activeTabReadOnly || !input.controllerReady || input.hydratePlaceholderActive
-      || rewindStatesByTab[sourceTabId] || input.running || input.messageActionOpen
+      || rewindStatesByTab[sourceTabId] || input.messageActionOpen
       || input.approvalOpen || input.askOpen || input.clearContextPending) return false;
     const next = displayText.trim();
     if (!next) return false;
     const submit = (submitText ?? displayText).trim();
+    // tl1544 parity note: the idle chain keeps its original shape — an empty
+    // reverse-lookup result flows through exactly as before (no new gate).
+    const original = originalPromptForTurn(turn);
+    const outcome = await ports.rewindForTabDetailed(sourceTabId, turn, "conversation");
+    if (!outcome.ok) return false;
+    bumpRewindSignal();
+    const targetTabId = outcome.tabId || sourceTabId;
+    try {
+      await ports.sendToTab(targetTabId, next, submit, original);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  // tl1544 (shared): resolve the historical prompt text for a checkpoint turn
+  // from the transcript items — the same reverse mapping the rewind picker
+  // uses (CheckpointTurnsByMessageIndex on the Go side).
+  function originalPromptForTurn(turn: number): string {
     const hasCheckpointTurns = items.some((it) => it.kind === "user" && it.checkpointTurn != null);
     let original = "";
     let userCount = 0;
@@ -218,17 +267,8 @@ export function useSessionUndo(input: SessionUndoInput) {
       }
       userCount++;
     }
-    const outcome = await ports.rewindForTabDetailed(sourceTabId, turn, "conversation");
-    if (!outcome.ok) return false;
-    bumpRewindSignal();
-    const targetTabId = outcome.tabId || sourceTabId;
-    try {
-      await ports.sendToTab(targetTabId, next, submit, original);
-      return true;
-    } catch {
-      return false;
-    }
-  });
+    return original;
+  }
 
   return {
     rewindState,

@@ -588,6 +588,10 @@ type SettingsView struct {
 	// 任务 1024: composer 草稿优化（改写按钮）lab switch readback. Boot snapshot;
 	// the settings save re-applies it, so a flip shows without a restart.
 	ExperimentalDraftRewrite bool `json:"experimentalDraftRewrite"`
+	// tl1544: 运行中编辑历史消息回溯重发 lab switch readback. Config-only flip
+	// (the frontend reads the live readback; no boot-snapshot gate), so it
+	// applies immediately.
+	ExperimentalEditResend bool `json:"experimentalEditResend"`
 	// 任务 1070: Standard 流续跑总闸 readback. Boot snapshot; the settings save
 	// re-applies it (config + live controller mirror), so a flip shows without
 	// a restart.
@@ -839,6 +843,9 @@ type DesktopStartupSettingsView struct {
 	// with `?? false` — the wand button vanished even though the switch (full
 	// Settings() view) read on. Pure frontend gate, settings save re-applies.
 	ExperimentalDraftRewrite bool `json:"experimentalDraftRewrite"`
+	// tl1544: 运行中编辑回溯重发 readback, rendered in this view too (81/123
+	// two-view lesson); config-only flip, no restart needed.
+	ExperimentalEditResend bool `json:"experimentalEditResend"`
 	// 任务 686: the workflow visualization panel gate, rendered in this view
 	// too (81/123 two-view lesson); pure frontend gate, no restart needed.
 	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
@@ -1726,6 +1733,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// 缺此行时启动快照恒为 false，前端 applyDesktopPreferences 用
 		// `?? false` 把已开的 flag 覆盖成 false，按钮消失）。
 		view.ExperimentalDraftRewrite = cfg.Agent.ExperimentalDraftRewrite
+		// tl1544: 运行中编辑回溯重发 readback（双视图同款）。
+		view.ExperimentalEditResend = cfg.Agent.ExperimentalEditResend
 		// 任务 686: workflow visualization panel readback (two-view lesson).
 		view.ExperimentalWorkflowPanel = cfg.Desktop.ExperimentalWorkflowPanel
 		view.ExperimentalWorkflowTemplates = cfg.Desktop.ExperimentalWorkflowTemplates
@@ -2089,6 +2098,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalPinnedIndex: cfg.Agent.ExperimentalPinnedIndex,
 		// 任务 1024: composer 草稿优化（改写按钮）lab switch readback.
 		ExperimentalDraftRewrite: cfg.Agent.ExperimentalDraftRewrite,
+		// tl1544: 运行中编辑回溯重发 lab switch readback.
+		ExperimentalEditResend: cfg.Agent.ExperimentalEditResend,
 		// 任务 1070: Standard 流续跑总闸 readback.
 		StandardContinuation: cfg.Agent.StandardContinuation,
 		// tl 1105: 中断自动续轮 readback.

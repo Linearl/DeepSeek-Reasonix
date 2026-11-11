@@ -2853,6 +2853,8 @@ export interface DesktopStartupSettingsView {
   decisionPatternAutoApprove?: boolean;
   /** 任务 1024: composer 草稿优化（改写按钮）；默认关（铁律 2——off 时无按钮、布局零变化）。 */
   experimentalDraftRewrite?: boolean;
+  /** tl1544: 运行中编辑历史消息回溯重发；默认关（off 时运行中编辑入口维持拒绝现状）。 */
+  experimentalEditResend?: boolean;
   /** Task 979: capability-group disclosure layer (tasks 953/954/955 shared switch); off unless the user opts in. */
   experimentalCapabilityGroups?: boolean;
   /** multi-session collaboration experiment (task 19); off unless the user opts in. */

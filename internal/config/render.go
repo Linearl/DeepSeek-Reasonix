@@ -197,6 +197,8 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 1024：composer 草稿优化（改写按钮）。
 	// tl1487 二组④：可选→推荐（用户 20261107 八组清单；前端同步）。
 	{"draftRewrite", LabTierRecommended, []string{"experimental_draft_rewrite"}},
+	// tl1544：运行中编辑历史消息回溯重发（EditAndResend 原子编排的运行中入口）。
+	{"editResend", LabTierOptional, []string{"experimental_edit_resend"}},
 	// ── observability（可观测性，2 项）───────────────────────────
 	{"monitoring", LabTierRecommended, []string{"experimental_session_monitor", "experimental_perf_monitor", "experimental_heap_high_profile"}}, // heap_high_profile 为 task 501 家族子键（rides perf_monitor）
 	{"subagentTps", LabTierOptional, []string{"experimental_subagent_tps"}},
@@ -894,6 +896,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_pinned_index = %v   # tl1193 plan E: standing pinned tier renders index lines, bodies go on-demand recall (off = legacy full-body injection byte-for-byte)\n", c.Agent.ExperimentalPinnedIndex)
 	// 任务 1024：composer 草稿优化（改写按钮）。显式渲染——同 81/123 丢档教训。
 	fmt.Fprintf(&b, "experimental_draft_rewrite = %v   # task 1024: composer rewrite button (auxiliary model rewrites the draft in place; off = no button, layout unchanged)\n", c.Agent.ExperimentalDraftRewrite)
+	// tl1544：运行中编辑历史消息回溯重发（EditAndResend 原子编排的运行中入口）。
+	// 显式渲染——同 81/123 丢档教训。
+	fmt.Fprintf(&b, "experimental_edit_resend = %v   # tl1544: RUNNING-state message edit routes through the EditAndResend atomic orchestration (stop + fork truncation + edited resend; off = running edits refused, post-turn chain unchanged)\n", c.Agent.ExperimentalEditResend)
 	// 任务 953/955：能力组披露面+组目录卡（Entry.Group 渲染 + 组卡 + route 推组、
 	// list 摘要档 30×240B + 两道体积闸、search 附组与 call_hint）。显式渲染
 	// ——同 81/123 丢档教训，omit-on-off 会在下一次渲染时把已保存的开关静默弹回。

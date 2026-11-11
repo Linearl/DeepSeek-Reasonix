@@ -3,6 +3,7 @@ import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { workspacePanelMemoryRoot } from "../store/layout";
 import { projectSessionAvailability } from "../lib/sessionAvailability";
 import { useWailsResizeFix } from "../lib/useWailsResizeFix";
+import { labFlagEnabled } from "../lib/labFlags";
 import type { RemoteSessionApi } from "../lib/useRemoteSession";
 import { activeLeaseBlockedTab } from "../lib/tabMetaRefresh";
 import { topicTitle } from "../lib/sessionTitles";
@@ -405,8 +406,12 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
     hydratePlaceholderActive,
     controllerReady, running: state.running, messageActionOpen: state.messageAction != null,
     approvalOpen: state.approval != null, askOpen: state.ask != null, clearContextPending,
+    // tl1544: the lab-flag snapshot rides the settings save (no restart).
+    editResendEnabled: labFlagEnabled("editResend"),
     ports: {
       rewindForTab, rewindForTabDetailed,
+      editAndResendForTab: (tabId, turn, display, submit, original) =>
+        runtime.composer.editAndResendForTab(tabId, turn, display, submit, original),
       refreshTabMetas: () => void refreshTabMetas(undefined, { afterMutation: true }),
       // tl1342②: sendToTab now resolves a SendTurnOutcome for resend feedback;
       // the undo/edit port keeps its void contract (outcome ignored here).

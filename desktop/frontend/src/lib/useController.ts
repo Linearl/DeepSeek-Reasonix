@@ -6530,6 +6530,29 @@ export function useController() {
     return (await rewindForTabDetailed(sourceTabId, turn, scope)).ok;
   }, [rewindForTabDetailed]);
 
+  // tl1544: the RUNNING-state edit entry's bridge face — one call performs the
+  // atomic edit-resend on the controller side (stop escalation + parked/
+  // guidance treatment + fork-at-turn + edited resend). The fork moved the tab
+  // onto a new session file, so the session data refresh rides the same
+  // settle path the rewind bridge uses.
+  const editAndResendForTab = useCallback(async (sourceTabId: string, turn: number, display: string, submit: string, original: string): Promise<{ ok: boolean; error?: string; branch?: string }> => {
+    if (!sourceTabId) return { ok: false, error: "no tab" };
+    const forkNavigationSeq = activeNavigationSeqRef.current;
+    await waitForTabReady(sourceTabId);
+    try {
+      const outcome = await app.EditAndResendForTab(sourceTabId, turn, display, submit, original);
+      if (!outcome.ok) return { ok: false, error: outcome.error };
+      // Same settle path as the rewind bridge: adopt the returned tab meta so
+      // the tab follows the fork's new session file, then refresh the
+      // transcript surface for the new history shape.
+      if (outcome.tab?.id) await adoptReturnedTab(outcome.tab, sourceTabId, forkNavigationSeq, "tab.rewind");
+      await loadSessionDataForTab(sourceTabId, true, "rewind");
+      return { ok: true, branch: outcome.branch };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  }, [adoptReturnedTab, loadSessionDataForTab, waitForTabReady]);
+
   const rewind = useCallback(async (turn: number, scope: string): Promise<boolean> => {
     if (!activeTabId) return false;
     return rewindForTab(activeTabId, turn, scope);
@@ -7127,7 +7150,7 @@ export function useController() {
     newSession, clearSession, listSessions, listTrashedSessions, retrySessionHistory, resumeSession, openChannelSession, previewSession, deleteSession, restoreSession, purgeTrashedSession, renameSession,
     loadOlderHistory,
     requestHistoryFullContent,
-    refreshMeta, pickWorkspace, switchWorkspace, compact, rewind, rewindForTab, rewindForTabDetailed, undoRewindForTab, setModel, setModelForTab, setEffort, setEffortForTab, cancelJob,
+    refreshMeta, pickWorkspace, switchWorkspace, compact, rewind, rewindForTab, rewindForTabDetailed, undoRewindForTab, editAndResendForTab, setModel, setModelForTab, setEffort, setEffortForTab, cancelJob,
     fetchMemory, remember, forget, saveDoc,
     switchTab, switchRemoteTab, openProjectTab, openGlobalTab, openTopicSession, ensureBlankTab, activateTopic, ensureBlankSurface, createIsolatedWorktree, commitSingleSurfaceNavigation, closeTab, reorderTabs,
     // Invalidate in-flight navigation completions (activateTopic's stale

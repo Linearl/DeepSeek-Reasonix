@@ -215,6 +215,9 @@ export interface SettingsView {
   // 任务 1024: composer 草稿优化（改写按钮）lab switch (default off; 铁律 2
   // —— off = 无按钮、布局零变化)。
   experimentalDraftRewrite?: boolean;
+  // tl1544: 运行中编辑历史消息回溯重发 lab switch (default off; off = 运行中
+  // 编辑入口维持现状拒绝，回合后链零变化)。
+  experimentalEditResend?: boolean;
   // 任务 1070: Standard 流续跑总闸 lab switch (default off; off = 普通对话
   // 续跑通道维持现状)。
   standardContinuation?: boolean;

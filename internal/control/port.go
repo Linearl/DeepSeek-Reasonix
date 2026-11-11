@@ -71,6 +71,12 @@ type TurnControl interface {
 	SubmitDeliveryRecovery(display, input string)
 	SubmitInvocationDisplay(display, input string, invocations []InvocationRequest)
 	SubmitEditedDisplay(display, input, original string)
+	// EditAndResend is the tl1544 atomic edit-resend (tl1375 plan B): cancel a
+	// running turn if any (three-level escalation), treat parked/guidance
+	// queues, fork the conversation at the historical turn, and resubmit the
+	// edited prompt. turn uses the same checkpoint numbering the rewind
+	// picker shows.
+	EditAndResend(turn int, display, input, original string) error
 	SubmitHTTP(input string)
 	SubmitHTTPFormat(input, format string)
 	SubmitUserTurn(input, display string)
