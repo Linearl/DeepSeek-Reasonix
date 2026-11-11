@@ -1,7 +1,7 @@
 // ContextPanel shows the active tab's context gauge and token usage.
 // All visible text is routed through the i18n dictionary.
 import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { asArray } from "../lib/array";
 import { app } from "../lib/bridge";
 import { contextWindowPercentages, capacityPinLayout } from "../lib/contextWindow";
@@ -10,9 +10,12 @@ import { formatMoneyLocalized } from "../lib/money";
 import { formatTokens } from "../lib/format";
 import { formatDurationLabel } from "../lib/durationFormat";
 import { normalizeRateBand, rateBandLabel, type DisplayRateBand } from "../lib/costRateBand";
-import type { ContextInfo, ContextPanelInfo, UsageSourceStats, WireUsage } from "../lib/types";
+import type { ContextInfo, ContextPanelInfo, CostQuote, UsageSourceStats, WireUsage } from "../lib/types";
 import { contextSessionCache } from "../lib/contextSessionCache";
 import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
+import { AnchoredPopover } from "./AnchoredPopover";
+import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { PlanUsageCard } from "./PlanUsageCard";
 import { OpenCodeGoUsageSidebarCard } from "./OpenCodeGoUsageSidebarCard";
 import type { Item } from "../lib/useController";
@@ -41,6 +44,10 @@ interface ContextPanelProps {
   // wt-zcode-285: identity of the open conversation, used to resolve its
   // session-group title and recovery-copy role for the info rows below.
   sessionInfo?: SessionPanelIdentity;
+  // tl1557: 会话费用重置成功后的信息栏同步刷新出口（App 注入 useController
+  // 的既有 dispatch 形态包装）。缺省时重置只刷指标卡自身（信息栏等下一次
+  // context 快照），交互主体不受影响。
+  refreshContextForTab?: (tabId: string) => void;
 }
 
 // tl1299：运行时长改走统一格式化（≥1h → "H小时M分S秒"，≥1d → "D天H小时"），
@@ -430,6 +437,7 @@ export function ContextPanel({
   refreshKey,
   usageSeq,
   sessionInfo,
+  refreshContextForTab,
 }: ContextPanelProps) {
   const { locale, t } = useI18n();
   const [info, setInfo] = useState<ContextPanelInfo | null>(null);
@@ -627,7 +635,12 @@ export function ContextPanel({
           )
         : cost.labelKind === "fallback"
           ? `${markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated)} (${t("context.sessionCostFallback")})`
-          : markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
+          // tl1557/tl1379 口径补漏：complete 零价（重置/恰好为零）是权威金额，
+          // ¥0.00 上屏而非「-」（圆环弹层同款处理；deliberate reset is a cost
+          // fact，读成「不可估算」违背重置语义）。0 元权威不带 ≈（同圆环）。
+          : cost.amount === 0 && cost.complete
+            ? formatMoneyLocalized(0, cost.currency, { locale, fractionDigits: 2 })
+            : markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
   const sessionCostLabel = rawSessionCostLabel;
   const sessionRateBand = normalizeRateBand(info?.sessionCostQuote?.rateBand);
   const sessionRateBandTitle = sessionRateBand ? t("billing.rateBand.tooltip") : undefined;
@@ -792,7 +805,24 @@ export function ContextPanel({
             <div className="context-panel__session-metrics" id={sessionMetricsPanelId}>
               <div className="context-panel__summary-rows">
                 <MiniStat label={t("status.cacheAvgLabel")} value={formatCacheHitRate(sessionCacheHit, sessionCacheMiss)} tone={cacheHitTone(sessionCacheHit, sessionCacheMiss)} />
-                <MiniStat label={t("context.sessionCost")} value={sessionCostLabel} title={sessionRateBandTitle} badge={sessionRateBandBadge} />
+                {/* tl1557: 会话费用项交互态——hover 选中效果+费用明细悬停卡片+
+                    右键重置（确认弹窗）。tabId 缺失（remote 面）时退化为纯展示，
+                    与原 MiniStat 形态一致。 */}
+                <SessionCostStat
+                  label={t("context.sessionCost")}
+                  value={sessionCostLabel}
+                  title={sessionRateBandTitle}
+                  badge={sessionRateBandBadge}
+                  tabId={tabId}
+                  quote={info?.sessionCostQuote}
+                  costLabelKind={cost.labelKind}
+                  costPartialPricedCount={cost.partialPricedCount}
+                  sourceRows={sourceUsageRows}
+                  onResetComplete={() => {
+                    void refresh();
+                    if (tabId) refreshContextForTab?.(tabId);
+                  }}
+                />
                 <MiniStat label={t("context.time")} value={fmtDuration(elapsed, t)} />
                 <MiniStat label={t("context.requests")} value={requestCount > 0 ? String(requestCount) : "-"} />
                 <MiniStat label={t("context.sessionTokensShort")} value={markEstimated(totalTokensMetric.display, sessionEstimated)} title={totalTokensTitle} wide />
@@ -1085,6 +1115,202 @@ function MiniStat({ label, value, title, tone, wide, badge }: { label: string; v
       </div>
       <strong title={exactTitle}>{value}</strong>
     </div>
+  );
+}
+
+// tl1557: 会话费用项交互态——同一 mini-stat 视觉族，附加三件交互（用户定案，
+// 20261111）：
+//   ① hover 选中效果（CSS interactive 态）；
+//   ② 悬停弹出费用明细卡片（AnchoredPopover，圆环弹层同款载体）；
+//   ③ 右键出菜单（ContextMenu，会话列表右键同款形态）→「重置会话费用」
+//      （danger）→ 既有确认弹窗文案（tl1379 三语 key）→ ClearSessionCostForTab。
+// tabId 缺失（remote 面）时整段交互缺席，DOM 与原 MiniStat 同构（仅多一个
+// class 挂点），其余 mini-stat 行零触碰。
+function SessionCostStat({
+  label,
+  value,
+  title,
+  badge,
+  tabId,
+  quote,
+  costLabelKind,
+  costPartialPricedCount,
+  sourceRows,
+  onResetComplete,
+}: {
+  label: string;
+  value: string;
+  title?: string;
+  badge?: MiniStatBadge;
+  tabId?: string;
+  quote?: CostQuote;
+  costLabelKind?: "estimated" | "payg_equivalent" | "fallback" | "bucketed" | "unavailable" | "partial_priced";
+  costPartialPricedCount?: number;
+  sourceRows?: ContextSourceRow[];
+  onResetComplete?: () => void;
+}) {
+  const { t, locale } = useI18n();
+  const interactive = tabId != null && tabId !== "";
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [menuPoint, setMenuPoint] = useState<ContextMenuPoint | null>(null);
+  const { confirm, dialog: resetDialog } = useConfirmDialog();
+  const [resetting, setResetting] = useState(false);
+
+  useEffect(() => () => {
+    if (enterTimer.current != null) clearTimeout(enterTimer.current);
+    if (leaveTimer.current != null) clearTimeout(leaveTimer.current);
+  }, []);
+
+  const requestReset = useCallback(async () => {
+    if (!tabId || resetting) return;
+    setMenuPoint(null);
+    setHoverOpen(false);
+    const confirmed = await confirm({
+      title: t("context.sessionCostResetTitle"),
+      message: t("context.sessionCostResetMessage"),
+      confirmLabel: t("context.sessionCostResetConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    setResetting(true);
+    try {
+      await app.ClearSessionCostForTab(tabId);
+      onResetComplete?.();
+    } finally {
+      setResetting(false);
+    }
+  }, [confirm, onResetComplete, resetting, tabId, t]);
+
+  if (!interactive) {
+    return <MiniStat label={label} value={value} title={title} badge={badge} />;
+  }
+
+  const onEnter = () => {
+    if (enterTimer.current != null) clearTimeout(enterTimer.current);
+    if (leaveTimer.current != null) clearTimeout(leaveTimer.current);
+    enterTimer.current = setTimeout(() => setHoverOpen(true), 200);
+  };
+  const onLeave = () => {
+    if (enterTimer.current != null) clearTimeout(enterTimer.current);
+    leaveTimer.current = setTimeout(() => setHoverOpen(false), 120);
+  };
+  const onPopoverEnter = () => {
+    if (leaveTimer.current != null) clearTimeout(leaveTimer.current);
+  };
+  const closeMenu = () => setMenuPoint(null);
+
+  const menuItems: ContextMenuItem[] = [
+    {
+      key: "reset-cost",
+      icon: <RotateCcw size={13} />,
+      label: t("context.sessionCostReset"),
+      danger: true,
+      disabled: resetting,
+      onSelect: () => { void requestReset(); },
+    },
+  ];
+
+  // 悬停卡片明细：口径说明行 + 分来源费用（有费用才列）。费用读数与卡片
+  // 同值（value 即 contextCostDisplay 的成品），不重复推导口径。
+  const kindNote = costLabelKind === "payg_equivalent"
+    ? t("context.sessionCostPaygEquivalent")
+    : costLabelKind === "fallback"
+      ? t("context.sessionCostFallback")
+      : costLabelKind === "bucketed"
+        ? t("context.sessionCostBucketed")
+        : costLabelKind === "unavailable"
+          ? t("context.sessionCostUnavailable")
+          : t("context.sessionCostEstimated");
+  const partialCount = costPartialPricedCount ?? quote?.partialPricedCount ?? 0;
+  const pricedSources = (sourceRows ?? []).filter((row) => row.cost > 0);
+
+  return (
+    <>
+      <div
+        ref={triggerRef}
+        className="context-panel__mini-stat context-panel__mini-stat--interactive"
+        aria-label={`${label}: ${value}`}
+        aria-haspopup={interactive ? "menu" : undefined}
+        onMouseEnter={onEnter}
+        onMouseLeave={onLeave}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenuPoint(contextMenuPointFromEvent(event));
+        }}
+      >
+        <div className="context-panel__mini-stat-head">
+          <span className="context-panel__mini-stat-label">{label}</span>
+          {badge && (
+            <span className={`context-panel__rate-band context-panel__rate-band--${badge.tone}`} title={badge.title}>
+              {badge.label}
+            </span>
+          )}
+        </div>
+        <strong title={title && title !== value ? title : undefined}>{value}</strong>
+      </div>
+      <AnchoredPopover
+        open={hoverOpen}
+        anchorRef={triggerRef}
+        onClose={() => setHoverOpen(false)}
+        className="session-cost-popover composer-menu-surface"
+        align="start"
+        placement="auto"
+      >
+        <div className="session-cost-popover__inner" role="dialog" aria-label={t("context.sessionCostDetailTitle")} onMouseEnter={onPopoverEnter} onMouseLeave={onLeave}>
+          <div className="session-cost-popover__head">
+            <span className="session-cost-popover__title">{t("context.sessionCostDetailTitle")}</span>
+            <span className="session-cost-popover__value">{value}</span>
+          </div>
+          <div className="session-cost-popover__rows">
+            <div className="session-cost-popover__row">
+              <span className="session-cost-popover__label">{t("context.sessionCostDetailKind")}</span>
+              <span className="session-cost-popover__value">{kindNote}</span>
+            </div>
+            {quote?.rateBand && (
+              <div className="session-cost-popover__row">
+                <span className="session-cost-popover__label">{t("context.sessionCostDetailRateBand")}</span>
+                <span className="session-cost-popover__value">{rateBandLabel(normalizeRateBand(quote.rateBand), t) ?? quote.rateBand}</span>
+              </div>
+            )}
+            {partialCount > 0 && (
+              <div className="session-cost-popover__row">
+                <span className="session-cost-popover__label">{t("context.sessionCostDetailPartial")}</span>
+                <span className="session-cost-popover__value">{t("context.sessionCostDetailPartialCount", { n: partialCount })}</span>
+              </div>
+            )}
+          </div>
+          {pricedSources.length > 0 && (
+            <div className="session-cost-popover__sources" role="group" aria-label={t("context.sessionCostDetailSources")}>
+              <div className="session-cost-popover__sources-head">{t("context.sessionCostDetailSources")}</div>
+              {pricedSources.map((row) => (
+                <div className="session-cost-popover__row" key={row.source}>
+                  <span className="session-cost-popover__label">
+                    <i className={`context-panel__source-dot context-panel__source-tone--${sourceTone(row.source)}`} aria-hidden="true" />
+                    {sourceLabel(row.label, t)}
+                  </span>
+                  <span className="session-cost-popover__value">
+                    {formatMoneyLocalized(row.cost, row.currency, { locale, empty: "dash" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="session-cost-popover__hint">{t("context.sessionCostDetailHint")}</p>
+        </div>
+      </AnchoredPopover>
+      <ContextMenu
+        open={menuPoint != null}
+        point={menuPoint}
+        items={menuItems}
+        onClose={closeMenu}
+        ariaLabel={label}
+      />
+      {resetDialog}
+    </>
   );
 }
 

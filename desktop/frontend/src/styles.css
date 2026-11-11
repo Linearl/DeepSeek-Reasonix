@@ -32499,6 +32499,96 @@ button.statusbar__mcp:focus-visible {
   color: var(--err);
 }
 
+/* tl1557: 会话费用项交互态（SessionCostStat）——hover 选中效果。零布局漂移：
+   不动 padding/border（nth-child 分栏布局保持原样），只叠背景+圆角+过渡。 */
+.context-panel__mini-stat--interactive {
+  border-radius: 8px;
+  transition: background-color 120ms ease;
+  cursor: context-menu;
+}
+
+.context-panel__mini-stat--interactive:hover {
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+
+/* tl1557: 费用明细悬停卡片（AnchoredPopover surface）。 */
+.session-cost-popover {
+  width: 260px;
+}
+
+.session-cost-popover__inner {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--text-sm);
+}
+
+.session-cost-popover__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.session-cost-popover__title {
+  color: var(--fg-dim);
+  font-weight: 620;
+}
+
+.session-cost-popover__value {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.session-cost-popover__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-cost-popover__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.session-cost-popover__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-cost-popover__sources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+}
+
+.session-cost-popover__sources-head {
+  color: var(--fg-dim);
+  font-weight: 620;
+}
+
+.session-cost-popover__hint {
+  margin: 0;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+}
+
 .context-panel__breakdown-details {
   min-width: 0;
   padding-top: 2px;

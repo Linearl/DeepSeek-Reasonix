@@ -5295,6 +5295,20 @@ export function useController() {
     };
   }, [activeTabId, activeState.turnActive, activeState.usageSeq, dispatchTo]);
 
+  // tl1557: 同步刷新出口——会话费用重置（右栏指标卡）成功后由 App 注入给
+  // ContextPanel 调用。拉一次最新 ContextUsageForTab 快照并 dispatch 两个既有
+  // action（context = 信息栏费用芯片读的 reducer 快照；context_panel_refresh =
+  // 右栏指标卡 refreshKey 序号），两条面一并归零上屏；不新增 reducer 分支，
+  // 形态照上方 usageSeq effect 与 ancillary context leg（ContextUsageForTab →
+  // dispatch "context"）。目标 tab 已不在 states（已关闭）时静默丢弃。
+  const refreshContextForTab = useCallback((tabId: string) => {
+    void app.ContextUsageForTab(tabId).then((context) => {
+      if (!statesRef.current.get(tabId)) return;
+      dispatchTo(tabId, { type: "context", context });
+      dispatchTo(tabId, { type: "context_panel_refresh" });
+    }).catch(() => {});
+  }, [dispatchTo]);
+
   // If the startup ready event is missed, keep the composer lock in sync with
   // the active tab's backend metadata without kicking off tab activation work.
   // Remote tabs are exempt: their readiness flows through remote-tab state
@@ -7185,5 +7199,6 @@ export function useController() {
     reassertVisibleTabAfterStaleNavigation,
     syncActiveTab: syncActiveTabFromBackend,
     reloadTranscriptsForConsolidatedSession,
+    refreshContextForTab,
   };
 }
