@@ -102,3 +102,73 @@ func TestStartupReconcileWaveReportsFailedScansWithoutDeferring(t *testing.T) {
 		t.Fatalf("deferred count = %d, want 0", count)
 	}
 }
+
+// TestStartupCatalogDegradedEventOnlyOnDeferred pins the tl1543 event source:
+// budget-out (deferred > 0) emits exactly one "app:startup-degraded" runtime
+// event carrying the deferred count and the WARN's mode tag, while a
+// fully-settled wave (deferred == 0) emits nothing — the negative half of the
+// frontend acceptance: a normal startup must not flip any degrade UX.
+// asyncRuntimeEmitter drains on a goroutine, so the capture is a channel.
+func TestStartupCatalogDegradedEventOnlyOnDeferred(t *testing.T) {
+	app := NewApp()
+	app.ctx = context.Background()
+	t.Cleanup(func() { app.shutdown(context.Background()) })
+	events := make(chan runtimeEventEnvelope, 8)
+	app.runtimeEvents.emit = func(ctx context.Context, name string, payload ...any) {
+		events <- runtimeEventEnvelope{ctx: ctx, name: name, payload: append([]any(nil), payload...)}
+	}
+	receive := func() runtimeEventEnvelope {
+		select {
+		case ev := <-events:
+			return ev
+		case <-time.After(2 * time.Second):
+			t.Fatalf("runtime event did not arrive within 2s")
+			return runtimeEventEnvelope{}
+		}
+	}
+
+	app.emitStartupCatalogDegraded(0)
+	select {
+	case ev := <-events:
+		t.Fatalf("deferred=0 emitted %q, want silence (normal startup must stay byte-identical)", ev.name)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	app.emitStartupCatalogDegraded(2)
+	ev := receive()
+	if ev.name != startupCatalogDegradedEvent {
+		t.Fatalf("deferred=2 event = %q, want %q", ev.name, startupCatalogDegradedEvent)
+	}
+	if len(ev.payload) != 1 {
+		t.Fatalf("payload arity = %d, want 1", len(ev.payload))
+	}
+	m, ok := ev.payload[0].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %#v, want map[string]any", ev.payload[0])
+	}
+	if m["deferred"] != 2 || m["mode"] != "deferred_to_async_queue" {
+		t.Fatalf("payload = %v, want deferred=2 mode=deferred_to_async_queue", m)
+	}
+}
+
+// TestRetryStartupCatalogScanRidesExistingRefreshPrimitive pins the tl1543
+// retry door: one call re-kicks the catalog refresh primitive the watch loop
+// already uses (per-directory reconcile queue + metadata sync) and fires the
+// one tree event the sidebar honors. No new reconcile mechanism.
+func TestRetryStartupCatalogScanRidesExistingRefreshPrimitive(t *testing.T) {
+	app := NewApp()
+	app.ctx = context.Background()
+	t.Cleanup(func() { app.shutdown(context.Background()) })
+	refreshes := 0
+	app.projectTreeCatalogRefreshHook = func() { refreshes++ }
+	treeSignals := 0
+	app.projectTreeChangedHook = func() { treeSignals++ }
+
+	app.RetryStartupCatalogScan()
+	if refreshes != 1 {
+		t.Fatalf("catalog refresh primitive fired %d times, want exactly 1", refreshes)
+	}
+	if treeSignals != 1 {
+		t.Fatalf("sidebar tree signal fired %d times, want exactly 1", treeSignals)
+	}
+}
