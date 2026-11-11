@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"reasonix/internal/event"
@@ -11,6 +14,8 @@ import (
 
 // tl1379 功能层：重置会话费用——只清费用记账（ledger+标量+分来源费用），
 // token 统计保持不动；幂等；sidecar 同步落盘。
+// tl1557：破坏性动作可追溯——非零重置 slog 留痕（前值+币种+会话路径），
+// 已零会话的幂等重写不写日志。
 
 func newCostTrackingTab(t *testing.T) (*App, *WorkspaceTab, string) {
 	t.Helper()
@@ -18,6 +23,47 @@ func newCostTrackingTab(t *testing.T) (*App, *WorkspaceTab, string) {
 	tab := &WorkspaceTab{ID: "cost-reset", SessionPath: sessionPath}
 	app := &App{tabs: map[string]*WorkspaceTab{tab.ID: tab}, tabOrder: []string{tab.ID}, activeTabID: tab.ID}
 	return app, tab, sessionPath
+}
+
+// tl1557：非零费用重置必须 slog 留痕（前值可追溯），幂等重写不产生日志行。
+func TestClearSessionCostLogsPrevValue(t *testing.T) {
+	app, tab, sessionPath := newCostTrackingTab(t)
+	tab.recordUsage(event.Event{
+		Usage:       &provider.Usage{PromptTokens: 100_000, TotalTokens: 100_000},
+		Pricing:     &provider.Pricing{Input: 1, Currency: "CNY"},
+		UsageSource: event.UsageSourceExecutor,
+	})
+	if tab.telemetrySnapshot().Usage.SessionCost <= 0 {
+		t.Fatalf("fixture setup wrong: cost=%f", tab.telemetrySnapshot().Usage.SessionCost)
+	}
+
+	var buf bytes.Buffer
+	prevHandler := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(prevHandler)
+
+	if err := app.ClearSessionCostForTab(tab.ID); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	line := buf.String()
+	if !strings.Contains(line, "desktop: session cost reset") {
+		t.Fatalf("non-zero reset not logged: %q", line)
+	}
+	if !strings.Contains(line, "prev_cost=") || !strings.Contains(line, "prev_currency=CNY") {
+		t.Fatalf("log line missing prev value fields: %q", line)
+	}
+	if !strings.Contains(line, sessionPath) {
+		t.Fatalf("log line missing session path: %q", line)
+	}
+
+	// 幂等重置：已零会话再清一次不产生新日志行。
+	buf.Reset()
+	if err := app.ClearSessionCostForTab(tab.ID); err != nil {
+		t.Fatalf("idempotent reset: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("already-zero reset must stay silent, got: %q", buf.String())
+	}
 }
 
 func TestClearSessionCostClearsCostKeepsTokens(t *testing.T) {
