@@ -7104,6 +7104,25 @@ export function useController() {
     const turnActive = runtimeSignals.turnActive;
     return turnActive === activeState.running ? activeState : { ...activeState, running: turnActive };
   }, [activeState, runtimeSignals]);
+
+  // tl1541「已确认 / 知道了」：放弃该 tab 全部 pending prompt。后端走
+  // cancelOwnedPrompt 漏斗（PromptClosed）+ 活回合前台取消配对，侧栏 pill、
+  // tab 条琥珀标记与决策卡同源消除。失败时拉一次权威态（reconcile）再抛，
+  // 由调用方决定 toast 文案。
+  const acknowledgePendingPromptsForTab = useCallback(async (tabId: string): Promise<void> => {
+    if (typeof app.AcknowledgePendingPromptsForTab !== "function") return;
+    try {
+      await app.AcknowledgePendingPromptsForTab(tabId);
+    } catch (error) {
+      void reconcileRuntimeAfterRejectedMutation(tabId);
+      throw error;
+    }
+  }, [reconcileRuntimeAfterRejectedMutation]);
+  const acknowledgePendingPrompts = useCallback((): Promise<void> => {
+    const tabId = activeTabId;
+    if (!tabId) return Promise.reject(new Error("source tab is unavailable"));
+    return acknowledgePendingPromptsForTab(tabId);
+  }, [activeTabId, acknowledgePendingPromptsForTab]);
   return {
     state: projectedState,
     // 任务1015：五态 TurnRuntimeState 与四信号谓词——消费端（Composer 等）
@@ -7119,6 +7138,7 @@ export function useController() {
     send, sendToTab, resendFailedToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, queueGuidanceBubble, notice,
     cancel, cancelForTab, approve, approveForTab, isPromptCurrentForTab, resolvePlanDecision, resolvePlanDecisionForTab,
     resolveRecovery, resolveRecoveryForTab, answerQuestion, answerQuestionForTab,
+    acknowledgePendingPrompts, acknowledgePendingPromptsForTab,
     notifyAskInteraction, notifyAskInteractionForTab, notifyAskActivity, notifyAskActivityForTab,
     notifyAskTakeover, notifyAskTakeoverForTab,
     answerMCPInteraction, answerMCPInteractionForTab, setControllerMode, setControllerModeForTab,
