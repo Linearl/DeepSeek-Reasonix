@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"reasonix/internal/topicregistry"
 )
 
 const (
@@ -585,6 +587,13 @@ func (a *App) fileHeartbeatTopics(groups []desktopGroup) []desktopGroup {
 	var add []string
 	for id, record := range snapshot.Records {
 		if _, filed := member[id]; filed {
+			continue
+		}
+		// tl1560：归属纪律（tl1208 同款）。注册表唯一归属不再是 global 的
+		// topic 不再被 managed filing 拉回——否则迁出到项目的会话会在每次
+		// 花名册读取时被鬼影重挂回 global 定时任务组（跨 scope 影子条目，
+		// 1074 家族）。注册表不可用（headless 冷机/索引未建）时维持原行为。
+		if owner, ownerOK := topicRegistryOwnerOf(id); ownerOK && owner.Scope != topicregistry.ScopeGlobal {
 			continue
 		}
 		if topicOriginIsHeartbeat(record.AutoMeta) {

@@ -45,6 +45,15 @@ var topicRegistryWriteAllowlist = map[string][]string{
 	"project_tree_organization_store.go": {
 		"func applyProjectOrganization(", // 加载视图顺序投影（成员集合不变）
 	},
+	// tl1560 分组迁移：global→project 的跨 scope 原子搬家（组切换 + 注册
+	// 搬家 + 墓碑清理在同一个 updateProjectsFile 事务里）。收点族
+	// （registerTopic/unregisterTopic 各自独立事务）表达不了「两 scope 同
+	// 事务」的形态——与 convergeGlobalRegistration（tl1262）同款收敛先例。
+	// 成员集合守卫：迁移 mutator 内先验成员快照一致（不一致整体回滚），
+	// session_group_migrate_test.go 钉落盘形态。
+	"session_group_migrate.go": {
+		"func (a *App) MigrateSessionGroupToProject(",
+	},
 	// 视图/投影结构体与注册列表同名字段（.Topics）的构建函数：赋值目标是
 	// 视图类型（ManageSessionsGroupView / ProjectTreeRuntime 投影），不是
 	// desktop-projects.json 的注册列表。按精确函数名豁免——这些函数体内

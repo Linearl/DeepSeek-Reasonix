@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense, type CSSProperties, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
-import { CheckCheck, Eraser, FolderMinus, FolderPlus, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { CheckCheck, Eraser, FolderInput, FolderMinus, FolderPlus, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
@@ -10,7 +10,7 @@ import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/
 import { canNestUnder, childGroups, descendantGroupIDs, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import { formatSessionBusyError } from "../lib/sessionBusyError";
-import type { DeleteGroupsPlan, ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
+import type { DeleteGroupsPlan, ProjectNode, ProjectTreeOrganizationBindings, SessionGroup, SessionGroupMigrationResult } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { reportFrontendLog } from "../lib/frontendLog";
 
@@ -194,6 +194,17 @@ export interface ProjectTreeOrganizationController {
    * SaveSessionGroupsVersioned CAS chain, so the two entry points can never
    * fight over the roster (task 170's single-group constraint). */
   moveTopicToGroup(key: string, topicID: string, groupID: string): void;
+  /** tl1560: whether the backend migration binding exists. The「迁移到其他
+   * 项目」entry renders only when true — older mocks stay byte-identical. */
+  canMigrateGroups(): boolean;
+  /** tl1560: legal migration destinations — every project folder with a root.
+   * The source of a migration is always the global section. */
+  migrationTargets(): ProjectNode[];
+  /** tl1560 第一阶段：把一个 global 分组（组壳 + 全部成员对话）整体迁入目标
+   * 项目。后端一次原子事务（会话文件搬家 + 组切换 + 注册搬家），失败整体
+   * 回滚；前端两路 settle 都重拉花名册并刷新话题页。binding 缺失时拒绝。
+   * 成功返回迁移回执（movedSessions 供 toast 读数）。 */
+  migrateGroupToProject(groupID: string, targetRoot: string): Promise<SessionGroupMigrationResult>;
 }
 
 export function useProjectTreeOrganization({
@@ -595,6 +606,34 @@ export function useProjectTreeOrganization({
       clearTopicDrag();
     },
     moveTopicToGroup: moveTopicIntoGroup,
+    canMigrateGroups() {
+      // tl1560：入口开关跟绑定走——老 mock / 浏览器开发面没有迁移绑定，
+      // 菜单项整体不渲染（与 CreateSessionGroup 等 typeof 守卫同款纪律）。
+      return typeof bindings.MigrateSessionGroupToProject === "function";
+    },
+    migrationTargets() {
+      // 目标 = 全部带 root 的项目节点；迁移源恒为 global 区。
+      return tree.filter((node) => node.kind === "project" && Boolean(node.root));
+    },
+    async migrateGroupToProject(groupID, targetRoot) {
+      if (typeof bindings.MigrateSessionGroupToProject !== "function") {
+        throw new Error("session group migration binding unavailable");
+      }
+      try {
+        return await bindings.MigrateSessionGroupToProject(groupID, targetRoot);
+      } finally {
+        // 成功与失败两路都重拉：成功读迁移后真态；失败（后端已整体回滚）
+        // 也按树事件同款语义读回迁移动前形态。981 event-flow 家族同一收口：
+        // 花名册按 key 全量重拉 + 话题页刷新。
+        for (const loaded of Array.from(loadedGroupsRef.current)) loadGroups(loaded, true);
+        try {
+          await refresh();
+        } catch (error) {
+          reportFrontendLog("project-groups", "topic page reload after group migration failed", `error=${String(error)}`);
+        }
+        await Promise.resolve(onTopicsChanged?.()).catch(() => undefined);
+      }
+    },
   };
 }
 
@@ -851,6 +890,18 @@ export function ProjectTreeGroupRows({
       // canNestUnder's cycle guard. The panel scrolls (max-height + overflow),
       // so a big roster no longer truncates the choices.
       const nestInto = nestTargetRows(groups, group.id);
+      // tl1560 第一阶段：global 分组的「迁移到其他项目」——组壳 + 全部成员
+      // 对话一次原子事务迁入目标项目（后端文件先搬、组后切，失败整体回滚）。
+      // 入口只出现在 global 区分组菜单（迁出 global），且只在后端迁移绑定
+      // 存在时渲染。成员仍在输出（树上的 running 点）时迁移行禁用——入口
+      // 保留（tl1198 同款发现性纪律），分组移动的层级行不受影响。后端活跃
+      // 门是并发窗口的兜底，前端禁用只是第一道闸。
+      // 可见窗口注：classic 截断模式下窗口外的 running 成员看不到——该形态
+      // 由后端门禁拒绝兜底，不为此扩窗口。
+      const migrateTargets = folder.kind === "global_folder" && organization.canMigrateGroups()
+        ? organization.migrationTargets()
+        : [];
+      const memberRunning = members.some((node) => node.running === true);
       // tl 1149: the flat "move under X / move to top level" rows collapsed
       // into one 「分组移动 ▸」 submenu. Same moves, same order (nest targets
       // first, then the top-level escape hatch for nested groups) — one level
@@ -876,6 +927,35 @@ export function ProjectTreeGroupRows({
           label: t("projectTree.moveGroupToTopLevel"),
           onSelect: () => { organization.nestGroup(key, group.id, null); setMenuGroup(null); },
         }] : []),
+        // tl1560: the migration rows live at the submenu tail, behind a
+        // separator — they are not display-only moves (they carry authority
+        // data across scopes), so they must never read as a third nest option.
+        ...(migrateTargets.length > 0 ? [{ type: "separator" as const, key: "group-migrate-sep" }] : []),
+        ...migrateTargets.map((target): ContextMenuItem => ({
+          key: `migrate:${target.root}`,
+          icon: <FolderInput size={13} />,
+          label: t("projectTree.migrateGroupTo", { project: target.label }),
+          disabled: memberRunning,
+          onSelect: () => {
+            setMenuGroup(null);
+            void (async () => {
+              const memberCount = (group.topicIds ?? []).length;
+              const confirmed = await confirmDelete({
+                title: t("projectTree.migrateGroupTitle"),
+                message: <p>{t("projectTree.migrateGroupConfirm", { title: group.title, count: String(memberCount), project: target.label })}</p>,
+                confirmLabel: t("projectTree.migrateGroupTitle"),
+                cancelLabel: t("common.cancel"),
+              });
+              if (!confirmed) return;
+              try {
+                const result = await organization.migrateGroupToProject(group.id, target.root ?? "");
+                showToast(t("projectTree.groupMigrated", { title: group.title, count: String(result?.movedSessions ?? 0), project: target.label }));
+              } catch (error) {
+                showToast(t("projectTree.groupMigrateFailed", { error: error instanceof Error ? error.message : String(error) }));
+              }
+            })();
+          },
+        })),
       ];
       return <div key={group.id} className={`project-tree__group${collapsed ? " project-tree__group--collapsed" : ""}${nested ? " project-tree__group--nested" : ""}`}>
         <div
