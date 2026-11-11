@@ -5,7 +5,7 @@ import { contextWindowPercentages } from "../lib/contextWindow";
 import { contextReadoutSource, contextReadoutSourceKey } from "../lib/contextPanelUtils";
 import { useI18n } from "../lib/i18n";
 import type { DictKey } from "../locales/en";
-import { formatMoneyLocalized } from "../lib/money";
+import { formatMoneyBuckets, formatMoneyLocalized } from "../lib/money";
 import { formatDurationLabel } from "../lib/durationFormat";
 import { appendRateBand, rateBandLabel } from "../lib/costRateBand";
 import type { BalanceInfo, ContextInfo, ContextPanelInfo } from "../lib/types";
@@ -247,17 +247,26 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   // 弹层不再给 partial 态单独的「含 N 条无定价按 0」行标签（并入估算行），
   // 0 元权威总额渲染 ¥0.00 而非「≈-」；数据层（partialPricedCount）不动。
   const sessionCostPartial = quoteStatus === "partial_priced" || (info?.sessionCostQuote?.partialPricedCount ?? 0) > 0;
+  // tl1556: 混合币种吞数字修复——bucketed 时用分桶金额逐币种上屏
+  // （"≈$0.01 + ¥0.85"），数字不再被静态「多币种」标签整体替换。
+  const sessionCostBucketsLabel = sessionCostBucketed
+    ? formatMoneyBuckets(info?.sessionCostQuote?.originalTotals, { locale })
+    : undefined;
   const sessionCostRaw = info?.sessionCostQuote?.selected
     ? Number(info.sessionCostQuote.selected.amount)
     : info?.sessionCost;
   const sessionCostCurrency = info?.sessionCostQuote?.selected?.currency || info?.sessionCurrency;
   const sessionCost =
-    !sessionCostBucketed && sessionCostComplete && typeof sessionCostRaw === "number" && (sessionCostRaw > 0 || ((sessionCostPartial || info?.sessionCostQuote?.complete === true) && info?.sessionCostQuote?.selected))
-      ? `≈${(sessionCostRaw > 0
-          ? formatMoneyLocalized(sessionCostRaw, sessionCostCurrency, { locale })
-          : formatMoneyLocalized(0, sessionCostCurrency, { locale, fractionDigits: 2 })
-        ).replace(/^≈/, "")}`
-      : undefined;
+    sessionCostBucketed
+      ? sessionCostBucketsLabel && sessionCostBucketsLabel !== "-"
+        ? `≈${sessionCostBucketsLabel}`
+        : undefined
+      : sessionCostComplete && typeof sessionCostRaw === "number" && (sessionCostRaw > 0 || ((sessionCostPartial || info?.sessionCostQuote?.complete === true) && info?.sessionCostQuote?.selected))
+        ? `≈${(sessionCostRaw > 0
+            ? formatMoneyLocalized(sessionCostRaw, sessionCostCurrency, { locale })
+            : formatMoneyLocalized(0, sessionCostCurrency, { locale, fractionDigits: 2 })
+          ).replace(/^≈/, "")}`
+        : undefined;
   const sessionCostHint =
     info?.sessionBillingMode === "subscription_equivalent"
         ? "payg_equivalent"

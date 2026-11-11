@@ -6,11 +6,11 @@ import { asArray } from "../lib/array";
 import { app } from "../lib/bridge";
 import { contextWindowPercentages, capacityPinLayout } from "../lib/contextWindow";
 import { useI18n, type Locale, type Translator } from "../lib/i18n";
-import { formatMoneyLocalized } from "../lib/money";
+import { formatMoneyBuckets, formatMoneyLocalized } from "../lib/money";
 import { formatTokens } from "../lib/format";
 import { formatDurationLabel } from "../lib/durationFormat";
 import { normalizeRateBand, rateBandLabel, type DisplayRateBand } from "../lib/costRateBand";
-import type { ContextInfo, ContextPanelInfo, UsageSourceStats, WireUsage } from "../lib/types";
+import type { ContextInfo, ContextPanelInfo, Money, UsageSourceStats, WireUsage } from "../lib/types";
 import { contextSessionCache } from "../lib/contextSessionCache";
 import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { PlanUsageCard } from "./PlanUsageCard";
@@ -126,6 +126,8 @@ export function contextCostDisplay({
   billingMode?: string;
   labelKind?: "estimated" | "payg_equivalent" | "fallback" | "bucketed" | "unavailable" | "partial_priced";
   partialPricedCount?: number;
+  /** tl1556: per-currency bucket totals shown alongside the bucketed label so the amounts never disappear. */
+  buckets?: Money[];
 } {
   // Prefer structured session quote, then per-usage quote.
   const quote = info?.sessionCostQuote || usage?.costQuote;
@@ -136,6 +138,8 @@ export function contextCostDisplay({
       estimated: true,
       complete: false,
       labelKind: "bucketed",
+      // tl1556: keep the per-currency sums visible instead of a bare label.
+      buckets: quote?.originalTotals,
     };
   }
   const fallbackOriginal = quote?.displayStatus === "fallback_original";
@@ -613,7 +617,14 @@ export function ContextPanel({
   const sessionEstimated = info?.sessionEstimated === true || context?.estimated === true;
   const markEstimated = (value: string, estimated: boolean) => estimated && value !== "-" ? `≈${value}` : value;
   const rawSessionCostLabel = cost.labelKind === "bucketed"
-    ? t("context.sessionCostBucketed")
+    ? // tl1556: 混合币种不再吞数字——分桶金额逐币种上屏（"$0.0123 + ¥0.85"），
+      // 「多币种」标签只当前缀；旧宿主无 originalTotals 时回退纯文案。
+      (() => {
+        const bucketsLabel = formatMoneyBuckets(cost.buckets, { locale });
+        return bucketsLabel === "-"
+          ? t("context.sessionCostBucketed")
+          : `${t("context.sessionCostBucketed")} ${bucketsLabel}`;
+      })()
     : cost.labelKind === "unavailable"
       ? t("context.sessionCostUnavailable")
       : cost.labelKind === "partial_priced"
