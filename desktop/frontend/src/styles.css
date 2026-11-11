@@ -32166,6 +32166,19 @@ button.statusbar__mcp:focus-visible {
   color: var(--err);
 }
 
+/* tl1559: 压缩运行态实时读数（「· 40s · 12.3K tokens · 45 tokens/s」，TTFT
+   空窗降级「估算中…」）——状态行旁的弱化文本，无 pill 底；随压缩结束整段
+   摘除（非压缩态零 DOM）。flags 组已有 flex-wrap 兜窄卡换行。 */
+.context-panel__capacity-live {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .context-panel__capacity-meter {
   gap: 6px;
 }

@@ -18,8 +18,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { LocaleProvider } from "../lib/i18n";
 import { ProcessFoldHeader } from "../components/ProcessFoldHeader";
+import { ContextPanel } from "../components/ContextPanel";
 import { compactionLiveReadout } from "../lib/compactionLive";
+import { compactionWindowOverride } from "../lib/contextPanelUtils";
 import type { Item } from "../lib/useController";
+import type { ContextInfo, ContextPanelInfo } from "../lib/types";
 import { en } from "../locales/en";
 import type { Translator } from "../lib/i18n";
 
@@ -188,5 +191,133 @@ function elapsedShapePresent(label: string, seconds: number): boolean {
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
 
-// ── Part C/D（刀2 追加）：compactionWindowOverride 读数源字段单元钉 +
-//    ContextPanel 容量卡渲染钉——随刀2 提交恢复。
+// ── Part C: compactionWindowOverride 读数源字段（刀2 数据面）─────────────────
+
+{
+  process.stdout.write("override: running phase carries the live readout source\n");
+  const running: Item[] = [
+    { kind: "compaction", id: "c1", pending: true, trigger: "auto", messages: 0, summary: "", archive: "", done: 6, total: 22, tokens: 12300, tokensPerSec: 45, startedAt: 1_000 },
+  ];
+  const override = compactionWindowOverride(running);
+  ok(override?.phase === "running" && override.pending === true, "running: phase + pending source leg");
+  eq(override?.tokens, 12300, "running: tokens ride through");
+  eq(override?.tokensPerSec, 45, "running: tps rides through");
+  eq(override?.startedAt, 1_000, "running: startedAt rides through");
+  eq(override?.done, 6, "running: done/total unchanged (1147 钉不回退)");
+  eq(override?.total, 22, "running: total unchanged");
+
+  // failed 相不带读数源（失败卡无 live 数字）。
+  const failedOnly: Item[] = [{ kind: "compaction", id: "c0", pending: false, failed: true, attempt: 2, reason: "x", trigger: "", messages: 0, summary: "", archive: "" }];
+  const failedOverride = compactionWindowOverride(failedOnly);
+  ok(failedOverride?.phase === "failed" && failedOverride.tokens === undefined && failedOverride.startedAt === undefined, "failed: no live source fields");
+
+  // 直接喂共享 helper：结构兼容 CompactionLiveSource，非 pending 自卫返回空。
+  eq(
+    override ? compactionLiveReadout(override, 41_000, t, { estimatingWhenEmpty: true }) : "no-override",
+    " · 40s · 12.3K tokens · 45 tokens/s",
+    "override feeds the shared helper directly (same seam)",
+  );
+}
+
+// ── Part D: ContextPanel 容量卡渲染（修法①：右上上下文窗口卡接线）────────────
+
+class TestResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+function emptyPanelInfo(): ContextPanelInfo {
+  return {
+    usedTokens: 0,
+    windowTokens: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    reasoningTokens: 0,
+    cacheHitTokens: 0,
+    cacheMissTokens: 0,
+    sessionCacheHitTokens: 0,
+    sessionCacheMissTokens: 0,
+    sessionCompletionTokens: 0,
+    requestCount: 0,
+    elapsedMs: 0,
+    sessionCost: 0,
+    readFiles: [],
+    changedFiles: [],
+  };
+}
+
+const panelDom = installDom();
+(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = TestResizeObserver;
+const goStub = { main: { App: { ContextPanel: async () => emptyPanelInfo() } } };
+(window as unknown as { go: unknown }).go = goStub;
+const panelRootEl = panelDom.window.document.getElementById("root") as HTMLElement;
+
+async function renderPanel(context: ContextInfo, items?: Item[]): Promise<Root> {
+  const scenarioRoot = createRoot(panelRootEl);
+  await act(async () => {
+    scenarioRoot.render(
+      React.createElement(LocaleProvider, null, React.createElement(ContextPanel, { tabId: "tab-1559", context, items })),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  return scenarioRoot;
+}
+
+async function unmountPanel(scenarioRoot: Root) {
+  await act(async () => {
+    scenarioRoot.unmount();
+  });
+}
+
+function capacityLiveText(): string | null {
+  return panelRootEl.querySelector(".context-panel__capacity-live")?.textContent ?? null;
+}
+
+function capacityStatusText(): string {
+  return panelRootEl.querySelector(".context-panel__capacity-status")?.textContent ?? "";
+}
+
+const overLimitContext: ContextInfo = { used: 1_300_000, window: 1_000_000, sessionTokens: 1_300_000, compactRatio: 0.8 };
+
+try {
+  process.stdout.write("component: ContextPanel capacity card live readout\n");
+  let panelRoot = await renderPanel(overLimitContext, [
+    { kind: "compaction", id: "cp1", pending: true, trigger: "auto", messages: 0, summary: "", archive: "", done: 6, total: 22, tokens: 12300, tokensPerSec: 45, startedAt: Date.now() - 40_000 },
+  ]);
+  let live = capacityLiveText();
+  ok(live !== null, "running: the live readout span renders");
+  ok(live !== null && live.includes("12.3K tokens") && live.includes("45 tokens/s"), `running: tokens + tps visible (acceptance ①): ${JSON.stringify(live)}`);
+  ok(live !== null && elapsedShapePresent(live!, 40), `running: elapsed leg leads: ${JSON.stringify(live)}`);
+  // 1147 钉保持：状态行本身是纯标签（读数走独立 span，不污染精确串钉）。
+  ok(/(正在压缩…6\/22|正在壓縮…6\/22|Compacting… 6\/22)/.test(capacityStatusText()), `running: status pill stays the pure 1147 label: ${JSON.stringify(capacityStatusText())}`);
+  await unmountPanel(panelRoot);
+
+  // TTFT 空窗（有戳无 tokens）→ 降级形态「估算中…」。
+  panelRoot = await renderPanel(overLimitContext, [
+    { kind: "compaction", id: "cp2", pending: true, trigger: "auto", messages: 0, summary: "", archive: "", startedAt: Date.now() - 7_000 },
+  ]);
+  live = capacityLiveText();
+  ok(live !== null && estimatingShapes.some((shape) => live!.includes(shape)), `TTFT window: capacity card degrades to the estimating shape: ${JSON.stringify(live)}`);
+  await unmountPanel(panelRoot);
+
+  // 完成卡 → 无读数 span（压缩后读数即时照常，零残值）。
+  panelRoot = await renderPanel(overLimitContext, [
+    { kind: "compaction", id: "cp3", pending: false, trigger: "auto", messages: 40, summary: "done", archive: "" },
+  ]);
+  ok(capacityLiveText() === null, `done: no live span (post-compaction readout untouched): ${JSON.stringify(capacityLiveText())}`);
+  await unmountPanel(panelRoot);
+
+  // 无压缩卡 → 基线 DOM 逐字节（无 live span）。
+  panelRoot = await renderPanel(overLimitContext);
+  ok(capacityLiveText() === null, `no compaction: baseline DOM without the live span: ${JSON.stringify(capacityLiveText())}`);
+  await unmountPanel(panelRoot);
+} catch (err) {
+  ok(false, `ContextPanel test threw: ${err}`);
+}
+
+panelDom.window.close();
+
+process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
+if (failed > 0) process.exit(1);

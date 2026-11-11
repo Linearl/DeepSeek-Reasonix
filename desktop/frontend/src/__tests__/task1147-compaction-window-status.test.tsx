@@ -12,6 +12,10 @@
 
 import { JSDOM } from "jsdom";
 
+// tl1559: 预存红修复——本文件用 JSX（classic 运行时）但缺 React 导入，tsx 直调
+// 下首屏渲染即 ReferenceError: React is not defined（基线 931aeb603 同样红，
+// 与 tl1559 改动无关；556/973 同代钉均显式 import React）。补导入即绿。
+import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ContextPanel } from "../components/ContextPanel";

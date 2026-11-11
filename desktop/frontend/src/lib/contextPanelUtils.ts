@@ -11,10 +11,19 @@ export interface ContextWindowStatus {
 // 实际压缩在推进并最终成功。以最新一张压缩卡的阶段覆盖容量卡状态行：
 // pending=压缩中（中性，替代红条），failed=失败（独立可辨识文案）；
 // 完成卡不覆盖（正常显示压缩后读数）。
+// tl1559：running 相携带实时读数源（pending 卡上 reducer 维护的
+// CompactionProgress 值 + startedAt 内存戳），结构上兼容
+// CompactionLiveSource——容量卡直接把整个 override 喂给共享
+// compactionLiveReadout，与折叠头/压缩卡同一数据面同一格式缝。
 export interface CompactionWindowOverride {
   phase: "running" | "failed";
   done?: number;
   total?: number;
+  /** tl1559: running 相恒真—— CompactionLiveSource 的 pending 腿。 */
+  pending?: boolean;
+  startedAt?: number;
+  tokens?: number;
+  tokensPerSec?: number;
 }
 
 export function compactionWindowOverride(items: Item[] | undefined): CompactionWindowOverride | null {
@@ -23,7 +32,9 @@ export function compactionWindowOverride(items: Item[] | undefined): CompactionW
     if (item.kind !== "compaction") continue;
     // 任务867：新一轮 CompactionStarted 把失败卡翻回 pending，同一张卡
     // pending/failed 互斥；倒序首张即最新阶段。
-    if (item.pending) return { phase: "running", done: item.done, total: item.total };
+    if (item.pending) {
+      return { phase: "running", pending: true, done: item.done, total: item.total, startedAt: item.startedAt, tokens: item.tokens, tokensPerSec: item.tokensPerSec };
+    }
     if (item.failed) return { phase: "failed" };
     return null;
   }
