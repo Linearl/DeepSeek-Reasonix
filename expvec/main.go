@@ -1,11 +1,14 @@
 package main
 
-// main.go —— expvec 入口：bench（四项实测）/ retrieve（召回对照）/ selfcheck（tokenizer 自洽）。
+// main.go —— expvec 入口：bench（四项实测）/ retrieve（召回对照）/ selfcheck（tokenizer 自洽）
+// / fullscale（全量口径实测，tl1351 补差 b）。
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 )
 
 type sample struct {
@@ -40,6 +43,7 @@ func main() {
 	dll := fs.String("dll", "models/onnxruntime.dll", "onnxruntime 共享库路径")
 	corpus := fs.String("corpus", "eval/corpus.tsv", "语料 TSV (id\\ttext)")
 	queries := fs.String("queries", "eval/queries.txt", "query 列表（每行一条）")
+	sizes := fs.String("sizes", "1000,3000,5000", "fullscale 各轮规模（逗号分隔）")
 	fs.Parse(os.Args[2:])
 
 	var err error
@@ -50,6 +54,19 @@ func main() {
 		err = runRetrieve(*model, *vocab, *dll, *corpus, *queries)
 	case "selfcheck":
 		err = runSelfcheck(*vocab)
+	case "fullscale":
+		var ns []int
+		for _, f := range strings.Split(*sizes, ",") {
+			v, e := strconv.Atoi(strings.TrimSpace(f))
+			if e != nil || v <= 0 {
+				err = fmt.Errorf("非法 -sizes: %q", *sizes)
+				break
+			}
+			ns = append(ns, v)
+		}
+		if err == nil {
+			err = runFullscale(*model, *vocab, *dll, ns)
+		}
 	default:
 		usage()
 		os.Exit(2)

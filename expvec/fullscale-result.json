@@ -1,0 +1,66 @@
+{
+  "env": {
+    "logical_cpus": 16,
+    "cpu_model": "AMD Ryzen AI 7 H 350 w/ Radeon 860M            ",
+    "go_version": "go1.26.3",
+    "scale_source": "主仓 live 记忆库 rune 长度分布(min=313 p25=918 p50=1107 p75=1720 p90=2688 max=2943, n=40, 2026-11-11)，合成语料 seed=42"
+  },
+  "load": {
+    "total_load_ms": 476,
+    "delta_after_warm_mib": 128.71484375,
+    "embedding_dim": 512
+  },
+  "rounds": [
+    {
+      "n": 1000,
+      "full_rebuild_serial_ms": 38198,
+      "throughput_texts_per_s": 26.178766365950302,
+      "per_entry_p50_ms": 39.175,
+      "per_entry_p95_ms": 54.905,
+      "per_entry_max_ms": 69.482,
+      "per_entry_mean_ms": 38.196118,
+      "capped_at_512_tokens_ratio": 0.356,
+      "ws_baseline_after_gen_mib": 133.75,
+      "ws_after_embed_mib": 198.91796875,
+      "ws_delta_embed_mib": 65.16796875,
+      "vector_store_mib": 1.953125,
+      "index_disk_mib": 1.953125,
+      "bruteforce_single_core_us": 258.49,
+      "bruteforce_all_core_us": 123.63
+    },
+    {
+      "n": 3000,
+      "full_rebuild_serial_ms": 123800,
+      "throughput_texts_per_s": 24.232629227662155,
+      "per_entry_p50_ms": 41.406,
+      "per_entry_p95_ms": 64.99,
+      "per_entry_max_ms": 180.945,
+      "per_entry_mean_ms": 41.263414000000054,
+      "capped_at_512_tokens_ratio": 0.35033333333333333,
+      "ws_baseline_after_gen_mib": 197.84765625,
+      "ws_after_embed_mib": 216.37109375,
+      "ws_delta_embed_mib": 18.5234375,
+      "vector_store_mib": 5.859375,
+      "index_disk_mib": 5.859375,
+      "bruteforce_single_core_us": 791.24,
+      "bruteforce_all_core_us": 166.41
+    },
+    {
+      "n": 5000,
+      "full_rebuild_serial_ms": 237137,
+      "throughput_texts_per_s": 21.08482808479939,
+      "per_entry_p50_ms": 47.83,
+      "per_entry_p95_ms": 83.207,
+      "per_entry_max_ms": 166.398,
+      "per_entry_mean_ms": 47.425325799999975,
+      "capped_at_512_tokens_ratio": 0.3528,
+      "ws_baseline_after_gen_mib": 206.65625,
+      "ws_after_embed_mib": 233.47265625,
+      "ws_delta_embed_mib": 26.81640625,
+      "vector_store_mib": 9.765625,
+      "index_disk_mib": 9.765625,
+      "bruteforce_single_core_us": 1477.58,
+      "bruteforce_all_core_us": 346.73
+    }
+  ]
+}

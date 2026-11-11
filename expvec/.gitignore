@@ -3,3 +3,10 @@ models/
 tools/
 expvec.exe
 *.nupkg
+# wailsprobe：wails build 产物与探针运行时输出（复现见报告增补节）
+wailsprobe/build/
+wailsprobe/wailsprobe.exe
+wailsprobe/probe-result.json
+*.syso
+# wails CLI 自动生成，wails build 会重建
+wailsprobe/frontend/wailsjs/
