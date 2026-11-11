@@ -120,6 +120,11 @@ func (t *UseCapabilityTool) resolveDiscovery(ctx context.Context, p useCapabilit
 }
 
 func (t *UseCapabilityTool) inspect(_ context.Context, id string) (string, error) {
+	// tl1553: 幂等防御性清洗——parse 层已剥控制字符，这里兜底（inspect 的
+	// 回显面 unknown capability_id %q 是模型重试的读取面，残留形态会被模仿）。
+	if cleaned, _ := sanitizeCapabilityID(id); cleaned != "" {
+		id = cleaned
+	}
 	cat := t.currentCatalog()
 	e, ok := cat.Lookup(id)
 	if !ok {

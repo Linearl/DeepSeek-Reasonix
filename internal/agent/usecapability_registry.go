@@ -27,6 +27,12 @@ func (t *UseCapabilityTool) resolveRegistryTool(ctx context.Context, name, id st
 	if !ok {
 		// Task 877: 真名错——附最接近的 catalog 真名建议与 search 占引用，
 		// 让模型下一轮即可自愈，不再撞一次学一次。
+		// tl1553: 回显前剥内嵌控制字符（id 主链在 parse 层已清洗，这里对
+		// name 做幂等防御性兜底）——not registered 文案是模型重试时最直接
+		// 的读取面，任何残留的 \r 形态都会被下一轮模仿（坏示范自增强）。
+		if cleaned, _ := sanitizeCapabilityID(name); cleaned != "" {
+			name = cleaned
+		}
 		reason := fmt.Sprintf("tool %q is not registered in this session", name)
 		if guide := t.capabilityNameCorrection(id); guide != "" {
 			// 换行开头：errMsg=firstLine 只留原错误行，引导全文在 output。
