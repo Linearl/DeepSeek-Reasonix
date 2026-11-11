@@ -207,6 +207,25 @@ func capabilityInputCorrection(errText string, raw json.RawMessage) string {
 	return capabilityCorrectionFor(kind, inspectCapabilityEnvelope(raw))
 }
 
+// capabilityQuotedID renders an id from the model's envelope for a model-facing
+// correction example. tl1553: the id is sanitized (embedded control characters
+// stripped, task-975 semantics) BEFORE quoting so the guidance the model reads
+// — and the retry it copies — carries the clean form. Echoing the polluted
+// form back was the observed self-reinforcement channel (2026-11-11: eight
+// consecutive not-registered failures; strconv.Quote renders \r as the literal
+// two-character escape the model then re-emits, its own bad output confirmed
+// back at it). A sanitized-empty id (all control characters) falls back to the
+// raw form under strconv.Quote — still escaped, never raw bytes.
+func capabilityQuotedID(id string) string {
+	if id == "" {
+		return `"<exact catalog id>"`
+	}
+	if cleaned, _ := sanitizeCapabilityID(id); cleaned != "" {
+		return strconv.Quote(cleaned)
+	}
+	return strconv.Quote(id)
+}
+
 // capabilityCorrectionFor 为已识别的型族生成可复制修正例。参数值一律用
 // 占位符（与 minimalValidExample 同纪律），绝不回显模型传入的值。
 func capabilityCorrectionFor(kind capabilityErrorKind, shape capabilityEnvelopeShape) string {
@@ -220,7 +239,9 @@ func capabilityCorrectionFor(kind capabilityErrorKind, shape capabilityEnvelopeS
 		// 转义），不再手动 `"`+escapeJSONString(x)+`"` 拼接——后者被
 		// CodeQL go/unsafe-quoting 判为「json.Marshal 输出流入引号拼接」
 		// （escapeJSONString 内部即 json.Marshal）。
-		id = strconv.Quote(shape.id)
+		// tl1553：回显前清洗——修正例里出现带 \r 的 id 形态会成为模型
+		// 下一轮模仿的坏示范（自增强通道），剥掉控制字符后 strconv.Quote。
+		id = capabilityQuotedID(shape.id)
 	}
 	searchHint := ` If the exact id is unclear, run {"action":"search","query":"<topic>","limit":5} first.`
 	switch kind {
@@ -230,7 +251,7 @@ func capabilityCorrectionFor(kind capabilityErrorKind, shape capabilityEnvelopeS
 	case capabilityErrNestedID:
 		nested := "<the nested id>"
 		if shape.nestedID != "" {
-			nested = strconv.Quote(shape.nestedID)
+			nested = capabilityQuotedID(shape.nestedID)
 		}
 		return fmt.Sprintf(`capability_id was found INSIDE arguments; hoist it to the top level: {"action":"call","capability_id":%s,"arguments":{ ...the target tool's own parameters... }}`,
 			nested)
@@ -271,7 +292,8 @@ func capabilityValidationCorrection(plan *toolCallPlan) string {
 		// 转义），不再手动 `"`+escapeJSONString(x)+`"` 拼接——后者被
 		// CodeQL go/unsafe-quoting 判为「json.Marshal 输出流入引号拼接」
 		// （escapeJSONString 内部即 json.Marshal）。
-		id = strconv.Quote(shape.id)
+		// tl1553：回显前清洗（同 capabilityCorrectionFor——切断坏示范自增强）。
+		id = capabilityQuotedID(shape.id)
 	}
 	// 整包或 arguments 成员字符串化：Actual 行已点名 "a JSON string wrapping…"，
 	// 这里补可复制的单行修正例。
@@ -398,8 +420,17 @@ func capabilityLocalName(id string) string {
 // capabilityNameCorrection 是「真名错/裸名」两族的代理出口引导：命中最接近
 // catalog 真名就给可复制重试例，无论命中与否都给 search(query) 占引用。
 // 返回空串表示无可建议（本地名为空等）。
+// tl1553：wrongID 入口即清洗（内嵌控制字符剥除）——剥 \r 后本地名与 catalog
+// 真名相等直接命中 dist=0 路径，建议给的就是干净可复制真名；回显面（无建议
+// 时的 %q）也只出现干净形态。这是切断「错误回显污染 id → 模型模仿自增强」
+// 的主闸：2026-11-11 现场 8 连败期间模型的每次重试都能在错误文案里看到自己
+// 的坏形态被原样确认。
 func (t *UseCapabilityTool) capabilityNameCorrection(wrongID string) string {
-	wrongID = strings.TrimSpace(wrongID)
+	if cleaned, _ := sanitizeCapabilityID(wrongID); cleaned != "" {
+		wrongID = cleaned
+	} else {
+		wrongID = strings.TrimSpace(wrongID)
+	}
 	if capabilityLocalName(wrongID) == "" {
 		return ""
 	}

@@ -265,13 +265,17 @@ func hasExplicitTodoParents(todos []TodoItem) bool {
 // An explicit parent_id wins and must reference an EARLIER item's step_id
 // (list order is display order, so a parent always renders above its
 // children); otherwise the legacy level 0/1 adjacency rule applies — a
-// level-1 item belongs to the nearest preceding level-0 item.
+// level-1 item belongs to the nearest preceding level-0 item. The id lookup
+// is projected through SanitizeStepID on both sides (tl1553) so a legacy
+// dirty stored id still resolves for its clean rewrite; the error message
+// renders the offending parent_id via VisibleStepID so embedded control
+// characters are visible instead of silently swallowed.
 func resolveTodoParents(todos []TodoItem) ([]int, error) {
 	byStepID := make(map[string]int, len(todos))
 	parents := make([]int, len(todos))
 	for i, todo := range todos {
 		parents[i] = -1
-		if id := strings.TrimSpace(todo.StepID); id != "" {
+		if id, _ := SanitizeStepID(todo.StepID); id != "" {
 			byStepID[id] = i
 		}
 	}
@@ -280,9 +284,9 @@ func resolveTodoParents(todos []TodoItem) ([]int, error) {
 	for i, todo := range todos {
 		switch {
 		case strings.TrimSpace(todo.ParentID) != "":
-			p, ok := byStepID[strings.TrimSpace(todo.ParentID)]
+			p, ok := byStepID[mustSanitizeStepIDKey(todo.ParentID)]
 			if !ok {
-				return nil, fmt.Errorf("todo %d %q has parent_id %q, but no earlier item carries that step_id; a child must come after its parent — give the parent that step_id or clear the parent_id", i+1, todo.Content, todo.ParentID)
+				return nil, fmt.Errorf("todo %d %q has parent_id %s, but no earlier item carries that step_id; a child must come after its parent — give the parent that step_id or clear the parent_id", i+1, todo.Content, VisibleStepID(todo.ParentID))
 			}
 			parents[i] = p
 			depth[i] = depth[p] + 1
@@ -295,6 +299,13 @@ func resolveTodoParents(todos []TodoItem) ([]int, error) {
 		}
 	}
 	return parents, nil
+}
+
+// mustSanitizeStepIDKey returns the sanitized form of a parent-id reference
+// for the resolveTodoParents lookup (the empty check already ran).
+func mustSanitizeStepIDKey(id string) string {
+	cleaned, _ := SanitizeStepID(id)
+	return cleaned
 }
 
 // hierarchicalTodoID renders the dotted position code of one item ("T1",
@@ -1795,6 +1806,21 @@ func ReceiptFromToolCall(toolName string, args json.RawMessage, success bool, re
 			if pid := strings.TrimSpace(stringField(fields, "plan_id")); pid != "" {
 				for i := range r.Todos {
 					r.Todos[i].PlanID = pid
+				}
+			}
+			// tl1553: the receipt is the storage-side entry for the model's
+			// list (ledger baseline, canonical panel state, todo_read all read
+			// from here), so step_id/parent_id are sanitized on the way in —
+			// new writes never store embedded control characters (the 2026-11-11
+			// field case: tokenizer-emitted \r landed in the stored id, byte
+			// matching then missed forever). Same mechanism as internal/agent's
+			// capability-id cleanup (task 975 / tl1310).
+			for i := range r.Todos {
+				if cleaned, stripped := SanitizeStepID(r.Todos[i].StepID); stripped {
+					r.Todos[i].StepID = cleaned
+				}
+				if cleaned, stripped := SanitizeStepID(r.Todos[i].ParentID); stripped {
+					r.Todos[i].ParentID = cleaned
 				}
 			}
 			// Task 972, fix 2: the host assigns stable step ids to items the

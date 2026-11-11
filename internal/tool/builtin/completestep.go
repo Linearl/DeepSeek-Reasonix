@@ -410,7 +410,12 @@ func verifyTodoStep(ctx context.Context, step string) (evidence.TodoStepMatch, b
 			return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q has no matching todo_write item and every current todo is already completed; this is a renewal sign-off, so retry complete_step with step_index %d (the final existing todo %q) and the fresh evidence — do not invent a new step or rewrite the completed list", step, last+1, todos[last].Content)
 		}
 		if ids := evidence.TodoStepIDs(todos); len(ids) > 0 {
-			return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q has no matching todo_write item in the current task list; cite the item's stable step_id — available ids: %s (list: %s)", step, strings.Join(ids, ", "), todoListInventory(todos))
+			// tl1553: ids render via VisibleStepIDJoin — a polluted stored id
+			// shows its control characters as visible escapes instead of raw
+			// invisible bytes, so the model can see the difference between
+			// what it sent and what is stored (display==storage; the raw-bytes
+			// join previously read as the clean form and fed the retry loop).
+			return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q has no matching todo_write item in the current task list; cite the item's stable step_id — available ids: %s (list: %s)", step, evidence.VisibleStepIDJoin(ids), todoListInventory(todos))
 		}
 		return evidence.TodoStepMatch{}, true, fmt.Errorf("step %q has no matching todo_write item in the current task list; cite a todo verbatim or by number: %s", step, todoListInventory(todos))
 	}

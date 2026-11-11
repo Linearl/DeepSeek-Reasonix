@@ -103,6 +103,20 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
+	// tl1553: strip embedded control characters from step_id/parent_id on the
+	// way in (tokenizer-emitted \r at snake_case split points, the tl1310
+	// mechanism family — 2026-11-11 field case stored a polluted step_id that
+	// byte matching could never hit again). Every validator below then runs on
+	// clean identities, and the receipt parser applies the same cleanup so the
+	// recorded baseline matches. Idempotent; clean ids pass byte-identical.
+	for i := range p.Todos {
+		if cleaned, stripped := evidence.SanitizeStepID(p.Todos[i].StepID); stripped {
+			p.Todos[i].StepID = cleaned
+		}
+		if cleaned, stripped := evidence.SanitizeStepID(p.Todos[i].ParentID); stripped {
+			p.Todos[i].ParentID = cleaned
+		}
+	}
 	planID := strings.TrimSpace(p.PlanID)
 	// Task 972: scope validation to one plan. A non-empty plan_id that differs
 	// from the host's current plan marker declares a NEW plan — a wholesale
@@ -239,7 +253,10 @@ func todoPlanMarker(baseline []evidence.TodoItem) string {
 func assignStableTodoStepIDs(todos []todoItem) {
 	occurrences := make(map[string]int, len(todos))
 	for i := range todos {
-		if strings.TrimSpace(todos[i].StepID) != "" {
+		// tl1553: a sanitized-empty id (control characters only) counts as
+		// "no id sent" so the host mints a usable one instead of storing a
+		// string that renders as nothing.
+		if id, _ := evidence.SanitizeStepID(todos[i].StepID); id != "" {
 			continue
 		}
 		key := strings.ToLower(strings.TrimSpace(todos[i].Content))
