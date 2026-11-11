@@ -1323,9 +1323,17 @@ export const AssistantMessage = memo(function AssistantMessage({
       {/* 任务1122: 助手消息补时间戳——与用户消息 msg-meta 同一位置样式（卡片
           下方、弱化字色、等宽数字）。createdAt 缺失时 CardTime 返回 null，
           不渲染错误时间（与 1012/1092 同契约）。 */}
-      <div className="msg-meta">
-        <CardTime createdAt={item.createdAt} className="msg-meta__time" />
-      </div>
+      {/* tl1540: createdAt 缺失时整行不渲染。.msg-meta 带 min-height:24px +
+          margin-top:4px，而 .msg--assistant 是 gap:8px 的纵向 flex——空壳
+          div 会在正文下方压出 32px 纯空白（历史恢复会话普遍无 createdAt，
+          段间红块≈折叠行 2 倍的现场即此条带 + .msg 外距级联终值 16px）。
+          zcode 同款空壳在行分发处裁剪零 DOM（ConversationRowView「返回
+          null 会留下空 RowShell 和多余间距」注释），此处对齐同一纪律。 */}
+      {item.createdAt != null && (
+        <div className="msg-meta">
+          <CardTime createdAt={item.createdAt} className="msg-meta__time" />
+        </div>
+      )}
     </div>
   );
 });
