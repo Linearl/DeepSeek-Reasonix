@@ -186,9 +186,14 @@ ok(
   ok(!openBody.includes("setSubagentDetailUserWidthActive(false)"), "openWorkspacePanel 切 tab 不清详情宽度记忆（跨 tab 保留，同 tl1129 口径）");
 }
 
+// tl1548 改钉注记：原钉 `detailEnabled && Boolean(selected)`。tl1548 给右栏
+// 加了后台命令输出详情（与子代理详情同一张右栏内容面、同一个分屏右栏），
+// bash 详情打开时同样需要抬宽判据（否则分屏列表列固定 200px + rail 246px
+// 会把详情挤死）。判据扩为 selected || bashDetail——上报机制本体不变（详情
+// 打开才上报；文件面板 wide 上报仍不置位），故原钉语义保持、仅随实现更新。
 ok(
-  panelSource.includes("setSubagentsDetailWideActive(detailEnabled && Boolean(selected))"),
-  "SubagentsDockPanel: 详情打开上报来源标识（文件面板上报不置位）",
+  panelSource.includes("setSubagentsDetailWideActive(detailEnabled && (Boolean(selected) || Boolean(bashDetail)))"),
+  "SubagentsDockPanel: 详情打开上报来源标识（子代理/bash 详情同据；文件面板上报不置位；tl1548 扩 bash 同据）",
 );
 ok(
   panelSource.includes("setSubagentsDetailWideActive(false)"),

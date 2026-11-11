@@ -1997,6 +1997,14 @@ export default function App() {
     () => registryRunningEntries({ jobs: state.jobs, foreground: foregroundSubagents }, activeTabId ?? ""),
     [state.jobs, foregroundSubagents, activeTabId],
   );
+  // tl1548: 右栏后台命令区数据源——同一 jobs 快照按 kind==="bash" 过滤。
+  // bash 不进上面的 registryRunning 子代理投影（subagentDirectory
+  // .registryRunningEntries 显式排除），两通道分界：子代理行走转录/liveTools，
+  // bash 行走输出快照读。输出桥复用 tl1479 的 capsuleJobOutput。
+  const dockBashJobs = useMemo(
+    () => (state.jobs ?? []).filter((job) => job && job.kind === "bash"),
+    [state.jobs],
+  );
   const exportLive = liveStore.getSnapshot(activeTabId) ?? state.live;
   // Task 447 capsule: stable wrappers so the panel's reload effects key on
   // open/running state instead of a fresh proxy method identity per render.
@@ -7012,6 +7020,11 @@ export default function App() {
                     onTerminateSubagent={(ref) => cancelSubagent(activeTabId ?? "", ref)}
                     /* tl1447: 「继续」续轮桥——静默越阈的运行行出两步确认入口。 */
                     onContinueSubagent={continueSubagentForSession}
+                    /* tl1548: 后台命令区（运行中 bash job）+ 输出详情——同一
+                       输出桥（capsuleJobOutput / App.JobOutputForTab 非消费
+                       快照读），不新增桥方法；数据与出口同源注入。 */
+                    bashJobs={dockBashJobs}
+                    onJobOutput={capsuleJobOutput}
                   />
                 </Suspense>
               ) : effectiveRightDockMode === "remote" ? (

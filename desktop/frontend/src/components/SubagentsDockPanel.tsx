@@ -13,6 +13,7 @@ import {
   LoaderCircle,
   Play,
   Square,
+  TerminalSquare,
   UnfoldHorizontal,
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
@@ -28,10 +29,11 @@ import {
   useLayoutStore,
 } from "../store/layout";
 import { Tooltip } from "./Tooltip";
+import { BashJobOutputDetail, jobStatusLabel } from "./BashJobOutputDetail";
 import { historyMessagesToItems, type Item } from "../lib/useController";
 import { subjectOf } from "../lib/tools";
 import { formatToolArgChars, toolCallArgsDetailText, toolCallArgsState, toolCallSummaryLine } from "../lib/toolCallSummary";
-import type { HistoryMessage } from "../lib/types";
+import type { HistoryMessage, JobOutputView, JobView } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
   SUBAGENTS_PERSISTED_POLL_MS,
@@ -878,6 +880,8 @@ export function SubagentsDockPanel({
   workflowRuns,
   workflowRecentRuns,
   onOpenWorkflowRun,
+  bashJobs,
+  onJobOutput,
 }: {
   directory: SubagentDirectory;
   /** Task 507 plan-A gate: row clicks open the read-only detail view. */
@@ -934,6 +938,16 @@ export function SubagentsDockPanel({
   /** tl1433: run 行点击出口——App 据此跳工作流面板并选中该 run。数据与出口
    *  同源注入：有数据无出口（不应出现）时行不渲染，不产生死行。 */
   onOpenWorkflowRun?: (runId: string) => void;
+  /** tl1548: 后台命令区数据源——active controller 的运行中 bash job
+   *  (JobView kind==="bash"，与 registryRunning 同一 jobs 快照另行过滤；
+   *  bash 不进子代理 registry 投影，见 subagentDirectory
+   *  .registryRunningEntries 的显式排除)。Absent/空 → 不渲染该段，面板
+   *  byte-for-byte pre-1548。 */
+  bashJobs?: readonly JobView[];
+  /** tl1548: 后台命令行的输出详情数据出口——与 tl1479 胶囊输出详情同一座
+   *  非消费快照读桥 (App.JobOutputForTab)，复用不新建。数据与出口同源注入：
+   *  缺出口则后台命令段整体不渲染（无死行）。 */
+  onJobOutput?: (tabId: string, jobID: string) => Promise<JobOutputView>;
 }) {
   const t = useT();
   // Task 495 ④: reveal the ended list 20 rows at a time (zcode's PAGE_SIZE).
@@ -951,6 +965,20 @@ export function SubagentsDockPanel({
   // persisted, so a restart lands back on the list (语义诚实: the preview
   // content itself is memory-only).
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // tl1548: 打开的后台命令输出详情（job 本体）。与 selectedId 互斥——详情面
+  // 同屏只有一张（子代理转录 or bash 输出），与胶囊 bashDetail/selected 的
+  // 互斥规则同款。
+  const [bashDetail, setBashDetail] = useState<JobView | null>(null);
+  // tl1548: 后台命令段渲染条件 = 数据与输出桥同源注入（无死行）；缺任一即
+  // 整段缺席，面板 byte-for-byte pre-1548。
+  const hasBashRows = Boolean(onJobOutput && bashJobs && bashJobs.length > 0);
+  // tl1548: 子代理行选中入口统一走这里——清掉可能开着的 bash 输出详情，
+  // 保证详情面互斥。未注入 bash 数据时 setBashDetail(null) 是幂等空操作，
+  // 既有行行为不变。
+  const openSubagent = useCallback((id: string) => {
+    setBashDetail(null);
+    setSelectedId(id);
+  }, []);
   // tl1426（需求②③）：split 列表列固定宽（默认 200，不再随面板百分比拉伸）+
   // 拖拽分隔条调整（ResizableDrawer 同款：拖动经 CSS 变量实时生效，松手/
   // 键盘写 subagentsSplitListWidth sizes 键持久化；双击回默认）。面板级偏好
@@ -1160,6 +1188,40 @@ export function SubagentsDockPanel({
     [onContinueSubagent, sessionPath],
   );
   const continueBridge = onContinueSubagent && sessionPath ? continueSubagent : undefined;
+  // tl1548: 后台命令段——active controller 的运行中 bash job。行点击开输出
+  // 详情（tl1479 的 BashJobOutputDetail 原组件，数据走同一 onJobOutput 桥）。
+  // 这是「后台 bash」通道的 UI 面：不渲染子代理的 liveTools/terminate/
+  // transcript 桥（那是子代理通道，tl1387fe/tl1537），两通道互不重复。
+  const bashSection = hasBashRows && bashJobs ? (
+    <section className="subagents-panel__section" data-subagents-bash="true">
+      <h3 className="subagents-panel__section-title">
+        {t("composer.capsuleCommands")} · {bashJobs.length}
+      </h3>
+      <ul className="subagents-panel__list">
+        {bashJobs.map((job) => (
+          <li className="subagents-panel__row-wrap" key={job.id}>
+            <button
+              type="button"
+              className="subagents-panel__row"
+              data-subagents-bash-job={job.id}
+              aria-label={`${t("composer.bashOutputOpen")} ${job.detail || job.label || job.id}`}
+              onClick={() => {
+                setSelectedId(null);
+                setBashDetail(job);
+              }}
+            >
+              <TerminalSquare size={13} aria-hidden="true" />
+              <Tooltip label={job.detail || job.label || job.id} wrap>
+                <span className="subagents-panel__row-title">{job.label || job.id}</span>
+              </Tooltip>
+              <span className="subagents-panel__row-status">{jobStatusLabel(job.status, t)}</span>
+              <ChevronRight size={12} aria-hidden="true" className="subagents-panel__chevron" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : null;
   // 四缺口④：「最近」段只在 App 注入了跳转出口时成立（数据与出口同源，
   // 无出口的行不渲染——不产生点了没反应的死行）。
   const recentSection = onOpenWorkflowRun && recentWorkflowViews.length > 0 ? (
@@ -1174,21 +1236,24 @@ export function SubagentsDockPanel({
       </ul>
     </section>
   ) : null;
-  const empty = running.length === 0 && ended.length === 0 && !hasWorkflowRows && !recentSection;
+  // tl1548: 空态判定计入后台命令段——只有 bash 在跑时面板不再误读「暂无子代理」。
+  const empty = running.length === 0 && ended.length === 0 && !hasWorkflowRows && !recentSection && !hasBashRows;
   const selected = selectedId
     ? running.find((entry) => entry.item.id === selectedId)
       ?? ended.find((entry) => entry.item.id === selectedId)
     : undefined;
   // tl1109 方案 E: 有打开的子代理内容 ⇒ 抬宽边栏；卸载/取消选中 ⇒ 回落。
+  // tl1548: bash 输出详情是同一张「打开的内容面」，纳入同一抬宽判据
+  // （bashDetail 缺席时判据逐字节不变）。
   useEffect(() => {
     setSideDockWideActive(detailEnabled && Boolean(selected));
     // tl1426: 同步上报来源标识（详情打开=子代理驱动），App 据此默认 1:1。
-    setSubagentsDetailWideActive(detailEnabled && Boolean(selected));
+    setSubagentsDetailWideActive(detailEnabled && (Boolean(selected) || Boolean(bashDetail)));
     return () => {
       setSideDockWideActive(false);
       setSubagentsDetailWideActive(false);
     };
-  }, [detailEnabled, selected, setSideDockWideActive, setSubagentsDetailWideActive]);
+  }, [detailEnabled, selected, bashDetail, setSideDockWideActive, setSubagentsDetailWideActive]);
   const widenToolbar = onToggleWide ? (
     <div className="subagents-panel__toolbar">
       <button
@@ -1213,6 +1278,21 @@ export function SubagentsDockPanel({
             restart persistence. Same faint-text class, no new CSS. */}
         <p className="subagents-panel__empty">{t("subagentPanel.empty")}</p>
         <p className="subagents-panel__empty">{t("subagentPanel.emptyGuide")}</p>
+      </div>
+    );
+  }
+  // tl1548: 非分屏态点开后台命令 → 面板体切换为输出详情（与胶囊同语义：
+  // 详情替换列表，返回即回列表）。工具条不渲染（详情态无加宽语义）。
+  // 分屏态不早退——bash 详情在右栏内容面渲染（见下方 detailEnabled 分支）。
+  if (bashDetail && !detailEnabled) {
+    return (
+      <div className="subagents-panel" aria-label={t("workspace.subagentsTab")}>
+        <BashJobOutputDetail
+          job={bashDetail}
+          tabId=""
+          onJobOutput={onJobOutput}
+          onBack={() => setBashDetail(null)}
+        />
       </div>
     );
   }
@@ -1242,7 +1322,7 @@ export function SubagentsDockPanel({
                 {workflowViews.map((view) => (
                   <WorkflowRunRow key={`wf:${view.runId}`} view={view} now={wallNow} onOpen={onOpenWorkflowRun}>
                     {workflowChildren.byRun.get(view.runId)?.map((entry) => (
-                      <DirectoryRow key={entry.item.id} entry={entry} nested onSelect={() => setSelectedId(entry.item.id)} onTerminate={onTerminateSubagent} now={wallNow} onContinue={continueBridge} />
+                      <DirectoryRow key={entry.item.id} entry={entry} nested onSelect={() => openSubagent(entry.item.id)} onTerminate={onTerminateSubagent} now={wallNow} onContinue={continueBridge} />
                     ))}
                   </WorkflowRunRow>
                 ))}
@@ -1250,7 +1330,7 @@ export function SubagentsDockPanel({
                   <DirectoryRow
                     key={entry.item.id}
                     entry={entry}
-                    onSelect={() => setSelectedId(entry.item.id)}
+                    onSelect={() => openSubagent(entry.item.id)}
                     onTerminate={onTerminateSubagent}
                     now={wallNow}
                     onContinue={continueBridge}
@@ -1259,6 +1339,8 @@ export function SubagentsDockPanel({
               </ul>
             )}
           </section>
+          {/* tl1548: 后台命令段——运行段之后、已结束段之前（运行态任务聚在一处）。 */}
+          {bashSection}
           <section className="subagents-panel__section">
             <h3 className="subagents-panel__section-title">
               {t("subagentPanel.ended")} · {ended.length}
@@ -1268,7 +1350,7 @@ export function SubagentsDockPanel({
             ) : (
               <ul className="subagents-panel__list">
                 {visibleEnded.map((entry) => (
-                  <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} />
+                  <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => openSubagent(entry.item.id)} />
                 ))}
               </ul>
             )}
@@ -1299,7 +1381,17 @@ export function SubagentsDockPanel({
           onKeyDown={onSplitResizeKeyDown}
           onDoubleClick={resetSplitListWidth}
         />
-        {selected ? (
+        {/* tl1548: bash 输出详情与子代理详情互斥——同一张右栏内容面。 */}
+        {bashDetail ? (
+          <div className="subagents-panel__detailview" data-subagents-bash-detail="true">
+            <BashJobOutputDetail
+              job={bashDetail}
+              tabId=""
+              onJobOutput={onJobOutput}
+              onBack={() => setBashDetail(null)}
+            />
+          </div>
+        ) : selected ? (
           <SubagentDetailView
             key={selected.item.id}
             entry={selected}
@@ -1338,7 +1430,7 @@ export function SubagentsDockPanel({
                     key={entry.item.id}
                     entry={entry}
                     nested
-                    onSelect={detailEnabled ? () => setSelectedId(entry.item.id) : undefined}
+                    onSelect={detailEnabled ? () => openSubagent(entry.item.id) : undefined}
                     onTerminate={onTerminateSubagent}
                     now={wallNow}
                     onContinue={continueBridge}
@@ -1351,7 +1443,7 @@ export function SubagentsDockPanel({
               <DirectoryRow
                 key={entry.item.id}
                 entry={entry}
-                onSelect={detailEnabled ? () => setSelectedId(entry.item.id) : undefined}
+                onSelect={detailEnabled ? () => openSubagent(entry.item.id) : undefined}
                 onTerminate={onTerminateSubagent}
                 now={wallNow}
                 onContinue={continueBridge}
@@ -1361,6 +1453,8 @@ export function SubagentsDockPanel({
           </ul>
         )}
       </section>
+      {/* tl1548: 后台命令段——运行段之后、已结束段之前（运行态任务聚在一处）。 */}
+      {bashSection}
       <section className="subagents-panel__section">
         <h3 className="subagents-panel__section-title">
           {t("subagentPanel.ended")} · {ended.length}
@@ -1373,7 +1467,7 @@ export function SubagentsDockPanel({
               <DirectoryRow
                 key={entry.item.id}
                 entry={entry}
-                onSelect={detailEnabled ? () => setSelectedId(entry.item.id) : undefined}
+                onSelect={detailEnabled ? () => openSubagent(entry.item.id) : undefined}
               />
             ))}
           </ul>
