@@ -178,8 +178,11 @@ ok(treeSource.includes('className="project-tree__folder-main"\n            style
   "guard: project folder rows keep their indentation formula");
 ok(/style=\{\{ paddingLeft: 14 \+ depth \* 16 \}\}/.test(treeSource),
   "guard: topic rows keep 14 + depth * 16");
-ok(readFileSync(resolve(dir, "../components/ProjectTreeOrganization.tsx"), "utf8").includes("style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16 }}"),
-  "guard: session-group headers keep the task-313 formula (892: one 16px step per level)");
+// tl1560 返修顺手修钉：tl1267 给该行追加了 --project-tree-drop-inset（同一
+// 公式值），原钉的闭括号精确匹配自此在 base 上预存红——更新到现实形态，
+// 钉的语义（313/892 缩进公式保留）不变。
+ok(readFileSync(resolve(dir, "../components/ProjectTreeOrganization.tsx"), "utf8").includes('style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16, "--project-tree-drop-inset"'),
+  "guard: session-group headers keep the task-313 formula (892: one 16px step per level; tl1267 drop-inset rides the same value)");
 
 // 文字起点推演（classic + data-theme-style，W=16，gap=7）：
 //   项目分组行  8+0*16+16+7 = 31
