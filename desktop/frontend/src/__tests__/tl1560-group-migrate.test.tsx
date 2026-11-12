@@ -1,17 +1,23 @@
 // Run: tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/tl1560-group-migrate.test.tsx
 //
-// tl1560 第一阶段验收钉（分组右键「迁移到其他项目」，迁移能力后端整体回滚）：
-//   ① global 分组右键 →「分组移动 ▸」二级末尾出现「迁移到其他项目」目标行
-//     （每项目一行，分隔线隔开层级移动行）；点击目标行 → 确认对话框 → 确认
-//     后 MigrateSessionGroupToProject 以 (groupId, targetRoot) 恰好一次落盘；
+// tl1560 验收钉（分组右键「迁移到其他分区」，迁移能力后端整体回滚）：
+// 第一阶段钉保持（零回退）：
+//   ① global 分组右键 →「分组移动 ▸」二级末尾出现迁移目标行；点击目标行 →
+//     确认对话框 → 确认后 MigrateSessionGroup 恰好一次落盘；
 //   ② 成员会话 running（树上的输出点）→ 迁移行禁用（入口保留，tl1198 同款
 //     发现性纪律；层级移动行不受影响）；
-//   ③ project 区分组不出现迁移行（入口只服务「迁出 global」）；
 //   ④ 后端迁移绑定缺失（老 mock / 浏览器开发面）→ 迁移行不渲染，
 //     ProjectTreeGroupRows 其余菜单逐字节同构；
 //   ⑤ 迁移失败（binding reject）→ 错误进 toast 通道，不冒泡不破窗；
+// 返修钉（20261112 用户裁决+装机实测）：
+//   R-② 项目间互迁：project 区分组的二级同样出现迁移行——目标 = global 区
+//     + 其他项目，源分区自身不出现（自迁移无语义）；global 区清单仍为全部
+//     项目；
+//   R-③ 分层+限高滚动：迁移行前有 section 分区头（与层级移动行视觉分层，
+//     ContextMenu 只展开一级子菜单的硬约束内做视觉分组）；flyout 面板限高
+//     滚动（styles.css max-height 钉）；
 //   源码钉：迁移行位于 groupMoveItems 尾部 + separator、disabled: memberRunning、
-//   typeof 守卫经 canMigrateGroups 收口。
+//   typeof 守卫经 canMigrateGroups 收口、目标行键含 global 兜底。
 
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
@@ -41,16 +47,22 @@ function eq(actual: unknown, expected: unknown, label: string) {
 }
 
 // ── 源码钉：入口形态 ─────────────────────────────────────────────────────────
-console.log("\ntl1560 A: 源码钉 — 二级尾部 + separator + 禁用态 + typeof 守卫");
+console.log("\ntl1560 A: 源码钉 — 二级尾部 + separator + 分区头 + 禁用态 + typeof 守卫 + flyout 限高");
 {
   const orgSource = readFileSync(new URL("../components/ProjectTreeOrganization.tsx", import.meta.url), "utf8");
-  ok(orgSource.includes("`migrate:${target.root}`"), "迁移目标行按项目 root 建键（每项目一行）");
+  ok(orgSource.includes("`migrate:${target.root ?? \"global\"}`"), "迁移目标行键带 global 兜底（互迁第三向）");
   ok(orgSource.includes('key: "group-migrate-sep"'), "迁移行前有 separator（与层级移动行隔开）");
+  ok(orgSource.includes('key: "group-migrate-section"'), "迁移区有 section 分区头（③分层：与层级移动行视觉分组）");
   ok(orgSource.includes("disabled: memberRunning"), "成员 running 时迁移行禁用（后端门禁为兜底）");
   ok(orgSource.includes("canMigrateGroups()"), "绑定存在性经 canMigrateGroups() typeof 守卫收口");
-  ok(orgSource.includes('folder.kind === "global_folder" && organization.canMigrateGroups()'), "入口只在 global 区渲染（迁出 global）");
+  ok(orgSource.includes('folder.kind === "global_folder"\n        ? { scope: "global", root: "" }'), "源分区解析：global 区 → (global, 空 root)");
+  ok(orgSource.includes('!== "global_folder"' ), "project 分区也是迁移入口（②互迁：源不再限定 global）");
+  ok(orgSource.includes("node.root === source.root"), "目标清单剔除源分区自身（自迁移无语义）");
+  ok(orgSource.includes('label: target.kind === "global_folder"\n            ? t("projectTree.migrateGroupToGlobal")'), "global 目标行用独立文案键");
+  const cssSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  ok(/\.context-menu--flyout\s*\{[^}]*max-height:\s*min\(60vh,\s*30rem\)/.test(cssSource), "flyout 面板限高滚动（③：min(60vh, 30rem) + overflow）");
   const hookSource = orgSource;
-  ok(hookSource.includes("MigrateSessionGroupToProject(groupID, targetRoot)"), "controller 经绑定调用后端迁移");
+  ok(hookSource.includes("bindings.MigrateSessionGroup(scope, sourceRoot, groupID, targetRoot)"), "controller 经绑定调用后端迁移（互迁四参签名）");
 }
 
 // ── jsdom 渲染链：真实右键 → 展开二级 → 断言/点击 ─────────────────────────────
@@ -82,7 +94,7 @@ Object.defineProperty(window, "matchMedia", {
 
 const t = ((key: string, vars?: Record<string, string>) => key + (vars && Object.keys(vars).length > 0 ? ":" + Object.values(vars).join("/") : "")) as unknown as Translator;
 
-interface MigrateCalls { args: Array<[string, string]>; next: SessionGroupMigrationResult | Error }
+interface MigrateCalls { args: Array<[string, string, string, string]>; next: SessionGroupMigrationResult | Error }
 
 function makeBindings(initial: SessionGroup[], migrate: MigrateCalls | null): ProjectTreeOrganizationBindings {
   let revision = 1;
@@ -107,8 +119,8 @@ function makeBindings(initial: SessionGroup[], migrate: MigrateCalls | null): Pr
       return { groups: groups.map((g) => ({ ...g })), revision, applied: true };
     },
     ...(migrate ? {
-      MigrateSessionGroupToProject: async (groupID: string, targetRoot: string) => {
-        migrate.args.push([groupID, targetRoot]);
+      MigrateSessionGroup: async (scope: string, sourceRoot: string, groupID: string, targetRoot: string) => {
+        migrate.args.push([scope, sourceRoot, groupID, targetRoot]);
         if (migrate.next instanceof Error) throw migrate.next;
         return migrate.next;
       },
@@ -118,6 +130,7 @@ function makeBindings(initial: SessionGroup[], migrate: MigrateCalls | null): Pr
 
 const globalFolder: ProjectNode = { key: "global|", kind: "global_folder", label: "Global", children: [] };
 const projectFolder: ProjectNode = { key: "project-/repo", kind: "project", label: "ProjA", root: "/repo", children: [] };
+const otherProjectFolder: ProjectNode = { key: "project-/other", kind: "project", label: "ProjB", root: "/other", children: [] };
 
 function topicNode(id: string, running: boolean): ProjectNode {
   return { key: `topic-${id}`, kind: "topic", label: id, topicId: id, status: running ? "streaming" : "idle", running };
@@ -201,22 +214,27 @@ function rowByText(text: string): HTMLButtonElement | undefined {
   return menuItems().find((el) => (el.textContent ?? "").includes(text)) as HTMLButtonElement | undefined;
 }
 
-// 验收 ①：global 分组二级末尾出现迁移目标行；确认后恰好一次落盘。
-console.log("\ntl1560 B: 渲染链 — 迁移行进入分组移动二级 + 确认后落盘");
+// 验收 ①：global 分组二级末尾出现迁移目标行 + 分区头；确认后恰好一次落盘。
+console.log("\ntl1560 B: 渲染链 — global 区迁移行（全项目）+ 确认后落盘");
 {
   const roster: SessionGroup[] = [{ id: "g-1", title: "G1", topicIds: ["t1"] }];
   const migrate: MigrateCalls = { args: [], next: { groupId: "g-1", groupTitle: "G1", targetWorkspaceRoot: "/repo", migratedTopics: ["t1"], movedSessions: 1 } };
   await mount({
     bindings: makeBindings(roster, migrate),
-    tree: [globalFolder, projectFolder],
+    tree: [globalFolder, projectFolder, otherProjectFolder],
     folder: globalFolder,
     children: [topicNode("t1", false)],
   });
 
   await openGroupMenu("G1");
   await expandGroupMoveSubmenu();
+  ok(Boolean(rowByText("projectTree.migrateGroupSection")), "③ 迁移分区头出现在二级（与层级移动行分层）");
+  ok(Boolean(rowByText("projectTree.migrateGroupTo:ProjA")), "① global 区出现「迁移到 ProjA」目标行");
+  ok(Boolean(rowByText("projectTree.migrateGroupTo:ProjB")), "① global 区出现「迁移到 ProjB」目标行（全项目清单）");
+  ok(!rowByText("projectTree.migrateGroupToGlobal"), "① global 区无「迁回 global」行（源即 global）");
+  const sectionRow = rowByText("projectTree.migrateGroupSection");
+  ok(Boolean(sectionRow) && sectionRow!.disabled === true, "③ 分区头不可点（纯视觉分组）");
   const row = rowByText("projectTree.migrateGroupTo:ProjA");
-  ok(Boolean(row), "① global 分组的二级出现「迁移到 ProjA」目标行");
   ok(Boolean(row) && row!.disabled === false, "① 无 running 成员时迁移行可点");
 
   if (row) {
@@ -225,12 +243,12 @@ console.log("\ntl1560 B: 渲染链 — 迁移行进入分组移动二级 + 确�
     const confirmButton = [...document.querySelectorAll("button")].find(
       (el) => (el.textContent ?? "").includes("projectTree.migrateGroupTitle"),
     ) as HTMLButtonElement | undefined;
-    ok(Boolean(confirmButton), "① 点击目标行先出确认对话框（迁移是跨 scope 数据面，非静默动作）");
+    ok(Boolean(confirmButton), "① 点击目标行先出确认对话框（迁移是跨分区数据面，非静默动作）");
     if (confirmButton) {
       await act(async () => { confirmButton.click(); await flush(); });
       await flush();
-      eq(migrate.args.length, 1, "① 确认后 MigrateSessionGroupToProject 恰好一次");
-      eq(migrate.args[0], ["g-1", "/repo"], "① 落盘参数 = (groupId, targetRoot)");
+      eq(migrate.args.length, 1, "① 确认后 MigrateSessionGroup 恰好一次");
+      eq(migrate.args[0], ["global", "", "g-1", "/repo"], "① 落盘参数 = (global, \"\", groupId, targetRoot)");
     }
   }
   await cleanup();
@@ -243,7 +261,7 @@ console.log("\ntl1560 C: 渲染链 — 成员 running 禁用迁移行（入口�
   const migrate: MigrateCalls = { args: [], next: { groupId: "g-1", groupTitle: "G1", targetWorkspaceRoot: "/repo", migratedTopics: [], movedSessions: 0 } };
   await mount({
     bindings: makeBindings(roster, migrate),
-    tree: [globalFolder, projectFolder],
+    tree: [globalFolder, projectFolder, otherProjectFolder],
     folder: globalFolder,
     children: [topicNode("t1", true)],
   });
@@ -260,31 +278,50 @@ console.log("\ntl1560 C: 渲染链 — 成员 running 禁用迁移行（入口�
   await cleanup();
 }
 
-// 验收 ③④：project 区分组无迁移行；绑定缺失时 migration 行不渲染。
-console.log("\ntl1560 D: 渲染链 — project 区与老 mock 形态不变");
+// 返修 R-②：project 区分组同样有迁移行——目标 = global + 其他项目，源自身
+// 剔除；绑定缺失时（global 与 project 两区）迁移行都不渲染（老 mock 零回退）。
+console.log("\ntl1560 D: 渲染链 — project 区互迁入口 + 源分区剔除 + 老 mock 形态");
 {
   const roster: SessionGroup[] = [{ id: "g-1", title: "G1", topicIds: ["t1"] }];
+  const migrate: MigrateCalls = { args: [], next: { groupId: "g-1", groupTitle: "G1", targetWorkspaceRoot: "", migratedTopics: ["t1"], movedSessions: 1 } };
   await mount({
-    bindings: makeBindings(roster, { args: [], next: { groupId: "g-1", groupTitle: "G1", targetWorkspaceRoot: "/repo", migratedTopics: [], movedSessions: 0 } }),
-    tree: [globalFolder, projectFolder],
+    bindings: makeBindings(roster, migrate),
+    tree: [globalFolder, projectFolder, otherProjectFolder],
     folder: projectFolder,
     children: [topicNode("t1", false)],
   });
   await openGroupMenu("G1");
   await expandGroupMoveSubmenu();
-  ok(!rowByText("projectTree.migrateGroupTo:ProjA"), "③ project 区分组的二级无迁移行（入口只服务迁出 global）");
+  ok(Boolean(rowByText("projectTree.migrateGroupSection")), "R② project 区分组二级出现迁移分区头（互迁入口全分区可见）");
+  ok(Boolean(rowByText("projectTree.migrateGroupTo:ProjB")), "R② project 区出现「迁移到 ProjB」（项目间互迁）");
+  ok(Boolean(rowByText("projectTree.migrateGroupToGlobal")), "R② project 区出现「迁回 global」行");
+  ok(!rowByText("projectTree.migrateGroupTo:ProjA"), "R② 源分区自身（ProjA）不出现在目标清单");
+
+  const projBRow = rowByText("projectTree.migrateGroupTo:ProjB");
+  if (projBRow) {
+    await act(async () => { projBRow.click(); await flush(); });
+    const confirmButton = [...document.querySelectorAll("button")].find(
+      (el) => (el.textContent ?? "").includes("projectTree.migrateGroupTitle"),
+    ) as HTMLButtonElement | undefined;
+    if (confirmButton) {
+      await act(async () => { confirmButton.click(); await flush(); });
+      await flush();
+      eq(migrate.args.length, 1, "R② project→project 落盘参数带源分区");
+      eq(migrate.args[0], ["project", "/repo", "g-1", "/other"], "R② 落盘参数 = (project, /repo, groupId, /other)");
+    }
+  }
   await cleanup();
 
   await mount({
     bindings: makeBindings(roster, null),
-    tree: [globalFolder, projectFolder],
-    folder: globalFolder,
+    tree: [globalFolder, projectFolder, otherProjectFolder],
+    folder: projectFolder,
     children: [topicNode("t1", false)],
   });
   await openGroupMenu("G1");
   await expandGroupMoveSubmenu();
-  ok(!rowByText("projectTree.migrateGroupTo:ProjA"), "④ 无迁移绑定时迁移行不渲染（老 mock 零回退）");
-  ok(Boolean(rowByText("projectTree.nestGroupUnder:ProjA")) === false, "GUARD 老形态：无层目标时 nest 行为与 tl1198 既有语义一致（目标树无其他组 → 无 nest 行）");
+  ok(!rowByText("projectTree.migrateGroupTo:ProjB") && !rowByText("projectTree.migrateGroupToGlobal"), "④ 无迁移绑定时 project 区迁移行不渲染（老 mock 零回退）");
+  ok(Boolean(rowByText("projectTree.nestGroupUnder:ProjB")) === false, "GUARD 老形态：无层目标时 nest 行为与 tl1198 既有语义一致（目标树无其他组 → 无 nest 行）");
   await cleanup();
 }
 
@@ -295,7 +332,7 @@ console.log("\ntl1560 E: 渲染链 — 失败路径走 toast");
   const migrate: MigrateCalls = { args: [], next: new Error("boom") };
   await mount({
     bindings: makeBindings(roster, migrate),
-    tree: [globalFolder, projectFolder],
+    tree: [globalFolder, projectFolder, otherProjectFolder],
     folder: globalFolder,
     children: [topicNode("t1", false)],
   });

@@ -30396,6 +30396,11 @@ button.statusbar__mcp:focus-visible {
    a long group title never pushes the panel past the viewport edge. */
 .context-menu--flyout {
   max-width: min(320px, calc(100vw - 16px));
+  /* tl1560③: 限高滚动容器——大花名册（如 20 个迁移目标/nest 目标）不再把
+     二级面板撑到整屏高；超限内部滚动（overflow 继承 .context-menu），
+     60vh 上限保证矮窗口下不越过视口。 */
+  max-height: min(60vh, 30rem);
+  overflow-y: auto;
 }
 
 .context-menu__item {

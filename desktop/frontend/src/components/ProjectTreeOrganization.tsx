@@ -195,16 +195,17 @@ export interface ProjectTreeOrganizationController {
    * fight over the roster (task 170's single-group constraint). */
   moveTopicToGroup(key: string, topicID: string, groupID: string): void;
   /** tl1560: whether the backend migration binding exists. The「迁移到其他
-   * 项目」entry renders only when true — older mocks stay byte-identical. */
+   * 分区」entry renders only when true — older mocks stay byte-identical. */
   canMigrateGroups(): boolean;
-  /** tl1560: legal migration destinations — every project folder with a root.
-   * The source of a migration is always the global section. */
-  migrationTargets(): ProjectNode[];
-  /** tl1560 第一阶段：把一个 global 分组（组壳 + 全部成员对话）整体迁入目标
-   * 项目。后端一次原子事务（会话文件搬家 + 组切换 + 注册搬家），失败整体
-   * 回滚；前端两路 settle 都重拉花名册并刷新话题页。binding 缺失时拒绝。
-   * 成功返回迁移回执（movedSessions 供 toast 读数）。 */
-  migrateGroupToProject(groupID: string, targetRoot: string): Promise<SessionGroupMigrationResult>;
+  /** tl1560 返修②：合法迁移目标 = global 区 + 全部带 root 的项目（互迁）。
+   * source 给定时剔除源分区自身；不给定时返回全量（调用方自行过滤）。 */
+  migrationTargets(source?: { scope: string; root: string }): ProjectNode[];
+  /** tl1560 返修②：把一个分组（组壳 + 全部成员对话）在分区之间整体迁移。
+   * (scope, sourceRoot) = 源分区（global 区 root 传空），targetRoot 空 = 目标
+   * 是 global 区。后端一次原子事务（会话文件搬家 + 组切换 + 注册搬家），
+   * 失败整体回滚；前端两路 settle 都重拉花名册并刷新话题页。binding 缺失
+   * 时拒绝。成功返回迁移回执（movedSessions 供 toast 读数）。 */
+  migrateGroupToPartition(scope: string, sourceRoot: string, groupID: string, targetRoot: string): Promise<SessionGroupMigrationResult>;
 }
 
 export function useProjectTreeOrganization({
@@ -609,18 +610,24 @@ export function useProjectTreeOrganization({
     canMigrateGroups() {
       // tl1560：入口开关跟绑定走——老 mock / 浏览器开发面没有迁移绑定，
       // 菜单项整体不渲染（与 CreateSessionGroup 等 typeof 守卫同款纪律）。
-      return typeof bindings.MigrateSessionGroupToProject === "function";
+      return typeof bindings.MigrateSessionGroup === "function";
     },
-    migrationTargets() {
-      // 目标 = 全部带 root 的项目节点；迁移源恒为 global 区。
-      return tree.filter((node) => node.kind === "project" && Boolean(node.root));
+    migrationTargets(source) {
+      // tl1560 返修②：互迁——目标 = global 区 + 全部带 root 的项目，
+      // 调用方剔除源分区自身（同一分区没有迁移语义，后端同款拒绝兜底）。
+      const targets = tree.filter((node) => node.kind === "global_folder" || (node.kind === "project" && Boolean(node.root)));
+      if (!source) return targets;
+      return targets.filter((node) => {
+        if (source.scope === "global") return node.kind !== "global_folder";
+        return !(node.kind === "project" && node.root === source.root);
+      });
     },
-    async migrateGroupToProject(groupID, targetRoot) {
-      if (typeof bindings.MigrateSessionGroupToProject !== "function") {
+    async migrateGroupToPartition(scope, sourceRoot, groupID, targetRoot) {
+      if (typeof bindings.MigrateSessionGroup !== "function") {
         throw new Error("session group migration binding unavailable");
       }
       try {
-        return await bindings.MigrateSessionGroupToProject(groupID, targetRoot);
+        return await bindings.MigrateSessionGroup(scope, sourceRoot, groupID, targetRoot);
       } finally {
         // 成功与失败两路都重拉：成功读迁移后真态；失败（后端已整体回滚）
         // 也按树事件同款语义读回迁移动前形态。981 event-flow 家族同一收口：
@@ -890,16 +897,22 @@ export function ProjectTreeGroupRows({
       // canNestUnder's cycle guard. The panel scrolls (max-height + overflow),
       // so a big roster no longer truncates the choices.
       const nestInto = nestTargetRows(groups, group.id);
-      // tl1560 第一阶段：global 分组的「迁移到其他项目」——组壳 + 全部成员
-      // 对话一次原子事务迁入目标项目（后端文件先搬、组后切，失败整体回滚）。
-      // 入口只出现在 global 区分组菜单（迁出 global），且只在后端迁移绑定
-      // 存在时渲染。成员仍在输出（树上的 running 点）时迁移行禁用——入口
-      // 保留（tl1198 同款发现性纪律），分组移动的层级行不受影响。后端活跃
-      // 门是并发窗口的兜底，前端禁用只是第一道闸。
+      // tl1560 返修②（用户裁决项目间互迁）：分组右键「迁移到其他分区」——
+      // 组壳 + 全部成员对话一次原子事务迁入目标分区（后端文件先搬、组后切，
+      // 失败整体回滚）。入口在全部分区分区的分组菜单可见：global 区迁出、
+      // 项目区互迁/迁回 global；目标清单剔除源分区自身。只在后端迁移绑定
+      // 存在时渲染（老 mock 零回退）。成员仍在输出（树上的 running 点）时
+      // 迁移行禁用——入口保留（tl1198 同款发现性纪律），分组移动的层级行
+      // 不受影响。后端活跃门是并发窗口的兜底，前端禁用只是第一道闸。
       // 可见窗口注：classic 截断模式下窗口外的 running 成员看不到——该形态
       // 由后端门禁拒绝兜底，不为此扩窗口。
-      const migrateTargets = folder.kind === "global_folder" && organization.canMigrateGroups()
-        ? organization.migrationTargets()
+      const migrationSource = folder.kind === "global_folder"
+        ? { scope: "global", root: "" }
+        : folder.kind === "project" && folder.root
+          ? { scope: "project", root: folder.root }
+          : null;
+      const migrateTargets = migrationSource && organization.canMigrateGroups()
+        ? organization.migrationTargets(migrationSource)
         : [];
       const memberRunning = members.some((node) => node.running === true);
       // tl 1149: the flat "move under X / move to top level" rows collapsed
@@ -929,15 +942,29 @@ export function ProjectTreeGroupRows({
         }] : []),
         // tl1560: the migration rows live at the submenu tail, behind a
         // separator — they are not display-only moves (they carry authority
-        // data across scopes), so they must never read as a third nest option.
+        // data across partitions), so they must never read as a third nest
+        // option. tl1560③: a section header splits them off the nest rows
+        // (the sidebar ContextMenu expands exactly ONE submenu level, so the
+        // grouping is visual: header + one row per target partition), and the
+        // flyout panel itself is height-capped with scroll (styles.css).
         ...(migrateTargets.length > 0 ? [{ type: "separator" as const, key: "group-migrate-sep" }] : []),
+        ...(migrateTargets.length > 0 ? [{
+          key: "group-migrate-section",
+          label: t("projectTree.migrateGroupSection"),
+          variant: "section" as const,
+          disabled: true,
+          onSelect: () => {},
+        }] : []),
         ...migrateTargets.map((target): ContextMenuItem => ({
-          key: `migrate:${target.root}`,
+          key: `migrate:${target.root ?? "global"}`,
           icon: <FolderInput size={13} />,
-          label: t("projectTree.migrateGroupTo", { project: target.label }),
+          label: target.kind === "global_folder"
+            ? t("projectTree.migrateGroupToGlobal")
+            : t("projectTree.migrateGroupTo", { project: target.label }),
           disabled: memberRunning,
           onSelect: () => {
             setMenuGroup(null);
+            if (!migrationSource) return;
             void (async () => {
               const memberCount = (group.topicIds ?? []).length;
               const confirmed = await confirmDelete({
@@ -948,7 +975,7 @@ export function ProjectTreeGroupRows({
               });
               if (!confirmed) return;
               try {
-                const result = await organization.migrateGroupToProject(group.id, target.root ?? "");
+                const result = await organization.migrateGroupToPartition(migrationSource.scope, migrationSource.root, group.id, target.root ?? "");
                 showToast(t("projectTree.groupMigrated", { title: group.title, count: String(result?.movedSessions ?? 0), project: target.label }));
               } catch (error) {
                 showToast(t("projectTree.groupMigrateFailed", { error: error instanceof Error ? error.message : String(error) }));

@@ -226,21 +226,26 @@ export interface ProjectTreeOrganizationBindings {
   RollbackManageOperation?(opID: string): Promise<ManageSessionsGroupResult>;
   /** 单一 dispatch（与 agent 工具同面）：9 action 见 handoff §2.3 schema。 */
   ManageSessions?(action: string, args: string): Promise<string>;
-  /** tl1560 第一阶段：把一个 global 分组（组壳 + 全部成员对话）整体迁入目标
-   * 项目。后端一次原子事务（会话文件搬家 + 组切入 Projects[target].Groups
-   * + 两侧 GroupsRevision 递增 + topic 注册搬家），失败整体回滚。可选：老
-   * mock/浏览器开发面没有该方法，菜单入口 typeof 守卫隐藏。 */
-  MigrateSessionGroupToProject?(groupID: string, targetWorkspaceRoot: string): Promise<SessionGroupMigrationResult>;
+  /** tl1560 返修②（用户裁决项目间互迁）：把一个分组（组壳 + 全部成员对话）
+   * 在分区之间整体迁移——源 = (scope, sourceRoot)（global 区 root 传空），
+   * 目标 = targetWorkspaceRoot（空 = 迁回 global）。后端一次原子事务（会话
+   * 文件搬家 + 组切换 + 两侧 GroupsRevision 递增 + topic 注册搬家），失败
+   * 整体回滚。可选：老 mock/浏览器开发面没有该方法，菜单入口 typeof 守卫
+   * 隐藏。 */
+  MigrateSessionGroup?(scope: string, sourceRoot: string, groupID: string, targetWorkspaceRoot: string): Promise<SessionGroupMigrationResult>;
 }
 
 /** tl1560：desktop/session_group_migrate.go SessionGroupMigrationResult 的
- * TS 镜像——迁移回执（只在整体成功时返回）。 */
+ * TS 镜像——迁移回执（只在整体成功时返回）。skippedTopics = 显式留在源
+ * 分区的成员（迷路/cleanup-pending/转录缺失，返修①：落盘名册与实际搬迁
+ * 清单一致）。 */
 export interface SessionGroupMigrationResult {
   groupId: string;
   groupTitle: string;
   targetWorkspaceRoot: string;
   migratedTopics: string[];
   movedSessions: number;
+  skippedTopics?: string[];
 }
 
 // ── Task 892-A 视图（Go struct → TS，handoff §2.2）──────────────────────────
