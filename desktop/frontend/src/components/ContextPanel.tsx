@@ -24,11 +24,6 @@ import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIden
 import { normalizeRecoveryLineageView } from "../lib/sessionRecoveryVersions";
 // tl1500: 会话指标卡折叠偏好（纯前端、localStorage 单键、默认展开）。
 import { setSessionMetricsCollapsed, useSessionMetricsCollapsed } from "../lib/sessionMetricsFold";
-// tl1559: 压缩运行态实时读数——容量卡接入共享 compactionLiveReadout（数据源
-// 同 973 的 pending 卡：CompactionProgress + startedAt 内存戳），秒级 tick 复用
-// workStatus 的 useTick（只在压缩运行时挂，空闲零定时器）。
-import { compactionLiveReadout } from "../lib/compactionLive";
-import { useTick } from "../lib/workStatus";
 export { contextSessionCache } from "../lib/contextSessionCache";
 const McpListLayers = lazy(() => import("./McpListLayers").then((module) => ({ default: module.McpListLayers })));
 interface ContextPanelProps {
@@ -460,16 +455,6 @@ export function ContextPanel({
   const lastRefreshTime = useRef(0);
   const usageRefreshKey = contextUsageRefreshKey(usage);
 
-  // tl1559: 压缩运行态实时读数（修法①）。此前容量卡只读 phase/done/total，
-  // pending 卡上 reducer 维护的 tokens/tokensPerSec/startedAt（973 数据面）
-  // 完全未接——截图主注视点的「正在压缩」卡整个压缩期无数字。倒序扫描即
-  // compactionWindowOverride 既有逻辑，此处提前到 hooks 区取值供 useTick 门控；
-  // 秒级 tick 只在压缩运行时挂（空闲零定时器），读数空窗（summarizer TTFT）
-  // 由共享 helper 的估算占位腿兜底（修法③前端半）。
-  const compactionOverride = compactionWindowOverride(items);
-  const now = useTick(compactionOverride?.phase === "running");
-  const compactionLive = compactionOverride ? compactionLiveReadout(compactionOverride, now, t, { estimatingWhenEmpty: true }) : "";
-
   // wt-zcode-285: session-group title + recovery-copy role for the open
   // conversation. Both ride existing read-only bindings (GetProjectGroups /
   // GetRecoveryLineage); failures degrade to hidden rows, never an error UI.
@@ -629,7 +614,10 @@ export function ContextPanel({
   const windowStatus = contextWindowStatus(rawUsagePct, compactPct);
   // 任务1147：压缩运行态覆盖——压缩中显示中性「正在压缩…N/22」替代超限红条；
   // 失败显示独立文案。完成卡不覆盖，压缩后读数即时照常显示。
-  // （tl1559：override 本体已提前到 hooks 区供 useTick 门控，此处只复用。）
+  // （tl1559 r2：容量卡的读数胶囊已按用户裁决摘除——与左侧转录区压缩行完全
+  // 重复；实时读数只保留折叠头条（底部条）与压缩卡两处，override 仅作状态
+  // 覆盖，不再携带读数源字段。）
+  const compactionOverride = compactionWindowOverride(items);
   const compactionOverrideLabel = compactionOverride?.phase === "running"
     ? (compactionOverride.total ?? 0) > 0
       ? t("context.windowStatusCompacting", { done: compactionOverride.done ?? 0, total: compactionOverride.total ?? 0 })
@@ -760,13 +748,6 @@ export function ContextPanel({
               <div className="context-panel__capacity-top">
                 <span className="context-panel__capacity-flags">
                   <span className="context-panel__capacity-status">{capacityStatusLabel}</span>
-                  {/* tl1559: 压缩运行态实时读数（秒数 · tokens · tps，TTFT 空窗
-                      降级为「估算中…」）——独立弱化 span 挂 flags 组，状态行
-                      文案保持 1147 钉住的纯标签形态；压缩结束 readout 归空整段
-                      随之消失（非压缩态零 DOM 变化）。 */}
-                  {compactionLive && (
-                    <span className="context-panel__capacity-live">{compactionLive}</span>
-                  )}
                   {/* 任务1025: 读数来源标记——「实测」=上次响应已校准；「估算」=
                       新会话首轮/切 provider 首轮。窗口环与分段条同一权威值口径。 */}
                   <span className="context-panel__readout-source" title={readoutSourceTitle}>
@@ -782,7 +763,7 @@ export function ContextPanel({
                     补 title 让被省略的完整读数悬停可见（与 aria 摘要同源）。 */}
                 <strong title={usageSummary}>{usedLabel}/{windowLabel}</strong>
               </div>
-              <div className="context-panel__usage-progress context-panel__capacity-meter" aria-label={`${capacityStatusLabel}${compactionLive}. ${usageSummary}. ${compactSummary}`}>
+              <div className="context-panel__usage-progress context-panel__capacity-meter" aria-label={`${capacityStatusLabel}. ${usageSummary}. ${compactSummary}`}>
                 <div className="context-panel__capacity-scale" aria-hidden="true">
                   <span className="context-panel__capacity-pin context-panel__capacity-pin--used" style={{ left: `${pinLayout.usagePct}%` }}>{rawUsagePct}%</span>
                   {pinLayout.compactLabelVisible && (
