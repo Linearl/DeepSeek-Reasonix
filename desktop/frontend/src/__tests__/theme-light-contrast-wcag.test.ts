@@ -6,6 +6,12 @@
 // ③var(--fg-faint) 引用面抽查（时间戳/meta/禁用态典型消费规则在位）；
 // ④var(--fg-faint, <fallback>) 回退值撒谎面对齐真值（V2）。
 // ⑤--scrollbar-thumb 派生（color-mix 42% fg-faint）亮色等效读数只升不降。
+// tl1546 打回重修（r2）扩面：
+// ⑥全风格 light 档（graphite/aurora/slate/carbon/nocturne）--fg-faint 对各自档
+//   bg/bg-elev/sidebar-bg ≥ 4.5:1（第一轮只修通用 auto/forced 两档，装机实测打回）；
+// ⑥a amber 档无 token 覆盖走通用兜底 #67717f，兜底路径逐对实算达标；
+// ⑨官方主题包 tokens.light.fgFaint 对各自包 bg/bgElev/sidebar ≥ 4.5:1 +
+//   accent 族（takeover/主按钮配色链 accentFg vs accent，light 与 dark）≥ 4.5:1。
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -202,6 +208,99 @@ const yoloBgLight = extractColor(forcedLightBlock, "--mode-yolo-bg");
 const yoloFgLight = extractColor(forcedLightBlock, "--mode-yolo-fg");
 const selMix = mixOver(yoloBgLight, 55, bgElev2Light);
 ok(wcagContrast(yoloFgLight, selMix) >= 4.5, `approval-select--yolo 亮色混合底 ${selMix} 上前景 = ${wcagContrast(yoloFgLight, selMix).toFixed(2)}:1 ≥ 4.5（改前白字 2.24）`);
+
+console.log("\ntl1546-r2 全风格 light 档 × 各自 bg WCAG contract（打回重修扩面）");
+
+// ---- ⑥全风格档 light 正钉：--fg-faint 对各自档 bg/bg-elev/sidebar-bg ≥4.5:1 ----
+// 每档 forced-light 与 auto-light 两块同值同钉；--text-3/--control-disabled-fg
+// 与 --fg-faint 同值同替（压深时三 token 一致性钉）；层级钉保 faint 仍浅于 fg-dim。
+
+const styleLights: Array<{ style: string; prev: string; next: string }> = [
+  { style: "graphite", prev: "#85888f", next: "#6a6d74" },
+  { style: "aurora", prev: "#8c84a2", next: "#72698b" },
+  { style: "slate", prev: "#828a99", next: "#676f7e" },
+  { style: "carbon", prev: "#8a8378", next: "#736d63" },
+  { style: "nocturne", prev: "#8a85a0", next: "#706a88" },
+];
+
+for (const { style, prev, next } of styleLights) {
+  const forcedBlock = blockAfter(stylesSource, `:root[data-theme="light"][data-theme-style="${style}"]`);
+  const autoBlock = blockAfter(stylesSource, `:root[data-theme-style="${style}"]:not([data-theme])`);
+  const blocks: Array<[string, string]> = [
+    ["forced-light", forcedBlock],
+    ["auto-light", autoBlock],
+  ];
+  for (const [label, block] of blocks) {
+    const fgFaint = extractColor(block, "--fg-faint");
+    const fgDim = extractColor(block, "--fg-dim");
+    const bg = extractColor(block, "--bg");
+    const bgElev = extractColor(block, "--bg-elev");
+    const sidebarBg = extractColor(block, "--sidebar-bg");
+    ok(fgFaint !== "" && bg !== "", `${style} ${label}: --fg-faint/--bg 可提取`);
+    ok(wcagContrast(fgFaint, bg) >= 4.5, `${style} ${label}: fg-faint ${fgFaint} vs bg ${bg} = ${wcagContrast(fgFaint, bg).toFixed(2)}:1 ≥ 4.5`);
+    ok(wcagContrast(fgFaint, bgElev) >= 4.5, `${style} ${label}: fg-faint vs bg-elev ${bgElev} = ${wcagContrast(fgFaint, bgElev).toFixed(2)}:1 ≥ 4.5`);
+    ok(wcagContrast(fgFaint, sidebarBg) >= 4.5, `${style} ${label}: fg-faint vs sidebar-bg ${sidebarBg} = ${wcagContrast(fgFaint, sidebarBg).toFixed(2)}:1 ≥ 4.5`);
+    ok(
+      fgDim !== "" && wcagContrast(fgFaint, bg) < wcagContrast(fgDim, bg),
+      `${style} ${label}: 层级保持（faint ${wcagContrast(fgFaint, bg).toFixed(2)} < dim ${wcagContrast(fgDim, bg).toFixed(2)} 对 bg）`,
+    );
+    // 三 token 同值同替（压深一致性）：text-3 / control-disabled-fg 与 fg-faint 同值。
+    ok(block.includes(`--text-3: ${fgFaint};`), `${style} ${label}: --text-3 与 --fg-faint 同值（${fgFaint}）`);
+    ok(block.includes(`--control-disabled-fg: ${fgFaint};`), `${style} ${label}: --control-disabled-fg 与 --fg-faint 同值（${fgFaint}）`);
+  }
+  // 旧值显式退场 + 新值在位（防复制粘贴回滚；公式断言本身也会拦，此为语义显式化）。
+  ok(!stylesSource.includes(`--fg-faint: ${prev};`), `${style}: 旧值 --fg-faint: ${prev} 已退场`);
+  ok(!stylesSource.includes(`--text-3: ${prev};`), `${style}: 旧值 --text-3: ${prev} 已退场`);
+  ok(stylesSource.includes(`--fg-faint: ${next};`), `${style}: 新值 --fg-faint: ${next} 在位`);
+}
+
+// ---- ⑥a amber 档兜底路径：无 --fg-faint 覆盖，走通用 forced-light #67717f ----
+
+const amberForcedBlock = blockAfter(stylesSource, ':root[data-theme="light"][data-theme-style="amber"]');
+ok(amberForcedBlock !== "", "amber forced-light 块可提取");
+ok(!amberForcedBlock.includes("--fg-faint"), "amber 档无 --fg-faint 覆盖（走通用 light 兜底 #67717f）");
+ok(amberForcedBlock.includes("--sidebar-bg: #f3f6fa;"), "amber 档 sidebar 覆盖 #f3f6fa 在位");
+ok(wcagContrast("#67717f", "#f7f8fb") >= 4.5, `amber 兜底: #67717f vs 通用 bg #f7f8fb = ${wcagContrast("#67717f", "#f7f8fb").toFixed(2)}:1 ≥ 4.5`);
+ok(wcagContrast("#67717f", "#ffffff") >= 4.5, `amber 兜底: #67717f vs 通用 bg-elev #ffffff = ${wcagContrast("#67717f", "#ffffff").toFixed(2)}:1 ≥ 4.5`);
+ok(wcagContrast("#67717f", "#f3f6fa") >= 4.5, `amber 兜底: #67717f vs amber sidebar #f3f6fa = ${wcagContrast("#67717f", "#f3f6fa").toFixed(2)}:1 ≥ 4.5`);
+
+console.log("\ntl1546-r2 官方主题包 fg-faint / accent 族 WCAG contract");
+
+// ---- ⑨官方主题包：tokens.light.fgFaint 对各自包三背景 ≥4.5；accent 族 ≥4.5 ----
+// takeover/主按钮配色链 = --control-primary-bg/--control-primary-fg，pack 注入值
+// 与 accent/accentFg 相同（TOKEN_TO_CSS 映射），故 accent 族钉覆盖该消费面。
+
+const officialPacks: Array<{ id: string; prevFgFaint: string }> = [
+  { id: "official-crimson-horizon", prevFgFaint: "#A9807D" },
+  { id: "official-cyan-stage", prevFgFaint: "#71939D" },
+  { id: "official-fortune-forge", prevFgFaint: "#A98A68" },
+  { id: "official-noir-gold", prevFgFaint: "#9A8F74" },
+  { id: "official-rose-dawn", prevFgFaint: "#A97B87" },
+  { id: "official-sage-breeze", prevFgFaint: "#7C8F83" },
+  { id: "official-spark-notebook", prevFgFaint: "#848D98" },
+  { id: "official-violet-starlight", prevFgFaint: "#9188B3" },
+];
+
+for (const { id, prevFgFaint } of officialPacks) {
+  const raw = readFileSync(resolve(testDir, "../../../themes/official", id, "theme.json"), "utf8");
+  const pack = JSON.parse(raw) as { tokens?: { light?: Record<string, string>; dark?: Record<string, string> } };
+  const light = pack.tokens?.light;
+  const dark = pack.tokens?.dark;
+  ok(Boolean(light?.fgFaint && light?.bg && light?.bgElev && light?.sidebar), `${id}: light fgFaint/bg/bgElev/sidebar 可提取`);
+  if (light?.fgFaint && light?.bg && light?.bgElev && light?.sidebar) {
+    ok(wcagContrast(light.fgFaint, light.bg) >= 4.5, `${id}: light fg-faint ${light.fgFaint} vs bg ${light.bg} = ${wcagContrast(light.fgFaint, light.bg).toFixed(2)}:1 ≥ 4.5`);
+    ok(wcagContrast(light.fgFaint, light.bgElev) >= 4.5, `${id}: light fg-faint vs bg-elev ${light.bgElev} = ${wcagContrast(light.fgFaint, light.bgElev).toFixed(2)}:1 ≥ 4.5`);
+    ok(wcagContrast(light.fgFaint, light.sidebar) >= 4.5, `${id}: light fg-faint vs sidebar ${light.sidebar} = ${wcagContrast(light.fgFaint, light.sidebar).toFixed(2)}:1 ≥ 4.5`);
+    ok(light.fgFaint.toUpperCase() !== prevFgFaint.toUpperCase(), `${id}: 旧值 ${prevFgFaint} 已退场`);
+  }
+  // accent 族（tl1546 关联核查面：sage-breeze ask 接管按钮等主按钮配色链）。
+  if (light?.accent && light?.accentFg) {
+    ok(wcagContrast(light.accentFg, light.accent) >= 4.5, `${id}: light accent-fg ${light.accentFg} vs accent ${light.accent} = ${wcagContrast(light.accentFg, light.accent).toFixed(2)}:1 ≥ 4.5`);
+  }
+  if (dark?.accent && dark?.accentFg) {
+    ok(wcagContrast(dark.accentFg, dark.accent) >= 4.5, `${id}: dark accent-fg ${dark.accentFg} vs accent ${dark.accent} = ${wcagContrast(dark.accentFg, dark.accent).toFixed(2)}:1 ≥ 4.5`);
+  }
+}
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
