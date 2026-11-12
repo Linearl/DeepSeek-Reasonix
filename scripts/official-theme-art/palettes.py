@@ -4,6 +4,11 @@ Defines the full token set for all eight official themes and checks the same
 pairs the Go backend validates (fg/bg, fg/chat >= 4.5; fgFaint/bg >= 3.0;
 accentFg/accent >= 3.0). ok/warn/err are intentionally unset so they inherit
 the base style. `write_manifests()` emits theme.json files.
+
+tl1546 r2 (2026-11-12): light fgFaint values darkened to WCAG AA 4.5:1 against
+each pack's bg/bgElev/sidebar (frontend contract pin in
+theme-light-contrast-wcag.test.ts now enforces >= 4.5; keep palettes.py and
+theme.json in lockstep or regeneration will roll the fix back).
 """
 from __future__ import annotations
 
@@ -32,7 +37,7 @@ THEMES = {
             "bg": "#FFF7F8", "bgSoft": "#FBEFF1", "bgElev": "#FFFFFF", "panel": "#FFFFFF",
             "sidebar": "#FBECEF", "chat": "#FFFCFC", "workspace": "#FFFFFF", "workspaceFiles": "#FDF3F4",
             "border": "#E2BCC6", "borderSoft": "#F5E3E7",
-            "fg": "#3A252C", "fgDim": "#6D4A55", "fgFaint": "#A97B87",
+            "fg": "#3A252C", "fgDim": "#6D4A55", "fgFaint": "#8E5D69",
             "accent": "#B43F65", "accentFg": "#FFF7F8",
         },
         "dark": {
@@ -54,7 +59,7 @@ THEMES = {
             "bg": "#FFF8E8", "bgSoft": "#F9EFD5", "bgElev": "#FFFDF6", "panel": "#FFFDF6",
             "sidebar": "#F8EDD3", "chat": "#FFFBF1", "workspace": "#FFFDF6", "workspaceFiles": "#FAF1DC",
             "border": "#D6B87E", "borderSoft": "#F2E7CD",
-            "fg": "#382116", "fgDim": "#6E4E35", "fgFaint": "#A98A68",
+            "fg": "#382116", "fgDim": "#6E4E35", "fgFaint": "#7F6548",
             "accent": "#A92D22", "accentFg": "#FFF8E8",
         },
         "dark": {
@@ -76,7 +81,7 @@ THEMES = {
             "bg": "#FFF8F7", "bgSoft": "#F9EEEC", "bgElev": "#FFFFFF", "panel": "#FFFFFF",
             "sidebar": "#F9ECEA", "chat": "#FFFBFA", "workspace": "#FFFFFF", "workspaceFiles": "#FBF1EF",
             "border": "#DFB3AD", "borderSoft": "#F6E4E2",
-            "fg": "#301D1D", "fgDim": "#6B4644", "fgFaint": "#A9807D",
+            "fg": "#301D1D", "fgDim": "#6B4644", "fgFaint": "#8A5F5B",
             "accent": "#B92B38", "accentFg": "#FFF8F7",
         },
         "dark": {
@@ -98,7 +103,7 @@ THEMES = {
             "bg": "#F7F7EF", "bgSoft": "#EFEFE2", "bgElev": "#FCFCF6", "panel": "#FCFCF6",
             "sidebar": "#EEEEE0", "chat": "#FAFAF4", "workspace": "#FCFCF6", "workspaceFiles": "#F1F1E5",
             "border": "#BFC095", "borderSoft": "#E8E8D8",
-            "fg": "#26332D", "fgDim": "#4E6157", "fgFaint": "#7C8F83",
+            "fg": "#26332D", "fgDim": "#4E6157", "fgFaint": "#5D6D63",
             "accent": "#47735F", "accentFg": "#F7F7EF",
         },
         "dark": {
@@ -120,7 +125,7 @@ THEMES = {
             "bg": "#FFF9ED", "bgSoft": "#F9F1DE", "bgElev": "#FFFDF7", "panel": "#FFFDF7",
             "sidebar": "#F8F0DC", "chat": "#FFFCF4", "workspace": "#FFFDF7", "workspaceFiles": "#FAF3E2",
             "border": "#D2BC8E", "borderSoft": "#F2E9D4",
-            "fg": "#2B2F35", "fgDim": "#565D66", "fgFaint": "#848D98",
+            "fg": "#2B2F35", "fgDim": "#565D66", "fgFaint": "#636B76",
             "accent": "#007B78", "accentFg": "#F3FBFA",
         },
         "dark": {
@@ -142,7 +147,7 @@ THEMES = {
             "bg": "#F7F4FF", "bgSoft": "#EFEBFB", "bgElev": "#FCFAFF", "panel": "#FCFAFF",
             "sidebar": "#EEE9FA", "chat": "#FAF8FF", "workspace": "#FCFAFF", "workspaceFiles": "#F1EDFB",
             "border": "#CABDEC", "borderSoft": "#E8E3F7",
-            "fg": "#251F3C", "fgDim": "#544B74", "fgFaint": "#9188B3",
+            "fg": "#251F3C", "fgDim": "#544B74", "fgFaint": "#6C6097",
             "accent": "#6242C7", "accentFg": "#F7F4FF",
         },
         "dark": {
@@ -164,7 +169,7 @@ THEMES = {
             "bg": "#F1FCFD", "bgSoft": "#E4F5F7", "bgElev": "#FAFEFE", "panel": "#FAFEFE",
             "sidebar": "#E3F4F6", "chat": "#F6FDFE", "workspace": "#FAFEFE", "workspaceFiles": "#E8F6F8",
             "border": "#9CCFD7", "borderSoft": "#DAEDF0",
-            "fg": "#173238", "fgDim": "#43606A", "fgFaint": "#71939D",
+            "fg": "#173238", "fgDim": "#43606A", "fgFaint": "#537079",
             "accent": "#007C92", "accentFg": "#F1FCFD",
         },
         "dark": {
@@ -186,7 +191,7 @@ THEMES = {
             "bg": "#FCF8EE", "bgSoft": "#F6F0DF", "bgElev": "#FEFBF4", "panel": "#FEFBF4",
             "sidebar": "#F5EFDD", "chat": "#FDFAF2", "workspace": "#FEFBF4", "workspaceFiles": "#F7F1E1",
             "border": "#CCBE94", "borderSoft": "#EFE8D2",
-            "fg": "#2A241B", "fgDim": "#5C5340", "fgFaint": "#9A8F74",
+            "fg": "#2A241B", "fgDim": "#5C5340", "fgFaint": "#736A54",
             "accent": "#7A5A16", "accentFg": "#FCF8EE",
         },
         "dark": {
