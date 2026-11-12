@@ -567,6 +567,17 @@
    Order: default-dark block, then forced-light override, then prefers-light
    override (for auto / no data-theme). */
 
+/* tl1546 打回重修（r2）：全风格档 light 的 --fg-faint/--text-3/--control-disabled-fg
+   同步压深达 WCAG AA 4.5:1（对各自档 bg/bg-elev/sidebar-bg 实算，公式钉见
+   theme-light-contrast-wcag.test.ts）。第一轮只修通用 auto/forced 两档
+   （#8a94a6→#67717f = 4.66），风格档漏面（实测 3.20-3.41）本轮补齐：
+   graphite #85888f→#6a6d74(4.67) / aurora #8c84a2→#72698b(4.66) /
+   slate #828a99→#676f7e(4.68) / carbon #8a8378→#736d63(4.67) /
+   nocturne #8a85a0→#706a88(4.72)。取色保各档色相族（保 H/S 降 L 至最浅达标点，
+   阈值 4.65 留余量），faint 亮度仍高于 fg-dim 保层级；amber 档无 token 覆盖、
+   走通用 light 兜底 #67717f 已达标（对 #f7f8fb 4.66 / sidebar #f3f6fa 4.56）不动；
+   暗色各档零变化（负钉维持）。 */
+
 /* ---- Graphite — paper, hairline borders, orange accent (desktop default). ---- */
 :root[data-theme-style="graphite"] {
   --stage: #08090c;
@@ -641,10 +652,10 @@
   --border-soft: rgba(20, 22, 28, 0.08);
   --text: #16181d;
   --text-2: #4a4d56;
-  --text-3: #85888f;
+  --text-3: #6a6d74;
   --fg: #16181d;
   --fg-dim: #4a4d56;
-  --fg-faint: #85888f;
+  --fg-faint: #6a6d74;
   --accent: #ff5a2c;
   --accent-fg: #ffffff;
   --accent-soft: rgba(255, 90, 44, 0.12);
@@ -655,7 +666,7 @@
   --control-primary-bg: #ff5a2c;
   --control-primary-fg: #ffffff;
   --control-disabled-bg: #eceae4;
-  --control-disabled-fg: #85888f;
+  --control-disabled-fg: #6a6d74;
   --button-bg: #ffffff;
   --button-bg-hover: #f6f5f1;
   --button-border: rgba(20, 22, 28, 0.12);
@@ -710,10 +721,10 @@
     --border-soft: rgba(20, 22, 28, 0.08);
     --text: #16181d;
     --text-2: #4a4d56;
-    --text-3: #85888f;
+    --text-3: #6a6d74;
     --fg: #16181d;
     --fg-dim: #4a4d56;
-    --fg-faint: #85888f;
+    --fg-faint: #6a6d74;
     --accent: #ff5a2c;
     --accent-fg: #ffffff;
     --accent-soft: rgba(255, 90, 44, 0.12);
@@ -724,7 +735,7 @@
     --control-primary-bg: #ff5a2c;
     --control-primary-fg: #ffffff;
     --control-disabled-bg: #eceae4;
-    --control-disabled-fg: #85888f;
+    --control-disabled-fg: #6a6d74;
     --button-bg: #ffffff;
     --button-bg-hover: #f6f5f1;
     --button-border: rgba(20, 22, 28, 0.12);
@@ -849,10 +860,10 @@
   --border-soft: rgba(40, 22, 84, 0.065);
   --text: #1c1830;
   --text-2: #574f70;
-  --text-3: #8c84a2;
+  --text-3: #72698b;
   --fg: #1c1830;
   --fg-dim: #574f70;
-  --fg-faint: #8c84a2;
+  --fg-faint: #72698b;
   --accent: #6d5efc;
   --accent-fg: #ffffff;
   --accent-soft: rgba(109, 94, 252, 0.12);
@@ -863,7 +874,7 @@
   --control-primary-bg: #6d5efc;
   --control-primary-fg: #ffffff;
   --control-disabled-bg: #ece8f5;
-  --control-disabled-fg: #8c84a2;
+  --control-disabled-fg: #72698b;
   --button-bg: #fdfcff;
   --button-bg-hover: #f4f0fb;
   --button-border: rgba(40, 22, 84, 0.09);
@@ -918,10 +929,10 @@
     --border-soft: rgba(40, 22, 84, 0.065);
     --text: #1c1830;
     --text-2: #574f70;
-    --text-3: #8c84a2;
+    --text-3: #72698b;
     --fg: #1c1830;
     --fg-dim: #574f70;
-    --fg-faint: #8c84a2;
+    --fg-faint: #72698b;
     --accent: #6d5efc;
     --accent-fg: #ffffff;
     --accent-soft: rgba(109, 94, 252, 0.12);
@@ -932,7 +943,7 @@
     --control-primary-bg: #6d5efc;
     --control-primary-fg: #ffffff;
     --control-disabled-bg: #ece8f5;
-    --control-disabled-fg: #8c84a2;
+    --control-disabled-fg: #72698b;
     --button-bg: #fdfcff;
     --button-bg-hover: #f4f0fb;
     --button-border: rgba(40, 22, 84, 0.09);
@@ -1056,10 +1067,10 @@
   --border-soft: rgba(20, 28, 46, 0.07);
   --text: #15181f;
   --text-2: #4a5160;
-  --text-3: #828a99;
+  --text-3: #676f7e;
   --fg: #15181f;
   --fg-dim: #4a5160;
-  --fg-faint: #828a99;
+  --fg-faint: #676f7e;
   --accent: #2f6fe0;
   --accent-fg: #ffffff;
   --accent-soft: rgba(47, 111, 224, 0.12);
@@ -1070,7 +1081,7 @@
   --control-primary-bg: #2f6fe0;
   --control-primary-fg: #ffffff;
   --control-disabled-bg: #eceff5;
-  --control-disabled-fg: #828a99;
+  --control-disabled-fg: #676f7e;
   --button-bg: #ffffff;
   --button-bg-hover: #f7f8fb;
   --button-border: rgba(20, 28, 46, 0.1);
@@ -1125,10 +1136,10 @@
     --border-soft: rgba(20, 28, 46, 0.07);
     --text: #15181f;
     --text-2: #4a5160;
-    --text-3: #828a99;
+    --text-3: #676f7e;
     --fg: #15181f;
     --fg-dim: #4a5160;
-    --fg-faint: #828a99;
+    --fg-faint: #676f7e;
     --accent: #2f6fe0;
     --accent-fg: #ffffff;
     --accent-soft: rgba(47, 111, 224, 0.12);
@@ -1139,7 +1150,7 @@
     --control-primary-bg: #2f6fe0;
     --control-primary-fg: #ffffff;
     --control-disabled-bg: #eceff5;
-    --control-disabled-fg: #828a99;
+    --control-disabled-fg: #676f7e;
     --button-bg: #ffffff;
     --button-bg-hover: #f7f8fb;
     --button-border: rgba(20, 28, 46, 0.1);
@@ -1263,10 +1274,10 @@
   --border-soft: rgba(30, 26, 20, 0.07);
   --text: #1a1714;
   --text-2: #544e46;
-  --text-3: #8a8378;
+  --text-3: #736d63;
   --fg: #1a1714;
   --fg-dim: #544e46;
-  --fg-faint: #8a8378;
+  --fg-faint: #736d63;
   --accent: #0d9488;
   --accent-fg: #ffffff;
   --accent-soft: rgba(13, 148, 136, 0.12);
@@ -1277,7 +1288,7 @@
   --control-primary-bg: #0d9488;
   --control-primary-fg: #ffffff;
   --control-disabled-bg: #ece8e0;
-  --control-disabled-fg: #8a8378;
+  --control-disabled-fg: #736d63;
   --button-bg: #ffffff;
   --button-bg-hover: #f8f6f2;
   --button-border: rgba(30, 26, 20, 0.1);
@@ -1332,10 +1343,10 @@
     --border-soft: rgba(30, 26, 20, 0.07);
     --text: #1a1714;
     --text-2: #544e46;
-    --text-3: #8a8378;
+    --text-3: #736d63;
     --fg: #1a1714;
     --fg-dim: #544e46;
-    --fg-faint: #8a8378;
+    --fg-faint: #736d63;
     --accent: #0d9488;
     --accent-fg: #ffffff;
     --accent-soft: rgba(13, 148, 136, 0.12);
@@ -1346,7 +1357,7 @@
     --control-primary-bg: #0d9488;
     --control-primary-fg: #ffffff;
     --control-disabled-bg: #ece8e0;
-    --control-disabled-fg: #8a8378;
+    --control-disabled-fg: #736d63;
     --button-bg: #ffffff;
     --button-bg-hover: #f8f6f2;
     --button-border: rgba(30, 26, 20, 0.1);
@@ -1470,10 +1481,10 @@
   --border-soft: rgba(40, 30, 80, 0.065);
   --text: #1b1830;
   --text-2: #544f6e;
-  --text-3: #8a85a0;
+  --text-3: #706a88;
   --fg: #1b1830;
   --fg-dim: #544f6e;
-  --fg-faint: #8a85a0;
+  --fg-faint: #706a88;
   --accent: #6366f1;
   --accent-fg: #ffffff;
   --accent-soft: rgba(99, 102, 241, 0.12);
@@ -1484,7 +1495,7 @@
   --control-primary-bg: #6366f1;
   --control-primary-fg: #ffffff;
   --control-disabled-bg: #ece9f5;
-  --control-disabled-fg: #8a85a0;
+  --control-disabled-fg: #706a88;
   --button-bg: #fdfcff;
   --button-bg-hover: #f5f2fb;
   --button-border: rgba(40, 30, 80, 0.09);
@@ -1539,10 +1550,10 @@
     --border-soft: rgba(40, 30, 80, 0.065);
     --text: #1b1830;
     --text-2: #544f6e;
-    --text-3: #8a85a0;
+    --text-3: #706a88;
     --fg: #1b1830;
     --fg-dim: #544f6e;
-    --fg-faint: #8a85a0;
+    --fg-faint: #706a88;
     --accent: #6366f1;
     --accent-fg: #ffffff;
     --accent-soft: rgba(99, 102, 241, 0.12);
@@ -1553,7 +1564,7 @@
     --control-primary-bg: #6366f1;
     --control-primary-fg: #ffffff;
     --control-disabled-bg: #ece9f5;
-    --control-disabled-fg: #8a85a0;
+    --control-disabled-fg: #706a88;
     --button-bg: #fdfcff;
     --button-bg-hover: #f5f2fb;
     --button-border: rgba(40, 30, 80, 0.09);
