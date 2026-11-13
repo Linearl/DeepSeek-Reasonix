@@ -124,6 +124,34 @@ console.log("\ntranscript grouping contract");
 }
 
 {
+  // tl1571: Diet fold/recovery 之后，checkpoint 列表非空但没有任何消息带
+  // checkpointTurn（旧 checkpoint 的消息索引坐标系与当前转录错位）。此时
+  // 可见序号绝不能冒充 rewind 目标编号——两个编号域数值重叠会让后端
+  // boundary(turn) 命中旧边界，静默多回退。
+  const misaligned = questionTurnsById([
+    { id: "u0", text: "recovered bubble one", turn: 0 },
+    { id: "u1", text: "recovered bubble two", turn: 1 },
+  ], true);
+  ok(!misaligned.has("u0"), "checkpoint-bearing session without stamps yields no rewind ordinal for u0");
+  ok(!misaligned.has("u1"), "checkpoint-bearing session without stamps yields no rewind ordinal for u1");
+  eq(misaligned.size, 0, "misaligned checkpoint session exposes no rewind targets at all");
+
+  const aligned = questionTurnsById([
+    { id: "u0", text: "recovered bubble one", turn: 0 },
+    { id: "u1", text: "stamped bubble", turn: 1, checkpointTurn: 42 },
+  ], true);
+  eq(aligned.get("u1"), 42, "stamped bubble keeps its authoritative checkpoint turn");
+  ok(!aligned.has("u0"), "unstamped bubble in a stamped session gets no rewind ordinal");
+
+  const noCheckpoints = questionTurnsById([
+    { id: "u0", text: "first", turn: 0 },
+    { id: "u1", text: "second", turn: 1 },
+  ], false);
+  eq(noCheckpoints.get("u0"), 0, "checkpoint-less session keeps the visible ordinal fallback");
+  eq(noCheckpoints.get("u1"), 1, "checkpoint-less session ordinal fallback increments by question");
+}
+
+{
   const items = syntheticTranscriptItems(10_000, 1);
   const start = performance.now();
   const groups = buildTurnGroups(items);

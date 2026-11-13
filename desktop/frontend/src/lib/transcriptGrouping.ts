@@ -40,13 +40,20 @@ export function compactQuestionText(text: string): string {
   return cleaned.slice(0, 80);
 }
 
-export function questionTurnsById(questions: QuestionAnchor[]): Map<string, number> {
+// tl1571: hasCheckpoints — 该会话的 checkpoint 列表非空。可见序号回退只服务
+// 完全没有 checkpoint 的会话（此时 rewind 入口本来全部禁用，序号只是导航
+// 编号）。会话有 checkpoint 但没有任何消息带 checkpointTurn（Diet fold/
+// recovery 之后，旧 checkpoint 的消息索引坐标系与当前转录错位）时，序号
+// 绝不能冒充 rewind 目标：display 序号与 checkpoint turn 两个编号域数值
+// 重叠，后端 boundary(turn) 会命中旧边界，静默多回退（tl1571 事故丢了
+// 209 条）。此时该气泡拿不到权威目标就不提供 rewind/edit/fork 入口。
+export function questionTurnsById(questions: QuestionAnchor[], hasCheckpoints = false): Map<string, number> {
   const hasCheckpointTurns = questions.some((question) => question.checkpointTurn != null);
   const turns = new Map<string, number>();
   for (const question of questions) {
     if (question.checkpointTurn != null) {
       turns.set(question.id, question.checkpointTurn);
-    } else if (!hasCheckpointTurns) {
+    } else if (!hasCheckpointTurns && !hasCheckpoints) {
       turns.set(question.id, question.turn);
     }
   }
