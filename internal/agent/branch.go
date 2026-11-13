@@ -115,6 +115,37 @@ type BranchMeta struct {
 	LogGeneration int64  `json:"log_generation,omitempty"`
 	// Closed completed todo shelves; desktop remounts hide the same fingerprint.
 	DismissedTodoBatches []string `json:"dismissed_todo_batches,omitempty"`
+	// ContextBaseline is the tl1570 persisted real-usage anchor (任务 1183's
+	// contextBaselineState in sidecar form). It is rewritten by the sampling
+	// path on every trusted usage measurement so a restart can still judge the
+	// open-session self-heal by the provider's own accounting instead of the
+	// pricing estimate — the 20261113 field incident (package 90): restart →
+	// no anchor → estimate misjudged overflow → diet → cache-miss compaction
+	// failure → earliest-history clip. Nil = no anchor on disk (never sampled,
+	// or an old build wrote this meta). Old builds ignore the key outright
+	// (Go json drops unknown fields), so migration is zero in both directions.
+	// Carried by the .jsonl.meta sidecar rather than a new file because the
+	// meta already owns the read-modify-write lock, the atomic save, the
+	// torn-write rebuild, and the deletion-chain sidecar inventory
+	// (SessionSidecarFiles) — a new file would re-invent all four.
+	ContextBaseline *ContextBaselineMeta `json:"context_baseline,omitempty"`
+}
+
+// ContextBaselineMeta is one persisted real-usage measurement: the provider's
+// own prompt/completion counts plus the local character total they covered and
+// the resolution-priced image tokens (same semantics as contextBaselineState,
+// 任务 1183), keyed to the provider instance and model ref that measured them
+// and stamped with the sampling time (the 24h trust window — tl1570). A
+// mismatched provider/model or a view that has grown past coveredChars
+// invalidates the anchor at read time.
+type ContextBaselineMeta struct {
+	ProviderName     string    `json:"provider_name,omitempty"`
+	ModelRef         string    `json:"model_ref,omitempty"`
+	PromptTokens     int       `json:"prompt_tokens,omitempty"`
+	CompletionTokens int       `json:"completion_tokens,omitempty"`
+	CoveredChars     int64     `json:"covered_chars,omitempty"`
+	ImageTokens      int       `json:"image_tokens,omitempty"`
+	SampledAt        time.Time `json:"sampled_at,omitempty"`
 }
 
 // SessionVersionKind is the durable identity class of a physical transcript.

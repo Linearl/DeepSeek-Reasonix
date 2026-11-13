@@ -125,9 +125,14 @@ type outputBudgetState struct {
 	activeReqShape    atomic.Pointer[requestCalibrationShape]
 	promptCalibration atomic.Pointer[promptTokenCalibration]
 	contextBaseline   atomic.Pointer[contextBaselineState] // tl 1183: real-usage anchor for the compaction trigger
-	contextUsage      atomic.Pointer[contextUsage]         // gauge's memoised prompt size
-	learned           atomic.Pointer[learnedContextBudget]
-	admission         atomic.Pointer[contextAdmission]
+	// lastPersistedBaseline mirrors the measurement most recently written to
+	// (or re-armed from) the session's .jsonl.meta sidecar, so identical
+	// successive samples skip the sidecar write (tl1570 write throttle) and a
+	// re-armed cold-start anchor is not immediately rewritten.
+	lastPersistedBaseline atomic.Pointer[contextBaselineState]
+	contextUsage          atomic.Pointer[contextUsage] // gauge's memoised prompt size
+	learned               atomic.Pointer[learnedContextBudget]
+	admission             atomic.Pointer[contextAdmission]
 }
 
 // contextBaselineState pairs one trusted provider prompt measurement (任务
@@ -139,12 +144,37 @@ type outputBudgetState struct {
 // path (storeLatestRequestUsage): a summary request's calibration shape
 // describes a fold region, not the visible view, and must never become the
 // trigger's baseline.
+//
+// tl1570: modelRef/sampledAt ride along so the state survives the
+// .jsonl.meta round-trip — modelRef lets a read reject a hot model switch
+// inside the same provider instance (providerName alone cannot see it), and
+// sampledAt is the 24h trust window for anchors read back from disk (an
+// in-memory anchor is never older than its process, so its stamp is inert
+// there).
 type contextBaselineState struct {
 	providerName     string
+	modelRef         string
 	promptTokens     int
 	completionTokens int
 	coveredChars     int64
 	imageTokens      int
+	sampledAt        time.Time
+}
+
+// sameMeasurement reports whether two anchors carry the identical measurement
+// (destination, counts, covered chars, images) — the write-throttle identity:
+// an equal sample is already on disk, only a changed one needs persisting.
+// sampledAt deliberately does not participate.
+func (s *contextBaselineState) sameMeasurement(other *contextBaselineState) bool {
+	if s == nil || other == nil {
+		return s == other
+	}
+	return s.providerName == other.providerName &&
+		s.modelRef == other.modelRef &&
+		s.promptTokens == other.promptTokens &&
+		s.completionTokens == other.completionTokens &&
+		s.coveredChars == other.coveredChars &&
+		s.imageTokens == other.imageTokens
 }
 
 // learnedContextBudget is an Agent-local observation of the live provider/model
@@ -221,6 +251,11 @@ func (o *outputBudgetState) reset() {
 	o.lastUsage.Store(nil)
 	o.activeReqShape.Store(nil)
 	o.contextBaseline.Store(nil)
+	// tl1570: the write-throttle mirror describes the PREVIOUS transcript's
+	// sidecar. Keeping it would let an identical measurement on the new
+	// transcript be skipped as "already persisted" when the new session's
+	// .jsonl.meta has never seen it.
+	o.lastPersistedBaseline.Store(nil)
 	o.admission.Store(nil)
 }
 
@@ -287,11 +322,17 @@ func (a *Agent) storeContextBaseline(usage *provider.Usage) {
 	}
 	a.sess.output.contextBaseline.Store(&contextBaselineState{
 		providerName:     a.requestProviderName(),
+		modelRef:         a.destinationModelRef(),
 		promptTokens:     prompt,
 		completionTokens: completion,
 		coveredChars:     shape.compactChars,
 		imageTokens:      shape.imageTokens,
+		sampledAt:        time.Now(),
 	})
+	// tl1570: the anchor now survives restarts — persist it beside the
+	// transcript so the open-session self-heal judges by the provider's own
+	// accounting after a relaunch instead of the pricing estimate.
+	a.persistContextBaseline(a.sess.output.contextBaseline.Load())
 }
 
 func outputBudgetOf(p provider.Provider) int {
