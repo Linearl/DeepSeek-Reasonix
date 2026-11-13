@@ -195,8 +195,10 @@ func (a *Agent) invalidateProjection(reason string) {
 	a.sess.compaction.lastTurn.Store(0)
 	// 任务516④: a lineage change starts a new fallback episode — let its
 	// first maintenance check warn immediately instead of waiting out the
-	// previous episode's throttle.
+	// previous episode's throttle. tl1562 G1: the suppressed counter is the
+	// throttle's other half and resets with it.
 	a.sess.compaction.fallbackWarnAt = time.Time{}
+	a.sess.compaction.fallbackWarnSuppressed = 0
 	// tl1203: a new invalidation episode re-arms the forced stale rebuild.
 	a.sess.staleRebuildArmed.Store(false)
 	if path != "" {
@@ -575,7 +577,9 @@ func (a *Agent) BindSessionPath(path string, loadSidecar bool) {
 	a.sess.compaction.consecutive = 0
 	a.sess.compaction.failedTurn.Store(0)
 	a.sess.compaction.lastTurn.Store(0)
+	// tl1562 G1: reset the suppressed counter together with the throttle.
 	a.sess.compaction.fallbackWarnAt = time.Time{}
+	a.sess.compaction.fallbackWarnSuppressed = 0
 }
 
 // SetSessionPath binds the transcript path used for projection persistence.
