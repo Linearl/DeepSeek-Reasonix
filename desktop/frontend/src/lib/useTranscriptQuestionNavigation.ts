@@ -16,6 +16,10 @@ export function useTranscriptQuestions(
   historyTotalTurns: number,
   scrollElement: HTMLElement | null,
   scheduleTailSync: () => void,
+  // tl1571: checkpoint 列表非空时，可见序号回退不得充当 rewind 目标编号
+  // （display 序号与 checkpoint turn 编号域重叠会错配旧边界）。见
+  // questionTurnsById。
+  hasCheckpoints = false,
 ) {
   const [questions, loadedByTurn, totalQuestions] = useMemo(() => {
     const loaded = new Map<number, QuestionAnchor>();
@@ -67,7 +71,7 @@ export function useTranscriptQuestions(
     }
   }, [questions, scheduleTailSync, totalQuestions]);
 
-  const userTurns = useMemo(() => questionTurnsById(questions), [questions]);
+  const userTurns = useMemo(() => questionTurnsById(questions, hasCheckpoints), [questions, hasCheckpoints]);
   const turnForUser = useCallback((item: Extract<Item, { kind: "user" }>) => userTurns.get(item.id), [userTurns]);
   return [
     questions, loadedByTurn, totalQuestions, activeQuestion, setActiveQuestion,

@@ -217,7 +217,7 @@ export function Transcript(props: TranscriptProps) {
   const [
     questions, loadedByTurn, totalQuestions, activeQuestion, setActiveQuestion,
     scheduleActiveQuestionSync, turnForUser, lastTurn,
-  ] = useTranscriptQuestions(items, historyStartTurn, historyTotalTurns, scrollElement, scheduleTailSync);
+  ] = useTranscriptQuestions(items, historyStartTurn, historyTotalTurns, scrollElement, scheduleTailSync, checkpoints.length > 0);
 
   const segmentStates = useMemo(() => foldSegmentStates(turnModels, experience === "deep"), [experience, turnModels]);
   const [folds, setFolds] = useState<FoldMap>(EMPTY_FOLDS);
