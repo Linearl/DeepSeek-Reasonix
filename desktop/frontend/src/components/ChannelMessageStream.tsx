@@ -115,7 +115,12 @@ export function ChannelMessageStream({
           m.body.includes(`@${mm.contact}`);
         if (hit && !mentioned.includes(mm.contact)) mentioned.push(mm.contact);
       }
-      if (mentioned.length > 0) return mentioned.filter((c) => c !== m.sender);
+      if (mentioned.length > 0) {
+        const recipients = mentioned.filter((c) => c !== m.sender);
+        // 仅 @ 自己（或仅 @ 其他发送者形态）= Go 发送者自排除后零投递 ——
+        // 归一化为 null（普通气泡），绝不渲染空卡。
+        return recipients.length > 0 ? recipients : null;
+      }
     }
     if (
       channelOwnerType === "human" &&
