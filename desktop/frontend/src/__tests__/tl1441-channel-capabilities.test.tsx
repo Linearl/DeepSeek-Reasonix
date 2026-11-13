@@ -8,8 +8,9 @@
 //   ③ 改写草稿：lab 开→按钮在群聊模式在场（②步的隐藏已解除）；点按走
 //      档位弹窗→RewriteDraftForChannel（draft+群尾窗上下文+所选档），回填
 //      输入框不自动发送；rewriteContextProvider 提供群尾窗。
-//   ④ 消息流附件缩略图（验收 1 后半「成员侧可见图」）：@…/.reasonix/
-//      attachments/<img> 引用渲染内嵌图；非图片/含 .. /无读桥=不渲染。
+//   ④ 消息流附件缩略图（验收 1 后半「成员侧可见图」；tl1565 G1 载体迁移：
+//      attachmentDisplay + MessageAttachments 统一渲染）：@…/.reasonix/
+//      attachments/<img> 引用渲染内嵌图；非图片=文件卡，读侧拒绝=图标卡。
 //   ⑤ 快捷指令/表情/历史提示词在场（② harness 已深验，此处兜底在场态）。
 //   ⑥ 源码钉：Composer 路由锚（savePastedImageRouted/attachmentPreviewRouted/
 //      RewriteDraftForChannel 分支）+ Go 桥声明钉。
@@ -291,17 +292,34 @@ root.render(React.createElement("div"));
 await act(async () => { await flush(); });
 
 // ── ④ 消息流附件缩略图（成员侧可见图）───────────────────────────────────
+// tl1565（G1 载体迁移）：解析/渲染收口到 attachmentDisplay + MessageAttachments
+// （读桥=组件内直连 app.ChannelAttachmentDataURL，attachmentPreview prop 退役）。
+// 断言意图不变：成员侧可见图；新增钉——非图片引用=文件卡（不再纯文本退化），
+// 读侧拒绝=图标卡诚实降级（真边界在 Go 读桥）。
 {
+  // lazy chunk 预解析：MessageAttachments 经 lazy+Suspense 挂载，本 harness
+  // 的微任务时序下 dynamic import 偶发不落地（附件卡空闪、断言抖动）；先显式
+  // 导入命中模块缓存，lazy 首帧即可用。
+  await import("../components/MessageAttachments");
   const previews: Record<string, string> = {
-    // tl1465：读桥收裸路径（@ 前缀在 attachmentRefsOf 剥除——事故修复后契约；
-    // 断言意图不变：成员侧可见图）。
+    // tl1465：读桥收裸路径（@ 前缀在 attachmentDisplay 解析时剥除——事故修复
+    // 后契约；断言意图不变：成员侧可见图）。
     "/mock-global/.reasonix/attachments/p1.png": TINY_PNG_URL,
     "D:\\w\\.reasonix\\attachments\\p2.png": TINY_PNG_URL,
   };
-  const preview = async (path: string): Promise<string> => {
-    const hit = previews[path];
-    if (!hit) throw new Error("outside");
-    return hit;
+  const bridgeCalls: string[] = [];
+  const existingGo = (dom.window as unknown as { go?: unknown }).go;
+  (dom.window as unknown as { go: unknown }).go = {
+    main: {
+      App: {
+        ChannelAttachmentDataURL: async (path: string) => {
+          bridgeCalls.push(path);
+          const hit = previews[path];
+          if (!hit) throw new Error("outside");
+          return hit;
+        },
+      },
+    },
   };
   const streamEl = dom.window.document.createElement("div");
   dom.window.document.body.appendChild(streamEl);
@@ -329,19 +347,26 @@ await act(async () => { await flush(); });
       { id: "m4", sender: "sc_dev", body: "逃出路径 @/etc/passwd/../.reasonix/attachments/evil.png 不渲染", at: 4 },
       { id: "m5", sender: "sc_dev", body: "非图片 @/mock-global/.reasonix/attachments/note.txt 不渲染", at: 5 },
     ],
-    attachmentPreview: preview,
   });
-  const pics = Array.from(streamEl.querySelectorAll(".channel-chat__attpic")) as HTMLImageElement[];
+  for (let i = 0; i < 8; i += 1) await act(async () => { await flush(); });
+  const cardInfo = Array.from(streamEl.querySelectorAll(".msg-attachment")).map((c) => ({ cls: c.className, text: c.textContent, hasImg: !!c.querySelector("img") }));
+  console.error("DBG:", JSON.stringify(cardInfo), JSON.stringify(bridgeCalls));
+  const pics = Array.from(streamEl.querySelectorAll(".msg-attachment__icon--image img")) as HTMLImageElement[];
   ok(pics.length === 2, "attachment image refs render as inline thumbnails (验收 1 成员侧可见图，多图逐张)");
-  ok(pics.every((pic) => pic.getAttribute("data-attachment-path")), "thumbnails carry their source path marker");
-  // 无读桥（bindings 缺省）= 纯文本，不渲染。
-  await paintStream({
-    messages: [{ id: "m1", sender: HUMAN_LOCAL, body: "看这张 @/mock-global/.reasonix/attachments/p1.png", at: 1 }],
-  });
-  ok(streamEl.querySelectorAll(".channel-chat__attpic").length === 0, "without the preview bridge the stream stays plain text");
+  ok(bridgeCalls.length >= 2 && bridgeCalls.every((called) => !called.startsWith("@")), "the read bridge receives bare paths (读桥收裸路径契约保持)");
+  // tl1565：非图片引用=文件卡（G1 收口：不再纯文本退化）；.png 形状的读侧
+  // 拒绝（逃逸路径）按扩展名归 image 卡但无缩略图=图标卡诚实降级（真边界在
+  // Go 读桥）。
+  ok(streamEl.querySelectorAll(".msg-attachment--file").length === 1, "the non-image ref renders as a file card (tl1565 G1 收口)");
+  ok(streamEl.querySelectorAll(".msg-attachment--image").length === 3 && pics.length === 2, "the rejected png ref degrades to an icon image card (读桥拒绝=无缩略图)");
+  const fileCards = Array.from(streamEl.querySelectorAll(".msg-attachment--file"));
+  ok(fileCards.every((card) => !card.querySelector("img")), "file cards carry no inline img");
+  // 普通提及（无路径形状）不产生任何附件卡片。
+  ok(pics.length === 2 && streamEl.querySelectorAll(".msg-attachment").length === 4, "a plain @mention renders no attachment card (3 image + 1 file)");
   streamRoot.render(React.createElement("div"));
   await act(async () => { await flush(); });
   streamEl.remove();
+  (dom.window as unknown as { go: unknown }).go = existingGo;
 }
 
 // ── ⑥ 源码钉 + 桥声明钉 ────────────────────────────────────────────────
@@ -357,7 +382,7 @@ for (const needle of [
 }
 const workspaceSrc = fs.readFileSync(path.join(import.meta.dirname, "..", "components", "ChannelWorkspacePanel.tsx"), "utf-8");
 ok(workspaceSrc.includes("rewriteContextProvider={buildRewriteTail}"), "workspace pins the rewrite tail provider");
-ok(workspaceSrc.includes("attachmentPreview={channelAttachmentPreview}"), "workspace pins the stream preview bridge (tl1465：引用稳定化后的 useCallback 形态)");
+ok(!workspaceSrc.includes("attachmentPreview="), "workspace no longer pins a preview bridge (tl1565 G1：渲染走 MessageAttachments 内置分流)");
 const bridgeSrc = fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "bridge.ts"), "utf-8");
 for (const needle of ["SaveChannelAttachment(dataUrl: string): Promise<string>", "ChannelAttachmentDataURL(path: string): Promise<string>", "RewriteDraftForChannel(draft: string, contextTail: string, contextBudgetKB: number): Promise<string>"]) {
   ok(bridgeSrc.includes(needle), `bridge declaration pin: ${needle.slice(0, 44)}…`);

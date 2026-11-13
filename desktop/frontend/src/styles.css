@@ -44220,23 +44220,6 @@ button.statusbar__mcp:focus-visible {
   align-items: flex-end;
   flex: none;
 }
-/* tl1441 ③：气泡内附件缩略图（成员侧可见图）——token 全主题变量；
-   失败静默不占位（读回成功才挂载 img）。 */
-.channel-chat__attpics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
-.channel-chat__attpic {
-  max-width: 200px;
-  max-height: 150px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  object-fit: cover;
-  display: block;
-}
-
 /* tl 1087 桌面截图覆盖层：全屏选区 + 标注画布 + 浮动工具条。挂载在
    document.body（createPortal），z-index 沿用 --z-onboarding（最高档），
    与 image-viewer 同族，保证盖过 app chrome / popover / toast。 */
