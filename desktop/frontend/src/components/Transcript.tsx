@@ -12,6 +12,8 @@ import {
 } from "react";
 import { ArrowDown, Loader2 } from "lucide-react";
 const ToolRecoveryPanel = lazy(() => import("./ToolRecoveryPanel").then(m => ({ default: m.ToolRecoveryPanel })));
+// tl1568: markdown 图查看器按需加载——保持转录壳 chunk 不吞 viewer/标注编辑器体积。
+const ImageViewer = lazy(() => import("./ImageViewer").then(m => ({ default: m.ImageViewer })));
 import type { ControllerLiveStore, HistoryLoadTrigger, HistoryMutation, Item, LiveStream } from "../lib/useController";
 import type { CheckpointMeta, WireCompletionSummary } from "../lib/types";
 import type { InvocationMetadataMap } from "../lib/invocationDisplay";
@@ -81,7 +83,7 @@ import { recordFrontendDiagnostic } from "../lib/frontendDiagnosticBridge";
 import { beginSurfaceFrame, completeSurfaceFrame } from "../lib/sessionMonitor";
 import { InvocationMetadataContext } from "./Message";
 import { LiveStreamContext } from "./LiveStreamContext";
-import { MarkdownImageTabContext } from "./MarkdownImageContext";
+import { MarkdownImageTabContext, MarkdownImageViewerContext } from "./MarkdownImageContext";
 import { TranscriptLayoutIntentProvider, TranscriptScrollWriteProvider } from "./TranscriptLayoutIntentContext";
 import { TranscriptRowRendererProvider } from "./TranscriptRowRendererContext";
 import { TranscriptViewport, type TranscriptViewportHandle } from "./TranscriptViewport";
@@ -273,6 +275,18 @@ export function Transcript(props: TranscriptProps) {
   const onReasoningFoldIntent = useCallback((itemId: string, open: boolean) => {
     writeReasoningFoldOverride(resolvedSessionKey, itemId, open);
   }, [resolvedSessionKey]);
+
+  // tl1568: markdown 图片点击放大——复用 ImageViewer 弹层（tl1289 附件查看
+  // 同款机制；单图形态不建多图导航）。状态挂转录根、经 MarkdownImageViewerContext
+  // 下发 opener；无 viewer 的宿主（工作区预览等）不 provide，其 markdown 图
+  // 保持纯展示。回调稳定引用，provider 不破行级 memo。
+  const [markdownViewer, setMarkdownViewer] = useState<{ open: boolean; url: string; name: string }>({ open: false, url: "", name: "" });
+  const openMarkdownImageViewer = useCallback((url: string, name?: string) => {
+    setMarkdownViewer({ open: true, url, name: name ?? "" });
+  }, []);
+  const closeMarkdownImageViewer = useCallback(() => {
+    setMarkdownViewer((prev) => (prev.open ? { ...prev, open: false } : prev));
+  }, []);
 
   // 任务 463：「收起/展开全部工作过程」按钮是双向开关，方向必须跟随真实折叠
   // 状态——这里把「当前是否全折叠」按 tabId 上报给共享 store，composer 据此
@@ -779,6 +793,7 @@ export function Transcript(props: TranscriptProps) {
   return (
     <InvocationMetadataContext.Provider value={invocationMetadata}>
     <MarkdownImageTabContext.Provider value={tabId ?? ""}>
+    <MarkdownImageViewerContext.Provider value={openMarkdownImageViewer}>
     <TranscriptLayoutIntentProvider value={() => { beginStructural("display-change"); }}>
     <TranscriptScrollWriteProvider value={writeOffset}>
     <TranscriptFindContext.Provider value={findHighlight}>
@@ -869,11 +884,20 @@ export function Transcript(props: TranscriptProps) {
         />
         {!empty && <button type="button" className="transcript__jump-bottom" hidden={!jumpBottomVisible} onClick={() => { endStaleGesture(); scrollToBottom(); }} aria-label={t("transcript.jumpToBottom")} title={t("transcript.jumpToBottom")}><ArrowDown size={18} strokeWidth={2.2} aria-hidden="true" /></button>}
         {FrontendDiagnosticsPanel && <Suspense fallback={null}><FrontendDiagnosticsPanel scrollElement={scrollElement} totalRows={allRows.length} /></Suspense>}
+        <Suspense fallback={null}>
+          <ImageViewer
+            open={markdownViewer.open}
+            imageUrl={markdownViewer.url}
+            imageName={markdownViewer.name || undefined}
+            onClose={closeMarkdownImageViewer}
+          />
+        </Suspense>
       </div>
       </TranscriptRowRendererProvider>
     </TranscriptFindContext.Provider>
     </TranscriptScrollWriteProvider>
     </TranscriptLayoutIntentProvider>
+    </MarkdownImageViewerContext.Provider>
     </MarkdownImageTabContext.Provider>
     </InvocationMetadataContext.Provider>
   );

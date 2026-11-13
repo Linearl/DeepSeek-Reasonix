@@ -172,9 +172,11 @@ console.log("\ntl1136+1122 message layout (17-pack-era thumbnail baseline) + tim
   ok(!readFileSync(resolve(here, "../components/MessageAttachments.tsx"), "utf8").includes("msg-attachment-gallery"), "④ 组件无 MessageImageGallery/gallery 类名残留（回退干净）");
   // Markdown 内联图（助手消息路径）的防竖排契约（MarkdownImage.css 既有规则，
   // 原 1121 验收要求「窄容器下图片不出现在文字流内」覆盖助手消息带图场景）。
+  // tl1568: 选择器泛化为 .md img 后代全形态（a>img / li>img 等结构性落位入约束），
+  // 原两落位是其子集，防竖排+防超宽契约本质不变、钉字面随实现同步。
   const mdCss = readFileSync(resolve(here, "../components/MarkdownImage.css"), "utf8");
-  ok(/\.md p > img \{[^}]*display: block;/s.test(mdCss) && /\.md p > img \{[^}]*max-width: 100%;/s.test(mdCss),
-    "③ 助手消息 Markdown 图 display:block + max-width:100%（防竖排契约不回退）");
+  ok(/\.md img \{[^}]*display: block;/s.test(mdCss) && /\.md img \{[^}]*max-width: 100%;/s.test(mdCss) && /\.md img \{[^}]*height: auto;/s.test(mdCss),
+    "③ 助手消息 Markdown 图 display:block + max-width:100% + height:auto（防竖排/防超宽契约，tl1568 泛化 .md img 全后代形态）");
 }
 
 // ── DOM 渲染：用户消息 / steer / 协作卡 / notice / 助手消息 ──
