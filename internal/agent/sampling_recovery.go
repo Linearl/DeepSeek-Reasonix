@@ -335,20 +335,11 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 	// of a request that never completed), logged explicitly as
 	// usage_present=false instead of an indistinguishable hit=0. The stamp
 	// feeds compaction miss attribution (the error→compact gap vs TTL).
-	var cacheHit, cacheMiss int64
-	usagePresent := result.usage != nil
-	if result.usage != nil {
-		cacheHit, cacheMiss = int64(result.usage.CacheHitTokens), int64(result.usage.CacheMissTokens)
-	}
+	// tl1562 G2: the trail moved into logSamplingAttemptFailure so the line
+	// also carries the session, the local view tokens, and the provider usage
+	// side by side (the 20261112 incident's local-vs-provider gap).
 	a.sess.lastProviderErrorAt.Store(time.Now().UnixMilli())
-	slog.Info("agent: sampling attempt failed",
-		"attempt", attempt, "max_attempts", maxSamplingAttempts,
-		"phase", failure.Phase, "status", failure.Status, "code", failure.Code,
-		"reason", reason, "retryable", failure.Retryable,
-		"cache_hit_tokens", cacheHit, "cache_miss_tokens", cacheMiss,
-		"usage_present", usagePresent,
-		"session_hit_total", a.sess.cacheHit.Load(), "session_miss_total", a.sess.cacheMiss.Load(),
-		"err", result.err)
+	a.logSamplingAttemptFailure(attempt, failure, reason, result.usage, result.err)
 	// 任务912 P1-d: a rejected key is the one failure the user has to fix.
 	// Raise the global banner here (throttled per credential) so a dead key is
 	// announced by the turn that hit it, not by whichever path notices first.
@@ -477,6 +468,12 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 		return false
 	}
 	if waiting && s.waited+delay > waitBudget {
+		// Task 317 trail: same cache-surface rationale as the per-attempt line.
+		var cacheHit, cacheMiss int64
+		usagePresent := result.usage != nil
+		if result.usage != nil {
+			cacheHit, cacheMiss = int64(result.usage.CacheHitTokens), int64(result.usage.CacheMissTokens)
+		}
 		slog.Warn("agent: recovery wait budget exhausted",
 			"phase", failure.Phase, "status", failure.Status, "code", failure.Code,
 			"attempts", attempt, "waited_ms", s.waited.Milliseconds(),

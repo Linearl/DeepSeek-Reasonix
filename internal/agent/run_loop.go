@@ -340,14 +340,11 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 			// failed turn leaves behind (304 error-path rule). A cancellation
 			// is the user's own action, not a provider failure — ClassifyRecovery
 			// excludes it from recovery, so it must not be logged as one either.
+			// tl1562 G2: the line moved into logTurnProviderFailure so it also
+			// names the session and reconciles the local view against the
+			// provider usage on the same line.
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				failure := provider.ClassifyRecovery(err)
-				slog.Warn("agent: turn ended with provider failure",
-					"phase", failure.Phase, "status", failure.Status, "code", failure.Code,
-					"usage_present", usage != nil,
-					"session_hit_total", a.sess.cacheHit.Load(),
-					"session_miss_total", a.sess.cacheMiss.Load(),
-					"err", err)
+				a.logTurnProviderFailure(err, usage)
 			}
 			// A broken provider stream can otherwise look like a silent hang
 			// followed only by the generic interrupted-turn notice (#9560).
