@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"time"
+
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
 )
@@ -74,11 +76,27 @@ func (a *Agent) ContextUsedTokens() int {
 // or a hot model switch (the anchor follows the request destination, the same
 // reset semantics the 1190 EWMA factor uses — a stale provider's count must
 // not price the new one).
+//
+// tl1570 cold-start anchor: when the in-memory anchor is absent (fresh
+// process before the first sampled turn) the anchor persisted in the
+// session's .jsonl.meta sidecar takes over after the same destination gates
+// plus its own 24h trust window (loadPersistedContextBaseline). This is the
+// restart leg of the tl1506 caliber: the open-session self-heal judges by the
+// provider's own accounting across relaunches instead of misjudging a mature
+// session as over-window from the estimate. A validated read-back re-arms the
+// in-memory anchor so later reads skip the sidecar I/O.
 func (a *Agent) observedContextTokens(visible []provider.Message) (int, bool) {
 	if a == nil {
 		return 0, false
 	}
 	base := a.sess.output.contextBaseline.Load()
+	if base == nil {
+		if persisted, ok := a.loadPersistedContextBaseline(time.Now()); ok {
+			base = persisted
+			a.sess.output.contextBaseline.Store(persisted)
+			a.sess.output.lastPersistedBaseline.Store(persisted)
+		}
+	}
 	if base == nil || base.promptTokens <= 0 || base.coveredChars <= 0 {
 		return 0, false
 	}
