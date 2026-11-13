@@ -242,10 +242,17 @@ type InboxSnapshot struct {
 	// 任务709: true only when a human set the current pause. Paused&&!UserPaused
 	// is an automatic pause (restart recovery / reopen backlog / error guard)
 	// — the state the desktop idle-turn bridge may wake.
-	UserPaused  bool            `json:"userPaused,omitempty"`
-	Recovered   bool            `json:"recovered"`
-	RecoveredN  int             `json:"recoveredCount,omitempty"`
-	Readonly    bool            `json:"readonly,omitempty"`
+	UserPaused bool `json:"userPaused,omitempty"`
+	Recovered  bool `json:"recovered"`
+	RecoveredN int  `json:"recoveredCount,omitempty"`
+	Readonly   bool `json:"readonly,omitempty"`
+	// tl1577 刀②（dormant/停滞 可视化，纯派生，零行为）：被 Paused/Readonly
+	// 门挡在派发之外的 StateQueued 行数。门开着或门后无活时为 0（omitempty
+	// 不上线）；>0 即「这里有一件卡住的东西」——tl1339 报告 §2.1#5 的
+	// 「NextQueued 的 paused 门完全静默」形状由此在状态面变成一个可查询读数。
+	// 面板 payload、serve GET /inbox、以及只读探测（无 runtime 的 dormant
+	// 会话）都出自同一构建器 snapshotFromManifestLocked，天然同源。
+	HeldQueued  int             `json:"heldQueued,omitempty"`
 	RunID       string          `json:"runId,omitempty"`
 	SessionPath string          `json:"sessionPath,omitempty"`
 	Items       []InboxItemMeta `json:"items"`
