@@ -2,12 +2,13 @@ package agent
 
 // Task 172 feedback touchpoints: T1 (completion) + T2 (mid-turn steer) with
 // the anti-loop gates. tl1350 adds the classification contract pins: the
-// inbox invitation only for a defect Reasonix itself can fix (criterion ①),
+// inbox submission only for a defect Reasonix itself can fix (criterion ①),
 // reusable know-how routed to memory:remember with no inbox mention
 // (criterion ②), and gate 4 skipping the touchpoint once remember already
-// succeeded this turn. Every test below also pins the default-off contract:
-// an agent constructed without Options.FeedbackNudge must be byte-for-byte
-// free of nudge messages and extra provider rounds.
+// succeeded this turn. tl1574 turns the touchpoint from an invitation into a
+// direct submission with a one-line receipt. Every test below also pins the
+// default-off contract: an agent constructed without Options.FeedbackNudge
+// must be byte-for-byte free of nudge messages and extra provider rounds.
 
 import (
 	"context"
@@ -184,7 +185,7 @@ func TestFeedbackNudgeSteerInjectsT2Once(t *testing.T) {
 }
 
 // TestFeedbackNudgeCopyClassifiesBeforeInviting pins the tl1350 copy contract
-// on both touchpoints. Criterion ①: the inbox invitation exists only inside a
+// on both touchpoints. Criterion ①: the inbox touchpoint exists only inside a
 // bucket gated on "Reasonix itself can fix", with non-fixable roots (upstream
 // API, prompts, user workflow) named as out-of-scope. Criterion ②: reusable
 // know-how is routed to memory:remember with an explicit "do NOT mention the
@@ -216,7 +217,39 @@ func TestFeedbackNudgeCopyClassifiesBeforeInviting(t *testing.T) {
 	}
 }
 
-// rememberStubTool is the gate-4 trigger shape: the model records a lesson
+// TestFeedbackNudgeCopySubmitsDirectlyWithReceipt pins the tl1574 receipt
+// contract on both touchpoints: the invitation era is gone. Each guidance
+// must (a) tell the model to submit without asking permission first,
+// (b) keep the dedup check inside the flow, (c) prescribe the one-line
+// receipt with its escalation clause (要立项说一声 — say the word and the
+// task starts on the spot), and (d) name the submit path explicitly.
+func TestFeedbackNudgeCopySubmitsDirectlyWithReceipt(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		copy string
+	}{
+		{"T1 completion", feedbackNudgeCompletionGuidance()},
+		{"T2 steer", feedbackNudgeSteerGuidance()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Case-normalized: phrases appear mid-sentence in T2.
+			copy := strings.ToLower(tc.copy)
+			for _, want := range []string{
+				"do not ask permission", // (a) direct submit, no invite question first
+				"submit it yourself",    // (d) the model calls the tool, not the user
+				"for duplicates",        // (b) dedup stays part of the flow
+				"receipt line",          // (c) the one-line receipt shape
+				"已投意见箱",                 // (c) receipt prefix
+				"要立项说一声",                // (c) escalation clause: on-the-spot task start
+			} {
+				if !strings.Contains(copy, want) {
+					t.Fatalf("%s copy missing %q:\n%s", tc.name, want, tc.copy)
+				}
+			}
+		})
+	}
+}
+
 // via the remember tool mid-turn.
 type rememberStubTool struct{}
 

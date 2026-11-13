@@ -17,16 +17,18 @@ import (
 //     appends ONE short guidance note for the correction turn. The model
 //     judges on its own; the current task is never interrupted.
 //
-// Classification contract (tl1350, user rules ①②): the inbox invitation is no
-// longer offered for anything reportable. The host copy sorts the session's
-// takeaways into three buckets —
+// Classification contract (tl1350, user rules ①②): the inbox is no longer
+// offered as an invitation for anything reportable. The host copy sorts the
+// session's takeaways into three buckets —
 //
 //  1. reusable know-how (including anything rooted OUTSIDE Reasonix: upstream
 //     model/API behavior, prompt wording, the user's own workflow) → the model
 //     records it itself via memory:remember and must NOT mention the inbox;
 //  2. a defect Reasonix itself can fix (built-in tool behavior/output,
 //     host-appended text, rendering/UI, config defaults, apparent fork bugs)
-//     → the only bucket that earns the ONE-sentence inbox invitation;
+//     → the only bucket that earns the inbox, and then by direct submission:
+//     the model calls submit_feedback itself and closes with a one-line
+//     receipt (tl1574, no permission ask);
 //  3. nothing worth recording → both skip.
 //
 // Anti-loop gates (at least two, all four implemented):
@@ -68,15 +70,17 @@ const feedbackNudgeMaxPerTurn = 1
 // feedbackNudgeCompletionGuidance is the T1 host message. Per the tl1350
 // classification contract it routes the session's takeaways: reusable
 // know-how (even when rooted outside Reasonix) goes to memory:remember with
-// no inbox mention; only a defect Reasonix itself can fix earns the one
-// short inbox invitation; nothing to record skips both, so a routine success
-// does not manufacture fake feedback.
+// no inbox mention; only a defect Reasonix itself can fix earns the inbox,
+// and then by direct submission — no permission ask, the model calls
+// submit_feedback itself and closes with a one-line receipt (tl1574);
+// nothing to record skips both, so a routine success does not manufacture
+// fake feedback.
 func feedbackNudgeCompletionGuidance() string {
 	return FeedbackNudgeMarker + " task-172 T1]\n" +
 		"The user's task has just been completed. Sort what this session surfaced into exactly one of three buckets before ending.\n" +
 		"1. Reusable know-how — a practice, workaround, or lesson future sessions would benefit from, INCLUDING anything whose root cause lies outside Reasonix (upstream model or API behavior, prompt wording, the user's own workflow): record it yourself by calling the memory:remember tool (description + body). Do NOT mention the feedback inbox for this.\n" +
-		"2. A defect Reasonix itself can fix — built-in tool behavior or output, host-appended text, rendering or UI, configuration defaults, or an apparent bug in this fork: end your reply with ONE short sentence inviting the user to record it in the feedback inbox (the submit_feedback tool can write it).\n" +
-		"3. Nothing worth recording: skip both — no remember call, no invitation.\n" +
+		"2. A defect Reasonix itself can fix — built-in tool behavior or output, host-appended text, rendering or UI, configuration defaults, or an apparent bug in this fork: do NOT ask permission — check the inbox for duplicates, submit it yourself by calling the submit_feedback tool, and end your reply with ONE short receipt line in the form ℹ️ 已投意见箱：<one-line summary>，要立项说一声. If the user says on the spot that it should become a task, start it immediately; otherwise the receipt must not delay or reshape the task's outcome.\n" +
+		"3. Nothing worth recording: skip both — no remember call, no submission.\n" +
 		"Do not repeat this request, and do not let it change the task's outcome."
 }
 
@@ -84,11 +88,11 @@ func feedbackNudgeCompletionGuidance() string {
 // consumed mid-turn steer. Guidance only: the model routes the correction's
 // takeaways under the same tl1350 contract — know-how to memory:remember
 // without an inbox mention, and only a fork-fixable defect may earn the
-// closing inbox mention.
+// inbox, submitted directly with a closing one-line receipt (tl1574).
 func feedbackNudgeSteerGuidance() string {
 	return FeedbackNudgeMarker + " task-172 T2]\n" +
 		"The user just sent a corrective mid-turn message. If working through that correction surfaces reusable know-how — a practice or lesson future sessions would benefit from, including anything whose root cause lies outside Reasonix (upstream model or API behavior, prompt wording, the user's own workflow) — record it yourself via the memory:remember tool, and do NOT mention the feedback inbox for it.\n" +
-		"Only if the correction exposed a defect Reasonix itself can fix (built-in tool behavior or output, host-appended text, rendering or UI, configuration defaults, or an apparent bug in this fork) may you briefly mention at the end of your final answer that the feedback inbox (submit_feedback) can record it.\n" +
+		"Only if the correction exposed a defect Reasonix itself can fix (built-in tool behavior or output, host-appended text, rendering or UI, configuration defaults, or an apparent bug in this fork) may you touch the inbox: do NOT ask permission — check it for duplicates, submit it yourself via the submit_feedback tool, and end your final answer with ONE short receipt line in the form ℹ️ 已投意见箱：<one-line summary>，要立项说一声 (a same-turn ask to make it a task starts immediately).\n" +
 		"Judge on your own; do not interrupt or delay the current task for this, and stay silent when neither applies."
 }
 
@@ -133,7 +137,8 @@ func (a *Agent) injectFeedbackNudge(state *turnRuntime, guidance string) {
 // maybeNudgeFeedbackCompletion is the T1 hook (task 172). Called from
 // handleFinalResponse right before a clean final answer ends the turn, after
 // steer intake has closed so a real user steer always wins over the nudge.
-// It reports whether the loop should continue for the invitation round.
+// It reports whether the loop should continue for the receipt round (tl1574:
+// the model submits and reports instead of inviting).
 func (a *Agent) maybeNudgeFeedbackCompletion(state *turnRuntime, input string) bool {
 	if !a.feedbackNudgeAllowed(state, input) {
 		return false

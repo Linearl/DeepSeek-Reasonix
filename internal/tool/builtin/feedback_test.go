@@ -197,6 +197,27 @@ func TestSubmitFeedbackDescriptionEncodesTriggerRules(t *testing.T) {
 	}
 }
 
+// tl1574: the receipt-style flow is product-level for every submit path —
+// submit directly without a permission ask, then append the one-line receipt
+// reporting the record, with the on-the-spot escalation clause (要立项说一声).
+// The dedup language (task 324 non-trigger list) must survive the addition —
+// the two rules compose, they do not replace each other.
+func TestSubmitFeedbackDescriptionSubmitsDirectlyWithReceipt(t *testing.T) {
+	desc := submitFeedback{}.Description()
+	for _, want := range []string{
+		"submit directly without asking permission first",
+		"append one short line reporting the record",
+		"已投意见箱",
+		"要立项说一声",
+		// Dedup stays: the receipt flow rides on top of the duplicate check.
+		"check feedback-inbox for duplicates first",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("Description() missing receipt-flow claim %q:\n%s", want, desc)
+		}
+	}
+}
+
 // Task 344-B: extended frontmatter fields written by the signal-scan drafts
 // (origin/fingerprint/confirmed/evidence-id/rule-version) and by the supersede
 // workflow (superseded-by) must not break parsing — field-style optional keys,
