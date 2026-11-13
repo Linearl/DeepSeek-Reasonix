@@ -583,36 +583,129 @@ func TestInboxDispatchGateHeldPausedLeavesTrace(t *testing.T) {
 	waitForInboxTurnDone(t, c, done)
 }
 
-// 自动暂停形态（709 恢复暂停，UserPaused=false）走同一补口；WARN 必须携带
-// user_paused=false 溯源字段（20261023 诊断的「自动暂停无任何日志」形状）。
-func TestInboxDispatchGateHeldAutoPausedLeavesTrace(t *testing.T) {
+// waitForInboxDrained polls until the durable inbox has no live items, so a
+// test may assert the post-completion queue shape without pinning the
+// TurnDone-event → AckDequeue ordering.
+func waitForInboxDrained(t *testing.T, c *Controller) {
+	t.Helper()
+	deadline := time.Now().Add(inboxDispatchTestTimeout)
+	for {
+		if len(c.InboxSnapshot().Items) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			failInboxDispatchWait(t, c, "inbox drain")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// tl1577 刀①（paused 补口，1007 家族唤醒钉）：自动暂停（Paused&&!UserPaused）
+// 藏着排队投递时，泵的空闲扫描亲手清门重驱——修前（tl1339min）这一枪只留痕
+// 不处置， parked 投递等一个不会来的 gate owner（桥不越活跃 tab 边界2、人只
+// 看得见自己看得见的面板），实测 20261101 全天 123 条 queued_followup 零注入
+// 零 exhausted。修后绿：复现 1007 场景（投递落箱→自动暂停→踢一脚）实测可
+// 唤醒——turn 真正开起来、item 被消费、门被清、WARN+GateLifts 双留痕。
+func TestInboxDispatchAutoPauseLiftWakesParkedDelivery(t *testing.T) {
 	logs := captureControllerLogs(t)
-	c, runner, _ := newInboxDispatchController(t)
-	if _, err := c.EnqueueInbox(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "auto-paused backlog"}); err != nil {
+	c, runner, done := newInboxDispatchController(t)
+	if _, err := c.EnqueueInbox(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "parked behind auto pause"}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := c.ensureInbox()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Store 级 SetPaused：只置 Paused，不带 UserPaused——自动暂停形状。
+	// Store 级 SetPaused：只置 Paused，不带 UserPaused——1007 家族的自动暂停
+	// 形状（重启恢复 / 重开积压 / 错误守卫都不带 UserPaused 位）。
 	if err := st.SetPaused(true); err != nil {
 		t.Fatal(err)
 	}
+	liftsBefore := sessioninbox.Metrics().GateLifts
+
+	// 修前红：这一枪静默停（dispatch 收不到输入直到超时）。
+	// 修后绿：清门 → 重踢 → 同一条排水循环里把这封投递真正开轮。
+	c.maybeDispatchInbox()
+	if got := waitForInboxDispatch(t, c, runner); got != "parked behind auto pause" {
+		t.Fatalf("parked delivery must be wakeable through the lifted gate, got %q", got)
+	}
+	waitForInboxTurnDone(t, c, done)
+	waitForInboxDrained(t, c)
+
+	if delta := sessioninbox.Metrics().GateLifts - liftsBefore; delta != 1 {
+		t.Fatalf("auto-pause lift must be counted (tl1577 刀①), delta = %d", delta)
+	}
+	if !strings.Contains(logs.String(), "auto-pause lifted") {
+		t.Fatalf("lift must leave a WARN trail, logs = %q", logs.String())
+	}
+	if !strings.Contains(logs.String(), "user_paused=false") {
+		t.Fatalf("lift WARN must carry pause provenance, logs = %q", logs.String())
+	}
+
+	// 唤醒证据（收尾态）：门已清、门后无滞留（HeldQueued 归零）、队列已消费。
+	snap := c.InboxSnapshot()
+	if snap.Paused || snap.UserPaused {
+		t.Fatalf("automatic pause must be lifted after the wake, snapshot = %+v", snap)
+	}
+	if len(snap.Items) != 0 || snap.HeldQueued != 0 {
+		t.Fatalf("parked delivery must be consumed, snapshot = %+v", snap)
+	}
+}
+
+// 709 绝对静默的反面钉：用户持有的门（UserPaused=true）泵绝不越——item 原位
+// queued、无 turn、不装 retry、不清门（GateLifts 不动）；基线刀①的 gate-held
+// WARN 照留（用户需要看见「你的暂停后面压着活」）；显式 resume 后照常消费
+// （放行语义未被本刀改动）。状态面联动：HeldQueued 让「门后滞留」在快照上
+// 可见（刀②）。
+func TestInboxDispatchUserPauseGateNeverAutoLifts(t *testing.T) {
+	logs := captureControllerLogs(t)
+	c, runner, _ := newInboxDispatchController(t)
+	if _, err := c.EnqueueInbox(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "user holds the gate"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetInboxPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	liftsBefore := sessioninbox.Metrics().GateLifts
 
 	c.maybeDispatchInbox()
 	c.autosaveWG.Wait()
 
-	if !strings.Contains(logs.String(), "gate-held") {
-		t.Fatalf("auto-paused gate must leave a WARN trail, logs = %q", logs.String())
+	// 709：暂停是用户意志——门原样持有。
+	snap := c.InboxSnapshot()
+	if !snap.Paused || !snap.UserPaused {
+		t.Fatalf("user-held pause must stay held, snapshot = %+v", snap)
 	}
-	if !strings.Contains(logs.String(), "user_paused=false") {
-		t.Fatalf("gate-held WARN must carry user_paused provenance, logs = %q", logs.String())
+	if len(snap.Items) != 1 || snap.Items[0].State != sessioninbox.StateQueued {
+		t.Fatalf("user-held gate must not move the item, snapshot = %+v", snap)
+	}
+	if snap.HeldQueued != 1 {
+		t.Fatalf("parked work must be visible on the status surface (tl1577 刀②), heldQueued = %d", snap.HeldQueued)
 	}
 	select {
 	case got := <-runner.inputs:
-		t.Fatalf("no turn may open behind the gate, got %q", got)
+		t.Fatalf("user-held gate must never auto-wake, got %q", got)
 	default:
+	}
+	c.inbox.mu.Lock()
+	attempts, scheduled := c.inbox.dispatchRetryAttempts, c.inbox.dispatchRetryScheduled
+	c.inbox.mu.Unlock()
+	if attempts != 0 || scheduled {
+		t.Fatalf("user-held gate must not arm retries: attempts=%d scheduled=%t", attempts, scheduled)
+	}
+	if delta := sessioninbox.Metrics().GateLifts - liftsBefore; delta != 0 {
+		t.Fatalf("user-held gate must never be lifted by the pump, delta = %d", delta)
+	}
+	if !strings.Contains(logs.String(), "gate-held") {
+		t.Fatalf("user-held gate must keep the tl1339min WARN trail, logs = %q", logs.String())
+	}
+
+	// 回归锚：显式 resume 的放行语义原样——用户开闸后这条投递照常开轮。
+	if err := c.SetInboxPaused(false); err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForInboxDispatch(t, c, runner); got != "user holds the gate" {
+		t.Fatalf("explicit resume must dispatch exactly as before, got %q", got)
 	}
 }
 

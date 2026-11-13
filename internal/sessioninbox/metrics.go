@@ -19,6 +19,10 @@ var (
 	metricGateHeldSkips  atomic.Int64
 	metricRetryExhausted atomic.Int64
 	metricDormantClaims  atomic.Int64
+	// tl1577 刀①（paused 补口）：泵亲手清掉一个自动暂停的次数。tl1339min
+	// 时代这类停滞只留痕不处置；本刀起泵在空闲扫描命中「自动门 + 门后滞留
+	// queued 活」时按 709 语义清门重驱，每次清门计一次。
+	metricGateLifts atomic.Int64
 )
 
 // MetricsSnapshot is a body-free counters view for diagnostics.
@@ -36,6 +40,8 @@ type MetricsSnapshot struct {
 	GateHeldSkips       int64 `json:"gateHeldSkips"`
 	RetryExhausted      int64 `json:"retryExhausted"`
 	DormantOrphanClaims int64 `json:"dormantOrphanClaims"`
+	// tl1577: automatic-pause lifts by the dispatch pump (see NoteGateLifted).
+	GateLifts int64 `json:"gateLifts"`
 }
 
 // Metrics returns current process-local inbox counters.
@@ -53,6 +59,7 @@ func Metrics() MetricsSnapshot {
 		GateHeldSkips:       metricGateHeldSkips.Load(),
 		RetryExhausted:      metricRetryExhausted.Load(),
 		DormantOrphanClaims: metricDormantClaims.Load(),
+		GateLifts:           metricGateLifts.Load(),
 	}
 }
 
@@ -82,8 +89,11 @@ func NoteTxFail()         { metricTxFail.Add(1) }
 // parked behind the manifest gate (Paused / schema readonly hides them from
 // NextQueued). tl1339 刀①: this stop burns no retry budget and produced no
 // trail at all — the counter makes the "gate-held" state queryable. The gate
-// owner (user resume / 709 auto-resume) still owns the next kick; nothing
-// about dispatch behavior changes.
+// owner still owns the next kick; nothing about dispatch behavior changes.
+// tl1577 刀① narrowed the population: automatic pauses with parked work are
+// lifted by the pump (counted by NoteGateLifted, never reaching here), so
+// what remains is the user-held gate and the readonly gate — exactly the two
+// holds a pump must not cross.
 func NoteGateHeldSkip() { metricGateHeldSkips.Add(1) }
 
 // NoteRetryExhausted tallies one dispatch cycle that found the generic
@@ -100,3 +110,11 @@ func NoteRetryExhausted() { metricRetryExhausted.Add(1) }
 // cannot see. tl1339 刀②: pure visibility — the probe still generates no
 // wake target for such sessions.
 func NoteDormantOrphanClaim() { metricDormantClaims.Add(1) }
+
+// NoteGateLifted tallies one automatic-pause lift performed by the dispatch
+// pump (tl1577 刀①, the 1007-family wake path): the pump's idle scan hit
+// "Paused && !UserPaused with parked queued followups" and cleared it through
+// the 任务709 store primitive (the same seam the desktop idle-turn bridge
+// uses for background sessions). User-held pauses are never crossed and never
+// counted here — they keep flowing to NoteGateHeldSkip.
+func NoteGateLifted() { metricGateLifts.Add(1) }

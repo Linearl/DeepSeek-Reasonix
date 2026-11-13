@@ -365,6 +365,18 @@ func (s *Store) snapshotLocked() InboxSnapshot {
 
 func (s *Store) snapshotFromManifestLocked(m *manifest, readonly bool) InboxSnapshot {
 	items := append([]InboxItemMeta(nil), m.Items...)
+	// tl1577 刀②: the gate-held parked count. NextQueued hides every queued
+	// row behind Paused/readonly (ops.go) — this number is that hidden work,
+	// surfaced so a stalled backlog is one queryable field instead of a
+	// semantic someone has to re-derive from Paused+Items.
+	heldQueued := 0
+	if m.Paused || readonly {
+		for _, it := range items {
+			if it.State == StateQueued {
+				heldQueued++
+			}
+		}
+	}
 	return InboxSnapshot{
 		SchemaVersion: m.SchemaVersion,
 		Revision:      m.Revision,
@@ -373,6 +385,7 @@ func (s *Store) snapshotFromManifestLocked(m *manifest, readonly bool) InboxSnap
 		Recovered:     m.Recovered,
 		RecoveredN:    m.RecoveredN,
 		Readonly:      readonly,
+		HeldQueued:    heldQueued,
 		RunID:         m.RunID,
 		SessionPath:   s.session,
 		Items:         items,

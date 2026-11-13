@@ -163,9 +163,21 @@ func (c *Controller) dispatchInboxOnce() inboxDispatchResult {
 	beforeSubmit := c.inbox.beforeDispatchSubmit
 	c.inbox.mu.Unlock()
 	if !ok {
+		// tl1577 刀①（paused 补口）: an AUTOMATIC pause holding parked queued
+		// work is lifted here — the 1007-family parked shape becomes wakeable
+		// (see liftInboxAutoPauseGate). Every hold a pump must not cross
+		// (user-held pause, readonly, gate behind zero parked work) falls
+		// through to the tl1339 刀① trail below.
+		if c.liftInboxAutoPauseGate() {
+			c.clearInboxDispatchGateHeld()
+			c.maybeDispatchInbox()
+			return inboxDispatchIdle
+		}
 		// tl1339 刀①: "empty" and "paused/readonly hides queued work" used to
 		// fold into the same silent idle. Leave a trail (zero behavior) when
-		// the queue was actually gate-held.
+		// the queue was actually gate-held. tl1577 刀① narrowed this branch:
+		// automatic pauses with parked work were lifted above, so what trails
+		// here is the user-held gate and the readonly gate.
 		c.traceInboxGateHeld()
 		return inboxDispatchIdle
 	}
@@ -350,9 +362,12 @@ func (c *Controller) resetInboxDispatchRetries() {
 // hides queued follow-ups — the two used to fold into one unobservable idle,
 // so a multi-hour parked backlog looked identical to a quiet session and
 // burned no budget anywhere. This trace changes NO dispatch behavior (the
-// gate owner — user resume or the 709 auto-resume — still owns the next
-// kick): it leaves one transition-gated WARN per gate-held episode plus a
-// per-cycle counter, with paused provenance (user vs automatic) in the line.
+// gate owner still owns the next kick). tl1577 刀① narrowed its population:
+// automatic pauses hiding parked work are lifted by liftInboxAutoPauseGate
+// before this trace runs, so what trails here is the user-held gate and the
+// readonly gate. It leaves one transition-gated WARN per gate-held episode
+// plus a per-cycle counter, with paused provenance (user vs automatic) in
+// the line.
 func (c *Controller) traceInboxGateHeld() {
 	st, err := c.ensureInbox()
 	if err != nil {
@@ -391,6 +406,67 @@ func (c *Controller) clearInboxDispatchGateHeld() {
 	c.inbox.mu.Lock()
 	c.inbox.gateHeldLogged = false
 	c.inbox.mu.Unlock()
+}
+
+// liftInboxAutoPauseGate is the tl1577 刀① wake path for the 1007 family's
+// parked shape: an AUTOMATIC pause (Paused && !UserPaused) hiding queued
+// follow-ups in an otherwise idle, dispatch-eligible session. tl1339min left
+// this stop visible but permanent — the gate's nominal owner ("user resume or
+// the 709 auto-resume") never comes for an in-process idle session: the
+// desktop bridge only wakes non-active-tab sessions (边界2), and a human only
+// resumes what they can see, so the parked delivery waited for nobody (实测
+// 20261101：123 条 queued_followup 全天零 exhausted 零注入). The pump lifts
+// the gate itself through the 任务709 store primitive (Store.ResumeAutoPause)
+// — the exact seam the bridge uses — so 暂停是用户意志 stays absolute: a
+// user-held pause returns (false, nil) there and also fails the pre-check
+// below, and a user pausing between the snapshot and the commit cannot be
+// overridden (check and commit share the store lock).
+//
+// Bounds: only reached on the idle scan path (every busy gate in
+// dispatchInboxOnce returned earlier); only lifts when parked StateQueued
+// work is actually hidden — error-guard pauses whose rows sit on the
+// Uncertain/Blocked review shelf (796 H4) and empty-queue pauses are left
+// untouched; the re-kick after a successful lift is the pump's ordinary
+// level-triggered contract, so the same drain loop re-scans with the gate
+// open. On success: one WARN (guardian-visible; the stall was real) plus the
+// GateLifts counter, then the parked delivery is attempted like any queued
+// head.
+func (c *Controller) liftInboxAutoPauseGate() bool {
+	st, err := c.ensureInbox()
+	if err != nil {
+		return false
+	}
+	// CachedSnapshot: owner-local in-memory read, no cross-process disk lock —
+	// same contract as traceInboxGateHeld. ResumeAutoPause re-validates under
+	// the store lock, so a stale snapshot cannot lift a fresh user pause.
+	snap := st.CachedSnapshot()
+	if !snap.Paused || snap.Readonly || snap.UserPaused {
+		return false
+	}
+	parked := 0
+	for _, item := range snap.Items {
+		if item.State == sessioninbox.StateQueued {
+			parked++
+		}
+	}
+	if parked == 0 {
+		return false
+	}
+	resumed, err := st.ResumeAutoPause()
+	if err != nil {
+		slog.Warn("controller: inbox auto-pause lift failed; gate stays held", "err", err)
+		return false
+	}
+	if !resumed {
+		// Someone else lifted it first (bridge wake / concurrent resume), or
+		// the re-validation under the store lock saw a user pause land in
+		// between — either way nothing to do this cycle.
+		return false
+	}
+	sessioninbox.NoteGateLifted()
+	slog.Warn("controller: inbox auto-pause lifted by dispatch pump; parked followups re-driven (任务709/tl1577 刀①)",
+		"queued", parked, "user_paused", false)
+	return true
 }
 
 // setDispatchRetryFailure pins the retry-class failure for the budget-
