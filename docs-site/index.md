@@ -4,6 +4,12 @@
 
 Reasonix 是一款开源（MIT）的编码 Agent：**可以一直开着跑**。一套本地引擎（单个 Go 二进制），四个入口——终端、桌面端、浏览器，或通过 ACP 接入你的编辑器。计划模式、分级审批、工作区沙箱与逐轮 checkpoint，让长时间自治运行始终可读、可撤销。
 
+## 介绍视频
+
+**2 分 10 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：
+
+<video src="assets/reasonix-fork-intro.mp4" controls preload="metadata" width="720">你的浏览器不支持内嵌视频，可打开仓库内 docs-site/assets/reasonix-fork-intro.mp4 直接观看。</video>
+
 ## 核心特性
 
 - **多模型 · 可组合**：DeepSeek 预设内置，任何 OpenAI/Anthropic 兼容端点都只是一条配置；可选双模型协同（执行器 + 规划器）。

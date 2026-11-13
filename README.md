@@ -24,6 +24,10 @@ Upstream project & docs: **[esengine/DeepSeek-Reasonix](https://github.com/eseng
 - **长期维护**——不是临时补丁仓：持续 bug 修复、体验优化、装机级验证；**发版节奏约每周一包**（时间戳构建 + 增量 release notes）。**重点维护 desktop 桌面版**，目前不做 CLI 的发版（CLI 侧改动随源码进仓库，但不单独出包）。
 - **向上游持续回馈**——累计向上游提交 **95 个 issue + 84 个 PR**，能进上游的尽量进上游，进不了的留在这里长期维护。
 
+## 介绍视频
+
+**2 分 10 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：[▶ reasonix-fork-intro.mp4](./docs-site/assets/reasonix-fork-intro.mp4)（GitHub 文件页可直接在线播放；产品文档站首页亦有内嵌播放）。
+
 ---
 
 ## 1. 为什么会有这个分支：历史与现状

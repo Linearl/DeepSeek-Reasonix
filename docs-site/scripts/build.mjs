@@ -57,7 +57,7 @@ function inline(text) {
   // 不能收窄——features/key-features 的手风琴折叠（tl1271）依赖 details/
   // summary 透传，收窄会把它转义成可见文本（20261102 实测）。
   const rawFragments = [];
-  const allowed = /<(?:span|div|section|details|summary|p) class="(?:badge|fnum|vtag|tl-date|acc)[^"]*"[^>]*>|<(?:details|summary)(?:\s[^>]*)?>|<\/(?:span|div|section|details|summary|p)>/g;
+  const allowed = /<(?:span|div|section|details|summary|p) class="(?:badge|fnum|vtag|tl-date|acc)[^"]*"[^>]*>|<(?:details|summary)(?:\s[^>]*)?>|<\/(?:span|div|section|details|summary|p)>|<video(?:\s[^>]*)?>|<\/video>/g;
   let src = String(text).replace(allowed, (m) => { rawFragments.push(m); return `\u0002${rawFragments.length - 1}\u0002`; });
   let out = escapeHtml(src);
   // 行内代码先摘出来保护，避免被下面的规则误伤。
@@ -266,7 +266,8 @@ ${body}
 function build() {
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(join(dist, "assets"), { recursive: true });
-  cpSync(join(root, "assets", "styles.css"), join(dist, "assets", "styles.css"));
+  // 整目录拷贝：styles.css + 介绍视频 reasonix-fork-intro.mp4（33MB，任务 20261113 视频部署）
+  cpSync(join(root, "assets"), join(dist, "assets"), { recursive: true });
 
   const pages = [];
 
