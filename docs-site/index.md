@@ -6,7 +6,7 @@ Reasonix 是一款开源（MIT）的编码 Agent：**可以一直开着跑**。�
 
 ## 介绍视频
 
-**2 分 10 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：
+**2 分 03 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：
 
 <video src="assets/reasonix-fork-intro.mp4" controls preload="metadata" width="720">你的浏览器不支持内嵌视频，可打开仓库内 docs-site/assets/reasonix-fork-intro.mp4 直接观看。</video>
 

@@ -26,7 +26,7 @@ Upstream project & docs: **[esengine/DeepSeek-Reasonix](https://github.com/eseng
 
 ## 介绍视频
 
-**2 分 10 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：[▶ 播放介绍视频](https://linearl.github.io/DeepSeek-Reasonix/)（跳转文档站，首页内嵌播放；GitHub 文件页对 32.7MB 大文件不提供预览）。
+**2 分 03 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：[▶ 播放介绍视频](https://linearl.github.io/DeepSeek-Reasonix/)（跳转文档站，首页内嵌播放；GitHub 文件页对 32.7MB 大文件不提供预览）。
 
 ---
 
