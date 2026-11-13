@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"reasonix/internal/collabchannel"
 	"reasonix/internal/sessioncollab"
 )
 
@@ -273,5 +274,118 @@ func TestDrainInboxRenderTextOneWayNoticeOverridesReplyFallback(t *testing.T) {
 	}, 0)
 	if !strings.Contains(ordinary, "回信到 contact_id=sc_main") {
 		t.Fatalf("an ordinary registered sender must keep the reply fallback: %s", ordinary)
+	}
+}
+
+// ── tl1566：群聊投递注入头（与 desktop/session_collab_test.go 镜像）─────────
+
+// tl1566 同形状 token 钉——与 desktop/session_collab_test.go 的
+// channelGuidanceTokens 镜像：两面（sessionCollabDeliveryText /
+// drainInboxRenderText）共用同一清单防漂移，改动必须两边同步。
+var channelGuidanceTokens = []string{
+	"[跨会话消息·群聊]",
+	"群聊：调研组",
+	"channel_send",
+	"回复方式：完成后用 channel_send 工具把回信发到群聊 调研组",
+	"@ 其 contact_id",
+	"效果要求",
+	"附件引用",
+	"投递编号：chf_",
+}
+
+// tl1566 验收1（drain 面）：群聊 fan-out 件的注入文本必须带群聊来源 +
+// channel_send 回群聊引导 + 效果层尾注；严禁出现 talk_to_session 引导（G2
+// 回信引导指向错误的负钉——20261112 用户实测 15:16 AI 被引回对话正是此面）。
+func TestDrainInboxRenderTextChannelFanoutGuidesChannelReply(t *testing.T) {
+	text := drainInboxRenderText(sessioncollab.MailMessage{
+		ID:      "chf_fffd34282aaa2d73",
+		From:    "human:local",
+		To:      "sc_worker",
+		Body:    "帮我确认下构建状态",
+		Channel: "调研组",
+	}, 0)
+	for _, tok := range channelGuidanceTokens {
+		if !strings.Contains(text, tok) {
+			t.Fatalf("channel fan-out text must carry %q:\n%s", tok, text)
+		}
+	}
+	if strings.Contains(text, "回复方式：完成后用 talk_to_session") {
+		t.Fatalf("a group copy must NOT steer the reply into a private talk_to_session exchange:\n%s", text)
+	}
+	if strings.Contains(text, "会话线程") {
+		t.Fatalf("a fan-out id is not a thread — must be labeled 投递编号:\n%s", text)
+	}
+
+	// RequireReply 防御位：fan-out 件今天不带该戳，但一旦带上必须照常渲染
+	// 索回信要求（与直接件同句式）。
+	demanded := drainInboxRenderText(sessioncollab.MailMessage{
+		ID: "chf_d", From: "sc_peer", To: "sc_worker", Body: "b",
+		Channel: "调研组", RequireReply: true,
+	}, 0)
+	if !strings.Contains(demanded, "require_reply") {
+		t.Fatalf("a demanded channel reply must keep the require_reply line:\n%s", demanded)
+	}
+}
+
+// tl1566 验收1 负钉（drain 面）：直接跨会话消息形态逐字节不变——头部标签、
+// threadId 行、talk_to_session 回信引导全部保持原字节。
+func TestDrainInboxRenderTextDirectMailBytesUnchanged(t *testing.T) {
+	text := drainInboxRenderText(sessioncollab.MailMessage{
+		ID:      "msg_1",
+		From:    "sc_alice",
+		To:      "sc_bob",
+		ReplyTo: "sc_alice",
+		Body:    "please review",
+	}, 0)
+	want := "[跨会话消息] 来自 contact_id=sc_alice → 发至 contact_id=sc_bob\n" +
+		"\nplease review\n\n---\n" +
+		"会话线程：threadId=msg_1\n" +
+		"回复方式：完成后用 talk_to_session 回信到 contact_id=sc_alice，hop 传 1，并把 thread_id 设为 msg_1。"
+	if text != want {
+		t.Fatalf("direct-mail delivery bytes are frozen (tl1566 negative pin):\ngot:  %q\nwant: %q", text, want)
+	}
+}
+
+// tl1566 验收3（机制级端到端，drain 面）：群聊 Publish → DrainFanout 落箱 →
+// drain_inbox 工具读出的注入文本即带群聊地址与 channel_send 回信引导。回信侧
+// 落库（chm_）由 collabchannel 包自测承载。
+func TestDrainInboxChannelFanoutEndToEnd(t *testing.T) {
+	mailDir := filepath.Join(t.TempDir(), "mail")
+
+	store, err := collabchannel.Open(mailDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateChannel("调研组", "", 0, "sc_me"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Publish("调研组", "human:local", "帮我确认下构建状态"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DrainFanout(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+
+	cfg := SessionCollabConfig{
+		Enabled:          true,
+		MailDir:          mailDir,
+		CurrentContactID: "sc_me",
+	}
+	payload := execDrain(t, cfg, `{}`)
+	if payload.Took != 1 {
+		t.Fatalf("want the fan-out copy drained, took=%d", payload.Took)
+	}
+	msg := payload.Messages[0]
+	if msg.From != "human:local" || !strings.HasPrefix(msg.ID, "chf_") {
+		t.Fatalf("fan-out provenance missing: id=%s from=%s", msg.ID, msg.From)
+	}
+	for _, tok := range channelGuidanceTokens {
+		if !strings.Contains(msg.Text, tok) {
+			t.Fatalf("drained fan-out text must carry %q:\n%s", tok, msg.Text)
+		}
+	}
+	if strings.Contains(msg.Text, "回复方式：完成后用 talk_to_session") {
+		t.Fatalf("drained fan-out text must not steer into a private reply:\n%s", msg.Text)
 	}
 }

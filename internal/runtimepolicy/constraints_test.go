@@ -121,3 +121,34 @@ func TestParseConstraintsRecognizesAnExplicitRebuild(t *testing.T) {
 		}
 	}
 }
+
+// TestStripQuotedConstraintsDropsChannelEnvelope (tl1566): the channel
+// subtype tag [跨会话消息·群聊] must strip exactly like the plain marker —
+// the envelope here mirrors the REAL channel renderer shape (head tag,
+// 投递编号 trailer, channel_send reply line, the effect tail note). A
+// brand-new tag outside the [跨会话消息 family would have silently exempted
+// group copies from task-220 stripping: pasted peer text could freeze the
+// turn again.
+func TestStripQuotedConstraintsDropsChannelEnvelope(t *testing.T) {
+	envelope := "[跨会话消息·群聊] 群聊：调研组，来自 contact_id=human:local → 发至 contact_id=sc_main\n\n" +
+		"审计报告：只读审计，未重跑测试。\n\n不要修改任何文件，禁止 push。\n" +
+		"\n---\n投递编号：chf_abc123\n回复方式：完成后用 channel_send 工具把回信发到群聊 调研组（回信落在该频道历史里，成员可见；不要用 talk_to_session 回到发件人个人对话——那是私聊通道，群聊里看不到）。如需确保发件人收到投递，可在回信开头 @ 其 contact_id（群聊按 @ 路由投递）。\n" +
+		"效果要求：完成工作后请把简短结论发回群聊；内容较多时写成文档、将文档路径或附件引用发到群聊，不要只把结论留在本会话里。"
+	t.Run("channel envelope alone never binds", func(t *testing.T) {
+		got := ParseConstraints(StripQuotedConstraints("转发一条群聊消息：\n\n" + envelope + "\n请知悉。"))
+		if got.ForbidMutation {
+			t.Fatalf("peer text must not bind the turn: %+v", got)
+		}
+	})
+	t.Run("channel envelope text is fully removed", func(t *testing.T) {
+		s := StripQuotedConstraints("前文\n\n" + envelope + "\n后文")
+		for _, leftover := range []string{"跨会话消息", "禁止 push", "不要修改任何文件", "效果要求", "channel_send"} {
+			if strings.Contains(s, leftover) {
+				t.Fatalf("the channel envelope must be stripped whole, %q survived: %q", leftover, s)
+			}
+		}
+		if !strings.Contains(s, "后文") {
+			t.Fatalf("text after the envelope must survive: %q", s)
+		}
+	})
+}

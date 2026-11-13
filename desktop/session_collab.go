@@ -1763,11 +1763,33 @@ func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, d
 // target and the sender's identity is unambiguous.
 func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) string {
 	var b strings.Builder
-	b.WriteString("[跨会话消息]")
-	// Both sides are always printed, even when empty: a silent omission of From
-	// loses the sender identity and, with it, the reply address (the ReplyTo is
-	// the same value). The recipient must be able to see the shape of the
-	// conversation, not infer it from absence.
+	// tl1566: a channel fan-out copy carries the group-source stamp (task 349
+	// note①) — it must NOT be indistinguishable from a direct send. The old
+	// head read 「[跨会话消息] 来自 contact_id=human:local」 for a group
+	// delivery, and the trailer then steered the reply into a private
+	// talk_to_session exchange: the AI answered in its own transcript while
+	// the group waited (20261112 用户实测 15:16). The subtype tag keeps the
+	// 「跨会话消息」 marker family intact ON PURPOSE: four mechanism consumers
+	// key off that prefix (runtimepolicy stripCollabEnvelope envelope
+	// stripping, agent collab status events, unfiled system-prompt
+	// classification, the frontend transcript-card detector collabMessage.ts)
+	// — a brand-new tag would silently exempt channel copies from all four.
+	if msg.Channel != "" {
+		// The channel name rides BEFORE the standard contact_id header so the
+		// transcript card parser (frontend collabMessage.ts COLLAB_HEADER_RE,
+		// anchored on 「来自 contact_id=… → 发至 contact_id=…」) keeps parsing
+		// channel copies without a second header shape.
+		b.WriteString("[跨会话消息·群聊] 群聊：")
+		b.WriteString(msg.Channel)
+		b.WriteString("，来自 contact_id=")
+	} else {
+		b.WriteString("[跨会话消息]")
+		// Both sides are always printed, even when empty: a silent omission of
+		// From loses the sender identity and, with it, the reply address (the
+		// ReplyTo is the same value). The recipient must be able to see the
+		// shape of the conversation, not infer it from absence.
+		b.WriteString(" 来自 contact_id=")
+	}
 	fromLabel := msg.From
 	if fromLabel == "" {
 		fromLabel = "(未登记)"
@@ -1776,7 +1798,6 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 	if toLabel == "" {
 		toLabel = "(未知)"
 	}
-	b.WriteString(" 来自 contact_id=")
 	b.WriteString(fromLabel)
 	b.WriteString(" → 发至 contact_id=")
 	b.WriteString(toLabel)
@@ -1802,10 +1823,34 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 	}
 	if msg.Hop > 0 || msg.From != "" {
 		if msg.ID != "" {
-			b.WriteString("会话线程：threadId=" + msg.ID + "\n")
+			if msg.Channel != "" {
+				// tl1566: a fan-out id (chf_…) is a mailbox delivery id, not a
+				// talk_to_session thread — calling it a thread invites the
+				// recipient to set thread_id on a reply that must go through
+				// channel_send (which has no thread parameter). Label it as
+				// what it is.
+				b.WriteString("投递编号：" + msg.ID + "\n")
+			} else {
+				b.WriteString("会话线程：threadId=" + msg.ID + "\n")
+			}
 		}
 	}
-	if msg.ReplyTo != "" {
+	// tl1566: the group-source stamp changes the reply contract — the reply
+	// goes back to the channel via channel_send, not into a private
+	// talk_to_session exchange. This branch must stay FIRST so a channel copy
+	// can never fall through to the direct-mail guidance below (the direct
+	// paths and their wording are byte-frozen by the negative-pin test).
+	if msg.Channel != "" {
+		b.WriteString("回复方式：完成后用 channel_send 工具把回信发到群聊 " + msg.Channel +
+			"（回信落在该频道历史里，成员可见；不要用 talk_to_session 回到发件人个人对话——那是私聊通道，群聊里看不到）。" +
+			"如需确保发件人收到投递，可在回信开头 @ 其 contact_id（群聊按 @ 路由投递）。")
+		// G3 效果层尾注：结论必须回到群聊这个事实面，不允许只留在本会话转录里。
+		// 长内容走文档/附件引用（引用格式见 tl1565 的格式定义；路径引用当前即可用）。
+		b.WriteString("\n效果要求：完成工作后请把简短结论发回群聊；内容较多时写成文档、将文档路径或附件引用发到群聊，不要只把结论留在本会话里。")
+		if msg.RequireReply {
+			b.WriteString("\n⚠ 发件人要求回信（require_reply）：完成本信的工作后，必须按上面的回复方式回信；无法完成也请回信说明，不要只在本会话里写下结论。")
+		}
+	} else if msg.ReplyTo != "" {
 		b.WriteString("回复方式：完成后用 talk_to_session 回信到 contact_id=" + msg.ReplyTo +
 			"，hop 传 " + strconv.Itoa(effectiveHop+1))
 		if msg.ID != "" {

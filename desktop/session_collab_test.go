@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/collabchannel"
 	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sessioncollab"
 )
@@ -467,7 +468,7 @@ func TestSessionCollabDeliveryTextReadReceiptSenderConsistent(t *testing.T) {
 }
 
 // 任务 1058：发件人已在正文里声明「本条为通知，无需回信」的系统发件方
-//（如意见箱 feedback_inbox 通知），模板不得再按「无 ReplyTo + 有 From」的
+// （如意见箱 feedback_inbox 通知），模板不得再按「无 ReplyTo + 有 From」的
 // 普通回退逻辑给它拼一条「回信到 contact_id=...」——那是自相矛盾：正文说不
 // 用回信，脚注却给了一个回信地址，收信方按地址回信才发现根本没人接（20261022
 // 意见箱线实测：地址 sc_feedback_inbox 从不在通讯录，talk_to_session 报
@@ -496,5 +497,117 @@ func TestDeliveryTextOneWayNoticeOverridesReplyFallback(t *testing.T) {
 	}, 0)
 	if !strings.Contains(ordinary, "回信到 contact_id=sc_main") {
 		t.Fatalf("an ordinary registered sender must keep the reply fallback: %s", ordinary)
+	}
+}
+
+// ── tl1566：群聊投递注入头（与 internal/agent/drain_inbox_tool_test.go 镜像）──
+
+// tl1566 同形状 token 钉——与 internal/agent/drain_inbox_tool_test.go 的
+// channelGuidanceTokens 镜像：两面（sessionCollabDeliveryText /
+// drainInboxRenderText）共用同一清单防漂移，改动必须两边同步。
+var channelGuidanceTokens = []string{
+	"[跨会话消息·群聊]",
+	"群聊：调研组",
+	"channel_send",
+	"回复方式：完成后用 channel_send 工具把回信发到群聊 调研组",
+	"@ 其 contact_id",
+	"效果要求",
+	"附件引用",
+	"投递编号：chf_",
+}
+
+// tl1566 验收1（desktop pump 面）：群聊 fan-out 件的注入文本必须带群聊来源 +
+// channel_send 回群聊引导 + 效果层尾注；严禁出现 talk_to_session 引导（G2
+// 回信引导指向错误的负钉——20261112 用户实测 15:16 AI 被引回对话正是此面）。
+func TestSessionCollabDeliveryTextChannelFanoutGuidesChannelReply(t *testing.T) {
+	text := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID:      "chf_fffd34282aaa2d73",
+		From:    "human:local",
+		To:      "sc_worker",
+		Body:    "帮我确认下构建状态",
+		Channel: "调研组",
+	}, 0)
+	for _, tok := range channelGuidanceTokens {
+		if !strings.Contains(text, tok) {
+			t.Fatalf("channel fan-out text must carry %q:\n%s", tok, text)
+		}
+	}
+	if strings.Contains(text, "回复方式：完成后用 talk_to_session") {
+		t.Fatalf("a group copy must NOT steer the reply into a private talk_to_session exchange:\n%s", text)
+	}
+	if strings.Contains(text, "会话线程") {
+		t.Fatalf("a fan-out id is not a thread — must be labeled 投递编号:\n%s", text)
+	}
+
+	// RequireReply 防御位：fan-out 件今天不带该戳，但一旦带上必须照常渲染
+	// 索回信要求（与直接件同句式）。
+	demanded := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID: "chf_d", From: "sc_peer", To: "sc_worker", Body: "b",
+		Channel: "调研组", RequireReply: true,
+	}, 0)
+	if !strings.Contains(demanded, "require_reply") {
+		t.Fatalf("a demanded channel reply must keep the require_reply line:\n%s", demanded)
+	}
+}
+
+// tl1566 验收1 负钉（desktop pump 面）：直接跨会话消息形态逐字节不变——头部
+// 标签、threadId 行、talk_to_session 回信引导全部保持原字节。
+func TestSessionCollabDeliveryTextDirectMailBytesUnchanged(t *testing.T) {
+	text := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID:      "msg_1",
+		From:    "sc_alice",
+		To:      "sc_bob",
+		ReplyTo: "sc_alice",
+		Body:    "please review",
+	}, 0)
+	want := "[跨会话消息] 来自 contact_id=sc_alice → 发至 contact_id=sc_bob\n" +
+		"\nplease review\n\n---\n" +
+		"会话线程：threadId=msg_1\n" +
+		"回复方式：完成后用 talk_to_session 回信到 contact_id=sc_alice，hop 传 1，并把 thread_id 设为 msg_1" +
+		"（发起方可能正在同步等待；hop 由系统按 thread 派生核对，自报值无效）。"
+	if text != want {
+		t.Fatalf("direct-mail delivery bytes are frozen (tl1566 negative pin):\ngot:  %q\nwant: %q", text, want)
+	}
+}
+
+// tl1566 验收3（机制级端到端，desktop 面）：群聊 Publish → DrainFanout 落箱 →
+// pump 渲染面 sessionCollabDeliveryText 读出的注入文本带群聊地址与
+// channel_send 回信引导。回信侧落库（chm_）由 collabchannel 包自测承载。
+func TestSessionCollabChannelFanoutDeliveryTextEndToEnd(t *testing.T) {
+	mailDir := filepath.Join(t.TempDir(), "mail")
+	store, err := collabchannel.Open(mailDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateChannel("调研组", "", 0, "sc_me"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Publish("调研组", "human:local", "帮我确认下构建状态"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DrainFanout(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+
+	pending, err := sessioncollab.NewMailStore(mailDir).Peek("sc_me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 {
+		t.Fatalf("want exactly one fanned-out copy in the mailbox, got %d", len(pending))
+	}
+	msg := pending[0]
+	if msg.From != "human:local" || !strings.HasPrefix(msg.ID, "chf_") || msg.Channel != "调研组" {
+		t.Fatalf("fan-out provenance missing: id=%s from=%s channel=%q", msg.ID, msg.From, msg.Channel)
+	}
+	text := sessionCollabDeliveryText(msg, msg.Hop)
+	for _, tok := range channelGuidanceTokens {
+		if !strings.Contains(text, tok) {
+			t.Fatalf("injected fan-out text must carry %q:\n%s", tok, text)
+		}
+	}
+	if strings.Contains(text, "回复方式：完成后用 talk_to_session") {
+		t.Fatalf("injected fan-out text must not steer into a private reply:\n%s", text)
 	}
 }

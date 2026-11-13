@@ -142,6 +142,37 @@ console.log("\ntask811 collab fold unify");
   ok(collabAsImSource(`${"[跨会话消息]"} 来自 contact_id=only-one-side`) === null, "758 回归: 残缺 header 仍不卡片化");
 }
 
+// ── A2. tl1566 标记族：群聊子类型头形照样卡片化 ───────────────────────────
+{
+  // 真实渲染形（sessionCollabDeliveryText / drainInboxRenderText 群聊分支）：
+  // 标记族子类型标签 + 群聊名前置 + 标准 contact_id 头。卡片判定按族前缀
+  // 匹配——群聊投递与直发同一卡片，不再裸全文分裂。
+  const CHANNEL_SAMPLE = [
+    `${"[跨会话消息·群聊]"} 群聊：调研组，来自 contact_id=human:local → 发至 contact_id=${TO_ID}`,
+    "",
+    "帮我确认下构建状态",
+    "",
+    "---",
+    "投递编号：chf_fffd34282aaa2d73",
+    "回复方式：完成后用 channel_send 工具把回信发到群聊 调研组（回信落在该频道历史里，成员可见；不要用 talk_to_session 回到发件人个人对话——那是私聊通道，群聊里看不到）。如需确保发件人收到投递，可在回信开头 @ 其 contact_id（群聊按 @ 路由投递）。",
+    "效果要求：完成工作后请把简短结论发回群聊；内容较多时写成文档、将文档路径或附件引用发到群聊，不要只把结论留在本会话里。",
+  ].join("\n");
+  const channel = collabAsImSource(CHANNEL_SAMPLE);
+  ok(channel !== null && channel.sender === "human:local" && channel.chat === TO_ID, "tl1566 群聊头形 sender/chat 解析干净");
+  ok(channel !== null && channel.text.startsWith("帮我确认下构建状态"), "tl1566 群聊多行正文从首行开始");
+  ok(channel !== null && channel.sentAt === undefined, "tl1566 群聊无时间尾时 sentAt 缺省（退回无时间，不误渲染）");
+
+  // 单行 preview 形态：群聊名前缀在 header 前段，不得漏进正文；时间尾剥净。
+  const CHANNEL_PREVIEW = `${"[跨会话消息·群聊]"} 群聊：调研组，来自 contact_id=human:local → 发至 contact_id=${TO_ID}，发送于 2026-11-13T09:30:00+08:00 Thu`;
+  const channelPreview = collabAsImSource(CHANNEL_PREVIEW);
+  ok(channelPreview !== null && channelPreview.chat === TO_ID, "tl1566 群聊单行 preview: chat 干净");
+  ok(channelPreview !== null && channelPreview.text === "", "tl1566 群聊单行 preview: 时间尾剥净正文为空（群聊名不漏进正文）");
+  ok(channelPreview !== null && (channelPreview.sentAt ?? 0) > 0, "tl1566 群聊单行 preview: 发送时刻解析出 epoch");
+
+  // 标记族负钉：截断粘贴无闭括号不算投递形态。
+  ok(collabAsImSource(`${"[跨会话消息"} 来自 contact_id=x → 发至 contact_id=y`) === null, "tl1566 负钉: 无闭括号的截断标记不卡片化");
+}
+
 // ── B/C 需要的公共装置 ─────────────────────────────────────────────────────
 async function installDom() {
   const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {

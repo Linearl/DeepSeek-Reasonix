@@ -246,3 +246,12 @@ func snapshotDir(t *testing.T, dir string) map[string]string {
 	}
 	return out
 }
+
+// tl1566: the channel subtype tag [跨会话消息·群聊] rides the same marker
+// family — a channel fan-out injection is regenerable machinery, not user
+// inspiration, and must never surface as an unfiled gap.
+func TestIsSystemPromptChannelSubtypeTag(t *testing.T) {
+	if !IsSystemPrompt("[跨会话消息·群聊] 来自群聊 调研组，发件人 contact_id=human:local → 发至 contact_id=sc_me\n帮我确认下构建状态") {
+		t.Fatal("a channel fan-out injection must be classified as a system prompt")
+	}
+}

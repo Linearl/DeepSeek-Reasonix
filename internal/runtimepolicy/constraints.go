@@ -299,31 +299,43 @@ func StripQuotedConstraints(raw string) string {
 }
 
 // stripCollabEnvelope removes cross-session delivery blocks (task 220 M1).
-// A block starts at the [跨会话消息] marker. The real renderer
-// (sessionCollabDeliveryText) puts the body AFTER a blank line and closes it
-// with a "\n\n---\n" separator followed by the identifying trailer lines
-// (会话线程 / 关联任务卡片 / 回复方式 / 单向通知) — so the block is stripped
-// structurally: to the end of the trailer line behind the separator. Stopping
-// at the first blank line used to leave the body in place, where a
+// A block starts at the 「[跨会话消息」 marker family — tl1566 added the
+// channel subtype tag 「[跨会话消息·群聊]」 beside the plain 「[跨会话消息]」,
+// so the marker matches by PREFIX and the tag is consumed through its closing
+// bracket. The real renderers (sessionCollabDeliveryText /
+// drainInboxRenderText) put the body AFTER a blank line and close it with a
+// "\n\n---\n" separator followed by the identifying trailer lines (会话线程 /
+// 投递编号 / 关联任务卡片 / 回复方式 / 效果要求 / 单向通知) — so the block is
+// stripped structurally: to the end of the trailer line behind the separator.
+// Stopping at the first blank line used to leave the body in place, where a
 // 「不要修改X」 could still freeze the turn. A block that lost its separator
 // (truncation, manual paste) strips to the next marker or the end of input:
 // the body is data, and over-stripping costs less than a frozen turn.
 func stripCollabEnvelope(s string) string {
-	const marker = "[跨会话消息]"
+	const markerPrefix = "[跨会话消息"
 	for {
-		i := strings.Index(s, marker)
+		i := strings.Index(s, markerPrefix)
 		if i < 0 {
 			return s
 		}
-		rest := s[i+len(marker):]
+		// Consume the tag through its closing bracket so both family members
+		// ([跨会话消息] and [跨会话消息·群聊]) strip identically. A truncated
+		// tag (paste cut mid-header) has no closing bracket — strip from the
+		// prefix onward: over-stripping costs less than a frozen turn.
+		tagLen := len(s) - i
+		if tagEnd := strings.Index(s[i:], "]"); tagEnd >= 0 {
+			tagLen = tagEnd + 1
+		}
+		rest := s[i+tagLen:]
 		end := len(s)
 		if j := strings.Index(rest, "\n\n---\n"); j >= 0 {
 			// Real renderer shape: strip through the WHOLE trailer — the
-			// identifying lines stack (thread id, reply instructions, the
-			// require-reply banner), so the cut lands after the LAST one.
+			// identifying lines stack (thread/delivery id, reply instructions,
+			// the effect tail note, the require-reply banner), so the cut
+			// lands after the LAST one.
 			trailer := rest[j:]
 			cut := 0
-			for _, tail := range []string{"会话线程：threadId=", "关联任务卡片：", "回复方式：", "这是一条单向通知：", "⚠ 发件人要求回信"} {
+			for _, tail := range []string{"会话线程：threadId=", "投递编号：", "关联任务卡片：", "回复方式：", "效果要求：", "这是一条单向通知：", "⚠ 发件人要求回信"} {
 				if k := strings.Index(trailer, tail); k >= 0 {
 					endOfLine := k + len(tail)
 					if lineEnd := strings.Index(trailer[k:], "\n"); lineEnd >= 0 {
@@ -337,9 +349,9 @@ func stripCollabEnvelope(s string) string {
 			if cut == 0 {
 				cut = len(trailer)
 			}
-			end = i + len(marker) + j + cut
-		} else if next := strings.Index(rest, marker); next >= 0 {
-			end = i + len(marker) + next
+			end = i + tagLen + j + cut
+		} else if next := strings.Index(rest, markerPrefix); next >= 0 {
+			end = i + tagLen + next
 		}
 		s = s[:i] + s[end:]
 	}

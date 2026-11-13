@@ -2233,8 +2233,10 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	// Task 202: engine-written status stream. The turn bookkeeping (start,
 	// end, received cross-session messages) costs the model nothing and keeps
 	// the batch's progress file honest even when no one writes it by hand.
+	// tl1566: matched by prefix so the channel subtype tag
+	// [跨会话消息·群聊] reports the received event too.
 	a.collabStatusEvent(CollabStatusTurnStart, summarizeCollabStatusInput(input), false)
-	if strings.Contains(input, "[跨会话消息]") {
+	if strings.Contains(input, "[跨会话消息") {
 		a.collabStatusEvent(CollabStatusReceived, "cross-session message injected into this turn", false)
 	}
 	defer func() {
