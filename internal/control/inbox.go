@@ -973,11 +973,30 @@ func (c *Controller) TrySubmitInboxItem(id string) (sessioninbox.InboxReceipt, e
 		}
 		return c.receiptForAdmissionResult(id, st, result), nil
 	}
+	// tl1563 已读推进（口径：进入上下文 且 回合运行中）：turnStarted 意味着
+	// 条目已成为本回合的开工上下文且回合开始运行 —— 群聊 fan-out 行在此刻
+	// 推进 read_at。被拒分支（上方回退 queued）消息未进入上下文，不推进。
+	// Best-effort：推进失败不影响本轮。折叠件（task 309 × 221）一并推进。
+	advanceChannelReadOnConsume(meta.CollabMailTo, append([]string{meta.CollabMsgID}, foldedReceiptIDs(meta)...))
 	return sessioninbox.InboxReceipt{
 		ItemID:      id,
 		Disposition: sessioninbox.DispositionStarted,
 		Capacity:    st.Snapshot().Capacity,
 	}, nil
+}
+
+// foldedReceiptIDs lists the delivery ids of the original mails folded into
+// one inbox item by a merge (task 309 × 221): consuming the merged body
+// advances every folded original, not just the first mail.
+func foldedReceiptIDs(meta sessioninbox.InboxItemMeta) []string {
+	if len(meta.FoldedReceipts) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(meta.FoldedReceipts))
+	for _, ref := range meta.FoldedReceipts {
+		ids = append(ids, ref.MsgID)
+	}
+	return ids
 }
 
 func (c *Controller) receiptForAdmissionResult(id string, st *sessioninbox.Store, result admissionResult) sessioninbox.InboxReceipt {

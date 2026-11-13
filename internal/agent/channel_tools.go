@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -40,6 +41,29 @@ func channelStore(cfg SessionCollabConfig) (*collabchannel.Store, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+// advanceChannelReadOnDrain is the tl1563 consume-side read advance for
+// drain_inbox (口径：进入上下文 且 回合运行中 — a tool call only runs inside
+// a turn, so consuming mail into the tool result IS "in context while the
+// member's turn is running"). Best-effort by contract: failures are logged
+// and never fail the drain, mirroring the task 309 SendReadReceipt calls
+// beside which it runs. deliveryIDs are mailbox ids (fanout chf_ ids for
+// channel fan-out copies); direct-session mail ids match no fanout row and
+// move zero rows, so callers may pass every taken id without pre-filtering.
+func advanceChannelReadOnDrain(mailDir, member string, deliveryIDs []string) {
+	if strings.TrimSpace(member) == "" || len(deliveryIDs) == 0 {
+		return
+	}
+	store, err := collabchannel.Open(mailDir)
+	if err != nil {
+		log.Printf("[session-collab] channel read advance: open store: %v", err)
+		return
+	}
+	defer store.Close()
+	if _, err := store.MarkReadByDelivery(member, deliveryIDs); err != nil {
+		log.Printf("[session-collab] channel read advance: mark read for %s: %v", member, err)
+	}
 }
 
 // ── channel_list (查看频道) ────────────────────────────────────────────────

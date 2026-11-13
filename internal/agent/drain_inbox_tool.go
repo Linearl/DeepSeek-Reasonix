@@ -271,6 +271,18 @@ func drainInboxFromSessionInbox(sessionPath, sourceFilter string, settle bool, l
 							log.Printf("[session-collab] folded read receipt for %s failed: %v", ref.MsgID, rerr)
 						}
 					}
+					// tl1563: channel fan-out copies queued in the session
+					// inbox advance their fanout read_at on consume (口径：
+					// 进入上下文 且 回合运行中 — a tool call only runs inside
+					// a turn). Delivery ids are the chf_ mailbox ids carried
+					// by the task-309 bookkeeping; folded originals advance
+					// alongside, and non-channel ids match no fanout row.
+					foldedIDs := make([]string, 0, len(item.FoldedReceipts))
+					for _, ref := range item.FoldedReceipts {
+						foldedIDs = append(foldedIDs, ref.MsgID)
+					}
+					advanceChannelReadOnDrain(config.SessionCollabMailDir(),
+						item.CollabMailTo, append([]string{item.CollabMsgID}, foldedIDs...))
 				}
 			}
 		}
@@ -358,6 +370,7 @@ func (t drainInboxTool) Execute(ctx context.Context, args json.RawMessage) (stri
 		}
 		payload.Took = len(taken)
 		payload.Refused = len(refused)
+		channelFanoutIDs := make([]string, 0, len(taken))
 		for _, m := range taken {
 			payload.Messages = append(payload.Messages, drainInboxConvert(m, m.Hop))
 			// Task 309: the mail just entered the recipient's context — the
@@ -367,6 +380,17 @@ func (t drainInboxTool) Execute(ctx context.Context, args json.RawMessage) (stri
 					log.Printf("[session-collab] read receipt for %s failed: %v", m.ID, rerr)
 				}
 			}
+			// tl1563: a channel fan-out copy consumed into context while this
+			// member's turn is running advances the fanout read_at (口径：
+			// 进入上下文 且 回合运行中). Only channel copies carry a fanout
+			// row; direct mail ids match nothing, so pre-filtering on the
+			// group-source stamp keeps the store open off direct-mail drains.
+			if m.Channel != "" {
+				channelFanoutIDs = append(channelFanoutIDs, m.ID)
+			}
+		}
+		if len(channelFanoutIDs) > 0 {
+			advanceChannelReadOnDrain(mailDir, me, channelFanoutIDs)
 		}
 		for _, m := range refused {
 			payload.RefusedMsgs = append(payload.RefusedMsgs, drainInboxConvert(m, m.Hop))
