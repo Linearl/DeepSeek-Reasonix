@@ -3841,19 +3841,21 @@ func (c *Config) InlineSystemPrompt() string {
 func (c *Config) Validate(model string) error {
 	e, ok := c.ResolveModel(model)
 	if !ok {
-		return fmt.Errorf("unknown model %q (configured: %s)", model, c.providerNames())
+		return fmt.Errorf("unknown model %q (configured: %s)", echoedSettingName(model), c.providerNames()) // tl1554 echo clean
 	}
 	if e.Kind == "" {
-		return fmt.Errorf("provider %q: kind is required", model)
+		return fmt.Errorf("provider %q: kind is required", echoedSettingName(model)) // tl1554 echo clean
 	}
 	if e.BaseURL == "" {
-		return fmt.Errorf("provider %q: base_url is required", model)
+		return fmt.Errorf("provider %q: base_url is required", echoedSettingName(model)) // tl1554 echo clean
 	}
 	if strings.TrimSpace(e.APIKeyEnv) != "" && !IsValidCredentialKey(e.APIKeyEnv) {
-		return fmt.Errorf("provider %q: api_key_env %q is invalid; use letters, numbers, and underscores, not a model name", model, e.APIKeyEnv)
+		// tl1554: model name echoed cleaned; api_key_env stays raw — it is
+		// config-file side input, not per-turn model input.
+		return fmt.Errorf("provider %q: api_key_env %q is invalid; use letters, numbers, and underscores, not a model name", echoedSettingName(model), e.APIKeyEnv)
 	}
 	if e.RequiresAPIKey() && e.APIKey() == "" {
-		return fmt.Errorf("provider %q: missing env %s", model, e.APIKeyEnv)
+		return fmt.Errorf("provider %q: missing env %s", echoedSettingName(model), e.APIKeyEnv) // tl1554 echo clean
 	}
 	return nil
 }

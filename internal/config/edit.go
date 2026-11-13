@@ -23,9 +23,25 @@ import (
 	"reasonix/internal/netclient"
 	"reasonix/internal/permission"
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/tool"
 )
 
 var validDesktopExternalOpenerID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// echoedSettingName renders a model-supplied setting name (model id, theme)
+// for %q echo in an error line (tl1554). The config tool is model-invokable,
+// so these echoes land in per-turn tool output: the cleaned form is what the
+// model reads; a polluted name is never confirmed back. Setting names are a
+// name domain — real control bytes and the literal backslash-r escape text
+// are stripped via the shared tool.SanitizeNameToken; a name that cleans to
+// empty falls back to the raw form for the caller's %q render
+// (capabilityQuotedID fallback discipline, tl1553).
+func echoedSettingName(name string) string {
+	if cleaned, _ := tool.SanitizeNameToken(name); cleaned != "" {
+		return cleaned
+	}
+	return name
+}
 
 // edit.go is the programmatic mutation surface a settings UI drives: change the
 // default model, add/remove a provider, set the planner, edit permission rules,
@@ -64,7 +80,7 @@ func (c *Config) SetDefaultModel(name string) error {
 		return fmt.Errorf("set default: empty name")
 	}
 	if _, ok := c.ResolveModel(name); !ok && protocol.PluginRefOwner(name) == "" {
-		return fmt.Errorf("set default: no such model %q (configured: %s)", name, c.providerNames())
+		return fmt.Errorf("set default: no such model %q (configured: %s)", echoedSettingName(name), c.providerNames()) // tl1554 echo clean
 	}
 	c.DefaultModel = name
 	return nil
@@ -99,10 +115,10 @@ func (c *Config) SetVisionModel(name string) error {
 	}
 	entry, ok := c.ResolveModel(name)
 	if !ok {
-		return fmt.Errorf("set vision model: no such model %q (configured: %s)", name, c.providerNames())
+		return fmt.Errorf("set vision model: no such model %q (configured: %s)", echoedSettingName(name), c.providerNames()) // tl1554 echo clean
 	}
 	if NewModelCapabilityResolver().Resolve(entry).State != CapabilitySupported {
-		return fmt.Errorf("set vision model: %q does not support image input", name)
+		return fmt.Errorf("set vision model: %q does not support image input", echoedSettingName(name)) // tl1554 echo clean
 	}
 	if !entry.Configured() {
 		return fmt.Errorf("set vision model: provider %q has no key", entry.Name)
@@ -275,7 +291,7 @@ func (c *Config) SetDesktopAppearance(theme, style string) error {
 	case "", "dark":
 		c.Desktop.Theme = "dark"
 	default:
-		return fmt.Errorf("desktop theme %q: must be auto|dark|light", theme)
+		return fmt.Errorf("desktop theme %q: must be auto|dark|light", echoedSettingName(theme)) // tl1554 echo clean
 	}
 	if strings.TrimSpace(style) == "" {
 		c.Desktop.ThemeStyle = ""
@@ -300,7 +316,7 @@ func (c *Config) SetDesktopTerminalTheme(theme string) error {
 	case "light":
 		c.Desktop.TerminalTheme = "light"
 	default:
-		return fmt.Errorf("desktop terminal theme %q: must be auto|dark|light", theme)
+		return fmt.Errorf("desktop terminal theme %q: must be auto|dark|light", echoedSettingName(theme)) // tl1554 echo clean
 	}
 	return nil
 }
