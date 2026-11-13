@@ -34,8 +34,11 @@ export type CollabImSourceMessage = {
   sentAt?: number;
 };
 
-/** 投递文本 header 的字面前缀（sessionCollabDeliveryText 保证）。 */
-export const COLLAB_MSG_PREFIX = "[跨会话消息]";
+/** 投递文本 header 的字面标记族前缀（sessionCollabDeliveryText /
+ * drainInboxRenderText 保证）：直发为 `[跨会话消息]`，tl1566 群聊投递为子类型
+ * `[跨会话消息·群聊]`。按族前缀匹配、消费到闭括号——新子类型落进同一标记族，
+ * 卡片化判定不再随头部标注扩列而漏判。 */
+export const COLLAB_MSG_PREFIX = "[跨会话消息";
 
 // 任务811: id 捕获停在全角/半角逗号前。866/1553 给 header 尾部加了
 // 「，发送于 <RFC3339 周几>」——它是 header 的时间戳而非正文，而 `，` 不是
@@ -67,7 +70,11 @@ export function collabAsImSource(text: string): CollabImSourceMessage | null {
     ? normalized.slice(STEER_NOTICE_PREFIX.length)
     : normalized;
   if (!withoutNotice.startsWith(COLLAB_MSG_PREFIX)) return null;
-  const rest = withoutNotice.slice(COLLAB_MSG_PREFIX.length);
+  // 标记族前缀（tl1566）：消费到闭括号——`[跨会话消息]` 与子类型
+  // `[跨会话消息·群聊]` 都从这里过。截断粘贴无闭括号时不算投递形态。
+  const bracket = withoutNotice.indexOf("]", COLLAB_MSG_PREFIX.length);
+  if (bracket < 0) return null;
+  const rest = withoutNotice.slice(bracket + 1);
   const newline = rest.indexOf("\n");
   const header = (newline < 0 ? rest : rest.slice(0, newline)).trim();
   const match = COLLAB_HEADER_RE.exec(header);

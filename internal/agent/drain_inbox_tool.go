@@ -45,7 +45,7 @@ func NewDrainInboxTool(cfg SessionCollabConfig) tool.Tool {
 func (drainInboxTool) Name() string { return "drain_inbox" }
 
 func (drainInboxTool) Description() string {
-	return "Pull unread cross-session mail addressed to this session into the tool result and optionally settle it (task 235). settle=true (default) claims and acks the batch — after a successful call InboxStatus.unread drops to zero for those messages. settle=false peeks without advancing the cursor (safe to poll). Reply through talk_to_session using the fromContactId and threadId each message carries; never answer only inside your own transcript. This tool does not start a new turn — it is a pure pull. Registered only when experimental_collab_background_delivery is on (the host pump then skips delivery and this tool is the mailbox's sole consumer — Block2 M-a mutual exclusion). Experimental."
+	return "Pull unread cross-session mail addressed to this session into the tool result and optionally settle it (task 235). settle=true (default) claims and acks the batch — after a successful call InboxStatus.unread drops to zero for those messages. settle=false peeks without advancing the cursor (safe to poll). Reply through talk_to_session using the fromContactId and threadId each message carries; never answer only inside your own transcript. tl1566: a message fanned out from a chat channel (head reads [群聊消息] with the channel name) must be answered through channel_send to that channel instead — each message's text carries its own reply contract; follow it. This tool does not start a new turn — it is a pure pull. Registered only when experimental_collab_background_delivery is on (the host pump then skips delivery and this tool is the mailbox's sole consumer — Block2 M-a mutual exclusion). Experimental."
 }
 
 func (drainInboxTool) Schema() json.RawMessage {
@@ -90,7 +90,28 @@ type drainInboxPayload struct {
 // desktop package dependency.
 func drainInboxRenderText(msg sessioncollab.MailMessage, effectiveHop int) string {
 	var b strings.Builder
-	b.WriteString("[跨会话消息]")
+	// tl1566: mirror of desktop/session_collab.go sessionCollabDeliveryText —
+	// a channel fan-out copy (task 349 note① group-source stamp) must not be
+	// indistinguishable from a direct send: the old head read 「[跨会话消息]
+	// 来自 contact_id=human:local」 for a group delivery and the trailer
+	// steered the reply into a private talk_to_session exchange while the
+	// group waited (20261112 用户实测 15:16). The subtype tag keeps the
+	// 「跨会话消息」 marker family intact ON PURPOSE (stripCollabEnvelope /
+	// collab status / unfiled classification / the frontend transcript-card
+	// detector key off that prefix). Update both faces together — the
+	// negative-pin tests freeze the direct-mail bytes on both sides.
+	if msg.Channel != "" {
+		// Mirror of desktop/session_collab.go: the channel name rides BEFORE
+		// the standard contact_id header so the transcript card parser
+		// (frontend collabMessage.ts COLLAB_HEADER_RE) keeps parsing channel
+		// copies without a second header shape.
+		b.WriteString("[跨会话消息·群聊] 群聊：")
+		b.WriteString(msg.Channel)
+		b.WriteString("，来自 contact_id=")
+	} else {
+		b.WriteString("[跨会话消息]")
+		b.WriteString(" 来自 contact_id=")
+	}
 	fromLabel := msg.From
 	if fromLabel == "" {
 		fromLabel = "(未登记)"
@@ -99,7 +120,6 @@ func drainInboxRenderText(msg sessioncollab.MailMessage, effectiveHop int) strin
 	if toLabel == "" {
 		toLabel = "(未知)"
 	}
-	b.WriteString(" 来自 contact_id=")
 	b.WriteString(fromLabel)
 	b.WriteString(" → 发至 contact_id=")
 	b.WriteString(toLabel)
@@ -122,9 +142,29 @@ func drainInboxRenderText(msg sessioncollab.MailMessage, effectiveHop int) strin
 		b.WriteString("关联任务卡片：" + msg.CardID + "\n")
 	}
 	if msg.ID != "" {
-		b.WriteString("会话线程：threadId=" + msg.ID + "\n")
+		// tl1566: mirror of desktop/session_collab.go — a fan-out id (chf_…)
+		// is a mailbox delivery id, not a talk_to_session thread; labeling it
+		// 「会话线程」 invited a thread_id on a reply that must go through
+		// channel_send (no thread parameter). Direct mail keeps threadId.
+		if msg.Channel != "" {
+			b.WriteString("投递编号：" + msg.ID + "\n")
+		} else {
+			b.WriteString("会话线程：threadId=" + msg.ID + "\n")
+		}
 	}
-	if msg.ReplyTo != "" {
+	// tl1566: mirror of desktop/session_collab.go — channel provenance changes
+	// the reply contract: back to the channel via channel_send, never into a
+	// private talk_to_session exchange. This branch stays FIRST so a channel
+	// copy can never fall through to the direct-mail guidance below.
+	if msg.Channel != "" {
+		b.WriteString("回复方式：完成后用 channel_send 工具把回信发到群聊 " + msg.Channel +
+			"（回信落在该频道历史里，成员可见；不要用 talk_to_session 回到发件人个人对话——那是私聊通道，群聊里看不到）。" +
+			"如需确保发件人收到投递，可在回信开头 @ 其 contact_id（群聊按 @ 路由投递）。")
+		b.WriteString("\n效果要求：完成工作后请把简短结论发回群聊；内容较多时写成文档、将文档路径或附件引用发到群聊，不要只把结论留在本会话里。")
+		if msg.RequireReply {
+			b.WriteString("\n⚠ 发件人要求回信（require_reply）：完成本信的工作后，必须按上面的回复方式回信；无法完成也请回信说明，不要只在本会话里写下结论。")
+		}
+	} else if msg.ReplyTo != "" {
 		b.WriteString("回复方式：完成后用 talk_to_session 回信到 contact_id=" + msg.ReplyTo +
 			"，hop 传 " + strconv.Itoa(effectiveHop+1))
 		if msg.ID != "" {
