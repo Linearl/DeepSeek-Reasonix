@@ -199,7 +199,11 @@
 :root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn:hover:not(.topicbar__chrome-btn--blocked),
 :root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn:focus-visible:not(.topicbar__chrome-btn--blocked) {
   border-color: transparent;
-  background: transparent;
+  /* tl1575（tl1558 B0）：抹平链原样把 hover 背景也压成 transparent——沉浸式
+     隐形 chrome 的静止态保留，但悬停必须有可见反馈，否则隐形钮不可发现
+     （tl1558 实锤例）。按报告建议「在其下保留可见底色」：静止透明、悬停
+     现形（--button-bg），icon-btn 同链同待遇。 */
+  background: var(--button-bg);
 }
 
 .sidebar--workbench .sidebar__head,

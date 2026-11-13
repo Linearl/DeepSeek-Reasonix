@@ -30,6 +30,8 @@
 .provider-connections .provider-editor { border: 0; padding-inline: 0; box-shadow: none; }
 .connection-title { display: inline-flex; align-items: center; gap: 8px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .connection-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* tl1575（tl1558 B2-19）：连接改名触发钮补 hover（focus 有 hover 无）。 */
+.connection-title:hover { background: var(--bg-soft); border-radius: 8px; }
 .connection-title svg { flex-shrink: 0; color: var(--fg-faint); }
 .connection-title-editor { min-width: 0; max-width: 100%; }
 .connection-title-editor__row { display: flex; align-items: center; gap: 6px; }

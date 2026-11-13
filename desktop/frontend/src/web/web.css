@@ -122,6 +122,37 @@ button {
 	border-radius: var(--w-radius);
 }
 
+/* tl1575（tl1558 B1-2）：web 壳此前全文件零 :hover 规则——可点元素统一补
+   最小悬停反馈。自持 --w-* token（不引桌面主题体系，壳独立原则见文件头）；
+   主色/危险底色钮向自身色板提亮，中性行钮走 --w-panel-2。 */
+.web-icon-btn:hover {
+	background: var(--w-panel-2);
+}
+
+.web-new-btn:hover {
+	background: color-mix(in srgb, var(--w-panel-2) 80%, var(--w-fg));
+	border-color: var(--w-muted);
+}
+
+.web-sidebar li button:not(.active):hover {
+	background: var(--w-panel-2);
+}
+
+.web-token-gate button:hover,
+.web-composer button:not(:disabled):hover {
+	background: color-mix(in srgb, var(--w-accent) 85%, var(--w-on-accent));
+}
+
+.web-composer .web-stop:not(:disabled):hover {
+	background: color-mix(in srgb, var(--w-danger) 85%, var(--w-on-accent));
+}
+
+.web-banner button:hover,
+.web-pending button:hover {
+	background: var(--w-panel);
+	color: var(--w-fg);
+}
+
 .web-turn-dot {
 	width: 9px;
 	height: 9px;
