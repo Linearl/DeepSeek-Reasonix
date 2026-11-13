@@ -69,7 +69,7 @@ import type { ControllerLiveStore } from "../lib/useController";
 import { clearLayoutSize, loadOptionalLayoutSize, saveLayoutSize } from "../lib/layoutPreferences";
 import { createRafResizeUpdater } from "../lib/resizeDrag";
 import { observeComposerMenuViewport } from "../lib/composerMenuViewport";
-import { resolveComposerContentSizing } from "../lib/composerSizing";
+import { composerReservedHeight, resolveComposerContentSizing } from "../lib/composerSizing";
 import { useToast } from "../lib/toast";
 import { readStatusLabel, turnPhaseStatusLabel } from "../lib/readStatus";
 import { turnTallyLabel } from "../lib/turnToolTally";
@@ -1134,6 +1134,11 @@ export function Composer({
   // offsetHeight 判定并挂 .composer-meta--tworow（第二行右对齐）；只驱动自由空隙
   // 分配，不回改条目宽度，无振荡面。
   const [metaTworow, setMetaTworow] = useState(false);
+  // tl1578 修③：meta 行实测超出名义高度的增量（0=jsdom/尚未实测）。与
+  // metaTworow 同一条实测链产出（measureTextareaAutoHeight 内、scrollHeight
+  // 早退之前持久化），经 lib/composerSizing.composerReservedHeight 喂给卡片
+  // 高度写手（effectiveComposerHeight）——与输入测量共用单一预留源。
+  const [composerMetaExtraHeight, setComposerMetaExtraHeight] = useState(0);
   // tl1508 修②：「⋯ 工具」二级菜单开合（窄折叠的展开层）。tl1508b 修①：状态行
   // 折叠/展开改持久化偏好（useComposerRunStripExpanded，localStorage 单键惰性
   // 水合），刷新/重开保持用户选择；组件不再持有本地 useState。
@@ -4381,6 +4386,12 @@ export function Composer({
   }, []);
 
   const measureTextareaAutoHeight = useCallback(() => {
+    // tl1578 修③：meta 实测增量先于 scrollHeight 早退持久化——卡片高度写手
+    // （effectiveComposerHeight，render 侧）经 composerReservedHeight 与本测量
+    // 共用同一预留值；jsdom（scrollHeight 恒 0）早退也不丢卡高修正。
+    const metaHeight = composerMetaRef.current?.offsetHeight ?? 0;
+    const metaExtraHeight = metaHeight > 0 ? Math.max(0, metaHeight - COMPOSER_META_NOMINAL_HEIGHT) : 0;
+    setComposerMetaExtraHeight((current) => (current === metaExtraHeight ? current : metaExtraHeight));
     const richHeight = invocationsRef.current.length > 0 ? richInputRef.current?.scrollHeight() : 0;
     const scrollHeight = richHeight || measureTaRef.current?.scrollHeight || 0;
     if (!scrollHeight) return;
@@ -4389,10 +4400,7 @@ export function Composer({
     // 里扣掉，textarea 高度约束随实测收紧、overflow 翻 auto 内滚，文字不再越过
     // 分割线压到按钮区（tl1333 只治了命中序，本修治几何根因）。jsdom 里
     // offsetHeight 恒 0 → 回退原常量，既有测量读数逐字节不变。
-    const metaHeight = composerMetaRef.current?.offsetHeight ?? 0;
-    const reservedHeight = metaHeight > 0
-      ? COMPOSER_AUTO_RESERVED_HEIGHT + Math.max(0, metaHeight - COMPOSER_META_NOMINAL_HEIGHT)
-      : COMPOSER_AUTO_RESERVED_HEIGHT;
+    const reservedHeight = composerReservedHeight(COMPOSER_AUTO_RESERVED_HEIGHT, metaExtraHeight);
     const sizing = resolveComposerContentSizing({
       contentHeight: scrollHeight,
       manualLogicalHeight: composerHeight,
@@ -5192,7 +5200,9 @@ export function Composer({
         contentHeight: textareaAutoHeight ?? 0,
         manualLogicalHeight: composerHeight,
         maxLogicalHeight: composerMaxHeight(),
-        reservedHeight: COMPOSER_AUTO_RESERVED_HEIGHT,
+        // tl1578 修③：与输入测量共用 meta 感知预留（此前裸 58，meta 折行时
+        // 卡高比内容矮、卡底内容下溢盖状态栏）。
+        reservedHeight: composerReservedHeight(COMPOSER_AUTO_RESERVED_HEIGHT, composerMetaExtraHeight),
       }).logicalHeight;
   const composerCardStyle = effectiveComposerHeight === null
     ? undefined
@@ -5212,7 +5222,7 @@ export function Composer({
   // height; the card modifier restores a thin scrollbar for exactly that
   // state so long drafts expose their scrollability (#8494/#8742/#9019).
   const composerAutoOverflow = composerHeight === null && textareaAutoOverflow;
-  const composerResizeValue = effectiveComposerHeight ?? clampComposerHeight((textareaAutoHeight ?? 0) + COMPOSER_AUTO_RESERVED_HEIGHT);
+  const composerResizeValue = effectiveComposerHeight ?? clampComposerHeight((textareaAutoHeight ?? 0) + composerReservedHeight(COMPOSER_AUTO_RESERVED_HEIGHT, composerMetaExtraHeight));
   void onSetMode;
   const chooseApprovalMode = (nextMode: ToolApprovalMode) => {
     onSetToolApprovalMode(nextMode);

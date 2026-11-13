@@ -98,6 +98,14 @@
   background: color-mix(in srgb, var(--fg-faint) 10%, transparent);
 }
 
+/* tl1575（tl1558 B1-4）：--pressed 死类补样式——AppChrome 挂类而全 CSS 零
+   定义。按压反馈比 hover 深一档（14%），blocked 仍由下方规则压制。 */
+.app-chrome__panel-toggle--pressed:not(.app-chrome__panel-toggle--blocked) {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg-faint) 14%, transparent);
+  opacity: 1;
+}
+
 .app-chrome__panel-toggle--blocked,
 .app-chrome__panel-toggle--blocked:hover {
   color: var(--fg-faint);

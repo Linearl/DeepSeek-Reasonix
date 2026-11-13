@@ -677,17 +677,29 @@ for (const selector of [
   );
 }
 
+// tl1575（tl1558 B0 实锤例决策更新）：静止态仍钉全透明（沉浸式隐形 chrome
+// 保留）；hover/focus-visible 由 tl1558 报告定案改为保留可见底色（--button-bg，
+// 与右栏 .app__dock-toggle 角标同 token）——隐形钮悬停必须现形，否则不可
+// 发现。原钉「hover 也透明」随该决策翻转（mode-workbench.css 抹平链注释同源）。
 for (const selector of [
   ":root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__icon-btn",
   ":root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn",
+]) {
+  ok(
+    finalDeclaration(selector, "background") === "transparent",
+    `${selector} stays fully transparent at rest in workbench mode (immersive chrome kept)`,
+  );
+}
+
+for (const selector of [
   ":root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__icon-btn:hover",
   ":root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__icon-btn:focus-visible",
   ":root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn:hover:not(.topicbar__chrome-btn--blocked)",
   ":root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn:focus-visible:not(.topicbar__chrome-btn--blocked)",
 ]) {
   ok(
-    finalDeclaration(selector, "background") === "transparent",
-    `${selector} does not paint a hover block in workbench mode`,
+    finalDeclaration(selector, "background") === "var(--button-bg)",
+    `${selector} paints the visible --button-bg hover in workbench mode (tl1558 B0: invisible buttons must reveal on hover)`,
   );
 }
 
