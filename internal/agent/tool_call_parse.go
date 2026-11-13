@@ -13,6 +13,18 @@ import (
 // parseToolCall resolves the canonical tool, rejects ambiguity/unknown tools,
 // and applies repeat-success and stale-anchor guards.
 func (a *Agent) parseToolCall(ctx context.Context, turn *turnRuntime, plan *toolCallPlan) (toolOutcome, bool) {
+	// tl1554: heal the model-generated tool name before resolution — the
+	// direct-call counterpart of the capability_id heal (task 975). A name
+	// carrying control characters (bare CR bytes or the literal `\r` escape
+	// text) would miss the registry and echo itself back in "unknown tool
+	// %q", confirming the polluted form for the retry. Names are a name
+	// domain: embedded control characters are never legitimate, so the heal
+	// has no false-positive surface. A name that cleans to empty is left
+	// alone — it stays unknown, and the echo falls back to the escaped render
+	// (same discipline as capabilityQuotedID, tl1553).
+	if cleaned, stripped := tool.SanitizeNameToken(plan.call.Name); stripped && cleaned != "" {
+		plan.call.Name = cleaned
+	}
 	t, canonicalName, ambiguous := a.svc.tools.ResolveCall(plan.call.Name)
 	if len(ambiguous) > 0 {
 		msg := fmt.Sprintf("ambiguous MCP tool reference %q; use one of: %s", plan.call.Name, strings.Join(ambiguous, ", "))
