@@ -96,6 +96,9 @@ type LabBulkSkip struct {
 var labBulkSetters = map[string]func(*Config, bool) error{
 	// ── automation ──
 	"sessionCollab": func(c *Config, on bool) error { return c.SetExperimentalSessionCollab(on) },
+	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：subagentPolicy 自
+	// unstable 升 optional 后进入批量范围——布尔主开关，有现成 setter，随批量面。
+	"subagentPolicy": func(c *Config, on bool) error { return c.SetExperimentalSubagentPolicy(on) },
 	// optimistic_parallel：master = sandbox.optimistic_write。桌面单项 toggle
 	// 会尝试 rebuild；批量走 config-only（重启选项兜底），字段直写。
 	"optimisticParallel": func(c *Config, on bool) error { c.Sandbox.OptimisticWrite = on; return nil },
@@ -136,6 +139,9 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// tl 1165：流式滚动平滑跟随（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
 	"smoothScrollFollow": func(c *Config, on bool) error { return c.SetExperimentalSmoothScrollFollow(on) },
 	"draftRewrite":       func(c *Config, on bool) error { return c.SetExperimentalDraftRewrite(on) },
+	// tl1265：editResend（tl1544 入表时漏登记，本轮随批量卫生门禁补齐）——
+	// 布尔主开关有现成 setter，随批量面（预存红修复）。
+	"editResend": func(c *Config, on bool) error { return c.SetExperimentalEditResend(on) },
 	// tl 1132：启动遮罩（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
 	"startupSplash": func(c *Config, on bool) error { return c.SetExperimentalStartupSplash(on) },
 	// 任务 1056：网络重试预算分级（[network.retry_budget] 总开关；family 子键
@@ -167,6 +173,9 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"runtimeReuse":        func(c *Config, on bool) error { return c.SetExperimentalRuntimeReuse(on) },
 	"orphanHandling":      func(c *Config, on bool) error { return c.SetExperimentalOrphanHandling(on) },
 	"heartbeatBackground": func(c *Config, on bool) error { return c.SetExperimentalHeartbeatBackground(on) },
+	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：localServer 自
+	// unstable 升 optional 后进入批量范围——布尔主开关，有现成 setter，随批量面。
+	"localServer": func(c *Config, on bool) error { return c.SetExperimentalLocalServer(on) },
 	// tl-1174：冷会话转录 zstd 归档（可选档，默认关）。批量开=允许空闲 sweep
 	// 开始压冷会话——无损可逆（解压即逐字节还原）且 sweep 每 pass 限流，随
 	// 批量面无护栏冲突。

@@ -82,7 +82,9 @@ var labFeatureTiers = []labFeatureTier{
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
 	// 任务 722：三个细粒度子开关（条件渲染，nil=跟随总开关不落盘）同归本卡。
 	{"safetyCostControl", LabTierOptional, []string{"experimental_safety_cost_control", "safety_idle_terminate", "safety_loop_streak_note", "safety_event_wait_recheck", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
-	{"subagentPolicy", LabTierUnstable, []string{"experimental_subagent_policy"}},
+	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选——
+	// 四采样点 ≥21 天持续开启零报障，子代理族 4 件报障均非本开关语义（前端同步）。
+	{"subagentPolicy", LabTierOptional, []string{"experimental_subagent_policy"}},
 	// ── memory-context（记忆/上下文，1 项；tl1193b 增 pinnedIndex）──────
 	// tl-1193b：pinned 常驻层索引化（plan E，环境变量通道退役后落 config 实
 	// 验段+实验室卡）。档位=未稳定——开启即换掉常驻层的注入契约（body 退
@@ -162,9 +164,10 @@ var labFeatureTiers = []labFeatureTier{
 	// 启动行为与引入前一致（铁律 2）。
 	{"startupSplash", LabTierOptional, []string{"experimental_startup_splash"}},
 	// 任务 742：心跳任务后台化（默认关）。开启后心跳触发不进标签栏（复用 264
-	// detached 语义，提交成功后 park）；档位按 550 口径可选——不开启不影响
-	// 任何调度行为，只是标签栏照旧出现会话。
-	{"heartbeatBackground", LabTierOptional, []string{"experimental_heartbeat_background"}},
+	// detached 语义，提交成功后 park）；原按 550 口径可选。
+	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐——
+	// 关闭则心跳 tab 常驻堆积，tab 拥挤痛点（tl264）复发，属体验缺口（前端同步）。
+	{"heartbeatBackground", LabTierRecommended, []string{"experimental_heartbeat_background"}},
 	{"todoSidebar", LabTierRecommended, []string{"experimental_todo_sidebar"}},
 	{"promptHistoryPicker", LabTierRecommended, []string{"experimental_prompt_history_picker"}},
 	{"restartUpdate", LabTierRecommended, []string{"experimental_restart_update", "experimental_autonomous_update"}}, // autonomous_update 为 task 254 家族子键
@@ -184,7 +187,9 @@ var labFeatureTiers = []labFeatureTier{
 	// 20261107 八组清单；前端同步）。
 	{"completionSummary", LabTierRecommended, []string{"experimental_completion_summary"}},
 	{"autoLoadOlder", LabTierRecommended, []string{"experimental_auto_load_older"}},
-	{"splitView", LabTierOptional, []string{"experimental_split_view"}},
+	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐——
+	// 分栏是核心视图能力，关闭即能力缺失（recommended 定义），≥21 天零报障（前端同步）。
+	{"splitView", LabTierRecommended, []string{"experimental_split_view"}},
 	// tl1487 三组②：草稿持久化、选区快捷操作可选→推荐（用户 20261107 八组
 	// 清单；前端同步）。
 	{"draftPersistence", LabTierRecommended, []string{"experimental_composer_draft"}},
@@ -193,7 +198,10 @@ var labFeatureTiers = []labFeatureTier{
 	// tl1487 四组：opencodeGoUsage 渲染表条目随「不提供开关、始终打开」移除
 	// （config 键整链退役，存量键走 deprecated 清单）；前端注册表保留
 	// recommended 展示行（783 成员行同 glmPlanUsage 口径，562 ③ feOnly 豁免）。
-	{"feedback", LabTierOptional, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键
+	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐——
+	// 关闭即失去 submit_feedback 工具+意见箱面板，反馈闭环入口缺失；≥21 天零报障
+	// （邻近 1494 属独立键 feedback_nudge，已 verified；前端同步）。
+	{"feedback", LabTierRecommended, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键
 	// 任务 1024：composer 草稿优化（改写按钮）。
 	// tl1487 二组④：可选→推荐（用户 20261107 八组清单；前端同步）。
 	{"draftRewrite", LabTierRecommended, []string{"experimental_draft_rewrite"}},
@@ -238,7 +246,9 @@ var labFeatureTiers = []labFeatureTier{
 	// tl1487 二组①：标签权限指示未稳定→可选（用户 20261107 八组清单；前端同步）。
 	{"tabModeTint", LabTierOptional, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
 	{"orphanHandling", LabTierRecommended, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键；任务 992：随复用池升推荐（用户 1018）
-	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
+	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选——
+	// 四采样点 ≥21 天持续开启零报障，正面使用实例 tl1536（二维码分享；前端同步）。
+	{"localServer", LabTierOptional, []string{"experimental_local_server"}},
 	// ── tool-opt（工具优化，4 项；815 登记窗口：789 证据门宽松转正入表；
 	//    943 族拆两卡：multiEditInjection 独立入表；979 capabilityGroups
 	//    自 labNonFeatureKeys 豁免表转正入表）──

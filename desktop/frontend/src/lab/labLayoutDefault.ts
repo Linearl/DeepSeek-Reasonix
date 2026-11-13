@@ -113,7 +113,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "decisionPatterns", labelKey: "settings.decisionPatterns", tier: "optional" },
             // 任务 742→961：心跳任务后台化——开启后心跳触发不进标签栏（264
             // detached 语义，提交成功后 park）。默认关=现状一致。
-            { id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional" },
+            // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐。
+            { id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "recommended" },
             // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，
             // 117 首落地，本件补设置页入口）。默认关=现状一致。
             { id: "stalledIntentNudge", labelKey: "settings.stalledIntentNudge", tier: "optional" },
@@ -272,7 +273,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           // 性组「运行可观测」卡，704 定位即「可观测性视图」）；灯键随迁出。
           onKeys: ["experimentalSplitView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite", "experimentalEditResend"],
           members: [
-            { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
+            // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐。
+            { id: "splitView", labelKey: "settings.splitView", tier: "recommended" },
             // tl1487 二组②：以下四行可选→推荐（用户 20261107 八组清单；
             // todoSidebar 已是推荐，无动作）。
             { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "recommended" },
@@ -345,7 +347,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 八组清单）。
             { id: "subagentPanel", labelKey: "settings.subagentPanel", tier: "recommended" },
             { id: "subagentDetail", labelKey: "settings.subagentDetail", tier: "recommended" },
-            { id: "subagentPolicy", labelKey: "settings.subagentPolicy", tier: "unstable" },
+            // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选。
+            { id: "subagentPolicy", labelKey: "settings.subagentPolicy", tier: "optional" },
             { id: "subagentTps", labelKey: "settings.subagentTps", tier: "optional" },
           ],
         },
@@ -369,7 +372,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           // 归位回本卡——重启更新放回原位置，工具优化处不再保留。
           onKeys: ["experimentalFeedback", "forkNotice", "experimentalRestartUpdate"],
           members: [
-            { id: "feedback", labelKey: "settings.feedback", tier: "optional" },
+            // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐。
+            { id: "feedback", labelKey: "settings.feedback", tier: "recommended" },
             { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },
           ],
         },
@@ -524,8 +528,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "gcPercent", labelKey: "settings.gcPercent", tier: "recommended" },
             // ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
             { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable" },
-            // 本地服务（原 infra 独立卡，未稳定档）。
-            { id: "localServer", labelKey: "settings.localServer", tier: "unstable" },
+            // 本地服务（原 infra 独立卡；tl1265 第2轮 2026-11-13 拍板：未稳定→可选）。
+            { id: "localServer", labelKey: "settings.localServer", tier: "optional" },
           ],
         },
         // tl134/tl1487 七组③：路径规则整卡移除（过时技术，用户裁决；存档

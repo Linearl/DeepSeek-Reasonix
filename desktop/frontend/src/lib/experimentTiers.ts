@@ -241,7 +241,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 组，档位可选（铁律 2，默认关）。
   stalledIntentNudge: "optional",
   safetyCostControl: "optional",
-  subagentPolicy: "unstable",
+  // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选——
+  // 四采样点 ≥21 天持续开启零报障，子代理族 4 件报障均非本开关语义（已 done）。
+  subagentPolicy: "optional",
   // ── memory-context（记忆/上下文，1 项；tl1193b 增 pinnedIndex）──────
   // tl1193b: pinned 常驻层索引化——boot 快照消费，重启生效。
   // tl1487 八组：未稳定→可选（用户 20261107 八组清单；默认关=铁律 2 不变，
@@ -306,14 +308,19 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   completionSummary: "recommended",
   // tl1487 二组⑥：自动加载可选→推荐（用户 20261107 八组清单）。
   autoLoadOlder: "recommended",
-  splitView: "optional",
+  // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐——
+  // 分栏是核心视图能力，关闭即能力缺失（recommended 定义），≥21 天零报障。
+  splitView: "recommended",
   // tl1487 三组②：草稿持久化、选区快捷操作可选→推荐（用户 20261107 八组
   // 清单；Go 渲染表同步翻）。
   draftPersistence: "recommended",
   selectionActions: "recommended",
   questionSearch: "recommended",
   opencodeGoUsage: "recommended",
-  feedback: "optional",
+  // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐——
+  // 关闭即失去 submit_feedback 工具 + 意见箱面板，反馈闭环入口缺失；
+  // ≥21 天零报障（邻近 1494 属独立键 feedback_nudge，已 verified）。
+  feedback: "recommended",
   // 任务 621：tabModeTint（任务 504 标签模式色调）在 Go labFeatureTiers 一直
   // 有档（unstable），但前端注册表漏收——实验室页渲染却无徽章，621 验收
   // 「每项特性有且仅有一个徽章」不允许。档位镜像 Go 侧。
@@ -362,7 +369,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 992：orphanHandling 随复用池升推荐（用户 1018）——本注册表
   // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
   orphanHandling: "recommended",
-  localServer: "unstable",
+  // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选——
+  // 四采样点 ≥21 天持续开启零报障，正面使用实例 tl1536（二维码分享）。
+  localServer: "optional",
   // ── tool-opt（工具优化，3 项；任务 943 拆分 + 979 capabilityGroups）──
   // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
   // （Go 渲染表同步升档，562 两侧一致断言守护）。任务 943：本 id 收窄
@@ -388,9 +397,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl 1125：标签页管理合并卡升「推荐」（用户 2026-10-24 指令：标签管理/
   // 视图布局两特性徽章档位提升为推荐——推荐 = 核心特性，不开启体验有缺口）。
   tabManagement: "recommended",
-  // 任务 742：心跳任务后台化（默认关）。按 550 口径定可选——不开启不影响
-  // 任何调度行为，只是心跳会话照旧出现在标签栏。
-  heartbeatBackground: "optional",
+  // 任务 742：心跳任务后台化（默认关）。原 550 口径定可选。
+  // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐——
+  // 关闭则心跳 tab 常驻堆积，tab 拥挤痛点（tl264）复发，属体验缺口。
+  heartbeatBackground: "recommended",
   // 任务 1070：Standard 流续跑总闸（默认关）。不开启=续跑通道维持现状
   // （普通对话永不自动续跑）；开启后才有界续跑。可选档。
   standardContinuation: "optional",
@@ -550,12 +560,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 可选→推荐，pathRules（未稳定）随 tl134 移除出表——推荐 47、可选 25、
  * 未稳定 5、总数 87→86。
  * tl1544：editResend（运行中编辑历史消息回溯重发）按可选档入表——可选
- * 25→26、总数 86→87（Go 渲染表同步 72→73）。 */
+ * 25→26、总数 86→87（Go 渲染表同步 72→73）。
+ * tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de，autopilot 代拍供追认）：
+ * localServer/subagentPolicy 未稳定→可选、splitView/heartbeatBackground/
+ * feedback 可选→推荐——推荐 47→50、可选 26→25、未稳定 5→3，总数不变 87。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
-  recommended: 47,
-  optional: 26,
-  unstable: 5,
+  recommended: 50,
+  optional: 25,
+  unstable: 3,
   retired: 0,
 };
 

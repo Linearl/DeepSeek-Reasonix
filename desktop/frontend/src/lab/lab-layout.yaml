@@ -93,9 +93,10 @@ groups:
             tier: optional
           # 任务 742：心跳任务后台化——开启后心跳触发不进标签栏（264 detached
           # 语义，提交成功后 park）。默认关=现状一致。
+          # tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐。
           - id: heartbeatBackground
             labelKey: settings.heartbeatBackground
-            tier: optional
+            tier: recommended
           # 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117
           # 首落地，本件补设置页入口）。默认关=现状一致。
           - id: stalledIntentNudge
@@ -255,7 +256,8 @@ groups:
         members:
           - id: splitView
             labelKey: settings.splitView
-            tier: optional
+            # tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐。
+            tier: recommended
           # tl1487 二组②：以下四行可选→推荐（用户 20261107 八组清单「侧栏
           # 标签显示、表格按栏宽换行、对话权限下拉框、右边栏悬停展开、左边栏
           # 悬停展开→推荐」；todoSidebar 已是推荐，无动作）。
@@ -343,9 +345,10 @@ groups:
           - id: subagentDetail
             labelKey: settings.subagentDetail
             tier: recommended
+          # tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选。
           - id: subagentPolicy
             labelKey: settings.subagentPolicy
-            tier: unstable
+            tier: optional
           - id: subagentTps
             labelKey: settings.subagentTps
             tier: optional
@@ -373,9 +376,10 @@ groups:
         labelKey: settings.updateFeedback
         onKeys: [experimentalFeedback, forkNotice, experimentalRestartUpdate]
         members:
+          # tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐。
           - id: feedback
             labelKey: settings.feedback
-            tier: optional
+            tier: recommended
           - id: restartUpdate
             labelKey: settings.restartUpdate
             tier: recommended
@@ -547,10 +551,10 @@ groups:
           - id: acpListen
             labelKey: settings.acpListen
             tier: unstable
-          # 本地服务（原 infra 独立卡，未稳定档）。
+          # 本地服务（原 infra 独立卡；tl1265 第2轮 2026-11-13 拍板：未稳定→可选）。
           - id: localServer
             labelKey: settings.localServer
-            tier: unstable
+            tier: optional
       # tl134/tl1487 七组③：路径规则整卡移除——结构化路径作用域判定为过时
       # 技术（zh 文案自证「未接线：开关开/关均无效果」，生产走 confine+
       # allow_write+写入审批），用户 20261107 20:17 裁决移除；机制存档见

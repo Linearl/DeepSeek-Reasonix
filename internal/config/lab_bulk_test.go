@@ -35,12 +35,14 @@ func TestLabBulkScopeBoundary(t *testing.T) {
 	}
 
 	// 推荐及以上：可选档不进。
+	// tl1265 第2轮：splitView 自可选升推荐后不再作 optional 探针——探针改用
+	// 仍为可选档的 decisionPatterns（自动化）+ highSpeedModel（提效）双点。
 	p = PlanLabBulk(LabBulkScopeRecommended, true, stable, true)
 	got = planIDs(p)
 	if !got["sessionWall"] {
 		t.Fatalf("recommended scope should include recommended-tier sessionWall")
 	}
-	if got["decisionPatterns"] || got["splitView"] {
+	if got["decisionPatterns"] || got["highSpeedModel"] || got["splitView"] && findLabFeatureTier(t, "splitView").tier == LabTierOptional {
 		t.Fatalf("recommended scope must NOT include optional-tier features: %v", p.Targets)
 	}
 

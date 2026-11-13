@@ -130,7 +130,8 @@ func TestRenderEmitsSplitKeysConditionally(t *testing.T) {
 
 // TestLabFeatureTiersCarriesSplitToolOpt pins the tier register for the
 // split: the family entry stays recommended (readBack 转正 783④), the new
-// injection entry registers optional, and both render keys are physically
+// injection entry registers recommended（tl1487 七组② 用户清单可选→推荐，
+// 原 943 定档 optional 断言随升档同步），and both render keys are physically
 // emitted by the render table (the 562 reverse gate lives in
 // render_lab_tiers_test.go — this test pins the entry shape).
 func TestLabFeatureTiersCarriesSplitToolOpt(t *testing.T) {
@@ -152,8 +153,8 @@ func TestLabFeatureTiersCarriesSplitToolOpt(t *testing.T) {
 	if injection == nil {
 		t.Fatal("labFeatureTiers missing the task-943 multiEditInjection entry")
 	}
-	if injection.tier != LabTierOptional {
-		t.Fatalf("multiEditInjection tier = %q, want optional (943 定档)", injection.tier)
+	if injection.tier != LabTierRecommended {
+		t.Fatalf("multiEditInjection tier = %q, want recommended (tl1487 七组② 升档同步)", injection.tier)
 	}
 	if len(injection.renderKeys) != 1 || injection.renderKeys[0] != "experimental_multi_edit_injection" {
 		t.Fatalf("multiEditInjection renderKeys = %v, want [experimental_multi_edit_injection]", injection.renderKeys)

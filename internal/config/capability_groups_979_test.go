@@ -68,8 +68,10 @@ func TestCapabilityGroupsRegisteredInLabTiers(t *testing.T) {
 	if entry == nil {
 		t.Fatal("labFeatureTiers lost the task-979 capabilityGroups entry")
 	}
-	if entry.tier != LabTierOptional {
-		t.Errorf("capabilityGroups tier = %q, 用户拍板提效类可选档 says optional", entry.tier)
+	// tl1487 七组②：工具优化五项（含本键）随用户 20261107 清单可选→推荐，
+	// 原 979 定档 optional 断言随升档同步（预存红修复，与 943 同族）。
+	if entry.tier != LabTierRecommended {
+		t.Errorf("capabilityGroups tier = %q, tl1487 七组② 升档同步 says recommended", entry.tier)
 	}
 	if len(entry.renderKeys) != 1 || entry.renderKeys[0] != "experimental_capability_groups" {
 		t.Errorf("capabilityGroups renderKeys = %v, want [experimental_capability_groups]", entry.renderKeys)
