@@ -52,12 +52,23 @@ ok(
 
 // 3) 三方言带齐文案，「保留最近一份」必须在说明里（误清=回不去，用户须知）。
 for (const [name, dict] of Object.entries(locales)) {
-  for (const key of ["hint", "scan", "summary", "none", "blocked", "confirm", "done"]) {
+  for (const key of ["hint", "scan", "batchClean", "summary", "none", "blocked", "confirm", "done"]) {
     ok(dict.includes(`"settings.dagBackupCleanup.${key}"`), `${name} has settings.dagBackupCleanup.${key}`);
   }
 }
 ok(locales.zh.includes("保留最近一份") && locales["zh-TW"].includes("保留最近一份") && locales.en.includes("keeping the newest"),
   "all dialects state the keep-newest rule");
+
+// 4) tl1573: 入口按钮显式化——idle 态入口用「DAG 批量清理」（页面上可被读成
+//    清理动作），done 态重扫保持「扫描迁移备份」语义；行为面（plan→确认→run、
+//    归零门与保留防线）由 dag-batch-cleanup-tl1573.test.tsx 渲染钉住。
+{
+  const idleBlock = section.slice(section.indexOf('phase === "idle"'), section.indexOf('phase === "planning"'));
+  ok(idleBlock.includes("settings.dagBackupCleanup.batchClean"), "the idle entry button reads as the batch cleanup action");
+  ok(!idleBlock.includes("settings.dagBackupCleanup.scan"), "the idle entry no longer hides behind the scan label");
+  const doneBlock = section.slice(section.indexOf('phase === "done"'));
+  ok(doneBlock.includes("settings.dagBackupCleanup.scan"), "the done state's re-scan keeps the scan semantics");
+}
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);

@@ -69,8 +69,13 @@ export function DagBackupCleanupSection({ t, busy, showHint = true }: { t: Trans
 
       {phase === "idle" && (
         <div className="settings-actions">
+          {/* tl1573: 入口按钮改为显式的「DAG 批量清理」——旧标签「扫描迁移备份」
+              让清理动作在页面上不可见（用户视角=只有两个扫描按钮、无清理入口）。
+              行为不变：点击仍是先 plan（只读清单）→ 逐行确认 → 才删，危险操作
+              的两步确认与「保留最近一份」防线原样。done 态的重扫按钮保持
+              「扫描迁移备份」语义（那里确实是重扫，不是再次入口）。 */}
           <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => void scan()}>
-            {t("settings.dagBackupCleanup.scan")}
+            {t("settings.dagBackupCleanup.batchClean")}
           </button>
         </div>
       )}

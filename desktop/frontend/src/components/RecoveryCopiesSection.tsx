@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
+import { app, type ConsolidationReport, type PreRepairBackupView, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { useT, type Translator } from "../lib/i18n";
 import { formatRecoveryActivateError } from "../lib/recoveryActivateError";
 // tl1415d9: 会话行展开态的持久化记忆(重挂载/采纳换主线后仍保持——用户二轮裁决)。
@@ -572,6 +572,13 @@ export function RecoveryCopiesSection() {
   // 需求 E), fetched alongside the copies list so the two readings of one
   // conversation can be merged into the same row (任务 1063).
   const [versionGroups, setVersionGroups] = useState<Map<string, SessionVersionGroupView>>(new Map());
+  // tl1572: 改写前备份（pre-repair）分区——自愈/Diet 改写前的整目录备份。
+  // 枚举失败不拖垮面板主体（副本/版本列表照常），分区里落一行原因；列表为
+  // 空也渲染分区头（Diet 通知把用户指到这里，「0 个」本身就是答案）。
+  const [preRepairs, setPreRepairs] = useState<PreRepairBackupView[]>([]);
+  const [preRepairError, setPreRepairError] = useState("");
+  const [preRepairOpen, setPreRepairOpen] = useState(false);
+  const [preRepairPreviewing, setPreRepairPreviewing] = useState<string | null>(null);
   // pickedChain names the branch the user chose to win, keyed by main path. Empty
   // means "let the engine take the fullest one". Keyed per conversation so a pick
   // in one group never leaks into another.
@@ -618,8 +625,22 @@ export function RecoveryCopiesSection() {
         typeof app.ListSessionVersionGroups === "function"
           ? await app.ListSessionVersionGroups().catch(() => [] as SessionVersionGroupView[])
           : ([] as SessionVersionGroupView[]);
+      // tl1572: 改写前备份是第三条读数——同样串行 await（同一
+      // unhandledRejection 窗口），失败只落分区错误行，不进面板级 failed。
+      // typeof 守卫同上：旧 harness 的 Partial stub 没有这个方法是同步 throw。
+      let preRepairList: PreRepairBackupView[] = [];
+      let preRepairErr = "";
+      if (typeof app.ListPreRepairBackups === "function") {
+        try {
+          preRepairList = (await app.ListPreRepairBackups()) ?? [];
+        } catch (e) {
+          preRepairErr = e instanceof Error ? e.message : String(e);
+        }
+      }
       setGroups(list);
       setVersionGroups(new Map((versions ?? []).map((g) => [g.mainPath, g])));
+      setPreRepairs(preRepairList);
+      setPreRepairError(preRepairErr);
       setSelected(new Set());
       // 任务 1146：候选链缓存一并作废。合成/删除/合并之后链清单已经变了，但
       // 这份 Map 只在行展开时写入：load() 不清它，惰性加载 effect 的
@@ -843,6 +864,33 @@ export function RecoveryCopiesSection() {
     } finally {
       setActivating(null);
     }
+  };
+
+  // tl1572: 改写前备份的只读查看。复用 PreviewRecoveryChain，以备份内转录
+  // 自身为主线参数（main==chain 走其成员校验的直通分支，不触碰主线状态）；
+  // 不提供 adopt/切回——备份树不在 catalog lineage，SetActiveSessionVersion
+  // 会按既有校验拒绝，通知文案已同步收口为「查看」。预览复用 ChainPreviewBody
+  // + 既有确认弹窗形态（单「关闭」键，无确认副作用）。
+  const previewPreRepair = async (view: PreRepairBackupView) => {
+    if (!view.transcript || preRepairPreviewing) return;
+    setPreRepairPreviewing(view.dir);
+    let preview: RecoveryChainPreview;
+    try {
+      preview = await app.PreviewRecoveryChain(view.transcript, view.transcript);
+    } catch (err) {
+      setPreRepairPreviewing(null);
+      const message = err instanceof Error ? err.message : String(err);
+      setErrors((current) => [...current, message]);
+      return;
+    }
+    setPreRepairPreviewing(null);
+    await confirm({
+      title: t("settings.recoveryCopiesPreRepairPreviewTitle"),
+      wide: true,
+      message: <ChainPreviewBody preview={preview} />,
+      confirmLabel: t("common.close"),
+      cancelLabel: t("common.cancel"),
+    });
   };
 
   /** 任务 1064：v3 版本块里的单版本删除。与父级的批量删除共用同一条确认与
@@ -2697,6 +2745,59 @@ export function RecoveryCopiesSection() {
                         </table>
                       </>
                     )}
+
+                    {/* tl1572: 改写前备份（pre-repair）分区——Diet 通知承诺
+                        「面板可查看」的兑现面。无论副本/版本列表是否为空都渲染
+                        （被 Diet 过的会话可以既无副本又无 heads，备份那时是唯一
+                        的独立读数）。收口口径=查看（只读），不承诺切回（备份树
+                        不在 lineage，adopt 会被后端拒绝）。全部复用既有 class，
+                        零新 CSS。 */}
+                    <div className="rc-versions__health" data-pre-repair-section="">
+                      <button
+                        className="btn btn--secondary btn--small"
+                        type="button"
+                        data-pre-repair-toggle=""
+                        onClick={() => setPreRepairOpen((v) => !v)}
+                      >
+                        {preRepairOpen ? "▾" : "▸"}{" "}
+                        {t("settings.recoveryCopiesPreRepairGroup")} · {preRepairs.length} ·{" "}
+                        {formatBytes(preRepairs.reduce((n, b) => n + b.bytes, 0))}
+                      </button>
+                      {preRepairError ? (
+                        <div className="rc-muted" data-pre-repair-error="">
+                          {t("settings.recoveryCopiesPreRepairFailed")}：{preRepairError}
+                        </div>
+                      ) : null}
+                      {preRepairOpen && !preRepairError ? (
+                        preRepairs.length === 0 ? (
+                          <div className="rc-muted">{t("settings.recoveryCopiesPreRepairNone")}</div>
+                        ) : (
+                          <ul className="rc-versions__issues" data-pre-repair-list="">
+                            {preRepairs.map((view) => (
+                              <li key={view.dir} title={view.dir}>
+                                {view.label} · {formatWhen(view.modifiedAt)} · {formatBytes(view.bytes)}
+                                {!view.ownerPath
+                                  ? ` · ${t("settings.recoveryCopiesPreRepairOrphan")}`
+                                  : null}
+                                {view.transcript ? (
+                                  <button
+                                    className="btn btn--small"
+                                    type="button"
+                                    data-pre-repair-view=""
+                                    disabled={preRepairPreviewing !== null}
+                                    onClick={() => void previewPreRepair(view)}
+                                  >
+                                    {preRepairPreviewing === view.dir
+                                      ? "…"
+                                      : t("settings.recoveryCopiesPreRepairView")}
+                                  </button>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        )
+                      ) : null}
+                    </div>
 
                     {/* 会话级动作的回执面(沉底后收在分区层,不随行消失):健康
                         报告 / 切换回执 / 修复回执。 */}

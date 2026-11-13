@@ -460,6 +460,21 @@ export interface SessionVersionGroupView {
   suggest?: string;
   heads: SessionHeadView[];
 }
+/** tl1572: one pre-repair self-heal backup directory (<stem>.pre-repair-<stamp>)
+ *  beside a session — the panel's 改写前备份 section lists these read-only.
+ *  transcript is the backed-up main transcript inside the dir (empty when the
+ *  backup was cleared); ownerPath is the live sibling session (empty when the
+ *  owner is gone — such a backup is the only surviving full copy). */
+export interface PreRepairBackupView {
+  dir: string;
+  transcript?: string;
+  ownerPath?: string;
+  label: string;
+  stamp: string;
+  bytes: number;
+  files: number;
+  modifiedAt: string;
+}
 /** One startup-scan finding (badge data; strictly read-only detection). */
 export interface SessionHealthFindingView {
   path: string;
@@ -1086,6 +1101,9 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]>;
   ScanRecoveryCopyGroup(mainPath: string): Promise<RecoveryCopyGroupView>;
   ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet>;
+  // tl1572: 版本与副本面板的「改写前备份」分区——自愈/Diet 改写前的整目录
+  // 备份（<stem>.pre-repair-<stamp>）枚举，纯目录读数（见 Go pre_repair_backups.go）。
+  ListPreRepairBackups(): Promise<PreRepairBackupView[]>;
   // 任务 1011: session health / self-heal / versions panel (需求 E).
   ListSessionVersionGroups(): Promise<SessionVersionGroupView[]>;
   ListSessionHealthFindings(): Promise<SessionHealthFindingView[]>;
@@ -4542,6 +4560,9 @@ function makeMockApp(): AppBindings {
     },
     /* replaced-force */
     async ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]> {
+      return [];
+    },
+    async ListPreRepairBackups(): Promise<PreRepairBackupView[]> {
       return [];
     },
     async ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet> {

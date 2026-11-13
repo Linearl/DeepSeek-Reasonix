@@ -1849,7 +1849,8 @@ export const en = {
   "recovery.noticeRepairStillOverWindow": "This repair refilled the checkpoint, but the conversation is still over the model window — run repair again with Diet checked to strip images and fold old messages.",
   "recovery.noticeSelectedHeadBehind": "Opened an older version ({selectedMessages} messages), while another version is longer and newer ({otherMessages} messages); switch in View versions if that is the chain you want.",
   "recovery.noticeMaterializationLag": "{gap} messages of this conversation are not materialized into the local transcript (events: {eventChain}, transcript: {materialized}); find this conversation in Settings → Storage & paths → Session versions and copies, expand it and run repair.",
-  "recovery.noticeSelfHealed": "On reopen, local self-heal found the projection over the model window and slimmed it down automatically (Diet) so the conversation is usable again ({actions}: strip_images = images replaced with placeholder references to save tokens, fold = over-window older messages folded into a local placeholder); this is automatic load-shedding, not data-corruption repair — the original version is kept, the whole directory is backed up in the sibling pre-repair directory, and it can be restored in Settings → Storage & paths → Session versions and copies.",
+  // tl1572: the panel offers read-only viewing (the Pre-repair backups section); this copy says exactly that - no restore promise.
+  "recovery.noticeSelfHealed": "On reopen, local self-heal found the projection over the model window and slimmed it down automatically (Diet) so the conversation is usable again ({actions}: strip_images = images replaced with placeholder references to save tokens, fold = over-window older messages folded into a local placeholder); this is automatic load-shedding, not data-corruption repair — the original version is kept, the whole directory is backed up in the sibling pre-repair directory, and it can be viewed in Settings → Storage & paths → Session versions and copies, under Pre-repair backups.",
   "recovery.noticeCompactFailStreak": "Context compaction has failed {streak} times in a row and the projection may overflow the window; reopening the conversation lets the local self-heal strip images and fold old messages.",
   "recovery.noticeHeadSelected": "This version is now the current version of the conversation.",
   "recovery.headsSummary": "{branches} versions of this conversation",
@@ -3011,6 +3012,8 @@ export const en = {
   "settings.dagMigration.done": "Migrated {migrated} · skipped (open in app) {active} · skipped {skipped} · failed {failed}",
   "settings.dagMigration.rescan": "Scan again",
   "settings.dagBackupCleanup.hint": "Migration keeps each session's original bytes at *.dagbak-tl1227, which adds up. Cleanup unlocks only once every session is migrated (a clean check): the newest backup is always kept as the last rollback credential, the rest are deleted newest first.",
+  // tl1573: explicit entry button - the old "Scan migration backups" label hid the cleanup action.
+  "settings.dagBackupCleanup.batchClean": "DAG batch cleanup",
   "settings.dagBackupCleanup.scan": "Scan migration backups",
   "settings.dagBackupCleanup.scanning": "Scanning backups and migration state…",
   "settings.dagBackupCleanup.summary": "{total} backup(s) · {totalSize}; will delete {del} · {delSize}, keeping the newest ({keepSize}).",
@@ -5174,6 +5177,13 @@ export const en = {
   "settings.recoveryCopiesPhaseTodoHint": "conversations with copies or candidates to process",
   "settings.recoveryCopiesGroupExpandTip": "click to expand this group",
   "settings.recoveryCopiesGroupCollapseTip": "click to collapse this group",
+  // tl1572: pre-repair backup section (read-only view; no adopt promise).
+  "settings.recoveryCopiesPreRepairGroup": "Pre-repair backups",
+  "settings.recoveryCopiesPreRepairNone": "No pre-repair backups found — no self-heal/Diet rewrite has left a backup directory on this machine.",
+  "settings.recoveryCopiesPreRepairView": "View",
+  "settings.recoveryCopiesPreRepairPreviewTitle": "Pre-repair backup preview (read-only)",
+  "settings.recoveryCopiesPreRepairOrphan": "original session is gone — this is its only surviving full copy",
+  "settings.recoveryCopiesPreRepairFailed": "listing pre-repair backups failed",
   "settings.recoveryCopiesStepScanHint": "Step ①: scan this conversation's versions and copies, re-measuring counts/turns/size; read-only",
   "settings.recoveryCopiesStepActivateHint": "Step ②: make this copy the current main line — the main row follows at once, the open conversation hot-switches, and reopening shows the new main",
   "settings.recoveryCopiesStepPreviewHint": "Step ② aid: preview this copy's tail messages (ending first) to judge what a merge would add at the end",

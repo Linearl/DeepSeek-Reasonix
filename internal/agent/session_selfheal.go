@@ -617,8 +617,11 @@ func foldProjectionTail(msgs []provider.Message, budgetTokens int) ([]provider.M
 	}
 	foldedCount := keep - sysEnd
 	placeholder := provider.Message{
-		Role:    provider.RoleUser,
-		Content: fmt.Sprintf("[本地折叠] 已省略 %d 条早期消息以恢复会话可用（投影超窗应急，纯本地操作，未调用模型）；原文未删——整目录备份在会话文件旁的 pre-repair 目录（含改写前日志段），可在「设置 → 存储与路径 → 工作阶段版本与副本」面板中查看或切回。", foldedCount),
+		Role: provider.RoleUser,
+		// tl1572: 面板能力=「改写前备份」分区只读查看（备份树不在 catalog
+		// lineage，切回/adopt 会被后端拒绝）——文案据此收口，不再承诺「切回」
+		// （tl1504 自愈通知族同一口径；tl1516 的面板路径/备份位置两钉不变）。
+		Content: fmt.Sprintf("[本地折叠] 已省略 %d 条早期消息以恢复会话可用（投影超窗应急，纯本地操作，未调用模型）；原文未删——整目录备份在会话文件旁的 pre-repair 目录（含改写前日志段），可在「设置 → 存储与路径 → 工作阶段版本与副本」面板的「改写前备份」分区查看。", foldedCount),
 	}
 	out := make([]provider.Message, 0, sysEnd+len(msgs)-keep+1)
 	out = append(out, msgs[:sysEnd]...)
