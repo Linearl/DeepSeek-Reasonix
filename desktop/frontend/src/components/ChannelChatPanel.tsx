@@ -820,6 +820,8 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
                 onBubbleContextMenu={(point) => setMenu(point)}
                 onMentionClick={() => onViewDirectChains?.()}
                 attachmentPreview={b.ChannelAttachmentDataURL ? channelAttachmentPreview : undefined}
+                deputyId={openCh.deputyId}
+                channelOwnerType={openCh.ownerType}
               />
             </div>
 

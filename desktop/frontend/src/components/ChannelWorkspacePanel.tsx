@@ -397,6 +397,8 @@ export function ChannelWorkspacePanel({
                 directoryTitle={directoryTitle}
                 onBubbleContextMenu={(point) => setMenu(point)}
                 attachmentPreview={channelAttachmentPreview}
+                deputyId={openCh.deputyId}
+                channelOwnerType={openCh.ownerType}
               />
             </div>
 
