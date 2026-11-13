@@ -1,5 +1,9 @@
-.md > img,
-.md p > img {
+/* tl1568: 显示尺寸约束对 .md 内全部后代 img 生效（display:block 防竖排；
+   max-width:100% + height:auto 让超宽截图等比缩放到容器宽，不再被
+   .transcript 的 overflow-x:hidden 裁掉右半）。原 .md > img / .md p > img
+   两落位只覆盖直挂与段落两种形态，a>img / li>img 等结构性落位是盲区；
+   后代选择器是它们的超集，防竖排契约（tl1121 钉）本质不变。 */
+.md img {
   display: block;
   max-width: 100%;
   height: auto;
