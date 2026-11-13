@@ -658,6 +658,37 @@ await act(async () => {
 await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 assert.equal(chat().querySelector(".channel-chat__atpop"), null, "a mousedown outside closes the mention picker (tl1369 同类收口)");
 
+// ── tl1563：inbox 消费推进 read_at → 已读标注出现（数据面→渲染面） ────────
+// 口径（20261112 msg_04cdadbd）：已读 = 消息进入成员上下文 且 该成员回合运行
+// 中——推进本身在 Go 侧（control 开轮 / drain_inbox 消费写 fanout.read_at，
+// 由 internal/control 与 internal/agent 测试钉全链）；本段钉渲染契约：推进前
+// 仅 delivered 的行不标已读（③a 已钉 receipts0=2），推进后（成员回合消费写
+// read_at、前端重拉尾窗）标注出现；仅投递未消费的行始终不标（边界）。
+{
+  // 推进模拟：sc_merge 的 fanout 行被消费写 read_at（Go 侧 MarkReadByDelivery
+  // 语义）；同时补一条仅 delivered（未消费，readAt 空）的边界行——只投递未
+  // 消费的成员永远不出已读（m3 已撤回成 tombstone，边界行挂在仍渲染的 m1 上）。
+  const m1 = state.messages.ch_mine.find((m) => m.id === "m1")!;
+  m1.fanout!.find((cell) => cell.member === "sc_merge")!.readAt = 1_700_000_008_000;
+  m1.fanout!.push({ messageId: "m1", member: "sc_fresh", fanoutId: "f9", state: "delivered", deliveredAt: 9 });
+  // 触发刷新：回列表再进频道（重新拉尾窗，等同面板轮询/重开后的重投影）。
+  await act(async () => {
+    (chat().querySelector(".channel-chat__listtitle")! as HTMLElement).click();
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => {
+    (Array.from(chat().querySelectorAll(".channel-chat__item"))[0] as HTMLElement).click();
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const rowsAfter = Array.from(chat().querySelectorAll(".channel-chat__row"));
+  assert.equal(rowsAfter.length, 4, "m3 stays a tombstone; the stream holds the four live bubbles (含前段新到消息)");
+  assert.match(rowsAfter[0].textContent ?? "", /大家好，我是人类/, "rowsAfter[0] is own message m1");
+  const receiptsAfter = rowsAfter[0].querySelectorAll(".channel-chat__receipt--read");
+  assert.equal(receiptsAfter.length, 2, "advance flips sc_merge from delivered-only to read on own message m1");
+  assert.match(receiptsAfter[1].textContent ?? "", /合并线会话 read/, "the newly-advanced member renders the read annotation");
+  assert.doesNotMatch(rowsAfter[0].textContent ?? "", /新会话 read/, "delivered-only (never consumed) rows never show read (边界：仅投递未开轮不推进)");
+}
+
 // 邮箱哨兵：全程没有任何信件中心读口调用（去重口径 b）。
 assert.equal(calls.some((c) => /Mail|Inbox/i.test(c.name)), false, "the chat never touches the mail center");
 
