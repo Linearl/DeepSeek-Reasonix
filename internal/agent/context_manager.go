@@ -84,6 +84,69 @@ type compactionProgress struct {
 	// the full canonical transcript" warning to one line per cooldown. Same
 	// compactionRunMu discipline as the growth-watch fields.
 	fallbackWarnAt time.Time
+	// tl1562 G1: fallbackWarnSuppressed counts observeProjectionFallback checks
+	// the cooldown swallowed since the last emitted warning. The next emitted
+	// line carries it as `suppressed=N` so a persistent episode (the 20261112
+	// incident: one WARN at 11:19:57 then silence while the session kept
+	// degrading) stays measurable from the log alone. Same discipline as
+	// fallbackWarnAt; the paired resets (invalidateProjection,
+	// BindSessionPath, valid-projection re-arm) zero both fields together.
+	fallbackWarnSuppressed int
+}
+
+// projectionDriftDiff is the tl1562 G1 content-mismatch evidence attached to
+// the fallback warning: what the projection recorded when the fold was
+// installed versus what the canonical transcript looks like now. The exact
+// first-drift message index is NOT recoverable here — the sidecar stores one
+// whole-prefix hash (CoveredPrefixHash), so per-prefix anchors needed to
+// bisect the drift do not exist; the hash pair plus the covered/canonical
+// counts and both transcript versions locate the episode well enough to
+// correlate it with the save/rewrite trail. systemPrefixLen is the honest
+// lower bound: leading system messages may refresh independently
+// (projectionMatchesAfterSystemRefresh), so real drift starts at or after
+// that index.
+type projectionDriftDiff struct {
+	ExpectedPrefixHashShort string // projection's CoveredPrefixHash, first 8 hex chars
+	ActualPrefixHashShort   string // current canonical covered-prefix hash, first 8 hex chars
+	CoveredCount            int
+	CanonicalMessages       int
+	SystemPrefixLen         int
+	ProjectionTranscript    uint64 // TranscriptVersion recorded at projection install
+	TranscriptVersion       uint64 // current canonical transcript version
+}
+
+// shortHash8 shortens a hex fingerprint for log lines; the empty hash stays
+// empty (no-projection episodes have nothing to compare).
+func shortHash8(h string) string {
+	if len(h) > 8 {
+		return h[:8]
+	}
+	return h
+}
+
+// projectionDriftEvidence diffs a stale projection against the current
+// canonical transcript. Callers already know the pair is mismatched; this
+// only gathers the details the warning line needs. curVersion is the live
+// transcript version from snapshotMessagesVersion.
+func projectionDriftEvidence(st CompactionState, msgs []provider.Message, curVersion uint64) projectionDriftDiff {
+	n := st.Projection.CoveredCount
+	actual := ""
+	if n > 0 && n <= len(msgs) {
+		actual = coveredPrefixHash(msgs, n)
+	}
+	systems := 0
+	for systems < len(msgs) && msgs[systems].Role == provider.RoleSystem {
+		systems++
+	}
+	return projectionDriftDiff{
+		ExpectedPrefixHashShort: shortHash8(st.Projection.CoveredPrefixHash),
+		ActualPrefixHashShort:   shortHash8(actual),
+		CoveredCount:            n,
+		CanonicalMessages:       len(msgs),
+		SystemPrefixLen:         systems,
+		ProjectionTranscript:    st.Projection.TranscriptVersion,
+		TranscriptVersion:       curVersion,
+	}
 }
 
 // ContextManager is the sole owner of provider-visible context maintenance.
@@ -655,45 +718,72 @@ func (a *Agent) observeProjectionFallback(est int) {
 	if len(st.Projection.Messages) == 0 {
 		// Fresh or invalidated session: only worth a line once the full
 		// canonical view itself is past the physical ceiling (the 2.7M/1M shape).
+		// The snapshot below only pays on the actual warn path.
 		if est < a.hardInputCeiling() {
 			return
 		}
-		a.warnProjectionFallback("no_projection", st, est, window)
+		msgs, curVersion := a.sess.conversation.snapshotMessagesVersion()
+		a.warnProjectionFallback("no_projection", st, est, window, projectionDriftEvidence(st, msgs, curVersion))
 		return
 	}
-	msgs, _ := a.sess.conversation.snapshotMessagesVersion()
+	msgs, curVersion := a.sess.conversation.snapshotMessagesVersion()
 	key := a.currentPromptCacheKeyLocked()
 	if projectionContentValid(st, msgs) {
 		// 任务638: a lineage-key change rebinds the cache namespace; it is not a
 		// view fallback, so a content-valid projection stays quiet. Re-arm the
 		// throttle so a later episode warns on its first check.
 		a.sess.compaction.fallbackWarnAt = time.Time{}
+		a.sess.compaction.fallbackWarnSuppressed = 0
 		return
 	}
+	// tl1562 G1: the pair is content-mismatched — gather the drift evidence
+	// once and hand it to whichever warning fires, so the log line can name
+	// HOW the prefix moved instead of only that it moved.
+	diff := projectionDriftEvidence(st, msgs, curVersion)
 	// Content drift: name whether the lineage key also moved.
 	if key != "" {
 		if _, ok := lineageKeyCompatible(st.PromptCacheKey, key); !ok {
-			a.warnProjectionFallback("lineage_key_mismatch", st, est, window)
+			a.warnProjectionFallback("lineage_key_mismatch", st, est, window, diff)
 			return
 		}
 	}
-	a.warnProjectionFallback("content_mismatch", st, est, window)
+	a.warnProjectionFallback("content_mismatch", st, est, window, diff)
 }
 
-// warnProjectionFallback emits the throttled fallback warning.
-func (a *Agent) warnProjectionFallback(reason string, st CompactionState, est, window int) {
+// warnProjectionFallback emits the throttled fallback warning. Checks the
+// cooldown swallows are counted in fallbackWarnSuppressed and flushed on the
+// next emitted line as `suppressed=N` (tl1562 G1), so a persistent episode is
+// measurable from the log alone.
+func (a *Agent) warnProjectionFallback(reason string, st CompactionState, est, window int, diff projectionDriftDiff) {
 	if !a.sess.compaction.fallbackWarnAt.IsZero() && time.Since(a.sess.compaction.fallbackWarnAt) < projectionFallbackWarnCooldown {
+		a.sess.compaction.fallbackWarnSuppressed++
 		return
 	}
 	a.sess.compaction.fallbackWarnAt = time.Now()
+	suppressed := a.sess.compaction.fallbackWarnSuppressed
+	a.sess.compaction.fallbackWarnSuppressed = 0
 	// tl1203: with a stale body in memory the wire serves the old fold over
 	// the canonical tail (never the full transcript), so the message names the
 	// episode instead of claiming a full-canonical fallback. The body-less
 	// shape (no_projection) still degrades per 任务719.
+	//
+	// tl1562 G1: the drift fields are the mismatch evidence — the covered
+	// prefix hash recorded at install vs the hash of the same prefix now,
+	// the covered/canonical message counts, and both transcript versions.
+	// session names the conversation so the episode can be joined with the
+	// sampling-failure and truncation lines of the same incident.
 	slog.Warn("agent: context projection invalid — fallback view serves the wire",
 		"reason", reason, "view_tokens", est, "window", window,
 		"projection_version", st.Projection.ProjectionVersion,
-		"prompt_cache_key", st.PromptCacheKey)
+		"prompt_cache_key", st.PromptCacheKey,
+		"session", a.sessionLogRef(),
+		"covered_count", diff.CoveredCount, "canonical_messages", diff.CanonicalMessages,
+		"expected_prefix_hash", diff.ExpectedPrefixHashShort,
+		"actual_prefix_hash", diff.ActualPrefixHashShort,
+		"system_prefix_len", diff.SystemPrefixLen,
+		"projection_transcript_version", diff.ProjectionTranscript,
+		"transcript_version", diff.TranscriptVersion,
+		"suppressed", suppressed)
 	// 任务1114: a real fallback episode with the canonical at or above the hard
 	// ceiling is the 新9 shape (3.02M/1M with no auto convergence until manual
 	// help) — arm the local overflow diet so the episode converges on its own.
