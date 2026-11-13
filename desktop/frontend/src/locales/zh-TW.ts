@@ -2337,6 +2337,8 @@ export const zhTW: Record<DictKey, string> = {
 "settings.dagMigration.done": "已遷移 {migrated} · 使用中跳過 {active} · 跳過 {skipped} · 失敗 {failed}",
 "settings.dagMigration.rescan": "重新掃描",
 "settings.dagBackupCleanup.hint": "遷移把每個工作階段的原始位元組留在 *.dagbak-tl1227，累計體量可觀。全部工作階段遷移完成（檢查歸零）後才可清理：自動保留最近一份作為最後回滾憑據，其餘按時間從新到舊刪除。",
+// tl1573: 入口按鈕顯式化——「DAG 批量清理」讓清理動作在頁面上可見。
+"settings.dagBackupCleanup.batchClean": "DAG 批量清理",
 "settings.dagBackupCleanup.scan": "掃描遷移備份",
 "settings.dagBackupCleanup.scanning": "正在掃描備份與遷移狀態…",
 "settings.dagBackupCleanup.summary": "共 {total} 份 · {totalSize}；將刪除 {del} 份 · {delSize}，保留最近一份（{keepSize}）。",

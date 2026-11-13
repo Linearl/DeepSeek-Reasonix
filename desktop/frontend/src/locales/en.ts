@@ -3012,6 +3012,8 @@ export const en = {
   "settings.dagMigration.done": "Migrated {migrated} · skipped (open in app) {active} · skipped {skipped} · failed {failed}",
   "settings.dagMigration.rescan": "Scan again",
   "settings.dagBackupCleanup.hint": "Migration keeps each session's original bytes at *.dagbak-tl1227, which adds up. Cleanup unlocks only once every session is migrated (a clean check): the newest backup is always kept as the last rollback credential, the rest are deleted newest first.",
+  // tl1573: explicit entry button - the old "Scan migration backups" label hid the cleanup action.
+  "settings.dagBackupCleanup.batchClean": "DAG batch cleanup",
   "settings.dagBackupCleanup.scan": "Scan migration backups",
   "settings.dagBackupCleanup.scanning": "Scanning backups and migration state…",
   "settings.dagBackupCleanup.summary": "{total} backup(s) · {totalSize}; will delete {del} · {delSize}, keeping the newest ({keepSize}).",

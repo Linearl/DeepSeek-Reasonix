@@ -2983,6 +2983,9 @@ export const zh: Record<DictKey, string> = {
   "settings.dagMigration.done": "已迁移 {migrated} · 使用中跳过 {active} · 跳过 {skipped} · 失败 {failed}",
   "settings.dagMigration.rescan": "重新扫描",
   "settings.dagBackupCleanup.hint": "迁移把每个会话的原始字节留在 *.dagbak-tl1227，累计体量可观。全部会话迁移完成（检查归零）后才可清理：自动保留最近一份作为最后回滚凭据，其余按时间从新到旧删除。",
+  // tl1573: 入口按钮显式化——「DAG 批量清理」让清理动作在页面上可见
+  // （旧标签「扫描迁移备份」被用户读成纯扫描，清理入口等于不存在）。
+  "settings.dagBackupCleanup.batchClean": "DAG 批量清理",
   "settings.dagBackupCleanup.scan": "扫描迁移备份",
   "settings.dagBackupCleanup.scanning": "正在扫描备份与迁移状态…",
   "settings.dagBackupCleanup.summary": "共 {total} 份 · {totalSize}；将删除 {del} 份 · {delSize}，保留最近一份（{keepSize}）。",
