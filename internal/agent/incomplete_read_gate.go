@@ -3,6 +3,8 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+
+	"reasonix/internal/tool"
 )
 
 type incompleteReadGateInput struct {
@@ -14,6 +16,15 @@ type incompleteReadGateInput struct {
 	readOK    bool
 	grepOK    bool
 	receiptOK bool
+}
+
+// cleanEchoPath strips real control bytes from a model-supplied path for
+// echo (tl1554). Paths are a VALUE domain — literal backslash sequences can
+// be legitimate on Windows (C:\readme.txt) — so only real C0/DEL bytes are
+// removed here, never the literal escape text form.
+func cleanEchoPath(p string) string {
+	cleaned, _ := tool.StripControlCharacters(p)
+	return cleaned
 }
 
 func parseIncompleteReadGateInput(plan *toolCallPlan) incompleteReadGateInput {
@@ -49,7 +60,9 @@ func matchIncompleteReadResultPage(plan *toolCallPlan, input incompleteReadGateI
 		return "", false, false
 	}
 	if input.result.ResultRef != entry.resultRef || input.result.Offset != entry.nextByteOffset {
-		return fmt.Sprintf("blocked: %s read continuation mismatch for tool_call_id %q; require result_ref=%q offset=%d", label, entry.toolCallID, entry.resultRef, entry.nextByteOffset), true, false
+		// tl1554: entry fields originate from model calls — echo the cleaned
+		// forms so a polluted id is never confirmed back.
+		return fmt.Sprintf("blocked: %s read continuation mismatch for tool_call_id %q; require result_ref=%q offset=%d", label, echoedNameToken(entry.toolCallID), echoedNameToken(entry.resultRef), entry.nextByteOffset), true, false
 	}
 	plan.incompleteReadRoot = key
 	plan.incompleteReadAction = action
@@ -61,7 +74,10 @@ func matchIncompleteReadSourcePage(plan *toolCallPlan, input incompleteReadGateI
 		return "", false, false
 	}
 	if input.read.Offset != entry.nextSourceOffset || !input.read.LimitExplicit || input.read.Limit != entry.nextSourceLimit {
-		return fmt.Sprintf("blocked: %s source continuation mismatch for path %q; require offset=%d limit=%d", label, entry.path, entry.nextSourceOffset, entry.nextSourceLimit), true, false
+		// tl1554: paths are a VALUE domain (Windows backslashes are
+		// legitimate) — strip real control bytes only, never literal escape
+		// text.
+		return fmt.Sprintf("blocked: %s source continuation mismatch for path %q; require offset=%d limit=%d", label, cleanEchoPath(entry.path), entry.nextSourceOffset, entry.nextSourceLimit), true, false
 	}
 	plan.incompleteReadRoot = key
 	plan.incompleteReadAction = action
@@ -108,15 +124,18 @@ func (s *incompleteReadState) instructionFor(key string) string {
 	}
 	switch entry.phase {
 	case incompleteReadAutoResultPage, incompleteReadStrategyResultPage:
-		args, _ := json.Marshal(map[string]any{"tool_call_id": entry.toolCallID, "result_ref": entry.resultRef, "offset": entry.nextByteOffset, "limit": toolResultPageMaxBytes})
+		// tl1554: the example is copyable guidance — a polluted id must not
+		// ride back into it (json.Marshal renders a real CR as literal `\r`
+		// text, the exact bad-example channel).
+		args, _ := json.Marshal(map[string]any{"tool_call_id": echoedNameToken(entry.toolCallID), "result_ref": echoedNameToken(entry.resultRef), "offset": entry.nextByteOffset, "limit": toolResultPageMaxBytes})
 		return fmt.Sprintf("The host retained a PARTIAL read_file result. If more content is needed, call use_capability with action=\"call\", capability_id=\"session:tool_result\", arguments=%s. Independent work may continue; an explicit full-file request still requires complete coverage.", args)
 	case incompleteReadAutoSourcePage, incompleteReadStrategySourcePage:
-		args, _ := json.Marshal(map[string]any{"path": entry.path, "offset": entry.nextSourceOffset, "limit": entry.nextSourceLimit})
+		args, _ := json.Marshal(map[string]any{"path": cleanEchoPath(entry.path), "offset": entry.nextSourceOffset, "limit": entry.nextSourceLimit})
 		return fmt.Sprintf("The read_file window has more source lines. Continue with read_file %s if needed. A partial window may be sufficient for local work; an explicit full-file request still requires complete coverage.", args)
 	case incompleteReadStrategy:
-		readExample, _ := json.Marshal(map[string]any{"path": entry.path, "offset": 0, "limit": 200})
-		receiptExample, _ := json.Marshal(map[string]any{"read_id": entry.readID, "search_tool_call_ids": []string{"<grep tool call id>"}, "read_tool_call_ids": []string{"<read_file tool call id>"}, "conclusion": "<why these searches and exact windows are sufficient for the task>"})
-		return fmt.Sprintf("The complete file cannot fit the dynamic context budget. READ STRATEGY read_id=%q path=%q. Independent work may continue. Search this file with grep, then read relevant windows (example %s). A targeted receipt never proves whole-file coverage. Record the targeted scope using use_capability with action=\"call\", capability_id=\"session:read_strategy_receipt\", arguments=%s.", entry.readID, entry.path, readExample, receiptExample)
+		readExample, _ := json.Marshal(map[string]any{"path": cleanEchoPath(entry.path), "offset": 0, "limit": 200})
+		receiptExample, _ := json.Marshal(map[string]any{"read_id": echoedNameToken(entry.readID), "search_tool_call_ids": []string{"<grep tool call id>"}, "read_tool_call_ids": []string{"<read_file tool call id>"}, "conclusion": "<why these searches and exact windows are sufficient for the task>"})
+		return fmt.Sprintf("The complete file cannot fit the dynamic context budget. READ STRATEGY read_id=%q path=%q. Independent work may continue. Search this file with grep, then read relevant windows (example %s). A targeted receipt never proves whole-file coverage. Record the targeted scope using use_capability with action=\"call\", capability_id=\"session:read_strategy_receipt\", arguments=%s.", echoedNameToken(entry.readID), cleanEchoPath(entry.path), readExample, receiptExample)
 	default:
 		return ""
 	}

@@ -96,7 +96,7 @@ func (t subscribeSessionTool) Execute(ctx context.Context, args json.RawMessage)
 		}
 		return t.unsubscribe(p.Target)
 	default:
-		return "", fmt.Errorf("action must be subscribe, unsubscribe or list (got %q)", p.Action)
+		return "", fmt.Errorf("action must be subscribe, unsubscribe or list (got %q)", echoedNameToken(p.Action)) // tl1554 echo clean
 	}
 }
 

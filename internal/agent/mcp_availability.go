@@ -17,11 +17,13 @@ func (r *MCPCapabilityRuntime) serverRegistered(server string) bool {
 }
 
 func mcpServerUnregisteredMessage(server string) string {
-	return fmt.Sprintf("MCP server %q is not registered in this session", server)
+	// tl1554: defensive echo clean — config-derived names are normally
+	// clean, but the id-resolved path can carry model input.
+	return fmt.Sprintf("MCP server %q is not registered in this session", echoedNameToken(server))
 }
 
 func mcpServerDisabledMessage(server string) string {
-	return fmt.Sprintf("MCP server %q is disabled in this session", server)
+	return fmt.Sprintf("MCP server %q is disabled in this session", echoedNameToken(server))
 }
 
 func mcpServerUnregisteredError(server string) error {

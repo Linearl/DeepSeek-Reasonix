@@ -23,6 +23,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"reasonix/internal/tool"
 )
 
 // capabilityErrorKind 是 8 型族 + 两个路由态（自解释错误不加引导；wrong_name/
@@ -224,6 +226,21 @@ func capabilityQuotedID(id string) string {
 		return strconv.Quote(cleaned)
 	}
 	return strconv.Quote(id)
+}
+
+// echoedNameToken renders a model-supplied name-domain token (action, mode,
+// id, key) for %q echo in an error line (tl1554). The cleaned form is what
+// the model reads; a polluted token is never confirmed back — real control
+// bytes and the literal `\r`-style escape text are stripped via the shared
+// name-token sanitizer. A token that cleans to empty (pure control garbage)
+// falls back to the raw form so the caller's %q still renders SOMETHING —
+// escaped by the verb, never raw bytes (same fallback discipline as
+// capabilityQuotedID, tl1553).
+func echoedNameToken(s string) string {
+	if cleaned, _ := tool.SanitizeNameToken(s); cleaned != "" {
+		return cleaned
+	}
+	return s
 }
 
 // capabilityCorrectionFor 为已识别的型族生成可复制修正例。参数值一律用

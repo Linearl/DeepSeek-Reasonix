@@ -242,7 +242,7 @@ func (t createCollabSessionTool) Execute(_ context.Context, args json.RawMessage
 	switch delivery {
 	case "", "steer", "followup":
 	default:
-		return "", fmt.Errorf("delivery %q is not supported — use steer (start it now) or followup (queue it)", delivery)
+		return "", fmt.Errorf("delivery %q is not supported — use steer (start it now) or followup (queue it)", echoedNameToken(delivery)) // tl1554 echo clean
 	}
 	if strings.TrimSpace(p.Message) == "" && delivery != "" {
 		return "", fmt.Errorf("delivery is only meaningful with message — pass message, or drop delivery")
