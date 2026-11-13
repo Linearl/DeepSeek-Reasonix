@@ -12,7 +12,13 @@ import (
 // line when possible. Its recovery cursor is exactly the first unseen byte, so
 // paging can reconstruct the original without a gap or duplicate.
 func truncateReadFileOutput(s, toolName, toolCallID string) (string, string) {
-	resultRef := toolResultRef(toolCallID, s)
+	return truncateReadFileOutputArchived(s, toolName, toolCallID, "")
+}
+
+// truncateReadFileOutputArchived is the archive-aware form (tl1561): the
+// marker points at the archived original instead of the retired result_ref
+// channel. next_offset stays mechanical — readFileRecoveryOffset parses it.
+func truncateReadFileOutputArchived(s, toolName, toolCallID, archivePath string) (string, string) {
 	headKeep := maxToolOutputBytes - 1024
 	if headKeep < 1024 {
 		headKeep = maxToolOutputBytes / 2
@@ -22,7 +28,7 @@ func truncateReadFileOutput(s, toolName, toolCallID string) (string, string) {
 		head = head[:newline+1]
 	}
 	for range 4 {
-		marker := toolOutputRecoveryMarkerAt(toolName, toolCallID, resultRef, len(s), len(head), len(head))
+		marker := toolOutputRecoveryMarkerAt(toolName, toolCallID, archivePath, len(s), len(head), len(head))
 		if len(head)+len(marker) <= maxToolOutputBytes {
 			notice := fmt.Sprintf(i18n.M.ToolOutputTruncatedFmt, len(s)-len(head), len(s))
 			return head + marker, notice
@@ -37,7 +43,7 @@ func truncateReadFileOutput(s, toolName, toolCallID string) (string, string) {
 			head = head[:newline+1]
 		}
 	}
-	marker := toolOutputRecoveryMarkerAt(toolName, toolCallID, resultRef, len(s), len(head), len(head))
+	marker := toolOutputRecoveryMarkerAt(toolName, toolCallID, archivePath, len(s), len(head), len(head))
 	if len(marker) > maxToolOutputBytes {
 		marker = snapToRuneBoundary(marker, 0, maxToolOutputBytes)
 	}
