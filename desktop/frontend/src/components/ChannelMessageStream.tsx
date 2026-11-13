@@ -6,10 +6,12 @@
 //     自己的消息上；失败行是诚实错误仍显示；
 //   - 撤回墓碑（349 Cancel 语义）；空流诚实空态；
 //   - 气泡内 @名字 渲染为「查看对话链」快捷入口（onMentionClick 注入；
-//     tab 工作区没有对话链通道时传 undefined = 纯文本渲染）。
+//     tab 工作区没有对话链通道时传 undefined = 纯文本渲染）；
+//   - tl1564 派活卡：tl1406 确定性定向投递的消息以任务分配卡呈现
+//     （谁→谁 + 任务摘要），判定依据见组件内 dispatchRecipientsOf 注释。
 // 右键菜单本体留在宿主（portal + veil 的挂载点与视图相关）。
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { CollabChannelMemberView, CollabChannelMessageView } from "../lib/bridge";
 import { HUMAN_LOCAL } from "./ChannelChatPanel";
 import { getLocale, useT } from "../lib/i18n";
@@ -36,6 +38,15 @@ export interface ChannelMessageStreamProps {
   onBubbleContextMenu?: (event: { messageId: string; sender: string; x: number; y: number }) => void;
   /** @名字 点击（对话链快捷入口；缺省 = 纯文本渲染）。 */
   onMentionClick?: () => void;
+  /**
+   * tl1564：群聊 owner 类型（CollabChannelView.ownerType 透传）。仅
+   * "human"（human-owned 群）启用 tl1406 副管理员默认收件人分支（Go
+   * routeRecipients 分支3 前的分支2）；session-owned/无主群是 fan-out-all
+   * 广播语义（Go 分支4），不是派活——缺省 undefined = 该分支不参与判定。
+   */
+  channelOwnerType?: string;
+  /** tl1564：在册副管理员 contact id（CollabChannelView.deputyId 透传；缺省=无）。 */
+  deputyId?: string;
 }
 
 /** 单张附件缩略图：读回成功才渲染，失败静默（气泡文本仍在）。 */
@@ -67,8 +78,55 @@ export function ChannelMessageStream({
   onBubbleContextMenu,
   onMentionClick,
   attachmentPreview,
+  channelOwnerType,
+  deputyId,
 }: ChannelMessageStreamProps) {
   const t = useT();
+
+  // ── tl1564 派活判定（dispatchRecipientsOf）─────────────────────────────
+  // 镜像 Go routeRecipients（internal/collabchannel/collabchannel.go tl1406
+  // 四分支，用户 20261105 裁决）中「确定性定向投递」的呈现面，按本组件现有
+  // 数据结构（routedTo 注记 / memberDetails / directoryTitle）落地。判定依据
+  // （优先级与 Go 一致）：
+  //   ① m.routedTo 非空 = 发布期权威注记（Go Publish 只在返回值携带；@ 命中
+  //     与副管理员默认两路投递都汇聚于此，发送者已被 Go 排除）→ 收件人=routedTo；
+  //   ② 历史读回 routedTo 恒缺（Go 不落库）→ 按 body 解析 @ 提及兜底：
+  //     needle = @显示名(directoryTitle) 与 @contactId——与 Go mentionedMembers
+  //     的「@contactID/@alias」needle 家族、renderBody 的可见高亮同一匹配口径
+  //     （所见高亮即所派；isNameByte 边界与最长 needle 语义由 Go 侧持有）。
+  //     命中 ≥1（含仅 @ 自己）即进提及分支 → 收件人=提及成员−发送者（Go
+  //     Publish 发送者自排除同款；仅 @ 自己=零投递=非派活）；
+  //   ③ 无提及 + human-owned（channelOwnerType==="human"）+ deputy 在册
+  //     （deputyId ∈ memberDetails，Go「离册副管理员降级零投递」同款）+
+  //     发送者≠deputy → 收件人=副管理员（tl1406 分支2「副管理员=默认任务
+  //     收件人」裁决；发送者=deputy 的无提及发言自派自收被 Go 发送者排除
+  //     =零投递=非派活）；
+  //   ④ 其余不渲染卡：deputyless 零投递（Go 分支3——已有零投递提示条承载）；
+  //     session-owned/无主群 fan-out-all（Go 分支4 广播语义非派活）。
+  // 返回 null = 普通气泡（非派活消息渲染零回归）。
+  const dispatchRecipientsOf = (m: CollabChannelMessageView): string[] | null => {
+    if (m.routedTo && m.routedTo.length > 0) return m.routedTo;
+    if (m.body.includes("@")) {
+      const mentioned: string[] = [];
+      for (const mm of memberDetails) {
+        const displayName = directoryTitle(mm.contact);
+        const hit =
+          (displayName && m.body.includes(`@${displayName}`)) ||
+          m.body.includes(`@${mm.contact}`);
+        if (hit && !mentioned.includes(mm.contact)) mentioned.push(mm.contact);
+      }
+      if (mentioned.length > 0) return mentioned.filter((c) => c !== m.sender);
+    }
+    if (
+      channelOwnerType === "human" &&
+      deputyId &&
+      deputyId !== m.sender &&
+      memberDetails.some((mm) => mm.contact === deputyId)
+    ) {
+      return [deputyId];
+    }
+    return null;
+  };
 
   // 附件引用提取：空白分隔 token 以 @ 开头、归一化分隔符后落在
   // .reasonix/attachments/ 内、图片扩展名结尾；拒绝包含 .. 的 token（tl1421
@@ -145,6 +203,29 @@ export function ChannelMessageStream({
         const failedMembers = own
           ? (m.fanout ?? []).filter((cell) => cell.state === "failed")
           : [];
+        // tl1564：派活判定（判定依据见 dispatchRecipientsOf 注释）。非 null =
+        // tl1406 确定性定向投递 → 气泡同位换装任务分配卡（徽标 + 谁→谁 +
+        // 任务摘要），行结构/行meta/回执标注/右键撤回全部原样保留。
+        const dispatchRecipients = dispatchRecipientsOf(m);
+        const bubbleContextMenu = onBubbleContextMenu
+          ? (event: ReactMouseEvent) => {
+              event.preventDefault();
+              onBubbleContextMenu({ messageId: m.id, sender: m.sender, x: event.clientX, y: event.clientY });
+            }
+          : undefined;
+        // 卡体/气泡共用的消息体渲染（@提及快捷入口 + 附件缩略图契约原样）。
+        const bodyContent = (
+          <>
+            {renderBody(m.body)}
+            {attachmentPreview && attachmentRefsOf(m.body).length > 0 && (
+              <span className="channel-chat__attpics">
+                {attachmentRefsOf(m.body).map((path) => (
+                  <ChannelAttachmentImage key={path} path={path} preview={attachmentPreview} />
+                ))}
+              </span>
+            )}
+          </>
+        );
         return (
           <div key={m.id} className={`channel-chat__row${own ? " channel-chat__row--own" : ""}`}>
             <div className="channel-chat__rowmeta">
@@ -156,22 +237,28 @@ export function ChannelMessageStream({
               </span>
               <span className="channel-chat__time" title={new Date(m.at).toLocaleString()}>{formatTime(m.at)}</span>
             </div>
-            <div
-              className="channel-chat__bubble"
-              onContextMenu={onBubbleContextMenu ? (event) => {
-                event.preventDefault();
-                onBubbleContextMenu({ messageId: m.id, sender: m.sender, x: event.clientX, y: event.clientY });
-              } : undefined}
-            >
-              {renderBody(m.body)}
-              {attachmentPreview && attachmentRefsOf(m.body).length > 0 && (
-                <span className="channel-chat__attpics">
-                  {attachmentRefsOf(m.body).map((path) => (
-                    <ChannelAttachmentImage key={path} path={path} preview={attachmentPreview} />
-                  ))}
-                </span>
-              )}
-            </div>
+            {dispatchRecipients ? (
+              <div
+                className="channel-chat__dispatch"
+                data-dispatch-to={dispatchRecipients.map((c) => directoryTitle(c)).join(", ")}
+                onContextMenu={bubbleContextMenu}
+              >
+                <div className="channel-chat__dispatchhead">
+                  <span className="channel-chat__dispatchbadge">{t("collabGroup.chat.dispatchBadge")}</span>
+                  <span className="channel-chat__dispatchto">
+                    {t("collabGroup.chat.dispatchTo", {
+                      sender: own ? t("collabGroup.chat.you") : directoryTitle(m.sender),
+                      executors: dispatchRecipients.map((c) => directoryTitle(c)).join(", "),
+                    })}
+                  </span>
+                </div>
+                <div className="channel-chat__dispatchbody">{bodyContent}</div>
+              </div>
+            ) : (
+              <div className="channel-chat__bubble" onContextMenu={bubbleContextMenu}>
+                {bodyContent}
+              </div>
+            )}
             {(readMembers.length > 0 || failedMembers.length > 0) && (
               <div className="channel-chat__receipts">
                 {readMembers.map((cell) => (

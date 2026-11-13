@@ -6392,6 +6392,10 @@ export const zhTW: Record<DictKey, string> = {
   "collabGroup.chat.unsetDeputy": "撤銷副管理員",
   // tl1406：human 群未設副管理員時未 @ 發言零投遞——發送後的如實提示（Q3）。
   "collabGroup.chat.deputylessHint": "本群未設副管理員：這條訊息不會推送給任何會話（成員仍可在歷史中查看）。可在成員列表設為副管理員後重發，或直接 @ 具體成員。",
+  // tl1564：任務分配卡（tl1406 確定性定向投遞的訊息，氣泡同位換裝）——
+  // 徽標 + 誰→誰 + 任務摘要。
+  "collabGroup.chat.dispatchBadge": "任務分配",
+  "collabGroup.chat.dispatchTo": "{sender} → {executors}",
   "collabGroup.chat.inviteDismissHint": "點擊本框外部區域自動關閉（已勾選保留）",
   "collabGroup.chat.atPopLabel": "選擇要 @ 的參與者",
   "collabGroup.chat.atPopTitle": "選擇要 @ 的參與者（↑↓ 選擇，Enter 確認）",

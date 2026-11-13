@@ -42991,6 +42991,40 @@ button.statusbar__mcp:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated, var(--bg)));
 }
+/* tl1564 派活卡：tl1406 确定性定向投递的消息在气泡同位换装任务分配卡
+   （徽标 + 谁→谁 + 任务摘要）——复用消息流行结构，不新增独立入口。 */
+.channel-chat__dispatch {
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated, var(--bg)));
+  font-size: var(--text-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.channel-chat__dispatchhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+}
+.channel-chat__dispatchbadge {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: var(--radius-pill);
+  font-size: 9px;
+  color: var(--accent);
+}
+.channel-chat__dispatchto {
+  color: var(--fg-dim);
+  word-break: break-word;
+}
+.channel-chat__dispatchbody {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .channel-chat__receipts {
   display: flex;
   flex-wrap: wrap;
