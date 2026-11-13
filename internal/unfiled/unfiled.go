@@ -32,7 +32,7 @@ const SystemRecoveryPrompt = "Your previous turn stopped abnormally before the w
 // be reported as unfiled user input: their text is regenerable machinery, not
 // user inspiration (task 1023 去重铁律：宿主注入/系统提示/跨会话消息折叠不计缺口).
 var systemPromptPrefixes = []string{
-	"[跨会话消息]",          // cross-session delivery (drain_inbox_tool)
+	"[跨会话消息",           // cross-session delivery (drain_inbox_tool); prefix covers the tl1566 channel subtype [跨会话消息·群聊] too
 	"[合并消息 ×",          // merged inbox consumption (control/inbox_merge)
 	"[跨会话回信提醒",         // require_reply nudge (agent.CollabReplyNudgeMarker)
 	"<context-state>",  // compaction state wrapper
