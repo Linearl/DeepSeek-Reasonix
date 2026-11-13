@@ -123,7 +123,20 @@ func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall
 	// 结果保留工具感知的头部预览，完整原件进 RawContent 供本地翻页。这是
 	// duplicate/recovery 路径既有先例的推广：不设源头闸，一次 587K 字符的
 	// 巨 tool 结果（1029 取证样本）就足以把会话顶过物理窗口。
-	visible, truncNotice := truncateToolOutputFor(o.output, call.Name, call.ID)
+	// tl1561: this layer's own truncation (receipt/self-heal appends can push an
+	// already-bounded body back over the cap, and the unbounded passthrough path
+	// lands here) archives the original so the marker keeps a readable path. The
+	// execute layer already archives when it truncates, and its bounded output
+	// stays under the cap here, so double-archiving is not introduced.
+	var archivePath string
+	if len(o.output) > maxToolOutputBytes {
+		src := o.output
+		if o.rawOutput != "" {
+			src = o.rawOutput
+		}
+		archivePath = a.archiveTruncatedToolOutput(call.Name, call.ID, src)
+	}
+	visible, truncNotice := truncateToolOutputArchived(o.output, call.Name, call.ID, archivePath)
 	if truncNotice != "" {
 		slog.Warn("agent: oversized tool result capped at history write (任务1029③)",
 			"tool", call.Name, "bytes", len(o.output), "cap", maxToolOutputBytes)

@@ -92,7 +92,13 @@ func (a *Agent) boundIncompleteReadAwareResult(plan *toolCallPlan, result string
 	if a.readPipelineActive() && structuredReader {
 		// Structured readers are deduplicated only in the ordered finalizer,
 		// against original text present in the frozen model request.
-		body, truncMsg = truncateToolOutputFor(result, plan.call.Name, plan.call.ID)
+		// tl1561: archive the original so the truncation marker keeps a
+		// readable path instead of the retired result_ref channel.
+		var archivePath string
+		if len(result) > maxToolOutputBytes {
+			archivePath = a.archiveTruncatedToolOutput(plan.call.Name, plan.call.ID, result)
+		}
+		body, truncMsg = truncateToolOutputArchived(result, plan.call.Name, plan.call.ID, archivePath)
 		if body != result {
 			original = result
 		}

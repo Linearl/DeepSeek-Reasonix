@@ -4166,13 +4166,18 @@ func truncateToolOutput(s string) (string, string) {
 }
 
 // truncateToolOutputFor is the tool-aware provider-input limiter. toolName and
-// toolCallID populate the recovery marker.
+// toolCallID populate the recovery marker. The archive-aware variant carries
+// the path a caller wrote the full original to (tl1561).
 func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
+	return truncateToolOutputArchived(s, toolName, toolCallID, "")
+}
+
+func truncateToolOutputArchived(s, toolName, toolCallID, archivePath string) (string, string) {
 	if len(s) <= maxToolOutputBytes {
 		return s, ""
 	}
 	if toolName == "read_file" {
-		return truncateReadFileOutput(s, toolName, toolCallID)
+		return truncateReadFileOutputArchived(s, toolName, toolCallID, archivePath)
 	}
 	strategy := snipStrategy{head: 40, tail: 40, headChars: 8000, tailChars: 8000}
 	switch {
@@ -4203,8 +4208,7 @@ func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 	}
 	head := snapToRuneBoundary(s, 0, headKeep)
 	tail := snapToRuneBoundary(s, len(s)-tailKeep, len(s))
-	resultRef := toolResultRef(toolCallID, s)
-	marker := toolOutputRecoveryMarker(toolName, toolCallID, resultRef, len(s), len(head)+len(tail))
+	marker := toolOutputRecoveryMarker(toolName, toolCallID, archivePath, len(s), len(head)+len(tail))
 	for range 3 {
 		bodyLen := len(head) + len(marker) + len(tail)
 		if bodyLen <= maxToolOutputBytes {
@@ -4219,7 +4223,7 @@ func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 		if trimTail < len(tail) {
 			tail = snapToRuneBoundary(tail, trimTail, len(tail))
 		}
-		marker = toolOutputRecoveryMarker(toolName, toolCallID, resultRef, len(s), len(head)+len(tail))
+		marker = toolOutputRecoveryMarker(toolName, toolCallID, archivePath, len(s), len(head)+len(tail))
 	}
 	notice := fmt.Sprintf(i18n.M.ToolOutputTruncatedFmt, len(s)-len(head)-len(tail), len(s))
 	return head + marker + tail, notice

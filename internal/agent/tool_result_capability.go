@@ -31,7 +31,7 @@ type sessionToolResultTool struct {
 func (*sessionToolResultTool) Name() string { return tool.HostSessionToolResult }
 
 func (*sessionToolResultTool) Description() string {
-	return "Read one bounded UTF-8 page from a complete tool result retained in the current agent session. This uses tr-... result references; for a sa_... subagent reference, use read_subagent_result instead."
+	return "Read one bounded UTF-8 page from a complete tool result retained in the current agent session. Pass tool_call_id; add result_ref only to disambiguate records that share one id. For a sa_... subagent reference, use read_subagent_result instead."
 }
 
 func (*sessionToolResultTool) ReadOnly() bool { return true }
@@ -61,7 +61,6 @@ type toolResultCandidate struct {
 	body        string
 	resultRef   string
 	recoverable bool
-	requiresRef bool
 }
 
 func toolResultRef(toolCallID, body string) string {
@@ -72,44 +71,53 @@ func toolResultRef(toolCallID, body string) string {
 	return fmt.Sprintf("tr-%x", h.Sum(nil)[:12])
 }
 
-func toolOutputRecoveryMarker(toolName, toolCallID, resultRef string, originalBytes, keptBytes int) string {
+// toolOutputRecoveryMarker builds the provider-visible truncation marker.
+// tl1561: the old result_ref guidance promised a recovery path that could not
+// hold — result_ref is a content hash of the original, and the retained
+// original drifts (CI summarization, tl1172 >64KiB session trims, legacy
+// records without RawContent), so the second call failed with "result_ref not
+// found". The marker now points at the archived original file (read_file
+// offset/limit); when no archive exists it only advises re-running with
+// narrower arguments — no promise the session cannot keep.
+func toolOutputRecoveryMarker(toolName, toolCallID, archivePath string, originalBytes, keptBytes int) string {
 	namePart := boundedMarkerField(toolName, 128, "tool")
 	idPart := boundedMarkerField(toolCallID, 128, "-")
-	exampleID := toolCallID
-	if len(exampleID) > 256 {
-		exampleID = "<full tool_call_id from this tool result>"
+	recovery := "re-run the original tool with narrower arguments"
+	if archivePath != "" {
+		recovery = "read the archived original with read_file(path=\"" + archivePath + "\", offset, limit) if more content is needed; otherwise re-run the original tool with narrower arguments"
 	}
-	args, _ := json.Marshal(struct {
-		ToolCallID string `json:"tool_call_id"`
-		ResultRef  string `json:"result_ref"`
-		Offset     int    `json:"offset"`
-	}{ToolCallID: exampleID, ResultRef: resultRef})
 	return fmt.Sprintf(
-		"\n\n…[truncated tool=%s call_id=%s result_ref=%s original_bytes=%d kept_bytes=%d — full original retained locally; recover with use_capability(action=\"call\", capability_id=\"session:tool_result\", arguments=%s). If use_capability is unavailable, re-run the original tool with narrower arguments]…\n\n",
-		namePart, idPart, resultRef, originalBytes, keptBytes, args,
+		"\n\n…[truncated tool=%s call_id=%s original_bytes=%d kept_bytes=%d archive=%s — %s]…\n\n",
+		namePart, idPart, originalBytes, keptBytes, archiveField(archivePath), recovery,
 	)
 }
 
 // toolOutputRecoveryMarkerAt builds the recoverable provider-visible marker.
 // recoverOffset is the first byte the model has not seen. It is intentionally
 // read_file-only; generic head/tail previews retain their byte-compatible marker
-// above and continue to recover from zero.
-func toolOutputRecoveryMarkerAt(toolName, toolCallID, resultRef string, originalBytes, keptBytes, recoverOffset int) string {
+// above and continue to recover from zero. The next_offset field is mechanical
+// state: readFileRecoveryOffset parses it to resume the read pipeline.
+func toolOutputRecoveryMarkerAt(toolName, toolCallID, archivePath string, originalBytes, keptBytes, recoverOffset int) string {
 	namePart := boundedMarkerField(toolName, 128, "tool")
 	idPart := boundedMarkerField(toolCallID, 128, "-")
-	exampleID := toolCallID
-	if len(exampleID) > 256 {
-		exampleID = "<full tool_call_id from this tool result>"
+	recovery := "re-run the original tool with narrower arguments"
+	if archivePath != "" {
+		recovery = "read the archived original with read_file(path=\"" + archivePath + "\", offset, limit) when more coverage is required; otherwise re-run the original tool with narrower arguments"
 	}
-	args, _ := json.Marshal(struct {
-		ToolCallID string `json:"tool_call_id"`
-		ResultRef  string `json:"result_ref"`
-		Offset     int    `json:"offset"`
-	}{ToolCallID: exampleID, ResultRef: resultRef, Offset: recoverOffset})
 	return fmt.Sprintf(
-		"\n\n…[truncated tool=%s call_id=%s result_ref=%s original_bytes=%d kept_bytes=%d next_offset=%d — full original retained locally; recover with use_capability(action=\"call\", capability_id=\"session:tool_result\", arguments=%s). INCOMPLETE READ: only a contiguous prefix is visible. Independent work may continue; recover more content when required and do not claim whole-file coverage from this prefix. If use_capability is unavailable, re-run the original tool with narrower arguments]…\n\n",
-		namePart, idPart, resultRef, originalBytes, keptBytes, recoverOffset, args,
+		"\n\n…[truncated tool=%s call_id=%s original_bytes=%d kept_bytes=%d next_offset=%d archive=%s — %s INCOMPLETE READ: only a contiguous prefix is visible. Independent work may continue; recover more content when required and do not claim whole-file coverage from this prefix.]…\n\n",
+		namePart, idPart, originalBytes, keptBytes, recoverOffset, archiveField(archivePath), recovery,
 	)
+}
+
+// archiveField renders the archive=<path> marker field. An empty archive path
+// renders as archive=none so the field always parses as one space-terminated
+// token and consumers never see a dangling separator.
+func archiveField(archivePath string) string {
+	if archivePath == "" {
+		return "none"
+	}
+	return archivePath
 }
 
 func boundedMarkerField(value string, maxBytes int, fallback string) string {
@@ -190,6 +198,13 @@ func (t *sessionToolResultTool) Execute(_ context.Context, args json.RawMessage)
 	return string(header) + "\n" + candidate.body[p.Offset:end], nil
 }
 
+// findToolResultCandidate locates the retained original for one tool call.
+// tl1561: the old "result_ref required for truncated results" gate is retired —
+// truncation markers no longer carry a result_ref, so demanding one recreated
+// the broken recovery path. A single candidate pages by tool_call_id alone;
+// result_ref remains as the disambiguator when several records share an id
+// (its refs are computed from the bodies actually retained, so echoing one
+// back always matches — unlike the old marker-embedded hash, which drifted).
 func findToolResultCandidate(msgs []provider.Message, toolCallID, resultRef string) (toolResultCandidate, error) {
 	candidates := make([]toolResultCandidate, 0, 2)
 	for _, msg := range slices.Backward(msgs) {
@@ -202,19 +217,11 @@ func findToolResultCandidate(msgs []provider.Message, toolCallID, resultRef stri
 			body = msg.Content
 			recoverable = !looksLikeTruncatedToolResult(msg.Content)
 		}
-		ref := toolResultRef(toolCallID, body)
-		requiresRef := strings.Contains(msg.Content, "…[truncated tool=") && strings.Contains(msg.Content, " result_ref=")
-		if !recoverable && requiresRef {
-			if markerRef, ok := toolResultRefFromMarker(msg.Content); ok {
-				ref = markerRef
-			}
-		}
 		candidate := toolResultCandidate{
-			name: msg.Name, body: body, resultRef: ref, recoverable: recoverable,
-			requiresRef: requiresRef,
+			name: msg.Name, body: body, resultRef: toolResultRef(toolCallID, body), recoverable: recoverable,
 		}
 		if resultRef != "" {
-			if ref == resultRef {
+			if candidate.resultRef == resultRef {
 				return candidate, nil
 			}
 			continue
@@ -228,9 +235,6 @@ func findToolResultCandidate(msgs []provider.Message, toolCallID, resultRef stri
 		return toolResultCandidate{}, fmt.Errorf("session tool result: tool_call_id %q was not found in the current session", toolCallID)
 	}
 	if len(candidates) == 1 {
-		if candidates[0].requiresRef {
-			return toolResultCandidate{}, fmt.Errorf("session tool result: result_ref is required for this truncated result; use result_ref=%s from its marker", candidates[0].resultRef)
-		}
 		return candidates[0], nil
 	}
 	refs := make([]string, 0, len(candidates))
@@ -238,28 +242,6 @@ func findToolResultCandidate(msgs []provider.Message, toolCallID, resultRef stri
 		refs = append(refs, candidate.resultRef)
 	}
 	return toolResultCandidate{}, fmt.Errorf("session tool result: tool_call_id %q is ambiguous; retry with one of result_ref=%s", toolCallID, strings.Join(refs, ","))
-}
-
-func toolResultRefFromMarker(content string) (string, bool) {
-	const markerStart = "…[truncated tool="
-	start := strings.Index(content, markerStart)
-	if start < 0 {
-		return "", false
-	}
-	marker := content[start:]
-	if end := strings.Index(marker, "]…"); end >= 0 {
-		marker = marker[:end]
-	}
-	for field := range strings.FieldsSeq(marker) {
-		ref, ok := strings.CutPrefix(field, "result_ref=")
-		if !ok || len(ref) != len("tr-")+24 || !strings.HasPrefix(ref, "tr-") {
-			continue
-		}
-		if decoded, err := hex.DecodeString(strings.TrimPrefix(ref, "tr-")); err == nil && len(decoded) == 12 {
-			return ref, true
-		}
-	}
-	return "", false
 }
 
 func looksLikeTruncatedToolResult(content string) bool {
@@ -327,7 +309,7 @@ func (t *UseCapabilityTool) inspectSessionToolResult() (string, error) {
 		"description": "Read one bounded page from a complete tool result retained in this agent's current session.",
 		"status":      "ready", "read_only": true,
 		"arguments": map[string]any{
-			"tool_call_id": "required", "result_ref": "required for new truncated results; optional for unambiguous legacy records",
+			"tool_call_id": "required", "result_ref": "optional; disambiguates records that share one tool_call_id",
 			"offset": 0, "limit_default": toolResultPageDefaultBytes, "limit_max": toolResultPageMaxBytes,
 		},
 	}

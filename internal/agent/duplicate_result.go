@@ -9,7 +9,14 @@ import (
 
 func (a *Agent) boundProviderVisibleResult(raw, toolName, callID, args string) (body, notice, original string) {
 	summarized := summarizeCIOutput(raw)
-	body, notice = truncateToolOutputFor(summarized, toolName, callID)
+	// tl1561: archive the full original before the marker is built so the
+	// truncation marker can point at a readable file. The pre-summary raw is
+	// archived (not the CI summary) — the file is the durable recovery channel.
+	var archivePath string
+	if len(summarized) > maxToolOutputBytes {
+		archivePath = a.archiveTruncatedToolOutput(toolName, callID, raw)
+	}
+	body, notice = truncateToolOutputArchived(summarized, toolName, callID, archivePath)
 	deduped := a.dedupeProviderVisibleResult(toolName, callID, args, raw, body)
 	if deduped != body {
 		original = raw

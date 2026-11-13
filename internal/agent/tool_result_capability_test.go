@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,7 +15,9 @@ import (
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
+	"reasonix/internal/sessiontemp"
 	"reasonix/internal/tool"
+	_ "reasonix/internal/tool/builtin"
 )
 
 type toolResultPageHeader struct {
@@ -66,8 +70,10 @@ func TestSessionToolResultPagesReconstructCompleteUTF8Output(t *testing.T) {
 	}}}
 	_, proxy := newToolResultCapabilityAgent(t, session)
 	ref := toolResultRef("call-1", full)
-	if _, _, err := executeToolResultPage(t, proxy, "call-1", "", 0, 128); err == nil || !strings.Contains(err.Error(), "result_ref is required") {
-		t.Fatalf("new truncated result accepted no result_ref: %v", err)
+	// tl1561: with the requiresRef gate retired, a truncated result pages by
+	// tool_call_id alone — the marker no longer carries (or demands) a ref.
+	if header, _, err := executeToolResultPage(t, proxy, "call-1", "", 0, 128); err != nil || header.ResultRef != ref {
+		t.Fatalf("unreferenced page failed: header=%+v err=%v", header, err)
 	}
 
 	var rebuilt strings.Builder
@@ -127,10 +133,17 @@ func TestToolResultProviderBoundaryAndRecoveryMarker(t *testing.T) {
 			if len(got) > maxToolOutputBytes || !utf8.ValidString(got) {
 				t.Fatalf("bounded result invalid: bytes=%d utf8=%v", len(got), utf8.ValidString(got))
 			}
-			ref := toolResultRef(callID, tc.body)
-			for _, want := range []string{"result_ref=" + ref, "original_bytes=", "kept_bytes=", "session:tool_result", "use_capability", "narrower arguments"} {
+			// tl1561: the marker promises only what the session can keep — the
+			// pure form has no archive path and guides to re-running; it never
+			// names the retired result_ref channel.
+			for _, want := range []string{"original_bytes=", "kept_bytes=", "archive=none", "narrower arguments"} {
 				if !strings.Contains(got, want) {
 					t.Fatalf("recovery marker missing %q: %.1000s", want, got)
+				}
+			}
+			for _, banned := range []string{"result_ref", "session:tool_result", "use_capability"} {
+				if strings.Contains(got, banned) {
+					t.Fatalf("recovery marker still promises %q: %.1000s", banned, got)
 				}
 			}
 			if tc.name == "error-tail" && !strings.Contains(got, "fatal: unique error tail") {
@@ -187,12 +200,13 @@ func TestSessionToolResultValidatesLegacyAndPagingErrors(t *testing.T) {
 	if _, _, err := executeToolResultPage(t, proxy, "lost", "", 0, 1024); err == nil || !strings.Contains(err.Error(), "full result is unavailable") {
 		t.Fatalf("legacy truncated result error = %v", err)
 	}
-	fullLostRef := toolResultRef("lost-new", fullLost)
-	if _, _, err := executeToolResultPage(t, proxy, "lost-new", "", 0, 1024); err == nil || !strings.Contains(err.Error(), fullLostRef) {
-		t.Fatalf("new truncated result did not request its marker ref: %v", err)
+	// tl1561: without retained RawContent the record is unrecoverable no matter
+	// how it is addressed — the honest answer is "re-run", never a ref demand.
+	if _, _, err := executeToolResultPage(t, proxy, "lost-new", "", 0, 1024); err == nil || !strings.Contains(err.Error(), "full result is unavailable") {
+		t.Fatalf("unreferenced truncated result without RawContent error = %v", err)
 	}
-	if _, _, err := executeToolResultPage(t, proxy, "lost-new", fullLostRef, 0, 1024); err == nil || !strings.Contains(err.Error(), "full result is unavailable") {
-		t.Fatalf("new truncated result with missing RawContent error = %v", err)
+	if _, _, err := executeToolResultPage(t, proxy, "lost-new", toolResultRef("lost-new", fullLost), 0, 1024); err == nil || !strings.Contains(err.Error(), "was not found") {
+		t.Fatalf("stale ref against unrecoverable record error = %v", err)
 	}
 	if _, _, err := executeToolResultPage(t, proxy, "complete", "", 1, 1024); err == nil || !strings.Contains(err.Error(), "UTF-8 character boundary") {
 		t.Fatalf("invalid UTF-8 offset error = %v", err)
@@ -486,4 +500,117 @@ func mustDecodeHex(t *testing.T, value string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// tl1561 验收①②:全链截断→落盘→按 marker 提示的路径取回完整原文。
+// heartbeat_task_list 同量级(~78KB)大返回,经 boundProviderVisibleResult 截断后,
+// marker 只承诺落盘文件(read_file 按 offset/limit 行窗读),不再承诺 result_ref。
+func TestTruncatedToolResultArchivesOriginalAndMarkerPointsAtIt(t *testing.T) {
+	tempRoot := t.TempDir()
+	mgr := sessiontemp.NewWithRoot(tempRoot)
+	mgr.Retain()
+	t.Cleanup(mgr.Release)
+	reg := tool.NewRegistry()
+	proxy := NewUseCapabilityTool(context.Background(), nil, nil, reg, nil, nil, nil)
+	reg.Add(proxy)
+	a := New(nil, reg, nil, Options{SessionTemp: mgr}, event.Discard)
+
+	raw := strings.Repeat("heartbeat task row 界🧪\n", 3000) + "tail-sentinel-最后一行\n"
+	body, notice, original := a.boundProviderVisibleResult(raw, "heartbeat_task_list", "call-arch", "{}")
+	if notice == "" || original == "" {
+		t.Fatalf("large result was not truncated: notice=%q original=%d", notice, len(original))
+	}
+	if !strings.Contains(body, "…[truncated tool=heartbeat_task_list") {
+		t.Fatalf("truncation marker missing: %.300s", body)
+	}
+	for _, banned := range []string{"result_ref", "session:tool_result", "use_capability"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("marker still promises retired channel %q: %.400s", banned, body)
+		}
+	}
+	_, afterArchive, _ := strings.Cut(body, "archive=")
+	path, _, _ := strings.Cut(afterArchive, " — ")
+	path = strings.TrimSpace(path)
+	if path == "" || path == "none" || !filepath.IsAbs(path) {
+		t.Fatalf("marker archive path not a readable absolute path: %q (marker %.400s)", path, body)
+	}
+	if !strings.Contains(body, `read_file(path="`+path+`"`) {
+		t.Fatalf("marker does not direct read_file at the archived path: %.500s", body)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != raw {
+		t.Fatalf("archived original mismatch: err=%v got=%d want=%d", err, len(got), len(raw))
+	}
+	// read_file 按 marker 提示可读回被截掉的尾部(行窗 offset/limit)。
+	var reader tool.Tool
+	for _, builtin := range tool.Builtins() {
+		if builtin.Name() == "read_file" {
+			reader = builtin
+			break
+		}
+	}
+	if reader == nil {
+		t.Fatal("read_file builtin missing")
+	}
+	args, _ := json.Marshal(map[string]any{"path": path, "offset": 3000, "limit": 10})
+	tail, err := reader.Execute(context.Background(), args)
+	if err != nil || !strings.Contains(tail, "tail-sentinel-最后一行") {
+		t.Fatalf("read_file could not recover the archived tail: err=%v out=%.300s", err, tail)
+	}
+}
+
+// tl1561 验收④:小返回零回退——字节不变、无 notice、不落盘。
+func TestBoundProviderVisibleResultSmallReturnUnchangedWithoutArchive(t *testing.T) {
+	tempRoot := t.TempDir()
+	mgr := sessiontemp.NewWithRoot(tempRoot)
+	mgr.Retain()
+	t.Cleanup(mgr.Release)
+	reg := tool.NewRegistry()
+	proxy := NewUseCapabilityTool(context.Background(), nil, nil, reg, nil, nil, nil)
+	reg.Add(proxy)
+	a := New(nil, reg, nil, Options{SessionTemp: mgr}, event.Discard)
+
+	raw := "small result 界🧪"
+	body, notice, original := a.boundProviderVisibleResult(raw, "heartbeat_task_list", "call-small", "{}")
+	if body != raw || notice != "" || original != "" {
+		t.Fatalf("small result changed: body=%q notice=%q original=%d", body, notice, len(original))
+	}
+	err := filepath.WalkDir(tempRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() || path != tempRoot {
+			t.Fatalf("small result created archive entries under %s: %s", tempRoot, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// tl1561 验收③⑤:read_file 前缀截断的 At-marker 保留机械恢复游标(next_offset,
+// readFileRecoveryOffset 解析),落盘路径入 marker 且不再承诺 result_ref。
+func TestReadFileTruncationMarkerKeepsRecoveryCursorAndArchive(t *testing.T) {
+	full := strings.Repeat("line 界\n", 20000)
+	bounded, notice := truncateReadFileOutputArchived(full, "read_file", "call-r", `C:\archive-tl1561\trunc-1.txt`)
+	if notice == "" {
+		t.Fatal("fixture was not truncated")
+	}
+	offset, ok := readFileRecoveryOffset(bounded)
+	if !ok || offset <= 0 {
+		t.Fatalf("next_offset cursor lost: offset=%d ok=%v", offset, ok)
+	}
+	if !strings.Contains(bounded, `archive=C:\archive-tl1561\trunc-1.txt`) || !strings.Contains(bounded, `read_file(path="`) {
+		t.Fatalf("archive guidance missing: %.500s", bounded)
+	}
+	for _, banned := range []string{"result_ref", "session:tool_result", "use_capability"} {
+		if strings.Contains(bounded, banned) {
+			t.Fatalf("read_file marker still promises %q: %.400s", banned, bounded)
+		}
+	}
+	pure, _ := truncateReadFileOutput(full, "read_file", "call-r")
+	if !strings.Contains(pure, "archive=none") || strings.Contains(pure, "result_ref") {
+		t.Fatalf("archive-less read_file marker shape changed: %.500s", pure)
+	}
 }
