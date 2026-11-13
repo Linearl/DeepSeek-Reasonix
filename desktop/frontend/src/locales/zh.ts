@@ -1841,7 +1841,8 @@ export const zh: Record<DictKey, string> = {
   "recovery.noticeRepairStillOverWindow": "这次修复把检查点补了回来，但会话仍超出模型窗口——请再跑一次修复并勾选 Diet（减肥），剥图折叠后即可恢复可用。",
   "recovery.noticeSelectedHeadBehind": "已打开一个较旧的版本（{selectedMessages} 条），另一版本更长且更新（{otherMessages} 条）；如需那条链，可在“查看版本”中手动切换。",
   "recovery.noticeMaterializationLag": "本会话有 {gap} 条历史未落入本地记录（事件日志 {eventChain} 条，本地记录 {materialized} 条）；可在「设置 → 存储与路径 → 工作阶段版本与副本」面板中找到该会话，展开后执行“修复”。",
-  "recovery.noticeSelfHealed": "打开会话时本地自愈检测到投影超出当前模型窗口，已自动瘦身（Diet）降载并恢复可用（本次动作 {actions}：strip_images=图片转占位引用省 token，fold=超出窗口的旧消息折叠为本地占位）；这是自动降载而非数据损坏修复——原版本未删，整目录备份在会话文件旁的 pre-repair 目录，可在「设置 → 存储与路径 → 工作阶段版本与副本」面板中切回。",
+  // tl1572: 面板能力=只读查看（pre-repair 分区），文案据此收口，不再承诺「切回」。
+  "recovery.noticeSelfHealed": "打开会话时本地自愈检测到投影超出当前模型窗口，已自动瘦身（Diet）降载并恢复可用（本次动作 {actions}：strip_images=图片转占位引用省 token，fold=超出窗口的旧消息折叠为本地占位）；这是自动降载而非数据损坏修复——原版本未删，整目录备份在会话文件旁的 pre-repair 目录，可在「设置 → 存储与路径 → 工作阶段版本与副本」面板的「改写前备份」分区查看。",
   "recovery.noticeCompactFailStreak": "上下文压缩已连续失败 {streak} 次，投影可能超出模型窗口；重新打开本会话可让本地自愈剥图并折叠旧消息。",
   "recovery.noticeHeadSelected": "已将此版本设为当前版本。",
   "recovery.headsSummary": "该会话共 {branches} 个版本",
@@ -5141,6 +5142,13 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPhaseTodoHint": "有副本/候选需要处理的会话",
   "settings.recoveryCopiesGroupExpandTip": "点击展开本组",
   "settings.recoveryCopiesGroupCollapseTip": "点击折叠本组",
+  // tl1572: 改写前备份分区（只读查看，不承诺切回）。
+  "settings.recoveryCopiesPreRepairGroup": "改写前备份（pre-repair）",
+  "settings.recoveryCopiesPreRepairNone": "未发现改写前备份——本机没有自愈/Diet 改写留下的备份目录。",
+  "settings.recoveryCopiesPreRepairView": "查看",
+  "settings.recoveryCopiesPreRepairPreviewTitle": "改写前备份预览（只读）",
+  "settings.recoveryCopiesPreRepairOrphan": "原会话已不在——这是它仅存的完整副本",
+  "settings.recoveryCopiesPreRepairFailed": "改写前备份枚举失败",
   "settings.recoveryCopiesStepScanHint": "第①步：全量扫描该会话的版本与副本，重算条数/轮次/大小；只读",
   "settings.recoveryCopiesStepActivateHint": "第②步：将该副本设为当前主线——列表主线行立即跟随，打开的会话热切，重开按新主线显示",
   "settings.recoveryCopiesStepPreviewHint": "第②步辅助：查看该副本的尾部消息预览（结尾优先，判断它合并后会在底部添加什么）",

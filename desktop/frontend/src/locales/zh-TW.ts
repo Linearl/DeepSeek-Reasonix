@@ -1462,7 +1462,8 @@ export const zhTW: Record<DictKey, string> = {
   "recovery.noticeRepairStillOverWindow": "這次修復把檢查點補了回來，但會話仍超出模型視窗——請再跑一次修復並勾選 Diet（減肥），剝圖折疊後即可恢復可用。",
   "recovery.noticeSelectedHeadBehind": "已開啟一個較舊的版本（{selectedMessages} 條），另一版本更長且更新（{otherMessages} 條）；如需那條鏈，可在「查看版本」中手動切換。",
   "recovery.noticeMaterializationLag": "本會話有 {gap} 條歷史未落入本地記錄（事件日誌 {eventChain} 條，本地記錄 {materialized} 條）；可在「設定 → 儲存與路徑 → 工作階段版本與副本」面板中找到該會話，展開後執行「修復」。",
-  "recovery.noticeSelfHealed": "重新開啟工作階段時，本地自癒偵測到投影超出目前模型視窗，已自動瘦身（Diet）降載並恢復可用（本次動作 {actions}：strip_images=圖片轉佔位引用省 token，fold=超出視窗的舊訊息摺疊為本地佔位）；這是自動降載而非資料損壞修復——原版本未刪，整目錄備份在工作階段檔案旁的 pre-repair 目錄，可在「設定 → 儲存與路徑 → 工作階段版本與副本」面板中切回。",
+  // tl1572: 面板能力=唯讀檢視（改寫前備份分區），文案據此收口，不再承諾「切回」。
+  "recovery.noticeSelfHealed": "重新開啟工作階段時，本地自癒偵測到投影超出目前模型視窗，已自動瘦身（Diet）降載並恢復可用（本次動作 {actions}：strip_images=圖片轉佔位引用省 token，fold=超出視窗的舊訊息摺疊為本地佔位）；這是自動降載而非資料損壞修復——原版本未刪，整目錄備份在工作階段檔案旁的 pre-repair 目錄，可在「設定 → 儲存與路徑 → 工作階段版本與副本」面板的「改寫前備份」分區檢視。",
   "recovery.noticeCompactFailStreak": "上下文壓縮已連續失敗 {streak} 次，投影可能超出模型視窗；重新開啟本工作階段可讓本地自癒剝圖並摺疊舊訊息。",
   "recovery.noticeHeadSelected": "已將此版本設為目前版本。",
   "recovery.headsSummary": "該會話共 {branches} 個版本",
@@ -3642,6 +3643,13 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPhaseTodoHint": "有副本/候選需要處理的對話",
   "settings.recoveryCopiesGroupExpandTip": "點擊展開本組",
   "settings.recoveryCopiesGroupCollapseTip": "點擊摺疊本組",
+  // tl1572: 改寫前備份分區（唯讀檢視，不承諾切回）。
+  "settings.recoveryCopiesPreRepairGroup": "改寫前備份（pre-repair）",
+  "settings.recoveryCopiesPreRepairNone": "未發現改寫前備份——本機沒有自癒/Diet 改寫留下的備份目錄。",
+  "settings.recoveryCopiesPreRepairView": "檢視",
+  "settings.recoveryCopiesPreRepairPreviewTitle": "改寫前備份預覽（唯讀）",
+  "settings.recoveryCopiesPreRepairOrphan": "原對話已不在——這是它僅存的完整副本",
+  "settings.recoveryCopiesPreRepairFailed": "改寫前備份枚舉失敗",
   "settings.recoveryCopiesStepScanHint": "第①步：全量掃描該對話的版本與副本，重算條數/輪次/大小；唯讀",
   "settings.recoveryCopiesStepActivateHint": "第②步：將該副本設為目前主線——列表主線行立即跟隨，開啟的對話熱切，重開按新主線顯示",
   "settings.recoveryCopiesStepPreviewHint": "第②步輔助：查看該副本的尾部訊息預覽（結尾優先，判斷它合併後會在底部添加什麼）",
