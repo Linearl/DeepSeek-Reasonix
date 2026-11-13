@@ -114,7 +114,7 @@ func (t taskCardTool) Execute(ctx context.Context, args json.RawMessage) (string
 	case "list":
 		return listTaskCardsTool{cfg: t.cfg}.Execute(ctx, args)
 	default:
-		return "", fmt.Errorf("unknown action %q (create|update|get|list)", p.Action)
+		return "", fmt.Errorf("unknown action %q (create|update|get|list)", echoedNameToken(p.Action)) // tl1554 echo clean
 	}
 }
 

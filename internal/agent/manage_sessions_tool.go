@@ -241,7 +241,7 @@ func (t manageSessionsTool) forwardArgs(action string, args json.RawMessage) (js
 		}
 		return args, nil
 	default:
-		return nil, fmt.Errorf("unknown action %q (%s)", action, strings.Join(manageSessionsActions, ", "))
+		return nil, fmt.Errorf("unknown action %q (%s)", echoedNameToken(action), strings.Join(manageSessionsActions, ", ")) // tl1554 echo clean
 	}
 }
 

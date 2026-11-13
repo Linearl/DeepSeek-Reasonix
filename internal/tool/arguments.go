@@ -74,10 +74,19 @@ var argumentSchemaCache sync.Map // map[string]compiledArgumentSchema
 
 // NormalizeArguments preserves the historical empty/null-to-object
 // compatibility without guessing fields, coercing types, or rewriting values.
+// tl1554: object KEY NAMES carrying control characters (or their literal
+// `\r`-style escape text) are healed here, at the one function every caller —
+// direct tool calls and the use_capability proxy alike — funnel through.
+// This is the direct-call counterpart of the proxy's parse-level key cleanup
+// and makes schema validation, permission, evidence, and execution all see
+// the same healed bytes. Values are still never rewritten.
 func NormalizeArguments(raw json.RawMessage) json.RawMessage {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 		return json.RawMessage(`{}`)
+	}
+	if cleaned, healed := SanitizeArgumentKeys(trimmed); healed > 0 {
+		return cleaned
 	}
 	return append(json.RawMessage(nil), trimmed...)
 }
@@ -249,9 +258,23 @@ func expectedForErrorKind(errorKind jsonschema.ErrorKind) string {
 	case *kind.Type:
 		return strings.Join(k.Want, " or ")
 	case *kind.Required:
+		// k.Missing names come from the host schema, never from the model
+		// input — no cleanup needed (tl1554 vetting: this arm is clean by
+		// construction).
 		return "required properties: " + strings.Join(k.Missing, ", ")
 	case *kind.AdditionalProperties:
-		return "only declared properties; remove: " + strings.Join(k.Properties, ", ")
+		// tl1554: k.Properties are the keys found on the actual instance —
+		// model input. Echo them cleaned so a polluted key is never confirmed
+		// back as a bad example. (Defense in depth: NormalizeArguments heals
+		// keys before validation, so this arm normally sees clean keys
+		// already; this covers ValidateJSONSchemaValue callers that pass
+		// unhealed instances directly.)
+		properties := make([]string, 0, len(k.Properties))
+		for _, name := range k.Properties {
+			cleaned, _ := SanitizeNameToken(name)
+			properties = append(properties, cleaned)
+		}
+		return "only declared properties; remove: " + strings.Join(properties, ", ")
 	case *kind.Enum:
 		return "one of: " + boundedSchemaValues(k.Want)
 	case *kind.Const:
@@ -295,11 +318,17 @@ func lastKeyword(path []string) string {
 	return path[len(path)-1]
 }
 
+// jsonPointer renders an instance location as a JSON pointer. tl1554: the
+// tokens are instance key names (model input) — echo them cleaned so a
+// polluted key never rides back into the violation path (defense in depth;
+// NormalizeArguments already heals keys before validation on the dispatch
+// paths).
 func jsonPointer(tokens []string) string {
 	var b strings.Builder
 	for _, token := range tokens {
+		cleaned, _ := SanitizeNameToken(token)
 		b.WriteByte('/')
-		b.WriteString(strings.ReplaceAll(strings.ReplaceAll(token, "~", "~0"), "/", "~1"))
+		b.WriteString(strings.ReplaceAll(strings.ReplaceAll(cleaned, "~", "~0"), "/", "~1"))
 	}
 	return b.String()
 }

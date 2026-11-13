@@ -151,7 +151,7 @@ func (t eventWaitTool) Execute(ctx context.Context, args json.RawMessage) (strin
 	switch mode {
 	case "all_idle", "any_idle", "any_message":
 	default:
-		return "", fmt.Errorf("unknown mode %q: use all_idle, any_idle or any_message", p.Mode)
+		return "", fmt.Errorf("unknown mode %q: use all_idle, any_idle or any_message", echoedNameToken(p.Mode)) // tl1554 echo clean
 	}
 	interval := clampDuration(time.Duration(p.IntervalS)*time.Second, eventWaitMinInterval, eventWaitMaxInterval, eventWaitDefaultInterval)
 	timeout := clampDuration(time.Duration(p.TimeoutS)*time.Second, eventWaitMinTimeout, eventWaitMaxTimeout, eventWaitDefaultTimeout)

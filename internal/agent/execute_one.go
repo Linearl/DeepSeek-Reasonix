@@ -155,7 +155,9 @@ func contextualToolGateOutcome(ctx context.Context, target tool.Tool, name strin
 	if !ok || contextual.ProviderVisible(ctx) {
 		return toolOutcome{}, false
 	}
-	msg := fmt.Sprintf("blocked: tool %q is unavailable in the current workflow context", name)
+	// tl1554: echo the cleaned form — the requested name is model input and
+	// this blocked message is its direct read-back.
+	msg := fmt.Sprintf("blocked: tool %q is unavailable in the current workflow context", echoedNameToken(name))
 	switch name {
 	case "update_goal":
 		msg = tool.UpdateGoalUnavailableMessage(ctx)

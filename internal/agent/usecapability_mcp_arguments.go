@@ -473,148 +473,41 @@ func promoteNestedCapabilityID(raw json.RawMessage) (string, json.RawMessage, bo
 // characters pass through byte-for-byte after the same TrimSpace the parser
 // always applied. The bool reports whether anything was removed so the caller
 // can keep the heal observable instead of silently rewriting model output.
+// tl1554: the id is a name domain, so the literal `\r`-style escape text form
+// (backslash+r as two characters — the form a model produces when it copies a
+// previously escaped echo back) is stripped too, via the shared
+// tool.SanitizeNameToken. This closes the "literal \r text passes through"
+// gap tl1553 documented on the id paths.
 func sanitizeCapabilityID(id string) (string, bool) {
-	cleaned, stripped := stripControlCharacters(id)
-	return strings.TrimSpace(cleaned), stripped
+	return tool.SanitizeNameToken(id)
 }
 
 // stripControlCharacters removes ASCII control characters (C0 range 0x00-0x1f
 // and DEL 0x7f) from s. Bytes >= 0x80 pass untouched so multi-byte UTF-8 is
 // never reinterpreted. The bool reports whether anything was removed so
 // callers can keep the heal observable instead of silently rewriting model
-// output. Shared by sanitizeCapabilityID (task 975) and the tl1310 argument
-// key-name cleanup.
+// output. tl1554 SSOT: delegates to the single repo-wide implementation in
+// internal/tool (the agent package keeps the task-975 call-site names;
+// builtin and config call tool.StripControlCharacters directly).
 func stripControlCharacters(s string) (string, bool) {
-	if !hasControlCharacter(s) {
-		return s, false
-	}
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := 0; i < len(s); i++ {
-		if c := s[i]; c >= 0x20 && c != 0x7f {
-			b.WriteByte(c)
-		}
-	}
-	return b.String(), true
+	return tool.StripControlCharacters(s)
 }
 
-// sanitizeArgumentKeys strips control characters from JSON object KEY NAMES at
-// every depth of an action=call arguments value (tl1310: the 10-31 ai-passport
+// sanitizeArgumentKeys strips control characters (and, since tl1554, their
+// literal `\r`-style escape text forms) from JSON object KEY NAMES at every
+// depth of an action=call arguments value (tl1310: the 10-31 ai-passport
 // field report had "expected_revision" arrive as "expected\r_revision" and
 // fail the target schema gate with a required-field error the model could not
 // diagnose, feeding a 5+ retry loop). Values — including long prompt strings
 // with legitimate \n/\r escapes — are preserved byte-for-byte; only key names
-// are rewritten, and only when a control character is actually present in one.
-// Returns the cleaned raw message and the number of keys rewritten; a count of
-// zero always returns the input byte-identical. Keys that clean to empty are
-// kept (never dropped) so the schema gate still reports the unknown field
-// instead of a misleading missing-required diagnosis.
+// are rewritten, and only when a key actually needs cleaning. Returns the
+// cleaned raw message and the number of keys rewritten; a count of zero
+// always returns the input byte-identical. Keys that clean to empty are kept
+// (never dropped) so the schema gate still reports the unknown field instead
+// of a misleading missing-required diagnosis. tl1554 SSOT: delegates to the
+// implementation shared with the direct-call choke (tool.NormalizeArguments).
 func sanitizeArgumentKeys(raw json.RawMessage) (json.RawMessage, int) {
-	if len(raw) == 0 || !argumentKeysHaveControlChars(raw) {
-		return raw, 0
-	}
-	return rebuildArgumentKeys(raw)
-}
-
-// argumentKeysHaveControlChars reports whether any object key at any depth of
-// raw carries an embedded control character. Detection walks the structure
-// without rewriting anything, so a payload whose keys are clean (including one
-// whose values contain legitimate control escapes in long prompt strings)
-// returns false and the caller keeps the input byte-identical.
-func argumentKeysHaveControlChars(raw json.RawMessage) bool {
-	trimmed := strings.TrimSpace(string(raw))
-	switch {
-	case strings.HasPrefix(trimmed, "{"):
-		var object map[string]json.RawMessage
-		if json.Unmarshal([]byte(trimmed), &object) != nil {
-			return false
-		}
-		for key, value := range object {
-			if hasControlCharacter(key) || argumentKeysHaveControlChars(value) {
-				return true
-			}
-		}
-	case strings.HasPrefix(trimmed, "["):
-		var array []json.RawMessage
-		if json.Unmarshal([]byte(trimmed), &array) != nil {
-			return false
-		}
-		for _, item := range array {
-			if argumentKeysHaveControlChars(item) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// rebuildArgumentKeys re-marshals the object graph replacing every key that
-// carries control characters with its cleaned form. Values travel as
-// json.RawMessage and are never re-encoded, so long prompt strings keep their
-// exact bytes; clean subtrees keep their original bytes too. Key order follows
-// map marshal (sorted) — acceptable because this path only runs on an
-// already-polluted payload where byte identity is off the table. A count of
-// zero with the input returned unchanged means re-marshaling failed; the call
-// then proceeds exactly as before the tolerance existed.
-func rebuildArgumentKeys(raw json.RawMessage) (json.RawMessage, int) {
-	trimmed := strings.TrimSpace(string(raw))
-	if strings.HasPrefix(trimmed, "{") {
-		var object map[string]json.RawMessage
-		if json.Unmarshal([]byte(trimmed), &object) != nil || object == nil {
-			return raw, 0
-		}
-		rebuilt := make(map[string]json.RawMessage, len(object))
-		cleaned := 0
-		for key, value := range object {
-			cleanKey, stripped := stripControlCharacters(key)
-			if stripped {
-				cleaned++
-			}
-			if inner, innerCleaned := rebuildArgumentKeys(value); innerCleaned > 0 {
-				value = inner
-				cleaned += innerCleaned
-			}
-			rebuilt[cleanKey] = value
-		}
-		merged, err := json.Marshal(rebuilt)
-		if err != nil {
-			return raw, 0
-		}
-		return merged, cleaned
-	}
-	if strings.HasPrefix(trimmed, "[") {
-		var array []json.RawMessage
-		if json.Unmarshal([]byte(trimmed), &array) != nil {
-			return raw, 0
-		}
-		rebuilt := make([]json.RawMessage, len(array))
-		cleaned := 0
-		for i, item := range array {
-			rebuilt[i] = item
-			if inner, innerCleaned := rebuildArgumentKeys(item); innerCleaned > 0 {
-				rebuilt[i] = inner
-				cleaned += innerCleaned
-			}
-		}
-		merged, err := json.Marshal(rebuilt)
-		if err != nil {
-			return raw, 0
-		}
-		return merged, cleaned
-	}
-	return raw, 0
-}
-
-// hasControlCharacter reports whether id contains any C0 control character or
-// DEL (0x00-0x1f, 0x7f). Bytes >= 0x80 pass untouched so multi-byte UTF-8
-// names are never reinterpreted.
-func hasControlCharacter(id string) bool {
-	for i := 0; i < len(id); i++ {
-		if c := id[i]; c < 0x20 || c == 0x7f {
-			return true
-		}
-	}
-	return false
+	return tool.SanitizeArgumentKeys(raw)
 }
 
 // capabilityControlOnlyIDError names the failure the generic missing-id error

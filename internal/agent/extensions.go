@@ -14,6 +14,7 @@ import (
 	"reasonix/internal/extension/dispatch"
 	"reasonix/internal/extension/providerconv"
 	"reasonix/internal/provider"
+	"reasonix/internal/tool"
 )
 
 // Extension Protocol v2 agent-side wiring. The agent consults the
@@ -271,11 +272,18 @@ func (a *Agent) interceptToolBefore(ctx context.Context, plan *toolCallPlan) (to
 	if trimmed == "" || trimmed[0] != '{' {
 		return violation("arguments must decode as a JSON object")
 	}
-	t, _, ambiguous := a.svc.tools.ResolveCall(payload.Name)
-	if t == nil || len(ambiguous) > 0 {
-		return violation(fmt.Sprintf("substituted tool name %q does not resolve in the registry", payload.Name))
+	// tl1554: heal the substituted name before resolution — an extension
+	// payload can carry the same control-character pollution a model emits;
+	// the echo below (and the re-parsed call) must carry the clean form.
+	substituted := payload.Name
+	if cleaned, stripped := tool.SanitizeNameToken(substituted); stripped && cleaned != "" {
+		substituted = cleaned
 	}
-	plan.call.Name = payload.Name
+	t, _, ambiguous := a.svc.tools.ResolveCall(substituted)
+	if t == nil || len(ambiguous) > 0 {
+		return violation(fmt.Sprintf("substituted tool name %q does not resolve in the registry", substituted))
+	}
+	plan.call.Name = substituted
 	plan.call.Arguments = payload.Arguments
 	return toolOutcome{}, false
 }

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"reasonix/internal/tool"
 )
 
 // fleetPlan is the validated dependency graph for one fleet call. Dependencies
@@ -36,6 +38,14 @@ func newFleetPlan(items []fleetTaskItem, failFast bool) (fleetPlan, error) {
 	index := make(map[string]int, n)
 	for i, item := range items {
 		id := strings.TrimSpace(item.ID)
+		// tl1554: fleet ids are name-domain identity labels the host resolves
+		// by exact match (depends_on → id). Heal before indexing so a
+		// polluted id still resolves, the duplicate check sees the healed
+		// form, and the error echoes below carry clean names — same self-heal
+		// semantics as capability ids (task 975).
+		if cleaned, stripped := tool.SanitizeNameToken(id); stripped && cleaned != "" {
+			id = cleaned
+		}
 		if id == "" {
 			id = strconv.Itoa(i + 1)
 		}
@@ -48,6 +58,11 @@ func newFleetPlan(items []fleetTaskItem, failFast bool) (fleetPlan, error) {
 	for i, item := range items {
 		for _, raw := range item.DependsOn {
 			dep := strings.TrimSpace(raw)
+			// tl1554: heal the dependency reference against the same
+			// name-domain pollution before the exact-match lookup.
+			if cleaned, stripped := tool.SanitizeNameToken(dep); stripped && cleaned != "" {
+				dep = cleaned
+			}
 			target, ok := index[dep]
 			if !ok {
 				return fleetPlan{}, fmt.Errorf("task %d (%q): depends_on %q matches no task id", i+1, plan.ids[i], dep)

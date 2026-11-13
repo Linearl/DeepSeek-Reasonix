@@ -75,7 +75,7 @@ func (t mailboxTool) Execute(ctx context.Context, args json.RawMessage) (string,
 	case "":
 		return "", fmt.Errorf("action is required (peek|drain|query)")
 	default:
-		return "", fmt.Errorf("unknown action %q (peek|drain|query)", action)
+		return "", fmt.Errorf("unknown action %q (peek|drain|query)", echoedNameToken(action)) // tl1554 echo clean
 	}
 }
 

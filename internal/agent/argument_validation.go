@@ -73,7 +73,11 @@ func (a *Agent) diagnoseCapabilityInputFailure(plan *toolCallPlan, err error) to
 	// Task 798: attach the received envelope shape (top-level keys only,
 	// never values) so the model sees what actually arrived and corrects the
 	// packaging in one round — the same discipline as tasks 216 and 457.
-	output := fmt.Sprintf("error: %v\nReceived envelope shape: %s\nThe capability call was not executed. Correct the indicated input and retry; normal permission checks still apply.", err, describeActualArguments(json.RawMessage(plan.call.Arguments)))
+	// tl1554: the resolver error text embeds model-supplied tokens (ids,
+	// keys) — echo it through the line-preserving control-character strip so
+	// a polluted token is never confirmed back, while multi-line coaching
+	// layout and Windows-style backslashes stay intact.
+	output := fmt.Sprintf("error: %v\nReceived envelope shape: %s\nThe capability call was not executed. Correct the indicated input and retry; normal permission checks still apply.", tool.SanitizeErrorLines(err.Error()), describeActualArguments(json.RawMessage(plan.call.Arguments)))
 	// Task 877: 命中已知错型时附可复制修正例（纠错引导），未定诊时给
 	// search(query) 指引；self_explanatory 与代理出口族不追加。
 	if guide := capabilityInputCorrection(err.Error(), json.RawMessage(plan.call.Arguments)); guide != "" {
@@ -183,7 +187,12 @@ func topLevelArgumentKeys(objectJSON string) ([]string, bool) {
 	}
 	keys := make([]string, 0, len(object))
 	for key := range object {
-		keys = append(keys, key)
+		// tl1554: these keys are echoed verbatim into "Received envelope
+		// shape" / "Actual arguments received" — show the cleaned form (name
+		// domain: real control bytes and literal escape text stripped) so the
+		// polluted shape is never confirmed back to the model.
+		cleaned, _ := tool.SanitizeNameToken(key)
+		keys = append(keys, cleaned)
 	}
 	sort.Strings(keys)
 	return keys, true
