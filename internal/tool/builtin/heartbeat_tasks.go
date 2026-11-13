@@ -357,15 +357,21 @@ func decodeHeartbeatUpsertArgs(args json.RawMessage) (HeartbeatTaskPatch, uint64
 	sort.Strings(unknown)
 	sort.Strings(engineOwned)
 	if len(unknown) > 0 || len(engineOwned) > 0 {
+		// tl1554: the key names are model input and this tool's error is the
+		// dedicated unknown-field echo — show the cleaned form (name domain,
+		// real control bytes and literal escape text stripped) so a polluted
+		// key is never confirmed back as a bad example. Defense in depth:
+		// NormalizeArguments heals keys before the arguments reach here on
+		// the dispatch paths.
 		var b strings.Builder
 		if len(unknown) > 0 {
-			fmt.Fprintf(&b, "unknown field(s) %s — not part of the heartbeat task contract", strings.Join(unknown, ", "))
+			fmt.Fprintf(&b, "unknown field(s) %s — not part of the heartbeat task contract", strings.Join(cleanKeyEchoes(unknown), ", "))
 		}
 		if len(engineOwned) > 0 {
 			if b.Len() > 0 {
 				b.WriteString("; ")
 			}
-			fmt.Fprintf(&b, "field(s) %s are engine-owned (lastRunAt/createdAt/runHistory are maintained by the scheduler; topicId is create-only) and cannot be written by tools", strings.Join(engineOwned, ", "))
+			fmt.Fprintf(&b, "field(s) %s are engine-owned (lastRunAt/createdAt/runHistory are maintained by the scheduler; topicId is create-only) and cannot be written by tools", strings.Join(cleanKeyEchoes(engineOwned), ", "))
 		}
 		return HeartbeatTaskPatch{}, 0, fmt.Errorf("%s", b.String())
 	}
@@ -536,4 +542,18 @@ func (heartbeatTaskEnable) Execute(ctx context.Context, args json.RawMessage) (s
 		return "", err
 	}
 	return string(out), nil
+}
+
+// cleanKeyEchoes sanitizes model-supplied key names for error echo (tl1554):
+// the cleaned form is what the model reads; the polluted form is never
+// confirmed back as a bad example. Real control bytes and the literal
+// `\r`-style escape text are stripped via the shared tool.SanitizeNameToken
+// (key names are a name domain — no legitimate backslash-escape semantics).
+func cleanKeyEchoes(keys []string) []string {
+	cleaned := make([]string, 0, len(keys))
+	for _, key := range keys {
+		form, _ := tool.SanitizeNameToken(key)
+		cleaned = append(cleaned, form)
+	}
+	return cleaned
 }

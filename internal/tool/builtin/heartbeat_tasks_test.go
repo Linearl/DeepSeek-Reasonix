@@ -225,3 +225,37 @@ func TestHeartbeatUpsertForwardsCallerSession(t *testing.T) {
 		t.Fatalf("CallerSession = %q, want empty outside a live session ctx", fake2.upsert.CallerSession)
 	}
 }
+
+// TestHeartbeatUpsertUnknownFieldEchoesCleanKeys pins the tl1554 echo
+// defense: the dedicated unknown-field echo renders key names (model input) —
+// both pollution forms must come out cleaned, never confirmed back as a bad
+// example. Bare CR bytes and the literal `\r` escape text are both banned
+// from the error text.
+func TestHeartbeatUpsertUnknownFieldEchoesCleanKeys(t *testing.T) {
+	withFakeManager(t)
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "real CR byte key", raw: `{"expected_revision":1,"interval\rx":"30m"}`},
+		{name: "literal escape key", raw: `{"expected_revision":1,"interval\rx":"30m"}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := heartbeatTaskUpsert{}.Execute(context.Background(), json.RawMessage(test.raw))
+			if err == nil || !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("unknown field must still be rejected, got %v", err)
+			}
+			msg := err.Error()
+			if strings.ContainsRune(msg, '\r') {
+				t.Fatalf("error echoes a bare CR byte: %q", msg)
+			}
+			if strings.Contains(msg, `\r`) {
+				t.Fatalf("error echoes the literal escape form: %q", msg)
+			}
+			if !strings.Contains(msg, "intervalx") {
+				t.Fatalf("cleaned key form missing from echo: %q", msg)
+			}
+		})
+	}
+}
