@@ -26,7 +26,7 @@ Upstream project & docs: **[esengine/DeepSeek-Reasonix](https://github.com/eseng
 
 ## 介绍视频
 
-**2 分 10 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：[▶ reasonix-fork-intro.mp4](./docs-site/assets/reasonix-fork-intro.mp4)（GitHub 文件页可直接在线播放；产品文档站首页亦有内嵌播放）。
+**2 分 10 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：[▶ 在线播放（文档站直链）](https://linearl.github.io/DeepSeek-Reasonix/assets/reasonix-fork-intro.mp4) ｜ [文档站首页（内嵌播放）](https://linearl.github.io/DeepSeek-Reasonix/)。仓库内源文件在 `docs-site/assets/`；GitHub 文件页对 32.7MB 大文件不提供预览播放，故不作播放入口。
 
 ---
 
