@@ -10657,7 +10657,23 @@ body > .mermaid-diagram--fullscreen {
   grid-row: 3;
   grid-column: 1 / -1;
   max-width: var(--maxw);
-  margin: 7px auto 0;
+  /* tl1578 修②：上间距从 margin 改 padding-top——几何不变（7px 空带原是
+     --bg 底色上的透明 margin，现在是同色盒内 padding），但溢出遮罩随之覆盖
+     整个状态栏行高（含原 margin 的 7px 空带）。 */
+  margin: 0 auto;
+  padding-top: 7px;
+  /* tl1578 修②（对照 tl1415 概要表头重叠修复 f3425e3c5 的同一机制先例）：
+     表头当年 `background: inherit` 继承到透明，滚动内容从表头底下穿过、文字
+     叠文字——修法=背景不透明化。状态栏同病：自身无任何背景声明，输入区
+     footer（flex:0 0 auto 不可收缩）在矮窗口/高输入卡下溢出中栏网格行时，
+     卡底内容直接叠印在状态栏文字上（用户实测三形态之「内容多时向下溢出、
+     盖到输入栏下方状态栏」）。取 .layout 自身背景 var(--bg)（状态栏底色即
+     它，视觉逐字节不变），并按表头先例提层（--z-inline-sticky，低于
+     --z-local-backdrop，本地弹层/菜单仍在其上）让溢出内容被遮住、状态栏
+     恒完整可读。 */
+  position: relative;
+  z-index: var(--z-inline-sticky);
+  background: var(--bg);
   display: flex;
   align-items: center;
   gap: 0;
@@ -33792,7 +33808,10 @@ button.statusbar__mcp:focus-visible {
 
 .statusbar {
   max-width: var(--maxw);
-  margin-top: 6px;
+  /* tl1578 修②：原 margin-top: 6px 改走 padding-top——该值此前压过基础块的
+     margin，是默认主题的真实上间距；基础块改 padding 后这里同步改 padding
+     （6px 覆盖基础 7px），上间距逐字节不变且空带纳入遮罩盒内。 */
+  padding-top: 6px;
   gap: 10px;
 }
 

@@ -3143,20 +3143,29 @@ export default function App() {
   // 任务 826: left-sidebar hover behavior (300ms mis-touch guard → expand;
   // 15s after the pointer leaves → fold back, reclaiming only the expansion
   // the hover itself made). With the lab switch off every callback no-ops and
-  // no timer is armed. The expand/collapse actions mirror toggleSidebar's
-  // persistence minus its toggle affordances (no pulse/overlay churn — the
-  // hover path is passive, not a user command).
+  // no timer is armed.
+  // tl1578 修①（路径归一化，用户定调「自动/手动共用同一条布局路径」）：手动
+  // toggleSidebar 在翻转状态外还做 anchorAppScrollToChat——侧栏展开/收起改变
+  // .layout 列宽，0.16s 过渡期间 .app（overflow-x:auto）可能产生水平溢出与
+  // scrollLeft 漂移，手动路径以立即/rAF/+300ms 三次回钉覆盖整个过渡窗口；
+  // 自动路径此前只有 set+save、独缺这一步，展开后整体左移与界面重叠=用户
+  // 实测三形态之一。现把同一步接进 expand/collapse，两条路径几何收口一致。
+  // 仍刻意不复制的两步（非布局路径）：pulseSidebarToggle 是折叠按钮的按压
+  // 动画（hover 路径没有按按钮这个动作）；closeTransientOverlays 是用户指令
+  // 语义的浮层清扫（hover 展开是被动的，扫过边缘不应关掉会话墙等临时面）。
   const leftSidebarHover = useSidebarHoverBehavior({
     enabled: sidebarHoverLeftEnabled,
     collapsed: sidebarCollapsed,
     expand: useCallback(() => {
       setSidebarCollapsed(false);
       saveSidebarCollapsed(false);
-    }, [setSidebarCollapsed]),
+      anchorAppScrollToChat();
+    }, [setSidebarCollapsed, anchorAppScrollToChat]),
     collapse: useCallback(() => {
       setSidebarCollapsed(true);
       saveSidebarCollapsed(true);
-    }, [setSidebarCollapsed]),
+      anchorAppScrollToChat();
+    }, [setSidebarCollapsed, anchorAppScrollToChat]),
   });
 
   const toggleSidebar = useCallback(() => {
