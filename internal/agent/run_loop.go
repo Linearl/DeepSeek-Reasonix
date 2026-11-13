@@ -285,9 +285,8 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 		if err != nil {
 			quote := a.emitTurnUsage(usage, &cacheDiagnostics)
 			a.observeRunBudget(state, usage, quote)
-			if msg, ok := finishReasonMessage(usage); ok {
-				a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg})
-			}
+			// tl1562 G3: notice + structured log line share one surface.
+			a.emitFinishReasonNotice(usage)
 			// Task 110: first text-loop interrupt becomes a one-shot host
 			// reminder so the model can pick a new path; a second hit pauses.
 			if errors.Is(err, ErrModelTextRepeat) {
@@ -357,9 +356,8 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 		a.sess.haveLastPrefixShape = true
 		quote := a.emitTurnUsage(usage, &cacheDiagnostics)
 		a.observeRunBudget(state, usage, quote)
-		if msg, ok := finishReasonMessage(usage); ok {
-			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg})
-		}
+		// tl1562 G3: notice + structured log line share one surface.
+		a.emitFinishReasonNotice(usage)
 
 		// Commit boundary: only a clean terminal attempt reaches here.
 		// A server-side output-limit truncation (finish_reason="length", e.g.

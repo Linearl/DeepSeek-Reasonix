@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"reasonix/internal/event"
 	"reasonix/internal/provider"
 )
 
@@ -69,6 +70,27 @@ func usageTokenFields(u *provider.Usage) (prompt, completion, total int, finishR
 		return 0, 0, 0, ""
 	}
 	return u.PromptTokens, u.CompletionTokens, u.TotalTokens, u.FinishReason
+}
+
+// emitFinishReasonNotice is the single abnormal-finish_reason surface shared
+// by the run loop's error and success turns (tl1562 G3): it renders the
+// existing user-facing notice AND leaves the matching structured log line.
+// The 20261112 incident showed the truncation on screen while grep found no
+// finish_reason/max_tokens/truncated record anywhere — the sink event was the
+// only trace. Normal terminations ("stop", "tool_calls") log nothing.
+func (a *Agent) emitFinishReasonNotice(u *provider.Usage) {
+	msg, ok := finishReasonMessage(u)
+	if !ok {
+		return
+	}
+	a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg})
+	prompt, completion, total, _ := usageTokenFields(u)
+	slog.Warn("agent: turn output truncated by provider finish reason",
+		"finish_reason", u.FinishReason,
+		"session", a.sessionLogRef(),
+		"model_ref", a.destinationModelRef(),
+		"max_output_tokens", a.destinationMaxOutputTokens(),
+		"prompt_tokens", prompt, "completion_tokens", completion, "total_tokens", total)
 }
 
 // logSamplingAttemptFailure is the per-attempt structured failure trail (task
