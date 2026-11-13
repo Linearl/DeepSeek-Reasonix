@@ -10,6 +10,12 @@
   object-fit: contain;
 }
 
+/* tl1568: 转录宿主提供了 viewer 时 MarkdownImage 给 img 挂此标记类——
+   zoom-in 光标是「点击看原图」的可达性提示；无 viewer 宿主不挂类零变化。 */
+.md-image-zoomable {
+  cursor: zoom-in;
+}
+
 .md-image-placeholder,
 .md-image-fallback {
   display: inline-flex;
