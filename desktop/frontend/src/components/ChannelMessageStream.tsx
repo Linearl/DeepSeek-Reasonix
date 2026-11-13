@@ -10,13 +10,26 @@
 //   - tl1564 派活卡：tl1406 确定性定向投递的消息以任务分配卡呈现
 //     （谁→谁 + 任务摘要），判定依据见组件内 dispatchRecipientsOf 注释。
 // 右键菜单本体留在宿主（portal + veil 的挂载点与视图相关）。
+//
+// tl1565（G1 渲染统一）：附件引用解析与卡片渲染收口到 attachmentDisplay +
+// MessageAttachments（与会话内同一套真相源）。此前本组件自写 attachmentRefsOf
+// 正则（只认图片扩展名+.reasonix/attachments/ 相对形态）——非图片文件与
+// 绝对路径引用退化成纯文本；现在 parseAttachmentRefsForDisplay 拆出的
+// DisplayAttachment 直接喂 MessageAttachments，跨会话绝对路径的读侧分流
+// （isChannelAttachmentRef → ChannelAttachmentDataURL 包含边界）由
+// MessageAttachments.loadPreview 原样承载，本组件零附件逻辑。
 
-import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { lazy, Suspense, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { CollabChannelMemberView, CollabChannelMessageView } from "../lib/bridge";
+import { parseAttachmentRefsForDisplay } from "../lib/attachmentDisplay";
 import { HUMAN_LOCAL } from "./ChannelChatPanel";
 import { getLocale, useT } from "../lib/i18n";
 // 任务1012：消息列表时间戳补日期——与消息气泡同一三档契约（lib/messageTimestamp.ts）。
 import { formatMessageTimestamp } from "../lib/messageTimestamp";
+
+// 任务1066 同款 lazy 模式：MessageAttachments 挂 ImageViewer（lightbox），
+// 只在消息真带附件引用时才进包。
+const MessageAttachments = lazy(() => import("./MessageAttachments").then((module) => ({ default: module.MessageAttachments })));
 
 function formatTime(ms: number): string {
   if (!ms) return "";
@@ -29,11 +42,6 @@ export interface ChannelMessageStreamProps {
   memberDetails: CollabChannelMemberView[];
   /** 名册显示名（title || purpose || contact id；human 端点=「我/You」）。 */
   directoryTitle: (contactId: string) => string;
-  /**
-   * tl1441 ③（验收 1「成员侧可见图」）：群聊附件预览读回——消息体 @引用里
-   * 指向群聊附件目录的图片路径渲染为内嵌缩略图（多图逐张）；缺省=纯文本。
-   */
-  attachmentPreview?: (path: string) => Promise<string>;
   /** 气泡右键（own=撤回菜单；宿主决定菜单实现）。 */
   onBubbleContextMenu?: (event: { messageId: string; sender: string; x: number; y: number }) => void;
   /** @名字 点击（对话链快捷入口；缺省 = 纯文本渲染）。 */
@@ -49,35 +57,12 @@ export interface ChannelMessageStreamProps {
   deputyId?: string;
 }
 
-/** 单张附件缩略图：读回成功才渲染，失败静默（气泡文本仍在）。 */
-function ChannelAttachmentImage({ path, preview }: { path: string; preview: (path: string) => Promise<string> }) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    preview(path)
-      .then((url) => { if (alive) setDataUrl(url); })
-      .catch(() => { /* 预览失败=少一张图，不是错误条 */ });
-    return () => { alive = false; };
-  }, [path, preview]);
-  if (!dataUrl) return null;
-  return (
-    <img
-      className="channel-chat__attpic"
-      src={dataUrl}
-      alt={path}
-      loading="lazy"
-      data-attachment-path={path}
-    />
-  );
-}
-
 export function ChannelMessageStream({
   messages,
   memberDetails,
   directoryTitle,
   onBubbleContextMenu,
   onMentionClick,
-  attachmentPreview,
   channelOwnerType,
   deputyId,
 }: ChannelMessageStreamProps) {
@@ -133,31 +118,17 @@ export function ChannelMessageStream({
     return null;
   };
 
-  // 附件引用提取：空白分隔 token 以 @ 开头、归一化分隔符后落在
-  // .reasonix/attachments/ 内、图片扩展名结尾；拒绝包含 .. 的 token（tl1421
-  // 同款保守判据——这里只挑预览候选，真正的越界拒绝在 Go 读桥）。
-  // tl1465：推入候选前剥掉 @ 前缀——预览读桥收裸路径（读桥侧 tl1465 也做
-  // @ 规范化兜底，双端一致）；此前原样推入带 @ 的 token，绝对路径 @C:\…
-  // 过不了 IsAbs 分支被当相对路径拒收，图片静默丢失 + WARN 刷屏。
-  const attachmentRefsOf = (body: string): string[] => {
-    if (!attachmentPreview || !body.includes("@")) return [];
-    const out: string[] = [];
-    for (const raw of body.split(/\s+/u)) {
-      if (!raw.startsWith("@") || raw.length > 512) continue;
-      const bare = raw.slice(1);
-      const norm = bare.replace(/\\/gu, "/");
-      if (norm.includes("..")) continue;
-      if (!norm.toLowerCase().includes(".reasonix/attachments/")) continue;
-      if (!/\.(?:png|jpe?g|gif|webp)$/iu.test(norm)) continue;
-      if (!out.includes(bare)) out.push(bare);
-    }
-    return out;
-  };
-
+  // tl1565（G1）：附件引用解析唯一入口 = lib/attachmentDisplay（与 Message.tsx
+  // 会话内同一真相源）。这里只消费它拆出的 DisplayAttachment 列表；@提及
+  // 高亮作用在剥除附件引用后的显示文本上，互不干扰。tl1465 的读桥收裸路径
+  // 契约由 MessageAttachments.loadPreview 承载（跨会话绝对路径分流同层）。
   const renderBody = (body: string): ReactNode => {
-    if (!body.includes("@")) return body;
+    const { text, attachments } = body.includes("@")
+      ? parseAttachmentRefsForDisplay(body)
+      : { text: body, attachments: [] };
+    if (!text.includes("@") && attachments.length === 0) return text;
     const parts: ReactNode[] = [];
-    let rest = body;
+    let rest = text;
     let key = 0;
     for (const m of memberDetails) {
       const name = m.contact === HUMAN_LOCAL ? t("collabGroup.chat.you") : directoryTitle(m.contact);
@@ -183,6 +154,13 @@ export function ChannelMessageStream({
       }
     }
     if (rest) parts.push(rest);
+    if (attachments.length > 0) {
+      parts.push(
+        <Suspense key="attachments" fallback={null}>
+          <MessageAttachments attachments={attachments} />
+        </Suspense>,
+      );
+    }
     return parts;
   };
 
@@ -218,17 +196,11 @@ export function ChannelMessageStream({
               onBubbleContextMenu({ messageId: m.id, sender: m.sender, x: event.clientX, y: event.clientY });
             }
           : undefined;
-        // 卡体/气泡共用的消息体渲染（@提及快捷入口 + 附件缩略图契约原样）。
+        // 卡体/气泡共用的消息体渲染（@提及快捷入口；附件经 renderBody 内
+        // parseAttachmentRefsForDisplay → MessageAttachments 统一承载，tl1565）。
         const bodyContent = (
           <>
             {renderBody(m.body)}
-            {attachmentPreview && attachmentRefsOf(m.body).length > 0 && (
-              <span className="channel-chat__attpics">
-                {attachmentRefsOf(m.body).map((path) => (
-                  <ChannelAttachmentImage key={path} path={path} preview={attachmentPreview} />
-                ))}
-              </span>
-            )}
           </>
         );
         return (

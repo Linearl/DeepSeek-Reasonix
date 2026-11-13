@@ -1,22 +1,25 @@
 // Run: tsx --tsconfig tsconfig.tsx-runner.json --import ./scripts/css-stub-register.mjs src/__tests__/tl1465-channel-image-render.test.tsx
-// tl1465 A+③（用户 20261106 17:57 实测）harness：
+// tl1465 A+③（用户 20261106 17:57 实测）harness——tl1565 载体迁移版：
+//
+//   tl1565（G1 渲染统一）把群聊附件解析从 ChannelMessageStream 自写的
+//   attachmentRefsOf 正则收口到 lib/attachmentDisplay（与会话内同一真相源）
+//   + MessageAttachments 组件渲染。原 ③a/③b 段钉的「attachmentRefsOf 候选
+//   判据」行为随载体一起迁移——钉点不变，断言改打在新载体上：
 //
 //   ③ 群聊图片内联渲染：消息体 @<绝对路径> 引用（SaveChannelAttachment 落
-//      全局工作区后的消息形态）在 ChannelMessageStream 渲染为内联缩略图。
-//      事故根因双头：a) 前端 attachmentRefsOf 原样把带 @ 的 token 喂给读桥，
-//      @C:\… 过不了 IsAbs 分支被当相对路径拒收（desktop-alerts.log WARN
-//      "attachment path is outside .reasonix/attachments" 刷屏）；b) 读桥侧
-//      无 @ 规范化兜底。本 harness 钉：读桥收到的是裸路径、图片真渲染、
-//      预览回调引用稳定（宿主任意重渲染不重发读桥调用=刷屏循环的前端断点）。
+//      全局工作区后的消息形态）经 parseAttachmentRefsForDisplay 拆出 →
+//      MessageAttachments.loadPreview 走 ChannelAttachmentDataURL 读桥内联
+//      渲染（读桥收裸路径、宿主任意重渲染不重发读桥=刷屏循环的前端断点，
+//      原 ③a 钉点逐一保留）。
+//
+//   ③' 边界形态（原 ③b）：.. 穿越 / 非图片扩展名 / @提及——解析层不再做
+//      扩展名白名单（G1 收口后非图片引用渲染文件卡而非纯文本退化），读侧
+//      边界全部由 Go 读桥把守：越界/不可读=图标卡诚实降级，不放大读面。
 //
 //   A 跨会话消息图片内联渲染：同一 @<绝对路径> 消息 f给 会话成员后，收方转录
-//      经 parseAttachmentRefsForDisplay 归类——绝对附件路径历史归 workspace
-//      文件卡（「clipboard-xxx.png · 工作区引用」），本件起归 attachment 源
+//      经 parseAttachmentRefsForDisplay 归类——绝对附件路径归 attachment 源
 //      （image kind），MessageAttachments 走 ChannelAttachmentDataURL 读桥
 //      内联渲染（与会话内 @图片 同一组件同一形态，零第二套）。
-//
-//   安全边界钉：.. 穿越 / 非图片扩展名 / 目录外绝对路径不进预览候选；
-//      MessageAttachments 对越界绝对路径读桥失败=退化图标卡（不崩）。
 //
 // Go 侧契约（@ 规范化 + 包含校验不放宽）由 desktop 包
 // TestChannelAttachmentDataURLNormalizesAtPrefix 持有。
@@ -63,7 +66,7 @@ globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} 
 
 const { LocaleProvider, preloadLocale } = await import("../lib/i18n");
 await preloadLocale("zh");
-const { ChannelMessageStream, } = await import("../components/ChannelMessageStream");
+const { ChannelMessageStream } = await import("../components/ChannelMessageStream");
 const { HUMAN_LOCAL } = await import("../components/ChannelChatPanel");
 const { MessageAttachments } = await import("../components/MessageAttachments");
 const { parseAttachmentRefsForDisplay } = await import("../lib/attachmentDisplay");
@@ -74,6 +77,12 @@ type CollabChannelMessageView = import("../lib/bridge").CollabChannelMessageView
 const flush = async (): Promise<void> => {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 };
+// tl1565：群聊流里 MessageAttachments 走 lazy+Suspense（任务1066 同款）——
+// 「lazy 模块 resolve → 子树挂载 → 预览读桥 promise → setPreviews → img
+// 上屏」多跳微任务链，逐轮 flush 直到状态沉淀（上限兜底防真死循环）。
+const settle = async (): Promise<void> => {
+  for (let round = 0; round < 6; round += 1) await flush();
+};
 
 const rootEl = document.getElementById("root")!;
 const root = createRoot(rootEl);
@@ -83,18 +92,25 @@ const memberDetails: CollabChannelMemberView[] = [
   { contact: "sc_dev", type: "session", joinedAt: 2 },
 ];
 
-// ══ ③a attachmentRefsOf：@ 剥除 + 候选判据（含安全边界）═══════════════════
+// ══ ③ 群聊图片内联渲染（tl1565 载体=MessageAttachments）═══════════════════
 {
-  const previewPaths: string[] = [];
-  const preview = async (path: string): Promise<string> => {
-    previewPaths.push(path);
-    return `data:image/png;base64,${encodeURIComponent(path)}`;
+  const calls: string[] = [];
+  (dom.window as unknown as { go: { main: { App: Record<string, unknown> } } }).go = {
+    main: {
+      App: {
+        AttachmentDataURL: async (p: string) => { calls.push(`AttachmentDataURL:${p}`); return `data:image/png;base64,${encodeURIComponent(p)}`; },
+        ChannelAttachmentDataURL: async (p: string) => { calls.push(`ChannelAttachmentDataURL:${p}`); return `data:image/png;base64,${encodeURIComponent(p)}`; },
+      },
+    },
   };
+  const { app } = await import("../lib/bridge");
+  void app;
   const messages: CollabChannelMessageView[] = [
     // 用户实测事故形态：反斜杠绝对路径 + 前导 @（SaveChannelAttachment 提交链产物）。
     { id: "m1", sender: HUMAN_LOCAL, body: "@C:\\Users\\yinji\\AppData\\Roaming\\reasonix\\global-workspace\\.reasonix\\attachments\\clipboard-20261106-175500.199046-000006.png", at: 1, fanout: [] },
-    // 正斜杠绝对路径 + 相对 @ 引用（双形态都要活）。
+    // 正斜杠绝对路径（双形态都要活）。
     { id: "m2", sender: "sc_dev", body: "看这张 @C:/Users/yinji/AppData/Roaming/reasonix/global-workspace/.reasonix/attachments/shot.png 收到请回复", at: 2, fanout: [] },
+    // 相对形态引用（走 AttachmentDataURL——组件既定分流）。
     { id: "m3", sender: "sc_dev", body: "相对形态 @.reasonix/attachments/rel-1.png", at: 3, fanout: [] },
   ];
   await act(async () => {
@@ -104,26 +120,23 @@ const memberDetails: CollabChannelMemberView[] = [
           messages={messages}
           memberDetails={memberDetails}
           directoryTitle={(id) => (id === "sc_dev" ? "开发会话" : id)}
-          attachmentPreview={preview}
         />
       </LocaleProvider>,
     );
   });
-  await flush();
+  await settle();
 
-  eq(previewPaths.length, 3, "three attachment candidates extracted from three messages");
-  eq(previewPaths.some((p) => p.startsWith("@")), false, "no candidate keeps the @ prefix (读桥收裸路径)");
-  eq(previewPaths[0], "C:\\Users\\yinji\\AppData\\Roaming\\reasonix\\global-workspace\\.reasonix\\attachments\\clipboard-20261106-175500.199046-000006.png", "the accident-form backslash absolute path strips @ only");
-  eq(previewPaths[1], "C:/Users/yinji/AppData/Roaming/reasonix/global-workspace/.reasonix/attachments/shot.png", "forward-slash absolute path passes through");
-  eq(previewPaths[2], ".reasonix/attachments/rel-1.png", "the relative @ ref keeps its native shape");
-
-  const imgs = Array.from(document.querySelectorAll("img.channel-chat__attpic")) as HTMLImageElement[];
-  eq(imgs.length, 3, "three inline thumbnails render (跨会话图片不再丢)");
-  eq(imgs[0].getAttribute("data-attachment-path")?.startsWith("@"), false, "the DOM path anchor carries no @ prefix");
-  eq(imgs[0].dataset.attachmentPath, previewPaths[0], "the DOM anchor matches the preview path");
+  const imgs = Array.from(document.querySelectorAll(".msg-attachment__icon--image img")) as HTMLImageElement[];
+  eq(imgs.length, 3, "three inline thumbnails render through MessageAttachments (跨会话图片不再丢)");
+  const bridgeCalls = calls.filter((c) => c.startsWith("ChannelAttachmentDataURL:"));
+  eq(bridgeCalls.length, 2, "the channel read bridge is called once per absolute image");
+  eq(bridgeCalls.some((c) => c.includes("@")), false, "the read bridge receives bare paths (读桥收裸路径)");
+  eq(bridgeCalls[0], `ChannelAttachmentDataURL:C:\\Users\\yinji\\AppData\\Roaming\\reasonix\\global-workspace\\.reasonix\\attachments\\clipboard-20261106-175500.199046-000006.png`, "the accident-form backslash absolute path strips @ only");
+  eq(calls.some((c) => c.startsWith("AttachmentDataURL:.reasonix/attachments/rel-1.png")), true, "the relative form reads through the workspace reader (组件既定分流)");
 
   // 重渲染（新 messages 数组身份=宿主任意状态更新形态）不得重发读桥调用
-  // ——preview 回调引用稳定（刷屏循环的前端断点钉）。
+  // ——loadPreview 的 previews 缓存（tl1465 刷屏循环断点钉，载体迁移版）。
+  const callsBeforeRerender = calls.filter((c) => c.startsWith("ChannelAttachmentDataURL:")).length;
   await act(async () => {
     root.render(
       <LocaleProvider>
@@ -131,84 +144,30 @@ const memberDetails: CollabChannelMemberView[] = [
           messages={[...messages]}
           memberDetails={memberDetails}
           directoryTitle={(id) => (id === "sc_dev" ? "开发会话" : id)}
-          attachmentPreview={preview}
         />
       </LocaleProvider>,
     );
   });
-  await flush();
-  eq(previewPaths.length, 3, "a parent re-render does NOT re-call the read bridge (WARN 刷屏循环断点)");
-
-  // 失败读回同样不得因重渲染重试（读失败的图片是少一张图，不是每帧重试的错误源）。
-  let failingCalls = 0;
-  const failing = async (): Promise<string> => {
-    failingCalls += 1;
-    throw new Error("rejected");
-  };
-  const failHost = document.createElement("div");
-  document.body.appendChild(failHost);
-  const failRoot = createRoot(failHost);
-  const failMsgs: CollabChannelMessageView[] = [
-    { id: "f1", sender: HUMAN_LOCAL, body: "@C:/w/.reasonix/attachments/broken.png", at: 1, fanout: [] },
-  ];
-  // 同一元素树重渲染（props 身份不变、无 remount）——宿主任意状态更新的同形态。
-  let tickState = 0;
-  const FailRerenderer: React.FC = () => {
-    const [, setTick] = React.useState(0);
-    React.useEffect(() => {
-      const timer = setInterval(() => { tickState += 1; setTick(tickState); }, 5);
-      return () => clearInterval(timer);
-    }, []);
-    return (
-      <ChannelMessageStream
-        messages={failMsgs}
-        memberDetails={memberDetails}
-        directoryTitle={() => "x"}
-        attachmentPreview={failing}
-      />
-    );
-  };
-  await act(async () => {
-    failRoot.render(
-      <LocaleProvider>
-        <FailRerenderer />
-      </LocaleProvider>,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 30));
-  });
-  const callsAfterRenders = failingCalls;
-  ok(callsAfterRenders >= 1, "the failing preview is attempted at least once");
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-  eq(failingCalls, callsAfterRenders, "a rejected preview is NOT retried on parent re-renders (每秒重试循环不再)");
-  // 失败=静默少一张图（诚实降级，不出错误条）。
-  failRoot.unmount();
-  failHost.remove();
+  await settle();
+  const callsAfterRerender = calls.filter((c) => c.startsWith("ChannelAttachmentDataURL:")).length;
+  eq(callsAfterRerender, callsBeforeRerender, "a parent re-render does NOT re-call the read bridge (WARN 刷屏循环断点)");
   root.unmount();
 }
 
-// ══ ③b 候选判据的安全边界（不进预览候选的形状）═══════════════════════════
+// ══ ③' 边界形态（原 ③b 语义迁移）：解析层收口后非图片=文件卡；读侧拒绝
+//    =图标卡降级，不放大读面 ═══════════════════════════════════════════════
 {
-  const previewPaths: string[] = [];
-  const preview = async (path: string): Promise<string> => {
-    previewPaths.push(path);
-    return "data:image/png;base64,AAA";
-  };
-  const messages: CollabChannelMessageView[] = [
-    { id: "e1", sender: HUMAN_LOCAL, body: "@.reasonix/attachments/../../escape.png", at: 1, fanout: [] },
-    { id: "e2", sender: HUMAN_LOCAL, body: "@.reasonix/attachments/notes.txt 看文件", at: 2, fanout: [] },
-    { id: "e3", sender: HUMAN_LOCAL, body: "@sc_dev 你看一下", at: 3, fanout: [] },
-  ];
-  const edgeRoot = createRoot(document.createElement("div"));
-  await act(async () => {
-    edgeRoot.render(
-      <LocaleProvider>
-        <ChannelMessageStream messages={messages} memberDetails={memberDetails} directoryTitle={() => "x"} attachmentPreview={preview} />
-      </LocaleProvider>,
-    );
-  });
-  await flush();
-  eq(previewPaths.length, 0, ".. traversal / non-image ext / @mention produce no preview candidates");
-  edgeRoot.unmount();
+  // 非图片扩展名不再退化纯文本——渲染文件卡（G1 收口的核心升级）。
+  const parsedTxt = parseAttachmentRefsForDisplay("@.reasonix/attachments/notes.txt 看文件");
+  eq(parsedTxt.attachments.length, 1, "a non-image attachment ref parses into an entry (不再纯文本退化)");
+  eq(parsedTxt.attachments[0].kind, "file", "the non-image entry is a file card");
+  // @提及不是附件引用（提及渲染走 renderBody 的名字匹配，不入附件列表）。
+  const parsedMention = parseAttachmentRefsForDisplay("@sc_dev 你看一下");
+  eq(parsedMention.attachments.length, 0, "@mention produces no attachment entry");
+  // 读侧拒绝（越界绝对路径）=图标卡诚实降级（MessageAttachments 已钉同款，
+  // 这里钉 channel 形态的解析归类：形状归 attachment，读桥边界在 Go）。
+  const parsedSibling = parseAttachmentRefsForDisplay("@C:/other/ws/.reasonix/attachments/x.png");
+  eq(parsedSibling.attachments[0].source, "attachment", "any .reasonix/attachments path is attachment-shaped (读侧边界在 Go)");
 }
 
 // ══ A 绝对附件路径归类：attachment 源 + image kind（不再渲染「工作区引用」

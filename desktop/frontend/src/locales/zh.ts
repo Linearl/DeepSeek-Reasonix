@@ -5315,6 +5315,10 @@ export const zh: Record<DictKey, string> = {
   "sources.open": "打开来源",
   "sources.copyLink": "复制链接",
   "msg.folderReference": "文件夹 · 工作区引用",
+  // tl1565：附件卡片左键打开 / 右键菜单（复制内容·复制路径·打开所在文件夹）。
+  "msg.copyContents": "复制内容",
+  "msg.copyPath": "复制路径",
+  "msg.attachmentPathUnavailable": "该路径当前无法打开（不存在或不可访问）",
   "msg.pastedExpandTooltip": "展开粘贴文本",
   "msg.pastedCollapseTooltip": "收起粘贴文本",
   "msg.foldExpand": "展开全文",

@@ -91,6 +91,9 @@ let inboxSnapshotCalls = 0;
       Commands: async () => [],
       Models: async () => [],
       ModelsForTab: async () => [],
+      // tl1565（G1 载体迁移）：成员图片引用经 MessageAttachments 直连 app
+      // 读桥（不再走面板 bindings 的 attachmentPreview prop）——预览桩挂这。
+      ChannelAttachmentDataURL: async () => "data:image/png;base64,iVBORw0KGgo=",
     },
   },
 };
@@ -156,8 +159,18 @@ const streamText = document.querySelector(".channel-workspace__stream")?.textCon
 ok(streamText.includes("测试下图片发送"), "member text 1 renders");
 ok(streamText.includes("收到，群聊测试正常。"), "member text 2 renders");
 ok(streamText.includes("图片也收到了。"), "member text 3 renders");
-const imgs = document.querySelectorAll("img.channel-chat__attpic");
-eq(imgs.length, 1, "the attachment message still renders its inline thumbnail (③同场回归)");
+// tl1565（G1 载体迁移）：缩略图经 MessageAttachments（lazy+Suspense）渲染；
+// 预导入命中模块缓存消抖动，缩略图走「挂载→预览读桥→setPreviews→img」异步
+// 链——轮询等待落地（固定 sleep 在慢机上会闪空），选择器对齐
+// .msg-attachment__icon--image。
+await import("../components/MessageAttachments");
+let inlineThumbCount = 0;
+for (let i = 0; i < 40; i += 1) {
+  inlineThumbCount = document.querySelectorAll(".msg-attachment__icon--image img").length;
+  if (inlineThumbCount > 0) break;
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
+}
+eq(inlineThumbCount, 1, "the attachment message still renders its inline thumbnail (③同场回归)");
 
 // ── 对照组：非 channelMode 的 Composer 照常拉队列（enabled 缺省真）────────
 // 直接调 lib 层：enabled=true 走 InboxSnapshot、enabled=false 不走。

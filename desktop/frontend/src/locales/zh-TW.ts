@@ -3794,6 +3794,10 @@ export const zhTW: Record<DictKey, string> = {
   "sources.open": "開啟來源",
   "sources.copyLink": "複製連結",
   "msg.folderReference": "資料夾 · 工作區引用",
+  // tl1565：附件卡片左鍵開啟 / 右鍵選單（複製內容·複製路徑·開啟所在資料夾）。
+  "msg.copyContents": "複製內容",
+  "msg.copyPath": "複製路徑",
+  "msg.attachmentPathUnavailable": "該路徑目前無法開啟（不存在或不可存取）",
   "msg.pastedExpandTooltip": "展開貼上文字",
   "msg.pastedCollapseTooltip": "收起貼上文字",
   "msg.foldExpand": "展開全文",

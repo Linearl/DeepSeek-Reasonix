@@ -224,14 +224,6 @@ export function ChannelWorkspacePanel({
     return lines.join("\n");
   }, [chat, directoryTitle]);
 
-  // tl1465：附件预览读回回调引用稳定化——ChannelAttachmentImage 的 effect 以
-  // [path, preview] 为依赖，内联箭头每渲染换身份会让宿主任意重渲染都重发读桥
-  // 调用，读失败时形成 WARN 刷屏循环（与 ChannelChatPanel 同修一处机制）。
-  const channelAttachmentPreview = useCallback(
-    (path: string) => b.ChannelAttachmentDataURL(path),
-    [b],
-  );
-
   const cancelMessage = useCallback(async (messageId: string) => {
     setMenu(null);
     setActionError(null);
@@ -396,7 +388,6 @@ export function ChannelWorkspacePanel({
                 memberDetails={memberDetails}
                 directoryTitle={directoryTitle}
                 onBubbleContextMenu={(point) => setMenu(point)}
-                attachmentPreview={channelAttachmentPreview}
                 deputyId={openCh.deputyId}
                 channelOwnerType={openCh.ownerType}
               />
