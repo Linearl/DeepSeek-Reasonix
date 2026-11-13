@@ -1571,6 +1571,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RevealWorkspacePathForTab(tabID: string, rel: string): Promise<void>;
   RevealPath(path: string): Promise<void>;
   OpenLocalPath(path: string): Promise<void>;
+  /** tl1565：附件卡片「复制内容」读桥——opener 家族读侧延伸（normalize +
+   *  可执行拒绝 + symlink 落点门禁同 OpenLocalPath；目录/二进制/超 2MiB 诚实
+   *  报错不截断）。契约对齐 desktop App.ReadLocalTextFile（wails generate
+   *  禁用，手写声明）。 */
+  ReadLocalTextFile(path: string): Promise<string>;
   SavePastedImage(dataUrl: string): Promise<string>;
   SaveClipboardImage(): Promise<string>;
   /** tl1441 ③：群聊附件落盘——全局工作区 .reasonix/attachments 锚点（群聊
@@ -6479,6 +6484,8 @@ function makeMockApp(): AppBindings {
     async OpenLocalPath(path: string) {
       console.info("mock OpenLocalPath", path);
     },
+    // tl1565：mock 无本地盘内容，返回空串=复制内容空结果（诚实降级，不造假数据）。
+    async ReadLocalTextFile(_path: string) { return ""; },
     async OpenWorkspacePathForTab(_tabID: string, rel: string) {
       await this.OpenWorkspacePath(rel);
     },

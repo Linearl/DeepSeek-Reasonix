@@ -5352,6 +5352,10 @@ export const en = {
   "sources.open": "Open source",
   "sources.copyLink": "Copy link",
   "msg.folderReference": "Folder · Workspace reference",
+  // tl1565: attachment card open / context menu (copy contents · copy path · reveal).
+  "msg.copyContents": "Copy contents",
+  "msg.copyPath": "Copy path",
+  "msg.attachmentPathUnavailable": "This path cannot be opened right now (missing or inaccessible)",
   "msg.pastedExpandTooltip": "Expand pasted text",
   "msg.pastedCollapseTooltip": "Collapse pasted text",
   "msg.foldExpand": "Show more",

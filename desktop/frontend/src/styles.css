@@ -5860,6 +5860,11 @@ a[href] {
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-soft) 78%, transparent);
 }
+/* tl1565：非图片附件卡可打开（左键=默认应用；文件夹=打开目录）+ 右键菜单。 */
+.msg-attachment--file,
+.msg-attachment--folder {
+  cursor: pointer;
+}
 .msg-attachment--image {
   display: inline-flex;
   align-items: center;
