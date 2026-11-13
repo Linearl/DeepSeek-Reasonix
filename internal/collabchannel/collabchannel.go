@@ -1275,6 +1275,40 @@ func (s *Store) MarkRead(ref, member string, messageIDs []string) (int, error) {
 	return total, nil
 }
 
+// MarkReadByDelivery advances read_at keyed by delivery id (fanout_id, the
+// chf_ mailbox id) instead of (channel, message id). tl1563: a session member
+// consumes channel fan-out through the inbox pipeline — the mail's chf_ id is
+// the only handle that survives the MailStore→sessioninbox round-trip (the
+// CollabMsgID bookkeeping, task 309) — so the consume side can never name the
+// channel or the chm_ message id. Rows are still keyed (message, member): one
+// member's read never touches another's, and the state='delivered' guard keeps
+// cancelled rows (撤回消息) honest — a message that was revoked before the
+// member saw it never turns "read". Unknown ids match nothing and return 0.
+// Returns how many rows moved.
+func (s *Store) MarkReadByDelivery(member string, deliveryIDs []string) (int, error) {
+	member = strings.TrimSpace(member)
+	if member == "" || len(deliveryIDs) == 0 {
+		return 0, nil
+	}
+	total := 0
+	for _, fid := range deliveryIDs {
+		fid = strings.TrimSpace(fid)
+		if fid == "" {
+			continue
+		}
+		res, err := s.db.Exec(`UPDATE fanout SET read_at = ?
+			WHERE member = ? AND read_at IS NULL AND state = 'delivered' AND fanout_id = ?`,
+			s.now(), member, fid)
+		if err != nil {
+			return total, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			total += int(n)
+		}
+	}
+	return total, nil
+}
+
 // MarkHumanVisible is the human half of 803 ⑥: a message the human can SEE in
 // the UI is, by definition, delivered to (and read by) the human — no mailbox
 // round-trip exists to drive the row. It settles any queued human rows to
