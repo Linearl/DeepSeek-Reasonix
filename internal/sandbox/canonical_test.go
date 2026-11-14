@@ -16,9 +16,38 @@ import (
 	"time"
 )
 
+// drainCanonicalFlightsForTest waits (bounded) for every in-flight walk and
+// background refresh goroutine to finish its bookkeeping. A fast-fail window
+// left armed by an earlier test makes degraded callers spawn background
+// refresh goroutines; one scheduled during a LATER test's setup captured
+// whatever seam and pool were installed at that instant and skewed the
+// exact-count walker pins (tl1583). Draining before any map swap keeps the
+// flight map authoritative: every spawned refresh body is visible in it until
+// it completes, so a zero count proves no refresh goroutine is still pending.
+// Abandoned walk-loop goroutines (budget expired, walker still climbing) have
+// no flight left and are tolerated: they hold the pool they captured at
+// spawn, never re-read the seams, and release the same pool (tl1583).
+func drainCanonicalFlightsForTest() {
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		canonicalMu.Lock()
+		n := len(canonicalFlights)
+		canonicalMu.Unlock()
+		if n == 0 {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 // resetCanonicalEngine swaps the package-level seams for one test and
 // restores them afterwards. Without it a stubbed evaluator or a shrunken
-// budget would leak into sibling tests through the process-wide cache.
+// budget would leak into sibling tests through the process-wide cache. The
+// cleanup also disarms the fast-fail window and drains in-flight walks: a
+// timeout armed the window for 30s during TestResolveCanonicalPathTimeout-
+// FallsBackAndWarns and every later test in the package then served
+// degraded-first without walking (the long-standing baseline reds), and its
+// pending background refreshes could schedule mid-sibling-test (tl1583).
 func resetCanonicalEngine(t *testing.T) {
 	t.Helper()
 	canonicalMu.Lock()
@@ -30,6 +59,8 @@ func resetCanonicalEngine(t *testing.T) {
 	t.Cleanup(func() {
 		canonicalEvalSymlinks, canonicalResolveTimeout, canonicalCacheTTL = oldEval, oldTimeout, oldTTL
 		canonicalCachePositiveTTL = oldPositiveTTL
+		canonicalFastFailUntil.Store(0)
+		drainCanonicalFlightsForTest()
 		canonicalMu.Lock()
 		canonicalCache = map[string]canonicalEntry{}
 		canonicalFlights = map[string]*canonicalFlight{}

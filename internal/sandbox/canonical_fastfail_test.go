@@ -9,13 +9,18 @@ import (
 )
 
 // sweepCanonicalFastFailStateForTest resets every piece of engine state the
-// fast-fail tests touch. Callers must restore the seams themselves.
+// fast-fail tests touch. Callers must restore the seams themselves. The
+// disarm and the flight drain keep background refresh goroutines from
+// scheduling mid-sibling-test (same rationale as resetCanonicalEngine,
+// tl1583): every spawned refresh body is visible in the flight map until it
+// completes, so the drain-before-swap proves none is still pending.
 func sweepCanonicalFastFailStateForTest() {
+	canonicalFastFailUntil.Store(0)
+	drainCanonicalFlightsForTest()
 	canonicalMu.Lock()
 	canonicalCache = map[string]canonicalEntry{}
 	canonicalFlights = map[string]*canonicalFlight{}
 	canonicalMu.Unlock()
-	canonicalFastFailUntil.Store(0)
 }
 
 // TestResolveCanonicalPathFastFailServesDegradedThenRefreshesInBackground is
