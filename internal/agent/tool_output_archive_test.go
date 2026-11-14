@@ -87,3 +87,26 @@ func TestArchiveTruncatedToolOutputDegradesWithoutSessionTemp(t *testing.T) {
 		t.Fatalf("archive of empty original returned %q", path)
 	}
 }
+
+// tl1584 补防线：模型可控的 tool 名 / call ID 呈路径穿越形状时，落盘路径必须
+// 仍被压在会话临时目录内且保持单段安全文件名（regexp 门 + 包含门保持生效）。
+func TestArchiveTruncatedToolOutputNeutralizesTraversalShapedTokens(t *testing.T) {
+	a, tempRoot := newArchiveTestAgent(t, true)
+	for _, tc := range []struct{ name, callID string }{
+		{"../../evil", "..\\..\\escape"},
+		{"a/b/c", "call-id-with/slashes"},
+		{"..", "..."},
+	} {
+		path := a.archiveTruncatedToolOutput(tc.name, tc.callID, "payload")
+		if path == "" {
+			t.Fatalf("archive degraded for name=%q callID=%q; gates must neutralize, not reject", tc.name, tc.callID)
+		}
+		if !strings.HasPrefix(path, tempRoot) {
+			t.Fatalf("archive path %q escaped the session temp root (name=%q callID=%q)", path, tc.name, tc.callID)
+		}
+		seg := filepath.Base(path)
+		if !safeArchiveBaseRE.MatchString(seg) {
+			t.Fatalf("archive filename %q failed the safe-segment gate (name=%q callID=%q)", seg, tc.name, tc.callID)
+		}
+	}
+}
