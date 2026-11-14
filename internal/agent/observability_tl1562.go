@@ -124,6 +124,8 @@ func (a *Agent) logSamplingAttemptFailure(attempt int, failure provider.Recovery
 		// above stay untouched.
 		"err", secrets.RedactError(err))
 }
+
+// logTurnProviderFailure is the turn-level closing line for an exhausted
 // sampling loop (run loop's provider-failure branch, extended by tl1562 G2):
 // same reconciliation surface as the per-attempt trail, so an incident's
 // final failure names the session and both sides of the token ledger.
