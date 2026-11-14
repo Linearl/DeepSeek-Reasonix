@@ -153,8 +153,11 @@ func TestExecuteTargetRequiresStagedTarget(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	fakeInstallRoot(t, nil, "")
 	app := &App{}
-	controller := newAutonomousUpdateController(app)
-	if _, err := controller.ExecuteTarget(t.Context(), ""); err == nil {
+	// tl1585 钉面同步: the tool face queues every turn once the gate widens, so
+	// the no-target refusal is boundary-waiter territory — pin the shared body
+	// the waiter runs (executeStagedTarget), not the ctx gate.
+	controller := autonomousUpdateController{app: app}
+	if _, err := controller.executeStagedTarget(""); err == nil {
 		t.Fatal("execute without set_target must be refused")
 	}
 }
@@ -189,14 +192,17 @@ func TestExecuteTargetRollbackSwitchesAndStagesResume(t *testing.T) {
 	}
 	delete(app.tabs, "t2")
 
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: this pin's subject is the swap+resume machinery (the
+	// boundary waiter's body), not the ctx gate — drive executeStagedTarget
+	// directly.
+	controller := autonomousUpdateController{app: app}
 	versionSwitchStartLauncher = func(string, int) error { return nil }
 	versionSwitchQuit = func(*App) {}
 
 	if _, err := controller.SetTarget(t.Context(), rollback); err != nil {
 		t.Fatal(err)
 	}
-	result, err := controller.ExecuteTarget(t.Context(), callerSession)
+	result, err := controller.executeStagedTarget(callerSession)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,9 +344,12 @@ func TestResumeMarkerRoundTripsJSON(t *testing.T) {
 	}
 }
 
-// ── tl1500 刀④返修（2026-11-09 用户拍板二轮①）三钉 ─────────────────────────
+// ── tl1500 刀④返修（2026-11-09 用户拍板二轮①）+ tl1585 扩全回合（2026-11-14
+// 用户令）钉族 ─────────────────────────
 // 修前红 = 刀④拒绝语义（mid_turn_host_restart_refused）；修后绿 = 排队 +
-// 回合边界自动执行。钉③对照证明前台回合不受影响。
+// 回合边界自动执行。tl1585 把门槛从心跳回合扩至全回合：前台「立即执行」面退役
+// （其 quitGrace+relaunch 链与回合收尾之间是竞态，包92 装机实例=拦腰打断），
+// 心跳与前台同门排队。
 
 // stubBoundaryRestartSeams swaps every process-lifecycle seam the queued
 // boundary restart can reach (publish/switch/plain-restart faces) for no-ops,
@@ -542,9 +551,11 @@ func TestHeartbeatTurnRestartQueueDedupesPerTurn(t *testing.T) {
 	})
 }
 
-// 钉③(对照): a foreground (no heartbeat stamp) call keeps the pre-刀④
-// immediate semantics — swap committed right away, the queue slot untouched.
-func TestForegroundTurnExecuteRemainsImmediate(t *testing.T) {
+// 钉③(tl1585 翻转，验收④): a foreground (no heartbeat stamp) call queues the
+// same way — the pre-tl1585 immediate face is retired, and after the turn
+// context ends the boundary waiter runs the same rollback body the heartbeat
+// path uses (swap committed, staged target consumed, slot drained).
+func TestForegroundTurnExecuteQueuesForTurnBoundary(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	active := "v1.38.3-20260923-1010"
 	rollback := "v1.38.3-20260922-0900"
@@ -558,22 +569,45 @@ func TestForegroundTurnExecuteRemainsImmediate(t *testing.T) {
 	if _, err := controller.SetTarget(t.Context(), rollback); err != nil {
 		t.Fatal(err)
 	}
-	note, err := controller.ExecuteTarget(t.Context(), "")
+
+	// 前台回合 ctx：无心跳戳的普通可取消 ctx（生产链=回合守卫在收尾完成后
+	// cancel；测试直接 cancel 模拟该边界）。
+	turnCtx, cancel := context.WithCancel(t.Context())
+	note, err := controller.ExecuteTarget(turnCtx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(note, midTurnRestartQueuedMarker) {
-		t.Fatalf("foreground call must not queue: %q", note)
+	if !strings.Contains(note, midTurnRestartQueuedMarker) {
+		t.Fatalf("foreground execute must queue (tl1585), got: %q", note)
 	}
-	waitForBoundaryRestart(t, "immediate foreground rollback", func() bool {
+	pendingKind, queuedAction, slotEmpty := boundaryQueueSnapshot(app)
+	if pendingKind != "installed" {
+		t.Fatalf("queued foreground execute must NOT consume the staged target mid-turn, kind=%q", pendingKind)
+	}
+	if slotEmpty || queuedAction != "execute" {
+		t.Fatalf("slot must hold the execute request (empty=%v action=%q)", slotEmpty, queuedAction)
+	}
+	if ptr, ptrErr := installlayout.ReadCurrent(root); ptrErr != nil || ptr.ActiveVersion != active {
+		t.Fatalf("no swap may happen mid-turn: ptr=%+v err=%v", ptr, ptrErr)
+	}
+	if launcherCalls.Load() != 0 {
+		t.Fatalf("no launcher handoff mid-turn: %d", launcherCalls.Load())
+	}
+
+	cancel()
+	waitForBoundaryRestart(t, "turn-boundary foreground rollback", func() bool {
 		if launcherCalls.Load() == 0 {
 			return false
 		}
 		ptr, err := installlayout.ReadCurrent(root)
 		return err == nil && ptr.ActiveVersion == rollback
 	})
-	_, _, slotEmpty := boundaryQueueSnapshot(app)
+	pendingKind, _, _ = boundaryQueueSnapshot(app)
+	if pendingKind != "" {
+		t.Fatalf("boundary execution must consume the staged target, kind=%q", pendingKind)
+	}
+	_, _, slotEmpty = boundaryQueueSnapshot(app)
 	if !slotEmpty {
-		t.Fatal("the foreground path must never touch the queue slot")
+		t.Fatal("boundary execution must drain the queue slot")
 	}
 }

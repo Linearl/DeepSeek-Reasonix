@@ -262,11 +262,13 @@ func TestExecuteTargetNamesAnUnstagedCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: the unstaged-caller face lives in the swap body the
+	// boundary waiter runs — drive executeStagedTarget directly (concrete type).
+	controller := autonomousUpdateController{app: app}
 	if _, err := controller.SetTarget(context.Background(), rollback); err != nil {
 		t.Fatal(err)
 	}
-	result, err := controller.ExecuteTarget(context.Background(), caller)
+	result, err := controller.executeStagedTarget(caller)
 	if err != nil {
 		t.Fatal(err)
 	}

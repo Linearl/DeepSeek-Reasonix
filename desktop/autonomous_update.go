@@ -9,16 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"reasonix/internal/control"
 	"reasonix/internal/installlayout"
 	"reasonix/internal/tool"
 )
 
 // boundaryRestartRequest is one queued mid-turn restart (tl1500 刀④返修,
-// 2026-11-09 用户拍板二轮①): the heartbeat turn that called restart_update
-// keeps its reference here until the turn boundary fires the existing restart
-// path. action is "execute" (perform the staged target) or "restart"
-// (relaunch the current version).
+// 2026-11-09 用户拍板二轮①; tl1585 扩至全回合): the turn that called
+// restart_update keeps its reference here until the turn boundary fires the
+// existing restart path. action is "execute" (perform the staged target) or
+// "restart" (relaunch the current version).
 type boundaryRestartRequest struct {
 	action        string
 	callerSession string
@@ -32,7 +31,7 @@ const midTurnRestartQueuedMarker = "mid_turn_host_restart_queued"
 // It must read as a SUCCESS (not a refusal): the model should finish the turn
 // normally and stop retrying, trusting the boundary to perform the restart.
 func queueMidTurnHostRestartNote(action string) string {
-	return fmt.Sprintf("restart_update %s queued (cause=%s, tl1500 刀④返修): 重启已排队，将在当前回合结束（转录落盘、TurnDone 发出）后的回合边界自动执行——请正常收尾本回合，不要重试、不要再次调用。/ The restart is queued and will run automatically at the turn boundary right after this turn finishes and its transcript is persisted; finish the turn normally and do not retry or call again. / 重啟已排隊，將在當前回合結束後自動執行——請正常收尾本回合，無需重試或再次調用。", action, midTurnRestartQueuedMarker)
+	return fmt.Sprintf("restart_update %s queued (cause=%s, tl1585 全回合排队): 重启已排队，将在当前回合结束（转录落盘、TurnDone 发出）后的回合边界自动执行——请正常收尾本回合，不要重试、不要再次调用。/ The restart is queued and will run automatically at the turn boundary right after this turn finishes and its transcript is persisted; finish the turn normally and do not retry or call again. / 重啟已排隊，將在當前回合結束後自動執行——請正常收尾本回合，無需重試或再次調用。", action, midTurnRestartQueuedMarker)
 }
 
 // queueMidTurnHostRestartDuplicateNote is the dedup face (钉②): a second
@@ -43,12 +42,14 @@ func queueMidTurnHostRestartDuplicateNote(action string) string {
 }
 
 // queueBoundaryRestart is the tl1500 刀④返修 (2026-11-09 用户拍板二轮①) of the
-// 刀④ refusal: a heartbeat-driven (unattended) turn still must not kill the
-// host from inside its own turn, but the call now QUEUES instead of refusing.
-// 诊断 §7 定案第一因（心跳回合 T28 于 11:03:45 执行 restart_update execute 把
-// 宿主拦腰打断 → 恢复链 35.4 分钟失败 → a.mu 读者车队）的机理约束不变；改变
-// 的是处置——staged 目标不消费、不重启，回合边界后由既有重启路径自动执行，
-// 不再等下一轮心跳周期。
+// 刀④ refusal, widened by tl1585 (2026-11-14 用户令) to EVERY turn: no turn —
+// heartbeat-scheduled or attended foreground — may kill the host from inside
+// itself; the call QUEUES instead. 诊断 §7 定案第一因（心跳回合 T28 于 11:03:45
+// 执行 restart_update execute 把宿主拦腰打断 → 恢复链 35.4 分钟失败 → a.mu
+// 读者车队）的机理约束不变；tl1585 补的是前台半边：前台「立即执行」自带
+// autonomousUpdateQuitGrace=3s+relaunch 链数秒窗口，回合收尾快于窗口=体感正常、
+// 慢于窗口=拦腰打断（包92 装机实例）——排队把这个竞态改成确定性等待（秒级延迟
+// 不破坏 task-254 出包装机：与「拒绝」等下一轮心跳≤30min 的破坏性不同性质）。
 //
 // 触发时机 = turnCtx.Done()：回合 ctx 由回合守卫在收尾完成后 cancel
 // （internal/control spawnGuardedTurn 的 defer 顺序——body 返回 → finishGuardedTurn
@@ -57,8 +58,8 @@ func queueMidTurnHostRestartDuplicateNote(action string) string {
 // 结束才触发——「回合」以守卫边界为准。
 //
 // 已知限制（返修口径明示）：回合异常终止（进程崩溃）时本排队（内存态）丢失，
-// 等待 goroutine 一并消亡——可接受，staged 构建仍在磁盘，下一轮心跳重新出包
-// 同一目标。
+// 等待 goroutine 一并消亡——可接受，staged 构建仍在磁盘（心跳线下一轮重新出包
+// 同一目标；前台线模型可再次调用）。
 func (c autonomousUpdateController) queueBoundaryRestart(turnCtx context.Context, action, callerSession string) (string, error) {
 	a := c.app
 	if a == nil {
@@ -262,28 +263,29 @@ func (c autonomousUpdateController) SetTarget(_ context.Context, target string) 
 // ExecuteTarget performs the staged target. callerSession is the session whose
 // turn issued the tool call; its tab is exempt from the busy guard because the
 // restart is meant to end that very turn (auto-resume marks it beforehand).
-// Returns once the swap is committed — the restart follows and a success must
-// never be retried.
+// Returns once the call is QUEUED for the turn boundary — the swap commits
+// right after the turn finishes — and a success must never be retried.
 //
-// tl1500 刀④返修（2026-11-09 用户拍板二轮①）：心跳回合内不再拒绝，改为排队
-// 到回合边界自动执行（queueBoundaryRestart）；前台回合（task-254 设计面）保持
-// 立即执行。
+// tl1500 刀④返修（2026-11-09 用户拍板二轮①）＋ tl1585 扩全回合（2026-11-14
+// 用户令）：回合内不再立即重启，一律排队到回合边界自动执行
+// （queueBoundaryRestart）。本接口只被 restart_update 工具面在回合中触达，故
+// 「本回合运行中即排队」无条件成立——心跳回合与前台回合同门（task-254 的
+// 「立即执行」面退役：其 quitGrace+relaunch 链与回合收尾之间的竞态由确定性
+// 等待取代，出包装机链路 set_target→execute→重启上线不变，只是推迟到回合
+// 边界）。
 func (c autonomousUpdateController) ExecuteTarget(ctx context.Context, callerSession string) (string, error) {
 	a := c.app
 	if a == nil {
 		return "", fmt.Errorf("restart: no app")
 	}
-	// tl1500 刀④返修: 心跳回合内排队宿主自重启。放在消费 pending 之前——
-	// 排队不掉 staged 目标，回合边界由等待者消费并执行同一目标。
-	if control.IsHeartbeatTurn(ctx) {
-		return c.queueBoundaryRestart(ctx, "execute", callerSession)
-	}
-	return c.executeStagedTarget(callerSession)
+	// tl1585: 全回合排队宿主自重启。放在消费 pending 之前——排队不掉 staged
+	// 目标，回合边界由等待者消费并执行同一目标。
+	return c.queueBoundaryRestart(ctx, "execute", callerSession)
 }
 
 // executeStagedTarget is the guarded-free body of ExecuteTarget: it consumes
-// the staged target and commits the swap. The immediate (foreground) path and
-// the turn-boundary queued path share this body.
+// the staged target and commits the swap. Since tl1585 every caller-facing
+// execute queues, so the turn-boundary waiter is this body's only caller.
 func (c autonomousUpdateController) executeStagedTarget(callerSession string) (string, error) {
 	a := c.app
 	a.autonomousMu.Lock()
@@ -356,23 +358,22 @@ const restartMarkerReasonToolRestart = "restart"
 //
 // The install is untouched, so — like RestartDesktop — this does not require
 // the restart-and-update experiment; the tool itself only exists behind
-// experimental_autonomous_update. Returns once the relaunch is committed; a
-// success must never be retried (that would be another restart).
+// experimental_autonomous_update. Returns once the call is QUEUED for the turn
+// boundary — the relaunch commits right after the turn finishes; a success
+// must never be retried (that would be another restart).
 func (c autonomousUpdateController) RestartOnly(ctx context.Context, callerSession string) (string, error) {
 	a := c.app
 	if a == nil {
 		return "", fmt.Errorf("restart: no app")
 	}
-	// tl1500 刀④返修: 同族排队——纯重启（task 520）同样不再回合内打断宿主。
-	if control.IsHeartbeatTurn(ctx) {
-		return c.queueBoundaryRestart(ctx, "restart", callerSession)
-	}
-	return c.restartOnlyBoundary(callerSession)
+	// tl1585: 同族全回合排队——纯重启（task 520）同样不再回合内打断宿主。
+	return c.queueBoundaryRestart(ctx, "restart", callerSession)
 }
 
 // restartOnlyBoundary is the guarded-free body of RestartOnly: the existing
-// reload core with the tool-face resume staging. The immediate (foreground)
-// path and the turn-boundary queued path share this body.
+// reload core with the tool-face resume staging. Since tl1585 every
+// caller-facing restart queues, so the turn-boundary waiter is this body's
+// only caller.
 func (c autonomousUpdateController) restartOnlyBoundary(callerSession string) (string, error) {
 	a := c.app
 	report, err := a.restartActiveVersionExempt(callerSession, restartMarkerReasonToolRestart)

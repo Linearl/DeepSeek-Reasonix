@@ -49,18 +49,13 @@ func heartbeatTurnRequested(ctx context.Context) bool {
 }
 
 // WithHeartbeatTurn stamps ctx as a heartbeat-driven turn（withHeartbeatTurn
-// 的导出孪生）。tl1500 刀④：desktop 的 restart_update 宿主面用 IsHeartbeatTurn
-// 拒绝无人值守回合内的宿主生命周期操作；钉与本导出面同源盖戳，与
-// SubmitHeartbeatTurn 的生产盖戳逐字节同键。
+// 的导出孪生）。tl1500 刀④曾作为 desktop restart_update 宿主门的判定入口
+// （IsHeartbeatTurn 判戳拒绝→返修后判戳排队）；tl1585（2026-11-14 用户令）把
+// 该门扩至全回合——工具面只在回合中触达，「运行中即排队」无条件成立，判戳
+// 失去判定价值，IsHeartbeatTurn 随门槛退役，本盖戳孪生保留：desktop 钉用它
+// 逐字节复刻生产心跳回合 ctx（生产盖戳点不变=SubmitHeartbeatTurn）。
 func WithHeartbeatTurn(ctx context.Context) context.Context {
 	return withHeartbeatTurn(ctx)
-}
-
-// IsHeartbeatTurn reports whether ctx belongs to a heartbeat-driven turn
-// （heartbeatTurnRequested 的导出孪生，tl1500 刀④：desktop 端回合内禁自重启
-// 门的判定入口）。
-func IsHeartbeatTurn(ctx context.Context) bool {
-	return heartbeatTurnRequested(ctx)
 }
 
 // SubmitHeartbeatTurn starts a scheduled turn: identical to SubmitUserTurn
