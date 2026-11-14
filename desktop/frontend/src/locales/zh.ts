@@ -6029,6 +6029,12 @@ export const zh: Record<DictKey, string> = {
   // tl1559: 首个 token 估计到达前的占位腿（摘要请求首 token 延迟空窗），
   // 调用面经 compactionLiveReadout 的 options 显式启用。
   "compaction.liveEstimating": "估算中…",
+  // tl1588: 压缩回合状态收敛——兜底动作的人话行（卡上常显一条）与详情区
+  // 标题。详情区逐条文案复用各 notice 本来的键，不另造词。
+  "compaction.rescueTrim": "已自动精简早期内容以继续，原文可找回",
+  "compaction.rescueResume": "上一轮异常终止，已自动接续一轮继续工作",
+  "compaction.rescueInterrupt": "本轮已中断：已完成部分已保留，可继续或回滚",
+  "compaction.episodeNotes": "压缩详情（{n} 条内部状态）",
   "composer.subagentPolicyTrigger": "子代理委派",
   "composer.quickCommandsTitle": "快捷指令",
   "heartbeat.fieldModelOverride": "模型覆盖",

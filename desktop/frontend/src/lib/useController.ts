@@ -48,8 +48,18 @@ import {
   isGoalLifecycleNotice,
   isNotActiveTurnRejection,
   isTurnAlreadyRunningRejection,
+  localizedNoticeText,
   readinessMissingIds,
 } from "./controllerNotices";
+// tl1588: 压缩回合状态收敛——分流判定/沉淀/人话 rescue 行的纯逻辑收口。
+import {
+  appendEpisodeNote,
+  episodeRescueLine,
+  isEpisodeNoticeCode,
+  isTrimRescueMaintenance,
+  rescueKindForCode,
+  type CompactionEpisodeNote,
+} from "./compactionEpisode";
 import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
 import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydrateFailureDetail, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
@@ -374,6 +384,12 @@ export type Item =
       // keeps running. The terminal card surfaces it once the session
       // resolves; until then the card stays the in-progress surface.
       interimSummary?: string;
+      // tl1588: 压缩回合内部状态沉淀（episode sink）。压缩会话打开期间，
+      // 预填充/中断/续轮/裁剪/恢复提示/压缩等待/流中断等状态不再逐条落
+      // notice 行刷 transcript，改挂到本卡的详情区（可展开）；兜底动作另出
+      // 一条人话 rescue 行。有界 FIFO、仅内存——水合卡不携带（973
+      // startedAt 同约定），窗口外的 notice 行为逐字不变。
+      episodeNotes?: CompactionEpisodeNote[];
     }
   | {
       kind: "tool";
@@ -2255,6 +2271,12 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // notice, so it must not render a second warning per item; failing open
       // keeps older backends' per-item warnings visible.
       if (e.code === "unapplied_steer" && e.detail === "unapplied_steer:restore-only") return s;
+      // tl1588: 压缩回合兼容窗内的内部状态（预填充/中断/续轮/恢复提示/压缩
+      // 等待/流中断）不逐条落 notice 行刷 transcript，改沉淀为压缩卡详情区；
+      // 窗口外逐字不变。streamInterruptNoticeShown 的去重闸照常落（窗口内
+      // diverts 也算「已展示」，防止 turn_done 再补一条完整句）。
+      const diverted = divertNoticeToEpisode(s, e.text ?? "", e.detail, e.code);
+      if (diverted) return e.code?.startsWith("stream_interrupted_") ? { ...diverted, streamInterruptNoticeShown: true } : diverted;
       const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt, e.emittedAt ?? Date.now(), e.suggestion);
       return e.code?.startsWith("stream_interrupted_") ? { ...next, streamInterruptNoticeShown: true } : next;
     }
@@ -2262,6 +2284,21 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const m = e.maintenance;
       if (!m || m.status === "noop") return s;
       if (!isNewMaintenanceOperation(s.seenMaintenanceOps, m.operationId)) return s;
+      // tl1588: 压缩回合兼容窗内的维护回执（摘要未形成短视图/已裁剪上下文
+      // 视图/摘要未完成）沉淀为压缩卡详情；applied+truncate 是裁剪兜底，
+      // 卡上出一条人话 rescue 行（验收③）。operationId 去重照常记账。
+      if (episodeSinkOpen(s)) {
+        const rescued = isTrimRescueMaintenance(m.status, m.action);
+        const divertedMaintenance = appendEpisodeNoteToState(s, {
+          at: Date.now(),
+          label: formatContextMaintenanceNotice(m, t),
+          ...(m.reason ? { detail: m.reason } : {}),
+          ...(rescued ? { rescue: "trim" as const } : {}),
+        });
+        if (divertedMaintenance) {
+          return { ...divertedMaintenance, seenMaintenanceOps: rememberMaintenanceOperation(s.seenMaintenanceOps, m.operationId) };
+        }
+      }
       // Task 633: a failed refresh with the fold kept is a safe state (compaction
       // live, refresh retryable) — informational, not a warning.
       const level = m.status === "failed" && !m.foldInstalled ? "warn" : "info";
@@ -2352,9 +2389,20 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         // session bookkeeping stays open until an ok pass lands.
         if (c?.outcome === "failed") {
           const prev = at < 0 ? undefined : (s.items[at] as Extract<Item, { kind: "compaction" }>);
-          const failedCard: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : prev!.id, pending: false, failed: true, attempt: c.attempt ?? 0, reason: c.reason ?? "", trigger: c.trigger || prev?.trigger || "", messages: 0, summary: "", archive: "", pass: (c.pass && c.pass > 0 ? c.pass : undefined) ?? prev?.pass };
+          const failedCard: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : prev!.id, pending: false, failed: true, attempt: c.attempt ?? 0, reason: c.reason ?? "", trigger: c.trigger || prev?.trigger || "", messages: 0, summary: "", archive: "", pass: (c.pass && c.pass > 0 ? c.pass : undefined) ?? prev?.pass, ...(prev?.episodeNotes?.length ? { episodeNotes: prev.episodeNotes } : {}) };
           const items = at < 0 ? [...s.items, failedCard] : s.items.map((it, i) => (i === at ? failedCard : it));
           return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, items };
+        }
+        // tl1588: aborted/planned-skip 落卡路径——卡上已沉淀的内部状态若随卡
+        // 摘除会凭空丢失（分流后不再有 notice 行兜底），回灌一条合并 notice
+        // 保底：rescue 行人话为正文、逐条状态进 detail。无沉淀时维持原样。
+        const dropped = at < 0 ? undefined : (s.items[at] as Extract<Item, { kind: "compaction" }>);
+        if (dropped?.episodeNotes?.length) {
+          const notes = dropped.episodeNotes;
+          const flushText = episodeRescueLine(notes, t) || t("compaction.episodeNotes", { n: notes.length });
+          const flushed: Item = { kind: "notice", id: `n${s.seq}`, level: "info", text: flushText, detail: notes.map((note) => note.label).join("\n") };
+          const items = [...s.items.filter((_, i) => i !== at), flushed];
+          return { ...s, running: s.turnActive ? s.running : false, compactionSessionOpen: false, compactionSessionPass: 0, seq: s.seq + 1, items };
         }
         const items = at < 0 ? s.items : s.items.filter((_, i) => i !== at);
         return { ...s, running: s.turnActive ? s.running : false, compactionSessionOpen: false, compactionSessionPass: 0, items };
@@ -2367,7 +2415,9 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // the DONE event's number (authoritative close) over a legacy 0.
       const pass = c.pass && c.pass > 0 ? c.pass : undefined;
       const summary = c.summary || cur?.interimSummary || "";
-      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : cur!.id, pending: false, trigger: c.trigger || cur?.trigger || "", messages: c.messages || cur?.messages || 0, summary, archive: c.archive ?? "", pass };
+      // tl1588: 终局卡继承本回合沉淀的内部状态详情——「可展开详情区」在压缩
+      // 结束后仍然可查（验收②），不是随 pending 态一起蒸发。
+      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : cur!.id, pending: false, trigger: c.trigger || cur?.trigger || "", messages: c.messages || cur?.messages || 0, summary, archive: c.archive ?? "", pass, ...(cur?.episodeNotes?.length ? { episodeNotes: cur.episodeNotes } : {}) };
       const items = at < 0 ? [...s.items, filled] : s.items.map((it, i) => (i === at ? filled : it));
       return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, compactionSessionOpen: closesSession ? false : s.compactionSessionOpen, items };
     }
@@ -2615,7 +2665,28 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
             detail: e.detail,
           });
         }
-        items = [...finalized, ...interruptItems];
+        // tl1588: 压缩回合兼容窗内，中断族（中断说明/流中断原因/供应商错误）
+        // 不逐条落 notice 行——三条正是现场「本轮已中断→回复被截断」刷屏的
+        // 主体，改沉淀为压缩卡详情，卡上以一条人话 rescue 行说明中断兜底
+        // （验收②③）。无卡（防御态）回落既有落行，内容不丢。
+        if (episodeSinkOpen(s)) {
+          const divertedInterrupt = divertItemsToEpisodeCard(finalized, (existing) => {
+            let notes: CompactionEpisodeNote[] = [...existing];
+            for (const item of interruptItems) {
+              if (item.kind !== "notice") continue;
+              notes = appendEpisodeNote(notes, {
+                at: now,
+                label: item.text,
+                ...(item.detail ? { detail: item.detail } : {}),
+                ...(item.text === t("notice.cancelledTurnDisplay") ? { rescue: "interrupt" as const } : {}),
+              });
+            }
+            return notes;
+          });
+          items = divertedInterrupt ?? [...finalized, ...interruptItems];
+        } else {
+          items = [...finalized, ...interruptItems];
+        }
       } else if (e.err && !s.streamInterruptNoticeShown) {
         // Task 372: if the retry loop gave up during this turn (the budget
         // window or the attempt cap refused another round), the error strip
@@ -3255,6 +3326,52 @@ function latestTodosAllComplete(items: Item[]): boolean {
 function appendNoticeToState(s: State, level: "info" | "warn", text: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt, createdAt?: number, suggestion?: string): State {
   const next = appendNoticeItem(s.items, s.seq, `n${s.seq}`, level, text, detail, code, decisionReceipt, createdAt, suggestion);
   return { ...s, running: s.turnActive ? s.running : false, seq: next.seq, items: next.items };
+}
+
+// ── tl1588: 压缩回合状态收敛（episode sink）────────────────────────────────
+// episodeSinkOpen：分流兼容窗 = 压缩会话打开（1021 记账，started→最终 ok done）
+// 且卡还在 items（aborted 落卡路径会把卡摘掉）。窗口外一律返回 false——
+// 973/1147/1559 等判例全部构造在窗口外，行为逐字不变。
+function episodeSinkOpen(s: State): boolean {
+  if (!s.compactionSessionOpen) return false;
+  return s.items.some((it) => it.kind === "compaction");
+}
+
+// 把一条内部状态沉淀到最近一张压缩卡的详情区。无卡（防御态）返回 null，
+// 调用方回落到既有 notice 行为——内容永不因收敛而丢失。
+function appendEpisodeNoteToState(s: State, note: CompactionEpisodeNote): State | null {
+  const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction");
+  if (idx < 0) return null;
+  const at = s.items.length - 1 - idx;
+  const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
+  const updated: Item = { ...cur, episodeNotes: appendEpisodeNote(cur.episodeNotes, note) };
+  return { ...s, seq: s.seq + 1, items: s.items.map((it, i) => (i === at ? updated : it)) };
+}
+
+// tl1588: notice 事件分流入口。兼容窗内且码在闭式集合 → 沉淀详情区（返回
+// 非 null）；否则返回 null 由调用方走既有 notice 落行。文案复用该 notice
+// 本来的本地化串（双轨不隐藏——技术细节进详情区不删除）。
+function divertNoticeToEpisode(s: State, text: string, detail?: string, code?: string): State | null {
+  if (!episodeSinkOpen(s) || !isEpisodeNoticeCode(code)) return null;
+  const rescue = rescueKindForCode(code);
+  const trimmedDetail = detail?.trim();
+  return appendEpisodeNoteToState(s, {
+    at: Date.now(),
+    label: localizedNoticeText(text, code, trimmedDetail),
+    ...(trimmedDetail ? { detail: trimmedDetail } : {}),
+    ...(rescue ? { rescue } : {}),
+  });
+}
+
+// tl1588: items 级分流（turn_done 组装面用）——把调用方构造的 note 批次挂到
+// 最近一张压缩卡。无卡返回 null，调用方回落到既有落行行为（内容不丢）。
+function divertItemsToEpisodeCard(items: Item[], build: (existing: readonly CompactionEpisodeNote[]) => CompactionEpisodeNote[]): Item[] | null {
+  const idx = [...items].reverse().findIndex((it) => it.kind === "compaction");
+  if (idx < 0) return null;
+  const at = items.length - 1 - idx;
+  const cur = items[at] as Extract<Item, { kind: "compaction" }>;
+  const notes = build(cur.episodeNotes ?? []);
+  return items.map((it, i) => (i === at ? { ...cur, episodeNotes: notes } : it));
 }
 
 export { replayPendingPromptsForActiveTab } from "./promptReplay";
