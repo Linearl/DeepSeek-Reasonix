@@ -84,7 +84,10 @@ func toolOutputRecoveryMarker(toolName, toolCallID, archivePath string, original
 	idPart := boundedMarkerField(toolCallID, 128, "-")
 	recovery := "re-run the original tool with narrower arguments"
 	if archivePath != "" {
-		recovery = "read the archived original with read_file(path=\"" + archivePath + "\", offset, limit) if more content is needed; otherwise re-run the original tool with narrower arguments"
+		// tl1584 (code-scanning 325): the path is spliced between literal
+		// quotes, so escape any double quote it might carry; paths without
+		// quotes (the only kind the archiver mints) render byte-identical.
+		recovery = "read the archived original with read_file(path=\"" + strings.ReplaceAll(archivePath, `"`, "%22") + "\", offset, limit) if more content is needed; otherwise re-run the original tool with narrower arguments"
 	}
 	return fmt.Sprintf(
 		"\n\n…[truncated tool=%s call_id=%s original_bytes=%d kept_bytes=%d archive=%s — %s]…\n\n",
@@ -102,7 +105,9 @@ func toolOutputRecoveryMarkerAt(toolName, toolCallID, archivePath string, origin
 	idPart := boundedMarkerField(toolCallID, 128, "-")
 	recovery := "re-run the original tool with narrower arguments"
 	if archivePath != "" {
-		recovery = "read the archived original with read_file(path=\"" + archivePath + "\", offset, limit) when more coverage is required; otherwise re-run the original tool with narrower arguments"
+		// tl1584 (code-scanning 326): quote-escape as in the byte-compatible
+		// marker above.
+		recovery = "read the archived original with read_file(path=\"" + strings.ReplaceAll(archivePath, `"`, "%22") + "\", offset, limit) when more coverage is required; otherwise re-run the original tool with narrower arguments"
 	}
 	return fmt.Sprintf(
 		"\n\n…[truncated tool=%s call_id=%s original_bytes=%d kept_bytes=%d next_offset=%d archive=%s — %s INCOMPLETE READ: only a contiguous prefix is visible. Independent work may continue; recover more content when required and do not claim whole-file coverage from this prefix.]…\n\n",
