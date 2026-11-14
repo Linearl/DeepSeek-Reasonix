@@ -6,6 +6,7 @@ import (
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
+	"reasonix/internal/secrets"
 )
 
 // tl1562 observability helpers. The 20261112 incident (fork开发-新12: a
@@ -116,7 +117,12 @@ func (a *Agent) logSamplingAttemptFailure(attempt int, failure provider.Recovery
 		"prompt_tokens", prompt, "completion_tokens", completion,
 		"total_tokens", total, "finish_reason", finishReason,
 		"session_hit_total", a.sess.cacheHit.Load(), "session_miss_total", a.sess.cacheMiss.Load(),
-		"err", err)
+		// tl1584 (code-scanning 327): the raw provider error can carry
+		// credential-shaped material (key env reads embedded in request-config
+		// errors), so the trail line carries the redacted message instead of
+		// the raw error value. Field stays grep-able; classification fields
+		// above stay untouched.
+		"err", secrets.RedactError(err))
 }
 
 // logTurnProviderFailure is the turn-level closing line for an exhausted
@@ -141,5 +147,7 @@ func (a *Agent) logTurnProviderFailure(err error, usage *provider.Usage) {
 		"cache_hit_tokens", cacheHit, "cache_miss_tokens", cacheMiss,
 		"session_hit_total", a.sess.cacheHit.Load(),
 		"session_miss_total", a.sess.cacheMiss.Load(),
-		"err", err)
+		// tl1584 (code-scanning 328): redacted like the per-attempt trail line —
+		// the turn-closing error may carry the same credential-shaped material.
+		"err", secrets.RedactError(err))
 }

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -26,6 +27,15 @@ import (
 //     O_EXCL，撞名重试），工具名与 call ID 经消毒便于人工辨认与按前缀清理。
 const toolOutputArchiveDirName = "tool-output-archive"
 
+// safeArchiveBaseRE is the full-match gate on the constructed archive
+// filename (tl1584, code-scanning 322-324): tool names and tool call IDs come
+// from provider output, so the filename is re-validated against the single
+// safe-segment shape before it ever reaches a filesystem call. sanitizeArchiveToken
+// builds names that always match; the gate is the defense-in-depth assertion
+// that stays true even if the sanitizer's alphabet ever drifts (and doubles as
+// the executable spec for the trunc- naming convention).
+var safeArchiveBaseRE = regexp.MustCompile(`^trunc-[0-9]+-[A-Za-z0-9._-]{0,64}-[A-Za-z0-9._-]{0,96}(-[0-9]+)?\.txt$`)
+
 // archiveTruncatedToolOutput writes the full original of a truncated tool
 // result into the session private temporary directory and returns its absolute
 // path. Best effort: any failure logs and returns "" so the truncation marker
@@ -40,7 +50,14 @@ func (a *Agent) archiveTruncatedToolOutput(toolName, toolCallID, original string
 		return ""
 	}
 	defer lease.Release()
-	dir := filepath.Join(lease.Dir(), toolOutputArchiveDirName)
+	root := lease.Dir()
+	dir := filepath.Join(root, toolOutputArchiveDirName)
+	// tl1584 (code-scanning 322): containment gate — every archive path handed
+	// to a filesystem call must stay inside the lease directory the session
+	// temp manager handed out.
+	if !strings.HasPrefix(dir, root) {
+		return ""
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		slog.Debug("agent: tool output archive mkdir failed (tl1561)", "dir", dir, "err", err)
 		return ""
@@ -49,6 +66,14 @@ func (a *Agent) archiveTruncatedToolOutput(toolName, toolCallID, original string
 		time.Now().UnixNano(),
 		sanitizeArchiveToken(toolName, 64),
 		sanitizeArchiveToken(toolCallID, 96))
+	// tl1584 (code-scanning 323/324): the model-controlled name/call-ID tokens
+	// are validated against the safe-segment shape before the first filesystem
+	// call; a mismatch means a sanitizer regression, so degrade to the re-run
+	// fallback instead of writing.
+	if !safeArchiveBaseRE.MatchString(base) {
+		slog.Debug("agent: tool output archive rejected unsafe name (tl1584)", "base", base)
+		return ""
+	}
 	path := filepath.Join(dir, base)
 	// O_EXCL keeps concurrent/rapid-fire truncations from silently overwriting
 	// each other on coarse-clock filesystems; a few suffix retries absorb the

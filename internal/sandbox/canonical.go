@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"reasonix/internal/secrets"
 )
 
 // Shared canonical path resolution (task 455fix). The walk used to exist
@@ -336,7 +338,11 @@ func canonicalWalkBounded(abs string) (string, bool) {
 		// drop the parenthetical verdict; the path attr lets the operator
 		// tell which one it actually was.
 		slog.Warn("canonical path resolution timed out; keeping cleaned path (slow disk or unreachable network drive?)",
-			"path", abs, "budget", canonicalResolveTimeout.String())
+			// tl1584 (code-scanning 321): the path passes the credential-shape
+			// scrub before it reaches the log line; ordinary paths are returned
+			// unchanged so the operator keeps the drive answer this attribute
+			// was added for (task 928 residual ④).
+			"path", secrets.Redact(abs), "budget", canonicalResolveTimeout.String())
 		// tl1526: arming degraded-first is the observable degrade transition —
 		// one WARN per storm with the spent time and the mode the engine now
 		// serves further resolutions in.
