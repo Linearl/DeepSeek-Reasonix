@@ -71,9 +71,18 @@ func (a *Agent) modelVisibleMessages() []provider.Message {
 	// valid-path shape (covered digest, live system refresh, canonical
 	// messages past CoveredCount verbatim), so the only stale part is the
 	// summarized prefix — never the recent turns.
+	//
+	// tl1586: the splice itself is now bounded — when the fold covers a small
+	// prefix of a multi-window canonical, the spliced view is nearly the full
+	// transcript (the content_mismatch incident's 1064450 tokens against a 1M
+	// window) and every request overflowed until the forced rebuild landed.
+	// At or above the hard input ceiling the splice degrades through the same
+	// tail-window construction as the body-less fallback; below it the
+	// tl1203 shape passes through unchanged.
 	if len(st.Projection.Messages) > 0 {
 		if visible := modelVisibleFromProjection(st.Projection, msgs); len(visible) > 0 {
 			a.sess.tailView.clear()
+			visible = a.boundedStaleSpliceView(visible, version, st.Projection.ProjectionVersion)
 			a.kickStaleProjectionRebuild()
 			return visible
 		}
