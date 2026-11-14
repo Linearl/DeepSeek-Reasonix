@@ -6071,6 +6071,13 @@ export const en = {
   // tl1559: placeholder leg before the first token estimate lands (summarizer
   // TTFT window) — surfaces opt in via compactionLiveReadout's options.
   "compaction.liveEstimating": "estimating…",
+  // tl1588: compaction episode convergence — one plain-language line per
+  // fallback action (always-visible on the card) plus the details summary.
+  // Per-note copy reuses each notice's own key; no new wording invented here.
+  "compaction.rescueTrim": "Earlier context was trimmed automatically to keep going; the original stays recoverable",
+  "compaction.rescueResume": "The previous turn ended unexpectedly; a continuation turn was started automatically",
+  "compaction.rescueInterrupt": "This turn was interrupted: completed output is preserved — continue or roll back",
+  "compaction.episodeNotes": "Compaction details ({n} internal statuses)",
   "composer.subagentPolicyTrigger": "Sub-agent delegation",
   "composer.quickCommandsTitle": "Quick commands",
   "heartbeat.fieldModelOverride": "Model override",

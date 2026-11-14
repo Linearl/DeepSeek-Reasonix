@@ -6024,6 +6024,12 @@ export const zhTW: Record<DictKey, string> = {
   // tl1559: 首個 token 估計到達前的佔位腿（摘要請求首 token 延遲空窗），
   // 呼叫面經 compactionLiveReadout 的 options 顯式啟用。
   "compaction.liveEstimating": "估算中…",
+  // tl1588: 壓縮回合狀態收斂——兜底動作的人話行（卡上常顯一條）與詳情區
+  // 標題。詳情區逐條文案復用各 notice 本來的鍵，不另造詞。
+  "compaction.rescueTrim": "已自動精簡早期內容以繼續，原文可找回",
+  "compaction.rescueResume": "上一輪異常終止，已自動接續一輪繼續工作",
+  "compaction.rescueInterrupt": "本輪已中斷：已完成部分已保留，可繼續或回滾",
+  "compaction.episodeNotes": "壓縮詳情（{n} 條內部狀態）",
   "composer.subagentPolicyTrigger": "子代理委派",
   "composer.quickCommandsTitle": "快捷指令",
   "heartbeat.fieldModelOverride": "模型覆蓋",

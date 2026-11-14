@@ -29,6 +29,8 @@ import { ProcessCompactIcon, ProcessPhaseIcon } from "./ProcessCard";
 import { useTranscriptUserResizeIntent } from "./TranscriptLayoutIntentContext";
 import { useTick } from "../lib/workStatus";
 import { compactionLiveReadout } from "../lib/compactionLive";
+// tl1588: 压缩回合内部状态沉淀的展示半边——rescue 人话行 + 可展开详情区。
+import { episodeRescueLine, type CompactionEpisodeNote } from "../lib/compactionEpisode";
 import { hostProtocolNoticeBody } from "../lib/hostProtocolNotice";
 
 export function PhaseCard({ id, text }: { id: string; text: string }) {
@@ -471,6 +473,35 @@ function localizedCompactionFailureReason(t: Translator, reason: string): string
   return key ? t(key) : reason;
 }
 
+// tl1588: 压缩回合沉淀块的展示半边。形态三件套：
+//   ① rescue 人话行——最近的兜底动作（裁剪/续轮/中断）一句话说明，常显；
+//   ② <details> 详情区——内部状态逐条（时间 + 该 notice 本来的本地化文案
+//     + 技术细节），默认收起，点开才展开（验收②：不逐条刷 transcript）；
+//   ③ 无沉淀时整块不渲染——973/1147/1559 各代判例的卡面逐字节不变。
+// 挂点：pending/failed/终局三态卡共用在同一卡元素内（pending/failed 是
+// flex 行，块以 flex-basis:100% 换行；终局卡是块流直接续在头按钮后）。
+function CompactionEpisodeBlock({ notes }: { notes: readonly CompactionEpisodeNote[] }) {
+  const t = useT();
+  const rescue = episodeRescueLine(notes, t);
+  return (
+    <>
+      {rescue ? <div className="compaction__rescue" role="status">{rescue}</div> : null}
+      <details className="compaction__notes">
+        <summary>{t("compaction.episodeNotes", { n: notes.length })}</summary>
+        <div className="compaction__notes-list">
+          {notes.map((note, i) => (
+            <div className="compaction__note" key={`${note.at}:${i}`}>
+              <CardTime createdAt={note.at} className="compaction__note-time" />
+              <span className="compaction__note-label">{note.label}</span>
+              {note.detail ? <span className="compaction__note-detail">{note.detail}</span> : null}
+            </div>
+          ))}
+        </div>
+      </details>
+    </>
+  );
+}
+
 export function CompactionCard({ item }: { item: CompactionItem }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -493,7 +524,9 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
     const round = (item.pass ?? 0) > 1 ? t("compaction.round", { n: item.pass ?? 0 }) : "";
     const label = round ? `${base} ${round}` : base;
     const readout = compactionLiveReadout(item, now, t);
-    return <div className="compaction compaction--pending" data-entrance={item.id} data-transcript-layout-variant="static"><ProcessCompactIcon size={12} /><span>{label + readout}</span></div>;
+    // tl1588: 一行进度（头行）+ 一条人话兜底行 + 可展开详情区，全部收在
+    // 这一张卡里；头行文案与读数逐字节不变（973 精确串钉零回退）。
+    return <div className="compaction compaction--pending compaction--episode" data-entrance={item.id} data-transcript-layout-variant="static"><ProcessCompactIcon size={12} /><span>{label + readout}</span>{item.episodeNotes?.length ? <CompactionEpisodeBlock notes={item.episodeNotes} /> : null}</div>;
   }
   // 任务 867: a failed pass renders as its own visible card instead of the
   // historical silent removal — the user sees which attempt failed and why,
@@ -501,15 +534,17 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
   if (item.failed) {
     const attempt = item.attempt ?? 0;
     return (
-      <div className="compaction compaction--failed" data-entrance={item.id} data-transcript-layout-variant="static" role="status">
+      <div className="compaction compaction--failed compaction--episode" data-entrance={item.id} data-transcript-layout-variant="static" role="status">
         <ProcessCompactIcon size={12} />
         <span>{attempt > 0 ? t("compaction.failedAttempt", { n: attempt }) : t("compaction.failed")}</span>
+        {/* 一行失败原因（验收①）：tl1446-6 本地化 reason，未知原因原文保留。 */}
         {item.reason ? <span className="compaction__meta">{localizedCompactionFailureReason(t, item.reason)}</span> : null}
+        {item.episodeNotes?.length ? <CompactionEpisodeBlock notes={item.episodeNotes} /> : null}
       </div>
     );
   }
   return (
-    <div className="compaction" data-entrance={item.id} data-transcript-layout-variant={open ? "compaction-expanded" : "compaction-collapsed"}>
+    <div className="compaction compaction--episode" data-entrance={item.id} data-transcript-layout-variant={open ? "compaction-expanded" : "compaction-collapsed"}>
       <button type="button" className="compaction__head" onClick={() => { beginUserResize(); setOpen((v) => !v); }} aria-expanded={open}>
         <ProcessCompactIcon size={12} />
         <span>{t("compaction.title")}</span>
@@ -519,6 +554,8 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
         <ChevronRight className={open ? "compaction__chevron--open" : ""} size={12} />
       </button>
       {open && <pre className="compaction__body">{item.summary}</pre>}
+      {/* tl1588: 终局卡继承的回合详情——压缩结束后仍可展开查证。 */}
+      {item.episodeNotes?.length ? <CompactionEpisodeBlock notes={item.episodeNotes} /> : null}
     </div>
   );
 }

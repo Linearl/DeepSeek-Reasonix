@@ -8659,6 +8659,59 @@ body > .mermaid-diagram--fullscreen {
   white-space: nowrap;
 }
 
+/* tl1588: 压缩回合状态收敛——rescue 人话行 + 可展开详情区，全部收在压缩卡
+   内。pending/failed 卡是 flex 行，沉淀块以 flex-basis:100% 换行为独立行；
+   终局卡是块流，直接续在头按钮/摘要之后。无沉淀时这些选择器无对应 DOM，
+   973/1147/1559 判例卡面逐字节不变。 */
+.compaction--episode {
+  flex-wrap: wrap;
+}
+.compaction__rescue {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding-left: 18px;
+  color: color-mix(in srgb, var(--ok, #2e7d32) 62%, var(--fg));
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.compaction__notes {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding-left: 18px;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+.compaction__notes summary {
+  cursor: pointer;
+  user-select: none;
+}
+.compaction__notes-list {
+  display: grid;
+  gap: 2px;
+  margin-top: 4px;
+}
+.compaction__note {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.compaction__note-time {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--fg-dim) 72%, transparent);
+}
+.compaction__note-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.compaction__note-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--fg-dim) 78%, transparent);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--text-xs);
+}
+
 
 /* ── footer: composer + status line ──────────────────────────────────────── */
 .footer {
