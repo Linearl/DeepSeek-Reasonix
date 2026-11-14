@@ -131,7 +131,13 @@ func configuredModelInfo(cfg *config.Config, name, model string, current bool) M
 		info.ProviderLabel = strings.TrimSpace(p.DisplayName)
 	}
 	if entry, ok := cfg.ResolveModel(info.Ref); ok {
-		info.DisplayName = entry.DisplayName
+		// tl1594: entry.DisplayName is the CONNECTION's display label (settings
+		// displayName — it rides the ResolveModel copy of the provider entry).
+		// ModelInfo.DisplayName is the per-model display tier (frontend
+		// modelRefLabel.ts contract); stamping the connection label here made
+		// every model under a renamed custom endpoint read as the endpoint name
+		// in the switcher entries. The connection label lives on
+		// info.ProviderLabel above; entries fall back to the bare model id.
 		info.ContextWindow = entry.ContextWindow
 		capability := config.NewModelCapabilityResolver().Resolve(entry)
 		info.Vision = string(capability.State) == "supported"
