@@ -21200,9 +21200,79 @@ button.statusbar__mcp:focus-visible {
   overflow: visible;
   text-overflow: clip;
   text-align: left;
+  /* tl1573-r2（缺陷②）：状态/记录行原继承 body 的 --text-base（14px 档），
+     与同排左列 10px（--text-2xs）简述、12px（--text-sm）标题对比突兀——
+     用户实测「记录字号过大」。收敛到标题同档 --text-sm（12px，tl1545 七档
+     令牌；--font-control-small/--font-status 同源）。 */
+  font-size: var(--text-sm);
 }
 .lab-subitem__ops .set-seg {
   justify-content: flex-start;
+}
+/* tl1573-r2（缺陷②）：确认清单的逐文件记录行是数据读数，再降一档到数据
+   档 --text-xs（11px；res-panel__table 同档先例）——状态行（--text-sm）与
+   数据行（--text-xs）两级分职，全部出自 tl1545 七档令牌。 */
+.lab-subitem__ops .dag-backup-cleanup__record {
+  font-size: var(--text-xs);
+}
+/* tl1573-r2（缺陷③）：清理结果弹面板——复用 .modal-backdrop/.modal 公共骨架
+   （任务 980 详情弹窗先例），本块只补差异：覆盖层之上（--z-popover-elevated
+   压过设置页自身覆盖层）+ 宽幅纵向滚动 + 表格档。 */
+.dag-cleanup-result-backdrop {
+  --wails-draggable: no-drag;
+  z-index: var(--z-popover-elevated);
+}
+.dag-cleanup-result {
+  max-width: min(640px, 92vw);
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 640px);
+}
+.dag-cleanup-result__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.dag-cleanup-result__title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.dag-cleanup-result__summary {
+  margin: 0 0 10px;
+}
+.dag-cleanup-result__scroll {
+  overflow: auto;
+  min-height: 0;
+}
+.dag-cleanup-result__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+.dag-cleanup-result__table th,
+.dag-cleanup-result__table td {
+  text-align: left;
+  padding: 5px 8px;
+  border-top: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+.dag-cleanup-result__table th {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.dag-cleanup-result__name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dag-cleanup-result__status--kept {
+  color: var(--ok);
+}
+.dag-cleanup-result__status--failed {
+  color: var(--danger);
 }
 
 .settings-inline-controls {

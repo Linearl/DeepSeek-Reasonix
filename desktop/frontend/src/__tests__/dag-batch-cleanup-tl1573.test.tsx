@@ -278,5 +278,109 @@ console.log("\nDAG batch cleanup button (tl1573)");
   await act(async () => root.unmount());
 }
 
+// ⑩ tl1573-r2 缺陷③：清理结果改弹出面板+表格——新后端 rows 在场时表格逐行
+// 呈现（标题/时间/体积/状态四列），保留份与已删份各占一行，回执读数随面板。
+{
+  const spies: Spies = { planCalls: 0, runCalls: 0 };
+  const root = await mount(spies, {
+    run: async () => ({
+      deleted: 1, deletedBytes: 300, failed: 0,
+      keptPath: "/sessions/b.jsonl.dagbak-tl1227",
+      rows: [
+        { path: "/sessions/b.jsonl.dagbak-tl1227", bytes: 500, modifiedAt: 1793007200000, outcome: "kept" },
+        { path: "/sessions/a.jsonl.dagbak-tl1227", bytes: 300, modifiedAt: 1793000000000, outcome: "deleted" },
+      ],
+    }),
+  });
+  await act(async () => { buttonByText("DAG batch cleanup")?.click(); });
+  await flush();
+  await act(async () => { buttonByText("Delete 1 old backup(s)")?.click(); });
+  await flush();
+  const panel = document.querySelector("[data-dag-backup-cleanup-result]");
+  ok(Boolean(panel), "⑩ the receipt opens as a modal panel after the run");
+  const table = panel?.querySelector("table.dag-cleanup-result__table");
+  ok(Boolean(table), "⑩ the panel renders the per-row table");
+  const headers = Array.from(table?.querySelectorAll("th") ?? []).map((th) => th.textContent);
+  ok(JSON.stringify(headers) === JSON.stringify(["Name", "Time", "Size", "Status"]), "⑩ the table carries the name/time/size/status columns");
+  const rowTexts = Array.from(table?.querySelectorAll("tbody tr") ?? []).map((tr) => tr.textContent ?? "");
+  ok(rowTexts.length === 2, "⑩ one row per backup");
+  ok(rowTexts[0]?.includes("b.jsonl.dagbak-tl1227") && rowTexts[0]?.includes("kept"), "⑩ the kept newest backup reads as kept");
+  ok(rowTexts[1]?.includes("a.jsonl.dagbak-tl1227") && rowTexts[1]?.includes("deleted"), "⑩ the deleted backup reads as deleted");
+  ok(bodyText().includes("300 B"), "⑩ the receipt names the freed size inside the panel");
+  ok(rowTexts[1]?.includes("2026-") || rowTexts[1]?.includes("17"), "⑩ the time column carries a stamp");
+  await act(async () => root.unmount());
+}
+
+// ⑪ tl1573-r2 缺陷③：旧后端无 rows（包92 及更早的 wire 形态）时由 plan 清单
+// 合成行——表格照常渲染，不得空面板（nil 家族防线）。
+{
+  const spies: Spies = { planCalls: 0, runCalls: 0 };
+  const root = await mount(spies, {
+    run: async () => ({ deleted: 1, deletedBytes: 300, failed: 0 }),
+  });
+  await act(async () => { buttonByText("DAG batch cleanup")?.click(); });
+  await flush();
+  await act(async () => { buttonByText("Delete 1 old backup(s)")?.click(); });
+  await flush();
+  const rows = document.querySelectorAll("[data-dag-backup-cleanup-result] tbody tr");
+  ok(rows.length === 2, "⑪ without backend rows the table synthesizes rows from the plan (kept + deleted)");
+  ok((rows[0]?.textContent ?? "").includes("kept") && (rows[1]?.textContent ?? "").includes("deleted"), "⑪ the synthesized rows keep the kept/deleted statuses");
+  await act(async () => root.unmount());
+}
+
+// ⑫ tl1573-r2 缺陷③：失败行进表格（状态列=failed + 原因挂 title），回执计数
+// 不静默。
+{
+  const spies: Spies = { planCalls: 0, runCalls: 0 };
+  const root = await mount(spies, {
+    run: async () => ({
+      deleted: 0, deletedBytes: 0, failed: 1,
+      keptPath: "/sessions/b.jsonl.dagbak-tl1227",
+      rows: [
+        { path: "/sessions/b.jsonl.dagbak-tl1227", bytes: 500, modifiedAt: 1793007200000, outcome: "kept" },
+        { path: "/sessions/a.jsonl.dagbak-tl1227", bytes: 300, modifiedAt: 1793000000000, outcome: "failed", detail: "access is denied" },
+      ],
+    }),
+  });
+  await act(async () => { buttonByText("DAG batch cleanup")?.click(); });
+  await flush();
+  await act(async () => { buttonByText("Delete 1 old backup(s)")?.click(); });
+  await flush();
+  const failedCell = document.querySelector("[data-dag-backup-cleanup-result] .dag-cleanup-result__status--failed");
+  ok(Boolean(failedCell) && (failedCell?.textContent ?? "") === "failed", "⑫ the failed row reads as failed in the status column");
+  ok((failedCell?.getAttribute("title") ?? "").includes("access is denied"), "⑫ the failure reason rides the row title");
+  ok(bodyText().includes("1 failed"), "⑫ the receipt still names the failure count");
+  await act(async () => root.unmount());
+}
+
+// ⑬ tl1573-r2 缺陷③：Escape 关面板回到入口态（模态家族惯例），入口按钮
+// 复得。
+{
+  const spies: Spies = { planCalls: 0, runCalls: 0 };
+  const root = await mount(spies, {
+    run: async () => ({
+      deleted: 1, deletedBytes: 300, failed: 0,
+      keptPath: "/sessions/b.jsonl.dagbak-tl1227",
+      rows: [
+        { path: "/sessions/b.jsonl.dagbak-tl1227", bytes: 500, modifiedAt: 1793007200000, outcome: "kept" },
+        { path: "/sessions/a.jsonl.dagbak-tl1227", bytes: 300, modifiedAt: 1793000000000, outcome: "deleted" },
+      ],
+    }),
+  });
+  await act(async () => { buttonByText("DAG batch cleanup")?.click(); });
+  await flush();
+  await act(async () => { buttonByText("Delete 1 old backup(s)")?.click(); });
+  await flush();
+  ok(Boolean(document.querySelector("[data-dag-backup-cleanup-result]")), "⑬ the panel is open before the escape");
+  const KeyboardEventCtor = (window as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+  await act(async () => {
+    document.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Escape", bubbles: true }));
+  });
+  await flush();
+  ok(!document.querySelector("[data-dag-backup-cleanup-result]"), "⑬ escape closes the panel");
+  ok(Boolean(buttonByText("DAG batch cleanup")), "⑬ closing returns to the idle entry");
+  await act(async () => root.unmount());
+}
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
