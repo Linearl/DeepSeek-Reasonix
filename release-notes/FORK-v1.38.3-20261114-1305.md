@@ -26,10 +26,10 @@
 
 - **2 个预存测试红**（EnsureBlankTab / RebindWithTakeoverMirror）：基点对照在 worktree 隔离下同样红，与本批改动无关，已申报在案。
 - **回合结束按钮行时有时无**（tl1590）：本包仅完成第一步日志埋点，根因定位待装机后复现取数。
-- **仓库安全面清零**（tl1584：code-scanning 9 条 + dependabot 6 PR）候拍板中，不入本包。
+- **dependabot 6 个升级 PR**（tl1584 B 面：3 可合 3 defer 专项）归协调线执行，不入本包；code-scanning 9 条处置已随 tl1584 入本包（8 修 + 1 dismiss 建议）。
 
 ## 附录
 
-- 入包 8 支：tl1583 / tl1585 / tl1586 / tl1587 / tl1588 / tl1589 / tl1573-r2 / tl1590
+- 入包 9 支：tl1583 / tl1584 / tl1585 / tl1586 / tl1587 / tl1588 / tl1589 / tl1573-r2 / tl1590
 - 棘轮：raw 初始 JS+CSS 预算 3326.0→3336.0（tl1588+tl1573-r2 双抬并集解），bundle 8/8 绿
 - 门禁：构建链内 10 checks 全绿（css-syntax/z-index/theme-token/class-contract/bridge-json-tags 等）
