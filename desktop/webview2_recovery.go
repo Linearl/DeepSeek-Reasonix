@@ -69,7 +69,13 @@ func (s webView2RecoveryState) nativeFailure(event webView2NativeEvent, now time
 			s.Deadline = now.Add(webView2ReadyTimeout)
 			s.Reason = reason
 			return s, webView2RecoveryWaitForReady
-		case webView2RecoveryFailed, "reload_suppressed":
+		case webView2RecoveryFailed, webView2RecoverySuppressed,
+			webView2RecoveryReloadError, webView2RecoveryReloadTimeout, webView2RecoveryNavFailed:
+			// tl1589: the three subdivided failure paths escalate exactly like
+			// the reload_failed they replace — in-place recovery is dead, so
+			// the answer is the controlled restart. For kind 2 this now
+			// arrives within 3s (the edge layer's short unresponsive window)
+			// instead of after the full 10s.
 			s.Phase = webView2RecoveryRestarting
 			s.Reason = reason
 			return s, webView2RecoveryRestart

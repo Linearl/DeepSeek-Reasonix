@@ -45,6 +45,40 @@ func TestWebView2RecoveryStateEscalatesTimeoutAndRepeatedFailure(t *testing.T) {
 	}
 }
 
+// tl1589 (issue #93): the three subdivided renderer recovery failure paths
+// escalate exactly like the reload_failed they replace — the answer is the
+// controlled restart, for both failure forms. The unresponsive form's
+// reload_timeout now arrives within the edge layer's 3s window instead of
+// after the full 10s, which is the faster-escalation gap itself; the
+// coordinator side just must not treat the renamed paths differently.
+func TestWebView2RecoveryStateEscalatesSubdividedReloadPaths(t *testing.T) {
+	now := time.Date(2026, 11, 14, 1, 2, 3, 0, time.UTC)
+	tests := []struct {
+		kind     int
+		recovery string
+	}{
+		{2, webView2RecoveryReloadTimeout},
+		{2, webView2RecoveryReloadError},
+		{2, webView2RecoveryNavFailed},
+		{1, webView2RecoveryReloadTimeout},
+		{1, webView2RecoveryReloadError},
+		{1, webView2RecoveryNavFailed},
+	}
+	for _, tt := range tests {
+		state, action := (webView2RecoveryState{}).nativeFailure(webView2NativeEvent{
+			Kind:     tt.kind,
+			Recovery: tt.recovery,
+		}, now)
+		if action != webView2RecoveryRestart || state.Phase != webView2RecoveryRestarting {
+			t.Fatalf("kind=%d recovery=%q: action=%q phase=%q, want restart (in-place recovery is dead)", tt.kind, tt.recovery, action, state.Phase)
+		}
+		wantReason := webView2ProcessKindBucket(tt.kind) + "." + tt.recovery
+		if state.Reason != wantReason {
+			t.Fatalf("kind=%d recovery=%q: journal reason=%q, want %q", tt.kind, tt.recovery, state.Reason, wantReason)
+		}
+	}
+}
+
 func TestWebView2RecoveryStateSeparatesBrowserAndAuxiliaryFailures(t *testing.T) {
 	now := time.Date(2026, 8, 14, 1, 2, 3, 0, time.UTC)
 	_, action := (webView2RecoveryState{}).nativeFailure(webView2NativeEvent{Kind: 0}, now)
