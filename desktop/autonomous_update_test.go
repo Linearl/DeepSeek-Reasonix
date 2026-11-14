@@ -153,8 +153,11 @@ func TestExecuteTargetRequiresStagedTarget(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	fakeInstallRoot(t, nil, "")
 	app := &App{}
-	controller := newAutonomousUpdateController(app)
-	if _, err := controller.ExecuteTarget(t.Context(), ""); err == nil {
+	// tl1585 钉面同步: the tool face queues every turn once the gate widens, so
+	// the no-target refusal is boundary-waiter territory — pin the shared body
+	// the waiter runs (executeStagedTarget), not the ctx gate.
+	controller := autonomousUpdateController{app: app}
+	if _, err := controller.executeStagedTarget(""); err == nil {
 		t.Fatal("execute without set_target must be refused")
 	}
 }
@@ -189,14 +192,17 @@ func TestExecuteTargetRollbackSwitchesAndStagesResume(t *testing.T) {
 	}
 	delete(app.tabs, "t2")
 
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: this pin's subject is the swap+resume machinery (the
+	// boundary waiter's body), not the ctx gate — drive executeStagedTarget
+	// directly.
+	controller := autonomousUpdateController{app: app}
 	versionSwitchStartLauncher = func(string, int) error { return nil }
 	versionSwitchQuit = func(*App) {}
 
 	if _, err := controller.SetTarget(t.Context(), rollback); err != nil {
 		t.Fatal(err)
 	}
-	result, err := controller.ExecuteTarget(t.Context(), callerSession)
+	result, err := controller.executeStagedTarget(callerSession)
 	if err != nil {
 		t.Fatal(err)
 	}

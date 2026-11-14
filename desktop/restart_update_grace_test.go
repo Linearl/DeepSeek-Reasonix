@@ -169,13 +169,17 @@ func TestGraceWindowThreeBusyTabsStillExecute(t *testing.T) {
 		"t2": {ID: "t2", SessionPath: heartbeat, Ctrl: &restartProbeController{path: heartbeat, status: control.RuntimeStatus{Running: true}}, Ready: true},
 		"t3": {ID: "t3", SessionPath: audit, Ctrl: &restartProbeController{path: audit, status: control.RuntimeStatus{BackgroundJobs: 2}}, Ready: true},
 	}}
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: concrete type — the grace window lives in the swap body
+	// the boundary waiter runs (executeStagedTarget), not behind the ctx gate.
+	controller := autonomousUpdateController{app: app}
 	if _, err := controller.SetTarget(context.Background(), rollback); err != nil {
 		t.Fatal(err)
 	}
 
 	start := time.Now()
-	result, err := controller.ExecuteTarget(context.Background(), caller)
+	// tl1585 钉面同步: the grace window lives in the swap body the boundary
+	// waiter runs — drive executeStagedTarget directly, not the ctx gate.
+	result, err := controller.executeStagedTarget(caller)
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("execute must not be refused by busy tabs (task 450): %v", err)
@@ -236,11 +240,13 @@ func TestGraceWindowNaturalSettlingCancelsNothing(t *testing.T) {
 	time.AfterFunc(60*time.Millisecond, func() { heartbeatCtrl.setStatus(control.RuntimeStatus{}) })
 	time.AfterFunc(60*time.Millisecond, func() { auditCtrl.setStatus(control.RuntimeStatus{}) })
 
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: concrete type — the grace window lives in the swap body
+	// the boundary waiter runs (executeStagedTarget), not behind the ctx gate.
+	controller := autonomousUpdateController{app: app}
 	if _, err := controller.SetTarget(context.Background(), rollback); err != nil {
 		t.Fatal(err)
 	}
-	result, err := controller.ExecuteTarget(context.Background(), caller)
+	result, err := controller.executeStagedTarget(caller)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,11 +290,13 @@ func TestGraceWindowExpiryCancelsAndStagesInterruptedSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: concrete type — the grace window lives in the swap body
+	// the boundary waiter runs (executeStagedTarget), not behind the ctx gate.
+	controller := autonomousUpdateController{app: app}
 	if _, err := controller.SetTarget(context.Background(), rollback); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := controller.ExecuteTarget(context.Background(), caller); err != nil {
+	if _, err := controller.executeStagedTarget(caller); err != nil {
 		t.Fatal(err)
 	}
 	if got := otherCtrl.cancelCount(); got != 1 {
@@ -362,11 +370,13 @@ func TestGraceWindowNeverCancelsAPendingPrompt(t *testing.T) {
 		"t2": {ID: "t2", SessionPath: promptCtrl.path, Ctrl: promptCtrl, Ready: true},
 	}}
 
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: concrete type — the grace window lives in the swap body
+	// the boundary waiter runs (executeStagedTarget), not behind the ctx gate.
+	controller := autonomousUpdateController{app: app}
 	if _, err := controller.SetTarget(context.Background(), rollback); err != nil {
 		t.Fatal(err)
 	}
-	result, err := controller.ExecuteTarget(context.Background(), caller)
+	result, err := controller.executeStagedTarget(caller)
 	if err != nil {
 		t.Fatal(err)
 	}

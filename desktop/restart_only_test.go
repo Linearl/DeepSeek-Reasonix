@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -51,9 +50,14 @@ func TestRestartOnlyRelaunchesSameVersionAndContinues(t *testing.T) {
 		"t1": {ID: "t1", SessionPath: caller, Ctrl: &restartProbeController{path: caller, status: control.RuntimeStatus{Running: true}}, autopilot: true, Ready: true},
 		"t2": {ID: "t2", SessionPath: otherCtrl.path, Ctrl: otherCtrl, Ready: true},
 	}}
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: concrete type — the planned-restart chain lives in the
+	// body the boundary waiter runs (restartOnlyBoundary), not behind the ctx
+	// gate.
+	controller := autonomousUpdateController{app: app}
 
-	result, err := controller.RestartOnly(context.Background(), caller)
+	// tl1585 钉面同步: the planned-restart chain lives in the body the boundary
+	// waiter runs — drive restartOnlyBoundary directly, not the ctx gate.
+	result, err := controller.restartOnlyBoundary(caller)
 	if err != nil {
 		t.Fatalf("restart must not be refused by the caller's own turn (task 254 exemption): %v", err)
 	}
@@ -135,9 +139,12 @@ func TestRestartOnlyAttendedCallerNamedUnstaged(t *testing.T) {
 	app := &App{tabs: map[string]*WorkspaceTab{
 		"t1": {ID: "t1", SessionPath: caller, Ctrl: &restartProbeController{path: caller, status: control.RuntimeStatus{Running: true}}, autopilot: false, Ready: true},
 	}}
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: concrete type — the planned-restart chain lives in the
+	// body the boundary waiter runs (restartOnlyBoundary), not behind the ctx
+	// gate.
+	controller := autonomousUpdateController{app: app}
 
-	result, err := controller.RestartOnly(context.Background(), caller)
+	result, err := controller.restartOnlyBoundary(caller)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,9 +180,12 @@ func TestRestartOnlyRefusesPortableBuildWithoutSideEffects(t *testing.T) {
 	app := &App{tabs: map[string]*WorkspaceTab{
 		"t1": {ID: "t1", SessionPath: caller, Ctrl: &restartProbeController{path: caller, status: control.RuntimeStatus{Running: true}}, autopilot: true, Ready: true},
 	}}
-	controller := newAutonomousUpdateController(app)
+	// tl1585 钉面同步: concrete type — the planned-restart chain lives in the
+	// body the boundary waiter runs (restartOnlyBoundary), not behind the ctx
+	// gate.
+	controller := autonomousUpdateController{app: app}
 
-	if _, err := controller.RestartOnly(context.Background(), caller); err == nil {
+	if _, err := controller.restartOnlyBoundary(caller); err == nil {
 		t.Fatal("a portable build has no launcher to hand off to; must refuse")
 	} else if !strings.Contains(err.Error(), "not a versioned install") {
 		t.Fatalf("expected the not-a-versioned-install refusal, got: %v", err)
