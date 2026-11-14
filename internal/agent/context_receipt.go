@@ -200,6 +200,9 @@ func (a *Agent) emitCompactionAborted(trigger string) {
 // as an abort, erasing the pending card while the watermark kept climbing.
 func (a *Agent) emitCompactionFailed(trigger string, err error) {
 	attempt := a.sess.compaction.failureStreak.Add(1)
+	// tl1587: 失败即武装分段道闩——下一个 allowChunked 的摘要 pass 直进分段
+	// 道跳过单发 rung（「连续失败≤1 次即进分段/降级路径」）；成功安装复位。
+	a.sess.compaction.segmentSummaryLatched.Store(true)
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Pass: int(a.sess.compactionSessionPass.Load()), Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
 	}})
@@ -208,8 +211,8 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 	// 自愈或手动修复执行，绝不在进行中的 turn 上动投影。
 	if attempt == compactFailStreakThreshold {
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
-			Code: event.NoticeCodeSessionCompactFailStreak,
-			Text: fmt.Sprintf("context compaction has failed %d times in a row; the conversation may overflow its window — reopening the conversation lets the local self-heal strip images and fold old messages", int(attempt)),
+			Code:   event.NoticeCodeSessionCompactFailStreak,
+			Text:   fmt.Sprintf("context compaction has failed %d times in a row; the conversation may overflow its window — reopening the conversation lets the local self-heal strip images and fold old messages", int(attempt)),
 			Detail: fmt.Sprintf("streak=%d threshold=%d trigger=%s", int(attempt), compactFailStreakThreshold, trigger)})
 	}
 }
@@ -217,6 +220,8 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 // emitCompactionSucceeded stamps the success outcome and resets the streak.
 func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, archive string) {
 	a.sess.compaction.failureStreak.Store(0)
+	// tl1587: 分段道闩随成功复位——下一次压缩回到正常单发 rung。
+	a.sess.compaction.segmentSummaryLatched.Store(false)
 	// 任务 1021: a successful pass CLOSES its compression session — the next
 	// Started (same turn, another pressure round) opens a fresh session and a
 	// fresh pass counter, so the frontend never folds a later round into the
