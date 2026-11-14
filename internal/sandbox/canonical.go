@@ -326,7 +326,7 @@ func canonicalWalkBounded(abs string) (string, bool) {
 				"live_walkers", canonicalWalkerMaxWalkers,
 				"mode", "degraded_first",
 				"window", canonicalFastFailWindow.String(),
-				"path", abs)
+				"path", secrets.Redact(abs))
 		}
 		return abs, false
 	}
