@@ -73,11 +73,14 @@ type dagMigrationRunView struct {
 var dagMigrationRunning atomic.Bool
 
 // ScanDagMigration 扫描全库并返回待迁移清单（check 模式，绝不写盘）。
+// tl1573-r2（缺陷①）：Sessions 必须初始化为空切片——Go 的 nil slice 经 Wails
+// 序列化成 JSON `null`，前端 `scan.sessions.filter` 直接崩（全库已迁移=零命中
+// 时必现，用户实测「扫描后页面加载失败」的根因）。
 func (a *App) ScanDagMigration() dagMigrationScanView {
 	started := time.Now()
 	root := dagMigrationProjectsRoot()
 	targets, backups, warnings, err := dagMigrationCollect(root)
-	view := dagMigrationScanView{Backups: len(backups)}
+	view := dagMigrationScanView{Backups: len(backups), Sessions: []dagMigrationSessionView{}}
 	for _, w := range warnings {
 		if view.Error == "" {
 			view.Error = w
@@ -132,7 +135,9 @@ func (a *App) RunDagMigration() (dagMigrationRunView, error) {
 	defer dagMigrationRunning.Store(false)
 
 	started := time.Now()
-	view := dagMigrationRunView{}
+	// tl1573-r2（缺陷①）：同 ScanDagMigration——Sessions 空切片初始化，nil 会
+	// 序列化成 JSON `null` 崩掉前端 done 态的 failed 清单渲染。
+	view := dagMigrationRunView{Sessions: []dagMigrationSessionView{}}
 	root := dagMigrationProjectsRoot()
 	targets, _, _, err := dagMigrationCollect(root)
 	if err != nil {
@@ -356,8 +361,10 @@ type dagBackupCleanupRunView struct {
 
 // dagBackupCleanupScan 收集全部 .dagbak-tl1227（含自愈快照树内的——它们同属
 // 迁移备份、同占体量），按修改时间从新到旧排序。
+// tl1573-r2（缺陷①）：out 空切片初始化——零备份时 nil 会以 JSON `null` 覆盖
+// plan view 的空切片初始化（`view.Backups = backups` 直接赋值）。
 func dagBackupCleanupScan(root string) ([]dagMigrationBackupView, error) {
-	var out []dagMigrationBackupView
+	out := []dagMigrationBackupView{}
 	if _, statErr := os.Stat(root); statErr != nil {
 		return nil, statErr
 	}
