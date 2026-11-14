@@ -7,6 +7,7 @@
 // "expanded"), and preference switches applying to folds already on screen.
 
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
+import { reportFrontendLog } from "./frontendLog";
 import { stableStringHash } from "./stableStringHash";
 import { isBatchedReadOnlyTool, isSteerNoticeText, type ExtensionItem, type Item } from "./useController";
 import { appendTurnActionCopyText } from "./turnActionCopy";
@@ -870,6 +871,16 @@ function turnTailForActionsRow(model: TurnModel): TurnTailInfo {
   return tail;
 }
 
+// tl1590（turn_actions_diag · 第一步日志增强，零行为变更）：turn-actions 行
+// 挂载判定观测。挂载四条件 = !isActive / turn != null / (文本 || checkpoint) /
+// user，逐回合记五元组（四条件 + 行身份 ta:<userId>）。通道走 reportFrontendLog
+// （任务 510/587 同款：desktop.log + console + ring 三落点，feature=turn_actions_diag
+// 可 grep）；频率守 frontendLog 的「只记转换点」纪律——按回合身份去重，判定
+// 签名翻转才上报，流式每 chunk 的行模型重建不产生日志。超界逐条驱逐（Map 插
+// 入序取最旧）而非整表清空——整表清空会在超界后把全部回合重报一遍，反成日志
+// 洪水（turnTallyMemo 的清空语义对缓存无损，对日志有损，故此处不同款）。
+const turnActionsMountDiag = new Map<string, string>();
+
 /** Builds stable complete-turn units for windowing and logical anchoring. */
 export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: BuildRowsOptions): TimelineBlock[] {
   const reversedBlocks: TimelineBlock[] = [];
@@ -911,6 +922,24 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
     // The active turn's actions appear only once it settles — mid-turn there is
     // nothing final to copy or rewind to. The row key follows the user item id
     // (turn NUMBERS shift when older history pages prepend; ids don't).
+    // tl1590（turn_actions_diag · mount）：挂载判定五元组观测，签名翻转才上报
+    // （判定本身不经过打点值——下方原条件逐字未动，零行为变更）。
+    if (user) {
+      const diagText = model.actionText.trim() !== "";
+      const diagCheckpoint = turn != null && (options.hasCheckpointForTurn?.(turn) ?? false);
+      const diagMounted = !model.isActive && turn != null && (diagText || diagCheckpoint);
+      const diagSig = `${diagMounted ? 1 : 0}|${model.isActive ? 0 : 1}|${turn ?? "null"}|${diagText ? 1 : 0}|${diagCheckpoint ? 1 : 0}`;
+      const diagIdentity = turnStableIdentity(model);
+      if (turnActionsMountDiag.get(diagIdentity) !== diagSig) {
+        if (turnActionsMountDiag.size >= 1024 && !turnActionsMountDiag.has(diagIdentity)) {
+          const oldest = turnActionsMountDiag.keys().next().value;
+          if (oldest !== undefined) turnActionsMountDiag.delete(oldest);
+        }
+        turnActionsMountDiag.set(diagIdentity, diagSig);
+        reportFrontendLog("turn_actions_diag", "mount",
+          `row=ta:${user.id} mounted=${diagMounted ? 1 : 0} settled=${model.isActive ? 0 : 1} turn=${turn ?? "null"} text=${diagText ? 1 : 0} checkpoint=${diagCheckpoint ? 1 : 0}`);
+      }
+    }
     if (
       !model.isActive &&
       turn != null &&
