@@ -11,6 +11,7 @@ import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactN
 import { collabAsImSource, type CollabImSourceMessage } from "../lib/collabMessage";
 import { replaySubmitTextPreservingSelectedContext } from "../lib/editReplay";
 import { getLocale, useT } from "../lib/i18n";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { Tooltip } from "./Tooltip";
 // Task 234: restored with the edit-state image viewer JSX (the upstream
 // MessageAttachments move dropped the import while the state stayed).
@@ -1106,6 +1107,24 @@ export function TurnActions({
     return tipLabel ? <Tooltip key={scope} label={tipLabel} side="top" block fill>{button}</Tooltip> : button;
   };
   const forkDisabledReason = canAct ? actionDisabledReason("fork") : "";
+  // tl1590（turn_actions_diag · surface）：turn-actions 组渲染面观测（第一步
+  // 日志增强，零行为变更）。canAct 只由 onRewind/turn 两 prop 决定，本组件唯
+  // 一渲染面是 useTranscriptRowRenderer 的 turn-actions case（onRewind 恒传非
+  // 空闭包）——canAct=0 只可能来自 turn=null，「只剩复制」形态的现场即此处
+  // canAct=0。签名只含能力态字段：hover/菜单开合/统计文案变化不进签名，不会
+  // 逐帧刷日志；checkpoint 只取存在性与 canConversation 布尔，不依赖对象身份
+  // （checkpoints 数组轮询重建不重报）。走 reportFrontendLog（任务 510/587 同
+  // 款 desktop.log+console+ring 三落点），守 frontendLog「只记转换点」纪律。
+  const turnActionsSurfaceSig = [
+    canAct ? 1 : 0, onRewind != null ? 1 : 0, turn ?? "null",
+    checkpoint ? (checkpoint.canConversation ? "cp" : "partial") : "none",
+    rewindDisabled ? 1 : 0, actionPending ? 1 : 0,
+  ].join("|");
+  useEffect(() => {
+    reportFrontendLog("turn_actions_diag", "surface",
+      `surface=useTranscriptRowRenderer/turn-actions turn=${turn ?? "null"} canAct=${canAct ? 1 : 0} onRewind=${onRewind != null ? 1 : 0} checkpoint=${checkpoint ? (checkpoint.canConversation ? "present-canConversation" : "present-partial") : "absent"} rewindDisabled=${rewindDisabled ? 1 : 0} actionPending=${actionPending ? 1 : 0}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 签名已含全部观测字段；依赖 checkpoint 对象身份会让每次 checkpoints 数组重建全表重报（frontendLog 4MB 纪律）
+  }, [turnActionsSurfaceSig]);
   // Task 630: the copy entry gates differently from fork/rewind. canAct asks
   // "is there a checkpoint to fork/rewind to"; the row itself only mounts for
   // settled turns that carry copyable text (assistant output, or the warn

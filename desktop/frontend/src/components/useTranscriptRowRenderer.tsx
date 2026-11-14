@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CheckpointMeta, WireCompletionSummary } from "../lib/types";
 import type { ToolItem, TranscriptRow } from "../lib/transcriptRows";
 import { assistantAnswerOnly } from "../lib/transcriptLiveTurn";
 import { questionAnchorId } from "../lib/transcriptGrouping";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { isSteerNoticeText } from "../lib/useController";
 import { useT } from "../lib/i18n";
 import { TurnActions, UserMessage } from "./Message";
@@ -72,6 +73,15 @@ export function useTranscriptRowRenderer({
   const t = useT();
   const [openAction, setOpenAction] = useState<OpenTurnAction | null>(null);
   const checkpointsByTurn = useMemo(() => new Map(checkpoints.map((checkpoint) => [checkpoint.turn, checkpoint])), [checkpoints]);
+  // tl1590（turn_actions_diag · checkpoint-query）：turn-actions 行的 checkpoint
+  // 查询观测（第一步日志增强，零行为变更）。row.turn 来自 tl1571 权威编号域
+  // （questionTurnsById 的 checkpointTurn 优先），此处 hit/miss + map size 即可
+  // 与后端 checkpoint 列表对账（断连期收尾回合无 checkpoint ⇒ 恒 miss 的现场
+  // 就是这里）。按 turn 去重、只报 hit 态翻转：checkpoints 数组每次重建都换
+  // map 身份，但本行 hit 态不变则静默（mapSize 只进 payload 不进签名，避免
+  // 每次 settle 把所有已挂载 actions 行重报一遍）。ref 存活于 hook 实例，跨
+  // useCallback 重建不丢。走 reportFrontendLog（任务 510/587 同款三落点）。
+  const checkpointQueryDiag = useRef<Map<number, string>>(new Map());
   useEffect(() => {
     if (!openAction) return;
     const close = (event: MouseEvent) => {
@@ -155,6 +165,13 @@ export function useTranscriptRowRenderer({
       case "extension": return <ExtensionCard item={row.item} tabId={tabId} />;
       case "turn-actions": {
         const openMenu = openAction?.turn === row.turn ? openAction.menu : null;
+        const checkpoint = checkpointsByTurn.get(row.turn);
+        const querySig = checkpoint ? (checkpoint.canConversation ? "hit-cp" : "hit-partial") : "miss";
+        if (checkpointQueryDiag.current.get(row.turn) !== querySig) {
+          checkpointQueryDiag.current.set(row.turn, querySig);
+          reportFrontendLog("turn_actions_diag", "checkpoint-query",
+            `row=${row.key} turn=${row.turn} hit=${checkpoint ? 1 : 0} canConversation=${checkpoint?.canConversation ? 1 : 0} mapSize=${checkpointsByTurn.size}`);
+        }
         return <TurnActions
           text={row.text} turn={row.turn} openMenu={openMenu}
           // 任务 1155：该回合自己的工具/文件/检索统计（行构建时静态算出，
@@ -162,7 +179,7 @@ export function useTranscriptRowRenderer({
           // （文件明细 / token 快照 / 完成时刻）一并传入。
           tally={row.tally} tail={row.tail}
           onOpenMenu={(menu) => setOpenAction(menu ? { turn: row.turn, menu } : null)}
-          checkpoint={checkpointsByTurn.get(row.turn)} actionPending={actionPending}
+          checkpoint={checkpoint} actionPending={actionPending}
           rewindDisabled={rewindDisabled}
           isLastTurn={row.turn === lastTurn}
           onRewind={(turn, scope) => { onRewind?.(turn, scope); setOpenAction(null); }}
