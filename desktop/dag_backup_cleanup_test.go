@@ -105,6 +105,28 @@ func TestDagBackupCleanupPlanAndRun(t *testing.T) {
 	if run.KeptPath != keep {
 		t.Fatalf("kept %s, want %s", run.KeptPath, keep)
 	}
+	// tl1573-r2 缺陷③：逐行结局——保留份首行，其余按删除顺序（时间从新到旧），
+	// 每行带体积/时间；行数=备份总数，不得有 nil（JSON null 会崩前端表格）。
+	if run.Rows == nil {
+		t.Fatal("run.Rows must be an empty slice, never nil (nil marshals as JSON null)")
+	}
+	if len(run.Rows) != 3 {
+		t.Fatalf("rows = %d, want 3 (kept + 2 deleted)", len(run.Rows))
+	}
+	if run.Rows[0].Path != keep || run.Rows[0].Outcome != "kept" || run.Rows[0].Bytes != 400 {
+		t.Fatalf("row[0] = %+v, want the kept newest (%s, 400)", run.Rows[0], keep)
+	}
+	if run.Rows[1].Path != older2 || run.Rows[1].Outcome != "deleted" || run.Rows[1].Bytes != 200 {
+		t.Fatalf("row[1] = %+v, want older2 deleted (200)", run.Rows[1])
+	}
+	if run.Rows[2].Path != older || run.Rows[2].Outcome != "deleted" || run.Rows[2].Bytes != 100 {
+		t.Fatalf("row[2] = %+v, want older deleted (100)", run.Rows[2])
+	}
+	for i, row := range run.Rows {
+		if row.ModifiedAt == 0 {
+			t.Fatalf("row[%d] carries no modifiedAt (the result table needs the time column)", i)
+		}
+	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Fatalf("the newest backup must survive: %v", err)
 	}
@@ -133,5 +155,37 @@ func TestDagBackupCleanupRefusesWhenMigrationBusy(t *testing.T) {
 func TestDagBackupSuffixStillAgentOwned(t *testing.T) {
 	if agent.SessionDAGMigrationBackupSuffix != ".dagbak-tl1227" {
 		t.Fatalf("backup suffix moved: %q", agent.SessionDAGMigrationBackupSuffix)
+	}
+}
+
+// TestDagMigrationScanAndRunSessionsNotNil（tl1573-r2 缺陷①）：Go nil slice 经
+// Wails 序列化成 JSON `null`，前端对 sessions 的 filter/some 在 null 上直接崩
+// （用户实测「扫描后页面加载失败」）。钉死 wire 契约：零命中/零目标时 scan 与
+// run 的 Sessions 都必须是空切片而非 nil。
+func TestDagMigrationScanAndRunSessionsNotNil(t *testing.T) {
+	t.Setenv("REASONIX_STATE_HOME", t.TempDir())
+	app := &App{}
+	scan := app.ScanDagMigration()
+	if scan.Sessions == nil {
+		t.Fatal("scan.Sessions must be an empty slice, never nil (nil marshals as JSON null and crashes the frontend render)")
+	}
+	run, _ := app.RunDagMigration()
+	// 空库（projects 根不存在）会走 collect 错误分支——错误返回的 view 同样
+	// 携带非 nil Sessions（错误态的 wire 形态一并钉住）。
+	if run.Sessions == nil {
+		t.Fatal("run.Sessions must be an empty slice, never nil (nil marshals as JSON null and crashes the frontend render); error path included")
+	}
+}
+
+// TestDagBackupCleanupScanEmptyRootReturnsEmptySlice（tl1573-r2 缺陷①）：零备份
+// 时 dagBackupCleanupScan 不得返回 nil——plan view 的 Backups 直接赋值会把 nil
+// 带给前端（JSON `null`）。
+func TestDagBackupCleanupScanEmptyRootReturnsEmptySlice(t *testing.T) {
+	backups, err := dagBackupCleanupScan(t.TempDir())
+	if err != nil {
+		t.Fatalf("scan on an empty root: %v", err)
+	}
+	if backups == nil {
+		t.Fatal("scan must return an empty slice, never nil (nil marshals as JSON null)")
 	}
 }

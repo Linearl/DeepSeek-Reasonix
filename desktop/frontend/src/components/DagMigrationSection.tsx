@@ -88,8 +88,14 @@ export function DagMigrationSection({ t, busy, apply, showHint = true }: { t: Tr
     setError("");
   };
 
-  const pending = scan?.sessions.filter((s) => s.status === "pending") ?? [];
-  const activeRows = scan?.sessions.filter((s) => s.status === "active") ?? [];
+  // tl1573-r2（缺陷①）：Go 的 nil slice 经 Wails 序列化成 JSON `null`（全库
+  // 已迁移时 Sessions 一个都不 append），可选链只兜住 scan 本身为 null、兜不住
+  // sessions 为 null——用户实测「扫描后页面加载失败」即此（render 抛
+  // "Cannot read properties of null (reading 'filter')"，SurfaceBoundary 整页
+  // 翻「设置加载失败」）。后端源头初始化见 dag_migration.go；这里 `?? []`
+  // 兜已发旧包（包92 前的 wire 仍可能送 null）。
+  const pending = (scan?.sessions ?? []).filter((s) => s.status === "pending");
+  const activeRows = (scan?.sessions ?? []).filter((s) => s.status === "active");
   const pendingBytes = pending.reduce((sum, s) => sum + (s.logBytes || 0), 0);
 
   return (
@@ -160,9 +166,9 @@ export function DagMigrationSection({ t, busy, apply, showHint = true }: { t: Tr
               })}
             </p>
           )}
-          {result && result.sessions.some((s) => s.status === "failed") && (
+          {result && (result.sessions ?? []).some((s) => s.status === "failed") && (
             <>
-              {result.sessions
+              {(result.sessions ?? [])
                 .filter((s) => s.status === "failed")
                 .map((s) => (
                   <p key={s.sessionPath} className="settings-field__hint-line">{`· ${s.label} · ${s.detail ?? ""}`}</p>

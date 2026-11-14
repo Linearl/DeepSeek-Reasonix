@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const section = readFileSync(resolve(testDir, "../components/DagBackupCleanupSection.tsx"), "utf8");
 const labSection = readFileSync(resolve(testDir, "../components/ExperimentalLabSection.tsx"), "utf8");
+const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
 const locales: Record<string, string> = {
   en: readFileSync(resolve(testDir, "../locales/en.ts"), "utf8"),
   zh: readFileSync(resolve(testDir, "../locales/zh.ts"), "utf8"),
@@ -55,6 +56,10 @@ for (const [name, dict] of Object.entries(locales)) {
   for (const key of ["hint", "scan", "batchClean", "summary", "none", "blocked", "confirm", "done"]) {
     ok(dict.includes(`"settings.dagBackupCleanup.${key}"`), `${name} has settings.dagBackupCleanup.${key}`);
   }
+  // tl1573-r2 缺陷③：结果面板与表格的新键也三语带齐。
+  for (const key of ["resultTitle", "colName", "colTime", "colSize", "colStatus", "rowDeleted", "rowFailed", "rowKept"]) {
+    ok(dict.includes(`"settings.dagBackupCleanup.${key}"`), `${name} has settings.dagBackupCleanup.${key} (tl1573-r2)`);
+  }
 }
 ok(locales.zh.includes("保留最近一份") && locales["zh-TW"].includes("保留最近一份") && locales.en.includes("keeping the newest"),
   "all dialects state the keep-newest rule");
@@ -68,6 +73,38 @@ ok(locales.zh.includes("保留最近一份") && locales["zh-TW"].includes("保�
   ok(!idleBlock.includes("settings.dagBackupCleanup.scan"), "the idle entry no longer hides behind the scan label");
   const doneBlock = section.slice(section.indexOf('phase === "done"'));
   ok(doneBlock.includes("settings.dagBackupCleanup.scan"), "the done state's re-scan keeps the scan semantics");
+}
+
+// 5) tl1573-r2（20261114 用户实测三缺陷返修）：
+//    ② 记录行字号统一——卡内状态行 --text-sm（标题同档）、确认清单逐文件记录
+//       行 --text-xs（数据档，res-panel__table 同档先例）；两档都是 tl1545
+//       七档令牌，不再继承 body 的 --text-base 14px。
+//    ③ 结果弹面板+表格——modal 家族骨架（.modal-backdrop/.modal）+ 逐行表格
+//       （标题/时间/体积/状态），行数据吃后端 rows、旧后端由 plan 合成。
+{
+  // ② 字号契约：既有 .lab-subitem__ops 规则加 font-size（不另立新规则分裂单源）。
+  const opsRuleAt = styles.indexOf(".lab-subitem__ops .settings-field__hint-line {");
+  ok(opsRuleAt >= 0, "the ops hint-line rule stays registered");
+  const opsRuleBody = styles.slice(opsRuleAt, styles.indexOf("}", opsRuleAt));
+  ok(opsRuleBody.includes("font-size: var(--text-sm)"), "the card's status lines sit on the --text-sm tier (defect 2, tl1545 tokens)");
+  const recordRuleAt = styles.indexOf(".lab-subitem__ops .dag-backup-cleanup__record {");
+  ok(recordRuleAt > opsRuleAt, "the record-line rule stays registered");
+  ok(styles.slice(recordRuleAt, styles.indexOf("}", recordRuleAt)).includes("font-size: var(--text-xs)"), "the per-file record lines sit on the --text-xs data tier (defect 2)");
+  ok(section.includes("dag-backup-cleanup__record"), "the confirm rows carry the record class");
+  // ③ 模态骨架契约：portal + modal 家族类 + 表格列键 + 合成兜底。
+  ok(section.includes("createPortal"), "the result renders through a portal (modal family, 980 precedent)");
+  ok(section.includes("modal-backdrop dag-cleanup-result-backdrop"), "the panel reuses the shared modal-backdrop skeleton");
+  ok(section.includes('"modal dag-cleanup-result"'), "the panel reuses the shared .modal skeleton with a differential class");
+  ok(section.includes("<table className=\"dag-cleanup-result__table\">"), "the receipt renders as a table (defect 3)");
+  for (const key of ["colName", "colTime", "colSize", "colStatus", "rowDeleted", "rowFailed", "rowKept", "resultTitle"]) {
+    ok(section.includes(`settings.dagBackupCleanup.${key}`), `the panel reads settings.dagBackupCleanup.${key}`);
+  }
+  ok(section.includes("export function cleanupResultRows"), "the rows synthesis is an exported pure helper (old-backend fallback)");
+  ok(section.includes("next.backups ?? []") && section.includes("next.deletable ?? []"), "the plan arrays are nil-guarded at the boundary (defect 1 family defense)");
+  const backdropRule = styles.indexOf(".dag-cleanup-result-backdrop {");
+  ok(backdropRule >= 0, "styles.css registers the panel backdrop differential");
+  ok(styles.slice(backdropRule, styles.indexOf("}", backdropRule)).includes("z-index: var(--z-popover-elevated)"), "the panel rides --z-popover-elevated above the settings overlay (980 precedent)");
+  ok(styles.includes(".dag-cleanup-result__table"), "styles.css registers the result table");
 }
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
