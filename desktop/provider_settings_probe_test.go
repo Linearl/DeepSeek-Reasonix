@@ -96,6 +96,36 @@ func TestProviderModelProbeReportsHTTPFailure(t *testing.T) {
 	}
 }
 
+// tl1594: a renamed connection's display label must stay on ProviderLabel only.
+// ResolveModel returns a copy of the provider entry, so its DisplayName is the
+// CONNECTION label; stamping it onto ModelInfo.DisplayName made every model
+// under a custom endpoint (two models → two rows) read as the endpoint name in
+// the switcher while deepseek (no display_name set) looked correct.
+func TestConfiguredModelInfoKeepsConnectionLabelOffModelEntries(t *testing.T) {
+	cfg := &config.Config{Providers: []config.ProviderEntry{{
+		DisplayName: "中转显示名", Name: "relay-1", Kind: "openai",
+		BaseURL: "https://example.test/v1", Models: []string{"model-a", "model-b"},
+	}}}
+	for _, model := range []string{"model-a", "model-b"} {
+		info := configuredModelInfo(cfg, "relay-1", model, false)
+		if info.DisplayName != "" {
+			t.Fatalf("connection label leaked into per-model display name for %s: %+v", model, info)
+		}
+		if info.ProviderLabel != "中转显示名" {
+			t.Fatalf("connection label missing from ProviderLabel for %s: %+v", model, info)
+		}
+	}
+	// No resolution path may invent a per-model display name; the connection
+	// label stays available for ref-holding surfaces either way.
+	plain := configuredModelInfo(cfg, "relay-1", "missing-model", false)
+	if plain.DisplayName != "" {
+		t.Fatalf("unresolved ref invented a per-model display name: %+v", plain)
+	}
+	if plain.ProviderLabel != "中转显示名" {
+		t.Fatalf("provider-name ladder lost the connection label: %+v", plain)
+	}
+}
+
 func TestConfiguredModelInfoUsesPerModelOverrides(t *testing.T) {
 	vision := true
 	cfg := &config.Config{Providers: []config.ProviderEntry{{
