@@ -331,18 +331,20 @@ func canonicalWalkBounded(abs string) (string, bool) {
 	// Buffered: a walker that outlives the budget (e.g. an SMB reconnect)
 	// must never block on delivery.
 	ch := make(chan walkResult, 1)
-	// Capture the seam into a local before spawning: a walker abandoned past
+	// Capture the seams into locals before spawning: a walker abandoned past
 	// the timeout keeps running after a later test swapped/restored the
-	// package variable, and must never re-read the shared seam (the -race
-	// report on task 762 was exactly that cross-test race).
+	// package variables, and must never re-read them (the -race report on
+	// task 762 was exactly that cross-test race; tl1583 adds the pool channel
+	// itself — acquire and release must hit the same pool instance).
 	eval := canonicalEvalSymlinks
+	slots := canonicalWalkerSlots
 	go func() {
 		// The permit tracks the walker's lifetime — its syscall-blocked OS
 		// thread is the resource being bounded — so it is released here, when
 		// the walk actually ends, not when the caller's budget expires. A
 		// walker abandoned past the timeout keeps its permit until it finishes
 		// climbing; saturation degrades new resolutions instead of growing.
-		defer func() { <-canonicalWalkerSlots }()
+		defer func() { <-slots }()
 		tail := ""
 		cur := abs
 		for {
