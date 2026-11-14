@@ -15,6 +15,18 @@ const (
 	webView2RecoveryFailed        = "reload_failed"
 	webView2RecoveryPending       = "reload_navigation_succeeded"
 	webView2RecoverySuppressed    = "reload_suppressed"
+	// tl1589 (issue #93): the native edge layer (third_party go-webview2)
+	// subdivides the renderer recovery failures into three attributable
+	// paths. They used to converge on the single string reload_failed,
+	// which left one telemetry payload unable to tell WHERE the recovery
+	// died — the Reload call erroring, the wait window elapsing with no
+	// navigation (the structural outcome for a hung renderer), or the
+	// navigation completing onto a failure page. The coordinator treats all
+	// three like the old reload_failed (escalate to the controlled restart)
+	// and the outcome classification stays exception/recovery_failed.
+	webView2RecoveryReloadError   = "reload_error"
+	webView2RecoveryReloadTimeout = "reload_timeout"
+	webView2RecoveryNavFailed     = "reload_nav_failed"
 	// webView2RecoveryBrowserRestart names the recovery a browser-process
 	// failure actually gets: the state machine answers kind 0 with the
 	// restart flow (webview2_recovery.go), because a browser process cannot
@@ -140,7 +152,8 @@ func sanitizeFailureSourceModule(value string) string {
 
 func normalizeWebView2Recovery(value string) string {
 	switch value {
-	case webView2RecoverySucceeded, webView2RecoveryFailed, webView2RecoveryPending, webView2RecoverySuppressed:
+	case webView2RecoverySucceeded, webView2RecoveryFailed, webView2RecoveryPending, webView2RecoverySuppressed,
+		webView2RecoveryReloadError, webView2RecoveryReloadTimeout, webView2RecoveryNavFailed:
 		return value
 	default:
 		return webView2RecoveryNotApplicable
@@ -163,7 +176,12 @@ func webView2Outcome(event webView2NativeEvent) (reportKind, outcome string) {
 			return "performance", "recovered"
 		case webView2RecoveryPending:
 			return "performance", "reload_pending"
-		case webView2RecoveryFailed, webView2RecoverySuppressed:
+		case webView2RecoveryFailed, webView2RecoverySuppressed,
+			webView2RecoveryReloadError, webView2RecoveryReloadTimeout, webView2RecoveryNavFailed:
+			// tl1589: the three subdivided failure paths keep the exact
+			// escalation semantics of the reload_failed they replace — a
+			// failed renderer recovery is an exception, never a degraded
+			// performance note.
 			return "exception", "recovery_failed"
 		default:
 			return "performance", "degraded"
@@ -218,6 +236,17 @@ func webView2NativeFailureReport(event webView2NativeEvent, runtimeVersion strin
 	if event.ExitCodeAvailable && !(event.Kind == 2 && event.ExitCode == exitCodeStillActive) {
 		fingerprintExitCode = strconv.FormatInt(int64(event.ExitCode), 10)
 	}
+	// tl1589 (issue #93): renderer failures carry the recovery path in the
+	// fingerprint, so the three subdivided failure outcomes group separately
+	// and a single report is attributable without opening the payload.
+	// Browser (kind 0) and diagnostic-only kinds keep the old shape: their
+	// recovery value is constant (restart / not_applicable), so the extra
+	// segment would only churn every existing fingerprint for nothing.
+	fingerprintSegments := []string{"web.runtime", "webview2", kind, reason}
+	if event.Kind == 1 || event.Kind == 2 {
+		fingerprintSegments = append(fingerprintSegments, recovery)
+	}
+	fingerprintSegments = append(fingerprintSegments, fingerprintExitCode)
 	report := baseCrashReport(reportKind)
 	report.SchemaVersion = 3
 	report.Source = "web.runtime.native"
@@ -225,7 +254,7 @@ func webView2NativeFailureReport(event webView2NativeEvent, runtimeVersion strin
 	report.ErrorType = "WebView2ProcessFailed"
 	report.ErrorMessage = sanitizeCrashText(fmt.Sprintf("WebView2 %s: %s (%s).", kind, reason, outcome), maxCrashFieldBytes)
 	report.TopFrame = "webview2.process." + kind
-	report.FingerprintHint = strings.Join([]string{"web.runtime", "webview2", kind, reason, fingerprintExitCode}, ".")
+	report.FingerprintHint = strings.Join(fingerprintSegments, ".")
 	report.OccurredAt = time.Now().UTC().Format(time.RFC3339)
 	report.WebRuntime = diagnostic
 	report.Message = sanitizeCrashText(fmt.Sprintf(`[windows.webview2.process_failed]

@@ -15,6 +15,26 @@ type ProcessFailedDiagnostic struct {
 	Recovery            string
 }
 
+// The renderer recovery failure vocabulary (tl1589). All three failures used
+// to report the single string "reload_failed", which made one telemetry
+// payload unable to answer WHERE the recovery died: did the Reload call
+// itself fail, did the hung renderer never complete the navigation within
+// the wait window, or did the navigation finish but render a failure page?
+// The desktop side (webview2_diagnostics.go) accepts these values in its
+// normalizer and fingerprints them, so a single report is attributable.
+const (
+	// reasonixRecoveryReloadError: the Reload COM call returned an error —
+	// the recovery never even started a navigation.
+	reasonixRecoveryReloadError = "reload_error"
+	// reasonixRecoveryReloadTimeout: the wait window elapsed with no bound
+	// navigation completion — the structurally dominant outcome for a hung
+	// (unresponsive) renderer, which cannot cooperate with the navigation.
+	reasonixRecoveryReloadTimeout = "reload_timeout"
+	// reasonixRecoveryNavFailed: the bound navigation completed but reported
+	// a failure (IsSuccess=false, or the outcome could not be read).
+	reasonixRecoveryNavFailed = "reload_nav_failed"
+)
+
 var processFailedObserver struct {
 	sync.RWMutex
 	callback func(ProcessFailedDiagnostic)

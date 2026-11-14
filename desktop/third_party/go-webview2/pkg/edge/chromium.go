@@ -27,8 +27,32 @@ type Rect = w32.Rect
 const (
 	reasonixNoProxyServerBrowserArg = "--no-proxy-server"
 	reasonixProcessRecoveryCooldown = 30 * time.Second
-	reasonixProcessRecoveryTimeout  = 10 * time.Second
+	// reasonixProcessRecoveryTimeout bounds the native Reload recovery for an
+	// exited renderer (kind 1): a fresh renderer must be spawned by the
+	// browser process before the reload navigation can even start, so the
+	// window has to cover process relaunch plus navigation.
+	reasonixProcessRecoveryTimeout = 10 * time.Second
+	// reasonixUnresponsiveRecoveryTimeout bounds the same recovery for an
+	// unresponsive renderer (kind 2, tl1589). A hung renderer is still alive
+	// but cannot cooperate with the reload navigation, so the full exited
+	// window is structurally almost always burned to its timeout before the
+	// desktop coordinator escalates to a controlled restart — the user waits
+	// on top of an already-frozen UI. The shorter window keeps one fast
+	// chance for the transient-hang case (an in-place reload costs nothing
+	// and does not burn the restart guard window) while cutting the wasted
+	// wait from 10s to 3s in the structural case.
+	reasonixUnresponsiveRecoveryTimeout = 3 * time.Second
 )
+
+// rendererRecoveryTimeout picks the reload wait window per renderer failure
+// form (tl1589): hung renderers get the short window, exited renderers keep
+// the full one (their reload can actually complete).
+func rendererRecoveryTimeout(kind COREWEBVIEW2_PROCESS_FAILED_KIND) time.Duration {
+	if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE {
+		return reasonixUnresponsiveRecoveryTimeout
+	}
+	return reasonixProcessRecoveryTimeout
+}
 
 func globalErrorHandler(err error) {
 	if err == nil {
@@ -718,11 +742,23 @@ func (e *Chromium) handleFailedRendererRecovery(diagnostic ProcessFailedDiagnost
 		return
 	}
 	if err := reload(); err != nil {
-		if failed, ok := e.finishFailedRendererRecovery("reload_failed"); ok {
+		// tl1589: the Reload call itself failed — no navigation was ever
+		// started. Named separately from the timeout/nav outcomes so telemetry
+		// can tell "recovery never started" from the other failure paths.
+		if failed, ok := e.finishFailedRendererRecovery(reasonixRecoveryReloadError); ok {
 			notifyProcessFailedObserver(failed)
 		}
 		e.nonFatalErrorCallback(fmt.Errorf("reload failed WebView2 renderer: %w", err))
 	}
+}
+
+// rendererRecoveryTimedOut fires when the reload wait window elapses without
+// a matching navigation completion — for a hung renderer this is the
+// structurally dominant outcome (tl1589). It escalates to the desktop
+// coordinator, which answers with the controlled restart.
+func (e *Chromium) rendererRecoveryTimedOut(failed ProcessFailedDiagnostic) {
+	failed.Recovery = reasonixRecoveryReloadTimeout
+	notifyProcessFailedObserver(failed)
 }
 
 func (e *Chromium) beginFailedRendererRecovery(diagnostic ProcessFailedDiagnostic, now time.Time) bool {
@@ -730,11 +766,8 @@ func (e *Chromium) beginFailedRendererRecovery(diagnostic ProcessFailedDiagnosti
 		diagnostic,
 		now,
 		reasonixProcessRecoveryCooldown,
-		reasonixProcessRecoveryTimeout,
-		func(failed ProcessFailedDiagnostic) {
-			failed.Recovery = "reload_failed"
-			notifyProcessFailedObserver(failed)
-		},
+		rendererRecoveryTimeout(diagnostic.Kind),
+		e.rendererRecoveryTimedOut,
 	)
 }
 
@@ -748,7 +781,10 @@ func (e *Chromium) completeFailedRendererRecovery(args *ICoreWebView2NavigationC
 	if !ok {
 		return ProcessFailedDiagnostic{}, false
 	}
-	recovery := "reload_failed"
+	// tl1589: the navigation completed, but a failure page (or an unreadable
+	// outcome) is still a failed recovery — named separately from the
+	// call-error and timeout paths so telemetry can triage each.
+	recovery := reasonixRecoveryNavFailed
 	if succeeded, resultErr := args.GetIsSuccess(); resultErr == nil && succeeded {
 		recovery = "reload_navigation_succeeded"
 	} else if resultErr != nil {

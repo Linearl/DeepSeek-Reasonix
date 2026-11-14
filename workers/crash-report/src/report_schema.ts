@@ -16,6 +16,27 @@ const Device = z.object({
   ramGb: z.number().min(0).max(65536),
 }).partial();
 
+// The desktop recovery vocabulary (desktop/webview2_diagnostics.go). The
+// ingest enum must track it exactly: safeParse failure here answers 400 and
+// the report never reaches storage, so any missing value is a silent
+// telemetry sink outage. tl1589 (issue #93): reload_error / reload_timeout /
+// reload_nav_failed name the three subdivided renderer recovery failure
+// paths (formerly one indistinguishable "reload_failed"). reload_navigation_
+// succeeded, reload_suppressed and restart have been part of the desktop
+// vocabulary since before this schema was written but were never accepted
+// here — same gap, widened in the same edit.
+const recoverySchema = z.enum([
+  "not_applicable",
+  "reload_succeeded",
+  "reload_failed",
+  "reload_error",
+  "reload_timeout",
+  "reload_nav_failed",
+  "reload_navigation_succeeded",
+  "reload_suppressed",
+  "restart",
+]);
+
 const WebView2Diagnostic = z.object({
   kind: runtimeBucket,
   reason: runtimeBucket,
@@ -24,7 +45,7 @@ const WebView2Diagnostic = z.object({
   failureSourceModule: z.string().max(255).refine((value) => !/[\\/]/.test(value)).optional(),
   runtimeVersion: technicalString(128),
   gpuDisabled: z.boolean(),
-  recovery: z.enum(["not_applicable", "reload_succeeded", "reload_failed"]),
+  recovery: recoveryValues,
 });
 
 export const WebRuntimeDiagnostic = z.object({
@@ -36,7 +57,7 @@ export const WebRuntimeDiagnostic = z.object({
   failureSourceModule: technicalString(255).optional(),
   runtimeVersion: technicalString(128),
   gpuMode: z.enum(["enabled", "disabled", "always", "on_demand", "unknown"]),
-  recovery: z.enum(["not_applicable", "reload_succeeded", "reload_failed"]),
+  recovery: recoveryValues,
 });
 
 export const Report = z.object({

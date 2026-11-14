@@ -69,6 +69,12 @@ func TestWebView2NativeFailureClassification(t *testing.T) {
 		{name: "browser fatal", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryBrowserRestart},
 		{name: "renderer recovered", event: webView2NativeEvent{Kind: 1, Recovery: webView2RecoverySucceeded}, kind: "performance", outcome: "recovered", recovery: webView2RecoverySucceeded},
 		{name: "renderer recovery failed", event: webView2NativeEvent{Kind: 2, Recovery: webView2RecoveryFailed}, kind: "exception", outcome: "recovery_failed", recovery: webView2RecoveryFailed},
+		// tl1589: the three subdivided failure paths inherit reload_failed's
+		// escalation semantics — each reports as exception/recovery_failed and
+		// keeps its own name in the recovery field.
+		{name: "renderer reload call error", event: webView2NativeEvent{Kind: 2, Recovery: webView2RecoveryReloadError}, kind: "exception", outcome: "recovery_failed", recovery: webView2RecoveryReloadError},
+		{name: "renderer reload window timeout", event: webView2NativeEvent{Kind: 1, Recovery: webView2RecoveryReloadTimeout}, kind: "exception", outcome: "recovery_failed", recovery: webView2RecoveryReloadTimeout},
+		{name: "renderer reload nav failed", event: webView2NativeEvent{Kind: 2, Recovery: webView2RecoveryNavFailed}, kind: "exception", outcome: "recovery_failed", recovery: webView2RecoveryNavFailed},
 		{name: "gpu degraded", event: webView2NativeEvent{Kind: 6}, kind: "performance", outcome: "degraded", recovery: webView2RecoveryNotApplicable},
 		// A browser exit code of 0x40010004 (DBG_TERMINATE_PROCESS) is the
 		// kernel's "someone called TerminateProcess on it" verdict, i.e. a
@@ -169,8 +175,72 @@ func TestWebView2NativeFailureSanitizesModuleAndFingerprint(t *testing.T) {
 	if strings.Contains(report.Message, `C:\Users`) || strings.Contains(report.FingerprintHint, "259") {
 		t.Fatalf("report leaked a path or fingerprinted STILL_ACTIVE: %+v", report)
 	}
-	if report.FingerprintHint != "web.runtime.webview2.render_process_unresponsive.unresponsive.unknown" {
+	// tl1589: renderer fingerprints name the recovery path (here the legacy
+	// reload_failed value), while STILL_ACTIVE stays excluded from the tail.
+	if report.FingerprintHint != "web.runtime.webview2.render_process_unresponsive.unresponsive.reload_failed.unknown" {
 		t.Fatalf("fingerprint = %q", report.FingerprintHint)
+	}
+}
+
+// tl1589 (issue #93): the three renderer recovery failure paths must be
+// attributable from a single telemetry payload — the recovery field names the
+// exact path and the fingerprint varies with it, so each path groups (and
+// triages) separately. The issue instance's shape
+// (render_process_unresponsive.unresponsive.<path>.unknown) pins the segment
+// order; browser fingerprints keep the recovery-less shape.
+func TestWebView2RendererRecoveryPathsAreAttributable(t *testing.T) {
+	event := webView2NativeEvent{
+		Kind:              2,
+		Reason:            1,
+		ReasonAvailable:   true,
+		ExitCode:          exitCodeStillActive,
+		ExitCodeAvailable: true,
+	}
+	fingerprints := make(map[string]string, 3)
+	for _, recovery := range []string{webView2RecoveryReloadError, webView2RecoveryReloadTimeout, webView2RecoveryNavFailed} {
+		event.Recovery = recovery
+		report, outcome := webView2NativeFailureReport(event, "157.0.4341.57", false)
+		if report.WebRuntime == nil || report.WebRuntime.Recovery != recovery {
+			t.Fatalf("path %q: report recovery = %v, want the path named verbatim", recovery, report.WebRuntime)
+		}
+		if report.Kind != "exception" || outcome != "recovery_failed" {
+			t.Fatalf("path %q: kind=%q outcome=%q, want exception/recovery_failed (escalation semantics of the reload_failed they replace)", recovery, report.Kind, outcome)
+		}
+		want := "web.runtime.webview2.render_process_unresponsive.unresponsive." + recovery + ".unknown"
+		if report.FingerprintHint != want {
+			t.Fatalf("path %q: fingerprint = %q, want %q", recovery, report.FingerprintHint, want)
+		}
+		fingerprints[recovery] = report.FingerprintHint
+	}
+	if len(fingerprints) != 3 {
+		t.Fatalf("collected %d distinct path pins, want 3", len(fingerprints))
+	}
+
+	// The exited form (kind 1) carries the same attribution dimension.
+	exited, outcome := webView2NativeFailureReport(webView2NativeEvent{
+		Kind: 1, Recovery: webView2RecoveryReloadTimeout,
+	}, "157.0.4341.57", false)
+	if exited.FingerprintHint != "web.runtime.webview2.render_process_exited.unknown.reload_timeout.unknown" {
+		t.Fatalf("exited fingerprint = %q", exited.FingerprintHint)
+	}
+	if exited.Kind != "exception" || outcome != "recovery_failed" {
+		t.Fatalf("exited kind=%q outcome=%q, want exception/recovery_failed", exited.Kind, outcome)
+	}
+
+	// A renderer failure without recovery knowledge still fingerprints (the
+	// segment normalizes to not_applicable instead of vanishing).
+	bare, _ := webView2NativeFailureReport(webView2NativeEvent{Kind: 2}, "", false)
+	if bare.FingerprintHint != "web.runtime.webview2.render_process_unresponsive.unknown.not_applicable.unknown" {
+		t.Fatalf("bare renderer fingerprint = %q", bare.FingerprintHint)
+	}
+
+	// Browser fingerprints keep the old shape (recovery is constant there —
+	// an extra segment would churn every existing browser fingerprint).
+	browser, _ := webView2NativeFailureReport(webView2NativeEvent{
+		Kind: 0, Reason: 3, ReasonAvailable: true, ExitCode: -1073741819, ExitCodeAvailable: true,
+	}, "157.0.4341.57", false)
+	if browser.FingerprintHint != "web.runtime.webview2.browser_process_exited.crashed.-1073741819" {
+		t.Fatalf("browser fingerprint = %q, want the recovery-less shape", browser.FingerprintHint)
 	}
 }
 
