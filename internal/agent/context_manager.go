@@ -70,6 +70,13 @@ type compactionProgress struct {
 	// 任务867: consecutive failed compaction passes, surfaced as the "Nth
 	// attempt" counter on the failed CompactionDone event; success resets it.
 	failureStreak atomic.Int64
+	// tl1587 分段道闩：任一压缩 pass 失败即武装（emitCompactionFailed），成功
+	// 安装复位（emitCompactionSucceeded）。武装期间 allowChunked 的摘要 pass
+	// 跳过单发 rung 直进分段道——「连续失败≤1 次即进分段/降级路径，不再刷屏」：
+	// 包92 现场同一近整窗单发请求形态连刷 31 行，第二起 pass 必须换道而非重放。
+	// 只在分段机制生效的窗口（summarySegmentInputBudget enforced）被读取，
+	// 小窗口会话零行为变化。
+	segmentSummaryLatched atomic.Bool
 	// lastTurn stops the post-turn observer and the pre-send preflight from
 	// paying for two summaries during one active tool loop.
 	lastTurn atomic.Int64

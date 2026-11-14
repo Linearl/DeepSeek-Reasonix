@@ -566,6 +566,39 @@ func chunkedFallbackApplies(err error, inputMode string) bool {
 	return summarySizeFailure(err)
 }
 
+// foldSummarySegmented is the tl1587 segment-only leg: it skips the
+// single-request rung entirely and runs the fragment/tree-reduce path with the
+// same live-progress wiring the size-failure fallback uses. Callers are the
+// failure escalation (one failed single request) and the cross-pass latch.
+func (a *Agent) foldSummarySegmented(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string) (foldSummary, CompactionTelemetry, error) {
+	chunked, chunkedErr := a.chunkedFoldSummary(ctx, fold, instructions, func(done, total int) {
+		a.compactionLiveFoldProgress(done, total)
+	})
+	tele := compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, chunked)
+	if chunkedErr != nil {
+		tele.Error = chunkedErr.Error()
+		return chunked, tele, chunkedErr
+	}
+	return chunked, tele, nil
+}
+
+// summarySegmentEscalatable reports whether a failed single summary request is
+// the shape a segmented (smaller-request) input can still land: empty provider
+// responses and transport/unknown failures — the 包92 three-shape family's ②③
+// minus every family that already owns a dedicated path. A provider overflow
+// belongs to the replan→slim ladder (one re-planned request instead of many
+// fragments), size failures to the existing chunked fallback, rate limits and
+// dead keys to their wait / lane-switch paths.
+func summarySegmentEscalatable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if provider.AsContextLimitError(err) != nil || summarySizeFailure(err) {
+		return false
+	}
+	return !summaryRateLimited(err) && !summaryAuthExpired(err)
+}
+
 // summaryTransientMaxAttempts bounds Task 303's automatic retry for transient
 // provider stream failures (the mimo-api INTERNAL_ERROR mid-stream sample).
 // Size/limit failures are excluded — those belong to the chunked fallback.
@@ -822,6 +855,15 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 	// the one that 401'd there is no alternative lane — this branch cannot
 	// fire, and the 任务912 P1-d alert still surfaces the dead key.
 	authFallbackTried := false
+	// tl1587 分段道：满窗会话（分段机制生效的窗口）的单发摘要请求失败一次即
+	// 进 fragment/tree-reduce 道不再按原尺寸重试；跨 pass 由
+	// segmentSummaryLatched 记忆（pass 1 失败 → pass 2 直进分段）。「估算超窗
+	// 应走分段压缩，不应失败多次」——包92 现场同一近整窗请求连刷 31 行失败链
+	// 的根治面之二。溢出/尺寸失败各有既有专用道，不经此闩。
+	segBudget, segEnforced := a.summarySegmentInputBudget()
+	foldTokens := a.guardedSummaryInputTokens(fold)
+	segmentEngaged := segEnforced && foldTokens > summarySegmentInputFloorTokens
+	segmented := segmentEngaged && a.sess.compaction.segmentSummaryLatched.Load()
 	for attempt := 0; ; attempt++ {
 		attemptRef := a.summaryDestinationRef()
 		// 任务 1010 需求 2 + tl1083 §5.2: the overflow lane (the one-shot
@@ -837,9 +879,12 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 		// and the maxChunkedSummaryCalls budget bounds the whole run.
 		allowChunked := req.allowChunked ||
 			trigger == CompactionTriggerOverflow || trigger == CompactionTriggerPressure
-		if allowChunked {
+		switch {
+		case allowChunked && segmented:
+			res, tele, err = a.foldSummarySegmented(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+		case allowChunked:
 			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
-		} else {
+		default:
 			res, tele, err = a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 		}
 		if err == nil {
@@ -849,7 +894,16 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 					"source_tokens", sourceTokens)
 			}
 			if attempt > 0 && rateWaits == 0 {
-				if modelRefRetried {
+				if segmented {
+					// tl1562 验收④的读取面之一：分段道命中的成功落点也必须可观测。
+					slog.Info("agent: summary request succeeded on the segmented path",
+						"attempts", attempt+1, "trigger", trigger,
+						"fold_tokens", foldTokens, "segment_budget", segBudget,
+						"spans", tele.Spans, "summary_input_mode", tele.SummaryInputMode,
+						"session", a.sessionLogRef(),
+						"source_tokens", sourceTokens,
+						"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
+				} else if modelRefRetried {
 					slog.Info("agent: summary request succeeded after model-ref retry",
 						"attempts", attempt+1, "trigger", trigger,
 						"model_ref", a.summaryDestinationRef(),
@@ -921,6 +975,24 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 		// wait, never retry, hand it straight back so the caller stops.
 		if ctx.Err() != nil {
 			return res, tele, ctx.Err()
+		}
+		// tl1587: 单发摘要请求失败一次即换分段道——空响应/传输中断这类小请求
+		// 能落地的形态（包92 三形态之②③）不允许按原尺寸再烧一轮（4 次 retry
+		// 全空、backoff 阶梯原样重放）。只换道一次；分段道自身的失败照走下方
+		// 既有阶梯。闸门：分段机制生效的窗口 + allowChunked 道；provider 溢出
+		// （replan→slim 阶梯所有）、尺寸失败（chunked fallback 所有）、限流与
+		// 鉴权（专用等待/换道）不进。
+		if allowChunked && segmentEngaged && !segmented && summarySegmentEscalatable(err) {
+			segmented = true
+			a.sess.compaction.segmentSummaryLatched.Store(true)
+			slog.Warn("agent: summary single request failed — segmenting the fold",
+				"trigger", trigger, "session", a.sessionLogRef(),
+				"model_ref", attemptRef,
+				"fold_tokens", foldTokens, "segment_budget", segBudget,
+				"source_tokens", sourceTokens,
+				"summary_input_mode", inputMode,
+				"err", err)
+			continue
 		}
 		// 任务912 P0-a: the slow backoff ladder for provider-side failures
 		// (upstream cancel / expired key / rate limit). It runs AFTER the
@@ -1022,8 +1094,12 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	// Cap every automatic summary input (#9572), including pressure folds after
 	// projection invalidation. mustFree also covers the over-ceiling manual rescue
 	// merged in #9474; ordinary manual compaction keeps its requested range.
+	// tl1587: boundedSummaryPrefixEnd tightens that cap to the segment budget —
+	// a full-window session's summary request rides a quarter-window segment
+	// instead of a near-window single prefill; the ladder's later rounds (and
+	// the next pass) fold the remaining middle segment by segment.
 	if req.mustFree || trigger != CompactionTriggerManual {
-		start = a.maximumSafeSummaryPrefixEnd(msgs, head, start, instructions)
+		start = a.boundedSummaryPrefixEnd(msgs, head, start, instructions)
 		if start <= head {
 			a.emitCompactionAborted(trigger)
 			return CompactionNoop, fmt.Errorf("%w: no balanced prefix leaves enough room for a summary response", errCheckpointRejected)
