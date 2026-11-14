@@ -350,6 +350,19 @@ type dagBackupCleanupPlanView struct {
 	Error               string `json:"error,omitempty"`
 }
 
+// dagBackupCleanupRunRow 是执行结果里的一份备份的逐行结局（tl1573-r2 缺陷③：
+// 结果弹面板表格的行数据——标题/时间/体积/状态四列的真相源，执行时现算，
+// 与 plan 时刻无关）。
+type dagBackupCleanupRunRow struct {
+	Path       string `json:"path"`
+	Bytes      int64  `json:"bytes"`
+	ModifiedAt int64  `json:"modifiedAt"` // unix millis
+	// Outcome: "deleted" | "failed" | "kept"。
+	Outcome string `json:"outcome"`
+	// Detail 仅 failed 时给一行原因（os.Remove err 首行）。
+	Detail string `json:"detail,omitempty"`
+}
+
 // dagBackupCleanupRunView 是一次执行的结果。
 type dagBackupCleanupRunView struct {
 	Deleted      int      `json:"deleted"`
@@ -357,6 +370,9 @@ type dagBackupCleanupRunView struct {
 	Failed       int      `json:"failed"`
 	KeptPath     string   `json:"keptPath,omitempty"`
 	Details      []string `json:"details,omitempty"`
+	// Rows 是逐行结局（保留份在最前，其余按删除顺序=时间从新到旧）。
+	// tl1573-r2：空切片初始化——nil 经 Wails 序列化成 JSON `null`（缺陷①同族）。
+	Rows []dagBackupCleanupRunRow `json:"rows"`
 }
 
 // dagBackupCleanupScan 收集全部 .dagbak-tl1227（含自愈快照树内的——它们同属
@@ -446,7 +462,7 @@ func (a *App) RunDagBackupCleanup() (dagBackupCleanupRunView, error) {
 	}
 	defer dagMigrationRunning.Store(false)
 
-	view := dagBackupCleanupRunView{}
+	view := dagBackupCleanupRunView{Rows: []dagBackupCleanupRunRow{}}
 	if remaining := a.dagBackupRemainingMigrations(); remaining > 0 {
 		return view, fmt.Errorf("dag backup cleanup: %d session(s) not yet migrated; migrate them first", remaining)
 	}
@@ -456,16 +472,27 @@ func (a *App) RunDagBackupCleanup() (dagBackupCleanupRunView, error) {
 	}
 	if len(backups) > 0 {
 		view.KeptPath = backups[0].Path
+		// tl1573-r2 缺陷③：保留份作为表格首行（时间从新到旧的其余行在其后）。
+		view.Rows = append(view.Rows, dagBackupCleanupRunRow{
+			Path: backups[0].Path, Bytes: backups[0].Bytes, ModifiedAt: backups[0].ModifiedAt, Outcome: "kept",
+		})
 	}
 	// 从新到旧删（backups 已按时间倒序；[0] 是保留的最近一份）。
 	for _, backup := range backups[1:] {
 		if err := os.Remove(backup.Path); err != nil {
 			view.Failed++
 			view.Details = append(view.Details, fmt.Sprintf("%s: %v", backup.Path, err))
+			view.Rows = append(view.Rows, dagBackupCleanupRunRow{
+				Path: backup.Path, Bytes: backup.Bytes, ModifiedAt: backup.ModifiedAt,
+				Outcome: "failed", Detail: dagMigrationFirstLine(err.Error()),
+			})
 			continue
 		}
 		view.Deleted++
 		view.DeletedBytes += backup.Bytes
+		view.Rows = append(view.Rows, dagBackupCleanupRunRow{
+			Path: backup.Path, Bytes: backup.Bytes, ModifiedAt: backup.ModifiedAt, Outcome: "deleted",
+		})
 	}
 	return view, nil
 }

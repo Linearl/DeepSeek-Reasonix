@@ -1034,6 +1034,20 @@ export interface DagBackupCleanupRunView {
   failed: number;
   keptPath?: string;
   details?: string[];
+  // tl1573-r2 缺陷③：逐行结局（保留份在最前，其余按删除顺序=时间从新到旧）。
+  // 可选：旧包（包92 及更早）的后端不带 rows——结果面板用 plan 清单合成行兜底。
+  rows?: DagBackupCleanupRunRow[];
+}
+
+/** tl1573-r2 缺陷③：结果表格的行——一份备份的执行结局。 */
+export interface DagBackupCleanupRunRow {
+  path: string;
+  bytes: number;
+  /** unix millis */
+  modifiedAt: number;
+  outcome: "deleted" | "failed" | "kept";
+  /** 仅 failed 时给一行原因。 */
+  detail?: string;
 }
 
 export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
@@ -7234,7 +7248,7 @@ function makeMockApp(): AppBindings {
     async ScanDagMigration() { return { sessions: [], scanned: 0, backups: 0, elapsedMs: 0 }; },
     async RunDagMigration() { return { sessions: [], migrated: 0, active: 0, skipped: 0, failed: 0, elapsedMs: 0 }; },
     async PlanDagBackupCleanup() { return { backups: [], deletable: [], deleteBytes: 0, remainingMigrations: 0 }; },
-    async RunDagBackupCleanup() { return { deleted: 0, deletedBytes: 0, failed: 0 }; },
+    async RunDagBackupCleanup() { return { deleted: 0, deletedBytes: 0, failed: 0, rows: [] }; },
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
     async SetSessionCollabReplyNudge() {},

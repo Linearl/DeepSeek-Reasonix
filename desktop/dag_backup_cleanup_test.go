@@ -105,6 +105,28 @@ func TestDagBackupCleanupPlanAndRun(t *testing.T) {
 	if run.KeptPath != keep {
 		t.Fatalf("kept %s, want %s", run.KeptPath, keep)
 	}
+	// tl1573-r2 缺陷③：逐行结局——保留份首行，其余按删除顺序（时间从新到旧），
+	// 每行带体积/时间；行数=备份总数，不得有 nil（JSON null 会崩前端表格）。
+	if run.Rows == nil {
+		t.Fatal("run.Rows must be an empty slice, never nil (nil marshals as JSON null)")
+	}
+	if len(run.Rows) != 3 {
+		t.Fatalf("rows = %d, want 3 (kept + 2 deleted)", len(run.Rows))
+	}
+	if run.Rows[0].Path != keep || run.Rows[0].Outcome != "kept" || run.Rows[0].Bytes != 400 {
+		t.Fatalf("row[0] = %+v, want the kept newest (%s, 400)", run.Rows[0], keep)
+	}
+	if run.Rows[1].Path != older2 || run.Rows[1].Outcome != "deleted" || run.Rows[1].Bytes != 200 {
+		t.Fatalf("row[1] = %+v, want older2 deleted (200)", run.Rows[1])
+	}
+	if run.Rows[2].Path != older || run.Rows[2].Outcome != "deleted" || run.Rows[2].Bytes != 100 {
+		t.Fatalf("row[2] = %+v, want older deleted (100)", run.Rows[2])
+	}
+	for i, row := range run.Rows {
+		if row.ModifiedAt == 0 {
+			t.Fatalf("row[%d] carries no modifiedAt (the result table needs the time column)", i)
+		}
+	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Fatalf("the newest backup must survive: %v", err)
 	}
