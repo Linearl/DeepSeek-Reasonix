@@ -45,6 +45,37 @@ type tailViewState struct {
 	warnedAt time.Time
 }
 
+// staleSpliceState caches the bounded stale-serving view (tl1586) per
+// (transcript version, projection version) pair. The stale splice is a pure
+// function of the immutable canonical snapshot plus the installed projection
+// generation, so both versions must match for a cached answer; a rebuild
+// landing bumps the projection version and invalidates the cache on its own.
+// view == nil with known == true means the raw splice fits under the hard
+// ceiling — the cached answer is "no degradation needed".
+type staleSpliceState struct {
+	mu       sync.Mutex
+	version  uint64
+	projVer  uint64
+	known    bool
+	view     []provider.Message
+	warnedAt time.Time
+}
+
+func (s *staleSpliceState) load(version, projVer uint64) ([]provider.Message, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.known || s.version != version || s.projVer != projVer {
+		return nil, false
+	}
+	return s.view, true
+}
+
+func (s *staleSpliceState) store(version, projVer uint64, view []provider.Message) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.version, s.projVer, s.known, s.view = version, projVer, true, view
+}
+
 func (s *tailViewState) load(version uint64) ([]provider.Message, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -249,4 +280,72 @@ func (a *Agent) warnTailViewDegrade(canonicalTokens, viewTokens, messages, dropp
 	slog.Warn("agent: context view degraded to a bounded recent-tail window",
 		"canonical_tokens", canonicalTokens, "view_tokens", viewTokens,
 		"messages", messages, "dropped", dropped, "window", a.effectiveContextWindow())
+}
+
+// boundedStaleSpliceView bounds the tl1203 stale-serving splice (tl1586).
+// While an unusable projection BODY serves the wire, modelVisibleMessages
+// returns the old fold spliced with the uncovered canonical tail — the
+// fail-open view that keeps recent turns verbatim. The splice has no bound of
+// its own: when the fold covers a small prefix of a multi-window canonical
+// (the content_mismatch incident's 1064450 tokens against a 1M window), the
+// spliced view is nearly the full transcript and every request overflows
+// until the forced rebuild lands. This is the missing middle rung for the
+// stale branch — 任务719 bounded the body-less fallback the same way: at or
+// above the hard input ceiling the splice degrades through the identical
+// tail-window construction (pinned head, truncation marker, carried digests,
+// newest replay-safe units), so the fold's summary survives the cut as a
+// carrier while the request payload returns under the window. Below the
+// ceiling the splice passes through byte-identical (the tl1203 shape,
+// unchanged). Sized and cached like boundedTailView, keyed on both versions.
+func (a *Agent) boundedStaleSpliceView(spliced []provider.Message, version, projVersion uint64) []provider.Message {
+	if a == nil || len(spliced) == 0 {
+		return spliced
+	}
+	if view, ok := a.sess.staleSplice.load(version, projVersion); ok {
+		if view != nil {
+			return view
+		}
+		return spliced
+	}
+	hard := a.hardInputCeiling()
+	total := a.estimatedVisibleRequestTokens(spliced)
+	if hard <= 0 || total < hard {
+		// The stale splice fits — exactly the pre-tl1586 shape, cached so the
+		// estimate is not re-walked on every gauge refresh.
+		a.sess.staleSplice.store(version, projVersion, nil)
+		return spliced
+	}
+	view, dropped := a.tailWindowView(spliced, a.tailViewTarget())
+	if len(view) == len(spliced) {
+		// Nothing could be bounded (the newest unit alone fills the window):
+		// leave the view unchanged and let the overflow chain own it, mirroring
+		// boundedTailView's degenerate case.
+		a.sess.staleSplice.store(version, projVersion, nil)
+		return spliced
+	}
+	a.sess.staleSplice.store(version, projVersion, view)
+	a.warnStaleSpliceDegrade(total, a.estimatedVisibleRequestTokens(view), len(spliced), dropped)
+	return view
+}
+
+// warnStaleSpliceDegrade names the stale-splice degradation once per cooldown,
+// with the same attribution the tl1562 incident lines carry (session, token
+// ledger against the window) so a bounded stale episode is joinable with its
+// content_mismatch fallback warning in one grep.
+func (a *Agent) warnStaleSpliceDegrade(canonicalTokens, viewTokens, messages, dropped int) {
+	s := &a.sess.staleSplice
+	s.mu.Lock()
+	now := time.Now()
+	if !s.warnedAt.IsZero() && now.Sub(s.warnedAt) < projectionFallbackWarnCooldown {
+		s.mu.Unlock()
+		return
+	}
+	s.warnedAt = now
+	s.mu.Unlock()
+	slog.Warn("agent: stale projection view degraded to a bounded recent-tail window",
+		"reason", "content_mismatch",
+		"canonical_tokens", canonicalTokens, "view_tokens", viewTokens,
+		"messages", messages, "dropped", dropped,
+		"window", a.effectiveContextWindow(),
+		"session", a.sessionLogRef())
 }

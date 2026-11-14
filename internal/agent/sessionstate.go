@@ -85,6 +85,14 @@ type sessionRuntime struct {
 	// pure function of the immutable canonical snapshot.
 	tailView tailViewState
 
+	// staleSplice caches the bounded stale-serving view (tl1586): while an
+	// unusable projection BODY serves the wire (tl1203), its fold+tail splice
+	// can still dwarf the window when the fold covers a small prefix of a
+	// multi-window canonical — the same over-window shape task 719 fixed for
+	// the body-less fallback. The splice degrades through the same tail-window
+	// construction, cached per (transcript version, projection version).
+	staleSplice staleSpliceState
+
 	// path and checkpointState are rebound by preflight when a transcript is
 	// bound, so reset leaves them to their owner rather than blanking them.
 	path            string // bound transcript path for projection sidecars
@@ -138,6 +146,9 @@ func (r *sessionRuntime) reset(s *Session) {
 	// 任务719: a new conversation starts unbounded — the tail view belongs to
 	// the replaced lineage's degraded window.
 	r.tailView = tailViewState{}
+	// tl1586: same ownership as the tail view — the bounded stale-serving
+	// splice belongs to the replaced lineage's stale episode.
+	r.staleSplice = staleSpliceState{}
 }
 
 // clearReasoningReplayStrongProjection drops the process-local repair overlay.

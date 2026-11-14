@@ -46,6 +46,9 @@ var sessionReset = map[string]bool{
 	// 任务719: a new conversation starts unbounded — the cached tail view
 	// belongs to the replaced lineage's degraded window.
 	"tailView": true,
+	// tl1586: same ownership as the tail view — the bounded stale-serving
+	// splice cache belongs to the replaced lineage's stale episode.
+	"staleSplice": true,
 }
 
 // sessionCarryOver names the fields reset deliberately leaves alone, each with
