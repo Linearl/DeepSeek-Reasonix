@@ -50,11 +50,30 @@ const (
 // immediately and re-resolve in the background, so a saturated disk costs the
 // load chain zero synchronous waits instead of one budget per path. Every
 // further timeout re-arms it; a quiet window lets normal walks resume.
+//
+// canonicalWalkerMaxWalkers is the tl1583 live-walker pool cap (issue #92).
+// The 250ms budget bounds only the caller's wait; the spawned walker keeps
+// running — and on a saturated disk keeps blocking inside EvalSymlinks
+// syscalls — long after the caller gave up, and a goroutine blocked in a
+// syscall pins its OS thread. The 2026-11-11 desktop crash accumulated
+// thousands of abandoned walkers under a 5591-timeouts-in-2-minutes storm
+// until Go hit its 10000-thread limit ("fatal error: thread exhaustion").
+// One pool permit per LIVE walker bounds concurrent walks at the pool size
+// no matter how many callers storm in: overflow degrades immediately to the
+// cleaned path (the same fallback a timeout produces) and arms the fast-fail
+// window, so the storm drains through the pool while every other resolution
+// is served without spawning a thread. The acquire is non-blocking — nobody
+// ever queues behind the pool.
 var (
 	canonicalEvalSymlinks   = filepath.EvalSymlinks
 	canonicalResolveTimeout = canonicalResolveTimeoutBudget
 	canonicalCacheTTL       = 30 * time.Second
 	canonicalFastFailWindow = 30 * time.Second
+
+	// Test seam: pins shrink the pool (and replace the channel) to exercise
+	// saturation and recovery deterministically; production never reassigns.
+	canonicalWalkerMaxWalkers = 64
+	canonicalWalkerSlots      = make(chan struct{}, canonicalWalkerMaxWalkers)
 
 	// Task 928 (residual ①): the TTL treadmill. Paths that are continuously
 	// re-canonicalized (every open tab's session file on the save/load/lock
@@ -289,6 +308,26 @@ func canonicalWalkBounded(abs string) (string, bool) {
 		path     string
 		positive bool
 	}
+	// tl1583: acquire one pool permit before spawning a walker. When the pool
+	// is full — a saturated disk keeps abandoned walkers alive well past the
+	// budget — spawning yet another walker is exactly how the process
+	// accumulated thousands of syscall-blocked OS threads (issue #92). Instead
+	// degrade to the cleaned path, the same value a timeout would produce, and
+	// arm the tl1526 fast-fail window so further callers skip walks entirely
+	// until the storm quiets. The arm WARN fires once per storm, so saturation
+	// stays visible without a per-call log flood.
+	select {
+	case canonicalWalkerSlots <- struct{}{}:
+	default:
+		if armed := armCanonicalFastFail(); armed {
+			slog.Warn("canonical walker pool saturated; arming degraded-first",
+				"live_walkers", canonicalWalkerMaxWalkers,
+				"mode", "degraded_first",
+				"window", canonicalFastFailWindow.String(),
+				"path", abs)
+		}
+		return abs, false
+	}
 	// Buffered: a walker that outlives the budget (e.g. an SMB reconnect)
 	// must never block on delivery.
 	ch := make(chan walkResult, 1)
@@ -298,6 +337,12 @@ func canonicalWalkBounded(abs string) (string, bool) {
 	// report on task 762 was exactly that cross-test race).
 	eval := canonicalEvalSymlinks
 	go func() {
+		// The permit tracks the walker's lifetime — its syscall-blocked OS
+		// thread is the resource being bounded — so it is released here, when
+		// the walk actually ends, not when the caller's budget expires. A
+		// walker abandoned past the timeout keeps its permit until it finishes
+		// climbing; saturation degrades new resolutions instead of growing.
+		defer func() { <-canonicalWalkerSlots }()
 		tail := ""
 		cur := abs
 		for {
