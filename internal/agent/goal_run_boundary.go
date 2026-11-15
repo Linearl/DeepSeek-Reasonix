@@ -15,8 +15,32 @@ type maxStepsPause struct {
 	key   string
 }
 
+// genericMaxStepsKey is the default MaxStepsKey: the runtime/tool-call
+// parameter name, not a user-facing config item. Desktop sessions and
+// task-spawned subagents land here because the interactive step limits
+// ([agent].max_steps, planner_max_steps) are retired — the adaptive progress
+// policy replaced them and config migration strips the keys from user TOML.
+const genericMaxStepsKey = "max_steps"
+
+// userSettableStepLimitKeys names the step-limit controls a user can actually
+// set today: the CLI one-off flag --max-steps (registered in
+// internal/cli/cli.go) and the unattended-bot config key [bot].max_steps
+// (BotConfig in internal/config). The retired [agent].max_steps stays out on
+// purpose: tl1604 (#8228 同款) — product copy must never tell the user to set
+// a key that no longer decodes anywhere.
+var userSettableStepLimitKeys = map[string]struct{}{
+	"--max-steps":   {},
+	"bot.max_steps": {},
+}
+
 func (e *maxStepsPause) Error() string {
-	return fmt.Sprintf("paused after %d tool-call rounds (%s) — the work so far is saved; send another message to continue, or set %s higher or to 0 for no limit", e.steps, e.key, e.key)
+	if _, settable := userSettableStepLimitKeys[e.key]; settable {
+		return fmt.Sprintf("paused after %d tool-call rounds (%s) — the work so far is saved; send another message to continue, or set %s higher or to 0 for no limit", e.steps, e.key, e.key)
+	}
+	// Generic runtime key: no user-facing config item named max_steps exists,
+	// so the copy keeps only the always-valid next step instead of pointing
+	// at a retired key.
+	return fmt.Sprintf("paused after %d tool-call rounds — the work so far is saved; send another message to continue", e.steps)
 }
 
 func isToolLoopPause(err error) bool {
