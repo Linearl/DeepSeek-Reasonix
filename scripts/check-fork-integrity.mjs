@@ -247,7 +247,9 @@ const CHECKS = [
   { feature: "任务470 openai 接线+请求侧判定", file: "internal/provider/openai/openai.go", patterns: ["AnnotateInlineImageRejection", "func requestHasInlineDataImages"] },
   { feature: "任务470 注解器测试", file: "internal/provider/image_rejection_test.go", patterns: ["TestAnnotateInlineImageRejection"] },
   { feature: "任务470 openai 集成测试", file: "internal/provider/openai/image_rejection_test.go", patterns: ["TestStreamAnnotatesInlineImageRejection", "TestRequestHasInlineDataImages"] },
-  { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["trigger != CompactionTriggerManual", "maximumSafeSummaryPrefixEnd"] },
+  // tl1587（f2307847a）把 safe 上限调用重写为 boundedSummaryPrefixEnd（分段预算收紧，
+  // 段内装不下回退 safe 上限），机制语义未变：锚点随实际形态同步（任务 1002 改锚先例）。
+  { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["trigger != CompactionTriggerManual", "boundedSummaryPrefixEnd"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9572 Unknown 网关回退", file: "internal/agent/compact_projection.go", patterns: ["a.lastAdmission().ObservedWindow > 0 || a.contextWindow > 0"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
