@@ -78,6 +78,11 @@ type Messages struct {
 	// PrefillSlowNoticeFmt (任务929 S3): the first-token watch fired; %d =
 	// estimated prompt tokens so the wait is attributed to context size.
 	PrefillSlowNoticeFmt string
+	// PrefillSlowNoticeNeutralFmt (tl1608): the same watch fired but the
+	// context sits below the compact trigger, so "normal prefill phase" is
+	// too strong an attribution; %d = seconds already waited. The silence
+	// may as well be a slow upstream — the notice stays neutral.
+	PrefillSlowNoticeNeutralFmt string
 	// HeaderWaitSlowNoticeFmt (任务927): response-header watch fired — the
 	// request is out but no headers arrived; %d = estimated prompt tokens,
 	// %d = seconds already waited (repeats stay informative, not a frozen line).

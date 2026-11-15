@@ -17,10 +17,13 @@ import (
 // tests can shrink it.
 var prefillNoticeAfter = 60 * time.Second
 
-// emitPrefillSlowNotice names the silence once per turn: the model is chewing
-// through a very large context, this is the normal prefill phase, waiting is
-// correct. It is per TURN, not per attempt — each retry re-arms the watch, and
-// repeating the same sentence for every replay only adds noise. Emission
+// emitPrefillSlowNotice names the silence once per turn. The attribution is
+// tiered (tl1608): at or above the compact trigger the context size makes
+// "normal prefill phase" the honest reading, but below it the same silence
+// may just as well be a slow upstream or a connection problem, so the notice
+// stays neutral — the 60s watch itself (task 929 S3, anti-fake-hang) is
+// unchanged. It is per TURN, not per attempt — each retry re-arms the watch,
+// and repeating the same sentence for every replay only adds noise. Emission
 // stays on the run loop (the streamWithFrozen select), never on a goroutine:
 // Sink.Emit is documented as serial-call-only.
 func (a *Agent) emitPrefillSlowNotice(sink event.Sink) {
@@ -35,7 +38,22 @@ func (a *Agent) emitPrefillSlowNotice(sink event.Sink) {
 		Kind:   event.Notice,
 		Level:  event.LevelInfo,
 		Code:   event.NoticeCodePrefillSlow,
-		Text:   fmt.Sprintf(i18n.M.PrefillSlowNoticeFmt, a.ContextUsedTokens()),
+		Text:   a.prefillSlowNoticeText(),
 		Detail: fmt.Sprintf("no provider output for %s (attempt-level first-token watch)", prefillNoticeAfter),
 	})
+}
+
+// prefillSlowNoticeText picks the wording tier for the silent wait. The
+// token count in the original notice was never the firing criterion — the
+// criterion is pure first-token silence — so it only backs the strong
+// attribution when it actually supports it: used >= compactTrigger(). Below
+// that (or with no configured window, trigger <= 0) the neutral wording
+// names both candidate causes. The seconds figure is interpolated from the
+// (test-shrinkable) threshold so the text cannot drift from the watch.
+func (a *Agent) prefillSlowNoticeText() string {
+	used := a.ContextUsedTokens()
+	if trigger := a.compactTrigger(); trigger > 0 && used >= trigger {
+		return fmt.Sprintf(i18n.M.PrefillSlowNoticeFmt, used)
+	}
+	return fmt.Sprintf(i18n.M.PrefillSlowNoticeNeutralFmt, int(prefillNoticeAfter.Seconds()))
 }
