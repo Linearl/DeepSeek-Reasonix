@@ -5356,6 +5356,11 @@ export const zh: Record<DictKey, string> = {
   "transcript.jumpToBottom": "跳到底部",
   "markdown.tableExpandAll": "展开全部 {n} 行",
   "markdown.tableCollapse": "收起表格",
+  // tl1596：表格级导出按钮组（复制 Markdown / 下载 CSV）。
+  "markdown.tableCopyMarkdown": "复制表格为 Markdown",
+  "markdown.tableDownloadCsv": "下载表格 CSV",
+  "markdown.tableEmpty": "表格无内容可复制",
+  "markdown.tableCsvUnavailable": "当前环境不支持下载 CSV",
   "transcript.loadEarlierFailed": "较早的对话加载失败",
   "transcript.noMoreEarlier": "已到最早，没有更多历史",
   "chat.loadOlder": "加载更早的消息",

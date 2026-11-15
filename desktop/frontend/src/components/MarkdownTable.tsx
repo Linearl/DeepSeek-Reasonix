@@ -11,15 +11,26 @@ import {
   cloneElement,
   isValidElement,
   memo,
+  useEffect,
   useState,
   useRef,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
 } from "react";
+import { Check, Copy, Download } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { MarkdownTableAlignment, VirtualMarkdownTableData } from "../lib/largeMarkdownTable";
+import {
+  buildCsvTableText,
+  buildMarkdownTableText,
+  hasExportableRows,
+  normalizeTableCellText,
+  type TableExportData,
+} from "../lib/tableExport";
 import { t } from "../lib/i18n";
+import { useToast } from "../lib/toast";
+import { writeClipboardText } from "./CopyButton";
 import { useTranscriptUserResizeIntent } from "./TranscriptLayoutIntentContext";
 
 export const MARKDOWN_TABLE_VIRTUAL_MIN_ROWS = 50;
@@ -41,6 +52,137 @@ function tableRows(tbody: ReactElement | null): ReactElement[] {
   const children = (tbody.props as { children?: ReactNode }).children;
   return Children.toArray(children).filter(
     (child): child is ReactElement => isValidElement(child) && child.type === "tr",
+  );
+}
+
+function reactNodeText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(reactNodeText).join("");
+  if (isValidElement(node)) {
+    // <br> is the markdown hard-break inside a table cell; keep it as "\n" so
+    // the Markdown rebuild can restore it as <br> (see tableExport.ts).
+    if (node.type === "br") return "\n";
+    const children = (node.props as { children?: ReactNode }).children;
+    return reactNodeText(children);
+  }
+  return "";
+}
+
+function rowCellTexts(row: ReactElement): string[] {
+  const children = (row.props as { children?: ReactNode }).children;
+  return Children.toArray(children)
+    .filter(
+      (child): child is ReactElement =>
+        isValidElement(child) && (child.type === "td" || child.type === "th"),
+    )
+    .map((cell) => normalizeTableCellText(reactNodeText((cell.props as { children?: ReactNode }).children)));
+}
+
+function tableExportData(head: ReactElement | null, rows: ReactElement[]): TableExportData {
+  // tl1596: copy/download read the React element tree (the original data), never
+  // the DOM. Virtualized bodies only mount the visible window, so a DOM read
+  // would silently truncate large tables to what happens to be on screen.
+  const headerRow = tableRows(head)[0];
+  return {
+    header: headerRow ? rowCellTexts(headerRow) : [],
+    rows: rows.map(rowCellTexts),
+  };
+}
+
+const CSV_DOWNLOAD_FILENAME = "table.csv";
+
+function downloadCsvFile(data: TableExportData): boolean {
+  if (
+    typeof document === "undefined" ||
+    typeof Blob === "undefined" ||
+    typeof URL === "undefined" ||
+    typeof URL.createObjectURL !== "function"
+  ) {
+    return false;
+  }
+  const blob = new Blob([buildCsvTableText(data)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = CSV_DOWNLOAD_FILENAME;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+// TableExportActions — the per-table copy/download row (tl1596). Both actions
+// pull rows through the caller's getData closure so every table state (small,
+// folded preview, virtualized) exports the full original table. The copy button
+// reuses CopyButton's three-tier clipboard channel (writeClipboardText) but is
+// drawn locally with module-level t() so MarkdownTable stays provider-free
+// (same rationale as TableFoldToggle; useToast's default context is a no-op).
+const COPIED_FEEDBACK_MS = 1200;
+
+function TableExportActions({ getData }: { getData: () => TableExportData }) {
+  const showToast = useToast().showToast;
+  const copyable = hasExportableRows(getData());
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current != null) window.clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+  const handleCopyMarkdown = async () => {
+    try {
+      await writeClipboardText(buildMarkdownTableText(getData()));
+      setCopied(true);
+      if (copiedTimerRef.current != null) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        copiedTimerRef.current = null;
+      }, COPIED_FEEDBACK_MS);
+    } catch {
+      /* clipboard unavailable across all three channels */
+    }
+  };
+  const handleDownloadCsv = () => {
+    if (!downloadCsvFile(getData())) {
+      showToast(t("markdown.tableCsvUnavailable"), "warn");
+    }
+  };
+  // Task 630 precedent: a mounted-but-empty copy entry must explain itself
+  // instead of silently acting like a normal copy button.
+  const copyLabel = copied
+    ? t("msg.copied")
+    : copyable
+      ? t("markdown.tableCopyMarkdown")
+      : t("markdown.tableEmpty");
+  return (
+    <div className="md-table-export" data-table-export="">
+      <button
+        type="button"
+        className={copied ? "copybtn copybtn--copied" : "copybtn"}
+        data-table-export="copy"
+        disabled={!copyable}
+        aria-label={copyLabel}
+        title={copyLabel}
+        onClick={() => {
+          void handleCopyMarkdown();
+        }}
+      >
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+      <button
+        type="button"
+        className="copybtn"
+        data-table-export="download"
+        aria-label={t("markdown.tableDownloadCsv")}
+        title={t("markdown.tableDownloadCsv")}
+        onClick={handleDownloadCsv}
+      >
+        <Download size={13} />
+      </button>
+    </div>
   );
 }
 
@@ -125,6 +267,7 @@ const CollapsibleLargeMarkdownTable = memo(function CollapsibleLargeMarkdownTabl
   const preview = rows.slice(0, MARKDOWN_TABLE_PREVIEW_ROWS);
   return (
     <div className="md-table-fold" data-expanded={expanded ? "true" : undefined}>
+      <TableExportActions getData={() => tableExportData(head, rows)} />
       {expanded ? (
         <VirtualMarkdownTable head={head} rows={rows} />
       ) : (
@@ -151,17 +294,22 @@ const CollapsibleLargeMarkdownTable = memo(function CollapsibleLargeMarkdownTabl
 export const MarkdownTable = memo(function MarkdownTable({ children }: { children?: ReactNode }) {
   const tbody = findTablePart(children, "tbody");
   const rows = tableRows(tbody);
+  const head = findTablePart(children, "thead");
+  const getData = () => tableExportData(head, rows);
   // Small tables stay in document flow. Horizontal overflow lives on a wrapper
   // (overflow-y:hidden) so CSS does not promote overflow-y to auto and steal
   // trackpad Y from the transcript.
   if (rows.length <= MARKDOWN_TABLE_VIRTUAL_MIN_ROWS) {
     return (
-      <div className="md-table-scroll">
-        <table>{children}</table>
-      </div>
+      <>
+        <TableExportActions getData={getData} />
+        <div className="md-table-scroll">
+          <table>{children}</table>
+        </div>
+      </>
     );
   }
-  return <CollapsibleLargeMarkdownTable head={findTablePart(children, "thead")} rows={rows} />;
+  return <CollapsibleLargeMarkdownTable head={head} rows={rows} />;
 });
 
 function alignmentProps(align: MarkdownTableAlignment): { align?: "left" | "center" | "right" } {
@@ -192,31 +340,35 @@ export const VirtualMarkdownSourceTable = memo(function VirtualMarkdownSourceTab
 
   if (!isLarge) {
     return (
-      <div className="md-table-scroll" data-markdown-source-rows={totalRows}>
-        <table>
-          <thead>
-            <tr>
-              {data.header.map((cell, index) => (
-                <th key={index} {...alignmentProps(data.align[index] ?? null)}>{cell}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                {row.map((cell, index) => (
-                  <td key={index} {...alignmentProps(data.align[index] ?? null)}>{cell}</td>
+      <>
+        <TableExportActions getData={() => ({ header: data.header, rows: data.rows })} />
+        <div className="md-table-scroll" data-markdown-source-rows={totalRows}>
+          <table>
+            <thead>
+              <tr>
+                {data.header.map((cell, index) => (
+                  <th key={index} {...alignmentProps(data.align[index] ?? null)}>{cell}</th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {data.rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, index) => (
+                    <td key={index} {...alignmentProps(data.align[index] ?? null)}>{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
     );
   }
 
   return (
     <div className="md-table-fold" data-expanded={expanded ? "true" : undefined} data-markdown-source-rows={totalRows}>
+      <TableExportActions getData={() => ({ header: data.header, rows: data.rows })} />
       {expanded ? (
         <div
           ref={scrollRef}

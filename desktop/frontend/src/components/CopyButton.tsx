@@ -35,7 +35,10 @@ function fallbackCopyText(value: string): boolean {
   return ok;
 }
 
-async function writeClipboardText(value: string): Promise<void> {
+// Exported for tl1596 table-export actions: same three-tier clipboard channel
+// (browser clipboard → Wails runtime → execCommand fallback) without dragging
+// the LocaleProvider requirement into provider-free surfaces (MarkdownTable).
+export async function writeClipboardText(value: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
     return;

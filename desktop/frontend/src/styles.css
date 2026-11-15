@@ -6982,6 +6982,19 @@ button.reasoning-summary:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: 2px;
 }
+/* tl1596：表格级导出按钮行（复制 Markdown / 下载 CSV），zcode 表格按钮组衍生。
+   右对齐、安静档小图标钮（复用 .copybtn 样式）；no-drag 与折叠开关同款，避免
+   在 Wails 窗口拖拽区误拖窗口。 */
+.md-table-export {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0 0 6px;
+  --wails-draggable: no-drag;
+}
+.md-table-export .copybtn:disabled {
+  cursor: default;
+}
 .md table {
   border-collapse: collapse;
   margin: 0 0 12px;
