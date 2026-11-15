@@ -81,12 +81,22 @@ func clipHistoryToolPreview(s string) string {
 
 func historyToolSubject(name, args string) string {
 	a := parseHistoryToolArgs(args)
+	// tl1613: the model-filled description wins as the human title; a blank or
+	// whitespace-only value never does (trim before the chain so an empty
+	// description falls through instead of blanking the subject).
+	desc := strings.TrimSpace(historyArgString(a, "description"))
 	var subject string
 	switch name {
 	case "bash":
-		subject = historyArgString(a, "command")
+		// The raw command stays in the card's expandable command block
+		// (frontend shellCommandOf reads it from args directly). Fall back to
+		// the command when the description is absent so old sessions and
+		// description-less calls render exactly as before.
+		subject = firstNonEmpty(desc, historyArgString(a, "command"))
 	case "grep", "glob":
-		subject = firstNonEmpty(historyArgString(a, "pattern"), historyArgString(a, "path"))
+		subject = firstNonEmpty(desc, historyArgString(a, "pattern"), historyArgString(a, "path"))
+	case "read_file", "edit_file", "write_file", "multi_edit":
+		subject = firstNonEmpty(desc, historyArgString(a, "path"), historyArgString(a, "file_path"))
 	case "web_fetch":
 		subject = historyArgString(a, "url")
 	case "task":
