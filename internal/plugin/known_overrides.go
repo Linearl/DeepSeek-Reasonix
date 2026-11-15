@@ -56,6 +56,31 @@ func isCodeGraphSpecName(name string) bool {
 	return strings.EqualFold(strings.TrimSpace(name), "codegraph")
 }
 
+// indexableRoot reports whether dir is a real project directory that a
+// cwd-aware full-tree indexer (CodeGraph) can safely be pinned to. A
+// filesystem root — a Windows drive root like C:\, a UNC share root, or the
+// unix / — is rejected: the server walks its working directory, so a root cwd
+// makes it index the whole volume (C:\Windows, Program Files, everything),
+// pinning gigabytes of RAM (#3747). An empty dir is rejected too: there is
+// nothing to pin a cwd-aware server to, and it would silently inherit the
+// host process's cwd. This ports upstream's codegraph.IndexableRoot (#3755)
+// to the one remaining spawn site: the bundled CodeGraph (and its two guarded
+// spawn sites) was removed in 655c72ad9, but a user-configured "codegraph"
+// stdio server still reaches newStdioTransport with WorkspaceRoot injected by
+// ApplyKnownOverrides — so the guard must live at the transport, not in a
+// package that no longer exists.
+func indexableRoot(dir string) bool {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return false
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	return filepath.Dir(abs) != abs // a filesystem root is its own parent
+}
+
 // isComputerUseSpec matches the computer-use screen-interaction MCP server
 // (Plocr/Reasonix-computer-use), by server name or command fragment.
 func isComputerUseSpec(s Spec) bool {

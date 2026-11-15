@@ -43,7 +43,16 @@ func newStdioTransport(ctx context.Context, s Spec) (*stdioTransport, error) {
 		return nil, fmt.Errorf("stdio plugin %q: command is required", s.Name)
 	}
 	var releaseSlot func()
-	if isCodeGraphSpecName(s.Name) {
+	if isCodeGraphSpecName(s.Name) && isStdioSpecType(s.Type) {
+		// Refuse to launch a cwd-aware full-tree indexer at a filesystem root
+		// (or with no dir at all): it would walk the whole volume — C:\Windows,
+		// Program Files, everything — pinning gigabytes of RAM (#3747, #3755).
+		// Upstream guarded its bundled spawn sites; after the bundled CodeGraph
+		// was removed, the user-configured path reaches only here, so the guard
+		// lives at this single spawn site.
+		if dir := stdioWorkingDir(s); !indexableRoot(dir) {
+			return nil, fmt.Errorf("codegraph: refusing to start with working dir %q — a filesystem root (or empty dir) would index the whole volume; set the server's dir to a project directory", dir)
+		}
 		release, err := acquireCodeGraphSlot()
 		if err != nil {
 			return nil, err
