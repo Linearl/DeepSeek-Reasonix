@@ -1929,7 +1929,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	}
 	maxStepsKey := opts.MaxStepsKey
 	if strings.TrimSpace(maxStepsKey) == "" {
-		maxStepsKey = "max_steps"
+		maxStepsKey = genericMaxStepsKey
 	}
 	maxSubagentDepth := opts.MaxSubagentDepth
 	if maxSubagentDepth == 0 {
