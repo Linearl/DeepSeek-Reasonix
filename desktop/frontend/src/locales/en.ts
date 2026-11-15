@@ -5392,6 +5392,11 @@ export const en = {
   "transcript.jumpToBottom": "Jump to bottom",
   "markdown.tableExpandAll": "Expand all {n} rows",
   "markdown.tableCollapse": "Collapse table",
+  // tl1596: per-table export actions (copy Markdown / download CSV).
+  "markdown.tableCopyMarkdown": "Copy table as Markdown",
+  "markdown.tableDownloadCsv": "Download table as CSV",
+  "markdown.tableEmpty": "Table has no rows to copy",
+  "markdown.tableCsvUnavailable": "CSV download is unavailable in this environment",
   "transcript.loadEarlierFailed": "Earlier conversation could not be loaded",
   "transcript.noMoreEarlier": "No more history to load",
   "chat.loadOlder": "Load earlier messages",
