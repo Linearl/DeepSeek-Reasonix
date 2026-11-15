@@ -43,6 +43,7 @@ var Chinese = Messages{
 	StreamInterruptedServerError:     "供应商网关中断了本次流式响应（服务端主动重置）；如果大请求反复出现，请拆分会话或等待上下文压缩后重试",
 	ProviderDeterministicReject:      "网关已连续 %d 次以相同原因中断本请求，且每次耗时几乎一致——判定为对本请求的确定性拒绝，疑似超出网关单请求处理上限。建议拆分会话、等待上下文压缩后再重试，或改用其他模型。",
 	PrefillSlowNoticeFmt:             "模型正在处理超大上下文（约 %d tokens），预计需要较长时间；这是正常的预填充阶段，可继续等待，无需取消。",
+	PrefillSlowNoticeNeutralFmt:      "模型暂无输出（已 %d 秒）——可能在预填充大上下文，也可能上游较慢。",
 	HeaderWaitSlowNoticeFmt:          "正在处理超大上下文（约 %d tokens），上游响应较慢，已等待 %d 秒仍未返回——请耐心等待，通常无需取消。",
 	HeaderWaitLightNotice:            "正在等待模型响应…（通常几十秒内会开始输出；若长时间无响应可按 Esc 取消）",
 	HeaderTimeoutRetryFmt:            "网关等待响应头超时，这是第 %d/%d 次尝试；每次重试都会从头处理全部上下文。建议：等待上下文压缩后重试、拆分会话，或改用其他模型。",

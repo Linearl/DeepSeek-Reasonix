@@ -42,6 +42,7 @@ var English = Messages{
 	StreamInterruptedServerError:     "the provider gateway reset the stream before the response completed; if this repeats on a large request, split the session or wait for context compaction before retrying",
 	ProviderDeterministicReject:      "The gateway cut this request %d times in a row with the same reason and near-identical timing — a deterministic rejection of this request, most likely beyond the gateway's single-request processing limit. Split the session, wait for context compaction before retrying, or switch to another model.",
 	PrefillSlowNoticeFmt:             "The model is processing a very large context (~%d tokens); a long wait is expected. This is the normal prefill phase — keep waiting, no need to cancel.",
+	PrefillSlowNoticeNeutralFmt:      "No model output yet (%d s elapsed) — this may be prefill over a large context, or the upstream may just be slow.",
 	HeaderWaitSlowNoticeFmt:          "Processing a very large context (~%d tokens); the upstream is responding slowly, %d seconds elapsed with no response yet — usually safe to keep waiting, no need to cancel.",
 	HeaderWaitLightNotice:            "Waiting for the model to respond… (output usually starts within seconds; press Esc to cancel if it takes much longer.)",
 	HeaderTimeoutRetryFmt:            "The gateway timed out waiting for response headers; retrying (attempt %d of %d). Each retry reprocesses the whole context from scratch — consider waiting for context compaction, splitting the session, or switching to another model.",

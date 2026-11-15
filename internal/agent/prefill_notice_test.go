@@ -3,10 +3,15 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"reasonix/internal/event"
+	"reasonix/internal/i18n"
+	"reasonix/internal/provider"
+	"reasonix/internal/tool"
 )
 
 func shrinkPrefillNoticeForTest(t *testing.T, d time.Duration) {
@@ -89,4 +94,62 @@ func TestPrefillNoticeEmittedOncePerTurn(t *testing.T) {
 	if !a.turn.prefillNoticeShown {
 		t.Fatal("the turn flag must be set so retry attempts stay quiet")
 	}
+}
+
+// tl1608 分档①: at or above the compact trigger the original prefill
+// attribution stays — there the context size actually supports the strong
+// reading ("normal prefill phase"), so the wording must not downgrade.
+func TestPrefillNoticeUsesPrefillWordingAtOrAboveCompactTrigger(t *testing.T) {
+	sess := NewSession("")
+	sess.Replace([]provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("filler ", 400)}})
+	sink := &recordingSink{}
+	a := New(&fakeProvider{reply: "x"}, tool.NewRegistry(), sess, Options{
+		ContextWindow: 400, CompactRatio: 0.5, MaxOutputTokens: 0, Temperature: 0.25,
+	}, sink)
+	trigger := a.compactTrigger()
+	if trigger <= 0 {
+		t.Fatalf("compactTrigger = %d, the tier fixture needs a configured window", trigger)
+	}
+	used := a.ContextUsedTokens()
+	if used < trigger {
+		t.Fatalf("tier-① fixture is broken: used=%d sits below trigger=%d — fix the fixture, not the assertion", used, trigger)
+	}
+	if got, want := a.prefillSlowNoticeText(), fmt.Sprintf(i18n.M.PrefillSlowNoticeFmt, used); got != want {
+		t.Fatalf("at/above-trigger wording = %q, want the prefill attribution %q", got, want)
+	}
+}
+
+// tl1608 分档②: below the compact trigger the attribution must downgrade to
+// the neutral wording — the same 60s silence may be a slow upstream or a
+// connection problem, so claiming "the normal prefill phase" over-claims.
+func TestPrefillNoticeDowngradesToNeutralBelowCompactTrigger(t *testing.T) {
+	a := newBreakerAgent(t, &fakeProvider{reply: "x"}, &recordingSink{})
+	trigger := a.compactTrigger()
+	if trigger <= 0 {
+		t.Fatalf("compactTrigger = %d, want a configured window from the breaker fixture", trigger)
+	}
+	if used := a.ContextUsedTokens(); used >= trigger {
+		t.Fatalf("tier-② fixture is broken: used=%d sits at/above trigger=%d — fix the fixture, not the assertion", used, trigger)
+	}
+	if got, want := a.prefillSlowNoticeText(), fmt.Sprintf(i18n.M.PrefillSlowNoticeNeutralFmt, int(prefillNoticeAfter.Seconds())); got != want {
+		t.Fatalf("below-trigger wording = %q, want the neutral attribution %q", got, want)
+	}
+}
+
+// tl1608: the emit path carries the tiered text, not a hardcoded line —
+// pinned on the neutral tier, the one the standard breaker fixture exercises.
+func TestPrefillNoticeEmitCarriesNeutralTierText(t *testing.T) {
+	sink := &recordingSink{}
+	a := newBreakerAgent(t, &fakeProvider{reply: "x"}, sink)
+	a.emitPrefillSlowNotice(sink)
+	want := fmt.Sprintf(i18n.M.PrefillSlowNoticeNeutralFmt, int(prefillNoticeAfter.Seconds()))
+	for _, e := range sink.events {
+		if e.Kind == event.Notice && e.Code == event.NoticeCodePrefillSlow {
+			if e.Text != want {
+				t.Fatalf("emitted text = %q, want the neutral tier text %q", e.Text, want)
+			}
+			return
+		}
+	}
+	t.Fatal("prefill notice not emitted through the emit path")
 }
