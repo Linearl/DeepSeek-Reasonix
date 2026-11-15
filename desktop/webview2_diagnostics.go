@@ -150,14 +150,32 @@ func sanitizeFailureSourceModule(value string) string {
 	return sanitizeCrashField(path.Base(value), 255)
 }
 
+// webView2RecoveryRendererValues is the single registration point for the
+// renderer (kind 1/2) recovery outcomes accepted verbatim by
+// normalizeWebView2Recovery. tl1605: this slice is the Go side of the
+// crash-report ingest enum (workers/crash-report/src/report_schema.ts
+// recoverySchema) — the two vocabularies are reconciled set-for-set by
+// crash_report_recovery_vocab_test.go. Add a new recovery outcome here AND in
+// the schema in the same edit; skipping either side is red now instead of a
+// silently dropped telemetry payload (the tl1589 incident class, third time
+// it had to be reconciled by hand).
+var webView2RecoveryRendererValues = []string{
+	webView2RecoverySucceeded,
+	webView2RecoveryFailed,
+	webView2RecoveryPending,
+	webView2RecoverySuppressed,
+	webView2RecoveryReloadError,
+	webView2RecoveryReloadTimeout,
+	webView2RecoveryNavFailed,
+}
+
 func normalizeWebView2Recovery(value string) string {
-	switch value {
-	case webView2RecoverySucceeded, webView2RecoveryFailed, webView2RecoveryPending, webView2RecoverySuppressed,
-		webView2RecoveryReloadError, webView2RecoveryReloadTimeout, webView2RecoveryNavFailed:
-		return value
-	default:
-		return webView2RecoveryNotApplicable
+	for _, accepted := range webView2RecoveryRendererValues {
+		if value == accepted {
+			return value
+		}
 	}
+	return webView2RecoveryNotApplicable
 }
 
 func webView2Outcome(event webView2NativeEvent) (reportKind, outcome string) {
