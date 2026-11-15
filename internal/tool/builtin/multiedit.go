@@ -54,6 +54,10 @@ func (multiEdit) Description() string {
 	return "WHEN TO USE: modifying 2+ places in the same file — use this INSTEAD of chained edit_file calls (atomic, fewer calls, per-step errors). Chinese phrasings like 同文件多处修改, 批量修改, 一次改完整个文件 all mean this tool. Apply a list of edits to a single file atomically: each edit runs against the result of the previous one, all in memory; the file is rewritten only if every edit succeeds. Cheaper and safer than chaining edit_file calls — a failure in step 3 leaves the file untouched instead of half-edited."
 }
 
+// tl1613: guidance for multi_edit's optional description argument (collapsed
+// card title; pre-escaped for direct JSON embedding).
+const multiEditDescriptionFieldPrompt = `One line in the user's language saying what the batch of edits accomplishes together - e.g. \"Rename shellCommandOf across the tool card\". Do not echo individual edits or the path: the user reads this description, often without seeing the diff. Avoid words like \"complex\" or \"risk\".`
+
 func (m multiEdit) Schema() json.RawMessage {
 	readBackField := ""
 	if m.readBack {
@@ -64,6 +68,7 @@ func (m multiEdit) Schema() json.RawMessage {
 "type":"object",
 "properties":{
   "path":{"type":"string","description":"File path"},
+  "description":{"type":"string","description":"` + multiEditDescriptionFieldPrompt + `"},
   "expected":{"type":"string","description":"Field not shown in schema; see shared optimistic-write baseline."},
   "edits":{
     "type":"array",

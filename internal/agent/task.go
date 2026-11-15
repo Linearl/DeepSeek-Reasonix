@@ -470,7 +470,7 @@ func (t *TaskTool) Schema() json.RawMessage {
 "type":"object",
 "properties":{
   "prompt":{"type":"string","description":"What the sub-agent should accomplish. Be specific about the deliverable — the sub-agent does not see this conversation."},
-  "description":{"type":"string","description":"Short label for the sub-task (3-7 words). Surfaced in the dispatch line so the user sees what's running."},
+  "description":{"type":"string","description":"Short label for the sub-task (3-7 words), in the user's language, active voice. Surfaced in the dispatch line so the user sees what's running - and the user reads this label without seeing the prompt: say what the sub-agent will do (e.g. \"Survey compact chain tests\"), not the tool list it will use. Avoid words like \"complex\" or \"risk\"."},
   "profile":{"type":"string","description":"Optional runAs=subagent profile name. Resolved at runtime from the Skill store; explicit names may invoke invocation=manual profiles. The profile body becomes the full system prompt."},
   "write_paths":{"type":"array","items":{"type":"string"},"description":"Optional workspace-relative or absolute file/directory paths this writer may modify. Globs and workspace escapes are rejected. Writers without write_paths claim the whole workspace (serializing against every other writer claim). Non-overlapping paths allow parallel writers up to max_parallel_writers. In fleet, multiple whole-workspace claims fail preflight before any task starts."},
   "tools":{"type":"array","items":{"type":"string"},"description":"Optional tool whitelist. When profile sets allowed-tools, this list is intersected (call args cannot expand profile permissions). ` + t.boundarySummary() + `"},
@@ -572,7 +572,7 @@ func (r *ReadOnlyTaskTool) Schema() json.RawMessage {
 "type":"object",
 "properties":{
   "prompt":{"type":"string","description":"What the read-only sub-agent should investigate. Be specific about the evidence or summary to return — the sub-agent does not see this conversation."},
-  "description":{"type":"string","description":"Short label for the read-only sub-task (3-7 words). Surfaced in the dispatch line so the user sees what's running."},
+  "description":{"type":"string","description":"Short label for the read-only sub-task (3-7 words), in the user's language, active voice. Surfaced in the dispatch line so the user sees what's running - and the user reads this label without seeing the prompt: say what the sub-agent will investigate (e.g. \"Survey compact chain tests\"), not the tool list it will use. Avoid words like \"complex\" or \"risk\"."},
   "tools":{"type":"array","items":{"type":"string"},"description":"Optional read-only tool whitelist. Writer, installer, memory mutation, background job, and delegation tools are never exposed."},
   "max_steps":{"type":"integer","description":"Optional cap on tool-call rounds. Defaults to two-thirds of the parent's cap (min 12); a configured subagent_default_steps override wins.","minimum":1},
   "model":{"type":"string","description":"Optional model override for the sub-agent (a configured provider/model name)."},

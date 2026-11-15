@@ -54,14 +54,20 @@ func TestArgumentErrorsRemainCorrectable(t *testing.T) {
 	reg.Add(b)
 	audit := &capability.Audit{}
 	a := New(nil, reg, NewSession(""), Options{CapabilityAudit: audit}, event.Discard)
+	// The diagnostic must carry the CURRENT schema fingerprint so the model can
+	// tell a stale schema from a stale call. Derive the expected value from the
+	// live schema: a legitimate schema edit (tl1613 added bash's description
+	// field) must not silently break this pin, but a diagnostic that drops or
+	// mismatches the fingerprint still fails here.
+	wantFingerprint := shortSchemaFingerprint(tool.SchemaFingerprint(b.Schema()))
 	raw := `{"arguments":{"command":"private-command-marker"}}`
 	for i := 1; i <= 3; i++ {
 		out := a.executeOne(context.Background(), &a.turn, provider.ToolCall{ID: fmt.Sprint(i), Name: "bash", Arguments: raw})
 		if out.blocked {
 			t.Errorf("attempt %d converted invalid input into a host refusal: %s", i, out.output)
 		}
-		if !strings.Contains(out.output, "726072279d1c3417") || !strings.Contains(out.output, "required properties: command") {
-			t.Errorf("missing original diagnostic: %s", out.output)
+		if !strings.Contains(out.output, wantFingerprint) || !strings.Contains(out.output, "required properties: command") {
+			t.Errorf("missing original diagnostic (want fingerprint %s): %s", wantFingerprint, out.output)
 		}
 		if !strings.Contains(out.output, `sole "arguments" wrapper`) {
 			t.Errorf("missing wrapper correction: %s", out.output)
