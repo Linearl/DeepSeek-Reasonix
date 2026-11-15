@@ -186,7 +186,10 @@ func TestHostRecoveryGuidanceRidesToolResultNotSteer(t *testing.T) {
 		t.Fatalf("tool output missing host recovery guidance: %q", out.output)
 	}
 	if text, _, ok := a.consumeSteer(); ok {
-		t.Fatalf("host recovery queued a user steer: %q", text)
+		// tl1611: the arg is a SteerPayload struct (never %q-able); the vet
+		// printf check started flagging this line once the payload gained a
+		// second non-string field. %+v is the correct verb for a struct.
+		t.Fatalf("host recovery queued a user steer: %+v", text)
 	}
 	for _, e := range sink.kinds(event.Steer) {
 		t.Fatalf("host recovery emitted a steer event: %+v", e)
