@@ -1,8 +1,8 @@
-# Reasonix Fork 桌面版 v1.38.3-20261115-2211 — Release Notes
+# Reasonix Fork 桌面版 v1.38.3-20261115-2224 — Release Notes
 
 > **依据**：`release-notes/WRITING-GUIDE.md`——发版级七段结构、用户视角（怎么用+效果+入口，原理 1~2 句）、禁内部术语、量化真实。
 > **范围**：上一个发布版本 `desktop-v1.38.3-20261115-0841`（2026-11-15 13:17）以来的全部用户可感知改动——1 个构建包（批 95）、11 个合并。
-> **Fork 与上游差异全览**：见 [FORK-vs-upstream.md](https://github.com/Linearl/DeepSeek-Reasonix/blob/desktop-v1.38.3-20261115-2211/release-notes/FORK-vs-upstream.md)。
+> **Fork 与上游差异全览**：见 [FORK-vs-upstream.md](https://github.com/Linearl/DeepSeek-Reasonix/blob/desktop-v1.38.3-20261115-2224/release-notes/FORK-vs-upstream.md)。
 > 基于官方 v1.38.3；覆盖安装即可。
 
 ---
