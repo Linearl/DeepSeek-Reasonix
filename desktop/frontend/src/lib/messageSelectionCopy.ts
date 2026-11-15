@@ -1,7 +1,25 @@
 import { writeClipboardText } from "./clipboard";
 import { transcriptSelectionStore } from "./transcriptSelectionStore";
 
-const MESSAGE_SELECTION_SELECTOR = ".msg__body, .reasoning__body";
+// tl1609: one menu for every selectable transcript text. The list names the
+// body container of each transcript surface that renders readable prose:
+// assistant/user message bodies, reasoning bodies, notice cards (guide and
+// completion variants — the whole `.notice-line__text` region, so an expanded
+// turn-result card selects too), steer bubbles and their deferred expansion,
+// collab delivery card text, completion report cards, and the expanded
+// host-protocol body. Path detection stays content-based downstream
+// (selectionPathCandidate), so a path-looking selection opens the same way
+// from any of these surfaces.
+const MESSAGE_SELECTION_SELECTOR = [
+  ".msg__body",
+  ".reasoning__body",
+  ".notice-line__text",
+  ".steer-line__bubble",
+  ".steer-line__expanded",
+  ".im-source-card__text",
+  ".completion-report",
+  ".host-protocol-bar__body",
+].join(", ");
 export const TRANSCRIPT_COPY_FAILED_EVENT = "reasonix:transcript-copy-failed";
 
 export interface MessageSelectionCopyState {
@@ -22,9 +40,10 @@ export function messageSelectionCopyText(state: MessageSelectionCopyState): stri
 }
 
 // Gates the transcript right-click menu the same way the copy interceptor
-// gates ⌘C — a non-collapsed, non-editable selection touching a message or
-// reasoning body — plus one menu-only rule: the right-click must land inside
-// a message body that the selection itself touches. A selection outlives
+// gates ⌘C — a non-collapsed, non-editable selection touching a transcript
+// text surface (MESSAGE_SELECTION_SELECTOR) — plus one menu-only rule: the
+// right-click must land inside a body container that the selection itself
+// touches. A selection outlives
 // clicks elsewhere: surfaces like the project tree and tab bar own their
 // right-click menus, and offering Copy on message B while message A holds
 // the selection would copy text from somewhere other than the click. A
