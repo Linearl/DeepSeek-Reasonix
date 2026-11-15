@@ -186,7 +186,11 @@ func TestShellLabelSnapshotSeparateFromProbeSnapshots(t *testing.T) {
 		t.Fatalf("anchor label = %q, want bash", anchored)
 	}
 
-	results := environment.RunProbesWithOptions(context.Background(), []string{"go version"}, environment.ProbeOptions{SnapshotDir: dir})
+	// DenyRoots carries the (per-invocation unique) temp dir into the probe
+	// fingerprint, so a repeat test run cannot serve the in-process probe cache
+	// and skip the snapshot write this test asserts on; go itself lives outside
+	// the deny root, so the probe still runs.
+	results := environment.RunProbesWithOptions(context.Background(), []string{"go version"}, environment.ProbeOptions{SnapshotDir: dir, DenyRoots: []string{dir}})
 	if len(results) != 1 || !results[0].Found {
 		t.Fatalf("probe results = %+v, want a found go version probe", results)
 	}
