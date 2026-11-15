@@ -182,7 +182,13 @@ export function DagBackupCleanupSection({ t, busy, showHint = true }: { t: Trans
             </>
           )}
           <div className="settings-actions">
-            {plan.error === "" && plan.remainingMigrations === 0 && plan.deletable.length > 0 && (
+            {/* tl1595：执行键门对 error 用 (error ?? "") === ""——Go 侧 Error 带
+                error,omitempty（dag_migration.go），成功响应整个键缺席=wire 上是
+                undefined 而非空串；旧判据 `=== ""` 把成功当失败，确认按钮永不
+                渲染（清理入口不可达，包93 复验 06-confirm-btn-missing.png）。
+                undefined 与 "" 同视为「无错误」；非空 error 仍拦在门外（错误
+                路径零回退，负钉 ⑮）。 */}
+            {(plan.error ?? "") === "" && plan.remainingMigrations === 0 && plan.deletable.length > 0 && (
               <button type="button" className="btn btn--small" disabled={busy} onClick={() => void run()}>
                 {t("settings.dagBackupCleanup.confirm", { del: plan.deletable.length })}
               </button>
