@@ -205,7 +205,10 @@ func (a *App) EnqueueInboxFollowupWithInvocations(tabID, display, submit string,
 	return a.enqueueInbox(tabID, sessioninbox.IntentFollowup, display, submit, invocations, idempotency, false)
 }
 
-// EnqueueInboxSteer durably queues and attempts mid-turn steer.
+// EnqueueInboxSteer durably queues guidance as a next-turn follow-up.
+// tl1607: without a turnId fence mid-turn injection has a closing-window race
+// (see enqueueInboxWithControllerSource) — use EnqueueInboxSteerForTurn to
+// inject into a known-active turn.
 func (a *App) EnqueueInboxSteer(tabID, display, submit, idempotency string) (InboxReceiptView, error) {
 	return a.enqueueInbox(tabID, sessioninbox.IntentSteer, display, submit, nil, idempotency, true)
 }
@@ -391,18 +394,24 @@ func (a *App) enqueueInboxWithControllerSource(tabID string, ctrl control.Sessio
 		rec sessioninbox.InboxReceipt
 		err error
 	)
-	if trySteer {
-		if turnID != "" {
-			exact, ok := ctrl.(interface {
-				TryEnqueueAndSteerForTurn(string, control.InboxRequest) (sessioninbox.InboxReceipt, error)
-			})
-			if !ok {
-				return InboxReceiptView{}, fmt.Errorf("exact-turn steer is unavailable")
-			}
-			rec, err = exact.TryEnqueueAndSteerForTurn(turnID, req)
-		} else {
-			rec, err = ctrl.TryEnqueueAndSteer(req)
+	// tl1607: turnID=="" 的引导一律走 followup 语义，不再尝试无围栏的当轮
+	// 注入（TryEnqueueAndSteer）。机理：收尾窗口（turn 的 exit flush 与
+	// controller 观测 running=false 之间）内 agent 的 steerRunActive 门仍可
+	// 能为 true，无围栏 steer 会被收进当轮队列，而该轮的消费冲刷已经过去——
+	// 消息不进模型也不进历史（internal/agent Steer 注释的 580 家族
+	// 「消息没进来」机理）。没有精确 turnID 就无法区分「真当轮」与「窗口」，
+	// 唯一消缝语义 = 持久排队为下一轮消息：空闲即派发，运行/收尾中留待
+	// 下一轮（finishing 闸门关窗 kick 消费，见 internal/control
+	// inbox_finishing_gate_test.go 轨迹①）。真正的 mid-turn 注入必须走
+	// turnID 围栏分支（TryEnqueueAndSteerForTurn）。
+	if trySteer && turnID != "" {
+		exact, ok := ctrl.(interface {
+			TryEnqueueAndSteerForTurn(string, control.InboxRequest) (sessioninbox.InboxReceipt, error)
+		})
+		if !ok {
+			return InboxReceiptView{}, fmt.Errorf("exact-turn steer is unavailable")
 		}
+		rec, err = exact.TryEnqueueAndSteerForTurn(turnID, req)
 	} else {
 		rec, err = ctrl.TryEnqueueFollowup(req)
 	}
