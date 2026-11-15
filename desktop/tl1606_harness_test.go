@@ -214,8 +214,19 @@ func newTl1606Session(t *testing.T, dir, seedUser, seedAssistant string) string 
 // the restart 形态's second lifecycle reuses this on the same path.
 func attachTl1606Harness(t *testing.T, dir, path string, rounds []tl1606Round) *tl1606Harness {
 	t.Helper()
-	prov := newTl1606Provider(rounds)
 	events := &tl1606EventLog{}
+	h := attachTl1606HarnessWithSink(t, dir, path, rounds, events)
+	h.events = events
+	return h
+}
+
+// attachTl1606HarnessWithSink is the sink-injecting variant: 断言② holds the
+// TurnDone fan-out by wrapping the controller sink with a gate. The harness
+// event log is still filled when the caller passes a wrapping gate that
+// forwards (tl1606TurnDoneGate in the 断言② file does exactly that).
+func attachTl1606HarnessWithSink(t *testing.T, dir, path string, rounds []tl1606Round, sink event.Sink) *tl1606Harness {
+	t.Helper()
+	prov := newTl1606Provider(rounds)
 	loaded, err := agent.LoadSession(path)
 	if err != nil {
 		t.Fatalf("load session %s: %v", path, err)
@@ -224,7 +235,7 @@ func attachTl1606Harness(t *testing.T, dir, path string, rounds []tl1606Round) *
 	ctrl := control.New(control.Options{
 		Runner:      ag,
 		Executor:    ag,
-		Sink:        events,
+		Sink:        sink,
 		SessionDir:  dir,
 		SessionPath: path,
 	})
@@ -253,7 +264,6 @@ func attachTl1606Harness(t *testing.T, dir, path string, rounds []tl1606Round) *
 		tab:      tab,
 		ctrl:     ctrl,
 		prov:     prov,
-		events:   events,
 		sink:     tab.sink,
 		sessionP: path,
 	}
@@ -343,4 +353,86 @@ func (h *tl1606Harness) turnLedgerSubmissions() []string {
 		}
 	}
 	return ids
+}
+
+// tl1606TurnDoneGate holds the first TurnDone inside its fan-out — the
+// finishing window 断言② submits into. Attach via SetBotSink on the tab sink
+// (the turn_submission_correlation_test.go pattern): the tabEventSink clears
+// its turn reservation only AFTER the bot-sink hop returns, so a gate held
+// here is exactly the production "fan-out keeps admission closed" window.
+// Non-TurnDone events pass through untouched — the fan-out window is a
+// TurnDone-only boundary.
+type tl1606TurnDoneGate struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (g *tl1606TurnDoneGate) Emit(e event.Event) {
+	if g == nil || e.Kind != event.TurnDone {
+		return
+	}
+	g.once.Do(func() { close(g.entered) })
+	<-g.release
+}
+
+func (g *tl1606TurnDoneGate) waitEntered(t *testing.T) {
+	t.Helper()
+	select {
+	case <-g.entered:
+	case <-time.After(15 * time.Second):
+		t.Fatal("tl1606 warmup TurnDone never entered the fan-out")
+	}
+}
+
+func (g *tl1606TurnDoneGate) open() { close(g.release) }
+
+// attachTl1606TabSinkHarness builds the harness with the tabEventSink itself
+// as the controller sink (turn_submission_correlation_test.go 同款装配) —
+// 断言②'s submission chain reads the sink's turn reservation, so TurnStarted/
+// TurnDone must flow through it. The frontend emit is a no-op sink.
+func attachTl1606TabSinkHarness(t *testing.T, dir, path string, rounds []tl1606Round) *tl1606Harness {
+	t.Helper()
+	prov := newTl1606Provider(rounds)
+	loaded, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatalf("load session %s: %v", path, err)
+	}
+	ag := agent.New(prov, tool.NewRegistry(), loaded, agent.Options{}, event.Discard)
+	app := NewApp()
+	app.ctx = context.Background()
+	tab := &WorkspaceTab{
+		ID:            "tl1606_tab_" + filepath.Base(path),
+		Ctrl:          nil, // set below once the controller exists
+		Scope:         "global",
+		WorkspaceRoot: "",
+		Ready:         true,
+		SessionPath:   path,
+		disabledMCP:   map[string]ServerView{},
+	}
+	tab.sink = &tabEventSink{tabID: tab.ID, app: app, ctx: context.Background()}
+	tab.sink.runtimeEvents.emit = func(context.Context, string, ...any) {}
+	ctrl := control.New(control.Options{
+		Runner:      ag,
+		Executor:    ag,
+		Sink:        tab.sink,
+		SessionDir:  dir,
+		SessionPath: path,
+	})
+	t.Cleanup(func() { ctrl.Close() })
+	tab.Ctrl = ctrl
+	app.tabs = map[string]*WorkspaceTab{tab.ID: tab}
+	app.activeTabID = tab.ID
+	ctrl.SetBeforeInboxDispatch(func(c *control.Controller) (func(), error) {
+		return app.beforeInboxDispatch(c)
+	})
+	return &tl1606Harness{
+		t:        t,
+		app:      app,
+		tab:      tab,
+		ctrl:     ctrl,
+		prov:     prov,
+		sink:     tab.sink,
+		sessionP: path,
+	}
 }
