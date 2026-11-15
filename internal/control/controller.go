@@ -5989,6 +5989,25 @@ func (c *Controller) stripCancelledVisibleTurnMessagesAfterWithFallbackAt(idx in
 			i++
 			continue
 		}
+		// tl1602: guidance already injected mid-turn — a consumed steer (user
+		// role, [Mid-turn steer…] prefix) and host-generated guidance — is
+		// provider-visible history the model has already acted on. The loop
+		// below only had LocalOnly/Assistant/Tool branches, so a user-role row
+		// fell through the switch and was silently deleted from the
+		// conversation; the post-cancel SaveRewrite then erased it from disk.
+		// The model had steered on guidance that no transcript, replay, or
+		// later prompt contained (2026-11-15 fatal, 580 family). Steers land
+		// only at tool-round gaps (after a complete result batch), so keeping
+		// them in place never breaks tool-call pairing. Host protocol messages
+		// stay excluded, matching hostGuidanceRows' transcript contract.
+		if m.Role == provider.RoleUser {
+			_, isSteer := agent.SteerText(m.Content)
+			if isSteer || (agent.IsHostGeneratedUserMessage(m) && !agent.IsHostProtocolMessage(m)) {
+				next = append(next, m)
+				i++
+				continue
+			}
+		}
 		// Auto-compaction can install a digest between the pinned current user
 		// message and its recent tool tail. It summarizes pre-turn/current work
 		// that is no longer present verbatim, so keep it provider-visible rather
