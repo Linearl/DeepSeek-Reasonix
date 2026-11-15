@@ -143,6 +143,12 @@ func (r cancelingRunner) Run(_ context.Context, _ string) error {
 
 // The gauge must measure what the trigger measures. Reporting the previous
 // turn's billed usage is how a session displayed 8% while it was compacting.
+// 任务1183/tl1600: the trigger's own input is now the provider-measured anchor
+// (prompt+completion when no chars were appended since), so for a trusted
+// anchor the gauge legitimately reads the last request's prompt+completion —
+// the surviving invariant is gauge == trigger input. The no-anchor leg (the
+// old "never the billed aggregate" shape) stays pinned agent-side
+// (TestContextUsedTokensMatchesTheTriggerInput + TestGaugeAndPanelConsumeObservedAnchor).
 func TestContextSnapshotMeasuresTheTriggerInput(t *testing.T) {
 	prov := &scriptedTurns{turns: [][]provider.Chunk{{
 		{Type: provider.ChunkText, Text: "ok"},
@@ -158,8 +164,15 @@ func TestContextSnapshotMeasuresTheTriggerInput(t *testing.T) {
 
 	want := c.ContextMaintenanceSnapshot().ProjectedTokens
 	used, window := c.ContextSnapshot()
-	if used != want || used == 6888 || window != 1_000_000 {
-		t.Fatalf("ContextSnapshot() = (%d, %d), want (%d, 1000000): the gauge reads the trigger's live input, never the last turn's 6888", used, window, want)
+	if used != want || window != 1_000_000 {
+		t.Fatalf("ContextSnapshot() = (%d, %d), want (%d, 1000000): the gauge reads the trigger's live input", used, window, want)
+	}
+	// 任务1183: with a trusted anchor the trigger judges prompt+completion —
+	// exactly the anchor's arithmetic, so the gauge may read 6888 here.
+	if obs, ok := ag.TrustedObservedContextTokens(); ok {
+		if used != obs {
+			t.Fatalf("gauge = %d, observed anchor = %d; the gauge must ride the anchor like the trigger", used, obs)
+		}
 	}
 }
 
