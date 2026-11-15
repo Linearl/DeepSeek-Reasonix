@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -286,5 +288,66 @@ func TestPersistedAnchorLegacyMetaWithoutField(t *testing.T) {
 	a.sess.output.contextBaseline.Store(nil)
 	if _, ok := a.observedContextTokens(a.modelVisibleMessages()); ok {
 		t.Fatalf("accepted an anchor from a pre-tl1570 meta without the field")
+	}
+}
+
+// tl1600: a fold install replaces the measured view (receipt.CacheBreak), so
+// the real-usage anchor describing the pre-fold request must die with it —
+// in memory, in the persist throttle mirror, and in the .jsonl.meta sidecar.
+// The shrink guard only holds until the turn's appends re-cross the stale
+// coveredChars: at that point a surviving anchor wakes and re-prices the new
+// view at the pre-fold count, overshooting by the folded region's real cost —
+// the trigger then fires while the estimator (what the gauge displayed) sits
+// below the line (the 20261115 新13 16:47 incident: receipt 678225 < fold,
+// deciding est above it). After the clear the anchor stays dead until the next
+// trusted sample re-arms it on the NEW view, including across a restart.
+func TestFoldInstallClearsContextBaseline(t *testing.T) {
+	path := tl1570TranscriptPath(t)
+	prov := &scriptedProvider{name: "vision", turns: [][]provider.Chunk{
+		{{Type: provider.ChunkText, Text: "compacted briefing"}, {Type: provider.ChunkDone}},
+	}}
+	a := tl1570Agent(t, prov, path, "model-a")
+	visible := a.modelVisibleMessages()
+	covered := int64(charsOfMessages(visible)) - 10
+	tl1570StoreAnchor(a, 3000, 120, covered) // 3000 >= fold 2500: the anchor crosses the line
+	if _, ok := a.observedContextTokens(visible); !ok {
+		t.Fatalf("precondition: trusted anchor rejected")
+	}
+	if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if prov.call < 1 {
+		t.Fatalf("fixture drift: fold never reached the summarizer")
+	}
+	if r := a.sess.compactionState.LastReceipt; r == nil || r.Status != "applied" {
+		t.Fatalf("fixture drift: fold did not install (receipt %+v)", r)
+	}
+	if a.sess.output.contextBaseline.Load() != nil {
+		t.Fatalf("fold install left the pre-fold anchor in memory")
+	}
+	if a.sess.output.lastPersistedBaseline.Load() != nil {
+		t.Fatalf("fold install left the persist throttle mirror behind")
+	}
+	m, ok, err := LoadBranchMeta(path)
+	if err != nil || !ok {
+		t.Fatalf("meta sidecar missing: ok=%v err=%v", ok, err)
+	}
+	if m.ContextBaseline != nil {
+		t.Fatalf("fold install left the stale anchor in the sidecar")
+	}
+	// Wake-up pin: appends past the stale coveredChars must not resurrect the
+	// anchor — the cleared state stays dead until a trusted sample re-arms it.
+	a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: strings.Repeat("x", 4096)})
+	grown := a.modelVisibleMessages()
+	if int64(charsOfMessages(grown)) <= covered {
+		t.Fatalf("fixture drift: appended view %d still under covered %d", charsOfMessages(grown), covered)
+	}
+	if _, ok := a.observedContextTokens(grown); ok {
+		t.Fatalf("cleared anchor woke up after the fold and re-priced the new view at the pre-fold count")
+	}
+	// Restart leg: the sidecar must not re-arm a fold-cleared anchor.
+	b := tl1570Agent(t, &failingSummaryProvider{}, path, "model-a")
+	if _, ok := b.observedContextTokens(b.modelVisibleMessages()); ok {
+		t.Fatalf("restart re-armed a fold-cleared anchor from the sidecar")
 	}
 }

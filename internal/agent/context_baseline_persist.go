@@ -96,6 +96,65 @@ func (a *Agent) persistContextBaseline(s *contextBaselineState) {
 	a.sess.output.lastPersistedBaseline.Store(s)
 }
 
+// clearContextBaseline drops the real-usage anchor after a view-changing
+// projection install (fold/summary commit, prune/truncate rescue — every
+// applied receipt with CacheBreak). The anchor describes one measured request
+// shape; after the install that shape no longer exists, and its own shrink
+// guard (curChars < coveredChars) only holds until the turn's appends re-cross
+// the stale coveredChars — at which point the anchor wakes and re-prices the
+// new view at the OLD request's real count, overshooting by the folded (or
+// pruned) region's real cost. That overshoot is the tl1600 measured trigger
+// contradiction: the deciding est jumped above the line while the estimator
+// (the number the gauge displayed) sat below it. Clearing at install makes the
+// anchor dead until the next trusted sample re-anchors the NEW view — the
+// estimator serves the gap exactly as the pre-1183 behavior did.
+//
+// Best-effort by the same contract as persistContextBaseline: the in-memory
+// clear is unconditional, the sidecar rewrite retries on the next trusted
+// sample if the meta lock is busy.
+func (a *Agent) clearContextBaseline() {
+	if a == nil {
+		return
+	}
+	a.sess.output.contextBaseline.Store(nil)
+	a.sess.output.lastPersistedBaseline.Store(nil)
+	a.clearPersistedContextBaseline()
+}
+
+// clearPersistedContextBaseline rewrites the .jsonl.meta sidecar without its
+// context_baseline field so a restart cannot re-arm an anchor whose measured
+// view no longer exists (loadPersistedContextBaseline would otherwise revive
+// the wake-up overshoot across the restart, the exact leg tl1570 added).
+func (a *Agent) clearPersistedContextBaseline() {
+	if a == nil {
+		return
+	}
+	path := a.SessionPath()
+	if path == "" {
+		return
+	}
+	unlock, ok, err := tryLockSessionMetaPath(path)
+	if err != nil || !ok {
+		// Lock busy: the next trusted sample's persistContextBaseline overwrites
+		// the stale anchor anyway; until then the shrink guard plus the load-time
+		// gates bound the damage the same way they did pre-clear.
+		return
+	}
+	defer unlock()
+	m, err := ensureBranchMetaUnlocked(path)
+	if err != nil {
+		slog.Warn("tl1600: context baseline clear read-back failed", "path", path, "err", err)
+		return
+	}
+	if m.ContextBaseline == nil {
+		return
+	}
+	m.ContextBaseline = nil
+	if err := saveBranchMeta(path, m, false); err != nil {
+		slog.Warn("tl1600: context baseline clear write failed", "path", path, "err", err)
+	}
+}
+
 // loadPersistedContextBaseline reads the persisted anchor back from the
 // session's .jsonl.meta sidecar and applies the tl1570 validity gates:
 //

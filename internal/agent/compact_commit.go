@@ -52,6 +52,12 @@ func (a *Agent) commitSummaryProjection(commit summaryProjectionCommit) (Compact
 	}
 	receipt := state.LastReceipt
 	a.sess.compactionMu.Unlock()
+	// tl1600: the installed fold replaced the measured view (receipt.CacheBreak);
+	// the real-usage anchor describing the pre-fold request must die with it or
+	// it re-prices the post-fold view at the pre-fold count once appends re-cross
+	// the stale coveredChars (the wake-up overshoot behind the 57%-trigger
+	// contradiction). The next trusted sample re-anchors the new view.
+	a.clearContextBaseline()
 	a.emitContextMaintenance(receipt)
 	return state, nil
 }

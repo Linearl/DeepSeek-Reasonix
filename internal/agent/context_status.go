@@ -86,9 +86,18 @@ func (a *Agent) ContextMaintenanceSnapshot() ContextMaintenanceSnapshot {
 	if valid && len(state.Projection.Messages) > 0 {
 		uiCheckpoint = stateCheckpointState(checkpointState, state)
 	}
+	projectedTokens := a.estimatedVisibleRequestTokens(visible)
+	// 任务1183/tl1600: the trigger judges the provider-usage anchor over this
+	// estimate (context_manager.go prepareOnce); the panel's projection figure
+	// must ride the same override so the gauge, the panel and the trigger read
+	// one caliber. Same scope as ContextUsedTokens: the anchor only — degraded
+	// states keep the view-sized read plus the ProjectionValid label.
+	if obs, ok := a.observedContextTokens(visible); ok {
+		projectedTokens = obs
+	}
 	snapshot := ContextMaintenanceSnapshot{
 		CanonicalTokens:   a.estimatedVisibleRequestTokens(canonical),
-		ProjectedTokens:   a.estimatedVisibleRequestTokens(visible),
+		ProjectedTokens:   projectedTokens,
 		ProjectionValid:   valid,
 		FoldTrigger:       trigger,
 		TriggerTokens:     trigger,

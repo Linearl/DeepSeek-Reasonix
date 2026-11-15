@@ -77,6 +77,10 @@ func (a *Agent) installMaintenanceProjection(in maintenanceInstall) (bool, error
 	}
 	a.sess.checkpointState = "applied"
 	a.sess.compactionMu.Unlock()
+	// tl1600: same anchor contract as the fold commit (compact_commit.go) — the
+	// prune/truncate/clear install replaced the measured view (CacheBreak), so
+	// the stale anchor dies here instead of waking into an overshoot later.
+	a.clearContextBaseline()
 	a.emitContextMaintenance(receipt)
 	return true, nil
 }
