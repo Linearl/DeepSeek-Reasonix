@@ -579,6 +579,10 @@ export function RecoveryCopiesSection() {
   const [preRepairError, setPreRepairError] = useState("");
   const [preRepairOpen, setPreRepairOpen] = useState(false);
   const [preRepairPreviewing, setPreRepairPreviewing] = useState<string | null>(null);
+  // tl1603: 清理面——勾选集（按备份目录路径记）、单删/批量的在途标记。批量
+  // 回执的拒绝行落面板 errors 列（与其它清理入口同一反馈面），成功走 toast。
+  const [preRepairSelected, setPreRepairSelected] = useState<Set<string>>(new Set());
+  const [preRepairBusy, setPreRepairBusy] = useState(false);
   // pickedChain names the branch the user chose to win, keyed by main path. Empty
   // means "let the engine take the fullest one". Keyed per conversation so a pick
   // in one group never leaks into another.
@@ -892,6 +896,110 @@ export function RecoveryCopiesSection() {
       cancelLabel: t("common.cancel"),
     });
   };
+
+  // tl1603: 改写前备份的手动清理（单删+批量）。后端是 E5 判据的权威闸（非唯
+  // 一退路+宿主健康，见 Go pre_repair_cleanup.go）：列表的 deletable 初判只
+  // 决定按钮可用性，删除桥的拒绝才是终审——初判可删但宿主已病变的行，点击
+  // 后收到诚实的拒删原因。删除走 OS 回收站（可原位还原），确认弹窗言明。
+  // 拒绝行的按钮禁用并在行内落原因（拒删提示不藏 hover）。
+  const preRepairCanCleanup =
+    typeof app.DeletePreRepairBackup === "function" && typeof app.DeletePreRepairBackups === "function";
+
+  const deletePreRepair = async (view: PreRepairBackupView) => {
+    if (!preRepairCanCleanup || preRepairBusy) return;
+    const ok = await confirm({
+      title: t("settings.recoveryCopiesPreRepairDeleteTitle"),
+      message: (
+        <div>
+          <p>
+            {view.label} · {formatBytes(view.bytes)} · {formatWhen(view.modifiedAt)}
+          </p>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairRecycleNote")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesPreRepairDelete"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!ok) return;
+    setPreRepairBusy(true);
+    try {
+      await app.DeletePreRepairBackup(view.dir);
+      showToast(t("settings.recoveryCopiesPreRepairCleanDone").replace("{n}", "1"), "info");
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErrors((current) => [...current, `${view.label}: ${message}`]);
+      showToast(`${t("settings.recoveryCopiesPreRepairDeleteFailed")}：${message}`, "error");
+    } finally {
+      setPreRepairBusy(false);
+    }
+  };
+
+  /** cleanPreRepairBatch is both batch entries (清理所选 / 清理全组). The whole
+   *  set is handed to the backend as-is: the authoritative E5 gate trashes the
+   *  deletable ones and returns one refusal line per kept one, so a sole-copy
+   *  backup is reported (not silently skipped) and the receipt is auditable.
+   *  typeof 守卫同 load() 的旧 harness 先例：Partial stub 上是同步 throw。 */
+  const cleanPreRepairBatch = async (targets: PreRepairBackupView[]) => {
+    if (!preRepairCanCleanup || targets.length === 0 || preRepairBusy) return;
+    const kept = targets.filter((v) => v.deletable === false);
+    const totalBytes = targets.reduce((n, v) => n + v.bytes, 0);
+    const ok = await confirm({
+      title: t("settings.recoveryCopiesPreRepairCleanTitle"),
+      message: (
+        <div>
+          <p>
+            {t("settings.recoveryCopiesPreRepairCleanLead")
+              .replace("{count}", String(targets.length))
+              .replace("{bytes}", formatBytes(totalBytes))}
+          </p>
+          {kept.length > 0 ? (
+            <p className="rc-muted">
+              {t("settings.recoveryCopiesPreRepairCleanKept").replace("{n}", String(kept.length))}
+            </p>
+          ) : null}
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairRecycleNote")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesPreRepairCleanConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!ok) return;
+    setPreRepairBusy(true);
+    try {
+      const run = await app.DeletePreRepairBackups(targets.map((v) => v.dir));
+      if (run.trashed > 0) {
+        showToast(
+          `${t("settings.recoveryCopiesPreRepairCleanDone").replace("{n}", String(run.trashed))} · ${formatBytes(run.trashedBytes)}`,
+          "info",
+        );
+      }
+      for (const failure of run.failures ?? []) {
+        const reason =
+          failure.reason === "sole-copy"
+            ? t("settings.recoveryCopiesPreRepairBlockedSoleCopy")
+            : failure.detail || failure.reason;
+        setErrors((current) => [...current, `${failure.label}: ${reason}`]);
+      }
+      if (run.trashed === 0 && run.failed > 0) {
+        showToast(t("settings.recoveryCopiesPreRepairCleanRefused").replace("{n}", String(run.failed)), "error");
+      }
+      await load();
+    } finally {
+      setPreRepairBusy(false);
+      setPreRepairSelected(new Set());
+    }
+  };
+
+  const togglePreRepairSelected = (dir: string) =>
+    setPreRepairSelected((current) => {
+      const next = new Set(current);
+      if (next.has(dir)) next.delete(dir);
+      else next.add(dir);
+      return next;
+    });
 
   /** 任务 1064：v3 版本块里的单版本删除。与父级的批量删除共用同一条确认与
    *  回收语义（后端 retire 标记：不选中就不可删，删后条目从列表消失、独有
@@ -2683,18 +2791,6 @@ export function RecoveryCopiesSection() {
                       </div>
                     ) : (
                       <>
-                        {errors.length > 0 && (
-                          <div className="banner banner--error" role="alert">
-                            <ul className="rc-errors">
-                              {/* key 用下标不用文案本身：同一句话重复出现（如两行同时
-                                  遇到同一个重放拒绝）时，按文案取 key 会让 React 报
-                                  重复 key 警告并把两行折叠成一行。 */}
-                              {errors.map((message, index) => (
-                                <li key={index}>{message}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
                         {/* tl1415b: 全页一张表——唯一表头(sticky+不透明背景,表头
                             下滑遮盖行内容),「类型」列替代一切分组横条与小表。 */}
                         <table className="rc-versions__table rc-maintable">
@@ -2746,12 +2842,32 @@ export function RecoveryCopiesSection() {
                       </>
                     )}
 
+                    {/* 任务 1368 同族（tl1603）：错误回执从「列表非空」分支提升到
+                        与空态平级——零副本组但带改写前备份的机器（tl1603 的目标
+                        受众）批量清理被拒时，拒绝原因若挂在非空分支里就会被空态
+                        吞掉。列表状态管列表，回执状态管回执，互不吞并。 */}
+                    {errors.length > 0 && (
+                      <div className="banner banner--error" role="alert">
+                        <ul className="rc-errors">
+                          {/* key 用下标不用文案本身：同一句话重复出现（如两行同时
+                              遇到同一个重放拒绝）时，按文案取 key 会让 React 报
+                              重复 key 警告并把两行折叠成一行。 */}
+                          {errors.map((message, index) => (
+                            <li key={index}>{message}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {/* tl1572: 改写前备份（pre-repair）分区——Diet 通知承诺
                         「面板可查看」的兑现面。无论副本/版本列表是否为空都渲染
                         （被 Diet 过的会话可以既无副本又无 heads，备份那时是唯一
                         的独立读数）。收口口径=查看（只读），不承诺切回（备份树
-                        不在 lineage，adopt 会被后端拒绝）。全部复用既有 class，
-                        零新 CSS。 */}
+                        不在 lineage，adopt 会被后端拒绝）。
+                        tl1603: 增清理能力——行内勾选+删除钮（deletable 初判为
+                        假的行按钮禁用并落拒删原因）、分区头「清理所选/清理全
+                        组」。删除走 OS 回收站，后端是 E5 判据权威闸。全部复用
+                        既有 class，零新 CSS。 */}
                     <div className="rc-versions__health" data-pre-repair-section="">
                       <button
                         className="btn btn--secondary btn--small"
@@ -2763,6 +2879,33 @@ export function RecoveryCopiesSection() {
                         {t("settings.recoveryCopiesPreRepairGroup")} · {preRepairs.length} ·{" "}
                         {formatBytes(preRepairs.reduce((n, b) => n + b.bytes, 0))}
                       </button>
+                      {preRepairCanCleanup && preRepairs.length > 0 ? (
+                        <>
+                          <button
+                            className="btn btn--secondary btn--small"
+                            type="button"
+                            data-pre-repair-clean-selected=""
+                            disabled={busy || preRepairBusy || preRepairSelected.size === 0}
+                            onClick={() =>
+                              void cleanPreRepairBatch(preRepairs.filter((v) => preRepairSelected.has(v.dir)))
+                            }
+                          >
+                            {preRepairBusy
+                              ? "…"
+                              : t("settings.recoveryCopiesPreRepairCleanSelected")
+                                  .replace("{n}", String(preRepairSelected.size))}
+                          </button>
+                          <button
+                            className="btn btn--secondary btn--small"
+                            type="button"
+                            data-pre-repair-clean-all=""
+                            disabled={busy || preRepairBusy}
+                            onClick={() => void cleanPreRepairBatch(preRepairs)}
+                          >
+                            {t("settings.recoveryCopiesPreRepairCleanAll")}
+                          </button>
+                        </>
+                      ) : null}
                       {preRepairError ? (
                         <div className="rc-muted" data-pre-repair-error="">
                           {t("settings.recoveryCopiesPreRepairFailed")}：{preRepairError}
@@ -2773,27 +2916,67 @@ export function RecoveryCopiesSection() {
                           <div className="rc-muted">{t("settings.recoveryCopiesPreRepairNone")}</div>
                         ) : (
                           <ul className="rc-versions__issues" data-pre-repair-list="">
-                            {preRepairs.map((view) => (
-                              <li key={view.dir} title={view.dir}>
-                                {view.label} · {formatWhen(view.modifiedAt)} · {formatBytes(view.bytes)}
-                                {!view.ownerPath
-                                  ? ` · ${t("settings.recoveryCopiesPreRepairOrphan")}`
-                                  : null}
-                                {view.transcript ? (
-                                  <button
-                                    className="btn btn--small"
-                                    type="button"
-                                    data-pre-repair-view=""
-                                    disabled={preRepairPreviewing !== null}
-                                    onClick={() => void previewPreRepair(view)}
-                                  >
-                                    {preRepairPreviewing === view.dir
-                                      ? "…"
-                                      : t("settings.recoveryCopiesPreRepairView")}
-                                  </button>
-                                ) : null}
-                              </li>
-                            ))}
+                            {preRepairs.map((view) => {
+                              const blocked = view.deletable === false;
+                              return (
+                                <li key={view.dir} title={view.dir}>
+                                  {preRepairCanCleanup ? (
+                                    <input
+                                      type="checkbox"
+                                      data-pre-repair-check=""
+                                      checked={preRepairSelected.has(view.dir)}
+                                      disabled={busy || preRepairBusy}
+                                      onChange={() => togglePreRepairSelected(view.dir)}
+                                      aria-label={view.label}
+                                    />
+                                  ) : null}{" "}
+                                  {view.label} · {formatWhen(view.modifiedAt)} · {formatBytes(view.bytes)}
+                                  {!view.ownerPath
+                                    ? ` · ${t("settings.recoveryCopiesPreRepairOrphan")}`
+                                    : null}
+                                  {blocked ? (
+                                    <span className="rc-muted" data-pre-repair-blocked="">
+                                      {" "}
+                                      · {t("settings.recoveryCopiesPreRepairBlockedSoleCopy")}
+                                    </span>
+                                  ) : null}
+                                  {view.transcript ? (
+                                    <button
+                                      className="btn btn--small"
+                                      type="button"
+                                      data-pre-repair-view=""
+                                      disabled={preRepairPreviewing !== null}
+                                      onClick={() => void previewPreRepair(view)}
+                                    >
+                                      {preRepairPreviewing === view.dir
+                                        ? "…"
+                                        : t("settings.recoveryCopiesPreRepairView")}
+                                    </button>
+                                  ) : null}
+                                  {preRepairCanCleanup ? (
+                                    <button
+                                      className="btn btn--secondary btn--small"
+                                      type="button"
+                                      data-pre-repair-delete=""
+                                      disabled={
+                                        busy ||
+                                        preRepairBusy ||
+                                        blocked ||
+                                        preRepairPreviewing !== null
+                                      }
+                                      title={
+                                        blocked
+                                          ? t("settings.recoveryCopiesPreRepairBlockedSoleCopy")
+                                          : t("settings.recoveryCopiesPreRepairDeleteHint")
+                                      }
+                                      onClick={() => void deletePreRepair(view)}
+                                    >
+                                      {t("settings.recoveryCopiesPreRepairDelete")}
+                                    </button>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
                           </ul>
                         )
                       ) : null}
