@@ -897,7 +897,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Execution modes no longer exist. Host obligations are fact-driven and
 	// never rewrite the cache-stable system prefix or tool schemas.
 	if cfg.EnvironmentEnabled() {
-		shellLabel := resolvedShellLabel(shell, cfg.Tools.Shell.Path)
+		// tl1614: the label is debounce-persisted like the probes below it —
+		// first boot pins it, later boots keep serving the persisted value
+		// until [tools.shell] config changes (see shell_label_snapshot.go).
+		shellLabel := stableShellLabel(shell, cfg.Tools.Shell.Prefer, cfg.Tools.Shell.Path, config.CacheDir(), sink)
 		envSection := environment.FormatSection(
 			environment.RunProbesWithOptions(ctx, environment.DefaultProbes(), environment.ProbeOptions{
 				Overrides: cfg.Environment.Tools,
