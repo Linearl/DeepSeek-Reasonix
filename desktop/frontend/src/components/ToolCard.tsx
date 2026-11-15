@@ -7,7 +7,7 @@ import { CodeViewer } from "./CodeViewer";
 import { DiffView } from "./DiffView";
 import { useT } from "../lib/i18n";
 import { formatDurationLabel, formatRelativeAgeLabel } from "../lib/durationFormat";
-import { diffsFor, languageForToolArgs, streamingToolSubject, subjectOf, summarize, summarizeFileDiff } from "../lib/tools";
+import { diffsFor, languageForToolArgs, shellCommandOf, streamingToolSubject, subjectOf, summarize, summarizeFileDiff } from "../lib/tools";
 import { capabilityInspectSchema } from "../lib/capabilityInspect";
 import { useShellExpand } from "../lib/shellExpand";
 import { app } from "../lib/bridge";
@@ -352,7 +352,10 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
     ? t("sources.noValid")
     : t("tool.searchResults", { n: searchVisibleCount });
   const isShellCard = Boolean(item.isShell || item.name === "bash" || execution);
-  const shellCommand = isShellCard ? subjectOf("bash", effectiveArgs) : "";
+  // tl1613: the command block reads the raw command directly (never the
+  // description) so the two-layer card keeps "human title on the collapsed
+  // row, verbatim command in the expandable body".
+  const shellCommand = isShellCard ? shellCommandOf(effectiveArgs) : "";
   const displayOutput = isWebSearch || toolOutputDuplicatesError(effectiveOutput, item.error) ? undefined : effectiveOutput;
   // tl1438: a use_capability inspect output carries the machine schema layer
   // (per-param rows derived from the engine's registered schema). Rendered as

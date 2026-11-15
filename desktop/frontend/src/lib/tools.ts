@@ -36,6 +36,17 @@ function str(a: Record<string, unknown>, key: string): string {
   return typeof a[key] === "string" ? (a[key] as string) : "";
 }
 
+// tl1613: the model-filled description arg (present on bash/grep/glob/
+// read_file/edit_file/write_file/multi_edit/task) becomes the collapsed
+// card's human title. A whitespace-only value never qualifies — it would
+// blank the subject instead of falling through to the raw subject.
+function descriptionTitle(a: Record<string, unknown>): string {
+  const value = a.description;
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return trimmed === "" ? "" : trimmed;
+}
+
 function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
@@ -54,16 +65,24 @@ export function summarizeFileDiff(fileDiff?: ToolFileDiff): string {
 }
 
 // subjectOf pulls the most informative one-liner out of a call's args — the
-// command for bash, the pattern for search, the path for file tools, the
-// description for a sub-task — so the collapsed row reads at a glance.
+// human description for the tools that carry one (falling back to the raw
+// command/pattern/path so description-less and pre-tl1613 calls render
+// exactly as before), the command for bash, the pattern for search, the path
+// for file tools, the description for a sub-task — so the collapsed row reads
+// at a glance.
 export function subjectOf(name: string, args: string): string {
   const a = parse(args);
   switch (name) {
     case "bash":
-      return str(a, "command");
+      return descriptionTitle(a) || str(a, "command");
     case "grep":
     case "glob":
-      return str(a, "pattern") || str(a, "path");
+      return descriptionTitle(a) || str(a, "pattern") || str(a, "path");
+    case "read_file":
+    case "edit_file":
+    case "write_file":
+    case "multi_edit":
+      return descriptionTitle(a) || str(a, "path") || str(a, "file_path");
     case "web_fetch":
       return str(a, "url");
     case "web_search":
@@ -91,6 +110,14 @@ export function subjectOf(name: string, args: string): string {
   }
 }
 
+// shellCommandOf extracts the raw shell command for the card's expandable
+// command block. Deliberately independent of subjectOf: since tl1613 the
+// subject prefers the model-filled description, but the command block stays
+// verbatim — the two-layer card is "human title + raw command on demand".
+export function shellCommandOf(args: string): string {
+  return str(parse(args), "command");
+}
+
 // tl1475: while a call's arguments are still streaming, the payload is half-
 // written JSON — subjectOf's strict parse yields nothing and the pending card
 // would show no subject at all. streamingToolSubject scans the excerpt's HEAD
@@ -109,12 +136,19 @@ export function streamingToolSubject(name: string, preview: string): string {
   return "";
 }
 
-// Mirrors subjectOf's key mapping for the streaming phase.
+// Mirrors subjectOf's key mapping for the streaming phase. tl1613: the
+// description key is tried first wherever subjectOf prefers it — during
+// streaming the tolerant scanner simply falls through to the raw key until
+// the description value arrives.
 function streamingSubjectKeys(name: string): string[] {
   switch (name) {
-    case "bash": return ["command"];
+    case "bash": return ["description", "command"];
     case "grep":
-    case "glob": return ["pattern", "path"];
+    case "glob": return ["description", "pattern", "path"];
+    case "read_file":
+    case "edit_file":
+    case "write_file":
+    case "multi_edit": return ["description", "path", "file_path"];
     case "web_fetch": return ["url"];
     case "web_search": return ["query"];
     case "task": return ["description", "prompt"];
