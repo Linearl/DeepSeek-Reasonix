@@ -17,6 +17,7 @@ type contextUsage struct {
 	calibration        *promptTokenCalibration
 	tools              *tool.Registry
 	toolSchemaRevision uint64
+	baseline           *contextBaselineState
 	tokens             int
 }
 
@@ -25,6 +26,15 @@ type contextUsage struct {
 // gauge fed from the last turn's usage instead lags a turn, counts completion
 // tokens the trigger ignores, and reads zero on a rebound session — which is
 // how a session displays 8% while it is compacting.
+//
+// 任务1183/tl1600: the trigger's Prepare overrides this estimate with the
+// provider-measured anchor (observedContextTokens, context_manager.go) — the
+// gauge must ride the same override or the display contradicts the compaction
+// the user is watching (the 20261115 新13 incident: the gauge sat in the 50s
+// while the trigger judged the anchor above the line). The degraded-state
+// occupancy override (tailView/stale-serving) stays trigger-only: those states
+// announce themselves through the panel's ProjectionValid label, and the gauge
+// keeps answering "what the next request sends".
 func (a *Agent) ContextUsedTokens() int {
 	if a == nil {
 		return 0
@@ -38,21 +48,28 @@ func (a *Agent) ContextUsedTokens() int {
 	calibration := a.sess.output.promptCalibration.Load()
 	tools := a.svc.tools
 	toolSchemaRevision := tools.SchemaRevision()
+	baseline := a.sess.output.contextBaseline.Load()
 	if cached := a.sess.output.contextUsage.Load(); cached != nil &&
 		cached.transcriptVersion == transcriptVersion &&
 		cached.projectionVersion == projectionVersion &&
 		cached.calibration == calibration &&
 		cached.tools == tools &&
-		cached.toolSchemaRevision == toolSchemaRevision {
+		cached.toolSchemaRevision == toolSchemaRevision &&
+		cached.baseline == baseline {
 		return cached.tokens
 	}
-	tokens := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
+	visible := a.modelVisibleMessages()
+	tokens := a.estimatedVisibleRequestTokens(visible)
+	if obs, ok := a.observedContextTokens(visible); ok {
+		tokens = obs
+	}
 	a.sess.output.contextUsage.Store(&contextUsage{
 		transcriptVersion:  transcriptVersion,
 		projectionVersion:  projectionVersion,
 		calibration:        calibration,
 		tools:              tools,
 		toolSchemaRevision: toolSchemaRevision,
+		baseline:           baseline,
 		tokens:             tokens,
 	})
 	return tokens

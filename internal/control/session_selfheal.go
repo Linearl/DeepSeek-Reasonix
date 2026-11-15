@@ -132,27 +132,35 @@ func (c *Controller) SelfHealOpenSession(windowTokens int) SelfHealOpenOutcome {
 				// 字节」窗口里的同进程 baseline 竞态 → recovery 副本 fork）。
 				// tl1506：预检判据不变（计价口径估算）；实账触发但估算门判
 				// 「无需」时在 else 分支留痕，不静默 no-op。
-				_, actions, changed := agent.DietSessionMessages(s.Snapshot(), windowTokens)
-				if changed {
-					if err := s.RewriteAndSaveCompact(path, "selfheal_diet", func(complete []provider.Message) []provider.Message {
-						f, acts, ch := agent.DietSessionMessages(complete, windowTokens)
-						actions = acts
-						if !ch {
-							return complete
-						}
-						return f
-					}); err != nil {
-						slog.Warn("selfheal: diet rewrite failed", "path", path, "err", err)
-						out.Detail = strings.TrimPrefix(out.Detail+"&", "&") + "diet_failed"
-					} else {
-						out.Dieted = true
-						for _, a := range actions {
-							if a.Status == "done" {
-								out.Actions = append(out.Actions, a.Action)
+					_, actions, changed := agent.DietSessionMessages(s.Snapshot(), windowTokens)
+					if changed {
+						if err := s.RewriteAndSaveCompact(path, "selfheal_diet", func(complete []provider.Message) []provider.Message {
+							f, acts, ch := agent.DietSessionMessages(complete, windowTokens)
+							actions = acts
+							if !ch {
+								return complete
 							}
+							return f
+						}); err != nil {
+							slog.Warn("selfheal: diet rewrite failed", "path", path, "err", err)
+							out.Detail = strings.TrimPrefix(out.Detail+"&", "&") + "diet_failed"
+						} else {
+							out.Dieted = true
+							for _, a := range actions {
+								if a.Status == "done" {
+									out.Actions = append(out.Actions, a.Action)
+								}
+							}
+							// tl1601: same rule as the agent-side overflow diet — the
+							// rewrite replaced the canonical the installed fold was
+							// fingerprinted against, so the fold can never validate
+							// again and the tl1203 stale-serving rebuild cannot make
+							// progress over the degenerate coverage. Drop the stale
+							// fold (keeps it only if it still matches) and let the
+							// fresh rebuild fold the small transcript.
+							c.executor.InvalidateProjectionIfStale()
 						}
-					}
-				} else if report.TokenSource == agent.HealthTokenSourceUsageActual {
+					} else if report.TokenSource == agent.HealthTokenSourceUsageActual {
 					// tl1506：实账判超窗、计价估算判未超（两口径在估算器残差
 					// 带内可能分叉）。不静默 no-op——留痕说明判定来源分叉，
 					// 下次打开（无实账段或实账变化）会按当次口径重判。

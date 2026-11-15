@@ -212,4 +212,17 @@ func (a *Agent) runOverflowDiet(s *Session, reason string, est int) {
 		"path", filepath.Base(path), "reason", reason, "actions", strings.Join(names, "+"),
 		"estimate_tokens_before", est, "estimate_tokens_after", estimateProjectionTokens(folded),
 		"window_tokens", window, "verify", verifyStatus, "backup", backupDir)
+	// tl1601: the diet replaced the canonical the projection's covered prefix
+	// was fingerprinted against — the installed fold can never validate again
+	// (covered_count > the dieted canonical, or a stripped-image byte drift
+	// inside the covered prefix). Leaving it installed parks the session in
+	// tl1203 stale-serving limbo: the wire serves the pre-diet fold, the
+	// post-invalidation rebuild cannot make progress over the degenerate
+	// coverage (the 20261115 新13 incident parked two rebuild rounds at
+	// 17:44:14/17:47:41 with the 566K stale fold serving a 141-message
+	// canonical), and the reopened tab reads as stuck. The rewind path already
+	// owns this rule (InvalidateProjectionIfStale after its rewrite); the diet
+	// owns it too — drop the fold only when it no longer matches the rewritten
+	// canonical and let the fresh rebuild fold the small transcript.
+	a.InvalidateProjectionIfStale()
 }

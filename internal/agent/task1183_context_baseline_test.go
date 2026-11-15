@@ -228,6 +228,35 @@ func TestBaselineResetWithTranscript(t *testing.T) {
 	}
 }
 
+// tl1600: the gauge and the maintenance panel must ride the same anchor
+// override the trigger's Prepare applies (context_manager.go), or the display
+// contradicts the compaction the user is watching — the 20261115 新13 incident
+// showed the gauge in the 50s-60s% while the trigger judged the anchor above
+// the line and folded.
+func TestGaugeAndPanelConsumeObservedAnchor(t *testing.T) {
+	a, _ := baselineFixture(t)
+	visible := a.modelVisibleMessages()
+	estimator := a.estimatedVisibleRequestTokens(visible)
+	storeBaseline(a, 3000, 120, int64(charsOfMessages(visible))-10)
+	obs, ok := a.observedContextTokens(visible)
+	if !ok {
+		t.Fatalf("precondition: trusted anchor rejected")
+	}
+	if used := a.ContextUsedTokens(); used != obs {
+		t.Fatalf("gauge = %d, anchor = %d; the gauge must ride the trigger's anchor override", used, obs)
+	}
+	if used := a.ContextUsedTokens(); used == estimator {
+		t.Fatalf("gauge = %d fell back to the estimator despite a trusted anchor", used)
+	}
+	snap := a.ContextMaintenanceSnapshot()
+	if snap.ProjectedTokens != obs {
+		t.Fatalf("panel projection = %d, anchor = %d; the panel must ride the same override", snap.ProjectedTokens, obs)
+	}
+	if want := max(0, a.hardInputCeiling()-obs); snap.Headroom != want {
+		t.Fatalf("headroom = %d, want hard %d - anchor %d = %d", snap.Headroom, a.hardInputCeiling(), obs, want)
+	}
+}
+
 // Delta pricing sanity: growth over the baseline is priced at the session's
 // tokPerChar, completion joins the context, and the anchor dominates the sum.
 func TestObservedTokensFormula(t *testing.T) {
