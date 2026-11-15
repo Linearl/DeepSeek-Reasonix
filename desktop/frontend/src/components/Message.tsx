@@ -434,6 +434,7 @@ export const UserMessage = memo(function UserMessage({
   createdAt,
   onEdit,
   onResend,
+  steerMark = false,
   editDisabled = false,
 }: {
   text: string;
@@ -448,6 +449,11 @@ export const UserMessage = memo(function UserMessage({
    * the edit-and-resend flow (rewind to the turn, re-submit the ORIGINAL
    * payload), just without touching the text. */
   onResend?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
+  /** tl1611: the row materialized a mid-turn steer (reducer stamped
+   * steerProvenance via the 723 inboxItemId pairing) — renders the same ↪
+   * mark the steer bubble and cross-session card heads carry, so the entity
+   * stays distinguishable from a typed message. */
+  steerMark?: boolean;
   editDisabled?: boolean;
 }) {
   const t = useT();
@@ -848,6 +854,15 @@ export const UserMessage = memo(function UserMessage({
           <MergedMessageBody merged={mergedMessage} />
         ) : (
           <>
+            {/* tl1611: mid-turn steer materialized as this user row — same ↪
+                mark language as the steer bubble (steer-line__icon) and the
+                cross-session card head (im-source-card__steer-mark); plain
+                user rows never render it (steerMark=false). */}
+            {steerMark && (
+              <div className="msg__steer-mark" data-transcript-selection-ignore>
+                <span title={t("transcript.steer")} aria-hidden="true">↪</span>
+              </div>
+            )}
             {/* Task 436: the clamp keeps the full text in the DOM — only the
                 visual height folds, so copy/selection and the model context
                 never lose content. */}

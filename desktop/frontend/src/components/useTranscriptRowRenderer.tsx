@@ -102,6 +102,9 @@ export function useTranscriptRowRenderer({
           failed={row.item.failed} createdAt={row.item.createdAt} turn={row.turn}
           anchorId={questionAnchorId(row.item.id)} onEdit={onEditPrompt}
           onResend={onResendPrompt}
+          // tl1611: a steer's next-turn materialization carries the ↪ mark on
+          // the entity row (pairing stamped in the reducer's user_input case).
+          steerMark={row.item.steerProvenance === true}
           editDisabled={rewindDisabled || !checkpoint?.canConversation}
         />;
       }
