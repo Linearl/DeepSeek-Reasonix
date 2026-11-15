@@ -11,6 +11,12 @@
 //      slice 序列化形态）不得崩渲染（原样即「扫描后页面加载失败」P1）。
 //  ⑩⑪⑫ 缺陷③——清理结果改模态面板+表格（标题/时间/体积/状态），旧后端
 //      无 rows 时由 plan 清单合成行（nil 家族防线）。
+// tl1595（20261115 包93 复验回归补钉）追加钉：
+//  ⑭ 干净 plan 的 wire 无 error 键（Go error,omitempty 成功省键）→ 确认按钮
+//      必须渲染——修复前 `plan.error === ""` 对 undefined 判 false，按钮永不
+//      出现=清理入口不可达（复验 06-confirm-btn-missing.png）；
+//  ⑮ 负钉：plan 带非空 error → 错误展示+不给删除键+run 不触达（error 路径
+//      零回退）。
 // 后端语义（倒序删/保留最近一份/归零门/互斥）由 desktop/dag_backup_cleanup_test.go
 // 覆盖；源码契约（挂载位置/键面）由 dag-backup-cleanup.test.ts 钉住。
 
@@ -79,8 +85,9 @@ const PLAN_OK: DagBackupCleanupPlanView = {
   keepBytes: 500,
   deleteBytes: 300,
   remainingMigrations: 0,
-  // 组件的执行键门是 plan.error === ""（undefined 不算过）——fixture 必须照
-  // 后端真实形态带空串。
+  // tl1595 勘误：此处带 error: "" 并非「后端真实形态」——Go 侧 Error 带
+  // error,omitempty（dag_migration.go），成功时整个键缺席=前端读 undefined。
+  // 保留显式空串形态（旧假说下的 wire 也算成功），无键形态由 ⑭ 专钉。
   error: "",
 };
 
@@ -379,6 +386,50 @@ console.log("\nDAG batch cleanup button (tl1573)");
   await flush();
   ok(!document.querySelector("[data-dag-backup-cleanup-result]"), "⑬ escape closes the panel");
   ok(Boolean(buttonByText("DAG batch cleanup")), "⑬ closing returns to the idle entry");
+  await act(async () => root.unmount());
+}
+
+// ⑭ tl1595 回归钉（包93 复验 06-confirm-btn-missing.png）：干净 plan 的 wire
+// 带 error,omitempty（dag_migration.go:350），成功时整个键缺席=plan.error 是
+// undefined。修复前执行键门 `plan.error === ""` 对 undefined 判 false——确认
+// 按钮「删除 N 份旧备份」永不渲染，清理入口 UI 不可达。本钉用无 error 键的
+// plan（真实成功 wire 形态，dev mock 同形态）直击：按钮必须在、流程必须通。
+{
+  const spies: Spies = { planCalls: 0, runCalls: 0 };
+  const root = await mount(spies, {
+    plan: () => ({
+      backups: PLAN_OK.backups,
+      deletable: PLAN_OK.deletable,
+      keepPath: PLAN_OK.keepPath,
+      keepBytes: PLAN_OK.keepBytes,
+      deleteBytes: PLAN_OK.deleteBytes,
+      remainingMigrations: PLAN_OK.remainingMigrations,
+      // 不写 error 键：Go omitempty 成功形态（键缺席=undefined）。
+    }),
+  });
+  await act(async () => { buttonByText("DAG batch cleanup")?.click(); });
+  await flush();
+  ok(Boolean(buttonByText("Delete 1 old backup(s)")), "⑭ the confirm button renders when the wire omits the error key (Go error,omitempty success shape)");
+  ok(!bodyText().includes("not migrated yet") && Boolean(document.querySelector("[data-dag-backup-cleanup-confirm]")), "⑭ the clean plan reads as clean, not blocked");
+  await act(async () => { buttonByText("Delete 1 old backup(s)")?.click(); });
+  await flush();
+  ok(spies.runCalls === 1, "⑭ the confirmed click runs the cleanup on an omitted-error plan");
+  await act(async () => root.unmount());
+}
+
+// ⑮ tl1595 负钉（error 路径零回退）：plan 自带非空 error 时——错误文案展示、
+// 不给删除键、run 不被触达。判据放宽只许吞掉「成功省键」（undefined），不许
+// 吞掉真实失败（非空 error 仍拦在归零门外）。
+{
+  const spies: Spies = { planCalls: 0, runCalls: 0 };
+  const root = await mount(spies, {
+    plan: () => ({ ...PLAN_OK, error: "scan failed: data dir unreadable" }),
+  });
+  await act(async () => { buttonByText("DAG batch cleanup")?.click(); });
+  await flush();
+  ok(bodyText().includes("scan failed: data dir unreadable"), "⑮ a plan-level error is displayed at the confirm step");
+  ok(!buttonByText("Delete 1 old backup(s)"), "⑮ no delete button when the plan carries an error");
+  ok(spies.runCalls === 0, "⑮ the run stays untouched when the plan carries an error");
   await act(async () => root.unmount());
 }
 
