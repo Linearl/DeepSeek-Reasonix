@@ -228,6 +228,17 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 		// (same field a regular user turn embeds), so the very next provider
 		// request carries them; admission is capability-gated upstream.
 		if payload, itemID, ok := a.consumeSteer(); ok {
+			// tl1611: the injected steer message carries a real wall clock.
+			// The durable enqueue time (payload.At, tl1152 contract) outranks
+			// the injection instant; the in-memory face has neither, so the
+			// injection instant is the floor. Without it the persisted record
+			// had CreatedAt=0 — history replay dropped the field (omitempty)
+			// and every surface fell back to its own processing clock
+			// (rebuild-moment bubbles, timestamp-less user rows).
+			steerAt := payload.At
+			if steerAt <= 0 {
+				steerAt = time.Now().UnixMilli()
+			}
 			// tl1608: the steer_cache_key pair brackets the injection so the
 			// log alone confirms or refutes "steer rewrites the prompt prefix
 			// → provider cache invalidated → full prefill". Observation only.
@@ -235,10 +246,10 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 			a.sess.conversation.Add(provider.Message{
 				Role: provider.RoleUser, Origin: provider.MessageOriginUser,
 				Content: a.withTurnPreferences(midTurnSteerMessage(payload.Text)), RawContent: payload.Text,
-				Images: payload.Images,
+				Images: payload.Images, CreatedAt: steerAt,
 			})
 			a.logSteerCacheKeyAfter(steerKeyBefore)
-			a.svc.sink.Emit(event.Event{Kind: event.Steer, Text: payload.Text, ItemID: itemID})
+			a.svc.sink.Emit(event.Event{Kind: event.Steer, Text: payload.Text, ItemID: itemID, At: steerAt})
 			// tl1514 验收④: a fresh steer is the direction change the user just
 			// asked for. The loop breaker's counting restarts here and its
 			// threshold tightens to the ≤2-boundary window: if the next two tool

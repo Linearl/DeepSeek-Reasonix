@@ -1071,9 +1071,18 @@ func trimLeadingSteerWrapper(content string) (string, bool) {
 // SteerPayload is the consumed body of one mid-turn guidance admission: the
 // instruction text plus optional image attachments (data URLs) that ride on
 // the injected user message so the next provider request sees them. 任务870.
+//
+// At (tl1611) is the guidance's durable enqueue wall clock (unix ms) — the
+// inbox item's CreatedAt, the same domain time UserInput events carry under
+// the tl1152 contract. The run loop stamps it onto the injected provider
+// message (history replay then shows the real time, not the consume instant)
+// and onto the visible Steer event. 0 = unstamped (legacy in-memory face);
+// the run loop falls back to the injection instant so every persisted steer
+// carries a usable time.
 type SteerPayload struct {
 	Text   string
 	Images []string
+	At     int64
 }
 
 // steerEntry is one mid-turn guidance admission.

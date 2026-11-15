@@ -94,7 +94,15 @@ func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (agent.Steer
 			_ = sessioncollab.SendReadReceipt(config.SessionCollabMailDir(),
 				strings.TrimPrefix(env.Source, "collab:"), ref.MailTo, ref.MsgID)
 		}
-		return agent.SteerPayload{Text: firstNonEmptyStr(materialized, text), Images: images}, nil
+		// tl1611: the durable enqueue wall clock rides the payload — the run
+		// loop stamps it onto the injected provider message and the visible
+		// Steer event (tl1152 contract: UserInput/Steer carry the item's
+		// CreatedAt). Zero meta time keeps the unstamped fallback.
+		var at int64
+		if !meta.CreatedAt.IsZero() {
+			at = meta.CreatedAt.UnixMilli()
+		}
+		return agent.SteerPayload{Text: firstNonEmptyStr(materialized, text), Images: images, At: at}, nil
 	}
 }
 

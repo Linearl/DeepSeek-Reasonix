@@ -342,7 +342,7 @@ const HISTORY_PAGE_TURNS = 60;
 
 export type TurnPhaseName = "working" | "checking" | "verifying" | "reviewing" | string;
 export type Item =
-  | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string }
+  | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string; /** tl1611: this row is a mid-turn steer's next-turn materialization (the 723 pairing key hit a steer notice) — UserMessage renders the ↪ mark so the entity stays distinguishable from a typed message. */ steerProvenance?: boolean }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; createdAt?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[]; turnDoneAt?: number; turnUsage?: import("./turnToolTally").TurnUsageSnapshot }
   | { kind: "phase"; id: string; text: string }
   | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; suggestion?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions" | "retry_reasoning_only"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean; createdAt?: number; /** tl1427: trajectory-ledger-only record — the chat row projection skips it; the trajectory view still consumes it. */ trajectoryOnly?: boolean }
@@ -2451,6 +2451,12 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // entity now, and the older row downgrades to the collapsed
       // "sent · handled next turn" placeholder. Keyed by inboxItemId, never
       // by text (same text from different items is legal — 580 case 5).
+      // tl1611: the same pairing also decides the user row's steer
+      // provenance — the entity itself carries the ↪ mark (UserMessage), so a
+      // steered message stays distinguishable from a typed one even after the
+      // ↪ bubble above it collapsed. Follow-up items (no steer notice with
+      // this id) keep the plain bubble.
+      const steerNoticeHit = Boolean(e.itemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === e.itemId && isSteerNoticeText(item.text)));
       const items = e.itemId
         ? s.items.map((item) => item.kind === "notice" && item.inboxItemId === e.itemId && !item.steerDeferred ? { ...item, steerDeferred: true } : item)
         : s.items;
@@ -2464,7 +2470,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         // bubble with the replay instant — many rows sharing one "09:34" while
         // the transcript's own createdAt says 00:41/01:01. Older backends send
         // no `at`; Date.now() stays the fallback.
-        items: [...items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: e.at ?? Date.now() }],
+        items: [...items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: e.at ?? Date.now(), ...(steerNoticeHit ? { steerProvenance: true } : {}) }],
       };
     }
     case "approval_request": {

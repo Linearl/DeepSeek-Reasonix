@@ -5430,6 +5430,19 @@ a[href] {
   padding: 14px 16px 16px;
   border-radius: 18px; /* 833-radius-wl:large */
 }
+/* tl1611: a steer's next-turn materialization (steerProvenance user row)
+   carries the ↪ mark inside the bubble head — same glyph/position language as
+   the steer bubble (steer-line__icon) and the cross-session card head
+   (im-source-card__steer-mark): faint glyph, bubble-local, no extra chrome.
+   Plain user rows never render this element, so their metrics are untouched. */
+.msg__steer-mark {
+  display: flex;
+  justify-content: flex-start;
+  color: var(--fg-faint);
+  line-height: 1;
+  margin-bottom: 3px;
+  user-select: none;
+}
 .msg-edit {
   display: flex;
   flex-direction: column;
