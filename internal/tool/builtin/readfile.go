@@ -138,11 +138,16 @@ func (readFile) Description() string {
 	return "Read a text file with optional line offset/limit. Output prefixes each line with its 1-based number (e.g. `   42→...`) so subsequent edit_file calls can target exact lines. Use `offset` and `limit` to page through large files; the tool reports total length and pagination hints in a trailer. Set `intent` to state why you are reading: inspect (default, a bounded preview), range (an explicit window), or full (scan the whole file). Independent reads with no data dependency should be issued in the same round."
 }
 
+// tl1613: guidance for read_file's optional description argument (collapsed
+// card title; pre-escaped for direct JSON embedding).
+const readFileDescriptionFieldPrompt = `One line in the user's language saying why you are opening this file and what you are looking for - e.g. \"Check how bash validates its arguments\". Do not merely restate the path: the user reads this description next to the path already shown. Avoid words like \"complex\" or \"risk\".`
+
 func (readFile) Schema() json.RawMessage {
 	return json.RawMessage(`{
 "type":"object",
 "properties":{
   "path":{"type":"string","description":"File path"},
+  "description":{"type":"string","description":"` + readFileDescriptionFieldPrompt + `"},
   "intent":{"type":"string","enum":["inspect","range","full"],"description":"Why you are reading. inspect (default): a bounded preview; one page is a complete answer. range (default when offset or limit is given): an explicit window. full: scan the whole file, paging until every line has been delivered."},
   "cursor":{"type":"string","description":"Continuation cursor returned by a previous read_file result. It names the exact next position; pass it back unchanged instead of computing an offset."},
   "offset":{"type":"integer","description":"0-based line offset to start reading from (default 0)","minimum":0},

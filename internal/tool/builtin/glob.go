@@ -36,8 +36,12 @@ func (globTool) Description() string {
 	return "Find files matching a glob pattern (e.g. \"*.go\", \"internal/*/*.go\", \"**/*.test.ts\"). Supports shell metacharacters * ? [] and the recursive ** pattern. Independent globs with no data dependency should be issued in the same round."
 }
 
+// tl1613: guidance for glob's optional description argument (collapsed card
+// title; pre-escaped for direct JSON embedding).
+const globDescriptionFieldPrompt = `One line in the user's language saying which files you are looking for and why - e.g. \"Locate Go test files for the tool package\". Do not echo the glob pattern verbatim: the user reads this description, often without seeing the pattern. Avoid words like \"complex\" or \"risk\".`
+
 func (globTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern (supports ** for recursive matching)"},"timeout_seconds":{"type":"integer","description":"Walk timeout in seconds (default 30, max 300); partial results are returned when it expires"}},"required":["pattern"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern (supports ** for recursive matching)"},"description":{"type":"string","description":"` + globDescriptionFieldPrompt + `"},"timeout_seconds":{"type":"integer","description":"Walk timeout in seconds (default 30, max 300); partial results are returned when it expires"}},"required":["pattern"]}`)
 }
 
 func (globTool) ReadOnly() bool { return true }

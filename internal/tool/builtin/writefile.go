@@ -42,8 +42,12 @@ func (writeFile) Description() string {
 	return "Write content to a file at the given path (overwriting existing content). Creates parent directories as needed."
 }
 
+// tl1613: guidance for write_file's optional description argument (collapsed
+// card title; pre-escaped for direct JSON embedding).
+const writeFileDescriptionFieldPrompt = `One line in the user's language saying what this file is for - e.g. \"Add regression test for the bash description field\". Do not echo the content or the path: the user reads this description, often without seeing the body. Avoid words like \"complex\" or \"risk\".`
+
 func (writeFile) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"File path"},"content":{"type":"string","description":"Full content to write"},` + expectedContentSchemaField() + `,"source_token":{"type":"string","description":"Optional: the source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten."}},"required":["path","content"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"File path"},"description":{"type":"string","description":"` + writeFileDescriptionFieldPrompt + `"},"content":{"type":"string","description":"Full content to write"},` + expectedContentSchemaField() + `,"source_token":{"type":"string","description":"Optional: the source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten."}},"required":["path","content"]}`)
 }
 
 func (writeFile) ReadOnly() bool { return false }

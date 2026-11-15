@@ -92,8 +92,12 @@ func (g grepTool) Description() string {
 	return "Search for a regular expression in a file, or recursively under a directory (skips hidden files and files matched by .gitignore). Returns matching lines as path:line:text, capped at 200 matches. Independent searches with no data dependency should be issued in the same round."
 }
 
+// tl1613: guidance for grep's optional description argument (collapsed card
+// title; pre-escaped for direct JSON embedding).
+const grepDescriptionFieldPrompt = `One line in the user's language saying what you are searching for, where, and why - e.g. \"Find retry logic under internal/agent\". Do not echo the regex or its flags verbatim: the user reads this description, often without seeing the pattern. Avoid words like \"complex\" or \"risk\"; just say what it does.`
+
 func (grepTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string","description":"Regular expression (RE2 syntax)"},"path":{"type":"string","description":"File or directory to search (default \".\")"},"timeout_seconds":{"type":"integer","description":"Abort and return partial matches after this many seconds (default 30, max 300). Raise it for a large tree; lower it for a quick probe.","minimum":1}},"required":["pattern"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"pattern":{"type":"string","description":"Regular expression (RE2 syntax)"},"description":{"type":"string","description":"` + grepDescriptionFieldPrompt + `"},"path":{"type":"string","description":"File or directory to search (default \".\")"},"timeout_seconds":{"type":"integer","description":"Abort and return partial matches after this many seconds (default 30, max 300). Raise it for a large tree; lower it for a quick probe.","minimum":1}},"required":["pattern"]}`)
 }
 
 func (grepTool) ReadOnly() bool { return true }
