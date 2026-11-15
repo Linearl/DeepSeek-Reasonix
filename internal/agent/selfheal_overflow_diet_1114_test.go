@@ -289,3 +289,77 @@ func TestVerifyRewrittenTranscriptVerbatim(t *testing.T) {
 		t.Fatal("a dropped message must fail the verbatim verification")
 	}
 }
+
+// tl1601: the diet replaced the canonical the installed projection was
+// fingerprinted against — the fold can never validate again (covered count
+// past the dieted canonical, or stripped-image byte drift inside the covered
+// prefix). Leaving it installed parks the session in tl1203 stale-serving
+// limbo: the wire serves the pre-diet fold while the transcript shows the
+// dieted rows, and the post-invalidation rebuild cannot make progress over
+// the degenerate coverage (20261115 新13: two rebuild rounds parked at
+// 17:44:14/17:47:41 with a 566K stale fold over a 141-message canonical —
+// the reopened tab read as stuck). The diet must drop the fold the same way
+// the rewind path already does (InvalidateProjectionIfStale) so a fresh
+// rebuild folds the small transcript.
+func TestOverflowDietInvalidatesStaleProjection(t *testing.T) {
+	const window = 100_000
+	path := imageDominantSchemaOneSession(t, t.TempDir(), "staleproj.jsonl")
+	a := agentOnDisk1114(t, path)
+
+	// Install a projection that validly covers a prefix of the pre-diet
+	// canonical: body = digest only, tail splices from the canonical.
+	msgs := a.sess.conversation.Snapshot()
+	covered := len(msgs) - 4
+	a.sess.compactionMu.Lock()
+	a.sess.compactionState = CompactionState{
+		SchemaVersion:     compactionStateSchemaCurrent,
+		TranscriptVersion: a.sess.conversation.TranscriptVersion(),
+		Projection: ContextProjection{
+			Messages:          []provider.Message{formatSummaryMessage("digest of the covered prefix")},
+			CoveredCount:      covered,
+			CoveredPrefixHash: coveredPrefixHash(msgs, covered),
+			PinnedContextHash: pinnedContextCoverageHash(msgs, covered),
+			ProjectionVersion: 7,
+		},
+		PromptCacheKey: a.currentPromptCacheKeyLocked(),
+	}
+	if err := a.persistCompactionStateLocked(); err != nil {
+		a.sess.compactionMu.Unlock()
+		t.Fatalf("persist fixture projection: %v", err)
+	}
+	a.sess.compactionMu.Unlock()
+
+	st := func() CompactionState {
+		a.sess.compactionMu.Lock()
+		defer a.sess.compactionMu.Unlock()
+		return a.sess.compactionState
+	}
+	if !projectionValid(st(), msgs) {
+		t.Fatalf("precondition: fixture projection must validate against the pre-diet canonical")
+	}
+
+	// Direct kick (the dedup pin's entry point): the observation path would not
+	// warn here — a still-valid projection keeps the fallback quiet — and the
+	// incident's diet ran from the same kick with the fold installed.
+	a.kickOverflowDiet("test_staleproj", a.hardInputCeiling()+1)
+	if !waitForDietSettled1114(t, a) {
+		t.Fatal("overflow diet never settled")
+	}
+
+	if got := st().Projection; len(got.Messages) != 0 {
+		t.Fatalf("diet left the stale fold installed: covered_count=%d messages=%d", got.CoveredCount, len(got.Messages))
+	}
+	if _, err := os.Stat(ContextStatePath(path)); !os.IsNotExist(err) {
+		t.Fatalf("projection sidecar must be gone after the diet invalidated it: err=%v", err)
+	}
+	// The view is the dieted canonical (bounded only by the ceiling), never the
+	// stale fold over a canonical that no longer contains its covered prefix.
+	dieted := mustSnapshot(t, path)
+	if len(dieted) >= len(msgs) {
+		t.Fatalf("fixture drift: diet did not shrink the canonical (%d -> %d)", len(msgs), len(dieted))
+	}
+	visible := a.modelVisibleMessages()
+	if len(visible) > 0 && projectionValid(st(), a.sess.conversation.Snapshot()) {
+		t.Fatalf("a stale fold resurrected after the diet")
+	}
+}
