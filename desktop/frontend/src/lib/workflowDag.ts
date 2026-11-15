@@ -3,7 +3,7 @@
 // 契约地位：685（路线 C 编排引擎）尚未落地，本文件的 schema 按其任务书语义
 // **预拟**：节点类型 = 子代理任务（subagent）/ 确定性门（gate，bash+exit
 // code）/ 汇聚（join）；边 = 依赖与数据流；phase = 阶段分组（着色用）。
-// 685 交付后以其 handoff 的 schema 为准对齐字段名（handoff-686.md 等待点①）。
+// 685 交付后以其 handoff 的 schema 为准对齐字段名（handoff/handoff-686.md 等待点①）。
 //
 // 布局是纯函数（无 DOM）：DFS 判定回边（门控循环的反馈边）→ 回边不参与分层
 // → 最长路径分层 → 同层按 phase 序 + 声明序排序 → 网格坐标。边路径为 SVG

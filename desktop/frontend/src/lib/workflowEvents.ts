@@ -4,7 +4,7 @@
 // （排队/运行中/完成/unconfirmed/失败/门通过）走 internal/event 总线，前端经
 // bridge onEvent 收流。本模块是订阅接口骨架：事件源可插拔（真实源 685 落地
 // 后接 bridge；测试与演示用 mock 源），store 只吃 WorkflowEvent 判定态。
-// （handoff-686.md 等待点②：schema 对齐后在 App 侧把 wire 事件映射进来。）
+// （handoff/handoff-686.md 等待点②：schema 对齐后在 App 侧把 wire 事件映射进来。）
 //
 // 秒级可见的保证：事件到达即 setState（驱动 React 订阅），无轮询。
 
