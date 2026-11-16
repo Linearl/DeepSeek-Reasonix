@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"reasonix/internal/provider"
@@ -280,3 +283,240 @@ func loadSessionMessagesFromJSONLContext(ctx context.Context, path string, hashe
 	}
 	return msgs, nil
 }
+
+// LoadSession reads a saved session into a fresh Session value. New sessions
+// replay the append-only event log; legacy sessions without an event log fall
+// back to the compatibility .jsonl checkpoint. A damaged log is replayed to its
+// last clean record (or the checkpoint when nothing decodes) and flagged so the
+// next save heals it with a rewrite-and-compact.
+// In-process loads share the save path mutex so they cannot observe a local
+// SaveSnapshot between appending an event-log record and refreshing the index.
+// The mutex wait is bounded (任务 946): a wedged holder surfaces as
+// ErrSessionFileLockHeld instead of hanging the hydrate until the process
+// watchdog kills the app.
+// Missing files surface as os.IsNotExist so callers can fall through to a
+// new session.
+func LoadSession(path string) (*Session, error) {
+	// 任务 1071：LoadSession 是所有「读入→重写」链路（保存/自愈/投影修复）的
+	// 共同入口。侧车文件（如 .repairlog.jsonl，修复日志审计记录）不得被当成
+	// 会话加载——一旦加载，后续任何一次 Save 都会把它重写成只剩 role 字段的
+	// 消息行（writeSessionMessages 原子覆盖），审计内容即被清空。分类闸门在
+	// 锁之前：不给侧车文件留任何被「顺手保存」的机会。
+	// tl1424：闸门走「可加载」口径（主转录 + guardian 伴随转录），不再直接用
+	// IsSessionTranscriptName。guardian 伴随转录是会话形态（同一会话层存取，
+	// 1071 闸门误拒后 guardian Load 自 2026-10-22 起静默失败：跨重启丢对话、
+	// 增量游标不恢复）。repairlog 等审计/派生侧车仍在拒绝集内——钉：
+	// Test1071RepairLogLoadSessionRefuses / TestLoadSessionGateSidecarsRefused；
+	// 会话列表发现仍用 IsSessionTranscriptName，guardian 伴随不进列表。
+	if path != "" && !store.IsLoadableSessionTranscriptName(filepath.Base(path)) {
+		return nil, fmt.Errorf("load session: %s is not a session transcript", filepath.Base(path))
+	}
+	unlock, err := lockSessionSavePath(path)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	return loadSessionUnlocked(path)
+}
+
+
+// LoadSessionTail is the first-paint form of LoadSession: for a very large
+// schema-2 log it returns a Session whose transcript is the trailing window and
+// reports that fact through TailTruncated. It exists for the hydrate path, where
+// the reader pages older history in anyway; every other caller (save, recovery,
+// migration, export) keeps using LoadSession, whose transcript is complete.
+// 946: this is the hydrate entry that sat behind a wedged save-path holder
+// until the 20s process watchdog killed the app — the wait is bounded now.
+func LoadSessionTail(path string) (*Session, error) {
+	unlock, err := lockSessionSavePath(path)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	return loadSessionTailUnlocked(path)
+}
+
+
+func loadSessionUnlocked(path string) (*Session, error) {
+	return loadSessionWithReader(path, func(hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
+		// P18-R1: the save-path lock is held by LoadSession here, so a cached
+		// fully replayed graph can serve the load directly (guards in
+		// cachedSessionLoadResult mirror dagStateForSave's reuse checks); every
+		// guard failure falls through to the ordinary full replay.
+		if res, ok := cachedSessionLoadResult(path, hasher); ok {
+			return res, nil
+		}
+		return loadSessionTranscript(context.Background(), path, defaultSessionReplayLimits, hasher)
+	})
+}
+
+
+func loadSessionTailUnlocked(path string) (*Session, error) {
+	return loadSessionWithReader(path, func(hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
+		return loadSessionTranscriptTail(context.Background(), path, defaultSessionReplayLimits, hasher)
+	})
+}
+
+
+// loadSessionWithReader is the shared body of both loaders: they differ only in
+// which transcript they ask for, so the normalization, digest and persistence
+// baseline below stay identical for the tail and the full form.
+func loadSessionWithReader(path string, read func(*sessionTranscriptHasher) (sessionLoadResult, error)) (*Session, error) {
+	hasher := newSessionTranscriptHasher()
+	res, err := read(hasher)
+	if err != nil {
+		return nil, err
+	}
+	msgs := res.msgs
+	if res.state != nil {
+		sessionGraphCachePut(store.SessionEventLog(path), res.state)
+	}
+	s := &Session{Messages: msgs, eventLogDamaged: res.damaged, tailTruncated: res.tailTruncated, head: sessionHeadState{ref: res.head, dag: res.dag, headCount: res.headCount, state: nil, openTurn: res.openTurn, events: res.events}}
+	// Repair persisted-history-safe issues before anything reads the session.
+	// Old sessions (pre adde2d3e) and interrupted turns can carry empty tool-call
+	// names, dangling tool_calls, or half-streamed argument JSON that DeepSeek
+	// rejects with a 400 on replay. Wire-only cleanup, such as dropping orphan
+	// tool messages, stays in the provider send path so Save/LoadSession keeps
+	// its round-trip contract. The fast path returns the input slice unchanged
+	// for a well-formed history, so we detect an actual repair by comparing
+	// slice headers: when NormalizeSession allocated a new backing array, the
+	// session is marked dirty so the next Save persists the fix.
+	normalized := NormalizeSession(s.Messages)
+	normalized = migrateLegacyProviderContent(normalized)
+	if len(normalized) != len(s.Messages) || (len(s.Messages) > 0 && &normalized[0] != &s.Messages[0]) {
+		s.normalizedDirty = true
+		// Keep the pre-repair transcript: checkSnapshotWrite must be able to
+		// recognize a snapshot that extends the bytes actually on disk, which
+		// the repaired view no longer represents (an interrupted tool turn
+		// gets a placeholder result fabricated here that the live session
+		// answered for real).
+		s.rawMessages = msgs
+		// tl1651 打点 c 恢复半边: this repair rewrites provider-visible
+		// transcript bytes at resume time WITHOUT passing through
+		// Rewrite/Replace, so the rewrite probe never sees it — yet it is the
+		// prime suspect for a resume-time covered-prefix hash mismatch (the
+		// sidecar was written against the pre-repair bytes). The log line makes
+		// the repair visible on the same timeline the projection validation
+		// reads; diagnoseProjectionMismatch's "load_repair" corpus check closes
+		// the attribution loop.
+		slog.Info("agent: transcript repaired on load",
+			"writer", SessionWriterID(),
+			"path", path,
+			"pre_repair_msgs", len(msgs),
+			"post_repair_msgs", len(normalized))
+	}
+	s.Messages = normalized
+	if s.tailTruncated {
+		// tl1281: the window base, captured after load-time normalization so
+		// the upgrade merge knows exactly where the appended turns start.
+		s.tailWindowLen = len(s.Messages)
+	}
+	assignLegacyMessageIDs(path, s.Messages)
+	// Decode already hashed the transcript; when the repairs above returned it
+	// unchanged (the common case) reuse that digest, else re-hash the repair.
+	digest, digestOK := hasher.sum()
+	if s.normalizedDirty || !digestOK {
+		if d, derr := digestSessionMessages(s.Messages); derr == nil {
+			digest, digestOK = d, true
+		} else {
+			digestOK = false
+		}
+	}
+	if digestOK {
+		// Pair the raw pre-repair transcript when normalization changed it.
+		diskView := s.Messages
+		if s.normalizedDirty {
+			diskView = s.rawMessages
+		}
+		if meta, ok, metaErr := loadBranchMetaRetry(path); metaErr != nil {
+			// The sidecar exists but is unreadable even after retries (torn or
+			// corrupt). The session must still open, but revision 0 must not
+			// pose as a real baseline: the next save would misread the honest
+			// on-disk revision as another runtime's write and fork a recovery
+			// branch. Anchor the baseline on digest+version only until a
+			// successful save re-learns the revision.
+			s.markPersistedRevisionUnknown(path, digest, s.version, s.rewriteVersion, diskView)
+		} else {
+			revision := int64(0)
+			if ok {
+				revision = meta.Revision
+			}
+			// 任务 831②: the clean-load snapshot no-op additionally requires
+			// the sidecar to agree with the decoded transcript. A missing
+			// sidecar, or one whose digest lags the bytes (interrupted save),
+			// keeps the first save on the full path that heals the ledger.
+			ledgerClean := ok && strings.TrimSpace(meta.ContentDigest) == digestString(digest)
+			s.markPersistedFromLoad(path, digest, s.version, revision, s.rewriteVersion, diskView, ledgerClean)
+		}
+	}
+	return s, nil
+}
+
+
+// upgradeTruncatedTranscriptForWrite replaces a first-paint transcript with the
+// complete one before it can reach disk.
+//
+// A tail Session is safe to show and must never be saved: saves are full
+// rewrites, so persisting the window would drop everything the window left out.
+// This is the second of two guards (the first being that only the hydrate path
+// asks for a tail at all), and it runs before any save lock is taken, so the
+// extra full replay happens on the rare transition from "opened for display" to
+// "written" and never inside the save critical section.
+//
+// tl1281: turns appended after hydration (executor appends on a windowed
+// session — the turn loop does not wait for an upgrade) are merged onto the
+// reloaded full transcript via tailWindowLen. tl1227 had made truncation
+// unreachable, so the outright replacement below never faced an appended turn;
+// with the checkpoint tail window producer back, replacement would silently
+// drop the user's turns.
+func (s *Session) upgradeTruncatedTranscriptForWrite(path string) error {
+	if s == nil || path == "" {
+		return nil
+	}
+	s.mu.RLock()
+	truncated := s.tailTruncated
+	windowLen := s.tailWindowLen
+	// The window base the reloaded full transcript must be spliced against:
+	// the pre-repair window byte count when load-time normalization changed
+	// the view (rawMessages), else the normalized window length. Everything
+	// from that base on — repaired window messages plus appended turns —
+	// survives the upgrade.
+	windowRawLen := 0
+	if truncated {
+		windowRawLen = windowLen
+		if s.normalizedDirty && len(s.rawMessages) > 0 {
+			windowRawLen = len(s.rawMessages)
+		}
+	}
+	s.mu.RUnlock()
+	if !truncated {
+		return nil
+	}
+	res, err := loadSessionTranscript(context.Background(), path, defaultSessionReplayLimits, newSessionTranscriptHasher())
+	if err != nil {
+		return fmt.Errorf("session: complete transcript required before saving a first-paint session: %w", err)
+	}
+	s.mu.Lock()
+	merged := res.msgs
+	if windowRawLen > 0 && windowRawLen <= len(res.msgs) {
+		prefix := res.msgs[:len(res.msgs)-windowRawLen]
+		merged = make([]provider.Message, 0, len(res.msgs)+len(s.Messages))
+		merged = append(merged, prefix...)
+		merged = append(merged, s.Messages...)
+	}
+	s.Messages = merged
+	s.tailTruncated = false
+	s.tailWindowLen = 0
+	if res.dag {
+		// Task 239 B1-2: release DAG to shared cache; do not hold res.state on Session.
+		if res.state != nil {
+			sessionGraphCachePut(store.SessionEventLog(path), res.state)
+		}
+		s.head = sessionHeadState{ref: res.head, dag: res.dag, headCount: res.headCount, state: nil, openTurn: res.openTurn, events: res.events}
+	}
+	s.mu.Unlock()
+	slog.Info("session: upgraded a first-paint transcript to the full one before saving",
+		"path", path, "messages", len(merged))
+	return nil
+}
+
