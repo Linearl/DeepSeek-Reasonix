@@ -1,17 +1,19 @@
 // Run: tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/pre-repair-cleanup-tl1603.test.tsx
 //
 // tl1603: 版本与副本面板「改写前备份」分区的清理能力（在 tl1572 只读面之上）。
+// tl1646（2026-11-16 用户裁决）语义修订：tl1603 的「仅存副本禁删」初判退役
+// （deletable/blockReason 字段随 wire 收窄删除）——孤儿备份的删除入口同样可
+// 用，确认弹窗对孤儿行追加「唯一副本、不可恢复」警示；其余钉零回退。
 // 验收钉五组：
-//  ① 单删（可删态）：deletable 行有删除钮 → 确认弹窗言明回收站语义 → 确认
-//     后按 dir 调 DeletePreRepairBackup → 重取列表（扫描刷新）；
-//  ② 拒删提示：blockReason=sole-copy 的行删除钮禁用、行内落原因文案（不藏
-//     hover），点击零桥调用；批量确认框对仅存副本有 kept 注记；
+//  ① 单删：每行都有可用删除钮 → 确认弹窗言明回收站语义（孤儿行追加唯一副
+//     本警示）→ 确认后按 dir 调 DeletePreRepairBackup → 重取列表（扫描刷新）；
+//  ② 拒删提示：删除桥以健康理由拒绝时，原因落面板（后端权威闸的诚实反馈）；
 //  ③ 批量清理：勾选 → 清理所所选按勾选集调 DeletePreRepairBackups；清理全组
 //     按全组调；回执 failures 逐条落面板（拒绝可见、不静默）；
 //  ④ tl1572 只读面零回退：查看钮照常（main==chain 双参）、全程零
 //     SetActiveSessionVersion（adopt 不许出现）、枚举失败不拖垮主体；
-//  ⑤ 三语与桥申报：新增清理键三语齐全；AppBindings 声明两个新桥；
-//     组件不出现裸 os 删除语义（回收站文案钉）。
+//  ⑤ 三语与桥申报：清理键三语齐全（SoleWarn 在列、sole-copy 旧键退役）；
+//     AppBindings 声明两个新桥；组件不出现裸 os 删除语义（回收站文案钉）。
 
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
@@ -114,8 +116,6 @@ const BACKUPS: PreRepairBackupView[] = [
     bytes: 512,
     files: 2,
     modifiedAt: "2026-11-05T02:00:06Z",
-    deletable: false,
-    blockReason: "sole-copy",
   },
 ];
 
@@ -214,19 +214,20 @@ function toastText(): string {
 
 console.log("\npre-repair backups cleanup (tl1603)");
 
-// ① 单删：可删行 → 确认弹窗 → DeletePreRepairBackup(dir) → 列表重取。
+// ① 单删：每行删除钮可用（tl1646：孤儿行不再禁用）→ 确认弹窗 → 列表重取。
 {
   const spies: Spies = { deleteCalls: [], batchCalls: [], listCalls: 0, viewCalls: [], activateCalls: [] };
   const root = await openPanel(spies);
   const deleteButtons = queryAll("[data-pre-repair-delete]");
   ok(deleteButtons.length === 3, "① every backup row offers a delete button");
-  const blockedButton = queryAll("[data-pre-repair-delete]").find((b) => (b as HTMLButtonElement).disabled);
-  ok(Boolean(blockedButton), "① the sole-copy row's delete button is disabled");
+  const disabledButton = deleteButtons.find((b) => (b as HTMLButtonElement).disabled);
+  ok(!disabledButton, "① no row's delete button is disabled (tl1646: the sole-copy gate is retired)");
   const deletableButton = deleteButtons.find((b) => !(b as HTMLButtonElement).disabled);
   await act(async () => { deletableButton?.click(); });
   await flush();
   ok(bodyText().includes("Delete this pre-repair backup?"), "① the confirm dialog names the action");
   ok(bodyText().includes("system recycle bin"), "① the confirm says the deletion goes to the recycle bin");
+  ok(!bodyText().includes("only surviving copy"), "① the live-owner row's confirm carries no sole-copy warning");
   await act(async () => { dialogConfirm()?.click(); });
   await flush();
   ok(
@@ -238,13 +239,24 @@ console.log("\npre-repair backups cleanup (tl1603)");
   await act(async () => root.unmount());
 }
 
-// ①b 拒删点击不发生：disabled 按钮点击零调用（拒绝在 UI 层就不可达）。
+// ①b 孤儿行的确认弹窗带「唯一副本、不可恢复」警示（tl1646：删除决定权在
+// 用户，警示代替禁用——这是用户裁决点名的验收面）。
 {
   const spies: Spies = { deleteCalls: [], batchCalls: [], listCalls: 0, viewCalls: [], activateCalls: [] };
   const root = await openPanel(spies);
+  const rows = queryAll("[data-pre-repair-list] > li");
+  ok(rows[2]?.textContent?.includes("original conversation is gone"), "①b the orphan row still carries the orphan marker");
+  const orphanDelete = rows[2]?.querySelector<HTMLButtonElement>("[data-pre-repair-delete]");
+  await act(async () => { orphanDelete?.click(); });
+  await flush();
+  ok(bodyText().includes("only surviving copy"), "①b the orphan row's confirm warns it is the only surviving copy");
+  ok(bodyText().includes("cannot be undone"), "①b the warning states the deletion is unrecoverable");
+  ok(bodyText().includes("system recycle bin"), "①b the recycle-bin note still rides along (既有通道不变)");
+  await act(async () => { dialogConfirm()?.click(); });
+  await flush();
   ok(
-    bodyText().includes("sole surviving copy"),
-    "①b the refusal reason is visible inline on the row (拒删提示不藏 hover)",
+    spies.deleteCalls.length === 1 && spies.deleteCalls[0] === "/sessions/lonely.pre-repair-20261105T020006",
+    `①b confirming the warned dialog deletes the orphan (${JSON.stringify(spies.deleteCalls)})`,
   );
   await act(async () => root.unmount());
 }
@@ -285,7 +297,10 @@ console.log("\npre-repair backups cleanup (tl1603)");
   await act(async () => { selectedButton.click(); });
   await flush();
   ok(bodyText().includes("Clean pre-repair backups"), "③ the batch confirm dialog opens");
-  ok(bodyText().includes("sole surviving copy and will be kept"), "③ the batch confirm names the kept sole-copies");
+  ok(
+    !bodyText().includes("sole surviving copy and will be kept"),
+    "③ the kept-sole-copies note is retired with the gate (tl1646: orphans ride the batch)",
+  );
   await act(async () => { dialogConfirm()?.click(); });
   await flush();
   ok(
@@ -322,7 +337,7 @@ console.log("\npre-repair backups cleanup (tl1603)");
         trashed: 1,
         trashedBytes: 1024,
         failed: 1,
-        failures: [{ dir: "/sessions/lonely.pre-repair-20261105T020006", label: "lonely conversation", reason: "sole-copy" }],
+        failures: [{ dir: "/sessions/lonely.pre-repair-20261105T020006", label: "lonely conversation", reason: "owner-unhealthy", detail: "owner session is not healthy (projection_overflow)" }],
       }),
   });
   await act(async () => { query("[data-pre-repair-clean-all]")?.click(); });
@@ -334,7 +349,7 @@ console.log("\npre-repair backups cleanup (tl1603)");
     "③c the receipt toast reports what went to the bin (counting trashed only)",
   );
   ok(
-    bodyText().includes("lonely conversation: sole surviving copy"),
+    bodyText().includes("lonely conversation: owner session is not healthy"),
     "③c refusals land in the panel errors with label+reason (never silent)",
   );
   await act(async () => root.unmount());
@@ -399,9 +414,9 @@ console.log("\npre-repair backups cleanup (tl1603)");
     "②-r2 the delete is in flight (one bridge call, no reload yet)",
   );
   const mid = queryAll("[data-pre-repair-delete]") as HTMLButtonElement[];
-  ok(mid.length === 3 && mid[0].disabled, "②-r2 the deleting row's own button is the only deletable one disabled");
-  // 行 3 是 sole-copy blocked 行，删除钮恒禁用（数据态，与本钉无关）。
-  ok(!mid[1].disabled && mid[2].disabled, "②-r2 other rows' delete buttons stay usable during a delete (删一条后其余立即可用)");
+  ok(mid.length === 3 && mid[0].disabled, "②-r2 the deleting row's own button is the only one disabled");
+  // tl1646：行 3（孤儿）删除钮同样可用——sole-copy 数据态禁用已退役。
+  ok(!mid[1].disabled && !mid[2].disabled, "②-r2 other rows' delete buttons stay usable during a delete (删一条后其余立即可用)");
   const midChecks = queryAll("[data-pre-repair-check]") as HTMLInputElement[];
   ok(midChecks.every((c) => !c.disabled), "②-r2 checkboxes stay usable during a single delete");
   await act(async () => { resolveDelete?.(); });
@@ -458,7 +473,7 @@ console.log("\npre-repair backups cleanup (tl1603)");
   await flush();
   ok(spies.viewCalls.length === 1, "②-r2c the preview is in flight");
   const deletes = queryAll("[data-pre-repair-delete]") as HTMLButtonElement[];
-  ok(!deletes[0].disabled && !deletes[1].disabled && deletes[2].disabled, "②-r2c delete buttons stay usable while a preview is pending (预览不再拖死删除; blocked 行恒禁用)");
+  ok(!deletes[0].disabled && !deletes[1].disabled && !deletes[2].disabled, "②-r2c delete buttons stay usable while a preview is pending (预览不再拖死删除)");
   await act(async () => { resolvePreview?.(); });
   await flush();
   await act(async () => { buttonByText("Close")?.click(); });
@@ -466,10 +481,9 @@ console.log("\npre-repair backups cleanup (tl1603)");
   await act(async () => root.unmount());
 }
 
-// ③-r2 孤儿备份标注三态（tl1572 注记形态的准确性拆分）：「原对话已不存在」
-// 只陈述事实；「仅存副本」的措辞只属于 blocked 行的后缀——可删的孤儿备份
-// （内容在应用回收站桶里另有副本）原本也挂着「仅存的完整副本」，与它可删
-// 的按钮形态自相矛盾。
+// ③-r2 孤儿备份标注（tl1646 后的行面）：「原对话已不存在」只陈述事实且保留
+// （删除警示的判定输入）；tl1603 的 blocked 行「不可删」后缀退役——孤儿行
+// 不再自称「仅存副本=不可删」，唯一副本的警示移进确认弹窗（①b 钉）。
 {
   const spies: Spies = { deleteCalls: [], batchCalls: [], listCalls: 0, viewCalls: [], activateCalls: [] };
   const root = await openPanel(spies);
@@ -477,9 +491,9 @@ console.log("\npre-repair backups cleanup (tl1603)");
   ok(rows.length === 3, "③-r2 the three fixture rows render");
   ok(!rows[0].textContent?.includes("original conversation is gone"), "③-r2 the live-owner row carries no orphan marker");
   ok(rows[1].textContent?.includes("original conversation is gone"), "③-r2 the deletable orphan row carries the orphan marker (tl1572 形态)");
-  ok(!rows[1].textContent?.includes("sole surviving copy"), "③-r2 the deletable orphan row no longer claims sole-copy (可删行不说假话)");
-  ok(rows[2].textContent?.includes("original conversation is gone"), "③-r2 the blocked orphan row carries the orphan marker");
-  ok(rows[2].textContent?.includes("sole surviving copy"), "③-r2 the blocked row still carries the sole-copy refusal suffix (E5 拒删提示不丢)");
+  ok(!rows[1].textContent?.includes("sole surviving copy"), "③-r2 the orphan row no longer claims sole-copy in the list (tl1646: 警示移进确认弹窗)");
+  ok(rows[2].textContent?.includes("original conversation is gone"), "③-r2 the second orphan row carries the orphan marker");
+  ok(!document.querySelector("[data-pre-repair-blocked]"), "③-r2 the blocked-marker node is retired (no row renders a refusal suffix)");
   await act(async () => root.unmount());
 }
 
@@ -491,14 +505,20 @@ console.log("\npre-repair backups cleanup (tl1603)");
     "zh-TW": readFileSync(resolve(testDir, "../locales/zh-TW.ts"), "utf8"),
   };
   const keys = [
-    "Delete", "DeleteHint", "DeleteTitle", "DeleteFailed", "RecycleNote", "BlockedSoleCopy",
-    "CleanSelected", "CleanAll", "CleanTitle", "CleanLead", "CleanKept", "CleanConfirm",
+    "Delete", "DeleteHint", "DeleteTitle", "DeleteFailed", "RecycleNote", "SoleWarn",
+    "CleanSelected", "CleanAll", "CleanTitle", "CleanLead", "CleanConfirm",
     "CleanDone", "CleanRefused",
   ];
   for (const key of keys) {
     ok(
       Object.values(locales).every((dict) => dict.includes(`"settings.recoveryCopiesPreRepair${key}"`)),
       `⑤ all three locales carry settings.recoveryCopiesPreRepair${key}`,
+    );
+  }
+  for (const retired of ["BlockedSoleCopy", "CleanKept"]) {
+    ok(
+      Object.values(locales).every((dict) => !dict.includes(`"settings.recoveryCopiesPreRepair${retired}"`)),
+      `⑤ the retired key settings.recoveryCopiesPreRepair${retired} is gone from all three locales (tl1646)`,
     );
   }
   const bridgeSource = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");

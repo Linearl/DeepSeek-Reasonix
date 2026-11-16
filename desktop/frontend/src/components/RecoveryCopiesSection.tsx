@@ -893,20 +893,23 @@ export function RecoveryCopiesSection() {
     });
   };
 
-  // tl1603: 改写前备份的手动清理（单删+批量）。后端是 E5 判据的权威闸（非唯
-  // 一退路+宿主健康，见 Go pre_repair_cleanup.go）：列表的 deletable 初判只
-  // 决定按钮可用性，删除桥的拒绝才是终审——初判可删但宿主已病变的行，点击
-  // 后收到诚实的拒删原因。删除走 OS 回收站（可原位还原），确认弹窗言明。
-  // 拒绝行的按钮禁用并在行内落原因（拒删提示不藏 hover）。
+  // tl1603: 改写前备份的手动清理（单删+批量）。后端是删除闸的权威（tl1646
+  // 后唯一保留的闸=活宿主健康，见 Go pre_repair_cleanup.go）：点击后收到诚实
+  // 的拒删原因。删除走 OS 回收站（可原位还原），确认弹窗言明。
+  // tl1646（2026-11-16 用户裁决：『不应该限制我删除』）：tl1603 的「仅存副本
+  // 禁删」初判退役——孤儿备份（原对话已不存在）的删除入口同样可用，确认弹窗
+  // 对孤儿行追加「唯一副本、删除后不可恢复」警示（不可删的禁用形态不复存在，
+  // 删除决定权在用户）。
   // tl1603-r2 缺陷②：单删的在途标记按 dir 记——在途只禁自己那一行的删除钮，
   // 其它行的删除钮/勾选框立即可用（并发点删安全：Go 侧 sessionRemovalMu 串
-  // 行化，E5 闸对每条权威复验，后删的拿到诚实结果）。错误路径同样在 finally
+  // 行化，闸对每条权威复验，后删的拿到诚实结果）。错误路径同样在 finally
   // 复位——失败不卡状态（验收「状态复位钉」）。
   const preRepairCanCleanup =
     typeof app.DeletePreRepairBackup === "function" && typeof app.DeletePreRepairBackups === "function";
 
   const deletePreRepair = async (view: PreRepairBackupView) => {
     if (!preRepairCanCleanup || preRepairDeleting.has(view.dir)) return;
+    const soleCopy = !view.ownerPath;
     const ok = await confirm({
       title: t("settings.recoveryCopiesPreRepairDeleteTitle"),
       message: (
@@ -914,6 +917,9 @@ export function RecoveryCopiesSection() {
           <p>
             {view.label} · {formatBytes(view.bytes)} · {formatWhen(view.modifiedAt)}
           </p>
+          {soleCopy ? (
+            <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairSoleWarn")}</p>
+          ) : null}
           <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairRecycleNote")}</p>
         </div>
       ),
@@ -941,13 +947,13 @@ export function RecoveryCopiesSection() {
   };
 
   /** cleanPreRepairBatch is both batch entries (清理所选 / 清理全组). The whole
-   *  set is handed to the backend as-is: the authoritative E5 gate trashes the
-   *  deletable ones and returns one refusal line per kept one, so a sole-copy
-   *  backup is reported (not silently skipped) and the receipt is auditable.
+   *  set is handed to the backend as-is: the authoritative gate trashes what
+   *  passes (orphans included since tl1646) and returns one refusal line per
+   *  kept one, so every refusal is reported (not silently skipped) and the
+   *  receipt is auditable.
    *  typeof 守卫同 load() 的旧 harness 先例：Partial stub 上是同步 throw。 */
   const cleanPreRepairBatch = async (targets: PreRepairBackupView[]) => {
     if (!preRepairCanCleanup || targets.length === 0 || preRepairBusy) return;
-    const kept = targets.filter((v) => v.deletable === false);
     const totalBytes = targets.reduce((n, v) => n + v.bytes, 0);
     const ok = await confirm({
       title: t("settings.recoveryCopiesPreRepairCleanTitle"),
@@ -958,11 +964,6 @@ export function RecoveryCopiesSection() {
               .replace("{count}", String(targets.length))
               .replace("{bytes}", formatBytes(totalBytes))}
           </p>
-          {kept.length > 0 ? (
-            <p className="rc-muted">
-              {t("settings.recoveryCopiesPreRepairCleanKept").replace("{n}", String(kept.length))}
-            </p>
-          ) : null}
           <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairRecycleNote")}</p>
         </div>
       ),
@@ -981,11 +982,7 @@ export function RecoveryCopiesSection() {
         );
       }
       for (const failure of run.failures ?? []) {
-        const reason =
-          failure.reason === "sole-copy"
-            ? t("settings.recoveryCopiesPreRepairBlockedSoleCopy")
-            : failure.detail || failure.reason;
-        setErrors((current) => [...current, `${failure.label}: ${reason}`]);
+        setErrors((current) => [...current, `${failure.label}: ${failure.detail || failure.reason}`]);
       }
       if (run.trashed === 0 && run.failed > 0) {
         showToast(t("settings.recoveryCopiesPreRepairCleanRefused").replace("{n}", String(run.failed)), "error");
@@ -2921,7 +2918,6 @@ export function RecoveryCopiesSection() {
                         ) : (
                           <ul className="rc-versions__issues" data-pre-repair-list="">
                             {preRepairs.map((view) => {
-                              const blocked = view.deletable === false;
                               return (
                                 <li key={view.dir} title={view.dir}>
                                   {preRepairCanCleanup ? (
@@ -2938,12 +2934,6 @@ export function RecoveryCopiesSection() {
                                   {!view.ownerPath
                                     ? ` · ${t("settings.recoveryCopiesPreRepairOrphan")}`
                                     : null}
-                                  {blocked ? (
-                                    <span className="rc-muted" data-pre-repair-blocked="">
-                                      {" "}
-                                      · {t("settings.recoveryCopiesPreRepairBlockedSoleCopy")}
-                                    </span>
-                                  ) : null}
                                   {view.transcript ? (
                                     <button
                                       className="btn btn--small"
@@ -2965,14 +2955,9 @@ export function RecoveryCopiesSection() {
                                       disabled={
                                         busy ||
                                         preRepairBusy ||
-                                        blocked ||
                                         preRepairDeleting.has(view.dir)
                                       }
-                                      title={
-                                        blocked
-                                          ? t("settings.recoveryCopiesPreRepairBlockedSoleCopy")
-                                          : t("settings.recoveryCopiesPreRepairDeleteHint")
-                                      }
+                                      title={t("settings.recoveryCopiesPreRepairDeleteHint")}
                                       onClick={() => void deletePreRepair(view)}
                                     >
                                       {t("settings.recoveryCopiesPreRepairDelete")}

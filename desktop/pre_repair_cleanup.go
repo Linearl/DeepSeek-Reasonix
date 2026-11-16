@@ -3,19 +3,21 @@ package main
 // tl1603: 改写前备份（*.pre-repair-*）的手动清理桥。
 //
 // tl1572 交付的只有「查看」（面板分区只读枚举）；用户实测存量 168 条 3.1GB
-// 只能看不能清。本文件在只读面之上补清理能力，设计约束=tl1116「无备份不
-// 减肥」判据不许破坏：pre-repair 是 Diet/改写的安全退路，只可删「非唯一退
-// 路」的——E5 语义两道闸（§ DeletePreRepairBackup）：
+// 只能看不能清。本文件在只读面之上补清理能力，设计约束源自 tl1116「无备份
+// 不减肥」判据，其中「唯一退路⇒禁删」一条已被用户裁决推翻（tl1646，
+// 2026-11-16：『不应该限制我删除』）——删除决定权在用户。现行语义
+// （§ DeletePreRepairBackup）：
 //
-//  1. 非唯一退路（stat 级，列表初判与删除闸同一判据）：宿主转录还在（活会
-//     话的改写前快照，内容另有正本），或宿主已走删除/归档链（其转录/随行
-//     备份躺在 <dir>/.trash 桶里，preRepairTrashFamilyHit）——两条都不成立
-//     =这份备份是该对话仅存的完整副本，拒绝（tl1116 禁区）。
-//  2. 主对话健康（重放级，只在删除时执行）：活宿主经 InspectSessionHealth
+//  1. 宿主健康（重放级，只在删除时执行）：活宿主经 InspectSessionHealth
 //     体检不过（超窗/加载超时）时拒绝——修复失败会话的改写前快照是它唯一
 //     的回头路，删退路正是 tl1116 禁止的「无备份减肥」。「已合并进主线」形
 //     态由本闸覆盖（合并的前提本就是宿主是权威线）；「超期」形态不做自动
 //     判定（non-goal：先给手动入口，过期策略后议）。
+//  2. 孤儿副本放行（tl1646 修订）：宿主已不存在（含宿主已走删除/归档链的
+//     形态）的备份一律允许删除。tl1603 原设计在此拒绝「仅存副本」，用户
+//     裁决改为：前端确认弹窗明示「唯一副本、删除后不可恢复」（三语
+//     settings.recoveryCopiesPreRepairSoleWarn），确认即删、走系统回收站
+//     既有通道；后端不再设 sole-copy 闸。
 //
 // 回收语义（任务 855 铁律）：删除必须经平台 API 送进系统回收站（trashWorkspacePaths
 // → SHFileOperation FOF_ALLOWUNDO / gio trash），禁止 os.RemoveAll 裸删、
@@ -28,7 +30,6 @@ package main
 // 形态）不持锁，与它撞上的表现是 rename ENOENT=诚实失败行，零数据损失。
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -43,18 +44,12 @@ import (
 // 同一先例）：健康闸钉「删除前必须体检活宿主」这条路径，拒绝分支用假报告喂。
 var preRepairHealthInspect = agent.InspectSessionHealth
 
-// E5 删除闸的拒绝 sentinel。错误文案走「下一步已存在」纪律： sole-copy 的
-// 下一步=先走应用内删除/归档链（它们会连备份一起搬走）；unhealthy 的下一步
-// =先修复宿主（面板本有修复入口）。
-var errPreRepairSoleCopy = errors.New("this backup is the conversation's only surviving copy — archive or delete the conversation in Reasonix first, and this backup will follow it")
-
-// preRepairCleanupFailureReason 是批量回执的稳定拒绝令牌（wire 契约：前端按
-// 令牌出三语文案；Detail 带原始细节）。
+// 删除闸拒绝令牌（wire 契约：前端按令牌出三语文案；Detail 带原始细节）。
+// tl1603 的 sole-copy 令牌随 tl1646 用户裁决退役（孤儿副本放行，不再有该拒绝）。
 const (
 	preRepairReasonInvalid        = "invalid"         // 路径形态/越界（永远不该发生，防御面）
 	preRepairReasonGone           = "gone"            // 枚举后已被别的链搬走
-	preRepairReasonSoleCopy       = "sole-copy"       // E5 闸①：仅存副本
-	preRepairReasonOwnerUnhealthy = "owner-unhealthy" // E5 闸②：宿主体检不过
+	preRepairReasonOwnerUnhealthy = "owner-unhealthy" // 健康闸：宿主体检不过
 	preRepairReasonTrashFailed    = "trash-failed"    // 平台回收站调用失败
 )
 
@@ -86,8 +81,12 @@ func preRepairBackupLabel(backupDir, stem string) string {
 	return label
 }
 
-// preRepairCleanupGate 是 E5 删除闸：校验 backupDir 可删，通过时返回 stem
+// preRepairCleanupGate 是删除闸：校验 backupDir 可删，通过时返回 stem
 // 与体量。所有拒绝都各留一行 slog（tl1414 纪律：拒绝必须可归因）。
+//
+// tl1646（2026-11-16 用户裁决）：tl1603 的「唯一退路」闸退役——宿主已不在
+// 的孤儿副本一律放行（前端确认弹窗承担「唯一副本、不可恢复」警示），此处
+// 只保留健康闸；宿主在不在只决定要不要体检。
 //
 // healthCache 是批量面的宿主健康读数缓存（owner→healthy；nil=单删不缓存）——
 // 同一会话的多份备份在批内只重放一次宿主日志。
@@ -122,18 +121,13 @@ func (a *App) preRepairCleanupGate(backupDir string, healthCache map[string]bool
 		slog.Warn("desktop: pre-repair delete refused", "reason", "outside known session dirs", "path", backupDir)
 		return "", 0, fmt.Errorf("backup path outside known session directories")
 	}
-	// ── E5 闸①：非唯一退路 ──
+	// ── 健康闸：活宿主才体检（宿主不在=孤儿副本，tl1646 放行；宿主的内容
+	// 已随删除链搬走的形态同样无从体检也不必体检）──
 	owner := filepath.Join(parent, stem+store.SessionTranscriptSuffix)
 	ownerLive := false
 	if oinfo, oerr := os.Lstat(owner); oerr == nil && !oinfo.IsDir() {
 		ownerLive = true
 	}
-	if !ownerLive && !preRepairTrashFamilyHit(parent, stem, map[string]map[string]bool{}) {
-		slog.Warn("desktop: pre-repair delete refused", "reason", "sole surviving copy", "path", backupDir, "owner", owner)
-		return "", 0, errPreRepairSoleCopy
-	}
-	// ── E5 闸②：主对话健康（活宿主才体检；桶里宿主的内容已随删除链搬走，
-	// 体检无从谈起也不必谈）──
 	if ownerLive {
 		var report agent.SessionHealthReport
 		if cached, hit := healthCache[owner]; hit {
@@ -209,8 +203,9 @@ func (a *App) trashPreRepairBackupDir(backupDir string) error {
 }
 
 // DeletePreRepairBackup 删单个改写前备份目录（面板行内「删除」按钮）。先过
-// E5 两道闸（非唯一退路+宿主健康），通过后整目录送 OS 回收站（可从系统回收
-// 站原位还原）。
+// 健康闸（活宿主体检，tl1646 后唯一保留的闸），通过后整目录送 OS 回收站
+// （可从系统回收站原位还原）。孤儿副本（宿主已不在）不再拒绝——删除决定权
+// 在用户，前端确认弹窗明示「唯一副本、不可恢复」（tl1646）。
 func (a *App) DeletePreRepairBackup(dir string) error {
 	backupDir := filepath.Clean(strings.TrimSpace(dir))
 	if backupDir == "." {
@@ -249,7 +244,7 @@ type PreRepairBatchCleanupView struct {
 }
 
 // DeletePreRepairBackups 批量清理改写前备份（面板「清理所选/清理全组」）。
-// 逐条过同一 E5 闸（活宿主健康读数在批内按宿主缓存——同一会话的多份备份只
+// 逐条过同一健康闸（活宿主健康读数在批内按宿主缓存——同一会话的多份备份只
 // 重放一次），逐条送回收站：一条被拒/失败不拖累其余，回执逐条可归因。
 func (a *App) DeletePreRepairBackups(dirs []string) (PreRepairBatchCleanupView, error) {
 	view := PreRepairBatchCleanupView{Failures: []PreRepairCleanupFailure{}}
@@ -307,11 +302,9 @@ func (a *App) DeletePreRepairBackups(dirs []string) (PreRepairBatchCleanupView, 
 	return view, nil
 }
 
-// preRepairFailureReason 把 E5 闸的错误映射成回执令牌。
+// preRepairFailureReason 把删除闸的错误映射成回执令牌。
 func preRepairFailureReason(err error) string {
 	switch {
-	case errors.Is(err, errPreRepairSoleCopy):
-		return preRepairReasonSoleCopy
 	case strings.Contains(err.Error(), "owner session is not healthy"):
 		return preRepairReasonOwnerUnhealthy
 	case strings.Contains(err.Error(), "no longer exists"):
