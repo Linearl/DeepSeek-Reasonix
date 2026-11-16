@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -511,6 +512,28 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		// tl1203: first-load bodies that fail verification still drop — the
 		// stale-serving branch only trusts folds this process installed. The
 		// kick below re-arms the background rebuild for the gap.
+		//
+		// tl1644: name WHICH criterion failed and the readings behind it. The
+		// 20261116 新14 incident dropped a healthy-applied sidecar here
+		// (restart after a silent on-disk prefix rewrite) and the fallback
+		// episode ended in a 719-message overflow diet; every reading this log
+		// carries had to be reverse-engineered from the pre-repair backup. The
+		// drop itself stays fail-closed — only the visibility is new.
+		mismatch := projectionContentInvalidReason(st, msgs)
+		n := st.Projection.CoveredCount
+		slog.Warn("agent: projection sidecar body dropped — covered-prefix verification failed",
+			"writer", SessionWriterID(),
+			"mismatch", mismatch,
+			"covered_count", n,
+			"projection_version", st.Projection.ProjectionVersion,
+			"transcript_version", st.TranscriptVersion,
+			"canonical_messages", len(msgs),
+			"stored_prefix_hash", shortHash8(st.Projection.CoveredPrefixHash),
+			"current_prefix_hash", shortHash8(coveredPrefixHash(msgs, n)),
+			"stored_pinned_hash", shortHash8(st.Projection.PinnedContextHash),
+			"current_pinned_hash", shortHash8(pinnedContextCoverageHash(msgs, n)),
+			"schema_version", st.SchemaVersion,
+			"session", filepath.Base(a.sess.path))
 		st.Projection = ContextProjection{}
 	}
 	a.sess.compactionState = st

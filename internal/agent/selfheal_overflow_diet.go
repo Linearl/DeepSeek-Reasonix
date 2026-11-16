@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"reasonix/internal/provider"
 )
@@ -45,11 +46,33 @@ import (
 // ERROR 留排查痕迹；备份白名单先行顺序不变（BackupSessionFiles 先于任何
 // 落笔）；重写产物逐字校验（verifyRewrittenTranscript）落 repair 记录。
 
+// overflowDietAnchorGrace bounds how long one fallback episode's diet stays
+// deferred on a trusted usage anchor (tl1644). The 20261116 新14 incident
+// folded 719 messages on a session whose last actually-served view measured
+// 669K of a 1M window: a restart-time covered-prefix mismatch killed a healthy
+// applied projection, the body-less fallback priced the FULL canonical at
+// 1.21M (>= the 999,744 hard ceiling), and the diet fired before the
+// background rebuild had its chance. An anchor below the ceiling proves the
+// invalidation is transient — the pre-invalidation view was sendable and the
+// 任务719 tail view keeps the wire sendable while the rebuild reruns — so the
+// first kick defers and the rebuild owns the gap. The grace keeps the 兜底:
+// past it (rebuild parked, canonical genuinely over the window) the same
+// episode's kick proceeds and the strip+fold fires as before.
+const overflowDietAnchorGrace = 15 * time.Minute
+
 // kickOverflowDiet arms one automatic overflow diet for a projection-fallback
 // episode whose canonical transcript sits at or above the hard input ceiling.
 // Safe to call from the maintenance path: it never blocks and never runs
 // inline — the diet (and its disk-bound transcript verification) happens on a
 // deduplicated background goroutine.
+//
+// tl1644 anchor gate (tl1506 用户终裁的 selfheal 腿：有实账按实账判): a
+// trusted usage anchor whose own measurement sits below the hard ceiling means
+// the last served view was sendable — the over-ceiling reading priced the
+// fallback view, not a session that truly cannot fit. One defer per episode
+// (bounded by overflowDietAnchorGrace) lets the projection rebuild converge
+// first; a genuinely over-window canonical (no anchor, anchor at/above the
+// ceiling, or grace expired with the rebuild still parked) folds as before.
 func (a *Agent) kickOverflowDiet(reason string, est int) {
 	if a == nil || a.sess.conversation == nil || a.sess.path == "" {
 		return
@@ -59,9 +82,37 @@ func (a *Agent) kickOverflowDiet(reason string, est int) {
 		// 不为可发送的会话做本地重写。
 		return
 	}
+	anchored, anchorOK := a.trustedContextBaselineBase()
+	if anchorOK && anchored < a.hardInputCeiling() {
+		a.sess.compactionMu.Lock()
+		deferredAt := a.sess.compaction.overflowDietDeferredAt
+		firstDefer := deferredAt.IsZero()
+		if firstDefer {
+			a.sess.compaction.overflowDietDeferredAt = time.Now()
+		}
+		a.sess.compactionMu.Unlock()
+		if firstDefer || time.Since(deferredAt) < overflowDietAnchorGrace {
+			// 首轮或宽限内：实账锚证明失效前视图可服务，折叠是误杀——等
+			// kickProjectionRebuild 的摘要重建收敛（LoadProjectionSidecar 丢弃
+			// 分支已武装）。任务719 尾视图保证请求仍发得出去。
+			slog.Info("session: overflow diet deferred — trusted usage anchor prices the last served view below the ceiling; the projection rebuild owns the gap",
+				"path", filepath.Base(a.sess.path), "reason", reason,
+				"fallback_estimate_tokens", est, "anchored_view_tokens", anchored,
+				"hard_ceiling", a.hardInputCeiling(),
+				"deferred_since", deferredAt, "grace", overflowDietAnchorGrace)
+			return
+		}
+	}
 	if !a.sess.dietPending.CompareAndSwap(false, true) {
 		return
 	}
+	// tl1644 观测钉：触发瞬间落一条（原因/估算/硬顶/锚读数）。此前触发只有
+	// applied/skipped 有日志，armed 无痕——复发时要从 repairlog 倒推。
+	slog.Warn("session: overflow diet armed after projection fallback",
+		"path", filepath.Base(a.sess.path), "reason", reason,
+		"estimate_tokens", est, "hard_ceiling", a.hardInputCeiling(),
+		"window_tokens", a.effectiveContextWindow(),
+		"anchored_view_tokens", anchored, "anchor_trusted", anchorOK)
 	go func() {
 		defer a.sess.dietPending.Store(false)
 		s := a.sess.session()

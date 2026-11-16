@@ -99,6 +99,17 @@ type compactionProgress struct {
 	// fallbackWarnAt; the paired resets (invalidateProjection,
 	// BindSessionPath, valid-projection re-arm) zero both fields together.
 	fallbackWarnSuppressed int
+	// tl1644: first kick the overflow-diet defer granted this fallback episode.
+	// A trusted usage anchor below the hard ceiling proves the last served view
+	// was sendable — the invalidation is transient (the tl1644 现场: a healthy
+	// 521K fold killed by a restart-time prefix mismatch) — so the diet waits
+	// for the projection rebuild instead of folding the canonical outright.
+	// The grace is bounded: past overflowDietAnchorGrace from this stamp the
+	// same episode's kick proceeds (rebuild parked = a genuinely over-window
+	// canonical keeps its 兜底). Cleared where fallbackWarnAt re-arms (a valid
+	// projection serving again ends the episode). Same compactionRunMu
+	// discipline as fallbackWarnAt.
+	overflowDietDeferredAt time.Time
 }
 
 // projectionDriftDiff is the tl1562 G1 content-mismatch evidence attached to
@@ -741,6 +752,9 @@ func (a *Agent) observeProjectionFallback(est int) {
 		// throttle so a later episode warns on its first check.
 		a.sess.compaction.fallbackWarnAt = time.Time{}
 		a.sess.compaction.fallbackWarnSuppressed = 0
+		// tl1644: a valid projection serving again ends the fallback episode —
+		// the diet-defer grace belongs to the episode, not the session.
+		a.sess.compaction.overflowDietDeferredAt = time.Time{}
 		return
 	}
 	// tl1562 G1: the pair is content-mismatched — gather the drift evidence

@@ -157,3 +157,43 @@ func (a *Agent) TrustedObservedContextTokens() (int, bool) {
 	}
 	return a.observedContextTokens(a.modelVisibleMessages())
 }
+
+// trustedContextBaselineBase is the anchor's OWN measurement (tl1644): the
+// provider-measured size of the last sampled request, WITHOUT repricing the
+// current view. observedContextTokens adds (currentChars − coveredChars) ×
+// tokPerChar on top of the base — correct for compaction triggers, which ask
+// "how big is the view I am about to send", but wrong for the overflow-diet
+// defer gate, which asks "was the last actually-served view sendable". After a
+// projection invalidation the fallback view IS the full canonical transcript,
+// so the delta term alone can cross the ceiling even when the anchor's base
+// (the healthy pre-invalidation view, the tl1644 现场: 669K served) sits far
+// below it. Gates mirror loadPersistedContextBaseline: destination match plus
+// structural sanity; the 24h TTL and covered-chars guard are already inside
+// the loader / observedContextTokens respectively.
+//
+// 读到内存锚缺失时复用 tl1570 的盘上回读并回填内存锚（与 observedContextTokens
+// 同一行为），保证重启后首轮检查即可用。
+func (a *Agent) trustedContextBaselineBase() (int, bool) {
+	if a == nil || a.Session() == nil {
+		return 0, false
+	}
+	base := a.sess.output.contextBaseline.Load()
+	if base == nil {
+		if persisted, ok := a.loadPersistedContextBaseline(time.Now()); ok {
+			base = persisted
+			a.sess.output.contextBaseline.Store(persisted)
+			a.sess.output.lastPersistedBaseline.Store(persisted)
+		}
+	}
+	if base == nil || base.promptTokens <= 0 || base.coveredChars <= 0 {
+		return 0, false
+	}
+	if cur := a.requestProviderName(); cur != base.providerName {
+		return 0, false
+	}
+	n := base.promptTokens + base.completionTokens + base.imageTokens
+	if n <= 0 {
+		return 0, false
+	}
+	return n, true
+}

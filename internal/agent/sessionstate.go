@@ -3,6 +3,7 @@ package agent
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"reasonix/internal/evidence"
 )
@@ -77,8 +78,8 @@ type sessionRuntime struct {
 	// valid projection serves again (preflight) or the lineage resets, so the
 	// next invalidation episode re-arms.
 	staleRebuildArmed atomic.Bool
-	compaction      compactionProgress
-	compactionState CompactionState
+	compaction        compactionProgress
+	compactionState   CompactionState
 	// 任务 1021: a compression SESSION spans every back-to-back pass of one
 	// over-threshold episode — the pressure ladder can run several summaries
 	// (foldContext's maxSummaries, plus follow-up Prepare rounds) and only the
@@ -151,6 +152,9 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.compaction.consecutive = 0
 	r.compaction.failedTurn.Store(0)
 	r.compaction.lastTurn.Store(0)
+	// tl1644: the diet-defer grace belongs to the replaced lineage's fallback
+	// episode, same as the fallbackWarnAt throttle it mirrors.
+	r.compaction.overflowDietDeferredAt = time.Time{}
 	r.compactionSessionPass.Store(0) // 任务 1021: a new lineage starts a fresh session count
 	r.rebuildPending.Store(false)
 	// tl1203: a new conversation starts unarmed — the flag belongs to the

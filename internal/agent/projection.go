@@ -510,31 +510,46 @@ func projectionValid(st CompactionState, msgs []provider.Message) bool {
 // is authoritative, except for leading system messages: those live outside the
 // folded region and may be refreshed independently after a compaction.
 func projectionContentValid(st CompactionState, msgs []provider.Message) bool {
+	return projectionContentInvalidReason(st, msgs) == ""
+}
+
+// projectionContentInvalidReason is the diagnostic face of
+// projectionContentValid (tl1644): it names WHICH criterion failed so the
+// sidecar-drop log can record the mismatch readings instead of only the fact
+// of a drop. The 20261116 新14 incident spent a full forensics pass reverse-
+// engineering that single bit (body dropped: which hash moved?) — the readings
+// below make the next recurrence a one-log-line diagnosis. "" means valid.
+// The verdict logic is identical to projectionContentValid; keep the two in
+// lockstep (the valid wrapper is the only production consumer).
+func projectionContentInvalidReason(st CompactionState, msgs []provider.Message) string {
 	if len(st.Projection.Messages) == 0 {
-		return false
+		return "empty_body"
 	}
 	n := st.Projection.CoveredCount
 	if n <= 0 || n > len(msgs) {
-		return false
+		return "covered_count_out_of_range"
 	}
 	// Prefix hash is required; legacy sidecars without it are rebuilt.
 	if st.Projection.CoveredPrefixHash == "" {
-		return false
+		return "missing_prefix_hash"
 	}
 	// Readers before v4 did not authenticate pinned revision provenance. Their
 	// projections may summarize or omit active pinned state, so fail closed and
 	// rebuild a v4 checkpoint from the canonical transcript.
 	if st.SchemaVersion < compactionStateSchemaV4 && containsPinnedContextRevision(msgs[:n]) {
-		return false
+		return "pre_v4_with_pinned_revision"
 	}
 	if st.SchemaVersion >= compactionStateSchemaV4 &&
 		st.Projection.PinnedContextHash != pinnedContextCoverageHash(msgs, n) {
-		return false
+		return "pinned_context_hash_mismatch"
 	}
 	if coveredPrefixHash(msgs, n) == st.Projection.CoveredPrefixHash {
-		return true
+		return ""
 	}
-	return projectionMatchesAfterSystemRefresh(st, msgs, n)
+	if projectionMatchesAfterSystemRefresh(st, msgs, n) {
+		return ""
+	}
+	return "covered_prefix_hash_mismatch"
 }
 
 // projectionMatchesAfterSystemRefresh verifies a covered-prefix mismatch by
