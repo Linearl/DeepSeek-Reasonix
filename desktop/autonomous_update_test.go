@@ -363,6 +363,33 @@ func TestResumeMarkerRoundTripsJSON(t *testing.T) {
 	}
 }
 
+// tl1615 ②: the post-restart resume prompt carries the now-active version
+// (read from the fresh process's current.json pointer — after a publish/switch
+// restart that pointer IS the new version), so the resumed session knows what
+// it booted into without a manual check. 修前红 = prompt named no version and
+// the user had to verify by hand after each 装机重启.
+func TestAutonomousUpdateResumePromptCarriesActiveVersion(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	active := "v1.38.3-20260923-1010"
+	root := fakeInstallRoot(t, []string{active}, active)
+
+	got := autonomousUpdateResumePromptText()
+	if !strings.Contains(got, autonomousUpdateResumePrompt) {
+		t.Fatalf("versioned prompt must keep the base text as prefix: %q", got)
+	}
+	if !strings.Contains(got, active) {
+		t.Fatalf("prompt must carry the active version %s from current.json (root %s): %q", active, root, got)
+	}
+
+	// No readable pointer (flat layout / missing current.json): the base
+	// prompt is returned unchanged, keeping the internal/unfiled exact-match
+	// whitelist entry valid for the fallback.
+	versionSwitchInstallRoot = func() (string, error) { return t.TempDir(), nil }
+	if got := autonomousUpdateResumePromptText(); got != autonomousUpdateResumePrompt {
+		t.Fatalf("unreadable pointer must fall back to the base prompt: %q", got)
+	}
+}
+
 // ── tl1500 刀④返修（2026-11-09 用户拍板二轮①）+ tl1585 扩全回合（2026-11-14
 // 用户令）钉族 ─────────────────────────
 // 修前红 = 刀④拒绝语义（mid_turn_host_restart_refused）；修后绿 = 排队 +
