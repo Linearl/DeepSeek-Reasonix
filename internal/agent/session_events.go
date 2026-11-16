@@ -723,6 +723,25 @@ func replaySessionEventLogWithContext(ctx context.Context, path string, limits s
 				replay.damaged = true
 				return replay, nil
 			}
+			// tl1642: an append record is the wall clock every message in its
+			// batch was persisted with. Stamp it onto messages that predate
+			// per-message CreatedAt (legacy rows carry createdAt=0) so a later
+			// full-state rewrite — replace/fold/migration/recovery lanes all
+			// re-persist the replayed transcript — cannot launder the times
+			// away: replace-event replay collapses per-record times, and an
+			// unstamped row then had no time left but the rewrite instant,
+			// which every panel then showed as a batch ("2026-11-16 14:44 装
+			// 机重启修复" 实测). CreatedAt sits outside transcript identity
+			// (messageForSessionIdentity) and every digest/equality funnel, so
+			// this changes no digest, no storage equality, no provider bytes.
+			if !rec.CreatedAt.IsZero() {
+				stampedAt := rec.CreatedAt.UnixMilli()
+				for i := range msgs {
+					if msgs[i].CreatedAt == 0 {
+						msgs[i].CreatedAt = stampedAt
+					}
+				}
+			}
 			replay.msgs = append(replay.msgs, msgs...)
 			replay.collectionItems = collectionItems
 			for range msgs {

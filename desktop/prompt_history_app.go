@@ -26,6 +26,11 @@ type PromptHistoryEntry struct {
 	At          int64  `json:"at"` // unix ms
 	SessionPath string `json:"sessionPath"`
 	Turn        int    `json:"turn"`
+	// atApprox marks entries whose time fell back to a coarse file/meta clock
+	// because the persisted row carries no per-message timestamp (tl1642).
+	// Unexported: it shapes the panel's newest-first order (an approximate
+	// time must never outrank a real one) but stays off the wire contract.
+	atApprox bool
 }
 
 // PromptHistoryResult is returned as one Wails value. It carries one loaded tape
@@ -409,7 +414,19 @@ func promptHistorySessionFiles(dir string) ([]promptHistorySessionFile, error) {
 	return sessions, nil
 }
 
+// promptHistoryEntryNewer orders the panel newest-first. tl1642: a row whose
+// time fell back to a coarse file/meta clock (atApprox) is an approximation,
+// not a fact — its fallback value is the last rewrite moment and advances with
+// every save, so letting it compete on clock value alone pinned a rewritten
+// session's legacy batch above genuinely newer prompts (the "最后一条用户消
+// 息缺席面板" report: the newest real entry sorted below a 14:44-repair batch
+// whose fallback clock outranked every real timestamp). Real-timestamped
+// entries therefore always outrank approximate ones; clocks decide only
+// within a bucket.
 func promptHistoryEntryNewer(a, b PromptHistoryEntry) bool {
+	if a.atApprox != b.atApprox {
+		return b.atApprox
+	}
 	if a.At != b.At {
 		return a.At > b.At
 	}
@@ -466,14 +483,17 @@ func collectEventLogUserPrompts(path string, info os.FileInfo, resolveUserConten
 			continue
 		}
 		at := fallbackAt
+		atApprox := true
 		if !user.At.IsZero() {
 			at = user.At.UnixMilli()
+			atApprox = false
 		}
 		emit(PromptHistoryEntry{
 			Text:        text,
 			At:          at,
 			SessionPath: path,
 			Turn:        turn,
+			atApprox:    atApprox,
 		})
 		turn++
 	}
@@ -525,14 +545,17 @@ func collectJSONLUserPrompts(path string, info os.FileInfo, resolveUserContent f
 				continue
 			}
 			at := fallbackAt
+			atApprox := true
 			if eventAt, ok := promptHistoryEventMillis(rec); ok {
 				at = eventAt
+				atApprox = false
 			}
 			entry := PromptHistoryEntry{
 				Text:        text,
 				At:          at,
 				SessionPath: path,
 				Turn:        turn,
+				atApprox:    atApprox,
 			}
 			emit(entry)
 			turn++
