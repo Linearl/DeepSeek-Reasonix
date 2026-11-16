@@ -125,8 +125,15 @@ func (s *shellSnapshot) probe(path string) bool {
 // candidates attributed to the wrong shell kind. build is the discovery pass
 // (injectable so the cache contract itself is testable).
 type shellInventory struct {
-	mu         sync.Mutex
-	current    *shellSnapshot
+	mu      sync.Mutex
+	current *shellSnapshot
+	// refreshing is the channel-close single-flight marker for an in-flight
+	// rebuild. tl1619: intentionally NOT golang.org/x/sync/singleflight —
+	// stale-while-revalidate (serve stale + rebuild in background) and the
+	// generation check (invalidate() must stop an already-running refresh
+	// from republishing) exceed singleflight's join semantics; the
+	// channel-close family's unification is deferred to the medium tier.
+	// Registered in docs/单飞去重清单-14处.md #12.
 	refreshing chan struct{}
 	generation uint64
 	build      func(goos, prefer, configPath string) *shellSnapshot

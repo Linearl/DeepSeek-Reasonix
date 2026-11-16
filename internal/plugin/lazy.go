@@ -38,6 +38,12 @@ func DefaultStartupBudget() time.Duration { return defaultStartTimeout }
 //
 // All transitions are gated by lazySpawn.mu so only one goroutine runs the
 // handshake even when multiple Execute calls race on first use.
+//
+// tl1619: intentionally NOT golang.org/x/sync/singleflight — this is a full
+// state machine, not pure dedupe: failed spawns stay failed and are retried
+// by the next Execute, spawns are generation-scoped, and the handshake keeps
+// running in the background while each caller honors its own waitBudget.
+// Registered in docs/单飞去重清单-14处.md #14.
 type spawnState int
 
 const (

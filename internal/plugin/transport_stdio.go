@@ -187,6 +187,14 @@ var stdioShellPATH = cachedShellPATH(defaultStdioShellPATH)
 // except when the probe's context was cancelled, since that empty reflects the
 // aborted caller rather than the host, and caching it would pin "" for the
 // rest of the process.
+//
+// tl1619: intentionally NOT golang.org/x/sync/singleflight — each caller owns
+// its ctx: a waiter may bail via ctx.Done instead of joining the leader's
+// result, and a probe aborted by its leader's cancellation is neither cached
+// nor shared as final, so the next caller re-probes. singleflight waiters
+// cannot cancel and would inherit the leader's aborted empty. Channel-close
+// family, deferred to the medium tier. Registered in
+// docs/单飞去重清单-14处.md #13.
 func cachedShellPATH(probe func(context.Context) string) func(context.Context) string {
 	var (
 		mu       sync.Mutex

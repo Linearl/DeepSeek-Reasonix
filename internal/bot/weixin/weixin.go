@@ -29,6 +29,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/fileutil"
 	fileencoding "reasonix/internal/fileutil/encoding"
+	"reasonix/internal/proc"
 )
 
 const (
@@ -318,7 +319,7 @@ func ilinkGET(ctx context.Context, baseURL, endpoint string) (map[string]any, er
 // pollLoop 长轮询获取更新。
 func (a *adapter) pollLoop(ctx context.Context) {
 	// 启动时短暂等待让登录完成
-	if !bot.SleepCtx(ctx, 2*time.Second) {
+	if !proc.SleepCtx(ctx, 2*time.Second) {
 		return
 	}
 
@@ -330,7 +331,7 @@ func (a *adapter) pollLoop(ctx context.Context) {
 		updates, err := a.getUpdates(ctx)
 		if err != nil {
 			a.logger.Error("getupdates failed", "err", err)
-			if !bot.SleepCtx(ctx, 5*time.Second) {
+			if !proc.SleepCtx(ctx, 5*time.Second) {
 				return
 			}
 			continue
@@ -342,7 +343,7 @@ func (a *adapter) pollLoop(ctx context.Context) {
 
 		// 没有更新时短暂等待
 		if len(updates) == 0 {
-			if !bot.SleepCtx(ctx, 500*time.Millisecond) {
+			if !proc.SleepCtx(ctx, 500*time.Millisecond) {
 				return
 			}
 		}

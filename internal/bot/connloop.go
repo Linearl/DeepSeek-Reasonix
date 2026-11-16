@@ -4,15 +4,19 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"reasonix/internal/proc"
 )
 
 // This file holds the shared connection-lifecycle primitives for the platform
 // adapters (qq / feishu / weixin). Each adapter previously hand-rolled the same
 // "loop forever, attempt a connection, sleep a fixed 5s on failure" shape; two of
 // them used time.Sleep, which ignores ctx and so left a Stop() blocked for the
-// remaining delay. SleepCtx fixes that; RunWithRetry folds the persistent-
-// connection reconnect loop (qq / feishu) into one cancellation-aware,
-// exponentially-backing-off helper.
+// remaining delay. The cancellation-aware sleep fixes that; it lived here as
+// SleepCtx until tl1620 promoted it to proc.SleepCtx (the shared home — the
+// desktoplauncher watchdog was the last bare time.Sleep site). RunWithRetry
+// folds the persistent-connection reconnect loop (qq / feishu) into one
+// cancellation-aware, exponentially-backing-off helper.
 
 const (
 	defaultInitialDelay = 1 * time.Second
@@ -47,27 +51,6 @@ func (c RetryConfig) withDefaults() RetryConfig {
 		c.ResetAfter = defaultResetAfter
 	}
 	return c
-}
-
-// SleepCtx waits for d or until ctx is cancelled, whichever comes first. It
-// returns true if the full duration elapsed and false if ctx was cancelled (or
-// was already cancelled on entry). Adapter loops use it instead of time.Sleep so
-// a Stop() takes effect promptly rather than blocking out the remaining delay.
-func SleepCtx(ctx context.Context, d time.Duration) bool {
-	if ctx.Err() != nil {
-		return false
-	}
-	if d <= 0 {
-		return true
-	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-t.C:
-		return true
-	}
 }
 
 // nextDelay doubles cur, capped at max. The <= 0 guard catches overflow on very
@@ -109,7 +92,7 @@ func RunWithRetry(ctx context.Context, log *slog.Logger, name string, cfg RetryC
 		if time.Since(start) >= cfg.ResetAfter {
 			delay = cfg.InitialDelay
 		}
-		if !SleepCtx(ctx, delay) {
+		if !proc.SleepCtx(ctx, delay) {
 			return
 		}
 		delay = nextDelay(delay, cfg.MaxDelay)

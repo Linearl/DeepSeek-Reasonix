@@ -140,6 +140,14 @@ type approvalManager struct {
 	mcpInteractions mcpInteractionState
 }
 
+// promptResolution is a per-id single-flight guard around one durable prompt
+// resolution (approval/ask): concurrent resolvers coalesce onto the first
+// attempt, latecomers wait and share its outcome. tl1619: intentionally NOT
+// golang.org/x/sync/singleflight — callers need semantics singleflight does
+// not have: external cancellation (cancel/resolve paths inject
+// context.Canceled to every waiter via cancelApprovalResolutionLocked) and
+// attempt-identity checks after persist (a stale attempt's result is
+// discarded instead of published). Registered in docs/单飞去重清单-14处.md #3.
 type promptResolution struct {
 	done     chan struct{}
 	joined   chan struct{}
