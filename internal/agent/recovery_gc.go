@@ -615,7 +615,10 @@ func ReclaimableRecoveryBranches(dir string, now time.Time, grace time.Duration)
 	}
 	var out []string
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), store.SessionTranscriptSuffix) || strings.HasSuffix(e.Name(), store.SessionEventLogSuffix) {
+		// tl1652: transcript-only classification through the store's single
+		// source of truth — audit sidecars (repairlog, rewrite attribution
+		// journal) sharing the stem must not enter the recovery enumeration.
+		if e.IsDir() || !store.IsSessionTranscriptName(e.Name()) {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
@@ -787,13 +790,12 @@ func trashCoveredRecoveryBranch(path, parentDir string, requireIdle, force bool)
 		return fmt.Errorf("recovery branch must be a direct child of its session directory")
 	}
 	key := filepath.Base(path)
-	// The conflicts sidecar shares the copy's stem; without this check a forced
-	// sweep would happily archive it as if it were a transcript, and the copy
-	// list would offer it as a merge candidate.
-	if !strings.HasSuffix(key, store.SessionTranscriptSuffix) ||
-		strings.HasSuffix(key, store.SessionEventLogSuffix) ||
-		strings.HasSuffix(key, store.SessionTurnEventLogSuffix) ||
-		strings.HasSuffix(key, store.SessionConflictLogSuffix) {
+	// The sidecars share the copy's stem; without this check a forced sweep
+	// would happily archive one as if it were a transcript, and the copy list
+	// would offer it as a merge candidate. tl1652: classification goes through
+	// the store's single source of truth so new audit sidecars (repairlog,
+	// rewrite attribution journal) are excluded by construction.
+	if !store.IsSessionTranscriptName(key) {
 		return fmt.Errorf("invalid recovery session path")
 	}
 

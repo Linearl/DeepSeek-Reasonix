@@ -150,11 +150,12 @@ func recoveryCopiesForMain(mainPath string) ([]string, error) {
 		// carry the same -recovery- prefix and would otherwise be enumerated as
 		// copies of the copy: fake chain rows, previews that fail to load, and
 		// promotes that die on "meta is missing". Only the transcript itself is
-		// a copy.
-		if e.IsDir() || !strings.HasSuffix(e.Name(), store.SessionTranscriptSuffix) ||
-			strings.HasSuffix(e.Name(), store.SessionEventLogSuffix) ||
-			strings.HasSuffix(e.Name(), store.SessionTurnEventLogSuffix) ||
-			strings.HasSuffix(e.Name(), store.SessionConflictLogSuffix) {
+		// a copy. tl1652: the classification goes through the store's single
+		// source of truth so every audit sidecar (repairlog, rewrite
+		// attribution journal, …) stays excluded by construction instead of
+		// chasing each new suffix here — a missed one produces exactly the
+		// fake-chain-row shape this comment warns about.
+		if e.IsDir() || !store.IsSessionTranscriptName(e.Name()) {
 			continue
 		}
 		if !strings.HasPrefix(e.Name(), prefix) {

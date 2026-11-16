@@ -97,6 +97,15 @@ type Session struct {
 	// cache-prefix change. DrainContentRewriteReasons (run_loop.go, once per
 	// provider request) is the sole consumer.
 	pendingContentReasons []string
+	// pendingAttribution (tl1652) buffers rewrite-attribution records waiting
+	// for their durable sidecar write (<stem>.rewritelog.jsonl, see
+	// session_rewrite_attribution_tl1652.go). Every producer of
+	// pendingContentReasons also queues here: the in-memory drain queue dies
+	// with the process, so attribution must reach the sidecar at write time —
+	// baseline known → flushed immediately outside s.mu; baseline unknown
+	// (pre-first-save) → flushed by the first successful save. Capped at
+	// rewriteAttributionMaxPending.
+	pendingAttribution []RewriteAttributionRecord
 	// persistObserver receives non-blocking post-commit projection hints. It is
 	// deliberately session-local so multiple runtimes cannot steal each other's
 	// observer registration.
@@ -138,11 +147,11 @@ type Session struct {
 	// feeding the hasher, so a stale state fails open to the full pass).
 	// nil means "no incremental state" — the common post-load, post-rewrite
 	// shape — and is always safe: the save path falls back to the full digest.
-	digestHash          hash.Hash
-	digestCount         int
-	digestVersion       uint64
+	digestHash           hash.Hash
+	digestCount          int
+	digestVersion        uint64
 	digestRewriteVersion int
-	digestSize          int64
+	digestSize           int64
 }
 
 // NewSession initializes a session with an optional system prompt.
@@ -229,22 +238,27 @@ func (s *Session) SetLeadingSystemPromptWithReason(prompt, reason string) bool {
 		return false
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if len(s.Messages) > 0 && s.Messages[0].Role == provider.RoleSystem {
 		if s.Messages[0].Content == prompt {
+			s.mu.Unlock()
 			return false
 		}
 		s.Messages[0].Content = prompt
 	} else if prompt != "" {
 		s.Messages = append([]provider.Message{{Role: provider.RoleSystem, Content: prompt, ID: NewMessageID()}}, s.Messages...)
 	} else {
+		s.mu.Unlock()
 		return false
 	}
 	s.rewriteVersion++
 	if reason = strings.TrimSpace(reason); reason != "" {
 		s.pendingContentReasons = append(s.pendingContentReasons, reason)
 	}
+	// tl1652: completion-time attribution persistence (see Rewrite).
+	s.queueRewriteAttributionLocked(newRewriteAttributionRecord(attributionSourceSystemPmt, reason, s.rewriteVersion))
 	s.version++
+	s.mu.Unlock()
+	s.flushRewriteAttribution()
 	return true
 }
 
@@ -404,6 +418,13 @@ func (s *Session) Replace(msgs []provider.Message) {
 	mintMessageIDs(msgs)
 	s.Messages = msgs
 	s.version++
+	// tl1652: provider-visible replace is exactly the silent-rewrite family
+	// tl1644 could not attribute post-mortem — journal it even though it
+	// carries no drain reason.
+	rec := newRewriteAttributionRecord(attributionSourceReplace, "", s.rewriteVersion)
+	rec.BeforeMsgs = len(before)
+	rec.AfterMsgs = len(msgs)
+	s.queueRewriteAttributionLocked(rec)
 	probe := s.prefixRewriteProbe
 	s.mu.Unlock()
 	// tl1651: outside s.mu — the agent-side probe takes compactionMu, and
@@ -412,6 +433,7 @@ func (s *Session) Replace(msgs []provider.Message) {
 	if probe != nil {
 		probe("", before, msgs)
 	}
+	s.flushRewriteAttribution()
 }
 
 // Rewrite atomically replaces the message log and marks it as a rewrite. The
@@ -436,6 +458,14 @@ func (s *Session) Rewrite(msgs []provider.Message, reason string) {
 	if reason != "" {
 		s.pendingContentReasons = append(s.pendingContentReasons, reason)
 	}
+	// tl1652: the drain queue above dies with the process — attribution is
+	// also buffered for its durable sidecar write, flushed outside s.mu below
+	// (completion-time persistence: a shutdown before the next drain request
+	// no longer loses the attribution).
+	rec := newRewriteAttributionRecord(attributionSourceRewrite, reason, s.rewriteVersion)
+	rec.BeforeMsgs = len(before)
+	rec.AfterMsgs = len(msgs)
+	s.queueRewriteAttributionLocked(rec)
 	probe := s.prefixRewriteProbe
 	s.mu.Unlock()
 	// tl1651: outside s.mu — see Replace. before/after are stable snapshots
@@ -443,6 +473,7 @@ func (s *Session) Rewrite(msgs []provider.Message, reason string) {
 	if probe != nil {
 		probe(reason, before, msgs)
 	}
+	s.flushRewriteAttribution()
 }
 
 // ReplaceLocalMetadata atomically replaces the message log exactly like
@@ -482,8 +513,11 @@ func (s *Session) NoteContentRewrite(reason string) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.pendingContentReasons = append(s.pendingContentReasons, reason)
+	// tl1652: completion-time attribution persistence (see Rewrite).
+	s.queueRewriteAttributionLocked(newRewriteAttributionRecord(attributionSourceNote, reason, s.rewriteVersion))
+	s.mu.Unlock()
+	s.flushRewriteAttribution()
 }
 
 // Snapshot returns a copy of the messages, safe to read from another goroutine
