@@ -5310,6 +5310,15 @@ export function useController() {
         invalidateSharedQuery("MetaForTab", [rebuiltTabId]);
         if (runtimeEpoch) runtimeEpochByTabRef.current.set(rebuiltTabId, runtimeEpoch);
         dispatchTo(rebuiltTabId, { type: "controller_rebuilt" });
+        // tl1653: the invalidate above only drops the cached meta — nothing
+        // refetched, so the tab's fingerprint (sessionPath/revision/digest)
+        // stayed stale until an unrelated pull. A rebuild that moved the
+        // session (recovery re-anchor, pre-snapshot conflict fork) or whose
+        // follow-up rewrite bumped the revision then raced every freshness
+        // gate against stale numbers — the 20261116 incident's blank
+        // transcript after the effort switch. Pull the fresh meta now; the
+        // backend's tab:meta push (tl1389 model parity) remains the primary.
+        void refreshMetaForTab(rebuiltTabId);
         // Task 1301 backstop: the settle clear in setEffortForTab is the
         // primary off-switch for the applying transition; the rebuild fence
         // clears again in case that settle was missed. tl1389: the model
@@ -5323,6 +5332,7 @@ export function useController() {
         for (const id of Array.from(statesRef.current.keys())) {
           invalidateSharedQuery("MetaForTab", [id]);
           dispatchTo(id, { type: "controller_rebuilt" });
+          void refreshMetaForTab(id);
           clearEffortApplying(id);
           clearModelApplying(id);
         }

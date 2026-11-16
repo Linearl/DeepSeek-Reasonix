@@ -19,7 +19,7 @@ import { useConfirmDialog } from "./ConfirmDialog";
 import { PlanUsageCard } from "./PlanUsageCard";
 import { OpenCodeGoUsageSidebarCard } from "./OpenCodeGoUsageSidebarCard";
 import type { Item } from "../lib/useController";
-import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate, compactionWindowOverride } from "../lib/contextPanelUtils";
+import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate, compactionWindowOverride, projectionStaleAnnotation } from "../lib/contextPanelUtils";
 import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
 import { normalizeRecoveryLineageView } from "../lib/sessionRecoveryVersions";
 // tl1500: 会话指标卡折叠偏好（纯前端、localStorage 单键、默认展开）。
@@ -595,10 +595,18 @@ export function ContextPanel({
   const tokensUntilCompact = compactTokens > usedTokens ? compactTokens - usedTokens : 0;
   // 任务549: canonical 超限且投影未生效时单独标注，让「全量回退」的读数可见。
   // 旧后端不带 projectionValid 字段（undefined），保持无标注的旧行为。
-  const projectionStale = context?.maintenance != null
-    && context.maintenance.projectionValid === false
-    && triggerTokens > 0
-    && usedTokens > triggerTokens;
+  // tl1653: 门提纯为 projectionStaleAnnotation（contextPanelUtils）并扩出
+  // 第二形态——投影失效后视图退化为尾部梯队，读数远小于真实占用
+  // （20261116 事故：95 轮会话投影拒收，读数 2%，原门永不命中 → 零降级
+  // 标注，纯误导）。同一标注位点亮，标题给出 canonical 实数。
+  const maintenanceInfo = context?.maintenance ?? null;
+  const canonicalTokens = maintenanceInfo?.canonicalTokens ?? 0;
+  const projectionStale = projectionStaleAnnotation(
+    maintenanceInfo?.projectionValid,
+    usedTokens,
+    triggerTokens,
+    canonicalTokens,
+  );
   const projectionStaleTitle = projectionStale && (context?.maintenance?.canonicalTokens ?? 0) > 0
     ? t("context.projectionInvalidTitle", { canonical: formatTokens(context.maintenance?.canonicalTokens ?? 0) })
     : undefined;

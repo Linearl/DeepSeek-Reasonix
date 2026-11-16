@@ -61,3 +61,25 @@ export function contextReadoutSource(observedPrompt: number | undefined): Contex
 export function contextReadoutSourceKey(source: ContextReadoutSource): DictKey {
   return source === "measured" ? "context.readoutMeasured" : "context.readoutEstimated";
 }
+
+/** 投影失效标注的点亮判据（任务549 原门 + tl1653 第二形态）。
+ *
+ * 投影失效（projectionValid === false）时容量读数有两种失真形态：
+ *   形态一（任务549，20261024 现场）：视图退化为服务全量 canonical，读数
+ *     巨大且超触发线——usedTokens > triggerTokens；
+ *   形态二（tl1653，20261116 21:24 现场）：视图退化为尾部梯队（任务719），
+ *     读数远小于真实占用——95 轮会话读数 2%，canonical 480K，原门永不
+ *     命中，面板零降级标注，纯误导。
+ * canonicalTokens 随 maintenance 一路上报：投影失效且 canonical 超过显示
+ * 读数，即证明读数失真（显示的是降级视图而非真实占用），标注点亮并由
+ * 标题给出 canonical 实数。投影有效时两形态都不成立，标注保持安静。 */
+export function projectionStaleAnnotation(
+  projectionValid: boolean | undefined,
+  usedTokens: number,
+  triggerTokens: number,
+  canonicalTokens: number,
+): boolean {
+  if (projectionValid !== false) return false;
+  if (triggerTokens > 0 && usedTokens > triggerTokens) return true;
+  return canonicalTokens > 0 && canonicalTokens > usedTokens;
+}
