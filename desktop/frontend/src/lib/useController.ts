@@ -2350,6 +2350,15 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const c = e.compaction;
       if (!c) return s;
       const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && it.pending);
+      // tl1637（tl556 复发诊断打点·证「到没到/写没写」）：入口与找卡结果一行
+      // 同记，与 Go 侧 "compaction progress emit" 构成三态判读——Go 有 emit
+      // 而本行缺席=wire 断；本行在而 readout 仍「估算中」=写入或渲染断。
+      // 事件被后端节流 ≤1/s，频度合规。回收候裁。
+      reportFrontendLog(
+        "compaction",
+        idx < 0 ? "progress received, no pending card (dropped)" : "progress received, pending card updated",
+        `trigger=${c.trigger ?? ""} pass=${c.pass ?? "?"} tokens=${c.tokens ?? "?"} tps=${c.tokensPerSec ?? "?"} fold=${c.done ?? "?"}/${c.total ?? "?"}`,
+      );
       if (idx < 0) return s;
       const at = s.items.length - 1 - idx;
       const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
