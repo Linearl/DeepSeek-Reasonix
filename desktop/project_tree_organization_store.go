@@ -173,9 +173,5 @@ func saveProjectOrganizationFile(f desktopProjectFile) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return fileutil.ReplaceFile(tmp, path)
+	return fileutil.AtomicWriteFile(path, b, 0o644)
 }

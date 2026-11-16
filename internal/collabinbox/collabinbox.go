@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"reasonix/internal/filelock"
+	"reasonix/internal/fileutil"
 	"reasonix/internal/sessioncollab"
 )
 
@@ -130,17 +131,17 @@ type Entry struct {
 	Delivery     string `json:"delivery,omitempty"`
 	// Bucket is the five-way view classification (approval|mention|automation|system).
 	Bucket string `json:"bucket"`
-		// Channel is the task-349 group identifier (349 挂账 note①): the chat
-		// channel this mail was fanned out from (its name at delivery time).
-		// Empty = point-to-point mail. Presentation-only provenance — the bucket
-		// classification (task 320 d) is deliberately untouched by it.
-		Channel string `json:"channel,omitempty"`
-		// RefPath is an optional file the entry points at — currently the
-		// authoritative md behind an 意见箱 notification (任务 1016 增强项 ②：
-		// 条目可点开对应 md). The panel renders it as a reveal action; it is
-		// derived from the message body's `md: <filename>` line at build time,
-		// so the transport layer stays untouched.
-		RefPath string `json:"refPath,omitempty"`
+	// Channel is the task-349 group identifier (349 挂账 note①): the chat
+	// channel this mail was fanned out from (its name at delivery time).
+	// Empty = point-to-point mail. Presentation-only provenance — the bucket
+	// classification (task 320 d) is deliberately untouched by it.
+	Channel string `json:"channel,omitempty"`
+	// RefPath is an optional file the entry points at — currently the
+	// authoritative md behind an 意见箱 notification (任务 1016 增强项 ②：
+	// 条目可点开对应 md). The panel renders it as a reveal action; it is
+	// derived from the message body's `md: <filename>` line at build time,
+	// so the transport layer stays untouched.
+	RefPath string `json:"refPath,omitempty"`
 	// Preview is the first line of the body, rune-bounded — enough to triage,
 	// never a transcript dump.
 	Preview string `json:"preview"`
@@ -436,11 +437,7 @@ func (s *Store) saveState(st stateFile) error {
 	if err != nil {
 		return err
 	}
-	tmp := s.statePath() + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.statePath())
+	return fileutil.AtomicWriteFile(s.statePath(), b, 0o600)
 }
 
 // classify assigns one message to a bucket (task 320 d). Priority: explicit

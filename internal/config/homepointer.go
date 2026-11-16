@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"reasonix/internal/fileutil"
 )
 
 // HomePointerFileName is the pointer file's name inside the OS-default home.
@@ -178,12 +180,7 @@ func WriteHomePointerFile(path string, home string) error {
 		return err
 	}
 	payload = append(payload, '\n')
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, payload, 0o644); err != nil {
-		return fmt.Errorf("write home pointer temp: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err := fileutil.AtomicWriteFile(path, payload, 0o644); err != nil {
 		return fmt.Errorf("swap home pointer: %w", err)
 	}
 	return nil

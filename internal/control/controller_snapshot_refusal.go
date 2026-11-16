@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/fileutil"
 )
 
 // tl1407: snapshot-refusal bounded logging + crash-safety dump.
@@ -74,16 +74,9 @@ func (c *Controller) dumpUnsavedTranscript(s *agent.Session, path string) string
 			return ""
 		}
 	}
-	tmp := dumpPath + ".tmp"
-	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
+	if err := fileutil.AtomicWriteFile(dumpPath, buf.Bytes(), 0o600); err != nil {
 		slog.Error("controller: unsaved-transcript dump write failed",
 			"dump", filepath.Base(dumpPath), "err", err)
-		return ""
-	}
-	if err := os.Rename(tmp, dumpPath); err != nil {
-		slog.Error("controller: unsaved-transcript dump rename failed",
-			"dump", filepath.Base(dumpPath), "err", err)
-		_ = os.Remove(tmp)
 		return ""
 	}
 	slog.Error("controller: unsaved transcript dumped beside the session dir (crash safety)",

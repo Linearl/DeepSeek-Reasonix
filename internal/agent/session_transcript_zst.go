@@ -261,12 +261,14 @@ func compressSessionTranscriptZstLocked(plain, zst string, now time.Time, reason
 	}
 	// Windows 句柄纪律：src 必须在删除明文之前显式关闭（os.Open 不带
 	// FILE_SHARE_DELETE，实测未关句柄时 os.Remove 报「正由另一进程使用」）。
-	tmp := zst + ".tmp"
-	dst, dstErr := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	// tl1616：固定 zst+".tmp" 换 CreateTemp 唯一暂存名（同 session_events_zst，
+	// 正规件 writeAtomicTemp 同规则），fsync/失败清理/rename 发布维持原状。
+	dst, dstErr := os.CreateTemp(filepath.Dir(zst), ".zst-*.tmp")
 	if dstErr != nil {
 		src.Close()
 		return before, 0, dstErr
 	}
+	tmp := dst.Name()
 	enc, encErr := zstd.NewWriter(dst,
 		zstd.WithEncoderLevel(zstd.SpeedFastest),
 		zstd.WithWindowSize(4<<20),

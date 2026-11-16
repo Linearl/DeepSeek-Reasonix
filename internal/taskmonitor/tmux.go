@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/fileutil"
 	"reasonix/internal/proc"
 )
 
@@ -381,25 +382,5 @@ func (a *TmuxAdapter) save(projectDir string, m TmuxMapping) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmux-*.tmp")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	defer os.Remove(name)
-	if _, err = tmp.Write(b); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err = tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-	if err = os.Rename(name, path); err != nil {
-		return err
-	}
-	return nil
+	return fileutil.AtomicWriteFile(path, b, 0o600)
 }

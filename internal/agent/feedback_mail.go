@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/fileutil"
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/tool/builtin"
 )
@@ -163,11 +164,7 @@ func registerContactByName(mailDir, name, contactID string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return fileutil.AtomicWriteFile(path, raw, 0o600)
 }
 
 // ---- 意见箱会话（固定名实体，1016 处理层） ----
@@ -534,9 +531,5 @@ func stampFeedbackNotified(path string) error {
 	// 在 "---" 前插一行，其余字节原样保留。
 	stamped := strings.TrimSuffix(front, "---") +
 		FeedbackNotifiedMarker + ": " + time.Now().UTC().Format(time.RFC3339) + "\n---" + string(raw[len(front):])
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(stamped), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return fileutil.AtomicWriteFile(path, []byte(stamped), 0o644)
 }

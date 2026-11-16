@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/fileutil"
 	"reasonix/internal/secrets"
 )
 
@@ -618,9 +619,5 @@ func writeAutonomousUpdateResumeFile(state autonomousUpdateResumeFile) error {
 	if err := os.MkdirAll(filepath.Dir(autonomousUpdateResumePath()), 0o755); err != nil {
 		return err
 	}
-	tmp := autonomousUpdateResumePath() + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, autonomousUpdateResumePath())
+	return fileutil.AtomicWriteFile(autonomousUpdateResumePath(), data, 0o644)
 }

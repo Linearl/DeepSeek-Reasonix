@@ -31,6 +31,7 @@ import (
 
 	"reasonix/internal/baseproc/pidalive"
 	"reasonix/internal/filelock"
+	"reasonix/internal/fileutil"
 	"reasonix/internal/store"
 )
 
@@ -273,15 +274,7 @@ func atomicWriteJSON(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + "." + newID("t") + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return fileutil.AtomicWriteFile(path, b, 0o600)
 }
 
 func appendJSONL(path string, v any) error {
@@ -1603,12 +1596,7 @@ func (s *MailStore) PruneBy(ctx context.Context, remove func(mailbox string, m M
 		if out != "" {
 			out += "\n"
 		}
-		tmp := path + "." + newID("t") + ".tmp"
-		if err := os.WriteFile(tmp, []byte(out), 0o600); err != nil {
-			continue
-		}
-		if err := os.Rename(tmp, path); err != nil {
-			_ = os.Remove(tmp)
+		if err := fileutil.AtomicWriteFile(path, []byte(out), 0o600); err != nil {
 			continue
 		}
 		removed += fileRemoved

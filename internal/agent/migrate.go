@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/fileutil"
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/provider"
 )
@@ -631,6 +632,9 @@ func transformAndCopyJsonl(src, dst string) error {
 			return err
 		}
 	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
@@ -716,13 +720,8 @@ func recordImportedTitle(destDir, base, summary string) {
 		slog.Warn("agent: legacy title index encode failed", "path", path, "err", err)
 		return
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	if err := fileutil.AtomicWriteFile(path, b, 0o644); err != nil {
 		slog.Warn("agent: legacy title index write failed; imported titles will be missing until re-import", "path", path, "err", err)
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		slog.Warn("agent: legacy title index publish failed", "path", path, "err", err)
 	}
 }
 
@@ -895,23 +894,7 @@ func copyBranchMetaSidecar(srcPath, dstPath string) {
 	if err := os.MkdirAll(filepath.Dir(dstMeta), 0o755); err != nil {
 		return
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dstMeta), ".branch.*.tmp")
-	if err != nil {
-		return
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return
-	}
-	if err := os.Rename(tmpPath, dstMeta); err != nil {
-		os.Remove(tmpPath)
-	}
+	_ = fileutil.AtomicWriteFile(dstMeta, b, 0o600)
 }
 
 func copySubagentArtifacts(srcSessionDir, dstSessionDir, parentSession string) error {
@@ -957,22 +940,7 @@ func copyFileIfExists(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dst), ".subagent.*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := os.Rename(tmpPath, dst); err != nil {
-		os.Remove(tmpPath)
+	if err := fileutil.AtomicWriteFile(dst, b, 0o600); err != nil {
 		return err
 	}
 	_ = os.Chtimes(dst, info.ModTime(), info.ModTime())

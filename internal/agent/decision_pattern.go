@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/fileutil"
 	"reasonix/internal/memory"
 )
 
@@ -243,9 +244,5 @@ func writeDecisionExtractState(path string, state decisionExtractState) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return fileutil.AtomicWriteFile(path, append(raw, '\n'), 0o600)
 }

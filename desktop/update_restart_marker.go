@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/fileutil"
 )
 
 // updateRestartMarkerName is the marker file's name under the user state dir.
@@ -66,16 +67,7 @@ func writeUpdateRestartMarker(reason, version string) {
 	marker := updateRestartMarker{At: time.Now().Unix(), PID: os.Getpid(), Reason: reason, Version: version}
 	data, err := json.Marshal(marker)
 	if err == nil {
-		if mkErr := os.MkdirAll(filepath.Dir(updateRestartMarkerPath()), 0o755); mkErr != nil {
-			err = mkErr
-		} else {
-			tmp := updateRestartMarkerPath() + ".tmp"
-			if writeErr := os.WriteFile(tmp, data, 0o644); writeErr != nil {
-				err = writeErr
-			} else if renameErr := os.Rename(tmp, updateRestartMarkerPath()); renameErr != nil {
-				err = renameErr
-			}
-		}
+		err = fileutil.AtomicWriteFile(updateRestartMarkerPath(), data, 0o644)
 	}
 	if err != nil {
 		// A missing marker is the SAFE failure direction: the next launch just
