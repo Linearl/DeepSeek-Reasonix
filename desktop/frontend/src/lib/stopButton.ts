@@ -110,3 +110,34 @@ export function stopButtonLabelSpec(
   if (phase === "force" || phase === "settled") return { key: "composer.stopTerminated" };
   return { key: "composer.stopStopping" };
 }
+
+// tl1582 按钮紧凑化: the full tier labels (「停止中…」/「强制停止 · 14s」/
+// 「已终止」) are long nowrap strings that overflow the button whenever the
+// toolbar flex row squeezes the tooltip-trigger wrapper (it has min-width:0
+// and no flex-shrink guard). The button now carries only a compact tag
+// (≤3 CJK-equivalent chars, see STOP_COMPACT_LABEL_MAX_CHARS) — the tier hue
+// (tl1420) and the aria-label keep the full semantics, and the complete
+// three-tier copy moves to the hover card. Pure like stopButtonLabelSpec so
+// the harness can pin label/key pairing AND the width budget (char count)
+// without a layout engine.
+export type StopButtonCompactLabelSpec = {
+  key: "composer.stopCompactStopping" | "composer.stopCompactGrace" | "composer.stopCompactTerminated";
+  n?: number;
+};
+
+/** tl1582 width budget in half-width units (CJK counts as 2) across every
+ *  locale's compact tag: 6 units ≈ 3 CJK chars ≈ 33px at the 11px label size,
+ *  which the button max-width (72px) covers with icon+padding. The harness
+ *  asserts all three locales stay within this — a longer tag fails tests, it
+ *  does not silently overflow. */
+export const STOP_COMPACT_LABEL_MAX_CHARS = 6;
+
+export function stopButtonCompactLabelSpec(
+  phase: StopButtonPhase,
+  countdownSeconds: number | null,
+): StopButtonCompactLabelSpec | null {
+  if (phase === "idle") return null;
+  if (phase === "grace") return { key: "composer.stopCompactGrace", n: countdownSeconds ?? 0 };
+  if (phase === "force" || phase === "settled") return { key: "composer.stopCompactTerminated" };
+  return { key: "composer.stopCompactStopping" };
+}
