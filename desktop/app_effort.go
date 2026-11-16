@@ -364,8 +364,27 @@ func (a *App) tryEffortFastPaths(tab *WorkspaceTab, tabID, level string, switchS
 					slog.Info("desktop: effort switch", "tab", tabID, "path", "fast-per-request", "level", effort, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 334: fast path observability; declines log on the agent side with reason; elapsed_ms: task 148.
 					return true, nil
 				}
+			} else {
+				// tl1653: the capability-class fall-through used to be silent —
+				// a rebuild followed with zero fast-path trace, indistinguishable
+				// from the agent-side declines (which do log). Name the branch.
+				slog.Info("desktop: effort switch", "tab", tabID, "path", "fast-skipped-not-configurable", "level", level, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 148: elapsed_ms.
 			}
+		} else {
+			// tl1653: a failed entry read also skipped the fast path silently
+			// and paid the rebuild below. Log the read failure so the decline
+			// trail names its cause instead of vanishing (20261116 incident:
+			// zero "effort override declined" lines across a 19.7s fallback).
+			slog.Warn("desktop: effort switch", "tab", tabID, "path", "fast-skipped-entry-read-failed", "level", level, "err", secrets.RedactError(err), "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 148: elapsed_ms.
 		}
+	} else {
+		// tl1653: a tab without a live controller (restored/detached runtime —
+		// the 20261116 incident shape: an open-topic tab whose history loaded
+		// cold, no runtime attached) skips the per-request arm entirely and
+		// pays the rebuild in the caller's fallback. That silent exit is why
+		// the incident's full logs had zero "effort override declined" lines:
+		// the decline never reached the agent. Name it.
+		slog.Info("desktop: effort switch", "tab", tabID, "path", "fast-skipped-no-controller", "level", level, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 148: elapsed_ms.
 	}
 	return false, nil
 }
@@ -478,6 +497,15 @@ func (a *App) swapEffortController(tab *WorkspaceTab, newCtrl *control.Controlle
 	a.clearDeferredRebuildVersion(tab.ID, pendingSequence)
 	a.persistTabSessionPath(tab, path)
 	a.notifyTabRuntimeRebuilt(tab)
+	// tl1653: push the settled meta right behind the runtime:rebuilt fence —
+	// the same lane and ordering the model swap uses (tl1389). The effort
+	// rebuild re-anchors the session (a recovery-forked session rebuilds to
+	// re-anchor; a pre-snapshot conflict can move the path) and rewrites
+	// tab.Label/tab.effort with no agent event to carry them, so without this
+	// push the frontend's meta fingerprint (sessionPath/revision/digest) stays
+	// stale until an unrelated pull — exactly the drift the 20261116 incident
+	// turned into a blank transcript on the next switch-back.
+	a.notifyTabMetaRefresh(tab)
 	return nil
 }
 
