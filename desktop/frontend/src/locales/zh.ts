@@ -5367,13 +5367,10 @@ export const zh: Record<DictKey, string> = {
   "turnActions.summary": "压缩",
   "turnActions.rewind": "回溯",
   "turnActions.copyEmpty": "该回合没有文本可复制",
-  // 任务 1137：回合尾部信息带（本轮修改文件卡片 + token 消耗 + 完成时刻）。
-  "turnActions.turnFiles": "本轮文件",
-  "turnActions.filesMore": "+{n} 个文件",
-  "turnActions.filesFewer": "收起",
+  // 任务 1137：回合尾部信息带（token 消耗 + 完成时刻）。tl1636：文件明细
+  // 键（turnFiles/filesMore/filesFewer/fileMissing）随「本轮文件」直出条
+  // 退役——明细唯一入口是「本轮结果」折叠卡。
   "turnActions.turnMetaTitle": "本回合输入/输出 token 与完成时间",
-  // tl1421: 文件 chip 缺失态（探针 ResolveOpenablePathForTab 空串）hover 说明。
-  "turnActions.fileMissing": "文件不存在或已移动，无法打开：{path}",
   "transcript.jumpToBottom": "跳到底部",
   "markdown.tableExpandAll": "展开全部 {n} 行",
   "markdown.tableCollapse": "收起表格",

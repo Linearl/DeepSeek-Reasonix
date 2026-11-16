@@ -3844,13 +3844,10 @@ export const zhTW: Record<DictKey, string> = {
   "turnActions.summary": "壓縮",
   "turnActions.rewind": "回溯",
   "turnActions.copyEmpty": "該回合沒有文字可複製",
-  // 任務 1137：回合尾部資訊帶（本輪修改檔案卡片 + token 消耗 + 完成時刻）。
-  "turnActions.turnFiles": "本輪檔案",
-  "turnActions.filesMore": "+{n} 個檔案",
-  "turnActions.filesFewer": "收起",
+  // 任務 1137：回合尾部資訊帶（token 消耗 + 完成時刻）。tl1636：檔案明細
+  // 鍵（turnFiles/filesMore/filesFewer/fileMissing）隨「本輪檔案」直出條
+  // 退役——明細唯一入口是「本輪結果」摺疊卡。
   "turnActions.turnMetaTitle": "本回合輸入/輸出 token 與完成時間",
-  // tl1421：檔案 chip 缺失態（探針 ResolveOpenablePathForTab 空串）hover 說明。
-  "turnActions.fileMissing": "檔案不存在或已移動，無法開啟：{path}",
   "transcript.jumpToBottom": "跳到底部",
   "markdown.tableExpandAll": "展開全部 {n} 行",
   "markdown.tableCollapse": "收起表格",

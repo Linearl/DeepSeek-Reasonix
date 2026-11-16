@@ -36,8 +36,11 @@ const noticeSuggestionKeys: Record<string, DictKey> = {
   session_also_open: "notice.suggestion.leaseBusy",
   // oversized event log 保底跳过（设置→修复会话单独处理）。
   session_compact_fail_streak: "notice.suggestion.oversizedEventLog",
-  // 任务1080：首字节等待 3~5s 轻提示——与 30s 档区分，只说「正在等待」。
-  header_wait_light: "notice.suggestion.headerWaitLight",
+  // tl1645：header_wait_light 不再配 suggestion 行——1080 的后端正文
+  // （i18n HeaderWaitLightNotice）与 1079 的 suggestion 文案逐字相同，两行
+  // 连排同句（用户 20261116 15:33 截图「出现两次」）。等待文案由后端正文
+  // 单点承载，suggestion 键 notice.suggestion.headerWaitLight 保留在词典
+  // （不动文案内容）但从本表摘除，杜绝重复渲染。
   // 任务1081：续轮耗尽转人工时的「建议下一步」行（试过什么的摘要走 errText）。
   autopilot_resume_exhausted: "notice.suggestion.autopilotResumeExhausted",
 };
