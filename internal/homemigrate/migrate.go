@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/baseproc/pidalive"
 	"reasonix/internal/config"
 )
 
@@ -282,7 +283,7 @@ func (e *Executor) acquireLock() (func(), string, error) {
 			continue
 		}
 		if ownerPID, readErr := readLockPID(path); readErr == nil && ownerPID > 0 {
-			if pidAlive(ownerPID) {
+			if pidalive.LockHolderAlive(ownerPID) {
 				return func() {}, fmt.Sprintf("lock held by live pid %d", ownerPID), ErrMigrationLocked
 			}
 			_ = os.Remove(path) // stale owner; retry the exclusive create
@@ -319,7 +320,7 @@ func migrationInProgressAt(path string) bool {
 	if err != nil || pid <= 0 {
 		return true // unreadable live-age lock: assume the worst, fail closed
 	}
-	return pidAlive(pid)
+	return pidalive.LockHolderAlive(pid)
 }
 
 func readLockPID(path string) (int, error) {

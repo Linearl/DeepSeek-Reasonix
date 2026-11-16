@@ -5,6 +5,12 @@
 // 任务511 复发断根 stale-holder recycle, and a leaf is the only shape both can
 // import without an import cycle. Alive is defined per platform in
 // pidalive_windows.go / pidalive_unix.go.
+//
+// The same leaf also carries LockHolderAlive (lockalive_*.go): the
+// lock-scenario conservative probe the instance-lock holders in homemigrate /
+// mcplaunch / cli turn to (tl1623 merged the three line-identical copies).
+// "Zero-dependency" means no in-repo imports; the Windows probe uses
+// golang.org/x/sys/windows.
 package pidalive
 
 import (
