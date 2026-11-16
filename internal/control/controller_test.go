@@ -1662,9 +1662,11 @@ func TestRecoverShutdownSnapshotPersistsAndReanchorsSession(t *testing.T) {
 func recoveryTranscriptPaths(paths []string) []string {
 	out := paths[:0]
 	for _, path := range paths {
-		if !strings.HasSuffix(path, ".events.jsonl") &&
-			!strings.HasSuffix(path, ".turns.jsonl") &&
-			!strings.HasSuffix(path, ".turns.jsonl.damaged") {
+		// tl1652: transcript-only classification through the store's single
+		// source of truth. The handwritten suffix list kept drifting behind
+		// new audit sidecars (the rewrite attribution journal tripped it into
+		// reporting a phantom branch).
+		if store.IsSessionTranscriptName(filepath.Base(path)) {
 			out = append(out, path)
 		}
 	}
