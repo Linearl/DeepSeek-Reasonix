@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"reasonix/internal/sandbox"
 )
 
 // WriteScope is where a write lands relative to the project, not how risky
@@ -96,26 +98,13 @@ func resolvedScratchScope(path, workspaceRoot string, scratchRoots []string) Wri
 
 // resolveScopePath resolves the deepest existing ancestor and appends the
 // missing tail. Writers commonly create new scratch files, so EvalSymlinks on
-// the complete path alone is insufficient.
+// the complete path alone is insufficient. tl1617: the hand-rolled unbounded
+// walk went to sandbox.ResolveAbsPath — same contract (deepest existing
+// ancestor + missing tail, cleaned abs when nothing exists) plus the bounded
+// 250ms budget, TTL cache, shared in-flight walks, and fast-fail degrade
+// (internal/sandbox/canonical.go task 455fix).
 func resolveScopePath(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	abs = filepath.Clean(abs)
-	tail := ""
-	cur := abs
-	for {
-		if real, evalErr := filepath.EvalSymlinks(cur); evalErr == nil {
-			return filepath.Join(real, tail), nil
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return abs, nil
-		}
-		tail = filepath.Join(filepath.Base(cur), tail)
-		cur = parent
-	}
+	return sandbox.ResolveAbsPath(path)
 }
 
 // DefaultScratchRoots includes the OS temp directory and Unix public aliases.

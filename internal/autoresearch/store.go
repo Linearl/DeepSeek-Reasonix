@@ -17,6 +17,7 @@ import (
 	"unicode"
 
 	fileencoding "reasonix/internal/fileutil/encoding"
+	"reasonix/internal/sandbox"
 )
 
 var safeTaskID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -30,7 +31,12 @@ type Store struct {
 }
 
 func NewStore(workspaceRoot string) *Store {
-	if resolved, err := filepath.EvalSymlinks(workspaceRoot); err == nil {
+	// tl1617: the resolve-if-possible idiom went to the sandbox canonical
+	// engine — bounded walk + TTL cache instead of a bare (potentially
+	// unbounded) filepath.EvalSymlinks per store construction. A missing
+	// root now lands as the cleaned absolute path instead of the raw input,
+	// which is the same location for fail-closed reads.
+	if resolved, err := sandbox.ResolveAbsPath(workspaceRoot); err == nil {
 		workspaceRoot = resolved
 	}
 	return &Store{

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"reasonix/internal/filelock"
+	"reasonix/internal/sandbox"
 )
 
 // All workspaces share a fixed set of hashed path-lock files. Hash collisions
@@ -339,28 +340,19 @@ func canonicalFileKey(abs string) (key, display string, err error) {
 	return normalizeIdentityPath(abs), display, nil
 }
 
+// canonicalFilePath resolves the deepest existing ancestor and re-attaches the
+// missing tail — the sandbox canonical engine's exact contract (tl1617: the
+// hand-rolled unbounded walk here went to sandbox.ResolveAbsPath, which adds
+// the bounded 250ms budget, the 30s TTL cache, shared in-flight walks, and
+// fast-fail degrade; see internal/sandbox/canonical.go task 455fix).
 func canonicalFilePath(abs string) (canonical, display string, err error) {
 	abs = strings.TrimSpace(abs)
 	if abs == "" {
 		return "", "", errors.New("path is empty")
 	}
-	abs, err = filepath.Abs(abs)
+	abs, err = sandbox.ResolveAbsPath(abs)
 	if err != nil {
 		return "", "", err
-	}
-	abs = filepath.Clean(abs)
-	cur, tail := abs, ""
-	for {
-		if resolved, resolveErr := filepath.EvalSymlinks(cur); resolveErr == nil {
-			abs = filepath.Join(resolved, tail)
-			break
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			break
-		}
-		tail = filepath.Join(filepath.Base(cur), tail)
-		cur = parent
 	}
 	display = filepath.Base(abs)
 	return compatibilityIdentityPath(abs), display, nil

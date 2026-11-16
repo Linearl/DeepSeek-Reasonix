@@ -46,7 +46,7 @@ func canonicalExternalFolderPath(root, candidate string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	realCandidate, err := evalSymlinksAllowMissing(candidate)
+	realCandidate, err := evalSymlinksReattachMissing(candidate)
 	if err != nil {
 		return "", false
 	}
@@ -57,9 +57,17 @@ func canonicalExternalFolderPath(root, candidate string) (string, bool) {
 	return filepath.Clean(realCandidate), true
 }
 
-// evalSymlinksAllowMissing resolves all existing ancestors but permits a
-// not-yet-created leaf used by display and open-path flows.
-func evalSymlinksAllowMissing(path string) (string, error) {
+// evalSymlinksReattachMissing resolves all existing ancestors but permits a
+// not-yet-created leaf: a dangling final symlink (or missing leaf) is treated
+// as missing and the walk climbs, re-attaching the unresolved tail. That
+// lenient edge is exactly why this is NOT the same function as
+// config/path_access.go's evalSymlinksStrictForWrite — the two were one
+// same-named pair whose boundary semantics had forked (tl1617 双实现显式双
+// 命名): the config one errors on a dangling leaf so a project config write
+// can never punch through it; this one re-attaches, which is correct for the
+// display/open-path flows here. Either behavior is fine for its own caller,
+// sharing a name was the bug.
+func evalSymlinksReattachMissing(path string) (string, error) {
 	path = filepath.Clean(path)
 	current := path
 	missing := make([]string, 0, 2)
