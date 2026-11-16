@@ -375,6 +375,97 @@ console.log("\npre-repair backups cleanup (tl1603)");
   await act(async () => root.unmount());
 }
 
+// ②-r2 单删在途只禁自己：删 A 的整个在途窗口（E5 健康闸重放+重取列表，大会
+// 话分钟级）里，其它行的删除钮与勾选框必须立即可用；A 完成后全表复位（状态
+// 复位钉）。这正是用户实测「删一条后其他删除按钮全部不可用」的返修面——根因
+// 是单删复用批量全局布尔 preRepairBusy。
+{
+  const spies: Spies = { deleteCalls: [], batchCalls: [], listCalls: 0, viewCalls: [], activateCalls: [] };
+  let resolveDelete: (() => void) | null = null;
+  const root = await openPanel(spies, {
+    DeletePreRepairBackup: (dir: string) =>
+      new Promise<void>((resolve) => {
+        resolveDelete = resolve;
+        spies.deleteCalls.push(dir);
+      }),
+  });
+  const buttons = queryAll("[data-pre-repair-delete]") as HTMLButtonElement[];
+  await act(async () => { buttons[0]?.click(); });
+  await flush();
+  await act(async () => { dialogConfirm()?.click(); });
+  await flush();
+  ok(
+    resolveDelete !== null && spies.listCalls === 1,
+    "②-r2 the delete is in flight (one bridge call, no reload yet)",
+  );
+  const mid = queryAll("[data-pre-repair-delete]") as HTMLButtonElement[];
+  ok(mid.length === 3 && mid[0].disabled, "②-r2 the deleting row's own button is the only deletable one disabled");
+  // 行 3 是 sole-copy blocked 行，删除钮恒禁用（数据态，与本钉无关）。
+  ok(!mid[1].disabled && mid[2].disabled, "②-r2 other rows' delete buttons stay usable during a delete (删一条后其余立即可用)");
+  const midChecks = queryAll("[data-pre-repair-check]") as HTMLInputElement[];
+  ok(midChecks.every((c) => !c.disabled), "②-r2 checkboxes stay usable during a single delete");
+  await act(async () => { resolveDelete?.(); });
+  await flush();
+  const done = queryAll("[data-pre-repair-delete]") as HTMLButtonElement[];
+  ok(!done[0].disabled && !done[1].disabled, "②-r2 after the delete resolves every button resets (状态复位钉)");
+  await act(async () => root.unmount());
+}
+
+// ②-r2b 失败路径同样复位：桥拒绝后全表可用（错误态卡死分支的反面钉）。
+{
+  const spies: Spies = { deleteCalls: [], batchCalls: [], listCalls: 0, viewCalls: [], activateCalls: [] };
+  const root = await openPanel(spies, {
+    DeletePreRepairBackup: async () => {
+      throw new Error("recycle-bin refused");
+    },
+  });
+  const first = queryAll("[data-pre-repair-delete]").find((b) => !(b as HTMLButtonElement).disabled);
+  await act(async () => { first?.click(); });
+  await flush();
+  await act(async () => { dialogConfirm()?.click(); });
+  await flush();
+  const after = queryAll("[data-pre-repair-delete]") as HTMLButtonElement[];
+  ok(!after[0].disabled && !after[1].disabled, "②-r2b after a failed delete the deletable rows are usable again (no stuck error state)");
+  await act(async () => root.unmount());
+}
+
+// ②-r2c 查看（预览）与删除解耦：预览在途只影响查看钮，删除钮照常可用。
+// 原实现把 preRepairPreviewing 挂进删除钮的禁用条件——一次卡在途的预览会把
+// 全表删除钮拖死（同一缺陷族的第二根线头）。
+{
+  const spies: Spies = { deleteCalls: [], batchCalls: [], listCalls: 0, viewCalls: [], activateCalls: [] };
+  let resolvePreview: (() => void) | null = null;
+  const root = await openPanel(spies, {
+    PreviewRecoveryChain: (mainPath: string, chainPath: string) =>
+      new Promise((resolve) => {
+        resolvePreview = () =>
+          resolve({
+            path: chainPath,
+            isMain: mainPath === chainPath,
+            messageCount: 7,
+            turns: 2,
+            firstUserText: "hello",
+            tailLines: ["[user]: hello"],
+            sharedWithMain: 7,
+            uniqueToChain: 0,
+            lastActivity: "",
+            degraded: false,
+          });
+        spies.viewCalls.push([mainPath, chainPath]);
+      }),
+  });
+  await act(async () => { queryAll("[data-pre-repair-view]")[0]?.click(); });
+  await flush();
+  ok(spies.viewCalls.length === 1, "②-r2c the preview is in flight");
+  const deletes = queryAll("[data-pre-repair-delete]") as HTMLButtonElement[];
+  ok(!deletes[0].disabled && !deletes[1].disabled && deletes[2].disabled, "②-r2c delete buttons stay usable while a preview is pending (预览不再拖死删除; blocked 行恒禁用)");
+  await act(async () => { resolvePreview?.(); });
+  await flush();
+  await act(async () => { buttonByText("Close")?.click(); });
+  await flush();
+  await act(async () => root.unmount());
+}
+
 // ⑤ 三语与桥申报。
 {
   const locales: Record<string, string> = {

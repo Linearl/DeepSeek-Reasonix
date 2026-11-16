@@ -579,10 +579,18 @@ export function RecoveryCopiesSection() {
   const [preRepairError, setPreRepairError] = useState("");
   const [preRepairOpen, setPreRepairOpen] = useState(false);
   const [preRepairPreviewing, setPreRepairPreviewing] = useState<string | null>(null);
-  // tl1603: 清理面——勾选集（按备份目录路径记）、单删/批量的在途标记。批量
-  // 回执的拒绝行落面板 errors 列（与其它清理入口同一反馈面），成功走 toast。
+  // tl1603: 清理面——勾选集（按备份目录路径记）、批量的在途标记。批量回执
+  // 的拒绝行落面板 errors 列（与其它清理入口同一反馈面），成功走 toast。
   const [preRepairSelected, setPreRepairSelected] = useState<Set<string>>(new Set());
+  // preRepairBusy 只属于批量动作（清理所选/清理全组）：批量在消费整个勾选
+  // 集，期间行级入口整体禁用是诚实形态。tl1603-r2 缺陷②勘误：单删原本也
+  // 复用这个全局布尔——删一条就把**所有**行删除钮+勾选框禁用，而单删桥在
+  // 后端要走 E5 健康闸（重放整份宿主日志，大会话分钟级）+删除后整列表重取
+  // （175 项现场同样是秒级到分钟级），整段窗口里其它行按钮全部灰死且点击
+  // 被 guard 静默吞掉——用户实测「删一条后其他删除按钮全部不可用」。现在
+  // 单删在途按行记（preRepairDeleting），删哪条只禁哪条。
   const [preRepairBusy, setPreRepairBusy] = useState(false);
+  const [preRepairDeleting, setPreRepairDeleting] = useState<Set<string>>(new Set());
   // pickedChain names the branch the user chose to win, keyed by main path. Empty
   // means "let the engine take the fullest one". Keyed per conversation so a pick
   // in one group never leaks into another.
@@ -902,11 +910,15 @@ export function RecoveryCopiesSection() {
   // 决定按钮可用性，删除桥的拒绝才是终审——初判可删但宿主已病变的行，点击
   // 后收到诚实的拒删原因。删除走 OS 回收站（可原位还原），确认弹窗言明。
   // 拒绝行的按钮禁用并在行内落原因（拒删提示不藏 hover）。
+  // tl1603-r2 缺陷②：单删的在途标记按 dir 记——在途只禁自己那一行的删除钮，
+  // 其它行的删除钮/勾选框立即可用（并发点删安全：Go 侧 sessionRemovalMu 串
+  // 行化，E5 闸对每条权威复验，后删的拿到诚实结果）。错误路径同样在 finally
+  // 复位——失败不卡状态（验收「状态复位钉」）。
   const preRepairCanCleanup =
     typeof app.DeletePreRepairBackup === "function" && typeof app.DeletePreRepairBackups === "function";
 
   const deletePreRepair = async (view: PreRepairBackupView) => {
-    if (!preRepairCanCleanup || preRepairBusy) return;
+    if (!preRepairCanCleanup || preRepairDeleting.has(view.dir)) return;
     const ok = await confirm({
       title: t("settings.recoveryCopiesPreRepairDeleteTitle"),
       message: (
@@ -922,7 +934,7 @@ export function RecoveryCopiesSection() {
       tone: "danger",
     });
     if (!ok) return;
-    setPreRepairBusy(true);
+    setPreRepairDeleting((current) => new Set(current).add(view.dir));
     try {
       await app.DeletePreRepairBackup(view.dir);
       showToast(t("settings.recoveryCopiesPreRepairCleanDone").replace("{n}", "1"), "info");
@@ -932,7 +944,11 @@ export function RecoveryCopiesSection() {
       setErrors((current) => [...current, `${view.label}: ${message}`]);
       showToast(`${t("settings.recoveryCopiesPreRepairDeleteFailed")}：${message}`, "error");
     } finally {
-      setPreRepairBusy(false);
+      setPreRepairDeleting((current) => {
+        const next = new Set(current);
+        next.delete(view.dir);
+        return next;
+      });
     }
   };
 
@@ -2962,7 +2978,7 @@ export function RecoveryCopiesSection() {
                                         busy ||
                                         preRepairBusy ||
                                         blocked ||
-                                        preRepairPreviewing !== null
+                                        preRepairDeleting.has(view.dir)
                                       }
                                       title={
                                         blocked
