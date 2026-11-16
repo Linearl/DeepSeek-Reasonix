@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, FileText, Folder, Plus } from "lucide-react";
 import { app } from "../lib/bridge";
+import { formatBytes } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useRemoteNavigationCommand } from "../lib/remoteNavigationCommands";
 import { useRemoteStore, waitForRemoteConnection } from "../store/remote";
@@ -25,18 +26,6 @@ const blankInput: RemoteHostInput = {
   credentialMode: "remote",
   useSSHConfig: false,
 };
-
-function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "";
-  const units = ["B", "KiB", "MiB", "GiB"];
-  let value = n;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-}
 
 function parentOf(path: string): string {
   const trimmed = path.replace(/\/+$/, "");
