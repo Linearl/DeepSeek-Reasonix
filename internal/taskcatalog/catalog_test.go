@@ -2,10 +2,12 @@ package taskcatalog
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"reasonix/internal/projectiondb"
 	"reasonix/internal/taskmonitor"
 )
 
@@ -93,5 +95,29 @@ func TestPageCursorIsRevisionBound(t *testing.T) {
 	stale, err := catalog.ListPage(ctx, PageRequest{ProjectKeys: []string{project.Key}, Cursor: first.NextCursor})
 	if err != nil || !stale.StaleCursor || len(stale.Items) != 0 {
 		t.Fatalf("stale=%#v err=%v", stale, err)
+	}
+}
+
+// tl1625: a task projection must observe the authority's quarantine outcome —
+// when the on-disk database is corrupt, projectiondb renames it aside and the
+// task Status must surface QuarantinedPath instead of dropping it.
+func TestOpenQuarantinesCorruptProjectionAndCarriesPath(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "tasks.sqlite")
+	if err := os.WriteFile(path, []byte("not sqlite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = catalog.Close(context.Background()) })
+	status := catalog.Status()
+	if status.State != projectiondb.StateReady || status.QuarantinedPath == "" {
+		t.Fatalf("status = %#v, want ready projection with quarantined path", status)
+	}
+	if _, err := os.Stat(status.QuarantinedPath); err != nil {
+		t.Fatalf("quarantined projection file: %v", err)
 	}
 }

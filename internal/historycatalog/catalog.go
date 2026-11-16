@@ -123,8 +123,7 @@ func Open(ctx context.Context, opts Options) (*Catalog, error) {
 		flushCh: make(chan chan struct{}, 1),
 		paths:   map[string]queuedPath{}, roots: map[string]Root{}, dirtyRoots: map[string]bool{},
 		closeDone: make(chan struct{}),
-		status: Status{State: string(handle.Status.State), Mode: handle.Status.Mode, Path: handle.Status.Path,
-			LastError: handle.Status.LastError, QuarantinedPath: handle.Status.QuarantinedPath}}
+		status:    handle.Status}
 	if err := c.db.QueryRowContext(ctx, `SELECT revision FROM history_state WHERE id=1`).Scan(new(uint64)); err != nil {
 		_ = c.db.Close()
 		cancel()
