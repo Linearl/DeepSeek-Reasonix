@@ -1033,10 +1033,8 @@ export function RecoveryCopiesSection() {
       // tl1367-fix defect C: the busy family renders localized (holder block).
       const detail = formatSessionBusyError(e);
       // tl1414 反馈对称：失败同弹 toast（横幅只在面板打开时可见）。
-      showToast(
-        `${t("settings.recoveryCopiesVersionDeleteFailedToast", { count: 1 })}：${detail}`,
-        "error",
-      );
+      // tl1647 错误单处渲染：toast 只报计数，原因全文在面板 errors 列一处。
+      showToast(t("settings.recoveryCopiesVersionDeleteFailedToast", { count: 1 }), "error");
       setErrors((current) => [...current, detail]);
     } finally {
       setDeletingHead(null);
@@ -1649,6 +1647,10 @@ export function RecoveryCopiesSection() {
       tone: "danger",
     });
     if (!okToDelete) return;
+    // tl1647：本轮结果清场（同单删口径）——上一轮的 outcome 行不再与本轮并
+    // 存；一轮批量删除在底部只渲染一份权威结果（成功行+失败明细行共存的形
+    // 态是「部分成功」这一态，聚合判定由下方 toast 单条承载）。
+    setDeletedOutcomes([]);
     setBusy(true);
     setErrors([]);
     const collected: DeleteOutcome[] = [];
@@ -1669,19 +1671,21 @@ export function RecoveryCopiesSection() {
       }
       setDeletedOutcomes([...collected]);
     }
-    // tl1414 反馈对称：批量删除的结果同样不能只活在展开面板里。成功计数一
-    // 条 toast；有失败时失败计数 + 首条原因一条 toast（其余原因在 outcome
-    // 行，面板内可查），与 tl1401 合并 toast 的口径一致。
+    // tl1414 反馈对称：批量删除的结果同样不能只活在展开面板里。
+    // tl1647 单一权威反馈：一次批量至多一条 toast——全成功/全失败/部分成功
+    // 三态之一（旧形态成功与失败两条 toast 并存弹出，读作矛盾）。失败原因
+    // 全文只在面板 outcome 明细行一处渲染（错误单处，toast 不再拼首条原因）。
     const deletedCount = collected.filter((o) => o.kind === "deleted").length;
     const failedItems = collected.filter((o) => o.kind === "failed");
-    if (deletedCount > 0) {
-      showToast(t("settings.recoveryCopiesDeletedToast", { count: deletedCount }), "info");
-    }
-    if (failedItems.length > 0) {
+    if (deletedCount > 0 && failedItems.length > 0) {
       showToast(
-        `${t("settings.recoveryCopiesDeleteFailedToast", { count: failedItems.length })}：${failedItems[0].detail ?? ""}`,
-        "error",
+        t("settings.recoveryCopiesDeletePartialToast", { deleted: deletedCount, count: failedItems.length }),
+        "warn",
       );
+    } else if (deletedCount > 0) {
+      showToast(t("settings.recoveryCopiesDeletedToast", { count: deletedCount }), "info");
+    } else if (failedItems.length > 0) {
+      showToast(t("settings.recoveryCopiesDeleteFailedToast", { count: failedItems.length }), "error");
     }
     setBranchesSelected(new Set());
     // 任务 1146：与合成路径同理——列表重取完成后再释放 busy，删除期间底部
@@ -1740,6 +1744,11 @@ export function RecoveryCopiesSection() {
       refuseMainDelete(group.mainLabel, copyPath);
       return;
     }
+    // tl1647：本轮结果清场——上一轮删除的 outcome 行在此起不再渲染。旧行为
+    // 里 deletedOutcomes 跨轮累积，上一轮的「已删除」与本轮的失败行同屏并存
+    // （用户现场：成功的回执行 + 红字错误 +「删除已生效」提示同时出现，读作
+    // 成功与失败互相矛盾）。一次删除动作 = 一份权威结果。
+    setDeletedOutcomes([]);
     setBusy(true);
     try {
       await app.DeleteRecoveryBranch(copyPath);
@@ -1751,8 +1760,7 @@ export function RecoveryCopiesSection() {
       // 只有展开面板才可见，成功同弹 toast——离开面板也在。
       showToast(t("settings.recoveryCopiesDeletedToast", { count: 1 }), "info");
     } catch (err) {
-      // tl1367 口径：busy 族渲染本地化持有者文案，其余透传后端原文；失败
-      // toast 带原因，不再只留展开式行。
+      // tl1367 口径：busy 族渲染本地化持有者文案，其余透传后端原文。
       const detail = formatSessionBusyError(err);
       setDeletedOutcomes((current) => [
         ...current,
@@ -1762,10 +1770,10 @@ export function RecoveryCopiesSection() {
           detail,
         },
       ]);
-      showToast(
-        `${t("settings.recoveryCopiesDeleteFailedToast", { count: 1 })}：${detail}`,
-        "error",
-      );
+      // tl1647 错误单处渲染：toast 只报计数（可见性，tl1414 的原始诉求），
+      // 原因全文只在面板 outcome 明细行一处——旧形态 toast 与面板行渲染同一
+      // 句原因全文，同屏两份（用户现场「红框 toast + 底部红字重复该错误」）。
+      showToast(t("settings.recoveryCopiesDeleteFailedToast", { count: 1 }), "error");
     } finally {
       // 任务 1146:列表重取完成后再释放 busy(与合成/批量删除路径同口径)。
       // tl1414：load() 从不抛错（内部 catch 落横幅后返回布尔），重取失败按
@@ -1812,6 +1820,8 @@ export function RecoveryCopiesSection() {
       tone: "danger",
     });
     if (!okToDelete) return;
+    // tl1647：本轮结果清场（同单删/批量删口径）。
+    setDeletedOutcomes([]);
     setBusy(true);
     setErrors([]);
     const collected: DeleteOutcome[] = [];
@@ -1839,18 +1849,23 @@ export function RecoveryCopiesSection() {
       setDeletedOutcomes([...collected]);
     }
     // tl1414 反馈对称：整对话删除与单删/批量删同族——结果不能只活在展开
-    // 面板里。根因修复后（目录拼写折叠）该按钮才真正开始归档副本，成功/
-    // 失败都给 toast；对话级删除的词汇是「对话」不是「分支」，单独成键。
+    // 面板里。对话级删除的词汇是「对话」不是「分支」，单独成键。
+    // tl1647 单一权威反馈：三态聚合单条 toast（同批量删口径，成功+失败两条
+    // 并存退役）；失败原因全文只在面板 outcome 明细行一处。
     const conversationCount = collected.filter((o) => o.kind === "conversation").length;
     const failedConversations = collected.filter((o) => o.kind === "failed");
-    if (conversationCount > 0) {
-      showToast(t("settings.recoveryCopiesConversationDeletedToast", { count: conversationCount }), "info");
-    }
-    if (failedConversations.length > 0) {
+    if (conversationCount > 0 && failedConversations.length > 0) {
       showToast(
-        `${t("settings.recoveryCopiesConversationDeleteFailedToast", { count: failedConversations.length })}：${failedConversations[0].detail ?? ""}`,
-        "error",
+        t("settings.recoveryCopiesConversationDeletePartialToast", {
+          deleted: conversationCount,
+          count: failedConversations.length,
+        }),
+        "warn",
       );
+    } else if (conversationCount > 0) {
+      showToast(t("settings.recoveryCopiesConversationDeletedToast", { count: conversationCount }), "info");
+    } else if (failedConversations.length > 0) {
+      showToast(t("settings.recoveryCopiesConversationDeleteFailedToast", { count: failedConversations.length }), "error");
     }
     setSelected(new Set());
     // 任务 1146 同口径：列表重取完成后再释放 busy，删除期间底部保持加载指示。
@@ -2586,7 +2601,13 @@ export function RecoveryCopiesSection() {
                       都够不着——head 删除要 headId,副本单删只在副本行渲染,
                       降级主线行无删除入口。现走 deleteBranchOne 同一条闸
                       (主线指针两道复核+确认框明示文件+回收语义),identity
-                      按文件 stem 称呼,不另起删除路径。 */}
+                      按文件 stem 称呼,不另起删除路径。
+                      tl1647 入口与后端校验同源：文件形行的删除入口与函数级
+                      闸同用「非主线文件」判定（mainFilePath=当前主线指针）—
+                      —主线文件自身/降级占位行（synthetic,path=扫描起点）不再
+                      渲染删除钮,点了才被 refuseMainDelete 弹错的坑在入口层
+                      消失；幽灵行(文件已删,tl1647 后端已根除)即便从旧缓存到
+                      达也落在同一条闸内。 */}
                   {!c.selected && c.headId && !c.degraded && (
                     <button
                       className="btn btn--secondary btn--small rc-delete"
@@ -2598,7 +2619,7 @@ export function RecoveryCopiesSection() {
                       {deletingHead === c.headId ? "…" : t("settings.recoveryCopiesDelete")}
                     </button>
                   )}
-                  {fileShaped && (
+                  {fileShaped && !sameSessionPath(c.path, mainFilePath) && (
                     <button
                       className="btn btn--secondary btn--small rc-delete"
                       type="button"
@@ -3067,7 +3088,14 @@ export function RecoveryCopiesSection() {
                             </li>
                           ))}
                         </ul>
-                        <p className="rc-result__hint">{t("settings.recoveryCopiesDeleteReopenHint")}</p>
+                        {/* tl1647 单一权威反馈：生效提示只在真的有删除成功时渲染
+                            ——全失败的 outcome 列表配「删除已生效」是自相矛盾现场
+                            （1117 对合成面同款判定的先例）。提示文案不再让用户
+                            「重新打开会话/刷新标签页」：面板删除后已自动重取列表
+                            （load），该下一步过时且是用户现场误读的来源之一。 */}
+                        {deletedOutcomes.some((outcome) => outcome.kind === "deleted" || outcome.kind === "conversation") ? (
+                          <p className="rc-result__hint">{t("settings.recoveryCopiesDeleteReopenHint")}</p>
+                        ) : null}
                       </div>
                     )}
                     {synthesisOutcomes.length > 0 && (

@@ -147,6 +147,18 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 	}
 	for _, path := range candidates {
 		info, statErr := os.Stat(path)
+		if statErr != nil && samePath(path, mainPath) {
+			// tl1647（2026-11-16 用户实测现场）：扫描起点文件本身已不存在（本
+			// 面板的删除/归档链刚把它送进回收站，列表尚未刷新）时不再为它产出
+			// 「文件消失」降级行——旧行为里这行以「降级副本」形态复活在版本区，
+			// 带可点击的删除入口，点了必被后端拒（「not a recovery copy: path
+			// is not filed in a recovery lineage」——文件已不在，lineage 判定
+			// 无从成立）。行上的每个操作（预览/切换/删除）对不存在的文件都无
+			// 从谈起；「读不出但要看见」的降级语义只服务真实存在的文件（真实
+			// 副本由磁盘枚举产生，stat 恒成功）。组的存在性与副本行不受影响
+			// （组由 recoveryCopiesByMain 的磁盘枚举决定，副本行照常渲染）。
+			continue
+		}
 		var bytes int64
 		if statErr == nil {
 			bytes = info.Size()
