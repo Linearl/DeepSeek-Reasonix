@@ -2285,6 +2285,22 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // diverts 也算「已展示」，防止 turn_done 再补一条完整句）。
       const diverted = divertNoticeToEpisode(s, e.text ?? "", e.detail, e.code);
       if (diverted) return e.code?.startsWith("stream_interrupted_") ? { ...diverted, streamInterruptNoticeShown: true } : diverted;
+      // tl1645: the header_wait_light line is a ROUND-level wait status
+      // ("request sent, waiting for the model"), not a mid-turn event — it
+      // reads as a prefix of the current turn's output. Appending it tail-first
+      // slotted it UNDER the streaming reasoning block (user 20261116 15:33:
+      // 「思考中…」above, the wait line below). Insert it before the current
+      // turn's assistant block instead: wait notice → thinking → answer text.
+      // Fall back to the plain append when no assistant item exists yet
+      // (identical to the legacy order, zero regression for plain turns).
+      if (e.code === "header_wait_light") {
+        const built = appendNoticeItem(s.items, s.seq, `n${s.seq}`, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt, e.emittedAt ?? Date.now(), e.suggestion);
+        if (built.items.length === s.items.length) return { ...s, running: s.turnActive ? s.running : false, seq: built.seq };
+        const notice = built.items[built.items.length - 1];
+        const at = headerWaitNoticeInsertIndex(s.items);
+        const items = at >= 0 ? [...s.items.slice(0, at), notice, ...s.items.slice(at)] : built.items;
+        return { ...s, running: s.turnActive ? s.running : false, seq: built.seq, items };
+      }
       const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt, e.emittedAt ?? Date.now(), e.suggestion);
       return e.code?.startsWith("stream_interrupted_") ? { ...next, streamInterruptNoticeShown: true } : next;
     }
@@ -3349,6 +3365,18 @@ function latestTodosAllComplete(items: Item[]): boolean {
 function appendNoticeToState(s: State, level: "info" | "warn", text: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt, createdAt?: number, suggestion?: string): State {
   const next = appendNoticeItem(s.items, s.seq, `n${s.seq}`, level, text, detail, code, decisionReceipt, createdAt, suggestion);
   return { ...s, running: s.turnActive ? s.running : false, seq: next.seq, items: next.items };
+}
+
+// tl1645: insertion point for the header_wait_light notice — immediately
+// before the turn's current assistant item (the streaming/placeholder bubble
+// that owns reasoning + answer text), so the transcript reads wait notice →
+// thinking → answer. Returns -1 when there is no assistant item to precede
+// (caller appends, matching the legacy tail order).
+export function headerWaitNoticeInsertIndex(items: readonly Item[]): number {
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].kind === "assistant") return i;
+  }
+  return -1;
 }
 
 // ── tl1588: 压缩回合状态收敛（episode sink）────────────────────────────────
