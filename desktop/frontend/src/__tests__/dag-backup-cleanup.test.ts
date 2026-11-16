@@ -45,7 +45,7 @@ ok(sessionStoreCard.indexOf("<DagMigrationSection") >= 0 && sessionStoreCard.ind
 //    只在「有将删项且未被归零门拦下」时出现。
 ok(section.includes("app.PlanDagBackupCleanup") && section.includes("app.RunDagBackupCleanup"), "plan first, run on the second click");
 ok(section.includes("plan.deletable.map"), "the confirm step lists every deletable backup");
-ok(section.includes("humanBytes(b.bytes)"), "each row shows its size");
+ok(section.includes("formatBytes(b.bytes)"), "each row shows its size (tl1618 unified formatter);");
 ok(
   section.includes("plan.remainingMigrations === 0 && plan.deletable.length > 0") || section.includes("plan.deletable.length > 0 &&"),
   "the delete button is gated on the zero-remaining check",

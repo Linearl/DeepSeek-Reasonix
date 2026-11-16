@@ -11,24 +11,14 @@
 // internal/agent.MigrateSessionDAGLog 内（本进程打开的会话一律跳过）。
 import { useEffect, useState } from "react";
 import { app, type DagMigrationRunView, type DagMigrationScanView } from "../lib/bridge";
+// tl1287⑤ 的 humanBytes 单源读数格式于 tl1618 并入 lib/formatBytes（KB 口径
+// 统一，报告 §C5 同机制第 8 处），备份清理卡同走该单源。
+import { formatBytes } from "../lib/format";
 import type { Translator } from "../lib/i18n";
 
 type Phase = "idle" | "scanning" | "confirming" | "running" | "done";
 
 const DAG_MIGRATION_PROGRESS_EVENT = "dag-migration:progress";
-
-/** tl1287⑤：备份清理卡复用同一读数格式（单源，不另抄一份）。 */
-export function humanBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
 
 // tl1337：showHint=false 时不渲染长说明行——宿主子项行的左列简述
 // （settings.sessionStorage.backupGroupDesc）已浓缩本说明要点，防左右重复。
@@ -122,12 +112,12 @@ export function DagMigrationSection({ t, busy, apply, showHint = true }: { t: Tr
                 ? t("settings.dagMigration.none")
                 : t("settings.dagMigration.summary", {
                     pending: pending.length,
-                    size: humanBytes(pendingBytes),
+                    size: formatBytes(pendingBytes),
                     backups: scan.backups,
                   })}
           </p>
           {pending.map((s) => (
-            <p key={s.sessionPath} className="settings-field__hint-line">{`· ${humanBytes(s.logBytes)} · ${s.messages} · ${s.label}`}</p>
+            <p key={s.sessionPath} className="settings-field__hint-line">{`· ${formatBytes(s.logBytes)} · ${s.messages} · ${s.label}`}</p>
           ))}
           {activeRows.length > 0 && (
             <p className="settings-field__hint-line">{t("settings.dagMigration.activeNote", { n: activeRows.length })}</p>
