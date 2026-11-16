@@ -466,6 +466,23 @@ console.log("\npre-repair backups cleanup (tl1603)");
   await act(async () => root.unmount());
 }
 
+// ③-r2 孤儿备份标注三态（tl1572 注记形态的准确性拆分）：「原对话已不存在」
+// 只陈述事实；「仅存副本」的措辞只属于 blocked 行的后缀——可删的孤儿备份
+// （内容在应用回收站桶里另有副本）原本也挂着「仅存的完整副本」，与它可删
+// 的按钮形态自相矛盾。
+{
+  const spies: Spies = { deleteCalls: [], batchCalls: [], listCalls: 0, viewCalls: [], activateCalls: [] };
+  const root = await openPanel(spies);
+  const rows = queryAll("[data-pre-repair-list] > li");
+  ok(rows.length === 3, "③-r2 the three fixture rows render");
+  ok(!rows[0].textContent?.includes("original conversation is gone"), "③-r2 the live-owner row carries no orphan marker");
+  ok(rows[1].textContent?.includes("original conversation is gone"), "③-r2 the deletable orphan row carries the orphan marker (tl1572 形态)");
+  ok(!rows[1].textContent?.includes("sole surviving copy"), "③-r2 the deletable orphan row no longer claims sole-copy (可删行不说假话)");
+  ok(rows[2].textContent?.includes("original conversation is gone"), "③-r2 the blocked orphan row carries the orphan marker");
+  ok(rows[2].textContent?.includes("sole surviving copy"), "③-r2 the blocked row still carries the sole-copy refusal suffix (E5 拒删提示不丢)");
+  await act(async () => root.unmount());
+}
+
 // ⑤ 三语与桥申报。
 {
   const locales: Record<string, string> = {
