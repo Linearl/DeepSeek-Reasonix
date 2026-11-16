@@ -180,7 +180,11 @@ console.log("\npre-repair backups section (tl1572)");
   ok(Boolean(list), "① expanding reveals the backup rows");
   ok(bodyText().includes("dieted conversation"), "① the newest backup's label renders");
   ok(bodyText().includes("deleted conversation"), "① the orphan backup renders too");
-  ok(bodyText().includes("only surviving full copy"), "① the orphan carries the only-copy note");
+  // tl1603-r2③: the marker now names only the fact (original gone); the
+  // "only surviving copy" claim moved to the sole-copy refusal suffix, since
+  // orphan rows whose content survives in the app's trash bucket are
+  // deletable and the old wording claimed the opposite.
+  ok(bodyText().includes("original conversation is gone"), "① the orphan carries the gone-conversation note");
   ok(bodyText().includes("1.0 MB"), "① the row shows its size");
   await act(async () => root.unmount());
 }

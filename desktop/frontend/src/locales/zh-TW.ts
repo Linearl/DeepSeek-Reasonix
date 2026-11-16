@@ -3659,7 +3659,9 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairNone": "未發現改寫前備份——本機沒有自癒/Diet 改寫留下的備份目錄。",
   "settings.recoveryCopiesPreRepairView": "檢視",
   "settings.recoveryCopiesPreRepairPreviewTitle": "改寫前備份預覽（唯讀）",
-  "settings.recoveryCopiesPreRepairOrphan": "原對話已不在——這是它僅存的完整副本",
+  // tl1603-r2③: 標注只陳述事實（原對話已不存在）；「僅存的完整副本」屬於
+  // 僅存副本拒刪語義（blocked 行自帶後綴）。
+  "settings.recoveryCopiesPreRepairOrphan": "原對話已不存在",
   "settings.recoveryCopiesPreRepairFailed": "改寫前備份枚舉失敗",
   // tl1603：清理面（單刪+批次），回收桶語義。
   "settings.recoveryCopiesPreRepairDelete": "刪除",

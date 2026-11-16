@@ -5191,7 +5191,11 @@ export const en = {
   "settings.recoveryCopiesPreRepairNone": "No pre-repair backups found — no self-heal/Diet rewrite has left a backup directory on this machine.",
   "settings.recoveryCopiesPreRepairView": "View",
   "settings.recoveryCopiesPreRepairPreviewTitle": "Pre-repair backup preview (read-only)",
-  "settings.recoveryCopiesPreRepairOrphan": "original session is gone — this is its only surviving full copy",
+  // tl1603-r2③: the marker only names the fact (original gone); the
+  // "only surviving copy" claim belongs to the sole-copy refusal, which
+  // carries its own suffix on blocked rows — claiming it on deletable
+  // orphan rows (content survives in the app's trash bucket) was false.
+  "settings.recoveryCopiesPreRepairOrphan": "original conversation is gone",
   "settings.recoveryCopiesPreRepairFailed": "listing pre-repair backups failed",
   // tl1603: cleanup surface (single delete + batch), recycle-bin semantics.
   "settings.recoveryCopiesPreRepairDelete": "Delete",

@@ -102,6 +102,39 @@ func TestPreRepairBackupsEnumerate(t *testing.T) {
 	}
 }
 
+// TestPreRepairBackupsSortedByBytesDesc（tl1603-r2④钉）——主键=体量从大到
+// 小（用户裁决：最占空间的排最前，清理收益一目了然）；并列体量时退回
+// tl1572 的「新的在前」（stamp 降序），零体量不读假时间。
+func TestPreRepairBackupsSortedByBytesDesc(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "projects")
+	sessions := filepath.Join(root, "proj", "sessions")
+	if err := os.MkdirAll(sessions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 落盘顺序刻意与体量顺序相反：小的最新（旧排序会把 30B 排第一）。
+	smallNew := writePreRepairTree(t, sessions, "small", "20261110T010000", 30)
+	midOld := writePreRepairTree(t, sessions, "mid", "20261101T010000", 200)
+	bigOlder := writePreRepairTree(t, sessions, "big", "20261001T010000", 2000)
+
+	views := preRepairBackupViewsIn([]string{root})
+	if len(views) != 3 {
+		t.Fatalf("views = %d (%+v), want 3", len(views), views)
+	}
+	if views[0].Dir != bigOlder || views[1].Dir != midOld || views[2].Dir != smallNew {
+		t.Fatalf("order must be bytes descending, got %+v", views)
+	}
+	// 并列体量（transcript 同 0 字节+meta 同长）→ 新的在前（次键仍活）。
+	emptyOld := writePreRepairTree(t, sessions, "zold", "20261002T010000", 0)
+	emptyNew := writePreRepairTree(t, sessions, "znew", "20261112T010000", 0)
+	views = preRepairBackupViewsIn([]string{root})
+	if len(views) != 5 {
+		t.Fatalf("views = %d, want 5", len(views))
+	}
+	if views[3].Dir != emptyNew || views[4].Dir != emptyOld {
+		t.Fatalf("equal-byte ties must fall back to newest first, got %+v at 3/4", views[3:5])
+	}
+}
+
 // TestPreRepairBackupsReadOnly 枚举是纯读：前后目录树逐字节一致。
 func TestPreRepairBackupsReadOnly(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "projects")

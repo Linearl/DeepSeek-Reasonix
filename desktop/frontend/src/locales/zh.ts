@@ -5159,7 +5159,10 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairNone": "未发现改写前备份——本机没有自愈/Diet 改写留下的备份目录。",
   "settings.recoveryCopiesPreRepairView": "查看",
   "settings.recoveryCopiesPreRepairPreviewTitle": "改写前备份预览（只读）",
-  "settings.recoveryCopiesPreRepairOrphan": "原会话已不在——这是它仅存的完整副本",
+  // tl1603-r2③: 标注只陈述事实（原对话已不存在）；「仅存的完整副本」属于
+  // 仅存副本拒删语义（blocked 行自带后缀）——可删的孤儿备份（内容仍在应用
+  // 回收站桶里）原本挂着这句假话。
+  "settings.recoveryCopiesPreRepairOrphan": "原对话已不存在",
   "settings.recoveryCopiesPreRepairFailed": "改写前备份枚举失败",
   // tl1603：清理面（单删+批量），回收站语义。
   "settings.recoveryCopiesPreRepairDelete": "删除",

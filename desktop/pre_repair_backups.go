@@ -165,9 +165,9 @@ func preRepairBackupViewsIn(roots []string) []PreRepairBackupView {
 			return filepath.SkipDir
 		})
 	}
-	// 新的在前（修复现场通常只关心最近一次）。主键=目录名里的 stamp（一次
-	// 修复一个目录，语义时间，不受目录 mtime 秒级粒度限制）；解析不了的排
-	// 最后，同 stamp 按路径稳定排序。
+	// tl1603-r2④: 按体量从大到小（用户裁决的排序键）——最占空间的排最前，
+	// 清理收益一目了然。并列体量内保留 tl1572 的「新的在前」（stamp 降序）
+	// 作次键；解析不了的排最后，同 stamp 按路径稳定排序。
 	stampTime := func(view PreRepairBackupView) time.Time {
 		parsed, err := time.Parse("20060102T150405", view.Stamp)
 		if err != nil {
@@ -176,6 +176,9 @@ func preRepairBackupViewsIn(roots []string) []PreRepairBackupView {
 		return parsed
 	}
 	sort.Slice(out, func(i, j int) bool {
+		if out[i].Bytes != out[j].Bytes {
+			return out[i].Bytes > out[j].Bytes
+		}
 		ti, tj := stampTime(out[i]), stampTime(out[j])
 		if !ti.Equal(tj) {
 			return ti.After(tj)
