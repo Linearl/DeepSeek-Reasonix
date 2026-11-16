@@ -814,3 +814,108 @@ func TestOpenTopicTabKeepsRunningParentInsteadOfCoveringLeaf(t *testing.T) {
 		t.Fatalf("resolve idle open = %q, want covering leaf %q", idleResolved, leaf)
 	}
 }
+
+// tl1655 regression pins: the Global folder is generated unconditionally in
+// GetProjectTreeSnapshot. The pre-tl1655 three-way condition (GlobalTitle set,
+// or GlobalTopics populated, or zero projects) dropped the node exactly when a
+// fresh machine gained its first real project, breaking the Global entry point
+// in the sidebar.
+func globalFolderNodeInTree(nodes []ProjectNode) *ProjectNode {
+	for i := range nodes {
+		if nodes[i].Kind == "global_folder" {
+			return &nodes[i]
+		}
+	}
+	return nil
+}
+
+func TestProjectTreeSnapshotGlobalFolderUnconditionalTL1655(t *testing.T) {
+	states := []struct {
+		name      string
+		wantLabel string
+		setup     func(t *testing.T)
+	}{
+		{
+			name:      "fresh install zero projects (pre-fix condition 3)",
+			wantLabel: "Global",
+			setup:     func(t *testing.T) {},
+		},
+		{
+			name:      "first real project, global never customized (tl1655 breakage state)",
+			wantLabel: "Global",
+			setup: func(t *testing.T) {
+				if err := addProject(t.TempDir(), "First Project"); err != nil {
+					t.Fatalf("add project: %v", err)
+				}
+			},
+		},
+		{
+			name:      "global title and topics populated (pre-fix conditions 1+2)",
+			wantLabel: "我的全局",
+			setup: func(t *testing.T) {
+				if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+					f.GlobalTitle = "我的全局"
+					f.GlobalTopics = []string{"topic_global_a", "topic_global_b"}
+					return true, nil
+				}); err != nil {
+					t.Fatalf("seed global metadata: %v", err)
+				}
+			},
+		},
+	}
+	for _, state := range states {
+		t.Run(state.name, func(t *testing.T) {
+			isolateDesktopUserDirs(t)
+			state.setup(t)
+			snapshot := NewApp().GetProjectTreeSnapshot()
+			global := globalFolderNodeInTree(snapshot.Projects)
+			if global == nil {
+				t.Fatalf("snapshot projects = %#v, want the Global folder present in state %q", snapshot.Projects, state.name)
+			}
+			if global.Label != state.wantLabel {
+				t.Fatalf("global label = %q, want %q", global.Label, state.wantLabel)
+			}
+			if global.Root != globalWorkspaceRoot() {
+				t.Fatalf("global root = %q, want %q", global.Root, globalWorkspaceRoot())
+			}
+			// The compatibility wrapper must share the one generation point —
+			// no separate re-synthesis path is allowed to drift.
+			nodes := NewApp().ListProjectTree()
+			if globalFolderNodeInTree(nodes) == nil {
+				t.Fatalf("ListProjectTree = %#v, want the Global folder present in state %q", nodes, state.name)
+			}
+		})
+	}
+}
+
+// tl1655 user recipe, step by step: a chat created under Global on a fresh
+// machine, then the first real project appears. Before the fix the second step
+// dropped the Global folder and the chat lost its sidebar entry.
+func TestProjectTreeGlobalFolderSurvivesFirstProjectWithGlobalChatTL1655(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	topicID := "topic_global_first_chat"
+	if err := indexNewTopicForSidebar("", topicID); err != nil {
+		t.Fatalf("register global chat: %v", err)
+	}
+	if err := addProject(t.TempDir(), "First Project"); err != nil {
+		t.Fatalf("add project: %v", err)
+	}
+	snapshot := NewApp().GetProjectTreeSnapshot()
+	if globalFolderNodeInTree(snapshot.Projects) == nil {
+		t.Fatalf("snapshot projects = %#v, want the Global folder to survive the first project", snapshot.Projects)
+	}
+	nodes := NewApp().ListProjectTree()
+	global := globalFolderNodeInTree(nodes)
+	if global == nil {
+		t.Fatalf("project tree = %#v, want the Global folder present", nodes)
+	}
+	reachable := false
+	for _, child := range global.Children {
+		if child.TopicID == topicID {
+			reachable = true
+		}
+	}
+	if !reachable {
+		t.Fatalf("global children = %#v, want the pre-existing Global chat %q reachable", global.Children, topicID)
+	}
+}
