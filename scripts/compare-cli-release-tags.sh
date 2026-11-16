@@ -8,6 +8,15 @@ set -euo pipefail
 # Stable ordering is major.minor.patch. Preview ordering appends the numeric
 # preview ordinal. Tags from another channel or any non-canonical tag fail
 # closed instead of being compared lexically.
+#
+# SISTER SCRIPT (tl1626 档C): scripts/compare-desktop-release-versions.sh is the
+# Desktop counterpart. The three-state verdict (update/skip) and the overall
+# skeleton are intentionally mirrored, while the comparison core deliberately
+# diverges: lexical tag comparison here vs decimal component comparison there.
+# The 2026-11-16 release-check audit (tl1626 R3) judged the two axes
+# independently evolving and declined to merge them. If you change the verdict
+# semantics, channel rules, or I/O contract in THIS file, check the Desktop
+# sister for the same change.
 
 export LC_ALL=C
 
