@@ -138,12 +138,15 @@ function SteerCollabCard({ source, foldable = true }: { source: CollabImSourceMe
             {t("msg.collabRoute", { from: collabLabel(source.sender), to: collabLabel(source.chat) })}
           </span>
         )}
-        <CopyButton text={source.text} label={t("msg.copy")} showInlineLabel={false} className="im-source-card__copy" />
       </div>
       {/* 任务1122: 时间戳统一卡片下方 meta-time 行（与用户消息 msg-meta 同一
-          位置样式）。 */}
+          位置样式）。tl1639: 复制按钮并入同一行（原在卡内 meta 行右贴尾，
+          与卡下时间戳行构成两行分裂，用户截图 20261116 13:38）——时间戳+
+          复制同行右对齐，与普通消息 msg-meta 同构。防回潮：勿在上方
+          .im-source-card__meta 里重新加 CopyButton。 */}
       <div className="im-source-card__time-row" data-transcript-selection-ignore>
         <CardTime createdAt={source.sentAt} className="msg-meta__time" />
+        <CopyButton text={source.text} label={t("msg.copy")} showInlineLabel={false} className="im-source-card__copy" />
       </div>
     </div>
   );
@@ -235,11 +238,12 @@ export function SteerCard({ id, text, deferred = false, createdAt }: { id: strin
           {/* 任务1066: 正文剥除 @引用 + 图片缩略图（1091 起与文字上下分离、并排横排）。 */}
           <SteerGuidanceBody body={body} renderCopy={false} />
         </div>
-        {/* 任务998：入队时刻走 1012 三档（同日只显时分，宽度冲击最小）。 */}
+        {/* 任务998：入队时刻走 1012 三档（同日只显时分，宽度冲击最小）。
+            tl1639: 复制按钮并入同一行（原独立 .steer-meta 行与时间戳行
+            上下两行分裂，用户截图 20261116 13:38）——时间戳+复制同行
+            右对齐，与普通消息 msg-meta 同构。 */}
         <div className="steer-meta steer-meta--time" data-transcript-selection-ignore>
           <CardTime createdAt={createdAt} className="msg-meta__time" />
-        </div>
-        <div className="steer-meta">
           <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
         </div>
       </div>
@@ -260,27 +264,29 @@ export function SteerCard({ id, text, deferred = false, createdAt }: { id: strin
         <span className={`steer-line__text${collab || !expanded ? " steer-line__text--summary" : ""}`}>
           {collab ? <SteerCollabRouteSummary source={collab} /> : expanded ? parseAttachmentRefsForDisplay(body).text : firstLine}
         </span>
-        {/* 任务1122: 时间戳移出折叠占位按钮（按钮内嵌 time 语义不合法，且与
-            「卡片下方」统一位置不符）——放按钮下方 meta-time 行，与非 deferred
-            steer 同位同款。 */}
+        {/* 任务1122: 时间戳移出折叠占位按钮（按钮内嵌 time 语义不合法）——
+            放按钮下方 meta-time 行。 */}
         <ChevronRight size={12} className="steer-line__chevron" aria-hidden="true" />
       </button>
+      {/* 任务1122: 时间戳放按钮下方 meta-time 行，与非 deferred steer 同位
+          同款。tl1639: 复制按钮并入同一行（渲染时机不变=展开且非 collab；
+          原独立 .steer-meta 行与时间戳行上下两行分裂，用户截图
+          20261116 13:38）——时间戳+复制同行右对齐。 */}
       <div className="steer-meta steer-meta--time" data-transcript-selection-ignore>
         <CardTime createdAt={createdAt} className="msg-meta__time" />
+        {expanded && !collab && (
+          <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
+        )}
       </div>
       {/* 任务811: deferred 占位展开时用户已显式点开，卡片不再套 705 二次折叠。 */}
       {expanded && collab && <SteerCollabCard source={collab} foldable={false} />}
       {/* 任务1066: 展开态与①同款形态（图片缩略图+复制按钮）。
-          任务1091: 复制按钮移出卡片、落卡片下方 meta 行（与用户消息 msg-meta 同位）。 */}
+          任务1091: 复制按钮移出卡片（tl1639 起落 .steer-meta--time 行、与
+          时间戳同行）。 */}
       {expanded && !collab && (
-        <>
-          <div className="steer-line__expanded">
-            <SteerGuidanceBody body={body} className="steer-line__text steer-line__text--expanded" renderCopy={false} />
-          </div>
-          <div className="steer-meta">
-            <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
-          </div>
-        </>
+        <div className="steer-line__expanded">
+          <SteerGuidanceBody body={body} className="steer-line__text steer-line__text--expanded" renderCopy={false} />
+        </div>
       )}
     </div>
   );

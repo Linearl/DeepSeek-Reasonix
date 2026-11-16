@@ -172,8 +172,9 @@ console.log("\ntl1066 steer image + copy");
         && Boolean(textSpan.compareDocumentPosition(attachRow) & Node.DOCUMENT_POSITION_FOLLOWING),
       "① 文字块在附件容器之前（上下分离，非嵌进文字流）",
     );
-    // 1122: steer 卡现在有两张 meta 行（meta-time 时间戳行 + 复制按钮行），
-    // 只有最后一张带 .steer-line__copy。
+    // 1122: meta 行分设 meta-time 时间戳行与复制按钮行；tl1639: 两行并为
+    // 一行（.steer-meta--time 同行承载时间戳+复制），仍只有该行带
+    // .steer-line__copy。
     const metaRows = Array.from(host.querySelectorAll(".steer-meta"));
     const copyMeta = metaRows.find(row => row.querySelector(".steer-line__copy")) ?? null;
     ok(copyMeta !== null && bubble !== null && !bubble.contains(copyMeta as Node), "① 复制按钮行在卡片之外");

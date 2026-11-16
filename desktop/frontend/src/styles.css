@@ -4881,11 +4881,16 @@ a[href] {
   user-select: none;
   -webkit-user-select: none;
 }
+/* tl1639: 复制按钮并入 .steer-meta--time 时间戳行——压掉基规则的
+   margin-left:auto（会把时间戳推到行左端）与 align-self:flex-end
+   （合并行是 align-items:center，贴底会错位），同行贴尾右对齐。 */
 .steer-meta .steer-line__copy {
   color: var(--fg-faint);
   background: transparent;
   border: none;
   padding: 2px 4px;
+  margin-left: 0;
+  align-self: center;
 }
 .steer-meta .steer-line__copy:hover:not(:disabled),
 .steer-meta .steer-line__copy:focus-visible {
@@ -4933,16 +4938,9 @@ a[href] {
   min-width: min(300px, 100%);
   width: 100%;
 }
-.steer-line__expanded .steer-line__copy {
-  color: var(--fg-faint);
-  background: transparent;
-  border: none;
-  padding: 2px 4px;
-}
-.steer-line__expanded .steer-line__copy:hover:not(:disabled),
-.steer-line__expanded .steer-line__copy:focus-visible {
-  color: var(--fg);
-}
+/* tl1639: .steer-line__expanded 内的 .steer-line__copy 专属规则删除——
+   复制按钮已并入 .steer-meta--time 行（.steer-meta .steer-line__copy
+   接管样式），展开块内不再渲染该按钮（防回潮勿加回）。 */
 /* 任务723: deferred steer placeholder — collapsed status row, click to expand. */
 .steer-line__bubble--deferred {
   cursor: pointer;
@@ -5790,16 +5788,20 @@ a[href] {
 /* 任务1092: 跨会话卡片 foot 的发送时刻 + 复制按钮——与 .msg-meta__time 同款
    弱化字色 + 等宽数字；复制按钮右对齐贴尾，与普通消息卡片（msg-meta）同位。
    任务1122: 时间戳移出 foot 行，统一卡片下方 meta-time 行；.im-source-card__time
-   规则随之删除（改用 .msg-meta__time）。 */
+   规则随之删除（改用 .msg-meta__time）。
+   tl1639: 复制按钮并入 .im-source-card__time-row 与时间戳同行——去掉
+   margin-left:auto（会把时间戳推到行左端，与「同行右对齐」相悖）。 */
 .im-source-card__copy {
   flex: 0 0 auto;
-  margin-left: auto;
 }
 /* 任务1122: 跨会话卡片下方时间戳行——与用户消息 msg-meta 同款（卡片右下、
-   弱化字色、等宽数字）。 */
+   弱化字色、等宽数字）。tl1639: 该行同时承载复制按钮（同行、贴尾对齐），
+   gap/居中与 .steer-meta--time 合并行同构。 */
 .im-source-card__time-row {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   min-height: 20px;
   margin-top: 4px;
   margin-right: 10px;
