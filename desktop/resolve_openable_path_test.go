@@ -82,3 +82,117 @@ func TestResolveOpenablePathForTab(t *testing.T) {
 		})
 	}
 }
+
+// tl1641：产物栏 dock 行菜单「在文件管理器中显示」「在内置终端打开」的
+// reveal 探针。分流收敛验收的后端半边：可执行扩展名（.ps1/.bat）reveal
+// 仍可用（shell 定位/cd 不执行目标），「用默认应用打开」的 open 探针照旧
+// 拒绝同一目标（只裁打开一项的分流语义不变）；不存在/逃逸/相对+Global
+// 依旧隐藏（死按钮防线与权限面零回退）。
+func TestResolveRevealablePathForTab(t *testing.T) {
+	projectRoot := robustTempDir(t)
+	if err := os.MkdirAll(filepath.Join(projectRoot, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mdFile := filepath.Join(projectRoot, "docs", "notes.md")
+	if err := os.WriteFile(mdFile, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ps1File := filepath.Join(projectRoot, "docs", "run.ps1")
+	if err := os.WriteFile(ps1File, []byte("Write-Output hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	batFile := filepath.Join(projectRoot, "docs", "run.bat")
+	if err := os.WriteFile(batFile, []byte("echo hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	exeFile := filepath.Join(projectRoot, "docs", "run.exe")
+	if err := os.WriteFile(exeFile, []byte("MZ"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	outsideRoot := robustTempDir(t)
+	outsideFile := filepath.Join(outsideRoot, "elsewhere.md")
+	if err := os.WriteFile(outsideFile, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp()
+	app.tabs = map[string]*WorkspaceTab{
+		"t": {ID: "t", Scope: "project", WorkspaceRoot: projectRoot},
+	}
+	app.activeTabID = "t"
+
+	t.Run("ps1 reveals (tl1641 core: shell reveal/cd work for script types)", func(t *testing.T) {
+		got, err := app.ResolveRevealablePathForTab("t", ps1File)
+		if err != nil {
+			t.Fatalf("reveal probe err = %v", err)
+		}
+		if got != ps1File {
+			t.Fatalf("reveal probe(ps1) = %q, want %q", got, ps1File)
+		}
+		// 对照钉：同一目标 open 探针照旧隐藏（「用默认应用打开」被裁的语义不变）。
+		if openGot, err := app.ResolveOpenablePathForTab("t", ps1File); err != nil || openGot != "" {
+			t.Fatalf("open probe(ps1) = %q, %v; want \"\", nil", openGot, err)
+		}
+	})
+
+	t.Run("bat and exe reveal too, open probe still refuses", func(t *testing.T) {
+		for _, p := range []string{batFile, exeFile} {
+			got, err := app.ResolveRevealablePathForTab("t", p)
+			if err != nil || got != p {
+				t.Fatalf("reveal probe(%q) = %q, %v; want %q, nil", p, got, err, p)
+			}
+			openGot, err := app.ResolveOpenablePathForTab("t", p)
+			if err != nil || openGot != "" {
+				t.Fatalf("open probe(%q) = %q, %v; want \"\", nil", p, openGot, err)
+			}
+		}
+	})
+
+	t.Run("md reveals and opens as before (zero regression)", func(t *testing.T) {
+		got, err := app.ResolveRevealablePathForTab("t", mdFile)
+		if err != nil || got != mdFile {
+			t.Fatalf("reveal probe(md) = %q, %v; want %q, nil", got, err, mdFile)
+		}
+		openGot, err := app.ResolveOpenablePathForTab("t", mdFile)
+		if err != nil || openGot != mdFile {
+			t.Fatalf("open probe(md) = %q, %v; want %q, nil", openGot, err, mdFile)
+		}
+	})
+
+	t.Run("missing file hides", func(t *testing.T) {
+		got, err := app.ResolveRevealablePathForTab("t", filepath.Join(projectRoot, "docs", "ghost.md"))
+		if err != nil || got != "" {
+			t.Fatalf("reveal probe(missing) = %q, %v; want \"\", nil", got, err)
+		}
+	})
+
+	t.Run("relative escaping the project root hides", func(t *testing.T) {
+		got, err := app.ResolveRevealablePathForTab("t", filepath.Join("..", filepath.Base(outsideRoot), "elsewhere.md"))
+		if err != nil || got != "" {
+			t.Fatalf("reveal probe(escape) = %q, %v; want \"\", nil", got, err)
+		}
+	})
+
+	t.Run("relative in a global tab hides", func(t *testing.T) {
+		globalApp := NewApp()
+		got, err := globalApp.ResolveRevealablePathForTab("t", filepath.Join("docs", "notes.md"))
+		if err != nil || got != "" {
+			t.Fatalf("reveal probe(global relative) = %q, %v; want \"\", nil", got, err)
+		}
+	})
+
+	t.Run("absolute outside any workspace still reveals", func(t *testing.T) {
+		got, err := app.ResolveRevealablePathForTab("t", outsideFile)
+		if err != nil || got != outsideFile {
+			t.Fatalf("reveal probe(absolute outside) = %q, %v; want %q, nil", got, err, outsideFile)
+		}
+	})
+
+	t.Run("empty path hides", func(t *testing.T) {
+		got, err := app.ResolveRevealablePathForTab("t", "   ")
+		if err != nil || got != "" {
+			t.Fatalf("reveal probe(empty) = %q, %v; want \"\", nil", got, err)
+		}
+	})
+}

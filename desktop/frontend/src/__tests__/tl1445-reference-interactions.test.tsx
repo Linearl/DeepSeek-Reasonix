@@ -70,6 +70,9 @@ const bridge = {
         bridge.probeCalls.push({ tabId: tabID, path });
         return bridge.probeResult;
       },
+      // tl1641: the reveal/terminal items ride the second probe; this judge
+      // exercises regular files, where both probes agree — same value back.
+      ResolveRevealablePathForTab: async (_tabID: string, _path: string) => bridge.probeResult,
       ResolveWorkspacePathForTab: async (tabID: string, path: string) => {
         bridge.resolveCalls.push({ tabId: tabID, path });
         return `${bridge.resolvePrefix}/${path.replace(/^[/\\]+/, "")}`;
@@ -284,11 +287,16 @@ console.log("\ntl1445 references row interactions");
 }
 
 // 4. Probe states: in-flight disables, empty removes (tl1421: no dead buttons).
+// tl1641: both probes gate their own items — hold both back so the in-flight
+// disable and the empty-removal cover the full three-item block.
 {
   let releaseProbe: ((value: string) => void) | null = null;
   const gated = new Promise<string>((resolve) => { releaseProbe = resolve; });
-  const originalProbe = (window as unknown as { go: { main: { App: Record<string, unknown> } } }).go.main.App.ResolveOpenablePathForTab;
-  (window as unknown as { go: { main: { App: Record<string, unknown> } } }).go.main.App.ResolveOpenablePathForTab = () => gated;
+  const appMocks = (window as unknown as { go: { main: { App: Record<string, unknown> } } }).go.main.App;
+  const originalProbe = appMocks.ResolveOpenablePathForTab;
+  const originalRevealProbe = appMocks.ResolveRevealablePathForTab;
+  appMocks.ResolveOpenablePathForTab = () => gated;
+  appMocks.ResolveRevealablePathForTab = () => gated;
   const handle = await renderPanel([READ_REL], { tabId: "tab-1" });
   const row = rowByPath(handle.host, "src/config.json")!;
   await act(async () => {
@@ -303,9 +311,11 @@ console.log("\ntl1445 references row interactions");
   });
   eq(menuButtonByLabel("Open with default app") === undefined, true, "probe: empty probe removes the open item (no dead button)");
   eq(menuButtonByLabel("Show in file manager") === undefined, true, "probe: empty probe removes the reveal item");
+  eq(menuButtonByLabel("Open in integrated terminal") === undefined, true, "probe: empty reveal probe removes the terminal item too (tl1641)");
   eq(menuButtonByLabel("Copy relative path") !== undefined, true, "probe: copy items survive an empty probe");
   await act(async () => { await handle.cleanup(); });
-  (window as unknown as { go: { main: { App: Record<string, unknown> } } }).go.main.App.ResolveOpenablePathForTab = originalProbe;
+  appMocks.ResolveOpenablePathForTab = originalProbe;
+  appMocks.ResolveRevealablePathForTab = originalRevealProbe;
 }
 
 // 5. Open/reveal actions use the probed absolute path (opener family).
