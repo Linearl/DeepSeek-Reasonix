@@ -1910,8 +1910,16 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // continued turns (readiness retry / inbox followup / feedback nudge)
       // start without a new user bubble, so the stale notice would otherwise
       // render as the footer of the turn that is now working.
+      // tl1636 收窄：原先无条件清空全部 completion notice——只要用户发出下
+      // 一条消息，上一轮已挂的卡就地消失，切 tab 全量重建后又从 history
+      // turn_result 回来，正是「初始无卡（直出形态）/切回有卡」漂移的主通道。
+      // 522 防的是「卡当运行中轮的 footer」，该风险只在卡位于最后一个 user
+      // 分界之后（auto-continue 无新气泡，卡与运行中轮同块）时成立；有新
+      // user 气泡时卡归上一轮块尾，与新轮不同块，保留之——live 与 hydration
+      // （历史 turn_result 无差别重建）由此共用同一判定：卡跟着自己的轮走。
       if (startsNewTurn) {
-        fresh.items = fresh.items.filter((it) => !(it.kind === "notice" && it.variant === "completion"));
+        const lastUserBoundary = fresh.items.reduce((acc, it, index) => (it.kind === "user" ? index : acc), -1);
+        fresh.items = fresh.items.filter((it, index) => !(it.kind === "notice" && it.variant === "completion" && index > lastUserBoundary));
       }
       const active = startsNewTurn || fresh.currentAssistant ? ensureActiveAssistant(fresh) : fresh;
       return {

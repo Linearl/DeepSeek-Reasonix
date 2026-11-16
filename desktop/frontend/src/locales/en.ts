@@ -5401,13 +5401,10 @@ export const en = {
   "turnActions.summary": "Compress",
   "turnActions.rewind": "Rewind",
   "turnActions.copyEmpty": "No text to copy for this turn",
-  // Task 1137: turn-tail info band (files-touched card + token usage + completion time).
-  "turnActions.turnFiles": "Files this turn",
-  "turnActions.filesMore": "+{n} more",
-  "turnActions.filesFewer": "Show less",
+  // Task 1137: turn-tail info band (token usage + completion time). tl1636:
+  // the files-detail keys (turnFiles/filesMore/filesFewer/fileMissing) retired
+  // with the chip strip — details live only in the completion notice card.
   "turnActions.turnMetaTitle": "Turn input/output tokens and completion time",
-  // tl1421: missing-file chip (ResolveOpenablePathForTab probe empty) hover note.
-  "turnActions.fileMissing": "File missing or moved, cannot open: {path}",
   "transcript.jumpToBottom": "Jump to bottom",
   "markdown.tableExpandAll": "Expand all {n} rows",
   "markdown.tableCollapse": "Collapse table",
