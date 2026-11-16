@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -270,5 +271,104 @@ func TestLastTurnGapMinutesFieldConvention(t *testing.T) {
 	a.sess.lastConversationRequestAt.Store(time.Now().Add(-30*time.Minute - 21*time.Second).UnixMilli())
 	if got := a.lastTurnGapMinutes(); got < 30.3 || got > 31.5 {
 		t.Fatalf("30.3min-old stamp: last_turn_gap_min = %v, want ~30.3 (clock jitter tolerant)", got)
+	}
+}
+
+// attributionLineFrom extracts the compaction cache miss attribution line
+// from a captured slog trail (shared by the tl1640 replay pins below).
+func attributionLineFrom(t *testing.T, out string) string {
+	t.Helper()
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "compaction cache miss attribution") {
+			return l
+		}
+	}
+	t.Fatalf("zero-hit compaction must emit the miss attribution line:\n%s", out)
+	return ""
+}
+
+// attributionTurnGapMin parses last_turn_gap_min off an attribution line.
+func attributionTurnGapMin(t *testing.T, line string) float64 {
+	t.Helper()
+	const key = "last_turn_gap_min="
+	i := strings.Index(line, key)
+	if i < 0 {
+		t.Fatalf("attribution line missing %s:\n%s", key, line)
+	}
+	rest := line[i+len(key):]
+	if j := strings.IndexByte(rest, ' '); j >= 0 {
+		rest = rest[:j]
+	}
+	v, err := strconv.ParseFloat(rest, 64)
+	if err != nil {
+		t.Fatalf("last_turn_gap_min = %q is not a number:\n%s", rest, line)
+	}
+	return v
+}
+
+// tl1640ReplaySession builds the same quiet-session shape the existing
+// attribution pin uses — a compactable transcript whose summary round
+// measures zero cache hit on the fake provider.
+func tl1640ReplaySession() *Session {
+	large := strings.Repeat("old tool output ", 160)
+	return &Session{Messages: []provider.Message{
+		{Role: provider.RoleSystem, Content: "system stays"},
+		{Role: provider.RoleUser, Content: "old request alpha"},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("analysis ", 160)},
+		{Role: provider.RoleTool, ToolCallID: "read-1", Name: "read_file", Content: large},
+		{Role: provider.RoleUser, Content: "unique boundary request"},
+		{Role: provider.RoleAssistant, Content: "tail stays byte-for-byte"},
+	}}
+}
+
+// TestCompactionMissAttributionPrefixTTLExpiredReplay (tl1640 案例回放): the
+// 20261116 13:04 incident — a quiet session, NO provider error, the last
+// conversation turn 30.3 minutes old (13:04:59 − 12:34:38), compaction lands
+// hit=0. The old labels had nowhere to put this: no error meant the shape
+// family, which read as "TTL ruled out" and was misjudged unreasonable. The
+// replay must mark prefix_ttl_expired and surface the 30.3min gap on the
+// line. EST semantics: the 5min threshold is the industry lower bound — the
+// label is the leading inference, not a measured provider verdict.
+func TestCompactionMissAttributionPrefixTTLExpiredReplay(t *testing.T) {
+	prov := &fakeProvider{reply: "old work summarized", promptTokens: 5000}
+	a := New(prov, tool.NewRegistry(), tl1640ReplaySession(), Options{ArchiveDir: t.TempDir()}, event.Discard)
+	// No provider error ever recorded this session — the O1 branch's lane.
+	a.sess.lastConversationRequestAt.Store(time.Now().Add(-30*time.Minute - 21*time.Second).UnixMilli())
+	trail := captureSlog(t)
+	if _, err := a.CompressContext(context.Background(), tool.CompressRequest{
+		Direction: "before", Anchor: "unique boundary", Focus: "keep decisions",
+	}); err != nil {
+		t.Fatalf("CompressContext: %v", err)
+	}
+	line := attributionLineFrom(t, trail.String())
+	if !strings.Contains(line, "attribution=prefix_ttl_expired") {
+		t.Fatalf("30.3min-quiet no-error compaction must read prefix_ttl_expired:\n%s", line)
+	}
+	if got := attributionTurnGapMin(t, line); got < 30.3 || got > 31.5 {
+		t.Fatalf("last_turn_gap_min = %v, want ~30.3 (clock jitter tolerant):\n%s", got, line)
+	}
+}
+
+// TestCompactionMissAttributionShortGapKeepsShapeFamily (tl1640 对照案例):
+// the same quiet-session compaction with the last conversation turn INSIDE
+// the TTL window keeps the existing prefix_or_model_shape attribution — the
+// new branch only claims TTL expiry when the gap actually exceeds the
+// estimate, so short-interval misses still point at the shape family.
+func TestCompactionMissAttributionShortGapKeepsShapeFamily(t *testing.T) {
+	prov := &fakeProvider{reply: "old work summarized", promptTokens: 5000}
+	a := New(prov, tool.NewRegistry(), tl1640ReplaySession(), Options{ArchiveDir: t.TempDir()}, event.Discard)
+	a.sess.lastConversationRequestAt.Store(time.Now().Add(-1 * time.Minute).UnixMilli())
+	trail := captureSlog(t)
+	if _, err := a.CompressContext(context.Background(), tool.CompressRequest{
+		Direction: "before", Anchor: "unique boundary", Focus: "keep decisions",
+	}); err != nil {
+		t.Fatalf("CompressContext: %v", err)
+	}
+	line := attributionLineFrom(t, trail.String())
+	if !strings.Contains(line, "attribution=prefix_or_model_shape") {
+		t.Fatalf("short-gap compaction must keep prefix_or_model_shape:\n%s", line)
+	}
+	if got := attributionTurnGapMin(t, line); got < 1.0 || got > 2.0 {
+		t.Fatalf("last_turn_gap_min = %v, want ~1.0 (clock jitter tolerant):\n%s", got, line)
 	}
 }
