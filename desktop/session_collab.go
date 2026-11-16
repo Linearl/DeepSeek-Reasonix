@@ -258,15 +258,6 @@ func collabBackgroundDelivery() bool {
 	return boot.CollabDrainInboxGate()
 }
 
-// collabBackgroundDeliveryFromConfig is the pure branch extracted for M3
-// testing. Returns true when experimental_collab_background_delivery is on.
-func collabBackgroundDeliveryFromConfig(cfg *config.Config) bool {
-	if cfg == nil {
-		return false
-	}
-	return cfg.Agent.ExperimentalCollabBackgroundDelivery
-}
-
 // CollabOpenDetachedFromConfig is the task-264 pure branch (two-mode test).
 // On: pump stand-ups build a detached runtime instead of a visible tab.
 // Unlike the 224 gate this is a live panel setting — it is read per drain
