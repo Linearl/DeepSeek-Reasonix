@@ -36,7 +36,7 @@ var capabilityGroups = []capabilityGroup{
 		Key: "session", Title: "会话协作组",
 		Scenario: "跨会话协作与会话管理（发信判活、会话改名、任务卡、版本管理）",
 		Members: []string{
-			"talk_to_session_sync", "subscribe_session",
+			"subscribe_session",
 			"create_task_card", "get_task_card", "update_task_card", "list_task_cards",
 			"delete_session", "get_session_info", "search_sessions", "session_control",
 			"rename_session", "rename_topic", "move_topic_to_group", "manage_sessions",

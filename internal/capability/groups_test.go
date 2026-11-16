@@ -21,12 +21,12 @@ var appendixA53 = []string{
 	"move_topic_to_group", "notebook_edit", "open_isolated_worktree_project", "peek_own_inbox",
 	"prepare_worktree_merge", "qq", "query_collab_mail", "read_collab_status", "rename_session",
 	"rename_topic", "screenshot", "search_sessions", "session_control", "submit_feedback",
-	"subscribe_session", "talk_to_session_sync", "todo_read", "ui_interact", "update_task_card",
+	"subscribe_session", "todo_read", "ui_interact", "update_task_card",
 	"web_fetch", "weixin", "workflow_define", "workflow_get", "workflow_list",
 	"workflow_run", "workflow_status",
 }
 
-// TestGroupCoversAppendixA53Exactly pins the 58-tool / 9-group tagging: no
+// TestGroupCoversAppendixA53Exactly pins the 57-tool / 9-group tagging: no
 // missing tool, no duplicate membership, no member outside appendix A.
 func TestGroupCoversAppendixA53Exactly(t *testing.T) {
 	owner := map[string]string{}
