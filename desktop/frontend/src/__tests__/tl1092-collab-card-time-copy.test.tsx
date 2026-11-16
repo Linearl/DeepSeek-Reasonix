@@ -201,7 +201,7 @@ console.log("\ntl1092 collab card time + copy");
     ok(Boolean(time?.getAttribute("datetime")), "② <time> 带 datetime 属性");
     eq(host.querySelector(".im-source-card__time"), null, "② foot 行内旧 .im-source-card__time 不再渲染（1122 收敛）");
     const copy = host.querySelector(".im-source-card__copy") as HTMLButtonElement | null;
-    ok(copy !== null && copy.getAttribute("type") === "button", "② 卡片 foot 行渲染复制按钮（1109/1122 保留）");
+    ok(copy !== null && copy.getAttribute("type") === "button", "② 复制按钮存在（tl1639 起落卡下 time-row 与时间戳同行）");
     await cleanup();
   }
 
@@ -217,7 +217,10 @@ console.log("\ntl1092 collab card time + copy");
     ok(metaTime !== null, "③ user-row 卡时间戳渲染在下方 msg-meta 行（1122 统一位置）");
     eq(metaTime?.textContent, formatMessageTimestamp(new Date(SENT_MS), new Date(Date.now()), "zh"), "③ 时间文案与 formatMessageTimestamp 三档同源（1012 契约不变）");
     eq(host.querySelector(".im-source-card__time"), null, "③ foot 行内旧 .im-source-card__time 不再渲染（1122 收敛）");
-    ok(host.querySelector(".im-source-card__copy") !== null, "③ user-row 卡 foot 行渲染复制按钮（保留）");
+    // tl1639: 卡内不再渲染复制按钮（与卡下 msg-meta 行复制重复+两行分裂），
+    // 复制统一在下方 msg-meta 行与时间戳同行。
+    eq(host.querySelector(".im-source-card__copy"), null, "③ user-row 卡内复制按钮不再渲染（tl1639 收敛）");
+    ok(host.querySelector(".msg-meta .msg-meta__copy") !== null, "③ user-row 卡复制按钮在下方 msg-meta 行（tl1639）");
     await cleanup();
   }
 

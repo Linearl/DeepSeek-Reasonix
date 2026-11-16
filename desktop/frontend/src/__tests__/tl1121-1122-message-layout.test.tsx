@@ -272,7 +272,10 @@ console.log("\ntl1136+1122 message layout (17-pack-era thumbnail baseline) + tim
     ok(host.querySelector(".im-source-card") !== null, "⑥ 跨会话用户消息渲染 im-source 卡");
     eq(host.querySelector(".im-source-card__time"), null, "⑥ foot 行内旧 .im-source-card__time 不再渲染（1122 收敛）");
     ok(host.querySelector(".msg-meta .msg-meta__time") !== null, "⑥ 时间戳渲染在卡片下方 .msg-meta 行");
-    ok(host.querySelector(".im-source-card__copy") !== null, "⑥ foot 行保留复制按钮（1109/1122）");
+    // tl1639: 卡内复制按钮收敛——复制统一在下方 msg-meta 行与时间戳同行
+    // （卡内残留=截图 20261116 13:38 的两行分裂+双复制现场）。
+    eq(host.querySelector(".im-source-card__copy"), null, "⑥ 卡内复制按钮不再渲染（tl1639 收敛）");
+    ok(host.querySelector(".msg-meta .msg-meta__copy") !== null, "⑥ 复制按钮在下方 msg-meta 行（tl1639）");
     await cleanup();
   }
 
@@ -286,7 +289,7 @@ console.log("\ntl1136+1122 message layout (17-pack-era thumbnail baseline) + tim
     ok(timeRow !== null, "⑦ 卡片下方渲染 .im-source-card__time-row（1122 统一位置）");
     ok(timeRow?.querySelector(".msg-meta__time") !== null, "⑦ meta-time 行复用 .msg-meta__time 样式（与用户消息同款）");
     eq(host.querySelector(".im-source-card__time"), null, "⑦ foot 行内旧 .im-source-card__time 不再渲染");
-    ok(host.querySelector(".im-source-card__copy") !== null, "⑦ foot 行保留复制按钮（1109/1122）");
+    ok(host.querySelector(".im-source-card__copy") !== null, "⑦ 复制按钮存在（tl1639 起落卡下 time-row 与时间戳同行）");
     await cleanup();
   }
 
