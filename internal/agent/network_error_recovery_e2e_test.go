@@ -179,7 +179,10 @@ func TestPersistent5xxExhaustsHonestlyWithSlogTrail(t *testing.T) {
 // must name its cause instead of leaving a bare hit=0 — the error→compact gap
 // against the TTL estimate, the zero-usage write gap, or the prefix/model
 // shape family — and the attribution line must actually reach slog (the
-// cache-查证 candidates were previously analysis-only).
+// cache-查证 candidates were previously analysis-only). tl1640 extends the
+// table with the no-error TTL branch: a stale conversation stamp now reads
+// prefix_ttl_expired (EST threshold), an unknown stamp stays with the shape
+// family, and the error branches keep precedence regardless of turn data.
 func TestCompactionMissAttributionAfterError(t *testing.T) {
 	withUsage := CompactionTelemetry{InputTokens: 600_000, RequestCount: 1}
 	cases := []struct {
@@ -187,15 +190,27 @@ func TestCompactionMissAttributionAfterError(t *testing.T) {
 		tele     CompactionTelemetry
 		gap      time.Duration
 		hadError bool
+		turnGap  time.Duration
+		haveTurn bool
 		want     string
 	}{
-		{"zero usage round", CompactionTelemetry{}, 0, false, "zero_usage_no_request"},
-		{"no recent error", withUsage, 0, false, "prefix_or_model_shape"},
-		{"gap beyond ttl", withUsage, 10 * time.Minute, true, "error_gap_over_ttl"},
-		{"gap inside ttl", withUsage, 30 * time.Second, true, "error_gap_within_ttl"},
+		{"zero usage round", CompactionTelemetry{}, 0, false, 0, false, "zero_usage_no_request"},
+		// Pre-tl1640 world: no conversation stamp at all — unknown gap must
+		// not claim TTL, the shape family keeps it.
+		{"no recent error", withUsage, 0, false, 0, false, "prefix_or_model_shape"},
+		// tl1640 branch 1: stale conversation turn (the 13:04 case's 30.3min),
+		// no provider error — the blind-spot label.
+		{"no error, turn gap beyond ttl", withUsage, 0, false, 30*time.Minute + 21*time.Second, true, "prefix_ttl_expired"},
+		// tl1640 branch 2: recent turn inside the window — the existing
+		// attribution stands.
+		{"no error, turn gap inside ttl", withUsage, 0, false, time.Minute, true, "prefix_or_model_shape"},
+		// Error branches keep precedence: stale turn data on the side does not
+		// reroute an error round.
+		{"gap beyond ttl", withUsage, 10 * time.Minute, true, 30*time.Minute + 21*time.Second, true, "error_gap_over_ttl"},
+		{"gap inside ttl", withUsage, 30 * time.Second, true, time.Minute, true, "error_gap_within_ttl"},
 	}
 	for _, tc := range cases {
-		if got := compactionMissAttribution(tc.tele, tc.gap, tc.hadError); got != tc.want {
+		if got := compactionMissAttribution(tc.tele, tc.gap, tc.hadError, tc.turnGap, tc.haveTurn); got != tc.want {
 			t.Errorf("%s: attribution = %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -231,7 +246,10 @@ func TestCompactionMissAttributionAfterError(t *testing.T) {
 	if line == "" {
 		t.Fatalf("zero-hit compaction must emit the miss attribution line:\n%s", out)
 	}
-	for _, field := range []string{"attribution=error_gap_over_ttl", "error_gap_ms=", "model_ref="} {
+	for _, field := range []string{"attribution=error_gap_over_ttl", "error_gap_ms=", "model_ref=",
+		// tl1640: the same line carries the conversation gap; this scenario
+		// never completed a conversation request, so the field reads unknown(-1).
+		"last_turn_gap_min=-1"} {
 		if !strings.Contains(line, field) {
 			t.Fatalf("attribution line missing %s:\n%s", field, line)
 		}
