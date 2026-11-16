@@ -1084,27 +1084,13 @@ func (a *App) GetSessionCatalogStatus() SessionCatalogStatus {
 // ListProjectTree is the one-release compatibility wrapper. It composes only
 // catalog pages and project shells; it never migrates, scans, or decodes a
 // session synchronously.
+//
+// tl1655: the pre-tl1655 metadata fallback that re-appended a bare Global
+// folder when the snapshot lacked one is gone — globalFolderNode now builds
+// the node unconditionally in GetProjectTreeSnapshot, so this wrapper can no
+// longer observe a snapshot without it (one generation point, no drift).
 func (a *App) ListProjectTree() []ProjectNode {
 	snapshot := a.GetProjectTreeSnapshot()
-	hasGlobal := false
-	for _, project := range snapshot.Projects {
-		if project.Kind == "global_folder" {
-			hasGlobal = true
-			break
-		}
-	}
-	if !hasGlobal && len(a.metadataProjectTopics("global", "")) > 0 {
-		f := loadProjectsFile()
-		label := strings.TrimSpace(f.GlobalTitle)
-		if label == "" {
-			label = "Global"
-		}
-		snapshot.Projects = append(snapshot.Projects, ProjectNode{
-			Key: "global_folder", Kind: "global_folder", Label: label,
-			Root: globalWorkspaceRoot(), ProjectColor: normalizeProjectColor(f.GlobalColor), Children: []ProjectNode{},
-		})
-		snapshot.Projects = applyPinnedProjectOrder(applyProjectTreeOrder(snapshot.Projects, f.SidebarOrder), f.PinnedProjects)
-	}
 	for index := range snapshot.Projects {
 		project := &snapshot.Projects[index]
 		// The lightweight snapshot carries pinned topic shells for collapsed

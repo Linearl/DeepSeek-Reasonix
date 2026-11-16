@@ -585,18 +585,7 @@ func (a *App) GetProjectTreeSnapshot() ProjectTreeSnapshot {
 	for _, topicID := range f.DeletedTopics {
 		deleted[topicID] = true
 	}
-	projects := []ProjectNode{}
-	if strings.TrimSpace(f.GlobalTitle) != "" || len(f.GlobalTopics) > 0 || len(f.Projects) == 0 {
-		label := strings.TrimSpace(f.GlobalTitle)
-		if label == "" {
-			label = "Global"
-		}
-		projects = append(projects, ProjectNode{
-			Key: "global_folder", Kind: "global_folder", Label: label,
-			Root: globalWorkspaceRoot(), ProjectColor: normalizeProjectColor(f.GlobalColor),
-			Children: a.pinnedTopicShells("global", "", f.GlobalTopics, f.GlobalPinnedTopics, f.GlobalColor, deleted),
-		})
-	}
+	projects := []ProjectNode{a.globalFolderNode(f, deleted)}
 	for _, project := range f.Projects {
 		label := strings.TrimSpace(project.Title)
 		if label == "" {
@@ -620,6 +609,29 @@ func (a *App) GetProjectTreeSnapshot() ProjectTreeSnapshot {
 		Revision: status.Revision, Projects: projects, Catalog: status,
 		Indexed: status.Indexed, Total: status.Total,
 		IndexingDone: a.catalogIndexingDone(status),
+	}
+}
+
+// globalFolderNode builds the Global folder node. Since tl1655 the caller
+// includes it unconditionally: the task-186 design makes Global the only node
+// that legitimately carries the host's own directories (builtin_roots.go
+// normalizeWorkspaceScope, heartbeat heartbeatRunScope, stripBuiltinProjects
+// on every save), and the frontend backstop
+// projectTreeWithoutBuiltinWorkspaceNodes reads the builtin root off this very
+// node. The pre-tl1655 three-way condition (GlobalTitle set, or GlobalTopics
+// populated, or no projects at all) dropped the node exactly when a fresh
+// machine gained its first real project — the sidebar lost the Global entry
+// point and every conversation living there became unreachable, which is the
+// tl1655 first-run breakage.
+func (a *App) globalFolderNode(f desktopProjectFile, deleted map[string]bool) ProjectNode {
+	label := strings.TrimSpace(f.GlobalTitle)
+	if label == "" {
+		label = "Global"
+	}
+	return ProjectNode{
+		Key: "global_folder", Kind: "global_folder", Label: label,
+		Root: globalWorkspaceRoot(), ProjectColor: normalizeProjectColor(f.GlobalColor),
+		Children: a.pinnedTopicShells("global", "", f.GlobalTopics, f.GlobalPinnedTopics, f.GlobalColor, deleted),
 	}
 }
 
