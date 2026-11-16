@@ -458,7 +458,7 @@ func collectEventLogUserPrompts(path string, info os.FileInfo, resolveUserConten
 	fallbackAt := promptHistoryFallbackMillis(path, info)
 	turn := 0
 	for _, user := range users {
-		if !agent.IsUserAuthoredTurnMessage(user.Message) {
+		if !promptHistoryIncludesUserInput(user.Message) {
 			continue
 		}
 		text := sessionUserPromptText(user.Message, resolveUserContent)
@@ -517,7 +517,7 @@ func collectJSONLUserPrompts(path string, info os.FileInfo, resolveUserContent f
 			}
 		}
 		if message.Content != "" {
-			if !agent.IsUserAuthoredTurnMessage(message) {
+			if !promptHistoryIncludesUserInput(message) {
 				continue
 			}
 			text := sessionUserPromptText(message, resolveUserContent)
@@ -545,7 +545,38 @@ func sessionUserPromptText(message provider.Message, resolveUserContent func(str
 	if strings.TrimSpace(message.RawContent) != "" {
 		return strings.TrimSpace(agent.UserMessageText(message))
 	}
-	return strings.TrimSpace(resolveUserContent(strings.TrimSpace(message.Content)))
+	content := strings.TrimSpace(message.Content)
+	// Legacy steer records persist only the wrapped Content (no RawContent).
+	// The transcript replay path (historySteerRows) strips the steer wrapper
+	// the same way; without it the raw "[Mid-turn steer ...]" prefix leaks
+	// into the panel (tl 1602 rework). Host Auto Guard policy bodies resolve
+	// to "" and drop out via the caller's empty-text guard.
+	if text, handled := agent.ReplaySteerText(content); handled {
+		content = strings.TrimSpace(text)
+	}
+	return strings.TrimSpace(resolveUserContent(content))
+}
+
+// promptHistoryIncludesUserInput is the panel's own "the user typed this into
+// the composer" criterion. The scan previously reused
+// agent.IsUserAuthoredTurnMessage, whose job is turn attribution — steers do
+// not start a user turn, so every steer silently vanished from the ↑-recall
+// panel (tl 1602 rework). Panel semantics differ: any user-authored input is
+// recallable, steers included. Host-injected guidance (origin host, synthetic
+// user text) stays excluded — it is not composer input and was already
+// excluded before the rework; steer inclusion is the only behavior change.
+// Steer-shaped records with host Auto Guard policy bodies are host-authored
+// too, so the transcript's own replay classifier (agent.ReplaySteerText, the
+// same one historySteerRows uses) decides steer inclusion: it reports those
+// bodies as handled-but-empty.
+func promptHistoryIncludesUserInput(msg provider.Message) bool {
+	if msg.Role != provider.RoleUser || agent.IsHostGeneratedUserMessage(msg) {
+		return false
+	}
+	if text, handled := agent.ReplaySteerText(msg.Content); handled {
+		return strings.TrimSpace(text) != ""
+	}
+	return strings.TrimSpace(agent.UserMessageText(msg)) != ""
 }
 
 func promptHistoryFallbackMillis(path string, info os.FileInfo) int64 {
