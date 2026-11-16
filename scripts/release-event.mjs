@@ -4,21 +4,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadCatalog, releaseForVersion } from "./release-notes.mjs";
-
-function invariant(condition, message) {
-  if (!condition) throw new Error(message);
-}
-
-function parseArgs(argv) {
-  const [command = "validate", ...rest] = argv;
-  const values = { command };
-  for (let index = 0; index < rest.length; index += 1) {
-    const arg = rest[index];
-    if (!arg.startsWith("--")) throw new Error(`unexpected argument ${arg}`);
-    values[arg.slice(2)] = rest[++index];
-  }
-  return values;
-}
+// tl1626 档B: invariant/parseArgs extracted to the shared module (was copy-pasted here).
+import { invariant, parseArgs } from "./lib/cli-util.mjs";
 
 export function validateReleaseEvent(event, release) {
   invariant(event && typeof event === "object" && !Array.isArray(event), "release event must be an object");
@@ -45,7 +32,7 @@ export function validateReleaseEvent(event, release) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2), { command: "validate" });
   invariant(args.version, "--version is required");
   const catalog = await loadCatalog(args.catalog ? resolve(args.catalog) : undefined);
   const release = releaseForVersion(catalog, args.version);

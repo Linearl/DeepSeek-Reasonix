@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # Resolve and validate one native CLI release tag. Manual recovery exposes only
 # official versions; prerelease parsing remains for historical workflow calls.
+#
+# DOWNSTREAM CONTRACT (tl1626 档C): the $GITHUB_OUTPUT keys written here —
+# tag/version/base_version/notes_version/channel/prerelease — are consumed by
+# the release workflows. The Desktop sibling (resolve-desktop-release.sh)
+# writes the same key set minus base_version; the two resolvers must agree so
+# the build/publish/mirror jobs see one value. Renaming or dropping any key
+# requires updating BOTH resolvers AND every consuming workflow in the same
+# change — a one-sided rename makes downstream workflow reads silently empty.
 set -euo pipefail
 
 stable_semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'

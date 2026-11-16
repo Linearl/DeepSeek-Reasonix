@@ -5,21 +5,14 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { loadCatalog, upsertRelease, validateCatalog } from "./release-notes.mjs";
+// tl1626 档B: parseArgs extracted to the shared module (was copy-pasted here; the
+// no-command form, i.e. parseArgs without the { command } option).
+import { parseArgs } from "./lib/cli-util.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const apiBase = process.env.DEEPSEEK_API_BASE || "https://api.deepseek.com";
 const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-pro";
 const releaseTargetOrder = ["desktop", "cli", "site", "service"];
-
-function parseArgs(argv) {
-  const values = {};
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (!arg.startsWith("--")) throw new Error(`unexpected argument ${arg}`);
-    values[arg.slice(2)] = argv[++index];
-  }
-  return values;
-}
 
 function runGit(args) {
   return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();

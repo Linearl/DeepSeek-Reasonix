@@ -3,6 +3,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+// tl1626 档B: invariant/parseArgs extracted to the shared module (was copy-pasted here).
+import { invariant, parseArgs } from "./lib/cli-util.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const defaultCatalogPath = resolve(repoRoot, "release-notes/releases.json");
@@ -15,10 +17,6 @@ const releaseStatuses = new Set(["reviewed", "published"]);
 const releaseTargetOrder = ["desktop", "cli", "site", "service"];
 const releaseTargets = new Set(releaseTargetOrder);
 const releaseTargetingRequiredFrom = "1.31.4";
-
-function invariant(condition, message) {
-  if (!condition) throw new Error(message);
-}
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -411,19 +409,8 @@ export async function upsertRelease(release, path = defaultCatalogPath) {
   return next;
 }
 
-function parseArgs(argv) {
-  const [command = "validate", ...rest] = argv;
-  const values = { command };
-  for (let i = 0; i < rest.length; i += 1) {
-    const arg = rest[i];
-    if (!arg.startsWith("--")) throw new Error(`unexpected argument ${arg}`);
-    values[arg.slice(2)] = rest[++i];
-  }
-  return values;
-}
-
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2), { command: "validate" });
   const catalogPath = args.catalog ? resolve(args.catalog) : defaultCatalogPath;
   const catalog = await loadCatalog(catalogPath);
   if (args.command === "validate") {

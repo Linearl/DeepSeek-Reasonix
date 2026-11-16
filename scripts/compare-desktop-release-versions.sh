@@ -7,6 +7,15 @@ set -euo pipefail
 #
 # Decimal components are compared without shell arithmetic so arbitrarily large
 # canonical components retain their exact ordering.
+#
+# SISTER SCRIPT (tl1626 档C): scripts/compare-cli-release-tags.sh is the CLI
+# counterpart. The three-state verdict (update/skip) and the overall skeleton
+# are intentionally mirrored, while the comparison core deliberately diverges:
+# decimal component comparison here vs lexical tag comparison there. The
+# 2026-11-16 release-check audit (tl1626 R3) judged the two axes independently
+# evolving and declined to merge them. If you change the verdict semantics,
+# channel rules, or I/O contract in THIS file, check the CLI sister for the
+# same change.
 
 export LC_ALL=C
 

@@ -9,15 +9,22 @@
 // missing. Exit 0 = all checks pass; exit 1 = list of missing markers.
 //
 // Usage: node scripts/check-fork-integrity.mjs   (from the repo root)
+//
+// tl1626 档D: CHECKS and the check loop are exported (runIntegrityChecks) so the
+// smoke test (scripts/check-fork-integrity.test.mjs) can drive both the green
+// path and the two red paths (missing registered file / missing anchor pattern)
+// against a synthetic tree. The CLI output below is byte-identical to the
+// pre-refactor script.
 
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ROOT = process.cwd();
 
 // Each entry: feature label, repo-relative file, patterns that must all
 // appear in that file. Add a row whenever a fork-only feature lands.
-const CHECKS = [
+export const CHECKS = [
   // ── CSS（auto-merge 静默丢块高发区）──────────────────────────────
   { feature: "任务350 分组层级化 CSS+树（层级≠指挥权）", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__group--nested > .project-tree__group-main", ".project-tree__group-subtree"] },
   { feature: "任务350 层级化纯函数与守卫", file: "desktop/frontend/src/lib/sessionGroupTree.ts", patterns: ["SESSION_GROUP_MAX_DEPTH", "hierarchyMutationIsDisplayOnly", "canNestUnder"] },
@@ -1586,33 +1593,42 @@ const CHECKS = [
 
 ];
 
-let failed = 0;
-const results = [];
-for (const check of CHECKS) {
-  const path = join(ROOT, check.file);
-  if (!existsSync(path)) {
-    failed += 1;
-    results.push(`MISSING FILE  ${check.file}  (${check.feature})`);
-    continue;
+// Run the checklist against `root` (defaults to the full CHECKS manifest).
+// Returns { failed, results, total }; the CLI entry below renders it exactly
+// as the pre-refactor script did. Exported for the smoke test (tl1626 档D).
+export function runIntegrityChecks(root, checks = CHECKS) {
+  const results = [];
+  let failed = 0;
+  for (const check of checks) {
+    const path = join(root, check.file);
+    if (!existsSync(path)) {
+      failed += 1;
+      results.push(`MISSING FILE  ${check.file}  (${check.feature})`);
+      continue;
+    }
+    // Normalise CRLF so multi-line patterns match on Windows checkouts too.
+    const content = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+    const missing = check.patterns.filter((p) => !content.includes(p));
+    if (missing.length > 0) {
+      failed += 1;
+      results.push(`MISSING       ${check.file}  (${check.feature})\n  patterns: ${missing.map((p) => JSON.stringify(p)).join(", ")}`);
+    } else {
+      results.push(`OK            ${check.feature}`);
+    }
   }
-  // Normalise CRLF so multi-line patterns match on Windows checkouts too.
-  const content = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
-  const missing = check.patterns.filter((p) => !content.includes(p));
-  if (missing.length > 0) {
-    failed += 1;
-    results.push(`MISSING       ${check.file}  (${check.feature})\n  patterns: ${missing.map((p) => JSON.stringify(p)).join(", ")}`);
-  } else {
-    results.push(`OK            ${check.feature}`);
-  }
+  return { failed, results, total: checks.length };
 }
 
-for (const line of results) process.stdout.write(line + "\n");
-process.stdout.write(`\n${CHECKS.length - failed}/${CHECKS.length} checks passed.\n`);
-if (failed > 0) {
-  process.stdout.write(
-    "\nFork-only features are missing from the working tree — likely dropped by an\n"
-    + "upstream auto-merge (no conflict markers, no build errors). Recover from the\n"
-    + "feature's origin commit (git log --all --oneline -- <file>) and re-run.\n",
-  );
-  process.exit(1);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const { failed, results, total } = runIntegrityChecks(ROOT);
+  for (const line of results) process.stdout.write(line + "\n");
+  process.stdout.write(`\n${total - failed}/${total} checks passed.\n`);
+  if (failed > 0) {
+    process.stdout.write(
+      "\nFork-only features are missing from the working tree — likely dropped by an\n"
+      + "upstream auto-merge (no conflict markers, no build errors). Recover from the\n"
+      + "feature's origin commit (git log --all --oneline -- <file>) and re-run.\n",
+    );
+    process.exit(1);
+  }
 }
