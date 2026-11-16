@@ -135,7 +135,7 @@ providers = [{name="deepseek-flash",kind="anthropic",base_url="https://api.deeps
 	}
 }
 
-func TestOldAutomaticProtocolMigrationDoesNotUndoChatDefault(t *testing.T) {
+func TestManualProtocolUpgradeDoesNotUndoChatDefault(t *testing.T) {
 	raw := `config_version = 8
 [[providers]]
 name = "deepseek-flash"
@@ -144,8 +144,11 @@ base_url = "https://api.deepseek.com"
 model = "deepseek-v4-flash"
 api_key_env = "DEEPSEEK_API_KEY"
 `
-	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "", true)
-	if err != nil || changed || next != raw {
-		t.Fatalf("old migration undid v8 default: changed=%v err=%v", changed, err)
+	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek")
+	if err != nil || !changed {
+		t.Fatalf("manual upgrade did not apply: changed=%v err=%v", changed, err)
+	}
+	if !strings.Contains(next, `kind = "anthropic"`) {
+		t.Fatalf("manual upgrade did not switch the transport:\n%s", next)
 	}
 }

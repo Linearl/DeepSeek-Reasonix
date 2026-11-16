@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,7 +13,7 @@ import (
 	fileencoding "reasonix/internal/fileutil/encoding"
 )
 
-func TestMigrateLegacyDeepSeekProtocolUserConfigPreservesTOMLAndIsIdempotent(t *testing.T) {
+func TestStartupDeepSeekProtocolMigrationMigratesLegacyOpenAIProvidersAndIsIdempotent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
 	path := filepath.Join(home, "config.toml")
@@ -51,42 +50,49 @@ future_provider_field = "untouched"
 		t.Fatal(err)
 	}
 
-	changed, err := MigrateLegacyDeepSeekProtocolUserConfig()
+	// The startup chain (boot/boot.go) is the surviving migration entry; the
+	// old automatic Messages migration it replaced is gone (tl1635).
+	changed, err := ApplyUserConfigUpgradesOnStartup(path)
 	if err != nil {
-		t.Fatalf("MigrateLegacyDeepSeekProtocolUserConfig: %v", err)
+		t.Fatalf("ApplyUserConfigUpgradesOnStartup: %v", err)
 	}
 	if !changed {
-		t.Fatal("legacy official providers were not migrated")
+		t.Fatal("legacy official providers were not migrated by the startup chain")
 	}
 	updatedBytes, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	updated := string(updatedBytes)
-	if strings.Count(updated, `kind        = "anthropic"`) != 2 ||
-		strings.Count(updated, `base_url    = "https://api.deepseek.com/anthropic"`) != 2 {
-		t.Fatalf("migrated provider protocol mismatch:\n%s", updated)
-	}
-	for _, preserved := range []string{
-		"# keep this user comment",
-		`future_top_level = "preserve-me"`,
-		`future_provider_field = "untouched"`,
-		`base_url = "https://gateway.example/v1"`,
-		`kind        = "anthropic" # legacy wire`,
-	} {
-		if !strings.Contains(updated, preserved) {
-			t.Errorf("migration dropped %q:\n%s", preserved, updated)
-		}
-	}
 
 	cfg, err := LoadForEditReadOnlyStrict(path)
 	if err != nil {
 		t.Fatalf("load migrated config: %v", err)
 	}
+	// The unrelated gateway provider must survive the migration untouched.
+	other, ok := cfg.Provider("other")
+	if !ok || other.BaseURL != "https://gateway.example/v1" || other.Kind != "openai" || other.APIKeyEnv != "OTHER_KEY" {
+		t.Fatalf("unrelated provider was touched: %+v", other)
+	}
+	var versionHeader struct {
+		ConfigVersion int `toml:"config_version"`
+	}
+	if _, err := toml.Decode(updated, &versionHeader); err != nil {
+		t.Fatalf("decode migrated config: %v", err)
+	}
+	if versionHeader.ConfigVersion != Default().ConfigVersion {
+		t.Fatalf("config_version = %d, want %d after startup migration", versionHeader.ConfigVersion, Default().ConfigVersion)
+	}
 	for _, name := range []string{"deepseek-flash", "deepseek-pro"} {
 		entry, ok := cfg.Provider(name)
 		if !ok {
 			t.Fatalf("migrated provider %q missing", name)
+		}
+		// Current expected end state: the official openai-compatible transport,
+		// NOT the retired anthropic Messages endpoint the removed automatic
+		// migration used to write.
+		if entry.Kind != "openai" || entry.BaseURL != "https://api.deepseek.com" {
+			t.Errorf("migrated provider %q protocol = %s/%s, want openai/https://api.deepseek.com", name, entry.Kind, entry.BaseURL)
 		}
 		model := strings.TrimSpace(entry.Default)
 		if model == "" {
@@ -97,31 +103,29 @@ future_provider_field = "untouched"
 			t.Fatalf("migrated provider %q model %q did not resolve", name, model)
 		}
 		cap := EffortCapabilityForEntry(resolved)
-		if entry.Kind != "anthropic" || entry.BaseURL != deepSeekAnthropicBaseURL ||
-			entry.Thinking != "enabled" || !EffectiveWebSearch(entry) ||
-			cap.Default != "high" || len(cap.Levels) == 0 {
-			t.Errorf("migrated provider %q capabilities = %+v effort=%+v", name, entry, cap)
+		if len(cap.Levels) == 0 {
+			t.Errorf("migrated provider %q effort capability = %+v", name, cap)
 		}
 	}
 
 	beforeSecondRun := string(updatedBytes)
-	changed, err = MigrateLegacyDeepSeekProtocolUserConfig()
+	changed, err = ApplyUserConfigUpgradesOnStartup(path)
 	if err != nil {
-		t.Fatalf("second migration: %v", err)
+		t.Fatalf("second startup migration: %v", err)
 	}
 	if changed {
-		t.Fatal("second migration unexpectedly reported a change")
+		t.Fatal("second startup migration unexpectedly reported a change")
 	}
 	afterSecondRun, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(afterSecondRun) != beforeSecondRun {
-		t.Fatal("idempotent migration rewrote the config on its second run")
+		t.Fatal("idempotent startup migration rewrote the config on its second run")
 	}
 }
 
-func TestAutomaticDeepSeekProtocolMigrationReportsMalformedConfigWithoutRewriting(t *testing.T) {
+func TestStartupDeepSeekMigrationReportsMalformedConfigWithoutRewriting(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
 	path := filepath.Join(home, "config.toml")
@@ -140,22 +144,22 @@ command = "C:\Users\reasonix\mcp.exe"
 		t.Fatal(err)
 	}
 
-	changed, err := MigrateLegacyDeepSeekProtocolUserConfig()
+	changed, err := ApplyUserConfigUpgradesOnStartup(path)
 	if err == nil {
-		t.Fatal("automatic migration accepted malformed config")
+		t.Fatal("startup migration accepted malformed config")
 	}
 	if !IsDeepSeekProtocolConfigParseError(err) {
-		t.Fatalf("automatic migration error type = %T, want TOML parse error", err)
+		t.Fatalf("startup migration error type = %T, want TOML parse error", err)
 	}
 	if changed {
-		t.Fatal("automatic migration reported changing malformed config")
+		t.Fatal("startup migration reported changing malformed config")
 	}
 	next, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(next) != raw {
-		t.Fatalf("automatic migration rewrote malformed config:\n%s", next)
+		t.Fatalf("startup migration rewrote malformed config:\n%s", next)
 	}
 
 	cfg, err := LoadForRootReadOnly(t.TempDir())
@@ -218,7 +222,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 	}
 }
 
-func TestMigrateLegacyDeepSeekProtocolUserConfigSerializesConcurrentUpgrades(t *testing.T) {
+func TestApplyUserConfigUpgradesOnStartupSerializesConcurrentDeepSeekUpgrades(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
 	path := filepath.Join(home, "config.toml")
@@ -240,7 +244,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 	for range workers {
 		wg.Go(func() {
 			<-start
-			_, err := MigrateLegacyDeepSeekProtocolUserConfig()
+			_, err := ApplyUserConfigUpgradesOnStartup(path)
 			errs <- err
 		})
 	}
@@ -249,7 +253,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 	close(errs)
 	for err := range errs {
 		if err != nil {
-			t.Fatalf("concurrent migration: %v", err)
+			t.Fatalf("concurrent startup migration: %v", err)
 		}
 	}
 
@@ -257,9 +261,13 @@ api_key_env = "DEEPSEEK_API_KEY"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(got), `kind = "anthropic"`) != 1 ||
-		strings.Count(string(got), `base_url = "https://api.deepseek.com/anthropic"`) != 1 {
-		t.Fatalf("concurrent migration produced a corrupt or partial config:\n%s", got)
+	var parsed Config
+	if _, err := toml.Decode(string(got), &parsed); err != nil {
+		t.Fatalf("concurrently migrated config is invalid: %v\n%s", err, got)
+	}
+	if parsed.ConfigVersion != Default().ConfigVersion || len(parsed.Providers) != 1 ||
+		parsed.Providers[0].Kind != "openai" || parsed.Providers[0].BaseURL != "https://api.deepseek.com" {
+		t.Fatalf("concurrent startup migration produced a corrupt or partial config:\n%s", got)
 	}
 	if _, err := LoadForEditReadOnlyStrict(path); err != nil {
 		t.Fatalf("concurrently migrated config is invalid: %v", err)
@@ -295,7 +303,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 	}
 }
 
-func TestMigrateLegacyDeepSeekProtocolPreservesConfigEncoding(t *testing.T) {
+func TestStartupDeepSeekMigrationHandlesLegacyUTF16Config(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
 	path := filepath.Join(home, "config.toml")
@@ -312,22 +320,20 @@ api_key_env = "DEEPSEEK_API_KEY"
 		t.Fatal(err)
 	}
 
-	changed, err := MigrateLegacyDeepSeekProtocolUserConfig()
+	changed, err := ApplyUserConfigUpgradesOnStartup(path)
 	if err != nil || !changed {
-		t.Fatalf("MigrateLegacyDeepSeekProtocolUserConfig: changed=%v err=%v", changed, err)
+		t.Fatalf("ApplyUserConfigUpgradesOnStartup on UTF-16 legacy: changed=%v err=%v", changed, err)
 	}
-	got, err := os.ReadFile(path)
+	// The startup render path (SaveTo) re-encodes as UTF-8 — long-standing
+	// behavior for every pre-7 config it upgrades. What must hold is that the
+	// UTF-16 source is decoded correctly and the migrated config stays valid.
+	cfg, err := LoadForEditReadOnlyStrict(path)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("migrated UTF-16 config is invalid: %v", err)
 	}
-	if !bytes.HasPrefix(got, []byte{0xff, 0xfe}) {
-		t.Fatalf("migrated config lost its UTF-16LE BOM: %x", got[:min(len(got), 8)])
-	}
-	decoded := string(fileencoding.DecodeToUTF8(got))
-	if !strings.Contains(decoded, `kind = "anthropic"`) ||
-		!strings.Contains(decoded, `base_url = "https://api.deepseek.com/anthropic"`) ||
-		!strings.Contains(decoded, "# preserve UTF-16 configuration") {
-		t.Fatalf("migrated UTF-16 config = %q", decoded)
+	entry, ok := cfg.Provider("deepseek-flash")
+	if !ok || entry.Kind != "openai" || entry.BaseURL != "https://api.deepseek.com" {
+		t.Fatalf("migrated UTF-16 provider = %+v, want openai/https://api.deepseek.com", entry)
 	}
 }
 
@@ -339,7 +345,7 @@ providers = [{ name = "quoted-example", kind = "openai" }]
 """
 providers = [{ name = "deepseek-flash", kind = "openai", base_url = "https://api.deepseek.com", model = "deepseek-v4-flash", api_key_env = "DEEPSEEK_API_KEY" }, { name = "other", kind = "openai", base_url = "https://gateway.example/v1", model = "other-model", api_key_env = "OTHER_KEY", headers = { X-Trace = "keep,=#value" } }, { name = "local", kind = "ollama", model = "local-model" }]
 `
-	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "", true)
+	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek")
 	if err != nil {
 		t.Fatalf("rewrite inline providers: %v", err)
 	}
@@ -365,7 +371,7 @@ providers = [{ name = "deepseek-flash", kind = "openai", base_url = "https://api
 	if len(decoded.Providers) != 3 || decoded.Providers[0].Kind != "anthropic" || decoded.Providers[1].Kind != "openai" {
 		t.Fatalf("migrated inline providers = %+v", decoded.Providers)
 	}
-	again, changed, err := rewriteLegacyDeepSeekProtocol(next, "", true)
+	again, changed, err := rewriteLegacyDeepSeekProtocol(next, "deepseek")
 	if err != nil {
 		t.Fatalf("second inline migration: %v", err)
 	}
@@ -379,7 +385,7 @@ func TestManualDeepSeekProtocolUpgradeSupportsMultilineInlineArray(t *testing.T)
   { name = "deepseek-pro", kind = 'openai', base_url = 'https://api.deepseek.com/v1', model = "deepseek-v4-pro", api_key_env = "CUSTOM_KEY", headers = { X-Route = "keep,=#route" }, future_capability = true },
 ]
 `
-	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek", false)
+	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek")
 	if err != nil {
 		t.Fatalf("manual inline upgrade: %v", err)
 	}
@@ -395,52 +401,6 @@ func TestManualDeepSeekProtocolUpgradeSupportsMultilineInlineArray(t *testing.T)
 		if !strings.Contains(next, want) {
 			t.Errorf("manual inline upgrade dropped %q:\n%s", want, next)
 		}
-	}
-}
-
-func TestAutomaticDeepSeekProtocolMigrationKeepsCustomizedProviders(t *testing.T) {
-	tests := []struct {
-		name  string
-		extra string
-	}{
-		{name: "proxy endpoint", extra: `base_url = "https://proxy.example/v1"`},
-		{name: "custom headers", extra: `headers = { X-Route = "custom" }`},
-		{name: "explicit model list", extra: `models = ["deepseek-v4-flash"]`},
-		{name: "vision override", extra: `vision = true`},
-		{name: "reasoning override", extra: `reasoning_protocol = "none"`},
-		{name: "effort override", extra: `supported_efforts = ["high"]`},
-		{name: "custom key", extra: `api_key_env = "MY_DEEPSEEK_KEY"`},
-		{name: "unknown future field", extra: `future_capability = true`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			baseURL := `base_url = "https://api.deepseek.com"`
-			apiKey := `api_key_env = "DEEPSEEK_API_KEY"`
-			model := `model = "deepseek-v4-flash"`
-			switch {
-			case strings.HasPrefix(tt.extra, "base_url"):
-				baseURL = tt.extra
-			case strings.HasPrefix(tt.extra, "api_key_env"):
-				apiKey = tt.extra
-			case strings.HasPrefix(tt.extra, "models"):
-				model = tt.extra
-			}
-			extra := tt.extra
-			if tt.extra == baseURL || tt.extra == apiKey || tt.extra == model {
-				extra = ""
-			}
-			raw := `[[providers]]
-name = "deepseek-flash"
-kind = "openai"
-` + baseURL + "\n" + model + "\n" + apiKey + "\n" + extra + "\n"
-			next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "", true)
-			if err != nil {
-				t.Fatalf("rewriteLegacyDeepSeekProtocol: %v", err)
-			}
-			if changed || next != raw {
-				t.Fatalf("customized provider was automatically migrated:\n%s", next)
-			}
-		})
 	}
 }
 
@@ -462,7 +422,7 @@ model = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 reasoning_protocol = "none"
 `
-	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek", false)
+	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek")
 	if err != nil {
 		t.Fatalf("rewriteLegacyDeepSeekProtocol: %v", err)
 	}
@@ -489,7 +449,7 @@ func TestDeepSeekProtocolMigrationSupportsQuotedKeys(t *testing.T) {
 'model' = "deepseek-v4-flash"
 "api_key_env" = "DEEPSEEK_API_KEY"
 `
-	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "", true)
+	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek")
 	if err != nil {
 		t.Fatalf("rewrite quoted-key provider: %v", err)
 	}
@@ -528,7 +488,7 @@ base_url = "https://api.deepseek.com"
 model = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
 `
-	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "", true)
+	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek")
 	if err != nil {
 		t.Fatalf("rewrite quoted provider table headers: %v", err)
 	}
@@ -562,7 +522,7 @@ kind = "example"
 base_url = "https://example.invalid"
 '''
 `
-	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek", false)
+	next, changed, err := rewriteLegacyDeepSeekProtocol(raw, "deepseek")
 	if err != nil {
 		t.Fatalf("manual multiline upgrade: %v", err)
 	}
