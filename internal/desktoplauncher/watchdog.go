@@ -1,6 +1,7 @@
 package desktoplauncher
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/proc"
 )
 
 // 任务 404（launcher watchdog）：the 0930 silent crash (desktop dead under
@@ -58,12 +60,15 @@ var watchdogDisabled = func() bool {
 // superviseDesktop is the Run-side entry: watch the just-started desktop and
 // maybe use the one restart. installRoot re-resolves current.json at restart
 // time — a mid-flight update that moved the pointer must not resurrect a
-// stale binary.
+// stale binary. The launcher process has no in-process stop face today, so
+// production supervises under context.Background(); the ctx parameter is the
+// seam (tl1620) that makes the restart backoff cancellation-aware instead of
+// a bare time.Sleep.
 func superviseDesktop(gen1 *exec.Cmd, installRoot, desktopPath string, args []string) int {
 	if watchdogDisabled() {
 		return 0
 	}
-	return supervise(gen1, func() (*exec.Cmd, error) {
+	return supervise(context.Background(), gen1, func() (*exec.Cmd, error) {
 		return restartCommand(installRoot, desktopPath, args)
 	})
 }
@@ -95,8 +100,11 @@ func superviseMarkerVouches(deadPID int) bool {
 // supervise watches generation 1 and, on an abnormal exit, restarts once after
 // the backoff. restart builds generation 2 lazily — only an abnormal first
 // death pays for the resolution work. The returned int is the launcher's own
-// process exit code: 0 when the last watched generation ended deliberately.
-func supervise(gen1 *exec.Cmd, restart func() (*exec.Cmd, error)) int {
+// process exit code: 0 when the last watched generation ended deliberately
+// (including a ctx stop arriving during the backoff — the one restart must
+// not fire on the way out; the death record is already written by then, so
+// evidence is preserved).
+func supervise(ctx context.Context, gen1 *exec.Cmd, restart func() (*exec.Cmd, error)) int {
 	if err := gen1.Wait(); err == nil {
 		return 0
 	}
@@ -135,7 +143,13 @@ func supervise(gen1 *exec.Cmd, restart func() (*exec.Cmd, error)) int {
 		"launcher: desktop exited abnormally; restarting once after backoff pid=%d exit=%d backoff=%s",
 		gen1.Process.Pid, code, watchdogRestartDelay))
 
-	time.Sleep(watchdogRestartDelay)
+	// tl1620: cancellation-aware backoff (proc.SleepCtx) instead of a bare
+	// time.Sleep — a stop arriving here ends supervision promptly instead of
+	// blocking out the remaining delay (the exact counterexample the
+	// bot/connloop header comment names), and skips the one restart.
+	if !proc.SleepCtx(ctx, watchdogRestartDelay) {
+		return 0
+	}
 
 	gen2, err := restart()
 	if err != nil {

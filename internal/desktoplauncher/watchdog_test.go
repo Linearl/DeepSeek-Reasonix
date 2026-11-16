@@ -2,6 +2,7 @@ package desktoplauncher
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -117,7 +118,7 @@ func TestSuperviseRestartsOnceAfterAbnormalExit(t *testing.T) {
 		t.Fatalf("start helper: %v", err)
 	}
 	restarts := 0
-	got := supervise(gen1, func() (*exec.Cmd, error) {
+	got := supervise(context.Background(), gen1, func() (*exec.Cmd, error) {
 		restarts++
 		return startedHelper(t, logPath, "0"), nil
 	})
@@ -143,7 +144,7 @@ func TestSuperviseNormalExitNeverRestarts(t *testing.T) {
 		t.Fatalf("start helper: %v", err)
 	}
 	restarts := 0
-	got := supervise(gen1, func() (*exec.Cmd, error) {
+	got := supervise(context.Background(), gen1, func() (*exec.Cmd, error) {
 		restarts++
 		return helperCommand(t, logPath, "0"), nil
 	})
@@ -169,7 +170,7 @@ func TestSuperviseSecondAbnormalExitSpendsBudget(t *testing.T) {
 		t.Fatalf("start helper: %v", err)
 	}
 	restarts := 0
-	got := supervise(gen1, func() (*exec.Cmd, error) {
+	got := supervise(context.Background(), gen1, func() (*exec.Cmd, error) {
 		restarts++
 		return startedHelper(t, logPath, "2"), nil
 	})
@@ -254,7 +255,7 @@ func TestSuperviseWritesAbnormalExitRecord(t *testing.T) {
 		t.Fatalf("start helper: %v", err)
 	}
 	before := time.Now().UTC()
-	if got := supervise(gen1, func() (*exec.Cmd, error) {
+	if got := supervise(context.Background(), gen1, func() (*exec.Cmd, error) {
 		return startedHelper(t, logPath, "0"), nil
 	}); got != 0 {
 		t.Fatalf("supervise = %d, want 0", got)
@@ -287,12 +288,55 @@ func TestSuperviseWritesAbnormalExitRecord(t *testing.T) {
 	if err := genClean.Start(); err != nil {
 		t.Fatalf("start clean helper: %v", err)
 	}
-	if got := supervise(genClean, func() (*exec.Cmd, error) {
+	if got := supervise(context.Background(), genClean, func() (*exec.Cmd, error) {
 		return nil, fmt.Errorf("restart must never be attempted on a clean exit")
 	}); got != 0 {
 		t.Fatalf("clean supervise = %d, want 0", got)
 	}
 	if _, err := os.Stat(recordPath); !os.IsNotExist(err) {
 		t.Fatalf("clean exit wrote an abnormal-exit record: %v", err)
+	}
+}
+
+// tl1620 acceptance: a stop arriving during the restart backoff must end
+// supervision promptly — not wait out the remaining delay (the bare
+// time.Sleep counterexample the bot/connloop header comment names) — and must
+// not burn the one restart on the way out. The death record stays intact (it
+// was written before the backoff), so evidence is preserved.
+func TestSuperviseStopDuringBackoffDoesNotRestart(t *testing.T) {
+	isolateDesktopLogMirror(t)
+	oldRecordPath := abnormalExitRecordPath
+	abnormalExitRecordPath = func() string {
+		return filepath.Join(t.TempDir(), "lifecycle", "last-abnormal-exit.json")
+	}
+	t.Cleanup(func() { abnormalExitRecordPath = oldRecordPath })
+	oldDelay := watchdogRestartDelay
+	watchdogRestartDelay = 2 * time.Second
+	t.Cleanup(func() { watchdogRestartDelay = oldDelay })
+
+	logPath := filepath.Join(t.TempDir(), "gen.log")
+	gen1 := helperCommand(t, logPath, "3")
+	if err := gen1.Start(); err != nil {
+		t.Fatalf("start helper: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	restarts := 0
+	start := time.Now()
+	if got := supervise(ctx, gen1, func() (*exec.Cmd, error) {
+		restarts++
+		return startedHelper(t, logPath, "0"), nil
+	}); got != 0 {
+		t.Fatalf("supervise = %d, want 0 (stop mid-backoff is a deliberate end)", got)
+	}
+	if elapsed := time.Since(start); elapsed >= watchdogRestartDelay {
+		t.Fatalf("supervise waited out the full backoff after stop (%v >= %v) — backoff ignored ctx", elapsed, watchdogRestartDelay)
+	}
+	if restarts != 0 {
+		t.Fatalf("restarts = %d, want 0 — a stop must not fire the one restart", restarts)
 	}
 }

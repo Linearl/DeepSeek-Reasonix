@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"reasonix/internal/bot"
+	"reasonix/internal/proc"
 )
 
 // newIdempotencyKey returns a random key for the Feishu create/reply `uuid`
@@ -48,7 +48,7 @@ func withTransientRetry(ctx context.Context, logger *slog.Logger, op string, fn 
 		}
 		wait := delay + time.Duration(mrand.Int63n(int64(delay/4)+1))
 		logger.Warn("feishu transient error; retrying", "op", op, "attempt", attempt, "wait", wait, "err", err)
-		if !bot.SleepCtx(ctx, wait) {
+		if !proc.SleepCtx(ctx, wait) {
 			return err
 		}
 		delay *= 2
