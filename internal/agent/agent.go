@@ -2033,6 +2033,10 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		strictAlternatingRoles: opts.StrictAlternatingRoles,
 	}
 	a.sess.output.outputBudget = outputBudgetOf(prov)
+	// tl1651 打点 c: covered-prefix rewrite attribution. Install BEFORE the
+	// sidecar load so even a rewrite that happens during the very first
+	// validation window is witnessed.
+	a.installPrefixRewriteProbe()
 	if a.sess.path != "" {
 		a.LoadProjectionSidecar(a.sess.path)
 	}

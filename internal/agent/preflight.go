@@ -502,11 +502,48 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		needsNormalization = true
 	}
 	// Only mark restored when the projection still matches the transcript.
-	if !projectionContentValid(st, msgs) && migrateLegacyCoveredPrefixHash(&st, msgs, preRepair) {
+	// tl1651: projectionInvalidReason shares one logic source with
+	// projectionContentValid (valid == reason empty), so the fail path now
+	// carries a distinct label per failure exit instead of one opaque
+	// "projection_body_invalid".
+	failReason := projectionInvalidReason(st, msgs)
+	if failReason != projectionFailNone && migrateLegacyCoveredPrefixHash(&st, msgs, preRepair) {
 		needsNormalization = true
+		failReason = projectionInvalidReason(st, msgs)
 	}
-	valid := len(st.Projection.Messages) > 0 && projectionValid(st, msgs)
+	valid := failReason == projectionFailNone
 	if !valid && len(st.Projection.Messages) > 0 {
+		// tl1651 打点 a/b: attribute the drop BEFORE the body is discarded —
+		// the diagnosis reads st's stored hashes. hash_mismatch additionally
+		// gets the first-divergence evidence (index, both hashes, role/origin,
+		// and which corpus localized it: this load's transcript repair vs the
+		// sidecar's persisted per-message fingerprints). The 20261116 14:45
+		// incident logged only "projection_body_invalid"; this line is the
+		// answer to "hash 对不上，差在哪".
+		if failReason == projectionFailHashMismatch {
+			ev := diagnoseProjectionMismatch(st, msgs, preRepair)
+			slog.Warn("agent: context projection body invalid — covered prefix hash mismatch",
+				"writer", SessionWriterID(), "reason", failReason,
+				"covered_count", ev.CoveredCount,
+				"stored_prefix_hash", ev.StoredPrefixHash,
+				"current_prefix_hash", ev.CurrentPrefixHash,
+				"mismatch_source", ev.Source,
+				"diff_pipeline_index", ev.DiffIndex,
+				"stored_msg_hash", ev.StoredMsgHash,
+				"current_msg_hash", ev.CurrentMsgHash,
+				"diff_role", ev.DiffRole,
+				"diff_origin", ev.DiffOrigin,
+				"stored_pipeline_len", ev.StoredMsgLen,
+				"current_pipeline_len", ev.CurrentMsgLen,
+				"load_repair_transcript", len(preRepair) > 0,
+				"canonical_msgs", len(msgs))
+		} else {
+			slog.Warn("agent: context projection body invalid",
+				"writer", SessionWriterID(), "reason", failReason,
+				"covered_count", st.Projection.CoveredCount,
+				"sidecar_updated_at", st.UpdatedAt.UTC().Format(time.RFC3339),
+				"canonical_msgs", len(msgs))
+		}
 		// Keep blocked receipts / telemetry; drop unusable projection body.
 		// tl1203: first-load bodies that fail verification still drop — the
 		// stale-serving branch only trusts folds this process installed. The
@@ -525,11 +562,38 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		a.sess.checkpointState = "none"
 	}
 	a.sess.compactionMu.Unlock()
+	if valid {
+		// tl1651 打点 d: the restore-side end of the resume timeline — pairs
+		// with "context sidecar loaded" and the transcript load/repair trail so
+		// LoadSession(repair?) → sidecar read → validation verdict reads as one
+		// ordered sequence in the log.
+		slog.Info("agent: context projection restored",
+			"writer", SessionWriterID(),
+			"projection_version", st.Projection.ProjectionVersion,
+			"covered_count", st.Projection.CoveredCount,
+			"canonical_msgs", len(msgs),
+			"load_repair_transcript", len(preRepair) > 0,
+			"normalized", needsNormalization)
+	}
 	if !valid && len(st.Projection.Messages) == 0 {
 		// Receipts-only sidecars and dropped unusable bodies: the next view is
 		// the 任务719 degradation ladder until the background rebuild lands.
-		a.kickProjectionRebuild("projection_body_invalid")
+		// tl1651: the kick reason is now the specific fail-path label (the
+		// rebuild episode's log line attributes itself accordingly).
+		a.kickProjectionRebuild(kickReasonFromFail(failReason))
 	}
+}
+
+// kickReasonFromFail maps a tl1651 fail-path label to the rebuild kick's
+// reason string. body_empty keeps the historical "projection_body_invalid" —
+// that path is the old opaque label's home turf (a sidecar with no usable
+// body, receipts only or freshly dropped); the other labels are already
+// precise and pass through unchanged.
+func kickReasonFromFail(reason string) string {
+	if reason == projectionFailBodyEmpty || reason == projectionFailNone {
+		return "projection_body_invalid"
+	}
+	return reason
 }
 
 // lineageKeyCompatible reports whether a stored PromptCacheKey still belongs to

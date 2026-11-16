@@ -245,6 +245,8 @@ func (a *Agent) commitCurateProjection(commit curateProjectionCommit) (Compactio
 		Projection: ContextProjection{
 			Messages: commit.projected, TranscriptVersion: commit.transcriptVersion,
 			ProjectionVersion: commit.projectionVersion + 1, CoveredCount: commit.covered, CoveredPrefixHash: coveredHash,
+			// tl1651: per-message diagnostic corpus for future mismatch localization.
+			CoveredMessageHashes: coveredMessageFingerprints(commit.canonical, commit.covered),
 			PinnedContextHash: pinnedContextCoverageHash(commit.canonical, commit.covered),
 			SummaryHash:       commit.summaryHash, SourceTokens: commit.sourceTokens, ProjectionTokens: commit.projectionTokens,
 			ViewInputHash: commit.inputHash, ViewOutputHash: commit.outputHash, CreatedAt: now,
