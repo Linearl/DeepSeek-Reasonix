@@ -179,6 +179,9 @@ func TestSessionSidecarFiles(t *testing.T) {
 		"/home/u/.reasonix/sessions/abc.display-index.json",
 		"/home/u/.reasonix/sessions/abc.conflicts.jsonl",
 		"/home/u/.reasonix/sessions/abc.repairlog.jsonl",
+		// tl1652：改写归因日志（.rewritelog.jsonl）是会话拥有的审计侧车——
+		// 漏列等于删会话时把归因史留在盘上（孤儿文件）。
+		"/home/u/.reasonix/sessions/abc.rewritelog.jsonl",
 		"/home/u/.reasonix/sessions/abc.recovery.json",
 		"/home/u/.reasonix/sessions/abc.context.json",
 		"/home/u/.reasonix/sessions/abc.pinned-context.json",

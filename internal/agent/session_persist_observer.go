@@ -140,5 +140,12 @@ func (s *Session) saveObservedAfterUpgrade(path string, mode sessionSaveMode, do
 	if err == nil && !mode.defersProjection() {
 		s.notifyPersisted(path, mode != sessionSaveSnapshot, appendFrom)
 	}
+	// tl1652: a successful save established (or confirmed) the persistence
+	// baseline, so attribution records that were queued before any sidecar
+	// path existed are now flushable — catch the buffer up here (no-op when
+	// empty). Runs outside all session/save locks.
+	if err == nil {
+		s.flushRewriteAttribution()
+	}
 	return err
 }

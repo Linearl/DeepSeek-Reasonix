@@ -7,7 +7,6 @@ import (
 
 func (s *Session) updateBatchGuardResults(calls []provider.ToolCall, results []string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	end := len(s.Messages) - 1
 	changed, durableChange := false, false
 	for i, call := range slices.Backward(calls) {
@@ -31,5 +30,11 @@ func (s *Session) updateBatchGuardResults(calls []provider.ToolCall, results []s
 	if durableChange {
 		s.rewriteVersion++
 		s.pendingContentReasons = append(s.pendingContentReasons, "tool_guard_before_sampling")
+		// tl1652: completion-time attribution persistence (see Rewrite).
+		s.queueRewriteAttributionLocked(newRewriteAttributionRecord(attributionSourceToolGuard, "tool_guard_before_sampling", s.rewriteVersion))
+	}
+	s.mu.Unlock()
+	if durableChange {
+		s.flushRewriteAttribution()
 	}
 }

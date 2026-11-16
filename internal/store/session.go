@@ -45,9 +45,17 @@ const (
 	SessionConflictLogSuffix   = ".conflicts.jsonl"
 	// SessionRepairLogSuffix 是会话自愈修复记录（任务 1011：<stem>.repairlog.jsonl）。
 	// 它属于会话侧车：分类侧不得自行拼写该后缀，删除会话时必须一并清掉。
-	SessionRepairLogSuffix    = ".repairlog.jsonl"
-	SessionEventIndexSuffix   = ".event-index.json"
-	SessionDisplayIndexSuffix = ".display-index.json"
+	SessionRepairLogSuffix = ".repairlog.jsonl"
+	// SessionRewriteAttributionLogSuffix 是改写归因日志（tl1652：
+	// <stem>.rewritelog.jsonl）。Session.Rewrite/NoteContentRewrite 等把
+	// provider-visible 改写原因排队给下一次 provider 请求的 drain 归因
+	// （pendingContentReasons，纯内存），该队列在关机/崩溃时丢失——tl1651
+	// 现场的指纹过期归因就是这样丢的。本侧车在改写落地时同步追加一行
+	// JSON，让归因跨进程可查；与 repairlog 同纪律：追加式审计侧车，不进
+	// 会话列表，删除会话时一并清掉。
+	SessionRewriteAttributionLogSuffix = ".rewritelog.jsonl"
+	SessionEventIndexSuffix            = ".event-index.json"
+	SessionDisplayIndexSuffix          = ".display-index.json"
 	// SessionGuardianTranscriptSuffix 是 guardian 伴随转录的尾缀
 	// （<stem>.guardian.jsonl）。它是会话形态的伴随文件：经同一会话层存取、带
 	// 自己的 meta/events/index 侧车，但不进会话列表（IsSessionTranscriptName
@@ -73,6 +81,7 @@ func IsSessionTranscriptName(name string) bool {
 		!strings.HasSuffix(name, SessionTurnEventLogSuffix) &&
 		!strings.HasSuffix(name, SessionConflictLogSuffix) &&
 		!strings.HasSuffix(name, SessionRepairLogSuffix) &&
+		!strings.HasSuffix(name, SessionRewriteAttributionLogSuffix) &&
 		!strings.HasSuffix(name, SessionGuardianTranscriptSuffix)
 }
 
@@ -389,6 +398,16 @@ func SessionRepairLog(sessionPath string) string {
 	return sessionStem(sessionPath) + SessionRepairLogSuffix
 }
 
+// SessionRewriteAttributionLog is the rewrite-attribution journal of a session
+// (tl1652: <stem>.rewritelog.jsonl). It stays beside the transcript like every
+// other sidecar so deleting the session removes the attribution trail too.
+func SessionRewriteAttributionLog(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + SessionRewriteAttributionLogSuffix
+}
+
 // SessionLockFile is the advisory save lock (<id>.jsonl.lock).
 func SessionLockFile(sessionPath string) string {
 	if sessionPath == "" {
@@ -489,6 +508,7 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionDisplayIndex(sessionPath),
 		SessionConflictLog(sessionPath),
 		SessionRepairLog(sessionPath),
+		SessionRewriteAttributionLog(sessionPath),
 		SessionRecoveryState(sessionPath),
 		SessionContext(sessionPath),
 		SessionPinnedContext(sessionPath),
