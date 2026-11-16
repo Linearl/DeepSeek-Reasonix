@@ -18,18 +18,10 @@ const (
 	MaxLimit         = 200
 )
 
-type Status struct {
-	State           string            `json:"state"`
-	Mode            projectiondb.Mode `json:"mode"`
-	Path            string            `json:"path,omitempty"`
-	Revision        uint64            `json:"revision"`
-	Indexed         int64             `json:"indexed"`
-	Total           int64             `json:"total"`
-	Pending         int64             `json:"pending"`
-	Failed          int64             `json:"failed"`
-	LastError       string            `json:"lastError,omitempty"`
-	QuarantinedPath string            `json:"quarantinedPath,omitempty"`
-}
+// Status is a transparent alias of the projectiondb authority status. The
+// previous local struct was a field-for-field duplicate that had to be edited
+// in lockstep with the authority; aliasing keeps one definition (tl1625).
+type Status = projectiondb.Status
 
 type Options struct {
 	Path              string

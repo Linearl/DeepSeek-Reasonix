@@ -30,17 +30,11 @@ const (
 	missingGrace  = 30 * time.Second
 )
 
-type Status struct {
-	State     string            `json:"state"`
-	Mode      projectiondb.Mode `json:"mode"`
-	Path      string            `json:"path,omitempty"`
-	Revision  uint64            `json:"revision"`
-	Indexed   int64             `json:"indexed"`
-	Total     int64             `json:"total"`
-	Pending   int64             `json:"pending"`
-	Failed    int64             `json:"failed"`
-	LastError string            `json:"lastError,omitempty"`
-}
+// Status is a transparent alias of the projectiondb authority status, so task
+// projections observe every field the authority publishes — including
+// QuarantinedPath when a corrupt on-disk projection has been renamed aside —
+// instead of a drift-prone local copy (tl1625).
+type Status = projectiondb.Status
 
 type Project struct {
 	Key   string `json:"projectKey"`
@@ -179,7 +173,7 @@ func Open(ctx context.Context, path string) (*Catalog, error) {
 	workerCtx, cancel := context.WithCancel(context.Background())
 	c := &Catalog{db: handle.DB, store: taskmonitor.NewFileStore(filepath.Join(".reasonix", "tasks")), ctx: workerCtx, cancel: cancel,
 		queue: make(chan request, 1024), dirtyWake: make(chan struct{}, 1), reconciling: map[string]bool{}, registered: map[string]bool{}, closeDone: make(chan struct{}),
-		status: Status{State: string(handle.Status.State), Mode: handle.Status.Mode, Path: handle.Status.Path, LastError: handle.Status.LastError}}
+		status: handle.Status}
 	var revision uint64
 	_ = c.db.QueryRowContext(ctx, `SELECT revision FROM task_state WHERE id=1`).Scan(&revision)
 	c.revision.Store(revision)
