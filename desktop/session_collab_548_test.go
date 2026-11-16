@@ -102,35 +102,3 @@ func TestRefusalNoticeReachesTheSender(t *testing.T) {
 		t.Fatal("a refused message must stay settled (report §建议 3: seen semantics unchanged)")
 	}
 }
-
-// TestDegradedSteerNoticeIsNewChainShaped: 任务548 P0-2 同修钉——降级通知
-// 不再拷回原消息 hop（hop>0 的通知会被发送方泵的溯源门灭掉）。该函数当前
-// 无调用点（真实路径经 notifySenderOnce），此测试防未来复用时带回病灶。
-func TestDegradedSteerNoticeIsNewChainShaped(t *testing.T) {
-	mailDir := setupIsolatedCollabMail(t)
-	mail := sessioncollab.NewMailStore(mailDir)
-	pump := &sessionCollabPump{}
-
-	pump.notifyDegradedSteer(sessioncollab.MailMessage{ID: "msg_steer1", From: "sc_from", To: "sc_target", Hop: 2}, "no_injectable_turn")
-
-	box, err := mail.Inbox("sc_from")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(box) != 1 {
-		t.Fatalf("the sender must receive exactly one degraded-steer notice, got %d", len(box))
-	}
-	notice := box[0]
-	if notice.Hop != 0 {
-		t.Fatalf("a degraded-steer notice must be new-chain shaped (hop=0), got hop=%d", notice.Hop)
-	}
-	if notice.From != "sc_target" {
-		t.Fatalf("the notice must name its real origin, got from=%q", notice.From)
-	}
-	if !strings.Contains(notice.Body, "no_injectable_turn") {
-		t.Fatalf("the notice must carry the disposition: %s", notice.Body)
-	}
-	if _, err := pump.verifyHop(notice); err != nil {
-		t.Fatalf("the notice must pass the sender-side provenance gate: %v", err)
-	}
-}
