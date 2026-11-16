@@ -9,6 +9,7 @@
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
 import { act } from "react";
@@ -61,6 +62,7 @@ function installDom() {
   globalThis.HTMLElement = dom.window.HTMLElement;
   globalThis.HTMLTextAreaElement = dom.window.HTMLTextAreaElement;
   globalThis.Event = dom.window.Event;
+  globalThis.MouseEvent = dom.window.MouseEvent;
   globalThis.KeyboardEvent = dom.window.KeyboardEvent;
   globalThis.MutationObserver = dom.window.MutationObserver;
   globalThis.File = dom.window.File;
@@ -363,7 +365,8 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
     stopButton()?.click();
     await flushTimers();
   });
-  eq(stopButton()?.textContent, en["composer.stopStopping"], "tl1420 L1 label reads 停止中… on the button itself");
+  eq(stopButton()?.textContent, en["composer.stopCompactStopping"], "tl1420 L1 label reads the compact tag on the button itself (tl1582: full copy moved to the hover card)");
+  eq(stopButton()?.getAttribute("aria-label"), en["composer.stopStopping"], "tl1420 L1 aria-label still reads the full tier text 停止中… (tl1582: SR keeps the full copy)");
   eq(stopButton()?.classList.contains("composer__btn--stop-stopping"), true, "tl1420 L1 carries the stopping tier class right after the click");
   eq(stopButton()?.classList.contains("composer__btn--stop-armed"), false, "tl1420 fresh L1 does not pulse yet");
   await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
@@ -389,7 +392,8 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   };
   const n0 = readNs();
   ok(n0 >= 7 && n0 <= 9, `tl1420 grace renders the countdown on the button (got ${n0}s)`);
-  ok(Boolean(stopButton()?.textContent?.includes("Force stop ·")), "tl1420 grace label reads 强制停止 · Ns");
+  ok(!stopButton()?.textContent?.includes("Force stop ·"), "tl1582 grace button carries no long copy (Force stop · lives in the hover card now)");
+  eq(stopButton()?.getAttribute("aria-label"), en["composer.stopForceCountdown"].replace("{n}", String(n0)), "tl1582 grace aria-label keeps the full 强制停止 · Ns text");
   await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
   const n1 = readNs();
   ok(n1 >= 0 && n1 < n0, `tl1420 grace countdown updates every second (${n0}s → ${n1}s)`);
@@ -405,7 +409,8 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   const { root } = await renderComposer({ running: true, tabId: "tl1420-l3", stopLevel: 3, stopDeadlineUnix: 0 });
   const btn = stopButton();
   ok(Boolean(btn?.classList.contains("composer__btn--stop-force")), "tl1420 L3 carries the force tier class");
-  eq(btn?.textContent, en["composer.stopTerminated"], "tl1420 L3 reads 已终止");
+  eq(btn?.textContent, en["composer.stopCompactTerminated"], "tl1420/tl1582 L3 reads the compact tag; the full 已终止 lives in aria + the hover card");
+  eq(btn?.getAttribute("aria-label"), en["composer.stopTerminated"], "tl1582 L3 aria-label keeps the full 已终止 text");
   await act(async () => { root.unmount(); });
   dom.window.close();
 }
@@ -426,12 +431,112 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   const btn = stopButton();
   ok(btn !== null, "tl1420 settled keeps the button mounted during the hold");
   ok(Boolean(btn?.classList.contains("composer__btn--stop-settled")), "tl1420 settled carries the settled tier class");
-  eq(btn?.textContent, en["composer.stopTerminated"], "tl1420 settled reads 已终止 during the hold");
+  eq(btn?.textContent, en["composer.stopCompactTerminated"], "tl1420/tl1582 settled reads the compact tag during the hold");
   eq(btn?.disabled, true, "tl1420 settled button is inert (nothing left to stop)");
   await act(async () => { await new Promise((r) => setTimeout(r, 1900)); });
   eq(stopButton(), null, "tl1420 after the linger the button is back to idle and unmounts");
   await act(async () => { root.unmount(); });
   dom.window.close();
+}
+
+// ── tl1582 按钮紧凑化 + hover 卡片：完整三段档位文案上既有 Tooltip 载体 ──
+// 验收②：hover 悬浮卡片完整显示三段文案+可读性（三行结构、当前档高亮、
+// note 说明齐备）；验收③：载体与 hover 体系一致（还是任务1033 的 .tooltip，
+// 不新造弹层）。
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced"));
+  runtimeStateStore.flush();
+  const { root } = await renderComposer({ running: true, tabId: "tl1582-l1-card", stopLevel: 0, stopDeadlineUnix: 0 });
+  await act(async () => {
+    stopButton()?.click();
+    await flushTimers();
+  });
+  const btn = stopButton();
+  eq(btn?.textContent, en["composer.stopCompactStopping"], "tl1582 L1 button carries only the compact tag");
+  ok(!btn?.textContent?.includes(en["composer.stopStopping"]), "tl1582 L1 button no longer renders the full 停止中… copy");
+  const trigger = btn?.closest(".tooltip-trigger");
+  ok(trigger !== null, "tl1582 stop button sits in the tooltip trigger (carrier unchanged)");
+  await act(async () => {
+    trigger?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: null }));
+    await new Promise((r) => setTimeout(r, 250)); // tooltip show delay is 180ms
+    await flushTimers();
+  });
+  const card = document.querySelector<HTMLElement>(".tooltip");
+  ok(card !== null, "tl1582 hovering pops the hover card");
+  const cardText = card?.textContent ?? "";
+  ok(cardText.includes(en["composer.stopStopping"]), "tl1582 card lists tier 1 停止中…");
+  ok(cardText.includes(en["composer.stopForceCountdown"].replace("{n}", "15")), "tl1582 card lists tier 2 强制停止 · 15s (ceiling copy off-grace)");
+  ok(cardText.includes(en["composer.stopTerminated"]), "tl1582 card lists tier 3 已终止");
+  ok(cardText.includes(en["composer.stopNormal"]), "tl1582 card carries the tier-1 note");
+  ok(cardText.includes(en["composer.stopForceHint"]), "tl1582 card carries the tier-2 note (the press-again copy)");
+  const rows = card?.querySelectorAll(".tooltip__stopcard-row");
+  eq(rows?.length, 3, "tl1582 card renders exactly three tier rows");
+  ok(rows?.[0]?.classList.contains("tooltip__stopcard-row--current") === true, "tl1582 L1 hover marks row 1 as current");
+  ok(rows?.[1]?.classList.contains("tooltip__stopcard-row--current") === false, "tl1582 L1 hover does not mark the force row");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
+// tl1582 grace 态：当前档 = 强制行，卡片主文案带实时倒计时数字。
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced"));
+  runtimeStateStore.flush();
+  const deadline = Math.floor(Date.now() / 1000) + 9;
+  const { root } = await renderComposer({ running: true, tabId: "tl1582-grace-card", stopLevel: 2, stopDeadlineUnix: deadline });
+  await act(async () => {
+    stopButton()?.closest(".tooltip-trigger")?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: null }));
+    await new Promise((r) => setTimeout(r, 250));
+    await flushTimers();
+  });
+  const card = document.querySelector<HTMLElement>(".tooltip");
+  ok(card !== null, "tl1582 grace hover pops the card");
+  const rows = card?.querySelectorAll(".tooltip__stopcard-row");
+  ok(rows?.[1]?.classList.contains("tooltip__stopcard-row--current") === true, "tl1582 grace hover marks the force row as current");
+  ok(rows?.[0]?.classList.contains("tooltip__stopcard-row--current") === false, "tl1582 grace hover does not mark row 1");
+  const n = Number(stopButton()?.textContent?.match(/(\d+)\s*s/)?.[1] ?? -1);
+  ok(n >= 7 && n <= 9, `tl1582 grace pre: countdown on the button (${n}s)`);
+  ok((card?.textContent ?? "").includes(en["composer.stopForceCountdown"].replace("{n}", String(n))), "tl1582 grace card shows the live countdown in the force row");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
+// tl1582 unknown 态不回归（任务510 契约）：tooltip 仍是「状态未知」提示，
+// 不出三段档位卡片。tabId 必须用 projection 工厂写死的 "t510-stop"，
+// session 对上号 unknown 才会生效（与块②同键）。
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("unknown"));
+  runtimeStateStore.flush();
+  const { root } = await renderComposer({ running: true, tabId: "t510-stop" });
+  eq(stopButton()?.getAttribute("aria-label"), en["composer.stopUnknownState"], "tl1582 unknown pre: aria already reads the degraded state");
+  await act(async () => {
+    stopButton()?.closest(".tooltip-trigger")?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: null }));
+    await new Promise((r) => setTimeout(r, 250));
+    await flushTimers();
+  });
+  const card = document.querySelector<HTMLElement>(".tooltip");
+  eq(card?.textContent, en["composer.stopUnknownState"], "tl1582 unknown tooltip stays the state-unknown hint (no tier card)");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
+// tl1582 CSS 防线（上限+新增即红）：按钮物理封顶 72px + 标签 span 内省略号。
+// compact 文案预算由 stop-button.test.ts 的字符断言把守；这里把守 CSS 面——
+// 两条防线任一被删都立刻红，不再回到「nowrap 长文案画出按钮边界」的形态。
+{
+  const css = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), "..", "styles.css"),
+    "utf8",
+  );
+  const stopBlock = /\.composer__btn--stop \{[^}]*\}/.exec(css);
+  ok(stopBlock !== null, "tl1582 the .composer__btn--stop block exists in styles.css");
+  ok(stopBlock?.[0].includes("max-width: 72px") === true, "tl1582 stop button keeps the 72px physical cap");
+  const labelBlock = /\.composer__btn--stop \.composer__stop-label \{[^}]*\}/.exec(css);
+  const countdownBlock = /\.composer__btn--stop \.composer__stop-countdown \{[^}]*\}/.exec(css);
+  ok(labelBlock?.[0].includes("text-overflow: ellipsis") === true, "tl1582 the stop label span ellipsizes inside the cap");
+  ok(countdownBlock?.[0].includes("text-overflow: ellipsis") === true, "tl1582 the grace countdown span ellipsizes inside the cap");
 }
 
 process.stdout.write(`\ncomposer stop unknown: ${passed} passed, ${failed} failed\n`);

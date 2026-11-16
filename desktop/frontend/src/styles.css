@@ -9544,6 +9544,11 @@ body > .mermaid-diagram--fullscreen {
 }
 .composer__btn--stop {
   margin-right: 6px;
+  /* tl1582 overflow guard: the compact tag keeps the label short by contract,
+     but the button must also physically cap — 72px covers icon(12)+gap(5)+
+     the 6-half-width-unit tag budget (~33px)+padding(18)+border(2). A future
+     longer label ellipsizes inside instead of painting past the border. */
+  max-width: 72px;
   border: 1px solid color-mix(in srgb, var(--err) 42%, transparent);
   background: color-mix(in srgb, var(--err) 14%, var(--bg-elev-2));
   color: var(--err);
@@ -9565,6 +9570,10 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 650;
   line-height: 1;
   white-space: nowrap;
+  /* tl1582: ellipsize inside the max-width cap — belt to the compact-tag
+     suspenders; overflow can paint past the border, ellipsis cannot. */
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0 2px;
 }
 /* tl1420 三级终止档位显形: the button itself carries the tier (main signal;
@@ -9587,6 +9596,9 @@ body > .mermaid-diagram--fullscreen {
   font-weight: 650;
   line-height: 1;
   white-space: nowrap;
+  /* tl1582: same in-button guard as the countdown span above. */
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0 2px;
 }
 .composer__btn--stop-stopping {
@@ -14174,6 +14186,35 @@ button.statusbar__mcp:focus-visible {
   pointer-events: none;
   white-space: pre-line;
   animation: tooltip-in var(--dur-fast) var(--ease-out) both;
+}
+/* tl1582 停止按钮 hover 卡片：完整三段档位文案（与任务1033 wrap 卡同载体
+   .tooltip，ReactNode 直渲——不新造弹层）。当前档行高亮，其余淡化供上下文；
+   note 说明走 fg-dim 小字，可读性靠行距与层级对比。 */
+.tooltip__stopcard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  white-space: normal;
+}
+.tooltip__stopcard-row {
+  display: flex;
+  flex-direction: column;
+  color: var(--fg-dim);
+}
+.tooltip__stopcard-row--current {
+  color: var(--fg);
+}
+.tooltip__stopcard-tier {
+  font-weight: 650;
+}
+.tooltip__stopcard-row--current .tooltip__stopcard-tier {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.tooltip__stopcard-note {
+  font-size: var(--text-xs, 12px);
+  margin-top: 2px;
 }
 .tooltip--top {
   --tooltip-from-y: var(--motion-rise);

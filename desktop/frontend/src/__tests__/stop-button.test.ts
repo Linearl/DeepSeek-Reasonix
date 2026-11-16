@@ -10,8 +10,13 @@ import {
   stopButtonView,
   stopButtonTier,
   stopButtonLabelSpec,
+  stopButtonCompactLabelSpec,
+  STOP_COMPACT_LABEL_MAX_CHARS,
   STOP_SETTLE_LINGER_MS,
 } from "../lib/stopButton";
+import { en } from "../locales/en";
+import { zh } from "../locales/zh";
+import { zhTW } from "../locales/zh-TW";
 
 let passed = 0;
 let failed = 0;
@@ -107,6 +112,39 @@ const runningNotSettled = stopButtonView({
   running: true, now: NOW, stopEverEngaged: true, stopSettledAt: NOW - 100,
 });
 ok(runningNotSettled.phase === "normal", "a running turn never shows settled");
+
+// tl1582 按钮紧凑化: phase → compact tag pairing. The full tier copy moved to
+// the hover card; the button shows at most a 3-CJK-char tag (grace keeps the
+// countdown digits — the one time-critical datum). idle has no tag (the
+// button unmounts; the icon-only shape never existed as a label).
+ok(stopButtonCompactLabelSpec("idle", null) === null, "tl1582 idle has no compact tag");
+ok(stopButtonCompactLabelSpec("normal", null)?.key === "composer.stopCompactStopping", "tl1582 L1 normal → 停止中 tag");
+ok(stopButtonCompactLabelSpec("armed", null)?.key === "composer.stopCompactStopping", "tl1582 armed → same 停止中 tag (pulse carries the escalation)");
+const compactGrace = stopButtonCompactLabelSpec("grace", 14);
+ok(compactGrace?.key === "composer.stopCompactGrace" && compactGrace.n === 14, "tl1582 L2 grace → {n}s tag with the countdown var");
+ok(stopButtonCompactLabelSpec("grace", null)?.n === 0, "tl1582 grace without a countdown reads 0s, never NaN");
+ok(stopButtonCompactLabelSpec("force", null)?.key === "composer.stopCompactTerminated", "tl1582 L3 force → 终止 tag");
+ok(stopButtonCompactLabelSpec("settled", null)?.key === "composer.stopCompactTerminated", "tl1582 settled → 终止 tag during the hold");
+
+// tl1582 宽度实测（验收①：各段宽度 ≤ 按钮）。jsdom 没有布局引擎，宽度按
+// 任务1033 判例用确定性代理：半角当量字符预算（CJK=2）× 11px 字号 ≈ 33px，
+// 按钮物理上限 72px（styles.css max-width，含图标 12 + gap 5 + padding 18 +
+// border 2）。断言三份 locale 的三段 compact tag 全部落在预算内——未来任何
+// 一档文案加长即红，不会静默溢出；配合 CSS ellipsis 双保险。
+const cjkUnits = (s: string): number =>
+  [...s].reduce((n, ch) => n + (/[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60\u3000-\u303F]/.test(ch) ? 2 : 1), 0);
+const compactKeys = [
+  "composer.stopCompactStopping",
+  "composer.stopCompactGrace",
+  "composer.stopCompactTerminated",
+] as const;
+for (const [localeName, dict] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) {
+  for (const key of compactKeys) {
+    const rendered = dict[key].replace("{n}", "99"); // 2-digit countdown = widest grace tag
+    const units = cjkUnits(rendered);
+    ok(units <= STOP_COMPACT_LABEL_MAX_CHARS, `tl1582 ${localeName} ${key} fits the width budget: "${rendered}" = ${units}/${STOP_COMPACT_LABEL_MAX_CHARS} half-width units`);
+  }
+}
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
