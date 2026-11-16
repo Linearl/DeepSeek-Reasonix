@@ -21,7 +21,11 @@ type pendingMCPInteraction struct {
 // mcpInteractionState groups the elicitation bookkeeping so the mutex-guarded
 // approvalManager ratchets by one field, not one per map.
 type mcpInteractionState struct {
-	pending     map[string]pendingMCPInteraction
+	pending map[string]pendingMCPInteraction
+	// resolutions reuses promptResolution, so it inherits the same tl1619
+	// verdict as approval.go: not singleflight — cancelMCPInteraction must
+	// inject context.Canceled to waiters and resolveMCPInteractionAfter
+	// re-checks attempt identity after persist. docs/单飞去重清单-14处.md #5.
 	resolutions map[string]*promptResolution
 }
 

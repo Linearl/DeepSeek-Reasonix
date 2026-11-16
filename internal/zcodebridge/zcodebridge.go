@@ -102,8 +102,13 @@ type Bridge struct {
 	closeOnce sync.Once
 	deadOnce  sync.Once
 
-	mu       sync.Mutex
-	inFlight map[string]struct{} // per-session politeness guard: ≤1 sendText in flight
+	mu sync.Mutex
+	// inFlight is a reject-style politeness guard (spec §四.4: ≤1 sendText per
+	// session; the CLI's CommandInbox owns real serialization). tl1619: not a
+	// dedupe site — a busy slot errors with ErrInFlight instead of joining the
+	// in-flight call, the opposite of singleflight's join semantics.
+	// Registered in docs/单飞去重清单-14处.md #8.
+	inFlight map[string]struct{}
 	closed   bool
 }
 
