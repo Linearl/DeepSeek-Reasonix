@@ -68,6 +68,9 @@ const bridge = {
         bridge.probeCalls.push({ tabId: tabID, path });
         return bridge.probeResult;
       },
+      // tl1641: the reveal/terminal items ride the second probe; this judge
+      // exercises regular files, where both probes agree — same value back.
+      ResolveRevealablePathForTab: async (_tabID: string, _path: string) => bridge.probeResult,
       ResolveWorkspacePathForTab: async (tabID: string, path: string) => {
         bridge.resolveCalls.push({ tabId: tabID, path });
         return `C:/resolved/${path.replace(/^[/\\]+/, "")}`;
