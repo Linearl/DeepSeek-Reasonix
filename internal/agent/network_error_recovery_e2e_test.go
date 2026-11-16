@@ -255,3 +255,20 @@ func TestCompactionMissAttributionAfterError(t *testing.T) {
 		}
 	}
 }
+
+// TestLastTurnGapMinutesFieldConvention (tl1640 O2): the conversation-gap
+// value both "compaction done" lines carry follows the established unknown
+// convention (-1, like error_gap_ms) and reads in MINUTES off the same stamp
+// the prefix_ttl_expired attribution uses — the 13:04 case's 30.3min must
+// surface as ~30.3, not seconds or a silently-zero unknown.
+func TestLastTurnGapMinutesFieldConvention(t *testing.T) {
+	prov := &fakeProvider{reply: "x", promptTokens: 10}
+	a := New(prov, tool.NewRegistry(), NewSession(""), Options{ArchiveDir: t.TempDir()}, event.Discard)
+	if got := a.lastTurnGapMinutes(); got != -1 {
+		t.Fatalf("no conversation request yet: last_turn_gap_min = %v, want -1 (unknown)", got)
+	}
+	a.sess.lastConversationRequestAt.Store(time.Now().Add(-30*time.Minute - 21*time.Second).UnixMilli())
+	if got := a.lastTurnGapMinutes(); got < 30.3 || got > 31.5 {
+		t.Fatalf("30.3min-old stamp: last_turn_gap_min = %v, want ~30.3 (clock jitter tolerant)", got)
+	}
+}

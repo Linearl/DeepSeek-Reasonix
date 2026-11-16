@@ -433,10 +433,14 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 		"source_tokens", sourceTokens,
 		"trigger", trigger)
 	a.logCompactionMissAttribution(trigger, tele, sourceTokens)
+	// tl1640 O2: same conversation-gap field as the projection fold's done
+	// line — both compaction shapes answer "how quiet was it" on one line
+	// (unknown session reads -1).
 	slog.Info("agent: compaction done", "trigger", trigger, "stage", "done", "ranges", true,
 		"folded_messages", len(fold), "source_tokens", sourceTokens, "fold_tokens", tele.FoldTokens,
 		"projection_tokens", projTokens, "input_tokens", tele.InputTokens, "output_tokens", tele.OutputTokens,
-		"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
+		"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens,
+		"last_turn_gap_min", a.lastTurnGapMinutes())
 	report.outcome = CompactionInstalled
 	report.foldIndex = int(idx)
 	return report, nil
