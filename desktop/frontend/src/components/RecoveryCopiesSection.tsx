@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { createPortal } from "react-dom";
 
 import { app, type ConsolidationReport, type PreRepairBackupView, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
+import { formatBytes } from "../lib/format";
 import { useT, type Translator } from "../lib/i18n";
 import { formatRecoveryActivateError } from "../lib/recoveryActivateError";
 // tl1415d9: 会话行展开态的持久化记忆(重挂载/采纳换主线后仍保持——用户二轮裁决)。
@@ -49,19 +50,6 @@ import { useConfirmDialog } from "./ConfirmDialog";
  *  B2 同 path 去重——主线本体文件不再以副本行重复出现（tl1448 双行形态收敛
  *  为单行，其删除安全保证由函数级闸 preferredMainPathOf 继续承担）。
  */
-
-/** bytes → a short human size. */
-function formatBytes(n: number): string {
-  if (!n) return "—";
-  const units = ["B", "KB", "MB", "GB"];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i += 1;
-  }
-  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
-}
 
 function formatWhen(iso: string): string {
   if (!iso) return "—";

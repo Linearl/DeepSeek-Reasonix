@@ -76,10 +76,12 @@ function delay(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-const dirs: Record<string, Array<{ name: string; path: string; isDir: boolean }>> = {
+const dirs: Record<string, Array<{ name: string; path: string; isDir: boolean; size?: number }>> = {
   "/home/dev": [
     { name: "projects", path: "/home/dev/projects", isDir: true },
-    { name: "notes.txt", path: "/home/dev/notes.txt", isDir: false },
+    { name: "notes.txt", path: "/home/dev/notes.txt", isDir: false, size: 500 },
+    { name: "dump.bin", path: "/home/dev/dump.bin", isDir: false, size: 2048 },
+    { name: "empty.tmp", path: "/home/dev/empty.tmp", isDir: false },
   ],
   "/home/dev/projects": [{ name: "app", path: "/home/dev/projects/app", isDir: true }],
   "/home/dev/projects/web": [],
@@ -124,7 +126,7 @@ window.go = { main: { App: {
     if (path === "/fast") {
       return [{ name: "latest", path: "/fast/latest", isDir: true, size: 0, mtimeUnix: 0, symlink: false }];
     }
-    return (dirs[path] ?? []).map((entry) => ({ ...entry, size: 0, mtimeUnix: 0, symlink: false }));
+    return (dirs[path] ?? []).map((entry) => ({ ...entry, size: entry.size ?? 0, mtimeUnix: 0, symlink: false }));
   },
   async MkdirRemote(_hostId: string, path: string) {
     tape.push(`MkdirRemote:${path}`);
@@ -434,6 +436,16 @@ ok(railItems()[2]?.className.includes("--current") === true, "step 3 is current 
 ok(document.querySelector<HTMLInputElement>(".remote-wizard__path-input")?.value === "/home/dev", "workspace picker starts at RemoteLastWorkspace path");
 ok(Boolean([...document.querySelectorAll(".remote-wizard__dir")].find((b) => b.textContent === "projects")), "directory entries render");
 ok(Boolean([...document.querySelectorAll(".remote-wizard__file")].find((row) => row.textContent?.includes("notes.txt"))), "files render in the tree next to folders");
+// tl1618 wizard drift pins: file sizes route through lib/formatBytes —
+// KB-style labels over unchanged 1024 arithmetic, byte-level integer
+// exemption, and "—" instead of the old empty span for absent sizes.
+{
+  const sizeTexts = [...document.querySelectorAll(".remote-wizard__file-size")].map((el) => el.textContent?.trim());
+  ok(sizeTexts.includes("500 B"), "500-byte file shows '500 B' (no '500.0 B' drift)");
+  ok(sizeTexts.includes("2.0 KB"), "2048-byte file shows '2.0 KB' (KB label, no 'KiB')");
+  ok(sizeTexts.includes("—"), "size-less entries show '—' instead of an empty span");
+  ok(!/\b[KMGT]iB\b/.test(document.body.textContent ?? ""), "no KiB/MiB/GiB labels anywhere in the wizard");
+}
 {
   const fileRow = [...document.querySelectorAll<HTMLButtonElement>(".remote-wizard__file")].find((row) => row.textContent?.includes("notes.txt"));
   await act(async () => {

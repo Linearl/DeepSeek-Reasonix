@@ -20,7 +20,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { app, type DagBackupCleanupPlanView, type DagBackupCleanupRunRow, type DagBackupCleanupRunView } from "../lib/bridge";
 import type { Translator } from "../lib/i18n";
-import { humanBytes } from "./DagMigrationSection";
+import { formatBytes } from "../lib/format";
 
 type Phase = "idle" | "planning" | "confirming" | "running" | "done";
 
@@ -168,16 +168,16 @@ export function DagBackupCleanupSection({ t, busy, showHint = true }: { t: Trans
               <p className="settings-field__hint-line">
                 {t("settings.dagBackupCleanup.summary", {
                   total: plan.backups.length,
-                  totalSize: humanBytes(plan.backups.reduce((sum, b) => sum + b.bytes, 0)),
+                  totalSize: formatBytes(plan.backups.reduce((sum, b) => sum + b.bytes, 0)),
                   del: plan.deletable.length,
-                  delSize: humanBytes(plan.deleteBytes),
-                  keepSize: humanBytes(plan.keepBytes ?? 0),
+                  delSize: formatBytes(plan.deleteBytes),
+                  keepSize: formatBytes(plan.keepBytes ?? 0),
                 })}
               </p>
               {plan.deletable.map((b) => (
                 // tl1573-r2 缺陷②：记录行挂数据档（--text-xs），不再继承
                 // body 的 --text-base 14px（与左列 10px 简述同排对比突兀）。
-                <p key={b.path} className="settings-field__hint-line dag-backup-cleanup__record">{`· ${humanBytes(b.bytes)} · ${formatStamp(b.modifiedAt)} · ${b.path}`}</p>
+                <p key={b.path} className="settings-field__hint-line dag-backup-cleanup__record">{`· ${formatBytes(b.bytes)} · ${formatStamp(b.modifiedAt)} · ${b.path}`}</p>
               ))}
             </>
           )}
@@ -230,7 +230,7 @@ export function DagBackupCleanupSection({ t, busy, showHint = true }: { t: Trans
             <p className="settings-field__hint-line dag-cleanup-result__summary">
               {t("settings.dagBackupCleanup.done", {
                 deleted: result.deleted,
-                size: humanBytes(result.deletedBytes),
+                size: formatBytes(result.deletedBytes),
                 failed: result.failed,
               })}
             </p>
@@ -249,7 +249,7 @@ export function DagBackupCleanupSection({ t, busy, showHint = true }: { t: Trans
                     <tr key={row.path}>
                       <td className="dag-cleanup-result__name" title={row.path}>{backupBaseName(row.path)}</td>
                       <td>{formatStamp(row.modifiedAt)}</td>
-                      <td>{humanBytes(row.bytes)}</td>
+                      <td>{formatBytes(row.bytes)}</td>
                       <td className={`dag-cleanup-result__status dag-cleanup-result__status--${row.outcome}`} title={row.detail ?? undefined}>
                         {t(OUTCOME_KEYS[row.outcome])}
                       </td>

@@ -13,25 +13,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Cpu, Gauge, List, MemoryStick, RefreshCw, Users, X } from "lucide-react";
 import { app, type ResourceSnapshotView } from "../lib/bridge";
+import { formatBytes } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { formatDurationLabel } from "../lib/durationFormat";
 import { useMountTransition } from "../lib/useMountTransition";
 
 const REFRESH_OPTIONS = [2000, 3000, 5000] as const;
 const DEFAULT_REFRESH_MS = 3000;
-
-/** bytes → 人类可读大小（PerfMemorySection 同款形态；0/缺失 → "—"）。 */
-function formatBytes(n: number | undefined): string {
-  if (!n) return "—";
-  const units = ["B", "KB", "MB", "GB"];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i += 1;
-  }
-  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
-}
 
 /** 子代理行时长：startedAt(ms) → 相对快照时刻的绝对时长标签。 */
 function subagentElapsed(startedAtMs: number, snapshotTsMs: number, t: ReturnType<typeof useT>): string {

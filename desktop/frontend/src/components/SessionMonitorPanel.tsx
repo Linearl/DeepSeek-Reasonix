@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
+import { formatBytes } from "../lib/format";
 import { useT } from "../lib/i18n";
 import {
   evictionsFor,
@@ -25,12 +26,6 @@ import {
 import { getTranscriptStore } from "../lib/transcriptStore";
 
 type MonitorTab = { tabId: string; title: string; session: string[]; active: boolean };
-
-function formatKiB(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
-  return `${bytes} B`;
-}
 
 function shortPath(path: string): string {
   const parts = path.replace(/\\/g, "/").split("/");
@@ -88,8 +83,8 @@ export function SessionMonitorPanel() {
 
       <div className="session-monitor__global">
         <span>{t("sessionMonitor.resident", { n: stats.residentSessions, max: stats.maxResidentSessions })}</span>
-        <span>{t("sessionMonitor.bodyBytes", { used: formatKiB(stats.bodyBytes), budget: formatKiB(stats.bodyBudgetBytes) })}</span>
-        <span>{t("sessionMonitor.markdownBytes", { used: formatKiB(stats.markdownBytes), budget: formatKiB(stats.markdownBudgetBytes) })}</span>
+        <span>{t("sessionMonitor.bodyBytes", { used: formatBytes(stats.bodyBytes), budget: formatBytes(stats.bodyBudgetBytes) })}</span>
+        <span>{t("sessionMonitor.markdownBytes", { used: formatBytes(stats.markdownBytes), budget: formatBytes(stats.markdownBudgetBytes) })}</span>
         <span>{t("sessionMonitor.evictions", { n: stats.historyEvictions + stats.markdownEvictions })}</span>
       </div>
 
@@ -117,7 +112,7 @@ export function SessionMonitorPanel() {
                         items: session.items,
                         records: session.records,
                         turns: session.totalTurns,
-                        bytes: formatKiB(session.bodyBytes),
+                        bytes: formatBytes(session.bodyBytes),
                       })}
                       {session.pinned ? ` · ${t("sessionMonitor.pinned")}` : ""}
                     </span>
@@ -167,7 +162,7 @@ export function SessionMonitorPanel() {
               <div className="session-monitor__metrics">
                 {last ? (
                   <span className="session-monitor__evicted">
-                    {t("sessionMonitor.evictedRow", { n: gone.length, reason: last.reason, bytes: formatKiB(last.bodyBytes) })}
+                    {t("sessionMonitor.evictedRow", { n: gone.length, reason: last.reason, bytes: formatBytes(last.bodyBytes) })}
                   </span>
                 ) : (
                   <span>{t("sessionMonitor.neverEvicted")}</span>
@@ -183,7 +178,7 @@ export function SessionMonitorPanel() {
           <span className="session-monitor__log-title">{t("sessionMonitor.recentEvictions")}</span>
           {allEvictions.map((entry) => (
             <span key={`${entry.at}-${entry.tabId}-${entry.reason}`} className="session-monitor__log-row">
-              {t("sessionMonitor.evictedRow", { n: entry.records, reason: entry.reason, bytes: formatKiB(entry.bodyBytes) })}
+              {t("sessionMonitor.evictedRow", { n: entry.records, reason: entry.reason, bytes: formatBytes(entry.bodyBytes) })}
             </span>
           ))}
         </div>

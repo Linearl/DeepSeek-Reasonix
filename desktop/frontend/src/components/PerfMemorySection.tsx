@@ -1,25 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { app, type HeapBreakdownView, type PerfTimeSeriesView } from "../lib/bridge";
+import { formatBytes } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { SettingsOptions } from "./SettingsOptions";
 
 if (import.meta.env?.MODE) void import("./PerfMemorySection.css");
 
 type ApplyFn = (fn: () => Promise<unknown>) => Promise<boolean>;
-
-/** bytes → a short human size (same shape as RecoveryCopiesSection). */
-function formatBytes(n: number): string {
-  if (!n) return "—";
-  const units = ["B", "KB", "MB", "GB"];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i += 1;
-  }
-  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
-}
 
 const WINDOWS = [
   { minutes: 60, labelKey: "settings.perfMonitor.window.1h" },

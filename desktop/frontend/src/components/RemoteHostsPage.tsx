@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useConfirmDialog } from "./ConfirmDialog";
 import { app } from "../lib/bridge";
+import { formatBytes } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { isRemoteDegradedWarning, remoteConnectionErrorSummaryKey } from "../lib/remoteErrors";
 import { useRemoteStore } from "../store/remote";
@@ -165,7 +166,7 @@ export function RemoteHostsPage() {
         {legacyData && (
           <section className="remote-hosts__legacy" aria-label={t("remote.legacyData.title")}>
             <h3>{t("remote.legacyData.title")}</h3>
-            <p>{t("remote.legacyData.summary", { count: legacyData.mirrorCount, size: formatLegacyBytes(legacyData.mirrorBytes) })}</p>
+            <p>{t("remote.legacyData.summary", { count: legacyData.mirrorCount, size: formatBytes(legacyData.mirrorBytes) })}</p>
             {legacyData.trustFile && <p>{t("remote.legacyData.trustPresent")}</p>}
             <div className="remote-hosts__legacy-actions">
               <button
@@ -189,18 +190,6 @@ export function RemoteHostsPage() {
       {confirmDialog}
     </>
   );
-
-function formatLegacyBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB"];
-  let value = n;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-}
 }
 
 function RemoteHostRow(props: {
