@@ -574,7 +574,12 @@ type TranscriptRowContent =
   | { kind: "answer"; key: string; item: AssistantItem }
   | { kind: "notice"; key: string; item: NoticeItem }
   | { kind: "extension"; key: string; item: ExtensionItem }
-  | { kind: "turn-actions"; key: string; turn: number; text: string; tally: TurnTally; tail: TurnTailInfo };
+  // tl1590-P2：turn 可空。挂载与 turn 解耦后，会话有 checkpoint 但该回合拿
+  // 不到权威 checkpointTurn（tl1571 fail-closed：边界失配/控制器重建后旧编号
+  // 域不可信）的 settle 回合也挂载本行——turn 为空时 TurnActions 的 canAct
+  // 恒 false，只剩复制（诚实形态：不伪造 rewind 目标），复制入口不再随
+  // checkpointTurn 缺失整行消失（tl1590 时有时无的本形态）。
+  | { kind: "turn-actions"; key: string; turn: number | undefined; text: string; tally: TurnTally; tail: TurnTailInfo };
 
 export type TranscriptRow = TranscriptRowContent & { layoutVariant?: TranscriptRowLayoutVariant };
 
@@ -923,11 +928,12 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
     // nothing final to copy or rewind to. The row key follows the user item id
     // (turn NUMBERS shift when older history pages prepend; ids don't).
     // tl1590（turn_actions_diag · mount）：挂载判定五元组观测，签名翻转才上报
-    // （判定本身不经过打点值——下方原条件逐字未动，零行为变更）。
+    // （第二步起判定与打点共用同一名义值：diagMounted 即下方挂载条件的镜像，
+    // turn=null 但有正文的行 mounted=1 是修复后的预期形态）。
     if (user) {
       const diagText = model.actionText.trim() !== "";
       const diagCheckpoint = turn != null && (options.hasCheckpointForTurn?.(turn) ?? false);
-      const diagMounted = !model.isActive && turn != null && (diagText || diagCheckpoint);
+      const diagMounted = !model.isActive && (diagText || diagCheckpoint);
       const diagSig = `${diagMounted ? 1 : 0}|${model.isActive ? 0 : 1}|${turn ?? "null"}|${diagText ? 1 : 0}|${diagCheckpoint ? 1 : 0}`;
       const diagIdentity = turnStableIdentity(model);
       if (turnActionsMountDiag.get(diagIdentity) !== diagSig) {
@@ -940,10 +946,17 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
           `row=ta:${user.id} mounted=${diagMounted ? 1 : 0} settled=${model.isActive ? 0 : 1} turn=${turn ?? "null"} text=${diagText ? 1 : 0} checkpoint=${diagCheckpoint ? 1 : 0}`);
       }
     }
+    // The active turn's actions appear only once it settles — mid-turn there is
+    // nothing final to copy or rewind to. The row key follows the user item id
+    // (turn NUMBERS shift when older history pages prepend; ids don't).
+    // tl1590-P2：挂载与 turn 解耦。turn=null（会话有 checkpoint 但本回合缺
+    // 权威 checkpointTurn——tl1571 fail-closed 的诚实缺口）不再整行失格：
+    // 有正文即挂载，渲染层 canAct=false 自动降级为「只剩复制」；rewind/fork
+    // 入口只在 turn 有权威值时出现，不伪造 rewind 目标。checkpoint 兜底
+    // （无正文但有 checkpoint 的回合，任务 648 家族）保持原语义。
     if (
       !model.isActive &&
-      turn != null &&
-      (model.actionText.trim() || options.hasCheckpointForTurn?.(turn)) &&
+      (model.actionText.trim() || (turn != null && Boolean(options.hasCheckpointForTurn?.(turn)))) &&
       user
     ) {
       modelRows.push({ kind: "turn-actions", key: `ta:${user.id}`, turn, text: model.actionText, tally: turnTallyForActionsRow(model), tail: turnTailForActionsRow(model), layoutVariant: "static" });

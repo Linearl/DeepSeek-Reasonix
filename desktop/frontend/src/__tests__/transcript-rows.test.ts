@@ -21,6 +21,7 @@ import {
   type TranscriptRow,
 } from "../lib/transcriptRows";
 import type { Item } from "../lib/useController";
+import { questionTurnsById } from "../lib/transcriptGrouping";
 
 let passed = 0;
 let failed = 0;
@@ -396,6 +397,47 @@ const keys = (rows: TranscriptRow[]) => rows.map((row) => row.key).join(",");
     { kind: "notice", id: "n-host", level: "info", text: "↪ A tool failed. Use read-only diagnosis as needed, continue unrelated work automatically." },
   ]);
   eq(models[0]?.actionText, "", "completion and host-recovery notices never leak into the copy payload");
+}
+
+{
+  // tl1590-P2: a settled turn whose user item carries no authoritative
+  // checkpointTurn (tl1571 fail-closed: boundary mismatch, controller rebuild,
+  // history projection without the field) used to lose the WHOLE turn-actions
+  // row — copy included — exactly when the session has checkpoints for its
+  // other turns. The turn_actions_diag mount log caught the shape live:
+  // mounted=0 settled=1 turn=null text=1 (ta:u42 / ta:he-r2, 2026-11-14..15).
+  // The row now mounts decoupled from turn: turn=null renders copy-only
+  // (canAct=false in TurnActions) and rewind stays hidden instead of faking a
+  // rewind target — the tl1571 discipline is intact, the copy entry stops
+  // flapping with the checkpointTurn wiring.
+  const turnsById = questionTurnsById(
+    [
+      { id: "u-stamped", text: "old prompt", turn: 0, checkpointTurn: 40 },
+      // No checkpointTurn while the session HAS checkpoints: the fail-closed shape.
+      { id: "u-unstamped", text: "tail prompt", turn: 1 },
+    ],
+    true,
+  );
+  ok(!turnsById.has("u-unstamped") && turnsById.get("u-stamped") === 40, "questionTurnsById keeps the tl1571 fail-closed gate for unstamped questions in checkpoint sessions");
+  const models = buildTurnModels([
+    { kind: "user", id: "u-stamped", text: "old prompt" },
+    { kind: "assistant", id: "a-stamped", text: "stamped answer", reasoning: "", streaming: false },
+    { kind: "user", id: "u-unstamped", text: "tail prompt" },
+    { kind: "assistant", id: "a-unstamped", text: "tail answer", reasoning: "", streaming: false },
+    { kind: "user", id: "u-bare", text: "no output" },
+  ]);
+  const rows = buildTranscriptRows(models, {
+    ...rowOptions(EMPTY_FOLDS),
+    turnForUser: (item: Extract<Item, { kind: "user" }>) => turnsById.get(item.id),
+    hasCheckpointForTurn: (turn) => turn === 40,
+  });
+  const stamped = rows.find((row) => row.kind === "turn-actions" && row.key === "ta:u-stamped");
+  const unstamped = rows.find((row) => row.kind === "turn-actions" && row.key === "ta:u-unstamped");
+  ok(Boolean(stamped) && stamped?.turn === 40, "stamped turn mounts with its authoritative non-null turn");
+  ok(Boolean(unstamped), "tl1590: settled unstamped turn (turn=null, has text) mounts the actions row again");
+  eq(unstamped?.kind === "turn-actions" ? unstamped.turn : "missing", undefined, "the mounted unstamped row carries turn=undefined — copy-only, no faked rewind target");
+  eq(unstamped?.kind === "turn-actions" ? unstamped.text : "missing", "tail answer", "the mounted unstamped row carries the turn's copy payload");
+  ok(!rows.some((row) => row.kind === "turn-actions" && row.key === "ta:u-bare"), "a textless turn without any checkpoint still mounts no actions row");
 }
 
 // ── Fold reconciliation ───────────────────────────────────────────────────────
