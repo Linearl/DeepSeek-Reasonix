@@ -29,9 +29,11 @@ const (
 // 551/564）。
 //
 // 与 81/123 渲染表防线同源：每个条目的 renderKeys 必须覆盖该特性在渲染表
-// 中的全部开关键。render_lab_tiers_test.go 是门禁——渲染表新出现一个未在
-// 本表登记（也未列入 labNonFeatureKeys 豁免）的实验室键 ⇒ 测试失败，即
-// 「新增实验项必须标档位」。
+// 中的全部开关键。渲染表新出现一个未在本表登记（也未列入 labNonFeatureKeys
+// 豁免）的实验室键 ⇒ 测试失败，即「新增实验项必须标档位」（原
+// render_lab_tiers_test.go 已不存在，该语义现由
+// experimental_ledger_gate_test.go 的宪法 IV 门禁承接——源码定义的每个
+// experimental_* 键必须落三表之一，tl1598）。
 type LabTier string
 
 const (
@@ -291,6 +293,24 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
 	"experimental_general_purpose_subagent":      "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
 	"experimental_effort_cross_model_map":        "tl 1169：切模型档位按相对位置映射（rank-based）的总闸——desktop 模型快路径消费，实验室 tab 暂无入口（手写 TOML 键；默认关=1161b 折叠行为不变）",
+	// ── tl1598 违宪审查 20261115 补账（违宪-1）：以下 11 键全部确立前引入、
+	//    从未落任何登记表（三表并集对账 108-97=11，双周清账轮按表点名清不到）。
+	//    逐键甄别后归本豁免表——全部为「无实验室设置页入口的手写 TOML /
+	//    config-only 开关」（这正是它们此前漏账的原因：渲染表面看不到它们）。
+	//    纯登记不动行为语义；7 个默认关键的转正/删除留双周清账轮按三终局裁。
+	//    宪法 IV 门禁：TestExperimentalKeysAllRegisteredInLedgers——新增
+	//    experimental_* 键不落三表之一即红。
+	"experimental_ui_driver":                   "task 233：ui_interact 受控 UI 驱动工具（activate/click/type/key，agent 运行验证用）——高危能力须显式 opt-in，手写 TOML 键（无实验室 tab 入口）",
+	"experimental_event_trigger":               "task 230：事件触发引擎 live 消费者总闸（phase 1 引擎为库形态、无默认消费面，event_wait 不依赖它）——手写 TOML 键（无实验室 tab 入口）",
+	"experimental_tool_flood_limit":            "task 243 A1：每回合工具调用上限（16，超限整批取消+结构化续跑提示）——单回合计数面（跨回合防重复归 storm breaker），手写 TOML 键（无实验室 tab 入口）",
+	"experimental_session_control":             "task 274/tl1311：跨会话控制工具（stop/set_model fail-closed，中途回合拒绝换模型）——agent 工具注册面开关+能力组披露（capability/groups.go），手写 TOML 键（无实验室 tab 入口）",
+	"experimental_gc_manage_sessions":          "task 911：GC 远端客户端分组名册管理（serve 域 boot-resolved 开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口；gc_child_session 同族先例）",
+	"experimental_curate_context":              "tl1378 增量1：curate_context 工具（模型把单条已处理工具结果置换为一行注记，prompt-cache 低温维护，补 fold 冷却窗空档）——模型可见面注册开关，手写 TOML 键（无实验室 tab 入口）",
+	"experimental_review_hint":                 "tl1378 增量2：压缩审查提示层（按批量/增量阈值在工具结果后追加 advisory line，只提示不压缩）——宿主提示面开关，手写 TOML 键（无实验室 tab 入口）",
+	"experimental_subagent_messaging":          "task 616：子代理消息通道总闸（parent send_message 工具+桌面 subagent 面板 send box+mailbox 持久化）——默认开 nil=ON（用户 2026-10-08 裁定的 fork 默认关规则例外，见 config.go 字段注释），面板内嵌面无独立实验室卡",
+	"experimental_session_selfheal":            "task 1011：会话自愈修复动作（选中头被更长新链支配时切链+超窗投影本地瘦身，逐步备份可逆）——默认开 nil=ON（1010 检测常在、1011 只补修复），显式 false 回 1010 只读姿态；config-only 逃生阀键",
+	"experimental_session_reminders":           "task 1001：会话延时自提醒工具（session_remind set|cancel|list+到期注入+任务 579 空闲桥）——默认开 nil=ON（拍板 commit 9457057：纯增量实验默认开以便发现），工具注册面开关，无独立实验室卡",
+	"experimental_reasoning_only_continuation": "tl1166：reasoning-only 终局修复（仅含推理的空答案回合一次提醒直答+双思考段合成展示，每回合有界）——默认开 nil=ON（只改已破回正常回合逐字节），经 ReasoningOnlyContinuationEnabled() helper 读；config-only 逃生阀键",
 	// 任务 979：experimental_capability_groups 自本豁免表转正入表A（见
 	// tool-opt 段 capabilityGroups 条目）——953/954/955 设置页入口补齐。
 }
