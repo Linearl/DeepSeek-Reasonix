@@ -608,7 +608,7 @@ export function ContextPanel({
     canonicalTokens,
   );
   const projectionStaleTitle = projectionStale && (context?.maintenance?.canonicalTokens ?? 0) > 0
-    ? t("context.projectionInvalidTitle", { canonical: formatTokens(context.maintenance?.canonicalTokens ?? 0) })
+    ? t("context.projectionInvalidTitle", { canonical: formatTokens(context?.maintenance?.canonicalTokens ?? 0) })
     : undefined;
   const breakdown = contextBreakdown(usedTokens, windowTokens, promptTokens, completionTokens, reasoningTokens);
   const eventTimes = [
