@@ -10,6 +10,7 @@ package agent
 // tokens/second, and the chunked-fold (done/total) progress.
 
 import (
+	"log/slog"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -243,6 +244,16 @@ func (a *Agent) emitCompactionLiveProgress() {
 	if !ok {
 		return
 	}
+	// tl1637（tl556 复发诊断打点·证「发没发」）：Emit 前记一行实际下发的
+	// 载荷。desktop.log 默认 Info 级，装机即可见；与前端 useController
+	// compaction_progress 入口的 "progress received" 行构成三态判读——
+	// Go 无本行=Go 侧断 / 有本行前端无 received=wire 断 / 两行都有而 UI 无
+	// tokens=写入或渲染断。注意 Progress 事件 wire 上本就不携带 pass
+	// （meter 不跟踪 pass），故以 trigger+fold N/M 关联两端。回收候裁：
+	// 定位后转正式观测或随诊断件纪律删除。
+	slog.Info("agent: compaction progress emit", "trigger", readout.Trigger,
+		"tokens", readout.Tokens, "tokens_per_sec", readout.TokensPerSec,
+		"fold_done", readout.Done, "fold_total", readout.Total)
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionProgress, Compaction: event.Compaction{
 		Trigger: readout.Trigger, Done: readout.Done, Total: readout.Total,
 		Tokens: readout.Tokens, TokensPerSec: readout.TokensPerSec,
