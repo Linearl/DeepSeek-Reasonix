@@ -87,7 +87,13 @@ type sessionRuntime struct {
 	// it so the frontend keeps ONE in-progress card instead of showing the
 	// first pass's「已压缩」terminal card while a later pass still runs.
 	compactionSessionPass atomic.Int64
-	cacheState            string // legacy resume telemetry; never provider-visible
+	// tl1648: unix-millis stamp of the last successful fold install
+	// (emitCompactionSucceeded). The failed-card surface reads it so the user
+	// can tell "the reading is stale because THIS pass installed nothing"
+	// from "compaction has never succeeded here". Runtime-only: 0 after a
+	// lineage reset or restart (unknown, not "never").
+	lastCompactionSuccessAt atomic.Int64
+	cacheState              string // legacy resume telemetry; never provider-visible
 
 	// tailView caches the bounded recent-tail view (task 719): while the
 	// projection is invalid or missing AND the canonical transcript outgrows the
@@ -152,6 +158,9 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.compaction.failedTurn.Store(0)
 	r.compaction.lastTurn.Store(0)
 	r.compactionSessionPass.Store(0) // 任务 1021: a new lineage starts a fresh session count
+	// tl1648: the stamp belongs to the replaced lineage; the new conversation
+	// starts unknown (0) until its own first successful fold.
+	r.lastCompactionSuccessAt.Store(0)
 	r.rebuildPending.Store(false)
 	// tl1203: a new conversation starts unarmed — the flag belongs to the
 	// replaced lineage's stale-serving episode, same as rebuildPending.

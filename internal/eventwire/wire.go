@@ -136,6 +136,7 @@ func ToWire(e event.Event) Event {
 			Done: e.Compaction.Done, Total: e.Compaction.Total, Tokens: e.Compaction.Tokens,
 			TokensPerSec: e.Compaction.TokensPerSec, Outcome: e.Compaction.Outcome,
 			Attempt: e.Compaction.Attempt, Reason: e.Compaction.Reason, Pass: e.Compaction.Pass,
+			FoldInstalled: e.Compaction.FoldInstalled, LastSuccessAt: e.Compaction.LastSuccessAt,
 		}
 	case event.ContextMaintenanceEvent:
 		if m := e.Maintenance; m != nil {
@@ -348,6 +349,18 @@ type Compaction struct {
 	// 任务 1021: 1-based pass number within one compression session
 	// (event.Compaction.Pass). omitempty keeps legacy senders byte-identical.
 	Pass int `json:"pass,omitempty"`
+	// tl1648 (Done-failed only): whether a valid projection already serves
+	// the wire; false = this pass installed nothing, the token reading will
+	// not drop until a later pass succeeds. Deliberately NO omitempty: the
+	// false itself is the fact the failed card must show ("nothing was
+	// installed"), and omitempty would erase exactly the 14:50 shape
+	// (fold_installed=false) the field exists to report. Legacy consumers
+	// ignore unknown fields, so always carrying the key is wire-safe.
+	FoldInstalled bool `json:"foldInstalled"`
+	// tl1648 (Done-failed only): unix millis of the last successful fold
+	// install; 0 = unknown (omitted). Drives the failed card's "上次成功压缩"
+	// line.
+	LastSuccessAt int64 `json:"lastSuccessAt,omitempty"`
 }
 
 // AskOption is one JSON-formatted choice in a structured ask request.
