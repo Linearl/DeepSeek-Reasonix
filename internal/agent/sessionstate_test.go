@@ -21,7 +21,11 @@ var sessionReset = map[string]bool{
 	// Task 317: a fresh conversation starts in the "no recent provider error"
 	// state or compaction miss attribution would blame a stale window.
 	"lastProviderErrorAt": true,
-	"missingReasoning":    true,
+	// tl1640: the last conversation request belongs to the replaced lineage —
+	// a new conversation starts with the stamp unknown (0), not with the old
+	// lineage's recency.
+	"lastConversationRequestAt": true,
+	"missingReasoning":          true,
 	// A strong-projection repair belongs to the corrupted conversation; a new
 	// conversation starts without it.
 	"reasoningReplayStrongProjection":       true,

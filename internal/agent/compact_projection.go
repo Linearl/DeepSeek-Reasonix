@@ -769,27 +769,67 @@ func summaryUpstreamCanceled(err error) bool {
 const promptCacheTTLEstimate = 5 * time.Minute
 
 // compactionMissAttribution names why a compaction round measured zero cache
-// hit (task 317, cache-查证 §④ candidates). Pure for testing:
+// hit (task 317, cache-查证 §④ candidates; tl1640 adds the no-error TTL
+// branch from the 20261116 全miss 根因报告's O1). Pure for testing:
 //   - zero_usage_no_request: the summary request never carried usage — the
 //     server never reported (or never wrote) a cache surface;
+//   - prefix_ttl_expired: no recent error, but the last CONVERSATION request
+//     is older than the TTL estimate, so the server-side prefix has likely
+//     been evicted by TTL (the tl1638 13:04 case: 30.3min of silence read as
+//     "prefix_or_model_shape" and looked unreasonable). EST, not fact: the
+//     threshold is promptCacheTTLEstimate — the industry lower bound, not a
+//     measured provider window — so this label means "TTL eviction is the
+//     leading INFERENCE", never a verified cause;
 //   - error_gap_over_ttl: the last provider error is older than the TTL
 //     estimate, so the server-side prefix has likely been evicted (candidate B);
 //   - error_gap_within_ttl: a recent error sits inside the window — the miss
 //     more likely comes from a never-written prefix (zero-usage error round,
 //     candidate A) than from TTL;
-//   - prefix_or_model_shape: no recent error — the known prefix/model-shape
-//     family (modelRef switch, #9572).
-func compactionMissAttribution(tele CompactionTelemetry, errorGap time.Duration, hadError bool) string {
+//   - prefix_or_model_shape: no recent error AND either no conversation
+//     request stamp (fresh/resumed session — gap unknown, must not claim TTL)
+//     or a stamp inside the window.
+func compactionMissAttribution(tele CompactionTelemetry, errorGap time.Duration, hadError bool, turnGap time.Duration, haveTurn bool) string {
 	if tele.InputTokens == 0 && tele.RequestCount == 0 {
 		return "zero_usage_no_request"
 	}
 	if !hadError {
+		// tl1640 O1: the error-TTL branch was only reachable with a provider
+		// error, so a quiet-but-stale session fell through to the shape family
+		// — the observation blind spot behind the 20261116 misread. haveTurn
+		// keeps the inference honest: without a stamp the gap is UNKNOWN and
+		// the label must stay with the old family.
+		if haveTurn && turnGap >= promptCacheTTLEstimate {
+			return "prefix_ttl_expired"
+		}
 		return "prefix_or_model_shape"
 	}
 	if errorGap >= promptCacheTTLEstimate {
 		return "error_gap_over_ttl"
 	}
 	return "error_gap_within_ttl"
+}
+
+// lastConversationTurnGap reports how long ago the last conversation-lane
+// request completed (tl1640, the stamp Commit 1 places at ChunkUsage). have
+// is false when no conversation request has completed yet — fresh or resumed
+// session — which reads as UNKNOWN, never as zero.
+func (a *Agent) lastConversationTurnGap() (gap time.Duration, have bool) {
+	last := a.sess.lastConversationRequestAt.Load()
+	if last <= 0 {
+		return 0, false
+	}
+	return time.Since(time.UnixMilli(last)), true
+}
+
+// lastTurnGapMinutes renders the same gap as the shared log field value: minutes
+// since the last conversation request, -1 when unknown. The "compaction done"
+// lines and the miss-attribution line carry it identically (tl1640 O2).
+func (a *Agent) lastTurnGapMinutes() float64 {
+	gap, have := a.lastConversationTurnGap()
+	if !have {
+		return -1
+	}
+	return gap.Minutes()
 }
 
 // logCompactionMissAttribution emits the miss-attribution line for a
@@ -810,10 +850,19 @@ func (a *Agent) logCompactionMissAttribution(trigger string, tele CompactionTele
 		gap = time.Since(time.UnixMilli(lastErr))
 		gapMs = gap.Milliseconds()
 	}
+	// tl1640: the no-error TTL branch reads the conversation stamp — derive
+	// the log field from the SAME single read the label used, so the line
+	// never contradicts itself.
+	turnGap, haveTurn := a.lastConversationTurnGap()
+	turnGapMin := -1.0
+	if haveTurn {
+		turnGapMin = turnGap.Minutes()
+	}
 	slog.Warn("agent: compaction cache miss attribution",
 		"trigger", trigger,
-		"attribution", compactionMissAttribution(tele, gap, hadError),
+		"attribution", compactionMissAttribution(tele, gap, hadError, turnGap, haveTurn),
 		"error_gap_ms", gapMs,
+		"last_turn_gap_min", turnGapMin,
 		"model_ref", a.destinationModelRef(),
 		"input_tokens", tele.InputTokens,
 		"cache_miss_tokens", tele.CacheMissTokens,

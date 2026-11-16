@@ -61,13 +61,17 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 	a.emitCompactionSucceeded(in.trigger, len(in.fold), in.summary, "")
 	// Done-log cache readout (task 303); 任务 867 adds fold_tokens so the
 	// view estimate, summarizer input, and provider count stay separable.
+	// tl1640 O2: last_turn_gap_min makes "the conversation went quiet N
+	// minutes ago" visible on the same line as the hit=0 readout — no more
+	// reconstructing the gap from timestamps (unknown session reads -1).
 	slog.Info("agent: compaction done", "trigger", in.trigger, "stage", "done",
 		"folded_messages", len(in.fold), "source_tokens", in.sourceTokens,
 		"fold_tokens", tele.FoldTokens,
 		"projection_tokens", projTokens,
 		"input_tokens", tele.InputTokens, "output_tokens", tele.OutputTokens,
 		"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens,
-		"request_count", tele.RequestCount)
+		"request_count", tele.RequestCount,
+		"last_turn_gap_min", a.lastTurnGapMinutes())
 	// Task 317 (cache 保全 面 b): the automatic fold attributes its miss the
 	// same way the explicit tool does (shared helper, both entry points).
 	a.logCompactionMissAttribution(in.trigger, tele, in.sourceTokens)

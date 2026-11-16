@@ -3258,6 +3258,13 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			a.storeLatestRequestUsage(chunk.Usage)
 			a.sess.cacheHit.Add(int64(chunk.Usage.CacheHitTokens))
 			a.sess.cacheMiss.Add(int64(chunk.Usage.CacheMissTokens))
+			// tl1640: usage arrival proves this conversation request reached the
+			// provider and refreshed the server-side prefix cache — the moment
+			// the cache-TTL clock restarts. Observation only (prefix_ttl_expired
+			// attribution + compaction done gap read it); summary requests ride
+			// StreamAuxiliary and never stamp, so a compaction round does not
+			// erase its own gap evidence.
+			a.sess.lastConversationRequestAt.Store(time.Now().UnixMilli())
 		case provider.ChunkError:
 			if provider.IsStreamInterrupted(chunk.Err) {
 				stored, _ := finishReasoning()

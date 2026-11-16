@@ -30,6 +30,18 @@ type sessionRuntime struct {
 	// conversation so a fresh session starts in the "no recent error" state.
 	lastProviderErrorAt atomic.Int64
 
+	// lastConversationRequestAt is the unix-milli stamp of the most recent
+	// COMPLETED conversation-lane request (tl1640): the ChunkUsage arrival in
+	// the main stream, the one surface that proves a request reached the
+	// provider and refreshed the server-side prefix cache. Compaction miss
+	// attribution reads it for the prefix_ttl_expired label and both
+	// "compaction done" lines for last_turn_gap_min — observation only, never
+	// a behavior gate. Summary/auxiliary requests never stamp it (they ride
+	// StreamAuxiliary), so the compaction round reading the gap does not
+	// erase its own evidence. Reset with the conversation: a new lineage has
+	// no conversation request yet; 0 means unknown, not "just now".
+	lastConversationRequestAt atomic.Int64
+
 	// authAlert throttles the task-912 P1-d global credential-expired banner.
 	// It tracks the PROVIDER KEY, not the conversation: a key already announced
 	// must not re-announce on the next conversation, so reset leaves it found.
@@ -122,6 +134,10 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.cacheHit.Store(0)
 	r.cacheMiss.Store(0)
 	r.lastProviderErrorAt.Store(0)
+	// tl1640: the last conversation request belongs to the replaced lineage —
+	// a new conversation starts with the stamp unknown (0), so attribution
+	// cannot borrow the old lineage's recency.
+	r.lastConversationRequestAt.Store(0)
 	r.output.reset()
 	r.missingReasoning = missingReasoningWatch{}
 	r.reasoningReplayStrongProjection = 0
