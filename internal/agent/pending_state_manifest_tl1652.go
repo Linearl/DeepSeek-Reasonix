@@ -126,7 +126,7 @@ var pendingStateManifest = []pendingStateEntry{
 	{"internal\\agent\\mailbox_tool.go:191", "drainInboxAliasTool.drainRegistered", dispExplicitDrop, "一次性注册标志，无数据"},
 	{"internal\\agent\\mailbox_tool.go:42", "mailboxTool.drainRegistered", dispExplicitDrop, "一次性注册标志，无数据"},
 	{"internal\\agent\\pinned_context_revision.go:85", "pinnedContextRuntime.staged", dispExplicitDrop, "回合内 staged 状态；消息 Add 后进转录持久，staged 本体瞬态"},
-	{"internal\\agent\\save.go:103", "sessionPersistState.projectionPending", dispExplicitDrop, "保存路径内短暂标志，无独立数据"},
+	{"internal\\agent\\save.go:48", "sessionPersistState.projectionPending", dispExplicitDrop, "保存路径内短暂标志，无独立数据"},
 	{"internal\\agent\\services.go:136", "agentServices.memQueue", dispExplicitDrop, "turn-tail 提示队列；记忆本体已先落盘（AppendDoc/WriteDoc），提示语可再生"},
 	{"internal\\agent\\session_head.go:17", "sessionHeadState.pending", dispExplicitDrop, "DAG 头追踪 pending entries；DAG 状态由事件日志可重建（session_dag_replay）"},
 	{"internal\\agent\\sessionstate.go:67", "sessionRuntime.rebuildPending", dispExplicitDrop, "自愈重建 dedup 标志；重启由盘上投影状态自然重新武装"},
