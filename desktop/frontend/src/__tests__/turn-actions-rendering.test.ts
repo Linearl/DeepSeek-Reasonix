@@ -31,9 +31,9 @@ function ok(value: unknown, label: string) {
 console.log("\nturn actions rendering");
 
 ok(
-  transcriptRowsSource.includes("model.actionText.trim() || options.hasCheckpointForTurn?.(turn)") &&
+  transcriptRowsSource.includes("model.actionText.trim() || (turn != null && Boolean(options.hasCheckpointForTurn?.(turn)))") &&
     transcriptSource.includes("hasCheckpointForTurn"),
-  "checkpointed turns keep rewind actions visible even when cancellation produced no assistant text",
+  "checkpointed turns keep rewind actions visible even when cancellation produced no assistant text (tl1590-P2: mount no longer requires turn, checkpoint fallback preserved)",
 );
 
 ok(

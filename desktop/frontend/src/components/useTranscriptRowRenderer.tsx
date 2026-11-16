@@ -81,7 +81,7 @@ export function useTranscriptRowRenderer({
   // map 身份，但本行 hit 态不变则静默（mapSize 只进 payload 不进签名，避免
   // 每次 settle 把所有已挂载 actions 行重报一遍）。ref 存活于 hook 实例，跨
   // useCallback 重建不丢。走 reportFrontendLog（任务 510/587 同款三落点）。
-  const checkpointQueryDiag = useRef<Map<number, string>>(new Map());
+  const checkpointQueryDiag = useRef<Map<number | undefined, string>>(new Map());
   useEffect(() => {
     if (!openAction) return;
     const close = (event: MouseEvent) => {
@@ -167,13 +167,16 @@ export function useTranscriptRowRenderer({
       }
       case "extension": return <ExtensionCard item={row.item} tabId={tabId} />;
       case "turn-actions": {
-        const openMenu = openAction?.turn === row.turn ? openAction.menu : null;
-        const checkpoint = checkpointsByTurn.get(row.turn);
+        // tl1590-P2：行挂载不再要求 turn 非空——turn=null 的「只剩复制」行
+        // 拿不到 checkpoint（无 rewind 目标，tl1571 fail-closed 的诚实形态）。
+        // 菜单状态只对有权威 turn 的行有意义（canAct=false 的行没有菜单钮）。
+        const openMenu = row.turn != null && openAction?.turn === row.turn ? openAction.menu : null;
+        const checkpoint = row.turn == null ? undefined : checkpointsByTurn.get(row.turn);
         const querySig = checkpoint ? (checkpoint.canConversation ? "hit-cp" : "hit-partial") : "miss";
         if (checkpointQueryDiag.current.get(row.turn) !== querySig) {
           checkpointQueryDiag.current.set(row.turn, querySig);
           reportFrontendLog("turn_actions_diag", "checkpoint-query",
-            `row=${row.key} turn=${row.turn} hit=${checkpoint ? 1 : 0} canConversation=${checkpoint?.canConversation ? 1 : 0} mapSize=${checkpointsByTurn.size}`);
+            `row=${row.key} turn=${row.turn ?? "null"} hit=${checkpoint ? 1 : 0} canConversation=${checkpoint?.canConversation ? 1 : 0} mapSize=${checkpointsByTurn.size}`);
         }
         return <TurnActions
           text={row.text} turn={row.turn} openMenu={openMenu}
@@ -181,7 +184,7 @@ export function useTranscriptRowRenderer({
           // 与输入框状态行同库同口径）。任务 1137：同源回合尾部信息带
           // （文件明细 / token 快照 / 完成时刻）一并传入。
           tally={row.tally} tail={row.tail}
-          onOpenMenu={(menu) => setOpenAction(menu ? { turn: row.turn, menu } : null)}
+          onOpenMenu={(menu) => setOpenAction(menu && row.turn != null ? { turn: row.turn, menu } : null)}
           checkpoint={checkpoint} actionPending={actionPending}
           rewindDisabled={rewindDisabled}
           isLastTurn={row.turn === lastTurn}
