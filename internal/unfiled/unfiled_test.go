@@ -61,6 +61,10 @@ func TestIsSystemPrompt(t *testing.T) {
 		want   bool
 	}{
 		{SystemRecoveryPrompt, true},
+		// tl1615 ②: the desktop's autonomous-update resume prompt with the
+		// version suffix (composed by autonomousUpdateResumePromptText; the
+		// desktop-side sync pin lives in unfiled_inputs_app_test.go).
+		{"The app updated and restarted itself while this autopilot session was working. Continue from where it stopped; do not restate the plan or wait for input. The app now runs version v1.38.3-20260923-1010.", true},
 		{"[跨会话消息] x", true},
 		{"[合并消息 ×3] x", true},
 		{"用户的真实输入", false},

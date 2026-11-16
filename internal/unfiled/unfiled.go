@@ -37,6 +37,12 @@ var systemPromptPrefixes = []string{
 	"[跨会话回信提醒",         // require_reply nudge (agent.CollabReplyNudgeMarker)
 	"<context-state>",  // compaction state wrapper
 	"<session-context", // host-generated snapshot wrapper
+	// tl1615 ②: the autonomous-update resume prompt gains a version suffix
+	// ("… The app now runs version vX.") read from the fresh process's
+	// current.json, so the base text matches by prefix; the exact entry below
+	// keeps covering the no-version fallback. Desktop-side pin:
+	// desktop/unfiled_inputs_app_test.go.
+	"The app updated and restarted itself while this autopilot session was working. Continue from where it stopped; do not restate the plan or wait for input.",
 }
 
 // systemPrompts are exact-match host injections (autopilot resume family,

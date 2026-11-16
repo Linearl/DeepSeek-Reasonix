@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/installlayout"
 	"reasonix/internal/secrets"
 )
 
@@ -28,6 +29,44 @@ import (
 // update is told. Like autopilotResumePrompt it states the fact and the
 // expectation without inventing work.
 const autonomousUpdateResumePrompt = "The app updated and restarted itself while this autopilot session was working. Continue from where it stopped; do not restate the plan or wait for input."
+
+// autonomousUpdateResumePromptWithVersion composes the tl1615 ② variant: the
+// base prompt plus the now-active version label, so the resumed session knows
+// which version it landed on without a manual check. Split from
+// autonomousUpdateResumePromptText so the unfiled whitelist pin can exercise
+// the exact production composition (internal/unfiled cannot import desktop).
+func autonomousUpdateResumePromptWithVersion(version string) string {
+	return autonomousUpdateResumePrompt + " The app now runs version " + version + "."
+}
+
+// autonomousUpdateResumePromptText is the injection-face prompt (tl1615 ②):
+// the active version is read from the fresh process's current.json — after a
+// publish/switch restart that pointer IS the new version — and appended to the
+// base prompt. When the version cannot be read (flat layout, unreadable
+// pointer) the base prompt is returned unchanged, which keeps the
+// internal/unfiled exact-match whitelist entry valid for the fallback.
+func autonomousUpdateResumePromptText() string {
+	version := resumeActiveVersionLabel()
+	if version == "" {
+		return autonomousUpdateResumePrompt
+	}
+	return autonomousUpdateResumePromptWithVersion(version)
+}
+
+// resumeActiveVersionLabel reads the active version from the install root's
+// current.json pointer ("" when unavailable). The hook-free read keeps the
+// resume chain honest about what actually booted, not what was staged.
+func resumeActiveVersionLabel() string {
+	root, err := versionSwitchInstallRoot()
+	if err != nil {
+		return ""
+	}
+	ptr, err := installlayout.ReadCurrent(root)
+	if err != nil {
+		return ""
+	}
+	return ptr.ActiveVersion
+}
 
 // restartInterruptedToolMarker is the greppable token for the 任务461-P2 兜底②
 // face: an auto-resume that would replay a turn whose last step was an
@@ -438,7 +477,7 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	a.settleRestartFenceForTab(tab)
 	id := tab.ID
 	go func() {
-		a.resumeRosterSession(tab, id, sessionKey, autonomousUpdateResumePrompt)
+		a.resumeRosterSession(tab, id, sessionKey, autonomousUpdateResumePromptText())
 	}()
 }
 

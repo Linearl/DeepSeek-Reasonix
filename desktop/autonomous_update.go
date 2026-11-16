@@ -273,13 +273,35 @@ func (c autonomousUpdateController) SetTarget(_ context.Context, target string) 
 // 「立即执行」面退役：其 quitGrace+relaunch 链与回合收尾之间的竞态由确定性
 // 等待取代，出包装机链路 set_target→execute→重启上线不变，只是推迟到回合
 // 边界）。
+//
+// tl1615 fail-fast（2026-11-16 用户令，feedback-20261116-001935 立项）：两晚
+// 装机丢失的直接教训——execute 未先 set_target 时，排队照进、边界才炸，模型
+// 面只拿到一条成功排队文案，失败只剩一条 slog.Warn（22:48/08:05 两次装机即
+// 此形态）。如今无 staged target 的 execute 在入口当场报错（文案含 set_target
+// 指引），不再排队。去重面（同回合已有排队者）优先于 fail-fast——tl1585 的
+// 排队语义零触碰：已有排队者时行为与改前逐字节一致。
 func (c autonomousUpdateController) ExecuteTarget(ctx context.Context, callerSession string) (string, error) {
 	a := c.app
 	if a == nil {
 		return "", fmt.Errorf("restart: no app")
 	}
-	// tl1585: 全回合排队宿主自重启。放在消费 pending 之前——排队不掉 staged
-	// 目标，回合边界由等待者消费并执行同一目标。
+	a.autonomousMu.Lock()
+	alreadyQueued := a.autonomousBoundaryRestart != nil
+	staged := a.autonomousPending.kind != ""
+	a.autonomousMu.Unlock()
+	if alreadyQueued {
+		// tl1585 去重面原样：第一次排队者拥有唯一执行权，第二次调用只提示，
+		// 不因缺 staged target 而改变既有排队语义。
+		return c.queueBoundaryRestart(ctx, "execute", callerSession)
+	}
+	if !staged {
+		// tl1615 fail-fast: the check the boundary used to make — moved to the
+		// entry so the caller sees the error in the tool result instead of a
+		// queued success followed by a boundary slog.Warn.
+		return "", fmt.Errorf("restart: no update target staged; call set_target first (pick a target from list_versions) — nothing was queued, so the turn boundary will not restart (tl1615 fail-fast)")
+	}
+	// tl1585: 全回合排队宿主自重启。排队不掉 staged 目标，回合边界由等待者
+	// 消费并执行同一目标。
 	return c.queueBoundaryRestart(ctx, "execute", callerSession)
 }
 
@@ -293,6 +315,9 @@ func (c autonomousUpdateController) executeStagedTarget(callerSession string) (s
 	a.autonomousPending = pendingUpdateTarget{}
 	a.autonomousMu.Unlock()
 	if pending.kind == "" {
+		// tl1615 后此处正常不可达（入口已 fail-fast），仅作边界兜底防御：排队
+		// 与消费之间 staged 目标若被清空（理论窗口），失败仍按原语义落
+		// runQueuedBoundaryRestart 的 slog.Warn，不静默丢。
 		return "", fmt.Errorf("restart: no update target staged; call set_target first")
 	}
 

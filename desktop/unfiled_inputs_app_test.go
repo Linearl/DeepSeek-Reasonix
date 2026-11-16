@@ -12,10 +12,15 @@ import (
 // prompt text changes here, update internal/unfiled too — this test fails
 // first.
 func TestUnfiledWhitelistCoversDesktopHostPrompts(t *testing.T) {
+	// tl1615 ②: the injection face appends the active version after the base
+	// prompt (autonomousUpdateResumePromptText), so the composed variant must
+	// be whitelisted too — otherwise the resume turn surfaces as a phantom
+	// unfiled user input.
 	for name, prompt := range map[string]string{
-		"autopilotAbnormalResumePrompt": autopilotAbnormalResumePrompt,
-		"autopilotResumePrompt":         autopilotResumePrompt,
-		"autonomousUpdateResumePrompt":  autonomousUpdateResumePrompt,
+		"autopilotAbnormalResumePrompt":       autopilotAbnormalResumePrompt,
+		"autopilotResumePrompt":               autopilotResumePrompt,
+		"autonomousUpdateResumePrompt":        autonomousUpdateResumePrompt,
+		"autonomousUpdateResumePromptWithVer": autonomousUpdateResumePromptWithVersion("v1.38.3-20260923-1010"),
 	} {
 		if !unfiled.IsSystemPrompt(prompt) {
 			t.Errorf("%s is not whitelisted in internal/unfiled; an auto-resume turn would surface as a phantom unfiled input", name)
