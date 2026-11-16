@@ -1,10 +1,17 @@
 package agent
 
 // Task 953: L0/L1 能力组披露面的组元数据（架构评审修点④：组是纯元数据 +
-// 渲染层消费，禁止成为运行时对象——本文件只有静态表与纯函数，无生命周期、
-// 无权限、无开关状态）。八组划分与成员清单来自设计表 sheet「3-53tool分组」
-// （能力架构设计表-20261017.xlsx，用户拍板版）。955 的组 catalog 接口直接
-// 消费 capabilityGroups 表与 groupForTool 反查，勿在别处重复硬编码成员。
+// 渲染层消费，禁止成为运行时对象——本文件只有派生表与纯函数，无生命周期、
+// 无权限、无开关状态）。
+//
+// tl1630 收敛：组集合/成员/入口/场景/示例/组名的唯一权威源 =
+// internal/capability 的 groupCatalog（经 capability.Groups() 导出，955 建立
+// 时即自称 single source of truth）。本文件原先维护的第二份手写冻结表已删——
+// 它与权威源出生即漂移（缺 submit_feedback/notebook_edit，组 key 分叉
+// mailbox/misc vs inbox/system），且 953 头注释宣称「955 的组 catalog 接口
+// 直接消费本表」与事实相反（955 自建了权威表）。改组请只改
+// internal/capability/groups.go；本文件的投影若有偏差，
+// TestCapabilityGroupsIsFaithfulProjectionOfAuthority 即红。
 
 import (
 	"fmt"
@@ -13,11 +20,11 @@ import (
 	"reasonix/internal/capability"
 )
 
-// capabilityGroup is one L1 tool group's disclosure metadata. Entry names the
-// optional L0 aggregated entry tool (修点①: session group's entry is
-// session_hub, task 954); it is only rendered when that tool actually exists
-// in the current catalog — guidance must never point at an absent tool
-// (开发纪律 3).
+// capabilityGroup is one L1 tool group's disclosure metadata (the agent-face
+// projection of capability.GroupDef). Entry names the optional L0 aggregated
+// entry tool (修点①: session group's entry is session_hub, task 954); it is
+// only rendered when that tool actually exists in the current catalog —
+// guidance must never point at an absent tool (开发纪律 3).
 type capabilityGroup struct {
 	Key      string   // stable id fragment: tool:group/<Key>
 	Title    string   // 组名（中文展示名）
@@ -27,91 +34,31 @@ type capabilityGroup struct {
 	Example  string   // 最常用调用示例（只列已存在的深件）
 }
 
-// capabilityGroups is the frozen eight-group table (design sheet 3; 51 tools).
+// capabilityGroups is the agent disclosure view of the authoritative group
+// table (capability.Groups — tl1630 收敛后唯一真相源在 internal/capability).
 // Member names that do not resolve in the current catalog are simply not
 // counted in the rendered "N 深件" and are skipped in member cards — the table
-// is the disclosure map, not a registration requirement.
-var capabilityGroups = []capabilityGroup{
-	{
-		Key: "session", Title: "会话协作组",
-		Scenario: "跨会话协作与会话管理（发信判活、会话改名、任务卡、版本管理）",
-		Members: []string{
-			"talk_to_session_sync", "subscribe_session",
-			"create_task_card", "get_task_card", "update_task_card", "list_task_cards",
-			"delete_session", "get_session_info", "search_sessions", "session_control",
-			"rename_session", "rename_topic", "move_topic_to_group", "manage_sessions",
-			"list_session_versions", "adopt_session_version",
-		},
-		// 954 的 session_hub 聚合件落地后此入口自动点亮（渲染时查 catalog）。
-		Entry:   "session_hub",
-		Example: "search_sessions/rename_session",
-	},
-	{
-		Key: "im", Title: "IM 通道组",
-		Scenario: "经 IM 通道（钉钉/飞书/QQ/微信）或旧总线通道收发消息",
-		Members: []string{
-			"channel_cancel", "channel_list", "channel_read", "channel_send",
-			"dingtalk", "feishu", "qq", "weixin",
-		},
-		Example: "channel_send/qq",
-	},
-	{
-		Key: "mailbox", Title: "信箱投递组",
-		Scenario: "会话信箱收发、收件箱拉取与投递状态查询",
-		Members: []string{
-			"mailbox", "peek_own_inbox", "drain_inbox",
-			"read_collab_status", "query_collab_mail", "event_wait",
-		},
-		Example: "mailbox/drain_inbox",
-	},
-	{
-		Key: "worktree", Title: "worktree/合并组",
-		Scenario: "git worktree 隔离开发与合并回主线",
-		Members: []string{
-			"create_worktree", "inspect_worktree_merge", "merge_worktree_back",
-			"open_isolated_worktree_project", "prepare_worktree_merge",
-		},
-		Example: "create_worktree/merge_worktree_back",
-	},
-	{
-		Key: "misc", Title: "系统杂项组",
-		Scenario: "系统杂项（认领检查、代码索引、截图、UI 操作、网页抓取、待办读取）",
-		Members: []string{
-			"claim_check", "code_index", "screenshot", "ui_interact",
-			"web_fetch", "todo_read", "delete_symbol",
-		},
-		Example: "web_fetch/screenshot",
-	},
-	{
-		Key: "heartbeat", Title: "心跳任务组",
-		Scenario: "心跳定时任务的查看与增改",
-		Members: []string{
-			"heartbeat_task_enable", "heartbeat_task_list", "heartbeat_task_upsert",
-		},
-		Example: "heartbeat_task_list",
-	},
-	{
-		Key: "workflow", Title: "工作流编排组",
-		Scenario: "声明式 DAG 工作流的定义、查询、触发与运行状态",
-		Members: []string{
-			"workflow_define", "workflow_list", "workflow_get", "workflow_run", "workflow_status",
-		},
-		Example: "workflow_run",
-	},
-	{
-		Key: "files", Title: "文件操作组",
-		Scenario: "文件移动、区间删除与列目录",
-		Members:  []string{"delete_range", "move_file", "ls"},
-		Example:  "move_file/ls",
-	},
-	{
-		// tl1453：dream/distill 记忆整理工具随 experimental_dream 实验退役
-		// （宪法 Q1），本组只剩决策模式固化一件。
-		Key: "memory", Title: "记忆固化组",
-		Scenario: "决策模式固化",
-		Members:  []string{"decision_pattern_solidify"},
-		Example:  "decision_pattern_solidify",
-	},
+// is the disclosure map, not a registration requirement. Derived, never
+// hand-edited: add/remove members and groups in internal/capability/groups.go.
+var capabilityGroups = deriveCapabilityGroups()
+
+// deriveCapabilityGroups projects the authoritative capability.GroupDef table
+// onto the agent disclosure shape. One group, one definition — the projection
+// must stay 1:1 (guards: usecapability_groups_ssot_test.go).
+func deriveCapabilityGroups() []capabilityGroup {
+	defs := capability.Groups()
+	out := make([]capabilityGroup, 0, len(defs))
+	for _, def := range defs {
+		out = append(out, capabilityGroup{
+			Key:      def.Name,
+			Title:    def.Title,
+			Scenario: def.Scenario,
+			Members:  def.Members,
+			Entry:    def.Entry,
+			Example:  def.Example,
+		})
+	}
+	return out
 }
 
 // groupForTool returns the group a bare tool name belongs to (first match

@@ -47,6 +47,7 @@ type GroupCard struct {
 // route/list/search only ever render from live catalog entries).
 type GroupDef struct {
 	Name     string   // stable group name (used in tool:group/<name>)
+	Title    string   // 中文展示名（agent 披露面组行标题；tl1630 自 agent/usecapability_groups 并入权威表）
 	Scenario string   // one-line scenario for list rows and route reasons
 	Members  []string // member builtin tool names (the 53-tool tagging)
 	Entry    string   // L0 aggregate entry tool ("session_hub"); "" = none
@@ -55,11 +56,17 @@ type GroupDef struct {
 	Card     *GroupCard
 }
 
-// groupCatalog is the single source of truth for the 8 groups (v3 tree L1
-// lane). Order = display order.
+// groupCatalog is the single source of truth for the group table (v3 tree L1
+// lane) — for BOTH consumption faces since tl1630: the catalog face
+// (BuildGroupEntries/tool tags/cards) and the agent use_capability disclosure
+// face (derived via Groups(); the former hand-frozen copy in
+// agent/usecapability_groups.go was removed — it had drifted at birth:
+// submit_feedback/notebook_edit missing, two group keys forked). Order =
+// display order.
 var groupCatalog = []GroupDef{
 	{
 		Name:     "session",
+		Title:    "会话协作组",
 		Scenario: "跨会话协作：发信/通讯录/判活/读尾/建会话/任务卡/会话管理（协作组聚合件承载）",
 		Members: []string{
 			"talk_to_session_sync", "subscribe_session",
@@ -105,6 +112,7 @@ var groupCatalog = []GroupDef{
 	},
 	{
 		Name:     "im",
+		Title:    "IM 通道组",
 		Scenario: "IM 通道：对外发 QQ/微信/钉钉/飞书，会话内频道广播（channel 族）",
 		Members: []string{
 			"channel_list", "channel_read", "channel_send", "channel_cancel",
@@ -136,6 +144,7 @@ var groupCatalog = []GroupDef{
 	},
 	{
 		Name:     "inbox",
+		Title:    "信箱投递组",
 		Scenario: "信箱投递：读取/消费/查询协作信箱，等待协作方条件（mailbox 族 + event_wait）",
 		Members: []string{
 			"mailbox", "peek_own_inbox", "drain_inbox",
@@ -146,6 +155,7 @@ var groupCatalog = []GroupDef{
 	},
 	{
 		Name:     "worktree",
+		Title:    "worktree/合并组",
 		Scenario: "worktree 建立/隔离打开/合并前准备与检查/合并回主线",
 		Members: []string{
 			"create_worktree", "open_isolated_worktree_project",
@@ -156,6 +166,7 @@ var groupCatalog = []GroupDef{
 	},
 	{
 		Name:     "system",
+		Title:    "系统杂项组",
 		Scenario: "系统杂项：注册校验/代码索引/截图/UI 操控/网页抓取/todo/删除符号/反馈",
 		Members: []string{
 			"claim_check", "code_index", "screenshot", "ui_interact",
@@ -166,6 +177,7 @@ var groupCatalog = []GroupDef{
 	},
 	{
 		Name:     "heartbeat",
+		Title:    "心跳任务组",
 		Scenario: "心跳任务：后台周期任务的列表/写入/开关",
 		Members:  []string{"heartbeat_task_list", "heartbeat_task_upsert", "heartbeat_task_enable"},
 		Example:  "heartbeat_task_upsert",
@@ -173,6 +185,7 @@ var groupCatalog = []GroupDef{
 	},
 	{
 		Name:     "workflow",
+		Title:    "工作流编排组",
 		Scenario: "工作流编排：声明式 DAG 的定义/查询/触发/状态（子代理节点+确定性门+独立确认+报告）",
 		Members:  []string{"workflow_define", "workflow_list", "workflow_get", "workflow_run", "workflow_status"},
 		Example:  "workflow_run",
@@ -180,6 +193,7 @@ var groupCatalog = []GroupDef{
 	},
 	{
 		Name:     "files",
+		Title:    "文件操作组",
 		Scenario: "文件操作：删除区间/移动文件/列目录/编辑 notebook",
 		Members:  []string{"delete_range", "move_file", "ls", "notebook_edit"},
 		Example:  "move_file",
@@ -189,6 +203,7 @@ var groupCatalog = []GroupDef{
 		// tl1453：dream/distill 记忆整理工具随 experimental_dream 实验退役
 		// （宪法 Q1），触发词与本组只剩决策模式固化一件。
 		Name:     "memory",
+		Title:    "记忆固化组",
 		Scenario: "记忆固化：决策模式固化",
 		Members:  []string{"decision_pattern_solidify"},
 		Example:  "decision_pattern_solidify",
