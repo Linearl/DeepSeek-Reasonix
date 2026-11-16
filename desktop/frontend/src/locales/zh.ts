@@ -4853,6 +4853,7 @@ export const zh: Record<DictKey, string> = {
   "settings.fetchModelsEmpty": "没有获取到可用模型",
   "settings.fetchModelsEmptyForProvider": "{provider} 没有返回可用模型",
   "settings.fetchModelsFailedForProvider": "刷新 {provider} 失败：{err}",
+  "settings.fetchModelsManualInputHint": "也可以编辑该连接，手动填写模型 ID。",
   "settings.fetchModelsAfterKeyFailed": "密钥已保存，但暂时无法自动刷新可用模型：{err}",
   "settings.fetchModelsAfterKeyFailedForProvider": "密钥已保存，但暂时无法刷新 {provider} 的可用模型：{err}",
   "settings.newProviderDraftName": "新供应商",

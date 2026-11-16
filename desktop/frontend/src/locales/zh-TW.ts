@@ -3401,6 +3401,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.fetchModelsEmpty": "沒有取得可用模型",
   "settings.fetchModelsEmptyForProvider": "{provider} 沒有返回可用模型",
   "settings.fetchModelsFailedForProvider": "重新整理 {provider} 失敗：{err}",
+  "settings.fetchModelsManualInputHint": "也可以編輯該連線，手動填寫模型 ID。",
   "settings.fetchModelsAfterKeyFailed": "金鑰已儲存，但暫時無法自動重新整理可用模型：{err}",
   "settings.fetchModelsAfterKeyFailedForProvider": "金鑰已儲存，但暫時無法重新整理 {provider} 的可用模型：{err}",
   "settings.newProviderDraftName": "新供應商",

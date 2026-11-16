@@ -58,6 +58,33 @@ export function reconcileManualModels(draft: { candidates: string[]; selected: s
   };
 }
 
+// tl1654: the install flow mints provider identities on the backend — preset
+// and connection installs rename entries with a random suffix — so callers
+// diff by name against the pre-save provider set instead of tracking a handle.
+// Only configured providers with a base URL are actionable for model fetch.
+export function newlyAddedProviders(providers: ProviderView[], knownNames: Set<string>): ProviderView[] {
+  return providers.filter((p) => p.added && !knownNames.has(p.name) && providerIsConfigured(p) && Boolean(p.baseUrl.trim()));
+}
+
+// tl1654: a preset/official install ships the curated static model list only
+// as a fallback (the provider validation requires at least one model). Once
+// the endpoint's live /models list arrives, it replaces the fallback outright
+// so model pickers stop showing stale built-in entries. Returns null when the
+// endpoint yielded nothing usable — the caller keeps the fallback in place and
+// surfaces a readable error with a manual-entry hint instead.
+export function installedProviderCatalogDraft(
+  p: { default: string; visionModels: string[] },
+  fetched: string[],
+): { models: string[]; default: string; visionModels: string[] } | null {
+  const live = uniqueStrings(fetched).filter(isLikelyChatModel);
+  if (live.length === 0) return null;
+  return {
+    models: live,
+    default: providerDefaultModel(p.default, live),
+    visionModels: p.visionModels.filter((model) => live.includes(model)),
+  };
+}
+
 export function inferredVisionModels(models: string[]): string[] {
   return uniqueStrings(models).filter((model) => isLikelyChatModel(model) && isLikelyVisionModel(model));
 }
