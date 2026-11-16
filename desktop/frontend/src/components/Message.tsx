@@ -842,11 +842,11 @@ export const UserMessage = memo(function UserMessage({
                     {imSource.chat && <span>{imSource.chat}</span>}
                   </>
                 )}
-                {/* 任务1122: 时间戳移出卡片 foot 行——统一放卡片下方 meta-time 行
-                    （与普通消息 msg-meta 同位同款）。任务1092 原版在 foot 行内
-                    渲染 im-source-card__time，已按用户 15:06 裁定回退；复制按钮
-                    留 foot 行右对齐（.im-source-card__copy margin-left:auto）。 */}
-                <CopyButton text={imSource.text} label={t("msg.copy")} showInlineLabel={false} className="im-source-card__copy" />
+                {/* tl1639: 卡内不渲染复制按钮——时间戳与复制统一在卡片下方
+                    .msg-meta 行同行右对齐（1122 起该行已带时间戳+复制；卡内
+                    复制与它构成「复制在卡内一行、时间戳在卡下一行」的两行
+                    分裂+双复制，用户截图 20261116 13:38 即此现场）。
+                    防回潮：勿在此行重新加 CopyButton。 */}
               </div>
             )}
           </div>
