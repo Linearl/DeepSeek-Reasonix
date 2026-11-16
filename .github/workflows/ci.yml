@@ -863,6 +863,13 @@ jobs:
       - name: architecture registry check
         run: node scripts/check-architecture.mjs
 
+      # tl1650 阶段 1：注入通道拦点断言——user 形态消息写入转录/事件流的合法
+      # 入口清单固化，新增旁路写入点（新文件构造/新文件发射 user_input/reducer
+      # 分叉）即红。白名单与锚清单在脚本内，枚举对照表在 workspace docs 的
+      # tl1650 拦点枚举文档。
+      - name: injection entrypoints check
+        run: node scripts/check-injection-entrypoints.mjs
+
       - name: wails version pin
         run: |
           bash scripts/check-wails-pin.sh
