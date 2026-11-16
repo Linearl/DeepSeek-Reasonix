@@ -74,6 +74,27 @@ type SendOptions struct {
 	RefreshCredential func() bool
 }
 
+// BuildSendOptions is the single construction site for a provider client's
+// SendOptions (tl1632). The anthropic/openai/responses clients previously
+// held three field-identical copies of this mapping, so a new SendOptions
+// field had to be wired in three places — missing one silently dropped that
+// field for that protocol. Protocol differences live in request construction,
+// not in this option mapping, so one shared builder is behaviour-equivalent.
+// keyPresent/retryAuth stay caller-evaluated so each client keeps its own
+// locking (currentAPIKey) and atomic (authed) read timing.
+func BuildSendOptions(name string, identity RequestIdentity, keyEnv, keySource string, keyPresent, retryAuth bool, refreshCredential func() bool) SendOptions {
+	return SendOptions{
+		Provider:            name,
+		ProviderDisplayName: identity.DisplayName,
+		Protocol:            identity.Protocol,
+		KeyEnv:              keyEnv,
+		KeySource:           keySource,
+		KeyPresent:          keyPresent,
+		RetryAuth:           retryAuth,
+		RefreshCredential:   refreshCredential,
+	}
+}
+
 // RetryBudget (task 1056 方案 B) is the lab-switch-gated retry tuning layer.
 // It rides a context value so SendWithRetry — the single choke point every HTTP
 // provider shares — can read it without touching any provider signature or the
