@@ -730,7 +730,7 @@ func (a *Agent) observeProjectionFallback(est int) {
 			return
 		}
 		msgs, curVersion := a.sess.conversation.snapshotMessagesVersion()
-		a.warnProjectionFallback("no_projection", st, est, window, projectionDriftEvidence(st, msgs, curVersion))
+		a.warnProjectionFallback("no_projection", st, est, window, projectionDriftEvidence(st, msgs, curVersion), "")
 		return
 	}
 	msgs, curVersion := a.sess.conversation.snapshotMessagesVersion()
@@ -747,21 +747,27 @@ func (a *Agent) observeProjectionFallback(est int) {
 	// once and hand it to whichever warning fires, so the log line can name
 	// HOW the prefix moved instead of only that it moved.
 	diff := projectionDriftEvidence(st, msgs, curVersion)
+	// tl1651 打点 a (runtime half): name the specific fail path that fired,
+	// not just "content mismatch" — the same five-way split the first-load
+	// path logs.
+	failDetail := projectionInvalidReason(st, msgs)
 	// Content drift: name whether the lineage key also moved.
 	if key != "" {
 		if _, ok := lineageKeyCompatible(st.PromptCacheKey, key); !ok {
-			a.warnProjectionFallback("lineage_key_mismatch", st, est, window, diff)
+			a.warnProjectionFallback("lineage_key_mismatch", st, est, window, diff, failDetail)
 			return
 		}
 	}
-	a.warnProjectionFallback("content_mismatch", st, est, window, diff)
+	a.warnProjectionFallback("content_mismatch", st, est, window, diff, failDetail)
 }
 
 // warnProjectionFallback emits the throttled fallback warning. Checks the
 // cooldown swallows are counted in fallbackWarnSuppressed and flushed on the
 // next emitted line as `suppressed=N` (tl1562 G1), so a persistent episode is
-// measurable from the log alone.
-func (a *Agent) warnProjectionFallback(reason string, st CompactionState, est, window int, diff projectionDriftDiff) {
+// measurable from the log alone. failDetail (tl1651) carries the specific
+// projectionInvalidReason label when a body exists and failed validation;
+// empty for body-less episodes.
+func (a *Agent) warnProjectionFallback(reason string, st CompactionState, est, window int, diff projectionDriftDiff, failDetail string) {
 	if !a.sess.compaction.fallbackWarnAt.IsZero() && time.Since(a.sess.compaction.fallbackWarnAt) < projectionFallbackWarnCooldown {
 		a.sess.compaction.fallbackWarnSuppressed++
 		return
@@ -780,7 +786,8 @@ func (a *Agent) warnProjectionFallback(reason string, st CompactionState, est, w
 	// session names the conversation so the episode can be joined with the
 	// sampling-failure and truncation lines of the same incident.
 	slog.Warn("agent: context projection invalid — fallback view serves the wire",
-		"reason", reason, "view_tokens", est, "window", window,
+		"reason", reason, "fail_detail", failDetail,
+		"view_tokens", est, "window", window,
 		"projection_version", st.Projection.ProjectionVersion,
 		"prompt_cache_key", st.PromptCacheKey,
 		"session", a.sessionLogRef(),

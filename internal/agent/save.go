@@ -2069,6 +2069,19 @@ func loadSessionWithReader(path string, read func(*sessionTranscriptHasher) (ses
 		// gets a placeholder result fabricated here that the live session
 		// answered for real).
 		s.rawMessages = msgs
+		// tl1651 打点 c 恢复半边: this repair rewrites provider-visible
+		// transcript bytes at resume time WITHOUT passing through
+		// Rewrite/Replace, so the rewrite probe never sees it — yet it is the
+		// prime suspect for a resume-time covered-prefix hash mismatch (the
+		// sidecar was written against the pre-repair bytes). The log line makes
+		// the repair visible on the same timeline the projection validation
+		// reads; diagnoseProjectionMismatch's "load_repair" corpus check closes
+		// the attribution loop.
+		slog.Info("agent: transcript repaired on load",
+			"writer", SessionWriterID(),
+			"path", path,
+			"pre_repair_msgs", len(msgs),
+			"post_repair_msgs", len(normalized))
 	}
 	s.Messages = normalized
 	if s.tailTruncated {

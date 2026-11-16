@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -74,6 +75,15 @@ type ContextProjection struct {
 	// CoveredPrefixHash fingerprints provider-visible canonical[:CoveredCount]
 	// so append-only growth can be distinguished from prefix edits/rewrites.
 	CoveredPrefixHash string `json:"covered_prefix_hash,omitempty"`
+	// CoveredMessageHashes (tl1651 diagnostic, optional) fingerprints each
+	// message of the sanitized covered prefix individually, in pipeline order,
+	// so a covered_prefix_hash mismatch can be pinpointed to the FIRST edited
+	// message on resume. Observability-only: no reader gates on it, and legacy
+	// sidecars (field absent) degrade to the whole-prefix hash pair. The array
+	// length is the SANITIZED pipeline length, which can differ from
+	// CoveredCount when orphan tool messages are dropped or placeholders are
+	// fabricated — that length delta is itself evidence of a structural rewrite.
+	CoveredMessageHashes []string `json:"covered_message_hashes,omitempty"`
 	// PinnedContextHash authenticates host-origin provenance inside the covered
 	// canonical prefix. Provider bytes omit Origin, so CoveredPrefixHash alone
 	// cannot detect provenance edits that change checkpoint reconstruction.
@@ -217,6 +227,19 @@ func LoadCompactionState(sessionPath string) (CompactionState, bool, error) {
 	if st.SchemaVersion == 0 {
 		st.SchemaVersion = compactionStateSchemaV1
 	}
+	// tl1651 打点 d (load-side anchor): the resume-time ordering — LoadSession
+	// (with its transcript repair) → sidecar read → content validation — is
+	// exactly the sequence the 20261116 restart incident needs to reconstruct.
+	// Debug level: the caller-level restored/drop lines already carry the
+	// verdict; this stamps the raw read with the on-disk sidecar's own state.
+	slog.Debug("agent: context sidecar loaded",
+		"writer", SessionWriterID(),
+		"schema_version", st.SchemaVersion,
+		"projection_version", st.Projection.ProjectionVersion,
+		"covered_count", st.Projection.CoveredCount,
+		"sidecar_updated_at", st.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		"sidecar_msg_count", len(st.Projection.Messages),
+		"per_msg_hashes", len(st.Projection.CoveredMessageHashes))
 	return st, true, nil
 }
 
@@ -253,7 +276,25 @@ func SaveCompactionState(sessionPath string, st CompactionState) error {
 		return err
 	}
 	b = append(b, '\n')
-	return fileutil.AtomicWriteFileStrict(path, b, 0o644)
+	err = fileutil.AtomicWriteFileStrict(path, b, 0o644)
+	// tl1651 打点 d (save-side anchor): every sidecar publish is stamped so the
+	// shutdown/save ordering against the transcript snapshot can be read
+	// straight off the log timeline (the 20261114→15 session's sidecar was
+	// written ~14h before the restart; knowing WHICH publish produced it rules
+	// the shutdown-flush hypothesis in or out directly). Low frequency (fold
+	// commits, lineage rebinds): Info is proportionate.
+	if err == nil {
+		slog.Info("agent: context sidecar saved",
+			"writer", SessionWriterID(),
+			"projection_version", st.Projection.ProjectionVersion,
+			"covered_count", st.Projection.CoveredCount,
+			"transcript_version", st.TranscriptVersion,
+			"sidecar_msg_count", len(st.Projection.Messages),
+			"per_msg_hashes", len(st.Projection.CoveredMessageHashes),
+			"bytes", len(b),
+			"path", path)
+	}
+	return err
 }
 
 // RemoveCompactionState deletes a corrupt or invalidated projection sidecar.
@@ -288,6 +329,129 @@ func coveredPrefixHash(msgs []provider.Message, n int) string {
 	}
 	visible := modelInputMessages(msgs[:n])
 	return providerVisibleFingerprint(provider.SanitizeToolPairing(visible))
+}
+
+// coveredMessageFingerprints (tl1651) fingerprints each message of the
+// sanitized covered prefix individually, through the exact pipeline
+// coveredPrefixHash uses (modelInputMessages → SanitizeToolPairing), so a
+// whole-prefix mismatch can be narrowed to the first edited message. The
+// per-message hashes are read side by side against the sidecar's persisted
+// CoveredMessageHashes; the index where they diverge is the rewrite point.
+func coveredMessageFingerprints(msgs []provider.Message, n int) []string {
+	if n <= 0 || n > len(msgs) {
+		return nil
+	}
+	visible := provider.SanitizeToolPairing(modelInputMessages(msgs[:n]))
+	out := make([]string, len(visible))
+	for i := range visible {
+		out[i] = providerVisibleFingerprint(visible[i : i+1])
+	}
+	return out
+}
+
+// projectionMismatchEvidence is the tl1651 diagnosis of one hash_mismatch
+// failure: which fail path fired, and — when a comparison corpus exists — the
+// first diverging message with both sides' fingerprints. It is only ever
+// logged, never persisted and never read back for decisions.
+type projectionMismatchEvidence struct {
+	StoredPrefixHash  string // sidecar's CoveredPrefixHash
+	CurrentPrefixHash string // recomputed from the current transcript
+	CoveredCount      int
+	// Source names the corpus the per-message diff ran against:
+	//   "load_repair"      — the pre-repair transcript (rawMessages) still
+	//                        matches the stored hash, so the rewrite happened
+	//                        during THIS process's LoadSession normalization.
+	//   "persisted_hashes" — the sidecar's CoveredMessageHashes array.
+	//   "none"             — no corpus; only the whole-prefix pair is known.
+	Source         string
+	DiffIndex      int    // first diverging index in the sanitized pipeline order; -1 unknown
+	StoredMsgHash  string // stored fingerprint at DiffIndex ("" when unavailable)
+	CurrentMsgHash string // current fingerprint at DiffIndex
+	DiffRole       string // role of the current message at DiffIndex
+	DiffOrigin     string // origin of the current message at DiffIndex
+	StoredMsgLen   int    // sanitized pipeline length the stored side describes
+	CurrentMsgLen  int    // sanitized pipeline length the current transcript produces
+}
+
+// diagnoseProjectionMismatch localizes a covered-prefix hash mismatch (tl1651
+// 打点 b). It prefers the load-repair corpus (zero-cost, and it attributes the
+// single most likely writer — LoadSession's NormalizeSession repair —
+// directly), then the persisted per-message hashes, then degrades to the
+// whole-prefix hash pair. Pure function: reads only its arguments.
+func diagnoseProjectionMismatch(st CompactionState, msgs, preRepair []provider.Message) projectionMismatchEvidence {
+	n := st.Projection.CoveredCount
+	ev := projectionMismatchEvidence{
+		StoredPrefixHash:  st.Projection.CoveredPrefixHash,
+		CurrentPrefixHash: coveredPrefixHash(msgs, n),
+		CoveredCount:      n,
+		DiffIndex:         -1,
+	}
+	currentFP := coveredMessageFingerprints(msgs, n)
+	ev.CurrentMsgLen = len(currentFP)
+
+	// B1: load-repair attribution. If the pre-repair transcript still hashes to
+	// the stored value, the covered prefix was rewritten by THIS load's
+	// normalization, and the first diverging pipeline slot names the repaired
+	// message.
+	if len(preRepair) > 0 && n > 0 && n <= len(preRepair) &&
+		coveredPrefixHash(preRepair, n) == st.Projection.CoveredPrefixHash {
+		ev.Source = "load_repair"
+		preFP := coveredMessageFingerprints(preRepair, n)
+		ev.StoredMsgLen = len(preFP)
+		ev.StoredMsgHash, ev.DiffIndex, ev.DiffRole, ev.DiffOrigin = firstFingerprintDivergence(preFP, currentFP, msgs)
+		return ev
+	}
+	// B2: persisted per-message hashes from the sidecar.
+	if stored := st.Projection.CoveredMessageHashes; len(stored) > 0 {
+		ev.Source = "persisted_hashes"
+		ev.StoredMsgLen = len(stored)
+		ev.StoredMsgHash, ev.DiffIndex, ev.DiffRole, ev.DiffOrigin = firstFingerprintDivergence(stored, currentFP, msgs)
+		return ev
+	}
+	// B3: no corpus — the whole-prefix pair is all the evidence available.
+	ev.Source = "none"
+	return ev
+}
+
+// firstFingerprintDivergence returns the first index where stored and current
+// per-message fingerprints differ, with the stored fingerprint at that slot and
+// a best-effort role/origin of the current message there. A length mismatch is
+// itself the divergence (structural insert/delete inside the covered prefix):
+// the slot is the shorter length, i.e. the first position where one side has no
+// counterpart. Role/origin are read from the CURRENT canonical transcript at
+// the pipeline index — approximate when sanitization dropped or fabricated
+// earlier messages, exact when the pipeline is 1:1 with canonical (the common
+// healthy-history case, since the fast path passes clean input through).
+func firstFingerprintDivergence(stored, current []string, msgs []provider.Message) (storedHash string, idx int, role, origin string) {
+	idx = -1
+	limit := len(stored)
+	if len(current) < limit {
+		limit = len(current)
+	}
+	for i := 0; i < limit; i++ {
+		if stored[i] != current[i] {
+			storedHash, idx = stored[i], i
+			break
+		}
+	}
+	if idx < 0 && len(stored) != len(current) {
+		idx = limit
+	}
+	if idx < 0 {
+		return "", -1, "", ""
+	}
+	if idx < len(msgs) {
+		role = string(msgs[idx].Role)
+		origin = string(msgs[idx].Origin)
+	}
+	return storedHashOr(stored, idx), idx, role, origin
+}
+
+func storedHashOr(stored []string, idx int) string {
+	if idx >= 0 && idx < len(stored) {
+		return stored[idx]
+	}
+	return ""
 }
 
 // boundedCoveredPrefixHash is the v3 bounded provider fingerprint. Keep the
@@ -381,6 +545,9 @@ func migratePromotedCoveredPrefixHash(st *CompactionState, msgs []provider.Messa
 	}
 	st.Projection.Messages = normalizedMessages
 	st.Projection.CoveredPrefixHash = currentHash
+	// tl1651: keep the diagnostic per-message corpus in step with the migrated
+	// prefix hash, so later mismatches localize against the migrated form.
+	st.Projection.CoveredMessageHashes = coveredMessageFingerprints(msgs, n)
 	if st.LastReceipt != nil && st.LastReceipt.CoveredPrefixHash == stored {
 		receipt := *st.LastReceipt
 		receipt.CoveredPrefixHash = currentHash
@@ -419,6 +586,8 @@ func migrateLegacyCoveredPrefixHash(st *CompactionState, current, preRepair []pr
 		return false
 	}
 	st.Projection.CoveredPrefixHash = currentHash
+	// tl1651: repopulate the diagnostic corpus against the current transcript.
+	st.Projection.CoveredMessageHashes = coveredMessageFingerprints(current, n)
 	if st.LastReceipt != nil && st.LastReceipt.CoveredPrefixHash == stored {
 		receipt := *st.LastReceipt
 		receipt.CoveredPrefixHash = currentHash
@@ -505,36 +674,63 @@ func projectionValid(st CompactionState, msgs []provider.Message) bool {
 	return projectionContentValid(st, msgs)
 }
 
+// tl1651 fail-path labels for projectionContentValid. Before tl1651 every
+// failure below was reported as the single opaque "projection_body_invalid",
+// which made the 20261116 14:45 restart incident (projection dropped to a
+// 1.21M-token full-canonical view) impossible to attribute. These strings are
+// observability-only: they never gate behavior.
+const (
+	projectionFailNone            = "" // valid
+	projectionFailBodyEmpty       = "projection_body_empty"
+	projectionFailCoveredOverflow = "covered_count_overflow"
+	projectionFailLegacyNoHash    = "legacy_no_hash"
+	projectionFailPinned          = "pinned_provenance"
+	projectionFailHashMismatch    = "hash_mismatch"
+)
+
 // projectionContentValid reports whether st's projection body still matches the
 // canonical transcript, independent of provider/model lineage. The covered hash
 // is authoritative, except for leading system messages: those live outside the
 // folded region and may be refreshed independently after a compaction.
 func projectionContentValid(st CompactionState, msgs []provider.Message) bool {
+	return projectionInvalidReason(st, msgs) == projectionFailNone
+}
+
+// projectionInvalidReason is the tl1651 diagnostic twin of
+// projectionContentValid: it returns why the projection body cannot serve the
+// wire, with one distinct label per failure exit. The two functions share a
+// single logic source — projectionContentValid is exactly "reason is empty" —
+// so the labels can never drift from the actual gates. Zero behavior change:
+// every branch below mirrors the pre-tl1651 projectionContentValid verbatim.
+func projectionInvalidReason(st CompactionState, msgs []provider.Message) string {
 	if len(st.Projection.Messages) == 0 {
-		return false
+		return projectionFailBodyEmpty
 	}
 	n := st.Projection.CoveredCount
 	if n <= 0 || n > len(msgs) {
-		return false
+		return projectionFailCoveredOverflow
 	}
 	// Prefix hash is required; legacy sidecars without it are rebuilt.
 	if st.Projection.CoveredPrefixHash == "" {
-		return false
+		return projectionFailLegacyNoHash
 	}
 	// Readers before v4 did not authenticate pinned revision provenance. Their
 	// projections may summarize or omit active pinned state, so fail closed and
 	// rebuild a v4 checkpoint from the canonical transcript.
 	if st.SchemaVersion < compactionStateSchemaV4 && containsPinnedContextRevision(msgs[:n]) {
-		return false
+		return projectionFailPinned
 	}
 	if st.SchemaVersion >= compactionStateSchemaV4 &&
 		st.Projection.PinnedContextHash != pinnedContextCoverageHash(msgs, n) {
-		return false
+		return projectionFailPinned
 	}
 	if coveredPrefixHash(msgs, n) == st.Projection.CoveredPrefixHash {
-		return true
+		return projectionFailNone
 	}
-	return projectionMatchesAfterSystemRefresh(st, msgs, n)
+	if projectionMatchesAfterSystemRefresh(st, msgs, n) {
+		return projectionFailNone
+	}
+	return projectionFailHashMismatch
 }
 
 // projectionMatchesAfterSystemRefresh verifies a covered-prefix mismatch by

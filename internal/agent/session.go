@@ -101,6 +101,14 @@ type Session struct {
 	// deliberately session-local so multiple runtimes cannot steal each other's
 	// observer registration.
 	persistObserver SessionPersistObserver
+	// prefixRewriteProbe (tl1651 打点 c) observes every provider-visible
+	// history rewrite at the moment it lands: the agent installs it when
+	// binding a session, and it attributes whether the change touches the
+	// currently covered prefix region (the exact writer class that produced
+	// the 20261116 14:45 projection_body_invalid rebuild). Nil = observation
+	// off: zero overhead, zero behavior change. Called OUTSIDE s.mu (see
+	// Rewrite) with immutable snapshots.
+	prefixRewriteProbe func(reason string, before, after []provider.Message)
 	// writeAuth is the generation-bound write permit for this session's path.
 	// Controllers bind it after acquiring a SessionLease; save/ownership paths
 	// consult it instead of a process-level "I hold a lease" boolean.
@@ -391,11 +399,19 @@ func (s *Session) UpdateToolCallResolution(call provider.ToolCall) bool {
 // that a mid-turn snapshot may already have written.
 func (s *Session) Replace(msgs []provider.Message) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	before := s.Messages
 	msgs = retainUnresolvedToolRecords(s.Messages, msgs)
 	mintMessageIDs(msgs)
 	s.Messages = msgs
 	s.version++
+	probe := s.prefixRewriteProbe
+	s.mu.Unlock()
+	// tl1651: outside s.mu — the agent-side probe takes compactionMu, and
+	// compactionMu→s.mu nesting exists on other paths, so calling under s.mu
+	// could invert the lock order.
+	if probe != nil {
+		probe("", before, msgs)
+	}
 }
 
 // Rewrite atomically replaces the message log and marks it as a rewrite. The
@@ -411,7 +427,7 @@ func (s *Session) Replace(msgs []provider.Message) {
 // change that never happened.
 func (s *Session) Rewrite(msgs []provider.Message, reason string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	before := s.Messages
 	msgs = retainUnresolvedToolRecords(s.Messages, msgs)
 	mintMessageIDs(msgs)
 	s.Messages = msgs
@@ -419,6 +435,13 @@ func (s *Session) Rewrite(msgs []provider.Message, reason string) {
 	s.version++
 	if reason != "" {
 		s.pendingContentReasons = append(s.pendingContentReasons, reason)
+	}
+	probe := s.prefixRewriteProbe
+	s.mu.Unlock()
+	// tl1651: outside s.mu — see Replace. before/after are stable snapshots
+	// (before is the replaced slice header; after is the freshly installed one).
+	if probe != nil {
+		probe(reason, before, msgs)
 	}
 }
 
