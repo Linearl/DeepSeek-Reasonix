@@ -1407,13 +1407,16 @@ func UnappliedSteerNotice(text string) string {
 	return fmt.Sprintf(i18n.M.UnappliedSteerFmt, text)
 }
 
-// readonlyTurnNotice is the visible head of a turn whose own input bound it to
-// read-only (task 220 P2). It exists so a silent ConstraintGuard freeze can
+// readonlyTurnNotice is the visible head of a turn whose own input carries a
+// mutation ban (task 220 P2). It exists so a silent ConstraintGuard freeze can
 // never read as a malfunction: the model knows why writes are refused and can
 // say so, instead of burning turns misdiagnosing — talk is blocked too, so the
-// freeze used to survive until the next unrelated user message.
+// freeze used to survive until the next unrelated user message. tl1621
+// removed the read-only wording trigger; only a negated mutation in the input
+// ("不要修改…", "do not modify anything") still binds, so the notice speaks of
+// a mutation ban rather than read-only.
 func readonlyTurnNotice() string {
-	return "[系统提示] 本轮输入包含只读约束（ForbidMutation 生效）：变更类工具（写入/编辑/投递等）会被拦截。这是用户本轮指令的约束而非故障；如需改动，请在回复中说明，并在用户下一轮不带只读字样的指令下执行。\n\n"
+	return "[系统提示] 本轮输入包含变更禁令（ForbidMutation 生效）：变更类工具（写入/编辑/投递等）会被拦截。这是用户本轮指令的约束而非故障；如需改动，请在回复中说明，并在用户下一轮不包含变更禁令的指令下执行。\n\n"
 }
 
 // unappliedSteerRestoreDetail rides the Detail of a per-item unapplied-steer

@@ -80,16 +80,22 @@ func ParseConstraints(instruction string) Constraints {
 	return c
 }
 
-// hasGlobalMutationBan distinguishes a turn-wide read-only instruction from a
-// scoped protection such as "do not change any config". The latter still lets
-// the requested output or an unrelated implementation target be written.
+// hasGlobalMutationBan recognizes a turn-wide negated mutation ("do not
+// modify anything", 「不要修改」) and distinguishes it from a scoped protection
+// such as "do not change any config", which still lets the requested output or
+// an unrelated implementation target be written. tl1621: read-only wording
+// ("只读", "read-only", "analyze only") no longer binds the turn at all —
+// clause-level matching kept mis-freezing heartbeat/task text that merely
+// described a read-only third party, and every peer product resolves
+// read-only-ness from configuration before the turn starts, never from
+// instruction text.
 func hasGlobalMutationBan(instruction string) bool {
 	for _, clause := range mutationConstraintClauses(instruction) {
 		clause = strings.TrimSpace(strings.TrimLeft(clause, "-*•0123456789. )\t"))
 		if clause == "" {
 			continue
 		}
-		if hasExplicitReadOnlyClause(clause) || hasGlobalNegatedMutationClause(clause) {
+		if hasGlobalNegatedMutationClause(clause) {
 			return true
 		}
 	}
@@ -105,65 +111,6 @@ func mutationConstraintClauses(instruction string) []string {
 			return false
 		}
 	})
-}
-
-func hasExplicitReadOnlyClause(clause string) bool {
-	if hasMutationContinuation(clause) {
-		return false
-	}
-	for _, phrase := range []string{
-		"analyze only", "analysis only", "read-only review", "read only review",
-		"reproduce only", "reproduce but don't fix", "reproduce but do not fix",
-		"只分析", "仅分析", "只看不改", "复现但不修复", "只复现", "仅复现",
-	} {
-		if strings.Contains(clause, phrase) {
-			return true
-		}
-	}
-	trimmed := strings.TrimSpace(clause)
-	if trimmed == "read-only" || strings.HasPrefix(trimmed, "read-only ") ||
-		trimmed == "read only" || strings.HasPrefix(trimmed, "read only ") {
-		return true
-	}
-	// Task 220 (P1): a bare 「只读…」prefix can no longer bind by itself — a
-	// report describing a third party ("只读审计，未重跑测试") must not freeze
-	// the turn. Bind only the bare imperative (只读 / 只读模式), one scoped to
-	// this turn (本次/这轮), or one where an analysis verb follows directly.
-	if !strings.HasPrefix(trimmed, "只读") {
-		return false
-	}
-	if trimmed == "只读" || trimmed == "只读模式" {
-		return true
-	}
-	if strings.Contains(trimmed, "本次") || strings.Contains(trimmed, "这轮") {
-		return true
-	}
-	normalized := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(trimmed, "只读模式"), "只读"))
-	for _, verb := range []string{
-		"分析", "看", "检查", "审阅", "跑", "读", "浏览", "研究", "评估", "查",
-		"analyze", "review", "read", "inspect", "check", "run", "verify",
-	} {
-		if strings.HasPrefix(normalized, verb) || strings.HasPrefix(normalized, " "+verb) {
-			return true
-		}
-	}
-	return false
-}
-
-func hasMutationContinuation(clause string) bool {
-	for _, marker := range []string{" then ", " and then ", " but then ", "然后", "再", "接着"} {
-		_, tail, ok := strings.Cut(clause, marker)
-		if !ok {
-			continue
-		}
-		if matchesAny(tail, []string{
-			"fix", "repair", "implement", "write", "edit", "change", "modify", "create", "commit", "push",
-			"修复", "实现", "编写", "写入", "编辑", "修改", "创建", "提交", "推送",
-		}) {
-			return true
-		}
-	}
-	return false
 }
 
 func hasGlobalNegatedMutationClause(clause string) bool {
@@ -287,7 +234,8 @@ func startsWithAnyChinese(value string, prefixes []string) bool {
 // of a peer's message is DATA for this turn, not an instruction to it — a
 // report that merely said 「只读审计」 once froze every write tool for a
 // whole turn, and letting peer text reach the parser widened the
-// prompt-injection surface for free.
+// prompt-injection surface for free. tl1621 removed the read-only trigger
+// entirely, but negated-mutation phrasing still parses, so the strip stays.
 func StripQuotedConstraints(raw string) string {
 	s := stripCollabEnvelope(raw)
 	s = stripFences(s)
