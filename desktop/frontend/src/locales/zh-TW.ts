@@ -4105,10 +4105,17 @@ export const zhTW: Record<DictKey, string> = {
   "compaction.showSummary": "展開摘要",
   "compaction.hideSummary": "收起摘要",
   "compaction.failed": "上下文壓縮失敗",
-  "compaction.failedAttempt": "上下文壓縮失敗（第 {n} 次）——本次壓縮已停止，上下文繼續記錄，稍後自動重試",
+  // tl1648: 原文案「稍後自動重試」是虛假承諾——本代實際 blocked，真正的下一
+  // 步是下一次上下文檢查時放行重試（internal/agent context_receipt.go）。
+  "compaction.failedAttempt": "上下文壓縮失敗（第 {n} 次）——本次壓縮已停止，上下文讀數保持不變，將在下一次上下文檢查時自動重試",
   // tl1446-6: 後端閉集失敗原因（internal/agent context_receipt.go
   // compactionFailureReason）按原文精確匹配本地化；未知原因保留原文。
-  "compaction.reasonContextChanged": "壓縮期間上下文發生了變化，本輪已被丟棄並將自動重試",
+  // tl1648: 後端 reason 同步去掉「will retry」虛假承諾。
+  "compaction.reasonContextChanged": "壓縮期間上下文發生了變化，本輪已被丟棄，將在下一次上下文檢查時自動重試",
+  // tl1648 失敗卡資訊補全：讀數為何不降 + 上次成功時間（後端
+  // fold_installed / last_success_at 事件欄位）。
+  "compaction.failedNoFold": "本次未安裝任何壓縮，上下文讀數不會下降",
+  "compaction.failedLastSuccess": "上次成功壓縮：",
   "compaction.reasonTruncated": "摘要輸出被截斷",
   "compaction.reasonNoReduction": "壓縮候選未能減小上下文體積",
   "compaction.reasonCancelled": "壓縮已被取消",
@@ -5956,9 +5963,10 @@ export const zhTW: Record<DictKey, string> = {
   "context.windowCompactHeadroom": "壓縮前餘量",
   "context.maintenanceTitle": "上下文短視圖",
   "context.maintenanceAppliedSummary": "已生成短視圖",
-  "context.maintenanceBlockedSummary": "摘要未形成短視圖 · 稍後自動重試",
-  "context.maintenanceFailedSummary": "摘要未完成 · 稍後自動重試",
-  "context.maintenanceRefreshFailedSummary": "短視圖已保留 · 摘要更新失敗，稍後自動重試",
+  // tl1648: 原文案「稍後自動重試」與 blocked 實際行為（本代不重試）矛盾，同批修正。
+  "context.maintenanceBlockedSummary": "摘要未形成短視圖 · 將在下一次上下文檢查時自動重試",
+  "context.maintenanceFailedSummary": "摘要未完成 · 將在下一次上下文檢查時自動重試",
+  "context.maintenanceRefreshFailedSummary": "短視圖已保留 · 摘要更新失敗，將在下一次上下文檢查時自動重試",
   "context.maintenanceTruncatedSummary": "已裁剪上下文視圖 · 移除最舊的工具結果與輪次以適配視窗",
   "context.maintenanceActionSnip": "裁短",
   "context.maintenanceActionPrune": "裁剪",

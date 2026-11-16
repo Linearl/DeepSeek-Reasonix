@@ -8670,6 +8670,20 @@ body > .mermaid-diagram--fullscreen {
 .compaction--failed .compaction__meta {
   color: color-mix(in srgb, var(--warn, #b45309) 78%, var(--fg));
 }
+/* tl1648: failed-card fact lines（「本次未安装任何压缩」明示 + 上次成功压缩
+   时间）——各占一整行，同 rescue/notes 的 flex-basis:100% 换行机制；首行
+   （主行+原因行）保持 867 判例的卡面逐字节不变。无失败事实时无对应 DOM。 */
+.compaction__meta-line {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding-left: 18px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.compaction__meta-time {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--warn, #b45309) 60%, var(--fg));
+}
 
 /* 任务 973: the pending card now carries the live readout（已 Xs · tokens ·
    t/s）on the same single row — clip with ellipsis so a long readout stays on

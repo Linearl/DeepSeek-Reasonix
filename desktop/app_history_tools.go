@@ -417,6 +417,13 @@ type previewCompaction struct {
 	Trigger  string `json:"trigger"`
 	Messages int    `json:"messages"`
 	Summary  string `json:"summary"`
+	// tl1648: the archived Done event's outcome face — a failed pass must
+	// rebuild as a failed card, not as an empty-summary pseudo success.
+	Outcome       string `json:"outcome"`
+	Attempt       int    `json:"attempt"`
+	Reason        string `json:"reason"`
+	FoldInstalled bool   `json:"foldInstalled"`
+	LastSuccessAt int64  `json:"lastSuccessAt"`
 	Archive  string `json:"archive"`
 }
 
@@ -502,12 +509,21 @@ func previewEventSessionMessages(path string) ([]HistoryMessage, bool, error) {
 			out = append(out, HistoryMessage{Role: "compaction", Pending: true, Trigger: c.Trigger})
 		case "compaction_done":
 			c := rec.compactionPayload()
+			// tl1648: carry the outcome face — failed passes rebuild with
+			// failed/attempt/reason so the transcript keeps the failure card
+			// after a reload instead of an empty-summary pseudo success.
+			failed := c.Outcome == "failed"
 			out = append(out, HistoryMessage{
-				Role:     "compaction",
-				Trigger:  c.Trigger,
-				Messages: c.Messages,
-				Summary:  c.Summary,
-				Archive:  c.Archive,
+				Role:          "compaction",
+				Trigger:       c.Trigger,
+				Messages:      c.Messages,
+				Summary:       c.Summary,
+				Archive:       c.Archive,
+				Failed:        failed,
+				Attempt:       c.Attempt,
+				Reason:        c.Reason,
+				FoldInstalled: c.FoldInstalled,
+				LastSuccessAt: c.LastSuccessAt,
 			})
 		}
 	}

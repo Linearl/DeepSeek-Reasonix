@@ -390,6 +390,10 @@ export type Item =
       // 一条人话 rescue 行。有界 FIFO、仅内存——水合卡不携带（973
       // startedAt 同约定），窗口外的 notice 行为逐字不变。
       episodeNotes?: CompactionEpisodeNote[];
+      // tl1648 失败卡事实（failed 卡专用）：本次是否未安装压缩（读数为何
+      // 不降的明示）与上次成功压缩时间。水合卡经存档重建路径同样携带。
+      foldInstalled?: boolean;
+      lastSuccessAt?: number;
     }
   | {
       kind: "tool";
@@ -1200,6 +1204,26 @@ export function historyMessagesToItems(messages: HistoryMessage[], idPrefix: str
       continue;
     }
     if (m.role === "compaction") {
+      // tl1648: an archived failed Done rebuilds as the failed card (with the
+      // fold/last-success facts), not as an empty-summary pseudo success.
+      if (m.failed) {
+        items.push({
+          kind: "compaction",
+          id: `${idPrefix}${seq}`,
+          pending: false,
+          failed: true,
+          attempt: m.attempt ?? 0,
+          reason: m.reason ?? "",
+          trigger: m.trigger ?? "",
+          messages: 0,
+          summary: "",
+          archive: "",
+          foldInstalled: m.foldInstalled,
+          lastSuccessAt: m.lastSuccessAt,
+        });
+        seq++;
+        continue;
+      }
       items.push({
         kind: "compaction",
         id: `${idPrefix}${seq}`,
@@ -2327,7 +2351,17 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const continuesSession = tracked
         ? pass > s.compactionSessionPass
         : s.items.some((it) => it.kind === "compaction");
-      const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && (continuesSession || !(it as Extract<Item, { kind: "compaction" }>).pending));
+      // tl1648: a RESOLVED (terminal ok) card is never reused — reuse rewrote
+      // the previous pass's success in place, so three successful compactions
+      // (the 20261116 13:07/13:35/14:04 run) left zero trace once the 14:45
+      // failure flipped the same card. Failed cards keep 任务 867's same-card
+      // retry semantics; pending cards keep 任务 1021's multi-pass semantics.
+      const idx = [...s.items].reverse().findIndex((it) => {
+        if (it.kind !== "compaction") return false;
+        const card = it as Extract<Item, { kind: "compaction" }>;
+        if (!card.pending && card.failed !== true) return false;
+        return continuesSession || !card.pending;
+      });
       if (idx >= 0) {
         const at = s.items.length - 1 - idx;
         const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
@@ -2337,7 +2371,11 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         // 任务 1021: a legacy sender (no pass numbers, so the session
         // bookkeeping is inert) keeps 867's historical clearing semantics.
         const failed = cur.failed === true && tracked;
-        const restarted: Item = { ...cur, pending: true, failed, attempt: failed ? cur.attempt : undefined, reason: failed ? cur.reason : undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0, startedAt: Date.now(), pass, interimSummary: undefined };
+        // tl1648: the failure facts describe the PREVIOUS pass — a restart
+        // means a new pass is running, so they clear unconditionally (the
+        // next failed Done re-attaches fresh ones; attempt keeps 867's
+        // tracked-retry counter semantics).
+        const restarted: Item = { ...cur, pending: true, failed, attempt: failed ? cur.attempt : undefined, reason: failed ? cur.reason : undefined, foldInstalled: undefined, lastSuccessAt: undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0, startedAt: Date.now(), pass, interimSummary: undefined };
         return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items: s.items.map((it, i) => (i === at ? restarted : it)) };
       }
       return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "", startedAt: Date.now(), pass }] };
@@ -2398,7 +2436,10 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         // session bookkeeping stays open until an ok pass lands.
         if (c?.outcome === "failed") {
           const prev = at < 0 ? undefined : (s.items[at] as Extract<Item, { kind: "compaction" }>);
-          const failedCard: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : prev!.id, pending: false, failed: true, attempt: c.attempt ?? 0, reason: c.reason ?? "", trigger: c.trigger || prev?.trigger || "", messages: 0, summary: "", archive: "", pass: (c.pass && c.pass > 0 ? c.pass : undefined) ?? prev?.pass, ...(prev?.episodeNotes?.length ? { episodeNotes: prev.episodeNotes } : {}) };
+          // tl1648: the card carries the fold/last-success facts so the user
+          // can tell why the reading did not drop (foldInstalled=false) and
+          // when compaction last succeeded (lastSuccessAt).
+          const failedCard: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : prev!.id, pending: false, failed: true, attempt: c.attempt ?? 0, reason: c.reason ?? "", trigger: c.trigger || prev?.trigger || "", messages: 0, summary: "", archive: "", pass: (c.pass && c.pass > 0 ? c.pass : undefined) ?? prev?.pass, foldInstalled: c.foldInstalled, lastSuccessAt: c.lastSuccessAt || undefined, ...(prev?.episodeNotes?.length ? { episodeNotes: prev.episodeNotes } : {}) };
           const items = at < 0 ? [...s.items, failedCard] : s.items.map((it, i) => (i === at ? failedCard : it));
           return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, items };
         }
