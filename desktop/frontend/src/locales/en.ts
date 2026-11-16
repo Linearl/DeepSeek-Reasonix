@@ -4870,6 +4870,7 @@ export const en = {
   "settings.fetchModelsEmpty": "No available models were returned",
   "settings.fetchModelsEmptyForProvider": "{provider} did not return any available models",
   "settings.fetchModelsFailedForProvider": "Failed to refresh {provider}: {err}",
+  "settings.fetchModelsManualInputHint": "You can also edit the connection and enter model IDs manually.",
   "settings.fetchModelsAfterKeyFailed": "Key saved, but available models could not be refreshed automatically: {err}",
   "settings.fetchModelsAfterKeyFailedForProvider": "Key saved, but available models for {provider} could not be refreshed: {err}",
   "settings.newProviderDraftName": "new provider",

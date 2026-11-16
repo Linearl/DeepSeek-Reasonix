@@ -41,7 +41,7 @@ import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeReb
 import { takeSettingsViewPrefetch, invalidateSettingsViewPrefetch } from "../lib/settingsPrefetch";
 import { settingsLoadRetry } from "../lib/settingsLoadRetry";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
-import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
+import { createLatestRequestGate, installedProviderCatalogDraft, mergedFetchedProviderModels, mergeProviderModelContextWindows, newlyAddedProviders, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
 import { providerBaseURLForSave, providerEndpointMismatchDetail, providerRequestURLForCatalogFormatChange, providerRequestURLFromConfig, trimmedBaseURL } from "../lib/providerEndpoint";
 import { providerModelVisionCapability, providerVisionModelsForView } from "../lib/providerVisionCapability";
@@ -5321,10 +5321,10 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
 
 
 
-  const refreshModels = async (group: ProviderAccessGroup, p: ProviderView) => {
-    const generation = beginGroupFetch(group.id);
-    setGroupFetchResult(group.id, null);
-    setGroupModelDraft(group.id, null);
+  const refreshModels = async (groupID: string, label: string, p: ProviderView) => {
+    const generation = beginGroupFetch(groupID);
+    setGroupFetchResult(groupID, null);
+    setGroupModelDraft(groupID, null);
     try {
       let fetched: string[];
       let fetchedCapabilities: ProviderModelCapabilityView[] = [];
@@ -5332,33 +5332,101 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
         fetchedCapabilities = await cachedFetchProviderModelCatalog((provider) => app.FetchProviderModelCatalog(provider), p, true);
         fetched = fetchedCapabilities.map((item) => item.model);
       } catch (e) {
-        if (!groupFetchIsCurrent(group.id, generation)) return;
-        setGroupFetchResult(group.id, {
+        if (!groupFetchIsCurrent(groupID, generation)) return;
+        setGroupFetchResult(groupID, {
           kind: "warn",
-          text: t("settings.fetchModelsFailedForProvider", { provider: group.label, err: String((e as Error)?.message ?? e) }),
+          text: t("settings.fetchModelsFailedForProvider", { provider: label, err: String((e as Error)?.message ?? e) }),
         });
         return;
       }
-      if (!groupFetchIsCurrent(group.id, generation)) return;
+      if (!groupFetchIsCurrent(groupID, generation)) return;
       if (fetched.length === 0) {
-        setGroupFetchResult(group.id, {
+        setGroupFetchResult(groupID, {
           kind: "warn",
-          text: t("settings.fetchModelsEmptyForProvider", { provider: group.label }),
+          text: t("settings.fetchModelsEmptyForProvider", { provider: label }),
         });
         return;
       }
       const draft = modelDraftForFetch(p, fetched, fetchedCapabilities);
       startTransition(() => {
-        setGroupModelDraft(group.id, draft);
-        setGroupFetchResult(group.id, {
+        setGroupModelDraft(groupID, draft);
+        setGroupFetchResult(groupID, {
           kind: "ok",
-          text: t("settings.fetchModelsReadyForProvider", { provider: group.label, n: draft.candidates.length }),
+          text: t("settings.fetchModelsReadyForProvider", { provider: label, n: draft.candidates.length }),
         });
       });
     } finally {
-      finishGroupFetch(group.id, generation);
+      finishGroupFetch(groupID, generation);
     }
   };
+
+  // tl1654: a preset/official install ships the curated static model list as a
+  // fallback only. Right after the install save lands, fetch the endpoint's
+  // live /models list once: on success the fallback is replaced through the
+  // narrow catalogs update so model pickers show real models, on failure the
+  // fallback stays and the readable error (auth/network/unsupported classified)
+  // points at manual model-ID entry.
+  const autoFetchInstalledProvider = async (p: ProviderView) => {
+    const groupID = `connection:${p.name}`;
+    const generation = beginGroupFetch(groupID);
+    setGroupFetchResult(groupID, null);
+    try {
+      let fetchedCapabilities: ProviderModelCapabilityView[] = [];
+      try {
+        fetchedCapabilities = await cachedFetchProviderModelCatalog((provider) => app.FetchProviderModelCatalog(provider), p, true);
+      } catch (e) {
+        if (!groupFetchIsCurrent(groupID, generation)) return;
+        setGroupFetchResult(groupID, {
+          kind: "warn",
+          text: `${providerModelFetchFallbackMessage(e, t)} ${t("settings.fetchModelsManualInputHint")}`,
+        });
+        return;
+      }
+      if (!groupFetchIsCurrent(groupID, generation)) return;
+      const draft = installedProviderCatalogDraft(p, fetchedCapabilities.map((item) => item.model));
+      if (!draft) {
+        setGroupFetchResult(groupID, {
+          kind: "warn",
+          text: `${t("settings.fetchModelsEmptyForProvider", { provider: p.name })} ${t("settings.fetchModelsManualInputHint")}`,
+        });
+        return;
+      }
+      const expectedFingerprint = p.modelCatalogFingerprint?.trim() ?? "";
+      if (!expectedFingerprint) return;
+      await apply(() => saveModelSettings(s, { kind: "catalogs", catalogs: [{ name: p.name, expectedFingerprint, models: draft.models, default: draft.default, visionModels: draft.visionModels }] }));
+      if (!groupFetchIsCurrent(groupID, generation)) return;
+      setGroupFetchResult(groupID, {
+        kind: "ok",
+        text: t("settings.fetchModelsUpdatedForProvider", { provider: p.name, n: draft.models.length }),
+      });
+    } catch (e) {
+      if (groupFetchIsCurrent(groupID, generation)) {
+        setGroupFetchResult(groupID, {
+          kind: "warn",
+          text: `${providerModelFetchFallbackMessage(e, t)} ${t("settings.fetchModelsManualInputHint")}`,
+        });
+      }
+    } finally {
+      finishGroupFetch(groupID, generation);
+    }
+  };
+
+  // The install flows mint provider names on the backend (random suffix), so
+  // the caller snapshots the pre-save names and this effect resolves the
+  // committed additions once the post-save provider state has landed.
+  const [autoFetchPlan, setAutoFetchPlan] = useState<{ knownNames: Set<string>; replace: boolean } | null>(null);
+  const providersRef = useRef(s.providers);
+  providersRef.current = s.providers;
+  useEffect(() => {
+    if (!autoFetchPlan) return;
+    setAutoFetchPlan(null);
+    const label = (p: ProviderView) => providerDisplayLabel(p);
+    for (const provider of newlyAddedProviders(providersRef.current, autoFetchPlan.knownNames)) {
+      void (autoFetchPlan.replace
+        ? autoFetchInstalledProvider(provider)
+        : refreshModels(`connection:${provider.name}`, label(provider), provider));
+    }
+  }, [autoFetchPlan, refreshModels, s.providers]);
 
   const saveProviderKey = async (group: ProviderAccessGroup, apiKeyEnv: string, value: string) => {
     if (!apiKeyEnv) return;
@@ -5463,15 +5531,32 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
             busy={busy}
             onMode={setAdding}
             onCancel={() => onboarding ? onOnboardingComplete?.() : setAdding(null)}
-            onAddOfficial={(kind, key, baseURL, format) => apply(() => saveModelSettings(s, {kind: "connection_add", name: s.providers.find(p => officialProviderKind(p) === kind)?.name ?? "deepseek-flash", key, baseURL, protocol: format})).then(saved => { if (saved) setAdding(null); })}
-            onAddPreset={(id, key, baseURL, format) => apply(() => saveModelSettings(s, {kind: "connection_add", presetId: id, key, baseURL, protocol: format})).then(saved => { if (saved) setAdding(null); })}
+            onAddOfficial={(kind, key, baseURL, format) => {
+              const knownNames = new Set(providersRef.current.map((p) => p.name));
+              return apply(() => saveModelSettings(s, {kind: "connection_add", name: s.providers.find(p => officialProviderKind(p) === kind)?.name ?? "deepseek-flash", key, baseURL, protocol: format})).then(saved => {
+                if (saved) { setAdding(null); setAutoFetchPlan({ knownNames, replace: true }); }
+              });
+            }}
+            onAddPreset={(id, key, baseURL, format) => {
+              const knownNames = new Set(providersRef.current.map((p) => p.name));
+              return apply(() => saveModelSettings(s, {kind: "connection_add", presetId: id, key, baseURL, protocol: format})).then(saved => {
+                if (saved) { setAdding(null); setAutoFetchPlan({ knownNames, replace: true }); }
+              });
+            }}
             onViewPresetConflict={(providerName) => {
               setRevealedProvider(providerName);
               setEditing(providerName);
               setAdding(null);
             }}
             onResetPreset={(id) => apply(() => saveModelSettings(s, {kind: "preset_reset", presetId: id})).then(saved => { if (saved) setAdding(null); })}
-            onAddCustom={(pv, key) => apply(() => saveProvider(pv, key ?? "", true)).then(saved => { if (saved) setAdding(null); })}
+            onAddCustom={(pv, key) => {
+              const knownNames = new Set(providersRef.current.map((p) => p.name));
+              return apply(() => saveProvider(pv, key ?? "", true)).then(saved => {
+                // tl1654: hand-typed models are explicit intent — offer the live
+                // list as a review draft instead of replacing the saved list.
+                if (saved) { setAdding(null); setAutoFetchPlan({ knownNames, replace: false }); }
+              });
+            }}
           />
         )}
         <ProviderConnections groups={groups} presets={s.providerPresets} revealedProvider={revealedProvider} hidden={adding !== null} busy={busy} onAdd={() => setAdding("official")} renderDetail={(group) => (
@@ -5524,9 +5609,13 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
               return apply(() => saveProvider(pv, key ?? "")).then((saved) => {
                 if (!saved) throw new Error(t("settings.connections.renameFailed"));
                 setGroupModelDraft(group.id, null);
+                // tl1654: an edit save completes configuration — fetch the live
+                // model list once into the review draft; existing saved models
+                // stay untouched until the draft is applied.
+                void refreshModels(group.id, group.label, pv);
               });
             }}
-            onRefresh={(provider) => void refreshModels(group, provider)}
+            onRefresh={(provider) => void refreshModels(group.id, group.label, provider)}
             onToggleDraftModel={(model) => updateModelDraftSelection(group.id, (draft) => (
               draft.selected.includes(model)
                 ? draft.selected.filter((candidate) => candidate !== model)
