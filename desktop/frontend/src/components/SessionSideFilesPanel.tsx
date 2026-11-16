@@ -81,9 +81,14 @@ function DockRowRenameInput({ value, label, onInput, onCommit, onCancel }: {
  *  A click highlights the row (single selection, same semantics as the tree's
  *  preview selection); a right-click selects the right-clicked row (Explorer
  *  behavior) and opens the row menu — the same FloatingMenu component the
- *  tree menu uses, with: open/reveal behind the tl1421 openability probe
- *  (ResolveOpenablePathForTab → OpenLocalPath / RevealPath, no dead buttons —
- *  probing disables the pair, an empty probe removes it), the tree's
+ *  tree menu uses, with: the tl1421 openability probe family, split into two
+ *  dimensions by tl1641 — open rides ResolveOpenablePathForTab (opener gate:
+ *  executable-extension targets lose only "open with default app"), while
+ *  reveal/terminal ride ResolveRevealablePathForTab (same resolution +
+ *  existence half, NO opener gate: explorer /select and a terminal cd never
+ *  execute the target, so .ps1/.bat rows keep both — the tl1641 screenshot
+ *  had all three items vanish for .ps1). No dead buttons — a probing probe
+ *  disables its items, an empty probe removes them; the tree's
  *  copy-path pair (relative copies the listed path, absolute resolves through
  *  ResolveWorkspacePathForTab with the same scope guard; absolute-shaped
  *  paths copy as-is), and the tree's add-reference action reusing the dock's
@@ -160,14 +165,21 @@ function DockSideFileList({ files, tabId, workspaceRoot, sessionPath, onInjectRe
   // keydown can fire with stale closures).
   const [rowRenaming, setRowRenaming] = useState<{ path: string; value: string } | null>(null);
   const rowRenamingRef = useRef<{ path: string; value: string } | null>(null);
-  // tl1421 惯例：菜单打开即探针（ResolveOpenablePathForTab——相对路径按会话
-  // 项目根解析、存在性 stat、opener 门禁），在途时打开/显示两项禁用（点了不
-  // 落空），探针空串=不可开 → 两项从菜单移除（不发死按钮）；通过后记住解析
-  // 出的绝对路径，打开/显示直接用它（OpenLocalPath / RevealPath，任务 1060/
-  // 944 opener 家族，与回合文件 chip 完全同链路）。tl1445：引用是会话读过的
-  // 文件，同链路语义不变——读过的文件同样可能被移走，探针兜底不变。
-  const [menuProbe, setMenuProbe] = useState<"probing" | "ok" | "none">("probing");
-  const [menuResolved, setMenuResolved] = useState("");
+  // tl1421 惯例：菜单打开即探针，在途时项禁用（点了不落空），空串=从菜单
+  // 移除（不发死按钮）。tl1445：引用是会话读过的文件，同链路语义不变——
+  // 读过的文件同样可能被移走，探针兜底不变。
+  // tl1641 分流收敛：探针拆双维——
+  //  - open 探针（ResolveOpenablePathForTab，原 menuProbe 语义不变）：相对
+  //    解析+存在性 stat+opener 门禁（可执行扩展名拒绝）→ 只管「用默认应用
+  //    打开」一项；
+  //  - reveal 探针（ResolveRevealablePathForTab，新桥）：同一解析+存在性判
+  //    定面、不套 opener 门禁（reveal 是 explorer /select 定位、终端是 cd，
+  //    均不执行目标文件）→ 管「在文件管理器中显示」「在内置终端打开」两
+  //    项，.ps1/.bat 等「不可用默认应用打开」的类型不再被连坐隐藏。
+  const [openProbe, setOpenProbe] = useState<"probing" | "ok" | "none">("probing");
+  const [openResolved, setOpenResolved] = useState("");
+  const [revealProbe, setRevealProbe] = useState<"probing" | "ok" | "none">("probing");
+  const [revealResolved, setRevealResolved] = useState("");
   const listRef = useRef<HTMLUListElement>(null);
   const interactive = Boolean(tabId);
   // tl1437: dismiss on outside mousedown / scroll / resize / Escape — the
@@ -193,18 +205,34 @@ function DockSideFileList({ files, tabId, workspaceRoot, sessionPath, onInjectRe
   useEffect(() => {
     if (!menu || !menuTabId) return;
     let cancelled = false;
-    setMenuProbe("probing");
-    setMenuResolved("");
+    setOpenProbe("probing");
+    setOpenResolved("");
+    setRevealProbe("probing");
+    setRevealResolved("");
+    // tl1641: two probes fire in parallel — the opener probe answers "can the
+    // OS default app open this", the reveal probe answers "does the file
+    // exist (so explorer can select it / the terminal can cd there)".
     app.ResolveOpenablePathForTab(menuTabId, menu.path)
       .then((absolute) => {
         if (cancelled) return;
-        setMenuResolved(absolute || "");
-        setMenuProbe(absolute ? "ok" : "none");
+        setOpenResolved(absolute || "");
+        setOpenProbe(absolute ? "ok" : "none");
       })
       .catch(() => {
         if (cancelled) return;
-        setMenuResolved("");
-        setMenuProbe("none");
+        setOpenResolved("");
+        setOpenProbe("none");
+      });
+    app.ResolveRevealablePathForTab(menuTabId, menu.path)
+      .then((absolute) => {
+        if (cancelled) return;
+        setRevealResolved(absolute || "");
+        setRevealProbe(absolute ? "ok" : "none");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRevealResolved("");
+        setRevealProbe("none");
       });
     return () => {
       cancelled = true;
@@ -236,7 +264,7 @@ function DockSideFileList({ files, tabId, workspaceRoot, sessionPath, onInjectRe
     const opsManaged = opsRelative !== "";
     const openDefault = () => {
       close();
-      const absolute = menuResolved;
+      const absolute = openResolved;
       if (!absolute) return;
       app.OpenLocalPath(absolute).catch((error: unknown) => {
         showToast(t("localPath.openFailed", { path, error: menuErrorText(error) }), "error");
@@ -244,7 +272,7 @@ function DockSideFileList({ files, tabId, workspaceRoot, sessionPath, onInjectRe
     };
     const reveal = () => {
       close();
-      const absolute = menuResolved;
+      const absolute = revealResolved;
       if (!absolute) return;
       app.RevealPath(absolute).catch((error: unknown) => {
         showToast(t("externalOpener.failed", { name: t("externalOpener.reveal"), error: menuErrorText(error) }), "error");
@@ -313,38 +341,52 @@ function DockSideFileList({ files, tabId, workspaceRoot, sessionPath, onInjectRe
       rowRenamingRef.current = seed;
       setRowRenaming(seed);
     };
-    return [
-      ...(menuProbe !== "none"
+    // tl1641 分流收敛：open 一项挂 open 探针（opener 门禁——不可用默认应用
+    // 打开的类型只裁这一项）；reveal/终端两项挂 reveal 探针（存在性——对所
+    // 有真实文件类型通用）。两块都空（文件不存在）时连 separator 一起消失，
+    // 与原「探针空串整块移除」的死按钮防线等价。
+    const openItems: FloatingMenuItem[] =
+      openProbe !== "none"
         ? [
             {
               icon: <ExternalLink size={14} />,
               label: t("workspace.openWithDefaultApp"),
-              disabled: menuProbe !== "ok",
+              disabled: openProbe !== "ok",
               onSelect: openDefault,
             },
+          ]
+        : [];
+    const revealItems: FloatingMenuItem[] =
+      revealProbe !== "none"
+        ? [
             {
               icon: <FolderOpen size={14} />,
               label: t("workspace.revealInFileManager"),
-              disabled: menuProbe !== "ok",
+              disabled: revealProbe !== "ok",
               onSelect: reveal,
             },
             // tl1468b: the tree's terminal item through the tree's own channel
             // (onOpenInTerminal → App.openTerminalForPath). Probe-aware like
-            // open/reveal: a gone file would otherwise just flash an empty
+            // reveal: a gone file would otherwise just flash an empty
             // terminal panel (the bridge refuses silently).
             ...(opsManaged && onOpenInTerminal
               ? [{
                   icon: <TerminalSquare size={14} />,
                   label: t("workspace.openInTerminal"),
-                  disabled: menuProbe !== "ok",
+                  disabled: revealProbe !== "ok",
                   onSelect: () => {
                     close();
                     onOpenInTerminal(opsRelative);
                   },
                 }]
               : []),
-            { separator: true as const, key: "sep-open" },
           ]
+        : [];
+    return [
+      ...openItems,
+      ...revealItems,
+      ...(openItems.length + revealItems.length > 0
+        ? [{ separator: true as const, key: "sep-open" }]
         : []),
       ...workspacePathCopyMenuItems({
         path,
@@ -393,7 +435,7 @@ function DockSideFileList({ files, tabId, workspaceRoot, sessionPath, onInjectRe
           ]
         : []),
     ];
-  }, [menu, menuTabId, menuProbe, menuResolved, onInjectReferences, onOpenInTerminal, workspaceRoot, confirmRowOps, showToast, t]);
+  }, [menu, menuTabId, openProbe, openResolved, revealProbe, revealResolved, onInjectReferences, onOpenInTerminal, workspaceRoot, confirmRowOps, showToast, t]);
   // tl1468b: the inline rename commit — the tree's commitTreeRename shape
   // (read via ref, trim, no-op when unchanged) through the tree's
   // RenameWorkspaceEntryForTab bridge with the menu's tab-id scope guard
