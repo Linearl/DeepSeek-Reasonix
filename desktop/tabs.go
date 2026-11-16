@@ -5271,6 +5271,11 @@ func (a *App) maybeResumeAutopilotTab(tab *WorkspaceTab) {
 			slog.Debug("desktop: autopilot resume skipped", "tab", id, "err", secrets.RedactError(err))
 			return
 		}
+		// tl1643: the goal path has no liveness watch, so the announce rides
+		// submit acceptance (task-734 best-effort contract) — without the
+		// UserInput wire event the injected row only surfaces on the next
+		// history reload (tab switch), never on first render.
+		a.emitBackendSubmittedUserInput(id, autopilotResumePrompt)
 		slog.Info("desktop: autopilot run resumed", "tab", id)
 	}()
 }

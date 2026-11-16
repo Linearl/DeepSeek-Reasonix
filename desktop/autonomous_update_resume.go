@@ -574,6 +574,11 @@ func (a *App) resumeRosterSession(tab *WorkspaceTab, tabID, sessionKey, prompt s
 			// so the late delivery retires the chain.
 			if attempt > 1 && baseline0 >= 0 {
 				if probe, ok := tab.Ctrl.(restartResumeLivenessProbe); ok && probe.HistoryLen() > baseline0 {
+					// tl1643: the injected prompt is now provably in the
+					// transcript — announce its row on the wire (the live
+					// reducer's only non-composer user-row channel) so the
+					// first render does not wait for a tab switch.
+					a.emitBackendSubmittedUserInput(tabID, prompt)
 					slog.Info("desktop: autonomous-update resume delivered late (the first submit landed once maintenance settled)", "tab", tabID)
 					return
 				}
@@ -596,10 +601,20 @@ func (a *App) resumeRosterSession(tab *WorkspaceTab, tabID, sessionKey, prompt s
 		}
 		if baseline < 0 {
 			// No liveness probe → the pre-tl1366 fire-and-forget contract.
+			// tl1643: delivery cannot be watched here, so the row announce is
+			// best-effort at submit acceptance (task-734 contract: a backend
+			// caller announces the row it just submitted).
+			a.emitBackendSubmittedUserInput(tabID, prompt)
 			slog.Info("desktop: autonomous-update run resumed", "tab", tabID)
 			return
 		}
 		if a.resumeDelivered(tab, sessionKey, baseline) {
+			// tl1643: the transcript grew past the submit baseline — the
+			// injected prompt is provably persisted. Announce its row on the
+			// wire so the live reducer renders it now instead of waiting for
+			// the next history reload (the "first render missing, tab switch
+			// shows it" defect).
+			a.emitBackendSubmittedUserInput(tabID, prompt)
 			if attempt > 1 {
 				slog.Info("desktop: autonomous-update resume delivered on retry", "tab", tabID, "attempt", attempt)
 			} else {
