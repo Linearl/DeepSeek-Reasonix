@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"reasonix/internal/sessioninbox"
+	"reasonix/internal/textutil"
 )
 
 // Task 221: drain-time inbox merge. The tri-state lives in config
@@ -227,7 +228,7 @@ func mergeInboxEnvelope(metas []sessioninbox.InboxItemMeta, envelopes []sessioni
 		segments = append(segments, seg)
 	}
 	for i, env := range envelopes {
-		text := strings.TrimSpace(firstNonEmptyStr(env.SubmitText, env.RawText, env.DisplayText))
+		text := strings.TrimSpace(textutil.FirstTrimmed(env.SubmitText, env.RawText, env.DisplayText))
 		if leaves, ok := flattenMergedSegments(text); ok {
 			for _, leaf := range leaves {
 				appendSegment(leaf)
@@ -280,7 +281,7 @@ func leafIDs(segments []mergedLeafSegment) []sessioninbox.InboxItemMeta {
 // metadata does not count as content for the merged body).
 func envelopeBodiesAllEmpty(envelopes []sessioninbox.PromptEnvelope) bool {
 	for _, env := range envelopes {
-		if strings.TrimSpace(firstNonEmptyStr(env.SubmitText, env.RawText, env.DisplayText)) != "" {
+		if strings.TrimSpace(textutil.FirstTrimmed(env.SubmitText, env.RawText, env.DisplayText)) != "" {
 			return false
 		}
 	}

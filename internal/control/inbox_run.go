@@ -8,6 +8,7 @@ import (
 
 	"reasonix/internal/event"
 	"reasonix/internal/sessioninbox"
+	"reasonix/internal/textutil"
 )
 
 // RunInboxTurn synchronously claims and executes one durable item. Bot and ACP
@@ -45,7 +46,7 @@ func (c *Controller) RunInboxTurn(ctx context.Context, id string) error {
 		c.inbox.mu.Lock()
 		c.inbox.trackActive(id)
 		c.inbox.mu.Unlock()
-		c.emitInboxUserInput(id, firstNonEmptyStr(env.DisplayText, env.SubmitText), meta.CreatedAt)
+		c.emitInboxUserInput(id, textutil.FirstTrimmed(env.DisplayText, env.SubmitText), meta.CreatedAt)
 		return nil
 	}, run)
 }
@@ -55,8 +56,8 @@ func (c *Controller) prepareInboxRun(env sessioninbox.PromptEnvelope) (func(cont
 	if err != nil || block != "" {
 		return nil, block, err
 	}
-	display := firstNonEmptyStr(env.DisplayText, submit)
-	raw := firstNonEmptyStr(env.RawText, submit)
+	display := textutil.FirstTrimmed(env.DisplayText, submit)
+	raw := textutil.FirstTrimmed(env.RawText, submit)
 	requests := controlInvocationsFromInbox(env)
 	if len(requests) == 0 {
 		return func(ctx context.Context) error {

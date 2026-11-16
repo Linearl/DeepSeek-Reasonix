@@ -1,6 +1,10 @@
 package agent
 
-import "strings"
+import (
+	"strings"
+
+	"reasonix/internal/textutil"
+)
 
 func (s *Session) prepareRecoveryBranchMetaLocked(path string, opts RecoveryBranchOptions, preview string, turns int, digest string, depth int, contentUnchanged bool) (BranchMeta, error) {
 	existing, ok, err := LoadBranchMeta(path)
@@ -10,7 +14,7 @@ func (s *Session) prepareRecoveryBranchMetaLocked(path string, opts RecoveryBran
 	meta := opts.BranchMeta
 	meta.ID = BranchID(path)
 	if strings.TrimSpace(meta.Name) == "" {
-		meta.Name = firstNonEmpty(strings.TrimSpace(opts.Name), RecoveryBranchDefaultName)
+		meta.Name = textutil.First(strings.TrimSpace(opts.Name), RecoveryBranchDefaultName)
 	}
 	if strings.TrimSpace(meta.ParentID) == "" {
 		meta.ParentID = recoveryRootID(opts.OriginalPath)
@@ -23,11 +27,11 @@ func (s *Session) prepareRecoveryBranchMetaLocked(path string, opts RecoveryBran
 	meta.Recovered = true
 	meta.VersionKind = VersionRecovery
 	meta.VersionState = VersionActive
-	meta.ParentConversationID = firstNonEmpty(meta.ParentConversationID, meta.TopicID)
-	meta.ParentVersionID = firstNonEmpty(meta.ParentVersionID, meta.ParentID)
+	meta.ParentConversationID = textutil.First(meta.ParentConversationID, meta.TopicID)
+	meta.ParentVersionID = textutil.First(meta.ParentVersionID, meta.ParentID)
 	meta.BaseRevision = opts.BaseRevision
 	meta.DiskRevision = opts.DiskRevision
-	meta.RecoveryReason = firstNonEmpty(strings.TrimSpace(opts.Reason), "session snapshot conflict")
+	meta.RecoveryReason = textutil.First(strings.TrimSpace(opts.Reason), "session snapshot conflict")
 	meta.RecoveryDigest = digest
 	meta.RecoveryDepth = depth
 	meta.Revision = 1

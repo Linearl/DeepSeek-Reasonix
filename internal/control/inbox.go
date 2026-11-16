@@ -13,6 +13,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"reasonix/internal/sessioninbox"
+	"reasonix/internal/textutil"
 )
 
 // TurnAdmission is the exported classification of TrySubmitInboxItem /
@@ -586,15 +587,15 @@ func (c *Controller) EnqueueInbox(req InboxRequest) (sessioninbox.InboxReceipt, 
 	if req.ExpectedSessionPath != "" && st.SessionPath() != req.ExpectedSessionPath {
 		return sessioninbox.InboxReceipt{}, ErrInboxSessionChanged
 	}
-	submit := strings.TrimSpace(firstNonEmptyStr(req.Submit, req.Raw))
+	submit := strings.TrimSpace(textutil.FirstTrimmed(req.Submit, req.Raw))
 	if submit == "" && len(req.Invocations) == 0 {
 		submit = strings.TrimSpace(req.Display)
 	}
 	if submit == "" && len(req.Invocations) == 0 {
 		return sessioninbox.InboxReceipt{}, sessioninbox.ErrEmpty
 	}
-	display := firstNonEmptyStr(req.Display, submit)
-	raw := firstNonEmptyStr(req.Raw, submit)
+	display := textutil.FirstTrimmed(req.Display, submit)
+	raw := textutil.FirstTrimmed(req.Raw, submit)
 	env := sessioninbox.PromptEnvelope{
 		DisplayText:  display,
 		RawText:      raw,
@@ -705,9 +706,9 @@ func (c *Controller) UpdateInboxItem(id, display, raw, submit string) (sessionin
 	if err != nil {
 		return sessioninbox.InboxItemMeta{}, err
 	}
-	submit = strings.TrimSpace(firstNonEmptyStr(submit, raw, display))
-	display = firstNonEmptyStr(display, submit)
-	raw = firstNonEmptyStr(raw, submit)
+	submit = strings.TrimSpace(textutil.FirstTrimmed(submit, raw, display))
+	display = textutil.FirstTrimmed(display, submit)
+	raw = textutil.FirstTrimmed(raw, submit)
 	_, previous, err := st.ReadItem(id)
 	if err != nil {
 		return sessioninbox.InboxItemMeta{}, err
@@ -965,7 +966,7 @@ func (c *Controller) TrySubmitInboxItem(id string) (sessioninbox.InboxReceipt, e
 	}
 	// Start the classified envelope directly. Submit would parse @tokens again
 	// and mix live workspace bytes with the enqueue-time snapshot.
-	result := c.submitPreparedInboxTurn(id, firstNonEmptyStr(env.DisplayText, env.SubmitText), meta.CreatedAt, run)
+	result := c.submitPreparedInboxTurn(id, textutil.FirstTrimmed(env.DisplayText, env.SubmitText), meta.CreatedAt, run)
 	if result != turnStarted {
 		if err := st.SetState(id, sessioninbox.StateQueued, ""); err != nil {
 			_ = st.ForcePause(true, 1)
@@ -1225,13 +1226,4 @@ func (c *Controller) TryEnqueueFollowup(req InboxRequest) (sessioninbox.InboxRec
 		c.maybeDispatchInbox()
 	}
 	return rec, nil
-}
-
-func firstNonEmptyStr(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }

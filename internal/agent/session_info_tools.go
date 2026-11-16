@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/textutil"
 	"reasonix/internal/tool"
 )
 
@@ -61,10 +62,10 @@ func resolveInfoTarget(cfg SessionCollabConfig, target string) (sessioncollab.Id
 	if meta, _, err := LoadBranchMeta(session); err == nil {
 		id.ContactID = meta.ContactID
 		id.TopicID = meta.TopicID
-		id.Title = firstNonEmpty(meta.TopicTitle, meta.CustomTitle, SessionDirectoryTitle(session))
+		id.Title = textutil.First(meta.TopicTitle, meta.CustomTitle, SessionDirectoryTitle(session))
 		id.Purpose = meta.Purpose
 		id.Scope = meta.Scope
-		id.Workspace = firstNonEmpty(meta.WorkspaceRoot, cfg.WorkspaceRoot)
+		id.Workspace = textutil.First(meta.WorkspaceRoot, cfg.WorkspaceRoot)
 	} else {
 		id.Title = SessionDirectoryTitle(session)
 	}
@@ -133,13 +134,13 @@ func (t getSessionInfoTool) sessionInfo(id sessioncollab.Identity) map[string]an
 	if id.Workspace == "" {
 		id.Workspace = meta.WorkspaceRoot
 	}
-	contact := firstNonEmpty(id.ContactID, meta.ContactID)
+	contact := textutil.First(id.ContactID, meta.ContactID)
 	info := map[string]any{
 		"sessionPath":   id.SessionPath,
 		"contactId":     contact,
 		"topicId":       id.TopicID,
-		"title":         firstNonEmpty(id.Title, meta.TopicTitle, meta.CustomTitle, SessionDirectoryTitle(id.SessionPath)),
-		"purpose":       firstNonEmpty(id.Purpose, meta.Purpose),
+		"title":         textutil.First(id.Title, meta.TopicTitle, meta.CustomTitle, SessionDirectoryTitle(id.SessionPath)),
+		"purpose":       textutil.First(id.Purpose, meta.Purpose),
 		"scope":         id.Scope,
 		"workspaceRoot": id.Workspace,
 		"model":         meta.Model,

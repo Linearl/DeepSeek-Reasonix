@@ -11,6 +11,7 @@ import (
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
+	"reasonix/internal/textutil"
 )
 
 func (a *Agent) contextMaintenanceInputHash(visible []provider.Message) string {
@@ -48,7 +49,7 @@ func (a *Agent) contextMaintenanceBlocked(inputHash string, est int) (bool, stri
 	if r.Status != "blocked" && r.Status != "failed" {
 		return false, ""
 	}
-	reason := firstNonEmpty(a.sess.compactionState.BlockedReason, r.Reason)
+	reason := textutil.First(a.sess.compactionState.BlockedReason, r.Reason)
 	// A failed view stays blocked for this generation. Changed input may retry
 	// on a later turn, but not once per tool result in the same active turn.
 	if r.BlockedInputHash != "" && inputHash != "" && r.BlockedInputHash != inputHash {

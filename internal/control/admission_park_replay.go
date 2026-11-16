@@ -36,6 +36,7 @@ import (
 	"sync"
 
 	"reasonix/internal/sessioninbox"
+	"reasonix/internal/textutil"
 )
 
 // parkReplayKind distinguishes the two durable row shapes a parked body can
@@ -149,7 +150,7 @@ func (c *Controller) persistParkReplay(r *parkedTurnReplay) {
 	}
 	req := InboxRequest{
 		Intent:  sessioninbox.IntentFollowup,
-		Display: firstNonEmptyStr(r.display, submit),
+		Display: textutil.FirstTrimmed(r.display, submit),
 		Raw:     submit,
 		Submit:  submit,
 		Source:  r.source,

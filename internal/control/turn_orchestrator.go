@@ -14,6 +14,7 @@ import (
 	"reasonix/internal/jobs"
 	"reasonix/internal/provider"
 	"reasonix/internal/skill"
+	"reasonix/internal/textutil"
 	"reasonix/internal/tool"
 )
 
@@ -153,7 +154,7 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 	// prefilled into the composer after a conversation rewind), so it must be
 	// the user's own text — never the composed provider input with its
 	// transient <response-language>/<reasoning-language>/memory/hook blocks.
-	c.beginCheckpoint(ctx, firstNonEmpty(raw, task))
+	c.beginCheckpoint(ctx, textutil.First(raw, task))
 	if c.guardianSess != nil {
 		c.guardianSess.ResetTurn()
 	}
@@ -173,7 +174,7 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 	if c.executor == nil {
 		return fmt.Errorf("subagent slash invocation requires an active session")
 	}
-	c.executor.AppendTurnContextAndUser(ctx, persistedUserTurn(input, firstNonEmpty(raw, task), images, nil, time.Now().UnixMilli()))
+	c.executor.AppendTurnContextAndUser(ctx, persistedUserTurn(input, textutil.First(raw, task), images, nil, time.Now().UnixMilli()))
 
 	for _, sk := range skills {
 		sk = c.skills.prepare(sk)
@@ -279,7 +280,7 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	// composed provider input carries transient prefab blocks that must never
 	// surface in the rewind picker or be prefilled into the composer.
 	if !turn.synthetic {
-		c.beginCheckpoint(ctx, firstNonEmpty(turn.raw, turn.input))
+		c.beginCheckpoint(ctx, textutil.First(turn.raw, turn.input))
 	}
 	if c.guardianSess != nil {
 		c.guardianSess.ResetTurn()

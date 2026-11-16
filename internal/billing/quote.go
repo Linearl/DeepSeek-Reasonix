@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"reasonix/internal/textutil"
 )
 
 // Billing modes.
@@ -285,7 +287,7 @@ func newQuoteBuildState(in QuoteInput) *quoteBuildState {
 	}
 	q.Valuations[currency] = Valuation{
 		Money: q.Original, Basis: BasisIdentity,
-		Source: firstNonEmpty(in.CatalogSource, "rate_card"),
+		Source: textutil.FirstTrimmed(in.CatalogSource, "rate_card"),
 		AsOf:   occurred.UTC().Format("2006-01-02"),
 	}
 	state := &quoteBuildState{
@@ -410,7 +412,7 @@ func (s *quoteBuildState) selectDisplay() {
 	s.quote.DisplayComplete = false
 	s.quote.Complete = false
 	s.quote.DisplayStatus = DisplayStatusFallbackOriginal
-	s.quote.IncompleteReason = firstNonEmpty(s.valuationFailures[display], "display_unavailable")
+	s.quote.IncompleteReason = textutil.FirstTrimmed(s.valuationFailures[display], "display_unavailable")
 }
 
 func (s *quoteBuildState) markIncomplete(reason string) {
@@ -645,7 +647,7 @@ func (a *quoteAccumulator) finish() CostQuote {
 	a.out.CostComplete = a.costFactsComplete
 	a.out.PartialPricedCount = a.partialPriced
 	if a.partialPriced > 0 {
-		a.out.IncompleteReason = firstNonEmpty(a.out.IncompleteReason, "missing_price_or_usage")
+		a.out.IncompleteReason = textutil.FirstTrimmed(a.out.IncompleteReason, "missing_price_or_usage")
 	}
 	if a.originalComplete && a.originalCurrency != "" {
 		a.out.Original = MoneyOf(a.originalTotal, a.originalCurrency)
@@ -717,17 +719,17 @@ func (a *quoteAccumulator) finish() CostQuote {
 	a.out.Complete = false
 	if !a.costFactsComplete {
 		a.out.DisplayStatus = DisplayStatusUnavailable
-		a.out.IncompleteReason = firstNonEmpty(a.out.IncompleteReason, "incomplete_cost_fact")
+		a.out.IncompleteReason = textutil.FirstTrimmed(a.out.IncompleteReason, "incomplete_cost_fact")
 	} else if a.originalComplete && a.originalCurrency != "" {
 		selected := a.out.Original
 		a.out.Selected = &selected
 		a.out.DisplayStatus = DisplayStatusFallbackOriginal
 		a.out.AggregateMode = AggregateModeSingleCurrency
-		a.out.IncompleteReason = firstNonEmpty(a.out.IncompleteReason, "display_unavailable")
+		a.out.IncompleteReason = textutil.FirstTrimmed(a.out.IncompleteReason, "display_unavailable")
 	} else {
 		a.out.DisplayStatus = DisplayStatusBucketed
 		a.out.AggregateMode = AggregateModeCurrencyBuckets
-		a.out.IncompleteReason = firstNonEmpty(a.out.IncompleteReason, "currency_buckets")
+		a.out.IncompleteReason = textutil.FirstTrimmed(a.out.IncompleteReason, "currency_buckets")
 	}
 	return a.out
 }
@@ -843,7 +845,7 @@ func PartialPricedQuote(in QuoteInput, preferredCurrency string) CostQuote {
 	}
 	q.Valuations[currency] = Valuation{
 		Money: q.Original, Basis: BasisIdentity,
-		Source: firstNonEmpty(in.CatalogSource, "rate_card"),
+		Source: textutil.FirstTrimmed(in.CatalogSource, "rate_card"),
 		AsOf:   occurred.Format("2006-01-02"),
 	}
 	if in.PricingFingerprint != "" {
@@ -866,15 +868,6 @@ func (a *quoteAccumulator) syncOriginalValuation() {
 	}
 	valuation.Money = a.out.Original
 	a.out.Valuations[a.originalCurrency] = valuation
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 func resolveCatalogIdentity(in QuoteInput) (provider, model string) {

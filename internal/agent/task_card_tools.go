@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/textutil"
 	"reasonix/internal/tool"
 )
 
@@ -207,9 +208,9 @@ func (t updateTaskCardTool) Execute(ctx context.Context, args json.RawMessage) (
 		}
 		if p.Note != "" || p.Assignee != "" {
 			card.Nodes = append(card.Nodes, sessioncollab.CardNode{
-				ContactID: firstNonEmpty(p.Assignee, t.cfg.currentContactID()),
+				ContactID: textutil.First(p.Assignee, t.cfg.currentContactID()),
 				Session:   t.cfg.currentSessionPath(),
-				Role:      firstNonEmpty(p.Role, "expert"),
+				Role:      textutil.First(p.Role, "expert"),
 				Note:      p.Note,
 				At:        time.Now().UnixMilli(),
 			})
