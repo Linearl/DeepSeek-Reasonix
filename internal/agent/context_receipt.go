@@ -198,6 +198,11 @@ func (a *Agent) emitCompactionAborted(trigger string) {
 // emitCompactionFailed closes a failed pass with a visible outcome (任务 867):
 // the failure used to be slog-only and the frontend read the summary-less Done
 // as an abort, erasing the pending card while the watermark kept climbing.
+// tl1648: the event additionally carries FoldInstalled (whether a valid
+// projection is already serving — the reason a failed pass leaves the token
+// reading unchanged) and LastSuccessAt (when compaction last succeeded), so
+// the failed card can answer "第 N 次 / 上次成功何时 / 读数为何不降" without
+// the log.
 func (a *Agent) emitCompactionFailed(trigger string, err error) {
 	attempt := a.sess.compaction.failureStreak.Add(1)
 	// tl1587: 失败即武装分段道闩——下一个 allowChunked 的摘要 pass 直进分段
@@ -205,6 +210,7 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 	a.sess.compaction.segmentSummaryLatched.Store(true)
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Pass: int(a.sess.compactionSessionPass.Load()), Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
+		FoldInstalled: a.projectionLiveForCard(), LastSuccessAt: a.sess.lastCompactionSuccessAt.Load(),
 	}})
 	// 任务 1011 检测路 3（运行中压缩连败）：连败达到阈值时发一条用户可见
 	// 提示——只报告读数，不改数据；修复动作（剥图+折叠饮食）由打开会话的
@@ -220,6 +226,9 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 // emitCompactionSucceeded stamps the success outcome and resets the streak.
 func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, archive string) {
 	a.sess.compaction.failureStreak.Store(0)
+	// tl1648: the failed-card surface reports when compaction last succeeded;
+	// stamped at the same place the streak resets so the two never disagree.
+	a.sess.lastCompactionSuccessAt.Store(time.Now().UnixMilli())
 	// tl1587: 分段道闩随成功复位——下一次压缩回到正常单发 rung。
 	a.sess.compaction.segmentSummaryLatched.Store(false)
 	// 任务 1021: a successful pass CLOSES its compression session — the next
@@ -237,16 +246,39 @@ func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, a
 	}})
 }
 
+// projectionLiveForCard reports whether a valid projection is currently
+// serving the wire (tl1648): the failed card's「上下文读数不会下降」line keys
+// off this — a pass that installed nothing leaves the reading exactly where it
+// was, while a live projection means the reading reflects the previous
+// successful fold.
+func (a *Agent) projectionLiveForCard() bool {
+	if a == nil || a.sess.conversation == nil {
+		return false
+	}
+	msgs, _ := a.sess.conversation.snapshotMessagesVersion()
+	a.sess.compactionMu.Lock()
+	st := a.sess.compactionState
+	a.sess.compactionMu.Unlock()
+	return len(st.Projection.Messages) > 0 && projectionValid(st, msgs)
+}
+
 // compactionFailureReason reduces an error to a short, display-safe
 // classification. The frontend renders it verbatim, so it must never carry
 // transcript content — provider error text can echo request fragments, so
 // non-classified errors stay generic.
+//
+// tl1648: the stale-context reason used to promise "will retry", but the
+// actual behavior (context_manager.go summaryFailed → recordContextMaintenanceBlocked)
+// blocks automatic retries for THIS generation — the next attempt happens at
+// the next context check (new input, later turn, or manual compact), which is
+// what the text now names (fork rule: the next step in an error message must
+// already exist).
 func compactionFailureReason(err error) string {
 	switch {
 	case err == nil:
 		return ""
 	case errors.Is(err, errCompressStaleContext):
-		return "context changed during compaction; the pass was discarded and will retry"
+		return "context changed during compaction; the pass was discarded and retries at the next context check"
 	case errors.Is(err, errSummaryOutputTruncated):
 		return "summarizer output was truncated"
 	case errors.Is(err, errCheckpointRejected):

@@ -47,6 +47,13 @@ type HistoryMessage struct {
 	Messages         int                              `json:"messages,omitempty"`
 	Summary          string                           `json:"summary,omitempty"`
 	Archive          string                           `json:"archive,omitempty"`
+	// tl1648: compaction-card failure face (archived Done with outcome=failed).
+	// Omitted when absent so older archived rows decode unchanged.
+	Failed        bool   `json:"failed,omitempty"`
+	Attempt       int    `json:"attempt,omitempty"`
+	Reason        string `json:"reason,omitempty"`
+	FoldInstalled bool   `json:"foldInstalled,omitempty"`
+	LastSuccessAt int64  `json:"lastSuccessAt,omitempty"`
 	DecisionReceipt  *provider.DecisionReceipt        `json:"decisionReceipt,omitempty"`
 	Readiness        *event.FinalReadiness            `json:"readiness,omitempty"`
 	ReadPause        *provider.ReadPause              `json:"readPause,omitempty"`

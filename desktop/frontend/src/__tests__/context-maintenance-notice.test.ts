@@ -13,9 +13,10 @@ function ok(value: unknown, message: string) {
 const messages: Partial<Record<DictKey, string>> = {
   "context.maintenanceTitle": "上下文短视图",
   "context.maintenanceAppliedSummary": "已生成短视图",
-  "context.maintenanceBlockedSummary": "摘要未形成短视图 · 稍后自动重试",
-  "context.maintenanceFailedSummary": "摘要未完成 · 稍后自动重试",
-  "context.maintenanceRefreshFailedSummary": "短视图已保留 · 摘要更新失败，稍后自动重试",
+  // tl1648: 文案与 blocked 的实际行为（本代不重试，下一次上下文检查放行）一致。
+  "context.maintenanceBlockedSummary": "摘要未形成短视图 · 将在下一次上下文检查时自动重试",
+  "context.maintenanceFailedSummary": "摘要未完成 · 将在下一次上下文检查时自动重试",
+  "context.maintenanceRefreshFailedSummary": "短视图已保留 · 摘要更新失败，将在下一次上下文检查时自动重试",
   "context.maintenanceTruncatedSummary": "已裁剪上下文视图",
   "context.tokensValue": "{value} tokens",
   "summary.detail": "摘要",
@@ -36,12 +37,15 @@ const applied = formatContextMaintenanceNotice({
 ok(applied === "已生成短视图", `unexpected applied notice: ${applied}`);
 
 const blocked = formatContextMaintenanceNotice({ status: "blocked" }, translate);
-ok(blocked === "摘要未形成短视图 · 稍后自动重试", `unexpected blocked notice: ${blocked}`);
+ok(blocked === "摘要未形成短视图 · 将在下一次上下文检查时自动重试", `unexpected blocked notice: ${blocked}`);
 
 // Task 633: failed/blocked receipts are generation-scoped same-view fallbacks,
 // never a final give-up — the copy must say the flow retries by itself.
+// tl1648: the retry happens at the NEXT CONTEXT CHECK, not "later" — the copy
+// names the step that actually exists (blocked = no automatic retry this
+// generation).
 const failed = formatContextMaintenanceNotice({ status: "failed" }, translate);
-ok(failed === "摘要未完成 · 稍后自动重试", `unexpected failed notice: ${failed}`);
+ok(failed === "摘要未完成 · 将在下一次上下文检查时自动重试", `unexpected failed notice: ${failed}`);
 
 // A failed refresh after an earlier round already installed the fold keeps the
 // compaction — the notice must say the short view survived, not that summary
@@ -50,7 +54,7 @@ const failedWithFold = formatContextMaintenanceNotice({
   status: "failed",
   foldInstalled: true,
 }, translate);
-ok(failedWithFold === "短视图已保留 · 摘要更新失败，稍后自动重试", `unexpected fold-kept failed notice: ${failedWithFold}`);
+ok(failedWithFold === "短视图已保留 · 摘要更新失败，将在下一次上下文检查时自动重试", `unexpected fold-kept failed notice: ${failedWithFold}`);
 
 const truncated = formatContextMaintenanceNotice({ status: "applied", action: "truncate" }, translate);
 ok(truncated === "已裁剪上下文视图", `unexpected truncated notice: ${truncated}`);

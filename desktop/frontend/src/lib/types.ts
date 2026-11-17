@@ -113,6 +113,13 @@ export interface WireCompaction {
   // tracked session; the reducer keeps the card pending across a session's
   // earlier passes so「上下文已压缩」never shows while a pass still runs.
   pass?: number;
+  // tl1648 (failed-only): whether a valid projection already serves the wire.
+  // false = this pass installed nothing — the token reading will not drop
+  // until a later pass succeeds; true = the reading reflects a previous fold.
+  foldInstalled?: boolean;
+  // tl1648 (failed-only): unix millis of the last successful fold install in
+  // this session; absent/0 = unknown (no success recorded).
+  lastSuccessAt?: number;
 }
 export interface WireProfile {
   model?: string;
@@ -1041,6 +1048,14 @@ export interface HistoryMessage {
   archive?: string;
   done?: number;
   total?: number;
+  // tl1648: compaction-card failure face from the archived Done event
+  // (outcome=failed). Older archived rows omit the fields and decode as the
+  // legacy terminal/empty shape.
+  failed?: boolean;
+  attempt?: number;
+  reason?: string;
+  foldInstalled?: boolean;
+  lastSuccessAt?: number;
   decisionReceipt?: WireDecisionReceipt;
   readiness?: WireFinalReadiness;
   protocolRecovery?: { id: string };

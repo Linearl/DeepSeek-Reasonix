@@ -5668,11 +5668,19 @@ export const en = {
   "compaction.showSummary": "show summary",
   "compaction.hideSummary": "hide summary",
   "compaction.failed": "Context compaction failed",
-  "compaction.failedAttempt": "Context compaction failed (attempt {n}) — this pass stopped, the context keeps recording, and it retries automatically later",
+  // tl1648: "retries automatically later" promised a retry the current
+  // generation blocks; the real next step is the next context check
+  // (internal/agent context_receipt.go).
+  "compaction.failedAttempt": "Context compaction failed (attempt {n}) — this pass stopped, the context reading stays unchanged, and it retries at the next context check",
   // tl1446-6: the backend's closed set of compaction failure reasons
   // (internal/agent context_receipt.go compactionFailureReason) localized by
   // exact match; unknown reasons stay verbatim.
-  "compaction.reasonContextChanged": "the context changed during compaction; this pass was discarded and will retry",
+  // tl1648: the backend reason dropped its "will retry" false promise too.
+  "compaction.reasonContextChanged": "the context changed during compaction; this pass was discarded and retries at the next context check",
+  // tl1648 failed-card facts: why the reading did not drop + when compaction
+  // last succeeded (backend foldInstalled / lastSuccessAt event fields).
+  "compaction.failedNoFold": "nothing was installed this pass — the context reading will not drop",
+  "compaction.failedLastSuccess": "last successful compaction: ",
   "compaction.reasonTruncated": "the summarizer output was truncated",
   "compaction.reasonNoReduction": "the compaction candidate did not reduce the context",
   "compaction.reasonCancelled": "the compaction was cancelled",
@@ -5888,9 +5896,10 @@ export const en = {
   "context.windowCompactHeadroom": "Before compression",
   "context.maintenanceTitle": "Context checkpoint",
   "context.maintenanceAppliedSummary": "Built a short context view · history summarized",
-  "context.maintenanceBlockedSummary": "Context summary could not form a safe short view · will retry automatically",
-  "context.maintenanceFailedSummary": "Context summary did not complete · will retry automatically",
-  "context.maintenanceRefreshFailedSummary": "Short context view kept · summary refresh failed, will retry automatically",
+  // tl1648: "will retry automatically" contradicted the blocked-for-this-generation behavior; the real next step is the next context check.
+  "context.maintenanceBlockedSummary": "Context summary could not form a safe short view · retries at the next context check",
+  "context.maintenanceFailedSummary": "Context summary did not complete · retries at the next context check",
+  "context.maintenanceRefreshFailedSummary": "Short context view kept · summary refresh failed, retries at the next context check",
   "context.maintenanceTruncatedSummary": "Trimmed the context view · oldest tool results and turns removed to fit the window",
   "context.maintenanceActionSnip": "Tool result snip",
   "context.maintenanceActionPrune": "Tool result prune",

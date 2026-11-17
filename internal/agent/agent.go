@@ -1279,6 +1279,20 @@ func (a *Agent) SetSink(sink event.Sink) {
 func (a *Agent) consumeSteer() (payload SteerPayload, itemID string, ok bool) {
 	a.steerMu.Lock()
 	defer a.steerMu.Unlock()
+	// tl1648 压缩中注入门：一条真实维护事务（任务920 的 maintaining 计数）
+	// 在飞时不得把 steer 落进 transcript——注入会让压缩 commit 的 CAS
+	// （compact_commit.go transcriptVersion 比对）必然失配，整条 pass 被丢
+	// （errCompressStaleContext，20261116 14:50 现场 user_dropped=6 的实证
+	// 形态）。排队语义：条目原封不动留在队首，压缩 settle 后由 run loop 的
+	// 下一个轮间隙自然消费（同步路径：压缩本身在 run loop 内，返回后下一轮
+	// 即达；并发路径：后台 rebuild/guardian/手动压缩期间 gate 挡住，结束后
+	// 恢复）。turn 收尾不受影响——closeSteerIntakeIfIdle 看到队列非空会让
+	// turn 继续一轮，排队条目因此总能等到注入点，绝不静默丢失。
+	// tl1650 注：未来注入通道归一化时，此门语义应并入统一入口；现维持
+	// consumeSteer 单点实现。
+	if a.maintaining.Load() > 0 {
+		return SteerPayload{}, "", false
+	}
 	if len(a.steerQueue) == 0 {
 		return SteerPayload{}, "", false
 	}

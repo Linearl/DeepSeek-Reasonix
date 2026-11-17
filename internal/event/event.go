@@ -548,6 +548,15 @@ type Compaction struct {
 	// 1); failed/aborted passes leave it open so the retry keeps the same
 	// card. 0 = legacy sender / not part of a tracked session.
 	Pass int
+	// tl1648 (Done-failed only): whether a valid projection is already
+	// serving the wire. False means THIS pass installed nothing — the token
+	// reading will not drop until a later pass succeeds. True means the
+	// reading reflects a previously installed fold.
+	FoldInstalled bool
+	// tl1648 (Done-failed only): unix millis of the last successful fold
+	// install in this session; 0 = unknown (no success recorded since the
+	// lineage started). Lets the failed card answer "上次成功压缩是什么时候".
+	LastSuccessAt int64
 }
 
 // ContextMaintenance is the typed wire-safe receipt for snip/prune/noop/

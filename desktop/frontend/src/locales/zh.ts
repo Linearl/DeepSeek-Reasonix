@@ -5629,10 +5629,18 @@ export const zh: Record<DictKey, string> = {
   "compaction.showSummary": "展开摘要",
   "compaction.hideSummary": "收起摘要",
   "compaction.failed": "上下文压缩失败",
-  "compaction.failedAttempt": "上下文压缩失败（第 {n} 次）——已停止本次压缩，上下文继续记录，稍后自动重试",
+  // tl1648: 原文案「稍后自动重试」是虚假承诺——本代实际 blocked（automatic
+  // retry blocked for this generation），真正的下一步是下一次上下文检查时放行
+  // 重试（新输入/新 turn 到来，internal/agent context_receipt.go 判定）。
+  "compaction.failedAttempt": "上下文压缩失败（第 {n} 次）——本次压缩已停止，上下文读数保持不变，将在下一次上下文检查时自动重试",
   // tl1446-6: 后端闭集失败原因（internal/agent context_receipt.go
   // compactionFailureReason）按原文精确匹配本地化；未知原因保留原文。
-  "compaction.reasonContextChanged": "压缩期间上下文发生了变化，本轮已被丢弃并将自动重试",
+  // tl1648: 后端 reason 同步去掉「will retry」虚假承诺。
+  "compaction.reasonContextChanged": "压缩期间上下文发生了变化，本轮已被丢弃，将在下一次上下文检查时自动重试",
+  // tl1648 失败卡信息补全：读数为何不降 + 上次成功时间（后端
+  // fold_installed / last_success_at 事件字段）。
+  "compaction.failedNoFold": "本次未安装任何压缩，上下文读数不会下降",
+  "compaction.failedLastSuccess": "上次成功压缩：",
   "compaction.reasonTruncated": "摘要输出被截断",
   "compaction.reasonNoReduction": "压缩候选未能减小上下文体积",
   "compaction.reasonCancelled": "压缩已被取消",
@@ -5848,9 +5856,11 @@ export const zh: Record<DictKey, string> = {
   "context.windowCompactHeadroom": "压缩前余量",
   "context.maintenanceTitle": "上下文短视图",
   "context.maintenanceAppliedSummary": "已生成短视图",
-  "context.maintenanceBlockedSummary": "摘要未形成短视图 · 稍后自动重试",
-  "context.maintenanceFailedSummary": "摘要未完成 · 稍后自动重试",
-  "context.maintenanceRefreshFailedSummary": "短视图已保留 · 摘要更新失败，稍后自动重试",
+  // tl1648: 原文案「稍后自动重试」与 blocked 的实际行为（本代不重试，下一次
+  // 上下文检查才放行）矛盾，与压缩失败卡同批修正。
+  "context.maintenanceBlockedSummary": "摘要未形成短视图 · 将在下一次上下文检查时自动重试",
+  "context.maintenanceFailedSummary": "摘要未完成 · 将在下一次上下文检查时自动重试",
+  "context.maintenanceRefreshFailedSummary": "短视图已保留 · 摘要更新失败，将在下一次上下文检查时自动重试",
   "context.maintenanceTruncatedSummary": "已裁剪上下文视图 · 移除最旧的工具结果与轮次以适配窗口",
   "context.maintenanceActionSnip": "裁短",
   "context.maintenanceActionPrune": "裁剪",

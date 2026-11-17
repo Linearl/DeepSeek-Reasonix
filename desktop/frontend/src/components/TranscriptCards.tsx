@@ -466,7 +466,12 @@ export function HostProtocolNoticeCard({ item }: { item: NoticeItem }) {
 // tl1446-6: exact-match map over the backend's closed failure-reason set
 // (internal/agent/context_receipt.go compactionFailureReason). A reason
 // outside the set renders verbatim — the technical track never hides.
+// tl1648: the backend stale-context reason dropped its "will retry" false
+// promise; the new string maps alongside the archived one (old transcripts'
+// persisted event streams still carry the pre-tl1648 text verbatim, so both
+// keys must resolve).
 const compactionFailureReasonKeys: Record<string, DictKey> = {
+  "context changed during compaction; the pass was discarded and retries at the next context check": "compaction.reasonContextChanged",
   "context changed during compaction; the pass was discarded and will retry": "compaction.reasonContextChanged",
   "summarizer output was truncated": "compaction.reasonTruncated",
   "compaction candidate did not reduce the context": "compaction.reasonNoReduction",
@@ -539,12 +544,24 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
   // with the retry state carried by the next pending card on the same id.
   if (item.failed) {
     const attempt = item.attempt ?? 0;
+    // tl1648 失败卡事实行（缺口d）：fold_installed=false 明示「本次未安装任何
+    // 压缩，上下文读数不会下降」（20261116 14:50 现场用户误读「明明成功了」
+    // 的直接根源）；lastSuccessAt 有值时补「上次成功压缩」时间锚，让「读数
+    // 为何不降」有对照。两行都挂 compaction__meta，随卡常驻转录。
+    const showNoFold = item.foldInstalled === false;
     return (
       <div className="compaction compaction--failed compaction--episode" data-entrance={item.id} data-transcript-layout-variant="static" role="status">
         <ProcessCompactIcon size={12} />
         <span>{attempt > 0 ? t("compaction.failedAttempt", { n: attempt }) : t("compaction.failed")}</span>
         {/* 一行失败原因（验收①）：tl1446-6 本地化 reason，未知原因原文保留。 */}
         {item.reason ? <span className="compaction__meta">{localizedCompactionFailureReason(t, item.reason)}</span> : null}
+        {showNoFold ? <span className="compaction__meta compaction__meta-line">{t("compaction.failedNoFold")}</span> : null}
+        {item.lastSuccessAt ? (
+          <span className="compaction__meta compaction__meta-line">
+            {t("compaction.failedLastSuccess")}
+            <CardTime createdAt={item.lastSuccessAt} className="compaction__meta-time" />
+          </span>
+        ) : null}
         {item.episodeNotes?.length ? <CompactionEpisodeBlock notes={item.episodeNotes} /> : null}
       </div>
     );

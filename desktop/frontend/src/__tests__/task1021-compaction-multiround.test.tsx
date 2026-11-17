@@ -107,9 +107,11 @@ function done(pass: number, summary: string, messages = 7): WireEvent {
   eq(lastCompaction(s).pending, false, "pass1 done first: resolves (no later pass known yet)");
   eq(lastCompaction(s).summary, "- interim", "pass1 done first: summary installed");
 
-  // Pass 2 的 started 复用终态卡回到 pending（新会话 pass 1 语义）。
+  // Pass 2 的 started 开新 pending 卡——tl1648：终局卡不再被复用改写
+  // （上一轮成功的留痕必须保留在转录上；1021 的单卡语义只覆盖会话内
+  // 多 pass 的 pending 阶段，跨会话的成功结果各自留卡）。
   s = reducer(s, { type: "event", e: started(2) });
-  eq(compactionCount(s), 1, "pass2 started: reuses the terminal card, no stack");
+  eq(compactionCount(s), 2, "pass2 started: terminal card kept as trace, new card opened (tl1648)");
   eq(lastCompaction(s).pending, true, "pass2 started: card pending again");
   s = reducer(s, { type: "event", e: done(2, "- final", 4) });
   eq(lastCompaction(s).pending, false, "pass2 done: terminal again");
@@ -136,10 +138,13 @@ function done(pass: number, summary: string, messages = 7): WireEvent {
   eq(card.summary, "- goal: ok", "legacy done: summary installed");
   eq(card.pass, undefined, "legacy done: no pass suffix on the terminal card");
 
-  // Abort（空 summary 的 done）仍删卡。
+  // Abort（空 summary 的 done）仍删卡——tl1648：删的是本轮 abort 的
+  // pending 卡；此前 legacy done 落下的终局卡作为成功留痕保留（不再被
+  // 复用改写），所以计数从 0 变 1，但绝无 pending/空卡残留。
   s = reducer(s, { type: "event", e: started() });
   s = reducer(s, { type: "event", e: { kind: "compaction_done", compaction: { trigger: "manual" } } as unknown as WireEvent });
-  eq(compactionCount(s), 0, "legacy abort: pending card removed");
+  eq(compactionCount(s), 1, "legacy abort: aborted pending card removed, terminal trace kept (tl1648)");
+  eq(s.items.some((it) => it.kind === "compaction" && (it as Extract<Item, { kind: "compaction" }>).pending), false, "legacy abort: no pending card lingers");
 }
 
 // ── Part D: 失败轮保持会话，retry 复用同一卡（任务 867 不回归） ──────────────
