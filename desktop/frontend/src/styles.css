@@ -41981,6 +41981,23 @@ button.statusbar__mcp:focus-visible {
   white-space: nowrap;
 }
 
+
+/* tl1674 阶段一：健康闸拒绝组与「改写前备份」可见徽标。徽标沿用 muted 文字色，
+   不新增颜色 token（class-contract assert3 会拦硬编码色）。 */
+.rc-refusal-group > ul.rc-errors {
+  margin-top: 4px;
+}
+
+.rc-refusal-group .btn--small {
+  margin-left: 8px;
+}
+
+.rc-pre-repair-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
 .rc-errors { margin: 0; padding-left: 20px; }
 /* 任务 1039：失败横幅上的后端原因——比横幅文案小一号、可换行，长错误
    （重放超限带 resource=value/limit）不撑破横幅。 */

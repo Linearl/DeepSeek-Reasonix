@@ -551,7 +551,13 @@ export function RecoveryCopiesSection() {
   // 「删除报错了」——两者在 UI 上同形。reason 令牌后端早已给出
   // （owner-unhealthy / gone / invalid / trash-failed / permanent-only），
   // 前端此前没用它区分。现在按令牌分流：拒绝=警示（warn），真失败=错误（error）。
-  const [refusals, setRefusals] = useState<string[]>([]);
+  // tl1674：拒绝项结构化（带 dir/ownerPath）——「修复该会话」按钮要靠
+  // ownerPath 定位宿主会话；tl1672 的字符串版拿不到归属。
+  const [refusals, setRefusals] = useState<
+    { kind: "owner-unhealthy" | "gone"; label: string; dir: string; ownerPath?: string }[]
+  >([]);
+  // tl1674：修复进行中的宿主会话路径（同一会话不重复触发）。
+  const [repairingOwner, setRepairingOwner] = useState("");
   const [failed, setFailed] = useState(false);
   // 任务 1039：失败原因单独留一份——只显示「设置加载失败」时用户与日志都
   // 无从判断是哪条链路断了（实测 49MB events 日志重放被拒）。
@@ -1057,36 +1063,62 @@ export function RecoveryCopiesSection() {
       // 该会话的唯一退路，设计上保留）；gone=文件已不在（目标已达成，幂等）；
       // invalid/trash-failed/permanent-only=真失败（走红）。"gone" 归入「无需处理」
       // 一组，不让用户以为删失败。
-      const refusedLines: string[] = [];
-      const goneLines: string[] = [];
+      // tl1674：ownerPath 由前端自己的 pre-repair 清单反查（备份目录 → 宿主会话），
+      // 后端 failure 不带该字段——不为此改后端契约。
+      const ownerOf = (dir: string) => preRepairs.find((v) => v.dir === dir)?.ownerPath;
+      const refusedItems: { kind: "owner-unhealthy" | "gone"; label: string; dir: string; ownerPath?: string }[] = [];
       for (const failure of run.failures ?? []) {
         const line = `${failure.label}: ${failure.detail || failure.reason}`;
         if (failure.reason === "owner-unhealthy") {
-          refusedLines.push(line);
+          refusedItems.push({
+            kind: "owner-unhealthy",
+            label: line,
+            dir: failure.dir,
+            ownerPath: ownerOf(failure.dir),
+          });
         } else if (failure.reason === "gone") {
-          goneLines.push(line);
+          refusedItems.push({ kind: "gone", label: line, dir: failure.dir });
         } else {
           setErrors((current) => [...current, line]);
         }
       }
-      if (refusedLines.length > 0) {
-        setRefusals((current) => [
-          ...current,
-          `${t("settings.recoveryCopiesPreRepairRefusedTitle").replace("{n}", String(refusedLines.length))}`,
-          ...refusedLines,
-        ]);
-      }
-      if (goneLines.length > 0) {
-        setRefusals((current) => [
-          ...current,
-          `${t("settings.recoveryCopiesPreRepairAlreadyGoneTitle").replace("{n}", String(goneLines.length))}`,
-          ...goneLines,
-        ]);
+      if (refusedItems.length > 0) {
+        setRefusals((current) => [...current, ...refusedItems]);
       }
       await load();
     } finally {
       setPreRepairBusy(false);
       setPreRepairSelected(new Set());
+    }
+  };
+
+  /** tl1674 阶段一 a)：健康闸拒绝 → 给「修复该会话」出口。
+   *  复用版本管理区的既有修复通道（app.RepairSessionFor，与「修复」按钮同一
+   *  入口），不带 diet（瘦身是另一档动作）；修完宿主会话恢复健康，它那份改写
+   *  前备份就能通过删除闸被清掉——**本件不自动删除**（删除仍是用户的一步）。
+   *  宿主会话不在（orphan）时无路可修，按钮不出现。 */
+  const repairRefusedOwner = async (ownerPath: string) => {
+    if (!ownerPath || repairingOwner !== "") return;
+    setRepairingOwner(ownerPath);
+    try {
+      const report = await app.RepairSessionFor(ownerPath, true, true, false);
+      if (!report.repaired) {
+        showToast(t("settings.recoveryCopiesPreRepairRepairNoop"), "info");
+      } else {
+        const actionsText = report.actions.map((a) => `${a.action}(${a.status})`).join("+");
+        showToast(
+          `${t("settings.recoveryCopiesPreRepairRepairDone")
+            .replace("{actions}", actionsText || "—")
+            .replace("{backup}", report.backupDir || "—")}`,
+          "info",
+        );
+      }
+      // 修完刷新改写前备份清单（健康闸状态可能已变），让用户直接看到可删。
+      await load();
+    } catch (e) {
+      showToast(String(e), "error");
+    } finally {
+      setRepairingOwner("");
     }
   };
 
@@ -2789,7 +2821,28 @@ export function RecoveryCopiesSection() {
         <td>—</td>
         <td className="rc-num">—</td>
         <td className="rc-num rc-muted">—</td>
-        <td className="rc-num">×{group.copies.length}</td>
+        <td className="rc-num">
+          ×{group.copies.length}
+          {/* tl1674 阶段一 b)：pre-repair 副本在版本管理区**可见**——按宿主会话
+              归属挂一个计数标记（title 列出清单）。刻意**不**把它们算进副本链
+              （链式合成是阶段二，候拍板）；这里只解决「用户在版本管理里看不见
+              这些备份」的可见性缺口。 */}
+          {(() => {
+            const owned = preRepairs.filter((v) => v.ownerPath && v.ownerPath === group.mainPath);
+            if (owned.length === 0) return null;
+            return (
+              <span
+                className="rc-muted rc-pre-repair-badge"
+                data-pre-repair-badge=""
+                title={owned
+                  .map((v) => `${v.label} · ${formatBytes(v.bytes)}`)
+                  .join("\n")}
+              >
+                {" "}+{owned.length} {t("settings.recoveryCopiesPreRepairBadge")}
+              </span>
+            );
+          })()}
+        </td>
         <td className="rc-num rc-muted">—</td>
         <td className="rc-col-ops">
           <div className="rc-ops">
@@ -2969,9 +3022,52 @@ export function RecoveryCopiesSection() {
                     {refusals.length > 0 && (
                       <div className="banner banner--warning" role="status">
                         <ul className="rc-errors">
-                          {refusals.map((message, index) => (
-                            <li key={`refusal-${index}`}>{message}</li>
-                          ))}
+                          {(() => {
+                            const unhealthy = refusals.filter((r) => r.kind === "owner-unhealthy");
+                            const gone = refusals.filter((r) => r.kind === "gone");
+                            return (
+                              <>
+                                {unhealthy.length > 0 ? (
+                                  <li className="rc-refusal-group">
+                                    {t("settings.recoveryCopiesPreRepairRefusedTitle")
+                                      .replace("{n}", String(unhealthy.length))}
+                                    <ul className="rc-errors">
+                                      {unhealthy.map((item, index) => (
+                                        <li key={`refusal-unhealthy-${index}`}>
+                                          {item.label}
+                                          {item.ownerPath ? (
+                                            <button
+                                              className="btn btn--secondary btn--small"
+                                              type="button"
+                                              data-pre-repair-repair=""
+                                              disabled={repairingOwner !== ""}
+                                              title={t("settings.recoveryCopiesPreRepairRepairHint")}
+                                              onClick={() => void repairRefusedOwner(item.ownerPath as string)}
+                                            >
+                                              {repairingOwner === item.ownerPath
+                                                ? "…"
+                                                : t("settings.recoveryCopiesPreRepairRepairAction")}
+                                            </button>
+                                          ) : null}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </li>
+                                ) : null}
+                                {gone.length > 0 ? (
+                                  <li className="rc-refusal-group">
+                                    {t("settings.recoveryCopiesPreRepairAlreadyGoneTitle")
+                                      .replace("{n}", String(gone.length))}
+                                    <ul className="rc-errors">
+                                      {gone.map((item, index) => (
+                                        <li key={`refusal-gone-${index}`}>{item.label}</li>
+                                      ))}
+                                    </ul>
+                                  </li>
+                                ) : null}
+                              </>
+                            );
+                          })()}
                         </ul>
                       </div>
                     )}
