@@ -14161,6 +14161,29 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-xs, 12px);
   margin-top: 2px;
 }
+/* tl1671 思考指标 hover 卡片：耗时与字数两行（同一 .tooltip 载体，
+   ReactNode 直渲——不新造弹层）。左侧标签走 fg-dim 弱化，右侧数值实色并用
+   tabular-nums 对齐小数点；数字形态对齐上游 studio 的「0.4 秒 · 77 字」。 */
+.tooltip__thoughtcard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  white-space: nowrap;
+}
+.tooltip__thoughtcard-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tooltip__thoughtcard-label {
+  color: var(--fg-dim);
+}
+.tooltip__thoughtcard-value {
+  color: var(--fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 .tooltip--top {
   --tooltip-from-y: var(--motion-rise);
   --tooltip-from-x: 0;
