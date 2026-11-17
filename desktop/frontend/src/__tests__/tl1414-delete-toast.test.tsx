@@ -5,15 +5,19 @@
 // 里才可见的 outcome 行，无 toast——用户读作「什么都没发生」。本 harness
 // 钉六点（反馈对称性，tl1401 同口径）：
 //  ① 单删成功 → outcome 行「Deleted」+ toast「Deleted 1 branch(es)」+ 列表重拉；
-//  ② 单删失败 → toast 带后端原因原文（不再只留展开式行）+ outcome 行在；
+//  ② 单删失败 → toast 报失败计数 + outcome 行在；
 //  ③ 批量删除成功 → toast 报成功计数 + 列表重拉；
 //  ④（续跑）整对话删除成功 → toast 报「Deleted N conversation(s)」（对话级
 //    词汇，不沿用分支计数）+ 列表重拉——该按钮正是目录拼写根因（Go 端
 //    recovery_branch_delete_casing_test.go）修复的受益路径；
-//  ⑤（续跑）整对话删除失败 → toast 带原因；
+//  ⑤（续跑）整对话删除失败 → toast 报失败计数；
 //  ⑥（续跑）删除后 load() 重取失败 → toast + 横幅双落——load() 内部 catch
 //    后返回布尔（从不抛错），反馈对称性靠返回值补 toast（旧 try/catch 是
 //    永不触发的死代码，本条是它生效的证明）。
+//
+// tl1647 契约更新（2026-11-16 用户实测「同一错误 toast 与底部红字重复渲染两
+// 份」）：失败 toast 只报计数（可见性=tl1414 的原始诉求），原因全文只在面板
+// outcome 明细行一处渲染——「toast 带后端原因原文」的旧断言随裁决退役。
 //
 // tl1415 移植适配：三表合并单会话单表后，副本行的删除按钮与复选框都住在
 // `tr.rc-detail__ops` 次行（不再嵌在 `.rc-row--copy` 主行里），选择器按合并
@@ -239,7 +243,7 @@ console.log("\ntl1414 copy-delete feedback toasts");
   await act(async () => { root.unmount(); });
 }
 
-// ② 失败案：toast 带后端原因原文（本次事故形态：活 tab 占用被 busy 拒）。
+// ② 失败案：toast 报失败计数；原因全文只在面板 outcome 行一处（tl1647）。
 {
   const spies = { listCalls: 0, deleted: [] as string[] };
   const busyReason = "this session is in use by another Reasonix window or process — close that window (or quit the other Reasonix instance), then retry";
@@ -248,8 +252,8 @@ console.log("\ntl1414 copy-delete feedback toasts");
   ok(spies.deleted.length === 0, "② a refused delete never reaches the archive");
   const text = toastText();
   ok(text.includes("Failed to delete 1 branch(es)"), `② failure toast appears (got ${JSON.stringify(text)})`);
-  ok(text.includes("in use by another Reasonix window"), "② the failure toast carries the backend reason");
-  ok(bodyText().includes("in use by another Reasonix window"), "② the outcome row keeps the reason too");
+  ok(!text.includes("in use by another Reasonix window"), "② the failure toast no longer repeats the backend reason (tl1647: 错误单处)");
+  ok(bodyText().includes("in use by another Reasonix window"), "② the outcome row keeps the reason (明细单处渲染)");
   await act(async () => { root.unmount(); });
 }
 
@@ -341,7 +345,8 @@ console.log("\ntl1414 copy-delete feedback toasts");
   await flush();
   const text = toastText();
   ok(text.includes("Failed to delete 1 conversation(s)"), `⑤ conversation failure toast appears (got ${JSON.stringify(text)})`);
-  ok(text.includes("direct child of its session directory"), "⑤ the failure toast carries the backend reason");
+  ok(!text.includes("direct child of its session directory"), "⑤ the failure toast no longer repeats the backend reason (tl1647: 错误单处)");
+  ok(bodyText().includes("direct child of its session directory"), "⑤ the outcome row keeps the reason (明细单处渲染)");
   await act(async () => { root.unmount(); });
 }
 

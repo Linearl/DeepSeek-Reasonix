@@ -26,21 +26,21 @@ import (
 	"reasonix/internal/store"
 )
 
-// PreRepairBlockReasonSoleCopy 是 E5 判据的拒绝令牌（wire 契约：前端按令牌
-// 出三语文案，不翻译后缀细节）：宿主已不在、回收站里也没有它的家族成员
-// （转录桶/随行备份桶都没有）——这份备份是该对话仅存的完整副本，删它就是
-// 真丢内容（tl1116「无备份不减肥」的禁区）。
-const PreRepairBlockReasonSoleCopy = "sole-copy"
-
 // PreRepairBackupView 是一个改写前备份目录的读数（只读，纯目录 stat 级，
 // 与 ListRecoveryCopyGroups 同一成本哲学：绝不打开转录）。
+//
+// tl1646（2026-11-16 用户裁决）：tl1603 的 Deletable/BlockReason 列表初判
+// 字段退役——「宿主不在=仅存副本=禁删」的 E5 闸①被推翻，孤儿副本允许删除
+// （前端确认弹窗警示不可恢复），列表不再给行标不可删态；删除时仍保留健康
+// 闸（pre_repair_cleanup.go，列表期无法便宜判定）。
 type PreRepairBackupView struct {
 	// Dir 是备份目录完整路径（<dir>/<stem>.pre-repair-<stamp>）。
 	Dir string `json:"dir"`
 	// Transcript 是目录内的主线转录副本（<stem>.jsonl）；备份失败/被清空时为空。
 	Transcript string `json:"transcript,omitempty"`
-	// OwnerPath 是旁侧现行会话转录（备份的宿主）；宿主已删除时为空——这种
-	// 备份是宿主仅存的完整副本，面板照常列出。
+	// OwnerPath 是旁侧现行会话转录（备份的宿主）；宿主已删除时为空——孤儿
+	// 备份，面板照常列出（行内标注「原对话已不存在」），删除入口可用
+	// （tl1646：确认弹窗明示唯一副本不可恢复后放行）。
 	OwnerPath string `json:"ownerPath,omitempty"`
 	// Label 是展示名：备份内 meta sidecar 的会话标题优先，回退 stem。
 	Label string `json:"label"`
@@ -52,14 +52,6 @@ type PreRepairBackupView struct {
 	Files int `json:"files"`
 	// ModifiedAt 是目录 mtime（RFC3339）。
 	ModifiedAt string `json:"modifiedAt"`
-	// Deletable 是 tl1603 E5 判据的**列表期初判**（纯 stat 级，零重放）：
-	// 宿主在（活会话的改写前快照，内容另有正本）或宿主已走删除/归档链（内容
-	// 在回收站桶里）= 非唯一退路，true；宿主不在且回收站无家族 = 仅存副本，
-	// false。健康闸成本高（重放宿主日志），只在删除时执行（pre_repair_cleanup.go）
-	// ——deletable=true 的行仍可能被删除桥以健康理由拒掉，那是诚实的拒删提示。
-	Deletable bool `json:"deletable"`
-	// BlockReason 是 deletable=false 时的稳定令牌（PreRepairBlockReasonSoleCopy）。
-	BlockReason string `json:"blockReason,omitempty"`
 }
 
 // preRepairStemOf 拆出 "<stem>.pre-repair-<stamp>" 目录名的 stem 与 stamp。
@@ -77,9 +69,6 @@ func preRepairStemOf(name string) (stem, stamp string, ok bool) {
 // 其它分区照常渲染（ListRecoveryCopyGroups 同一原则）。
 func preRepairBackupViewsIn(roots []string) []PreRepairBackupView {
 	seen := map[string]struct{}{}
-	// tl1603: E5 列表期初判的回收站家族缓存（每个会话目录的 .trash 只走一遍，
-	// 同目录多条孤儿备份共享读数）。nil 条目=该目录尚无回收站读数。
-	trashFamilies := map[string]map[string]bool{}
 	out := []PreRepairBackupView{}
 	for _, root := range roots {
 		root = strings.TrimSpace(root)
@@ -149,17 +138,9 @@ func preRepairBackupViewsIn(roots []string) []PreRepairBackupView {
 			if info, err := d.Info(); err == nil {
 				view.ModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
 			}
-			// tl1603 E5 初判（纯 stat，零重放）：宿主在=非唯一退路；宿主不在
-			// 时看回收站里还有没有 stem 家族成员（删除/归档链 tl1442-ext 会把
-			// 转录与随行备份一起搬进桶——桶里有=内容另有副本）。都没有=仅存
-			// 副本，初判拒绝，删除桥以同一判据权威复验。
-			if view.OwnerPath != "" {
-				view.Deletable = true
-			} else if preRepairTrashFamilyHit(parent, stem, trashFamilies) {
-				view.Deletable = true
-			} else {
-				view.BlockReason = PreRepairBlockReasonSoleCopy
-			}
+			// tl1646：列表不再携带可删初判——孤儿副本（宿主不在）与活宿主备
+			// 份同形态列出，删除入口一律可用；唯一副本的警示在前端确认弹窗
+			// （settings.recoveryCopiesPreRepairSoleWarn），健康闸在删除桥。
 			out = append(out, view)
 			// 整棵备份树是一个单元：不再下探。
 			return filepath.SkipDir
@@ -199,52 +180,6 @@ func preRepairScanRoots() []string {
 		config.SessionDir(),
 		filepath.Join(config.MemoryUserDir(), "projects"),
 	}
-}
-
-// preRepairTrashFamilyHit 报告会话目录 dir 的回收站（<dir>/.trash/<桶>/）里
-// 是否仍保有 stem 家族的成员——宿主转录本体（<stem>.jsonl 文件）或任一随行
-// 的改写前备份目录（<stem>.pre-repair-*）。删除/归档链（tl1442-ext 全集清单）
-// 把这两类成员随桶搬走，所以「桶里有」=宿主走的是显式删除/归档链、内容另有
-// 副本=备份非唯一退路（E5 判据的后半）。桶名形态不做业务判断（主链桶=
-// key、防撞桶带 -recovery-<stamp> 尾号、终端归档桶唯一名——各链各有命名），
-// 只读桶内一层成员名，命名无关、覆盖全部链。
-//
-// mem 是同一会话目录的跨条目缓存（枚举一个目录几十条孤儿备份时 .trash 只走
-// 一遍）；nil 条目=该目录尚无读数，命中表 lazy 填充。
-func preRepairTrashFamilyHit(dir, stem string, mem map[string]map[string]bool) bool {
-	hits, cached := mem[dir]
-	if cached {
-		return hits[stem]
-	}
-	hits = map[string]bool{}
-	mem[dir] = hits
-	buckets, err := os.ReadDir(filepath.Join(dir, ".trash"))
-	if err != nil {
-		return false
-	}
-	for _, bucket := range buckets {
-		if !bucket.IsDir() {
-			continue
-		}
-		members, err := os.ReadDir(filepath.Join(dir, ".trash", bucket.Name()))
-		if err != nil {
-			continue
-		}
-		for _, member := range members {
-			name := member.Name()
-			switch {
-			case !member.IsDir() && strings.TrimSuffix(name, store.SessionTranscriptSuffix) != name:
-				// 一个转录名文件（<stem>.jsonl）——它的 stem 入表。
-				hits[strings.TrimSuffix(name, store.SessionTranscriptSuffix)] = true
-			case member.IsDir() && strings.Contains(name, store.SessionPreRepairBackupSuffix):
-				// 一个改写前备份目录——剥掉备份后缀即宿主 stem。
-				if idx := strings.LastIndex(name, store.SessionPreRepairBackupSuffix); idx > 0 {
-					hits[name[:idx]] = true
-				}
-			}
-		}
-	}
-	return hits[stem]
 }
 
 // ListPreRepairBackups 列出全库的改写前备份目录，供版本与副本面板的

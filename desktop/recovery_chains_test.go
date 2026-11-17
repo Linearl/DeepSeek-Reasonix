@@ -148,3 +148,53 @@ func TestListRecoveryChainsSplitsLongerAndNewer(t *testing.T) {
 		t.Fatalf("Longer and newer must be independently computable and can point at different chains: got both=%q", set.NewestPath)
 	}
 }
+
+// TestListRecoveryChainsDropsVanishedMainRow（tl1647 幽灵行根除）——扫描起点
+// 文件本身已被删除（本面板删除链刚把它送进回收站、列表尚未刷新的现场）时，
+// 枚举不再为它产出「文件消失」降级行：旧行为里这行在前端以「降级副本」形态
+// 复活在版本区，带可点击的删除入口，点了必被后端拒（「not a recovery copy:
+// path is not filed in a recovery lineage」）——正是用户实测「磁盘已删、行还
+// 在、再点报错」的三重矛盾源头。副本行照常产出（组的存在性由磁盘枚举决定，
+// 不受主线消失影响）。
+func TestListRecoveryChainsDropsVanishedMainRow(t *testing.T) {
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(dir, "chains-1647-vanished.jsonl")
+	copyPath := filepath.Join(dir, "chains-1647-vanished-recovery-0123456789abcdef.jsonl")
+	t.Cleanup(func() {
+		for _, p := range []string{mainPath, copyPath, mainPath + ".meta", copyPath + ".meta"} {
+			_ = os.Remove(p)
+		}
+	})
+	saveChainFixture(t, mainPath, 2, "被删会话", time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC))
+	saveChainFixture(t, copyPath, 1, "被删会话", time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC))
+	// 现场形态：主线文件已进回收站（磁盘上消失），副本还在。
+	if err := os.Remove(mainPath); err != nil {
+		t.Fatalf("remove main: %v", err)
+	}
+
+	app := newBranchDeleteApp(t)
+	set, err := app.ListRecoveryChains(mainPath)
+	if err != nil {
+		t.Fatalf("list recovery chains: %v", err)
+	}
+	for _, chain := range set.Chains {
+		if chain.Path == mainPath {
+			t.Fatalf("the deleted main file must not come back as a ghost degraded row: %+v", set.Chains)
+		}
+	}
+	found := false
+	for _, chain := range set.Chains {
+		if chain.Path == copyPath {
+			found = true
+			if chain.Degraded {
+				t.Fatalf("the surviving copy must stay a normal (non-degraded) row: %+v", chain)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the surviving copy row must still be listed: %+v", set.Chains)
+	}
+}

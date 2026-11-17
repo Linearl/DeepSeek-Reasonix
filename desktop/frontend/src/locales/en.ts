@@ -4993,15 +4993,17 @@ export const en = {
   "settings.recoveryCopiesDeleteSelected": "Delete selected",
   "settings.recoveryCopiesDeleting": "Deleting",
   "settings.recoveryCopiesOutcomeDeleted": "Deleted",
-  "settings.recoveryCopiesDeleteReopenHint": "The deletion has taken effect. Reopen the conversation in its project (or refresh the tab) to see the updated list — deleted content is still in the trash.",
+  "settings.recoveryCopiesDeleteReopenHint": "The deletion has taken effect and the list has refreshed automatically — deleted content is still in the trash.",
   // tl1414: delete feedback toasts — the outcome row only shows inside the
   // expanded panel, so a refused/silent delete read as "nothing happened".
   "settings.recoveryCopiesDeletedToast": "Deleted {count} branch(es)",
   "settings.recoveryCopiesDeleteFailedToast": "Failed to delete {count} branch(es)",
+  "settings.recoveryCopiesDeletePartialToast": "Deleted {deleted} branch(es); failed to delete {count}",
   // tl1414: whole-conversation deletes and version-row deletes speak their own
   // vocabulary (conversations, versions — not branches).
   "settings.recoveryCopiesConversationDeletedToast": "Deleted {count} conversation(s)",
   "settings.recoveryCopiesConversationDeleteFailedToast": "Failed to delete {count} conversation(s)",
+  "settings.recoveryCopiesConversationDeletePartialToast": "Deleted {deleted} conversation(s); failed to delete {count}",
   "settings.recoveryCopiesVersionDeletedToast": "Deleted {count} version(s)",
   "settings.recoveryCopiesVersionDeleteFailedToast": "Failed to delete {count} version(s)",
   // 任务 1368 线2：whole-conversation delete — the main transcript (with its
@@ -5203,16 +5205,15 @@ export const en = {
   "settings.recoveryCopiesPreRepairFailed": "listing pre-repair backups failed",
   // tl1603: cleanup surface (single delete + batch), recycle-bin semantics.
   "settings.recoveryCopiesPreRepairDelete": "Delete",
-  "settings.recoveryCopiesPreRepairDeleteHint": "Send this backup to the system recycle bin (restorable). The backend first checks the owner session's health and that this is not its only remaining copy.",
+  "settings.recoveryCopiesPreRepairDeleteHint": "Send this backup to the system recycle bin (restorable). When the owner session still exists, the backend checks its health before deleting.",
   "settings.recoveryCopiesPreRepairDeleteTitle": "Delete this pre-repair backup?",
   "settings.recoveryCopiesPreRepairDeleteFailed": "deleting the pre-repair backup failed",
   "settings.recoveryCopiesPreRepairRecycleNote": "The backup directory goes to the system recycle bin — restore it from there if the deletion was a mistake.",
-  "settings.recoveryCopiesPreRepairBlockedSoleCopy": "sole surviving copy of a conversation whose original and trash records are gone — deleting here would lose it for good",
+  "settings.recoveryCopiesPreRepairSoleWarn": "The conversation no longer exists and this backup is its only surviving copy. This cannot be undone — delete only if you no longer need it.",
   "settings.recoveryCopiesPreRepairCleanSelected": "Clean selected ({n})",
   "settings.recoveryCopiesPreRepairCleanAll": "Clean all",
   "settings.recoveryCopiesPreRepairCleanTitle": "Clean pre-repair backups",
   "settings.recoveryCopiesPreRepairCleanLead": "{count} backups · {bytes} will be sent to the system recycle bin.",
-  "settings.recoveryCopiesPreRepairCleanKept": "{n} of them are a conversation's sole surviving copy and will be kept (the receipt names each one).",
   "settings.recoveryCopiesPreRepairCleanConfirm": "Clean",
   "settings.recoveryCopiesPreRepairCleanDone": "{n} backups sent to the recycle bin",
   "settings.recoveryCopiesPreRepairCleanRefused": "{n} backups were refused — see the reasons below the table",

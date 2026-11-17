@@ -464,11 +464,12 @@ export interface SessionVersionGroupView {
  *  beside a session — the panel's 改写前备份 section lists these read-only.
  *  transcript is the backed-up main transcript inside the dir (empty when the
  *  backup was cleared); ownerPath is the live sibling session (empty when the
- *  owner is gone — such a backup is the only surviving full copy).
- *  tl1603: deletable/blockReason carry the stat-level E5 verdict of the listing
- *  (host live or archived-in-trash → deletable; sole surviving copy → blocked
- *  with the "sole-copy" token). The delete bridge re-validates authoritatively,
- *  including the owner health gate the listing cannot afford. */
+ *  owner is gone — an orphan backup, listed the same as any other).
+ *  tl1646 (user ruling 2026-11-16): the tl1603 deletable/blockReason verdict
+ *  fields are retired — orphan backups are deletable (the confirm dialog
+ *  warns "only surviving copy, unrecoverable"), so the listing carries no
+ *  per-row gate anymore. The delete bridge keeps its authoritative health
+ *  gate, which the listing cannot afford. */
 export interface PreRepairBackupView {
   dir: string;
   transcript?: string;
@@ -478,14 +479,12 @@ export interface PreRepairBackupView {
   bytes: number;
   files: number;
   modifiedAt: string;
-  deletable?: boolean;
-  blockReason?: string;
 }
 
 /** tl1603: one refusal line of the batch cleanup receipt. reason is a stable
- *  token the panel localizes; detail carries the raw backend text. */
+ *  token the panel localizes; detail carries the raw backend text.
+ *  tl1646: the "sole-copy" token is retired with the gate it named. */
 export type PreRepairCleanupFailureReason =
-  | "sole-copy"
   | "owner-unhealthy"
   | "gone"
   | "invalid"

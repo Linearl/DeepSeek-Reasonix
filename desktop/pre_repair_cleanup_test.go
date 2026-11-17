@@ -2,13 +2,17 @@ package main
 
 // tl1603: 改写前备份清理桥的后端单测。
 //
-// 验收=三态+回收语义：
+// tl1646（2026-11-16 用户裁决）语义修订：tl1603 的「仅存副本禁删」（E5 闸①）
+// 被推翻——孤儿副本（宿主不在且回收站无家族）允许删除，唯一副本的警示在前端
+// 确认弹窗承担；后端唯一保留的闸=活宿主健康（重放级）。验收=四态+回收语义：
 //  ① 可删——活宿主健康/宿主已走删除链（回收站桶里有家族成员）的备份，删除
 //     成功且**必须经平台回收站 API**（替换 workspaceTrashPlatform 钉死路径，
 //     任务 855 铁律的既有测试先例）；
-//  ② 拒删提示——仅存副本（宿主不在、回收站无家族）与宿主体检不过两条 E5
-//     拒绝分支：错误带原因、平台 API 零调用、目录原样；
-//  ③ 批量清归零——批量后重扫，可删集合归零（仅存副本按判据诚实留存）。
+//  ② 孤儿副本放行（tl1646）——宿主不在、回收站无家族的备份删除成功、走平台
+//     回收站、目录消失（删除决定权在用户）；
+//  ③ 拒删提示——活宿主体检不过一条拒绝分支：错误带原因、平台 API 零调用、
+//     目录原样；
+//  ④ 批量清归零——批量后重扫归零（孤儿副本在批量中同样被清理）。
 //
 // 健康闸经 preRepairHealthInspect 测试缝喂假报告（拒绝分支无需构造超窗会话）；
 // 「可删」态跑真缝（裸转录=healthy，真实接线全链路）。
@@ -117,26 +121,28 @@ func TestPreRepairDeleteTrashesLiveOwnerBackup(t *testing.T) {
 	}
 }
 
-// TestPreRepairDeleteRefusesSoleCopy（三态②：拒删提示）——宿主不在且回收站
-// 无家族成员：拒绝、平台 API 零调用、目录原样。
-func TestPreRepairDeleteRefusesSoleCopy(t *testing.T) {
+// TestPreRepairDeleteAllowsSoleCopyByUserVerdict（tl1646 态②：孤儿副本放行）
+// ——宿主不在且回收站无家族成员（tl1603 时代会拒绝的「仅存副本」）：用户裁决
+// 删除决定权在用户，删除成功、走平台回收站、目录消失；重扫不再含该目录。
+func TestPreRepairDeleteAllowsSoleCopyByUserVerdict(t *testing.T) {
 	sessions := stagePreRepairFixture(t)
 	backup := writePreRepairTree(t, sessions, "lonely", "20261110T010000", 120)
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	err := app.DeletePreRepairBackup(backup)
-	if err == nil {
-		t.Fatal("delete must refuse a sole surviving copy")
+	if err := app.DeletePreRepairBackup(backup); err != nil {
+		t.Fatalf("the sole surviving copy must be deletable by user verdict (tl1646): %v", err)
 	}
-	if !errors.Is(err, errPreRepairSoleCopy) {
-		t.Fatalf("err = %v, want the sole-copy sentinel (the frontend quotes this reason)", err)
+	if len(spy.calls) != 1 || spy.calls[0] != backup {
+		t.Fatalf("trash calls = %v, want exactly [%s]", spy.calls, backup)
 	}
-	if len(spy.calls) != 0 {
-		t.Fatalf("trash must not be called on refusal, got %v", spy.calls)
+	if _, err := os.Stat(backup); !os.IsNotExist(err) {
+		t.Fatalf("the deleted sole copy must be gone from the session dir (stat err=%v)", err)
 	}
-	if _, err := os.Stat(backup); err != nil {
-		t.Fatalf("refused backup must stay untouched: %v", err)
+	for _, view := range preRepairBackupViewsIn([]string{sessions}) {
+		if view.Dir == backup {
+			t.Fatalf("rescan still lists the deleted sole copy: %+v", view)
+		}
 	}
 }
 
@@ -258,9 +264,10 @@ func TestPreRepairBatchCleanupSweepsToZero(t *testing.T) {
 	}
 }
 
-// TestPreRepairBatchCleanupRefusesSoleCopyAndReports——批量里的仅存副本被拒
-// 并逐条归因（令牌+detail），其余成员照常清理；重扫只剩被拒那条。
-func TestPreRepairBatchCleanupRefusesSoleCopyAndReports(t *testing.T) {
+// TestPreRepairBatchCleanupIncludesOrphans——批量里的孤儿副本（tl1603 会被
+// 拒的仅存副本）随 tl1646 放行一并清理：活宿主与孤儿各删各的，回执零失败，
+// 重扫归零。
+func TestPreRepairBatchCleanupIncludesOrphans(t *testing.T) {
 	sessions := stagePreRepairFixture(t)
 	writeLiveOwner(t, sessions, "s1")
 	b1 := writePreRepairTree(t, sessions, "s1", "20261108T010000", 100)
@@ -272,18 +279,18 @@ func TestPreRepairBatchCleanupRefusesSoleCopyAndReports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
-	if run.Trashed != 1 || run.Failed != 1 {
-		t.Fatalf("run = trashed %d / failed %d, want 1/1", run.Trashed, run.Failed)
+	if run.Trashed != 2 || run.Failed != 0 {
+		t.Fatalf("run = trashed %d / failed %d, want 2/0 (orphans ride the batch, tl1646)", run.Trashed, run.Failed)
 	}
-	if len(run.Failures) != 1 || run.Failures[0].Dir != sole || run.Failures[0].Reason != preRepairReasonSoleCopy {
-		t.Fatalf("failures = %+v, want the sole-copy line with its token", run.Failures)
+	if len(run.Failures) != 0 {
+		t.Fatalf("failures = %+v, want none", run.Failures)
 	}
-	if len(spy.calls) != 1 || spy.calls[0] != b1 {
-		t.Fatalf("trash calls = %v, want only the deletable one", spy.calls)
+	if len(spy.calls) != 2 {
+		t.Fatalf("trash calls = %v, want both dirs", spy.calls)
 	}
 	remaining := preRepairBackupViewsIn([]string{sessions})
-	if len(remaining) != 1 || remaining[0].Dir != sole || remaining[0].Deletable {
-		t.Fatalf("rescan = %+v, want exactly the refused sole copy, still marked undeletable", remaining)
+	if len(remaining) != 0 {
+		t.Fatalf("rescan = %+v, want zero (归零)", remaining)
 	}
 }
 
@@ -319,9 +326,10 @@ func TestPreRepairBatchHealthReadCachedPerOwner(t *testing.T) {
 	}
 }
 
-// TestPreRepairEnumerationCarriesE5Verdicts——列表初判的三形态：活宿主=可删、
-// 桶里宿主=可删、仅存副本=拒+令牌。
-func TestPreRepairEnumerationCarriesE5Verdicts(t *testing.T) {
+// TestPreRepairEnumerationListsOrphansPlainly——列表三形态同列（tl1646：不再
+// 有可删初判）：活宿主、桶里宿主、孤儿副本都以同一形态列出；孤儿行的
+// OwnerPath 为空（前端据此在确认弹窗里给唯一副本警示），label/体量读数齐全。
+func TestPreRepairEnumerationListsOrphansPlainly(t *testing.T) {
 	sessions := stagePreRepairFixture(t)
 	writeLiveOwner(t, sessions, "s1")
 	writePreRepairTree(t, sessions, "s1", "20261108T010000", 100)
@@ -337,13 +345,16 @@ func TestPreRepairEnumerationCarriesE5Verdicts(t *testing.T) {
 	for _, view := range views {
 		byStem[strings.Split(filepath.Base(view.Dir), ".pre-repair-")[0]] = view
 	}
-	if !byStem["s1"].Deletable || byStem["s1"].BlockReason != "" {
-		t.Fatalf("live-owner backup = %+v, want deletable with no block reason", byStem["s1"])
+	if byStem["s1"].OwnerPath == "" {
+		t.Fatalf("live-owner backup = %+v, want the owner path filled", byStem["s1"])
 	}
-	if !byStem["archived"].Deletable {
-		t.Fatalf("archived-remains backup = %+v, want deletable (family survives in the trash)", byStem["archived"])
+	if byStem["archived"].OwnerPath != "" {
+		t.Fatalf("archived-remains backup = %+v, want an empty owner path (owner lives in the trash)", byStem["archived"])
 	}
-	if byStem["lonely"].Deletable || byStem["lonely"].BlockReason != PreRepairBlockReasonSoleCopy {
-		t.Fatalf("sole-copy backup = %+v, want blocked with the sole-copy token", byStem["lonely"])
+	if byStem["lonely"].OwnerPath != "" {
+		t.Fatalf("orphan backup = %+v, want an empty owner path (the confirm-dialog sole-copy warning keys off this, tl1646)", byStem["lonely"])
+	}
+	if byStem["lonely"].Bytes <= 0 || byStem["lonely"].Label == "" {
+		t.Fatalf("orphan backup = %+v, want complete readings (bytes/label)", byStem["lonely"])
 	}
 }
