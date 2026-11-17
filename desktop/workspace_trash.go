@@ -22,3 +22,10 @@ func trashWorkspacePaths(paths []string) error {
 }
 
 var errTrashUnsupported = errors.New("move to trash is not supported on this platform")
+
+// errTrashLongPath 是「树内存在超长路径、回收站收不下（收下=只能永久删除）」
+// 的稳定哨兵（tl1658）：平台预检拒绝长路径时必须 %w 包装它，调用方靠
+// errors.Is 识别这一类失败并给出出路（短路径中转后入桶 / 明示永久删除），
+// 而不是把它当成一次普通的 trash 失败——tl1658 现场②正是这条出路缺失，
+// 保守拒绝变成了单删/批量两条路全堵的死锁。
+var errTrashLongPath = errors.New("items exceed the recycle bin's maximum path length")

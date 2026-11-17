@@ -105,8 +105,12 @@ func TestPreRepairDeleteTrashesLiveOwnerBackup(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	if err := app.DeletePreRepairBackup(backup); err != nil {
+	verdict, err := app.DeletePreRepairBackup(backup)
+	if err != nil {
 		t.Fatalf("delete: %v", err)
+	}
+	if !verdict.Trashed || verdict.ViaStaging || verdict.PermanentOnly {
+		t.Fatalf("verdict = %+v, want plain trashed (no staging, no permanent-only)", verdict)
 	}
 	if len(spy.calls) != 1 || spy.calls[0] != backup {
 		t.Fatalf("trash calls = %v, want exactly [%s]", spy.calls, backup)
@@ -130,8 +134,12 @@ func TestPreRepairDeleteAllowsSoleCopyByUserVerdict(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	if err := app.DeletePreRepairBackup(backup); err != nil {
+	verdict, err := app.DeletePreRepairBackup(backup)
+	if err != nil {
 		t.Fatalf("the sole surviving copy must be deletable by user verdict (tl1646): %v", err)
+	}
+	if !verdict.Trashed {
+		t.Fatalf("verdict = %+v, want trashed", verdict)
 	}
 	if len(spy.calls) != 1 || spy.calls[0] != backup {
 		t.Fatalf("trash calls = %v, want exactly [%s]", spy.calls, backup)
@@ -163,9 +171,12 @@ func TestPreRepairDeleteRefusesUnhealthyOwner(t *testing.T) {
 	t.Cleanup(func() { preRepairHealthInspect = previous })
 
 	app := &App{}
-	err := app.DeletePreRepairBackup(backup)
+	verdict, err := app.DeletePreRepairBackup(backup)
 	if err == nil {
 		t.Fatal("delete must refuse when the owner session is unhealthy")
+	}
+	if verdict.Trashed || verdict.PermanentOnly {
+		t.Fatalf("verdict = %+v, want a bare refusal (no trashed, no permanent-only)", verdict)
 	}
 	if !strings.Contains(err.Error(), "owner session is not healthy") || !strings.Contains(err.Error(), "projection_overflow") {
 		t.Fatalf("err = %v, want the unhealthy reason with the criterion codes", err)
@@ -187,7 +198,7 @@ func TestPreRepairDeleteAllowsArchivedRemains(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	if err := app.DeletePreRepairBackup(backup); err != nil {
+	if _, err := app.DeletePreRepairBackup(backup); err != nil {
 		t.Fatalf("delete of archived remains must pass the gate: %v", err)
 	}
 	if len(spy.calls) != 1 || spy.calls[0] != backup {
@@ -203,7 +214,7 @@ func TestPreRepairDeleteRefusesOutsideSessionDirs(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	if err := app.DeletePreRepairBackup(outside); err == nil {
+	if _, err := app.DeletePreRepairBackup(outside); err == nil {
 		t.Fatal("delete must refuse paths outside known session dirs")
 	}
 	if len(spy.calls) != 0 {
@@ -220,8 +231,12 @@ func TestPreRepairDeleteTrashFailureIsHonest(t *testing.T) {
 	withPreRepairTrashSpy(t, errors.New("bin refused"))
 
 	app := &App{}
-	if err := app.DeletePreRepairBackup(backup); err == nil {
+	verdict, err := app.DeletePreRepairBackup(backup)
+	if err == nil {
 		t.Fatal("a recycle-bin failure must surface")
+	}
+	if verdict.Trashed || verdict.PermanentOnly {
+		t.Fatalf("verdict = %+v, want a bare failure (a plain bin refusal is not a permanent-only verdict)", verdict)
 	}
 	if _, err := os.Stat(backup); err != nil {
 		t.Fatalf("failed trash must leave the backup in place: %v", err)
