@@ -14,7 +14,14 @@ import (
 // tool-facing JSON shape and the conversion into the tool's item type.
 
 type todoOp struct {
-	Op          string `json:"op"` // replace | insert | delete | move
+	Op string `json:"op"` // replace | insert | delete | move
+	// StepID is the op's TARGET identity, and it lives here at the ops element's
+	// top level, next to "op" and "item" — that is the canonical position
+	// (tl1668; see evidence.TodoOpsStepIDPlacement for the one-line statement).
+	// Inside Item, step_id means something else: the payload item's own
+	// identity. When the top-level id is absent, evidence.ApplyTodoOps accepts
+	// the payload's id as the target so the older "step_id inside item" form
+	// works instead of failing with a bare `step_id ""`.
 	StepID      string `json:"step_id,omitempty"`
 	AfterStepID string `json:"after_step_id,omitempty"`
 	// Item is the ops payload (task 1014): Level is a *int so the JSON layer
