@@ -21,6 +21,14 @@ import (
 // 时间戳不在口径内（schema-1 replace 记录只承载一条记录级时间）。
 // 原 DAG 日志字节先整体备份到 <log>.dagbak-tl1227 再落新日志，回滚 = 单文件
 // 改回 + 删 schema-1 侧车；迁移函数与校验读数可独立复跑（check 模式只读）。
+//
+// tl1667 补记（迁移知识留存口）：存量 schema-2 DAG 日志一律由
+// MigrateSessionDAGLog 一次性迁移为 schema-1；schema-2 读面（tl1227）已
+// 单路径化退役，凡是「须经 schema-2 读面取样」的场景（大库成本基线、selfheal
+// 备份/瘦身读回、截断转录升级写链读回、refusal 缓存断言等）在代码路径上不再
+// 可达。按 fork 开发纪律「禁止静默 SKIP」——不可达场景的测试应删除而非永久
+// t.Skip；本注释即为该类 Skip 注释迁移知识的收口处（原残体见
+// save_bench_710_test.go / session_backup_1116_test.go，tl1667 已删）。
 
 // SessionDAGMigrationMode decides whether MigrateSessionDAGLog writes to disk.
 type SessionDAGMigrationMode string
