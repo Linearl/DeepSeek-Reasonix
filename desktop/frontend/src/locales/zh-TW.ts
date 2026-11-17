@@ -1468,6 +1468,9 @@ export const zhTW: Record<DictKey, string> = {
   // tl1572: 面板能力=唯讀檢視（改寫前備份分區），文案據此收口，不再承諾「切回」。
   "recovery.noticeSelfHealed": "重新開啟工作階段時，本地自癒偵測到投影超出目前模型視窗，已自動瘦身（Diet）降載並恢復可用（本次動作 {actions}：strip_images=圖片轉佔位引用省 token，fold=超出視窗的舊訊息摺疊為本地佔位）；這是自動降載而非資料損壞修復——原版本未刪，整目錄備份在工作階段檔案旁的 pre-repair 目錄，可在「設定 → 儲存與路徑 → 工作階段版本與副本」面板的「改寫前備份」分區檢視。",
   "recovery.noticeCompactFailStreak": "上下文壓縮已連續失敗 {streak} 次，投影可能超出模型視窗；重新開啟本工作階段可讓本地自癒剝圖並摺疊舊訊息。",
+  // tl1669：連續失敗熔斷——本代內暫停自動壓縮，當前回合不中斷（用現有上下文繼續），
+  // 下一次上下文檢查恢復自動壓縮。
+  "recovery.noticeCompactionBreaker": "上下文壓縮已連續失敗 {streak} 次，本輪內的自動壓縮已暫停；當前回合不會中斷，將在下一次上下文檢查時恢復自動壓縮。",
   "recovery.noticeHeadSelected": "已將此版本設為目前版本。",
   "recovery.headsSummary": "該會話共 {branches} 個版本",
   "recovery.currentVersion": "目前版本",

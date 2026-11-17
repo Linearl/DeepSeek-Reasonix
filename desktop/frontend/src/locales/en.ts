@@ -1855,6 +1855,10 @@ export const en = {
   // tl1572: the panel offers read-only viewing (the Pre-repair backups section); this copy says exactly that - no restore promise.
   "recovery.noticeSelfHealed": "On reopen, local self-heal found the projection over the model window and slimmed it down automatically (Diet) so the conversation is usable again ({actions}: strip_images = images replaced with placeholder references to save tokens, fold = over-window older messages folded into a local placeholder); this is automatic load-shedding, not data-corruption repair — the original version is kept, the whole directory is backed up in the sibling pre-repair directory, and it can be viewed in Settings → Storage & paths → Session versions and copies, under Pre-repair backups.",
   "recovery.noticeCompactFailStreak": "Context compaction has failed {streak} times in a row and the projection may overflow the window; reopening the conversation lets the local self-heal strip images and fold old messages.",
+  // tl1669: the three-strike breaker — automatic compaction is paused for this
+  // generation, the turn keeps running on the current context, and the next
+  // context check resumes the automatic path.
+  "recovery.noticeCompactionBreaker": "Context compaction has failed {streak} times in a row; automatic compaction is paused for this generation — the current turn keeps running on the existing context, and the next context check resumes the automatic path.",
   "recovery.noticeHeadSelected": "This version is now the current version of the conversation.",
   "recovery.headsSummary": "{branches} versions of this conversation",
   "recovery.currentVersion": "Current version",

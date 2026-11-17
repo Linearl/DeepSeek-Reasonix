@@ -247,6 +247,14 @@ export function localizedNoticeText(text: string, code?: string, detail?: string
       return t("recovery.noticeCompactFailStreak", params);
     }
   }
+  // tl1669: the three-strike circuit breaker — automatic compaction is paused
+  // for this generation while the turn keeps running on the current context.
+  if (code === "compaction_breaker") {
+    const params = detailParams(detail);
+    if (Object.keys(params).length > 0) {
+      return t("recovery.noticeCompactionBreaker", params);
+    }
+  }
   const streamReasonKey = code ? streamInterruptReasonCodeKeys[code] : undefined;
   if (streamReasonKey) {
     return t("notice.streamInterruptReason", { reason: t(streamReasonKey) });
