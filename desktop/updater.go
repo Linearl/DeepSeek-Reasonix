@@ -183,6 +183,12 @@ type UpdateInfo struct {
 	DownloadURL       string `json:"downloadUrl"`   // human-facing releases page (macOS path / fallback link)
 	AssetSize         int64  `json:"assetSize"`     // running platform's artifact size, for the progress bar
 	Err               string `json:"err,omitempty"` // set when the check itself failed (both endpoints down)
+	// CheckFailed marks a fork-channel lookup that could not complete (tl1680):
+	// dead channel, rate limit, transport failure. It is deliberately NOT Err —
+	// a failed check is not a failed update, and the UI must stay quiet instead
+	// of raising the banner the issue #96 user could never dismiss. The exact
+	// cause goes to the log, not to the UI.
+	CheckFailed bool `json:"checkFailed,omitempty"`
 }
 
 // UpdateDownloadResult is returned after an artifact has been downloaded,

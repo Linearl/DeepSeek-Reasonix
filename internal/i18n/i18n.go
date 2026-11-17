@@ -708,6 +708,12 @@ type Messages struct {
 	UpgradeApplying            string // "Replacing binary…"
 	UpgradeApplyFailed         string // "failed to apply update: %v"
 	UpgradeSuccessFmt          string // "Updated %s → %s"
+	// tl1680: fork-build face of `upgrade`. A channel lookup that cannot
+	// complete degrades silently (one neutral line, exit 0) — a dead or
+	// rate-limited channel is not an update failure.
+	UpgradeCheckUnavailable    string // neutral skip line when the fork channel is unreachable
+	UpgradeForkAvailableFmt    string // "Fork update available: %s"
+	UpgradeForkDownloadHintFmt string // "Download: %s"
 
 	// `reasonix report` — local CLI crash review and explicit upload
 	ReportNoPending           string

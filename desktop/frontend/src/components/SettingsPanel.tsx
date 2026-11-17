@@ -8056,6 +8056,7 @@ function UpdatesSection({
   const updateStatus =
     status.kind === "checking" ? t("updater.checking") :
     status.kind === "upToDate" ? t("updater.upToDate") :
+    status.kind === "unavailable" ? t("updater.checkUnavailable") :
     status.kind === "available" ? t("updater.available", { v: status.info.latest }) :
     status.kind === "downloading" ? t("updater.downloading", {
       done: mb(status.received),
@@ -8222,7 +8223,7 @@ function UpdatesSection({
             className={`btn btn--small${downloadIsPrimary ? "" : " btn--primary"}`}
             type="button"
             disabled={settingsBusy || updaterBusy}
-            onClick={() => status.info ? applyUpdate(status.info) : void check()}
+            onClick={() => status.info && status.info.latest ? applyUpdate(status.info) : void check()}
           >
             {t("updater.retry")}
           </button>

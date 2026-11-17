@@ -102,6 +102,8 @@ func TestUpdaterWailsMethodContracts(t *testing.T) {
 		{name: "ApplyUpdateRequest", numIn: 4, numOut: 1},
 		{name: "CheckUpdate", numIn: 2, numOut: 2},
 		{name: "OpenDownloadPage", numIn: 1, numOut: 0},
+		// tl1680: the fork one-click apply face (expectedVersion, requestID).
+		{name: "ForkApplyUpdate", numIn: 3, numOut: 1},
 	}
 	// Legacy Download/Install split bindings must stay deleted (v1.20+).
 	for _, removed := range []string{"DownloadUpdate", "InstallUpdate", "DownloadUpdateRequest", "InstallUpdateRequest", "ApplyUpdate"} {

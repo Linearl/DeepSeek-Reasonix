@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/forkupdate"
 	"reasonix/internal/i18n"
 	"reasonix/internal/netclient"
 
@@ -229,6 +230,17 @@ func upgradeCommand(args []string, version string) int {
 		return 1
 	}
 	c.CheckRedirect = validateCLIUpgradeRedirect
+
+	// tl1680 (issue #96): fork builds identify themselves by the fork version
+	// shape (v1.38.3-20261117-1800). Their update target is the fork's own
+	// release channel — the upstream gateway (crash.reasonix.io) is shut down
+	// and the official v* channel serves upstream versions a fork must never
+	// install. Fork builds check the fork channel with the same three-state
+	// contract as the desktop: channel failure degrades silently, current
+	// build answers "already latest", a newer build prints where to get it.
+	if _, isFork := forkupdate.ParseForkVersion(version); isFork {
+		return forkUpgradeCommand(syntax, version, c)
+	}
 
 	// 3. Fetch latest release from GitHub API.
 	fmt.Println(i18n.M.UpgradeChecking)

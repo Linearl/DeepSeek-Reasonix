@@ -134,7 +134,10 @@ export function UpdateBanner({
             className={`btn btn--small${downloadFirst ? "" : " btn--primary"}`}
             type="button"
             onClick={() => {
-              if (status.info) apply(status.info);
+              // tl1680: only re-apply with a pinned version. A stale info from
+              // a failed check carries no version — re-check instead of
+              // triggering the backend's empty-version refusal.
+              if (status.info && status.info.latest) apply(status.info);
               else void check();
             }}
           >
@@ -146,6 +149,11 @@ export function UpdateBanner({
         </div>
       );
     }
+    case "unavailable":
+      // tl1680: the fork channel could not be reached. A failed check is not
+      // an update failure — the banner stays silent (Settings shows the one
+      // neutral line), and the next hourly refresh retries on its own.
+      return null;
     default:
       // idle | checking | upToDate — nothing to show.
       return null;

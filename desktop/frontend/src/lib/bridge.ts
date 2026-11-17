@@ -2319,6 +2319,12 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   CheckUpdate(channel: string): Promise<UpdateInfo | null>;
   /** v1.20+ single-action update: download, verify, install, relaunch. */
   ApplyUpdateRequest(channel: string, expectedVersion: string, requestId: string): Promise<void>;
+  /**
+   * tl1680: the fork's own one-action seamless update — download the pinned
+   * fork release artifact, stage the release unit, publish through the
+   * restart-and-update path, relaunch. The fork UI's only apply face.
+   */
+  ForkApplyUpdate(expectedVersion: string, requestId: string): Promise<void>;
   /** Discard a stuck previous update transaction so the next install can proceed. */
   AbandonPendingUpdate?(): Promise<void>;
   OpenDownloadPage(): Promise<void>;
@@ -3025,7 +3031,7 @@ function bridgeBreadcrumb(method: string): string {
     return `settings ${method}`;
   if (/^(SetConnectionKey|AddProviderConnection|RenameProviderConnections|SaveProvider|SetProviderWebSearch|SaveProviderModelCatalogs|AddOfficialProviderAccess|UpgradeDeepSeekProviderAccess|AddProviderPresetAccess|ResetProviderPresetAccess|RemoveProviderAccess|RemoveProviderAccesses|DeleteProvider|SaveProviderKey|SetProviderKey|ClearProviderKey|TestProviderModel|FetchProviderModelCatalog|FetchAllProviderModelCatalogs|FetchProviderModels|FetchAllProviderModels|ConnectKey)/.test(method))
     return `provider ${method}`;
-  if (/^(CheckUpdate|ApplyUpdateRequest|OpenDownloadPage|OpenUserConfigPath|ReloadUserConfig)/.test(method)) return `update ${method}`;
+  if (/^(CheckUpdate|ApplyUpdateRequest|ForkApplyUpdate|OpenDownloadPage|OpenUserConfigPath|ReloadUserConfig)/.test(method)) return `update ${method}`;
   if (/^(AddMCPServer|InstallMCPServer|UpdateMCPServer|RemoveMCPServer|AuthorizeAndConnectMCPServer|AuthenticateMCPServer|ReconnectMCPServer|ClearMCPServerAuthentication|SetMCPServer)/.test(method))
     return `mcp ${method}`;
   if (/^(AddSkillPath|RemoveSkillPath|SetSkillPathEnabled|RefreshSkills|SetSkillEnabled|SetSkillImplicitInvocation|AcceptSkillSuggestion|AvailableSubagentTools|CreateSubagentProfile|UpdateSubagentProfile|DeleteSubagentProfile|SetSubagentProfileModel|SetSubagentProfileEffort|TrySubagentProfile|CancelTrySubagentProfile)/.test(method))
@@ -8118,6 +8124,21 @@ function makeMockApp(): AppBindings {
     },
     async ApplyUpdateRequest(channel: string, expectedVersion: string, requestId: string) {
       void channel;
+      const selectedChannel = "stable";
+      const total = 12_345_678;
+      for (let r = 0; r <= total; r += 1_800_000) {
+        emitUpdater({ requestId, version: expectedVersion, channel: selectedChannel, phase: "downloading", received: Math.min(r, total), total });
+        await delay(120);
+      }
+      emitUpdater({ requestId, version: expectedVersion, channel: selectedChannel, phase: "verifying", received: total, total });
+      await delay(300);
+      emitUpdater({ requestId, version: expectedVersion, channel: selectedChannel, phase: "installing", received: total, total });
+      await delay(300);
+      emitUpdater({ requestId, version: expectedVersion, channel: selectedChannel, phase: "relaunching", received: 0, total: 0 });
+    },
+    // tl1680: the fork one-click update rides the same progress phases, so the
+    // browser mock mirrors ForkApplyUpdate with the identical phase sequence.
+    async ForkApplyUpdate(expectedVersion: string, requestId: string) {
       const selectedChannel = "stable";
       const total = 12_345_678;
       for (let r = 0; r <= total; r += 1_800_000) {

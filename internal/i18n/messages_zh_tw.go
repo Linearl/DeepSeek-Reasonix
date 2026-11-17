@@ -698,6 +698,10 @@ var ChineseTraditional = Messages{
 	UpgradeApplying:            "正在替換二進位制檔案…",
 	UpgradeApplyFailed:         "應用更新失敗：%v",
 	UpgradeSuccessFmt:          "已更新 %s → %s",
+	// tl1680：fork 渠道面。檢查失敗≠更新失敗。
+	UpgradeCheckUnavailable:    "暫時連不上更新渠道，已跳過本次檢查。目前版本未受影響，稍後可再試。",
+	UpgradeForkAvailableFmt:    "有新版本：%s",
+	UpgradeForkDownloadHintFmt: "下載：%s",
 
 	// tl1472 目標物件化（雙通道建立 + activation）
 	GoalCreatedFmt: "目標已建立（模型自立）→ %s",

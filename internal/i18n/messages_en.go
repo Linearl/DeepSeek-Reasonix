@@ -623,6 +623,10 @@ var English = Messages{
 	UpgradeApplying:            "Replacing binary…",
 	UpgradeApplyFailed:         "failed to apply update: %v",
 	UpgradeSuccessFmt:          "Updated %s → %s",
+	// tl1680: fork channel face. A failed check is not an update failure.
+	UpgradeCheckUnavailable:    "Update channel unreachable; check skipped. Nothing changed — try again later.",
+	UpgradeForkAvailableFmt:    "Fork update available: %s",
+	UpgradeForkDownloadHintFmt: "Download: %s",
 
 	ReportNoPending:           "No pending CLI crash reports.",
 	ReportHeaderFmt:           "CLI crash report %s",

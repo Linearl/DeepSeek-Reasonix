@@ -6,11 +6,20 @@ import type { UpdateInfo } from "./types";
 // Settings panel. v1.20+ uses a single "update and restart" action that downloads,
 // verifies, installs, and relaunches. There is no durable cross-restart pending
 // state: failures leave the current version running and the user simply retries.
+//
+// tl1680 (issue #96): the update target is the fork's own release channel and
+// the machine gained the "unavailable" face — a channel lookup that cannot
+// complete (dead endpoint, GitHub 403 rate limit, EOF) is NOT an update
+// failure. The banner stays silent; Settings shows one neutral line. The
+// pre-tl1680 behavior (raw transport error → error banner → Retry calling
+// apply() with the empty version from the failed check → `update: invalid
+// stable version ''`) is exactly the noise this state removes.
 
 export type UpdateStatus =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "upToDate"; current: string }
+  | { kind: "unavailable" }
   | { kind: "available"; info: UpdateInfo }
   | { kind: "downloading"; received: number; total: number; info: UpdateInfo }
   | { kind: "verifying"; info: UpdateInfo }
@@ -209,6 +218,12 @@ function useUpdaterInternal(): Updater {
       operation.channel = responseChannel;
       operation.expectedVersion = info.latest;
       operationRef.current = { ...operation, kind: "ready" };
+      // tl1680: a fork-channel lookup that could not complete is a neutral
+      // outcome, not an error — no banner, no retry loop, nothing to dismiss.
+      if (info.checkFailed) {
+        setStatus({ kind: "unavailable" });
+        return;
+      }
       if (info.err) {
         setStatus(updateError(info.err, info));
         return;
@@ -242,19 +257,26 @@ function useUpdaterInternal(): Updater {
       void app.OpenDownloadPage();
       return;
     }
+    // tl1680: never send an apply without a pinned fork version — the backend
+    // would (correctly) refuse, and the empty-version error is precisely the
+    // issue #96 noise. A missing version means re-check, not re-apply.
+    if (!info.latest) {
+      void check();
+      return;
+    }
     const operation = beginOperation(selectedChannel, "applying", info.latest);
     setStatus(
       info.requiresElevation || info.installMode === "deb"
         ? { kind: "authorizing", info }
         : { kind: "downloading", received: 0, total: info.assetSize, info },
     );
-    void app.ApplyUpdateRequest(selectedChannel, info.latest, operation.requestId).catch((e) => {
+    void app.ForkApplyUpdate(info.latest, operation.requestId).catch((e) => {
       if (!isCurrentOperation(operation)) return;
       const message = errMsg(e);
       completeOperation(operation);
       setStatus(updateError(message, info));
     });
-  }, [beginOperation, completeOperation, isCurrentOperation]);
+  }, [beginOperation, check, completeOperation, isCurrentOperation]);
 
   const openDownload = useCallback(() => {
     void app.OpenDownloadPage();
