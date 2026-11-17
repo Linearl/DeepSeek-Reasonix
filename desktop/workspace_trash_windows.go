@@ -226,7 +226,11 @@ func trashRecycleGuard(path string) (string, error) {
 		return "", fmt.Errorf("cannot measure %s for the recycle-bin pre-flight: %w", abs, measureErr)
 	}
 	if maxPathLen > maxRecyclePathLen {
-		return "", fmt.Errorf("%s contains items whose full paths exceed %d characters (%d) — Windows cannot put them in the recycle bin and would permanently delete them, refusing", abs, maxRecyclePathLen, maxPathLen)
+		// tl1658：错误必须 %w 包装 errTrashLongPath 哨兵——拒绝本身是对的
+		// （Shell 收不下就只会永久删），但调用方需要靠 errors.Is 识别这一类
+		// 失败并给出出路（短路径中转 / 明示永久删除），不能让保守拒绝变成
+		// 死锁（现场②：单删/清理全组两条路全堵）。
+		return "", fmt.Errorf("%w: %s contains items whose full paths exceed %d characters (%d) — Windows cannot put them in the recycle bin and would permanently delete them, refusing", errTrashLongPath, abs, maxRecyclePathLen, maxPathLen)
 	}
 	if hasLimit {
 		used, usedErr := recycleBinUsedBytes(vol + `\`)

@@ -484,12 +484,16 @@ export interface PreRepairBackupView {
 
 /** tl1603: one refusal line of the batch cleanup receipt. reason is a stable
  *  token the panel localizes; detail carries the raw backend text.
- *  tl1646: the "sole-copy" token is retired with the gate it named. */
+ *  tl1646: the "sole-copy" token is retired with the gate it named.
+ *  tl1658: "permanent-only" — the tree cannot enter the recycle bin (over
+ *  MAX_PATH and short-path staging infeasible); the only way out is an
+ *  explicit user-confirmed permanent delete of that single item. */
 export type PreRepairCleanupFailureReason =
   | "owner-unhealthy"
   | "gone"
   | "invalid"
-  | "trash-failed";
+  | "trash-failed"
+  | "permanent-only";
 
 export interface PreRepairCleanupFailureView {
   dir: string;
@@ -499,12 +503,29 @@ export interface PreRepairCleanupFailureView {
 }
 
 /** tl1603: the batch cleanup receipt — how many dirs went to the OS recycle
- *  bin (with their bytes) and which ones were refused, one line each. */
+ *  bin (with their bytes) and which ones were refused, one line each.
+ *  tl1658: staged counts the trashed items that went through the short-path
+ *  transit (their recycle-bin restore lands in the staging dir, not the
+ *  original location — the receipt discloses that when staged > 0). */
 export interface PreRepairBatchCleanupView {
   trashed: number;
   trashedBytes: number;
+  staged: number;
   failed: number;
   failures: PreRepairCleanupFailureView[];
+}
+
+/** tl1658: the single-delete verdict — the three states the panel copy must
+ *  match exactly. trashed = it went to the recycle bin (viaStaging marks the
+ *  short-path transit, whose restore location differs); permanentOnly =
+ *  nothing was deleted, the recycle semantics is unreachable and the panel
+ *  must offer the explicit "permanent delete is unrecoverable" dialog before
+ *  calling DeletePreRepairBackupPermanent; anything else arrives as an error. */
+export interface PreRepairDeleteView {
+  trashed: boolean;
+  viaStaging?: boolean;
+  permanentOnly?: boolean;
+  detail?: string;
 }
 /** One startup-scan finding (badge data; strictly read-only detection). */
 export interface SessionHealthFindingView {
@@ -1149,9 +1170,13 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // tl1572: 版本与副本面板的「改写前备份」分区——自愈/Diet 改写前的整目录
   // 备份（<stem>.pre-repair-<stamp>）枚举，纯目录读数（见 Go pre_repair_backups.go）。
   ListPreRepairBackups(): Promise<PreRepairBackupView[]>;
-  // tl1603: 改写前备份的手动清理——先过 E5 闸（非唯一退路+宿主健康），通过
-  // 后整目录送 OS 回收站（可从系统回收站原位还原）；拒绝即人话原因。
-  DeletePreRepairBackup(dir: string): Promise<void>;
+  // tl1603: 改写前备份的手动清理——先过宿主健康闸，通过后整目录送 OS 回收
+  // 站（可从系统回收站原位还原）；拒绝即人话原因。
+  // tl1658: 返回裁决视图（trashed / viaStaging / permanentOnly）——超长路径
+  // 收不进桶且短路径中转也不可行时，裁决交前端出「永久删除不可恢复」明示
+  // 弹窗，确认后才走 DeletePreRepairBackupPermanent。
+  DeletePreRepairBackup(dir: string): Promise<PreRepairDeleteView>;
+  DeletePreRepairBackupPermanent(dir: string): Promise<void>;
   DeletePreRepairBackups(dirs: string[]): Promise<PreRepairBatchCleanupView>;
   // 任务 1011: session health / self-heal / versions panel (需求 E).
   ListSessionVersionGroups(): Promise<SessionVersionGroupView[]>;
@@ -4622,11 +4647,15 @@ function makeMockApp(): AppBindings {
     async ListPreRepairBackups(): Promise<PreRepairBackupView[]> {
       return [];
     },
-    async DeletePreRepairBackup(_dir: string): Promise<void> {
+    async DeletePreRepairBackup(_dir: string): Promise<PreRepairDeleteView> {
+      // mock: cleanup is a no-op in browser-dev mode
+      return { trashed: true };
+    },
+    async DeletePreRepairBackupPermanent(_dir: string): Promise<void> {
       // mock: cleanup is a no-op in browser-dev mode
     },
     async DeletePreRepairBackups(_dirs: string[]): Promise<PreRepairBatchCleanupView> {
-      return { trashed: 0, trashedBytes: 0, failed: 0, failures: [] };
+      return { trashed: 0, trashedBytes: 0, staged: 0, failed: 0, failures: [] };
     },
     async ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet> {
       return { mainPath, mainLabel: mainPath, chains: [], longestPath: "", longestHead: "", newestPath: "", newestHead: "" };

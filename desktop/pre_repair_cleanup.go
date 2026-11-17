@@ -18,6 +18,15 @@ package main
 //     裁决改为：前端确认弹窗明示「唯一副本、删除后不可恢复」（三语
 //     settings.recoveryCopiesPreRepairSoleWarn），确认即删、走系统回收站
 //     既有通道；后端不再设 sole-copy 闸。
+//  3. 超长路径死锁解除（tl1658，2026-11-17）：备份树内层路径超 MAX_PATH(260)
+//     时 Shell 收不进桶（预检诚实拒绝），此前单删/批量两条路全堵=保守拒绝
+//     变死锁。现在两段出路：①短路径中转（移到 %TEMP% 暂存区再整体入桶，
+//     移动不受 MAX_PATH 限制、回收站语义保住；还原位置差异在前端文案披露）；
+//     ②中转也不可行时返回 permanentOnly 裁决，前端出「永久删除不可恢复」
+//     明示弹窗，确认后才走 DeletePreRepairBackupPermanent（健康闸照常，
+//     os.RemoveAll 显式通道，任务 855「彻底删除是独立显式操作」条款）。
+//     批量面另有逐项进度事件（pre-repair-cleanup:progress）——3.4GB/181
+//     项的批量删除不再静默。
 //
 // 回收语义（任务 855 铁律）：删除必须经平台 API 送进系统回收站（trashWorkspacePaths
 // → SHFileOperation FOF_ALLOWUNDO / gio trash），禁止 os.RemoveAll 裸删、
@@ -30,7 +39,10 @@ package main
 // 形态）不持锁，与它撞上的表现是 rename ENOENT=诚实失败行，零数据损失。
 
 import (
+	"errors"
 	"fmt"
+	"hash/fnv"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -51,6 +63,10 @@ const (
 	preRepairReasonGone           = "gone"            // 枚举后已被别的链搬走
 	preRepairReasonOwnerUnhealthy = "owner-unhealthy" // 健康闸：宿主体检不过
 	preRepairReasonTrashFailed    = "trash-failed"    // 平台回收站调用失败
+	// preRepairReasonPermanentOnly（tl1658）：超长路径+短路径中转也不可行——
+	// 回收语义走不通，唯一出路是用户在明示弹窗确认后的永久删除。批量回执里
+	// 携带该令牌让前端逐条归因；单删走 PreRepairDeleteView.PermanentOnly 裁决。
+	preRepairReasonPermanentOnly = "permanent-only"
 )
 
 // preRepairBackupBytes 是备份目录的体量读数（一层平铺 stat 和，与枚举同一口径）。
@@ -191,22 +207,214 @@ func pathContainedBy(path, root string) bool {
 	return err == nil && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." && !filepath.IsAbs(rel)
 }
 
-// trashPreRepairBackupDir 是删除执行的单点：E5 闸通过后把整个备份目录送进
-// OS 回收站。锁（a.sessionRemovalMu）由调用方持有。
-func (a *App) trashPreRepairBackupDir(backupDir string) error {
-	if err := trashWorkspacePaths([]string{backupDir}); err != nil {
-		slog.Warn("desktop: pre-repair delete failed at the recycle bin", "path", backupDir, "err", err)
-		return err
+// preRepairStagingMkdir 是短路径暂存区的创建缝（tl1658）：var 仅为测试缝
+// （workspaceTrashPlatform 同一先例）——「中转不可行」分支靠替换它钉死。
+var preRepairStagingMkdir = os.MkdirTemp
+
+// preRepairStagingMove 是把一个文件挪进暂存树的执行缝（tl1658；var 仅为测试
+// 可注入，生产=os.Rename 的同卷元数据改名，零字节拷贝）。
+var preRepairStagingMove = os.Rename
+
+// movedStagedFile 记录一次「原长路径 → 暂存短路径」的文件搬移，入桶失败时
+// 按映射逆向搬回（骨架目录尚未清，父目录必然还在）。
+type movedStagedFile struct{ from, to string }
+
+// preRepairShortenComponent 把单个路径组件截到 ≤40 字符：前 30 rune（不劈
+// UTF-8）+ "~" + 8 位 FNV 指纹（同输入同输出，防截断前缀碰撞）。短组件原样
+// 保留——只有超长组件才需要动，短路径树少改名少惊喜。
+func preRepairShortenComponent(component string) string {
+	if len(component) <= 40 {
+		return component
 	}
-	slog.Info("desktop: pre-repair backup deleted to recycle bin", "path", backupDir)
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(component))
+	runes := []rune(component)
+	if len(runes) > 30 {
+		runes = runes[:30]
+	}
+	return string(runes) + "~" + fmt.Sprintf("%08x", hash.Sum32())
+}
+
+// preRepairMoveTreeToStaging 把 srcRoot 树内全部文件逐个 rename 进 dstRoot
+// （相对结构保留、超长组件截短）。返回搬移映射；中途失败时返回已完成的映
+// 射供调用方逆向回滚。目录不搬——文件全部挪走后源树只剩空壳，由调用方在
+// 入桶成功后 RemoveAll 清掉（骨架清理放在入桶之后：入桶失败时父目录还在，
+// 逆向 rename 不需要重建任何目录）。
+func preRepairMoveTreeToStaging(srcRoot, dstRoot string) ([]movedStagedFile, error) {
+	moves := []movedStagedFile{}
+	walkErr := filepath.WalkDir(srcRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, relErr := filepath.Rel(srcRoot, path)
+		if relErr != nil {
+			return relErr
+		}
+		relParts := strings.Split(rel, string(filepath.Separator))
+		for i, part := range relParts {
+			relParts[i] = preRepairShortenComponent(part)
+		}
+		dst := filepath.Join(dstRoot, filepath.Join(relParts...))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		if err := preRepairStagingMove(path, dst); err != nil {
+			return err
+		}
+		moves = append(moves, movedStagedFile{from: path, to: dst})
+		return nil
+	})
+	return moves, walkErr
+}
+
+// preRepairTrashViaShortStaging 是 tl1658① 的中转执行：把备份树搬进 %TEMP%
+// 短路径暂存区（逐文件 rename，超长组件截短——**顶层改名不够**：guard 量的
+// 是树内最长完整路径，实测夹具抓出「短根+189 字符内层名=314 仍被拒」），落
+// 稳后整体送 OS 回收站。回收站还原语义的差异（经中转的备份从回收站还原时
+// 会回到暂存目录、且超长名已截短）已在前端确认文案里披露
+// （settings.recoveryCopiesPreRepairRecycleNote）。数据安全序：文件先搬 →
+// 入桶 → 成功后才清源树空壳；入桶失败按映射逆向搬回原位（父目录都在），
+// 数据滞留 TEMP 的窗口被压缩到「入桶调用本身」，且失败路径自愈。
+func preRepairTrashViaShortStaging(backupDir string) error {
+	// 暂存名保住「识别度」：stem 过长时截断到 30 字符，后缀
+	// .pre-repair-<stamp> 原样保留——回收站里的条目名仍能对上备份。
+	stem, stamp, ok := preRepairStemOf(filepath.Base(backupDir))
+	if !ok {
+		return fmt.Errorf("not a pre-repair backup directory: %s", filepath.Base(backupDir))
+	}
+	if runes := []rune(stem); len(runes) > 30 {
+		stem = string(runes[:30])
+	}
+	stagedName := stem + store.SessionPreRepairBackupSuffix + stamp
+	root, err := preRepairStagingMkdir("", "reasonix-prepair-")
+	if err != nil {
+		return fmt.Errorf("long-path staging unavailable: %w", err)
+	}
+	staged := filepath.Join(root, stagedName)
+	if err := os.Mkdir(staged, 0o755); err != nil {
+		_ = os.Remove(root)
+		return fmt.Errorf("long-path staging unavailable: %w", err)
+	}
+	moves, moveErr := preRepairMoveTreeToStaging(backupDir, staged)
+	if moveErr != nil {
+		rollbackMoves(moves)
+		_ = os.RemoveAll(root)
+		return fmt.Errorf("long-path staging move failed: %w", moveErr)
+	}
+	// 入桶：暂存树全程远短于 MAX_PATH，trashRecycleGuard 预检通过，
+	// SHFileOperation 搬进回收站=数据离开暂存区。
+	if trashErr := trashWorkspacePaths([]string{staged}); trashErr != nil {
+		// 入桶失败必须搬回原位：数据滞留在 TEMP 会让面板「看不见」这份备份
+		// （枚举只扫会话目录），用户会以为删没了——比失败更糟。源树骨架
+		// 未清，逆向 rename 即可完整复原。
+		rollbackMoves(moves)
+		_ = os.RemoveAll(root)
+		return fmt.Errorf("staged delete failed, the backup was moved back: %w", trashErr)
+	}
+	// 成功：清源树空壳（文件已全部随桶走）与暂存根；清不掉只留空目录，
+	// 不遮掩成功。
+	_ = os.RemoveAll(backupDir)
+	_ = os.Remove(root)
 	return nil
+}
+
+// rollbackMoves 按搬移映射逆向 rename（入桶失败的自愈路径；映射序=搬出序，
+// 逆序撤回）。搬回失败的文件如实落日志——数据仍在暂存区，绝不静默吞。
+func rollbackMoves(moves []movedStagedFile) {
+	for i := len(moves) - 1; i >= 0; i-- {
+		if err := os.Rename(moves[i].to, moves[i].from); err != nil {
+			slog.Error("desktop: pre-repair staging rollback failed — the file stays at the staging path", "from", moves[i].to, "to", moves[i].from, "err", err)
+		}
+	}
+}
+
+// trashPreRepairBackupDir 是删除执行的单点：E5 闸通过后把整个备份目录送进
+// OS 回收站；预检判「树内超长路径收不进桶」时（tl1658 现场②，285>260 实测
+// 现场）自动走短路径中转二段入桶——回收站语义保住，死锁解除。返回是否经
+// 中转（回执/裁决文案需要区分：中转项的还原位置不同）。锁
+// （a.sessionRemovalMu）由调用方持有。
+func (a *App) trashPreRepairBackupDir(backupDir string) (staged bool, err error) {
+	trashErr := trashWorkspacePaths([]string{backupDir})
+	if trashErr == nil {
+		slog.Info("desktop: pre-repair backup deleted to recycle bin", "path", backupDir)
+		return false, nil
+	}
+	if errors.Is(trashErr, errTrashLongPath) {
+		if stageErr := preRepairTrashViaShortStaging(backupDir); stageErr == nil {
+			slog.Info("desktop: pre-repair backup deleted to recycle bin via short-path staging", "path", backupDir)
+			return true, nil
+		} else {
+			// 中转也不可行：把原始长路径拒绝原样上抛（errors.Is 链保留）——
+			// 上层据此给 permanentOnly 裁决，用户明示后才允许永久删除。
+			slog.Warn("desktop: pre-repair delete could not be staged for the recycle bin", "path", backupDir, "trash_err", trashErr, "staging_err", stageErr)
+			return false, trashErr
+		}
+	}
+	slog.Warn("desktop: pre-repair delete failed at the recycle bin", "path", backupDir, "err", trashErr)
+	return false, trashErr
+}
+
+// PreRepairDeleteView 是单删的裁决回执（tl1658）：删除走没走成、有没有经
+// 短路径中转，以及「回收语义走不通、只剩明示永久删除一条路」的裁决。
+// permanentOnly=true 时目录原样未动、error 为 nil——这不是成功也不是失败，
+// 是把裁决交给前端出第二段明示弹窗（「永久删除不可恢复」，确认后才调
+// DeletePreRepairBackupPermanent）。文案与实际行为一致的三态就挂在这三个
+// 字段上：Trashed=已进回收站（toast 说「进回收站」）、PermanentOnly=未删
+// （弹窗说「永久删除不可恢复」）、其余=诚实报错。
+type PreRepairDeleteView struct {
+	// Trashed 表示备份已送进系统回收站（可还原）。
+	Trashed bool `json:"trashed"`
+	// ViaStaging 表示走了短路径中转（回收站还原时会回到中转目录而非原位置，
+	// 前端 receipt 对该形态附披露说明）。
+	ViaStaging bool `json:"viaStaging,omitempty"`
+	// PermanentOnly 表示无法进回收站（超长路径且中转不可行）——未删除任何
+	// 字节，等用户在明示弹窗确认后的永久删除。
+	PermanentOnly bool `json:"permanentOnly,omitempty"`
+	// Detail 是 permanentOnly 裁决的原始细节（预检拒绝全文，诊断与展示用）。
+	Detail string `json:"detail,omitempty"`
 }
 
 // DeletePreRepairBackup 删单个改写前备份目录（面板行内「删除」按钮）。先过
 // 健康闸（活宿主体检，tl1646 后唯一保留的闸），通过后整目录送 OS 回收站
-// （可从系统回收站原位还原）。孤儿副本（宿主已不在）不再拒绝——删除决定权
-// 在用户，前端确认弹窗明示「唯一副本、不可恢复」（tl1646）。
-func (a *App) DeletePreRepairBackup(dir string) error {
+// （可从系统回收站原位还原）；树内超长路径收不进桶时自动走短路径中转二段
+// 入桶（tl1658①）。孤儿副本（宿主已不在）不再拒绝——删除决定权在用户，
+// 前端确认弹窗明示「唯一副本、不可恢复」（tl1646）。中转也不可行时返回
+// permanentOnly 裁决（tl1658②），由前端出明示弹窗。
+func (a *App) DeletePreRepairBackup(dir string) (PreRepairDeleteView, error) {
+	backupDir := filepath.Clean(strings.TrimSpace(dir))
+	if backupDir == "." {
+		return PreRepairDeleteView{}, fmt.Errorf("no backup path given")
+	}
+	a.sessionRemovalMu.Lock()
+	defer a.sessionRemovalMu.Unlock()
+	gatedStem, _, err := a.preRepairCleanupGate(backupDir, nil)
+	if err != nil {
+		return PreRepairDeleteView{}, friendlySessionFileError(err)
+	}
+	staged, trashErr := a.trashPreRepairBackupDir(backupDir)
+	if trashErr != nil {
+		if errors.Is(trashErr, errTrashLongPath) {
+			// 死锁出口（tl1658②）：中转不可行，回收语义走不通。目录原样
+			// 未动，裁决交前端——只有用户在明示弹窗确认后才会走永久删除桥。
+			slog.Warn("desktop: pre-repair delete verdict is permanent-only (recycle bin and staging both refused)", "path", backupDir, "err", trashErr)
+			return PreRepairDeleteView{PermanentOnly: true, Detail: trashErr.Error()}, nil
+		}
+		return PreRepairDeleteView{}, friendlySessionFileError(trashErr)
+	}
+	slog.Info("desktop: pre-repair backup deleted", "label", preRepairBackupLabel(backupDir, gatedStem), "path", backupDir)
+	return PreRepairDeleteView{Trashed: true, ViaStaging: staged}, nil
+}
+
+// DeletePreRepairBackupPermanent 永久删除单个改写前备份目录（tl1658②兜底，
+// DeleteWorkspaceEntriesPermanent 同一先例：前端必须先弹「永久删除不可恢复」
+// 的明示确认再调用）。健康闸照常体检——活宿主不健康时其改写前快照是唯一的
+// 回头路，兜底不允许旁路它（tl1116 纪律在永久路径上同等生效）。任务 855 铁
+// 律的「彻底删除是独立显式操作」条款：本桥只服务明示确认后的删除，绝不作为
+// 任何删除流的默认通道。
+func (a *App) DeletePreRepairBackupPermanent(dir string) error {
 	backupDir := filepath.Clean(strings.TrimSpace(dir))
 	if backupDir == "." {
 		return fmt.Errorf("no backup path given")
@@ -217,10 +425,11 @@ func (a *App) DeletePreRepairBackup(dir string) error {
 	if err != nil {
 		return friendlySessionFileError(err)
 	}
-	if err := a.trashPreRepairBackupDir(backupDir); err != nil {
+	if err := os.RemoveAll(backupDir); err != nil {
+		slog.Warn("desktop: pre-repair permanent delete failed", "path", backupDir, "err", err)
 		return friendlySessionFileError(err)
 	}
-	slog.Info("desktop: pre-repair backup deleted", "label", preRepairBackupLabel(backupDir, gatedStem), "path", backupDir)
+	slog.Info("desktop: pre-repair backup permanently deleted (explicit user verdict)", "label", preRepairBackupLabel(backupDir, gatedStem), "path", backupDir)
 	return nil
 }
 
@@ -234,18 +443,42 @@ type PreRepairCleanupFailure struct {
 }
 
 // PreRepairBatchCleanupView 是批量清理的回执：几条进了回收站（含体量）、
-// 几条被拒（逐条带令牌）。Failures 永不为 nil（nil 经 Wails 序列化成 JSON
-// null，前端 .filter 直接崩——dag 迁移面同款钉）。
+// 几条被拒（逐条带令牌）、几条经短路径中转入桶（tl1658：中转项的回收站还
+// 原位置不同，前端 receipt 对该形态附披露说明）。Failures 永不为 nil（nil
+// 经 Wails 序列化成 JSON null，前端 .filter 直接崩——dag 迁移面同款钉）。
 type PreRepairBatchCleanupView struct {
-	Trashed      int                       `json:"trashed"`
-	TrashedBytes int64                     `json:"trashedBytes"`
-	Failed       int                       `json:"failed"`
-	Failures     []PreRepairCleanupFailure `json:"failures"`
+	Trashed      int   `json:"trashed"`
+	TrashedBytes int64 `json:"trashedBytes"`
+	// Staged（tl1658）是 Trashed 里经短路径中转入桶的条数。
+	Staged   int                       `json:"staged"`
+	Failed   int                       `json:"failed"`
+	Failures []PreRepairCleanupFailure `json:"failures"`
+}
+
+// preRepairCleanupProgressEvent 前端订阅的批量清理进度事件名（tl1658 现场①：
+// 3.4GB/181 项的批量删除必须有可见进度；dag-migration:progress 同一先例）。
+const preRepairCleanupProgressEvent = "pre-repair-cleanup:progress"
+
+// emitPreRepairCleanupProgress 把一条批量进度推给前端；ctx 缺失（离屏/测试）
+// 时静默跳过（emitDagMigrationProgress 同一形态）。
+func (a *App) emitPreRepairCleanupProgress(index, total int, label, status string) {
+	if a == nil || a.ctx == nil {
+		return
+	}
+	runtimeEventsEmitFallback(a.ctx, preRepairCleanupProgressEvent, map[string]any{
+		"index":  index,
+		"total":  total,
+		"label":  label,
+		"status": status,
+	})
 }
 
 // DeletePreRepairBackups 批量清理改写前备份（面板「清理所选/清理全组」）。
 // 逐条过同一健康闸（活宿主健康读数在批内按宿主缓存——同一会话的多份备份只
-// 重放一次），逐条送回收站：一条被拒/失败不拖累其余，回执逐条可归因。
+// 重放一次），逐条送回收站（超长路径自动短路径中转，tl1658①）：一条被拒/
+// 失败不拖累其余，回执逐条可归因。逐项 emit 进度事件（tl1658 现场①）——
+// 每项开始（processing）与落定（trashed/staged/refused）各一条，前端据此
+// 渲染「已处理 n/N」。
 func (a *App) DeletePreRepairBackups(dirs []string) (PreRepairBatchCleanupView, error) {
 	view := PreRepairBatchCleanupView{Failures: []PreRepairCleanupFailure{}}
 	// 去重保序：前端勾选集不会有重复，防御面仍按集合语义收口。
@@ -267,37 +500,48 @@ func (a *App) DeletePreRepairBackups(dirs []string) (PreRepairBatchCleanupView, 
 	defer a.sessionRemovalMu.Unlock()
 	// 健康读数批内缓存：同一宿主的多份备份只体检一次（一次重放一份日志）。
 	health := map[string]bool{}
-	for _, backupDir := range ordered {
+	refuse := func(index int, dir, label, reason, detail string) {
+		view.Failed++
+		view.Failures = append(view.Failures, PreRepairCleanupFailure{
+			Dir: dir, Label: label, Reason: reason, Detail: detail,
+		})
+		a.emitPreRepairCleanupProgress(index, len(ordered), label, "refused")
+	}
+	for i, backupDir := range ordered {
 		base := filepath.Base(backupDir)
 		stem, _, ok := preRepairStemOf(base)
 		if !ok {
-			view.Failed++
-			view.Failures = append(view.Failures, PreRepairCleanupFailure{
-				Dir: backupDir, Label: base, Reason: preRepairReasonInvalid,
-			})
+			refuse(i+1, backupDir, base, preRepairReasonInvalid, "not a pre-repair backup directory: "+base)
 			continue
 		}
 		label := preRepairBackupLabel(backupDir, stem)
+		a.emitPreRepairCleanupProgress(i+1, len(ordered), label, "processing")
 		_, bytes, err := a.preRepairCleanupGate(backupDir, health)
 		if err != nil {
-			view.Failed++
-			view.Failures = append(view.Failures, PreRepairCleanupFailure{
-				Dir: backupDir, Label: label, Reason: preRepairFailureReason(err), Detail: err.Error(),
-			})
+			refuse(i+1, backupDir, label, preRepairFailureReason(err), err.Error())
 			continue
 		}
-		if err := a.trashPreRepairBackupDir(backupDir); err != nil {
-			view.Failed++
-			view.Failures = append(view.Failures, PreRepairCleanupFailure{
-				Dir: backupDir, Label: label, Reason: preRepairReasonTrashFailed, Detail: err.Error(),
-			})
+		staged, trashErr := a.trashPreRepairBackupDir(backupDir)
+		if trashErr != nil {
+			if errors.Is(trashErr, errTrashLongPath) {
+				// tl1658②：中转也不可行——令牌归因，用户可在面板对单项走明示永久删除。
+				refuse(i+1, backupDir, label, preRepairReasonPermanentOnly, trashErr.Error())
+				continue
+			}
+			refuse(i+1, backupDir, label, preRepairReasonTrashFailed, trashErr.Error())
 			continue
 		}
 		view.Trashed++
 		view.TrashedBytes += bytes
+		if staged {
+			view.Staged++
+			a.emitPreRepairCleanupProgress(i+1, len(ordered), label, "staged")
+		} else {
+			a.emitPreRepairCleanupProgress(i+1, len(ordered), label, "trashed")
+		}
 	}
 	slog.Info("desktop: pre-repair batch cleanup done",
-		"requested", len(ordered), "trashed", view.Trashed, "failed", view.Failed,
+		"requested", len(ordered), "trashed", view.Trashed, "staged", view.Staged, "failed", view.Failed,
 		"bytes", view.TrashedBytes)
 	return view, nil
 }

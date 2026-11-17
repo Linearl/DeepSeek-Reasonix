@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type PreRepairBackupView, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
+import { app, type ConsolidationReport, type PreRepairBackupView, type PreRepairDeleteView, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { formatBytes } from "../lib/format";
 import { useT, type Translator } from "../lib/i18n";
 import { formatRecoveryActivateError } from "../lib/recoveryActivateError";
@@ -579,6 +579,26 @@ export function RecoveryCopiesSection() {
   // 单删在途按行记（preRepairDeleting），删哪条只禁哪条。
   const [preRepairBusy, setPreRepairBusy] = useState(false);
   const [preRepairDeleting, setPreRepairDeleting] = useState<Set<string>>(new Set());
+  // tl1658 现场①：批量的逐项进度（pre-repair-cleanup:progress 事件驱动）。
+  // 181 项/3.4GB 的清理是分钟级阻塞桥调用，此前全程零反馈——用户无从知道
+  // 是否在跑（dag-migration:progress 同一先例）。null=不在途/无进度。
+  const [preRepairProgress, setPreRepairProgress] = useState<{ done: number; total: number; label: string } | null>(
+    null,
+  );
+  // tl1658: 进度事件只在批量在途窗口订阅（busy 翻 false 时连带清理最后一帧
+  // 进度——完成 toast 与刷新后的列表是完成态的权威呈现，进度行不再残留）。
+  useEffect(() => {
+    if (!preRepairBusy) return;
+    const off = window.runtime?.EventsOn("pre-repair-cleanup:progress", (...args: unknown[]) => {
+      const payload = args[0] as { index?: number; total?: number; label?: string } | undefined;
+      if (!payload || typeof payload.label !== "string") return;
+      setPreRepairProgress({ done: payload.index ?? 0, total: payload.total ?? 0, label: payload.label });
+    });
+    return () => {
+      off?.();
+      setPreRepairProgress(null);
+    };
+  }, [preRepairBusy]);
   // pickedChain names the branch the user chose to win, keyed by main path. Empty
   // means "let the engine take the fullest one". Keyed per conversation so a pick
   // in one group never leaks into another.
@@ -930,8 +950,41 @@ export function RecoveryCopiesSection() {
     if (!ok) return;
     setPreRepairDeleting((current) => new Set(current).add(view.dir));
     try {
-      await app.DeletePreRepairBackup(view.dir);
-      showToast(t("settings.recoveryCopiesPreRepairCleanDone").replace("{n}", "1"), "info");
+      // tl1658: 桥返回裁决视图（三态文案与实际行为一一对应）——trashed=进
+      // 回收站（viaStaging=经短路径中转，toast 附披露）；permanentOnly=什么
+      // 都没删，出第二段「永久删除不可恢复」明示弹窗，确认后才走永久桥；
+      // 其余=错误原样上抛。旧 harness 的 void stub（undefined）按 trashed
+      // 处理（既有判例零回退）。
+      const verdict: PreRepairDeleteView | undefined = await app.DeletePreRepairBackup(view.dir);
+      if (verdict?.permanentOnly) {
+        const okPermanent = await confirm({
+          title: t("settings.recoveryCopiesPreRepairPermanentTitle"),
+          message: (
+            <div>
+              <p>
+                {view.label} · {formatBytes(view.bytes)}
+              </p>
+              <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairPermanentWarn")}</p>
+              {verdict.detail ? <p className="rc-muted">{verdict.detail}</p> : null}
+            </div>
+          ),
+          confirmLabel: t("settings.recoveryCopiesPreRepairPermanentConfirm"),
+          cancelLabel: t("common.cancel"),
+          tone: "danger",
+        });
+        if (!okPermanent) return;
+        await app.DeletePreRepairBackupPermanent(view.dir);
+        showToast(t("settings.recoveryCopiesPreRepairPermanentDone"), "info");
+      } else {
+        if (verdict?.viaStaging) {
+          showToast(
+            `${t("settings.recoveryCopiesPreRepairCleanDone").replace("{n}", "1")} · ${t("settings.recoveryCopiesPreRepairStagedNote")}`,
+            "info",
+          );
+        } else {
+          showToast(t("settings.recoveryCopiesPreRepairCleanDone").replace("{n}", "1"), "info");
+        }
+      }
       await load();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -975,17 +1028,27 @@ export function RecoveryCopiesSection() {
     setPreRepairBusy(true);
     try {
       const run = await app.DeletePreRepairBackups(targets.map((v) => v.dir));
-      if (run.trashed > 0) {
+      // tl1658 完成回执三态（与实际行为一一对应；tl1647 聚合口径）：全成功/
+      // 部分成功/全被拒各一条 toast——部分成功此前只报成功数、失败只落面板，
+      // toast 层看不出「有失败」。经中转的项（staged>0）附还原位置披露。
+      const stagedNote = run.staged > 0 ? ` · ${t("settings.recoveryCopiesPreRepairStagedNote")}` : "";
+      if (run.trashed > 0 && run.failed === 0) {
         showToast(
-          `${t("settings.recoveryCopiesPreRepairCleanDone").replace("{n}", String(run.trashed))} · ${formatBytes(run.trashedBytes)}`,
+          `${t("settings.recoveryCopiesPreRepairCleanDone").replace("{n}", String(run.trashed))} · ${formatBytes(run.trashedBytes)}${stagedNote}`,
           "info",
         );
+      } else if (run.trashed > 0 && run.failed > 0) {
+        showToast(
+          `${t("settings.recoveryCopiesPreRepairCleanPartial")
+            .replace("{ok}", String(run.trashed))
+            .replace("{failed}", String(run.failed))}${stagedNote}`,
+          "info",
+        );
+      } else if (run.failed > 0) {
+        showToast(t("settings.recoveryCopiesPreRepairCleanRefused").replace("{n}", String(run.failed)), "error");
       }
       for (const failure of run.failures ?? []) {
         setErrors((current) => [...current, `${failure.label}: ${failure.detail || failure.reason}`]);
-      }
-      if (run.trashed === 0 && run.failed > 0) {
-        showToast(t("settings.recoveryCopiesPreRepairCleanRefused").replace("{n}", String(run.failed)), "error");
       }
       await load();
     } finally {
@@ -2924,9 +2987,22 @@ export function RecoveryCopiesSection() {
                             disabled={busy || preRepairBusy}
                             onClick={() => void cleanPreRepairBatch(preRepairs)}
                           >
-                            {t("settings.recoveryCopiesPreRepairCleanAll")}
+                            {/* tl1658 现场①：全组钮同样给在途标记（此前只有
+                                「清理所选」变「…」，全组钮只是灰死——批量在
+                                跑这件事在按钮上不可见）。 */}
+                            {preRepairBusy ? "…" : t("settings.recoveryCopiesPreRepairCleanAll")}
                           </button>
                         </>
+                      ) : null}
+                      {preRepairBusy && preRepairProgress ? (
+                        // tl1658 现场①：逐项进度行（pre-repair-cleanup:progress
+                        // 事件驱动）——181 项/3.4GB 的批量删除不再静默。
+                        <div className="rc-muted" data-pre-repair-progress="">
+                          {t("settings.recoveryCopiesPreRepairCleanProgress")
+                            .replace("{done}", String(preRepairProgress.done))
+                            .replace("{total}", String(preRepairProgress.total))}{" "}
+                          · {preRepairProgress.label}
+                        </div>
                       ) : null}
                       {preRepairError ? (
                         <div className="rc-muted" data-pre-repair-error="">
