@@ -64,6 +64,19 @@ export function summarizeFileDiff(fileDiff?: ToolFileDiff): string {
   return `+${fileDiff.added} -${fileDiff.removed}`;
 }
 
+// tl1677: the subject is a ONE-liner by contract. A task dispatch without a
+// description falls back to the prompt, which can be a long document — the
+// full text previously flooded both the transcript card and the dock row
+// title. The first non-empty line is the honest one-line summary; multi-line
+// prompts lose nothing that a subject line could carry.
+export function firstNonEmptyLine(value: string): string {
+  for (const line of value.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed) return trimmed;
+  }
+  return "";
+}
+
 // subjectOf pulls the most informative one-liner out of a call's args — the
 // human description for the tools that carry one (falling back to the raw
 // command/pattern/path so description-less and pre-tl1613 calls render
@@ -88,7 +101,7 @@ export function subjectOf(name: string, args: string): string {
     case "web_search":
       return str(a, "query");
     case "task":
-      return str(a, "description") || str(a, "prompt");
+      return firstNonEmptyLine(str(a, "description")) || firstNonEmptyLine(str(a, "prompt"));
     case "run_skill":
       return str(a, "name");
     case "move_file": {
@@ -131,7 +144,11 @@ export function streamingToolSubject(name: string, preview: string): string {
   const head = preview.split("\n…", 1)[0] ?? preview;
   for (const key of streamingSubjectKeys(name)) {
     const value = partialStringField(head, key);
-    if (value) return value;
+    if (value) {
+      // tl1677: same one-liner discipline as subjectOf — a task prompt
+      // streaming in keeps its subject to the first non-empty line.
+      return name === "task" ? firstNonEmptyLine(value) : value;
+    }
   }
   return "";
 }

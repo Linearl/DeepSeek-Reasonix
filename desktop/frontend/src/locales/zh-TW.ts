@@ -2748,6 +2748,8 @@ export const zhTW: Record<DictKey, string> = {
 "subagentPanel.replayClose": "關閉回放",
 "subagentPanel.replayBadge": "唯讀回放",
 "subagentPanel.replayReadOnly": "子代理回放為唯讀記錄；人類直接向子代理發訊息的功能尚未提供。",
+"subagentPanel.expandFull": "展開全文",
+"subagentPanel.popoverClose": "關閉懸浮卡",
 "subagentPanel.splitResize": "調整列表寬度",
 "subagentPanel.liveTools": "工作過程（工具調用）",
 "subagentPanel.widen": "加寬預覽",

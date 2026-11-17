@@ -3409,6 +3409,8 @@ export const zh: Record<DictKey, string> = {
 "subagentPanel.replayClose": "关闭回放",
 "subagentPanel.replayBadge": "只读回放",
 "subagentPanel.replayReadOnly": "子代理回放为只读记录；人类直接向子代理发消息的功能尚未提供。",
+"subagentPanel.expandFull": "展开全文",
+"subagentPanel.popoverClose": "关闭悬浮卡",
 "subagentPanel.splitResize": "调整列表宽度",
 "subagentPanel.liveTools": "工作过程（工具调用）",
 "subagentPanel.widen": "加宽预览",

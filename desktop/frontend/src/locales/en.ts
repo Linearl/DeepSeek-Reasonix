@@ -3424,6 +3424,8 @@ export const en = {
 "subagentPanel.replayClose": "Close replay",
 "subagentPanel.replayBadge": "Read-only replay",
 "subagentPanel.replayReadOnly": "The subagent replay is a read-only record; sending messages to a sub-agent directly is not available yet.",
+"subagentPanel.expandFull": "Expand full text",
+"subagentPanel.popoverClose": "Close popover",
 "subagentPanel.splitResize": "Resize the list column",
 "subagentPanel.liveTools": "Work in progress (tool calls)",
 "subagentPanel.widen": "Widen preview",

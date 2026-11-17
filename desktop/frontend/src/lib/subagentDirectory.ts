@@ -60,9 +60,13 @@ export const SUBAGENT_DIRECTORY_PAGE_SIZE = 20;
  *  nothing else triggers it. The transcript-count trigger cannot see a
  *  workflow-dispatched child (no session transcript card → no ended-count
  *  move), so this interval is what makes its running row appear — and its
- *  move to the ended section happen — live. Same cadence the task monitor
- *  panel polls its store (TaskMonitorPanel POLL_INTERVAL_MS). */
-export const SUBAGENTS_PERSISTED_POLL_MS = 5000;
+ *  move to the ended section happen — live.
+ *  tl1677 缺陷②: 5s → 2s，对齐 dock 详情转录的 live 轮询节奏
+ *  （SUBAGENT_DOCK_LIVE_POLL_MS）——计数/状态转换的滞后从「最多 5s」压到
+ *  「最多 2s」。选型仍为轮询而非事件推送：ListSubagentsByParent 返回全量投
+ *  影，re-pull 即增量（tl1537/tl1434 同一论证），零新接口零新事件契约；事件
+ *  推送需要 desktop→前端的新 Wails 通道，面大收益同。 */
+export const SUBAGENTS_PERSISTED_POLL_MS = 2000;
 
 /** tl1447（缺陷①）：运行行静默警示阈值——超过该时长无任何可观测活动（进度
  *  管道零事件）即视为「疑似失活」，行内出心跳警示徽章（异常先发声）。默认
@@ -160,10 +164,15 @@ export function buildSubagentDirectory(items: readonly Item[] | undefined): Suba
   for (const item of items ?? []) {
     if (item.kind !== "tool") continue;
     if (!item.subagentProgress && !isSubagentToolName(item.name)) continue;
+    const isRunning = entryRunning(item);
+    const phase = item.subagentProgress?.phase;
     const entry: SubagentDirectoryEntry = {
       item,
-      running: entryRunning(item),
-      phase: item.subagentProgress?.phase,
+      running: isRunning,
+      // tl1677 缺陷④: 状态单一生真源——已结束行的 phase 只保留终态值。残
+      // 留的运行中相位（tool_result 只翻转 status、progress 流没发终态事件的
+      // 收尾窗口）不再把图标和文案拉回「运行中」口径。
+      phase: isRunning || isTerminalSubagentPhase(phase) ? phase : undefined,
       status: item.status,
       ref: entryRef(item),
     };
