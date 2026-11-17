@@ -20,10 +20,18 @@ const controller = readFileSync(join(root, "lib/useController.ts"), "utf8");
 
 // 环②：session_changed+sessionReset 必须走整页重载（reset=true，
 // reason=session-changed），不许退化为 patch。
+// tl1653x 修订：重载面加指纹门（sessionChangedReloadNeeded）——同指纹二批
+// 去重（resume 后同内容渲染两次的形态①修），指纹翻动/未知仍整页重载，
+// 改写信号的消费能力（环②本体）不变。
 assert.match(
   controller,
-  /e\.kind === "session_changed" && e\.sessionReset[\s\S]{0,200}loadSessionDataForTab\(targetTabId, true, "session-changed"\)/,
+  /e\.kind === "session_changed" && e\.sessionReset[\s\S]{0,600}loadSessionDataForTab\(targetTabId, true, "session-changed"\)/,
   "环②：session_changed+sessionReset 的整页重载面缺失（Diet 改写信号将无人消费）",
+);
+assert.match(
+  controller,
+  /sessionChangedReloadNeeded\(statesRef\.current\.get\(targetTabId\), fresh\)[\s\S]{0,120}loadSessionDataForTab\(targetTabId, true, "session-changed"\)/,
+  "环② tl1653x：session-changed 重载缺指纹门（二批去重面缺失，resume 后同内容重灌回归）",
 );
 
 // 环③：onRuntimeRebuilt 处理器在 controller_rebuilt 之后拉新 meta——

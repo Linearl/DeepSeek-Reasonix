@@ -326,6 +326,32 @@ export function explainReusableCache(
   return "";
 }
 
+// ── tl1653x: session-changed reload fingerprint gate ─────────────────────────
+//
+// A session_changed+sessionReset event orders a full reload (head switch from
+// /switch, /branch, /rewind — and, since tl1653 F1, the Diet/self-heal rewrite).
+// The resume flow already rendered that content once (the startup replace-surface
+// hydrate); when the rewrite did not actually move this session file's content
+// (same revision + digest), the ordered reload re-poured the identical page over
+// the resident surface — the "resume 后同内容渲染两次" report (two surface batches
+// for one unchanged session). The gate compares the resident surface fingerprint
+// against a fresh branch-meta read: a proven match skips the second pour, any
+// unknown or differing fingerprint keeps the reload (rewind/branch semantics stay
+// conservative — an unverifiable state always reloads).
+export function sessionChangedReloadNeeded(
+  resident: { historyRevision?: number; historyDigest?: string } | undefined,
+  fresh: { sessionRevision?: number; sessionDigest?: string } | undefined,
+): boolean {
+  const residentRev = resident?.historyRevision;
+  const freshRev = fresh?.sessionRevision;
+  if (typeof residentRev !== "number" || residentRev <= 0) return true;
+  if (typeof freshRev !== "number" || freshRev <= 0) return true;
+  const residentDigest = (resident?.historyDigest ?? "").trim();
+  const freshDigest = (fresh?.sessionDigest ?? "").trim();
+  if (residentDigest && freshDigest && residentDigest !== freshDigest) return true;
+  return freshRev !== residentRev;
+}
+
 // An empty surface has to apply history or switch-back shows Welcome. A turn
 // that has already streamed rows keeps them — but a tab with no history page
 // behind it still gets one, prepended, instead of a blank transcript above the
