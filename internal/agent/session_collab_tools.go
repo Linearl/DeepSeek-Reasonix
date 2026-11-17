@@ -979,7 +979,7 @@ func (talkToSessionTool) Description() string {
 }
 
 func (talkToSessionTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, the exact title from list_addressable_sessions, or an enrolled task-bus contact (zcode-<role>, e.g. zcode-worker)."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain (omit it unless replying). hop>0 REQUIRES thread_id naming the inbound message you are answering — hop>0 without thread_id is refused at send time (task 548). The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"steer (default, task 309) injects mid-turn, degrading to followup when it cannot; followup explicitly queues for the next turn."},"receipt":{"type":"boolean","description":"Task 309: request a read receipt — the target sends back a system receipt message when this mail enters its context (turn injection / drain consumption). Default off; delivery-level confirmation already rides the return value."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the message id you RECEIVED — the inbound id from your own mailbox (drain_inbox / delivery text), never the id of a message you sent yourself; a self-sent id fails the thread check (task 194). The requester matches your reply against it."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (the old talk_to_session_sync behavior)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target: contact_id, topic_id, the exact title from list_addressable_sessions, or an enrolled task-bus contact (zcode-<role>, e.g. zcode-worker)."},"message":{"type":"string"},"hop":{"type":"integer","description":"0 for a new chain (omit it unless replying). hop>0 REQUIRES thread_id naming the inbound message you are answering — hop>0 without thread_id is refused at send time (task 548). The system derives the real depth from the thread."},"delivery":{"type":"string","enum":["followup","steer"],"description":"steer (default, task 309) injects mid-turn, degrading to followup when it cannot; followup explicitly queues for the next turn."},"receipt":{"type":"boolean","description":"Task 309: request a read receipt — the target sends back a system receipt message when this mail enters its context (turn injection / drain consumption). Default off; delivery-level confirmation already rides the return value."},"card_id":{"type":"string","description":"Optional task card id to stamp on the message."},"thread_id":{"type":"string","description":"When answering a message, pass the message id you RECEIVED — the inbound id from your own mailbox (drain_inbox / delivery text), never the id of a message you sent yourself; a self-sent id fails the thread check (task 194). The requester matches your reply against it."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."},"approver":{"type":"string","description":"contact_id (or resolvable title) of the session that answers THIS task's approval prompts (task 225). Default: the sender. Must be a registered session."},"wait":{"type":"boolean","description":"Set true to wait — bounded — for a reply on this thread instead of returning queued at once (synchronous send: the call blocks until the reply lands or the timeout fires)."},"timeout_ms":{"type":"integer","description":"wait: how long to wait for the reply (default 30000, max 120000)."}},"required":["to","message"]}`)
 }
 
 func (talkToSessionTool) ReadOnly() bool { return false }
@@ -1269,11 +1269,10 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 // Matching is case-insensitive like the directory's own; the canonical
 // lower-case contact from the table wins.
 // cancelFreeCtx drops cancellation (and deadlines) from ctx while keeping it
-// non-nil: the sync send contract (task 156/158, pinned by
-// TestTalkToSessionSyncStopsWaitingWhenContextEnds) settles the request on
-// disk even when the turn ends mid-call, and reports the phase split in the
-// result instead of an NDR. Bounded waiting is preserved by the filelock
-// default budget, not by cancellation.
+// non-nil: the sync send contract (task 156/158) settles the request on disk
+// even when the turn ends mid-call, and reports the phase split in the result
+// instead of an NDR. Bounded waiting is preserved by the filelock default
+// budget, not by cancellation.
 func cancelFreeCtx(ctx context.Context) context.Context {
 	if ctx == nil {
 		return context.Background()
@@ -1338,7 +1337,7 @@ func (t talkToSessionTool) mailDirFor(target sessioncollab.Identity, viaBus bool
 }
 
 // waitReply polls the caller's own inbox for an answer on the delivered
-// message's thread (task 174; the old talk_to_session_sync behavior verbatim).
+// message's thread (task 174; bounded synchronous-send semantics).
 func (t talkToSessionTool) waitReply(ctx context.Context, messageID string, timeoutMS int) (string, error) {
 	queued := fmt.Sprintf(`{"status":"queued","messageId":%q,"threadId":%q}`, messageID, messageID)
 	var sent struct {
@@ -1364,108 +1363,6 @@ func (t talkToSessionTool) waitReply(ctx context.Context, messageID string, time
 	}
 	if timeout > 120*time.Second {
 		timeout = 120 * time.Second
-	}
-	// Task 158.A: this is a REAL wait, not a fire-and-forget send — it polls
-	// the requester's own inbox for a message whose threadId is the id we just
-	// delivered, bounded by `timeout` (max 120s) and by the caller's context.
-	started := time.Now()
-	reply, ok := sessioncollab.NewMailStore(mailDir).AwaitReplyContext(ctx, me, sent.MessageID, timeout)
-	waited := int(time.Since(started) / time.Millisecond)
-	if !ok {
-		note := "request was delivered; the reply will arrive in your inbox later"
-		if ctx != nil && ctx.Err() != nil {
-			// The turn was cancelled while waiting. The result is the same
-			// "no reply yet" a timeout reports — the request is already
-			// queued — but the reason must not read as an unexplained
-			// timeout, or the caller re-sends a message that is in flight.
-			note = "wait ended early (" + ctx.Err().Error() +
-				"); the request was delivered and the reply will still arrive in your inbox"
-		}
-		out, _ := json.Marshal(map[string]any{
-			"status":    "timeout",
-			"messageId": sent.MessageID,
-			"threadId":  sent.MessageID,
-			"waitedMs":  waited,
-			"timeoutMs": int(timeout / time.Millisecond),
-			"note":      note,
-		})
-		return string(out), nil
-	}
-	out, _ := json.Marshal(map[string]any{
-		"status":    "replied",
-		"messageId": sent.MessageID,
-		"threadId":  sent.MessageID,
-		"waitedMs":  waited,
-		"from":      reply.From,
-		"body":      reply.Body,
-	})
-	return string(out), nil
-}
-
-// NewTalkToSessionSyncTool is the synchronous variant. It delivers the same
-// durable message and then waits — bounded — for an answer carrying the thread
-// id. A timeout is reported as a status, not an error: the request is already
-// queued, so failing the call would misreport what happened.
-//
-// Task 174: boot no longer registers this tool — talk_to_session(wait=true) is
-// the same capability — but the constructor stays for direct callers and tests.
-func NewTalkToSessionSyncTool(cfg SessionCollabConfig) tool.Tool {
-	return talkToSessionSyncTool{cfg: cfg}
-}
-
-type talkToSessionSyncTool struct{ cfg SessionCollabConfig }
-
-func (talkToSessionSyncTool) Name() string { return "talk_to_session_sync" }
-
-func (talkToSessionSyncTool) Description() string {
-	return "Send a message to another registered session and wait for its reply (task 19 / 142). The request is delivered durably first; if no reply arrives within the timeout this returns status=timeout with the message id, and the answer still lands in your inbox later. Prefer talk_to_session (async) for long tasks. Your own contact_id is minted automatically on first send. When answering a message that was delivered to you, ALWAYS reply through this tool (async form) with to = the From contact_id — never answer inside your own transcript. Experimental."
-}
-
-func (talkToSessionSyncTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"to":{"type":"string","description":"Target contact_id."},"message":{"type":"string"},"hop":{"type":"integer"},"card_id":{"type":"string"},"timeout_ms":{"type":"integer","description":"How long to wait for the reply (default 30000, max 120000)."},"require_reply":{"type":"boolean","description":"Set true when the sender needs an answer on this thread (task 173). Requires the panel switch session_collab_allow_require_reply."}},"required":["to","message"]}`)
-}
-
-func (talkToSessionSyncTool) ReadOnly() bool { return false }
-
-func (t talkToSessionSyncTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
-	var p struct {
-		To        string `json:"to"`
-		Message   string `json:"message"`
-		Hop       int    `json:"hop"`
-		CardID    string `json:"card_id"`
-		TimeoutMS int    `json:"timeout_ms"`
-	}
-	if err := json.Unmarshal(args, &p); err != nil {
-		return "", fmt.Errorf("invalid args: %w", err)
-	}
-	timeout := time.Duration(p.TimeoutMS) * time.Millisecond
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
-	if timeout > 120*time.Second {
-		timeout = 120 * time.Second
-	}
-	// Reuse the async path verbatim so delivery semantics cannot drift.
-	queued, err := talkToSessionTool{cfg: t.cfg}.Execute(ctx, args)
-	if err != nil {
-		return "", err
-	}
-	var sent struct {
-		MessageID string `json:"messageId"`
-	}
-	_ = json.Unmarshal([]byte(queued), &sent)
-	if sent.MessageID == "" {
-		return queued, nil
-	}
-	// Task 156.A: mint the sender address on first send (same as async). Task
-	// 158.B: resolved at call time, not from the boot snapshot.
-	me := t.cfg.currentContactID()
-	if me == "" {
-		return queued, nil // nothing to receive an answer on
-	}
-	mailDir := t.cfg.MailDir
-	if mailDir == "" {
-		mailDir = config.SessionCollabMailDir()
 	}
 	// Task 158.A: this is a REAL wait, not a fire-and-forget send — it polls
 	// the requester's own inbox for a message whose threadId is the id we just

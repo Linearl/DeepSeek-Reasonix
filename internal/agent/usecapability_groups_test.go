@@ -78,8 +78,8 @@ func TestGroupInspectCardSession(t *testing.T) {
 	if len(payload.Scenario) < 3 {
 		t.Errorf("scenario lines = %d, want >=3", len(payload.Scenario))
 	}
-	if len(payload.Members) != 16 {
-		t.Fatalf("member table = %d rows, want 16", len(payload.Members))
+	if len(payload.Members) != 15 {
+		t.Fatalf("member table = %d rows, want 15", len(payload.Members))
 	}
 	if len(payload.Examples) < 2 {
 		t.Errorf("examples = %d, want >=2", len(payload.Examples))

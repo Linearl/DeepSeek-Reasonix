@@ -69,7 +69,7 @@ var groupCatalog = []GroupDef{
 		Title:    "会话协作组",
 		Scenario: "跨会话协作：发信/通讯录/判活/读尾/建会话/任务卡/会话管理（协作组聚合件承载）",
 		Members: []string{
-			"talk_to_session_sync", "subscribe_session",
+			"subscribe_session",
 			"create_task_card", "get_task_card", "update_task_card", "list_task_cards",
 			"delete_session", "get_session_info", "search_sessions", "session_control",
 			"rename_session", "rename_topic", "move_topic_to_group", "manage_sessions",
@@ -86,7 +86,6 @@ var groupCatalog = []GroupDef{
 				"与信箱投递组（tool:group/inbox）的边界：本组含发信与协作补充件；收件箱读取/消费/查询/等待在 inbox 组。",
 			},
 			Members: []GroupMember{
-				{ID: "tool:talk_to_session_sync", Summary: "发信并同步等对方回复（超时返回 timeout，回复稍后落信箱）", Params: "to=contact_id|topic_id|精确标题, message, timeout", Action: "send（同步变体）"},
 				{ID: "tool:subscribe_session", Summary: "订阅对方会话异常事件，中途推送进本会话", Params: "action=subscribe|unsubscribe|list, target, events"},
 				{ID: "tool:create_task_card", Summary: "建任务卡（派单可见性记录）", Params: "标题/负责人/正文", Action: "card create"},
 				{ID: "tool:get_task_card", Summary: "读一张任务卡", Params: "card_id", Action: "card get"},
