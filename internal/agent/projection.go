@@ -702,6 +702,10 @@ func projectionContentValid(st CompactionState, msgs []provider.Message) bool {
 // single logic source — projectionContentValid is exactly "reason is empty" —
 // so the labels can never drift from the actual gates. Zero behavior change:
 // every branch below mirrors the pre-tl1651 projectionContentValid verbatim.
+// tl1644 merge note: tl1644's parallel projectionContentInvalidReason
+// (string-literal six-branch variant) was resolved INTO this function as the
+// single logic source — tl1644's sidecar-drop WARN consumer reads these
+// constants instead. Do not reintroduce a second verdict function.
 func projectionInvalidReason(st CompactionState, msgs []provider.Message) string {
 	if len(st.Projection.Messages) == 0 {
 		return projectionFailBodyEmpty
