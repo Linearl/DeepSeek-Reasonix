@@ -161,11 +161,12 @@ window.go = {
         checkedChannels.push(channel);
         return { ...debInfo, channel: "stable" };
       },
-      ApplyUpdateRequest(channel: string, expectedVersion: string, requestId: string) {
+      // tl1680: the fork UI's apply face is ForkApplyUpdate(expectedVersion, requestId).
+      ForkApplyUpdate(expectedVersion: string, requestId: string) {
         return new Promise<void>((resolve, reject) => applyAttempts.push({
           requestId,
           version: expectedVersion,
-          channel,
+          channel: "stable",
           resolve,
           reject,
         }));
@@ -289,7 +290,7 @@ ok(document.getElementById("banner-status")?.textContent === "available", "stale
 let oldApplyRequestId = "";
 let oldApplyVersion = "";
 let resolveOldApply!: () => void;
-window.go.main.App.ApplyUpdateRequest = (_channel: string, expectedVersion: string, requestId: string) =>
+window.go.main.App.ForkApplyUpdate = (expectedVersion: string, requestId: string) =>
   new Promise<void>((resolve) => {
     oldApplyRequestId = requestId;
     oldApplyVersion = expectedVersion;
@@ -345,7 +346,7 @@ window.go.main.App.CheckUpdate = async () => ({
   channel: "stable",
   latest: "v1.2.0",
 });
-window.go.main.App.ApplyUpdateRequest = async () => {
+window.go.main.App.ForkApplyUpdate = async () => {
   throw new Error("should not reach when version mismatches from progress only");
 };
 
@@ -355,13 +356,13 @@ await act(async () => {
 });
 ok(document.getElementById("banner-status")?.textContent === "available", "official update is available again");
 
-window.go.main.App.ApplyUpdateRequest = async (_channel: string, _expectedVersion: string, requestId: string) => {
+window.go.main.App.ForkApplyUpdate = async (expectedVersion: string, requestId: string) => {
   // Hang until cancelled by reset so we can prove supersession.
   return new Promise<void>((_resolve, reject) => {
     applyAttempts.push({
       requestId,
-      version: _expectedVersion,
-      channel: _channel,
+      version: expectedVersion,
+      channel: "stable",
       resolve: () => {},
       reject,
     });
@@ -476,6 +477,95 @@ ok(
   document.getElementById("banner-manual")?.textContent === "recovery",
   "discard failure keeps the recovery disposition when the message matches",
 );
+
+// ---------------------------------------------------------------------------
+// tl1680: the fork channel face — three states the issue #96 contract pins.
+// ---------------------------------------------------------------------------
+
+// State 1: channel lookup could not complete -> neutral "unavailable", never an
+// error state, and nothing for the banner to raise (the banner renders null).
+let forkCheckCalls = 0;
+window.go.main.App.CheckUpdate = async () => {
+  forkCheckCalls += 1;
+  return {
+    ...debInfo,
+    available: false,
+    channel: "stable",
+    latest: "",
+    checkFailed: true,
+  };
+};
+await act(async () => {
+  (document.getElementById("settings-check-update") as HTMLButtonElement).click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(document.getElementById("banner-status")?.textContent === "unavailable", "channel failure lands in the neutral unavailable state");
+ok(document.getElementById("settings-status")?.textContent === "unavailable", "unavailable state is shared");
+ok(document.getElementById("banner-manual")?.textContent === "", "unavailable never reclassifies as an error disposition");
+
+// State 2: a newer fork release -> available, and apply pins that exact version
+// through ForkApplyUpdate (the fork one-click face, not ApplyUpdateRequest).
+let forkApplyCalls: Array<{ version: string; requestId: string }> = [];
+window.go.main.App.CheckUpdate = async () => ({ ...debInfo, channel: "stable", latest: "v1.38.3-20261117-1800" });
+window.go.main.App.ForkApplyUpdate = (expectedVersion: string, requestId: string) => {
+  forkApplyCalls.push({ version: expectedVersion, requestId });
+  return Promise.resolve();
+};
+await act(async () => {
+  (document.getElementById("settings-check-update") as HTMLButtonElement).click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(document.getElementById("banner-status")?.textContent === "available", "fork update availability flows from the fork channel");
+await act(async () => {
+  (document.getElementById("banner-apply") as HTMLButtonElement).click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(forkApplyCalls.length === 1, "fork apply routes through ForkApplyUpdate exactly once");
+ok(forkApplyCalls[0]?.version === "v1.38.3-20261117-1800", "fork apply pins the checked release version");
+ok(!!forkApplyCalls[0]?.requestId, "fork apply carries a request id for progress events");
+
+// State 2b: the version-less apply guard — an available result with an empty
+// latest (the legacy failed-check residue) must route to a re-check, never to
+// the backend's empty-version refusal.
+window.go.main.App.CheckUpdate = async () => {
+  forkCheckCalls += 1;
+  return { ...debInfo, available: true, channel: "stable", latest: "" };
+};
+await act(async () => {
+  (document.getElementById("banner-reset") as HTMLButtonElement).click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+const forkApplyCallsBefore = forkApplyCalls.length;
+await act(async () => {
+  (document.getElementById("settings-check-update") as HTMLButtonElement).click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(document.getElementById("banner-status")?.textContent === "available", "versionless available result still renders");
+// The availability check itself passed through the counting mock; capture the
+// baseline here so the next increment can only come from the re-check route.
+const forkCheckCallsBeforeApply = forkCheckCalls;
+await act(async () => {
+  (document.getElementById("banner-apply") as HTMLButtonElement).click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(forkApplyCalls.length === forkApplyCallsBefore, "empty-latest apply never reaches ForkApplyUpdate");
+ok(forkCheckCalls === forkCheckCallsBeforeApply + 1, "empty-latest apply re-checks instead");
+
+// State 3: already current -> the positive "upToDate" feedback, not an error.
+window.go.main.App.CheckUpdate = async () => ({
+  ...debInfo,
+  available: false,
+  channel: "stable",
+  latest: "v1.0.0",
+  current: "v1.0.0",
+});
+await act(async () => {
+  (document.getElementById("banner-reset") as HTMLButtonElement).click();
+  (document.getElementById("settings-check-update") as HTMLButtonElement).click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(document.getElementById("banner-status")?.textContent === "upToDate", "current build gets the upToDate positive feedback");
+ok(document.getElementById("settings-status")?.textContent === "upToDate", "upToDate feedback is shared");
 
 delete window.go;
 

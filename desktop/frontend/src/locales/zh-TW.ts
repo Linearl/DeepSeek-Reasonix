@@ -5945,7 +5945,9 @@ export const zhTW: Record<DictKey, string> = {
   "tool.otherReadCount": "{n} 個只讀呼叫",
   "updater.autoCheckLabel": "啟動時檢測新版本",
   "updater.autoCheckHint": "關閉後，Reasonix 開啟時不會自動檢查更新；你仍可在此頁手動檢查。",
-  "updater.officialReleaseHint": "Reasonix 僅檢查最新正式版本。",
+  // tl1680：fork 檢查自己的 GitHub releases 渠道。
+  "updater.officialReleaseHint": "Reasonix 檢查 fork 最新發布版本。",
+  "updater.checkUnavailable": "暫時連不上更新渠道，已跳過本次檢查。目前版本未受影響，稍後可再試。",
   "updater.officialDownload": "前往官網下載",
   "updater.privacyAndUpdatePreferences": "隱私與更新偏好",
   "settings.telemetryLabel": "匿名啟動統計",

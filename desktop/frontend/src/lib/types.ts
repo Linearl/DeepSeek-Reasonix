@@ -3000,6 +3000,11 @@ export interface UpdateInfo {
   downloadUrl: string; // human-facing releases page (macOS path / fallback link)
   assetSize: number; // running platform's artifact size, for the progress bar
   err?: string; // set when the check itself failed (both endpoints down)
+  // tl1680: fork-channel lookup could not complete (dead endpoint, rate limit,
+  // transport failure). A failed check is not a failed update — the UI shows a
+  // neutral "check skipped" line instead of the error banner the issue #96
+  // user could never get rid of.
+  checkFailed?: boolean;
 }
 
 export interface UpdateDownloadResult {

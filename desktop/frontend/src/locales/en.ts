@@ -5816,7 +5816,9 @@ export const en = {
   "config.doctorHint": "Or run: reasonix doctor repair",
   "updater.autoCheckLabel": "Check for updates on startup",
   "updater.autoCheckHint": "When off, Reasonix won't check automatically when it opens. You can still check manually here.",
-  "updater.officialReleaseHint": "Reasonix checks the latest official release.",
+  // tl1680: the fork checks its own GitHub releases channel.
+  "updater.officialReleaseHint": "Reasonix checks the latest fork release.",
+  "updater.checkUnavailable": "Couldn't reach the update channel — check skipped. Your version is unchanged; try again later.",
   "updater.officialDownload": "Download from official site",
   "updater.privacyAndUpdatePreferences": "Privacy & update preferences",
   "settings.telemetryLabel": "Anonymous usage ping",

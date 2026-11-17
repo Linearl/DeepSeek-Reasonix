@@ -5776,7 +5776,9 @@ export const zh: Record<DictKey, string> = {
   "config.doctorHint": "或运行：reasonix doctor repair",
   "updater.autoCheckLabel": "启动时检测新版本",
   "updater.autoCheckHint": "关闭后，Reasonix 打开时不会自动检查更新；你仍可在此页手动检查。",
-  "updater.officialReleaseHint": "Reasonix 仅检查最新正式版本。",
+  // tl1680：fork 检查自己的 GitHub releases 渠道。
+  "updater.officialReleaseHint": "Reasonix 检查 fork 最新发布版本。",
+  "updater.checkUnavailable": "暂时连不上更新渠道，已跳过本次检查。当前版本未受影响，稍后可再试。",
   "updater.officialDownload": "前往官网下载",
   "updater.privacyAndUpdatePreferences": "隐私与更新偏好",
   "settings.telemetryLabel": "匿名启动统计",
