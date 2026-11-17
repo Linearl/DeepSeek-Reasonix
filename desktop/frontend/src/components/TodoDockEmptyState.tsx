@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Translator } from "../lib/i18n";
-import { todoDockEmptyState, type TodoDockEmptyItemSignal, type TodoBatch } from "../lib/todoVisibility";
+import { todoDockEmptyState, todoTerminalStatus, type TodoDockEmptyItemSignal, type TodoBatch } from "../lib/todoVisibility";
 import type { Todo } from "../lib/tools";
 
 /**
@@ -37,9 +37,6 @@ export function TodoDockEmptyState({
   // user did not ask for.
   const [sealedExpanded, setSealedExpanded] = useState(false);
   const view = todoDockEmptyState({ todos, archive, items, dismissedBatches, canonicalTodos });
-  const copy = view.state === "sealed"
-    ? t(view.count !== null ? "rightDock.todoSealedCount" : "rightDock.todoSealed", view.count !== null ? { count: view.count } : undefined)
-    : t("rightDock.todoEmpty");
   // tl1353: the sealed snapshot itself, best source first — the canonical
   // snapshot IS the sealed live list (todo_read reads it back verbatim), then
   // the newest archived batch, then the resolved list. No source with items →
@@ -51,6 +48,20 @@ export function TodoDockEmptyState({
         ? archive[0].todos
         : todos && todos.length > 0 ? todos : [])
     : [];
+  // tl1682: the header copy must never read as "the list is empty / purely
+  // historical" while the folded snapshot still holds in-progress or pending
+  // work — the exact misread from feedback-20261117-143801 (the current
+  // turn's seven in-progress tasks folded into the "previous turn" copy).
+  // The count rides the snapshot that actually renders on expand, so the
+  // header and the revealed list always agree.
+  const sealedActive = sealedTodos.filter((todo) => !todoTerminalStatus(todo.status)).length;
+  const copy = view.state === "sealed"
+    ? sealedTodos.length > 0
+      ? sealedActive > 0
+        ? t("rightDock.todoSealedActiveCount", { count: sealedTodos.length, active: sealedActive })
+        : t("rightDock.todoSealedCount", { count: sealedTodos.length })
+      : t(view.count !== null ? "rightDock.todoSealedCount" : "rightDock.todoSealed", view.count !== null ? { count: view.count } : undefined)
+    : t("rightDock.todoEmpty");
   if (view.state !== "sealed" || sealedTodos.length === 0) {
     return (
       <div className="workbench-dock__todo workbench-dock__todo--empty" data-todo-empty-state={view.state}>

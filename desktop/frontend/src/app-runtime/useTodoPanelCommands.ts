@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { loadDismissedTodoKeys, saveDismissedTodoKeys } from "../lib/todoDismissalStorage";
-import { parseTodos, type Todo } from "../lib/tools";
+import { parseTodos, todoLiveParse, type Todo } from "../lib/tools";
 import {
   dismissedTodoKeyForScope,
   partitionTodoBatches,
@@ -74,7 +74,7 @@ export function useTodoPanelCommands(input: TodoPanelCommandsInput) {
   const todoItem = todoEntry?.item ?? null;
   const metaTodos = remote ? undefined : input.meta?.canonicalTodos;
   const todos = useMemo(
-    () => resolveTodoPanelTodos(metaTodos, todoItem ? parseTodos(todoItem.args) : undefined),
+    () => resolveTodoPanelTodos(metaTodos, todoItem ? todoLiveParse(todoItem.args) : undefined),
     [metaTodos, todoItem],
   );
   const [dismissedTodoKeys, setDismissedTodoKeys] = useState<Set<string>>(loadDismissedTodoKeys);

@@ -408,6 +408,8 @@ export const zh: Record<DictKey, string> = {
   // （canonicalTodos 快照完好）；展开入口键 todoSealedExpand。
   "rightDock.todoSealed": "上一回合的任务列表已收起保存",
   "rightDock.todoSealedCount": "上一回合的任务列表已收起保存（{count} 项）",
+  // tl1682: 收起的快照里仍有未完成任务时不再谎称「上一回合」——头部点名进行中计数。
+  "rightDock.todoSealedActiveCount": "任务列表已收起保存（{count} 项，其中 {active} 项进行中）",
   "rightDock.todoSealedExpand": "上一回合列表（{count} 项）",
 
   // 话题栏

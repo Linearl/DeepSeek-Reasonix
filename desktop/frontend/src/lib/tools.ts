@@ -274,6 +274,27 @@ export function parseTodos(args: string): Todo[] {
   }
 }
 
+// todoLiveParse (tl1682) is the panel-facing variant of parseTodos: it
+// distinguishes an explicit empty write from an args shape the frontend cannot
+// expand. parseTodos collapses both to [], which the live projection treated
+// as authoritative — an incremental {"ops":[...]} write (the shape the tool
+// schema tells the model to prefer for small edits) therefore resolved the
+// panel list to empty and the dock folded the whole list into the sealed
+// "previous turn" state. Returns:
+//   - Todo[]  → a full-list write, including the explicit `{"todos":[]}` clear
+//     (an empty array must stay authoritative — the clearing semantics).
+//   - null    → the args carry no expandable todos payload (an ops write or
+//     malformed JSON); the caller falls back to the kernel canonical snapshot.
+export function todoLiveParse(args: string): Todo[] | null {
+  try {
+    const a = JSON.parse(args) as { todos?: Todo[] };
+    if (Array.isArray(a.todos)) return a.todos;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function plusMinus(original: string, modified: string): { add: number; del: number } {
   let add = 0;
   let del = 0;
