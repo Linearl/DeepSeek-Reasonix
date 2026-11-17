@@ -38,6 +38,7 @@ import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
+import { useRevealLocation } from "../lib/revealLocation";
 import { takeSettingsViewPrefetch, invalidateSettingsViewPrefetch } from "../lib/settingsPrefetch";
 import { settingsLoadRetry } from "../lib/settingsLoadRetry";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
@@ -7434,6 +7435,11 @@ function HooksSection({ onChanged }: { onChanged: (settings?: SettingsView | nul
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // tl1663：hooks 设置文件行的「打开位置」（与决策模式文件位置、数据位置
+  // 四行共用同一 reveal 探针）。scope 切换/加载刷新更新 view.path 后探针
+  // 自动重跑；文件缺失时按钮置灰并显示缺失提示。
+  const reveal = useRevealLocation(view?.path ?? "");
+
   const load = useCallback(async (nextScope: HookScope) => {
     setBusy(true);
     setErr(null);
@@ -7542,6 +7548,7 @@ function HooksSection({ onChanged }: { onChanged: (settings?: SettingsView | nul
               <code className="hooks-path-display__value" title={view?.path || t("settings.hooksPathUnavailable")}>
                 {view?.path || t("settings.hooksPathUnavailable")}
               </code>
+              <button className="btn btn--secondary btn--small" disabled={busy || !view?.path || reveal.target === ""} title={view?.path && reveal.target === "" ? t("settings.revealLocationMissing") : t("settings.revealLocation")} onClick={() => { void reveal.reveal().catch((error) => console.error("reveal location failed", error)); }}>{t("settings.revealLocation")}</button>
               <button className="btn btn--secondary btn--small" disabled={busy || !view?.path} onClick={() => void copyHooksPath()}>{t("settings.hooksPathCopy")}</button>
             </div>
             {pathMessage && <div className="hooks-path-display__message">{pathMessage}</div>}

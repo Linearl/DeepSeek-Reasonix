@@ -2973,6 +2973,8 @@ export const en = {
 "settings.decisionPatternsFilePath": "Decision-patterns file location",
 "settings.decisionPatternsFilePathHint": "Path of the solidified file (default global-workspace/docs/decision-patterns.md). Backup rotation and autopilot injection follow it; running sessions pick a change up after restart.",
 "settings.decisionPatternsFilePathPlaceholder": "Leave empty for the default path",
+"settings.revealLocation": "Open location",
+"settings.revealLocationMissing": "File does not exist; cannot locate it in the file manager",
 "settings.decisionPatternsAutoApprove": "Skip approval, write directly",
 "settings.decisionPatternsAutoApproveHint": "Off by default: the heartbeat reports the extracted patterns and waits for your approval before writing. When on, consolidation is fully automatic (5-version backup rotation still applies).",
 "settings.sessionCollab": "Session collaboration",

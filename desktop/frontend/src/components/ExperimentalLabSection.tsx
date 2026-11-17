@@ -23,6 +23,7 @@ import { setFeedbackEnabled, setFeedbackOpen } from "./FeedbackPanel";
 import { fireMockCrashDrill } from "../lib/crashMock";
 import { setCollabInboxOpen } from "./CollabInboxPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
+import { useRevealLocation } from "../lib/revealLocation";
 import { type DictKey } from "../lib/i18n";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { LabSectionCard, SettingsField } from "./SettingsForm";
@@ -331,6 +332,10 @@ export function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps
   // 阈值/路径的本地草稿随快照初始化（0 = 配置默认 5，框里显示 5）。
   const [decisionThresholdDraft, setDecisionThresholdDraft] = useState(String(s.decisionPatternThreshold || 5));
   const [decisionPathDraft, setDecisionPathDraft] = useState(s.decisionPatternFilePath ?? "");
+  // tl1663：「打开位置」探针钉在已保存的 resolved 路径上（留空=默认路径时
+  // 后端也回传 resolved 绝对路径，不是空串）；draft 打字中不触发探测，失焦
+  // 保存后快照更新、探针自动重跑。文件未生成 ⇒ 置灰 + 缺失提示。
+  const decisionReveal = useRevealLocation(s.decisionPatternFilePath ?? "");
   // Task 184: the sampler interval is a number the user can edit; the config layer
   // clamps it, so the box can hold an intermediate value while typing.
   const [perfInterval, setPerfInterval] = useState<number>(s.perfMonitorIntervalSeconds ?? 5);
@@ -1941,20 +1946,32 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   />
                 </SettingsField>
                 <SettingsField label={t("settings.decisionPatternsFilePath")} hint={t("settings.decisionPatternsFilePathHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
-                  <input
-                    type="text"
-                    className="settings-input"
-                    placeholder={t("settings.decisionPatternsFilePathPlaceholder")}
-                    value={decisionPathDraft}
-                    disabled={busy}
-                    onChange={(e) => setDecisionPathDraft(e.target.value)}
-                    onBlur={() => void apply(async () => {
-                      const v = decisionPathDraft.trim();
-                      if (v !== s.decisionPatternFilePath) {
-                        await app.SetDecisionPatternFilePath(v);
-                      }
-                    })}
-                  />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+                    <input
+                      type="text"
+                      className="settings-input"
+                      style={{ flex: 1, minWidth: 0 }}
+                      placeholder={t("settings.decisionPatternsFilePathPlaceholder")}
+                      value={decisionPathDraft}
+                      disabled={busy}
+                      onChange={(e) => setDecisionPathDraft(e.target.value)}
+                      onBlur={() => void apply(async () => {
+                        const v = decisionPathDraft.trim();
+                        if (v !== s.decisionPatternFilePath) {
+                          await app.SetDecisionPatternFilePath(v);
+                        }
+                      })}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--small"
+                      disabled={busy || decisionReveal.target === ""}
+                      title={decisionReveal.target === "" ? t("settings.revealLocationMissing") : t("settings.revealLocation")}
+                      onClick={() => { void decisionReveal.reveal().catch((error) => console.error("reveal location failed", error)); }}
+                    >
+                      {t("settings.revealLocation")}
+                    </button>
+                  </div>
                 </SettingsField>
                 <SettingsField label={t("settings.decisionPatternsAutoApprove")} hint={t("settings.decisionPatternsAutoApproveHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">

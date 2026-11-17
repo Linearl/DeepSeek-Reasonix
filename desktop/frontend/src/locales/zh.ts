@@ -2956,6 +2956,8 @@ export const zh: Record<DictKey, string> = {
 "settings.decisionPatternsFilePath": "决策模式文件位置",
 "settings.decisionPatternsFilePathHint": "固化文件路径（默认 global-workspace/docs/decision-patterns.md）。备份轮转与 autopilot 注入均跟随该路径；改动后对已运行的会话在重启后生效。",
 "settings.decisionPatternsFilePathPlaceholder": "留空使用默认路径",
+"settings.revealLocation": "打开位置",
+"settings.revealLocationMissing": "文件不存在，无法在文件管理器中定位",
 "settings.decisionPatternsAutoApprove": "跳过人工批准直接修改",
 "settings.decisionPatternsAutoApproveHint": "默认关：心跳汇报提取到的模式后等待你批准才写入。开启后整合全自动（写入前仍有 5 版本备份轮转可回滚）。",
 "settings.sessionCollab": "跨会话协作",
