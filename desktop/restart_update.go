@@ -81,16 +81,33 @@ func (a *App) restartAndUpdateExempt(sourceDir, version, callerSession string) (
 		return "", fmt.Errorf("restart: the restart-and-update experiment is off; enable experimental_restart_update in the desktop settings")
 	}
 
-	// Task 450 (plan A): the busy refusal is gone — but the grace window is
-	// SIDE-EFFECTFUL (audit-2 major fix): it stops the heartbeat (no restart
-	// path exists until the app relaunches) and cancels other tabs (their
-	// resume markers only get consumed after a restart). Running it before the
-	// validation gates meant a misdirected call — switching to the active
-	// version, a plain restart on a portable build — paid those costs and then
-	// failed, silently. So the window runs only AFTER every fallible check,
-	// immediately before the first irreversible step (ActivateVersion): past
-	// that point the swap is committed and the restart is happening, which is
-	// exactly what the window's side effects presume.
+	// tl1680: the publish body below the experiment gate is now its own seam so
+	// the fork release updater can drive the exact same staging publish without
+	// (a) duplicating the sequence or (b) demanding an unrelated experiment be
+	// enabled for an explicit user-initiated update. The body is byte-for-byte
+	// what this function used to run past the gate.
+	return a.publishStagedVersion(sourceDir, version, callerSession)
+}
+
+// publishStagedVersion is the guarded publish body of the restart-and-update
+// family: staging-dir completion, version normalization, release-unit checks,
+// the task-450 grace window, the ActivateVersion commit, the update-restart
+// markers, and the launcher handoff. It assumes the caller has already decided
+// the publish is authorized (the experiment gate for the tool/UI face; the
+// fork updater's own downloaded-and-staged gate for its face) and completed
+// whatever empty-version argument it intends to.
+//
+// Task 450 (plan A): the busy refusal is gone — but the grace window is
+// SIDE-EFFECTFUL (audit-2 major fix): it stops the heartbeat (no restart
+// path exists until the app relaunches) and cancels other tabs (their
+// resume markers only get consumed after a restart). Running it before the
+// validation gates meant a misdirected call — switching to the active
+// version, a plain restart on a portable build — paid those costs and then
+// failed, silently. So the window runs only AFTER every fallible check,
+// immediately before the first irreversible step (ActivateVersion): past
+// that point the swap is committed and the restart is happening, which is
+// exactly what the window's side effects presume.
+func (a *App) publishStagedVersion(sourceDir, version, callerSession string) (string, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("restart: locate executable: %w", err)

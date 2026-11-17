@@ -13,6 +13,7 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"reasonix/desktop/internal/update"
+	"reasonix/internal/forkupdate"
 	"reasonix/internal/installlayout"
 	"reasonix/internal/repair"
 )
@@ -81,68 +82,84 @@ func ensureExpectedUpdateVersion(selectedChannel, expectedVersion, actualVersion
 // frontend displays it; CheckUpdate compares against it.
 func (a *App) Version() string { return version }
 
-// CheckUpdate fetches the manifest (R2, then GitHub) and reports whether a newer
-// build is available for this platform. Safe to call on startup: a network error
-// surfaces in UpdateInfo.Err rather than failing, so the UI can stay quiet.
+// CheckUpdate queries the fork's own release channel (tl1680, issue #96) and
+// reports whether a newer fork build is available for this platform.
+//
+// The pre-tl1680 face fetched the UPSTREAM manifest chain (R2, then the
+// crash.reasonix.io release gateway, then the esengine GitHub fallback). The
+// gateway is shut down (NXDOMAIN) and the fallbacks serve upstream versions —
+// a fork client must never install one, so the whole chain is off the check
+// path now. A channel lookup that cannot complete (dead channel, GitHub 403
+// rate limit, transport EOF) degrades SILENTLY: checkFailed=true, no Err, no
+// UI error — a failed check is not a failed update, and a user already on the
+// latest fork build must see the normal "you're up to date" feedback, never
+// `update: invalid stable version ''` noise.
+//
+// Safe to call on startup: nothing here returns a transport error to the
+// caller; the boolean return exists for the Wails binding shape.
 func (a *App) CheckUpdate(selectedChannel string) (*UpdateInfo, error) {
 	selectedChannel = targetUpdateChannel(selectedChannel)
 	profile := detectInstallProfile()
-	c, err := httpClient()
-	if err != nil {
-		a.recordUpdateError(err)
-		return &UpdateInfo{
-			Current:           version,
-			Channel:           selectedChannel,
-			CanSelfUpdate:     profile.CanSelfUpdate && canSelfUpdate(),
-			ManualOnly:        !(profile.CanSelfUpdate && canSelfUpdate()),
-			ManualReason:      firstNonEmptyStr(profile.ManualReason, manualUpdateReason()),
-			InstallMode:       profile.Mode,
-			RequiresElevation: profile.RequiresElev,
-			DownloadURL:       downloadPage(selectedChannel),
-			Err:               err.Error(),
-		}, nil
+	info := &UpdateInfo{
+		Current:           version,
+		Channel:           selectedChannel,
+		CanSelfUpdate:     profile.CanSelfUpdate && canSelfUpdate(),
+		ManualOnly:        !(profile.CanSelfUpdate && canSelfUpdate()),
+		ManualReason:      firstNonEmptyStr(profile.ManualReason, manualUpdateReason()),
+		InstallMode:       profile.Mode,
+		RequiresElevation: profile.RequiresElev,
+		DownloadURL:       forkupdate.ReleasesPage,
+	}
+	// Dev builds never prompt (pre-existing semantics) and never error — the
+	// version they run has no channel identity to compare against.
+	if version == "" || version == "dev" {
+		return info, nil
+	}
+	running, ok := forkupdate.ParseForkVersion(version)
+	if !ok {
+		// A build identity outside the fork channel (e.g. a dev-injected
+		// non-fork label) has no meaningful comparison; stay quiet.
+		info.CheckFailed = true
+		return info, nil
 	}
 	ctx, cancel := context.WithTimeout(a.reqCtx(), httpTimeout)
 	defer cancel()
-	v4, _ := httpClientIPv4()
-	m, err := fetchManifest(ctx, c, v4, selectedChannel)
+	c, err := forkCheckClient()
 	if err != nil {
-		a.recordUpdateError(err)
-		return &UpdateInfo{
-			Current:           version,
-			Channel:           selectedChannel,
-			CanSelfUpdate:     profile.CanSelfUpdate && canSelfUpdate(),
-			ManualOnly:        !(profile.CanSelfUpdate && canSelfUpdate()),
-			ManualReason:      firstNonEmptyStr(profile.ManualReason, manualUpdateReason()),
-			InstallMode:       profile.Mode,
-			RequiresElevation: profile.RequiresElev,
-			DownloadURL:       downloadPage(selectedChannel),
-			Err:               err.Error(),
-		}, nil
+		// tl1680: 检查失败≠更新失败 — degrade silently (no Err), log only.
+		info.CheckFailed = true
+		return info, nil
 	}
-	info := evaluateForChannel(version, selectedChannel, m)
-	return &info, nil
+	rel, err := checkForkRelease(ctx, c)
+	if err != nil {
+		// tl1680: 检查失败≠更新失败 — degrade silently (no Err), log only.
+		info.CheckFailed = true
+		return info, nil
+	}
+	info.Latest = rel.Version
+	info.Notes = rel.Notes
+	info.Available = rel.CompareVersion(running) > 0
+	if asset, okAsset := rel.SelectPlatformAsset(runtime.GOOS, runtime.GOARCH); okAsset {
+		// Surface the platform artifact's size so the apply path can show a
+		// real download denominator before any manifest-equivalent fetch.
+		info.AssetSize = asset.Size
+	}
+	return info, nil
 }
 
-// OpenDownloadPage opens the install page in the browser — the macOS manual-update
-// path and a fallback link elsewhere.
+// OpenDownloadPage opens the fork releases page in the browser — the macOS
+// manual-update path and the manual fallback everywhere else. tl1680: the page
+// is the fork's own GitHub releases page (the old manifest-refined first-party
+// download page belonged to the upstream channel this fork never targets).
 func (a *App) OpenDownloadPage() {
 	a.openDownloadPage(targetUpdateChannel(""))
 }
 
 func (a *App) openDownloadPage(selectedChannel string) {
 	selectedChannel = targetUpdateChannel(selectedChannel)
-	page := downloadPage(selectedChannel)
-	if c, err := httpClient(); err == nil {
-		ctx, cancel := context.WithTimeout(a.reqCtx(), httpTimeout)
-		defer cancel()
-		v4, _ := httpClientIPv4()
-		if m, err := fetchManifest(ctx, c, v4, selectedChannel); err == nil {
-			page = manifestDownloadPage(selectedChannel, m.DownloadPage)
-		}
-	}
+	_ = selectedChannel
 	if a.ctx != nil {
-		wruntime.BrowserOpenURL(a.ctx, page)
+		wruntime.BrowserOpenURL(a.ctx, forkupdate.ReleasesPage)
 	}
 }
 

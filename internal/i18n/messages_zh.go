@@ -624,6 +624,10 @@ var Chinese = Messages{
 	UpgradeApplying:            "正在替换二进制文件…",
 	UpgradeApplyFailed:         "应用更新失败：%v",
 	UpgradeSuccessFmt:          "已更新 %s → %s",
+	// tl1680：fork 渠道面。检查失败≠更新失败。
+	UpgradeCheckUnavailable:    "暂时连不上更新渠道，已跳过本次检查。当前版本未受影响，稍后可再试。",
+	UpgradeForkAvailableFmt:    "有新版本：%s",
+	UpgradeForkDownloadHintFmt: "下载：%s",
 
 	ReportNoPending:           "没有待处理的 CLI 崩溃报告。",
 	ReportHeaderFmt:           "CLI 崩溃报告 %s",
