@@ -40,6 +40,9 @@ var sessionReset = map[string]bool{
 	// 任务1114: same ownership as rebuildPending — an in-flight overflow diet
 	// belongs to the replaced lineage's fallback episode.
 	"dietPending": true,
+	// tl1648: the last successful compaction stamp belongs to the replaced
+	// lineage; a new conversation starts with no compaction history.
+	"lastCompactionSuccessAt": true,
 	// tl1203: same ownership as rebuildPending — the forced stale-rebuild
 	// arming belongs to the replaced lineage's stale-serving episode.
 	"staleRebuildArmed": true,
