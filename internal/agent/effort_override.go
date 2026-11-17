@@ -38,19 +38,34 @@ func (a *Agent) SetSessionEffortOverride(level string) bool {
 		a.sessionEffort.Store("")
 		return true
 	}
-	// A recovery-forked session keeps its reanchor semantics on the rebuild
-	// path (forked file sealed, in-memory history anchored to a fresh branch):
-	// an override that skips the rebuild would leave the forked file in active
-	// use. Defer such sessions to the caller's fallback.
+	// tl1660: a recovery-forked session no longer declines the per-request
+	// override. The old guard (task 1301) deferred it to the rebuild path on
+	// the theory that skipping the rebuild leaves the forked file in active
+	// use — but the 20261117 incident (tab_f7ee41fe, 14-30s per switch) proved
+	// the two concerns orthogonal on every axis:
+	//   1. The override only changes the wire's reasoning depth
+	//      (provider.Request.EffortOverride); it never touches the session
+	//      file, the branch identity, or the transcript, so there is nothing
+	//      for the reanchor semantics to conflict with.
+	//   2. On a settled recovery copy the rebuild's "reanchor" is a no-op: the
+	//      20261117 effort rebuilds forked nothing, moved no path, and resumed
+	//      the same recovery file (logs: two declined→rebuild cycles, zero
+	//      "session move follow" lines, cache_state=warm on the same path).
+	//   3. The recovery copy is already in active use after its resume — every
+	//      turn saves to it — so "the forked file stays in use" describes the
+	//      normal state, not something the override worsens.
+	//   4. The override survives a later conflict fork: sessionEffort lives on
+	//      the Agent, and recovery swaps the Session object, not the Agent.
+	// The rebuild path itself keeps its task-1301 semantics untouched (a
+	// snapshot conflict still forks and re-anchors there); declining is just no
+	// longer forced by effort switches. The model override keeps its guard —
+	// a model change rebuilds the provider anyway.
 	if path := strings.TrimSpace(a.sess.path); path != "" {
 		if meta, ok, err := LoadBranchMeta(path); err == nil && ok && meta.Recovered {
-			// Task 334: name why the fast path declined — this is one of the
-			// two documented fallback causes (recovery fork keeps reanchor).
-			// Task 1388: "path" carries the switch path the decline hands off
-			// to, pairing this line with the desktop's runtime-build-end
-			// path=fallback line so a slow switch reconciles across both logs.
-			slog.Info("agent: effort override declined", "reason", "recovery-fork", "path", "fallback")
-			return false
+			// tl1660: leave a trace on the fast path instead of the old decline
+			// line, so a recovery-copy switch is still attributable in the logs
+			// (paired against the desktop's fast-per-request line).
+			slog.Info("agent: effort override accepted on recovery fork", "path", "fast-per-request")
 		}
 	}
 	// Task 148: probe the effective destination (session model override when
