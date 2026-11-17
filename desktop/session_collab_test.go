@@ -422,10 +422,12 @@ func TestConstraintStrippingHandlesRealDeliveryText(t *testing.T) {
 		t.Fatalf("text outside the envelope must survive: %q", stripped)
 	}
 
-	// The caller's own imperative next to the envelope still binds.
-	bound := runtimepolicy.ParseConstraints(runtimepolicy.StripQuotedConstraints("只读分析这个 diff\n\n" + delivered))
+	// The caller's own mutation ban next to the envelope still binds
+	// (tl1621: read-only wording no longer binds, so the probe uses a
+	// negated mutation absent from the delivered body).
+	bound := runtimepolicy.ParseConstraints(runtimepolicy.StripQuotedConstraints("不要修改当前工作区\n\n" + delivered))
 	if !bound.ForbidMutation {
-		t.Fatalf("the caller's own imperative must still bind: %+v", bound)
+		t.Fatalf("the caller's own mutation ban must still bind: %+v", bound)
 	}
 }
 

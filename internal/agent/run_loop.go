@@ -148,10 +148,12 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 		}
 	}
 	a.recordRebuildAuthorization()
-	// Task 220 (P2): when the user's own words bind this turn to read-only,
-	// say so in the provider input. A silent guard reads as a malfunction —
-	// the model cannot even tell the user through the blocked talk tool, and
-	// the freeze then survives until the next unrelated user message.
+	// Task 220 (P2), narrowed by tl1621: when the user's own words carry a
+	// mutation ban (negated phrasing only — read-only wording no longer
+	// binds), say so in the provider input. A silent guard reads as a
+	// malfunction — the model cannot even tell the user through the blocked
+	// talk tool, and the freeze then survives until the next unrelated user
+	// message.
 	if a.turn.constraints.ForbidMutation && !a.turn.constraints.PlanModeReadOnly {
 		providerInput = readonlyTurnNotice() + providerInput
 	}
