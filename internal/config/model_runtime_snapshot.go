@@ -20,7 +20,12 @@ var modelSnapshotKey = func() []byte {
 
 // LoadModelRuntimeSnapshot reads the config and credentials under their writer
 // locks. In particular, boot cannot mix half of two connection transactions.
-func LoadModelRuntimeSnapshot(root string, sessionRefs ...string) (*Config, error) {
+//
+// tl1654 (round 3): the snapshot used to re-create a provider for a session's
+// model ref when that connection was gone from the config. A deleted provider
+// is now final — the session runs on the default model the caller resolved —
+// so the snapshot carries the configured providers only.
+func LoadModelRuntimeSnapshot(root string) (*Config, error) {
 	unlock := LockUserConfigEdits()
 	defer unlock()
 	unlockCredentials, err := LockUserCredentialEdits()
@@ -35,9 +40,6 @@ func LoadModelRuntimeSnapshot(root string, sessionRefs ...string) (*Config, erro
 	if err != nil {
 		return nil, err
 	}
-	// Restored session aliases may introduce providers absent from the file.
-	// Expand them while both locks are held, before freezing their credentials.
-	NormalizeLegacyMimoCustomProvidersForRefs(c, sessionRefs...)
 	c.FreezeProviderCredentials()
 	return c, nil
 }

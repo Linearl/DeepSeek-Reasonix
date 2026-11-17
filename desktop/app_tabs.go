@@ -270,8 +270,9 @@ func desktopNewSessionDefaults(scope, workspaceRoot string) (string, string, str
 // desktop-accessible chat model exists, the empty result lets tab startup show
 // an actionable setup error instead of re-admitting an ineligible default.
 func resolveNewSessionModel(cfg *config.Config) string {
-	def := strings.TrimSpace(cfg.DefaultModel)
-	config.NormalizeLegacyMimoCustomProvidersForRefs(cfg, def)
+	// tl1654 (round 3): a default_model naming a deleted provider no longer
+	// resurrects that connection; ResolveDesktopNewSessionModel falls through
+	// to the first configured chat model instead.
 	if resolved, _, ok := cfg.ResolveDesktopNewSessionModel(); ok {
 		// Keep provider identity explicit at the new-session boundary: a bare
 		// model id is ambiguous when two gateways expose the same model, and a

@@ -4790,8 +4790,10 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	}
 	prepareStartupPinnedContext(tab, startupSessionPath, tabSessionPath)
 	model := strings.TrimSpace(tabModel)
+	// tl1654 (round 3): a historical session ref naming a deleted provider no
+	// longer resurrects that connection — it stops resolving here and the
+	// fallback chain below moves the tab to the default model.
 	if sessionModel, ok := agent.LoadSessionModel(startupSessionPath); ok {
-		config.NormalizeLegacyMimoCustomProvidersForRefs(cfg, sessionModel)
 		if _, ok := cfg.ResolveModel(sessionModel); ok {
 			model = sessionModel
 		}
@@ -4811,7 +4813,6 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 			model = resolved
 		}
 	}
-	config.NormalizeLegacyMimoCustomProvidersForRefs(cfg, model)
 	requestedModel := model
 	if providerext.PluginRefOwner(model) == "" {
 		// Plugin refs skip the config fallback: rerouting an unavailable

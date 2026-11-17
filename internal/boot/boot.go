@@ -390,7 +390,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	memoryCompilerMigrated, memoryCompilerMigErr := config.MigrateLegacyMemoryCompilerForRoot(root)
 	multiThresholdMigrated, multiThresholdMigErr := config.MigrateLegacyMultiThresholdCompactionForRoot(root)
 	config.MigrateLegacyMCPTiersForRoot(root)
-	cfg, err := config.LoadModelRuntimeSnapshot(root, opts.Model)
+	cfg, err := config.LoadModelRuntimeSnapshot(root)
 	if err != nil {
 		return nil, err
 	}

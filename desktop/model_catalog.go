@@ -70,13 +70,7 @@ func (a *App) remoteProxyModelCatalog(curModel string) []ModelInfo {
 	out := []ModelInfo{}
 	for i := range cfg.Providers {
 		entry := &cfg.Providers[i]
-		if !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, entry.Name) || !entry.Configured() {
-			continue
-		}
-		// Task 279: disabled (hidden) providers stay out of every picker here
-		// too — the local desktopModelCatalog filter applies to remote-proxied
-		// tabs reading the same config.
-		if entry.Hidden {
+		if !pickerProviderVisible(cfg, entry) {
 			continue
 		}
 		for _, model := range entry.ChatModelList() {
@@ -85,6 +79,35 @@ func (a *App) remoteProxyModelCatalog(curModel string) []ModelInfo {
 		}
 	}
 	return out
+}
+
+// pickerProviderVisible reports whether a configured connection may appear in
+// the model picker. Three states, three different rules (tl1654 round 3):
+//
+//   - 已删 (the config has no section for it): the connection never reaches
+//     this loop. The loader no longer materializes a provider the user deleted
+//     — a stale provider_access entry or a historical model ref used to bring
+//     it back, which is how the deleted "MiMo API" group kept reappearing in
+//     the picker.
+//   - hidden (the section is there, hidden = true): the user parked the
+//     connection on purpose. Its section stays and its refs keep resolving;
+//     only the picker entry is dropped (task 279).
+//   - a live section: visible when the access list grants it and its
+//     credential is present.
+func pickerProviderVisible(cfg *config.Config, p *config.ProviderEntry) bool {
+	if cfg == nil || p == nil {
+		return false
+	}
+	if !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, p.Name) {
+		return false
+	}
+	if !p.Configured() {
+		return false
+	}
+	if p.Hidden {
+		return false
+	}
+	return true
 }
 
 func (a *App) desktopModelCatalog(curModel, workspaceRoot string, ctrl control.SessionAPI) []ModelInfo {
@@ -104,11 +127,7 @@ func (a *App) desktopModelCatalog(curModel, workspaceRoot string, ctrl control.S
 	out := []ModelInfo{}
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
-		if !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, p.Name) || !p.Configured() {
-			continue
-		}
-		// Hidden connections stay out of every picker; refs to them still resolve.
-		if p.Hidden {
+		if !pickerProviderVisible(cfg, p) {
 			continue
 		}
 		for _, m := range p.ChatModelList() {

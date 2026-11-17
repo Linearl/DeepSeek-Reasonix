@@ -39,7 +39,7 @@ func (gw *BotGateway) applySessionModelSettings(ctx context.Context, key string,
 		if botSessionHasActiveWork(previous) {
 			return nil, fmt.Errorf("saved model settings are pending until current work finishes")
 		}
-		cfg, err := config.LoadModelRuntimeSnapshot(previous.workspaceRoot, old.ModelRef())
+		cfg, err := config.LoadModelRuntimeSnapshot(previous.workspaceRoot)
 		if err != nil {
 			return nil, err
 		}
