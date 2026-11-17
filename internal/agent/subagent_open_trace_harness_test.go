@@ -82,7 +82,7 @@ func TestSubagentOpenSegmentsEndToEndHarness(t *testing.T) {
 	root := t.TempDir()
 	reg := tool.NewRegistry()
 	reg.Add(fakeReadFileTool{})
-	task := NewTaskTool(prov, nil, reg, 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+	task := NewTaskTool(prov, nil, reg, 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
 		WithTranscripts(mustSubagentStore(t), root, "base", "high").
 		WithScheduler(NewSubagentScheduler(4, 4))
 

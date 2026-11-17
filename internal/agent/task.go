@@ -247,28 +247,29 @@ func NewTaskToolWithOptions(opts TaskToolOptions) *TaskTool {
 //
 // Compatibility wrapper: new call sites should prefer NewTaskToolWithOptions.
 // The positional form is kept for at least one full iteration cycle.
+//
+// tl1666: the retired softCompactRatio / toolResultSnipRatio / compactForceRatio
+// positions are gone — they carried no consumer since the multi-threshold
+// compaction was replaced by the single CompactRatio knob.
 func NewTaskTool(prov provider.Provider, pricing *provider.Pricing, parentReg *tool.Registry,
-	maxSteps, contextWindow, recentKeep int, softCompactRatio, toolResultSnipRatio, compactRatio, compactForceRatio, temperature float64, archiveDir, sysPrompt string, gate Gate,
+	maxSteps, contextWindow, recentKeep int, compactRatio, temperature float64, archiveDir, sysPrompt string, gate Gate,
 	keepPolicy KeepPolicy, subagentModel, subagentEffort string, resolveProvider func(string, string) (provider.Provider, *provider.Pricing, int, error)) *TaskTool {
 	return NewTaskToolWithOptions(TaskToolOptions{
-		Provider:            prov,
-		Pricing:             pricing,
-		ParentRegistry:      parentReg,
-		MaxSteps:            maxSteps,
-		ContextWindow:       contextWindow,
-		RecentKeep:          recentKeep,
-		SoftCompactRatio:    softCompactRatio,
-		ToolResultSnipRatio: toolResultSnipRatio,
-		CompactRatio:        compactRatio,
-		CompactForceRatio:   compactForceRatio,
-		Temperature:         temperature,
-		ArchiveDir:          archiveDir,
-		SysPrompt:           sysPrompt,
-		Gate:                gate,
-		KeepPolicy:          keepPolicy,
-		SubagentModel:       subagentModel,
-		SubagentEffort:      subagentEffort,
-		ResolveProvider:     resolveProvider,
+		Provider:        prov,
+		Pricing:         pricing,
+		ParentRegistry:  parentReg,
+		MaxSteps:        maxSteps,
+		ContextWindow:   contextWindow,
+		RecentKeep:      recentKeep,
+		CompactRatio:    compactRatio,
+		Temperature:     temperature,
+		ArchiveDir:      archiveDir,
+		SysPrompt:       sysPrompt,
+		Gate:            gate,
+		KeepPolicy:      keepPolicy,
+		SubagentModel:   subagentModel,
+		SubagentEffort:  subagentEffort,
+		ResolveProvider: resolveProvider,
 	})
 }
 

@@ -70,11 +70,10 @@ func TestTask920RealFoldRaisesGateAndSettlesOnce(t *testing.T) {
 	probe := &gateFoldProbe{reply: "summary"}
 	sess := foldableSessionOverForce(6)
 	a := New(probe, tool.NewRegistry(), sess, Options{
-		ContextWindow:     5_000,
-		CompactRatio:      0.5,
-		CompactForceRatio: 0.5,
-		RecentKeep:        2,
-		ArchiveDir:        t.TempDir(),
+		ContextWindow: 5_000,
+		CompactRatio:  0.5,
+		RecentKeep:    2,
+		ArchiveDir:    t.TempDir(),
 	}, event.Discard)
 	probe.a = a
 
@@ -131,11 +130,10 @@ func TestTask920FailedFoldStillSettles(t *testing.T) {
 	probe := &gateFailProbe{}
 	sess := foldableSessionOverForce(6)
 	a := New(probe, tool.NewRegistry(), sess, Options{
-		ContextWindow:     5_000,
-		CompactRatio:      0.5,
-		CompactForceRatio: 0.5,
-		RecentKeep:        2,
-		ArchiveDir:        t.TempDir(),
+		ContextWindow: 5_000,
+		CompactRatio:  0.5,
+		RecentKeep:    2,
+		ArchiveDir:    t.TempDir(),
 	}, event.Discard)
 
 	var settles atomic.Int32
@@ -169,11 +167,10 @@ func TestTask920TimedOutFoldStillSettles(t *testing.T) {
 	probe := &gateTimeoutProbe{}
 	sess := foldableSessionOverForce(6)
 	a := New(probe, tool.NewRegistry(), sess, Options{
-		ContextWindow:     5_000,
-		CompactRatio:      0.5,
-		CompactForceRatio: 0.5,
-		RecentKeep:        2,
-		ArchiveDir:        t.TempDir(),
+		ContextWindow: 5_000,
+		CompactRatio:  0.5,
+		RecentKeep:    2,
+		ArchiveDir:    t.TempDir(),
 	}, event.Discard)
 
 	var settles atomic.Int32

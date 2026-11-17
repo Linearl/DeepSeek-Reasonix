@@ -12,7 +12,7 @@ import (
 )
 
 func TestTaskSchemaIncludesProfileAndWritePaths(t *testing.T) {
-	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil)
+	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil)
 	schema := string(task.Schema())
 	for _, want := range []string{`"profile"`, `"write_paths"`} {
 		if !strings.Contains(schema, want) {
@@ -27,7 +27,7 @@ func TestTaskSchemaIncludesProfileAndWritePaths(t *testing.T) {
 
 func TestTaskWriterWithoutPathsClaimsWholeWorkspace(t *testing.T) {
 	root := t.TempDir()
-	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
 		WithTranscripts(mustSubagentStore(t), root, "base", "high").
 		WithScheduler(NewSubagentScheduler(6, 3))
 
@@ -42,7 +42,7 @@ func TestTaskWriterWithoutPathsClaimsWholeWorkspace(t *testing.T) {
 
 func TestTaskUnknownProfileRejected(t *testing.T) {
 	root := t.TempDir()
-	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
 		WithTranscripts(mustSubagentStore(t), root, "base", "high").
 		WithProfileLookup(func(string) (ProfileDefinition, bool) { return ProfileDefinition{}, false })
 	_, err := task.Execute(withCallContext(context.Background(), "c", event.Discard, nil, false),
@@ -56,7 +56,7 @@ func TestTaskProfileUsesBodyAsSystemPrompt(t *testing.T) {
 	root := t.TempDir()
 	var sawSystem string
 	prov := &captureSystemProvider{onReq: func(sys string) { sawSystem = sys }}
-	task := NewTaskTool(prov, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0, 0.0, "", DefaultTaskSystemPrompt, nil, 0, "", "", nil).
+	task := NewTaskTool(prov, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", DefaultTaskSystemPrompt, nil, 0, "", "", nil).
 		WithTranscripts(mustSubagentStore(t), root, "base", "high").
 		WithProfileLookup(func(name string) (ProfileDefinition, bool) {
 			if name != "doc-rewriter" {
@@ -79,7 +79,7 @@ func TestTaskProfileUsesBodyAsSystemPrompt(t *testing.T) {
 
 func TestTaskToolsIntersectionCannotExpand(t *testing.T) {
 	root := t.TempDir()
-	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
 		WithTranscripts(mustSubagentStore(t), root, "base", "high").
 		WithProfileLookup(func(name string) (ProfileDefinition, bool) {
 			return ProfileDefinition{Name: name, Body: "body", AllowedTools: []string{"read_file"}}, true
@@ -92,7 +92,7 @@ func TestTaskToolsIntersectionCannotExpand(t *testing.T) {
 }
 
 func TestTaskResolveProfilePrecedence(t *testing.T) {
-	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "global-m", "global-e", nil).
+	task := NewTaskTool(&mockProvider{name: "sub"}, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "global-m", "global-e", nil).
 		WithProfileLookup(func(name string) (ProfileDefinition, bool) {
 			return ProfileDefinition{Name: name, Body: "b", Model: "front-m", Effort: "front-e"}, true
 		}).

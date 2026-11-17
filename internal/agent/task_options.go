@@ -78,20 +78,17 @@ type TaskToolOptions struct {
 	ReviewMaxSteps int
 	// SubagentDefaultSteps overrides the default step budget for non-review
 	// sub-agents (task 118). 0 keeps the formula max(parent*2/3, 12).
-	SubagentDefaultSteps                  int
-	ContextWindow                         int
-	RecentKeep                            int
-	SoftCompactRatio                      float64
-	ToolResultSnipRatio                   float64
-	CompactRatio                          float64
-	CompactForceRatio                     float64
-	Temperature                           float64
-	ContextEditing, ArchiveDir, SysPrompt string
-	Gate                                  Gate
-	KeepPolicy                            KeepPolicy
-	SubagentModel                         string
-	SubagentEffort                        string
-	ResolveProvider                       func(string, string) (provider.Provider, *provider.Pricing, int, error)
+	SubagentDefaultSteps  int
+	ContextWindow         int
+	RecentKeep            int
+	CompactRatio          float64
+	Temperature           float64
+	ArchiveDir, SysPrompt string
+	Gate                  Gate
+	KeepPolicy            KeepPolicy
+	SubagentModel         string
+	SubagentEffort        string
+	ResolveProvider       func(string, string) (provider.Provider, *provider.Pricing, int, error)
 	// Task 265 audit-3 M2: the three fork-only agent behaviours ride into every
 	// sub-agent (task / read_only_task / parallel_tasks children) through the
 	// single construction point. Zero values only occur in direct unit

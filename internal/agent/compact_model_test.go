@@ -168,7 +168,7 @@ func TestCompactModelProjectionSurvivesConversationModelSwitch(t *testing.T) {
 		ModelResolver: resolver,
 		CompactModel:  "econ/m3",
 		ContextWindow: 5000,
-		CompactRatio:  0.5, CompactForceRatio: 0.5, RecentKeep: 2,
+		CompactRatio:  0.5, RecentKeep: 2,
 		ArchiveDir: t.TempDir(),
 	}, event.Discard)
 

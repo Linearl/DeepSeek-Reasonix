@@ -26,12 +26,11 @@ import (
 func tl1570Agent(t *testing.T, prov provider.Provider, path, modelRef string) *Agent {
 	t.Helper()
 	a := New(prov, tool.NewRegistry(), foldableSessionOverForce(2), Options{
-		ContextWindow:     5000,
-		CompactRatio:      0.5,
-		CompactForceRatio: 0.5,
-		RecentKeep:        2,
-		ArchiveDir:        t.TempDir(),
-		ModelRef:          modelRef,
+		ContextWindow: 5000,
+		CompactRatio:  0.5,
+		RecentKeep:    2,
+		ArchiveDir:    t.TempDir(),
+		ModelRef:      modelRef,
 	}, event.Discard)
 	if path != "" {
 		a.SetSessionPath(path)

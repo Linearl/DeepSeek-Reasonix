@@ -152,7 +152,7 @@ func TestManualCompactAcrossMidFlightModelSwitchLandsOnCurrentModel(t *testing.T
 	}}
 	a = New(stale, nil, sess, Options{
 		ModelResolver: resolver, ContextWindow: 5000,
-		CompactRatio: 0.5, CompactForceRatio: 0.5, RecentKeep: 2,
+		CompactRatio: 0.5, RecentKeep: 2,
 		ArchiveDir: t.TempDir(),
 	}, event.Discard)
 

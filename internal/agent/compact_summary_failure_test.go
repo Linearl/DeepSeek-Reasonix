@@ -42,11 +42,10 @@ func agentOverForce(t *testing.T, prov provider.Provider, sess *Session) *Agent 
 func agentOverForceWindow(t *testing.T, prov provider.Provider, sess *Session, window int) *Agent {
 	t.Helper()
 	return New(prov, tool.NewRegistry(), sess, Options{
-		ContextWindow:     window,
-		CompactRatio:      0.5,
-		CompactForceRatio: 0.5,
-		RecentKeep:        2,
-		ArchiveDir:        t.TempDir(),
+		ContextWindow: window,
+		CompactRatio:  0.5,
+		RecentKeep:    2,
+		ArchiveDir:    t.TempDir(),
 	}, event.Discard)
 }
 
