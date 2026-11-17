@@ -28,7 +28,7 @@ func resolveConfigAccessPathUnpinned(path string, userConfig bool) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("resolve config path %q: %w", path, err)
 	}
-	resolved, err := evalSymlinksAllowMissing(logical)
+	resolved, err := evalSymlinksStrictForWrite(logical)
 	if err != nil {
 		scope := "project"
 		if userConfig {
@@ -41,7 +41,7 @@ func resolveConfigAccessPathUnpinned(path string, userConfig bool) (string, erro
 		return resolved, nil
 	}
 
-	root, err := evalSymlinksAllowMissing(filepath.Dir(logical))
+	root, err := evalSymlinksStrictForWrite(filepath.Dir(logical))
 	if err != nil {
 		return "", fmt.Errorf("resolve project root %q: %w", root, err)
 	}
@@ -52,11 +52,18 @@ func resolveConfigAccessPathUnpinned(path string, userConfig bool) (string, erro
 	return resolved, nil
 }
 
-// evalSymlinksAllowMissing canonicalizes every existing path component while
+// evalSymlinksStrictForWrite canonicalizes every existing path component while
 // allowing a new file (and missing parent directories) to be created later.
-// A broken final symlink is not "missing": EvalSymlinks sees the link and
-// returns an error, which prevents a write from replacing it.
-func evalSymlinksAllowMissing(path string) (string, error) {
+// A broken final symlink is not "missing": Lstat sees the link and
+// EvalSymlinks therefore fails with an error, which prevents a write from
+// replacing it. That strict edge is exactly why this is NOT the same function
+// as control/refs_external_path.go's evalSymlinksReattachMissing — the two
+// were one same-named pair whose boundary semantics had forked (tl1617 双实现
+// 显式双命名): this one must error so a project config write can never punch
+// through a dangling link; the control one treats a dangling leaf as missing
+// and climbs. Either behavior is fine for its own caller, sharing a name was
+// the bug. 安全面（写权限判定）不随 tl1617 收口进 sandbox 引擎，保持本实现。
+func evalSymlinksStrictForWrite(path string) (string, error) {
 	path = filepath.Clean(path)
 	current := path
 	var suffix []string

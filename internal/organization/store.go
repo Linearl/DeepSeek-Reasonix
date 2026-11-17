@@ -372,11 +372,7 @@ func saveSidecar(f File) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return fileutil.ReplaceFile(tmp, path)
+	return fileutil.AtomicWriteFile(path, b, 0o644)
 }
 
 // ── the load/save/update store loop ─────────────────────────────────────────
@@ -418,11 +414,7 @@ func SaveFile(f File) error {
 		return err
 	}
 	path := filepath.Join(d, ProjectsFile)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return fileutil.ReplaceFile(tmp, path)
+	return fileutil.AtomicWriteFile(path, b, 0o644)
 }
 
 // UpdateFile runs one read-modify-write cycle under the package lock. The

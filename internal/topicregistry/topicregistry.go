@@ -378,12 +378,7 @@ func persistLocked() {
 		slog.Warn("topicregistry: cache dir", "err", err)
 		return
 	}
-	tmp := cfg.cachePath + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		slog.Warn("topicregistry: write cache tmp", "err", err)
-		return
-	}
-	if err := fileutil.ReplaceFile(tmp, cfg.cachePath); err != nil {
+	if err := fileutil.AtomicWriteFile(cfg.cachePath, b, 0o644); err != nil {
 		slog.Warn("topicregistry: replace cache", "err", err)
 	}
 }

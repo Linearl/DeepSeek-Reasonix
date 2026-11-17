@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"reasonix/internal/fileutil"
 )
 
 // Version-tree occupancy probing (task 1259).
@@ -179,13 +181,7 @@ func saveOccupancyLedger(versionsDir string, ledger *occupancyLedgerFile) {
 		return
 	}
 	path := filepath.Join(versionsDir, occupancyLedgerName)
-	tmp := path + ".tmp"
-	if os.WriteFile(tmp, body, 0o644) != nil {
-		return
-	}
-	if os.Rename(tmp, path) != nil {
-		_ = os.Remove(tmp)
-	}
+	_ = fileutil.AtomicWriteFile(path, body, 0o644)
 }
 
 // removeOccupancyLedger drops the file once no tree is occupied, so a healthy

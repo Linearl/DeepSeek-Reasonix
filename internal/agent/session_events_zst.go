@@ -400,12 +400,15 @@ func compressSessionEventLogZstLocked(plain, zst, reason string) (before, after 
 	// 注意：src 必须在删除明文之前显式关闭——Windows 的 os.Open 不带
 	// FILE_SHARE_DELETE，句柄未关时 os.Remove 会以「正由另一进程使用」失败
 	// （实测 2026-10-26），归档退化为「两者并存」残件态。不用 defer。
-	tmp := zst + ".tmp"
-	dst, dstErr := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	// tl1616：暂存名走 CreateTemp 唯一名（正规件 writeAtomicTemp 同规则），
+	// 固定 zst+".tmp" 在并发压缩下会互踩；流式压缩无字节切片 API，等价形态
+	// = 唯一暂存名 + 已有的 fsync/失败清理 + rename 发布。
+	dst, dstErr := os.CreateTemp(filepath.Dir(zst), ".zst-*.tmp")
 	if dstErr != nil {
 		src.Close()
 		return before, 0, dstErr
 	}
+	tmp := dst.Name()
 	enc, encErr := zstd.NewWriter(dst,
 		zstd.WithEncoderLevel(zstd.SpeedFastest),
 		zstd.WithWindowSize(4<<20),

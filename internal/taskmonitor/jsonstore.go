@@ -409,33 +409,18 @@ func (s *FileStore) SaveTask(ctx context.Context, projectDir string, snap TaskSn
 		return fmt.Errorf("save task: marshal: %w", err)
 	}
 
-	// Atomic write via temp file + rename
-	tmp, err := os.CreateTemp(taskDir, ".snapshot-*.tmp")
+	// Atomic write via the canonical staging pair (tl1616): StageAtomicWrite
+	// gives unique temp + fsync + chmod; PublishStagedWrite keeps the claim
+	// guarantee — atomic rename only, never a copy fallback — across bounded
+	// retries for Windows readers or filter drivers, so the CAS lock above
+	// stays the only serialization point.
+	tmpName, err := fileutil.StageAtomicWrite(target, data, 0o600)
 	if err != nil {
 		return fmt.Errorf("save task: %w", err)
 	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+	if err := fileutil.PublishStagedWrite(tmpName, target); err != nil {
 		return fmt.Errorf("save task: %w", err)
 	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return fmt.Errorf("save task: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("save task: %w", err)
-	}
-	// Keep the CAS lock across bounded retries for Windows readers or filter
-	// drivers. Publication must remain an atomic rename, never a copy fallback.
-	if err := fileutil.ClaimRename(tmpName, target); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("save task: %w", err)
-	}
-	_ = os.Chmod(target, 0o600)
 	committed = true
 	return nil
 }

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/fileutil"
 	fileencoding "reasonix/internal/fileutil/encoding"
 )
 
@@ -238,9 +239,10 @@ func loadStatsForOwner(name string) StartupStats {
 	return StartupStats{}
 }
 
-// writeStatsAtomic serialises s and writes it via tmpfile + os.Rename so that
-// concurrent readers see either the old content or the new one, never a
-// half-written file. Mirrors desktop/sessions.go:40-64.
+// writeStatsAtomic serialises s and publishes it atomically (fileutil
+// canonical: unique temp + fsync + retried rename) so that concurrent readers
+// see either the old content or the new one, never a half-written file.
+// Mirrors desktop/sessions.go:40-64.
 func writeStatsAtomic(path string, s StartupStats) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -250,21 +252,7 @@ func writeStatsAtomic(path string, s StartupStats) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, ".stats.*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	return os.Rename(tmpPath, path)
+	return fileutil.AtomicWriteFile(path, b, 0o600)
 }
 
 // p99 returns the 99th-percentile sample as a Duration. With small windows

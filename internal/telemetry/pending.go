@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"reasonix/internal/fileutil"
 )
 
 const (
@@ -50,15 +52,7 @@ func appendPending(home string, p pendingPayload) error {
 		return err
 	}
 	name := fmt.Sprintf("%d-%d-%s.json", time.Now().UnixNano(), os.Getpid(), nonce)
-	tmp := filepath.Join(dir, "."+name+".tmp")
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, filepath.Join(dir, name)); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return fileutil.AtomicWriteFile(filepath.Join(dir, name), b, 0o600)
 }
 
 // prunePending removes expired entries and makes room for one new pending file.

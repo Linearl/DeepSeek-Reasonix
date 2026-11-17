@@ -454,12 +454,7 @@ func (s *store) renameFile(oldName, newName string) (*Workflow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("workflow: encode: %w", err)
 	}
-	tmp := newPath + ".tmp"
-	if err := os.WriteFile(tmp, fresh, 0o644); err != nil {
-		return nil, fmt.Errorf("workflow: store: %w", err)
-	}
-	if err := os.Rename(tmp, newPath); err != nil {
-		_ = os.Remove(tmp)
+	if err := fileutil.AtomicWriteFile(newPath, fresh, 0o644); err != nil {
 		return nil, fmt.Errorf("workflow: store: %w", err)
 	}
 	if newPath != oldPath {

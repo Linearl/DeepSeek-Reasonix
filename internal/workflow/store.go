@@ -100,12 +100,7 @@ func (s *store) save(doc []byte, overwrite bool) (bool, *Workflow, error) {
 	if exists && s.archiveOn != nil && s.archiveOn() && s.headVersion(wf.Name) != defFingerprint(wf) {
 		s.archiveVersion(wf.Name)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
-		return false, nil, fmt.Errorf("workflow: store: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err := fileutil.AtomicWriteFile(path, raw, 0o644); err != nil {
 		return false, nil, fmt.Errorf("workflow: store: %w", err)
 	}
 	return !exists, wf, nil

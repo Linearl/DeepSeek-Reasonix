@@ -6445,11 +6445,7 @@ func (a *App) saveTabsWrite(dir string, entries []desktopTabEntry, activeID stri
 		return
 	}
 	path := filepath.Join(dir, tabsFileName)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return
-	}
-	if err := fileutil.ReplaceFile(tmp, path); err != nil {
+	if err := fileutil.AtomicWriteFile(path, b, 0o644); err != nil {
 		return
 	}
 	a.tabsLastWrittenVersion = version
@@ -6639,11 +6635,7 @@ func saveProjectsFile(f desktopProjectFile) error {
 		return err
 	}
 	path := filepath.Join(dir, desktopProjectsFile)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return fileutil.ReplaceFile(tmp, path)
+	return fileutil.AtomicWriteFile(path, b, 0o644)
 }
 
 func updateProjectsFile(mutator func(*desktopProjectFile) (bool, error)) error {
@@ -7760,11 +7752,7 @@ func saveTelemetry(path string, snapshot tabTelemetrySnapshot) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return fileutil.ReplaceFile(tmp, path)
+	return fileutil.AtomicWriteFile(path, b, 0o644)
 }
 
 func loadTelemetry(path string) tabTelemetrySnapshot {

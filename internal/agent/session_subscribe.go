@@ -16,6 +16,7 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/eventtrigger"
+	"reasonix/internal/fileutil"
 	"reasonix/internal/sessioncollab"
 )
 
@@ -289,11 +290,7 @@ func (s *SubscribeService) persistLocked() {
 	if err != nil {
 		return
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return
-	}
-	_ = os.Rename(tmp, s.path)
+	_ = fileutil.AtomicWriteFile(s.path, b, 0o644)
 }
 
 func subList(m map[string]*Subscription) []Subscription {

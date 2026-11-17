@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reasonix/internal/fileutil"
 )
 
 // Card states — the three-way closure of 任务 408 plus the open state.
@@ -155,11 +157,7 @@ func (q *Queue) persistLocked() error {
 	if err != nil {
 		return err
 	}
-	tmp := q.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, q.path)
+	return fileutil.AtomicWriteFile(q.path, data, 0o644)
 }
 
 // Enqueue appends a pending card (dedup by ID: re-noting an existing prompt is

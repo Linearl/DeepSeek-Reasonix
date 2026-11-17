@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"reasonix/internal/filelock"
+	"reasonix/internal/fileutil"
 	"reasonix/internal/store"
 )
 
@@ -242,20 +243,13 @@ func mutate(sessionPath string, fn func(*queue) error) error {
 	if err != nil {
 		return fmt.Errorf("reminder: encode queue: %w", err)
 	}
-	tmp := filepath.Join(dir, fileName+".tmp")
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("reminder: write queue: %w", err)
+	// Canonical atomic publish (tl1616, fileutil): unique temp + fsync +
+	// retried rename with sharing-lock backoff. Windows transient external
+	// holders (indexer/AV) can deny the rename for a while; retrying so a
+	// consumed entry is really removed matters — a half-removed entry would
+	// re-deliver on the next scan.
+	if err := fileutil.AtomicWriteFile(filepath.Join(dir, fileName), data, 0o600); err != nil {
+		return fmt.Errorf("reminder: commit queue: %w", err)
 	}
-	// Windows: transient external holders (indexer/AV) can deny the rename
-	// for a few milliseconds; retry briefly so a consumed entry is really
-	// removed — a half-removed entry would re-deliver on the next scan.
-	var renameErr error
-	for range 5 {
-		if renameErr = os.Rename(tmp, filepath.Join(dir, fileName)); renameErr == nil {
-			return nil
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	_ = os.Remove(tmp)
-	return fmt.Errorf("reminder: commit queue: %w", renameErr)
+	return nil
 }
