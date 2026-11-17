@@ -608,13 +608,27 @@ export function ContextPanel({
   // 47 万，压缩按 canonical 941485 触发，同屏互相矛盾）。投影有效时不切：
   // 健康压缩会话 used<canonical 是压缩的目的本身，不是失真。旧侧报文无
   // canonicalTokens 时门自动安静（contextDisplayCaliber）。
+  // tl1670: 常态面的同一把尺——两态共用 contextDisplayCaliber。降级态切
+  // canonical（tl1656 已交付面，语义逐字不变）；常态态（投影有效）canonical
+  // 是整段历史体积，切过去等于把历史谎报成窗口占用，改为在面板上明示口径：
+  // 主读数是「下一请求发送量」，canonical 是「全量记录」，日志里的 compaction
+  // src= 用的就是后者（20261117 18:34 现场：面板 381.9K vs src=1050159，
+  // 2.7 倍差却零口径标注）。
   const tl1656Caliber = contextDisplayCaliber(projectionStale, usedTokens, canonicalTokens);
   const displayUsedTokens = tl1656Caliber.tokens;
   const canonicalOverride = tl1656Caliber.canonicalOverride;
+  const caliberNote = tl1656Caliber.note;
   const projectionStaleTitle = projectionStale && canonicalTokens > 0
     ? canonicalOverride
       ? t("context.estimateUnderreadsTitle", { canonical: formatTokens(canonicalTokens), used: formatTokens(usedTokens) })
       : t("context.projectionInvalidTitle", { canonical: formatTokens(canonicalTokens) })
+    : undefined;
+  // tl1670 常态口径标注：两个数都在屏幕上，标题说清各自是什么尺。
+  const historyVolumeLabel = caliberNote === "historyVolume" && canonicalTokens > 0
+    ? t("context.historyVolumeLabel", { canonical: formatTokens(canonicalTokens) })
+    : undefined;
+  const historyVolumeTitle = caliberNote === "historyVolume" && canonicalTokens > 0
+    ? t("context.historyVolumeTitle", { canonical: formatTokens(canonicalTokens), used: formatTokens(usedTokens) })
     : undefined;
   const usagePercentages = contextWindowPercentages(displayUsedTokens, windowTokens);
   const rawUsagePct = usagePercentages.raw;
@@ -778,6 +792,15 @@ export function ContextPanel({
                   {projectionStale && (
                     <span className="context-panel__projection-stale" title={projectionStaleTitle}>
                       {t("context.projectionInvalid")}
+                    </span>
+                  )}
+                  {/* tl1670: 常态口径标注——canonical（整段历史体积）与主读数
+                      （下一请求发送量）不是一把尺时，把 canonical 也摆出来。
+                      走既有中性小 pill（与「估算/实测」同族），不新增样式、
+                      不新增独立入口：默认视图只多一颗中性 chip。 */}
+                  {historyVolumeLabel && (
+                    <span className="context-panel__readout-source" title={historyVolumeTitle}>
+                      {historyVolumeLabel}
                     </span>
                   )}
                 </span>

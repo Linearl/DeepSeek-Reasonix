@@ -95,11 +95,27 @@ export function projectionStaleAnnotation(
  * 不是失真（tl1653 形态一门的前提同源）。canonical 缺数（旧侧报文）不动。 */
 export const CONTEXT_ESTIMATE_DEVIATION_RATIO = 1.3;
 
+/** tl1670：面板读数与「全量记录（canonical）」背离的两种形态——两态同一把尺。
+ *
+ *  - degradedCanonical（降级态）：投影失效，canonical 就是下一请求要发的物理
+ *    占用（尾部梯队/残值投影只量到视图那一层）→ 主读数切 canonical（tl1656
+ *    已交付面，本件不改其语义）。
+ *  - historyVolume（常态态）：投影有效，canonical 是**整段历史体积**——压缩
+ *    只写投影、历史永不缩减（现场 20261117 18:14:57 折叠后 source 771812 →
+ *    视图 261814；18:30:14 下一轮压缩 src=1050159 仍是整段历史），所以
+ *    canonical ≫ 视图读数是**折叠的成果不是失真**。此时主读数必须保持视图
+ *    口径（切过去等于把整段历史谎报成窗口占用，会把健康会话误报成超窗），
+ *    但面板必须把两个数都摆出来——用户拿面板读数与日志里的 compaction
+ *    src= 对账时，需要知道那不是同一个尺（透明原则）。 */
+export type ContextCaliberNote = "none" | "degradedCanonical" | "historyVolume";
+
 export interface ContextDisplayCaliber {
   /** 容量卡主读数应显示的 token 数。 */
   tokens: number;
   /** true = 主读数已切换到 canonical（降级视图读数偏低）。 */
   canonicalOverride: boolean;
+  /** 面板上要明示的口径标注（none = 无背离，两数同尺）。 */
+  note: ContextCaliberNote;
 }
 
 export function contextDisplayCaliber(
@@ -107,9 +123,10 @@ export function contextDisplayCaliber(
   usedTokens: number,
   canonicalTokens: number,
 ): ContextDisplayCaliber {
-  if (!projectionStale || canonicalTokens <= 0) return { tokens: usedTokens, canonicalOverride: false };
-  if (canonicalTokens > usedTokens * CONTEXT_ESTIMATE_DEVIATION_RATIO) {
-    return { tokens: canonicalTokens, canonicalOverride: true };
+  if (canonicalTokens <= 0) return { tokens: usedTokens, canonicalOverride: false, note: "none" };
+  if (canonicalTokens <= usedTokens * CONTEXT_ESTIMATE_DEVIATION_RATIO) {
+    return { tokens: usedTokens, canonicalOverride: false, note: "none" };
   }
-  return { tokens: usedTokens, canonicalOverride: false };
+  if (projectionStale) return { tokens: canonicalTokens, canonicalOverride: true, note: "degradedCanonical" };
+  return { tokens: usedTokens, canonicalOverride: false, note: "historyVolume" };
 }
