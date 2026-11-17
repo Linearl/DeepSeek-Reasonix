@@ -37,7 +37,7 @@ func (a *Agent) resolveIncompleteReadToolRoundBoundary(ctx context.Context, stat
 		}
 		instruction, err := a.readContinuation(false)
 		if instruction != "" {
-			a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
+			a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
 		}
 		if ctx.Err() != nil {
 			return false, ctx.Err(), true
@@ -57,7 +57,7 @@ func (a *Agent) resolveIncompleteReadToolRoundBoundary(ctx context.Context, stat
 	}
 	instruction := state.incompleteReads.nextInstruction()
 	if instruction != "" {
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
 		a.emitIncompleteReadNotice(event.NoticeCodeReadContinuationRequired, i18n.M.ReadContinuationRequired, "read continuation instruction appended")
 	}
 	if ctx.Err() != nil {
