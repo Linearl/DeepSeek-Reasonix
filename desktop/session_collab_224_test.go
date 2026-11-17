@@ -6,6 +6,18 @@ import (
 	"reasonix/internal/config"
 )
 
+// collabBackgroundDeliveryFromConfig is the pure branch extracted for M3
+// testing (tl1627: moved here from session_collab.go — test-only scaffolding,
+// zero production callers; production reads the boot snapshot via
+// collabBackgroundDelivery instead). Returns true when
+// experimental_collab_background_delivery is on.
+func collabBackgroundDeliveryFromConfig(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalCollabBackgroundDelivery
+}
+
 // M3: collabBackgroundDelivery two-path test.
 // On: drain() returns empty (no tab). Off (default): zero regression.
 func TestCollabBackgroundDeliveryTwoPaths(t *testing.T) {

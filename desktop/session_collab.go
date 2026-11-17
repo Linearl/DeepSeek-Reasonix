@@ -258,15 +258,6 @@ func collabBackgroundDelivery() bool {
 	return boot.CollabDrainInboxGate()
 }
 
-// collabBackgroundDeliveryFromConfig is the pure branch extracted for M3
-// testing. Returns true when experimental_collab_background_delivery is on.
-func collabBackgroundDeliveryFromConfig(cfg *config.Config) bool {
-	if cfg == nil {
-		return false
-	}
-	return cfg.Agent.ExperimentalCollabBackgroundDelivery
-}
-
 // CollabOpenDetachedFromConfig is the task-264 pure branch (two-mode test).
 // On: pump stand-ups build a detached runtime instead of a visible tab.
 // Unlike the 224 gate this is a live panel setting — it is read per drain
@@ -1718,37 +1709,6 @@ func sessionCollabReceiptSteered(disposition string) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-// notifyDegradedSteer writes a status note back to the sender's mailbox. It
-// is best-effort: a failure here must not drop the message that was already
-// delivered.
-//
-// 当前无调用点（降级通知实际经 collabDelivery.notify → notifySenderOnce 发出，
-// 同为新链形态）；保留实现并同修为 Hop=0 新链形态（任务548 P0-2）：拷回原
-// 消息的 hop 会让通知在发送方的泵被溯源门拒收（hop>0 且无父 threadId），
-// 「降级」信号对发送方不可达。
-func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, disposition string) {
-	if strings.TrimSpace(msg.From) == "" {
-		return
-	}
-	mailDir := config.SessionCollabMailDir()
-	if mailDir == "" {
-		return
-	}
-	note := "你发送的 steer 未能注入目标会话当轮（目标不可注入，disposition=" + disposition +
-		"），已自动降级为排队 follow-up。目标空闲后会自动开轮处理（约 1 分钟内）；" +
-		"可用 get_message_status 按 messageId 查询最终结局。（messageId=" + msg.ID + "）"
-	if _, err := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit()).Deliver(context.Background(), sessioncollab.MailMessage{
-		From:    msg.To,
-		To:      msg.From,
-		Body:    note,
-		Hop:     0,
-		ReplyTo: "",
-		Kind:    "system", // 任务461 P8 ②：平台状态通知自动已读，不顶未读数
-	}); err != nil {
-		log.Printf("[session-collab] degraded-steer notice to %s failed: %v", msg.From, err)
 	}
 }
 
