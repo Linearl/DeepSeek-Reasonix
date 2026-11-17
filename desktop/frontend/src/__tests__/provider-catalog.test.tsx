@@ -84,5 +84,36 @@ await change("format", "anthropic");
 await act(async () => {render(false, [deepseekChoice]);});
 assert.equal(select("format").value, "anthropic");
 assert.equal(rootEl.querySelector<HTMLInputElement>('input[id$="-url"]')!.value, "https://api.deepseek.com/anthropic");
+// tl1659: MiMo exposes the access-mode (product) dropdown on the China site —
+// API / Token Plan switching swaps the prefilled base_url and the key env
+// hint, mirroring the Zhipu cn-region shape. Overseas stations stay
+// token-plan only.
+await act(async () => {render(false, choices.map(c => ({...c, keyEnv: c.id === "mimo-api" || c.id === "mimo-anthropic" ? "MIMO_API_KEY" : c.id.startsWith("mimo-token-plan-") ? "MIMO_TOKEN_PLAN_API_KEY" : c.keyEnv})));});
+// The MiMo brand has no icon yet, so its button renders a "M" monogram plus
+// the label ("MMiMo") — match by inclusion instead of the exact brand text.
+await act(async () => {Array.from(rootEl.querySelectorAll<HTMLButtonElement>(".provider-catalog__brand")).find(el => el.textContent?.includes("MiMo"))!.click();});
+const keyHint = () => rootEl.querySelector<HTMLInputElement>('input[id$="-key"]')!.placeholder;
+// This harness feeds catalog JSON key order, so the first MiMo choice is the
+// Anthropic route (mimo-anthropic); the assertions below pin the switching
+// semantics rather than the harness' initial format.
+assert.ok(select("product"), "MiMo China site exposes the access-mode dropdown");
+assert.equal(rootEl.querySelector<HTMLInputElement>('input[id$="-url"]')!.value, "https://api.xiaomimimo.com/anthropic");
+assert.match(keyHint(), /MIMO_API_KEY/);
+assert.equal((await settingsOptionValues(select("product"))).length, 2, "API and Token Plan are both offered");
+await change("product", "token");
+assert.equal(rootEl.querySelector<HTMLInputElement>('input[id$="-url"]')!.value, "https://token-plan-cn.xiaomimimo.com/anthropic");
+assert.match(keyHint(), /MIMO_TOKEN_PLAN_API_KEY/);
+await act(async () => { rootEl.querySelector<HTMLButtonElement>(".btn--primary")!.click(); });
+assert.equal(installed, "mimo-token-plan-cn-anthropic");
+await change("product", "api");
+assert.equal(rootEl.querySelector<HTMLInputElement>('input[id$="-url"]')!.value, "https://api.xiaomimimo.com/anthropic");
+assert.match(keyHint(), /MIMO_API_KEY/);
+await act(async () => { rootEl.querySelector<HTMLButtonElement>(".btn--primary")!.click(); });
+assert.equal(installed, "mimo-anthropic");
+await change("format", "openai");
+assert.equal(rootEl.querySelector<HTMLInputElement>('input[id$="-url"]')!.value, "https://api.xiaomimimo.com/v1", "openai route prefills the /v1 endpoint without manual entry");
+await change("region", "sgp");
+assert.equal(rootEl.querySelector('button.settings-select[id$="-product"]'), null, "overseas stations keep token-plan as the only product");
+assert.equal(rootEl.querySelector<HTMLInputElement>('input[id$="-url"]')!.value, "https://token-plan-sgp.xiaomimimo.com/v1");
 await act(async () => root.unmount());
-console.log("PASS provider catalog: grouping, constrained selection, exact install, refresh state, local setup");
+console.log("PASS provider catalog: grouping, constrained selection, exact install, refresh state, local setup, mimo access modes");

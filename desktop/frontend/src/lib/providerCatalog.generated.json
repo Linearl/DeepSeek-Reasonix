@@ -495,7 +495,7 @@
     "mimo-anthropic": {
       "brandId": "mimo",
       "brandLabel": "MiMo",
-      "region": "global",
+      "region": "cn",
       "product": "api",
       "format": "anthropic",
       "baseUrl": "https://api.xiaomimimo.com/anthropic",
@@ -521,7 +521,7 @@
     "mimo-api": {
       "brandId": "mimo",
       "brandLabel": "MiMo",
-      "region": "global",
+      "region": "cn",
       "product": "api",
       "format": "openai",
       "baseUrl": "https://api.xiaomimimo.com/v1",

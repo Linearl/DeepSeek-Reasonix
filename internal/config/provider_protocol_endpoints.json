@@ -447,7 +447,7 @@
       "checkedOn": "2026-09-07"
     }
   },
-  "mimo|global|api": {
+  "mimo|cn|api": {
     "responses": {
       "baseUrl": "https://api.xiaomimimo.com/v1",
       "source": "https://mimo.mi.com/docs/en-US/api/chat/responses",
