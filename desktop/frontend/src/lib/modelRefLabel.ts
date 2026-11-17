@@ -33,23 +33,27 @@ export interface ModelRefLabelInput {
 const connectionLabels = new Map<string, string>();
 const modelDisplayNames = new Map<string, string>();
 
-/** Feed the registry from a model catalog snapshot. Idempotent; entries are
- *  display labels only and the map stays tiny (one entry per ref). */
+/** Feed the registry from a model catalog snapshot. The snapshot is the whole
+ *  truth: entries for connections/models that no longer appear in it are
+ *  dropped (tl1654r2), so a deleted or disabled connection's display label
+ *  cannot keep surfacing through stale refs (session/branch model refs that
+ *  still point at it) after the config no longer lists the provider.
+ *  Display labels only; the map stays tiny (one entry per ref). */
 export function registerModelRefLabels(models: ModelRefLabelInput[]): void {
+  const nextConnections = new Map<string, string>();
+  const nextDisplayNames = new Map<string, string>();
   for (const m of models) {
     const provider = m.provider?.trim();
     const providerLabel = m.providerLabel?.trim();
-    if (provider) {
-      if (providerLabel) connectionLabels.set(provider, providerLabel);
-      else connectionLabels.delete(provider);
-    }
+    if (provider && providerLabel) nextConnections.set(provider, providerLabel);
     const ref = m.ref?.trim();
     const displayName = m.displayName?.trim();
-    if (ref) {
-      if (displayName) modelDisplayNames.set(ref, displayName);
-      else modelDisplayNames.delete(ref);
-    }
+    if (ref && displayName) nextDisplayNames.set(ref, displayName);
   }
+  connectionLabels.clear();
+  for (const [provider, label] of nextConnections) connectionLabels.set(provider, label);
+  modelDisplayNames.clear();
+  for (const [ref, displayName] of nextDisplayNames) modelDisplayNames.set(ref, displayName);
 }
 
 /** The label a user-facing surface shows for one connection: its registry
