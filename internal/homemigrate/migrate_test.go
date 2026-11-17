@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/baseproc/pidalive"
 	"reasonix/internal/config"
 )
 
@@ -446,7 +447,7 @@ func TestExecuteHonorsMigrationLock(t *testing.T) {
 func findDeadPID(t *testing.T) int {
 	t.Helper()
 	for pid := 4000000; pid < 4000000+500; pid++ {
-		if !pidAlive(pid) {
+		if !pidalive.LockHolderAlive(pid) {
 			return pid
 		}
 	}

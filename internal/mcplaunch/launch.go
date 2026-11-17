@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/baseproc/pidalive"
 	"reasonix/internal/fileutil"
 )
 
@@ -466,7 +467,7 @@ func fileLockOwnerAlive(owner []byte) bool {
 		return false
 	}
 	pid, err := strconv.Atoi(fields[0])
-	return err == nil && launchLockProcessAlive(pid)
+	return err == nil && pidalive.LockHolderAlive(pid)
 }
 
 func removeOwnedFileLock(path string, owner []byte) {

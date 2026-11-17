@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"reasonix/internal/baseproc/pidalive"
 	"reasonix/internal/config"
 	"reasonix/internal/fileutil"
 	"reasonix/internal/store"
@@ -139,7 +140,7 @@ func registerWebInstance(reasonixHome, addr string) (*webInstanceRegistration, e
 		dir:               filepath.Join(reasonixHome, "server", webInstanceDirectoryName),
 		now:               time.Now,
 		heartbeatInterval: webInstanceHeartbeat,
-		processAlive:      webInstanceProcessAlive,
+		processAlive:      pidalive.LockHolderAlive,
 	}
 	return registry.register(addr, os.Getpid())
 }
