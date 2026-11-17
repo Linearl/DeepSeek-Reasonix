@@ -105,6 +105,31 @@ export class TurnEventProjector {
     return true;
   }
 
+  // tl1653x: fence-anchor/projector epoch single-point alignment. The wire
+  // fence anchor (runtimeEpochByTabRef) is re-armed by every meta refresh
+  // (loadMetaForTab), but this projector's epochByTab only moves through
+  // observeRuntime — which runs solely inside dispatchRuntimeStatusForTab. A
+  // controller rebuild (resume, Diet/self-heal rewrite, effort switch) flips
+  // the runtime epoch; the fence reconcile re-arms the ANCHOR, the next event
+  // passes the fence into acceptLive, exposes its seq gap, and requests a
+  // replay — which then early-returns at replayGap's epoch check because the
+  // PROJECTOR still holds the old epoch (requestedEpoch=new vs currentEpoch=old).
+  // Every reasoning/text delta dropped by the fence stays un-filled until a tab
+  // switch reseeds the cursor — the "thinking block appears only after
+  // switching tabs" report. Re-arming the anchor and the projector in the same
+  // breath keeps the two epoch authorities from diverging; the teardown matches
+  // observeRuntime's epoch-flip branch byte for byte (an epoch flip voids the
+  // old epoch's cursor, queues, and in-flight repair).
+  reanchorEpoch(tabId: string, runtimeEpoch: string | undefined) {
+    if (!runtimeEpoch || runtimeEpoch === this.epochByTab.get(tabId)) return;
+    this.generationByTab.set(tabId, (this.generationByTab.get(tabId) ?? 0) + 1);
+    this.epochByTab.set(tabId, runtimeEpoch);
+    this.sequenceByTab.delete(tabId);
+    this.gapQueueByTab.delete(tabId);
+    this.pendingRepairByTab.delete(tabId);
+    this.repairByTab.delete(tabId);
+  }
+
   private requestReplay(tabId: string, afterSeq: number, runtimeEpoch?: string) {
     if (typeof app.TurnEventsForTab !== "function") return;
     if (this.repairByTab.has(tabId)) {

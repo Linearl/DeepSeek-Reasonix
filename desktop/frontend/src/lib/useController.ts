@@ -65,7 +65,7 @@ import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydrateFailureDetail, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { HISTORY_AUTO_RETRY_LIMIT, runBoundedAutoRetry } from "./historyAutoRetry";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, callerSkipOwesFreshnessGate, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fillChunkStartTurn, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, HISTORY_FILL_CHUNK_ITEMS, HISTORY_TAIL_FIRST_TURNS, hydratedHistoryApplyMode, planHistoryFillChunks, residentPageHeavy, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, callerSkipOwesFreshnessGate, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fillChunkStartTurn, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, HISTORY_FILL_CHUNK_ITEMS, HISTORY_TAIL_FIRST_TURNS, hydratedHistoryApplyMode, planHistoryFillChunks, residentPageHeavy, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, sessionChangedReloadNeeded, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
 import { prefetchMruTabs, type PrefetchCandidate } from "./transcriptPrefetch";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
@@ -3860,7 +3860,15 @@ export function useController() {
     const seq = bumpMetaRefreshSeq(tabId);
     const meta = await app.MetaForTab(tabId).catch(() => undefined);
     if (!metaRefreshCurrent(tabId, seq)) return undefined;
-    if (meta?.runtime?.epoch) runtimeEpochByTabRef.current.set(tabId, meta.runtime.epoch);
+    if (meta?.runtime?.epoch) {
+      runtimeEpochByTabRef.current.set(tabId, meta.runtime.epoch);
+      // tl1653x: re-arm the projector's epoch in the same breath as the fence
+      // anchor. Without this, the seq-gap back-fill that should restore
+      // fence-dropped text/reasoning deltas dies at replayGap's epoch check
+      // (projector still on the old epoch) and the thinking block only shows
+      // up after a tab switch rebuilds the surface.
+      turnEventProjector.reanchorEpoch(tabId, meta.runtime.epoch);
+    }
     return meta;
   }, [bumpMetaRefreshSeq, metaRefreshCurrent]);
   const refreshMetaOnlyForTab = useCallback(async (tabId: string): Promise<Meta | undefined> => {
@@ -5322,9 +5330,16 @@ export function useController() {
         app.JobsForTab(targetTabId).then((jobs) => dispatchTo(targetTabId, { type: "jobs", jobs: asArray(jobs) })).catch(() => {});
       }
       if (e.kind === "session_changed" && e.sessionReset) {
-        // The controller replaced the transcript under the same path (a head
-        // switch from /switch, /branch, or /rewind); reload rather than patch.
-        void loadSessionDataForTab(targetTabId, true, "session-changed");
+        // Head switch (/switch, /branch, /rewind); reload rather than patch.
+        // tl1653x: gate on the fingerprint first — a rewrite that did not move
+        // this session file (same revision+digest) must not re-pour the batch
+        // the resume hydrate already rendered (同内容渲染两次形态①)。
+        void (async () => {
+          const fresh = await refreshMetaOnlyForTab(targetTabId);
+          if (!statesRef.current.has(targetTabId)) return;
+          if (!sessionChangedReloadNeeded(statesRef.current.get(targetTabId), fresh)) return;
+          await loadSessionDataForTab(targetTabId, true, "session-changed");
+        })().catch(() => {});
       }
     };
     turnEventProjector.bind(handleWireEvent);
