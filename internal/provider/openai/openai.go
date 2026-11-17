@@ -479,16 +479,7 @@ func (c *client) MissingToolCallReasoningWarningIdentity() string {
 }
 
 func (c *client) sendOpts() provider.SendOptions {
-	return provider.SendOptions{
-		Provider:            c.name,
-		ProviderDisplayName: c.identity.DisplayName,
-		Protocol:            c.identity.Protocol,
-		KeyEnv:              c.keyEnv,
-		KeySource:           c.keySource,
-		KeyPresent:          c.currentAPIKey() != "",
-		RetryAuth:           c.authed.Load(),
-		RefreshCredential:   c.refreshCredential,
-	}
+	return provider.BuildSendOptions(c.name, c.identity, c.keyEnv, c.keySource, c.currentAPIKey() != "", c.authed.Load(), c.refreshCredential)
 }
 
 // currentAPIKey returns the request key under the re-auth lock (任务1308):
