@@ -5796,11 +5796,9 @@ export const zh: Record<DictKey, string> = {
   "updater.officialReleaseHint": "Reasonix 检查 fork 最新发布版本。",
   "updater.checkUnavailable": "暂时连不上更新渠道，已跳过本次检查。当前版本未受影响，稍后可再试。",
   "updater.officialDownload": "前往官网下载",
-  "updater.privacyAndUpdatePreferences": "隐私与更新偏好",
-  "settings.telemetryLabel": "匿名启动统计",
-  "settings.telemetryHint": "启动时发送匿名ID、版本、系统/发行版、会话、Runtime、GPU模式。异常退出后下次启动可发送阶段、堆栈、原因、退出码、恢复结果。不含账号、对话、密钥、文件、完整路径、显卡驱动",
-  "settings.metricsLabel": "共享聚合质量指标",
-  "settings.metricsHint": "默认开启。发送匿名轮次统计、更新错误、运行健康与设置快照，并用随机安装 ID 统计 DAU。可能包含归一化的自定义 Provider 和模型名；不含对话、提示词、密钥、路径、URL、记忆、工具输出或文件内容。",
+  // tl1665：用户裁定「我们不做遥测」——匿名启动统计 / 共享聚合质量指标两项开关
+  // 与其文案一并删除（更新页不再有遥测偏好）。
+  "updater.privacyAndUpdatePreferences": "更新偏好",
   "updater.currentVersion": "当前版本：{v}",
 "updater.builtAt": "编译于 {at}",
 "updater.copyVersion": "复制版本号",

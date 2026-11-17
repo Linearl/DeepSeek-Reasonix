@@ -726,8 +726,6 @@ type SettingsView struct {
 
 	CheckUpdates      bool   `json:"checkUpdates"`
 	UpdateChannel     string `json:"updateChannel"`
-	Telemetry         bool   `json:"telemetry"`
-	Metrics           bool   `json:"metrics"`
 	ExpandThinking    bool   `json:"expandThinking"`
 	ConversationWidth string `json:"conversationWidth,omitempty"`
 	ConfigPath        string `json:"configPath"`
@@ -2235,8 +2233,6 @@ func (a *App) Settings() SettingsView {
 		DefaultSubagentPolicy:        cfg.DefaultSubagentPolicy(),
 		CheckUpdates:                 cfg.DesktopCheckUpdates(),
 		UpdateChannel:                cfg.DesktopUpdateChannel(),
-		Telemetry:                    cfg.DesktopTelemetry(),
-		Metrics:                      cfg.DesktopMetrics(),
 		ExpandThinking:               cfg.Desktop.ExpandThinking,
 		ConversationWidth:            cfg.DesktopConversationWidth(),
 		ConfigPath:                   cfgPath,

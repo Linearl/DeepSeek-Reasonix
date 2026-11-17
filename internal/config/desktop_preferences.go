@@ -496,8 +496,13 @@ type DesktopConfig struct {
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.
 	UpdateChannel        string   `toml:"update_channel"`
-	Telemetry            *bool    `toml:"telemetry"`          // anonymous launch ping plus scrubbed next-launch native crash diagnostics; nil keeps the default enabled
-	Metrics              *bool    `toml:"metrics"`            // aggregate desktop metrics (anonymous signal/bucket counts, including lifecycle health; no content); nil keeps the default enabled
+	// Telemetry/Metrics are read-only compatibility keys (tl1665): the fork's
+	// product decision is「我们不做遥测」, so the desktop never sends the
+	// anonymous launch ping nor aggregate desktop metrics. Old config files
+	// that still carry these keys keep loading; nothing writes them any more
+	// and nothing honours them (see Config.DesktopTelemetry/DesktopMetrics).
+	Telemetry            *bool    `toml:"telemetry"`          // retired: anonymous launch ping + scrubbed next-launch native crash diagnostics; parsed for compatibility only
+	Metrics              *bool    `toml:"metrics"`            // retired: aggregate desktop metrics (anonymous signal/bucket counts); parsed for compatibility only
 	ProviderAccess       []string `toml:"provider_access"`    // desktop-only list of provider entries shown in Settings > Model > Access
 	SessionExperience    string   `toml:"session_experience"` // standard|deep; canonical desktop transcript experience
 	ExpandThinking       bool     `toml:"expand_thinking"`    // deprecated compatibility alias: true maps to auto

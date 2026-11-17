@@ -462,12 +462,6 @@ func (c *Config) SetCompactRatio(ratio float64) error {
 	return nil
 }
 
-// SetDesktopTelemetry sets whether the desktop sends the anonymous launch ping.
-func (c *Config) SetDesktopTelemetry(enabled bool) error {
-	c.Desktop.Telemetry = &enabled
-	return nil
-}
-
 // SetSessionStorage selects the conversation store mode (task 155): v3_only,
 // dual_write_read_v3, dual_write_read_v4 or v4_only. The legacy spellings
 // "legacy" and "v4" are accepted and normalized, so an old settings.toml
@@ -2319,12 +2313,6 @@ func (c *Config) SetCollabInboxMerge(mode string) error {
 func (c *Config) SetCollabGuidanceMerge(enabled bool) error {
 	c.Agent.CollabGuidanceMerge = enabled
 	c.Desktop.CollabGuidanceMerge = false
-	return nil
-}
-
-// SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics.
-func (c *Config) SetDesktopMetrics(enabled bool) error {
-	c.Desktop.Metrics = &enabled
 	return nil
 }
 

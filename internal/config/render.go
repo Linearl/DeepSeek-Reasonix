@@ -706,8 +706,12 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "alert_log_retention_days = %d   # desktop: WARN/ERROR alert-log retention in days (0 = default 7, -1 = forever, clamped -1..90)\n", c.Desktop.DesktopAlertLogRetentionDays)
 		fmt.Fprintf(&b, "alert_log_max_total_mb = %d   # desktop: WARN/ERROR alert-log total size ceiling in MB (0 = default 100, -1 = unlimited, clamped -1..10240)\n", c.Desktop.DesktopAlertLogMaxTotalMB)
 		fmt.Fprintf(&b, "collab_inbox_merge = %q   # desktop: settings-view mirror of [agent] collab_inbox_merge (task 221; off | same_sender | all)\n", NormalizeCollabInboxMerge(c.Desktop.CollabInboxMerge))
-		fmt.Fprintf(&b, "telemetry = %v   # desktop: anonymous launch ping + scrubbed next-launch native crash diagnostics; never content\n", c.DesktopTelemetry())
-		fmt.Fprintf(&b, "metrics = %v   # desktop: aggregate quality/lifecycle metrics (anonymous signal/bucket counts); never content\n", c.DesktopMetrics())
+		// tl1665: the fork does not do telemetry (user decision「我们不做遥测」),
+		// so these two keys are always false and never written by the app. They
+		// stay rendered so an old config's stale `telemetry = true` is rewritten
+		// to the truth on the next save instead of lingering as a lie.
+		fmt.Fprintf(&b, "telemetry = %v   # desktop: retired — this fork never sends the anonymous launch ping nor native crash diagnostics\n", c.DesktopTelemetry())
+		fmt.Fprintf(&b, "metrics = %v   # desktop: retired — this fork never sends aggregate quality/lifecycle metrics\n", c.DesktopMetrics())
 		// A non-nil empty slice is intentional: provider_access = [] means the
 		// user removed every desktop access entry. Omitting it would make the next
 		// load treat the config as legacy and infer access again.

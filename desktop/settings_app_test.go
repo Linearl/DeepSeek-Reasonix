@@ -2255,26 +2255,49 @@ func TestRetiredAutoRecoveryCheckpointSettingsAreNoOps(t *testing.T) {
 	}
 }
 
-func TestSetDesktopMetricsDefaultsOnAndPersistsOff(t *testing.T) {
+// TestDesktopTelemetryAndMetricsSurfaceRemoved (tl1665, 2026-11-18) pins the
+// fork's product decision「我们不做遥测」on the desktop side: the two
+// switches are gone, so the Wails write bindings are gone, the settings view
+// no longer carries the flags, and the config keys stay read-only — an old
+// config that still opts in must keep loading but must not re-enable anything.
+func TestDesktopTelemetryAndMetricsSurfaceRemoved(t *testing.T) {
 	isolateDesktopUserDirs(t)
 
 	app := NewApp()
-	if !app.Settings().Metrics {
-		t.Fatal("Settings().Metrics default = false, want true")
+	// The settings view no longer exposes the two flags at all: the frontend
+	// type dropped them, so the Go view must not carry them either. Asserted on
+	// the serialized payload — that is what the frontend actually reads.
+	payload, err := json.Marshal(app.Settings())
+	if err != nil {
+		t.Fatalf("marshal settings view: %v", err)
 	}
-	if err := app.SetDesktopMetrics(false); err != nil {
-		t.Fatalf("SetDesktopMetrics: %v", err)
+	for _, retired := range []string{`"telemetry"`, `"metrics"`} {
+		if strings.Contains(string(payload), retired) {
+			t.Fatalf("the settings view still carries %s, want it removed", retired)
+		}
 	}
-	view := app.Settings()
-	if view.Metrics {
-		t.Fatal("Settings().Metrics = true, want false")
+	// The write bindings are gone with the switches — a caller cannot re-arm
+	// the reporting from the app surface any more.
+	appType := reflect.TypeFor[*App]()
+	for _, removed := range []string{"SetDesktopTelemetry", "SetDesktopMetrics"} {
+		if _, ok := appType.MethodByName(removed); ok {
+			t.Fatalf("App.%s must be removed from the Wails surface (the switches are gone)", removed)
+		}
 	}
-	cfg := config.LoadForEdit(config.UserConfigPath())
-	if cfg.Desktop.Metrics == nil || *cfg.Desktop.Metrics {
-		t.Fatalf("desktop.metrics = %+v, want false", cfg.Desktop.Metrics)
+	// The gate is closed for a config that still carries the old opt-in.
+	path := config.UserConfigPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("[desktop]\ntelemetry = true\nmetrics = true\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg := config.LoadForEdit(path)
+	if cfg.DesktopTelemetry() {
+		t.Fatal("DesktopTelemetry() = true with a stale telemetry = true key, want false")
 	}
 	if cfg.DesktopMetrics() {
-		t.Fatal("DesktopMetrics() = true, want false")
+		t.Fatal("DesktopMetrics() = true with a stale metrics = true key, want false")
 	}
 }
 

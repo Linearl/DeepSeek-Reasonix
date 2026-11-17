@@ -115,8 +115,6 @@ export function baseSettings(displayMode: "standard" | "compact" = "standard"): 
     defaultSubagentPolicy: "light",
     checkUpdates: true,
     updateChannel: "stable",
-    telemetry: true,
-    metrics: true,
     configPath: "/tmp/reasonix/config.toml",
     providerKinds: [],
     autoApproveTools: false,

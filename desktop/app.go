@@ -474,7 +474,11 @@ type App struct {
 	// read-only afterwards, so tabEventSink.Emit reads it without a lock.
 	botBridge *botBridgeHub
 
-	metrics atomic.Pointer[metricsAggregator] // non-nil only when desktop.metrics is opted in; swapped live by SetDesktopMetrics
+	// tl1665: the fork does not do telemetry, so this aggregator is never
+	// armed (config.DesktopMetrics() is hard-wired to false) and the switch
+	// that used to swap it live is gone. The plumbing stays for a later,
+	// deliberate teardown.
+	metrics atomic.Pointer[metricsAggregator] // never armed under the fork's no-telemetry policy
 
 	notificationSenderOnce sync.Once
 	notificationSender     notify.Sender

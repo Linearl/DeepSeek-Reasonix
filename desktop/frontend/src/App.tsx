@@ -137,6 +137,7 @@ import { useRuntimeTransitionFocusRestore } from "./app-runtime/useLocalUiLifecy
 import { useConsolidatedSessionReload } from "./app-runtime/useConsolidatedSessionReload";
 import { useNavigationSurfaceTimeoutWatch } from "./app-runtime/navigationSurfaceTimeoutWatch";
 import { app, onBackendTabActivated, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
+import { FORK_CHANGELOG_URL } from "./lib/forkLinks";
 import { formatActionError } from "./lib/actionErrors";
 import { installNoticeEventArchive } from "./lib/notifyArchive";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
@@ -6291,7 +6292,7 @@ export default function App() {
           <UpdateBanner
             enabled={startupUpdateChecksEnabled === true}
             onShowReleaseNotes={() => {
-              void openExternal("https://linearl.github.io/DeepSeek-Reasonix/changelog/");
+              void openExternal(FORK_CHANGELOG_URL);
             }}
           />
 

@@ -34,12 +34,6 @@ export function createDesktopPreferencesMock(settings: SettingsView) {
       void channel;
       settings.updateChannel = "stable";
     },
-    async SetDesktopTelemetry(enabled: boolean) {
-      settings.telemetry = enabled;
-    },
-    async SetDesktopMetrics(enabled: boolean) {
-      settings.metrics = enabled;
-    },
     async SetDesktopConversationWidth(width: string) { settings.conversationWidth = width; },
     async SetReasoningDisplayMode(mode: "hidden" | "summary" | "auto" | "expanded") { applyMockLegacyReasoningMode(settings, mode); },
     async SetSessionExperience(mode: "standard" | "deep" | "concise") { applyMockSessionExperience(settings, mode); },
