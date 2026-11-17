@@ -467,6 +467,14 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 			contentValid = true
 			needsNormalization = true
 		}
+		// tl1651 修复③: the same legitimate migration lane extends to a load
+		// repair that rewrote provider-visible bytes (A1): a sidecar whose
+		// stored hash matches the pre-repair disk prefix re-anchors to the
+		// repaired transcript instead of being dropped on the key-change path.
+		if !contentValid && migrateLoadRepairedPrefixHash(&st, msgs, preRepair) {
+			contentValid = true
+			needsNormalization = true
+		}
 		if contentValid {
 			normalized, keyOK = key, true
 		}
@@ -509,6 +517,18 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 	// "projection_body_invalid".
 	failReason := projectionInvalidReason(st, msgs)
 	if failReason != projectionFailNone && migrateLegacyCoveredPrefixHash(&st, msgs, preRepair) {
+		needsNormalization = true
+		failReason = projectionInvalidReason(st, msgs)
+	}
+	// tl1651 修复③ (A1): a hash_mismatch whose diagnosis attributes the
+	// rewrite to THIS load's deterministic repair (stored == pre-repair disk
+	// prefix, first sanitized fingerprint shared) migrates the stored hash to
+	// the repaired transcript instead of discarding a healthy fold. The gates
+	// inside migrateLoadRepairedPrefixHash keep real third-party rewrites
+	// fail-closed (tl1203 semantics intact); on success the re-validated body
+	// serves the wire and the normalized sidecar is republished below via
+	// persistCompactionStateLocked.
+	if failReason != projectionFailNone && migrateLoadRepairedPrefixHash(&st, msgs, preRepair) {
 		needsNormalization = true
 		failReason = projectionInvalidReason(st, msgs)
 	}
