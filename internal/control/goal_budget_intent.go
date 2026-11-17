@@ -43,16 +43,6 @@ func Classify(input string) Intent {
 	}
 }
 
-// NeedsEvidence reports whether the intent expects host-observable work.
-func (i Intent) NeedsEvidence() bool {
-	return i == ObservableRead || i == Mutation || i == PersistentAction
-}
-
-// NeedsEvidence reports whether a task text expects host-observable work.
-func NeedsEvidence(input string) bool {
-	return Classify(input).NeedsEvidence()
-}
-
 var deliveryMutationNeedles = []string{
 	"fix", "repair", "resolve", "create", "add", "write", "edit", "update", "change", "delete", "remove", "rename",
 	"implement", "refactor", "apply", "install", "publish", "commit", "push", "continue work",

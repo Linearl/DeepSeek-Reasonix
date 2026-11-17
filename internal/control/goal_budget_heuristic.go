@@ -8,9 +8,8 @@ import (
 
 // heuristicInputIsTask reports whether a user input reads as an actionable
 // task rather than conversational chat. The delivery evidence gate uses it to
-// decide when a turn should be held to acceptance-criteria expectations
-// (NeedsEvidence); greetings and acknowledgements must not arm the
-// delivery gates.
+// decide when a turn should be held to acceptance-criteria expectations;
+// greetings and acknowledgements must not arm the delivery gates.
 func heuristicInputIsTask(input string) bool {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
