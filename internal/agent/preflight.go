@@ -497,11 +497,22 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		if !keyOK {
 			reason = "lineage_key_changed"
 		}
-		slog.Info("agent: context projection not restored",
+		args := []any{
 			"writer", SessionWriterID(), "reason", reason,
 			"stored_key", st.PromptCacheKey != "", "key_matched", keyOK,
 			"msgs", len(msgs),
-			"canonical_tokens", estimateMessagesTokens(modelInputMessages(msgs)))
+			"canonical_tokens", estimateMessagesTokens(modelInputMessages(msgs)),
+		}
+		// tl1651 修复④: a lineage rejection with only key_matched=false cannot
+		// name WHICH segment moved — the 20261116 21:24 effort-switch incident
+		// logged lineage_key_changed twice within seconds and the segment (was
+		// it a branch retarget via snapshot recovery, a workspace change, or a
+		// model ref change?) stayed unattributable. The per-segment diff closes
+		// that gap; matching keys add nothing (zero behavior on the green path).
+		if !keyOK {
+			args = append(args, lineageKeyDiffArgs(st.PromptCacheKey, key)...)
+		}
+		slog.Info("agent: context projection not restored", args...)
 		a.kickProjectionRebuild(reason)
 		return
 	}
@@ -662,6 +673,37 @@ func lineageKeyCompatible(stored, current string) (normalized string, ok bool) {
 		return current, true
 	}
 	return "", false
+}
+
+// lineageKeyDiffArgs renders the per-segment diff (tl1651 修复④) behind a
+// rejected lineage key: workspace | branch | model — the exact segment order
+// promptCacheKey joins. The suffix after the second "|" is the model ref and
+// may itself contain "|"-joined adapter detail, so the model segment keeps
+// everything SplitN leaves. Observability-only: the strings feed the drop log
+// and never gate behavior.
+func lineageKeyDiffArgs(stored, current string) []any {
+	stored = strings.TrimSpace(stored)
+	current = strings.TrimSpace(current)
+	sParts := strings.SplitN(stored, "|", 3)
+	cParts := strings.SplitN(current, "|", 3)
+	seg := func(parts []string, i int) string {
+		if i < len(parts) {
+			return parts[i]
+		}
+		return ""
+	}
+	names := []string{"workspace", "branch", "model"}
+	args := make([]any, 0, 2*len(names)+3)
+	var changed []string
+	for i, name := range names {
+		s, c := seg(sParts, i), seg(cParts, i)
+		args = append(args, "stored_"+name, s, "current_"+name, c)
+		if s != c {
+			changed = append(changed, name)
+		}
+	}
+	args = append(args, "changed_segments", strings.Join(changed, "+"))
+	return args
 }
 
 func (a *Agent) resetCompactionState() {
