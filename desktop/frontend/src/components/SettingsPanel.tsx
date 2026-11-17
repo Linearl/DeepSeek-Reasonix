@@ -5216,6 +5216,12 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
   const fetchGate = useMemo(createLatestRequestGate, []);
   const [fetchResults, setFetchResults] = useState<Record<string, ProviderFetchResult>>({});
   const [modelDrafts, setModelDrafts] = useState<Record<string, ProviderModelDraft>>({});
+  // tl1654r2: bumped when an automatic fetch commits a catalog replacement.
+  // The expanded detail editor snapshots the provider's models at mount; this
+  // revision rides the editor key so a committed catalog swap remounts the
+  // editor from the fresh provider view instead of editing against the stale
+  // pre-install snapshot (and later saving it back over the live catalog).
+  const [catalogRevision, setCatalogRevision] = useState(0);
   const visibleProviders = useMemo(() => s.providers
     .filter((p) => (p.added || p.name === revealedProvider))
     // Task 279: disabled (hidden) providers stay listed — they carry the
@@ -5394,7 +5400,24 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
       const expectedFingerprint = p.modelCatalogFingerprint?.trim() ?? "";
       if (!expectedFingerprint) return;
       await apply(() => saveModelSettings(s, { kind: "catalogs", catalogs: [{ name: p.name, expectedFingerprint, models: draft.models, default: draft.default, visionModels: draft.visionModels }] }));
+      // tl1654r2: the catalog write above already triggers one settings
+      // re-read inside apply, but that re-read's setState can be dropped when
+      // a concurrent reload (mount prefetch/hydrate) wins the load-sequence
+      // race or its own read fails — the write commits while the panel keeps
+      // showing the pre-install model list ("picker updates, list does not").
+      // Queue one no-op apply as a dedicated read-back: it enters the same
+      // serialized queue last, so its reload carries the freshest load
+      // sequence and lands the committed catalog on screen before the success
+      // banner claims the update. Idempotent read only — no second write.
+      await apply(async () => null);
       if (!groupFetchIsCurrent(groupID, generation)) return;
+      // The committed list replaced the provider's models behind any open
+      // editor: the expanded detail editor snapshots models at mount, so
+      // bumping the catalog revision remounts it from the fresh provider view
+      // — the list and its selection follow the committed catalog without a
+      // page reopen, and a subsequent editor save can no longer write the
+      // stale pre-install snapshot back over the live catalog.
+      setCatalogRevision((n) => n + 1);
       setGroupFetchResult(groupID, {
         kind: "ok",
         text: t("settings.fetchModelsUpdatedForProvider", { provider: p.name, n: draft.models.length }),
@@ -5588,6 +5611,7 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
             <ProviderAccessCard
               key={group.id}
               detail
+              catalogRevision={catalogRevision}
             onCopy={() => void apply(() => saveModelSettings(s, {kind: "connection_add", name: group.providers[0].name, key: ""}))}
             onRename={(label) => apply(() => {
               if (typeof app.RenameProviderConnections !== "function") throw new Error(t("settings.connections.restartRequired"));
@@ -5805,6 +5829,7 @@ export function AddProviderPanel({
 
 export function ProviderAccessCard({
   detail = false,
+  catalogRevision = 0,
   onCopy,
   onRename,
   group,
@@ -5832,6 +5857,9 @@ export function ProviderAccessCard({
   onDelete,
 }: {
   detail?: boolean;
+  /** tl1654r2: bumps when an automatic fetch commits a catalog replacement,
+   *  remounting the expanded editor from the fresh provider view. */
+  catalogRevision?: number;
   onCopy?: () => void;
   onRename?: (label: string) => Promise<boolean>;
   group: ProviderAccessGroup;
@@ -6026,7 +6054,7 @@ export function ProviderAccessCard({
 
       {editingProvider && (
         <ProviderEditor
-          key={`${editingProvider.name}:${editorRevision}`}
+          key={`${editingProvider.name}:${editorRevision}:${catalogRevision}`}
           initial={editingProvider}
           hideConnectionName={detail}
           providerPresets={providerPresets}
