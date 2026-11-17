@@ -546,6 +546,12 @@ export function RecoveryCopiesSection() {
   // （merged/forced 会把删除误报成内容搬迁），两条结果线各自成列。
   const [deletedOutcomes, setDeletedOutcomes] = useState<DeleteOutcome[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  // tl1672：健康闸拒绝与真失败**视觉分离**。此前批量清理的失败项一律进
+  // errors（banner--error 红），用户把「该会话不健康所以保留它的备份」读成
+  // 「删除报错了」——两者在 UI 上同形。reason 令牌后端早已给出
+  // （owner-unhealthy / gone / invalid / trash-failed / permanent-only），
+  // 前端此前没用它区分。现在按令牌分流：拒绝=警示（warn），真失败=错误（error）。
+  const [refusals, setRefusals] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   // 任务 1039：失败原因单独留一份——只显示「设置加载失败」时用户与日志都
   // 无从判断是哪条链路断了（实测 49MB events 日志重放被拒）。
@@ -1047,8 +1053,35 @@ export function RecoveryCopiesSection() {
       } else if (run.failed > 0) {
         showToast(t("settings.recoveryCopiesPreRepairCleanRefused").replace("{n}", String(run.failed)), "error");
       }
+      // tl1672：拒绝与真失败分流。owner-unhealthy=健康闸拒绝（不是故障：备份是
+      // 该会话的唯一退路，设计上保留）；gone=文件已不在（目标已达成，幂等）；
+      // invalid/trash-failed/permanent-only=真失败（走红）。"gone" 归入「无需处理」
+      // 一组，不让用户以为删失败。
+      const refusedLines: string[] = [];
+      const goneLines: string[] = [];
       for (const failure of run.failures ?? []) {
-        setErrors((current) => [...current, `${failure.label}: ${failure.detail || failure.reason}`]);
+        const line = `${failure.label}: ${failure.detail || failure.reason}`;
+        if (failure.reason === "owner-unhealthy") {
+          refusedLines.push(line);
+        } else if (failure.reason === "gone") {
+          goneLines.push(line);
+        } else {
+          setErrors((current) => [...current, line]);
+        }
+      }
+      if (refusedLines.length > 0) {
+        setRefusals((current) => [
+          ...current,
+          `${t("settings.recoveryCopiesPreRepairRefusedTitle").replace("{n}", String(refusedLines.length))}`,
+          ...refusedLines,
+        ]);
+      }
+      if (goneLines.length > 0) {
+        setRefusals((current) => [
+          ...current,
+          `${t("settings.recoveryCopiesPreRepairAlreadyGoneTitle").replace("{n}", String(goneLines.length))}`,
+          ...goneLines,
+        ]);
       }
       await load();
     } finally {
@@ -2931,6 +2964,18 @@ export function RecoveryCopiesSection() {
                         与空态平级——零副本组但带改写前备份的机器（tl1603 的目标
                         受众）批量清理被拒时，拒绝原因若挂在非空分支里就会被空态
                         吞掉。列表状态管列表，回执状态管回执，互不吞并。 */}
+                    {/* tl1672：拒绝（健康闸）走警示区，与真失败的错误区分离——
+                        此前两者同形，用户把「保留（该会话不健康）」读成「删除报错」。 */}
+                    {refusals.length > 0 && (
+                      <div className="banner banner--warning" role="status">
+                        <ul className="rc-errors">
+                          {refusals.map((message, index) => (
+                            <li key={`refusal-${index}`}>{message}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {errors.length > 0 && (
                       <div className="banner banner--error" role="alert">
                         <ul className="rc-errors">
