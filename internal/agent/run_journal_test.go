@@ -216,7 +216,7 @@ func TestRunJournalCancellationEndsRunCancelled(t *testing.T) {
 		observed: make(chan struct{}, 2),
 		release:  make(chan struct{}),
 	}
-	task := NewTaskTool(prov, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+	task := NewTaskTool(prov, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
 		WithTranscripts(mustSubagentStore(t), root, "base", "high").
 		WithScheduler(NewSubagentScheduler(2, 2))
 	f := NewFleetTool(task).WithRunJournalPath(dbPath)

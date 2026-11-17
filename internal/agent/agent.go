@@ -1650,22 +1650,22 @@ type Options struct {
 	// the parent's call context.
 	WorktreeProjectOpener tool.WorktreeProjectOpener
 
-	// Context management. ContextWindow <= 0 disables compaction. Ratios and
-	// RecentKeep fall back to defaults when unset.
+	// Context management. ContextWindow <= 0 disables compaction. CompactRatio
+	// and RecentKeep fall back to defaults when unset. Automatic maintenance is
+	// controlled only by CompactRatio.
 	ContextWindow int
 	CompactRatio  float64
-	// Deprecated compatibility inputs. New agents ignore these fields; automatic
-	// maintenance is controlled only by CompactRatio.
-	SoftCompactRatio       float64
-	ToolResultSnipRatio    float64
-	CompactForceRatio      float64
+	// RecentKeep / ArchiveDir / KeepPolicy are live inputs (read by the
+	// projection retain policy), not deprecated compatibility fields.
+	// tl1666: the retired soft/snip/force thresholds and the retired native
+	// context-editing flag are gone from this struct — the config layer still
+	// detects and warns about the old TOML keys (internal/config/load.go).
 	RecentKeep             int
 	ArchiveDir             string
 	KeepPolicy             KeepPolicy
 	SessionPath            string // projection sidecar path; empty = memory only
 	WorkspaceID            string // prompt-cache lineage component
 	StrictAlternatingRoles bool   // merge adjacent user turns for strict providers at request time
-	ContextEditing         string // deprecated; native provider editing was removed
 
 	// Hooks fires PreToolUse / PostToolUse shell hooks around tool calls. nil
 	// disables hook firing.

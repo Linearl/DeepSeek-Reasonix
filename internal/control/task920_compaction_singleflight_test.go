@@ -111,11 +111,10 @@ func gateSingleFlightController(t *testing.T, prov *gateFoldProvider) (*Controll
 	sessionPath := filepath.Join(t.TempDir(), "session.jsonl")
 	sess := foldableOverForceSession(t)
 	ag := agent.New(prov, tool.NewRegistry(), sess, agent.Options{
-		ContextWindow:     5000,
-		CompactRatio:      0.5,
-		CompactForceRatio: 0.5,
-		RecentKeep:        2,
-		ArchiveDir:        t.TempDir(),
+		ContextWindow: 5000,
+		CompactRatio:  0.5,
+		RecentKeep:    2,
+		ArchiveDir:    t.TempDir(),
 	}, event.Discard)
 	c := New(Options{Runner: ag, Executor: ag, Sink: event.Discard, SessionPath: sessionPath})
 	return c, sessionPath

@@ -65,6 +65,46 @@ type TodoOp struct {
 	Item        *TodoOpItem `json:"item,omitempty"`
 }
 
+// TodoOpsStepIDPlacement is the single source of truth for WHERE an ops
+// element carries its target step_id (tl1668).
+//
+// The canonical position is the ops ELEMENT top level, as a sibling of "op"
+// and "item": {"op":"replace","step_id":"s1","item":{...}}. Inside "item" the
+// step_id means something else — it is the payload item's OWN identity (the id
+// a new insert mints, and the id a replace must keep) — never the op's target.
+//
+// Two older records disagreed about this (one pool entry asserted "step_id
+// 应在 item 对象内", another measured the opposite), so a caller could only
+// learn the right shape by trial and error, burning a whole turn per attempt.
+// This constant is the one place the shape is written down; the tool schema
+// and every ops error message quote it.
+const TodoOpsStepIDPlacement = `step_id goes at the ops element top level, next to "op" and "item" — e.g. {"ops":[{"op":"replace","step_id":"plan_step_02","item":{"content":"...","status":"completed"}}]}; inside "item" the step_id is the item's own identity, not the op's target`
+
+// targetStepID resolves the step_id an op acts on.
+//
+// Canonical: the op element's own top-level step_id. Compatibility (tl1668):
+// when the top-level one is absent but the payload item carries a step_id,
+// that id is accepted as the target — this is the form that used to fail with
+// a bare `step_id ""` error and force a whole-turn trial-and-error detour.
+//
+// The top level always wins when both are present: a replace whose two ids
+// disagree is an identity change, and the existing must-stay check below
+// rejects it with a message that says so.
+//
+// insert is excluded on purpose — there, item.step_id is the NEW item's id
+// and the op has no target at all.
+func (op TodoOp) targetStepID() string {
+	if id := strings.TrimSpace(op.StepID); id != "" {
+		return op.StepID
+	}
+	if op.Item != nil {
+		if id := strings.TrimSpace(op.Item.StepID); id != "" {
+			return op.Item.StepID
+		}
+	}
+	return op.StepID
+}
+
 // ApplyTodoOps mutates a copy of baseline according to ops and returns the
 // resulting full list. Errors name the op and how to fix them.
 func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
@@ -88,9 +128,9 @@ func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
 	for i, op := range ops {
 		switch strings.ToLower(strings.TrimSpace(op.Op)) {
 		case "replace":
-			idx := indexOf(op.StepID)
+			idx := indexOf(op.targetStepID())
 			if idx < 0 {
-				return nil, fmt.Errorf("ops[%d] replace: step_id %q is not in the current list; call todo_read first%s", i, op.StepID, todoOpKnownIDs(list))
+				return nil, fmt.Errorf("ops[%d] replace: step_id %q is not in the current list; call todo_read first — %s%s", i, op.targetStepID(), TodoOpsStepIDPlacement, todoOpKnownIDs(list))
 			}
 			if op.Item == nil {
 				return nil, fmt.Errorf("ops[%d] replace: item is required", i)
@@ -151,24 +191,24 @@ func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
 			if strings.TrimSpace(op.AfterStepID) != "" {
 				idx := indexOf(op.AfterStepID)
 				if idx < 0 {
-					return nil, fmt.Errorf("ops[%d] insert: after_step_id %q is not in the current list%s", i, op.AfterStepID, todoOpKnownIDs(list))
+					return nil, fmt.Errorf("ops[%d] insert: after_step_id %q is not in the current list — after_step_id is an ops element top-level field, next to \"op\" and \"item\"%s", i, op.AfterStepID, todoOpKnownIDs(list))
 				}
 				pos = idx + 1
 			}
 			list = append(list[:pos], append([]TodoItem{next}, list[pos:]...)...)
 		case "delete":
-			idx := indexOf(op.StepID)
+			idx := indexOf(op.targetStepID())
 			if idx < 0 {
-				return nil, fmt.Errorf("ops[%d] delete: step_id %q is not in the current list%s", i, op.StepID, todoOpKnownIDs(list))
+				return nil, fmt.Errorf("ops[%d] delete: step_id %q is not in the current list — %s%s", i, op.targetStepID(), TodoOpsStepIDPlacement, todoOpKnownIDs(list))
 			}
 			if list[idx].Status == "in_progress" {
-				return nil, fmt.Errorf("ops[%d] delete: step %q is in_progress; mark another step in_progress (or complete this one) before deleting it", i, op.StepID)
+				return nil, fmt.Errorf("ops[%d] delete: step %q is in_progress; mark another step in_progress (or complete this one) before deleting it", i, op.targetStepID())
 			}
 			list = append(list[:idx], list[idx+1:]...)
 		case "move":
-			idx := indexOf(op.StepID)
+			idx := indexOf(op.targetStepID())
 			if idx < 0 {
-				return nil, fmt.Errorf("ops[%d] move: step_id %q is not in the current list%s", i, op.StepID, todoOpKnownIDs(list))
+				return nil, fmt.Errorf("ops[%d] move: step_id %q is not in the current list — %s%s", i, op.targetStepID(), TodoOpsStepIDPlacement, todoOpKnownIDs(list))
 			}
 			item := list[idx]
 			list = append(list[:idx], list[idx+1:]...)
@@ -176,7 +216,7 @@ func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
 			if strings.TrimSpace(op.AfterStepID) != "" {
 				after := indexOf(op.AfterStepID)
 				if after < 0 {
-					return nil, fmt.Errorf("ops[%d] move: after_step_id %q is not in the current list%s", i, op.AfterStepID, todoOpKnownIDs(list))
+					return nil, fmt.Errorf("ops[%d] move: after_step_id %q is not in the current list — after_step_id is an ops element top-level field, next to \"op\" and \"item\"%s", i, op.AfterStepID, todoOpKnownIDs(list))
 				}
 				pos = after + 1
 			}

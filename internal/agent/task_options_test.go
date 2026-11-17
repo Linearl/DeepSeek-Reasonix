@@ -41,24 +41,21 @@ func TestNewTaskToolWithOptionsMatchesPositional(t *testing.T) {
 		{
 			name: "non-empty-gate-and-overrides",
 			opts: TaskToolOptions{
-				Provider:            prov,
-				Pricing:             pricing,
-				ParentRegistry:      reg,
-				MaxSteps:            12,
-				ContextWindow:       64000,
-				RecentKeep:          7,
-				SoftCompactRatio:    0.55,
-				ToolResultSnipRatio: 0.4,
-				CompactRatio:        0.8,
-				CompactForceRatio:   0.95,
-				Temperature:         0.2,
-				ArchiveDir:          t.TempDir(),
-				SysPrompt:           "custom sub-agent prompt",
-				Gate:                gate,
-				KeepPolicy:          KeepErrors | KeepUserMarked,
-				SubagentModel:       "deepseek-chat",
-				SubagentEffort:      "high",
-				ResolveProvider:     resolve,
+				Provider:        prov,
+				Pricing:         pricing,
+				ParentRegistry:  reg,
+				MaxSteps:        12,
+				ContextWindow:   64000,
+				RecentKeep:      7,
+				CompactRatio:    0.8,
+				Temperature:     0.2,
+				ArchiveDir:      t.TempDir(),
+				SysPrompt:       "custom sub-agent prompt",
+				Gate:            gate,
+				KeepPolicy:      KeepErrors | KeepUserMarked,
+				SubagentModel:   "deepseek-chat",
+				SubagentEffort:  "high",
+				ResolveProvider: resolve,
 			},
 		},
 	}
@@ -72,10 +69,7 @@ func TestNewTaskToolWithOptionsMatchesPositional(t *testing.T) {
 				tc.opts.MaxSteps,
 				tc.opts.ContextWindow,
 				tc.opts.RecentKeep,
-				tc.opts.SoftCompactRatio,
-				tc.opts.ToolResultSnipRatio,
 				tc.opts.CompactRatio,
-				tc.opts.CompactForceRatio,
 				tc.opts.Temperature,
 				tc.opts.ArchiveDir,
 				tc.opts.SysPrompt,
@@ -122,7 +116,7 @@ func TestNewTaskToolWithOptionsAndLegacyExecuteEquivalence(t *testing.T) {
 	storeDir := t.TempDir()
 	workspace := t.TempDir()
 
-	legacy := NewTaskTool(legacyProv, nil, reg, 20, 0, 0, 0, 0, 0, 0, 0.0, "", sys, nil, 0, "", "", nil).
+	legacy := NewTaskTool(legacyProv, nil, reg, 20, 0, 0, 0, 0.0, "", sys, nil, 0, "", "", nil).
 		WithTranscripts(NewSubagentStore(storeDir), workspace, "base-model", "base-effort")
 	modern := NewTaskToolWithOptions(TaskToolOptions{
 		Provider:       modernProv,

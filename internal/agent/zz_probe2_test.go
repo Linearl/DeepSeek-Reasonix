@@ -26,7 +26,7 @@ func TestZZProbeThroughTaskTool(t *testing.T) {
 		{toolCallChunk("1", "read_file", `{"path":"a.go"}`), {Type: provider.ChunkDone}},
 		{{Type: provider.ChunkText, Text: "done"}, {Type: provider.ChunkDone}},
 	}}
-	task := NewTaskTool(prov, nil, reg, 20, 0, 0, 0, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
+	task := NewTaskTool(prov, nil, reg, 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
 		WithTranscripts(mustSubagentStore(t), root, "base", "high").
 		WithScheduler(NewSubagentScheduler(4, 4))
 	ctx := withCallContext(context.Background(), "call-1", probe, nil, false)

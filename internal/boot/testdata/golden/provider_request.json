@@ -119,6 +119,10 @@
             "description": "Shell command to execute",
             "type": "string"
           },
+          "description": {
+            "description": "Clear, concise description of what this command does, in active voice, written in the user's language (the conversation's language). Never use words like \"complex\" or \"risk\" - just describe what it does.\n\nSay what the command does in plain words: do not echo the command's text, its flags, or file paths - the user reads this description, often without seeing the command.\n\nFor simple commands (git, go test, package managers), keep it brief (5-10 words):\n- ls → \"List files in current directory\"\n- git status → \"Show working tree status\"\n- go build ./... → \"Build all packages\"\n\nFor commands that are harder to parse at a glance (piped commands, obscure flags), add enough context to clarify what it does:\n- find . -name \"*.tmp\" -exec rm {} \\; → \"Find and delete all .tmp files recursively\"\n- git reset --hard origin/main → \"Discard all local changes and match remote main\"\n- curl -s url | jq '.data[]' → \"Fetch JSON from URL and extract data array elements\"",
+            "type": "string"
+          },
           "justification": {
             "description": "Required when additional_write_dirs is non-empty. Explain why those directories must be writable.",
             "type": "string"
@@ -279,6 +283,27 @@
       }
     },
     {
+      "name": "create_goal",
+      "description": "Create a session goal on your own initiative (the host then pursues it automatically across turns). Use it when the work is a multi-turn objective with an acceptance standard the user should be able to watch in the sidebar — e.g. \"refactor X and keep the tests green\", \"investigate Y and report findings with evidence\", or any task that will outlive this single reply. Do NOT create a goal for one-shot Q\u0026A, quick edits, or anything finished within this turn. Fields: `goal` (the objective as a task contract: what counts as done, constraints, output format), `summary` (REQUIRED: the tidied one-line digest shown in the sidebar — same language as the conversation, never the raw prompt text). If a live goal already exists in this session the call is REFUSED (only the user can replace it, or you may replace a completed goal); surface the refusal cause to the user instead of retrying.",
+      "parameters": {
+        "properties": {
+          "goal": {
+            "description": "The objective, written as a small task contract: what counts as done, the constraints, the expected output. This is the text the goal loop will keep re-reading.",
+            "type": "string"
+          },
+          "summary": {
+            "description": "REQUIRED. The tidied digest for the sidebar display — one line, the conversation's language, not the raw input text.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "goal",
+          "summary"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "name": "edit_file",
       "description": "Replace an exact string in a file with another. old_string must occur exactly once; add surrounding context to disambiguate. Use for targeted edits instead of rewriting the whole file. For replacing or deleting a whole line block you may instead pass line_range (e.g. \"278-292\") with the source_token from your latest read_file; anchor_head/anchor_tail prefixes are recommended so drifted line numbers are rejected instead of editing the wrong block. For multiple edits in one file (同文件多处修改), prefer multi_edit (atomic batch).",
       "parameters": {
@@ -289,6 +314,10 @@
           },
           "anchor_tail": {
             "description": "With line_range: expected content prefix of the last line in the range.",
+            "type": "string"
+          },
+          "description": {
+            "description": "One line in the user's language saying what this change does and why - e.g. \"Fix off-by-one in line clamping\". Do not echo the old/new strings or the path: the user reads this description, often without seeing the diff. Avoid words like \"complex\" or \"risk\"; just say what it does.",
             "type": "string"
           },
           "expected": {
@@ -347,6 +376,10 @@
             "description": "Continuation cursor returned by a previous read_file result. It names the exact next position; pass it back unchanged instead of computing an offset.",
             "type": "string"
           },
+          "description": {
+            "description": "One line in the user's language saying why you are opening this file and what you are looking for - e.g. \"Check how bash validates its arguments\". Do not merely restate the path: the user reads this description next to the path already shown. Avoid words like \"complex\" or \"risk\".",
+            "type": "string"
+          },
           "intent": {
             "description": "Why you are reading. inspect (default): a bounded preview; one page is a complete answer. range (default when offset or limit is given): an explicit window. full: scan the whole file, paging until every line has been delivered.",
             "enum": [
@@ -379,11 +412,11 @@
     },
     {
       "name": "todo_write",
-      "description": "Record and update a structured task list for the current work. Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read; send the COMPLETE `todos` list only for a wholesale rewrite. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time — the FIRST unfinished item, in the shape [completed, in_progress, pending] (if it lands behind pending work the host auto-reorders instead of rejecting, but send the correct order) — and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Deeper nesting (task 152): give a sub-step `parent_id` = the parent's step_id to build a tree (T1 / T1.1 / T1.1.1 — a parent may be signed off only once every subtask under it is finished, abandoned, or archived). Statuses: pending | in_progress | completed, plus abandoned (you are giving this item up — say so instead of leaving it dangling) and archived (a completed item kept for the record; only completed items may be archived). Each item has `content` (imperative, e.g. \"Add the parser\"), `status`, `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), optional `parent_id`, and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one.",
+      "description": "Record and update a structured task list for the current work. Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read — in an ops element the target step_id sits at the element's TOP LEVEL, next to `op` and `item`, never inside `item`; send the COMPLETE `todos` list only for a wholesale rewrite. Use it to plan multi-step work and show progress: keep exactly one item in_progress at a time — the FIRST unfinished item, in the shape [completed, in_progress, pending] (if it lands behind pending work the host auto-reorders instead of rejecting, but send the correct order) — and flip an item to completed the moment it's done (don't batch completions). Skip it for trivial single-step tasks. The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Deeper nesting (task 152): give a sub-step `parent_id` = the parent's step_id to build a tree (T1 / T1.1 / T1.1.1 — a parent may be signed off only once every subtask under it is finished, abandoned, or archived). Statuses: pending | in_progress | completed, plus abandoned (you are giving this item up — say so instead of leaving it dangling) and archived (a completed item kept for the record; only completed items may be archived). Each item has `content` (imperative, e.g. \"Add the parser\"), `status`, `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), optional `parent_id`, and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one.",
       "parameters": {
         "properties": {
           "ops": {
-            "description": "Optional incremental edits applied to the current host list, then validated as a full list. Use after todo_read. Omit when sending todos.",
+            "description": "Optional incremental edits applied to the current host list, then validated as a full list. Use after todo_read. Omit when sending todos. An op element's target step_id sits at the ELEMENT'S TOP LEVEL, next to \"op\" and \"item\" — not inside \"item\".",
             "items": {
               "properties": {
                 "after_step_id": {
@@ -391,7 +424,7 @@
                   "type": "string"
                 },
                 "item": {
-                  "description": "replace/insert payload (content,status,activeForm,level,step_id,parent_id).",
+                  "description": "replace/insert payload (content,status,activeForm,level,step_id,parent_id). Its step_id is the ITEM's identity, not the op's target.",
                   "properties": {
                     "activeForm": {
                       "type": "string"
@@ -427,6 +460,7 @@
                       "type": "string"
                     },
                     "step_id": {
+                      "description": "This item's own identity — not the op's target.",
                       "type": "string"
                     }
                   },
@@ -442,7 +476,7 @@
                   "type": "string"
                 },
                 "step_id": {
-                  "description": "Target item identity (replace/delete/move; ignored for insert).",
+                  "description": "Target item identity (replace/delete/move; ignored for insert). Put it HERE, at the op element's top level next to \"op\" and \"item\" — not inside \"item\".",
                   "type": "string"
                 }
               },
@@ -671,6 +705,10 @@
         "properties": {
           "content": {
             "description": "Full content to write",
+            "type": "string"
+          },
+          "description": {
+            "description": "One line in the user's language saying what this file is for - e.g. \"Add regression test for the bash description field\". Do not echo the content or the path: the user reads this description, often without seeing the body. Avoid words like \"complex\" or \"risk\".",
             "type": "string"
           },
           "expected": {

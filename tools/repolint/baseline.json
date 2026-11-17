@@ -1247,9 +1247,6 @@
       "file-size": 1716,
       "function-size": 155
     },
-    "internal/agent/save_bench_710_test.go": {
-      "essay": 5
-    },
     "internal/agent/save_coalesce_710_test.go": {
       "essay": 2
     },

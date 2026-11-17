@@ -31,9 +31,8 @@ func newSubagentSkillOptionsFactory(
 		return agent.Options{
 			MaxSteps: steps, Temperature: cfg.Temperature, Pricing: price, QuoteContext: quoteCtx, UsageSource: event.UsageSourceSubagent,
 			Gate: gate, ContextWindow: ctxWin, RecentKeep: cfg.RecentKeep,
-			SoftCompactRatio: cfg.SoftCompactRatio, ToolResultSnipRatio: cfg.ToolResultSnipRatio,
-			CompactRatio: cfg.CompactRatio, CompactForceRatio: cfg.CompactForceRatio, ContextEditing: cfg.ContextEditing,
-			ArchiveDir: config.ArchiveDir(), KeepPolicy: keepPolicy,
+			CompactRatio: cfg.CompactRatio,
+			ArchiveDir:   config.ArchiveDir(), KeepPolicy: keepPolicy,
 			ResponseLanguage: agent.ResponseLanguageFromContext(ctx), ReasoningLanguage: agent.ReasoningLanguageFromContext(ctx),
 			SubagentDepth: childDepth, MaxSubagentDepth: maxDepth,
 			Ablation: ablationSet, WorkspaceLease: lease, WriteRoots: writeRoots,

@@ -13,7 +13,7 @@ import (
 func TestTaskSetupFailurePreservesAllocatedSubagentOutcome(t *testing.T) {
 	workspace := t.TempDir()
 	store := NewSubagentStore(t.TempDir())
-	task := NewTaskTool(nil, nil, tool.NewRegistry(), 20, 0, 0, 0, 0, 0, 0, 0, "", "sys", nil, 0, "", "", nil).
+	task := NewTaskTool(nil, nil, tool.NewRegistry(), 20, 0, 0, 0, 0.0, "", "sys", nil, 0, "", "", nil).
 		WithTranscripts(store, workspace, "model", "effort")
 	task.resolveProvider = func(string, string) (provider.Provider, *provider.Pricing, int, error) {
 		return nil, nil, 0, errors.New("profile unavailable")
