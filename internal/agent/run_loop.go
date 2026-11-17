@@ -317,7 +317,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 						Text:   "Your last answer repeated the same text in a loop. Continue with a different approach; do not restate what you already wrote.",
 						Detail: "text repeat 1/1",
 					})
-					a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(
+					a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(
 						"Your previous reply was interrupted because it repeated the same text. Continue the task with a new approach and do not repeat prior wording.",
 					)))
 					a.contextManager().ObserveUsage(usage)
@@ -338,7 +338,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 						Text:   fmt.Sprintf("Loop-streak note %d/%d injected; the run continues without a pause (task 244 B2).", state.terminal.loopStreakNotes, maxLoopStreakNotes),
 						Detail: "loop streak neutral note",
 					})
-					a.sess.conversation.Add(HostGeneratedUserMessage("Continue."))
+					a.addHostGuidance(HostGeneratedUserMessage("Continue."))
 					a.contextManager().ObserveUsage(usage)
 					continue
 				}
@@ -531,7 +531,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			return false, pause
 		}
 		if instruction != "" {
-			a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
+			a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
 			return true, nil
 		}
 	}
@@ -542,7 +542,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		a.contextManager().ObserveUsage(usage)
 		return false, pause
 	} else if instruction != "" {
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(instruction)))
 		a.emitIncompleteReadNotice(
 			event.NoticeCodeReadContinuationRequired,
 			i18n.M.IncompleteReadFinishBlocked,
@@ -614,7 +614,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			Text:   recoveryText,
 			Detail: providerRejectionStageDetail(stage),
 		})
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(recoveryMsg)))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(recoveryMsg)))
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
@@ -671,7 +671,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 					Text:   readinessCatchUpNotice(),
 					Detail: fmt.Sprintf("catch-up %d/%d: %s", state.terminal.readinessCatchUps, a.readinessCatchUpLimit, readinessAdvisoryDetail(readiness.missingIDs())),
 				})
-				a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(readinessAdvisoryRetryMessage(readiness.missingIDs()))))
+				a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(readinessAdvisoryRetryMessage(readiness.missingIDs()))))
 				a.contextManager().ObserveUsage(usage)
 				return true, nil
 			}
@@ -709,7 +709,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			// another turn with the gaps named, bounded so a real gap cannot spin.
 			if state.terminal.readinessAdvisories < maxReadinessAdvisories {
 				state.terminal.readinessAdvisories++
-				a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(readinessAdvisoryRetryMessage(readiness.missingIDs()))))
+				a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(readinessAdvisoryRetryMessage(readiness.missingIDs()))))
 				a.contextManager().ObserveUsage(usage)
 				return true, nil
 			}
@@ -741,7 +741,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			Text:   planResearchNudgeNotice(),
 			Detail: fmt.Sprintf("plan research gate %d/%d", state.terminal.planResearchNudges, a.planResearchGateLimit),
 		})
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(planResearchNudgeMessage())))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(planResearchNudgeMessage())))
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
@@ -772,7 +772,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 				return false, fmt.Errorf("model finished without a visible final answer %d times", state.terminal.emptyFinalBlocks)
 			}
 			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeEmptyFinal, Text: emptyFinalNotice(), Detail: emptyFinalNoticeDetail(a.providerForRequest().Name(), usage, len(reasoning))})
-			a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(emptyFinalRetryMessage())))
+			a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(emptyFinalRetryMessage())))
 			a.contextManager().ObserveUsage(usage)
 			return true, nil
 		}
@@ -780,7 +780,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	if a.hostContinuationEnabled(ctx) && state.executorHandoff && !state.usedAnyTool && state.terminal.handoffNudges < maxExecutorHandoffNudges && shouldNudgeExecutorHandoff(state.input, text) {
 		state.terminal.handoffNudges++
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeExecutorHandoff, Text: executorHandoffNoticeText(), Detail: "executor answered without taking any action; nudging it to use its tools"})
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(executorHandoffRetryMessage())))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(executorHandoffRetryMessage())))
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
@@ -798,7 +798,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		// 日志/前端可单独检索 stalled_intent。
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeStalledIntent,
 			Text: executorHandoffNoticeText(), Detail: "model announced the next step without taking it; nudged once"})
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(stalledIntentRetryMessage())))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(stalledIntentRetryMessage())))
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
@@ -1004,7 +1004,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 		// text cannot skip repair; only a later clean round may validate.
 		state.terminal.contextToolRepairs++
 		nudge := fmt.Sprintf("The following tools are unavailable in the current workflow phase: %s. Do not call them again. Respond to the user's request with visible answer text now; call a different tool only if it is still needed to complete the request.", strings.Join(unavailableContextTools, ", "))
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(nudge)))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(nudge)))
 	}
 	a.trackTodoProgress(ctx, state, receiptMark)
 
@@ -1020,7 +1020,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 			Code:   event.NoticeCodeDelegationReminder,
 			Text:   delegationReminderMessage(state.mainChainToolSteps),
 			Detail: "efficiency tier mid-turn delegation reminder (task 850)"})
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(
 			delegationReminderMessage(state.mainChainToolSteps))))
 	}
 
@@ -1037,7 +1037,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 			ctrl.MarkFinalizationOffered(a.recovery.taskID)
 		}
 		nudge := "Auto recovery has reached its limit for this turn. Do not call any more tools. Summarize what was completed, what failed, and what the user should do next. The user can continue in the next message."
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(nudge)))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(nudge)))
 		return true, nil
 	}
 

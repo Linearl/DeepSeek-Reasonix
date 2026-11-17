@@ -232,7 +232,7 @@ func (a *Agent) maybeNudgeCollabReply(state *turnRuntime) bool {
 		Text:   collabReplyNudgeNoticeText(len(due)),
 		Detail: "threadIds=" + strings.Join(threadIDs, ","),
 	})
-	a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(collabReplyNudgeMessage(due))))
+	a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(collabReplyNudgeMessage(due))))
 	return true
 }
 

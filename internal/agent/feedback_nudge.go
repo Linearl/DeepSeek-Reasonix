@@ -131,7 +131,7 @@ func (a *Agent) feedbackNudgeAllowed(state *turnRuntime, input string) bool {
 func (a *Agent) injectFeedbackNudge(state *turnRuntime, guidance string) {
 	state.terminal.feedbackNudges++
 	a.feedbackNudgeLastTurn.Store(a.feedbackNudgeTurn.Load())
-	a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(guidance)))
+	a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(guidance)))
 }
 
 // maybeNudgeFeedbackCompletion is the T1 hook (task 172). Called from

@@ -57,7 +57,7 @@ func (a *Agent) continueStandardTodo(ctx context.Context, state *turnRuntime) bo
 	}
 	state.standardTodoContinuations++
 	state.standardTodoProgress = progress
-	a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(standardTodoContinuationMessage())))
+	a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(standardTodoContinuationMessage())))
 	return true
 }
 

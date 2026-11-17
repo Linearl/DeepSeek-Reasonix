@@ -123,7 +123,7 @@ func (a *Agent) trackTodoProgress(ctx context.Context, state *turnRuntime, recei
 				message = fmt.Sprintf(
 					"Host progress redirect: the current todo still has no new completion or unique host-observed work after %d tool-call rounds, so the list has been cleared. Re-plan with a smaller set of steps via todo_write, shrink the active step, switch tools or approach, delegate a focused sub-task, or use update_goal(blocked) only if a user or external condition is the sole blocker. Do not repeat the same calls.", rounds)
 			}
-			a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(message)))
+			a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(message)))
 		}
 		return
 	}
@@ -138,7 +138,7 @@ func (a *Agent) trackTodoProgress(ctx context.Context, state *turnRuntime, recei
 		if a.traceAsState && a.contextIsShort() {
 			checkpoint = reReadGuidanceMessage(state.todoStallRounds, a.recentReadPaths(5))
 		}
-		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(checkpoint)))
+		a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(checkpoint)))
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeLoopGuard,
 			Text: loopGuardNoticeText(), Detail: fmt.Sprintf("the current todo has no new completion, unique read, command, or mutation for %d consecutive tool-call rounds; asking the assistant to reassess", state.todoStallRounds)})
 	}

@@ -86,7 +86,7 @@ func (a *Agent) maybeInjectReasoningOnlyContinuation(state *turnRuntime, reasoni
 		Detail: fmt.Sprintf("injection=%d/%d reasoning_chars=%d",
 			state.terminal.reasoningOnlyContinues, maxReasoningOnlyContinuations, len(reasoning)),
 	})
-	a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(reasoningOnlyContinuationMessage())))
+	a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(reasoningOnlyContinuationMessage())))
 	a.contextManager().ObserveUsage(usage)
 	return true
 }
