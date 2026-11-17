@@ -6,8 +6,10 @@ import { useT } from "../lib/i18n";
 import type { Item } from "../lib/useController";
 import { Markdown } from "./Markdown";
 import { ProcessBrainIcon } from "./ProcessCard";
+import { ReasoningMetricsCard } from "./ReasoningMetricsCard";
 import { ReasoningSummary } from "./ReasoningSummary";
 import { StreamingReasoningText } from "./StreamingReasoningText";
+import { Tooltip } from "./Tooltip";
 
 type AssistantItem = Extract<Item, { kind: "assistant" }>;
 
@@ -86,12 +88,17 @@ export function AssistantReasoningPanel({
   const meta = running ? "" : reasoningDurationLabel(item.reasoningDurationMs, t);
   return (
     <div className="reasoning">
-      <button type="button" className="reasoning__head" data-running={running ? "" : undefined} onClick={toggle} aria-expanded={open}>
-        <ProcessBrainIcon size={12} />
-        <span>{running ? t("msg.thinkingRunning") : t("msg.thinking")}</span>
-        {meta && <span className="reasoning__meta">{meta}</span>}
-        <ChevronRight className={`reasoning__chevron${open ? " reasoning__chevron--open" : ""}`} size={12} />
-      </button>
+      <Tooltip
+        side="top"
+        label={<ReasoningMetricsCard reasoning={item.reasoning} durationMs={item.reasoningDurationMs} />}
+      >
+        <button type="button" className="reasoning__head" data-running={running ? "" : undefined} onClick={toggle} aria-expanded={open}>
+          <ProcessBrainIcon size={12} />
+          <span>{running ? t("msg.thinkingRunning") : t("msg.thinking")}</span>
+          {meta && <span className="reasoning__meta">{meta}</span>}
+          <ChevronRight className={`reasoning__chevron${open ? " reasoning__chevron--open" : ""}`} size={12} />
+        </button>
+      </Tooltip>
       {open ? (
         <div ref={bodyRef} className="reasoning__body" data-transcript-selectable="reasoning" data-nested-scroll>
           {running

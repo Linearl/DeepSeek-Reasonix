@@ -6,8 +6,10 @@ import { useT } from "../lib/i18n";
 import { LiveStreamContext } from "./LiveStreamContext";
 import { Markdown } from "./Markdown";
 import { ProcessBrainIcon } from "./ProcessCard";
+import { ReasoningMetricsCard } from "./ReasoningMetricsCard";
 import { ReasoningSummary } from "./ReasoningSummary";
 import { StreamingReasoningText } from "./StreamingReasoningText";
+import { Tooltip } from "./Tooltip";
 import { useTranscriptUserResizeIntent } from "./TranscriptLayoutIntentContext";
 import { resolveReasoningLayoutVariant } from "../lib/transcriptRowGeometry";
 import { useReasoningScrollFollow } from "../lib/useReasoningScrollFollow";
@@ -78,11 +80,16 @@ export function InlineAssistantReasoning({
       className={`turn-collapse__reasoning-phase${open ? " turn-collapse__reasoning-phase--open" : ""}`}
       data-transcript-layout-variant={layoutVariant}
     >
-      <button type="button" className="turn-collapse__reasoning-head" data-running={running ? "" : undefined} onClick={toggle} aria-expanded={open}>
-        <ProcessBrainIcon size={12} />
-        <span>{running ? t("msg.thinkingRunning") : t("msg.thinking")}</span>
-        <ChevronRight className={`reasoning__chevron${open ? " reasoning__chevron--open" : ""}`} size={12} />
-      </button>
+      <Tooltip
+        side="top"
+        label={<ReasoningMetricsCard reasoning={shown.reasoning} durationMs={item.reasoningDurationMs} />}
+      >
+        <button type="button" className="turn-collapse__reasoning-head" data-running={running ? "" : undefined} onClick={toggle} aria-expanded={open}>
+          <ProcessBrainIcon size={12} />
+          <span>{running ? t("msg.thinkingRunning") : t("msg.thinking")}</span>
+          <ChevronRight className={`reasoning__chevron${open ? " reasoning__chevron--open" : ""}`} size={12} />
+        </button>
+      </Tooltip>
       {open ? (
         <div
           ref={reasoningScrollRef}
