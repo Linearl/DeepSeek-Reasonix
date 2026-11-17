@@ -208,7 +208,16 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 	attempt := a.sess.compaction.failureStreak.Add(1)
 	// tl1587: 失败即武装分段道闩——下一个 allowChunked 的摘要 pass 直进分段
 	// 道跳过单发 rung（「连续失败≤1 次即进分段/降级路径」）；成功安装复位。
-	a.sess.compaction.segmentSummaryLatched.Store(true)
+	// tl1675: the latch arms ONLY on segmentLatchArmable failures — a size or
+	// empty/transport request failure. A stale-context race, a cancellation, a
+	// checkpoint/model rejection, a rate limit or a dead key says nothing about
+	// the single rung's viability on the next pass; arming on those chunked
+	// every later pass without a single attempt (the 20261117 20:34 incident).
+	// The in-loop escalation in summarizeFold keeps its own unconditional arm —
+	// its error class is already segment-escalatable there.
+	if segmentLatchArmable(err) {
+		a.sess.compaction.segmentSummaryLatched.Store(true)
+	}
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Pass: int(a.sess.compactionSessionPass.Load()), Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
 		FoldInstalled: a.projectionLiveForCard(), LastSuccessAt: a.sess.lastCompactionSuccessAt.Load(),
@@ -222,6 +231,22 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 			Text:   fmt.Sprintf("context compaction has failed %d times in a row; the conversation may overflow its window — reopening the conversation lets the local self-heal strip images and fold old messages", int(attempt)),
 			Detail: fmt.Sprintf("streak=%d threshold=%d trigger=%s", int(attempt), compactFailStreakThreshold, trigger)})
 	}
+}
+
+// notifyChunkedDegradation is the UI face of a pass that lost or skipped its
+// single summary request and is recovering through the chunked fragment path
+// (tl1675). 任务 867's failed card covers a pass that LANDS failed; this pass
+// still lands, so a failed card would be false — but its degradation used to
+// be invisible: the 20261117 20:34 pass went straight to fragments at 0.4s
+// and neither the log nor the UI said why. reason is display-safe
+// (compactionFailureReason text or the latch explanation), never transcript
+// content.
+func (a *Agent) notifyChunkedDegradation(trigger, reason string, sourceTokens, foldTokens int) {
+	a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
+		Code: event.NoticeCodeCompactionChunkedFallback,
+		Text: "single-request summary unavailable for this pass — compacting through the chunked fragment path",
+		Detail: fmt.Sprintf("trigger=%s reason=%s source_tokens=%d fold_tokens=%d pass=%d",
+			trigger, reason, sourceTokens, foldTokens, a.sess.compactionSessionPass.Load())})
 }
 
 // emitCompactionSucceeded stamps the success outcome and resets the streak.

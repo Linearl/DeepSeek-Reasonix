@@ -195,16 +195,18 @@ func TestSingleSummaryFailureEscalatesToSegmentedInPass(t *testing.T) {
 	}
 }
 
-// 验收②（跨 pass）：pass 1 全形态失败后，下一个 pass 直进分段道（闩），
-// 不再重放单发大请求。
-func TestFailedPassLatchesSegmentedPathForNextPass(t *testing.T) {
+// 验收②（跨 pass，tl1675 修订后的契约）：pass 1 全形态失败后闩武装；pass 2
+// 的折叠段装得进单次请求预算（tl1587 规划上限 ≈1/4 窗口 < 单次预算），按
+// tl1675 判据先重放一次单发 rung——失败一次即换分段道落地，两个 pass 各只
+// 允许一次大请求形态（pass 内不按原尺寸重试的契约不变）。
+func TestFailedPassRetriesSingleRungThenEscalatesNextPass(t *testing.T) {
 	const window = 1_000_000
 	const bigBytes = 900_000
 	prov := &segmentStubProvider{window: window, bigThreshold: bigBytes, failBig: true, allEmpty: true}
 	sess := bigWindowSegmentSession(1600)
 	a := segmentAgent(t, prov, sess, window)
 
-	// pass 1: 单发 + 分段道全空响应 → 失败落账，闩武装。
+	// pass 1: 单发 + 分段道全空响应 → 失败落账，闩武装（空响应类可武装）。
 	if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
 		t.Fatalf("prepare = %v", err)
 	}
@@ -214,19 +216,36 @@ func TestFailedPassLatchesSegmentedPathForNextPass(t *testing.T) {
 	if !a.sess.compaction.segmentSummaryLatched.Load() {
 		t.Fatal("a failed pass did not arm the segment latch")
 	}
+	if got := bigRequestShapes(prov.recorded(), bigBytes); got != 1 {
+		t.Fatalf("pass 1 distinct big shapes = %d, want exactly 1", got)
+	}
 
-	// provider 恢复（小请求能落地），视图增长换 hash，pass 2 直进分段道。
+	// provider 部分恢复（小请求能落地、大单发仍失败），视图增长换 hash：
+	// pass 2 先重放一次单发 rung（tl1675：折叠段未超单次预算），失败一次即
+	// 升级分段道落地。
 	prov.setAllEmpty(false)
 	sess.Add(provider.Message{Role: provider.RoleUser, Content: "follow-up turn"})
 	sess.Add(provider.Message{Role: provider.RoleAssistant, Content: "acknowledged"})
+	// pass1 的与 pass2 的折叠段字节可能完全一致（规划边界相同），provider 层
+	// 对失败请求的自行重试会放大 wire 次数——清账后按 pass 各断言一种大形态。
+	prov.mu.Lock()
+	prov.requests = nil
+	prov.mu.Unlock()
 	if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
 		t.Fatalf("second prepare = %v", err)
 	}
-	if got := bigRequestShapes(prov.recorded(), bigBytes); got != 1 {
-		t.Fatalf("distinct big summary request shapes across both passes = %d, want only pass 1's single attempt (no replay)", got)
+	reqs2 := prov.recorded()
+	if got := bigRequestShapes(reqs2, bigBytes); got != 1 {
+		t.Fatalf("pass 2 distinct big shapes = %d, want exactly 1 (the single-rung retry; no same-size replay within the pass)", got)
+	}
+	if fragmentRequestCount(reqs2) == 0 {
+		t.Fatal("pass 2 never escalated to the segmented fragment path")
 	}
 	if r := a.sess.compactionState.LastReceipt; r == nil || r.Status != "applied" || latestDigest(a.sess.compactionState.Projection.Messages) == "" {
 		t.Fatalf("receipt = %+v, want pass 2 to land via the segmented path", r)
+	}
+	if a.sess.compaction.segmentSummaryLatched.Load() {
+		t.Fatal("a successful pass 2 left the segment latch armed")
 	}
 }
 

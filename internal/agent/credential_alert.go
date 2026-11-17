@@ -44,7 +44,9 @@ func (a *Agent) alertCredentialExpired(err error) {
 	}
 	key := "401"
 	var auth *provider.AuthError
-	if errors.As(err, &auth) {
+	// tl1675: typed-nil guard, same shape as summaryModelRejected — a wrapper
+	// whose embedded *AuthError is nil Unwraps to a typed-nil pointer here.
+	if errors.As(err, &auth) && auth != nil {
 		key = provider.ProviderDisplayLabel(auth.Provider, auth.ProviderDisplayName, auth.Protocol) + ":401"
 	}
 	now := time.Now()

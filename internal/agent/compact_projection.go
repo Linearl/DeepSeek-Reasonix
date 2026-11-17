@@ -533,6 +533,20 @@ func (a *Agent) foldSummaryWithChunkedFallback(ctx context.Context, trigger stri
 	if err == nil || !chunkedFallbackApplies(err, inputMode) {
 		return res, tele, err
 	}
+	// tl1675: this fallback decision was a silent channel. When the chunked
+	// path recovered, the single request's failure reason reached no log and
+	// no event — the pass finished green and nothing explained why it went
+	// through fragments (the 20261117 20:34 "0.4s 进分块" review). The pass-1
+	// failure is now recorded here and surfaced on the UI; when the chunked
+	// path ALSO fails, summarizeFold's terminal "summary request failed" line
+	// still carries the whole trail, and this line is its first entry.
+	slog.Warn("agent: summary single request failed — falling back to the chunked fragment path",
+		"trigger", trigger, "session", a.sessionLogRef(),
+		"model_ref", a.summaryDestinationRef(),
+		"source_tokens", sourceTokens, "fold_tokens", tele.FoldTokens,
+		"summary_input_mode", inputMode,
+		"reason", compactionFailureReason(err), "err", err)
+	a.notifyChunkedDegradation(trigger, compactionFailureReason(err), sourceTokens, tele.FoldTokens)
 	// 任务 556: stream the fragment progress (and the live token readout) to
 	// the frontend. The #9082 wiring was lost when the chunked path moved to
 	// session_extract.go — the callback went back to nil and the live card
@@ -599,6 +613,30 @@ func summarySegmentEscalatable(err error) bool {
 		return false
 	}
 	return !summaryRateLimited(err) && !summaryAuthExpired(err)
+}
+
+// segmentLatchArmable reports whether a failed compaction pass may arm the
+// tl1587 cross-pass segment latch. The latch's premise is "the single summary
+// REQUEST failed in a shape smaller requests can fix" — a size failure (the
+// chunked fallback's own class) or a segment-escalatable empty/transport
+// failure. Everything else says nothing about the single rung's viability on
+// the NEXT pass, whose fold differs: a stale-context race discarded a pass
+// whose request already landed, a cancellation is the user's own action, a
+// checkpoint rejection is a planning verdict, a model rejection and rate
+// limits and dead keys have their own lanes. Arming on those chunked every
+// later pass for free — the 20261117 20:34 incident: a 18:30 stale-context
+// failure armed the latch, and the 20:34 pressure pass chunked a 111K fold on
+// a ~1.2M window at 65% cache miss without ever attempting the single request.
+func segmentLatchArmable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errCompressStaleContext) ||
+		errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, errCheckpointRejected) || summaryModelRejected(err) {
+		return false
+	}
+	return summarySizeFailure(err) || summarySegmentEscalatable(err)
 }
 
 // summaryTransientMaxAttempts bounds Task 303's automatic retry for transient
@@ -688,7 +726,11 @@ func summaryModelRejected(err error) bool {
 		return false
 	}
 	var api *provider.APIError
-	if errors.As(err, &api) {
+	// tl1675: the nil guard is load-bearing, not cosmetic — a wrapped
+	// *ContextLimitError whose embedded *APIError is nil Unwraps to a typed-nil
+	// pointer, errors.As matches it, and the field read below used to crash
+	// the classification chain (the pass1 failure path this piece hardens).
+	if errors.As(err, &api) && api != nil {
 		return api.Status == 400
 	}
 	return httpStatusOf(err.Error()) == 400
@@ -742,7 +784,9 @@ func summaryAuthExpired(err error) bool {
 		return false
 	}
 	var auth *provider.AuthError
-	if errors.As(err, &auth) {
+	// tl1675: same typed-nil guard as summaryModelRejected — a wrapper whose
+	// embedded *AuthError is nil Unwraps to a typed-nil pointer here.
+	if errors.As(err, &auth) && auth != nil {
 		return auth.Status == 401
 	}
 	if httpStatusOf(err.Error()) == 401 {
@@ -914,7 +958,30 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 	segBudget, segEnforced := a.summarySegmentInputBudget()
 	foldTokens := a.guardedSummaryInputTokens(fold)
 	segmentEngaged := segEnforced && foldTokens > summarySegmentInputFloorTokens
-	segmented := segmentEngaged && a.sess.compaction.segmentSummaryLatched.Load()
+	// tl1675: the cross-pass latch may only SKIP the single rung when the fold
+	// estimate exceeds the single-request input budget — the same ruler the
+	// pre-send pre-fold prices with (summaryInputBudget). A fold that fits one
+	// request still rides the single rung first: the latch's premise is "the
+	// same oversized request will fail again", and a fitting fold is not that
+	// request (the 20261117 20:34 incident: a 111K fold on a ~1.2M window went
+	// straight to fragments at 65% cache miss because a stale-context race two
+	// hours earlier had armed the latch). The in-loop escalation below keeps
+	// its own route — there the single request has already run and failed.
+	singleBudget := a.summaryInputBudget(instructions)
+	latched := segmentEngaged && a.sess.compaction.segmentSummaryLatched.Load()
+	if latched && foldTokens <= singleBudget {
+		slog.Info("agent: segmented latch armed but the fold fits one summary request — running the single rung first",
+			"trigger", trigger, "session", a.sessionLogRef(),
+			"fold_tokens", foldTokens, "single_budget", singleBudget,
+			"segment_budget", segBudget, "source_tokens", sourceTokens)
+		latched = false
+	}
+	segmented := latched
+	// Snapshot of the latch-routed entry: only the FIRST attempt entering the
+	// segmented branch via the latch logs the skip; the in-loop escalation sets
+	// segmented itself and its own "segmenting the fold" line covers that.
+	segmentViaLatch := segmented
+	latchEntryLogged := false
 	for attempt := 0; ; attempt++ {
 		attemptRef := a.summaryDestinationRef()
 		// 任务 1010 需求 2 + tl1083 §5.2: the overflow lane (the one-shot
@@ -932,6 +999,23 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 			trigger == CompactionTriggerOverflow || trigger == CompactionTriggerPressure
 		switch {
 		case allowChunked && segmented:
+			if segmentViaLatch && !latchEntryLogged {
+				latchEntryLogged = true
+				// tl1675: the latch-routed entry used to be a silent channel —
+				// pass 1 never ran and nothing in the log or the UI said why
+				// the pass went straight to fragments (the 20261117 20:34
+				// "0.4s 进分块" review: start → chunked run in 0.4s, zero
+				// err/fail lines). The skip is now a recorded decision.
+				slog.Warn("agent: summary pass entering the segmented lane on the cross-pass latch — single rung skipped",
+					"trigger", trigger, "session", a.sessionLogRef(),
+					"model_ref", a.summaryDestinationRef(),
+					"fold_tokens", foldTokens, "segment_budget", segBudget,
+					"source_tokens", sourceTokens,
+					"summary_input_mode", inputMode)
+				a.notifyChunkedDegradation(trigger,
+					"a previous pass failed; the cross-pass segment latch is armed",
+					sourceTokens, foldTokens)
+			}
 			res, tele, err = a.foldSummarySegmented(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 		case allowChunked:
 			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
