@@ -19,7 +19,8 @@ func (a *Agent) persistFinalReadinessRecovery(missing []string) {
 	if err != nil {
 		return
 	}
-	a.sess.conversation.Add(provider.Message{
+	// tl1669: canonical write → the compaction-await funnel.
+	a.appendTurnMessage(nil, provider.Message{
 		Role:       provider.RoleTool,
 		ToolCallID: provider.LocalOnlyToolID,
 		Name:       provider.LocalOnlyToolName,

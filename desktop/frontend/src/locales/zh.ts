@@ -1847,6 +1847,9 @@ export const zh: Record<DictKey, string> = {
   // tl1572: 面板能力=只读查看（pre-repair 分区），文案据此收口，不再承诺「切回」。
   "recovery.noticeSelfHealed": "打开会话时本地自愈检测到投影超出当前模型窗口，已自动瘦身（Diet）降载并恢复可用（本次动作 {actions}：strip_images=图片转占位引用省 token，fold=超出窗口的旧消息折叠为本地占位）；这是自动降载而非数据损坏修复——原版本未删，整目录备份在会话文件旁的 pre-repair 目录，可在「设置 → 存储与路径 → 工作阶段版本与副本」面板的「改写前备份」分区查看。",
   "recovery.noticeCompactFailStreak": "上下文压缩已连续失败 {streak} 次，投影可能超出模型窗口；重新打开本会话可让本地自愈剥图并折叠旧消息。",
+  // tl1669：连续失败熔断——本代内暂停自动压缩，当前回合不中断（用现有上下文继续），
+  // 下一次上下文检查恢复自动压缩。
+  "recovery.noticeCompactionBreaker": "上下文压缩已连续失败 {streak} 次，本轮内的自动压缩已暂停；当前回合不会中断，将在下一次上下文检查时恢复自动压缩。",
   "recovery.noticeHeadSelected": "已将此版本设为当前版本。",
   "recovery.headsSummary": "该会话共 {branches} 个版本",
   "recovery.currentVersion": "当前版本",

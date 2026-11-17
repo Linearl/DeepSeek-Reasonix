@@ -62,6 +62,36 @@ func (a *Agent) contextMaintenanceBlocked(inputHash string, est int) (bool, stri
 	return true, reason
 }
 
+// compactionBreakerBlocks reports whether the automatic compaction path is
+// parked by the tl1669 three-strike breaker.
+//
+// The breaker opens after compactionFailBreakerLimit consecutive failed
+// passes. It closes again when the context check sees NEW input (the failed
+// view's hash no longer matches the receipt's — US2: 下次上下文检查恢复), when
+// a pass succeeds, or when the user asks for a manual compact — the manual
+// path always runs. The one-shot physical OVERFLOW recovery is exempt too:
+// it is a different lane with its own truncation rescue, and parking it
+// would turn a "still sendable after truncation" case into a dead turn.
+func (a *Agent) compactionBreakerBlocks(inputHash, trigger string) bool {
+	if a == nil || trigger == CompactionTriggerManual || trigger == CompactionTriggerOverflow {
+		return false
+	}
+	if !a.sess.compaction.breakerOpen.Load() {
+		return false
+	}
+	a.sess.compactionMu.Lock()
+	r := a.sess.compactionState.LastReceipt
+	a.sess.compactionMu.Unlock()
+	if r != nil && r.BlockedInputHash != "" && inputHash != "" && r.BlockedInputHash != inputHash {
+		// A NEW view reached the context check: re-arm the automatic path.
+		a.sess.compaction.breakerOpen.Store(false)
+		slog.Info("agent: compaction breaker re-armed by a new context check",
+			"input_hash", shortHash8(inputHash), "failed_hash", shortHash8(r.BlockedInputHash))
+		return false
+	}
+	return true
+}
+
 func (a *Agent) maintenanceRetryDue(r *ContextMaintenanceReceipt, est int) bool {
 	window := a.effectiveContextWindow()
 	if est <= 0 || window <= 0 || r.InputTokens <= 0 {
@@ -222,11 +252,25 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 			Text:   fmt.Sprintf("context compaction has failed %d times in a row; the conversation may overflow its window — reopening the conversation lets the local self-heal strip images and fold old messages", int(attempt)),
 			Detail: fmt.Sprintf("streak=%d threshold=%d trigger=%s", int(attempt), compactFailStreakThreshold, trigger)})
 	}
+	// tl1669 US2: the three-strike circuit breaker. After the limit the
+	// AUTOMATIC compaction path stops for this generation — the turn keeps
+	// running on the current context, and the next context check with new
+	// input re-arms it (竞品语义: zcode/claude 的连续失败熔断).
+	if attempt == compactionFailBreakerLimit {
+		a.sess.compaction.breakerOpen.Store(true)
+		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
+			Code:   event.NoticeCodeCompactionBreaker,
+			Text:   fmt.Sprintf("context compaction has failed %d times in a row; automatic compaction is paused for this generation — the turn keeps running on the current context, and the next context check resumes the attempts", int(attempt)),
+			Detail: fmt.Sprintf("streak=%d limit=%d trigger=%s", int(attempt), compactionFailBreakerLimit, trigger)})
+	}
 }
 
 // emitCompactionSucceeded stamps the success outcome and resets the streak.
 func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, archive string) {
 	a.sess.compaction.failureStreak.Store(0)
+	// tl1669: a successful pass closes the three-strike circuit breaker — the
+	// automatic compaction path is armed again.
+	a.sess.compaction.breakerOpen.Store(false)
 	// tl1648: the failed-card surface reports when compaction last succeeded;
 	// stamped at the same place the streak resets so the two never disagree.
 	a.sess.lastCompactionSuccessAt.Store(time.Now().UnixMilli())

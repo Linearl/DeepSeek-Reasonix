@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 
 	"reasonix/internal/provider"
@@ -87,8 +88,31 @@ func (a *Agent) streamProviderRequest(ctx context.Context, dest provider.Provide
 // prepareSamplingRequest freezes one model-round request (preflight + interceptors).
 // Output budgets are resolved only here and never change the compact_ratio
 // trigger. Physical overflow may attempt at most one recovery summary.
+//
+// tl1669 US2: a FAILED compaction must not kill the turn. The competitor
+// semantics (dsh "warn then continuing the turn", zcode "a compaction failure
+// should not fail the turn") are: the reason is recorded, and the round goes
+// on with the context the session already has. Only a cancellation (the user
+// stopped the turn) and a request that cannot be admitted at all (the view is
+// genuinely unsendable) still end the round.
 func (a *Agent) prepareSamplingRequest(ctx context.Context) (samplingRequest, error) {
-	frozen, err := a.buildSamplingRequest(ctx, CompactionTriggerPressure)
+	// The compaction transaction and the request assembly are separated on
+	// purpose: only a COMPACTION failure may take the fallback leg below, and
+	// the extension interceptors must run exactly once per round (they can
+	// have side effects — "Extension interceptors run only on the real
+	// sampling request so side-effecting plugins are not double-invoked").
+	prepared, perr := a.contextManager().Prepare(ctx, ContextPreparePolicy{Trigger: CompactionTriggerPressure})
+	if perr != nil {
+		if ctx.Err() != nil {
+			// Cancellation is the user's own action — not a compaction outcome.
+			return samplingRequest{}, perr
+		}
+		if fallback, ok := a.compactionFallbackRequest(ctx, perr); ok {
+			return fallback, nil
+		}
+		return samplingRequest{}, perr
+	}
+	frozen, err := a.buildSamplingRequestFrom(ctx, CompactionTriggerPressure, prepared.Messages)
 	if err != nil {
 		return samplingRequest{}, err
 	}
@@ -120,19 +144,74 @@ func (a *Agent) prepareSamplingRequest(ctx context.Context) (samplingRequest, er
 	return samplingRequest{req: freezeProviderRequest(frozen.req), prov: frozen.prov}, nil
 }
 
+// compactionFallbackRequest rebuilds the round's request on the CURRENT
+// visible context after the compaction round failed (tl1669 US2). The context
+// is used as it stands — no second compaction attempt, no silent retry storm.
+// Reports false when the current view cannot be assembled or cannot be
+// admitted: a request that cannot be sent is not sent, and the original
+// failure stays the honest outcome.
+func (a *Agent) compactionFallbackRequest(ctx context.Context, cause error) (samplingRequest, bool) {
+	// The fallback exists for a COMPACTION failure, not for a context that
+	// physically cannot be sent. When the view sits at or above the hard
+	// ceiling the truncation+sliding-window rescue ladder has already failed
+	// (that is the only way Prepare reports an error there) — the honest
+	// outcome is the typed ErrCompactionRequired, not a round on a view the
+	// provider cannot accept.
+	if cur := a.contextManager().currentPrepared(); cur.InputTokens >= a.hardInputCeiling() {
+		return samplingRequest{}, false
+	}
+	frozen, err := a.buildSamplingRequestFrom(ctx, CompactionTriggerPressure, a.modelVisibleMessages())
+	if err != nil {
+		return samplingRequest{}, false
+	}
+	if err := a.applyAdmissionToRequest(&frozen.req); err != nil {
+		return samplingRequest{}, false
+	}
+	a.recordCompactionTurnFallback(cause)
+	shape := a.requestCalibrationShape(frozen.req)
+	a.sess.output.activeReqShape.Store(&shape)
+	return samplingRequest{req: freezeProviderRequest(frozen.req), prov: frozen.prov}, true
+}
+
+// recordCompactionTurnFallback reports a failed compaction that did NOT end the
+// turn (tl1669 US2: 失败原因落日志). The transcript side of the story is the
+// failed card (emitCompactionFailed → attempt N + reason, tl1648); this line
+// is the turn-log half, so the log always names WHY the round continued on
+// the uncompacted context.
+//
+// tl1675 boundary (tl1675 is a separate piece, later in this wave): tl1675
+// owns the pass-1 zero-log defect and the chunked-fallback criteria. This
+// function is the MINIMUM log the US2 story needs in this piece — the
+// compaction failure reason reaches the turn log here, at the place where the
+// decision "the turn continues" is taken.
+func (a *Agent) recordCompactionTurnFallback(cause error) {
+	reason := compactionFailureReason(cause)
+	attempt := a.sess.compaction.failureStreak.Load()
+	slog.Warn("agent: context compaction failed — the turn continues with the current context",
+		"session", a.sessionLogRef(), "attempt", attempt, "reason", reason, "err", cause)
+}
+
 func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (samplingRequest, error) {
-	// CreatedAt is durable UI metadata, not model input. Strip it from the
-	// transport copy so wall-clock differences never invalidate the provider's
-	// prompt-cache prefix (and custom providers cannot accidentally send it).
 	prepared, err := a.contextManager().Prepare(ctx, ContextPreparePolicy{Trigger: trigger})
 	if err != nil {
 		return samplingRequest{}, err
 	}
-	requestMessages := a.normalizeModelRequestMessages(prepared.Messages)
+	return a.buildSamplingRequestFrom(ctx, trigger, prepared.Messages)
+}
+
+// buildSamplingRequestFrom assembles the provider request on an explicit
+// message view. It never runs a compaction round of its own — the caller owns
+// the view (prepareSamplingRequest's fallback leg passes the current visible
+// context, the normal leg passes the prepared/compacted one).
+func (a *Agent) buildSamplingRequestFrom(ctx context.Context, trigger string, messages []provider.Message) (samplingRequest, error) {
+	// CreatedAt is durable UI metadata, not model input. Strip it from the
+	// transport copy so wall-clock differences never invalidate the provider's
+	// prompt-cache prefix (and custom providers cannot accidentally send it).
+	requestMessages := a.normalizeModelRequestMessages(messages)
 	// context.prepare: extensions may rewrite the message copy feeding THIS
 	// request. The session log is never touched — the replacement is
 	// ephemeral, so the next request starts from the unmodified history.
-	requestMessages, err = a.interceptContextPrepare(ctx, requestMessages)
+	requestMessages, err := a.interceptContextPrepare(ctx, requestMessages)
 	if err != nil {
 		return samplingRequest{}, err
 	}

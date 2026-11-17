@@ -83,7 +83,8 @@ func (c *Controller) MCPAppCallTool(instanceToken, toolName string, args json.Ra
 		return string(rawResult), fmt.Errorf("persist app result: %w", emitErr)
 	}
 	if c.executor != nil && c.executor.Session() != nil {
-		c.executor.Session().Add(provider.Message{
+		// tl1669: canonical write → the compaction-await funnel.
+		c.executor.AppendTurnMessage(ctx, provider.Message{
 			Role: provider.RoleTool, LocalOnly: true,
 			ToolCallID: callID, Name: target.Name(),
 			Content: output,

@@ -638,7 +638,8 @@ func (a *Agent) appendPinnedRevisionAndUser(ctx context.Context, plan pinnedRevi
 		batch = append(batch, *plan.message)
 	}
 	batch = append(batch, user)
-	a.sess.conversation.AddBatch(batch...)
+	// tl1669: canonical write → the compaction-await funnel.
+	a.appendTurnMessageBatch(ctx, batch...)
 	a.commitPinnedRevisionPlan(plan)
 }
 

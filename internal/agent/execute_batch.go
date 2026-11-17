@@ -424,7 +424,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		finalize(i)
 	}
 	a.applyBatchGuards(ctx, cancelled, calls, outcomes, results, receiptMark)
-	a.storeBatchGuardResults(calls, results)
+	a.storeBatchGuardResults(ctx, calls, results)
 	images := make([][]string, len(calls))
 	executions := make([]*tool.ShellExecution, len(calls))
 	for i := range outcomes {
