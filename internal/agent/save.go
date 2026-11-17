@@ -1071,12 +1071,3 @@ func truncateUTF8Bytes(s string, max int) string {
 }
 
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
-}
-

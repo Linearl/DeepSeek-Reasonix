@@ -9,6 +9,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioninbox"
+	"reasonix/internal/textutil"
 )
 
 func steerAlreadyAdmitted(state sessioninbox.InboxState) bool {
@@ -102,7 +103,7 @@ func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (agent.Steer
 		if !meta.CreatedAt.IsZero() {
 			at = meta.CreatedAt.UnixMilli()
 		}
-		return agent.SteerPayload{Text: firstNonEmptyStr(materialized, text), Images: images, At: at}, nil
+		return agent.SteerPayload{Text: textutil.FirstTrimmed(materialized, text), Images: images, At: at}, nil
 	}
 }
 

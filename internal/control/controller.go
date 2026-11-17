@@ -65,6 +65,7 @@ import (
 	"reasonix/internal/skill"
 	"reasonix/internal/store"
 	"reasonix/internal/taskmonitor"
+	"reasonix/internal/textutil"
 	"reasonix/internal/tool"
 	"reasonix/internal/workflow"
 	"reasonix/internal/workspacelease"
@@ -7859,7 +7860,7 @@ func rememberApprovalSubject(fallback string, args json.RawMessage) string {
 	if err := json.Unmarshal(args, &in); err != nil {
 		return fallback
 	}
-	name := approvalCompactText(firstNonEmpty(in.Name, in.Title))
+	name := approvalCompactText(textutil.First(in.Name, in.Title))
 	desc := approvalTruncate(approvalCompactText(in.Description), 180)
 	body := approvalTruncate(approvalCompactText(in.Body), 240)
 	typ := string(memory.NormalizeType(in.Type))
@@ -7908,15 +7909,6 @@ func forgetApprovalSubject(fallback string, args json.RawMessage) string {
 		return fallback
 	}
 	return fmt.Sprintf(i18n.M.MemoryApprovalArchiveFmt, name)
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func approvalCompactText(s string) string {

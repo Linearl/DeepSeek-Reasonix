@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/textutil"
 	"reasonix/internal/tool"
 )
 
@@ -170,8 +171,8 @@ func (t manageSessionsTool) forwardArgs(action string, args json.RawMessage) (js
 		return marshalManageArgs(map[string]any{
 			"topic_id":       id.TopicID,
 			"session_path":   id.SessionPath,
-			"scope":          firstNonEmpty(p.Scope, id.Scope),
-			"workspace_root": firstNonEmpty(p.Workspace, id.Workspace),
+			"scope":          textutil.First(p.Scope, id.Scope),
+			"workspace_root": textutil.First(p.Workspace, id.Workspace),
 			"group_id":       strings.TrimSpace(p.GroupID),
 			"group":          strings.TrimSpace(p.Group),
 		})
@@ -190,8 +191,8 @@ func (t manageSessionsTool) forwardArgs(action string, args json.RawMessage) (js
 			"topic_id":       id.TopicID,
 			"group_id":       strings.TrimSpace(p.GroupID),
 			"index":          p.Index,
-			"scope":          firstNonEmpty(p.Scope, id.Scope),
-			"workspace_root": firstNonEmpty(p.Workspace, id.Workspace),
+			"scope":          textutil.First(p.Scope, id.Scope),
+			"workspace_root": textutil.First(p.Workspace, id.Workspace),
 		})
 	case "group_create":
 		if strings.TrimSpace(p.Title) == "" {
@@ -231,8 +232,8 @@ func (t manageSessionsTool) forwardArgs(action string, args json.RawMessage) (js
 		return marshalManageArgs(map[string]any{
 			"topic_id":       id.TopicID,
 			"session_path":   id.SessionPath,
-			"scope":          firstNonEmpty(p.Scope, id.Scope),
-			"workspace_root": firstNonEmpty(p.Workspace, id.Workspace),
+			"scope":          textutil.First(p.Scope, id.Scope),
+			"workspace_root": textutil.First(p.Workspace, id.Workspace),
 			"confirm":        confirm.Confirm,
 		})
 	case "rollback":

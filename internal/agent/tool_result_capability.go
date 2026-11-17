@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"reasonix/internal/provider"
+	"reasonix/internal/textutil"
 	"reasonix/internal/tool"
 )
 
@@ -143,7 +144,7 @@ func (t *sessionToolResultTool) Execute(_ context.Context, args json.RawMessage)
 	p.ToolCallID = strings.TrimSpace(p.ToolCallID)
 	p.ResultRef = strings.TrimSpace(p.ResultRef)
 	if strings.HasPrefix(p.ToolCallID, "sa_") || strings.HasPrefix(p.ResultRef, "sa_") {
-		return "", fmt.Errorf("session tool result: %q is a subagent reference; use read_subagent_result with ref", firstNonEmpty(p.ResultRef, p.ToolCallID))
+		return "", fmt.Errorf("session tool result: %q is a subagent reference; use read_subagent_result with ref", textutil.First(p.ResultRef, p.ToolCallID))
 	}
 	if p.ToolCallID == "" {
 		return "", fmt.Errorf("session tool result: tool_call_id is required")

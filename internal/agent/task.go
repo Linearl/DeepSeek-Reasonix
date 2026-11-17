@@ -24,6 +24,7 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/subagentmailbox"
+	"reasonix/internal/textutil"
 	"reasonix/internal/tool"
 	"reasonix/internal/workspacelease"
 )
@@ -881,7 +882,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 		Writer:     isWriter,
 		WritePaths: spec.Grant.WritePaths,
 		Nested:     spec.Sched.Nested,
-		Label:      firstNonEmpty(spec.Task.Description, spec.Worker.Name, "task"),
+		Label:      textutil.First(spec.Task.Description, spec.Worker.Name, "task"),
 	}
 	// Defensive fallback for callers that manually construct a background spec
 	// instead of going through buildTaskSpec.
@@ -1005,7 +1006,7 @@ func (t *TaskTool) runBackgroundProfileSpec(ctx context.Context, spec ProfileExe
 	} else {
 		releaseStart = func() {}
 	}
-	label := firstNonEmpty(spec.Task.Description, spec.Worker.Name, "task")
+	label := textutil.First(spec.Task.Description, spec.Worker.Name, "task")
 	if t.transcripts != nil && run != nil && run.Ref != "" {
 		if err := t.transcripts.MarkRunning(run); err != nil {
 			releaseStart()
@@ -1141,7 +1142,7 @@ func (t *TaskTool) prepareTranscriptRunWithPrompt(ctx context.Context, subReg *t
 		ToolContext:      childToolIdentityContext(ctx),
 		Model:            identityModel,
 		Effort:           identityEffort,
-		ResumedFrom:      firstNonEmpty(continueFrom, legacyForkFrom),
+		ResumedFrom:      textutil.First(continueFrom, legacyForkFrom),
 	}
 	if continueFrom != "" {
 		return t.transcripts.PrepareContinue(continueFrom, spec)
@@ -1177,7 +1178,7 @@ func (t *TaskTool) usageModelRef(modelRef, effort string) string {
 	if model != "" {
 		return model
 	}
-	return firstNonEmpty(modelRef, t.baseModel, t.subagentModel)
+	return textutil.First(modelRef, t.baseModel, t.subagentModel)
 }
 
 func (t *TaskTool) effectiveModelIdentity(modelRef string) string {
