@@ -232,8 +232,15 @@ func LoadCompactionState(sessionPath string) (CompactionState, bool, error) {
 	// exactly the sequence the 20261116 restart incident needs to reconstruct.
 	// Debug level: the caller-level restored/drop lines already carry the
 	// verdict; this stamps the raw read with the on-disk sidecar's own state.
+	// tl1651 主修①: the read path itself is stamped too — the 20261117
+	// "sidecar_updated_at=2026-10-26 in a session created 2026-11-15" incident
+	// could not name WHICH file served the stale reading. The load path is
+	// deterministic (SessionContext of the bound transcript — backups/recovery
+	// copies are never consulted; pinned by TestTL1651R1BackupSidecarNotRead),
+	// so the logged path doubles as the source-of-truth audit trail.
 	slog.Debug("agent: context sidecar loaded",
 		"writer", SessionWriterID(),
+		"path", path,
 		"schema_version", st.SchemaVersion,
 		"projection_version", st.Projection.ProjectionVersion,
 		"covered_count", st.Projection.CoveredCount,

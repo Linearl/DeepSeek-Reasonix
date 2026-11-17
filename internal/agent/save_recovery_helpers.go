@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"reasonix/internal/provider"
 )
@@ -145,9 +146,26 @@ func copyValidContextProjection(originalPath, targetPath string, msgs []provider
 		coveredPrefixHash(msgs, n) != st.Projection.CoveredPrefixHash {
 		return false, nil
 	}
+	// tl1651 主修①: an inherited sidecar starts its own lifecycle at the copy.
+	// SaveCompactionState only fills UpdatedAt when it is zero, so the copy used
+	// to carry the PARENT's timestamp verbatim — the 20261117 incident read
+	// "sidecar_updated_at=2026-10-26" in a session created 2026-11-15 and the
+	// inheritance trail (fork/recovery-copy via this helper) was invisible,
+	// which read exactly like a cross-session sidecar leak. Restamping the
+	// timestamp and logging the transplant keeps the design guarantee (each
+	// session owns ONE sidecar file, still path-derived) while making an
+	// inherited fold attributable.
+	inheritedAt := st.UpdatedAt
+	st.UpdatedAt = time.Now().UTC()
 	if err := SaveCompactionState(targetPath, st); err != nil {
 		return false, err
 	}
+	slog.Info("agent: context projection inherited from parent session",
+		"writer", SessionWriterID(),
+		"source", originalPath,
+		"target", targetPath,
+		"covered_count", n,
+		"inherited_updated_at", inheritedAt.UTC().Format(time.RFC3339Nano))
 	return true, nil
 }
 
