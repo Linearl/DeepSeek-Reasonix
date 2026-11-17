@@ -1,7 +1,8 @@
 import { Component, Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Folder } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { useRevealLocation } from "../lib/revealLocation";
 import { RecoveryCopiesSection } from "./RecoveryCopiesSection";
 
 type StorageSettingsView = Awaited<ReturnType<typeof app.StorageSettings>>;
@@ -123,6 +124,10 @@ function StoragePathField({ label, hint, value }: { label: ReactNode; hint?: Rea
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
+  // tl1663：只读路径行的「打开位置」。探针空串（文件/目录缺失）时按钮置灰
+  // 并给出缺失提示——不给点了没反应的死按钮。
+  const reveal = useRevealLocation(value);
+  const revealMissing = value.trim() !== "" && reveal.target === "";
   return (
     <div className="settings-field">
       <div className="settings-field__copy">
@@ -131,6 +136,16 @@ function StoragePathField({ label, hint, value }: { label: ReactNode; hint?: Rea
       </div>
       <div className="settings-field__control settings-path-value">
         <input className="mem-input" value={value} placeholder={t("common.none")} aria-label={String(label)} readOnly />
+        <button
+          className="btn settings-icon-button"
+          type="button"
+          disabled={!value.trim() || reveal.target === ""}
+          title={revealMissing ? t("settings.revealLocationMissing") : t("settings.revealLocation")}
+          aria-label={`${t("settings.revealLocation")}: ${String(label)}`}
+          onClick={() => { void reveal.reveal().catch((error) => console.error("reveal location failed", error)); }}
+        >
+          <Folder size={16} />
+        </button>
         <button className="btn settings-icon-button" disabled={!value} title={t(copied ? "richLink.copied" : "common.copy")} aria-label={`${t("common.copy")}: ${String(label)}`} onClick={async () => { try { await navigator.clipboard.writeText(value); setCopied(true); setCopyError(false); } catch { setCopyError(true); } }}>{copied ? <Check size={16} /> : <Copy size={16} />}</button>
         {copyError && <span role="alert">{t("settings.hooksJsonClipboardUnavailable")}</span>}
       </div>

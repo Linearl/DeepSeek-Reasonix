@@ -2298,6 +2298,8 @@ export const zhTW: Record<DictKey, string> = {
 "settings.decisionPatternsFilePath": "決策模式檔案位置",
 "settings.decisionPatternsFilePathHint": "固化檔案路徑（預設 global-workspace/docs/decision-patterns.md）。備份輪轉與 autopilot 注入均跟隨該路徑；改動後對已執行的會話在重啟後生效。",
 "settings.decisionPatternsFilePathPlaceholder": "留空使用預設路徑",
+"settings.revealLocation": "開啟位置",
+"settings.revealLocationMissing": "檔案不存在，無法在檔案總管中定位",
 "settings.decisionPatternsAutoApprove": "跳過人工批准直接修改",
 "settings.decisionPatternsAutoApproveHint": "預設關：心跳彙報提取到的模式後等待你批准才寫入。開啟後整合全自動（寫入前仍有 5 版本備份輪轉可回滾）。",
 "settings.sessionCollab": "會話協作",
