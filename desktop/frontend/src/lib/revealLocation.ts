@@ -20,6 +20,34 @@ export type RevealLocation = {
   reveal: () => Promise<void>;
 };
 
+/**
+ * tl1673：文件本身不存在时的「父目录回落」。
+ *
+ * 场景：决策模式的 decision-patterns.md 是**注入用聚合文件**——首次决策固化
+ * 轮才创建，此前永远不存在。此时「打开位置」若只有「文件不存在，无法定位」
+ * 一句，就是死提示（无出路）。
+ *
+ * 回落规则：文件探针为空时，再探它的**所在目录**——目录存在就能定位到
+ * 「文件将来会出现在哪」，比死提示有出路；目录也不存在时维持原样（置灰）。
+ * 只回落一级（不递归向上找），避免「随便落到某个存在的祖先目录」造成
+ * 指向误导。
+ */
+export type RevealLocationWithFallback = RevealLocation & {
+  /** 父目录回落目标（可定位的目录绝对路径）；"" = 无回落可用。 */
+  fallbackTarget: string;
+  /** 打开父目录；无回落时为 no-op。 */
+  revealFallback: () => Promise<void>;
+  /** 文件缺失但父目录可用——调用方据此把按钮降级为「打开所在文件夹」。 */
+  fileMissing: boolean;
+};
+
+function parentDirOf(path: string): string {
+  const trimmed = path.trim().replace(/[\\/]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("\\"), trimmed.lastIndexOf("/"));
+  if (idx <= 0) return "";
+  return trimmed.slice(0, idx);
+}
+
 export function useRevealLocation(value: string): RevealLocation {
   const [target, setTarget] = useState("");
   useEffect(() => {
@@ -52,4 +80,57 @@ export function useRevealLocation(value: string): RevealLocation {
     await app.RevealPath(target);
   }, [target]);
   return { target, reveal };
+}
+
+/**
+ * useRevealLocation + 父目录回落（tl1673）。文件缺失且父目录存在时，
+ * fallbackTarget 非空且 fileMissing=true——调用方把按钮降级为「打开所在
+ * 文件夹」，让死提示有出路。
+ */
+export function useRevealLocationWithParentFallback(value: string): RevealLocationWithFallback {
+  const base = useRevealLocation(value);
+  const [fallbackTarget, setFallbackTarget] = useState("");
+  useEffect(() => {
+    let alive = true;
+    const probe = value.trim();
+    if (probe === "") {
+      setFallbackTarget("");
+      return;
+    }
+    // 文件本身可定位时不需要回落。
+    if (base.target !== "") {
+      setFallbackTarget("");
+      return;
+    }
+    const parent = parentDirOf(probe);
+    if (parent === "") {
+      setFallbackTarget("");
+      return;
+    }
+    try {
+      void app.ResolveRevealablePathForTab("", parent)
+        .then((resolved) => {
+          if (alive) setFallbackTarget(resolved);
+        })
+        .catch(() => {
+          if (alive) setFallbackTarget("");
+        });
+    } catch {
+      if (alive) setFallbackTarget("");
+    }
+    return () => {
+      alive = false;
+    };
+  }, [value, base.target]);
+  const revealFallback = useCallback(async () => {
+    if (fallbackTarget === "") return;
+    await app.RevealPath(fallbackTarget);
+  }, [fallbackTarget]);
+  return {
+    target: base.target,
+    reveal: base.reveal,
+    fallbackTarget,
+    revealFallback,
+    fileMissing: base.target === "" && fallbackTarget !== "",
+  };
 }

@@ -23,7 +23,7 @@ import { setFeedbackEnabled, setFeedbackOpen } from "./FeedbackPanel";
 import { fireMockCrashDrill } from "../lib/crashMock";
 import { setCollabInboxOpen } from "./CollabInboxPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
-import { useRevealLocation } from "../lib/revealLocation";
+import { useRevealLocationWithParentFallback } from "../lib/revealLocation";
 import { type DictKey } from "../lib/i18n";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { LabSectionCard, SettingsField } from "./SettingsForm";
@@ -335,7 +335,11 @@ export function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps
   // tl1663：「打开位置」探针钉在已保存的 resolved 路径上（留空=默认路径时
   // 后端也回传 resolved 绝对路径，不是空串）；draft 打字中不触发探测，失焦
   // 保存后快照更新、探针自动重跑。文件未生成 ⇒ 置灰 + 缺失提示。
-  const decisionReveal = useRevealLocation(s.decisionPatternFilePath ?? "");
+  // tl1673：decision-patterns.md 是注入用聚合文件——首次决策固化轮才创建，
+  // 此前永远不存在。此时「打开位置」若只报「文件不存在」就是死提示。
+  // 回落探针补一级父目录：目录存在就能定位到「文件将来出现在哪」，
+  // 按钮降级为「打开所在文件夹」+ 生成时机说明（文件生成后自动恢复原样）。
+  const decisionReveal = useRevealLocationWithParentFallback(s.decisionPatternFilePath ?? "");
   // Task 184: the sampler interval is a number the user can edit; the config layer
   // clamps it, so the box can hold an intermediate value while typing.
   const [perfInterval, setPerfInterval] = useState<number>(s.perfMonitorIntervalSeconds ?? 5);
@@ -1965,11 +1969,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     <button
                       type="button"
                       className="btn btn--secondary btn--small"
-                      disabled={busy || decisionReveal.target === ""}
-                      title={decisionReveal.target === "" ? t("settings.revealLocationMissing") : t("settings.revealLocation")}
-                      onClick={() => { void decisionReveal.reveal().catch((error) => console.error("reveal location failed", error)); }}
+                      disabled={busy || (decisionReveal.target === "" && decisionReveal.fallbackTarget === "")}
+                      title={
+                        decisionReveal.target !== ""
+                          ? t("settings.revealLocation")
+                          : decisionReveal.fileMissing
+                            ? t("settings.decisionPatternsNotGeneratedYet")
+                            : t("settings.revealLocationMissing")
+                      }
+                      onClick={() => {
+                        // 文件在 → 定位文件；文件不在但目录在 → 定位目录（不是死提示）。
+                        const action = decisionReveal.target !== ""
+                          ? decisionReveal.reveal()
+                          : decisionReveal.revealFallback();
+                        void action.catch((error) => console.error("reveal location failed", error));
+                      }}
                     >
-                      {t("settings.revealLocation")}
+                      {decisionReveal.fileMissing ? t("settings.revealLocationOpenFolder") : t("settings.revealLocation")}
                     </button>
                   </div>
                 </SettingsField>
