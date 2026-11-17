@@ -5825,11 +5825,9 @@ export const en = {
   "updater.autoCheckHint": "When off, Reasonix won't check automatically when it opens. You can still check manually here.",
   "updater.officialReleaseHint": "Reasonix checks the latest official release.",
   "updater.officialDownload": "Download from official site",
-  "updater.privacyAndUpdatePreferences": "Privacy & update preferences",
-  "settings.telemetryLabel": "Anonymous usage ping",
-  "settings.telemetryHint": "On launch, send a random anonymous install ID, version, OS/build or Linux distribution/session, Web Runtime, and GPU mode to count active installs. After an abnormal exit, the next launch may send scrubbed native diagnostics: lifecycle phase, symbolized stack, runtime reason, exit code, and recovery result. This is not an account ID and never includes conversations, accounts, keys, file contents, full paths, or GPU drivers.",
-  "settings.metricsLabel": "Share aggregate quality metrics",
-  "settings.metricsHint": "On by default. Sends anonymous turn-end counts, updater error categories, lifecycle/window health buckets, and settings preference snapshots. Includes the random install id used to de-duplicate DAU. Buckets may include normalized custom provider and model names — never conversations, prompts, keys, paths, base URLs, memory text, tool outputs, or file contents.",
+  // tl1665: the user decided "we do not do telemetry" — the anonymous usage
+  // ping / aggregate quality metrics switches and their copy are gone.
+  "updater.privacyAndUpdatePreferences": "Update preferences",
   "updater.currentVersion": "Current version: {v}",
 "updater.builtAt": "Built {at}",
 "updater.copyVersion": "Copy version",

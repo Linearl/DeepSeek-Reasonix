@@ -349,8 +349,6 @@ export interface SettingsView {
   defaultSubagentPolicy: SubagentPolicy; // fork: default sub-agent delegation tier for new sessions
   checkUpdates: boolean; // check for new versions on startup
   updateChannel: string; // compatibility field; always "stable"
-  telemetry: boolean; // anonymous launch ping + scrubbed next-launch native crash diagnostics
-  metrics: boolean; // aggregate quality/lifecycle metrics (anonymous signal/bucket counts)
   configPath: string;
   shadowedByPath?: string; // workspace reasonix.toml that outranks configPath, when one exists
   providerKinds: string[]; // provider implementations the kernel registered (for the kind picker)

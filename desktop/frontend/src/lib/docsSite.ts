@@ -7,12 +7,17 @@
 //
 // URL 说明：站点已发布（tl1253b 回填），Pages 站点根为
 // https://linearl.github.io/DeepSeek-Reasonix/（实测无 docs-site 段；
-// workflow 侧 DOCS_BASE_URL 与此对齐）。若 Pages 地址再变，改下面这一行
-// 常量 + 同步更新 docs-site-entry.test.ts 的 URL 断言。
+// workflow 侧 DOCS_BASE_URL 与此对齐）。若 Pages 地址再变，改
+// lib/forkLinks.ts 里的 FORK_DOCS_SITE_URL 一处 + 同步更新
+// docs-site-entry.test.ts 的 URL 断言。
+//
+// tl1665：常量值迁到 lib/forkLinks.ts（fork 官方链接的单一真相源），本模块
+// 只保留「打开文档」的动作与对常量名的转出，调用方不变。
 
 import { openExternal } from "./bridge";
+import { FORK_DOCS_SITE_URL } from "./forkLinks";
 
-export const DOCS_SITE_BASE_URL = "https://linearl.github.io/DeepSeek-Reasonix/";
+export const DOCS_SITE_BASE_URL = FORK_DOCS_SITE_URL;
 
 // 打开产品文档：走系统默认浏览器（openExternal → Wails BrowserOpenURL），
 // 不在 webview 内导航。整个调用链是同步 fire-and-forget，无等待、无网络往返。

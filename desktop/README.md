@@ -292,27 +292,25 @@ desktop/
 
 ## Telemetry
 
-The desktop app sends one anonymous ping per launch to `crash.reasonix.io`:
-a random anonymous install id (generated locally and not an account id), app
-version, OS, architecture, Windows build/revision or bounded Linux
-distribution/kernel/session facts, and Web Runtime/GPU mode. When the previous
-process ended abnormally, the next normal launch may also send a bounded native
-diagnostic (lifecycle phase, symbolized stack, WebView2 or WebKitGTK Runtime,
-process reason/exit code/recovery fields, window failure kind, and coarse device
-facts).
-Panic values are removed and paths/secrets are scrubbed before the report is
-queued. The install id is attached only while sending and is not stored in a
-pending crash file. It never includes conversations, account data, API keys,
-file contents, usernames, hostnames, GPU driver details, or full local paths.
+**This fork does not do telemetry** (product decision, 2026-11-18). The desktop
+app sends nothing to `crash.reasonix.io` on its own: no anonymous launch ping,
+no aggregate quality/lifecycle metrics, no scrubbed next-launch native crash
+diagnostics. The two Settings switches that used to own those two channels
+("Anonymous usage ping" / "Share aggregate quality metrics") are gone from
+Settings > Updates, and the `telemetry` / `metrics` keys under `[desktop]` are
+kept only so old config files keep loading — they are never honoured and
+nothing writes them.
 
-Opt out any time: Settings > Updates > "Anonymous usage ping", or set
-`telemetry = false` under `[desktop]` in the global config. Dev builds
-never ping or upload queued native diagnostics. Frontend crash and
-performance-pressure reports remain separate and are sent only when the user
-clicks "Send report" on the diagnostic UI.
+The reporting code itself (`telemetry_app.go`, `metrics_app.go`,
+`startup_metrics.go`, and the crash-diagnostic path in `crash_app.go` /
+`crash_pending.go` / `lifecycle_diagnostics.go`) is still in the tree, but
+every one of those sites reads the single gate in
+`internal/config/config.go` (`DesktopTelemetry()` / `DesktopMetrics()`), which
+is hard-wired to `false`. A later, deliberate teardown can delete the dead
+code; nothing reaches the network until then.
 
-Aggregate quality metrics are also enabled by default and can be disabled from
-Settings > Updates > "Share aggregate quality metrics", or by setting
-`metrics = false` under `[desktop]`. These metrics are anonymous signal/bucket
-counts, lifecycle/window failure buckets, and preference buckets; they never
-include conversations, prompts, keys, paths, base URLs, or file contents.
+What is still separate and unchanged: frontend crash and performance-pressure
+reports, which are sent only when the user clicks "Send report" on the
+diagnostic UI, and the CLI's own content-free usage metrics under
+`[telemetry] cli_metrics`.
+

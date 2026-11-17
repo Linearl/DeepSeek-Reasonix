@@ -18,6 +18,7 @@ import type {
   WorkflowTemplateValidation,
 } from "./workflowTypes";
 import { addBreadcrumb, noteActivity } from "./breadcrumbs";
+import { FORK_RELEASES_URL } from "./forkLinks";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
 import { makeMockHistoryCatalogBindings, type HistoryCatalogBindings } from "./historyCatalogBridge";
@@ -2300,8 +2301,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   GetDesktopShellStatus(): Promise<DesktopShellStatusView>;
   SetDesktopCheckUpdates(enabled: boolean): Promise<void>;
   SetDesktopUpdateChannel(channel: string): Promise<void>;
-  SetDesktopTelemetry(enabled: boolean): Promise<void>;
-  SetDesktopMetrics(enabled: boolean): Promise<void>;
   SetExpandThinking(on: boolean): Promise<void>;
   SetDesktopConversationWidth(width: string): Promise<void>;
   MigrateDesktopPreferences(language: string, theme: string, style: string): Promise<void>;
@@ -3882,8 +3881,6 @@ function makeMockApp(): AppBindings {
     defaultToolApprovalMode: "auto",
     checkUpdates: true,
     updateChannel: "stable",
-    telemetry: true,
-    metrics: true,
     configPath: "~/.reasonix/config.toml",
     shadowedByPath: "~/projects/reasonix/reasonix.toml",
     providerKinds: ["openai", "anthropic", "responses"],
@@ -8133,7 +8130,7 @@ function makeMockApp(): AppBindings {
     async AbandonPendingUpdate() {},
     async OpenDownloadPage() {
       if (typeof window !== "undefined") {
-        window.open("https://github.com/Linearl/DeepSeek-Reasonix/releases", "_blank", "noopener");
+        window.open(FORK_RELEASES_URL, "_blank", "noopener");
       }
     },
     async OpenUserConfigPath() {},

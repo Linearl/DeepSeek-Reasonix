@@ -55,14 +55,37 @@ func TestDefaultDesktopAppearanceAutoGraphite(t *testing.T) {
 	}
 }
 
-func TestDefaultDesktopMetricsOn(t *testing.T) {
+// TestDesktopTelemetryAndMetricsOffByForkPolicy (tl1665, 2026-11-18) pins the
+// fork's product decision「我们不做遥测」at the single gate every reporting site
+// reads: the desktop must not send the anonymous launch ping nor aggregate
+// desktop metrics.
+//
+// The two config keys stay read-only compatibility keys — an old config that
+// still says `telemetry = true` must keep loading, but it must not re-enable
+// anything. That is why this test writes the key directly instead of calling a
+// setter (tl1665 removed the setters: the switches are gone, so nothing writes
+// these keys any more).
+func TestDesktopTelemetryAndMetricsOffByForkPolicy(t *testing.T) {
 	cfg := Default()
-	if !cfg.DesktopMetrics() {
-		t.Fatal("default desktop metrics = false, want true")
+	if cfg.DesktopTelemetry() {
+		t.Fatal("default desktop telemetry = true, want false (the fork does not do telemetry)")
 	}
-	disabled := false
-	cfg.Desktop.Metrics = &disabled
 	if cfg.DesktopMetrics() {
-		t.Fatal("desktop metrics explicit false = true, want false")
+		t.Fatal("default desktop metrics = true, want false (the fork does not do telemetry)")
+	}
+	// A stale opt-in left in an old config file must not turn anything back on.
+	enabled := true
+	cfg.Desktop.Telemetry = &enabled
+	cfg.Desktop.Metrics = &enabled
+	if cfg.DesktopTelemetry() {
+		t.Fatal("desktop telemetry = true with a stale telemetry = true key, want false")
+	}
+	if cfg.DesktopMetrics() {
+		t.Fatal("desktop metrics = true with a stale metrics = true key, want false")
+	}
+	// The keys are still parsed (they are not rejected as unknown), which is
+	// what keeps old config files loading.
+	if cfg.Desktop.Telemetry == nil || cfg.Desktop.Metrics == nil {
+		t.Fatal("the compatibility keys must stay parsed so old config files keep loading")
 	}
 }

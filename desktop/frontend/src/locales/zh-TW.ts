@@ -5952,11 +5952,9 @@ export const zhTW: Record<DictKey, string> = {
   "updater.autoCheckHint": "關閉後，Reasonix 開啟時不會自動檢查更新；你仍可在此頁手動檢查。",
   "updater.officialReleaseHint": "Reasonix 僅檢查最新正式版本。",
   "updater.officialDownload": "前往官網下載",
-  "updater.privacyAndUpdatePreferences": "隱私與更新偏好",
-  "settings.telemetryLabel": "匿名啟動統計",
-  "settings.telemetryHint": "啟動時傳送匿名ID、版本、系統/發行版、會話、Runtime、GPU模式。異常退出後下次啟動傳送階段、堆疊、原因、結束碼、復原結果。不含帳號、對話、金鑰、檔案、完整路徑、顯示卡驅動",
-  "settings.metricsLabel": "共享聚合品質指標",
-  "settings.metricsHint": "預設開啟。傳送匿名的輪次結束統計、更新器錯誤類別、生命週期/視窗健康分桶與設定偏好快照。包含用於 DAU 去重的隨機安裝 ID。Bucket 可能包含正規化後的自訂 Provider 名和模型名——絕不包含對話、提示詞、金鑰、路徑、base URL、記憶正文、工具輸出或檔案內容。",
+  // tl1665：用戶裁定「我們不做遙測」——匿名啟動統計 / 共享聚合品質指標兩項開關
+  // 與其文案一併刪除（更新頁不再有遙測偏好）。
+  "updater.privacyAndUpdatePreferences": "更新偏好",
   "context.windowTitle": "上下文視窗",
   "context.windowStatusHealthy": "上下文充足",
   "context.windowStatusWatch": "即將壓縮",

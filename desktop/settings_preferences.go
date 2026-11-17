@@ -161,11 +161,6 @@ func (a *App) SetDesktopUpdateChannel(channel string) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopUpdateChannel(channel) })
 }
 
-// SetDesktopTelemetry sets whether the desktop sends the anonymous launch ping.
-func (a *App) SetDesktopTelemetry(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopTelemetry(enabled) })
-}
-
 // SetSessionStorage selects the conversation store mode (task 155: v3_only,
 // dual_write_read_v3, dual_write_read_v4, v4_only). The write side is fixed when
 // the process boots - modes 2/3/4 are created at boot and v3_only runs without a
@@ -1203,24 +1198,6 @@ func (a *App) CreateDecisionPatternHeartbeatTask() (created bool, err error) {
 		return false, serr
 	}
 	return true, nil
-}
-
-// SetDesktopMetrics sets whether the desktop sends aggregate desktop metrics,
-// starting or stopping the live aggregator so the toggle takes effect immediately.
-func (a *App) SetDesktopMetrics(enabled bool) error {
-	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopMetrics(enabled) }); err != nil {
-		return err
-	}
-	switch {
-	case enabled && a.metrics.Load() == nil && version != "dev":
-		a.metrics.Store(newMetricsAggregator(config.MemoryUserDir()))
-		if cfg, err := config.Load(); err == nil {
-			a.recordSettingsMetricsSnapshot(cfg)
-		}
-	case !enabled:
-		a.metrics.Store(nil)
-	}
-	return nil
 }
 
 // SetDesktopConversationWidth sets the max transcript width preference.

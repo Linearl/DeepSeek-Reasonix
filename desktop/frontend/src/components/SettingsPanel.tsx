@@ -38,6 +38,7 @@ import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
+import { FORK_CHANGELOG_URL, FORK_NEW_ISSUE_URL, FORK_OPEN_ISSUES_URL } from "../lib/forkLinks";
 import { useRevealLocation } from "../lib/revealLocation";
 import { takeSettingsViewPrefetch, invalidateSettingsViewPrefetch } from "../lib/settingsPrefetch";
 import { settingsLoadRetry } from "../lib/settingsLoadRetry";
@@ -780,8 +781,6 @@ export function SettingsPanel({
                       configPath={s.configPath}
                       shadowedByPath={s.shadowedByPath}
                       checkUpdates={s.checkUpdates}
-                      telemetry={s.telemetry !== false}
-                      metrics={s.metrics !== false}
                       settingsBusy={pageBusy}
                       applySettings={apply}
                     />
@@ -8022,16 +8021,12 @@ function UpdatesSection({
   configPath,
   shadowedByPath,
   checkUpdates,
-  telemetry,
-  metrics,
   settingsBusy,
   applySettings,
 }: {
   configPath: string;
   shadowedByPath?: string;
   checkUpdates: boolean;
-  telemetry: boolean;
-  metrics: boolean;
   settingsBusy: boolean;
   applySettings: (fn: () => Promise<void>) => Promise<boolean>;
 }) {
@@ -8233,7 +8228,7 @@ function UpdatesSection({
         label={t("changelog.title")}
         hint={t("changelog.subtitle")}
       >
-        <button className="btn btn--small" onClick={() => void openExternal("https://linearl.github.io/DeepSeek-Reasonix/changelog/")}>
+        <button className="btn btn--small" onClick={() => void openExternal(FORK_CHANGELOG_URL)}>
           {t("changelog.openWeb")}
           <ExternalLink size={14} aria-hidden="true" />
         </button>
@@ -8246,14 +8241,14 @@ function UpdatesSection({
         <div className="settings-inline-controls">
           <button
             className="btn btn--small"
-            onClick={() => void openExternal("https://github.com/Linearl/DeepSeek-Reasonix/issues/new/choose")}
+            onClick={() => void openExternal(FORK_NEW_ISSUE_URL)}
           >
             {t("feedback.submitIssue")}
             <ExternalLink size={14} aria-hidden="true" />
           </button>
           <button
             className="btn btn--small"
-            onClick={() => void openExternal("https://github.com/Linearl/DeepSeek-Reasonix/issues")}
+            onClick={() => void openExternal(FORK_OPEN_ISSUES_URL)}
           >
             {t("feedback.viewIssues")}
             <ExternalLink size={14} aria-hidden="true" />
@@ -8287,28 +8282,6 @@ function UpdatesSection({
               value={checkUpdates}
               disabled={settingsBusy}
               onChange={(enabled) => void applySettings(() => app.SetDesktopCheckUpdates(enabled))}
-            />
-          </SettingsField>
-          <SettingsField
-            className="settings-field--wide-copy"
-            label={t("settings.telemetryLabel")}
-            hint={t("settings.telemetryHint")}
-          >
-            <ToggleSegment
-              value={telemetry}
-              disabled={settingsBusy}
-              onChange={(enabled) => void applySettings(() => app.SetDesktopTelemetry(enabled))}
-            />
-          </SettingsField>
-          <SettingsField
-            className="settings-field--wide-copy"
-            label={t("settings.metricsLabel")}
-            hint={t("settings.metricsHint")}
-          >
-            <ToggleSegment
-              value={metrics}
-              disabled={settingsBusy}
-              onChange={(enabled) => void applySettings(() => app.SetDesktopMetrics(enabled))}
             />
           </SettingsField>
           {configPath && (

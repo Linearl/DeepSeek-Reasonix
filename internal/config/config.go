@@ -886,22 +886,35 @@ func NormalizeReasoningLanguage(lang string) string {
 	}
 }
 
-// DesktopTelemetry reports whether the desktop sends the anonymous launch ping.
-// It carries no conversation, key, or file data — see desktop/README.md.
+// DesktopTelemetry reports whether the desktop may send the anonymous launch
+// ping.
+//
+// tl1665 (2026-11-18, user decision「我们不做遥测」): the fork never sends the
+// anonymous launch ping, and never sends the scrubbed next-launch native crash
+// diagnostics that ride the same gate. The [desktop].telemetry key is still
+// parsed so old config files keep loading, but it is neither honoured nor
+// written any more — the Settings switches that owned it are gone. The
+// reporting code itself stays in the tree (telemetry_app.go, crash_pending.go,
+// lifecycle_diagnostics.go, crash_app.go) so a later, deliberate teardown can
+// delete it; this change only closes the gate.
+//
+// Single choke point on purpose: every reporting site reads this one getter,
+// so the policy cannot be half-applied by missing a call site.
 func (c *Config) DesktopTelemetry() bool {
-	if c == nil || c.Desktop.Telemetry == nil {
-		return true
-	}
-	return *c.Desktop.Telemetry
+	return false
 }
 
-// DesktopMetrics reports whether the desktop sends aggregate desktop metrics —
-// anonymous (signal, bucket) counters, never content. Default on.
+// DesktopMetrics reports whether the desktop may send aggregate desktop
+// metrics (anonymous signal/bucket counters, never content).
+//
+// tl1665 (2026-11-18): the fork never sends aggregate desktop metrics either —
+// turn-end counters, updater error categories, lifecycle/window health buckets,
+// settings preference snapshots, or the random install id used to de-duplicate
+// DAU. Same policy as DesktopTelemetry: the [desktop].metrics key is parsed for
+// compatibility but neither honoured nor written. metrics_app.go and
+// startup_metrics.go stay in the tree; only the gate is closed.
 func (c *Config) DesktopMetrics() bool {
-	if c == nil || c.Desktop.Metrics == nil {
-		return true
-	}
-	return *c.Desktop.Metrics
+	return false
 }
 
 // LSPConfig governs the optional Language Server Protocol tools (lsp_definition,

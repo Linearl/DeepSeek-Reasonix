@@ -1,4 +1,5 @@
 import { app, openExternal } from "../lib/bridge";
+import { FORK_CHANGELOG_URL } from "../lib/forkLinks";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { useOverlayStore } from "../store/overlays";
 export type ConfigWarningsReload = (warnings: string[], revision: number) => void;
@@ -41,7 +42,7 @@ export function useSessionBannerCommands(options: { remote: boolean; reloadConfi
   });
 
   const showReleaseNotes = useCommittedCommand(() => {
-    void openExternal("https://linearl.github.io/DeepSeek-Reasonix/changelog/");
+    void openExternal(FORK_CHANGELOG_URL);
   });
 
   return { reclaimSession, openTakeoverDialog, closeTakeoverDialog, openConfigFile, reloadConfigFile, showReleaseNotes };

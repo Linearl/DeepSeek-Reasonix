@@ -76,7 +76,7 @@ func (a *App) defaultSettingsView() SettingsView {
 		StatusBarStyle: "icon", StatusBarItems: config.DefaultDesktopStatusBarItems(), SessionExperience: "standard",
 		DefaultToolApprovalMode: "auto", CheckUpdates: true, UpdateChannel: "stable",
 		EventsAutoRotation: config.EventsAutoRotationManual, EventsRotationFactor: config.EventsRotationFactorDefault,
-		Telemetry: true, Metrics: true, ExpandThinking: false, ConversationWidth: "standard",
+		ExpandThinking: false, ConversationWidth: "standard",
 	}
 }
 

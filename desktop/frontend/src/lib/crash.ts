@@ -8,6 +8,7 @@ import { t } from "./i18n";
 import { sessionPipelineDiagnostics, type SessionPipelineDiagnostics } from "./sessionDiagnostics";
 import { isWailsRuntimeOnlyCrashEvent } from "./wailsRuntimeCrash";
 import { buildCrashIssueSkeleton } from "./crashIssue";
+import { FORK_ISSUES_URL } from "./forkLinks";
 import { recordNotification } from "./notifyArchive";
 import { isNotifyKindEnabled } from "./notifyDisplayPrefs";
 // 任务 910：性能/卡顿/崩溃入口三面共用的 .rt-notice 骨架挂载器。
@@ -963,7 +964,9 @@ export function opaqueScriptFingerprintHint(
 // then the browser opens the fork's issue list so the paste-and-submit loop is
 // one step shorter. Plain constant (not config): same repo as the backend's
 // crashAnalysisRepo route-B target.
-const ISSUE_TRACKER_URL = "https://github.com/Linearl/DeepSeek-Reasonix/issues";
+// tl1665: URL 值迁到 lib/forkLinks.ts（fork 官方链接单一真相源）。该模块零
+// 依赖，不引入 bridge —— 本文件的「最后手段」语义不受影响。
+const ISSUE_TRACKER_URL = FORK_ISSUES_URL;
 
 // Task 674: open the issue tracker in the system browser without importing the
 // bridge module — the last-resort faces must stay usable when the rest of the
