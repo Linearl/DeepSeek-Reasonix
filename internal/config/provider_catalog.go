@@ -40,8 +40,13 @@ var providerCatalog = map[string]ProviderCatalog{
 	"kimi-cn":                           {BrandID: "kimi", BrandLabel: "Moonshot / Kimi", Region: "cn", Product: "api"},
 	"kimi-global":                       {BrandID: "kimi", BrandLabel: "Moonshot / Kimi", Region: "global", Product: "api"},
 	"kimi-coding-plan":                  {BrandID: "kimi", BrandLabel: "Moonshot / Kimi", Region: "global", Product: "coding"},
-	"mimo-api":                          {BrandID: "mimo", BrandLabel: "MiMo", Region: "global", Product: "api"},
-	"mimo-anthropic":                    {BrandID: "mimo", BrandLabel: "MiMo", Region: "global", Product: "api"},
+	// tl1659: the MiMo open-platform API endpoint (api.xiaomimimo.com) lives on
+	// the China site alongside token-plan-cn, so both access modes share the cn
+	// region row and the product dropdown offers API / Token Plan switching
+	// (same shape as the Zhipu glm-cn precedent). Overseas token-plan stations
+	// (sgp/ams) keep token as their only product.
+	"mimo-api":                          {BrandID: "mimo", BrandLabel: "MiMo", Region: "cn", Product: "api"},
+	"mimo-anthropic":                    {BrandID: "mimo", BrandLabel: "MiMo", Region: "cn", Product: "api"},
 	"mimo-token-plan-cn":                {BrandID: "mimo", BrandLabel: "MiMo", Region: "cn", Product: "token"},
 	"mimo-token-plan-cn-anthropic":      {BrandID: "mimo", BrandLabel: "MiMo", Region: "cn", Product: "token"},
 	"mimo-token-plan-sgp":               {BrandID: "mimo", BrandLabel: "MiMo", Region: "sgp", Product: "token"},
