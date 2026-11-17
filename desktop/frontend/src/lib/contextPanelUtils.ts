@@ -83,3 +83,33 @@ export function projectionStaleAnnotation(
   if (triggerTokens > 0 && usedTokens > triggerTokens) return true;
   return canonicalTokens > 0 && canonicalTokens > usedTokens;
 }
+
+/** tl1656：估算偏差>30% 的切口径门。投影失效（projectionStale 已点亮）且
+ * canonical 超过显示读数 30% 以上时，读数主体切换到 canonical——降级视图
+ * （尾部梯队/残值投影）的读数只反映「下一请求发送什么」，而压缩判据在降级
+ * 态按 canonical 物理占用触发（context_manager.go maintenanceOccupancyEstimate），
+ * 主读数不切就出现「23%·距压缩 47 万」与「按 94 万触发压缩」同屏的误导
+ * （20261117 09:40 现场：估算 229.9K，canonical 941485，4 倍差）。
+ *
+ * 投影有效时绝不切换：健康压缩会话 used<canonical 是压缩的目的本身，
+ * 不是失真（tl1653 形态一门的前提同源）。canonical 缺数（旧侧报文）不动。 */
+export const CONTEXT_ESTIMATE_DEVIATION_RATIO = 1.3;
+
+export interface ContextDisplayCaliber {
+  /** 容量卡主读数应显示的 token 数。 */
+  tokens: number;
+  /** true = 主读数已切换到 canonical（降级视图读数偏低）。 */
+  canonicalOverride: boolean;
+}
+
+export function contextDisplayCaliber(
+  projectionStale: boolean,
+  usedTokens: number,
+  canonicalTokens: number,
+): ContextDisplayCaliber {
+  if (!projectionStale || canonicalTokens <= 0) return { tokens: usedTokens, canonicalOverride: false };
+  if (canonicalTokens > usedTokens * CONTEXT_ESTIMATE_DEVIATION_RATIO) {
+    return { tokens: canonicalTokens, canonicalOverride: true };
+  }
+  return { tokens: usedTokens, canonicalOverride: false };
+}

@@ -5887,6 +5887,9 @@ export const en = {
   "context.windowCompactDistance": "To compact",
   "context.projectionInvalid": "Projection invalid · full transcript",
   "context.projectionInvalidTitle": "Projection invalid: the readout is the unprojected full transcript ({canonical}); it rebuilds automatically",
+  // tl1656: degraded-view readout understates the real occupancy by >30% - the gauge
+  // shows the canonical figure the compaction trigger judges.
+  "context.estimateUnderreadsTitle": "Estimate understates the real occupancy: showing the canonical figure ({canonical}); the degraded view only measured {used}",
   "context.readoutMeasured": "Measured",
   "context.readoutEstimated": "Estimated",
   "context.readoutSourceTitle": "Source: measured (last provider response calibrated the estimate) / estimated (first turn of a session or after a provider switch, before a response)",

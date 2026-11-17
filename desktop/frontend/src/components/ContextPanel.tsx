@@ -19,7 +19,7 @@ import { useConfirmDialog } from "./ConfirmDialog";
 import { PlanUsageCard } from "./PlanUsageCard";
 import { OpenCodeGoUsageSidebarCard } from "./OpenCodeGoUsageSidebarCard";
 import type { Item } from "../lib/useController";
-import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate, compactionWindowOverride, projectionStaleAnnotation } from "../lib/contextPanelUtils";
+import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate, compactionWindowOverride, projectionStaleAnnotation, contextDisplayCaliber } from "../lib/contextPanelUtils";
 import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
 import { normalizeRecoveryLineageView } from "../lib/sessionRecoveryVersions";
 // tl1500: 会话指标卡折叠偏好（纯前端、localStorage 单键、默认展开）。
@@ -580,9 +580,6 @@ export function ContextPanel({
   const readFiles = asArray(info?.readFiles);
   const changedFiles = asArray(info?.changedFiles);
 
-  const usagePercentages = contextWindowPercentages(usedTokens, windowTokens);
-  const rawUsagePct = usagePercentages.raw;
-  const usagePct = usagePercentages.display;
   const compactRatio = context?.compactRatio && context.compactRatio > 0 ? context.compactRatio : 0.80;
   const compactPct = Math.round(compactRatio * 100);
   const reportedTriggerTokens = context?.maintenance?.triggerTokens ?? 0;
@@ -591,8 +588,6 @@ export function ContextPanel({
     : windowTokens > 0
       ? Math.round(windowTokens * compactRatio)
       : 0;
-  const compactTokens = triggerTokens > 0 ? triggerTokens : (windowTokens > 0 ? Math.round(windowTokens * compactRatio) : 0);
-  const tokensUntilCompact = compactTokens > usedTokens ? compactTokens - usedTokens : 0;
   // 任务549: canonical 超限且投影未生效时单独标注，让「全量回退」的读数可见。
   // 旧后端不带 projectionValid 字段（undefined），保持无标注的旧行为。
   // tl1653: 门提纯为 projectionStaleAnnotation（contextPanelUtils）并扩出
@@ -607,10 +602,26 @@ export function ContextPanel({
     triggerTokens,
     canonicalTokens,
   );
-  const projectionStaleTitle = projectionStale && (context?.maintenance?.canonicalTokens ?? 0) > 0
-    ? t("context.projectionInvalidTitle", { canonical: formatTokens(context?.maintenance?.canonicalTokens ?? 0) })
+  // tl1656: 降级读数偏差门——projectionStale 且 canonical 超显示读数 30%
+  // 以上时，主读数（含百分比、距压缩、状态行、分段条）切换到 canonical，
+  // 与压缩判据的物理占用口径对齐（20261117 09:40 现场：读数 23%·距压缩
+  // 47 万，压缩按 canonical 941485 触发，同屏互相矛盾）。投影有效时不切：
+  // 健康压缩会话 used<canonical 是压缩的目的本身，不是失真。旧侧报文无
+  // canonicalTokens 时门自动安静（contextDisplayCaliber）。
+  const tl1656Caliber = contextDisplayCaliber(projectionStale, usedTokens, canonicalTokens);
+  const displayUsedTokens = tl1656Caliber.tokens;
+  const canonicalOverride = tl1656Caliber.canonicalOverride;
+  const projectionStaleTitle = projectionStale && canonicalTokens > 0
+    ? canonicalOverride
+      ? t("context.estimateUnderreadsTitle", { canonical: formatTokens(canonicalTokens), used: formatTokens(usedTokens) })
+      : t("context.projectionInvalidTitle", { canonical: formatTokens(canonicalTokens) })
     : undefined;
-  const breakdown = contextBreakdown(usedTokens, windowTokens, promptTokens, completionTokens, reasoningTokens);
+  const usagePercentages = contextWindowPercentages(displayUsedTokens, windowTokens);
+  const rawUsagePct = usagePercentages.raw;
+  const usagePct = usagePercentages.display;
+  const compactTokens = triggerTokens > 0 ? triggerTokens : (windowTokens > 0 ? Math.round(windowTokens * compactRatio) : 0);
+  const tokensUntilCompact = compactTokens > displayUsedTokens ? compactTokens - displayUsedTokens : 0;
+  const breakdown = contextBreakdown(displayUsedTokens, windowTokens, promptTokens, completionTokens, reasoningTokens);
   const eventTimes = [
     ...readFiles.map((file) => file.time),
     ...changedFiles.map((file) => file.latestTime ?? 0),
@@ -670,7 +681,10 @@ export function ContextPanel({
     ? { label: rateBandLabel(sessionRateBand, t) ?? sessionRateBand, tone: sessionRateBand, title: sessionRateBandTitle }
     : undefined;
   const totalTokensTitle = totalTokensMetric.exact === "-" ? "-" : t("context.tokensValue", { value: totalTokensMetric.exact });
-  const usedLabel = formatTokens(usedTokens);
+  // tl1656: 主读数标签走切换后的口径——canonicalOverride 时用户看到的
+  // 「已用/窗口」与「距压缩」直接按 canonical 计，不再出现读数与压缩行为
+  // 各说各话（20261117 现场）。
+  const usedLabel = formatTokens(displayUsedTokens);
   const windowLabel = formatTokens(windowTokens);
   const compactRemainingLabel = tokensUntilCompact > 0 ? formatTokens(tokensUntilCompact) : "0";
   const compactMarkerPct = Math.max(0, Math.min(100, compactPct));
