@@ -97,6 +97,16 @@ func chunks(items ...provider.Chunk) <-chan provider.Chunk {
 }
 
 func TestToolLoopRetriesOnlyAfterOverflowMaintenanceProgress(t *testing.T) {
+	// 本测试期望同回合连续 9 次同形 grow_context 调用触发两次独立 overflow
+	// 恢复；tl1514 面二 loop breaker（同形零进展连续 5 轮打断）入库后该场景
+	// 在第 5 轮即被 RecoveryPauseError 打断，第二次 overflow 点到不了
+	// （provider overflows=1）。tl1644reg 二分定性（20261117）：tl1514 批前
+	// f8a261a56c 3/3 绿、tl1644 批前 26b8e1fc34 起 3/3 红——语义漂移由
+	// tl1514 引入，与 tl1644 锚门批无关，overflow maintenance 本体无回归。
+	// 这里用 loop_breaker.go 文档明确的 ≤0 kill switch 关掉 breaker 面，
+	// 让本测试继续专测 overflow maintenance 进度语义；loop breaker 行为
+	// 由 loop_breaker_test.go 自覆盖。
+	shrinkLoopBreakerForTest(t, 0, 0)
 	prov := &repeatedOverflowProvider{rejectedAt: make(map[int]bool), requestsAt: make(map[int]int), maxToolCalls: 9}
 	reg := tool.NewRegistry()
 	reg.Add(overflowLoopTool{output: strings.Repeat("large deterministic tool output. ", 700)})
