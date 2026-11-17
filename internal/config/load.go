@@ -843,7 +843,7 @@ func normalizeConfigForEdit(cfg *Config) bool {
 	changed = normalizeLegacyQwenContextWindows(cfg) || changed
 	changed = normalizeLegacyKimiK3Catalog(cfg) || changed
 	changed = normalizeLegacyOpenCodeGoInstalls(cfg) || changed
-	changed = normalizeLegacyMimoCustomProviders(cfg) || changed
+	changed = normalizeLegacyMimoProviderCatalogs(cfg) || changed
 	normalizeLegacyProviderModels(cfg)
 	normalizeDesktopOfficialProviderAccess(cfg)
 	normalizeOfficialDeepSeekModels(cfg)
@@ -1757,6 +1757,26 @@ func mergeMissingOpenCodeGoVisionOverride(p *ProviderEntry) {
 	p.ModelOverrides[key] = override
 }
 
+// normalizeLegacyMimoProviderCatalogs repairs the model catalog of legacy MiMo
+// connections that ARE still configured: an entry saved without a model list
+// gets the legacy catalog back.
+//
+// tl1654 (round 3, 2026-11-17): the MiMo compatibility shim used to RE-CREATE
+// a provider entry for every legacy MiMo name that showed up in a ref — a
+// config ref, a stale desktop.provider_access entry, or a restored session's
+// model ref — even when the user had already deleted that connection from
+// reasonix.toml. The recreated entry looked alive (it inherited MIMO_API_KEY
+// from the credentials file), so a deleted connection reappeared in the model
+// picker under its old label ("MiMo API") and pinned historical sessions to it
+// instead of letting them move on.
+//
+// The user's call is that a deletion is final: a model ref that points at a
+// deleted provider must land on the DEFAULT model rather than keep the
+// provider alive. The loader therefore no longer materializes providers that
+// have no section in the config, and the existing fallback chains
+// (Config.ResolveModelWithFallback, Config.ResolveDesktopNewSessionModel)
+// switch such refs to the default model. Only the catalog repair below
+// survives.
 func normalizeLegacyMimoProviderCatalogs(c *Config) bool {
 	if c == nil {
 		return false
@@ -1947,94 +1967,10 @@ func legacyOfficialProviderModel(name string) string {
 	}
 }
 
-func normalizeLegacyMimoCustomProviders(c *Config) bool {
-	return normalizeLegacyMimoCustomProvidersForRefs(c, legacyMimoConfigRefs(c)...)
-}
-
-// NormalizeLegacyMimoCustomProvidersForRefs appends custom OpenAI-compatible
-// MiMo providers needed by legacy refs that live outside reasonix.toml, such as
-// restored desktop tab state.
-func NormalizeLegacyMimoCustomProvidersForRefs(c *Config, refs ...string) bool {
-	return normalizeLegacyMimoCustomProvidersForRefs(c, refs...)
-}
-
-func normalizeLegacyMimoCustomProvidersForRefs(c *Config, refs ...string) bool {
-	if c == nil {
-		return false
-	}
-	needed := map[string]bool{}
-	addRef := func(ref string) {
-		if name := legacyMimoProviderNameForRef(ref); name != "" {
-			needed[name] = true
-		}
-	}
-	for _, ref := range refs {
-		addRef(ref)
-	}
-	changed := normalizeLegacyMimoProviderCatalogs(c)
-	for name := range needed {
-		if _, ok := c.Provider(name); ok {
-			continue
-		}
-		c.Providers = append(c.Providers, legacyMimoCustomProvider(name))
-		changed = true
-	}
-	if normalizeLegacyMimoProviderCatalogs(c) {
-		changed = true
-	}
-	return changed
-}
-
-func legacyMimoConfigRefs(c *Config) []string {
-	if c == nil {
-		return nil
-	}
-	refs := []string{
-		c.DefaultModel,
-		c.Agent.PlannerModel,
-		c.Agent.VisionModel,
-		c.Agent.WebSearchModel,
-		c.Agent.SubagentModel,
-		c.Bot.Model,
-	}
-	for _, ref := range c.Agent.SubagentModels {
-		refs = append(refs, ref)
-	}
-	for _, conn := range c.Bot.Connections {
-		refs = append(refs, conn.Model)
-	}
-	refs = append(refs, c.Desktop.ProviderAccess...)
-	return refs
-}
-
 func legacyMimoProviderName(ref string) string {
 	switch strings.TrimSpace(ref) {
 	case "mimo", "xiaomi-mimo", "xiaomi_mimo", "mimo-api", "mimo-token-plan", "mimo-pro", "mimo-flash":
 		return strings.TrimSpace(ref)
-	default:
-		return ""
-	}
-}
-
-func legacyMimoProviderNameForRef(ref string) string {
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return ""
-	}
-	providerName, _, hasModel := strings.Cut(ref, "/")
-	if name := legacyMimoProviderName(providerName); name != "" {
-		return name
-	}
-	if hasModel {
-		return ""
-	}
-	switch ref {
-	case "mimo-v2.5-pro":
-		return "mimo-pro"
-	case "mimo-v2.5":
-		return "mimo-flash"
-	case "mimo-v2-omni":
-		return "mimo-api"
 	default:
 		return ""
 	}
@@ -2046,43 +1982,6 @@ func legacyMimoAPIModels() []string {
 
 func legacyMimoTokenPlanModels() []string {
 	return []string{"mimo-v2.5-pro", "mimo-v2.5"}
-}
-
-func legacyMimoCustomProvider(name string) ProviderEntry {
-	switch strings.TrimSpace(name) {
-	case "mimo", "xiaomi-mimo", "xiaomi_mimo", "mimo-api":
-		models := legacyMimoAPIModels()
-		return ProviderEntry{
-			Name:          strings.TrimSpace(name),
-			Kind:          "openai",
-			BaseURL:       "https://api.xiaomimimo.com/v1",
-			Models:        models,
-			VisionModels:  []string{"mimo-v2.5", "mimo-v2-omni"},
-			Default:       "mimo-v2.5-pro",
-			APIKeyEnv:     "MIMO_API_KEY",
-			ContextWindow: 1_048_576,
-			Prices:        mimoDomesticPrices(models),
-			NoProxy:       true,
-		}
-	case "mimo-token-plan":
-		models := legacyMimoTokenPlanModels()
-		return ProviderEntry{
-			Name:          "mimo-token-plan",
-			Kind:          "openai",
-			BaseURL:       "https://token-plan-cn.xiaomimimo.com/v1",
-			Models:        models,
-			VisionModels:  []string{"mimo-v2.5"},
-			Default:       "mimo-v2.5-pro",
-			APIKeyEnv:     "MIMO_API_KEY",
-			ContextWindow: 1_048_576,
-			Prices:        mimoDomesticPrices(models),
-			NoProxy:       true,
-		}
-	case "mimo-flash":
-		return ProviderEntry{Name: "mimo-flash", Kind: "openai", BaseURL: "https://token-plan-cn.xiaomimimo.com/v1", Model: "mimo-v2.5", APIKeyEnv: "MIMO_API_KEY", ContextWindow: 1_000_000, Price: mimoV25Price(), NoProxy: true}
-	default:
-		return ProviderEntry{Name: "mimo-pro", Kind: "openai", BaseURL: "https://token-plan-cn.xiaomimimo.com/v1", Model: "mimo-v2.5-pro", APIKeyEnv: "MIMO_API_KEY", ContextWindow: 1_000_000, Price: mimoV25ProPrice(), NoProxy: true}
-	}
 }
 
 func normalizeDesktopOfficialProviderAccess(c *Config) {

@@ -17,7 +17,14 @@ import (
 	"reasonix/internal/provider"
 )
 
-func TestModelsForTabKeepsUserProvidersWithProjectConfig(t *testing.T) {
+// TestModelsForTabWithProjectProviderTableDoesNotRebuildShadowedUserProviders
+// (tl1654 round 3): a project-level reasonix.toml that declares [[providers]]
+// replaces the user-level provider table (isolate semantics). The user-level
+// access list survives the merge, but a name it still carries must NOT bring a
+// connection back: an access entry without a section is a deleted connection,
+// and rebuilding it is exactly what put the deleted "MiMo API" group back into
+// the picker.
+func TestModelsForTabWithProjectProviderTableDoesNotRebuildShadowedUserProviders(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	setDesktopTestCredential(t, "DEEPSEEK_API_KEY", "sk-test")
 	setDesktopTestCredential(t, "MIMO_API_KEY", "sk-test")
@@ -41,6 +48,50 @@ kind = "openai"
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-flash"
 api_key_env = "DEEPSEEK_API_KEY"
+`
+	if err := os.WriteFile(filepath.Join(projectRoot, "reasonix.toml"), []byte(projectConfig), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+
+	app := NewApp()
+	tab := &WorkspaceTab{ID: "project", WorkspaceRoot: projectRoot, Ready: true}
+	app.tabs = map[string]*WorkspaceTab{tab.ID: tab}
+	app.activeTabID = tab.ID
+
+	models := app.ModelsForTab(tab.ID)
+	refs := modelRefsFromView(models)
+	if !refs["deepseek/deepseek-v4-flash"] {
+		t.Fatalf("ModelsForTab refs = %+v, missing the project provider", models)
+	}
+	if refs["mimo-pro/mimo-v2.5-pro"] {
+		t.Fatalf("ModelsForTab refs = %+v, a shadowed user connection must not be rebuilt", models)
+	}
+}
+
+// TestModelsForTabKeepsUserProvidersWithProjectConfig: without a project
+// [[providers]] table the user-level connections stay in the picker, even
+// when a project reasonix.toml exists next to them.
+func TestModelsForTabKeepsUserProvidersWithProjectConfig(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	setDesktopTestCredential(t, "DEEPSEEK_API_KEY", "sk-test")
+	setDesktopTestCredential(t, "MIMO_API_KEY", "sk-test")
+
+	userCfg := config.Default()
+	userCfg.DefaultModel = "mimo-pro/mimo-v2.5-pro"
+	userCfg.Desktop.ProviderAccess = []string{"deepseek-flash", "mimo-pro"}
+	userCfg.Providers = append(userCfg.Providers, config.ProviderEntry{
+		Name: "mimo-pro", Kind: "openai", BaseURL: "https://token-plan-cn.xiaomimimo.com/v1",
+		Model: "mimo-v2.5-pro", APIKeyEnv: "MIMO_API_KEY",
+	})
+	if err := userCfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("save user config: %v", err)
+	}
+
+	projectRoot := t.TempDir()
+	projectConfig := `default_model = "deepseek-flash/deepseek-v4-flash"
+
+[desktop]
+provider_access = ["deepseek-flash"]
 `
 	if err := os.WriteFile(filepath.Join(projectRoot, "reasonix.toml"), []byte(projectConfig), 0o644); err != nil {
 		t.Fatalf("write project config: %v", err)

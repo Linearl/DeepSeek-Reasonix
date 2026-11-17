@@ -535,6 +535,13 @@ func TestSetDefaultModelRejectsProviderWithoutKey(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.Desktop.ProviderAccess = []string{"mimo-api"}
+	// tl1654 (round 3): the connection carries a real section here — the
+	// keyless gate must be exercised on a configured connection, not on one the
+	// loader rebuilds from the access list.
+	cfg.Providers = append(cfg.Providers, config.ProviderEntry{
+		Name: "mimo-api", Kind: "openai", BaseURL: "https://api.xiaomimimo.com/v1",
+		Model: "mimo-v2.5-pro", APIKeyEnv: "MIMO_API_KEY",
+	})
 	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
 		t.Fatalf("save config: %v", err)
 	}

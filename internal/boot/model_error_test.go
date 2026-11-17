@@ -91,7 +91,14 @@ default_model = "deepseek-flash"
 	t.Fatalf("expected a warning naming the ignored project model and user fallback; got %v", notices)
 }
 
-func TestBuildMigratesLegacyBareMimoModelOverride(t *testing.T) {
+// TestBuildRejectsDeletedProviderModelOverride (tl1654 round 3): an explicit
+// model override that names a deleted provider must fail loudly. The legacy
+// MiMo compatibility layer used to rebuild the connection from a bare model id
+// ("mimo-v2.5-pro" → "mimo-pro/..."), which kept a deleted provider alive and
+// dragged it into every new session. Callers that can fall back (the desktop
+// tab startup) resolve the ref BEFORE building and land the session on the
+// default model; boot itself never invents a connection.
+func TestBuildRejectsDeletedProviderModelOverride(t *testing.T) {
 	dir := robustTempDir(t)
 	fenceBootTestHistoryCatalog(t)
 	t.Chdir(dir)
@@ -107,12 +114,12 @@ api_key_env = "REASONIX_TEST_KEY_UNSET"
 `)
 
 	ctrl, err := Build(context.Background(), Options{Sink: event.Discard, Model: "mimo-v2.5-pro"})
-	if err != nil {
-		t.Fatalf("Build should migrate legacy bare MiMo model override: %v", err)
+	if err == nil {
+		ctrl.Close()
+		t.Fatal("Build must not rebuild a deleted provider for an explicit model override")
 	}
-	defer ctrl.Close()
-	if ctrl.Label() != "mimo-v2.5-pro" {
-		t.Fatalf("controller label = %q, want mimo-v2.5-pro", ctrl.Label())
+	if !strings.Contains(err.Error(), "mimo-v2.5-pro") {
+		t.Fatalf("Build error = %v, want it to name the unresolvable model", err)
 	}
 }
 

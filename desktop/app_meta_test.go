@@ -614,10 +614,22 @@ func TestModelsForTabOnlyListsProviderAccessWhenConfigured(t *testing.T) {
 
 	cfg := config.Default()
 	cfg.DefaultModel = "deepseek/deepseek-v4-flash"
-	cfg.Desktop.ProviderAccess = []string{"deepseek", "mimo-pro"}
+	cfg.Desktop.ProviderAccess = []string{"deepseek", "mimo-pro", "mimo-flash"}
 	cfg.Providers = append(cfg.Providers, config.ProviderEntry{
 		Name: "deepseek", Kind: "anthropic", BaseURL: "https://api.deepseek.com/anthropic",
 		Models: []string{"deepseek-v4-flash", "deepseek-v4-pro"}, Default: "deepseek-v4-flash", APIKeyEnv: "DEEPSEEK_API_KEY",
+	})
+	// tl1654 (round 3): the connections carry real sections here. The picker
+	// lists what the config actually declares — an access-list name with no
+	// section is a deleted connection and must not be rebuilt.
+	cfg.Providers = append(cfg.Providers, config.ProviderEntry{
+		Name: "mimo-pro", Kind: "openai", BaseURL: "https://token-plan-cn.xiaomimimo.com/v1",
+		Models: []string{"mimo-v2.5-pro", "mimo-v2.5"}, Default: "mimo-v2.5-pro", APIKeyEnv: "MIMO_API_KEY",
+	})
+	cfg.Providers = append(cfg.Providers, config.ProviderEntry{
+		Name: "mimo-flash", Kind: "openai", BaseURL: "https://token-plan-cn.xiaomimimo.com/v1",
+		Models: []string{"mimo-v2.5-pro", "mimo-v2.5"}, Default: "mimo-v2.5-pro", APIKeyEnv: "MIMO_API_KEY",
+		Hidden: true,
 	})
 	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
 		t.Fatalf("save config: %v", err)
@@ -637,6 +649,7 @@ func TestModelsForTabOnlyListsProviderAccessWhenConfigured(t *testing.T) {
 	}
 	for _, hidden := range []string{
 		"deepseek-pro/deepseek-v4-pro",
+		"mimo-flash/mimo-v2.5-pro",
 		"mimo-flash/mimo-v2.5",
 	} {
 		if refs[hidden] {

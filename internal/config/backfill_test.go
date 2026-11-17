@@ -1064,68 +1064,98 @@ func TestNormalizeOfficialDeepSeekModelsLeavesExternalEndpointUntouched(t *testi
 	}
 }
 
-func TestNormalizeLegacyMimoCustomProvidersEnsuresReferencedMimoAPI(t *testing.T) {
+// TestDeletedMimoProviderIsNotMaterializedFromAccessReference (tl1654 round 3):
+// a provider the user deleted stays deleted. The access list may still name it
+// — a project-level reasonix.toml entry the settings page can never rewrite —
+// but the loader must not bring the connection back. While it did, the deleted
+// "MiMo API" connection reappeared in the model picker (its label came from
+// the built-in vendor table) and pinned historical sessions to it.
+func TestDeletedMimoProviderIsNotMaterializedFromAccessReference(t *testing.T) {
 	c := Default()
-	c.DefaultModel = "mimo-api/mimo-v2.5-pro"
-	c.Desktop.ProviderAccess = []string{"mimo-api"}
-	if !normalizeLegacyMimoCustomProviders(c) {
-		t.Fatal("legacy MiMo migration did not report a change")
+	c.DefaultModel = "kept/kept-model"
+	c.Providers = []ProviderEntry{{
+		Name: "kept", Kind: "openai", BaseURL: "http://127.0.0.1:11434/v1",
+		Models: []string{"kept-model"},
+	}}
+	c.Desktop.ProviderAccess = []string{"kept", "mimo-api"}
+	normalizeLegacyMimoProviderCatalogs(c)
+	if _, ok := c.Provider("mimo-api"); ok {
+		t.Fatal("deleted mimo-api provider must not be materialized from a stale access reference")
 	}
-	p, ok := c.Provider("mimo-api")
-	if !ok {
-		t.Fatal("mimo-api paid provider missing")
+	if _, ok := c.ResolveModel("mimo-api/mimo-v2.5-pro"); ok {
+		t.Fatal("a deleted provider's model ref must not resolve")
 	}
-	if !p.HasModel("mimo-v2.5") || !p.HasModel("mimo-v2-omni") {
-		t.Fatalf("mimo-api models = %v, want vision-capable MiMo models", p.ModelList())
-	}
-	normalizeDesktopOfficialProviderAccess(c)
-	if got := c.Desktop.ProviderAccess; len(got) != 1 || got[0] != "mimo-api" {
-		t.Fatalf("provider_access = %+v, want mimo-api", got)
+	resolved, fallback, ok := c.ResolveModelWithFallback("mimo-api/mimo-v2.5-pro")
+	if !ok || !fallback || resolved != "kept/kept-model" {
+		t.Fatalf("ResolveModelWithFallback = %q (fallback=%v ok=%v), want kept/kept-model", resolved, fallback, ok)
 	}
 }
 
-func TestNormalizeLegacyMimoCustomProvidersRecognizesBareModelRefs(t *testing.T) {
+// TestDeletedMimoProviderIsNotMaterializedFromBareModelRef (tl1654 round 3):
+// a bare legacy MiMo model id in default_model must not conjure a connection
+// either — the deleted provider's refs land on the default model instead.
+func TestDeletedMimoProviderIsNotMaterializedFromBareModelRef(t *testing.T) {
 	c := Default()
 	c.DefaultModel = "mimo-v2.5-pro"
-	if !normalizeLegacyMimoCustomProviders(c) {
-		t.Fatal("legacy bare MiMo model migration did not report a change")
+	c.Providers = []ProviderEntry{{
+		Name: "kept", Kind: "openai", BaseURL: "http://127.0.0.1:11434/v1",
+		Models: []string{"kept-model"},
+	}}
+	normalizeLegacyMimoProviderCatalogs(c)
+	if _, ok := c.Provider("mimo-pro"); ok {
+		t.Fatal("a bare MiMo model ref must not materialize a mimo-pro provider")
 	}
-	p, ok := c.Provider("mimo-pro")
-	if !ok {
-		t.Fatal("mimo-pro provider missing")
-	}
-	if p.Model != "mimo-v2.5-pro" {
-		t.Fatalf("mimo-pro model = %q, want mimo-v2.5-pro", p.Model)
-	}
-	if e, ok := c.ResolveModel("mimo-v2.5-pro"); !ok || e.Name != "mimo-pro" {
-		t.Fatalf("bare MiMo model resolved to %+v/%v, want mimo-pro", e, ok)
+	if _, ok := c.ResolveModel("mimo-v2.5-pro"); ok {
+		t.Fatal("a bare MiMo model id must not resolve without a configured provider")
 	}
 }
 
-func TestNormalizeLegacyMimoCustomProvidersScansBotRefs(t *testing.T) {
+// TestDeletedMimoProviderIsNotMaterializedFromBotRefs (tl1654 round 3): the bot
+// model refs are no resurrection source either.
+func TestDeletedMimoProviderIsNotMaterializedFromBotRefs(t *testing.T) {
 	c := Default()
 	c.Bot.Model = "mimo-pro"
 	c.Bot.Connections = []BotConnectionConfig{{Model: "mimo-flash"}}
-	if !normalizeLegacyMimoCustomProviders(c) {
-		t.Fatal("legacy bot MiMo migration did not report a change")
+	normalizeLegacyMimoProviderCatalogs(c)
+	if _, ok := c.Provider("mimo-pro"); ok {
+		t.Fatal("mimo-pro provider must not be materialized from a bot ref")
 	}
-	if _, ok := c.Provider("mimo-pro"); !ok {
-		t.Fatal("mimo-pro provider missing")
-	}
-	if _, ok := c.Provider("mimo-flash"); !ok {
-		t.Fatal("mimo-flash provider missing")
+	if _, ok := c.Provider("mimo-flash"); ok {
+		t.Fatal("mimo-flash provider must not be materialized from a bot ref")
 	}
 }
 
-func TestNormalizeLegacyDesktopProviderAccessIncludesUnconfiguredMimoRefs(t *testing.T) {
+// TestNormalizeLegacyDesktopProviderAccessSkipsDeletedMimoRefs (tl1654 round
+// 3): the access seeding for pre-Settings configs may only name connections
+// that exist — a deleted MiMo provider must not re-enter the access list.
+func TestNormalizeLegacyDesktopProviderAccessSkipsDeletedMimoRefs(t *testing.T) {
 	c := Default()
 	c.DefaultModel = "mimo-pro"
 	c.Bot.Connections = []BotConnectionConfig{{Model: "mimo-flash"}}
-	normalizeLegacyMimoCustomProviders(c)
+	normalizeLegacyMimoProviderCatalogs(c)
 	NormalizeLegacyDesktopProviderAccess(c)
 	access := desktopProviderAccessMap(c.Desktop.ProviderAccess)
-	if !access["mimo-pro"] || !access["mimo-flash"] {
-		t.Fatalf("provider_access = %+v, want unconfigured migrated MiMo refs visible", c.Desktop.ProviderAccess)
+	if access["mimo-pro"] || access["mimo-flash"] {
+		t.Fatalf("provider_access = %+v, want deleted MiMo refs excluded", c.Desktop.ProviderAccess)
+	}
+}
+
+// TestLegacyMimoProviderKeepsCatalogRepairWhenConfigured (tl1654 round 3):
+// the compatibility repair that survives is the CATALOG repair for legacy MiMo
+// connections that are still configured — an entry saved without a model list
+// gets the legacy catalog back.
+func TestLegacyMimoProviderKeepsCatalogRepairWhenConfigured(t *testing.T) {
+	c := Default()
+	c.Providers = []ProviderEntry{{
+		Name: "mimo-api", Kind: "openai", BaseURL: "https://api.xiaomimimo.com/v1",
+	}}
+	normalizeLegacyMimoProviderCatalogs(c)
+	p, ok := c.Provider("mimo-api")
+	if !ok {
+		t.Fatal("configured mimo-api provider missing")
+	}
+	if !p.HasModel("mimo-v2.5") || !p.HasModel("mimo-v2-omni") {
+		t.Fatalf("mimo-api models = %v, want vision-capable MiMo models", p.ModelList())
 	}
 }
 

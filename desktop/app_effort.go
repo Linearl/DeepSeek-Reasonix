@@ -719,7 +719,9 @@ func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, e
 	}
 	mark("model")
 	resolveStart := time.Now()
-	config.NormalizeLegacyMimoCustomProvidersForRefs(cfg, ref)
+	// tl1654 (round 3): a ref naming a deleted provider no longer resurrects
+	// that connection — the fallback chain moves the request to the default
+	// model instead.
 	resolved, _, ok := cfg.ResolveModelWithFallback(ref)
 	if !ok {
 		return nil, fmt.Errorf("unknown model %q", ref)

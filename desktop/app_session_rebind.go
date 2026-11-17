@@ -485,8 +485,10 @@ func (a *App) buildSessionRebindCandidate(
 	}
 
 	model := strings.TrimSpace(source.model)
+	// tl1654 (round 3): a historical session ref naming a deleted provider no
+	// longer resurrects that connection; it simply stops resolving here and
+	// lands on the default model through the fallback chain below.
 	if sessionModel, ok := agent.LoadSessionModel(sessionPath); ok {
-		config.NormalizeLegacyMimoCustomProvidersForRefs(cfg, sessionModel)
 		if _, ok := cfg.ResolveModel(sessionModel); ok {
 			model = sessionModel
 		}
@@ -494,7 +496,6 @@ func (a *App) buildSessionRebindCandidate(
 	if model == "" {
 		model = cfg.DefaultModel
 	}
-	config.NormalizeLegacyMimoCustomProvidersForRefs(cfg, model)
 	if resolved, _, ok := cfg.ResolveModelWithFallback(model); ok {
 		model = resolved
 	}

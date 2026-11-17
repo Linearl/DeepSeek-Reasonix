@@ -4,7 +4,10 @@ import "reasonix/internal/config"
 
 func runtimeModelSettingsReader(root, modelName, modelRef string, settings *config.ModelRuntimeSettings) func() (string, error) {
 	return func() (string, error) {
-		current, err := config.LoadModelRuntimeSnapshot(root, modelName)
+		// tl1654 (round 3): the runtime snapshot no longer re-creates a deleted
+		// provider for the session's model ref — a session whose provider was
+		// removed runs on the default model instead.
+		current, err := config.LoadModelRuntimeSnapshot(root)
 		if err != nil {
 			return "", err
 		}
@@ -24,7 +27,6 @@ func runtimeImageCapabilityReader(root, modelName, snapshot string, settings *co
 		if err != nil {
 			return false
 		}
-		config.NormalizeLegacyMimoCustomProvidersForRefs(current, modelName)
 		return config.ModelCapabilitySnapshot(current, config.NewModelCapabilityResolver()) != snapshot
 	}
 }
