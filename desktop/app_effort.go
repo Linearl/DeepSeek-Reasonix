@@ -397,7 +397,24 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 	// swap) so background jobs survive the rebuild; nil/nil falls back to a
 	// fresh pair — pre-974 behavior.
 	handoffJobs, handoffLease := jobsHandoffFrom(oldCtrl)
-	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
+	// tl1660: feed the 363A runtime-reuse pool into the effort rebuild (same
+	// shape as the model-switch rebuild in app_model.go). An effort switch
+	// changes only the wire's reasoning depth — skill/command/hook discovery
+	// and the prompt re-scan are effort-independent, so the 20261117 incident's
+	// 14-30s builds (skills 8.5-13s + agent:tools 1.6-2.6s per boot: stage
+	// timings) are pure rediscovery tax. Acquire the OUTGOING generation's
+	// assembly (keyed by the tab's pre-switch root/model/effort identity, the
+	// one guaranteed warm once the tab has built); publish the fresh one under
+	// the post-switch identity. ReuseAssembly is nil when the gate is off or
+	// the pool is cold and the build is then byte-identical to the pre-tl1660
+	// one.
+	oldEffortKey := ""
+	if snap.effort != nil {
+		oldEffortKey = *snap.effort
+	}
+	reuseAssembly := a.acquireRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, snap.model, oldEffortKey))
+	buildSegmentStart := time.Now()
+	newCtrl, assembly, err := boot.BuildWithAssembly(a.bootContext(), boot.Options{
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      modelRef,
@@ -449,6 +466,13 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 		OnManageSessions:           a.AgentManageSessions,
 		// Keep the private temporary directory across effort switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
+		// tl1660: the reuse pair rides the embedded RuntimeReload (promoted
+		// names cannot appear in the outer literal — same shape as the
+		// model-switch and rebind chains).
+		RuntimeReload: boot.RuntimeReload{
+			ReuseAssembly: reuseAssembly,
+			PreviousPlan:  boot.FullReusePlan(),
+		},
 		// Task 974: the shared pair keeps background jobs alive across the swap.
 		Jobs:           handoffJobs,
 		WorkspaceLease: handoffLease,
@@ -456,8 +480,20 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 	if err != nil {
 		return nil, err
 	}
+	// tl1660: publish the freshly built assembly under the post-switch identity
+	// so the next effort switch (or any same-key rebuild) skips discovery too.
+	// No-op when the gate is off or the build reused without producing a new
+	// assembly.
+	a.storeRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, snap.model, effort), assembly)
 	a.bindControllerDisplayRecorder(newCtrl)
 	configureControllerRuntime(newCtrl, oldCtrl, runtime)
+	// tl1660: the build/swap boundary read — boot's stage timings cover only
+	// the build's interior and the caller's runtime-build-end line only the
+	// whole window, so the resume/swap half of a slow switch was attributable
+	// only by subtraction across two logs. One line closes it: swap_ms =
+	// runtime-build-end ms − build_ms. assembly_reused names whether the 363A
+	// pool served this build.
+	slog.Info("desktop: effort rebuild segments", "tab", tabID, "trigger", "set-effort", "build_ms", time.Since(buildSegmentStart).Milliseconds(), "shared_host_reused", sharedHost != nil, "assembly_reused", reuseAssembly != nil)
 	return newCtrl, nil
 }
 
