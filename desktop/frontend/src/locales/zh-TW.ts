@@ -5971,6 +5971,12 @@ export const zhTW: Record<DictKey, string> = {
   "context.projectionInvalidTitle": "投影失效中：讀數為未投影的全量記錄（{canonical}），下輪自動重建",
   // tl1656：降級視圖讀數低估真實占用 30% 以上——容量卡按壓縮判據的 canonical 實數顯示。
   "context.estimateUnderreadsTitle": "估算偏低：已按 canonical 實數顯示（{canonical}）；降級視圖只量到 {used}",
+  // tl1670：常態態（投影有效）——主讀數與全量記錄不是一把尺：主讀數是「下一
+  // 請求實際發送量」，全量記錄是整段歷史體積（壓縮只寫投影、歷史永不縮減，
+  // 不計入窗口占用）。主讀數保持發送量口徑，chip 把兩個數都擺出來，使用者才能
+  // 把面板讀數與日誌裡的 compaction src= 對上帳（20261117 18:34 現場）。
+  "context.historyVolumeLabel": "全量記錄 {canonical}",
+  "context.historyVolumeTitle": "口徑：主讀數 {used} = 下一請求實際發送量；全量記錄 {canonical} = 整段歷史體積（壓縮只寫投影，歷史永不縮減，不計入窗口占用）。日誌裡的 compaction src= 就是全量記錄這個數。",
   "context.readoutMeasured": "實測",
   "context.readoutEstimated": "估算",
   "context.readoutSourceTitle": "來源：實測=上次響應已校準估算；估算=新會話首輪/切 provider 首輪（尚無響應）",

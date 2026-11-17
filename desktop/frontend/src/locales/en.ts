@@ -5906,6 +5906,13 @@ export const en = {
   // tl1656: degraded-view readout understates the real occupancy by >30% - the gauge
   // shows the canonical figure the compaction trigger judges.
   "context.estimateUnderreadsTitle": "Estimate understates the real occupancy: showing the canonical figure ({canonical}); the degraded view only measured {used}",
+  // tl1670: normal (valid projection) state - the readout and the full record are
+  // two different calibers. The full record is the whole history (compaction
+  // writes projections only, history never shrinks); it does not count against
+  // the window, so the main readout stays on the payload caliber and this chip
+  // states both numbers so the panel can be reconciled with the logs.
+  "context.historyVolumeLabel": "Full record {canonical}",
+  "context.historyVolumeTitle": "Caliber: the readout {used} is what the next request actually sends; the full record {canonical} is the whole history (compaction writes projections only - history never shrinks and does not count against the window). The compaction src= in the logs is the full-record figure.",
   "context.readoutMeasured": "Measured",
   "context.readoutEstimated": "Estimated",
   "context.readoutSourceTitle": "Source: measured (last provider response calibrated the estimate) / estimated (first turn of a session or after a provider switch, before a response)",

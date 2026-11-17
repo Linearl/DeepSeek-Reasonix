@@ -11,9 +11,18 @@ import (
 // visible message, and status gauges redraw far more often than the view moves,
 // so it is keyed on everything that can change the answer: the transcript,
 // projection, calibration, and provider-visible tool schemas.
+//
+// tl1670: the compaction generation joins the key. A maintenance outcome
+// (fold applied / pass failed / pass blocked) advances the generation even
+// when the transcript and the projection version stay put — that is exactly
+// the moment the panel must not keep serving the pre-outcome estimate
+// ("压缩失败后读数保持不变" froze a stale number, 20261117 18:34 incident).
+// Generation only moves on a maintenance outcome, so the memo still collapses
+// the ordinary gauge redraws.
 type contextUsage struct {
 	transcriptVersion  uint64
 	projectionVersion  uint64
+	compactionGen      uint64
 	calibration        *promptTokenCalibration
 	tools              *tool.Registry
 	toolSchemaRevision uint64
@@ -45,6 +54,7 @@ func (a *Agent) ContextUsedTokens() int {
 	}
 	transcriptVersion := session.TranscriptVersion()
 	projectionVersion := a.currentProjectionVersion()
+	compactionGen := a.currentCompactionGeneration()
 	calibration := a.sess.output.promptCalibration.Load()
 	tools := a.svc.tools
 	toolSchemaRevision := tools.SchemaRevision()
@@ -52,6 +62,7 @@ func (a *Agent) ContextUsedTokens() int {
 	if cached := a.sess.output.contextUsage.Load(); cached != nil &&
 		cached.transcriptVersion == transcriptVersion &&
 		cached.projectionVersion == projectionVersion &&
+		cached.compactionGen == compactionGen &&
 		cached.calibration == calibration &&
 		cached.tools == tools &&
 		cached.toolSchemaRevision == toolSchemaRevision &&
@@ -66,6 +77,7 @@ func (a *Agent) ContextUsedTokens() int {
 	a.sess.output.contextUsage.Store(&contextUsage{
 		transcriptVersion:  transcriptVersion,
 		projectionVersion:  projectionVersion,
+		compactionGen:      compactionGen,
 		calibration:        calibration,
 		tools:              tools,
 		toolSchemaRevision: toolSchemaRevision,

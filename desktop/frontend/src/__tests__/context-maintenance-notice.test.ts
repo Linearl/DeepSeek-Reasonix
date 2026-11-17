@@ -78,10 +78,14 @@ ok(
   !contextPanelSource.includes("checkpointState"),
   "ContextPanel must not derive hidden checkpoint presentation state",
 );
+// tl1656 把 canonical 的取数从字面 `context?.maintenance?.canonicalTokens` 重构成
+// 先取 maintenanceInfo 再读 `maintenanceInfo?.canonicalTokens`——语义不变，钉按
+// 字面 grep 失配（基线 59f4eed299 即红，本件顺手把钉收成语义等价的两种写法）。
 ok(
   contextPanelSource.includes("context?.maintenance?.projectedTokens")
     && contextPanelSource.includes('t("context.projectionInvalidTitle"')
-    && contextPanelSource.includes("context.maintenance?.canonicalTokens"),
+    && (contextPanelSource.includes("context.maintenance?.canonicalTokens")
+      || contextPanelSource.includes("maintenanceInfo?.canonicalTokens")),
   "ContextPanel main readout uses projected tokens and labels projection-invalid state visibly (任务549)",
 );
 ok(

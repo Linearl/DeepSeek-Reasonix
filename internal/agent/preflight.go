@@ -145,6 +145,22 @@ func (a *Agent) currentProjectionVersion() uint64 {
 	return a.sess.compactionState.Projection.ProjectionVersion
 }
 
+// currentCompactionGeneration is the maintenance-domain generation counter
+// (tl1670). It advances on every maintenance outcome — a fold applied
+// (maintenance_commit.go), a pass failed or blocked (context_receipt.go
+// recordContextMaintenanceOutcome) — even when the transcript and the
+// projection version stay put. Consumers that memoise a context reading key
+// on it so a maintenance outcome always forces a fresh read instead of
+// serving the pre-outcome number.
+func (a *Agent) currentCompactionGeneration() uint64 {
+	if a == nil {
+		return 0
+	}
+	a.sess.compactionMu.Lock()
+	defer a.sess.compactionMu.Unlock()
+	return a.sess.compactionState.Generation
+}
+
 // currentPromptCacheKey is the lineage key for the bound session + model.
 func (a *Agent) currentPromptCacheKey() string {
 	if a == nil {
