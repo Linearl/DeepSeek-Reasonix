@@ -50,7 +50,17 @@ type compactionLiveMeter struct {
 	mu      sync.Mutex
 	active  bool
 	trigger string
+	// tl1657: the pass number riding the CompactionStarted event (任务 1021),
+	// so Progress emissions and the query face (CompactionLiveState) carry the
+	// same pass the frontend card was opened with.
+	pass    int
 	started time.Time
+	// tl1657: streamStarted latches the FIRST chunk. begin() records the pass
+	// open (queue + admission + provider TTFT can sit on it for minutes — the
+	// 20261117 09:40 incident: 101s from begin to the first chunk), while the
+	// tokens/sec figure must measure the streaming window alone or a queued
+	// pass reads as near-zero throughput forever.
+	streamStarted bool
 	// now is swappable for tests; real code never assigns it.
 	now func() time.Time
 
@@ -77,13 +87,16 @@ func (m *compactionLiveMeter) clock() time.Time {
 
 // begin opens the metering window for one compaction pass. Called right where
 // CompactionStarted is emitted; callers defer stop so every exit path
-// (success, abort, panic) closes the window.
-func (m *compactionLiveMeter) begin(trigger string) {
+// (success, abort, panic) closes the window. pass is the 任务 1021 pass number
+// the Started event carried (0 = legacy caller without a tracked pass).
+func (m *compactionLiveMeter) begin(trigger string, pass int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.active = true
 	m.trigger = trigger
+	m.pass = pass
 	m.started = m.clock()
+	m.streamStarted = false
 	m.chars = 0
 	m.done, m.total = 0, 0
 	m.hasLastEmit = false
@@ -103,6 +116,9 @@ func (m *compactionLiveMeter) stop() {
 
 // addOutput accumulates one summarizer stream chunk and reports whether the
 // throttle gate admits an emission now. No-op unless a pass is active.
+// tl1657: the first chunk also latches the streaming window start — the tps
+// denominator must exclude the queue/admission/TTFT stretch before the first
+// token (the 20261117 101s-quiet incident).
 func (m *compactionLiveMeter) addOutput(text string) bool {
 	if text == "" {
 		return false
@@ -111,6 +127,10 @@ func (m *compactionLiveMeter) addOutput(text string) bool {
 	defer m.mu.Unlock()
 	if !m.active {
 		return false
+	}
+	if !m.streamStarted {
+		m.streamStarted = true
+		m.started = m.clock()
 	}
 	m.chars += utf8.RuneCountInString(text)
 	return m.tryEmitLocked(true)
@@ -139,11 +159,20 @@ func (m *compactionLiveMeter) setFoldProgress(done, total int) bool {
 // transitions pass respectInterval=false — bounded by maxChunkedSummaryCalls,
 // they must reach the card immediately, including the final N/M after the
 // last fragment). Callers hold m.mu.
+//
+// tl1657 zero-suppression: an all-invisible snapshot (tokens=0 — fewer than
+// compactionLiveCharsPerToken runes so far — and no fold progress 0/0) never
+// emits, including as the FIRST emission. The 20261117 incident's first and
+// only emission was exactly that all-zero shape: it burned the throttled slot
+// on a readout every frontend hides anyway (wire contract: 0 = "not emitted
+// yet") and the queued pass then stayed silent for its whole streaming tail.
+// Once visible, snapshots never regress (chars only grow), so the plain
+// changed-check takes over.
 func (m *compactionLiveMeter) tryEmitLocked(respectInterval bool) bool {
 	now := m.clock()
-	changed := !m.hasLastEmit ||
-		m.chars != m.lastEmitChars || m.done != m.lastEmitDone || m.total != m.lastEmitTotal
-	if !changed {
+	changed := m.chars != m.lastEmitChars || m.done != m.lastEmitDone || m.total != m.lastEmitTotal
+	invisible := m.chars < compactionLiveCharsPerToken && m.done == 0 && m.total == 0
+	if !changed || invisible {
 		return false
 	}
 	if respectInterval && m.hasLastEmit && now.Sub(m.lastEmit) < compactionLiveEmitInterval {
@@ -159,6 +188,7 @@ func (m *compactionLiveMeter) tryEmitLocked(respectInterval bool) bool {
 // compactionLiveReadout is a wire-ready snapshot of the meter.
 type compactionLiveReadout struct {
 	Trigger      string
+	Pass         int
 	Tokens       int
 	TokensPerSec int
 	Done         int
@@ -179,6 +209,7 @@ func (m *compactionLiveMeter) snapshot() (compactionLiveReadout, bool) {
 	}
 	return compactionLiveReadout{
 		Trigger:      m.trigger,
+		Pass:         m.pass,
 		Tokens:       tokens,
 		TokensPerSec: tps,
 		Done:         m.done,
@@ -187,7 +218,7 @@ func (m *compactionLiveMeter) snapshot() (compactionLiveReadout, bool) {
 }
 
 // compactionLiveBegin opens the metering window at a CompactionStarted emit.
-func (a *Agent) compactionLiveBegin(trigger string) { a.compactionLive.begin(trigger) }
+func (a *Agent) compactionLiveBegin(trigger string, pass int) { a.compactionLive.begin(trigger, pass) }
 
 // compactionLiveStop closes the window; callers defer it next to begin so
 // Done, aborts, and panics all seal the pass.
@@ -208,11 +239,50 @@ func (a *Agent) CompactionRunning() bool {
 	return a.compactionLive.active
 }
 
+// CompactionLiveState is the query face for the desktop pending-card
+// reconciliation (tl1657): a frontend that attached AFTER the pass opened
+// (a resume-triggered compaction racing the webview's first subscription)
+// missed CompactionStarted, so every CompactionProgress lands on no pending
+// card and is dropped. The frontend polls this once per tab refresh and
+// synthesizes the card when Running. All fields are the meter's own readout
+// (same values the Progress wire carries).
+type CompactionLiveState struct {
+	Running      bool
+	Trigger      string
+	Pass         int
+	Tokens       int
+	TokensPerSec int
+	Done         int
+	Total        int
+}
+
+// CompactionLiveState snapshots the in-flight pass; Running=false (no pass)
+// means there is nothing to reconcile and the caller builds no card — a pass
+// that already ended is terminal history, not a live card.
+func (a *Agent) CompactionLiveState() CompactionLiveState {
+	if a == nil {
+		return CompactionLiveState{}
+	}
+	readout, ok := a.compactionLive.snapshot()
+	if !ok {
+		return CompactionLiveState{}
+	}
+	return CompactionLiveState{
+		Running:      true,
+		Trigger:      readout.Trigger,
+		Pass:         readout.Pass,
+		Tokens:       readout.Tokens,
+		TokensPerSec: readout.TokensPerSec,
+		Done:         readout.Done,
+		Total:        readout.Total,
+	}
+}
+
 // CompactionLiveBeginForTest / CompactionLiveStopForTest drive the meter
 // window directly, same convention as SetSessionReplayLimitsForTest — the
 // turn-stall watchdog test (control) needs a live pass without staging a real
 // compaction request.
-func (a *Agent) CompactionLiveBeginForTest(trigger string) { a.compactionLiveBegin(trigger) }
+func (a *Agent) CompactionLiveBeginForTest(trigger string) { a.compactionLiveBegin(trigger, 0) }
 
 func (a *Agent) CompactionLiveStopForTest() { a.compactionLiveStop() }
 
@@ -252,10 +322,11 @@ func (a *Agent) emitCompactionLiveProgress() {
 	// （meter 不跟踪 pass），故以 trigger+fold N/M 关联两端。回收候裁：
 	// 定位后转正式观测或随诊断件纪律删除。
 	slog.Info("agent: compaction progress emit", "trigger", readout.Trigger,
+		"pass", readout.Pass,
 		"tokens", readout.Tokens, "tokens_per_sec", readout.TokensPerSec,
 		"fold_done", readout.Done, "fold_total", readout.Total)
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionProgress, Compaction: event.Compaction{
-		Trigger: readout.Trigger, Done: readout.Done, Total: readout.Total,
+		Trigger: readout.Trigger, Pass: readout.Pass, Done: readout.Done, Total: readout.Total,
 		Tokens: readout.Tokens, TokensPerSec: readout.TokensPerSec,
 	}})
 }

@@ -269,7 +269,9 @@ func (a *Agent) compressVisibleRange(
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger, Pass: int(pass)}})
 	// 任务 556: meter the pass from Started to every exit (defer covers Done,
 	// aborts, panics) so live readout events never outlive the pending card.
-	a.compactionLiveBegin(trigger)
+	// tl1657: the meter carries the pass so Progress emissions and the
+	// CompactionLiveState query face match the card the frontend opened.
+	a.compactionLiveBegin(trigger, int(pass))
 	defer a.compactionLiveStop()
 	prepared, reason, err := a.prepareVisibleCompression(ctx, trigger, plan.fold, instructions, inputMode)
 	if err != nil {
@@ -1127,7 +1129,9 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger, Pass: int(pass)}})
 	// 任务 556: meter the pass from Started to every exit (defer covers Done,
 	// aborts, panics) so live readout events never outlive the pending card.
-	a.compactionLiveBegin(trigger)
+	// tl1657: the meter carries the pass so Progress emissions and the
+	// CompactionLiveState query face match the card the frontend opened.
+	a.compactionLiveBegin(trigger, int(pass))
 	defer a.compactionLiveStop()
 	// Task 303: phase 1/3 of the compaction slog trail (start → fold/summary →
 	// done). Token fields live in the done log where the counters exist.

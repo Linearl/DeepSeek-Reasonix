@@ -82,6 +82,7 @@ import type {
   CommandInfo,
   ControlResult,
   ContextInfo,
+  CompactionStateView,
   ContextPanelInfo,
   DirEntry,
   DesktopStartupSettingsView,
@@ -1505,6 +1506,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RemoveWorkspace(path: string): Promise<void>;
   ContextUsage(): Promise<ContextInfo>;
   ContextUsageForTab(tabID: string): Promise<ContextInfo>;
+  // tl1657: in-flight compaction pass snapshot for pending-card reconciliation —
+  // a pass that opened before the webview attached (resume-triggered compaction)
+  // never delivered CompactionStarted, so the refresh batch polls this and
+  // synthesizes the card. running=false → build nothing.
+  CompactionStateForTab(tabID: string): Promise<CompactionStateView>;
   Balance(): Promise<BalanceInfo>;
   BalanceForTab(tabID: string): Promise<BalanceInfo>;
   UsageStats(req: UsageStatsRequest): Promise<UsageStatsRange>;
@@ -5827,6 +5833,10 @@ function makeMockApp(): AppBindings {
         },
         async ContextUsageForTab() {
           return this.ContextUsage();
+        },
+        async CompactionStateForTab() {
+          // Browser dev mock has no compaction pass; nothing to reconcile.
+          return { running: false, trigger: "", pass: 0, tokens: 0, tokensPerSec: 0, done: 0, total: 0 };
         },
         async Balance() {
       // Mirror the active mock provider: deepseek-flash carries a balance_url.

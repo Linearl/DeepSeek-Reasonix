@@ -278,7 +278,9 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	// 门槛全过:开一段自己的压缩 pass(事件配对从这里开始)。
 	pass := a.sess.compactionSessionPass.Add(1)
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger, Pass: int(pass)}})
-	a.compactionLiveBegin(trigger)
+	// tl1657: meter 携带 pass 号——Progress 事件与 CompactionLiveState 查询面
+	// 同 Started 卡片对齐。
+	a.compactionLiveBegin(trigger, int(pass))
 	defer a.compactionLiveStop()
 
 	if a.svc.hooks != nil {
