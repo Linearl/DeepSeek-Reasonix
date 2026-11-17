@@ -18,18 +18,6 @@ import (
 
 const deepSeekOfficialBalanceURL = "https://api.deepseek.com/user/balance"
 
-// MigrateLegacyDeepSeekProtocolUserConfig upgrades only unmodified legacy
-// DeepSeek provider aliases in the user-global config. It deliberately edits
-// the original TOML in place instead of rendering Config, so comments, future
-// fields, and unrelated provider blocks survive byte-for-byte.
-func MigrateLegacyDeepSeekProtocolUserConfig() (bool, error) {
-	path := userConfigLoadPath()
-	if strings.TrimSpace(path) == "" {
-		return false, nil
-	}
-	return editLegacyDeepSeekProtocolFile(path, "", true)
-}
-
 // IsDeepSeekProtocolConfigParseError reports whether migration failed while
 // parsing the user configuration rather than reading, locking, or writing it.
 func IsDeepSeekProtocolConfigParseError(err error) bool {
@@ -45,7 +33,7 @@ func UpgradeDeepSeekProviderProtocol(path, name string) (bool, error) {
 	if name == "" {
 		return false, fmt.Errorf("upgrade DeepSeek protocol: empty provider name")
 	}
-	return editLegacyDeepSeekProtocolFile(path, name, false)
+	return editLegacyDeepSeekProtocolFile(path, name)
 }
 
 // UpgradeDeepSeekProviderProtocolUserConfig applies the explicit upgrade to
@@ -72,7 +60,7 @@ func CanUpgradeDeepSeekProviderProtocolUserConfig(name string) bool {
 	if err != nil {
 		return false
 	}
-	_, changed, err := rewriteLegacyDeepSeekProtocol(string(raw), name, false)
+	_, changed, err := rewriteLegacyDeepSeekProtocol(string(raw), name)
 	return err == nil && changed
 }
 
@@ -108,22 +96,22 @@ func CanUpgradeDeepSeekProviderProtocol(p *ProviderEntry) bool {
 	}
 }
 
-func editLegacyDeepSeekProtocolFile(path, target string, automatic bool) (bool, error) {
+func editLegacyDeepSeekProtocolFile(path, target string) (bool, error) {
 	unlock, err := LockConfigFileEdits(path)
 	if err != nil {
 		return false, err
 	}
 	defer unlock()
-	return editLegacyDeepSeekProtocolFileLocked(path, target, automatic)
+	return editLegacyDeepSeekProtocolFileLocked(path, target)
 }
 
 // UpgradeDeepSeekProviderProtocolLocked is the narrow edit for a caller that
 // already owns LockUserConfigEdits, including a compare-and-save transaction.
 func UpgradeDeepSeekProviderProtocolLocked(path, name string) (bool, error) {
-	return editLegacyDeepSeekProtocolFileLocked(path, name, false)
+	return editLegacyDeepSeekProtocolFileLocked(path, name)
 }
 
-func editLegacyDeepSeekProtocolFileLocked(path, target string, automatic bool) (bool, error) {
+func editLegacyDeepSeekProtocolFileLocked(path, target string) (bool, error) {
 	resolved, exists, err := statConfigPath(path)
 	if err != nil || !exists {
 		return false, err
@@ -138,7 +126,7 @@ func editLegacyDeepSeekProtocolFileLocked(path, target string, automatic bool) (
 	}
 	encoding, detected := fileencoding.Detect(rawBytes)
 	raw := fileencoding.Decode(detected, encoding)
-	next, changed, err := rewriteLegacyDeepSeekProtocol(string(raw), target, automatic)
+	next, changed, err := rewriteLegacyDeepSeekProtocol(string(raw), target)
 	if err != nil || !changed {
 		return changed, err
 	}
@@ -148,28 +136,13 @@ func editLegacyDeepSeekProtocolFileLocked(path, target string, automatic bool) (
 	return true, nil
 }
 
-func rewriteLegacyDeepSeekProtocol(raw, target string, automatic bool) (string, bool, error) {
-	// Retained for compatibility callers; current startup no longer invokes
-	// the old automatic Messages migration, and v8 choices must stay untouched.
-	if automatic {
-		var header struct {
-			ConfigVersion int `toml:"config_version"`
-		}
-		if _, err := toml.Decode(raw, &header); err != nil {
-			return raw, false, err
-		}
-		if header.ConfigVersion >= deepSeekChatDefaultConfigVersion {
-			return raw, false, nil
-		}
-	}
-	return rewriteDeepSeekProtocol(raw, "anthropic", deepSeekAnthropicBaseURL, func(entry *ProviderEntry, fields map[string]any) bool {
-		if !CanUpgradeDeepSeekProviderProtocol(entry) {
-			return false
-		}
-		if automatic {
-			return isUnmodifiedLegacyDeepSeekProvider(*entry, fields)
-		}
-		return deepSeekUpgradeTargetMatches(target, entry.Name)
+// rewriteLegacyDeepSeekProtocol applies the explicit (Settings-triggered)
+// protocol upgrade to raw TOML: eligible official openai-transport provider
+// blocks matching the target family switch to the Anthropic Messages endpoint
+// while comments, unknown fields and unrelated blocks survive byte-for-byte.
+func rewriteLegacyDeepSeekProtocol(raw, target string) (string, bool, error) {
+	return rewriteDeepSeekProtocol(raw, "anthropic", deepSeekAnthropicBaseURL, func(entry *ProviderEntry, _ map[string]any) bool {
+		return CanUpgradeDeepSeekProviderProtocol(entry) && deepSeekUpgradeTargetMatches(target, entry.Name)
 	})
 }
 
@@ -237,43 +210,6 @@ func rewriteDeepSeekProtocol(raw, kind, baseURL string, eligible func(*ProviderE
 	return applyTOMLReplacements(raw, replacements), true, nil
 }
 
-func isUnmodifiedLegacyDeepSeekProvider(p ProviderEntry, raw map[string]any) bool {
-	if p.Name != "deepseek-flash" && p.Name != "deepseek-pro" {
-		return false
-	}
-	if !isExactDeepSeekOpenAIEndpoint(p.BaseURL) {
-		return false
-	}
-	// Automatic migration is intentionally narrower than the explicit Settings
-	// upgrade: only the stock environment variable is unambiguous enough to
-	// change without user confirmation.
-	if strings.TrimSpace(p.APIKeyEnv) != "DEEPSEEK_API_KEY" {
-		return false
-	}
-	allowed := map[string]bool{
-		"name": true, "kind": true, "base_url": true, "model": true,
-		"api_key_env": true, "balance_url": true, "context_window": true,
-		"price": true,
-	}
-	for key := range raw {
-		if !allowed[key] {
-			return false
-		}
-	}
-	for _, required := range []string{"name", "kind", "base_url", "model", "api_key_env"} {
-		if _, ok := raw[required]; !ok {
-			return false
-		}
-	}
-	if p.BalanceURL != "" && strings.TrimRight(strings.TrimSpace(p.BalanceURL), "/") != deepSeekOfficialBalanceURL {
-		return false
-	}
-	if p.ContextWindow != 0 && p.ContextWindow != 1_000_000 {
-		return false
-	}
-	return p.Price == nil || IsKnownDeepSeekOfficialPricing(p.Model, p.Price)
-}
-
 func deepSeekUpgradeTargetMatches(target, providerName string) bool {
 	target = strings.TrimSpace(target)
 	providerName = strings.TrimSpace(providerName)
@@ -284,11 +220,6 @@ func deepSeekUpgradeTargetMatches(target, providerName string) bool {
 		return false
 	}
 	return CanonicalDesktopOfficialProviderName(providerName) == "deepseek"
-}
-
-func isExactDeepSeekOpenAIEndpoint(raw string) bool {
-	path, ok := deepSeekOpenAIEndpointPath(raw)
-	return ok && path == ""
 }
 
 func isOfficialDeepSeekOpenAIEndpoint(raw string) bool {
