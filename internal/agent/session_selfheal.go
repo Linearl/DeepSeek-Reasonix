@@ -450,6 +450,19 @@ func writeJSONLCheckpointAtomic(path string, msgs []provider.Message, times []ti
 // messages into one local placeholder, then persists the dieted transcript
 // through the CAS-protected compact rewrite. actions is nil when the
 // projection already fits (nothing to do — the caller reports skipped).
+//
+// tl1651 主修②: a diet shrinks the canonical transcript while the context
+// sidecar keeps its pre-diet CoveredCount — the fold commit (RewriteAndSaveCompact)
+// only rewrites the transcript. The stale sidecar then fails its next resume
+// validation on covered_count_overflow (covered=389 vs canonical=54, the
+// 20261117 incident reading) and the projection is discarded through the
+// *accidental* path: a WARN, a kicked rebuild, and one full-canonical episode
+// the diet's placeholder was supposed to have prevented. The fold commit here
+// therefore retires the sidecar itself, symmetrically to the open-session
+// heal's InvalidateProjectionIfStale (tl1601). No migration is attempted: a
+// dieted canonical cannot re-anchor an old covered count, and serving the old
+// body would pin canonical[covered:] empty — new turns past the fold would
+// never reach the wire.
 func dietSessionProjection(ctx context.Context, path string, windowTokens int) (actions []SelfHealAction, skipDetail string) {
 	if windowTokens <= 0 {
 		windowTokens = defaultHealthWindowTokens
@@ -480,7 +493,46 @@ func dietSessionProjection(ctx context.Context, path string, windowTokens int) (
 		}
 		return acts, ""
 	}
+	// tl1651 主修②: acts now reflects the IN-LOCK fold (the closure above
+	// reassigns it), so a done strip/fold proves the committed transcript is
+	// the dieted shape. Retire the stale sidecar inside the same call — the
+	// next resume rebuilds from the small canonical instead of tripping
+	// covered_count_overflow on a page count that no longer exists.
+	if dietFoldCommitted(acts) {
+		if err := RemoveCompactionState(path); err != nil {
+			slog.Warn("agent: remove context projection after diet", "path", path, "err", err)
+		}
+		slog.Info("agent: context projection invalidated by diet",
+			"writer", SessionWriterID(),
+			"path", path,
+			"reason", "selfheal_diet",
+			"actions", selfHealDoneActions(acts))
+	}
 	return acts, ""
+}
+
+// dietFoldCommitted reports whether the recorded diet actions prove the
+// committed transcript is the dieted shape (a done strip or a done fold).
+// Same criterion as detectHydrateStillOverWindow's dietRan check, so the two
+// diet verdicts can never drift.
+func dietFoldCommitted(acts []SelfHealAction) bool {
+	for _, a := range acts {
+		if a.Status == "done" && (a.Action == HealActionStripImages || a.Action == HealActionFold) {
+			return true
+		}
+	}
+	return false
+}
+
+// selfHealDoneActions lists the action names that actually ran, for logs.
+func selfHealDoneActions(acts []SelfHealAction) []string {
+	out := make([]string, 0, len(acts))
+	for _, a := range acts {
+		if a.Status == "done" {
+			out = append(out, a.Action)
+		}
+	}
+	return out
 }
 
 // DietSessionMessages is the pure-local projection diet as a pure function:

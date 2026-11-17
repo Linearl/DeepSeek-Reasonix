@@ -232,8 +232,15 @@ func LoadCompactionState(sessionPath string) (CompactionState, bool, error) {
 	// exactly the sequence the 20261116 restart incident needs to reconstruct.
 	// Debug level: the caller-level restored/drop lines already carry the
 	// verdict; this stamps the raw read with the on-disk sidecar's own state.
+	// tl1651 主修①: the read path itself is stamped too — the 20261117
+	// "sidecar_updated_at=2026-10-26 in a session created 2026-11-15" incident
+	// could not name WHICH file served the stale reading. The load path is
+	// deterministic (SessionContext of the bound transcript — backups/recovery
+	// copies are never consulted; pinned by TestTL1651R1BackupSidecarNotRead),
+	// so the logged path doubles as the source-of-truth audit trail.
 	slog.Debug("agent: context sidecar loaded",
 		"writer", SessionWriterID(),
+		"path", path,
 		"schema_version", st.SchemaVersion,
 		"projection_version", st.Projection.ProjectionVersion,
 		"covered_count", st.Projection.CoveredCount,
@@ -593,6 +600,74 @@ func migrateLegacyCoveredPrefixHash(st *CompactionState, current, preRepair []pr
 		receipt.CoveredPrefixHash = currentHash
 		st.LastReceipt = &receipt
 	}
+	return true
+}
+
+// migrateLoadRepairedPrefixHash (tl1651 修复③ / 候选 A1) gives the
+// load-repair rewrite a legitimate migration lane, symmetric to
+// migrateLegacyCoveredPrefixHash. On an auto-resume, LoadSession's
+// NormalizeSession rewrites provider-visible bytes of an interrupted turn; a
+// sidecar sealed against the pre-repair bytes then fails first-load
+// verification (hash_mismatch) and used to be discarded wholesale — the
+// 20261116 incident's 1.21M-token full-canonical fallback. When the diagnosis
+// proves the rewrite was THIS load's deterministic repair, re-anchoring the
+// stored hash to the repaired transcript is safe.
+//
+// The gates are deliberately strict:
+//  1. B1 attribution gate — the stored hash must equal the PRE-REPAIR disk
+//     prefix. A third-party prefix rewrite (the tl1644 silent-rewrite family)
+//     changes the on-disk bytes themselves, so the stored hash no longer
+//     matches what this load read and the gate fails closed: real rewrites are
+//     never legalized into a migrated fold.
+//  2. Shared-prefix gate — the FIRST sanitized message must fingerprint
+//     identically on both sides. LoadSession repairs never touch the leading
+//     identity header; a mismatch there means the "repair" reshaped the
+//     conversation's head, and migration refuses.
+//
+// On success the sidecar hash, the per-message diagnostic corpus, and a
+// matching last receipt are all repointed at the repaired transcript, and the
+// migration is logged (it carries the covered count — the repair-migrated
+// fold then serves the wire instead of forcing a rebuild).
+func migrateLoadRepairedPrefixHash(st *CompactionState, current, preRepair []provider.Message) bool {
+	if st == nil || len(preRepair) == 0 {
+		return false
+	}
+	n := st.Projection.CoveredCount
+	if n <= 0 || n > len(current) || n > len(preRepair) {
+		return false
+	}
+	stored := st.Projection.CoveredPrefixHash
+	if stored == "" || stored != coveredPrefixHash(preRepair, n) {
+		slog.Debug("agent: load-repair migration gate closed",
+			"writer", SessionWriterID(),
+			"gate", "b1_stored_matches_pre_repair",
+			"covered_count", n)
+		return false
+	}
+	currentHash := coveredPrefixHash(current, n)
+	if currentHash == "" || currentHash == stored {
+		return false
+	}
+	preFP := coveredMessageFingerprints(preRepair, n)
+	curFP := coveredMessageFingerprints(current, n)
+	if len(preFP) == 0 || len(curFP) == 0 || preFP[0] != curFP[0] {
+		slog.Debug("agent: load-repair migration gate closed",
+			"writer", SessionWriterID(),
+			"gate", "shared_first_fingerprint",
+			"covered_count", n)
+		return false
+	}
+	st.Projection.CoveredPrefixHash = currentHash
+	st.Projection.CoveredMessageHashes = coveredMessageFingerprints(current, n)
+	if st.LastReceipt != nil && st.LastReceipt.CoveredPrefixHash == stored {
+		receipt := *st.LastReceipt
+		receipt.CoveredPrefixHash = currentHash
+		st.LastReceipt = &receipt
+	}
+	slog.Info("agent: load-repaired covered prefix migrated",
+		"writer", SessionWriterID(),
+		"covered_count", n,
+		"msgs", len(current))
 	return true
 }
 
