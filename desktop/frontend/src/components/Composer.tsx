@@ -672,6 +672,11 @@ export function Composer({
   submitDisabled = false,
   submitDisabledReason,
   readOnly = false,
+  // tl1664: custom copy for the read-only state — the channel's default
+  // ("渠道会话只读") does not describe the subagent replay surface; the
+  // caller supplies the accurate reason when it flips readOnly for its own
+  // surface. Undefined keeps the default byte-for-byte.
+  readOnlyNotice,
   decisionPending = false,
   ready,
   turnStartAt,
@@ -822,6 +827,10 @@ export function Composer({
   submitDisabled?: boolean;
   submitDisabledReason?: string;
   readOnly?: boolean;
+  /** tl1664: overrides the read-only copy (placeholder / blocked-reason /
+   *  submit hint) when the read-only state belongs to a caller-owned surface
+   *  rather than the read-only channel. */
+  readOnlyNotice?: string;
   decisionPending?: boolean;
   // ready/cwd/running/workspaceScopeKey re-trigger the command fetch: Commands() returns only
   // built-ins until boot.Build finishes (the controller, hence skills/custom/MCP,
@@ -3091,7 +3100,7 @@ export function Composer({
       // Never swallow a deliberate send: the button is already disabled for these
       // states, so reaching here means Enter was pressed - say why instead.
       const blockedReason = readOnly
-        ? t("composer.readOnlyChannel")
+        ? (readOnlyNotice || t("composer.readOnlyChannel"))
         : disabled
           ? t("composer.blockedDisabled")
           : submitDisabledReason;
@@ -5445,7 +5454,7 @@ export function Composer({
   // supported" (reported 2026-09-15). Read-only wins because it explains the tab, not
   // the moment.
   const submitUnavailableHint = readOnly
-    ? t("composer.readOnlyChannel")
+    ? (readOnlyNotice || t("composer.readOnlyChannel"))
     : !running && submitDisabled
       ? submitDisabledReason
       : undefined;
@@ -5453,7 +5462,7 @@ export function Composer({
     ? t("composer.queueGuidance", { combo: sendComboLabel })
     : t("composer.send", { combo: sendComboLabel });
   const composerPlaceholder = readOnly
-    ? t("composer.readOnlyChannel")
+    ? (readOnlyNotice || t("composer.readOnlyChannel"))
     : disabled
       ? t("common.loading")
       : queuedFollowup

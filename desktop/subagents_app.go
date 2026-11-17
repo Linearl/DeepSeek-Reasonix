@@ -45,6 +45,13 @@ type SubagentArtifactView struct {
 	Description   string `json:"description,omitempty"`
 	Model         string `json:"model,omitempty"`
 	ParentSession string `json:"parentSession,omitempty"`
+	// ParentToolCallID (tl1664) is the dispatch call id under which the parent
+	// transcript re-parents the child's tool events (nested_sink). The dock
+	// dedupes the running sidecar row against the transcript card by it: a
+	// card that has not latched the progress ref yet (dispatch → first
+	// progress event window) and its sidecar twin used to count twice, and
+	// the count snapped back to one only when the card ended.
+	ParentToolCallID string `json:"parentToolCallId,omitempty"`
 	// HasTranscript reports whether the <ref>.jsonl transcript exists on
 	// disk. A meta can survive without its transcript after a crash; such
 	// entries are listed but not openable.
@@ -101,10 +108,11 @@ func (a *App) ListSubagentsByParent(sessionPath string) ([]SubagentArtifactView,
 			Kind:          artifact.Meta.Kind,
 			Name:          artifact.Meta.Name,
 			Description:   artifact.Meta.Description,
-			Model:         artifact.Meta.Model,
-			ParentSession: artifact.Meta.ParentSession,
-			HasTranscript: statErr == nil,
-			PendingMail:   mailHub.PendingCount(artifact.Ref),
+			Model:            artifact.Meta.Model,
+			ParentSession:    artifact.Meta.ParentSession,
+			ParentToolCallID: artifact.Meta.ParentToolCallID,
+			HasTranscript:    statErr == nil,
+			PendingMail:      mailHub.PendingCount(artifact.Ref),
 		})
 	}
 	return out, nil

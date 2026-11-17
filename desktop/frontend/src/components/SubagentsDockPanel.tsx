@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   Ban,
@@ -11,10 +12,12 @@ import {
   FoldHorizontal,
   HeartPulse,
   LoaderCircle,
+  Maximize2,
   Play,
   Square,
   TerminalSquare,
   UnfoldHorizontal,
+  X,
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
 import { formatDurationLabel } from "../lib/durationFormat";
@@ -37,6 +40,7 @@ import type { HistoryMessage, JobOutputView, JobView } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
   SUBAGENTS_PERSISTED_POLL_MS,
+  isBareSubagentToolName,
   isSubagentEntrySilent,
   mergeEndedSubagentRecords,
   mergePersistedRunningSubagents,
@@ -120,13 +124,33 @@ const EMPTY_LIVE_TOOLS_MAP: ReadonlyMap<string, SubagentDirectoryItem[]> = new M
 //   component state only — nothing is persisted, a restart lands back on the
 //   list (the progress preview itself is never on disk).
 
+// tl1664: the row title chain — dispatch subject, then the args-derived
+// one-liner, then a resolved name, then a NON-bare tool/profile name. A bare
+// name ("task") identifies nothing, so it yields "" and the row renders the
+// unnamed fallback (「子代理 · <start time>」) instead of a column of
+// identical titles.
 function rowTitle(entry: SubagentDirectoryEntry): string {
   const item = entry.item;
-  return item.subject || subjectOf(item.name, item.args) || item.resolvedName || item.name;
+  const named = item.subject || subjectOf(item.name, item.args) || item.resolvedName;
+  if (named) return named;
+  return isBareSubagentToolName(item.name) ? "" : item.name;
 }
 
+// tl1664: the unnamed fallback — the start clock when known, a bare
+// "subagent" otherwise. Never fabricated detail: just a distinguishable
+// identity for rows that carry no label at all.
+function rowTitleFallback(entry: SubagentDirectoryEntry, t: ReturnType<typeof useT>): string {
+  const clock = entryStartedClock(entry);
+  return clock ? t("subagentPanel.unnamedAt", { time: clock }) : t("subagentPanel.unnamed");
+}
+
+// tl1677 缺陷④: 状态单一生真源。运行行的「现在相位」是活状态（running/
+// reasoning/tool/…）；已结束行只剩终局——status 是唯一权威。此前任何行只要
+// 残留一个 phase 就优先显示，而 tool_result 只翻转 status 不清 progress 相位
+// （useController tool_result 分支），一张已结束卡残留最后一个运行中相位就在
+// 「已结束」组里读「运行中」。非运行行一律走 status 映射。
 function statusLabelKey(entry: SubagentDirectoryEntry): DictKey {
-  if (entry.phase) return `subagent.phase.${entry.phase}` as DictKey;
+  if (entry.running && entry.phase) return `subagent.phase.${entry.phase}` as DictKey;
   switch (entry.status) {
     case "done": return "subagent.phase.completed";
     case "error": return "subagent.phase.failed";
@@ -150,8 +174,15 @@ function StatusIcon({ entry }: { entry: SubagentDirectoryEntry }) {
   return <CheckCircle2 size={13} aria-hidden="true" className="subagents-panel__icon subagents-panel__icon--done" />;
 }
 
-function entryDurationSeconds(entry: SubagentDirectoryEntry): number {
+// tl1677 缺陷②: 运行行的时长接墙钟——节点事件之间的间隙里 durationMs 冻结
+// 在最后一次进度推送（用户读作「进度不实时」）。有 startedAt 的运行行按面板
+// 墙钟（now，15s 一跳）实时折算；终态行保持定值（起止差），缺 startedAt 的
+// 运行行退回静态投影（不伪造起点）。
+function entryDurationSeconds(entry: SubagentDirectoryEntry, now?: number): number {
   const progress = entry.item.subagentProgress;
+  if (entry.running && now !== undefined && entry.item.startedAt) {
+    return Math.max(0, Math.round((now - entry.item.startedAt) / 1000));
+  }
   return Math.round((progress?.durationMs ?? entry.item.durationMs ?? 0) / 1000);
 }
 
@@ -183,8 +214,75 @@ function ChildToolGlyph({ status }: { status: SubagentDirectoryItem["status"] })
 // the row shows an explicit truncation badge and the detail prints the raw
 // text verbatim; a still-streaming call (argChars only) shows a receiving
 // note instead of pretending the args exist.
-const ChildToolRow = memo(function ChildToolRow({ tool }: { tool: SubagentDirectoryItem }) {
+// tl1677 缺陷③: 详情面的 preview/summary 大文本块（任务书/启动消息一族的
+// 无上限 pre）曾把整列撑爆——转录回放与列表被顶出可视区。改造：块内 clamp
+// （默认 6 行 + 渐隐），「展开全文」走 portal 悬浮卡（fixed、带遮罩、点外
+// 关闭）——全文可读且不再占据面板流式空间。
+const DETAIL_CLAMP_LINES = 6;
+const DETAIL_CLAMP_CHARS = 480;
+
+function shouldClampDetailText(text: string): boolean {
+  return text.length > DETAIL_CLAMP_CHARS || text.split("\n").length > DETAIL_CLAMP_LINES;
+}
+
+function ClampedDetailText({
+  label,
+  text,
+  tone,
+}: {
+  label: string;
+  text: string;
+  tone?: "error";
+}) {
   const t = useT();
+  const [open, setOpen] = useState(false);
+  const clamped = shouldClampDetailText(text);
+  return (
+    <div
+      className={`subagents-panel__detailview-block${tone === "error" ? " subagents-panel__detailview-block--error" : ""}`}
+      data-clamped-text={clamped ? "true" : undefined}
+    >
+      <div className="subagents-panel__detailview-label">{label}</div>
+      {clamped ? (
+        <>
+          <pre className="subagents-panel__detailview-text subagents-panel__detailview-text--clamped">{text}</pre>
+          <button
+            type="button"
+            className="subagents-panel__clamp-toggle"
+            data-subagents-clamp-expand="true"
+            onClick={() => setOpen(true)}
+          >
+            <Maximize2 size={11} aria-hidden="true" />
+            <span>{t("subagentPanel.expandFull")}</span>
+          </button>
+          {open && createPortal(
+            <div className="subagent-popover-overlay" data-subagents-popover="true" onClick={() => setOpen(false)}>
+              <div
+                className="subagent-popover"
+                role="dialog"
+                aria-label={label}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="subagent-popover__head">
+                  <span className="subagent-popover__label">{label}</span>
+                  <button type="button" className="subagent-popover__close" aria-label={t("subagentPanel.popoverClose")} onClick={() => setOpen(false)}>
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </div>
+                <pre className="subagent-popover__text">{text}</pre>
+              </div>
+            </div>,
+            document.body,
+          )}
+        </>
+      ) : (
+        <pre className="subagents-panel__detailview-text">{text}</pre>
+      )}
+    </div>
+  );
+}
+
+const ChildToolRow = memo(function ChildToolRow({ tool }: { tool: SubagentDirectoryItem }) {  const t = useT();
   const [open, setOpen] = useState(false);
   const argsState = useMemo(() => toolCallArgsState(tool.args, tool.argChars), [tool.args, tool.argChars]);
   const line = useMemo(() => toolCallSummaryLine(tool), [tool]);
@@ -296,9 +394,9 @@ const DirectoryRow = memo(function DirectoryRow({
   const [continuing, setContinuing] = useState(false);
   const [receipt, setReceipt] = useState<SubagentSendReceiptView | null>(null);
   const [continueError, setContinueError] = useState<string | null>(null);
-  const title = rowTitle(entry);
+  const title = rowTitle(entry) || rowTitleFallback(entry, t);
   const summary = entry.item.summary || entry.item.error || "";
-  const durationSeconds = entryDurationSeconds(entry);
+  const durationSeconds = entryDurationSeconds(entry, now);
   const startedClock = entryStartedClock(entry);
   const ref = entry.ref;
   const canTerminate = Boolean(onTerminate && ref && entry.running);
@@ -592,7 +690,7 @@ function SubagentDetailView({
   transcriptItems?: readonly Item[];
 }) {
   const t = useT();
-  const title = rowTitle(entry);
+  const title = rowTitle(entry) || rowTitleFallback(entry, t);
   const summary = entry.item.summary || "";
   const error = entry.item.error || "";
   const progress = entry.item.subagentProgress;
@@ -807,34 +905,19 @@ function SubagentDetailView({
               renders through the read path above). */}
           {liveToolsSection}
           {error ? (
-            <div className="subagents-panel__detailview-block subagents-panel__detailview-block--error">
-              <div className="subagents-panel__detailview-label">{t("subagent.preview.notice")}</div>
-              <pre className="subagents-panel__detailview-text">{error}</pre>
-            </div>
+            <ClampedDetailText label={t("subagent.preview.notice")} text={error} tone="error" />
           ) : null}
           {summary ? (
-            <div className="subagents-panel__detailview-block">
-              <div className="subagents-panel__detailview-label">{t("subagentPanel.detailSummary")}</div>
-              <pre className="subagents-panel__detailview-text">{summary}</pre>
-            </div>
+            <ClampedDetailText label={t("subagentPanel.detailSummary")} text={summary} />
           ) : null}
           {previewReasoning ? (
-            <div className="subagents-panel__detailview-block">
-              <div className="subagents-panel__detailview-label">{t("subagent.preview.reasoning")}</div>
-              <pre className="subagents-panel__detailview-text">{previewReasoning}</pre>
-            </div>
+            <ClampedDetailText label={t("subagent.preview.reasoning")} text={previewReasoning} />
           ) : null}
           {previewText ? (
-            <div className="subagents-panel__detailview-block">
-              <div className="subagents-panel__detailview-label">{t("subagent.preview.text")}</div>
-              <pre className="subagents-panel__detailview-text">{previewText}</pre>
-            </div>
+            <ClampedDetailText label={t("subagent.preview.text")} text={previewText} />
           ) : null}
           {previewNotice ? (
-            <div className="subagents-panel__detailview-block">
-              <div className="subagents-panel__detailview-label">{t("subagent.preview.notice")}</div>
-              <pre className="subagents-panel__detailview-text">{previewNotice}</pre>
-            </div>
+            <ClampedDetailText label={t("subagent.preview.notice")} text={previewNotice} />
           ) : null}
           {progress?.truncated ? <div className="subagents-panel__detailview-note">{t("subagent.preview.truncated")}</div> : null}
           {!summary && !error && !hasPreview ? (

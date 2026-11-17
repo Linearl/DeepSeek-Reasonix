@@ -141,6 +141,8 @@ export const en = {
   "common.busyHint": "Finish or stop the current turn first",
   "common.loading": "Loading…",
   "composer.readOnlyChannel": "Channel conversation is read-only",
+  // tl1664: notice while the subagent replay surface owns the composer.
+  "composer.subagentReplayReadOnly": "Subagent replay open — input is disabled; close the replay to restore it.",
 "composer.blockedDisabled": "Sending is unavailable in the current state",
   // tl1301: fallback effort rebuild in flight (shown beside the effort control; fast paths never show it).
   "composer.effortApplying": "Applying reasoning effort…",
@@ -3422,6 +3424,15 @@ export const en = {
 // their honest stand-in until the live tool stream (or the pending note)
 // fills the pane.
 "subagentPanel.runningNoPreview": "The sub-agent is running: nothing to show yet — its tool calls will appear here as they happen.",
+// tl1664: the unnamed-row fallback (bare tool names no longer stand in as titles) + the open-in-main replay surface.
+"subagentPanel.unnamed": "Subagent",
+"subagentPanel.unnamedAt": "Subagent ({time})",
+"subagentPanel.replayTitle": "Subagent replay",
+"subagentPanel.replayClose": "Close replay",
+"subagentPanel.replayBadge": "Read-only replay",
+"subagentPanel.replayReadOnly": "The subagent replay is a read-only record; sending messages to a sub-agent directly is not available yet.",
+"subagentPanel.expandFull": "Expand full text",
+"subagentPanel.popoverClose": "Close popover",
 "subagentPanel.splitResize": "Resize the list column",
 "subagentPanel.liveTools": "Work in progress (tool calls)",
 "subagentPanel.widen": "Widen preview",

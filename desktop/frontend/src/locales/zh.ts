@@ -137,6 +137,8 @@ export const zh: Record<DictKey, string> = {
   "common.busyHint": "请先完成或停止当前回合",
   "common.loading": "加载中…",
   "composer.readOnlyChannel": "渠道会话只读",
+// tl1664: 子代理回放面打开时的输入区注明（readOnly 文案覆盖）。
+"composer.subagentReplayReadOnly": "子代理回放打开中——输入区已停用，关闭回放后恢复。",
 "composer.blockedDisabled": "当前状态下无法发送",
   // tl1301：effort 走 fallback 重建在飞（显示在力度控件旁；快速通道不出现）。
   "composer.effortApplying": "正在应用推理力度…",
@@ -3405,6 +3407,15 @@ export const zh: Record<DictKey, string> = {
 // their honest stand-in until the live tool stream (or the pending note)
 // fills the pane.
 "subagentPanel.runningNoPreview": "子代理运行中：暂无可显示的过程——工具调用开始后将在此实时出现。",
+// tl1664: 无名行的可辨识兜底（裸工具名不再充当行名）+「在主区打开」回放面。
+"subagentPanel.unnamed": "子代理",
+"subagentPanel.unnamedAt": "子代理（{time}）",
+"subagentPanel.replayTitle": "子代理回放",
+"subagentPanel.replayClose": "关闭回放",
+"subagentPanel.replayBadge": "只读回放",
+"subagentPanel.replayReadOnly": "子代理回放为只读记录；人类直接向子代理发消息的功能尚未提供。",
+"subagentPanel.expandFull": "展开全文",
+"subagentPanel.popoverClose": "关闭悬浮卡",
 "subagentPanel.splitResize": "调整列表宽度",
 "subagentPanel.liveTools": "工作过程（工具调用）",
 "subagentPanel.widen": "加宽预览",

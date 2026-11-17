@@ -32031,6 +32031,170 @@ button.statusbar__mcp:focus-visible {
   overflow: auto;
 }
 
+/* tl1664: 「在主区打开」的只读回放面 —— 占满主转录位（primarySubagentReplay
+   surface），结构同 dock 详情（头部操作行 / 内容体 / 只读脚注），复用
+   subagents-panel__back/retry 的按钮 chrome（零新按钮样式）。 */
+.subagent-replay {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 14px;
+}
+
+.subagent-replay__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.subagent-replay__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 560;
+}
+
+.subagent-replay__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--fg);
+}
+
+.subagent-replay__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.subagent-replay__note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.subagent-replay__readonly {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+}
+
+/* tl1677 缺陷③: 详情面 preview/summary 大块 clamp + portal 悬浮卡。默认态
+   只有 6 行 clamp 块（详情列不再被长任务书/结局文本撑爆，转录回放与列表行
+   不被顶走）；全文走用户主动点开的悬浮卡（fixed + 遮罩，不占面板空间）。 */
+.subagents-panel__detailview-text--clamped {
+  max-height: calc(var(--text-xs) * 1.5 * 6);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, var(--fg) 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, var(--fg) 60%, transparent 100%);
+}
+
+.subagents-panel__clamp-toggle {
+  --wails-draggable: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.subagents-panel__clamp-toggle:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+
+.subagent-popover-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-tooltip);
+  background: rgba(0, 0, 0, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.subagent-popover {
+  --wails-draggable: no-drag;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(640px, calc(100vw - 48px));
+  max-height: min(70vh, 560px);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  color: var(--fg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.subagent-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.subagent-popover__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--fg-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-popover__close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.subagent-popover__close:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+
+.subagent-popover__text {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .subagents-panel__openmain {
   --wails-draggable: no-drag;
   display: inline-flex;

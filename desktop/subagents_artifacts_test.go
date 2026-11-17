@@ -132,6 +132,61 @@ func TestListSubagentsByParentFlagsMissingTranscript(t *testing.T) {
 	}
 }
 
+// tl1664: the projection carries the dispatch call id so the dock can dedupe
+// the running sidecar row against its transcript card (the card's item.id IS
+// this call id) — the ghost-row fix's Go half. A record without the field
+// stays empty (omitted), keeping the old wire shape for legacy metas.
+func TestListSubagentsByParentCarriesParentToolCallID(t *testing.T) {
+	app, dir, sessionPath := newCapsuleTestSession(t)
+	stamped := "sa_20261002_100000_000000000_000000000005"
+	legacy := "sa_20261002_100000_000000000_000000000006"
+	writeSubagentMetaWithCallID(t, dir, stamped, agent.BranchID(sessionPath), time.Now().UTC(), "task", "call-77")
+	writeSubagentMeta(t, dir, legacy, agent.BranchID(sessionPath), time.Now().UTC(), "task", "m", "", false)
+
+	views, err := app.ListSubagentsByParent(sessionPath)
+	if err != nil {
+		t.Fatalf("ListSubagentsByParent: %v", err)
+	}
+	byRef := map[string]SubagentArtifactView{}
+	for _, view := range views {
+		byRef[view.Ref] = view
+	}
+	if got := byRef[stamped].ParentToolCallID; got != "call-77" {
+		t.Fatalf("stamped meta ParentToolCallID = %q, want call-77", got)
+	}
+	if got := byRef[legacy].ParentToolCallID; got != "" {
+		t.Fatalf("legacy meta ParentToolCallID = %q, want empty", got)
+	}
+}
+
+// writeSubagentMetaWithCallID writes a sidecar meta with the dispatch call id
+// stamped (tl1664) — the same field agent.SubagentSpec carries at dispatch.
+func writeSubagentMetaWithCallID(t *testing.T, dir, ref, parentSession string, createdAt time.Time, name, parentToolCallID string) {
+	t.Helper()
+	subagentDir := filepath.Join(dir, "subagents")
+	if err := os.MkdirAll(subagentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	meta := agent.SubagentMeta{
+		Ref:              ref,
+		CreatedAt:        createdAt,
+		UpdatedAt:        createdAt.Add(time.Minute),
+		Status:           agent.SubagentRunning,
+		Kind:             "task",
+		Name:             name,
+		WorkspaceRoot:    dir,
+		ParentSession:    parentSession,
+		ParentToolCallID: parentToolCallID,
+	}
+	data, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subagentDir, ref+".meta.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestListSubagentsByParentEmptyPathAndLimit(t *testing.T) {
 	app, dir, sessionPath := newCapsuleTestSession(t)
 

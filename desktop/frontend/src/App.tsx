@@ -56,6 +56,17 @@ import {
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { buildSubagentDirectory, registryRunningEntries, subagentsTabLabel } from "./lib/subagentDirectory";
+import type { SubagentDirectoryEntry } from "./lib/subagentDirectory";
+import { subjectOf } from "./lib/tools";
+
+// tl1664: the replay tab title — the same chain the dock rows use (dispatch
+// subject → args one-liner → resolved name → tool name). No unnamed fallback
+// here: the surface header can show the tool name, and the ref rides in the
+// target for the read bridge.
+function rowTitleOfEntry(entry: SubagentDirectoryEntry): string {
+  const item = entry.item;
+  return item.subject || subjectOf(item.name, item.args) || item.resolvedName || item.name;
+}
 // 任务 686: 工作流可视化面板的 palette 插条（flag 关=原数组逐字节不变）。
 // 单独轻量模块：workflowDag 的 fixture/布局只随面板懒加载 chunk 走，不进
 // initial 面（首版实测炸 initial 线的教训）。
@@ -383,6 +394,10 @@ const RemotePanel = lazy(() => import("./components/RemotePanel").then((module) 
 const SideFilesDockPanel = lazy(() => import("./components/SessionSideFilesPanel").then((module) => ({ default: module.SideFilesDockPanel })));
 // Task 495: the right-dock subagent directory panel (own lazy chunk).
 const SubagentsDockPanel = lazy(() => import("./components/SubagentsDockPanel").then((module) => ({ default: module.SubagentsDockPanel })));
+// tl1664: 「在主区打开」的只读回放面 —— 主区 body 替换形态（任务 704 先例），
+// 懒加载与 dock 面板同款。
+const SubagentReplaySurface = lazy(() => import("./components/SubagentReplaySurface").then((module) => ({ default: module.SubagentReplaySurface })));
+type SubagentReplayTarget = import("./components/SubagentReplaySurface").SubagentReplayTarget;
 // Task 505: the session graph wall is switch-gated (default off) and lazy —
 // the chunk only loads once the wall actually opens.
 // Task 627: the load is breadcrumb-logged (feature=sessionWall) so a packaged
@@ -1426,6 +1441,15 @@ export default function App() {
   const clearContextPending = useOverlayStore((s) => s.clearContextPending);
   const setClearContextPending = useOverlayStore((s) => s.setClearContextPending);
   const [backgroundRuntimes, setBackgroundRuntimes] = useState<BackgroundRuntimeView[]>([]);
+  // tl1664: 「在主区打开」的子代理回放目标 —— 打开时主转录替换为只读回放面
+  // （任务 704 surface 先例），输入栏经 Composer 既有 readOnly 通道禁用并
+  // 注明。纯前端态：切 tab / 关闭即回落，不占用后端 tab 资源。
+  const [subagentReplay, setSubagentReplay] = useState<SubagentReplayTarget | null>(null);
+  // 回放只绑定打开它的会话：会话切换（activeTabId 变化）即关闭，避免把 A 会
+  // 话的子代理回放叠在 B 会话的主区上。
+  useEffect(() => {
+    setSubagentReplay(null);
+  }, [activeTabId]);
   // Task 557: running foreground (synchronous) sub-agents across all tabs —
   // the third running-work source for the capsule (foreground children never
   // register as jobs). Same 1s cadence as the background runtime list.
@@ -5742,6 +5766,18 @@ export default function App() {
       />
     </Suspense>
   ) : null;
+  // tl1664: the subagent replay surface replaces the primary transcript the
+  // same way the trajectory surface does — the surface owns the main area
+  // until the user closes it (or switches tab; the effect above clears it).
+  const primarySubagentReplay = subagentReplay ? (
+    <Suspense fallback={null}>
+      <SubagentReplaySurface
+        target={subagentReplay}
+        onReadSubagent={capsuleReadSubagent}
+        onClose={() => setSubagentReplay(null)}
+      />
+    </Suspense>
+  ) : null;
   const sidebarClassName = [
     "sidebar",
     sidebarCollapsed ? "sidebar--collapsed" : "",
@@ -6302,7 +6338,7 @@ export default function App() {
                       style={splitTabId ? ({ "--split-preview-ratio": splitPreviewTier } as CSSProperties) : undefined}
                     >
                       <div className="transcript-split__pane transcript-split__pane--primary">
-                                        {primaryTrajectory ?? (<Transcript
+                                        {primarySubagentReplay ?? primaryTrajectory ?? (<Transcript
                       items={unfiledVisibleItems}
                       live={runtimeTransitioning ? undefined : state.live}
                       liveStore={liveStore}
@@ -6733,7 +6769,11 @@ export default function App() {
               onSetEffort={setEffort}
               insertRequest={composerInsertRequest}
               selectedTextRequest={selectedTextRequest}
-              readOnly={Boolean(activeTab?.readOnly)}
+              /* tl1664: 子代理回放面打开时输入区禁用并注明（人类→子代理发消息
+                 功能未开发，readOnly 是该状态的诚实表达）；notice 覆盖默认的
+                 渠道只读文案，未打开时 undefined（byte-for-byte 原样）。 */
+              readOnly={Boolean(activeTab?.readOnly) || Boolean(subagentReplay)}
+              readOnlyNotice={subagentReplay ? t("composer.subagentReplayReadOnly") : undefined}
               disabled={runtimeTransitioning || rewindCommitting || state.messageAction != null || Boolean(decisionSurface)}
               submitDisabled={!controllerReady}
               decisionPending={rewindCommitting || state.messageAction != null || Boolean(decisionSurface)}
@@ -7009,19 +7049,20 @@ export default function App() {
                        compaction, not only while their transcript card
                        survives in memory. */
                     onListPersisted={capsuleListSubagents}
-                    /* tl1109: 「在主区打开」出口 —— 子代理是只读回放（任务 502
-                       定论），主区出口沿用主区 ReadOnly tab 机制（dockTabs 的
-                       隐藏标签 + 主区只读展示）；ref 缺失（临时运行）时按钮
-                       不出，避免打开空会话。 */
+                    /* tl1109/tl1664: 「在主区打开」出口 —— 子代理是只读回放（任务 502
+                       定论）。tl1664 修复：原 handler 只读一次并弹 toast（半成品），
+                       现改为打开主区只读回放面（surface 替换主转录，任务 704 先例；
+                       输入栏经 Composer readOnly 通道禁用并注明）。ref 缺失（临时
+                       运行）时按钮不出，避免打开空会话。 */
                     onOpenInMain={(entry) => {
                       const ref = entry.ref?.trim();
                       const parent = (activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim();
                       if (!ref || !parent) return;
-                      void app.ReadSubagentSession(parent, ref).then((messages) => {
-                        if (!Array.isArray(messages) || messages.length === 0) return;
-                        showToast(t("subagentPanel.openInMain"), "info");
-                      }).catch(() => {
-                        showToast(t("composer.capsuleHistoryFailed"), "error");
+                      setSubagentReplay({
+                        sessionPath: parent,
+                        ref,
+                        title: rowTitleOfEntry(entry),
+                        running: entry.running,
                       });
                     }}
                     /* tl1209: 运行中行的单子代理终止 —— 与胶囊面板同一 cancelSubagent
