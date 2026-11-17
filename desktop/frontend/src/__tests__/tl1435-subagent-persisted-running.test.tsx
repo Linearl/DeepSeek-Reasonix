@@ -201,11 +201,13 @@ console.log("\ntl1435 persisted running subagents (dock single-source convergenc
   ok(!endedMarkup.includes("subagents-panel__running-blank") || true, "panel(move): no running-blank note on ended rows");
 }
 
-// 7. Poll cadence constant is panel-grade slow (matches the task monitor
-// panel's cadence class — a child that never moves the transcript still
-// surfaces within seconds, without per-second disk churn).
+// 7. Poll cadence constant rides the dock live cadence. tl1435 shipped 5s
+// (task-monitor cadence class); tl1677 缺陷② tightened it to 2s to match
+// SUBAGENT_DOCK_LIVE_POLL_MS — the count/status lag window drops with it,
+// and the read stays the same cheap full-projection re-pull (no extra disk
+// churn: one directory scan per 2s while mounted).
 {
-  eq(SUBAGENTS_PERSISTED_POLL_MS, 5000, "poll: persisted directory re-pull stays at the 5s panel cadence");
+  eq(SUBAGENTS_PERSISTED_POLL_MS, 2000, "poll: persisted directory re-pull rides the 2s dock live cadence (tl1677)");
 }
 
 // 8. act()-mounted live panel: the interval poll pulls the persisted directory
