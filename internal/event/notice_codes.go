@@ -204,6 +204,13 @@ const (
 	// chronological) was synthesized into the assistant message. The notice
 	// card carries the retry action.
 	NoticeCodeReasoningOnlyFinal = "reasoning_only_final"
+	// NoticeCodeCompactionChunkedFallback (tl1675): a compaction pass degraded
+	// to the chunked fragment path — either its single summary request failed
+	// on a size-class error, or the cross-pass segment latch skipped the single
+	// rung. The pass still lands a digest, so this is its visible "why" (the
+	// degraded shape is slower and bills more cache-miss tokens), not a failure
+	// outcome; the failed face stays with 任务 867's failed card.
+	NoticeCodeCompactionChunkedFallback = "compaction_chunked_fallback"
 )
 
 // 任务1079: high-frequency failure notices now carry an actionable next step
