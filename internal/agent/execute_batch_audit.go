@@ -187,10 +187,17 @@ func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall
 	} else if a.readPipelineActive() && (o.errMsg != "" || o.blocked) {
 		a.observeFailedRead(call, o)
 	}
-	a.sess.conversation.Add(msg)
+	// tl1669: the tool result is a canonical write → it queues behind an
+	// in-flight compaction instead of burning the pass's commit CAS. The tool
+	// goroutine parks here; the turn resumes once the pass settles (US1).
+	a.appendTurnMessage(ctx, msg)
 }
 
 // Guard interventions revise only results that have not yet reached a model.
-func (a *Agent) storeBatchGuardResults(calls []provider.ToolCall, results []string) {
+func (a *Agent) storeBatchGuardResults(ctx context.Context, calls []provider.ToolCall, results []string) {
+	// tl1669: the guard rewrite mutates tool results IN PLACE and bumps the
+	// transcript version — it is a canonical write and queues behind an
+	// in-flight compaction exactly like the tool results it rewrites.
+	a.awaitCompactionSettle(ctx)
 	a.sess.conversation.updateBatchGuardResults(calls, results)
 }

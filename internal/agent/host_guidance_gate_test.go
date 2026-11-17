@@ -37,12 +37,18 @@ func newGateTestAgent(t *testing.T) *Agent {
 
 // shrinkHostGuidanceWait shrinks the queue window for timeout-path tests and
 // restores the production values on cleanup.
+//
+// tl1669 reconciliation: the 1648x-specific wait triple (hostGuidanceCompaction*
+// ) was COLLAPSED onto the single shared await primitive
+// (compaction_await.go compactionAwaitBound / compactionAwaitPoll) when the
+// execution model became the synchronous await. The PIN keeps its shape — same
+// assertion, same count — only the shrunk knobs moved.
 func shrinkHostGuidanceWait(t *testing.T, bound time.Duration) {
 	t.Helper()
-	origBound, origPoll := hostGuidanceCompactionWaitBound, hostGuidanceCompactionPoll
-	hostGuidanceCompactionWaitBound, hostGuidanceCompactionPoll = bound, 5*time.Millisecond
+	origBound, origPoll := compactionAwaitBound, compactionAwaitPoll
+	compactionAwaitBound, compactionAwaitPoll = bound, 5*time.Millisecond
 	t.Cleanup(func() {
-		hostGuidanceCompactionWaitBound, hostGuidanceCompactionPoll = origBound, origPoll
+		compactionAwaitBound, compactionAwaitPoll = origBound, origPoll
 	})
 }
 

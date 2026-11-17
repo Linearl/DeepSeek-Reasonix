@@ -1,12 +1,5 @@
 package agent
 
-import (
-	"log/slog"
-	"time"
-
-	"reasonix/internal/provider"
-)
-
 // tl1648x: host guidance vs. compaction mutex (delayed-injection variant).
 //
 // The 2026-11-17 09:4x incident shape: an auto-resume submits its continue
@@ -42,45 +35,20 @@ import (
 // unified injection entry (run-loop protocol, 任务6 contract); this helper is
 // the channel-F write funnel and the natural seam for the stage-2
 // normalization to absorb the gate from.
-var (
-	// hostGuidanceCompactionWaitBound bounds the queue wait. Production
-	// compactions run minutes-long (the 09:4x window was ~100s; the 包68 boot
-	// compaction 2m50s), so five minutes covers them with headroom; past the
-	// bound we write through rather than drop. Vars so tests can shrink them.
-	hostGuidanceCompactionWaitBound = 5 * time.Minute
-	// hostGuidanceCompactionPoll is the in-flight check cadence while queued.
-	hostGuidanceCompactionPoll = 200 * time.Millisecond
-)
+//
+// tl1669 (20261117 21:33 用户拍板：压缩执行模型改同步 await): the wait
+// implementation is COLLAPSED onto the single await primitive
+// (compaction_await.go awaitCompactionSettle) and the write itself goes
+// through the shared canonical write funnel (appendTurnMessage). One await
+// primitive, one write funnel — the 1648x-specific wait/bound/poll triple no
+// longer exists as a second mechanism. Behavior is unchanged: bounded wait →
+// timeout writes through → CAS backstop stays.
+//
+// tl1650/tl1669 note: the guidance write is a CANONICAL write, so it is
+// queued exactly like the turn's own messages (US3: 压缩等待期间我发的消息/
+// 系统注入排队等压缩完成再进入，不丢失).
+import "reasonix/internal/provider"
 
-// addHostGuidance is the single write funnel for channel-F host guidance
-// (Origin=host user-role messages the run loop injects into the canonical
-// transcript). All callers must land guidance through it: while a compaction
-// is in flight the append would invalidate the pass's CAS, so it queues until
-// settle (bounded, then writes through — see above).
 func (a *Agent) addHostGuidance(msg provider.Message) {
-	a.waitHostGuidanceCompactionSettle()
-	a.sess.conversation.Add(msg)
-}
-
-// waitHostGuidanceCompactionSettle blocks while a real maintenance transaction
-// is in flight, bounded by hostGuidanceCompactionWaitBound. Zero-cost when no
-// compaction is running (one atomic load — the idle face pays nothing).
-func (a *Agent) waitHostGuidanceCompactionSettle() {
-	if a.maintaining.Load() == 0 {
-		return
-	}
-	slog.Debug("agent: host guidance queued behind in-flight compaction",
-		"writer", SessionWriterID(), "bound", hostGuidanceCompactionWaitBound.String())
-	deadline := time.Now().Add(hostGuidanceCompactionWaitBound)
-	for a.maintaining.Load() > 0 {
-		if !time.Now().Before(deadline) {
-			// Bounded wait exhausted: write through and let the commit CAS be
-			// the backstop (first-round precedent: the CAS backstop + failure
-			// card visibility stay; a burned pass is reported, never silent).
-			slog.Warn("agent: host guidance writing through past unsettled compaction",
-				"writer", SessionWriterID(), "waited", hostGuidanceCompactionWaitBound.String())
-			return
-		}
-		time.Sleep(hostGuidanceCompactionPoll)
-	}
+	a.appendTurnMessage(nil, msg)
 }

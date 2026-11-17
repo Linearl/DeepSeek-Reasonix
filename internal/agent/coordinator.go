@@ -426,7 +426,8 @@ func (c *Coordinator) persistExecutorNoOp(ctx context.Context, input, plan strin
 		Role: provider.RoleUser, Origin: provider.MessageOriginUser, Content: providerContent, RawContent: rawContent,
 		Images: userImages(ctx), Audio: userAudio(ctx), CreatedAt: time.Now().UnixMilli(),
 	})
-	c.executor.sess.conversation.Add(provider.Message{Role: provider.RoleAssistant, Content: plan})
+	// tl1669: canonical write → the compaction-await funnel.
+	c.executor.appendTurnMessage(ctx, provider.Message{Role: provider.RoleAssistant, Content: plan})
 }
 
 // plannerOutcome is one planning turn's result. A submitted plan is the

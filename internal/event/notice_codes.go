@@ -326,3 +326,13 @@ const (
 const (
 	NoticeCodeLoopBreaker = "loop_breaker"
 )
+
+// NoticeCodeCompactionBreaker (tl1669 US2): the three-strike circuit breaker
+// tripped — automatic compaction is paused for this generation after
+// consecutive failed passes. The turn is NOT dead: it keeps running on the
+// current context, and the next context check re-arms the automatic path.
+// Text is the English technical half, Detail carries streak/limit/trigger/
+// reason (same dual-track contract as the other notice codes).
+const (
+	NoticeCodeCompactionBreaker = "compaction_breaker"
+)

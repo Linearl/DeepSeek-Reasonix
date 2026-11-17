@@ -316,11 +316,12 @@ func (a *Agent) RetryToolRecovery(ctx context.Context, attempt, inspection strin
 	}
 	call.ID = "retry_" + hex.EncodeToString(id[:])
 	call.Recovery = nil
-	a.Session().Add(provider.Message{Role: provider.RoleAssistant, LocalOnly: true, ToolCalls: []provider.ToolCall{call}})
+	// tl1669: canonical write → the compaction-await funnel.
+	a.appendTurnMessage(ctx, provider.Message{Role: provider.RoleAssistant, LocalOnly: true, ToolCalls: []provider.ToolCall{call}})
 	ctx = context.WithValue(ctx, recoveryRetryKey{}, &r)
 	out := a.executeOne(ctx, &a.turn, call)
 	a.finishToolRecovery(ctx, call, out)
-	a.Session().Add(provider.Message{Role: provider.RoleTool, LocalOnly: true, ToolCallID: call.ID, Name: call.Name, Content: out.output, ToolRunState: outcomeRunState(out)})
+	a.appendTurnMessage(ctx, provider.Message{Role: provider.RoleTool, LocalOnly: true, ToolCallID: call.ID, Name: call.Name, Content: out.output, ToolRunState: outcomeRunState(out)})
 	if err := event.EmitChecked(a.svc.sink, event.Event{Kind: event.Notice, RecoveryCheckpoint: true}); err != nil {
 		return err
 	}

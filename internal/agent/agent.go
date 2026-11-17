@@ -687,6 +687,12 @@ type Agent struct {
 	// on return. Fast paths (below trigger, blocked/stuck views) never touch
 	// it, so ordinary sampling rounds carry zero gate cost (验收②).
 	maintaining atomic.Int32
+	// compactionWakeMu guards compactionWake, the channel closed on the next
+	// maintenance release. tl1669 (同步 await 压缩执行模型): writers waiting
+	// for an in-flight compaction park on it instead of polling, so a turn
+	// resumes the moment the pass settles (US1: 压缩完成后自动继续).
+	compactionWakeMu sync.Mutex
+	compactionWake   chan struct{}
 
 	// feedbackNudgeTurn counts Run entries (user message rounds) and
 	// feedbackNudgeLastTurn stores the round of the last task-172 nudge
@@ -1226,7 +1232,12 @@ func (a *Agent) CompactionInFlight() bool {
 // hook: parked turns are only released after the refresh has landed (候选 B
 // 顺序保证，同步串行，无独立 goroutine).
 func (a *Agent) endMaintenance() {
-	if a.maintaining.Add(-1) > 0 || a.maintaining.Load() < 0 {
+	remaining := a.maintaining.Add(-1)
+	// tl1669: wake every writer parked behind this pass — on EVERY release,
+	// not only the last one (a session can hold several maintenance slots).
+	// The waiters re-read `maintaining` and either resume or re-park.
+	a.releaseCompactionWaiters()
+	if remaining > 0 || a.maintaining.Load() < 0 {
 		return
 	}
 	if a.hostStateRebuild != nil {
@@ -1448,7 +1459,8 @@ const unappliedSteerRestoreDetail = "unapplied_steer:restore-only"
 // normalization, while current readers use LocalOnly to exclude it before
 // every provider request.
 func (a *Agent) recordUnappliedSteerArchive(text string) {
-	a.sess.conversation.Add(provider.Message{
+	// tl1669: canonical write → the compaction-await funnel.
+	a.appendTurnMessage(nil, provider.Message{
 		Role:       provider.RoleTool,
 		Content:    a.withTurnPreferences(midTurnSteerMessage(text)),
 		ToolCallID: provider.LocalOnlyToolID,
@@ -3394,7 +3406,8 @@ func (a *Agent) recordInterruptedDisplay(text, reasoning string, calls []provide
 		failureDiagnostic = provider.DiagnoseFailure(terminalErr)
 		failureSummary = interruptedFailureSummary(terminalErr)
 	}
-	a.sess.conversation.Add(provider.Message{
+	// tl1669: canonical write → the compaction-await funnel.
+	a.appendTurnMessage(nil, provider.Message{
 		Role:             provider.RoleTool,
 		Content:          text,
 		ReasoningContent: reasoning,

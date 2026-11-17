@@ -70,6 +70,13 @@ type compactionProgress struct {
 	// 任务867: consecutive failed compaction passes, surfaced as the "Nth
 	// attempt" counter on the failed CompactionDone event; success resets it.
 	failureStreak atomic.Int64
+	// tl1669: the three-strike circuit breaker. After
+	// compactionFailBreakerLimit consecutive failed passes the AUTOMATIC
+	// compaction path stops for this generation — the turn keeps running on
+	// the current context (US2: a failing compaction never kills the turn),
+	// and the next context check with NEW input re-arms the automatic path.
+	// A successful pass or a manual compact closes it as well.
+	breakerOpen atomic.Bool
 	// tl1587 分段道闩：任一压缩 pass 失败即武装（emitCompactionFailed），成功
 	// 安装复位（emitCompactionSucceeded）。武装期间 allowChunked 的摘要 pass
 	// 跳过单发 rung 直进分段道——「连续失败≤1 次即进分段/降级路径，不再刷屏」：
@@ -166,6 +173,13 @@ func projectionDriftEvidence(st CompactionState, msgs []provider.Message, curVer
 		TranscriptVersion:       curVersion,
 	}
 }
+
+// compactionFailBreakerLimit is the consecutive-failure count at which the
+// AUTOMATIC compaction path stops for the current generation (tl1669 US2:
+// 连续失败 3 次熔断 — zcode/claude 的连续失败熔断语义). The turn keeps running
+// on the current context — a failing compaction never kills a turn — and the
+// next context check with new input re-arms the automatic path.
+const compactionFailBreakerLimit = 3
 
 // ContextManager is the sole owner of provider-visible context maintenance.
 // Canonical session messages are immutable inputs; Prepare evolves only the
@@ -322,6 +336,21 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	}
 	if est < fold {
 		a.resetCompactionProgress()
+	}
+	// tl1669 US2: the three-strike circuit breaker. After
+	// compactionFailBreakerLimit consecutive failed passes the AUTOMATIC
+	// compaction path stops for this generation — the turn keeps running on
+	// the current context (a failing compaction never kills a turn), and the
+	// next context check with NEW input re-arms the automatic path. A manual
+	// compact is the user's explicit action and always runs.
+	if blocked := a.compactionBreakerBlocks(inputHash, policy.Trigger); blocked {
+		slog.Warn("agent: compaction breaker open — automatic compaction paused for this generation",
+			"trigger", policy.Trigger, "streak", a.sess.compaction.failureStreak.Load(),
+			"limit", compactionFailBreakerLimit, "input_hash", shortHash8(inputHash))
+		if capped, ok := m.slidingWindowFallback(policy, errors.New("compaction circuit breaker open")); ok {
+			return capped, nil
+		}
+		return prepared, nil
 	}
 	if a.sess.compaction.stuck && a.sess.compaction.stuckInputHash != inputHash {
 		// The previous projection could not reclaim enough from its exact view,

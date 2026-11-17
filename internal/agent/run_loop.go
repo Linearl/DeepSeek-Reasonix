@@ -244,12 +244,18 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 			// tl1608: the steer_cache_key pair brackets the injection so the
 			// log alone confirms or refutes "steer rewrites the prompt prefix
 			// → provider cache invalidated → full prefill". Observation only.
-			steerKeyBefore := a.logSteerCacheKeyBefore()
-			a.sess.conversation.Add(provider.Message{
-				Role: provider.RoleUser, Origin: provider.MessageOriginUser,
-				Content: a.withTurnPreferences(midTurnSteerMessage(payload.Text)), RawContent: payload.Text,
-				Images: payload.Images, CreatedAt: steerAt,
-			})
+				steerKeyBefore := a.logSteerCacheKeyBefore()
+				// tl1669: the steer landing is a canonical write — it queues behind
+				// an in-flight compaction instead of invalidating the pass's commit
+				// CAS (the tl1648 consumeSteer gate already keeps the ENTRY queued
+				// while the pass runs; this closes the window between dequeue and
+				// landing).
+				a.appendTurnMessage(ctx, provider.Message{
+					Role: provider.RoleUser, Origin: provider.MessageOriginUser,
+					Content: a.withTurnPreferences(midTurnSteerMessage(payload.Text)), RawContent: payload.Text,
+					Images: payload.Images, CreatedAt: steerAt,
+				})
+
 			a.logSteerCacheKeyAfter(steerKeyBefore)
 			a.svc.sink.Emit(event.Event{Kind: event.Steer, Text: payload.Text, ItemID: itemID, At: steerAt})
 			// tl1514 验收④: a fresh steer is the direction change the user just
@@ -403,7 +409,12 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 		// archive. Most OpenAI-compatible backends do not replay it; providers
 		// with an explicit round-trip contract retain the raw provider text.
 		calls = a.withPreviewFileDiffs(ctx, calls)
-		a.sess.conversation.Add(provider.Message{
+		// tl1669: the assistant round is the turn's own canonical write — it
+		// queues behind an in-flight compaction (the 18:30/20:34 incident
+		// shape: the round landed while the compression was still running and
+		// burned the whole pass). The turn pauses here and continues by itself
+		// once the pass settles (US1).
+		a.appendTurnMessage(ctx, provider.Message{
 			Role:               provider.RoleAssistant,
 			Content:            text,
 			ReasoningContent:   reasoning,
@@ -959,7 +970,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 		// Second violation ends the batch: every call is paired, none executes,
 		// and same-turn answer text cannot bypass — it predates the host error.
 		msg := fmt.Sprintf("blocked: context-unavailable tools were called again after the repair instruction: %s", strings.Join(unavailableContextTools, ", "))
-		a.pairUnexecutedGraceCalls(calls, msg)
+		a.pairUnexecutedGraceCalls(ctx, calls, msg)
 		a.contextManager().ObserveUsage(usage)
 		return false, &CompletionUncertainError{
 			Cause:  CompletionUncertainContextTool,
@@ -1062,9 +1073,10 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 	return true, nil
 }
 
-func (a *Agent) pairUnexecutedGraceCalls(calls []provider.ToolCall, msg string) {
+func (a *Agent) pairUnexecutedGraceCalls(ctx context.Context, calls []provider.ToolCall, msg string) {
 	for _, call := range calls {
-		a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name})
+		// tl1669: canonical write → the compaction-await funnel.
+		a.appendTurnMessage(ctx, provider.Message{Role: provider.RoleTool, Content: msg, ToolCallID: call.ID, Name: call.Name})
 	}
 }
 

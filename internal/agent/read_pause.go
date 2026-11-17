@@ -46,7 +46,7 @@ func (a *Agent) finishReadRun(err error) {
 		pause.Reads = append(pause.Reads, provider.PausedRead{ReadID: ob.Key, Path: ob.Scope.CanonicalPath, Snapshot: ob.Version, Intent: string(ob.Requirement.Intent), Covered: boundedReadRanges(ob.Covered), Missing: boundedReadRanges(readcoord.Subtract(missing, ob.Covered)), Reason: reason})
 	}
 	incomplete.Pause = pause
-	a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true, ReadPause: pause})
+	a.appendTurnMessage(nil, provider.Message{Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true, ReadPause: pause})
 }
 
 func (a *Agent) recordLegacyReadPause() *provider.ReadPause {
@@ -76,7 +76,7 @@ func (a *Agent) recordLegacyReadPause() *provider.ReadPause {
 		pause.Reads = append(pause.Reads, read)
 	}
 	if len(pause.Reads) > 0 {
-		a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true, ReadPause: pause})
+		a.appendTurnMessage(nil, provider.Message{Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true, ReadPause: pause})
 	}
 	return pause
 }
@@ -103,7 +103,7 @@ func (a *Agent) recordReadCompletion() {
 		receipt.Reads = append(receipt.Reads, provider.CompletedRead{ReadID: ob.Key, Path: ob.Scope.CanonicalPath, Snapshot: ob.Version, Intent: string(ob.Requirement.Intent), Verdict: "partial_read_sufficient", Covered: boundedReadRanges(ob.Covered), SourceEnd: ob.SourceEnd})
 	}
 	if len(receipt.Reads) > 0 {
-		a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true, ReadCompletion: receipt})
+		a.appendTurnMessage(nil, provider.Message{Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true, ReadCompletion: receipt})
 	}
 }
 
@@ -128,7 +128,7 @@ func (a *Agent) recordLegacyReadCompletion() {
 		receipt.Reads = append(receipt.Reads, read)
 	}
 	if len(receipt.Reads) > 0 {
-		a.sess.conversation.Add(provider.Message{Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true, ReadCompletion: receipt})
+		a.appendTurnMessage(nil, provider.Message{Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true, ReadCompletion: receipt})
 	}
 }
 

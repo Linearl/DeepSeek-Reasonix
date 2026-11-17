@@ -204,7 +204,9 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 		toolEvent.Output = answer
 		c.sink.Emit(event.Event{Kind: event.ToolResult, Tool: toolEvent})
 		workDurationMs := max(int64(1), time.Since(turnStartedAt).Milliseconds())
-		c.executor.Session().Add(provider.Message{Role: provider.RoleAssistant, Content: answer, WorkDurationMs: workDurationMs})
+		// tl1669: canonical write → the compaction-await funnel (the host
+		// answer must not land inside an in-flight compaction window).
+		c.executor.AppendTurnMessage(ctx, provider.Message{Role: provider.RoleAssistant, Content: answer, WorkDurationMs: workDurationMs})
 		display := agent.DisplayAssistantText(answer)
 		c.sink.Emit(event.Event{Kind: event.Text, Text: display})
 		c.sink.Emit(event.Event{Kind: event.Message, Text: display})

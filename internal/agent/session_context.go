@@ -123,7 +123,10 @@ func (a *Agent) appendTurnContextAndMessages(ctx context.Context, messages ...pr
 		batch = append(batch, contextMessage)
 	}
 	batch = append(batch, messages...)
-	sess.AddBatch(batch...)
+	// tl1669: the admitted user turn is a canonical write → it queues behind
+	// an in-flight compaction (the resume path's user turn used to land while
+	// the compaction was running and burn the pass).
+	a.appendTurnMessageBatch(ctx, batch...)
 	return appendContext
 }
 
