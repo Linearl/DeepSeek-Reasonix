@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
 
+	"reasonix/internal/config"
 	"reasonix/internal/fileutil"
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/store"
@@ -19,9 +21,9 @@ import (
 // 侧车对账、超长文件名改名与 branch reparent。
 
 const (
-	cleanupPendingExt          = ".cleanup-pending.json"
+	cleanupPendingExt = ".cleanup-pending.json"
 
-	guardianSidecarSuffix      = ".guardian.jsonl"
+	guardianSidecarSuffix = ".guardian.jsonl"
 
 	// nameMaxBytes is the single-component filename limit shared by the
 	// filesystems Reasonix targets (APFS, ext4, NTFS all cap at 255).
@@ -34,7 +36,6 @@ const (
 	// for future suffixes. Names past this bound come from the pre-bounded
 	// recovery cascade and get renamed by reconcileOverlongSessionFilenames.
 	maxSessionBasenameBytes = 224
-
 )
 
 // CleanupPendingMeta records that a session was logically removed but still has
@@ -44,7 +45,6 @@ type CleanupPendingMeta struct {
 	CreatedAt int64  `json:"createdAt"`
 }
 
-
 // CleanupPendingInfo describes one durable delayed-cleanup marker and the
 // session transcript it belongs to.
 type CleanupPendingInfo struct {
@@ -53,19 +53,244 @@ type CleanupPendingInfo struct {
 	Meta        CleanupPendingMeta
 }
 
-
 // CleanupPendingPath returns the durable marker path for a session transcript.
+// Pure derivation with no filesystem side effects. The three sink operations
+// (Mark/Clear/Is) must go through cleanupPendingMarkerPath instead, which
+// anchors and boundary-checks the untrusted session path (tl1681).
 func CleanupPendingPath(sessionPath string) string {
 	return store.SessionCleanupPending(sessionPath)
 }
 
+// cleanupPendingMarkerPath is the tl1681 guard shared by the three delayed-
+// cleanup sink operations (MarkCleanupPending / ClearCleanupPending /
+// IsCleanupPending). sessionPath arrives from enumeration and delete-flow
+// callers and is treated as untrusted: it must never relocate the marker away
+// from the canonical transcript's own sidecar slot.
+//
+// Three rejection gates wrap one meaning-preserving anchor:
+//
+//   - Anchor: the marker is derived only from fileutil.SanitizeFilePath's
+//     output — the tl1373 Clean+Abs sanitizer shape (recognized by the CodeQL
+//     go/path-injection query as a taint cut). Clean callers are byte-for-byte
+//     unaffected: their marker spelling is identical to the pre-guard form,
+//     merely anchored absolute earlier (relative callers resolved against the
+//     working directory before, so the same file is targeted).
+//   - Gate 1 (../ traversal injection): a raw spelling that Clean would rewrite
+//     (dot segments, redundant or doubled separators) is rejected outright.
+//     Every production caller passes enumeration output, whose spelling is
+//     already clean, so no legitimate flow carries dot segments.
+//   - Gate 2 (non-local absolute injection): UNC shares, \\?\ device forms and
+//     drive-relative spellings are rejected unless the resulting directory
+//     physically sits inside a configured session storage root — a
+//     REASONIX_STATE_HOME pointed at a share is a legal setup and stays
+//     sanctioned.
+//
+// Gates 1 and 2 are purely lexical and safe on hot list surfaces. The
+// write/delete sinks additionally run markerResolvesWithinSessionRoots (gate
+// 3, symlink escape), which costs a bounded physical resolution per call and
+// would be too expensive per item in IsCleanupPending's list loops — a
+// read-only Stat cannot escape the root anyway.
+func cleanupPendingMarkerPath(sessionPath string) (string, error) {
+	trimmed := strings.TrimSpace(sessionPath)
+	if trimmed == "" {
+		return "", nil
+	}
+	canonical := fileutil.SanitizeFilePath(trimmed)
+	marker := store.SessionCleanupPending(canonical)
+	if marker == "" {
+		return "", nil
+	}
+	if err := guardCleanupPendingSpelling(trimmed, marker); err != nil {
+		return "", err
+	}
+	return marker, nil
+}
+
+// guardCleanupPendingSpelling runs the two lexical gates of
+// cleanupPendingMarkerPath against the raw input.
+func guardCleanupPendingSpelling(raw, marker string) error {
+	// Gate 1: any spelling Clean would rewrite carries a relocation payload.
+	// FromSlash first, so Windows callers using forward-slash spellings (the
+	// OS accepts them and pre-guard behavior targeted the same file) are not
+	// mistaken for traversal.
+	if filepath.Clean(raw) != filepath.FromSlash(raw) {
+		return fmt.Errorf("cleanup-pending path %q: session path must be a clean spelling without traversal (tl1681)", raw)
+	}
+	// Gate 2: non-local absolute shapes (UNC, \\?\, drive-relative) must be
+	// sanctioned by a configured storage root, checked by physical identity.
+	if nonLocalPathSpelling(raw) && !physicallyWithinConfiguredSessionRoots(filepath.Dir(marker)) {
+		return fmt.Errorf("cleanup-pending path %q: outside the configured session storage roots (tl1681)", raw)
+	}
+	return nil
+}
+
+// nonLocalPathSpelling reports whether p is a Windows absolute shape that
+// reaches beyond the local drive namespace: UNC shares, \\?\ device paths, or
+// a drive-relative spelling ("C:evil.jsonl") that the OS anchors against the
+// drive's current directory. On Unix every absolute path is a local shape —
+// backslashes are ordinary filename bytes there — so the gate is Windows-only
+// and never fires elsewhere.
+func nonLocalPathSpelling(p string) bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	if strings.HasPrefix(p, `\\`) {
+		return true
+	}
+	if vol := filepath.VolumeName(p); len(vol) == 2 && len(p) > 2 && p[2] != '\\' && p[2] != '/' {
+		return true
+	}
+	return false
+}
+
+// markerResolvesWithinSessionRoots is gate 3 (tl1681) for the write/delete
+// sinks. When the marker's directory lexically sits inside a configured
+// session storage root, the directory's physical identity (symlinks and
+// junctions resolved, Windows case folding included) must still land inside
+// the correspondingly resolved roots — a directory symlink or junction
+// planted inside the root cannot smuggle marker writes and removals past the
+// storage boundary. Directories outside every configured root (test fixtures,
+// external enumerations) have no root to escape from and keep the pre-guard
+// behavior.
+func markerResolvesWithinSessionRoots(marker string) error {
+	dir := filepath.Dir(marker)
+	if !lexicallyWithinConfiguredSessionRoots(dir) {
+		return nil
+	}
+	if !physicallyWithinConfiguredSessionRoots(dir) {
+		return fmt.Errorf("cleanup-pending path %q: directory resolves outside the configured session storage roots through a symlink (tl1681)", dir)
+	}
+	return nil
+}
+
+// configuredSessionStorageRoots derives the sanctioned session storage roots
+// from configuration: the global v3 and v4 roots plus every per-workspace
+// sessions/sessions-v4 directory currently on disk. Derived per call so env
+// overrides (tests, REASONIX_STATE_HOME) take effect immediately.
+func configuredSessionStorageRoots() []string {
+	var roots []string
+	if d := config.SessionDir(); d != "" {
+		roots = append(roots, d)
+	}
+	if d := config.SessionStoreDir(); d != "" {
+		roots = append(roots, d)
+	}
+	if base := config.MemoryUserDir(); base != "" {
+		projects := filepath.Join(base, "projects")
+		entries, err := os.ReadDir(projects)
+		if err != nil {
+			return roots
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			slug := filepath.Join(projects, e.Name())
+			roots = append(roots, filepath.Join(slug, "sessions"), filepath.Join(slug, "sessions-v4"))
+		}
+	}
+	return roots
+}
+
+// lexicallyWithinConfiguredSessionRoots reports whether dir sits inside one
+// of the configured roots by spelling alone (no filesystem resolution).
+func lexicallyWithinConfiguredSessionRoots(dir string) bool {
+	dir = lexicalPathKey(dir)
+	for _, root := range configuredSessionStorageRoots() {
+		if dirWithinRootKey(dir, lexicalPathKey(root)) {
+			return true
+		}
+	}
+	return false
+}
+
+// physicallyWithinConfiguredSessionRoots reports whether dir's physical
+// identity (symlinks and junctions resolved, Windows case folded) sits inside
+// one of the correspondingly resolved configured roots.
+func physicallyWithinConfiguredSessionRoots(dir string) bool {
+	dir = lexicalPathKey(resolvePhysicalPath(dir))
+	for _, root := range configuredSessionStorageRoots() {
+		if dirWithinRootKey(dir, lexicalPathKey(resolvePhysicalPath(root))) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolvePhysicalPath resolves dir's physical location by climbing components
+// and following reparse points via os.Readlink. filepath.EvalSymlinks cannot
+// stand in for this on Windows: since Go 1.26, Lstat no longer marks directory
+// junctions with ModeSymlink, so EvalSymlinks leaves them unresolved while
+// junctions remain the unprivileged directory-alias primitive of that
+// platform (mklink /J). Readlink succeeds on both junctions and symlinks, so
+// one walk covers both. Only the write/delete sinks call this, so the extra
+// per-component syscalls stay off the hot list surfaces.
+func resolvePhysicalPath(dir string) string {
+	cur := filepath.Clean(dir)
+	tail := ""
+	for {
+		if target, err := os.Readlink(cur); err == nil && target != "" {
+			// cur is a reparse point; follow it and keep scanning — the
+			// target itself may chain further links. The tail collected so
+			// far stays pending: it hangs below cur wherever cur ends up.
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(cur), target)
+			}
+			cur = filepath.Clean(target)
+			continue
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		tail = filepath.Join(filepath.Base(cur), tail)
+		cur = parent
+	}
+	return filepath.Join(cur, tail)
+}
+
+// lexicalPathKey normalizes a path for containment comparison: cleaned,
+// absolute, case folded on Windows. It performs no filesystem resolution —
+// resolvePhysicalPath supplies the physical form.
+func lexicalPathKey(p string) string {
+	key := filepath.Clean(strings.TrimSpace(p))
+	if abs, err := filepath.Abs(key); err == nil {
+		key = abs
+	}
+	if runtime.GOOS == "windows" {
+		key = strings.ToLower(key)
+	}
+	return key
+}
+
+// dirWithinRootKey reports whether the normalized dir equals root or lies
+// strictly inside it. Both inputs must come from the same normalization form.
+func dirWithinRootKey(dir, root string) bool {
+	if root == "" || dir == "" {
+		return false
+	}
+	if dir == root {
+		return true
+	}
+	rel, err := filepath.Rel(root, dir)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
 
 // MarkCleanupPending hides a logically removed session from resume/list surfaces
 // until delayed physical cleanup has finished.
 func MarkCleanupPending(sessionPath, operation string) error {
-	path := CleanupPendingPath(sessionPath)
+	path, err := cleanupPendingMarkerPath(sessionPath)
+	if err != nil {
+		return err
+	}
 	if path == "" {
 		return nil
+	}
+	if err := markerResolvesWithinSessionRoots(path); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -81,12 +306,17 @@ func MarkCleanupPending(sessionPath, operation string) error {
 	return fileutil.AtomicWriteFile(path, b, 0o644)
 }
 
-
 // ClearCleanupPending removes a delayed-cleanup marker after physical cleanup.
 func ClearCleanupPending(sessionPath string) error {
-	path := CleanupPendingPath(sessionPath)
+	path, err := cleanupPendingMarkerPath(sessionPath)
+	if err != nil {
+		return err
+	}
 	if path == "" {
 		return nil
+	}
+	if err := markerResolvesWithinSessionRoots(path); err != nil {
+		return err
 	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
@@ -94,24 +324,24 @@ func ClearCleanupPending(sessionPath string) error {
 	return nil
 }
 
-
 // IsCleanupPending reports whether a session is hidden pending delayed cleanup.
+// A session path that fails the tl1681 guard is reported as not pending: the
+// marker subsystem has no jurisdiction over out-of-domain paths, and Mark
+// would have refused to publish a marker for them.
 func IsCleanupPending(sessionPath string) bool {
-	path := CleanupPendingPath(sessionPath)
-	if path == "" {
+	path, err := cleanupPendingMarkerPath(sessionPath)
+	if err != nil || path == "" {
 		return false
 	}
-	_, err := os.Stat(path)
+	_, err = os.Stat(path)
 	return err == nil
 }
-
 
 // IsVisibleSession reports whether a persisted session should appear on normal
 // user/agent-facing list, restore, and retrieval surfaces.
 func IsVisibleSession(sessionPath string) bool {
 	return strings.TrimSpace(sessionPath) != "" && !IsCleanupPending(sessionPath)
 }
-
 
 // ListCleanupPending returns delayed-cleanup markers left in dir. A missing
 // directory is not an error.
@@ -159,7 +389,6 @@ func ListCleanupPending(dir string) ([]CleanupPendingInfo, error) {
 	return out, nil
 }
 
-
 // ReconcileCleanupPending retries physical cleanup for leftover delayed-cleanup
 // markers and stale lock/lease sidecars. It keeps going after individual
 // cleanup errors and returns them joined.
@@ -190,7 +419,6 @@ func ReconcileCleanupPending(dir string, cleanup func(CleanupPendingInfo) error)
 	}
 	return errors.Join(errs...)
 }
-
 
 // ReconcileSessionSidecars renames transcripts whose filenames outgrew their
 // sidecars and removes stale lock and lease files left beside sessions by
@@ -246,7 +474,6 @@ func ReconcileSessionSidecars(dir string) error {
 	return errors.Join(errs...)
 }
 
-
 func removeStaleSessionLockSidecar(basePath, sidecarPath string) error {
 	basePath = canonicalSessionSavePath(basePath)
 	if sessionLeaseHeldLocally(basePath) || SessionLeaseHeldByOtherRuntime(basePath) {
@@ -265,7 +492,6 @@ func removeStaleSessionLockSidecar(basePath, sidecarPath string) error {
 	return lock.RemoveAndUnlock()
 }
 
-
 // removeStaleSessionLeaseLockSidecar retires a leftover .lease.lock. The file
 // is the lease lock itself, so taking it non-blocking proves no runtime holds
 // the lease, and RemoveAndUnlock deletes it atomically with the release.
@@ -283,7 +509,6 @@ func removeStaleSessionLeaseLockSidecar(basePath, _ string) error {
 	}
 	return lock.RemoveAndUnlock()
 }
-
 
 // removeStaleSessionLeaseInfoSidecar retires a leftover .lease.json while
 // holding the lease lock, so no runtime can adopt the info file mid-removal.
@@ -322,12 +547,10 @@ func removeStaleSessionLeaseInfoSidecar(basePath, sidecarPath string) error {
 	return nil
 }
 
-
 func sessionLeaseHeldLocally(path string) bool {
 	_, ok := sessionLeaseOwners.Load(canonicalSessionSavePath(path))
 	return ok
 }
-
 
 // sessionLockSidecarFits reports whether basePath's .lock sidecar name stays
 // within the filesystem's per-component limit; past it, no process can hold
@@ -336,12 +559,10 @@ func sessionLockSidecarFits(basePath string) bool {
 	return len(filepath.Base(store.SessionLockFile(basePath))) <= nameMaxBytes
 }
 
-
 // sessionLeaseSidecarFits is the lease-file analogue of sessionLockSidecarFits.
 func sessionLeaseSidecarFits(basePath string) bool {
 	return len(filepath.Base(store.SessionLeaseLock(basePath))) <= nameMaxBytes
 }
-
 
 // reconcileOverlongSessionFilenames renames transcripts whose basenames grew
 // past maxSessionBasenameBytes — the leftover shape of the pre-bounded
@@ -391,7 +612,6 @@ func reconcileOverlongSessionFilenames(dir string) error {
 	}
 	return errors.Join(errs...)
 }
-
 
 // renameOverlongSession moves one overlong transcript to its bounded name and
 // migrates the sidecars that carry user state. It returns the new branch ID,
@@ -477,7 +697,6 @@ func renameOverlongSession(oldPath string) (string, error) {
 	return newID, errors.Join(errs...)
 }
 
-
 // migrateSessionSidecars moves the user-state sidecars of a renamed session:
 // branch meta (with its ID rewritten to match the new filename), goal state,
 // and the checkpoint/job directories. Lock and lease files are disposable and
@@ -523,7 +742,6 @@ func migrateSessionSidecars(oldPath, newPath, newID string) error {
 	return errors.Join(errs...)
 }
 
-
 // reparentSessionBranches rewrites ParentID references from renamed branch IDs
 // to their bounded replacements so the branch tree stays connected.
 func reparentSessionBranches(dir string, renamed map[string]string) error {
@@ -561,4 +779,3 @@ func reparentSessionBranches(dir string, renamed map[string]string) error {
 	}
 	return errors.Join(errs...)
 }
-
