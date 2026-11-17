@@ -137,6 +137,8 @@ export const zhTW: Record<DictKey, string> = {
   "common.busyHint": "請先完成或停止當前回合",
   "common.loading": "載入中…",
   "composer.readOnlyChannel": "渠道會話唯讀",
+  // tl1664：子代理回放面開啟時的輸入區註明（唯讀文案覆蓋）。
+  "composer.subagentReplayReadOnly": "子代理回放開啟中——輸入區已停用，關閉回放後恢復。",
 "composer.blockedDisabled": "目前狀態下無法傳送",
   // tl1301：effort 走 fallback 重建在飛（顯示在力度控制項旁；快速通道不出現）。
   "composer.effortApplying": "正在套用推理力度…",
@@ -2739,6 +2741,13 @@ export const zhTW: Record<DictKey, string> = {
 // their honest stand-in until the live tool stream (or the pending note)
 // fills the pane.
 "subagentPanel.runningNoPreview": "子代理運行中：暫無可顯示的過程——工具調用開始後將在此實時出現。",
+// tl1664：無名行的可辨識兜底（裸工具名不再充當行名）＋「在主區打開」回放面。
+"subagentPanel.unnamed": "子代理",
+"subagentPanel.unnamedAt": "子代理（{time}）",
+"subagentPanel.replayTitle": "子代理回放",
+"subagentPanel.replayClose": "關閉回放",
+"subagentPanel.replayBadge": "唯讀回放",
+"subagentPanel.replayReadOnly": "子代理回放為唯讀記錄；人類直接向子代理發訊息的功能尚未提供。",
 "subagentPanel.splitResize": "調整列表寬度",
 "subagentPanel.liveTools": "工作過程（工具調用）",
 "subagentPanel.widen": "加寬預覽",

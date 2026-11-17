@@ -2391,6 +2391,12 @@ export interface SubagentArtifactView {
   description?: string;
   model?: string;
   parentSession?: string;
+  // tl1664: the dispatch call id (agent.SubagentMeta.ParentToolCallID). The
+  // dock's running section dedupes the sidecar row against the transcript
+  // card by it — the card's item.id IS this call id — closing the
+  // dispatch→first-progress window where the card had no ref yet and both
+  // sources counted the same child.
+  parentToolCallId?: string;
   hasTranscript: boolean; // false = meta survived without its jsonl; not openable
   // 任务616: messages persisted in the sub-agent's mailbox but not yet
   // delivered (badge in the capsule directory; delivered at the next

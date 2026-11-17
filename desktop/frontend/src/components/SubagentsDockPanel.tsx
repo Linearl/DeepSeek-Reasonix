@@ -37,6 +37,7 @@ import type { HistoryMessage, JobOutputView, JobView } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
   SUBAGENTS_PERSISTED_POLL_MS,
+  isBareSubagentToolName,
   isSubagentEntrySilent,
   mergeEndedSubagentRecords,
   mergePersistedRunningSubagents,
@@ -120,9 +121,24 @@ const EMPTY_LIVE_TOOLS_MAP: ReadonlyMap<string, SubagentDirectoryItem[]> = new M
 //   component state only — nothing is persisted, a restart lands back on the
 //   list (the progress preview itself is never on disk).
 
+// tl1664: the row title chain — dispatch subject, then the args-derived
+// one-liner, then a resolved name, then a NON-bare tool/profile name. A bare
+// name ("task") identifies nothing, so it yields "" and the row renders the
+// unnamed fallback (「子代理 · <start time>」) instead of a column of
+// identical titles.
 function rowTitle(entry: SubagentDirectoryEntry): string {
   const item = entry.item;
-  return item.subject || subjectOf(item.name, item.args) || item.resolvedName || item.name;
+  const named = item.subject || subjectOf(item.name, item.args) || item.resolvedName;
+  if (named) return named;
+  return isBareSubagentToolName(item.name) ? "" : item.name;
+}
+
+// tl1664: the unnamed fallback — the start clock when known, a bare
+// "subagent" otherwise. Never fabricated detail: just a distinguishable
+// identity for rows that carry no label at all.
+function rowTitleFallback(entry: SubagentDirectoryEntry, t: ReturnType<typeof useT>): string {
+  const clock = entryStartedClock(entry);
+  return clock ? t("subagentPanel.unnamedAt", { time: clock }) : t("subagentPanel.unnamed");
 }
 
 function statusLabelKey(entry: SubagentDirectoryEntry): DictKey {
@@ -296,7 +312,7 @@ const DirectoryRow = memo(function DirectoryRow({
   const [continuing, setContinuing] = useState(false);
   const [receipt, setReceipt] = useState<SubagentSendReceiptView | null>(null);
   const [continueError, setContinueError] = useState<string | null>(null);
-  const title = rowTitle(entry);
+  const title = rowTitle(entry) || rowTitleFallback(entry, t);
   const summary = entry.item.summary || entry.item.error || "";
   const durationSeconds = entryDurationSeconds(entry);
   const startedClock = entryStartedClock(entry);
@@ -592,7 +608,7 @@ function SubagentDetailView({
   transcriptItems?: readonly Item[];
 }) {
   const t = useT();
-  const title = rowTitle(entry);
+  const title = rowTitle(entry) || rowTitleFallback(entry, t);
   const summary = entry.item.summary || "";
   const error = entry.item.error || "";
   const progress = entry.item.subagentProgress;

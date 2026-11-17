@@ -28,6 +28,31 @@ export function isSubagentToolName(name: string | undefined): boolean {
   return !!name && SUBAGENT_DIRECTORY_TOOLS.includes(name);
 }
 
+// tl1664: the bare dispatch tool names — profile names that carry ZERO
+// identity for the row title (every child of that tool would read the same).
+// "explore"/"research"/"review" are named profiles and stay informative; the
+// bare ones fall through to the row-level unnamed fallback instead of
+// rendering a column of identical "task" titles.
+const BARE_SUBAGENT_TOOL_NAMES: readonly string[] = ["task", "read_only_task", "parallel_tasks", "fleet"];
+
+export function isBareSubagentToolName(name: string | undefined): boolean {
+  return !!name && BARE_SUBAGENT_TOOL_NAMES.includes(name);
+}
+
+/** tl1664: the dispatch label a row should carry, or "" when nothing
+ *  informative exists (the panel then renders the unnamed fallback).
+ *  `description` is the dispatch line; `name`/`kind` are profile-ish labels
+ *  that only help when they are not bare tool names. */
+export function subagentRowLabel(description: string | undefined, ...names: (string | undefined)[]): string {
+  const desc = (description ?? "").trim();
+  if (desc) return desc;
+  for (const candidate of names) {
+    const value = (candidate ?? "").trim();
+    if (value && !isBareSubagentToolName(value)) return value;
+  }
+  return "";
+}
+
 /** Task 495 ④: the ended list starts at 20 rows; "show more" reveals +20. */
 export const SUBAGENT_DIRECTORY_PAGE_SIZE = 20;
 
@@ -160,21 +185,20 @@ const PERSISTED_ENTRY_ID_PREFIX = "persisted:";
 
 function persistedDirectoryEntry(view: SubagentArtifactView): SubagentDirectoryEntry {
   const status: ToolStatus = view.status === "failed" ? "error" : view.status === "interrupted" ? "stopped" : "done";
+  // tl1664: description-first; bare tool names ("task") no longer stand in as
+  // the label — an unlabelled record falls through to the row-level unnamed
+  // fallback instead of a column of identical titles.
+  const label = subagentRowLabel(view.description, view.name, view.kind);
   const item: SubagentDirectoryItem = {
     kind: "tool",
     id: `${PERSISTED_ENTRY_ID_PREFIX}${view.ref}`,
-    // tl1209: description-first — the persisted sidecar's Name is the
-    // profile/skill name ("ask", "task"), which makes every row read the
-    // same; the dispatch description is what tells them apart. A record
-    // without one keeps the old fallback chain (name → kind → "task"), so
-    // nothing ever renders bare.
-    name: view.description || view.name || view.kind || "task",
+    name: label || "task",
     args: "",
     readOnly: true,
     status,
     startedAt: view.createdAt || undefined,
     durationMs: view.updatedAt && view.createdAt ? Math.max(0, view.updatedAt - view.createdAt) : undefined,
-    subject: view.description || view.name || undefined,
+    subject: label || undefined,
     summary: view.outcome || undefined,
   };
   return { item, running: false, status, ref: view.ref };
@@ -212,19 +236,28 @@ export function mergeEndedSubagentRecords(directory: SubagentDirectory, views: r
 // neither the transcript projection nor the turn-scoped foreground registry
 // ever sees it while running).
 function persistedRunningDirectoryEntry(view: SubagentArtifactView): SubagentDirectoryEntry {
+  // tl1664: same label discipline as the ended twin, plus the dispatch call
+  // id — the transcript card's item.id IS view.parentToolCallId, so the
+  // running merge can dedupe the twin even while the card has not latched a
+  // progress ref yet (the ghost-row window).
+  const label = subagentRowLabel(view.description, view.name, view.kind);
   const item: SubagentDirectoryItem = {
     kind: "tool",
     id: `${PERSISTED_ENTRY_ID_PREFIX}${view.ref}`,
-    // tl1209 semantics, same as the ended twin: the dispatch description
-    // distinguishes same-profile children; the profile name is the fallback.
-    name: view.description || view.name || view.kind || "task",
+    name: label || "task",
     args: "",
     readOnly: true,
     status: "running",
     startedAt: view.createdAt || undefined,
-    subject: view.description || view.name || undefined,
+    subject: label || undefined,
   };
-  return { item, running: true, status: "running", ref: view.ref };
+  return {
+    item,
+    running: true,
+    status: "running",
+    ref: view.ref,
+    ...(view.parentToolCallId ? { callId: view.parentToolCallId } : {}),
+  };
 }
 
 /** tl1435 (运行中区收工作流子代理): fold RUNNING persisted sidecar views into
@@ -245,7 +278,13 @@ export function mergePersistedRunningSubagents(directory: SubagentDirectory, vie
     known.add(entry.item.id);
   }
   const extra = runningViews
-    .filter((view) => !known.has(view.ref))
+    // tl1664: a view whose dispatch call id is already represented (the
+    // transcript card's item.id) is the same child — dedupe it even though
+    // the card has not latched a progress ref yet. This closes the ghost
+    // row: dispatch → first-progress-event the card carries no ref, so the
+    // ref-only check used to admit the sidecar twin and the running count
+    // read one too high until the child ended.
+    .filter((view) => !known.has(view.ref) && !(view.parentToolCallId && known.has(view.parentToolCallId)))
     .map(persistedRunningDirectoryEntry);
   if (extra.length === 0) return directory;
   return { running: [...extra, ...directory.running], ended: directory.ended };
@@ -304,17 +343,19 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
   const push = (id: string, label: string, startedAt: number | undefined, ref: string | undefined, callId?: string, lastActivityAt?: number) => {
     if (!id || seen.has(id)) return;
     seen.add(id);
+    // tl1664: a bare tool name ("task") is not a label — leave the item
+    // unnamed so the row renders the unnamed fallback instead of a column
+    // of identical titles.
+    const named = subagentRowLabel(label);
     const item: SubagentDirectoryItem = {
       kind: "tool",
       id,
-      // tl1209 semantics: the dispatch description tells same-profile
-      // children apart; the profile name is the fallback.
-      name: label || "task",
+      name: named || "task",
       args: "",
       readOnly: true,
       status: "running",
       startedAt: startedAt || undefined,
-      subject: label || undefined,
+      subject: named || undefined,
     };
     out.push({
       item,
@@ -336,7 +377,10 @@ export function registryRunningEntries(source: RegistryRunningSource | undefined
     // Only the active tab's rows belong in this session's directory; foreign
     // tabs carry their origin in the capsule instead (task 557 contract).
     if (tabId && entry.tabId && entry.tabId !== tabId) continue;
-    push(`registry:fg:${entry.ref}`, entry.description || entry.name || entry.ref, entry.startedAt, entry.ref, entry.parentToolCallId || undefined, entry.lastActivityAt);
+    // tl1664: the raw ref is no longer a label fallback — an unlabelled
+    // child renders the unnamed fallback (named row when a description or a
+    // named profile exists).
+    push(`registry:fg:${entry.ref}`, entry.description || entry.name || "", entry.startedAt, entry.ref, entry.parentToolCallId || undefined, entry.lastActivityAt);
   }
   return out;
 }
@@ -373,6 +417,11 @@ export function mergeRegistryRunningSubagents(directory: SubagentDirectory, regi
   const known = new Set<string>();
   for (const entry of running) {
     if (entry.ref) known.add(entry.ref);
+    // tl1664: the callId is a merge key too — a sidecar row folded in by
+    // mergePersistedRunningSubagents carries the dispatch call id, and the
+    // job/foreground twin of the same child must not double it (the job row
+    // carries no ref, so the ref check never matched it).
+    if (entry.callId) known.add(entry.callId);
     known.add(entry.item.id);
   }
   const extra = registry.filter((entry) => {
