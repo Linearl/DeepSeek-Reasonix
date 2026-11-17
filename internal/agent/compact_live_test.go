@@ -70,7 +70,7 @@ func TestCompactionLiveMeterThrottlesChunkEvents(t *testing.T) {
 	clk := newFakeClock()
 	var m compactionLiveMeter
 	m.now = clk.Now
-	m.begin("auto")
+	m.begin("auto", 0)
 
 	// First chunk emits immediately (readout appears at stream start).
 	if !m.addOutput("abcd") {
@@ -116,7 +116,7 @@ func TestCompactionLiveMeterFoldProgressBypassesGate(t *testing.T) {
 	clk := newFakeClock()
 	var m compactionLiveMeter
 	m.now = clk.Now
-	m.begin("manual")
+	m.begin("manual", 0)
 
 	if !m.addOutput("abcd") {
 		t.Fatal("first chunk must emit")
@@ -152,7 +152,7 @@ func TestCompactionLiveMeterReadoutMath(t *testing.T) {
 	clk := newFakeClock()
 	var m compactionLiveMeter
 	m.now = clk.Now
-	m.begin("auto")
+	m.begin("auto", 0)
 
 	// 4000 runes → 1000 tokens. tps stays hidden before 500ms.
 	if !m.addOutput(strings.Repeat("x", 4000)) {
@@ -188,7 +188,7 @@ func TestCompactionLiveMeterStopSilences(t *testing.T) {
 	clk := newFakeClock()
 	var m compactionLiveMeter
 	m.now = clk.Now
-	m.begin("auto")
+	m.begin("auto", 0)
 	if !m.addOutput("abcd") {
 		t.Fatal("active meter must emit")
 	}
@@ -203,7 +203,7 @@ func TestCompactionLiveMeterStopSilences(t *testing.T) {
 		t.Fatal("snapshot after stop must report inactive")
 	}
 	// Re-begin for the next pass resets the counters cleanly.
-	m.begin("manual")
+	m.begin("manual", 0)
 	if _, ok := m.snapshot(); !ok {
 		t.Fatal("snapshot after re-begin must be active")
 	}
@@ -220,7 +220,7 @@ func TestCompactionLiveMeterConcurrentSumSExact(t *testing.T) {
 	clk := newFakeClock()
 	var m compactionLiveMeter
 	m.now = clk.Now
-	m.begin("auto")
+	m.begin("auto", 0)
 
 	const workers, perWorker, runesPerChunk = 4, 250, 8
 	var wg sync.WaitGroup
@@ -314,7 +314,7 @@ func TestCompactEmitsThrottledLiveProgress(t *testing.T) {
 func TestSummarizeLiveProgressGrows(t *testing.T) {
 	prov := &chunkSpamProvider{chunks: 40, text: "abcd"}
 	a := New(prov, tool.NewRegistry(), &Session{}, Options{}, event.Discard)
-	a.compactionLive.begin("manual")
+	a.compactionLive.begin("manual", 0)
 	defer a.compactionLive.stop()
 
 	region := []provider.Message{{Role: provider.RoleUser, Content: "x"}}
@@ -341,7 +341,7 @@ func TestSummarizeLiveProgressGrows(t *testing.T) {
 func TestChunkedFoldProgressReachesMeter(t *testing.T) {
 	prov := &chunkSpamProvider{chunks: 5, text: "fragment digest "}
 	a := New(prov, tool.NewRegistry(), &Session{}, Options{}, event.Discard)
-	a.compactionLive.begin("manual")
+	a.compactionLive.begin("manual", 0)
 	defer a.compactionLive.stop()
 
 	var mu sync.Mutex
@@ -369,7 +369,7 @@ func TestChunkedFoldProgressReachesMeter(t *testing.T) {
 
 	// Now with the production wiring (the same closure
 	// foldSummaryWithChunkedFallback installs).
-	a.compactionLive.begin("manual")
+	a.compactionLive.begin("manual", 0)
 	defer a.compactionLive.stop()
 	if _, err := a.chunkedFoldSummary(context.Background(), fold, "", func(done, total int) {
 		a.compactionLiveFoldProgress(done, total)

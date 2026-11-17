@@ -1282,6 +1282,20 @@ export interface ContextInfo {
   contextBudget?: ContextBudgetInfo;
 }
 
+// tl1657: in-flight compaction pass snapshot (desktop CompactionStateForTab).
+// Same readout shape the CompactionProgress wire events carry, so a pending
+// card synthesized from this snapshot attaches seamlessly to the live stream.
+// running=false = no pass in flight — build nothing.
+export interface CompactionStateView {
+  running: boolean;
+  trigger: string;
+  pass: number;
+  tokens: number;
+  tokensPerSec: number;
+  done: number;
+  total: number;
+}
+
 export interface Meta extends RemoteSessionMetaFields {
   label: string;
   ready: boolean;

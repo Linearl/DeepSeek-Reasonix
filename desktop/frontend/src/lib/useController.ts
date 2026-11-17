@@ -3900,19 +3900,43 @@ export function useController() {
     }, PROMPT_FENCE_RECONCILE_MS);
     promptFenceReconcileTimers.current.set(tabId, timer);
   }, [refreshMetaOnlyForTab]);
+  // tl1657: pending-card reconciliation for a compaction the webview never saw
+  // start. A resume-triggered pressure compaction opens its pass during the Go
+  // boot (autonomous-update resume), often BEFORE this window attached its
+  // event subscription — CompactionStarted is lost (Wails events have no
+  // replay), every later CompactionProgress lands on "no pending card
+  // (dropped)", and the user watches the whole pass with zero readout. The tab
+  // refresh batch polls the backend's in-flight snapshot and synthesizes the
+  // compaction_started dispatch; the existing reducer reuses/creates the card
+  // and every subsequent Progress/Done event attaches normally, so the card's
+  // lifecycle stays aligned with started/failed (a pass that already sealed
+  // reports running=false and builds nothing — no orphan card).
+  // Idempotent: an already-pending compaction card short-circuits the synth.
+  const reconcileCompactionStateForTab = useCallback(async (tabId: string): Promise<WireEvent | undefined> => {
+    if (typeof app.CompactionStateForTab !== "function") return undefined;
+    const state = await app.CompactionStateForTab(tabId).catch(() => undefined);
+    if (!state?.running) return undefined;
+    const current = statesRef.current.get(tabId);
+    if (!current) return undefined;
+    if (current.items.some((it) => it.kind === "compaction" && it.pending)) return undefined;
+    return { kind: "compaction_started", compaction: { trigger: state.trigger || "", pass: state.pass > 0 ? state.pass : undefined } } as WireEvent;
+  }, []);
+
   const refreshMetaForTab = useCallback(async (tabId: string): Promise<void> => {
     const sessionSeq = sessionLoadSeq.current.get(tabId) ?? 0;
     const meta = await loadMetaForTab(tabId);
     if (meta === undefined || (sessionLoadSeq.current.get(tabId) ?? 0) !== sessionSeq) return;
     dispatchTo(tabId, { type: "meta", meta });
-    const [context, effort] = await Promise.all([
+    const [context, effort, compaction] = await Promise.all([
       app.ContextUsageForTab(tabId).catch(() => undefined),
       app.EffortForTab(tabId).catch(() => undefined),
+      reconcileCompactionStateForTab(tabId),
     ]);
     if ((sessionLoadSeq.current.get(tabId) ?? 0) !== sessionSeq) return;
     if (context !== undefined) dispatchTo(tabId, { type: "context", context });
     if (effort !== undefined) dispatchTo(tabId, { type: "effort", effort });
-  }, [dispatchTo, loadMetaForTab]);
+    if (compaction) dispatchTo(tabId, { type: "event", e: compaction });
+  }, [dispatchTo, loadMetaForTab, reconcileCompactionStateForTab]);
   const bumpCheckpointRefreshSeq = useCallback((tabId: string): number => {
     const seq = (checkpointRefreshSeq.current.get(tabId) ?? 0) + 1;
     checkpointRefreshSeq.current.set(tabId, seq);

@@ -5847,6 +5847,8 @@ export const zh: Record<DictKey, string> = {
   "context.windowCompactDistance": "距压缩",
   "context.projectionInvalid": "投影失效 · 全量回退中",
   "context.projectionInvalidTitle": "投影失效中：读数为未投影的全量记录（{canonical}），下轮自动重建",
+  // tl1656：降级视图读数低估真实占用 30% 以上——容量卡按压缩判据的 canonical 实数显示。
+  "context.estimateUnderreadsTitle": "估算偏低：已按 canonical 实数显示（{canonical}）；降级视图只量到 {used}",
   "context.readoutMeasured": "实测",
   "context.readoutEstimated": "估算",
   "context.readoutSourceTitle": "来源：实测=上次响应已校准估算；估算=新会话首轮/切 provider 首轮（尚无响应）",
