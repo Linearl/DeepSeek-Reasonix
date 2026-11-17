@@ -28,6 +28,7 @@ fmt:
 lint: lint-go
 	go run ./tools/repolint
 	node scripts/check-architecture.mjs
+	node scripts/check-injection-entrypoints.mjs
 	bash scripts/check-wails-pin.sh
 	bash scripts/check-wails-pin.test.sh
 
