@@ -101,7 +101,34 @@ func (a *Agent) recordToolReceipts(plan *toolCallPlan, result string, execution 
 				a.turn.deliveryCriteriaEstablished = true
 			}
 			a.emitTodoResultPreview(call, result)
+			// tl1682: an ops-based write never carries the resulting full list in
+			// its raw args ({"ops":[...]}) — the frontend panel parses only the
+			// {"todos":[...]} shape, so without a synthetic full-list event the
+			// live projection resolves empty and the dock panel collapses the
+			// whole list (kernel canonical included) into the sealed
+			// "previous turn" fold. advanceCanonicalTodo already emits the same
+			// synthetic pair for host-advanced completions; an expanded ops write
+			// is the same "the host owns the full state transition" family.
+			if todoWriteArgsUseOps(json.RawMessage(call.Arguments)) {
+				a.emitTodoState(rec.Todos, 0)
+			}
 		}
 		return rec
 	}
+}
+
+// todoWriteArgsUseOps reports whether a todo_write call's raw args carry an
+// incremental ops payload without a todos array — the shape the frontend panel
+// cannot expand on its own (the expansion needs the host baseline). A parse
+// failure or a full-list write (including an explicit {"todos":[]} clear)
+// returns false: those keep their existing event faces.
+func todoWriteArgsUseOps(args json.RawMessage) bool {
+	var p struct {
+		Todos *[]json.RawMessage `json:"todos"`
+		Ops   []json.RawMessage  `json:"ops"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return false
+	}
+	return p.Todos == nil && len(p.Ops) > 0
 }

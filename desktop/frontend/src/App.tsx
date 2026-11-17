@@ -189,7 +189,7 @@ import { startTerminalEventBridge } from "./lib/terminalEvents";
 import { applyTerminalThemePreference } from "./lib/terminalTheme";
 import { useTerminalStore } from "./store/terminal";
 import { hydrateReasoningDisplayMode, setReasoningDisplayPending } from "./lib/reasoningDisplayPreference";
-import { parseTodos, type Todo } from "./lib/tools";
+import { parseTodos, todoLiveParse, type Todo } from "./lib/tools";
 import {
   dismissedTodoKeyForScope,
   partitionTodoBatches,
@@ -2579,7 +2579,7 @@ export default function App() {
   const todoItem = todoEntry?.item ?? null;
   const metaTodos = state.meta?.canonicalTodos;
   const todos = useMemo(
-    () => resolveTodoPanelTodos(metaTodos, todoItem ? parseTodos(todoItem.args) : undefined),
+    () => resolveTodoPanelTodos(metaTodos, todoItem ? todoLiveParse(todoItem.args) : undefined),
     [metaTodos, todoItem],
   );
   // Task 152: every earlier successful top-level todo_write whose items all

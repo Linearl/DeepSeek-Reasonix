@@ -260,5 +260,66 @@ console.log("\ntodo dock empty state (893-B)");
   }
 }
 
+// 7. tl1682 (feedback-20261117-143801): the folded snapshot still holding
+// in-progress/pending work must not read as the "previous turn" history —
+// the header names the in-progress count instead, and the counts always
+// agree with the list the expand reveals.
+{
+  type EmptyStateProps = Omit<Parameters<typeof TodoDockEmptyState>[0], "t">;
+  const mount = (props: EmptyStateProps, translator = t): string => {
+    return renderToStaticMarkup(createElement(TodoDockEmptyState, { ...props, t: translator }));
+  };
+  const mixed7: Todo[] = [
+    { content: "Inspect the report", status: "completed" },
+    { content: "Ship the fix", status: "completed" },
+    { content: "Write the handoff", status: "completed" },
+    { content: "Update the docs", status: "completed" },
+    { content: "Notify the reviewer", status: "completed" },
+    { content: "Append the new task", status: "in_progress", activeForm: "Appending the new task" },
+    { content: "Verify the panel", status: "pending" },
+  ];
+
+  const sealedActive = mount({ canonicalTodos: mixed7 });
+  eq(sealedActive.includes("rightDock.todoSealedActiveCount"), true, "tl1682: snapshot with active work uses the active-count copy");
+  eq(sealedActive.includes("rightDock.todoSealedCount"), false, "tl1682: active work never gets the previous-turn-only copy");
+  eq(sealedActive.includes("data-todo-sealed-toggle"), true, "tl1682: expand affordance stays available");
+  eq(sealedActive.includes("data-todo-empty-state=\"sealed\""), true, "tl1682: state bit stays sealed");
+
+  // Real translator: both numbers ride through ({count} then {active}).
+  const localizedActive = mount({ canonicalTodos: mixed7 }, tFor("en"));
+  eq(localizedActive.includes("7"), true, "tl1682: {count} interpolates to 7");
+  eq(localizedActive.includes("2"), true, "tl1682: {active} interpolates to 2");
+  eq(localizedActive.includes("in progress"), true, "tl1682: en copy names the in-progress count");
+  eq(localizedActive.includes("{active}"), false, "tl1682: no leftover {active} placeholder");
+  // The header copy itself drops the previous-turn claim (the pre-existing
+  // expand toggle label keeps its own wording — out of scope here).
+  eq(localizedActive.includes("The previous turn's task list"), false, "tl1682: active-work header drops the previous-turn claim");
+
+  // All-terminal snapshot keeps the softened tl1353 count copy.
+  const sealedDone = mount({ todos: completed3 });
+  eq(sealedDone.includes("rightDock.todoSealedCount"), true, "tl1682: all-terminal snapshot keeps the count copy");
+  eq(sealedDone.includes("rightDock.todoSealedActiveCount"), false, "tl1682: all-terminal snapshot never claims active work");
+
+  // No derivable snapshot keeps the generic sealed copy (pre-tl1353 shape).
+  const sealedGeneric = mount({ dismissedBatches: ["x"] });
+  eq(sealedGeneric.includes("rightDock.todoSealed"), true, "tl1682: no snapshot keeps the generic sealed copy");
+  eq(sealedGeneric.includes("rightDock.todoSealedActiveCount"), false, "tl1682: no snapshot never claims active work");
+
+  // The seven-item copy agrees with the expandable list (header ↔ reveal).
+  const rootEl2 = document.getElementById("root")!;
+  const root2 = createRoot(rootEl2);
+  await act(async () => {
+    root2.render(createElement(TodoDockEmptyState, { canonicalTodos: mixed7, t: tFor("en") }));
+  });
+  await act(async () => {
+    document.querySelector<HTMLElement>("[data-todo-sealed-toggle]")!.click();
+  });
+  const revealed = document.querySelector<HTMLElement>("[data-todo-sealed-list]")!;
+  eq(revealed.querySelectorAll("li").length, 7, "tl1682: revealed list carries the same 7 items the header counts");
+  await act(async () => {
+    root2.unmount();
+  });
+}
+
 console.log(`\ntodo dock empty state: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

@@ -390,6 +390,11 @@ export function resolveTodoPanelTodos(
   // `live` is set only when the transcript has a completed top-level todo_write.
   // Prefer it over MetaForTab — meta only refreshes on turn_done / focus change,
   // so mid-turn status flips otherwise freeze until the user switches tabs (#7642).
+  // tl1682: an empty live array stays authoritative only when the args carried
+  // an explicit todos payload (`{"todos":[]}` — the clearing write); an
+  // unexpandable shape (an incremental `{"ops":[...]}` write, malformed JSON)
+  // reaches the caller as null and falls back to the canonical snapshot, so an
+  // ops-driven turn never collapses the panel into the sealed empty fold.
   if (live !== undefined && live !== null) return live;
   return Array.isArray(canonical) ? canonical : [];
 }

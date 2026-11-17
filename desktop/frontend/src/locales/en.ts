@@ -414,6 +414,9 @@ export const en = {
   // expand affordance lives in todoSealedExpand.
   "rightDock.todoSealed": "The previous turn's task list is saved and collapsed",
   "rightDock.todoSealedCount": "The previous turn's task list ({count} tasks) is saved and collapsed",
+  // tl1682: when the folded snapshot still holds unfinished work, the header
+  // must not claim "previous turn" — it names the in-progress count instead.
+  "rightDock.todoSealedActiveCount": "Task list saved and collapsed ({count} tasks, {active} in progress)",
   "rightDock.todoSealedExpand": "Previous turn's list ({count})",
 
   // topic bar
