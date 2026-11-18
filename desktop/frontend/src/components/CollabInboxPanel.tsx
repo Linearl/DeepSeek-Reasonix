@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useConfirmDialog } from "./ConfirmDialog";
+import { CollabDispatchPanel } from "./CollabDispatchPanel";
 import { app } from "../lib/bridge";
 import { collabTitleFor, rememberCollabContactNames, shortContactId } from "../lib/collabContactNames";
 import { reportFrontendLog } from "../lib/frontendLog";
@@ -376,7 +377,9 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [sessions, setSessions] = useState<CollabSessionDirectoryRow[]>([]);
-  const [view, setView] = useState<"list" | "chains">("list");
+  // tl1696：视图第三态「派发」——发件侧四态审计面（CollabDispatchPanel），
+  // 与列表/对话链同壳，不新增独立入口。
+  const [view, setView] = useState<"list" | "chains" | "dispatch">("list");
   // 任务 856 ②：批量选择模式——list 视图选中 entry.id，chains 视图选中
   // threadId（删除时展开为链内全部信件 id，=「按链选择=删除链内全部信件」）。
   const [multi, setMulti] = useState(false);
@@ -932,58 +935,74 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
           >
             {t("collabInbox.view.chains")}
           </button>
+          {/* tl1696：派发记录（发件侧四态审计面）——同壳第三视图。 */}
+          <button
+            type="button"
+            className={`collab-inbox-panel__state${view === "dispatch" ? " collab-inbox-panel__state--on" : ""}`}
+            onClick={() => { setView("dispatch"); resetPaging(); }}
+          >
+            {t("collabInbox.view.dispatch")}
+          </button>
         </div>
-        <span className="collab-inbox-panel__sep" aria-hidden="true" />
-        <span className="collab-inbox-panel__tlabel">{t("collabInbox.sortLabel")}</span>
-        <div className="collab-inbox-panel__ordertoggle" role="group" aria-label={t("collabInbox.sortByDate")}>
-          {ORDERS.map((name) => (
+        {/* tl1696：排序/全部已读/多选均为收件列表专属动作，派发视图不渲染
+            （派发面板自带只读审计语义，无批量操作）。 */}
+        {view !== "dispatch" && (
+          <>
+            <span className="collab-inbox-panel__sep" aria-hidden="true" />
+            <span className="collab-inbox-panel__tlabel">{t("collabInbox.sortLabel")}</span>
+            <div className="collab-inbox-panel__ordertoggle" role="group" aria-label={t("collabInbox.sortByDate")}>
+              {ORDERS.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={order === name}
+                  className={`collab-inbox-panel__state${order === name ? " collab-inbox-panel__state--on" : ""}`}
+                  onClick={() => { setOrder(name); resetPaging(); }}
+                >
+                  {t(`collabInbox.order.${name}` as "collabInbox.order.desc")}
+                </button>
+              ))}
+            </div>
+            {rows.some((entry) => !entry.read) && (
+              <button
+                type="button"
+                className="btn btn--secondary btn--small"
+                disabled={busy}
+                onClick={() => void markAllRead()}
+              >
+                {t("collabInbox.markAllRead")}
+              </button>
+            )}
+            {/* 任务 856 ②：批量选择模式开关（多选态=复选框+底部浮动条）。 */}
+            <button
+              type="button"
+              className={`btn btn--small${multi ? " btn--primary" : " btn--secondary"}`}
+              disabled={busy}
+              onClick={() => (multi ? exitMulti() : setMulti(true))}
+            >
+              {multi ? t("collabInbox.multiSelectExit") : t("collabInbox.multiSelect")}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* 任务716 ④（定稿第四位）：桶过滤标签行。tl1696：派发视图无桶概念。 */}
+      {view !== "dispatch" && (
+        <div className="collab-inbox-panel__buckets" role="tablist">
+          {BUCKETS.map((name) => (
             <button
               key={name}
               type="button"
-              aria-pressed={order === name}
-              className={`collab-inbox-panel__state${order === name ? " collab-inbox-panel__state--on" : ""}`}
-              onClick={() => { setOrder(name); resetPaging(); }}
+              role="tab"
+              aria-selected={bucket === name}
+              className={`collab-inbox-panel__bucket${bucket === name ? " collab-inbox-panel__bucket--on" : ""}`}
+              onClick={() => { setBucket(name); resetPaging(); }}
             >
-              {t(`collabInbox.order.${name}` as "collabInbox.order.desc")}
+              {t(`collabInbox.bucket.${name}` as "collabInbox.bucket.all")}
             </button>
           ))}
         </div>
-        {rows.some((entry) => !entry.read) && (
-          <button
-            type="button"
-            className="btn btn--secondary btn--small"
-            disabled={busy}
-            onClick={() => void markAllRead()}
-          >
-            {t("collabInbox.markAllRead")}
-          </button>
-        )}
-        {/* 任务 856 ②：批量选择模式开关（多选态=复选框+底部浮动条）。 */}
-        <button
-          type="button"
-          className={`btn btn--small${multi ? " btn--primary" : " btn--secondary"}`}
-          disabled={busy}
-          onClick={() => (multi ? exitMulti() : setMulti(true))}
-        >
-          {multi ? t("collabInbox.multiSelectExit") : t("collabInbox.multiSelect")}
-        </button>
-      </div>
-
-      {/* 任务716 ④（定稿第四位）：桶过滤标签行。 */}
-      <div className="collab-inbox-panel__buckets" role="tablist">
-        {BUCKETS.map((name) => (
-          <button
-            key={name}
-            type="button"
-            role="tab"
-            aria-selected={bucket === name}
-            className={`collab-inbox-panel__bucket${bucket === name ? " collab-inbox-panel__bucket--on" : ""}`}
-            onClick={() => { setBucket(name); resetPaging(); }}
-          >
-            {t(`collabInbox.bucket.${name}` as "collabInbox.bucket.all")}
-          </button>
-        ))}
-      </div>
+      )}
 
       {bucket === "approval" && (
         <div className="collab-inbox-panel__states">
@@ -1000,6 +1019,8 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
         </div>
       )}
 
+      {/* tl1696：from/to 过滤为收件列表专属，派发视图不渲染。 */}
+      {view !== "dispatch" && (
       <div className="collab-inbox-panel__filters">
         {/* 任务461-P4: from/to 过滤改下拉 —— 选项=会话名（值=contact_id，与后端
             精确匹配口径一致），hover 显示 项目 › 分组 › 会话名 › contact_id，
@@ -1037,8 +1058,18 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
           {t("collabInbox.showDismissed")}
         </label>
       </div>
+      )}
 
       <div className="collab-inbox-panel__rows">
+        {/* tl1696：派发视图——发件侧四态审计面（只读；点击行直达目标会话）。
+            面板自管读取三态（加载/失败/降级）与空态，不冒充「暂无信件」。 */}
+        {view === "dispatch" && (
+          <CollabDispatchPanel
+            bindings={b as unknown as import("./CollabDispatchPanel").CollabDispatchBindings}
+            directory={dir}
+            embedded={embedded}
+          />
+        )}
         {/* tl1238 ①：多选态列表头部主控「全选」复选框——勾=全选当前视图，
             再点=清空当前视图选择；与 batchbar 的全选按钮同一 selected 状态。
             list 视图选 entry.id、chains 视图选 threadId，与行首复选框口径一致。 */}

@@ -324,3 +324,13 @@ type CollabInboxCleanResult struct {
 
 // collinboxSnapshot pins the wire type name for the Wails bindings.
 type collinboxSnapshot = collabinbox.Snapshot
+
+// ListCollabSentMail answers the dispatch panel's read (task 1696): every
+// outgoing cross-session message on this machine, joined with its persisted
+// delivery receipt and reply chain into the four-state view (等待/进行中/
+// 已回信/已拒绝). Read-only audit surface — state and history come from the
+// persistent layer (*.sent.jsonl + receipts/*.json + inbox threadIds), so a
+// restart keeps every row (验收④). limit <= 0 uses the default page (50).
+func (a *App) ListCollabSentMail(limit int) (collabinbox.SentDispatchSnapshot, error) {
+	return collabInboxStore().SentDispatch(collabInboxCtx(), limit)
+}

@@ -46096,3 +46096,157 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* tl1696：派发记录四态面板（信件中心「派发记录」视图）——逐行 = 目标会话·
+   角色·四态徽标·时间·回信摘要；行整体可点（直达目标会话）。颜色 token 与
+   收件面板同一套变量，明暗主题跟随。 */
+.collab-dispatch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.collab-dispatch__note {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+}
+.collab-dispatch__empty {
+  padding: 14px 10px;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+}
+.collab-dispatch__empty--degraded {
+  color: var(--fg-dim);
+}
+.collab-dispatch__empty--error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--danger, #c0392b);
+}
+.collab-dispatch__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.collab-dispatch__row:hover {
+  border-color: var(--button-border-hover);
+  background: var(--button-bg-hover);
+}
+.collab-dispatch__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.collab-dispatch__route {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-strong);
+}
+.collab-dispatch__id {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  font-weight: normal;
+}
+.collab-dispatch__role {
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
+  background: var(--bg-soft);
+}
+.collab-dispatch__role--human {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.collab-dispatch__status {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+/* 四态着色：等待=中性灰（默认态）、进行中=accent、已回信=成功绿、已拒绝=红。 */
+.collab-dispatch__status--in_flight {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.collab-dispatch__status--replied {
+  border-color: var(--success, #2e7d32);
+  color: var(--success, #2e7d32);
+}
+.collab-dispatch__status--refused {
+  border-color: var(--danger, #c0392b);
+  color: var(--danger, #c0392b);
+}
+.collab-dispatch__time {
+  margin-left: auto;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.collab-dispatch__reqreply {
+  padding: 1px 7px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+.collab-dispatch__preview {
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collab-dispatch__reply {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+  border-top: 1px dashed var(--border);
+  font-size: var(--text-xs);
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collab-dispatch__replylabel {
+  color: var(--success, #2e7d32);
+  flex: none;
+}
+.collab-dispatch__reply .collab-dispatch__time {
+  margin-left: auto;
+}
+.collab-dispatch__detail {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collab-dispatch__more {
+  padding: 6px 10px;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}

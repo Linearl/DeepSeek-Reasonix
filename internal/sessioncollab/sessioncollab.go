@@ -1206,6 +1206,74 @@ func (s *MailStore) ListSent(fromContact string, limit int) []MailMessage {
 	return out
 }
 
+// AllSent aggregates every contact's sent log into one dispatch view, newest
+// first (task 1696). History (above) reads the receiving side of every
+// mailbox; the dispatch panel needs the sending side of the same store — a
+// human auditing "who did I dispatch to, and did it land" wants ALL outgoing
+// mail on this machine, not one contact's log. Same discipline as History:
+// one cross-process lock, one directory listing, unparsable lines skipped.
+// Sent logs are never pruned (see PruneInbox), so rows survive restarts —
+// this read is the persistence behind the dispatch panel's audit promise.
+func (s *MailStore) AllSent(ctx context.Context) ([]MailMessage, bool) {
+	start := time.Now()
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		slog.Warn("session collab mail: degraded all-sent read (lock busy)",
+			"lock", filepath.Join(s.root, ".mail.lock"),
+			"last_holder", s.LockHolderInfo(),
+			"wait_ms", time.Since(start).Milliseconds())
+		return nil, true
+	}
+	defer unlock()
+	entries, err := s.listDirOrDefault(s.root)
+	if err != nil {
+		slog.Warn("session collab mail: cannot list the mail directory — degraded all-sent read",
+			"root", s.root, "err", err)
+		return nil, true
+	}
+	var out []MailMessage
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".sent.jsonl") {
+			continue
+		}
+		sender := strings.TrimSuffix(name, ".sent.jsonl")
+		all, err := s.readAllSentLocked(sender)
+		if err != nil {
+			continue
+		}
+		out = append(out, all...)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].At > out[j].At })
+	return out, false
+}
+
+// readAllSentLocked parses one sender's sent log; caller holds the lock.
+func (s *MailStore) readAllSentLocked(sender string) ([]MailMessage, error) {
+	b, err := os.ReadFile(filepath.Join(s.root, sender+".sent.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	var out []MailMessage
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m MailMessage
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			continue
+		}
+		if m.From == "" {
+			// The log file name IS the sender; a legacy row without the
+			// fromContactId field still belongs to this sender.
+			m.From = sender
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
 // A reply names the message it answers in thread_id. Two ways of naming the wrong
 // one are refused here rather than silently dropping the message later:
 //
