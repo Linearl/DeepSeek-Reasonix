@@ -248,6 +248,10 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 	if segmentLatchArmable(err) {
 		a.sess.compaction.segmentSummaryLatched.Store(true)
 	}
+	// tl1689: seal frame BEFORE the failed Done — the burned pass's final
+	// readout reaches the failed card (任务 867 keeps it on the transcript),
+	// so "failed after N tokens at M tok/s" is visible without the log.
+	a.compactionLiveSeal()
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Pass: int(a.sess.compactionSessionPass.Load()), Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
 		FoldInstalled: a.projectionLiveForCard(), LastSuccessAt: a.sess.lastCompactionSuccessAt.Load(),
@@ -311,6 +315,11 @@ func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, a
 	// counter so a later pressure round never counts as a round of the
 	// terminal card's session.
 	a.sess.compactionSessionPass.Store(0)
+	// tl1689: seal frame BEFORE Done — the pass's final readout lands as one
+	// last CompactionProgress (interval-gate bypassed) so a fast pass whose
+	// whole stream fit inside one 1s throttle window still shows its final
+	// tokens/tps before the card resolves. Wire order: …frames → seal → Done.
+	a.compactionLiveSeal()
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Pass: pass, Messages: messages, Summary: summary, Archive: archive, Outcome: "ok",
 	}})

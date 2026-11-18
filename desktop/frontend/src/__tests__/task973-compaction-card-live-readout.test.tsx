@@ -65,11 +65,14 @@ function lastCompaction(s: State): CompactionItem {
   eq(progressed.tokens, 300, "progress: tokens visible");
   eq(progressed.startedAt, card.startedAt, "progress: startedAt preserved");
 
-  // done 整体替换卡：resolved 卡不带戳（水合同款无残值语义）。
+  // done 整体替换卡：tl1689 起 resolved 卡保留 startedAt 并打 endedAt 戳
+  // （hover 指标卡的耗时行数据源）；水合卡依旧两戳皆无（内存戳约定不变），
+  // 卡面读数仍由 pending 门控——resolved 恒不渲染读数。
   s = reducer(s, { type: "event", e: { kind: "compaction_done", compaction: { trigger: "auto", messages: 7, summary: "- goal: ok" } } as unknown as WireEvent });
   const resolved = lastCompaction(s);
   eq(resolved.pending, false, "done: card resolved");
-  eq(resolved.startedAt, undefined, "done: no stale startedAt on the resolved card");
+  eq(typeof resolved.startedAt, "number", "done: startedAt kept for the hover duration (tl1689)");
+  eq(typeof resolved.endedAt, "number", "done: endedAt stamped (tl1689)");
 }
 
 {

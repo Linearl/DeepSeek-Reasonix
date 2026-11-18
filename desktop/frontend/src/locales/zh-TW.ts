@@ -6114,6 +6114,17 @@ export const zhTW: Record<DictKey, string> = {
   "compaction.progress": "分塊壓縮中 {done}/{total}",
   // 任務 556: 壓縮進行中的即時讀數（run-strip 同款觀感）
   "compaction.liveReadout": "{tokens} tokens · {tps} tokens/s",
+  // tl1689: 壓縮卡 hover 指標卡（對標 tl1671 思考指標卡；資料取自壓縮卡既有
+  // 欄位——終局卡繼承的 seal 幀讀數 + started/ended 記憶體戳）。缺資料的列
+  // 整列隱藏，不造 0 值噪音。
+  "compaction.metricsDurationLabel": "壓縮耗時",
+  "compaction.metricsDurationValue": "{s} 秒",
+  "compaction.metricsTpsLabel": "平均吞吐",
+  "compaction.metricsTpsValue": "{n} tokens/s",
+  "compaction.metricsMessagesLabel": "摺疊訊息",
+  "compaction.metricsMessagesValue": "{n} 條",
+  "compaction.metricsTokensLabel": "摘要輸出",
+  "compaction.metricsTokensValue": "{n} tokens",
   // tl1559: 首個 token 估計到達前的佔位腿（摘要請求首 token 延遲空窗），
   // 呼叫面經 compactionLiveReadout 的 options 顯式啟用。
   "compaction.liveEstimating": "估算中…",

@@ -357,8 +357,11 @@ export type Item =
       done?: number; // fork: chunked-compaction progress
       total?: number;
       // 任务 556: live readout while pending (backend CompactionProgress).
-      // Present only on the pending card; compaction_done replaces the item
-      // wholesale, so the finished card never carries a stale estimate.
+      // tl1689: the TERMINAL card also carries the pass's FINAL readout —
+      // compaction_done inherits the pending card's last values (the backend
+      // seal frame's final tokens/tps when it seals, otherwise the last
+      // interval-gated frame) so the hover metrics card can state 平均吞吐/
+      // 摘要输出 after resolution. Hydrated history cards carry none.
       tokens?: number;
       tokensPerSec?: number;
       // 任务 973: compaction_started stamp — feeds the「已 XXs」elapsed leg of
@@ -367,6 +370,11 @@ export type Item =
       // only, same convention as ToolItem.startedAt: hydrated cards carry no
       // stamp and therefore render no elapsed.
       startedAt?: number;
+      // tl1689: terminal stamp — compaction_done records the resolution time
+      // next to the inherited startedAt so the hover metrics card states the
+      // pass's duration (the 26.6s 式 readout). In-memory only, same
+      // convention as startedAt: hydrated cards carry no stamp.
+      endedAt?: number;
       // 任务 867: a failed pass stays visible (failed/attempt/reason) instead
       // of vanishing while the watermark climbs; the next CompactionStarted
       // flips this card back to pending instead of stacking a duplicate.
@@ -2402,7 +2410,25 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         const restarted: Item = { ...cur, pending: true, failed, attempt: failed ? cur.attempt : undefined, reason: failed ? cur.reason : undefined, foldInstalled: undefined, lastSuccessAt: undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0, startedAt: Date.now(), pass, interimSummary: undefined };
         return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items: s.items.map((it, i) => (i === at ? restarted : it)) };
       }
-      return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "", startedAt: Date.now(), pass }] };
+      // tl1687: a NEW pending card is a historical anchor — the pass runs
+      // before the turn's output exists. When the turn's assistant bubble is
+      // still the pre-created empty cursor (turn_started 预建气泡), tail
+      // append renders the card BELOW thinking that actually began after
+      // compaction completed (20261118 08:50 现场：压缩 26s 完成后新一轮思考
+      // 渲染在压缩卡上方——时间顺序反了). Insert before the empty bubble so
+      // the card anchors the turn; an assistant already streaming reasoning
+      // keeps the tail order (its thinking genuinely began first).
+      const lastIdx = s.items.length - 1;
+      const last = s.items[lastIdx];
+      const emptyLiveAssistant = !!last
+        && last.kind === "assistant"
+        && last.id === s.currentAssistant
+        && !assistantHasContent(last, s.live?.id === last.id ? s.live : undefined);
+      const card: Item = { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "", startedAt: Date.now(), pass };
+      const items = emptyLiveAssistant
+        ? [...s.items.slice(0, lastIdx), card, ...s.items.slice(lastIdx)]
+        : [...s.items, card];
+      return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items };
     }
     case "compaction_progress": {
       // 任务 556: live tokens/throughput + chunked-fold N/M on the pending
@@ -2491,7 +2517,13 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const summary = c.summary || cur?.interimSummary || "";
       // tl1588: 终局卡继承本回合沉淀的内部状态详情——「可展开详情区」在压缩
       // 结束后仍然可查（验收②），不是随 pending 态一起蒸发。
-      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : cur!.id, pending: false, trigger: c.trigger || cur?.trigger || "", messages: c.messages || cur?.messages || 0, summary, archive: c.archive ?? "", pass, ...(cur?.episodeNotes?.length ? { episodeNotes: cur.episodeNotes } : {}) };
+      // tl1689: the terminal card inherits the pending card's last live
+      // readout (tokens/tps — the seal frame's final figures when the backend
+      // seals) plus the started→ended span, so the hover metrics card states
+      // 耗时/平均吞吐/折叠消息/摘要输出 after resolution. Hydrated cards carry
+      // none of these (in-memory convention); the hover shows only rows with
+      // data — no zero-value noise.
+      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : cur!.id, pending: false, trigger: c.trigger || cur?.trigger || "", messages: c.messages || cur?.messages || 0, summary, archive: c.archive ?? "", pass, tokens: cur?.tokens ?? 0, tokensPerSec: cur?.tokensPerSec ?? 0, ...(cur?.startedAt ? { startedAt: cur.startedAt } : {}), endedAt: Date.now(), ...(cur?.episodeNotes?.length ? { episodeNotes: cur.episodeNotes } : {}) };
       const items = at < 0 ? [...s.items, filled] : s.items.map((it, i) => (i === at ? filled : it));
       return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, compactionSessionOpen: closesSession ? false : s.compactionSessionOpen, items };
     }
