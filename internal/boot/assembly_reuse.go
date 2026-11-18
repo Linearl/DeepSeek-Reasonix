@@ -4,6 +4,8 @@ import (
 	"reasonix/internal/command"
 	"reasonix/internal/extension"
 	"reasonix/internal/hook"
+	"reasonix/internal/memory"
+	"reasonix/internal/sandbox"
 	"reasonix/internal/skill"
 	"reasonix/internal/tool"
 )
@@ -19,6 +21,23 @@ type ReusedAssembly struct {
 	Hooks                   []hook.ResolvedHook
 	Registry                *tool.Registry
 	ImplicitSkillInvocation bool
+	// Memory is the previous build's memory snapshot. tl1683: the memory
+	// segments (migrate / pinned / load) were the boot hot path's dominant
+	// cost — the migrate segment alone was 98.9% of the P95 growth — and
+	// they ran unconditionally even when the whole system prompt was about
+	// to be replaced by the stored one. A reuse build now reuses this
+	// snapshot instead of re-reading the store.
+	Memory *memory.Set
+	// MemoryFingerprint is the store change token captured together with
+	// Memory (each fact file's name, size and mtime). The reuse build only
+	// takes Memory when the token still matches — a store that changed
+	// since the snapshot falls back to a fresh load.
+	MemoryFingerprint string
+	// Shell is the previously resolved shell. tl1683: the resolution runs
+	// subprocess health probes (`bash -c true`, a 3s budget per candidate on
+	// Windows), and a reuse build serves the previous prompt anyway, so the
+	// probe would be paid for nothing.
+	Shell sandbox.Shell
 }
 
 // shouldReuseDiscovery reports whether rediscovery of skills/commands/hooks

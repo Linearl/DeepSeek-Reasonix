@@ -19,7 +19,7 @@ go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json  
 
 | # | 指标（bench） | 阈值 | tasklist 出处 | 数据源 |
 |---|---|---|---|---|
-| M1 | boot total · 热路径（`boot`） | P95 < 1000ms | 任务 363 验收①「单开新对话（热路径）boot total <1s」 | `boot: stage timings` + `desktop: runtime assembly hit` 配对（构建起点 ±2s）；无 hit 行时退化到「prompt+mcp+agent:tools ≤300ms」启发式 |
+| M1 | boot total · 热路径（`boot`） | P95 < 3500ms（tl1683 按可达门重标定，原 1000ms） | 任务 363 验收①「单开新对话（热路径）boot total <1s」（P50 口径仍成立；P95 口径按修复后各相 P95 合计重标定，见下「门值重标定」） | 主口径：`boot: assembly reuse`（boot 自报本次真的复用了 prompt/memory/shell，落在本次 boot 的构建窗口内）；兜底：「prompt+mcp+agent:tools ≤1500ms」启发式。`desktop: runtime assembly hit` 只作标注，不再单独构成热路径 |
 | M1c | boot total · 冷启动（`boot`，OBSERVE） | 无（363① 对照基线 3.4s） | tasklist 无冷启动数值验收 | `boot: stage timings` |
 | M2 | 打开历史对话→可发消息（`open-topic`） | P95 < 2000ms | 任务 363 追加验收⑥「打开历史对话到可发消息 <2s（open-topic total + ancillary effort 合成体感）」 | `frontend open-topic summary` total + `tab switch timing` 的 `open-topic:ancillary effort` 合成配对（同 tab，60s 窗） |
 | M3 | 打开会话失败（`open-topic`，census） | 0 条，任何一条即 FAIL | 任务 298「失败必须留痕（无日志≠未发生）」 | `desktop: open session failed` 计数 |

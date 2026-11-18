@@ -31,7 +31,7 @@ func TestWarnPatrolCollectAndVerdict(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.FixedZone("CST", 8*3600))
-	col, err := collectLogDir(dir, 72*time.Hour, now, parseWarnPatterns(defaultWarnPatterns))
+	col, err := collectLogDir(dir, 72*time.Hour, now, parseWarnPatterns(defaultWarnPatterns), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestWarnPatrolCollectAndVerdict(t *testing.T) {
 	}
 
 	// 自定义模式：采集期按该模式过滤后，不命中的行出 0 条 PASS 行。
-	col2, err := collectLogDir(dir, 72*time.Hour, now, parseWarnPatterns("open session slow, totally-absent"))
+	col2, err := collectLogDir(dir, 72*time.Hour, now, parseWarnPatterns("open session slow, totally-absent"), 0)
 	if err != nil {
 		t.Fatal(err)
 	}

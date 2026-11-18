@@ -43,6 +43,19 @@ type Options struct {
 	UserDir string
 }
 
+// FingerprintFor returns the change token of the store that Load(opts) reads:
+// a hash over every fact file's name, size and mtime. A snapshot taken under
+// one token describes exactly the same facts as any other snapshot taken
+// under it. tl1683 uses it to decide whether a 363A reuse build may reuse
+// the previous memory snapshot instead of re-reading the whole store.
+func FingerprintFor(opts Options) string {
+	cwd := opts.CWD
+	if cwd == "" {
+		cwd = "."
+	}
+	return StoreFor(opts.UserDir, cwd).Fingerprint()
+}
+
 // Load discovers all memory for a session: the hierarchical docs and the
 // auto-memory index. It is best-effort and never errors — missing files just
 // mean less memory — so boot can call it unconditionally.

@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,10 +38,73 @@ type MigrationReport struct {
 
 var memoryStoreMutationMu sync.Mutex
 
+// migrateHeaderBytes bounds the frontmatter probe MigrateV2 needs. The id and
+// revision keys it looks for live in the first lines of a memory file, so
+// reading whole files to learn them made every boot pay a full read of the
+// entire store (tl1683 归因报告 §4.2: 881 files / 2.1MB = 295ms hot,
+// 1240ms cold) before it could conclude "nothing to migrate".
+//
+// 1024 is measured, not guessed: across the live store's 886 fact files the
+// frontmatter block (bytes up to the closing fence) measures min 231 / p50
+// 360 / p90 481 / p99 657 / max 912 bytes — a 1KB head covers every one of
+// them, so the probe decides without a fallback. A file whose frontmatter
+// does not fit is reported as undecidable and falls back to the full read, so
+// the bound can never change the verdict.
+const migrateHeaderBytes = 1024
+
+// migrateHeaderBufPool recycles the head-read buffers: the scan touches every
+// fact file on every boot, and a fresh 4KB allocation per file is pure waste.
+var migrateHeaderBufPool = sync.Pool{New: func() any {
+	buf := make([]byte, migrateHeaderBytes)
+	return &buf
+}}
+
+// migrationCandidate is one memory file that still needs the v2 migration.
+type migrationCandidate struct {
+	dir  string
+	path string
+}
+
+// MigrateV2 brings legacy memory files up to the v2 metadata shape.
+//
+// The work is split in two phases on purpose. Classification (phase 1) is
+// IO-bound and runs WITHOUT the process-wide mutation mutex; only the actual
+// rewrites (phase 2) take the lock. Before this split the whole scan ran
+// under that mutex, and the mutex is the one every memory write holds while
+// it rewrites the whole MEMORY.md index — so a boot that overlapped a write
+// waited for the write instead of doing its own work (tl1683 归因报告 §4.2:
+// the segment's own workload is 295ms hot / 1240ms cold while its P95 was
+// 21–29s, i.e. 22–93x the work it was doing). The lock's semantics are
+// unchanged — phase 2 still mutates under it.
 func (s Store) MigrateV2() (MigrationReport, error) {
+	candidates, err := s.migrationCandidates()
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	if len(candidates) == 0 {
+		return MigrationReport{}, nil
+	}
 	memoryStoreMutationMu.Lock()
 	defer memoryStoreMutationMu.Unlock()
 	var report MigrationReport
+	for _, candidate := range candidates {
+		migrated, err := s.migrateFile(candidate.dir, candidate.path)
+		if err != nil {
+			return report, err
+		}
+		if migrated {
+			report.Migrated++
+		}
+	}
+	return report, nil
+}
+
+// migrationCandidates lists the memory files that still need the v2
+// migration, reading only the head of each file. A file whose frontmatter
+// does not fit in the head falls back to the full read, so the verdict is
+// always the one the pre-tl1683 full-read code reached.
+func (s Store) migrationCandidates() ([]migrationCandidate, error) {
+	var out []migrationCandidate
 	for _, dir := range s.dirs() {
 		if strings.TrimSpace(dir) == "" {
 			continue
@@ -49,65 +114,140 @@ func (s Store) MigrateV2() (MigrationReport, error) {
 			continue
 		}
 		if err != nil {
-			return report, err
+			return nil, err
 		}
 		if !info.IsDir() {
-			return report, fmt.Errorf("memory store path %q is not a directory", dir)
+			return nil, fmt.Errorf("memory store path %q is not a directory", dir)
 		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return report, err
+			return nil, err
 		}
 		for _, entry := range entries {
 			if entry.IsDir() || entry.Name() == indexFile || !strings.HasSuffix(entry.Name(), ".md") {
 				continue
 			}
 			path := filepath.Join(dir, entry.Name())
-			raw, err := os.ReadFile(path)
+			needs, complete, err := needsMigration(path)
 			if err != nil {
-				return report, err
+				return nil, err
 			}
-			frontmatter, _ := splitFrontmatter(string(raw))
-			if strings.TrimSpace(frontmatter["id"]) != "" && parsePositiveInt(frontmatter["revision"]) > 0 {
-				continue
-			}
-			memory, ok := loadMemory(path)
-			if !ok {
-				continue
-			}
-			memory.Name = slug(memory.Name)
-			if memory.Scope == "" {
-				memory.Scope = s.scopeForDir(dir)
-			}
-			// The rewrite below is in place: persist the exact original bytes
-			// as <name>.md.bak first so a bad migration stays recoverable
-			// (upstream 11846/PR11857 semantics). Backup failure refuses the
-			// migration; an existing backup is kept as the first copy so a
-			// retried migration never overwrites the pre-migration snapshot.
-			// The .bak suffix keeps it out of every reader — fact discovery,
-			// index, recall, and revisions all filter on ".md".
-			bakPath := path + ".bak"
-			bakInfo, bakErr := os.Stat(bakPath)
-			switch {
-			case os.IsNotExist(bakErr):
-				if err := writeMemoryAtomic(bakPath, raw, 0o644); err != nil {
-					return report, fmt.Errorf("memory migration backup %q failed: %w", bakPath, err)
+			if !complete {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					return nil, err
 				}
-			case bakErr != nil:
-				return report, fmt.Errorf("memory migration backup %q: %w", bakPath, bakErr)
-			case !bakInfo.Mode().IsRegular():
-				return report, fmt.Errorf("memory migration backup %q exists and is not a regular file", bakPath)
+				needs = memoryNeedsMigration(string(raw))
 			}
-			if err := writeMemoryAtomic(path, []byte(render(memory, memory.Name)), 0o644); err != nil {
-				return report, err
+			if needs {
+				out = append(out, migrationCandidate{dir: dir, path: path})
 			}
-			if err := reindexIn(dir, memory.Name, memory); err != nil {
-				return report, err
-			}
-			report.Migrated++
 		}
 	}
-	return report, nil
+	return out, nil
+}
+
+// migrateFile rewrites one legacy memory file in place. The caller holds the
+// process-wide mutation mutex. The frontmatter is re-checked here because
+// phase 1 ran without the lock: a concurrent write may have migrated the
+// file in between.
+func (s Store) migrateFile(dir, path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	if !memoryNeedsMigration(string(raw)) {
+		return false, nil
+	}
+	memory, ok := loadMemory(path)
+	if !ok {
+		return false, nil
+	}
+	memory.Name = slug(memory.Name)
+	if memory.Scope == "" {
+		memory.Scope = s.scopeForDir(dir)
+	}
+	// The rewrite below is in place: persist the exact original bytes
+	// as <name>.md.bak first so a bad migration stays recoverable
+	// (upstream 11846/PR11857 semantics). Backup failure refuses the
+	// migration; an existing backup is kept as the first copy so a
+	// retried migration never overwrites the pre-migration snapshot.
+	// The .bak suffix keeps it out of every reader — fact discovery,
+	// index, recall, and revisions all filter on ".md".
+	bakPath := path + ".bak"
+	bakInfo, bakErr := os.Stat(bakPath)
+	switch {
+	case os.IsNotExist(bakErr):
+		if err := writeMemoryAtomic(bakPath, raw, 0o644); err != nil {
+			return false, fmt.Errorf("memory migration backup %q failed: %w", bakPath, err)
+		}
+	case bakErr != nil:
+		return false, fmt.Errorf("memory migration backup %q: %w", bakPath, bakErr)
+	case !bakInfo.Mode().IsRegular():
+		return false, fmt.Errorf("memory migration backup %q exists and is not a regular file", bakPath)
+	}
+	if err := writeMemoryAtomic(path, []byte(render(memory, memory.Name)), 0o644); err != nil {
+		return false, err
+	}
+	if err := reindexIn(dir, memory.Name, memory); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// memoryNeedsMigration reports whether a memory file's bytes still need the
+// v2 migration: an already-migrated file carries a non-empty id and a
+// positive revision in its frontmatter.
+func memoryNeedsMigration(raw string) bool {
+	frontmatter, _ := splitFrontmatter(raw)
+	return strings.TrimSpace(frontmatter["id"]) == "" || parsePositiveInt(frontmatter["revision"]) <= 0
+}
+
+// needsMigration decides from the file head alone whether path still needs
+// the v2 migration. complete=false means the head could not decide (the
+// frontmatter block does not fit in it), and the caller must fall back to a
+// full read.
+func needsMigration(path string) (needs bool, complete bool, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, false, err
+	}
+	defer f.Close()
+	bufp := migrateHeaderBufPool.Get().(*[]byte)
+	defer migrateHeaderBufPool.Put(bufp)
+	// One read, not io.ReadFull: a regular file read returns everything that
+	// is left, so a short read means "this file is smaller than the head" —
+	// which is exactly the "we have the whole file" case. io.ReadFull would
+	// spend a second syscall per file to reach the same conclusion.
+	n, err := f.Read(*bufp)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, false, err
+	}
+	head := string((*bufp)[:n])
+	// A short read means the whole file is in the head, so the head decides.
+	if n < migrateHeaderBytes || frontmatterHeadComplete(head) {
+		return memoryNeedsMigration(head), true, nil
+	}
+	return false, false, nil
+}
+
+// frontmatterHeadComplete reports whether the frontmatter block of head is
+// fully contained in head. A file with no frontmatter at all is complete by
+// definition — the full read would reach the same verdict. A head that ends
+// inside an open fence is not decidable: the block may be longer than the
+// head, or the file may genuinely lack a closing fence.
+func frontmatterHeadComplete(head string) bool {
+	normalized := strings.ReplaceAll(head, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return true
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return true
+		}
+	}
+	return false
 }
 
 // inheritOnUpdate keeps the update-omittable fields of an existing revision:

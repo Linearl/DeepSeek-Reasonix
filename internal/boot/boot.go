@@ -857,7 +857,32 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// tl1229: prompt-stage internal segments (pure timing + one log line at
 	// the stage close; no behavior or prompt-content change).
 	promptSegs := newPromptSegments()
-	shell := sandbox.ResolveShell(cfg.Tools.Shell.Prefer, cfg.Tools.Shell.Path, stderr)
+	// tl1683 ①/④: the 363A reuse decision is taken BEFORE the prompt phase
+	// runs. The reuse branch serves the previous assembly's system prompt
+	// verbatim, so every prompt-phase work item below (shell probe, memory
+	// migrate/pin/load/compose) produces a result that is thrown away — yet
+	// it was all paid for. That is why a "hot path" boot still showed a 35s
+	// prompt phase (tl1683 归因报告 §4.4: the 363A reuse covered
+	// skills/commands/hooks only; the memory segments ran unconditionally).
+	implicitSkillInvocation := cfg.ImplicitSkillInvocationEnabled()
+	canReuseDiscovery := opts.ReuseAssembly != nil && shouldReuseDiscovery(opts.PreviousPlan)
+	canReuseSkills := canReuseDiscovery &&
+		opts.ReuseAssembly.ImplicitSkillInvocation == implicitSkillInvocation
+	// The stored prompt replaces the assembled one only when it carries
+	// content; an empty stored prompt must not drop the fresh assembly.
+	reusePrompt := canReuseSkills && strings.TrimSpace(opts.ReuseAssembly.SystemPrompt) != ""
+	// tl1683 ④: the shell resolution runs subprocess health probes
+	// (`bash -c true`, a 3s budget per candidate on Windows) and the reuse
+	// branch serves the previous prompt anyway — so a reused build reuses
+	// the previous resolution instead of paying the probe again.
+	shell := sandbox.Shell{}
+	shellReused := false
+	if reusePrompt && opts.ReuseAssembly.Shell.Path != "" {
+		shell = opts.ReuseAssembly.Shell
+		shellReused = true
+	} else {
+		shell = sandbox.ResolveShell(cfg.Tools.Shell.Prefer, cfg.Tools.Shell.Path, stderr)
+	}
 	promptSegs.mark("shell")
 
 	sysPrompt, err := cfg.ResolveSystemPromptForRoot(root)
@@ -921,8 +946,27 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Stable memory policy and REASONIX.md / AGENTS.md standing instructions
 	// enter the system prompt. Pinned facts and the background index remain in
 	// the controller-owned session-context snapshot.
-	if _, err := memory.StoreFor(config.MemoryUserDir(), root).MigrateV2(); err != nil {
-		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Memory metadata migration did not complete.", Detail: err.Error()})
+	//
+	// tl1683 ①: the three memory segments (migrate / pinned / load) were the
+	// boot hot path's dominant cost — the migrate segment alone was 98.9% of
+	// the P95 growth (21–29s against a 295ms hot / 1240ms cold own workload).
+	// A 363A reuse build serves the previous prompt verbatim, so this work
+	// was pure waste there. When the store is unchanged (cheap stat
+	// fingerprint, no file content read) the previous snapshot is reused.
+	memOptions := memory.Options{CWD: root, UserDir: config.MemoryUserDir()}
+	memReused := false
+	var mem *memory.Set
+	if reusePrompt && opts.ReuseAssembly.Memory != nil {
+		if fingerprint := opts.ReuseAssembly.MemoryFingerprint; fingerprint != "" &&
+			fingerprint == memory.FingerprintFor(memOptions) {
+			mem = opts.ReuseAssembly.Memory
+			memReused = true
+		}
+	}
+	if !memReused {
+		if _, err := memory.StoreFor(config.MemoryUserDir(), root).MigrateV2(); err != nil {
+			sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Memory metadata migration did not complete.", Detail: err.Error()})
+		}
 	}
 	promptSegs.mark("memory_migrate")
 	// Record activation: pinned on facts that only pin through the legacy
@@ -930,8 +974,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Injection is unchanged; each rewrite keeps a rollback revision, and the
 	// budget check passes by construction — a body-for-body replacement never
 	// grows the total.
-	if _, err := memory.StoreFor(config.MemoryUserDir(), root).MaterializeLegacyPinned(); err != nil {
-		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Legacy pinned-memory materialization did not complete.", Detail: err.Error()})
+	if !memReused {
+		if _, err := memory.StoreFor(config.MemoryUserDir(), root).MaterializeLegacyPinned(); err != nil {
+			sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Legacy pinned-memory materialization did not complete.", Detail: err.Error()})
+		}
 	}
 	promptSegs.mark("memory_pinned")
 	// tl1193b: resolve the plan-E pinned-index lab switch (agent
@@ -939,7 +985,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// first Load — capabilityGroups boot-snapshot precedent, restart to apply.
 	// Default off keeps the legacy full-body pinned injection byte-for-byte.
 	memory.SetPinnedIndexMode(cfg.Agent.ExperimentalPinnedIndex)
-	mem := memory.Load(memory.Options{CWD: root, UserDir: config.MemoryUserDir()})
+	if !memReused {
+		mem = memory.Load(memOptions)
+	}
 	promptSegs.mark("memory_load")
 	projectChecks := instruction.ExtractHostChecks(mem.Docs)
 	promptSegs.mark("host_checks")
@@ -948,18 +996,19 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// post-compaction memory reload reuses it so only the # Memory region is
 	// regenerated from the latest on-disk memory.
 	sysPromptBase := sysPrompt
-	sysPrompt = memory.Compose(sysPrompt, mem)
+	// tl1683 ①: a reused prompt already carries its own memory region, so
+	// composing again would only produce a string that is discarded below.
+	if !reusePrompt {
+		sysPrompt = memory.Compose(sysPrompt, mem)
+	}
 	promptSegs.mark("memory_compose")
 
-	implicitSkillInvocation := cfg.ImplicitSkillInvocationEnabled()
 	// Skills: rediscovery skipped on no-op/interceptor/UI rebuilds when
 	// ReuseAssembly is retained from the previous BuildResult.
 	var skillStore *skill.Store
 	var skills []skill.Skill
 	var allSkillStore *skill.Store
 	var allSkills []skill.Skill
-	canReuseSkills := opts.ReuseAssembly != nil && shouldReuseDiscovery(opts.PreviousPlan) &&
-		opts.ReuseAssembly.ImplicitSkillInvocation == implicitSkillInvocation
 	if canReuseSkills {
 		skills = opts.ReuseAssembly.Skills
 		allSkills = skills
@@ -983,8 +1032,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(),
 			MaxDepth: cfg.SkillMaxDepth(), Stderr: io.Discard,
 		})
-		if s := strings.TrimSpace(opts.ReuseAssembly.SystemPrompt); s != "" {
-			sysPrompt = s
+		if reusePrompt {
+			sysPrompt = opts.ReuseAssembly.SystemPrompt
 		}
 	} else {
 		// Task 919: both stores read the same on-disk skill tree and differ only
@@ -1021,6 +1070,20 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// the before-data the 1193 family optimizes against. Emitted before the
 	// stage-close mark so "prompt" stays the whole-window number.
 	slog.Info("boot: prompt segments", "summary", promptSegs.summary())
+	// tl1683 ⑤: the reuse facts of THIS build, as one greppable line. The
+	// bench used to call a boot "hot path" purely because a pool hit line
+	// sat near it — but a pool hit only means the pool HAD an entry, not
+	// that the build took the reuse branch. Before tl1683 the memory
+	// segments ran unconditionally, so every hit-paired boot re-ran the
+	// full prompt assembly and the 363① gate measured a path that does not
+	// exist (tl1683 归因报告 §4.4: 111/111 hot samples came from the hit
+	// pairing, 0 from the phase-budget heuristic — a constant-FAIL gate).
+	// This line is the boot's own evidence of what it actually reused.
+	slog.Info("boot: assembly reuse",
+		"prompt", reusePrompt,
+		"memory", memReused,
+		"shell", shellReused,
+	)
 	bootTime.mark("prompt")
 
 	// memoryReload regenerates only the memory (# Memory) region of the system
@@ -3171,6 +3234,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Hooks:                   resolvedHooks,
 		Registry:                reg,
 		ImplicitSkillInvocation: implicitSkillInvocation,
+		// tl1683 ①/④: carry the memory snapshot, its store change token, and
+		// the resolved shell so a 363A reuse build can skip the memory
+		// segments and the shell probe instead of paying for work whose
+		// result the reuse branch discards.
+		Memory:           mem,
+		MemoryFingerprint: memory.FingerprintFor(memOptions),
+		Shell:            shell,
 	}
 	// Task 125: one greppable line answers "startup ~9s, where did it go?"
 	// after the fact. Observation only — never fails a build.

@@ -26,8 +26,20 @@ type bootSample struct {
 	Stages map[string]int64
 	Model  string
 	Root   string
-	Hot    bool // 复用命中配对（363A 直接证据）或分相预算启发式
-	Reuse  bool // 与 desktop: runtime assembly hit 配对成功
+	Hot    bool // 本次 boot 真的走了复用路径，或分相预算启发式命中
+	Reuse  bool // 与 boot: assembly reuse 行配对成功（boot 自报的复用事实）
+	PoolHit bool // 与 desktop: runtime assembly hit 配对成功（池里有货，不等于走了复用）
+	// HotBy 记录热路径判定依据："reuse"（boot 自报复用）/ "budget"（分相预算
+	// 启发式）/ "pool-hit"（仅池命中——旧口径的假门来源，不再单独成立）。
+	HotBy string
+}
+
+// reuseMark 是 boot 自报的一次复用事实（boot: assembly reuse 行）。
+type reuseMark struct {
+	At     time.Time
+	Prompt bool
+	Memory bool
+	Shell  bool
 }
 
 // censusRow 是「越线普查」计数：desktop 后端只记录越过慢线的 stage
@@ -60,7 +72,9 @@ type logCollect struct {
 	Window          time.Duration
 	FilesParsed     int
 	LinesParsed     int
+	HotBudgetMS     int64      // 热路径分类的重组相合计预算（0 = 用默认值）
 	AssemblyHits    []time.Time // desktop: runtime assembly hit（363A 复用命中的直接证据）
+	ReuseMarks      []reuseMark // boot: assembly reuse（boot 自报：本次真的复用了什么）
 	Boots           []bootSample
 	OpenTopicTotal  []sample // frontend open-topic summary 的 total（无条件记录）
 	OpenTopicAnc    []sample // 后端 open-topic:ancillary effort（慢线普查）
@@ -86,8 +100,9 @@ type logCollect struct {
 // collectLogDir 扫描目录内 desktop.log 与轮转文件（desktop.log.N，N 越大越旧），
 // 解析窗口内的行。目录不存在返回错误。warnPatterns 为 WARN 巡检模式（采集期
 // 按模式过滤入池；nil/空 = 不采集 WARN 池，与 -warn-patterns 为空语义一致）。
-func collectLogDir(dir string, window time.Duration, now time.Time, warnPatterns []string) (*logCollect, error) {
-	c := &logCollect{Window: window, warnPatterns: warnPatterns}
+// hotBudgetMS 为热路径分类的重组相合计预算（0 = 用默认值）。
+func collectLogDir(dir string, window time.Duration, now time.Time, warnPatterns []string, hotBudgetMS int64) (*logCollect, error) {
+	c := &logCollect{Window: window, warnPatterns: warnPatterns, HotBudgetMS: hotBudgetMS}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -121,6 +136,7 @@ func collectLogDir(dir string, window time.Duration, now time.Time, warnPatterns
 	}
 	c.rollupCensus()
 	c.pairReuseHits()
+	c.classifyBoots()
 	return c, nil
 }
 
@@ -161,9 +177,23 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 	}
 	switch ln.msg {
 	case "desktop: runtime assembly hit":
-		// 363A 复用命中的直接证据：acquire 发生在 BuildWithAssembly 起步前，
-		// 与随后 boot summary 的 (At - Total) 起点对齐即可判定该次 boot 走热路径。
+		// 363A 复用命中的**间接**证据：acquire 发生在 BuildWithAssembly 起步前，
+		// 与随后 boot summary 的 (At - Total) 起点对齐即可判定该次 boot 走过
+		// 池子。但「池里有货」不等于「本次 boot 真的复用了」——tl1683 之前
+		// memory 三段无条件执行，命中配对的 boot 照样重跑完整 prompt 组装，
+		// 于是 111/111 热路径样本全部来自这一支，启发式分支 0 样本，363①
+		// 成了恒 FAIL 的假门（tl1683 归因报告 §4.4）。故本行只作标注
+		// （PoolHit），不再单独构成热路径判定。
 		c.AssemblyHits = append(c.AssemblyHits, ln.ts)
+	case "boot: assembly reuse":
+		// tl1683 ⑤：boot 自报的复用事实（本次 build 复用了 prompt / memory /
+		// shell 中的哪些）。这是热路径判定的**直接**证据。
+		c.ReuseMarks = append(c.ReuseMarks, reuseMark{
+			At:     ln.ts,
+			Prompt: ln.attrs["prompt"] == "true",
+			Memory: ln.attrs["memory"] == "true",
+			Shell:  ln.attrs["shell"] == "true",
+		})
 	case "boot: stage timings":
 		total, stages, ok := parseBootSummary(ln.attrs["summary"])
 		if !ok {
@@ -172,7 +202,8 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 		c.Boots = append(c.Boots, bootSample{
 			At: ln.ts, Total: total, Stages: stages,
 			Model: ln.attrs["model"], Root: ln.attrs["root"],
-			Hot: bootIsHot(stages),
+			// 热/冷判定在采集后统一做（classifyBoots）：它需要本次 boot 的
+			// 复用证据与预算，两者都在采集完成后才齐备。
 		})
 	case "desktop: frontend open-topic summary":
 		d := parseKVList(ln.attrs["detail"])
@@ -262,11 +293,38 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 	}
 }
 
-// pairReuseHits 把 desktop: runtime assembly hit 与 boot summary 配对：
-// hit 落在 BuildWithAssembly 起步前，故 boot 的构建起点 = At - Total。
-// 每个 hit 只消费一次；|hit - 构建起点| ≤ 2s 判同一次构建（实测最大偏差
-// 1.7s，含日志落行抖动）。配对成功 = 该 boot 走了 363A 热路径。
+// pairReuseHits 把两类复用证据配到每次 boot 上：
+//
+// ① boot: assembly reuse（boot 自报）——**直接**证据。该行落在本次 boot 的
+// [构建起点, 落行时刻] 窗口内（构建起点 = summary.At - Total），故归属
+// 明确，无需时间容差。
+// ② desktop: runtime assembly hit（池里有货）——**间接**证据，只作标注
+// （PoolHit），不再单独构成热路径判定。
+//
+// 旧口径把 ② 直接当成热路径：命中配对只说明「池里有货」，不说明「本次
+// build 真的复用了」——tl1683 之前 memory 三段无条件执行，命中配对的 boot
+// 照样重跑完整 prompt 组装。于是第5/6 期热路径样本 100%（69/69、111/111）
+// 来自 ②，启发式分支 0 样本，363① 成了恒 FAIL 的假门（tl1683 归因报告
+// §4.4）。现在 ① 定热路径、② 只标注。
 func (c *logCollect) pairReuseHits() {
+	// ① boot 自报的复用事实：按构建窗口归属配对。
+	marks := append([]reuseMark(nil), c.ReuseMarks...)
+	sort.Slice(marks, func(i, j int) bool { return marks[i].At.Before(marks[j].At) })
+	markUsed := make([]bool, len(marks))
+	for i := range c.Boots {
+		b := &c.Boots[i]
+		start := b.At.Add(-time.Duration(b.Total) * time.Millisecond)
+		for j, m := range marks {
+			if markUsed[j] || m.At.Before(start) || m.At.After(b.At) {
+				continue
+			}
+			markUsed[j] = true
+			b.Reuse = true
+			break
+		}
+	}
+
+	// ② 池命中配对：只标注（PoolHit），不参与热路径判定。
 	hits := append([]time.Time(nil), c.AssemblyHits...)
 	sort.Slice(hits, func(i, j int) bool { return hits[i].Before(hits[j]) })
 	used := make([]bool, len(hits))
@@ -289,8 +347,42 @@ func (c *logCollect) pairReuseHits() {
 		}
 		if best >= 0 {
 			used[best] = true
-			b.Reuse = true
+			b.PoolHit = true
+		}
+	}
+}
+
+// classifyBoots 给每次 boot 定热路径/冷启动，并记录判定依据。
+//
+// 判定口径（tl1683 ⑤）：
+//   - "reuse"：boot 自报走了复用分支（boot: assembly reuse 行落在本次 boot
+//     的构建窗口内）——直接证据，优先级最高。
+//   - "budget"：三大重组相（prompt/mcp/agent:tools）合计在预算内——启发式
+//     兜底，覆盖复用功能上线前的老日志与未命中复用的快 boot。
+//   - 池命中（PoolHit）**不**单独成立：它只说明池里有货。
+//
+// 预算默认值从 300ms 抬到 1500ms：tl1683 之前三大重组相在热路径上的 P50 是
+// 4321ms，300ms 的预算对任何真实 boot 都够不到（这正是启发式分支 0 样本的
+// 结构性原因）；修复后复用 boot 的重组相落在 ~340ms（P50）到 ~1.4s（P95 上界
+// ＝ prompt≈0 + mcp 393 + agent:tools 833 + 余量），1500ms 既能接住修复后的
+// 复用 boot，又接不住修复前那批 4.3s 起的重组相。
+func (c *logCollect) classifyBoots() {
+	budget := c.HotBudgetMS
+	if budget <= 0 {
+		budget = defaultBootHotBudgetMS
+	}
+	for i := range c.Boots {
+		b := &c.Boots[i]
+		switch {
+		case b.Reuse:
 			b.Hot = true
+			b.HotBy = "reuse"
+		case bootIsHotWith(b.Stages, budget):
+			b.Hot = true
+			b.HotBy = "budget"
+		default:
+			b.Hot = false
+			b.HotBy = ""
 		}
 	}
 }
@@ -298,8 +390,8 @@ func (c *logCollect) pairReuseHits() {
 // bootIsHot 按组合预算把 boot 分为热路径/冷启动（启发式兜底口径）：
 // 363A 的热路径=runtime 复用（prompt 免重组、agent:tools 免重建），
 // 落到日志上就是三大重组相（prompt/mcp/agent:tools）合计很小。
-// 主口径是 pairReuseHits 的 hit 配对（直接证据）；hit 行缺失的老日志
-// （复用功能上线前）退化到本启发式，阈值可在 CLI 覆盖（bootHotBudgetMS）。
+// 主口径是 boot 自报的复用事实（boot: assembly reuse，直接证据）；该行缺失
+// 的老日志（复用功能上线前）退化到本启发式。
 func bootIsHot(stages map[string]int64) bool {
 	return bootIsHotWith(stages, defaultBootHotBudgetMS)
 }
