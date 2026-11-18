@@ -47,12 +47,21 @@ import (
 // versioned installs; every other platform gets the check plus a manual
 // download link, the same disposition as the official macOS manual path.
 
-// forkCheckClient builds the transport for fork channel lookups. The updater
-// client already carries the user's proxy settings and the redirect allowlist
-// (github.com / *.githubusercontent.com) that release downloads need. A var so
-// tests can point the whole face at a local mock transport.
+// forkCheckClient builds the transport for fork channel lookups (tl1690).
+// httpClient() already resolves the user's [network] proxy settings through
+// netclient (auto = env, then the OS system proxy on Windows), so the channel
+// check rides the same proxy as the rest of the app — a desktop app without
+// process env vars used to dial api.github.com direct and die on TLS handshake
+// timeout ("fork release channel unreachable; check skipped"). The forkupdate
+// package's own newChannelClient is the fallback when the updater's config
+// load fails (a broken config must not turn the check into a hard error — it
+// degrades to the auto default instead). A var so tests can point the whole
+// face at a local mock transport.
 var forkCheckClient = func() (*http.Client, error) {
-	return httpClient()
+	if c, err := httpClient(); err == nil {
+		return c, nil
+	}
+	return forkupdate.NewChannelClient()
 }
 
 // forkCheckSeam indirection so tests can pin the channel result without a

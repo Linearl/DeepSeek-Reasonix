@@ -1303,9 +1303,10 @@ type BusWorkerConfig struct {
 // web_fetch reuses these proxy settings while keeping its own SSRF-guarded
 // dialer.
 type NetworkConfig struct {
-	// ProxyMode is "auto" (default; environment proxy for now), "env", "custom",
-	// or "off". auto leaves room for OS proxy detection later without changing the
-	// config shape.
+	// ProxyMode is "auto" (default; environment proxy, then the OS system
+	// proxy — Windows IE/PAC/WPAD via internal/sysproxy), "env", "custom",
+	// or "off". auto keeps the historical config shape; the OS-detection leg
+	// was documented as a placeholder until tl1690 (forkupdate channel checks).
 	ProxyMode string `toml:"proxy_mode"`
 	// ProxyURL is an advanced custom override such as "socks5://127.0.0.1:7890".
 	// When set and proxy_mode = "custom", it wins over the structured proxy table.

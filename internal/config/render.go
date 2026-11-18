@@ -769,7 +769,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 
 	if shouldRenderNetwork(c, defaults, scope) {
 		b.WriteString("[network]\n")
-		fmt.Fprintf(&b, "proxy_mode = %q   # auto|env|custom|off; auto currently uses env proxy\n", c.NetworkProxyMode())
+		fmt.Fprintf(&b, "proxy_mode = %q   # auto|env|custom|off; auto = env proxy, then OS system proxy\n", c.NetworkProxyMode())
 		if c.Network.ProxyURL != "" {
 			fmt.Fprintf(&b, "proxy_url  = %q   # custom override, e.g. socks5://127.0.0.1:7890\n", c.Network.ProxyURL)
 		} else {

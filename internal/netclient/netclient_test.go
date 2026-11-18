@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -585,5 +586,116 @@ func TestForceIPv4Dials(t *testing.T) {
 	if c, err := tr.DialContext(context.Background(), "tcp", "[::1]:9"); err == nil {
 		c.Close()
 		t.Error("forced-IPv4 dial should reject an IPv6 address")
+	}
+}
+
+// stubOSProxy swaps the OS-proxy seam for the duration of one test and
+// restores it afterwards. The fake stands in for internal/sysproxy (Windows
+// IE/PAC/WPAD), so the three auto-mode states below are hermetic: no real
+// registry read, no real PAC lookup, no dependence on this machine's proxy.
+func stubOSProxy(t *testing.T, fn func(*url.URL) (*url.URL, error)) {
+	t.Helper()
+	orig := OSProxy
+	OSProxy = fn
+	t.Cleanup(func() { OSProxy = orig })
+}
+
+// TestAutoModeThreeStates pins the auto proxy contract (tl1690): environment
+// proxy first, OS system proxy when the env vars are empty, direct when
+// neither applies. env/off modes must not consult the OS leg at all.
+func TestAutoModeThreeStates(t *testing.T) {
+	osProxyCalls := 0
+	osProxy := func(u *url.URL) (*url.URL, error) {
+		osProxyCalls++
+		return mustURL("http://os-proxy.example:8080"), nil
+	}
+	stubOSProxy(t, osProxy)
+
+	// Windows env vars are case-insensitive, so HTTP_PROXY and http_proxy are
+	// the same var — set the intended value last or the empty clear wipes it.
+	t.Setenv("http_proxy", "")
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("https_proxy", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	tests := []struct {
+		name        string
+		mode        string
+		envSet      bool
+		scheme      string // http:// target so HTTP_PROXY (not HTTPS_PROXY) applies
+		wantProxy   string // "" = direct
+		wantOSCalls int
+	}{
+		// httpproxy sends http:// requests through HTTP_PROXY only; an https://
+		// target would consult HTTPS_PROXY and silently miss the env leg here.
+		{name: "auto with env proxy uses env", mode: ModeAuto, envSet: true, scheme: "http", wantProxy: "http://env-proxy.example:8080"},
+		{name: "auto without env falls back to OS proxy", mode: ModeAuto, scheme: "https", wantProxy: "http://os-proxy.example:8080", wantOSCalls: 1},
+		{name: "env mode never consults the OS leg", mode: ModeEnv, scheme: "https", wantOSCalls: 0},
+		{name: "off mode stays direct", mode: ModeOff, scheme: "https", wantOSCalls: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Windows env vars are case-insensitive, so HTTP_PROXY and http_proxy
+			// are the same var: clear both spellings first, then set the intended
+			// value last so the clear cannot wipe it. HTTPS_PROXY stays cleared so
+			// a developer-machine value cannot leak into the lookup.
+			t.Setenv("http_proxy", "")
+			t.Setenv("HTTP_PROXY", "")
+			t.Setenv("https_proxy", "")
+			t.Setenv("HTTPS_PROXY", "")
+			if tt.envSet {
+				t.Setenv("HTTP_PROXY", "http://env-proxy.example:8080")
+			}
+			osProxyCalls = 0
+			pf, err := proxyFunc(ProxySpec{Mode: tt.mode})
+			if err != nil {
+				t.Fatalf("proxyFunc: %v", err)
+			}
+			// proxyFunc wraps the mode resolver; nil means the caller dials
+			// direct (off mode) — do not build a Request for a nil func.
+			if pf == nil {
+				if tt.wantProxy != "" || tt.wantOSCalls != 0 {
+					t.Fatalf("nil proxy func, want proxy %q and %d OS calls", tt.wantProxy, tt.wantOSCalls)
+				}
+				return
+			}
+			got, err := pf(&http.Request{URL: mustURL(tt.scheme + "://api.github.com/repos/x/y/releases")})
+			if err != nil {
+				t.Fatalf("proxy lookup: %v", err)
+			}
+			gotStr := ""
+			if got != nil {
+				gotStr = got.String()
+			}
+			if gotStr != tt.wantProxy {
+				t.Fatalf("proxy = %q, want %q", gotStr, tt.wantProxy)
+			}
+			if osProxyCalls != tt.wantOSCalls {
+				t.Fatalf("OS proxy calls = %d, want %d", osProxyCalls, tt.wantOSCalls)
+			}
+		})
+	}
+}
+
+// TestAutoModeOSProxyErrorFallsBackDirect: a broken OS detector must not
+// break the request — auto fails open to a direct connection (same fail-open
+// contract NormalizeMode applies to unknown mode strings).
+func TestAutoModeOSProxyErrorFallsBackDirect(t *testing.T) {
+	stubOSProxy(t, func(*url.URL) (*url.URL, error) { return nil, errors.New("PAC lookup failed") })
+	t.Setenv("http_proxy", "")
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("https_proxy", "")
+	pf, err := proxyFunc(ProxySpec{Mode: ModeAuto})
+	if err != nil {
+		t.Fatalf("proxyFunc: %v", err)
+	}
+	got, err := pf(&http.Request{URL: mustURL("https://api.github.com/x")})
+	if err != nil {
+		t.Fatalf("proxy lookup must fail open, got err: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("an OS-proxy error must fall back to direct, got %s", got)
 	}
 }

@@ -85,6 +85,13 @@ func ProxyFunc(spec ProxySpec) (func(*http.Request) (*url.URL, error), error) {
 	return proxyFunc(spec)
 }
 
+// OSProxy resolves the OS-level system proxy (Windows IE/PAC/WPAD) for a target
+// URL, returning nil when no proxy applies so callers fall back to direct.
+// It exists as a seam so other bare HTTP clients (forkupdate's channel check,
+// for one) can opt into the same OS detection without pulling in netclient's
+// whole transport. Production wires sysproxy.ForURL; tests inject fakes.
+var OSProxy = sysproxy.ForURL
+
 // NewHTTPClient returns an HTTP client with Reasonix proxy settings applied.
 func NewHTTPClient(spec ProxySpec, opts TransportOptions) (*http.Client, error) {
 	tr, err := NewTransport(spec, opts)
@@ -152,7 +159,7 @@ func Summary(spec ProxySpec) string {
 		}
 		return "custom (" + redactURL(u) + ")"
 	default:
-		return "auto (env)"
+		return "auto (env + OS)"
 	}
 }
 
@@ -234,7 +241,14 @@ func autoProxyFunc() func(*http.Request) (*url.URL, error) {
 		if u, err := pf(req.URL); err != nil || u != nil {
 			return u, err
 		}
-		return sysproxy.ForURL(req.URL)
+		// Fail open: a broken OS detector (PAC lookup error) degrades to a
+		// direct connection instead of failing the request — same spirit as
+		// NormalizeMode mapping unknown modes to auto.
+		u, err := OSProxy(req.URL)
+		if err != nil {
+			return nil, nil
+		}
+		return u, nil
 	}
 }
 
