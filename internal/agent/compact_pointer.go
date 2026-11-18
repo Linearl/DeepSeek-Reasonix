@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"strings"
 
@@ -34,10 +35,16 @@ const (
 )
 
 // zeroSummaryFoldEnabled resolves the tl1691 lane: an explicit override wins
-// (tests, harnesses), otherwise the live config read decides.
+// (tests, harnesses), otherwise the live config read decides. Under a test
+// binary with no override the lane is forced off, so the regression suite
+// never flips lanes on the host machine's config file — the same live read is
+// what production folds consult.
 func (a *Agent) zeroSummaryFoldEnabled() bool {
 	if a.zeroSummaryOverride != nil {
 		return *a.zeroSummaryOverride
+	}
+	if flag.Lookup("test.v") != nil {
+		return false
 	}
 	return config.ZeroSummaryCompactLive()
 }
