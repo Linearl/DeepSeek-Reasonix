@@ -71,12 +71,16 @@ function pendingCard(s: State): Extract<Item, { kind: "compaction" }> {
   eq(card.tokensPerSec, 45, "progress: tps appears");
   eq(card.done, 2, "progress: done grows");
 
-  // 完成卡片整体替换：读数被最终结果替代，不留残值（验收 ③）。
+  // 完成卡片整体替换：tl1689 起终局卡继承 pending 卡的最后一次读数（后端
+  // seal 帧的最终值；本事件无 pass/进度时即 556 的最后帧）供 hover 指标卡
+  // 使用——卡面渲染仍走 compactionLiveReadout（pending=false 恒空串），残值
+  // 不会再出现在卡面上，验收 ③ 的「不残留」语义收窄为「卡面不残留」。
   s = reducer(s, { type: "event", e: { kind: "compaction_done", compaction: { trigger: "auto", messages: 7, summary: "- goal: ok" } } as unknown as WireEvent });
   card = pendingCard(s);
   eq(card.pending, false, "done: card resolved");
-  eq(card.tokens, undefined, "done: no stale token estimate");
-  eq(card.tokensPerSec, undefined, "done: no stale tps");
+  eq(card.tokens, 12300, "done: final readout inherited for the hover metrics (tl1689)");
+  eq(card.tokensPerSec, 45, "done: final tps inherited for the hover metrics (tl1689)");
+  ok(typeof card.endedAt === "number", "done: endedAt stamped (tl1689)");
   eq(card.summary, "- goal: ok", "done: summary installed");
 
   // 中止：空 summary 的 done 删卡。

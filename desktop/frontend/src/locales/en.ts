@@ -6163,6 +6163,18 @@ export const en = {
   "compaction.progress": "Compacting chunk {done}/{total}",
   // 任务 556: live compaction readout (run-strip look)
   "compaction.liveReadout": "{tokens} tokens · {tps} tokens/s",
+  // tl1689: compaction-card hover metrics (mirrors the tl1671 thinking
+  // metrics card; data comes from the card's own fields — the seal frame's
+  // final readout plus the in-memory started/ended stamps). Rows without
+  // data stay hidden — no zero-value noise.
+  "compaction.metricsDurationLabel": "Compaction time",
+  "compaction.metricsDurationValue": "{s} s",
+  "compaction.metricsTpsLabel": "Avg throughput",
+  "compaction.metricsTpsValue": "{n} tokens/s",
+  "compaction.metricsMessagesLabel": "Folded messages",
+  "compaction.metricsMessagesValue": "{n} messages",
+  "compaction.metricsTokensLabel": "Summary output",
+  "compaction.metricsTokensValue": "{n} tokens",
   // tl1559: placeholder leg before the first token estimate lands (summarizer
   // TTFT window) — surfaces opt in via compactionLiveReadout's options.
   "compaction.liveEstimating": "estimating…",

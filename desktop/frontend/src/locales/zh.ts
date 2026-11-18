@@ -6117,6 +6117,17 @@ export const zh: Record<DictKey, string> = {
   "compaction.progress": "分块压缩中 {done}/{total}",
   // 任务 556: 压缩进行中的实时读数（run-strip 同款观感）
   "compaction.liveReadout": "{tokens} tokens · {tps} tokens/s",
+  // tl1689: 压缩卡 hover 指标卡（对标 tl1671 思考指标卡；数据取自压缩卡既有
+  // 字段——终局卡继承的 seal 帧读数 + started/ended 内存戳）。缺数据的行整行
+  // 隐藏，不造 0 值噪音。
+  "compaction.metricsDurationLabel": "压缩耗时",
+  "compaction.metricsDurationValue": "{s} 秒",
+  "compaction.metricsTpsLabel": "平均吞吐",
+  "compaction.metricsTpsValue": "{n} tokens/s",
+  "compaction.metricsMessagesLabel": "折叠消息",
+  "compaction.metricsMessagesValue": "{n} 条",
+  "compaction.metricsTokensLabel": "摘要输出",
+  "compaction.metricsTokensValue": "{n} tokens",
   // tl1559: 首个 token 估计到达前的占位腿（摘要请求首 token 延迟空窗），
   // 调用面经 compactionLiveReadout 的 options 显式启用。
   "compaction.liveEstimating": "估算中…",

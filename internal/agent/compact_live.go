@@ -217,12 +217,59 @@ func (m *compactionLiveMeter) snapshot() (compactionLiveReadout, bool) {
 	}, true
 }
 
+// sealReadout renders the pass's FINAL readout for the seal frame (tl1689):
+// the same shape snapshot() returns, with two deltas. ① The tps 500ms live
+// noise floor does not apply — the final frame states the pass's real average
+// whenever the streaming window is measurable (>0), because a fast pass that
+// streamed entirely inside one throttle interval (the 20261118 08:50 shape:
+// 26s pass, the ONLY progress frame read tokens=1 tps=0) would otherwise
+// never show a throughput figure at all. ② A pass that accumulated nothing
+// visible (chars below the ÷4 floor) seals nothing — the zero-suppression
+// contract (wire 0 = "not emitted yet") stays intact. ok is false when no
+// pass is active or nothing visible accumulated.
+func (m *compactionLiveMeter) sealReadout() (compactionLiveReadout, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.active || m.chars < compactionLiveCharsPerToken {
+		return compactionLiveReadout{}, false
+	}
+	tokens := m.chars / compactionLiveCharsPerToken
+	var tps int
+	if elapsed := m.clock().Sub(m.started); elapsed > 0 {
+		tps = int(float64(tokens) / elapsed.Seconds())
+	}
+	return compactionLiveReadout{
+		Trigger:      m.trigger,
+		Pass:         m.pass,
+		Tokens:       tokens,
+		TokensPerSec: tps,
+		Done:         m.done,
+		Total:        m.total,
+	}, true
+}
+
 // compactionLiveBegin opens the metering window at a CompactionStarted emit.
 func (a *Agent) compactionLiveBegin(trigger string, pass int) { a.compactionLive.begin(trigger, pass) }
 
 // compactionLiveStop closes the window; callers defer it next to begin so
 // Done, aborts, and panics all seal the pass.
 func (a *Agent) compactionLiveStop() { a.compactionLive.stop() }
+
+// compactionLiveSeal emits the pass's FINAL progress frame (tl1689) — one
+// last CompactionProgress carrying the final tokens/tps readout, bypassing
+// the 1s interval gate and the tps 500ms live floor, so a fast pass whose
+// whole stream fit inside one throttle window still lands a visible frame
+// before Done resolves the card (the 20261118 08:50 26s pass emitted only
+// its first frame, tokens=1 tps=0, and the card never showed throughput).
+// Callers invoke it immediately BEFORE the pass's CompactionDone emit so
+// wire order stays first-frame → … → seal frame → Done; the deferred
+// compactionLiveStop then makes any later emission impossible. No-op when
+// the pass accumulated nothing visible.
+func (a *Agent) compactionLiveSeal() {
+	if readout, ok := a.compactionLive.sealReadout(); ok {
+		a.emitCompactionLiveProgressFrom(readout)
+	}
+}
 
 // CompactionRunning reports whether a compaction pass is in flight. 任务1147:
 // the turn-stall watchdog consults it so a silent stretch inside a chunked
@@ -314,6 +361,13 @@ func (a *Agent) emitCompactionLiveProgress() {
 	if !ok {
 		return
 	}
+	a.emitCompactionLiveProgressFrom(readout)
+}
+
+// emitCompactionLiveProgressFrom emits one CompactionProgress event from a
+// ready readout (shared by the chunk/fold-driven path and the tl1689 seal
+// frame).
+func (a *Agent) emitCompactionLiveProgressFrom(readout compactionLiveReadout) {
 	// tl1637（tl556 复发诊断打点·证「发没发」）：Emit 前记一行实际下发的
 	// 载荷。desktop.log 默认 Info 级，装机即可见；与前端 useController
 	// compaction_progress 入口的 "progress received" 行构成三态判读——

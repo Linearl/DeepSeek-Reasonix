@@ -32,6 +32,9 @@ import { compactionLiveReadout } from "../lib/compactionLive";
 // tl1588: 压缩回合内部状态沉淀的展示半边——rescue 人话行 + 可展开详情区。
 import { episodeRescueLine, type CompactionEpisodeNote } from "../lib/compactionEpisode";
 import { hostProtocolNoticeBody } from "../lib/hostProtocolNotice";
+// tl1689: 压缩卡 hover 指标——对标 tl1671 思考指标卡，同一条 Tooltip 载体。
+import { Tooltip } from "./Tooltip";
+import { CompactionMetricsCard } from "./CompactionMetricsCard";
 
 export function PhaseCard({ id, text }: { id: string; text: string }) {
   return <div className="phase" data-entrance={id}><ProcessPhaseIcon size={12} /><span>{text}</span></div>;
@@ -566,16 +569,28 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
       </div>
     );
   }
+  // tl1689: 终局卡 hover 指标——对标 tl1671 思考指标卡，同一条 Tooltip 载体
+  // （ReactNode 直渲，不新造弹层）。有任一可显数据行（耗时/吞吐/摘要输出）
+  // 才挂 Tooltip；卡面文本零变化（973 精确串钉不受影响：Tooltip 只在 hover
+  // 时渲染 label）。只有 messages 的水合卡不挂——那个数字卡面上已有。
+  const hasMetrics = Boolean(
+    (item.startedAt && item.endedAt && item.endedAt > item.startedAt)
+    || (item.tokensPerSec ?? 0) > 0
+    || (item.tokens ?? 0) > 0,
+  );
+  const head = (
+    <button type="button" className="compaction__head" onClick={() => { beginUserResize(); setOpen((v) => !v); }} aria-expanded={open}>
+      <ProcessCompactIcon size={12} />
+      <span>{t("compaction.title")}</span>
+      {/* 任务 1021: the terminal card names the session's total pass count when
+          more than one round ran, so「已压缩」reads as the SESSION's result. */}
+      <span className="compaction__meta">{t("compaction.messages", { n: item.messages })}{(item.pass ?? 0) > 1 ? ` · ${t("compaction.rounds", { n: item.pass ?? 0 })}` : ""}{item.trigger ? ` · ${item.trigger}` : ""}</span>
+      <ChevronRight className={open ? "compaction__chevron--open" : ""} size={12} />
+    </button>
+  );
   return (
     <div className="compaction compaction--episode" data-entrance={item.id} data-transcript-layout-variant={open ? "compaction-expanded" : "compaction-collapsed"}>
-      <button type="button" className="compaction__head" onClick={() => { beginUserResize(); setOpen((v) => !v); }} aria-expanded={open}>
-        <ProcessCompactIcon size={12} />
-        <span>{t("compaction.title")}</span>
-        {/* 任务 1021: the terminal card names the session's total pass count when
-            more than one round ran, so「已压缩」reads as the SESSION's result. */}
-        <span className="compaction__meta">{t("compaction.messages", { n: item.messages })}{(item.pass ?? 0) > 1 ? ` · ${t("compaction.rounds", { n: item.pass ?? 0 })}` : ""}{item.trigger ? ` · ${item.trigger}` : ""}</span>
-        <ChevronRight className={open ? "compaction__chevron--open" : ""} size={12} />
-      </button>
+      {hasMetrics ? <Tooltip side="top" label={<CompactionMetricsCard item={item} />}>{head}</Tooltip> : head}
       {open && <pre className="compaction__body">{item.summary}</pre>}
       {/* tl1588: 终局卡继承的回合详情——压缩结束后仍可展开查证。 */}
       {item.episodeNotes?.length ? <CompactionEpisodeBlock notes={item.episodeNotes} /> : null}
