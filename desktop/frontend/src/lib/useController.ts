@@ -2402,7 +2402,25 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         const restarted: Item = { ...cur, pending: true, failed, attempt: failed ? cur.attempt : undefined, reason: failed ? cur.reason : undefined, foldInstalled: undefined, lastSuccessAt: undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0, startedAt: Date.now(), pass, interimSummary: undefined };
         return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items: s.items.map((it, i) => (i === at ? restarted : it)) };
       }
-      return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "", startedAt: Date.now(), pass }] };
+      // tl1687: a NEW pending card is a historical anchor — the pass runs
+      // before the turn's output exists. When the turn's assistant bubble is
+      // still the pre-created empty cursor (turn_started 预建气泡), tail
+      // append renders the card BELOW thinking that actually began after
+      // compaction completed (20261118 08:50 现场：压缩 26s 完成后新一轮思考
+      // 渲染在压缩卡上方——时间顺序反了). Insert before the empty bubble so
+      // the card anchors the turn; an assistant already streaming reasoning
+      // keeps the tail order (its thinking genuinely began first).
+      const lastIdx = s.items.length - 1;
+      const last = s.items[lastIdx];
+      const emptyLiveAssistant = !!last
+        && last.kind === "assistant"
+        && last.id === s.currentAssistant
+        && !assistantHasContent(last, s.live?.id === last.id ? s.live : undefined);
+      const card: Item = { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "", startedAt: Date.now(), pass };
+      const items = emptyLiveAssistant
+        ? [...s.items.slice(0, lastIdx), card, ...s.items.slice(lastIdx)]
+        : [...s.items, card];
+      return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items };
     }
     case "compaction_progress": {
       // 任务 556: live tokens/throughput + chunked-fold N/M on the pending
