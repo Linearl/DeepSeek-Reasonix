@@ -76,7 +76,7 @@ func TestStaleContextFailureDoesNotArmSegmentLatch(t *testing.T) {
 	if !a.sess.compaction.segmentSummaryLatched.Load() {
 		t.Fatal("an empty-output request failure did not arm the segment latch (tl1587 core)")
 	}
-	a.emitCompactionSucceeded(CompactionTriggerPressure, 3, "digest", "")
+	a.emitCompactionSucceeded(CompactionTriggerPressure, 3, "digest", "", CompactionTelemetry{})
 	if a.sess.compaction.segmentSummaryLatched.Load() {
 		t.Fatal("a successful pass left the segment latch armed")
 	}

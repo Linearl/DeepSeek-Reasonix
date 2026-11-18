@@ -402,6 +402,15 @@ export type Item =
       // 不降的明示）与上次成功压缩时间。水合卡经存档重建路径同样携带。
       foldInstalled?: boolean;
       lastSuccessAt?: number;
+      // tl1689 补强 (ok 终局卡)：Done 事件直带的释放指标——释放前后计费
+      // tokens（释放量）、摘要请求缓存命中/未命中拆分（摘要输入）、pass
+      // begin→Done 墙钟耗时。0 = 未携带（legacy 后端/水合卡），hover 卡
+      // 对应行整行隐藏。
+      sourceTokens?: number;
+      projectionTokens?: number;
+      summaryHitTokens?: number;
+      summaryMissTokens?: number;
+      durationMs?: number;
     }
   | {
       kind: "tool";
@@ -2523,7 +2532,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // 耗时/平均吞吐/折叠消息/摘要输出 after resolution. Hydrated cards carry
       // none of these (in-memory convention); the hover shows only rows with
       // data — no zero-value noise.
-      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : cur!.id, pending: false, trigger: c.trigger || cur?.trigger || "", messages: c.messages || cur?.messages || 0, summary, archive: c.archive ?? "", pass, tokens: cur?.tokens ?? 0, tokensPerSec: cur?.tokensPerSec ?? 0, ...(cur?.startedAt ? { startedAt: cur.startedAt } : {}), endedAt: Date.now(), ...(cur?.episodeNotes?.length ? { episodeNotes: cur.episodeNotes } : {}) };
+      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : cur!.id, pending: false, trigger: c.trigger || cur?.trigger || "", messages: c.messages || cur?.messages || 0, summary, archive: c.archive ?? "", pass, tokens: cur?.tokens ?? 0, tokensPerSec: cur?.tokensPerSec ?? 0, sourceTokens: c.sourceTokens ?? 0, projectionTokens: c.projectionTokens ?? 0, summaryHitTokens: c.summaryHitTokens ?? 0, summaryMissTokens: c.summaryMissTokens ?? 0, durationMs: c.durationMs ?? 0, ...(cur?.startedAt ? { startedAt: cur.startedAt } : {}), endedAt: Date.now(), ...(cur?.episodeNotes?.length ? { episodeNotes: cur.episodeNotes } : {}) };
       const items = at < 0 ? [...s.items, filled] : s.items.map((it, i) => (i === at ? filled : it));
       return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, compactionSessionOpen: closesSession ? false : s.compactionSessionOpen, items };
     }

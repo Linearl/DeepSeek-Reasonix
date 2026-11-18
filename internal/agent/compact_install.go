@@ -58,7 +58,7 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 		a.emitCompactionFailed(in.trigger, err)
 		return CompactionNoop, err
 	}
-	a.emitCompactionSucceeded(in.trigger, len(in.fold), in.summary, "")
+	a.emitCompactionSucceeded(in.trigger, len(in.fold), in.summary, "", tele)
 	// Done-log cache readout (task 303); 任务 867 adds fold_tokens so the
 	// view estimate, summarizer input, and provider count stay separable.
 	// tl1640 O2: last_turn_gap_min makes "the conversation went quiet N

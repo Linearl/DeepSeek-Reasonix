@@ -420,7 +420,7 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	if trigger == CompactionTriggerModelRanges {
 		a.modelRangesFoldTimes = append(a.modelRangesFoldTimes, now)
 	}
-	a.emitCompactionSucceeded(trigger, len(fold), summary, state.LastReceipt.Archive)
+	a.emitCompactionSucceeded(trigger, len(fold), summary, state.LastReceipt.Archive, tele)
 	a.emitCompactionTelemetry(tele)
 	// 「压缩频次 × 缓存抖动」联合观测(三约束③的观测面):index/间隔是
 	// 频次半边,hit 是缓存半边,一行出全。迭代三洪水闸直接在此定参。

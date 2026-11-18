@@ -44,7 +44,7 @@ type Action = Parameters<typeof reducer>[1];
 const ev = (e: unknown) => ({ type: "event", e } as unknown as Action);
 const started = (pass = 1) => ev({ kind: "compaction_started", compaction: { trigger: "auto", pass } });
 const progress = (tokens: number, tps: number) => ev({ kind: "compaction_progress", compaction: { trigger: "auto", pass: 1, tokens, tokensPerSec: tps } });
-const done = () => ev({ kind: "compaction_done", compaction: { trigger: "auto", pass: 1, outcome: "ok", messages: 7, summary: "- final" } });
+const done = () => ev({ kind: "compaction_done", compaction: { trigger: "auto", pass: 1, outcome: "ok", messages: 7, summary: "- final", sourceTokens: 821_800, projectionTokens: 215_600, summaryHitTokens: 800_000, summaryMissTokens: 21_800, durationMs: 26_600 } });
 
 const lastCompaction = (s: State) =>
   [...s.items].reverse().find((it): it is CompactionItem => it.kind === "compaction");
@@ -62,6 +62,10 @@ const lastCompaction = (s: State) =>
   ok(card.tokensPerSec === 19, `terminal card inherits tps=19, got ${card.tokensPerSec}`);
   ok(typeof card.startedAt === "number" && card.startedAt > 0, "terminal card keeps the startedAt stamp");
   ok(typeof card.endedAt === "number" && card.endedAt >= (card.startedAt ?? 0), "terminal card carries the endedAt stamp");
+  // tl1689 补强: the release metrics ride the Done event onto the card.
+  ok(card.sourceTokens === 821_800 && card.projectionTokens === 215_600, "release figures inherited (821.8K→215.6K shape)");
+  ok(card.summaryHitTokens === 800_000 && card.summaryMissTokens === 21_800, "summary input hit/miss split inherited");
+  ok(card.durationMs === 26_600, "pass duration inherited");
 }
 
 // ── ② 丢帧直落：读数 0 值、时间戳仍然成立 ─────────────────────────────────────
@@ -81,10 +85,12 @@ const lastCompaction = (s: State) =>
   process.stdout.write("component: metrics card renders one row per available datum\n");
   const now = Date.now();
   const full = renderToStaticMarkup(React.createElement(LocaleProvider, null,
-    React.createElement(CompactionMetricsCard, { item: { kind: "compaction", id: "c", pending: false, trigger: "auto", messages: 7, summary: "", archive: "", startedAt: now - 26_600, endedAt: now, tokens: 976, tokensPerSec: 19 } as CompactionItem })));
-  ok((full.match(/tooltip__thoughtcard-row/g) ?? []).length === 4, `full data renders 4 rows, got ${(full.match(/tooltip__thoughtcard-row/g) ?? []).length}`);
+    React.createElement(CompactionMetricsCard, { item: { kind: "compaction", id: "c", pending: false, trigger: "auto", messages: 7, summary: "", archive: "", startedAt: now - 26_600, endedAt: now, tokens: 976, tokensPerSec: 19, sourceTokens: 821_800, projectionTokens: 215_600, summaryHitTokens: 800_000, summaryMissTokens: 21_800, durationMs: 26_600 } as CompactionItem })));
+  ok((full.match(/tooltip__thoughtcard-row/g) ?? []).length === 6, `full data renders 6 rows (耗时/吞吐/消息/释放/输入/输出), got ${(full.match(/tooltip__thoughtcard-row/g) ?? []).length}`);
   ok(/26\.\d/.test(full), `duration renders the 26.6s-shaped figure: ${full}`);
   ok(full.includes("19"), "tps figure present");
+  ok(full.includes("821.8K") && full.includes("215.6K"), "release figures render formatted (821.8K → 215.6K)");
+  ok(full.includes("800K") && full.includes("21.8K"), "summary input hit/miss render formatted");
 
   const partial = renderToStaticMarkup(React.createElement(LocaleProvider, null,
     React.createElement(CompactionMetricsCard, { item: { kind: "compaction", id: "c", pending: false, trigger: "auto", messages: 7, summary: "", archive: "", startedAt: now - 1_000, endedAt: now } as CompactionItem })));
@@ -116,6 +122,8 @@ const lastCompaction = (s: State) =>
     "compaction.metricsTpsLabel", "compaction.metricsTpsValue",
     "compaction.metricsMessagesLabel", "compaction.metricsMessagesValue",
     "compaction.metricsTokensLabel", "compaction.metricsTokensValue",
+    "compaction.metricsReleasedLabel", "compaction.metricsReleasedValue",
+    "compaction.metricsInputLabel", "compaction.metricsInputValue",
   ] as const;
   const dicts: Array<[string, Record<string, string>]> = [
     ["en", en as unknown as Record<string, string>],

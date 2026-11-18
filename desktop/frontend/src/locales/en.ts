@@ -6175,6 +6175,10 @@ export const en = {
   "compaction.metricsMessagesValue": "{n} messages",
   "compaction.metricsTokensLabel": "Summary output",
   "compaction.metricsTokensValue": "{n} tokens",
+  "compaction.metricsReleasedLabel": "Released",
+  "compaction.metricsReleasedValue": "{from} → {to}",
+  "compaction.metricsInputLabel": "Summary input",
+  "compaction.metricsInputValue": "{hit} hit / {miss} miss",
   // tl1559: placeholder leg before the first token estimate lands (summarizer
   // TTFT window) — surfaces opt in via compactionLiveReadout's options.
   "compaction.liveEstimating": "estimating…",

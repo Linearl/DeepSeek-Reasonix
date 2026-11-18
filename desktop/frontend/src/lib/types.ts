@@ -120,6 +120,15 @@ export interface WireCompaction {
   // tl1648 (failed-only): unix millis of the last successful fold install in
   // this session; absent/0 = unknown (no success recorded).
   lastSuccessAt?: number;
+  // tl1689 补强 (done-ok only): the release metrics the terminal card's hover
+  // states — 释放量 (source vs projection billed tokens), 摘要输入 (summarizer
+  // cache hit/miss split), 耗时 (pass begin→Done wall ms). absent/0 = not
+  // carried (legacy sender) — the hover hides those rows.
+  sourceTokens?: number;
+  projectionTokens?: number;
+  summaryHitTokens?: number;
+  summaryMissTokens?: number;
+  durationMs?: number;
 }
 export interface WireProfile {
   model?: string;

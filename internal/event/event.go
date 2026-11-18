@@ -557,6 +557,17 @@ type Compaction struct {
 	// install in this session; 0 = unknown (no success recorded since the
 	// lineage started). Lets the failed card answer "上次成功压缩是什么时候".
 	LastSuccessAt int64
+	// tl1689 补强 (Done-ok only): the release figures the terminal card's
+	// hover metrics card states. SourceTokens/ProjectionTokens are the
+	// billed-token read before vs after the pass (释放量 821.8K→215.6K 式);
+	// SummaryHit/SummaryMissTokens split the summarizer request's input by
+	// cache outcome; DurationMs is the pass's begin→Done wall time. 0 =
+	// not carried (legacy sender / unknown) — frontends hide the row.
+	SourceTokens      int
+	ProjectionTokens  int
+	SummaryHitTokens  int
+	SummaryMissTokens int
+	DurationMs        int64
 }
 
 // ContextMaintenance is the typed wire-safe receipt for snip/prune/noop/

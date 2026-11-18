@@ -55,6 +55,11 @@ type compactionLiveMeter struct {
 	// same pass the frontend card was opened with.
 	pass    int
 	started time.Time
+	// tl1689 补强: the pass's begin wall time — unlike started, it is NOT
+	// latched forward by the first chunk (the streaming-window start), so
+	// elapsedSinceBegin states the whole pass duration (queue + stream),
+	// which is the number the hover card's 耗时 row means.
+	beginAt time.Time
 	// tl1657: streamStarted latches the FIRST chunk. begin() records the pass
 	// open (queue + admission + provider TTFT can sit on it for minutes — the
 	// 20261117 09:40 incident: 101s from begin to the first chunk), while the
@@ -96,6 +101,7 @@ func (m *compactionLiveMeter) begin(trigger string, pass int) {
 	m.trigger = trigger
 	m.pass = pass
 	m.started = m.clock()
+	m.beginAt = m.started
 	m.streamStarted = false
 	m.chars = 0
 	m.done, m.total = 0, 0
@@ -250,6 +256,23 @@ func (m *compactionLiveMeter) sealReadout() (compactionLiveReadout, bool) {
 
 // compactionLiveBegin opens the metering window at a CompactionStarted emit.
 func (a *Agent) compactionLiveBegin(trigger string, pass int) { a.compactionLive.begin(trigger, pass) }
+
+// compactionLiveElapsedMs reports the ACTIVE pass's begin→now wall duration
+// (tl1689 补强); 0 when no pass is active — the Done caller runs inside the
+// window (before the deferred stop), so the ok Done carries a real duration
+// and legacy/missing meters carry 0 (= "not carried", the row hides).
+func (a *Agent) compactionLiveElapsedMs() int64 {
+	a.compactionLive.mu.Lock()
+	defer a.compactionLive.mu.Unlock()
+	if !a.compactionLive.active {
+		return 0
+	}
+	elapsed := a.compactionLive.clock().Sub(a.compactionLive.beginAt)
+	if elapsed <= 0 {
+		return 0
+	}
+	return int64(elapsed / time.Millisecond)
+}
 
 // compactionLiveStop closes the window; callers defer it next to begin so
 // Done, aborts, and panics all seal the pass.

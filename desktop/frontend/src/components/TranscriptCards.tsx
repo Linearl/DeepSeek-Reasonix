@@ -34,7 +34,7 @@ import { episodeRescueLine, type CompactionEpisodeNote } from "../lib/compaction
 import { hostProtocolNoticeBody } from "../lib/hostProtocolNotice";
 // tl1689: 压缩卡 hover 指标——对标 tl1671 思考指标卡，同一条 Tooltip 载体。
 import { Tooltip } from "./Tooltip";
-import { CompactionMetricsCard } from "./CompactionMetricsCard";
+import { CompactionMetricsCard, compactionHasMetrics } from "./CompactionMetricsCard";
 
 export function PhaseCard({ id, text }: { id: string; text: string }) {
   return <div className="phase" data-entrance={id}><ProcessPhaseIcon size={12} /><span>{text}</span></div>;
@@ -570,14 +570,11 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
     );
   }
   // tl1689: 终局卡 hover 指标——对标 tl1671 思考指标卡，同一条 Tooltip 载体
-  // （ReactNode 直渲，不新造弹层）。有任一可显数据行（耗时/吞吐/摘要输出）
-  // 才挂 Tooltip；卡面文本零变化（973 精确串钉不受影响：Tooltip 只在 hover
-  // 时渲染 label）。只有 messages 的水合卡不挂——那个数字卡面上已有。
-  const hasMetrics = Boolean(
-    (item.startedAt && item.endedAt && item.endedAt > item.startedAt)
-    || (item.tokensPerSec ?? 0) > 0
-    || (item.tokens ?? 0) > 0,
-  );
+  // （ReactNode 直渲，不新造弹层）。有任一可显数据行（耗时/吞吐/摘要输出/
+  // 释放量/摘要输入）才挂 Tooltip（判定收口在 compactionHasMetrics）；
+  // 卡面文本零变化（973 精确串钉不受影响：Tooltip 只在 hover 时渲染 label）。
+  // 只有 messages 的水合卡不挂——那个数字卡面上已有。
+  const hasMetrics = compactionHasMetrics(item);
   const head = (
     <button type="button" className="compaction__head" onClick={() => { beginUserResize(); setOpen((v) => !v); }} aria-expanded={open}>
       <ProcessCompactIcon size={12} />

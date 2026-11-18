@@ -63,7 +63,7 @@ func TestFailureStreakCountsUpAndResetsOnSuccess(t *testing.T) {
 
 	a.emitCompactionFailed(CompactionTriggerPressure, errors.New("boom"))
 	a.emitCompactionFailed(CompactionTriggerPressure, errCompressStaleContext)
-	a.emitCompactionSucceeded(CompactionTriggerPressure, 3, "digest body", "")
+	a.emitCompactionSucceeded(CompactionTriggerPressure, 3, "digest body", "", CompactionTelemetry{})
 	a.emitCompactionFailed(CompactionTriggerPressure, errors.New("boom"))
 
 	var attempts []int
