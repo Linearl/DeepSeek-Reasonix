@@ -112,6 +112,8 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"compactModel":       func(c *Config, on bool) error { return c.SetExperimentalCompactModel(on) },
 	// tl1397: ranges 小段增量压缩（未稳定档，默认关）。
 	"rangesCompact":         func(c *Config, on bool) error { return c.SetExperimentalRangesCompact(on) },
+	// tl1691: 零摘要折叠道（未稳定档，默认关）。
+	"zeroSummaryCompact":    func(c *Config, on bool) error { return c.SetExperimentalZeroSummaryCompact(on) },
 	"outputStyle":           func(c *Config, on bool) error { return c.SetExperimentalOutputStyleUI(on) },
 	"cacheTuning":           func(c *Config, on bool) error { return c.SetExperimentalCacheTuning(on) },
 	"sessionCollabAutoFold": func(c *Config, on bool) error { return c.SetExperimentalSessionCollabAutoFold(on) },

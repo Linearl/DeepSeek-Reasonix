@@ -1930,6 +1930,26 @@ func (c *Config) SetExperimentalCurateContext(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalZeroSummaryCompact toggles tl1691's zero-summary compaction
+// lane (live read at fold time; off by default). On: a fold installs a
+// content-hash pointer + folded-work index instead of a model-written digest.
+func (c *Config) SetExperimentalZeroSummaryCompact(enabled bool) error {
+	c.Agent.ExperimentalZeroSummaryCompact = enabled
+	return nil
+}
+
+// ZeroSummaryCompactLive is the fold-time live read of the tl1691 zero-summary
+// lane. Same discipline as RangesCompactLive: a mid-session switch-off can
+// never un-install a pointer fold that already landed, but the next fold goes
+// back through the summary path (the projection rebuilds on the summary lane).
+func ZeroSummaryCompactLive() bool {
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalZeroSummaryCompact
+}
+
 // SetExperimentalReviewHint toggles the tl1378 review-hint prompt layer
 // (boot snapshot; off by default — restart to apply).
 func (c *Config) SetExperimentalReviewHint(enabled bool) error {

@@ -53,6 +53,11 @@ const (
 	CompactionModeChunked    = "chunked"
 	CompactionModeDegraded   = "degraded"
 	CompactionModeSnip       = "snip"
+	// CompactionModePointer (tl1691) is the zero-summary lane: the fold
+	// installs a content-hash pointer + folded-work index instead of a digest,
+	// so the fold spends no provider request at all. Verbatim content stays in
+	// canonical and comes back through the recall tool.
+	CompactionModePointer = "pointer"
 )
 
 const (

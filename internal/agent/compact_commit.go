@@ -74,6 +74,9 @@ func (a *Agent) summaryProjectionState(commit summaryProjectionCommit) Compactio
 		InputHash: commit.inputHash, OutputHash: commit.outputHash, InputTokens: commit.sourceTokens,
 		ResultTokens: commit.projectionTokens, SavedTokens: max(0, commit.sourceTokens-commit.projectionTokens),
 		SummaryHash: summaryHash, CacheBreak: true, CreatedAt: now,
+		// tl1691: the zero-summary lane names the folded region by content hash;
+		// empty on the summary lane.
+		FoldPointer: commit.result.Pointer,
 	}
 	// LastReceipt is authoritative; do not mirror last_trigger/last_mode/token
 	// counters or top-level blocked_* fields (stripped again on save).
