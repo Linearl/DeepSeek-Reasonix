@@ -173,7 +173,11 @@ func (s *Store) SentDispatch(ctx context.Context, limit int) (SentDispatchSnapsh
 	}
 	for _, r := range rows {
 		tid := strings.TrimSpace(r.Mail.ThreadID)
-		if tid == "" {
+		if tid == "" || tid == r.Mail.ID {
+			// Deliver stamps a chain-starting message with ThreadID == its own
+			// ID (sessioncollab.Deliver) — that self-reference is the chain's
+			// origin marker, NOT a reply. Counting it would judge every fresh
+			// dispatch "replied" the moment it landed.
 			continue
 		}
 		if cur, ok := replies[tid]; !ok || r.Mail.At < cur.at {
