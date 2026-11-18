@@ -2345,6 +2345,22 @@ type AgentConfig struct {
 	// registered at all, so the model-visible surface is byte-identical to the
 	// pre-tl1378 baseline.
 	ExperimentalCurateContext bool `toml:"experimental_curate_context"`
+	// tl1691: zero-summary compaction lane. On: a fold installs a content-hash
+	// pointer + folded-work index instead of a model-written digest — the fold
+	// spends no provider request at all (the full-prefill summary call, the
+	// 8~12万 in/次 the tl1679 report measured, is not spent), and the folded
+	// verbatim content comes back through the recall tool. Off by default
+	// (iron rule 2): the summary path is byte-identical, and digests folded
+	// earlier are not re-merged under this lane (index + recall replace the
+	// rolling digest).
+	ExperimentalZeroSummaryCompact bool `toml:"experimental_zero_summary_compact"`
+	// tl1691: register the recall tool (bring folded conversation back by #n
+	// address or keyword search, one budget per compaction). Off by default
+	// (iron rule 2): the tool is not registered at all, so the model-visible
+	// surface is byte-identical to the pre-tl1691 baseline. Useful on its own —
+	// it reads back the folded region the existing summary lane replaces —
+	// which is the tl1679 灰度 step ①.
+	ExperimentalRecallTool bool `toml:"experimental_recall_tool"`
 	// tl1378 增量2: the review-hint prompt layer. On: every reviewHintBatchInterval
 	// tool batches or reviewHintTokenDelta estimated tokens of growth, the host
 	// appends one advisory line to the latest tool result suggesting a

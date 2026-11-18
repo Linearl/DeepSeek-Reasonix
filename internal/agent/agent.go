@@ -494,6 +494,10 @@ type Agent struct {
 	decisionMu      sync.Mutex
 	decisionTurns   int
 	decisionRunning bool
+	// zeroSummaryOverride (tl1691) pins the zero-summary lane for tests and
+	// harnesses: nil defers to the live config read, a value forces the lane
+	// regardless of the user config file, so compaction tests stay hermetic.
+	zeroSummaryOverride *bool
 	// svc are the collaborators this agent talks to; see services.go.
 	svc agentServices
 	// sess is the state one conversation owns; SetSession restarts it. See

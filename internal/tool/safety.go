@@ -93,6 +93,9 @@ var builtinSafety = map[string]SafetySpec{
 	// tl1419：compress_ranges 与 compress 同族（模型驱动 ranges 小折，boot 门控
 	// 注册）——投影安装有状态，必须独占串行批。
 	"compress_ranges": {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
+	// tl1691：recall 只读 canonical（不装投影），预算账在 compactionMu 内
+	// 记账，可并行；boot 门控注册。
+	"recall": {ReadOnly: true, ConcurrentSafe: true, RiskLevel: RiskLow},
 	"todo_write":      {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
 	"wait":            {ReadOnly: true, ConcurrentSafe: false, RiskLevel: RiskLow},
 	// 工作区文件变更（原 permission.IsFileMutationTool 七个名字的元数据化）。

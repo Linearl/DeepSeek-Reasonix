@@ -36,6 +36,9 @@ type foldSummary struct {
 	FoldTokens int
 	Spans      int
 	InputMode  string
+	// Pointer (tl1691) is the zero-summary lane's content-hash name of the
+	// folded region (fold-<sha6>); empty on the summary lane.
+	Pointer string
 }
 
 // guardedSummaryInputTokens sizes the summarizer input on the same calibrated

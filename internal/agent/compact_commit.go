@@ -67,13 +67,23 @@ func (a *Agent) summaryProjectionState(commit summaryProjectionCommit) Compactio
 	now := time.Now().UTC()
 	summaryHash := summaryContentHash(commit.summary)
 	coveredHash := coveredPrefixHash(commit.canonical, commit.covered)
+	// tl1691: a pointer fold is not a summary — the receipt must say which
+	// lane produced the checkpoint, or the token account reads as if the
+	// full-prefill summary request was spent when it was not.
+	action := "summary"
+	if commit.result.Mode == CompactionModePointer {
+		action = "pointer"
+	}
 	receipt := &ContextMaintenanceReceipt{
 		OperationID: fmt.Sprintf("summary-%d-%s", projectionVersion, commit.outputHash), Status: "applied",
-		Action: "summary", Trigger: commit.trigger, SourceProjection: commit.projectionVersion,
+		Action: action, Trigger: commit.trigger, SourceProjection: commit.projectionVersion,
 		ProjectionVersion: projectionVersion, CoveredCount: commit.covered, CoveredPrefixHash: coveredHash,
 		InputHash: commit.inputHash, OutputHash: commit.outputHash, InputTokens: commit.sourceTokens,
 		ResultTokens: commit.projectionTokens, SavedTokens: max(0, commit.sourceTokens-commit.projectionTokens),
 		SummaryHash: summaryHash, CacheBreak: true, CreatedAt: now,
+		// tl1691: the zero-summary lane names the folded region by content hash;
+		// empty on the summary lane.
+		FoldPointer: commit.result.Pointer,
 	}
 	// LastReceipt is authoritative; do not mirror last_trigger/last_mode/token
 	// counters or top-level blocked_* fields (stripped again on save).

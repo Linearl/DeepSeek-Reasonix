@@ -53,6 +53,11 @@ const (
 	CompactionModeChunked    = "chunked"
 	CompactionModeDegraded   = "degraded"
 	CompactionModeSnip       = "snip"
+	// CompactionModePointer (tl1691) is the zero-summary lane: the fold
+	// installs a content-hash pointer + folded-work index instead of a digest,
+	// so the fold spends no provider request at all. Verbatim content stays in
+	// canonical and comes back through the recall tool.
+	CompactionModePointer = "pointer"
 )
 
 const (
@@ -119,6 +124,12 @@ type ContextMaintenanceReceipt struct {
 	AffectedToolResults int    `json:"affected_tool_results,omitempty"`
 	SummaryHash         string `json:"summary_hash,omitempty"`
 	Archive             string `json:"archive,omitempty"`
+	// FoldPointer (tl1691) is the zero-summary fold's content-hash pointer
+	// (fold-<sha6>) naming the folded region the projection's pointer message
+	// stands for. Distinct from Archive, which means the transcript was
+	// archived to a NEW session; FoldPointer names an in-session fold whose
+	// content stays verbatim in canonical.
+	FoldPointer string `json:"fold_pointer,omitempty"`
 	CacheBreak          bool   `json:"cache_break,omitempty"`
 	Reason              string `json:"reason,omitempty"`
 	BlockedInputHash    string `json:"blocked_input_hash,omitempty"`
@@ -140,6 +151,15 @@ const (
 	CompactionNoop
 )
 
+// RecallLedger is one generation's recall budget bookkeeping (tl1691): what
+// the recall tool spent pulling folded content back into context. A new
+// compaction generation starts a fresh ledger; the ledger rides the sidecar so
+// a restart cannot hand the model a fresh allowance for the same generation.
+type RecallLedger struct {
+	Generation  uint64 `json:"generation,omitempty"`
+	SpentTokens int    `json:"spent_tokens,omitempty"`
+}
+
 // CompactionState is the session context sidecar payload.
 type CompactionState struct {
 	SchemaVersion      int                        `json:"schema_version"`
@@ -156,6 +176,11 @@ type CompactionState struct {
 	LastReceipt        *ContextMaintenanceReceipt `json:"last_receipt,omitempty"`
 	BlockedInputHash   string                     `json:"blocked_input_hash,omitempty"`
 	BlockedReason      string                     `json:"blocked_reason,omitempty"`
+	// Recall (tl1691) books the current generation's recall spend. A pointer
+	// keeps the JSON empty for sessions that never recall, and needs no schema
+	// bump: readers predating the field ignore it (the established
+	// unknown-field tolerance on this sidecar).
+	Recall *RecallLedger `json:"recall,omitempty"`
 	// NativeContextEditingAccepted latches the first successful native request.
 	// ContextEditingFallbackLocal persists the only allowed request-shape switch:
 	// an explicit unsupported response before that latch was set.

@@ -1282,7 +1282,15 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	sourceTokens := a.estimatedVisibleRequestTokens(msgs)
 	inputMode := summaryInputModeFor(req, regionHadPinnedRevision,
 		providerVisibleFingerprint(modelInputMessages(fold)) != originalFoldHash)
-	res, tele, err := a.summarizeFold(ctx, trigger, fold, instructions, sourceTokens, inputMode, req)
+	// tl1691: the canonical span this fold newly hides — [pointerFrom, covered)
+	// — is what the zero-summary lane's index lines address. On the projected
+	// view the prior covered count is the span's start; on the raw transcript
+	// the fold begins after the pinned head.
+	pointerFrom := head
+	if onProjection {
+		pointerFrom = stateSnapshot.Projection.CoveredCount
+	}
+	res, tele, err := a.foldProduct(ctx, trigger, canonical, pointerFrom, covered, fold, instructions, sourceTokens, inputMode, req)
 	if err != nil {
 		a.emitCompactionTelemetry(tele)
 		// 任务912 P1-d: a rejected key needs the USER, and compaction is the
@@ -1295,12 +1303,18 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		a.emitCompactionFailed(trigger, err)
 		return CompactionNoop, err
 	}
-	summary, err := a.interceptCompactionComplete(ctx, res.Text)
-	if err != nil {
-		tele.Error = err.Error()
-		a.emitCompactionTelemetry(tele)
-		a.emitCompactionFailed(trigger, err)
-		return CompactionNoop, err
+	summary := res.Text
+	if res.Mode != CompactionModePointer {
+		// The pointer document is host-minted and deterministic; the completion
+		// interceptor reviews model output, and running it on the pointer would
+		// break the hash-addressed determinism for no review value.
+		summary, err = a.interceptCompactionComplete(ctx, res.Text)
+		if err != nil {
+			tele.Error = err.Error()
+			a.emitCompactionTelemetry(tele)
+			a.emitCompactionFailed(trigger, err)
+			return CompactionNoop, err
+		}
 	}
 	// tl1695: mark the split on the telemetry the done line reads — the fold
 	// boundary crossing the active-turn start means the fold covered the
