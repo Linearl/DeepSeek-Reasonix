@@ -363,6 +363,9 @@ type Controller struct {
 	// sidecar providers over the config/broker base), or nil when no sidecar
 	// declared providers. Immutable after New; ProviderCatalog reads it.
 	providerResolver provider.Resolver
+	// sessionTitleModel is the optional title-model override (tl1692),
+	// snapshotted from Options at New and never swapped.
+	sessionTitleModel string
 
 	// Capability routing (Delivery hybrid route + dual-model Planner proxy).
 	// Not part of the provider-visible prefix; only seeds the turn-scoped ledger
@@ -775,6 +778,11 @@ type Options struct {
 	// consults it only after the steer faces miss. nil keeps the P15-only
 	// behaviour.
 	InboxAppliedBodyReceipts func(sessionPath string) map[string]struct{}
+	// SessionTitleModel is the optional canonical provider/model ref the
+	// session-title face (GenerateSessionTitle, tl1692) resolves before the
+	// session's own model. Empty keeps the previous behaviour: the title call
+	// rides the session's configured provider. Immutable after New.
+	SessionTitleModel string
 	// TaskBudget is the configured spend gate; unset leaves a turn unbounded.
 	TaskBudget agent.TaskBudget
 	// GoalTokenBudget bounds an unattended Goal loop by cumulative tokens.
@@ -1120,6 +1128,7 @@ func New(opts Options) *Controller {
 		},
 		taskBudget:                 opts.TaskBudget,
 		goalTokenBudget:            opts.GoalTokenBudget,
+		sessionTitleModel:          strings.TrimSpace(opts.SessionTitleModel),
 		autopilot:                  opts.Autopilot && opts.AutopilotMaxRuntime > 0,
 		autopilotApprovalGrace:     autopilotApprovalGrace(opts),
 		approvalTier:               NormalizeApprovalTier(opts.ApprovalTier),

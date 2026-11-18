@@ -169,3 +169,62 @@ func TestCleanSessionTitle(t *testing.T) {
 		}
 	}
 }
+
+// TestGenerateSessionTitlePrefersConfiguredTitleModel (tl1692): when the
+// controller carries a SessionTitleModel (agent.title_model), the bounded
+// title call resolves THAT model instead of the session's own — and an empty
+// override keeps the previous behaviour (the session model serves the title).
+func TestGenerateSessionTitlePrefersConfiguredTitleModel(t *testing.T) {
+	sessionProv := &sessionTitleProviderStub{out: "Session model title", finishReason: "stop"}
+	titleProv := &sessionTitleProviderStub{out: "Title model name", finishReason: "stop"}
+	resolver := &provider.StaticResolver{
+		Descriptors: []provider.Descriptor{
+			{Ref: "test/title-model"},
+			{Ref: "test/title-model-2"},
+		},
+		Providers: map[string]provider.Provider{
+			"test/title-model":   sessionProv,
+			"test/title-model-2": titleProv,
+		},
+	}
+
+	t.Run("override resolves the configured title model", func(t *testing.T) {
+		c := New(Options{
+			ModelRef:          "test/title-model",
+			SessionTitleModel: "test/title-model-2",
+			Sink:              event.Discard,
+			ProviderResolver:  resolver,
+		})
+		title, err := c.GenerateSessionTitle(context.Background(), "user turn text")
+		if err != nil {
+			t.Fatalf("GenerateSessionTitle: %v", err)
+		}
+		if title != "Title model name" {
+			t.Fatalf("title = %q, want the title-model name", title)
+		}
+		if len(titleProv.requests) != 1 {
+			t.Fatalf("title-model requests = %d, want 1", len(titleProv.requests))
+		}
+		if len(sessionProv.requests) != 0 {
+			t.Fatalf("session-model served %d title requests; the override must bypass it", len(sessionProv.requests))
+		}
+	})
+
+	t.Run("empty override keeps the session model", func(t *testing.T) {
+		c := New(Options{
+			ModelRef:         "test/title-model",
+			Sink:             event.Discard,
+			ProviderResolver: resolver,
+		})
+		title, err := c.GenerateSessionTitle(context.Background(), "user turn text")
+		if err != nil {
+			t.Fatalf("GenerateSessionTitle: %v", err)
+		}
+		if title != "Session model title" {
+			t.Fatalf("title = %q, want the session-model name", title)
+		}
+		if len(sessionProv.requests) != 1 {
+			t.Fatalf("session-model requests = %d, want 1", len(sessionProv.requests))
+		}
+	})
+}

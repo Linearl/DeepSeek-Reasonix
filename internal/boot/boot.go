@@ -3089,6 +3089,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ctrlOpts.SessionV4 = sessionV4
 		ctrlOpts.Cleanup = func() { cleanup() }
 	}
+	// tl1692: the optional agent.title_model rides the controller's
+	// session-title face (manual AI rename + the desktop's automatic naming).
+	// Empty keeps the previous behaviour — the title call uses the session's
+	// own model, and the desktop's automatic naming stays off entirely.
+	ctrlOpts.SessionTitleModel = strings.TrimSpace(cfg.Agent.TitleModel)
 	ctrl := control.New(ctrlOpts)
 	bootTime.mark("controller")
 	// Task 1001: snapshot the reminder switch and run the first durable-queue

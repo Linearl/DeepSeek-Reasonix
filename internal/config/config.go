@@ -1816,6 +1816,13 @@ type AgentConfig struct {
 	// RecoveryModel names the optional recovery reviewer. Empty leaves
 	// rule-only recovery; it is not implied by guardian or the main model.
 	RecoveryModel string `toml:"recovery_model"`
+	// TitleModel names the optional title model (tl1692). Empty (the default)
+	// leaves automatic AI session naming OFF entirely — the desktop derives
+	// heuristic titles as before and nothing else changes. When set to a
+	// canonical provider/model ref, the desktop fires one parallel bounded
+	// title request through this model on the session's first user turn; a
+	// manual rename is never overridden (manual > auto, always).
+	TitleModel string `toml:"title_model"`
 	// RecoveryTemperature is accepted from older configs but ignored. Auto
 	// Guard review is deterministic at temperature zero.
 	RecoveryTemperature float64           `toml:"recovery_temperature"`
