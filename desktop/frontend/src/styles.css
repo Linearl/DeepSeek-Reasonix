@@ -5140,6 +5140,22 @@ a[href] {
 .jump-item[data-loaded="false"] .jump-dot {
   background: color-mix(in srgb, var(--border) 30%, transparent);
 }
+/* tl1698：底部锚——末刻度之下的显式标记（比普通刻度更粗，带方向感）。 */
+.jump-item--bottom .jump-dot--bottom {
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fg-faint);
+}
+
+.jump-scroll[data-density="compact"] .jump-item--bottom .jump-dot--bottom {
+  height: 2px;
+}
+
+.jump-scroll[data-density="packed"] .jump-item--bottom .jump-dot--bottom {
+  height: 2px;
+}
+
 .jump-dot[data-d="0"] {
   background: var(--accent);
 }

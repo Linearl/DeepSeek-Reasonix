@@ -4138,6 +4138,7 @@ export const zhTW: Record<DictKey, string> = {
   "questionNav.jump": "跳轉到問題 {n}",
   "questionNav.hint": "點擊跳轉到這次提問",
   "questionNav.notLoaded": "第 {n} 個問題（點擊載入）",
+  "questionNav.bottom": "跳到轉錄底部",
   "compaction.working": "正在壓縮對話…",
   "compaction.title": "上下文已壓縮",
   "compaction.messages": "{n} 條訊息",
