@@ -118,6 +118,15 @@ var labFeatureTiers = []labFeatureTier{
 	// 「单次收益限+滑动窗口」替代（约束①②）。窗口两键为家族子键（477
 	// 先例）：参数化预留，调参等 tl1397 观测面出数。
 	{"modelRangesCompact", LabTierUnstable, []string{"experimental_model_ranges_compact", "model_ranges_fold_window_minutes", "model_ranges_fold_window_max"}},
+	// tl1691：recall 回读工具注册（boot 门控注入，铁律 2 默认关=模型可见面
+	// 逐字节一致）——折叠区按 #n 地址/关键词取回原文，每代预算 max(2000,
+	// 窗口×10%)。摘要道下也可独立使用（tl1679 灰度①），未稳定档。
+	{"recallTool", LabTierUnstable, []string{"experimental_recall_tool"}},
+	// tl1691：零摘要折叠道（live read at fold time，铁律 2 默认关=摘要路径
+	// 逐字节一致）——折叠装 fold-<sha6> 指针+折叠工索引替代摘要请求，省
+	// 全量 prefill 摘要调用（tl1679 实测 8~12万 in/次）；回读出口即上条
+	// recall 工具。未稳定档（与 rangesCompact 同族不同道）。
+	{"zeroSummaryCompact", LabTierUnstable, []string{"experimental_zero_summary_compact"}},
 	// tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单；前端同步）。
 	{"outputStyle", LabTierRecommended, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
