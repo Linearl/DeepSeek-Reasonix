@@ -55,7 +55,6 @@ func TestSaveLoadPreservesLegacyContentAndRawUserContent(t *testing.T) {
 	}
 }
 
-
 func TestSaveLoadPreservesBoundedToolContentAndCompleteRawContent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	full := strings.Repeat("完整工具结果-🧪", 6000)
@@ -82,7 +81,6 @@ func TestSaveLoadPreservesBoundedToolContentAndCompleteRawContent(t *testing.T) 
 		t.Fatalf("provider projection after resume is not bounded: content=%d raw=%d", len(model[2].Content), len(model[2].RawContent))
 	}
 }
-
 
 // TestSnapshotUpToDateFastPath locks in the #6607 switch-lag fix: a snapshot
 // of a session that has not changed since its last save to the same path must
@@ -196,7 +194,6 @@ func TestSnapshotUpToDateFastPath(t *testing.T) {
 	}
 }
 
-
 func TestSaveSnapshotBoundsCrossProcessFileLockWait(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	lock, err := tryTakeSessionLockFile(store.SessionLockFile(path))
@@ -227,7 +224,6 @@ func TestSaveSnapshotBoundsCrossProcessFileLockWait(t *testing.T) {
 		t.Fatalf("failed save changed in-memory transcript: %+v", got)
 	}
 }
-
 
 func TestSaveSnapshotSucceedsWhenCrossProcessFileLockReleasesBeforeDeadline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -269,7 +265,6 @@ func TestSaveSnapshotSucceedsWhenCrossProcessFileLockReleasesBeforeDeadline(t *t
 		t.Fatalf("persisted transcript = %+v", got)
 	}
 }
-
 
 func TestSaveShutdownRecoveryBranchBypassesHeldOriginalFileLock(t *testing.T) {
 	dir := schemaOneTempDir(t)
@@ -332,7 +327,6 @@ func TestSaveShutdownRecoveryBranchBypassesHeldOriginalFileLock(t *testing.T) {
 	}
 }
 
-
 // TestRepairedSessionArmsFastPath (#6613 review P2): a session loaded with a
 // damaged event log — or carrying a load-time normalization repair — must
 // re-arm the snapshot no-op fast path once a successful save persists the
@@ -387,7 +381,6 @@ func TestRepairedSessionArmsFastPath(t *testing.T) {
 	}
 }
 
-
 // TestSaveLoadRoundTrip is the contract `reasonix --resume` depends on: a
 // session written to disk reloads byte-for-byte, including tool calls and
 // reasoning content (which the model wants to keep across resumes for cache
@@ -436,7 +429,6 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
-
 func TestSavePreservesToolContentOnDisk(t *testing.T) {
 	secret := "sk-real-secret-value-123456"
 	s := NewSession("sys")
@@ -460,7 +452,6 @@ func TestSavePreservesToolContentOnDisk(t *testing.T) {
 		t.Fatalf("session did not persist tool content verbatim:\n%s", body)
 	}
 }
-
 
 func TestSaveProtectsVerbatimSessionEventLog(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -488,7 +479,6 @@ func TestSaveProtectsVerbatimSessionEventLog(t *testing.T) {
 	assertPrivateSessionFile(t, eventPath)
 }
 
-
 func assertPrivateSessionFile(t *testing.T, path string) {
 	t.Helper()
 	info, err := os.Stat(path)
@@ -499,7 +489,6 @@ func assertPrivateSessionFile(t *testing.T, path string) {
 		t.Fatalf("%s mode = %04o, want 0600", path, got)
 	}
 }
-
 
 // TestSaveVerbatimRoundTripKeepsSnapshotBaselineStable pins digest consistency
 // for byte-preserving transcripts: a loaded transcript re-saves without a
@@ -553,7 +542,6 @@ func TestSaveVerbatimRoundTripKeepsSnapshotBaselineStable(t *testing.T) {
 	}
 }
 
-
 func TestSaveLoadLargeMessage(t *testing.T) {
 	s := NewSession("sys")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "run it"})
@@ -576,7 +564,6 @@ func TestSaveLoadLargeMessage(t *testing.T) {
 		t.Errorf("large content not round-tripped (got %d bytes, want %d)", len(loaded.Messages[2].Content), len(big))
 	}
 }
-
 
 func TestSaveSnapshotRejectsStalePrefixOverwrite(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
@@ -608,7 +595,6 @@ func TestSaveSnapshotRejectsStalePrefixOverwrite(t *testing.T) {
 	}
 }
 
-
 func TestSaveSnapshotAllowsAppendFromDiskPrefix(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	base := NewSession("sys")
@@ -632,7 +618,6 @@ func TestSaveSnapshotAllowsAppendFromDiskPrefix(t *testing.T) {
 		t.Fatalf("message count after append snapshot = %d, want 3", got)
 	}
 }
-
 
 // TestSaveSnapshotAppendsAcrossInterruptedToolCallTail is the mid-turn autosave
 // shape from the field: a snapshot lands between an assistant tool call and its
@@ -683,7 +668,6 @@ func TestSaveSnapshotAppendsAcrossInterruptedToolCallTail(t *testing.T) {
 		t.Fatal("transcript still needs repair after appending the real tool result")
 	}
 }
-
 
 // TestSaveSnapshotAppendsAcrossPartiallyAnsweredMultiToolCallTail covers the
 // same raw-prefix fallback when a multi-call assistant turn already has some
@@ -753,7 +737,6 @@ func TestSaveSnapshotAppendsAcrossPartiallyAnsweredMultiToolCallTail(t *testing.
 	}
 }
 
-
 // TestSaveSnapshotUnchangedInterruptedToolCallTailIsNoOp covers the turn that
 // stays interrupted (cancel, crash recovery with nothing new in memory):
 // re-snapshotting the exact bytes on disk must be a no-op, not a stale-prefix
@@ -788,7 +771,6 @@ func TestSaveSnapshotUnchangedInterruptedToolCallTailIsNoOp(t *testing.T) {
 		t.Fatalf("revision after no-op snapshot = %d (err %v), want 1", revision, err)
 	}
 }
-
 
 // TestSaveRewriteOwnedAcrossInterruptedToolCallTail: compaction rewrites the
 // in-memory history while the transcript on disk still ends with the dangling
@@ -825,7 +807,6 @@ func TestSaveRewriteOwnedAcrossInterruptedToolCallTail(t *testing.T) {
 		t.Fatalf("compacted message after round-trip = %q", got)
 	}
 }
-
 
 // TestSaveSnapshotAfterDirtyResumeKeepsEventChainReplayable: a session resumed
 // from an interrupted tool tail carries the load-time repair in memory, so its
@@ -882,7 +863,6 @@ func TestSaveSnapshotAfterDirtyResumeKeepsEventChainReplayable(t *testing.T) {
 		t.Fatalf("new turn after round-trip = %q, want %q", got, "done")
 	}
 }
-
 
 // TestSaveSnapshotAfterDirtyResumeWithTruncatedToolArgsPersistsRepair covers a
 // same-length load-time repair: truncated tool-call JSON is fixed in memory, but
@@ -946,7 +926,6 @@ func TestSaveSnapshotAfterDirtyResumeWithTruncatedToolArgsPersistsRepair(t *test
 	}
 }
 
-
 // TestSaveRecoveryBranchNotNeededWhenRawTranscriptCoversSnapshot: the
 // recovery-needed check must also judge coverage against the pre-repair bytes.
 // Here the stored transcript equals the snapshot exactly, but normalization
@@ -970,7 +949,6 @@ func TestSaveRecoveryBranchNotNeededWhenRawTranscriptCoversSnapshot(t *testing.T
 		t.Fatalf("SaveRecoveryBranch err = %v, want ErrSessionRecoveryNotNeeded", err)
 	}
 }
-
 
 func TestSaveSnapshotAppendsWithoutReplacingPrefixFile(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
@@ -998,7 +976,6 @@ func TestSaveSnapshotAppendsWithoutReplacingPrefixFile(t *testing.T) {
 		t.Fatal("SaveSnapshot replaced the session file; want append-in-place for disk-prefix snapshots")
 	}
 }
-
 
 func TestSaveSnapshotAppendsEventLogAndDisplayReadModel(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
@@ -1065,7 +1042,6 @@ func TestSaveSnapshotAppendsEventLogAndDisplayReadModel(t *testing.T) {
 	}
 }
 
-
 func TestSaveRewriteAppendsReplaceEventAndRefreshesCheckpoint(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
 	base := NewSession("sys")
@@ -1108,7 +1084,6 @@ func TestSaveRewriteAppendsReplaceEventAndRefreshesCheckpoint(t *testing.T) {
 	}
 }
 
-
 func TestSaveSnapshotMigratesLegacyJSONLToEventLog(t *testing.T) {
 	path := schemaOneSessionPath(t, "legacy.jsonl")
 	if err := os.WriteFile(path, []byte(`{"role":"system","content":"sys"}`+"\n"+`{"role":"user","content":"legacy"}`+"\n"), 0o644); err != nil {
@@ -1138,7 +1113,6 @@ func TestSaveSnapshotMigratesLegacyJSONLToEventLog(t *testing.T) {
 	}
 }
 
-
 func TestSaveSnapshotAllowsAppendAfterSystemPromptRefresh(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	base := NewSession("old sys")
@@ -1165,7 +1139,6 @@ func TestSaveSnapshotAllowsAppendAfterSystemPromptRefresh(t *testing.T) {
 		t.Fatalf("system prompt after refresh = %q, want %q", got, "new sys")
 	}
 }
-
 
 func TestSaveSnapshotRecordsRevisionAndMetaUpdatesPreserveIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -1213,7 +1186,6 @@ func TestSaveSnapshotRecordsRevisionAndMetaUpdatesPreserveIt(t *testing.T) {
 	}
 }
 
-
 func TestSaveSnapshotSameContentSkipsRevisionBump(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	s := NewSession("sys")
@@ -1249,7 +1221,6 @@ func TestSaveSnapshotSameContentSkipsRevisionBump(t *testing.T) {
 		t.Fatalf("revision after append = %d, want %d", advanced.Revision, before.Revision+1)
 	}
 }
-
 
 func TestSaveSnapshotSameContentByOtherRuntimeKeepsClonedBaselineWritable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -1297,7 +1268,6 @@ func TestSaveSnapshotSameContentByOtherRuntimeKeepsClonedBaselineWritable(t *tes
 	}
 }
 
-
 func TestSaveSnapshotAllowsExactAppendFromStaleRevisionBaseline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	s := NewSession("sys")
@@ -1343,7 +1313,6 @@ func TestSaveSnapshotAllowsExactAppendFromStaleRevisionBaseline(t *testing.T) {
 		t.Fatalf("recovery branches after stale-baseline append = %v err=%v, want none", matches, err)
 	}
 }
-
 
 func TestSaveSnapshotAllowsCompatibleSystemAppendFromStaleRevisionBaseline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -1396,7 +1365,6 @@ func TestSaveSnapshotAllowsCompatibleSystemAppendFromStaleRevisionBaseline(t *te
 	}
 }
 
-
 func TestSaveSnapshotRefusesStaleBaselineAppendOverRewoundTranscript(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
 	s := NewSession("sys")
@@ -1434,7 +1402,6 @@ func TestSaveSnapshotRefusesStaleBaselineAppendOverRewoundTranscript(t *testing.
 	}
 }
 
-
 func TestSaveRewriteAllowsOwnedRewriteAfterLedgerReset(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
 	s := NewSession("sys")
@@ -1470,7 +1437,6 @@ func TestSaveRewriteAllowsOwnedRewriteAfterLedgerReset(t *testing.T) {
 		t.Fatalf("recovery branches after owned rewrite = %v err=%v, want none", matches, err)
 	}
 }
-
 
 func TestSaveSnapshotStillPersistsNormalizedRepair(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -1526,7 +1492,6 @@ func TestSaveSnapshotStillPersistsNormalizedRepair(t *testing.T) {
 	}
 }
 
-
 func TestSaveSnapshotRejectsStalePrefixAfterSystemPromptRefresh(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
 	current := NewSession("new sys")
@@ -1555,7 +1520,6 @@ func TestSaveSnapshotRejectsStalePrefixAfterSystemPromptRefresh(t *testing.T) {
 		t.Fatalf("last message after stale system refresh snapshot = %q, want %q", got, "second")
 	}
 }
-
 
 func TestSaveRewriteAllowsRewriteOverSameContentForeignStamp(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -1610,7 +1574,6 @@ func TestSaveRewriteAllowsRewriteOverSameContentForeignStamp(t *testing.T) {
 	}
 }
 
-
 func TestSaveRewriteRejectsForeignStampForUnattributedBytes(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
 	base := NewSession("sys")
@@ -1664,7 +1627,6 @@ func TestSaveRewriteRejectsForeignStampForUnattributedBytes(t *testing.T) {
 	}
 }
 
-
 func TestSaveSnapshotAllowsOwnedNonPrefixRewrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	s := NewSession("sys")
@@ -1696,7 +1658,6 @@ func TestSaveSnapshotAllowsOwnedNonPrefixRewrite(t *testing.T) {
 		t.Fatalf("rewritten content = %q, want %q", got, "summarized first")
 	}
 }
-
 
 func TestSaveSnapshotRejectsInterruptedForeignWriteAtSameRevision(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
@@ -1745,7 +1706,6 @@ func TestSaveSnapshotRejectsInterruptedForeignWriteAtSameRevision(t *testing.T) 
 	}
 }
 
-
 func TestSaveRewriteAllowsOwnedNonPrefixRewrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	s := NewSession("sys")
@@ -1774,7 +1734,6 @@ func TestSaveRewriteAllowsOwnedNonPrefixRewrite(t *testing.T) {
 		t.Fatalf("rewritten content = %q, want %q", got, "summarized first")
 	}
 }
-
 
 func TestCloneWithMessagesPreservesRewriteBaseline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -1811,7 +1770,6 @@ func TestCloneWithMessagesPreservesRewriteBaseline(t *testing.T) {
 	}
 }
 
-
 func TestCloneWithMessagesIfCompatibleRejectsHistoryChanges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	s := NewSession("old sys")
@@ -1837,7 +1795,6 @@ func TestCloneWithMessagesIfCompatibleRejectsHistoryChanges(t *testing.T) {
 		t.Fatal("non-system history change should not preserve baseline")
 	}
 }
-
 
 func TestSaveRewriteRejectsStalePrefixOverwrite(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
@@ -1866,7 +1823,6 @@ func TestSaveRewriteRejectsStalePrefixOverwrite(t *testing.T) {
 		t.Fatalf("last message after stale rewrite = %q, want %q", got, "second")
 	}
 }
-
 
 func TestSaveRecoveryBranchPersistsDivergedSnapshot(t *testing.T) {
 	path := schemaOneSessionPath(t, "session.jsonl")
@@ -1931,7 +1887,6 @@ func TestSaveRecoveryBranchPersistsDivergedSnapshot(t *testing.T) {
 	}
 }
 
-
 func TestSaveSnapshotRefusesToRecreateExternallyRemovedBaseline(t *testing.T) {
 	dir := schemaOneTempDir(t)
 	path := filepath.Join(dir, "removed.jsonl")
@@ -1954,7 +1909,6 @@ func TestSaveSnapshotRefusesToRecreateExternallyRemovedBaseline(t *testing.T) {
 	}
 }
 
-
 func TestSaveRecoveryBranchSkipsPureStalePrefix(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	current := NewSession("sys")
@@ -1973,7 +1927,6 @@ func TestSaveRecoveryBranchSkipsPureStalePrefix(t *testing.T) {
 	}
 }
 
-
 func divergedSessionPair(t *testing.T, dir, name string) (string, *Session) {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -1991,7 +1944,6 @@ func divergedSessionPair(t *testing.T, dir, name string) (string, *Session) {
 	return path, stale
 }
 
-
 func stampRecoveryMeta(t *testing.T, path string, depth int) {
 	t.Helper()
 	meta, ok, err := LoadBranchMeta(path)
@@ -2004,7 +1956,6 @@ func stampRecoveryMeta(t *testing.T, path string, depth int) {
 		t.Fatalf("SaveBranchMeta: %v", err)
 	}
 }
-
 
 func TestSaveRecoveryBranchDedupesByDigest(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
@@ -2030,7 +1981,6 @@ func TestSaveRecoveryBranchDedupesByDigest(t *testing.T) {
 		t.Fatalf("second recovery = %+v, want existing same path %q", second, first.Path)
 	}
 }
-
 
 func TestSaveRecoveryBranchCompactsLongParentFilename(t *testing.T) {
 	dir := t.TempDir()
@@ -2067,7 +2017,6 @@ func TestSaveRecoveryBranchCompactsLongParentFilename(t *testing.T) {
 		t.Fatalf("recovery parent = %q, want original branch id", meta.ParentID)
 	}
 }
-
 
 func TestSaveRecoveryBranchDoesNotCascadeRecoveryFilename(t *testing.T) {
 	dir := t.TempDir()
@@ -2112,7 +2061,6 @@ func TestSaveRecoveryBranchDoesNotCascadeRecoveryFilename(t *testing.T) {
 		t.Fatalf("recovery basename length = %d (%q), want bounded", len(base), base)
 	}
 }
-
 
 // TestSaveSnapshotSameRevisionAllowsOwnedNonPrefixAppend reproduces the scenario from
 // #6948: a recovery branch whose snapshot saves systematically diverged because
@@ -2175,14 +2123,12 @@ func TestSaveSnapshotSameRevisionAllowsOwnedNonPrefixAppend(t *testing.T) {
 	}
 }
 
-
 func TestContinueSessionPathReusesPriorFile(t *testing.T) {
 	prev := filepath.Join("sessions", "20260602-120000.000000000-deepseek.jsonl")
 	if got := ContinueSessionPath(prev, "sessions", "other-model"); got != prev {
 		t.Fatalf("carried conversation should keep its file %q, got %q", prev, got)
 	}
 }
-
 
 func TestContinueSessionPathMintsFreshWhenNoPrior(t *testing.T) {
 	dir := t.TempDir()
@@ -2192,13 +2138,11 @@ func TestContinueSessionPathMintsFreshWhenNoPrior(t *testing.T) {
 	}
 }
 
-
 func TestContinueSessionPathNoPersistence(t *testing.T) {
 	if got := ContinueSessionPath("", "", "deepseek"); got != "" {
 		t.Fatalf("no session dir should disable persistence, got %q", got)
 	}
 }
-
 
 func readSessionEventsForTest(t *testing.T, path string) []sessionEventRecord {
 	t.Helper()
@@ -2221,4 +2165,3 @@ func readSessionEventsForTest(t *testing.T, path string) []sessionEventRecord {
 	}
 	return out
 }
-

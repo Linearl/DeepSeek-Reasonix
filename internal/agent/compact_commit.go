@@ -85,8 +85,8 @@ func (a *Agent) summaryProjectionState(commit summaryProjectionCommit) Compactio
 			ProjectionVersion: projectionVersion, CoveredCount: commit.covered, CoveredPrefixHash: coveredHash,
 			// tl1651: per-message diagnostic corpus for future mismatch localization.
 			CoveredMessageHashes: coveredMessageFingerprints(commit.canonical, commit.covered),
-			PinnedContextHash: pinnedContextCoverageHash(commit.canonical, commit.covered),
-			SummaryHash:       summaryHash, SourceTokens: commit.sourceTokens, ProjectionTokens: commit.projectionTokens,
+			PinnedContextHash:    pinnedContextCoverageHash(commit.canonical, commit.covered),
+			SummaryHash:          summaryHash, SourceTokens: commit.sourceTokens, ProjectionTokens: commit.projectionTokens,
 			ViewInputHash: commit.inputHash, ViewOutputHash: commit.outputHash, CreatedAt: now,
 		},
 		LastReceipt: receipt, UpdatedAt: now,

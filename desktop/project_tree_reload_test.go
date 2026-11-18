@@ -23,7 +23,7 @@ import (
 // seedReloadScene registers one project with:
 //   - topic-live:        a real session file on disk, indexed in the registry;
 //   - topic-shadow:      a zero-binding registration (CreatedAtMS==0, no file) —
-//                        the trash-residue / tl1383 shadow form.
+//     the trash-residue / tl1383 shadow form.
 func seedReloadScene(t *testing.T) (app *App, root, dir, livePath string) {
 	t.Helper()
 	root = t.TempDir()

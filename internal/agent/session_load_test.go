@@ -41,7 +41,6 @@ func TestLoadSessionMigratesLegacyInjectedUserContentWithoutChangingProviderByte
 	}
 }
 
-
 func TestLoadSessionMigratesTransitionalProviderContentToLegacySafeShape(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	const raw = "fix the bug"
@@ -69,4 +68,3 @@ func TestLoadSessionMigratesTransitionalProviderContentToLegacySafeShape(t *test
 		t.Fatal("transitional migration must schedule a rewrite on the next save")
 	}
 }
-

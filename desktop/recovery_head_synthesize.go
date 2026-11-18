@@ -45,7 +45,7 @@ type HeadSynthesisItem struct {
 	// Grated counts how many of this branch's turns were actually grafted onto
 	// the new main (only meaningful for the losing chain, i.e. the former main).
 	// The other branches are archived as a whole rather than spliced.
-	UniqueToHead int `json:"uniqueToHead"`
+	UniqueToHead int  `json:"uniqueToHead"`
 	Archived     bool `json:"archived"`
 }
 
@@ -341,4 +341,3 @@ func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisRepo
 	})
 	return report, nil
 }
-

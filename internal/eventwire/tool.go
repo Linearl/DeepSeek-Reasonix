@@ -56,7 +56,7 @@ func toWireTool(in event.Tool) *Tool {
 		StartedAt: in.StartedAt, EndedAt: in.EndedAt,
 		ArgChars: in.ArgChars, Refreshed: in.Refreshed,
 		ArgsPreview: in.ArgsPreview,
-		ParentID: in.ParentID, AttemptID: in.AttemptID,
+		ParentID:    in.ParentID, AttemptID: in.AttemptID,
 		Diff: in.Diff, Added: in.Added, Removed: in.Removed,
 		SubagentRef: in.SubagentRef, SubagentStatus: in.SubagentStatus,
 		SubagentErrorCode: in.SubagentErrorCode, SubagentRetryable: in.SubagentRetryable,

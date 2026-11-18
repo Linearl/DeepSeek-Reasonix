@@ -93,7 +93,7 @@ func (a *App) Version() string { return version }
 // rate limit, transport EOF) degrades SILENTLY: checkFailed=true, no Err, no
 // UI error — a failed check is not a failed update, and a user already on the
 // latest fork build must see the normal "you're up to date" feedback, never
-// `update: invalid stable version ''` noise.
+// `update: invalid stable version ”` noise.
 //
 // Safe to call on startup: nothing here returns a transport error to the
 // caller; the boolean return exists for the Wails binding shape.

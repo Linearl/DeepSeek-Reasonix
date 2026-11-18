@@ -71,29 +71,29 @@ type Config struct {
 	// 「left in place」，而是 L2 整文件 zstd 归档（无损可逆，读/写先物化回
 	// 明文）、仍超限再 L3 确定性裁剪超大 tool 结果（头尾保留+标记）。折叠
 	// 10% 门槛原样保留——本开关补的是「门槛不满足时的动作」，不是门槛。
-	ExperimentalEventsSlimOversize bool `toml:"experimental_events_slim_oversize"`
-	UI                  UIConfig            `toml:"ui"`
-	CLI                 CLIConfig           `toml:"cli"`
-	Desktop             DesktopConfig       `toml:"desktop"`
-	Billing             BillingConfig       `toml:"billing"`
-	Telemetry           TelemetryConfig     `toml:"telemetry"`
-	Notifications       NotificationsConfig `toml:"notifications"`
-	Agent               AgentConfig         `toml:"agent"`
-	Providers           []ProviderEntry     `toml:"providers"`
-	Tools               ToolsConfig         `toml:"tools"`
-	Permissions         PermissionsConfig   `toml:"permissions"`
-	Sandbox             SandboxConfig       `toml:"sandbox"`
-	Network             NetworkConfig       `toml:"network"`
-	Environment         EnvironmentConfig   `toml:"environment"`
-	Plugins             []PluginEntry       `toml:"plugins"`
-	Skills              SkillsConfig        `toml:"skills"`
-	Statusline          StatuslineConfig    `toml:"statusline"`
-	LSP                 LSPConfig           `toml:"lsp"`
-	Bot                 BotConfig           `toml:"bot"`
-	Serve               ServeConfig         `toml:"serve"`
-	Secrets             SecretsConfig       `toml:"secrets"`
-	Sentinel            SentinelConfig      `toml:"sentinel"`
-	Remote              RemoteConfig        `toml:"remote"`
+	ExperimentalEventsSlimOversize bool                `toml:"experimental_events_slim_oversize"`
+	UI                             UIConfig            `toml:"ui"`
+	CLI                            CLIConfig           `toml:"cli"`
+	Desktop                        DesktopConfig       `toml:"desktop"`
+	Billing                        BillingConfig       `toml:"billing"`
+	Telemetry                      TelemetryConfig     `toml:"telemetry"`
+	Notifications                  NotificationsConfig `toml:"notifications"`
+	Agent                          AgentConfig         `toml:"agent"`
+	Providers                      []ProviderEntry     `toml:"providers"`
+	Tools                          ToolsConfig         `toml:"tools"`
+	Permissions                    PermissionsConfig   `toml:"permissions"`
+	Sandbox                        SandboxConfig       `toml:"sandbox"`
+	Network                        NetworkConfig       `toml:"network"`
+	Environment                    EnvironmentConfig   `toml:"environment"`
+	Plugins                        []PluginEntry       `toml:"plugins"`
+	Skills                         SkillsConfig        `toml:"skills"`
+	Statusline                     StatuslineConfig    `toml:"statusline"`
+	LSP                            LSPConfig           `toml:"lsp"`
+	Bot                            BotConfig           `toml:"bot"`
+	Serve                          ServeConfig         `toml:"serve"`
+	Secrets                        SecretsConfig       `toml:"secrets"`
+	Sentinel                       SentinelConfig      `toml:"sentinel"`
+	Remote                         RemoteConfig        `toml:"remote"`
 
 	systemPromptFileSource     promptFileSource
 	providerSources            map[string]providerSourceScope

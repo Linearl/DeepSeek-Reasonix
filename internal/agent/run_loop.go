@@ -244,17 +244,17 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 			// tl1608: the steer_cache_key pair brackets the injection so the
 			// log alone confirms or refutes "steer rewrites the prompt prefix
 			// → provider cache invalidated → full prefill". Observation only.
-				steerKeyBefore := a.logSteerCacheKeyBefore()
-				// tl1669: the steer landing is a canonical write — it queues behind
-				// an in-flight compaction instead of invalidating the pass's commit
-				// CAS (the tl1648 consumeSteer gate already keeps the ENTRY queued
-				// while the pass runs; this closes the window between dequeue and
-				// landing).
-				a.appendTurnMessage(ctx, provider.Message{
-					Role: provider.RoleUser, Origin: provider.MessageOriginUser,
-					Content: a.withTurnPreferences(midTurnSteerMessage(payload.Text)), RawContent: payload.Text,
-					Images: payload.Images, CreatedAt: steerAt,
-				})
+			steerKeyBefore := a.logSteerCacheKeyBefore()
+			// tl1669: the steer landing is a canonical write — it queues behind
+			// an in-flight compaction instead of invalidating the pass's commit
+			// CAS (the tl1648 consumeSteer gate already keeps the ENTRY queued
+			// while the pass runs; this closes the window between dequeue and
+			// landing).
+			a.appendTurnMessage(ctx, provider.Message{
+				Role: provider.RoleUser, Origin: provider.MessageOriginUser,
+				Content: a.withTurnPreferences(midTurnSteerMessage(payload.Text)), RawContent: payload.Text,
+				Images: payload.Images, CreatedAt: steerAt,
+			})
 
 			a.logSteerCacheKeyAfter(steerKeyBefore)
 			a.svc.sink.Emit(event.Event{Kind: event.Steer, Text: payload.Text, ItemID: itemID, At: steerAt})

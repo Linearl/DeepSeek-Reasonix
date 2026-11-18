@@ -102,7 +102,6 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 	}
 }
 
-
 // 任务 506: tab-strip adaptive compression is a plain default-off desktop
 // bool. An untouched config must render false (ships off, 铁律 2), enabling
 // must render true, and flipping back off must stay recorded — otherwise the

@@ -318,8 +318,8 @@ func TestMentionedMembersEdges(t *testing.T) {
 		want []string
 	}{
 		{"@sc_a 收", []string{"sc_a"}},
-		{"先看这个\n@乙 再看", []string{"sc_b"}},   // 换行后的别名
-		{"邮箱 a@sc_a.com 里的 @ 不是提及", nil},      // 语法只认 @开头 needle —— a@sc_a 不以 @ 开头，不成路由
+		{"先看这个\n@乙 再看", []string{"sc_b"}},       // 换行后的别名
+		{"邮箱 a@sc_a.com 里的 @ 不是提及", nil},        // 语法只认 @开头 needle —— a@sc_a 不以 @ 开头，不成路由
 		{"@@sc_a 双写也算", []string{"sc_a"}},       // 第二个 @ 起始同样命中
 		{"@甲@乙 连写两个", []string{"sc_a", "sc_b"}}, // 连写各自命中
 		{"没有提及", nil},

@@ -69,7 +69,7 @@ func TestBenchSwitchCostVerdicts(t *testing.T) {
 
 	// 越线：P95 取最近秩，样本 [10, 2000] → P95=2000 > 1500 → FAIL。
 	failCol := &logCollect{
-		ModelSwitchFast: []sample{{MS: 10}, {MS: 2000}},
+		ModelSwitchFast:  []sample{{MS: 10}, {MS: 2000}},
 		EffortSwitchFast: []sample{{MS: 8}, {MS: 30}},
 	}
 	rows := benchSwitchCost(failCol, o)

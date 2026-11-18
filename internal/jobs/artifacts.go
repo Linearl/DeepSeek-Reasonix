@@ -36,9 +36,9 @@ func RemoveArtifacts(sessionPath string) error {
 }
 
 type artifactMeta struct {
-	ID                      string                    `json:"id"`
-	Kind                    string                    `json:"kind"`
-	Label                   string                    `json:"label,omitempty"`
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Label string `json:"label,omitempty"`
 	// Detail carries the untruncated source text behind Label (tl1033) so a
 	// recovered job's hover card keeps the full command. Older metas lack the
 	// key and restore with "" — panels fall back to Label. Machine-facing

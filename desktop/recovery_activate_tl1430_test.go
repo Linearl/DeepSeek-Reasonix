@@ -418,6 +418,7 @@ func TestSetActiveSessionVersionRepresentativeAndChainSelectedFollowSwitch(t *te
 //     re-proved the choice through the strict snapshot
 //     (LoadSessionContentSnapshot fail-closes on damaged/dirty logs), dropped
 //     the flag, and representative/reopen kept the old line.
+//
 // The write side, the promote check, AND the projection must accept the same
 // tolerant-replay proof. Hard assertions: any half slipping fails here.
 func TestSetActiveSessionVersionAdoptsForkWithDamagedTail(t *testing.T) {

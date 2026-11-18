@@ -58,7 +58,7 @@ func tl1228BuildDAGSession(t testing.TB, mb int) string {
 	base := time.Date(2026, 1, 8, 10, 0, 0, 0, time.UTC)
 	entryOverhead := 768
 	perEntry := bodyBytes + entryOverhead
-	n := mb<<20 / perEntry
+	n := mb << 20 / perEntry
 	if n < 8 {
 		n = 8
 	}

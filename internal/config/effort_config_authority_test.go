@@ -83,7 +83,7 @@ model_overrides   = { "deepseek-v4-flash" = { supported_efforts = ["disabled", "
 func TestModelLevelEffortVocabularyOverride(t *testing.T) {
 	cfg := &Config{Providers: []ProviderEntry{{
 		Name: "gateway", Kind: "openai", BaseURL: "https://api.example-gateway.com/v1",
-		Models: []string{"chat-model", "reasoning-model", "plain-model"},
+		Models:           []string{"chat-model", "reasoning-model", "plain-model"},
 		SupportedEfforts: []string{"low", "high", "max"}, DefaultEffort: "high",
 		ModelOverrides: map[string]ProviderModelOverride{
 			"reasoning-model": {SupportedEfforts: []string{"low", "xhigh", "max"}, DefaultEffort: "max"},
@@ -125,7 +125,7 @@ func TestModelLevelEffortVocabularyOverride(t *testing.T) {
 func TestSetProviderModelEffort(t *testing.T) {
 	cfg := &Config{Providers: []ProviderEntry{{
 		Name: "gateway", Kind: "openai", BaseURL: "https://api.example-gateway.com/v1",
-		Models: []string{"chat-model", "reasoning-model"},
+		Models:           []string{"chat-model", "reasoning-model"},
 		SupportedEfforts: []string{"low", "high", "max"},
 		ModelOverrides: map[string]ProviderModelOverride{
 			"reasoning-model": {SupportedEfforts: []string{"low", "xhigh", "max"}},

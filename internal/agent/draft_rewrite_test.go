@@ -22,10 +22,14 @@ func draftRewriteAgent(t *testing.T, turns ...testutil.Turn) (*Agent, *testutil.
 
 // 任务 1024 验收（辅助通道面）：
 // ① 改写请求走辅助通道——不改写会话消息（Snapshot 前后一致）、不产生
-//    transcript 消息；
+//
+//	transcript 消息；
+//
 // ② 请求带用户草稿正文与系统规则，返回辅助模型的改写文本；
 // ③ 上下文尾巴超预算时按尾部裁剪（保留最新内容）；预算=档位参数
-//    （任务 1052：0=默认 10KB）；
+//
+//	（任务 1052：0=默认 10KB）；
+//
 // ④ 空草稿/流失败/空输出一律 ("", err)，调用方可静默降级。
 func TestRewriteDraftAuxiliaryOnlyAndReturnsText(t *testing.T) {
 	a, p := draftRewriteAgent(t, testutil.Turn{Text: "改写后的草稿"})

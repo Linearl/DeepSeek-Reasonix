@@ -17,7 +17,6 @@ func touch(path string, t time.Time) error {
 	return os.Chtimes(path, t, t)
 }
 
-
 // TestListSessionsOrdersByMTime makes sure the picker shows the most
 // recently used conversation first — that's what users reach for when they
 // hit `reasonix --continue`.
@@ -55,7 +54,6 @@ func TestListSessionsOrdersByMTime(t *testing.T) {
 	}
 }
 
-
 func TestListSessionsIncludesCustomTitle(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "named.jsonl")
@@ -88,7 +86,6 @@ func TestListSessionsIncludesCustomTitle(t *testing.T) {
 		t.Fatalf("topic title = %q, want Topic title", got[0].TopicTitle)
 	}
 }
-
 
 func TestListSessionsSkipsCleanupPending(t *testing.T) {
 	dir := t.TempDir()
@@ -124,7 +121,6 @@ func TestListSessionsSkipsCleanupPending(t *testing.T) {
 		t.Fatalf("session should be visible after clearing marker, got %+v", got)
 	}
 }
-
 
 func TestListSessionsOrdersByLastActivityMeta(t *testing.T) {
 	dir := t.TempDir()
@@ -165,7 +161,6 @@ func TestListSessionsOrdersByLastActivityMeta(t *testing.T) {
 	}
 }
 
-
 func TestListSessionOrderIncludesEmptySessionsWithoutPreviewScan(t *testing.T) {
 	dir := t.TempDir()
 	emptyPath := filepath.Join(dir, "empty.jsonl")
@@ -202,7 +197,6 @@ func TestListSessionOrderIncludesEmptySessionsWithoutPreviewScan(t *testing.T) {
 		t.Fatalf("ListSessions = %+v, want only the non-empty real session", listed)
 	}
 }
-
 
 func TestSessionListingsExposeRecoveryMetadata(t *testing.T) {
 	dir := t.TempDir()
@@ -247,7 +241,6 @@ func TestSessionListingsExposeRecoveryMetadata(t *testing.T) {
 	}
 }
 
-
 func writeBranchMeta(t *testing.T, path string, createdAt, updatedAt time.Time) {
 	t.Helper()
 	meta := BranchMeta{
@@ -264,7 +257,6 @@ func writeBranchMeta(t *testing.T, path string, createdAt, updatedAt time.Time) 
 	}
 }
 
-
 // TestListSessionsMissingDir returns nil + no error so callers can fall
 // through to a fresh session without special-casing.
 func TestListSessionsMissingDir(t *testing.T) {
@@ -273,4 +265,3 @@ func TestListSessionsMissingDir(t *testing.T) {
 		t.Errorf("missing dir = %v / %v, want nil/nil", got, err)
 	}
 }
-

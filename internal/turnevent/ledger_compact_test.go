@@ -261,4 +261,3 @@ func TestLedgerCompactIdleThroughConvertsOrphanThenCompacts(t *testing.T) {
 		t.Fatalf("converted orphan survived the confirmed compaction: %s", data)
 	}
 }
-

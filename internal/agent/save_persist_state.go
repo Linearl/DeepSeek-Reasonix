@@ -23,8 +23,7 @@ import (
 // 基线/摘要（digest）/revision 账（ledger）/转写 hasher/前缀比对。
 
 var (
-	sessionWriterID                 = newSessionWriterID()
-
+	sessionWriterID = newSessionWriterID()
 )
 
 func (s *Session) ownsPersistedState(path string, existingDigest [sha256.Size]byte, existingRevision int64, existingLedgerDigest string, nextVersion uint64) bool {
@@ -55,7 +54,6 @@ func (s *Session) ownsPersistedState(path string, existingDigest [sha256.Size]by
 	// only the conservative conflict path preserves both sides.
 	return existingLedgerDigest == digestString(existingDigest)
 }
-
 
 // snapshotUpToDate reports whether a snapshot save to path is a provable
 // no-op from in-memory bookkeeping alone: the last successful save went to
@@ -145,14 +143,12 @@ func (s *Session) snapshotNoOpReason(path string) string {
 	return armed
 }
 
-
 // snapshotUpToDate reports that the transcript this session holds is exactly
 // what the ledger already describes, so a snapshot can skip the serialize +
 // digest + probe entirely (#6607).
 func (s *Session) snapshotUpToDate(path string) bool {
 	return s.snapshotNoOpReason(path) != ""
 }
-
 
 // SnapshotUpToDateForPath reports whether the live session's in-memory
 // transcript is byte-stable since the last successful save to path — nothing
@@ -165,7 +161,6 @@ func (s *Session) snapshotUpToDate(path string) bool {
 func (s *Session) SnapshotUpToDateForPath(path string) bool {
 	return s.snapshotUpToDate(path) || s.snapshotTailWindowClean(path)
 }
-
 
 // warnVanishedPersistedFiles stamps an out-of-band removal of a baseline-known
 // transcript checkpoint or event log (tl1313). Both sizes live on the persist
@@ -217,7 +212,6 @@ func (s *Session) warnVanishedPersistedFiles(path string) {
 	}
 }
 
-
 // snapshotTailWindowClean reports that a first-paint tail-window session is a
 // pure read projection of an unchanged disk transcript (tl1281). The window
 // decoded from the checkpoint is a strict subset of the disk transcript, and
@@ -260,7 +254,6 @@ func (s *Session) snapshotTailWindowClean(path string) bool {
 	return true
 }
 
-
 func (s *Session) persistState(path string) sessionPersistState {
 	key := canonicalSessionSavePath(path)
 	s.mu.RLock()
@@ -270,7 +263,6 @@ func (s *Session) persistState(path string) sessionPersistState {
 	}
 	return sessionPersistState{}
 }
-
 
 // PersistedState is a read-only view of the baseline the session last
 // persisted to (or loaded from) its transcript path. History paging uses it to
@@ -300,7 +292,6 @@ type PersistedState struct {
 	UnchangedSincePersisted bool
 }
 
-
 // PersistedState returns the session's persistence baseline for path, or
 // false when the session has never persisted to (or loaded from) that path.
 func (s *Session) PersistedState(path string) (PersistedState, bool) {
@@ -320,7 +311,6 @@ func (s *Session) PersistedState(path string) (PersistedState, bool) {
 		UnchangedSincePersisted: s.persisted.version == s.version,
 	}, true
 }
-
 
 // SessionContentIdentity returns the ledger identity of the authoritative
 // persisted transcript without loading its message bodies. It is intended for
@@ -351,7 +341,6 @@ func SessionContentIdentity(path string) (PersistedState, bool, error) {
 	}, true, nil
 }
 
-
 // sessionContentRevision reads the CAS ledger (revision + content digest) from
 // the branch-meta sidecar. A missing sidecar is revision 0 — a session that
 // has never recorded one. An unreadable sidecar is an error: reporting it as
@@ -364,7 +353,6 @@ func sessionContentRevision(path string) (int64, string, error) {
 	}
 	return ledger.revision, ledger.digest, nil
 }
-
 
 func recordSessionContentRevision(path string, digest [sha256.Size]byte, baseRevision, reservedRevision int64) (int64, error) {
 	// Revision allocation is a read-modify-write transaction. Holding only the
@@ -419,16 +407,13 @@ func recordSessionContentRevision(path string, digest [sha256.Size]byte, baseRev
 	return committed, nil
 }
 
-
 func digestString(digest [sha256.Size]byte) string {
 	return fmt.Sprintf("%x", digest[:])
 }
 
-
 func SessionWriterID() string {
 	return sessionWriterID
 }
-
 
 func newSessionWriterID() string {
 	host, _ := os.Hostname()
@@ -451,12 +436,10 @@ func newSessionWriterID() string {
 	return fmt.Sprintf("%s-%d-%x", host, os.Getpid(), nonce[:])
 }
 
-
 func digestSessionMessages(msgs []provider.Message) ([sha256.Size]byte, error) {
 	digest, _, err := digestAndSizeSessionMessages(msgs)
 	return digest, err
 }
-
 
 func messageForSessionIdentity(m provider.Message) provider.Message {
 	// CreatedAt and ID are local metadata. Keep them out of transcript identity
@@ -472,7 +455,6 @@ func messageForSessionIdentity(m provider.Message) provider.Message {
 	m.ID = ""
 	return m
 }
-
 
 // snapshotDigest returns the transcript digest a schema-2 save needs. When the
 // persistence baseline already describes exactly this version — the same proof
@@ -503,7 +485,6 @@ func (s *Session) snapshotDigest(path string, msgs []provider.Message, version u
 	return digest, nil
 }
 
-
 // transcriptDigestAndSizeForSave is the schema-1 twin of snapshotDigest: the
 // incremental stream first, then the full pass with a reseed (任务 923).
 func (s *Session) transcriptDigestAndSizeForSave(msgs []provider.Message, version uint64, rewriteVersion int) ([sha256.Size]byte, int64, error) {
@@ -518,14 +499,12 @@ func (s *Session) transcriptDigestAndSizeForSave(msgs []provider.Message, versio
 	return digest, size, nil
 }
 
-
 // digestAndSizeSessionMessages also reports the encoded transcript size, which
 // the save path uses to bound the event log relative to the live content.
 func digestAndSizeSessionMessages(msgs []provider.Message) ([sha256.Size]byte, int64, error) {
 	digest, size, _, err := digestAndSizeSessionMessagesState(msgs)
 	return digest, size, err
 }
-
 
 // sessionMessagesEncodedSize sums the encoded transcript bytes exactly the way
 // digestAndSizeSessionMessages measures them (identity fold + one newline per
@@ -544,7 +523,6 @@ func sessionMessagesEncodedSize(msgs []provider.Message) (int64, error) {
 	return size, nil
 }
 
-
 // sessionTranscriptHasher accumulates the transcript digest one message at a
 // time, exactly like digestAndSizeSessionMessages, so load paths hash during
 // decode instead of re-serializing. A nil receiver disables hashing.
@@ -553,11 +531,9 @@ type sessionTranscriptHasher struct {
 	err error
 }
 
-
 func newSessionTranscriptHasher() *sessionTranscriptHasher {
 	return &sessionTranscriptHasher{h: sha256.New()}
 }
-
 
 // rehash restarts accumulation over msgs (event-log replace records).
 func (s *sessionTranscriptHasher) rehash(msgs []provider.Message) {
@@ -569,13 +545,11 @@ func (s *sessionTranscriptHasher) rehash(msgs []provider.Message) {
 	s.addAll(msgs)
 }
 
-
 func (s *sessionTranscriptHasher) addAll(msgs []provider.Message) {
 	for _, m := range msgs {
 		s.add(m)
 	}
 }
-
 
 // add hashes one message and returns it for append chaining.
 func (s *sessionTranscriptHasher) add(m provider.Message) provider.Message {
@@ -594,7 +568,6 @@ func (s *sessionTranscriptHasher) add(m provider.Message) provider.Message {
 	return m
 }
 
-
 // sum reports the accumulated digest; ok is false when hashing was disabled
 // or a message failed to encode, and callers fall back to digestSessionMessages.
 func (s *sessionTranscriptHasher) sum() (digest [sha256.Size]byte, ok bool) {
@@ -604,7 +577,6 @@ func (s *sessionTranscriptHasher) sum() (digest [sha256.Size]byte, ok bool) {
 	copy(digest[:], s.h.Sum(nil))
 	return digest, true
 }
-
 
 func messagesHavePrefix(full, prefix []provider.Message) bool {
 	if len(prefix) > len(full) {
@@ -617,7 +589,6 @@ func messagesHavePrefix(full, prefix []provider.Message) bool {
 	}
 	return true
 }
-
 
 // messagesPrefixDigestDepth returns the number of leading messages of msgs
 // whose storage digest equals target, or -1 when no prefix matches. The
@@ -644,7 +615,6 @@ func messagesPrefixDigestDepth(msgs []provider.Message, target [sha256.Size]byte
 	return -1
 }
 
-
 // appendCoversPersistedBaseline reports whether an append-shaped write (disk
 // transcript a prefix of next, modulo a compatible leading-system swap) still
 // covers everything this session ever persisted: the baseline digest must be
@@ -666,13 +636,11 @@ func appendCoversPersistedBaseline(next, existing []provider.Message, baseDigest
 	return depth >= 0 && len(existing) >= depth
 }
 
-
 func messagesHavePrefixWithCompatibleSystem(full, prefix []provider.Message) bool {
 	full = messagesWithoutLeadingSystem(full)
 	prefix = messagesWithoutLeadingSystem(prefix)
 	return messagesHavePrefix(full, prefix)
 }
-
 
 func messagesWithoutLeadingSystem(msgs []provider.Message) []provider.Message {
 	// Resume refreshes the dynamic system header (fresh prompt, memory/tool
@@ -686,7 +654,6 @@ func messagesWithoutLeadingSystem(msgs []provider.Message) []provider.Message {
 	}
 	return out
 }
-
 
 func messagesEqualForStorage(a, b provider.Message) bool {
 	a = messageForSessionIdentity(a)
@@ -714,7 +681,6 @@ func messagesEqualForStorage(a, b provider.Message) bool {
 	return bytes.Equal(ab, bb)
 }
 
-
 func messagesEqualForStorageList(a, b []provider.Message) bool {
 	if len(a) != len(b) {
 		return false
@@ -727,11 +693,9 @@ func messagesEqualForStorageList(a, b []provider.Message) bool {
 	return true
 }
 
-
 func messagesCompatibleForStorageBaseline(a, b []provider.Message) bool {
 	if messagesEqualForStorageList(a, b) {
 		return true
 	}
 	return messagesEqualForStorageList(messagesWithoutLeadingSystem(a), messagesWithoutLeadingSystem(b))
 }
-

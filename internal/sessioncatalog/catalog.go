@@ -43,26 +43,26 @@ type Catalog struct {
 	// rebuild) the first sync always publishes, which is the safe direction.
 	lastMetadataFingerprint string
 	removedPaths            sync.Map
-	repairCh         chan string
-	repairQueued     sync.Map
-	reconcileCh      chan DirectoryTarget
-	reconcileQueued  sync.Map
-	reconcileDirtyMu sync.Mutex
-	reconcileDirty   map[string]DirectoryTarget
-	verifiedDirsMu   sync.RWMutex
-	verifiedDirs     map[string]string
-	pathCh           chan sessionPathRequest
-	pathQueueMu      sync.Mutex
-	pathQueued       sync.Map
-	directoryLocksMu sync.Mutex
-	directoryLocks   map[string]*sync.Mutex
-	workerCtx        context.Context
-	workerCancel     context.CancelFunc
-	stop             chan struct{}
-	stopOnce         sync.Once
-	workers          sync.WaitGroup
-	closeDone        chan struct{}
-	closeErr         error
+	repairCh                chan string
+	repairQueued            sync.Map
+	reconcileCh             chan DirectoryTarget
+	reconcileQueued         sync.Map
+	reconcileDirtyMu        sync.Mutex
+	reconcileDirty          map[string]DirectoryTarget
+	verifiedDirsMu          sync.RWMutex
+	verifiedDirs            map[string]string
+	pathCh                  chan sessionPathRequest
+	pathQueueMu             sync.Mutex
+	pathQueued              sync.Map
+	directoryLocksMu        sync.Mutex
+	directoryLocks          map[string]*sync.Mutex
+	workerCtx               context.Context
+	workerCancel            context.CancelFunc
+	stop                    chan struct{}
+	stopOnce                sync.Once
+	workers                 sync.WaitGroup
+	closeDone               chan struct{}
+	closeErr                error
 	// testReconcileBatchHook deterministically pauses an uncommitted directory
 	// projection. Production catalogs leave it nil.
 	testReconcileBatchHook func(int)

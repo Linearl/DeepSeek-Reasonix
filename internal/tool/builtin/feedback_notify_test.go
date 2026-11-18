@@ -29,8 +29,8 @@ func TestSubmitFeedbackDualWriteNotify(t *testing.T) {
 
 	tool := submitFeedback{}
 	args, _ := json.Marshal(map[string]any{
-		"kind": "bug",
-		"text": "Panel does not open on Ctrl+P.\nSecond line of detail.\nThird line.\nFourth line beyond the cap.",
+		"kind":  "bug",
+		"text":  "Panel does not open on Ctrl+P.\nSecond line of detail.\nThird line.\nFourth line beyond the cap.",
 		"title": "快捷键冲突",
 	})
 	result, err := tool.Execute(context.Background(), args)

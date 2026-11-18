@@ -44,14 +44,16 @@ func subagentOpenTraceFromContext(ctx context.Context) *subagentOpenTrace {
 // 弃、不缓冲；CheckedSink 能力原样透传。
 //
 // 分段名即段尾标记（mark(X) = 自上一 mark 以来、以收口名 X 记账）：
-//   registry    子代理工具注册表构建
-//   transcript  转录 run 准备（fresh/continue/fork 元数据，内存操作）
-//   runtime     provider/pricing/ctxWin 解析（无 override 时复用父 provider）
-//   slot        调度槽获取（含排队等待；前台在 acquireSlot 后、后台在 job 内）
-//   dispatch    runSession 闭包入口（前台≈0ms；后台=作业调度排队）
-//   prepare     请求序列化 + agent 组装（turn_entry→请求发出）
-//   rtt         请求发出→响应头到达（Connecting 清帧 attempt=0）
-//   first_out   响应头→首个内容事件（服务端 prefill + 首 token）
+//
+//	registry    子代理工具注册表构建
+//	transcript  转录 run 准备（fresh/continue/fork 元数据，内存操作）
+//	runtime     provider/pricing/ctxWin 解析（无 override 时复用父 provider）
+//	slot        调度槽获取（含排队等待；前台在 acquireSlot 后、后台在 job 内）
+//	dispatch    runSession 闭包入口（前台≈0ms；后台=作业调度排队）
+//	prepare     请求序列化 + agent 组装（turn_entry→请求发出）
+//	rtt         请求发出→响应头到达（Connecting 清帧 attempt=0）
+//	first_out   响应头→首个内容事件（服务端 prefill + 首 token）
+//
 // total = 整个窗口墙钟（发出时刻）。
 type subagentOpenSegments struct {
 	start  time.Time

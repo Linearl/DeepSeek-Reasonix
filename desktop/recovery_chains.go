@@ -184,9 +184,9 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 			continue
 		}
 		set.Chains = append(set.Chains, RecoveryChainView{
-			Path:    path,
-			Label:   recoveryDisplayName(path),
-			IsMain:  isMain,
+			Path:   path,
+			Label:  recoveryDisplayName(path),
+			IsMain: isMain,
 			// tl1430b：Selected 跟随显式采纳（preferredRows）；副本行的激活
 			// 按钮（headId 为空）走既有的副本采纳路径（SetActiveSessionVersion
 			// 的 catalog lineage 校验），与恒空 heads 时代副本行的行为一致。

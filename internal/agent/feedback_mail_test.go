@@ -314,16 +314,16 @@ func TestRegistryRepointOnTransfer(t *testing.T) {
 // sessioncollabMail is a local alias so the test reads messages without a
 // second import line clashing with the fixture's own use.
 type sessioncollabMail = struct {
-	ID          string `json:"id"`
-	From        string `json:"fromContactId,omitempty"`
-	To          string `json:"toContactId"`
-	Body        string `json:"body"`
-	Delivery    string `json:"delivery,omitempty"`
-	Kind        string `json:"kind,omitempty"`
-	Channel     string `json:"channel,omitempty"`
-	ToTitle     string `json:"toTitle,omitempty"`
-	At          int64  `json:"at"`
-	ThreadID    string `json:"threadId,omitempty"`
+	ID       string `json:"id"`
+	From     string `json:"fromContactId,omitempty"`
+	To       string `json:"toContactId"`
+	Body     string `json:"body"`
+	Delivery string `json:"delivery,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	Channel  string `json:"channel,omitempty"`
+	ToTitle  string `json:"toTitle,omitempty"`
+	At       int64  `json:"at"`
+	ThreadID string `json:"threadId,omitempty"`
 }
 
 func sessioncollabMailStore(mailDir string) []sessioncollabMail { return nil }

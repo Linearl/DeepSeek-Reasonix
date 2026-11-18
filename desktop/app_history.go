@@ -17,43 +17,43 @@ import (
 // HistoryMessage is one prior turn, for the frontend to repopulate its transcript
 // after a reload.
 type HistoryMessage struct {
-	CompletionReceipt  *eventwire.CompletionReceipt `json:"completionReceipt,omitempty"`
-	CompletionSummary  *eventwire.CompletionSummary `json:"completionSummary,omitempty"`
-	TurnID             string                       `json:"turnId,omitempty"`
-	Role               string                       `json:"role"`
-	Content            string                       `json:"content"`
-	Detail             string                       `json:"detail,omitempty"`
-	Code               string                       `json:"code,omitempty"`
+	CompletionReceipt *eventwire.CompletionReceipt `json:"completionReceipt,omitempty"`
+	CompletionSummary *eventwire.CompletionSummary `json:"completionSummary,omitempty"`
+	TurnID            string                       `json:"turnId,omitempty"`
+	Role              string                       `json:"role"`
+	Content           string                       `json:"content"`
+	Detail            string                       `json:"detail,omitempty"`
+	Code              string                       `json:"code,omitempty"`
 	// Suggestion (任务1079)：notice 的可选「怎么办」行；空值省略，历史重放
 	// 与新 notice 同一条渲染路径。
-	Suggestion         string                       `json:"suggestion,omitempty"`
-	SubmitText         string                       `json:"submitText,omitempty"`
-	CheckpointTurn     *int                         `json:"checkpointTurn,omitempty"`
-	CreatedAt          int64                        `json:"createdAt,omitempty"`
-	Reasoning          string                       `json:"reasoning,omitempty"`
-	MemoryCitations    []provider.MemoryCitation    `json:"memoryCitations,omitempty"`
-	WorkDurationMs     int64                        `json:"workDurationMs,omitempty"`
-	Level              string                       `json:"level,omitempty"`
-	ToolCalls          []HistoryToolCall            `json:"toolCalls,omitempty"`
-	ToolCallID         string                       `json:"toolCallId,omitempty"`
-	ToolName           string                       `json:"toolName,omitempty"`
-	ToolResultArchived bool                         `json:"toolResultArchived,omitempty"`
-	ToolResultError    string                       `json:"toolResultError,omitempty"`
+	Suggestion         string                    `json:"suggestion,omitempty"`
+	SubmitText         string                    `json:"submitText,omitempty"`
+	CheckpointTurn     *int                      `json:"checkpointTurn,omitempty"`
+	CreatedAt          int64                     `json:"createdAt,omitempty"`
+	Reasoning          string                    `json:"reasoning,omitempty"`
+	MemoryCitations    []provider.MemoryCitation `json:"memoryCitations,omitempty"`
+	WorkDurationMs     int64                     `json:"workDurationMs,omitempty"`
+	Level              string                    `json:"level,omitempty"`
+	ToolCalls          []HistoryToolCall         `json:"toolCalls,omitempty"`
+	ToolCallID         string                    `json:"toolCallId,omitempty"`
+	ToolName           string                    `json:"toolName,omitempty"`
+	ToolResultArchived bool                      `json:"toolResultArchived,omitempty"`
+	ToolResultError    string                    `json:"toolResultError,omitempty"`
 	// Execution is local shell metadata restored onto ToolCards after history
 	// reload. Omitted when absent so older frontends ignore it safely.
-	Execution        *provider.ToolExecution          `json:"execution,omitempty"`
-	Pending          bool                             `json:"pending,omitempty"`
-	Trigger          string                           `json:"trigger,omitempty"`
-	Messages         int                              `json:"messages,omitempty"`
-	Summary          string                           `json:"summary,omitempty"`
-	Archive          string                           `json:"archive,omitempty"`
+	Execution *provider.ToolExecution `json:"execution,omitempty"`
+	Pending   bool                    `json:"pending,omitempty"`
+	Trigger   string                  `json:"trigger,omitempty"`
+	Messages  int                     `json:"messages,omitempty"`
+	Summary   string                  `json:"summary,omitempty"`
+	Archive   string                  `json:"archive,omitempty"`
 	// tl1648: compaction-card failure face (archived Done with outcome=failed).
 	// Omitted when absent so older archived rows decode unchanged.
-	Failed        bool   `json:"failed,omitempty"`
-	Attempt       int    `json:"attempt,omitempty"`
-	Reason        string `json:"reason,omitempty"`
-	FoldInstalled bool   `json:"foldInstalled,omitempty"`
-	LastSuccessAt int64  `json:"lastSuccessAt,omitempty"`
+	Failed           bool                             `json:"failed,omitempty"`
+	Attempt          int                              `json:"attempt,omitempty"`
+	Reason           string                           `json:"reason,omitempty"`
+	FoldInstalled    bool                             `json:"foldInstalled,omitempty"`
+	LastSuccessAt    int64                            `json:"lastSuccessAt,omitempty"`
 	DecisionReceipt  *provider.DecisionReceipt        `json:"decisionReceipt,omitempty"`
 	Readiness        *event.FinalReadiness            `json:"readiness,omitempty"`
 	ReadPause        *provider.ReadPause              `json:"readPause,omitempty"`

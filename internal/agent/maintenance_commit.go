@@ -52,8 +52,8 @@ func (a *Agent) installMaintenanceProjection(in maintenanceInstall) (bool, error
 		CoveredCount: len(in.canonical), CoveredPrefixHash: coveredHash, SourceTokens: sourceTokens,
 		// tl1651: per-message diagnostic corpus for future mismatch localization.
 		CoveredMessageHashes: coveredMessageFingerprints(in.canonical, len(in.canonical)),
-		PinnedContextHash: pinnedContextCoverageHash(in.canonical, len(in.canonical)),
-		ProjectionTokens:  resultTokens, ViewInputHash: inputHash, ViewOutputHash: outputHash, CreatedAt: now,
+		PinnedContextHash:    pinnedContextCoverageHash(in.canonical, len(in.canonical)),
+		ProjectionTokens:     resultTokens, ViewInputHash: inputHash, ViewOutputHash: outputHash, CreatedAt: now,
 	}
 	next.LastReceipt = receipt
 	next.UpdatedAt = now

@@ -176,33 +176,33 @@ func (a *App) balanceDisplayCurrency() string {
 
 // Meta describes the session for the frontend's header and status line.
 type Meta struct {
-	Label                 string             `json:"label"`
-	Ready                 bool               `json:"ready"`
-	Runtime               SessionRuntimeView `json:"runtime"`
-	StartupErr            string             `json:"startupErr,omitempty"`
-	EventChannel          string             `json:"eventChannel"`
-	SessionPath           string             `json:"sessionPath,omitempty"`
-	SessionRevision       int64              `json:"sessionRevision,omitempty"`
-	SessionDigest         string             `json:"sessionDigest,omitempty"`
+	Label           string             `json:"label"`
+	Ready           bool               `json:"ready"`
+	Runtime         SessionRuntimeView `json:"runtime"`
+	StartupErr      string             `json:"startupErr,omitempty"`
+	EventChannel    string             `json:"eventChannel"`
+	SessionPath     string             `json:"sessionPath,omitempty"`
+	SessionRevision int64              `json:"sessionRevision,omitempty"`
+	SessionDigest   string             `json:"sessionDigest,omitempty"`
 	// SessionGeneration mirrors tab.SessionGeneration on the "tab:meta" push
 	// (tl1403): a recovery fork/promote moves the controller onto a new session
 	// file, and the pushed meta carries the bumped generation as the deliberate
 	// surface-move marker — the frontend accepts a path-changing push only when
 	// this generation strictly advances, so stale pushes from the outgoing
 	// session can never clobber a settled tab. Additive omitempty field.
-	SessionGeneration    uint64             `json:"sessionGeneration,omitempty"`
-	Cwd                   string             `json:"cwd"`
-	WorkspaceRoot         string             `json:"workspaceRoot,omitempty"`
-	WorkspaceName         string             `json:"workspaceName,omitempty"`
-	WorkspacePath         string             `json:"workspacePath,omitempty"`
-	GitBranch             string             `json:"gitBranch,omitempty"`
-	ImageInputEnabled     bool               `json:"imageInputEnabled"`
-	AudioInputEnabled     bool               `json:"audioInputEnabled"` // task 1008: audio attachment entry gate
-	VisionFallbackEnabled bool               `json:"visionFallbackEnabled,omitempty"`
-	AutoApproveTools      bool               `json:"autoApproveTools"`
-	Bypass                bool               `json:"bypass"` // legacy JSON key for YOLO/full-access tool auto-approval
-	CollaborationMode     string             `json:"collaborationMode"`
-	ToolApprovalMode      string             `json:"toolApprovalMode"`
+	SessionGeneration     uint64 `json:"sessionGeneration,omitempty"`
+	Cwd                   string `json:"cwd"`
+	WorkspaceRoot         string `json:"workspaceRoot,omitempty"`
+	WorkspaceName         string `json:"workspaceName,omitempty"`
+	WorkspacePath         string `json:"workspacePath,omitempty"`
+	GitBranch             string `json:"gitBranch,omitempty"`
+	ImageInputEnabled     bool   `json:"imageInputEnabled"`
+	AudioInputEnabled     bool   `json:"audioInputEnabled"` // task 1008: audio attachment entry gate
+	VisionFallbackEnabled bool   `json:"visionFallbackEnabled,omitempty"`
+	AutoApproveTools      bool   `json:"autoApproveTools"`
+	Bypass                bool   `json:"bypass"` // legacy JSON key for YOLO/full-access tool auto-approval
+	CollaborationMode     string `json:"collaborationMode"`
+	ToolApprovalMode      string `json:"toolApprovalMode"`
 	// Autopilot is the RAW first-axis flag (task 465 two-axis matrix). The
 	// synthesized CollaborationMode label orders plan>goal>autopilot, so a
 	// goal × autopilot tab reports "goal" and the composer could no longer see the unattended state it must show; the raw flag keeps both axes visible at once.

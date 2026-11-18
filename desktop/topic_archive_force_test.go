@@ -356,7 +356,6 @@ func TestTrashTopicForceNeverStealsLiveLockBehindStaleVerdict(t *testing.T) {
 	}
 }
 
-
 // forceCloseStoppableController is a running controller that actually stops on
 // Cancel, so stop_and_close observes idle within the grace window and closes
 // the tab WITHOUT detaching (the detach path returns early and keeps the

@@ -350,7 +350,7 @@ func pruneAlertLogWithCachedSettings() {
 	cached := desktopAlertLog.settingsCached
 	desktopAlertLog.mu.Unlock()
 	if !cached {
-		retentionDays = 7 // 内置默认时间档
+		retentionDays = 7         // 内置默认时间档
 		maxTotalBytes = 100 << 20 // 内置默认大小档
 	}
 	_, _ = pruneAlertLogFamily(alertLogDir(), retentionDays, maxTotalBytes, time.Now())

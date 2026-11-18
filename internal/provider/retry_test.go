@@ -333,7 +333,7 @@ func TestSendWithRetryWallClockCap(t *testing.T) {
 	})}
 	ctx := WithRetryBudget(context.Background(), RetryBudget{
 		MaxRetries:    MaxRetries, // a high cap the wall-clock must cut short
-		WallClock:      300 * time.Millisecond,
+		WallClock:     300 * time.Millisecond,
 		WrapExhausted: true,
 	})
 	start := time.Now()

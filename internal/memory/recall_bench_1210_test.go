@@ -21,8 +21,8 @@ type recallBench1210Case struct {
 }
 
 type recallBench1210File struct {
-	Version int               `json:"version"`
-	Note    string            `json:"note"`
+	Version int                   `json:"version"`
+	Note    string                `json:"note"`
 	Cases   []recallBench1210Case `json:"cases"`
 }
 

@@ -294,7 +294,7 @@ func TestKilledJobBashOutputDoesNotNoteLeaseBeforeEvidenceIsReady(t *testing.T) 
 // agree on that job: wait collects it, bash_output reads it, kill_shell stops
 // it — none of them may report it missing while it runs. The job is registered
 // directly through the manager (channel-gated) so the test triggers the
-//失联形态 deterministically, with no real subprocess.
+// 失联形态 deterministically, with no real subprocess.
 func TestBackgroundToolsTrackJobAcrossSessionRebind(t *testing.T) {
 	root := t.TempDir()
 	m := jobs.NewManager(event.Discard)

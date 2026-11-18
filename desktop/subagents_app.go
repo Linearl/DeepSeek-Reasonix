@@ -33,13 +33,13 @@ const listSubagentsViewLimit = 200
 // internals (system prompt hash, tool scope/schema hashes, context capsule)
 // stay backend-only.
 type SubagentArtifactView struct {
-	Ref           string `json:"ref"`
-	CreatedAt     int64  `json:"createdAt"` // unix milliseconds
-	UpdatedAt     int64  `json:"updatedAt"` // unix milliseconds
-	Status        string `json:"status"`    // running|completed|failed|interrupted
-	Outcome       string `json:"outcome,omitempty"`
-	Kind          string `json:"kind,omitempty"` // task|skill
-	Name          string `json:"name,omitempty"`
+	Ref       string `json:"ref"`
+	CreatedAt int64  `json:"createdAt"` // unix milliseconds
+	UpdatedAt int64  `json:"updatedAt"` // unix milliseconds
+	Status    string `json:"status"`    // running|completed|failed|interrupted
+	Outcome   string `json:"outcome,omitempty"`
+	Kind      string `json:"kind,omitempty"` // task|skill
+	Name      string `json:"name,omitempty"`
 	// Description is the persisted dispatch line (tl1209). The ended directory
 	// prefers it over Name so same-profile records stay distinguishable.
 	Description   string `json:"description,omitempty"`
@@ -100,14 +100,14 @@ func (a *App) ListSubagentsByParent(sessionPath string) ([]SubagentArtifactView,
 	for _, artifact := range artifacts {
 		_, statErr := os.Stat(artifact.SessionPath)
 		out = append(out, SubagentArtifactView{
-			Ref:           artifact.Ref,
-			CreatedAt:     artifact.Meta.CreatedAt.UnixMilli(),
-			UpdatedAt:     artifact.Meta.UpdatedAt.UnixMilli(),
-			Status:        string(artifact.Meta.Status),
-			Outcome:       artifact.Meta.Outcome,
-			Kind:          artifact.Meta.Kind,
-			Name:          artifact.Meta.Name,
-			Description:   artifact.Meta.Description,
+			Ref:              artifact.Ref,
+			CreatedAt:        artifact.Meta.CreatedAt.UnixMilli(),
+			UpdatedAt:        artifact.Meta.UpdatedAt.UnixMilli(),
+			Status:           string(artifact.Meta.Status),
+			Outcome:          artifact.Meta.Outcome,
+			Kind:             artifact.Meta.Kind,
+			Name:             artifact.Meta.Name,
+			Description:      artifact.Meta.Description,
 			Model:            artifact.Meta.Model,
 			ParentSession:    artifact.Meta.ParentSession,
 			ParentToolCallID: artifact.Meta.ParentToolCallID,

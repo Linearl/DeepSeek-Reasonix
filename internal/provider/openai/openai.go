@@ -396,8 +396,8 @@ type client struct {
 	// only. reauth re-reads the credential source (boot wires
 	// config.RefreshProviderCredential); a swap of the build-time apiKey shares
 	// keyMu with its reads so a concurrent send never observes a torn key.
-	reauth        func() (string, bool)
-	keyMu         sync.Mutex
+	reauth func() (string, bool)
+	keyMu  sync.Mutex
 	// dropToolMessageName suppresses the message-level `name` key on role=tool
 	// messages. Set only for the official OpenCode Go chat route, whose gateway
 	// 400s that key ("name" is not supported by this endpoint) — the inverse of
@@ -1135,15 +1135,15 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			// Progress ticks while a large argument payload streams (a 30KB
 			// write_file body can take a minute-plus): one chunk per 2KB bucket
 			// so the consumer can show liveness without per-delta spam.
-				if started[tc.Index] {
-					if bucket := len(cur.Arguments) / 2048; bucket > argBucket[tc.Index] {
-						argBucket[tc.Index] = bucket
-						emitted = true
-						if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: cur.ID, Name: cur.Name}, ArgChars: len(cur.Arguments), ArgsPreview: provider.ArgsPreviewExcerpt(cur.Arguments)}) {
-							return emitted, ctx.Err()
-						}
+			if started[tc.Index] {
+				if bucket := len(cur.Arguments) / 2048; bucket > argBucket[tc.Index] {
+					argBucket[tc.Index] = bucket
+					emitted = true
+					if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkToolCallArgsDelta, ToolCall: &provider.ToolCall{ID: cur.ID, Name: cur.Name}, ArgChars: len(cur.Arguments), ArgsPreview: provider.ArgsPreviewExcerpt(cur.Arguments)}) {
+						return emitted, ctx.Err()
 					}
 				}
+			}
 		}
 	}
 

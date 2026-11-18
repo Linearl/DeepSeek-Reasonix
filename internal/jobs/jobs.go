@@ -133,9 +133,9 @@ func (h SessionTeardown) DoneChannels() []<-chan struct{} {
 // terminal fields; the run goroutine writes them, readers (Output/Wait/snapshots)
 // take the same lock.
 type Job struct {
-	ID        string
-	Kind      string // "bash" | "task"
-	Label     string
+	ID    string
+	Kind  string // "bash" | "task"
+	Label string
 	// Detail is the untruncated source text behind Label (tl1033). Same lock
 	// discipline as the other snapshot fields; written once at Start.
 	Detail    string

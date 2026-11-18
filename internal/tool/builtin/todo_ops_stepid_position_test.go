@@ -63,7 +63,7 @@ func TestTodoOpsStepIDInsideItemAlsoWorks(t *testing.T) {
 		{Content: "step three", Status: "pending", StepID: "s3"},
 	}
 	list, err := applyTodoOps(base, []todoOp{{
-		Op: "replace",
+		Op:   "replace",
 		Item: &todoOpItem{Content: "step two revised", Status: "completed", StepID: "s2"},
 	}})
 	if err != nil {
@@ -73,14 +73,14 @@ func TestTodoOpsStepIDInsideItemAlsoWorks(t *testing.T) {
 		t.Fatalf("replace with step_id inside item did not apply: %+v", list)
 	}
 	list, err = applyTodoOps(base, []todoOp{{
-		Op: "delete",
+		Op:   "delete",
 		Item: &todoOpItem{StepID: "s3"},
 	}})
 	if err != nil || len(list) != 2 {
 		t.Fatalf("delete with step_id inside item must succeed: list=%+v err=%v", list, err)
 	}
 	list, err = applyTodoOps(base, []todoOp{{
-		Op: "move",
+		Op:   "move",
 		Item: &todoOpItem{StepID: "s3"}, AfterStepID: "s1",
 	}})
 	if err != nil || list[1].StepID != "s3" {
@@ -121,7 +121,7 @@ func TestTodoOpsStepIDErrorCarriesCorrectExample(t *testing.T) {
 func TestTodoOpsInsertItemStepIDIsNewIdentityNotTarget(t *testing.T) {
 	base := []evidence.TodoItem{{Content: "step one", Status: "completed", StepID: "s1"}}
 	list, err := applyTodoOps(base, []todoOp{{
-		Op: "insert",
+		Op:   "insert",
 		Item: &todoOpItem{Content: "new item", Status: "pending", StepID: "s2"},
 	}})
 	if err != nil {
@@ -133,7 +133,7 @@ func TestTodoOpsInsertItemStepIDIsNewIdentityNotTarget(t *testing.T) {
 	// A duplicate id is still rejected — the insert path never silently
 	// re-points at the existing entry.
 	if _, err := applyTodoOps(base, []todoOp{{
-		Op: "insert",
+		Op:   "insert",
 		Item: &todoOpItem{Content: "clash", Status: "pending", StepID: "s1"},
 	}}); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("insert with a duplicate step_id must be rejected, err=%v", err)

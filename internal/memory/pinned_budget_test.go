@@ -112,9 +112,9 @@ func TestPinnedBudgetRejectsGrowthWithActionableLedger(t *testing.T) {
 		"(deficit 467)",
 		"REASONIX.md",
 		"/memory unpin user-work-profile", // largest real entry, copyable
-		"| yes", // legacy rows are marked
-		"| no",  // explicit rows too
-		"2026-08-07", // real sample updated_at leaks into the ledger
+		"| yes",                           // legacy rows are marked
+		"| no",                            // explicit rows too
+		"2026-08-07",                      // real sample updated_at leaks into the ledger
 	} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("rejection missing %q:\n%s", want, msg)

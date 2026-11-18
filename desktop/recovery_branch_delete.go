@@ -49,16 +49,17 @@ var errSessionVersionNotDeletable = errors.New("the current version cannot be de
 // 主线身份的原主线」，与 1064「用户的判断本身就是覆盖证明」同构。
 //
 // 三道防线保证「非副本不被误删」：
-//  ① 组在——路径必须仍在 catalog 投影的 recovery 组里（recoveryLineageSelection
-//     成立，组内有 recovered 组员）；普通独立会话（无组）拒绝。
-//  ② 权威指别处——打开漏斗权威（recoveryAuthorityMainPathForOpen：权威#2
-//     filing 偏好 / 权威#3 meta 旗标，与面板 Selected 同源）必须命中另一成
-//     员；无显式采纳证据（无旗标无 filing）拒绝。权威解析刻意用 ForOpen 版
-//     而非 recoveryAuthorityMainPath：后者权威#1 是 tab 当前路径，tab 停在
-//     降级文件上时它自命权威、删除永远放不开——正是取证现场「面板标对、
-//     打开选错」分裂的同款机制。
-//  ③ 仍是现任主线拒绝——权威=自己时返回 currentMain，调用方给
-//     errSessionVersionNotDeletable（下一步明确：先切到别的版本）。
+//
+//	① 组在——路径必须仍在 catalog 投影的 recovery 组里（recoveryLineageSelection
+//	   成立，组内有 recovered 组员）；普通独立会话（无组）拒绝。
+//	② 权威指别处——打开漏斗权威（recoveryAuthorityMainPathForOpen：权威#2
+//	   filing 偏好 / 权威#3 meta 旗标，与面板 Selected 同源）必须命中另一成
+//	   员；无显式采纳证据（无旗标无 filing）拒绝。权威解析刻意用 ForOpen 版
+//	   而非 recoveryAuthorityMainPath：后者权威#1 是 tab 当前路径，tab 停在
+//	   降级文件上时它自命权威、删除永远放不开——正是取证现场「面板标对、
+//	   打开选错」分裂的同款机制。
+//	③ 仍是现任主线拒绝——权威=自己时返回 currentMain，调用方给
+//	   errSessionVersionNotDeletable（下一步明确：先切到别的版本）。
 //
 // 返回 authority=命中的权威路径（空=拒绝，reason 说明原因）。
 func (a *App) demotedMainlineDeleteVerdict(catalog *sessioncatalog.Catalog, sessionPath string) (authority string, currentMain bool, reason string) {

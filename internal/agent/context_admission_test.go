@@ -76,7 +76,7 @@ func TestAdmitOutputBudgetUsesOfficialAutoWhenConfigIsZero(t *testing.T) {
 // the completion cap by the safety margin and the request that leaves must
 // STILL fit the window under the provider's own arithmetic.
 func TestAdmissionSafetyMarginAbsorbsTenPercentUnderestimate(t *testing.T) {
-	const realPrompt = 737_203 // what the provider reported in the incident
+	const realPrompt = 737_203  // what the provider reported in the incident
 	est := realPrompt * 10 / 11 // int(737203/1.1) = 670184, pure integer math
 	prov := &sharedWindowTestProvider{budget: 360_660, shared: true}
 	a := &Agent{
@@ -108,7 +108,8 @@ func TestAdmissionSafetyMarginAbsorbsTenPercentUnderestimate(t *testing.T) {
 	}
 }
 
-func TestAdmitOutputBudgetOmitsWhenSafeHasRoom(t *testing.T) {	prov := &policyWindowProvider{policy: provider.ContextBudgetPolicy{
+func TestAdmitOutputBudgetOmitsWhenSafeHasRoom(t *testing.T) {
+	prov := &policyWindowProvider{policy: provider.ContextBudgetPolicy{
 		WindowMode:       provider.ContextWindowShared,
 		AutoOutputTokens: provider.DeepSeekMaxOutputTokens,
 		MaxOutputTokens:  provider.DeepSeekMaxOutputTokens,

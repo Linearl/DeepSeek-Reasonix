@@ -625,15 +625,15 @@ const (
 // Event is one increment in a turn's event stream. Read the field(s) documented
 // for Kind; the others are zero.
 type Event struct {
-	Kind             Kind
-	PromptKind       string                    // interactive prompt kind for lifecycle events
-	TurnID           string                    // stable id of the owning top-level turn
-	Sequence         uint64                    // monotonic session-local event sequence
-	Status           TurnStatus                // lifecycle state after this event
-	Text             string                    // Reasoning / Text / Message / Notice / Phase
-	ModelRef         string                    // Usage: canonical "provider/model" ref that produced this usage
-	Detail           string                    // Notice: optional diagnostic text for expandable details
-	Code             string                    // Notice: stable id for frontend localization; empty = unmapped
+	Kind       Kind
+	PromptKind string     // interactive prompt kind for lifecycle events
+	TurnID     string     // stable id of the owning top-level turn
+	Sequence   uint64     // monotonic session-local event sequence
+	Status     TurnStatus // lifecycle state after this event
+	Text       string     // Reasoning / Text / Message / Notice / Phase
+	ModelRef   string     // Usage: canonical "provider/model" ref that produced this usage
+	Detail     string     // Notice: optional diagnostic text for expandable details
+	Code       string     // Notice: stable id for frontend localization; empty = unmapped
 	// Suggestion (任务 1079)：Notice 专属的可选「怎么办」行——「发生了什么」
 	// 之外的下一步建议（切 tab / 换措辞 / 关窗口…）。为空时前端完全不渲染
 	// 该行（默认关语义，与改动前逐字一致）。1079-b：文案不在 Go 侧回填，
@@ -692,10 +692,10 @@ type Event struct {
 	// "not stamped": consumers keep their existing fallback. The field rides
 	// the turn-event ledger (ToWire → Envelope.Event), so replays return the
 	// original time rather than re-stamping.
-	At                 int64                     // domain time (unix ms); 0 = unstamped
-	SessionPath        string                    // routes Serve frames
-	SessionReset       bool                      // SessionChanged came from /new or /clear, not resume/recovery
-	Workspace          *WorkspaceChangedPayload  // WorkspaceChanged (host-local)
+	At           int64                    // domain time (unix ms); 0 = unstamped
+	SessionPath  string                   // routes Serve frames
+	SessionReset bool                     // SessionChanged came from /new or /clear, not resume/recovery
+	Workspace    *WorkspaceChangedPayload // WorkspaceChanged (host-local)
 	// PhaseName is set on TurnPhase events (working|checking|verifying|reviewing).
 	PhaseName TurnPhaseName
 	// Completion is set on CompletionSummary events.

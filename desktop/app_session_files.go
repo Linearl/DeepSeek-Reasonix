@@ -311,11 +311,11 @@ func (a *App) assembleTrashedSessionMeta(dir string, titles map[string]string, b
 		// 族里,不因合成路径漏掉归组线索。
 		key, isCopy := trashedFamilyKey(filepath.Base(path))
 		return SessionMeta{
-			Path:           path,
-			TurnsState:     "unknown",
-			DeletedAt:      deletedAt,
-			LastActivityAt: deletedAt,
-			ModTime:        deletedAt,
+			Path:            path,
+			TurnsState:      "unknown",
+			DeletedAt:       deletedAt,
+			LastActivityAt:  deletedAt,
+			ModTime:         deletedAt,
 			TrashFamilyKey:  key,
 			TrashFamilyCopy: isCopy,
 		}, true

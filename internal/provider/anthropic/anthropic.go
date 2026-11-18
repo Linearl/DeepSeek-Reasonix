@@ -239,8 +239,8 @@ type client struct {
 	// only. reauth re-reads the credential source (boot wires
 	// config.RefreshProviderCredential); a swap of the build-time apiKey shares
 	// keyMu with its reads so a concurrent send never observes a torn key.
-	reauth        func() (string, bool)
-	keyMu         sync.Mutex
+	reauth func() (string, bool)
+	keyMu  sync.Mutex
 }
 
 func (c *client) Name() string { return c.name }

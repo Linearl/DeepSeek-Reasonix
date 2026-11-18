@@ -14,22 +14,23 @@ import (
 // 「session path outside known session dirs」）。
 //
 // 根因是两处缺口叠加：
-//  ① knownSessionDirs 只枚举 legacy 全局目录、项目 root 的 desktopSessionDir
-//     与活跃 tab 目录——引擎侧 project-scope 容器目录
-//     （<state>/projects/<slug>/sessions）不在列表，而 heartbeat/子会话
-//     （guardian）由引擎托管创建住在那里；版本面板的扫描面
-//     （recoveryScanDirectories）与协作名册却都已枚举它们 ⇒ 列得出来、
-//     过不了 sessionDirForPath，红字。
-//  ② validateSessionPath 用 store.IsSessionTranscriptName 判名，guardian
-//     侧车（.guardian.jsonl）被排除（那是扫描期的分类口径，防侧车在清单里
-//     遮蔽母会话，事故 F154-4）——补了目录后它仍会以「not a session file」
-//     被拒。guardian 转录是与主转录同一保存路径写出的会话形态文件
-//     （internal/guardian Session.Save），校验边界应放行。
+//
+//	① knownSessionDirs 只枚举 legacy 全局目录、项目 root 的 desktopSessionDir
+//	   与活跃 tab 目录——引擎侧 project-scope 容器目录
+//	   （<state>/projects/<slug>/sessions）不在列表，而 heartbeat/子会话
+//	   （guardian）由引擎托管创建住在那里；版本面板的扫描面
+//	   （recoveryScanDirectories）与协作名册却都已枚举它们 ⇒ 列得出来、
+//	   过不了 sessionDirForPath，红字。
+//	② validateSessionPath 用 store.IsSessionTranscriptName 判名，guardian
+//	   侧车（.guardian.jsonl）被排除（那是扫描期的分类口径，防侧车在清单里
+//	   遮蔽母会话，事故 F154-4）——补了目录后它仍会以「not a session file」
+//	   被拒。guardian 转录是与主转录同一保存路径写出的会话形态文件
+//	   （internal/guardian Session.Save），校验边界应放行。
 //
 // 本测试钉住修复后的完整合同：
-//  - 容器目录下的 guardian 转录与普通转录都过 sessionDirForPath，且
-//    guardian 转录可经 PreviewSession 预览（用户可见验收）；
-//  - 安全边界不放宽：目录外路径、目录穿越、非转录名照旧拒绝。
+//   - 容器目录下的 guardian 转录与普通转录都过 sessionDirForPath，且
+//     guardian 转录可经 PreviewSession 预览（用户可见验收）；
+//   - 安全边界不放宽：目录外路径、目录穿越、非转录名照旧拒绝。
 func TestSessionDirForPathAcceptsEngineProjectContainerDirs(t *testing.T) {
 	stateHome := t.TempDir()
 	t.Setenv("REASONIX_STATE_HOME", stateHome)

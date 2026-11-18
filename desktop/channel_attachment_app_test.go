@@ -105,7 +105,7 @@ func TestChannelAttachmentDataURLNormalizesAtPrefix(t *testing.T) {
 		t.Fatal("@-prefixed absolute path must round-trip as an image data URL")
 	}
 	// @ + 相对形态（存储原语原生形状的 @ 引用）同样放行。
-	if _, err := app.ChannelAttachmentDataURL("@"+filepath.ToSlash(filepath.Join(".reasonix", "attachments", filepath.Base(abs)))); err != nil {
+	if _, err := app.ChannelAttachmentDataURL("@" + filepath.ToSlash(filepath.Join(".reasonix", "attachments", filepath.Base(abs)))); err != nil {
 		t.Fatalf("ChannelAttachmentDataURL(@relative): %v", err)
 	}
 	// @ 剥掉后仍是逃逸路径 → 照拒：目录外绝对路径、.. 穿越、兄弟工作区、

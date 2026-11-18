@@ -43,9 +43,9 @@ func tl1651Fixture() ([]provider.Message, CompactionState) {
 		{Role: provider.RoleUser, Content: "next"},
 	}
 	st := CompactionState{
-		SchemaVersion:   compactionStateSchemaV4,
+		SchemaVersion:     compactionStateSchemaV4,
 		TranscriptVersion: 4,
-		PromptCacheKey:  "ws|sess|model",
+		PromptCacheKey:    "ws|sess|model",
 		Projection: ContextProjection{
 			Messages: []provider.Message{
 				{Role: provider.RoleSystem, Content: "sys"},
@@ -360,8 +360,8 @@ func TestTL1651ResumeRewrittenPrefixDiagnosed(t *testing.T) {
 	}
 	key := promptCacheKey("ws", BranchID(path), "m")
 	stored := CompactionState{
-		SchemaVersion:   compactionStateSchemaV4,
-		PromptCacheKey:  key,
+		SchemaVersion:  compactionStateSchemaV4,
+		PromptCacheKey: key,
 		Projection: ContextProjection{
 			Messages: []provider.Message{
 				{Role: provider.RoleSystem, Content: "sys"},

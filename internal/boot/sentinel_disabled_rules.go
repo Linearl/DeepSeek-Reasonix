@@ -51,7 +51,7 @@ type sentinelDisabledRulesState struct {
 var processSentinelDisabledRules sentinelDisabledRulesState
 
 // normalizeDisabledRuleKeys 与 sentinel.SetDisabledRules 同一规范化
-//（TrimSpace + 小写、去空串），使集合比较与 sentinel 的生效语义一致：
+// （TrimSpace + 小写、去空串），使集合比较与 sentinel 的生效语义一致：
 // 大小写/空白差异不算集合变化，重复项折叠。
 func normalizeDisabledRuleKeys(rules []string) map[string]struct{} {
 	key := make(map[string]struct{}, len(rules))

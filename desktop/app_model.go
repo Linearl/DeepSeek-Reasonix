@@ -26,7 +26,7 @@ type ModelInfo struct {
 	// contract); entries without one fall back to the bare model id. The
 	// connection's display label rides ProviderLabel — never stamp it here
 	// (tl1594: that leak renamed every model entry after its endpoint).
-	DisplayName   string `json:"displayName,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
 	// ProviderLabel is the connection's display name (settings displayName),
 	// tl1547 (A1): display-only payload so ref-holding surfaces render the
 	// same connection name the settings panel resolves. Provider itself stays

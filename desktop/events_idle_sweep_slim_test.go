@@ -123,8 +123,8 @@ func TestSweepSlimBusyNeverTouched(t *testing.T) {
 // sweep；运行态不可读时保守让路；无 tab 的候选交给外部 lease 检查。
 func TestEventsIdleSweepBusyForTabCriterion(t *testing.T) {
 	now := time.UnixMilli(1790000000000)
-	idle := now.Add(-15 * time.Minute)   // 空闲超窗
-	recent := now.Add(-3 * time.Minute)  // 窗口内刚活跃
+	idle := now.Add(-15 * time.Minute)  // 空闲超窗
+	recent := now.Add(-3 * time.Minute) // 窗口内刚活跃
 	if !eventsIdleSweepBusyFor(true, true, idle, now, true) {
 		t.Fatal("an actively working tab session must stay busy")
 	}

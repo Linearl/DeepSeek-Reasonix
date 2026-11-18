@@ -81,8 +81,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.ExperimentalSelectionActions = true             // selectionActions
 	orig.Desktop.ExperimentalQuestionSearch = boolPtr(true)    // questionSearch (*bool, nil means on)
 	// tl1487 四组：opencodeGoUsage fixture 行随键退役移除。
-	orig.Desktop.ExperimentalRestartUpdate = true              // M6
-	orig.Desktop.ExperimentalFeedback = true                   // M6
+	orig.Desktop.ExperimentalRestartUpdate = true // M6
+	orig.Desktop.ExperimentalFeedback = true      // M6
 
 	// observability（可观测性）/ dev-debug（开发调试）
 	orig.Desktop.ExperimentalSessionMonitor = true     // monitoring (M8 standalone, member 1)
@@ -101,9 +101,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalJsonlZstd = true // jsonlZstd
 
 	// infra（基础设施；785 退役 S1 常驻底座开关条目）
-	orig.Agent.ExperimentalRuntimeReuse = true            // runtimeReuse
-	orig.Desktop.ExperimentalACPListen = true             // acpListen (task 790)
-	orig.Desktop.ACPListenPort = 8791                     // acpListen family key
+	orig.Agent.ExperimentalRuntimeReuse = true // runtimeReuse
+	orig.Desktop.ExperimentalACPListen = true  // acpListen (task 790)
+	orig.Desktop.ACPListenPort = 8791          // acpListen family key
 	// tl1487 七组③：pathRules fixture 行随键退役移除。
 	orig.Agent.ExperimentalOrphanHandling = true          // orphanHandling
 	orig.Desktop.ExperimentalLocalServer = true           // localServer

@@ -30,8 +30,8 @@ import (
 
 // failureState 三态标识，与 guardian.go review() 的两条失败分支一一对应。
 const (
-	failureTransport  = "transport"   // agent.Run 返回 provider 传输错误
-	failureTimeout    = "timeout"     // reviewTimeout（30s）压垮 review ctx
+	failureTransport   = "transport"   // agent.Run 返回 provider 传输错误
+	failureTimeout     = "timeout"     // reviewTimeout（30s）压垮 review ctx
 	failureUnparseable = "unparseable" // 模型输出无法 ParseAssessment
 )
 
@@ -256,9 +256,9 @@ func TestGuardianAuthenticAllowResetsFailureFoldedDenials(t *testing.T) {
 	parent := matrixParentSession()
 
 	steps := []struct {
-		wantFailure      bool // odd steps fail (scripted transport error), even steps allow
-		wantConsecutive  int
-		wantTriggered    bool
+		wantFailure     bool // odd steps fail (scripted transport error), even steps allow
+		wantConsecutive int
+		wantTriggered   bool
 	}{
 		{true, 1, false},
 		{false, 0, false},

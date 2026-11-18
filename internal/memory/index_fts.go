@@ -326,7 +326,7 @@ func loadRecallFTSDocs(db *sql.DB) ([]recallFTSDoc, error) {
 		var (
 			id, scope, name, title, description, ftype, activation, volatility string
 			subject, keywords, triggers, body, searchText, ftsTerms            string
-			revision, createdAt, updatedAt, expiresAt, lastVerifiedAt         int64
+			revision, createdAt, updatedAt, expiresAt, lastVerifiedAt          int64
 		)
 		if err := rows.Scan(&id, &scope, &revision, &createdAt, &updatedAt, &name, &title,
 			&description, &ftype, &activation, &volatility, &subject, &expiresAt,
@@ -453,4 +453,3 @@ func buildRecallIndexFromFTS(store Store) *RecallIndex {
 	}
 	return index
 }
-

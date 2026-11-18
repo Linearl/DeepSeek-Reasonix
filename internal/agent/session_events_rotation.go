@@ -144,14 +144,15 @@ func EventsAutoRotationSnapshot() (mode string, factor float64, capMB int64) {
 // 却要求 content ≤ 0.72·log——自相矛盾，恒假，是死代码，随本修复移除。
 //
 // 修法（任务书方向①+②，全部复用已装机原语）：
-//  ② 预估与实测对账：预估说不缩 ≠ 豁免——放行一次真实折叠（probe），由调用
-//     方在动作后回报实测收益（noteSessionFoldOutcome）。实测省到 ≥10% ⇒ 估计
-//     错了，清零连败继续正常折叠；实测连续 foldProbeMaxStrikes 次低于阈值 ⇒
-//     折叠地板由「测量」而非「估计」证明，本 regime 内才允许不折叠。
-//  ① 地板兜底：地板证明后不得死在 "left in place"——save 尾部（文件锁内）把
-//     日志无损归档（tl1172 L2 zstd 原语，JSONL 实测 5~10×，红线：不删历史、
-//     可逆、自描述），落盘体积真实下降可量化；每 regime 至多一次（archivedAt
-//     闩），有损的 L3 裁剪仍归 desktop sweep 的实验开关管，save 路径不碰。
+//
+//	② 预估与实测对账：预估说不缩 ≠ 豁免——放行一次真实折叠（probe），由调用
+//	   方在动作后回报实测收益（noteSessionFoldOutcome）。实测省到 ≥10% ⇒ 估计
+//	   错了，清零连败继续正常折叠；实测连续 foldProbeMaxStrikes 次低于阈值 ⇒
+//	   折叠地板由「测量」而非「估计」证明，本 regime 内才允许不折叠。
+//	① 地板兜底：地板证明后不得死在 "left in place"——save 尾部（文件锁内）把
+//	   日志无损归档（tl1172 L2 zstd 原语，JSONL 实测 5~10×，红线：不删历史、
+//	   可逆、自描述），落盘体积真实下降可量化；每 regime 至多一次（archivedAt
+//	   闩），有损的 L3 裁剪仍归 desktop sweep 的实验开关管，save 路径不碰。
 //
 // regime 语义与 710 的重警再武装（foldNoShrinkReWarnGrowth=1.10）、921 的
 // park 再武装同一常数：日志较 regime 基准再涨 ≥10% 才整梯重新起跑——豁免

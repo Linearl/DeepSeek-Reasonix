@@ -319,7 +319,6 @@ func LoadSession(path string) (*Session, error) {
 	return loadSessionUnlocked(path)
 }
 
-
 // LoadSessionTail is the first-paint form of LoadSession: for a very large
 // schema-2 log it returns a Session whose transcript is the trailing window and
 // reports that fact through TailTruncated. It exists for the hydrate path, where
@@ -336,7 +335,6 @@ func LoadSessionTail(path string) (*Session, error) {
 	return loadSessionTailUnlocked(path)
 }
 
-
 func loadSessionUnlocked(path string) (*Session, error) {
 	return loadSessionWithReader(path, func(hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
 		// P18-R1: the save-path lock is held by LoadSession here, so a cached
@@ -350,13 +348,11 @@ func loadSessionUnlocked(path string) (*Session, error) {
 	})
 }
 
-
 func loadSessionTailUnlocked(path string) (*Session, error) {
 	return loadSessionWithReader(path, func(hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
 		return loadSessionTranscriptTail(context.Background(), path, defaultSessionReplayLimits, hasher)
 	})
 }
-
 
 // loadSessionWithReader is the shared body of both loaders: they differ only in
 // which transcript they ask for, so the normalization, digest and persistence
@@ -452,7 +448,6 @@ func loadSessionWithReader(path string, read func(*sessionTranscriptHasher) (ses
 	return s, nil
 }
 
-
 // upgradeTruncatedTranscriptForWrite replaces a first-paint transcript with the
 // complete one before it can reach disk.
 //
@@ -519,4 +514,3 @@ func (s *Session) upgradeTruncatedTranscriptForWrite(path string) error {
 		"path", path, "messages", len(merged))
 	return nil
 }
-

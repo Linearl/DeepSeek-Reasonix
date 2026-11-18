@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"reasonix/internal/agent/testutil"
-	"reasonix/internal/evidence"
 	"reasonix/internal/event"
+	"reasonix/internal/evidence"
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
 )

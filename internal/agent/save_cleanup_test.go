@@ -34,7 +34,6 @@ func TestReconcileSessionSidecarsRemovesUnlockedArtifacts(t *testing.T) {
 	}
 }
 
-
 func TestReconcileSessionSidecarsKeepsLiveLocks(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")
@@ -61,7 +60,6 @@ func TestReconcileSessionSidecarsKeepsLiveLocks(t *testing.T) {
 		}
 	}
 }
-
 
 // TestReconcileSessionSidecarsKeepsFlockOnlyLocks proves the file lock alone
 // protects a writer from cleanup: CLI-style savers hold the .lock flock while
@@ -90,7 +88,6 @@ func TestReconcileSessionSidecarsKeepsFlockOnlyLocks(t *testing.T) {
 		t.Fatalf(".lock survived cleanup after release (err=%v)", err)
 	}
 }
-
 
 // TestReconcileSessionSidecarsRenamesOverlongSessionFiles covers the
 // migration for transcripts left behind by the unbounded recovery cascade
@@ -181,7 +178,6 @@ func TestReconcileSessionSidecarsRenamesOverlongSessionFiles(t *testing.T) {
 	}
 }
 
-
 // TestReconcileOverlongRenameStillReparentsWhenSidecarMigrationFails pins the
 // point-of-no-return contract: once the transcript rename lands, the mapping
 // must be committed — children re-parented, error surfaced as a warning —
@@ -233,7 +229,6 @@ func TestReconcileOverlongRenameStillReparentsWhenSidecarMigrationFails(t *testi
 		t.Fatalf("old meta lost though its migration failed: %v", err)
 	}
 }
-
 
 // TestReconcileOverlongMigratesDiagnosticSidecars pins two halves of one fix:
 // overlong-name reconciliation must skip .events.jsonl / .conflicts.jsonl
@@ -307,4 +302,3 @@ func TestReconcileOverlongMigratesDiagnosticSidecars(t *testing.T) {
 		}
 	}
 }
-

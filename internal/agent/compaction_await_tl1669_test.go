@@ -216,7 +216,7 @@ func TestTl1669CompactionCommitsWhileTurnWrites(t *testing.T) {
 // TestTl1669CompactionFailureKeepsTheRoundAlive is the US2 pin: a failed
 // summarizer must NOT end the round — the round goes out on the context the
 // session already has (竞品语义: dsh「warn 后 continuing the turn」/ zcode
-//「失败不应让 turn 失败」).
+// 「失败不应让 turn 失败」).
 func TestTl1669CompactionFailureKeepsTheRoundAlive(t *testing.T) {
 	sess := foldableSessionOverForce(6)
 	a := agentOverForce(t, &fakeProvider{streamErr: errors.New("provider down")}, sess)

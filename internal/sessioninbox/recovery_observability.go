@@ -44,33 +44,33 @@ const (
 // recoveryTrigger names why a recovery pass ran. Wire-stable: never rename or
 // reuse one once shipped.
 const (
-	RecoveryTriggerCrossProcess = "cross_process_recovery"
+	RecoveryTriggerCrossProcess    = "cross_process_recovery"
 	RecoveryTriggerManifestCorrupt = "manifest_corrupt"
-	RecoveryTriggerSchemaUpgrade  = "schema_upgrade"
+	RecoveryTriggerSchemaUpgrade   = "schema_upgrade"
 )
 
 // recoveryEntry is ONE JSON line in the snapshot ledger. Content-free with
 // respect to message bodies — only ids, states, timestamps, counts, and
 // RunID readings ever leave the store through this face.
 type recoveryEntry struct {
-	TS         string               `json:"ts"`
-	Session    string               `json:"session"`
-	OldRunID   string               `json:"oldRunId,omitempty"`
-	NewRunID   string               `json:"newRunId"`
-	Trigger    string               `json:"trigger"`
-	Recovered  int                  `json:"recovered"`
-	Items      int                  `json:"items"`
-	Paused     bool                 `json:"paused"`
-	Entries    []recoveryEntryItem  `json:"entries,omitempty"`
+	TS        string              `json:"ts"`
+	Session   string              `json:"session"`
+	OldRunID  string              `json:"oldRunId,omitempty"`
+	NewRunID  string              `json:"newRunId"`
+	Trigger   string              `json:"trigger"`
+	Recovered int                 `json:"recovered"`
+	Items     int                 `json:"items"`
+	Paused    bool                `json:"paused"`
+	Entries   []recoveryEntryItem `json:"entries,omitempty"`
 }
 
 // recoveryEntryItem is one queue row's content-free fingerprint inside a
 // recoveryEntry. Id, state and timestamp only — no body, no preview.
 type recoveryEntryItem struct {
-	ID        string `json:"id"`
-	State     string `json:"state"`
-	Source    string `json:"source,omitempty"`
-	At        string `json:"at"`
+	ID     string `json:"id"`
+	State  string `json:"state"`
+	Source string `json:"source,omitempty"`
+	At     string `json:"at"`
 }
 
 // recoverySnapshotWriter is the process-wide (package-level) append-only

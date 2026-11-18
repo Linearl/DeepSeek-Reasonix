@@ -33,7 +33,7 @@ import (
 //      修复 = 活口收口升级：成员的可见 tab 一律先关（关失败整体中止）、
 //      detached 空闲副本可指认拒绝（后台任务中心打开并关 tab 后重试——
 //      该下一步真实存在）、持锁状态下复查无新活 tab 才落盘。
-//   另修第一阶段编排死锁：closeTabRuntime 自取 runtime-mutation + 
+//   另修第一阶段编排死锁：closeTabRuntime 自取 runtime-mutation +
 //      sessionRemovalMu 两闸，第一阶段却持着 sessionRemovalMu 去关 tab——
 //      成员 tab 打开时真跑迁移即互斥重入死锁（测试无 tab 未暴露）。
 //      现在关 tab 一律在两闸之前完成（TrashTopicForce tl1367 缺陷 B 同款

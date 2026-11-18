@@ -28,11 +28,11 @@ var (
 	// and desktop shutdown snapshot synchronously; waiting forever here wedges
 	// the UI and keeps the session lease (and WebView) alive indefinitely.
 	// Package vars let focused tests shorten the wait without slowing the suite.
-	sessionFileLockWait         = 5 * time.Second
+	sessionFileLockWait = 5 * time.Second
 
 	sessionFileLockPollInterval = 25 * time.Millisecond
 
-	sessionMetaLockWait         = 5 * time.Second
+	sessionMetaLockWait = 5 * time.Second
 
 	// 任务 885/946: sessionSavePathLockWait bounds the IN-PROCESS save-path
 	// mutex acquisition for EVERY caller — the blocking save path (885) and
@@ -53,7 +53,7 @@ var (
 
 	// sessionSavePathLockPoll is the try-lock retry cadence while waiting for
 	// the in-process save-path mutex; same rhythm as the file-lock poll.
-	sessionSavePathLockPoll    = 25 * time.Millisecond
+	sessionSavePathLockPoll = 25 * time.Millisecond
 
 	// ErrSessionFileLockHeld reports that the save lock stayed held for the
 	// full bounded acquisition window: the cross-process compatibility .lock
@@ -62,7 +62,6 @@ var (
 	// that are about to terminate can use this sentinel to persist a recovery
 	// branch without waiting on the same stalled file again.
 	ErrSessionFileLockHeld = errors.New("session file lock held")
-
 )
 
 // lockSessionSavePath acquires the in-process save-path mutex for path with a
@@ -80,11 +79,9 @@ func lockSessionSavePath(path string) (func(), error) {
 	return lockSessionSavePathWithin(path, sessionSavePathLockWait)
 }
 
-
 // sessionSaveLockWarnWait is the queueing time above which the save-path lock is worth a
 // line in the log. Below it, a lock acquired immediately stays silent.
 const sessionSaveLockWarnWait = 250 * time.Millisecond
-
 
 // tryLockSessionSavePath lets low-priority maintenance yield immediately to a
 // foreground save. The returned unlock is non-nil only when acquired.
@@ -97,7 +94,6 @@ func tryLockSessionSavePath(path string) (func(), bool) {
 	}
 	return mu.Unlock, true
 }
-
 
 // savePathLockFree is an advisory, never-blocking probe of the in-process
 // save-path mutex: true means a save starting right now would not queue
@@ -118,7 +114,6 @@ func savePathLockFree(path string) bool {
 	return false
 }
 
-
 // HoldSessionSavePathForTest acquires the in-process save-path mutex for path
 // and returns the release func, so other packages' tests can reproduce
 // save-path contention (the mutex itself is deliberately unexported). It keeps
@@ -133,7 +128,6 @@ func HoldSessionSavePathForTest(path string) func() {
 	mu.Lock()
 	return mu.Unlock
 }
-
 
 // lockSessionFile waits briefly for the cross-process compatibility save lock.
 // A short overlap with a legitimate writer is allowed to settle, but an
@@ -166,7 +160,6 @@ func lockSessionFile(path string) (func(), error) {
 	}
 }
 
-
 // LockSessionMetaPath serializes a complete branch-meta read-modify-write
 // cycle with both goroutines in this process and other Reasonix processes.
 // Callers must hold it from the first read through the final replace.
@@ -186,7 +179,6 @@ func LockSessionMetaPath(path string) (func(), error) {
 	}, nil
 }
 
-
 func tryLockSessionMetaPath(path string) (func(), bool, error) {
 	lockPath, err := sessionMetaLockTarget(path)
 	if err != nil {
@@ -202,7 +194,6 @@ func tryLockSessionMetaPath(path string) (func(), bool, error) {
 	return releaseFile, true, nil
 }
 
-
 func sessionMetaLockTarget(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", fmt.Errorf("empty session path")
@@ -214,13 +205,11 @@ func sessionMetaLockTarget(path string) (string, error) {
 	return sessionMetaLockPath(canonical), nil
 }
 
-
 func sessionMetaLockPath(path string) string {
 	canonical := canonicalSessionSavePath(path)
 	digest := sha256.Sum256([]byte(canonical))
 	return filepath.Join(filepath.Dir(canonical), "."+hex.EncodeToString(digest[:8])+".meta.lock")
 }
-
 
 // UpdateBranchMeta is the owner-level metadata API. The callback runs while
 // the cross-process metadata lock is held, so callers cannot accidentally
@@ -243,7 +232,6 @@ func UpdateBranchMeta(path string, touchUpdated bool, update func(*BranchMeta) e
 	return saveBranchMeta(path, m, touchUpdated)
 }
 
-
 func canonicalSessionSavePath(path string) string {
 	// Task 883 probe: time the canonicalization only; the returned key is
 	// exactly what it was before.
@@ -252,7 +240,6 @@ func canonicalSessionSavePath(path string) string {
 	canonicalProbeSaveLockKey(path, key, started)
 	return key
 }
-
 
 // CanonicalSessionPath is the identity key of a session path: cleaned,
 // absolute, and case-folded on Windows, matching the key form used by the
@@ -267,4 +254,3 @@ func CanonicalSessionPath(path string) string {
 	}
 	return canonicalSessionSavePath(path)
 }
-

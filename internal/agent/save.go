@@ -19,7 +19,6 @@ import (
 
 const (
 	maxRecoveryParentStemBytes = 80
-
 )
 
 var (
@@ -36,13 +35,11 @@ var (
 	// ErrSessionRecoveryDepthExceeded is retained for older callers. New
 	// recovery writes update one stable branch and no longer return it.
 	ErrSessionRecoveryDepthExceeded = errors.New("session recovery chain depth exceeded")
-
 )
 
 // SessionRecoveryMaxDepth is the historical nested-fork cap. New writes stamp
 // RecoveryDepth=1 and update one stable path instead of deepening a chain.
 const SessionRecoveryMaxDepth = 3
-
 
 type sessionPersistState struct {
 	projectionPending bool
@@ -93,9 +90,7 @@ type sessionPersistState struct {
 	ok              bool
 }
 
-
 type sessionSaveMode int
-
 
 const (
 	sessionSaveSnapshot sessionSaveMode = iota
@@ -103,7 +98,6 @@ const (
 	sessionSaveRewriteCompact
 	sessionSaveToolCheckpoint
 )
-
 
 type snapshotWriteDecision struct {
 	revision         int64
@@ -122,15 +116,12 @@ type snapshotWriteDecision struct {
 	ledgerStale bool
 }
 
-
 type SessionSnapshotConflictKind string
-
 
 const (
 	SessionSnapshotConflictStalePrefix SessionSnapshotConflictKind = "stale_prefix"
 	SessionSnapshotConflictDiverged    SessionSnapshotConflictKind = "diverged"
 )
-
 
 type SessionSnapshotConflictError struct {
 	Path             string
@@ -141,7 +132,6 @@ type SessionSnapshotConflictError struct {
 	DiskRevision     int64
 	Identity         SnapshotConflictIdentity // tl1443 trace evidence; never part of Error()
 }
-
 
 func (e *SessionSnapshotConflictError) Error() string {
 	if e == nil {
@@ -157,11 +147,9 @@ func (e *SessionSnapshotConflictError) Error() string {
 	}
 }
 
-
 func (e *SessionSnapshotConflictError) Unwrap() error {
 	return ErrSessionSnapshotConflict
 }
-
 
 func SnapshotConflictKind(err error) (SessionSnapshotConflictKind, bool) {
 	var conflict *SessionSnapshotConflictError
@@ -171,9 +159,7 @@ func SnapshotConflictKind(err error) (SessionSnapshotConflictKind, bool) {
 	return "", false
 }
 
-
 const RecoveryBranchDefaultName = "Recovered unsaved changes from stale runtime"
-
 
 type RecoveryBranchOptions struct {
 	OriginalPath string
@@ -184,7 +170,6 @@ type RecoveryBranchOptions struct {
 	DiskRevision int64
 }
 
-
 type RecoveryBranchInfo struct {
 	Path     string
 	Digest   string
@@ -193,7 +178,6 @@ type RecoveryBranchInfo struct {
 	Preview  string
 	Turns    int
 }
-
 
 // Save persists the session using the normal CAS-protected snapshot protocol.
 // It is kept as the convenient default for callers that do not need to spell
@@ -205,14 +189,12 @@ func (s *Session) Save(path string) error {
 	return s.saveObserved(path, sessionSaveSnapshot)
 }
 
-
 // SaveSnapshot writes a normal autosave/snapshot only when doing so cannot hide
 // a newer transcript already on disk. Explicit history rewrites such as rewind,
 // compaction, and cancel recovery should call SaveRewrite instead.
 func (s *Session) SaveSnapshot(path string) error {
 	return s.saveObserved(path, sessionSaveSnapshot)
 }
-
 
 // SaveSnapshotIfPathFree is the non-blocking form of SaveSnapshot for
 // latency-sensitive foreground paths (desktop tab switching): it performs the
@@ -251,7 +233,6 @@ func (s *Session) SaveSnapshotIfPathFree(path string) (attempted bool, err error
 	})
 }
 
-
 // SaveRewrite writes an intentional non-append history rewrite only while this
 // Session still owns the current on-disk transcript baseline. It prevents a
 // stale controller from force-rewinding a newer transcript written elsewhere.
@@ -259,14 +240,12 @@ func (s *Session) SaveRewrite(path string) error {
 	return s.saveObserved(path, sessionSaveRewrite)
 }
 
-
 // SaveRewriteCompact performs a CAS-protected rewrite and folds the event log
 // to one replace record. It is for destructive maintenance such as redaction:
 // retaining old WAL records would keep the removed bytes recoverable on disk.
 func (s *Session) SaveRewriteCompact(path string) error {
 	return s.saveObserved(path, sessionSaveRewriteCompact)
 }
-
 
 // RewriteAndSaveCompact installs an in-memory history rewrite and persists it
 // as one CAS-protected compact rewrite inside a single save-path lock window
@@ -325,7 +304,6 @@ func (s *Session) RewriteAndSaveCompact(path string, reason string, fold func(co
 	})
 }
 
-
 func (s *Session) save(path string, mode sessionSaveMode) error {
 	if path == "" {
 		return fmt.Errorf("empty session path")
@@ -334,7 +312,6 @@ func (s *Session) save(path string, mode sessionSaveMode) error {
 		return s.saveLocked(path, mode)
 	})
 }
-
 
 func (s *Session) withSessionSaveLocks(path string, fn func() error) error {
 	if strings.TrimSpace(path) == "" {
@@ -361,7 +338,6 @@ func (s *Session) withSessionSaveLocks(path string, fn func() error) error {
 	s.lastSaveLockWaitMs.Store(time.Since(lockWaitStart).Milliseconds())
 	return fn()
 }
-
 
 // lockSessionSavePathWithin acquires the in-process save-path mutex for path,
 // polling every sessionSavePathLockPoll, and gives up after budget with
@@ -398,7 +374,6 @@ func lockSessionSavePathWithin(path string, budget time.Duration) (func(), error
 	}
 }
 
-
 // tryWithSessionSaveLocks is the non-blocking form of withSessionSaveLocks for
 // latency-sensitive foreground paths (desktop tab switching): the in-process
 // save-path mutex is taken only when immediately free, and attempted=false is
@@ -431,7 +406,6 @@ func (s *Session) tryWithSessionSaveLocks(path string, fn func() error) (attempt
 	return true, fn()
 }
 
-
 func sessionArtifactExists(path string) bool {
 	if _, err := os.Lstat(path); err == nil {
 		return true
@@ -459,7 +433,6 @@ func sessionArtifactExists(path string) bool {
 	return false
 }
 
-
 // saveLocked runs the save body and, on success, the tl1285 fold-floor
 // fallback: a log the probe ladder has MEASURED at its fold floor and that is
 // still over the configured cap is archived losslessly here, inside the same
@@ -472,7 +445,6 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 	}
 	return err
 }
-
 
 func (s *Session) saveLockedInner(path string, mode sessionSaveMode) error {
 	baseRevision := int64(0)
@@ -741,7 +713,6 @@ func (s *Session) saveLockedInner(path string, mode sessionSaveMode) error {
 	return nil
 }
 
-
 // checkSnapshotWrite decides whether this session may write msgs over path, and
 // whether the safe write shape is a no-op, append-only suffix, or full rewrite.
 func (s *Session) checkSnapshotWrite(path string, next []provider.Message, nextDigest [sha256.Size]byte, nextVersion uint64, allowOwnedRewrite bool) (snapshotWriteDecision, error) {
@@ -895,7 +866,6 @@ func (s *Session) checkSnapshotWrite(path string, next []provider.Message, nextD
 	}
 }
 
-
 func snapshotConflict(path string, existing, next []provider.Message, baseRevision, diskRevision int64, identity SnapshotConflictIdentity) error {
 	kind := SessionSnapshotConflictDiverged
 	if messagesHavePrefix(existing, next) || messagesHavePrefixWithCompatibleSystem(existing, next) {
@@ -912,11 +882,9 @@ func snapshotConflict(path string, existing, next []provider.Message, baseRevisi
 	}
 }
 
-
 func (s *Session) SaveRecoveryBranch(opts RecoveryBranchOptions) (RecoveryBranchInfo, error) {
 	return s.saveRecoveryBranch(opts, false)
 }
-
 
 // SaveShutdownRecoveryBranch persists the current transcript to a distinct
 // recovery branch after the normal shutdown snapshot failed with
@@ -932,13 +900,11 @@ func (s *Session) SaveShutdownRecoveryBranch(opts RecoveryBranchOptions) (Recove
 	return s.saveRecoveryBranch(opts, true)
 }
 
-
 // SaveConflictRecoveryBranch writes the depth-cap isolated copy (one path per
 // live Session). Subsequent conflicts from that Session rewrite it in place.
 func (s *Session) SaveConflictRecoveryBranch(opts RecoveryBranchOptions) (RecoveryBranchInfo, error) {
 	return s.saveRecoveryBranch(opts, true)
 }
-
 
 func (s *Session) saveRecoveryBranch(opts RecoveryBranchOptions, shutdown bool) (RecoveryBranchInfo, error) {
 	originalPath := strings.TrimSpace(opts.OriginalPath)
@@ -1020,7 +986,6 @@ func (s *Session) saveRecoveryBranch(opts RecoveryBranchOptions, shutdown bool) 
 	return RecoveryBranchInfo{}, fmt.Errorf("allocate isolated recovery lane: too many existing collisions")
 }
 
-
 func recoveryParentStem(parent string) string {
 	parent = strings.TrimSpace(parent)
 	if parent == "" {
@@ -1048,7 +1013,6 @@ func recoveryParentStem(parent string) string {
 	return fmt.Sprintf("%s-%x", prefix, sum[:6])
 }
 
-
 func truncateUTF8Bytes(s string, max int) string {
 	if max <= 0 {
 		return ""
@@ -1069,5 +1033,3 @@ func truncateUTF8Bytes(s string, max int) string {
 	}
 	return s
 }
-
-

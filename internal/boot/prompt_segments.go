@@ -22,17 +22,18 @@ import (
 //
 // 分段名即段尾标记（mark(X) = 自上一 mark 以来、以收口名 X 记账，与
 // bootTiming.mark 同语义）：
-//   shell        shell 解析
-//   base_prompt  系统提示词解析 + outputstyle + 核心策略 + rules + policy 块
-//   env_probes   session-context 静态段 + 环境探测（含探测快照读写）
-//   memory_migrate  记忆库 MigrateV2
-//   memory_pinned   MaterializeLegacyPinned
-//   memory_load     memory.Load
-//   host_checks     instruction.ExtractHostChecks
-//   memory_compose  memory.Compose（# Memory 段组装）
-//   skills          skills 发现（双 store List，共享 parse cache）
-//   collab_block    通讯录索引段
-//   persona         官方 persona 折叠
+//
+//	shell        shell 解析
+//	base_prompt  系统提示词解析 + outputstyle + 核心策略 + rules + policy 块
+//	env_probes   session-context 静态段 + 环境探测（含探测快照读写）
+//	memory_migrate  记忆库 MigrateV2
+//	memory_pinned   MaterializeLegacyPinned
+//	memory_load     memory.Load
+//	host_checks     instruction.ExtractHostChecks
+//	memory_compose  memory.Compose（# Memory 段组装）
+//	skills          skills 发现（双 store List，共享 parse cache）
+//	collab_block    通讯录索引段
+//	persona         官方 persona 折叠
 type promptSegments struct {
 	start  time.Time
 	last   time.Time

@@ -75,9 +75,9 @@ func TestForkVersionCompare(t *testing.T) {
 		{a: "v1.38.3-20261117-1800", b: "v1.38.3-20261117-1800", want: 0},  // same build
 		{a: "v1.38.3-20261012-0045", b: "v1.38.3", want: 1},                // stamp refresh beats its bare base (semver cannot say this)
 		{a: "v1.38.3", b: "v1.38.3-20261012-0045", want: -1},
-		{a: "v1.39.0", b: "v1.38.3-20261117-1800", want: 1},  // base bump wins over any stamp
-		{a: "v1.38.10", b: "v1.38.9-20261117-1800", want: 1}, // numeric, not lexical, base compare
-		{a: "v1.34.0+fork", b: "v1.34.0", want: 0},           // build metadata never affects order
+		{a: "v1.39.0", b: "v1.38.3-20261117-1800", want: 1},               // base bump wins over any stamp
+		{a: "v1.38.10", b: "v1.38.9-20261117-1800", want: 1},              // numeric, not lexical, base compare
+		{a: "v1.34.0+fork", b: "v1.34.0", want: 0},                        // build metadata never affects order
 		{a: "v1.38.3-20261118-0045", b: "v1.38.3-20261117-2359", want: 1}, // day rollover with zero-padded clock
 	}
 	for _, tt := range tests {

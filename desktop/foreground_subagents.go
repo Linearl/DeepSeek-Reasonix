@@ -35,10 +35,10 @@ import (
 // parallel dispatch share it. The capsule UI ignores it; get_session_status's
 // work detail surfaces it as "batch".
 type ForegroundSubagentView struct {
-	TabID            string `json:"tabId"`
-	Title            string `json:"title,omitempty"`
-	Ref              string `json:"ref"`
-	Name             string `json:"name,omitempty"`
+	TabID string `json:"tabId"`
+	Title string `json:"title,omitempty"`
+	Ref   string `json:"ref"`
+	Name  string `json:"name,omitempty"`
 	// Description is the dispatch line the parent model passed with the call
 	// (tl1209). Panels prefer it over Name: same-profile children ("ask",
 	// "task") are otherwise indistinguishable.

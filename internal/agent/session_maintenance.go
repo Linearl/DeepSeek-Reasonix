@@ -121,6 +121,7 @@ func TrimSessionOversizeToolResults(sessionPath string) (before, after int64, tr
 //   - tool 结果正文：Content / RawContent / ReasoningContent（>64KiB 才裁）；
 //   - 超大 image data URL（红线扩展）：任何 role 的 Images/Audio 条目 >256KiB
 //     才裁。
+//
 // ToolCalls.Arguments 属于助手侧入参不在本件范围。
 func trimOversizeToolResultFields(msgs []provider.Message) int {
 	trimmed := 0

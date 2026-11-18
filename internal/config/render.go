@@ -243,10 +243,10 @@ var labFeatureTiers = []labFeatureTier{
 	// 一同入「稳定」档（992 刚升推荐的四项中的第四项，用户 1018 拍板批1）。
 	{"runtimeReuse", LabTierStable, []string{"experimental_runtime_reuse"}},
 	// tl-1048：zcodeTaskBus 卡随 8787 任务总线退役（原 unstable，键 experimental_zcode_task_bus）。
-	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}},               // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
-	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
+	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}}, // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
+	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},     // 任务 545：会话 cwd 跟随，默认关新实验
 	// tl1487 二组①：标签权限指示未稳定→可选（用户 20261107 八组清单；前端同步）。
-	{"tabModeTint", LabTierOptional, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
+	{"tabModeTint", LabTierOptional, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}},                                                        // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
 	{"orphanHandling", LabTierRecommended, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键；任务 992：随复用池升推荐（用户 1018）
 	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选——
 	// 四采样点 ≥21 天持续开启零报障，正面使用实例 tl1536（二维码分享；前端同步）。

@@ -103,13 +103,13 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// 会尝试 rebuild；批量走 config-only（重启选项兜底），字段直写。
 	"optimisticParallel": func(c *Config, on bool) error { c.Sandbox.OptimisticWrite = on; return nil },
 	// ── efficiency ──
-	"budgetControl":         func(c *Config, on bool) error { return c.SetExperimentalContextBudget(on) },
-	"compressOpt":           func(c *Config, on bool) error { return c.SetExperimentalProactiveCompact(on) },
-	"quickCommands":         func(c *Config, on bool) error { return c.SetExperimentalQuickCommands(on) },
-	"highSpeedModel":        func(c *Config, on bool) error { return c.SetExperimentalHighSpeedModel(on) },
-	"compactionParallel":    func(c *Config, on bool) error { return c.SetExperimentalCompactionParallel(on) },
-	"traceAsState":          func(c *Config, on bool) error { return c.SetExperimentalTraceAsState(on) },
-	"compactModel":          func(c *Config, on bool) error { return c.SetExperimentalCompactModel(on) },
+	"budgetControl":      func(c *Config, on bool) error { return c.SetExperimentalContextBudget(on) },
+	"compressOpt":        func(c *Config, on bool) error { return c.SetExperimentalProactiveCompact(on) },
+	"quickCommands":      func(c *Config, on bool) error { return c.SetExperimentalQuickCommands(on) },
+	"highSpeedModel":     func(c *Config, on bool) error { return c.SetExperimentalHighSpeedModel(on) },
+	"compactionParallel": func(c *Config, on bool) error { return c.SetExperimentalCompactionParallel(on) },
+	"traceAsState":       func(c *Config, on bool) error { return c.SetExperimentalTraceAsState(on) },
+	"compactModel":       func(c *Config, on bool) error { return c.SetExperimentalCompactModel(on) },
 	// tl1397: ranges 小段增量压缩（未稳定档，默认关）。
 	"rangesCompact":         func(c *Config, on bool) error { return c.SetExperimentalRangesCompact(on) },
 	"outputStyle":           func(c *Config, on bool) error { return c.SetExperimentalOutputStyleUI(on) },

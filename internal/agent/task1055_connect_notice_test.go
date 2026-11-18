@@ -19,15 +19,15 @@ import (
 // the real OpenAI-compatible provider + SendWithRetry path (the same shape as
 // TestAgentEmitsRetryingThenStreams): first request 503s, second streams.
 //
-//  ① 发起即见: a Connecting event (scope "connect", ordinal ≥ 1) is emitted
-//     BEFORE the first Retrying event — the connecting status does not wait
-//     for a failure.
-//  ② ordinal increments: the second attempt's Connecting carries ordinal 2
-//     (the request counter is shared across sampling attempts).
-//  ③ A3 exclusivity: every in-flight Connecting frame is closed by the
-//     zero-attempt clear frame the moment headers arrive (or the start
-//     fails) — the connect label can never name the header-wait or prefill
-//     silence.
+//	① 发起即见: a Connecting event (scope "connect", ordinal ≥ 1) is emitted
+//	   BEFORE the first Retrying event — the connecting status does not wait
+//	   for a failure.
+//	② ordinal increments: the second attempt's Connecting carries ordinal 2
+//	   (the request counter is shared across sampling attempts).
+//	③ A3 exclusivity: every in-flight Connecting frame is closed by the
+//	   zero-attempt clear frame the moment headers arrive (or the start
+//	   fails) — the connect label can never name the header-wait or prefill
+//	   silence.
 func TestAgentEmitsConnectingBeforeRetryAndClearsOnStart(t *testing.T) {
 	var reqs int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

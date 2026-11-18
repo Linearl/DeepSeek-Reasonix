@@ -79,7 +79,7 @@ func newForkUpdateTestEnv(t *testing.T) *forkUpdateTestEnv {
 // desktop check face: channel failure degrades silently (no Err, no available),
 // an up-to-date build gets the normal "already current" result, and a newer
 // fork release marks available. The legacy dead-gateway noise
-// (`update: invalid stable version ''`) must be impossible from this face.
+// (`update: invalid stable version ”`) must be impossible from this face.
 func TestCheckUpdateForkChannelThreeStates(t *testing.T) {
 	newForkUpdateTestEnv(t)
 	version = "v1.38.3-20261115-0841"

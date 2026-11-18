@@ -450,9 +450,9 @@ func TestEventsIdleSweepQuotaRanksByReleasableBytes(t *testing.T) {
 	const mb = int64(1) << 20
 	cands := []eventsIdleSweepCandidate{
 		{Path: "a-big-little-gain.jsonl", EventsBytes: 100 * mb, LiveBytes: 60 * mb, LastActivityAt: 1}, // rel 40MB
-		{Path: "b-mid-big-gain.jsonl", EventsBytes: 60 * mb, LiveBytes: 5 * mb, LastActivityAt: 1},     // rel 55MB
-		{Path: "c-small-big-gain.jsonl", EventsBytes: 50 * mb, LiveBytes: 5 * mb, LastActivityAt: 1},   // rel 45MB
-		{Path: "d-least.jsonl", EventsBytes: 45 * mb, LiveBytes: 2 * mb, LastActivityAt: 1},            // rel 43MB
+		{Path: "b-mid-big-gain.jsonl", EventsBytes: 60 * mb, LiveBytes: 5 * mb, LastActivityAt: 1},      // rel 55MB
+		{Path: "c-small-big-gain.jsonl", EventsBytes: 50 * mb, LiveBytes: 5 * mb, LastActivityAt: 1},    // rel 45MB
+		{Path: "d-least.jsonl", EventsBytes: 45 * mb, LiveBytes: 2 * mb, LastActivityAt: 1},             // rel 43MB
 	}
 	h := &sweepPassHarness{byPath: map[string][2]int64{
 		"a-big-little-gain.jsonl": {100 * mb, 60 * mb},

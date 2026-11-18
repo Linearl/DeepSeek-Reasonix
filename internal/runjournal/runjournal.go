@@ -93,9 +93,9 @@ func Open(dbPath string) (*Store, error) {
 		return nil, err
 	}
 	return &Store{
-		db:    db,
-		now:   func() int64 { return time.Now().UnixMilli() },
-		path:  dbPath,
+		db:   db,
+		now:  func() int64 { return time.Now().UnixMilli() },
+		path: dbPath,
 	}, nil
 }
 
@@ -223,10 +223,10 @@ func newID(prefix string) string {
 
 // MemberSpec declares one roster member at run creation.
 type MemberSpec struct {
-	Idx       int    // 1-based position in the group
-	MemberID  string // stable event key (e.g. "group/fleet-1")
-	Label     string
-	Profile   string
+	Idx      int    // 1-based position in the group
+	MemberID string // stable event key (e.g. "group/fleet-1")
+	Label    string
+	Profile  string
 }
 
 // RunSpec declares a run at its start (borrow 5: the launch anchor rides the
@@ -459,14 +459,14 @@ type RunRow struct {
 
 // MemberRow mirrors the members table — no time columns by design (§5).
 type MemberRow struct {
-	Idx       int    `json:"idx"`
-	MemberID  string `json:"memberId"`
-	Label     string `json:"label"`
-	Profile   string `json:"profile"`
-	Status    string `json:"status"`
-	Ref       string `json:"ref"`
-	Error     string `json:"error"`
-	Preview   string `json:"preview"`
+	Idx      int    `json:"idx"`
+	MemberID string `json:"memberId"`
+	Label    string `json:"label"`
+	Profile  string `json:"profile"`
+	Status   string `json:"status"`
+	Ref      string `json:"ref"`
+	Error    string `json:"error"`
+	Preview  string `json:"preview"`
 }
 
 // EventRow is one append-only trail entry.

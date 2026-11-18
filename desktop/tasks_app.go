@@ -14,9 +14,9 @@ import (
 // JobView is one running background job (bash/task started with
 // run_in_background) for the status-bar indicator.
 type JobView struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	Label     string `json:"label"`
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
 	// Detail is the untruncated source text behind Label (tl1033: a bash
 	// job's full command). The capsule hover card prefers it; row display,
 	// stop buttons and the status bar keep using the preview-sized Label.

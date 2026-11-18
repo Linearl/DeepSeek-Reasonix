@@ -26,7 +26,7 @@ func TestPromptSegmentsMarkAccounting(t *testing.T) {
 
 func TestPromptSegmentsNilAndEmptySafe(t *testing.T) {
 	var p *promptSegments
-	p.mark("shell")     // must not panic
+	p.mark("shell") // must not panic
 	if s := p.summary(); s != "" {
 		t.Fatalf("nil summary = %q, want empty", s)
 	}

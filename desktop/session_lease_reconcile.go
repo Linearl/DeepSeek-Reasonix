@@ -47,10 +47,10 @@ var leaseReconcileProcessAlive = desktopProcessAlive
 type leaseHolderVerdict int
 
 const (
-	leaseHolderNone         leaseHolderVerdict = iota // no record at all
-	leaseHolderForeignLive                            // another live process holds it — respect
-	leaseHolderForeignDead                            // recorded holder is gone — stale leftover
-	leaseHolderSelf                                   // this process's own record
+	leaseHolderNone        leaseHolderVerdict = iota // no record at all
+	leaseHolderForeignLive                           // another live process holds it — respect
+	leaseHolderForeignDead                           // recorded holder is gone — stale leftover
+	leaseHolderSelf                                  // this process's own record
 	// leaseHolderForeignReused is the tl1367 line 3 verdict: the recorded pid
 	// is ALIVE but its executable is not this application — the pid number was
 	// reused by an unrelated program, so the record is stale even though the

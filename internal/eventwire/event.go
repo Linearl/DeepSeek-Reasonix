@@ -9,17 +9,17 @@ import (
 // externalizable:"true" marks large string payloads the Remote protocol may
 // offload via content refs without changing provider-visible semantics.
 type Event struct {
-	RuntimeState     *event.RuntimeStateSnapshot      `json:"runtimeState,omitempty"`
-	Kind             string                           `json:"kind"`
-	PromptID         string                           `json:"promptId,omitempty"`
-	PromptKind       string                           `json:"promptKind,omitempty"`
-	PromptLegacy     bool                             `json:"promptLegacy,omitempty"`
-	TurnID           string                           `json:"turnId,omitempty"`
-	Sequence         uint64                           `json:"seq,omitempty"`
-	Status           string                           `json:"status,omitempty"`
-	Text             string                           `json:"text,omitempty" externalizable:"true"`
-	Detail           string                           `json:"detail,omitempty" externalizable:"true"`
-	Code             string                           `json:"code,omitempty"`
+	RuntimeState *event.RuntimeStateSnapshot `json:"runtimeState,omitempty"`
+	Kind         string                      `json:"kind"`
+	PromptID     string                      `json:"promptId,omitempty"`
+	PromptKind   string                      `json:"promptKind,omitempty"`
+	PromptLegacy bool                        `json:"promptLegacy,omitempty"`
+	TurnID       string                      `json:"turnId,omitempty"`
+	Sequence     uint64                      `json:"seq,omitempty"`
+	Status       string                      `json:"status,omitempty"`
+	Text         string                      `json:"text,omitempty" externalizable:"true"`
+	Detail       string                      `json:"detail,omitempty" externalizable:"true"`
+	Code         string                      `json:"code,omitempty"`
 	// Suggestion (任务 1079)：notice 的可选「怎么办」行；空值省略——旧前端
 	// 忽略未知字段，行为与改动前一致。
 	Suggestion       string                           `json:"suggestion,omitempty" externalizable:"true"`

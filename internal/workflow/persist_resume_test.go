@@ -138,10 +138,10 @@ func TestEngineResumeFromCheckpointSkipsFinishedNodes(t *testing.T) {
 
 // gateStopRunner 在第 N 个子代理调用返回后触发 cancel（模拟断点时刻）。
 type gateStopRunner struct {
-	inner   *countingRunner
-	afterN  int
-	onStop  func()
-	once    sync.Once
+	inner  *countingRunner
+	afterN int
+	onStop func()
+	once   sync.Once
 }
 
 func (g *gateStopRunner) Run(ctx context.Context, req SubagentRequest) (string, error) {

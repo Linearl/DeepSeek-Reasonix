@@ -14,14 +14,12 @@ func SessionPreview(path string) (string, int) {
 	return previewSession(path)
 }
 
-
 // SessionPreviewWithError returns the same preview and user-turn count as
 // SessionPreview, but preserves read and decode failures for callers that must
 // not persist a fallback derived from an unreadable transcript.
 func SessionPreviewWithError(path string) (string, int, error) {
 	return previewSessionWithError(path)
 }
-
 
 // SessionPreviewFromMessages computes the same preview line and user-turn count
 // as previewSession, but from an in-memory message slice. Session.Save writes
@@ -44,7 +42,6 @@ func sessionPreviewNoiseless(msg provider.Message) string {
 	}
 	return text
 }
-
 
 // SessionPreviewFromMessages returns the session preview and the number of
 // user-role turns so the picker can show "5 turns · 'help me debug the…'".
@@ -73,7 +70,6 @@ func SessionPreviewFromMessages(msgs []provider.Message) (string, int) {
 	return first, turns
 }
 
-
 // recentExcerptCount is how many closing user messages the hover excerpts
 // carry. tl 1188 raised it from 3 to 8: the excerpts moved from the card's
 // in-card overlay (where 3 lines was all a ≥210px cell could show) to an
@@ -81,12 +77,10 @@ func SessionPreviewFromMessages(msgs []provider.Message) (string, int) {
 // sidecar grows by a few hundred bytes per session — still tiny.
 const recentExcerptCount = 8
 
-
 // RecentExcerptCount is the exported hover-excerpt width (tl-1177b): the
 // desktop's on-demand tail reader (SessionTailUserExcerpts) shares this
 // constant so the sidecar field and the hover computation never drift apart.
 const RecentExcerptCount = recentExcerptCount
-
 
 // SessionRecentExcerptsFromMessages returns up to n recent user messages
 // (newest first), noise-filtered the same way as the preview. This is the
@@ -110,7 +104,6 @@ func SessionRecentExcerptsFromMessages(msgs []provider.Message, n int) []string 
 	return out
 }
 
-
 // previewSession returns the session preview (the newest recognizable user
 // message, truncated — tl 1177 tail-first) and the number of user-role
 // messages so the picker can show "5 turns · 'help me debug the…'".
@@ -119,7 +112,6 @@ func previewSession(path string) (string, int) {
 	preview, turns, _ := previewSessionWithError(path)
 	return preview, turns
 }
-
 
 // previewProse drops the leading @file references a prompt opens with so the
 // preview shows what was asked rather than a row of paths. A prompt that is
@@ -143,7 +135,6 @@ func previewProse(s string) string {
 	return rest
 }
 
-
 // truncatePreview clamps a preview line to 80 runes with an ellipsis, matching
 // what the pickers render.
 func truncatePreview(s string) string {
@@ -152,4 +143,3 @@ func truncatePreview(s string) string {
 	}
 	return s
 }
-

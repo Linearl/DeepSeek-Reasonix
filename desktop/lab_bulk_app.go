@@ -20,11 +20,11 @@ type LabBulkSkipView struct {
 
 // LabBulkPlanView 批量计划视图（确认前的预览 + 执行后的回执共用）。
 type LabBulkPlanView struct {
-	Scope         string           `json:"scope"`
-	On            bool             `json:"on"`
-	Targets       []string         `json:"targets"`
-	StableInScope []string         `json:"stableInScope"`
-	SkippedStable []string         `json:"skippedStable"`
+	Scope         string            `json:"scope"`
+	On            bool              `json:"on"`
+	Targets       []string          `json:"targets"`
+	StableInScope []string          `json:"stableInScope"`
+	SkippedStable []string          `json:"skippedStable"`
 	Skipped       []LabBulkSkipView `json:"skipped"`
 	// Applied 仅执行后非空（预览为 null）——已写配置的特性 id。
 	Applied []string `json:"applied"`

@@ -208,7 +208,7 @@ export const CHECKS = [
   // 回调，前端读数卡死为静态「压缩中」数月无人察觉，故逐文件登记）。
   { feature: "任务556 压缩实时读数 meter（后端）", file: "internal/agent/compact_live.go", patterns: ["compactionLiveMeter", "compactionLiveEmitInterval", "emitCompactionLiveProgress"] },
   { feature: "任务556 摘要流挂点", file: "internal/agent/compact.go", patterns: ["compactionLiveAddOutput"] },
-  { feature: "任务556 压缩窗口 begin/stop + 折叠进度回调", file: "internal/agent/compact_projection.go", patterns: ["compactionLiveBegin(trigger)", "compactionLiveFoldProgress(done, total)"] },
+  { feature: "任务556 压缩窗口 begin/stop + 折叠进度回调", file: "internal/agent/compact_projection.go", patterns: ["compactionLiveBegin(trigger,", "compactionLiveFoldProgress(done, total)"] },
   { feature: "任务556 折叠片段完成计数（report(false) 补齐）", file: "internal/agent/session_extract.go", patterns: ["report(false)"] },
   { feature: "任务556 wire 字段", file: "internal/eventwire/wire.go", patterns: ["TokensPerSec int `json:\"tokensPerSec,omitempty\"`"] },
   { feature: "任务556 前端 reducer", file: "desktop/frontend/src/lib/useController.ts", patterns: ["case \"compaction_progress\":"] },
@@ -309,7 +309,7 @@ export const CHECKS = [
   // 魔改（函数内逻辑）也必须登记锚点——存在性检查（文件/符号还在）抓不住
   // 「函数还在但逻辑被上游版顶掉」。新特性落地时同步在此登记，锚点选
   // 语义性字符串（赋值/调用形态），不选注释。
-  { feature: "#10056 快照 fast path（projectionPending 不否决）", file: "internal/agent/save.go", patterns: ["deliberately not part of this decision"] },
+  { feature: "#10056 快照 fast path（projectionPending 不否决）", file: "internal/agent/save.go", patterns: ["projectionPending bool", "snapshot no-op fast path"] },
   { feature: "任务92① 预览 bridge 透传（不锚定 activeSessionDir）", file: "desktop/recovery_chains.go", patterns: ["RecoveryChainPreviewFor(mainPath, chainPath)"] },
   { feature: "任务92③ 内容快照/overlap LRU 缓存", file: "internal/agent/recovery_gc.go", patterns: ["contentSnapshotCache", "contentOverlapCache", "contentSnapshotCacheLimit"] },
   { feature: "任务92③ 宽松重放 LRU（非全清）", file: "internal/agent/recovery_chain_preview.go", patterns: ["tolerantReplayCache.order"] },
@@ -367,7 +367,7 @@ export const CHECKS = [
   // ── 任务 187：大会话首开读放大治理（尾部重放 + 写保护）（2026-09-20）──
   { feature: "任务187 尾部窗口重放", file: "internal/agent/session_dag_replay.go", patterns: ["func replaySessionDAGTail", "func sessionDAGTailWindowStart", "errSessionDAGTailUnavailable", "tailTruncated"] },
   { feature: "任务187 首屏加载入口与阈值", file: "internal/agent/session_load.go", patterns: ["func loadSessionTranscriptTail", "sessionTranscriptTailThresholdBytes", "sessionTranscriptTailWindowBytes"] },
-  { feature: "任务187 首屏 Session 与写保护", file: "internal/agent/save.go", patterns: ["func LoadSessionTail", "func (s *Session) upgradeTruncatedTranscriptForWrite", "loadSessionWithReader"] },
+  { feature: "任务187 首屏 Session 与写保护", file: "internal/agent/session_load.go", patterns: ["func LoadSessionTail(path string) (*Session, error)", "func (s *Session) upgradeTruncatedTranscriptForWrite(path string) error"] },
   { feature: "任务187 截断标记与会话克隆传递", file: "internal/agent/session.go", patterns: ["func (s *Session) TailTruncated", "tailTruncated:           s.tailTruncated"] },
   { feature: "任务187 Save 入口升级", file: "internal/agent/session_persist_observer.go", patterns: ["upgradeTruncatedTranscriptForWrite(path)"] },
   { feature: "任务187 重放失败负缓存", file: "internal/agent/session_replay_guard.go", patterns: ["func rememberSessionReplayRefusal", "func cachedSessionReplayRefusal", "sessionReplayRefusalLimit"] },
@@ -510,7 +510,7 @@ export const CHECKS = [
   // 广播 UserInput（wire 协议唯一「用户消息进会话」通道；退回无事件会重现「消费后
   // 正文无用户行」）、切回 resident 快路径先对 meta fingerprint 核对新鲜度（退回无
   // 核对会重现「切出切回零拉取零 reconcile 不刷新」）。少任何一个都会退回 580 双症状。
-  { feature: "任务580 inbox 开轮消费广播 UserInput（守卫+同步两路径共用；tl1152 回执带 durable CreatedAt 戳）", file: "internal/control/inbox_run.go", patterns: ["func (c *Controller) emitInboxUserInput", "Kind: event.UserInput", "c.emitInboxUserInput(itemID, display, at)", "c.emitInboxUserInput(id, firstNonEmptyStr(env.DisplayText, env.SubmitText), meta.CreatedAt)"] },
+  { feature: "任务580 inbox 开轮消费广播 UserInput（守卫+同步两路径共用；tl1152 回执带 durable CreatedAt 戳）", file: "internal/control/inbox_run.go", patterns: ["func (c *Controller) emitInboxUserInput", "Kind: event.UserInput", "c.emitInboxUserInput(itemID, display, at)", "c.emitInboxUserInput(id, textutil.FirstTrimmed(env.DisplayText, env.SubmitText), meta.CreatedAt)"] },
   { feature: "任务580 切回 resident 先核 meta fingerprint 再决定零拉取（tl1518 门扩 caller-skip 面：callerSkipOwesFreshnessGate）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["residentStale = !residentSurfaceFresh(resident, freshMeta)", "if (residentStale) {", "skipHistory = false;"] },
   { feature: "任务388 autopilot 代批上下文感知：两档 scope+自然语言 manifest（tail-kept 有界）", file: "internal/control/autopilot_approval.go", patterns: ["autopilotProxyContext", "PROXY SCOPE: level 1", "PROXY SCOPE: level 2", "PROXY MANIFEST"] },
   // 任务 433：recovery fence 无副作用工具白名单。三个锚点按链路登记——
@@ -1149,7 +1149,7 @@ export const CHECKS = [
   // 出口一行「controller: recovery fork decision」、doctor 全工作区分叉普查。
   // merge 顶掉任一环 = 分叉重新变回「只知道发生了、不知道谁触发谁写的盘」。
   { feature: "tl1443 冲突双方身份证据（digest 三元组+账本写者归类）", file: "internal/agent/save_conflict_identity.go", patterns: ["type SnapshotConflictIdentity struct", "func LedgerWriterOrigin"] },
-  { feature: "tl1443 冲突构造点填身份（三处）", file: "internal/agent/save.go", patterns: ["Identity:         newSnapshotConflictIdentity(baseState, nextDigest, existingDigest, ledger)", "noteLedgerCommit(path, committed, digest)"] },
+  { feature: "tl1443 冲突构造点填身份（三处）", file: "internal/agent/save.go", patterns: ["Identity:         newSnapshotConflictIdentity(baseState, nextDigest, existingDigest, ledger)", "newSnapshotConflictIdentity(baseState, nextDigest, existingDigest, ledger)"] },
   { feature: "tl1443 进程内账本提交环（对手写者归因）", file: "internal/agent/save_ledger_trace.go", patterns: ["func noteLedgerCommit", "func RecentLedgerCommit"] },
   { feature: "tl1443 决策行与字段（fork_decision/fork_reason/双方三元组/刹车窗/对手写路径）", file: "internal/control/recovery_fork_trace.go", patterns: ["controller: recovery fork decision", "\"fork_decision\", t.decision", "\"src_rev\", c.BaseRevision", "\"brake_seq\", b.seq", "\"peer_trigger\", p.origin.trigger"] },
   { feature: "tl1443 fork_trigger 枚举表（调用栈→写路径）", file: "internal/control/recovery_fork_trigger.go", patterns: ["var forkTriggerRows = []forkFrameRow{", "func ForkTriggerForFunction", "{\"(*App).tabSnapshotLoop\", forkTriggerTabAutosave}"] },

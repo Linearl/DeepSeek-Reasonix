@@ -3,9 +3,9 @@
 package main
 
 import (
-	"encoding/binary"
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/png"

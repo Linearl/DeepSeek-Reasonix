@@ -495,7 +495,7 @@ type DesktopConfig struct {
 	CheckUpdates            *bool `toml:"check_updates"` // startup update checks; nil keeps the default enabled
 	// UpdateChannel is a legacy compatibility field. It is accepted on read but
 	// ignored and omitted from future canonical writes.
-	UpdateChannel        string   `toml:"update_channel"`
+	UpdateChannel string `toml:"update_channel"`
 	// Telemetry/Metrics are read-only compatibility keys (tl1665): the fork's
 	// product decision is「我们不做遥测」, so the desktop never sends the
 	// anonymous launch ping nor aggregate desktop metrics. Old config files

@@ -424,7 +424,7 @@ type previewCompaction struct {
 	Reason        string `json:"reason"`
 	FoldInstalled bool   `json:"foldInstalled"`
 	LastSuccessAt int64  `json:"lastSuccessAt"`
-	Archive  string `json:"archive"`
+	Archive       string `json:"archive"`
 }
 
 func previewEventSessionMessages(path string) ([]HistoryMessage, bool, error) {

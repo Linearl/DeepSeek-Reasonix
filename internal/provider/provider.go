@@ -60,8 +60,8 @@ type Message struct {
 	RawContent string `json:"raw_content,omitempty"`
 	// ProviderContent is a transitional field written by early Context Engine v2
 	// builds. Loaders migrate it into Content/RawContent before normal use.
-	ProviderContent  string   `json:"provider_content,omitempty"`
-	Images           []string `json:"images,omitempty"` // vision refs: data URLs, http(s) image URLs, or Files API file-api- ids; embedded only for vision-capable models
+	ProviderContent string   `json:"provider_content,omitempty"`
+	Images          []string `json:"images,omitempty"` // vision refs: data URLs, http(s) image URLs, or Files API file-api- ids; embedded only for vision-capable models
 	// Audio holds inline audio data URLs (task 1008, first phase: file
 	// attachments only). A separate field from Images keeps the two capability
 	// gates independent; adapters embed it as input_audio parts only when the
@@ -888,19 +888,19 @@ type Chunk struct {
 	// (empty Text): the provider-issued reasoning item id/status capturedfrom the SSE stream, so the
 	// Agentcanpersist them into the sessionand the next turn's input reasoning item round-trips them (review
 	// #7234 — OpenAI Responses schema marks Reasoning.id required).
-	ReasoningID     string            // ChunkReasoning: provider-issued reasoning item id
-	ReasoningStatus string            // ChunkReasoning: final reasoning item status ("completed")
-	ToolCall        *ToolCall         // ChunkToolCallStart (ID+Name only), ChunkToolCallArgsDelta (ID+Name), ChunkToolCall (complete)
-	ArgChars        int               // ChunkToolCallArgsDelta: cumulative argument characters received for this call
+	ReasoningID     string    // ChunkReasoning: provider-issued reasoning item id
+	ReasoningStatus string    // ChunkReasoning: final reasoning item status ("completed")
+	ToolCall        *ToolCall // ChunkToolCallStart (ID+Name only), ChunkToolCallArgsDelta (ID+Name), ChunkToolCall (complete)
+	ArgChars        int       // ChunkToolCallArgsDelta: cumulative argument characters received for this call
 	// ArgsPreview rides ChunkToolCallArgsDelta: a bounded tail of the call's
 	// cumulative arguments (tl1475) so the UI can render a live preview of what
 	// the model is still writing. Purely display-only: never parsed, never
 	// executed, and never persisted as tool input.
-	ArgsPreview   string          // ChunkToolCallArgsDelta: bounded tail of the cumulative arguments
-	ResponsesItem json.RawMessage // ChunkResponsesItem: opaque validated Responses API output item
-	ServerSearch    *ServerSearchCall // ChunkServerSearch: display card + replay payload
-	Usage           *Usage            // ChunkUsage
-	Err             error             // ChunkError
+	ArgsPreview   string            // ChunkToolCallArgsDelta: bounded tail of the cumulative arguments
+	ResponsesItem json.RawMessage   // ChunkResponsesItem: opaque validated Responses API output item
+	ServerSearch  *ServerSearchCall // ChunkServerSearch: display card + replay payload
+	Usage         *Usage            // ChunkUsage
+	Err           error             // ChunkError
 }
 
 // Streaming argument preview budget (tl1475), in bytes. The excerpt carries

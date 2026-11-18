@@ -77,10 +77,10 @@ type logCollect struct {
 	EffortSwitchFallb int      // desktop: runtime build end trigger=set-effort 条数（快路径双双拒收）
 	EffortReadSlow    []sample // desktop: effort read breakdown（≥150ms 才落行，截断样本普查）
 
-	Warns           []warnLine // 窗口内命中巡检模式的 level=WARN 行（阶段 4 巡检池）
-	WarnTruncated   bool       // 巡检池达上限丢过行：判定期 FAIL 显式化，绝不静默
-	warnPatterns    []string   // 采集期过滤模式（= -warn-patterns，collectLogDir 注入）
-	backendRaw      []sample   // 后端 stage 行（待归并为普查）
+	Warns         []warnLine // 窗口内命中巡检模式的 level=WARN 行（阶段 4 巡检池）
+	WarnTruncated bool       // 巡检池达上限丢过行：判定期 FAIL 显式化，绝不静默
+	warnPatterns  []string   // 采集期过滤模式（= -warn-patterns，collectLogDir 注入）
+	backendRaw    []sample   // 后端 stage 行（待归并为普查）
 }
 
 // collectLogDir 扫描目录内 desktop.log 与轮转文件（desktop.log.N，N 越大越旧），

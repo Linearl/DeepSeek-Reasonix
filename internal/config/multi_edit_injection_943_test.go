@@ -26,8 +26,8 @@ func boolPtr943(v bool) *bool { return &v }
 // both absent reads as off.
 func TestMultiEditInjectionFallbackSemantics(t *testing.T) {
 	cases := []struct {
-		name    string
-		a, b    *bool
+		name         string
+		a, b         *bool
 		wantReadBack bool
 		wantInject   bool
 	}{

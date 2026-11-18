@@ -61,8 +61,8 @@ func TestManageSessionsArchiveReachesRegistryShell(t *testing.T) {
 		t.Fatalf("archive dry run on a registry shell must be reachable (same identity resolution as delete_session), got: %v", err)
 	}
 	var dry struct {
-		Status  string `json:"status"`
-		TopicID string `json:"topicId"`
+		Status   string `json:"status"`
+		TopicID  string `json:"topicId"`
 		Sessions []struct {
 			SessionPath string `json:"sessionPath"`
 		} `json:"sessions"`

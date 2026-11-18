@@ -90,21 +90,21 @@ func TestSessionLeaseHolderBlockCarriesFullIdentity(t *testing.T) {
 		return "reasonix-desktop.exe", `C:\Program Files\Reasonix\reasonix-desktop.exe`
 	})
 	info := &agent.SessionLeaseInfo{
-		PID:       4321,
-		Hostname:  "DESKTOP-XYZ",
+		PID:        4321,
+		Hostname:   "DESKTOP-XYZ",
 		AcquiredAt: time.Date(2026, 11, 3, 4, 34, 56, 0, time.UTC),
-		WriterID:  "writer-abc",
+		WriterID:   "writer-abc",
 	}
 	block := sessionLeaseHolderBlock("live", info)
 	fields := parseHolderBlock(t, block)
 	for k, want := range map[string]string{
-		"class":     "live",
-		"pid":       "4321",
-		"name":      "reasonix-desktop.exe",
-		"path":      `C:\Program Files\Reasonix\reasonix-desktop.exe`,
-		"host":      "DESKTOP-XYZ",
-		"acquired":  "2026-11-03T04:34:56Z",
-		"writer":    "writer-abc",
+		"class":    "live",
+		"pid":      "4321",
+		"name":     "reasonix-desktop.exe",
+		"path":     `C:\Program Files\Reasonix\reasonix-desktop.exe`,
+		"host":     "DESKTOP-XYZ",
+		"acquired": "2026-11-03T04:34:56Z",
+		"writer":   "writer-abc",
 	} {
 		if fields[k] != want {
 			t.Fatalf("block field %s = %q, want %q (block: %s)", k, fields[k], want, block)

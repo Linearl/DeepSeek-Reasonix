@@ -151,9 +151,9 @@ func assembleResourceSnapshot(now time.Time, bootAt time.Time, counters procCoun
 			Kind:          "main",
 			Measured:      counters.Available,
 		},
-		Runtime: runtimeView,
-		System:  sys,
-		Children: sortResourceChildren(children),
+		Runtime:   runtimeView,
+		System:    sys,
+		Children:  sortResourceChildren(children),
 		Subagents: resourceSubagentRows(subagents),
 	}
 	return view

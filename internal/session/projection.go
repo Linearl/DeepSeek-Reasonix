@@ -32,8 +32,8 @@ type Projection struct {
 	// projectTurnStart resets only the per-turn TodoWritten marker. A real
 	// reclaim (explicit empty todo/write, goal stall clear on the canonical
 	// side) still replaces or empties it through the write path.
-	Todos       []event.Todo
-	TodoWritten bool
+	Todos         []event.Todo
+	TodoWritten   bool
 	Interactions  map[string]string
 	ActiveTools   map[string]string
 	Recovery      *event.RecoveryStatus

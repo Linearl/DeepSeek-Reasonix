@@ -44,7 +44,6 @@ type SessionInfo struct {
 	ParentVersionID      string
 }
 
-
 // sessionOrderMetaCache memoizes the parsed branch meta for one session sidecar.
 //
 // Directory reconciliation runs on tab switches and conversation-head queries, and
@@ -64,7 +63,6 @@ type SessionInfo struct {
 //     TestListSessionsSkipsCleanupPending.
 var sessionOrderMetaCache sync.Map // metaPath -> sessionOrderMetaEntry
 
-
 type sessionOrderMetaEntry struct {
 	size  int64
 	mtime time.Time
@@ -72,7 +70,6 @@ type sessionOrderMetaEntry struct {
 	ok    bool
 	err   error
 }
-
 
 // loadBranchMetaCached is LoadBranchMeta with the parse reused while the sidecar's
 // size and mtime are unchanged. A missing sidecar is not cached: LoadBranchMeta
@@ -102,14 +99,12 @@ func loadBranchMetaCached(sessionPath string) (BranchMeta, bool, error) {
 	return meta, ok, err
 }
 
-
 // ListSessionOrder returns every *.jsonl session under dir in the same
 // most-recently-active order used by ListSessions, using only file metadata and
 // branch sidecars. A missing directory is not an error.
 func ListSessionOrder(dir string) ([]SessionOrderInfo, error) {
 	return ListSessionOrderWithRecoveryPreferenceResolver(dir, RecoveryPreferenceCurrent)
 }
-
 
 // ListSessionOrderWithRecoveryPreferenceResolver lets catalog reconciliation
 // reuse its wave-local transcript snapshot when validating explicit choices.
@@ -264,7 +259,6 @@ func ListSessionOrderWithRecoveryPreferenceResolver(dir string, resolve Recovery
 	return out, nil
 }
 
-
 // ListSessions returns every non-empty *.jsonl session under dir,
 // most-recently-active first, each with a preview line so the picker can show
 // something the user recognises. It never decodes a transcript: legacy counts
@@ -277,7 +271,6 @@ func ListSessions(dir string) ([]SessionInfo, error) {
 	}
 	return sessionsFromOrder(ordered), nil
 }
-
 
 // sessionsFromOrder applies the shared listing projection: the single source
 // of the drop rules (stale projection without content → dropped; stale
@@ -309,7 +302,6 @@ func sessionsFromOrder(ordered []SessionOrderInfo) []SessionInfo {
 	return out
 }
 
-
 // ListSessionsMetadataOnly is ListSessions with the recovery-preference proof
 // skipped: it never replays a transcript, so a sidecar carrying
 // RecoveryPreferred + digest cannot trigger a full LoadSession + digest cycle
@@ -331,4 +323,3 @@ func ListSessionsMetadataOnly(dir string) ([]SessionInfo, error) {
 	}
 	return sessionsFromOrder(ordered), nil
 }
-

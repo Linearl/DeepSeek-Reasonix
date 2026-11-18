@@ -115,7 +115,7 @@ func BuildRoster(run RunRow, members []MemberRow, events []EventRow, now int64) 
 
 	views := make([]MemberStateView, 0, len(members))
 	health := RosterHealth{
-		Terminal:      terminal,
+		Terminal:       terminal,
 		LastProgressAt: lastProgress,
 		MembersTotal:   len(members),
 	}

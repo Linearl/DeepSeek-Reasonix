@@ -54,5 +54,5 @@ Reasonix 是「可以一直开着跑的编码 Agent」：配置驱动、多模�
 
 ## 下一步
 
-- [fork 特性（四维度+完整清单）](key-features.html)
+- [fork 特性（三维定位+完整清单）](key-features.html)
 - [配置项参考](../reference/config.html)

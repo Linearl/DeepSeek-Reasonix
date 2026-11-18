@@ -30,11 +30,11 @@ func TestMapEffortRankSevenToThree(t *testing.T) {
 		level string
 		want  string
 	}{
-		{"level7", "high"},  // rank 1.0 → slot m-1: ceiling → ceiling
-		{"level1", "low"},   // rank 0.0 → slot 0: floor → floor
-		{"level2", "low"},   // rank 1/6 → round(1/3)=0
+		{"level7", "high"},   // rank 1.0 → slot m-1: ceiling → ceiling
+		{"level1", "low"},    // rank 0.0 → slot 0: floor → floor
+		{"level2", "low"},    // rank 1/6 → round(1/3)=0
 		{"level4", "medium"}, // rank 0.5 → slot 1
-		{"level6", "high"},  // rank 5/6 → round(5/3)=2
+		{"level6", "high"},   // rank 5/6 → round(5/3)=2
 	}
 	for _, tc := range cases {
 		got, _, ok := MapEffortAcrossVocabularies(src, dst, tc.level)

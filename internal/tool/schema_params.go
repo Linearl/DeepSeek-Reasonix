@@ -11,11 +11,11 @@ import (
 // the schema itself stays the single source of truth; this is a pure
 // derivation, never a second hand-written definition.
 type SchemaParam struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type,omitempty"`
-	Required    bool     `json:"required"`
-	Enum        []any    `json:"enum,omitempty"`
-	Description string   `json:"description,omitempty"`
+	Name        string `json:"name"`
+	Type        string `json:"type,omitempty"`
+	Required    bool   `json:"required"`
+	Enum        []any  `json:"enum,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // SchemaParams derives per-parameter rows (name/type/required/enum/description)
