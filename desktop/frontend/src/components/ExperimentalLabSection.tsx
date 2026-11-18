@@ -1894,6 +1894,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           {selected === "smartAutomation" && (
             <>
               <SettingsField label={labLabel("smartAutomation", t("settings.smartAutomation"))} hint={t("settings.smartAutomationHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              {/* tl1688：后台任务完成时唤醒空闲会话续轮——tl553 机制早已在链上（默认关），
+                  本件只把它暴露成实验室开关（用户指定位置：智能自动化下面）。
+                  额度影响写进说明：自动开轮受自驱预算约束（最多 3 轮/600s + 60s 节流）。 */}
+              <SettingsField label={t("settings.backgroundJobWakeIdleSession")} hint={t("settings.backgroundJobWakeIdleSessionHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.backgroundJobWakeIdleSession) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetBackgroundJobWakeIdleSession(on))}
+                    >
+                      {t(on ? "settings.backgroundJobWakeIdleSession.on" : "settings.backgroundJobWakeIdleSession.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* tl1453：梦境族卡随 experimental_dream 实验退役（宪法 Q1），
                   卡内两行（整理开关 + 创建 dream 自动任务）一并摘除；
                   「后台与续跑」族卡原样保留。 */}

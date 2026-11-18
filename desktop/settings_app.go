@@ -579,6 +579,8 @@ type SettingsView struct {
 	// the config leaves it empty, so the panel shows the effective path.
 	ExperimentalDecisionPatterns bool   `json:"experimentalDecisionPatterns"`
 	DecisionPatternFilePath      string `json:"decisionPatternFilePath"`
+	// tl1688: 实验室 UI 读面——后台任务完成时唤醒空闲会话续轮（默认关）。
+	BackgroundJobWakeIdleSession bool `json:"backgroundJobWakeIdleSession"`
 	DecisionPatternThreshold     int    `json:"decisionPatternThreshold"`
 	DecisionPatternAutoApprove   bool   `json:"decisionPatternAutoApprove"`
 	// tl1193b: plan-E pinned standing-tier index mode readback. Boot snapshot —
@@ -2090,6 +2092,7 @@ func (a *App) Settings() SettingsView {
 		// Task 801: decision-pattern readback (empty path resolves to default).
 		ExperimentalDecisionPatterns: cfg.Agent.ExperimentalDecisionPatterns,
 		DecisionPatternFilePath:      decisionPatternPathForView(cfg),
+		BackgroundJobWakeIdleSession: cfg.BackgroundJobWakeIdleSession(),
 		DecisionPatternThreshold:     cfg.Agent.DecisionPatternThreshold,
 		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
 		// tl1193b: plan-E pinned index mode readback.

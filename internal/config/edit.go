@@ -1636,6 +1636,19 @@ func (c *Config) SetExperimentalAutoLoadOlder(enabled bool) error {
 	return nil
 }
 
+// SetBackgroundJobWakeIdleSession toggles the idle-session wake for owned
+// background jobs (tl553 mechanism, tl1688 exposes it in the lab UI).
+// Off by default (铁律 2: the self-drive budget is bound to it) — a nil
+// pointer means off, so an unset key keeps the default.
+func (c *Config) SetBackgroundJobWakeIdleSession(enabled bool) error {
+	if c.Tools.BackgroundJobs.WakeIdleSession == nil {
+		c.Tools.BackgroundJobs.WakeIdleSession = &enabled
+		return nil
+	}
+	*c.Tools.BackgroundJobs.WakeIdleSession = enabled
+	return nil
+}
+
 // SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
 // Single-writes the [agent] key (task 473); the [desktop] mirror is retired
 // and only cleared here. Agent.ExperimentalSessionCollab gates the
