@@ -7,7 +7,7 @@ toolchain go1.26.9
 require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.1
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.1
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
 	github.com/BurntSushi/toml v1.6.0
 	github.com/alecthomas/chroma/v2 v2.27.0
@@ -20,7 +20,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/kevinburke/ssh_config v1.6.0
-	github.com/klauspost/compress v1.20.3
+	github.com/klauspost/compress v1.20.4
 	github.com/larksuite/oapi-sdk-go/v3 v3.12.2
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -38,14 +38,14 @@ require (
 	github.com/yuin/goldmark v1.8.7
 	github.com/zalando/go-keyring v0.2.8
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.58.0
-	golang.org/x/image v0.47.0
-	golang.org/x/mod v0.42.0
+	golang.org/x/crypto v0.59.0
+	golang.org/x/image v0.48.0
+	golang.org/x/mod v0.43.0
 	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.38.0
 	golang.org/x/sys v0.50.0
-	golang.org/x/term v0.47.0
-	golang.org/x/text v0.43.0
+	golang.org/x/term v0.48.0
+	golang.org/x/text v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.62.0
 	mvdan.cc/sh/v3 v3.14.1
@@ -76,7 +76,7 @@ require (
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/xo/terminfo v1.0.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
