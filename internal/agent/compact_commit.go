@@ -67,9 +67,16 @@ func (a *Agent) summaryProjectionState(commit summaryProjectionCommit) Compactio
 	now := time.Now().UTC()
 	summaryHash := summaryContentHash(commit.summary)
 	coveredHash := coveredPrefixHash(commit.canonical, commit.covered)
+	// tl1691: a pointer fold is not a summary — the receipt must say which
+	// lane produced the checkpoint, or the token account reads as if the
+	// full-prefill summary request was spent when it was not.
+	action := "summary"
+	if commit.result.Mode == CompactionModePointer {
+		action = "pointer"
+	}
 	receipt := &ContextMaintenanceReceipt{
 		OperationID: fmt.Sprintf("summary-%d-%s", projectionVersion, commit.outputHash), Status: "applied",
-		Action: "summary", Trigger: commit.trigger, SourceProjection: commit.projectionVersion,
+		Action: action, Trigger: commit.trigger, SourceProjection: commit.projectionVersion,
 		ProjectionVersion: projectionVersion, CoveredCount: commit.covered, CoveredPrefixHash: coveredHash,
 		InputHash: commit.inputHash, OutputHash: commit.outputHash, InputTokens: commit.sourceTokens,
 		ResultTokens: commit.projectionTokens, SavedTokens: max(0, commit.sourceTokens-commit.projectionTokens),

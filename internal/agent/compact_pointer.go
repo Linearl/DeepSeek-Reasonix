@@ -33,10 +33,19 @@ const (
 	foldPointerLineMaxRunes  = 110
 )
 
+// zeroSummaryFoldEnabled resolves the tl1691 lane: an explicit override wins
+// (tests, harnesses), otherwise the live config read decides.
+func (a *Agent) zeroSummaryFoldEnabled() bool {
+	if a.zeroSummaryOverride != nil {
+		return *a.zeroSummaryOverride
+	}
+	return config.ZeroSummaryCompactLive()
+}
+
 // foldProduct produces the fold's replacement document: a digest on the
 // summary lane, or a pointer + index on the tl1691 zero-summary lane.
 func (a *Agent) foldProduct(ctx context.Context, trigger string, canonical []provider.Message, pointerFrom, covered int, fold []provider.Message, instructions string, sourceTokens int, inputMode string, req foldRequest) (foldSummary, CompactionTelemetry, error) {
-	if config.ZeroSummaryCompactLive() {
+	if a.zeroSummaryFoldEnabled() {
 		return a.foldToPointer(trigger, canonical, pointerFrom, covered, fold, sourceTokens, inputMode)
 	}
 	return a.summarizeFold(ctx, trigger, fold, instructions, sourceTokens, inputMode, req)
