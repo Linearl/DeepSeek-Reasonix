@@ -92,6 +92,16 @@ func (s Store) fingerprint() string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// Fingerprint exposes the store's stat fingerprint as the change token for
+// "has this store changed since it was read". It is the same token the
+// resident recall index is keyed by, so a snapshot whose token still matches
+// describes exactly the same facts. tl1683 uses it to decide whether a
+// 363A reuse build may reuse the previous memory snapshot instead of
+// re-reading the whole store.
+func (s Store) Fingerprint() string {
+	return s.fingerprint()
+}
+
 // recallIndexFor returns the resident index when the store's stat fingerprint
 // is unchanged, building and adopting it otherwise. Racing first recalls both
 // build and the last store wins — the build is idempotent, so the race is
