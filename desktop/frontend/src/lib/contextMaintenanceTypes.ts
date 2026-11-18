@@ -2,7 +2,7 @@ import type { Translator } from "./i18n";
 
 export type ContextMaintenanceStatus = "planned" | "applied" | "noop" | "blocked" | "failed";
 /** New writers emit summary | noop | truncate (the lossy ceiling rescue). snip/prune/native are legacy restore-only. */
-export type ContextMaintenanceAction = "summary" | "noop" | "truncate" | "snip" | "prune" | "native_tool_clear";
+export type ContextMaintenanceAction = "summary" | "pointer" | "noop" | "truncate" | "snip" | "prune" | "native_tool_clear";
 
 export interface WireContextMaintenance {
   status?: ContextMaintenanceStatus;
