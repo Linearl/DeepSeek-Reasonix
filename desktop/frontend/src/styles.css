@@ -36518,6 +36518,70 @@ button.statusbar__mcp:focus-visible {
   pointer-events: none;
 }
 
+/* tl1693: the updates tab's fork release list — compact rows under the check
+   control. The running version's row carries the accent "current" badge; the
+   whole section stays unmounted when the channel lookup fails, so these rules
+   only ever paint a successful listing. */
+.fork-releases {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+.fork-releases__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fork-releases__title {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.fork-releases__hint {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+.fork-releases__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fork-releases__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg-dim) 12%, transparent);
+  font-size: var(--text-xs);
+}
+.fork-releases__row:last-child {
+  border-bottom: 0;
+}
+.fork-releases__tag {
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fork-releases__date {
+  color: var(--fg-faint);
+  flex-shrink: 0;
+}
+.fork-releases__current {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.fork-releases__download {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .project-tree__group {
   position: relative;
 }

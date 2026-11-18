@@ -3024,6 +3024,30 @@ export interface UpdateInfo {
   checkFailed?: boolean;
 }
 
+// tl1693: the version page's release list — the fork channel's published
+// releases, newest first, with the running version's row marked. Failed
+// carries a channel lookup that could not complete; the UI hides the list
+// instead of erroring (same silent-degrade face as the check).
+export interface ForkReleaseAsset {
+  name: string;
+  url: string;
+  size: number;
+}
+
+export interface ForkReleaseItem {
+  tag: string;
+  version: string;
+  notes: string;
+  published: string; // RFC3339; "" when the channel did not report one
+  current: boolean;
+  assets: ForkReleaseAsset[];
+}
+
+export interface ForkReleaseList {
+  releases: ForkReleaseItem[];
+  failed: boolean;
+}
+
 export interface UpdateDownloadResult {
   requestId: string;
   version: string;

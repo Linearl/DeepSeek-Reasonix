@@ -39,6 +39,7 @@ import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
 import { FORK_CHANGELOG_URL, FORK_NEW_ISSUE_URL, FORK_OPEN_ISSUES_URL } from "../lib/forkLinks";
+import { ForkReleasesList } from "./ForkReleasesList";
 import { useRevealLocation } from "../lib/revealLocation";
 import { takeSettingsViewPrefetch, invalidateSettingsViewPrefetch } from "../lib/settingsPrefetch";
 import { settingsLoadRetry } from "../lib/settingsLoadRetry";
@@ -8224,6 +8225,10 @@ function UpdatesSection({
           </button>
         </div>
       )}
+      {/* tl1693: the fork channel's release list — newest first, running
+          version marked, installer links. Renders nothing on a failed/empty
+          lookup (availability first). */}
+      <ForkReleasesList />
       <SettingsField
         className="settings-field--wide-copy"
         label={t("changelog.title")}

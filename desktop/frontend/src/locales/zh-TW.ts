@@ -4284,6 +4284,12 @@ export const zhTW: Record<DictKey, string> = {
   "updater.checking": "正在檢查更新…",
   "updater.upToDate": "已是最新版本。",
   "updater.available": "發現新版本：{v}",
+  // tl1693：側欄腳註更新燈與版本頁發布列表。
+  "updater.sidebarUpdateAvailable": "有新版本 —— 開啟更新設定",
+  "updater.releasesTitle": "發布列表",
+  "updater.releasesHint": "來自 fork 的 GitHub 發布；已標記目前運行版本。",
+  "updater.releasesCurrent": "目前版本",
+  "updater.releasesInstallers": "安裝包",
   "updater.releaseNotes": "更新說明",
   "updater.updateAndRestart": "更新並重新啟動",
   "updater.goToDownload": "前往下載頁",

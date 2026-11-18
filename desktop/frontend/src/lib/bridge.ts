@@ -175,6 +175,7 @@ import type {
   TopicMeta,
   ToolApprovalMode,
   TurnEventReplayView,
+  ForkReleaseList,
   UpdateInfo,
   UpdateProgress,
   WireEvent,
@@ -2318,6 +2319,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   /** Build timestamp stamped by the build script; shown under the version (task: update confirmation). */
   BuildTime(): Promise<string>;
   CheckUpdate(channel: string): Promise<UpdateInfo | null>;
+  /** tl1693: the fork channel's published releases for the version page list; failed=true degrades silently. */
+  ForkListReleases(): Promise<ForkReleaseList>;
   /** v1.20+ single-action update: download, verify, install, relaunch. */
   ApplyUpdateRequest(channel: string, expectedVersion: string, requestId: string): Promise<void>;
   /**
@@ -8121,6 +8124,10 @@ function makeMockApp(): AppBindings {
         downloadUrl: "",
         assetSize: 0,
       };
+    },
+    async ForkListReleases() {
+      // Browser preview: an empty list hides the version page's release section.
+      return { releases: [], failed: false };
     },
     async ApplyUpdateRequest(channel: string, expectedVersion: string, requestId: string) {
       void channel;
