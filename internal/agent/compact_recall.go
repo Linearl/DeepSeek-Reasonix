@@ -14,7 +14,8 @@ import (
 
 // A fold moves earlier messages out of the model-visible view. Recall is what
 // brings them back: the canonical transcript keeps them verbatim, so a read is
-// a lookup, not a re-derivation.
+// a lookup, not a re-derivation (studio compact_recall.go / compact_search.go
+// semantics, ported onto this fork's session state).
 //
 // The budget is per compaction generation, so the fold that freed the window
 // cannot be undone by the turns after it: a recall loop runs out of budget
@@ -24,22 +25,22 @@ const (
 	minRecallBudgetTokens = 2000
 )
 
+// Search constants. recallSearchNoise drops trailing hits far below the best
+// one, so a query whose terms are common does not return twenty near-zero rows.
+const (
+	defaultRecallSearchLimit = 8
+	maxRecallSearchLimit     = 20
+	recallSnippetRunes       = 240
+	recallSearchNoise        = 0.25
+)
+
 // Recall document kinds. tool_input is a call's arguments and tool_output its
-// result; both are addressed by the block that holds the call.
+// result; both are addressed by the assistant message that made the call.
 const (
 	recallKindUser      = "user_text"
 	recallKindAssistant = "assistant_text"
 	recallKindToolIn    = "tool_input"
 	recallKindToolOut   = "tool_output"
-)
-
-const (
-	defaultRecallSearchLimit = 8
-	maxRecallSearchLimit     = 20
-	recallSnippetRunes       = 240
-	// recallSearchNoise drops trailing hits far below the best one, so a query
-	// whose terms are common does not return twenty near-zero rows.
-	recallSearchNoise = 0.25
 )
 
 // recallBudget is one generation's ceiling on pulling folded content back.
@@ -52,7 +53,7 @@ func (a *Agent) recallBudget() int {
 }
 
 // RecallContext is the read half of the recall mechanism: it answers with
-// content the fold replaced, addressed by block or found by keyword.
+// content the fold replaced, addressed by position or found by keyword.
 func (a *Agent) RecallContext(ctx context.Context, req tool.RecallRequest) (tool.RecallResult, error) {
 	return a.recallContext(ctx, req)
 }
@@ -67,7 +68,7 @@ func (a *Agent) recallContext(_ context.Context, req tool.RecallRequest) (tool.R
 	case query == "" && len(req.Positions) == 0:
 		return tool.RecallResult{}, fmt.Errorf("recall: no positions given")
 	}
-	if a.sess == nil || a.sess.conversation == nil {
+	if a.sess.conversation == nil {
 		return tool.RecallResult{}, fmt.Errorf("recall is unavailable outside an active agent session")
 	}
 	canonical, _ := a.sess.conversation.snapshotMessagesVersion()
@@ -79,30 +80,26 @@ func (a *Agent) recallContext(_ context.Context, req tool.RecallRequest) (tool.R
 	if covered <= 0 {
 		return tool.RecallResult{}, fmt.Errorf("recall: nothing has been folded in this session yet, so every message is still in your context")
 	}
-	if !projectionValid(*state, canonical) {
-		// The frozen prefix no longer matches what the projection stands for, so
-		// an address would name a different message than it did when it was
-		// published. Serving it would be worse than refusing.
-		return tool.RecallResult{}, fmt.Errorf("recall: the folded region changed since it was folded; read the current context instead")
-	}
-	if state.Recall.Generation != state.Generation {
-		state.Recall = RecallLedger{Generation: state.Generation}
+	if state.Recall == nil || state.Recall.Generation != state.Generation {
+		state.Recall = &RecallLedger{Generation: state.Generation}
 	}
 	budget := a.recallBudget()
 	left := budget - state.Recall.SpentTokens
-	blocks := recallBlocks(canonical, covered)
 	if query != "" {
-		return a.searchRecallLocked(canonical, blocks, query, req, budget, left)
+		return a.searchRecallLocked(canonical[:covered], query, req, budget, left)
 	}
 
 	var body strings.Builder
 	var recalled, missing []int
 	for _, pos := range req.Positions {
-		if pos < 1 || pos > len(blocks) {
+		if pos < 0 || pos >= len(canonical) {
 			missing = append(missing, pos)
 			continue
 		}
-		rendered := renderRecallBlock(canonical[blocks[pos-1].start:blocks[pos-1].end])
+		if pos >= covered {
+			return tool.RecallResult{}, fmt.Errorf("recall: #%d is not folded — it is still in your context, so read it there", pos)
+		}
+		rendered := renderRecallSpan(recallSpan(canonical, pos))
 		if strings.TrimSpace(rendered) == "" {
 			missing = append(missing, pos)
 			continue
@@ -114,7 +111,7 @@ func (a *Agent) recallContext(_ context.Context, req tool.RecallRequest) (tool.R
 		return tool.RecallResult{BudgetLeft: left, Missing: missing},
 			fmt.Errorf("recall: %s named nothing the transcript still holds", positionsText(missing))
 	}
-	// Refused whole rather than truncated: a half-recalled block reads as the
+	// Refused whole rather than truncated: a half-recalled span reads as the
 	// whole of what was there, which is the failure recall exists to prevent.
 	cost := recallCostTokens(body.String())
 	if cost > left {
@@ -149,44 +146,34 @@ func recallCostTokens(text string) int {
 	return estimateTextTokens(text)
 }
 
-// recallBlock is one addressable unit of the folded region: a user turn and
-// the work that answered it.
-type recallBlock struct {
-	ordinal int
-	start   int // canonical index, inclusive
-	end     int // canonical index, exclusive
-}
-
-// recallBlocks partitions the folded region into blocks. A block starts at a
-// user-authored turn, so an address names a piece of work rather than a
-// fragment of one. The partition depends only on the canonical prefix, so an
-// address published by one fold still names the same work after the next.
-func recallBlocks(canonical []provider.Message, covered int) []recallBlock {
-	if covered > len(canonical) {
-		covered = len(canonical)
+// recallSpan returns the message at pos plus the tool results that answer it.
+// An index line addresses the call, and a call without its result is the half
+// that says least.
+func recallSpan(canonical []provider.Message, pos int) []provider.Message {
+	span := []provider.Message{canonical[pos]}
+	wanted := map[string]bool{}
+	for _, tc := range canonical[pos].ToolCalls {
+		wanted[tc.ID] = true
 	}
-	blocks := make([]recallBlock, 0, 8)
-	start := 0
-	for i := 0; i < covered; i++ {
-		if i > start && IsUserAuthoredTurnMessage(canonical[i]) {
-			blocks = append(blocks, recallBlock{ordinal: len(blocks) + 1, start: start, end: i})
-			start = i
+	for i := pos + 1; i < len(canonical) && len(wanted) > 0; i++ {
+		m := canonical[i]
+		if m.Role != provider.RoleTool {
+			break
+		}
+		if wanted[m.ToolCallID] {
+			span = append(span, m)
+			delete(wanted, m.ToolCallID)
 		}
 	}
-	if start < covered {
-		blocks = append(blocks, recallBlock{ordinal: len(blocks) + 1, start: start, end: covered})
-	}
-	return blocks
+	return span
 }
 
-// renderRecallBlock renders a recalled block the way it happened: the tool
+// renderRecallSpan renders a recalled span the way it happened: the tool
 // arguments and the tool bodies stay whole, because a recall exists to return
-// what was actually said and run.
-//
-// Only provider-visible content is returned. The local original
-// (provider.Message.RawContent) is display-only state that never reaches a
-// provider, and a recall result does.
-func renderRecallBlock(msgs []provider.Message) string {
+// what was actually said and run. Only provider-visible content is returned —
+// RawContent is display-only state that never reaches a provider, and a recall
+// result does.
+func renderRecallSpan(msgs []provider.Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
 		if m.LocalOnly {
@@ -194,7 +181,7 @@ func renderRecallBlock(msgs []provider.Message) string {
 		}
 		switch m.Role {
 		case provider.RoleUser:
-			fmt.Fprintf(&b, "[user]\n%s\n\n", m.Content)
+			fmt.Fprintf(&b, "[user]\n%s\n\n", UserMessageText(m))
 		case provider.RoleAssistant:
 			if m.Content != "" {
 				fmt.Fprintf(&b, "[assistant]\n%s\n", m.Content)
@@ -204,12 +191,21 @@ func renderRecallBlock(msgs []provider.Message) string {
 			}
 			b.WriteString("\n")
 		case provider.RoleTool:
-			fmt.Fprintf(&b, "[tool %s result]\n%s\n\n", m.Name, m.Content)
+			fmt.Fprintf(&b, "[tool %s result]\n%s\n\n", m.Name, recallToolBody(m))
 		case provider.RoleSystem:
 			fmt.Fprintf(&b, "[system]\n%s\n\n", m.Content)
 		}
 	}
 	return b.String()
+}
+
+// recallToolBody is what the call actually returned, for the one caller whose
+// answer is that and whose own budget bounds the size.
+func recallToolBody(m provider.Message) string {
+	if m.RawContent != "" {
+		return m.RawContent
+	}
+	return m.Content
 }
 
 // positionsText names the addresses a request asked for that are gone.
@@ -226,31 +222,24 @@ func positionsText(positions []int) string {
 
 // recallDoc is one searchable unit of the folded region.
 type recallDoc struct {
-	block  int
-	kind   string
-	tool   string
-	text   string
-	counts map[string]int
-	length int
+	position int // canonical position the hit is addressed by
+	kind     string
+	tool     string
+	text     string
+	counts   map[string]int
+	length   int
 }
 
 // buildRecallDocs turns the folded region into searchable units. A tool result
-// is searched on its own text but addressed by the block that holds the call,
-// because a read returns the call together with its output.
-func buildRecallDocs(canonical []provider.Message, blocks []recallBlock) []recallDoc {
-	blockOf := make(map[int]int, len(canonical))
-	for _, b := range blocks {
-		for i := b.start; i < b.end && i < len(canonical); i++ {
-			blockOf[i] = b.ordinal
-		}
-	}
-	docs := make([]recallDoc, 0, len(canonical))
-	add := func(idx int, kind, toolName, text string) {
+// is searched on its own text but addressed by the assistant call above it,
+// because recallSpan reads a call together with its results: addressing the
+// result would return output without the command behind it.
+func buildRecallDocs(region []provider.Message) []recallDoc {
+	callAt := map[string]int{}
+	callName := map[string]string{}
+	var docs []recallDoc
+	add := func(pos int, kind, toolName, text string) {
 		if strings.TrimSpace(text) == "" {
-			return
-		}
-		block, ok := blockOf[idx]
-		if !ok {
 			return
 		}
 		terms := retrieval.Tokens(text)
@@ -258,33 +247,34 @@ func buildRecallDocs(canonical []provider.Message, blocks []recallBlock) []recal
 			return
 		}
 		docs = append(docs, recallDoc{
-			block: block, kind: kind, tool: toolName, text: text,
+			position: pos, kind: kind, tool: toolName, text: text,
 			counts: retrieval.Counts(terms), length: len(terms),
 		})
 	}
-	callAt := map[string]int{}
-	callName := map[string]string{}
-	for i, m := range canonical {
+	for i, m := range region {
 		if m.LocalOnly {
 			continue
 		}
 		for _, tc := range m.ToolCalls {
 			callAt[tc.ID], callName[tc.ID] = i, tc.Name
+			add(i, recallKindToolIn, tc.Name, tc.Name+" "+tc.Arguments)
 		}
 		switch m.Role {
 		case provider.RoleUser:
-			add(i, recallKindUser, "", UserMessageText(m))
+			// A prior digest is itself folded content, but searching it would
+			// rank the summary over the messages it replaced — the exact
+			// secondhand text recall exists to bypass.
+			if !isCompactionSummary(m) {
+				add(i, recallKindUser, "", UserMessageText(m))
+			}
 		case provider.RoleAssistant:
 			add(i, recallKindAssistant, "", m.Content)
-			for _, tc := range m.ToolCalls {
-				add(i, recallKindToolIn, tc.Name, tc.Name+" "+tc.Arguments)
-			}
 		case provider.RoleTool:
-			at, ok := callAt[m.ToolCallID]
+			pos, ok := callAt[m.ToolCallID]
 			if !ok {
 				continue
 			}
-			add(at, recallKindToolOut, callName[m.ToolCallID], m.Content)
+			add(pos, recallKindToolOut, callName[m.ToolCallID], recallToolBody(m))
 		}
 	}
 	return docs
@@ -292,8 +282,8 @@ func buildRecallDocs(canonical []provider.Message, blocks []recallBlock) []recal
 
 // searchRecallLocked ranks the folded region and charges the snippets to this
 // generation's recall budget. Callers hold compactionMu.
-func (a *Agent) searchRecallLocked(canonical []provider.Message, blocks []recallBlock, query string, req tool.RecallRequest, budget, left int) (tool.RecallResult, error) {
-	hits, searched, err := searchRecallRegion(canonical, blocks, query, normalizeRecallLimit(req.Limit))
+func (a *Agent) searchRecallLocked(region []provider.Message, query string, req tool.RecallRequest, budget, left int) (tool.RecallResult, error) {
+	hits, err := searchFoldedRegion(region, query, normalizeRecallLimit(req.Limit))
 	if err != nil {
 		return tool.RecallResult{BudgetLeft: left}, err
 	}
@@ -301,8 +291,8 @@ func (a *Agent) searchRecallLocked(canonical []provider.Message, blocks []recall
 		// Not an error: "it is not in the folded region" is an answer, and
 		// failing the call would read as the search itself being broken.
 		return tool.RecallResult{
-			Text:     fmt.Sprintf("No folded message matches %q. The %d folded messages were all searched.", query, searched),
-			Searched: searched, BudgetLeft: left,
+			Text:     fmt.Sprintf("No folded message matches %q. The %d folded messages were all searched.", query, len(region)),
+			Searched: len(region), BudgetLeft: left,
 		}, nil
 	}
 	text := renderRecallHits(query, hits)
@@ -314,23 +304,18 @@ func (a *Agent) searchRecallLocked(canonical []provider.Message, blocks []recall
 	a.sess.compactionState.Recall.SpentTokens += cost
 	a.persistRecallLedger()
 	return tool.RecallResult{
-		Text: text, Hits: hits, Searched: searched,
+		Text: text, Hits: hits, Searched: len(region),
 		Tokens: cost, BudgetLeft: budget - a.sess.compactionState.Recall.SpentTokens,
 	}, nil
 }
 
-// searchRecallRegion ranks the folded region against a query and returns the
-// hits with the block each is addressed by.
-func searchRecallRegion(canonical []provider.Message, blocks []recallBlock, query string, limit int) ([]tool.RecallHit, int, error) {
+// searchFoldedRegion ranks the folded region against a query.
+func searchFoldedRegion(region []provider.Message, query string, limit int) ([]tool.RecallHit, error) {
 	terms, err := retrieval.QueryTerms(query)
 	if err != nil {
-		return nil, 0, fmt.Errorf("recall: %w", err)
+		return nil, fmt.Errorf("recall: %w", err)
 	}
-	docs := buildRecallDocs(canonical, blocks)
-	searched := 0
-	for _, b := range blocks {
-		searched += b.end - b.start
-	}
+	docs := buildRecallDocs(region)
 	counts := make([]map[string]int, 0, len(docs))
 	for _, d := range docs {
 		counts = append(counts, d.counts)
@@ -358,7 +343,7 @@ func searchRecallRegion(canonical []provider.Message, blocks []recallBlock, quer
 		if ranked[i].score != ranked[j].score {
 			return ranked[i].score > ranked[j].score
 		}
-		return ranked[i].doc.block < ranked[j].doc.block
+		return ranked[i].doc.position < ranked[j].doc.position
 	})
 	ranked = retrieval.KeepTopRelativeScore(ranked, recallSearchNoise, func(s scored) float64 { return s.score })
 
@@ -368,19 +353,19 @@ func searchRecallRegion(canonical []provider.Message, blocks []recallBlock, quer
 		if len(hits) >= limit {
 			break
 		}
-		// One line per (block, kind): a call and its result already share an
+		// One line per (position, kind): a call and its result already share an
 		// address, and reading it once returns both.
-		key := fmt.Sprintf("%d\x00%s", s.doc.block, s.doc.kind)
+		key := fmt.Sprintf("%d\x00%s", s.doc.position, s.doc.kind)
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
 		hits = append(hits, tool.RecallHit{
-			Position: s.doc.block, Kind: s.doc.kind, Tool: s.doc.tool,
+			Position: s.doc.position, Kind: s.doc.kind, Tool: s.doc.tool,
 			Snippet: retrieval.MakeSnippet(s.doc.text, query, terms, recallSnippetRunes),
 		})
 	}
-	return hits, searched, nil
+	return hits, nil
 }
 
 // renderRecallHits is what the model reads back. Each line is an address it
