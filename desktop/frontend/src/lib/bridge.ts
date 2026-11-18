@@ -196,6 +196,33 @@ export const COMPACT_RATIO_MIN_PERCENT = 30, COMPACT_RATIO_MAX_PERCENT = 85;
 
 // SessionEventsEntry/SessionEventsInventoryView/SessionEventsCompactResult
 // carry the task-333 storage panel's event-log statistic card and compact run.
+/** tl1696: 派发四态面板读面（与 internal/collabinbox/dispatch.go 的 json tag 对齐）。 */
+export interface CollabSentDispatchRow {
+  id: string;
+  fromContactId: string;
+  toContactId: string;
+  fromRole?: string;
+  toRole?: string;
+  toTitle?: string;
+  preview: string;
+  delivery?: string;
+  requireReply?: boolean;
+  at: number;
+  status: string;
+  statusAt?: number;
+  statusDetail?: string;
+  replyPreview?: string;
+  replyAt?: number;
+}
+
+export interface CollabSentDispatchSnapshot {
+  rows: CollabSentDispatchRow[];
+  total: number;
+  returned: number;
+  truncated: boolean;
+  degraded?: boolean;
+}
+
 export interface SessionEventsEntry {
   path: string;
   name: string;
@@ -2169,6 +2196,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // revision-stamped snapshot (contract ①), so dismiss/decide/retention
   // return the NEW state directly.
   ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean, order: string): Promise<CollabMailSnapshotView>;
+  /** tl1696: 派发四态面板的读面——全机发件日志聚合（读持久层，重启仍在）。 */
+  ListCollabSentMail(limit: number): Promise<CollabSentDispatchSnapshot>;
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChainsView>;
   /** 任务 980 ③: one entry's full body for the detail popup (list stays preview-only). */
   ReadCollabMail(id: string): Promise<CollabMailDetailView>;
@@ -7380,6 +7409,9 @@ function makeMockApp(): AppBindings {
     async ClearFeedbackEntries() {},
     async GetFeedbackInboxPath() { return ""; },
     // Task 320 mocks: honest empty states (the dev shell has no mailbox).
+    async ListCollabSentMail() {
+      return { rows: [], total: 0, returned: 0, truncated: false };
+    },
     async ListCollabMail() {
       return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
     },

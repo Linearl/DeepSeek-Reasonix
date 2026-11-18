@@ -126,7 +126,7 @@ export function CollabDispatchPanel({
       if (!mounted.current) return;
       // 任务587 同纪律：失败显式报错 + 留痕，绝不渲染成「暂无派发记录」。
       setLoadError(true);
-      reportFrontendLog("collabDispatch: read failed", { err: String(err) });
+      reportFrontendLog("collabDispatch", "read failed", String(err), "error");
     } finally {
       if (mounted.current) setLoading(false);
     }
@@ -151,7 +151,7 @@ export function CollabDispatchPanel({
         const source = directory ?? b;
         rows = (await source.ListAddressableSessions()) ?? [];
       } catch (err) {
-        reportFrontendLog("collabDispatch: directory read failed", { err: String(err) });
+        reportFrontendLog("collabDispatch", "directory read failed", String(err), "error");
         setJumpNote(t("collabDispatch.jump.directoryFailed"));
         return;
       }
@@ -163,15 +163,15 @@ export function CollabDispatchPanel({
       }
       if (!b.ActivateTopic || !hit.topicId || !hit.workspaceRoot) {
         // 会话在通讯录但不可直达（归档外部/缺 topic）——诚实说明而非假装跳了。
-        setJumpNote(t("collabDispatch.jump.notOpenable", { title: collabTitleFor(row.toContactId, row.toTitle) }));
+        setJumpNote(t("collabDispatch.jump.notOpenable", { title: collabTitleFor(row.toContactId) }));
         return;
       }
       try {
         await b.ActivateTopic(hit.scope ?? "global", hit.workspaceRoot, hit.topicId, hit.sessionPath ?? "");
         setJumpNote("");
       } catch (err) {
-        reportFrontendLog("collabDispatch: activate failed", { err: String(err) });
-        setJumpNote(t("collabDispatch.jump.failed", { title: collabTitleFor(row.toContactId, row.toTitle) }));
+        reportFrontendLog("collabDispatch", "activate failed", String(err), "error");
+        setJumpNote(t("collabDispatch.jump.failed", { title: collabTitleFor(row.toContactId) }));
       }
     },
     [b, directory, t],
@@ -179,7 +179,7 @@ export function CollabDispatchPanel({
 
   const rows = snapshot?.rows ?? [];
   const displayName = (row: CollabSentDispatchRow) =>
-    collabTitleFor(row.toContactId, row.toTitle);
+    collabTitleFor(row.toContactId);
   const statusKey = (status: string) =>
     (STATUS_KEYS as readonly string[]).includes(status)
       ? (status as (typeof STATUS_KEYS)[number])
