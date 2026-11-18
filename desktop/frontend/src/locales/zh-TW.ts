@@ -6000,7 +6000,7 @@ export const zhTW: Record<DictKey, string> = {
   // 請求實際發送量」，全量記錄是整段歷史體積（壓縮只寫投影、歷史永不縮減，
   // 不計入窗口占用）。主讀數保持發送量口徑，chip 把兩個數都擺出來，使用者才能
   // 把面板讀數與日誌裡的 compaction src= 對上帳（20261117 18:34 現場）。
-  "context.historyVolumeLabel": "全量記錄 {canonical}",
+  "context.historyVolumeLabel": "全量{canonical}",
   "context.historyVolumeTitle": "口徑：主讀數 {used} = 下一請求實際發送量；全量記錄 {canonical} = 整段歷史體積（壓縮只寫投影，歷史永不縮減，不計入窗口占用）。日誌裡的 compaction src= 就是全量記錄這個數。",
   "context.readoutMeasured": "實測",
   "context.readoutEstimated": "估算",

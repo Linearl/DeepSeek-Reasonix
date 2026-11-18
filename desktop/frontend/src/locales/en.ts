@@ -5936,7 +5936,7 @@ export const en = {
   // writes projections only, history never shrinks); it does not count against
   // the window, so the main readout stays on the payload caliber and this chip
   // states both numbers so the panel can be reconciled with the logs.
-  "context.historyVolumeLabel": "Full record {canonical}",
+  "context.historyVolumeLabel": "Full {canonical}",
   "context.historyVolumeTitle": "Caliber: the readout {used} is what the next request actually sends; the full record {canonical} is the whole history (compaction writes projections only - history never shrinks and does not count against the window). The compaction src= in the logs is the full-record figure.",
   "context.readoutMeasured": "Measured",
   "context.readoutEstimated": "Estimated",
