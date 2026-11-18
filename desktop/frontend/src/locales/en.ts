@@ -5702,6 +5702,7 @@ export const en = {
   "questionNav.jump": "Jump to question {n}",
   "questionNav.hint": "Click to jump to this question",
   "questionNav.notLoaded": "Question {n} (click to load)",
+  "questionNav.bottom": "Jump to transcript bottom",
   "compaction.working": "Compacting conversation…",
   "compaction.title": "Context compacted",
   "compaction.messages": "{n} messages",

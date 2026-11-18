@@ -31,6 +31,24 @@ export function sampledQuestionTurns(totalQuestions: number, activeTurn: number 
   return turns;
 }
 
+/**
+ * tl1698：rail 末段（最后提问刻度之下）= 转录底部锚。
+ *
+ * 旧行为：rail 的 Y→提问映射按 ratio×totalQuestions 铺满整条轨道，末刻度
+ * 落��**最后一条用户提问**，而转录底部是提问之后的回复/工具流——结构上够不到
+ * 底部（用户 20261118 20:05 实测）。现在把「最后提问刻度之下」这段显式划给
+ * 底部锚：点到即落转录末行；中间刻度仍按提问跳（tl10/384 的上滚跳转语义不动）。
+ */
+export function isBottomRailBand(clientY: number, top: number, height: number, totalQuestions: number, lastMarkerTurn: number): boolean {
+  if (!Number.isFinite(height) || height <= 0) return false;
+  const ratio = (clientY - top) / height;
+  if (!Number.isFinite(ratio)) return false;
+  const total = Math.max(0, Math.floor(totalQuestions));
+  if (total === 0) return true;
+  const lastRatio = (Math.max(0, lastMarkerTurn) + 0.5) / total;
+  return ratio > lastRatio;
+}
+
 export function questionTurnFromRailY(clientY: number, top: number, height: number, totalQuestions: number): number | null {
   const total = Math.max(0, Math.floor(totalQuestions));
   if (total === 0 || !Number.isFinite(height) || height <= 0) return null;
@@ -43,11 +61,15 @@ export function QuestionJumpBar({
   totalQuestions,
   activeTurn,
   onJump,
+  onJumpBottom,
 }: {
   loadedQuestions: QuestionAnchor[];
   totalQuestions: number;
   activeTurn: number | null;
   onJump: (question: QuestionAnchor) => void;
+  /** tl1698：跳到转录底部（末刻度）。走 kernel 的 scrollToBottom——用户主动
+   *  移动时结束手势是对的（scheduleTailSync 那条「读者手势」路径才是错配）。 */
+  onJumpBottom?: () => void;
 }) {
   const t = useT();
   const total = Math.max(0, Math.floor(totalQuestions));
@@ -94,11 +116,17 @@ export function QuestionJumpBar({
   };
   const hoveredQuestion = hovered === null ? undefined : questionAt(hovered);
 
-  const questionFromY = (clientY: number): { question: QuestionAnchor; previewY: number } | null => {
+  const lastMarkerTurn = markerTurns.length > 0 ? markerTurns[markerTurns.length - 1] : -1;
+
+  const questionFromY = (clientY: number): { question: QuestionAnchor; previewY: number } | { bottom: true } | null => {
     const rail = railRef.current;
     const bar = barRef.current;
     if (!rail || !bar) return null;
     const railRect = rail.getBoundingClientRect();
+    // tl1698：末刻度之下 = 底部锚（点它落转录末行，不再停在最后一条提问）。
+    if (onJumpBottom && isBottomRailBand(clientY, railRect.top, railRect.height, total, lastMarkerTurn)) {
+      return { bottom: true };
+    }
     const turn = questionTurnFromRailY(clientY, railRect.top, railRect.height, total);
     if (turn === null) return null;
     const barRect = bar.getBoundingClientRect();
@@ -116,6 +144,12 @@ export function QuestionJumpBar({
   const onMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     const target = questionFromY(event.clientY);
     if (!target) return;
+    if ("bottom" in target) {
+      // 底部锚没有提问可预览——清掉 hover，避免沿用上一个提问的预览卡。
+      setHovered(null);
+      setShowPreview(false);
+      return;
+    }
     previewTop.current = target.previewY;
     setHovered(target.question.turn);
     setShowPreview(true);
@@ -126,6 +160,13 @@ export function QuestionJumpBar({
     const target = questionFromY(event.clientY);
     if (!target) return;
     event.preventDefault();
+    if ("bottom" in target) {
+      // tl1698：末刻度 → 转录底部（用户主动移动，走 kernel.scrollToBottom）。
+      onJumpBottom?.();
+      setHovered(null);
+      setShowPreview(false);
+      return;
+    }
     previewTop.current = target.previewY;
     setHovered(target.question.turn);
     setShowPreview(true);
@@ -145,7 +186,15 @@ export function QuestionJumpBar({
       case "PageUp": next = current - page; break;
       case "PageDown": next = current + page; break;
       case "Home": next = 0; break;
-      case "End": next = total - 1; break;
+      case "End":
+        // tl1698：End 与末刻度同义 = 转录底部（不再停在最后一条提问）。
+        if (onJumpBottom) {
+          event.preventDefault();
+          onJumpBottom();
+          return;
+        }
+        next = total - 1;
+        break;
       case "Enter":
       case " ": next = current; break;
       default: return;
@@ -229,6 +278,17 @@ export function QuestionJumpBar({
             <span className="jump-dot" {...dotProps(index, turn)} />
           </span>
         ))}
+        {/* tl1698：底部锚——末刻度之下的显式标记，点它落转录末行。 */}
+        {onJumpBottom && total > 0 ? (
+          <span
+            className="jump-item jump-item--bottom"
+            data-bottom="true"
+            aria-hidden="true"
+            style={{ top: "100%" }}
+          >
+            <span className="jump-dot jump-dot--bottom" />
+          </span>
+        ) : null}
       </div>
       {showPreview && preview && placement && (
         <div

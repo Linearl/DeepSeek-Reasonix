@@ -5661,6 +5661,7 @@ export const zh: Record<DictKey, string> = {
   "questionNav.jump": "跳转到问题 {n}",
   "questionNav.hint": "点击跳转到这次提问",
   "questionNav.notLoaded": "第 {n} 个问题（点击加载）",
+  "questionNav.bottom": "跳到转录底部",
   "compaction.working": "正在压缩对话…",
   "compaction.title": "上下文已压缩",
   "compaction.messages": "{n} 条消息",

@@ -854,7 +854,8 @@ export function Transcript(props: TranscriptProps) {
         )}
         {!empty && showQuestionNav && <Suspense fallback={null}><TranscriptQuestionNavigator ref={questionNavigatorRef} kernel={transcriptKernel}
           requestOlder={requestOlder} loadingOlderHistory={loadingOlderHistory} loadedByTurn={loadedByTurn}
-          jump={jumpToLoadedQuestion} questions={questions} totalQuestions={totalQuestions} activeTurn={activeQuestion} /></Suspense>}
+          jump={jumpToLoadedQuestion} questions={questions} totalQuestions={totalQuestions} activeTurn={activeQuestion}
+          onJumpBottom={scrollToBottom} /></Suspense>}
       {showQuestionNav && (
         <Suspense fallback={null}>
           <QuestionSearchPanel
