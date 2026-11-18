@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"reasonix/internal/forkupdate"
 	"reasonix/internal/installlayout"
@@ -103,6 +104,89 @@ func checkForkRelease(ctx context.Context, c *http.Client) (*forkupdate.Release,
 		return nil, err
 	}
 	return rel, nil
+}
+
+// ForkReleaseAsset is one downloadable artifact on a release-list row (tl1693):
+// the version page links the installers directly, same URLs the channel page shows.
+type ForkReleaseAsset struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	Size int64  `json:"size"`
+}
+
+// ForkReleaseItem is one row of the version page's release list (tl1693).
+// Current marks the running version's own row (the marker the user looks for);
+// Notes is the release body truncated to forkReleaseNotesLimit — the full body
+// already has its release-notes button, so the list stays light.
+type ForkReleaseItem struct {
+	Tag       string             `json:"tag"`
+	Version   string             `json:"version"`
+	Notes     string             `json:"notes"`
+	Published string             `json:"published"` // RFC3339; "" when the channel did not report one
+	Current   bool               `json:"current"`
+	Assets    []ForkReleaseAsset `json:"assets"`
+}
+
+// ForkReleaseList is the ForkListReleases result. Failed reports a channel
+// lookup that could not complete (rate limit, unreachable) — the same
+// silent-degrade face the check carries: the UI hides the list, never errors.
+type ForkReleaseList struct {
+	Releases []ForkReleaseItem `json:"releases"`
+	Failed   bool              `json:"failed"`
+}
+
+// forkReleaseNotesLimit caps one row's release body so a long notes payload
+// cannot bloat the list response; the full body rides the release-notes face.
+const forkReleaseNotesLimit = 4000
+
+// forkListSeam indirection so tests can pin the list result without a network,
+// mirroring forkCheckSeam.
+var forkListSeam = forkupdate.FetchReleases
+
+// ForkListReleases lists the fork channel's complete desktop releases, newest
+// first, for the version page's release list (tl1693). Never returns a UI-facing
+// error: a failed lookup is an expected environment condition and comes back as
+// {failed: true} — the caller degrades silently (availability first).
+func (a *App) ForkListReleases() *ForkReleaseList {
+	c, err := forkCheckClient()
+	if err != nil {
+		slog.Info("update: fork release list client unavailable; list skipped", "err", err)
+		return &ForkReleaseList{Releases: []ForkReleaseItem{}, Failed: true}
+	}
+	rels, err := forkListSeam(a.reqCtx(), c)
+	if err != nil {
+		if forkupdate.RateLimited(err) {
+			slog.Info("update: fork release list rate limited; list skipped")
+		} else {
+			slog.Info("update: fork release list unreachable; list skipped", "err", err)
+		}
+		return &ForkReleaseList{Releases: []ForkReleaseItem{}, Failed: true}
+	}
+	running, _ := forkupdate.ParseForkVersion(version)
+	items := make([]ForkReleaseItem, 0, len(rels))
+	for i := range rels {
+		rel := &rels[i]
+		notes := rel.Notes
+		if len(notes) > forkReleaseNotesLimit {
+			notes = notes[:forkReleaseNotesLimit]
+		}
+		assets := make([]ForkReleaseAsset, 0, len(rel.Assets))
+		for _, asset := range rel.Assets {
+			assets = append(assets, ForkReleaseAsset{Name: asset.Name, URL: asset.URL, Size: asset.Size})
+		}
+		item := ForkReleaseItem{
+			Tag:     rel.Tag,
+			Version: rel.Version,
+			Notes:   notes,
+			Current: running.String() != "" && rel.Version == running.String(),
+			Assets:  assets,
+		}
+		if !rel.Published.IsZero() {
+			item.Published = rel.Published.UTC().Format(time.RFC3339)
+		}
+		items = append(items, item)
+	}
+	return &ForkReleaseList{Releases: items, Failed: false}
 }
 
 // ForkApplyUpdate is the fork's one-action seamless update (tl1680). expectedVersion

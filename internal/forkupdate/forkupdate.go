@@ -28,6 +28,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -208,11 +209,12 @@ type Asset struct {
 
 // Release is one fork channel release (GitHub releases API subset).
 type Release struct {
-	Tag        string  // "desktop-v1.38.3-20261117-1800"
-	Version    string  // "v1.38.3-20261117-1800" (normalized ForkVersion form)
-	Prerelease bool    `json:"-"` // parsed from the API payload, not re-encoded
-	Notes      string  // release body — what the UI's release-notes button shows
-	Assets     []Asset `json:"-"`
+	Tag        string    // "desktop-v1.38.3-20261117-1800"
+	Version    string    // "v1.38.3-20261117-1800" (normalized ForkVersion form)
+	Prerelease bool      `json:"-"` // parsed from the API payload, not re-encoded
+	Notes      string    // release body — what the UI's release-notes button shows
+	Assets     []Asset   `json:"-"`
+	Published  time.Time `json:"-"` // channel timestamp (created_at) for the releases list UI (tl1693)
 }
 
 // CompareVersion reports latest-this-release versus the running version:
@@ -304,6 +306,28 @@ type apiRelease struct {
 // parse as fork versions, and tags older than the best seen are skipped, so an
 // interrupted publication can never shadow the previous complete release.
 func FetchLatestRelease(ctx context.Context, c *http.Client) (*Release, error) {
+	rels, err := fetchChannelReleases(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	return pickLatestRelease(rels)
+}
+
+// FetchReleases lists every complete desktop release on the fork channel,
+// newest first (tl1693). Same channel membership rules as FetchLatestRelease:
+// drafts, prereleases, and non-desktop tags are skipped. The version page uses
+// this for the GitHub release list with a current-version marker; a failed
+// lookup is the caller's silent-degrade cue, never a UI error.
+func FetchReleases(ctx context.Context, c *http.Client) ([]Release, error) {
+	rels, err := fetchChannelReleases(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	return listReleases(rels), nil
+}
+
+// fetchChannelReleases performs one channel GET and decodes the release list.
+func fetchChannelReleases(ctx context.Context, c *http.Client) ([]apiRelease, error) {
 	if c == nil {
 		c = http.DefaultClient
 	}
@@ -333,7 +357,7 @@ func FetchLatestRelease(ctx context.Context, c *http.Client) (*Release, error) {
 	if err := decodeLimited(resp.Body, &rels); err != nil {
 		return nil, err
 	}
-	return pickLatestRelease(rels)
+	return rels, nil
 }
 
 func decodeLimited(body io.Reader, out any) error {
@@ -375,6 +399,7 @@ func pickLatestRelease(rels []apiRelease) (*Release, error) {
 			Version:    ver.String(),
 			Prerelease: rel.Prerelease,
 			Notes:      rel.Body,
+			Published:  rel.CreatedAt,
 		}
 		for _, a := range rel.Assets {
 			if strings.TrimSpace(a.BrowserDownloadURL) == "" || a.Size <= 0 {
@@ -389,4 +414,48 @@ func pickLatestRelease(rels []apiRelease) (*Release, error) {
 		return nil, fmt.Errorf("fork release channel returned no desktop release in %s/%s", Owner, Repo)
 	}
 	return best, nil
+}
+
+// listReleases converts an API payload into the channel's complete desktop
+// release list, newest first (tl1693). Same membership rules as
+// pickLatestRelease; releases whose tags do not parse are skipped rather than
+// erroring, and an empty list is a valid result (the UI hides the section).
+func listReleases(rels []apiRelease) []Release {
+	out := make([]Release, 0, len(rels))
+	for i := range rels {
+		rel := &rels[i]
+		if rel.Draft || rel.Prerelease {
+			continue
+		}
+		if !strings.HasPrefix(rel.TagName, tagPrefix) {
+			continue
+		}
+		ver, ok := ParseForkVersion(rel.TagName)
+		if !ok {
+			continue
+		}
+		r := Release{
+			Tag:        rel.TagName,
+			Version:    ver.String(),
+			Prerelease: rel.Prerelease,
+			Notes:      rel.Body,
+			Published:  rel.CreatedAt,
+		}
+		for _, a := range rel.Assets {
+			if strings.TrimSpace(a.BrowserDownloadURL) == "" || a.Size <= 0 {
+				continue
+			}
+			r.Assets = append(r.Assets, Asset{Name: a.Name, URL: a.BrowserDownloadURL, Size: a.Size})
+		}
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		vi, oki := ParseForkVersion(out[i].Version)
+		vj, okj := ParseForkVersion(out[j].Version)
+		if !oki || !okj {
+			return false
+		}
+		return vi.Compare(vj) > 0
+	})
+	return out
 }

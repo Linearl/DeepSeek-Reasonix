@@ -341,3 +341,92 @@ func TestFetchLatestReleaseTokenSent(t *testing.T) {
 		t.Fatalf("Authorization = %q, want Bearer tok-123", seen)
 	}
 }
+
+// TestListReleasesOrdersAndFilters pins the tl1693 release-list semantics: the
+// same channel membership rules as pickLatestRelease (drafts, prereleases,
+// non-fork tags skipped) applied to every row, and the list sorted newest
+// first. An empty member set is a valid empty list, not an error — the version
+// page hides the section instead of erroring.
+func TestListReleasesOrdersAndFilters(t *testing.T) {
+	rels, err := decodeReleasesForTest(releaseJSON(
+		"desktop-v1.38.3",                    // older bare base
+		"v1.31.4",                            // legacy upstream tag — not a member
+		"desktop-v1.38.3-20261115-0841",      // older stamp
+		"desktop-v1.38.3-20261117-1800",      // newest
+	))
+	if err != nil {
+		t.Fatalf("decode test payload: %v", err)
+	}
+	got := listReleases(rels)
+	if len(got) != 3 {
+		t.Fatalf("listReleases kept %d rows, want 3 (legacy tag skipped)", len(got))
+	}
+	wantOrder := []string{"desktop-v1.38.3-20261117-1800", "desktop-v1.38.3-20261115-0841", "desktop-v1.38.3"}
+	for i, want := range wantOrder {
+		if got[i].Tag != want {
+			t.Fatalf("row %d = %q, want %q", i, got[i].Tag, want)
+		}
+	}
+	// Every row carries the artifact links the version page shows.
+	if len(got[0].Assets) != 2 {
+		t.Fatalf("newest row assets = %d, want 2", len(got[0].Assets))
+	}
+	if got[0].Assets[0].URL == "" {
+		t.Fatal("asset URL must be present for a direct download link")
+	}
+
+	// Draft and prerelease rows never appear in the list.
+	draftPayload := `[
+		{"tag_name":"desktop-v1.40.0-20261119-1000","name":"d","body":"b","prerelease":false,"draft":true,"assets":[]},
+		{"tag_name":"desktop-v1.40.0-rc.1","name":"p","body":"b","prerelease":true,"draft":false,"assets":[]}
+	]`
+	rels, _ = decodeReleasesForTest(draftPayload)
+	if got := listReleases(rels); len(got) != 0 {
+		t.Fatalf("draft/prerelease rows must not list; got %d", len(got))
+	}
+}
+
+// TestFetchReleases pins the list face on the same channel endpoint and decode
+// path as FetchLatestRelease (tl1693).
+func TestFetchReleases(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, releaseJSON("desktop-v1.38.3-20261115-0841", "desktop-v1.38.3-20261117-1800"))
+	}))
+	defer srv.Close()
+
+	orig := releasesAPIURL
+	releasesAPIURL = srv.URL + "/repos/" + Owner + "/" + Repo + "/releases?per_page=100"
+	defer func() { releasesAPIURL = orig }()
+
+	got, err := FetchReleases(context.Background(), srv.Client())
+	if err != nil {
+		t.Fatalf("FetchReleases: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("FetchReleases rows = %d, want 2", len(got))
+	}
+	if got[0].Tag != "desktop-v1.38.3-20261117-1800" {
+		t.Fatalf("first row = %q, want the newest tag", got[0].Tag)
+	}
+}
+
+// TestFetchReleasesRateLimited: the list face degrades with the same classified
+// error the check face produces, so the caller's silent path is identical.
+func TestFetchReleasesRateLimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	orig := releasesAPIURL
+	releasesAPIURL = srv.URL + "/releases"
+	defer func() { releasesAPIURL = orig }()
+
+	_, err := FetchReleases(context.Background(), srv.Client())
+	if err == nil || !RateLimited(err) {
+		t.Fatalf("FetchReleases 403 must classify as rate limited, got %v", err)
+	}
+}
