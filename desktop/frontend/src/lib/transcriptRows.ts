@@ -115,6 +115,20 @@ export function partitionTurnItems(items: readonly Item[], live: TranscriptLiveF
       continue;
     }
     if (item.kind !== "assistant") {
+      // tl1701: a compaction card that FOLLOWS the turn's completion stats in
+      // items is a post-turn anchor (tl1669 同步语义：压缩在回合结束后触发，
+      // 统计块先挂、压缩后跑). The stats block must stay ABOVE the card it
+      // postdates: flush the held completion notices into their own segment
+      // here instead of hoisting them past the card to the turn tail — the
+      // hoist rendered the running「正在压缩对话…」card above the stats
+      // (20261119 现场：进度条插在本轮结果统计块上方). A card that PRECEDES
+      // the stats in items (mid-turn pressure compaction) keeps the hoist —
+      // the stats genuinely postdate that pass, chronology preserved both ways.
+      if (item.kind === "compaction" && results.length > 0) {
+        current.outsideItems.push(...results);
+        results.length = 0;
+        flushSegment();
+      }
       pushProcess(item);
       continue;
     }

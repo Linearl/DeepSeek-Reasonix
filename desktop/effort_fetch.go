@@ -126,6 +126,25 @@ type effortCacheEntry struct {
 	fp   effortServeFingerprint
 }
 
+// effortCompactionProbe is the narrow surface tl1702 consults: whether a
+// compaction pass is in flight for this tab's controller. Same shape as
+// compaction_state.go's probe — a fake or older controller without the
+// capability simply reports "not compacting" (the pre-tl1702 behavior).
+type effortCompactionProbe interface {
+	CompactionRunning() bool
+}
+
+// compactionRunningForTab reports whether the tab's controller has a
+// compaction pass in flight (tl1702). No controller / no capability = false.
+func (a *App) compactionRunningForTab(tabID string) bool {
+	_, ctrl := a.tabAndCtrlForUsage(tabID)
+	probe, ok := ctrl.(effortCompactionProbe)
+	if !ok {
+		return false
+	}
+	return probe.CompactionRunning()
+}
+
 // EffortForTab returns the effort control state for a tab. Task 1161 fast
 // path: a cache entry whose input fingerprint (tab model/effort/build
 // generation) still matches and that is younger than effortStaleServeMaxAge
@@ -136,7 +155,28 @@ type effortCacheEntry struct {
 // is served (or a defined default on the first read, before any cache exists)
 // and a warn log plus a tab notice record the fallback, so a degraded sample
 // is diagnosable instead of silently slow.
+//
+// tl1702: a running compaction pass is exactly the disk/queue-heavy window
+// where the bounded read degrades noisiest — the 2s cap fires on reads
+// QUEUED behind the summarizer's disk work and the fallback records a
+// "timed out" notice for a value that was never wrong (the 20261119 板面
+// 现场：压缩重活期 effort_fetch.go:192 降级 default=auto+notice 刷屏).
+// For the pass's duration the synchronous refresh is SKIPPED: serve the
+// last completed read (value semantics, same trust as the timeout
+// fallback) or the defined default on a first read, no notice either way,
+// and the single-flight background refresh keeps the cache evolving — a
+// post-compaction read takes the normal path again. The task-421 bounded
+// read itself (cap, select, timeout branch) is untouched and still
+// governs every non-compaction read.
 func (a *App) EffortForTab(tabID string) EffortInfo {
+	if a.compactionRunningForTab(tabID) {
+		info, _, ok := a.cachedEffortForTab(tabID)
+		if !ok {
+			info = EffortInfo{Current: "auto", Levels: []string{}}
+		}
+		a.spawnEffortRefresh(tabID)
+		return info
+	}
 	if cached, ok := a.freshCachedEffortForTab(tabID); ok {
 		// Not logged: this is the healthy path (tab switches are constant,
 		// see effortBreakdownLogMs) — the refresh keeps the cache evolving

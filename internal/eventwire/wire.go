@@ -137,6 +137,9 @@ func ToWire(e event.Event) Event {
 			TokensPerSec: e.Compaction.TokensPerSec, Outcome: e.Compaction.Outcome,
 			Attempt: e.Compaction.Attempt, Reason: e.Compaction.Reason, Pass: e.Compaction.Pass,
 			FoldInstalled: e.Compaction.FoldInstalled, LastSuccessAt: e.Compaction.LastSuccessAt,
+			SourceTokens: e.Compaction.SourceTokens, ProjectionTokens: e.Compaction.ProjectionTokens,
+			SummaryHitTokens: e.Compaction.SummaryHitTokens, SummaryMissTokens: e.Compaction.SummaryMissTokens,
+			DurationMs: e.Compaction.DurationMs,
 		}
 	case event.ContextMaintenanceEvent:
 		if m := e.Maintenance; m != nil {
@@ -361,6 +364,16 @@ type Compaction struct {
 	// install; 0 = unknown (omitted). Drives the failed card's "上次成功压缩"
 	// line.
 	LastSuccessAt int64 `json:"lastSuccessAt,omitempty"`
+	// tl1689 补强 (Done-ok only): the release metrics the terminal card's
+	// hover states — 释放量 (source vs projection billed tokens), 摘要输入
+	// (summarizer cache hit/miss split), 耗时 (pass begin→Done). omitempty
+	// keeps Started/Progress payloads byte-identical to the pre-补强 wire
+	// shape; 0 = not carried and the frontend hides the row.
+	SourceTokens      int   `json:"sourceTokens,omitempty"`
+	ProjectionTokens  int   `json:"projectionTokens,omitempty"`
+	SummaryHitTokens  int   `json:"summaryHitTokens,omitempty"`
+	SummaryMissTokens int   `json:"summaryMissTokens,omitempty"`
+	DurationMs        int64 `json:"durationMs,omitempty"`
 }
 
 // AskOption is one JSON-formatted choice in a structured ask request.

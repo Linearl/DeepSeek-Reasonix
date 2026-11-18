@@ -348,7 +348,7 @@ func (a *Agent) compressVisibleRange(
 	// The transcript was rewritten, so repeating a pre-compaction tool result is
 	// no longer a duplicate (#39 / upstream #10023).
 	a.turn.loop.clearResultFingerprints()
-	a.emitCompactionSucceeded(trigger, len(plan.fold), summary, state.LastReceipt.Archive)
+	a.emitCompactionSucceeded(trigger, len(plan.fold), summary, state.LastReceipt.Archive, tele)
 	// Task 317: the explicit compress tool is the manual "second compaction"
 	// a user reaches for after a network error — its zero-hit round must
 	// attribute its miss exactly like the automatic fold does.

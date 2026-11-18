@@ -66,7 +66,10 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 	if last := a.sess.lastCompactionSuccessAt.Load(); last > 0 {
 		compactionIntervalMin = time.Since(time.UnixMilli(last)).Minutes()
 	}
-	a.emitCompactionSucceeded(in.trigger, len(in.fold), in.summary, "")
+	// tl1689 补强: the success receipt now carries the compaction telemetry
+	// (duration / tokens / cache hit-miss) so the done-line and the hover
+	// card read from one source.
+	a.emitCompactionSucceeded(in.trigger, len(in.fold), in.summary, "", tele)
 	// Done-log cache readout (task 303); 任务 867 adds fold_tokens so the
 	// view estimate, summarizer input, and provider count stay separable.
 	// tl1640 O2: last_turn_gap_min makes "the conversation went quiet N

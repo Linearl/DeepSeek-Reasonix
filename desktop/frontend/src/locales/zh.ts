@@ -6133,6 +6133,10 @@ export const zh: Record<DictKey, string> = {
   "compaction.metricsMessagesValue": "{n} 条",
   "compaction.metricsTokensLabel": "摘要输出",
   "compaction.metricsTokensValue": "{n} tokens",
+  "compaction.metricsReleasedLabel": "释放量",
+  "compaction.metricsReleasedValue": "{from} → {to}",
+  "compaction.metricsInputLabel": "摘要输入",
+  "compaction.metricsInputValue": "命中 {hit} / 未命中 {miss}",
   // tl1559: 首个 token 估计到达前的占位腿（摘要请求首 token 延迟空窗），
   // 调用面经 compactionLiveReadout 的 options 显式启用。
   "compaction.liveEstimating": "估算中…",

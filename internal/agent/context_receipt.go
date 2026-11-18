@@ -295,7 +295,13 @@ func (a *Agent) notifyChunkedDegradation(trigger, reason string, sourceTokens, f
 }
 
 // emitCompactionSucceeded stamps the success outcome and resets the streak.
-func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, archive string) {
+// tl1689 补强: the ok Done additionally carries the release metrics the
+// terminal card's hover states — source vs projection billed tokens (释放量),
+// the summarizer request's cache hit/miss input split (摘要输入), and the
+// pass's begin→Done wall duration (耗时). All from the caller's telemetry
+// (every success site holds tele in scope) plus the live meter's elapsed;
+// zeros mean "not carried" and the frontend hides those rows.
+func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, archive string, tele CompactionTelemetry) {
 	a.sess.compaction.failureStreak.Store(0)
 	// tl1669: a successful pass closes the three-strike circuit breaker — the
 	// automatic compaction path is armed again.
@@ -322,6 +328,9 @@ func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, a
 	a.compactionLiveSeal()
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Pass: pass, Messages: messages, Summary: summary, Archive: archive, Outcome: "ok",
+		SourceTokens: tele.SourceTokens, ProjectionTokens: tele.ProjectionTokens,
+		SummaryHitTokens: tele.CacheHitTokens, SummaryMissTokens: tele.CacheMissTokens,
+		DurationMs: a.compactionLiveElapsedMs(),
 	}})
 }
 

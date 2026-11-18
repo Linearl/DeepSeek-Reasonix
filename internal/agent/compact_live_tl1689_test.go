@@ -87,6 +87,7 @@ func TestCompactSealFrameCarriesFinalReadout(t *testing.T) {
 	var mu sync.Mutex
 	var progress []event.Compaction
 	doneAt := -1
+	var donePayload *event.Compaction
 	sink := event.FuncSink(func(e event.Event) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -95,6 +96,8 @@ func TestCompactSealFrameCarriesFinalReadout(t *testing.T) {
 			progress = append(progress, e.Compaction)
 		case event.CompactionDone:
 			doneAt = len(progress)
+			payload := e.Compaction
+			donePayload = &payload
 		}
 	})
 	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 50_000, RecentKeep: 2}, sink)
@@ -117,5 +120,23 @@ func TestCompactSealFrameCarriesFinalReadout(t *testing.T) {
 	}
 	if last.Tokens < 1500 {
 		t.Fatalf("seal tokens = %d, want the full pass estimate (>=1500 of 1575)", last.Tokens)
+	}
+	// tl1689 补强: the ok Done carries the release metrics the hover card
+	// states — source > projection (a release actually happened), the
+	// summarizer input cache split, and the pass duration.
+	if donePayload == nil {
+		t.Fatal("ok CompactionDone missing")
+	}
+	if donePayload.SourceTokens <= 0 || donePayload.ProjectionTokens <= 0 {
+		t.Fatalf("Done release tokens = src %d / proj %d, want both > 0", donePayload.SourceTokens, donePayload.ProjectionTokens)
+	}
+	if donePayload.ProjectionTokens >= donePayload.SourceTokens {
+		t.Fatalf("projection %d must be smaller than source %d — the pass released nothing", donePayload.ProjectionTokens, donePayload.SourceTokens)
+	}
+	if donePayload.SummaryHitTokens+donePayload.SummaryMissTokens <= 0 {
+		t.Fatalf("summary input split = hit %d / miss %d, want a measurable request", donePayload.SummaryHitTokens, donePayload.SummaryMissTokens)
+	}
+	if donePayload.DurationMs < 0 {
+		t.Fatalf("DurationMs = %d, want >= 0", donePayload.DurationMs)
 	}
 }

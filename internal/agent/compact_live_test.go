@@ -36,7 +36,7 @@ func (p *chunkSpamProvider) Stream(_ context.Context, _ provider.Request) (<-cha
 	for i := 0; i < p.chunks; i++ {
 		ch <- provider.Chunk{Type: provider.ChunkText, Text: p.text}
 	}
-	ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, CompletionTokens: 10, TotalTokens: 20}}
+	ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, CompletionTokens: 10, TotalTokens: 20, CacheHitTokens: 6, CacheMissTokens: 4}}
 	ch <- provider.Chunk{Type: provider.ChunkDone}
 	close(ch)
 	return ch, nil

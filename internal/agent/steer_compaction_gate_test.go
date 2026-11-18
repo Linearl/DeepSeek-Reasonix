@@ -136,7 +136,7 @@ func TestTl1648FailedCardCarriesFoldAndSuccessFacts(t *testing.T) {
 	}
 
 	// A success stamps the clock; the next failure carries it.
-	a.emitCompactionSucceeded(CompactionTriggerPressure, 3, "summary", "")
+	a.emitCompactionSucceeded(CompactionTriggerPressure, 3, "summary", "", CompactionTelemetry{})
 	if a.sess.lastCompactionSuccessAt.Load() == 0 {
 		t.Fatal("successful install must stamp lastCompactionSuccessAt")
 	}
