@@ -1073,6 +1073,12 @@ func (a *App) SetExperimentalAutoLoadOlder(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutoLoadOlder(enabled) })
 }
 
+// SetBackgroundJobWakeIdleSession toggles the background-job idle wake
+// (tl1688: exposes the tl553 switch in the lab UI; default stays off).
+func (a *App) SetBackgroundJobWakeIdleSession(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetBackgroundJobWakeIdleSession(enabled) })
+}
+
 // SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
 func (a *App) SetExperimentalSessionCollab(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollab(enabled) })

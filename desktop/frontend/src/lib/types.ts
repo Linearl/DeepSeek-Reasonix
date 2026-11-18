@@ -2890,6 +2890,8 @@ export interface DesktopStartupSettingsView {
   decisionPatternThreshold?: number;
   /** Task 801: skip the approval gate before writing (default off). */
   decisionPatternAutoApprove?: boolean;
+  /** tl1688: 后台任务完成时唤醒空闲会话续轮（tl553 机制；默认关，铁律 2 反循环预算绑定）。 */
+  backgroundJobWakeIdleSession?: boolean;
   /** 任务 1024: composer 草稿优化（改写按钮）；默认关（铁律 2——off 时无按钮、布局零变化）。 */
   experimentalDraftRewrite?: boolean;
   /** tl1544: 运行中编辑历史消息回溯重发；默认关（off 时运行中编辑入口维持拒绝现状）。 */

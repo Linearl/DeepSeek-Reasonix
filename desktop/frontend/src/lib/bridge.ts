@@ -2056,6 +2056,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetDecisionPatternThreshold(n: number): Promise<void>;
   // Task 801: skip the approval gate before the heartbeat writes (default off).
   SetDecisionPatternAutoApprove(enabled: boolean): Promise<void>;
+  /** tl1688: 后台任务完成时唤醒空闲会话续轮（默认关）。 */
+  SetBackgroundJobWakeIdleSession(enabled: boolean): Promise<void>;
   SetExperimentalPerfMonitor(enabled: boolean): Promise<void>;
   // Task 501: threshold-triggered heap snapshot (experimental, default off).
   SetExperimentalHeapHighProfile(enabled: boolean): Promise<void>;
@@ -7282,6 +7284,7 @@ function makeMockApp(): AppBindings {
     async SetDecisionPatternFilePath() {},
     async SetDecisionPatternThreshold() {},
     async SetDecisionPatternAutoApprove() {},
+    async SetBackgroundJobWakeIdleSession() {},
     async SetExperimentalPerfMonitor() {},
     async SetExperimentalHeapHighProfile() {},
     async SetPerfMonitorIntervalSeconds() {},
