@@ -5892,7 +5892,7 @@ export const zh: Record<DictKey, string> = {
   // 请求实际发送量」，全量记录是整段历史体积（压缩只写投影、历史永不缩减，
   // 不计入窗口占用）。主读数保持发送量口径，chip 把两个数都摆出来，用户才能
   // 把面板读数与日志里的 compaction src= 对上账（20261117 18:34 现场）。
-  "context.historyVolumeLabel": "全量记录 {canonical}",
+  "context.historyVolumeLabel": "全量{canonical}",
   "context.historyVolumeTitle": "口径：主读数 {used} = 下一请求实际发送量；全量记录 {canonical} = 整段历史体积（压缩只写投影，历史永不缩减，不计入窗口占用）。日志里的 compaction src= 就是全量记录这个数。",
   "context.readoutMeasured": "实测",
   "context.readoutEstimated": "估算",
