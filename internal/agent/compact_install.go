@@ -4,6 +4,7 @@ package agent
 
 import (
 	"log/slog"
+	"time"
 
 	"reasonix/internal/provider"
 )
@@ -58,12 +59,22 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 		a.emitCompactionFailed(in.trigger, err)
 		return CompactionNoop, err
 	}
+	// tl1695: read the interval BEFORE the success stamp overwrites it — the
+	// done line answers "how long since the PREVIOUS compaction" (追着回合跑
+	// 的读数半边; -1 = first successful compaction of the session).
+	compactionIntervalMin := -1.0
+	if last := a.sess.lastCompactionSuccessAt.Load(); last > 0 {
+		compactionIntervalMin = time.Since(time.UnixMilli(last)).Minutes()
+	}
 	a.emitCompactionSucceeded(in.trigger, len(in.fold), in.summary, "")
 	// Done-log cache readout (task 303); 任务 867 adds fold_tokens so the
 	// view estimate, summarizer input, and provider count stay separable.
 	// tl1640 O2: last_turn_gap_min makes "the conversation went quiet N
 	// minutes ago" visible on the same line as the hit=0 readout — no more
 	// reconstructing the gap from timestamps (unknown session reads -1).
+	// tl1695: split_active names the active-turn split and
+	// compaction_interval_min names the cadence — the「压后仍过半」repair
+	// surface and the「追着回合跑」judgment read from one line.
 	slog.Info("agent: compaction done", "trigger", in.trigger, "stage", "done",
 		"folded_messages", len(in.fold), "source_tokens", in.sourceTokens,
 		"fold_tokens", tele.FoldTokens,
@@ -71,7 +82,9 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 		"input_tokens", tele.InputTokens, "output_tokens", tele.OutputTokens,
 		"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens,
 		"request_count", tele.RequestCount,
-		"last_turn_gap_min", a.lastTurnGapMinutes())
+		"last_turn_gap_min", a.lastTurnGapMinutes(),
+		"split_active", tele.SplitActive,
+		"compaction_interval_min", compactionIntervalMin)
 	// Task 317 (cache 保全 面 b): the automatic fold attributes its miss the
 	// same way the explicit tool does (shared helper, both entry points).
 	a.logCompactionMissAttribution(in.trigger, tele, in.sourceTokens)

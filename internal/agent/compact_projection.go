@@ -1191,7 +1191,18 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	a.sess.compactionMu.Unlock()
 	msgs, onProjection := a.visibleInputForFold(stateSnapshot, canonical, transcriptVersion)
 	viewInputHash := providerVisibleFingerprint(modelInputMessages(msgs))
-	head, start, ok := a.planFoldRegion(msgs, req.force, req.mustFree)
+	// tl1695（tl1600 主根因修复）：压力触发与 overflow rescue 同样允许分割
+	// 活跃轮的较早已完成轮次（activeTurnFoldBoundary 保最新
+	// activeTurnKeepRounds 个 assistant 轮逐字，fold 只覆盖 prompt+较早
+	// 轮次）。此前 active turn 排除把折叠区钳到 active——长回合大会话只
+	// 收走旧前缀小尾巴，压后视图仍过半（tl1600 ②：533,877/1M=53.4%），
+	// 压缩追着回合跑且每次装成都断一次 provider 前缀缓存（tl1600 ⑤）。
+	// 放开后单次折叠覆盖 prompt+较早轮次，压后视图收敛到健康水位，压缩
+	// 频次随单次收益变大自然下降——断缓存频次同源收敛（tl1396 态①的全量
+	// 重写必然仍在，收窄的是它的触发频次）。manual/tool 保持用户指定范围
+	// 不动；overflow 语义原样（mustFree 已含）。
+	splitActive := req.mustFree || trigger == CompactionTriggerPressure
+	head, start, ok := a.planFoldRegion(msgs, req.force, splitActive)
 	if !ok {
 		return CompactionNoop, nil
 	}
@@ -1290,6 +1301,12 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		a.emitCompactionTelemetry(tele)
 		a.emitCompactionFailed(trigger, err)
 		return CompactionNoop, err
+	}
+	// tl1695: mark the split on the telemetry the done line reads — the fold
+	// boundary crossing the active-turn start means the fold covered the
+	// turn's older completed rounds instead of clamping to them.
+	if idx := a.activeTurnStart(msgs); idx >= 0 && idx >= head && start > idx {
+		tele.SplitActive = true
 	}
 	return a.installFoldProjection(foldProjectionInstall{
 		trigger: trigger, msgs: msgs, canonical: canonical, fold: fold,

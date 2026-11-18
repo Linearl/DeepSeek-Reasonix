@@ -195,6 +195,10 @@ type CompactionTelemetry struct {
 	RangesFoldIndex int     `json:"ranges_fold_index,omitempty"`
 	PreservedTokens int     `json:"preserved_tokens,omitempty"`
 	RangesCacheHit  float64 `json:"ranges_cache_hit,omitempty"`
+	// tl1695: 压力道分割活跃轮较早轮次（splitActive）时置位。done 行与遥测
+	// 消费——「压后仍过半/追着回合跑」修复面的观测半边；false = 折叠区未
+	// 越过活跃轮边界（含 manual/tool 的钳制语义，属预期形态）。
+	SplitActive bool `json:"split_active,omitempty"`
 }
 
 // ContextStatePath returns the projection sidecar path for a session transcript.
