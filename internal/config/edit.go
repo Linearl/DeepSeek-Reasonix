@@ -1938,6 +1938,13 @@ func (c *Config) SetExperimentalZeroSummaryCompact(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalRecallTool toggles tl1691's recall readback tool
+// (boot-snapshot registration; off by default — restart to apply).
+func (c *Config) SetExperimentalRecallTool(enabled bool) error {
+	c.Agent.ExperimentalRecallTool = enabled
+	return nil
+}
+
 // ZeroSummaryCompactLive is the fold-time live read of the tl1691 zero-summary
 // lane. Same discipline as RangesCompactLive: a mid-session switch-off can
 // never un-install a pointer fold that already landed, but the next fold goes

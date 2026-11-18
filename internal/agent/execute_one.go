@@ -573,6 +573,9 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 	// tl1419: compress_ranges rides the same session binding — the model
 	// initiates, the host executes the fold and enforces the flood gate.
 	cctx = tool.WithRangesFolder(cctx, a)
+	// tl1691: recall rides the same session binding — the agent owns the
+	// canonical transcript and the per-generation recall budget ledger.
+	cctx = tool.WithContextRecaller(cctx, a)
 	// Task 254: the autonomous-update controller binds through the call
 	// context, plus the calling session path execute uses for its busy-guard
 	// exemption (the restart ends the turn that asked for it).

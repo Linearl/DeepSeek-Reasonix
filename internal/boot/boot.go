@@ -1139,6 +1139,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if cfg.Agent.ExperimentalModelRangesCompact {
 		reg.Add(builtin.CompressRangesTool{})
 	}
+	// tl1691: the recall readback tool, same gating shape — off (the default)
+	// keeps the model-visible tool surface byte-identical to the pre-tl1691
+	// baseline. Tool add/remove needs a restart; the budget ledger is
+	// per-compaction-generation and lives in the context sidecar.
+	if cfg.Agent.ExperimentalRecallTool {
+		reg.Add(builtin.RecallTool{})
+	}
 	addWebSearch(reg, cfg, entry, proxySpec, sink)
 	builtinsMs := time.Since(builtinsStart).Milliseconds()
 	// Task 413: the mcp pre-enumeration segment (host pick, enabled-plugin

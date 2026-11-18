@@ -114,6 +114,8 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"rangesCompact":         func(c *Config, on bool) error { return c.SetExperimentalRangesCompact(on) },
 	// tl1691: 零摘要折叠道（未稳定档，默认关）。
 	"zeroSummaryCompact":    func(c *Config, on bool) error { return c.SetExperimentalZeroSummaryCompact(on) },
+	// tl1691: recall 回读工具注册（boot 门控，默认关）。
+	"recallTool":            func(c *Config, on bool) error { return c.SetExperimentalRecallTool(on) },
 	"outputStyle":           func(c *Config, on bool) error { return c.SetExperimentalOutputStyleUI(on) },
 	"cacheTuning":           func(c *Config, on bool) error { return c.SetExperimentalCacheTuning(on) },
 	"sessionCollabAutoFold": func(c *Config, on bool) error { return c.SetExperimentalSessionCollabAutoFold(on) },
