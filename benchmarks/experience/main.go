@@ -31,8 +31,21 @@ import (
 
 // 阈值默认值：全部引用 tasklist 各任务验收（详见 README.md 指标清单）。
 const (
-	defaultBootHotBudgetMS     = 300  // 热路径分类：prompt+mcp+agent:tools 合计预算
-	defaultBootHotMaxMS        = 1000 // 363 验收①：单开新对话（热路径）boot total <1s
+	// defaultBootHotBudgetMS：热路径分类的重组相（prompt+mcp+agent:tools）合计
+	// 预算。tl1683 ⑤ 从 300 抬到 1500：修复前热路径 boot 的重组相 P50 是
+	// 4321ms，300ms 的预算对任何真实 boot 都够不到——这正是「启发式分支 0
+	// 样本」的结构性原因（假门的一半）。修复后复用 boot 的重组相落在 ~340ms
+	// （P50）到 ~1.4s（P95 上界），1500ms 接得住修复后的复用 boot，又接不住
+	// 修复前那批 4.3s 起的重组相。
+	defaultBootHotBudgetMS = 1500
+	// defaultBootHotMaxMS：363 验收① 的门，原值 1000ms。tl1683 ⑤ 按「可达门」
+	// 重标定为 3500ms：≤1000ms 在 P95 口径下不可达（修复后 P95 样本合成
+	// 2833ms，各相 P95 上界合计 ≤3877ms，报告 §7.2 判 ≈3～4s）；1000ms 只在
+	// P50 口径成立（各相 P50 合计 ≈890ms），拿 P95 口径量 P50 目标 = 恒 FAIL。
+	// 重标定不是「数据量涨了所以放宽」——数据量只涨 10.9% 而读数涨 88～154%
+	// （比值 8～14 倍）、P50 几乎不动、两期该段 Max 完全相同，算术上否掉了
+	// 「自然增长」解释（报告 §7.1）。
+	defaultBootHotMaxMS        = 3500
 	defaultOpenTopicMaxMS      = 2000 // 363 追加验收⑥：打开历史对话→可发消息 <2s
 	defaultRenderMaxMS         = 150  // tab_timing.go slowTabSwitchLogMs（任务 196 判定线）
 	defaultFirstResponseMaxSec = 60   // 370：无数值验收，取遥测分桶 s_15_60 上沿（可配）
@@ -134,7 +147,7 @@ func main() {
 	var results []metricResult
 
 	// 日志侧共享一次采集（巡检模式在采集期过滤入池，与 -warn-patterns 同源）。
-	col, err := collectLogDir(o.logDir, o.window, now, parseWarnPatterns(o.warnPatterns))
+	col, err := collectLogDir(o.logDir, o.window, now, parseWarnPatterns(o.warnPatterns), o.bootHotBudgetMS)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "读取日志目录失败（%v）；日志侧四项不可用，仅尝试会话侧\n", err)
 		col = &logCollect{Window: o.window}
@@ -191,15 +204,31 @@ func main() {
 	fmt.Println("\n结论：PASS（各项门内通过；N/A/OBSERVE 项见明细）")
 }
 
-// benchBoot：M1 boot total——热路径 <1s（363 验收①），冷启动只报告不设门。
+// benchBoot：M1 boot total——热路径（363 验收①），冷启动只报告不设门。
+//
+// 热路径判定（tl1683 ⑤）：主口径是 boot 自报的复用事实（boot: assembly
+// reuse 行落在本次 boot 的构建窗口内＝这次 build 真的走了复用分支），兜底是
+// 重组相合计预算启发式。**池命中（desktop: runtime assembly hit）不再单独
+// 成立**——旧口径把它当热路径的充要条件，于是第5/6 期热路径样本 100% 来自
+// 配对分支、启发式分支 0 样本，363① 成了恒 FAIL 的假门（tl1683 归因报告
+// §4.4：命中只说明池里有货，不说明这次 build 复用了什么）。
 func benchBoot(col *logCollect, o options) []metricResult {
 	var hot, cold []int64
 	worst := map[string]int64{}
+	byReuse, byBudget, poolOnly := 0, 0, 0
 	for _, b := range col.Boots {
-		if b.Hot {
+		switch {
+		case b.Hot && b.HotBy == "reuse":
 			hot = append(hot, b.Total)
-		} else {
+			byReuse++
+		case b.Hot:
+			hot = append(hot, b.Total)
+			byBudget++
+		default:
 			cold = append(cold, b.Total)
+			if b.PoolHit {
+				poolOnly++
+			}
 			for name, ms := range b.Stages {
 				if ms > worst[name] {
 					worst[name] = ms
@@ -207,17 +236,20 @@ func benchBoot(col *logCollect, o options) []metricResult {
 			}
 		}
 	}
+	branchNote := fmt.Sprintf("热路径样本构成：boot 自报复用 %d 条 / 重组相预算启发式 %d 条；"+
+		"另有 %d 条「池命中但未走复用」已改判冷启动（旧口径会把它们算成热路径）",
+		byReuse, byBudget, poolOnly)
 	out := []metricResult{
-		latencyResult("boot", "boot total（热路径=assembly hit 配对，兜底=重组相合计≤预算）",
+		latencyResult("boot", "boot total（热路径=boot 自报复用，兜底=重组相合计≤预算）",
 			fmt.Sprintf("boot total < %dms（热路径）", o.bootHotMaxMS),
-			"task 363 验收①", hot, float64(o.bootHotMaxMS),
-			verdictNA, "窗口内无热路径 boot 样本（热路径=runtime assembly 复用命中；复用关闭或未开同键新对话时下属预期）"),
+			"task 363 验收①（门值按 tl1683 可达门重标定）", hot, float64(o.bootHotMaxMS),
+			verdictNA, "窗口内无热路径 boot 样本（本次 build 既没自报复用、重组相合计也超预算；复用关闭或未开同键新对话时下属预期）"),
 		{
 			Bench: "boot", Metric: "boot total（冷启动，观测）",
 			Source: "desktop.log「boot: stage timings」",
 			Ref:    "tasklist 无冷启动数值验收；363① 的对照基线 3.4s",
 			N:      len(cold), Verdict: verdictObserve,
-			Note: fmt.Sprintf("冷启动 P50/P95/Max 见右列；最慢相 %s", topStages(worst, 3)),
+			Note: fmt.Sprintf("冷启动 P50/P95/Max 见右列；最慢相 %s。%s", topStages(worst, 3), branchNote),
 		},
 	}
 	if len(cold) > 0 {

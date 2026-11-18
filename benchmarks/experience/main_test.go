@@ -94,7 +94,7 @@ func TestCollectLogDirAndPairing(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.FixedZone("CST", 8*3600))
-	col, err := collectLogDir(dir, 72*time.Hour, now, nil) // 本测不涉 WARN 巡检：模式传 nil
+	col, err := collectLogDir(dir, 72*time.Hour, now, nil, 0) // 本测不涉 WARN 巡检：模式传 nil
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,8 +131,15 @@ func TestCollectLogDirAndPairing(t *testing.T) {
 	}
 }
 
-// TestPairReuseHits：热路径分类的主口径——boot 构建起点（At-Total）与
-// assembly hit 对齐 ±2s 即复用命中；hit 一次性消费；启发式仍独立成立。
+// TestPairReuseHits：热路径分类的两类证据配对（tl1683 ⑤ 口径修正）。
+//
+// 旧口径：assembly hit 配对成功 = 热路径（直接置 Hot）。错在「池里有货」≠
+// 「本次 build 真的复用了」——修复前 memory 三段无条件执行，命中配对的 boot
+// 照样重跑完整 prompt 组装，于是 111/111 热路径样本全来自配对分支、启发式
+// 分支 0 样本，363① 成了恒 FAIL 的假门（tl1683 归因报告 §4.4）。
+//
+// 新口径：boot 自报的复用事实（boot: assembly reuse 落在本次 boot 的构建
+// 窗口内）= 热路径；assembly hit 只作标注（PoolHit），不再单独成立。
 func TestPairReuseHits(t *testing.T) {
 	base := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
 	mk := func(at time.Time, total int64) bootSample {
@@ -141,6 +148,8 @@ func TestPairReuseHits(t *testing.T) {
 	col := &logCollect{
 		// hit1 对准 b1 起点（10:00:00）；hit2 对准 b2 起点（10:01:00）。
 		AssemblyHits: []time.Time{base, base.Add(61 * time.Second)},
+		// b2 的构建窗口 = [10:01:00, 10:01:04]：boot 自报的复用事实落在这里。
+		ReuseMarks: []reuseMark{{At: base.Add(62 * time.Second), Prompt: true, Memory: true}},
 		Boots: []bootSample{
 			mk(base.Add(5*time.Second), 5000),   // 起点 = base：配中 hit1
 			mk(base.Add(64*time.Second), 4000),  // 起点 = base+60s：配中 hit2
@@ -148,18 +157,95 @@ func TestPairReuseHits(t *testing.T) {
 		},
 	}
 	col.pairReuseHits()
-	if !col.Boots[0].Reuse || !col.Boots[0].Hot {
-		t.Fatalf("b0 应配中 hit1：%+v", col.Boots[0])
+	// ① 池命中只作标注，不再是热路径的充要条件（tl1683 ⑤ 口径修正）。
+	if !col.Boots[0].PoolHit {
+		t.Fatalf("b0 应配中 hit1（PoolHit）：%+v", col.Boots[0])
 	}
-	if !col.Boots[1].Reuse {
-		t.Fatalf("b1 应配中 hit2：%+v", col.Boots[1])
+	if col.Boots[0].Reuse {
+		t.Fatalf("b0 无 boot 自报复用事实，Reuse 不该为真：%+v", col.Boots[0])
 	}
-	if col.Boots[2].Reuse {
+	if !col.Boots[1].PoolHit {
+		t.Fatalf("b1 应配中 hit2（PoolHit）：%+v", col.Boots[1])
+	}
+	if col.Boots[2].PoolHit {
 		t.Fatalf("b2 不应配中（hit 已被消费/超窗）：%+v", col.Boots[2])
 	}
-	// 分相启发式兜底：无 hit 但重组相合计≤预算仍判热。
+	// ② boot 自报的复用事实落在构建窗口内 ⇒ Reuse 成立。
+	if !col.Boots[1].Reuse {
+		t.Fatalf("b2 应配中 boot 自报复用事实：%+v", col.Boots[1])
+	}
+	// ③ 判定：b2 走复用 ⇒ 热路径；b0/b1 重组相 4000ms 超预算 ⇒ 冷启动。
+	col.classifyBoots()
+	if !col.Boots[1].Hot || col.Boots[1].HotBy != "reuse" {
+		t.Fatalf("b2 走了复用分支，应判热路径：%+v", col.Boots[1])
+	}
+	if col.Boots[0].Hot || col.Boots[2].Hot {
+		t.Fatalf("b0/b2 未走复用且重组相超预算，不应判热路径：%+v %+v", col.Boots[0], col.Boots[2])
+	}
+	// 分相启发式兜底：无复用事实但重组相合计≤预算仍判热。
 	if !bootIsHotWith(map[string]int64{"prompt": 100, "mcp": 50, "agent:tools": 100}, 300) {
 		t.Fatal("重组相合计 250ms 应判热（启发式兜底）")
+	}
+}
+
+// TestClassifyBootsBothBranches1683：tl1683 ⑤ 的度量修正达标断言——热路径
+// 判定的两条分支（boot 自报复用 / 重组相预算启发式）都必须能产出非零样本，
+// 且池命中不再单独把慢 boot 塞进热路径。
+//
+// 这是「假门」问题的机制层反证：旧口径下两条分支的样本量是 111/0（全部来自
+// 池命中配对），修复后必须是两条分支都非零、且池命中单独为 0。
+func TestClassifyBootsBothBranches1683(t *testing.T) {
+	base := time.Date(2026, 11, 17, 20, 0, 0, 0, time.UTC)
+	mk := func(at time.Time, total int64, stages map[string]int64) bootSample {
+		return bootSample{At: at, Total: total, Stages: stages}
+	}
+	col := &logCollect{
+		HotBudgetMS: defaultBootHotBudgetMS,
+		// 三次 boot：① 走了复用（自报）、② 快但没走复用（预算启发式）、
+		// ③ 池命中但没走复用且很慢（旧口径会算成热路径）。
+		// boot ① 的构建窗口 = [base+3s, base+5s]：自报行落在窗口内。
+		ReuseMarks: []reuseMark{{At: base.Add(4 * time.Second), Prompt: true, Memory: true, Shell: true}},
+		// 池命中行各自对准对应 boot 的构建起点（At-Total）±2s。
+		AssemblyHits: []time.Time{
+			base.Add(-13 * time.Second), // boot ③ 起点 = base-13.565s
+			base.Add(2 * time.Second),   // boot ① 起点 = base+3s
+			base.Add(12 * time.Second),  // boot ② 起点 = base+12.5s
+		},
+		Boots: []bootSample{
+			mk(base.Add(5*time.Second), 2000, map[string]int64{"prompt": 120, "mcp": 100, "agent:tools": 90}),
+			mk(base.Add(15*time.Second), 2500, map[string]int64{"prompt": 130, "mcp": 110, "agent:tools": 95}),
+			mk(base.Add(25*time.Second), 38565, map[string]int64{"prompt": 35732, "mcp": 393, "agent:tools": 1024}),
+		},
+	}
+	col.pairReuseHits()
+	col.classifyBoots()
+
+	var reuseHits, budgetHits, coldHits int
+	for _, b := range col.Boots {
+		switch {
+		case b.Hot && b.HotBy == "reuse":
+			reuseHits++
+		case b.Hot:
+			budgetHits++
+		default:
+			coldHits++
+		}
+	}
+	if reuseHits != 1 {
+		t.Fatalf("「boot 自报复用」分支样本数 = %d（应为 1）：%+v", reuseHits, col.Boots)
+	}
+	if budgetHits != 1 {
+		t.Fatalf("「重组相预算启发式」分支样本数 = %d（应为 1）：%+v", budgetHits, col.Boots)
+	}
+	if coldHits != 1 {
+		t.Fatalf("冷路径样本数 = %d（应为 1）：%+v", coldHits, col.Boots)
+	}
+	// 池命中的那条慢 boot 必须在冷路径里（旧口径的假门来源）。
+	if !col.Boots[2].PoolHit {
+		t.Fatalf("第 3 条 boot 应配中池命中：%+v", col.Boots[2])
+	}
+	if col.Boots[2].Hot {
+		t.Fatalf("池命中但重组相 37s 的 boot 不得判热路径（假门修复点）：%+v", col.Boots[2])
 	}
 }
 

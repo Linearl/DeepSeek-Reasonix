@@ -40,7 +40,7 @@ func TestCollectSwitchCostLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 16, 16, 0, 0, 0, time.FixedZone("CST", 8*3600))
-	col, err := collectLogDir(dir, 72*time.Hour, now, nil)
+	col, err := collectLogDir(dir, 72*time.Hour, now, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
