@@ -14,6 +14,15 @@ import { TranscriptViewportWriter } from "./transcriptViewportWriter";
 import { observeTranscriptGeometry } from "./transcriptGeometryObserver";
 
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+/** tl 1699: the viewport facts captured BEFORE a width rewrap — the width
+ * epoch they belong to, the measured "at the bottom" verdict of that epoch,
+ * and the first visible line (the screen's first line, as the reader saw it
+ * before the content under the viewport moved). */
+type PreReflowFacts = {
+  width: number;
+  atBottom: boolean;
+  firstVisible: LogicalAnchor | null;
+};
 // Native WebViews can leave a short gap between coalesced wheel batches while
 // the platform compositor is still the authoritative scroll owner. Keep the
 // lease beyond that boundary so deferred geometry is committed only after the
@@ -337,6 +346,8 @@ export function useTranscriptKernel({
   // then re-applies that intent: tail → unconditional bottom write, reader →
   // the first line re-anchored).
   const compensatedWidthRef = useRef<number | null>(null);
+  // tl 1699: the pre-rewrap viewport facts (see PreReflowFacts).
+  const preReflowRef = useRef<PreReflowFacts | null>(null);
 
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const snapshot = useCallback(() => {
@@ -535,35 +546,82 @@ export function useTranscriptKernel({
   // whose block anchor is gone). The screen's FIRST visible line is what the
   // reader is looking at, so it is what a reflow must preserve — the fallback
   // keeps the current pixels instead of yanking the view somewhere else.
-  const firstVisibleAnchor = useCallback((): LogicalAnchor | null => {
-    const geometry = snapshot();
+  const visibleAnchorOf = useCallback((geometry: TranscriptViewportSnapshot | null): LogicalAnchor | null => {
     if (!geometry) return null;
     const first = geometry.visibleBlocks.find((block) => block.bottom > geometry.scrollTop + 0.5);
     if (!first) return null;
     return { kind: "block", blockKey: first.key, offsetPx: geometry.scrollTop - first.top };
-  }, [snapshot]);
+  }, []);
+
+  const firstVisibleAnchor = useCallback((): LogicalAnchor | null => visibleAnchorOf(snapshot()), [snapshot, visibleAnchorOf]);
+
+  // tl 1699: the viewport facts captured BEFORE a rewrap. A rewrap changes the
+  // scroller's width, and everything measured after that change describes the
+  // NEW layout — the browser's scroll anchoring has already moved scrollTop,
+  // the content above grew, so "am I at the bottom" and "which block is at the
+  // top of the screen" are no longer answers about what the reader wanted.
+  // These facts are therefore captured at the last observation of the current
+  // width epoch (the user-driven scroll observations) and are what the width
+  // compensation aims at.
+  const capturePreReflowFacts = useCallback((): PreReflowFacts | null => {
+    const element = scrollRef.current;
+    if (!element) return null;
+    const width = element.clientWidth;
+    const facts = preReflowRef.current;
+    // A different width means a rewrap just happened: the recorded facts are
+    // still the PRE-rewrap ones — keep them, do not overwrite.
+    if (facts && Math.abs(facts.width - width) > 0.5) return facts;
+    const geometry = snapshot();
+    if (!geometry) return facts;
+    const next: PreReflowFacts = {
+      width,
+      atBottom: kernel.isViewportAtBottom(geometry),
+      firstVisible: visibleAnchorOf(geometry),
+    };
+    preReflowRef.current = next;
+    return next;
+  }, [kernel, snapshot, visibleAnchorOf]);
+
+  // The width epoch advanced (a rewrap was compensated): the next rewrap's
+  // pre-state must be measured in the new width.
+  const refreshPreReflowFacts = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    // The compensation just wrote the scroll position: the frame's merged
+    // snapshot still holds the PRE-write scrollTop, and a "at the bottom"
+    // verdict read from it would be stale (tl 1699 — the facts must describe
+    // the position the reader is actually looking at now).
+    frameSnapshot = null;
+    const geometry = snapshot();
+    if (!geometry) return;
+    preReflowRef.current = {
+      width: element.clientWidth,
+      atBottom: kernel.isViewportAtBottom(geometry),
+      firstVisible: visibleAnchorOf(geometry),
+    };
+  }, [kernel, snapshot, visibleAnchorOf]);
 
   // tl 1699: the width-reflow compensation target.
-  //   tail  → the reader was at the bottom BEFORE the rewrap → pin the bottom
-  //            unconditionally after it. The verdict is the kernel's STICKY,
-  //            user-driven one (`atBottom`): it is only rewritten by a real
-  //            user displacement, so it survives the rewrap's own geometry
-  //            noise (streaming growth, the browser's scroll anchoring) while
-  //            a fresh post-rewrap measurement does not.
+  //   tail  → the reader was at the bottom BEFORE the rewrap (the pre-rewrap
+  //            measurement, not a post-rewrap one) → pin the bottom
+  //            unconditionally after it.
   //   reader → the logical anchor (the first visible block at the reader's
   //            last displacement) is re-applied, so the screen's first line
-  //            stays where it was.
+  //            stays where it was. When the logical anchor cannot name a block
+  //            (a stale tail intent over a viewport parked mid-transcript),
+  //            the pre-rewrap first visible line is the fallback: the screen's
+  //            first line is what the reader is looking at.
   const resolveWidthTarget = useCallback((): LogicalAnchor => {
+    const facts = preReflowRef.current;
     const logical = kernel.anchor;
-    if (kernel.atBottom) return { kind: "tail" };
+    const wasAtBottom = facts ? facts.atBottom : kernel.atBottom;
+    if (wasAtBottom) return { kind: "tail" };
     if (logical.kind === "block") return logical;
-    // No usable block anchor (a tail intent over a viewport parked
-    // mid-transcript): hold the first visible line instead of the bottom.
-    return firstVisibleAnchor() ?? logical;
-  }, [firstVisibleAnchor, kernel]);
+    if (facts?.firstVisible) return facts.firstVisible;
+    return logical;
+  }, [kernel]);
 
   const beginAnchorRestore = useCallback((anchor?: LogicalAnchor) => {
-    const restoreAnchor = anchor ?? kernel.anchor;
     if (kernel.userGestureActive) return null;
     // tl 1699: the intent picks the compensation TARGET; it no longer decides
     // whether there is one at all. A tail view used to return null here, and
@@ -578,15 +636,20 @@ export function useTranscriptKernel({
     }
     // A reader view without a usable block anchor falls back to the first
     // visible line (tl 1699): the screen's first line is what the reader is
-    // looking at, so it is what must be preserved.
-    const blockAnchor = restoreAnchor.kind === "block" ? restoreAnchor : firstVisibleAnchor();
-    if (!blockAnchor) return null;
+    // looking at, so it is what a reflow must preserve. The caller may hand
+    // in a block anchor of its own; otherwise the kernel's logical anchor
+    // names the block — and when neither names one, the first visible line
+    // is the fallback.
+    const restoreAnchor: LogicalAnchor | null = anchor !== undefined
+      ? (anchor.kind === "block" ? anchor : firstVisibleAnchor())
+      : (kernel.anchor.kind === "block" ? kernel.anchor : firstVisibleAnchor());
+    if (!restoreAnchor) return null;
     // Task 931: this is the passive streaming-restore path — measurement
     // publishes re-apply kernel.anchor to hold the reader's position. When the
     // anchor is stale (unobserved native momentum / a gesture-deferred revert),
     // that re-application is a teleport; mark it passive so correctAnchor's
     // drift gate also covers its first alignment.
-    const transaction = kernel.activeTransaction ?? kernel.begin("restore", blockAnchor, { passive: true });
+    const transaction = kernel.activeTransaction ?? kernel.begin("restore", restoreAnchor, { passive: true });
     if (transaction) refresh();
     return transaction;
   }, [firstVisibleAnchor, kernel, refresh]);
@@ -646,11 +709,11 @@ export function useTranscriptKernel({
         // delivery-time truth far enough apart to poison the 753 drift gate.
         // Drop the per-frame merge cache so the commit reads live facts.
         frameSnapshot = null;
-        // tl 1699: the compensation TARGET comes from the PRE-reflow state
-        // (the kernel's frozen intent and anchor), never from a post-reflow
-        // measurement: after the rewrap the browser's own scroll anchoring has
-        // already moved scrollTop, so "am I at the bottom" is no longer
-        // evidence about what the reader wanted.
+        // tl 1699: the compensation TARGET comes from the PRE-rewrap facts
+        // (the frozen intent, the pre-rewrap first visible line), never from
+        // a post-rewrap measurement: after the rewrap the browser's own scroll
+        // anchoring has already moved scrollTop, so "am I at the bottom" is no
+        // longer evidence about what the reader wanted.
         kernel.beginWidthCompensation(resolveWidthTarget());
         commitViewportGeometry(undefined, true);
         refresh();
@@ -658,13 +721,14 @@ export function useTranscriptKernel({
         // in the new width, and a scroll observation that still sees the old
         // width belongs to THIS rewrap (tl 1699's reflow-scoped observation).
         compensatedWidthRef.current = element.clientWidth;
+        refreshPreReflowFacts();
         return;
       }
       // Height-only (and unclassified) deliveries keep the 267 R3 semantics.
       kernel.scheduleTailSync();
       compensatedWidthRef.current = element.clientWidth;
     }, undefined, { deliverSync: (change) => change?.widthChanged === true });
-  }, [kernel, scrollElement, commitViewportGeometry, refresh, resolveWidthTarget]);
+  }, [kernel, scrollElement, commitViewportGeometry, refresh, refreshPreReflowFacts, resolveWidthTarget]);
 
   const beginGesture = useCallback((owner: "selection" | "native" = "native") => {
     const current = snapshot();
@@ -714,10 +778,12 @@ export function useTranscriptKernel({
     const current = snapshot();
     if (!current) return null;
     // tl 1699: a scroll observation that belongs to a width rewrap must not
-    // re-derive the reader's intent (see compensatedWidthRef).
+    // re-derive the reader's intent (see compensatedWidthRef), and it must
+    // refresh the pre-rewrap facts of the CURRENT width epoch.
     const element = scrollRef.current;
     const reflowed = element != null && compensatedWidthRef.current != null
       && Math.abs(element.clientWidth - compensatedWidthRef.current) > 0.5;
+    capturePreReflowFacts();
     const towardHistory = current.scrollTop < observedTopRef.current;
     observedTopRef.current = current.scrollTop;
     const nativeOwned = kernel.observeNativeScroll(current, { reflowed });
@@ -728,7 +794,7 @@ export function useTranscriptKernel({
     if (kernel.nativeGestureLeaseActive) renewGestureLease();
     refresh();
     return towardHistory && kernel.userGestureActive;
-  }, [kernel, refresh, renewGestureLease, snapshot]);
+  }, [capturePreReflowFacts, kernel, refresh, renewGestureLease, snapshot]);
 
   // Fork (task 160): while the viewport is parked at the top it stops emitting
   // scroll events, so `current.scrollTop < observedTopRef.current` can never be

@@ -96,12 +96,6 @@ type ActiveTransaction = {
   /** Task 931: passive corrections (the streaming anchor-restore path) face
    * the drift gate on their FIRST alignment too; explicit intents do not. */
   passive: boolean;
-  /** tl 1699: a width-reflow compensation is exempt from the 753 anchor-drift
-   * gate — its anchor is captured at the pre-reflow moment (by construction
-   * current, never stale) and the anchored block's top legitimately moves when
-   * the lines above it rewrap. The gate's "the anchor drifted, refuse" reading
-   * would preserve exactly the drift the compensation exists to remove. */
-  driftExempt: boolean;
   correctionRevision: number;
   retryUsed: boolean;
   timeout: ReturnType<typeof setTimeout>;
@@ -475,7 +469,7 @@ export class TranscriptKernel {
     return () => { cancelled = true; this.clock.cancelAnimationFrame(handle); };
   }
 
-  begin(kind: ScrollTransactionKind, anchor = this.anchorValue, options?: { passive?: boolean; driftExempt?: boolean }): ScrollTransaction | null {
+  begin(kind: ScrollTransactionKind, anchor = this.anchorValue, options?: { passive?: boolean }): ScrollTransaction | null {
     if (this.userGesture && kind !== "selection") {
       if (kind === "restore" || kind === "prepend" || kind === "display-change" || kind === "composer-resize") {
         this.deferredStructural = { generation: this.generationValue, kind, passive: options?.passive === true };
@@ -493,7 +487,7 @@ export class TranscriptKernel {
       status: "active",
     };
     const timeout = this.clock.setTimeout(() => this.finish(transaction.id, "expired", "deadline"), TRANSACTION_TTL_MS);
-    this.active = { transaction, anchor, passive: options?.passive === true, driftExempt: options?.driftExempt === true, correctionRevision: -1, retryUsed: false, timeout };
+    this.active = { transaction, anchor, passive: options?.passive === true, correctionRevision: -1, retryUsed: false, timeout };
     this.anchorValue = anchor;
     this.intentValue = anchor.kind === "tail" ? "tail" : "reader";
     this.anchors.set(this.session, anchor);
@@ -503,24 +497,19 @@ export class TranscriptKernel {
 
   /** tl 1699: open the width-reflow compensation transaction.
    *
-   * Two deliberate differences from an ordinary structural restore:
-   *   - the TARGET is decided by the caller from the PRE-reflow state (the
-   *     frozen intent), never from a post-reflow measurement: after the
-   *     rewrap the browser's own scroll anchoring has already moved
-   *     scrollTop, so "am I at the bottom" is no longer evidence about what
-   *     the reader wanted;
-   *   - the 753 anchor-drift gate does NOT apply (driftExempt). The anchored
-   *     block's top moves legitimately when the lines above it rewrap — a
-   *     sidebar toggle rewraps hundreds of pixels — and the gate's "the
-   *     anchor drifted, refuse" reading would preserve exactly the drift this
-   *     compensation exists to remove. The anchor handed in is captured at the
-   *     pre-reflow moment, so the staleness the gate protects against cannot
-   *     be present here.
+   * The TARGET is decided by the caller from the PRE-rewrap state (the frozen
+   * intent and the pre-rewrap first visible line), never from a post-rewrap
+   * measurement: after the rewrap the browser's own scroll anchoring has
+   * already moved scrollTop, so "am I at the bottom" is no longer evidence
+   * about what the reader wanted.
    *
    * The transaction kind stays "composer-resize" so the owner label and the
-   * diagnostic stream stay byte-compatible with the tl 1255 width path. */
+   * diagnostic stream stay byte-compatible with the tl 1255 width path. The
+   * 753 anchor-drift gate still applies to it (tl 1255 leg E pins it: a
+   * genuinely over-threshold shift on the width path must be refused and
+   * re-anchored, not teleported) — tl 1699 does not weaken that invariant. */
   beginWidthCompensation(anchor: LogicalAnchor): ScrollTransaction | null {
-    return this.begin("composer-resize", anchor, { driftExempt: true });
+    return this.begin("composer-resize", anchor);
   }
 
   cancelActive(outcome = "cancelled"): void {
@@ -590,16 +579,16 @@ export class TranscriptKernel {
       && !surfaceRestoreFirst
       && active.transaction.kind !== "jump"
       && active.transaction.kind !== "prepend";
-    // tl 1699: a width-reflow compensation is exempt. The gate compares the
-    // correction target against the CURRENT scrollTop; after a rewrap the
-    // anchored block legitimately moved (the lines above it rewrapped) and
-    // the browser's scroll anchoring may or may not have followed — either
-    // way the gap the gate measures is the REWRAP, not a stale anchor, and
-    // refusing the correction preserves exactly the drift the compensation
-    // exists to remove (the reader's first line slides). The anchor is
-    // captured at the pre-reflow moment, so the staleness the gate protects
-    // against is not present in this transaction.
-    if (viewport && !active.driftExempt && (sameAnchorAligned || passiveFirstAlignment)) {
+    // tl 1699: a width-reflow compensation is NOT exempt from this gate. The
+    // gate compares the correction target against the CURRENT scrollTop; when
+    // the browser's scroll anchoring followed the rewrap, the target and the
+    // scrollTop agree and the gate lets the correction through (the reader's
+    // first line is preserved). When the anchoring was defeated (a virtualized
+    // transcript rebuilt its DOM nodes) the gap IS the content's movement, and
+    // the fork's 753 invariant says: do not teleport — keep the pixels and
+    // re-anchor to the block the reader is actually looking at (tl 1255 leg E
+    // pins exactly this on the width path). tl 1699 does not weaken it.
+    if (viewport && (sameAnchorAligned || passiveFirstAlignment)) {
       const target = top + active.anchor.offsetPx;
       if (Math.abs(target - viewport.scrollTop) > Math.max(ANCHOR_DRIFT_MIN_PX, viewport.clientHeight)) {
         const first = viewport.visibleBlocks.find((block) => block.bottom > viewport.scrollTop + 0.5);
@@ -639,12 +628,11 @@ export class TranscriptKernel {
     this.intentValue = "tail";
     this.anchorValue = { kind: "tail" };
     this.anchors.set(this.session, this.anchorValue);
-    // tl 1699: an explicit bottom landing is also a bottom VERDICT. The
-    // sticky verdict (`atBottomValue`) is what the width compensation reads as
-    // the pre-reflow "was the reader at the bottom" answer; leaving it at the
-    // pre-jump value made an explicit jump-to-bottom look like a reader view
-    // to the next reflow.
-    this.atBottomValue = true;
+    // tl 1241: the sticky bottom verdict (`atBottomValue`) is a CONDITIONAL
+    // snapshot — only a real user displacement rewrites it (tl 1219 §1). A
+    // programmatic bottom write must NOT rewrite it here (that is leak A,
+    // unchanged by design); the width compensation therefore reads the
+    // PRE-rewrap measurement from the hook, not from this verdict.
     const transaction = this.begin("tail-sync", this.anchorValue);
     return Boolean(transaction && this.active && this.writeAndFinish(this.active, "tail-follow", Number.POSITIVE_INFINITY));
   }

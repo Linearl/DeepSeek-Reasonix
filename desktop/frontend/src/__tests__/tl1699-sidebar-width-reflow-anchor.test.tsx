@@ -20,20 +20,19 @@
 //        atBottom 判定 + 冻结的逻辑锚），并且 re-flow 期间的 scroll 观察
 //        不再改写意图（observeNativeScroll 的 reflowed 分支）。
 //
-//   洞 3（753 漂移门误伤宽度补偿）：宽度补偿用的块锚，其 top 在 re-wrap 后
-//        合法地移动了（上面的行重新折行，可能几百像素）。753 的门拿「当前
-//        scrollTop」与补偿目标比，差值就是 re-wrap 的量 → 门把补偿当成
-//        「锚漂移」拒掉 → 读者首行漂移（tl 1255 的 harness 每步只动 60px，
-//        永远在门内，所以它绿而实测漂）。
-//        修法：宽度结构补偿豁免该门——它的锚是 reflow 前当场捕获的，不可能
-//        陈旧；陈旧锚的保护留给其它路径（见验收 D）。
+//   洞 3（753 漂移门）：复核结论——门保留，宽度结构补偿不豁免。tl 1255 的 E
+//        腿明确钉住「真实超门漂移经同步路径仍被 753 拒绝+重锚」，753 的语义
+//        是「不瞬移」：宁可停在读者当前看到的像素，也不把视口搬到别处。
+//        本件因此不动门本身（数值口径与锚点主语义都不动），只保证宽度补偿
+//        的「目标」取自 reflow 前——不再被 re-flow 之后的测量污染。
 //
 // 验收矩阵：
 //   A  贴底态 + 手势在场：re-wrap 期间的 scroll 事件不得降级 tail 意图；
 //      手势结束后 tail 必须回到底部（洞 2）。
 //   B  读者态 + 大 re-wrap（> 漂移门）：宽度补偿必须落笔，首行不变（洞 3）。
 //   C  贴底态的几何补偿入口必须开出补偿并回写底部（洞 1）。
-//   D  753 语义不弱化：普通 restore 路径仍拒写陈旧锚。
+//   D  753 语义不弱化：普通 restore 路径仍拒写陈旧锚；宽度路径上真实超门的
+//      位移也仍被拒（tl 1255 E 腿的语义，本件不动门）。
 
 import { JSDOM } from "jsdom";
 import { act } from "react";
@@ -207,11 +206,12 @@ async function fireInitialObservation(): Promise<void> {
 
 /**
  * re-flow 的一帧（生产顺序）：
- *   1. 布局变了（宽度变 → 行重新折行 → 内容变高）；
- *   2. 浏览器的 scroll anchoring 改了 scrollTop → 产生一个 scroll 事件
+ *   1. 浏览器进入新的一帧（几何读取缓存按帧失效 → 读到的是本帧的事实）；
+ *   2. 布局变了（宽度变 → 行重新折行 → 内容变高）；
+ *   3. 浏览器的 scroll anchoring 改了 scrollTop → 产生一个 scroll 事件
  *      （scroll 事件在「滚动步骤」里派发，早于同帧的 ResizeObserver 交付）；
- *   3. ResizeObserver 交付（布局后、绘制前）→ 同步补偿。
- * 修前：第 2 步把 tail 意图降级（洞 2），第 3 步的补偿因此不再回写底部。
+ *   4. ResizeObserver 交付（布局后、绘制前）→ 同步补偿。
+ * 修前：第 3 步把 tail 意图降级（洞 2），第 4 步的补偿因此不再回写底部。
  */
 async function rewrapFrame(options: {
   width: number;
@@ -220,6 +220,7 @@ async function rewrapFrame(options: {
   anchorShift: number;
   gesture: boolean;
 }): Promise<void> {
+  bumpFrame();
   geom.clientW = options.width;
   geom.blocks = options.blocks;
   geom.height = options.height;
@@ -283,7 +284,7 @@ process.stdout.write("\n[tl 1699] sidebar width reflow: tail keeps the bottom, r
   await unmount();
 }
 
-// ── B: 读者态 + 大 re-wrap——宽度补偿必须落笔，首行不变（洞 3）─────────────
+// ── B: 读者态 + 手势在场——re-wrap 的 scroll 事件不得降级读者意图，首行不变 ──
 {
   resetGeom();
   clock = new TranscriptTestClock();
@@ -299,35 +300,28 @@ process.stdout.write("\n[tl 1699] sidebar width reflow: tail keeps the bottom, r
   eq((hookRef.current!.kernel.anchor as { blockKey: string }).blockKey, "blk-b", "B: anchored to blk-b");
   eq((hookRef.current!.kernel.anchor as { offsetPx: number }).offsetPx, 200, "B: anchor offset 1200-1000=200");
 
-  // 第一次宽度交付：小 re-wrap（blk-b 的 top 1000→1240）。补偿落笔，读者的
-  // 首行保持（视口下的内容不变），同时建立对齐基准。
+  // 手势在场 + 侧栏展开一帧：上面的行重新折行（blk-a 1000→1240，blk-b 的
+  // top 随之移动），浏览器的 scroll anchoring 被虚拟化重建的 DOM 击穿
+  // （scrollTop 没动 → 视口下的内容已经平移），再产生一个 scroll 事件。
+  hookRef.current!.beginGesture();
   writes.length = 0;
   await rewrapFrame({
     width: 780,
     blocks: { "blk-a": { top: 0, height: 1240 }, "blk-b": { top: 1240, height: 3000 } },
     height: 4240,
     anchorShift: 0,
-    gesture: false,
+    gesture: true,
   });
-  eq(geom.top, 1440, `B: the small rewrap compensates (expected 1240+200=1440, got ${geom.top})`);
-  ok(writes.some((write) => write.owner === "composer-resize"), "B: the width compensation rode the composer-resize owner");
+  eq(hookRef.current!.kernel.intent, "reader", "B: the rewrap's scroll event does not demote the reader intent");
+  eq((hookRef.current!.kernel.anchor as { blockKey: string }).blockKey, "blk-b", "B: the logical anchor stays the pre-rewrap block");
 
-  // 第二次宽度交付：大 re-wrap（上面的行重新折行 2360px，远超漂移门
-  // max(320, clientHeight)=500）。753 的门此时会把补偿当成「锚漂移」拒掉。
-  writes.length = 0;
-  const beforeTop = geom.top;
-  await rewrapFrame({
-    width: 620,
-    blocks: { "blk-a": { top: 0, height: 3600 }, "blk-b": { top: 3600, height: 3000 } },
-    height: 6600,
-    anchorShift: 0,
-    gesture: false,
-  });
-  const expected = 3600 + 200;
-  eq(geom.top, expected, `B: the big rewrap compensates instead of being refused by the drift gate (expected ${expected}, got ${geom.top})`);
-  eq(geom.top - beforeTop, 2360, "B: the viewport moved exactly as much as the content above the anchor rewrapped");
-  eq(hookRef.current!.kernel.intent, "reader", "B: the intent stays reader");
-  eq((hookRef.current!.kernel.anchor as { blockKey: string }).blockKey, "blk-b", "B: the anchor stays blk-b (no false re-base)");
+  // 手势结束 → 宽度补偿必须按 re-wrap 前的锚落笔（blk-b 的新 top + offset）。
+  await act(async () => { hookRef.current!.endGesture(); });
+  flushAll();
+  bumpFrame();
+  flushAll();
+  ok(writes.some((write) => write.owner === "composer-resize"), "B: the width compensation rode the composer-resize owner");
+  eq(geom.top, 1440, `B: the reader's first line is preserved (expected 1240+200=1440, got ${geom.top})`);
   await unmount();
 }
 
@@ -390,6 +384,18 @@ process.stdout.write("\n[tl 1699] sidebar width reflow: tail keeps the bottom, r
   await act(async () => { hookRef.current!.commitViewportGeometry(); });
   ok(!writes.some((write) => write.owner === "restore"), "D: a genuinely stale anchor restore is still refused (753 semantics kept)");
   eq(geom.top, 1440, "D: the viewport stays where the reader is (no teleport)");
+
+  // 宽度路径上的真实超门位移同样被拒（tl 1255 E 腿的语义）：本件不动门。
+  writes.length = 0;
+  await rewrapFrame({
+    width: 760,
+    blocks: { "blk-a": { top: 0, height: 3600 }, "blk-b": { top: 3600, height: 2000 } },
+    height: 5600,
+    anchorShift: 0,
+    gesture: false,
+  });
+  ok(!writes.some((write) => write.owner === "composer-resize"), "D: an over-threshold shift on the width path is still refused (753 semantics kept)");
+  eq(geom.top, 1440, "D: the width path keeps the reader's pixels (no teleport)");
   await unmount();
 }
 
