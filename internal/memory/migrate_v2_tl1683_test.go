@@ -220,6 +220,9 @@ func TestMigrateV2WritePhaseStillTakesGlobalLock1683(t *testing.T) {
 //
 // 真机形态：881 个 .md / 2.1MB ⇒ 单文件均值约 2.4KB。这里按同样的形态造
 // 库，对比「只读文件头」（新）与「全量读全文」（旧）的耗时。
+//
+// 两臂共享同一份预热过的页缓存：不预热的话先跑的那一臂独吞冷读成本，结论
+// 会变成「谁先跑谁慢」而不是「谁读得少」。
 func BenchmarkMigrateV2Scan1683(b *testing.B) {
 	const fileCount = 881
 	const bodySize = 2400
@@ -228,13 +231,21 @@ func BenchmarkMigrateV2Scan1683(b *testing.B) {
 	content := front + body + "\n"
 
 	dir := b.TempDir()
+	names := make([]string, 0, fileCount)
 	for i := range fileCount {
 		name := filepath.Join(dir, "fact"+strings.Repeat("0", 4-len(itoa(i)))+itoa(i)+".md")
 		if err := os.WriteFile(name, []byte(content), 0o644); err != nil {
 			b.Fatal(err)
 		}
+		names = append(names, name)
 	}
 	store := Store{Dir: dir}
+	// 预热：把整库读进页缓存，两臂起点一致。
+	for _, name := range names {
+		if _, err := os.ReadFile(name); err != nil {
+			b.Fatal(err)
+		}
+	}
 
 	b.Run("head-only", func(b *testing.B) {
 		for b.Loop() {
@@ -245,15 +256,8 @@ func BenchmarkMigrateV2Scan1683(b *testing.B) {
 	})
 	b.Run("full-read-baseline", func(b *testing.B) {
 		for b.Loop() {
-			entries, err := os.ReadDir(dir)
-			if err != nil {
-				b.Fatal(err)
-			}
-			for _, e := range entries {
-				if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-					continue
-				}
-				raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			for _, name := range names {
+				raw, err := os.ReadFile(name)
 				if err != nil {
 					b.Fatal(err)
 				}
