@@ -1,0 +1,81 @@
+# REQ-7210 文档保鲜配置模板
+# 使用方式: 复制到 04-auto_audit/config/document-freshness.yaml 并按项目实际情况修改
+# 交互式配置: /doc-freshness-audit setup
+
+# 默认过期阈值（小时），用于未匹配到分类的文档兜底
+# 可选: 72(3d) / 168(7d) / 336(14d)
+default_threshold_hours: 168  # 7d
+
+# 自适应阈值——文档连续审计通过后自动延长审计间隔
+adaptive:
+  enabled: true
+  strategy: "progressive"       # progressive(2.0→3.0→4.0×) | exponential(×2每次) | linear(+72h每次)
+  base_multiplier: 1.0          # 初始乘数
+  first_pass_multiplier: 2.0    # 首次审计通过后的乘数
+  step_increment: 1.0           # 后续每次递增
+  max_multiplier: 4.0           # 上限
+  reset_on_failure: true        # 发现问题时重置为 1.0
+  full_audit_interval_days: 30  # 每月强制全量审计（忽略自适应）
+
+# 文档分类阈值——按目录前缀匹配，最长前缀优先
+categories:
+  # 架构文档（日常审视）
+  - prefix: "2.tech/architecture/"
+    threshold_hours: 336   # {threshold_architecture}
+  # API 文档（代码变更直接影响）
+  - prefix: "2.tech/api/"
+    threshold_hours: 168   # {threshold_api}
+  # 数据库文档
+  - prefix: "2.tech/database/"
+    threshold_hours: 336   # {threshold_database}
+  # 开发规范（相对稳定）
+  - prefix: "2.tech/development/standards/"
+    threshold_hours: 720   # {threshold_standards}
+  # 开发模板（相对稳定）
+  - prefix: "2.tech/development/templates/"
+    threshold_hours: 720   # {threshold_templates}
+  # 工具指南
+  - prefix: "2.tech/development/tools/"
+    threshold_hours: 720   # {threshold_tools}
+  # 工作流文档
+  - prefix: "2.tech/development/workflow/"
+    threshold_hours: 720   # {threshold_workflow}
+  # 开发专题（兜底）
+  - prefix: "2.tech/development/"
+    threshold_hours: 720   # {threshold_development}
+  # 用户手册
+  - prefix: "2.tech/user_guide/"
+    threshold_hours: 336   # {threshold_user_guide}
+  # 其他技术文档兜底
+  - prefix: "2.tech/"
+    threshold_hours: 168   # {threshold_default}
+
+# 单文档阈值覆盖——优先级高于 categories 前缀匹配
+# 格式: "文档相对路径": 小时数
+overrides: {}
+# 示例:
+#   "2.tech/architecture/02-前端架构.md": 168   # 高频变更，7d
+#   "2.tech/api/03-Docker服务.md": 720          # 稳定，30d
+
+# 排除模式（glob）
+exclude:
+  - "**/INDEX.md"
+  - "**/README.md"
+
+# 工作目录——审计系统根目录（绝对路径）
+# 交互式配置时自动填充为当前项目 04-auto_audit/ 的绝对路径
+work_dir: "{absolute_path_to_04-auto_audit}"
+
+# AI 审计配置
+audit:
+  models: ["opus", "sonnet", "haiku", "sonnet"]  # [深度, 结构, 快速, 反面论证]
+  max_files_per_run: 12  # 单次审计文档上限，0=无上限
+  max_batch_parallel: 1  # Phase 3 batch 最大并行数: 1(顺序) | 2 | 3 | 自定义
+  reviewer_model: "sonnet"
+  language: "zh"
+  parallel_reviewers: 4
+
+# 去重配置——避免重复审计未变更文档
+dedup:
+  enabled: true       # 关闭 = 每次全量审计
+  ttl_days: 14        # audited_sha 有效期，超期后强制重审；0=永久跳过

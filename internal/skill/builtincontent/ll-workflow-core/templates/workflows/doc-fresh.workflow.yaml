@@ -1,0 +1,300 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.doc-fresh
+  short_name: doc-fresh
+  name: ll-workflow-core / 文档保鲜审计工作流
+  description: 扫描最新版本 docs/2.tech/ 技术文档，按过期阈值与 SHA 去重，多模型子代理并行审计（opus-deep / sonnet-structural / haiku-quick / sonnet-devil），reviewer 复核生成修正报告。6 阶段流水线（扫描→分组→并行审计→复核→汇总→标记已审计）。
+  owner_skill: ll-workflow-core
+  activation_aliases:
+    - df
+    - doc-fresh
+    - doc-freshness
+    - 文档保鲜
+    - 过期文档
+    - 文档审计
+  activation_hint: 当用户提到文档保鲜、过期文档、文档审计、文档新鲜度、stale 文档检查时触发。默认走传统 YAML 工作流；如需 CC Workflow 版本（Claude Code 内门控更严），用 df-cc 变体。
+  mode_support:
+    - interactive
+    - non_interactive
+  defaults:
+    on_fail: block
+    max_total_rounds: 6
+    evidence_policy: batch_integrity_check
+
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（绝对路径），用于解析所有相对路径
+      - name: targetDevDir
+        description: 当前开发版本目录（如 02-dev/dev_12），用于落位审计产物
+      - name: scanPath
+        description: 扫描根路径（默认 2.tech/，可配置如 3.analysis/report/）
+      - name: thresholdOverride
+        description: 覆盖默认过期阈值（小时）
+      - name: forceFull
+        description: 强制全量审计（忽略 SHA 去重）
+      - name: maxFilesPerRun
+        description: 单次审计文档上限（默认 12，0=无上限）
+    outputs:
+      - name: scanResultJson
+        description: 扫描结果 JSON（包含待审计文档清单与 SHA）
+      - name: batchReports
+        description: 4 份子诊断报告（opus-deep/sonnet-structural/haiku-quick/sonnet-devil）/batch
+      - name: reviewReports
+        description: reviewer 复核报告
+      - name: summaryMd
+        description: 最终修正报告（Markdown 格式，按文档逐项列出过期点与建议）
+      - name: markAuditedLog
+        description: 已审计标记日志（每文档一份）
+    variables:
+      - name: runDirRoot
+      - name: batchList
+      - name: modelDeep
+      - name: modelStruct
+      - name: modelQuick
+      - name: modelDevil
+
+  phases:
+    # ═══════════════════════════════════════════════════════════════
+    # Phase 1: 扫描
+    # ═══════════════════════════════════════════════════════════════
+    - id: p1_scan
+      name: 文档扫描与去重
+      purpose: 调 Python 扫描器扫描指定路径，识别过期文档并按 SHA + TTL 去重。
+      steps:
+        - id: ensure_run_dir
+          title: 创建本次运行目录
+          action: custom.described_action
+          with:
+            description: >-
+              在 work_dir（如 04-auto_audit/results/）下创建本次运行目录：
+              路径格式：{date}-{seq}，其中 {date} 是 YYYY-MM-DD，{seq} 是当天的 6 位递增序号。
+              若目录已存在则复用，否则创建。
+            expected_outputs:
+              - runDirRoot
+          save_as: run_dir
+
+        - id: invoke_scanner
+          title: 调用 Python 扫描器
+          action: custom.described_action
+          with:
+            description: >-
+              执行 Python 扫描器 routes/doc-fresh/scripts/check-doc-freshness.py。
+              支持以下参数：
+                --work-dir {runDirRoot}
+                --scan-path {scanPath}     # 默认 2.tech/
+                --threshold-override {thresholdOverride}   # 可选
+                --force-full                              # 可选
+                --max-files-per-run {maxFilesPerRun}      # 可选，默认 12
+              扫描输出：{runDirRoot}/scan-result.json
+              字段：summary{total_scanned, stale, new, recurring_skipped, current}
+                    + audit_files[{rel_path, last_modified, git_sha, threshold_hours, age_hours, report_count}]
+            expected_outputs:
+              - scanResultJson
+              - summary
+              - auditFiles
+            constraints:
+              - 扫描器必须存在且可执行（python routes/doc-fresh/scripts/check-doc-freshness.py --help）
+          save_as: scan_result
+
+        - id: gate_new_items
+          title: 门控：检查是否有新文档需要审计
+          action: custom.described_action
+          with:
+            description: >-
+              读取 scan-result.json 中的 summary 字段：
+              - summary.new > 0：进入 Phase 2
+              - summary.new == 0：跳过 Phase 2-4，直接进入 Phase 5（生成空 summary.md）
+              - 强制全量（--force-full）时忽略 recurring_skipped，全部进入审计
+            expected_outputs:
+              - hasNewItems
+          save_as: scan_gate
+
+    # ═══════════════════════════════════════════════════════════════
+    # Phase 2: 分组
+    # ═══════════════════════════════════════════════════════════════
+    - id: p2_group
+      name: 按前缀分批
+      purpose: 主对话读取 scan-result.json，按文档路径前缀分组，每组 ≤4 篇。
+      steps:
+        - id: load_scan_result
+          title: 读取扫描结果
+          action: custom.described_action
+          with:
+            description: >-
+              读取 {runDirRoot}/scan-result.json，提取 audit_files 列表。
+              每个元素的 rel_path 形如 2.tech/architecture/01-总体架构.md。
+            expected_outputs:
+              - auditFiles
+          save_as: loaded_files
+
+        - id: group_by_prefix
+          title: 按前缀分组
+          action: custom.described_action
+          with:
+            description: >-
+              按 rel_path 的二级前缀分组（如 2.tech/architecture/）：
+              - 同前缀尽量不分拆
+              - 每组 ≤4 篇
+              - 混合前缀仅在填充不满 4 篇时使用
+              - batch 命名格式：batch-NN-{slug}，NN 从 01 开始递增
+              - 在 {runDirRoot}/ 下创建各 batch 目录
+            expected_outputs:
+              - batchList
+              - batchDirs
+          save_as: batches
+
+    # ═══════════════════════════════════════════════════════════════
+    # Phase 3: 并行审计
+    # ═══════════════════════════════════════════════════════════════
+    - id: p3_parallel_audit
+      name: 4 代理并行审计
+      purpose: 对每个 batch 并行派出 4 个子代理（opus-deep / sonnet-structural / haiku-quick / sonnet-devil），等齐 4/4 报告。
+      steps:
+        - id: dispatch_4_agents_per_batch
+          title: 派出 4 代理（每 batch 一次）
+          action: custom.described_action
+          with:
+            description: >-
+              对 batches 中的每个 batch，并行派出 4 个子代理（全部后台运行）：
+
+              Agent A — opus (deep)
+                模板：routes/doc-fresh/prompts/opus-deep.md
+                提示词字段：batch_name, repo_root（绝对路径）, doc_list, output（绝对路径）
+                输出：{runDirRoot}/{batchName}/opus-deep.md
+
+              Agent B — sonnet (structural)
+                模板：routes/doc-fresh/prompts/sonnet-structural.md
+                输出：{runDirRoot}/{batchName}/sonnet-structural.md
+
+              Agent C — haiku (quick)
+                模板：routes/doc-fresh/prompts/haiku-quick.md
+                输出：{runDirRoot}/{batchName}/haiku-quick.md
+
+              Agent D — sonnet (devil's advocate)
+                模板：routes/doc-fresh/prompts/sonnet-devil.md
+                输出：{runDirRoot}/{batchName}/sonnet-devil.md
+
+              强制：output 与 repo_root 必须使用绝完整路径（相对路径在子代理工作目录不一致，
+              实测 opus 曾写入 docs/8.test/reports/...、docs/4.misc/... 等错误位置）。
+            expected_outputs:
+              - agentReports
+          save_as: parallel_agents
+
+        - id: gate_batch_integrity
+          title: 门控：批次完整性检查（强制 4/4）
+          action: custom.described_action
+          with:
+            description: >-
+              Phase 3 → Phase 4 门控。检查每个 batch 目录的 .md 报告数：
+
+              for d in {runDirRoot}/batch-*/; do
+                count=$(ls "$d"/*.md 2>/dev/null | wc -l)
+                echo "$(basename $d): $count/4"
+              done
+
+              - 任何 batch 报告 < 4 → 禁止进入 Phase 4 → 恢复或替换缺失代理
+              - 全部 batch 4/4 → 才可启动 Phase 4
+              - 代理响应时间差异可达 5 倍（haiku 150s vs sonnet 770s），不等齐会导致 reviewer 遗漏发现
+            expected_outputs:
+              - batchIntegrityReport
+          save_as: batch_integrity_gate
+
+    # ═══════════════════════════════════════════════════════════════
+    # Phase 4: 复核
+    # ═══════════════════════════════════════════════════════════════
+    - id: p4_review
+      name: reviewer 复核
+      purpose: 派 reviewer 代理合并、去重、裁决子代理发现。
+      steps:
+        - id: dispatch_reviewer
+          title: 派出 reviewer 代理
+          action: custom.described_action
+          with:
+            description: >-
+              派 reviewer 子代理（模板：routes/doc-fresh/prompts/reviewer.md）。
+              提示词字段：
+                batch_list（如 batch-01-architecture, batch-02-database-a）
+                run_dir_root（绝对路径）
+                repo_root（绝对路径）
+                output（绝对路径）
+
+              reviewer 任务：
+                1. 读取所分配 batch 全部 4 份子诊断报告
+                2. 合并相同发现 → 标注共识数（如 "3/4 共识"）
+                3. 裁决冲突 → 给出最终判定（P0/P1/P2）
+                4. 确认或驳回反面论证的过度报告拦截
+                5. 写入复核报告
+
+              输出：{runDirRoot}/review-{NN}.md（每 reviewer 一份，NN 从 01 递增）
+            expected_outputs:
+              - reviewReports
+          save_as: review_reports
+
+    # ═══════════════════════════════════════════════════════════════
+    # Phase 5: 汇总
+    # ═══════════════════════════════════════════════════════════════
+    - id: p5_summary
+      name: 最终汇总
+      purpose: 主对话读取全部 review-*.md，生成最终 summary.md。
+      steps:
+        - id: aggregate_reviews
+          title: 汇总全部 review 报告
+          action: custom.described_action
+          with:
+            description: >-
+              主对话读取 {runDirRoot}/review-*.md，使用
+              routes/doc-fresh/templates/phase5-summary.md 模板生成 summary.md。
+
+              汇总内容：
+                1. 流程完整性（每阶段产出 + 状态）
+                2. 审计结果表（stale / partial / current 判定 + P0/P1/P2 计数）
+                3. P0 清单（含共识数）
+                4. 自适应阈值更新记录（乘数变化 + 有效阈值）
+
+              输出：{runDirRoot}/summary.md
+            expected_outputs:
+              - summaryMd
+          save_as: summary
+
+    # ═══════════════════════════════════════════════════════════════
+    # Phase 6: 标记已审计
+    # ═══════════════════════════════════════════════════════════════
+    - id: p6_mark_audited
+      name: 写入 audited_sha
+      purpose: 对每个已审计文档调用 --mark-audited 写入 SHA + 时间戳，确保下次扫描去重生效。
+      steps:
+        - id: mark_each_doc
+          title: 标记每个文档已审计
+          action: custom.described_action
+          with:
+            description: >-
+              对 scan_result.audit_files 中每个已审计文档执行：
+                python routes/doc-fresh/scripts/check-doc-freshness.py --mark-audited "{rel_path}"
+
+              该命令将当前 git_sha 写入 audited_sha + audited_at 字段。
+              操作说明见 routes/doc-fresh/templates/phase6-mark-audited.md。
+
+              强制：审计汇总完成后必须执行 Phase 6。
+              未标记 = 去重机制无效 = 下次扫描重复审计。
+            expected_outputs:
+              - markedDocs
+          save_as: mark_log
+
+        - id: cleanup_empty_runs
+          title: 清理无效结果目录
+          action: custom.described_action
+          with:
+            description: >-
+              若某 run_dir 仅含 scan-result.json 但无审计产出（无 batch 目录），
+              删除该 run_dir。避免 results/ 下堆积空目录。
+            expected_outputs:
+              - cleanedDirs
+          save_as: cleanup

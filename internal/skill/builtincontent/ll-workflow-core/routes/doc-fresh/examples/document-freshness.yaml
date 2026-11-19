@@ -1,0 +1,73 @@
+# REQ-7210 文档保鲜配置 v4
+# 仅扫描最新版本 dev_XX/docs/2.tech/
+# 阈值范围: 3d-30d + 自适应加成（指数退让）
+
+default_threshold_hours: 168  # 7d 兜底
+
+# 自适应阈值（渐进式递增）
+# 每次审计通过 → multiplier += 1.0，首次 ×2.0，后续每次 +1
+# 发现问题 → multiplier 重置为 1.0
+# 有效阈值 = base_threshold × multiplier，上限 ×4
+adaptive:
+  enabled: true
+  strategy: "progressive"       # progressive: 2.0→3.0→4.0 (cap)
+  base_multiplier: 1.0          # 初始
+  first_pass_multiplier: 2.0    # 首次通过 → ×2
+  step_increment: 1.0           # 后续每次 +1
+  max_multiplier: 4.0           # 上限 ×4
+  reset_on_failure: true        # 发现问题重置为 1.0
+  full_audit_interval_days: 30  # 每月强制全量审计
+
+categories:
+  # 架构文档 — 14d
+  - prefix: "2.tech/architecture/"
+    threshold_hours: 336   # 14d
+  # 接口/API 文档 — 7d，代码变更直接影响
+  - prefix: "2.tech/api/"
+    threshold_hours: 168   # 7d
+  # 数据库文档 — 14d，schema 变更需同步
+  - prefix: "2.tech/database/"
+    threshold_hours: 336   # 14d
+  # 开发规范/标准 — 30d，相对稳定
+  - prefix: "2.tech/development/standards/"
+    threshold_hours: 720   # 30d
+  # 开发模板 — 30d，相对稳定
+  - prefix: "2.tech/development/templates/"
+    threshold_hours: 720   # 30d
+  # 开发工具指南 — 30d
+  - prefix: "2.tech/development/tools/"
+    threshold_hours: 720   # 30d
+  # 开发工作流 — 30d，相对稳定
+  - prefix: "2.tech/development/workflow/"
+    threshold_hours: 720   # 30d
+  # 开发专题文档 — 30d
+  - prefix: "2.tech/development/"
+    threshold_hours: 720   # 30d
+  # 用户手册 — 14d，功能变更需同步
+  - prefix: "2.tech/user_guide/"
+    threshold_hours: 336   # 14d
+  # 其他技术文档 — 7d 兜底
+  - prefix: "2.tech/"
+    threshold_hours: 168   # 7d
+
+# 单文档覆盖（优先级高于 categories 前缀匹配）
+# 可为特定文档指定自定义阈值
+overrides: {}
+
+# 排除模式（glob）
+exclude:
+  - "**/INDEX.md"
+  - "**/README.md"
+
+# AI 审计配置
+audit:
+  models: ["opus", "sonnet", "haiku", "sonnet"]  # [深度, 结构, 快速, 反面论证]
+  max_files_per_run: 32  # 0 = 无上限
+  reviewer_model: "sonnet"
+  language: "zh"  # 子代理任务描述语言（zh=中文）
+  parallel_reviewers: 4  # 复核阶段最大并行数
+
+# 去重配置（避免重复审计未变更文档）
+dedup:
+  enabled: true       # 启用去重
+  ttl_days: 14        # audited_sha 有效期（天后强制重审）；0=永久跳过

@@ -1,0 +1,285 @@
+version: 0.1.0
+registry:
+  id: ll-workflow-composite-actions
+  description: ll 系列技能共享复合动作注册表；所有复合动作都应优先消费目录结构配置，而不是直接硬编码 docs 子目录。
+composite_actions:
+  - id: flow.requirement_develop
+    description: 根据用户描述创建 inactive requirement 语义目录下的需求文档。
+    uses:
+      - layout.load_directory_profile
+      - context.resolve_target_version
+      - context.load_governance_context
+      - requirement.analyze_request
+      - requirement.create_inactive_doc
+      - docs.sync_governance_entries
+    required_inputs:
+      - userRequest
+      - workspaceRoot
+      - directoryProfileRef
+    produced_outputs:
+      - requirementPath
+      - openQuestions
+    entry_conditions:
+      - 原始需求尚未进入 todo 语义目录
+    exit_conditions:
+      - inactive requirement 语义目录中的需求文档已生成
+    default_on_fail: block
+    notes:
+      - docs.sync_governance_entries 在此只同步 docs/README.md + docs/INDEX.md；requirements.md 不在本流程的产物范围内
+
+  - id: flow.requirement_activate
+    description: 将需求从 inactive requirement 语义目录激活到 todo 语义目录，并创建 original 冻结副本。
+    uses:
+      - layout.load_directory_profile
+      - context.resolve_target_version
+      - task.activate_requirement
+      - task.freeze_original_copy
+      - state.update_task_status
+      - docs.sync_governance_entries
+    required_inputs:
+      - requirementPath
+      - title
+      - workspaceRoot
+      - directoryProfileRef
+    produced_outputs:
+      - taskPath
+      - workingReqPath
+      - originalReqPath
+    entry_conditions:
+      - requirementPath 已存在
+    exit_conditions:
+      - todo 任务包路径已建立
+    default_on_fail: block
+    notes:
+      - task.activate_requirement 内部会调用 task.resolve_identity，复合流程不再单独声明
+
+  - id: flow.task_expand_package
+    description: 把单一需求文档扩充成六件套任务包。
+    uses:
+      - layout.load_directory_profile
+      - context.load_governance_context
+      - task.validate_package_spec
+      - task.ensure_package_scaffold
+      - handoff.ensure_ticket
+      - state.update_task_status
+      - docs.sync_governance_entries
+    required_inputs:
+      - taskPath
+      - directoryProfileRef
+      - governanceRef
+      - specReference
+    produced_outputs:
+      - packageFiles
+      - handoffTicketPath
+    entry_conditions:
+      - taskPath 已存在
+      - specReference 已读取（六件套规范文档）
+    exit_conditions:
+      - README、REQ-{id}.md、REQ-{id}-original.md、tasks.md、run_result.json 齐备
+      - 文件命名符合规范（REQ 文件含编号后缀）
+    default_on_fail: block
+    notes:
+      - docs.sync_governance_entries 在此只同步 docs/README.md + docs/INDEX.md；requirements.md 同步留给 flow.task_archive_done 调用 docs.maintain_requirements_md
+
+  - id: flow.task_implement
+    description: 完成任务包的开发、验证、证据收集与状态回写。
+    uses:
+      - layout.load_directory_profile
+      - context.load_governance_context
+      - governance.validate_state_sync
+      - handoff.ensure_ticket
+      - implementation.apply_changes
+      - validation.execute
+      - quality.route_gate
+      - evidence.collect
+      - evidence.emit_dual_format
+      - decision.record
+      - state.update_task_status
+      - docs.sync_governance_entries
+      - feedback.enqueue_learning
+    required_inputs:
+      - taskPath
+      - scope
+      - validationPlan
+      - directoryProfileRef
+      - governanceRef
+    produced_outputs:
+      - changedFiles
+      - validationResult
+      - evidenceBundle
+      - gateDecision
+      - evidenceMarkdownPath
+      - evidenceJsonPath
+      - weeklyBackflowPath
+    entry_conditions:
+      - 任务包已扩充
+    exit_conditions:
+      - 改动完成且验证结果已回写
+    default_on_fail: block
+    notes:
+      - evidence.collect → evidence.emit_dual_format 强顺序：先 collect 汇总，再 emit 落盘为双格式
+      - docs.sync_governance_entries 在此只同步 docs/README.md + docs/INDEX.md；requirements.md 同步留给 flow.task_archive_done
+
+  - id: flow.task_archive_done
+    description: 在验证通过后归档任务包到 done 语义目录，并同步 requirements.md。
+    uses:
+      - layout.load_directory_profile
+      - validation.execute
+      - evidence.collect
+      - archive.move_task_package
+      - state.update_task_status
+      - docs.maintain_requirements_md
+      - docs.sync_governance_entries
+    required_inputs:
+      - taskPath
+      - archiveSlot
+      - directoryProfileRef
+    produced_outputs:
+      - archivePath
+      - evidenceBundle
+    entry_conditions:
+      - 归档前置验证已准备
+    exit_conditions:
+      - 任务包已迁移到 done
+    default_on_fail: block
+    notes:
+      - docs.maintain_requirements_md 默认 mode=upgrade_then_sync 即可一次性完成元数据升级 + 清单同步
+
+  - id: flow.audit_fix_cycle
+    description: 分析、修复、验证、总结的审计修复闭环。
+    uses:
+      - layout.load_directory_profile
+      - context.load_governance_context
+      - handoff.ensure_ticket
+      - audit.scan_codebase
+      - audit.cross_review_findings
+      - implementation.apply_changes
+      - validation.execute
+      - quality.route_gate
+      - evidence.collect
+      - evidence.emit_dual_format
+      - decision.record
+      - docs.sync_governance_entries
+      - feedback.enqueue_learning
+    required_inputs:
+      - auditScope
+      - directoryProfileRef
+      - governanceRef
+    produced_outputs:
+      - reviewedFindings
+      - validationResult
+      - gateDecision
+      - evidenceMarkdownPath
+      - evidenceJsonPath
+      - weeklyBackflowPath
+    entry_conditions:
+      - 审计范围已确认
+    exit_conditions:
+      - 审计问题已修复或已明确跳过
+    default_on_fail: block
+    notes:
+      - evidence.collect → evidence.emit_dual_format 强顺序：先 collect 汇总，再 emit 落盘为双格式
+      - docs.sync_governance_entries 在此只同步 docs/README.md + docs/INDEX.md
+
+  - id: flow.docs_bootstrap_and_import
+    description: 创建 docs 骨架并导入历史文档。
+    uses:
+      - layout.load_directory_profile
+      - docs.bootstrap_structure
+      - docs.import_documents
+      - validation.execute
+      - decision.record
+    required_inputs:
+      - targetDevDir
+      - sourceDir
+      - directoryProfileRef
+    produced_outputs:
+      - bootstrapResult
+      - importReport
+    entry_conditions:
+      - 目标 docs 目录待初始化或待重构
+    exit_conditions:
+      - docs 骨架与导入日志齐备
+    default_on_fail: block
+
+  - id: flow.version_closeout
+    description: 完成版本级文档同步（含 requirements.md）、更新日志与收口总结。
+    uses:
+      - layout.load_directory_profile
+      - context.resolve_target_version
+      - validation.execute
+      - docs.maintain_requirements_md  # 默认 mode=upgrade_then_sync 一次完成升级+同步
+      - docs.sync_governance_entries
+      - decision.record
+      - feedback.enqueue_learning
+    notes:
+      - docs.maintain_requirements_md 取代原 docs.upgrade_run_results + docs.sync_requirements_md 的双调用
+    required_inputs:
+      - workspaceRoot
+      - validationPlan
+      - directoryProfileRef
+      - governanceRef
+    produced_outputs:
+      - validationResult
+      - syncedFiles
+      - weeklyBackflowPath
+    entry_conditions:
+      - 当前版本任务已基本完成
+    exit_conditions:
+      - changelog 与 docs 入口已同步
+    default_on_fail: block
+
+  - id: flow.block_e2e
+    description: >-
+      Block 完成后选择性运行 E2E 测试。
+      编译 → 生产模式启动 → 等待就绪 → 选择性 E2E → 记录结果。
+      v12 新增 composite，支持按模块选择性运行 E2E（参见 REQ-4065）。
+    uses:
+      - custom.described_action
+      - custom.described_action
+      - custom.described_action
+      - e2e.selective_run
+    required_inputs:
+      - e2eScope
+      - modulesRegistry
+      - prodStartScript
+      - healthCheckUrl
+    produced_outputs:
+      - e2eResult
+      - testFiles
+    entry_conditions:
+      - Block 已 commit
+      - e2eScope 非空且非 []
+    exit_conditions:
+      - E2E 测试已完成
+    default_on_fail: block
+    notes:
+      - 前 3 步为 custom.described_action：build、start_prod、wait_ready
+      - 第 4 步为 e2e.selective_run，内部调用 select-e2e.js 展开 scope
+      - cleanup 模块（TC-002）为 mandatory，自动注入任何 scope
+      - 与 flow.version_closeout 不互斥：block_e2e 是 Block 级，version_closeout 是版本级
+
+  - id: flow.req_apply_overrides
+    description: >-
+      应用复杂度评估与项目配置，计算 req 路由的 4 个控制开关（skipClarification / skipDesign / effectiveMaxGateRounds / unresolvedCount）。
+      v0.2.2 新增 composite，包装结构化 action requirement.compute_overrides。
+      替代原 req.workflow.yaml 中的 custom.described_action apply_complexity_overrides。
+    uses:
+      - requirement.compute_overrides
+    required_inputs:
+      - complexityAssessment
+    produced_outputs:
+      - skipClarification
+      - skipDesign
+      - effectiveMaxGateRounds
+      - unresolvedCount
+      - appliedKeywordMatches
+    entry_conditions:
+      - complexity_assessment 已生成
+    exit_conditions:
+      - 控制开关已计算
+      - unresolvedCount 已初始化
+    default_on_fail: block
+    notes:
+      - 互斥约束：与 flow.requirement_activate 不应在同一 workflow 中同时调用，避免同时改 task 路径与 overrides
+      - 项目配置字段（category_mapping / complexity_rules / skip_clarification_keywords / skip_design_complexity）由调用方通过 inputs 传入

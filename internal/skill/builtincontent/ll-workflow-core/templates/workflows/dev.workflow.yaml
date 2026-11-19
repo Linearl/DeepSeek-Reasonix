@@ -1,0 +1,396 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.dev
+  short_name: dev
+  name: ll-workflow-core / dev 自动开发编排循环
+  description: 识别版本、扫描 todo、规划 Block、并行推进任务、Block 级验证与提交、版本收口。
+  owner_skill: ll-workflow-core
+  source_skill: ll-develop
+  activation_aliases:
+    - dev
+    - development
+    - feature-development
+    - 功能开发
+    - 开发这个需求
+    - 持续开发
+  activation_hint: 当用户要推进 todo、做功能开发、进入持续开发循环或说执行 dev 时触发。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - shared.governance
+    - route.dev.assets
+    - shared.docs.common
+  mode_support:
+    - interactive
+    - semi_automatic
+  defaults:
+    on_fail: block
+    max_gate_rounds: 3
+    block_parallel_threshold: 3  # 任务数超过此阈值时启用 Block 规划
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: userTarget
+        description: 用户目标（需求编号 / 文件路径 / 自然语言描述）
+      - name: continueMode
+        description: continueMode 字段
+    outputs:
+      - name: completedTopics
+        description: completedTopics 字段
+      - name: blockPlan
+        description: blockPlan 字段
+      - name: versionCloseoutSummary
+        description: versionCloseoutSummary 字段
+    variables:
+      remainingTopics_count: 0
+      auto_continue: false
+
+  phases:
+    # ============================================================
+    # A. 预处理
+    # ============================================================
+    - id: a_preprocess
+      name: 预处理
+      purpose: 确定 targetDevDir、version，并建立待办清单。
+      steps:
+        - id: check_lessons
+          title: 查阅历史经验教训
+          action: custom.described_action
+          with:
+            description: >-
+              遇到疑难问题时，查阅 skills/ll-workflow-core/lessons/ 目录下的历史经验教训文件，
+              避免重复踩坑。若 lessons 目录为空则跳过。
+            expected_outputs:
+              - lessonsChecked
+            success_criteria: 已检查历史经验或确认无历史经验
+          save_as: lessons_context
+
+        - id: resolve_version
+          title: 解析目标版本
+          action: context.resolve_target_version
+          with:
+            userTarget: "${ userTarget }"
+            workspaceRoot: "${ workspaceRoot }"
+          save_as: target_context
+
+        - id: load_directory_profile
+          title: 加载目录结构配置
+          action: layout.load_directory_profile
+          with:
+            directoryProfileRef: "../../config/directory-layout.yaml#profiles/default"
+            workspaceRoot: "${ workspaceRoot }"
+            targetDevDir: "${ target_context.targetDevDir }"
+            version: "${ target_context.version }"
+          save_as: layout_profile
+
+        - id: load_governance
+          title: 读取治理规则
+          action: context.load_governance_context
+          with:
+            targetDevDir: "${ target_context.targetDevDir }"
+            layout: "${ layout_profile }"
+          save_as: governance
+
+        - id: scan_todo_topics
+          title: 扫描当前版本待办专题
+          action: context.scan_todo_topics
+          with:
+            layout: "${ layout_profile }"
+            semanticName: todo
+          save_as: todo_snapshot
+
+        - id: bootstrap_docs_if_missing
+          type: branch
+          if: "${ governance.docRules.docs_ready == false }"
+          then:
+            - id: bootstrap_docs
+              title: 初始化 docs 结构
+              action: docs.bootstrap_structure
+              with:
+                layout: "${ layout_profile }"
+                targetSlot: docs_root
+                bootstrapMode: standard
+          else:
+            - id: record_docs_ready
+              title: 记录 docs 已就绪
+              action: decision.record
+              with:
+                decisionPoint: docs_bootstrap
+                choice: skip
+                reason: docs 结构已满足最小要求
+
+    # ============================================================
+    # B. Block 规划（任务数 > 阈值时启用）
+    # ============================================================
+    - id: b_block_planning
+      name: Block 规划
+      purpose: 分析任务依赖，将任务分组为 Block，确定并行策略。
+      steps:
+        - id: analyze_task_count
+          title: 判断是否需要 Block 规划
+          action: custom.described_action
+          with:
+            description: >-
+              检查 todo_snapshot.remainingTopics_count。
+              若 <= block_parallel_threshold（默认 3），跳过 Block 规划，直接进入串行执行。
+              若 > block_parallel_threshold，进入 Block 规划流程。
+            expected_outputs:
+              - needsBlockPlan
+            success_criteria: 已判断是否需要 Block 规划
+          save_as: planning_decision
+
+        - id: create_block_plan
+          title: 创建 Block 执行计划
+          action: custom.described_action
+          with:
+            description: >-
+              分析 todo_snapshot.remainingTopics 的依赖关系和特征：
+              1. 识别哪些任务可以并行（无共享状态、无顺序依赖）
+              2. 识别哪些任务有依赖关系（必须串行）
+              3. 按依赖拓扑和优先级分组为 Block
+              4. 每个 Block 标注：并行/串行、包含的任务列表、预估工时
+              5. 参考 templates/docs/1.task/template/todolist.md 格式输出 blockPlan
+              blockPlan 结构：
+              - blocks: [{ id, name, parallel: bool, tasks: [{taskPath, title, priority}], estimatedEffort }]
+              - dependencyMatrix: [{ task, block, dependsOn,ParallelGroup }]
+            expected_outputs:
+              - blockPlan
+            success_criteria: Block 计划已创建，包含依赖分析和并行策略
+          save_as: block_plan
+
+        - id: confirm_block_plan
+          title: 确认 Block 计划
+          action: interaction.ask_questions_gate
+          with:
+            questionSet: ll_develop_block_plan_confirm
+            recommendedOptions:
+              - "确认计划，开始执行"
+              - "调整 Block 分组"
+              - "跳过 Block 规划，串行执行"
+          save_as: plan_confirmation
+
+        - id: record_plan_decision
+          title: 记录规划决策
+          action: decision.record
+          with:
+            decisionPoint: block_planning
+            choice: "${ plan_confirmation.answers.action }"
+            reason: "${ plan_confirmation.answers.reason }"
+
+    # ============================================================
+    # C. Block 执行循环
+    # ============================================================
+    - id: c_block_execution
+      name: Block 执行循环
+      purpose: 按 Block 顺序执行，Block 内可并行，Block 结束后统一验证+提交。
+      steps:
+        - id: execute_blocks
+          title: 逐 Block 执行
+          type: for_each
+          items: "${ block_plan.blocks }"
+          item_as: block
+          steps:
+            # ---- Block 内任务执行 ----
+            - id: execute_tasks_in_block
+              title: 执行 Block 内任务
+              type: branch
+              if: "${ block.parallel == true }"
+              then:
+                - id: parallel_task_execution
+                  title: 并行执行 Block 内任务
+                  action: custom.described_action
+                  with:
+                    description: >-
+                      Block "{block.name}" 包含 {block.tasks.length} 个可并行任务。
+                      为每个任务启动独立的执行上下文（子代理或 worktree），
+                      并行执行 implementation.apply_changes。
+                      等待所有任务完成后汇总结果。
+                      并行策略：
+                      - 若任务修改不同文件，可直接并行
+                      - 若任务修改同文件但不同模块，谨慎并行
+                      - 若任务有隐式依赖，降级为串行
+                    expected_outputs:
+                      - parallelResults
+                      - conflictFiles
+                    success_criteria: Block 内所有任务已完成
+                  save_as: block_execution_result
+              else:
+                - id: serial_task_execution
+                  title: 串行执行 Block 内任务
+                  action: custom.described_action
+                  with:
+                    description: >-
+                      Block "{block.name}" 包含 {block.tasks.length} 个串行任务。
+                      按依赖顺序逐个执行 implementation.apply_changes。
+                      每个任务完成后记录进度。
+                    expected_outputs:
+                      - serialResults
+                    success_criteria: Block 内所有任务已完成
+                  save_as: block_execution_result
+
+            # ---- Block 级验证闸门 ----
+            # 验证项含「否定性断言证据完整性」（claim-hygiene，2026-09-22）：
+            # 交付含「不存在/缺失/未实现」类结论时，必须附 claim_check CLI/工具
+            # 或 test -f/grep -c 原始输出；采样查询（head/tail）不作存在性证据。
+            # 判定项详见 routes/dev/templates/completion-evidence.md 第 4 节。
+            - id: block_validation_gate
+              title: Block 级验证闸门
+              action: validation.execute
+              with:
+                validationPlan: block_validation
+              save_as: block_validation_result
+
+            - id: block_quality_gate
+              title: Block 级质量门判定
+              action: quality.route_gate
+              with:
+                governanceRef: "../../config/workflow-governance.yaml"
+                route: dev
+                validationResult: "${ block_validation_result.validationResult }"
+              save_as: block_gate_decision
+
+            - id: handle_block_failure
+              type: branch
+              if: "${ block_gate_decision.gateDecision == 'block' }"
+              then:
+                - id: fix_block_issues
+                  title: 修复 Block 验证失败的问题
+                  action: custom.described_action
+                  with:
+                    description: >-
+                      Block "{block.name}" 验证未通过。
+                      分析失败原因，修复后重新验证。
+                      修复范围限制在当前 Block 内，不得引入 Block 外变更。
+                    expected_outputs:
+                      - fixResult
+                    success_criteria: 修复后验证通过
+                  save_as: fix_result
+
+            # ---- Block 级提交 ----
+            - id: block_commit
+              title: Block 级提交
+              action: custom.described_action
+              with:
+                description: >-
+                  Block "{block.name}" 验证通过。
+                  将 Block 内所有任务的变更合并为一个或少量原子提交。
+                  提交信息格式：chore(Block{N}): {block.name} - {变更摘要}
+                  禁止 git add .，必须按文件精确暂存。
+                expected_outputs:
+                  - commitHash
+                  - commitMessage
+                success_criteria: Block 变更已提交
+              save_as: block_commit_result
+
+            - id: record_block_completion
+              title: 记录 Block 完成
+              action: decision.record
+              with:
+                decisionPoint: block_completion
+                choice: "${ block.name }"
+                reason: "提交 ${ block_commit_result.commitHash }，${ block.tasks.length } 个任务完成"
+
+            # ---- Block 级 E2E 验证（REQ-4065） ----
+            - id: block_e2e_gate
+              title: Block 级 E2E 验证
+              type: branch
+              if: "${ block.e2e_scope != null && block.e2e_scope.length > 0 }"
+              then:
+                - id: run_block_e2e
+                  title: 执行选择性 E2E
+                  uses: flow.block_e2e
+                  with:
+                    e2eScope: "${ block.e2e_scope }"
+                    modulesRegistry: "tests/e2e/modules.json"
+                    prodStartScript: "start-all.ps1 -Mode prod"
+                    healthCheckUrl: "http://localhost:5280"
+                  save_as: block_e2e_result
+              else:
+                - id: skip_block_e2e
+                  title: 跳过 E2E（无 scope）
+                  action: decision.record
+                  with:
+                    decisionPoint: block_e2e
+                    choice: skip
+                    reason: Block 未标注 e2e_scope，跳过 E2E 验证
+
+            # ---- Block 归档 ----
+            - id: block_archive
+              title: 归档 Block 内任务包
+              action: custom.described_action
+              with:
+                description: >-
+                  Block "{block.name}" 已提交。
+                  将 Block 内已完成的任务包从 B.todo/{version}/ 迁移到 B.2.done/{version}/。
+                  同步更新 requirements.md 和 docs/INDEX.md。
+                expected_outputs:
+                  - archivedPaths
+                success_criteria: Block 内任务包已归档
+              save_as: block_archive_result
+
+            # ---- 刷新待办清单 ----
+            - id: refresh_todo_snapshot
+              title: 刷新剩余任务清单
+              action: context.scan_todo_topics
+              with:
+                layout: "${ layout_profile }"
+                semanticName: todo
+              save_as: todo_snapshot
+
+    # ============================================================
+    # D. 版本收口
+    # ============================================================
+    - id: d_closeout
+      name: 版本收口
+      purpose: 完成版本级文档同步、更新日志与总结。
+      steps:
+        - id: maintain_requirements_md
+          title: requirements.md 一站式维护（升级 + 同步）
+          action: docs.maintain_requirements_md
+          with:
+            mode: upgrade_then_sync
+            layout: "${ layout_profile }"
+            apply: true
+          save_as: requirements_maintenance
+
+        - id: run_version_closeout
+          title: 执行版本收口
+          uses: flow.version_closeout
+          with:
+            workspaceRoot: "${ workspaceRoot }"
+            validationPlan: version_closeout_checks
+            directoryProfileRef: "../../config/directory-layout.yaml#profiles/default"
+            governanceRef: "../../config/workflow-governance.yaml"
+          save_as: closeout_result
+
+        - id: export_summary_by_description
+          title: 生成工作流区间总结
+          action: custom.described_action
+          with:
+            description: >-
+              汇总本次 dev 循环的完成项、剩余项、Block 执行记录和版本级收口结果，
+              生成适合写入 markdown 的进展总结。
+              包含：各 Block 完成状态、并行执行统计、验证结果、提交记录。
+            expected_outputs:
+              - versionCloseoutSummary
+            success_criteria: 用户可直接阅读并决定是否保存总结文档
+            layout: "${ layout_profile }"
+          save_as: workflow_summary
+
+        - id: queue_dev_learning
+          title: 记录开发经验回灌候选
+          action: feedback.enqueue_learning
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            runResultPath: "${ closeout_result.runResultPath }"
+            triggerSignals:
+              - dev_closeout
+          save_as: dev_learning

@@ -1,0 +1,97 @@
+version: 0.1.0
+registry:
+  id: ll-workflow-resource-bundles
+  description: >-
+    ll-workflow-core 的资源包注册表。用于把模板、脚本、配置、参考文档按 bundle 聚合，
+    让 workflow 通过 bundle ID 声明依赖，而不是直接在正文里散写路径。
+bundles:
+  - id: shared.core
+    description: 运行任意 route 时都建议具备的核心配置与元数据文件。
+    includes:
+      - ../config/directory-layout.yaml
+      - ../config/route-registry.yaml
+      - ../config/workflow-governance.yaml
+      - ../templates/action-registry.yaml
+      - ../templates/composite-actions.yaml
+      - ../templates/workflow.schema.yaml
+
+  - id: shared.governance
+    description: 统一协作治理资源，包括交接工单、双格式证据与经验回灌模板。
+    includes:
+      - ../config/workflow-governance.yaml
+      - ../templates/handoff-ticket-template.md
+      - ../templates/evidence-bundle-template.md
+      - ../templates/evidence-bundle-template.json
+      - ../templates/docs/7.weekly/03-high-value-learning-backlog-template.md
+
+  - id: shared.docs.common
+    description: 通用文档模板镜像，来自一套编号化 docs 结构样本，现已归一到 templates/docs/。
+    includes:
+      - ../templates/docs/0.version_plan
+      - ../templates/docs/2.tech
+      - ../templates/docs/3.analysis/report
+      - ../templates/docs/4.misc
+      - ../templates/docs/5.git-commit
+      - ../templates/docs/6.changelog
+      - ../templates/docs/7.weekly
+      - ../templates/docs/8.test
+
+  - id: shared.cc-workflows
+    description: CC Workflow 副本目录（templates/cc-workflows/），aud-cc / gt-cc / df-cc 三个变体共享。项目级 .claude/workflows/ → 本目录单向同步。
+    includes:
+      - ../templates/cc-workflows
+
+  - id: route.init.assets
+    description: init 路由特有的 bootstrap 与导入映射资源。
+    includes:
+      - ../routes/init/templates
+      - ../routes/init/references
+      - ../templates/scripts/generate-docs-index.js
+      - ../templates/scripts/req-sync.js
+
+  - id: route.req.assets
+    description: req 路由特有的需求产物模板与 schema 资源。
+    includes:
+      - ../routes/req/templates
+      - ../routes/req/config
+      - ../templates/scripts/req-sync.js
+
+  - id: route.dev.assets
+    description: dev 路由特有的开发循环模板、工具与参考文档。
+    includes:
+      - ../routes/dev/templates
+      - ../routes/dev/tools
+      - ../routes/dev/references
+
+  - id: route.aud.assets
+    description: aud 路由特有的审计模板、脚本、执行配置与结果契约。
+    includes:
+      - ../routes/aud/templates
+      - ../routes/aud/docs
+      - ../routes/aud/scripts
+      - ../routes/aud/config
+
+  - id: route.branch.assets
+    description: branch 路由特有的并行开发资源与模板。
+    includes:
+      - ../routes/branch/templates
+
+  - id: route.merge.assets
+    description: merge 路由特有的合并清理资源与模板。
+    includes:
+      - ../routes/merge/templates
+
+  - id: route.doc-fresh.assets
+    description: doc-fresh 路由特有的 Python 扫描器、4 代理 prompt、阶段模板、配置与示例。
+    includes:
+      - ../routes/doc-fresh/scripts
+      - ../routes/doc-fresh/prompts
+      - ../routes/doc-fresh/templates
+      - ../routes/doc-fresh/config
+      - ../routes/doc-fresh/examples
+      - ../routes/doc-fresh/LESSONS.md
+
+bundle_rules:
+  notes:
+    - 新 route 优先声明自己的 route.<short_name>.assets bundle。
+    -

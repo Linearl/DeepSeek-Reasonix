@@ -1,0 +1,717 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.aud
+  short_name: aud
+  name: ll-workflow-core / aud 代码审计（纯分析）
+  description: 9 维度分批并行扫描（3 维度/批）→ 门控检查 → 全量复核（并发3 + 超时5分钟）→ 报告生成 → 降级输出。不承担修复职责，修复由 fix 工作流承接。
+  owner_skill: ll-workflow-core
+  source_skill: ll-audit
+  activation_aliases:
+    - aud
+    - audit
+    - project-audit
+    - code-audit
+    - 项目审计
+    - 代码审计
+    - 代码健康诊断
+  activation_hint: 当用户要求项目审计、代码审计、安全扫描或执行 aud 时触发。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - shared.governance
+    - route.aud.assets
+    - shared.docs.common
+  mode_support:
+    - interactive
+    - non_interactive
+  defaults:
+    on_fail: block
+    max_review_rounds: 3
+    # 9 维度并行扫描配置（与 CC Workflow v2 等价）
+    audit_dimensions:
+      - { key: security,        name: 安全性,     weight: 0.20, batch: 1 }
+      - { key: stability,       name: 稳定性,     weight: 0.15, batch: 1 }
+      - { key: architecture,    name: 架构设计,   weight: 0.15, batch: 1 }
+      - { key: quality,         name: 代码质量,   weight: 0.15, batch: 2 }
+      - { key: performance,     name: 性能效率,   weight: 0.10, batch: 2 }
+      - { key: testability,     name: 可测试性,   weight: 0.10, batch: 2 }
+      - { key: observability,   name: 可观测性,   weight: 0.05, batch: 3 }
+      - { key: maintainability, name: 可维护性,   weight: 0.05, batch: 3 }
+      - { key: compatibility,   name: 兼容性,     weight: 0.05, batch: 3 }
+    # 并行与超时配置
+    parallel_config:
+      max_concurrent_per_batch: 3   # 每批最多 3 个并行（避免超出 API 限制 4）
+      review_concurrent: 3          # 复核并发数
+      scan_timeout_ms: 300000       # 单维度扫描超时 5 分钟
+      review_timeout_ms: 300000     # 单批复核超时 5 分钟
+    # 降级策略
+    degradation:
+      missing_preprocessing: warn_continue  # 预处理缺失：警告继续
+      missing_batch_scan: warn_continue     # 某批次扫描缺失：警告继续
+      missing_review_summary: skip_filter   # 复核汇总缺失：跳过误报过滤
+      missing_report_draft: block           # 报告草稿缺失：阻塞
+      missing_final_files: partial_pass     # 最终产物缺失：部分通过
+    # 门控配置
+    gate_policy:
+      strict_gates: [a2_topic_directory, a2_report_draft]    # 必须通过的强门控
+      soft_gates: [a0_preprocessing, a1_scan_batches]       # 警告通过的软门控
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: userTarget
+        description: 用户目标（需求编号 / 文件路径 / 自然语言描述）
+      - name: auditScope
+        description: 审计范围说明
+      - name: mode
+        description: 运行模式（interactive / non_interactive）
+      - name: dateStr
+        description: 运行日期（YYYY-MM-DD）
+    outputs:
+      - name: reviewedFindings
+        description: reviewedFindings 字段
+      - name: auditReportPath
+        description: auditReportPath 字段
+      - name: auditPackagePath
+        description: 审计包路径
+      - name: runResultPath
+        description: run_result.json 落盘路径
+      - name: gateResults
+        description: 门控结果集合
+    variables:
+      review_round: 0
+      scan_batches: []   # 收集 3 个批次的 findings
+      review_verdicts: []
+
+  # ============================================================
+  # 阶段 A：分析（A0~A3）
+  # ============================================================
+  phases:
+    # ----------------------------------------------------------
+    # A0. 审计范围选择 + 预处理分解
+    # ----------------------------------------------------------
+    - id: a0_scope_selection
+      name: 审计范围选择与预处理
+      purpose: 确认全量或增量审计策略，执行 3 路并行预处理（文件统计/模块结构/依赖分析）。
+      steps:
+        - id: check_lessons
+          title: 查阅历史经验教训
+          action: custom.described_action
+          with:
+            description: >-
+              遇到疑难问题时，查阅 skills/ll-workflow-core/lessons/ 目录下的历史经验教训文件，
+              避免重复踩坑。若 lessons 目录为空则跳过。
+            expected_outputs:
+              - lessonsChecked
+            success_criteria: 已检查历史经验或确认无历史经验
+          save_as: lessons_context
+
+        - id: resolve_version
+          title: 解析目标版本
+          action: context.resolve_target_version
+          with:
+            userTarget: "${ userTarget }"
+            workspaceRoot: "${ workspaceRoot }"
+          save_as: target_context
+
+        - id: load_directory_profile
+          title: 加载目录结构配置
+          action: layout.load_directory_profile
+          with:
+            directoryProfileRef: "../../config/directory-layout.yaml#profiles/default"
+            workspaceRoot: "${ workspaceRoot }"
+            targetDevDir: "${ target_context.targetDevDir }"
+            version: "${ target_context.version }"
+          save_as: layout_profile
+
+        - id: load_governance
+          title: 读取治理规则
+          action: context.load_governance_context
+          with:
+            targetDevDir: "${ target_context.targetDevDir }"
+            layout: "${ layout_profile }"
+          save_as: governance
+
+        - id: choose_scope_mode
+          type: switch
+          expression: "${ auditScope }"
+          cases:
+            - match: full
+              steps:
+                - id: record_full_scan
+                  title: 记录全量审计
+                  action: decision.record
+                  with:
+                    decisionPoint: audit_scope
+                    choice: full
+                    reason: 首次或发布前审计
+            - match: incremental
+              steps:
+                - id: record_incremental_scan
+                  title: 记录增量审计
+                  action: decision.record
+                  with:
+                    decisionPoint: audit_scope
+                    choice: incremental
+                    reason: 仅扫描近期变更
+          default:
+            - id: ask_scope_gate
+              title: 询问审计范围
+              action: interaction.ask_questions_gate
+              with:
+                questionSet: ll_audit_scope
+              save_as: scope_answer
+
+        - id: ask_review_rounds
+          title: 询问复核轮数
+          action: interaction.ask_questions_gate
+          with:
+            questionSet: ll_audit_review_rounds
+            recommendedOptions:
+              - "1 轮（快速）"
+              - "2 轮（推荐）"
+              - "3 轮（严格）"
+              - "全量复核（CC Workflow 等价，推荐）"
+          save_as: review_rounds_answer
+
+        - id: record_review_rounds
+          title: 记录复核轮数决策
+          action: decision.record
+          with:
+            decisionPoint: audit_review_rounds
+            choice: "${ review_rounds_answer.answers.rounds }"
+            reason: "${ review_rounds_answer.answers.reason }"
+
+        # 预处理：3 路并行调查 + 门控
+        - id: a0_create_dirs
+          title: 创建产物目录
+          action: custom.described_action
+          with:
+            description: >-
+              创建审计产物目录结构（与 CC Workflow v2 等价）：
+              - diagnosisDir/00-preprocessing/
+              - diagnosisDir/01-scan-batch1/ ~ 03-scan-batch3/
+              - diagnosisDir/04-review/
+              - diagnosisDir/05-report/
+            expected_outputs:
+              - dirsCreated
+          save_as: dirs_context
+
+        - id: a0_preprocessing_parallel
+          title: 预处理（3 路并行）
+          type: parallel
+          max_concurrent: 3
+          steps:
+            - id: file_stats_agent
+              title: 文件统计
+              action: audit.preprocess_file_stats
+              with:
+                targetDir: "${ target_context.targetDevDir }"
+                outputPath: "${ topic_context.diagnosisDir }/00-preprocessing/file-stats.json"
+              save_as: file_stats_result
+            - id: module_map_agent
+              title: 模块结构分析
+              action: audit.preprocess_module_map
+              with:
+                targetDir: "${ target_context.targetDevDir }"
+                outputPath: "${ topic_context.diagnosisDir }/00-preprocessing/module-map.json"
+              save_as: module_map_result
+            - id: dependency_analysis_agent
+              title: 依赖分析
+              action: audit.preprocess_dependency_analysis
+              with:
+                targetDir: "${ target_context.targetDevDir }"
+                outputPath: "${ topic_context.diagnosisDir }/00-preprocessing/dependency-analysis.json"
+              save_as: dependency_result
+
+        # 门控 A0
+        - id: a0_gate
+          title: 门控：预处理产物
+          action: custom.described_action
+          with:
+            description: >-
+              检查 3 份预处理产物是否有效（软门控）：
+              - file-stats.json
+              - module-map.json
+              - dependency-analysis.json
+              通过：至少 1 个文件存在（降级策略：warn_continue）。
+            expected_outputs:
+              - gatePassed
+              - passCount
+          save_as: a0_gate_result
+
+    # ----------------------------------------------------------
+    # A1. 分批并行扫描（9 维度 / 3 批，每批 3 维度）
+    # ----------------------------------------------------------
+    - id: a1_parallel_scan
+      name: 分批并行扫描（9 维度 × 3 批）
+      purpose: 9 个审计维度分 3 批并行（每批 3 维度），每批完成后立即持久化 + 门控。
+      strategy: 分批并行，串行批次内部并发 3
+      steps:
+        # 批次 1：security, stability, architecture
+        - id: a1_batch1
+          title: 批次 1（security, stability, architecture）
+          type: parallel
+          max_concurrent: 3
+          timeout_ms: "${ parallel_config.scan_timeout_ms }"
+          steps:
+            - id: scan_security
+              title: 扫描-安全性
+              action: audit.scan_dimension
+              with:
+                dimension: security
+                weight: 0.20
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch1_security_findings
+            - id: scan_stability
+              title: 扫描-稳定性
+              action: audit.scan_dimension
+              with:
+                dimension: stability
+                weight: 0.15
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch1_stability_findings
+            - id: scan_architecture
+              title: 扫描-架构设计
+              action: audit.scan_dimension
+              with:
+                dimension: architecture
+                weight: 0.15
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch1_architecture_findings
+
+        - id: a1_batch1_persist
+          title: 批次 1 持久化
+          action: custom.described_action
+          with:
+            description: >-
+              将批次 1 findings 写入 ${topic_context.diagnosisDir}/01-scan-batch1/findings.json。
+              JSON 格式：{ batch: 1, dimensions: [...], count: N, findings: [...] }
+            expected_outputs:
+              - batch1FilePath
+          save_as: batch1_persist_result
+
+        - id: a1_batch1_gate
+          title: 门控：批次 1 扫描产物
+          action: custom.described_action
+          with:
+            description: >-
+              检查 01-scan-batch1/findings.json 是否存在且 JSON 有效（软门控）。
+              失败：降级策略 warn_continue（记录警告，继续执行）。
+            expected_outputs:
+              - gatePassed
+          save_as: a1_batch1_gate_result
+
+        # 批次 2：quality, performance, testability
+        - id: a1_batch2
+          title: 批次 2（quality, performance, testability）
+          type: parallel
+          max_concurrent: 3
+          timeout_ms: "${ parallel_config.scan_timeout_ms }"
+          steps:
+            - id: scan_quality
+              title: 扫描-代码质量
+              action: audit.scan_dimension
+              with:
+                dimension: quality
+                weight: 0.15
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch2_quality_findings
+            - id: scan_performance
+              title: 扫描-性能效率
+              action: audit.scan_dimension
+              with:
+                dimension: performance
+                weight: 0.10
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch2_performance_findings
+            - id: scan_testability
+              title: 扫描-可测试性
+              action: audit.scan_dimension
+              with:
+                dimension: testability
+                weight: 0.10
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch2_testability_findings
+
+        - id: a1_batch2_persist
+          title: 批次 2 持久化
+          action: custom.described_action
+          with:
+            description: >-
+              将批次 2 findings 写入 ${topic_context.diagnosisDir}/02-scan-batch2/findings.json。
+            expected_outputs:
+              - batch2FilePath
+          save_as: batch2_persist_result
+
+        - id: a1_batch2_gate
+          title: 门控：批次 2 扫描产物
+          action: custom.described_action
+          with:
+            description: >-
+              检查 02-scan-batch2/findings.json 是否存在且 JSON 有效（软门控）。
+              失败：降级策略 warn_continue。
+            expected_outputs:
+              - gatePassed
+          save_as: a1_batch2_gate_result
+
+        # 批次 3：observability, maintainability, compatibility
+        - id: a1_batch3
+          title: 批次 3（observability, maintainability, compatibility）
+          type: parallel
+          max_concurrent: 3
+          timeout_ms: "${ parallel_config.scan_timeout_ms }"
+          steps:
+            - id: scan_observability
+              title: 扫描-可观测性
+              action: audit.scan_dimension
+              with:
+                dimension: observability
+                weight: 0.05
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch3_observability_findings
+            - id: scan_maintainability
+              title: 扫描-可维护性
+              action: audit.scan_dimension
+              with:
+                dimension: maintainability
+                weight: 0.05
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch3_maintainability_findings
+            - id: scan_compatibility
+              title: 扫描-兼容性
+              action: audit.scan_dimension
+              with:
+                dimension: compatibility
+                weight: 0.05
+                targetDir: "${ target_context.targetDevDir }"
+              save_as: batch3_compatibility_findings
+
+        - id: a1_batch3_persist
+          title: 批次 3 持久化
+          action: custom.described_action
+          with:
+            description: >-
+              将批次 3 findings 写入 ${topic_context.diagnosisDir}/03-scan-batch3/findings.json。
+            expected_outputs:
+              - batch3FilePath
+          save_as: batch3_persist_result
+
+        - id: a1_batch3_gate
+          title: 门控：批次 3 扫描产物
+          action: custom.described_action
+          with:
+            description: >-
+              检查 03-scan-batch3/findings.json 是否存在且 JSON 有效（软门控）。
+              失败：降级策略 warn_continue。
+            expected_outputs:
+              - gatePassed
+          save_as: a1_batch3_gate_result
+
+        # 合并扫描结果
+        - id: a1_merge_findings
+          title: 合并全量 findings
+          action: custom.described_action
+          with:
+            description: >-
+              合并 3 个批次 findings，按 severity 排序（P1>P2>P3>P4），写入
+              ${topic_context.diagnosisDir}/scan-findings.json。
+              强门控：此文件必须存在才能继续。
+            expected_outputs:
+              - mergedFilePath
+              - totalCount
+              - severityCounts
+          save_as: a1_merge_result
+
+    # ----------------------------------------------------------
+    # A2. 报告生成 + 目录探测
+    # ----------------------------------------------------------
+    - id: a2_report_generation
+      name: 报告生成与目录探测
+      purpose: 合并子 Agent 报告，确定审计专题目录，生成审计报告。
+      steps:
+        - id: determine_topic_directory
+          title: 确定审计专题目录
+          action: custom.described_action
+          with:
+            description: >-
+              确定审计报告输出目录：
+              - 诊断报告输出到 docs/3.analysis/diagnosis/01-active/{YYYY-MM-DD-主题}/
+              - 审计任务包创建到 docs/1.task/B.todo/{version}/{YYYYMMDD}_audit-fix/
+              - 若目录已存在则复用，不得新建第二专题。
+              - 若有多个审计报告，每个报告使用独立的主题目录。
+            expected_outputs:
+              - diagnosisDir
+              - auditPackageDir
+            success_criteria: 审计目录已确定或创建
+          save_as: topic_context
+
+        # 门控 A2（强）：目录必须创建成功
+        - id: a2_topic_directory_gate
+          title: 门控：审计目录创建
+          action: custom.described_action
+          with:
+            description: >-
+              验证 diagnosisDir 与 auditPackageDir 已创建。
+              失败：阻塞后续流程。
+            expected_outputs:
+              - gatePassed
+          save_as: a2_topic_directory_gate_result
+
+        - id: generate_report
+          title: 生成审计报告
+          action: custom.described_action
+          with:
+            description: >-
+              使用 templates/report_template.md 模板，合并 raw_findings 并去重排序。
+              生成两份产物：
+              1. 诊断报告：写入 diagnosisDir/README.md（docs/3.analysis/diagnosis/01-active/{YYYY-MM-DD-主题}/）
+              2. 审计包主报告：写入 auditPackageDir/README.md（docs/1.task/B.todo/{version}/{YYYYMMDD}_audit-fix/）
+              两份报告内容一致，但诊断报告侧重问题发现，审计包主报告侧重修复路线图。
+              输出各优先级问题数 + 总评分。
+            expected_outputs:
+              - diagnosisReportPath
+              - auditPackageReadmePath
+              - issueSummary
+            success_criteria: 审计报告已写入诊断目录和审计包
+          save_as: report_context
+
+        - id: create_issue_subdirectories
+          title: 创建问题子目录
+          action: custom.described_action
+          with:
+            description: >-
+              根据问题清单，在 auditPackageDir 下创建问题子目录结构。
+              参考 templates/audit-package/ 模板目录结构：
+              - P1/P1-001-{slug}/、P1/P1-002-{slug}/ ...
+              - P2/P2-001-{slug}/ ...
+              - P3/P3-001-{slug}/ ...
+              - P4/P4-004-{slug}/ ...
+              - skipped/（预置 skip_log.md 和 debt_backlog.md）
+              - decision_log.md
+              - effective_config.yaml（审计配置快照）
+              每个问题子目录预置 问题描述.md（使用 aud/templates/问题描述_template.md）。
+            expected_outputs:
+              - issueStructurePath
+            success_criteria: 审计包目录结构已创建
+          save_as: issue_structure
+
+    # ----------------------------------------------------------
+    # A3. 全量复核（替代原 ≤3 轮循环）
+    # ----------------------------------------------------------
+    - id: a3_full_review
+      name: 全量复核（并发3 + 超时5分钟 + 降级）
+      purpose: 对全量 findings 执行复核（替代原 ≤3 轮循环），并发 3，单批超时 5 分钟。
+      steps:
+        - id: a3_review_batches
+          title: 分批复核（全量）
+          type: repeat_for_each_batch
+          batch_size: 3
+          max_concurrent: 3
+          timeout_per_batch_ms: "${ parallel_config.review_timeout_ms }"
+          source: "${ a1_merge_result.mergedFindings }"
+          steps:
+            - id: review_single_finding
+              title: 复核单个 finding
+              action: audit.review_finding
+              with:
+                finding: "${ current_batch_item }"
+                outputDir: "${ topic_context.diagnosisDir }/04-review"
+              save_as: current_verdict
+
+            - id: a3_review_persist
+              title: 复核批次持久化
+              action: custom.described_action
+              with:
+                description: >-
+                  将当前批次的 verdicts 写入 verdicts-batch{N}.json。
+              save_as: current_batch_persist_result
+
+        - id: a3_review_summary
+          title: 复核结果汇总
+          action: custom.described_action
+          with:
+            description: >-
+              汇总全量 verdicts：统计 confirmed/falsePositives，
+              写入 ${topic_context.diagnosisDir}/04-review/verdicts.json。
+              软门控：失败则降级，跳过误报过滤。
+            expected_outputs:
+              - reviewSummaryPath
+              - confirmedCount
+              - falsePositiveCount
+              - finalFindingsCount
+          save_as: a3_review_summary_result
+
+        - id: a3_review_gate
+          title: 门控：复核汇总
+          action: custom.described_action
+          with:
+            description: >-
+              检查 verdicts.json 是否存在（软门控）。
+              失败：降级策略 skip_filter（使用原始扫描结果，不做误报过滤）。
+            expected_outputs:
+              - gatePassed
+              - degradationApplied
+          save_as: a3_review_gate_result
+
+        - id: update_report_after_review
+          title: 复核后更新报告
+          action: custom.described_action
+          with:
+            description: >-
+              根据 review_result 修正审计报告：移除误报、修正行号、补充遗漏。
+              同时更新 diagnosisDir/README.md 和 auditPackageDir/README.md。
+              更新审计包中各问题子目录的 问题描述.md。
+              如果降级触发（a3_review_gate.gatePassed=false），跳过误报过滤步骤。
+            expected_outputs:
+              - updatedReportPath
+            success_criteria: 报告与复核结果一致
+          save_as: updated_report
+
+    # ============================================================
+    # 阶段 B：收口（B0~B1，纯分析收口，不含修复）
+    # ============================================================
+
+    # ----------------------------------------------------------
+    # B0. 结果验证 + 最终门控
+    # ----------------------------------------------------------
+    - id: b0_validation
+      name: 结果验证
+      purpose: 验证审计报告完整性与一致性，执行最终门控。
+      steps:
+        - id: verify_report_completeness
+          title: 验证报告完整性
+          action: custom.described_action
+          with:
+            description: >-
+              验证审计报告完整性：
+              - 诊断报告（diagnosisDir/README.md）是否包含所有发现的问题
+              - 审计包（auditPackageDir/README.md）是否包含修复路线图
+              - 问题子目录是否与报告中的问题清单一致
+              - decision_log.md 是否记录了所有关键决策
+            expected_outputs:
+              - isComplete
+              - missingItems
+            success_criteria: 报告完整性验证通过
+          save_as: completeness_check
+
+        - id: sync_audit_entries
+          title: 同步审计治理入口
+          action: docs.sync_governance_entries
+          with:
+            layout: "${ layout_profile }"
+            syncProfile: task_default
+          save_as: synced_docs
+
+        - id: verify_output_artifacts
+          title: 产物完整性复核与补齐
+          action: custom.described_action
+          with:
+            description: >-
+              逐一检查以下产物是否已生成，缺失则当场补齐：
+              
+              必检清单：
+              1. diagnosisDir/README.md — 诊断报告
+              2. auditPackageDir/README.md — 审计包主报告（含修复路线图）
+              3. diagnosisDir/04-review/verdicts.json — 复核汇总
+              4. auditPackageDir/decision_log.md — 决策日志
+              5. auditPackageDir/effective_config.yaml — 审计配置快照
+              6. auditPackageDir/ 下各级别（P1/P2/P3/P4）的问题子目录中 问题描述.md 是否存在
+              
+              补齐规则：
+              - diagnosisDir/README.md 缺失：使用 templates/report_template.md 重新生成诊断报告，
+                内容基于 raw_findings + reviewedFindings，侧重问题发现。
+              - auditPackageDir/README.md 缺失：基于同一份数据重新生成审计包主报告，
+                侧重修复路线图（按 P1→P4 排列，附修复优先级建议）。
+              - verdicts.json 缺失：使用 a3_review_summary_result 中的汇总数据重新生成；
+                若汇总数据也不可用，则降级为空汇总（confirmed=raw_findings, falsePositive=0）。
+              - decision_log.md 缺失：创建空模板（使用 aud/templates/decision_log_template.md）。
+              - effective_config.yaml 缺失：基于当前 workflow parameters 快照重新生成。
+              - 问题描述.md 缺失：使用 aud/templates/问题描述_template.md 补齐，问题数据
+                从 auditPackageDir/README.md 的问题清单中提取。
+              
+              每补齐一个文件，输出日志："[补齐] {文件路径} — 已生成"
+              最终输出补齐清单（空则表示所有产物完整）。
+            expected_outputs:
+              - allPresent
+              - missingFiles
+              - fixedFiles
+            success_criteria: 所有必检产物已存在（原始生成或补齐）
+          save_as: artifact_check
+
+    # ----------------------------------------------------------
+    # B1. 输出收口
+    # ----------------------------------------------------------
+    - id: b1_closeout
+      name: 输出收口
+      purpose: 输出审计 run_result，记录经验回灌。
+      steps:
+        - id: emit_audit_evidence
+          title: 输出 aud 双格式证据
+          action: evidence.emit_dual_format
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            route: aud
+            evidenceBundle: "${ completeness_check }"
+          save_as: audit_evidence
+
+        - id: generate_run_result
+          title: 生成审计 run_result
+          action: custom.described_action
+          with:
+            description: >-
+              汇总审计结果：问题清单、复核轮次、报告路径、证据路径、门控结果、降级标记，
+              输出 run_result.json 到 auditPackageDir/run_result.json。
+              status 为 pass（强门控全过）/ partial_pass（部分产物缺失）/ blocked（强门控失败）。
+            expected_outputs:
+              - runResultPath
+            success_criteria: run_result 已生成
+          save_as: audit_run_result
+
+        # 最终门控
+        - id: b1_final_gate
+          title: 最终门控
+          action: custom.described_action
+          with:
+            description: >-
+              验证 3 个核心最终产物：
+              - diagnosisDir/README.md
+              - diagnosisDir/audit-findings.json
+              - diagnosisDir/run-result.json
+              软门控：缺失则 partial_pass（部分通过），记录缺失项。
+            expected_outputs:
+              - gatePassed
+              - finalPassCount
+              - missingFiles
+          save_as: b1_final_gate_result
+
+        - id: queue_audit_learning
+          title: 记录审计经验回灌候选
+          action: feedback.enqueue_learning
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            runResultPath: "${ audit_run_result.runResultPath }"
+            triggerSignals:
+              - audit_closeout
+              - gate_degradation
+          save_as: audit_learning
+
+        - id: output_fix_hint
+          title: 输出修复提示
+          action: custom.described_action
+          with:
+            description: >-
+              审计完成，向用户输出下一步提示：
+              "审计报告已生成。修复请使用 fix 工作流：执行 fix {auditPackageDir}"
+              列出审计包路径、问题摘要（P1/P2/P3/P4 各多少条）、门控结果、降级标记。
+            expected_outputs:
+              - fixHint
+            success_criteria: 用户已被告知下一步
+   

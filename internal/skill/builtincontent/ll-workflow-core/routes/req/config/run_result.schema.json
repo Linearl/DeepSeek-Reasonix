@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ll-requirements/run_result.schema.json",
+  "title": "Requirements Dev Workflow Run Result",
+  "description": "Schema for strict workflow gating and audit-ready run result output. v0.2.3 updated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "skill",
+    "version",
+    "mode",
+    "status",
+    "started_at",
+    "ended_at",
+    "duration_seconds",
+    "phases",
+    "artifacts",
+    "handoff",
+    "governance",
+    "traceability",
+    "control_metrics",
+    "decision_refs",
+    "retry_count",
+    "last_success_phase",
+    "completed_phases",
+    "summary",
+    "audit",
+    "evidence"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "minLength": 1 },
+    "skill": { "type": "string", "const": "ll-requirements" },
+    "version": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "enum": ["interactive", "non_interactive", "hybrid"] },
+    "status": { "type": "string", "enum": ["pass", "blocked", "failed", "cancelled"] },
+    "started_at": { "type": "string", "format": "date-time" },
+    "ended_at": { "type": "string", "format": "date-time" },
+    "duration_seconds": { "type": "integer", "minimum": 0 },
+    "project_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repo": { "type": "string" },
+        "target_version": { "type": "string" },
+        "request_source": { "type": "string" },
+        "operator": { "type": "string" }
+      }
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase_id", "gate_id", "rounds_used", "status", "unresolved_items", "conflict_items", "notes"],
+        "properties": {
+          "phase_id": { "type": "string", "enum": ["P0", "P1", "P2", "P3", "P4", "P5"] },
+          "gate_id": { "type": ["string", "null"], "enum": ["G0", "G1", "G2", "G3", "G4", null] },
+          "rounds_used": { "type": "integer", "minimum": 0 },
+          "status": { "type": "string", "enum": ["pass", "blocked", "failed", "cancelled"] },
+          "unresolved_items": { "type": "array", "items": { "type": "string" } },
+          "conflict_items": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "gates_passed": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["G0", "G1", "G2", "G3", "G4"] }
+    },
+    "requirementStatus": {
+      "type": "string",
+      "enum": ["draft", "review", "approved", "active", "done"],
+      "description": "v0.2.2+: 需求轴状态，与 workflow-governance.yaml.allowed_pairs 对齐"
+    },
+    "reqType": {
+      "type": "string",
+      "enum": ["feature", "bugfix", "refactor", "ops", "docs", "test", "research", "uncategorized"],
+      "description": "v0.2.2+: 需求类型"
+    },
+    "categoryCode": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9,
+      "description": "v0.2.2+: 编号段首位数字"
+    },
+    "complexity": {
+      "type": "string",
+      "enum": ["simple", "medium", "complex"],
+      "description": "v0.2.2+: 复杂度评估"
+    },
+    "skipFlags": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clarification": { "type": "boolean" },
+        "design": { "type": "boolean" }
+      },
+      "description": "v0.2.2+: 控制开关"
+    },
+    "gateRounds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "v0.2.2+: 澄清门控已使用的轮数"
+    },
+    "decisionPoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decisionPoint", "choice"],
+        "properties": {
+          "decisionPoint": { "type": "string" },
+          "choice": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      },
+      "description": "v0.2.2+: 关键决策点列表"
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirements_md", "design_md", "tasks_md", "decision_log_md", "run_result_json"],
+      "properties": {
+        "requirements_md": { "type": "string", "minLength": 1 },
+        "design_md": { "type": "string", "minLength": 1 },
+        "tasks_md": { "type": "string", "minLength": 1 },
+        "decision_log_md": { "type": "string", "minLength": 1 },
+        "run_result_json": { "type": "string", "minLength": 1 }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["template_ref", "ticket_path", "required_fields", "missing_fields", "status"],
+      "properties": {
+        "template_ref": { "type": "string", "minLength": 1 },
+        "ticket_path": { "type": "string", "minLength": 1 },
+        "required_fields": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "missing_fields": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["complete", "incomplete", "blocked"] }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state_sync", "version_selection"],
+      "properties": {
+        "state_sync": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["checked", "is_consistent", "mismatch_items", "blocking_reason"],
+          "properties": {
+            "checked": { "type": "boolean" },
+            "is_consistent": { "type": "boolean" },
+            "mismatch_items": { "type": "array", "items": { "type": "string" } },
+            "blocking_reason": { "type": ["string", "null"] }
+          }
+        },
+        "version_selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategy", "explicit_fallback", "resolver"],
+          "properties": {
+            "strategy": { "type": "string" },
+            "explicit_fallback": { "type": "boolean" },
+            "resolver": { "type": "string" }
+          }
+        }
+      }
+    },
+    "traceability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirements_count", "design_links_count", "task_links_count", "traceability_ok", "gap_items"],
+      "properties": {
+        "requirements_count": { "type": "integer", "minimum": 0 },
+        "design_links_count": { "type": "integer", "minimum": 0 },
+        "task_links_count": { "type": "integer", "minimum": 0 },
+        "traceability_ok": { "type": "boolean" },
+        "gap_items": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "control_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_gate_rounds", "max_total_rounds", "max_unresolved_after_p1",
+        "max_conflict_retries", "high_risk_conflict_policy", "total_rounds_used",
+        "default_decisions_count", "assumptions_count", "high_risk_conflicts_count", "fallback_actions"
+      ],
+      "properties": {
+        "max_gate_rounds": { "type": "integer", "minimum": 1 },
+        "max_total_rounds": { "type": "integer", "minimum": 1 },
+        "max_unresolved_after_p1": { "type": "integer", "minimum": 0 },
+        "max_conflict_retries": { "type": "integer", "minimum": 0 },
+        "high_risk_conflict_policy": { "type": "string", "enum": ["block", "warn", "allow"] },
+        "total_rounds_used": { "type": "integer", "minimum": 0 },
+        "default_decisions_count": { "type": "integer", "minimum": 0 },
+        "assumptions_count": { "type": "integer", "minimum": 0 },
+        "high_risk_conflicts_count": { "type": "integer", "minimum": 0 },
+        "fallback_actions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "risk_level", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "risk_level": { "type": "string", "enum": ["high", "medium", "low"] },
+          "status": { "type": "string", "enum": ["open", "closed"] }
+        }
+      }
+    },
+    "blocking_reasons": { "type": "array", "items": { "type": "string" } },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "decision_refs": { "type": "array", "items": { "type": "string" } },
+    "retry_count": { "type": "integer", "minimum": 0 },
+    "last_success_phase": { "type": "string", "enum": ["P0", "P1", "P2", "P3", "P4", "P5"] },
+    "completed_phases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["P0", "P1", "P2", "P3", "P4", "P5"] }
+    },
+    "cancel_reason": { "type": ["string", "null"] },
+    "summary": { "type": "string", "minLength": 1 },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "schema_validated", "validated_at", "operator", "evidence_refs"],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "schema_validated": { "type": "boolean" },
+        "validated_at": { "type": "string", "format": "date-time" },
+        "operator": { "type": "string" },
+        "evidence_refs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["markdown_bundle", "json_bundle", "weekly_backflow_candidate"],
+      "properties": {
+        "markdown_bundle": { "type": "string", "minLength": 1 },
+        "json_bundle": { "type": "string", "minLength": 1 },
+        "weekly_backflow_candidate": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "pass" } }, "required": ["status"] },
+      "then": {
+        "required": ["gates_passed"],
+        "properties": {
+          "blocking_reasons": { "maxItems": 0 },
+          "errors": { "maxItems": 0 },
+          "cancel_reason": { "type": "null" },
+          "traceability": {
+            "properties": { "traceability_ok": { "const": true } },
+            "required": ["traceability_ok"]
+          },
+          "handoff": {
+            "properties": { "missing_fields": { "maxItems": 0 }, "status": { "const": "complete" } },
+            "required": ["missing_fields", "status"]
+          },
+          "governance": {
+            "properties": {
+              "state_sync": {
+                "properties": { "is_consistent": { "const": true } },
+                "required": ["is_consistent"]
+              }
+            },
+            "required": ["state_sync"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "blocked" } }, "required": ["status"] },
+      "then": {
+        "properties": { "blocking_reasons": { "minItems": 1 } },
+        "required": ["blocking_reasons"]
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+      "then": {
+        "properties": { "errors": { "minItems": 1 } },
+        "required": ["errors"]
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "cancelled" } }, "required": ["status"] },
+      "then": {
+        "properties": { "cancel_reason": { "type": "string", "minLength": 1 } },
+        "required": ["cancel_reason"]
+      }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "non_interactive" } }, "required": ["mode"] },
+      "then": {
+        "properties": {
+          "control_metrics": {
+            "properties": {
+              "default_decisions_count": { "minimum": 0 },
+              "assumptions_count": { "minimum": 0 },
+              "high_risk_conflicts_count": { "minimum": 0 }
+            },
+            "required": ["default_decisions_count", "assumptions_count", "high_risk_conflicts_count", "fallback_actions"]
+          }
+        }
+      }
+    }
+  ]
+}

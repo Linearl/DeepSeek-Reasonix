@@ -1,0 +1,489 @@
+version: 0.1.0
+registry:
+  id: ll-workflow-routes
+  description: >-
+    ll-workflow-core 的统一路由注册表。用于根据 short_name、alias、意图提示发现 workflow，
+    也用于声明每条路由依赖的目录 profile、资源包与来源技能。
+  discovery_policy:
+    - explicit_short_name_first
+    - alias_match_second
+    - intent_hint_third
+    - ask_for_confirmation_last
+  defaults:
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    route_status: stable
+    shared_resource_bundles:
+      - shared.core
+      - shared.governance
+      - shared.docs.common
+routes:
+  - id: route.init
+    short_name: init
+    status: stable
+    workflow: ../templates/workflows/init.workflow.yaml
+    route_root: ../routes/init
+    source_skill: ll-workflow-core
+    purpose: 初始化 worktree pool 追踪 + 初始化 docs 骨架、导入历史文档、重建目录结构
+    aliases:
+      - init
+      - initialize
+      - bootstrap
+      - docs-init
+      - 初始化
+      - 导入旧文档
+      - worktree-init
+      - 初始化 worktree
+      - 初始化 worktree 池
+    intent_hints:
+      - 初始化 docs
+      - 建 docs 骨架
+      - 导入历史文档
+      - 重建目录结构
+      - 初始化 worktree
+      - worktree pool 初始化
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - route.init.assets
+      - shared.docs.common
+    extension_points:
+      - preflight
+      - import_mapping
+      - post_validation
+
+  - id: route.req
+    short_name: req
+    status: stable
+    workflow: ../templates/workflows/req.workflow.yaml
+    route_root: ../routes/req
+    source_skill: ll-requirements
+    purpose: 需求澄清、requirements/design/tasks 产物生成
+    aliases:
+      - req
+      - requirement
+      - requirements
+      - requirement-development
+      - 需求开发
+      - 需求澄清
+    intent_hints:
+      - 需求拆解
+      - 需求文档
+      - requirements
+      - design/tasks 产出
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - route.req.assets
+      - shared.docs.common
+    template_files:
+      - path: ../routes/req/templates/gate-questions-template.md
+        purpose: 澄清门控问题模板（v0.2.2 注册）
+      - path: ../routes/req/templates/run_result.json-schema.md
+        purpose: run_result 字段规范（v0.2.2 扩充）
+      - path: ../routes/req/config/run_result.schema.json
+        purpose: run_result JSON Schema（v0.2.2 扩充）
+    notes: |
+      v0.2.2：删除未支撑的 extension_points 声明（clarification_gate / artifact_generation / acceptance_contract），
+      改用 template_files 字段将模板路径显式注册。
+
+  - id: route.dev
+    short_name: dev
+    status: stable
+    workflow: ../templates/workflows/dev.workflow.yaml
+    route_root: ../routes/dev
+    source_skill: ll-develop
+    purpose: 功能开发、循环推进 todo、版本收口
+    aliases:
+      - dev
+      - development
+      - feature-development
+      - 功能开发
+      - 持续开发
+      - 开发这个需求
+    intent_hints:
+      - 推进 todo
+      - 开发某个需求
+      - 执行开发循环
+      - 版本收口
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - route.dev.assets
+      - shared.docs.common
+    extension_points:
+      - candidate_ranking
+      - task_gate
+      - closeout
+
+  - id: route.aud
+    short_name: aud
+    status: stable
+    workflow: ../templates/workflows/aud.workflow.yaml
+    route_root: ../routes/aud
+    source_skill: ll-audit
+    purpose: 项目审计（纯分析）。扫描 → 报告 → 复核 → 输出诊断报告。不承担修复职责，修复由 fix 工作流承接。支持 12 维全栈诊断清单。
+    aliases:
+      - aud
+      - audit
+      - project-audit
+      - code-audit
+      - 项目审计
+      - 代码审计
+      - 代码健康诊断
+    intent_hints:
+      - 项目审计
+      - 安全检查
+      - 审计修复
+      - 风险扫描
+      - 代码健康诊断
+      - 12维诊断
+      - 过度抽象
+      - 防御编程
+      - 死代码检测
+      - 魔法数字
+      - 异常处理审计
+      - 大文件拆分
+      - 测试覆盖度
+      - 性能瓶颈
+      - 工程评价
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - shared.cc-workflows
+      - route.aud.assets
+      - shared.docs.common
+    extension_points:
+      - scope_selection
+      - review_rounds
+      - skip_policy
+      - diagnostic_dimensions
+    variants:
+      - id: route.aud.cc-workflow
+        short_name: aud-cc
+        description: CC Workflow 版本（推荐）。使用 Claude Code Workflow 工具执行 9 维度并行审计，支持门控、超时、降级。
+        workflow: ../templates/cc-workflows/audit-parallel-v2.js
+        executor: cc_workflow
+        aliases:
+          - aud-cc
+          - cc-audit
+        intent_hints:
+          - 并行审计
+          - CC workflow 审计
+          - 门控审计
+      - id: route.aud.traditional
+        short_name: aud-trad
+        status: experimental
+        description: 传统 YAML 工作流版本。兼容其他编程智能体（如 Cursor、Continue.dev），使用自定义动作而非 Claude Code Workflow。
+        workflow: ../templates/workflows/aud.workflow.yaml
+        executor: traditional_yaml
+        aliases:
+          - aud-trad
+          - trad-audit
+          - 传统审计
+        intent_hints:
+          - 传统审计
+          - YAML 工作流审计
+          - 非 CC 智能体审计
+
+  - id: route.gen-test
+    short_name: gt
+    status: experimental
+    workflow: ../templates/workflows/gt.workflow.yaml
+    route_root: ../routes/gt
+    source_skill: ll-workflow-core
+    purpose: 并行生成后端服务层单元测试。优先使用 CC Workflow 脚本（test-generation-parallel.js），其他编程智能体降级使用 YAML 工作流。
+    aliases:
+      - gt
+      - gen-test
+      - generate-test
+      - 生成测试
+      - 并行测试生成
+      - 测试生成
+    intent_hints:
+      - 生成测试
+      - 并行测试
+      - 测试覆盖度
+      - 服务层测试
+      - 单元测试生成
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - shared.cc-workflows
+      - shared.docs.common
+    extension_points:
+      - service_grouping
+      - mock_strategy
+      - coverage_target
+      - validation
+    variants:
+      - id: route.gen-test.cc-workflow
+        short_name: gt-cc
+        description: CC Workflow 版本（推荐）。使用 Claude Code Workflow 工具并行生成服务层单元测试，支持 mock 策略、覆盖率门控。
+        workflow: ../templates/cc-workflows/test-generation-parallel.js
+        executor: cc_workflow
+        aliases:
+          - gt-cc
+          - cc-test
+          - cc-testgen
+        intent_hints:
+          - 并行测试
+          - CC workflow 测试
+          - 门控测试
+      - id: route.gen-test.traditional
+        short_name: gt-trad
+        status: experimental
+        description: 传统 YAML 工作流版本。兼容其他编程智能体（如 Cursor、Continue.dev），使用自定义动作而非 Claude Code Workflow。当前为占位 workflow（待实质化实现）。
+        workflow: ../templates/workflows/gt.workflow.yaml
+        executor: traditional_yaml
+        aliases:
+          - gt-trad
+          - trad-test
+          - 传统测试生成
+        intent_hints:
+          - 传统测试生成
+          - YAML 工作流测试
+          - 非 CC 智能体测试生成
+
+  - id: route.branch
+    short_name: branch
+    status: experimental
+    workflow: ../templates/workflows/branch.workflow.yaml
+    route_root: ../routes/branch
+    source_skill: ll-workflow-core
+    purpose: 持久化 worktree 池分配 slot → 开发任务包 → 提交。3 slot 全满时回退 ephemeral。并行开发入口。
+    aliases:
+      - branch
+      - parallel-dev
+      - worktree
+      - 并行开发
+      - 分支开发
+      - 创建分支
+      - worktree 开发
+    intent_hints:
+      - 创建新分支开发
+      - 并行开发
+      - worktree 开发
+      - 独立分支开发
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - route.branch.assets
+    extension_points:
+      - worktree_creation
+      - develop_loop
+      - commit_closeout
+
+  - id: route.merge
+    short_name: merge
+    status: experimental
+    workflow: ../templates/workflows/merge.workflow.yaml
+    route_root: ../routes/merge
+    source_skill: ll-workflow-core
+    purpose: 定位 pool slot 或 ephemeral 分支 → 合并回 master → 链式验证 → 重置 slot 或清理。分支收口与清理入口。
+    aliases:
+      - merge
+      - merge-branch
+      - merge-worktree
+      - 合并分支
+      - 合并清理
+      - 分支合并
+      - 收口
+    intent_hints:
+      - 合并 worktree
+      - 分支合并
+      - 合并回主线
+      - 清理 worktree
+      - 合并清理
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - route.merge.assets
+    extension_points:
+      - state_check
+      - merge_execution
+      - verification
+      - cleanup
+
+  - id: route.health-check
+    short_name: hchk
+    status: experimental
+    workflow: ../templates/workflows/health-check.workflow.yaml
+    route_root: ../routes/health-check
+    source_skill: ll-workflow-core
+    purpose: 项目健康检查与战略指导，识别不足、规划下一步、提取可复用的方法论。五维健康评估（架构、安全、测试、债务、流程）+ 七种债务模式识别 + 版本生命周期判断。
+    aliases:
+      - hchk
+      - health-check
+      - hc
+      - 健康检查
+      - 项目检查
+      - project-health
+      - version-check
+    intent_hints:
+      - 健康检查
+      - 版本启动检查
+      - 版本复盘
+      - 战略校准
+      - 五维评估
+      - 债务模式
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - shared.docs.common
+    extension_points:
+      - snapshot_collection
+      - pattern_recognition
+      - recommendation_generation
+
+  - id: route.fix
+    short_name: fix
+    status: experimental
+    workflow: ../templates/workflows/fix.workflow.yaml
+    route_root: ../routes/fix
+    source_skill: ll-audit
+    purpose: 读取审计任务包，按 P1→P4 逐级修复审计发现的问题，支持跳过与技术债台账。审计修复入口。
+    aliases:
+      - fix
+      - audit-fix
+      - 审计修复
+      - 修复审计问题
+      - 修复代码问题
+      - 处理审计问题
+    intent_hints:
+      - 修复审计问题
+      - 审计修复
+      - 处理 P1 问题
+      - 处理审计包
+      - audit-fix
+      - 代码问题修复
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - route.aud.assets
+      - shared.docs.common
+    extension_points:
+      - package_reading
+      - priority_iteration
+      - skip_policy
+      - archive_decision
+
+  - id: route.doc-fresh
+    short_name: df
+    status: stable
+    workflow: ../templates/workflows/doc-fresh.workflow.yaml
+    route_root: ../routes/doc-fresh
+    source_skill: doc-freshness-audit
+    purpose: 文档保鲜审计——扫描过期技术文档、多模型子代理并行审计、生成修正报告。默认走传统 YAML 工作流（依赖 Python 扫描器 check-doc-freshness.py），CC Workflow 变体走 df-cc。
+    aliases:
+      - df
+      - doc-fresh
+      - doc-freshness
+      - doc-freshness-audit
+      - 文档保鲜
+      - 过期文档
+      - 文档审计
+      - 文档新鲜度
+      - 检查文档新鲜度
+    intent_hints:
+      - 文档保鲜审计
+      - 过期文档扫描
+      - 文档新鲜度检查
+      - stale 文档检查
+      - 文档与代码一致性
+      - 修正报告
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - shared.cc-workflows
+      - route.doc-fresh.assets
+      - shared.docs.common
+    extension_points:
+      - scan_paths
+      - batch_grouping
+      - model_assignment
+      - dedup_ttl
+      - acknowledge_doc
+    variants:
+      - id: route.doc-fresh.cc-workflow
+        short_name: df-cc
+        description: CC Workflow 版本。使用 Claude Code Workflow 工具编排 6 阶段（扫描→分组→并行审计→复核→汇总→标记），内置门控与批次完整性检查。推荐在 Claude Code 内使用。
+        workflow: ../templates/cc-workflows/doc-fresh-parallel.js
+        executor: cc_workflow
+        aliases:
+          - df-cc
+          - cc-doc-fresh
+        intent_hints:
+          - 并行文档审计
+          - CC workflow 文档保鲜
+          - 门控文档审计
+      - id: route.doc-fresh.traditional
+        short_name: df-trad
+        status: stable
+        description: 传统 YAML 工作流版本。兼容其他编程智能体（如 Cursor、Continue.dev、Aider）。依赖 Python 扫描器 check-doc-freshness.py 与 prompts/ 下的代理提示词。
+        workflow: ../templates/workflows/doc-fresh.workflow.yaml
+        executor: traditional_yaml
+        aliases:
+          - df-trad
+          - trad-doc-fresh
+          - 传统文档审计
+        intent_hints:
+          - 传统文档审计
+          - YAML 工作流文档审计
+          - 非 CC 智能体文档审计
+
+  - id: route.harness-audit
+    short_name: haud
+    status: experimental
+    workflow: ../templates/workflows/harness-audit.workflow.yaml
+    route_root: ../routes/harness-audit
+    source_skill: ll-workflow-core
+    purpose: AI 辅助配置审计，审计 CLAUDE.md / settings.json / linter / CI / Git Hooks 五种配置介质的正确性、完备性、同步性。
+    aliases:
+      - haud
+      - harness-audit
+      - 配置审计
+      - agent-config-audit
+      - config-audit
+    intent_hints:
+      - 配置审计
+      - CLAUDE.md 审计
+      - settings.json 审计
+      - agent config
+      - 配置同步
+    directory_profile_ref: ./directory-layout.yaml#profiles/default
+    resource_bundles:
+      - shared.core
+      - shared.governance
+      - shared.docs.common
+    extension_points:
+      - config_discovery
+      - quality_assessment
+      - synchronization_check
+      - anti_pattern_detection
+
+extension_rules:
+  short_name_pattern: "^[a-z][a-z0-9_-]{1,15}$"
+  required_fields:
+    - id
+    - short_name
+    - workflow
+    - purpose
+    - aliases
+    - directory_profile_ref
+    - resource_bundles
+  recommended_fields:
+    - route_root
+    - source_skill
+    - extension_points
+  notes:
+    - 新增流程优先注册 route，而不是直接在 SKILL.md 里硬编码。
+    - 当 workflow 已经稳定后，再考虑把 route_status 从 experimental 升级为 stable。

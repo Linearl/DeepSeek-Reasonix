@@ -1,0 +1,323 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.merge
+  short_name: merge
+  name: ll-workflow-core / merge 持久化池式合并清理工作流
+  description: 定位 worktree 分支（pool slot 或 ephemeral）→ 合并回 master → 链式验证 → 重置 slot 或清理。
+  owner_skill: ll-workflow-core
+  source_skill: ll-workflow-core
+  activation_aliases:
+    - merge
+    - merge-branch
+    - merge-worktree
+    - 合并分支
+    - 合并清理
+    - 分支合并
+    - 收口
+    - merge-cleanup
+  activation_hint: 当用户要求合并分支、清理 worktree、收口时触发。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - shared.governance
+    - route.merge.assets
+  mode_support:
+    - interactive
+  defaults:
+    on_fail: block
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: userRequest
+        description: 用户请求原始文本
+    outputs:
+      - name: mergeSummary
+        description: mergeSummary 字段
+      - name: cleanupStatus
+        description: cleanupStatus 字段
+      - name: postMergeSuggestions
+        description: postMergeSuggestions 字段
+    variables:
+      targetBranch: ""
+      isPoolSlot: false
+      slotName: ""
+      branchFreshness: ""
+      masterAheadCount: 0
+
+  phases:
+    - id: a_preprocess
+      name: 预处理
+      purpose: 确定目标分支和所在 slot/worktree，检查状态。
+      steps:
+        - id: check_lessons
+          title: 查阅历史经验教训
+          action: custom.described_action
+          with:
+            description: >-
+              遇到疑难问题时，查阅 skills/ll-workflow-core/lessons/ 目录下的历史经验教训文件，
+              避免重复踩坑。若 lessons 目录为空则跳过。
+            expected_outputs:
+              - lessonsChecked
+            success_criteria: 已检查历史经验或确认无历史经验
+          save_as: lessons_context
+
+        - id: resolve_target_branch
+          title: 确定目标分支并定位 slot
+          action: custom.described_action
+          with:
+            description: >-
+              若用户指定了分支名（如 branch_260608_1），使用该分支。
+              若用户未指定，扫描 worktree/ 目录下按日期+编号排序最新的 branch_YYMMDD_N 文件夹。
+              确认分支存在：git branch --list branch_YYMMDD_N
+
+              定位该分支所在的 slot 或 worktree（三种方法优先序）：
+              方法 A：读取 worktree/.slots.json，查找 branch 字段匹配的 slot → 取 slotName, worktreePath, isPoolSlot=true
+              方法 B：扫描 worktree/dev1 worktree/dev2 worktree/dev3，用 git rev-parse --abbrev-ref HEAD 匹配分支名
+              方法 C：扫描 worktree/branch_* 目录匹配分支名（ephemeral 分支）→ isPoolSlot=false
+              若三种方法都找不到 → 中止流程。
+
+              输出 targetBranch、worktreePath、isPoolSlot、slotName（pool slot 时）。
+            expected_outputs:
+              - targetBranch
+              - worktreePath
+              - isPoolSlot
+              - slotName
+            success_criteria: 目标分支确定且定位到所在 worktree
+          save_as: target
+
+        - id: pre_merge_health_check
+          title: 合并前主仓库健康检查
+          action: custom.described_action
+          with:
+            description: >-
+              在主仓库根目录执行以下检查，任一阻断条件触发则中止流程：
+
+              1. 检查是否在 rebase/merge 中间状态：
+                 git status → 若包含 "rebase in progress" 或 "merge in progress" → 阻断
+              2. 检查 HEAD 是否在 master：
+                 git rev-parse --abbrev-ref HEAD → 必须输出 master，否则阻断
+              3. 检查工作区是否干净：
+                 git status --porcelain → 若有输出 → 警告（不阻断，提示用户处理）
+              4. 检查是否有未恢复的 stash：
+                 git stash list → 若有条目 → 警告（不阻断，提示用户可能丢失 stash）
+
+              输出 healthCheckResult（healthy / warnings / blocked），issues 列表。
+              若 blocked → 中止流程，告知用户修复后再执行合并。
+            expected_outputs:
+              - healthCheckResult
+              - issues
+            success_criteria: 主仓库状态健康，可执行合并
+          save_as: health_check
+
+        - id: check_branch_freshness
+          title: 检查分支与 master 的新鲜度
+          action: custom.described_action
+          with:
+            description: >-
+              计算目标分支与 master 的分叉程度：
+
+              1. git log --oneline master..{targetBranch} → 分支独有的 commit 数（branchOnlyCount）
+              2. git log --oneline {targetBranch}..master → master 领先的 commit 数（masterAheadCount）
+
+              根据 masterAheadCount 判定分支新鲜度：
+              - masterAheadCount == 0 → branchFreshness = fresh（可直接合并）
+              - masterAheadCount <= 10 → branchFreshness = stale（警告：合并前建议 rebase）
+              - masterAheadCount > 10 → branchFreshness = diverged（警告：高冲突风险）
+              - masterAheadCount > 20 → branchFreshness = critically_diverged（阻断：要求先在分支中 rebase）
+
+              输出 branchFreshness、masterAheadCount、branchOnlyCount。
+              若 critically_diverged → 中止流程，建议用户先在分支中执行 rebase。
+            expected_outputs:
+              - branchFreshness
+              - masterAheadCount
+              - branchOnlyCount
+            success_criteria: 已评估分支新鲜度
+            targetBranch: "${ target.targetBranch }"
+          save_as: branch_freshness
+
+        - id: check_worktree_clean
+          title: 检查 worktree 状态
+          action: custom.described_action
+          with:
+            description: >-
+              进入 worktree 目录执行 git status --porcelain。
+              若有未提交变更 → 中止流程，告知用户先提交再合并。
+              若干净 → 记录状态为 clean。
+            expected_outputs:
+              - statusCheck
+              - isClean
+            success_criteria: worktree 无未提交变更或流程中止
+            worktreePath: "${ target.worktreePath }"
+          save_as: status
+
+    - id: b_execution
+      name: 合并与验证
+      purpose: 合并到 master，链式验证，确认合并。
+      steps:
+        - id: switch_to_master
+          title: 切换到 master 并拉取最新
+          action: custom.described_action
+          with:
+            description: >-
+              回到主仓库根目录，执行 git checkout master 和 git pull origin master，
+              确保 master 是最新状态。
+            expected_outputs:
+              - masterUpdated
+            success_criteria: master 已拉取最新
+          save_as: master_state
+
+        - id: attempt_rebase_if_stale
+          title: 分支过时时尝试 rebase
+          action: custom.described_action
+          with:
+            description: >-
+              仅当 branch_freshness.branchFreshness == stale 或 diverged 时执行，否则跳过。
+
+              执行流程：
+              1. git checkout {targetBranch}
+              2. git rebase master
+              3. 若 rebase 成功（无冲突）→ 记录 rebaseResult = success，继续合并
+              4. 若 rebase 有冲突 → git rebase --abort，记录 rebaseResult = conflict_aborted
+                 回退到 merge 策略（后续 merge_branch 步骤用 --no-ff 合并）
+
+              输出 rebaseResult（success / conflict_aborted / skipped）。
+            expected_outputs:
+              - rebaseResult
+            success_criteria: rebase 完成或已回退到 merge 策略
+            targetBranch: "${ target.targetBranch }"
+            branchFreshness: "${ branch_freshness.branchFreshness }"
+          save_as: rebase_attempt
+
+        - id: merge_branch
+          title: 合并分支到 master
+          action: custom.described_action
+          with:
+            description: >-
+              执行 git merge branch_{targetBranch} --no-ff。
+              若自动合并成功 → 记录合并结果。
+              若出现冲突且无法自动解决 → git merge --abort，告知用户手动处理。
+            expected_outputs:
+              - mergeResult
+              - mergeSuccess
+            success_criteria: 合并成功无冲突
+            targetBranch: "${ target.targetBranch }"
+          save_as: merge_result
+
+        - id: verify_chain
+          title: 链式验证主线
+          action: custom.described_action
+          with:
+            description: >-
+              在目标版本目录下按顺序执行链式验证，任一失败即中止：
+              1. npx tsc --noEmit（类型检查）
+              2. npm run lint（代码风格）
+              3. npm run test:unit（单元测试）
+              4. npm run test:integration（集成测试）
+              输出每一步的通过/失败状态和详细日志。
+              失败时必须执行 git merge --abort 回退。
+            expected_outputs:
+              - tscPassed
+              - lintPassed
+              - unitTestPassed
+              - integrationTestPassed
+              - verificationLog
+            success_criteria: 所有验证步骤通过
+          save_as: verification
+
+        - id: commit_merge
+          title: 确认合并结果
+          action: custom.described_action
+          with:
+            description: >-
+              在 master 上确认 git log --oneline -5 中已包含 merge commit，
+              记录 merge commit SHA 和消息。
+            expected_outputs:
+              - commitSha
+              - commitMessage
+            success_criteria: merge commit 确认存在
+          save_as: merge_commit
+
+    - id: c_cleanup
+      name: 清理与报告
+      purpose: 按类型清理（pool slot 重置 或 ephemeral 移除），输出合并总结。
+      steps:
+        - id: cleanup_worktree
+          title: 清理 — 重置 pool slot 或移除 ephemeral
+          action: custom.described_action
+          with:
+            description: >-
+              根据 isPoolSlot 选择清理方式：
+
+              场景 A — pool slot 分支（isPoolSlot=true）：
+              1. cd worktree/{slotName}
+              2. git checkout master
+              3. git pull origin master（拉取刚才的 merge commit）
+              4. git branch -d {targetBranch}（删除已合并分支）
+              5. 回到根目录，更新 worktree/.slots.json：status=available, branch=null
+
+              场景 B — ephemeral 分支（isPoolSlot=false）：
+              1. git worktree remove worktree/{targetBranch}
+              2. git branch -d {targetBranch}
+              3. rmdir /s /q worktree\{targetBranch} 2>nul 或 rm -rf worktree/{targetBranch}
+            expected_outputs:
+              - isPoolSlot
+              - slotResetDone
+              - worktreeCleaned
+            success_criteria: slot 已重置为可用状态 或 ephemeral 已清理
+            targetBranch: "${ target.targetBranch }"
+            slotName: "${ target.slotName }"
+            isPoolSlot: "${ target.isPoolSlot }"
+          save_as: cleanup_result
+
+        - id: generate_report
+          title: 生成合并报告
+          action: custom.described_action
+          with:
+            description: >-
+              输出合并清理总结报告，包含：
+              - ✅ 合并分支：{targetBranch}
+              - ✅ 所属工作区：{slotName}（pool slot）或 ephemeral
+              - ✅ 验证结果（类型检查 / 代码风格 / 单元测试 / 集成测试）
+              - ✅ 合并提交 SHA
+              - ✅ 清理状态（slot 重置 / ephemeral 删除）
+              - ❌ 遇阻事项（如有）
+
+              后续建议段（根据合并情况动态生成）：
+              - 若 rebase_attempt.rebaseResult == success →
+                建议执行 git push origin master --force-with-lease（因为 rebase 改写了分支历史）
+              - 若 branch_freshness.masterAheadCount > 0 且未 rebase →
+                提醒用户本次合并已将 master 领先的 commit 合入，建议推送远程
+              - 若 master 有未推送 commit（master_freshness == has_unpushed_commits）→
+                提醒用户 git push origin master 推送 master 变更
+            expected_outputs:
+              - mergeSummary
+              - postMergeSuggestions
+            success_criteria: 用户获得完整的合并清理报告和后续建议
+            targetBranch: "${ target.targetBranch }"
+            slotName: "${ target.slotName }"
+            isPoolSlot: "${ target.isPoolSlot }"
+            mergeInfo: "${ merge_commit }"
+            verificationInfo: "${ verification }"
+            cleanupStatus: "${ cleanup_result }"
+            branchFreshnessInfo: "${ branch_freshness }"
+            rebaseAttemptInfo: "${ rebase_attempt }"
+            masterFreshnessInfo: "${ master_freshness }"
+          save_as: report
+
+        - id: queue_merge_learning
+          title: 记录合并经验回灌候选
+          action: feedback.enqueue_learning
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            taskPath: "${ target.taskPath }"
+            triggerSignals:
+              - merge_closeout
+          save_as: merge_learning

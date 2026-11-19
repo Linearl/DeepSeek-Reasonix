@@ -1,0 +1,97 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.gen-test
+  short_name: gt
+  name: ll-workflow-core / gt 并行生成服务层单元测试（传统 YAML 占位）
+  description: |
+    gt 路由的 traditional_yaml 变体占位 workflow。
+
+    与 `gt-cc`（cc_workflow 变体，使用 templates/cc-workflows/test-generation-parallel.js）
+    对应，本文件为非 CC 编程智能体（Cursor / Continue.dev / 其他 IDE）提供降级路径。
+
+    **当前状态：experimental / 占位实现** —— 本文件仅声明 workflow 骨架与 extension_points，
+    步骤体（steps）尚未实质化。推荐场景下应优先使用 `gt-cc` 变体。
+
+    待实现核心步骤（占位）：
+      - context.discover_services（按 service_grouping 切分服务）
+      - flow.test_draft_per_service（每服务并行生成测试）
+      - gate.coverage_threshold（覆盖率门控）
+      - flow.test_validate_run（执行并验证测试可运行）
+  owner_skill: ll-workflow-core
+  source_skill: ll-workflow-core
+  activation_aliases:
+    - gt-trad
+    - trad-test
+    - 传统测试生成
+  activation_hint: 当用户明确要求使用传统 YAML 变体（gt-trad）生成测试时触发；推荐场景下应优先使用 gt-cc。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - shared.governance
+    - shared.docs.common
+  mode_support:
+    - interactive
+    - non_interactive
+  defaults:
+    on_fail: block
+    # 并行与超时配置（与 CC Workflow 对齐）
+    parallel_config:
+      max_concurrent_per_batch: 3   # 每批最多 3 个服务并行生成
+      test_run_timeout_ms: 180000   # 测试运行超时 3 分钟
+      draft_timeout_ms: 300000      # 单服务草稿生成超时 5 分钟
+    # 降级策略
+    degradation:
+      missing_service_grouping: block     # 服务切分缺失：阻塞
+      missing_draft_output: warn_continue  # 草稿缺失：警告继续
+      coverage_below_threshold: warn_continue  # 覆盖率不达标：警告继续
+    # 门控配置
+    gate_policy:
+      strict_gates: [g1_service_grouping, g3_test_run_pass]    # 必须通过的强门控
+      soft_gates: [g0_discovery, g2_draft, g4_coverage]        # 警告通过的软门控
+    # 扩展点（暴露给消费方）
+    extension_points:
+      - service_grouping   # 服务切分策略（按目录 / 按导出符号 / 按依赖图）
+      - mock_strategy      # mock 策略（自动生成 / 手工指定 / 复用既有）
+      - coverage_target    # 覆盖率目标（行/分支/函数，0-1）
+      - validation         # 验证策略（仅语法检查 / 必须跑通 / 必须断言通过）
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: userTarget
+        description: 用户目标（需求编号 / 文件路径 / 自然语言描述）
+      - name: serviceGroupingStrategy
+        description: 服务切分策略（按目录 / 按导出符号 / 按依赖图）
+      - name: mockStrategy
+        description: mock 策略（自动生成 / 手工指定 / 复用既有）
+      - name: coverageTarget
+        description: 覆盖率目标（行/分支/函数，0-1）
+      - name: mode
+        description: 运行模式（interactive / non_interactive）
+      - name: dateStr
+        description: 运行日期（YYYY-MM-DD）
+    outputs:
+      - name: generatedTestFiles
+        description: 生成的测试文件路径列表
+      - name: testRunReportPath
+        description: 测试运行报告路径
+      - name: coverageReportPath
+        description: 覆盖率报告路径
+      - name: runResultPath
+        description: run_result.json 落盘路径
+      - name: gateResults
+        description: 门控结果集合
+    variables:
+      services: []
+      drafts: []
+      test_runs: []
+
+# 步骤段待实现（占位空段，避免 schema 校验失败）
+steps: []

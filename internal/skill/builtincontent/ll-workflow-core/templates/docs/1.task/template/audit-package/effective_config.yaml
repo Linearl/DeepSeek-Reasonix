@@ -1,0 +1,41 @@
+# ll-audit 本次审计生效配置快照
+# Generated: {YYYY-MM-DD}
+
+mode:
+  non_interactive: {true/false}
+  on_no_response: use_default
+  wait_seconds: 90
+
+defaults:
+  audit_scope: {full/partial}
+  review_rounds: {N}
+  use_audit_branch: true
+
+quality:
+  merge_gate:
+    enabled: true
+    max_perf_regression_pct: 5
+
+logging:
+  decision_log:
+    enabled: true
+    path: decision_log.md
+
+skip:
+  debt_backlog:
+    enabled: true
+    sla:
+      P1: 24~72h
+      P2: 1w
+      P3: 1 iteration
+      P4: planned
+
+branch:
+  name_pattern: audit/{date}
+
+interactive:
+  questions_enabled: true
+
+commit:
+  enforce_template: true
+  template: "fix(P{priority}-{id}): {summary}"

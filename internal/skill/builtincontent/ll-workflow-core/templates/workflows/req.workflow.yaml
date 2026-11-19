@@ -1,0 +1,499 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  project_config_schema: ../project-config.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.req
+  short_name: req
+  name: ll-workflow-core / req 需求开发工作流
+  description: 原始需求输入 → 需求分类 → 评估复杂度 → 可选拦清 → requirements/design/tasks/run_result 输出。
+  owner_skill: ll-workflow-core
+  source_skill: ll-requirements
+  activation_aliases:
+    - req
+    - requirement
+    - requirements
+    - requirement-development
+    - 需求开发
+    - 需求澄清
+  activation_hint: 当用户提到需求拆解、需求澄清、需求文档、requirements 产物生成时触发。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - shared.governance
+    - route.req.assets
+    - shared.docs.common
+  mode_support:
+    - interactive
+    - non_interactive
+  defaults:
+    on_fail: block
+    max_gate_rounds: 4
+    max_total_rounds: 12
+  context:
+    inputs:
+      - name: userRequest
+        description: 用户请求原始文本
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: mode
+        description: 运行模式（interactive / non_interactive）
+      - name: targetTaskHint
+        description: targetTaskHint 字段
+      - name: skipClarificationOverride
+        description: 强制跳过澄清（true / false）
+    outputs:
+      - name: requirementsPath
+        description: requirementsPath 字段
+      - name: designPath
+        description: designPath 字段
+      - name: tasksPath
+        description: tasksPath 字段
+      - name: decisionLogPath
+        description: decisionLogPath 字段
+      - name: runResultPath
+        description: run_result.json 落盘路径
+      - name: projectConfig
+        description: projectConfig 字段
+    variables:
+      unresolved_count: 0
+      gate_round: 0
+      reqType: ""
+      categoryCode: 0
+      complexity: medium
+      skipClarification: false
+      skipDesign: false
+      effectiveMaxGateRounds: 4
+
+  phases:
+    - id: a_load_project_config
+      name: 加载项目配置
+      purpose: 检测并加载项目级配置文件，为后续流程提供自定义的分类映射和行为参数。
+      steps:
+        - id: detect_project_config
+          title: 检测项目配置文件
+          action: config.manage_project
+          with:
+            mode: read
+            workspaceRoot: "${ workspaceRoot }"
+            configFileName: ".ll-workflow.yaml"
+          save_as: config_detection
+
+    - id: b_input_intake
+      name: 输入受理与上下文建立
+      purpose: 建立 targetDevDir、version、治理上下文、需求分类与复杂度评估。
+      steps:
+        - id: resolve_version
+          title: 解析目标版本
+          action: context.resolve_target_version
+          with:
+            userTarget: "${ targetTaskHint }"
+            workspaceRoot: "${ workspaceRoot }"
+          save_as: target_context
+
+        - id: load_directory_profile
+          title: 加载目录结构配置
+          action: layout.load_directory_profile
+          with:
+            directoryProfileRef: "../../config/directory-layout.yaml#profiles/${ config_detection.projectConfig.base_profile || 'default' }"
+            workspaceRoot: "${ workspaceRoot }"
+            targetDevDir: "${ target_context.targetDevDir }"
+            version: "${ target_context.version }"
+          save_as: layout_profile
+
+        - id: load_governance
+          title: 读取治理规则
+          action: context.load_governance_context
+          with:
+            targetDevDir: "${ target_context.targetDevDir }"
+            layout: "${ layout_profile }"
+          save_as: governance
+
+        - id: classify_request
+          title: 需求分类
+          action: requirement.classify_type
+          with:
+            userRequest: "${ userRequest }"
+            categoryMapping: "${ config_detection.projectConfig.workflows?.req?.category_mapping }"
+          save_as: classification_result
+
+        - id: assess_complexity
+          title: 评估复杂度
+          action: requirement.assess_complexity
+          with:
+            requirementDraft: "${ classification_result }"
+            complexityRules: "${ config_detection.projectConfig.workflows?.req?.complexity_rules }"
+          save_as: complexity_assessment
+
+        - id: apply_complexity_overrides
+          title: 应用复杂度配置覆盖
+          type: composite
+          uses: flow.req_apply_overrides
+          with:
+            complexityAssessment: "${ complexity_assessment }"
+            userOverride: "${ skipClarificationOverride }"
+            categoryMapping: "${ config_detection.projectConfig.workflows?.req?.category_mapping }"
+            complexityRules: "${ config_detection.projectConfig.workflows?.req?.complexity_rules }"
+            skipClarificationKeywords: "${ config_detection.projectConfig.workflows?.req?.skip_clarification_keywords }"
+            skipDesignComplexity: "${ config_detection.projectConfig.workflows?.req?.skip_design_complexity }"
+            openQuestionsCount: "${ requirement_analysis.openQuestions_count }"
+          save_as: complexity_overrides
+          notes: |
+            v0.2.2：将原 custom.described_action apply_complexity_overrides 替换为
+            composite flow.req_apply_overrides（其内部调用结构化 action requirement.compute_overrides）。
+            4 个项目配置字段（category_mapping/complexity_rules/skip_clarification_keywords/skip_design_complexity）
+            全部生效，unresolvedCount 真实回写。
+
+        - id: preflight_taskPath_hint
+          title: 预计算任务包路径提示
+          action: task.compute_path_hint
+          with:
+            version: "${ target_context.version }"
+            reqId: "${ requirement_analysis.requirementDraft.reqId }"
+            title: "${ requirement_analysis.requirementDraft.title }"
+            layout: "${ layout_profile }"
+          save_as: path_hint
+          notes: |
+            v0.2.2：b_input_intake 阶段预先计算 taskPathHint（不创建目录），
+            供 c/d/e/f 阶段的 evidence/governance 调用引用。
+            实际目录创建仍由 d_write_requirements 的 task.resolve_identity 完成。
+
+        - id: analyze_initial_request
+          title: 生成初始需求草稿
+          action: requirement.analyze_request
+          with:
+            userRequest: "${ userRequest }"
+            context: "${ governance }"
+          save_as: requirement_analysis
+
+    - id: c_clarify_and_resolve_conflicts
+      name: 需求澄清与冲突消解
+      purpose: 通过门控问答循环压缩未决项（可跳过）。
+      gate:
+        pass_when: "${ unresolved_count == 0 }"
+        fail_when: "${ gate_round > effectiveMaxGateRounds }"
+      steps:
+        - id: check_skip_clarification
+          type: branch
+          if: "${ complexity_overrides.skipClarification == true }"
+          then:
+            - id: record_skip_clarification
+              title: 记录跳过澄清
+              action: decision.record
+              with:
+                decisionPoint: clarification_skip
+                choice: skipped
+                reason: "需求类型为 ${ reqType }，复杂度为 ${ complexity }，或用户要求跳过"
+          else:
+            - id: choose_mode
+              type: branch
+              if: "${ mode == 'non_interactive' }"
+              then:
+                - id: record_non_interactive_defaults
+                  title: 记录非交互默认策略
+                  action: decision.record
+                  with:
+                    decisionPoint: requirement_mode
+                    choice: non_interactive_defaults
+                    reason: 使用默认决策包替代 ask_questions
+                - id: load_default_decision_bundle
+                  title: 加载非交互默认决策包
+                  action: custom.described_action
+                  with:
+                    description: >-
+                      从 routes/req/templates/decision_log-template.md 加载默认决策包，
+                      转化为与 interaction.ask_questions_gate 的 latest_answers 同构的对象。
+                      若 routes/req/config/run_result.schema.json 中声明了 defaultDecisions 字段，优先使用。
+                    expected_outputs:
+                      - latest_answers
+                    layout: "${ layout_profile }"
+                  save_as: default_bundle
+                  notes: |
+                    v0.2.2：non_interactive 模式必须产出 latest_answers，
+                    保证下游 requirement.refine_ears 拿到与 interactive 同构的输入。
+
+                - id: apply_default_decisions
+                  title: 应用非交互默认决策
+                  action: decision.record
+                  with:
+                    decisionPoint: non_interactive_apply_defaults
+                    choice: applied
+                    reason: "${ default_bundle.appliedKeys }"
+                  save_as: applied_defaults
+
+                - id: refine_with_defaults
+                  title: 用默认决策包执行 EARS 提炼
+                  action: requirement.refine_ears
+                  with:
+                    requirementDraft: "${ requirement_analysis.requirementDraft }"
+                    openQuestions: "${ requirement_analysis.openQuestions }"
+                    latestAnswers: "${ default_bundle.latest_answers }"
+                  save_as: refinement_result
+                  notes: |
+                    v0.2.2：non_interactive 模式复用 requirement.refine_ears，
+                    输入 latestAnswers 来自默认决策包，保证 refinement_result 不为 null。
+              else:
+                - id: clarify_round_loop
+                  type: while
+                  condition: "${ unresolved_count > 0 && gate_round < effectiveMaxGateRounds }"
+                  max_iterations: "${ effectiveMaxGateRounds }"
+                  steps:
+                    - id: ask_clarification_questions
+                      title: 发起本轮澄清问题
+                      action: interaction.ask_questions_gate
+                      with:
+                        questionSet: ll_requirements_gate_round
+                        gateTemplatePath: "../routes/req/templates/gate-questions-template.md"
+                        recommendedOptions:
+                          - 使用推荐边界与验收方式
+                          - 针对冲突项给出选择
+                      save_as: latest_answers
+                      notes: |
+                        v0.2.2：gateTemplatePath 显式声明，与 route-registry.route.req.template_files[0] 对应。
+                        模板-契约绑定。
+
+                    - id: refine_acceptance_by_description
+                      title: 用最新答案压缩 openQuestions 并提炼 EARS 验收条目
+                      action: requirement.refine_ears
+                      with:
+                        requirementDraft: "${ requirement_analysis.requirementDraft }"
+                        openQuestions: "${ requirement_analysis.openQuestions }"
+                        latestAnswers: "${ latest_answers }"
+                      save_as: refinement_result
+                      notes: |
+                        v0.2.2：将原 custom.described_action refine_acceptance_by_description
+                        替换为结构化 action requirement.refine_ears。
+                        关键约束：openQuestions 必须真实压缩，unresolvedCount 必须真实回写。
+
+                    - id: record_clarification_decision
+                      title: 记录本轮门控决策
+                      action: decision.record
+                      with:
+                        decisionPoint: clarification_round
+                        choice: "${ latest_answers.gateResult }"
+                        reason: "${ latest_answers.answers_summary }"
+
+    - id: d_write_requirements
+      name: requirements 落地
+      purpose: 在任务目录生成 requirements.md 与 decision_log.md。
+      steps:
+        - id: resolve_task_identity
+          title: 确认任务身份
+          action: task.resolve_identity
+          with:
+            title: "${ requirement_analysis.requirementDraft.title }"
+            version: "${ target_context.version }"
+            reqId: "${ requirement_analysis.requirementDraft.reqId }"
+            layout: "${ layout_profile }"
+          save_as: task_identity
+
+        - id: load_task_package_spec
+          title: 读取任务包六件套规范
+          action: task.load_package_spec
+          with:
+            workspaceRoot: "${ workspaceRoot }"
+            layout: "${ layout_profile }"
+          save_as: task_package_spec
+
+        - id: scaffold_task_package
+          title: 建立任务包骨架
+          uses: flow.task_expand_package
+          with:
+            taskPath: "${ task_identity.taskPath }"
+            directoryProfileRef: "../../config/directory-layout.yaml#profiles/${ config_detection.projectConfig.base_profile || 'default' }"
+            governanceRef: "../../config/workflow-governance.yaml"
+            specReference: "${ task_package_spec }"
+            reqId: "${ task_identity.reqId }"
+          save_as: package_scaffold
+
+        - id: ensure_req_handoff_ticket
+          title: 生成 req → dev 统一交接工单
+          action: handoff.ensure_ticket
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            taskPath: "${ task_identity.taskPath }"
+            route: req
+            ticketType: req_to_dev
+          save_as: handoff_ticket
+
+        - id: write_requirements_doc
+          title: 写入 requirements 工作副本
+          action: custom.described_action
+          with:
+            description: >-
+              在 taskPath 下生成或更新 requirements.md，内容必须包含目标、范围、非目标、EARS 验收条目、
+              风险与未决项清单，并与 refinement_result 中的最新决策保持一致。
+              包含需求分类信息：类型（${ reqType }）、编号段（${ categoryCode }xxx）、复杂度（${ complexity }）。
+            expected_outputs:
+              - requirementsPath
+            success_criteria: requirements.md 可被下游 design/tasks 直接引用
+            layout: "${ layout_profile }"
+          save_as: requirements_doc
+
+    - id: e_write_design
+      name: design 收敛
+      purpose: 形成与 requirements 可追溯的 design.md（可跳过）。
+      steps:
+        - id: check_skip_design
+          type: branch
+          if: "${ complexity_overrides.skipDesign == true }"
+          then:
+            - id: record_skip_design
+              title: 记录跳过 design
+              action: decision.record
+              with:
+                decisionPoint: design_skip
+                choice: skipped
+                reason: "复杂度为 ${ complexity }，跳过 design 阶段"
+            - id: set_design_path_null
+              title: 设置 designPath 为空
+              action: custom.described_action
+              with:
+                description: "设置 designPath 为 null，表示跳过 design 阶段"
+                expected_outputs:
+                  - designPath
+          else:
+            - id: write_design_doc
+              title: 生成 design.md
+              action: custom.described_action
+              with:
+                description: >-
+                  基于 requirements.md 生成 design.md，覆盖架构、关键流程、接口/数据结构、错误处理、回滚策略、
+                  性能与安全约束，并确保每个设计决策都能追溯到 requirements 条目。
+                expected_outputs:
+                  - designPath
+                success_criteria: design 中不存在待补充的核心接口字段
+                layout: "${ layout_profile }"
+              save_as: design_doc
+
+    - id: f_write_tasks
+      name: tasks 分解
+      purpose: 生成可执行、可验收、可估时的 tasks.md。
+      steps:
+        - id: write_tasks_doc
+          title: 生成 tasks.md
+          action: custom.described_action
+          with:
+            description: >-
+              将 requirements 与 design 拆解为原子任务，写入 tasks.md；每个任务必须包含依赖、DoD、验证方式，
+              且不能出现超大任务未拆分的情况。
+              若跳过 design，则仅基于 requirements 生成 tasks。
+            expected_outputs:
+              - tasksPath
+            success_criteria: tasks.md 中每个任务都可以独立执行和验证
+            layout: "${ layout_profile }"
+            hasDesign: "${ design_doc != null }"
+          save_as: tasks_doc
+
+    - id: g_finalize
+      name: 汇总与结果输出
+      purpose: 生成 run_result，并同步治理入口。
+      steps:
+        - id: sync_docs_entries
+          title: 同步治理入口
+          action: docs.sync_governance_entries
+          with:
+            layout: "${ layout_profile }"
+            syncProfile: requirement_default
+            taskPath: "${ task_identity.taskPath }"
+          save_as: synced_docs
+
+        - id: sync_requirement_status
+          title: 写入 requirement 轴状态（双轴一致性）
+          action: state.update_task_status
+          with:
+            taskPath: "${ task_identity.taskPath }"
+            newStatus: approved
+            statusAxis: requirement
+            reason: "req 路由完成 requirements/design/tasks 落地，写入 requirement 轴状态以满足 governance 双轴允许对"
+            layout: "${ layout_profile }"
+          save_as: requirement_status
+          notes: |
+            v0.2.2：扩展 state.update_task_status 支持 statusAxis=requirement。
+            与 record_final_status（task 轴）配合，实现 governance.validate_state_sync 双轴一致。
+
+        - id: record_final_status
+          title: 记录结果状态
+          action: state.update_task_status
+          with:
+            taskPath: "${ task_identity.taskPath }"
+            newStatus: requirements_ready
+            reason: requirements/design/tasks 已生成
+            layout: "${ layout_profile }"
+          save_as: final_status
+
+        - id: collect_req_evidence
+          title: 汇总 req 路由证据材料
+          action: evidence.collect
+          with:
+            validationResult: "${ final_status.statusRecord }"
+            artifacts:
+              - path: "${ task_identity.taskPath }/requirements.md"
+                kind: document
+              - path: "${ task_identity.taskPath }/design.md"
+                kind: document
+                optional: true
+              - path: "${ task_identity.taskPath }/tasks.md"
+                kind: document
+              - path: "${ task_identity.taskPath }/run_result.json"
+                kind: config
+            route: req
+          save_as: collected_evidence
+          notes: |
+            v0.2.2：满足 evidence.collect → evidence.emit_dual_format 强顺序约束。
+            collect 仅在内存中聚合，emit_dual_format 负责落盘为 Markdown + JSON。
+
+        - id: validate_req_state_sync
+          title: 校验需求与任务状态一致性
+          action: governance.validate_state_sync
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            layout: "${ layout_profile }"
+            taskPath: "${ task_identity.taskPath }"
+            requirementPath: "${ requirements_doc.requirementsPath }"
+          save_as: state_sync_result
+
+        - id: emit_req_evidence
+          title: 输出 req 双格式证据
+          action: evidence.emit_dual_format
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            route: req
+            taskPath: "${ task_identity.taskPath }"
+            evidenceBundle: "${ collected_evidence.evidenceBundle }"
+          save_as: req_evidence
+          notes: |
+            v0.2.2：evidenceBundle 来源从 final_status.statusRecord 改为 collected_evidence.evidenceBundle，
+            满足强顺序约束。
+
+        - id: emit_run_result
+          title: 生成 run_result
+          action: custom.described_action
+          with:
+            description: >-
+              基于当前 workflow 上下文输出 run_result.json，至少包含 status、artifacts、unresolved_items、
+              assumptions、blocking_reasons、handoff ticket、state sync、双格式证据与版本选择信息，
+              并保证后续 ll-develop 可以读取。
+              包含需求分类信息：reqType、categoryCode、complexity、skipClarification、skipDesign。
+            expected_outputs:
+              - runResultPath
+            success_criteria: run_result.json 足以支持下游编排
+            layout: "${ layout_profile }"
+          save_as: run_result
+
+        - id: queue_req_learning
+          title: 记录高价值经验回灌候选
+          action: feedback.enqueue_learning
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            taskPath: "${ task_identity.taskPath }"
+            runResultPath: "${ run_result.runResultPath }"
+            triggerSignals:
+              - req_closeout
+              - "${ state_sync_result.isConsistent }"
+          save_as: req_learning

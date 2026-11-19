@@ -1,0 +1,25 @@
+{
+  "_comment": "示例扫描结果——敏感路径已脱敏。实际 run_dir 中的 scan-result.json 不含此注释。",
+  "dev_version": "dev_11",
+  "scan_time": "2026-05-29T01:50:00.000000+00:00",
+  "run_dir": "04-auto_audit/results/2026-05-29-000004",
+  "summary": {
+    "total_scanned": 92,
+    "stale": 84,
+    "new": 84,
+    "recurring": 0,
+    "recurring_skipped": 0,
+    "current": 8
+  },
+  "audit_files": [
+    {
+      "rel_path": "2.tech/architecture/01-总体架构.md",
+      "last_modified": "2026-05-27T10:10:28+08:00",
+      "git_sha": "6d8f3c6a10f69c47797a860aa45097e0135c1f2d",
+      "threshold_hours": 24,
+      "report_count": 1,
+      "age_hours": 47.7
+    }
+  ],
+  "all_stale": []
+}

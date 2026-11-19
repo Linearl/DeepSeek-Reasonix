@@ -1,0 +1,42 @@
+# OS / file manager noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor temp files
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+
+# Local validation / future tooling outputs
+coverage/
+dist/
+out/
+tmp/
+temp/
+.vscode-test/
+
+# Node.js (tests/ 使用 node:test + js-yaml)
+node_modules/
+package-lock.json
+
+# Python 一次性脚本 / 临时工具
+_*.py
+__pycache__/
+*.pyc
+
+# 生成的演示 HTML（html/ 由 merge-workflows.mjs 现生成）
+html/
+
+# 审计与临时报告草稿
+AUDIT-REPORT-draft*.md
+*-draft.md
+
+# Claude Code / Cowork 工具的内部目录
+.claude-local/
+
+# 本地归档（审计历史，不推送）
+docs/audit-history/
+node_modules/

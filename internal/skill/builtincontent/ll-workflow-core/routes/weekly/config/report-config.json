@@ -1,0 +1,4 @@
+{
+  "mode": "current_week",
+  "description": "current_week = 当周实时追加到已有文件；last_week = 上周回顾，创建新文件。"
+}

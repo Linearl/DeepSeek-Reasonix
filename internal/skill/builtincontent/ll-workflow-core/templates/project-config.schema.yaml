@@ -1,0 +1,303 @@
+schema:
+  id: ll-project-config-schema
+  version: 1.0.0
+  description: 项目级 ll-workflow 配置文件 schema，用于自定义目录映射和工作流行为。
+
+  top_level_fields:
+    version:
+      type: string
+      required: true
+      description: 配置文件版本号
+
+    base_profile:
+      type: string
+      required: false
+      default: default
+      description: 基础 directory profile 名称
+      allowed_values:
+        - default
+        - generic_docs_v1
+        - minimal_workspace
+
+    project:
+      type: object
+      required: false
+      description: 项目元信息
+      fields:
+        name:
+          type: string
+          required: true
+          description: 项目名称
+        type:
+          type: string
+          required: false
+          default: fullstack
+          description: 项目类型
+          allowed_values:
+            - fullstack
+            - backend
+            - frontend
+            - library
+            - mobile
+        docs_language:
+          type: string
+          required: false
+          default: zh
+          description: 文档语言
+          allowed_values:
+            - zh
+            - en
+
+    variables:
+      type: object
+      required: false
+      description: 工作流变量定义，用于模板中的 ${var} 引用
+      fields:
+        docs:
+          type: string
+          required: false
+          default: docs
+          description: 文档根目录名称（相对于 worktree），模板中使用 ${docs} 引用
+        worktree:
+          type: string
+          required: false
+          default: "."
+          description: 工作目录路径（相对于项目根），模板中使用 ${worktree} 引用
+
+    slots:
+      type: object
+      required: false
+      description: 目录槽位覆盖（覆盖 base_profile 的对应字段）
+      allowed_keys:
+        - docs_root
+        - task_inactive_root
+        - task_todo_root
+        - task_todo_version_root
+        - task_done_root
+        - task_done_version_root
+        - task_requirements_index
+        - task_readme_index
+        - docs_index
+        - docs_readme
+        - changelog_root
+        - guide_root
+        - analysis_diagnosis_root
+        - analysis_diagnosis_active
+        - analysis_diagnosis_outdated
+        - analysis_report_root
+        - analysis_evidence_root
+        - governance_handoff_root
+        - governance_json_evidence_root
+        - governance_learning_backflow_root
+        - weekly_root
+        - test_root
+
+    semantics:
+      type: object
+      required: false
+      description: 语义目录名覆盖
+      allowed_keys:
+        - todo
+        - inactive_requirement
+        - done
+        - docs_index
+        - changelog
+
+    workflows:
+      type: object
+      required: false
+      description: 工作流行为配置
+      fields:
+        init:
+          type: object
+          required: false
+          description: init 工作流配置
+          fields:
+            import_source:
+              type: string
+              required: false
+              description: 自动导入的历史文档目录（相对项目根）
+            import_strategy:
+              type: string
+              required: false
+              default: copy
+              description: 导入策略
+              allowed_values:
+                - move
+                - copy
+                - link
+        req:
+          type: object
+          required: false
+          description: req 工作流配置
+          fields:
+            extra_categories:
+              type: array
+              required: false
+              description: 需求文档的额外分类
+              items:
+                type: object
+                fields:
+                  name:
+                    type: string
+                    required: true
+                  label:
+                    type: string
+                    required: true
+                  target_slot:
+                    type: string
+                    required: true
+            category_mapping:
+              type: object
+              required: false
+              description: 需求编号分类映射表
+              fields:
+                architecture:
+                  type: array
+                  required: false
+                  description: 架构和基础设施（1xxx）的关键词
+                core_feature:
+                  type: array
+                  required: false
+                  description: 核心功能开发（2xxx）的关键词
+                ui_ux:
+                  type: array
+                  required: false
+                  description: 用户界面和体验（3xxx）的关键词
+                testing:
+                  type: array
+                  required: false
+                  description: 测试和质量保证（4xxx）的关键词
+                documentation:
+                  type: array
+                  required: false
+                  description: 文档和规范（5xxx）的关键词
+                devops:
+                  type: array
+                  required: false
+                  description: 运维和部署（6xxx）的关键词
+                tech_debt:
+                  type: array
+                  required: false
+                  description: 技术债务和重构（7xxx）的关键词
+                research:
+                  type: array
+                  required: false
+                  description: 研究和调研（8xxx）的关键词
+                misc:
+                  type: array
+                  required: false
+                  description: 未分类和临时任务（9xxx）的关键词
+            complexity_rules:
+              type: array
+              required: false
+              description: 复杂度判定规则
+              items:
+                type: object
+                fields:
+                  pattern:
+                    type: string
+                    required: true
+                    description: 关键词匹配模式（正则）
+                  complexity:
+                    type: string
+                    required: true
+                    description: 复杂度等级
+                    allowed_values:
+                      - simple
+                      - medium
+                      - complex
+            skip_clarification:
+              type: boolean
+              required: false
+              default: false
+              description: 是否默认跳过澄清循环
+            skip_clarification_keywords:
+              type: array
+              required: false
+              description: 包含这些关键词时跳过澄清
+              items:
+                type: string
+            skip_design_complexity:
+              type: array
+              required: false
+              description: 这些复杂度等级跳过 design 阶段
+              items:
+                type: string
+            max_gate_rounds_override:
+              type: object
+              required: false
+              description: 按复杂度覆盖最大澄清轮数
+              fields:
+                simple:
+                  type: integer
+                  required: false
+                medium:
+                  type: integer
+                  required: false
+                complex:
+                  type: integer
+                  required: false
+        dev:
+          type: object
+          required: false
+          description: dev 工作流配置
+          fields:
+            version_format:
+              type: string
+              required: false
+              default: "v{version}"
+              description: 版本号格式
+        branch:
+          type: object
+          required: false
+          description: branch 工作流配置
+          fields:
+            max_parallel_slots:
+              type: integer
+              required: false
+              default: 3
+              min: 1
+              max: 10
+              description: worktree 并行 slot 最大数量
+
+    aliases:
+      type: array
+      required: false
+      description: 路由别名覆盖
+      items:
+        type: object
+        fields:
+          name:
+            type: string
+            required: true
+          maps_to:
+            type: string
+            required: true
+            description: 目标 route short_name
+
+  examples:
+    minimal_config:
+      version: "1.0"
+      project:
+        name: "我的项目"
+
+    full_config:
+      version: "1.0"
+      base_profile: default
+      project:
+        name: "项目名称"
+        type: fullstack
+        docs_language: zh
+      slots:
+        docs_root: "${targetDevDir}/docs"
+        task_todo_root: "${targetDevDir}/docs/1.task/B.todo"
+      workflows:
+        init:
+          import_source: "docs/legacy"
+          import_strategy: copy
+        branch:
+          max_parallel_slots: 5
+      aliases:
+        - name: "建文档"
+          maps_to: init

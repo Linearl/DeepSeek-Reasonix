@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/ll-audit/execution.schema.json",
+  "title": "ll-audit execution config schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "non_interactive": { "type": "boolean", "default": false },
+        "on_no_response": {
+          "type": "string",
+          "enum": ["use_default", "abort"],
+          "default": "use_default"
+        },
+        "wait_seconds": { "type": "integer", "minimum": 1, "default": 90 }
+      },
+      "required": ["non_interactive", "on_no_response", "wait_seconds"]
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "audit_scope": { "type": "string", "enum": ["full", "incremental"], "default": "full" },
+        "review_rounds": { "type": "integer", "minimum": 1, "maximum": 3, "default": 2 },
+        "use_audit_branch": { "type": "boolean", "default": true }
+      },
+      "required": ["audit_scope", "review_rounds", "use_audit_branch"]
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "merge_gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "max_perf_regression_pct": { "type": "number", "minimum": 0, "default": 5 }
+          },
+          "required": ["enabled", "max_perf_regression_pct"]
+        }
+      },
+      "required": ["merge_gate"]
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision_log": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "path": { "type": "string", "minLength": 1, "default": "decision_log.md" }
+          },
+          "required": ["enabled", "path"]
+        }
+      },
+      "required": ["decision_log"]
+    },
+    "skip": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "debt_backlog": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "sla": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "P1": { "type": "string", "default": "24~72h" },
+                "P2": { "type": "string", "default": "1w" },
+                "P3": { "type": "string", "default": "1 iteration" },
+                "P4": { "type": "string", "default": "planned" }
+              },
+              "required": ["P1", "P2", "P3", "P4"]
+            }
+          },
+          "required": ["enabled", "sla"]
+        }
+      },
+      "required": ["debt_backlog"]
+    },
+    "branch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name_pattern": { "type": "string", "minLength": 1, "default": "audit/{date}" }
+      },
+      "required": ["name_pattern"]
+    },
+    "interactive": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "questions_enabled": { "type": "boolean", "default": true }
+      },
+      "required": ["questions_enabled"]
+    },
+    "commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enforce_template": { "type": "boolean", "default": true },
+        "template": { "type": "string", "minLength": 1, "default": "fix(P{priority}-{id}): {summary}" }
+      },
+      "required": ["enforce_template", "template"]
+    }
+  },
+  "required": ["mode", "defaults", "quality", "logging", "skip", "branch", "interactive", "commit"]
+}

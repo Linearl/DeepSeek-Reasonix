@@ -1,8 +1,5 @@
 # DeepSeek-Reasonix（Linearl 维护分支）
 
-> 🚨 **Stability notice (2026-11-15)**: known issues in the latest release — **message response misalignment / rendering / compression**; fix ETA **~3–5 days**; not yet confirmed whether release-specific. Details & workarounds → **issue #94**.
-> ⚠️ **稳定性公告（2026-11-15）**：当前版本存在已知稳定性问题（**消息响应错位 / 渲染 / 压缩**），修复中，预计约 **3~5 天**；尚不明确是否为本 release 特有。详情与规避 → **issue #94**：https://github.com/Linearl/DeepSeek-Reasonix/issues/94
-
 > **上游项目与完整介绍见 → [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)**（README / 官方文档 / studio 分支）。
 > 本仓库是其**长期维护的功能超集分支**：早期追齐上游版本，上游转入仅维护态后转为**独立演进**——持续修复与优化，并承载上游未合并的体验与效率特性。
 > 版本节奏：`1.38.3-YYYYMMDD-HHMM` 时间戳构建，每包配 release notes。

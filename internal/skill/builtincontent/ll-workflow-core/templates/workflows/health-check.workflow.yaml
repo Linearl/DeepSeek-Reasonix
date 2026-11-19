@@ -1,0 +1,335 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.health-check
+  short_name: health-check
+  name: ll-workflow-core / 项目健康检查工作流
+  description: 定期项目健康检查与战略指导，识别不足、规划下一步、提取可复用的方法论。
+  owner_skill: ll-workflow-core
+  activation_aliases:
+    - health-check
+    - hc
+    - 健康检查
+    - 项目检查
+  activation_hint: 当用户提到健康检查、版本启动检查、版本复盘、战略校准时触发。
+  mode_support:
+    - interactive
+  defaults:
+    on_fail: block
+
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: targetDevDir
+        description: targetDevDir 字段
+      - name: mode
+        description: 运行模式（interactive / non_interactive）
+    outputs:
+      - name: healthCheckReport
+        description: healthCheckReport 字段
+      - name: patterns
+        description: patterns 字段
+      - name: recommendations
+        description: 战略建议列表
+    variables:
+      current_version: ""
+
+  phases:
+    - id: a_collect_snapshot
+      name: 项目快照采集
+      purpose: 采集项目当前状态的客观数据，为后续分析提供基础。
+      steps:
+        - id: collect_task_stats
+          title: 统计任务状态
+          action: custom.described_action
+          with:
+            description: >-
+              扫描 ${docs}/1.task/ 下各状态目录的任务数：
+              B.todo（待办）、B.1.paused（暂停）、B.2.done（完成）、B.3.cancelled（取消）。
+              统计各优先级（P0-P4）分布。
+            expected_outputs:
+              - task_stats
+          save_as: task_stats
+
+        - id: collect_code_health
+          title: 代码健康快照
+          action: custom.described_action
+          with:
+            description: >-
+              执行以下检查：
+              1. TypeScript 编译：npx tsc --noEmit（错误数）
+              2. 测试通过率：npm test（通过/失败/总数）
+              3. 超大文件扫描：后端源码目录和前端源码目录中 >800 行的文件
+            expected_outputs:
+              - tsc_errors
+              - test_results
+              - large_files
+          save_as: code_health
+
+        - id: collect_security_status
+          title: 安全状态检查
+          action: custom.described_action
+          with:
+            description: >-
+              执行以下检查：
+              1. npm audit（高危/严重漏洞数）
+              2. .env 中是否有硬编码凭据（排除 .env.example）
+            expected_outputs:
+              - audit_vulnerabilities
+              - hardcoded_secrets
+          save_as: security_status
+
+        - id: collect_diagnosis_status
+          title: 诊断报告状态
+          action: custom.described_action
+          with:
+            description: >-
+              统计以下目录的文件数：
+              1. ${docs}/3.analysis/diagnosis/01-active/（活跃诊断报告）
+              2. ${docs}/3.analysis/diagnosis/02-outdated/（已归档报告）
+            expected_outputs:
+              - active_diagnosis_count
+              - outdated_diagnosis_count
+          save_as: diagnosis_status
+
+        - id: collect_version_plan_status
+          title: 版本规划状态
+          action: custom.described_action
+          with:
+            description: >-
+              检查以下内容：
+              1. ${docs}/0.version_plan/ 下最新规划文件
+              2. B.todo 下待办任务数及优先级分布
+            expected_outputs:
+              - latest_plan
+              - todo_stats
+          save_as: version_plan_status
+
+        - id: assemble_snapshot
+          title: 组装项目快照
+          action: custom.described_action
+          with:
+            description: >-
+              将以上采集的数据组装为结构化 JSON 快照，包含：
+              task_stats, code_health, security_status, diagnosis_status, version_plan_status
+          save_as: project_snapshot
+
+    - id: b_five_dimension_assessment
+      name: 五维健康评估
+      purpose: 从架构、安全、测试、债务、流程五个维度评估项目健康度。
+      steps:
+        - id: assess_architecture
+          title: 架构健康度评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估架构健康度（1-5分）：
+              - 后端分层是否清晰（routes → controllers → services → repositories）
+              - 前端组件是否遵循单一职责
+              - API 响应格式是否统一
+              - 是否有循环依赖
+              - Design Token 是否已提取
+            expected_outputs:
+              - score
+              - evidence
+              - issues
+          save_as: architecture_assessment
+
+        - id: assess_security
+          title: 安全健康度评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估安全健康度（1-5分）：
+              - 所有端点是否默认需要认证
+              - 输入校验是否覆盖所有外部接口
+              - CSP 是否配置且无 unsafe-inline
+              - 凭据是否全部在 .env 中
+              - Session 方案是否支持水平扩展
+            expected_outputs:
+              - score
+              - evidence
+              - issues
+          save_as: security_assessment
+
+        - id: assess_testing
+          title: 测试健康度评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估测试健康度（1-5分）：
+              - 单元测试覆盖率是否 ≥ 80%
+              - 集成测试是否覆盖核心 API 端点
+              - E2E 测试是否覆盖关键用户流程
+              - 测试是否在 CI 中自动运行
+              - 是否有 flaky test 治理机制
+            expected_outputs:
+              - score
+              - evidence
+              - issues
+          save_as: testing_assessment
+
+        - id: assess_debt
+          title: 债务健康度评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估债务健康度（1-5分）：
+              - TypeScript strict 模式是否启用
+              - any 类型使用频率
+              - 超大文件（>800 行）数量
+              - 重复代码是否存在
+              - 错误处理是否统一
+              - 日志是否结构化
+            expected_outputs:
+              - score
+              - evidence
+              - issues
+          save_as: debt_assessment
+
+        - id: assess_process
+          title: 流程健康度评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估流程健康度（1-5分）：
+              - 是否有版本规划文档
+              - 任务包是否使用六件套规范
+              - 是否有定期审计机制
+              - 需求变更是否有记录和追溯
+              - 文档是否与代码同步更新
+            expected_outputs:
+              - score
+              - evidence
+              - issues
+          save_as: process_assessment
+
+        - id: assemble_assessment
+          title: 组装评估结果
+          action: custom.described_action
+          with:
+            description: >-
+              将五个维度的评估结果组装为完整的健康评估报告。
+            expected_outputs:
+              - total_score
+              - dimension_scores
+              - key_issues
+          save_as: health_assessment
+
+    - id: c_pattern_recognition
+      name: 模式识别与方法论提取
+      purpose: 识别反复出现的债务模式，提取可复用的方法论。
+      steps:
+        - id: identify_patterns
+          title: 识别债务模式
+          action: custom.described_action
+          with:
+            description: >-
+              从七种债务模式中匹配当前项目状态：
+              1. 快速原型债务
+              2. 不彻底的模块化
+              3. 响应格式漂移
+              4. 样式债务累积
+              5. 审计驱动的打地鼠
+              6. 安全后置的代价
+              7. 范围蔓延的温水煮青蛙
+            expected_outputs:
+              - matched_patterns
+              - pattern_details
+          save_as: pattern_result
+
+        - id: assess_version_stage
+          title: 版本生命周期阶段判断
+          action: custom.described_action
+          with:
+            description: >-
+              基于评估结果判断当前项目所处的生命周期阶段：
+              - 原型验证（v01-02）
+              - 功能迭代（v03-05）
+              - 债务清理（v06-07）
+              - 治理+安全（v08-09）
+              - 成熟运营（v10+）
+            expected_outputs:
+              - current_stage
+              - stage_characteristics
+          save_as: version_stage
+
+    - id: d_generate_recommendations
+      name: 诊断与建议生成
+      purpose: 基于快照和评估结果，生成具体的诊断报告和行动建议。
+      steps:
+        - id: prioritize_actions
+          title: 优先级排序
+          action: custom.described_action
+          with:
+            description: >-
+              使用优先级判断矩阵对发现的问题进行排序：
+              - 紧急度 × 影响度
+              - P0：安全漏洞、架构阻塞、数据丢失风险
+              - P1：安全加固、债务清理
+              - P2：代码风格、文档完善
+            expected_outputs:
+              - prioritized_actions
+          save_as: prioritized_actions
+
+        - id: generate_report
+          title: 生成健康检查报告
+          action: custom.described_action
+          with:
+            description: >-
+              生成结构化健康检查报告，包含：
+              1. 快照摘要
+              2. 五维评分表
+              3. 识别到的模式
+              4. 最高优先级行动（Top 3）
+              5. 下一版本规划建议
+            expected_outputs:
+              - report_path
+              - report_content
+          save_as: health_check_report
+
+        - id: save_report
+          title: 保存报告
+          action: custom.described_action
+          with:
+            description: >-
+              将报告写入 ${docs}/3.analysis/diagnosis/01-active/{date}-health-check.md
+            expected_outputs:
+              - saved_path
+          save_as: save_result
+
+    - id: e_experience_deposit
+      name: 经验沉淀（可选）
+      purpose: 将新发现的模式或教训沉淀到项目经验库。
+      steps:
+        - id: extract_methodology
+          title: 提取可复用方法论
+          action: custom.described_action
+          with:
+            description: >-
+              从本次健康检查中提取可复用的范式，包含：
+              - 特征、信号、根因、对策、教训五个要素
+              - 至少一个真实案例支撑
+            expected_outputs:
+              - methodology
+          save_as: methodology
+
+        - id: deposit_learnings
+          title: 沉淀经验
+          action: custom.described_action
+          with:
+            description: >-
+              将方法论写入对应位置：
+              - 方法论/范式 → 本技能的 SKILL.md §2.2
+              - 具体问题 → .learnings/LEARNINGS.md
+              - 错误模式 → .learnings/ERRORS.md
+            expected_outputs:
+              - deposited_locations
+          save_as: deposit_result

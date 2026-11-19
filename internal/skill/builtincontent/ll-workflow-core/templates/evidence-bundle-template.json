@@ -1,0 +1,39 @@
+{
+  "evidence_id": "EV-YYYYMMDD-001",
+  "route": "dev",
+  "task_id": "REQ-0000",
+  "result": "pass",
+  "timestamp": "YYYY-MM-DDTHH:mm:ssZ",
+  "checkpoints": [
+    {
+      "name": "state_sync",
+      "result": "pass",
+      "evidence_files": []
+    },
+    {
+      "name": "quality_gate",
+      "result": "pass",
+      "evidence_files": []
+    },
+    {
+      "name": "writeback_guard",
+      "result": "pass",
+      "evidence_files": []
+    }
+  ],
+  "artifacts": {
+    "markdown_bundle": "",
+    "json_bundle": "",
+    "run_result": "",
+    "logs": []
+  },
+  "summary_targets": {
+    "weekly": "",
+    "release": ""
+  },
+  "learning_backflow": {
+    "queued": false,
+    "target": "",
+    "item_id": ""
+  }
+}

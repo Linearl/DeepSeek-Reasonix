@@ -1,0 +1,266 @@
+schema:
+  id: ll-workflow-schema
+  version: 0.1.0
+  description: >-
+    ll 系列技能的 workflow YAML 草案。该 schema 先服务于可读性与结构化表达，
+    目标是让 AI 和人类都能从 YAML 直接理解流程主干、循环和分支。
+  expression_syntax:
+    format: "${ ... }"
+    description: 在当前 workflow context 上执行的布尔或选择表达式。
+  top_level_fields:
+    workflow:
+      required: true
+      fields:
+        - id
+        - short_name
+        - name
+        - description
+        - owner_skill
+        - activation_aliases
+        - activation_hint
+        - directory_profile_ref
+        - mode_support
+        - defaults
+        - context
+        - phases
+    imports:
+      required: false
+      description: 引用动作注册表、复合动作注册表、目录结构配置或共享模板。
+      allowed_fields:
+        - action_registry
+        - composite_registry
+        - schema
+        - directory_layout
+        - route_registry
+        - resource_bundles
+
+  routing_contract:
+    short_name:
+      description: 四个核心 workflow 的英文简称，如 init / req / dev / aud。
+    activation_aliases:
+      description: 用户可能直接说出的关键词、别名或中文触发语。
+    activation_hint:
+      description: 当用户没有显式简称时，供路由判断的语义说明。
+    directory_profile_ref:
+      description: 指向 directory-layout 配置文件及 profile 的引用。
+    resource_bundles:
+      description: workflow 依赖的资源包 ID 列表。
+    source_skill:
+      description: 若 workflow 来自历史技能迁移，记录来源技能，便于追溯。
+
+  workflow_defaults:
+    allowed_fields:
+      - on_fail
+      - evidence_policy
+      - max_gate_rounds
+      - max_total_rounds
+      - wait_mode
+      - route_status
+
+  context_contract:
+    inputs:
+      description: workflow 需要的外部输入
+      item:
+        description: 单个 input 字段定义
+        type: object
+        required_fields:
+          - name
+          - description
+        notes:
+          - 必须使用对象格式 - name + description,不允许标量字符串
+          - description 描述字段语义(何时传入、合法值范围、单位)
+    outputs:
+      description: workflow 最终产出
+      item:
+        description: 单个 output 字段定义
+        type: object
+        required_fields:
+          - name
+          - description
+        notes:
+          - 必须使用对象格式 - name + description,不允许标量字符串
+          - description 描述产出语义(写入路径、消费者、格式)
+    variables:
+      description: 运行时上下文字段
+    layout:
+      description: 由 directory-layout 配置解析出的逻辑槽位与语义目录映射
+    loadedBundles:
+      description: 由 resource-bundles 装载出的模板 / 工具 / 配置集合
+
+  phase_shape:
+    required_fields:
+      - id
+      - name
+      - purpose
+      - steps
+    optional_fields:
+      - gate
+      - notes
+
+  step_types:
+    action:
+      required_fields:
+        - id
+        - title
+        - action
+      optional_fields:
+        - description
+        - with
+        - save_as
+        - when
+        - on_fail
+        - evidence_policy
+
+    composite:
+      required_fields:
+        - id
+        - title
+        - uses
+      optional_fields:
+        - with
+        - save_as
+        - when
+        - on_fail
+        - notes
+      conditional_required:
+        notes_required_when:
+          description: >-
+            notes 字段为部分 composite 的强制项。判定触发条件
+            （与 action-registry.yaml 联动）：
+              1. uses 列表中存在带 usage_boundary 的 action，且 boundary 文本包含
+                 关键词"内部调用/取代/合并/替代/互斥/顺序约束"
+              2. 该 action 暗示内部链式调用、动作合并或边界约束，
+                 composite 必须用 notes 字段说明，以避免下游误用或重复声明
+          triggers:
+            - condition: "uses 包含 usage_boundary 含'内部调用'的 action"
+              rationale: "该 action 在内部链式调用其他动作；composite 必须显式说明以避免重复声明"
+            - condition: "uses 包含 usage_boundary 含'取代/合并/替代'的 action"
+              rationale: "该 action 已收敛多个旧动作；composite 必须列出被收敛的旧动作清单"
+            - condition: "uses 包含 usage_boundary 含'互斥'的 action"
+              rationale: "该 action 与另一个 action 互斥；composite 必须说明互斥对象"
+            - condition: "uses 包含 usage_boundary 含'顺序约束'的 action"
+              rationale: "该 action 必须在另一个 action 之前/之后执行；composite 必须说明顺序"
+          validation:
+            - rule: "composite.uses 中至少一个 action 在 action-registry 中存在 usage_boundary 且匹配上述关键词"
+              enforcement: "composite.notes 必须为非空字符串数组或字符串"
+              source_of_truth: "templates/action-registry.yaml"
+
+    branch:
+      required_fields:
+        - id
+        - type
+        - if
+        - then
+      optional_fields:
+        - else
+      constraints:
+        - type 必须为 branch
+        - then / else 均为 steps 数组
+
+    switch:
+      required_fields:
+        - id
+        - type
+        - expression
+        - cases
+      optional_fields:
+        - default
+      constraints:
+        - type 必须为 switch
+        - cases 为数组，每个 case 包含 match 与 steps
+
+    for_each:
+      required_fields:
+        - id
+        - type
+        - items
+        - item_as
+        - steps
+      optional_fields:
+        - index_as
+        - when
+        - on_fail
+      constraints:
+        - type 必须为 for_each
+        - items 应引用数组上下文，如 "${ todoTopics }"
+
+    while:
+      required_fields:
+        - id
+        - type
+        - condition
+        - steps
+      optional_fields:
+        - max_iterations
+        - on_fail
+      constraints:
+        - type 必须为 while
+        - max_iterations 建议显式给出，避免无限循环
+
+    repeat_until:
+      required_fields:
+        - id
+        - type
+        - until
+        - steps
+      optional_fields:
+        - max_iterations
+        - on_fail
+      constraints:
+        - type 必须为 repeat_until
+        - until 为布尔表达式
+
+  on_fail_policy:
+    allowed_values:
+      - block
+      - continue_with_warning
+      - use_default
+      - retry_once
+      - needs_user_confirmation
+      - stop_current_branch
+
+  examples:
+    branch_example:
+      id: choose_mode
+      type: branch
+      if: "${ mode == 'non_interactive' }"
+      then:
+        - id: use_default_strategy
+          title: 使用默认策略
+          action: decision.record
+          with:
+            decisionPoint: mode
+            choice: non_interactive_default
+      else:
+        - id: ask_user_mode
+          title: 询问用户模式
+          action: interaction.ask_questions_gate
+          with:
+            questionSet: mode_gate
+
+    loop_example:
+      id: clarify_until_clear
+      type: while
+      condition: "${ openQuestions_count > 0 && gate_round <= max_gate_rounds }"
+      max_iterations: 4
+      steps:
+        - id: ask_clarification
+          title: 发起澄清问询
+          action: interaction.ask_questions_gate
+          with:
+            questionSet: clarification_round
+        - id: analyze_again
+          title: 重新分析需求
+          action: requirement.analyze_request
+          with:
+            userRequest: "${ latest_user_feedback }"
+
+  style_guide:
+    - workflow 应优先通过 route-registry 被发现，而不是只靠人工记忆文件名。
+    - workflow 应尽量声明 resource_bundles，避免在正文中重复列模板路径。
+    - workflow 主干优先引用复合动作，局部细节再下钻基础动作。
+    - 新增但尚未稳定的动作，优先用 custom.described_action。
+    - workflow 在首次使用任何目录前，必须先加载 directory-layout profile。
+    - todo / inactive / done / changelog 等目录一律通过 layout.semantics 或 layout.slots 引用。
+    - 复杂 workflow 必须显式写出分支与循环，禁止把控制逻辑藏在长 description 里。
+    - branch / while / for_each 内部 steps 与普通 steps 结构保持一致。

@@ -28,6 +28,8 @@ import (
 //go:embed ll-iteration-review
 //go:embed ll-zcode-collaboration
 //go:embed ll-update
+//go:embed ll-workflow-core
+//go:embed ll-cdp-reasonix-debug/SKILL.md
 //go:embed react-best-practices
 //go:embed feature-boundary-planner
 //go:embed dogfood

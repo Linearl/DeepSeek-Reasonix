@@ -1,0 +1,295 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.branch
+  short_name: branch
+  name: ll-workflow-core / branch 持久化池式并行开发工作流
+  description: 使用持久化 worktree 池（3 slot）分配工作区、开发任务包并提交。slot 占满时回退 ephemeral。
+  owner_skill: ll-workflow-core
+  source_skill: ll-workflow-core
+  activation_aliases:
+    - branch
+    - parallel-dev
+    - worktree
+    - 并行开发
+    - 分支开发
+    - 创建分支
+    - worktree 开发
+  activation_hint: 当用户要求创建独立分支、并行开发、worktree 开发时触发。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - shared.governance
+    - route.branch.assets
+  mode_support:
+    - interactive
+  defaults:
+    on_fail: block
+    max_gate_rounds: 3
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: userRequest
+        description: 用户请求原始文本
+    outputs:
+      - name: branchName
+        description: 分支名称
+      - name: slotName
+        description: slotName 字段
+      - name: commitSummary
+        description: commitSummary 字段
+      - name: divergeStatus
+        description: divergeStatus 字段
+    variables:
+      branchDate: ""
+      branchNumber: 0
+      isPoolSlot: false
+      masterFreshness: ""
+      divergeStatus: ""
+
+  phases:
+    - id: a_preprocess
+      name: 预处理
+      purpose: 解析用户请求，扫描分支编号，确保 .slots.json 就绪。
+      steps:
+        - id: check_lessons
+          title: 查阅历史经验教训
+          action: custom.described_action
+          with:
+            description: >-
+              遇到疑难问题时，查阅 skills/ll-workflow-core/lessons/ 目录下的历史经验教训文件，
+              避免重复踩坑。若 lessons 目录为空则跳过。
+            expected_outputs:
+              - lessonsChecked
+            success_criteria: 已检查历史经验或确认无历史经验
+          save_as: lessons_context
+
+        - id: parse_request
+          title: 解析用户任务需求
+          action: custom.described_action
+          with:
+            description: >-
+              解析用户请求，提取待开发的任务描述（如功能名称、任务包编号、bug 修复内容）。
+              输出 userTaskDescription 用于后续开发。
+            expected_outputs:
+              - userTaskDescription
+            success_criteria: 能明确知道要在分支上做什么
+          save_as: task_request
+
+        - id: scan_worktree_dir
+          title: 扫描 worktree 目录确定分支编号
+          action: custom.described_action
+          with:
+            description: >-
+              扫描 ${ layout_profile.slots.worktree_root } 文件夹，统计所有 branch_YYMMDD_N 格式的目录，
+              取当日（YYMMDD）的最大 N 值，N+1 为新编号。若无当日文件夹则 N=1。
+              日期格式 YYMMDD（如 260608）。
+              输出 branchDate（YYMMDD）和 branchNumber（递增序号）。
+              注意：分支名不包含 "branch_" 前缀之外的版本标识，不与 dev_xx 版本号混淆。
+            expected_outputs:
+              - branchDate
+              - branchNumber
+            success_criteria: 分支编号确定且不重复
+          save_as: branch_id
+
+        - id: ensure_slots_file
+          title: 确保 .slots.json 存在
+          action: custom.described_action
+          with:
+            description: >-
+              检查 ${ layout_profile.slots.worktree_slots_json } 是否存在。
+              若不存在，创建 JSON 文件：{"version":1,"slots":[]}。
+              注意：此时不创建任何 worktree slot，真正创建在分配步骤按需进行。
+              若已存在，直接跳过。
+              输出 pool_status（ready 或 newly_initialized）。
+            expected_outputs:
+              - poolStatus
+            success_criteria: .slots.json 已就绪
+          save_as: pool_init
+
+        - id: check_master_freshness
+          title: 检查 master 推送状态
+          action: custom.described_action
+          with:
+            description: >-
+              检查主仓库 master 是否有未推送的 commit：
+              git log --oneline origin/master..master
+              若有输出（master 领先 origin），警告用户 master 存在未推送的变更，
+              建议在创建分支前先推送 master，避免 worktree 基底过时。
+              若 master 与 origin 同步则跳过警告。
+              输出 masterFreshness（synced / has_unpushed_commits）和 unpushedCount。
+            expected_outputs:
+              - masterFreshness
+              - unpushedCount
+            success_criteria: 已检查 master 状态
+          save_as: master_freshness
+
+    - id: b_execution
+      name: 分配 slot 并开发
+      purpose: 分配 pool slot（或 fallback ephemeral），开发任务包，提交。
+      steps:
+        - id: allocate_slot
+          title: 分配 pool slot（按需懒创建）
+          action: custom.described_action
+          with:
+            description: >-
+              按需分配 pool slot（懒创建策略）：
+
+              读取 ${ layout_profile.slots.worktree_slots_json }，找到第一个 status=available 的 slot。
+              验证该 slot 的真实 git 状态：
+              1. git rev-parse --abbrev-ref HEAD → 必须是 master
+              2. git status --porcelain → 必须为空
+              验证通过则分配：cd ${ layout_profile.slots.worktree_root }/devN → git checkout master → git pull → git checkout -b branch_{branchDate}_{branchNumber}
+              更新 .slots.json：status=in_use, branch=branch_{branchDate}_{branchNumber}
+              输出 slotName（dev1/2/3）、worktreePath、isPoolSlot=true。
+
+              若验证失败，标记 slot 为 dirty 并尝试下一个。
+
+              若无 available slot（全部 in_use 或没有 slot）：
+              检查当前 slot 总数。
+              若少于 ${ workflows.branch.max_parallel_slots } 个 → 创建新 slot（dev1→dev2→dev3 递增）：
+              git worktree add ${ layout_profile.slots.worktree_root }/dev{N} master
+              cd ${ layout_profile.slots.worktree_root }/dev{N} → git checkout -b branch_{branchDate}_{branchNumber}
+              注册新 slot 到 .slots.json，status=in_use。
+              输出 slotName、worktreePath、isPoolSlot=true。
+
+              若已达上限 → 标记 isPoolSlot=false，后续走 fallback 步骤。
+            expected_outputs:
+              - slotName
+              - worktreePath
+              - isPoolSlot
+              - branchName
+            success_criteria: slot 已分配或 fallback 路径已确定
+            branchDate: "${ branch_id.branchDate }"
+            branchNumber: "${ branch_id.branchNumber }"
+          save_as: slot_info
+
+        - id: fallback_if_needed
+          title: fallback — 创建 ephemeral worktree
+          action: custom.described_action
+          with:
+            description: >-
+              仅当 slot_info.isPoolSlot == false 时执行。
+              使用传统方式创建临时 worktree：
+              git worktree add ${ layout_profile.slots.worktree_root }/branch_{branchDate}_{branchNumber} -b branch_{branchDate}_{branchNumber} master
+              然后复制 node_modules：
+              robocopy ${ target_context.targetDevDir }\${ layout_profile.slots.backend_src }\node_modules ${ layout_profile.slots.worktree_root }\branch_{branchDate}_{branchNumber}\${ target_context.targetDevDir }\${ layout_profile.slots.backend_src }\node_modules /E /XD .git /NJH /NJS /NP
+              robocopy ${ target_context.targetDevDir }\${ layout_profile.slots.webapp_src }\node_modules ${ layout_profile.slots.worktree_root }\branch_{branchDate}_{branchNumber}\${ target_context.targetDevDir }\${ layout_profile.slots.webapp_src }\node_modules /E /XD .git /NJH /NJS /NP
+              输出 worktreePath（ephemeral 目录）。
+              若 isPoolSlot == true，跳过此步。
+            expected_outputs:
+              - worktreePath
+              - nodeModulesCopied
+            success_criteria: ephemeral worktree 就绪或跳过
+            branchDate: "${ branch_id.branchDate }"
+            branchNumber: "${ branch_id.branchNumber }"
+            isPoolSlot: "${ slot_info.isPoolSlot }"
+          save_as: fallback_info
+
+        - id: sync_with_master
+          title: 同步分支与 master 基底
+          action: custom.described_action
+          with:
+            description: >-
+              进入 worktree 目录，检查分支与 master 的分叉情况：
+              1. git log --oneline master..HEAD → 分支独有的 commit 数
+              2. git log --oneline HEAD..master → master 领先的 commit 数
+
+              根据分叉情况处理：
+              - 若 master 领先 > 5 个 commit → 警告用户，建议先 rebase 再开发
+              - 自动执行同步：git fetch origin && git rebase origin/master
+              - 若 rebase 有冲突 → git rebase --abort，回退到 git merge master 策略
+
+              输出 divergeStatus（clean / rebased / merged_fallback / conflict_abort），
+              masterAheadCount，rebaseOrMergeUsed。
+            expected_outputs:
+              - divergeStatus
+              - masterAheadCount
+              - rebaseOrMergeUsed
+            success_criteria: 分支基底已与 master 同步
+            worktreePath: "${ slot_info.worktreePath }"
+          save_as: diverge_sync
+
+        - id: implement_in_worktree
+          title: 在 worktree 中开发任务包
+          action: custom.described_action
+          with:
+            description: >-
+              开发任务 "${ task_request.userTaskDescription }"。
+              步骤：
+              1. cd 进入 worktree 目录（pool slot 或 ephemeral）
+              2. 理解任务需求，按 Karpathy 编码准则实现（Think Before Coding、Simplicity First、Surgical Changes）
+              3. 修改代码后运行相关测试
+              4. 更新文档（如适用）
+              记录实现的具体文件清单和改动说明。
+            expected_outputs:
+              - changedFiles
+              - implementationSummary
+              - testResults
+            success_criteria: 功能开发完成，测试通过
+            worktreePath: "${ slot_info.worktreePath }"
+            taskDescription: "${ task_request.userTaskDescription }"
+          save_as: impl_result
+
+        - id: commit_changes
+          title: 提交变更到分支
+          action: custom.described_action
+          with:
+            description: >-
+              在 worktree 中按 Conventional Commits 规范提交变更。
+              禁止 git add . ，必须精确暂存改动的文件。
+              提交信息格式：feat/fix/docs/refactor/test: <描述>
+              提交后推送远程：git push origin branch_${branchName}
+              输出 commitSha 和 commitMessage。
+            expected_outputs:
+              - commitSha
+              - commitMessage
+              - filesCommitted
+            success_criteria: 变更已提交并推送远程
+            worktreePath: "${ slot_info.worktreePath }"
+            branchName: "${ slot_info.branchName }"
+            changedFiles: "${ impl_result.changedFiles }"
+          save_as: commit_result
+
+    - id: c_summary
+      name: 输出总结
+      purpose: 汇总分支信息与开发成果。
+      steps:
+        - id: generate_summary
+          title: 生成分支开发总结
+          action: custom.described_action
+          with:
+            description: >-
+              汇总本次 branch 工作流结果：
+              - 分支名：{branchName}
+              - 工作区：pool slot {slotName}（或 ephemeral 目录）
+              - 开发内容：{userTaskDescription}
+              - 变更文件列表
+              - 提交 SHA 与消息
+              输出适合用户阅读的总结文本。
+            expected_outputs:
+              - branchSummary
+            success_criteria: 用户可以清楚知道分支状态和开发结果
+            branchName: "${ slot_info.branchName }"
+            slotName: "${ slot_info.slotName }"
+            isPoolSlot: "${ slot_info.isPoolSlot }"
+            taskDescription: "${ task_request.userTaskDescription }"
+            commitInfo: "${ commit_result }"
+          save_as: summary
+
+        - id: queue_branch_learning
+          title: 记录并行开发经验回灌候选
+          action: feedback.enqueue_learning
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            taskPath: "${ task_request.taskPath }"
+            triggerSignals:
+              - branch_closeout
+          save_as: branch_learning

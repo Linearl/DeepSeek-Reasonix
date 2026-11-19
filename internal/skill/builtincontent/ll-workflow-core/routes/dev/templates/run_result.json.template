@@ -1,0 +1,16 @@
+{
+  "reqId": "REQ-XXXX",
+  "title": "任务标题（中文）",
+  "priority": "P1",
+  "version": "dev_XX",
+  "status": "pending",
+  "createdAt": "YYYY-MM-DD",
+  "completedAt": null,
+  "source": "",
+  "note": "",
+  "tasks": {
+    "total": 0,
+    "completed": 0,
+    "pending": 0
+  }
+}

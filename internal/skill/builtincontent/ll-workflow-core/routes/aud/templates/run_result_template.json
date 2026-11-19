@@ -1,0 +1,49 @@
+{
+  "status": "pass",
+  "mode": "interactive",
+  "config": {
+    "config_file": "config/execution.yaml",
+    "effective_config_file": "effective_config.yaml",
+    "schema_file": "config/execution.schema.json"
+  },
+  "summary": {
+    "fixed": 0,
+    "skipped": 0,
+    "remaining": 0,
+    "gate": "pass"
+  },
+  "handoff": {
+    "ticket_path": "docs/1.task/B.todo/{version}/YYYYMMDD_audit-fix/handoff-ticket.md",
+    "status": "complete"
+  },
+  "quality": {
+    "tests": "pass",
+    "format": "pass",
+    "perf_regression_pct": 0,
+    "perf_threshold_pct": 5,
+    "gate_decision": "continue"
+  },
+  "backflow": {
+    "task_progress": "done",
+    "requirement_risk_notes": "done",
+    "changelog_entry": "done",
+    "guard": "pass"
+  },
+  "blocking_reasons": [
+    
+  ],
+  "artifacts": {
+    "report": "docs/1.task/B.todo/{version}/YYYYMMDD_audit-fix/README.md",
+    "decision_log": "docs/1.task/B.todo/{version}/YYYYMMDD_audit-fix/decision_log.md",
+    "skip_log": "docs/1.task/B.todo/{version}/YYYYMMDD_audit-fix/skipped/skip_log.md",
+    "debt_backlog": "docs/1.task/B.todo/{version}/YYYYMMDD_audit-fix/skipped/debt_backlog.md",
+    "evidence_markdown": "docs/3.analysis/evidence/{version}/audit-fix-evidence.md",
+    "evidence_json": "docs/3.analysis/evidence/{version}/audit-fix-evidence.json"
+  },
+  "learning_backflow": {
+    "queued": true,
+    "target": "docs/7.weekly/03-high-value-learning-backlog-template.md",
+    "item_id": "LEARN-001"
+  },
+  "timestamp": "YYYY-MM-DDTHH:mm:ss"
+}

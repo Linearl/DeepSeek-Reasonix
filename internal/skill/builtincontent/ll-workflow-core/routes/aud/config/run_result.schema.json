@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/ll-audit/run_result.schema.json",
+  "title": "ll-audit run_result schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["pass", "blocked"]
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["interactive", "non_interactive"]
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "config_file": { "type": "string", "minLength": 1 },
+        "effective_config_file": { "type": "string", "minLength": 1 },
+        "schema_file": { "type": "string", "minLength": 1 }
+      },
+      "required": ["config_file", "effective_config_file", "schema_file"]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fixed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "remaining": { "type": "integer", "minimum": 0 },
+        "gate": { "type": "string", "enum": ["pass", "blocked"] }
+      },
+      "required": ["fixed", "skipped", "remaining", "gate"]
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ticket_path": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["complete", "incomplete", "blocked"] }
+      },
+      "required": ["ticket_path", "status"]
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tests": { "type": "string", "enum": ["pass", "fail", "skip"] },
+        "format": { "type": "string", "enum": ["pass", "fail", "skip"] },
+        "perf_regression_pct": { "type": "number" },
+        "perf_threshold_pct": { "type": "number", "minimum": 0 },
+        "gate_decision": { "type": "string", "enum": ["continue", "pause", "block"] }
+      },
+      "required": ["tests", "format", "perf_regression_pct", "perf_threshold_pct", "gate_decision"]
+    },
+    "backflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "task_progress": { "type": "string", "enum": ["done", "missing"] },
+        "requirement_risk_notes": { "type": "string", "enum": ["done", "missing"] },
+        "changelog_entry": { "type": "string", "enum": ["done", "missing"] },
+        "guard": { "type": "string", "enum": ["pass", "blocked"] }
+      },
+      "required": ["task_progress", "requirement_risk_notes", "changelog_entry", "guard"]
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "SCHEMA_INVALID",
+              "CONFIG_MISSING",
+              "QUESTION_ABORTED",
+              "TEST_FAIL",
+              "FORMAT_FAIL",
+              "PERF_REGRESSION",
+              "STATE_SYNC_MISMATCH",
+              "HANDOFF_FIELDS_MISSING",
+              "AUDIT_BACKFLOW_MISSING",
+              "QUALITY_GATE_BLOCKED",
+              "MERGE_GATE_FAIL",
+              "UNKNOWN_ERROR"
+            ]
+          },
+          "message": { "type": "string", "minLength": 1 },
+          "location": { "type": "string" }
+        },
+        "required": ["code", "message"]
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "report": { "type": "string", "minLength": 1 },
+        "decision_log": { "type": "string", "minLength": 1 },
+        "skip_log": { "type": "string", "minLength": 1 },
+        "debt_backlog": { "type": "string", "minLength": 1 },
+        "evidence_markdown": { "type": "string", "minLength": 1 },
+        "evidence_json": { "type": "string", "minLength": 1 }
+      },
+      "required": ["report", "decision_log", "skip_log", "debt_backlog", "evidence_markdown", "evidence_json"]
+    },
+    "learning_backflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "queued": { "type": "boolean" },
+        "target": { "type": "string", "minLength": 1 },
+        "item_id": { "type": "string", "minLength": 1 }
+      },
+      "required": ["queued", "target", "item_id"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "status",
+    "mode",
+    "config",
+    "summary",
+    "handoff",
+    "quality",
+    "backflow",
+    "blocking_reasons",
+    "artifacts",
+    "learning_backflow",
+    "timestamp"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "pass" }
+        }
+      },
+      "then": {
+        "properties": {
+          "blocking_reasons": { "maxItems": 0 },
+          "backflow": {
+            "properties": {
+              "guard": { "const": "pass" }
+            },
+            "required": ["guard"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "blocked" }
+        }
+      },
+      "then": {
+        "properties": {
+          "blocking_reasons": { "minItems": 1 }
+        }
+      }
+    }
+  ]
+}

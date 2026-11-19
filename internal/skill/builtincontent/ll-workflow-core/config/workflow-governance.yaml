@@ -1,0 +1,120 @@
+# 状态字面值 SSOT：本文件出现的任务状态 emoji + 文案（🆕 待激活 / 📋 待办 / 🚧 进行中 /
+# ⏸️ 暂停 / ✅ 已完成 / 🛑 已终止）均来自 templates/scripts/req-sync/utils.js 的
+# LIFECYCLE_STATUS_MAP（L53）。修改字面值请改那里。
+
+version: 0.1.0
+governance:
+  id: ll-workflow-governance
+  source_requirement: REQ-0001
+  description: >-
+    ll-workflow-core 的协作治理配置，统一约束状态一致性、交接工单、审计回流、质量门、
+    双格式证据、版本选择与经验回灌。
+
+state_sync:
+  block_on_mismatch: true
+  authoritative_sources:
+    - slot: task_requirements_index
+      purpose: 需求与任务主线总索引
+    - slot: task_todo_version_root
+      purpose: 当前版本任务包与任务状态来源
+    - slot: task_done_version_root
+      purpose: 已完成任务状态来源
+  allowed_pairs:
+    - requirement_status: draft
+      task_status:
+        - requirements_draft
+        - "📋 待办"
+    - requirement_status: review
+      task_status:
+        - review_pending
+        - "📋 待办"
+    - requirement_status: approved
+      task_status:
+        - requirements_ready
+        - "🚧 进行中"
+    - requirement_status: active
+      task_status:
+        - in_progress
+        - "🚧 进行中"
+    - requirement_status: done
+      task_status:
+        - "✅ 已完成"
+  outputs:
+    - sync_report
+    - mismatch_items
+    - blocking_reason
+
+handoff_ticket:
+  template_ref: ../templates/handoff-ticket-template.md
+  required_fields:
+    - objective
+    - scope_in
+    - scope_out
+    - acceptance_criteria
+    - risks_and_assumptions
+    - rollback_plan
+    - evidence_targets
+    - audit_trigger
+    - writebacks
+  validate_on_routes:
+    - req
+    - dev
+    - aud
+  audit_trigger_values:
+    - required
+    - suggested
+    - not_required
+
+audit_backflow:
+  block_on_missing: true
+  required_writebacks:
+    - task_progress
+    - requirement_risk_notes
+    - changelog_entry
+  expected_sync_profile: task_default
+
+quality_gate:
+  required_when:
+    - state_sync_mismatch
+    - security_or_data_integrity_change
+    - audit_fix_cycle
+    - cross_route_handoff
+  suggested_when:
+    - doc_only_change
+    - template_only_change
+    - low_risk_refactor
+  severity_routes:
+    continue:
+      - low
+    pause:
+      - medium
+    block:
+      - high
+      - critical
+
+evidence_policy:
+  markdown_template_ref: ../templates/evidence-bundle-template.md
+  json_template_ref: ../templates/evidence-bundle-template.json
+  required_formats:
+    - markdown
+    - json
+  summary_targets:
+    - weekly
+    - release
+
+version_selection:
+  shared_action: context.resolve_target_version
+  strategy: highest_dev_version_first
+  explicit_fallback: record_and_continue
+
+experience_backflow:
+  weekly_template_ref: ../templates/docs/7.weekly/03-high-value-learning-backlog-template.md
+  triggers:
+    - repeated_fix_pattern
+    - new_governance_exception
+    - high_value_default_decision
+    - audit_rule_gap
+  trace_to:
+    - taskPath
+    - decisionLog
+    - runResult

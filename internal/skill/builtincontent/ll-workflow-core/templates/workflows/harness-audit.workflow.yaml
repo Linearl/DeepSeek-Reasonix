@@ -1,0 +1,352 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.harness-audit
+  short_name: harness-audit
+  name: ll-workflow-core / 配置审计工作流
+  description: 审计 AI 辅助配置的正确性、完备性、同步性，支持单次审计和 CI 集成。
+  owner_skill: ll-workflow-core
+  activation_aliases:
+    - harness-audit
+    - 配置审计
+    - 审计
+    - agent config audit
+  activation_hint: 当用户提到配置审计、CLAUDE.md、settings.json、agent config、配置同步时触发。
+  mode_support:
+    - interactive
+  defaults:
+    on_fail: block
+
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: targetDevDir
+        description: targetDevDir 字段
+      - name: mode
+        description: 运行模式（interactive / non_interactive）
+    outputs:
+      - name: auditReport
+        description: auditReport 字段
+      - name: healthScore
+        description: healthScore 字段
+      - name: recommendations
+        description: 战略建议列表
+
+  phases:
+    - id: a_discovery
+      name: 配置文件发现
+      purpose: 扫描项目中的 AI 配置文件，识别所有配置介质。
+      steps:
+        - id: scan_config_files
+          title: 扫描配置文件
+          action: custom.described_action
+          with:
+            description: >-
+              扫描并统计以下配置文件的存在性和行数：
+              1. CLAUDE.md / .claude/CLAUDE.md（主指令文件）
+              2. .claude/settings.json（工具与权限）
+              3. .claude/agents/*.md（自定义代理）
+              4. .github/workflows/*.yml（CI 配置）
+              5. .pre-commit-config.yaml（预提交钩子）
+              6. package.json 中的 scripts（lint/test/build）
+            expected_outputs:
+              - config_file_list
+              - file_sizes
+          save_as: config_discovery
+
+        - id: identify_media_types
+          title: 识别配置介质
+          action: custom.described_action
+          with:
+            description: >-
+              将发现的配置文件分类为五种标准配置介质：
+              1. 指令文件（CLAUDE.md, agents/*.md）
+              2. 设置文件（settings.json, .env）
+              3. Linter 配置（eslint, prettier, stylelint）
+              4. CI 配置（GitHub Actions, GitLab CI）
+              5. Git 钩子（pre-commit, pre-push）
+            expected_outputs:
+              - media_type_map
+          save_as: media_types
+
+    - id: b_quality_assessment
+      name: 配置质量评估
+      purpose: 评估每个配置介质的质量，检测常见问题。
+      steps:
+        - id: assess_claude_md
+          title: CLAUDE.md 质量评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估 CLAUDE.md 的质量：
+              1. 安全指令是否存在且完整
+              2. 权限边界是否明确
+              3. 工作流程是否定义清晰
+              4. 项目规范是否覆盖关键方面
+              5. 是否有占位符或未完成的章节
+            expected_outputs:
+              - quality_score
+              - issues
+              - suggestions
+          save_as: claude_md_quality
+
+        - id: assess_settings_json
+          title: settings.json 质量评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估 settings.json 的质量：
+              1. 权限规则是否与 CLAUDE.md 一致
+              2. 工具配置是否完整
+              3. 代理定义是否合理
+              4. 是否有过度宽松的权限
+            expected_outputs:
+              - quality_score
+              - issues
+              - suggestions
+          save_as: settings_quality
+
+        - id: assess_linter_config
+          title: Linter 配置质量评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估 Linter 配置的质量：
+              1. ESLint 规则是否覆盖安全和质量
+              2. Prettier 配置是否一致
+              3. Stylelint 是否配置完整
+              4. 是否有自定义规则
+            expected_outputs:
+              - quality_score
+              - issues
+              - suggestions
+          save_as: linter_quality
+
+        - id: assess_ci_config
+          title: CI 配置质量评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估 CI 配置的质量：
+              1. 是否包含 lint/test/build 步骤
+              2. 是否有安全扫描（npm audit, trivy）
+              3. 是否有代码覆盖率报告
+              4. 是否有自动部署
+            expected_outputs:
+              - quality_score
+              - issues
+              - suggestions
+          save_as: ci_quality
+
+        - id: assess_git_hooks
+          title: Git 钩子质量评估
+          action: custom.described_action
+          with:
+            description: >-
+              评估 Git 钩子的质量：
+              1. pre-commit 是否配置代码检查
+              2. pre-push 是否运行测试
+              3. 是否有提交信息验证
+              4. 钩子是否可跳过（--no-verify）
+            expected_outputs:
+              - quality_score
+              - issues
+              - suggestions
+          save_as: hooks_quality
+
+    - id: c_synchronization_check
+      name: 配置同步性检查
+      purpose: 检查不同配置介质之间的一致性。
+      steps:
+        - id: check_claude_vs_settings
+          title: CLAUDE.md ↔ settings.json 同步
+          action: custom.described_action
+          with:
+            description: >-
+              检查 CLAUDE.md 与 settings.json 的同步性：
+              1. CLAUDE.md 中禁止的工具是否在 settings.json 中被禁用
+              2. CLAUDE.md 中允许的工具是否在 settings.json 中被允许
+              3. CLAUDE.md 中定义的代理是否在 settings.json 中配置
+              4. 权限边界是否一致
+            expected_outputs:
+              - sync_issues
+              - recommendations
+          save_as: sync_claude_settings
+
+        - id: check_ci_vs_linter
+          title: CI ↔ Linter 同步
+          action: custom.described_action
+          with:
+            description: >-
+              检查 CI 与 Linter 的同步性：
+              1. CI 中运行的 lint 命令是否与本地一致
+              2. Linter 配置的规则是否在 CI 中被使用
+              3. 是否有 CI 中运行但本地不运行的检查
+            expected_outputs:
+              - sync_issues
+              - recommendations
+          save_as: sync_ci_linter
+
+        - id: check_hooks_vs_package
+          title: Git Hooks ↔ package.json 同步
+          action: custom.described_action
+          with:
+            description: >-
+              检查 Git Hooks 与 package.json 的同步性：
+              1. hooks 中引用的脚本是否在 package.json 中定义
+              2. hooks 中的工具是否在 devDependencies 中安装
+              3. hooks 执行顺序是否合理
+            expected_outputs:
+              - sync_issues
+              - recommendations
+          save_as: sync_hooks_package
+
+    - id: d_anti_pattern_detection
+      name: 反模式检测
+      purpose: 检测配置中常见的反模式和安全风险。
+      steps:
+        - id: detect_security_antipatterns
+          title: 安全反模式检测
+          action: custom.described_action
+          with:
+            description: >-
+              检测以下安全反模式：
+              1. dangerously-skip-permissions 或类似过度宽松权限
+              2. 硬编码的 API 密钥或密码
+              3. 缺少 CSP 配置
+              4. 缺少输入校验配置
+            expected_outputs:
+              - antipatterns
+              - severity
+              - recommendations
+          save_as: security_antipatterns
+
+        - id: detect_maintenance_antipatterns
+          title: 维护反模式检测
+          action: custom.described_action
+          with:
+            description: >-
+              检测以下维护反模式：
+              1. 过大的配置文件（>200 行）
+              2. 重复的配置定义
+              3. 硬编码的路径或值
+              4. 缺少注释或文档
+            expected_outputs:
+              - antipatterns
+              - severity
+              - recommendations
+          save_as: maintenance_antipatterns
+
+        - id: detect_consistency_antipatterns
+          title: 一致性反模式检测
+          action: custom.described_action
+          with:
+            description: >-
+              检测以下一致性反模式：
+              1. 同一规则在不同文件中的不同表述
+              2. 过时的配置引用
+              3. 缺少的配置节
+              4. 不一致的命名约定
+            expected_outputs:
+              - antipatterns
+              - severity
+              - recommendations
+          save_as: consistency_antipatterns
+
+        - id: detect_code_data_mixing
+          title: 代码/数据目录混合检测
+          action: custom.described_action
+          with:
+            description: >-
+              检测项目中代码目录与数据/存储目录是否混在一起：
+              1. 扫描 dev_xx 目录结构，识别 storage、dataset、cache、logs、backup 等数据目录
+              2. 检查这些数据目录是否与 backend、webapp、docker 等代码目录同级
+              3. 检查 .gitignore 是否正确忽略数据目录
+              4. 检查 docker-compose.yml 中的 volume 挂载是否指向 dev_xx 内部
+              5. 检查是否有软链接将数据目录外移（推荐模式）
+              风险：代码和数据混在一起会导致版本升级时误删数据、备份困难、多版本无法共享数据。
+              建议：将数据目录（storage/logs/cache/backup）移到 dev_xx 外部，通过软链接引用。
+            expected_outputs:
+              - mixing_issues
+              - affected_directories
+              - severity
+              - recommendations
+          save_as: code_data_mixing
+
+    - id: e_scoring
+      name: 健康评分
+      purpose: 基于评估结果计算健康评分。
+      steps:
+        - id: calculate_score
+          title: 计算综合评分
+          action: custom.described_action
+          with:
+            description: >-
+              基于五种配置介质的评分计算综合健康分：
+              - CLAUDE.md：40%
+              - settings.json：20%
+              - Linter：15%
+              - CI：15%
+              - Git Hooks：10%
+              安全问题一票否决。
+            expected_outputs:
+              - total_score
+              - dimension_scores
+              - pass_fail
+          save_as: health_score
+
+    - id: f_improvement_suggestions
+      name: 改进建议生成
+      purpose: 生成具体的配置改进建议和行动项。
+      steps:
+        - id: generate_quick_wins
+          title: 生成快速胜利项
+          action: custom.described_action
+          with:
+            description: >-
+              识别可以立即执行的改进项：
+              - 缺失的配置文件
+              - 过时的配置
+              - 简单的同步问题
+            expected_outputs:
+              - quick_wins
+              - effort_estimate
+          save_as: quick_wins
+
+        - id: generate_strategic_improvements
+          title: 生成战略改进项
+          action: custom.described_action
+          with:
+            description: >-
+              识别需要长期投入的改进项：
+              - 架构级配置重构
+              - 安全架构升级
+              - CI/CD 流程优化
+            expected_outputs:
+              - strategic_items
+              - priority
+              - dependencies
+          save_as: strategic_improvements
+
+        - id: generate_report
+          title: 生成审计报告
+          action: custom.described_action
+          with:
+            description: >-
+              生成配置审计报告，包含：
+              1. 健康评分摘要
+              2. 配置介质评估详情
+              3. 同步性检查结果
+              4. 反模式检测结果
+              5. 改进建议（快速 + 战略）
+            expected_outputs:
+              - report_path
+              - report_content
+          save_as: audit_report

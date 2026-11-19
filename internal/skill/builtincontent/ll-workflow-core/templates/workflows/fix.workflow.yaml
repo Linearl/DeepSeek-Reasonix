@@ -1,0 +1,549 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.fix
+  short_name: fix
+  name: ll-workflow-core / fix 审计修复
+  description: 读取审计任务包，展示问题清单后由用户确定处理范围与修复策略，并行分析、分批验证提交，支持跳过与技术债台账。
+  owner_skill: ll-workflow-core
+  source_skill: ll-audit
+  activation_aliases:
+    - fix
+    - audit-fix
+    - 审计修复
+    - 修复审计问题
+    - 修复代码问题
+  activation_hint: 当用户要求修复审计发现的问题、执行 audit-fix 或处理审计包中的 P1-P4 问题时触发。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - shared.governance
+    - route.aud.assets
+    - shared.docs.common
+  mode_support:
+    - interactive
+    - non_interactive
+  defaults:
+    on_fail: block
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: userTarget
+        description: 用户目标（需求编号 / 文件路径 / 自然语言描述）
+      - name: auditPackagePath
+        description: 审计包路径
+      - name: mode
+        description: 运行模式（interactive / non_interactive）
+    outputs:
+      - name: fixSummary
+        description: fixSummary 字段
+      - name: runResultPath
+        description: run_result.json 落盘路径
+    variables:
+      current_priority: ""
+
+  # ============================================================
+  # 阶段 A：准备
+  # ============================================================
+  phases:
+    # ----------------------------------------------------------
+    # A0. 读取审计包
+    # ----------------------------------------------------------
+    - id: a0_read_audit_package
+      name: 读取审计包
+      purpose: 定位审计任务包，提取问题清单与当前状态。
+      steps:
+        - id: check_lessons
+          title: 查阅历史经验教训
+          action: custom.described_action
+          with:
+            description: >-
+              遇到疑难问题时，查阅 skills/ll-workflow-core/lessons/ 目录下的历史经验教训文件，
+              避免重复踩坑。若 lessons 目录为空则跳过。
+            expected_outputs:
+              - lessonsChecked
+            success_criteria: 已检查历史经验或确认无历史经验
+          save_as: lessons_context
+
+        - id: resolve_version
+          title: 解析目标版本
+          action: context.resolve_target_version
+          with:
+            userTarget: "${ userTarget }"
+            workspaceRoot: "${ workspaceRoot }"
+          save_as: target_context
+
+        - id: load_directory_profile
+          title: 加载目录结构配置
+          action: layout.load_directory_profile
+          with:
+            directoryProfileRef: "../../config/directory-layout.yaml#profiles/default"
+            workspaceRoot: "${ workspaceRoot }"
+            targetDevDir: "${ target_context.targetDevDir }"
+            version: "${ target_context.version }"
+          save_as: layout_profile
+
+        - id: load_governance
+          title: 读取治理规则
+          action: context.load_governance_context
+          with:
+            targetDevDir: "${ target_context.targetDevDir }"
+            layout: "${ layout_profile }"
+          save_as: governance
+
+        - id: locate_audit_package
+          title: 定位审计任务包
+          action: custom.described_action
+          with:
+            description: >-
+              在 docs/1.task/B.todo/{version}/ 下查找审计任务包（{YYYYMMDD}_audit-fix 目录）。
+              若用户指定了 auditPackagePath 则直接使用。
+              读取 README.md 提取问题清单（P1/P2/P3/P4 各多少条）。
+              读取 decision_log.md 了解审计阶段的决策记录。
+              输出 auditPackageDir、issueList、issueCount。
+            expected_outputs:
+              - auditPackageDir
+              - issueList
+              - issueCount
+            success_criteria: 审计包已定位且问题清单已提取
+          save_as: package_context
+
+    # ----------------------------------------------------------
+    # A1. 分支策略
+    # ----------------------------------------------------------
+    - id: a1_branch_strategy
+      name: 分支策略
+      purpose: 确认是否启用修复分支。
+      steps:
+        - id: ask_branch_strategy
+          title: 询问分支策略
+          action: interaction.ask_questions_gate
+          with:
+            questionSet: ll_audit_branch_strategy
+            recommendedOptions:
+              - "启用修复分支（推荐）"
+              - "不启用，直接在当前分支修复"
+          save_as: branch_answer
+
+        - id: record_branch_decision
+          title: 记录分支决策到 decision_log.md
+          action: custom.described_action
+          with:
+            description: >-
+              在 auditPackageDir/decision_log.md 末尾追加：
+              ## fix 分支策略（{日期时间}）
+              - 选择：{branch_answer.answers.strategy}
+              - 理由：{branch_answer.answers.reason}
+            expected_outputs:
+              - decisionAppended
+            success_criteria: decision_log.md 已追加分支策略决策
+          save_as: branch_decision
+
+    # ============================================================
+    # 阶段 A2：确定处理范围与修复策略
+    # ============================================================
+    - id: a2_scope_and_strategy
+      name: 确定处理范围与修复策略
+      purpose: 展示完整问题清单后，让用户决定处理范围和修复介入深度。
+      steps:
+        - id: present_issue_summary
+          title: 展示问题清单概览
+          action: custom.described_action
+          with:
+            description: >-
+              读取 auditPackageDir/README.md 中的修复路线图，以表格展示所有问题：
+              | 编号 | 级别 | 问题摘要 | 影响范围 | 修复难度预估 |
+              附统计：P1=N, P2=M, P3=K, P4=L, 共 X 条。
+              按 P1→P4 排序，每级别内按修复难度（低→高）排序。
+            expected_outputs:
+              - issueSummaryTable
+            success_criteria: 用户已看到完整问题清单
+          save_as: issue_summary
+
+        - id: ask_scope
+          title: 询问处理范围
+          action: interaction.ask_questions_gate
+          with:
+            questionSet: fix_scope_selection
+            recommendedOptions:
+              - "全部处理（推荐）"
+              - "仅处理 P1（紧急）"
+              - "仅处理 P1 + P2"
+              - "自定义选择"
+          save_as: scope_answer
+
+        - id: ask_fix_strategy
+          title: 询问修复策略
+          action: interaction.ask_questions_gate
+          with:
+            questionSet: fix_strategy_selection
+            recommendedOptions:
+              - "全部由 AI 决定（推荐，效率最高）"
+              - "逐个问题确认（最审慎）"
+              - "我指定重点关注项，其余 AI 决定"
+          save_as: strategy_answer
+
+        - id: resolve_focus_issues
+          title: 解析重点关注项
+          type: branch
+          if: "${ strategy_answer.answers.strategy == 'hybrid' }"
+          then:
+            - id: ask_focus_issues
+              title: 用户选择重点关注的问题
+              action: interaction.ask_questions_gate
+              with:
+                questionSet: fix_focus_selection
+                recommendedOptions: []
+              save_as: focus_answer
+
+        - id: record_scope_decision
+          title: 追加范围与策略决策到 decision_log.md
+          action: custom.described_action
+          with:
+            description: >-
+              在 auditPackageDir/decision_log.md 末尾追加：
+              ## fix 处理范围与策略（{日期时间}）
+              - 处理范围：{scope_answer}
+              - 修复策略：{strategy_answer}
+              - 重点关注项：{focus_answer 或 "无（全部由 AI 决定）"}
+              - 理由：{scope_answer.reason}
+            expected_outputs:
+              - decisionAppended
+            success_criteria: decision_log.md 已追加本次 fix 的范围与策略决策
+          save_as: scope_decision
+
+    # ============================================================
+    # 阶段 B：并行分析与分批修复
+    # ============================================================
+
+    # ----------------------------------------------------------
+    # B0. 并行分析问题
+    # ----------------------------------------------------------
+    - id: b0_parallel_analysis
+      name: 并行分析问题
+      purpose: 对 scope 内所有问题生成修复方案（2-3 个候选方案含推荐值）。
+      steps:
+        - id: analyze_all_issues
+          title: 并行分析所有问题
+          action: custom.described_action
+          with:
+            description: >-
+              根据 scope_answer 确定的范围，遍历 auditPackageDir 下对应级别的问题子目录。
+              对每个问题：
+              1. 读取 问题描述.md 了解问题详情（aud 在初始化目录时已生成）
+              2. 分析修复方案，生成 2-3 个候选方案，每个包含：
+                 - label: 方案名称（如"方案A"）
+                 - description: 修复描述
+                 - risk: 风险等级（低/中/高）
+                 - recommended: 是否为推荐方案
+              3. 检查问题间依赖关系（同文件修改、基础设施依赖等）
+              
+              并行策略：
+              - 独立问题（无文件交集）可并发分析
+              - 有依赖关系的问题标记 depends_on，排在依赖完成后分析
+              - 每批次分析 3-5 个问题
+            expected_outputs:
+              - issueAnalysisResults
+            success_criteria: 所有 scope 内问题已分析并生成候选方案
+          save_as: analysis_results
+
+        - id: present_and_confirm_options
+          title: 对需确认的问题展示方案供选择
+          type: branch
+          if: "${ strategy_answer.answers.strategy != 'ai_decide' }"
+          then:
+            - id: ask_fix_options
+              title: 展示方案供用户确认
+              action: custom.described_action
+              with:
+                description: >-
+                  根据 strategy_answer 确定的策略：
+                  - strategy=confirm_all：对所有问题展示方案供用户选择
+                  - strategy=hybrid：仅对 focus_answer 中列出的问题展示方案，
+                    其余自动采纳推荐方案
+                  
+                  展示格式：
+                  ## {issueId}: {问题摘要}
+                  - [推荐] 方案A: {描述} — 风险：低
+                  - 方案B: {描述} — 风险：中
+                  - 方案C: {描述} — 风险：高
+                  
+                  用户确认后，将每个问题的方案选择追加到 auditPackageDir/decision_log.md：
+                  ### {issueId} 修复方案确认
+                  - 选定方案：{selectedOption}
+                  - 备注：{userNote 或 "无"}
+                  
+                  不在确认范围内的问题自动采纳推荐方案，同样记录。
+                expected_outputs:
+                  - confirmedPlan
+                success_criteria: 每个问题都有确定的修复方案
+              save_as: fix_plan
+          else:
+            - id: auto_select_all
+              title: 自动采纳所有推荐方案
+              action: custom.described_action
+              with:
+                description: >-
+                  对所有问题采纳推荐方案，生成 confirmedPlan。
+                  同时追加到 auditPackageDir/decision_log.md：
+                  ### 自动方案选择（AI 决定）
+                  - {issueId}: {推荐方案label}（推荐）
+                  （逐条列出）
+                expected_outputs:
+                  - confirmedPlan
+                success_criteria: 每个问题已选定推荐方案
+              save_as: fix_plan
+
+    # ----------------------------------------------------------
+    # B1. 分批执行修复
+    # ----------------------------------------------------------
+    - id: b1_execute_fixes
+      name: 分批执行修复
+      purpose: 按依赖关系分批执行，每批完成后立即验证+提交。
+      steps:
+        - id: compute_batches
+          title: 计算修复批次
+          action: custom.described_action
+          with:
+            description: >-
+              根据 confirmedPlan 和依赖分析结果，将问题分批：
+              - 同批内问题无文件交集（可并行通过 subagent）
+              - 有依赖关系的问题分在不同批次，被依赖的在前
+              - 每批 3-5 个问题
+            expected_outputs:
+              - batches
+            success_criteria: 批次已划分且依赖关系已满足
+          save_as: batch_plan
+
+        - id: batch_fix_loop
+          title: 分批修复循环
+          type: for_each
+          items_from: "${ batch_plan.batches }"
+          item_as: batch
+          steps:
+            - id: apply_batch
+              title: 执行本批次修复
+              action: custom.described_action
+              with:
+                description: >-
+                  对 batch 内每个问题：
+                  1. 按 confirmedPlan 中选定的方案执行代码修复（implementation.apply_changes）
+                  2. 填写 解决方案.md（使用 aud/templates/解决方案_template.md）
+                  3. 填写 实施总结.md（使用 aud/templates/实施总结_template.md）
+                  
+                  batch 内无文件冲突的问题可通过 subagent 并行执行。
+                expected_outputs:
+                  - batchFixedIssues
+                success_criteria: 本批次所有问题已修复
+              save_as: batch_result
+
+            - id: batch_verify
+              title: 批次验证
+              action: validation.execute
+              with:
+                validationPlan: audit_fix_validation
+              save_as: batch_test_result
+
+            - id: batch_gate
+              title: 批次闸门
+              action: quality.route_gate
+              with:
+                governanceRef: "../../config/workflow-governance.yaml"
+                route: fix
+                validationResult: "${ batch_test_result.validationResult }"
+              save_as: batch_gate_result
+
+            - id: batch_git_commit
+              title: 批次提交
+              action: custom.described_action
+              with:
+                description: >-
+                  验证通过后执行 git 提交：
+                  - 每个问题单独 commit：fix(P{n}-{seq}): {描述}
+                  - 批次末一个总结 commit：fix(batch-{N}): 修复 {count} 项问题
+                  
+                  若验证失败：回滚本批次修改，将失败原因追加到
+                  auditPackageDir/decision_log.md：
+                  ### 批次 {N} 验证失败
+                  - 问题：{failedIssues}
+                  - 原因：{failureReason}
+                  将问题标记为 blocked 并继续下一批。
+                expected_outputs:
+                  - commitHashes
+                success_criteria: 本批次已提交或已回滚
+              save_as: batch_commit
+
+    # ----------------------------------------------------------
+    # B2. 记录跳过项
+    # ----------------------------------------------------------
+    - id: b2_record_skipped
+      name: 记录跳过项
+      purpose: 汇总所有被跳过或阻塞的问题。
+      steps:
+        - id: log_skipped
+          title: 记录跳过/阻塞项
+          action: custom.described_action
+          with:
+            description: >-
+              汇总以下问题并记录到 auditPackageDir/skipped/skip_log.md：
+              - 用户主动跳过的级别（scope 中排除的级别）
+              - 修复失败被阻塞的问题
+              
+              同时追加到 auditPackageDir/decision_log.md：
+              ## 跳过/阻塞项汇总（{日期时间}）
+              - 跳过：{skippedList}
+              - 阻塞：{blockedList}
+              - 跳过理由：{reason}
+            expected_outputs:
+              - skipLogPath
+            success_criteria: 跳过项已记录
+          save_as: skipped_result
+
+    # ============================================================
+    # 阶段 C：验证与收口
+    # ============================================================
+
+    # ----------------------------------------------------------
+    # C0. 结果验证
+    # ----------------------------------------------------------
+    - id: c0_validation
+      name: 结果验证
+      purpose: 运行测试、格式检查，确认修复无回归。
+      steps:
+        - id: run_tests
+          title: 执行测试套件
+          action: validation.execute
+          with:
+            validationPlan: audit_fix_validation
+          save_as: test_result
+
+        - id: merge_gate_check
+          title: 合并闸门检查
+          action: quality.route_gate
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            route: fix
+            validationResult: "${ test_result.validationResult }"
+          save_as: gate_decision
+
+    # ----------------------------------------------------------
+    # C1. 汇总归档
+    # ----------------------------------------------------------
+    - id: c1_closeout
+      name: 汇总归档
+      purpose: 汇总修复结果、跳过项，更新审计包，输出 run_result。
+      steps:
+        - id: update_audit_readme
+          title: 更新审计包 README
+          action: custom.described_action
+          with:
+            description: >-
+              更新 auditPackageDir/README.md：
+              - 在各优先级问题表格中添加"修复状态"列（已修复/跳过/待修复）
+              - 更新"优先修复路线图"中的状态
+              - 添加"修复汇总"章节：已修复 N 项 / 跳过 M 项 / 剩余 K 项
+              - 更新 C1 闸门状态
+            expected_outputs:
+              - updatedReadmePath
+            success_criteria: README.md 已更新修复状态
+          save_as: updated_readme
+
+        - id: generate_debt_backlog
+          title: 生成技术债台账
+          action: custom.described_action
+          with:
+            description: >-
+              从 skipped/skip_log.md 汇总所有跳过项，生成 skipped/debt_backlog.md。
+              使用 templates/debt-backlog.md 模板。
+              按优先级分组，标注建议处理窗口（P1: 24~72h, P2: 1w, P3: 1 iteration, P4: planned）。
+            expected_outputs:
+              - debtBacklogPath
+            success_criteria: debt_backlog.md 已生成
+          save_as: debt_backlog
+
+        - id: verify_backflow_guard
+          title: 校验回流三处回写
+          action: audit.verify_backflow
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            layout: "${ layout_profile }"
+          save_as: backflow_guard
+
+        - id: emit_fix_evidence
+          title: 输出修复证据
+          action: evidence.emit_dual_format
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            route: fix
+            evidenceBundle: "${ test_result.validationResult }"
+          save_as: fix_evidence
+
+        - id: generate_run_result
+          title: 生成 fix run_result
+          action: custom.described_action
+          with:
+            description: >-
+              汇总修复结果：已修复数、跳过数、剩余数、测试结果、闸门状态、
+              回流校验结果、证据路径，输出 run_result.json 到 auditPackageDir/run_result.json。
+              status 为 pass 或 blocked。
+            expected_outputs:
+              - runResultPath
+            success_criteria: run_result 能表达 pass 或 blocked 的真实状态
+          save_as: fix_run_result
+
+        - id: decide_archive
+          title: 决定是否归档
+          action: custom.described_action
+          with:
+            description: >-
+              检查归档条件：
+              - 所有 P1 问题已修复或明确跳过
+              - C0 测试通过
+              - run_result.json 已生成
+              若满足，将审计包从 B.todo/{version}/ 移动到 B.2.done/{version}/。
+              若不满足，保持在 B.todo 并输出阻塞原因。
+            expected_outputs:
+              - archived
+              - archivePath
+            success_criteria: 归档决策已执行
+          save_as: archive_result
+
+        - id: sync_governance
+          title: 同步治理入口
+          action: docs.sync_governance_entries
+          with:
+            layout: "${ layout_profile }"
+            syncProfile: task_default
+          save_as: synced_docs
+
+        - id: generate_fix_report
+          title: 生成修复报告
+          action: custom.described_action
+          with:
+            description: >-
+              在 layout_profile.slots.analysis_report_root 指定的目录下生成修复报告：
+              {analysis_report_root}/{YYYY-MM-DD}-audit-fix-report.md
+              报告内容包含：审计包来源、修复统计（已修复/跳过/剩余）、验证结果、归档状态。
+              使用 templates/audit-report.md 模板格式。
+            expected_outputs:
+              - fixReportPath
+            success_criteria: 修复报告已写入分析报告目录
+          save_as: fix_report
+
+        - id: queue_fix_learning
+          title: 记录修复经验回灌候选
+          action: feedback.enqueue_learning
+          with:
+            governanceRef: "../../config/workflow-governance.yaml"
+            runResultPath: "${ fix_run_result.runResultPath }"
+            triggerSignals:
+              - fix_closeout
+              - "${ backflow_guard.backflowStatus }"
+          save_as: fix_learning

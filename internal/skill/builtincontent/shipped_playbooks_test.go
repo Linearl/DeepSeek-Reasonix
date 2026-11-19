@@ -33,6 +33,8 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 		"ll-iteration-review",
 		"ll-zcode-collaboration",
 		"ll-update",
+		"ll-workflow-core",
+		"ll-cdp-reasonix-debug",
 		"react-best-practices",
 		"feature-boundary-planner",
 		"dogfood",

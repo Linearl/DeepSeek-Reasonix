@@ -1,0 +1,225 @@
+version: 0.2.0
+profile_id: default
+profile_resolution:
+  description: >-
+    directory profile 的选择顺序：项目配置覆盖 > 显式 workflow 覆盖 > route 绑定 > registry 默认值 > profile_id 默认值。
+  order:
+    - project_config_override
+    - workflow_override
+    - route_binding
+    - registry_default
+    - global_default
+profiles:
+  default:
+    description: >-
+      默认的 ll-workflow-core 目录抽象配置。基于实际 docs 结构，
+      采用编号化 0-8 体系，通过逻辑槽位（slots）而不是硬编码目录名来驱动 workflow。
+    variables:
+      workspace_root: "${ workspaceRoot }"
+      target_dev_dir: "${ targetDevDir }"
+      worktree: "${ worktree | default('.') }"
+      docs: "${ docs | default('docs') }"
+      version_token: "${ version }"
+      worktree_root: "${ worktree_root | default(workspaceRoot + '/worktrees') }"
+    slots:
+      # worktree 池目录（已被 .gitignore 忽略）
+      worktree_root: "${ worktree_root }"
+      worktree_slots_json: "${ worktree_root }/.slots.json"
+      docs_root: "${ targetDevDir }/${ docs }"
+      task_inactive_root: "${ targetDevDir }/${ docs }/1.task/A.inactive"
+      task_todo_root: "${ targetDevDir }/${ docs }/1.task/B.todo"
+      task_todo_version_root: "${ targetDevDir }/${ docs }/1.task/B.todo/${ version }"
+      task_done_root: "${ targetDevDir }/${ docs }/1.task/B.2.done"
+      task_done_version_root: "${ targetDevDir }/${ docs }/1.task/B.2.done/${ version }"
+      task_paused_root: "${ targetDevDir }/${ docs }/1.task/B.1.paused"
+      task_cancelled_root: "${ targetDevDir }/${ docs }/1.task/B.3.cancelled"
+      task_requirements_index: "${ targetDevDir }/${ docs }/1.task/requirements.md"
+      task_readme_index: "${ targetDevDir }/${ docs }/1.task/README.md"
+      docs_index: "${ targetDevDir }/${ docs }/INDEX.md"
+      docs_readme: "${ targetDevDir }/${ docs }/README.md"
+      changelog_root: "${ targetDevDir }/${ docs }/6.changelog"
+      weekly_root: "${ targetDevDir }/${ docs }/7.weekly"
+      test_root: "${ targetDevDir }/${ docs }/8.test"
+      tech_api_root: "${ targetDevDir }/${ docs }/2.tech/api"
+      tech_architecture_root: "${ targetDevDir }/${ docs }/2.tech/architecture"
+      tech_database_root: "${ targetDevDir }/${ docs }/2.tech/database"
+      tech_development_root: "${ targetDevDir }/${ docs }/2.tech/development"
+      tech_guide_root: "${ targetDevDir }/${ docs }/2.tech/guide"
+      tech_specification_root: "${ targetDevDir }/${ docs }/2.tech/specification"
+      tech_user_guide_root: "${ targetDevDir }/${ docs }/2.tech/user_guide"
+      guide_root: "${ targetDevDir }/${ docs }/2.tech/guide"
+      analysis_diagnosis_root: "${ targetDevDir }/${ docs }/3.analysis/diagnosis"
+      analysis_diagnosis_active: "${ targetDevDir }/${ docs }/3.analysis/diagnosis/01-active"
+      analysis_diagnosis_outdated: "${ targetDevDir }/${ docs }/3.analysis/diagnosis/02-outdated"
+      analysis_report_root: "${ targetDevDir }/${ docs }/3.analysis/report"
+      analysis_evidence_root: "${ targetDevDir }/${ docs }/3.analysis/evidence"
+      governance_handoff_root: "${ targetDevDir }/${ docs }/4.misc/handoff"
+      governance_json_evidence_root: "${ targetDevDir }/${ docs }/3.analysis/evidence/${ version }"
+      governance_learning_backflow_root: "${ targetDevDir }/${ docs }/7.weekly"
+    semantics:
+      todo: task_todo_version_root
+      inactive_requirement: task_inactive_root
+      paused: task_paused_root
+      cancelled: task_cancelled_root
+      done: task_done_version_root
+      docs_index: docs_index
+      changelog: changelog_root
+    sync_targets:
+      task_default:
+        - task_requirements_index
+        - task_readme_index
+        - docs_index
+      requirement_default:
+        - task_requirements_index
+        - docs_index
+      closeout_default:
+        - changelog_root
+        - docs_index
+        - docs_readme
+    package_naming:
+      task_folder: "v{version}-r{req_id}-{priority}-{slug}"
+      requirement_working_copy: "REQ-{req_id}-{slug}.md"
+      requirement_original_suffix: "-original"
+      phase_archive_folder: "phase-{phase_id}-{date}"
+    usage_notes:
+      - 所有 workflow 中的 todo / inactive / done 都应先映射到本配置中的语义槽位。
+      - 如仓库目录结构调整，优先改项目配置 .ll-workflow.yaml 或本文件，不要批量改 workflow 正文。
+      - 新动作在引用路径时，应优先声明使用哪个 slot，而不是写死 docs 子目录。
+      - 本 profile 基于通用项目实际结构，其他项目可通过 .ll-workflow.yaml 覆盖。
+
+  numbered_docs_v1:
+    extends: default
+    description: >-
+      原始的编号化 docs 布局 profile（历史版本）。保留 task 生命周期和分析/技术/测试主分区，
+      适合需要类似编号化 docs 但不完全等同于当前仓库的场景。
+    slots:
+      docs_root: "${ targetDevDir }/docs"
+      task_inactive_root: "${ targetDevDir }/docs/1.task/A.inactive"
+      task_todo_root: "${ targetDevDir }/docs/1.task/B.todo"
+      task_todo_version_root: "${ targetDevDir }/docs/1.task/B.todo/${ version }"
+      task_done_root: "${ targetDevDir }/docs/1.task/B.2.done"
+      task_done_version_root: "${ targetDevDir }/docs/1.task/B.2.done/${ version }"
+      task_requirements_index: "${ targetDevDir }/docs/1.task/requirements.md"
+      task_readme_index: "${ targetDevDir }/docs/1.task/README.md"
+      docs_index: "${ targetDevDir }/docs/INDEX.md"
+      docs_readme: "${ targetDevDir }/docs/README.md"
+      changelog_root: "${ targetDevDir }/docs/6.changelog"
+      guide_root: "${ targetDevDir }/docs/2.tech/guide"
+      analysis_diagnosis_root: "${ targetDevDir }/docs/3.analysis/diagnosis"
+      analysis_report_root: "${ targetDevDir }/docs/3.analysis/report"
+      analysis_evidence_root: "${ targetDevDir }/docs/3.analysis/evidence"
+      governance_handoff_root: "${ targetDevDir }/docs/4.misc/handoff"
+      governance_json_evidence_root: "${ targetDevDir }/docs/3.analysis/evidence/${ version }"
+      governance_learning_backflow_root: "${ targetDevDir }/docs/7.weekly"
+      weekly_root: "${ targetDevDir }/docs/7.weekly"
+      test_root: "${ targetDevDir }/docs/8.test"
+
+  generic_docs_v1:
+    extends: default
+    description: >-
+      面向其他项目的通用 docs 布局 profile。保留 task 生命周期和分析/技术/测试主分区，
+      适合需要类似编号化 docs 但不完全等同于当前仓库的场景。
+    slots:
+      docs_root: "${ targetDevDir }/docs"
+      task_inactive_root: "${ targetDevDir }/docs/tasks/inactive"
+      task_todo_root: "${ targetDevDir }/docs/tasks/todo"
+      task_todo_version_root: "${ targetDevDir }/docs/tasks/todo/${ version }"
+      task_done_root: "${ targetDevDir }/docs/tasks/done"
+      task_done_version_root: "${ targetDevDir }/docs/tasks/done/${ version }"
+      task_requirements_index: "${ targetDevDir }/docs/tasks/requirements.md"
+      task_readme_index: "${ targetDevDir }/docs/tasks/README.md"
+      docs_index: "${ targetDevDir }/docs/INDEX.md"
+      docs_readme: "${ targetDevDir }/docs/README.md"
+      changelog_root: "${ targetDevDir }/docs/changelog"
+      guide_root: "${ targetDevDir }/docs/tech/guide"
+      analysis_diagnosis_root: "${ targetDevDir }/docs/analysis/diagnosis"
+      analysis_report_root: "${ targetDevDir }/docs/analysis/report"
+      analysis_evidence_root: "${ targetDevDir }/docs/analysis/evidence"
+      governance_handoff_root: "${ targetDevDir }/docs/misc/handoff"
+      governance_json_evidence_root: "${ targetDevDir }/docs/analysis/evidence/${ version }"
+      governance_learning_backflow_root: "${ targetDevDir }/docs/weekly"
+      weekly_root: "${ targetDevDir }/docs/weekly"
+      test_root: "${ targetDevDir }/docs/test"
+
+  minimal_workspace:
+    description: >-
+      面向轻量仓库或早期试点的最小化 profile。适用于还没有完整 numbered docs 体系，
+      但仍希望 route/workflow 能运行的场景。
+    variables:
+      workspace_root: "${ workspaceRoot }"
+      target_dev_dir: "${ targetDevDir }"
+      version_token: "${ version }"
+    slots:
+      docs_root: "${ targetDevDir }/docs"
+      task_inactive_root: "${ targetDevDir }/docs/inactive"
+      task_todo_root: "${ targetDevDir }/docs/todo"
+      task_todo_version_root: "${ targetDevDir }/docs/todo/${ version }"
+      task_done_root: "${ targetDevDir }/docs/done"
+      task_done_version_root: "${ targetDevDir }/docs/done/${ version }"
+      task_requirements_index: "${ targetDevDir }/docs/requirements.md"
+      task_readme_index: "${ targetDevDir }/docs/README.md"
+      docs_index: "${ targetDevDir }/docs/INDEX.md"
+      docs_readme: "${ targetDevDir }/docs/README.md"
+      changelog_root: "${ targetDevDir }/docs/changelog"
+      guide_root: "${ targetDevDir }/docs/guide"
+      analysis_diagnosis_root: "${ targetDevDir }/docs/analysis"
+      analysis_report_root: "${ targetDevDir }/docs/reports"
+      analysis_evidence_root: "${ targetDevDir }/docs/evidence"
+      governance_handoff_root: "${ targetDevDir }/docs/handoff"
+      governance_json_evidence_root: "${ targetDevDir }/docs/evidence/${ version }"
+      governance_learning_backflow_root: "${ targetDevDir }/docs/weekly"
+      weekly_root: "${ targetDevDir }/docs/weekly"
+      test_root: "${ targetDevDir }/docs/test"
+    semantics:
+      todo: task_todo_version_root
+      inactive_requirement: task_inactive_root
+      done: task_done_version_root
+      docs_index: docs_index
+      changelog: changelog_root
+    sync_targets:
+      task_default:
+        - task_requirements_index
+        - docs_index
+      requirement_default:
+        - task_requirements_index
+      closeout_default:
+        - changelog_root
+        - docs_index
+    package_naming:
+      task_folder: "task-{slug}"
+      requirement_working_copy: "requirements-{slug}.md"
+      requirement_original_suffix: "-original"
+      phase_archive_folder: "phase-{phase_id}-{date}"
+
+slot_groups:
+  task_lifecycle:
+    - task_inactive_root
+    - task_todo_root
+    - task_todo_version_root
+    - task_done_root
+    - task_done_version_root
+    - task_paused_root
+    - task_cancelled_root
+  governance_indexes:
+    - task_requirements_index
+    - task_readme_index
+    - docs_index
+    - docs_readme
+  governance:
+    - governance_handoff_root
+    - governance_json_evidence_root
+    - governance_learning_backflow_root
+  analysis:
+    - analysis_diagnosis_root
+    - analysis_diagnosis_active
+    - analysis_diagnosis_outdated
+    - analysis_report_root
+    - analysis_evidence_root
+  tech_docs:
+    - tech_api_root
+    - tech_architecture_root
+    - tech_database_root
+    - tech_development_root
+    - tech_guide_root
+    - tech_specification_root
+    - tech_user_guide_root

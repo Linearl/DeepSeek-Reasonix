@@ -1,0 +1,433 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  project_config_schema: ../project-config.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.init
+  short_name: init
+  name: ll-workflow-core / init 初始化与导入工作流
+  description: 初始化 worktree pool 追踪 → 创建 docs 骨架 → 生成导入映射 → 处理冲突 → 验证收口。
+  owner_skill: ll-workflow-core
+  source_skill: ll-workflow-core
+  activation_aliases:
+    - init
+    - initialize
+    - bootstrap
+    - docs-init
+    - 初始化
+    - 导入旧文档
+    - worktree-init
+    - 初始化 worktree
+  activation_hint: 当用户要初始化 docs、重建目录结构、导入历史文档、初始化 worktree pool 或执行 init 时触发。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - route.init.assets
+    - shared.docs.common
+  mode_support:
+    - interactive
+    - non_interactive
+  defaults:
+    on_fail: block
+  context:
+    inputs:
+      - name: workspaceRoot
+        description: 工作区根目录（项目根路径）
+      - name: userTarget
+        description: 用户目标（需求编号 / 文件路径 / 自然语言描述）
+      - name: sourceDir
+        description: sourceDir 字段
+      - name: importStrategy
+        description: 导入策略（copy / move / link）
+    outputs:
+      - name: envReport
+        description: 环境能力探针结果（git/node/python 可用性与缺失清单）
+      - name: bootstrapResult
+        description: bootstrapResult 字段
+      - name: importReport
+        description: importReport 字段
+      - name: importSummary
+        description: importSummary 字段
+      - name: projectConfig
+        description: projectConfig 字段
+    variables:
+      unresolvedMappings_count: 0
+
+  phases:
+    - id: a0_environment_check
+      name: 环境能力检测
+      purpose: 在加载配置与创建结构之前，探测后续阶段所依赖的命令行环境（git / node / python），避免静默失败或能力不可用。
+      steps:
+        - id: probe_environment
+          title: 探测环境能力
+          action: custom.described_action
+          with:
+            description: >-
+              逐项探测 init 流程后续阶段依赖的命令行能力，输出结构化环境清单：
+              1. git —— `git --version`（G 阶段 ensure_git_initialized / hook 注册依赖）；
+              2. node —— `node --version`（f_sync_indexes 的 req-sync.js / generate-docs-index.js 依赖）；
+              3. python（可选）—— `python --version`（目录复制/校验的兜底工具，缺失可降级）。
+              探测策略：能取到版本号 => available=true；命令不存在 => available=false 并加入 missing 列表。
+              不阻断流程：缺失项仅标记 downgrade，由后续步骤按可用性降级执行，
+              并在 import-summary 的环境章节写清"哪些能力缺失、哪些步骤被降级"。
+            expected_outputs:
+              - gitAvailable
+              - nodeAvailable
+              - pythonAvailable
+              - missing
+              - versionNotes
+            success_criteria: 已产出环境可用性清单（允许存在缺失项，缺项不判失败）
+          save_as: env_probe
+
+        - id: report_environment
+          title: 记录环境检测结论
+          action: decision.record
+          with:
+            decisionPoint: environment_check
+            choice: "${ env_probe.missing.length > 0 ? 'partial' : 'ready' }"
+            reason: "环境能力检测完成；缺失项：${ env_probe.missing }"
+
+    - id: a_load_project_config
+      name: 加载项目配置
+      purpose: 检测并加载项目级配置文件，为后续流程提供自定义的目录映射和行为参数。
+      steps:
+        - id: detect_project_config
+          title: 检测项目配置文件
+          action: config.manage_project
+          with:
+            mode: read
+            workspaceRoot: "${ workspaceRoot }"
+            configFileName: ".ll-workflow.yaml"
+          save_as: config_detection
+
+        - id: branch_config_exists
+          type: branch
+          if: "${ config_detection.configExists == true }"
+          then:
+            - id: use_existing_config
+              title: 使用现有配置
+              action: decision.record
+              with:
+                decisionPoint: project_config
+                choice: use_existing
+                reason: "项目配置文件已存在: ${ config_detection.configPath }"
+              save_as: config_decision
+          else:
+            - id: interactive_setup_config
+              title: 交互式配置设置
+              action: config.interactive_setup
+              with:
+                workspaceRoot: "${ workspaceRoot }"
+                baseProfile: default
+              save_as: interactive_config
+
+            - id: write_new_config
+              title: 写入项目配置文件
+              action: config.manage_project
+              with:
+                mode: write
+                workspaceRoot: "${ workspaceRoot }"
+                projectConfig: "${ interactive_config.projectConfig }"
+              save_as: config_write_result
+
+            - id: record_config_created
+              title: 记录配置创建
+              action: decision.record
+              with:
+                decisionPoint: project_config
+                choice: created
+                reason: "新建项目配置文件: ${ config_write_result.configPath }"
+              save_as: config_decision
+
+    - id: b_prepare_context
+      name: 准备目录配置
+      purpose: 解析目标版本并加载目录布局，合并项目级配置覆盖。
+      steps:
+        - id: resolve_version
+          title: 解析目标版本
+          action: context.resolve_target_version
+          with:
+            userTarget: "${ userTarget }"
+            workspaceRoot: "${ workspaceRoot }"
+          save_as: target_context
+
+        - id: load_base_directory_profile
+          title: 加载基础目录结构配置
+          action: layout.load_directory_profile
+          with:
+            directoryProfileRef: "../../config/directory-layout.yaml#profiles/${ config_detection.projectConfig.base_profile || 'default' }"
+            workspaceRoot: "${ workspaceRoot }"
+            targetDevDir: "${ target_context.targetDevDir }"
+            version: "${ target_context.version }"
+          save_as: base_layout_profile
+
+        - id: merge_project_overrides
+          title: 合并项目级配置覆盖
+          action: config.merge_profiles
+          with:
+            baseProfile: "${ base_layout_profile }"
+            projectConfig: "${ config_detection.projectConfig }"
+          save_as: layout_profile
+
+        - id: init_worktree_pool_tracking
+          title: 初始化 worktree pool 追踪文件
+          action: custom.described_action
+          with:
+            description: >-
+              检查项目根目录下的 worktree/.slots.json 是否存在。
+              若不存在，创建 JSON 文件：{"version":1,"slots":[]}。
+              注意：此时不创建任何 worktree slot，真正的 worktree 创建由 branch 路由按需懒创建。
+              若已存在，跳过。
+              输出 wtPoolStatus（ready 或 newly_initialized）。
+              worktree 最大并行数使用项目配置中的 workflows.branch.max_parallel_slots（默认 3）。
+            expected_outputs:
+              - wtPoolStatus
+            success_criteria: worktree pool 追踪文件已就绪
+            workspaceRoot: "${ workspaceRoot }"
+            maxSlots: "${ config_detection.projectConfig.workflows?.branch?.max_parallel_slots || 3 }"
+          save_as: wt_pool_init
+
+    - id: c_bootstrap
+      name: 创建结构
+      purpose: 初始化 docs 结构并预置模板。
+      steps:
+        - id: bootstrap_docs
+          title: 创建 docs 骨架
+          action: docs.bootstrap_structure
+          with:
+            sourceTemplate: templates/docs/
+            targetSlot: docs_root
+            bootstrapMode: copy_first
+            fallbackLayout: "${ layout_profile }"
+            description: >-
+              优先直接复制技能内置 templates/docs/ 目录到目标版本，快速生成完整骨架。
+              复制失败时回退到 layout profile 配置创建。
+          save_as: bootstrap_result
+
+        - id: bootstrap_if_missing_only
+          type: branch
+          if: "${ bootstrap_result.bootstrapResult.wasCreated == true }"
+          then:
+            - id: record_bootstrap_created
+              title: 记录新建 docs 结构
+              action: decision.record
+              with:
+                decisionPoint: bootstrap_docs
+                choice: created
+                reason: 目标 docs 原先不存在或结构不完整
+          else:
+            - id: record_bootstrap_skipped
+              title: 记录跳过初始化
+              action: decision.record
+              with:
+                decisionPoint: bootstrap_docs
+                choice: skipped
+                reason: docs 结构已存在
+
+    - id: d_import_mapping
+      name: 导入映射与冲突处理
+      purpose: 对来源文档做分类、生成诊断文档、用户批量确认后导入。
+      steps:
+        - id: generate_classification_diagnosis
+          title: 生成分类建议诊断文档
+          action: custom.described_action
+          with:
+            description: >-
+              扫描 sourceDir 下的历史文档，依据标题、目录语义和内容关键词，为每份文档推断目标 ${docs} 分类，
+              生成诊断文档写入 ${docs}/3.analysis/diagnosis/01-active/，列出所有文件的建议分类与置信度。
+              高置信度（>=0.8）自动标记，低置信度标记为待确认。
+              诊断文档随问题处理归档到 02-outdated/。
+            expected_outputs:
+              - diagnosisPath
+              - importCandidates
+              - unresolvedMappings
+            success_criteria: 诊断文档已生成，大部分文档已自动归类，剩余歧义文档可批量确认
+            layout: "${ layout_profile }"
+          save_as: diagnosis_result
+
+        - id: review_diagnosis
+          title: 对话确认分类
+          action: interaction.review_diagnosis
+          with:
+            diagnosisPath: "${ diagnosis_result.diagnosisPath }"
+            mode: conversation
+            instructions: >-
+              用户查看诊断文档后，在对话中与 AI 交互，
+              批量确认或修改分类建议。已确认的分类直接生效。
+          save_as: confirmed_mapping
+
+        - id: import_documents
+          title: 执行导入
+          action: docs.import_documents
+          with:
+            sourceDir: "${ sourceDir }"
+            layout: "${ layout_profile }"
+            targetSlot: docs_root
+            importStrategy: "${ importStrategy }"
+            confirmedMapping: "${ confirmed_mapping }"
+          save_as: import_result
+
+    - id: e_validation
+      name: 验证与收口
+      purpose: 校验目标 docs 完整性并输出总结。
+      steps:
+        - id: validate_bootstrap_import
+          title: 执行导入后校验
+          action: validation.execute
+          with:
+            validationPlan: docs_bootstrap_validation
+          save_as: validation_result
+
+        - id: finalize_summary
+          title: 生成导入总结
+          action: custom.described_action
+          with:
+            description: >-
+              汇总 config_detection、bootstrap_result、import_result 与 validation_result，
+              生成 import-summary.md 所需的完成项、跳过项、失败项与待人工项清单。
+              包含项目配置信息：使用的基础 profile、覆盖的 slots、工作流参数。
+            expected_outputs:
+              - importSummary
+            success_criteria: 使用者无需回读全部日志就能理解导入结果
+            layout: "${ layout_profile }"
+            projectConfig: "${ config_detection.projectConfig }"
+          save_as: import_summary
+
+    - id: f_sync_indexes
+      name: 同步治理索引
+      purpose: 生成或同步 INDEX.md、requirements.md 等治理入口文件。
+      steps:
+        - id: sync_requirements_md
+          title: 同步 requirements.md
+          action: docs.maintain_requirements_md
+          with:
+            mode: sync
+            layout: "${ layout_profile }"
+            apply: true
+          save_as: requirements_sync
+
+        - id: generate_docs_index
+          title: 生成 docs/INDEX.md
+          action: custom.described_action
+          with:
+            description: >-
+              扫描 docs 目录下所有 Markdown 文件，生成 docs/INDEX.md 索引文件。
+              索引按目录分类组织，包含文件标题、描述和相对路径。
+              执行 templates/scripts/generate-docs-index.js（node ./docs --apply）。
+              前置条件：a0_environment_check 的 nodeAvailable 为 true；否则跳过并在 summary 记录降级。
+            expected_outputs:
+              - docsIndexPath
+            layout: "${ layout_profile }"
+          save_as: docs_index_result
+
+        - id: sync_task_readme
+          title: 同步 docs/1.task/README.md
+          action: custom.described_action
+          with:
+            description: >-
+              扫描 docs/1.task/B.todo/ 和 docs/1.task/B.2.done/ 下的任务包，
+              生成 docs/1.task/README.md 任务总览索引。
+            expected_outputs:
+              - taskReadmePath
+            layout: "${ layout_profile }"
+          save_as: task_readme_result
+
+        - id: record_sync_complete
+          title: 记录索引同步完成
+          action: decision.record
+          with:
+            decisionPoint: index_sync
+            choice: completed
+            reason: "已同步 requirements.md、docs/INDEX.md、docs/1.task/README.md"
+
+    - id: g_verify_and_register
+      name: 产物检查与注册
+      purpose: 检查所有关键产物是否完整生成，并注册 git pre-commit hooks 实现治理文件自动同步。
+      steps:
+        - id: verify_outputs
+          title: 检查产物完整性
+          action: custom.described_action
+          with:
+            description: >-
+              逐一检查以下关键文件是否存在且内容有效：
+              1. requirements.md 存在且非空
+              2. docs/INDEX.md 存在且包含目录条目
+              3. docs/1.task/README.md 存在
+              4. 各子目录模板文件已就位
+              对于任一缺失的文件，记录到 missingOutputs 列表中。
+            expected_outputs:
+              - missingOutputs
+              - allOutputsValid
+            success_criteria: 所有关键文件均已生成且内容有效
+          save_as: output_check
+
+        - id: handle_missing_outputs
+          type: branch
+          if: "${ output_check.missingOutputs.length > 0 }"
+          then:
+            - id: report_missing
+              title: 报告缺失产物
+              action: custom.described_action
+              with:
+                description: >-
+                  列出所有缺失的关键文件，说明可能原因，
+                  建议用户回退到对应阶段重新生成，或确认是否可以忽略。
+              save_as: missing_report
+          else:
+            - id: record_outputs_valid
+              title: 记录产物完整
+              action: decision.record
+              with:
+                decisionPoint: output_verification
+                choice: all_valid
+                reason: "所有关键文件均已生成"
+
+        - id: ensure_git_initialized
+          title: 确保 git 仓库已初始化
+          action: custom.described_action
+          with:
+            description: >-
+              检查 workspaceRoot 是否为 git 仓库（git rev-parse --is-inside-work-tree）。
+              前置条件：a0_environment_check 的 gitAvailable 为 true；若为 false，本步标记 skip 并记录降级原因。
+              若否 → 执行 `git init -b main`（失败则回退 `git init`），
+              并在根目录补齐 .gitignore（忽略 .reasonix/、worktrees/、系统/Office 临时文件）。
+              已初始化则跳过。输出 gitReady（true/false）与 initAction（already 或 initialized）。
+              此步骤必须排在 register_pre_commit_hooks 之前：非 git 仓库时，
+              后续 hook 注册无法落盘，必须在此兜底完成 git 初始化后走正常注册路径。
+            expected_outputs:
+              - gitReady
+              - initAction
+            success_criteria: workspaceRoot 已是 git 仓库
+          save_as: git_init
+
+        - id: register_pre_commit_hooks
+          title: 注册 git pre-commit hooks
+          action: custom.described_action
+          with:
+            description: >-
+              注册 git pre-commit hook，实现治理文件自动同步：
+              1. 复制 routes/init/templates/hook/pre-commit.template.sh 到 .git/hooks/pre-commit；
+              2. 模板自带幂等标记 "# ll-workflow-core: auto-sync"，内容为唯一事实源：
+                 - docs/ 下 Markdown 改动 → node generate-docs-index.js ./docs --apply → git add docs/INDEX.md
+                 - docs/1.task/ 下改动 → cd docs/1.task && node req-sync.js sync --docs .. --apply → git add docs/1.task/requirements.md
+                 （脚本根路径按平台解析：Windows=%APPDATA%/reasonix/skills/ll-workflow-core/templates/scripts，POSIX=$HOME/.reasonix/...）
+              3. 已存在同标记的 hook → 覆盖安装同一模板（幂等，单事实源）；
+              4. 确保 hook 文件可执行（chmod +x；Windows 下 Git 对 .sh 不做位校验可跳过非零退出）。
+            expected_outputs:
+              - hookRegistered
+              - hookAlreadyExisted
+            success_criteria: .git/hooks/pre-commit 已落盘且首行含 ll-workflow-core:auto-sync 特征标记
+          save_as: hook_result
+
+        - id: record_hook_status
+          title: 记录 hook 注册状态
+          action: decision.record
+          with:
+            decisionPoint: pre_commit_hook
+            choice: "${ hook_result.hookAlreadyExisted ? 'already_registered' : 'newly_registered' }"
+            reason: "pre-commit hook 状态: ${ hook_result.hookAlreadyExisted ? '已存在' : '新注册' }"

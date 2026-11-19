@@ -1,0 +1,120 @@
+imports:
+  action_registry: ../action-registry.yaml
+  composite_registry: ../composite-actions.yaml
+  schema: ../workflow.schema.yaml
+  directory_layout: ../../config/directory-layout.yaml
+  route_registry: ../../config/route-registry.yaml
+  resource_bundles: ../../config/resource-bundles.yaml
+
+workflow:
+  id: route.example
+  short_name: example
+  name: ll-workflow-core / example 新流程模板
+  description: 用于新增第 N 条 route 时的最小模板。
+  owner_skill: ll-workflow-core
+  source_skill: custom
+  activation_aliases:
+    - example
+    - 示例流程
+  activation_hint: 当用户意图命中该流程时触发。
+  directory_profile_ref: ../../config/directory-layout.yaml#profiles/default
+  resource_bundles:
+    - shared.core
+    - shared.docs.common
+  mode_support:
+    - interactive
+    - non_interactive
+  defaults:
+    on_fail: block
+    route_status: experimental
+  context:
+    inputs:
+      - workspaceRoot
+      - userTarget
+      - userRequest
+    outputs:
+      - routeResult
+    variables:
+      routeReady: false
+      routeSummary: ""
+    layout:
+      description: 运行时由 directory profile 解析出的槽位
+    loadedBundles:
+      description: 运行时由 resource bundle 装载出的资源清单
+
+  phases:
+    - id: p0_route_resolution
+      name: 路由准备
+      purpose: 解析版本、route、directory profile 与资源包。
+      steps:
+        - id: resolve_version
+          title: 解析目标版本
+          action: context.resolve_target_version
+          with:
+            userTarget: "${ userTarget }"
+            workspaceRoot: "${ workspaceRoot }"
+          save_as: target_context
+
+        - id: resolve_route
+          title: 解析当前 route
+          action: route.resolve_workflow
+          with:
+            routeRegistryRef: "../../config/route-registry.yaml"
+            userRequest: "${ userRequest }"
+            explicitRoute: example
+          save_as: route_context
+
+        - id: load_directory_profile
+          title: 加载目录 profile
+          action: layout.load_directory_profile
+          with:
+            directoryProfileRef: "${ route_context.directoryProfileRef }"
+            workspaceRoot: "${ workspaceRoot }"
+            targetDevDir: "${ target_context.targetDevDir }"
+            version: "${ target_context.version }"
+          save_as: layout_profile
+
+        - id: load_resource_bundles
+          title: 装载资源包
+          action: resource.load_bundle
+          with:
+            resourceBundlesRef: "../../config/resource-bundles.yaml"
+            bundleIds: "${ route_context.resourceBundles }"
+          save_as: bundles
+
+    - id: p1_business_flow
+      name: 业务流程
+      purpose: 在这里填入新 route 的主逻辑。
+      steps:
+        - id: record_initial_decision
+          title: 记录初始决策
+          action: decision.record
+          with:
+            decisionPoint: route_start
+            choice: example_started
+            reason: 使用 route-template.workflow.yaml 创建新流程
+
+        - id: example_custom_action
+          title: 用自定义动作占位
+          action: custom.described_action
+          with:
+            description: >-
+              在这里替换为新 route 的核心业务动作；如果动作稳定并被复用，
+              后续应提升为正式基础动作或复合动作。
+            expected_outputs:
+              - routeResult
+            success_criteria: 新 route 的主要目标达成
+            layout: "${ layout_profile }"
+          save_as: route_result
+
+    - id: p2_finalize
+      name: 收口
+      purpose: 输出总结并同步必要入口。
+      steps:
+        - id: record_route_status
+          title: 更新 route 状态
+          action: decision.record
+          with:
+            decisionPoint: route_end
+            choice: example_finished
+            reason: 新流程模板执行完成
