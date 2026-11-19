@@ -45,10 +45,29 @@ const (
 	// 重标定不是「数据量涨了所以放宽」——数据量只涨 10.9% 而读数涨 88～154%
 	// （比值 8～14 倍）、P50 几乎不动、两期该段 Max 完全相同，算术上否掉了
 	// 「自然增长」解释（报告 §7.1）。
-	defaultBootHotMaxMS        = 3500
-	defaultOpenTopicMaxMS      = 2000 // 363 追加验收⑥：打开历史对话→可发消息 <2s
-	defaultRenderMaxMS         = 150  // tab_timing.go slowTabSwitchLogMs（任务 196 判定线）
-	defaultFirstResponseMaxSec = 60   // 370：无数值验收，取遥测分桶 s_15_60 上沿（可配）
+	defaultBootHotMaxMS   = 3500
+	defaultOpenTopicMaxMS = 2000 // 363 追加验收⑥：打开历史对话→可发消息 <2s
+	defaultRenderMaxMS    = 150  // tab_timing.go slowTabSwitchLogMs（任务 196 判定线）
+	// defaultFirstResponseMaxSec：首响 P95 门，原值 60s（370 无数值验收，取
+	// 遥测分桶 s_15_60 上沿）。tl1684 R7 按「可达形态」重标定为 180s，量级
+	// 论证（详见 docs/reasonix/report/ 报告）：
+	//   - 60s 门从未在修正口径下可达：重建真实样本集（含被 checkpoint 截断
+	//     的样本）后三期 P95 = 61.7s/171.1s/160.1s，六期公布读数（截断低估
+	//     口径）也在 60.0~153.1s——唯一的 60.0s 恰出自截断最严重的第 4 期
+	//     （低使用周+样本丢失），是假可达；修正口径下 60s 门=恒 FAIL 假门。
+	//   - 读数构成不可本侧收敛：P95 由 provider 等待主导（长尾样本中占
+	//     88.7%，corr(等待, cacheMissTokens)≈0.80 三期稳定），属 provider 侧
+	//     形态；压缩同步阻塞（唯一本地放大器）已被 tl1669 同步 await 结构性
+	//     消解，宿主侧 P95 仅 7.96s。剩余长尾靠 R4（保前缀缓存）/R5（ctx
+	//     治理）类件才动得了。
+	//   - 门语义 = 回归检测（结构性回退如压缩阻塞回潮/宿主回归才该红），
+	//     不是 provider 体验承诺：180s = 修正口径最重周 P95 171.1s 上浮 ~5%，
+	//     既有余量又不把正常周判红；低使用周（60s 档）远在门内。
+	//   - 配套观测行「≥60s 长尾普查」承载真实恶化信号（长尾时长占比
+	//     25.9%→45.9%→58.3% 是三期唯一真实恶化量）；待 R4/R5 落地后再按新
+	//     形态重标定。
+	defaultFirstResponseLongTailMS = 60000 // 长尾普查门槛（观测行，不设门）
+	defaultFirstResponseMaxSec     = 180
 	// 任务 909：切换快路径门。task 602 的验收是「跨供应商热切 <2s」（端到端、
 	// 测试内构造）；日志里的 elapsed_ms 是同一路径的现场读数（含锁等与
 	// tabs 持久化）。门取 1500ms：快路径本体是毫秒级 override，够不到
@@ -420,9 +439,13 @@ func benchSwitchCost(col *logCollect, o options) []metricResult {
 	return out
 }
 
-// benchFirstResponse：M5 发消息→首响，P95 ≤ 阈值（370 未定数值验收，
-// 默认取遥测分桶 s_15_60 上沿 60s，可配）。数据源为 sessions/*.turns.jsonl
-// turn ledger（370/doctor 同款口径），不是 events 的 turn_begin 标记。
+// benchFirstResponse：M5 发消息→首响，P95 ≤ 阈值（370 未定数值验收；门值
+// tl1684 R7 按可达形态重标定，见 defaultFirstResponseMaxSec 注释）。数据源
+// 为 sessions/*.turns.jsonl turn ledger（370/doctor 同款口径），不是 events
+// 的 turn_begin 标记；checkpoint 截断删除的历史样本经留存池跨 checkpoint
+// 聚合回来（tl1684 R7），P95/Max 不再系统性低估长尾。
+// 第二行「≥60s 长尾普查」是观测项：三期唯一真实恶化量是长尾占总等待的
+// 比重（25.9%→45.9%→58.3%），P95 单指标看不到这个形态。
 func benchFirstResponse(o options, now time.Time) []metricResult {
 	out := []metricResult{}
 	roots := sessionRoots(o.home, o.sessionsDir)
@@ -432,7 +455,7 @@ func benchFirstResponse(o options, now time.Time) []metricResult {
 			Bench: "first-response", Metric: "发消息→首响",
 			Source:    fmt.Sprintf("sessions/*%s turn_started→首个模型输出", store.SessionTurnEventLogSuffix),
 			Threshold: fmt.Sprintf("P95 ≤ %.0fs", o.firstResponseMaxSec),
-			Ref:       "task 370（阈值默认取遥测分桶 s_15_60 上沿）",
+			Ref:       "task 370（门值 tl1684 R7 按可达形态重标定）",
 			Verdict:   verdictNA, Note: fmt.Sprintf("会话目录不可读：%v", err),
 		})
 		return out
@@ -444,12 +467,15 @@ func benchFirstResponse(o options, now time.Time) []metricResult {
 	maxSec := o.firstResponseMaxSec * 1000
 	r := latencyResult("first-response", "发消息→首响（turn_started→首个模型输出）",
 		fmt.Sprintf("P95 ≤ %.0fs", o.firstResponseMaxSec),
-		"task 370（阈值默认取遥测分桶 s_15_60 上沿）", vals, maxSec,
+		"task 370（门值 tl1684 R7 按可达形态重标定：provider 主导+回归检测语义）", vals, maxSec,
 		verdictNA, fmt.Sprintf("窗口内无 turn 样本（扫描 %d 个 ledger 文件）", scan.FilesScanned))
 	if r.N > 0 {
 		r = gated(r, r.P95MS, maxSec)
 	}
 	note := fmt.Sprintf("扫描 %d 个 turn ledger", scan.FilesScanned)
+	if scan.FromCheckpoint > 0 {
+		note += fmt.Sprintf("；%d 个样本经 checkpoint 留存池聚合（tl1684 R7）", scan.FromCheckpoint)
+	}
 	if scan.NoResponse > 0 {
 		note += fmt.Sprintf("；%d 个 turn 无首响（取消/失败）", scan.NoResponse)
 	}
@@ -461,6 +487,38 @@ func benchFirstResponse(o options, now time.Time) []metricResult {
 	}
 	r.Note = note
 	out = append(out, r)
+
+	// 长尾普查（观测）：≥60s 样本条数、其时长占总等待的比重、最长样本。
+	// tl1684 归因 C7：该占比三期 25.9%→45.9%→58.3%，是唯一真实恶化量——
+	// P95 假持平的周期里它已经翻倍。观测不设门（无 tasklist 数值验收）。
+	longTail := make([]int64, 0, len(vals))
+	var totalMS, tailMS int64
+	for _, v := range vals {
+		totalMS += v
+		if v >= defaultFirstResponseLongTailMS {
+			longTail = append(longTail, v)
+			tailMS += v
+		}
+	}
+	tail := metricResult{
+		Bench: "first-response", Metric: fmt.Sprintf("≥%ds 长尾普查（观测）", defaultFirstResponseLongTailMS/1000),
+		Source:    "与首响同源样本；占比=长尾样本时长合计/全部首响时长合计",
+		Threshold: "—（观测计数；占比升高=长尾占总等待变重，tl1684 C7）",
+		Ref:       "tl1684 归因 C7（三期 25.9%→45.9%→58.3%）",
+		N:         len(longTail), Verdict: verdictObserve,
+	}
+	if len(longTail) > 0 {
+		sort.Slice(longTail, func(i, j int) bool { return longTail[i] < longTail[j] })
+		tail.P50MS = float64(percentileInt64(longTail, 0.50))
+		tail.MaxMS = float64(longTail[len(longTail)-1])
+		if totalMS > 0 {
+			tail.Note = fmt.Sprintf("长尾时长占比 %.1f%%（%d/%d ms）；占比升高=长尾变重，P95 持平时尤需看本行",
+				float64(tailMS)*100/float64(totalMS), tailMS, totalMS)
+		}
+	} else {
+		tail.Note = "窗口内无 ≥60s 长尾样本"
+	}
+	out = append(out, tail)
 	return out
 }
 

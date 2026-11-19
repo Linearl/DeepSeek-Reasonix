@@ -24,7 +24,8 @@ go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json  
 | M2 | 打开历史对话→可发消息（`open-topic`） | P95 < 2000ms | 任务 363 追加验收⑥「打开历史对话到可发消息 <2s（open-topic total + ancillary effort 合成体感）」 | `frontend open-topic summary` total + `tab switch timing` 的 `open-topic:ancillary effort` 合成配对（同 tab，60s 窗） |
 | M3 | 打开会话失败（`open-topic`，census） | 0 条，任何一条即 FAIL | 任务 298「失败必须留痕（无日志≠未发生）」 | `desktop: open session failed` 计数 |
 | M4 | 打开会话 ≥2s 慢开（`open-topic`，census） | 0 条（越线才落日志） | 363⑥ 的实锤形态 / 298 慢路径面 | `desktop: open session slow`（`slowThresholdMs=2000` 截断样本，单列不并入 P95 门） |
-| M5 | 发消息→首响（`first-response`） | P95 ≤ 60s（可配） | 任务 370（无验收数值；默认取遥测 `cli_first_response_latency` 分桶 `s_15_60` 上沿） | `sessions/*.turns.jsonl`：`turn_started` → 首个 `reasoning/text/tool_dispatch/tool_started`（与 telemetry sink、doctor responsiveness 同口径） |
+| M5 | 发消息→首响（`first-response`） | P95 ≤ 180s（可配；tl1684 R7 按可达形态重标定，原 60s） | 任务 370（无验收数值；原值取遥测分桶上沿；tl1684 归因证明 60s 在修正口径下恒 FAIL——provider 等待主导、重建三期 P95=61.7/171.1/160.1s——门改回归检测语义） | `sessions/*.turns.jsonl`：`turn_started` → 首个 `reasoning/text/tool_dispatch/tool_started`（与 telemetry sink、doctor responsiveness 同口径）；checkpoint 截断样本经留存池跨 checkpoint 聚合（tl1684 R7，按 TurnID 去重） |
+| M5b | ≥60s 首响长尾普查（`first-response`，OBSERVE） | 无（占比升高=长尾变重，tl1684 C7：三期 25.9%→45.9%→58.3%） | tl1684 归因 C7（三期唯一真实恶化量；P95 持平周期里它已翻倍） | 与 M5 同源样本：≥60s 条数、长尾时长占全部首响时长比、Max |
 | M6 | 切 tab 渲染 render（`tab-switch`） | P95 < 150ms | 任务 196 判定线（`tab_timing.go` `slowTabSwitchLogMs=150`，越线才落日志则取同值作门） | `frontend tab switch render` |
 | M7 | transcript 首帧 / switch-tab summary（`tab-switch`，OBSERVE） | 无 | tasklist 无数值验收 | `frontend transcript first frame`、`frontend switch-tab summary` |
 | M8 | 后端 stage 越线普查（`tab-switch`，OBSERVE） | 普通 stage 150ms / switch-out 50ms（越线才落行） | 任务 196 | `desktop: tab switch timing` 按 stage 归并计数 |
@@ -44,9 +45,12 @@ go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json  
 
 - **首响数据源是 turn ledger，不是 events 的 `turn_begin`**：后者骑在下一次
   save 上（文件顺序与时间戳错位）、仅 schema-2 会话写入，2026-10-09 实测
-  16 个事件文件 0 样本。ledger 会随 checkpoint 截断旧事件——样本只覆盖窗口
-  内仍保留记录的 turn，这正是 `-window` 的语义；截断的 ledger 停在截断处
-  （不修补），计数进 `Torn`。
+  16 个事件文件 0 样本。ledger 会随 checkpoint 截断旧事件——tl1684 归因
+  证实这曾让历史最坏样本对周读数不可见（公布 Max 160s，真实 Max ≥180s），
+  **tl1684 R7 起写侧在 checkpoint 行留存有界首响样本池（≤1024 条，
+  content-free），读侧跨 checkpoint 聚合、按 TurnID 与 live 配对去重**；
+  留存自写侧落地起生效，此前已被截断删除的样本不可恢复。截断的 ledger
+  停在截断处（不修补），计数进 `Torn`。
 - **热路径判定主口径是 `runtime assembly hit` 配对**（363A 复用的直接证据，
   acquire 发生在 BuildWithAssembly 前，与 `boot summary` 的构建起点对齐
   ±2s，实测最大偏差 1.7s）；复用功能上线前的老日志退化到分相预算启发式。
