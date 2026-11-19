@@ -270,7 +270,7 @@ const readSrc = (p: string) => readFileSync(resolve(here, "..", p), "utf8");
 
   // tl1703：两层品牌帧对齐契约（index.html boot-shell ↔ styles.css splash）。
   // 对齐基准 = boot-shell（它还在 flag-off 时渲染，flag-off 视觉路径字节不变）。
-  const indexHtml = readFileSync(resolve(here, "..", "index.html"), "utf8");
+  const indexHtml = readFileSync(resolve(here, "..", "..", "index.html"), "utf8");
   const stylesSrc2 = readSrc("styles.css");
   ok(/\.boot-shell__mark img\{[^}]*width:56px;height:56px\}/.test(indexHtml),
     "boot-shell mark paints the logo at 56px (index.html critical shell)");
