@@ -231,12 +231,22 @@ export function QuestionJumpBar({
 
   // When many history turns are marked, grow the rail's vertical extent so each
   // marker keeps a comfortable ~12px gap instead of being packed into a fixed
-  // 240px column. The height grows with the marker count, capped at 70vh, so a
-  // long session stays readable without overflowing the transcript shell (#9218).
+  // 240px column. The height grows with the marker count, capped inside the
+  // transcript shell, so a long session stays readable without overflowing the
+  // transcript shell (#9218).
+  //
+  // tl1704: the cap must resolve against the containing block (.transcript-shell),
+  // never against the viewport. The shell sits above the footer (composer), and
+  // .main clips overflow, so a viewport cap (70vh) let the centered rail spill
+  // past the shell's bottom edge — the lowest markers and the tl1698 bottom
+  // anchor disappeared under/near the composer whenever the shell was shorter
+  // than the rail (tall composer, small window). Percentage height resolves
+  // against the shell, so the rail shrinks with it when the composer expands
+  // (same 16px inset as the tl1244 question-search-panel fix).
   const RAIL_BASE_HEIGHT = 240;
   const RAIL_MARKER_GAP = 12;
   const railHeight = markerTurns.length > 20
-    ? `min(${Math.max(RAIL_BASE_HEIGHT, markerTurns.length * RAIL_MARKER_GAP + 24)}px, 70vh)`
+    ? `min(${Math.max(RAIL_BASE_HEIGHT, markerTurns.length * RAIL_MARKER_GAP + 24)}px, calc(100% - 16px))`
     : undefined;
 
   return (
