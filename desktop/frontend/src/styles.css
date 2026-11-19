@@ -5092,6 +5092,12 @@ a[href] {
   align-items: flex-end;
   width: 56px;
   height: 240px;
+  /* tl1704: the rail must stay inside .transcript-shell (its containing block).
+     The shell's bottom edge is the composer's top and .main clips overflow, so
+     the default 240px height would still spill past the shell on short windows
+     with a tall composer — hiding the lowest markers and the bottom anchor.
+     Percentage max-height tracks the shell as it shrinks/grows (tl1244 inset). */
+  max-height: calc(100% - 16px);
   padding: 0 12px;
   opacity: 0;
   pointer-events: none;
