@@ -10,7 +10,7 @@ import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/
 import { canNestUnder, childGroups, descendantGroupIDs, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import { formatSessionBusyError } from "../lib/sessionBusyError";
-import type { DeleteGroupsPlan, ProjectNode, ProjectTreeOrganizationBindings, SessionGroup, SessionGroupMigrationResult } from "../lib/types";
+import type { DeleteGroupsPlan, ProjectNode, ProjectTreeOrganizationBindings, SessionGroup, SessionGroupMigrationResult, SessionTopicMigrationResult } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { reportFrontendLog } from "../lib/frontendLog";
 
@@ -206,6 +206,13 @@ export interface ProjectTreeOrganizationController {
    * 失败整体回滚；前端两路 settle 都重拉花名册并刷新话题页。binding 缺失
    * 时拒绝。成功返回迁移回执（movedSessions 供 toast 读数）。 */
   migrateGroupToPartition(scope: string, sourceRoot: string, groupID: string, targetRoot: string): Promise<SessionGroupMigrationResult>;
+  /** tl1711: whether the backend single-topic move binding exists. The「移动
+   * 到项目」entry renders only when true — older mocks stay byte-identical. */
+  canMigrateTopics(): boolean;
+  /** tl1711：把单个会话（topic）跨分区移动。后端一次原子事务（会话文件
+   * 搬家 + topic 注册/置顶/源分组名册同步），失败整体回滚；前端两路 settle
+   * 都重拉花名册并刷新话题页（tl1560 migrateGroupToPartition 同款纪律）。 */
+  moveTopicToPartition(scope: string, sourceRoot: string, topicID: string, targetRoot: string): Promise<SessionTopicMigrationResult>;
 }
 
 export function useProjectTreeOrganization({
@@ -637,6 +644,29 @@ export function useProjectTreeOrganization({
           await refresh();
         } catch (error) {
           reportFrontendLog("project-groups", "topic page reload after group migration failed", `error=${String(error)}`);
+        }
+        await Promise.resolve(onTopicsChanged?.()).catch(() => undefined);
+      }
+    },
+    canMigrateTopics() {
+      // tl1711：入口开关跟绑定走——老 mock / 浏览器开发面没有单会话移动
+      // 绑定，菜单项整体不渲染（canMigrateGroups 同款 typeof 守卫纪律）。
+      return typeof bindings.MoveSessionTopic === "function";
+    },
+    async moveTopicToPartition(scope, sourceRoot, topicID, targetRoot) {
+      if (typeof bindings.MoveSessionTopic !== "function") {
+        throw new Error("session topic move binding unavailable");
+      }
+      try {
+        return await bindings.MoveSessionTopic(scope, sourceRoot, topicID, targetRoot);
+      } finally {
+        // tl1560 migrateGroupToPartition 同款两路 settle：源/目标分区花名册
+        // 全量重拉 + 话题页刷新（成功读移动后真态；失败读回滚后形态）。
+        for (const loaded of Array.from(loadedGroupsRef.current)) loadGroups(loaded, true);
+        try {
+          await refresh();
+        } catch (error) {
+          reportFrontendLog("project-groups", "topic page reload after topic move failed", `error=${String(error)}`);
         }
         await Promise.resolve(onTopicsChanged?.()).catch(() => undefined);
       }

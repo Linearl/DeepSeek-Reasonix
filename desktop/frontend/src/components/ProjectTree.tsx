@@ -1208,10 +1208,13 @@ export function ProjectTree({
   const forceArchiveDialog = useConfirmDialog();
   // tl1502b（用户 20261109 拍板）：「移出侧边栏」首击即弹显式确认弹窗。原二段
   // 确认（confirmRemoveProject 状态切菜单文字）是死机制：ContextMenu 叶子点选
-  // 即整链关闭，重开菜单的 openProjectMenu/openTopicMenu/closeMenu 又把武装态
+  // 即整链关闭，重开菜单的 openProjectMenu/closeMenu 又把武装态
   // 清零——确认文案永远不会出现，removeProject 从未被确认路径调到。改走应用内
   // 确认弹窗（tl1249 同载体，danger tone），死状态链一并删除。
   const removeProjectDialog = useConfirmDialog();
+  // tl1711：会话右键「移动到项目」确认弹窗——跨分区数据面（会话文件搬家 +
+  // 注册搬家），非静默动作；tl1560 分组迁移同款确认纪律。
+  const topicMoveDialog = useConfirmDialog();
   const dissolveProjectGroup = useCallback((group: ProjectGroup) => {
     void (async () => {
       setGroupMenuId(null);
@@ -1983,12 +1986,27 @@ export function ProjectTree({
         purposeEditorAnchorRef.current = event.currentTarget as HTMLElement;
       };
       // tl 1103 会话右键菜单（一级 9 项 / 17 功能，二级聚合）——顺序即需求规格表：
-      //   置顶 / 重命名 / AI 重命名 / 已读 ── 分组 ▸ ── 复制 ▸ / 打开方式 ▸ /
-      //   编辑职责 ── 移到回收站（唯一 danger 项）。
+      //   置顶 / 重命名 / AI 重命名 / 已读 ── 分组 ▸ ── 移动到项目 ▸ ── 复制 ▸ /
+      //   打开方式 ▸ / 编辑职责 ── 移到回收站（唯一 danger 项）。
       // 强制归档不再占一级：回收站失败且后端标记 forceable（lease busy 类）时弹
       // 二次确认走 force（trashTopicForceableAny）；其他失败照常报错。远端会话
       // 无本地路径/工作区，复制 ▸ 打开方式 ▸ 两项不渲染。
       const organizationItems = organization.topicMenuItems(node, t);
+      // tl1711 会话右键「移动到项目 ▸」：单会话跨分区移动（分组 ▸ 只管同
+      // 项目内的分组归属；跨项目移动从这里走）。目标清单 = global 区 + 全部
+      // 其他项目（migrationTargets 剔除源分区自身）；源分区按行 kind 解析
+      // （projectTreeTopicOpenRequest 同款判定）。入口跟绑定走（老 mock 零
+      // 回退），远端会话无本地盘面不渲染，running 行禁用（后端活跃门兜底
+      // 并发窗口），确认弹窗后落盘（tl1560 分组迁移同款确认纪律）。
+      const topicMoveScope = node.kind === "global_topic" || node.kind === "global_session" ? "global" : "project";
+      const topicMoveSource = {
+        scope: topicMoveScope,
+        root: topicMoveScope === "global" ? "" : node.root ?? "",
+      };
+      const canMoveTopicToPartition = isTopicNode(node) || isRuntimeSessionNode(node);
+      const topicMoveTargets = canMoveTopicToPartition && !node.remoteSession && organization.canMigrateTopics()
+        ? organization.migrationTargets(topicMoveSource)
+        : [];
       // tl1240: the batch-mode right-click menu is deliberately slim — the
       // single-row operations (rename/pin/copy/…) make no sense for a
       // multi-select gesture. Two selection commands, nothing else.
@@ -2065,6 +2083,42 @@ export function ProjectTree({
           icon: <FolderInput size={13} />,
           label: t("projectGroup.moveInto"),
           items: organizationItems,
+        }] : []),
+        // tl1711 「移动到项目 ▸」：每目标分区一行（global 区用独立文案键），
+        // 叶子点击 → 确认弹窗 → MoveSessionTopic 落盘 → toast 收口；失败走
+        // 同一 toast 通道不冒泡（tl1560 分组迁移 E 钉同款收口）。目标清单
+        // 为空（无其他分区）时整个入口不渲染——无路可走的入口只会制造误点。
+        ...(topicMoveTargets.length > 0 ? [{
+          type: "submenu" as const,
+          key: "move-to-project",
+          icon: <FolderInput size={13} />,
+          label: t("projectTree.moveTopicToProject"),
+          items: topicMoveTargets.map((target): ContextMenuItem => ({
+            key: `move-topic:${target.root ?? "global"}`,
+            icon: <FolderInput size={13} />,
+            label: target.kind === "global_folder"
+              ? t("projectTree.moveTopicToGlobal")
+              : t("projectTree.moveTopicTo", { project: target.label }),
+            disabled: node.running === true,
+            onSelect: () => {
+              if (!topicId) return;
+              void (async () => {
+                const confirmed = await topicMoveDialog.confirm({
+                  title: t("projectTree.moveTopicConfirmTitle"),
+                  message: <p>{t("projectTree.moveTopicConfirm", { title: label, project: target.label })}</p>,
+                  confirmLabel: t("projectTree.moveTopicConfirmTitle"),
+                  cancelLabel: t("common.cancel"),
+                });
+                if (!confirmed) return;
+                try {
+                  await organization.moveTopicToPartition(topicMoveSource.scope, topicMoveSource.root, topicId, target.root ?? "");
+                  showToast(t("projectTree.topicMoved", { title: label, project: target.label }));
+                } catch (error) {
+                  showToast(t("projectTree.topicMoveFailed", { error: error instanceof Error ? error.message : String(error) }), "error");
+                }
+              })();
+            },
+          })),
         }] : []),
         { type: "separator" as const, key: "ctx-sep-copy" },
         // tl 1103 新增「复制 ▸」：会话路径 / 日志路径 / 会话 ID，取值口径与
@@ -3755,6 +3809,8 @@ export function ProjectTree({
       {removeProjectDialog.dialog}
       {/* tl1367 line 1: the occupancy preflight dialog — same carrier rule. */}
       {occupancyDialog.dialog}
+      {/* tl1711: the move-to-project confirm dialog — same carrier rule. */}
+      {topicMoveDialog.dialog}
       <NewGroupPanel open={newGroupOpen} onClose={() => setNewGroupOpen(false)} onConfirm={handleAddGroup} />
       {/* Task 881 ①: blank-area right-click — the create-group door that works
           with zero projects and zero groups on screen. */}
