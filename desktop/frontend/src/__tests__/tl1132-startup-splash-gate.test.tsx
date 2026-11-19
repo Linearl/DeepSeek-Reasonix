@@ -173,7 +173,10 @@ const readSrc = (p: string) => readFileSync(resolve(here, "..", p), "utf8");
     "the splash rules are layout-agnostic (no .app--classic/.app--workbench scoping)");
 
   const labFlagsSrc = readSrc("lib/labFlags.ts");
-  ok(labFlagsSrc.includes('"draftRewrite" | "startupSplash"') && /startupSplash: false,/.test(labFlagsSrc),
+  // tl1703 适配：union 断言不再钉相邻成员字面量（tl1544 的 editResend 插队
+  // 曾把 `'\"draftRewrite\" | \"startupSplash\"'` 钉成预存红）；改为断言
+  // 「union 含 startupSplash 成员 + defaults 落 false」两件事本身。
+  ok(labFlagsSrc.includes('"startupSplash"') && /startupSplash: false,/.test(labFlagsSrc),
     "labFlags registers startupSplash with a default-off value");
 
   const splashSrc = readSrc("components/StartupSplash.tsx");
@@ -247,6 +250,36 @@ const readSrc = (p: string) => readFileSync(resolve(here, "..", p), "utf8");
     const keys = ["settings.startupLoading", "settings.startupSplash", "settings.startupSplashHint", "settings.startupSplash.on", "settings.startupSplash.off"];
     ok(keys.every((k) => src.includes(`"${k}"`)), `${name} locale carries all five startup-splash keys (card-head hint omitted: zh ratchet 78B)`);
   }
+}
+
+{
+  // tl1703：首帧同步种子契约。开关已开时 splash 渲染门不得等 boot snapshot
+  // 异步推入（OBS 实证 5s 主界面裸奔 → 7s 遮罩才盖上）。种子只动
+  // startupSplash 一个键；applyLabFlags 仍是唯一权威（镜像回写 + listener 纠偏）。
+  const labFlagsSrc = readSrc("lib/labFlags.ts");
+  ok(labFlagsSrc.includes('"reasonix.labflag.startupSplash"') && labFlagsSrc.includes("seedStartupSplashFromMirror();"),
+    "labFlags seeds startupSplash from the localStorage mirror at module init (first-frame sync path)");
+  ok(labFlagsSrc.includes("mirrorStartupSplash();"),
+    "applyLabFlags mirrors the resolved startupSplash value back to localStorage");
+  const seedBody = labFlagsSrc.slice(
+    labFlagsSrc.indexOf("function seedStartupSplashFromMirror"),
+    labFlagsSrc.indexOf("seedStartupSplashFromMirror();"),
+  );
+  ok(!/flags\.(?!startupSplash)[A-Za-z]+\s*=/.test(seedBody),
+    "the seed assigns only flags.startupSplash (other flags keep default-until-snapshot)");
+
+  // tl1703：两层品牌帧对齐契约（index.html boot-shell ↔ styles.css splash）。
+  // 对齐基准 = boot-shell（它还在 flag-off 时渲染，flag-off 视觉路径字节不变）。
+  const indexHtml = readFileSync(resolve(here, "..", "index.html"), "utf8");
+  const stylesSrc2 = readSrc("styles.css");
+  ok(/\.boot-shell__mark img\{[^}]*width:56px;height:56px\}/.test(indexHtml),
+    "boot-shell mark paints the logo at 56px (index.html critical shell)");
+  ok(/\.boot-shell__name\{[^}]*font-size:22px/.test(indexHtml),
+    "boot-shell name paints at 22px (index.html critical shell)");
+  ok(/\.startup-splash__mark img \{[^}]*width: 56px;/s.test(stylesSrc2),
+    "splash mark img aligns with the boot-shell 56px");
+  ok(/\.startup-splash__name \{[^}]*font-size: 22px;/s.test(stylesSrc2),
+    "splash name aligns with the boot-shell 22px");
 }
 
 console.log(`\n${passed} checks passed${failed ? ` , ${failed} failed` : ""}`);
