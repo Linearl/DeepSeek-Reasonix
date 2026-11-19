@@ -161,6 +161,11 @@ const noticeCodeKeys: Record<string, DictKey> = {
   // tl1296：自动恢复成功的纠正行（tl1342 提交面 + tl1296 引导重试面共用
   // 一个 code）——崩溃恢复语境下的「已恢复、消息在跑/在投递」。
   write_authority_auto_recovered: "notice.writeAuthorityRecovered",
+  // tl1707（外部 issue #103）：模型把工具调用标记当普通文本输出（未走
+  // tool_calls 结构化通道），工具未被执行——检测告警（warn）与唯一一次
+  // 有界重发提醒（info）各占一码，分别取词典。
+  malformed_tool_call: "notice.malformedToolCall",
+  malformed_tool_call_retry: "notice.malformedToolCallRetry",
 };
 
 // tl1459: Goal lifecycle notices. The backend emits one goal_* notice every

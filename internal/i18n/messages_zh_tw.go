@@ -18,6 +18,8 @@ var ChineseTraditional = Messages{
 	CompletionUncertain:              "完成狀態未確認。目前結果與已完成工作均已保留。傳送「繼續」可接著完成，也可以補充說明需要調整的內容。",
 	ReasoningReplayRepair:            "模型服務拒絕了本會話歷史中的 thinking 區塊。Reasonix 已從傳送給模型的歷史中移除這些內容，並重試了一次。",
 	EmptyFinal:                       "沒有產生可見回覆，已要求助手重新作答。",
+	MalformedToolCall:                "模型輸出的工具呼叫格式異常（呼叫標記以普通文字混入，未走結構化通道），相關工具未被執行。",
+	MalformedToolCallRetry:           "已要求模型透過結構化通道重發該工具呼叫（僅重發一次）。",
 	ReasoningOnlyContinuation:        "上一條回覆只有思考過程、沒有可見正文，已要求助手直接作答。",
 	ReasoningOnlyFinal:               "本次回答只產生了思考過程，思考內容已顯示在正文中。",
 	ReasoningOnlyFinalBody:           "本次回答只產生了思考過程，完整思考內容如下。",

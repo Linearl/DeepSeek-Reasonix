@@ -629,6 +629,44 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
+	// tl1707 (external issue #103): bare tool-call markup in the visible text
+	// of a ZERO-tool-call round — the model believed it had called tools, but
+	// nothing arrived through the structured channel and nothing was executed.
+	// A round in this shape reports normal progress and ends the turn, so an
+	// unattended run stops silently with no tool results to continue from.
+	// Detection scans outside fenced code blocks and inline code spans, so
+	// markup shown as an example cannot trip it. Same bounded-ladder
+	// discipline as the rejection ladder above: one detection notice always,
+	// one re-ask round at most, and the second malformed round recovers
+	// nothing — never a loop.
+	if tags := detectMalformedToolCallText(text); len(tags) > 0 {
+		providerName := ""
+		if dest := a.providerForRequest(); dest != nil {
+			providerName = dest.Name()
+		}
+		a.svc.sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelWarn,
+			Code:   event.NoticeCodeMalformedToolCall,
+			Text:   malformedToolCallNotice(),
+			Detail: malformedToolCallDetail(tags, providerName),
+		})
+		if state.terminal.malformedToolCallRecoveries < maxMalformedToolCallRecoveries {
+			state.terminal.malformedToolCallRecoveries++
+			a.svc.sink.Emit(event.Event{
+				Kind:   event.Notice,
+				Level:  event.LevelInfo,
+				Code:   event.NoticeCodeMalformedToolCallRetry,
+				Text:   malformedToolCallRetryNotice(),
+				Detail: malformedToolCallStageDetail(state.terminal.malformedToolCallRecoveries),
+			})
+			a.addHostGuidance(HostGeneratedUserMessage(a.withTurnPreferences(malformedToolCallRetryMessage())))
+			a.contextManager().ObserveUsage(usage)
+			return true, nil
+		}
+		// Budget spent: the detection notice above is the user-visible face of
+		// the stop (never silent); the turn now ends as an ordinary final.
+	}
 	readiness := a.finalReadinessCheckFor()
 	if state.graceRound && (readiness.reason != "" || !hasVisibleFinalAnswer(text)) {
 		a.contextManager().ObserveUsage(usage)

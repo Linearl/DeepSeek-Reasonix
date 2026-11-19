@@ -42,6 +42,11 @@ type Messages struct {
 	ReasoningReplayRepair  string // provider rejected replayed thinking blocks; history repaired and retried once
 	// Host guard/recovery notices (event.Notice texts the fronts render verbatim).
 	EmptyFinal string // empty_final: no visible answer; retrying
+	// tl1707: malformed tool-call markup arrived as plain text instead of a
+	// structured tool_calls response (external issue #103) — nothing was
+	// executed and the turn was about to end silently on autopilot.
+	MalformedToolCall      string // malformed_tool_call: detection notice (Warn)
+	MalformedToolCallRetry string // malformed_tool_call: the single bounded re-ask round (Info)
 	// tl-1166: reasoning-only finals. ReasoningOnlyContinuation is the B
 	// reminder's info notice; ReasoningOnlyFinal is the C fallback warn notice
 	// (both thinking segments were synthesized into the message body);

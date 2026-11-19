@@ -342,6 +342,15 @@ func (m *metricsAggregator) observe(e event.Event) {
 		if e.Code == event.NoticeCodeEmptyFinal || strings.HasPrefix(e.Detail, "empty final answer blocked") {
 			m.inc("empty_final", "total")
 		}
+		// tl1707: malformed tool-call markup detections — the observability
+		// face for the family issue (#103). Detection and the single re-ask
+		// round are counted separately (the codes are split for searchability).
+		if e.Code == event.NoticeCodeMalformedToolCall {
+			m.inc("malformed_tool_call", "total")
+		}
+		if e.Code == event.NoticeCodeMalformedToolCallRetry {
+			m.inc("malformed_tool_call_retry", "total")
+		}
 	}
 }
 
