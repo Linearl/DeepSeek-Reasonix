@@ -342,7 +342,7 @@ const HISTORY_PAGE_TURNS = 60;
 
 export type TurnPhaseName = "working" | "checking" | "verifying" | "reviewing" | string;
 export type Item =
-  | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string; /** tl1611: this row is a mid-turn steer's next-turn materialization (the 723 pairing key hit a steer notice) — UserMessage renders the ↪ mark so the entity stays distinguishable from a typed message. */ steerProvenance?: boolean }
+  | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string; /** tl1611: this row is a mid-turn steer's next-turn materialization (the 723 pairing key hit a steer notice) — UserMessage renders the ↪ mark so the entity stays distinguishable from a typed message. */ steerProvenance?: boolean; /** tl1712: in-memory only (never persisted/history). This row came from a no-itemId `user_input` announce — a backend direct submission. The rebase merge uses the marker to collapse the row into its already-persisted page twin; composer rows carry no marker and typed duplicates stay untouched. */ hostAnnounced?: boolean }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; createdAt?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[]; turnDoneAt?: number; turnUsage?: import("./turnToolTally").TurnUsageSnapshot }
   | { kind: "phase"; id: string; text: string }
   | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; suggestion?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions" | "retry_reasoning_only"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean; createdAt?: number; /** tl1427: trajectory-ledger-only record — the chat row projection skips it; the trajectory view still consumes it. */ trajectoryOnly?: boolean }
@@ -2560,6 +2560,23 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       if (!text.trim()) return s;
       if (e.itemId && s.items.some((item) => item.kind === "user" && item.inboxItemId === e.itemId)) return s;
       if (s.pendingUser !== undefined && s.pendingUser === text) return s;
+      // tl1712 (form-1): a no-itemId user_input event is ALWAYS a backend
+      // direct-submission announce — the composer renders its row optimistically
+      // and never emits this kind, and durable-inbox events carry an itemId.
+      // When the hydrate prefix already drew the same persisted row (the injected
+      // prompt landed on disk BEFORE the announce crossed the wire — the 包2016
+      // restart scene, two identical "The app updated..." rows side by side),
+      // appending again renders the SAME persisted message twice. Scoped to the
+      // history prefix on purpose: same-text announces on the live tail (a
+      // backend re-firing the same instruction) still each render, and a typed
+      // duplicate in history is the user's own message, not this row's twin.
+      if (!e.itemId) {
+        const prefixEnd = Math.min(s.historyPrefixCount ?? 0, s.items.length);
+        for (let i = 0; i < prefixEnd; i += 1) {
+          const item = s.items[i];
+          if (item.kind === "user" && item.text === text) return s;
+        }
+      }
       // 任务723: a receipt-time steer bubble (guidance_bubble / consume-time
       // steer, same inboxItemId) whose message just became THIS turn's input
       // must stop rendering as a full ↪ bubble — the user row below is the
@@ -2585,7 +2602,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         // bubble with the replay instant — many rows sharing one "09:34" while
         // the transcript's own createdAt says 00:41/01:01. Older backends send
         // no `at`; Date.now() stays the fallback.
-        items: [...items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: e.at ?? Date.now(), ...(steerNoticeHit ? { steerProvenance: true } : {}) }],
+        items: [...items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: e.at ?? Date.now(), ...(steerNoticeHit ? { steerProvenance: true } : {}), ...(e.itemId ? {} : { hostAnnounced: true }) }],
       };
     }
     case "approval_request": {
@@ -3215,7 +3232,15 @@ export function reducer(s: State, a: Action): State {
       // ref-resolved patch (L1) and off-head/reset-window overlaps (L2),
       // leaving one entryId twice in items. retainedLiveTail keeps the
       // signature path for id-less rows only.
-      const retainedTail = retainedLiveTail(liveTail, a.items);
+      // tl1712 (form-2): the stable-id union cannot see that a live announce
+      // row (id `u<seq>`) and its persisted page row (id `h<turn>-<n>`) are the
+      // SAME message — the two id systems never collide, so a reload rebase
+      // after the announce drew its row kept both (the second surface of the
+      // 包2016 double-render). Drop live host-announced rows whose exact text
+      // the page already carries; composer rows carry no marker, so typed
+      // duplicates on the tail are untouched.
+      const rebasePageUserTexts = new Set(a.items.filter((item): item is Extract<Item, { kind: "user" }> => item.kind === "user").map((item) => item.text));
+      const retainedTail = retainedLiveTail(liveTail, a.items).filter((item) => !(item.kind === "user" && item.hostAnnounced && rebasePageUserTexts.has(item.text)));
       return {
         ...s,
         items: compactArchivedToolItems([...a.items, ...retainedTail]),
@@ -3238,10 +3263,15 @@ export function reducer(s: State, a: Action): State {
       // Task 316: the drop set is caller removeIds (signature path) UNION the
       // stable-id overlap with the incoming page, so both keys agree inside
       // the reducer regardless of what the call site managed to compute.
+      // tl1712: same host-announce collapse as history_rebase — a live announce
+      // row's `u<seq>` id never collides with the page's `h<turn>-<n>` ids, so
+      // the id union alone would keep both faces of one persisted message.
       const drop = new Set(a.removeIds);
       for (const item of a.items) if (item.id) drop.add(item.id);
       const keep = (item: { id?: string }) => !item.id || !drop.has(item.id);
-      const rest = drop.size > 0 ? s.items.filter(keep) : s.items;
+      const prependPageUserTexts = new Set(a.items.filter((item): item is Extract<Item, { kind: "user" }> => item.kind === "user").map((item) => item.text));
+      const hostTwin = (item: Item) => item.kind === "user" && Boolean(item.hostAnnounced) && prependPageUserTexts.has(item.text);
+      const rest = (drop.size > 0 ? s.items.filter(keep) : s.items).filter((item) => !hostTwin(item));
       const prefix = s.items.slice(0, Math.min(s.historyPrefixCount, s.items.length));
       const retainedPrefix = drop.size > 0 ? prefix.filter(keep) : prefix;
       return {
