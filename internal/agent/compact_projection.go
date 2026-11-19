@@ -1207,13 +1207,51 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		return CompactionNoop, nil
 	}
 	latestContext := sessionContextCarrierSet(msgs)
-	_, preliminaryFold, _ := a.partitionFoldForProjectionAt(msgs[head:start], head, latestContext)
+	preliminaryKept, preliminaryFold, _ := a.partitionFoldForProjectionAt(msgs[head:start], head, latestContext)
+	// tl1713 打点定案（协调线 20261120）：折叠边界与砍区分支的常驻观测面。
+	// active=-1 时砍区分支（activeTurnFoldBoundary）不可达——压力触发若发生
+	// 在活跃轮内（四条触发面：turn 内 / 发送前 preflight / 回合后观察者 /
+	// 后台投影重建 goroutine），本行读数可把 folded 塌陷归到【甲】砍区（fold
+	// 只剩 head..active 零头）或【乙】safe-prefix/载体墙推进（零头只剩旧摘
+	// 要），pressure 与 manual 同视图对照读数同源。
+	slog.Info("agent: fold plan", "trigger", trigger, "session", a.sessionLogRef(),
+		"head", head, "start", start, "view_messages", len(msgs), "on_projection", onProjection,
+		"active_turn", a.activeTurnStart(msgs), "split_active", splitActive,
+		"kept_messages", len(preliminaryKept), "fold_messages", len(preliminaryFold))
 	if len(preliminaryFold) == 0 || (!req.force && !a.foldEconomics(preliminaryFold)) {
 		return CompactionNoop, nil
 	}
 	fixedPrefixTokens := a.estimatedVisibleRequestTokens(msgs[:head])
 	if a.destinationContextWindow() > 0 && fixedPrefixTokens >= a.compactTrigger() {
 		return CompactionNoop, fmt.Errorf("%w: fixed prefix (%d tokens) already exceeds trigger (%d)", errCheckpointRejected, fixedPrefixTokens, a.compactTrigger())
+	}
+
+	// tl1713 低收益拒绝门（只在自动压力道武装）：收纳量过低 × 预计残留过高
+	// 的轮次在花费任何摘要请求、发出任何压缩事件之前放弃——宁不压也不产出
+	// 高残留投影（tl1644 F2 锚门同思想：判据不达就不武装）。塌陷现场
+	// （20261119 21:34→22:28）：投影体首部是巨型 session-context 载体链，
+	// tl1587 段预算的二分前缀搜索把边界钉死在载体墙内侧，折叠区只剩旧摘要
+	// 一条（folded_messages=1，fold_tokens≈旧摘要重写 14-17K），残留恒
+	// 77-81%，pressure 高频复压恶性循环。拒绝即停车：同水位（增长 <
+	// parkRetryGrowthTokens）的后续自动尝试直接 noop；增长跨过步长、视图
+	// 缩水或任何成功安装后清场重评。manual（用户裁决）/force/mustFree
+	// （物理回收）旁路；阈值反演与候拍板标注见 tl1713 报告。
+	if trigger == CompactionTriggerPressure && !req.force && !req.mustFree {
+		if a.lowYieldParkBlocks(msgs) {
+			return CompactionNoop, nil
+		}
+		if gateStart := a.boundedSummaryPrefixEnd(msgs, head, start, instructions); gateStart > head {
+			if yieldTokens, sourceTokens := a.roundFoldYield(msgs, head, gateStart, latestContext); lowYieldRound(yieldTokens, sourceTokens, a.roundFoldYieldFloor()) {
+				a.sess.compaction.lowYieldParkEst.Store(int64(sourceTokens))
+				slog.Warn("agent: compaction declined — fold yield too low for this view",
+					"trigger", trigger, "session", a.sessionLogRef(),
+					"fold_yield_tokens", yieldTokens, "source_tokens", sourceTokens,
+					"min_yield_tokens", max(a.roundFoldYieldFloor(), int(float64(sourceTokens)*minRoundFoldYieldRatio)),
+					"residual_tokens", sourceTokens-yieldTokens, "max_residual_ratio", maxRoundResidualRatio,
+					"park_est", sourceTokens, "retry_growth_tokens", a.parkRetryGrowthTokens())
+				return CompactionNoop, nil
+			}
+		}
 	}
 
 	// 任务 1021: the Started event names its pass inside the ongoing
@@ -1442,6 +1480,41 @@ type userTurnRetention struct {
 
 func (a *Agent) partitionFoldForProjection(region []provider.Message) (kept, fold []provider.Message, retention userTurnRetention) {
 	return a.partitionFoldForProjectionAt(region, 0, sessionContextCarrierSet(region))
+}
+
+// roundFoldYield sizes the tl1713 gate inputs for one automatic round: how
+// much NEW verbatim content the [head:start] region would fold (previous
+// digests merge into the new digest and yield no view benefit, so they do not
+// count), and the billed size of the view the round would shrink. The region
+// boundary must already carry the tl1587 segment cap — that cap is where the
+// 20261119 collapse lives.
+func (a *Agent) roundFoldYield(msgs []provider.Message, head, start int, carriers map[int]bool) (yieldTokens, sourceTokens int) {
+	_, fold, _ := a.partitionFoldForProjectionAt(msgs[head:start], head, carriers)
+	fresh := make([]provider.Message, 0, len(fold))
+	for _, m := range fold {
+		if isCompactionSummary(m) {
+			continue
+		}
+		fresh = append(fresh, m)
+	}
+	return a.estimatedVisibleRequestTokens(fresh), a.estimatedVisibleRequestTokens(msgs)
+}
+
+// lowYieldParkBlocks reports whether the tl1713 low-yield park suppresses this
+// automatic attempt: the view grew less than the retry step since the last
+// decline. A shrunken view (manual repair, rewind) or growth past the step
+// clears the park and lets the round re-evaluate.
+func (a *Agent) lowYieldParkBlocks(msgs []provider.Message) bool {
+	park := a.sess.compaction.lowYieldParkEst.Load()
+	if park <= 0 {
+		return false
+	}
+	est := int64(a.estimatedVisibleRequestTokens(msgs))
+	if est < park || est >= park+int64(a.parkRetryGrowthTokens()) {
+		a.sess.compaction.lowYieldParkEst.Store(0)
+		return false
+	}
+	return true
 }
 
 // partitionFoldForProjectionAt keeps every session-context message whose index

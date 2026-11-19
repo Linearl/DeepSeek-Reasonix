@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -59,7 +60,14 @@ const (
 
 var (
 	errSummaryOutputTruncated = errors.New("summarizer output truncated")
-	errCheckpointRejected     = errors.New("checkpoint candidate rejected")
+	// tl1714: the empty-output verdict at the end of a drained summary stream —
+	// no digest material in the text (and none usable from reasoning when the
+	// turn also reached for tools). out>0 with this error bills tool-call
+	// arguments or reasoning only (the 20261119 现场: out=41~1026, cache=warm,
+	// mimo-v2.6-flash). summarizeOnce replays the same request exactly once
+	// before failing upward.
+	errSummaryEmptyOutput = errors.New("summarizer returned empty output")
+	errCheckpointRejected = errors.New("checkpoint candidate rejected")
 	// Task 307 classification for a candidate at or above the physical input
 	// ceiling. Task 516: the acceptance path no longer produces it — a
 	// candidate that still shrinks the view is installed as partial progress —
@@ -192,6 +200,59 @@ func recentTailFloor(budget, window int) int {
 // tokens than this cannot beat the digest's own size, so compacting it would
 // raise the projection (压前反升's small-region half).
 const minFoldTokens = 400
+
+// tl1713 低收益拒绝门阈值（阈值与判据候拍板标注：docs/reasonix/report/
+// tl1713-1714 报告，现场 16 轮全表反演 20261119）：
+//   - 收纳量（本轮真正折掉的新原文；旧摘要并入新摘要、不产生视图收益，不计入）
+//     低于 max(绝对下限, source×比率)，且
+//   - 预计残留（source − 收纳量）高于 source 的 maxRoundResidualRatio
+//
+//   ⇒ 本次自动压缩放弃（宁不压也不产出高残留投影，tl1644 F2 锚门同思想：
+//   判据不达就不武装），停车等新增长。现场反演：21:34→22:28 八轮 folded=1
+//   （fold_tokens≈旧摘要重写 14-17K，source≈850K）收纳比 1.7-2%、残留
+//   78-81%，全部落进门内；21:02/21:25（收纳 25K/50K）同在门内；22:51
+//   manual（165K/693K=24%）在门外（manual 旁路）。
+const (
+	minRoundFoldYieldRatio     = 0.10 // 收纳量需 ≥ source 的 10% 才值得打断用户
+	minRoundFoldYieldTokens    = 8192 // 收纳量绝对下限（窗口 ≥64K 时生效）
+	maxRoundResidualRatio      = 0.60 // 预计残留 > source 的 60% 视为高残留
+	parkRetryGrowthFloorTokens = 16 * 1024
+)
+
+// lowYieldRound reports whether one automatic compaction round fails the
+// tl1713 low-yield gate: too little would actually fold AND the post-fold
+// view would still carry most of the source. The residual condition protects
+// tiny sessions, where a small absolute yield is still most of the view.
+// floorTokens comes from roundFoldYieldFloor so small windows shrink the
+// absolute bound instead of letting it swallow their whole yield scale.
+func lowYieldRound(yieldTokens, sourceTokens, floorTokens int) bool {
+	if sourceTokens <= 0 {
+		return false
+	}
+	if yieldTokens >= max(floorTokens, int(float64(sourceTokens)*minRoundFoldYieldRatio)) {
+		return false
+	}
+	return float64(sourceTokens-yieldTokens) > float64(sourceTokens)*maxRoundResidualRatio
+}
+
+// roundFoldYieldFloor scales the tl1713 absolute yield floor to the window:
+// 8192 tokens on today's production windows, shrinking below a 64K window so
+// the floor cannot price a small window's entire fold scale as "low yield"
+// (a 5K window's whole view is smaller than the flat floor).
+func (a *Agent) roundFoldYieldFloor() int {
+	if w := a.effectiveContextWindow(); w > 0 {
+		return min(minRoundFoldYieldTokens, max(1, w/8))
+	}
+	return minRoundFoldYieldTokens
+}
+
+// parkRetryGrowthTokens is the tl1713 retry step: after a declined round the
+// automatic lane waits for the view to grow this many billed tokens before
+// re-evaluating, so a parked session does not re-attempt (and re-decline) on
+// every check.
+func (a *Agent) parkRetryGrowthTokens() int {
+	return max(parkRetryGrowthFloorTokens, a.effectiveContextWindow()/16)
+}
 
 // foldEconomics estimates whether compacting the given region saves enough
 // tokens to justify the summarization API call. It returns false when the
@@ -585,7 +646,14 @@ func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Re
 					// reasoning is private chain-of-thought, not digest material.
 					r := strings.TrimSpace(reasoning.String())
 					if r == "" || toolCalls > 0 {
-						return "", usage, fmt.Errorf("summarizer returned empty output")
+						// tl1714: the shape readout separates "billed nothing" from
+						// "billed tool-call arguments / reasoning only" (out>0 判空
+						// 现场形态) without touching transcript content.
+						outTokens := 0
+						if usage != nil {
+							outTokens = usage.CompletionTokens
+						}
+						return "", usage, fmt.Errorf("%w (text=0 reasoning_bytes=%d tool_calls=%d out_tokens=%d)", errSummaryEmptyOutput, len(r), toolCalls, outTokens)
 					}
 					return truncateUTF8Bytes(r, summaryReasoningMaxBytes), usage, nil
 				}
@@ -617,11 +685,27 @@ func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Re
 // summarizeOnce performs the application-layer summary request. 任务 812: an
 // output truncation gets exactly one retry at twice the output budget (studio
 // summaryRetryOutputMaxTokens semantics) before the failure escapes to the
-// chunked ladder; timeouts, stream errors, and empty results still fail once.
-// A retry that still truncates returns the truncation error either way, so
-// the chunked-fallback classification is unchanged.
+// chunked ladder. tl1714: an empty-output verdict (including the out>0 shapes
+// billed on tool-call arguments or reasoning-only) gets exactly ONE same-shape
+// replay — the 20261119 现场 (three empty outputs, cache=warm, out=41~1026)
+// was model-shape jitter, not a deterministic rejection; one bounded replay
+// precedes the tl1587 segment escalation, which still owns the oversized
+// regime. A replay that still comes back empty fails upward unchanged.
 func (a *Agent) summarizeOnce(ctx context.Context, fold []provider.Message, instructions string) (string, *provider.Usage, error) {
 	summary, usage, err := a.summarize(ctx, fold, instructions)
+	if errors.Is(err, errSummaryEmptyOutput) && ctx.Err() == nil {
+		slog.Warn("agent: summarizer returned empty output — replaying the same request once",
+			"session", a.sessionLogRef(), "model_ref", a.summaryDestinationRef(),
+			"fold_tokens", a.guardedSummaryInputTokens(fold), "err", err)
+		retried, retryUsage, retryErr := a.summarize(ctx, fold, instructions)
+		// Both attempts ride one summary call's bill (812 precedent): merge the
+		// usages so the fold telemetry sees the whole spend.
+		merged := mergeSamplingUsage(usage, retryUsage)
+		if retryErr == nil {
+			return retried, merged, nil
+		}
+		return "", merged, retryErr
+	}
 	if err == nil || !errors.Is(err, errSummaryOutputTruncated) {
 		return summary, usage, err
 	}

@@ -117,6 +117,12 @@ type compactionProgress struct {
 	// projection serving again ends the episode). Same compactionRunMu
 	// discipline as fallbackWarnAt.
 	overflowDietDeferredAt time.Time
+	// tl1713: 低收益拒绝门停车场。拒绝落地的 pressure 尝试记录当时的视图
+	// 计费读数；此后同水位（增长 < parkRetryGrowthTokens）的自动尝试直接
+	// noop——宁不压也不每轮打断。增长跨过步长、视图缩水（手动修复/回退）
+	// 或任何成功安装（emitCompactionSucceeded）后清场重评。全部读写都发生在
+	// compactToProjectionLocked（compactionRunMu 全程持有）与成功安装点。
+	lowYieldParkEst atomic.Int64
 }
 
 // projectionDriftDiff is the tl1562 G1 content-mismatch evidence attached to

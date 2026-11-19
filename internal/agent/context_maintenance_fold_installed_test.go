@@ -35,16 +35,23 @@ func (f *failOnCallN) Stream(ctx context.Context, req provider.Request) (<-chan 
 // compaction — not the compaction failing. The receipt and the wire event must
 // both carry fold_installed, so the frontend says "short view kept" instead of
 // reading as a give-up.
+// tl1713: the pressure lane's second ladder round is exactly the digest-rewrite
+// shape the low-yield gate declines (fold = the digest it just wrote), so the
+// refresh-failure contract rides the manual over-ceiling lane: the ladder runs
+// up to 4 rounds while the view sits at or above the hard ceiling and the gate
+// stays bypassed (manual/mustFree) — the marker contract itself is unchanged.
+// A 12000-word digest keeps the post-round-one view above that ceiling, so the
+// scripted stream error lands on a kept fold in round two.
 func TestFoldKeptRefreshFailureCarriesFoldInstalled(t *testing.T) {
-	sess := foldableSessionOverForce(6)
-	// A 2000-word digest keeps the folded view above the pressure fold trigger
-	// but below the hard ceiling, so the ladder takes a second round and the
-	// scripted stream error lands on a kept fold.
+	sess := foldableSessionOverForce(12)
 	prov := &failOnCallN{
-		fakeProvider: &fakeProvider{reply: strings.Repeat("word ", 2000)},
+		fakeProvider: &fakeProvider{reply: strings.Repeat("word ", 4500)},
 		n:            2, err: errors.New("provider down"),
 	}
 	a := agentOverForce(t, prov, sess)
+	if est, hard := canonicalEstimate(a, sess), a.hardInputCeiling(); est < hard {
+		t.Fatalf("fixture estimates %d tokens, below the ceiling %d; add turns", est, hard)
+	}
 	var seen *event.ContextMaintenance
 	a.svc.sink = event.FuncSink(func(e event.Event) {
 		if e.Kind == event.ContextMaintenanceEvent && e.Maintenance != nil && e.Maintenance.Status == "failed" {
@@ -52,8 +59,14 @@ func TestFoldKeptRefreshFailureCarriesFoldInstalled(t *testing.T) {
 		}
 	})
 
-	if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
-		t.Fatalf("prepare = %v, want a kept fold to stay recoverable", err)
+	// tl1713: the manual lane surfaces a refresh failure to its CALLER (the
+	// /compact result) instead of letting the turn proceed like the pressure
+	// lane — the kept-fold receipt and wire event below are the contract under
+	// test, and the error itself is the manual compact's honest outcome.
+	if err := prepareContext(context.Background(), a, CompactionTriggerManual); err == nil {
+		t.Fatal("manual compact reported success despite the scripted refresh failure")
+	} else if !strings.Contains(err.Error(), "provider down") {
+		t.Fatalf("prepare err = %v, want the scripted provider failure", err)
 	}
 	if prov.calls < 2 {
 		t.Fatalf("summarizer used %d calls; the fixture never reached a second ladder round", prov.calls)
