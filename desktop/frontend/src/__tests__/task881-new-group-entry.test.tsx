@@ -73,7 +73,7 @@ console.log("\n881-② toolbar entry (shared create dropdown)");
 ok(count(treeSource, 'aria-label={t("projectGroup.createNew")}') === 0,
   "no header layout keeps a direct create-group button (classic folded by 1157, workbench aligned by tl1222)");
 
-// 共享头部挂「新建」下拉；下拉一级「新建项目分组」点击直开 NewGroupPanel
+// 共享头部挂「新建」下拉；下拉一级「新建会话组」点击直开 NewGroupPanel
 {
   const headerBody = treeSource.slice(treeSource.indexOf('const renderProjectHeader = (mode: "classic" | "workbench") => ('), treeSource.indexOf("// Project rows render under their group heading"));
   ok(headerBody.includes('label={t("projectTree.createMenu")}') && headerBody.includes("items={classicCreateItems}"),

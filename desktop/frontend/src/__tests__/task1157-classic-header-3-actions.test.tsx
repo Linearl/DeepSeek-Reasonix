@@ -5,9 +5,9 @@
 //   ② 筛选 = 单个下拉面板：时间范围 + 项目颜色两组控件，选项即时生效（无"应用"按钮），
 //     按钮带已选态圆点徽标 + tooltip 摘要，底部「清除筛选」。排序区从旧时间菜单随迁
 //     （arrangeClassicProjectTree 仍按 workbenchSortMode 排序，砍掉 = classic 失去唯一排序入口）。
-//   ③ 新建下拉一级恰三项：新建项目（二级 = 新建空白项目 + 使用现有文件夹）/ 新建项目分组 /
+//   ③ 新建下拉一级恰三项：新建项目（二级 = 新建空白项目 + 使用现有文件夹）/ 新建会话组 /
 //     远程连接；原 5 按钮覆盖的 8 个动作零丢失。
-//   ④ 空态兜底：项目列表为空时可见「新建项目分组」文字链（不占头部图标位）。
+//   ④ 空态兜底：项目列表为空时可见「新建会话组」文字链（不占头部图标位）。
 //   ⑤ workbench 布局零变化。（tl1222 起本条被取代：用户验收要求 workbench 头部
 //     对齐 classic 同一形态，旧 6 图标行退场——见 ⑥，classic 断言 ①-④ 不变。）
 //
@@ -160,12 +160,12 @@ ok(headerBody.includes("items={classicCreateItems}"),
 // ── 验收 ⑦：三语文案（key 不动、值逐字、孤词零命中） ───────────────────────
 console.log("\n1157-⑦ three-language copy");
 
-ok(zh.includes('"projectTree.newGroup": "新建项目分组"') && zh.includes('"projectGroup.createNew": "新建项目分组"'),
-  "zh: both create-group keys read 新建项目分组");
-ok(en.includes('"projectTree.newGroup": "New project group"') && en.includes('"projectGroup.createNew": "New project group"'),
-  "en: both create-group keys read New project group");
-ok(zhTW.includes('"projectTree.newGroup": "新增專案分組"') && zhTW.includes('"projectGroup.createNew": "新增專案分組"'),
-  "zh-TW: both create-group keys read 新增專案分組");
+ok(zh.includes('"projectTree.newGroup": "新建会话组"') && zh.includes('"projectGroup.createNew": "新建会话组"'),
+  "zh: both create-group keys read 新建会话组");
+ok(en.includes('"projectTree.newGroup": "New session group"') && en.includes('"projectGroup.createNew": "New session group"'),
+  "en: both create-group keys read New session group");
+ok(zhTW.includes('"projectTree.newGroup": "新增會話組"') && zhTW.includes('"projectGroup.createNew": "新增會話組"'),
+  "zh-TW: both create-group keys read 新增會話組");
 ok(!zh.includes("新建分组") && !zhTW.includes("新建分組") && !zhTW.includes("新增分組"),
   "no standalone 「新建分组」 copy left in zh / zh-TW locales");
 ok(zh.includes('"projectTree.createProject": "新建项目"') && en.includes('"projectTree.createProject": "New project"') && zhTW.includes('"projectTree.createProject": "新增專案"'),
