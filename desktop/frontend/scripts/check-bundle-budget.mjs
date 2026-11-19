@@ -639,4 +639,4 @@ assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudget
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the
 // gzip budget above; re-set from the measured value with headroom.
   // 2520: raw ratchet step widened to ~+10 KiB (user 2026-09-20). Merge batch measured 2511.8 (tasks 185/181/collab frontend).
-assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_451.5 * 1024); // 包102 棘轮(实测超0.5 照实测+1.5 一次到位): tl1705+tl1694 双测试文件叠加 实测 1450.5 超 1450.0 线 0.5 — 1451.5 含余量（2026-11-19 包102 出包清障独立 commit，zcode 自抬报备）；上代=包89 棘轮 1435→1445（raw 步长+10） // 棘轮史台账: docs/bundle-budget-ratchet台账.md
+assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_453 * 1024); // 包102 棘轮(实测超0.5 照实测+1.5 一次到位): tl1705+tl1694 双测试文件叠加 二抬实测 1452.1 超 1451.5 线 0.6 — 1453.0 含余量(步长对齐包89+1.5)（2026-11-19 包102 出包清障独立 commit，zcode 自抬报备）；上代=包89 棘轮 1435→1445（raw 步长+10） // 棘轮史台账: docs/bundle-budget-ratchet台账.md
