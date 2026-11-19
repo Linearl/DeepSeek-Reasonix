@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -65,6 +67,117 @@ type migrationCandidate struct {
 	path string
 }
 
+// migrateScanMarker is the persisted per-file verdict of the last migration
+// scan (tl1706): for every fact file, the (size, mtimeMs) hash at the time it
+// was confirmed to already carry v2 metadata. A file whose stat still matches
+// the recorded hash cannot have changed content (every write path goes through
+// atomic replace, which always bumps mtime), so its "needs no migration"
+// verdict carries over and the scan never opens it. This is the same
+// (size, mtime) trust model the recall FTS reconcile already uses
+// (index_fts.go: ensureRecallFTS "Unchanged files are never re-read").
+//
+// Why it exists: the classification phase opens every fact file to read its
+// head. On this machine that costs ~130ms warm but 14–19s when the pool's
+// pages are cold (940 small-file opens × ~20ms NTFS cold access — measured,
+// see docs/reasonix/report/tl1706-清理后首启慢归因-20261120.md). Every boot
+// paid that whenever a cleanup had evicted the cache or touched the store,
+// which is exactly the "first boot after cleanup is slow" report (tl1706).
+// With the marker, a changed store only re-judges the files whose stat
+// actually changed; a cold cache with an unchanged store opens none.
+type migrateScanMarker struct {
+	// Version guards against misreading a future format change.
+	Version int               `json:"version"`
+	Files   map[string]string `json:"files"` // path -> "{size}|{mtimeMs}" hash at last "v2 confirmed"
+}
+
+const migrateScanMarkerVersion = 1
+
+const migrateScanMarkerName = "migrate-v2-scan.json"
+
+// migrateScanMarkerPath returns where the persisted scan verdict lives, "" when
+// the store has no base directory. It sits beside the recall FTS index under
+// .index/ — derived, disposable, never scanned as a fact file.
+func migrateScanMarkerPath(s Store) string {
+	base := s.Dir
+	if base == "" {
+		base = s.GlobalDir
+	}
+	if base == "" {
+		return ""
+	}
+	return filepath.Join(base, ".index", migrateScanMarkerName)
+}
+
+// readMigrateScanMarker loads the persisted verdict. Any unreadable or
+// foreign-version marker means "no verdict" — the scan then runs in full, the
+// pre-tl1706 behavior, which is always safe.
+func readMigrateScanMarker(s Store) *migrateScanMarker {
+	path := migrateScanMarkerPath(s)
+	if path == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var marker migrateScanMarker
+	if err := json.Unmarshal(raw, &marker); err != nil || marker.Version != migrateScanMarkerVersion {
+		return nil
+	}
+	return &marker
+}
+
+// recordMigrateScanMarker persists the verdict (best effort). A failure only
+// costs the next boot a full re-scan — the pre-tl1706 behavior — never
+// correctness, so it is logged and otherwise swallowed.
+func recordMigrateScanMarker(s Store, files map[string]string) {
+	path := migrateScanMarkerPath(s)
+	if path == "" || len(files) == 0 {
+		return
+	}
+	raw, err := json.Marshal(migrateScanMarker{Version: migrateScanMarkerVersion, Files: files})
+	if err != nil {
+		slog.Warn("memory: migrate scan marker marshal failed", "err", err)
+		return
+	}
+	if err := writeMemoryAtomic(path, raw, 0o644); err != nil {
+		slog.Warn("memory: migrate scan marker write failed (next boot re-scans)", "err", err)
+	}
+}
+
+// classifyMigrations decides which files still need the v2 migration, carrying
+// over verdicts from the persisted marker for files whose stat is unchanged
+// and reading only the head of the rest. The returned confirmed map lists
+// every file verified to be v2 in this pass (carried over + freshly judged).
+func classifyMigrations(files []factFileState, marker *migrateScanMarker) (candidates []migrationCandidate, confirmed map[string]string, err error) {
+	confirmed = make(map[string]string, len(files))
+	for _, f := range files {
+		if marker != nil {
+			if verdict, ok := marker.Files[f.path]; ok && verdict == f.hash {
+				confirmed[f.path] = f.hash
+				continue
+			}
+		}
+		needs, complete, err := needsMigration(f.path)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !complete {
+			raw, err := os.ReadFile(f.path)
+			if err != nil {
+				return nil, nil, err
+			}
+			needs = memoryNeedsMigration(string(raw))
+		}
+		if needs {
+			candidates = append(candidates, migrationCandidate{dir: filepath.Dir(f.path), path: f.path})
+		} else {
+			confirmed[f.path] = f.hash
+		}
+	}
+	return candidates, confirmed, nil
+}
+
 // MigrateV2 brings legacy memory files up to the v2 metadata shape.
 //
 // The work is split in two phases on purpose. Classification (phase 1) is
@@ -76,12 +189,25 @@ type migrationCandidate struct {
 // the segment's own workload is 295ms hot / 1240ms cold while its P95 was
 // 21–29s, i.e. 22–93x the work it was doing). The lock's semantics are
 // unchanged — phase 2 still mutates under it.
+//
+// tl1706 adds a persisted per-file verdict (migrateScanMarker) on top: files
+// whose (size, mtime) stat is unchanged since the last scan carried a v2
+// verdict skip the head read entirely, so the cold-cache first boot after a
+// cleanup no longer pays a ~15–19s full re-open of the pool.
 func (s Store) MigrateV2() (MigrationReport, error) {
-	candidates, err := s.migrationCandidates()
+	files := scanFactFiles(s)
+	marker := readMigrateScanMarker(s)
+	candidates, confirmed, err := classifyMigrations(files, marker)
 	if err != nil {
 		return MigrationReport{}, err
 	}
 	if len(candidates) == 0 {
+		// Lock-free by tl1683 contract: nothing to rewrite, no lock needed.
+		// The verdict write is atomic and idempotent — racing boots write the
+		// same content (or, when a concurrent write changed the store mid-pass,
+		// the loser's stale hashes simply fail to match on the next boot and
+		// those files are re-judged: self-healing, never wrong).
+		recordMigrateScanMarker(s, confirmed)
 		return MigrationReport{}, nil
 	}
 	memoryStoreMutationMu.Lock()
@@ -96,6 +222,16 @@ func (s Store) MigrateV2() (MigrationReport, error) {
 			report.Migrated++
 		}
 	}
+	// The rewrites above changed sizes and mtimes, so the carried-over hashes
+	// are stale. Re-stat once (directory enumeration only) and persist the
+	// post-migration verdicts. On the error path above no marker is recorded:
+	// the next boot re-scans in full, the pre-tl1706 behavior.
+	postFiles := scanFactFiles(s)
+	post := make(map[string]string, len(postFiles))
+	for _, f := range postFiles {
+		post[f.path] = f.hash
+	}
+	recordMigrateScanMarker(s, post)
 	return report, nil
 }
 
