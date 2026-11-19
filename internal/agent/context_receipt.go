@@ -306,6 +306,9 @@ func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, a
 	// tl1669: a successful pass closes the three-strike circuit breaker — the
 	// automatic compaction path is armed again.
 	a.sess.compaction.breakerOpen.Store(false)
+	// tl1713: any successful install clears the low-yield park — the view just
+	// shrank, so the next pressure check must re-evaluate from scratch.
+	a.sess.compaction.lowYieldParkEst.Store(0)
 	// tl1648: the failed-card surface reports when compaction last succeeded;
 	// stamped at the same place the streak resets so the two never disagree.
 	a.sess.lastCompactionSuccessAt.Store(time.Now().UnixMilli())
