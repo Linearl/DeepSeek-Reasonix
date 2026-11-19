@@ -155,7 +155,9 @@ func TestTodoWriteSchemaCarriesOrderingGuidance(t *testing.T) {
 	}
 	description := todoWrite{}.Description()
 	for _, want := range []string{
-		"the FIRST unfinished item, in the shape [completed, in_progress, pending]",
+		// tl1716 reorganized the description into the front-loaded three-rule
+		// block; the ordering rule now reads "so the list reads [...]".
+		"the FIRST unfinished item, so the list reads [completed, in_progress, pending]",
 		"the host auto-reorders instead of rejecting",
 	} {
 		if !strings.Contains(description, want) {
