@@ -292,6 +292,15 @@ type Options struct {
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
+	// OnTrashList / OnTrashRestore (tl1710) are the trash-side companions of
+	// OnDeleteSession: list the trash buckets and restore one through the same
+	// channel the desktop Trash page uses — the two faces the 20261119
+	// incident (a hasTurn=true conversation trashed with no agent-side
+	// recovery) lacked. Both ride the SessionCollabAllowDelete gate: they only
+	// exist where delete_session exists (能删即能列/能还原，不新增开关). Nil
+	// omits the respective tool.
+	OnTrashList    agent.TrashListFunc
+	OnTrashRestore agent.TrashRestoreFunc
 	// OnRegistryShellProbe / OnRegistryShellTrash (task 1145) give
 	// delete_session reach into registry shells (registered in the desktop
 	// tree, no main transcript on disk) so a tree-visible entry stops
@@ -2730,6 +2739,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// unregistered, not registered-but-refusing.
 		if opts.OnDeleteSession != nil && cfg.Agent.SessionCollabAllowDelete {
 			reg.Add(agent.NewDeleteSessionTool(collab, opts.OnDeleteSession))
+			// tl1710: trash_list / trash_restore ride the same gate — the trash
+			// faces only matter where delete_session exists, and a separate
+			// switch would be one more toggle with no separate caller.
+			if opts.OnTrashList != nil {
+				reg.Add(agent.NewTrashListTool(collab, opts.OnTrashList))
+			}
+			if opts.OnTrashRestore != nil {
+				reg.Add(agent.NewTrashRestoreTool(collab, opts.OnTrashRestore))
+			}
 		}
 		// 170: the "改" half of the CRUD. Both are host capabilities like the
 		// two above: a CLI host without a sidebar has nothing to move or retitle.

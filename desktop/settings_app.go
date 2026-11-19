@@ -3256,6 +3256,8 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		OnCascadeDelegate:         cascadeDelegateFor,
 		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
 		OnDeleteSession:           a.deleteCollabSession,
+		OnTrashList:               a.agentTrashList,
+		OnTrashRestore:            a.agentTrashRestore,
 		OnRegistryShellProbe:      a.resolveRegistryShell,
 		OnRegistryShellTrash:      a.trashRegistryShell,
 		OnRenameSession:           a.renameCollabSession,

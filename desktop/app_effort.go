@@ -459,6 +459,8 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 		OnCascadeSourceCapability:  cascadeSourceCapabilityFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
+		OnTrashList:                a.agentTrashList,
+		OnTrashRestore:             a.agentTrashRestore,
 		OnRegistryShellProbe:       a.resolveRegistryShell,
 		OnRegistryShellTrash:       a.trashRegistryShell,
 		OnRenameSession:            a.renameCollabSession,
