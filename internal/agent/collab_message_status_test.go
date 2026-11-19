@@ -317,11 +317,11 @@ func TestReceiptStatusSemanticsCoversVocabulary(t *testing.T) {
 		sessioncollab.ReceiptFailedRetrying,
 		sessioncollab.ReceiptOpenRetryExhausted,
 	} {
-		if receiptStatusSemantics(outcome) == "" {
+		if receiptStatusSemantics(outcome, sessioncollab.MaxHop) == "" {
 			t.Fatalf("outcome %q must have caller-facing semantics", outcome)
 		}
 	}
-	if receiptStatusSemantics("unknown_outcome") != "" {
+	if receiptStatusSemantics("unknown_outcome", sessioncollab.MaxHop) != "" {
 		t.Fatal("an unknown outcome must map to empty semantics")
 	}
 }

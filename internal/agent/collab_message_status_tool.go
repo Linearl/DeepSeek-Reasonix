@@ -55,7 +55,9 @@ func (getMessageStatusTool) ReadOnly() bool { return true }
 
 // receiptStatusSemantics maps a receipt outcome to the caller-facing
 // explanation. Kept as a pure function so the wording is pinned by tests.
-func receiptStatusSemantics(outcome string) string {
+// tl1697: hopLimit is the live ceiling, surfaced inside the refused_hop wording
+// so the caller sees the number that was actually enforced.
+func receiptStatusSemantics(outcome string, hopLimit int) string {
 	switch outcome {
 	case sessioncollab.ReceiptInjected:
 		return "已注入目标会话当轮（steer 生效）——这是真正的「已送达并生效」。"
@@ -64,7 +66,7 @@ func receiptStatusSemantics(outcome string) string {
 	case sessioncollab.ReceiptOpenRetryExhausted:
 		return "空闲开轮重试用尽：目标收件箱已收到该消息，但自动开轮尝试 3 次未成功。消息仍保留在目标收件箱队列，未丢失；稍后复查（状态可能被后续成功覆盖），或让目标会话人工重试收件箱。"
 	case sessioncollab.ReceiptRefusedHop:
-		return "被拒绝并丢弃：协作链达到 hop 上限。新起一条链（hop=0、不带旧 thread_id）重发。"
+		return fmt.Sprintf("被拒绝并丢弃：协作链达到 hop 上限（当前上限 %d）。请新起一条链（省略 hop，即 hop=0，且不带旧 thread_id）重发；确需更长的链，可在 设置 → 实验特性 → 跨会话协作 调高「协作链 hop 上限」。", hopLimit)
 	case sessioncollab.ReceiptRefusedProvenance:
 		return "被拒绝并丢弃：thread 来源无法核实。回信时把收到的 thread_id 原样传回，或省略 thread_id 新起链。"
 	case sessioncollab.ReceiptRefusedCrossWire:
@@ -111,7 +113,7 @@ func (t getMessageStatusTool) Execute(_ context.Context, args json.RawMessage) (
 			"messageId": r.MessageID,
 			"status":    r.Outcome,
 			"known":     true,
-			"semantics": receiptStatusSemantics(r.Outcome),
+			"semantics": receiptStatusSemantics(r.Outcome, t.cfg.hopLimit()),
 			"receipt":   r,
 			"note":      "receipt recorded by the host delivery pump; failed_retrying is not terminal and is overwritten by a later success",
 		})

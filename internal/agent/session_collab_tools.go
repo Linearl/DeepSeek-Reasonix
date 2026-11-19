@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1012,7 +1013,9 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		return "", fmt.Errorf("to and message are required")
 	}
 	if limit := t.cfg.hopLimit(); p.Hop < 0 || p.Hop > limit+1 {
-		return "", fmt.Errorf("invalid hop %d", p.Hop)
+		// tl1697：拒发文案必须给出真实上限与已存在的出路（下一步必须已存在
+		// 纪律），与下面 hop>0 无父链的源头拒发文案同一风格。
+		return "", fmt.Errorf("hop=%d 无效：当前协作链深度上限为 %d（出厂默认 5，可在 设置 → 实验特性 → 跨会话协作 调整）。回信请把你收到的入向消息的 thread_id 原样传回、hop 交由系统推导；新起一条链请省略 hop（hop=0）", p.Hop, limit)
 	}
 	// Task 309: an omitted delivery uses the configured mailbox default
 	// (steer unless [agent] session_collab_default_delivery says otherwise).
@@ -1159,7 +1162,13 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		if runes := []rune(excerpt); len(runes) > 80 {
 			excerpt = string(runes[:80]) + "…"
 		}
-		return "", fmt.Errorf("退信（NDR）：致 %s；原因：%v；原文「%s」", target.Title, derr, excerpt)
+		reason := derr.Error()
+		if errors.Is(derr, sessioncollab.ErrHopLimit) {
+			// tl1697：store 层错误只报「超限+数值」，不给出路；退信面在此补
+			// 可执行指引——出路（新链/调设置）都已真实存在。
+			reason += fmt.Sprintf("——已到协作链深度上限 %d：请新起一条链（省略 hop，即 hop=0，且不带旧 thread_id），不要在原链继续接力；确需更长的链，可在 设置 → 实验特性 → 跨会话协作 调高「协作链 hop 上限」", t.cfg.hopLimit())
+		}
+		return "", fmt.Errorf("退信（NDR）：致 %s；原因：%s；原文「%s」", target.Title, reason, excerpt)
 	}
 	msg = delivered
 	// Task 175: the sender keeps its own sent log — the inbox only shows what
