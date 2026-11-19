@@ -343,3 +343,15 @@ const (
 const (
 	NoticeCodeCompactionBreaker = "compaction_breaker"
 )
+
+// NoticeCodeCompactionFailed (tl1714): a compaction pass failed and will not
+// land this round — the failure used to ride only the transcript failed card
+// (任务 867) while the user-visible notice surface stayed silent until the
+// streak thresholds, so a single empty-output failure looked like nothing
+// happened (20261119 现场: 3× empty output 静默，靠下次压力窗口自然重试).
+// Emitted per failed pass AFTER the bounded replay; cancellations (the user's
+// own interruption) stay silent. Detail carries trigger/attempt/pass, Text is
+// display-safe (compactionFailureReason), Suggestion names the retry path.
+const (
+	NoticeCodeCompactionFailed = "compaction_failed"
+)

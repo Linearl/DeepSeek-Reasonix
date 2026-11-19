@@ -256,6 +256,18 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 		Trigger: trigger, Pass: int(a.sess.compactionSessionPass.Load()), Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
 		FoldInstalled: a.projectionLiveForCard(), LastSuccessAt: a.sess.lastCompactionSuccessAt.Load(),
 	}})
+	// tl1714: a failed pass now also reaches the notice surface — the failed
+	// card lives in the transcript, but a single failure (empty output, warm
+	// cache, no streak yet) otherwise reads as silence while the next pressure
+	// window retries invisibly. Cancellations are the user's own interruption
+	// (tl1714 定性：非缺陷), not a compaction fault — they stay silent here.
+	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
+			Code: event.NoticeCodeCompactionFailed,
+			Text: "context compaction failed this pass: " + compactionFailureReason(err),
+			Detail: fmt.Sprintf("trigger=%s attempt=%d pass=%d", trigger, int(attempt), int(a.sess.compactionSessionPass.Load())),
+			Suggestion: "the next pressure check retries automatically; a manual compact forces it now"})
+	}
 	// 任务 1011 检测路 3（运行中压缩连败）：连败达到阈值时发一条用户可见
 	// 提示——只报告读数，不改数据；修复动作（剥图+折叠饮食）由打开会话的
 	// 自愈或手动修复执行，绝不在进行中的 turn 上动投影。
@@ -372,6 +384,8 @@ func compactionFailureReason(err error) string {
 		return "context changed during compaction; the pass was discarded and retries at the next context check"
 	case errors.Is(err, errSummaryOutputTruncated):
 		return "summarizer output was truncated"
+	case errors.Is(err, errSummaryEmptyOutput):
+		return "the summarizer returned no usable digest (empty output after one replay); the next pressure check or a manual compact retries it"
 	case errors.Is(err, errCheckpointRejected):
 		return "compaction candidate did not reduce the context"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

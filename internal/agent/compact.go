@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -59,7 +60,14 @@ const (
 
 var (
 	errSummaryOutputTruncated = errors.New("summarizer output truncated")
-	errCheckpointRejected     = errors.New("checkpoint candidate rejected")
+	// tl1714: the empty-output verdict at the end of a drained summary stream —
+	// no digest material in the text (and none usable from reasoning when the
+	// turn also reached for tools). out>0 with this error bills tool-call
+	// arguments or reasoning only (the 20261119 现场: out=41~1026, cache=warm,
+	// mimo-v2.6-flash). summarizeOnce replays the same request exactly once
+	// before failing upward.
+	errSummaryEmptyOutput = errors.New("summarizer returned empty output")
+	errCheckpointRejected = errors.New("checkpoint candidate rejected")
 	// Task 307 classification for a candidate at or above the physical input
 	// ceiling. Task 516: the acceptance path no longer produces it — a
 	// candidate that still shrinks the view is installed as partial progress —
@@ -638,7 +646,14 @@ func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Re
 					// reasoning is private chain-of-thought, not digest material.
 					r := strings.TrimSpace(reasoning.String())
 					if r == "" || toolCalls > 0 {
-						return "", usage, fmt.Errorf("summarizer returned empty output")
+						// tl1714: the shape readout separates "billed nothing" from
+						// "billed tool-call arguments / reasoning only" (out>0 判空
+						// 现场形态) without touching transcript content.
+						outTokens := 0
+						if usage != nil {
+							outTokens = usage.CompletionTokens
+						}
+						return "", usage, fmt.Errorf("%w (text=0 reasoning_bytes=%d tool_calls=%d out_tokens=%d)", errSummaryEmptyOutput, len(r), toolCalls, outTokens)
 					}
 					return truncateUTF8Bytes(r, summaryReasoningMaxBytes), usage, nil
 				}
@@ -670,11 +685,27 @@ func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Re
 // summarizeOnce performs the application-layer summary request. 任务 812: an
 // output truncation gets exactly one retry at twice the output budget (studio
 // summaryRetryOutputMaxTokens semantics) before the failure escapes to the
-// chunked ladder; timeouts, stream errors, and empty results still fail once.
-// A retry that still truncates returns the truncation error either way, so
-// the chunked-fallback classification is unchanged.
+// chunked ladder. tl1714: an empty-output verdict (including the out>0 shapes
+// billed on tool-call arguments or reasoning-only) gets exactly ONE same-shape
+// replay — the 20261119 现场 (three empty outputs, cache=warm, out=41~1026)
+// was model-shape jitter, not a deterministic rejection; one bounded replay
+// precedes the tl1587 segment escalation, which still owns the oversized
+// regime. A replay that still comes back empty fails upward unchanged.
 func (a *Agent) summarizeOnce(ctx context.Context, fold []provider.Message, instructions string) (string, *provider.Usage, error) {
 	summary, usage, err := a.summarize(ctx, fold, instructions)
+	if errors.Is(err, errSummaryEmptyOutput) && ctx.Err() == nil {
+		slog.Warn("agent: summarizer returned empty output — replaying the same request once",
+			"session", a.sessionLogRef(), "model_ref", a.summaryDestinationRef(),
+			"fold_tokens", a.guardedSummaryInputTokens(fold), "err", err)
+		retried, retryUsage, retryErr := a.summarize(ctx, fold, instructions)
+		// Both attempts ride one summary call's bill (812 precedent): merge the
+		// usages so the fold telemetry sees the whole spend.
+		merged := mergeSamplingUsage(usage, retryUsage)
+		if retryErr == nil {
+			return retried, merged, nil
+		}
+		return "", merged, retryErr
+	}
 	if err == nil || !errors.Is(err, errSummaryOutputTruncated) {
 		return summary, usage, err
 	}
