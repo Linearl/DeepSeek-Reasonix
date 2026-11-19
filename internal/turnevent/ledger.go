@@ -31,7 +31,46 @@ const (
 	terminalSummaryLimit       = 16
 	replayMaxEvents            = 512
 	replaySoftBytes      int64 = 2 << 20
+
+	// firstResponseCap is the bounded size of the checkpoint-retained
+	// first-response sample pool (tl1684 R7). The pool survives checkpoint
+	// compaction across generations: compaction writes it into the checkpoint
+	// record, Open reads it back, and the next compaction inherits it — so a
+	// turn's first-response reading outlives its event lines. 1024 samples at
+	// ~70 bytes each caps one checkpoint line around ~70KB (vs the 8MB
+	// compaction trigger); one week of turns on a single heavy session stays
+	// well under it. Overflow drops the oldest samples — under sustained
+	// extreme usage (>1024 turns/week on one session) the oldest in-window
+	// samples can roll out, an accepted bound of the "content-free, bounded"
+	// contract.
+	firstResponseCap = 1024
 )
+
+// firstResponseStat is one content-free first-response sample retained through
+// checkpoint compaction (tl1684 R7): the first-response benchmarks read
+// turn_started → first model output from the live event lines, but compaction
+// physically deletes those lines, which made the historical worst samples
+// invisible to the weekly read (P95/Max systematically under-reported). The
+// pool mirrors what the benchmark pairs — StartedAt is the turn's first
+// record's createdAt (same origin as the reader's pairing start) and MS the
+// gap to the first reasoning/text/tool_dispatch/tool_started — so checkpoint
+// samples and live-paired samples aggregate into one distribution.
+type firstResponseStat struct {
+	TurnID    string `json:"turnId"`
+	StartedAt int64  `json:"startedAt"`
+	MS        int64  `json:"ms"`
+}
+
+// firstResponseKindName reports whether a wire kind counts as the turn's
+// first model output. Must stay verbatim in sync with the reader side
+// (benchmarks/experience firstResponseKinds and doctor responsiveness).
+func firstResponseKindName(kind string) bool {
+	switch kind {
+	case "reasoning", "text", "tool_dispatch", "tool_started":
+		return true
+	}
+	return false
+}
 
 var ErrTurnLedgerUnavailable = errors.New("turn event ledger unavailable")
 
@@ -134,6 +173,11 @@ type checkpointRecord struct {
 	HeadID                     string            `json:"headId,omitempty"`
 	LeafMessageID              string            `json:"leafMessageId,omitempty"`
 	TerminalSummaries          []TerminalSummary `json:"terminalSummaries"`
+	// FirstResponses carries the bounded first-response sample pool through
+	// compaction (tl1684 R7). Empty is omitted; readers (benchmarks/experience)
+	// aggregate it into the first-response distribution alongside the live
+	// event lines, deduped by turnId.
+	FirstResponses []firstResponseStat `json:"firstResponses,omitempty"`
 }
 
 type routingMetadata struct {
@@ -192,6 +236,15 @@ type Ledger struct {
 	compactedThrough           uint64
 	projectionCommittedThrough uint64
 
+	// firstResponses is the bounded sample pool carried through checkpoint
+	// compaction (tl1684 R7, see firstResponseStat). turnFirstEventAt /
+	// turnResponseAt track the active turn's pairing timestamps using the same
+	// origin as the reader side (first record's createdAt → first model
+	// output's createdAt).
+	firstResponses   []firstResponseStat
+	turnFirstEventAt int64
+	turnResponseAt   int64
+
 	writer               *os.File
 	writeVersion         int
 	fileSize             int64
@@ -206,6 +259,7 @@ type Ledger struct {
 type parsedLedger struct {
 	records             []Envelope
 	summaries           []TerminalSummary
+	firstResponses      []firstResponseStat
 	acks                map[string]uint64
 	compactedThrough    uint64
 	projectionCommitted uint64
@@ -237,9 +291,20 @@ func Open(sessionPath, sessionID string) (*Ledger, error) {
 	l.projectionCommittedThrough = parsed.projectionCommitted
 	l.transcript = parsed.checkpoint
 	l.fileSize = parsed.fileSize
+	l.firstResponses = parsed.firstResponses
 
 	pendingTools := make(map[string]eventwire.Tool)
 	pendingToolOrder := make([]string, 0)
+	// Backfill pairing state for the retention pool (tl1684 R7): per-turn
+	// first-record / first-response stamps over the live lines, flushed into
+	// the pool when the turn ends. rememberFirstResponseLocked dedups by
+	// turnId, so turns already covered by the checkpoint pool are skipped.
+	backTurn, backFirst, backResp, backTerminal := "", int64(0), int64(0), false
+	flushBackfill := func() {
+		if backTurn != "" && backTerminal && backResp > 0 && backFirst > 0 {
+			l.rememberFirstResponseLocked(backTurn, backFirst, backResp-backFirst)
+		}
+	}
 	for _, rec := range l.records {
 		if rec.Sequence >= l.nextSeq {
 			l.nextSeq = rec.Sequence + 1
@@ -250,6 +315,18 @@ func Open(sessionPath, sessionID string) (*Ledger, error) {
 				pendingToolOrder = pendingToolOrder[:0]
 				l.turnStartSeq = rec.Sequence
 				l.turnStarted = rec.CreatedAt
+				l.turnFirstEventAt = rec.CreatedAt
+				l.turnResponseAt = 0
+			}
+			if rec.TurnID != backTurn {
+				flushBackfill()
+				backTurn, backFirst, backResp, backTerminal = rec.TurnID, rec.CreatedAt, int64(0), false
+			}
+			if backResp == 0 && firstResponseKindName(rec.Kind) {
+				backResp = rec.CreatedAt
+			}
+			if rec.Status.Terminal() {
+				backTerminal = true
 			}
 			l.active = rec.TurnID
 			l.status = rec.Status
@@ -272,6 +349,7 @@ func Open(sessionPath, sessionID string) (*Ledger, error) {
 			}
 		}
 	}
+	flushBackfill()
 	if l.nextSeq <= l.compactedThrough {
 		l.nextSeq = l.compactedThrough + 1
 	}
@@ -349,6 +427,7 @@ func (l *Ledger) Begin() (string, error) {
 	}
 	l.active, l.status, l.terminal = id, event.TurnQueued, false
 	l.turnStartSeq, l.turnStarted = l.nextSeq, time.Now().UnixMilli()
+	l.turnFirstEventAt, l.turnResponseAt = 0, 0
 	l.routing, l.nextRouting = l.nextRouting, routingMetadata{}
 	if l.routing.submissionID != "" {
 		l.submissionTurns[l.routing.submissionID] = id
@@ -555,6 +634,20 @@ func (l *Ledger) appendLocked(e event.Event, status event.TurnStatus) (event.Eve
 	if e.Kind == event.Text || e.Kind == event.Reasoning {
 		l.metrics.StreamRecords++
 	}
+	// First-response capture (tl1684 R7): same origin as the reader-side
+	// pairing — the turn's first record's createdAt is the start, the first
+	// reasoning/text/tool_dispatch/tool_started is the response. The sample
+	// lands in the retention pool so the next checkpoint compaction carries
+	// it past the deletion of these event lines.
+	if rec.Sequence == l.turnStartSeq {
+		l.turnFirstEventAt = rec.CreatedAt
+	}
+	if l.turnResponseAt == 0 && firstResponseKindName(kind) && l.turnFirstEventAt > 0 {
+		l.turnResponseAt = rec.CreatedAt
+		if ms := rec.CreatedAt - l.turnFirstEventAt; ms >= 0 {
+			l.rememberFirstResponseLocked(rec.TurnID, l.turnFirstEventAt, ms)
+		}
+	}
 	l.nextSeq++
 	l.status = status
 	if terminal {
@@ -721,6 +814,25 @@ func (l *Ledger) terminalSequenceLocked(turnID string) uint64 {
 
 func (l *Ledger) addSummaryLocked(rec Envelope, outcome string) {
 	l.summaries = appendTerminalSummary(l.summaries, terminalSummaryFor(rec, outcome, l.turnStarted))
+}
+
+// rememberFirstResponseLocked upserts one sample into the bounded retention
+// pool (tl1684 R7). Dedup by turnId keeps checkpoint-inherited turns from
+// being re-recorded on reopen; overflow drops the oldest samples (see the
+// firstResponseCap comment for the bound rationale). Caller must hold l.mu.
+func (l *Ledger) rememberFirstResponseLocked(turnID string, startedAt, ms int64) {
+	if turnID == "" || startedAt <= 0 {
+		return
+	}
+	for i := range l.firstResponses {
+		if l.firstResponses[i].TurnID == turnID {
+			return
+		}
+	}
+	l.firstResponses = append(l.firstResponses, firstResponseStat{TurnID: turnID, StartedAt: startedAt, MS: ms})
+	if len(l.firstResponses) > firstResponseCap {
+		l.firstResponses = append([]firstResponseStat(nil), l.firstResponses[len(l.firstResponses)-firstResponseCap:]...)
+	}
 }
 
 // Replay returns a bounded page without rereading the whole sidecar. Open owns
@@ -904,6 +1016,7 @@ func (l *Ledger) compactLocked(force bool) error {
 		TranscriptRevision: last.TranscriptRevision, TranscriptDigest: last.TranscriptDigest,
 		HeadID: last.HeadID, LeafMessageID: last.LeafMessageID,
 		TerminalSummaries: append([]TerminalSummary(nil), l.summaries...),
+		FirstResponses:    append([]firstResponseStat(nil), l.firstResponses...),
 	}
 	if checkpoint.TerminalSummaries == nil {
 		checkpoint.TerminalSummaries = []TerminalSummary{}
@@ -1101,6 +1214,7 @@ func (l *Ledger) readAndRepairLocked() (parsedLedger, error) {
 				result.projectionCommitted = checkpoint.ProjectionCommittedThrough
 				result.checkpoint = transcriptSnapshot{revision: checkpoint.TranscriptRevision, digest: checkpoint.TranscriptDigest, headID: checkpoint.HeadID, leafID: checkpoint.LeafMessageID}
 				result.summaries = append(result.summaries, checkpoint.TerminalSummaries...)
+				result.firstResponses = append(result.firstResponses, checkpoint.FirstResponses...)
 				expectedSeq = checkpoint.CompactedThroughSequence + 1
 			case "event":
 				var rec diskEventRecord
