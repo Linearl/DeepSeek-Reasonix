@@ -96,6 +96,16 @@ type ActiveTransaction = {
   /** Task 931: passive corrections (the streaming anchor-restore path) face
    * the drift gate on their FIRST alignment too; explicit intents do not. */
   passive: boolean;
+  /** tl 1699r2: the compensation target was rebuilt from a FRESH line-level
+   * capture of the reader's pre-rewrap first line (a DOM Range over the exact
+   * text the viewport top was cutting). Such a target can never name content
+   * the reader left long ago — it is the line they are looking at — so the
+   * 753 drift gate's "stale restore" verdict does not apply to it and the
+   * first-line keep-alive write goes through even when the rewrap's content
+   * shift exceeds the gate threshold. A block-level fallback target (Range
+   * unavailable / node detached) does NOT carry the flag and stays gated
+   * (tl 1255 leg E semantics byte-for-byte). */
+  freshFirstLine: boolean;
   correctionRevision: number;
   retryUsed: boolean;
   timeout: ReturnType<typeof setTimeout>;
@@ -105,6 +115,9 @@ type DeferredStructuralTransaction = {
   generation: number;
   kind: "restore" | "prepend" | "display-change" | "composer-resize";
   passive: boolean;
+  /** tl 1699r2: carried through a gesture deferral so the resumed width
+   * compensation keeps the fresh-line gate exemption it was opened with. */
+  freshFirstLine: boolean;
 };
 
 const TRANSACTION_TTL_MS = 1_000;
@@ -434,7 +447,9 @@ export class TranscriptKernel {
     // re-applying the frozen anchor here used to revert the logical anchor and
     // hand the next correction a stale target — a teleport back to where the
     // gesture started instead of where the reader actually is.
-    if (deferred && deferred.generation === this.generationValue) resumed = this.begin(deferred.kind, this.anchorValue, { passive: deferred.passive });
+    if (deferred && deferred.generation === this.generationValue) {
+      resumed = this.begin(deferred.kind, this.anchorValue, { passive: deferred.passive, freshFirstLine: deferred.freshFirstLine });
+    }
     // Task 267: tail-sync requests arriving during the gesture were dropped
     // outright (only structural kinds defer), and nothing ever retried them.
     // With the gate open and the view still owning the tail, re-arm the
@@ -469,10 +484,15 @@ export class TranscriptKernel {
     return () => { cancelled = true; this.clock.cancelAnimationFrame(handle); };
   }
 
-  begin(kind: ScrollTransactionKind, anchor = this.anchorValue, options?: { passive?: boolean }): ScrollTransaction | null {
+  begin(kind: ScrollTransactionKind, anchor = this.anchorValue, options?: { passive?: boolean; freshFirstLine?: boolean }): ScrollTransaction | null {
     if (this.userGesture && kind !== "selection") {
       if (kind === "restore" || kind === "prepend" || kind === "display-change" || kind === "composer-resize") {
-        this.deferredStructural = { generation: this.generationValue, kind, passive: options?.passive === true };
+        this.deferredStructural = {
+          generation: this.generationValue,
+          kind,
+          passive: options?.passive === true,
+          freshFirstLine: options?.freshFirstLine === true,
+        };
       }
       return null;
     }
@@ -487,7 +507,15 @@ export class TranscriptKernel {
       status: "active",
     };
     const timeout = this.clock.setTimeout(() => this.finish(transaction.id, "expired", "deadline"), TRANSACTION_TTL_MS);
-    this.active = { transaction, anchor, passive: options?.passive === true, correctionRevision: -1, retryUsed: false, timeout };
+    this.active = {
+      transaction,
+      anchor,
+      passive: options?.passive === true,
+      freshFirstLine: options?.freshFirstLine === true,
+      correctionRevision: -1,
+      retryUsed: false,
+      timeout,
+    };
     this.anchorValue = anchor;
     this.intentValue = anchor.kind === "tail" ? "tail" : "reader";
     this.anchors.set(this.session, anchor);
@@ -507,9 +535,17 @@ export class TranscriptKernel {
    * diagnostic stream stay byte-compatible with the tl 1255 width path. The
    * 753 anchor-drift gate still applies to it (tl 1255 leg E pins it: a
    * genuinely over-threshold shift on the width path must be refused and
-   * re-anchored, not teleported) — tl 1699 does not weaken that invariant. */
-  beginWidthCompensation(anchor: LogicalAnchor): ScrollTransaction | null {
-    return this.begin("composer-resize", anchor);
+   * re-anchored, not teleported) — tl 1699 does not weaken that invariant.
+   *
+   * tl 1699r2: `freshFirstLine` marks a target rebuilt from the pre-rewrap
+   * LINE-level capture (a Range over the exact text under the viewport top).
+   * The gate stays open for such a target — it names the line the reader is
+   * looking at right now, so re-applying it across the rewrap is the
+   * first-line keep-alive the width path exists for, never the "teleport to
+   * a message left long ago" the gate refuses. Block-level fallback targets
+   * omit the flag and remain gated (tl 1255 leg E unchanged). */
+  beginWidthCompensation(anchor: LogicalAnchor, options?: { freshFirstLine?: boolean }): ScrollTransaction | null {
+    return this.begin("composer-resize", anchor, { freshFirstLine: options?.freshFirstLine === true });
   }
 
   cancelActive(outcome = "cancelled"): void {
@@ -588,7 +624,18 @@ export class TranscriptKernel {
     // the fork's 753 invariant says: do not teleport — keep the pixels and
     // re-anchor to the block the reader is actually looking at (tl 1255 leg E
     // pins exactly this on the width path). tl 1699 does not weaken it.
-    if (viewport && (sameAnchorAligned || passiveFirstAlignment)) {
+    //
+    // tl 1699r2: ONE bounded exemption. A target rebuilt from the fresh
+    // line-level capture (active.freshFirstLine) names the exact text the
+    // viewport top was cutting BEFORE the rewrap — by construction it cannot
+    // be a stale restore to content the reader left long ago. Re-applying it
+    // across the rewrap is the first-line keep-alive itself, so the gate's
+    // "stale anchor" verdict does not apply. The exemption is per-flag, not
+    // per-path: a block-level fallback target on the same width path stays
+    // gated exactly as tl 1255 leg E pinned it, and the gate's numbers
+    // (ANCHOR_DRIFT_MIN_PX / max(..., clientHeight)) are untouched.
+    const freshLineCompensation = active.freshFirstLine === true;
+    if (viewport && (sameAnchorAligned || passiveFirstAlignment) && !freshLineCompensation) {
       const target = top + active.anchor.offsetPx;
       if (Math.abs(target - viewport.scrollTop) > Math.max(ANCHOR_DRIFT_MIN_PX, viewport.clientHeight)) {
         const first = viewport.visibleBlocks.find((block) => block.bottom > viewport.scrollTop + 0.5);
