@@ -65,7 +65,7 @@ import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydrateFailureDetail, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { HISTORY_AUTO_RETRY_LIMIT, runBoundedAutoRetry } from "./historyAutoRetry";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, callerSkipOwesFreshnessGate, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fillChunkStartTurn, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, HISTORY_FILL_CHUNK_ITEMS, HISTORY_TAIL_FIRST_TURNS, hydratedHistoryApplyMode, planHistoryFillChunks, residentPageHeavy, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, sessionChangedReloadNeeded, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, callerSkipOwesFreshnessGate, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fillChunkStartTurn, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, HISTORY_FILL_CHUNK_ITEMS, HISTORY_TAIL_FIRST_TURNS, hydratedHistoryApplyMode, isStaleResidentProjection, planHistoryFillChunks, projectionNewerThanResident, residentPageHeavy, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, sessionChangedReloadNeeded, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
 import { prefetchMruTabs, type PrefetchCandidate } from "./transcriptPrefetch";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
@@ -4281,6 +4281,22 @@ export function useController() {
         items: projection.items, revision: projection.revisionKnown ? projection.revision : undefined, digest: projection.digest || undefined,
       };
       const applyMode = hydratedHistoryApplyMode(skipHistory, projection !== undefined, foregroundTurnActive(), statesRef.current.get(tabId), applyProj);
+      // tl1705: the fetched page landing (or not landing) on the surface used
+      // to be observable only on the reuse branch — an apply-mode "skip" over
+      // a FETCHED page (skipHistory already false) fell through both log
+      // branches below with zero trace, so "fetched 671 ms, surface unchanged"
+      // could not be attributed afterwards (the 20261119 collab-line report).
+      // One line per fetched page states the verdict and its inputs.
+      const residentRevisionBeforeApply = statesRef.current.get(tabId)?.historyRevision;
+      const appliedRevision = applyProj?.revision;
+      if (applyMode === "skip" && projection !== undefined && !skipHistory) {
+        reportFrontendLog(
+          "history-paging",
+          "history apply skipped",
+          `tab=${tabId} fetched=${projection.items.length} items revision=${appliedRevision ?? "-"} residentRevision=${residentRevisionBeforeApply ?? "-"} running=${foregroundTurnActive()} newer=${projectionNewerThanResident(statesRef.current.get(tabId), applyProj)} staleResident=${isStaleResidentProjection(statesRef.current.get(tabId), applyProj)} scope=${reason}`,
+          "warn",
+        );
+      }
       if (projection !== undefined && applyMode !== "skip") {
         const historyApplyStartedAt = Date.now();
         if (deferResetUntilHistory && stillCurrent() && !foregroundTurnActive()) {
@@ -4311,8 +4327,26 @@ export function useController() {
             "info",
           );
         } else {
+          // tl1705: a replace whose revision reads OLDER than the resident
+          // page is silently dropped by the reducer — log the would-reject
+          // verdict so a revision rollback (recovery fork / cross-lineage
+          // rebind) is attributable from desktop.log alone.
+          if (historyRevisionIsOlder(residentRevisionBeforeApply, appliedRevision)) {
+            reportFrontendLog(
+              "history-paging",
+              "history replace would be rejected (resident revision ahead)",
+              `tab=${tabId} residentRevision=${residentRevisionBeforeApply ?? "-"} incomingRevision=${appliedRevision ?? "-"} items=${projection.items.length} scope=${reason}`,
+              "warn",
+            );
+          }
           dispatchTo(tabId, { type: "history_replace", ...page });
         }
+        reportFrontendLog(
+          "history-paging",
+          "history page applied",
+          `tab=${tabId} mode=${applyMode} items=${projection.items.length} turns=${projection.startTurn}-${projection.endTurn}/${projection.totalTurns} revision=${appliedRevision ?? "-"} residentRevision=${residentRevisionBeforeApply ?? "-"} scope=${reason}`,
+          "info",
+        );
         noteStageTiming(tabId, "hydrate:apply", Date.now() - historyApplyStartedAt);
         addBreadcrumb(
           "tab.hydrate",

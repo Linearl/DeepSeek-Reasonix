@@ -476,7 +476,56 @@ func (a *App) HistorySliceForTab(tabID string, req HistorySliceRequest) HistoryS
 		sessionPath = p
 		sessionDir = controllerSessionDir(ctrl)
 	}
+	// tl1705: a resident tab whose controller lags the on-disk ledger must not
+	// serve the live in-memory view — the rows another writer persisted are not
+	// in it (20261119: collab-line reply landed in the jsonl, switch-back
+	// fetched 671 ms and still rendered the pre-reply surface; only a tab
+	// reopen — ctrl==nil → cold read — showed it).
+	if liveControllerBehindLedger(ctrl, sessionPath) {
+		slice, err := a.coldHistorySlice(sessionDir, sessionPath, req, tr)
+		if err != nil {
+			slog.Debug("desktop: cold history slice (live behind ledger) failed", "path", sessionPath, "err", err)
+			return failedHistorySlice(err.Error())
+		}
+		return slice
+	}
 	return a.liveHistorySlice(ctrl, sessionDir, sessionPath, req, tr)
+}
+
+// liveControllerBehindLedger reports that the tab controller's in-memory
+// transcript provably lags the on-disk branch-meta ledger — the signature of
+// an external writer (collab line, CLI, another window) appending to the same
+// session file without this process seeing the writes. The live view is stale
+// by construction in that state, so the caller falls back to the cold read
+// (display index / transcript scan), which is authoritative.
+//
+// Conservative by design: an unreadable or fingerprint-less ledger keeps the
+// live path (today's behaviour — nothing provably stale), and a controller
+// without the windowed interface is untouched. A matching revision with a
+// diverging digest means one side is lying; the disk wins, same as an older
+// revision. The normal foreground session (writer == controller) keeps the
+// live fast path because its baseline and the ledger advance together.
+func liveControllerBehindLedger(ctrl control.SessionAPI, sessionPath string) bool {
+	wc, ok := ctrl.(historyWindowController)
+	if !ok {
+		return false
+	}
+	ledger, _, err := agent.SessionContentIdentity(sessionPath)
+	if err != nil || !ledger.RevisionKnown {
+		return false
+	}
+	ps, psOK := wc.SessionPersistedState()
+	if !psOK || !ps.RevisionKnown {
+		// The ledger carries a CAS fingerprint the controller cannot match:
+		// its memory view cannot prove it covers the persisted transcript.
+		return true
+	}
+	if ps.Revision < ledger.Revision {
+		return true
+	}
+	// Same revision but a diverging digest: one side is lying about content;
+	// the disk is authoritative.
+	return ps.Revision == ledger.Revision && ps.DigestHex != ledger.DigestHex
 }
 
 // liveHistorySlice pages a tab with a running controller. The display index
