@@ -13,6 +13,19 @@ updates:
         patterns: ["*"]
         exclude-patterns: ["github.com/sky-valley/pi"]
         update-types: ["minor", "patch"]
+    # tl1700: pi 锁在 v0.99.26，不放 1.x。
+    # pi 1.x 把 opencode-go 目录的 baseUrl 从 https://opencode.ai/zen/go/v1 迁到
+    # https://opencode.ai/inference/go/openai/v1（anthropic 路由同理迁到
+    # https://opencode.ai/inference/go/anthropic），而 internal/provider/opencode_go.go
+    # 把官方路由硬编码成 /zen/go/v1 与 /zen/go、pi_catalog.go 又按这组 baseUrl 精确匹配
+    # 目录条目——两者一旦对不上，OpenCode Go 的模型表、上下文上限/最大输出与视觉模型识别
+    # 会整体失效，而 go build 仍能通过（属静默行为回退）。
+    # 实测：fork 自带的 internal/provider 契约测试在 v0.99.26 全绿，升到 v1.5.31 挂 4 个
+    # （TestOpenCodeGoChatModelsMatchPinnedLimits 等，见 PR #99 评估）。
+    # 待 fork 适配新路由后再放开 1.x。
+    ignore:
+      - dependency-name: "github.com/sky-valley/pi"
+        versions: [">=1.0.0"]
 
   - package-ecosystem: "gomod"
     directory: "/desktop"
