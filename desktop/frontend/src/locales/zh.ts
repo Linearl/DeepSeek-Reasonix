@@ -5826,6 +5826,12 @@ export const zh: Record<DictKey, string> = {
   "updater.checking": "正在检查更新…",
   "updater.upToDate": "已是最新版本。",
   "updater.available": "发现新版本：{v}",
+  // tl1693：侧栏脚注更新灯与版本页发布列表。
+  "updater.sidebarUpdateAvailable": "有新版本 —— 打开更新设置",
+  "updater.releasesTitle": "发布列表",
+  "updater.releasesHint": "来自 fork 的 GitHub 发布；已标记当前运行版本。",
+  "updater.releasesCurrent": "当前版本",
+  "updater.releasesInstallers": "安装包",
   "updater.releaseNotes": "更新说明",
   "updater.updateAndRestart": "更新并重启",
   "updater.goToDownload": "前往下载页",

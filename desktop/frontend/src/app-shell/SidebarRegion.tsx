@@ -8,6 +8,7 @@ import { AlarmClock, MessageSquare, MessagesSquare, Settings, SquarePen, Trash2 
 import { setCollabHubOpen } from "../components/CollabHubPanel";
 import { useHydrateSessionExperimentFlags } from "../app-runtime/useHydrateSessionExperimentFlags";
 import { Tooltip } from "../components/Tooltip";
+import { SidebarUpdateDot } from "../components/SidebarUpdateDot";
 import type { Translator } from "../lib/i18n";
 import type { SettingsTab } from "../lib/types";
 
@@ -75,12 +76,14 @@ export function SidebarRegion(props: SidebarRegionProps) {
             452L→856：收件站/群聊两键融合为协作中心一键（App.tsx 四位行同步）：
             回收站 → 协作中心 → 自动化 → 设置。未读徽标属挂载侧动态状态
             （useCollabInboxUnreadCount），本卸载树不接；复挂时如需徽标再补
-            count 接线。 */}
+            count 接线。tl1693：更新灯（SidebarUpdateDot）自取 updater context
+            （不占 props 接线位），有可用新版才渲染，点击直达更新设置。 */}
         <nav className="sidebar__nav sidebar__nav--footer">
           <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
             <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
             <UtilityButton label={t("sidebar.collabHub")} icon={<MessagesSquare size={16} />} onClick={() => setCollabHubOpen(true)} />
             <UtilityButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
+            <SidebarUpdateDot onOpenUpdates={() => props.onOpenSettings("updates")} />
             <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
           </div>
         </nav>

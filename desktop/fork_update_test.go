@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/forkupdate"
 	"reasonix/internal/repair"
@@ -372,3 +373,75 @@ func buildForkReleaseZip(t *testing.T) []byte {
 // rate-limited degradation without reaching into the package's unexported
 // error type. It wraps forkupdate.RateLimited's classification contract.
 var _ = fmt.Sprintf
+
+// TestForkListReleasesSilentDegrade pins the tl1693 version-page face: a
+// successful lookup returns the release list (newest first, current-version
+// marker, artifact links, RFC3339 timestamps) and any channel failure comes
+// back as {failed: true} with no error — the UI hides the list, never errors.
+func TestForkListReleasesSilentDegrade(t *testing.T) {
+	env := newForkUpdateTestEnv(t)
+	version = "v1.38.3-20261115-0841"
+	app := &App{}
+
+	t.Run("success lists releases with current marker", func(t *testing.T) {
+		forkListSeam = func(context.Context, *http.Client) ([]forkupdate.Release, error) {
+			return []forkupdate.Release{
+				{Tag: "desktop-v1.38.3-20261117-1800", Version: "v1.38.3-20261117-1800", Notes: "newest notes", Published: time.Date(2026, 11, 17, 18, 0, 0, 0, time.UTC),
+					Assets: []forkupdate.Asset{{Name: "Reasonix-windows-amd64.zip", URL: "https://example.com/win.zip", Size: 1}}},
+				{Tag: "desktop-v1.38.3-20261115-0841", Version: "v1.38.3-20261115-0841", Notes: "running notes"},
+			}, nil
+		}
+		got := app.ForkListReleases()
+		if got.Failed {
+			t.Fatal("a successful lookup must not report failed")
+		}
+		if len(got.Releases) != 2 {
+			t.Fatalf("rows = %d, want 2", len(got.Releases))
+		}
+		if got.Releases[0].Current {
+			t.Fatal("the newest release is not the running one; current must be false")
+		}
+		if !got.Releases[1].Current {
+			t.Fatalf("running version %q must be marked current", version)
+		}
+		if got.Releases[1].Assets == nil {
+			t.Fatal("assets must be a non-nil slice for JSON stability")
+		}
+		if got.Releases[0].Published != "2026-11-17T18:00:00Z" {
+			t.Fatalf("published = %q, want RFC3339 UTC", got.Releases[0].Published)
+		}
+		if got.Releases[0].Notes != "newest notes" {
+			t.Fatalf("notes = %q", got.Releases[0].Notes)
+		}
+		if len(got.Releases[0].Assets) != 1 || got.Releases[0].Assets[0].URL != "https://example.com/win.zip" {
+			t.Fatalf("assets = %+v", got.Releases[0].Assets)
+		}
+	})
+
+	t.Run("channel failure degrades silently", func(t *testing.T) {
+		forkListSeam = func(context.Context, *http.Client) ([]forkupdate.Release, error) {
+			return nil, forkupdate.NewRateLimitError("403 Too Many Requests")
+		}
+		got := app.ForkListReleases()
+		if !got.Failed {
+			t.Fatal("a failed lookup must report failed for the UI to hide the list")
+		}
+		if len(got.Releases) != 0 {
+			t.Fatalf("failed lookup must carry no rows; got %d", len(got.Releases))
+		}
+	})
+
+	t.Run("transport client unavailable degrades silently", func(t *testing.T) {
+		forkCheckClient = func() (*http.Client, error) { return nil, errors.New("no transport") }
+		forkListSeam = func(context.Context, *http.Client) ([]forkupdate.Release, error) {
+			t.Fatal("list seam must not run when the client is unavailable")
+			return nil, nil
+		}
+		got := app.ForkListReleases()
+		if !got.Failed || len(got.Releases) != 0 {
+			t.Fatalf("client failure must degrade to {failed: true, rows: 0}; got %+v", got)
+		}
+	})
+
+	_ = env
+}

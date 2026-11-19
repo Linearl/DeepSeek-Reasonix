@@ -6051,6 +6051,12 @@ func (a *App) maybeAutoTitleTopic(tab *WorkspaceTab) bool {
 	if sessionHasManualDisplayTitle(sessionPath) {
 		return false
 	}
+	// tl1692: when agent.title_model is configured, fire the one parallel AI
+	// title request for this session here — the first autosave pass that sees
+	// a user turn, i.e. while the first answer is still streaming. All gates
+	// run inline (cheap); only the generation is parallel, and an unset
+	// title_model closes the chain before anything happens.
+	a.maybeKickAutoAITopicTitle(tab, topicID, titleRoot, sessionPath)
 	nextTitle, updated := autoTitleTopicFromSession(titleRoot, topicID, sessionPath)
 	if !updated {
 		return false

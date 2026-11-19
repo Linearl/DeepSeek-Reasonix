@@ -5868,6 +5868,12 @@ export const en = {
   "updater.checking": "Checking for updates…",
   "updater.upToDate": "You're on the latest version.",
   "updater.available": "A new version is available: {v}",
+  // tl1693: the sidebar footer light and the version page's release list.
+  "updater.sidebarUpdateAvailable": "Update available — open update settings",
+  "updater.releasesTitle": "Releases",
+  "updater.releasesHint": "Published on the fork's GitHub releases; your running version is marked.",
+  "updater.releasesCurrent": "Current",
+  "updater.releasesInstallers": "Installers",
   "updater.releaseNotes": "Release notes",
   "updater.updateAndRestart": "Update and restart",
   "updater.goToDownload": "Go to download page",
