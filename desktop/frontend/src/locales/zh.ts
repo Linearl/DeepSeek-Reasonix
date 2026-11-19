@@ -126,6 +126,14 @@ export const zh: Record<DictKey, string> = {
   "selection.quickAction.truncated": "（选中文本过长，已截断）",
   "selection.quickAction.failed": "请求失败，请重试",
   "selection.quickAction.unavailable": "选区已失效，请重新选择",
+  // tl1709：选中文本朗读（Web Speech API，零后端零网络）。toggle 文案 +
+  // 三种可见失败提示（环境不支持 / 无语音包 / 无匹配语种语音包）——不静默失败。
+  "selection.quickAction.speak": "朗读",
+  "selection.quickAction.stop": "停止",
+  "selection.quickAction.speaking": "朗读中…",
+  "selection.quickAction.speechUnsupported": "当前环境不支持语音朗读",
+  "selection.quickAction.speechNoVoices": "未检测到可用的系统语音包",
+  "selection.quickAction.speechNoVoiceFor": "未找到可朗读{lang}文本的语音包",
   "common.cut": "剪切",
   "common.paste": "粘贴",
   "common.selectAll": "全选",
