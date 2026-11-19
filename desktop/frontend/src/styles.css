@@ -3084,15 +3084,22 @@ a[href] {
   align-items: center;
   justify-content: center;
   filter: drop-shadow(0 14px 22px color-mix(in srgb, #0153e5 34%, transparent));
-  margin-bottom: 22px;
+  /* tl1703: 10px matches the boot-shell card gap so the brand frames swap
+     without a name-position jump. */
+  margin-bottom: 10px;
 }
 .startup-splash__mark img {
-  width: 64px;
-  height: 64px;
+  /* tl1703: aligned with the index.html boot-shell mark (56px) so the two
+     brand frames swap without a size jump; the boot-shell is the alignment
+     base because it also paints with the lab switch off (flag-off visual
+     path must stay byte-identical). */
+  width: 56px;
+  height: 56px;
   display: block;
 }
 .startup-splash__name {
-  font-size: 27px;
+  /* tl1703: matches the boot-shell brand name (22px) — see the mark img note. */
+  font-size: 22px;
   font-weight: 650;
   letter-spacing: 0;
   line-height: 1.1;
