@@ -22,6 +22,40 @@ type PreReflowFacts = {
   width: number;
   atBottom: boolean;
   firstVisible: LogicalAnchor | null;
+  /** tl 1699r2: the LINE-level first-line anchor (see LineAnchor). Null when
+   * unavailable (no caret API, empty rects, block gap, at the bottom) — the
+   * block-level `firstVisible` above stays the fallback in that case. */
+  line: LineAnchor | null;
+};
+
+/**
+ * tl 1699r2: a line-level anchor on the reader's first visible line.
+ *
+ * A width rewrap changes how text wraps, so a BLOCK-level anchor
+ * ({blockKey, offsetPx}) cannot keep the first line: the same pixel offset
+ * into the block points at different text after every line above it
+ * rewraps. That granularity gap is exactly the residual drift the first
+ * round left behind. This anchor instead holds a DOM Range over the exact
+ * character the viewport top was cutting. Rewrapping changes line breaks —
+ * not text content or node identity — so re-measuring the same range in the
+ * rewrapped layout yields the SAME line's new position, and writing the
+ * scroll top that restores the captured viewport offset keeps the first
+ * line on screen (the platform's scroll-anchoring idea, done explicitly,
+ * because `.transcript` runs `overflow-anchor: none` and the kernel owns
+ * anchoring semantics).
+ */
+type LineAnchor = {
+  /** The transcript block containing the anchored line (recovery target
+   * conversion + diagnostics). */
+  blockKey: string;
+  /** The anchored text position (a one-character DOM Range). Dead when its
+   * start container leaves the document (virtualization / re-render) — the
+   * consumer checks `isConnected` and falls back to the block anchor. */
+  range: Range;
+  /** The line box top relative to the scroller's viewport top at capture
+   * time (within one line height; ≤ 0 when the box straddles the viewport
+   * top edge). The keep-alive write restores this visual offset. */
+  lineOffsetFromViewportTop: number;
 };
 // Native WebViews can leave a short gap between coalesced wheel batches while
 // the platform compositor is still the authoritative scroll owner. Keep the
@@ -555,6 +589,54 @@ export function useTranscriptKernel({
 
   const firstVisibleAnchor = useCallback((): LogicalAnchor | null => visibleAnchorOf(snapshot()), [snapshot, visibleAnchorOf]);
 
+  // tl 1699r2: capture the LINE under the viewport's top edge (see LineAnchor).
+  // Uses caretRangeFromPoint — the platform primitive for "what text sits at
+  // this point" — one O(1) measurement per observation, only while NOT at the
+  // bottom (a bottom-pinned view re-pins via the tail leg and never needs a
+  // line anchor). Any degradation path (no caret API in the engine/test DOM,
+  // caret on a non-text node i.e. a block gap or image, unmeasurable line
+  // box, caret drifting more than a line from the top edge) returns null and
+  // the block-level anchor of the same facts stays in charge.
+  const captureLineAnchor = useCallback((geometry: TranscriptViewportSnapshot): LineAnchor | null => {
+    const element = scrollRef.current;
+    if (!element) return null;
+    if (kernel.isViewportAtBottom(geometry)) return null;
+    const doc = element.ownerDocument;
+    const caretAt = typeof doc.caretRangeFromPoint === "function" ? doc.caretRangeFromPoint.bind(doc) : null;
+    if (!caretAt) return null;
+    const scrollerRect = element.getBoundingClientRect();
+    if (scrollerRect.height <= 0) return null;
+    const caret = caretAt(scrollerRect.left + scrollerRect.width / 2, scrollerRect.top + 1);
+    const node = caret?.startContainer;
+    if (!node || node.nodeType !== 3) return null;
+    const text = node.textContent ?? "";
+    if (text.length === 0) return null;
+    const blockElement = node.parentElement?.closest("[data-transcript-block-key]") ?? null;
+    const blockKey = blockElement?.getAttribute("data-transcript-block-key") ?? null;
+    if (!blockKey) return null;
+    // Measure the line box through a one-character range around the caret
+    // (a collapsed range has no client rects). Clamp both ends into the node:
+    // caretRangeFromPoint may return the node's end offset, where (end, end)
+    // would be collapsed and unmeasurable — step one character back instead,
+    // which still sits on the same (last) line.
+    const caretOffset = caret!.startOffset;
+    const end = Math.min(caretOffset + 1, text.length);
+    const start = Math.max(0, Math.min(caretOffset, end - 1));
+    const probe = doc.createRange();
+    probe.setStart(node, start);
+    probe.setEnd(node, end);
+    const rects = probe.getClientRects();
+    const lineRect = rects.length > 0 ? rects[0] : probe.getBoundingClientRect();
+    if (!lineRect || lineRect.height <= 0) return null;
+    const lineOffsetFromViewportTop = lineRect.top - scrollerRect.top;
+    // The caret point hugs the viewport's top edge, so its line box must be
+    // within one line height of it. Anything farther (a caret snapped into a
+    // block gap / padding) would keep the wrong line — fall back to the
+    // block anchor rather than anchor the wrong text.
+    if (lineOffsetFromViewportTop > lineRect.height) return null;
+    return { blockKey, range: probe, lineOffsetFromViewportTop };
+  }, [kernel]);
+
   // tl 1699: the viewport facts captured BEFORE a rewrap. A rewrap changes the
   // scroller's width, and everything measured after that change describes the
   // NEW layout — the browser's scroll anchoring has already moved scrollTop,
@@ -577,10 +659,11 @@ export function useTranscriptKernel({
       width,
       atBottom: kernel.isViewportAtBottom(geometry),
       firstVisible: visibleAnchorOf(geometry),
+      line: captureLineAnchor(geometry),
     };
     preReflowRef.current = next;
     return next;
-  }, [kernel, snapshot, visibleAnchorOf]);
+  }, [captureLineAnchor, kernel, snapshot, visibleAnchorOf]);
 
   // The width epoch advanced (a rewrap was compensated): the next rewrap's
   // pre-state must be measured in the new width.
@@ -598,27 +681,58 @@ export function useTranscriptKernel({
       width: element.clientWidth,
       atBottom: kernel.isViewportAtBottom(geometry),
       firstVisible: visibleAnchorOf(geometry),
+      // Measured in the NEW width epoch: the next rewrap's pre-state. The
+      // line anchor re-captures here too, so a multi-frame transition keeps
+      // a fresh line anchor every frame (each frame's keep-alive aims at the
+      // line the reader is looking at as of that frame).
+      line: captureLineAnchor(geometry),
     };
-  }, [kernel, snapshot, visibleAnchorOf]);
+  }, [captureLineAnchor, kernel, snapshot, visibleAnchorOf]);
 
   // tl 1699: the width-reflow compensation target.
   //   tail  → the reader was at the bottom BEFORE the rewrap (the pre-rewrap
   //            measurement, not a post-rewrap one) → pin the bottom
   //            unconditionally after it.
-  //   reader → the logical anchor (the first visible block at the reader's
-  //            last displacement) is re-applied, so the screen's first line
-  //            stays where it was. When the logical anchor cannot name a block
-  //            (a stale tail intent over a viewport parked mid-transcript),
-  //            the pre-rewrap first visible line is the fallback: the screen's
-  //            first line is what the reader is looking at.
-  const resolveWidthTarget = useCallback((): LogicalAnchor => {
+  //   reader → keep the screen's first line. tl 1699r2 rebuilds the target
+  //            from the LINE-level capture when it is alive: re-measure the
+  //            anchored range in the rewrapped layout, convert the line's new
+  //            position into a block anchor expressing "this line back at the
+  //            captured viewport offset", and mark the target fresh so the
+  //            753 drift gate lets the keep-alive write through (the target
+  //            names the line the reader is looking at — never a stale
+  //            restore). When the line anchor is unavailable or dead (caret
+  //            API missing, node detached by virtualization), the pre-1699r2
+  //            block-level chain (logical anchor → pre-rewrap first visible
+  //            block) takes over UNMARKED, keeping tl 1255 leg E's gated
+  //            semantics byte-for-byte.
+  const resolveWidthTarget = useCallback((): { anchor: LogicalAnchor; freshFirstLine: boolean } => {
     const facts = preReflowRef.current;
     const logical = kernel.anchor;
     const wasAtBottom = facts ? facts.atBottom : kernel.atBottom;
-    if (wasAtBottom) return { kind: "tail" };
-    if (logical.kind === "block") return logical;
-    if (facts?.firstVisible) return facts.firstVisible;
-    return logical;
+    if (wasAtBottom) return { anchor: { kind: "tail" }, freshFirstLine: false };
+    const line = facts?.line;
+    if (line && line.range.startContainer.isConnected) {
+      const element = scrollRef.current;
+      if (element) {
+        const rects = line.range.getClientRects();
+        const lineRect = rects.length > 0 ? rects[0] : line.range.getBoundingClientRect();
+        if (lineRect && lineRect.height > 0) {
+          const top = blockTop(element, line.blockKey);
+          if (top != null) {
+            // The anchored line's content coordinate in the rewrapped layout,
+            // then back off by the captured viewport offset: writing this
+            // scroll top puts the SAME line back where the reader saw it.
+            const scrollerTop = element.getBoundingClientRect().top;
+            const lineContentTop = lineRect.top - scrollerTop + element.scrollTop;
+            const target = lineContentTop - line.lineOffsetFromViewportTop;
+            return { anchor: { kind: "block", blockKey: line.blockKey, offsetPx: target - top }, freshFirstLine: true };
+          }
+        }
+      }
+    }
+    if (logical.kind === "block") return { anchor: logical, freshFirstLine: false };
+    if (facts?.firstVisible) return { anchor: facts.firstVisible, freshFirstLine: false };
+    return { anchor: logical, freshFirstLine: false };
   }, [kernel]);
 
   const beginAnchorRestore = useCallback((anchor?: LogicalAnchor) => {
@@ -714,7 +828,11 @@ export function useTranscriptKernel({
         // a post-rewrap measurement: after the rewrap the browser's own scroll
         // anchoring has already moved scrollTop, so "am I at the bottom" is no
         // longer evidence about what the reader wanted.
-        kernel.beginWidthCompensation(resolveWidthTarget());
+        // tl 1699r2: a line-anchored target rides the freshFirstLine flag —
+        // the one bounded exemption from the 753 drift gate (a fresh line
+        // target cannot be a stale restore); block-level fallbacks stay gated.
+        const widthTarget = resolveWidthTarget();
+        kernel.beginWidthCompensation(widthTarget.anchor, { freshFirstLine: widthTarget.freshFirstLine });
         commitViewportGeometry(undefined, true);
         refresh();
         // The width epoch advanced — the next rewrap's pre-state is measured

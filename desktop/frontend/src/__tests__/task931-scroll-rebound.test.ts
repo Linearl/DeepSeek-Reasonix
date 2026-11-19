@@ -261,7 +261,7 @@ console.log("\ntask 931: stale-anchor rebound — deferred resume uses current a
   ok(hookSource.includes('kernel.begin("restore", restoreAnchor, { passive: true })'),
     "source pin: beginAnchorRestore marks the streaming restore passive");
   const kernelSource = readFileSync(new URL("../lib/transcriptKernel.ts", import.meta.url), "utf8");
-  ok(kernelSource.includes("this.begin(deferred.kind, this.anchorValue, { passive: deferred.passive })"),
+  ok(kernelSource.includes("this.begin(deferred.kind, this.anchorValue, { passive: deferred.passive, freshFirstLine: deferred.freshFirstLine })"),
     "source pin: endUserGesture resumes the deferred transaction with the CURRENT anchor");
   ok(!kernelSource.includes("kind, anchor }") && !/deferredStructural = \{ generation: [^}]*anchor/.test(kernelSource),
     "source pin: the deferred record no longer freezes the defer-time anchor");
