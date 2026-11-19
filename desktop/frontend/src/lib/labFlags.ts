@@ -112,11 +112,46 @@ let tabPermissionIndicator: TabPermissionIndicatorMode = "badge";
 const flags: Record<LabFeatureFlag, boolean> = { ...defaults };
 const listeners = new Set<() => void>();
 
+// tl1703: the startup-splash gate must resolve on the first frame, but the
+// boot snapshot that carries the lab flags arrives asynchronously (the main
+// UI would otherwise stand uncovered for the whole snapshot round trip while
+// the switch is on — user OBS frame capture 2026-11-19). The last resolved
+// startupSplash value is mirrored to localStorage on every applyLabFlags, and
+// the mirror is read synchronously once at module init to seed the flag. The
+// seed covers only startupSplash — every other flag keeps the exact
+// default-until-snapshot behaviour. After the snapshot lands, applyLabFlags
+// remains the sole authority and corrects the seed through the existing
+// onLabFlagsChange listeners; a missing/denied mirror falls back to the
+// default (off), so flag-off behaviour is byte-for-byte unchanged.
+const STARTUP_SPLASH_MIRROR_KEY = "reasonix.labflag.startupSplash";
+
+function seedStartupSplashFromMirror(): void {
+  try {
+    const mirrored = window.localStorage.getItem(STARTUP_SPLASH_MIRROR_KEY);
+    if (mirrored === "1") flags.startupSplash = true;
+    else if (mirrored === "0") flags.startupSplash = false;
+  } catch {
+    // Restricted host (or plain Node test env): keep the default; the boot
+    // snapshot stays the only authority.
+  }
+}
+seedStartupSplashFromMirror();
+
+function mirrorStartupSplash(): void {
+  try {
+    window.localStorage.setItem(STARTUP_SPLASH_MIRROR_KEY, flags.startupSplash ? "1" : "0");
+  } catch {
+    // Restricted host: the mirror is advisory only; the snapshot stays
+    // authoritative for the next boot's seed attempt.
+  }
+}
+
 /** Boot-time (or test) entry: replace the whole flag set from the snapshot. */
 export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): void {
   for (const key of Object.keys(defaults) as LabFeatureFlag[]) {
     flags[key] = next[key] ?? defaults[key];
   }
+  mirrorStartupSplash();
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
