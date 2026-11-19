@@ -17,6 +17,8 @@ var English = Messages{
 	CompletionUncertain:              "Completion could not be confirmed. The current result and completed work are kept. Send \"continue\" to resume, or restate what should change.",
 	ReasoningReplayRepair:            "The model provider rejected this conversation's stored thinking blocks. Reasonix removed them from the provider-visible history and retried once.",
 	EmptyFinal:                       "No visible answer was produced; asking the assistant to respond again.",
+	MalformedToolCall:                "The model's tool call arrived as malformed raw markup instead of a structured call; the tools were not executed.",
+	MalformedToolCallRetry:           "Asking the model to re-send the tool call through the structured channel (one attempt only).",
 	ReasoningOnlyContinuation:        "The previous reply contained only a thinking process with no visible answer; asking the assistant to reply directly.",
 	ReasoningOnlyFinal:               "This reply only produced a thinking process; the thinking is shown in the message body.",
 	ReasoningOnlyFinalBody:           "This reply only produced a thinking process. The full thinking is shown below.",

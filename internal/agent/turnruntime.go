@@ -205,6 +205,14 @@ type terminalProtocolState struct {
 	// the ladder position for the tl-1314 recovery rounds: 1 → rewrite round,
 	// 2 → degrade-to-file round, 3 → run ends, nothing injected.
 	rejectedTemplateBlocks int
+	// malformedToolCallRecoveries counts tl1707 re-ask rounds sent after a
+	// final round carried bare tool-call markup instead of a structured
+	// tool_calls response (external issue #103). Kept separate from
+	// rejectedTemplateBlocks for the same reason: different cause, different
+	// ceiling (exactly 1, maxMalformedToolCallRecoveries) — a second malformed
+	// round recovers nothing and the turn ends with the detection notice
+	// already on the transcript.
+	malformedToolCallRecoveries int
 	// readinessAdvisories counts turns that ended with an unmet readiness contract
 	// carried forward instead of pausing. Unattended (autopilot) runs advise and
 	// continue, and this bounds that so a gap the model cannot close does not spin.

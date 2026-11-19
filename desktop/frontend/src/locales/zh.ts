@@ -5596,6 +5596,9 @@ export const zh: Record<DictKey, string> = {
   "notice.deliveryRequirementTask": "剩余实施工作",
   "notice.deliveryRequirementCapability": "必需能力检查",
   "notice.emptyFinal": "没有生成可见回复，已要求助手重新作答。",
+  // tl1707（外部 issue #103）：模型把工具调用标记当普通文本输出，工具未被执行。
+  "notice.malformedToolCall": "模型输出的工具调用格式异常（调用标记以普通文本混入，未走结构化通道），相关工具未被执行。",
+  "notice.malformedToolCallRetry": "已要求模型通过结构化通道重发该工具调用（仅重发一次）。",
   "notice.executorHandoff": "助手尚未执行必要操作，已要求它使用相应工具。",
   "notice.toolBudget": "工具调用轮数已达上限，已要求助手总结当前进展。",
   "notice.promptQueued": "有一个问题在等你先回答前面的提示。",

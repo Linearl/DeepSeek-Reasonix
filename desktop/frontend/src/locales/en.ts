@@ -5637,6 +5637,9 @@ export const en = {
   "notice.deliveryRequirementTask": "remaining implementation work",
   "notice.deliveryRequirementCapability": "required capability checks",
   "notice.emptyFinal": "No visible answer was produced; asking the assistant to respond again.",
+  // tl1707（外部 issue #103）：模型把工具调用标记当普通文本输出，工具未被执行。
+  "notice.malformedToolCall": "The model's tool call arrived as malformed raw markup instead of a structured call; the tools were not executed.",
+  "notice.malformedToolCallRetry": "Asking the model to re-send the tool call through the structured channel (one attempt only).",
   "notice.executorHandoff": "The assistant answered before taking action; asking it to use the required tools.",
   "notice.toolBudget": "Tool round limit reached; asking the assistant to summarize progress.",
   "notice.promptQueued": "A question is waiting for you to answer the prompt ahead of it.",

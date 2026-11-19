@@ -20,6 +20,20 @@ const (
 	// separately from the bare provider_rejection detection notice.
 	NoticeCodeProviderRejectionRewrite = "provider_rejection_rewrite"
 	NoticeCodeProviderRejectionDegrade = "provider_rejection_degrade"
+	// NoticeCodeMalformedToolCall (tl1707): the model emitted tool-call markup
+	// (bare <bash>/<command>/<arg_key> tags) as plain text instead of a
+	// structured tool_calls response — the model believed it had called tools,
+	// but nothing was executed and the turn was about to end with no tool
+	// results to continue from (external issue #103, deepseek-v4.1-flash,
+	// autopilot silent stop). The notice makes the broken shape visible
+	// instead of silent; a bounded single recovery round may follow.
+	NoticeCodeMalformedToolCall = "malformed_tool_call"
+	// NoticeCodeMalformedToolCallRetry (tl1707): the single bounded re-ask
+	// round that follows the detection. Split from the detection code so
+	// logs/frontends can search the two states separately (任务 1069 独立化
+	// 纪律), and so the desktop code-keyed localization cannot flatten both
+	// texts into one.
+	NoticeCodeMalformedToolCallRetry = "malformed_tool_call_retry"
 	NoticeCodeFallbackModelSwitched    = "fallback_model_switched"
 	NoticeCodeReadinessAdvisory        = "readiness_advisory"
 	NoticeCodeExecutorHandoff          = "executor_handoff"
