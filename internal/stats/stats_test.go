@@ -26,6 +26,29 @@ func flushRecorder(t *testing.T, recorder *Recorder) {
 	}
 }
 
+// queryWideForMidnight (tl1694) 返回覆盖夹具日 ±1 天的查询窗口。生产 emit
+// 自取 time.Now()，与夹具的 dayStart(time.Now()) 是两次独立取钟；测试若在
+// 午夜瞬间运行，emit 落桶日会偏移一天。±1 天窗口保证跨午夜 emit 仍被聚合。
+func queryWideForMidnight(day time.Time) SourceFilter {
+	return SourceFilter{From: day.AddDate(0, 0, -1), To: day.AddDate(0, 0, 1)}
+}
+
+// assertSingleActiveDay (tl1694) 要求窗口内恰有一个非零日并返回它：
+// 聚合总量落单日、其余日为零的跨午夜不变量。
+func assertSingleActiveDay(t *testing.T, got RangeStats) DailyTokens {
+	t.Helper()
+	var active []DailyTokens
+	for _, d := range got.Daily {
+		if d.Total != 0 || d.Requests != 0 || d.Turns != 0 {
+			active = append(active, d)
+		}
+	}
+	if len(active) != 1 {
+		t.Fatalf("want exactly 1 active day in window, got %d: %+v", len(active), got.Daily)
+	}
+	return active[0]
+}
+
 func TestRecorderWritesDailyFile(t *testing.T) {
 	dir := t.TempDir()
 	inner := &spySink{}
@@ -37,22 +60,27 @@ func TestRecorderWritesDailyFile(t *testing.T) {
 	flushRecorder(t, r)
 
 	// The daily file must exist with three lines (2 usage + 1 turn marker).
+	// tl1694: each emit re-reads the clock inside the recorder, so a run at
+	// midnight may split the three lines across two adjacent-day files; the
+	// line total is the invariant, not the file count.
 	files := dailyJSONLFiles(t, dir)
-	if len(files) != 1 {
-		t.Fatalf("want 1 daily file, got %d", len(files))
-	}
-	data, err := os.ReadFile(filepath.Join(dir, files[0].Name()))
-	if err != nil {
-		t.Fatalf("read file: %v", err)
+	if len(files) == 0 || len(files) > 2 {
+		t.Fatalf("want 1 daily file (2 only when emit crossed midnight), got %d", len(files))
 	}
 	lines := 0
-	for _, b := range data {
-		if b == '\n' {
-			lines++
+	for _, f := range files {
+		data, err := os.ReadFile(filepath.Join(dir, f.Name()))
+		if err != nil {
+			t.Fatalf("read file: %v", err)
+		}
+		for _, b := range data {
+			if b == '\n' {
+				lines++
+			}
 		}
 	}
 	if lines != 3 {
-		t.Fatalf("want 3 lines, got %d", lines)
+		t.Fatalf("want 3 lines across daily files, got %d", lines)
 	}
 	// Forwarding must be untouched.
 	if len(inner.events) != 3 {
@@ -95,12 +123,16 @@ func TestRecorderCountsMergedProviderRequests(t *testing.T) {
 	flushRecorder(t, r)
 
 	day := dayStart(time.Now())
-	got, err := r.writer.Query(SourceFilter{From: day, To: day})
+	got, err := r.writer.Query(queryWideForMidnight(day))
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
-	if got.Requests != 2 || len(got.Daily) != 1 || got.Daily[0].Requests != 2 {
+	// tl1694: ±1 天窗口吃掉跨午夜 emit 的落桶偏移，总量与非零日数不变。
+	if got.Requests != 2 {
 		t.Fatalf("merged requests = total %d daily %+v, want 2", got.Requests, got.Daily)
+	}
+	if day := assertSingleActiveDay(t, got); day.Requests != 2 {
+		t.Fatalf("merged requests on active day = %d, want 2", day.Requests)
 	}
 }
 
@@ -117,7 +149,7 @@ func TestRecorderCapturesGuardianUsageAndPreservesProtocolAudit(t *testing.T) {
 	flushRecorder(t, r)
 
 	day := dayStart(time.Now())
-	got, err := r.writer.Query(SourceFilter{From: day, To: day})
+	got, err := r.writer.Query(queryWideForMidnight(day))
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -153,7 +185,7 @@ func TestRecorderPersistsRequestOnlyFailureWithoutForwardingReceipt(t *testing.T
 	flushRecorder(t, r)
 
 	day := dayStart(time.Now())
-	got, err := r.writer.Query(SourceFilter{From: day, To: day})
+	got, err := r.writer.Query(queryWideForMidnight(day))
 	if err != nil {
 		t.Fatalf("query: %v", err)
 	}
@@ -201,7 +233,7 @@ func TestRecorderNeverWaitsForStatsFileLock(t *testing.T) {
 	release()
 	locked = false
 	flushRecorder(t, recorder)
-	result, err := recorder.writer.Query(SourceFilter{From: dayStart(time.Now()), To: dayStart(time.Now())})
+	result, err := recorder.writer.Query(queryWideForMidnight(dayStart(time.Now())))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,6 +558,37 @@ func TestRecorderForwardsHostCapabilities(t *testing.T) {
 
 	if inner.turns != 1 || len(inner.workspace) != 1 || len(inner.runBudgets) != 1 {
 		t.Fatalf("host capabilities not forwarded: turns=%d workspace=%d run_budget=%d", inner.turns, len(inner.workspace), len(inner.runBudgets))
+	}
+}
+
+// TestRecorderQueryToleratesMidnightCrossingEmit (tl1694) 用 record.Timestamp
+// 直控落桶日，确定性等价「生产 emit 取钟在夹具取钟后跨越午夜」（无法注入的
+// 生产时钟用夹具平移模拟）。修前单日窗口在此场景丢失次日桶（requests=1≠2），
+// ±1 天窗口必须把两笔 emit 聚合回同一总量。
+func TestRecorderQueryToleratesMidnightCrossingEmit(t *testing.T) {
+	dir := t.TempDir()
+	r := NewRecorder(&spySink{}, dir, "desktop")
+
+	// 第一笔 emit：生产钟仍在本日（与夹具同日）。
+	r.Emit(usageEvent("deepseek/deepseek-v4-flash", 10, 4, 0, 0, 10, 14))
+
+	// 第二笔：模拟跨午夜后的 emit（生产钟已落到次日）。
+	tomorrow := dayStart(time.Now()).AddDate(0, 0, 1).Add(time.Hour)
+	if err := r.writer.Append(record{Timestamp: tomorrow, ModelRef: "deepseek/deepseek-v4-pro", Source: "desktop", Total: 7, Requests: 1}); err != nil {
+		t.Fatalf("append next-day record: %v", err)
+	}
+	flushRecorder(t, r)
+
+	got, err := r.writer.Query(queryWideForMidnight(dayStart(time.Now())))
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if got.Requests != 2 || got.Tokens != 21 {
+		t.Fatalf("crossing emit aggregates = requests %d tokens %d, want 2/21", got.Requests, got.Tokens)
+	}
+	// 本日与次日两桶都被窗口覆盖并聚合（修前单日窗只会看到 14/1）。
+	if len(got.Daily) < 2 {
+		t.Fatalf("±1 day window should expand to daily series, got %d entries", len(got.Daily))
 	}
 }
 

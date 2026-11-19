@@ -84,6 +84,16 @@ func TestDailyPingSendsOnceWithCLISurface(t *testing.T) {
 	if err := client.sendDailyPing(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	// tl1694: the claim file name embeds the UTC day read inside sendDailyPing
+	// (no clock injection point). A run straddling UTC midnight would rotate
+	// the claim name for the second call and re-send. Seed the next-day claim
+	// (the straddle window is at most ±1 day) so the idempotence assertion
+	// holds regardless of which day the second call lands on; content matches
+	// the production "sent\n" marker.
+	tomorrow := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	if err := os.WriteFile(filepath.Join(home, "cli-telemetry-ping-"+tomorrow), []byte("sent\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := client.sendDailyPing(context.Background()); err != nil {
 		t.Fatal(err)
 	}

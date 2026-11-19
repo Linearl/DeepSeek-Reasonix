@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -13,8 +14,12 @@ import (
 
 // TestResolveStatsRange covers the six branches of resolveStatsRange: the four
 // preset day ranges, custom valid/invalid dates, and the unknown-range default.
-// resolveStatsRange anchors to time.Now(), so assertions are relative — the
-// returned day (local calendar date) must equal the expected offset from today.
+// resolveStatsRange anchors to its own internal time.Now(), which cannot be
+// injected, so the test takes the clock once before and once after the call
+// (tl1694): a run at midnight may straddle the day boundary, and the "to"
+// day must then equal one of the two bracketing days. Relative expectations
+// are pinned via the span (to-from+1 days) instead of absolute calendar dates,
+// which stays byte-for-byte as strict as before on any non-midnight run.
 func TestResolveStatsRange(t *testing.T) {
 	now := time.Now()
 	today := func(offsetDays int) time.Time {
@@ -25,33 +30,35 @@ func TestResolveStatsRange(t *testing.T) {
 	tests := []struct {
 		name    string
 		req     UsageStatsRequest
-		want    [2]time.Time // [from, to] as local day starts
-		wantErr string       // substring of the error, "" for success
+		span    int       // success cases: expected inclusive day count (to-from+1)
+		fixed   [2]string // custom-range echo: exact from/to dates, clock-independent
+		wantErr string    // substring of the error, "" for success
 	}{
 		{
 			name: "preset 7 days",
 			req:  UsageStatsRequest{Range: "7"},
-			want: [2]time.Time{today(-6), today(0)},
+			span: 7,
 		},
 		{
 			name: "preset 14 days",
 			req:  UsageStatsRequest{Range: "14"},
-			want: [2]time.Time{today(-13), today(0)},
+			span: 14,
 		},
 		{
 			name: "preset 30 days",
 			req:  UsageStatsRequest{Range: "30"},
-			want: [2]time.Time{today(-29), today(0)},
+			span: 30,
 		},
 		{
 			name: "preset 90 days",
 			req:  UsageStatsRequest{Range: "90"},
-			want: [2]time.Time{today(-89), today(0)},
+			span: 90,
 		},
 		{
-			name: "custom valid dates",
-			req:  UsageStatsRequest{Range: "custom", From: "2026-07-01", To: "2026-07-31"},
-			want: [2]time.Time{time.Date(2026, 7, 1, 0, 0, 0, 0, now.Location()), time.Date(2026, 7, 31, 23, 59, 59, 0, now.Location())},
+			name:  "custom valid dates",
+			req:   UsageStatsRequest{Range: "custom", From: "2026-07-01", To: "2026-07-31"},
+			span:  31,
+			fixed: [2]string{"2026-07-01", "2026-07-31"},
 		},
 		{
 			name:    "custom missing from",
@@ -69,8 +76,14 @@ func TestResolveStatsRange(t *testing.T) {
 			wantErr: "must not be after",
 		},
 		{
-			name:    "custom future to date",
-			req:     UsageStatsRequest{Range: "custom", From: today(0).Format(dateLayout), To: today(1).Format(dateLayout)},
+			name: "custom future to date",
+			req: UsageStatsRequest{
+				Range: "custom",
+				From:  today(0).Format(dateLayout),
+				// tl1694: To 推远到 today(+2)——即便构造后测试运行跨过午夜，
+				// 生产钟当天最多偏移一天，To 仍必为未来日，恒报错。
+				To: today(2).Format(dateLayout),
+			},
 			wantErr: "must not be in the future",
 		},
 		{
@@ -80,7 +93,8 @@ func TestResolveStatsRange(t *testing.T) {
 				From:  today(-(maxStatsCustomRangeDays - 1)).Format(dateLayout),
 				To:    today(0).Format(dateLayout),
 			},
-			want: [2]time.Time{today(-(maxStatsCustomRangeDays - 1)), today(0)},
+			span:  maxStatsCustomRangeDays,
+			fixed: [2]string{today(-(maxStatsCustomRangeDays - 1)).Format(dateLayout), today(0).Format(dateLayout)},
 		},
 		{
 			name: "custom over maximum span",
@@ -94,18 +108,20 @@ func TestResolveStatsRange(t *testing.T) {
 		{
 			name: "empty range defaults to 7 days",
 			req:  UsageStatsRequest{},
-			want: [2]time.Time{today(-6), today(0)},
+			span: 7,
 		},
 		{
 			name: "unknown range defaults to 7 days",
 			req:  UsageStatsRequest{Range: "365"},
-			want: [2]time.Time{today(-6), today(0)},
+			span: 7,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			before := time.Now()
 			from, to, err := resolveStatsRange(tt.req)
+			after := time.Now()
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("want error containing %q, got %v", tt.wantErr, err)
@@ -115,14 +131,35 @@ func TestResolveStatsRange(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			// Compare local calendar-day identity: the helper builds day starts,
-			// resolveStatsRange returns from at 00:00:00 and to at 23:59:59.
+			// Compare local calendar-day identity: resolveStatsRange returns
+			// from at 00:00:00 and to at 23:59:59.
 			dayOf := func(tm time.Time) string { return tm.Format(dateLayout) }
-			if dayOf(from) != dayOf(tt.want[0]) {
-				t.Fatalf("from: want %s, got %s", dayOf(tt.want[0]), dayOf(from))
+			if tt.fixed[0] != "" {
+				// Custom ranges echo their input dates — independent of the
+				// production clock, no midnight straddle possible.
+				if dayOf(from) != tt.fixed[0] {
+					t.Fatalf("from: want %s, got %s", tt.fixed[0], dayOf(from))
+				}
+				if dayOf(to) != tt.fixed[1] {
+					t.Fatalf("to: want %s, got %s", tt.fixed[1], dayOf(to))
+				}
+			} else {
+				// tl1694: the production clock lies within [before, after]; a
+				// midnight-straddling run accepts either bracketing day for
+				// "to", then anchors "from" off the actual "to" so the span
+				// invariant stays exact.
+				if dayOf(to) != dayOf(before) && dayOf(to) != dayOf(after) {
+					t.Fatalf("to: want %s or %s, got %s", dayOf(before), dayOf(after), dayOf(to))
+				}
+				if wantFrom := dayOf(to.AddDate(0, 0, -(tt.span - 1))); dayOf(from) != wantFrom {
+					t.Fatalf("from: want %s, got %s", wantFrom, dayOf(from))
+				}
 			}
-			if dayOf(to) != dayOf(tt.want[1]) {
-				t.Fatalf("to: want %s, got %s", dayOf(tt.want[1]), dayOf(to))
+			// Span invariant (DST-safe day diff): inclusive day count.
+			fromDay := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, from.Location())
+			toDay := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, to.Location())
+			if got := int(math.Round(toDay.Sub(fromDay).Hours() / 24)) + 1; got != tt.span {
+				t.Fatalf("span: want %d days, got %d", tt.span, got)
 			}
 		})
 	}
@@ -140,7 +177,22 @@ func TestResolveStatsRangeToIsEndOfDay(t *testing.T) {
 	}
 }
 
+// sleepOffMidnight (tl1694)：距本地午夜不足 guard 时先睡过午夜再留余量。
+// 用途：Emit 与 Query 都各自内部取 time.Now()（不可注入），两次取钟不能夹着
+// 日界跳变——否则记录落桶日与查询窗错开一天。只在午夜前 3 秒内运行才会等待。
+func sleepOffMidnight(t *testing.T) {
+	t.Helper()
+	const guard = 3 * time.Second
+	now := time.Now()
+	next := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
+	if d := next.Sub(now); d < guard {
+		t.Logf("tl1694 midnight guard: sleeping %v past local midnight", d+guard)
+		time.Sleep(d + guard)
+	}
+}
+
 func TestUsageStatsFlushesPendingRecorderWrites(t *testing.T) {
+	sleepOffMidnight(t)
 	t.Setenv("REASONIX_STATE_HOME", t.TempDir())
 	recorder := stats.NewRecorder(event.Discard, config.StatsDir(), "desktop")
 	recorder.Emit(event.Event{
