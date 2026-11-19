@@ -90,6 +90,42 @@ func (deleteSessionTool) Schema() json.RawMessage {
 
 func (deleteSessionTool) ReadOnly() bool { return false }
 
+// deleteSessionHasTurnWarning is tl1710 件3: the prominent trilingual warning
+// a hasTurn=true target gets. The 20261119 incident: 『决策模式』 (a real
+// conversation) was confirmed straight from a stale impact without a fresh
+// dry run, and the agent had no way to look at the trash afterwards — the
+// warning must therefore (a) fire on the dry run BEFORE any confirm, and
+// (b) name the recovery exit that actually exists (trash_restore / Trash
+// page). Returns "" when not applicable so a plain empty-shell dry run stays
+// byte-compatible with the pre-tl1710 shape.
+func deleteSessionHasTurnWarning(title string, turnInFlight bool) string {
+	if title == "" {
+		title = "(untitled)"
+	}
+	base := "WARNING: \"" + title + "\" already holds real turns (hasTurn=true) — confirm=true moves the whole conversation to the trash, not an empty shell. If that is not intended, stop here; to get it back afterwards use trash_restore (or the desktop Trash page)." +
+		"｜警告：「" + title + "」已有真实对话轮次（hasTurn=true）——confirm=true 会把整段对话移入回收站，不是空壳。若非本意请停手；事后可用 trash_restore（或桌面回收站页）找回。" +
+		"｜警告：「" + title + "」已有真實對話輪次（hasTurn=true）——confirm=true 會把整段對話移入回收站，不是空殼。若非本意請停手；事後可用 trash_restore（或桌面回收站頁）找回。"
+	if turnInFlight {
+		base += " A turn is in flight right now — trashing kills work in progress." +
+			"｜且当前回合正在进行中——删除会打断正在执行的任务。" +
+			"｜且目前回合正在進行中——刪除會打斷正在執行的任務。"
+	}
+	return base
+}
+
+// deleteSessionTrashedWarning is the confirmed-call twin of the dry-run
+// warning: the trash already happened, so the note shifts to recovery (留痕 —
+// the result the caller files must carry its own undo hint). Trilingual, same
+// convention as the dry-run warning.
+func deleteSessionTrashedWarning(title string) string {
+	if title == "" {
+		title = "(untitled)"
+	}
+	return "Trashed a session that held real turns (hasTurn=true): \"" + title + "\". If this was unintended, restore it with trash_restore (or the desktop Trash page)." +
+		"｜已移入回收站的会话含真实对话轮次（hasTurn=true）：「" + title + "」。如属误删，用 trash_restore（或桌面回收站页）找回。" +
+		"｜已移入回收站的會話含真實對話輪次（hasTurn=true）：「" + title + "」。如屬誤刪，用 trash_restore（或桌面回收站頁）找回。"
+}
+
 // unconsumedMailCount is the task-509 pre-archive gate probe: how many inbox
 // entries of the target contact are NOT covered by its seen cursor
 // (queued≠read — memory 跨会话消息投递复核法). A read error is returned, not
@@ -219,6 +255,12 @@ func (t deleteSessionTool) executeSingle(target string, confirm bool) (string, e
 			"impact": impact,
 			"note":   "re-run with confirm=true to move it to trash",
 		}
+		// tl1710 件3: a hasTurn=true target gets the prominent warning ON the
+		// dry run — the caller should not need a second pass to learn the
+		// target is a real conversation (the 20261119 incident).
+		if impact.HasTurn {
+			out["warning"] = deleteSessionHasTurnWarning(impact.Title, impact.TurnInFlight)
+		}
 		// 任务 509: with the gate on, the dry run also answers "will confirm be
 		// refused?" so the orchestrator can consume mail before asking.
 		if unconsumed >= 0 {
@@ -238,6 +280,11 @@ func (t deleteSessionTool) executeSingle(target string, confirm bool) (string, e
 		"status": "trashed",
 		"result": result,
 		"impact": impact,
+	}
+	// tl1710 件3: the confirmed result of a hasTurn=true target carries the
+	// recovery hint so the filed receipt names its own undo exit (留痕).
+	if impact.HasTurn {
+		out["warning"] = deleteSessionTrashedWarning(impact.Title)
 	}
 	// 任务 509: the gate passed with zero unconsumed — record that in the tool
 	// result so the archive decision carries its own evidence (留痕).
@@ -271,6 +318,10 @@ type deleteBatchSummary struct {
 	Skipped    int `json:"skipped,omitempty"`
 	Failed     int `json:"failed,omitempty"`
 	WouldTrash int `json:"wouldTrash,omitempty"`
+	// HasTurn counts the rows that leave (or, on the confirm call, have
+	// already left) with real transcript turns — the number behind the tl1710
+	// batch warning (0/omitted = every leaving row is an empty shell).
+	HasTurn int `json:"hasTurn,omitempty"`
 }
 
 // executeBatch is the tl1305 face: many targets and/or a filter predicate, one
@@ -422,11 +473,27 @@ func (t deleteSessionTool) executeBatch(p deleteSessionArgs) (string, error) {
 	summary.WouldTrash = len(runnable)
 
 	if !p.Confirm {
+		// tl1710 件3: batch face of the hasTurn warning — only rows confirm
+		// would actually trash count here (status==""), protected rows are
+		// not leaving. Counted BEFORE out is built: summary is a value type,
+		// so the map holds the copy made at assignment time.
+		warnTargets := []string{}
+		for _, it := range items {
+			if it.Status == "" && it.HasTurn {
+				warnTargets = append(warnTargets, it.Target)
+			}
+		}
+		if len(warnTargets) > 0 {
+			summary.HasTurn = len(warnTargets)
+		}
 		out := map[string]any{
 			"status":  "dry_run",
 			"items":   items,
 			"summary": summary,
 			"note":    "re-run with confirm=true to trash the unprotected sessions",
+		}
+		if len(warnTargets) > 0 {
+			out["warning"] = deleteSessionBatchHasTurnWarning(warnTargets, false)
 		}
 		outJSON, _ := json.Marshal(out)
 		return string(outJSON), nil
@@ -475,13 +542,44 @@ func (t deleteSessionTool) executeBatch(p deleteSessionArgs) (string, error) {
 		item.Result = &res
 		summary.Trashed++
 	}
+	// tl1710 件3: confirmed batch twin — count the rows that actually left
+	// with real turns and carry the recovery hint (留痕). Same value-type
+	// care as the dry run: summary is patched before it goes into the map.
+	trashedHasTurn := []string{}
+	for _, it := range items {
+		if it.Status == "trashed" && it.HasTurn {
+			trashedHasTurn = append(trashedHasTurn, it.Target)
+		}
+	}
+	if len(trashedHasTurn) > 0 {
+		summary.HasTurn = len(trashedHasTurn)
+	}
 	out := map[string]any{
 		"status":  "batch_done",
 		"items":   items,
 		"summary": summary,
 	}
+	if len(trashedHasTurn) > 0 {
+		out["warning"] = deleteSessionBatchHasTurnWarning(trashedHasTurn, true)
+	}
 	outJSON, _ := json.Marshal(out)
 	return string(outJSON), nil
+}
+
+// deleteSessionBatchHasTurnWarning is the batch form of the tl1710 trilingual
+// warning: it names every affected target so a 45-item batch cannot bury one
+// real conversation in an undifferentiated summary. trashed=true shifts the
+// message from "stop here" to the recovery exit that exists (trash_restore).
+func deleteSessionBatchHasTurnWarning(targets []string, trashed bool) string {
+	list := strings.Join(targets, ", ")
+	if trashed {
+		return "WARNING: the trashed batch included sessions that held real turns (hasTurn=true): " + list + ". If any was unintended, restore it with trash_restore (or the desktop Trash page)." +
+			"｜警告：本批移入回收站的会话中有含真实对话轮次的（hasTurn=true）：" + list + "。如属误删，用 trash_restore（或桌面回收站页）找回。" +
+			"｜警告：本批移入回收站的會話中有含真實對話輪次的（hasTurn=true）：" + list + "。如屬誤刪，用 trash_restore（或桌面回收站頁）找回。"
+	}
+	return "WARNING: " + fmt.Sprintf("%d", len(targets)) + " of the sessions about to be trashed hold real turns (hasTurn=true): " + list + ". If that is not intended, stop here; they can still be recovered afterwards via trash_restore (or the desktop Trash page)." +
+		"｜警告：即将删除的会话中有 " + fmt.Sprintf("%d", len(targets)) + " 个含真实对话轮次（hasTurn=true）：" + list + "。若非本意请停手；事后仍可用 trash_restore（或桌面回收站页）找回。" +
+		"｜警告：即將刪除的會話中有 " + fmt.Sprintf("%d", len(targets)) + " 個含真實對話輪次（hasTurn=true）：" + list + "。若非本意請停手；事後仍可用 trash_restore（或桌面回收站頁）找回。"
 }
 
 // deleteBatchCandidate is one resolved batch target before protection is
