@@ -130,6 +130,15 @@ export const en = {
   "selection.quickAction.truncated": "(selection was too long and has been truncated)",
   "selection.quickAction.failed": "Request failed, please retry",
   "selection.quickAction.unavailable": "Selection is no longer available — select the text again",
+  // tl1709: read-aloud quick action (Web Speech API, zero backend). Toggle copy
+  // plus the three visible-failure notices (unsupported env / no voices at all
+  // / no voice matching the detected language) — never a silent no-op.
+  "selection.quickAction.speak": "Read aloud",
+  "selection.quickAction.stop": "Stop",
+  "selection.quickAction.speaking": "Reading aloud…",
+  "selection.quickAction.speechUnsupported": "Speech playback is not available in this environment",
+  "selection.quickAction.speechNoVoices": "No system speech voices were found",
+  "selection.quickAction.speechNoVoiceFor": "No speech voice available for {lang} text",
   "common.cut": "Cut",
   "common.paste": "Paste",
   "common.selectAll": "Select all",

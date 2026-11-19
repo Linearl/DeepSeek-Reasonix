@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, FolderOpen, MessageSquare, Languages, Pin, Sparkles, X } from "lucide-react";
+import { ExternalLink, FolderOpen, MessageSquare, Languages, Pin, Sparkles, Volume2, X } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useSelectionActionsEnabled } from "../lib/selectionActionsPreference";
 import { selectionPathCandidate } from "../lib/selectionPathCandidate";
 import { ContextMenu, type ContextMenuPoint } from "./ContextMenu";
 import { messageSelectionContextText, TRANSCRIPT_COPY_FAILED_EVENT } from "../lib/messageSelectionCopy";
 import { writeClipboardText } from "../lib/clipboard";
+import {
+  cancelSpeech,
+  detectSpeakLang,
+  primeSpeechVoices,
+  speakLangDisplayName,
+  speakSelection,
+  speechSupport,
+  MAX_SPEAK_CHARS,
+} from "../lib/speech";
 import {
   detectShortcutPlatform,
   formatShortcutCombo,
@@ -15,9 +24,20 @@ import {
   useGlobalShortcut,
 } from "../lib/keyboardShortcuts";
 import { useT } from "../lib/i18n";
+import type { DictKey } from "../lib/i18n";
 import { transcriptSelectionStore } from "../lib/transcriptSelectionStore";
 import { rowKeyForNode, transcriptSelectionPointClientRect } from "../lib/transcriptSelectionDom";
 import { useToast } from "../lib/toast";
+
+// tl1709: the result card title/aria-label used to be a two-way ternary over
+// translate/explain; the speak action joins the card family (visible failure
+// notices + speaking indicator), so the titles move to one authoritative map.
+type QuickActionKind = "translate" | "explain" | "speak";
+const QUICK_ACTION_TITLES: Record<QuickActionKind, DictKey> = {
+  translate: "selection.quickAction.translate",
+  explain: "selection.quickAction.explain",
+  speak: "selection.quickAction.speak",
+};
 
 // Vite loads this beside the already-lazy selection menu chunk. The direct
 // tsx unit-test runner has no CSS loader, so it deliberately leaves MODE unset.
@@ -161,10 +181,18 @@ export function TranscriptSelectionMenu({
   // experimental_selection_actions switch — off = byte-identical legacy menu.
   const quickActionsEnabledStore = useSelectionActionsEnabled();
   const quickActionsEnabled = quickActionsEnabledProp ?? quickActionsEnabledStore;
-  const [quickAction, setQuickAction] = useState<"translate" | "explain" | null>(null);
+  const [quickAction, setQuickAction] = useState<QuickActionKind | null>(null);
   const [quickResult, setQuickResult] = useState("");
   const [quickError, setQuickError] = useState(false);
   const [quickPinned, setQuickPinned] = useState(false);
+  // tl1709: read-aloud toggle state. Ref mirrors the state so the click
+  // handler never acts on a stale closure while an utterance is playing.
+  const [speaking, setSpeaking] = useState(false);
+  const speakingRef = useRef(false);
+  const setSpeakingState = useCallback((value: boolean) => {
+    speakingRef.current = value;
+    setSpeaking(value);
+  }, []);
   const quickActionRef = useRef<((action: string, text: string, contextText: string) => Promise<string>) | null>(null);
   const addShortcut = useMemo(
     () => formatShortcutCombo(resolvedShortcutCombo("selection.addToChat", shortcutPlatform), shortcutPlatform),
@@ -216,10 +244,81 @@ export function TranscriptSelectionMenu({
   }, [onQuickAction, resolveLogical, t]);
 
   const closeQuickCard = useCallback(() => {
+    // tl1709: closing the card always stops the read-aloud — the speaking
+    // card is the read-aloud surface, so Escape / click-away / a new action
+    // all double as "stop" without hunting for the toolbar button.
+    cancelSpeech();
     setQuickAction(null);
     setQuickResult("");
     setQuickError(false);
     setQuickPinned(false);
+  }, []);
+
+  // tl1709: read-aloud runs entirely in the frontend (Web Speech API) — no
+  // onQuickAction bridge, no LLM. Toggle first (stopping must work even when
+  // the selection has since gone stale), then the visible-failure ladder, then
+  // the actual utterance. Every failure lands in the result card like the
+  // translate/explain paths do; nothing fails silently.
+  const runSpeak = useCallback((selection: SelectionAction | null) => {
+    if (speakingRef.current) {
+      setSpeakingState(false);
+      closeQuickCard();
+      return;
+    }
+    if (!selection) return;
+    void (async () => {
+      const text = selection.kind === "native"
+        ? selection.text
+        : await resolveLogical(selection);
+      if (!text) {
+        setQuickAction("speak");
+        setQuickError(true);
+        setQuickResult(t("selection.quickAction.unavailable"));
+        return;
+      }
+      const lang = detectSpeakLang(text);
+      const support = speechSupport(lang);
+      if (support !== "ready") {
+        setQuickAction("speak");
+        setQuickError(true);
+        setQuickResult(t(
+          support === "unsupported"
+            ? "selection.quickAction.speechUnsupported"
+            : support === "no-voices"
+              ? "selection.quickAction.speechNoVoices"
+              : "selection.quickAction.speechNoVoiceFor",
+          support === "no-match" ? { lang: speakLangDisplayName(lang) } : undefined,
+        ));
+        return;
+      }
+      const truncated = text.length > MAX_SPEAK_CHARS;
+      const body = truncated ? text.slice(0, MAX_SPEAK_CHARS) : text;
+      setQuickAction("speak");
+      setQuickError(false);
+      // Same notice contract as the translate/explain paths: a capped payload
+      // is always visible in the card, never silently clipped.
+      setQuickResult(
+        truncated
+          ? `${t("selection.quickAction.speaking")}\n${t("selection.quickAction.truncated")}`
+          : t("selection.quickAction.speaking"),
+      );
+      setSpeakingState(true);
+      speakSelection(body, lang, () => {
+        // Natural end or error: settle the toggle and drop the speaking card.
+        if (speakingRef.current) {
+          setSpeakingState(false);
+          closeQuickCard();
+        }
+      });
+    })();
+  }, [closeQuickCard, resolveLogical, setSpeakingState, t]);
+
+  // tl1709: prime the (async-loading) voice list on mount so the click-time
+  // support check rarely races Chromium's voice enumeration, and stop any
+  // playback when the menu unmounts (tab switch, session close).
+  useEffect(() => {
+    primeSpeechVoices();
+    return () => cancelSpeech();
   }, []);
 
   useEffect(() => {
@@ -569,7 +668,17 @@ export function TranscriptSelectionMenu({
             setMenu(null);
           },
         },
-      ] : [])]}
+      ] : []),
+      {
+        // tl1709：朗读第三项——不挂实验开关（零配置面），toggle 文案随
+        // speaking 状态（与工具条按钮同语义）。
+        key: "quick-speak",
+        label: speaking ? t("selection.quickAction.stop") : t("selection.quickAction.speak"),
+        onSelect: () => {
+          if (menu) runSpeak(menu);
+          setMenu(null);
+        },
+      }]}
       onClose={() => setMenu(null)}
     />
     {typeof document !== "undefined" && createPortal(
@@ -628,6 +737,24 @@ export function TranscriptSelectionMenu({
           </>
         )}
         {/*
+         * tl1709：朗读——第三项 quick action（列于翻译/解释之后）。纯前端
+         * Web Speech API（零后端零网络），不走 onQuickAction 桥，也不挂
+         * experimental_selection_actions 实验开关（零配置面：该开关默认关，
+         * 挂上去 = 用户开不出本功能）。toggle 语义：朗读中再点 = 停止。
+         */}
+        <button
+          type="button"
+          data-selection-speak-action="toggle"
+          disabled={actionOverlay.phase !== "open"}
+          tabIndex={actionOverlay.phase === "open" ? 0 : -1}
+          onClick={() => {
+            runSpeak(actionOverlay.action);
+          }}
+        >
+          <Volume2 size={14} aria-hidden="true" />
+          <span>{speaking ? t("selection.quickAction.stop") : t("selection.quickAction.speak")}</span>
+        </button>
+        {/*
          * 任务 1060：选中文字是已存在的路径时追加两项，文案/图标语义与产物卡片、
          * 右侧边栏同源（OpenLocalPath / RevealPath）。openablePath 为 null 时
          * 整组不渲染——不存在/Global 相对路径/可执行目标零误报。
@@ -670,7 +797,7 @@ export function TranscriptSelectionMenu({
         className="transcript-selection-result-card"
         data-pinned={quickPinned ? "true" : undefined}
         role="dialog"
-        aria-label={t(quickAction === "translate" ? "selection.quickAction.translate" : "selection.quickAction.explain")}
+        aria-label={t(QUICK_ACTION_TITLES[quickAction])}
         style={{
           left: actionOverlay.point.left,
           top: actionOverlay.point.top,
@@ -678,7 +805,7 @@ export function TranscriptSelectionMenu({
       >
         <div className="transcript-selection-result-card__head">
           <span className="transcript-selection-result-card__title">
-            {t(quickAction === "translate" ? "selection.quickAction.translate" : "selection.quickAction.explain")}
+            {t(QUICK_ACTION_TITLES[quickAction])}
           </span>
           <button
             type="button"

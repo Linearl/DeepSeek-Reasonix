@@ -585,12 +585,14 @@ console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
     await flushTimers();
   });
 
-  // Off (default): right-click menu offers only Copy.
+  // Off (default): the LLM quick-actions stay hidden, but the zero-config
+  // read-aloud action (tl1709, no backend/no gate) rides along with Copy.
   selectNodeText(msgBody.firstChild as Node);
   await dispatchContextMenu(msgBody);
   let items = [...document.querySelectorAll("[role=\"menuitem\"]")] as HTMLButtonElement[];
-  eq(items.length, 1, "switch off: transcript menu keeps only Copy");
-  eq(items[0]?.textContent?.includes("Copy"), true, "switch off: the single item is Copy");
+  eq(items.length, 2, "switch off: transcript menu keeps Copy + read aloud (translate/explain gated)");
+  eq(items[0]?.textContent?.includes("Copy"), true, "switch off: the first item is Copy");
+  ok(items[1]?.textContent?.includes("Read aloud") === true, "switch off: the second item is Read aloud");
 
   // Re-mount with the switch on (fresh root: unmounted roots cannot re-render).
   await act(async () => { root.unmount(); });
@@ -613,9 +615,12 @@ console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
   selectNodeText(msgBody.firstChild as Node);
   await dispatchContextMenu(msgBody);
   items = [...document.querySelectorAll("[role=\"menuitem\"]")] as HTMLButtonElement[];
-  eq(items.length, 3, "switch on: transcript menu offers Copy + translate + explain");
+  // tl1709: read-aloud joins the menu unconditionally (zero-config third quick
+  // action), so the on-state now carries Copy + translate + explain + speak.
+  eq(items.length, 4, "switch on: transcript menu offers Copy + translate + explain + read aloud");
   ok(items.some((b) => b.textContent?.includes("Translate")), "switch on: translate item present");
   ok(items.some((b) => b.textContent?.includes("Explain")), "switch on: explain item present");
+  ok(items.some((b) => b.textContent?.includes("Read aloud")), "switch on: read-aloud item present");
 
   // Floating action bar: selection opens it, and it gains the two quick buttons.
   await act(async () => {
