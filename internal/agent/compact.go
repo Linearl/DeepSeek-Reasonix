@@ -22,14 +22,13 @@ const (
 	recentTailBudgetRatio  = 0.16 // recent verbatim tail as a fraction of the window
 	summaryOutputMaxTokens = 8192 // max digest output; further clipped by remaining candidate space
 
-	// 任务 812: the 16%-of-window tail budget clamps to a 96K cap. Above
-	// ~614K windows the ratio kept scaling (a 1M window carried a 160K tail
-	// after compaction); above the cap it no longer does. The floor stays
-	// defensive instead of studio's absolute 32K: fork serves arbitrarily
-	// small windows, where an absolute floor swallows the whole foldable
-	// region and compaction can never trigger (measured at a 10K window).
-	// The ratio itself is the small-window protection — it shrinks with the
-	// window — so every window at or below ~614K behaves exactly as before.
+	// 任务 812: the 16%-of-window tail budget clamps to a cap. Above the cap
+	// threshold the ratio no longer scales (a 1M window once carried a 160K
+	// tail after compaction). The floor stays defensive instead of studio's
+	// absolute floor: fork serves arbitrarily small windows, where an absolute
+	// floor swallows the whole foldable region and compaction can never
+	// trigger (measured at a 10K window). The ratio itself is the small-window
+	// protection — it shrinks with the window.
 	// 任务 812: an output-truncated summary gets exactly one retry at twice
 	// the output budget (studio summaryRetryOutputMaxTokens semantics) before
 	// the failure escapes to the chunked ladder.
@@ -40,12 +39,27 @@ const (
 	// ratio is ever tuned down) and must never reach smaller windows, where
 	// an absolute floor lifts the tail over the whole context and compaction
 	// can never trigger (任务 812 measured this at a 10K window).
+	// 任务 1717（用户拍板 20261119）: the cap drops 96K → 32K — a 1M window no
+	// longer carries a 96K verbatim tail (4.8× Codex's 20K budget); with the
+	// 16% ratio the cap binds from every window above 200K, so the tail is a
+	// flat 32K there and unchanged 16% below it. The 819 floor stays: for
+	// windows ≥256K the floor and the cap now coincide (clamp envelope upper
+	// and lower edges meet at 32K), and it keeps guarding a future ratio
+	// retune. Small windows (≤200K) read the identical pre-1717 budget.
 	// 合并线定案（per 819 报告）: tail = max(1, recentTailFloor(clamp(window×16%), window)) —
-	// 812 的 96K cap 与 819 的 32K@≥256K floor 组成 studio clamp 包络上下两段。
+	// 1717 的 32K cap 与 819 的 32K@≥256K floor 组成 studio clamp 包络上下两段。
 	recentTailBudgetFloorTokens    = 32 * 1024
 	recentTailBudgetFloorMinWindow = 256 * 1024
-	recentTailBudgetCapTokens      = 96 * 1024
+	recentTailBudgetCapTokens      = 32 * 1024
 	summaryRetryBudgetMultiplier   = 2
+
+	// 任务 1717: the verbatim tail also carries a TURN ceiling, the second
+	// half of opencode's dual constraint (token budget + tail_turns) — a tail
+	// of tiny turns can fit the 32K budget many times over yet still bury the
+	// digest under stale verbatim exchanges. At most recentTailMaxTurns
+	// user-authored turns stay verbatim after a fold; older turns are foldable
+	// (按 user turn 边界截断, 第 4 回合起可折).
+	recentTailMaxTurns = 3
 
 	// summaryReasoningMaxBytes clamps a surfaced reasoning-only summary
 	// (~8k tokens of bytes), matching the summaryOutputMaxTokens envelope.
@@ -156,8 +170,9 @@ func (a *Agent) hardInputCeiling() int {
 
 // recentTailBudget is the content-construction budget for the recent verbatim
 // tail. Harness-style compaction retains 16% of the model window, capped at
-// recentTailBudgetCapTokens (任务 812); windows from recentTailBudgetFloorMinWindow
-// additionally carry studio's absolute floor (任务 819).
+// recentTailBudgetCapTokens (任务 812, 32K since 任务 1717); windows from
+// recentTailBudgetFloorMinWindow additionally carry studio's absolute floor
+// (任务 819).
 func (a *Agent) recentTailBudget() int {
 	window := a.effectiveContextWindow()
 	if a == nil || window <= 0 {
@@ -167,7 +182,8 @@ func (a *Agent) recentTailBudget() int {
 }
 
 // clampRecentTailBudget caps oversized windows — a 1M window no longer carries
-// a 160K tail after compaction — leaving every smaller window at the raw 16%
+// a 160K tail after compaction (96K since 任务 812, 32K since 任务 1717) —
+// leaving every window at or below the 200K cap threshold at the raw 16%
 // ratio. The floor only guards degenerate ratios, not small windows: see the
 // constant comment for why studio's absolute 32K floor does not transfer.
 func clampRecentTailBudget(budget int) int {
@@ -250,6 +266,54 @@ func estimateTextTokens(s string) int {
 		return runes
 	}
 	return byBytes
+}
+
+// estimateTailMessagesTokens prices a tail candidate with the decomposed
+// estimator 任务 1717 requires for the verbatim-tail ledger: text rides the
+// existing estimateMessagesTokens census unchanged, while every image adds the
+// 任务 1025/tl1656 resolution caliber (imageEstimateTokens) on top —
+//
+//	tokens = ceil(w×h / 750) after the 1568-long-side downscale,
+//	         ×1.15 conservative uplift, floor 256,
+//	         flat 2048 when the header cannot be sniffed.
+//
+// estimateMessagesTokens cannot see the Images field (tl1656: canonical text
+// and imageTokens are metered separately), so a screenshot tail reads nearly
+// free there — and the old pre-1025 alternative of pricing the base64 payload
+// as characters would read a single 1080p screenshot at hundreds of thousands
+// of census tokens, blowing any budget in one message. Neither half may
+// account the tail alone: text through the census, images by pixels, one
+// number per message for the tail walk's budget ledger.
+func estimateTailMessagesTokens(msgs []provider.Message) int {
+	total := estimateMessagesTokens(msgs)
+	for _, m := range msgs {
+		if m.LocalOnly || IsPinnedContextRevision(m) {
+			continue
+		}
+		for _, img := range m.Images {
+			total += imageEstimateTokens(img)
+		}
+	}
+	return total
+}
+
+// tailTurnBoundary returns the smallest tail start that keeps at most
+// recentTailMaxTurns user-authored turns verbatim: the index of the
+// recentTailMaxTurns-newest user turn's opening message (任务 1717 — older
+// turns are foldable even when they still fit the token budget). Sessions
+// with fewer turns (or nothing after head) return head, leaving the token
+// walk in charge.
+func tailTurnBoundary(msgs []provider.Message, head int) int {
+	seen := 0
+	for i := len(msgs) - 1; i > head; i-- {
+		if IsUserAuthoredTurnMessage(msgs[i]) {
+			seen++
+			if seen == recentTailMaxTurns {
+				return i
+			}
+		}
+	}
+	return head
 }
 
 // SummarizeFrom keeps the compatibility index contract while installing a
@@ -340,14 +404,40 @@ func (a *Agent) pinnedPrefixLen(msgs []provider.Message) int {
 	return 0
 }
 
+// recentTailStart composes the 任务 1717 verbatim-tail boundary: the token
+// walk (tailStart on the billing ruler, 32K-capped budget) tightened by the
+// turn ceiling (tailTurnBoundary). It is the ONE boundary the full-compaction
+// path (planCompaction) plans its fold against, so the dual constraint —
+// recentTailBudget tokens AND recentTailMaxTurns user turns — can never drift
+// apart into two half-gated selections. The ranges lane
+// (compactRangesFoldLocked) complies with the same policy by construction: it
+// folds every completed exchange up to the active turn, so its installed
+// projection retains fewer verbatim user turns than this ceiling allows (≤1
+// completed turn) — pinned equal by TestRangesFoldRetainsAtMostTailTurns
+// rather than by sharing this boundary (clamping its fold end to this tail
+// would strand the kept turns behind the appended note and structurally fail
+// the tl1396 95% partial-cache line: prefix/(prefix+note+tail) < 0.95 whenever
+// the tail exceeds prefix/19).
+func (a *Agent) recentTailStart(msgs []provider.Message, head, budget int) int {
+	start := tailStart(msgs, head, budget, a.messageTokens, a.tailFloor())
+	if turnStart := tailTurnBoundary(msgs, head); turnStart > start {
+		return turnStart
+	}
+	return start
+}
+
 // planCompaction returns [head:start] to fold while retaining the newest 16%
-// of the model window and keeping tool-call/result groups balanced.
+// of the model window (任务 1717: capped at 32K and at recentTailMaxTurns user
+// turns) and keeping tool-call/result groups balanced.
 func (a *Agent) planCompaction(msgs []provider.Message, min int, force bool) (head, start int, ok bool) {
 	head = a.pinnedPrefixLen(msgs)
 	if a.destinationContextWindow() > 0 {
 		budget := a.recentTailBudget()
 		if force {
-			if half := estimateMessagesTokens(modelInputMessages(msgs)) / 2; half > 0 && half < budget {
+			// 任务 1717: the halving ledger prices images by resolution too —
+			// the base-blind census read screenshot sessions as nearly free and
+			// handed the halved budget to a tail the wire would bill far over.
+			if half := estimateTailMessagesTokens(modelInputMessages(msgs)) / 2; half > 0 && half < budget {
 				budget = half
 			}
 		}
@@ -357,7 +447,7 @@ func (a *Agent) planCompaction(msgs []provider.Message, min int, force bool) (he
 		// screenshot batches in the verbatim tail, the installed projection
 		// crossed the window, and the next request paid the 400 → rescue →
 		// 压前反升 chain.
-		start = tailStart(msgs, head, budget, a.messageTokens, a.tailFloor())
+		start = a.recentTailStart(msgs, head, budget)
 		// Conservative second opinion (kept from the pre-tl1395 shape): the
 		// estimateTextTokens census errs HIGH (~1 token per rune — 4x the real
 		// ASCII rate, ~right for CJK), so a tail the cheap walk admits can still
@@ -366,9 +456,11 @@ func (a *Agent) planCompaction(msgs []provider.Message, min int, force bool) (he
 		// the install gate (acceptCheckpointCandidate) keeps an over-fold from
 		// raising the projection. tailStart already bounds the tail at the
 		// budget on the billing ruler; this census is pure extra safety.
+		// 任务 1717: the census prices images by resolution now — a screenshot
+		// tail the old census read as nearly free can trim here too.
 		floor := max(head, len(msgs)-a.tailFloor())
 		remeasure := force || !a.strictAlternatingRoles
-		for remeasure && start < floor && estimateMessagesTokens(provider.ModelMessages(msgs[start:])) > budget {
+		for remeasure && start < floor && estimateTailMessagesTokens(provider.ModelMessages(msgs[start:])) > budget {
 			start++
 			for start < floor && start < len(msgs) && msgs[start].Role == provider.RoleTool {
 				start++

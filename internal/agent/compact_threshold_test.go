@@ -26,10 +26,11 @@ func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
 	}
 }
 
-// 任务 812: the 16%-of-window tail budget is capped at 96K. Windows up to
-// ~614K keep the exact pre-clamp value (small-window behavior unchanged —
-// the ratio itself shrinks with the window), larger windows ride the cap:
-// a 1M window drops from a 160K tail to 96K.
+// 任务 812: the 16%-of-window tail budget is capped. Windows up to the 200K
+// cap threshold keep the exact pre-clamp value (small-window behavior
+// unchanged — the ratio itself shrinks with the window), larger windows ride
+// the cap: 任务 1717 dropped the cap 96K → 32K, so a 1M window now carries a
+// flat 32K tail instead of 96K.
 func TestRecentTailBudgetClampedToStudioCap(t *testing.T) {
 	cases := []struct {
 		window int
@@ -37,8 +38,8 @@ func TestRecentTailBudgetClampedToStudioCap(t *testing.T) {
 	}{
 		{10_000, 1_600},
 		{128_000, 20_480},
-		{400_000, 64_000},
-		{600_000, 96_000},
+		{400_000, recentTailBudgetCapTokens},
+		{600_000, recentTailBudgetCapTokens},
 		{700_000, recentTailBudgetCapTokens},
 		{1_000_000, recentTailBudgetCapTokens},
 	}
@@ -66,17 +67,18 @@ func TestRecentTailFloorGatedToLargeWindows(t *testing.T) {
 
 // 任务 819: end-to-end — every window at or above the 256K gate honors the
 // 32K lower bound, and windows below it stay at the raw 16% ratio, identical
-// to the pre-819 behavior.
+// to the pre-819 behavior. 任务 1717: above the 200K cap threshold the 32K
+// cap and the 819 floor coincide, so large windows read exactly 32K.
 func TestRecentTailBudgetStudioFloorGate(t *testing.T) {
 	cases := []struct {
 		window int
 		want   int
 	}{
-		{262_144, 41_943},   // at the gate: 16% already clears the floor
-		{1_000_000, 98_304}, // floor respected (≥32K stands); 812's 96K cap binds first (合并组合态：clamp 先于 floor)
+		{262_144, 32_768},   // at the gate: 16% (41,943) rides the 1717 cap down to the floor value
+		{1_000_000, 32_768}, // floor (≥32K) and cap (≤32K) meet: flat 32K tail (合并组合态：clamp 先于 floor)
 		{10_000, 1_600},     // below the gate: unchanged
 		{128_000, 20_480},   // unchanged
-		{200_000, 32_000},   // unchanged — 16% < 32K, the floor must NOT lift it
+		{200_000, 32_000},   // unchanged — 16% < 32K, neither floor nor cap moves it
 	}
 	for _, tc := range cases {
 		a := &Agent{agentConfig: agentConfig{contextWindow: tc.window, compactRatio: defaultCompactRatio}}
