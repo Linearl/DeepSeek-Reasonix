@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -118,6 +119,14 @@ func argumentValidationMessage(plan *toolCallPlan, result tool.ArgumentValidatio
 	// round of feedback is enough to self-correct.
 	if actual := describeActualArguments(plan.execArgs); actual != "" {
 		fmt.Fprintf(&b, "\nActual arguments received: %s", actual)
+	}
+	// tl1716: a type violation whose value actually arrived as a JSON string
+	// wrapping the expected array/object reads as a false alarm to the model
+	// ("I did send an array"). Name the packaging fact so one round of
+	// feedback fixes the wrapping, the same discipline as the Task 877
+	// stringified_args coaching.
+	if hint := stringifiedFieldCorrections(plan.execArgs, result.Violations); hint != "" {
+		fmt.Fprintf(&b, "\n%s", hint)
 	}
 	if expected := minimalValidExample(plan.execTool); expected != "" {
 		fmt.Fprintf(&b, "\nMinimal valid arguments example: %s", expected)
@@ -302,6 +311,116 @@ func hasRedundantArgumentWrapper(target tool.Tool, raw json.RawMessage) bool {
 
 func argumentValidationSignature(target, fingerprint, category string) string {
 	return "argument_validation:" + target + ":" + shortSchemaFingerprint(fingerprint) + ":" + category
+}
+
+// stringifiedFieldCorrections reports, for at most one type violation per
+// path, that the value at the violating path arrived as a JSON string
+// wrapping the array/object the schema expected (tl1716). This is the nested
+// counterpart of the Task 877 stringified_args family: the top-level
+// envelope has "a JSON string wrapping an object" coaching, but a stringified
+// field INSIDE the arguments (e.g. {"ops":"[{\"op\":...}]"}) used to surface
+// only as a bare `/ops: type; expected array`, which reads as a false alarm
+// because the model believes it sent an array.
+//
+// Value-free by construction: the line names the path and the expected shape
+// and shows the correct JSON packaging with placeholders — the stringified
+// payload is never echoed back. Root-level violations are skipped: the whole
+// arguments value being a string is already described by
+// describeActualArguments (and, for use_capability, coached by Task 877).
+func stringifiedFieldCorrections(args json.RawMessage, violations []tool.ArgumentViolation) string {
+	var root any
+	if json.Unmarshal(args, &root) != nil {
+		return ""
+	}
+	seen := make(map[string]struct{}, len(violations))
+	for _, violation := range violations {
+		if violation.Keyword != "type" || violation.Path == "" || violation.Path == "/" {
+			continue
+		}
+		if _, dup := seen[violation.Path]; dup {
+			continue
+		}
+		value, ok := valueAtArgumentPath(root, violation.Path)
+		if !ok {
+			continue
+		}
+		text, ok := value.(string)
+		if !ok {
+			continue
+		}
+		var probe any
+		if json.Unmarshal([]byte(strings.TrimSpace(text)), &probe) != nil {
+			continue
+		}
+		innerKind := ""
+		switch probe.(type) {
+		case []any:
+			innerKind = "array"
+		case map[string]any:
+			innerKind = "object"
+		default:
+			continue
+		}
+		if !expectedIncludes(violation.Expected, innerKind) {
+			continue
+		}
+		seen[violation.Path] = struct{}{}
+		field := lastJSONPointerToken(violation.Path)
+		if innerKind == "array" {
+			return fmt.Sprintf("The value at %s is a JSON string wrapping an array — the model-side packaging degraded. Unwrap it and send the array itself as a normal JSON value, not a quoted string (shape: %q: [ ... ] with each element as a JSON object).", violation.Path, field)
+		}
+		return fmt.Sprintf("The value at %s is a JSON string wrapping an object — the model-side packaging degraded. Unwrap it and send the object itself as a normal JSON value, not a quoted string (shape: %q: { ... }).", violation.Path, field)
+	}
+	return ""
+}
+
+// expectedIncludes reports whether the comma/or-separated expectation list
+// rendered by expectedForErrorKind names the wanted kind.
+func expectedIncludes(expected, wanted string) bool {
+	for _, part := range strings.FieldsFunc(expected, func(r rune) bool { return r == ' ' || r == ',' }) {
+		if part == "or" {
+			continue
+		}
+		if part == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+// valueAtArgumentPath walks a decoded arguments value along a JSON pointer as
+// rendered by jsonPointer (leading '/', '~0'/'~1' escapes). Object members
+// resolve by key; array elements resolve by decimal index.
+func valueAtArgumentPath(root any, pointer string) (any, bool) {
+	current := root
+	for _, raw := range strings.Split(strings.TrimPrefix(pointer, "/"), "/") {
+		token := strings.ReplaceAll(strings.ReplaceAll(raw, "~1", "/"), "~0", "~")
+		if array, ok := current.([]any); ok {
+			index, err := strconv.Atoi(token)
+			if err != nil || index < 0 || index >= len(array) {
+				return nil, false
+			}
+			current = array[index]
+			continue
+		}
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		next, ok := object[token]
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+// lastJSONPointerToken returns the final token of a JSON pointer.
+func lastJSONPointerToken(pointer string) string {
+	tokens := strings.Split(strings.TrimPrefix(pointer, "/"), "/")
+	last := tokens[len(tokens)-1]
+	return strings.ReplaceAll(strings.ReplaceAll(last, "~1", "/"), "~0", "~")
 }
 
 func shortSchemaFingerprint(fingerprint string) string {

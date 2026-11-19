@@ -685,11 +685,46 @@ func summaryRateLimited(err error) bool {
 	low := strings.ToLower(err.Error())
 	// 任务912 P0-b: the shared open markers (provider.RateLimitText) cover the
 	// underscore/连字符 forms the old `Contains(low, "rate limit")` missed.
-	if provider.RateLimitText(low) || strings.Contains(low, "429") {
+	// tl1716: the bare "429" probe matches a STANDALONE status number only —
+	// a substring hit inside a larger number once classified a context-overflow
+	// 400 ("requested 42953 tokens ...") as a rate limit and parked the summary
+	// lane on a 60s wait instead of the overflow ladder (field case: the tool
+	// description grew past the 42565→42953 substring window and the
+	// EffectSummaryOverflow test burned its whole 120s deadline on two waits).
+	if provider.RateLimitText(low) || containsStatusNumber(low, "429") {
 		return true
 	}
 	return httpStatusOf(err.Error()) == 429
 }
+
+// containsStatusNumber reports whether needle appears in text as a
+// standalone number: at least one hit whose preceding and following
+// characters are not ASCII digits ("HTTP 429" and "\"code\":429" hit;
+// "requested 42953 tokens" does not).
+func containsStatusNumber(text, needle string) bool {
+	for i := 0; ; {
+		j := strings.Index(text[i:], needle)
+		if j < 0 {
+			return false
+		}
+		start := i + j
+		end := start + len(needle)
+		before := byte(' ')
+		if start > 0 {
+			before = text[start-1]
+		}
+		after := byte(' ')
+		if end < len(text) {
+			after = text[end]
+		}
+		if !isASCIIDigit(before) && !isASCIIDigit(after) {
+			return true
+		}
+		i = start + 1
+	}
+}
+
+func isASCIIDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // summaryRateLimitWait returns how long to wait before resuming: the
 // provider's Retry-After when the error text carries one (numeric seconds -
