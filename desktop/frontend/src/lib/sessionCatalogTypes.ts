@@ -233,6 +233,12 @@ export interface ProjectTreeOrganizationBindings {
    * 整体回滚。可选：老 mock/浏览器开发面没有该方法，菜单入口 typeof 守卫
    * 隐藏。 */
   MigrateSessionGroup?(scope: string, sourceRoot: string, groupID: string, targetWorkspaceRoot: string): Promise<SessionGroupMigrationResult>;
+  /** tl1711：把单个会话（topic）在分区之间移动——源 = (scope, sourceRoot)
+   * （global 区 root 传空），目标 = targetWorkspaceRoot（空 = 移回 global）。
+   * 后端一次原子事务（会话文件搬家 + topic 注册/置顶/源分组名册同步），
+   * 失败整体回滚。可选：老 mock/浏览器开发面没有该方法，菜单入口 typeof
+   * 守卫隐藏。 */
+  MoveSessionTopic?(scope: string, sourceRoot: string, topicID: string, targetWorkspaceRoot: string): Promise<SessionTopicMigrationResult>;
 }
 
 /** tl1560：desktop/session_group_migrate.go SessionGroupMigrationResult 的
@@ -246,6 +252,15 @@ export interface SessionGroupMigrationResult {
   migratedTopics: string[];
   movedSessions: number;
   skippedTopics?: string[];
+}
+
+/** tl1711：desktop/session_topic_migrate.go SessionTopicMigrationResult 的
+ * TS 镜像——单会话跨分区移动回执（只在整体成功时返回）。movedSessions =
+ * 物理搬家的会话文件数（组织性成员纯注册搬家时为 0）。 */
+export interface SessionTopicMigrationResult {
+  topicId: string;
+  targetWorkspaceRoot: string;
+  movedSessions: number;
 }
 
 // ── Task 892-A 视图（Go struct → TS，handoff §2.2）──────────────────────────
