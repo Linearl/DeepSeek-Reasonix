@@ -60,6 +60,7 @@
 | 10 | 上游已于 2026-11-12 停止维护 | 不再向上游提 issue/PR 对照；动向巡检=`git fetch upstream` + `git log upstream/studio` |
 | 11 | README 告示长期挂着 | 问题修复即**整段删除**，不换「已修复」版续挂 |
 | 12 | locale 文案改动 | 必跑 `pnpm build` 过 bundle 棘轮（gzip 与 vite 报值口径不一致） |
+| 14 | CI 的 `macos-15`(arm64) runner 排队 15 分钟拿不到被 GitHub 自动取消（两次复现；`macos-15-intel` 正常）→ publish skipped | 先把 matrix 两 arm darwin job 临时注掉/`if: false` rerun 出 Release（fork 用户基本 Windows），arm 资产后补或永久放弃 |
 | 13 | 测试断言绑死文案 | 改 locale 文案先 `git grep` 旧文案全仓（含 __tests__ 断言与注释）一起改 |
 
 ## 三、快速对照（TL;DR）
