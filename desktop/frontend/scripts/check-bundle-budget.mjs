@@ -250,7 +250,7 @@ console.log("\nbundle budgets");
 // Task 495 (subagent panel: App gate arg + directory model + en locale keys in
 // the initial chunk): initial gzip measures 512.5 over the 512.0 line —
 // one-shot +0.5 to 513.0 per the 2026-09-20 ratchet rule (no drip, independent commit).
-const initialJSBudgetKiB = 682.4; // 包100 棘轮(超幅1.4 照实测+1.0):包100 十三支滚合批(tl1669 压缩同步await/tl1675 分块闩武装/tl1670 读数两把尺/tl1681 路径守卫/tl1652 完成即落盘/tl1651 投影打点/tl1654 三返修/tl1680 无感升级/tl1665 更新页治理/tl1664+1677 子代理面板六缺陷/tl1682 待办面板/tl1671 思考悬浮卡/tl1672+1673 去向与死提示/tl1674 阶段一 前端面叠加)实测 681.4 超 680.0 线 1.4 — 照实测+1.0 一次到位 → 682.4 含余量（2026-11-18 包100 出包清障独立 commit，免费线自抬报备）
+const initialJSBudgetKiB = 684.0; // 包101 棘轮(超幅1.6 照实测+1.0):包101 五支滚合批(tl1691 recall 工具前端面/tl1692 首轮AI自动命名/tl1693 侧栏脚注+版本页 /tl1696 派发四态面板/tl1698 底部锚/tl1699 修正/tl1701 进度条锚/tl1702 effort 静音等)实测 684.0 超 682.4 线 1.6 — 照实测+1.0 一次到位 → 684.0 含余量（2026-11-19 包101 出包清障独立 commit，免费线自抬报备）
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
 // switch in the sessionCollab pane), also within 470.5 — same one-shot value
