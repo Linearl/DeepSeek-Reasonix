@@ -36,6 +36,11 @@ func (a heartbeatManagerAdapter) ListTasks() (builtin.HeartbeatListView, error) 
 	if err != nil {
 		return builtin.HeartbeatListView{}, err
 	}
+	// tl1725: the agent list is a load path too — surface hand-edit repairs the
+	// same way the panel reload does (banner payload + throttled WARN). The
+	// view below then shows the repaired rows (e.g. NextRunHint "disabled"
+	// instead of "invalid-interval" on an enabled-but-broken task).
+	e.noteSanitizedConfigLocked(snapshot)
 	e.recordConfigSnapshotLocked(snapshot)
 	e.tasks = snapshot.cfg.Tasks
 	e.prunePendingTopicsLocked(e.tasks)
@@ -429,6 +434,29 @@ func validateHeartbeatTaskEdit(t HeartbeatTask) error {
 		// Task 327: 0 means unlimited, negative means nothing — reject instead
 		// of normalizing, so a typo cannot silently remove the ceiling.
 		return fmt.Errorf("field \"maxRuns\": %d is invalid; use 0 (unlimited, the default), 1 for a single run, or a positive N", t.MaxRuns)
+	}
+	return nil
+}
+
+// validateHeartbeatPanelSave is the panel-save face of the agent tools' field
+// contract (tl1725): a full-table save re-validates every ENABLED task with the
+// same validateHeartbeatTaskEdit the upsert tool enforces, so the panel can no
+// longer persist an enabled task the scheduler would silently never run — the
+// write-side half of closing the 20261028 invalid-interval incident.
+//
+// Disabled rows are skipped on purpose: they have no scheduling behavior, and
+// the load-time sanitize (sanitizeHeartbeatTasks) may have just disabled
+// damaged rows — letting the next panel save write that honest state back to
+// disk is exactly how the repair reaches the file. Enabling such a row re-runs
+// this gate because the row is then enabled.
+func validateHeartbeatPanelSave(tasks []HeartbeatTask) error {
+	for i := range tasks {
+		if !tasks[i].Enabled {
+			continue
+		}
+		if err := validateHeartbeatTaskEdit(tasks[i]); err != nil {
+			return fmt.Errorf("task %q (%s): %w", tasks[i].ID, tasks[i].Title, err)
+		}
 	}
 	return nil
 }
