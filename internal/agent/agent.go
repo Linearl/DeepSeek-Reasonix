@@ -1547,8 +1547,22 @@ func (a *Agent) CompactRatio() float64 { return a.compactRatio }
 
 // CompactNow forces one projection compaction (canonical transcript untouched).
 func (a *Agent) CompactNow(ctx context.Context, instructions string) error {
+	return a.CompactNowWithTrigger(ctx, instructions, CompactionTriggerManual)
+}
+
+// CompactNowWithTrigger is CompactNow with an explicit entry label (tl1719
+// 压缩入口归一化): user-facing entries (ui/slash/serve) advertise which surface
+// fired the pass so CompactionStarted/Done events and the maintenance receipt
+// attribute it correctly. The label only flows through — the fold itself runs
+// the same manual-class core for every entry (IsManualClassTrigger branches).
+func (a *Agent) CompactNowWithTrigger(ctx context.Context, instructions, trigger string) error {
+	if !IsManualClassTrigger(trigger) {
+		// The manual family is the only class this face serves; pressure/overflow
+		// have their own lanes. Normalize rather than execute a mislabelled pass.
+		trigger = CompactionTriggerManual
+	}
 	_, err := a.contextManager().Prepare(ctx, ContextPreparePolicy{
-		Trigger:              CompactionTriggerManual,
+		Trigger:              trigger,
 		Instructions:         instructions,
 		Force:                true,
 		AllowChunkedFallback: true,

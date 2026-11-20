@@ -73,7 +73,7 @@ func (a *Agent) contextMaintenanceBlocked(inputHash string, est int) (bool, stri
 // it is a different lane with its own truncation rescue, and parking it
 // would turn a "still sendable after truncation" case into a dead turn.
 func (a *Agent) compactionBreakerBlocks(inputHash, trigger string) bool {
-	if a == nil || trigger == CompactionTriggerManual || trigger == CompactionTriggerOverflow {
+	if a == nil || IsManualClassTrigger(trigger) || trigger == CompactionTriggerOverflow {
 		return false
 	}
 	if !a.sess.compaction.breakerOpen.Load() {

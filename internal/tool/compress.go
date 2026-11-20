@@ -2,6 +2,13 @@ package tool
 
 import "context"
 
+// CompressToolName is the model-side context compression tool's registry name.
+// tl1719: shared by the builtin registration and the capability-list
+// discoverability exception — the one model-invocable compaction entry stays
+// listed in use_capability list even though its schema rides the provider
+// surface.
+const CompressToolName = "compress"
+
 // CompressRequest describes one explicit, model-requested context fold.
 type CompressRequest struct {
 	Direction string

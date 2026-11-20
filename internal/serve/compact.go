@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"reasonix/internal/agent"
 )
 
 func (s *Server) compact(w http.ResponseWriter, r *http.Request) {
@@ -16,7 +18,10 @@ func (s *Server) compact(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad body", http.StatusBadRequest)
 		return
 	}
-	if err := s.ctl().Compact(r.Context(), strings.TrimSpace(body.Instructions)); err != nil {
+	// tl1719: the serve surface names itself so the compaction receipt/events
+	// attribute this pass to the serve entry (same manual-class core as the
+	// desktop button and the slash command).
+	if err := s.ctl().CompactForTrigger(r.Context(), strings.TrimSpace(body.Instructions), agent.CompactionTriggerServe); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -236,6 +236,12 @@ type SessionHistory interface {
 	CurrentBranchID() string
 	SwitchBranch(ref string) (agent.BranchInfo, error)
 	Compact(ctx context.Context, instructions string) error
+	// CompactForTrigger is the tl1719 entry-labelled form of Compact: the
+	// user-facing compaction surfaces (desktop button = "ui", slash /compact =
+	// "slash", serve POST /compact = "serve") name themselves so the core's
+	// events and receipt attribute the pass to the exact entry. The fold
+	// behavior is identical for every manual-family label.
+	CompactForTrigger(ctx context.Context, instructions, trigger string) error
 	CompactRatio() float64
 	ContextReport() (summary, detail string)
 	SummarizeFrom(ctx context.Context, turn int) error
