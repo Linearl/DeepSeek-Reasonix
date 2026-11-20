@@ -23,6 +23,7 @@ import (
 //go:embed gh-issue-triage/SKILL.md
 //go:embed ll-iteration-intake/SKILL.md
 //go:embed ll-iteration-plan
+//go:embed ll-iteration-parallel-dev/SKILL.md
 //go:embed ll-iteration-dev
 //go:embed ll-iteration-audit-fix
 //go:embed ll-iteration-review
