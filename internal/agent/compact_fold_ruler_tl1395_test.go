@@ -52,7 +52,7 @@ func TestPlanFoldRegionTailFitsBudgetOnBillingRuler(t *testing.T) {
 	a := agentOverForceWindow(t, &fakeProvider{reply: "digest"}, rulerSession(20), window)
 	msgs := a.sess.conversation.Snapshot()
 
-	head, start, ok := a.planFoldRegion(msgs, false, true)
+	head, start, ok := a.planFoldRegion(msgs, false, true, false)
 	if !ok {
 		t.Fatal("fixture has no foldable region")
 	}

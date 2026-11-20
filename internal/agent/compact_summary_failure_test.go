@@ -76,7 +76,7 @@ func canonicalEstimate(a *Agent, sess *Session) int {
 func foldRegionOf(a *Agent) []provider.Message {
 	canonical, version := a.sess.conversation.snapshotMessagesVersion()
 	msgs, _ := a.visibleInputForFold(a.sess.compactionState, canonical, version)
-	head, start, ok := a.planFoldRegion(msgs, false, false)
+	head, start, ok := a.planFoldRegion(msgs, false, false, false)
 	if !ok {
 		return nil
 	}

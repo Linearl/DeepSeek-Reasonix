@@ -1237,7 +1237,14 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	// 重写必然仍在，收窄的是它的触发频次）。manual/tool 保持用户指定范围
 	// 不动；overflow 语义原样（mustFree 已含）。
 	splitActive := req.mustFree || trigger == CompactionTriggerPressure
-	head, start, ok := a.planFoldRegion(msgs, req.force, splitActive)
+	// tl1713fix（用户 20261120 00:4x 裁定候选乙）：压力自动道（非 mustFree）
+	// 用完整轮内分割替换砍区分支——分割域=完整活跃轮、折旧轮全折、保最新
+	// activeTurnKeepRounds 个 assistant 轮逐字+replay-safe 单元边界；轮数不
+	// 足分割时保持外层规划边界，不再把折叠上界砍到活跃轮边界。mustFree
+	//（overflow/超硬顶物理回收）的活跃轮内折叠保护原样保留——100% 超窗唯一
+	// 兜底；并发不一致防线已由 tl1669 await 接管，砍区不再必要。
+	fullSplitActive := trigger == CompactionTriggerPressure && !req.mustFree
+	head, start, ok := a.planFoldRegion(msgs, req.force, splitActive, fullSplitActive)
 	if !ok {
 		return CompactionNoop, nil
 	}
@@ -1490,7 +1497,14 @@ func (a *Agent) acceptCheckpointCandidate(trigger string, sourceTokens, candidat
 // planFoldRegion returns [head:start] to fold; force shrinks the recent tail.
 // splitActive lets an overflow rescue fold the active turn's older completed
 // rounds as well; otherwise the active turn stays verbatim.
-func (a *Agent) planFoldRegion(msgs []provider.Message, force, splitActive bool) (head, start int, ok bool) {
+// fullSplitActive (tl1713fix, pressure lane) plans the fold against the WHOLE
+// active turn: the boundary counts assistant rounds across the entire turn
+// instead of the budget-truncated tail, and a turn with too few rounds to
+// split keeps the outer planning boundary instead of clamping the fold to the
+// active turn — the clamp was the zero-head fold root (folded_messages=1 形
+// 态：砍区在其后发生且无二次下限校验，砍完剩零头也照折；并发防线已由
+// tl1669 await 接管，砍区存在理由消失）。
+func (a *Agent) planFoldRegion(msgs []provider.Message, force, splitActive, fullSplitActive bool) (head, start int, ok bool) {
 	head, start, ok = a.planCompaction(msgs, minCompactMessages, force)
 	if !ok {
 		head, start, ok = a.planCompaction(msgs, 1, force)
@@ -1499,9 +1513,18 @@ func (a *Agent) planFoldRegion(msgs []provider.Message, force, splitActive bool)
 		return head, start, false
 	}
 	if active := a.activeTurnStart(msgs); active >= head && active < start {
-		if splitActive {
+		switch {
+		case fullSplitActive:
+			if boundary := activeTurnFullSplitBoundary(msgs, active); boundary > active && boundary-head >= minCompactMessages {
+				start = boundary
+			}
+			// boundary == active（活跃轮内无 assistant 单元可作边界）或边界
+			// 会留下低于 minCompactMessages 的零头折叠区：保持外层规划边界
+			// ——不再砍区到活跃轮边界（下限已由 planCompaction 校验，尾部
+			// 预算边界天然 replay-safe）。
+		case splitActive:
 			start = activeTurnFoldBoundary(msgs, active, start)
-		} else {
+		default:
 			start = active
 		}
 	}

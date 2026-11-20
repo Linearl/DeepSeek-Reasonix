@@ -9,6 +9,14 @@ package agent
 // 语义（保最新 activeTurnKeepRounds 个 assistant 轮逐字，fold 只覆盖
 // prompt+较早已完成轮次）。manual/tool 触发保持用户指定范围语义不变。
 //
+// tl1713fix 补修（用户 20261120 00:4x 裁定候选乙）：pressure 道的轮内分割
+// 升级为完整轮内分割（activeTurnFullSplitBoundary）——分割域从被尾部预算
+// 钳短的 [active+1:start) 放宽到完整活跃轮，且轮数不足分割时不再把折叠上
+// 界砍回 active（零头折叠/folded=1 形态根因，详见
+// compact_active_fullsplit_tl1713fix_test.go）。本文件三钉的 fixture 形态
+// （活跃轮 6 轮、预算域内 >2 轮）在新旧语义下折叠边界同点，断言原样保持
+// 绿——分割契约「折旧轮全折+保最新 2 轮逐字」不变，只是达成机制更强。
+//
 // fixture 用 assistant 大消息（非 tool 结果）：prune 道不生效，压力必须走
 // 真正的摘要折叠——与 tl1600 现场「116 条消息只值 39K」的长回合形态同构。
 
