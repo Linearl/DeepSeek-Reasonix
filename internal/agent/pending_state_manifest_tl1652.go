@@ -94,7 +94,7 @@ var pendingStateManifest = []pendingStateEntry{
 	{"desktop\\bot_event_sink.go:43", "botEventForwarder.queue", dispExplicitDrop, "事件转发瞬态"},
 	{"desktop\\cmd\\transcript-native-smoke\\host_windows.go:109", "transcriptWheelState.probePending", dispExplicitDrop, "冒烟工具瞬态"},
 	{"desktop\\deferred_rebuild.go:38", "deferredRebuildState.pending", dispExplicitDrop, "UI rebuild 重试态"},
-	{"desktop\\heartbeat.go:210", "HeartbeatEngine.pendingTopics", dispExplicitDrop, "调度循环瞬态；重启重新调度"},
+	{"desktop\\heartbeat.go:229", "HeartbeatEngine.pendingTopics", dispExplicitDrop, "调度循环瞬态；重启重新调度"},
 	{"desktop\\linux_renderer_recovery.go:43", "linuxWebKitRecoveryCoordinator.pendingTimer", dispExplicitDrop, "渲染恢复瞬态"},
 	{"desktop\\linux_renderer_recovery.go:44", "linuxWebKitRecoveryCoordinator.pendingEvent", dispExplicitDrop, "渲染恢复瞬态"},
 	{"desktop\\linux_renderer_recovery.go:45", "linuxWebKitRecoveryCoordinator.pendingTelemetry", dispExplicitDrop, "渲染恢复瞬态"},
