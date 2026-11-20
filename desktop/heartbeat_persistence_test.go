@@ -235,11 +235,15 @@ func TestHeartbeatReplaceTasksPreservesRunHistory(t *testing.T) {
 		t.Fatalf("seed ReplaceTasks: %v", err)
 	}
 
-	// 前端旧快照：只改了 enabled，runHistory 字段缺失（竞态下 load 到旧数据）
+	// 前端旧快照：只改了 enabled，runHistory 字段缺失（竞态下 load 到旧数据）。
+	// tl1725 起整表保存对 enabled 任务做工具同款字段校验，fixture 补齐
+	// prompt/interval 使其贴近真实前端提交（编辑器必填项）。
 	if err := engine.ReplaceTasks([]HeartbeatTask{{
-		ID:      "t1",
-		Title:   "task",
-		Enabled: true,
+		ID:       "t1",
+		Title:    "task",
+		Prompt:   "p",
+		Interval: "1h",
+		Enabled:  true,
 	}}); err != nil {
 		t.Fatalf("stale ReplaceTasks: %v", err)
 	}
@@ -315,8 +319,9 @@ func TestMergeHeartbeatDiskRunHistoryPreservesAllEngineRunState(t *testing.T) {
 func TestHeartbeatMergeRunUpdatesPersistsRunHistory(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	engine := &HeartbeatEngine{}
-	// 先建立基线任务（磁盘 + 内存一致）
-	seed := []HeartbeatTask{{ID: "t1", Title: "task", Enabled: true}}
+	// 先建立基线任务（磁盘 + 内存一致）。tl1725：enabled 任务走工具同款
+	// 校验，fixture 补齐必填字段。
+	seed := []HeartbeatTask{{ID: "t1", Title: "task", Prompt: "p", Interval: "1h", Enabled: true}}
 	if err := engine.ReplaceTasks(seed); err != nil {
 		t.Fatalf("seed: %v", err)
 	}

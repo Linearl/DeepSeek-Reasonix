@@ -61,12 +61,148 @@ func (e *HeartbeatEngine) readConfigSnapshot() (heartbeatConfigSnapshot, error) 
 			}
 		}
 	}
+	// tl1725: this is the one read every consumer shares (scheduler adoption,
+	// panel reload, agent list, run-state merge), so it is where a hand edit of
+	// the JSON gets the same treatment the write paths enforce. The repairs ride
+	// on the snapshot as notes; surfacing (banner + WARN) is the caller's job.
+	var sanitizeNotes []string
+	if repaired, notes := sanitizeHeartbeatTasks(cfg.Tasks); len(notes) > 0 {
+		cfg.Tasks = repaired
+		sanitizeNotes = notes
+	}
 	snapshot := heartbeatConfigSnapshot{
-		cfg:    cfg,
-		digest: sha256.Sum256(b),
-		exists: true,
+		cfg:           cfg,
+		digest:        sha256.Sum256(b),
+		exists:        true,
+		sanitizeNotes: sanitizeNotes,
 	}
 	return snapshot, nil
+}
+
+// sanitizeHeartbeatTasks repairs hand-edit damage at load time (tl1725). The
+// agent tools and the panel save validate every edit through
+// validateHeartbeatTaskEdit, but a direct edit of heartbeat-tasks.json bypasses
+// both write paths — the 20261028 incident left a task with a broken interval
+// that never ran while the panel looked normal. This is the load-side
+// counterpart the research recommended: each rule mirrors a
+// validateHeartbeatTaskEdit rule, normalized back to a safe default where one
+// exists, and disabled outright where none does (heartbeatTaskDueAt treats an
+// unparsable interval as never due, so "disabled" is the honest version of a
+// state the task was already in — visible instead of faked).
+//
+// The file on disk is left untouched: the load path must not take write side
+// effects, every load re-derives the same repairs (idempotent), and a panel
+// save of the sanitized view persists them naturally (disabled rows pass
+// validateHeartbeatPanelSave by design).
+func sanitizeHeartbeatTasks(tasks []HeartbeatTask) ([]HeartbeatTask, []string) {
+	out := make([]HeartbeatTask, 0, len(tasks))
+	var notes []string
+	for i, t := range tasks {
+		if strings.TrimSpace(t.ID) == "" {
+			// An id-less row is unaddressable by every editor and invisible to
+			// the panel's per-row editing; keep the load from silently carrying
+			// it by dropping it and saying so.
+			notes = append(notes, fmt.Sprintf("task #%d (%q) dropped: empty id", i, t.Title))
+			continue
+		}
+		notes = append(notes, sanitizeHeartbeatTaskFields(&t)...)
+		out = append(out, t)
+	}
+	return out, notes
+}
+
+// sanitizeHeartbeatTaskFields applies the per-task repairs in place and returns
+// one note per repair. Rules mirror validateHeartbeatTaskEdit one-for-one, so a
+// value the editors reject is exactly a value repaired or disabled here.
+func sanitizeHeartbeatTaskFields(t *HeartbeatTask) []string {
+	var notes []string
+	label := t.Title
+	if label == "" {
+		label = t.ID
+	} else {
+		// Both handles: the title is what the panel shows, the id is what
+		// every editor addresses — a repair note must let the user find the
+		// row by either.
+		label = fmt.Sprintf("%s (%s)", t.Title, t.ID)
+	}
+
+	// Fields with a safe default: normalize back to it and say so.
+	if trimmed := strings.ToLower(strings.TrimSpace(t.ApprovalMode)); trimmed != "" {
+		if v := normalizeHeartbeatApprovalMode(t.ApprovalMode); v != trimmed {
+			notes = append(notes, fmt.Sprintf("task %q: invalid approvalMode %q normalized to %q", label, t.ApprovalMode, v))
+			t.ApprovalMode = v
+		}
+	}
+	if t.Scope != "" && t.Scope != "global" && t.Scope != "project" {
+		notes = append(notes, fmt.Sprintf("task %q: invalid scope %q normalized to global", label, t.Scope))
+		t.Scope = ""
+	}
+	for _, side := range []struct {
+		name  string
+		value *string
+	}{
+		{"timeWindowStart", &t.TimeWindowStart},
+		{"timeWindowEnd", &t.TimeWindowEnd},
+	} {
+		if *side.value == "" {
+			continue
+		}
+		if _, _, ok := parseHeartbeatClock(*side.value); !ok {
+			notes = append(notes, fmt.Sprintf("task %q: invalid %s %q cleared (the scheduler ignored it anyway; now the config says no window)", label, side.name, *side.value))
+			*side.value = ""
+		}
+	}
+
+	// Fields without a safe default: an enabled task here would sit enabled
+	// while silently never running. Disable instead of faking it.
+	disable := func(reason string) {
+		notes = append(notes, fmt.Sprintf("task %q: %s — task disabled", label, reason))
+		t.Enabled = false
+	}
+	if strings.TrimSpace(t.Title) == "" {
+		disable("empty title")
+	}
+	if strings.TrimSpace(t.Prompt) == "" {
+		disable("empty prompt")
+	}
+	if _, _, err := classifyHeartbeatInterval(t.Interval); err != nil {
+		disable(err.Error())
+	}
+	if t.Scope == "project" && strings.TrimSpace(t.WorkspaceRoot) == "" {
+		disable(`scope="project" without workspaceRoot (repairing it to global would change where it runs)`)
+	}
+	if t.MaxRuns < 0 {
+		disable(fmt.Sprintf("negative maxRuns %d (a typo must not silently become unlimited)", t.MaxRuns))
+	}
+	return notes
+}
+
+// noteSanitizedConfigLocked records load-time hand-edit repairs (tl1725) on the
+// engine's health surface. A sanitized read sets configHealthErr — the same
+// channel the fail-open path uses, so the panel's resident banner (rendered
+// from HeartbeatConfigView.ConfigError) makes the damage visible on the very
+// reload that repaired it — and WARNs once per on-disk digest so a ticking
+// engine cannot turn one bad hand edit into a log storm. A clean read clears
+// the banner, exactly like the unconditional clear this call replaced. Unlike
+// the fail-open path, the view stays fully saveable: the file parses fine, so
+// fixing the fields in the panel and saving is a real repair route, not a
+// degraded overwrite. Returns true when a WARN was emitted this call. Callers
+// must hold e.mu.
+func (e *HeartbeatEngine) noteSanitizedConfigLocked(snapshot heartbeatConfigSnapshot) bool {
+	if len(snapshot.sanitizeNotes) == 0 {
+		e.configHealthErr = ""
+		return false
+	}
+	summary := heartbeatSanitizeBanner(snapshot.sanitizeNotes)
+	e.configHealthErr = summary
+	if e.sanitizeWarned && e.sanitizeWarnDigest == snapshot.digest {
+		return false
+	}
+	e.sanitizeWarned = true
+	e.sanitizeWarnDigest = snapshot.digest
+	slog.Warn("heartbeat config hand-edit repaired on load; fix the fields in heartbeat-tasks.json or re-save the panel to persist the repair",
+		"issues", len(snapshot.sanitizeNotes), "detail", summary)
+	return true
 }
 
 func (e *HeartbeatEngine) recordConfigSnapshotLocked(snapshot heartbeatConfigSnapshot) {
@@ -93,7 +229,10 @@ func (e *HeartbeatEngine) adoptExternalEditsLocked() {
 		log.Printf("[heartbeat] invalid external config: %v (fail-open: keeping %d in-memory task(s))", err, len(e.tasks))
 		return
 	}
-	e.configHealthErr = ""
+	// tl1725: clean read clears the banner, sanitized read sets it with the
+	// repair notes and the once-per-digest WARN. Replaces the old unconditional
+	// clear, which behaved identically for a clean read.
+	e.noteSanitizedConfigLocked(snapshot)
 	if !snapshot.exists {
 		// Treat deletion of a previously observed config as authoritative.
 		// Retaining the old tasks would execute them on the next tick and recreate

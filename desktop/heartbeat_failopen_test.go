@@ -110,8 +110,11 @@ func TestHeartbeatFailOpenClearsWhenConfigIsFixed(t *testing.T) {
 	}
 
 	// The user fixes the field type; the next reload must restore the disk
-	// list and clear the banner payload.
-	fixed := `{"schemaVersion": 4, "revision": 2, "tasks": [{"id": "fixed", "interval": "5m", "enabled": true, "createdAt": 1700000000000}]}`
+	// list and clear the banner payload. (tl1725: the fixed task now also
+	// carries title/prompt — an enabled task without them is exactly what the
+	// load-time sanitize would disable, and this test's subject is the 823②
+	// type-error banner, not field validation.)
+	fixed := `{"schemaVersion": 4, "revision": 2, "tasks": [{"id": "fixed", "title": "fixed", "prompt": "p", "interval": "5m", "enabled": true, "createdAt": 1700000000000}]}`
 	writeHeartbeatConfigFile(t, engine, fixed)
 	view := engine.ReloadConfig()
 	if view.ConfigError != "" {

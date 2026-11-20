@@ -144,6 +144,11 @@ type heartbeatConfigSnapshot struct {
 	cfg    heartbeatConfig
 	digest [sha256.Size]byte
 	exists bool
+	// sanitizeNotes (tl1725): one human-readable description per hand-edit
+	// repair applied by sanitizeHeartbeatTasks while building this snapshot.
+	// Empty for a clean read. The notes travel on the snapshot so consumers can
+	// surface them (panel banner / WARN log) without re-deriving the diff.
+	sanitizeNotes []string
 }
 
 // HeartbeatConfigView is the revisioned Wails contract used by current
@@ -173,7 +178,21 @@ func (s heartbeatConfigSnapshot) view() HeartbeatConfigView {
 	if s.exists {
 		etag = hex.EncodeToString(s.digest[:])
 	}
-	return HeartbeatConfigView{Revision: s.cfg.Revision, ETag: etag, Tasks: tasks}
+	// tl1725: a sanitized snapshot carries its repair notes on the banner so
+	// the panel sees the damage on the very reload that repaired it. The view
+	// keeps a working ETag (unlike the 823② degraded view) — the file parses
+	// fine, so saving the repair from the panel is a legitimate route.
+	return HeartbeatConfigView{Revision: s.cfg.Revision, ETag: etag, Tasks: tasks, ConfigError: heartbeatSanitizeBanner(s.sanitizeNotes)}
+}
+
+// heartbeatSanitizeBanner renders load-time hand-edit repair notes as the
+// panel banner payload. Shared by snapshot.view() and
+// noteSanitizedConfigLocked so the banner text and the WARN log cannot drift.
+func heartbeatSanitizeBanner(notes []string) string {
+	if len(notes) == 0 {
+		return ""
+	}
+	return "config repaired on load (hand-edit protection): " + strings.Join(notes, "; ")
 }
 
 // heartbeatModelRef combines the optional per-task provider/model override
@@ -250,6 +269,14 @@ type HeartbeatEngine struct {
 	// left behind by the removed tl-547 autopilot auto-guard has completed.
 	// Guarded by mu.
 	legacyGuardSwept bool
+
+	// sanitizeWarnDigest / sanitizeWarned (tl1725): WARN-log throttling for
+	// load-time hand-edit repair. The same on-disk digest warns once; a changed
+	// digest (another hand edit) warns again. The panel banner (configHealthErr)
+	// is intentionally NOT throttled — it is an idempotent assignment. Guarded
+	// by mu.
+	sanitizeWarnDigest [sha256.Size]byte
+	sanitizeWarned     bool
 }
 
 type heartbeatPendingTopic struct {
@@ -293,7 +320,10 @@ func (e *HeartbeatEngine) Start() {
 		e.configHealthErr = err.Error()
 		log.Printf("[heartbeat] invalid config: %v (fail-open: starting with no tasks)", err)
 	} else {
-		e.configHealthErr = ""
+		// tl1725: a clean read clears the health banner, a sanitized read sets
+		// it (same call, notes on the snapshot decide). Also emits the
+		// once-per-digest WARN so a cold start on damaged JSON is visible.
+		e.noteSanitizedConfigLocked(snapshot)
 		e.recordConfigSnapshotLocked(snapshot)
 		e.tasks = snapshot.cfg.Tasks
 	}
@@ -1186,7 +1216,10 @@ func (e *HeartbeatEngine) ReloadConfig() HeartbeatConfigView {
 		view.ConfigError = e.configHealthErr
 		return view
 	}
-	e.configHealthErr = ""
+	// tl1725: clean read clears the banner, sanitized read sets it with the
+	// repair notes (and WARNs once per digest) — the hand-edit damage that the
+	// write-path validation never saw becomes visible on this very reload.
+	e.noteSanitizedConfigLocked(snapshot)
 	e.recordConfigSnapshotLocked(snapshot)
 	e.tasks = snapshot.cfg.Tasks
 	e.prunePendingTopicsLocked(e.tasks)
@@ -1212,6 +1245,11 @@ func (e *HeartbeatEngine) ReplaceTasks(tasks []HeartbeatTask) error {
 	// conversation and stay incompatible with per-run-fresh mode; existing rows
 	// keep the disk binding either way.
 	if err := e.validateHeartbeatTopicBindings(tasks, expected.cfg.Tasks); err != nil {
+		return err
+	}
+	// tl1725: same field contract as the agent tools — an enabled task the
+	// scheduler would silently never run must not pass a panel save either.
+	if err := validateHeartbeatPanelSave(tasks); err != nil {
 		return err
 	}
 	if err := e.writeTasks(tasks, expected, true, "panel-save"); err != nil {
@@ -1256,6 +1294,10 @@ func (e *HeartbeatEngine) ReplaceConfig(update HeartbeatConfigUpdate) (Heartbeat
 	tasks := mergeHeartbeatDiskRunHistory(update.Tasks, expected.cfg.Tasks)
 	// tl 1059: same create-only binding gate as ReplaceTasks — see there.
 	if err := e.validateHeartbeatTopicBindings(tasks, expected.cfg.Tasks); err != nil {
+		return expected.view(), err
+	}
+	// tl1725: same field contract as the agent tools (see ReplaceTasks).
+	if err := validateHeartbeatPanelSave(tasks); err != nil {
 		return expected.view(), err
 	}
 	if err := e.writeTasks(tasks, expected, true, "panel-save-cas"); err != nil {

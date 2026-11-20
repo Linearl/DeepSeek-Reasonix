@@ -267,6 +267,7 @@ func TestHeartbeatMaxRunsReenableResetsBudget(t *testing.T) {
 		ID:           "reopen",
 		Title:        "Reopen",
 		Prompt:       "ping",
+		Interval:     "1h", // tl1725: the re-enable save is a panel full-table save; enabled rows need the field contract satisfied
 		ApprovalMode: "yolo",
 		MaxRuns:      1,
 		Enabled:      true,
