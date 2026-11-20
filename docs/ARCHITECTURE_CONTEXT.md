@@ -103,6 +103,6 @@ node scripts/check-architecture.mjs --changed --base main-v2-stable   # 分支�
   `--context <id> --full` 拉 bounded context 包定边界与消费方；B1 查找者顺带
   查边界违规（倒挂 import / 深导入 / 宿主与 testutil 误导入 / 环）；阶段 C
   清理以 `--changed` 增量报告验收（新增清零 + 销账指纹）。
-- **上游合并**（`docs/upstream-merge-checklist.md` §1.2）：合并后必跑本检查器，
+- **上游单点吸收/cherry-pick**（`docs/upstream-merge-checklist.md` §1.2）：吸收后必跑本检查器，
   与 `check-fork-integrity.mjs`（锚点防静默丢）互补——一个防「fork 东西丢了」，
   一个防「结构被上游改坏」；同样只报基线外新增，避免全量噪音。

@@ -81,7 +81,7 @@ check 四种 `kind`：
 ```jsonc
 {
   "package": "v1.38.3-<时间戳>",
-  "handoff": "../../../docs/handoff/fork开发-包<N>部署安装handoff-<日期>.md",
+  "handoff": "global-workspace/docs/reasonix/handoff/fork开发-包<N>部署安装handoff-<日期>.md",
   "checks": [
     // ① eval：页面里跑一段 JS，返回 {pass, detail}（无导航，断当前视图）
     { "id": "sidebar-css-nowrap", "match": ["侧栏 CSS"], "kind": "eval",

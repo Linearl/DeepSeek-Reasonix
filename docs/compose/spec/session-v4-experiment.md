@@ -1,7 +1,7 @@
 ---
 feature: session-v4-experiment
-status: in-progress
-updated: 2026-09-15
+status: concluded  # v4 已收束为仅迁移支持；主存储=魔改 v3（去 DAG），见 2026-11-16 定案
+updated: 2026-11-20
 branch: feat/session-v4-experiment
 commits: 477b99679..a9716dcb6+  # filled at delivery
 ---

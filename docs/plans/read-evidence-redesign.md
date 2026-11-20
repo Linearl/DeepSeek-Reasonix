@@ -1,6 +1,6 @@
 # 文件读取、证据检查与进度展示改造（单 PR 方案）
 
-状态：实施中。分支 `feature/read-evidence-pr1`，基线 `main-v2 / daf18272f`。
+状态：**已落地**——read pipeline 已默认启用（`make the new read pipeline the default`），后续多轮修复迭代。分支 `feature/read-evidence-pr1`，基线 `main-v2 / daf18272f`（2026-11-20 状态更正：原「实施中」过时）。
 一个 PR 承载全部改造；内部按可审查提交推进，不再拆分为多个 PR。
 
 ## 1. 目标与默认行为

@@ -1,7 +1,7 @@
 # Upstream Merge Checklist / 合并上游核对清单
 
-> **每次合并 upstream/main-v2 之后、构建发布之前，必须执行本清单。**
-> 背景：git auto-merge 曾三次静默丢弃 fork-only CSS 块（#9222 分组 194 行、
+> **适用范围（2026-11-12 上游停维护后）**：本清单仅在 **cherry-pick / 单点吸收**上游修复时适用——
+> 不再有「整批合并 upstream/main-v2」的常态流程（历史：git auto-merge 曾三次静默丢弃 fork-only CSS 块（#9222 分组 194 行、
 > #9221 颜色筛选 42 行、--fg-faint token 换名）——无冲突标记、无构建报错，
 > 只有运行时裸奔。人工核对不可靠，所以第 1 步是可执行脚本。
 
@@ -32,8 +32,7 @@ node scripts/check-fork-integrity.mjs
 3. **锚点选语义性字符串**：赋值/调用形态（如 `skipHistory: hasLocalItems`、
    `RecoveryChainPreviewFor(mainPath, chainPath)`、`contentSnapshotCache`），
    不选注释、不选纯符号名。函数还在但逻辑被顶掉时，只有语义锚点能报警。
-4. **可上游化的优化提 PR**（上游 merged 后从 CHECKS 销账）——上游吸收是
-   最强的防冲掉：fork 不再独自维护该代码。
+4. ~~可上游化的优化提 PR（上游 merged 后销账）~~ —— **已随上游 2026-11-12 停维护终止**；吸收进 fork 的优化由 fork 长期维护，不再提 PR 销账。
 
 ### 1.2 结构红线（必跑，与锚点核对互补）
 

@@ -1,7 +1,6 @@
-# AI 安审试运行方案（任务 219 P1，2026-10-08 落盘，未启用）
+# AI 安审试运行方案（任务 219 P1，2026-10-08 落盘）
 
-状态：**workflow 草案已落盘于分支 `wt-219`
-（`.github/workflows/ai-security-review.yml`），推送远端待用户确认**。
+状态：**已合入主分支并运行中**——`.github/workflows/ai-security-review.yml` 已在主分支持续维护（2026-10-10 换审查模型、端点切 mimo）；label 门控启用。原「落盘于 wt-219 分支待确认」状态已过时（2026-11-20 文档审计更正）。
 试运行采用任务书候选 A：`anthropics/claude-code-security-review`。
 
 ## 候选二选一结论
