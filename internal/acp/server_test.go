@@ -2067,8 +2067,8 @@ func TestDeleteSessionFilesDeletesOwnedSubagents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := deleteSessionFiles(sessionPath); err != nil {
-		t.Fatalf("deleteSessionFiles: %v", err)
+	if err := deleteSessionFiles(sessionPath, sessionDeleteModePermanent); err != nil {
+		t.Fatalf("deleteSessionFiles(permanent): %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "subagents", ref+".jsonl")); !os.IsNotExist(err) {
 		t.Fatalf("subagent jsonl should be deleted, stat err = %v", err)
@@ -2081,7 +2081,10 @@ func TestDeleteSessionFilesDeletesOwnedSubagents(t *testing.T) {
 	}
 }
 
-func TestReconcileCleanupPendingDeletesACPMeta(t *testing.T) {
+// tl1722: a "delete" marker recovers into the trash bucket (the same split the
+// desktop reconciler applies), so the reconcile keeps the deleted session
+// restorable instead of hard-deleting it behind the user's back.
+func TestReconcileCleanupPendingTrashesDeleteMarker(t *testing.T) {
 	dir := t.TempDir()
 	sessionPath := transcriptPath(dir, "pending-acp")
 	if err := os.WriteFile(sessionPath, []byte(`{"role":"user","content":"hi"}`+"\n"), 0o644); err != nil {
@@ -2104,11 +2107,51 @@ func TestReconcileCleanupPendingDeletesACPMeta(t *testing.T) {
 	if err := ReconcileCleanupPending(dir); err != nil {
 		t.Fatalf("ReconcileCleanupPending: %v", err)
 	}
+	// Gone from the live session directory...
 	for _, path := range []string{sessionPath, acpMetaPath(sessionPath), jobsDir, agent.CleanupPendingPath(sessionPath)} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("%s still exists after reconciliation (err=%v)", path, err)
 		}
 	}
+	// ...but recoverable: the whole family sits in one trash bucket.
+	bucket := singleTrashBucket(t, dir)
+	for _, name := range []string{
+		"pending-acp.jsonl",
+		"pending-acp.acp.json",
+		"pending-acp.jobs",
+		acpSessionTrashMetaFile,
+	} {
+		if _, err := os.Stat(filepath.Join(bucket, name)); err != nil {
+			t.Fatalf("trashed artifact %s missing from bucket: %v", name, err)
+		}
+	}
+	assertTrashMetaKey(t, bucket, "pending-acp.jsonl")
+}
+
+// tl1722: a permanent-chain marker ("delete-permanent", "clear") reconciles
+// with hard-delete semantics — no bucket, unrecoverable, as requested.
+func TestReconcileCleanupPendingHardDeletesPermanentMarker(t *testing.T) {
+	dir := t.TempDir()
+	sessionPath := transcriptPath(dir, "pending-perm")
+	if err := os.WriteFile(sessionPath, []byte(`{"role":"user","content":"hi"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveACPMeta(sessionPath, acpSessionMeta{Cwd: t.TempDir(), Model: "test-model"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.MarkCleanupPending(sessionPath, "delete-permanent"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ReconcileCleanupPending(dir); err != nil {
+		t.Fatalf("ReconcileCleanupPending: %v", err)
+	}
+	for _, path := range []string{sessionPath, acpMetaPath(sessionPath), agent.CleanupPendingPath(sessionPath)} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("%s still exists after reconciliation (err=%v)", path, err)
+		}
+	}
+	assertNoTrashBucket(t, dir)
 }
 
 func writeACPSubagentArtifact(t *testing.T, dir, ref, parentSession string) {

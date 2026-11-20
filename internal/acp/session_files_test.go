@@ -29,8 +29,8 @@ func TestDeleteSessionFilesSweepsEventLogAndSidecars(t *testing.T) {
 		t.Fatalf("write conflict log: %v", err)
 	}
 
-	if err := deleteSessionFiles(path); err != nil {
-		t.Fatalf("deleteSessionFiles: %v", err)
+	if err := deleteSessionFiles(path, sessionDeleteModePermanent); err != nil {
+		t.Fatalf("deleteSessionFiles(permanent): %v", err)
 	}
 	for _, p := range []string{
 		path,
@@ -47,4 +47,5 @@ func TestDeleteSessionFilesSweepsEventLogAndSidecars(t *testing.T) {
 	if _, err := agent.LoadSession(path); !os.IsNotExist(err) {
 		t.Fatalf("LoadSession after delete = %v, want IsNotExist (no resurrection)", err)
 	}
+	assertNoTrashBucket(t, dir)
 }

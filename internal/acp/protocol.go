@@ -423,6 +423,16 @@ type SessionCloseResult struct{}
 // SessionDeleteParams removes a session from future session/list results.
 type SessionDeleteParams struct {
 	SessionID string `json:"sessionId"`
+	// DeletionMode picks what happens to the session's files on disk
+	// (tl1722). Empty or "trash" (the default) moves the transcript and
+	// every owned artifact into the session directory's ".trash" bucket —
+	// the same bucket shape the desktop writes and restores, so a remote
+	// delete stays recoverable exactly like a local one. Only the explicit
+	// value "permanent" hard-deletes beyond recovery. Any other value is
+	// rejected as invalid params: a typo must never silently downgrade a
+	// permanent request into a recoverable move, nor escalate a default
+	// into a hard delete.
+	DeletionMode string `json:"deletionMode,omitempty"`
 }
 
 // SessionDeleteResult is the empty delete ack.
