@@ -8,6 +8,7 @@ import (
 
 	"reasonix/internal/capability"
 	"reasonix/internal/plugin"
+	"reasonix/internal/tool"
 )
 
 // listServerInfo is one configured MCP server entry returned by action=list.
@@ -85,7 +86,13 @@ func (t *UseCapabilityTool) listCapabilities(p useCapabilityArgs) (string, error
 				continue
 			}
 			// Skip provider-visible core tools — they are already top-level.
-			if e.Kind == capability.KindTool && t.registry != nil && t.registry.ProviderVisible(e.ToolName) {
+			// tl1719 discoverability exception: compress stays listed. It is the
+			// only model-invocable compaction entry (five entry surfaces converge
+			// on one core; the tool is the model's own), and a bare list scan that
+			// hides it reads as "this session cannot fold". The schema itself is
+			// still on the provider surface — the row just marks it discoverable.
+			if e.Kind == capability.KindTool && t.registry != nil && t.registry.ProviderVisible(e.ToolName) &&
+				e.ToolName != tool.CompressToolName {
 				continue
 			}
 			caps = append(caps, capInfoForList{

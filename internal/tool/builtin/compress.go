@@ -18,7 +18,7 @@ func init() { tool.RegisterBuiltin(compressContext{}) }
 
 type compressContext struct{}
 
-func (compressContext) Name() string { return "compress" }
+func (compressContext) Name() string { return tool.CompressToolName }
 
 func (compressContext) Description() string {
 	return "Compress a selected part of the current model-visible conversation without deleting visible history. Use it when the work has reached a natural boundary — a large phase just finished, or the conversation is switching to a different topic — and the history is long enough that its detail no longer needs to stay live; also use it when the user explicitly asks. Do NOT fold a short context: re-reading is cheaper than the detail you would discard, and the host refuses a fold below the floor it reports back. When you do fold, put the facts, decisions, acceptance criteria, changed files and open questions that must survive into `focus` — a hand-off that names what changed and what is still unresolved lets the post-fold context resume without re-deriving them. Choose `before` to summarize everything before the uniquely matched user turn while keeping that turn and later context, or `after` to summarize from that turn through the last completed turn while keeping the active turn. The anchor must be an exact, unique excerpt from a real user message; use a longer excerpt if the tool reports multiple matches."
