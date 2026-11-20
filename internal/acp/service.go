@@ -2168,7 +2168,9 @@ func (s *service) sessionList(_ context.Context, raw json.RawMessage) (any, erro
 }
 
 // sessionDelete removes a session from future list results. Deleting a missing
-// session succeeds silently, matching ACP's idempotent delete guidance.
+// session succeeds silently, matching ACP's idempotent delete guidance. The
+// on-disk semantics follow the request's deletionMode (tl1722): the default
+// recovers into the ".trash" bucket, an explicit "permanent" hard-deletes.
 func (s *service) sessionDelete(_ context.Context, raw json.RawMessage) (any, error) {
 	var p SessionDeleteParams
 	if err := json.Unmarshal(raw, &p); err != nil {
@@ -2176,6 +2178,10 @@ func (s *service) sessionDelete(_ context.Context, raw json.RawMessage) (any, er
 	}
 	if err := validateSessionID("session/delete", p.SessionID); err != nil {
 		return nil, err
+	}
+	mode, err := sessionDeleteModeFromWire(p.DeletionMode)
+	if err != nil {
+		return nil, &RPCError{Code: ErrInvalidParams, Message: "session/delete: " + err.Error()}
 	}
 
 	path := ""
@@ -2190,12 +2196,12 @@ func (s *service) sessionDelete(_ context.Context, raw json.RawMessage) (any, er
 		path = sess.transcript
 		destroy = sess.ctrl.BeginDestroySession(path)
 		if result := destroy.Wait(); result.HasTimedOut() {
-			if err := agent.MarkCleanupPending(path, "delete"); err != nil {
-				go delayedDeleteSessionFiles(path, destroy)
+			if err := agent.MarkCleanupPending(path, cleanupPendingOperationFor(mode)); err != nil {
+				go delayedDeleteSessionFiles(path, mode, destroy)
 				sess.ctrl.CloseAfterDestroy()
 				return nil, &RPCError{Code: ErrInternal, Message: "session/delete: " + err.Error()}
 			}
-			go delayedDeleteSessionFiles(path, destroy)
+			go delayedDeleteSessionFiles(path, mode, destroy)
 			delayed = true
 		}
 		sess.ctrl.CloseAfterDestroy()
@@ -2206,7 +2212,7 @@ func (s *service) sessionDelete(_ context.Context, raw json.RawMessage) (any, er
 		}
 	}
 	if path != "" && !delayed {
-		if err := deleteSessionFiles(path); err != nil {
+		if err := deleteSessionFiles(path, mode); err != nil {
 			return nil, &RPCError{Code: ErrInternal, Message: "session/delete: " + err.Error()}
 		}
 		if destroy.Finish != nil {
@@ -2219,12 +2225,24 @@ func (s *service) sessionDelete(_ context.Context, raw json.RawMessage) (any, er
 	// never reach again.
 	if dir := s.sessionDir(); dir != "" {
 		if idPath := transcriptPath(dir, p.SessionID); idPath != path {
-			if err := deleteSessionFiles(idPath); err != nil {
+			if err := deleteSessionFiles(idPath, mode); err != nil {
 				return nil, &RPCError{Code: ErrInternal, Message: "session/delete: " + err.Error()}
 			}
 		}
 	}
 	return SessionDeleteResult{}, nil
+}
+
+// cleanupPendingOperationFor spells the cleanup-pending marker's operation for
+// a requested delete mode. "delete" keeps the historical spelling every
+// reconciler reads as the recoverable delete; the permanent chain needs its
+// own spelling so a later reconcile (this process died mid-delete) keeps the
+// original semantics instead of defaulting the marker into a recovery.
+func cleanupPendingOperationFor(mode sessionDeleteMode) string {
+	if mode == sessionDeleteModePermanent {
+		return "delete-permanent"
+	}
+	return "delete"
 }
 
 // sessionCancel aborts a session's in-flight turn, if any. It is a notification:
@@ -2975,7 +2993,67 @@ func parseSessionUpdatedAt(s string) time.Time {
 	return t
 }
 
-func deleteSessionFiles(sessionPath string) error {
+// sessionDeleteMode is the on-disk semantics of one session delete (tl1722):
+// trash buckets everything for recovery (the default, matching the desktop),
+// permanent hard-deletes beyond recovery. Only the exact wire value
+// "permanent" maps to the hard-delete path — see sessionDeleteModeFromWire.
+type sessionDeleteMode string
+
+const (
+	sessionDeleteModeTrash     sessionDeleteMode = "trash"
+	sessionDeleteModePermanent sessionDeleteMode = "permanent"
+)
+
+// sessionDeleteModeFromWire resolves the protocol's deletionMode field into
+// the delete semantics. Data-safety discipline (tl1722): only the literal,
+// case-sensitive "permanent" reaches the hard-delete path; an absent field
+// and "trash" both recover. Every other value is an error — a typo must never
+// silently downgrade a permanent request into a recoverable move, and the
+// default must never escalate into a hard delete.
+func sessionDeleteModeFromWire(raw string) (sessionDeleteMode, error) {
+	switch raw {
+	case "":
+		return sessionDeleteModeTrash, nil
+	case string(sessionDeleteModeTrash):
+		return sessionDeleteModeTrash, nil
+	case string(sessionDeleteModePermanent):
+		return sessionDeleteModePermanent, nil
+	default:
+		return "", fmt.Errorf("deletionMode %q: want %q or %q", raw, sessionDeleteModeTrash, sessionDeleteModePermanent)
+	}
+}
+
+// cleanupPendingDeleteMode maps a cleanup-pending marker's operation onto the
+// delete semantics, mirroring the desktop reconciler's split
+// (desktop reconcileDesktopCleanupPendingLocked): "delete" — the marker both
+// the desktop delete (a trash) and the ACP default delete write — recovers
+// into the trash bucket; everything else ("clear" teardowns and the ACP
+// permanent chain's "delete-permanent") hard-deletes, the same semantics the
+// desktop's else branch applies.
+func cleanupPendingDeleteMode(operation string) sessionDeleteMode {
+	if operation == "delete" {
+		return sessionDeleteModeTrash
+	}
+	return sessionDeleteModePermanent
+}
+
+// deleteSessionFiles disposes of a session's on-disk artifacts following the
+// requested semantics (tl1722). trash moves the whole artifact family into
+// the session directory's ".trash" bucket — the same bucket shape the desktop
+// lists and restores, so a remote delete stays recoverable exactly like a
+// local one. permanent hard-deletes (the pre-tl1722 behavior) and is only
+// reachable through the explicit "permanent" wire value.
+func deleteSessionFiles(sessionPath string, mode sessionDeleteMode) error {
+	if mode == sessionDeleteModePermanent {
+		return permanentDeleteSessionFiles(sessionPath)
+	}
+	return trashSessionFiles(sessionPath)
+}
+
+// permanentDeleteSessionFiles is the hard-delete path: os.Remove/RemoveAll on
+// every artifact family, unrecoverable. Kept verbatim from the pre-tl1722
+// deleteSessionFiles body.
+func permanentDeleteSessionFiles(sessionPath string) error {
 	paths := []string{
 		sessionPath,
 		acpMetaPath(sessionPath),
@@ -3004,18 +3082,21 @@ func deleteSessionFiles(sessionPath string) error {
 }
 
 // ReconcileCleanupPending retries delayed ACP session cleanup left by a previous
-// process, including ACP's own metadata sidecar.
+// process, including ACP's own metadata sidecar. The marker's operation keeps
+// the original request's semantics (tl1722): "delete" recovers into the trash
+// bucket, everything else ("clear", "delete-permanent") hard-deletes — the
+// same split the desktop reconciler applies to the same markers.
 func ReconcileCleanupPending(dir string) error {
 	return agent.ReconcileCleanupPending(dir, func(item agent.CleanupPendingInfo) error {
-		return deleteSessionFiles(item.SessionPath)
+		return deleteSessionFiles(item.SessionPath, cleanupPendingDeleteMode(item.Meta.Operation))
 	})
 }
 
-func delayedDeleteSessionFiles(sessionPath string, destroy control.SessionDestroyHandle) {
+func delayedDeleteSessionFiles(sessionPath string, mode sessionDeleteMode, destroy control.SessionDestroyHandle) {
 	if destroy.WaitAll != nil {
 		destroy.WaitAll()
 	}
-	if err := deleteSessionFiles(sessionPath); err != nil {
+	if err := deleteSessionFiles(sessionPath, mode); err != nil {
 		slog.Warn("acp: delayed session delete failed", "path", sessionPath, "err", err)
 	}
 	if destroy.Finish != nil {
