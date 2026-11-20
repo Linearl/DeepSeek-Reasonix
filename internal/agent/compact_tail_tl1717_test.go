@@ -76,7 +76,7 @@ func TestFullPathTailKeepsAtMostThreeTurns(t *testing.T) {
 		t.Fatalf("fixture 失真：token 独走尾区只有 %d 个回合，复现不出超限", turns)
 	}
 
-	_, start, ok := a.planFoldRegion(msgs, false, true)
+	_, start, ok := a.planFoldRegion(msgs, false, true, false)
 	if !ok {
 		t.Fatal("fixture has no foldable region")
 	}
@@ -128,7 +128,7 @@ func TestFullPathTailFits32KCapAt1MWindow(t *testing.T) {
 	if turnStart := tailTurnBoundary(snap, head); turnStart > tailStart(snap, head, a.recentTailBudget(), a.messageTokens, a.tailFloor()) {
 		t.Fatalf("fixture 失真：回合边界 %d 先于 token 边界生效，测不出 cap", turnStart)
 	}
-	_, start, ok := a.planFoldRegion(snap, false, true)
+	_, start, ok := a.planFoldRegion(snap, false, true, false)
 	if !ok {
 		t.Fatal("fixture has no foldable region")
 	}
@@ -226,7 +226,7 @@ func TestSmallWindowFoldableRegionSurvivesTailPolicy(t *testing.T) {
 		t.Fatalf("10K 窗口预算 = %d, want 1600（任务 812 比例保护）", got)
 	}
 	msgs := a.sess.conversation.Snapshot()
-	head, start, ok := a.planFoldRegion(msgs, false, true)
+	head, start, ok := a.planFoldRegion(msgs, false, true, false)
 	if !ok {
 		t.Fatal("10K 窗口无可折区——保护尾吞掉折叠区（任务 812 回归）")
 	}

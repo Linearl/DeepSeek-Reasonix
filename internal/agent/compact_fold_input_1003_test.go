@@ -101,7 +101,7 @@ func TestSummaryInputPreFoldedUnderCeiling(t *testing.T) {
 	prov := &preFoldProvider{window: window}
 	a := buildPreFoldAgent(t, prov, turns, window)
 	msgs := a.sess.conversation.Snapshot()
-	head, start, ok := a.planFoldRegion(msgs, true, true)
+	head, start, ok := a.planFoldRegion(msgs, true, true, false)
 	if !ok {
 		t.Fatal("fixture has no foldable prefix")
 	}
@@ -147,7 +147,7 @@ func TestSummaryUnderBudgetUnchanged(t *testing.T) {
 	prov := &preFoldProvider{window: window}
 	a := buildPreFoldAgent(t, prov, 8, window)
 	msgs := a.sess.conversation.Snapshot()
-	head, start, ok := a.planFoldRegion(msgs, true, true)
+	head, start, ok := a.planFoldRegion(msgs, true, true, false)
 	if !ok {
 		t.Fatal("fixture has no foldable prefix")
 	}
