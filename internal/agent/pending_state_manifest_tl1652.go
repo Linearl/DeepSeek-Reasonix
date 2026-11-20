@@ -248,7 +248,7 @@ var pendingStateManifest = []pendingStateEntry{
 	{"desktop\\tab_meta.go:31", "TabMeta.PendingPrompt", dispPersistedElsewhere, "投影"},
 	{"desktop\\tabs.go:7519", "sessionRecoveryFailedEvent.RecoveryPending", dispPersistedElsewhere, "事件投影"},
 	{"desktop\\theme_pack.go:226", "ThemeImportResult.PendingID", dispPersistedElsewhere, "结果投影"},
-	{"internal\\acp\\protocol.go:557", "SessionReloadExtensionsResult.Queued", dispPersistedElsewhere, "结果投影"},
+	{"internal\\acp\\protocol.go:567", "SessionReloadExtensionsResult.Queued", dispPersistedElsewhere, "结果投影"},
 	{"internal\\agent\\agent.go:1703", "Options.MemoryQueue", dispPersistedElsewhere, "配置注入，非内存待落盘态"},
 	{"internal\\agent\\agent.go:1907", "Options.RetryQueueMax", dispPersistedElsewhere, "配置数值，非内存待落盘态"},
 	{"internal\\agent\\agent.go:561", "Agent.retryQueueMax", dispPersistedElsewhere, "配置数值，非内存待落盘态"},
