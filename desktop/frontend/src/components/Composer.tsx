@@ -1049,6 +1049,7 @@ export function Composer({
         </span>
         <span className={rowClass(phase === "force" || phase === "settled")}>
           <span className="tooltip__stopcard-tier">{t("composer.stopTerminated")}</span>
+          <span className="tooltip__stopcard-note">{t("composer.stopImmediate")}</span>
         </span>
       </span>
     );
