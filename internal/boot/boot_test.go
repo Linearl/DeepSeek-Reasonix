@@ -2324,6 +2324,9 @@ func unifiedBootToolNames() []string {
 		"bash_output",
 		"complete_step",
 		"compress",
+		// tl1472 把 create_goal 挂进 provider-visible 面（agent_preset.go），
+		// 本基线当时漏更新——diag-boot2red 补记（断言基线漂移，非行为回归）。
+		"create_goal",
 		"edit_file",
 		"kill_shell",
 		"read_file",

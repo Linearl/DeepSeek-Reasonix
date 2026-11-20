@@ -195,6 +195,14 @@ func classifyMigrations(files []factFileState, marker *migrateScanMarker) (candi
 // verdict skip the head read entirely, so the cold-cache first boot after a
 // cleanup no longer pays a ~15–19s full re-open of the pool.
 func (s Store) MigrateV2() (MigrationReport, error) {
+	// diag-boot2red 回归修复：tl1706 把扫描从 migrationCandidates 换成 FTS
+	// reconcile 复用的 scanFactFiles 后，「store 路径存在但不是目录」这类用户
+	// 可见配置错误被静默吞掉（scanFactFiles 对 ReadDir 失败一律 continue——
+	// 这对索引重建是合理契约，对 migration 不是）。这里恢复 tl1706 之前的
+	// 目录 preflight，让 boot 照旧发 "Memory metadata migration" 警告。
+	if err := s.checkStoreDirs(); err != nil {
+		return MigrationReport{}, err
+	}
 	files := scanFactFiles(s)
 	marker := readMigrateScanMarker(s)
 	candidates, confirmed, err := classifyMigrations(files, marker)
@@ -233,6 +241,31 @@ func (s Store) MigrateV2() (MigrationReport, error) {
 	}
 	recordMigrateScanMarker(s, post)
 	return report, nil
+}
+
+// checkStoreDirs restores the store-shape preflight migrationCandidates used
+// to run before tl1706: a store path that exists but is not a directory is a
+// user-visible misconfiguration and must surface as an error (boot turns it
+// into a warning), never be silently skipped. A missing path stays a no-op.
+// Deliberately separate from scanFactFiles — the FTS reconcile's silent
+// continue contract is correct for index rebuilds and stays untouched.
+func (s Store) checkStoreDirs() error {
+	for _, dir := range s.dirs() {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		info, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("memory store path %q is not a directory", dir)
+		}
+	}
+	return nil
 }
 
 // migrationCandidates lists the memory files that still need the v2
