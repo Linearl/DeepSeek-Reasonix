@@ -1457,6 +1457,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ClearGoalForTab(tabID: string): Promise<void>;
   Compact(): Promise<void>;
   CompactForTab(tabID: string): Promise<void>;
+  /** tl1723：focus 透传变体——focus 字符串直送压缩核心（对齐斜杠 /compact <focus> 语义），trigger 仍为 ui。 */
+  CompactForTabWithFocus(tabID: string, focus: string): Promise<void>;
   NewSession(): Promise<void>;
   NewSessionForTab(tabID: string): Promise<void>;
   ClearSession(): Promise<SessionClearResult>;
@@ -5554,6 +5556,7 @@ function makeMockApp(): AppBindings {
         },
         async Compact() {},
         async CompactForTab() {},
+        async CompactForTabWithFocus() {},
         async NewSession() {},
         async NewSessionForTab() {},
         async ClearSession() { return { sessionPath: "", sessionGeneration: 0 }; },
