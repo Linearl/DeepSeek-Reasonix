@@ -3,7 +3,6 @@ package serve
 import (
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 
@@ -21,13 +20,13 @@ func (s *Server) compact(w http.ResponseWriter, r *http.Request) {
 	// tl1719: the serve surface names itself so the compaction receipt/events
 	// attribute this pass to the serve entry (same manual-class core as the
 	// desktop button and the slash command).
+	// tl1723: persistence is folded into CompactForTrigger itself
+	// (SnapshotRewrite semantics) — this endpoint no longer carries its own
+	// post-compact Snapshot tail, so the serve save lands through the same
+	// closure as the slash command and the desktop button.
 	if err := s.ctl().CompactForTrigger(r.Context(), strings.TrimSpace(body.Instructions), agent.CompactionTriggerServe); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-	// Persist the compacted session to disk — ctrl.Compact() only mutates in-memory.
-	if err := s.ctl().Snapshot(); err != nil {
-		slog.Warn("serve: snapshot after compact", "err", err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

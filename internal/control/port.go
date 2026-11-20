@@ -241,6 +241,9 @@ type SessionHistory interface {
 	// "slash", serve POST /compact = "serve") name themselves so the core's
 	// events and receipt attribute the pass to the exact entry. The fold
 	// behavior is identical for every manual-family label.
+	// tl1723: a successful fold also persists the session right here
+	// (SnapshotRewrite semantics) — implementers must not add their own
+	// post-compact save on top.
 	CompactForTrigger(ctx context.Context, instructions, trigger string) error
 	CompactRatio() float64
 	ContextReport() (summary, detail string)

@@ -2320,13 +2320,13 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 	case trimmed == "/compact" || strings.HasPrefix(trimmed, "/compact "):
 		focus := strings.TrimSpace(strings.TrimPrefix(trimmed, "/compact"))
 		go func() {
+			// tl1723: the post-compact SnapshotRewrite moved into
+			// CompactForTrigger itself — this surface no longer carries its
+			// own persistence tail.
 			if err := c.CompactForTrigger(context.Background(), focus, agent.CompactionTriggerSlash); err != nil {
 				c.notice("compaction failed: " + err.Error())
 			} else {
 				c.notice("compacted")
-				if err := c.SnapshotRewrite(); err != nil {
-					slog.Warn("controller: snapshot after compact", "err", err)
-				}
 			}
 		}()
 	case trimmed == "/context":
@@ -4636,6 +4636,16 @@ func (c *Controller) Compact(ctx context.Context, instructions string) error {
 // and receipt attribute the pass to the exact entry. Labels outside the manual
 // family normalize to manual; the fold behavior is identical for every label
 // in the family (agent.IsManualClassTrigger branches).
+//
+// tl1723 持久化收口: a successful fold persists the session right here via
+// SnapshotRewrite (the intentional-history-rewrite save, same face rewind
+// uses) — one persistence closure for every manual-family entry instead of
+// the slash/serve surfaces each rolling their own post-compact save and the
+// ui / cold-cache surfaces relying on the next autosave tick. The call runs
+// inside the rotation gate (same fold NewSession snapshots in), so by the
+// time the gate releases the disk already holds the folded transcript. A
+// persistence failure only warns: the fold itself took effect in memory and
+// NeedsRewriteSave pins every later save path to the rewrite form.
 func (c *Controller) CompactForTrigger(ctx context.Context, instructions, trigger string) error {
 	if c.executor == nil {
 		return nil
@@ -4649,7 +4659,16 @@ func (c *Controller) CompactForTrigger(ctx context.Context, instructions, trigge
 		return err
 	}
 	defer c.endRotation()
-	return c.executor.CompactNowWithTrigger(ctx, instructions, trigger)
+	if err := c.executor.CompactNowWithTrigger(ctx, instructions, trigger); err != nil {
+		return err
+	}
+	// tl1723: the unified persistence closure. Same warn-only contract the
+	// slash surface carried pre-tl1723 — a failed save must not fail the
+	// compaction, the autosave tick still owes the rewrite.
+	if err := c.SnapshotRewrite(); err != nil {
+		slog.Warn("controller: snapshot after compact", "err", err)
+	}
+	return nil
 }
 
 // ExtractHighlightsToNewSession was removed: compaction now falls back to the

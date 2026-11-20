@@ -438,7 +438,7 @@ func (a *App) AnswerQuestionForTab(tabID, id string, answers []QuestionAnswer) {
 }
 
 // Compact runs a plain compaction pass (the "compact now" button). Focus-guided
-// compaction goes through Submit("/compact <focus>") instead.
+// compaction goes through Submit("/compact <focus>") or CompactForTabWithFocus.
 func (a *App) Compact() error {
 	return a.CompactForTab("")
 }
@@ -446,6 +446,18 @@ func (a *App) Compact() error {
 // CompactForTab compacts the requested tab without depending on which tab is
 // focused when the asynchronous frontend call reaches the backend.
 func (a *App) CompactForTab(tabID string) error {
+	// tl1723: the button carries no focus — the focusless default keeps the
+	// pre-existing binding byte-for-byte. Focus-guided passes go through the
+	// CompactForTabWithFocus variant (or the slash command).
+	return a.CompactForTabWithFocus(tabID, "")
+}
+
+// CompactForTabWithFocus is CompactForTab with an explicit focus string
+// handed to the compaction core (tl1723 focus passthrough): the same
+// "keep what the focus names" steering the slash command gets from
+// "/compact <focus>", now reachable from the desktop layer without routing
+// through Submit. Empty focus behaves exactly like CompactForTab.
+func (a *App) CompactForTabWithFocus(tabID, focus string) error {
 	tab, ctrl := a.tabAndCtrlByID(tabID)
 	if a.tabIsReadOnly(tab) {
 		return readOnlyChannelErr()
@@ -463,7 +475,7 @@ func (a *App) CompactForTab(tabID string) error {
 	// tl1719: the "compact now" button names itself — the compaction receipt
 	// and events attribute this pass to the ui entry (same manual-class core
 	// as the slash command and the serve endpoint).
-	return ctrl.CompactForTrigger(a.ctx, "", agent.CompactionTriggerUI)
+	return ctrl.CompactForTrigger(a.ctx, focus, agent.CompactionTriggerUI)
 }
 
 // workspaceNotReadyErr names why a session action arrived before the tab's
