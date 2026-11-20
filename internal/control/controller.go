@@ -2320,7 +2320,7 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 	case trimmed == "/compact" || strings.HasPrefix(trimmed, "/compact "):
 		focus := strings.TrimSpace(strings.TrimPrefix(trimmed, "/compact"))
 		go func() {
-			if err := c.Compact(context.Background(), focus); err != nil {
+			if err := c.CompactForTrigger(context.Background(), focus, agent.CompactionTriggerSlash); err != nil {
 				c.notice("compaction failed: " + err.Error())
 			} else {
 				c.notice("compacted")
@@ -4627,6 +4627,16 @@ func (c *Controller) GoalStatus() string {
 // Compact runs one compaction pass on the executor's session on demand.
 // instructions is optional `/compact <focus>` guidance steering what to keep.
 func (c *Controller) Compact(ctx context.Context, instructions string) error {
+	return c.CompactForTrigger(ctx, instructions, agent.CompactionTriggerManual)
+}
+
+// CompactForTrigger is Compact with an explicit entry label (tl1719 压缩入口
+// 归一化): the user-facing surfaces — desktop button (ui), slash /compact
+// (slash), serve POST /compact (serve) — name themselves so the core's events
+// and receipt attribute the pass to the exact entry. Labels outside the manual
+// family normalize to manual; the fold behavior is identical for every label
+// in the family (agent.IsManualClassTrigger branches).
+func (c *Controller) CompactForTrigger(ctx context.Context, instructions, trigger string) error {
 	if c.executor == nil {
 		return nil
 	}
@@ -4639,7 +4649,7 @@ func (c *Controller) Compact(ctx context.Context, instructions string) error {
 		return err
 	}
 	defer c.endRotation()
-	return c.executor.CompactNow(ctx, instructions)
+	return c.executor.CompactNowWithTrigger(ctx, instructions, trigger)
 }
 
 // ExtractHighlightsToNewSession was removed: compaction now falls back to the

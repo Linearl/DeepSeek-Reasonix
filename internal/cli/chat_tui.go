@@ -4314,7 +4314,12 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 		// snapshot once the pass returns. Any text after "/compact" is focus
 		// guidance steering what the summary keeps.
 		focus := strings.TrimSpace(strings.TrimPrefix(input, typedCmd))
-		return func() tea.Msg { return compactDoneMsg{err: m.ctrl.Compact(context.Background(), focus)} }
+		// tl1719: the TUI's /compact is the slash entry — same label the chat
+		// controller's slash route uses, so receipts attribute both surfaces
+		// identically (behavior is the shared manual-class core).
+		return func() tea.Msg {
+			return compactDoneMsg{err: m.ctrl.CompactForTrigger(context.Background(), focus, agent.CompactionTriggerSlash)}
+		}
 	case "/context":
 		return m.showContextReport(input)
 	case "/new":

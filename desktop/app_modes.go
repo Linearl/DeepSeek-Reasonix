@@ -460,7 +460,10 @@ func (a *App) CompactForTab(tabID string) error {
 	if ctrl == nil {
 		return nil
 	}
-	return ctrl.Compact(a.ctx, "")
+	// tl1719: the "compact now" button names itself — the compaction receipt
+	// and events attribute this pass to the ui entry (same manual-class core
+	// as the slash command and the serve endpoint).
+	return ctrl.CompactForTrigger(a.ctx, "", agent.CompactionTriggerUI)
 }
 
 // workspaceNotReadyErr names why a session action arrived before the tab's
