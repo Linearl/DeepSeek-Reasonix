@@ -17,15 +17,10 @@ func (s *Server) rewind(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing turn", http.StatusBadRequest)
 		return
 	}
-	scope := control.RewindBoth
-	switch body.Scope {
-	case "both":
-	case "code":
-		scope = control.RewindCode
-	case "conversation":
-		scope = control.RewindConversation
-	default:
-		http.Error(w, "scope must be code, conversation, or both", http.StatusBadRequest)
+	scope, err := control.ParseRewindScope(body.Scope)
+	if err != nil {
+		// tl1724: same invalid scope, same rejection as the desktop entry points.
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Rewind may intentionally switch to a fork. Serialize the controller and
