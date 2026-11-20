@@ -1,274 +1,96 @@
 # DeepSeek-Reasonix（Linearl 维护分支）
 
-> **上游项目与完整介绍见 → [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)**（README / 官方文档 / studio 分支）。
-> 本仓库是其**长期维护的功能超集分支**：早期追齐上游版本，上游转入仅维护态后转为**独立演进**——持续修复与优化，并承载上游未合并的体验与效率特性。
+> **上游项目见 → [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)**。
+> 本仓库是其**长期维护的功能超集分支**：早期追齐上游版本；上游转入仅维护态并于 2026-11-12 公告停止维护后，本 fork 转为**独立演进**——持续修复与优化，并承载上游未合并的体验与效率特性。
 > 版本节奏：`1.38.3-YYYYMMDD-HHMM` 时间戳构建，每包配 release notes。
 
 ## English TL;DR
 
 A **long-term maintained, feature-superset fork** of [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix):
 
-- **Grew out of tracking upstream; now evolving independently.** We aligned with 6 major upstream releases before upstream went maintenance-only. Today we cherry-pick the fixes worth having and adopt the mechanisms worth having, instead of merging whole releases.
-- **Stability first**: the upstream `main-v2` line has been through repeated regressions and sweeping re-architecture; we ship timestamped builds (`1.38.3-YYYYMMDD-HHMM`) with per-build release notes, machine-level verification, and default-off experimental switches so the default experience stays predictable.
-- **Active upstream collaboration**: 95 issues + 84 pull requests contributed upstream; anything valuable to both sides lands upstream first, anything not merged stays maintained here.
+- **Independent evolution.** We tracked multiple major upstream releases before upstream went maintenance-only; upstream has since announced end of maintenance (2026-11-12). Today we cherry-pick the fixes worth having instead of merging whole releases, and no longer file upstream issues/PRs.
+- **Stability first**: timestamped builds (`1.38.3-YYYYMMDD-HHMM`) with per-build release notes, machine-level verification, and default-off experimental switches so the default experience stays predictable.
+- **Track record**: 95 issues + 84 pull requests contributed upstream before it closed; everything not merged upstream stays maintained here.
 
-**How we develop it**: benchmark against the best and judge for ourselves (the recovery fence went away after six competitors showed no equivalent); observability first (stability means a bug can be *seen, located, and proven*, not that bugs don't exist); automation (autopilot, multi-session collaboration, and a human-AI split with the zcode execution line); and self-iteration — the agent is a daily user too, so it reports, investigates, and files issues on its own — admitting its current limit: the agent proposes and implements, but **a human still decides what gets adopted**.
-
-Upstream project & docs: **[esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)**.
+**How we develop it**: benchmark against the best and judge for ourselves; observability first (stability means a bug can be *seen, located, and proven*); automation (autopilot, multi-session collaboration, a human-AI split with the zcode execution line); and self-iteration — the agent is a daily user too, but **a human still decides what gets adopted**.
 
 ---
 
 ## 中文速览（TL;DR）
 
-- **上游功能的超集，但已独立演进**——早期追齐过 6 个大版本；上游转入仅维护态后不再整批跟进，改为按需 cherry-pick 修复、吸收机制。上游有的我们基本都有；我们有的（多会话协作、项目分组、autopilot…）上游不一定有。
-- **长期维护**——不是临时补丁仓：持续 bug 修复、体验优化、装机级验证；**发版节奏约每周一包**（时间戳构建 + 增量 release notes）。**重点维护 desktop 桌面版**，目前不做 CLI 的发版（CLI 侧改动随源码进仓库，但不单独出包）。
-- **向上游持续回馈**——累计向上游提交 **95 个 issue + 84 个 PR**，能进上游的尽量进上游，进不了的留在这里长期维护。
+- **上游功能的超集，已独立演进**——早期追齐过多个大版本；上游 2026-11-12 停止维护后不再整批跟进、也不再向上游提 issue/PR，改为按需 cherry-pick 修复、吸收机制。上游有的我们基本都有；我们有的（多会话协作、项目分组、群聊、autopilot…）上游不一定有。
+- **长期维护**——不是临时补丁仓：持续 bug 修复、体验优化、装机级验证；**发版节奏约每周一包**。**重点维护 desktop 桌面版**（CLI 改动随源码进仓库，不单独出包）。
+- **累计向上游贡献 95 个 issue + 84 个 PR**（上游关闭反馈通道前）；对上游有价值的修复留在这里长期维护。
 
 ## 介绍视频
 
-**2 分 03 秒看完这个 fork 分支**——为什么存在、与上游的关系、独有特性一览：[▶ 播放介绍视频](https://linearl.github.io/DeepSeek-Reasonix/)（跳转文档站，首页内嵌播放；GitHub 文件页对 32.7MB 大文件不提供预览）。
+**2 分 03 秒看完这个 fork**——为什么存在、与上游的关系、独有特性一览：[▶ 播放介绍视频](https://linearl.github.io/DeepSeek-Reasonix/)（文档站首页内嵌播放）。
 
 ---
 
-## 1. 为什么会有这个分支：历史与现状
+## 1. 为什么会有这个分支（摘要）
 
-### 上游发生了什么
+上游 `main-v2` 在 1.35~1.38.12 与 Electron 迁移期两轮问题爆发（大量 crash/regression/升级断裂，issue 曾批量关闭而非修复），**1.38.3 是两轮爆发之间的稳定窗口**——本 fork 停留此基线（Wails），把稳定性做扎实。我们需要的能力（项目分组、颜色筛选等）长期得不到上游合并，追齐版本的冲突成本也高于收益，因此从「追齐」转为「独立演进」：好修复照 cherry-pick，不再整批合并。
 
-DeepSeek-Reasonix 主线（`main-v2`）在近期经历了连串动荡：
+> 完整历史、定位与开发方法（含标杆对标、可观测性优先、自动化与自迭代的完整论述）见 **[docs/PROJECT-BACKGROUND.zh-CN.md](./docs/PROJECT-BACKGROUND.zh-CN.md)**。
 
-- **稳定性问题连续多个版本反复出现**：近 60 天内 **100+ 个 Bug 类 issue**（标题含 Bug，实际触到查询上限），近 90 天 14 个 `crash`、5 个 `regression` 标题 issue；上游 discussions 里有用户「用了两个月失望透顶，我已经弃坑了」（#10744）与「1.38.3 版本 bash 编辑被频繁拒绝」（#10497）等真实反馈。
-- **旧问题未收敛即大改架构，1.38.3 之后的若干个版本都不稳定**：上游在 v1.38 系对桌面布局与运行时做了多轮结构性重做（含 Electron 迁移方向的反复），**随后的 1.39.x 若干版本持续暴露大量问题**——界面回归、升级断裂、启动链缺陷（#10222 / #10106 / #10171 等）批量出现，直到今天仍在点状修复。
-- **issue 被批量关闭，而不是被修复**：issue 一度积累到 **约 1.5k**，后来 open 数「奇迹般」降到 121——见 discussions [#11140「issues 从 1.5k 降到 121，怎么做到的」](https://github.com/esengine/DeepSeek-Reasonix/discussions/11140)。**这种做法实际埋掉了大量合理的用户需求：只要用户继续停留在上游版本，这些问题就永远不会被修复。** 当前 open 仍有 123（截至 2026-09-28）。
-- **主线进入仅维护态，开发精力转向 studio**：上游默认分支已切为 `studio`（studio-v2.20.x 一天可发四版），主线版本（v1.39.3）转为点状修复推进。
-- **两轮问题大爆发（本 fork 停留 1.38.3 的直接原因）**：上游历史上有两轮集中爆发——**1.21 ~ 1.25** 一轮、**1.35 ~ 1.38.12** 一轮（**尤其 1.38.5 起转 Electron 后**问题密度陡增）。我们在跟进中踩过这些坑，因此**选择停留在 1.38.3**（Wails 基线）：这是两轮爆发之间的稳定窗口，且 Electron 迁移期的包体/启动链/升级断裂问题都在这之后。
+## 2. 独有改进一览
 
-### 我们在跟进中遇到的困难
+按主题归纳（逐版本明细见 [`release-notes/FORK-vs-upstream.md`](./release-notes/FORK-vs-upstream.md) 差异台账 22 张版本表）：
 
-- **高频反馈仍跟不上上游变动速度**：95 个 issue + 84 个 PR 持续回馈，但复发有两层——
-  - **上游架构级改动让老问题重犯**：新一批回归随每次大改批量出现，我们刚收敛稳定又要重查一遍；
-  - **上游更新让我们的补丁失效**：上游改掉补丁赖以成立的前提（文件搬迁、结构重做、行为改写），补丁看似还在、实际已被架空——例如 classic 布局被上游分批退役后，每次合并都要手工恢复我们的布局实现；基于上一版做的优化也会在合并中被上游侧改动冲掉，只能靠每次合并后的完整性核对（`check-fork-integrity.mjs`）逐项找回。
-- **我们需要的能力长期得不到合并**：项目分组（上游 #9222）、颜色筛选（#9221）等至今仍 open——「上游不一定合」正是这个 fork 长期存在的原因。
-- **版本跃迁成本高**：1.34 → 1.39 跨多个大版本，每轮追齐都要做逐文件论证、双向比对与全量验证，否则就是静默丢功能。
-
----
-
-## 2. 我们的定位
-
-**长期维护（bug 修复 + 体验优化）+ 新特性。早期是上游功能的超集，现在是一条独立演进的线。**
-
-两条原则（详见 [`FORK.md`](./FORK.md)）：
-
-1. **吸收合理改进，但不追齐版本** —— 上游已转入仅维护态，我们按自己的节奏演进，**不再整批合并上游版本**；上游的重构或修复只要更优就采用，**哪怕替换我们自己的实现**（有价值的单点修复照常 cherry-pick）。
-2. **向上游反馈** —— 对上游也有价值的能力以高质量 issue + PR 回馈；上游吸收后不再长期自己背。
-
-**关于上游分支状态**：上游主线已进入**只维护状态**（开发精力转向 studio），并已于 **2026-11-12 在 README 宣布停止维护**（退役反馈通道/崩溃上报/telemetry，代码保留）——本 fork 不再向上游提交 issue/PR，动向巡检改为 `git fetch upstream` + `log` 直查。鉴于此，**我们长期可能会做一些破坏性探索**（大版本跃迁/架构实验类改动）；此类探索若进行，**会在 release notes 中单独说明**（含退路与影响面），不会静默改变默认行为。
-
----
-
-## 3. 我们的开发方法
-
-这一节讲方法，不讲功能。功能见 release notes，上游差异见 `release-notes/FORK-vs-upstream.md`。
-
-**我们和上游是什么关系（历史 / 现状 / 原因）**
-
-- **历史**：本分支早期按「追齐上游」维护——完整对齐过 6 个大版本，边跟边补。这段经历让我们看清了上游各机制的取舍。
-- **现状**：**不再追齐版本**。上游 `main-v2` 已进入仅维护态、开发转向 studio 分支；我们按自己的节奏走，只挑有用的拿——上游的**好修复 cherry-pick**、**好机制吸收**（例：路径身份统一 #9511、远程准入栅栏 #8749 系列），不再为「版本号一致」而整体跟进。
-- **原因**：① 上游那条基线不稳定（1.35~1.38.12 与 Electron 迁移期问题密集），全量跟进等于把别人的震荡引到自己身上；② 我们的改动面已经很宽（classic 布局、项目分组、多会话协作…），整批 merge 的冲突成本高于收益；③ **代价可控**——不追版本 ≠ 不学东西：有价值的单点改动照拿，只是不再整批搬。
-
-### 3.1 标杆对标：向最好的学，但独立判断
-
-#### 3.1.1 拆掉不合理的机制 —— 「把上游机制拆了以后发现，外面根本没有雨」
-
-**方法**：不假设现成机制是对的。机制是上游为它当时的问题写的，未必是我们的问题。当同一个机制**反复出问题、需要不断打补丁**时，先问「**这个机制本身该不该存在**」，而不是继续打补丁。
-
-**案例：recovery fence（"中断的工具需要核实"围栏）**
-
-- **缘起**：该机制系上游移植，我们继承后 **20 天内做了 10+ 次收敛修复**，问题反复复发——典型的"缝缝补补"。
-- **转折**：停止打补丁，转去做**竞品对照**——codex / openclaw / opencode / claw-code / zcode / mimo-code **六家皆无等价物**。竞品统一把人工介入点放在**执行前审批**，失败后**直接交回模型自愈**（codex 的原话是 "returned to the model, never escalated to the user"）。而上游代码注释自己也写着：*"a button nobody will press"*、*"the fence would strand the run"*。
-- **结论**：判定为**过度设计**，拆掉。
-- **落地**：4 个切片（停拦截 / 撤工具 / 测试对齐 / 完整性锚），**净删 480 行**（+99/−579，14 文件），装机实测通过。
-- **效果**：工具失败后 **ask / unset / unknown / auto / yolo 全模式直通**，不再以 `recovery_required` 错误收尾；「中断的工具」面板**保留但降级为事后核实台**，不再是继续工作的前置条件。**连带收益**：另一个待办（"重启后中断进 fence 面板"）随之一并消失。
-- **已向上游反馈**：#12058。
-
-**第二个案例：写路径的阻塞形态（乐观并行 + 沙箱/权限/写目录授权）**
-
-- **上游的做法**：写操作前先拿锁、先要授权——写路径被串行化，并需要逐次获准。
-- **我们的做法**：拆成两块——
-  - **乐观并行**（`optimistic_write` #9213）：去掉「写前必须拿锁」的阻塞形态，改为**并发写 + 冲突可见**；
-  - **沙箱 / 权限 / 写目录授权**：把「每次写都要单独授权」放开为**项目级 / 全局级的允许写入路径**（沙箱写目录三层统一、完全访问档）。
-- **拆锁之后必须有补偿，否则就是无序**：我们借 zcode 的**声明式并发**思路（见下一节「向竞品学」）给 bash 加了**「重命令（install/build）独占」声明**——把「哪些命令不能并发」变成**工具的声明**，而不是调度器的白名单。
-- **一句话**：**乐观 ≠ 无序——拆掉阻塞的同时，把约束换成更精确的形态。**
-
-**三条纪律（拆机制 ≠ 裸删）**
-
-1. **删的是"阻塞形态"，不是"记录语义"** —— `outcome_unknown` 记录、面板、读侧全部保留，老会话不拒载；
-2. **删保护类机制前必须有替代** —— 同一批清单里 `readcoord`（读协调）的退役被**当场叫停**：「暂不执行，除非找到替代机制」。没有替代就不删。
-3. **拆掉阻塞就要补上约束** —— 去锁不是去约束（乐观并行配套「重命令独占」声明）；去掉一个机制时，必须回答「它原本挡住的坏事，现在谁来挡」。
-
-**上游的删除动作 = 免费的审计线索**
-
-上游 v2.x 删掉的机制，我们 v1.x 基本都继承着 —— 等价于**上游替我们做过一轮减法审计**。我们据此做过一次系统对照（**29 条机制级条目**，每条带 v1.x `file:line` 与 v2.x 状态证据），逐条判断「退役 / 降级 / 保留并论证」。其中体量最大的是 `bot` IM 渠道网关（上游整个删除，我方核实后**裁定保留**）。
-
-#### 3.1.2 看到好的机制，学习并迁移 —— 但必须找到"结合点"
-
-**方法**：不照搬。**先找到它与我们现有机制的接口**，再落地——否则只是引入**第二套并行机制**，比一套坏的更麻烦。
-
-**案例 A：向竞品学"声明式并发"** —— 读 zcode 的写并发模型，价值不在某个函数，而在「**工具自己声明并发属性 + 单一调度点统一决策**」这条结构。我们当时正被 `node_modules` 并发破坏反复咬，原思路是给每个危险命令打补丁；学完之后改成给 bash 加**「重命令（install/build）独占」声明**——"哪些命令不能并发"变成**工具的声明**而不是调度器的白名单，修复面积从"N 个命令"收敛到"一处规则"。
-
-**案例 B：吸收上游的优解** —— 上游有些重构/修复比我们的实现更好，就**直接采用，哪怕替换掉我们自己的代码**（例：路径身份统一 #9511、远程准入栅栏 #8749 系列）。**"不追版本"不等于"不学东西"。**
-
-### 3.2 可观测性优先：让问题被看见、被定位、被证明
-
-**方法**：把诊断能力当**资产**投入，不等功能做完再说。
-
-> 稳定的真身是**可观测性**——不是"没有 bug"，而是 **bug 一出现就能被看见、被定位、被证明**。
-
-**三个投入面**
-
-1. **运行时可观测**：分阶段耗时打点（如切 tab 的 `switch-tab:*` 各阶段读数）、慢路径告警、崩溃黑匣子（WER LocalDumps）；
-2. **工作过程可视化**：任务/子代理面板、产物与参考文件列表、工具调用记录、会话图墙、实验室特性图墙；
-3. **留痕可追溯**：每个任务有编号，交付有分支、出包有台账、装机有验证——**任何结论都能追到 `file:line` 或某一行日志**。
-
-**收益（实证）**：一句"切 tab 又变慢了"，从日志里捞出 25.4 秒的坏样本、对齐提交与出包时间线，**约 15 分钟**给出可立项结论；一张截图，根因定位到 `Message.tsx:855-857` 的一行条件，**约 10 分钟**。**在没有打点的版本上，同类问题只能靠猜。**
-
-
-### 3.3 自动化：让 agent 能自己把事推下去
-
-**两个方向**
-
-1. **单会话自主（autopilot）**：从"每一步等你确认"到"整件事做完再汇报"。
-   —— 关键在于**让模型学习人的决策方式**：哪些问题可以自行处理、哪些必须交回用户，不是靠固定规则，而是**通过记忆积累人过往的判断**（例如"这类改动优劣明显，不必再问"），逐步扩大它可以自主的范围。**人的注意力是稀缺资源，自动化要省的就是它。**
-2. **多会话协作**：协调线派单、开发线执行、审计线复核、守护线看板；跨会话消息总线 + 信件中心，会话之间可直接通信。**任务编号即接口**——一个任务号串起分支名、报告、出包、装机，全链可追溯。
-3. **人机混合的并行开发（我们与 zcode 的分工）**：本分支长期采用「**AI 主对话 + zcode 执行线**」的模式 —— Reasonix 主对话作为协调中枢，负责任务拆解、**验收标准制定**、代码合并、打包与装机验证；zcode（一个外部 coding harness）作为并行执行线，按任务书独立完成开发与测试。两者通过**文件留言板**交接：主对话写任务书（目标、验收锚、约束），zcode 完成后回板交付（分支、提交、验收证据），再由专门的合并会话汇入主线。
-   —— **这个分工为什么有效**：主对话守住**全局视角与质量闸门**（体积预算棘轮、集成核验），zcode 提供**稳定的并行执行力**。合起来的效果是：单个特性「立项 → 开发 → 合并 → 装机」的周期**从数天缩短到数小时**。
-
-**为什么值得**：自动化省下的不是人力，而是**切换成本**。真正被释放的是"人不必每次都在场"——人只在**关键点裁决**：方向、取舍、破坏性变更。
-
-**配套纪律**（自动化不是放飞）：新能力默认走**实验开关且默认关**；破坏性变更**留退路**；可用性优先于机制完整性（**无界等待视为缺陷**——锁必须有超时，终止必须端到端生效）。
-
-### 3.4 自主迭代：模型也是使用者
-
-**方法**：**不把 agent 只当"实现者"，也当"用户"**。它每天在用这个软件，它遇到的摩擦就是真实用户会遇到的摩擦。
-
-- **让 agent 能提意见**：内置意见箱（`submit_feedback`），模型在工作现场发现的问题直接落进去，不需要"等人来记"；
-- **让 agent 能自己查、自己提**：内置技能让它完成本地分析并提交 issue（**带源码定位与分级修复建议**，而不是一句"这里坏了"）；
-- **让 agent 能改自己**：harness 本身（工具、提示词、审批链、恢复机制）就是可迭代对象——本仓库相当一部分改动**最初来自 agent 自己的使用反馈**，而不是用户报告；
-- **闭环**：反馈 → 调查（带根因）→ 立项（带验收）→ 开发 → 出包 → 装机 → 新读数 → **回到反馈**。
-
-**目前走到哪一步（诚实标注）**
-
-- ✅ **已跑通**：反馈 → 调查（带根因）→ 立项（带验收）→ 开发 → 出包 → 装机 → 新读数 的完整闭环；agent 在工作现场发现的问题会自己记进意见箱、自己查证、自己起草 issue。
-- ⚠️ **未充分放开**：**"模型改 harness"目前仍需人审批把关** —— agent 可以提出改动、可以实施，但**采纳权在人手里**。这是有意为之：**若让模型自主决定纳入什么需求，坏需求会被固化进 harness，代价远高于收益。**
-- ⏭️ **未来**：随着"哪些能自主、哪些要交人"的判定被记忆逐步积累（见 3.3 的 autopilot），可自主的范围会扩大 —— 但**边界始终由人划定**。
-
-**一句话**：**使用者不只有人。**
-
----
-
-## 4. 核心特性（区别于上游）
-
-重点是**大幅改善日常体验与工作效率**的部分；完整清单见 [`FORK.md`](./FORK.md)。分类与实验室「特性图墙」的分组一致。
-
-### 执行引擎与上下文
-
-| 特性 | 说明 |
+| 主题 | 内容 |
 |---|---|
-| **会话压缩稳定性族** | 压缩失败不再拖死对话（失败截断 / 限流等待续跑 / 提前折叠）；长只读任务不再被误停 |
-| **存储自动瘦身** | 大会话 event log 按 records 上限自动压缩，根治长会话保存卡死 |
-| **WAL 自动收缩** | 数据库日志文件超限自动回收，不再只增不减 |
-| **DeepSeek effort 档位** | 4 档推理强度 + auto，**按请求覆盖**（切换即时生效） |
-| **大会话秒开** | 快照稀疏索引 + 尾部窗口加载：数百 MB 会话切换从 71.7 秒降到 1 秒上下 |
-| **agent 工具报错自愈引导** | 工具调用参数写错时，报错信息附正确用法示例与自愈建议——agent 自行纠正后重试 |
-| **v5 会话导入器** | 终端 `sessions import-v5`：上游 1.38.9+ 的 v5 会话导入（dry-run 预览+全量备份+完整性校验） |
-| **跨 provider 热替换** | 换 provider / 模型不重启会话 |
-| **投影有效性解耦**〔开发中〕 | 切模型不再丢上下文投影，避免切换后上下文暴涨 |
-| **摘要请求安全上限**〔开发中〕 | 超长会话压缩不再因请求无上限而失败 |
+| **多会话协作** | 通讯录/跨会话信箱与派单（hop 链、任务卡）、群聊频道（频道历史、@投递、副管理员）、协作心跳与守护线 |
+| **上下文与压缩** | 压缩进度悬停数据卡（耗时/速度/折叠数/释放量）、压后视图大幅瘦身（86.6%→28.9% 实测）、五入口归一化、尾部保留 32K/3 回合新口径、投影失效可见化与有界降级 |
+| **消息可靠性** | 新消息必渲染、切回即显示（账本对账门）、回合结束排队、压缩中消息注入、回溯不丢消息 |
+| **项目与会话管理** | 项目分组、会话分组、项目颜色筛选、回收站（删除可恢复+dry-run 预演）、对话版本管理（回溯/快照） |
+| **记忆系统** | 背景记忆索引与召回工具、置顶记忆索引化（150 字符行+按需召回）、记忆候选建议与归档 |
+| **实验室（实验特性）** | 分组/卡片/徽章配置驱动 + 推荐/可选/未稳定三档徽章、特性速览墙、生效时机明示（即时/重启/边界） |
+| **更新与版本** | 无感升级一键铺包重启、多版本快速切换（回退一条命令）、时间戳包+逐包 notes |
+| **稳定性与可观测** | 崩溃与卡顿根因治理（issue #92/#93/#94/#96 收口）、doctor 判活与诊断包、boot/首响性能治理、CDP 界面自验 |
+| **经典布局保留** | classic 双布局完整保留（上游已分批退役，fork 每次合并手工恢复） |
+| **界面打磨** | 侧栏漂移行级锚定、跳转条遮挡修复、亮色主题对比度、模型下拉修正等一批细节 |
 
-### 会话协作
+## 3. 安装与使用
 
-| 特性 | 说明 |
+1. **下载**：[Releases](https://github.com/Linearl/DeepSeek-Reasonix/releases) 选 `1.38.3-YYYYMMDD-HHMM` 时间戳包（每包配 release notes）。**推荐使用最新正式 Release**。
+2. **升级**：覆盖安装即可；回滚用 设置 → 实验 → 快速切换版本，或安装旧时间戳包。
+3. **特性开关**：改变体验的新特性默认关闭，位于 设置 → 实验室；性能/稳定性类内部改进直接生效。
+4. 存储格式与官方版兼容；**不要回退到 1.34/1.38.1 以下**（会话格式单向升级，旧构建拒绝加载，文件不损坏）。
+
+> **推荐「经典桌面风格」**：fork 特性以经典布局为基准开发，其他布局（workbench 等）功能可能略有缺失。
+
+## 4. 开发方法（摘要）
+
+一句话版：**向最好的学但独立判断**（机制不合用就拆，如 recovery fence 在六家竞品中无对应即移除）；**可观测性优先**（bug 要能被看见、定位、证明）；**自动化**（autopilot、多会话协作、zcode 执行线的人机分工）；**自迭代**（agent 也是日常用户，主动报告与立项）——但**采纳与否由人决定**。
+
+> 完整版（3.1 标杆对标 / 3.2 观测与反馈 / 3.3 组织方式）见 **[docs/PROJECT-BACKGROUND.zh-CN.md](./docs/PROJECT-BACKGROUND.zh-CN.md)**。
+
+## 5. 仓库结构与构建
+
+| 路径 | 说明 |
 |---|---|
-| **多会话协作** | 会话间互发消息、派单 / 回执 / 进度对齐；主对话协调子对话分工（调研 / 开发 / 审计多线并行），跨会话任务链全程留痕 |
-| **跨会话消息总线（人类可查）** | 信件中心面板直接查看跨会话消息，不必经过工具调用 |
-| **外部协作总线**（实验） | 本进程内托管协作总线端点，外部 agent 可接入信件与任务卡 |
-| **ACP 双端接线**（实验） | Agent Client Protocol 会话驱动层——外部 ACP 客户端（如编辑器插件）可驱动会话 |
-| **协作群聊视图**（实验） | AI 团队分工、会话运行状态、消息数一目了然（侧栏左下角群聊入口） |
-| **autopilot / 自动档** | 长任务自动推进、交付检查自动放行（无人值守跑长链）；配合 yolo / 询问档分级授权 |
-| **计划任务与心跳** | 侧边栏「自动化」：定时唤醒、周期任务，provider / model 可配置 |
-| **子代理委派档位** | 输入框「+」菜单：light / balanced / aggressive 三档委派深度 |
-| **会话分组** | 项目内会话可分组、可折叠，项目树按分组展示 |
-| **子代理运行中消息通道** | 用户与 AI 都能向运行中的子代理发消息（双向） |
-
-### 诊断与可观测
-
-| 特性 | 说明 |
-|---|---|
-| **崩溃上报自有通道** | 崩溃转储走我们自己的通道，可一键分析 |
-| **一键分析** | 崩溃弹窗一键建 YOLO 会话，自动分析并起草 issue |
-| **桌面日志轮转** | `logs/desktop/desktop.log` 4MB × 25 份，GUI 无控制台时的诊断依据 |
-| **WER 黑匣子指引** | 指引配置 Windows 崩溃转储，进程崩溃时留下完整证据 |
-| **模拟崩溃测试入口**〔规划中〕 | 主动验证崩溃链路端到端可用 |
-
-### UI 与交互
-
-| 特性 | 说明 |
-|---|---|
-| **经典布局** | 上游已分批退役，我们保留——单栏 / 工作台布局长期可用 |
-| **项目分组**（上游 #9222 未合并） | 项目树新建分组、右键移动、可折叠、跨重启保持 |
-| **颜色筛选与多选排序**（上游 #9221 未合并） | 调色板筛选 / 排序，支持多选（上游只有设色数据层，无筛选 UI） |
-| **搜索历史提问** | 长会话内搜索并跳转历史提问，滚顶加载更早历史 |
-| **输入框草稿持久化** | 草稿 / 粘贴块 / 附件路径跨重启不丢 |
-| **权限档位四色语义** | yolo 红 / approval 蓝 / autopilot 橙 / plan 紫，当前档位一眼可辨 |
-| **实验室三档徽章**〔开发中〕 | 推荐（不开会让体验出现缺口）／可选（小幅影响）／未稳定（可能不稳） |
-| **实验室特性图墙** | 实验特性可视化总览，点开看详情 |
-| **启动 tab 秒出** | 冷启动标签栏不再等待慢会话 |
-| **用量监测侧栏卡** | GLM Plan 订阅用量按当前模型自动显示（五小时/周窗口余量+重置倒计时）；OpenCode Go 用量卡按当前地址条件出现——用哪家显示哪家 |
-| **界面组合并卡** | 界面组 14 项合并为 9 行三张合并卡（检索与历史/输入与选区/视图布局），一屏可见 |
-
-### 安全与权限
-
-| 特性 | 说明 |
-|---|---|
-| **已授权写目录面板 + 乐观并发写** | 设置 → 权限：会话级 / 全局写目录可视化管理；并行写不靠加锁换安全 |
-| **沙箱模式** | Bash 沙箱界定「能写到哪」，不自动批准命令 |
-| **本地服务器 / 远程网关** | 手机端 / Tailscale 接入，gateway token 一键复制。手机端 **GrandCouncil 尚在开发中**（能连、核心链路可用，但功能未完——不要当作成品依赖） |
-| **provider 固定拒答识别** | 识别 provider 侧的模板化拒答并如实回显，不再被误当成本地风控 |
-
-## 5. 使用指南
-
-### 安装与升级
-
-1. **下载**：[Releases](https://github.com/Linearl/DeepSeek-Reasonix/releases) 中选 `1.38.3-YYYYMMDD-HHMM` 时间戳包（每包对应一份 release notes，注明包含的修复与特性）。
-2. **升级**：直接覆盖安装；无存储格式变更时可无损升级。**回滚**：设置 → 实验 → 快速切换版本，或安装旧时间戳包。
-3. **首次使用**：与上游一致；**改变使用体验的新增特性默认关闭**，在 设置 → 实验室（Laboratory） 中按需开启——不影响体验的内部改进（性能、稳定性、日志）则直接生效，无需配置。
-
-> **推荐使用「经典桌面风格」**：本 fork 作者日常自用即经典桌面风格，功能覆盖最完整、体验最有保障。**其他桌面风格（如 workbench）功能可能略有缺失**（fork 的部分特性以经典布局为基准开发）——使用中遇到问题请及时反馈。
-
-### 仓库导览
-
-| 路径 | 内容 |
-|---|---|
-| [`FORK.md`](./FORK.md) | fork 定位、与上游差异的结构化纪律、特性全表 |
-| [`release-notes/`](./release-notes/) | 每个时间戳包的增量 release notes + `FORK-vs-upstream.md`（逐版本上游差异台账） |
-| `scripts/check-fork-integrity.mjs` | 合并上游后的完整性核对清单（每次合并必跑） |
-| `desktop/` | 桌面端（独立 Go module + 前端）；构建见 `scripts/build-local-installer.sh` |
+| `FORK.md` | 结构化纪律（开发判据/新特性规范/出包检查清单的权威文件） |
+| `release-notes/` | 每包增量 notes + `FORK-vs-upstream.md` 逐版本差异台账 + `WRITING-GUIDE.md` 写作规范 |
+| `docs/` | `RELEASE-GUIDE.zh-CN.md`（发版流程）· `PROJECT-BACKGROUND.zh-CN.md`（项目背景完整版） |
+| `scripts/check-fork-integrity.mjs` | 合并上游后的完整性核对（每次合并必跑） |
+| `scripts/check-architecture.mjs` | 结构红线（基线增量报告） |
+| `desktop/` | 桌面端（独立 Go module + 前端） |
 
 ### 从源码构建
 
 ```bash
-bash scripts/build-local-installer.sh <版本号>   # 产出 NSIS 安装器并铺 staging
+bash scripts/desktop-build.sh windows/amd64 <版本号>   # wails 官方管线 + ldflags 版本注入，产出 NSIS 安装器
 ```
 
-构建依赖 wails CLI + NSIS（本机工具链位置见仓库文档）；构建前请先更新 `release-notes/` 对应 notes 文件。
-
----
+构建依赖 wails CLI + NSIS；agent 环境需注入 `~/go/bin` 等 PATH（详见 `docs/RELEASE-GUIDE.zh-CN.md`）。构建前先更新对应 release notes。
 
 ## 6. 欢迎提 issue
 
-- **在这个仓库提**：使用体验、bug、特性建议都欢迎——我们响应快、装机验证、修复直接进时间戳包。
-- **建议用内置 gh 技能提**：让 agent 直接用内置的 GitHub 技能做**问题分析**（日志取证、源码定位、复现步骤整理），再产出**高质量 issue / PR**——这是我们向上游 95 issue + 84 PR 的标准姿势，本地反馈同样适用：分析到位的 issue 修得快，PR 直接带验证面。
-- **也继续向上游提**：对上游也有价值的修复，我们会整理成高质量 issue/PR 反馈给 [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)——上游合并后两边都不用再背。
-- 报 bug 时附上：时间戳包版本 + 复现步骤 + `logs/desktop/desktop.log` 相关片段，能大幅缩短定位时间。
+- **在这个仓库提**：使用体验、bug、特性建议都欢迎——响应快、装机验证、修复直接进时间戳包。
+- **建议用内置 gh 技能提**：让 agent 先做问题分析（日志取证、源码定位、复现步骤）再产出高质量 issue/PR——分析到位的修得快。
+- 报 bug 附上：时间戳包版本 + 复现步骤 + `logs/desktop/desktop.log` 片段，能大幅缩短定位时间。
+- 上游已于 2026-11-12 关闭反馈通道，**不再向上游提 issue/PR**；有价值的修复会留在本仓库持续维护。
 
 ---
 
