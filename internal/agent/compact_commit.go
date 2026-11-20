@@ -47,7 +47,7 @@ func (a *Agent) commitSummaryProjection(commit summaryProjectionCommit) (Compact
 		return CompactionState{}, fmt.Errorf("persist projection: %w", err)
 	}
 	a.sess.checkpointState = "applied"
-	if commit.activeTurn != 0 && commit.trigger != CompactionTriggerManual {
+	if commit.activeTurn != 0 && !IsManualClassTrigger(commit.trigger) {
 		a.sess.compaction.lastTurn.Store(commit.activeTurn)
 	}
 	receipt := state.LastReceipt

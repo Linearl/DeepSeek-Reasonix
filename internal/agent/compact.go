@@ -136,7 +136,7 @@ Rules: be terse — bullet points and fragments, not prose. Preserve identifiers
 // configured compact_ratio.
 func (a *Agent) compact(ctx context.Context, trigger, instructions string, force bool) error {
 	_, err := a.compactToProjectionWithChunked(ctx, trigger, instructions, foldRequest{
-		force: force, allowChunked: trigger == CompactionTriggerManual,
+		force: force, allowChunked: IsManualClassTrigger(trigger),
 	})
 	return err
 }

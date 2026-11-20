@@ -330,7 +330,7 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	// Receipts back off sub-critical retries only. A failed summary never
 	// fabricates a digest; at the ceiling the lossy truncation rescue is the
 	// last resort, so the turn still leaves with a view the provider accepts.
-	if blocked, reason := a.contextMaintenanceBlocked(inputHash, viewEst); blocked && policy.Trigger != CompactionTriggerManual &&
+	if blocked, reason := a.contextMaintenanceBlocked(inputHash, viewEst); blocked && !IsManualClassTrigger(policy.Trigger) &&
 		policy.Trigger != CompactionTriggerOverflow && est < hard {
 		// 任务912 P1-c: a backed-off view is still the whole transcript. Once
 		// the failure is a pattern the turn must not leave with it — cap it to
@@ -374,7 +374,7 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	// est >= hard on its own (the view only degrades at or above the hard
 	// ceiling), and the old term wrongly force-folded sessions whose observed
 	// usage sat below the fold trigger (the issue 7935 contract).
-	forceFold := policy.Force || policy.Trigger == CompactionTriggerManual || policy.Trigger == CompactionTriggerOverflow || est >= hard
+	forceFold := policy.Force || IsManualClassTrigger(policy.Trigger) || policy.Trigger == CompactionTriggerOverflow || est >= hard
 	if est < fold && !forceFold {
 		// tl1397(实验档,默认关):低于全量触发线的 ranges 主动小折通道——
 		// 开关关闭时此分支零行为(铁律 2),触发线之上的回收责任仍归全量路径。
@@ -418,10 +418,10 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 }
 
 func shouldPruneBeforeFold(trigger string, overHardCeiling bool) bool {
-	switch trigger {
-	case CompactionTriggerPressure, CompactionTriggerOverflow:
+	switch {
+	case trigger == CompactionTriggerPressure || trigger == CompactionTriggerOverflow:
 		return true
-	case CompactionTriggerManual:
+	case IsManualClassTrigger(trigger):
 		return overHardCeiling
 	default:
 		return false
@@ -436,7 +436,7 @@ const manualRecoverySummaries = 4
 
 func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
 	switch {
-	case policy.Trigger == CompactionTriggerManual && overCeiling:
+	case IsManualClassTrigger(policy.Trigger) && overCeiling:
 		return manualRecoverySummaries
 	case policy.Trigger == CompactionTriggerPressure:
 		return 2
@@ -505,8 +505,8 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 }
 
 func foldLanded(policy ContextPreparePolicy, tokens, fold, hard int) bool {
-	switch policy.Trigger {
-	case CompactionTriggerManual, CompactionTriggerOverflow:
+	switch {
+	case IsManualClassTrigger(policy.Trigger) || policy.Trigger == CompactionTriggerOverflow:
 		return tokens < hard || tokens < fold
 	default:
 		return tokens < fold
@@ -515,7 +515,7 @@ func foldLanded(policy ContextPreparePolicy, tokens, fold, hard int) bool {
 
 func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash string, hard, est int, foldInstalled bool, err error) (PreparedContext, error) {
 	a := m.agent
-	if errors.Is(err, errCompressStaleContext) && policy.Trigger != CompactionTriggerManual {
+	if errors.Is(err, errCompressStaleContext) && !IsManualClassTrigger(policy.Trigger) {
 		reason := "context changed during summary; automatic retry blocked for this generation"
 		slog.Warn("agent: context summary blocked", "reason", reason, "trigger", policy.Trigger, "fold_installed", foldInstalled)
 		a.recordContextMaintenanceBlocked(inputHash, policy.Trigger, "summary", reason)
@@ -551,7 +551,7 @@ func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash str
 	// Task 516: the acceptance path now installs partial progress instead of
 	// producing this rejection, so the branch is defensive only — it stays so a
 	// re-introduced ceiling rejection can never regress into the 17:50 loop.
-	if errors.Is(err, errCheckpointCeiling) && policy.Trigger != CompactionTriggerManual {
+	if errors.Is(err, errCheckpointCeiling) && !IsManualClassTrigger(policy.Trigger) {
 		return m.rescueByTruncation(policy, hard, err)
 	}
 	return m.rescueOrFail(policy, hard, est, err)
@@ -594,11 +594,11 @@ func (m ContextManager) rescueOrFail(policy ContextPreparePolicy, hard, est int,
 		return m.rescueByTruncationOrSlidingWindow(policy, hard, cause)
 	}
 	overCeiling := m.currentPrepared().InputTokens >= hard
-	if policy.Trigger == CompactionTriggerManual {
+	if IsManualClassTrigger(policy.Trigger) {
 		overCeiling = est >= hard
 	}
 	if !overCeiling {
-		if policy.Trigger == CompactionTriggerManual {
+		if IsManualClassTrigger(policy.Trigger) {
 			return PreparedContext{}, cause
 		}
 		// 任务912 P1-c: below the ceiling a failed summary used to hand the turn

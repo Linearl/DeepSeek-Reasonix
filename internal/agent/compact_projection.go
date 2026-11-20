@@ -1326,7 +1326,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	// a full-window session's summary request rides a quarter-window segment
 	// instead of a near-window single prefill; the ladder's later rounds (and
 	// the next pass) fold the remaining middle segment by segment.
-	if req.mustFree || trigger != CompactionTriggerManual {
+	if req.mustFree || !IsManualClassTrigger(trigger) {
 		start = a.boundedSummaryPrefixEnd(msgs, head, start, instructions)
 		if start <= head {
 			a.emitCompactionAborted(trigger)
@@ -1352,7 +1352,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		a.emitCompactionAborted(trigger)
 		return CompactionNoop, nil
 	}
-	if req.mustFree || trigger != CompactionTriggerManual {
+	if req.mustFree || !IsManualClassTrigger(trigger) {
 		if err := a.validateSafeSummaryRequest(fold, instructions, req.slim); err != nil {
 			a.emitCompactionAborted(trigger)
 			return CompactionNoop, err
@@ -1486,7 +1486,7 @@ func (a *Agent) acceptCheckpointCandidate(trigger string, sourceTokens, candidat
 		return fmt.Errorf("%w: candidate would not reduce tokens (%d >= %d)", errCheckpointRejected, candidateTokens, sourceTokens)
 	}
 	hard := a.hardInputCeiling()
-	if trigger != CompactionTriggerManual && hard > 0 && candidateTokens >= hard {
+	if !IsManualClassTrigger(trigger) && hard > 0 && candidateTokens >= hard {
 		slog.Warn("agent: checkpoint candidate still above physical ceiling — installing partial fold progress",
 			"trigger", trigger, "source_tokens", sourceTokens,
 			"candidate_tokens", candidateTokens, "ceiling", hard)

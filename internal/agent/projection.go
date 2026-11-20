@@ -44,7 +44,31 @@ const (
 	// 「发起源」,与阈值规则(压力/hard ceiling/overflow 安全网)叠加不替代;
 	// 折叠事务与判据(foldEconomics/1396 红线)对所有触发源一视同仁。
 	CompactionTriggerModelRanges = "model_ranges"
+	// tl1719 压缩入口归一化：用户面手动家族的三个入口标签。五个压缩入口
+	// （pressure 自动 / UI 按钮 / 斜杠 /compact / compress 工具 / serve
+	// POST /compact）各带自己的标签进同一折叠核心，事件与 receipt 的
+	// Trigger 字段可归因到具体入口；行为差异只允许来自 trigger 标签的
+	// 显式分支。ui/slash/serve 与 manual 同属手动行为类（IsManualClassTrigger
+	// 全量继承 manual 的折叠语义——裁段门/单飞预算/落地判据/失败救援全部
+	// 一致），manual 本身保留给非五入口的手动道（guardian、SummarizeFrom
+	// 等）。
+	CompactionTriggerUI    = "ui"
+	CompactionTriggerSlash = "slash"
+	CompactionTriggerServe = "serve"
 )
+
+// IsManualClassTrigger reports whether t carries the manual behavior class.
+// tl1719: ui/slash/serve are the entry-labelled forms of the manual family —
+// every manual-class branch in the core reads this helper, never a bare
+// == CompactionTriggerManual comparison, so a new entry label cannot silently
+// fork behavior.
+func IsManualClassTrigger(t string) bool {
+	switch t {
+	case CompactionTriggerManual, CompactionTriggerUI, CompactionTriggerSlash, CompactionTriggerServe:
+		return true
+	}
+	return false
+}
 
 // Compaction mode labels.
 const (
