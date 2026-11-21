@@ -18,8 +18,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig := Default()
 
 	// automation（自动化）
-	orig.Desktop.Autopilot = true               // autopilot (M8 standalone)
-	orig.Agent.ExperimentalSessionCollab = true // sessionCollab (M8 standalone)
 	orig.Agent.ExperimentalFullAccess = true    // fullAccess (M8 standalone)
 	orig.Sandbox.OptimisticWrite = true         // optimisticParallel (M8 standalone)
 	// tl1453：experimental_dream 随 dream/distill 实验退役，不再入往返面。
@@ -72,8 +70,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	// tl 1132：启动遮罩（默认关=不渲染 splash）。
 	orig.Desktop.ExperimentalStartupSplash = true // startupSplash
 	// 任务 686：工作流可视化面板（默认关）。
-	orig.Desktop.ExperimentalWorkflowPanel = true              // workflowPanel
-	orig.Desktop.ExperimentalWorkflowTemplates = true          // workflowPanel family (tl1454)
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
 	orig.Agent.ExperimentalAutoLoadOlder = true                // autoLoadOlder ([agent] authoritative after task 473)
 	orig.Desktop.ExperimentalSplitView = true                  // splitView
@@ -88,7 +84,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalSessionMonitor = true     // monitoring (M8 standalone, member 1)
 	orig.Agent.ExperimentalPerfMonitor = true          // monitoring (M8 standalone, member 2)
 	orig.Agent.ExperimentalPerfMonitor = true          // monitoring ([agent] authoritative after task 473)
-	orig.Desktop.ExperimentalCDPDebugPort = true       // M5
 	orig.Desktop.ExperimentalLifecycleNoiseGate = true // M5
 
 	// storage（存储）
@@ -101,7 +96,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalJsonlZstd = true // jsonlZstd
 
 	// infra（基础设施；785 退役 S1 常驻底座开关条目）
-	orig.Agent.ExperimentalRuntimeReuse = true // runtimeReuse
 	orig.Desktop.ExperimentalACPListen = true  // acpListen (task 790)
 	orig.Desktop.ACPListenPort = 8791          // acpListen family key
 	// tl1487 七组③：pathRules fixture 行随键退役移除。
@@ -115,7 +109,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	// fixed-key-set rule). Conditional blocks (autopilot, optimistic_write)
 	// must light up because the fields above are set.
 	for _, key := range []string{
-		"autopilot = true",
+		// (autopilot absent: tl1741 retired the switch from the render face.)
 		"optimistic_write = true",
 		"session_storage = \"dual_write_read_v4\"",
 		"events_auto_rotation = \"auto\"",
@@ -150,13 +144,12 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		// tl 1132：启动遮罩键无条件渲染（fixed-key-set rule）。
 		"experimental_startup_splash = true",
 		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
-		"experimental_workflow_panel = true",
-		"experimental_workflow_templates = true",
+		// (workflow_panel/templates absent: tl1741 retired the switches.)
 		"experimental_question_search = true",
 		"experimental_subagent_tps", // rendered from the nil-means-on helper; presence only
 		"experimental_completion_summary = true",
 		"experimental_quick_commands = true",
-		"experimental_cdp_debug_port = true",
+		// (cdp_debug_port absent: tl1741 retired the switch — endpoint arms unconditionally.)
 		"experimental_output_style_ui = true",
 		"experimental_acp_listen = true",
 		"acp_listen_port = 8791",
@@ -165,7 +158,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_local_server = true",
 		"experimental_cache_tuning = true",
 		"trace_as_state = true", // task 473: [agent] spelling (renamed from experimental_trace_as_state)
-		"experimental_session_collab = true",
+		// (session_collab absent: tl1741 retired the key from the render face.)
 		"experimental_auto_load_older = true",
 		"experimental_perf_monitor = true",
 		"experimental_safety_cost_control = true",
@@ -180,7 +173,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_orphan_handling = true",
 		// (task 551: experimental_model_capability_filter retired from the render
 		// face — accepted on read, never rendered; see render_coverage_test.)
-		"experimental_runtime_reuse = true",
+		// (runtime_reuse absent: tl1741 retired the key from the render face.)
 		"experimental_full_access = true",
 		"experimental_subagent_policy = true",
 		// tl1193b：pinned 索引化开关键无条件渲染（fixed-key-set rule）。
@@ -211,9 +204,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	}
 
 	// Round-trip: each switch reads back with the value we stored.
-	if !got.Desktop.Autopilot {
-		t.Error("autopilot did not round-trip")
-	}
 	if !got.Sandbox.OptimisticWrite {
 		t.Error("sandbox.optimistic_write did not round-trip")
 	}
@@ -240,7 +230,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		t.Error("trace_as_state (agent, post-473 single key) did not round-trip")
 	}
 	for name, ok := range map[string]bool{
-		"agent.experimental_session_collab":          got.Agent.ExperimentalSessionCollab,
 		"agent.experimental_pinned_index":            got.Agent.ExperimentalPinnedIndex, // tl1193b：memory-context 组往返
 		"agent.experimental_full_access":             got.Agent.ExperimentalFullAccess,
 		"agent.experimental_safety_cost_control":     got.Agent.ExperimentalSafetyCostControl,
@@ -252,7 +241,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"agent.experimental_high_speed_model":        got.Agent.ExperimentalHighSpeedModel,
 		"agent.experimental_composer_draft":          got.Agent.ExperimentalComposerDraft,
 		"agent.experimental_selection_actions":       got.Agent.ExperimentalSelectionActions,
-		"agent.experimental_runtime_reuse":           got.Agent.ExperimentalRuntimeReuse,
 		"agent.experimental_orphan_handling":         got.Agent.ExperimentalOrphanHandling,
 		"desktop.experimental_cache_tuning":          got.Desktop.ExperimentalCacheTuning,
 		"desktop.experimental_quick_commands":        got.Desktop.ExperimentalQuickCommands,
@@ -277,7 +265,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		// (retired from render — task 473 single-key fold.)
 		"desktop.experimental_restart_update":       got.Desktop.ExperimentalRestartUpdate,
 		"desktop.experimental_feedback":             got.Desktop.ExperimentalFeedback,
-		"desktop.experimental_cdp_debug_port":       got.Desktop.ExperimentalCDPDebugPort,
 		"desktop.experimental_lifecycle_noise_gate": got.Desktop.ExperimentalLifecycleNoiseGate,
 		"desktop.experimental_acp_listen":           got.Desktop.ExperimentalACPListen,
 		"desktop.experimental_local_server":         got.Desktop.ExperimentalLocalServer,

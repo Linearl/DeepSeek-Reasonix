@@ -38,21 +38,12 @@ func runtimeAssemblyKey(root, model, effort string) string {
 	return hex.EncodeToString(digest[:8])
 }
 
-// runtimeReuseEnabled reads the experimental gate from the current config.
-func (a *App) runtimeReuseEnabled() bool {
-	cfg, _, err := a.loadDesktopUserConfigForView()
-	if err != nil || cfg == nil {
-		return false
-	}
-	return cfg.Agent.ExperimentalRuntimeReuse
-}
+// tl1741：runtimeReuseEnabled 配置门随撤开关删除——运行时复用池无条件启用
+// （键退役，复用/存储路径只受池冷热影响，语义不变）。
 
 // acquireRuntimeAssembly returns the pooled assembly for the key, or nil when
-// the gate is off / the pool is cold. Read-only: no reference counting.
+// the pool is cold. Read-only: no reference counting.
 func (a *App) acquireRuntimeAssembly(key string) *boot.ReusedAssembly {
-	if !a.runtimeReuseEnabled() {
-		return nil
-	}
 	runtimeAssemblies.mu.Lock()
 	defer runtimeAssemblies.mu.Unlock()
 	assembly := runtimeAssemblies.entries[key]
@@ -63,9 +54,9 @@ func (a *App) acquireRuntimeAssembly(key string) *boot.ReusedAssembly {
 }
 
 // storeRuntimeAssembly publishes a freshly built assembly under the key
-// (last-writer-wins). A no-op when the gate is off.
+// (last-writer-wins). A no-op for a nil assembly.
 func (a *App) storeRuntimeAssembly(key string, assembly *boot.ReusedAssembly) {
-	if !a.runtimeReuseEnabled() || assembly == nil {
+	if assembly == nil {
 		return
 	}
 	runtimeAssemblies.mu.Lock()
@@ -75,9 +66,8 @@ func (a *App) storeRuntimeAssembly(key string, assembly *boot.ReusedAssembly) {
 	slog.Info("desktop: runtime assembly stored", "key", key, "pool_size", len(runtimeAssemblies.entries))
 }
 
-// DropRuntimeAssemblyPools empties the pool (config gate flip, tests). The
-// gate-off fast path above makes stale entries inert, so this is hygiene
-// rather than correctness.
+// DropRuntimeAssemblyPools empties the pool (tests). Stale entries were never
+// reachable through a cold key, so this is hygiene rather than correctness.
 func DropRuntimeAssemblyPools() {
 	runtimeAssemblies.mu.Lock()
 	defer runtimeAssemblies.mu.Unlock()

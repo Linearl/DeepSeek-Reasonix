@@ -22,7 +22,13 @@ export type ExperimentFeatureId =
   // M8 keeps standalone entries: autopilot / sessionCollab / fullAccess
   // （tl1309 卡①：optimisticParallel 并 contextGovernance；卡②：monitoring 并
   // runtimeObservability——两 id 自此清单除名）。
-  | "autopilot"
+  // tl1741：autopilot / sessionCollab / collabHub / resourceGovernance 四
+  // union id 随撤开关摘除（卡移除，功能常开）；fullAccess 保留。
+  // tl1741 拆卡回散条：orphanHandling/acpListen/localServer 三 feature id +
+  // idleReleaseMinutes/gcPercent 两 param 卡 id 重新入 union（1309 逆向）。
+  | "orphanHandling"
+  | "acpListen"
+  | "localServer"
   // Task 318.5: session + performance monitoring merge into one lab entry
   // (the two underlying switches stay independent inside the page).
   // tl1309 卡②：monitoring 独立 pane 退役——并入「运行可观测」合并卡
@@ -57,12 +63,6 @@ export type ExperimentFeatureId =
   // tl1309 卡③：localServer 独立 pane 退役——并入「资源治理」合并卡成员行
   // （union id 同步摘除）。tl134/tl1487 七组③：pathRules pane/union id 随
   // 整卡移除摘除（pane 分支与白名单登记同撤）。
-  | "sessionCollab"
-  // Task 244 B4/B5, merged into one switch by task 449.
-  // tl1309 卡③：orphanHandling 独立 pane 退役——并入「资源治理」合并卡
-  // （resourceGovernance）成员行（961 先例；union id 同步摘除）。
-  // Task 363A: runtime assembly reuse pool——tl1309 卡③同款并入资源治理卡。
-  | "resourceGovernance"
   // 任务 722：messageMerge 并入 safetyCostControl 卡（成员，无独立 pane）；
   // sessionCollabAutoFold 并入 sessionCollab 卡（成员，无独立 pane）——两个
   // id 从 pane union 摘除，卡片行/徽章走布局数据的成员登记。
@@ -122,7 +122,6 @@ export type ExperimentFeatureId =
   | "toolOptimizations"
   // 任务 677→856 ③: unified collaboration-hub entry switch (the mail-inbox
   // + group-chat icons merged into one; renamed from collabGroupView).
-  | "collabHub"
   // 任务 775: kind:param 参数卡 id——无硬编码 pane，pane 走通用参数渲染器
   // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
   // tl1309 卡③：idleReleaseMinutes/gcPercent 两参数卡退役——并入「资源治理」
@@ -151,8 +150,8 @@ export type ExperimentFeatureId =
 // 入表，实数以 Set 为准）。任务 943：multiEditInjection（工具优化族拆分
 // 独立卡）入表。
 export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
-  "autopilot",
-  "sessionCollab",
+  // tl1741：autopilot / sessionCollab / collabHub / resourceGovernance 四 id
+  // 随撤开关摘除（卡移除；resourceGovernance 五成员回散条）。
   "fullAccess",
   // 任务 961：dream/decisionPatterns/heartbeatBackground 三散条并入
   // smartAutomation 合并卡（成员行承载，独立 pane 退役）。
@@ -163,7 +162,7 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "contextGovernance",
   "safetyCostControl",
   "modelStrategy",
-  "collabHub",
+  // tl1741：collabHub 白名单 id 随撤开关摘除。
   // tl 1132：启动与加载合并卡（首项=启动遮罩，1133 预留成员位）。
   "startupLoading",
   "tabManagement",
@@ -189,10 +188,13 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "pinnedIndex",
   // tl1733: 记忆注入瘦身 pane（提效组）。
   "memoryIndexSlim",
-  // tl1309 卡③：资源治理合并卡（runtimeReuse/acpListen/orphanHandling/
-  // localServer/idleReleaseMinutes/gcPercent 六独立 pane 退役为成员行，
-  // 容器 id 入表——961 先例）。
-  "resourceGovernance",
+  // tl1741：resourceGovernance 容器 id 白名单摘除（整卡移除）；
+  // 五成员回散条（feature 卡硬编码分支 + kind:param 通用渲染器），白名单重新登记。
+  "orphanHandling",
+  "idleReleaseMinutes",
+  "gcPercent",
+  "acpListen",
+  "localServer",
   "toolOptimizations",
   // 任务 971：multiEditInjection 独立 pane 退役（聚合页成员行，943 语义不变）。
   // 任务 775：kind:param 参数卡 id——pane 由通用参数渲染器承接（无独立

@@ -39,6 +39,11 @@ type foregroundHealFake struct {
 
 func (f *foregroundHealFake) RuntimeStatus() control.RuntimeStatus { return f.status }
 
+// tl1741：pumpTick 常跑 drainOnce（开关退役常开）→ sessionCollabTargets 会
+// 对每个活 tab 调 Ctrl.SessionPath()——fake 返回空路径让 collab 面静默跳过
+// （无 contact 可寻址），heal 断言面不受影响。
+func (f *foregroundHealFake) SessionPath() string { return "" }
+
 func (f *foregroundHealFake) HealStuckFinishing(maxAge time.Duration) (bool, time.Duration) {
 	f.finishingGot.Add(1)
 	f.finishingArg = maxAge
@@ -59,7 +64,7 @@ func foregroundHealApp(t *testing.T, ctrls map[string]control.SessionAPI) (*App,
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
 	if err := os.WriteFile(filepath.Join(home, "config.toml"),
-		[]byte("[agent]\nexperimental_session_collab = false\n"), 0o644); err != nil {
+		[]byte(""), 0o644); err != nil { // tl1741：开关退役常开，空 config 即可（残留 false 无害）
 		t.Fatal(err)
 	}
 	tabs := make(map[string]*WorkspaceTab, len(ctrls))
@@ -128,21 +133,19 @@ func TestForegroundHealPassOffersRunningSeamOnPlainTab(t *testing.T) {
 	}
 }
 
-// ④ collab 门独立性：collab 实验开关关（隔离配置下默认关）时，pumpTick
-// 仍必须跑前台 heal pass——普通 tab 的自愈不依赖 collab 是否启用。
+// ④ collab 门独立性 → tl1741：实验开关退役（信件泵无条件运转），前台 heal
+// pass 的顺序语义（heal 先于 collab gates）由 pumpTick 结构保持——本测试
+// 退化为常开语义下的 heal 独立性钉。
 func TestPumpTickRunsForegroundHealWithoutCollabEnabled(t *testing.T) {
 	fake := &foregroundHealFake{status: control.RuntimeStatus{
 		Finishing:          true,
 		FinishingSinceUnix: time.Now().Add(-idleTurnFinishingStuckTimeout - time.Minute).Unix(),
 	}, healResult: true}
 	_, p := foregroundHealApp(t, map[string]control.SessionAPI{"gate_tab": fake})
-	if sessionCollabEnabled() {
-		t.Fatal("fixture: isolated config must default the collab experiment off")
-	}
 
 	p.pumpTick(time.Now())
 	if got := fake.finishingGot.Load(); got != 1 {
-		t.Fatalf("pumpTick with collab off must still run the foreground heal pass, got %d calls", got)
+		t.Fatalf("pumpTick must still run the foreground heal pass, got %d calls", got)
 	}
 }
 

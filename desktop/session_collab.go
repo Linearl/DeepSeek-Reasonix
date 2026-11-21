@@ -205,26 +205,11 @@ func (p *sessionCollabPump) loop(stop chan struct{}) {
 }
 
 // pumpTick is one pump interval's work, extracted so tests can drive the
-// gating order directly. Order matters (tl1304 ④): the foreground heal pass
-// runs BEFORE the collab gates — the wedged-turn shapes it heals exist in
-// plain non-collab tabs too, so the collab experiment switch must never gate
-// plain-tab self-heal.
+// gating order directly. tl1741：跨会话协作撤开关——信件泵无条件运转（原
+// 默认开=行为零变化），foreground heal 顺序语义保持不变。
 func (p *sessionCollabPump) pumpTick(now time.Time) {
 	p.sweepForegroundTurnHeals(now)
-	if !sessionCollabEnabled() {
-		return
-	}
 	p.drainOnce()
-}
-
-// sessionCollabEnabled reads the live user config. The pump is a no-op while
-// the experiment is off, so an untouched install pays nothing.
-func sessionCollabEnabled() bool {
-	cfg, err := config.Load()
-	if err != nil || cfg == nil {
-		return false
-	}
-	return cfg.Agent.ExperimentalSessionCollab
 }
 
 // syncCollabInboxMergeMode re-arms the controller-level drain merge from the

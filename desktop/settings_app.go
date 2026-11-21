@@ -357,9 +357,10 @@ type SettingsView struct {
 	ModelEfforts           map[string]string `json:"modelEfforts"`
 	PlannerModel           string            `json:"plannerModel"`
 	GuardianModel          string            `json:"guardianModel"`
-	Autopilot              bool              `json:"autopilot"`
-	AutopilotMaxRuntime    string            `json:"autopilotMaxRuntime"`
-	AutopilotApprovalGrace string            `json:"autopilotApprovalGrace"`
+	// tl1741：Autopilot 偏好键随撤开关退役（新会话恒默认 unattended）；
+	// MaxRuntime/ApprovalGrace 是运行护栏键，保留展示（config 手写可调）。
+	AutopilotMaxRuntime    string `json:"autopilotMaxRuntime"`
+	AutopilotApprovalGrace string `json:"autopilotApprovalGrace"`
 	// Task 477: the experimental ask-timeout sub-option — the switch (default
 	// off) and its wait in seconds (effective value, so the panel never shows
 	// a bare 0; unset reads as the built-in 15).
@@ -402,14 +403,9 @@ type SettingsView struct {
 	UpdateChimeTune            string `json:"updateChimeTune"`
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
-	// ExperimentalCollabGroupView is the LEGACY task-677 group-chat switch,
-	// kept as a decode-side migration source only (任务 856 ③ renamed the
-	// switch to collabHub); new code reads ExperimentalCollabHub instead.
-	ExperimentalCollabGroupView bool `json:"experimentalCollabGroupView"`
-	// ExperimentalCollabHub gates the unified collaboration-hub entry (task
-	// 856 ③); rendered in both views or the lab switch reads permanently off
-	// (the 2026-09-15 lesson, task 81/123).
-	ExperimentalCollabHub bool `json:"experimentalCollabHub"`
+	// tl1741：ExperimentalCollabGroupView（task-677 legacy 迁移源）与
+	// ExperimentalCollabHub（856③）两 view 字段随撤开关退役——协作中心
+	// 入口常显，无状态可展示。
 	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
 	// into a summary bar (task 705); rendered in both views for the same
 	// permanently-off lesson.
@@ -467,9 +463,7 @@ type SettingsView struct {
 	// 任务 686: the workflow visualization panel (command-palette entry opening
 	// the DAG flow view). Rendered in both views for the 81/123 two-view
 	// lesson; pure frontend gate, settings save re-applies.
-	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
 	// tl1454: user workflow templates (workflowPanel family sub-key; live-read).
-	ExperimentalWorkflowTemplates bool `json:"experimentalWorkflowTemplates"`
 	// Task 495: subagent panel package (dock tab + ended-card collapse);
 	// boot snapshot, restart to apply.
 	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
@@ -505,7 +499,6 @@ type SettingsView struct {
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
 	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
 	// Loopback-only random port, boot snapshot — restart to apply.
-	ExperimentalCDPDebugPort bool `json:"experimentalCDPDebugPort"`
 	// Task 385a: lab 「回答风格」 gate (default false; 铁律 2) plus the persisted
 	// [agent] output_style value the selector reads back.
 	ExperimentalOutputStyleUI bool   `json:"experimentalOutputStyleUI"`
@@ -624,12 +617,10 @@ type SettingsView struct {
 	// 100MB；-1 = 永久 / 无限制）。全量日志不受此两项影响。
 	DesktopAlertLogRetentionDays int  `json:"desktopAlertLogRetentionDays"`
 	DesktopAlertLogMaxTotalMB    int  `json:"desktopAlertLogMaxTotalMB"`
-	ExperimentalSessionCollab    bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder    bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
-	ExperimentalRuntimeReuse   bool `json:"experimentalRuntimeReuse"`
 	// Task 517: merged safety/cost switch (settings-view mirror of [agent];
 	// one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards).
 	ExperimentalSafetyCostControl bool `json:"experimentalSafetyCostControl"`
@@ -782,14 +773,9 @@ type DesktopStartupSettingsView struct {
 	UpdateChimeTune            string `json:"updateChimeTune"`
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
-	// ExperimentalCollabGroupView is the LEGACY task-677 group-chat switch,
-	// kept as a decode-side migration source only (任务 856 ③ renamed the
-	// switch to collabHub); new code reads ExperimentalCollabHub instead.
-	ExperimentalCollabGroupView bool `json:"experimentalCollabGroupView"`
-	// ExperimentalCollabHub gates the unified collaboration-hub entry (task
-	// 856 ③); rendered in both views or the lab switch reads permanently off
-	// (the 2026-09-15 lesson, task 81/123).
-	ExperimentalCollabHub bool `json:"experimentalCollabHub"`
+	// tl1741：ExperimentalCollabGroupView（task-677 legacy 迁移源）与
+	// ExperimentalCollabHub（856③）两 view 字段随撤开关退役——协作中心
+	// 入口常显，无状态可展示。
 	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
 	// into a summary bar (task 705); rendered in both views for the same
 	// permanently-off lesson.
@@ -852,9 +838,7 @@ type DesktopStartupSettingsView struct {
 	ExperimentalEditResend bool `json:"experimentalEditResend"`
 	// 任务 686: the workflow visualization panel gate, rendered in this view
 	// too (81/123 two-view lesson); pure frontend gate, no restart needed.
-	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
 	// tl1454: user workflow templates, rendered in this view too (81/123).
-	ExperimentalWorkflowTemplates bool `json:"experimentalWorkflowTemplates"`
 	// ExperimentalSubagentPanel gates the subagent panel package (task 495);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
@@ -879,7 +863,6 @@ type DesktopStartupSettingsView struct {
 	TabPermissionIndicator string `json:"tabPermissionIndicator"`
 	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
 	// Loopback-only random port, boot snapshot — restart to apply.
-	ExperimentalCDPDebugPort bool `json:"experimentalCDPDebugPort"`
 	// Task 385a: lab 「回答风格」 gate (default false; 铁律 2) plus the persisted
 	// [agent] output_style value the selector reads back.
 	ExperimentalOutputStyleUI bool   `json:"experimentalOutputStyleUI"`
@@ -960,15 +943,12 @@ type DesktopStartupSettingsView struct {
 	// 100MB；-1 = 永久 / 无限制）。全量日志不受此两项影响。
 	DesktopAlertLogRetentionDays int `json:"desktopAlertLogRetentionDays"`
 	DesktopAlertLogMaxTotalMB    int `json:"desktopAlertLogMaxTotalMB"`
-	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
-	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
 	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
 	// task 160). The runtime flag lives on [agent]; this view mirrors it.
 	ExperimentalAutoLoadOlder bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (mirror of [agent]; folds the task 244
 	// B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
-	ExperimentalRuntimeReuse   bool `json:"experimentalRuntimeReuse"`
 	// Task 517: merged safety/cost switch (mirror of [agent]; one「安全 / 成本
 	// 控制」knob for the task-244 B1/B2/B3 guards).
 	ExperimentalSafetyCostControl bool `json:"experimentalSafetyCostControl"`
@@ -1043,9 +1023,8 @@ type DesktopStartupSettingsView struct {
 	CheckUpdates            bool   `json:"checkUpdates"`
 	UpdateChannel           string `json:"updateChannel"`
 	ConversationWidth       string `json:"conversationWidth,omitempty"`
-	// Autopilot mirrors the [desktop] preference so the composer knows whether
-	// to offer the mode at all - it is opt-in, never a surprise.
-	Autopilot bool `json:"autopilot"`
+	// tl1741：Autopilot 偏好镜像随撤开关退役——会话级自动驾驶状态走
+	// tab 会话态，不再读 [desktop] 偏好。
 	// ConfigWarnings report in-memory recovery without rewriting user/project files.
 	ConfigWarnings         []string `json:"configWarnings,omitempty"`
 	ConfigWarningsRevision uint64   `json:"configWarningsRevision"`
@@ -1704,10 +1683,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.UpdateChimeTune = cfg.UpdateChimeTuneMode()
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
-		// Task 677: legacy group-chat entry readback (migration source only).
-		view.ExperimentalCollabGroupView = cfg.Desktop.ExperimentalCollabGroupView
-		// Task 856 ③: unified collaboration-hub entry readback (boot snapshot).
-		view.ExperimentalCollabHub = cfg.Desktop.ExperimentalCollabHub
 		// Task 705: cross-session message auto-fold readback.
 		view.ExperimentalSessionCollabAutoFold = cfg.Desktop.ExperimentalSessionCollabAutoFold
 		// Task 704: trajectory view switch readback (boot snapshot).
@@ -1740,8 +1715,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// tl1544: 运行中编辑回溯重发 readback（双视图同款）。
 		view.ExperimentalEditResend = cfg.Agent.ExperimentalEditResend
 		// 任务 686: workflow visualization panel readback (two-view lesson).
-		view.ExperimentalWorkflowPanel = cfg.Desktop.ExperimentalWorkflowPanel
-		view.ExperimentalWorkflowTemplates = cfg.Desktop.ExperimentalWorkflowTemplates
 		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel
 		view.ExperimentalSessionWall = cfg.Desktop.ExperimentalSessionWall
 		view.ExperimentalPromptHistoryPicker = cfg.Desktop.ExperimentalPromptHistoryPicker
@@ -1763,8 +1736,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSubagentTps = cfg.DesktopSubagentTpsEnabled()
 		view.ExperimentalCompletionSummary = cfg.DesktopCompletionSummaryEnabled()
 		view.ExperimentalQuickCommands = cfg.Desktop.ExperimentalQuickCommands
-		// Task 342: CDP debug endpoint switch readback (boot snapshot).
-		view.ExperimentalCDPDebugPort = cfg.Desktop.ExperimentalCDPDebugPort
 		// Task 385a: lab 回答风格 gate + persisted output_style readback.
 		view.ExperimentalOutputStyleUI = cfg.Desktop.ExperimentalOutputStyleUI
 		view.OutputStyle = cfg.Agent.OutputStyle
@@ -1805,7 +1776,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SentinelPenetrationGuard = sentinelPenetrationGuardForView(cfg)
 		view.ExperimentalOrphanHandling = cfg.Agent.ExperimentalOrphanHandling
 
-		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
 		view.ExperimentalHeapHighProfile = cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile
 		view.PerfMonitorIntervalSeconds = cfg.Desktop.PerfMonitorIntervalSeconds
@@ -1820,7 +1790,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// 0 = 内置默认，前端据此渲染「7 天 / 100 MB」选中态）。
 		view.DesktopAlertLogRetentionDays = cfg.Desktop.DesktopAlertLogRetentionDays
 		view.DesktopAlertLogMaxTotalMB = cfg.Desktop.DesktopAlertLogMaxTotalMB
-		view.ExperimentalSessionCollab = cfg.Agent.ExperimentalSessionCollab
 		view.ExperimentalAutoLoadOlder = cfg.Agent.ExperimentalAutoLoadOlder
 		view.CollabInboxMerge = config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge)
 		view.CollabGuidanceMerge = cfg.Agent.CollabGuidanceMerge
@@ -1986,7 +1955,6 @@ func (a *App) Settings() SettingsView {
 		ModelEfforts:                         desktopModelEfforts(cfg),
 		PlannerModel:                         cfg.Agent.PlannerModel,
 		GuardianModel:                        cfg.Agent.GuardianModel,
-		Autopilot:                            cfg.Desktop.Autopilot,
 		AutopilotMaxRuntime:                  cfg.Desktop.AutopilotMaxRuntime,
 		AutopilotApprovalGrace:               cfg.Desktop.AutopilotApprovalGrace,
 		ExperimentalAutopilotAskTimeout:      cfg.Desktop.ExperimentalAutopilotAskTimeout,
@@ -2011,9 +1979,7 @@ func (a *App) Settings() SettingsView {
 		UpdateChimeTune:              cfg.UpdateChimeTuneMode(),
 		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
-		ExperimentalCollabGroupView:  cfg.Desktop.ExperimentalCollabGroupView, // task 677 legacy group-chat entry (migration source)
-		ExperimentalCollabHub:        cfg.Desktop.ExperimentalCollabHub,       // task 856 ③ unified collaboration-hub entry
-		ExperimentalTrajectoryView:   cfg.Desktop.ExperimentalTrajectoryView,  // task 704 trajectory view switch
+		ExperimentalTrajectoryView:   cfg.Desktop.ExperimentalTrajectoryView, // task 704 trajectory view switch
 		// Task 705, readback fixed by 759: the field was mapped only in
 		// DesktopStartupSettings, so the panel read the Go zero value and the
 		// switch rendered "off" even with the feature running (the 81/123
@@ -2041,9 +2007,6 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSmoothScrollFollow: cfg.Desktop.ExperimentalSmoothScrollFollow,
 		// tl 1132: startup splash overlay readback (two-view lesson).
 		ExperimentalStartupSplash: cfg.Desktop.ExperimentalStartupSplash,
-		// 任务 686: workflow visualization panel readback (two-view lesson).
-		ExperimentalWorkflowPanel:       cfg.Desktop.ExperimentalWorkflowPanel,
-		ExperimentalWorkflowTemplates:   cfg.Desktop.ExperimentalWorkflowTemplates,
 		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
 		ExperimentalSessionWall:         cfg.Desktop.ExperimentalSessionWall,
 		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
@@ -2064,8 +2027,6 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSubagentTps:        cfg.DesktopSubagentTpsEnabled(),
 		ExperimentalCompletionSummary:  cfg.DesktopCompletionSummaryEnabled(),
 		ExperimentalQuickCommands:      cfg.Desktop.ExperimentalQuickCommands,
-		// Task 342: CDP debug endpoint switch readback.
-		ExperimentalCDPDebugPort: cfg.Desktop.ExperimentalCDPDebugPort,
 		// Task 385a: lab 回答风格 gate + persisted output_style readback.
 		ExperimentalOutputStyleUI: cfg.Desktop.ExperimentalOutputStyleUI,
 		OutputStyle:               cfg.Agent.OutputStyle,
@@ -2123,7 +2084,6 @@ func (a *App) Settings() SettingsView {
 		SentinelPenetrationGuard: sentinelPenetrationGuardForView(cfg),
 		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).
 		ExperimentalOrphanHandling:     cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling,
-		ExperimentalRuntimeReuse:       cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse,
 		ExperimentalPerfMonitor:        cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor,
 		ExperimentalHeapHighProfile:    cfg.Desktop.ExperimentalHeapHighProfile || cfg.Agent.ExperimentalHeapHighProfile,
 		PerfMonitorIntervalSeconds:     cfg.Desktop.PerfMonitorIntervalSeconds,
@@ -2134,7 +2094,6 @@ func (a *App) Settings() SettingsView {
 		// tl 1097: 告警日志时间/大小档位 readback（启动快照）。
 		DesktopAlertLogRetentionDays: cfg.Desktop.DesktopAlertLogRetentionDays,
 		DesktopAlertLogMaxTotalMB:    cfg.Desktop.DesktopAlertLogMaxTotalMB,
-		ExperimentalSessionCollab:    cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
 		ExperimentalAutoLoadOlder:    cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		CollabInboxMerge:             config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
 		CollabGuidanceMerge:          cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
@@ -3583,26 +3542,9 @@ func (a *App) SetDefaultToolApprovalMode(mode string) error {
 	})
 }
 
-// SetDesktopAutopilot updates the unattended-run defaults for newly-created
-// desktop sessions. An empty maxRuntime disables autopilot: a run with no
-// wall-clock bound is what the CLI refuses outright, and the same refusal belongs
-// here rather than letting a session start with nobody watching and no limit.
-//
-// Task 325 (user ruling 2026-09-25): enabling the autopilot default additionally
-// requires the new-session approval default to be yolo. ask/auto defaults would
-// create unattended sessions that stack human approval prompts; the refusal
-// names the switch to flip first. Disabling is always allowed.
-func (a *App) SetDesktopAutopilot(enabled bool, maxRuntime, approvalGrace string) error {
-	return a.applyConfigOnly(func(c *config.Config) error {
-		if enabled && c.DesktopDefaultToolApprovalMode() != "yolo" {
-			return fmt.Errorf("autopilot requires the yolo approval mode (需要 yolo 审批模式); set desktop.default_tool_approval_mode = \"yolo\" (currently %q) before enabling the autopilot default", c.DesktopDefaultToolApprovalMode())
-		}
-		c.Desktop.Autopilot = enabled
-		c.Desktop.AutopilotMaxRuntime = strings.TrimSpace(maxRuntime)
-		c.Desktop.AutopilotApprovalGrace = strings.TrimSpace(approvalGrace)
-		return nil
-	})
-}
+// tl1741：SetDesktopAutopilot（新会话 autopilot 偏好三键 setter）随撤开关
+// 退役——新会话恒默认 unattended（护栏：无有效 max_runtime 仍拒绝降级为关）；
+// AutopilotMaxRuntime / AutopilotApprovalGrace 护栏键保留，config 手写可调。
 
 // SetDesktopAutopilotAskTimeout configures the task-477 ask-timeout
 // sub-option for newly-created desktop sessions. Off (the default) keeps the

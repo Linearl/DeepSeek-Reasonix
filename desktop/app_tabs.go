@@ -213,19 +213,15 @@ func (a *App) createTabEntry(scope, workspaceRoot, topicID string) *WorkspaceTab
 }
 
 // desktopAutopilotDefaults returns the unattended-run settings a newly-created
-// desktop session starts with, read from the [desktop] preferences. Autopilot
-// without a wall-clock bound is the one combination the CLI refuses outright, so
-// it is refused here too rather than silently running a desktop session with no
-// limit: a missing or malformed bound leaves autopilot off. The task-477 pair
-// rides along: the ask-timeout sub-option switch and its wait (0 = the
-// controller's built-in default — 15s under the sub-option, 10m without it).
-// The task-544 ask auto-continue switch rides along too, independent of the
-// 477 pair.
+// desktop session starts with, read from the [desktop] preferences. tl1741：
+// autopilot 实验室开关撤除，新会话一律默认 unattended；唯一保留的拒绝条件是
+// 无有效 wall-clock bound（CLI 对无界 autopilot 直接拒绝，桌面同步护栏）——
+// 缺失/畸形 bound 仍降级为关。The task-477 pair rides along: the ask-timeout
+// sub-option switch and its wait (0 = the controller's built-in default — 15s
+// under the sub-option, 10m without it). The task-544 ask auto-continue switch
+// rides along too, independent of the 477 pair.
 func desktopAutopilotDefaults() (bool, time.Duration, time.Duration, bool, time.Duration, bool) {
 	cfg := config.LoadForEdit(config.UserConfigPath())
-	if !cfg.Desktop.Autopilot {
-		return false, 0, 0, false, 0, false
-	}
 	maxRuntime, err := time.ParseDuration(strings.TrimSpace(cfg.Desktop.AutopilotMaxRuntime))
 	if err != nil || maxRuntime <= 0 {
 		return false, 0, 0, false, 0, false

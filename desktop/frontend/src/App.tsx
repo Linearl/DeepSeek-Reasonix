@@ -78,7 +78,6 @@ import { ResourcePanel } from "./components/ResourcePanel";
 // tl 1101：命令面板分组后仍沿用两条既有 lab 门控插条（task 505 / 任务 686）——
 // flag 关 = 原数组逐字节不变，flag 开 = 在「重载运行时」后插入对应入口。
 import { insertSessionWallEntry } from "./lib/sessionWall";
-import { insertWorkflowPanelEntry } from "./lib/workflowPanelEntry";
 // tl1433: 任务面板「运行中」列表并入工作流 run 行——数据源即工作流面板同一
 // 喂单（workflowRunFeed：拉推合流单例），App 只订阅+过滤 running 并下发展示；
 // 跳转锚定经 focus 透传给面板。
@@ -962,11 +961,8 @@ export default function App() {
   //「搜索历史提问」项与 Ctrl+Shift+F 快捷键继续受它门控（关 = 不渲染/不生效）。
   const [questionSearchEnabled, setQuestionSearchEnabled] = useState(labFlagEnabled("questionSearch"));
   useEffect(() => onLabFlagsChange(() => setQuestionSearchEnabled(labFlagEnabled("questionSearch"))), []);
-  // 任务 677: the group-chat entry rides the same lab-flag snapshot — off
-  // (default) renders the utility row exactly as before task 409.
-  // 任务 856 ③：协作中心入口总开关（677 collabGroupView 随两图标合一迁移改名）。
-  const [collabHubEntryEnabled, setCollabHubEntryEnabled] = useState(labFlagEnabled("collabHub"));
-  useEffect(() => onLabFlagsChange(() => setCollabHubEntryEnabled(labFlagEnabled("collabHub"))), []);
+  // tl1741：collabHubEntryEnabled state 随撤开关删除——协作中心入口常显
+  // （856③ 融合入口，labFlag 不再门控）。
   // 任务 704: the trajectory view rides the lab-flag snapshot (铁律 2 default
   // off) and the per-session surface selection re-points at every tab change.
   const [trajectoryViewEnabled, setTrajectoryViewEnabled] = useState(labFlagEnabled("trajectoryView"));
@@ -977,10 +973,8 @@ export default function App() {
   useEffect(() => onLabFlagsChange(() => setSidebarHoverLeftEnabled(labFlagEnabled("sidebarHoverLeft"))), []);
   const [sidebarHoverRightEnabled, setSidebarHoverRightEnabled] = useState(labFlagEnabled("sidebarHoverRight"));
   useEffect(() => onLabFlagsChange(() => setSidebarHoverRightEnabled(labFlagEnabled("sidebarHoverRight"))), []);
-  // 任务 686: 工作流可视化面板（铁律 2 默认 off——关时 palette 逐字节不变、
-  // 面板 chunk 不加载）；面板本体走懒加载（sessionWall 同款）。
-  const [workflowPanelEnabled, setWorkflowPanelEnabled] = useState(labFlagEnabled("workflowPanel"));
-  useEffect(() => onLabFlagsChange(() => setWorkflowPanelEnabled(labFlagEnabled("workflowPanel"))), []);
+  // tl1741：workflowPanelEnabled state 随撤开关删除——工作流面板入口/懒加载
+  // 常显（686 面板）。
   // 任务 848 — 首屏动画门：848 的侧栏/dock 过渡动画规则全部挂在
   // .app--ui-settled 下，本标记在首帧绘制完成（double rAF）后置位，
   // 保证首屏渲染与状态恢复零动画（含开关关的用户——铁律 2 零回归）。
@@ -1684,9 +1678,7 @@ export default function App() {
         // 任务 507: subagent detail view (plan A on / plan C off);
         // default-false, re-applied on every settings save.
         subagentDetail: settings.experimentalSubagentDetail ?? false,
-        // 任务 856 ③: unified collaboration-hub entry (default-false — 铁律 2,
-        // renamed from the task-677 group-chat switch; re-applied on settings save).
-        collabHub: settings.experimentalCollabHub ?? false,
+        // tl1741：collabHub 条目随撤开关删除（入口常显，无 flag 可 apply）。
         // 任务 704: trajectory view switch (default-false — 铁律 2, off keeps
         // the transcript as the only surface); re-applied on settings save.
         trajectoryView: settings.experimentalTrajectoryView ?? false,
@@ -1713,10 +1705,8 @@ export default function App() {
         // 任务 686: workflow visualization panel gate (default-false — 铁律 2,
         // off = palette byte-for-byte unchanged, panel chunk never loads);
         // re-applied on settings save.
-        workflowPanel: settings.experimentalWorkflowPanel ?? false,
-        // tl1454: 用户自定义工作流模板（工作流面板家族子键，default-false —
-        // 铁律 2，off 时面板逐字节不变）；保存即换态免重启。
-        workflowTemplates: settings.experimentalWorkflowTemplates ?? false,
+        // tl1741：workflowPanel / workflowTemplates 条目随撤开关删除（面板与
+        // 模板常显，无 flag 可 apply）。
         // 任务 932: 概览 events 大小行门控（并入监控卡 perf monitor 行，
         // experimentalPerfMonitor）——关闭时不渲染任何 DOM；保存即换态。
         perfMonitor: settings.experimentalPerfMonitor ?? false,
@@ -5359,26 +5349,20 @@ export default function App() {
       },
       // tl1462：协作中心接入命令面板（Ctrl+K 是键盘主入口，此前只有侧栏左下
       // 角图标入口且纯键盘用户不可达）。两处与侧栏入口严格同源：
-      //   - 同一开关 collabHubEntryEnabled（labFlagEnabled("collabHub")，951 行
-      //     同一 state——开关关 = 本项不进面板，与 802 零痕迹策略一致；cmd-goto-tab
-      //     的 lab 门控插条 tl1175 同款写法，不新造注册机制）；
-      //   - 同一打开函数 setCollabHubOpen（CollabHubPanel 模块单例，5980 行侧栏
+      //   - tl1741：入口 lab 门控随撤开关删除（协作中心常显）；
+      //   - 同一打开函数 setCollabHubOpen（CollabHubPanel 模块单例，侧栏
       //     图标 onClick 用的就是它），不复制逻辑。
       // 追加在 toolsCmds 字面量末尾（tl1456 资源管理器同组并行加项，追加式便于
       // 主会话合并）。
-      ...(collabHubEntryEnabled
-        ? [
-            {
-              id: "cmd-collab-hub",
-              group: t("palette.group.tools"),
-              title: t("palette.cmd.collabHub"),
-              icon: <MessagesSquare size={15} />,
-              compact: true,
-              keywords: ["collab", "hub", "collaboration", "mail", "letter", "chat", "group", "notification", "协作", "协作中心", "信件", "聊天", "群聊", "通知", "通知中心"],
-              run: () => setCollabHubOpen(true),
-            } satisfies PaletteItem,
-          ]
-        : []),
+      {
+        id: "cmd-collab-hub",
+        group: t("palette.group.tools"),
+        title: t("palette.cmd.collabHub"),
+        icon: <MessagesSquare size={15} />,
+        compact: true,
+        keywords: ["collab", "hub", "collaboration", "mail", "letter", "chat", "group", "notification", "协作", "协作中心", "信件", "聊天", "群聊", "通知", "通知中心"],
+        run: () => setCollabHubOpen(true),
+      } satisfies PaletteItem,
     ];
     // 帮助与支持组（tl 1101 新增）：产品文档 / 问题反馈 / 提需求 / 提交漏洞 /
     // 关于·版本 / 导出日志 / 打开日志目录。跳转目标走 GitHub 仓库对应入口
@@ -5479,56 +5463,53 @@ export default function App() {
           .catch((err) => showToast(formatActionError("action.extensionRun", err), "error"));
       },
     }));
-    // tl 1101 分组后仍沿用两条既有 lab 门控插条（task 505 / 任务 686）：flag 关
-    // = 返回原数组逐字节不变，flag 开 = 在「重载运行时」后插入对应入口。
-    const cmdsWithWorkflow = insertWorkflowPanelEntry(
-      insertSessionWallEntry(
-        [
-          ...sessionCmds,
-          ...settingsCmds,
-          ...toolsCmds,
-          ...helpCmds,
-          ...extensionItems,
-          ...remoteItems,
-          ...sessionItems,
-        ],
-        sessionWallEnabled,
-        {
-          id: "cmd-session-wall",
-          group: t("palette.group.session"),
-          title: t("palette.cmd.sessionWall"),
-          icon: <LayoutGrid size={15} />,
-          compact: true,
-          shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.gotoTopic", desktopPlatform), desktopPlatform),
-          expandable: true,
-          expand: () => {
-            setWallPresetOpenOnly(false);
-            setSessionWallOpen(true);
-          },
-          keywords: ["session", "wall", "jump", "sessions", "跳转", "会话", "图墙"],
-          run: () => {
-            reportFrontendLog("sessionWall", "open requested", "palette entry");
-            setWallPresetOpenOnly(false);
-            setSessionWallOpen(true);
-          },
-        },
-      ),
-      workflowPanelEnabled,
+    // tl 1101 分组后沿用 lab 门控插条（task 505）；tl1741：工作流面板插条
+    // 随撤开关退役——面板入口常显，直接追加（sessionWall 插条保留）。
+    const cmdsWithWorkflow = insertSessionWallEntry(
+      [
+        ...sessionCmds,
+        ...settingsCmds,
+        ...toolsCmds,
+        ...helpCmds,
+        ...extensionItems,
+        ...remoteItems,
+        ...sessionItems,
+      ],
+      sessionWallEnabled,
       {
-        id: "cmd-workflow-panel",
-        group: t("palette.group.tools"),
-        title: t("palette.cmd.workflowPanel"),
-        icon: <GitBranch size={15} />,
+        id: "cmd-session-wall",
+        group: t("palette.group.session"),
+        title: t("palette.cmd.sessionWall"),
+        icon: <LayoutGrid size={15} />,
         compact: true,
-        keywords: ["workflow", "dag", "flow", "工作流", "流程图", "编排"],
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.gotoTopic", desktopPlatform), desktopPlatform),
+        expandable: true,
+        expand: () => {
+          setWallPresetOpenOnly(false);
+          setSessionWallOpen(true);
+        },
+        keywords: ["session", "wall", "jump", "sessions", "跳转", "会话", "图墙"],
         run: () => {
-          reportFrontendLog("workflowPanel", "open requested", "palette entry");
-          setWorkflowPanelOpen(true);
+          reportFrontendLog("sessionWall", "open requested", "palette entry");
+          setWallPresetOpenOnly(false);
+          setSessionWallOpen(true);
         },
       },
     );
+    cmdsWithWorkflow.push({
+      id: "cmd-workflow-panel",
+      group: t("palette.group.tools"),
+      title: t("palette.cmd.workflowPanel"),
+      icon: <GitBranch size={15} />,
+      compact: true,
+      keywords: ["workflow", "dag", "flow", "工作流", "流程图", "编排"],
+      run: () => {
+        reportFrontendLog("workflowPanel", "open requested", "palette entry");
+        setWorkflowPanelOpen(true);
+      },
+    } as (typeof cmdsWithWorkflow)[number]);
     return cmdsWithWorkflow;
-  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled, questionSearchEnabled, collabHubEntryEnabled, desktopPlatform]);
+  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, questionSearchEnabled, desktopPlatform]);
   // Delete / rename act on disk, then re-fetch so the panel reflects the change.
   const onDeleteSession = useCallback(
     async (path: string) => {
@@ -5988,10 +5969,9 @@ export default function App() {
                 {/* 任务 856 ①（demo v2 定稿）：信件中心 + 群聊两图标融合为一个
                     「协作中心」入口（双视图面板，CollabHubPanel 承载）——工具行
                     5→4 位：回收站 → 协作中心 → 自动化 → 设置。未读徽标沿用
-                    320 接线（信件未读仍是入口主信号）。挂 collabHub 实验室
-                    开关（实验室 → 提效 → 协作中心，前置依赖跨会话协作）——
-                    关=不渲染本按钮（802 零痕迹策略沿用）。 */}
-                {collabHubEntryEnabled && (
+                    320 接线（信件未读仍是入口主信号）。tl1741：collabHub 实验
+                    室开关随撤开关退役——入口常显。 */}
+                {(
                 <Tooltip label={t("sidebar.collabHub")} fill side="top">
                   <button
                     className="sidebar__utility-button"

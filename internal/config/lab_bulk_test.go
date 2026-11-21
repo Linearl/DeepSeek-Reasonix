@@ -46,26 +46,20 @@ func TestLabBulkScopeBoundary(t *testing.T) {
 		t.Fatalf("recommended scope must NOT include optional-tier features: %v", p.Targets)
 	}
 
-	// 稳定档：仅注入的稳定项。
+	// 稳定档：tl1741 换代——可批量稳定集合已空（sessionCollab/runtimeReuse
+	// 撤开关退役），stable scope Targets 恒空。
 	p = PlanLabBulk(LabBulkScopeStable, true, stable, true)
 	got = planIDs(p)
-	if !got["sessionCollab"] || !got["runtimeReuse"] || len(got) != 2 {
-		t.Fatalf("stable scope should contain exactly the stable set: %v", p.Targets)
+	if len(p.Targets) != 0 {
+		t.Fatalf("stable scope should target nothing after tl1741 retired the bulkable stable set: %v", p.Targets)
 	}
 
-	// tl 1037：真集合（从 labFeatureTiers 派生，非空）下 stable 档覆盖 1005
-	// 批1 四项 —— 全部为稳定档且可批量的 sessionCollab / runtimeReuse 进
-	// Targets；fullAccess / autopilot 因排除名单（danger_gate / precondition）
-	// 进 Skipped（原因码见各断言），绝非静默消失。
+	// tl 1037 → tl1741：真集合（从 labFeatureTiers 派生，仅 fullAccess）下
+	// stable 档唯一成员因危险门排除进 Skipped，绝非静默消失。
 	p = PlanLabBulk(LabBulkScopeStable, true, LabStableFeatureIDs(), false)
 	got = planIDs(p)
-	for _, id := range []string{"sessionCollab", "runtimeReuse"} {
-		if !got[id] {
-			t.Errorf("stable scope (real stable set) must target %s, got %v", id, p.Targets)
-		}
-	}
-	if got["sessionWall"] {
-		t.Fatalf("stable scope must NOT include recommended-tier sessionWall: %v", p.Targets)
+	if len(p.Targets) != 0 {
+		t.Fatalf("stable scope (real stable set) must have no bulkable target after tl1741, got %v", p.Targets)
 	}
 	skipBy := map[string]string{}
 	for _, s := range p.Skipped {
@@ -73,9 +67,6 @@ func TestLabBulkScopeBoundary(t *testing.T) {
 	}
 	if skipBy["fullAccess"] != LabBulkSkipDangerGate {
 		t.Errorf("stable scope must skip fullAccess with danger_gate, got %q", skipBy["fullAccess"])
-	}
-	if skipBy["autopilot"] != LabBulkSkipPrecondition {
-		t.Errorf("stable scope must skip autopilot with precondition, got %q", skipBy["autopilot"])
 	}
 	for _, s := range p.Skipped {
 		if s.Reason == "" {
@@ -85,30 +76,32 @@ func TestLabBulkScopeBoundary(t *testing.T) {
 }
 
 func TestLabBulkGuardrails(t *testing.T) {
-	stable := map[string]bool{"sessionCollab": true}
-
-	// 护栏①：批量关含稳定档 → StableInScope 暴露给警示。
-	p := PlanLabBulk(LabBulkScopeOptional, false, stable, true)
-	if len(p.StableInScope) != 1 || p.StableInScope[0] != "sessionCollab" {
-		t.Fatalf("guardrail①: bulk-off with stable in scope must expose StableInScope=[sessionCollab], got %v", p.StableInScope)
+	// tl1741 换代：可批量稳定集合已空（sessionCollab/runtimeReuse 撤开关退役）
+	// → 护栏①StableInScope 与护栏②SkippedStable 恒空（机制保留：真集合里若
+	// 未来出现可批量稳定档会重新生效）。真集合唯一稳定档 fullAccess 走排除
+	// 名单（danger_gate 优先于护栏），绝不静默。
+	p := PlanLabBulk(LabBulkScopeOptional, false, LabStableFeatureIDs(), false)
+	if len(p.StableInScope) != 0 {
+		t.Fatalf("guardrail①: StableInScope must be empty after tl1741 (no bulkable stable left), got %v", p.StableInScope)
 	}
-	if !planIDs(p)["sessionCollab"] {
-		t.Fatalf("dev-mode ON: stable feature must stay in targets, got %v", p.Targets)
+	if len(p.SkippedStable) != 0 {
+		t.Fatalf("guardrail②: SkippedStable must be empty after tl1741, got %v", p.SkippedStable)
 	}
-
-	// 护栏②：开发者模式关 + 批量关 → 稳定档自动跳过并提示。
-	p = PlanLabBulk(LabBulkScopeOptional, false, stable, false)
-	if len(p.SkippedStable) != 1 || p.SkippedStable[0] != "sessionCollab" {
-		t.Fatalf("guardrail②: dev-mode OFF must auto-skip stable on bulk-off, got %v", p.SkippedStable)
+	reasonBy := map[string]string{}
+	for _, s := range p.Skipped {
+		reasonBy[s.ID] = s.Reason
 	}
-	if planIDs(p)["sessionCollab"] {
-		t.Fatalf("guardrail②: skipped stable feature must NOT be in targets")
+	if reasonBy["fullAccess"] != LabBulkSkipDangerGate {
+		t.Fatalf("fullAccess must be Skipped with danger_gate (排除名单优先于护栏), got %q", reasonBy["fullAccess"])
 	}
-
-	// 护栏②只作用于「关」：批量开不受开发者模式影响。
-	p = PlanLabBulk(LabBulkScopeOptional, true, stable, false)
-	if !planIDs(p)["sessionCollab"] || len(p.SkippedStable) != 0 {
-		t.Fatalf("guardrail② must only gate bulk-OFF; bulk-ON with dev-mode off should keep stable target: %v", p)
+	if planIDs(p)["fullAccess"] {
+		t.Fatalf("fullAccess must never be a bulk target")
+	}
+	// 原注入集合机制钉（fake stable id 不在档位表 → 不进 plan 任何面）。
+	fakeStable := map[string]bool{"sessionCollab": true}
+	p = PlanLabBulk(LabBulkScopeOptional, false, fakeStable, false)
+	if planIDs(p)["sessionCollab"] || len(p.SkippedStable) != 0 {
+		t.Fatalf("retired id must not enter any plan face (键退役), targets=%v skippedStable=%v", p.Targets, p.SkippedStable)
 	}
 }
 
@@ -117,7 +110,9 @@ func TestLabBulkExcludedFeatures(t *testing.T) {
 	// 而 PlanLabBulk 的范围判定按宿主注入的 stableIDs（不看 tier 字段）——传 nil
 	// 时两者不落范围、排除名单无从生效。本测试要验的是「排除名单在范围内强制
 	// 生效」，故显式把两者喂进 stableIDs（真实宿主会把已开稳定项注入进来）。
-	stableIDs := map[string]bool{"fullAccess": true, "autopilot": true}
+	// tl1741：autopilot/collabHub/sessionStorage 随撤开关出排除名单，稳定档
+	// 排除面只剩 fullAccess（危险门）。
+	stableIDs := map[string]bool{"fullAccess": true}
 	p := PlanLabBulk(LabBulkScopeOptional, true, stableIDs, true)
 	skipBy := map[string]string{}
 	for _, s := range p.Skipped {
@@ -125,9 +120,6 @@ func TestLabBulkExcludedFeatures(t *testing.T) {
 	}
 	if skipBy["fullAccess"] != LabBulkSkipDangerGate {
 		t.Fatalf("fullAccess must be skipped with danger_gate (task 257 单项危险确认不可被批量绕过), got %q", skipBy["fullAccess"])
-	}
-	if skipBy["autopilot"] != LabBulkSkipPrecondition {
-		t.Fatalf("autopilot must be skipped with precondition (yolo 前置), got %q", skipBy["autopilot"])
 	}
 	if skipBy["messageMerge"] != LabBulkSkipNotBool {
 		t.Fatalf("messageMerge (tri-state master) must be skipped with not_bool_switch, got %q", skipBy["messageMerge"])
@@ -155,71 +147,50 @@ func TestLabBulkApplyWritesConfig(t *testing.T) {
 		t.Fatalf("recommended/on must write session_wall/todo_sidebar keys, got wall=%v todo=%v",
 			c.Desktop.ExperimentalSessionWall, c.Desktop.ExperimentalTodoSidebar)
 	}
-	// tl 1037 后 stable 项进 recommended 范围（stableIDs 含它）：sessionCollab
-	// 已是默认开，recommended/on 写 true = 幂等保持开（不因批量而被关）。
-	if !c.Agent.ExperimentalSessionCollab {
-		t.Fatalf("recommended/on must keep stable sessionCollab on (default true, bulk writes true)")
-	}
 	// 家族子键不动：批量只翻主开关。
 	if c.Desktop.ExperimentalAutopilotAskTimeout {
 		t.Fatalf("bulk must NOT touch family sub-keys (ask-timeout)")
 	}
-	// 范围外（未稳定）键不动。
-	if c.Desktop.ExperimentalCollabHub {
-		t.Fatalf("bulk must NOT touch unstable-tier keys (collabHub)")
-	}
+	// tl1741：sessionCollab/collabHub 断言随撤开关退役（键/批量面不存在）。
 
-	// 反向：批量关。tl 1037 后 sessionCollab 在 recommended 范围内、devMode
-	// 恒 false ⇒ 被护栏②挡在 SkippedStable（不被关）；sessionWall 关掉。
+	// 反向：批量关；sessionWall 关掉。tl1741：sessionCollab SkippedStable
+	// 断言随撤开关退役（稳定档可批量集合已空）。
 	if _, _, err := c.ApplyLabBulk(LabBulkScopeRecommended, false); err != nil {
 		t.Fatalf("ApplyLabBulk recommended/off: %v", err)
 	}
 	if c.Desktop.ExperimentalSessionWall {
 		t.Fatalf("recommended/off must clear the master switches")
 	}
-	if !c.Agent.ExperimentalSessionCollab {
-		t.Fatalf("recommended/off must NOT clear stable sessionCollab (护栏② devMode off, stays default-on)")
-	}
 }
 
 func TestLabBulkApplyOffSkipsStableUnderPlaceholder(t *testing.T) {
-	// tl 1037 后真实语义：稳定档集合非空（派生），开发者模式恒 false ⇒
-	// 批量关把「可批量」稳定档（sessionCollab / runtimeReuse）移入
-	// SkippedStable（护栏②）；autopilot / fullAccess 在排除名单更前一步
-	// 落 Skipped（precondition / danger_gate）。推荐/可选目标正常关闭。
+	// tl 1037 语义随 tl1741 换代：可批量稳定档集合已空（sessionCollab /
+	// runtimeReuse 撤开关退役），SkippedStable 恒空；autopilot / collabHub /
+	// sessionStorage 出排除名单，稳定档排除面只剩 fullAccess（danger_gate）。
+	// 推荐/可选目标正常关闭。
 	c := Default()
 	plan, _, err := c.ApplyLabBulk(LabBulkScopeOptional, false)
 	if err != nil {
 		t.Fatalf("ApplyLabBulk optional/off: %v", err)
 	}
-	// 护栏②挡下的可批量稳定档。
-	for _, id := range []string{"sessionCollab", "runtimeReuse"} {
-		found := false
-		for _, s := range plan.SkippedStable {
-			if s == id {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("bulkable stable %s must be in SkippedStable (护栏② devMode off), got %v", id, plan.SkippedStable)
-		}
+	if len(plan.SkippedStable) != 0 {
+		t.Errorf("SkippedStable must be empty after tl1741 retired the bulkable stable set, got %v", plan.SkippedStable)
 	}
-	// 排除名单稳定档（autopilot/fullAccess）——非静默、带原因码。
 	reasonBy := map[string]string{}
 	for _, s := range plan.Skipped {
 		reasonBy[s.ID] = s.Reason
 	}
-	if reasonBy["autopilot"] != LabBulkSkipPrecondition {
-		t.Errorf("autopilot must be Skipped with precondition, got %q", reasonBy["autopilot"])
-	}
 	if reasonBy["fullAccess"] != LabBulkSkipDangerGate {
 		t.Errorf("fullAccess must be Skipped with danger_gate, got %q", reasonBy["fullAccess"])
 	}
-	// 四项稳定档绝不落 Targets（排除/护栏②必挡其一）。
+	// 稳定档（fullAccess）与退役项绝不落 Targets。
 	got := planIDs(plan)
-	for _, id := range []string{"autopilot", "sessionCollab", "fullAccess", "runtimeReuse"} {
+	if got["fullAccess"] {
+		t.Errorf("stable fullAccess must not be a bulk-off target (排除), got %v", plan.Targets)
+	}
+	for _, id := range []string{"autopilot", "sessionCollab", "collabHub", "runtimeReuse", "sessionStorage"} {
 		if got[id] {
-			t.Errorf("stable %s must not be a bulk-off target (排除/护栏②), got %v", id, plan.Targets)
+			t.Errorf("retired %s must not appear in any bulk plan (键退役), got %v", id, plan.Targets)
 		}
 	}
 	if len(plan.Targets) == 0 {
@@ -321,13 +292,8 @@ func TestLabStableFeatureIDsMatchesTierRegistry(t *testing.T) {
 	}
 }
 
-// tl 1037 ①+②：四稳定档批量可达 + Skipped 非静默。
-//
-// recommended/off：sessionCollab 在范围内（stableIDs 命中）→ 稳定档、
-// devMode 关 → 被护栏②挡在 SkippedStable（带 dev_mode_off 原因，非静默）；
-// autopilot / fullAccess 在稳定档范围（推荐+稳定档）→ 排除名单 → Skipped
-// 带原因码；runtimeReuse 同 sessionCollab 被护栏②挡。sessionWall 推荐档
-// 不受影响照常进 Targets（1037 零回归面）。
+// tl 1037 ①+② → tl1741 换代：稳定档批量面收口为 fullAccess（危险门排除，
+// 非静默）；退役四项不进 plan 任何面；sessionWall 推荐档零回归。
 func TestLabBulkRecommendedOffCoversFourStableAndNotSilent(t *testing.T) {
 	stableIDs := LabStableFeatureIDs()
 	p := PlanLabBulk(LabBulkScopeRecommended, false, stableIDs, false)
@@ -337,48 +303,22 @@ func TestLabBulkRecommendedOffCoversFourStableAndNotSilent(t *testing.T) {
 	if !got["sessionWall"] {
 		t.Fatalf("recommended/off must still target sessionWall (1037 零回归), got %v", p.Targets)
 	}
-	// 四项绝不落 Targets（devMode 关，护栏② 或排除名单必挡其一）。
-	for _, id := range []string{"autopilot", "sessionCollab", "fullAccess", "runtimeReuse"} {
+	// 退役项绝不出现在 plan 任何面。
+	for _, id := range []string{"autopilot", "sessionCollab", "runtimeReuse"} {
 		if got[id] {
-			t.Errorf("stable %s must NOT be in Targets (devMode off + 排除/护栏), got %v", id, p.Targets)
+			t.Errorf("retired %s must NOT be in Targets (键退役), got %v", id, p.Targets)
 		}
 	}
-	// 非静默：四项每一项要么在 SkippedStable（带 dev_mode_off），要么在
-	// Skipped（带 danger_gate / precondition），绝不消失。
+	if got["fullAccess"] {
+		t.Errorf("stable fullAccess must NOT be in Targets (危险门排除), got %v", p.Targets)
+	}
+	// 非静默：fullAccess 必须在 Skipped 带 danger_gate 原因。
 	reasonBy := map[string]string{}
 	for _, s := range p.Skipped {
 		reasonBy[s.ID] = s.Reason
 	}
-	skippedStable := map[string]bool{}
-	for _, id := range p.SkippedStable {
-		skippedStable[id] = true
-	}
-	for _, id := range []string{"autopilot", "sessionCollab", "fullAccess", "runtimeReuse"} {
-		inSkippedStable := skippedStable[id]
-		reason, inSkipped := reasonBy[id]
-		if !inSkippedStable && !inSkipped {
-			t.Errorf("stable %s disappeared silently — 不在 Targets / SkippedStable / Skipped（tl 1037 禁止静默）", id)
-			continue
-		}
-		if inSkippedStable && !inSkipped {
-			t.Errorf("stable %s in SkippedStable but no Skipped reason record (skippedCount 汇总看不到)", id)
-		}
-		if inSkipped && reason == "" {
-			t.Errorf("stable %s Skipped carries no reason", id)
-		}
-	}
-	// autopilot/fullAccess 排除名单优先（danger_gate / precondition）。
-	if reasonBy["autopilot"] != LabBulkSkipPrecondition {
-		t.Errorf("autopilot must carry precondition reason, got %q", reasonBy["autopilot"])
-	}
 	if reasonBy["fullAccess"] != LabBulkSkipDangerGate {
 		t.Errorf("fullAccess must carry danger_gate reason, got %q", reasonBy["fullAccess"])
-	}
-	// sessionCollab/runtimeReuse 被护栏②挡，必须同时挂 dev_mode_off 原因。
-	for _, id := range []string{"sessionCollab", "runtimeReuse"} {
-		if reasonBy[id] != LabBulkSkipDevMode {
-			t.Errorf("%s must carry dev_mode_off reason (护栏②), got %q", id, reasonBy[id])
-		}
 	}
 	// 所有 Skipped 记录原因非空（杜绝空原因静默）。
 	for _, s := range p.Skipped {
@@ -388,64 +328,25 @@ func TestLabBulkRecommendedOffCoversFourStableAndNotSilent(t *testing.T) {
 	}
 }
 
-// tl 1037 ①：stable 范围在真集合下可批量项真正落 Targets（sessionCollab /
-// runtimeReuse 进，fullAccess / autopilot 排除，sessionWall 推荐档不进）。
+// tl 1037 ① → tl1741 换代：stable 范围可批量集合已空（sessionCollab /
+// runtimeReuse 退役），Targets 恒空；fullAccess 仍在排除名单（danger_gate）。
 func TestLabBulkStableScopeTargetsBulkableStable(t *testing.T) {
 	p := PlanLabBulk(LabBulkScopeStable, true, LabStableFeatureIDs(), false)
 	got := planIDs(p)
-	if !got["sessionCollab"] || !got["runtimeReuse"] {
-		t.Fatalf("stable scope must target sessionCollab+runtimeReuse, got %v", p.Targets)
+	if len(p.Targets) != 0 {
+		t.Fatalf("stable scope must have no bulkable targets after tl1741, got %v", p.Targets)
 	}
-	if got["sessionWall"] {
-		t.Fatalf("stable scope must not include sessionWall (recommended tier), got %v", p.Targets)
+	if got["fullAccess"] {
+		t.Fatalf("stable scope must exclude fullAccess (危险门排除名单), got %v", p.Targets)
 	}
-	if got["autopilot"] || got["fullAccess"] {
-		t.Fatalf("stable scope must exclude autopilot/fullAccess (排除名单), got %v", p.Targets)
-	}
-	// 非静默：autopilot/fullAccess 在 Skipped 且带原因码。
 	reasonBy := map[string]string{}
 	for _, s := range p.Skipped {
 		reasonBy[s.ID] = s.Reason
-	}
-	if reasonBy["autopilot"] != LabBulkSkipPrecondition {
-		t.Errorf("stable scope autopilot Skipped must carry precondition, got %q", reasonBy["autopilot"])
 	}
 	if reasonBy["fullAccess"] != LabBulkSkipDangerGate {
 		t.Errorf("stable scope fullAccess Skipped must carry danger_gate, got %q", reasonBy["fullAccess"])
 	}
 }
 
-// tl 1037 ①：批量开（devMode 关也挡不住开）四项在 recommended/on 面内可达
-// —— autopilot/fullAccess 排除（危险门/前置），sessionCollab/runtimeReuse
-// 稳定档开 → 进 Targets；runtimeReuse 真被写（验配置值变化）。
-func TestLabBulkRecommendedOnWritesStableOn(t *testing.T) {
-	c := Default()
-	// 反转默认：把稳定档可批量项关掉，再批量开，验证值真正变。
-	if err := c.SetExperimentalSessionCollab(false); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.SetExperimentalRuntimeReuse(false); err != nil {
-		t.Fatal(err)
-	}
-	plan, applied, err := c.ApplyLabBulk(LabBulkScopeRecommended, true)
-	if err != nil {
-		t.Fatalf("ApplyLabBulk recommended/on: %v", err)
-	}
-	appliedSet := map[string]bool{}
-	for _, id := range applied {
-		appliedSet[id] = true
-	}
-	if !appliedSet["sessionCollab"] || !appliedSet["runtimeReuse"] {
-		t.Fatalf("recommended/on must apply sessionCollab+runtimeReuse (四稳定档批量开可达), plan=%v applied=%v", plan.Targets, applied)
-	}
-	if !c.Agent.ExperimentalSessionCollab || !c.Agent.ExperimentalRuntimeReuse {
-		t.Fatalf("config values must actually flip to on: collab=%v runtimeReuse=%v",
-			c.Agent.ExperimentalSessionCollab, c.Agent.ExperimentalRuntimeReuse)
-	}
-	// autopilot/fullAccess 不被批量开（排除名单强制）。
-	for _, id := range plan.Targets {
-		if id == "autopilot" || id == "fullAccess" {
-			t.Errorf("excluded %s must never be a bulk target, got %v", id, plan.Targets)
-		}
-	}
-}
+// tl1741：TestLabBulkRecommendedOnWritesStableOn 随撤开关删除——
+// sessionCollab/runtimeReuse 批量面不存在（键退役，功能常开）。

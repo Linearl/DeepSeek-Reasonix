@@ -35,7 +35,6 @@ import { SUBAGENT_SILENCE_ALERT_MS } from "../lib/subagentDirectory";
 import { historyMessagesToItems } from "../lib/useController";
 import type { HistoryMessage } from "../lib/types";
 import { app } from "../lib/bridge";
-import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { budgetReadout, settleStaleRunning } from "../lib/workflowTemplates";
 import { RunFailureBanner, templateExtraRows, templateExtrasFor, type NodeTemplateExtras } from "./WorkflowRunExtras";
 import {
@@ -341,9 +340,8 @@ export function WorkflowPanel({
   const t = useT();
   const { mounted, status } = useMountTransition(open, 200);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // tl1454: 模板视图开关（家族子键，保存即生效）。关 = 不渲染切换钮/附加面。
-  const [templatesEnabled, setTemplatesEnabled] = useState(() => labFlagEnabled("workflowTemplates"));
-  useEffect(() => onLabFlagsChange(() => setTemplatesEnabled(labFlagEnabled("workflowTemplates"))), []);
+  // tl1454 → tl1741：模板视图开关随撤开关退役——模板面常显（flag 不再读）。
+  const [templatesEnabled] = useState(() => true);
   const [view, setView] = useState<"flow" | "templates" | "definitions">("flow");
   const showTemplates = templatesEnabled && view === "templates";
   // tl1300: 定义页签——面板可见即可切（读面不设独立开关，写入面在组件内随

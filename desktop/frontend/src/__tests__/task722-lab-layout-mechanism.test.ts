@@ -127,11 +127,10 @@ items:
   // 点2：卡内只读行不再挂徽章（labLabel）。
   ok(!panel.includes('labLabel("modelCapabilityFilter"'),
     "点2: the retired row keeps its read-only display without a tier badge");
-  // 点4：邮箱化默认「默认投递通道」行——标签在左、下拉框在右、整行跨双列。
-  ok(panel.includes('className="set-gates__item set-gates__item--wide"') &&
-     panel.indexOf('set-gates__item--wide') < panel.indexOf('t("settings.sessionCollabDefaultDelivery")') &&
-     styles.includes(".set-gates__item--wide") && styles.includes("grid-column: 1 / -1"),
-    "点4: the delivery-channel row is label-left / select-right spanning both columns");
+  // 点4 → tl1741：delivery-channel 行随 sessionCollab 卡移除退役——样式类
+  // 与跨列语义保留（styles 断言不变），面板侧断言改为「行已随卡不在」。
+  ok(styles.includes(".set-gates__item--wide") && styles.includes("grid-column: 1 / -1"),
+    "点4: the delivery-channel row retired with the sessionCollab card (tl1741); the wide-row css contract stays");
   // 点6 组迁移已由 task517/561 钉；这里钉 yaml 的组序（自动化 → 提效）。
   const auto = yamlText.indexOf("key: automation");
   const eff = yamlText.indexOf("key: efficiency");

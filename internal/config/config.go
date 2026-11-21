@@ -1937,10 +1937,10 @@ type AgentConfig struct {
 	// without the user's confirmation. Off by default (铁律 2): off = no
 	// button, the composer layout is byte-for-byte unchanged.
 	ExperimentalDraftRewrite bool `toml:"experimental_draft_rewrite"`
-	// ExperimentalSessionCollab enables multi-session collaboration tools
-	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
-	// Off by default.
-	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// tl1741：ExperimentalSessionCollab（task 19 跨会话协作总闸）随「稳定档
+	// 不再提供开关」退役（用户 20261121 三拍：清理 false 分支）——协作工具
+	// 注册面/信件泵无条件启用（原默认即开，行为零变化）；[desktop] 镜像与
+	// load fold 迁移一并删除。存量手写键由 deprecated 清单承接。
 	// ExperimentalCapabilityGroups (tasks 953/954/955, the 951 second batch)
 	// turns on the capability-group disclosure layer: use_capability v2 (list
 	//摘要档+kind=group 组行+两道闸), the session_hub L0 aggregation entry, and
@@ -2497,13 +2497,9 @@ type AgentConfig struct {
 	// dispatch. No longer rendered or writable; a stale true in an old config
 	// is inert and vanishes on the next save.
 	ExperimentalModelCapabilityFilter bool `toml:"experimental_model_capability_filter"`
-	// ExperimentalRuntimeReuse lets a new conversation tab reuse the runtime
-	// assembly (system prompt, skills/commands/hooks discovery, static tool
-	// registry) from a pool keyed by workspace root + model + effort instead
-	// of re-running boot discovery every time (task 363A; same idea as the
-	// per-request effort override). Off by default (fork rule 2): the current
-	// full-rebuild path stays byte-identical.
-	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
+	// tl1741：ExperimentalRuntimeReuse（task 363A 运行时复用池总闸）随「稳定
+	// 档不再提供开关」退役（用户 20261121 三拍）——复用池无条件启用（原默认
+	// 即开，行为零变化）。存量手写键由 deprecated 清单承接。
 	// ExperimentalSessionCwdFollow makes a resumed session run against its own
 	// persisted project root (branch meta workspace_root) instead of the
 	// process working directory (task 545): relative paths and git commands in
@@ -3400,17 +3396,16 @@ func Default() *Config {
 		DefaultModel:     "deepseek-flash",
 		CredentialsStore: CredentialsStoreAuto,
 		UI:               UIConfig{Theme: "auto", ShowTurnUsage: true},
-		// 任务 1005 批1 稳定档默认开（C1）：autopilot 随 sessionCollab /
-		// fullAccess / runtimeReuse 一同转「稳定」——TOML decode 以 Default()
-		// 打底、显式值覆盖默认值，存量手写 false 不被覆盖（C4 kill switch：
-		// 配置手写键双向保留，fullAccess 安全项尤其不升级强开）。
-		// AutopilotMaxRuntime 必须伴生默认：desktopAutopilotDefaults（app_tabs）
-		// 对 autopilot=开 但无有效时限的组合直接拒绝降级为关——不伴生则新装
-		// 用户的「默认开」是静默空转；8h 与桌面端 setter 的兜底值同源。
+		// tl1741：1005 批1 的 C4 kill switch 口径对 autopilot/sessionCollab/
+		// runtimeReuse 三项废止（用户 20261121 三拍：稳定档不再提供开关，
+		// false 分支清理非写死 true）——三键自 struct 退役，功能常开；
+		// fullAccess 保留键与手写 false 生效语义不变。
+		// AutopilotMaxRuntime 伴生默认保留：desktopAutopilotDefaults（app_tabs）
+		// 对无有效时限的组合直接拒绝降级为关——护栏键无 UI 入口，config 手写
+		// 可调；8h 与桌面端兜底值同源。
 		Desktop: DesktopConfig{
 			DefaultToolApprovalMode: "auto",
 			ConversationWidth:       "standard",
-			Autopilot:               true,
 			AutopilotMaxRuntime:     "8h",
 			// 任务 1084：ask 轮次上限默认 3（Default() 打底；显式 0 = 无限制，
 			// AskRoundLimitEffective 原样返回 0 不回落 3——语义与 task 477 的
@@ -3447,12 +3442,9 @@ func Default() *Config {
 			// not cover). Pin the documented default here; an explicit false in
 			// a user config still wins.
 			SessionCollabMailIdempotentDefault: true,
-			// 任务 1005 批1 稳定档默认开（C1）：sessionCollab / fullAccess /
-			// runtimeReuse 三项转「稳定」档。机制同上：Default() 打底 +
-			// TOML 显式值覆盖，手写 false 不被覆盖（C4 kill switch）。
-			ExperimentalSessionCollab: true,
-			ExperimentalFullAccess:    true,
-			ExperimentalRuntimeReuse:  true,
+			// tl1741：sessionCollab / runtimeReuse 两键自 struct 退役（1005 C4
+			// 口径废止，功能常开）；fullAccess 保留默认开 + 手写 false 生效。
+			ExperimentalFullAccess: true,
 		},
 		// Mode "ask" with no rules keeps `reasonix run` autonomous (no TTY → ask
 		// resolves to allow) while `reasonix` prompts before writers. Users add

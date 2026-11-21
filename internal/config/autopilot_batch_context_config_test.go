@@ -11,7 +11,6 @@ import (
 
 func TestAutopilotBatchContextDialRendersThroughNormalizedLevel(t *testing.T) {
 	c := &Config{}
-	c.Desktop.Autopilot = true
 	if err := c.SetExperimentalAutopilotBatchContext("minimal"); err != nil {
 		t.Fatal(err)
 	}
@@ -34,8 +33,7 @@ func TestAutopilotBatchContextOffAndUntouchedStayOutOfTheConfig(t *testing.T) {
 	// both the absent and the explicit-off state render nothing.
 	for _, level := range []string{"", "off"} {
 		c := &Config{}
-		c.Desktop.Autopilot = true
-		if level != "" {
+			if level != "" {
 			if err := c.SetExperimentalAutopilotBatchContext(level); err != nil {
 				t.Fatal(err)
 			}
@@ -52,7 +50,6 @@ func TestAutopilotBatchContextOffAndUntouchedStayOutOfTheConfig(t *testing.T) {
 
 func TestAutopilotBatchPlanRendersOnlyWhileSet(t *testing.T) {
 	c := &Config{}
-	c.Desktop.Autopilot = true
 	if err := c.SetExperimentalAutopilotBatchContext("minimal"); err != nil {
 		t.Fatal(err)
 	}

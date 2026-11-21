@@ -15,7 +15,6 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/boot"
-	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
 	"reasonix/internal/skill"
@@ -23,12 +22,7 @@ import (
 
 func TestSetModelForTabRebuildReusesRuntimeAssembly(t *testing.T) {
 	personaBoundaryTestConfig(t)
-	// Flip the 363A gate on for this test (acquire/store are no-ops when off).
-	cfg := config.LoadForEdit(config.UserConfigPath())
-	cfg.Agent.ExperimentalRuntimeReuse = true
-	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
-		t.Fatalf("save config with reuse gate: %v", err)
-	}
+	// tl1741：复用池常开——363A gate fixture 退役（acquire/store 无条件生效）。
 	t.Cleanup(DropRuntimeAssemblyPools)
 	DropRuntimeAssemblyPools()
 

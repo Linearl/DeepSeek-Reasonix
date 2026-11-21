@@ -3718,7 +3718,7 @@ function makeMockApp(): AppBindings {
     defaultModel: "deepseek",
     plannerModel: "",
     guardianModel: "",
-    autopilot: false,
+    // tl1741：autopilot 偏好随撤开关退役（fixture 不再携带）。
     autopilotMaxRuntime: "",
     autopilotApprovalGrace: "",
     experimentalAutopilotAskTimeout: false,
@@ -7534,11 +7534,7 @@ function makeMockApp(): AppBindings {
     async ChannelCancelFromHuman(_ref: string, _messageID: string) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
-    async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
-      settings.autopilot = enabled;
-      settings.autopilotMaxRuntime = maxRuntime;
-      settings.autopilotApprovalGrace = approvalGrace;
-    },
+    // tl1741：SetDesktopAutopilot dev-shell 实现随撤开关删除（App 层 setter 已退役）。
     async SetDesktopAutopilotAskTimeout(enabled: boolean, seconds: number) {
       if (enabled && seconds !== 0 && (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < 1 || seconds > 3600)) {
         throw new Error(`autopilot ask timeout must be between 1 and 3600 seconds, got ${seconds}`);

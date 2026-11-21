@@ -5220,6 +5220,12 @@ export const zhTW: Record<DictKey, string> = {
 "settings.viewLayout": "檢視版面",
 "settings.smartAutomation": "智慧自動化",
 "settings.smartAutomationHint": "智慧自動化合併卡（任務 961）：決策模式擷取 + 心跳任務背景化等行合一。卡內各行各自獨立開關、各讀各的設定鍵；右側 rail 徽章取卡內最高檔。",
+  // tl1741：頂部卡右側子項概要（拍板 20261121 三條款③——右側空間改主題概要）。
+  "settings.smartAutomation.brief.title": "本卡子項",
+  "settings.smartAutomation.brief.decisionPatterns": "決策模式擷取：從使用者否定/修正 AI 的輪次擷取裁決，心跳任務定期固化進決策模式檔案。",
+  "settings.smartAutomation.brief.heartbeatBackground": "心跳任務背景化：計畫任務提交後轉入背景駐留，話題標籤不常駐標籤欄。",
+  "settings.smartAutomation.brief.stalledIntentNudge": "提前結束續輪提醒：模型宣布下一步卻停手時，追加一次續輪提醒。",
+  "settings.smartAutomation.brief.standardContinuation": "普通對話續跑：「列了待辦沒收尾」時宿主補一輪有界續跑（無進展即停）。",
   "settings.backgroundJobWakeIdleSession": "背景任務完成時自動喚醒空閒會話續輪",
   "settings.backgroundJobWakeIdleSessionHint": "預設關（鐵律 2：自動開輪受自驅預算約束）。開啟後，本會話擁有的背景任務（含背景化子代理）完成時，會話空閒會自動續一輪處理結果——額度影響：自動開輪最多 3 輪/600s，兩輪之間至少隔 60s。改動需重啟生效。",
   "settings.backgroundJobWakeIdleSession.on": "開",

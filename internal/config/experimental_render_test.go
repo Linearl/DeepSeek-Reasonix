@@ -25,7 +25,6 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	// Task 473: the lab mirror set is single-source now — the [agent] key
 	// carries the value and the render face has only the [agent] row.
 	c.Agent.TraceAsState = true
-	c.Agent.ExperimentalSessionCollab = true
 	// 任务 517：合并键往返；legacy B1/B2/B3 键不再是可写面（见 off 断言）。
 	c.Agent.ExperimentalSafetyCostControl = true
 	c.Desktop.ExperimentalOrphanLeaseReclaim = true
@@ -50,7 +49,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_todo_sidebar = true",
 		"experimental_prompt_history_picker = true",
 		"trace_as_state = true",
-		"experimental_session_collab = true",
+		// (experimental_session_collab absent: tl1741 retired the key from the render face.)
 		"experimental_safety_cost_control = true",
 		"experimental_orphan_lease_reclaim = true",
 		"experimental_recovery_orphan_sweep = true",
@@ -80,7 +79,7 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		// Task 473: the [desktop] mirror spelling is gone; the [agent] key
 		// (trace_as_state) is asserted further down the list. tl1453:
 		// experimental_dream left the render face with its feature.
-		"experimental_session_collab = false",
+		// (experimental_session_collab absent when off: tl1741 retired the key.)
 		"experimental_safety_cost_control = false",
 		// 任务 517：legacy B1/B2/B3 键保持渲染（迁移后读 false），关态可记录。
 		"experimental_autonomous_idle_terminate = false",
@@ -341,15 +340,6 @@ func TestTask265NilMeansOnSwitchesRoundTrip(t *testing.T) {
 	out = RenderTOMLForScope(full, RenderScopeUser)
 	if !strings.Contains(out, "experimental_full_access = true") {
 		t.Fatalf("full access enable must render true\n---\n%s", out)
-	}
-}
-
-func TestExperimentalSessionCollabRoundTripThroughRender(t *testing.T) {
-	c := &Config{}
-	c.Agent.ExperimentalSessionCollab = true
-	out := RenderTOMLForScope(c, RenderScopeUser)
-	if !strings.Contains(out, "experimental_session_collab = true") {
-		t.Fatalf("rendered user config is missing experimental_session_collab = true\n---\n%s", out)
 	}
 }
 

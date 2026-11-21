@@ -16,11 +16,7 @@ import (
 func setupIsolatedCollabMail(t *testing.T) string {
 	t.Helper()
 	isolateDesktopUserDirs(t)
-	cfg := config.Default()
-	cfg.Agent.ExperimentalSessionCollab = true
-	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
-		t.Fatalf("save config: %v", err)
-	}
+	// tl1741：sessionCollab 开关退役（常开）——fixture 无需置位。
 	return config.SessionCollabMailDir()
 }
 

@@ -255,7 +255,9 @@ console.log("\ntask 562 lab three-tier badges");
   // zeroSummaryCompact 两 unstable 条目入 Go 表而本 pin 漏跟（基点
   // c9bb09cd23 实值 75=预存红，20261121 tl1733 收口）；tl1733：
   // memoryIndexSlim（记忆注入瘦身，提效组，可选档）两侧共享入表——75→76。
-  ok(Object.keys(goTiers).length === 76, `Go registry parses to 76 entries (tl1733 memoryIndexSlim added; got ${Object.keys(goTiers).length})`);
+  // tl1741：Go 表 76→69（autopilot/sessionCollab/collabHub/workflowPanel/
+  // cdpDebugPort/sessionStorage/runtimeReuse 七条随撤开关出表）。
+  ok(Object.keys(goTiers).length === 69, `Go registry parses to 69 entries (tl1741 retired seven stable rows; got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -276,7 +278,10 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1487 二组：workflowTemplates（工作流模板，Go 侧为 workflowPanel 家族
   // 子键）入表。tl1487 四组：opencodeGoUsage（用量展示行，配置键整链退役）
   // 转入 feOnly。
-  ok(JSON.stringify(feOnly) === JSON.stringify(["coldCacheCompact", "gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "opencodeGoUsage", "resourceGovernance", "runtimeObservability", "searchHistory", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout", "workflowTemplates"]),
+  // tl1741：八项撤开关 id 转入 feOnly（Go 表条目退役，前端注册表标注保留
+  // ——图墙/徽章展示面用，拍板条款②「注册表不动」）；idleReleaseMinutes/
+  // gcPercent 随资源治理拆卡回散条 param 卡（仍 feOnly）。
+  ok(JSON.stringify(feOnly) === JSON.stringify(["autopilot", "cdpDebugPort", "coldCacheCompact", "collabHub", "gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "opencodeGoUsage", "resourceGovernance", "runtimeObservability", "runtimeReuse", "searchHistory", "sessionCollab", "sessionStorage", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout", "workflowPanel", "workflowTemplates"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
@@ -319,7 +324,11 @@ console.log("\ntask 562 lab three-tier badges");
   // 52→58。
   // tl1309 卡④：todoSidebar 并 tabManagement、三面板并 sessionTaskPanels——58→62。
   // tl1453：dream 成员行随实验退役出 smartAutomation 卡——62→61。
-  ok(members.length === 62, `merged cards carry 62 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl1741：成员 62→52（sessionCollabAutoFold/workflowPanel/cdpDebugPort/
+  // sessionStorage/runtimeReuse 五成员行随卡退役；resourceGovernance 五成员
+  // 回散条出 members——orphanHandling/idleReleaseMinutes/gcPercent/acpListen/
+  // localServer）。
+  ok(members.length === 52, `merged cards carry 52 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -351,9 +360,8 @@ console.log("\ntask 562 lab three-tier badges");
   const agg = (id: string) => labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, id);
   ok(JSON.stringify(railTiersForDefault("contextGovernance")) === JSON.stringify(["recommended", "optional"]) && agg("contextGovernance") === "recommended",
     `contextGovernance: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("contextGovernance"))} → ${String(agg("contextGovernance"))})`);
-  // 任务 1005：autopilot 独立卡转稳定档——单枚稳定徽章（LAB_TIER_ORDER
-  // 首位，聚合取最高档）。
-  ok(JSON.stringify(railTiersForDefault("autopilot")) === JSON.stringify(["stable"]) && agg("autopilot") === "stable", "standalone entry badges itself");
+  // 任务 1005 → tl1741：autopilot 卡退役——fullAccess 成为唯一 stable 独立卡。
+  ok(JSON.stringify(railTiersForDefault("fullAccess")) === JSON.stringify(["stable"]) && agg("fullAccess") === "stable", "standalone entry badges itself (fullAccess, tl1741 后唯一 stable 卡)");
   ok(railTiersForDefault("preapproveManagedPaths").length === 0 && agg("preapproveManagedPaths") === null, "non-表A id (task-364 domain) shows no badge");
   // 任务 722 点2：「已退役」徽章自模型策略卡移除——只余 highSpeedModel 的可选档。
   ok(JSON.stringify(railTiersForDefault("modelStrategy")) === JSON.stringify(["optional"]) && agg("modelStrategy") === "optional",
@@ -362,10 +370,7 @@ console.log("\ntask 562 lab three-tier badges");
   // （可选）并入后，卡头只聚合出推荐一枚。
   ok(JSON.stringify(railTiersForDefault("safetyCostControl")) === JSON.stringify(["recommended", "optional"]) && agg("safetyCostControl") === "recommended",
     `safetyCostControl: input [推荐,可选] aggregates to the single 推荐 badge after the 722 folds (got ${String(agg("safetyCostControl"))})`);
-  // 任务 722 点3 + 774 验收件① + 任务 1005：跨会话协作卡（卡=稳定 + 折叠
-  // 子项=可选）卡头只显示「稳定」一枚（1005 批1 转档后推荐>可选、稳定>推荐）。
-  ok(JSON.stringify(railTiersForDefault("sessionCollab")) === JSON.stringify(["stable", "optional"]) && agg("sessionCollab") === "stable",
-    `sessionCollab shows exactly one 稳定 badge, its auto-fold member's 可选 stays in-card (got ${String(agg("sessionCollab"))})`);
+  // tl1741：sessionCollab 卡（含 autoFold 成员）随撤开关移除——聚合断言随件退役。
   // 任务 774 验收件②：子代理套件（无自有档）按最高档单枚。tl1487 三组①：
   // 成员 [推荐×2, 可选, 未稳定] → 单枚 推荐。tl1265 第2轮：subagentPolicy
   // 未稳定→可选（dec-73872eee136e22de）——输入变 [推荐, 可选]，终值仍推荐。
@@ -386,25 +391,30 @@ console.log("\ntask 562 lab three-tier badges");
   // 与卡头同源 labEntryBadgeTier（ExperimentalLabSection 586 行）随之联动。
   // 断言输入清单精确等于 ["stable"]：若日后有人往本卡塞回未稳定成员致徽章
   // 回落，此处即红（连带①「无其他成员阻滞」钉死）。
-  ok(JSON.stringify(railTiersForDefault("sessionStore")) === JSON.stringify(["stable"]) && agg("sessionStore") === "stable",
-    `sessionStore: sole member sessionStorage 稳定 ⇒ input exactly [稳定], aggregates to 稳定 after tl1338 (got ${JSON.stringify(railTiersForDefault("sessionStore"))} → ${String(agg("sessionStore"))})`);
+  // tl1741：sessionStorage 成员行随撤开关摘除——sessionStore 容器档回落
+  // （成员清空 → 无徽章；916 迁移工具面保留，不挂档位徽章）。
+  ok(railTiersForDefault("sessionStore").length === 0 && agg("sessionStore") === null,
+    `sessionStore: sessionStorage member removed by tl1741 ⇒ no badge (got ${JSON.stringify(railTiersForDefault("sessionStore"))} → ${String(agg("sessionStore"))})`);
   // tl1309 卡②：运行可观测卡聚合输入 [推荐(监控), 可选(events 瘦身/轨迹观测)]
   // → 卡头单枚 推荐。
   ok(JSON.stringify(railTiersForDefault("runtimeObservability")) === JSON.stringify(["recommended", "optional"]) && agg("runtimeObservability") === "recommended",
     `runtimeObservability: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("runtimeObservability"))} → ${String(agg("runtimeObservability"))})`);
-  // tl1309 卡③：资源治理卡聚合输入 [稳定(复用池), 推荐(孤儿回收/闲置释放/
-  // GC—tl1487 七组①升推荐), 可选(本地服务—tl1265 第2轮升可选), 未稳定(监听)]
-  // → 卡头单枚 稳定。
-  ok(JSON.stringify(railTiersForDefault("resourceGovernance")) === JSON.stringify(["stable", "recommended", "optional", "unstable"]) && agg("resourceGovernance") === "stable",
-    `resourceGovernance: four-tier member input after tl1265 aggregates to the single 稳定 badge (got ${JSON.stringify(railTiersForDefault("resourceGovernance"))} → ${String(agg("resourceGovernance"))})`);
+  // tl1741：资源治理卡整卡移除——五成员回散条，聚合断言随件退役。
+  // 拆卡后的散条卡各自单档：orphanHandling/gcPercent/idleReleaseMinutes 推荐、
+  // acpListen 未稳定、localServer 可选（键/档位零变化）。
+  ok(agg("orphanHandling") === "recommended" && agg("acpListen") === "unstable" && agg("localServer") === "optional" && agg("gcPercent") === "recommended" && agg("idleReleaseMinutes") === "recommended",
+    `resourceGovernance members return to standalone cards with unchanged tiers (got ${String(agg("orphanHandling"))}/${String(agg("acpListen"))}/${String(agg("localServer"))}/${String(agg("gcPercent"))}/${String(agg("idleReleaseMinutes"))})`);
   // tl1309 卡④：标签页管理（推荐容器+推荐成员）单枚推荐；会话与任务面板
   // 聚合输入 tl1487 二组⑤ 后 [稳定(工作流), 推荐(图墙/完成摘要)] → 卡头单枚 稳定。
   ok(JSON.stringify(railTiersForDefault("tabManagement")) === JSON.stringify(["recommended"]) && agg("tabManagement") === "recommended",
     `tabManagement: recommended container + recommended member stays the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("tabManagement"))})`);
-  ok(JSON.stringify(railTiersForDefault("sessionTaskPanels")) === JSON.stringify(["stable", "recommended"]) && agg("sessionTaskPanels") === "stable",
-    `sessionTaskPanels: tl1487 input [稳定,推荐] aggregates to the single 稳定 badge (got ${JSON.stringify(railTiersForDefault("sessionTaskPanels"))})`);
-  // tl1487 五组：cdpDebugPort 升稳定——聚合终值 未稳定→稳定（lifecycleNoiseGate 仍未稳定）。
-  ok(agg("devDebug") === "stable", `devDebug aggregates to 稳定 after tl1487 五组 (got ${String(agg("devDebug"))})`);
+  // tl1741：workflowPanel 成员行摘除——sessionTaskPanels 输入 [推荐,推荐]
+  // → 卡头单枚 推荐。
+  ok(JSON.stringify(railTiersForDefault("sessionTaskPanels")) === JSON.stringify(["recommended"]) && agg("sessionTaskPanels") === "recommended",
+    `sessionTaskPanels: tl1741 input [推荐,推荐] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("sessionTaskPanels"))})`);
+  // tl1487 五组 → tl1741：cdpDebugPort 成员行摘除——devDebug 仅余未稳定
+  // lifecycleNoiseGate，聚合终值 稳定→未稳定。
+  ok(agg("devDebug") === "unstable", `devDebug falls back to 未稳定 after tl1741 removed the stable cdp row (got ${String(agg("devDebug"))})`);
   // 任务 782：界面组三张合并卡逐卡钉聚合终值——容器徽章 = 成员最高档
   // （searchHistory 三成员 tl1487 二组⑥ 后全推荐 → 推荐；inputSelection
   // 全可选成员 → 可选）。
@@ -468,7 +478,16 @@ console.log("\ntask 562 lab three-tier badges");
     // LogManagementLabPane 承接（当前占用行 + 打开目录按钮 + 永久+无限制
     // 警示行，超出通用 labLabel 包裹模式），徽章在组件内直接渲染——同
     // opencodeGoUsage 自带徽章的豁免口径。
-    if (id !== "opencodeGoUsage" && id !== "modelCapabilityFilter" && id !== "logManagement" && !wrapped.has(id)) missing.push(id);
+    // tl1741：八项撤开关 id（+sessionCollabAutoFold 随宿主卡）的实验室展示面
+    // 移除——labLabel 包装断言随之豁免；gcPercent/idleReleaseMinutes 为
+    // kind:param 散条卡（通用 LabParamFieldsCard 渲染，binding.labelKey
+    // 内部包装，同 logManagement 豁免口径）。
+    if (["opencodeGoUsage", "modelCapabilityFilter", "logManagement",
+         "autopilot", "sessionCollab", "sessionCollabAutoFold", "collabHub",
+         "workflowPanel", "workflowTemplates", "cdpDebugPort", "runtimeReuse",
+         "resourceGovernance", "sessionStorage",
+         "gcPercent", "idleReleaseMinutes"].includes(id)) continue;
+    if (!wrapped.has(id)) missing.push(id);
   }
   ok(missing.length === 0, `pane labels wrap every non-card id in SettingsPanel + the usage card covers opencodeGoUsage (missing: ${JSON.stringify(missing)})`);
   // 任务 774：rail 行渲染单枚聚合徽章（features 表预解析 badgeTier），

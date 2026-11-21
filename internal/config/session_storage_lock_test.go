@@ -62,19 +62,22 @@ func TestRenderPreservesStoredV4Mode(t *testing.T) {
 // users — stays reachable from the settings page. Shrinking the tier table
 // without an entry here would hide the card for everyone.
 func TestLabTierKeepsSessionStorageEntry(t *testing.T) {
-	found := false
+	// tl1741 换代：sessionStorage 档位行撤出实验室 UI（会话存储开关不再提供），
+	// labFeatureTiers 不再有条目；但 session_storage 键与四模式机制保留（916
+	// 宽容往返），且会话存储卡本体（sessionStore entry + 805 迁移路由）由
+	// 前端 lab-layout.yaml 的 sessionStore 条目承载——这里钉两件事：
+	// 1) labFeatureTiers 无 sessionStorage 条目（档位行已撤）；
+	// 2) 键仍在渲染面输出（916 锁注释行在场，升级用户配置往返不降级）。
 	for _, entry := range labFeatureTiers {
 		if entry.id == "sessionStorage" {
-			found = true
-			if entry.tier == LabTierRetired {
-				t.Errorf("sessionStorage lab tier = retired; the card hosts the migration routes and must stay reachable")
-			}
-			if len(entry.renderKeys) == 0 || entry.renderKeys[0] != "session_storage" {
-				t.Errorf("sessionStorage lab render keys = %v, want first key session_storage", entry.renderKeys)
-			}
+			t.Fatalf("sessionStorage must have left labFeatureTiers (tl1741: the lab switch row is gone), got entry %v", entry)
 		}
 	}
-	if !found {
-		t.Fatal("labFeatureTiers has no sessionStorage entry — the storage card (and its migration section) would vanish from settings")
+	rendered := RenderTOML(Default())
+	if !strings.Contains(rendered, `session_storage = "v3_only"`) {
+		t.Fatalf("session_storage key must keep rendering (916 宽容往返):\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "settings-locked per task 916") {
+		t.Fatalf("session_storage render must keep the 916 lock marker:\n%s", rendered)
 	}
 }

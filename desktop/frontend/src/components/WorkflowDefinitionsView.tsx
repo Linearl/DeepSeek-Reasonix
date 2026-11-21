@@ -21,7 +21,6 @@ import { useT } from "../lib/i18n";
 import type { DictKey } from "../locales/en";
 import { app } from "../lib/bridge";
 import { reportFrontendLog } from "../lib/frontendLog";
-import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { definitionCounters, validateRename, type RenameProblem } from "../lib/workflowTemplates";
 import type { WorkflowTemplateList, WorkflowTemplateRunPreview, WorkflowTemplateSummary } from "../lib/workflowTypes";
 
@@ -53,7 +52,9 @@ interface RenameDraft {
 export function WorkflowDefinitionsView({ onRunStarted }: { onRunStarted: (runId: string) => void }) {
   const t = useT();
   const [list, setList] = useState<WorkflowTemplateList | null>(null);
-  const [writeEnabled, setWriteEnabled] = useState(() => labFlagEnabled("workflowTemplates"));
+  // tl1741：workflowTemplates 开关随撤开关退役——模板写面常显（true 固定，
+  // 不再读 lab flag）。
+  const [writeEnabled] = useState(() => true);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   // 删除二段确认：armed = 已武装待再击的名字（同时只武装一张卡）。
@@ -62,8 +63,6 @@ export function WorkflowDefinitionsView({ onRunStarted }: { onRunStarted: (runId
   const [sourceOf, setSourceOf] = useState<string | null>(null);
   const [sourceText, setSourceText] = useState<string | null>(null);
   const [preview, setPreview] = useState<WorkflowTemplateRunPreview | null>(null);
-
-  useEffect(() => onLabFlagsChange(() => setWriteEnabled(labFlagEnabled("workflowTemplates"))), []);
 
   const fail = useCallback((what: string, err: unknown) => {
     const detail = errorText(err);
@@ -181,14 +180,11 @@ export function WorkflowDefinitionsView({ onRunStarted }: { onRunStarted: (runId
   }, [sourceOf, fail]);
 
   const cards = list?.templates ?? [];
-  const invalid = writeEnabled ? (list?.invalid ?? []) : [];
+  const invalid = list?.invalid ?? [];
 
   return (
     <div className="wf-tpl" data-testid="wf-defs">
       <aside className="wf-tpl__list">
-        {!writeEnabled && (
-          <p className="wf-tpl__note" data-testid="wf-defs-hint">{t("workflowPanel.definitions.disabledHint")}</p>
-        )}
         {list && cards.length === 0 && invalid.length === 0 && (
           <p className="wf-tpl__empty" data-testid="wf-defs-empty">{t("workflowPanel.definitions.empty")}</p>
         )}

@@ -147,15 +147,14 @@ type Service struct {
 }
 
 // NewService 构造服务；dir 为 config.WorkflowsDir()（空 = 内存目录）。
+// tl1741：模板开关退役后归档无条件开（archiveOn 绑定删除，store 直接归档）。
 func NewService(dir string) *Service {
-	s := &Service{
+	return &Service{
 		store:      newStore(dir),
 		runs:       map[string]*RunRecord{},
 		dirty:      make(chan struct{}, 1),
 		persistDir: runsDir(dir),
 	}
-	s.store.archiveOn = func() bool { return templatesOn() }
-	return s
 }
 
 // global 是进程级单例（惰性构造，boot 与桌面 hub 共用）。

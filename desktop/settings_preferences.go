@@ -345,12 +345,6 @@ func (a *App) SetExperimentalCollabGroupView(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCollabGroupView(enabled) })
 }
 
-// SetExperimentalCollabHub toggles the unified collaboration-hub entry (task
-// 856 ③): with it off the utility row keeps the pre-856 layout (no hub icon).
-func (a *App) SetExperimentalCollabHub(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCollabHub(enabled) })
-}
-
 // SetExperimentalSessionCollabAutoFold toggles the transcript fold for
 // over-long cross-session messages (task 705): off (default) renders every
 // cross-session message in full.
@@ -491,20 +485,6 @@ func (a *App) mirrorStandardContinuationToControllers(enabled bool) {
 	}
 }
 
-// SetExperimentalWorkflowPanel toggles the workflow visualization panel
-// (task 686): the command-palette entry opening the DAG flow view. Pure
-// frontend gate: the settings save re-applies the boot snapshot, so the
-// change is visible without a restart.
-func (a *App) SetExperimentalWorkflowPanel(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalWorkflowPanel(enabled) })
-}
-
-// SetExperimentalWorkflowTemplates toggles the tl1454 user workflow templates
-// (template view + write bridges + version archive; live-read, no restart).
-func (a *App) SetExperimentalWorkflowTemplates(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalWorkflowTemplates(enabled) })
-}
-
 // SetExperimentalSubagentPanel toggles the subagent panel package (task 495):
 // the right-dock subagent tab plus default-collapsed ended subagent cards in
 // deep mode. The frontend snapshots the flag at boot, so the change shows up
@@ -574,13 +554,6 @@ func (a *App) SetTabPermissionIndicator(mode string) error {
 // SetExperimentalQuickCommands toggles the whole quick-commands surface (262).
 func (a *App) SetExperimentalQuickCommands(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalQuickCommands(enabled) })
-}
-
-// SetExperimentalCDPDebugPort toggles the WebView2 CDP debug endpoint (task
-// 342). Ships off; the browser args are read at startup, so a flip needs a
-// restart — the settings card communicates that and raises the restart banner.
-func (a *App) SetExperimentalCDPDebugPort(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCDPDebugPort(enabled) })
 }
 
 // SetExperimentalACPListen toggles the resident ACP listener (task 790).
@@ -928,12 +901,6 @@ func (a *App) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRecoveryOrphanSweep(enabled) })
 }
 
-// SetExperimentalRuntimeReuse toggles the task-363A runtime assembly reuse
-// pool. Read at Build time per new tab — no restart needed for new tabs.
-func (a *App) SetExperimentalRuntimeReuse(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRuntimeReuse(enabled) })
-}
-
 // SetExperimentalPerfMonitor toggles the host performance monitor (task 184).
 // Restart-scoped: interval and file table are read while the app starts.
 func (a *App) SetExperimentalPerfMonitor(enabled bool) error {
@@ -1085,11 +1052,6 @@ func (a *App) SetExperimentalAutoLoadOlder(enabled bool) error {
 // (tl1688: exposes the tl553 switch in the lab UI; default stays off).
 func (a *App) SetBackgroundJobWakeIdleSession(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetBackgroundJobWakeIdleSession(enabled) })
-}
-
-// SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
-func (a *App) SetExperimentalSessionCollab(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollab(enabled) })
 }
 
 // GetCollabInboxMergeMode exposes the drain-merge tri-state (task 221:

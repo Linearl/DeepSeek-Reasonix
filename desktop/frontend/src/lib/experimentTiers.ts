@@ -660,10 +660,11 @@ export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, reado
  * 禁用态并提示「需先开启跨会话协作」。声明在此而非散在设置页——后续其他
  * 开关要挂前置时加一行即可，渲染侧统一处理禁用态（856 计划文档 ③）。
  * 单前置一期够用（与一期单副管理员同一简化原则）；多条依赖再演进为数组。
+ *
+ * tl1741：collabHub→sessionCollab 依赖随双卡撤开关退役（跨会话协作常开，
+ * 前置门永真），表暂空；机制保留（后续开关挂前置时直接加行）。
  */
-export const LAB_FEATURE_DEPS: Readonly<Partial<Record<TierFeatureId, TierFeatureId>>> = {
-  collabHub: "sessionCollab",
-};
+export const LAB_FEATURE_DEPS: Readonly<Partial<Record<TierFeatureId, TierFeatureId>>> = {};
 
 export function isTierFeatureId(id: string): id is TierFeatureId {
   return Object.prototype.hasOwnProperty.call(EXPERIMENT_FEATURE_TIERS, id);

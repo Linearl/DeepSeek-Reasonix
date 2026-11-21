@@ -27,9 +27,7 @@ var labMirrorCases = []struct {
 		func(c *Config) *bool { return &c.Desktop.ExperimentalTraceAsState }},
 	// tl1453: experimental_dream left the fold table with its feature — the
 	// tombstone fields decode and are ignored (retired_experimental_dream_test).
-	{"experimental_session_collab", "experimental_session_collab",
-		func(c *Config) *bool { return &c.Agent.ExperimentalSessionCollab },
-		func(c *Config) *bool { return &c.Desktop.ExperimentalSessionCollab }},
+	// tl1741：experimental_session_collab 出 fold 表（双侧键退役，deprecated 清单承接）。
 	{"experimental_auto_load_older", "experimental_auto_load_older",
 		func(c *Config) *bool { return &c.Agent.ExperimentalAutoLoadOlder },
 		func(c *Config) *bool { return &c.Desktop.ExperimentalAutoLoadOlder }},
@@ -48,9 +46,7 @@ var labMirrorCases = []struct {
 	{"experimental_model_capability_filter", "experimental_model_capability_filter",
 		func(c *Config) *bool { return &c.Agent.ExperimentalModelCapabilityFilter },
 		func(c *Config) *bool { return &c.Desktop.ExperimentalModelCapabilityFilter }},
-	{"experimental_runtime_reuse", "experimental_runtime_reuse",
-		func(c *Config) *bool { return &c.Agent.ExperimentalRuntimeReuse },
-		func(c *Config) *bool { return &c.Desktop.ExperimentalRuntimeReuse }},
+	// tl1741：experimental_runtime_reuse 出 fold 表（双侧键退役）。
 	{"collab_guidance_merge", "collab_guidance_merge",
 		func(c *Config) *bool { return &c.Agent.CollabGuidanceMerge },
 		func(c *Config) *bool { return &c.Desktop.CollabGuidanceMerge }},
@@ -117,49 +113,9 @@ experimental_perf_monitor = false
 
 // 验收③ (settings round-trip, off leg): a migrated-on switch turned off in
 // Settings must stay off across save + reload — no resurrection from a stale
-// mirror true. Runs through the real user-config path.
-func TestLabMirrorKeysOffSurvivesSaveRoundTrip(t *testing.T) {
-	home := isolateUserConfigHome(t)
-	path := UserConfigPath()
-	requireTestPathWithin(t, home, path)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(`[desktop]
-experimental_session_collab = true
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+// tl1741：TestLabMirrorKeysOffSurvivesSaveRoundTrip（sessionCollab fold
+// 用例）随撤开关删除——双侧键退役，fold 表已无此项。
 
-	cfg := LoadForEdit(path)
-	if !cfg.Agent.ExperimentalSessionCollab {
-		t.Fatal("precondition: the fold must turn the switch on")
-	}
-	if err := cfg.SetExperimentalSessionCollab(false); err != nil {
-		t.Fatal(err)
-	}
-	if err := cfg.SaveTo(path); err != nil {
-		t.Fatal(err)
-	}
-
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(raw)
-	if strings.Contains(text, "experimental_session_collab = true") {
-		t.Fatalf("save must not carry a stale on state:\n%s", text)
-	}
-
-	reloaded := LoadForEdit(path)
-	if reloaded.Agent.ExperimentalSessionCollab || reloaded.Desktop.ExperimentalSessionCollab {
-		t.Fatal("off must survive the reload (no resurrection from a stale mirror true)")
-	}
-}
-
-// 验收③ (settings round-trip, on leg): a folded-on switch must survive
-// save + reload with the [agent] key carrying the value and the [desktop]
-// mirror gone from the file.
 func TestLabMirrorKeysOnSurvivesSaveRoundTrip(t *testing.T) {
 	home := isolateUserConfigHome(t)
 	path := UserConfigPath()
@@ -233,7 +189,7 @@ func TestLabMirrorKeysRenderExactlyOnce(t *testing.T) {
 		"trace_as_state = false",
 		// (experimental_dream absent: tl1453 retired the feature; the tombstone
 		// field never renders — retired_experimental_dream_test pins that.)
-		"experimental_session_collab = false",
+		// (experimental_session_collab absent: tl1741 retired the key from the render face.)
 		"experimental_auto_load_older = false",
 		"experimental_perf_monitor = false",
 		"experimental_heap_high_profile = false",
@@ -242,7 +198,7 @@ func TestLabMirrorKeysRenderExactlyOnce(t *testing.T) {
 		"experimental_event_wait_recheck = false",
 		"experimental_orphan_handling = false",
 		// (experimental_model_capability_filter absent: task 551 never renders it.)
-		"experimental_runtime_reuse = false",
+		// (experimental_runtime_reuse absent: tl1741 retired the key from the render face.)
 		"collab_guidance_merge = false",
 	} {
 		if !strings.Contains(out, want) {
@@ -255,7 +211,6 @@ func TestLabMirrorKeysRenderExactlyOnce(t *testing.T) {
 // and clear the retired [desktop] mirror, so a save drops the legacy key.
 func TestLabMirrorSettersSingleWrite(t *testing.T) {
 	c := &Config{}
-	c.Desktop.ExperimentalSessionCollab = true // pre-473 leftover, not yet normalized
 	setters := []struct {
 		name    string
 		apply   func(bool) error
@@ -265,9 +220,7 @@ func TestLabMirrorSettersSingleWrite(t *testing.T) {
 		{"SetExperimentalTraceAsState", c.SetExperimentalTraceAsState,
 			func() bool { return c.Agent.TraceAsState },
 			func() bool { return c.Desktop.ExperimentalTraceAsState }},
-		{"SetExperimentalSessionCollab", c.SetExperimentalSessionCollab,
-			func() bool { return c.Agent.ExperimentalSessionCollab },
-			func() bool { return c.Desktop.ExperimentalSessionCollab }},
+		// tl1741：SetExperimentalSessionCollab 条目随撤开关退役。
 		{"SetExperimentalAutoLoadOlder", c.SetExperimentalAutoLoadOlder,
 			func() bool { return c.Agent.ExperimentalAutoLoadOlder },
 			func() bool { return c.Desktop.ExperimentalAutoLoadOlder }},
@@ -285,9 +238,7 @@ func TestLabMirrorSettersSingleWrite(t *testing.T) {
 		// Task 551 retired the B9 writable path (gate removed, desktop mirror
 		// read-only); the migrate fold still covers legacy [desktop] values at
 		// load, but the key no longer participates in the setter table below.
-		{"SetExperimentalRuntimeReuse", c.SetExperimentalRuntimeReuse,
-			func() bool { return c.Agent.ExperimentalRuntimeReuse },
-			func() bool { return c.Desktop.ExperimentalRuntimeReuse }},
+		// tl1741：SetExperimentalRuntimeReuse 条目随撤开关退役。
 		{"SetCollabGuidanceMerge", c.SetCollabGuidanceMerge,
 			func() bool { return c.Agent.CollabGuidanceMerge },
 			func() bool { return c.Desktop.CollabGuidanceMerge }},

@@ -35,6 +35,20 @@ var deprecatedConfigKeys = map[string]string{
 	// tl1487 七组③：路径规则（task-134）整卡移除——过时技术，生产沿用
 	// confine + allow_write + 写入审批；机制存档 docs/archive/。
 	"desktop.experimental_path_rules": "retired key (tl1487): the task-134 path-scope rules card was removed (never wired; confine + allow_write + approval unchanged)",
+	// tl1741 实验室瘦身（用户 20261121 三拍）：8 项 stable 卡撤开关——稳定档
+	// 不再提供开关，功能常开（非写死 true：false 分支与 config 读取项一并清）。
+	// fullAccess 保留（外部目录访问控制有真实需求，手写 false 仍生效）；
+	// session_storage 是 916 特例：键保留（宽容往返防替升级用户做降级决定），
+	// 只撤实验室 UI 行，不在此登记。
+	"desktop.autopilot":                          "retired key (tl1741): new desktop sessions always default to autopilot (requires autopilot_max_runtime); per-session autopilot state is unaffected",
+	"agent.experimental_session_collab":          "retired key (tl1741): multi-session collaboration is now always on — the switch was removed",
+	"desktop.experimental_session_collab":        "retired key (tl1741): [desktop] mirror of the collaboration switch; the [agent] key retired with it",
+	"desktop.experimental_collab_hub":            "retired key (tl1741): the collaboration-hub entry is now always shown — the switch was removed",
+	"desktop.experimental_workflow_panel":        "retired key (tl1741): the workflow panel is now always available — the switch was removed",
+	"desktop.experimental_workflow_templates":    "retired key (tl1741): workflow templates are now always available — the switch was removed",
+	"desktop.experimental_cdp_debug_port":        "retired key (tl1741): the WebView2 CDP debug endpoint (loopback-only random port) now starts unconditionally",
+	"agent.experimental_runtime_reuse":           "retired key (tl1741): the runtime assembly reuse pool is now always on — the switch was removed",
+	"desktop.experimental_runtime_reuse":         "retired key (tl1741): [desktop] mirror of the runtime-reuse switch; the [agent] key retired with it",
 }
 
 // unknownKeyWarned tracks which unrecognized keys this process has already

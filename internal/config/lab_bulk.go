@@ -95,7 +95,7 @@ type LabBulkSkip struct {
 // （前提：主开关布尔且无门控）。
 var labBulkSetters = map[string]func(*Config, bool) error{
 	// ── automation ──
-	"sessionCollab": func(c *Config, on bool) error { return c.SetExperimentalSessionCollab(on) },
+	// tl1741："sessionCollab" 随撤开关出表（键退役，功能常开，无批量面）。
 	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：subagentPolicy 自
 	// unstable 升 optional 后进入批量范围——布尔主开关，有现成 setter，随批量面。
 	"subagentPolicy": func(c *Config, on bool) error { return c.SetExperimentalSubagentPolicy(on) },
@@ -178,7 +178,7 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// 体，随重启生效（pinnedIndex 同款批量面口径）。
 	"memoryIndexSlim": func(c *Config, on bool) error { return c.SetMemoryIndexSlim(on) },
 	// ── infra / storage ──
-	"runtimeReuse":        func(c *Config, on bool) error { return c.SetExperimentalRuntimeReuse(on) },
+	// tl1741："runtimeReuse" 随撤开关出表（键退役，复用池常开，无批量面）。
 	"orphanHandling":      func(c *Config, on bool) error { return c.SetExperimentalOrphanHandling(on) },
 	"heartbeatBackground": func(c *Config, on bool) error { return c.SetExperimentalHeartbeatBackground(on) },
 	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：localServer 自
@@ -204,30 +204,21 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 //
 //   - fullAccess：单项开关带一次性危险确认（task 257「写入不再逐项批准」），
 //     批量开若绕过该门等于静默放开全量写权限——护栏级回归，必须单项手动；
-//   - autopilot：开有关联前置（desktop 默认审批模式必须 yolo，task 325），
-//     批量直写会绕过或直接失败，交单项走既有拒绝路径；
 //   - messageMerge：主开关是三态键 collab_inbox_merge（off|same_sender|all），
 //     「开」没有唯一布尔语义；
 //   - eventsRotation：主开关是三态键 events_auto_rotation（off|manual|…）；
-//   - sessionStorage（tl1338 升稳定后进入批量范围）：主开关是模式键
-//     session_storage（v3_only|dual_write_read_v3|…），且 fork 已锁 v3（916）
-//     ——「开」没有唯一布尔语义，批量更不得触碰存储档位面；
-//   - collabHub（tl1487 升稳定档后进入批量范围）：开有关联前置（sessionCollab
-//     必须先开，LAB_FEATURE_DEPS/856③ 前置门）——批量直写会绕过依赖门，
-//     交单项走既有拒绝路径（autopilot precondition 同款）；
 //   - tabModeTint（tl1487 二组① 自 unstable 升可选后进入批量范围）：主开关
 //     是模式键 tab_permission_indicator（badge|off|background），「开」没有
 //     唯一布尔语义，批量盲写会破坏语义（messageMerge/eventsRotation 同款）。
 //   - tl1487 四组：opencodeGoUsage 排除条目随键退役移除（Go 渲染表无条目，
 //     前端转 feOnly 展示行，无批量面）。
+//   - tl1741：autopilot / collabHub / sessionStorage 排除条目随撤开关移除
+//     （键退役或档位行撤出实验室 UI，无批量面）。
 var labBulkExcluded = map[string]string{
 	"fullAccess":     LabBulkSkipDangerGate,
-	"autopilot":      LabBulkSkipPrecondition,
-	"collabHub":      LabBulkSkipPrecondition,
 	"tabModeTint":    LabBulkSkipNotBool,
 	"messageMerge":   LabBulkSkipNotBool,
 	"eventsRotation": LabBulkSkipNotBool,
-	"sessionStorage": LabBulkSkipNotBool,
 }
 
 // ParseLabBulkScope 校验范围串（未知值报错，前端传参 typo 不静默落空集）。
