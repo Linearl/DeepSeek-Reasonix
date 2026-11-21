@@ -29,6 +29,15 @@ export class TurnEventProjector {
   private readonly epochByTab = new Map<string, string>();
   private readonly generationByTab = new Map<string, number>();
   private readonly projectingReplayByTab = new Set<string>();
+  // tl1739: a voided cursor (epoch flip) loses the truth "the surface already
+  // folded everything up to here". The next accepted live event then exposes a
+  // fake gap from 0 and the repair re-pours the WHOLE durable ledger — every
+  // painted row re-applied past any watermark that a rebuild reset in the same
+  // window (the 20261120 duplicate-render incident). Keeping the pre-void
+  // cursor as the repair's starting floor bounds the repair to genuinely
+  // unseen events on the continuing-numbering shape; the restarted-numbering
+  // shape is adjudicated inside replayGap from the response itself.
+  private readonly preVoidCursorByTab = new Map<string, number>();
   private strandedHandler?: (tabId: string) => void;
   private handler: WireHandler = () => {};
   private resetHandler?: ResetHandler;
@@ -38,6 +47,15 @@ export class TurnEventProjector {
   bindReset(handler: ResetHandler) { this.resetHandler = handler; }
   unbindReset(handler: ResetHandler) { if (this.resetHandler === handler) this.resetHandler = undefined; }
   onPromptsStranded(handler?: (tabId: string) => void) { this.strandedHandler = handler; }
+  // tl1739: whether a ledger replay is mid-flight on this tab. The wire layer
+  // uses it to dispatch replayed text deltas ONE SEGMENT EACH instead of into
+  // the shared rAF batch — a batch would merge a re-projected folded delta
+  // with the next new delta under the max seq, so the watermark could no
+  // longer drop the folded prefix and it re-streamed onto the painted bubble
+  // (the 20261120 duplicate-render incident).
+  isProjectingReplay(tabId: string): boolean {
+    return this.projectingReplayByTab.has(tabId);
+  }
 
   // Runs at every repair terminal that can leave prompt-kind events sitting in
   // the gap queue (failed/abandoned repair, page budget exhausted, epoch
@@ -55,6 +73,7 @@ export class TurnEventProjector {
     this.sequenceByTab.delete(tabId);
     this.gapQueueByTab.delete(tabId);
     this.epochByTab.delete(tabId);
+    this.preVoidCursorByTab.delete(tabId);
     this.projectingReplayByTab.delete(tabId);
     this.pendingRepairByTab.delete(tabId);
     this.repairByTab.delete(tabId);
@@ -76,6 +95,9 @@ export class TurnEventProjector {
       this.epochByTab.set(tabId, runtimeEpoch);
       this.sequenceByTab.delete(tabId);
       this.gapQueueByTab.delete(tabId);
+      // tl1739: a fresh authoritative seed from the snapshot supersedes the
+      // pre-void hint — the snapshot's durable floor is the better truth.
+      this.preVoidCursorByTab.delete(tabId);
       this.pendingRepairByTab.delete(tabId);
       this.repairByTab.delete(tabId);
     }
@@ -90,6 +112,7 @@ export class TurnEventProjector {
   acceptLive(tabId: string, event: WireEvent, runtimeEpoch?: string): boolean {
     if (this.projectingReplayByTab.has(tabId)) return true;
     if (typeof event.seq !== "number" || event.seq <= 0) return true;
+    const voided = !this.sequenceByTab.has(tabId);
     const last = this.sequenceByTab.get(tabId) ?? 0;
     if (event.seq <= last) return false;
     if (this.repairByTab.has(tabId) || event.seq > last + 1) {
@@ -97,7 +120,10 @@ export class TurnEventProjector {
       queued.push(event);
       this.gapQueueByTab.set(tabId, queued);
       if (!this.repairByTab.has(tabId)) {
-        this.requestReplay(tabId, last, event.runtimeEpoch ?? runtimeEpoch);
+        // tl1739: a voided cursor must not blind-start the repair at 0 — the
+        // pre-void cursor is the floor of what the surface already folded.
+        const repairFrom = voided ? (this.preVoidCursorByTab.get(tabId) ?? last) : last;
+        this.requestReplay(tabId, repairFrom, event.runtimeEpoch ?? runtimeEpoch);
       }
       return false;
     }
@@ -122,6 +148,12 @@ export class TurnEventProjector {
   // old epoch's cursor, queues, and in-flight repair).
   reanchorEpoch(tabId: string, runtimeEpoch: string | undefined) {
     if (!runtimeEpoch || runtimeEpoch === this.epochByTab.get(tabId)) return;
+    // tl1739: preserve the folded truth across the void — the pre-void cursor
+    // becomes the next repair's floor (see preVoidCursorByTab). Cleared on
+    // release and on the next authoritative flip (observeRuntime), kept here:
+    // this flip IS the one that created the void it describes.
+    const preVoid = this.sequenceByTab.get(tabId);
+    if (preVoid !== undefined) this.preVoidCursorByTab.set(tabId, preVoid);
     this.generationByTab.set(tabId, (this.generationByTab.get(tabId) ?? 0) + 1);
     this.epochByTab.set(tabId, runtimeEpoch);
     this.sequenceByTab.delete(tabId);
@@ -180,6 +212,28 @@ export class TurnEventProjector {
         return;
       }
 
+      const envelopes = asArray(replay.events).slice().sort((a, b) => a.seq - b.seq);
+      // tl1739: a repair that starts from a pre-void floor (or any blind high
+      // guess) can land on a ledger whose numbering RESTARTED beneath it (new
+      // session head, crash-analysis rebind): every envelope sits at or below
+      // the floor and the page comes back empty. The empty page alone would
+      // end the repair and drain nothing; the queued small-seq events would
+      // then be dropped as duplicates of a numbering the surface never folded
+      // (the 657 live-tail loss shape). Adjudicate on page 0: the ledger's
+      // latest sitting strictly behind the requested position IS the restart
+      // signal — drop the floor to the checkpoint boundary and re-fetch.
+      if (page === 0 && !replay.resetRequired && envelopes.length === 0) {
+        const restartFloor = Math.max(0, replay.floorSeq - 1);
+        const behind = replay.latestSeq > 0
+          ? replay.latestSeq < afterSeq
+          : restartFloor < afterSeq;
+        if (behind && restartFloor < cursor) {
+          cursor = restartFloor;
+          this.sequenceByTab.set(tabId, cursor);
+          continue;
+        }
+      }
+
       if (replay.resetRequired) {
         if (!this.resetHandler || !(await this.resetHandler(tabId, replay))) {
           throw new Error("turn event checkpoint reset could not hydrate the transcript");
@@ -189,7 +243,6 @@ export class TurnEventProjector {
         this.sequenceByTab.set(tabId, cursor);
       }
 
-      const envelopes = asArray(replay.events).slice().sort((a, b) => a.seq - b.seq);
       for (const envelope of envelopes) {
         if (envelope.seq <= cursor) continue;
         if (envelope.seq !== cursor + 1) throw new Error(`turn event replay gap after ${cursor}`);

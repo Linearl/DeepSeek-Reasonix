@@ -70,14 +70,22 @@ s4 = reducer(s4, status({ running: false, runtimeEpoch: "ed", turnEventSeq: 1, s
 equal(s4.appliedEventSeq, 0, "idle 分支采纳 runtimeStatus，epoch 变更同样归零");
 equal(s4.running, false, "idle 分支语义不回退（running 收敛为 false）");
 
-// ---- epoch 翻回（A→B→A）同样归零：每次重建 seq 从 1 重启 ----
+// ---- epoch 翻回（A→B→A）:重启看账本倒退，不看 epoch 字面（tl1739 收紧）----
+// 原语义「epoch 翻回即归零（不假设 epoch 单调）」在等值快照（turnEventSeq 不低
+// 于上一发存档）上误伤连续账本：同一 session 的重建 seq 连排，等值是空闲轮两
+// 次快照的常态，归零=权威重放的已上屏前缀整段重新放行（20261120 重复渲染事故）。
+// 归零条件收紧为「快照 turnEventSeq 严格低于上一发存档 runtimeStatusSeq」——
+// 真重启（新会话头/换会话）seq 必然倒退，上方 epoch-a→epoch-b 各例（1 < 40 等）
+// 即其钉；等值/前进按连续账本保持水位线。
 let s5 = reducer(initialState, status({ running: false, runtimeEpoch: "e1", turnEventSeq: 20, snapshotAt: nextSnapshotAt() }));
 s5 = reducer(s5, ev(20, { kind: "turn_started", turnId: "t11", status: "in_progress" }));
 s5 = reducer(s5, status({ running: false, runtimeEpoch: "e2", turnEventSeq: 1, snapshotAt: nextSnapshotAt() }));
 s5 = reducer(s5, ev(1, { kind: "turn_started", turnId: "t12", status: "in_progress" }));
 equal(s5.appliedEventSeq, 1, "e2 下水位线推进到 1");
 s5 = reducer(s5, status({ running: false, runtimeEpoch: "e1", turnEventSeq: 1, snapshotAt: nextSnapshotAt() }));
-equal(s5.appliedEventSeq, 0, "epoch 翻回 e1 同样归零（不假设 epoch 单调）");
+equal(s5.appliedEventSeq, 1, "epoch 翻回但 seq 未倒退（等值）→ 不归零（连续账本：水位线保持重放去重闸）");
+const backwardOnFlipBack = reducer(s5, status({ running: false, runtimeEpoch: "e0", turnEventSeq: 0, snapshotAt: nextSnapshotAt() }));
+equal(backwardOnFlipBack.appliedEventSeq, 0, "seq 倒退（1→0，空账本新头）仍归零——重启信号不看 epoch 字面，看账本倒退");
 
 // ---- 645b LRU 驱逐选择：会被 retain 守卫保留的 tab 不进驱逐名单 ----
 const ids = ["a", "b", "c", "d", "e"];
