@@ -274,6 +274,70 @@ func TestAgentTrashListAgreesWithTrashPageListing(t *testing.T) {
 	}
 }
 
+// tl1710r2：同会话不重复列出。包104 装机实测——删除会话后 trash_list 把同一
+// 条目列两次，两条 sessionPath 仅大小写不同（`d--1.workspace-ai-novel` vs
+// `D--1.workspace-ai-novel`）。机制：磁盘上遗留旧版本创建的大写 slug 目录，
+// 当前二进制经 WorkspaceSlug 折叠派生出小写拼写；knownSessionDirs 的 seen 表
+// 按字节比较，两种拼写各占一位，每个拼写的 .trash 扫描都命中同一个物理桶，
+// 于是同一会话被装配两条记录。
+//
+// 夹具复现该形态：物理目录按「首字母翻转的 slug」落盘，项目注册走折叠拼写，
+// 两种拼写指向同一物理 .trash。断言 trash_list 恰好一条（扫描侧按 ToLower
+// 归一去重），Trash 页列表同拍一致。
+func TestAgentTrashListDeduplicatesCaseVariantDirSpellings(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	projectRoot := robustTempDir(t)
+	if err := saveProjectsFile(desktopProjectFile{Projects: []desktopProject{{Root: projectRoot}}}); err != nil {
+		t.Fatalf("seed projects file: %v", err)
+	}
+	foldedDir := desktopSessionDir(projectRoot)
+	// 物理目录以首字母翻转的 slug 落盘——复现字段现场（折叠派生 d--… 与磁盘
+	// 遗留 D--… 并存）。构造失败必须响亮报错，不静默放行。
+	slugParent := filepath.Dir(foldedDir)
+	slug := filepath.Base(slugParent)
+	onDiskDir := filepath.Join(filepath.Dir(slugParent), strings.ToUpper(slug[:1])+slug[1:], "sessions")
+	if onDiskDir == foldedDir {
+		t.Fatalf("fixture degenerate: slug %q spelling did not flip (needs a case-foldable lead rune)", slug)
+	}
+	if err := os.MkdirAll(onDiskDir, 0o755); err != nil {
+		t.Fatalf("mkdir on-disk sessions dir %s: %v", onDiskDir, err)
+	}
+	// 前置断言：两种拼写解析到同一物理目录（大小写不敏感文件系统）。折叠拼写
+	// 从未按该拼写创建，stat 不到即构造失败。
+	if _, err := os.Stat(foldedDir); err != nil {
+		t.Fatalf("folded spelling %q must resolve to the on-disk dir %q on this filesystem: %v", foldedDir, onDiskDir, err)
+	}
+	live := tl1710StageLiveSession(t, onDiskDir, "20261120-091000.000000000-tl1710r2-case.jsonl", true, false)
+	if err := deleteSessionFile(onDiskDir, live); err != nil {
+		t.Fatalf("trash: %v", err)
+	}
+
+	app := NewApp()
+	t.Cleanup(func() { app.stopSessionCatalog(time.Second) })
+	entries, err := app.agentTrashList()
+	if err != nil {
+		t.Fatalf("agentTrashList: %v", err)
+	}
+	// 同会话不重复列出：两种目录拼写各扫一遍，归一后只许一条。
+	if len(entries) != 1 {
+		t.Fatalf("trash_list listed the same session %d times (case-variant dir spellings scanned twice): %+v", len(entries), entries)
+	}
+	if !entries[0].HasTurn {
+		t.Fatalf("surviving entry lost hasTurn: %+v", entries[0])
+	}
+	if entries[0].DeletedAt <= 0 {
+		t.Fatalf("surviving entry lost deletedAt: %+v", entries[0])
+	}
+	if base := filepath.Base(entries[0].SessionPath); base != filepath.Base(live) {
+		t.Fatalf("surviving entry = %q, want the staged bucket %q", base, filepath.Base(live))
+	}
+	// Trash 页与 agent 共用本链，同一钉：页面列表同样恰好一条。
+	page := app.ListTrashedSessions()
+	if len(page) != 1 {
+		t.Fatalf("trash page listed the same session %d times: %+v", len(page), page)
+	}
+}
+
 // The trash-meta the round trip relies on carries the key + timestamp the
 // listing reads; pin its on-disk shape so a silent format change breaks here
 // instead of in the field.
