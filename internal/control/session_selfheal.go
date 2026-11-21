@@ -112,6 +112,24 @@ func (c *Controller) SelfHealOpenSession(windowTokens int) SelfHealOpenOutcome {
 	// 判据 projection_overflow / compact_fail_streak：投影饮食。先备份整
 	// 目录（与文件级自愈同一备份形态），再走 CAS 重写。
 	if needsDiet(report.Issues) {
+		// tl1738: the diet rewrite lands via RewriteAndSaveCompact →
+		// Session.Rewrite — a canonical write OUTSIDE the tl1669
+		// compaction-await funnel. Landing it while a compaction pass is in
+		// flight moves the transcript under the pass's commit CAS
+		// (compact_commit.go: transcriptVersion + len + covered-prefix hash)
+		// and burns the whole summary: the 20261120 15:52-15:55 scene —
+		// pressure pass started 15:52:31, the background resume diet landed
+		// 15:52:35, "conversation changed while compression was running"
+		// 15:55:09, user_dropped=6, retry blocked for the generation. Defer
+		// instead of waiting: the pass's own fold shrinks the projection, so
+		// the next resume re-judges the criterion on the post-fold view and
+		// the diet usually becomes unnecessary.
+		if c.executor.CompactionInFlight() {
+			out.Detail = "diet_deferred_compaction_in_flight"
+			slog.Info("selfheal: diet deferred — a compaction pass is in flight; the next resume re-judges on the folded view",
+				"path", path)
+			return out
+		}
 		s = c.executor.Session()
 		if s != nil {
 			backupDir, err := agent.BackupSessionFiles(path)
