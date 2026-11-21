@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -247,6 +248,22 @@ func (a *App) ListTrashedSessions() []SessionMeta {
 		bucket trashedBucketRecord
 	}
 	var work []trashBucketWork
+	// tl1710r2: 同一物理桶可能以两个仅大小写不同的目录拼写到达这里——磁盘上
+	// 遗留旧版本创建的大写 slug 目录（allProjectsSessionDirs 读磁盘真实大小写），
+	// 当前二进制又经 WorkspaceSlug 折叠派生小写拼写（projects 文件链），NTFS
+	// 视两者为同一目录。knownSessionDirs 的 seen 表按字节比较挡不住这种形态，
+	// 两个拼写各扫一遍 .trash，同一会话就被装配两条记录（包104 装机实测：
+	// trash_list 列出 `d--…` 与 `D--…` 双条目）。这里按桶转录路径 ToLower 归一
+	// 去重，首个拼写胜出——两条候选记录的标题/时间戳都读自同一物理文件，先到
+	// 先得无损。归一仅 Windows 生效：大小写敏感文件系统上路径不同字母即不同
+	// 文件，ToLower 会错并真会话（与 WorkspaceSlug 的折叠口径一致）。
+	seenBucketPaths := map[string]bool{}
+	foldBucketPath := func(p string) string {
+		if runtime.GOOS == "windows" {
+			return strings.ToLower(p)
+		}
+		return p
+	}
 	for _, dir := range a.knownSessionDirs() {
 		buckets, err := listTrashedSessionBuckets(dir)
 		if err != nil {
@@ -254,6 +271,11 @@ func (a *App) ListTrashedSessions() []SessionMeta {
 		}
 		titles := loadSessionTitles(dir)
 		for _, bucket := range buckets {
+			key := foldBucketPath(bucket.Path)
+			if seenBucketPaths[key] {
+				continue
+			}
+			seenBucketPaths[key] = true
 			work = append(work, trashBucketWork{dir: dir, titles: titles, bucket: bucket})
 		}
 	}
