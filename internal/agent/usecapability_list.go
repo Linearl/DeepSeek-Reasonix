@@ -44,6 +44,11 @@ type capInfoForList struct {
 	// Group is the task-955 pure-metadata group tag (absent when the
 	// group layer is off or the entry is untagged).
 	Group string `json:"group,omitempty"`
+	// Offer is the tl1728 tri-lingual offer-condition note (absent for
+	// unconditionally listed entries): it states when the tool actually joins
+	// the live provider schema, because a listed conditional-offer tool is
+	// not necessarily callable this turn (the execute gate stays authoritative).
+	Offer string `json:"offer,omitempty"`
 }
 
 // listServersPayload is the decoded compact server summary block.
@@ -91,9 +96,26 @@ func (t *UseCapabilityTool) listCapabilities(p useCapabilityArgs) (string, error
 			// on one core; the tool is the model's own), and a bare list scan that
 			// hides it reads as "this session cannot fold". The schema itself is
 			// still on the provider surface — the row just marks it discoverable.
-			if e.Kind == capability.KindTool && t.registry != nil && t.registry.ProviderVisible(e.ToolName) &&
-				e.ToolName != tool.CompressToolName {
-				continue
+			// tl1728 conditional-offer exception: a tool whose schema presence is
+			// decided per turn (tool.ContextualTool) or behind an experiment
+			// switch (providerSurfaceExtras) can be absent from the live provider
+			// surface even though the static allowlist names it — filtering it
+			// here too reads as "this session cannot X" on a bare list scan
+			// (bash_output/wait/kill_shell/complete_step/create_goal/update_goal
+			// were all invisible to a model scanning the list). Conditional-offer
+			// tools stay listed and carry the tri-lingual offer-condition note
+			// (also on rows already listed outside the allowlist, e.g.
+			// submit_plan); listing is discoverability only — the execute gate
+			// (contextualToolGateOutcome) stays authoritative for callability.
+			offerNote := ""
+			if e.Kind == capability.KindTool {
+				note, conditional := t.offerCondition(e.ToolName)
+				if conditional {
+					offerNote = note
+				} else if t.registry != nil && t.registry.ProviderVisible(e.ToolName) &&
+					e.ToolName != tool.CompressToolName {
+					continue
+				}
 			}
 			caps = append(caps, capInfoForList{
 				ID:          e.ID,
@@ -103,6 +125,7 @@ func (t *UseCapabilityTool) listCapabilities(p useCapabilityArgs) (string, error
 				ReadOnly:    e.ReadOnly,
 				Description: e.Description,
 				Group:       e.Group,
+				Offer:       offerNote,
 			})
 		}
 	}
