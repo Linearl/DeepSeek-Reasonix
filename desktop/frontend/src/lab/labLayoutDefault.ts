@@ -220,6 +220,12 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // tl1487 一组①：协作中心入口 unstable→稳定（用户 20261107 八组清单；
         // 前置依赖 sessionCollab 语义不变，LAB_FEATURE_DEPS 仍单条）。
         { id: "collabHub", labelKey: "settings.collabHub", tier: "stable", onKeys: ["experimentalCollabHub"] },
+        // tl1733：记忆注入瘦身（提效组新卡，可选档，默认关）。默认关=默认
+        // 瘦身注入管线（短行+零召回裁条带数据成熟期门槛+20K 字符预算，裁剪
+        // 不落 IndexFrom 本体）；开启=应急旁路——背景索引段整体停注仅留
+        // pinned，按需层（memory search/read）不受影响。boot 快照消费
+        // （pinnedIndex 先例），重启生效。
+        { id: "memoryIndexSlim", labelKey: "settings.memoryIndexSlim", tier: "optional", onKeys: ["experimentalMemoryIndexSlim"] },
       ],
     },
     {

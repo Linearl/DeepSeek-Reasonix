@@ -173,6 +173,10 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// 预算/召回不变式随态切换自洽，批量面无护栏冲突（重启生效类开关同
 	// capabilityGroups 口径）。
 	"pinnedIndex": func(c *Config, on bool) error { return c.SetExperimentalPinnedIndex(on) },
+	// tl1733：记忆注入瘦身（提效组，可选档，默认关）。批量开=应急旁路生效
+	// （背景索引停注仅留 pinned）——按需层不受影响，裁剪面不落 IndexFrom 本
+	// 体，随重启生效（pinnedIndex 同款批量面口径）。
+	"memoryIndexSlim": func(c *Config, on bool) error { return c.SetMemoryIndexSlim(on) },
 	// ── infra / storage ──
 	"runtimeReuse":        func(c *Config, on bool) error { return c.SetExperimentalRuntimeReuse(on) },
 	"orphanHandling":      func(c *Config, on bool) error { return c.SetExperimentalOrphanHandling(on) },

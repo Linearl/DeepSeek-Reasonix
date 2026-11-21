@@ -994,6 +994,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// first Load — capabilityGroups boot-snapshot precedent, restart to apply.
 	// Default off keeps the legacy full-body pinned injection byte-for-byte.
 	memory.SetPinnedIndexMode(cfg.Agent.ExperimentalPinnedIndex)
+	// tl1733: resolve the injection-slimming lab switch (agent
+	// experimental_memory_index_slim) the same way — ON is the emergency
+	// bypass (background index stops injecting, pinned only), OFF keeps the
+	// default slimmed injection pipeline. Restart to apply.
+	memory.SetMemoryIndexSlimMode(cfg.Agent.ExperimentalMemoryIndexSlim)
 	if !memReused {
 		mem = memory.Load(memOptions)
 	}
