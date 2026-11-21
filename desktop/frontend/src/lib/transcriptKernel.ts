@@ -127,6 +127,13 @@ const TRANSACTION_TTL_MS = 1_000;
 // "anchor semantics set in the render layer" failure mode this ticket removes.
 export const TRANSCRIPT_BOTTOM_THRESHOLD_PX = 4;
 const BOTTOM_THRESHOLD_PX = TRANSCRIPT_BOTTOM_THRESHOLD_PX;
+// tl 1740: how long a real upward wheel input stays usable as reader-intent
+// evidence inside a width-reflow window. The wheel's smooth momentum keeps
+// producing scroll events for roughly the same span the native gesture lease
+// covers (the hook's NATIVE_GESTURE_IDLE_MS), so the evidence window rides the
+// same lifetime — one span, one semantic ("the wheel input is still the live
+// stream").
+const WHEEL_INTENT_WINDOW_MS = 320;
 // Task 753 (root cause 2): an anchored restore that would move the viewport
 // further than this (or one viewport height, whichever is larger) is a yank,
 // not a correction - the reader's anchored block drifted (large collapse or
@@ -198,6 +205,9 @@ export class TranscriptKernel {
   private anomalyCount = 0;
   private safeModeValue = false;
   private writeTop: number | null = null;
+  // tl 1740: the clock timestamp of the last real upward wheel input (see
+  // noteWheelScrollUp). Consumed by observeNativeScroll's reflow-scoped branch.
+  private wheelScrollUpAt: number | null = null;
   private nativeGestureTimer: ReturnType<typeof setTimeout> | null = null;
   // Task 753: the block this kernel last aligned the viewport to, and the
   // top it had at that moment. Same key + a large top delta at correction
@@ -317,6 +327,18 @@ export class TranscriptKernel {
     return { kind: "block", blockKey: first.key, offsetPx: snapshot.scrollTop - first.top };
   }
 
+  /** tl 1740: record a real upward wheel input (deltaY < 0) as reader-intent
+   * evidence. Called from the hook's native wheel listener. Inside a
+   * width-reflow window the scroll observation's scrollTop is polluted by the
+   * browser's scroll anchoring (tl 1699 hole 2), so the observation cannot
+   * carry intent on its own — but the wheel event itself can: a deltaY < 0 is
+   * the reader's own "leave the bottom" signal, produced by the input device,
+   * never by the rewrap. The evidence never derives from the polluted
+   * scrollTop. */
+  noteWheelScrollUp(): void {
+    this.wheelScrollUpAt = this.clock.now();
+  }
+
   observeNativeScroll(snapshot: TranscriptViewportSnapshot, options?: { reflowed?: boolean }): boolean {
     const writerTop = this.writeTop;
     if (writerTop !== null && Math.abs(snapshot.scrollTop - writerTop) <= BOTTOM_THRESHOLD_PX) {
@@ -338,9 +360,31 @@ export class TranscriptKernel {
     // drifts off the bottom and stops following the output.
     // A reflow-scoped observation therefore keeps the PRE-reflow intent; the
     // width compensation re-applies it (tail → unconditional bottom write).
+    // tl 1740: that argument covers only scroll events the reflow ITSELF
+    // produced. A real upward wheel input inside the reflow window is the
+    // reader's own intent — with every in-reflow observation suppressed, the
+    // intent stayed "tail" while the width compensation re-pinned the bottom
+    // every frame, so the user could not leave the bottom for the whole
+    // transition (the forced-restart report). An unexpired upward-wheel
+    // timestamp (see noteWheelScrollUp) passes the observation through to the
+    // ordinary derivation below.
     if (options?.reflowed === true) {
       this.lastScrollTop = snapshot.scrollTop;
-      return false;
+      // tl 1740: record WHY the reflow-scoped branch took (or waived) the
+      // suppression, so a field report can tell a real reader gesture from an
+      // anchoring shift without a reproduction session.
+      const wheelIntentFresh = this.wheelScrollUpAt !== null
+        && this.clock.now() - this.wheelScrollUpAt <= WHEEL_INTENT_WINDOW_MS;
+      const reflowSuppressed = !wheelIntentFresh;
+      this.emit({
+        session: this.session,
+        generation: this.generationValue,
+        transaction: this.active?.transaction.id ?? 0,
+        intent: this.intentValue,
+        geometryRevision: this.geometryVersion,
+        outcome: reflowSuppressed ? "reflow-suppressed" : "reflow-wheel-intent",
+      });
+      if (reflowSuppressed) return false;
     }
     // tl 1184: a reader who stays put while output streams keeps the SAME
     // scrollTop while scrollHeight grows - the naive atBottom above then flips
