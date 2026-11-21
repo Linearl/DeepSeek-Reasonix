@@ -83,9 +83,19 @@ func (m *memoryManager) claimAutoRemember(args json.RawMessage) bool {
 	return true
 }
 
-func (m *memoryManager) recall(query string) memory.RecallResult {
+func (m *memoryManager) recall(sessionID, query string) memory.RecallResult {
 	result := m.current().AutoRecall(query, memory.RecallOptions{})
 	m.recordRecall(result)
+	// tl1733 打点:hits 非空才是真注入,记 (memory, session) 召回计数,为
+	// 注入瘦身(零召回裁条)与 Block2 分层公式供数。落盘在 usage-counts.json
+	// (压缩刷新链之外)。
+	if len(result.Hits) > 0 {
+		ids := make([]string, 0, len(result.Hits))
+		for _, hit := range result.Hits {
+			ids = append(ids, hit.Memory.ID)
+		}
+		memory.RecordUsageRecall(m.current().Store, sessionID, ids)
+	}
 	return result
 }
 

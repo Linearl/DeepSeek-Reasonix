@@ -232,7 +232,7 @@ func (c *Controller) composeWithGoal(
 		// stable system/tool prefix and keeps synthetic recovery turns free of
 		// accidental recall. A just-written fact already arrives in memory-update.
 		if len(notes) == 0 && !c.ablation.Off(ablation.Retrieval) {
-			result := c.memory.recall(source)
+			result := c.memory.recall(c.parentSessionID(), source)
 			event.RecordMemoryRecall(c.sink, memoryRecallAudit(result))
 			if block := result.Block(); block != "" {
 				text = strings.TrimRight(text, "\n") + "\n\n" + block

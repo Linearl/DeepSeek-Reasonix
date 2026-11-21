@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"reasonix/internal/instruction"
 )
@@ -23,6 +24,14 @@ type Set struct {
 	CWD                    string   // project working dir used for discovery
 	UserDir                string   // user config root (may be "")
 	InstructionDiagnostics []instruction.Diagnostic
+
+	// all is the Load-time listing the injected index renders from (tl1733):
+	// the slimming pipeline needs per-fact metadata (age, pinned, usage), not
+	// the rendered Index string. IndexFrom re-sorts its input slice in place,
+	// so Load hands the pipeline its own copy. A nil all (Sets constructed
+	// directly, e.g. in tests) makes BackgroundDataBlock fall back to injecting
+	// the pre-rendered Index verbatim.
+	all []Memory
 
 	// recall is the snapshot's lazily built retrieval index; recallBuilt
 	// distinguishes "not built yet" from "built, memory store is empty".
@@ -79,6 +88,9 @@ func Load(opts Options) *Set {
 	// and one ListAll for the index, and the memory_load segment was the boot
 	// prompt stage's largest suspect (859ms, tl1229 baseline).
 	all := store.ListAll()
+	// tl1733: IndexFrom re-sorts its input in place, so the injection pipeline
+	// gets its own copy of the pool to render from.
+	pool := append([]Memory(nil), all...)
 	return &Set{
 		Docs:                   resolved.Documents,
 		PinnedGuidance:         store.pinnedGuidanceForProjectFrom(all),
@@ -87,6 +99,7 @@ func Load(opts Options) *Set {
 		CWD:                    cwd,
 		UserDir:                opts.UserDir,
 		InstructionDiagnostics: resolved.Diagnostics,
+		all:                    pool,
 	}
 }
 
@@ -213,6 +226,12 @@ func (s *Set) PolicyBlock() string {
 // BackgroundDataBlock renders durable preferences and the fact index without
 // their stable policy or standing instruction files. It belongs in the latest
 // host-generated session-context snapshot.
+// tl1733: the injected index goes through the slimming pipeline
+// (RenderInjectionIndex); IndexFrom's full-pool string stays the untouched
+// source of truth, and the on-demand tool layer never reads this output. When
+// the lab switch (experimental_memory_index_slim) is on, the background index
+// section stops injecting entirely — pinned guidance keeps its own channel,
+// memory search/read stays complete (the emergency bypass).
 func (s *Set) BackgroundDataBlock() string {
 	if s == nil || (len(s.PinnedGuidance) == 0 && strings.TrimSpace(s.Index) == "") {
 		return ""
@@ -233,11 +252,26 @@ func (s *Set) BackgroundDataBlock() string {
 			}
 		}
 	}
-	if idx := strings.TrimSpace(s.Index); idx != "" {
-		b.WriteString("\n### Background memory index\n\n")
-		b.WriteString(idx)
+	// tl1733: the slim switch is the emergency bypass — index section gone,
+	// pinned tier unaffected, on-demand layer complete.
+	if !memoryIndexSlimMode() {
+		if idx := strings.TrimSpace(s.injectionIndexBlock()); idx != "" {
+			b.WriteString("\n### Background memory index\n\n")
+			b.WriteString(idx)
+		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// injectionIndexBlock renders the injected background index. Sets carrying the
+// Load-time pool (all != nil) go through the slimming pipeline; legacy Sets
+// built directly (tests, callers that never went through Load) inject the
+// pre-rendered Index verbatim so their behavior stays byte-identical.
+func (s *Set) injectionIndexBlock() string {
+	if s.all == nil {
+		return s.Index
+	}
+	return s.Store.RenderInjectionIndex(s.all, time.Now())
 }
 
 // StandingBlock renders only high-authority instruction documents.

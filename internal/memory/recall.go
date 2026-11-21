@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"reasonix/internal/jobs"
 	"reasonix/internal/retrieval"
 	"reasonix/internal/tool"
 )
@@ -94,6 +95,10 @@ func (t recallTool) Execute(ctx context.Context, args json.RawMessage) (string, 
 		if !ok {
 			return "", fmt.Errorf("memory %q not found", slug(in.Name))
 		}
+		// tl1733 打点:read 是"召回后实际查看"的按需层事件,为 Block2 的
+		// Hit 分量供数。session 经 ctx 携带(jobs.WithSession);无会话作用域
+		// 时退化为仅记忆级计数。
+		RecordUsageView(t.store, jobs.SessionFromContext(ctx), m.ID)
 		return formatMemory(t.store, m), nil
 	case "list":
 		return formatMemoryList(t.store, filterMemories(t.store.ListAll(), memType, memScope), limit), nil
