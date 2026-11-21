@@ -708,7 +708,15 @@ export function useTranscriptKernel({
   const resolveWidthTarget = useCallback((): { anchor: LogicalAnchor; freshFirstLine: boolean } => {
     const facts = preReflowRef.current;
     const logical = kernel.anchor;
-    const wasAtBottom = facts ? facts.atBottom : kernel.atBottom;
+    // tl 1740: a reader intent established INSIDE the reflow window (a real
+    // upward wheel passed through observeNativeScroll) supersedes the frozen
+    // pre-rewrap tail verdict — without this check the width compensation
+    // below would re-pin the bottom every frame and drag the reader who just
+    // scrolled up straight back down (the tl 1740 forced-restart report).
+    // Every other combination keeps the tl 1699 semantics byte-for-byte:
+    // a tail intent still trusts the frozen facts (hole 2), and a reader
+    // intent with fresh facts reads the same verdict from either source.
+    const wasAtBottom = kernel.intent === "reader" ? false : (facts ? facts.atBottom : kernel.atBottom);
     if (wasAtBottom) return { anchor: { kind: "tail" }, freshFirstLine: false };
     const line = facts?.line;
     if (line && line.range.startContainer.isConnected) {
@@ -952,11 +960,18 @@ export function useTranscriptKernel({
         writer.interruptViewport();
         renewGestureLease();
       }
-      if (event.deltaY < 0) requestOlderAtTop();
+      if (event.deltaY < 0) {
+        // tl 1740: a real upward wheel input is reader-intent evidence for the
+        // width-reflow window (see kernel.noteWheelScrollUp) — without it the
+        // reflow-scoped observation suppression swallowed the reader's escape
+        // from the bottom for the whole sidebar transition.
+        kernel.noteWheelScrollUp();
+        requestOlderAtTop();
+      }
     };
     element.addEventListener("wheel", onWheel, { passive: true });
     return () => element.removeEventListener("wheel", onWheel);
-  }, [renewGestureLease, requestOlderAtTop, scrollElement, writer]);
+  }, [kernel, renewGestureLease, requestOlderAtTop, scrollElement, writer]);
 
   const onPointerDownCapture = useCallback((event: { clientX: number; pointerType?: string }) => {
     // Touch has its own start/end stream. Its compatibility pointerup must
