@@ -5847,8 +5847,10 @@ export const zh: Record<DictKey, string> = {
   // tl1693：侧栏脚注更新灯与版本页发布列表。
   "updater.sidebarUpdateAvailable": "有新版本 —— 打开更新设置",
   "updater.releasesTitle": "发布列表",
-  "updater.releasesHint": "来自 fork 的 GitHub 发布；已标记当前运行版本。",
-  "updater.releasesCurrent": "当前版本",
+  // tl1737：列表收紧为只显最新一条；完整列表收进「在网页查看」外链。
+  "updater.releasesHint": "来自 fork 的 GitHub 发布；仅显示最新一条，完整列表见「在网页查看」。",
+  "updater.releasesViewOnline": "在网页查看",
+  "updater.releasesUpToDate": "已是最新，当前 {version}",
   "updater.releasesInstallers": "安装包",
   "updater.releaseNotes": "更新说明",
   "updater.updateAndRestart": "更新并重启",

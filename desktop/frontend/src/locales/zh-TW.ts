@@ -4306,8 +4306,10 @@ export const zhTW: Record<DictKey, string> = {
   // tl1693：側欄腳註更新燈與版本頁發布列表。
   "updater.sidebarUpdateAvailable": "有新版本 —— 開啟更新設定",
   "updater.releasesTitle": "發布列表",
-  "updater.releasesHint": "來自 fork 的 GitHub 發布；已標記目前運行版本。",
-  "updater.releasesCurrent": "目前版本",
+  // tl1737：列表收緊為只顯最新一條；完整列表收進「在網頁查看」外鏈。
+  "updater.releasesHint": "來自 fork 的 GitHub 發布；僅顯示最新一條，完整列表見「在網頁查看」。",
+  "updater.releasesViewOnline": "在網頁查看",
+  "updater.releasesUpToDate": "已是最新，目前 {version}",
   "updater.releasesInstallers": "安裝包",
   "updater.releaseNotes": "更新說明",
   "updater.updateAndRestart": "更新並重新啟動",

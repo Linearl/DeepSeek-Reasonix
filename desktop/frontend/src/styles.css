@@ -36590,6 +36590,20 @@ button.statusbar__mcp:focus-visible {
   font-weight: 600;
   flex-shrink: 0;
 }
+/* tl1737: up-to-date single-line face — same accent as the old per-row badge,
+   grown to flex so the installer button stays pinned to the row's right edge. */
+.fork-releases__uptodate {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent);
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .fork-releases__download {
   margin-left: auto;
   flex-shrink: 0;

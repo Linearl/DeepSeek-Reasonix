@@ -5890,8 +5890,11 @@ export const en = {
   // tl1693: the sidebar footer light and the version page's release list.
   "updater.sidebarUpdateAvailable": "Update available — open update settings",
   "updater.releasesTitle": "Releases",
-  "updater.releasesHint": "Published on the fork's GitHub releases; your running version is marked.",
-  "updater.releasesCurrent": "Current",
+  // tl1737: the list collapses to the newest release only; the full history
+  // stays reachable through the "view online" link.
+  "updater.releasesHint": "Published on the fork's GitHub releases; only the latest is listed, the full history is behind \"View online\".",
+  "updater.releasesViewOnline": "View online",
+  "updater.releasesUpToDate": "Up to date — running {version}",
   "updater.releasesInstallers": "Installers",
   "updater.releaseNotes": "Release notes",
   "updater.updateAndRestart": "Update and restart",
