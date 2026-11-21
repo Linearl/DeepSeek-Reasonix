@@ -2110,6 +2110,8 @@ export const en = {
   "memory.summary": "{facts} background · {archives} archived · {docs} instruction files",
   "memory.summarySettings": "{facts} background · {archives} archived · {docs} instruction files · current workspace",
   "memory.unavailable": "Memory unavailable.",
+  "memory.emptyWorkspaceTitle": "No memories for this project yet",
+  "memory.emptyWorkspaceBody": "This workspace has nothing to show yet. Switch workspaces above, or keep chatting in this project — captured facts will appear here.",
   "memory.quickAdd": "Add instruction",
   "memory.whereToSave": "Instruction scope",
   "memory.notePlaceholder": "Standing rule or project convention…",

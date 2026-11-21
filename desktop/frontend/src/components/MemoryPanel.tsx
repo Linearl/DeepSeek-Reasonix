@@ -775,10 +775,25 @@ export function MemoryPanel({
 
 // MemorySettingsPage is a self-contained memory management page embedded inside
 // the settings centre. It loads its own data and handles all memory operations.
+// tl1734: empty workspace placeholder fed to the normal render path so an
+// empty/unready workspace renders the standard skeleton + empty-state CTA
+// instead of the whole-page "memory unavailable" fallback. available stays
+// true because the memory feature itself is fine — there is simply no data.
+const MEMORY_EMPTY_VIEW: MemoryView = {
+	docs: [], facts: [], archives: [], scopes: [], instructionDiagnostics: [],
+	conflicts: [], lastRecall: { query: "", hits: [], omitted: 0, charBudget: 0, usedChars: 0 },
+	storeDir: "", storeGlobalDir: "", available: true,
+};
+
 export function MemorySettingsPage() {
 	const t = useT();
-	const [view, setView] = useState<MemoryView | null>(null);
+	const [viewState, setView] = useState<MemoryView | null>(null);
 	const [tabs, setTabs] = useState<TabMeta[]>([]);
+	// tl1734: tracks the ListTabs request so the initial memory fetch knows
+	// whether to wait (still loading), fall back to the active-tab view
+	// (failed or empty list), or use the tab-scoped view.
+	const [tabsState, setTabsState] = useState<"loading" | "loaded" | "failed">("loading");
+	const [loadError, setLoadError] = useState<string | null>(null);
 	const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
 	const [note, setNote] = useState("");
 	const [scope, setScope] = useState("");
@@ -807,11 +822,12 @@ export function MemorySettingsPage() {
 	useEffect(() => {
 		app.ListTabs().then((tabList) => {
 			setTabs(tabList);
+			setTabsState("loaded");
 			if (!selectedTabId) {
 				const active = tabList.find((tb) => tb.active);
 				if (active) setSelectedTabId(active.id);
 			}
-		}).catch(() => {});
+		}).catch(() => setTabsState("failed"));
 	}, []);
 
 	// Deduplicate tabs by workspace: multiple conversations in the same project
@@ -841,6 +857,7 @@ export function MemorySettingsPage() {
 
 	const reload = useCallback(async () => {
 		const tabId = effectiveTabId;
+		setLoadError(null);
 		// Clear view immediately so stale data from the previous workspace
 		// doesn't persist while the new workspace loads.
 		setView((prev) => {
@@ -851,8 +868,30 @@ export function MemorySettingsPage() {
 			};
 			return prev;
 		});
-		setView(tabId ? await app.MemoryForTab(tabId).catch(() => null) : await app.Memory().catch(() => null));
-	}, [effectiveTabId]);
+		// tl1734 缺陷A: the panel used to fire a full Memory() (active-tab view)
+		// on mount and then a second full MemoryForTab() once ListTabs settled —
+		// two full store scans per open (listAll alone is ~75ms @200 facts,
+		// ~470ms @1000). Now the initial fetch waits for effectiveTabId and runs
+		// exactly one MemoryForTab; the Memory() fallback only fires when
+		// ListTabs failed or came back with no workspace at all, so the panel
+		// still loads without a workspace.
+		try {
+			if (tabId) {
+				setView(await app.MemoryForTab(tabId));
+			} else if (tabsState === "loading") {
+				// ListTabs still pending: keep viewState null and render the
+				// loading placeholder until the effect reruns.
+			} else {
+				setView(await app.Memory());
+			}
+		} catch (err) {
+			// tl1734 缺陷B: a failed load used to be swallowed into view=null,
+			// which rendered as the misleading "memory unavailable" page. Surface
+			// it as a recoverable error state instead.
+			setView(null);
+			setLoadError(errorMessage(err));
+		}
+	}, [effectiveTabId, tabsState]);
 
 	useEffect(() => { void reload(); }, [reload]);
 	useEffect(() => {
@@ -939,8 +978,8 @@ export function MemorySettingsPage() {
 		void refreshSuggestions();
 	}, [refreshSuggestions, suggestionBusy, suggestions, tab]);
 
-	const facts = view?.facts ?? [];
-	const archives = view?.archives ?? [];
+	const facts = viewState?.facts ?? [];
+	const archives = viewState?.archives ?? [];
 	const factNames = useMemo(() => new Set(facts.map((f) => f.name)), [facts]);
 	const factTypes = useMemo(
 		() => Array.from(new Set([...facts, ...archives].map((f) => f.type).filter(Boolean))).sort(),
@@ -1089,7 +1128,7 @@ export function MemorySettingsPage() {
 		}
 	}, [busy, effectiveTabId, reload]);
 
-	const scopes = view?.scopes ?? [];
+	const scopes = viewState?.scopes ?? [];
 	const activeScope =
 		scope || scopes.find((s) => s.scope === "project")?.scope || scopes[0]?.scope || "project";
 
@@ -1165,11 +1204,54 @@ export function MemorySettingsPage() {
 		}
 	}, [busy, effectiveTabId]);
 
-	if (!view?.available) {
+	// tl1734 缺陷B: distinguish the three "no content" shapes instead of
+	// collapsing them into one whole-page "memory unavailable" fallback:
+	//  1. workspace not ready (tab.Ctrl==nil on the backend → available=false)
+	//     or plain no-data → render the normal skeleton fed MEMORY_EMPTY_VIEW,
+	//     which yields an empty list + the "该项目暂无记忆" CTA;
+	//  2. workspace ready but the backend still says available=false — the
+	//     memory feature itself is disabled (memory.Load never returns nil) —
+	//     keep the "memory.unavailable" fallback;
+	//  3. load request failed → recoverable error state with a retry button
+	//     (previously swallowed into view=null and shown as "unavailable").
+	const rawView = viewState;
+	const selectedWsMeta = uniqueWorkspaceTabs.find((tb) => tb.id === effectiveTabId);
+	const tabReady = !!selectedWsMeta?.ready;
+	const showUnavailable = !!rawView && !rawView.available && tabReady && !loadError;
+	const view = showUnavailable ? rawView : (rawView && rawView.available ? rawView : MEMORY_EMPTY_VIEW);
+	const emptyWorkspace = !showUnavailable && !(rawView && rawView.available);
+	const loadingView = rawView === null && !loadError;
+
+	if (loadError) {
+		return (
+			<>
+				{wsSelector}
+				<div className="empty">
+					<strong>{t("memory.emptyWorkspaceTitle")}</strong>
+					<span>{t("memory.emptyWorkspaceBody")}</span>
+					<div className="mem-error" role="alert">{loadError}</div>
+					<button className="btn btn--secondary btn--small" type="button" onClick={() => void reload()}>
+						{t("common.retry")}
+					</button>
+				</div>
+			</>
+		);
+	}
+
+	if (showUnavailable) {
 		return (
 			<>
 				{wsSelector}
 				<div className="empty">{t("memory.unavailable")}</div>
+			</>
+		);
+	}
+
+	if (loadingView) {
+		return (
+			<>
+				{wsSelector}
+				<div className="empty">{t("common.loading")}</div>
 			</>
 		);
 	}
@@ -1307,8 +1389,17 @@ export function MemorySettingsPage() {
 				{error && <div className="mem-error" role="alert">{error}</div>}
 				{facts.length === 0 ? (
 					<div className="mem-empty mem-empty--cta">
-						<strong>{t("memory.emptySavedTitle")}</strong>
-						<span>{t("memory.emptySavedBody")}</span>
+						{emptyWorkspace ? (
+							<>
+								<strong>{t("memory.emptyWorkspaceTitle")}</strong>
+								<span>{t("memory.emptyWorkspaceBody")}</span>
+							</>
+						) : (
+							<>
+								<strong>{t("memory.emptySavedTitle")}</strong>
+								<span>{t("memory.emptySavedBody")}</span>
+							</>
+						)}
 					</div>
 				) : filteredFacts.length === 0 ? (
 					<div className="mem-empty">
@@ -1736,14 +1827,14 @@ export function MemorySettingsPage() {
 						<div className="mem-note">{t("memory.instructionFilesHint")}</div>
 					</div>
 					<div className="mem-section__actions">
-						<button
+						{!emptyWorkspace && <button
 							className="btn btn--secondary btn--small"
 							type="button"
 							disabled={busy}
 							onClick={() => setShowAdd((v) => !v)}
 						>
 							{showAdd ? t("common.collapse") : <><Plus size={13} />{t("memory.addMemory")}</>}
-						</button>
+						</button>}
 					</div>
 				</div>
 				{view.instructionDiagnostics.length > 0 && (
