@@ -1,5 +1,8 @@
 # Security Policy
 
+> ⚠️ **上游原文保留（2026-11-21 文档审计标注）**：上游已于 2026-11-12 停止维护并退役
+> 官方反馈通道；本 fork 的安全问题走内部流程（tasklist 立项处理），不向上游报告。
+
 ## Supported Versions
 
 Reasonix security fixes are prioritized for the currently developed Go rewrite

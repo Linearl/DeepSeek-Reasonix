@@ -1,5 +1,9 @@
 # Contributing to Reasonix
 
+> ⚠️ **上游原文保留（2026-11-21 文档审计标注）**：本文件继承自上游 esengine/DeepSeek-Reasonix，
+> 其贡献流程指向上游语境；上游已于 2026-11-12 停止维护，本 fork 的改动走内部开发流程
+> （tasklist 立项 → 留言板派单 → 合并出包），不按本文件向上游提交。
+
 Thank you for your interest in contributing to Reasonix! This guide covers
 everything you need to get started.
 
