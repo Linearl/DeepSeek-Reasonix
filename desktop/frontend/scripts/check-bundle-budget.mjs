@@ -250,7 +250,7 @@ console.log("\nbundle budgets");
 // Task 495 (subagent panel: App gate arg + directory model + en locale keys in
 // the initial chunk): initial gzip measures 512.5 over the 512.0 line —
 // one-shot +0.5 to 513.0 per the 2026-09-20 ratchet rule (no drip, independent commit).
-const initialJSBudgetKiB = 686.1; // 包101 二跑棘轮(恰等抖动必炸区+1.0,403/591/721/758 先例):实测 684.1 对 684.0 线余 0.1<0.3 触扩权 → 685.0 含余量（2026-11-19 包101 二跑出包清障独立 commit，免费线自抬报备）// 两支滚合棘轮(超0.1 照实测+1.0):tl1710 回收站三语+tl1711 移动到项目 合后实测 685.1 超 685.0 线 0.1 — 一次到位 → 686.1 含余量（2026-11-20 合并线自抬报备）
+const initialJSBudgetKiB = 687.1; // 包107 棘轮(超0.1 照实测+1.0):tl1719 归一化+tl1733 瘦身管线+tl1740 wheel 证据 合后实测 686.2 超 686.1 线 0.1 — 一次到位 → 687.1 含余量（2026-11-21 包107 出包清障独立 commit，zcode 自抬报备）；上代=包101 二跑 686.1
 // larger one-shot value stands (audit ruling, no second ratchet).
 // Task 264 rebased onto the same budget: measured 470.3 KiB (collab-background
 // switch in the sessionCollab pane), also within 470.5 — same one-shot value
