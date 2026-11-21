@@ -2098,6 +2098,8 @@ export const zh: Record<DictKey, string> = {
   "memory.summary": "{facts} 条背景记忆 · {archives} 条归档 · {docs} 个指令文件",
   "memory.summarySettings": "{facts} 条背景记忆 · {archives} 条归档 · {docs} 个指令文件 · 当前工作区",
   "memory.unavailable": "记忆功能不可用。",
+  "memory.emptyWorkspaceTitle": "该项目暂无记忆",
+  "memory.emptyWorkspaceBody": "这个工作区还没有可显示的记忆；可从上方切换到其他工作区，在此项目的对话沉淀的事实也会出现在这里。",
   "memory.quickAdd": "添加指令",
   "memory.whereToSave": "指令作用域",
   "memory.notePlaceholder": "常驻规则或项目约定…",

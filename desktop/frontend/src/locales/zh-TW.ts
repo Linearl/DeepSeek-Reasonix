@@ -1681,6 +1681,8 @@ export const zhTW: Record<DictKey, string> = {
   "memory.title": "記憶",
   "memory.summary": "{facts} 條背景記憶 · {archives} 條歸檔 · {docs} 個指令檔案",
   "memory.unavailable": "記憶功能不可用。",
+  "memory.emptyWorkspaceTitle": "該專案暫無記憶",
+  "memory.emptyWorkspaceBody": "這個工作區還沒有可顯示的記憶；可從上方切換到其他工作區，在此專案的對話沉澱的事實也會出現在這裡。",
   "memory.quickAdd": "新增指令",
   "memory.whereToSave": "指令作用域",
   "memory.notePlaceholder": "常駐規則或專案約定…",
