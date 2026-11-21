@@ -36604,6 +36604,17 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* tl1737: single-line up-to-date face — drop the row divider (no siblings to
+   separate) and keep the face quiet; the span carries the accent already. */
+.fork-releases__row--uptodate {
+  border-bottom: 0;
+}
+/* tl1737: the "view on the web" link-button lives in the head row; it styles
+   itself inline, this hook only pins it to the right edge of the header. */
+.fork-releases__online {
+  margin-left: auto;
+  cursor: pointer;
+}
 .fork-releases__download {
   margin-left: auto;
   flex-shrink: 0;
