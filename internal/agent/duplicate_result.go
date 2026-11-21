@@ -12,8 +12,10 @@ func (a *Agent) boundProviderVisibleResult(raw, toolName, callID, args string) (
 	// tl1561: archive the full original before the marker is built so the
 	// truncation marker can point at a readable file. The pre-summary raw is
 	// archived (not the CI summary) — the file is the durable recovery channel.
+	// The trigger follows the tool's tier budget, so an archived original only
+	// exists when the tiered marker actually promises a readable path.
 	var archivePath string
-	if len(summarized) > maxToolOutputBytes {
+	if len(summarized) > toolOutputBudgetBytes(toolName) {
 		archivePath = a.archiveTruncatedToolOutput(toolName, callID, raw)
 	}
 	body, notice = truncateToolOutputArchived(summarized, toolName, callID, archivePath)

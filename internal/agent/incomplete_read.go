@@ -313,7 +313,11 @@ func (s *incompleteReadState) observeReadFile(
 	}
 	trailer := parseReadFileTrailer(rawOutput)
 	recoveryOffset, truncated := readFileRecoveryOffset(visibleOutput)
-	if !truncated && len(rawOutput) > maxToolOutputBytes {
+	// tl1561 tiering: this state machine only ever sees read_file output, so
+	// the passive detection uses the critical tier — the same budget the
+	// read_file truncation path itself enforces. A mismatch here would misflag
+	// 40K-100K outputs as truncated and spin up paging state for nothing.
+	if !truncated && len(rawOutput) > toolOutputBudgetBytes("read_file") {
 		recoveryOffset = 0
 		truncated = true
 	}

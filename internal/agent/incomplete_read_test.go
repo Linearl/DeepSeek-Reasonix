@@ -20,6 +20,16 @@ import (
 
 const incompleteReadKeyRule = "KEY_RULE_362_MUST_BE_READ"
 
+// tl1561 tiering: read_file sits in the critical tier (100 KiB budget), so
+// fixtures that must exercise truncation+recovery grow past the critical
+// budget. Each "rule-%04d " line is width+2 bytes; lines=1080 at width=96
+// yields a ~103 KiB read output, and the key line lands past the ~101 KiB
+// recovery cursor, inside the recovered suffix (well under one 24 KiB page).
+const (
+	incompleteReadFixtureLines   = 1080
+	incompleteReadFixtureKeyLine = 1060
+)
+
 type incompleteReadEventSink struct {
 	mu     sync.Mutex
 	events []event.Event
@@ -190,12 +200,12 @@ func requestHasText(req provider.Request, text string) bool {
 }
 
 func TestReadFileTruncationUsesContiguousUTF8PrefixAndExactRecovery(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "更新笔记助手.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "更新笔记助手.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	read := incompleteReadBuiltin(t)
 	args := fmt.Sprintf(`{"path":%q}`, path)
 	full := expectedReadOutput(t, read, args)
-	if len(full) < 43*1024 {
-		t.Fatalf("fixture bytes=%d, want a recoverable result of at least 43 KiB", len(full))
+	if len(full) < criticalToolOutputBytes {
+		t.Fatalf("fixture bytes=%d, want a recoverable result over the %d-byte critical tier", len(full), criticalToolOutputBytes)
 	}
 
 	bounded, notice := truncateToolOutputFor(full, "read_file", "read-43k")
@@ -234,7 +244,7 @@ func TestReadFileTruncationUsesContiguousUTF8PrefixAndExactRecovery(t *testing.T
 }
 
 func TestIncompleteReadBlocksFinalUntilRecoveryAndDefersObservation(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "rules-crlf.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "rules-crlf.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	read := incompleteReadBuiltin(t)
 	readArgs := fmt.Sprintf(`{"path":%q,"intent":"full"}`, path)
 	full := expectedReadOutput(t, read, readArgs)
@@ -264,7 +274,7 @@ func TestIncompleteReadBlocksFinalUntilRecoveryAndDefersObservation(t *testing.T
 	}}
 	sink := &incompleteReadEventSink{}
 	agent = newLegacyIncompleteReadTestAgentWithOptions(
-		prov, read, NewSession("sys"), sink, Options{ContextWindow: 64_000},
+		prov, read, NewSession("sys"), sink, Options{ContextWindow: 256_000},
 	)
 	if err := agent.Run(context.Background(), "Read the complete rules file before answering."); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -277,8 +287,8 @@ func TestIncompleteReadBlocksFinalUntilRecoveryAndDefersObservation(t *testing.T
 	for _, observation := range observations {
 		observedLines += len(observation.LineHashes)
 	}
-	if observedLines != 430 {
-		t.Fatalf("completed observation windows=%d lines=%d, want 430 visible lines", len(observations), observedLines)
+	if observedLines != incompleteReadFixtureLines {
+		t.Fatalf("completed observation windows=%d lines=%d, want the full fixture visible lines", len(observations), observedLines)
 	}
 	for _, code := range []string{
 		event.NoticeCodeIncompleteReadDetected,
@@ -292,7 +302,7 @@ func TestIncompleteReadBlocksFinalUntilRecoveryAndDefersObservation(t *testing.T
 }
 
 func TestIncompleteReadSecondIgnoredFinalPausesRecoverably(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "ignored.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "ignored.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	read := incompleteReadBuiltin(t)
 	readArgs := fmt.Sprintf(`{"path":%q,"intent":"full"}`, path)
 	prov := &scriptedProvider{name: "ignore-continuation", turns: [][]provider.Chunk{
@@ -312,7 +322,7 @@ func TestIncompleteReadSecondIgnoredFinalPausesRecoverably(t *testing.T) {
 }
 
 func TestIncompleteReadDoesNotFreezeIndependentMutation(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "read-before-write.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "read-before-write.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	read := incompleteReadBuiltin(t)
 	readArgs := fmt.Sprintf(`{"path":%q}`, path)
 	writer := &incompleteReadMutationTool{}
@@ -337,8 +347,8 @@ func TestIncompleteReadDoesNotFreezeIndependentMutation(t *testing.T) {
 func TestIncompleteReadRecoversParallelFilesBeforeFinal(t *testing.T) {
 	const keyA = "PARALLEL_KEY_A_362"
 	const keyB = "PARALLEL_KEY_B_362"
-	pathA := makeIncompleteReadFixture(t, "parallel-a.txt", 430, 96, 362, keyA)
-	pathB := makeIncompleteReadFixture(t, "parallel-b.txt", 430, 96, 362, keyB)
+	pathA := makeIncompleteReadFixture(t, "parallel-a.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, keyA)
+	pathB := makeIncompleteReadFixture(t, "parallel-b.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, keyB)
 	read := incompleteReadBuiltin(t)
 	argsA := fmt.Sprintf(`{"path":%q,"intent":"full"}`, pathA)
 	argsB := fmt.Sprintf(`{"path":%q,"intent":"full"}`, pathB)
@@ -373,7 +383,7 @@ func TestIncompleteReadRecoversParallelFilesBeforeFinal(t *testing.T) {
 	for _, observation := range observations {
 		observedLines += len(observation.LineHashes)
 	}
-	if prov.call != 3 || observedLines != 860 {
+	if prov.call != 3 || observedLines != incompleteReadFixtureLines*2 {
 		t.Fatalf("rounds=%d observations=%d lines=%d, want both reads complete before final", prov.call, len(observations), observedLines)
 	}
 	if !requestHasText(prov.requests[2], keyA) || !requestHasText(prov.requests[2], keyB) {
@@ -484,7 +494,7 @@ func TestIncompleteReadAutomaticallyRecoversBeyondFormerByteAndTokenCaps(t *test
 }
 
 func TestIncompleteReadContextLimitEntersSearchReadReceiptStrategy(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "context-soft-limit.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "context-soft-limit.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	read := incompleteReadBuiltin(t)
 	readArgs := fmt.Sprintf(`{"path":%q}`, path)
 	full := expectedReadOutput(t, read, readArgs)
@@ -507,7 +517,7 @@ func TestIncompleteReadContextLimitEntersSearchReadReceiptStrategy(t *testing.T)
 	prov := &scriptedProvider{name: "context-strategy", turns: [][]provider.Chunk{
 		{toolCallChunk("read-context-soft", "read_file", readArgs), {Type: provider.ChunkDone}},
 		{toolCallChunk("grep-key", "grep", fmt.Sprintf(`{"pattern":%q,"path":%q}`, incompleteReadKeyRule, path)), {Type: provider.ChunkDone}},
-		{toolCallChunk("read-key-window", "read_file", fmt.Sprintf(`{"path":%q,"offset":350,"limit":30}`, path)), {Type: provider.ChunkDone}},
+		{toolCallChunk("read-key-window", "read_file", fmt.Sprintf(`{"path":%q,"offset":%d,"limit":30}`, path, incompleteReadFixtureKeyLine-10)), {Type: provider.ChunkDone}},
 		{toolCallChunk("strategy-receipt", "use_capability", string(receipt)), {Type: provider.ChunkDone}},
 		textTurn("The answer is based on the searched and explicitly read rule window."),
 	}}
@@ -521,7 +531,7 @@ func TestIncompleteReadContextLimitEntersSearchReadReceiptStrategy(t *testing.T)
 		t.Fatalf("provider rounds=%d, want read + grep + exact read + receipt + next-round final", prov.call)
 	}
 	observations := agent.task.ledger.TextObservations()
-	if len(observations) != 2 || len(observations[0].LineHashes) >= 350 || observations[1].StartLine != 351 || len(observations[1].LineHashes) != 30 {
+	if len(observations) != 2 || len(observations[0].LineHashes) >= incompleteReadFixtureKeyLine-10 || observations[1].StartLine != incompleteReadFixtureKeyLine-9 || len(observations[1].LineHashes) != 30 {
 		t.Fatalf("observations=%d, want visible prefix plus the explicit 30-line strategy window", len(observations))
 	}
 	result := toolResultByID(agent.Session(), "read-context-soft")
@@ -536,7 +546,7 @@ func TestIncompleteReadContextLimitEntersSearchReadReceiptStrategy(t *testing.T)
 }
 
 func TestIncompleteReadUnknownContextEntersStrategyWithoutImmediatePause(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "unknown-context.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "unknown-context.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	read := incompleteReadBuiltin(t)
 	readArgs := fmt.Sprintf(`{"path":%q,"intent":"full"}`, path)
 	prov := &scriptedProvider{name: "unknown-context", turns: [][]provider.Chunk{
@@ -560,7 +570,7 @@ func TestIncompleteReadUnknownContextEntersStrategyWithoutImmediatePause(t *test
 }
 
 func TestReadStrategyReceiptDoesNotGateIndependentWriter(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "receipt-boundary.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "receipt-boundary.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	read := incompleteReadBuiltin(t)
 	grepTool, ok := tool.LookupBuiltin("grep")
 	if !ok {
@@ -582,7 +592,7 @@ func TestReadStrategyReceiptDoesNotGateIndependentWriter(t *testing.T) {
 	prov := &scriptedProvider{name: "receipt-boundary", turns: [][]provider.Chunk{
 		{toolCallChunk("read-boundary", "read_file", fmt.Sprintf(`{"path":%q}`, path)), {Type: provider.ChunkDone}},
 		{toolCallChunk("grep-boundary", "grep", fmt.Sprintf(`{"pattern":%q,"path":%q}`, incompleteReadKeyRule, path)), {Type: provider.ChunkDone}},
-		{toolCallChunk("read-boundary-window", "read_file", fmt.Sprintf(`{"path":%q,"offset":350,"limit":30}`, path)), {Type: provider.ChunkDone}},
+		{toolCallChunk("read-boundary-window", "read_file", fmt.Sprintf(`{"path":%q,"offset":%d,"limit":30}`, path, incompleteReadFixtureKeyLine-10)), {Type: provider.ChunkDone}},
 		{
 			toolCallChunk("receipt-boundary-call", "use_capability", string(receipt)),
 			toolCallChunk("write-same-batch", writer.Name(), `{}`),
@@ -625,13 +635,13 @@ func TestReadStrategyAllowsIndependentReadOnlyTools(t *testing.T) {
 }
 
 func TestReadStrategyReceiptRejectsChangedFileAndClearsEvidence(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "receipt-file-change.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "receipt-file-change.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	state := incompleteReadState{}
 	entry := &incompleteRead{
 		key: "ir-change", readID: "ir-change", path: path, phase: incompleteReadStrategy,
 		strategyVersion: snapshotIncompleteReadFile(path),
-		searches:        map[string]incompleteReadSearch{"grep": {callID: "grep", pattern: incompleteReadKeyRule, matchLines: []int{362}}},
-		reads:           map[string]incompleteReadWindow{"read": {callID: "read", startLine: 350, endLine: 380}},
+		searches:        map[string]incompleteReadSearch{"grep": {callID: "grep", pattern: incompleteReadKeyRule, matchLines: []int{incompleteReadFixtureKeyLine}}},
+		reads:           map[string]incompleteReadWindow{"read": {callID: "read", startLine: incompleteReadFixtureKeyLine - 10, endLine: incompleteReadFixtureKeyLine + 20}},
 	}
 	state.addEntryLocked(entry)
 	entry.reads["read"] = incompleteReadWindow{
@@ -643,8 +653,8 @@ func TestReadStrategyReceiptRejectsChangedFileAndClearsEvidence(t *testing.T) {
 		t.Fatalf("non-overlap receipt error=%v receipt=%v", err, entry.pendingReceipt)
 	}
 	entry.reads["read"] = incompleteReadWindow{
-		callID: "read", startLine: 350, endLine: 380,
-		observed: []tool.ModelTextObservation{{Path: path, StartLine: 350, LineHashes: []string{"synthetic"}}},
+		callID: "read", startLine: incompleteReadFixtureKeyLine - 10, endLine: incompleteReadFixtureKeyLine + 20,
+		observed: []tool.ModelTextObservation{{Path: path, StartLine: incompleteReadFixtureKeyLine - 10, LineHashes: []string{"synthetic"}}},
 	}
 	if err := os.WriteFile(path, []byte("changed\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -661,13 +671,13 @@ func TestReadStrategyReceiptRejectsChangedFileAndClearsEvidence(t *testing.T) {
 }
 
 func TestReadStrategyReceiptRevalidatesWindowHashesWhenStatIsUnchanged(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "receipt-same-stat-change.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "receipt-same-stat-change.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	stableTime := time.Unix(1_700_000_000, 0)
 	if err := os.Chtimes(path, stableTime, stableTime); err != nil {
 		t.Fatal(err)
 	}
 	read := incompleteReadBuiltin(t)
-	args := fmt.Sprintf(`{"path":%q,"offset":349,"limit":31}`, path)
+	args := fmt.Sprintf(`{"path":%q,"offset":%d,"limit":31}`, path, incompleteReadFixtureKeyLine-11)
 	output := expectedReadOutput(t, read, args)
 	observer, ok := read.(tool.ModelTextObserver)
 	if !ok {
@@ -682,9 +692,9 @@ func TestReadStrategyReceiptRevalidatesWindowHashesWhenStatIsUnchanged(t *testin
 	entry := &incompleteRead{
 		key: "ir-same-stat", readID: "ir-same-stat", path: path, requestPath: path,
 		phase: incompleteReadStrategy, strategyVersion: snapshotIncompleteReadFile(path), readTool: read,
-		searches: map[string]incompleteReadSearch{"grep": {callID: "grep", pattern: incompleteReadKeyRule, matchLines: []int{362}}},
+		searches: map[string]incompleteReadSearch{"grep": {callID: "grep", pattern: incompleteReadKeyRule, matchLines: []int{incompleteReadFixtureKeyLine}}},
 		reads: map[string]incompleteReadWindow{"read": {
-			callID: "read", startLine: 350, endLine: 380,
+			callID: "read", startLine: incompleteReadFixtureKeyLine - 10, endLine: incompleteReadFixtureKeyLine + 20,
 			observed: []tool.ModelTextObservation{observed},
 		}},
 	}

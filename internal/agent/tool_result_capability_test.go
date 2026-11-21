@@ -113,24 +113,26 @@ func TestToolResultProviderBoundaryAndRecoveryMarker(t *testing.T) {
 		name string
 		body string
 	}{
-		{name: "below", body: strings.Repeat("a", maxToolOutputBytes-1)},
-		{name: "equal", body: strings.Repeat("a", maxToolOutputBytes)},
-		{name: "ascii", body: strings.Repeat("a", maxToolOutputBytes+1)},
-		{name: "chinese", body: strings.Repeat("界", maxToolOutputBytes)},
-		{name: "emoji", body: strings.Repeat("🧪", maxToolOutputBytes)},
+		// tl1561 tiering: this call passes an unnamed oversized tool name, so the
+		// boundary fixtures use the regular tier budget.
+		{name: "below", body: strings.Repeat("a", regularToolOutputBytes-1)},
+		{name: "equal", body: strings.Repeat("a", regularToolOutputBytes)},
+		{name: "ascii", body: strings.Repeat("a", regularToolOutputBytes+1)},
+		{name: "chinese", body: strings.Repeat("界", regularToolOutputBytes)},
+		{name: "emoji", body: strings.Repeat("🧪", regularToolOutputBytes)},
 		{name: "error-tail", body: strings.Repeat("trace\n", 9000) + "fatal: unique error tail"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			callID := strings.Repeat("调用-🧪", 100)
 			got, notice := truncateToolOutputFor(tc.body, strings.Repeat("tool-界", 100), callID)
-			if len(tc.body) <= maxToolOutputBytes {
+			if len(tc.body) <= regularToolOutputBytes {
 				if got != tc.body || notice != "" {
 					t.Fatalf("under-bound result changed: bytes=%d notice=%q", len(got), notice)
 				}
 				return
 			}
-			if len(got) > maxToolOutputBytes || !utf8.ValidString(got) {
+			if len(got) > regularToolOutputBytes || !utf8.ValidString(got) {
 				t.Fatalf("bounded result invalid: bytes=%d utf8=%v", len(got), utf8.ValidString(got))
 			}
 			// tl1561: the marker promises only what the session can keep — the
@@ -181,7 +183,7 @@ func TestSessionToolResultRequiresExactRefForDuplicateCallID(t *testing.T) {
 }
 
 func TestSessionToolResultValidatesLegacyAndPagingErrors(t *testing.T) {
-	fullLost := strings.Repeat("lost-new-result", 3000)
+	fullLost := strings.Repeat("lost-new-result", 8000) // 120KB — must exceed the read_file critical tier to truncate
 	boundedLost, notice := truncateToolOutputFor(fullLost, "read_file", "lost-new")
 	if notice == "" {
 		t.Fatal("new lost-result fixture was not truncated")
@@ -515,7 +517,7 @@ func TestTruncatedToolResultArchivesOriginalAndMarkerPointsAtIt(t *testing.T) {
 	reg.Add(proxy)
 	a := New(nil, reg, nil, Options{SessionTemp: mgr}, event.Discard)
 
-	raw := strings.Repeat("heartbeat task row 界🧪\n", 3000) + "tail-sentinel-最后一行\n"
+	raw := strings.Repeat("heartbeat task row 界🧪\n", 4500) + "tail-sentinel-最后一行\n"
 	body, notice, original := a.boundProviderVisibleResult(raw, "heartbeat_task_list", "call-arch", "{}")
 	if notice == "" || original == "" {
 		t.Fatalf("large result was not truncated: notice=%q original=%d", notice, len(original))
@@ -552,7 +554,7 @@ func TestTruncatedToolResultArchivesOriginalAndMarkerPointsAtIt(t *testing.T) {
 	if reader == nil {
 		t.Fatal("read_file builtin missing")
 	}
-	args, _ := json.Marshal(map[string]any{"path": path, "offset": 3000, "limit": 10})
+	args, _ := json.Marshal(map[string]any{"path": path, "offset": 4500, "limit": 10}) // tl1561: fixture 放大后尾巴在第 4501 行
 	tail, err := reader.Execute(context.Background(), args)
 	if err != nil || !strings.Contains(tail, "tail-sentinel-最后一行") {
 		t.Fatalf("read_file could not recover the archived tail: err=%v out=%.300s", err, tail)

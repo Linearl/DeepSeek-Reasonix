@@ -117,8 +117,9 @@ func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall
 		}
 	}
 	state := outcomeRunState(o)
-	// 任务1029③: 源头侧大小上限——tool 结果写入历史时按 maxToolOutputBytes
-	// 封顶（与任务1010 单图 8KiB 估算封顶同族的安全侧口径，复用既有的
+	// 任务1029③: 源头侧大小上限——tool 结果写入历史时按该工具的分层预算
+	// （tl1561：关键 100K/常规 40K/流式 8K，toolOutputBudgetBytes）封顶（与
+	// 任务1010 单图 8KiB 估算封顶同族的安全侧口径，复用既有的
 	// truncateToolOutputFor 工具感知策略）。低于上限的字节级原样直通；超限
 	// 结果保留工具感知的头部预览，完整原件进 RawContent 供本地翻页。这是
 	// duplicate/recovery 路径既有先例的推广：不设源头闸，一次 587K 字符的
@@ -127,9 +128,12 @@ func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall
 	// already-bounded body back over the cap, and the unbounded passthrough path
 	// lands here) archives the original so the marker keeps a readable path. The
 	// execute layer already archives when it truncates, and its bounded output
-	// stays under the cap here, so double-archiving is not introduced.
+	// stays under the cap here, so double-archiving is not introduced. The cap
+	// follows the tool's tier so a critical-tier tool is never second-trimmed at
+	// 40K after surviving its 100K budget.
 	var archivePath string
-	if len(o.output) > maxToolOutputBytes {
+	tierBudget := toolOutputBudgetBytes(call.Name)
+	if len(o.output) > tierBudget {
 		src := o.output
 		if o.rawOutput != "" {
 			src = o.rawOutput
@@ -139,7 +143,7 @@ func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall
 	visible, truncNotice := truncateToolOutputArchived(o.output, call.Name, call.ID, archivePath)
 	if truncNotice != "" {
 		slog.Warn("agent: oversized tool result capped at history write (任务1029③)",
-			"tool", call.Name, "bytes", len(o.output), "cap", maxToolOutputBytes)
+			"tool", call.Name, "bytes", len(o.output), "cap", tierBudget)
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: truncNotice})
 	}
 	msg := provider.Message{Role: provider.RoleTool, Content: visible, Images: o.images, VisionSummary: o.visionSummary, ToolCallID: call.ID, Name: call.Name, ToolRunState: state, ToolExecution: toProviderToolExecution(o.execution)}
