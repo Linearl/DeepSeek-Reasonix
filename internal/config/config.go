@@ -1909,6 +1909,18 @@ type AgentConfig struct {
 	// this field landed — no compat shim: the env var was a merge-line
 	// evaluation gate that never shipped in a release build.
 	ExperimentalPinnedIndex bool `toml:"experimental_pinned_index"`
+	// ExperimentalMemoryIndexSlim is the tl1733 injection-slimming lab switch:
+	// ON = emergency bypass — the background memory index section stops
+	// injecting entirely and only pinned guidance rides session-context, while
+	// the on-demand layer (memory search/read/list) stays complete. Ships OFF
+	// (铁律 2): off = the default slimmed injection pipeline (tl1733 Block1:
+	// shorter lines, zero-recall cutoff behind its data-maturity gate, 20K-rune
+	// budget) — trimming never touches IndexFrom, so tool layers and disk
+	// MEMORY.md stay on the full-pool truth. Efficiency tier (实验室「提效」
+	// 组), optional tier; boot resolves the saved switch into the memory
+	// package gate (pinnedIndex 先例), so a flip applies on restart; the
+	// desktop flip writes config only.
+	ExperimentalMemoryIndexSlim bool `toml:"experimental_memory_index_slim"`
 	// ExperimentalEditResend is the tl1544 lab switch: while a turn is RUNNING,
 	// the message-history edit entry stays usable and routes through the
 	// EditAndResend atomic orchestration (stop → parked/guidance treatment →

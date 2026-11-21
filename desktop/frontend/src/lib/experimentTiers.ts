@@ -55,6 +55,9 @@ export type TierFeatureId =
   // tl1193b: plan-E pinned standing-tier index mode (实验室「记忆与上下文」
   // 新组首卡；未稳定档，默认关——关时常驻注入与引入前逐字节一致)。
   | "pinnedIndex"
+  // tl1733: 记忆注入瘦身（实验室「提效」组新卡；可选档，默认关——关=默认
+  // 瘦身注入管线；开=应急旁路仅注入 pinned）。boot 快照消费，重启生效。
+  | "memoryIndexSlim"
   | "budgetControl"
   | "compressOpt"
   | "messageMerge"
@@ -249,8 +252,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1487 八组：未稳定→可选（用户 20261107 八组清单；默认关=铁律 2 不变，
   // Go 渲染表同步翻）。
   pinnedIndex: "optional",
-  // ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl；────
-  //    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
+  // ── efficiency（提效，11 项；任务 517 B3 并入 safetyCostControl；────
+  //    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效。
+  //    tl1733：memoryIndexSlim 记忆注入瘦身入组，可选档）
   optimisticParallel: "recommended",
   budgetControl: "recommended",
   compressOpt: "recommended",
@@ -262,6 +266,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单）。
   outputStyle: "recommended",
   cacheTuning: "optional",
+  // tl1733：记忆注入瘦身（默认关=默认瘦身注入管线；开=应急旁路仅 pinned）。
+  memoryIndexSlim: "optional",
   // tl1487 一组④：冷缓存压缩独立可选档（compressOpt 附属行起挂自己的徽章；
   // 用户 20261107 八组清单「冷缓存压缩→可选」）。
   coldCacheCompact: "optional",
@@ -563,11 +569,14 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 25→26、总数 86→87（Go 渲染表同步 72→73）。
  * tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de，autopilot 代拍供追认）：
  * localServer/subagentPolicy 未稳定→可选、splitView/heartbeatBackground/
- * feedback 可选→推荐——推荐 47→50、可选 26→25、未稳定 5→3，总数不变 87。 */
+ * feedback 可选→推荐——推荐 47→50、可选 26→25、未稳定 5→3，总数不变 87。
+ * tl1733：memoryIndexSlim（记忆注入瘦身，提效组，可选档）入表——可选
+ * 25→26、总数 87→88（Go 渲染表同步 75→76，recallTool/zeroSummaryCompact
+ * 两条 Go-only 预存红同批收口进豁免名单）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 50,
-  optional: 25,
+  optional: 26,
   unstable: 3,
   retired: 0,
 };

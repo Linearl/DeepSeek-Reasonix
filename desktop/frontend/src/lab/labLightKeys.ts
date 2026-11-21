@@ -138,6 +138,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalJsonlZstd: (s: SettingsView) => Boolean(s.experimentalJsonlZstd),
   /** tl1193b 索引化灯：实验开关开即亮（boot 快照消费，重启生效）。 */
   experimentalPinnedIndex: (s: SettingsView) => Boolean(s.experimentalPinnedIndex),
+  /** tl1733 注入瘦身灯：实验开关开即亮（boot 快照消费，重启生效）。 */
+  experimentalMemoryIndexSlim: (s: SettingsView) => Boolean(s.experimentalMemoryIndexSlim),
 } as const;
 
 /** The validation whitelist: every id a layout document may reference. */

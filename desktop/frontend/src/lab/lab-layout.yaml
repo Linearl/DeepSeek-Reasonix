@@ -199,6 +199,15 @@ groups:
         # 前置依赖 sessionCollab 语义不变，LAB_FEATURE_DEPS 仍单条）。
         tier: stable
         onKeys: [experimentalCollabHub]
+      # tl1733：记忆注入瘦身（提效组新卡，可选档，默认关）。默认关=默认瘦
+      # 身注入管线（短行+零召回裁条带数据成熟期门槛+20K 字符预算，裁剪不落
+      # IndexFrom 本体）；开启=应急旁路——背景索引段整体停注仅留 pinned，
+      # 按需层（memory search/read）不受影响。boot 快照消费（pinnedIndex 先
+      # 例），重启生效。
+      - id: memoryIndexSlim
+        labelKey: settings.memoryIndexSlim
+        tier: optional
+        onKeys: [experimentalMemoryIndexSlim]
 
   # ── 界面（11 项；任务 742：tab 二开关合并为「标签页管理」；任务 782：
   #    三张条目级合并卡 + opencodeGoUsage 迁出至可观测性组；任务 961：

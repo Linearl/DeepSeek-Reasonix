@@ -834,6 +834,14 @@ func (a *App) SetExperimentalPinnedIndex(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPinnedIndex(enabled) })
 }
 
+// SetMemoryIndexSlim toggles the tl1733 记忆注入瘦身 lab card (提效 group,
+// optional tier). ON = emergency bypass: background index stops injecting,
+// pinned only; the on-demand memory tools stay complete. Applies on restart
+// (boot snapshot), like every boot-resolved switch.
+func (a *App) SetMemoryIndexSlim(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetMemoryIndexSlim(enabled) })
+}
+
 // SetStalledIntentNudge toggles the task-1069 stalled-intent nudge lab switch
 // (模型提前结束判定器续轮提醒). Applies on restart (boot snapshot), like every
 // boot-resolved switch.

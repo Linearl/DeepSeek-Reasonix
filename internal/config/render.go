@@ -112,6 +112,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 收益依赖 provider 缓存行为（tl1396 态③红线运行时兜底，破线回退全量）。
 	// 默认关=压缩路径逐字节一致（铁律 2）。
 	{"rangesCompact", LabTierUnstable, []string{"experimental_ranges_compact"}},
+	// tl1733：记忆注入瘦身总闸（提效组，可选档）。默认关=默认瘦身注入管线
+	// （短行+零召回裁条带数据成熟期门槛+20K 字符预算，裁剪不落 IndexFrom 本
+	// 体）；开启=应急旁路——背景索引段整体停注仅留 pinned，按需层（memory
+	// search/read）不受影响。boot 快照消费（pinnedIndex 先例），重启生效。
+	{"memoryIndexSlim", LabTierOptional, []string{"experimental_memory_index_slim"}},
 	// tl1419（迭代三）：模型驱动 ranges 折叠，未稳定档——ranges 通道上叠加
 	// 新触发「发起源」（compress_ranges 工具，boot 门控注入，铁律 2 默认关
 	// =模型可见面逐字节一致）；折叠仍走 tl1397 事务，判据硬闸不变，冷却由
@@ -937,6 +942,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// 渲染时把已保存的开关静默弹回（81/123 丢档教训）。boot 快照消费，重启
 	// 生效；关=常驻层 body 全量注入与引入前逐字节一致。
 	fmt.Fprintf(&b, "experimental_pinned_index = %v   # tl1193 plan E: standing pinned tier renders index lines, bodies go on-demand recall (off = legacy full-body injection byte-for-byte)\n", c.Agent.ExperimentalPinnedIndex)
+	// tl1733：记忆注入瘦身总闸。显式渲染——同 81/123 丢档教训。boot 快照消
+	// 费，重启生效；关=默认瘦身注入管线，开=背景索引停注仅留 pinned。
+	fmt.Fprintf(&b, "experimental_memory_index_slim = %v   # tl1733: ON = emergency bypass (background index stops injecting, pinned only, on-demand memory tools unaffected); OFF = default slimmed injection pipeline (short lines + zero-recall cutoff behind its data gate + 20K budget)\n", c.Agent.ExperimentalMemoryIndexSlim)
 	// 任务 1024：composer 草稿优化（改写按钮）。显式渲染——同 81/123 丢档教训。
 	fmt.Fprintf(&b, "experimental_draft_rewrite = %v   # task 1024: composer rewrite button (auxiliary model rewrites the draft in place; off = no button, layout unchanged)\n", c.Agent.ExperimentalDraftRewrite)
 	// tl1544：运行中编辑历史消息回溯重发（EditAndResend 原子编排的运行中入口）。

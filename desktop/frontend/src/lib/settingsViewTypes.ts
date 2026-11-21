@@ -204,6 +204,9 @@ export interface SettingsView {
   /** tl1193b: plan-E pinned standing-tier index mode (memory-context group,
    * unstable tier, default off, restart to apply). */
   experimentalPinnedIndex?: boolean;
+  /** tl1733: 记忆注入瘦身 (efficiency group, optional tier, default off,
+   * restart to apply; ON = background index stops injecting, pinned only). */
+  experimentalMemoryIndexSlim?: boolean;
   // Task 801: resolved solidified decision-patterns file path (empty config
   // value renders as the default global-workspace/docs path).
   decisionPatternFilePath?: string;

@@ -2213,6 +2213,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               随整卡移除——结构化路径作用域判定为过时技术（从未接线，生产走
               confine+allow_write+写入审批），用户 20261107 裁决移除；机制存档
               docs/archive/路径作用域规则tl134-机制存档-20261107.md。 */}
+          {selected === "memoryIndexSlim" && (
+            /* tl1733: 记忆注入瘦身. Efficiency group, optional tier, default
+               off; boot resolves the saved switch into the memory gate before
+               the first Load, so a flip applies on restart. ON = emergency
+               bypass (background index stops injecting, pinned only); OFF =
+               the default slimmed injection pipeline. */
+            <SettingsField label={labLabel("memoryIndexSlim", t("settings.memoryIndexSlim"))} hint={t("settings.memoryIndexSlim.hint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalMemoryIndexSlim) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetMemoryIndexSlim(on))}
+                  >
+                    {t(on ? "settings.memoryIndexSlim.on" : "settings.memoryIndexSlim.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
                     {/* 任务 961：traceAsState 独立 pane 退役——并入「交互与呈现」合并卡
               （interactionPresentation，卡内成员行承载）。
               tl1309 卡③：orphanHandling/runtimeReuse 两独立 pane 同款退役——

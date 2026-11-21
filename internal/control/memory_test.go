@@ -66,7 +66,10 @@ func TestSaveMemoryRefreshesBackgroundSnapshotWithoutLegacyUpdate(t *testing.T) 
 	}
 
 	background := c.Memory().BackgroundDataBlock()
-	if !strings.Contains(background, "response-language") || !strings.Contains(background, body) {
+	// tl1733: the injected index line carries the display title ("response
+	// language"), not the kebab file reference — the reference stays
+	// re-derivable via the memory tool (on-demand layer).
+	if !strings.Contains(background, "response language") || !strings.Contains(background, body) {
 		t.Fatalf("saved memory missing from refreshed background snapshot:\n%s", background)
 	}
 	if composed := c.Compose("hello"); strings.Contains(composed, "<memory-update>") || composed != "hello" {
@@ -137,7 +140,9 @@ func TestRestoreArchivedMemoryRefreshesBackgroundSnapshotWithoutLegacyUpdate(t *
 		t.Fatalf("restored memory = %+v", restored)
 	}
 	background := c.Memory().BackgroundDataBlock()
-	if !strings.Contains(background, "build-contract") || !strings.Contains(background, "project build contract") {
+	// tl1733: injected lines carry the display title ("build contract"), not
+	// the kebab reference (re-derivable via the memory tool).
+	if !strings.Contains(background, "build contract") || !strings.Contains(background, "project build contract") {
 		t.Fatalf("restored memory missing from refreshed background snapshot:\n%s", background)
 	}
 	if composed := c.Compose("continue"); strings.Contains(composed, "<memory-update>") || composed != "continue" {
@@ -226,7 +231,12 @@ func TestRestoreMemoryRefreshesBackgroundSnapshotWithoutLegacyUpdate(t *testing.
 		t.Fatalf("revision history = %+v", revisions)
 	}
 	background := c.Memory().BackgroundDataBlock()
-	if !strings.Contains(background, "release-target") || !strings.Contains(background, "v1") {
+	// tl1733: the injected index line carries the display title ("release
+	// target") + description, not the kebab file reference — the reference
+	// stays re-derivable via the memory tool (on-demand layer). The restored
+	// description "v1" proves the refreshed snapshot carries the restored
+	// revision.
+	if !strings.Contains(background, "release target") || !strings.Contains(background, "v1") {
 		t.Fatalf("restored revision missing from refreshed background snapshot: %q", background)
 	}
 	if composed := c.Compose("continue"); strings.Contains(composed, "<memory-update>") || composed != "continue" {

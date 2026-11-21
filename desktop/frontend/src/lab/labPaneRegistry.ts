@@ -111,6 +111,9 @@ export type ExperimentFeatureId =
   // tl1193b: plan-E pinned standing-tier index mode card (memory-context
   // group; unstable, default off, restart to apply).
   | "pinnedIndex"
+  // tl1733: 记忆注入瘦身卡（提效组；可选档，默认关；boot 快照消费重启生效；
+  // 开=应急旁路仅注入 pinned）。
+  | "memoryIndexSlim"
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
   // 任务 943：族拆两卡——本 id 收窄为 readBack 面；multi_edit 直注独立卡。
   // 任务 971：扩为聚合页——readBack + multi_edit 直注 + restart_update 三开关
@@ -184,6 +187,8 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "jsonlZstd",
   // tl1193b: pinned index mode pane (memory-context group).
   "pinnedIndex",
+  // tl1733: 记忆注入瘦身 pane（提效组）。
+  "memoryIndexSlim",
   // tl1309 卡③：资源治理合并卡（runtimeReuse/acpListen/orphanHandling/
   // localServer/idleReleaseMinutes/gcPercent 六独立 pane 退役为成员行，
   // 容器 id 入表——961 先例）。

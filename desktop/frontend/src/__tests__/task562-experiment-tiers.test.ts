@@ -163,11 +163,12 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：localServer/
   // subagentPolicy 未稳定→可选、splitView/heartbeatBackground/feedback 可选→
   // 推荐——推荐 47→50、可选 25（出 3 进 2 后再 +3 净变 25）、未稳定 5→3。
-  ok(counts.stable === 9 && counts.recommended === 50 && counts.optional === 25 && counts.unstable === 3 && counts.retired === 0,
-    `register counts are 9 稳定/50/25/3/0 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 87, `register holds exactly 87 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 50 && LAB_TIER_COUNTS.optional === 25 && LAB_TIER_COUNTS.unstable === 3 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/50/25/3/0");
+  // tl1733：memoryIndexSlim（可选）入表——可选 25→26、总数 87→88。
+  ok(counts.stable === 9 && counts.recommended === 50 && counts.optional === 26 && counts.unstable === 3 && counts.retired === 0,
+    `register counts are 9 稳定/50/26/3/0 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 88, `register holds exactly 88 features (tl1733 memoryIndexSlim added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 50 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 3 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/50/26/3/0");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -250,16 +251,21 @@ console.log("\ntask 562 lab three-tier badges");
   // 条目；workflowTemplates（工作流模板）为前端独有新条目（Go 侧仍为
   // workflowPanel 家族子键）。四组：opencodeGoUsage 渲染表条目随键退役移除
   // ——Go 表 74→73（前端转 feOnly 展示行，用量查询常开无门）。tl1487 七组：
-  // pathRules 条目随键退役移除——Go 表 73→72。
-  ok(Object.keys(goTiers).length === 73, `Go registry parses to 73 entries (got ${Object.keys(goTiers).length})`);
+  // pathRules 条目随键退役移除——Go 表 73→72。tl1453 后 recallTool /
+  // zeroSummaryCompact 两 unstable 条目入 Go 表而本 pin 漏跟（基点
+  // c9bb09cd23 实值 75=预存红，20261121 tl1733 收口）；tl1733：
+  // memoryIndexSlim（记忆注入瘦身，提效组，可选档）两侧共享入表——75→76。
+  ok(Object.keys(goTiers).length === 76, `Go registry parses to 76 entries (tl1733 memoryIndexSlim added; got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
   const feOnly = feIds.filter((id) => !goIds.includes(id));
   // 并集解回调（2026-10-28）：jsonlZstd 前端已随 58c19737d 注册 ⇒ Go-only
   // 收回 3 条（去 jsonlZstd）。tl1397/tl1419：rangesCompact/modelRangesCompact
-  // 加入（同上 config-only 豁免口径，5 条）。
-  ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "modelRangesCompact", "networkRetryBudget", "rangesCompact", "sessionCwdFollow"]),
+  // 加入（同上 config-only 豁免口径，5 条）。tl1733：recallTool /
+  // zeroSummaryCompact 两 Go-only 条目补入豁免名单（基点预存红收口，
+  // 7 条）；memoryIndexSlim 两侧共享，不入名单。
+  ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "modelRangesCompact", "networkRetryBudget", "rangesCompact", "recallTool", "sessionCwdFollow", "zeroSummaryCompact"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
   // tl 1132：startupLoading（「启动与加载」纯前端容器 id，Go 渲染表无条目，
   // 同 tabManagement 豁免）加入 feOnly。tl1309 卡②：runtimeObservability 加入。
@@ -335,7 +341,8 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1193b：pinnedIndex 独立 rail 入口计入（记忆与上下文新组）→ 82。
   // tl1487 七组：pathRules 出表（union/registry 同撤）→ covered 87→86。
   // tl1265 第2轮：editResend（tl1544 入表，此前漏同步本计数）补齐 86→87。
-  ok(covered.size === 87, "rail entries cover all 87 features (tl1265: +editResend 补同步)");
+  // tl1733：memoryIndexSlim rail 入口计入 → 87→88。
+  ok(covered.size === 88, "rail entries cover all 88 features (tl1733 memoryIndexSlim added)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含

@@ -46,8 +46,10 @@ const render = read(repoRoot, "internal/config/render.go");
 // the rail light reads both the gate and the persisted style.
 ok(
   panel.includes('id: "interactionPresentation"') &&
-    panel.includes('{ id: "outputStyle", labelKey: "settings.outputStyle", tier: "optional" }'),
-  "lab rail hosts the outputStyle member row (961 interactionPresentation merged card)",
+    // tl1487 一组②把 outputStyle 可选→推荐（基点 c9bb09cd23 本 pin 漏跟=
+    // 预存红，20261121 tl1733 对照收口）。
+    panel.includes('{ id: "outputStyle", labelKey: "settings.outputStyle", tier: "recommended" }'),
+  "lab rail hosts the outputStyle member row (961 interactionPresentation merged card; tl1487 tier bump)",
 );
 ok(
   panel.includes(

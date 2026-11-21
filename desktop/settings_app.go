@@ -587,6 +587,10 @@ type SettingsView struct {
 	// boot resolves the saved switch into the memory gate before the first
 	// Load, so the desktop flip writes config and applies on restart.
 	ExperimentalPinnedIndex bool `json:"experimentalPinnedIndex"`
+	// tl1733: 记忆注入瘦身 lab switch readback. Boot snapshot — boot resolves
+	// the saved switch into the memory gate before the first Load, so the
+	// desktop flip writes config and applies on restart.
+	ExperimentalMemoryIndexSlim bool `json:"experimentalMemoryIndexSlim"`
 	// 任务 1024: composer 草稿优化（改写按钮）lab switch readback. Boot snapshot;
 	// the settings save re-applies it, so a flip shows without a restart.
 	ExperimentalDraftRewrite bool `json:"experimentalDraftRewrite"`
@@ -2097,6 +2101,8 @@ func (a *App) Settings() SettingsView {
 		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
 		// tl1193b: plan-E pinned index mode readback.
 		ExperimentalPinnedIndex: cfg.Agent.ExperimentalPinnedIndex,
+		// tl1733: 记忆注入瘦身 lab switch readback.
+		ExperimentalMemoryIndexSlim: cfg.Agent.ExperimentalMemoryIndexSlim,
 		// 任务 1024: composer 草稿优化（改写按钮）lab switch readback.
 		ExperimentalDraftRewrite: cfg.Agent.ExperimentalDraftRewrite,
 		// tl1544: 运行中编辑回溯重发 lab switch readback.

@@ -1548,6 +1548,16 @@ func (c *Config) SetExperimentalPinnedIndex(enabled bool) error {
 	return nil
 }
 
+// SetMemoryIndexSlim toggles the tl1733 injection-slimming lab switch (ON =
+// emergency bypass: background index stops injecting, pinned only; OFF =
+// default slimmed injection pipeline). Boot resolves the saved switch into the
+// memory package gate (pinnedIndex 先例), so a flip applies on restart; the
+// desktop flip writes config only.
+func (c *Config) SetMemoryIndexSlim(enabled bool) error {
+	c.Agent.ExperimentalMemoryIndexSlim = enabled
+	return nil
+}
+
 // SetStalledIntentNudge toggles the task-1069 stalled-intent nudge lab switch
 // (模型提前结束判定器续轮提醒). Key semantics unchanged from task 117's
 // hand-written `stalled_intent_nudge = true`: the agent reads the boot

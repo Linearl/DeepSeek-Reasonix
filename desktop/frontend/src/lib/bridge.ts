@@ -2079,6 +2079,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // tl1193b: plan-E pinned standing-tier index mode (experimental; boot
   // resolves the saved switch, so a flip applies on restart).
   SetExperimentalPinnedIndex(enabled: boolean): Promise<void>;
+  // tl1733: 记忆注入瘦身 (experimental; boot resolves the saved switch, so a
+  // flip applies on restart).
+  SetMemoryIndexSlim(enabled: boolean): Promise<void>;
   // Task 801: solidified decision-patterns file location (empty = default
   // global-workspace/docs/decision-patterns.md; must be a .md path).
   SetDecisionPatternFilePath(path: string): Promise<void>;
@@ -7316,6 +7319,7 @@ function makeMockApp(): AppBindings {
     async SetStalledIntentNudge() {},
     async SetExperimentalDecisionPatterns() {},
     async SetExperimentalPinnedIndex() {},
+    async SetMemoryIndexSlim() {},
     async SetDecisionPatternFilePath() {},
     async SetDecisionPatternThreshold() {},
     async SetDecisionPatternAutoApprove() {},
