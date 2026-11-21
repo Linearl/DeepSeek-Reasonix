@@ -5385,15 +5385,8 @@ export default function App() {
     //（fork 的 README 指向 esengine/DeepSeek-Reasonix；导出日志/打开日志目录走
     // Go 侧 RevealPath）。
     const helpCmds: PaletteItem[] = [
-      {
-        id: "cmd-docs",
-        group: t("palette.group.help"),
-        title: t("palette.cmd.docs"),
-        icon: <BookOpen size={15} />,
-        compact: true,
-        keywords: ["docs", "documentation", "help", "文档", "帮助"],
-        run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix#readme"),
-      },
+      // 「产品文档」只保留命令组的 cmd-product-docs（1102，开我们的文档站）；
+      // 原帮助组 cmd-docs 开上游已停维护的 README，20261121 去重删除。
       { id: "cmd-feedback", group: t("palette.group.help"), title: t("palette.cmd.feedback"), icon: <MessageSquare size={15} />, compact: true, keywords: ["feedback", "反馈", "意见"], run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues/new") },
       { id: "cmd-feature-request", group: t("palette.group.help"), title: t("palette.cmd.featureRequest"), icon: <Lightbulb size={15} />, compact: true, keywords: ["feature", "request", "需求", "建议"], run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues/new?template=feature_request.md") },
       { id: "cmd-report-bug", group: t("palette.group.help"), title: t("palette.cmd.reportBug"), icon: <Bug size={15} />, compact: true, keywords: ["bug", "report", "漏洞", "报告"], run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues/new?template=bug_report.md") },

@@ -4492,7 +4492,6 @@ export const en = {
   "palette.cmd.gotoTab": "Go to tab",
   "palette.cmd.searchQuestions": "Search past questions",
   "palette.cmd.lab": "Lab",
-  "palette.cmd.docs": "Product docs",
   "palette.cmd.feedback": "Feedback",
   "palette.cmd.featureRequest": "Feature request",
   "palette.cmd.reportBug": "Report a bug",

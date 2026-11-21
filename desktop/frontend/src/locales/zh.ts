@@ -4472,7 +4472,6 @@ export const zh: Record<DictKey, string> = {
   "palette.cmd.gotoTab": "跳转标签页",
   "palette.cmd.searchQuestions": "搜索历史提问",
   "palette.cmd.lab": "实验室",
-  "palette.cmd.docs": "产品文档",
   "palette.cmd.feedback": "问题反馈",
   "palette.cmd.featureRequest": "提需求",
   "palette.cmd.reportBug": "提交漏洞",
