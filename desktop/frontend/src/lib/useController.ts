@@ -3003,8 +3003,16 @@ export function reducer(s: State, a: Action): State {
       // 已经在同一触发上发生了——拒收若连带丢掉归零，重放照样被旧水位线吞掉。故
       // 归零提到闸前，拒收路径带归零返回；epoch 未变时 epochZeroed 恒等于 s，
       // 既有拒收语义（引用相等）逐字节不变。
+      // tl1739: 归零条件从「epoch 变了」收紧为「账本序号重启」。同一 session 的
+      // runtime 重建（rebindTurnEvents 重开同一账本文件）序号连排——旧 epoch 与
+      // 新 epoch 共享同一套单调 seq，此时归零会把重放的已上屏前缀整段重新放行
+      // （20261120 实测：转录中同一 turn 内容渲染两次）。重启信号=快照的
+      // turnEventSeq 严格低于上一发快照存档的 runtimeStatusSeq（账本倒退）；等值
+      // /前进按连续账本处理，水位线保持重放去重闸。真重启形态（新会话头/一键
+      // 分析换会话）seq 必然倒退，657 的放行语义由本条件承接。
       const epochChanged = Boolean(incomingEpoch && storedEpoch && incomingEpoch !== storedEpoch);
-      const epochZeroed = epochChanged && s.appliedEventSeq !== 0 ? { ...s, appliedEventSeq: 0 } : s;
+      const ledgerRestarted = epochChanged && (a.turnEventSeq ?? 0) < (s.runtimeStatusSeq ?? 0);
+      const epochZeroed = ledgerRestarted && s.appliedEventSeq !== 0 ? { ...s, appliedEventSeq: 0 } : s;
       if (runtimeStatusSnapshotIsStale(s, a)) return epochZeroed;
       // Reject snapshots that began before newer prompt or turn lifecycle evidence.
       if (runtimeSnapshotPredatesPrompt(s, a.snapshotAt) || snapshotPredatesTurnLifecycle(s.turnLifecycleObservedAt, a.snapshotAt)) return epochZeroed;
@@ -3012,7 +3020,7 @@ export function reducer(s: State, a: Action): State {
         runtimeStatusEpoch: incomingEpoch ?? storedEpoch,
         runtimeStatusSeq: a.turnEventSeq ?? s.runtimeStatusSeq,
         runtimeStatusSnapshotAt: a.snapshotAt,
-        ...(epochChanged ? { appliedEventSeq: 0 } : {}),
+        ...(ledgerRestarted ? { appliedEventSeq: 0 } : {}),
       };
       const pendingPrompt = Boolean(a.pendingPrompt);
       const backgroundJobs = Math.max(0, a.backgroundJobs ?? s.backgroundJobs ?? 0);
@@ -3401,10 +3409,13 @@ export function reducer(s: State, a: Action): State {
         // 任务1015：控制器重建后旧的投递回执不再可信，排队态归零待重评估。
         queuedFollowup: false,
         promptArrivedAt: undefined,
-        // 任务657: a rebuilt runtime restarts its ledger seqs from 1, so the
-        // old epoch's watermark would silently swallow the new epoch's
-        // replayed events.
-        appliedEventSeq: 0,
+        // tl1739: 重建不再盲目归零水位线。同一 session 的重建（rebindTurnEvents
+        // 重开同一账本文件）seq 连排，归零会把后续权威重放的已上屏前缀整段放行
+        // （657 原假设「重建必从 1 重启」只对换会话形态成立——该形态伴随 surface
+        // reset，水位线随 initialState 归零，无需此处代劳）。重启形态的放行移到
+        // 第一发 epoch 变更快照的账本倒退判定上（backend_status 的
+        // ledgerRestarted），投影器修复界（preVoidCursor floor + replayGap 重启
+        // 重取）负责重放重达，缺口队列承载重建窗口内的在途事件。
         extensionStatuses: {},
         extensionForm: undefined,
         extensionNotifications: [],
@@ -3947,30 +3958,6 @@ export function useController() {
     if (meta !== undefined) dispatchTo(tabId, { type: "meta", meta });
     return meta;
   }, [dispatchTo, loadMetaForTab]);
-  // 任务469: an event dropped by a stale wire fence used to simply vanish —
-  // the fences sit upstream of the 428 gate and the P16 receipt row, so a
-  // swallowed popup left no trace and no recovery until the next navigation.
-  // 469 reconciled prompt-kind drops; tl1444 extends the same debounced
-  // reconcile to every fenced event (超限态身份翻动会整轮吞掉 turn 内容，
-  // projector 的 seq-gap 权威重放负责回填漏接增量). One debounced
-  // authoritative reconcile per tab:
-  // refresh the tab meta first (it re-arms runtimeEpochByTabRef and
-  // meta.sessionGeneration so the replay can pass the fences), then ask the
-  // backend to replay whatever prompt is genuinely still pending there. The
-  // replay rides the binding channel (fenced by nothing) and only re-emits
-  // prompts the CURRENT controller actually holds — no zombie risk — while the
-  // #6432 tombstone still filters an already-answered one.
-  const schedulePromptFenceReconcile = useCallback((tabId: string) => {
-    if (promptFenceReconcileTimers.current.has(tabId)) return;
-    const timer = window.setTimeout(() => {
-      promptFenceReconcileTimers.current.delete(tabId);
-      void (async () => {
-        await refreshMetaOnlyForTab(tabId);
-        if (statesRef.current.has(tabId)) replayPendingPromptsForActiveTab(tabId);
-      })();
-    }, PROMPT_FENCE_RECONCILE_MS);
-    promptFenceReconcileTimers.current.set(tabId, timer);
-  }, [refreshMetaOnlyForTab]);
   // tl1657: pending-card reconciliation for a compaction the webview never saw
   // start. A resume-triggered pressure compaction opens its pass during the Go
   // boot (autonomous-update resume), often BEFORE this window attached its
@@ -5156,6 +5143,55 @@ export function useController() {
     return tabs;
   }, [dispatchRuntimeStatusForTab, loadSessionDataForTab, refreshBalanceForTab]);
 
+  // 任务469: an event dropped by a stale wire fence used to simply vanish —
+  // the fences sit upstream of the 428 gate and the P16 receipt row, so a
+  // swallowed popup left no trace and no recovery until the next navigation.
+  // 469 reconciled prompt-kind drops; tl1444 extends the same debounced
+  // reconcile to every fenced event (超限态身份翻动会整轮吞掉 turn 内容，
+  // projector 的 seq-gap 权威重放负责回填漏接增量). One debounced
+  // authoritative reconcile per tab. The replay rides the binding channel
+  // (fenced by nothing) and only re-emits prompts the CURRENT controller
+  // actually holds — no zombie risk — while the #6432 tombstone still filters
+  // an already-answered one.
+  // tl1739: 顺序与翻代补全。此前对账体只刷 meta（loadMetaForTab 重 arm 锚 +
+  // reanchorEpoch 删投影器游标），而 reanchor 本意依赖的「下一发权威快照经
+  // observeRuntime 以 durable floor 重播种」在 fence 路径上没有配对——游标
+  // 作废后第一条放行直播增量在 acceptLive 暴露「从 0 起」的假缺口，
+  // requestReplay(0) 全量账本重灌，重放穿过被 controller_rebuilt 归零的 657
+  // 水位线（tl1739 已收紧为账本倒退判定），把已上屏内容重新 apply 一遍
+  // （20261120 实测：转录中同一 turn 渲染两次，desktop.log reason=epoch-fence
+  // session_changed）。现在对账体按序做四件事：① 先以权威运行时快照重播种
+  // （dispatchRuntimeStatusForTab → observeRuntime，floor 语义同 675，先于锚
+  // 重挂，两处 epoch 权威不分叉）；② 再刷 meta 重挂 fence 锚与新代（reanchor
+  // 自此同代 no-op，游标保全）；③ 权威重放真实挂起的 prompt（469 语义：面板
+  // 恢复不等重载）；④ 锚翻代时复用 accepted session_changed 同款指纹门
+  // （sessionChangedReloadNeeded → loadSessionDataForTab(reset)）——被 fence
+  // 吞掉的身份事件，其对账恢复与事件被放行走同一条 replace 语义
+  // （epoch-fence 恢复走 replace 而非 append，指纹未动则维持轻量路径）。
+  const schedulePromptFenceReconcile = useCallback((tabId: string) => {
+    if (promptFenceReconcileTimers.current.has(tabId)) return;
+    const timer = window.setTimeout(() => {
+      promptFenceReconcileTimers.current.delete(tabId);
+      void (async () => {
+        const paintedEpoch = runtimeEpochByTabRef.current.get(tabId);
+        await reconcileTabRuntime(tabId, { hydrateSessionData: false, refreshAncillary: false });
+        const meta = await refreshMetaOnlyForTab(tabId);
+        if (statesRef.current.has(tabId)) replayPendingPromptsForActiveTab(tabId);
+        const freshEpoch = meta?.runtime?.epoch;
+        if (
+          statesRef.current.has(tabId) &&
+          paintedEpoch &&
+          freshEpoch &&
+          paintedEpoch !== freshEpoch &&
+          sessionChangedReloadNeeded(statesRef.current.get(tabId), meta)
+        ) {
+          await loadSessionDataForTab(tabId, true, "session-changed");
+        }
+      })();
+    }, PROMPT_FENCE_RECONCILE_MS);
+    promptFenceReconcileTimers.current.set(tabId, timer);
+  }, [loadSessionDataForTab, refreshMetaOnlyForTab, reconcileTabRuntime]);
+
   const reconcileRuntimeAfterRejectedMutation = useCallback(async (tabId: string): Promise<void> => {
     const result = await findTabAfterSubmitFailure(app, tabId, CANCEL_RECONCILE_DELAYS_MS, promptEventClock);
     if (!result) return;
@@ -5428,7 +5464,17 @@ export function useController() {
       }
       if (e.kind === "text" || e.kind === "reasoning") {
         if (e.submissionId) dispatchTo(targetTabId, { type: "send_confirmed", submissionId: e.submissionId });
-        textBatch.push({ tabId: targetTabId, e });
+        if (turnEventProjector.isProjectingReplay(targetTabId)) {
+          // tl1739: 重放投影的增量必须保住各自的 seq 判定——进共享 rAF 批会被
+          // coalesce 成一段取 max seq，已折叠前缀（seq ≤ 水位线）搭上新增量
+          // （seq > 水位线）的车整段放行，重新流进已上屏气泡（20261120 同一
+          // turn 渲染两次事故）。逐条单段派发，水位线逐条裁决；重放有界且
+          // 低频，直派的 reducer 开销可承受。先 drain 保证既有直播段先落。
+          textBatch.drain();
+          dispatchTo(targetTabId, { type: "stream_batch", segments: [{ kind: e.kind, delta: e.text ?? e.reasoning ?? "", seq: e.seq }] });
+        } else {
+          textBatch.push({ tabId: targetTabId, e });
+        }
       } else {
         textBatch.drain();
         dispatchTo(targetTabId, { type: "event", e });

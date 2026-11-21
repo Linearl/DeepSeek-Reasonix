@@ -82,12 +82,19 @@ const rebaseReplay = reducer(rebased, { type: "stream_batch", segments: [{ kind:
 equal(rebaseReplay, rebased, "rebase 后同 seq 重放为 no-op");
 equal(rebaseReplay.live?.reasoning, "想", "rebase 后重放不把 live 内容再灌一遍（不想出『想想』）");
 
-// ---- reset 点归零 ----
+// ---- 重建点不归零（tl1739 收紧 657）----
+// 657 原语义「controller_rebuilt 归零」假设重建必重启账本序号；但同一 session
+// 的重建（rebindTurnEvents 重开同一账本文件）seq 连排，盲目归零会把权威重放的
+// 已上屏前缀整段放行（20261120 重复渲染事故：转录中同一 turn 渲染两次）。换
+// 会话的重启形态伴随 surface reset（水位线随 initialState 归零，无需此处代劳）；
+// 不换会话的重启形态由第一发 epoch 变更快照的账本倒退判定放行（见下）。
 const rebuilt = reducer(s, { type: "controller_rebuilt" });
-equal(rebuilt.appliedEventSeq, 0, "controller_rebuilt 归零水位线（新 epoch seq 从 1 重启）");
-const freshEpoch = reducer(rebuilt, ev(1, { kind: "turn_started", turnId: "turn-new", status: "in_progress" }));
-equal(freshEpoch.appliedEventSeq, 1, "新 epoch 的 seq=1 不被旧水位线吞掉");
-equal(freshEpoch.running, true, "新 epoch 事件照常驱动渲染状态");
+equal(rebuilt.appliedEventSeq, s.appliedEventSeq, "controller_rebuilt 不归零水位线（连排账本：水位线仍是重放去重闸）");
+const continuingTurn = reducer(rebuilt, ev(s.appliedEventSeq + 1, { kind: "turn_started", turnId: "turn-new", status: "in_progress" }));
+equal(continuingTurn.appliedEventSeq, s.appliedEventSeq + 1, "连排账本的新 seq 照常入列");
+equal(continuingTurn.running, true, "重建后事件照常驱动渲染状态");
+// 重启形态（换会话/新会话头）的放行钉在 turn-event-epoch-watermark.test.ts：
+// 快照 turnEventSeq 严格低于上一发存档 runtimeStatusSeq 才归零。
 
 const resetState = reducer(s, { type: "reset" });
 equal(resetState.appliedEventSeq, 0, "reset（切换会话）归零水位线");
