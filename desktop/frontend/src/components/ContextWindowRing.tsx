@@ -30,6 +30,17 @@ const detailViewByTab = new Map<string, boolean>();
 // capability.DirectoryWarnBytes 同源的字面量；字节口径，非 token）。
 const DIRECTORY_WARN_BYTES = 64 * 1024;
 
+// tl1736: 对称防抖窗口——tl1239③ 只治「勾选后浮层重定位」的浮层侧 leave，
+// 普通打开路径同样存在遮挡回路：浮层（或其数据异步加载后 AnchoredPopover
+// 自动重定位）覆盖指针所在环带 → 浏览器对静止指针补发 mouseleave →
+// onLeave 120ms 后关 → 指针重新 enter → 200ms 后再开，形成出现-消失回路
+// （实测周期 ~300ms；靠右时浮层向左展开不压指针故不断路）。浮层打开瞬间
+// 武装对称护栏：窗口内触发区 leave 被忽略，窗口后真移出照常关（防永久
+// 锁死）。N 值标定见 tl1736 报告：400ms 覆盖「open 后数据回来重定位」的
+// 补发窗口（enter 延迟 200ms + 本地 IPC 加载尾部）并留余量，与 tl1239③
+// 豁免窗同值。
+const OPEN_LEAVE_GUARD_MS = 400;
+
 interface ContextWindowRingProps {
   turnMetrics?: { elapsed: string; tokens: string | null; tps: string | null };
   enabled?: boolean;
@@ -193,14 +204,25 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
     if (leaveTimer.current != null) clearTimeout(leaveTimer.current);
   }, []);
 
+  // tl1736: 对称防抖（窗口常量 OPEN_LEAVE_GUARD_MS 见模块级定义）。
+  const openLeaveGuardUntil = useRef(0);
+  const armOpenLeaveGuard = useCallback(() => {
+    openLeaveGuardUntil.current = Date.now() + OPEN_LEAVE_GUARD_MS;
+  }, []);
+
   const onEnter = useCallback(() => {
     if (enterTimer.current != null) clearTimeout(enterTimer.current);
     if (leaveTimer.current != null) clearTimeout(leaveTimer.current);
     loadInfo();
-    enterTimer.current = setTimeout(() => setOpen(true), 200);
-  }, [loadInfo]);
+    enterTimer.current = setTimeout(() => {
+      armOpenLeaveGuard();
+      setOpen(true);
+    }, 200);
+  }, [loadInfo, armOpenLeaveGuard]);
 
   const onLeave = useCallback(() => {
+    // tl1736: 浮层打开后 N ms 内忽略触发区 leave（对称防抖，堵遮挡回路）。
+    if (Date.now() < openLeaveGuardUntil.current) return;
     if (enterTimer.current != null) clearTimeout(enterTimer.current);
     leaveTimer.current = setTimeout(() => setOpen(false), 120);
   }, []);
@@ -294,6 +316,7 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
           if (enterTimer.current != null) clearTimeout(enterTimer.current);
           if (leaveTimer.current != null) clearTimeout(leaveTimer.current);
           loadInfo();
+          armOpenLeaveGuard();
           setOpen(true);
         }}
         aria-haspopup="dialog"
