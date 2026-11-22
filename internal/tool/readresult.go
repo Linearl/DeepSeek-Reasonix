@@ -204,6 +204,14 @@ func stripSourceTokenCitation(output string) string {
 	return rest[:idx+1]
 }
 
+// TrimSourceTokenCitation removes one trailing host-stamped source-token
+// citation line ([source_token ...]) from a read result. Digesting callers
+// compare windows across calls (repeated-read dedup) and must not let the
+// per-call receipt id break byte equality of identical content (tl1762).
+func TrimSourceTokenCitation(output string) string {
+	return stripSourceTokenCitation(output)
+}
+
 // ParseReadTrailer reads the reader's own paging trailer. It is the reader's
 // format, not a third party's, so the reader owns both sides of it.
 func ParseReadTrailer(output string) ReadTrailer {

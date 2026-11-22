@@ -98,6 +98,20 @@ type toolOutcome struct {
 	readActiveMillis  int64
 	incompleteRead    *incompleteReadDeferred
 	subagentOutcome   *SubagentOutcome
+	// pendingReceiptCitation is the host citation suffix computed for a
+	// successful call at execution time (appendReceiptCitation), applied to
+	// the result only after the batch finalizers finish rewriting it.
+	// tl1762: the read pipeline's ordered finalizer re-clips a read_file
+	// result from its raw output, which used to wipe a citation appended at
+	// execution time — the model then received a read whose printed source
+	// token did not exist, and any edit citing it was rejected with
+	// source_token_unknown.
+	pendingReceiptCitation string
+	// citationSuppressed marks outputs the host replaced wholesale (a
+	// restricted read-strategy preview): there is no fresh model-visible
+	// window for the receipt to cite, so stamping one would promise evidence
+	// the ledger never filed.
+	citationSuppressed bool
 }
 
 // batchExecution is the result of one provider tool-call batch.
@@ -254,6 +268,11 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		// cache invalidation, rewriting stored history would.
 		a.maybeApplyReviewHint(&outcomes[i], i == len(calls)-1)
 		a.finalizeIncompleteReadOutcome(ctx, outcomes[i].incompleteRead, &outcomes[i])
+		// tl1762: the citation lands after the pipeline re-clip but BEFORE the
+		// deduper, so the delivery digest it remembers matches the cited text
+		// the model actually received. A dedup rewrite replaces the output
+		// wholesale afterwards, so references stay citation-free.
+		a.applyPendingReceiptCitation(&outcomes[i])
 		a.finalizeReadDelivery(ctx, calls[i], &outcomes[i])
 		results[i] = outcomes[i].output
 		a.commitBatchCallResolution(calls[i])

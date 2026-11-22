@@ -281,6 +281,29 @@ func appendReceiptCitation(result string, rec evidence.Receipt) string {
 	return strings.TrimRight(result, "\n") + "\n[receipt " + rec.ID + "]"
 }
 
+// applyPendingReceiptCitation stamps the citation computed at execution time
+// onto the final result text. tl1762: the batch finalizers may rebuild a
+// read_file result from its raw output (pipeline re-clip) or replace it
+// wholesale (dedup reference, restricted strategy preview) — applying here
+// keeps the citation on every delivered window instead of letting the rewrites
+// silently drop it, and suppresses it where no fresh model-visible window
+// exists so the printed token never names evidence the ledger did not file.
+func (a *Agent) applyPendingReceiptCitation(o *toolOutcome) {
+	if o == nil || o.pendingReceiptCitation == "" || o.citationSuppressed || o.readReference != nil {
+		return
+	}
+	// A source token names a delivered window. Windowless read results (empty
+	// files, past-EOF markers) file no observation, so citing their receipt
+	// would be rejected with source_token_unknown — keep the promise honest by
+	// printing nothing instead.
+	if strings.HasPrefix(o.pendingReceiptCitation, "\n[source_token ") {
+		if _, ok := tool.ParseReadWindow(o.output); !ok {
+			return
+		}
+	}
+	o.output = strings.TrimRight(o.output, "\n") + o.pendingReceiptCitation
+}
+
 // Readiness gap actions. They are identifiers the frontend maps to a control,
 // not sentences for the model to interpret.
 const (
