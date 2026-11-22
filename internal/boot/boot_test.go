@@ -2324,6 +2324,9 @@ func unifiedBootToolNames() []string {
 		"bash_output",
 		"complete_step",
 		"compress",
+		// tl1472(16fa92580c) 双通道创建把 create_goal 收进 provider 可见面；本契约
+		// 名单此前漏同步（tl1750 最小档 20261122 补齐，红线=DeepEqual 差集）。
+		"create_goal",
 		"edit_file",
 		"kill_shell",
 		"read_file",

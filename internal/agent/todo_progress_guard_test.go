@@ -43,6 +43,16 @@ func stalledTodoAgent(t *testing.T, turns []testutil.Turn) (*Agent, *testutil.Mo
 // asked to reassess once; what it does after that is its own call, and the
 // zero-evidence ladder already owns the structural stop on the same receipts.
 func TestTodoProgressGuardNeverPausesARun(t *testing.T) {
+	// 本文件四个 todo-stall 语义测试（跑完不停/Goal redirect/stall 清锁/unique host
+	// 续租）都用同形重复 inspect 构造场景；tl1514 面二 loop breaker（同形零进展连
+	// 续 5 轮打断，79f70ad4a8 入库）落地后场景在第 5 轮即被 RecoveryPauseError 打
+	// 断，nudge/redirect/clear 各语义点到不了（预存红批量治理 tl1750 最小档
+	// 20261122 定性，同 925fb9aa77 对 ToolLoopRetries 的判例）。这里用
+	// loop_breaker.go 文档明确的 ≤0 kill switch 关掉 breaker 面，让测试继续专测
+	// todo progress guard 语义；loop breaker 行为由 loop_breaker_test.go 自覆盖。
+	// 语义分层注意：同形场景下生产不可达 nudge(8)/redirect(16)/clear(16)——不是
+	// bug 而是防线接力（breaker 第 5 轮先断）。
+	shrinkLoopBreakerForTest(t, 0, 0)
 	for _, tc := range []struct {
 		name string
 		ctx  func() context.Context
@@ -85,6 +95,9 @@ func TestTodoProgressGuardNeverPausesARun(t *testing.T) {
 }
 
 func TestGoalTodoProgressGuardReplansWithoutPausing(t *testing.T) {
+	// 同形构造撞 tl1514 breaker 面，kill switch 隔离（tl1750，见
+	// TestTodoProgressGuardNeverPausesARun 注释）。
+	shrinkLoopBreakerForTest(t, 0, 0)
 	turns := []testutil.Turn{{ToolCalls: []provider.ToolCall{{
 		ID: "todo", Name: "todo_write",
 		Arguments: `{"todos":[{"content":"finish the task","status":"in_progress"}]}`,
@@ -121,6 +134,9 @@ func TestGoalTodoProgressGuardReplansWithoutPausing(t *testing.T) {
 // Without the clear the serial validator keeps rejecting every later write
 // against a plan the model cannot advance.
 func TestTodoStallClearsCanonicalListInOrdinaryChat(t *testing.T) {
+	// 同形构造撞 tl1514 breaker 面，kill switch 隔离（tl1750，见
+	// TestTodoProgressGuardNeverPausesARun 注释）。
+	shrinkLoopBreakerForTest(t, 0, 0)
 	turns := []testutil.Turn{{ToolCalls: []provider.ToolCall{{
 		ID: "todo", Name: "todo_write",
 		Arguments: `{"todos":[{"content":"stuck step","status":"in_progress"},{"content":"later","status":"pending"}]}`,
@@ -155,6 +171,9 @@ func TestTodoStallClearsCanonicalListInOrdinaryChat(t *testing.T) {
 }
 
 func TestTodoProgressGuardRenewsOnUniqueHostWork(t *testing.T) {
+	// 同形 inspect 段撞 tl1514 breaker 面（write 前第 5 轮即断），kill switch
+	// 隔离（tl1750，见 TestTodoProgressGuardNeverPausesARun 注释）。
+	shrinkLoopBreakerForTest(t, 0, 0)
 	turns := []testutil.Turn{{ToolCalls: []provider.ToolCall{{
 		ID: "todo", Name: "todo_write",
 		Arguments: `{"todos":[{"content":"finish the task","status":"in_progress"}]}`,

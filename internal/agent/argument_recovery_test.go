@@ -494,6 +494,12 @@ func TestArgumentRecoveryPreservesProviderPrefix(t *testing.T) {
 }
 
 func TestArgumentRecoverySoftLimitAndExplicitBudget(t *testing.T) {
+	// 12 轮同形 bash `{}` 参数恢复风暴撞 tl1514 breaker 面：limit=0 子测期望
+	// fixture 第 7 次请求自行 cancel，第 5 轮即被 RecoveryPauseError 打断；limit=3
+	// 子测 maxSteps 先触发不受影响。kill switch 隔离专测参数恢复 soft limit 语义
+	// （tl1750，判例 925fb9aa77 对 ToolLoopRetries 的同款修法；见
+	// todo_progress_guard_test.go 注释）。
+	shrinkLoopBreakerForTest(t, 0, 0)
 	for _, limit := range []int{0, 3} {
 		t.Run(fmt.Sprint(limit), func(t *testing.T) {
 			b := recoveryBash(t)

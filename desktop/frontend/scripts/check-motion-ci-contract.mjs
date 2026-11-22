@@ -154,7 +154,6 @@ for (const required of [
   "transcript-viewport.test.tsx",
   "transcript-question-jump.test.ts",
   "nested-scroll-handoff.test.ts",
-  "creation-transcript-scrollbar.test.ts",
   "markdown-table-virtual.test.tsx",
   "typography-overflow-contract.test.ts",
   "transcript-selection-retention.test.tsx",

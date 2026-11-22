@@ -83,6 +83,12 @@ func TestGoalSameFailureRedirectsWithoutPausing(t *testing.T) {
 // retired with upstream #10223 (#9766). Seven consecutive same-read rounds
 // must pass through without any guard pausing or redirecting the turn.
 func TestGoalZeroEvidenceNeverStopsTheRun(t *testing.T) {
+	// 本测试断言退役 progress guard 不得停 7 轮同形零证据 read（上游 #10223 语义
+	// 不得回潮）。fork tl1514 breaker 是宪法级用户令防线、优先保留，与该断言在
+	// 同形场景撞面（第 5 轮 RecoveryPauseError）；fork 侧分工=同形零进展归
+	// breaker 管。kill switch 隔离验证「退役 guard 不回潮」本体（tl1750，判例
+	// 925fb9aa77；见 todo_progress_guard_test.go 注释）。
+	shrinkLoopBreakerForTest(t, 0, 0)
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "read_file", readOnly: true})
 	const zeroEvidenceRounds = 7
