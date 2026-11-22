@@ -19,7 +19,7 @@ import { useConfirmDialog } from "./ConfirmDialog";
 import { PlanUsageCard } from "./PlanUsageCard";
 import { OpenCodeGoUsageSidebarCard } from "./OpenCodeGoUsageSidebarCard";
 import type { Item } from "../lib/useController";
-import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate, compactionWindowOverride, projectionStaleAnnotation, contextDisplayCaliber } from "../lib/contextPanelUtils";
+import { contextWindowStatus, contextReadoutSourceResolved, contextReadoutSourceKey, formatCacheHitRate, compactionWindowOverride, projectionStaleAnnotation, contextDisplayCaliber } from "../lib/contextPanelUtils";
 import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
 import { normalizeRecoveryLineageView } from "../lib/sessionRecoveryVersions";
 // tl1500: 会话指标卡折叠偏好（纯前端、localStorage 单键、默认展开）。
@@ -540,12 +540,16 @@ export function ContextPanel({
   // 任务1025（显示层收口）：读数来源标记——admission.observedPrompt > 0 说明
   //  provider 上次响应已校准（「实测」）；= 0 说明是新会话首轮 / 切 provider
   //  首轮（「估算」）。窗口环与分段条共用同一权威值口径与标记。
+  //  tl1752 单源收口：主读数（projectedTokens）由后端 provider-usage 锚覆盖
+  //  时 maintenance.readoutMeasured=true 随数同来——标签与数字同一判定源，
+  //  重启后（锚自 .jsonl.meta 回读）与压缩后（首轮请求重锚）即刻翻「实测」；
+  //  旧后端无此字段时回退 legacy observedPrompt 链（contextReadoutSourceResolved）。
   const projectedTokens = context?.maintenance?.projectedTokens ?? 0;
   const usedTokens = projectedTokens > 0
     ? projectedTokens
     : context?.used && context.used > 0 ? context.used : info?.usedTokens ?? 0;
   const observedPrompt = info?.contextBudget?.observedPrompt ?? context?.contextBudget?.observedPrompt ?? context?.maintenance?.contextBudget?.observedPrompt ?? 0;
-  const readoutSource = contextReadoutSource(observedPrompt);
+  const readoutSource = contextReadoutSourceResolved(context?.maintenance?.readoutMeasured, observedPrompt);
   const readoutSourceLabel = t(contextReadoutSourceKey(readoutSource));
   const readoutSourceTitle = t("context.readoutSourceTitle");
   const windowTokens = context?.window && context.window > 0 ? context.window : info?.windowTokens ?? 0;

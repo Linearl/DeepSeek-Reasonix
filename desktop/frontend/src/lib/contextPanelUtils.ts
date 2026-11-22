@@ -50,11 +50,28 @@ export function contextWindowStatus(rawUsagePct: number, compactPct: number): Co
 
 /** 任务1025（显示层收口）：读数来源标记。admission.observedPrompt > 0 说明
  *  provider 上次响应已实测校准（「实测」）；= 0 说明是新会话首轮 / 切 provider
- *  首轮，读数是估算（「估算」）。 */
+ *  首轮，读数是估算（「估算」）。
+ *  tl1752 缺陷：observedPrompt 的唯一赋值点是超限错误恢复路径，正常轮的
+ *  usage 校准从不写它——重启后（admission 清空）读数已走持久化锚（实测）
+ *  标签却卡「估算」，压缩后正常轮校准也不翻标签。 */
 export type ContextReadoutSource = "measured" | "estimated";
 
 export function contextReadoutSource(observedPrompt: number | undefined): ContextReadoutSource {
   return (observedPrompt ?? 0) > 0 ? "measured" : "estimated";
+}
+
+/** tl1752（单源收口）：读数来源标记的权威判定——maintenance.readoutMeasured
+ *  是后端「这次读数是不是锚（实测）算出来的」的那个布尔本身，与主读数
+ *  （projectedTokens）同源；true=实测，false=估算（新后端的权威负值，不再
+ *  回退 legacy）。undefined=旧后端报文，回退任务1025 的 legacy 链
+ *  （admission.observedPrompt > 0），兼容包108 及更早的宿主。 */
+export function contextReadoutSourceResolved(
+  readoutMeasured: boolean | undefined,
+  observedPrompt: number | undefined,
+): ContextReadoutSource {
+  if (readoutMeasured === true) return "measured";
+  if (readoutMeasured === false) return "estimated";
+  return contextReadoutSource(observedPrompt);
 }
 
 /** 读数来源的 i18n key，供窗口环/分段条共用同一套文案。 */

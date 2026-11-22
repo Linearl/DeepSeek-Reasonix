@@ -6042,7 +6042,7 @@ export const en = {
   "context.historyVolumeTitle": "Caliber: the readout {used} is what the next request actually sends; the full record {canonical} is the whole history (compaction writes projections only - history never shrinks and does not count against the window). The compaction src= in the logs is the full-record figure.",
   "context.readoutMeasured": "Measured",
   "context.readoutEstimated": "Estimated",
-  "context.readoutSourceTitle": "Source: measured (last provider response calibrated the estimate) / estimated (first turn of a session or after a provider switch, before a response)",
+  "context.readoutSourceTitle": "Source: measured (anchored on the last response's real usage; the persisted anchor survives restarts) / estimated (no trusted anchor yet — first turn, provider switch, or right after compaction)",
   "context.windowUsedLabel": "Used",
   "context.windowUsed": "Used context",
   "context.windowCompactThreshold": "Compression threshold",

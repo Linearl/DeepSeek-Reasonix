@@ -221,6 +221,48 @@ await unmountScenario(validRoot);
   await unmountScenario(estimatedRoot);
 }
 
+// ── tl1752: 标签单源收口——maintenance.readoutMeasured 与主读数同源 ──
+// 现场①：重启后读数走盘上锚（实测）而 admission.ObservedPrompt=0（不持久化，
+// 也没有 contextBudget 报文）——旧链会标「估算」，新链必须标「实测」。
+{
+  const restartRoot = await renderScenario({
+    used: 1_028_400, window: 1_000_000, sessionTokens: 1_028_400, compactRatio: 0.8,
+    maintenance: { projectedTokens: 1_028_400, projectionValid: true, triggerTokens: 800_000, readoutMeasured: true },
+  });
+  const restartCapacity = document.querySelector(".context-panel__capacity-card");
+  const restartBadgeText = restartCapacity?.querySelector(".context-panel__readout-source")?.textContent ?? "";
+  ok(["实测", "Measured", "實測"].includes(restartBadgeText),
+    `restart scenario (persisted anchor, no admission) renders the 实测 marker (got ${JSON.stringify(restartBadgeText)})`);
+  await unmountScenario(restartRoot);
+
+  // 诚实降级：新后端权威负值 readoutMeasured=false（锚失效——fold 装成清锚/
+  // 换 provider）时，即便 legacy observedPrompt>0（早前超限恢复过）也标「估算」
+  // ——标签不得与读数数字的来源矛盾。
+  const degradedRoot = await renderScenario({
+    used: 427_000, window: 1_000_000, sessionTokens: 427_000, compactRatio: 0.8,
+    maintenance: { projectedTokens: 427_000, projectionValid: true, triggerTokens: 800_000, readoutMeasured: false,
+      contextBudget: { windowTokens: 1_000_000, promptTokens: 900_000, observedPrompt: 900_000 } },
+  });
+  const degradedCapacity = document.querySelector(".context-panel__capacity-card");
+  const degradedBadgeText = degradedCapacity?.querySelector(".context-panel__readout-source")?.textContent ?? "";
+  ok(["估算", "Estimated", "估算"].includes(degradedBadgeText),
+    `authoritative negative (anchor invalid, stale observedPrompt>0) renders the 估算 marker (got ${JSON.stringify(degradedBadgeText)})`);
+  await unmountScenario(degradedRoot);
+
+  // 旧后端兼容：报文无 readoutMeasured 字段（包108 及更早）→ 回退任务1025
+  // legacy 链（observedPrompt>0 → 实测），行为零变化。
+  const legacyRoot = await renderScenario({
+    used: 546_500, window: 1_000_000, sessionTokens: 546_500, compactRatio: 0.8,
+    maintenance: { projectedTokens: 546_500, projectionValid: true, triggerTokens: 800_000,
+      contextBudget: { windowTokens: 1_000_000, promptTokens: 545_900, observedPrompt: 545_900 } },
+  });
+  const legacyCapacity = document.querySelector(".context-panel__capacity-card");
+  const legacyBadgeText = legacyCapacity?.querySelector(".context-panel__readout-source")?.textContent ?? "";
+  ok(["实测", "Measured", "實測"].includes(legacyBadgeText),
+    `legacy backend payload (no readoutMeasured) falls back to the observedPrompt chain (got ${JSON.stringify(legacyBadgeText)})`);
+  await unmountScenario(legacyRoot);
+}
+
 // 任务834: 渲染场景钉——已用读数贴近压缩阈值（79% vs 80%）时阈值 pin 的
 // 文字标签让位，两个「NN%」不再互相遮挡；远离阈值时照常双 pin 显示。
 const nearRoot = await renderScenario({ used: 790, window: 1_000, sessionTokens: 790, compactRatio: 0.8 });
