@@ -30,14 +30,11 @@ function ok(value: boolean, label: string) {
   else { process.stdout.write(`  FAIL  ${label}\n`); failed += 1; }
 }
 
-// tl1741：撤开关 id 豁免集合（stable 8 项 + 随宿主卡成员 + 容器）。
-const LAB1741_RETIRED = new Set<string>([
-  "autopilot", "sessionCollab", "collabHub", "workflowPanel", "workflowTemplates",
-  "cdpDebugPort", "runtimeReuse", "resourceGovernance",
-  "sessionCollabAutoFold",
-]);
+// tl1741r2 打回返修（20261122 用户裁定）：stable 8 项卡体回归后 labLabel 包装
+// 全部恢复（tl1741 期间的豁免集合收回）——每 id 恰一枚行级徽章口径不变。
+const LAB1741_RETIRED = new Set<string>([]);
 
-console.log("' + chr(92) + 'ntask 621 badge placement + suffix cleanup (tl1741 retired ids exempted)");
+console.log("' + chr(92) + 'ntask 621 badge placement + suffix cleanup (tl1741r2 card bodies restored)");
 
 const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../lab/labPaneRegistry.ts", import.meta.url)), "utf8");
 const card = readFileSync(fileURLToPath(new URL("../components/SettingsOpenCodeGoUsageCard.tsx", import.meta.url)), "utf8");
@@ -65,16 +62,11 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
       // 任务 722 点2：「已退役」徽章移除（rail 成员表 + 卡内只读行都不挂）。
       if (n !== 0) dupes.push(`${id}×${n}`);
     } else if (id === "sessionStorage") {
-      // tl1741：档位条目退役，但 sessionStore 卡内「存储版本」行（916 面板锁
-      // 的迁移工具面，tl1338 口径）保留一处 labLabel——恰好 1 允许。
+      // tl1741r2：档位成员行随卡体回归（稳定展示行）+ sessionStore 卡内
+      // 「存储版本」行（916 面板锁迁移工具面）——恰好 1 允许。
       if (n !== 1) dupes.push(`${id}×${n}`);
     } else if (LAB1741_RETIRED.has(id)) {
-      // tl1741：撤开关 id（+随宿主卡的 sessionCollabAutoFold）实验室展示面
-      // 移除——labLabel 包装断言随之豁免（562⑤ 同款口径）。
-      if (n !== 0) dupes.push(`${id}×${n}`);
-    } else if (id === "gcPercent" || id === "idleReleaseMinutes") {
-      // tl1741 拆卡回散条：kind:param 散条卡走通用 LabParamFieldsCard
-      // （binding.labelKey 内部包装，同 logManagement 豁免口径）。
+      // tl1741r2：豁免集合清空——全部恢复 labLabel 包装，走通用恰一枚校验。
       if (n !== 0) dupes.push(`${id}×${n}`);
     } else if (n === 0) missing.push(id);
     else if (n > 1) dupes.push(`${id}×${n}`);
@@ -86,8 +78,10 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
 // ② acceptance sample: badge on the master switch row, bare sibling rows.
 {
   const badged = [
-    // tl1741：autopilot 主行随卡退役——fullAccess 成为唯一 stable 主行钉。
+    // tl1741r2：autopilot 卡头行（无主开关卡）回归——stable 主行钉回 1005 前
+    // 口径（fullAccess 仍是唯一带开关的 stable 主行）。
     'labLabel("fullAccess", t("settings.fullAccess"))',
+    'labLabel("autopilot", t("settings.autopilot"))',
     'labLabel("monitoring", t("settings.sessionMonitor"))',
     'labLabel("budgetControl", t("settings.contextBudget"))',
     'labLabel("compressOpt", t("settings.proactiveCompact"))',
@@ -97,8 +91,9 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
     'labLabel("coldCacheCompact", t("settings.coldCacheCompact"))',
   ];
   const bare = [
-    // tl1741：autopilot 附属行（maxRuntime/approvalGrace/ask 族）随宿主卡
-    // 退役——preapprove 子块同卡不在；兄弟行抽查保留。
+    // tl1741r2：autopilot 附属行抽查（ask 族/preapprove 子块行随卡体回归，
+    // 各行裸标签不挂徽章；maxRuntime/approvalGrace 护栏行不回归——三键
+    // setter 随主键退役，键 config 手写可调）。
     'label={t("settings.perfMonitor")}',
     'label={t("settings.researchBudget")}',
     'label={t("settings.collabGuidanceMerge")}',
