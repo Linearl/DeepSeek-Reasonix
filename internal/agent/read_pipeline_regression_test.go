@@ -150,6 +150,11 @@ func TestReadCursorRejectsConflictingWindows(t *testing.T) {
 }
 
 func TestReadPipelineRepeatedRejectedPagesReachBoundedPause(t *testing.T) {
+	// 7 轮同形 read 期望读管道自己的 IncompleteReadError（bounded pause，
+	// Stagnant=4 ladder）；tl1514 通用 breaker 第 5 轮抢先打断，专测语义到不了。
+	// kill switch 隔离恢复读管道专测（tl1750，判例 925fb9aa77；见
+	// todo_progress_guard_test.go 注释）。
+	shrinkLoopBreakerForTest(t, 0, 0)
 	path := makeShortPagedReadFixture(t, "repeat.txt", 2105, 2050, "tail")
 	var turns [][]provider.Chunk
 	for i := range 7 {
