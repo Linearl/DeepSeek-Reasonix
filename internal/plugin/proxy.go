@@ -3,7 +3,6 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -98,7 +97,7 @@ func closeServerProxies(proxies map[string]*serverProxy) {
 // CancelInFlightMCP is a best-effort drain hook: closes active proxied
 // backends for every server so generation drain can abort mid-call work.
 // Ordinary tool calls do not yet track per-call context cancel on Host;
-// ReplaceServerBackend still closes the previous client.
+// replace paths close the previous client as they swap.
 func (h *Host) CancelInFlightMCP() {
 	if h == nil {
 		return
@@ -115,80 +114,6 @@ func (h *Host) CancelInFlightMCP() {
 			c.close()
 		}
 	}
-}
-
-// ReplaceServerBackend swaps the live client for name behind a stable proxy.
-// Tool schemas and names stay owned by the registry; only the connection moves.
-// generation is the runtime generation performing the replace.
-func (h *Host) ReplaceServerBackend(ctx context.Context, name string, next *Client, generation uint64) error {
-	if h == nil {
-		return fmt.Errorf("plugin: nil Host")
-	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("plugin: empty server name")
-	}
-	h.mu.Lock()
-	if h.closed {
-		h.mu.Unlock()
-		if next != nil {
-			next.close()
-		}
-		return fmt.Errorf("plugin: host closed")
-	}
-	if h.proxies == nil {
-		h.proxies = make(map[string]*serverProxy)
-	}
-	p := h.proxies[name]
-	if p == nil {
-		p = newServerProxy(name)
-		h.proxies[name] = p
-	}
-	// Publish the proxy and clients slice under the same Host lock. Otherwise a
-	// scope rollback can remove next after h.mu is released but before p.replace
-	// publishes it, leaving the proxy pointed at a closed client.
-	prev := p.client()
-	if prev == next {
-		_, err := p.swap(next, generation)
-		h.mu.Unlock()
-		return err
-	}
-	if next != nil {
-		if err := h.noteClientFromContext(ctx, next); err != nil {
-			h.mu.Unlock()
-			next.close()
-			return err
-		}
-	}
-	replaced, err := p.swap(next, generation)
-	if err != nil {
-		if next != nil {
-			for i, client := range h.clients {
-				if client == next {
-					h.clients = append(h.clients[:i], h.clients[i+1:]...)
-					break
-				}
-			}
-		}
-		h.mu.Unlock()
-		if next != nil {
-			next.close()
-		}
-		return err
-	}
-	if prev != nil {
-		for i, client := range h.clients {
-			if client == prev {
-				h.clients = append(h.clients[:i], h.clients[i+1:]...)
-				break
-			}
-		}
-	}
-	h.mu.Unlock()
-	if replaced != nil && replaced != next && replaced.t != nil {
-		replaced.close()
-	}
-	return nil
 }
 
 func (h *Host) lookupClient(name string) *Client {

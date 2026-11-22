@@ -23,25 +23,3 @@ func TestServerProxyReplaceDrainsPrevious(t *testing.T) {
 		t.Fatal("active not b")
 	}
 }
-
-func TestHostReplaceServerBackend(t *testing.T) {
-	h := &Host{}
-	a := &Client{name: "demo"}
-	b := &Client{name: "demo"}
-	if err := h.ReplaceServerBackend(context.Background(), "demo", a, 1); err != nil {
-		t.Fatal(err)
-	}
-	if h.client("demo") != a {
-		t.Fatal("client should be a")
-	}
-	if err := h.ReplaceServerBackend(context.Background(), "demo", b, 2); err != nil {
-		t.Fatal(err)
-	}
-	if h.client("demo") != b {
-		t.Fatal("client should be b after replace")
-	}
-	h.Close()
-	if h.client("demo") != nil {
-		t.Fatal("closed host should not resolve clients")
-	}
-}

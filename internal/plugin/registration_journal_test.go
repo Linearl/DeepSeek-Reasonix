@@ -6,13 +6,32 @@ import (
 	"testing"
 )
 
+// noteClientForTest registers c under the scope carried by ctx, holding the
+// Host write lock as noteClientLocked requires. It stands in for the retired
+// zero-caller ReplaceServerBackend (tl1754) as the scope-journal test entry:
+// same noteClientFromContext attribution, and like that face a same-name
+// registration replaces the live instance so instance-scoped rollback stays
+// testable. The proxy swap face is not reproduced (tests assert clients /
+// scope journals, not proxies).
+func noteClientForTest(h *Host, ctx context.Context, c *Client) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i, prev := range h.clients {
+		if prev != nil && prev.name == c.name {
+			h.clients = append(h.clients[:i], h.clients[i+1:]...)
+			prev.close()
+		}
+	}
+	return h.noteClientFromContext(ctx, c)
+}
+
 func TestRegistrationScopeRollbackIsInstanceScoped(t *testing.T) {
 	host := NewHost()
 	// Pre-existing sibling client accepted under scope A.
 	siblingA := &Client{name: "sibling"}
 	scopeA := host.BeginRegistrationScope()
 	ctxA := ContextWithRegistrationScope(context.Background(), scopeA)
-	if err := host.ReplaceServerBackend(ctxA, "sibling", siblingA, 1); err != nil {
+	if err := noteClientForTest(host, ctxA, siblingA); err != nil {
 		t.Fatal(err)
 	}
 	refsA := scopeA.Snapshot()
@@ -26,10 +45,10 @@ func TestRegistrationScopeRollbackIsInstanceScoped(t *testing.T) {
 	staleNew := &Client{name: "stale-new"}
 	scopeStale := host.BeginRegistrationScope()
 	ctxStale := ContextWithRegistrationScope(context.Background(), scopeStale)
-	if err := host.ReplaceServerBackend(ctxStale, "sibling", staleSibling, 2); err != nil {
+	if err := noteClientForTest(host, ctxStale, staleSibling); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.ReplaceServerBackend(ctxStale, "stale-new", staleNew, 2); err != nil {
+	if err := noteClientForTest(host, ctxStale, staleNew); err != nil {
 		t.Fatal(err)
 	}
 	refsStale := scopeStale.Snapshot()
@@ -49,12 +68,12 @@ func TestRegistrationScopeRollbackIsInstanceScoped(t *testing.T) {
 	// Sibling/new-generation resource created AFTER the stale scope must survive
 	// rollback (name-diff would delete it incorrectly). No scope token.
 	siblingNewGen := &Client{name: "sibling-new-gen"}
-	if err := host.ReplaceServerBackend(context.Background(), "sibling-new-gen", siblingNewGen, 3); err != nil {
+	if err := noteClientForTest(host, context.Background(), siblingNewGen); err != nil {
 		t.Fatal(err)
 	}
 	// Newer generation also replaces the shared name after the stale scope ends.
 	newerSibling := &Client{name: "sibling"}
-	if err := host.ReplaceServerBackend(context.Background(), "sibling", newerSibling, 4); err != nil {
+	if err := noteClientForTest(host, context.Background(), newerSibling); err != nil {
 		t.Fatal(err)
 	}
 	newerID := newerSibling.instanceID
@@ -99,12 +118,12 @@ func TestRegistrationScopeIgnoresUnrelatedHostWrites(t *testing.T) {
 
 	// Sibling hot-add during the open scope WITHOUT the token.
 	sibling := &Client{name: "sibling-hot-add"}
-	if err := host.ReplaceServerBackend(context.Background(), "sibling-hot-add", sibling, 1); err != nil {
+	if err := noteClientForTest(host, context.Background(), sibling); err != nil {
 		t.Fatal(err)
 	}
 	// Stale build also registers its own server under the scope.
 	staleOnly := &Client{name: "stale-only"}
-	if err := host.ReplaceServerBackend(ctxStale, "stale-only", staleOnly, 1); err != nil {
+	if err := noteClientForTest(host, ctxStale, staleOnly); err != nil {
 		t.Fatal(err)
 	}
 
@@ -139,7 +158,7 @@ func TestRegistrationScopeRejectsLateRegistrationAfterAbort(t *testing.T) {
 	scope.AbortAndRollback()
 
 	late := &Client{name: "late"}
-	err := host.ReplaceServerBackend(ctx, "late", late, 1)
+	err := noteClientForTest(host, ctx, late)
 	if !errors.Is(err, ErrRegistrationScopeAborted) {
 		t.Fatalf("late registration err = %v, want ErrRegistrationScopeAborted", err)
 	}
@@ -155,7 +174,7 @@ func TestRegistrationScopeCommitPreservesClientReusedByNewerBuild(t *testing.T) 
 	older := host.BeginRegistrationScope()
 	olderCtx := ContextWithRegistrationScope(context.Background(), older)
 	client := &Client{name: "shared", toolCatalog: toolCatalogSnapshot{listed: true}}
-	if err := host.ReplaceServerBackend(olderCtx, "shared", client, 1); err != nil {
+	if err := noteClientForTest(host, olderCtx, client); err != nil {
 		t.Fatal(err)
 	}
 
@@ -179,7 +198,7 @@ func TestRegistrationScopeActiveClaimDefersCreatorRollback(t *testing.T) {
 	creator := host.BeginRegistrationScope()
 	creatorCtx := ContextWithRegistrationScope(context.Background(), creator)
 	client := &Client{name: "shared", toolCatalog: toolCatalogSnapshot{listed: true}}
-	if err := host.ReplaceServerBackend(creatorCtx, "shared", client, 1); err != nil {
+	if err := noteClientForTest(host, creatorCtx, client); err != nil {
 		t.Fatal(err)
 	}
 
@@ -211,7 +230,7 @@ func TestCommittedScopeAcceptsLateLazyRegistration(t *testing.T) {
 	}
 
 	late := &Client{name: "late"}
-	if err := host.ReplaceServerBackend(ctx, "late", late, 1); err != nil {
+	if err := noteClientForTest(host, ctx, late); err != nil {
 		t.Fatalf("published scope rejected a late lazy registration: %v", err)
 	}
 	scope.AbortAndRollback()
@@ -226,10 +245,10 @@ func TestRegistrationScopesRemainIndependentWhileBothActive(t *testing.T) {
 	second := host.BeginRegistrationScope()
 	firstCtx := ContextWithRegistrationScope(context.Background(), first)
 	secondCtx := ContextWithRegistrationScope(context.Background(), second)
-	if err := host.ReplaceServerBackend(firstCtx, "a", &Client{name: "a"}, 1); err != nil {
+	if err := noteClientForTest(host, firstCtx, &Client{name: "a"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.ReplaceServerBackend(secondCtx, "b", &Client{name: "b"}, 1); err != nil {
+	if err := noteClientForTest(host, secondCtx, &Client{name: "b"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(first.Snapshot()) != 1 || len(second.Snapshot()) != 1 {
