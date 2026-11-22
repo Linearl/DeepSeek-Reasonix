@@ -22,13 +22,15 @@ export type ExperimentFeatureId =
   // M8 keeps standalone entries: autopilot / sessionCollab / fullAccess
   // （tl1309 卡①：optimisticParallel 并 contextGovernance；卡②：monitoring 并
   // runtimeObservability——两 id 自此清单除名）。
-  // tl1741：autopilot / sessionCollab / collabHub / resourceGovernance 四
-  // union id 随撤开关摘除（卡移除，功能常开）；fullAccess 保留。
-  // tl1741 拆卡回散条：orphanHandling/acpListen/localServer 三 feature id +
-  // idleReleaseMinutes/gcPercent 两 param 卡 id 重新入 union（1309 逆向）。
-  | "orphanHandling"
-  | "acpListen"
-  | "localServer"
+  // tl1741 返修（20261122 用户裁定「stable 清主选项、子选项保留配置」）：
+  // autopilot / sessionCollab / collabHub / resourceGovernance 四 union id
+  // 随卡体回归（无主开关卡——主键退役不回，子项面在各自 pane）；fullAccess
+  // 保留。五散条 id（orphanHandling/acpListen/localServer/idleReleaseMinutes/
+  // gcPercent）随资源治理卡回收出 union（1309 卡③再逆向=回归成员行）。
+  | "autopilot"
+  | "sessionCollab"
+  | "collabHub"
+  | "resourceGovernance"
   // Task 318.5: session + performance monitoring merge into one lab entry
   // (the two underlying switches stay independent inside the page).
   // tl1309 卡②：monitoring 独立 pane 退役——并入「运行可观测」合并卡
@@ -155,8 +157,11 @@ export type ExperimentFeatureId =
 // 入表，实数以 Set 为准）。任务 943：multiEditInjection（工具优化族拆分
 // 独立卡）入表。
 export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
-  // tl1741：autopilot / sessionCollab / collabHub / resourceGovernance 四 id
-  // 随撤开关摘除（卡移除；resourceGovernance 五成员回散条）。
+  // tl1741 返修：autopilot / sessionCollab / collabHub / resourceGovernance
+  // 四 id 随卡体回归白名单（无主开关卡；resourceGovernance 六成员回成员行，
+  // 五散条白名单 id 随卡回收）。
+  "autopilot",
+  "sessionCollab",
   "fullAccess",
   // 任务 961：dream/decisionPatterns/heartbeatBackground 三散条并入
   // smartAutomation 合并卡（成员行承载，独立 pane 退役）。
@@ -167,7 +172,8 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "contextGovernance",
   "safetyCostControl",
   "modelStrategy",
-  // tl1741：collabHub 白名单 id 随撤开关摘除。
+  // tl1741 返修：collabHub 白名单 id 随卡体回归。
+  "collabHub",
   // tl 1132：启动与加载合并卡（首项=启动遮罩，1133 预留成员位）。
   "startupLoading",
   "tabManagement",
@@ -193,13 +199,11 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "pinnedIndex",
   // tl1733: 记忆注入瘦身 pane（提效组）。
   "memoryIndexSlim",
-  // tl1741：resourceGovernance 容器 id 白名单摘除（整卡移除）；
-  // 五成员回散条（feature 卡硬编码分支 + kind:param 通用渲染器），白名单重新登记。
-  "orphanHandling",
-  "idleReleaseMinutes",
-  "gcPercent",
-  "acpListen",
-  "localServer",
+  // tl1741 返修：resourceGovernance 容器 id 白名单随卡体回归；五散条白名单
+  // id（orphanHandling/idleReleaseMinutes/gcPercent/acpListen/localServer）
+  // 随卡回收（成员行承载，feature 分支在卡 pane 硬编码、参数行走
+  // LAB_PARAM_FIELDS 注册表绑定）。
+  "resourceGovernance",
   "toolOptimizations",
   // 任务 971：multiEditInjection 独立 pane 退役（聚合页成员行，943 语义不变）。
   // 任务 775：kind:param 参数卡 id——pane 由通用参数渲染器承接（无独立

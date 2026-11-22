@@ -1,12 +1,13 @@
 // Run: tsx src/__tests__/settings-preapprove-managed.test.ts
 //
 // Task 231 — managed-path pre-approval settings surface (source guards)
-// → tl1741 换代（用户 20261121 三拍：autopilot 稳定卡随「稳定档不再提供开关」
-// 移除——卡内 autopilot-preapprove-subblock 随宿主 pane 退役；preapprove_*
-// 五值 setter/bridge 接口/三语九键/CSS 契约全部保留——语义面零改动）：
-//  ① 子块不在实验室面板渲染（随 autopilot pane 移除）；
-//  ② bridge 五值 setter 接口仍在（活键，config 手写可调）；
-//  ③ 三语九键契约与 CSS 形态契约不变（退役不删，重挂位可复用）。
+// → tl1741r2 再换代（用户 20261122 打回裁定「stable 清主选项（常开）、子选项
+// 保留配置」：autopilot 卡体回归 rail（无主开关行），卡内
+// autopilot-preapprove-subblock 随宿主 pane 回归；preapprove_* 五值 setter/
+// bridge 接口/三语九键/CSS 契约语义面零改动）：
+//  ① 子块在 autopilot 卡 pane 渲染（无主开关卡的子项面，不占独立 rail 入口）；
+//  ② bridge 五值 setter 接口仍在；
+//  ③ 三语九键契约与 CSS 形态契约不变。
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -38,10 +39,11 @@ const en = readFileSync(join(root, "locales/en.ts"), "utf8");
 const zh = readFileSync(join(root, "locales/zh.ts"), "utf8");
 const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
-// ── tl1741: the sub-block retired with the autopilot pane ──────────────────
+// ── tl1741r2: the sub-block is back inside the autopilot card pane ─────────
 ok(!panel.includes('{ id: "preapproveManagedPaths", group:'),
-  "render table has no preapprove rail entry (still folded, tl1741 retired the host card)");
-ok(!panel.includes("autopilot-preapprove-subblock"), "the pre-approval sub-block left the lab panel with the autopilot pane (tl1741)");
+  "render table has no preapprove rail entry (still folded: member face of the autopilot card, tl1741r2)");
+ok(panel.includes("autopilot-preapprove-subblock"), "the pre-approval sub-block renders in the autopilot card pane (tl1741r2)");
+ok(panel.includes("app.SetPreapproveManagedPaths("), "the sub-block wires the five-value bridge setter (one apply, no half-applied saves)");
 
 // ── bridge: one five-value write (no half-applied saves) ────────────────────
 ok(bridge.includes("SetPreapproveManagedPaths(enabled: boolean, skills: boolean, hooks: boolean, sessionStores: boolean, bashEscape: boolean): Promise<void>;"),

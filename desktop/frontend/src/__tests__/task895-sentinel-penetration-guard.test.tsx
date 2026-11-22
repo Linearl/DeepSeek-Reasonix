@@ -53,7 +53,9 @@ console.log("\n任务 895 sentinel 穿透封堵开关（UI 面）");
 // ① 卡内单条开关条目。
 {
   const start = panel.indexOf('{selected === "safetyCostControl" && (');
-  // tl1741：sessionCollab 分支随撤开关删除——结束锚随迁 modelStrategy。
+  // tl1741r2：sessionCollab/autopilot 两卡 pane 回归在 safetyCostControl 与
+  // modelStrategy 之间——结束锚维持 modelStrategy（切片含两回归卡，无本键
+  // 写者，唯一写者断言不受影响）。
   const end = panel.indexOf('{selected === "modelStrategy" && (');
   ok(start >= 0 && end > start, "safetyCostControl pane branch located");
   const card = start >= 0 && end > start ? panel.slice(start, end) : "";

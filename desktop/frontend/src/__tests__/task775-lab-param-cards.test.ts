@@ -45,8 +45,9 @@ const paneIds = new Set<string>();
   if (m) for (const id of m[1].matchAll(/"([a-zA-Z]+)"/g)) paneIds.add(id[1]);
 }
 
-// ── ② 首批迁移 → tl1309 卡③ 并卡：两参数（闲置释放/GC 策略）以成员行落
-//    「资源治理」卡（infra 组），字段绑定不变（值语义单源在 labParamFields），
+// ── ② 首批迁移 → tl1309 卡③ 并卡 → tl1741r2 卡体回归：两参数（闲置释放/
+//    GC 策略）以成员行落「资源治理」卡（infra 组，卡体回归 rail=无主开关卡
+//    20261122 用户裁定），字段绑定不变（值语义单源在 labParamFields），
 //    yaml ≡ 内置默认 ──
 {
   const resolved = resolveLabLayout(yamlText, { allowedEntryIds: paneIds });
@@ -60,27 +61,27 @@ const paneIds = new Set<string>();
   // sessionStore/homePointer/jsonlZstd 三项。
   ok(storage?.entries.length === 3, "storage group carries sessionStore + homePointer + jsonlZstd (tl1309 card-3 move)");
   const infra = LAB_LAYOUT_DEFAULT_DATA.groups.find((g) => g.key === "infra");
-  // tl1741：资源治理合并卡（tl1309 卡③）随「稳定档不再提供开关」整卡移除——
-  // runtimeReuse 撤开关（键退役），其余五成员回散条：两参数卡恢复独立
-  // kind:param 形态（tier/label 零变化，775 逆向回归=回到本任务最初交付面）。
+  // tl1741r2 打回返修：资源治理合并卡（tl1309 卡③）卡体回归（无主开关卡
+  // ——runtimeReuse 主键退役，成员行=无开关展示行），五成员随卡（775 两参数
+  // 回成员行承载，tier/label 零变化）。
   const gov = infra?.entries.find((e) => e.id === "resourceGovernance");
-  ok(gov === undefined,
-    "resourceGovernance merged card is gone (tl1741 split-back)");
-  const idleEntry = infra?.entries.find((e) => e.id === "idleReleaseMinutes");
-  const gcEntry = infra?.entries.find((e) => e.id === "gcPercent");
-  ok(idleEntry?.kind === "param" && idleEntry.tier === "recommended" && idleEntry.labelKey === "settings.detachedIdleRelease",
-    "idleReleaseMinutes is a standalone param card again (tier/label unchanged)");
-  ok(gcEntry?.kind === "param" && gcEntry.tier === "recommended" && gcEntry.labelKey === "settings.gcPercent",
-    "gcPercent is a standalone param card again (tier/label unchanged)");
-  ok(!infra?.entries.some((e) => e.id === "runtimeReuse") &&
-     Boolean(infra?.entries.find((e) => e.id === "orphanHandling")) &&
-     Boolean(infra?.entries.find((e) => e.id === "acpListen")) &&
-     Boolean(infra?.entries.find((e) => e.id === "localServer")),
-    "infra group: runtimeReuse retired, orphan/acp/localServer back as standalone cards");
-  ok(Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "idleReleaseMinutes")) &&
-     Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "gcPercent")) &&
-     !findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance"),
-    "the two param ids are entries again; the container id is gone");
+  ok(gov !== undefined && gov.tier === "stable" && !gov.onKeys?.includes("experimentalRuntimeReuse"),
+    "resourceGovernance merged card is back without the retired runtimeReuse light (tl1741r2)");
+  const govMemberIds = (gov?.members ?? []).map((m: { id: string }) => m.id);
+  ok(govMemberIds.includes("runtimeReuse") && govMemberIds.includes("orphanHandling") &&
+     govMemberIds.includes("idleReleaseMinutes") && govMemberIds.includes("gcPercent") &&
+     govMemberIds.includes("acpListen") && govMemberIds.includes("localServer"),
+    "the governance card hosts all six members (runtimeReuse as read-only row)");
+  const idleMember = gov?.members?.find((m: { id: string }) => m.id === "idleReleaseMinutes");
+  const gcMember = gov?.members?.find((m: { id: string }) => m.id === "gcPercent");
+  ok(idleMember?.tier === "recommended" && (idleMember as { labelKey?: string }).labelKey === "settings.detachedIdleRelease",
+    "idleReleaseMinutes rides as a member row (tier/label unchanged)");
+  ok(gcMember?.tier === "recommended" && (gcMember as { labelKey?: string }).labelKey === "settings.gcPercent",
+    "gcPercent rides as a member row (tier/label unchanged)");
+  ok(Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance")) &&
+     !Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "idleReleaseMinutes")) &&
+     !Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "gcPercent")),
+    "the container id is a rail entry again; the two param ids are members, not entries");
 }
 
 // ── ②b 绑定注册表：值语义收拢在代码 ──
@@ -102,28 +103,34 @@ const paneIds = new Set<string>();
 
 // ── ③ SettingsPanel：硬编码行退役 + 通用参数渲染接线 ──
 {
-  // tl1741：sessionCollab 卡随撤开关整体移除（宿主消失）——「卡不再承载两
-  // 参数行」断言升级为面板全文级（硬编码行不存在即真）。
-  ok(!panel.includes("detachedIdleRelease") && !panel.includes("gcPercent") || panel.includes("LabParamFieldsCard"),
-    "the retired sessionCollab card no longer hosts the two parameter rows (tl1741)");
+  // tl1741r2：两参数行落「资源治理」卡 pane 硬编码分支（成员行经
+  // LAB_PARAM_FIELDS 绑定读写）——「卡不再承载两参数行」断言钉宿主语义：
+  // sessionCollab 卡 pane 不再含两参数行（tl1309 前的旧落点不回归）。
+  ok(!panel.includes("detachedIdleRelease") || panel.includes("LabParamFieldsCard"),
+    "the parameter rows live in the governance card + registry (sessionCollab host stays retired)");
   ok(!panel.includes("SetDetachedIdleReleaseMinutes(") && !panel.includes("SetGCPercent("),
     "the panel has no direct setter calls left (写入走注册表)");
   ok(panel.includes('selectedEntry?.kind === "param"') && panel.includes("<LabParamFieldsCard entry={selectedEntry"),
     "the pane dispatch routes param cards to the generic data-driven renderer");
   ok(panel.includes("import { LAB_PARAM_FIELDS } from \"../lab/labParamFields\";"),
     "the panel imports the param binding registry");
-  // tl1741：两参数卡回散条——pane 白名单/union id 重新登记（1309 逆向）；
-  // 容器 id 摘除；通用参数渲染器承接（kind:param 无硬编码分支，labLabel
-  // 包装由 LabParamFieldsCard 内部 binding.labelKey 承担）。
-  ok(paneIds.has("idleReleaseMinutes") && paneIds.has("gcPercent"),
-    "both param card ids re-entered the pane whitelist (tl1741 split-back)");
-  ok(panel.includes('"idleReleaseMinutes",') && panel.includes('"gcPercent",') &&
-     panel.includes('"orphanHandling",') && panel.includes('"acpListen",') && panel.includes('"localServer",'),
-    "the five standalone ids re-entered the pane union + whitelist");
-  ok(!panel.includes('"resourceGovernance",') && !panel.includes('| "resourceGovernance"'),
-    "the merged container id left the pane union + whitelist (tl1741)");
-  // tl1741：通用渲染器经 binding.write 调用（panel 无硬编码行）——断言改钉
-  // 注册表源的 write 接线（值语义单源不变）。
+  // tl1741r2：容器 id 回归 pane 白名单/union（卡体回归）；五散条 id 回收出
+  // union+白名单（成员行承载，无独立 pane）；两参数成员行走 LAB_PARAM_FIELDS
+  // 绑定（值语义单源不变）。
+  ok(paneIds.has("resourceGovernance"),
+    "the governance container id re-entered the pane whitelist (tl1741r2 card body restored)");
+  ok(!paneIds.has("idleReleaseMinutes") && !paneIds.has("gcPercent") &&
+     !paneIds.has("orphanHandling") && !paneIds.has("acpListen") && !paneIds.has("localServer"),
+    "the five standalone ids left the pane whitelist again (members of the governance card)");
+  // 五散条 id 出 union（管道语法钉；白名单面由上方 paneIds 负钉承载——
+  // 宽松引号串钉会误匹配 pane 内 labLabel("id", ...) 调用，tl1741r2 收紧）。
+  ok(!panel.includes('| "idleReleaseMinutes"') && !panel.includes('| "gcPercent"') &&
+     !panel.includes('| "orphanHandling"') && !panel.includes('| "acpListen"') && !panel.includes('| "localServer"'),
+    "the five standalone ids left the pane union (tl1741r2; whitelist face pinned via paneIds above)");
+  ok(panel.includes('"resourceGovernance",') && panel.includes('| "resourceGovernance"'),
+    "the merged container id re-entered the pane union + whitelist (tl1741r2)");
+  // 参数成员行经 LAB_PARAM_FIELDS.write 调用（panel 无直接 setter 行）——
+  // 断言钉注册表源的 write 接线（值语义单源不变）。
   ok(registry.includes("app.SetDetachedIdleReleaseMinutes(Number(value))") && registry.includes("app.SetGCPercent(Number(value))"),
     "the two param cards read/write through the registry bindings (值语义单源)");
 }

@@ -89,8 +89,9 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
      !goRender.includes('{"runtimeReuse", LabTierStable,') &&
      goRender.includes('LabTierStable      LabTier = "stable"'),
     "Go labFeatureTiers retires three stable rows and keeps fullAccess (tl1741)");
-  // tl1741：八项实验室展示面移除——布局数据（yaml+默认）不再含四项；唯一
-  // stable 卡=fullAccess（单枚稳定徽章）。
+  // tl1741 打回返修（20261122 用户裁定「stable 清主选项、子选项保留配置」）：
+  // 布局数据（yaml+默认）重新承载四项卡体（无主开关形态），Go 表退役面不回
+  // （三键出表维持）——卡片展示面与撤开关语义并存。
   const yamlText = read("src/lab/lab-layout.yaml");
   const paneIds = new Set(LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g) => g.entries.map((e) => e.id)));
   const resolved = resolveLabLayout(yamlText, { allowedEntryIds: paneIds });
@@ -98,13 +99,17 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
     e.id,
     ...(e.members ?? []).map((m) => m.id),
   ])));
-  ok(!layoutIds.has("autopilot") && !layoutIds.has("sessionCollab") && !layoutIds.has("runtimeReuse") && layoutIds.has("fullAccess"),
-    "layout data drops the retired ids and keeps fullAccess (tl1741)");
+  ok(layoutIds.has("autopilot") && layoutIds.has("sessionCollab") && layoutIds.has("runtimeReuse") && layoutIds.has("fullAccess"),
+    "layout data carries the four card bodies again (tl1741r2, no master switches)");
+  // runtimeReuse 无独立 rail 卡（资源治理卡成员行承载）——其稳定档经宿主卡
+  // 聚合展示（findLabEntry 只搜顶层 entry，成员直查=null 是预期形态）。
+  const govEntry = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g) => g.entries).find((e) => e.id === "resourceGovernance");
   ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "fullAccess") === "stable" &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "autopilot") === null &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "sessionCollab") === null &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "runtimeReuse") === null,
-    "rail aggregation: fullAccess keeps its stable badge, retired ids aggregate to none");
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "autopilot") === "stable" &&
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "sessionCollab") === "stable" &&
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "runtimeReuse") === null &&
+     Boolean(govEntry?.members?.some((m) => m.id === "runtimeReuse" && m.tier === "stable")),
+    "rail aggregation: the four stable bodies surface again — three as rail cards, runtimeReuse as the governance card's stable member row (tl1741r2; fullAccess remains the only one with a switch)");
   // TierBadge 渲染 stable（轻渲染：类名 + 文案 + tooltip 键）。
   const dom = new JSDOM("<div id='root'></div>");
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
@@ -141,10 +146,11 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
     "the tl1741 acceptance tests exist in internal/config");
 }
 
-// ── ③ 禁用态两分支文案（四个 pane）──────────────────────────────
+// ── ③ 禁用态两分支文案（tl1741r2：唯一带开关的 stable pane=fullAccess）──
 // 1134（45381165f）实验室二级 chunk 拆分：ExperimentalSection 整体搬入
 // ExperimentalLabSection.tsx，本段与 ④ 的源码锚随迁（1005 漏跟同步，
-// wt-reds-cleanup 件5c 补）。
+// wt-reds-cleanup 件5c 补）。tl1741r2：stable 8 项卡体回归但主开关不回归
+// ——锁定形态只剩 fullAccess 一个消费方。
 {
   const panel = read("src/components/ExperimentalLabSection.tsx");
   const panes = ["fullAccess"] as const;

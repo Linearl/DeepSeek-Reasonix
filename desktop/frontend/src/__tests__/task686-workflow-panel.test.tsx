@@ -218,12 +218,13 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   const lightKeys = read("src/lab/labLightKeys.ts");
   ok(!lightKeys.includes("experimentalWorkflowPanel: (s: SettingsView)"), "lab light predicate retired");
   const layoutDefault = read("src/lab/labLayoutDefault.ts");
-  ok(layoutDefault.includes('id: "sessionTaskPanels"') && !layoutDefault.includes('{ id: "workflowPanel"'), "built-in lab layout drops the member row (tl1741)");
+  // tl1741r2：成员行回归=无开关展示行（面板/模板常显——键退役面不回）。
+  ok(layoutDefault.includes('id: "sessionTaskPanels"') && layoutDefault.includes('{ id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "stable" }'), "built-in lab layout carries the workflowPanel display row again (tl1741r2)");
   const layoutYaml = read("src/lab/lab-layout.yaml");
-  ok(!layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalSessionWall, experimentalCompletionSummary]"), "lab-layout.yaml mirrors the retirement (724 同构)");
+  ok(layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalSessionWall, experimentalCompletionSummary]"), "lab-layout.yaml mirrors the restored display row, retired keys stay out of onKeys (tl1741r2, 724 同构)");
   const labSection = read("src/components/ExperimentalLabSection.tsx");
   ok(labSection.includes('selected === "sessionTaskPanels"'), "lab section keeps the pane branch (sessionTaskPanels)");
-  ok(!labSection.includes('labLabel("workflowPanel"'), "pane row gone (member retired)");
+  ok(labSection.includes('labLabel("workflowPanel"') && !labSection.includes("app.SetExperimentalWorkflowPanel("), "pane row is a display row again — no switch wiring (tl1741r2)");
   const appTsx = read("src/App.tsx");
   ok(!appTsx.includes('labFlagEnabled("workflowPanel")'), "App no longer reads the lab flag");
   ok(!appTsx.includes("insertWorkflowPanelEntry("), "App no longer gates the palette entry (direct push)");
