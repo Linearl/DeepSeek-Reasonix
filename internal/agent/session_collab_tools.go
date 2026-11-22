@@ -1410,16 +1410,6 @@ func (t talkToSessionTool) waitReply(ctx context.Context, messageID string, time
 	return string(out), nil
 }
 
-func workspaceRootForMail(cfg SessionCollabConfig, target sessioncollab.Identity) string {
-	if strings.TrimSpace(target.Workspace) != "" {
-		return target.Workspace
-	}
-	if strings.TrimSpace(cfg.WorkspaceRoot) != "" {
-		return cfg.WorkspaceRoot
-	}
-	return filepath.Dir(cfg.SessionDir)
-}
-
 // scanAddressable collects registered sessions from every session directory on
 // this machine: the global dir, every project dir, and the archive.
 //

@@ -256,12 +256,6 @@ func newOutputCollector(combinedLimit, tailLimit int) *outputCollector {
 	return c
 }
 
-func (c *outputCollector) tailString() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return string(c.tail.buf)
-}
-
 // boundedBuffer keeps complete output up to limit. Once output crosses the
 // limit it retains a head plus a rolling tail separated by marker. Write always
 // reports the full input consumed so a safety cap never changes child-process

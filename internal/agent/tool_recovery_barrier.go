@@ -2,9 +2,7 @@ package agent
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
-	"fmt"
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
@@ -59,17 +57,4 @@ func recoveryFailureState(err error) provider.ToolRunState {
 		return provider.ToolRunUnknown
 	}
 	return provider.ToolRunFailed
-}
-func assignRecoveryCallIDs(calls []provider.ToolCall) error {
-	seen := map[string]bool{}
-	for i := range calls {
-		if calls[i].ID == "" {
-			calls[i].ID = "call_" + rand.Text()
-		}
-		if seen[calls[i].ID] {
-			return fmt.Errorf("provider returned duplicate tool call IDs")
-		}
-		seen[calls[i].ID] = true
-	}
-	return nil
 }

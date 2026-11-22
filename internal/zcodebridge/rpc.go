@@ -188,15 +188,6 @@ func (c *conn) markDead() {
 	}
 }
 
-func (c *conn) isDead() bool {
-	select {
-	case <-c.deadCh:
-		return true
-	default:
-		return false
-	}
-}
-
 func (c *conn) write(frame []byte) error {
 	c.wmu.Lock()
 	defer c.wmu.Unlock()

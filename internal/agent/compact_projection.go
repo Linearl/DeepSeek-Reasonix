@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"time"
 
@@ -1603,15 +1602,6 @@ func sessionContextCarrierSet(messages []provider.Message) map[int]bool {
 		set[idx] = true
 	}
 	return set
-}
-
-func latestSessionContextIndex(messages []provider.Message) int {
-	for i := range slices.Backward(messages) {
-		if isSessionContextMessage(messages[i]) {
-			return i
-		}
-	}
-	return -1
 }
 
 // runCompactionSummary uses the single local summarizer path for every provider.

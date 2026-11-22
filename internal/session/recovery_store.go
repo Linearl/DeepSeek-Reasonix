@@ -84,11 +84,6 @@ type storageIdentity struct {
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
-// recoveryCheckpoint was the bolt cache's serialized checkpoint record. The
-// type is gone with the cache; loadRecoveryStartupState is the only remaining
-// seam and it always answers "no checkpoint".
-func openRecoveryStorePlaceholder() {}
-
 // recoveryStore was the bolt checkpoint/operations cache (task 1013 removal).
 // It is now a generation-scoped stub kept at the same field shape so the
 // binding and session wiring keep one code path: it holds the storage identity
