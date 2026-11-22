@@ -27,6 +27,15 @@ type ContextMaintenanceSnapshot struct {
 	Blocked           bool
 	LastReceipt       *ContextMaintenanceReceipt
 	ContextBudget     *ContextBudgetSnapshot
+	// tl1752: the readout-source verdict for the ProjectedTokens figure. True
+	// exactly when the provider-usage anchor (observedContextTokens) priced the
+	// projection above — the same boolean that decided the number — so the
+	// frontend 实测/估算 label reads the same source the number does instead of
+	// admission.ObservedPrompt (written only on context-limit errors, never
+	// persisted: the label and the calibration chain had drifted apart — a
+	// restart with a trusted persisted anchor showed a measured figure labeled
+	// 估算, and normal-turn usage calibrations never flipped the label).
+	ReadoutMeasured bool
 }
 
 // ContextBudgetSnapshot is the optional send-time admission view for the
@@ -92,13 +101,18 @@ func (a *Agent) ContextMaintenanceSnapshot() ContextMaintenanceSnapshot {
 	// must ride the same override so the gauge, the panel and the trigger read
 	// one caliber. Same scope as ContextUsedTokens: the anchor only — degraded
 	// states keep the view-sized read plus the ProjectionValid label.
+	// tl1752: ok is the readout-source verdict — the label must answer for the
+	// exact boolean that priced the number above.
+	readoutMeasured := false
 	if obs, ok := a.observedContextTokens(visible); ok {
 		projectedTokens = obs
+		readoutMeasured = true
 	}
 	snapshot := ContextMaintenanceSnapshot{
 		CanonicalTokens:   a.estimatedVisibleRequestTokens(canonical),
 		ProjectedTokens:   projectedTokens,
 		ProjectionValid:   valid,
+		ReadoutMeasured:   readoutMeasured,
 		FoldTrigger:       trigger,
 		TriggerTokens:     trigger,
 		CheckpointState:   uiCheckpoint,

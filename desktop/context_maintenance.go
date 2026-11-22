@@ -34,7 +34,14 @@ type ContextMaintenanceInfo struct {
 	// ProjectionValid is false while the panel is looking at the full-canonical
 	// fallback (task 549): the frontend labels the readout instead of letting a
 	// whole-transcript size present as normal usage.
-	ProjectionValid   bool                           `json:"projectionValid"`
+	ProjectionValid bool `json:"projectionValid"`
+	// ReadoutMeasured is the 实测/估算 verdict for ProjectedTokens (tl1752):
+	// true exactly when the provider-usage anchor priced the figure, false
+	// while the estimator served it (no trusted anchor — cold start, fold
+	// install, provider/model switch). Emitted unconditionally like
+	// projectionValid so a new frontend can trust the negative without falling
+	// back to the legacy admission.observedPrompt label chain.
+	ReadoutMeasured   bool                           `json:"readoutMeasured"`
 	SummaryTokens     int                            `json:"summaryTokens,omitempty"`
 	LastSavedTokens   int                            `json:"lastSavedTokens,omitempty"`
 	SnipTrigger       int                            `json:"snipTrigger,omitempty"`  // always 0; legacy compatibility
@@ -100,8 +107,8 @@ func contextMaintenanceInfo(snapshot agent.ContextMaintenanceSnapshot) *ContextM
 	}
 	info := &ContextMaintenanceInfo{
 		CanonicalTokens: snapshot.CanonicalTokens, ProjectedTokens: snapshot.ProjectedTokens,
-		ProjectionValid: snapshot.ProjectionValid,
-		SummaryTokens:   snapshot.SummaryTokens, LastSavedTokens: snapshot.LastSavedTokens,
+		ProjectionValid: snapshot.ProjectionValid, ReadoutMeasured: snapshot.ReadoutMeasured,
+		SummaryTokens: snapshot.SummaryTokens, LastSavedTokens: snapshot.LastSavedTokens,
 		// Snip/Force remain zero for one-version compatibility with older frontends.
 		FoldTrigger: snapshot.TriggerTokens, TriggerTokens: snapshot.TriggerTokens,
 		CheckpointState: snapshot.CheckpointState, HardInputCeiling: snapshot.HardInputCeiling,
