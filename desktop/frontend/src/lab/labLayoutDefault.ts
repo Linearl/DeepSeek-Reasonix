@@ -441,6 +441,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "alertLogMaxTotalMB", input: "segment" },
           ],
         },
+        // tl1746：任务面板——桌面内嵌只读直读 tasklist.db（与 lab-layout.yaml
+        // 同步维护，561 对账钉两侧一致）。未稳定档默认关。
+        {
+          id: "tasklistPanel",
+          labelKey: "settings.tasklistPanel",
+          tier: "unstable",
+          onKeys: ["tasklistPanel"],
+        },
       ],
     },
     {

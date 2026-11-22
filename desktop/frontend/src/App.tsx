@@ -75,6 +75,7 @@ import { WorkflowPanelBoundary } from "./components/WorkflowPanelBoundary";
 // tl1456：资源管理器面板（命令面板 → 工具与诊断）。直接 import——组件轻
 //（无图表库/无独立 store），不值得为一次 palette 入口切 lazy chunk。
 import { ResourcePanel } from "./components/ResourcePanel";
+import { TasklistPanel } from "./components/TasklistPanel";
 // tl 1101：命令面板分组后仍沿用两条既有 lab 门控插条（task 505 / 任务 686）——
 // flag 关 = 原数组逐字节不变，flag 开 = 在「重载运行时」后插入对应入口。
 import { insertSessionWallEntry } from "./lib/sessionWall";
@@ -967,6 +968,9 @@ export default function App() {
   // 任务 856 ③：协作中心入口总开关（677 collabGroupView 随两图标合一迁移改名）。
   const [collabHubEntryEnabled, setCollabHubEntryEnabled] = useState(labFlagEnabled("collabHub"));
   useEffect(() => onLabFlagsChange(() => setCollabHubEntryEnabled(labFlagEnabled("collabHub"))), []);
+  // tl1746：任务面板入口门控（与面板/实验室卡同一开关 tasklistPanel）。
+  const [tasklistPanelEntryEnabled, setTasklistPanelEntryEnabled] = useState(labFlagEnabled("tasklistPanel"));
+  useEffect(() => onLabFlagsChange(() => setTasklistPanelEntryEnabled(labFlagEnabled("tasklistPanel"))), []);
   // 任务 704: the trajectory view rides the lab-flag snapshot (铁律 2 default
   // off) and the per-session surface selection re-points at every tab change.
   const [trajectoryViewEnabled, setTrajectoryViewEnabled] = useState(labFlagEnabled("trajectoryView"));
@@ -1025,6 +1029,8 @@ export default function App() {
   // tl1456：资源管理器开关态。非 lab 门控（诊断面属常驻能力），只在命令
   // 面板「工具与诊断」组可达；开才挂载，关即卸载（面板内 interval 同步清）。
   const [resourcePanelOpen, setResourcePanelOpen] = useState(false);
+  // tl1746：任务面板开合（命令面板入口；面板本体 wf-panel 家族，ResourcePanel 同款挂载）。
+  const [tasklistPanelOpen, setTasklistPanelOpen] = useState(false);
   // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
   // global shortcut can't double-fire in split view; pulse re-selects the
   // query when the chord repeats while the bar is already open.
@@ -1629,7 +1635,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalStartupSplash?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalStartupSplash?: boolean; experimentalTasklistPanel?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1687,6 +1693,10 @@ export default function App() {
         // 任务 856 ③: unified collaboration-hub entry (default-false — 铁律 2,
         // renamed from the task-677 group-chat switch; re-applied on settings save).
         collabHub: settings.experimentalCollabHub ?? false,
+        // tl1746: embedded read-only tasklist panel (default-false — 铁律 2,
+        // off keeps the palette item list byte-for-byte unchanged; re-applied
+        // on settings save, no restart).
+        tasklistPanel: settings.experimentalTasklistPanel ?? false,
         // 任务 704: trajectory view switch (default-false — 铁律 2, off keeps
         // the transcript as the only surface); re-applied on settings save.
         trajectoryView: settings.experimentalTrajectoryView ?? false,
@@ -5379,6 +5389,24 @@ export default function App() {
             } satisfies PaletteItem,
           ]
         : []),
+        // tl1746：任务面板接入命令面板（Ctrl+K 搜「任务/面板/tasklist」直达）。
+      // 与侧栏入口同一开关 tasklistPanelEntryEnabled（labFlagEnabled("tasklistPanel")，
+      // collabHub 951 行同款门控）——开关关 = 本项不进面板（铁律 2 零痕迹）；
+      // 打开函数 = setTasklistPanelOpen（与挂载点同源，CollabHub setCollabHubOpen
+      // 同款接线）。
+      ...(tasklistPanelEntryEnabled
+        ? [
+            {
+              id: "cmd-tasklist-panel",
+              group: t("palette.group.tools"),
+              title: t("palette.cmd.tasklistPanel"),
+              icon: <Activity size={15} />,
+              compact: true,
+              keywords: ["tasklist", "panel", "tasks", "task", "任务", "任务面板", "面板", "看板"],
+              run: () => setTasklistPanelOpen(true),
+            } satisfies PaletteItem,
+          ]
+        : []),
     ];
     // 帮助与支持组（tl 1101 新增）：产品文档 / 问题反馈 / 提需求 / 提交漏洞 /
     // 关于·版本 / 导出日志 / 打开日志目录。跳转目标走 GitHub 仓库对应入口
@@ -5528,7 +5556,7 @@ export default function App() {
       },
     );
     return cmdsWithWorkflow;
-  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled, questionSearchEnabled, collabHubEntryEnabled, desktopPlatform]);
+  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled, questionSearchEnabled, collabHubEntryEnabled, tasklistPanelEntryEnabled, desktopPlatform]);
   // Delete / rename act on disk, then re-fetch so the panel reflects the change.
   const onDeleteSession = useCallback(
     async (path: string) => {
@@ -7363,6 +7391,9 @@ export default function App() {
 
       {/* tl1456：资源管理器——开才挂载、关即卸载；快照轮询 interval 挂在
           面板的 [open, refreshMs] 上，关闭后零定时器零在途请求。 */}
+      {tasklistPanelOpen && (
+        <TasklistPanel open onClose={() => setTasklistPanelOpen(false)} />
+      )}
       {resourcePanelOpen && (
         <ResourcePanel open onClose={() => setResourcePanelOpen(false)} />
       )}

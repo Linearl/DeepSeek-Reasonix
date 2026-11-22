@@ -261,7 +261,9 @@ groups:
         # tl1309 卡②：trajectoryView（轨迹观测）迁出本卡成员表，入可观测性组
         # 「运行可观测」卡（704 定位即「可观测性视图」）；灯键随迁出。容器档
         # 仍推荐（自有档推荐压过其余可选成员，聚合徽章不变）。
-        onKeys: [experimentalSplitView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalSmoothScrollFollow, experimentalDraftRewrite]
+        # tl1746 顺手收口：editResend（tl1544）入卡成员行时本 yaml 灯键漏补
+        # （默认布局已含，722 结构对账基线红）——补齐对齐，键语义零变化。
+        onKeys: [experimentalSplitView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalSmoothScrollFollow, experimentalDraftRewrite, experimentalEditResend]
         members:
           - id: splitView
             labelKey: settings.splitView
@@ -299,6 +301,11 @@ groups:
           - id: draftRewrite
             labelKey: settings.draftRewrite
             tier: recommended
+          # tl1746 顺手收口：editResend（tl1544）成员行——默认布局已含本行
+          # （档位可选，Go 渲染表同档），yaml 漏补致 722 结构对账基线红。
+          - id: editResend
+            labelKey: settings.editResend
+            tier: optional
       # tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
       # 会话图墙（palette 会话网格墙）+ 工作流面板（palette DAG 面板）+ 任务
       # 完成摘要（每轮结果卡）三散条并卡：三者同为「运行状态/产出的可视化
@@ -457,6 +464,16 @@ groups:
             input: segment
           - id: alertLogMaxTotalMB
             input: segment
+      # tl1746：任务面板——桌面内嵌只读直读 tasklist.db（命令面板 Ctrl+K
+      # 搜「任务」直达 + 本卡开关与数据库路径子项）。未稳定档，默认关：
+      # 关=两入口零渲染，tl serve/export/tl.py 三件套照常（铁律 2）；开=
+      # 面板读库走 mode=ro，绝不写库（写仍 tl.py SSOT）。路径子项为家族
+      # 子键 tasklist_db_path（decision_pattern_file_path 先例），改路径即
+      # 生效（面板查询时解析，免重启），pane 含测试连接 + 打开所在位置。
+      - id: tasklistPanel
+        labelKey: settings.tasklistPanel
+        tier: unstable
+        onKeys: [tasklistPanel]
 
   # ── 开发调试（1 项）─────────────────────────────────────────
   - key: dev-debug

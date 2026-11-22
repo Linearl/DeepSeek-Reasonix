@@ -76,8 +76,8 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // subagentPolicy 未稳定→可选、splitView/heartbeatBackground/feedback
   // 可选→推荐（推荐 47→50、未稳定 5→3，总数不变 87）。
   // tl1733：memoryIndexSlim（可选）入表——可选 25→26、总数 87→88。
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 50 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 3 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/50 推荐/26 可选/3 未稳定/0 退役 (tl1733 memoryIndexSlim added)");
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 50 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 4 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/50 推荐/26 可选/4 未稳定/0 退役 (tl1746 tasklistPanel 入未稳定档)");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");

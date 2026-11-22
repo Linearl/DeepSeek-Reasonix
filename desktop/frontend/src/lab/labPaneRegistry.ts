@@ -133,6 +133,11 @@ export type ExperimentFeatureId =
   // 警示行，超出通用参数渲染器覆盖面）；两个 segment 字段仍走 labParamFields
   // 注册表读写。
   | "logManagement"
+  // tl1746：任务面板卡 id（可观测性组）——开关行 + 数据库路径子项 + 测试
+  // 连接/打开所在位置，pane 由专用 TasklistPanelLabPane 承接（LogManagement
+  // 同款「专用 pane 超出通用参数渲染器」先例）；路径字段仍走 labParamFields
+  // 注册表读写。
+  | "tasklistPanel"
   // 任务 783：「用量监测」合并卡（可观测性组）——GLM Plan 用量 + OpenCode
   // Go 用量（opencodeGoUsage 独立 pane 并入此卡，742 先例）。
   | "usageMonitoring"
@@ -202,6 +207,8 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   // 单源不变在 labParamFields）。
   // tl 1097：日志管理参数卡（可观测性组）。
   "logManagement",
+  // tl1746：任务面板卡（可观测性组）。
+  "tasklistPanel",
   // tl1287：dagMigration 已摘除（动作卡转正进会话存储卡，见 union 尾注）。
 ]);
 

@@ -105,6 +105,18 @@ export const LAB_PARAM_FIELDS: Readonly<Record<string, LabParamFieldBinding>> = 
     read: (s) => s.askRoundLimit ?? 3,
     write: (value) => app.SetAskRoundLimit(Number(value)),
   },
+
+  // tl1746：任务面板数据库路径（可观测性组任务面板卡子项；text 形态）。
+  // 空串 = 内置默认库（%APPDATA%/reasonix/global-workspace/...）；面板查询
+  // 时解析，改路径即生效免重启。只读红线：路径只决定「读哪个库」，面板
+  // 恒 mode=ro，本绑定不构成任何写通道。
+  tasklistDbPath: {
+    input: "text",
+    labelKey: "settings.tasklistPanel.dbPath",
+    hintKey: "settings.tasklistPanel.dbPathHint",
+    read: (s) => s.tasklistDbPath ?? "",
+    write: (value) => app.SetTasklistDBPath(String(value)),
+  },
 };
 
 /** Registry key union — the compile gate for default-layout field refs. */

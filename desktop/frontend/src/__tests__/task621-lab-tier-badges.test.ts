@@ -54,6 +54,11 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
       // LogManagementLabPane 承接，徽章在组件内直接渲染——562⑤ 同款豁免，
       // 本测试漏跟（基线上「missing logManagement」假红）。
       if (n !== 0) dupes.push(`${id}×${n}`);
+    } else if (id === "tasklistPanel") {
+      // tl1746：任务面板卡 pane 由专用 TasklistPanelLabPane 承接（开关行 +
+      // 路径子项 + 测试连接/打开所在位置），徽章组件内直接渲染
+      // （TierBadge + EXPERIMENT_FEATURE_TIERS）——logManagement 豁免口径。
+      if (n !== 0) dupes.push(`${id}×${n}`);
     } else if (id === "modelCapabilityFilter") {
       // 任务 722 点2：「已退役」徽章移除（rail 成员表 + 卡内只读行都不挂）。
       if (n !== 0) dupes.push(`${id}×${n}`);
