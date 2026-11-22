@@ -8,10 +8,23 @@ import (
 
 // StreamAuxiliary applies the finite policy to search and summarization. It
 // buffers attempts so failed partial summaries never leak into their caller.
+//
+// tl1751: the out channel stays atomicity-buffered (drained only after the
+// terminal event), but callers that need a LIVE readout can attach
+// WithStreamProgress: the callback fires the moment a text/reasoning chunk
+// arrives, BEFORE it enters the retry buffer. The callback is a read-only
+// bypass — it must not retain the text (the live compaction meter counts
+// runes only) — so retry atomicity on the content channel is untouched and a
+// failed attempt's partial text, while never sent on out, still shows up in
+// the progress feed (which is the point: the readout mirrors real generation,
+// not the post-retry drain burst).
 func StreamAuxiliary(ctx context.Context, p Provider, req Request) (<-chan Chunk, error) {
 	ctx = WithManagedRecovery(WithIndependentRequestAttemptCounter(ctx))
 	out := make(chan Chunk)
 	var aggregate Usage
+	// Resolved once: the callback rides the caller's ctx and is fixed for the
+	// whole call, so the per-chunk cost is a nil check, not a ctx walk.
+	progress := streamProgressFrom(ctx)
 	go func() {
 		defer close(out)
 		send := func(c Chunk) bool {
@@ -55,6 +68,13 @@ func StreamAuxiliary(ctx context.Context, p Provider, req Request) (<-chan Chunk
 						if c.Type == ChunkUsage {
 							latest = c.Usage
 							continue
+						}
+						// tl1751: live-readout bypass, strictly BEFORE the append —
+						// text/reasoning only (same chunks the compaction meter
+						// counted at drain time before this bypass existed). The
+						// buffer below keeps its retry-atomicity semantics unchanged.
+						if progress != nil && (c.Type == ChunkText || c.Type == ChunkReasoning) {
+							progress(c.Text)
 						}
 						complete = complete || c.Type == ChunkDone
 						chunks = append(chunks, c)
@@ -115,6 +135,31 @@ func StreamAuxiliary(ctx context.Context, p Provider, req Request) (<-chan Chunk
 		}
 	}()
 	return out, nil
+}
+
+// streamProgressKey carries the tl1751 live-readout bypass (see
+// StreamAuxiliary). Absent callback = the bypass costs nothing: callers that
+// don't wire a meter (web search, draft rewrite) keep their exact baseline
+// behavior.
+type streamProgressKey struct{}
+
+// WithStreamProgress attaches a live-readout callback that StreamAuxiliary
+// invokes with each text/reasoning chunk as it ARRIVES, before the chunk
+// enters the atomicity buffer. The callback must not retain the text — it is
+// a metering bypass, not a second content channel; retaining content would
+// defeat the very atomicity guarantee the buffer exists for. It runs on the
+// StreamAuxiliary producer goroutine and must therefore be cheap and
+// goroutine-safe (the compaction meter is mutex-guarded and its sink is
+// event.Sync-wrapped).
+func WithStreamProgress(ctx context.Context, onProgress func(text string)) context.Context {
+	return context.WithValue(ctx, streamProgressKey{}, onProgress)
+}
+
+func streamProgressFrom(ctx context.Context) func(text string) {
+	if fn, ok := ctx.Value(streamProgressKey{}).(func(text string)); ok {
+		return fn
+	}
+	return nil
 }
 
 type recoverySleeperKey struct{}
