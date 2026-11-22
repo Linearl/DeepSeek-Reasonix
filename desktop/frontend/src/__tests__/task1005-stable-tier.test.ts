@@ -99,11 +99,15 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   ])));
   ok(layoutIds.has("autopilot") && layoutIds.has("sessionCollab") && layoutIds.has("runtimeReuse") && layoutIds.has("fullAccess"),
     "layout data carries the four card bodies again (tl1741r2, no master switches)");
+  // runtimeReuse 无独立 rail 卡（资源治理卡成员行承载）——其稳定档经宿主卡
+  // 聚合展示（findLabEntry 只搜顶层 entry，成员直查=null 是预期形态）。
+  const govEntry = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g) => g.entries).find((e) => e.id === "resourceGovernance");
   ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "fullAccess") === "stable" &&
      labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "autopilot") === "stable" &&
      labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "sessionCollab") === "stable" &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "runtimeReuse") === "stable",
-    "rail aggregation: the four stable card bodies badge stable again (tl1741r2; fullAccess remains the only one with a switch)");
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "runtimeReuse") === null &&
+     Boolean(govEntry?.members?.some((m) => m.id === "runtimeReuse" && m.tier === "stable")),
+    "rail aggregation: the four stable bodies surface again — three as rail cards, runtimeReuse as the governance card's stable member row (tl1741r2; fullAccess remains the only one with a switch)");
   // TierBadge 渲染 stable（轻渲染：类名 + 文案 + tooltip 键）。
   const dom = new JSDOM("<div id='root'></div>");
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });

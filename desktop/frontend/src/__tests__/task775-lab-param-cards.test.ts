@@ -122,9 +122,11 @@ const paneIds = new Set<string>();
   ok(!paneIds.has("idleReleaseMinutes") && !paneIds.has("gcPercent") &&
      !paneIds.has("orphanHandling") && !paneIds.has("acpListen") && !paneIds.has("localServer"),
     "the five standalone ids left the pane whitelist again (members of the governance card)");
-  ok(!panel.includes('"idleReleaseMinutes",') && !panel.includes('"gcPercent",') &&
-     !panel.includes('"orphanHandling",') && !panel.includes('"acpListen",') && !panel.includes('"localServer",'),
-    "the five standalone ids left the pane union + whitelist (tl1741r2)");
+  // 五散条 id 出 union（管道语法钉；白名单面由上方 paneIds 负钉承载——
+  // 宽松引号串钉会误匹配 pane 内 labLabel("id", ...) 调用，tl1741r2 收紧）。
+  ok(!panel.includes('| "idleReleaseMinutes"') && !panel.includes('| "gcPercent"') &&
+     !panel.includes('| "orphanHandling"') && !panel.includes('| "acpListen"') && !panel.includes('| "localServer"'),
+    "the five standalone ids left the pane union (tl1741r2; whitelist face pinned via paneIds above)");
   ok(panel.includes('"resourceGovernance",') && panel.includes('| "resourceGovernance"'),
     "the merged container id re-entered the pane union + whitelist (tl1741r2)");
   // 参数成员行经 LAB_PARAM_FIELDS.write 调用（panel 无直接 setter 行）——
