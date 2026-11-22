@@ -4205,7 +4205,12 @@ export function Composer({
     // 请求走控制通道仍能送达；此前 unknown 把出口整个吞掉，turn 在远端继续跑而
     // 用户无从停止。finishing 与「快照明确不可取消」的防误操作语义保持不变
     // （P7 三级终止的阶梯语义未动：首按仍是 L1，超时后照常武装强制停止）。
-    if (finishing || (!runtimeState.unknown && runtimeState.cancellable === false)) return;
+    // tl1765：cancellable=false 的否决再收窄一档——本地 reducer 仍在跑
+    // （running=true）而投影说引擎空闲，正是 turn_done 断链的分叉现场；
+    // 此刻按投影禁用会把三档阶梯整体锁死（按钮渲染但点击无声吞掉，20261122
+    // GC专员截图形态）。分叉态放行：Cancel 对无活轮的 controller 幂等无害
+    // （cancelTurnLocked 快进快出），后续 reconcile 收敛后按钮自然回 idle。
+    if (finishing || (!runtimeState.unknown && runtimeState.cancellable === false && !running)) return;
     const targetDraftKey = activeDraftKeyRef.current;
     if (cancelSettlingDraftsRef.current.has(targetDraftKey)) return;
     cancelSettlingDraftsRef.current.add(targetDraftKey);
@@ -6831,7 +6836,12 @@ export function Composer({
                   nowrap 长文案在可被压缩的 tooltip-trigger 里画出按钮边界），
                   按钮只留图标+紧凑短标（档位色阶继续承档位语义），aria-label
                   仍读完整档位文案；完整三段说明走既有 Tooltip 载体的 hover
-                  卡片（当前档高亮）。 */}
+                  卡片（当前档高亮）。
+                  tl1765：cancellable=false 的否决收窄为「本地同样不在跑」——
+                  分叉现场（本地 reducer running=true 而投影已翻引擎 idle，
+                  turn_done 断链形态，20261122 GC专员截图）不再锁死停止出口，
+                  三档阶梯（L1/L2/L3）保持可达；Cancel 对无活轮 controller
+                  幂等无害，与 handleCancel 的守卫收窄同源。 */}
               {(running && !finishing) || stopView.phase === "settled" ? (
                 <Tooltip label={runtimeState.unknown && stopView.phase !== "settled" ? t("composer.stopUnknownState") : stopHoverCard(stopView.phase, stopView.countdownSeconds)}>
                   <button
@@ -6846,7 +6856,7 @@ export function Composer({
                       }
                       void onEscalateStop?.();
                     }}
-                    disabled={stopView.phase === "settled" || (!runtimeState.unknown && runtimeState.cancellable === false) || cancelSettlingDraftsRef.current.has(draftKey)}
+                    disabled={stopView.phase === "settled" || (!runtimeState.unknown && runtimeState.cancellable === false && !running) || cancelSettlingDraftsRef.current.has(draftKey)}
                     aria-label={runtimeState.unknown && stopView.phase !== "settled" ? t("composer.stopUnknownState") : stopButtonLabel}
                   >
                     {stopView.phase === "idle"
