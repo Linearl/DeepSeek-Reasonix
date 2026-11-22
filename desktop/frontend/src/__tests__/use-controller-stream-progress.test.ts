@@ -709,32 +709,30 @@ function ev(s: typeof initialState, e: WireEvent) {
   }
 }
 
-// --- 8. context occupancy uses prompt tokens and keeps legacy fallback semantics ---
+// --- 8. tl1726: the gauge reads only the authoritative snapshot. Usage events
+// no longer rewrite context.used — the usage prompt figure is a different
+// caliber from ContextSnapshot (what the next request sends), and locally
+// overwriting it raced the per-usage authoritative refetch. The event only
+// bumps usageSeq, which is what drives that refetch.
 {
   let s = ev({
     ...initialState,
     running: true,
     turnActive: true,
-    context: { ...initialState.context, window: 1_000 },
+    context: { ...initialState.context, window: 1_000, used: 500 },
   }, { kind: "usage", usage: {
-    promptTokens: 500,
+    promptTokens: 900,
     completionTokens: 20,
-    totalTokens: 520,
+    totalTokens: 920,
     contextPromptTokens: 0,
     contextCompletionTokens: 20,
     source: "executor",
   } } as WireEvent);
-  eq(s.context.used, 500, "completion-only latest usage falls back to aggregate prompt occupancy");
+  eq(s.context.used, 500, "usage event does not locally rewrite the authoritative gauge");
+  eq(s.usageSeq, 1, "usage event still bumps usageSeq to drive the authoritative refetch");
 
-  s = ev({ ...s, running: true, turnActive: true }, { kind: "usage", usage: {
-    promptTokens: 700,
-    completionTokens: 30,
-    totalTokens: 730,
-    contextPromptTokens: 450,
-    contextCompletionTokens: 0,
-    source: "executor",
-  } } as WireEvent);
-  eq(s.context.used, 450, "latest-attempt prompt occupancy excludes completion tokens");
+  s = reducer(s, { type: "context", context: { used: 450, window: 1_000, sessionTokens: 920 } } as never);
+  eq(s.context.used, 450, "the authoritative snapshot remains the only gauge writer");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
