@@ -53,10 +53,11 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" driver (house pattern: projectiondb/topicstate)
 )
 
-// schemaVersion v4 (任务 856 ⑤): channels.deputy_id — the single deputy
-// manager a HUMAN founder may appoint (additive migration, same pattern as
-// the v2→v3 803 columns; empty = no deputy).
-const schemaVersion = 4
+// schemaVersion v5 (tl1721): channels.cleared_at — the message-clear tombstone
+// (消息清空的软删除点: messages at/below it hide from every read; restore
+// zeroes it and the history is back). Additive migration, same pattern as the
+// v2→v3→v4 columns; empty/0 = nothing cleared.
+const schemaVersion = 5
 
 // ErrHourlyCap is the per-channel 429 guard: publish refused until the
 // rolling hour window frees up.
@@ -221,11 +222,14 @@ func migrate(db *sql.DB) error {
 	// 迁移，不改任何既有行的值。
 	// v3→v4 (任务 856 ⑤): 单副管理员列，additive——老群 deputy 为空串
 	// （= 无副管理员，语义不变）；无数据迁移，不改任何既有行的值。
+	// v4→v5 (tl1721): 消息清空墓碑列，additive——老群 cleared_at 为 NULL
+	// （= 从未清空，语义不变）；无数据迁移，不改任何既有行的值。
 	for _, col := range []string{
 		`ALTER TABLE members ADD COLUMN type TEXT NOT NULL DEFAULT '` + MemberTypeSession + `'`,
 		`ALTER TABLE channels ADD COLUMN owner_type TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE channels ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE channels ADD COLUMN deputy_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE channels ADD COLUMN cleared_at INTEGER`,
 	} {
 		if _, err := db.Exec(col); err != nil &&
 			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
@@ -288,7 +292,11 @@ type Channel struct {
 	// the ChannelInvite permission (same as the owner); removal stays
 	// owner-only. Only a human-owned channel gets one (the SetDeputy API is
 	// human-called by construction).
-	DeputyID      string   `json:"deputyId,omitempty"`
+	DeputyID string `json:"deputyId,omitempty"`
+	// tl1721: the message-clear tombstone (ms epoch; 0/omitted = nothing
+	// cleared). History reads hide messages at/below this point for EVERY
+	// member (the channel log is shared state); restore zeroes it.
+	ClearedAt     int64    `json:"clearedAt,omitempty"`
 	MemberDetails []Member `json:"memberDetails,omitempty"`
 }
 
@@ -543,6 +551,110 @@ func (s *Store) Dissolve(ref, actor string) error {
 	return tx.Commit()
 }
 
+// ClearResult reports what one history clear touched (tl1721): the tombstone
+// time, how many messages this clear point newly hides, how many still-queued
+// fan-out rows were stopped before delivery, and how many copies had already
+// been delivered into member mailboxes. Delivered copies stay — the task-309
+// inbox belongs to the recipient, the same boundary single-message Cancel
+// draws (no cross-owner inbox rewrite).
+type ClearResult struct {
+	Channel          string `json:"channel"`
+	ClearedAt        int64  `json:"clearedAt"`
+	ClearedMessages  int    `json:"clearedMessages"`
+	CancelledQueued  int    `json:"cancelledQueued"`
+	AlreadyDelivered int    `json:"alreadyDelivered"`
+	WasCleared       bool   `json:"wasCleared"` // true = a tombstone already existed and this call moved it forward
+}
+
+// ClearHistory tombstones the channel's shared history (tl1721 消息清空,
+// entry: the chat-detail panel): every read path (channel_read / the human
+// message view / ExportMarkdown / roster counts) hides messages published at
+// or below the tombstone FOR EVERY MEMBER — the channel log is shared state,
+// so this is a visible change for the whole group, not a local read-state
+// reset. Soft delete by design: the rows stay in SQLite, RestoreHistory zeroes
+// the tombstone and the history is fully back (宪法「怎么退」). Still-queued
+// fan-out rows of the cleared range flip to cancelled (a message that is about
+// to be hidden is not delivered afterwards; the drain's pre-delivery re-check
+// makes this win against an in-flight pass, same guard as Cancel). Copies
+// already delivered are NOT retracted. Owner-only (requireOwner — the removal
+// side of channel management; the deputy carries invite only, 856 ⑤).
+// Re-clearing moves the tombstone forward (WasCleared=true); publishing after
+// a clear works normally — new lines land above it and are visible.
+func (s *Store) ClearHistory(ref, actor string) (ClearResult, error) {
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return ClearResult{}, errors.New("collabchannel: actor identity is required")
+	}
+	id, err := s.requireOwner(ref, actor)
+	if err != nil {
+		return ClearResult{}, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return ClearResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var old sql.NullInt64
+	if err := tx.QueryRow(`SELECT cleared_at FROM channels WHERE id = ?`, id).Scan(&old); err != nil {
+		return ClearResult{}, err
+	}
+	res := ClearResult{Channel: id, ClearedAt: s.now(), WasCleared: old.Valid && old.Int64 > 0}
+
+	// Newly hidden = visible messages at/below the new tombstone (messages
+	// below an older tombstone were already hidden — they stay hidden).
+	hideFrom := int64(0)
+	if old.Valid && old.Int64 > 0 {
+		hideFrom = old.Int64
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM messages WHERE channel_id = ? AND at <= ? AND at > ?`,
+		id, res.ClearedAt, hideFrom).Scan(&res.ClearedMessages); err != nil {
+		return ClearResult{}, err
+	}
+	// Stop pending delivery for the cleared range (fanout keys on message_id
+	// only — no channel_id column, hence the message-id subselect).
+	qr, err := tx.Exec(`UPDATE fanout SET state = 'cancelled'
+		WHERE state = 'queued' AND message_id IN
+			(SELECT id FROM messages WHERE channel_id = ? AND at <= ?)`, id, res.ClearedAt)
+	if err != nil {
+		return ClearResult{}, fmt.Errorf("collabchannel: clear fanout %s: %w", id, err)
+	}
+	if n, err := qr.RowsAffected(); err == nil {
+		res.CancelledQueued = int(n)
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM fanout WHERE state = 'delivered' AND message_id IN
+		(SELECT id FROM messages WHERE channel_id = ? AND at <= ? AND at > ?)`,
+		id, res.ClearedAt, hideFrom).Scan(&res.AlreadyDelivered); err != nil {
+		return ClearResult{}, err
+	}
+	if _, err := tx.Exec(`UPDATE channels SET cleared_at = ? WHERE id = ?`, res.ClearedAt, id); err != nil {
+		return ClearResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ClearResult{}, err
+	}
+	return res, nil
+}
+
+// RestoreHistory lifts the clear tombstone (tl1721 的「怎么退」): every hidden
+// message becomes visible again on the next read, for every member, and the
+// roster count returns. Owner-only. Idempotent — restoring a never-cleared
+// (or already-restored) channel is a no-op that still returns the channel.
+func (s *Store) RestoreHistory(ref, actor string) (Channel, error) {
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return Channel{}, errors.New("collabchannel: actor identity is required")
+	}
+	id, err := s.requireOwner(ref, actor)
+	if err != nil {
+		return Channel{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE channels SET cleared_at = 0 WHERE id = ?`, id); err != nil {
+		return Channel{}, err
+	}
+	return s.Channel(id)
+}
+
 // requireOwner resolves the channel and checks the actor owns it.
 func (s *Store) requireOwner(ref, actor string) (string, error) {
 	if actor == "" {
@@ -698,8 +810,8 @@ func (s *Store) Channel(ref string) (Channel, error) {
 		return Channel{}, err
 	}
 	var c Channel
-	err = s.db.QueryRow(`SELECT id, name, topic, created_at, hourly_limit, COALESCE(owner_type, ''), COALESCE(owner_id, ''), COALESCE(deputy_id, '') FROM channels WHERE id = ?`, id).
-		Scan(&c.ID, &c.Name, &c.Topic, &c.CreatedAt, &c.HourlyLimit, &c.OwnerType, &c.OwnerID, &c.DeputyID)
+	err = s.db.QueryRow(`SELECT id, name, topic, created_at, hourly_limit, COALESCE(owner_type, ''), COALESCE(owner_id, ''), COALESCE(deputy_id, ''), COALESCE(cleared_at, 0) FROM channels WHERE id = ?`, id).
+		Scan(&c.ID, &c.Name, &c.Topic, &c.CreatedAt, &c.HourlyLimit, &c.OwnerType, &c.OwnerID, &c.DeputyID, &c.ClearedAt)
 	if err != nil {
 		return Channel{}, err
 	}
@@ -711,8 +823,23 @@ func (s *Store) Channel(ref string) (Channel, error) {
 	for _, m := range c.MemberDetails {
 		c.Members = append(c.Members, m.Contact)
 	}
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE channel_id = ?`, id).Scan(&c.Messages)
+	// tl1721: the roster count is the VISIBLE count — messages hidden by a
+	// clear tombstone stop counting (restore brings them and the count back).
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE channel_id = ? AND (? = 0 OR at > ?)`, id, c.ClearedAt, c.ClearedAt).Scan(&c.Messages)
 	return c, nil
+}
+
+// clearedAtOf reads the channel's clear tombstone (0 = nothing cleared).
+func (s *Store) clearedAtOf(channelID string) (int64, error) {
+	var cleared sql.NullInt64
+	err := s.db.QueryRow(`SELECT cleared_at FROM channels WHERE id = ?`, channelID).Scan(&cleared)
+	if err != nil {
+		return 0, err
+	}
+	if !cleared.Valid {
+		return 0, nil
+	}
+	return cleared.Int64, nil
 }
 
 // Members lists one channel's membership with types (任务 803: 成员类型对
@@ -1056,9 +1183,15 @@ func (s *Store) Cancel(ref, messageID, requester string) (CancelResult, error) {
 }
 
 // Messages answers 获取消息: channel history since an optional ms bound,
-// oldest first, hard-capped.
+// oldest first, hard-capped. Messages at/below a clear tombstone (tl1721) are
+// hidden for every reader — soft-deleted rows stay in the table and reappear
+// if the tombstone is restored.
 func (s *Store) Messages(ref string, sinceMs int64, limit int) ([]Message, error) {
 	id, err := s.resolve(ref)
+	if err != nil {
+		return nil, err
+	}
+	cleared, err := s.clearedAtOf(id)
 	if err != nil {
 		return nil, err
 	}
@@ -1069,7 +1202,8 @@ func (s *Store) Messages(ref string, sinceMs int64, limit int) ([]Message, error
 		limit = 500
 	}
 	rows, err := s.db.Query(`SELECT id, channel_id, at, sender, body, COALESCE(cancelled_at, 0) FROM messages
-		WHERE channel_id = ? AND (? = 0 OR at >= ?) ORDER BY at DESC LIMIT ?`, id, sinceMs, sinceMs, limit)
+		WHERE channel_id = ? AND (? = 0 OR at >= ?) AND (? = 0 OR at > ?) ORDER BY at DESC LIMIT ?`,
+		id, sinceMs, sinceMs, cleared, cleared, limit)
 	if err != nil {
 		return nil, err
 	}
