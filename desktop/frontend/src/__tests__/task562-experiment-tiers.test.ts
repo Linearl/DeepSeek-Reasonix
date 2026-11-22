@@ -494,6 +494,8 @@ console.log("\ntask 562 lab three-tier badges");
     // gcPercent/idleReleaseMinutes 成员行）；tasklistPanel=专用 pane 豁免
     // （tl1746 合并态条目）；opencodeGoUsage/modelCapabilityFilter/logManagement
     // 三真豁免保留。
+    if (["opencodeGoUsage", "modelCapabilityFilter", "logManagement",
+         "tasklistPanel"].includes(id)) continue;
     if (!wrapped.has(id)) missing.push(id);
 
   }

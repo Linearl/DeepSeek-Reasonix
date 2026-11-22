@@ -165,10 +165,10 @@ console.log("\ntask 561 lab regroup + merged cards");
   // （collabHub 撤）、infra 拆卡回散条 2→6（orphan/idleRelease/gcPercent/
   // acpListen/localServer/toolOptimizations）。
   // tl1746：tasklistPanel 卡入可观测性组 → observability 3→4 → 2/5/8/4/1/3/6/1。
-  ok(groups["automation"] === 2 && groups["efficiency"] === 5 && groups["ui"] === 8 &&
-     groups["observability"] === 4 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 6 &&
+  ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 8 &&
+     groups["observability"] === 4 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 2 &&
      groups["memory-context"] === 1,
-    `group counts are 2/5/8/4/1/3/6/1 (tl1746+tl1741; got ${JSON.stringify(groups)})`);
+    `group counts are 4/6/8/4/1/3/2/1 (tl1746 tasklistPanel + tl1741r2 card bodies restored; got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -442,10 +442,10 @@ for (const id of [
   // tl1309 卡②：「运行可观测」合并卡容器 id 进 union。tl1309 卡③：「资源
   // 治理」合并卡容器 id 进 union。tl1309 卡④：「会话与任务面板」合并卡容器
   // id 进 union。
-  // tl1741：resourceGovernance 容器 id 出 union（拆卡回散条）；
-  // orphanHandling/acpListen/localServer 三散条 id 重入 union。
+  // tl1741 返修：resourceGovernance 容器 id 重入 union（卡体回归 rail）；
+  // orphanHandling/acpListen/localServer 三散条 id 出 union（回卡内成员）。
   "runtimeObservability", "sessionTaskPanels",
-  "orphanHandling", "acpListen", "localServer",
+  "resourceGovernance",
 ]) {
   ok(panel.includes(`| "${id}"`), `union gains the family id ${id}`);
 }
