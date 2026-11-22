@@ -519,7 +519,56 @@ func benchFirstResponse(o options, now time.Time) []metricResult {
 		tail.Note = "窗口内无 ≥60s 长尾样本"
 	}
 	out = append(out, tail)
+	out = append(out, providerStratificationRows(scan.Turns)...)
 	return out
+}
+
+// providerStratificationRows 把首响样本按 provider 分层（tl1685 ①，观测）。
+//
+// tl1684 归因证实首响长尾由 provider 等待主导（长尾样本中占 88.7%，corr≈0.80
+// 三期稳定），P95 单指标混着各 provider 的形态看不出归因——本行把「provider
+// 维度」变成周评测的持续读数，是 P1 首响归因件的前置。每 provider 一行
+// （键含 provider 名，周趋势按 P95 对比自动工作）。数据源是会话 meta 侧车
+// （<session>.jsonl.meta 的 model 字段，canonical "provider/model"），
+// 粒度是会话级；ledger 本身不带 model 信息（eventwire 无 modelRef），
+// 这是「不改被测系统」前提下能拿到的最细归属。
+func providerStratificationRows(turns []turnSample) []metricResult {
+	if len(turns) == 0 {
+		return nil
+	}
+	byProvider := map[string][]int64{}
+	for _, t := range turns {
+		p := t.Provider
+		if p == "" {
+			p = providerUnknown
+		}
+		byProvider[p] = append(byProvider[p], t.MS)
+	}
+	names := make([]string, 0, len(byProvider))
+	for p := range byProvider {
+		names = append(names, p)
+	}
+	// 多者在前（同名按字典序），报告阅读顺序与主因对齐。
+	sort.Slice(names, func(i, j int) bool {
+		if len(byProvider[names[i]]) != len(byProvider[names[j]]) {
+			return len(byProvider[names[i]]) > len(byProvider[names[j]])
+		}
+		return names[i] < names[j]
+	})
+	rows := make([]metricResult, 0, len(names))
+	for _, p := range names {
+		vals := byProvider[p]
+		r := latencyResult("first-response", fmt.Sprintf("发消息→首响 · provider=%s（分层观测）", p),
+			"—（观测分层；各 provider 形态差异大，不设统一门）",
+			"tl1685 ①（P1 首响归因 tl1684 口径的前置：provider 等待主导长尾 88.7%，分层先持续可测）",
+			vals, 0, verdictObserve, "")
+		r.Verdict = verdictObserve
+		r.Source = "sessions/*.turns.jsonl + <session>.jsonl.meta 的 model 字段（canonical provider/model 前缀）"
+		r.Note = fmt.Sprintf("会话级归属：按会话当前 meta.model 归窗口内全部 turn（会话内换模型的历史 turn 不重分层）；"+
+			"checkpoint 留存样本随所属 ledger 归同一 provider；meta 缺失归 %s", providerUnknown)
+		rows = append(rows, r)
+	}
+	return rows
 }
 
 // latencyResult 组装一项延迟读数（P50/P95/Max 由 vals 现算）。
