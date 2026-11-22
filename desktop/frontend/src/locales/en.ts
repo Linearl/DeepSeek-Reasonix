@@ -5479,6 +5479,7 @@ export const en = {
   "slash.skill": "skill",
   "slash.subagent": "subagent",
   "slash.startOnly": "Only available at the start of a message",
+  "slash.compactFocusHint": "Optionally add a focus hint to steer what compact keeps",
   "slash.group.actions": "Quick actions",
   "slash.group.management": "More commands",
   "slash.group.subagents": "Subagents",

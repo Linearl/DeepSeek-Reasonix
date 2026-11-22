@@ -6108,7 +6108,7 @@ function makeMockApp(): AppBindings {
       const commands: CommandInfo[] = [
         { name: "new", description: "start new session; save transcript", kind: "builtin" as const, group: "actions" },
         { name: "clear", description: "discard current context", kind: "builtin" as const, group: "actions" },
-        { name: "compact", description: "Summarize older history to free up context", kind: "builtin" as const, group: "actions" },
+        { name: "compact", description: "compact context [focus]", kind: "builtin" as const, group: "actions" },
         { name: "model", description: "Switch model", kind: "builtin" as const, group: "actions" },
         { name: "effort", description: "Set reasoning effort", kind: "builtin" as const, group: "actions" },
         { name: "skill", description: "List skills", kind: "builtin" as const, group: "skills" },

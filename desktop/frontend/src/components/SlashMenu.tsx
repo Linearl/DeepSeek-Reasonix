@@ -17,12 +17,13 @@ export function slashCommandKindTag(command: CommandInfo, t: Translator): string
 
 type SlashCommandGroup = "actions" | "management" | "subagents" | "skills" | "integrations";
 
-type SlashMenuRow =
+export type SlashMenuRow =
   | { type: "group"; group: SlashCommandGroup; label: string }
-  | { type: "command"; command: CommandInfo; commandIndex: number };
+  | { type: "command"; command: CommandInfo; commandIndex: number }
+  | { type: "hint"; key: string; label: string };
 
 function slashMenuRowKey(row: SlashMenuRow): string {
-  return row.type === "group" ? `group:${row.group}` : `${row.command.kind}:${row.command.name}`;
+  return row.type === "group" ? `group:${row.group}` : row.type === "hint" ? row.key : `${row.command.kind}:${row.command.name}`;
 }
 
 const slashCommandGroups: SlashCommandGroup[] = ["actions", "subagents", "skills", "integrations", "management"];
@@ -48,6 +49,39 @@ export function sortSlashCommandsForMenu(commands: CommandInfo[]): CommandInfo[]
     .map(({ command }) => command);
 }
 
+// slashMenuRows lays out the menu rows for the given (already filtered) commands:
+// group headers interleaved with their command rows, plus — when the compact row
+// is reachable (visible and enabled) — a trailing non-pickable usage hint for the
+// optional focus argument (tl1745: the description alone couldn't teach
+// "/compact <聚焦词>"; same ride-along pattern as the quick-command bang hint).
+// Exported pure so the hint gating stays unit-testable without the virtualizer.
+export function slashMenuRows(
+  items: CommandInfo[],
+  t: Translator,
+  isDisabled?: (c: CommandInfo) => boolean,
+): SlashMenuRow[] {
+  const grouped = new Map<SlashCommandGroup, Array<{ command: CommandInfo; commandIndex: number }>>();
+  items.forEach((command, commandIndex) => {
+    const group = slashCommandGroup(command);
+    const groupItems = grouped.get(group) ?? [];
+    groupItems.push({ command, commandIndex });
+    grouped.set(group, groupItems);
+  });
+  const rows: SlashMenuRow[] = slashCommandGroups.flatMap((group) => {
+    const groupItems = grouped.get(group);
+    if (!groupItems?.length) return [];
+    return [
+      { type: "group" as const, group, label: t(`slash.group.${group}`) },
+      ...groupItems.map(({ command, commandIndex }) => ({ type: "command" as const, command, commandIndex })),
+    ];
+  });
+  const compactRow = items.find((command) => command.name === "compact");
+  if (compactRow && !isDisabled?.(compactRow)) {
+    rows.push({ type: "hint", key: "compact-focus-hint", label: t("slash.compactFocusHint") });
+  }
+  return rows;
+}
+
 // SlashMenu is the "/" autocomplete dropdown above the composer. Presentational:
 // the Composer owns filtering, the active index, and key handling; this renders
 // the (virtualized) list and reports hover/pick. Uses mousedown (not click) so
@@ -68,33 +102,21 @@ export function SlashMenu({
   disabledReason?: string;
 }) {
   const t = useT();
-  const rows = useMemo<SlashMenuRow[]>(() => {
-    const grouped = new Map<SlashCommandGroup, Array<{ command: CommandInfo; commandIndex: number }>>();
-    items.forEach((command, commandIndex) => {
-      const group = slashCommandGroup(command);
-      const groupItems = grouped.get(group) ?? [];
-      groupItems.push({ command, commandIndex });
-      grouped.set(group, groupItems);
-    });
-    return slashCommandGroups.flatMap((group) => {
-      const groupItems = grouped.get(group);
-      if (!groupItems?.length) return [];
-      return [
-        { type: "group" as const, group, label: t(`slash.group.${group}`) },
-        ...groupItems.map(({ command, commandIndex }) => ({ type: "command" as const, command, commandIndex })),
-      ];
-    });
-  }, [items, t]);
+  const rows = useMemo(() => slashMenuRows(items, t, isDisabled), [items, t, isDisabled]);
   const activeRowIndex = rows.findIndex((row) => row.type === "command" && row.commandIndex === activeIndex);
   return (
     <VirtualMenu
       items={rows}
       activeIndex={activeRowIndex}
       itemKey={slashMenuRowKey}
-      estimateSize={(row) => row.type === "group" ? 26 : 34}
+      estimateSize={(row) => row.type === "group" || row.type === "hint" ? 26 : 34}
       renderItem={(row) => row.type === "group" ? (
         <div className="slashmenu__group" role="separator" aria-label={row.label}>
           {row.label}
+        </div>
+      ) : row.type === "hint" ? (
+        <div className="slashmenu__item slashmenu__item--empty" role="presentation">
+          <span className="slashmenu__hint">{row.label}</span>
         </div>
       ) : (
         <button

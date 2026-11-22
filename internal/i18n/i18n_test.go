@@ -60,6 +60,28 @@ func TestProviderStatusMessageGatewayFamily(t *testing.T) {
 	}
 }
 
+// TestCmdCompactAdvertisesFocusArg (tl1745) pins the /compact menu description to
+// advertise the optional focus argument in all three catalogs. The description is
+// the only discoverability surface for "/compact <聚焦词>" (tl1723 wiring) — a
+// bare "压缩上下文" gives users no way to learn the parameter exists.
+func TestCmdCompactAdvertisesFocusArg(t *testing.T) {
+	cases := []struct {
+		tag   string
+		value string
+	}{
+		{tag: "en", value: English.CmdCompact},
+		{tag: "zh", value: Chinese.CmdCompact},
+		{tag: "zh-TW", value: ChineseTraditional.CmdCompact},
+	}
+	for _, tt := range cases {
+		t.Run(tt.tag, func(t *testing.T) {
+			if !strings.Contains(tt.value, "[") || !strings.Contains(tt.value, "]") {
+				t.Fatalf("CmdCompact(%s) = %q, want a [arg] marker advertising the focus argument", tt.tag, tt.value)
+			}
+		})
+	}
+}
+
 // TestCatalogsAgreeOnPlaceholders catches translations that silently drop or
 // gain %s/%d/%q placeholders — a class of bug that only blows up when the
 // affected message is rendered. Compares the count per format verb across
