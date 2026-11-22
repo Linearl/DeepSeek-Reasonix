@@ -53,7 +53,8 @@ console.log("\n任务 895 sentinel 穿透封堵开关（UI 面）");
 // ① 卡内单条开关条目。
 {
   const start = panel.indexOf('{selected === "safetyCostControl" && (');
-  const end = panel.indexOf('{selected === "sessionCollab" && (');
+  // tl1741：sessionCollab 分支随撤开关删除——结束锚随迁 modelStrategy。
+  const end = panel.indexOf('{selected === "modelStrategy" && (');
   ok(start >= 0 && end > start, "safetyCostControl pane branch located");
   const card = start >= 0 && end > start ? panel.slice(start, end) : "";
   ok(card.includes('t("settings.sentinelPenetrationGuard")'),
@@ -67,7 +68,7 @@ console.log("\n任务 895 sentinel 穿透封堵开关（UI 面）");
   ok(card.includes('"settings.sentinelPenetrationGuard.on"') &&
      card.includes('"settings.sentinelPenetrationGuard.off"'),
     "segment buttons carry on/off keys");
-  ok(card.includes('selected === "safetyCostControl"') && panel.includes('{selected === "sessionCollab" && ('),
+  ok(card.includes('selected === "safetyCostControl"'),
     "pane boundaries intact (row inserted inside the card, not around it)");
   // 即时生效：本行不写 setRestartNeeded（判定路径每次调用读开关）。
   const rowStart = card.indexOf('label={t("settings.sentinelPenetrationGuard")}');

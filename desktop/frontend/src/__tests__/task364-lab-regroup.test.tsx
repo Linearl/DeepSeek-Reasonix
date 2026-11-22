@@ -1,16 +1,11 @@
-// Task 364 acceptance (two pure-UI regroup moves in the lab, same precedent
-// as task 359: grouping/mounts only — config keys, persistence, switch
-// semantics and approval behaviour are byte-identical):
-//  ① managed-path pre-approval now lives INSIDE the autopilot card as a
-//     sub-block (switch + four category checkboxes + risk line intact) and
-//     has exactly ONE entry: no rail item, no standalone pane branch;
-//  ② full access (YOLO) moved from the misc group to efficiency;
-//  ③ zero behaviour: the config keys / bridge setter calls / persisted field
-//     names are unchanged — asserted by scope (the moved block still calls
-//     the same app.SetPreapproveManagedPaths signature);
-//  ④ the task 359 group machinery (labGroups counts + sticky rail directory)
-//     stays green — it derives from the features array, so the deleted entry
-//     flows through automatically; run task359 alongside this file.
+// Task 364 acceptance → tl1741 换代（用户 20261121 三拍：autopilot 稳定卡随
+// 「稳定档不再提供开关」移除——preapprove 子块随宿主卡退役；fullAccess 保留
+// 在 automation 组）：
+//  ① autopilot 卡与卡内 preapprove 子块不再在实验室面板渲染（语义面零改动：
+//     bridge 五值 setter / persisted 字段名 / settingsViewTypes 字段全保留，
+//     settings-preapprove-managed.test.ts 详钉）；
+//  ② full access 仍归 automation 组（fullAccess 是 tl1741 后该组唯一卡）；
+//  ③ render-table 现存清单：退役 id（autopilot/sessionCollab）出表，其余在位。
 //
 // Run: npx tsx src/__tests__/task364-lab-regroup.test.tsx
 
@@ -26,58 +21,50 @@ function ok(value: boolean, label: string) {
 
 const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
 
-console.log("\ntask 364 lab regroup");
+console.log("\ntask 364 lab regroup (tl1741: autopilot pane retired with its preapprove sub-block)");
+
+const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
+const bridge = readFileSync(fileURLToPath(new URL("../lib/bridge.ts", import.meta.url)), "utf8");
+const viewTypes = readFileSync(fileURLToPath(new URL("../lib/settingsViewTypes.ts", import.meta.url)), "utf8");
 
 // ① single entry: no rail feature, no standalone pane branch.
 ok(!panel.includes('{ id: "preapproveManagedPaths", group:'), "rail has no preapprove entry (feature removed from the array)");
 ok(!panel.includes('{selected === "preapproveManagedPaths" &&'), "no standalone pane branch for preapprove (single entry)");
-// Task 561: the audit table re-homes autopilot into the automation group.
-// 任务 722/724：render table 移交布局默认数据（src/lab/labLayoutDefault.ts），
-// 断言改读布局数据源（panel 不再内联 features 数组）。
-const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
-ok(/id: "autopilot", labelKey: "settings.autopilot"/.test(labDefault) && labDefault.indexOf('key: "automation"') < labDefault.indexOf('id: "autopilot"'),
-  "autopilot stays put as the automation-group merge target");
 
-// ① sub-block inside the autopilot card, full anatomy preserved.
+// ① tl1741: the autopilot card (and its preapprove sub-block) retired.
 {
-  const start = panel.indexOf('{selected === "autopilot" && (');
-  // Task 561: the pane after autopilot is the modelStrategy family card.
-  const next = panel.indexOf('{selected === "modelStrategy" && (');
-  ok(start >= 0 && next > start, "autopilot pane branch located");
-  const card = panel.slice(start, next);
-  ok(card.includes("autopilot-preapprove-subblock"), "pre-approval renders as a named sub-block INSIDE the autopilot card");
-  ok(card.includes('app.SetPreapproveManagedPaths('), "master switch setter still wired inside the card");
-  ok(card.includes('type="checkbox"') && card.includes("preapproveSkills") && card.includes("preapproveBashEscape"), "the four category checkboxes moved along (skills/hooks/stores/bash)");
-  ok(card.includes("settings.preapproveManagedPaths.warning"), "risk line moved along");
-  ok(card.includes("settings.preapproveManagedPaths.on") && card.includes("settings.preapproveManagedPaths.off"), "on/off switch labels intact");
+  ok(!labDefault.includes('id: "autopilot"'), "autopilot entry left the layout (tl1741)");
+  ok(!panel.includes('{selected === "autopilot" && ('), "autopilot pane branch removed (tl1741)");
+  ok(!panel.includes("autopilot-preapprove-subblock"), "pre-approval sub-block retired with the autopilot card (tl1741)");
+  ok(!panel.includes('app.SetPreapproveManagedPaths('), "no panel call sites remain (card retired)");
 }
 
-// ② full access re-homed.
+// ② full access re-homed (unchanged): automation group, the only card after tl1741.
 {
-  // 任务 722/724：fullAccess 的组归属在布局默认数据里（automation 组成员）。
   const autoBlock = labDefault.slice(labDefault.indexOf('key: "automation"'), labDefault.indexOf('key: "efficiency"'));
   ok(autoBlock.includes('id: "fullAccess"'), `full access group = automation (got ${autoBlock.includes('id: "fullAccess"') ? "automation" : "missing"})`);
 }
 
-// ③ zero behaviour by scope: the moved block still uses the same bridge
-//    method, same persisted field names, same five-value single write.
-ok(panel.includes("app.SetPreapproveManagedPaths"), "bridge method name unchanged");
-ok(panel.includes("experimentalPreapproveManagedPaths") && panel.includes("preapproveSkills") && panel.includes("preapproveSessionStores"), "persisted field names unchanged");
-ok(panel.includes("Boolean(s.preapproveSkills)") && panel.includes("Boolean(s.preapproveBashEscape)"), "category reads unchanged (no field rename smuggled in)");
-// Exactly one call site family: the setter appears in the card only (one in
-// the switch, one in the checkbox handler) — no duplicated parallel wiring.
+// ③ zero behaviour by scope (tl1741): the semantic surface is untouched —
+//    bridge method, persisted field names and view-type fields all live on
+//    (config 手写可调；settings-preapprove-managed.test.ts 详钉).
+ok(bridge.includes("SetPreapproveManagedPaths(enabled: boolean"), "bridge method name unchanged");
+ok(viewTypes.includes("experimentalPreapproveManagedPaths") && viewTypes.includes("preapproveSkills") && viewTypes.includes("preapproveSessionStores"), "persisted field names unchanged");
+ok(viewTypes.includes("preapproveBashEscape"), "category reads unchanged (no field rename smuggled in)");
 {
   const calls = panel.match(/app\.SetPreapproveManagedPaths\(/g) ?? [];
-  ok(calls.length === 2, `setter has exactly the two known call sites in the card (got ${calls.length})`);
+  ok(calls.length === 0, `panel has zero call sites after the card retired (got ${calls.length})`);
 }
 ok(!panel.includes("SetExperimentalFullAccess") === false, "full-access switch wiring untouched (presence check)");
 
 // ④ remaining render-table entries all still present (no silent drop).
 {
-  // tl1453：dream 随实验退役出布局，缺席由退役面覆盖，清单不再单列。
-  const ids = ["autopilot", "sessionCollab", "fullAccess", "splitView", "todoSidebar"];
+  // tl1741：autopilot/sessionCollab 随撤开关出布局；其余在位（no silent drop）。
+  const ids = ["fullAccess", "splitView", "todoSidebar"];
   const missing = ids.filter((id) => !labDefault.includes(`id: "${id}"`));
-  ok(missing.length === 0, `render-table entries intact (missing: ${missing.join(", ") || "none"})`);
+  const retired = ["autopilot", "sessionCollab"].filter((id) => labDefault.includes(`id: "${id}"`));
+  ok(missing.length === 0 && retired.length === 0,
+    `render-table entries intact (missing: ${missing.join(", ") || "none"}; retired-still-present: ${retired.join(", ") || "none"})`);
 }
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);

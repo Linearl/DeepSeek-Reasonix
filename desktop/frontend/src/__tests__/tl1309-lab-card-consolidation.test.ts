@@ -60,11 +60,13 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
     "① efficiency: optimisticParallel rides contextGovernance (任务书①)");
   ok(membersOf("runtimeObservability").join(",") === "monitoring,eventsRotation,trajectoryView",
     "① observability: 监控+events 瘦身+轨迹观测 ride runtimeObservability (任务书②)");
-  ok(membersOf("resourceGovernance").join(",") === "runtimeReuse,orphanHandling,idleReleaseMinutes,gcPercent,acpListen,localServer",
-    "① infra/storage: 六项资源生命周期卡成员落位 (任务书③)");
+  // tl1741：资源治理合并卡拆卡回散条（runtimeReuse 撤开关退役，五成员回独立卡）。
+  ok(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance") === undefined &&
+     Boolean(membersOf("infra").length === 0),
+    "① infra/storage: resourceGovernance split back to standalone cards (tl1741 逆向)");
   ok(membersOf("tabManagement").includes("todoSidebar") &&
-     membersOf("sessionTaskPanels").join(",") === "sessionWall,workflowPanel,completionSummary",
-    "① ui: todoSidebar 并标签页管理卡、三面板并会话与任务面板 (任务书④)");
+     membersOf("sessionTaskPanels").join(",") === "sessionWall,completionSummary",
+    "① ui: todoSidebar 并标签页管理卡、面板卡成员换代（workflowPanel 退役, tl1741）");
   // 界面组零散条：8 张卡全部是合并卡/容器卡/自带成员卡。
   ok(entryIdsOf("ui").join(",") === "startupLoading,tabManagement,viewLayout,sessionTaskPanels,searchHistory,subagentSuite,inputSelection,updateFeedback",
     "① ui group carries only merged/container cards (零散条)");
@@ -77,9 +79,9 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
   //   dev-debug / memory-context：单卡组（任务书⑤维持现状）。
   ok(entryIdsOf("dev-debug").join(",") === "devDebug" && entryIdsOf("memory-context").join(",") === "pinnedIndex",
     "① dev-debug/memory-context stay single-card groups (任务书⑤)");
-  ok(entryIdsOf("infra").join(",") === "resourceGovernance,toolOptimizations" &&
+  ok(entryIdsOf("infra").join(",") === "orphanHandling,idleReleaseMinutes,gcPercent,acpListen,localServer,toolOptimizations" &&
      entryIdsOf("storage").join(",") === "sessionStore,homePointer,jsonlZstd",
-    "① infra/storage residual standalone entries (tl1487: pathRules removed; homePointer/jsonlZstd remain)");
+    "① infra/storage residual standalone entries (tl1741: resourceGovernance split; runtimeReuse retired)");
 }
 
 // ── ② 卡内关联说明完整（依赖/派生）──
@@ -98,9 +100,10 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
   ok(panel.includes('labLabel("runtimeObservability", t("settings.runtimeObservability"))') &&
      panel.includes('t("settings.runtimeObservabilityHint")'),
     "② runtimeObservability pane head carries the association hint");
-  ok(panel.includes('labLabel("resourceGovernance", t("settings.resourceGovernance"))') &&
-     panel.includes('t("settings.resourceGovernanceHint")'),
-    "② resourceGovernance pane head carries the association hint");
+  // tl1741：resourceGovernance 卡退役——pane head 不在（Hint 键保留，重挂位可复用）。
+  ok(!panel.includes('labLabel("resourceGovernance"') &&
+     readFileSync(`${frontendRoot}/src/locales/zh.ts`, "utf8").includes('"settings.resourceGovernanceHint"'),
+    "② resourceGovernance pane head retired with the card (tl1741; hint keys live on)");
   ok(panel.includes('labLabel("sessionTaskPanels", t("settings.sessionTaskPanels"))') &&
      panel.includes('t("settings.sessionTaskPanelsHint")'),
     "② sessionTaskPanels pane head carries the association hint");
@@ -117,19 +120,23 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
   // sessionTaskPanels 随 workflowPanel 升稳定，聚合终值 推荐→稳定。
   const agg = (id: string) => labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, id);
   ok(agg("contextGovernance") === "recommended" && agg("runtimeObservability") === "recommended" &&
-     agg("resourceGovernance") === "stable" && agg("tabManagement") === "recommended" &&
-     agg("sessionTaskPanels") === "stable",
-    "③ card-head badges aggregate to the strongest member tier (774; tl1487 sessionTaskPanels → stable)");
+     agg("resourceGovernance") === null && agg("tabManagement") === "recommended" &&
+     agg("sessionTaskPanels") === "recommended",
+    "③ card-head badges aggregate to the strongest member tier (774; tl1741 sessionTaskPanels → recommended, resourceGovernance → none)");
   // 配置键零变化的反面钉：成员 id 都仍注册在档位表（562 主守卫继续钉全量），
   // 这里钉四张新/扩卡的存在性与 pane 白名单一一对应。
-  for (const id of ["runtimeObservability", "resourceGovernance", "sessionTaskPanels"]) {
+  for (const id of ["runtimeObservability", "sessionTaskPanels"]) {
     ok(paneIds.has(id) && Boolean(findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)),
       `③ ${id} is whitelisted and laid out (rail/pane 同源)`);
   }
+  ok(!paneIds.has("resourceGovernance") && findLabEntry(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance") === undefined,
+    "③ resourceGovernance left the whitelist + layout (tl1741)");
   // 依赖层级展示（992⑦ 口径）：LAB_FEATURE_DEPS 不被本件触碰——仍只有
   // collabHub→sessionCollab 一条前置（新卡成员间无前置依赖声明需求）。
-  ok(Object.keys(LAB_FEATURE_DEPS).length === 1 && LAB_FEATURE_DEPS.collabHub === "sessionCollab",
-    "③ dependency table untouched (992⑦: collabHub→sessionCollab remains the single dep)");
+  // tl1741：collabHub→sessionCollab 依赖随双卡撤开关退役（跨会话协作常开，
+  // 前置门永真）——表暂空，机制保留。
+  ok(Object.keys(LAB_FEATURE_DEPS).length === 0,
+    "③ dependency table emptied by tl1741 (collabHub→sessionCollab retired with both cards)");
   // 迁出的成员不再占旧卡成员表（防双挂）。
   ok(!membersOf("sessionStore").includes("eventsRotation") && !membersOf("viewLayout").includes("trajectoryView") &&
      !membersOf("subagentSuite").includes("todoSidebar"),

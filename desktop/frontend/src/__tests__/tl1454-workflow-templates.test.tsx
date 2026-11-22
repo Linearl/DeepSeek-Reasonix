@@ -154,8 +154,9 @@ const failedRun: WireWorkflowRun = {
   failure: { nodeId: "a", reason: "budget", detail: "workflow budget exceeded: tokens 1400 >= 1000 budget (crossed after node \"a\")" },
 };
 {
-  applyLabFlags({ workflowPanel: true });
-  ok(labFlagEnabled("workflowTemplates") === false, "labFlags default the templates switch to off");
+  // tl1741：templates 开关退役常开——off 态不存在，单态断言（附加面恒在）。
+  applyLabFlags({});
+  ok(labFlagEnabled("workflowTemplates") === undefined, "labFlags no longer knows workflowTemplates (tl1741)");
   const host = document.getElementById("root")!;
   const root = createRoot(host);
   await act(async () => {
@@ -163,32 +164,21 @@ const failedRun: WireWorkflowRun = {
   });
   await settle(50);
   ok(document.querySelector(".wf-panel") !== null, "the panel renders the live run");
-  ok(byTest("wf-templates-toggle") === null, "switch off: no Templates toggle in the toolbar");
-  ok(byTest("wf-run-failure") === null, "switch off: no failure banner (default view unchanged)");
-  const offTokens = Array.from(document.querySelectorAll('[data-testid="wf-progress"] span')).map((el) => el.textContent ?? "");
-  ok(offTokens.some((txt) => txt.startsWith("—")), "switch off: the tokens slot keeps its legacy dash for live runs");
-  ok(byTest("wf-budget") === null, "switch off: no budget readout");
-  const nodeB = Array.from(document.querySelectorAll(".wf-node")).find((n) => n.textContent?.includes("b"));
-  ok(nodeB?.className.includes("wf-node--running") === true, "switch off: a stale running node keeps its legacy rendering (no projection)");
-  ok(document.querySelector(".wf-tpl") === null, "switch off: the template view never mounts");
-
-  await act(async () => { applyLabFlags({ workflowPanel: true, workflowTemplates: true }); });
-  await settle(20);
-  ok(byTest("wf-templates-toggle") !== null, "switch on: the Templates toggle appears (live, no restart)");
+  ok(byTest("wf-templates-toggle") !== null, "templates toggle always on (tl1741)");
   const banner = byTest("wf-run-failure");
   ok(banner?.textContent?.includes("Run stopped after node a") === true && banner.textContent.includes("Over budget") && banner.textContent.includes("workflow budget exceeded: tokens 1400"),
-    "switch on: failure banner names the crossing node with the plain reason and the technical detail");
+    "failure banner names the crossing node with the plain reason and the technical detail");
   const tokensSlot = Array.from(document.querySelectorAll('[data-testid="wf-progress"] span')).map((el) => el.textContent ?? "");
-  ok(tokensSlot.some((txt) => txt.startsWith("1.4k")), "switch on: the existing tokens slot shows the run's real usage");
-  ok(byTest("wf-budget")?.textContent?.includes("tokens 1.4k/1.0k") === true, "switch on: budget readout shows used/limit");
+  ok(tokensSlot.some((txt) => txt.startsWith("1.4k")), "the tokens slot shows the run's real usage");
+  ok(byTest("wf-budget")?.textContent?.includes("tokens 1.4k/1.0k") === true, "budget readout shows used/limit");
   const nodeB2 = Array.from(document.querySelectorAll(".wf-node")).find((n) => n.textContent?.includes("b"));
-  ok(nodeB2?.className.includes("wf-node--queued") === true, "switch on: the in-flight node of the terminated run renders as not finished");
+  ok(nodeB2?.className.includes("wf-node--queued") === true, "the in-flight node of the terminated run renders as not finished");
   const nodeA = Array.from(document.querySelectorAll(".wf-node")).find((n) => n.textContent?.trim().startsWith("◈a") || n.querySelector(".wf-node__name")?.textContent === "a");
   await act(async () => { (nodeA as HTMLElement | undefined)?.click(); });
   await settle();
   const detailText = document.querySelector(".wf-panel__detail")?.textContent ?? "";
   ok(detailText.includes("Why it stopped") && detailText.includes("Over budget") && detailText.includes("1.4k tokens · 4 requests"),
-    "switch on: node detail shows reason (human) + usage");
+    "node detail shows reason (human) + usage");
   await act(async () => { root.unmount(); });
   applyLabFlags({});
 }
@@ -254,33 +244,34 @@ const failedRun: WireWorkflowRun = {
 
 // ── ⑤ 全链路钉 ───────────────────────────────────────────────────────
 {
-  ok(readRepo("internal/config/desktop_preferences.go").includes('toml:"experimental_workflow_templates"'), "Go config carries the key");
+  // tl1741：键退役——Go config/setter/render/档位/视图/谓词/布局全链路摘除断言；
+  // 模板数据链（bridge 面+视图 chunk）保留。
+  ok(!readRepo("internal/config/desktop_preferences.go").includes('toml:"experimental_workflow_templates"'), "Go config key retired (tl1741)");
   const edit = readRepo("internal/config/edit.go");
-  ok(edit.includes("func (c *Config) SetExperimentalWorkflowTemplates(enabled bool) error") && edit.includes("func WorkflowTemplatesLive() bool"), "Go setter + live read");
+  ok(!edit.includes("func (c *Config) SetExperimentalWorkflowTemplates(enabled bool) error") && !edit.includes("func WorkflowTemplatesLive() bool"), "Go setter + live read retired");
   const render = readRepo("internal/config/render.go");
-  ok(render.includes("experimental_workflow_templates = %v") && render.includes('"experimental_workflow_panel", "experimental_workflow_templates"'),
-    "render line (fixed-key-set) + workflowPanel family registration (tier unchanged)");
+  ok(!render.includes("experimental_workflow_templates = %v") && !render.includes('"experimental_workflow_panel", "experimental_workflow_templates"'),
+    "render line + family registration gone (tl1741)");
   const settingsApp = readRepo("desktop/settings_app.go");
-  ok(settingsApp.split("\n").filter((l) => l.includes("ExperimentalWorkflowTemplates")).length >= 4, "both desktop settings views + both mappings");
-  ok(readRepo("desktop/settings_preferences.go").includes("func (a *App) SetExperimentalWorkflowTemplates(enabled bool) error"), "desktop setter");
+  ok(!settingsApp.split("\n").some((l) => l.includes("ExperimentalWorkflowTemplates")), "desktop settings views retired the field");
+  ok(!readRepo("desktop/settings_preferences.go").includes("func (a *App) SetExperimentalWorkflowTemplates(enabled bool) error"), "desktop setter retired");
   const bridgeGo = readRepo("desktop/workflow_templates_app.go");
   ok(["WorkflowTemplates()", "WorkflowTemplateValidate(", "WorkflowTemplateSave(", "WorkflowTemplateRunPreview(", "WorkflowTemplateRun("].every((m) => bridgeGo.includes(`func (a *App) ${m}`)),
-    "desktop template bridges exist");
+    "desktop template bridges exist (data chain untouched)");
   const bridge = read("src/lib/bridge.ts");
-  ok(bridge.includes("SetExperimentalWorkflowTemplates(enabled: boolean): Promise<void>;") && bridge.includes("async SetExperimentalWorkflowTemplates() {}"), "bridge setter + mock");
+  ok(!bridge.includes("SetExperimentalWorkflowTemplates(enabled: boolean): Promise<void>;") && !bridge.includes("async SetExperimentalWorkflowTemplates() {}"), "bridge switch setter retired");
   ok(bridge.includes("WorkflowTemplateRun(name: string): Promise<WorkflowTemplateRunStart>;") && bridge.includes("async WorkflowTemplateRun() {"), "bridge run binding + honest mock");
-  ok(read("src/lib/types.ts").includes("experimentalWorkflowTemplates?: boolean;") && read("src/lib/settingsViewTypes.ts").includes("experimentalWorkflowTemplates?: boolean;"), "both TS settings views");
-  ok(read("src/lab/labLightKeys.ts").includes("experimentalWorkflowTemplates: (s: SettingsView) => Boolean(s.experimentalWorkflowTemplates)"), "lab light predicate");
-  ok(read("src/lab/lab-layout.yaml").includes("experimentalWorkflowPanel, experimentalWorkflowTemplates, experimentalCompletionSummary") &&
-    read("src/lab/labLayoutDefault.ts").includes('"experimentalWorkflowPanel", "experimentalWorkflowTemplates", "experimentalCompletionSummary"'),
-    "card light keys mirrored in yaml + built-in default (724 同构)");
+  ok(!read("src/lib/types.ts").includes("experimentalWorkflowTemplates?: boolean;") && !read("src/lib/settingsViewTypes.ts").includes("experimentalWorkflowTemplates?: boolean;"), "both TS settings views retired the field");
+  ok(!read("src/lab/labLightKeys.ts").includes("experimentalWorkflowTemplates:"), "lab light predicate retired");
+  ok(!read("src/lab/lab-layout.yaml").includes("experimentalWorkflowTemplates") &&
+    !read("src/lab/labLayoutDefault.ts").includes("experimentalWorkflowTemplates"),
+    "card light keys gone from yaml + built-in default (tl1741)");
   const lab = read("src/components/ExperimentalLabSection.tsx");
-  ok(lab.includes("await app.SetExperimentalWorkflowTemplates(on);") && lab.includes("settings.workflowTemplatesDepNote") && lab.includes("(on && !s.experimentalWorkflowPanel)"),
-    "lab sub-row writes its own setter and is gated on the workflow panel");
+  ok(!lab.includes("await app.SetExperimentalWorkflowTemplates(on);"), "lab sub-row retired");
   const appTsx = read("src/App.tsx");
-  ok(appTsx.includes("workflowTemplates: settings.experimentalWorkflowTemplates ?? false"), "App feeds the lab flag from settings");
+  ok(!appTsx.includes("workflowTemplates: settings.experimentalWorkflowTemplates"), "App no longer feeds the lab flag");
   const panel = read("src/components/WorkflowPanel.tsx");
-  ok(panel.includes('const LazyTemplatesView = lazy(') && panel.includes("{templatesEnabled && ("), "template view is a lazy chunk behind the switch");
+  ok(panel.includes('const LazyTemplatesView = lazy(') && panel.includes("{templatesEnabled && ("), "template view is a lazy chunk (always enabled)");
   const en = read("src/locales/en.ts");
   const zh = read("src/locales/zh.ts");
   const zhTw = read("src/locales/zh-TW.ts");

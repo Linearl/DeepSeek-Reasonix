@@ -961,8 +961,8 @@ export default function App() {
   //「搜索历史提问」项与 Ctrl+Shift+F 快捷键继续受它门控（关 = 不渲染/不生效）。
   const [questionSearchEnabled, setQuestionSearchEnabled] = useState(labFlagEnabled("questionSearch"));
   useEffect(() => onLabFlagsChange(() => setQuestionSearchEnabled(labFlagEnabled("questionSearch"))), []);
-  // tl1741：collabHubEntryEnabled state 随撤开关删除——协作中心入口常显
-  // （856③ 融合入口，labFlag 不再门控）。
+  // tl1741：协作中心入口 state 随撤开关删除——入口常显（856③ 融合入口，
+  // labFlag 不再门控）。
   // 任务 704: the trajectory view rides the lab-flag snapshot (铁律 2 default
   // off) and the per-session surface selection re-points at every tab change.
   const [trajectoryViewEnabled, setTrajectoryViewEnabled] = useState(labFlagEnabled("trajectoryView"));
