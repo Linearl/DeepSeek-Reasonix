@@ -125,7 +125,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   // tl1487 七组③：pathRules 整卡移除 → 28→27。
   // tl1733：记忆注入瘦身卡入提效组 → 27→28。
   // tl1746：tasklistPanel 卡入可观测性组 → 28→29。
-  ok(defEntries.length === 29, `default layout carries exactly 29 rail entries (tl1746 tasklistPanel added; got ${defEntries.length})`);
+  // tl1746 → tl1741 合并态：tl1741 撤 8 项 stable 卡（autopilot/sessionCollab/
+  // collabHub 三 rail 卡出表 -3；workflowPanel/cdpDebugPort/sessionStorage/
+  // runtimeReuse 为成员行摘除不占 rail；resourceGovernance 容器卡拆五散条
+  // 回 rail +4）→ 29−3+4=30... 实际净变：-3（rail 卡）+5（五散条）+1
+  //（tasklistPanel）=30（tl1733 的 28 基数上：28−3+5+1=31−1=30，以实态为准）。
+  ok(defEntries.length === 30, `default layout carries exactly 30 rail entries (tl1746 tasklistPanel added, tl1741 retired/split; got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -160,11 +165,14 @@ console.log("\ntask 561 lab regroup + merged cards");
   // → 4/5/8/3/1/3/3/1。
   // tl1487 七组③：infra 3→2（pathRules 移除）→ 4/5/8/3/1/3/2/1。
   // tl1733：memoryIndexSlim 卡入提效组 → efficiency 5→6。
-  // tl1746：tasklistPanel 卡入可观测性组 → observability 3→4 → 4/6/8/4/1/3/2/1。
-  ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 8 &&
-     groups["observability"] === 4 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 2 &&
+  // tl1741：automation 4→2（autopilot/sessionCollab 撤）、efficiency 6→5
+  // （collabHub 撤）、infra 拆卡回散条 2→6（orphan/idleRelease/gcPercent/
+  // acpListen/localServer/toolOptimizations）。
+  // tl1746：tasklistPanel 卡入可观测性组 → observability 3→4 → 2/5/8/4/1/3/6/1。
+  ok(groups["automation"] === 2 && groups["efficiency"] === 5 && groups["ui"] === 8 &&
+     groups["observability"] === 4 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 6 &&
      groups["memory-context"] === 1,
-    `group counts are 4/6/8/4/1/3/2/1 (tl1746; got ${JSON.stringify(groups)})`);
+    `group counts are 2/5/8/4/1/3/6/1 (tl1746+tl1741; got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -173,10 +181,8 @@ console.log("\ntask 561 lab regroup + merged cards");
   const memberIds = (safety!.members ?? []).map((m: { id: string }) => m.id);
   ok(["messageMerge", "compactModel", "heartbeatRotation"].every((x) => memberIds.includes(x)),
     "safetyCostControl members carry messageMerge + compactModel + heartbeatRotation (722 点5/6 + 727)");
-  const collab = LAB_LAYOUT_DEFAULT_DATA.groups.find((g: { key: string }) => g.key === "automation")!
-    .entries.find((e: { id: string }) => e.id === "sessionCollab");
-  ok((collab!.members ?? []).some((m: { id: string }) => m.id === "sessionCollabAutoFold"),
-    "sessionCollab hosts the auto-fold member (722 点3)");
+  // tl1741：sessionCollab 卡随撤开关退役（autoFold 随宿主卡入 storage 组）——
+  // 原断言「sessionCollab hosts the auto-fold member」随卡摘除。
 }
 
 // ② merged cards — per-member read+write independence.
@@ -206,8 +212,10 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // 随迁到物理下一个卡 acpListen（旧 marker 不存在会让 cardSlice 返回空、
   // 测试假红/假绿）。tl1309 卡③：acpListen pane 退役入「资源治理」卡——
   // endMarker 再随迁到 resourceGovernance。
-  { id: "devDebug", endMarker: '{selected === "resourceGovernance" && (', members: [
-    { label: "M5 cdpDebugPort", field: "s.experimentalCDPDebugPort", setter: "app.SetExperimentalCDPDebugPort(on)" },
+  // tl-1048 → tl1309 卡③ → tl1741：devDebug 的 endMarker 三随迁——cdpDebugPort
+  // 成员行随「稳定档不再提供开关」摘除（endpoint 无条件起，键退役），成员仅余
+  // lifecycleNoiseGate；endMarker 随迁物理下一个卡 toolOptimizations。
+  { id: "devDebug", endMarker: '{selected === "toolOptimizations" && (', members: [
     { label: "M5 lifecycleNoiseGate", field: "s.experimentalLifecycleNoiseGate", setter: "app.SetExperimentalLifecycleNoiseGate(on)" },
   ] },
   // 任务 785：S1 常驻底座开关详情卡退役——endMarker 随迁到物理下一个卡
@@ -224,13 +232,19 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // tl1309 卡③：「资源治理」合并卡（复用池/孤儿回收/闲置释放/GC/ACP 监听/
   // 本地服务六成员）——四散条 + 两参数卡（自存储组迁入）随迁本卡；参数行经
   // labParamFields 注册表绑定读写（值语义单源），field 断言钉绑定引用。
-  { id: "resourceGovernance", endMarker: '{selected === "toolOptimizations" && (', members: [
-    { label: "tl1309 runtimeReuse", field: "s.experimentalRuntimeReuse", setter: "app.SetExperimentalRuntimeReuse(on)" },
-    { label: "tl1309 orphanHandling", field: "s.experimentalOrphanHandling", setter: "app.SetExperimentalOrphanHandling(on)" },
-    { label: "tl1309 idleReleaseMinutes", field: "LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.write", setter: "" },
-    { label: "tl1309 gcPercent", field: "LAB_PARAM_FIELDS.gcPercent.write", setter: "" },
-    { label: "tl1309 acpListen", field: "s.experimentalACPListen", setter: "app.SetExperimentalACPListen(on)" },
-    { label: "tl1309 localServer", field: "s.experimentalLocalServer", setter: "app.SetExperimentalLocalServer(on)" },
+  // tl1741（tl1309 卡③逆向拆卡）：资源治理合并卡移除——runtimeReuse 撤开关
+  // 退役（键/setter/pane 全摘）；孤儿回收/ACP 监听/本地服务三散条回归独立
+  // pane（键/setter/档位零变化）；idleReleaseMinutes/gcPercent 两参数卡回
+  // kind:param 独立卡（通用 LabParamFieldsCard 渲染，无硬编码 pane 分支，
+  // 不入 families 表——775 参数卡先例）。
+  { id: "orphanHandling", endMarker: '{selected === "acpListen" && (', members: [
+    { label: "tl1741 orphanHandling (standalone again)", field: "s.experimentalOrphanHandling", setter: "app.SetExperimentalOrphanHandling(on)" },
+  ] },
+  { id: "acpListen", endMarker: '{selected === "localServer" && (', members: [
+    { label: "tl1741 acpListen (standalone again)", field: "s.experimentalACPListen", setter: "app.SetExperimentalACPListen(on)" },
+  ] },
+  { id: "localServer", endMarker: '{selected === "logManagement" && (', members: [
+    { label: "tl1741 localServer (standalone again)", field: "s.experimentalLocalServer", setter: "app.SetExperimentalLocalServer(on)" },
   ] },
   // tl1309 卡②：「运行可观测」合并卡（monitoring+events 瘦身+轨迹观测）——
   // M7 eventsRotation 行自 sessionStore、M8 监控段自 monitoring、782
@@ -248,10 +262,10 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   ] },
   // 任务 782：界面组三张条目级合并卡（742 tabManagement 先例）——各成员行
   // 读自己的键、写自己的 setter；聚合徽章断言在 562 测试。
-  // 任务 856 ③：后继分支随两图标合一迁移改名（collabGroupView → collabHub）。
+  // 任务 856 ③ → tl1741：后继分支原 collabHub 随撤卡移除——endMarker 随迁 sessionTaskPanels。
   // 任务 961：renderArtifact 成员行入卡（944 原独立卡并入，键/setter 零变化）。
   // 任务 1072：renderArtifact 整功能移除，成员行随件退役（不再断言）。
-  { id: "viewLayout", endMarker: '{selected === "collabHub" && (', members: [
+  { id: "viewLayout", endMarker: '{selected === "sessionTaskPanels" && (', members: [
     { label: "782 splitView", field: "s.experimentalSplitView", setter: "app.SetExperimentalSplitView(on)" },
     // tl1309 卡②：trajectoryView 行迁出本卡（成员清单随迁 runtimeObservability）。
   ] },
@@ -339,9 +353,9 @@ for (const family of families) {
 {
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const entryIds = new Set(LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id)));
+  // tl1741：autopilot/sessionCollab 随撤开关出 M8 清单（rail 入口与 pane
+  // 分支俱撤）；fullAccess 为唯一 stable 主卡。
   for (const [id, pane] of [
-    ["autopilot", '{selected === "autopilot" && ('],
-    ["sessionCollab", '{selected === "sessionCollab" && ('],
     ["fullAccess", '{selected === "fullAccess" && ('],
   ] as const) {
     ok(entryIds.has(id), `M8 ${id} keeps its own rail entry`);
@@ -386,12 +400,11 @@ for (const id of [
   "optimisticParallel",
   // tl1309 卡②：monitoring 并入「运行可观测」卡（同款先例）。
   "monitoring",
-  // tl1309 卡③：四散条并入「资源治理」卡（同款先例；idleReleaseMinutes/
-  // gcPercent 两参数卡 id 从不在 union——775 参数卡走通用渲染器，无 union 登记）。
+  // tl1309 卡③ → tl1741 拆卡回散条：runtimeReuse 随撤开关退役（键/pane/
+  // union 全摘）；orphanHandling/acpListen/localServer 三散条重入 union+
+  // pane（搬出本 folded 清单，改列「union gains」）；idleReleaseMinutes/
+  // gcPercent 两参数卡 id 从不在 union——775 参数卡走通用渲染器，无 union 登记。
   "runtimeReuse",
-  "orphanHandling",
-  "acpListen",
-  "localServer",
   // tl1309 卡④：todoSidebar 并 tabManagement；三面板并 sessionTaskPanels。
   "todoSidebar",
   "sessionWall",
@@ -414,7 +427,10 @@ for (const id of [
   // tl1309 卡②：「运行可观测」合并卡容器 id 进 union。tl1309 卡③：「资源
   // 治理」合并卡容器 id 进 union。tl1309 卡④：「会话与任务面板」合并卡容器
   // id 进 union。
-  "runtimeObservability", "resourceGovernance", "sessionTaskPanels",
+  // tl1741：resourceGovernance 容器 id 出 union（拆卡回散条）；
+  // orphanHandling/acpListen/localServer 三散条 id 重入 union。
+  "runtimeObservability", "sessionTaskPanels",
+  "orphanHandling", "acpListen", "localServer",
 ]) {
   ok(panel.includes(`| "${id}"`), `union gains the family id ${id}`);
 }
@@ -436,7 +452,7 @@ for (const setter of [
   "app.SetExperimentalSubagentDetail(on)",
   "app.SetExperimentalSubagentPolicy(on)",
   "app.SetExperimentalSubagentTps(on)",
-  "app.SetExperimentalCDPDebugPort(on)",
+  // tl1741：app.SetExperimentalCDPDebugPort 随撤开关退役（endpoint 无条件起）。
   "app.SetExperimentalLifecycleNoiseGate(on)",
   "app.SetExperimentalRestartUpdate(on)",
   "app.SetExperimentalFeedback(on)",
