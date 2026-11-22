@@ -100,6 +100,35 @@ type CleanupResult struct {
 	Error                      string         `json:"error,omitempty"`
 }
 
+// mergeRuntimeAcquire is the host runtime-occupancy gate (tl1727 归一化#6).
+// The desktop bridge used to carry the full admission sequence — runtime
+// blockers check plus per-root merge reservation — while the
+// merge_worktree_back tool face called MergeBack after validating only the
+// expected_* identities, so a merge landing on a worktree whose session was
+// still running was invisible to the tool surface (the optimistic CAS cannot
+// catch occupancy). Sinking the gate here makes both faces share one check:
+// the host registers an acquire (blockers re-check under the admission barrier
+// plus reservation publication) and every MergeBack caller inherits it. The
+// zero value (CLI/serve, no desktop runtime registry) means nothing to check.
+var mergeRuntimeAcquire func(sourceRoot, worktreeRoot string) (func(), error)
+
+// SetMergeRuntimeAcquire installs the host runtime gate and returns the
+// previously registered one (nil when none). The desktop App registers
+// reserveWorktreeMergeRuntime at construction; tests swap and restore it.
+func SetMergeRuntimeAcquire(acquire func(sourceRoot, worktreeRoot string) (func(), error)) (previous func(sourceRoot, worktreeRoot string) (func(), error)) {
+	previous, mergeRuntimeAcquire = mergeRuntimeAcquire, acquire
+	return previous
+}
+
+// acquireMergeRuntime is the nil-safe face MergeBack uses: no registered gate
+// means no runtime registry exists in this process, so the merge proceeds.
+func acquireMergeRuntime(sourceRoot, worktreeRoot string) (func(), error) {
+	if mergeRuntimeAcquire == nil {
+		return func() {}, nil
+	}
+	return mergeRuntimeAcquire(sourceRoot, worktreeRoot)
+}
+
 // mergeStepHook is test-only. Tests install it before starting a merge and do
 // not mutate it concurrently; it makes otherwise sub-millisecond identity
 // windows deterministic without weakening production checks.
@@ -279,12 +308,22 @@ func inspectCleanupBlockers(ctx context.Context, metadata mergeMetadata, inspect
 }
 
 // MergeBack commits opted-in dirty changes, re-runs inspection, and merges.
-// It never removes the worktree or its branch.
+// It never removes the worktree or its branch. The runtime-occupancy gate
+// (tl1727) is acquired from the inspection's resolved identities before any
+// expectation is verified, so both the desktop bridge and the
+// merge_worktree_back tool face merge only while no session is still running
+// on the source or worktree checkout — and the reservation stays published
+// through the whole git mutation.
 func MergeBack(ctx context.Context, managedRoot string, request MergeRequest) (MergeResult, error) {
 	inspection, err := InspectMerge(ctx, request.WorkspaceRoot, managedRoot)
 	if err != nil {
 		return mergeFailure(inspection, false, err)
 	}
+	releaseRuntime, err := acquireMergeRuntime(inspection.SourceRoot, inspection.WorktreeRoot)
+	if err != nil {
+		return mergeFailure(inspection, false, err)
+	}
+	defer releaseRuntime()
 	if err := verifyExpectedInspection(inspection, request); err != nil {
 		return mergeFailure(inspection, false, err)
 	}

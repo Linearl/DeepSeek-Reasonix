@@ -3,10 +3,12 @@ package worktree
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -369,6 +371,85 @@ func TestInspectMergeRejectsOutsideManagedPath(t *testing.T) {
 	inspection, err := InspectMerge(context.Background(), repo, t.TempDir())
 	if err == nil || inspection.Available {
 		t.Fatalf("outside managed inspection = %+v, %v", inspection, err)
+	}
+}
+
+// tl1727: the runtime-occupancy gate is sunk into MergeBack so both the desktop
+// bridge and the merge_worktree_back tool face refuse a merge whose source or
+// worktree checkout still has a session running. The optimistic CAS only
+// catches identity drift — occupancy needs this gate.
+func TestMergeBackRefusesWhenRuntimeOccupied(t *testing.T) {
+	requireGit(t)
+	repo := initRepo(t)
+	managed := t.TempDir()
+	created, err := Create(context.Background(), repo, managed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitCommitFile(t, created.WorktreeRoot, "feature.txt", "feature\n", "feature")
+	inspection := inspectMergeTest(t, created.WorkspaceRoot, managed)
+
+	previous := SetMergeRuntimeAcquire(func(_, _ string) (func(), error) {
+		return nil, errors.New("merge runtime admission blocked: a source or worktree runtime still has active or waiting work")
+	})
+	t.Cleanup(func() { SetMergeRuntimeAcquire(previous) })
+
+	result, err := MergeBack(context.Background(), managed, requestFromInspection(inspection))
+	if err == nil || result.Merged {
+		t.Fatalf("occupied merge = %+v, %v", result, err)
+	}
+	if !strings.Contains(result.Error, "merge runtime admission blocked") {
+		t.Fatalf("occupied merge error = %q, want the runtime admission message", result.Error)
+	}
+	if _, err := os.Stat(created.WorktreeRoot); err != nil {
+		t.Fatalf("refused merge removed recoverable worktree: %v", err)
+	}
+}
+
+// tl1727: the reservation acquired by the gate must stay published through the
+// whole git mutation — release only after MergeBack returns. This is the
+// desktop bridge's former guarantee (TestMergeWorktreeBackHoldsRuntimeReserv...
+// in desktop), now owned by the core both faces share.
+func TestMergeBackHoldsRuntimeReservationThroughGitMutation(t *testing.T) {
+	requireGit(t)
+	repo := initRepo(t)
+	managed := t.TempDir()
+	created, err := Create(context.Background(), repo, managed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitCommitFile(t, created.WorktreeRoot, "feature.txt", "feature\n", "feature")
+	inspection := inspectMergeTest(t, created.WorkspaceRoot, managed)
+
+	var released atomic.Bool
+	heldAtMutation := false
+	previous := SetMergeRuntimeAcquire(func(sourceRoot, worktreeRoot string) (func(), error) {
+		if err := sameDirectory(sourceRoot, inspection.SourceRoot); err != nil {
+			t.Errorf("gate source root: %v", err)
+		}
+		if err := sameDirectory(worktreeRoot, inspection.WorktreeRoot); err != nil {
+			t.Errorf("gate worktree root: %v", err)
+		}
+		return func() { released.Store(true) }, nil
+	})
+	t.Cleanup(func() { SetMergeRuntimeAcquire(previous) })
+	origHook := mergeStepHook
+	mergeStepHook = func(step string) {
+		if step == "before_merge_prepare" {
+			heldAtMutation = !released.Load()
+		}
+	}
+	t.Cleanup(func() { mergeStepHook = origHook })
+
+	result, err := MergeBack(context.Background(), managed, requestFromInspection(inspection))
+	if err != nil || !result.Merged {
+		t.Fatalf("MergeBack = %+v, %v", result, err)
+	}
+	if !heldAtMutation {
+		t.Fatal("runtime reservation was not held through the git mutation")
+	}
+	if !released.Load() {
+		t.Fatal("runtime reservation was not released after the merge returned")
 	}
 }
 

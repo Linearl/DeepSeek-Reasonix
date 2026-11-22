@@ -15,6 +15,7 @@ import (
 	"reasonix/internal/control"
 	"reasonix/internal/tool"
 	"reasonix/internal/tool/builtin"
+	"reasonix/internal/worktree"
 )
 
 // eventChannel is the Wails runtime event name the frontend subscribes to for the
@@ -95,6 +96,11 @@ func NewApp() *App {
 	a.workspaceHub = newWorkspaceChangeHub(a)
 	a.terminals = newTerminalManager(a)
 	a.botBridge = a.newBotBridge()
+	// tl1727 归一化#6: the runtime-occupancy gate lives inside worktree.MergeBack
+	// so the desktop bridge AND the merge_worktree_back tool face share one
+	// check+reservation. Every App re-registers its own gate; the reservation
+	// refuses overlapping merges, so at most one merge runs per process anyway.
+	worktree.SetMergeRuntimeAcquire(a.reserveWorktreeMergeRuntime)
 	return a
 }
 
