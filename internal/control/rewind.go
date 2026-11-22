@@ -20,6 +20,28 @@ import (
 // commit only after the user explicitly confirms it.
 var ErrRewindCoverageConfirmationRequired = errors.New("partial checkpoint coverage requires explicit confirmation")
 
+// ErrRewindInvalidScope is returned by ParseRewindScope for any scope string
+// outside "code" | "conversation" | "both". Every wire-format entry point
+// (desktop preview/commit, serve HTTP) must reject through this single error
+// so the same invalid input yields the same outcome everywhere (tl1724).
+var ErrRewindInvalidScope = errors.New("scope must be code, conversation, or both")
+
+// ParseRewindScope maps a wire-format scope string to RewindScope. Unlike the
+// historical desktop defaults, unknown values are rejected, not silently
+// widened to RewindBoth: a typo must not fork the conversation unintentionally.
+func ParseRewindScope(scope string) (RewindScope, error) {
+	switch scope {
+	case "code":
+		return RewindCode, nil
+	case "conversation":
+		return RewindConversation, nil
+	case "both":
+		return RewindBoth, nil
+	default:
+		return RewindBoth, ErrRewindInvalidScope
+	}
+}
+
 // RewindPlanRequiresConfirmation reports whether a prepared plan can restore
 // files but cannot guarantee that every workspace mutation was captured.
 func RewindPlanRequiresConfirmation(plan checkpoint.RewindPlan) bool {

@@ -225,12 +225,11 @@ func (a *App) PreviewRewindForTab(tabID string, turn int, scope string) RewindPl
 	if ctrl == nil {
 		return RewindPlanView{OK: false, Error: "no controller"}
 	}
-	s := control.RewindBoth
-	switch scope {
-	case "code":
-		s = control.RewindCode
-	case "conversation":
-		s = control.RewindConversation
+	s, err := control.ParseRewindScope(scope)
+	if err != nil {
+		// tl1724: reject the same invalid scope the serve entry point rejects,
+		// instead of silently widening it to RewindBoth.
+		return RewindPlanView{OK: false, Error: err.Error()}
 	}
 	plan, err := ctrl.PrepareRewind(turn, s)
 	view := rewindPlanToView(plan, scope)

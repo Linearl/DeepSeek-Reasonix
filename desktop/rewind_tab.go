@@ -21,12 +21,11 @@ func (a *App) CommitRewindForTab(tabID, planID string, turn int, scope string) R
 	if ctrl == nil {
 		return RewindResultView{OK: false, Error: "no controller"}
 	}
-	s := control.RewindBoth
-	switch scope {
-	case "code":
-		s = control.RewindCode
-	case "conversation":
-		s = control.RewindConversation
+	s, err := control.ParseRewindScope(scope)
+	if err != nil {
+		// tl1724: same invalid scope, same rejection as the serve entry point —
+		// no silent widening to RewindBoth (which would fork the conversation).
+		return RewindResultView{OK: false, Error: err.Error()}
 	}
 	if planID == "" {
 		plan, err := ctrl.PrepareRewind(turn, s)
@@ -46,7 +45,6 @@ func (a *App) CommitRewindForTab(tabID, planID string, turn int, scope string) R
 	}
 	_, inPlace := ctrl.SessionHead()
 	var result checkpoint.RewindResult
-	var err error
 	if inPlace {
 		result, err = ctrl.CommitRewindInPlace(planID)
 	} else {
