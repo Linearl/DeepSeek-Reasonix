@@ -1627,6 +1627,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("fullAccess");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* tl1718：工具组默认折叠——开启后宽窗口同样保持折叠为单图标，
+                  工具全集在既有「⋯ 工具」二级菜单查看（复用窄宽折叠形态与
+                  入口，菜单本体零改动）。默认关=折叠仍只由宽度驱动（铁律 2）；
+                  纯前端门，保存即换态免重启。 */}
+              <SettingsField label={labLabel("composerToolsFold", t("settings.composerToolsFold"))} hint={t("settings.composerToolsFoldHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalComposerToolsFold) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalComposerToolsFold(on))}
+                    >
+                      {t(on ? "settings.composerToolsFold.on" : "settings.composerToolsFold.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {/* tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——

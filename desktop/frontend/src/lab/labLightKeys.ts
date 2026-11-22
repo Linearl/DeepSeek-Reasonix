@@ -28,6 +28,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalDraftRewrite: (s: SettingsView) => Boolean(s.experimentalDraftRewrite),
   // tl1544：运行中编辑历史消息回溯重发（默认关）。
   experimentalEditResend: (s: SettingsView) => Boolean(s.experimentalEditResend),
+  // tl1718：composer 工具组默认折叠（默认关——宽窗口折叠行为零变化）。
+  experimentalComposerToolsFold: (s: SettingsView) => Boolean(s.experimentalComposerToolsFold),
   // tl 1132：DSH 式启动遮罩（默认关——关时 splash 不渲染）。
   experimentalStartupSplash: (s: SettingsView) => Boolean(s.experimentalStartupSplash),
   // 任务 1070：Standard 流续跑总闸（默认关）。

@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "trajectoryView" | "sidebarHoverLeft" | "sidebarHoverRight" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "editResend" | "startupSplash" | "tasklistPanel"
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "trajectoryView" | "sidebarHoverLeft" | "sidebarHoverRight" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "editResend" | "composerToolsFold" | "startupSplash" | "tasklistPanel"
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -75,6 +75,10 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   draftRewrite: false,
   // tl1544: 运行中编辑历史消息回溯重发（默认关=运行中编辑入口维持拒绝现状）。
   editResend: false,
+  // tl1718: composer 工具组默认折叠（默认关=折叠仍只由宽度驱动——窄折宽不
+  // 折，与引入前逐字节一致；开启后宽窗口同样保持折叠为单图标，工具全集在
+  // 既有「⋯ 工具」二级菜单查看，同一入口同一形态）。保存即换态免重启。
+  composerToolsFold: false,
   // tl 1132：DSH 式启动遮罩（logo+副文案+点动画，核心 UI 挂载完成后淡出）。
   // 默认关（铁律 2 + 用户 2026-10-24 steer「做成实验特性，允许开关，方便
   // 对比」）——关闭时 splash 不渲染，启动行为与引入前一致；保存即换态。

@@ -261,7 +261,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           tier: "recommended",
           // tl1309 卡②：trajectoryView（轨迹观测）迁出本卡成员表（入可观测
           // 性组「运行可观测」卡，704 定位即「可观测性视图」）；灯键随迁出。
-          onKeys: ["experimentalSplitView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite", "experimentalEditResend"],
+          // tl1718：composerToolsFold（工具组默认折叠）键与成员行入卡
+          // （940/959「版面占用形态」先例；与 yaml 同构同值）。
+          onKeys: ["experimentalSplitView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite", "experimentalEditResend", "experimentalComposerToolsFold"],
           members: [
             // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐。
             { id: "splitView", labelKey: "settings.splitView", tier: "recommended" },
@@ -284,6 +286,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // tl1544：运行中编辑历史消息回溯重发（默认关=运行中编辑入口维持
             // 拒绝现状；回合后 rewind 链零变化）。
             { id: "editResend", labelKey: "settings.editResend", tier: "optional" },
+            // tl1718：工具组默认折叠——宽窗口同样保持折叠为单图标，工具全集
+            // 在既有「⋯ 工具」二级菜单查看（复用窄宽折叠形态与入口，菜单本体
+            // 零改动）。默认关=折叠仍只由宽度驱动（铁律 2）；保存即换态免重启。
+            { id: "composerToolsFold", labelKey: "settings.composerToolsFold", tier: "recommended" },
           ],
         },
         // tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——

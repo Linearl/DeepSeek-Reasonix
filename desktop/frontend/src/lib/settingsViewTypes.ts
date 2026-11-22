@@ -220,6 +220,9 @@ export interface SettingsView {
   // tl1544: 运行中编辑历史消息回溯重发 lab switch (default off; off = 运行中
   // 编辑入口维持现状拒绝，回合后链零变化)。
   experimentalEditResend?: boolean;
+  // tl1718: composer 工具组默认折叠 lab switch (default off; off = 折叠仍只由
+  // 宽度驱动——窄折宽不折，与引入前逐字节一致)。
+  experimentalComposerToolsFold?: boolean;
   // 任务 1070: Standard 流续跑总闸 lab switch (default off; off = 普通对话
   // 续跑通道维持现状)。
   standardContinuation?: boolean;

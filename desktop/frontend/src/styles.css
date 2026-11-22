@@ -46088,6 +46088,22 @@ button.statusbar__mcp:focus-visible {
   }
 }
 
+/* tl1718 工具组默认折叠（实验室→界面→视图布局卡，推荐档，默认关）：开关开
+   时 .composer-toolbar-send--tools-default-fold 修饰类生效——复用上方窄宽
+   折叠的同一组规则（四钮收进既有「⋯ 工具」二级菜单，同一入口同一菜单本体），
+   宽窗口同样保持折叠为单图标。类门控而非容器断点：关时类不挂、规则不命中，
+   折叠行为与引入前逐字节一致（铁律 2）；规则置于容器断点块之后，窄宽两态
+   同类相遇时本块胜出且终值一致（窄宽折叠零回归）。 */
+.composer-toolbar-send--tools-default-fold .composer-emoji-picker,
+.composer-toolbar-send--tools-default-fold .composer-screenshot-picker,
+.composer-toolbar-send--tools-default-fold .composer-history-picker,
+.composer-toolbar-send--tools-default-fold .composer__btn--rewrite {
+  display: none;
+}
+.composer-toolbar-send--tools-default-fold .composer-tools-fold {
+  display: inline-flex;
+}
+
 /* 修②②③ 紧凑态（meta 容器 ≤619px，介于既有 650 与 560 断点之间）——
    Autopilot 等档位图标化（图标+tooltip 承载档名，档位段宽约省 45%+）+ 权限↔
    模型间弹性空隙收紧（gap 6→4、approval margin-inline-start 2→0、审批条收窄，

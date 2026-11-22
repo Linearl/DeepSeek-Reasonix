@@ -146,6 +146,9 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// tl1265：editResend（tl1544 入表时漏登记，本轮随批量卫生门禁补齐）——
 	// 布尔主开关有现成 setter，随批量面（预存红修复）。
 	"editResend": func(c *Config, on bool) error { return c.SetExperimentalEditResend(on) },
+	// tl1718：composer 工具组默认折叠（推荐档；布尔主开关，纯前端门），
+	// 随批量面。
+	"composerToolsFold": func(c *Config, on bool) error { return c.SetExperimentalComposerToolsFold(on) },
 	// tl 1132：启动遮罩（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
 	"startupSplash": func(c *Config, on bool) error { return c.SetExperimentalStartupSplash(on) },
 	// 任务 1056：网络重试预算分级（[network.retry_budget] 总开关；family 子键

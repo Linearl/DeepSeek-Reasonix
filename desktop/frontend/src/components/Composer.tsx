@@ -1252,6 +1252,11 @@ export function Composer({
   // （不自动发送；失败/超时静默降级为不改写）。
   const [draftRewriteOn, setDraftRewriteOn] = useState(() => labFlagEnabled("draftRewrite"));
   useEffect(() => onLabFlagsChange(() => setDraftRewriteOn(labFlagEnabled("draftRewrite"))), []);
+  // tl1718：工具组默认折叠（实验室-界面-视图布局卡开关）。开启后宽窗口同样
+  // 保持折叠为单图标——四钮收进既有「⋯ 工具」二级菜单（同一入口同一形态，
+  // 菜单本体零改动）；关（默认）=折叠仍只由宽度驱动（铁律 2）。
+  const [toolsDefaultFold, setToolsDefaultFold] = useState(() => labFlagEnabled("composerToolsFold"));
+  useEffect(() => onLabFlagsChange(() => setToolsDefaultFold(labFlagEnabled("composerToolsFold"))), []);
   const [draftRewriting, setDraftRewriting] = useState(false);
   // tl1427：增强中可取消——请求代际。取消=代际失效（在途结果回来即丢弃，
   // 防旧结果覆盖用户新输入）；再次发起=新一轮代际。startedAt 供轨迹记录算耗时。
@@ -6619,7 +6624,11 @@ export function Composer({
                 {effortApplying && <span className="composer-effort-applying" role="status">{t("composer.effortApplying")}</span>}
               </div>}
             </div>}
-            <div className={`composer-toolbar-send${submitUnavailableHint ? " composer-toolbar-send--unavailable" : ""}`}>
+            {/* tl1718：toolsDefaultFold 开时挂 --tools-default-fold 修饰类——
+                CSS 侧复用窄宽折叠的同一组规则（四钮 display:none + 折叠入口
+                display:inline-flex），宽窗口同样保持折叠为单图标；关时不挂类，
+                规则不命中，折叠行为与引入前逐字节一致（铁律 2）。 */}
+            <div className={`composer-toolbar-send${submitUnavailableHint ? " composer-toolbar-send--unavailable" : ""}${toolsDefaultFold ? " composer-toolbar-send--tools-default-fold" : ""}`}>
               {/* tl1508 修②①：「⋯ 工具」折叠入口——窄（meta 容器 ≤559px，CSS
                   容器断点）时表情/截图/历史/改写四钮 display:none 折进本菜单
                   （demo 方案B 定稿）；宽屏入口不渲染显示（display:none 默认态）。

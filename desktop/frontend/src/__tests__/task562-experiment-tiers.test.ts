@@ -165,12 +165,14 @@ console.log("\ntask 562 lab three-tier badges");
   // 推荐——推荐 47→50、可选 25（出 3 进 2 后再 +3 净变 25）、未稳定 5→3。
   // tl1733：memoryIndexSlim（可选）入表——可选 25→26、总数 87→88。
   // tl1746：tasklistPanel（未稳定）入表——未稳定 3→4、总数 88→89。
-  ok(counts.stable === 9 && counts.recommended === 50 && counts.optional === 26 && counts.unstable === 4 && counts.retired === 0,
-    `register counts are 9 稳定/50/26/4/0 (got ${JSON.stringify(counts)})`);
-  // tl1746：tasklistPanel 入表 → 88→89。
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 89, `register holds exactly 89 features (tl1746 tasklistPanel added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 50 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 4 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/50/26/4/0 (tl1746 tasklistPanel 入未稳定档)");
+  // tl1718：composerToolsFold（composer 工具组默认折叠，推荐档）入表——
+  // 推荐 50→51、总数 89→90。
+  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 26 && counts.unstable === 4 && counts.retired === 0,
+    `register counts are 9 稳定/51/26/4/0 (got ${JSON.stringify(counts)})`);
+  // tl1746：tasklistPanel 入表 → 88→89。tl1718：composerToolsFold 入表 → 89→90。
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 90, `register holds exactly 90 features (tl1746 tasklistPanel + tl1718 composerToolsFold added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 4 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/51/26/4/0 (tl1718 composerToolsFold 入推荐档)");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -258,7 +260,8 @@ console.log("\ntask 562 lab three-tier badges");
   // c9bb09cd23 实值 75=预存红，20261121 tl1733 收口）；tl1733：
   // memoryIndexSlim（记忆注入瘦身，提效组，可选档）两侧共享入表——75→76。
   // tl1741 撤七条(autopilot/sessionCollab/collabHub/workflowPanel/cdpDebugPort/sessionStorage/runtimeReuse) + tl1746 加 tasklistPanel：76-7+1=70。
-  ok(Object.keys(goTiers).length === 70, `Go registry parses to 70 entries (tl1741 retired seven, tl1746 added tasklistPanel; got ${Object.keys(goTiers).length})`);
+  // tl1718：composerToolsFold 两侧共享入表——70→71。
+  ok(Object.keys(goTiers).length === 71, `Go registry parses to 71 entries (tl1741 retired seven, tl1746 added tasklistPanel, tl1718 added composerToolsFold; got ${Object.keys(goTiers).length})`);
 
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
@@ -330,7 +333,8 @@ console.log("\ntask 562 lab three-tier badges");
   // sessionStorage/runtimeReuse 五成员行随卡退役；resourceGovernance 五成员
   // 回散条出 members——orphanHandling/idleReleaseMinutes/gcPercent/acpListen/
   // localServer）。
-  ok(members.length === 52, `merged cards carry 52 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl1718：viewLayout 卡补 composerToolsFold 成员行——52→53。
+  ok(members.length === 53, `merged cards carry 53 member features (tl1718 composerToolsFold added; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -354,7 +358,8 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1265 第2轮：editResend（tl1544 入表，此前漏同步本计数）补齐 86→87。
   // tl1733：memoryIndexSlim rail 入口计入 → 87→88。
   // tl1746：tasklistPanel rail 入口计入 → 88→89。
-  ok(covered.size === 89, "rail entries cover all 89 features (tl1746 tasklistPanel added)");
+  // tl1718：composerToolsFold 入表计入 → 89→90。
+  ok(covered.size === 90, "rail entries cover all 90 features (tl1746 tasklistPanel + tl1718 composerToolsFold added)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含

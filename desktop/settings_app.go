@@ -596,6 +596,11 @@ type SettingsView struct {
 	// (the frontend reads the live readback; no boot-snapshot gate), so it
 	// applies immediately.
 	ExperimentalEditResend bool `json:"experimentalEditResend"`
+	// tl1718: composer tools fold as the default state readback. Config-only
+	// flip riding the boot snapshot; the settings save re-applies it, so it
+	// applies immediately. Must be rendered in this view too (81/123 two-view
+	// lesson).
+	ExperimentalComposerToolsFold bool `json:"experimentalComposerToolsFold"`
 	// 任务 1070: Standard 流续跑总闸 readback. Boot snapshot; the settings save
 	// re-applies it (config + live controller mirror), so a flip shows without
 	// a restart.
@@ -846,6 +851,10 @@ type DesktopStartupSettingsView struct {
 	// tl1544: 运行中编辑回溯重发 readback, rendered in this view too (81/123
 	// two-view lesson); config-only flip, no restart needed.
 	ExperimentalEditResend bool `json:"experimentalEditResend"`
+	// tl1718: composer tools fold readback, rendered in this view too (81/123
+	// two-view lesson) — the boot snapshot feeds applyLabFlags, so omitting it
+	// here would pin the fold off forever.
+	ExperimentalComposerToolsFold bool `json:"experimentalComposerToolsFold"`
 	// 任务 686: the workflow visualization panel gate, rendered in this view
 	// too (81/123 two-view lesson); pure frontend gate, no restart needed.
 	// tl1454: user workflow templates, rendered in this view too (81/123).
@@ -1727,6 +1736,9 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalDraftRewrite = cfg.Agent.ExperimentalDraftRewrite
 		// tl1544: 运行中编辑回溯重发 readback（双视图同款）。
 		view.ExperimentalEditResend = cfg.Agent.ExperimentalEditResend
+		// tl1718: composer tools fold readback（双视图同款——启动快照喂
+		// applyLabFlags，缺此行折叠开关永远读 false）。
+		view.ExperimentalComposerToolsFold = cfg.Desktop.ExperimentalComposerToolsFold
 		// 任务 686: workflow visualization panel readback (two-view lesson).
 		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel
 		view.ExperimentalSessionWall = cfg.Desktop.ExperimentalSessionWall
@@ -2083,6 +2095,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalDraftRewrite: cfg.Agent.ExperimentalDraftRewrite,
 		// tl1544: 运行中编辑回溯重发 lab switch readback.
 		ExperimentalEditResend: cfg.Agent.ExperimentalEditResend,
+		// tl1718: composer tools fold lab switch readback.
+		ExperimentalComposerToolsFold: cfg.Desktop.ExperimentalComposerToolsFold,
 		// 任务 1070: Standard 流续跑总闸 readback.
 		StandardContinuation: cfg.Agent.StandardContinuation,
 		// tl 1105: 中断自动续轮 readback.

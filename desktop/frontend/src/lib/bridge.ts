@@ -1987,6 +1987,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // save, no restart）。
   SetExperimentalDraftRewrite(enabled: boolean): Promise<void>;
   SetExperimentalEditResend(enabled: boolean): Promise<void>;
+  // tl1718: composer 工具组默认折叠（宽窗口同样折叠为单图标，复用既有「⋯
+  // 工具」二级菜单；re-applied on settings save, no restart）。
+  SetExperimentalComposerToolsFold(enabled: boolean): Promise<void>;
   // tl 1132: DSH 式启动遮罩（off = 不渲染，on = 核心区就绪后淡出；
   // re-applied on settings save, no restart）。
   SetExperimentalStartupSplash(enabled: boolean): Promise<void>;
@@ -7250,6 +7253,8 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSmoothScrollFollow() {},
     async SetExperimentalDraftRewrite() {},
     async SetExperimentalEditResend() {},
+    // tl1718: composer 工具组默认折叠 mock（浏览器 dev 无桌面桥）。
+    async SetExperimentalComposerToolsFold() {},
     async SetExperimentalStartupSplash() {},
     async SetStandardContinuation() {},
     // tl1741：SetExperimentalWorkflowPanel mock 随撤开关退役。

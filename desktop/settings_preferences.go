@@ -462,6 +462,15 @@ func (a *App) SetExperimentalEditResend(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalEditResend(enabled) })
 }
 
+// SetExperimentalComposerToolsFold toggles the tl1718 lab switch: the composer
+// "⋯ 工具" fold becomes the default state regardless of width (the four
+// buttons stay folded into the existing overflow menu, same entry and items as
+// the narrow-width fold). Off (default) = the width-driven fold byte-for-byte
+// unchanged. Pure frontend gate, config-only flip, no restart needed.
+func (a *App) SetExperimentalComposerToolsFold(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalComposerToolsFold(enabled) })
+}
+
 // SetExperimentalStartupSplash toggles the DSH-style startup splash overlay
 // (tl 1132): off (default) never renders the splash, on shows it until the
 // core UI is mounted then fades it out. Pure frontend gate: the settings save
