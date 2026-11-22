@@ -55,6 +55,12 @@ export interface ChannelMessageStreamProps {
   channelOwnerType?: string;
   /** tl1564：在册副管理员 contact id（CollabChannelView.deputyId 透传；缺省=无）。 */
   deputyId?: string;
+  /**
+   * tl1721：消息清空墓碑（CollabChannelView.clearedAt 透传；缺省/0=未清空，
+   * 分隔条不渲染=默认视图零改动）。>0 时在消息流顶部渲染「历史已清空」分隔
+   * 条——清空是全体成员共享可见变化，流内诚实标注可见区间从清空点开始。
+   */
+  clearedAt?: number;
 }
 
 export function ChannelMessageStream({
@@ -65,6 +71,7 @@ export function ChannelMessageStream({
   onMentionClick,
   channelOwnerType,
   deputyId,
+  clearedAt,
 }: ChannelMessageStreamProps) {
   const t = useT();
 
@@ -166,6 +173,13 @@ export function ChannelMessageStream({
 
   return (
     <>
+      {/* tl1721：清空分隔条——共享历史从清空点开始的诚实标注（复用撤回墓碑
+          同族行样式；未清空/已恢复时零渲染）。 */}
+      {Boolean(clearedAt) && (
+        <div className="channel-chat__tombstone">
+          {t("collabGroup.chat.historyCleared", { time: formatTime(clearedAt ?? 0) })}
+        </div>
+      )}
       {messages.length === 0 && (
         <div className="channel-chat__empty">{t("collabGroup.chat.emptyStream")}</div>
       )}

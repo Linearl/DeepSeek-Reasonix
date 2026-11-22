@@ -6657,6 +6657,12 @@ export const zh: Record<DictKey, string> = {
   "collabGroup.chat.leave": "退群",
   "collabGroup.chat.dissolve": "解散群聊",
   "collabGroup.chat.dissolveConfirm": "再点一次确认解散（成员与消息全部删除，不可恢复）",
+  // tl1721: 消息清空（聊天-详情入口，仅群主）+ 恢复（「怎么退」）。清空是
+  // 全体成员共享可见变化——软删除墓碑可恢复；消息流分隔条如实标注可见区间。
+  "collabGroup.chat.clearHistory": "清空记录",
+  "collabGroup.chat.clearHistoryConfirm": "再点一次清空——所有成员都将看不到现有历史（可恢复）",
+  "collabGroup.chat.historyCleared": "历史已清空（{time}）——更早的消息已隐藏",
+  "collabGroup.chat.restoreHistory": "恢复记录",
   "settings.collabInbox": "信件中心",
   "settings.collabInboxHint": "历史信件查询、五桶聚合与保留期（任务 320）",
   "settings.collabInbox.open": "打开信件中心",

@@ -264,3 +264,89 @@ func TestHumanMentionNamesBuilder(t *testing.T) {
 		t.Fatalf("human self tokens: %v", self)
 	}
 }
+
+// tl1721 — 消息清空/恢复的桥面验收：清空后 ChannelMessagesForHuman 只见清空
+// 点之后的新话（全体成员共享可见变化，桥面只承载 human 读视角）；恢复全量
+// 回归（软删除，怎么退）；session 群里 human 非群主同拒（权限在 store 层
+// requireOwner，前端门控只是装饰）。
+func TestChannelClearAndRestoreHistoryForHuman(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	captureHumanDrain(t)
+	app := NewApp()
+
+	ch, err := app.ChannelCreateForHuman("清空桥面", "", 0)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := app.ChannelInvite(ch.ID, []string{"sc_dev"}); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+	// human 发一条（未 @ 无副管理员=零投递的 deputyless 线，不干扰本件）；
+	// 会话侧经同一 Publish 链路补一条「他成员的历史行」。
+	if _, err := app.ChannelSendFromHuman(ch.ID, "人类第一条"); err != nil {
+		t.Fatalf("human send: %v", err)
+	}
+	other, err := collabchannel.Open(config.SessionCollabMailDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Publish(ch.ID, "sc_dev", "会话一条"); err != nil {
+		t.Fatalf("session publish: %v", err)
+	}
+	_ = other.Close()
+
+	// 清空：两行全藏（WasCleared=false=首次清空）。
+	res, err := app.ChannelClearHistoryForHuman(ch.ID)
+	if err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if res.WasCleared || res.ClearedMessages != 2 || res.ClearedAt == 0 {
+		t.Fatalf("clear result: %+v", res)
+	}
+	read, err := app.ChannelMessagesForHuman(ch.ID, 0, 50)
+	if err != nil {
+		t.Fatalf("read after clear: %v", err)
+	}
+	if len(read.Messages) != 0 || read.Channel.ClearedAt != res.ClearedAt {
+		t.Fatalf("post-clear view: %d messages clearedAt=%d, want 0/%d", len(read.Messages), read.Channel.ClearedAt, res.ClearedAt)
+	}
+
+	// 清空后发新话：照常可见（新对话不被墓碑吞掉）。
+	if _, err := app.ChannelSendFromHuman(ch.ID, "清空后的新话"); err != nil {
+		t.Fatalf("send after clear: %v", err)
+	}
+	read, err = app.ChannelMessagesForHuman(ch.ID, 0, 50)
+	if err != nil || len(read.Messages) != 1 {
+		t.Fatalf("post-clear fresh view: %v %d messages, want 1", err, len(read.Messages))
+	}
+
+	// 恢复（怎么退）：三行全量回归，墓碑归零。
+	back, err := app.ChannelRestoreHistoryForHuman(ch.ID)
+	if err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if back.ClearedAt != 0 || back.Messages != 3 {
+		t.Fatalf("restored channel: clearedAt=%d messages=%d, want 0/3", back.ClearedAt, back.Messages)
+	}
+	read, err = app.ChannelMessagesForHuman(ch.ID, 0, 50)
+	if err != nil || len(read.Messages) != 3 {
+		t.Fatalf("restored view: %v %d messages, want 3", err, len(read.Messages))
+	}
+
+	// 反例：session 群里 human 非群主——桥面同拒（requireOwner 在 store 层）。
+	so, err := collabchannel.Open(config.SessionCollabMailDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := so.CreateChannelWithOwner("他人群", "", 0, collabchannel.MemberTypeSession, "sc_owner")
+	_ = so.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.ChannelClearHistoryForHuman(foreign.ID); err == nil {
+		t.Fatal("human must not clear a session-owned channel")
+	}
+	if _, err := app.ChannelRestoreHistoryForHuman(foreign.ID); err == nil {
+		t.Fatal("human must not restore a session-owned channel")
+	}
+}
