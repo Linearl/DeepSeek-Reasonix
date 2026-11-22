@@ -74,7 +74,22 @@ const (
 	// 1500ms 说明有东西掉进慢 IO/重建——比 602 的 2s 留 500ms 余量，
 	// 避免高负载机器抖动误报。
 	defaultSwitchFastMaxMS = 1500
-	defaultWindow          = 72 * time.Hour
+	// boot 各相独立门（tl1685 ②）：task 1223 相分析法的持续门禁化——
+	// 启动慢的归因结论（prompt 阶段占 boot 60-83%）此前只活在一次性报告里，
+	// 周评测只有 boot total 一个门，相级回退（如复用坏了 prompt 重新变慢）
+	// 要等下一份归因报告才可见。三门挂在热路径样本池（与 M1 同池，P95 口径），
+	// 默认值 = 20261122 实测现读数上浮（首期基线，n=46）：
+	//   prompt       P50=3531 P95=37366 Max=47017 → 60000（Max 上浮 ~27%）
+	//   agent:tools  P50=558  P95=2677  Max=4707  → 8000（Max 上浮 ~70%）
+	//   controller   P50=207  P95=754   Max=2668  → 4000（Max 上浮 ~50%）
+	// 现读数本身就是存量劣化面（自报复用标记的 boot 其 prompt 相 P95=37s，
+	// 复用行 prompt=true 但组装照跑——tl1683 归因的余留，修复归 boot P1 另件，
+	// 本件只加观测不碰修复面），故门值锚定在「比现读数更坏才红」的回归检测
+	// 语义；P1 修复落地后用 -boot-phase-*-max-ms 收紧重定基线。
+	defaultBootPhasePromptMaxMS = 60000
+	defaultBootPhaseToolsMaxMS  = 8000
+	defaultBootPhaseCtlMaxMS    = 4000
+	defaultWindow               = 72 * time.Hour
 )
 
 type options struct {
@@ -85,6 +100,9 @@ type options struct {
 	bench               string
 	bootHotBudgetMS     int64
 	bootHotMaxMS        int64
+	bootPhasePromptMax  int64 // tl1685 ②：boot 相 prompt（热路径 P95）独立门
+	bootPhaseToolsMax   int64 // tl1685 ②：boot 相 agent:tools（热路径 P95）独立门
+	bootPhaseCtlMax     int64 // tl1685 ②：boot 相 controller（热路径 P95）独立门
 	openTopicMaxMS      int64
 	renderMaxMS         int64
 	switchFastMaxMS     int64 // 任务 909：切换快路径（模型/effort）P95 门
@@ -130,6 +148,9 @@ func main() {
 	flag.StringVar(&o.bench, "bench", "all", "boot|open-topic|tab-switch|switch-cost|first-response|warn-patrol|all")
 	flag.Int64Var(&o.bootHotBudgetMS, "boot-hot-budget-ms", defaultBootHotBudgetMS, "热路径分类的重组相合计预算")
 	flag.Int64Var(&o.bootHotMaxMS, "boot-hot-max-ms", defaultBootHotMaxMS, "热路径 boot total 阈值（363①）")
+	flag.Int64Var(&o.bootPhasePromptMax, "boot-phase-prompt-max-ms", defaultBootPhasePromptMaxMS, "boot 相 prompt（热路径 P95）独立阈值（tl1685 ②，首期基线 20261122）")
+	flag.Int64Var(&o.bootPhaseToolsMax, "boot-phase-tools-max-ms", defaultBootPhaseToolsMaxMS, "boot 相 agent:tools（热路径 P95）独立阈值（tl1685 ②，首期基线 20261122）")
+	flag.Int64Var(&o.bootPhaseCtlMax, "boot-phase-ctl-max-ms", defaultBootPhaseCtlMaxMS, "boot 相 controller（热路径 P95）独立阈值（tl1685 ②，首期基线 20261122）")
 	flag.Int64Var(&o.openTopicMaxMS, "open-topic-max-ms", defaultOpenTopicMaxMS, "打开历史对话端到端阈值（363⑥）")
 	flag.Int64Var(&o.renderMaxMS, "render-max-ms", defaultRenderMaxMS, "切 tab 渲染阈值（196 慢线）")
 	flag.Int64Var(&o.switchFastMaxMS, "switch-fast-max-ms", defaultSwitchFastMaxMS, "切换模型/effort 快路径 P95 阈值（909）")
@@ -280,7 +301,49 @@ func benchBoot(col *logCollect, o options) []metricResult {
 	if r := out[0]; r.N > 0 {
 		out[0] = gated(r, r.P95MS, float64(o.bootHotMaxMS))
 	}
+	out = append(out, bootPhaseGateRows(col, o)...)
 	return out
+}
+
+// bootPhaseGateRows：boot 各相独立门（tl1685 ②）——task 1223 相分析法
+// （启动慢主因=boot prompt 阶段 60-83%）的持续门禁化。样本池与 M1 热路径
+// 同池（b.Hot=true 的 stage timings 分相），门口径 P95，与既有延迟门一致。
+// 相缺省（老版本日志无该分相）不计样本、不冒 0；无热路径样本整行 N/A。
+// 冷启动的相级归因不在此设门（存量冷启动相读数是已知劣化面，照报不修），
+// 由 M1c 冷启动行的「最慢相」注记承载。
+func bootPhaseGateRows(col *logCollect, o options) []metricResult {
+	type phaseGate struct {
+		name      string // boot summary 里的分相键
+		label     string // 指标名显示
+		threshold int64
+	}
+	gates := []phaseGate{
+		{"prompt", "prompt", o.bootPhasePromptMax},
+		{"agent:tools", "agent:tools", o.bootPhaseToolsMax},
+		{"controller", "controller", o.bootPhaseCtlMax},
+	}
+	rows := make([]metricResult, 0, len(gates))
+	for _, g := range gates {
+		var vals []int64
+		for _, b := range col.Boots {
+			if !b.Hot {
+				continue
+			}
+			if ms, ok := b.Stages[g.name]; ok {
+				vals = append(vals, ms)
+			}
+		}
+		r := latencyResult("boot", fmt.Sprintf("boot 相 %s（热路径，独立门）", g.label),
+			fmt.Sprintf("P95 < %dms", g.threshold),
+			"task 1223 相分析法的持续门禁化（tl1685 ②；首期基线=20261122 现读数上浮，P1 修复落地后 -boot-phase-*-max-ms 收紧重定）",
+			vals, float64(g.threshold),
+			verdictNA, "窗口内无热路径 boot 样本（该相门不适用）")
+		if r.N > 0 {
+			r = gated(r, r.P95MS, float64(g.threshold))
+		}
+		rows = append(rows, r)
+	}
+	return rows
 }
 
 // benchOpenTopic：M2 打开历史对话→可发消息 <2s（363 追加验收⑥，合成口径）；
