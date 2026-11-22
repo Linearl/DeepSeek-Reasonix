@@ -130,8 +130,12 @@ func (c *Controller) takeoverDivergedRevLag(trace *forkTrace, path string, saveE
 // blanket "your latest turns are preserved".
 func takeoverNoticeText(preserve takeoverPreserveOutcome) string {
 	if preserve.diskOnlyUser > 0 {
-		return fmt.Sprintf("the session file held a stale copy from a closed writer; the live conversation took over the file. %d message(s) from the other version line (including %d of yours) were preserved in %s and relayed to the model",
-			preserve.diskOnly, preserve.diskOnlyUser, orDash(preserve.preserveRef))
+		where := "and relayed to the model"
+		if preserve.preserveRef != "" {
+			where = "preserved in " + preserve.preserveRef + " and relayed to the model"
+		}
+		return fmt.Sprintf("the session file held a stale copy from a closed writer; the live conversation took over the file. %d message(s) from the other version line (including %d of yours) were %s",
+			preserve.diskOnly, preserve.diskOnlyUser, where)
 	}
 	return "the session file held a stale copy from a closed writer; the live conversation took over the file and your latest turns are preserved"
 }

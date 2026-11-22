@@ -368,8 +368,10 @@ func (o *takeoverPreserveOutcome) renderRelay(users []provider.Message) string {
 	for i, m := range users {
 		if kept == takeoverRelayMaxMessages || total >= takeoverRelayMaxTotal {
 			o.relayTruncated = len(users) - kept
-			b.WriteString(fmt.Sprintf("…%d more user message(s) omitted; full abandoned-line transcript is in %s\n",
-				o.relayTruncated, orDash(o.preserveRef)))
+			if o.relayTruncated > 0 {
+				b.WriteString(fmt.Sprintf("…%d more user message(s) omitted; full abandoned-line transcript is in %s\n",
+					o.relayTruncated, orDash(o.preserveRef)))
+			}
 			break
 		}
 		text := agent.UserMessageText(m)
