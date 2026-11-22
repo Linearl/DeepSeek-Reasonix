@@ -11,7 +11,7 @@
 
 import type { WorkflowDag, WorkflowDagNode } from "./workflowDag";
 import type { WorkflowNodeState, WireWorkflowRun, WireRunNode, WireRunDag, WorkflowRunLiveState } from "./workflowTypes";
-import type { WorkflowRunSnapshot, WorkflowRunState, WorkflowNodeDetail, WorkflowNodeState as PanelNodeState } from "./workflowEvents";
+import type { WorkflowRunSnapshot, WorkflowRunState, WorkflowNodeDetail, WorkflowPanelNodeState as PanelNodeState } from "./workflowEvents";
 import { app } from "./bridge";
 
 export type {

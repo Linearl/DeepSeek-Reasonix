@@ -11,6 +11,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -104,7 +105,7 @@ func TestProjectTreeTopicPageWalkRendersEveryGroupMember(t *testing.T) {
 	}
 	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
 		next := uniqueStrings(append(groupTopicIDs, f.GlobalTopics...))
-		if sameStringList(next, f.GlobalTopics) {
+		if slices.Equal(next, f.GlobalTopics) {
 			return false, nil
 		}
 		f.GlobalTopics = next

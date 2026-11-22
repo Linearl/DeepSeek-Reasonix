@@ -24,6 +24,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -71,7 +72,7 @@ func TestRepairDoesNotShadowTopicIndexedInAnotherWorkspace(t *testing.T) {
 	}
 	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
 		next := uniqueStrings(append([]string{topicID}, f.GlobalTopics...))
-		if sameStringList(next, f.GlobalTopics) {
+		if slices.Equal(next, f.GlobalTopics) {
 			return false, nil
 		}
 		f.GlobalTopics = next
@@ -142,7 +143,7 @@ func TestRepairDoesNotShadowTopicIndexedInAnotherWorkspace(t *testing.T) {
 			return false, nil
 		}
 		next := uniqueStrings(append([]string{projectOwnedID}, f.Projects[i].Topics...))
-		if sameStringList(next, f.Projects[i].Topics) {
+		if slices.Equal(next, f.Projects[i].Topics) {
 			return false, nil
 		}
 		f.Projects[i].Topics = next

@@ -27,7 +27,7 @@ import {
   createWorkflowRunStore,
   playFixtureRun,
   workflowRunProgress,
-  type WorkflowNodeState,
+  type WorkflowPanelNodeState,
   type WorkflowRunStore,
   type WorkflowRunState,
 } from "../lib/workflowEvents";
@@ -55,7 +55,7 @@ import {
   zoomFactorFromWheel,
 } from "../lib/workflowViewport";
 
-const NODE_STATE_CLASS: Record<WorkflowNodeState, string> = {
+const NODE_STATE_CLASS: Record<WorkflowPanelNodeState, string> = {
   queued: "wf-node--queued",
   running: "wf-node--running",
   done: "wf-node--done",

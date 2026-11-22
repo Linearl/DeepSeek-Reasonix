@@ -41,6 +41,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/store"
+	"reasonix/internal/textutil"
 )
 
 // V4ImportBackup records the pre-run backup of the legacy files the run touches.
@@ -374,7 +375,7 @@ func backupV4ImportTargets(ctx context.Context, plan *V4ImportPlan, opts V4Impor
 	}
 	backupRoot := strings.TrimSpace(opts.BackupRoot)
 	if backupRoot == "" {
-		backupRoot = filepath.Dir(firstNonEmpty(opts.V3Dirs...))
+		backupRoot = filepath.Dir(textutil.FirstTrimmed(opts.V3Dirs...))
 		if backupRoot == "" || backupRoot == "." {
 			backupRoot = filepath.Dir(opts.V4Root)
 		}

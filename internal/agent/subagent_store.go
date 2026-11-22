@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -880,7 +881,7 @@ func validateMeta(meta SubagentMeta, spec SubagentSpec) error {
 		return fmt.Errorf("subagent reference %q belongs to workspace %q, current workspace is %q", meta.Ref, meta.WorkspaceRoot, want.WorkspaceRoot)
 	case meta.SystemPromptHash != want.SystemPromptHash:
 		return fmt.Errorf("subagent reference %q uses a different subagent persona; run a fresh subagent to use the current persona", meta.Ref)
-	case !sameStrings(meta.ToolScope, want.ToolScope):
+	case !slices.Equal(meta.ToolScope, want.ToolScope):
 		return fmt.Errorf("subagent reference %q uses a different tool scope", meta.Ref)
 	case meta.ToolSchemaHash != want.ToolSchemaHash:
 		return fmt.Errorf("subagent reference %q uses different tool schemas", meta.Ref)
@@ -1044,16 +1045,4 @@ func validSubagentRef(ref string) bool {
 func bytesHash(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
-}
-
-func sameStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

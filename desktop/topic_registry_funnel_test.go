@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -142,7 +143,7 @@ func TestRegisterTopicPinUpdateInPlace(t *testing.T) {
 	if !containsDesktopString(f.GlobalPinnedTopics, topicID) {
 		t.Fatalf("pinned topics = %#v, want %q", f.GlobalPinnedTopics, topicID)
 	}
-	if !sameStringList(f.GlobalTopics, orderBefore) {
+	if !slices.Equal(f.GlobalTopics, orderBefore) {
 		t.Fatalf("pin update must not reorder members: before=%#v after=%#v", orderBefore, f.GlobalTopics)
 	}
 	owner, ok := topicRegistryOwnerOf(topicID)
@@ -170,7 +171,7 @@ func TestReorderTopicOrderIsPermutation(t *testing.T) {
 	}
 	f := loadProjectsFile()
 	want := []string{"topic_r3", "topic_r1", "topic_r2"}
-	if !sameStringList(f.GlobalTopics, want) {
+	if !slices.Equal(f.GlobalTopics, want) {
 		t.Fatalf("order = %#v, want %#v (omitted id re-appended)", f.GlobalTopics, want)
 	}
 	if err := reorderTopicOrder("global", "", []string{"topic_unknown"}); err == nil {

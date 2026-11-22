@@ -15,6 +15,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"reasonix/internal/textutil"
 )
 
 // MailDetail is the panel's on-demand full-body view of ONE archive entry.
@@ -67,7 +69,7 @@ func (s *Store) ReadMail(ctx context.Context, id string) (MailDetail, error) {
 			To:          m.To,
 			ToTitle:     m.ToTitle,
 			At:          m.At,
-			ThreadID:    firstNonEmpty(m.ThreadID, m.ID),
+			ThreadID:    textutil.First(m.ThreadID, m.ID),
 			Bucket:      s.classify(m),
 			Channel:     m.Channel,
 			RefPath:     feedbackRefOf(m),

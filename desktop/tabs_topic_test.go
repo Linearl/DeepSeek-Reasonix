@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1194,7 +1195,7 @@ func TestRepairRescanKeepsIndexedTopicsUntouched(t *testing.T) {
 		t.Fatalf("steady-state rescan reported repairs: %#v", repaired)
 	}
 	after := loadProjectsFile()
-	if !sameStringList(before.GlobalTopics, after.GlobalTopics) {
+	if !slices.Equal(before.GlobalTopics, after.GlobalTopics) {
 		t.Fatalf("rescan reordered globalTopics: before=%v after=%v", before.GlobalTopics, after.GlobalTopics)
 	}
 	statAfter, err := os.Stat(projPath)

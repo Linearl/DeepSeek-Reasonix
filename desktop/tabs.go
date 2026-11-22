@@ -8260,7 +8260,7 @@ func (a *App) SetProjectPinned(workspaceRoot string, pinned bool) error {
 		if pinned {
 			next = prependUniqueString(next, root)
 		}
-		if sameStringList(next, f.PinnedProjects) {
+		if slices.Equal(next, f.PinnedProjects) {
 			return false, nil
 		}
 		f.PinnedProjects = next
@@ -8309,7 +8309,7 @@ func (a *App) ReorderProjects(workspaceRoots []string) error {
 		changed := !sameProjectOrder(next, f.Projects)
 		f.Projects = next
 		if hasGlobalOrder {
-			if !sameStringList(sidebarOrder, f.SidebarOrder) {
+			if !slices.Equal(sidebarOrder, f.SidebarOrder) {
 				changed = true
 			}
 			f.SidebarOrder = sidebarOrder
@@ -10016,18 +10016,6 @@ func topicSessionDirSnapshot(dir string) ([]topicSessionFileSignature, []string,
 	return signature, sessionNames, nil
 }
 
-func topicSessionSignaturesEqual(a, b []topicSessionFileSignature) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func topicSessionIndexForDir(dir string) (topicSessionDirIndex, error) {
 	key := topicSessionDirKey(dir)
 	if key == "" {
@@ -10042,7 +10030,7 @@ func topicSessionIndexForDir(dir string) (topicSessionDirIndex, error) {
 	}
 	topicSessionIndexCache.Lock()
 	cached, ok := topicSessionIndexCache.byDir[key]
-	if ok && topicSessionSignaturesEqual(cached.signature, signature) {
+	if ok && slices.Equal(cached.signature, signature) {
 		topicSessionIndexCache.Unlock()
 		return cached, nil
 	}
