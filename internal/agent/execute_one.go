@@ -763,7 +763,11 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 		result, visionSummary = processed.text, processed.summary
 	}
 	body, truncMsg, original, readObserver := a.boundIncompleteReadAwareResult(plan, result)
-	body = appendReceiptCitation(body, receipt)
+	// tl1762: the citation is computed here but applied by the batch finalizer
+	// (applyPendingReceiptCitation) — the read pipeline rebuilds this result
+	// from its raw output after execution, which used to wipe a citation
+	// appended to `body` before the model ever saw it.
+	pendingCitation := appendReceiptCitation("", receipt)
 	// Task 798: a resolver-repaired call (auto-promoted capability_id) must not
 	// self-heal silently — the correct-usage note rides the successful result
 	// the model reads, after hooks/receipts observed the raw target output.
@@ -771,6 +775,7 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 	out := toolOutcome{
 		runState: runState, output: body, images: images, visionSummary: visionSummary, truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
 		execution: execution, mcpApp: toProviderMCPApp(plan.mcpApp), recoveryGeneration: recoveryGen,
+		pendingReceiptCitation: pendingCitation,
 	}
 	// Task 603: only a completed call can carry a read-back — the tool files
 	// its window after its write succeeded, so an error return never reaches

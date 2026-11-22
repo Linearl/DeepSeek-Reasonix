@@ -121,6 +121,7 @@ var pendingStateManifest = []pendingStateEntry{
 	{"internal\\agent\\agent.go:521", "Agent.turnTimedOutPendingContinue", dispExplicitDrop, "回合内标志；回合随进程终止，重启后无可恢复对象"},
 	{"internal\\agent\\agent.go:690", "Agent.steerQueue", dispExplicitDrop, "回合内 steer 在途队列；中断语义即丢弃，用户重发"},
 	{"internal\\agent\\agent.go:778", "Agent.pending", dispExplicitDrop, "下一回合武装意图；进程终止后用户重发即可"},
+	{"internal\\agent\\execute_batch.go:109", "toolOutcome.pendingReceiptCitation", dispExplicitDrop, "tl1762 新增：执行期算好的 citation 后缀，批收尾器终局落笔；中断即随 toolOutcome 废弃，重发即再生"},
 	{"internal\\agent\\incomplete_read.go:84", "incompleteRead.pendingObserved", dispExplicitDrop, "工具执行在途阶段；中断即废弃，重启后重读"},
 	{"internal\\agent\\incomplete_read.go:91", "incompleteRead.pendingReceipt", dispExplicitDrop, "工具执行在途回执；中断即废弃"},
 	{"internal\\agent\\mailbox_tool.go:191", "drainInboxAliasTool.drainRegistered", dispExplicitDrop, "一次性注册标志，无数据"},

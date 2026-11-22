@@ -135,7 +135,11 @@ func (a *Agent) checkOperationEvidence(ctx context.Context, call provider.ToolCa
 	if len(observations) == 0 {
 		check.Reason = "no_eligible_read"
 		check.Missing = info.Ranges
-		check.Recovery = fmt.Sprintf("read %s in a previous provider round, then retry; reads from the same batch do not count", info.Path)
+		// tl1762: the dominant dead-end is the same-round trap — the model
+		// read the file in THIS round, retried immediately, and burned the
+		// retry budget on a rejection that will not lift until the round ends.
+		// Name the trap and the way out instead of restating the rule.
+		check.Recovery = fmt.Sprintf("read %s in a previous provider round, then retry; reads from the same batch do not count — a read issued in this same round does not either: end this round, then re-send the same edit and cite the source_token that read prints", info.Path)
 		return check
 	}
 	if satisfied, missing := evidenceCoversTarget(observations, info); satisfied {

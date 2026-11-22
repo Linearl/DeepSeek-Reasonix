@@ -28,7 +28,7 @@ func (a *Agent) rememberReadDelivery(callID, body string, env tool.ReadResultEnv
 	if a.reads.deliveries == nil {
 		a.reads.deliveries = make(map[string]readDelivery)
 	}
-	a.reads.deliveries[callID] = readDelivery{callID: callID, resultRef: env.ResultRef, source: env.Source, digest: sha256.Sum256([]byte(body)), ranges: append([]tool.ReadRange(nil), env.DeliveredRanges...)}
+	a.reads.deliveries[callID] = readDelivery{callID: callID, resultRef: env.ResultRef, source: env.Source, digest: sha256.Sum256([]byte(tool.TrimSourceTokenCitation(body))), ranges: append([]tool.ReadRange(nil), env.DeliveredRanges...)}
 }
 
 // freezeVisibleReads is called for the exact request used by a sampling
@@ -40,7 +40,9 @@ func (a *Agent) freezeVisibleReads(messages []provider.Message) {
 		if msg.Role != provider.RoleTool || msg.LocalOnly {
 			continue
 		}
-		if d, ok := a.reads.deliveries[msg.ToolCallID]; ok && sha256.Sum256([]byte(msg.Content)) == d.digest {
+		// tl1762: both sides digest the window without its per-call source
+		// token citation, so byte equality stays a statement about content.
+		if d, ok := a.reads.deliveries[msg.ToolCallID]; ok && sha256.Sum256([]byte(tool.TrimSourceTokenCitation(msg.Content))) == d.digest {
 			visible[msg.ToolCallID] = d
 		}
 	}
@@ -73,7 +75,7 @@ func (a *Agent) finalizeReadDelivery(ctx context.Context, call provider.ToolCall
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
-		digest := sha256.Sum256([]byte(o.output))
+		digest := sha256.Sum256([]byte(tool.TrimSourceTokenCitation(o.output)))
 		for _, id := range ids {
 			d := a.reads.visible[id]
 			if d.source != env.Source || d.digest != digest || !readcoord.Covers(d.ranges, env.DeliveredRanges) {

@@ -216,6 +216,10 @@ func (a *Agent) finalizeIncompleteReadOutcome(ctx context.Context, deferred *inc
 		out.output = readStrategyPreview(deferred.rawOutput, transition.readID, transition.totalTokens, transition.limitTokens)
 		out.rawOutput = deferred.rawOutput
 		out.truncated = true
+		// tl1762: a restricted preview replaces the result wholesale — there is
+		// no fresh delivered window, so a source-token citation would promise
+		// evidence the ledger never filed.
+		out.citationSuppressed = true
 		out.truncMsg = fmt.Sprintf(i18n.M.ReadRestrictedStrategyFmt, transition.totalTokens, transition.limitTokens)
 		a.emitIncompleteReadNotice(event.NoticeCodeReadStrategyRequired, i18n.M.ReadStrategyRequired, fmt.Sprintf("read_id=%s bytes=%d tokens=%d budget_tokens=%d", transition.readID, transition.totalBytes, transition.totalTokens, transition.limitTokens))
 	}

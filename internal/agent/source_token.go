@@ -36,7 +36,9 @@ func (a *Agent) checkCitedSourceToken(call provider.ToolCall, check evidenceChec
 	})
 	if len(observations) == 0 {
 		check.Reason = "source_token_unknown"
-		check.Recovery = fmt.Sprintf("source_token %q does not name a read of %s in this turn; read the file and cite the source_token it prints", token, info.Path)
+		// tl1762: point at the literal line the host prints, so the model can
+		// copy the token instead of composing one.
+		check.Recovery = fmt.Sprintf("source_token %q does not name a read of %s in this turn; re-read the file and cite the [source_token ...] line printed at the end of that read_file result", token, info.Path)
 		check.Missing = info.Ranges
 		return check
 	}

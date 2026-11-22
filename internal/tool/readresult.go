@@ -178,9 +178,44 @@ type ReadTrailer struct {
 	LocalSafety  bool
 }
 
+// sourceTokenCitationPrefix is the host-stamped citation line appended to a
+// successful read_file result (agent appendReceiptCitation, tl1762). It rides
+// after the reader's own paging trailer, so trailer parsing strips it instead
+// of losing the paging state to the changed output suffix.
+const sourceTokenCitationPrefix = "\n[source_token "
+
+// stripSourceTokenCitation removes one trailing host-stamped source-token
+// citation line, restoring the reader's original trailer suffix. Output that
+// does not end in a well-formed citation line is returned unchanged, so an
+// in-content mention of the marker never rewinds the parse position.
+func stripSourceTokenCitation(output string) string {
+	rest, ok := strings.CutSuffix(output, "]")
+	if !ok {
+		return output
+	}
+	idx := strings.LastIndex(rest, sourceTokenCitationPrefix)
+	if idx < 0 {
+		return output
+	}
+	token := rest[idx+len(sourceTokenCitationPrefix):]
+	if token == "" || strings.ContainsAny(token, " \t\r\n[]") {
+		return output
+	}
+	return rest[:idx+1]
+}
+
+// TrimSourceTokenCitation removes one trailing host-stamped source-token
+// citation line ([source_token ...]) from a read result. Digesting callers
+// compare windows across calls (repeated-read dedup) and must not let the
+// per-call receipt id break byte equality of identical content (tl1762).
+func TrimSourceTokenCitation(output string) string {
+	return stripSourceTokenCitation(output)
+}
+
 // ParseReadTrailer reads the reader's own paging trailer. It is the reader's
 // format, not a third party's, so the reader owns both sides of it.
 func ParseReadTrailer(output string) ReadTrailer {
+	output = stripSourceTokenCitation(output)
 	const safetyPrefix = "\n[read_file local safety page; next_offset="
 	if start := strings.LastIndex(output, safetyPrefix); start >= 0 && strings.HasSuffix(output, "]\n") {
 		fields := strings.TrimSuffix(output[start+len(safetyPrefix):], "]\n")
