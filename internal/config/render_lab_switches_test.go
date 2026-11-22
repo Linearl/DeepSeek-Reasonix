@@ -85,9 +85,13 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalFeedback = true      // M6
 
 	// observability（可观测性）/ dev-debug（开发调试）
-	orig.Desktop.ExperimentalSessionMonitor = true     // monitoring (M8 standalone, member 1)
-	orig.Agent.ExperimentalPerfMonitor = true          // monitoring (M8 standalone, member 2)
-	orig.Agent.ExperimentalPerfMonitor = true          // monitoring ([agent] authoritative after task 473)
+	orig.Desktop.ExperimentalSessionMonitor = true // monitoring (M8 standalone, member 1)
+	orig.Agent.ExperimentalPerfMonitor = true      // monitoring (M8 standalone, member 2)
+	orig.Agent.ExperimentalPerfMonitor = true      // monitoring ([agent] authoritative after task 473)
+	// tl1746：任务面板（未稳定档）——开关无条件渲染往返；tasklist_db_path
+	// 为家族子键（条件渲染：非空才落盘，fixture 给非空值验证往返面）。
+	orig.Desktop.ExperimentalTasklistPanel = true      // tasklistPanel
+	orig.Desktop.TasklistDBPath = "D:/tmp/tasklist.db" // tasklistPanel family key
 	orig.Desktop.ExperimentalCDPDebugPort = true       // M5
 	orig.Desktop.ExperimentalLifecycleNoiseGate = true // M5
 
@@ -129,6 +133,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_restart_update = true",
 		"experimental_session_monitor = true",
 		"experimental_split_view = true",
+		// tl1746：任务面板开关键无条件渲染（fixed-key-set rule）；路径家族
+		// 子键条件渲染，fixture 非空值须原样往返。
+		"experimental_tasklist_panel = true",
+		"tasklist_db_path = \"D:/tmp/tasklist.db\"",
 		"experimental_feedback = true",
 		"experimental_todo_sidebar = true",
 		"experimental_subagent_panel = true",
@@ -240,8 +248,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		t.Error("trace_as_state (agent, post-473 single key) did not round-trip")
 	}
 	for name, ok := range map[string]bool{
-		"agent.experimental_session_collab":          got.Agent.ExperimentalSessionCollab,
-		"agent.experimental_pinned_index":            got.Agent.ExperimentalPinnedIndex, // tl1193b：memory-context 组往返
+		"agent.experimental_session_collab": got.Agent.ExperimentalSessionCollab,
+		"agent.experimental_pinned_index":   got.Agent.ExperimentalPinnedIndex, // tl1193b：memory-context 组往返
+		// tl1746：任务面板开关+路径家族子键往返。
+		"desktop.experimental_tasklist_panel":        got.Desktop.ExperimentalTasklistPanel,
 		"agent.experimental_full_access":             got.Agent.ExperimentalFullAccess,
 		"agent.experimental_safety_cost_control":     got.Agent.ExperimentalSafetyCostControl,
 		"agent.safety_idle_terminate":                got.Agent.SafetyIdleTerminate != nil && *got.Agent.SafetyIdleTerminate,
@@ -306,5 +316,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	}
 	if !got.DesktopQuestionSearchEnabled() || !got.DesktopSubagentTpsEnabled() || !got.DesktopCompletionSummaryEnabled() {
 		t.Error("desktop nil-means-on helpers disagree with the round-tripped pointers")
+	}
+	// tl1746：路径家族子键往返（条件渲染的字符串键）。
+	if got.Desktop.TasklistDBPath != "D:/tmp/tasklist.db" {
+		t.Errorf("desktop.tasklist_db_path did not round-trip: %q", got.Desktop.TasklistDBPath)
 	}
 }

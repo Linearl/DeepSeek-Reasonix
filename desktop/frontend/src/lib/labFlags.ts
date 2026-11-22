@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "workflowTemplates" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "editResend" | "startupSplash";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "workflowTemplates" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "editResend" | "startupSplash" | "tasklistPanel";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -92,6 +92,12 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // 默认关（铁律 2 + 用户 2026-10-24 steer「做成实验特性，允许开关，方便
   // 对比」）——关闭时 splash 不渲染，启动行为与引入前一致；保存即换态。
   startupSplash: false,
+  // tl1746: the embedded read-only tasklist panel ships off (铁律 2). With it
+  // off there is no palette entry and no lab card — the palette item list is
+  // byte-for-byte unchanged and the existing three-piece surface (tl serve /
+  // tl export / tl.py) is the only access path. A flip applies on settings
+  // save (no restart); the panel's queries stay mode=ro regardless.
+  tasklistPanel: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -155,7 +161,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} workflowTemplates=${flags.workflowTemplates} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} smoothScrollFollow=${flags.smoothScrollFollow} draftRewrite=${flags.draftRewrite} editResend=${flags.editResend} startupSplash=${flags.startupSplash}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} workflowTemplates=${flags.workflowTemplates} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} smoothScrollFollow=${flags.smoothScrollFollow} draftRewrite=${flags.draftRewrite} editResend=${flags.editResend} startupSplash=${flags.startupSplash} tasklistPanel=${flags.tasklistPanel}`,
   );
   for (const listener of listeners) listener();
 }

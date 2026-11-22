@@ -64,6 +64,10 @@ var desktopRenderOmissions = map[string]string{
 	// experimental_collab_hub), never rendered; a stale line vanishes on the
 	// next save via the fixed-key-set rule.
 	"experimental_collab_group_view": "task 856: legacy task-677 key retired by the collabHub rename; decode-side migration source, never rendered",
+	// tl1746: conditionally rendered — the tasklist db override is written
+	// only once the user sets it; empty = the built-in default path, so an
+	// untouched config stays short (staging_dir precedent).
+	"tasklist_db_path": "tl1746: rendered only when the override is set; empty = the built-in default tasklist db path (read-only consumption)",
 	// tl1286: the soft-memory-limit key is retired (a low limit drove GC into a
 	// full-throttle spin). The [desktop] tombstone field survives only so old
 	// configs decode and the one-shot migration hint can name the value; the

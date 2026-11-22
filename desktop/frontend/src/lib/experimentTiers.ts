@@ -171,6 +171,9 @@ export type TierFeatureId =
   // 两个 segment 档位 + 当前占用 + 打开目录按钮，Go 渲染表无条目（同
   // tabManagement 豁免）。
   | "logManagement"
+  // tl1746: 可观测性组「任务面板」卡 id（Go 渲染表有同名条目，unstable，
+  // 默认关=两入口零渲染）——开关 + 数据库路径子项 + 测试连接/打开所在位置。
+  | "tasklistPanel"
   // 任务 789: 编辑证据门宽松模式（toolOptimizations 卡成员；默认关=严格
   // 行为逐字节一致）。lab-layout.yaml members + 本表双登记（562 口径）。
   | "editEvidenceRelaxed"
@@ -336,6 +339,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── observability（可观测性，2 项；tl 1097 增 logManagement 参数卡）──
   monitoring: "recommended",
   subagentTps: "optional",
+  // tl1746: 任务面板（tasklistPanel）——桌面内嵌只读直读 tasklist.db；Go
+  // 渲染表同名条目同档（未稳定，家族子键 experimental_tasklist_panel +
+  // tasklist_db_path）。
+  tasklistPanel: "unstable",
   // tl 1097: 日志管理（logManagement）——告警日志时间/大小档位参数卡（纯前端
   // rail 容器 id，无配置键，同 tabManagement/usageMonitoring 豁免口径）。档位
   // 按任务书建议 optional（不开启只影响日志留存，不影响主流程）。
@@ -572,12 +579,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * feedback 可选→推荐——推荐 47→50、可选 26→25、未稳定 5→3，总数不变 87。
  * tl1733：memoryIndexSlim（记忆注入瘦身，提效组，可选档）入表——可选
  * 25→26、总数 87→88（Go 渲染表同步 75→76，recallTool/zeroSummaryCompact
- * 两条 Go-only 预存红同批收口进豁免名单）。 */
+ * 两条 Go-only 预存红同批收口进豁免名单）。
+ * tl1746：tasklistPanel（任务面板，可观测性组，未稳定档）入表——未稳定
+ * 3→4、总数 88→89（Go 渲染表同步 76→77，tasklist_db_path 为家族子键不
+ * 另计）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 50,
   optional: 26,
-  unstable: 3,
+  unstable: 4,
   retired: 0,
 };
 

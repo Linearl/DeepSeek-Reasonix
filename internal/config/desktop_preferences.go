@@ -124,6 +124,19 @@ type DesktopConfig struct {
 	// Pure projection preference: the view only consumes the existing read
 	// projections (no storage reads, no backend writes; 597 调研纪律).
 	ExperimentalTrajectoryView bool `toml:"experimental_trajectory_view"`
+	// ExperimentalTasklistPanel gates the desktop tasklist panel (tl1746 phase
+	// 1: read-only direct sqlite read of the tasklist DB, mode=ro — the panel
+	// never writes; writes stay with tl.py as the SSOT). It ships off per 铁律
+	// 2: with it off no palette entry and no lab card render, and the existing
+	// three-piece surface (tl serve / tl export / tl.py) is byte-for-byte
+	// unchanged — the panel is a third, embedded entry.
+	ExperimentalTasklistPanel bool `toml:"experimental_tasklist_panel"`
+	// TasklistDBPath overrides which tasklist database the panel reads (tl1746
+	// phase 1, read-only; decision_pattern_file_path family-key precedent).
+	// Empty = the built-in default under %APPDATA%/reasonix/global-workspace.
+	// Resolved at query time (no restart needed), and the panel opens it
+	// mode=ro regardless of the value — never a write surface.
+	TasklistDBPath string `toml:"tasklist_db_path"`
 	// Task 473: the [desktop] boolean mirrors of [agent] lab switches are
 	// retired. These fields are READ-ONLY legacy inputs: migrateLabMirrorKeysToAgent
 	// folds any leftover true into the [agent] key at load and the setters only

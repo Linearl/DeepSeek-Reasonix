@@ -257,6 +257,89 @@ function LogManagementLabPane({ s, busy, apply }: { s: SettingsView; busy: boole
   );
 }
 
+/** tl1746 — 任务面板 pane（可观测性组卡专用渲染）。
+ *
+ * 通用 LabParamFieldsCard 只能渲染「一行一字段」，本卡多出四样：
+ *   ① 开关行（experimental_tasklist_panel，off/on 分段即点即存——卡灯同键）；
+ *   ② 「测试连接」按钮（探测草稿态路径，展示 ok/任务数/错误原因）；
+ *   ③ 「打开所在位置」按钮（RevealPath 语义，OpenTasklistDBLocation）；
+ *   ④ 只读红线说明行（面板 mode=ro，写仍走 tl.py）。
+ * 路径字段本身仍走 labParamFields 注册表（tasklistDbPath，onBlur 落盘），
+ * 值语义单源；探测/打开按钮作用于草稿值（先试后存），不偷写配置。 */
+function TasklistPanelLabPane({ s, busy, apply }: { s: SettingsView; busy: boolean; apply: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const t = useT();
+  const binding = LAB_PARAM_FIELDS.tasklistDbPath;
+  const [pathDraft, setPathDraft] = useState<string | null>(null);
+  const [probe, setProbe] = useState<{ ok: boolean; tasks: number; error: string } | null>(null);
+  const [probing, setProbing] = useState(false);
+  const savedPath = binding.read(s) as string;
+  const draftPath = pathDraft ?? savedPath;
+  return (
+    <>
+      <SettingsField label={<>
+        {t("settings.tasklistPanel")}
+        <TierBadge tier={EXPERIMENT_FEATURE_TIERS.tasklistPanel} translator={t} />
+      </>} hint={t("settings.tasklistPanel.hint")} icon={<Activity size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {[false, true].map((on) => (
+            <button
+              key={String(on)}
+              className={`set-seg__btn${Boolean(s.experimentalTasklistPanel) === on ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => app.SetExperimentalTasklistPanel(on))}
+            >
+              {t(on ? "settings.tasklistPanel.on" : "settings.tasklistPanel.off")}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
+      <SettingsField label={t("settings.tasklistPanel.dbPath")} hint={t("settings.tasklistPanel.dbPathHint")} icon={<Folder size={18} />} stacked>
+        <input
+          type="text"
+          value={draftPath}
+          spellCheck={false}
+          disabled={busy}
+          placeholder={t("settings.tasklistPanel.dbPathPlaceholder")}
+          onChange={(event) => setPathDraft(event.target.value)}
+          onBlur={() => { if (pathDraft !== null) void apply(async () => { await binding.write(pathDraft); }); }}
+        />
+        <div className="set-seg" role="group">
+          <button
+            type="button"
+            className="btn btn--secondary btn--small"
+            disabled={busy || probing}
+            onClick={() => {
+              setProbing(true);
+              void app.TestTasklistDB(draftPath)
+                .then((res) => setProbe({ ok: res.ok, tasks: res.tasks, error: res.error }))
+                .catch((err: unknown) => setProbe({ ok: false, tasks: 0, error: String(err) }))
+                .finally(() => setProbing(false));
+            }}
+          >
+            {t("settings.tasklistPanel.testConnection")}
+          </button>
+          <button
+            type="button"
+            className="btn btn--secondary btn--small"
+            disabled={busy}
+            onClick={() => void apply(async () => { await app.OpenTasklistDBLocation(draftPath); })}
+          >
+            {t("settings.tasklistPanel.openLocation")}
+          </button>
+        </div>
+        {probe && (
+          <p className="settings-field__hint" data-testid="tasklist-db-probe" role="status">
+            {probe.ok
+              ? t("settings.tasklistPanel.probeOk", { n: String(probe.tasks) })
+              : t("settings.tasklistPanel.probeFail", { reason: probe.error })}
+          </p>
+        )}
+      </SettingsField>
+      <p className="settings-field__hint">{t("settings.tasklistPanel.readOnlyNote")}</p>
+    </>
+  );
+}
+
 /** tl 1134 — rail 行 memo 化：行 props 全为纯值（feature 引用随 features useMemo
  * 稳定、active 布尔、onSelect 为 setState 引用稳定），selected 切换/他卡开合时
  * 未受影响的行不再重渲——63 行的 rail 在高频点击导航下避免全列表 reconciliation。
@@ -866,6 +949,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               档位本身仍走 labParamFields 注册表读写（值语义单源）。 */}
           {selected === "logManagement" && (
             <LogManagementLabPane s={s} busy={busy} apply={apply} />
+          )}
+          {/* tl1746：任务面板（可观测性组）——专用 pane：开关行 + 数据库
+              路径子项 + 测试连接/打开所在位置（路径字段走 labParamFields
+              注册表；只读红线说明行常驻）。 */}
+          {selected === "tasklistPanel" && (
+            <TasklistPanelLabPane s={s} busy={busy} apply={apply} />
           )}
           {/* tl1287：dagMigration 独立 pane 退役——动作卡转正进会话存储卡
               （sessionStore 分支内），不再占实验室 rail。 */}

@@ -1062,6 +1062,25 @@ func (c *Config) SetExperimentalCollabHub(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalTasklistPanel toggles the desktop tasklist panel (tl1746
+// phase 1: embedded read-only view of the tasklist DB). Pure frontend gate:
+// the palette entry and the lab card re-appear on the next settings refresh,
+// no restart. The panel's data channel opens the DB mode=ro only — this key
+// never unlocks a write path (writes stay with tl.py as the SSOT).
+func (c *Config) SetExperimentalTasklistPanel(enabled bool) error {
+	c.Desktop.ExperimentalTasklistPanel = enabled
+	return nil
+}
+
+// SetTasklistDBPath sets the tasklist database path override (tl1746 phase 1;
+// decision_pattern_file_path family-key precedent). Empty string = the
+// built-in default under the global workspace. The value is trimmed; the
+// panel resolves it at query time, so a change applies without a restart.
+func (c *Config) SetTasklistDBPath(path string) error {
+	c.Desktop.TasklistDBPath = strings.TrimSpace(path)
+	return nil
+}
+
 // SetExperimentalSessionCollabAutoFold folds over-long cross-session messages
 // into a summary bar (task 705). Pure display preference: off (default) keeps
 // the transcript rendering every cross-session message in full.

@@ -164,11 +164,13 @@ console.log("\ntask 562 lab three-tier badges");
   // subagentPolicy 未稳定→可选、splitView/heartbeatBackground/feedback 可选→
   // 推荐——推荐 47→50、可选 25（出 3 进 2 后再 +3 净变 25）、未稳定 5→3。
   // tl1733：memoryIndexSlim（可选）入表——可选 25→26、总数 87→88。
-  ok(counts.stable === 9 && counts.recommended === 50 && counts.optional === 26 && counts.unstable === 3 && counts.retired === 0,
-    `register counts are 9 稳定/50/26/3/0 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 88, `register holds exactly 88 features (tl1733 memoryIndexSlim added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 50 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 3 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/50/26/3/0");
+  // tl1746：tasklistPanel（未稳定）入表——未稳定 3→4、总数 88→89。
+  ok(counts.stable === 9 && counts.recommended === 50 && counts.optional === 26 && counts.unstable === 4 && counts.retired === 0,
+    `register counts are 9 稳定/50/26/4/0 (got ${JSON.stringify(counts)})`);
+  // tl1746：tasklistPanel 入表 → 88→89。
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 89, `register holds exactly 89 features (tl1746 tasklistPanel added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 50 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 4 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/50/26/4/0 (tl1746 tasklistPanel 入未稳定档)");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -255,7 +257,8 @@ console.log("\ntask 562 lab three-tier badges");
   // zeroSummaryCompact 两 unstable 条目入 Go 表而本 pin 漏跟（基点
   // c9bb09cd23 实值 75=预存红，20261121 tl1733 收口）；tl1733：
   // memoryIndexSlim（记忆注入瘦身，提效组，可选档）两侧共享入表——75→76。
-  ok(Object.keys(goTiers).length === 76, `Go registry parses to 76 entries (tl1733 memoryIndexSlim added; got ${Object.keys(goTiers).length})`);
+  // tl1746：Go 渲染表同步 76→77（tasklistPanel 条目）。
+  ok(Object.keys(goTiers).length === 77, `Go registry parses to 77 entries (tl1746 tasklistPanel added; got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -342,7 +345,8 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1487 七组：pathRules 出表（union/registry 同撤）→ covered 87→86。
   // tl1265 第2轮：editResend（tl1544 入表，此前漏同步本计数）补齐 86→87。
   // tl1733：memoryIndexSlim rail 入口计入 → 87→88。
-  ok(covered.size === 88, "rail entries cover all 88 features (tl1733 memoryIndexSlim added)");
+  // tl1746：tasklistPanel rail 入口计入 → 88→89。
+  ok(covered.size === 89, "rail entries cover all 89 features (tl1746 tasklistPanel added)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
@@ -468,7 +472,10 @@ console.log("\ntask 562 lab three-tier badges");
     // LogManagementLabPane 承接（当前占用行 + 打开目录按钮 + 永久+无限制
     // 警示行，超出通用 labLabel 包裹模式），徽章在组件内直接渲染——同
     // opencodeGoUsage 自带徽章的豁免口径。
-    if (id !== "opencodeGoUsage" && id !== "modelCapabilityFilter" && id !== "logManagement" && !wrapped.has(id)) missing.push(id);
+    // tasklistPanel（tl1746）：专用 TasklistPanelLabPane 承接（开关行 +
+    // 路径子项 + 测试连接/打开所在位置），徽章同样组件内直接渲染
+    // （TierBadge + EXPERIMENT_FEATURE_TIERS）——同 logManagement 豁免口径。
+    if (id !== "opencodeGoUsage" && id !== "modelCapabilityFilter" && id !== "logManagement" && id !== "tasklistPanel" && !wrapped.has(id)) missing.push(id);
   }
   ok(missing.length === 0, `pane labels wrap every non-card id in SettingsPanel + the usage card covers opencodeGoUsage (missing: ${JSON.stringify(missing)})`);
   // 任务 774：rail 行渲染单枚聚合徽章（features 表预解析 badgeTier），
