@@ -203,6 +203,35 @@ console.log("\ntl1746 tasklist panel: overview/list behavior + lab gate + wiring
   const statusRowText = document.querySelector("[data-testid='tl-status-done']")?.textContent ?? "";
   ok(statusRowText.includes(en["tasklist.status.done"]), "status rows carry locale labels");
 
+  // tl1746 返修：分布条必须「轨道+填充+右侧计数」三元素齐全——填充是块级
+  // div（span 版 width 不生效，零宽不渲染=本次返修根因）且宽度按 max 归一。
+  const fillInfo = (rowSelector: string) => {
+    const fill = document.querySelector(`${rowSelector} .res-panel__sysbar-fill`);
+    return { tag: fill?.tagName ?? "", width: fill instanceof HTMLElement ? fill.style.width : "" };
+  };
+  const doneFill = fillInfo("[data-testid='tl-status-done']");
+  ok(doneFill.tag === "DIV" && doneFill.width === "100%",
+    "status fill is a block div at full width when it is the max (fixture: all counts=1)");
+  // fixture byStatus 缺 in_progress 桶 → count=0 → 0%（零计数零填充）；
+  // 其余 7 行满条（都是 max=1）。逐行核对绑定面。
+  const statusWidths = Object.fromEntries(["pending", "in_progress", "partial", "watching", "blocked", "done", "verified", "cancelled"]
+    .map((key) => [key, fillInfo(`[data-testid='tl-status-${key}']`).width]));
+  ok(statusWidths["in_progress"] === "0%" &&
+    ["pending", "partial", "watching", "blocked", "done", "verified", "cancelled"].every((k) => statusWidths[k] === "100%"),
+    "all 8 status rows render a fill bound to the max-normalized width (zero count = 0%)");
+
+  // 比例口径：openByDomain fixture = 记忆 2 / UI与交互 1（max=2）→ 100% / 50%。
+  const domainWidths = Array.from(document.querySelectorAll(".tlpanel__bar-row")).map((row) => ({
+    label: row.querySelector(".tlpanel__bar-label")?.textContent ?? "",
+    fill: row.querySelector(".res-panel__sysbar-fill"),
+  })).filter((r) => r.label === "记忆" || r.label === "UI与交互");
+  const jiYi = domainWidths.find((r) => r.label === "记忆");
+  const uiHx = domainWidths.find((r) => r.label === "UI与交互");
+  ok(Boolean(jiYi?.fill) && jiYi?.fill instanceof HTMLElement && jiYi.fill.style.width === "100%",
+    "domain fill: max-count row (记忆=2) fills the full track");
+  ok(Boolean(uiHx?.fill) && uiHx?.fill instanceof HTMLElement && uiHx.fill.style.width === "50%",
+    "domain fill: half-of-max row (UI与交互=1) renders at 50%");
+
   // 切列表 tab → fixture 行渲染（标题 + 状态中文标签 + prio_mark 口径列）。
   await act(async () => {
     (document.querySelector("[data-testid='tl-tab-list']") as HTMLButtonElement)?.click();
@@ -340,6 +369,18 @@ console.log("\ntl1746 tasklist panel: overview/list behavior + lab gate + wiring
   ok(en["palette.cmd.tasklistPanel"] === "Tasklist Panel", "en palette key");
   ok(zh["tasklist.status.done"] === "已完成" && zhTW["tasklist.status.done"] === "已完成" && en["tasklist.status.done"] === "Done", "status dict keys land in all three locales");
   ok(Boolean(zh["tasklist.error.goSettings"]) && Boolean(en["tasklist.error.goSettings"]), "error-card guidance keys exist");
+
+  // tl1746 返修：分布条渐变同款网页版（tl.py .dtrack>div 渐变式），scoped 在
+  // tlpanel 不牵连 ResourcePanel 实心条；轨道/填充必须块级元素契约。
+  const stylesCss = read("src/styles.css");
+  ok(stylesCss.includes(".tlpanel__bar .res-panel__sysbar-fill") &&
+    /(^|[^\w-])\.tlpanel__bar \.res-panel__sysbar-fill \{[^}]*linear-gradient\(90deg,\s*var\(--accent\),\s*var\(--ok\)\)/.test(stylesCss),
+    "tlpanel distribution fill carries the web-version accent→ok gradient (scoped to tlpanel)");
+  const panelTsx = read("src/components/TasklistPanel.tsx");
+  ok(panelTsx.includes('<div className="res-panel__sysbar tlpanel__bar">') &&
+    panelTsx.includes('<div className="res-panel__sysbar-fill"') &&
+    !panelTsx.includes('<span className="res-panel__sysbar'),
+    "distribution track and fill are block divs (ResourcePanel same-shape contract; inline span = tl1746 root cause)");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

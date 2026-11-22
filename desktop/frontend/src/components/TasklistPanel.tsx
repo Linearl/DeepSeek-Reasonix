@@ -259,9 +259,12 @@ export function TasklistPanel({
                     return (
                       <div className="tlpanel__bar-row" key={key} data-testid={`tl-status-${key}`}>
                         <span className="tlpanel__bar-label">{t(`tasklist.status.${key}`)}</span>
-                        <span className="res-panel__sysbar tlpanel__bar">
-                          <span className="res-panel__sysbar-fill" style={{ width: `${Math.round((count / maxStatus) * 100)}%` }} />
-                        </span>
+                        {/* 轨道/填充必须用块级元素（ResourcePanel 同款 div 契约）：
+                            span 在轨道内的 inline 格式化上下文里 width/height 不生效，
+                            填充零宽不渲染（tl1746 返修根因）。 */}
+                        <div className="res-panel__sysbar tlpanel__bar">
+                          <div className="res-panel__sysbar-fill" style={{ width: `${Math.round((count / maxStatus) * 100)}%` }} />
+                        </div>
                         <span className="tlpanel__bar-count">{count}</span>
                       </div>
                     );
@@ -278,9 +281,9 @@ export function TasklistPanel({
                     {overview.openByDomain.map((c: TasklistCount) => (
                       <div className="tlpanel__bar-row" key={c.key || "__unlabeled__"}>
                         <span className="tlpanel__bar-label">{c.key || t("tasklist.overview.unlabeled")}</span>
-                        <span className="res-panel__sysbar tlpanel__bar">
-                          <span className="res-panel__sysbar-fill" style={{ width: `${Math.round((c.count / maxDomain) * 100)}%` }} />
-                        </span>
+                        <div className="res-panel__sysbar tlpanel__bar">
+                          <div className="res-panel__sysbar-fill" style={{ width: `${Math.round((c.count / maxDomain) * 100)}%` }} />
+                        </div>
                         <span className="tlpanel__bar-count">{c.count}</span>
                       </div>
                     ))}
@@ -297,9 +300,9 @@ export function TasklistPanel({
                     {overview.openByPriority.map((c: TasklistCount) => (
                       <div className="tlpanel__bar-row" key={c.key || "__unlabeled__"}>
                         <span className="tlpanel__bar-label">{c.key || t("tasklist.overview.unlabeled")}</span>
-                        <span className="res-panel__sysbar tlpanel__bar">
-                          <span className="res-panel__sysbar-fill" style={{ width: `${Math.round((c.count / maxPrio) * 100)}%` }} />
-                        </span>
+                        <div className="res-panel__sysbar tlpanel__bar">
+                          <div className="res-panel__sysbar-fill" style={{ width: `${Math.round((c.count / maxPrio) * 100)}%` }} />
+                        </div>
                         <span className="tlpanel__bar-count">{c.count}</span>
                       </div>
                     ))}

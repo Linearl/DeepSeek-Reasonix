@@ -46412,6 +46412,12 @@ button.statusbar__mcp:focus-visible {
 .tlpanel__bar {
   min-width: 0;
 }
+/* tl1746 返修：分布条填充对齐网页版 tasklist.html 的同款渐变
+   （tl.py .dtrack>div = linear-gradient(90deg, var(--accent), var(--ok))）；
+   scoped 在 tlpanel——ResourcePanel 系统条保持实心 accent 不受牵连。 */
+.tlpanel__bar .res-panel__sysbar-fill {
+  background: linear-gradient(90deg, var(--accent), var(--ok));
+}
 .tlpanel__bar-count {
   font-family: var(--mono);
   font-size: var(--text-xs);
