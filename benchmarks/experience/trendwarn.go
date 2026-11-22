@@ -219,7 +219,9 @@ type trendRow struct {
 }
 
 // buildTrendRows 把本期读数与上期逐指标配对（键 = bench+metric）：
-//   - 两侧都有 P95 的延迟行：按 P95 百分比对比，恶化 ≥ worsePct 标 ↑慢化；
+//   - 两侧都有 Ratio 的比值行（tl1685 ④）：按比值百分比对比，恶化 ≥
+//     worsePct 标 ↑慢化（比值行不走条数对比，条数单指标会跨期误判）；
+//   - 其余两侧都有 P95 的延迟行：按 P95 百分比对比，恶化 ≥ worsePct 标 ↑慢化；
 //   - 其余（census / WARN 计数行）：按 n 对比，增多即 ↑（越多越坏）；
 //   - 任一侧无样本（n=0）或上期缺该指标 → 不出行（新增/消失不算慢化）。
 func buildTrendRows(prev, cur []metricResult, worsePct float64) []trendRow {
@@ -240,6 +242,22 @@ func buildTrendRows(prev, cur []metricResult, worsePct float64) []trendRow {
 		}
 		row := trendRow{Bench: c.Bench, Metric: c.Metric}
 		switch {
+		case c.Ratio > 0 && p.Ratio > 0:
+			// 比值行（tl1685 ④）：按比值百分比对比。比值行不走条数对比——
+			// 条数单指标会跨期误判（第6期慢读条数翻倍但单条变快，实为切换
+			// 频次增多非劣化）。
+			row.Prev = fmt.Sprintf("比值=%.2f", p.Ratio)
+			row.Cur = fmt.Sprintf("比值=%.2f", c.Ratio)
+			d := (c.Ratio - p.Ratio) / p.Ratio * 100
+			row.Delta = fmt.Sprintf("%+.1f%%", d)
+			switch {
+			case d >= worsePct:
+				row.State = "↑慢化"
+			case d <= -worsePct:
+				row.State = "↓改善"
+			default:
+				row.State = "≈"
+			}
 		case c.P95MS > 0 && p.P95MS > 0:
 			// 延迟行：P95 百分比对比。
 			row.Prev = fmt.Sprintf("P95=%.0fms", p.P95MS)

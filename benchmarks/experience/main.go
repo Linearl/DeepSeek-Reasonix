@@ -135,8 +135,12 @@ type metricResult struct {
 	P50MS     float64 `json:"p50_ms,omitempty"`
 	P95MS     float64 `json:"p95_ms,omitempty"`
 	MaxMS     float64 `json:"max_ms,omitempty"`
-	Verdict   verdict `json:"verdict"`
-	Note      string  `json:"note,omitempty"`
+	// Ratio 是「条数÷次数」型指标的比值（tl1685 ④）：周趋势对比按比值
+	// 百分比走（条数单指标会跨期误判——第6期慢读 125→237 条升但 P95
+	// 2503→1855ms 反降，条数升/单条快=切换次数增多非劣化）。
+	Ratio   float64 `json:"ratio,omitempty"`
+	Verdict verdict `json:"verdict"`
+	Note    string  `json:"note,omitempty"`
 }
 
 func main() {
@@ -499,7 +503,42 @@ func benchSwitchCost(col *logCollect, o options) []metricResult {
 			N:         0, Verdict: verdictPass, Note: "窗口内无慢读记录",
 		})
 	}
+	out = append(out, effortSlowReadRatioRow(col))
 	return out
+}
+
+// effortSlowReadRatioRow：effort 慢读条数 ÷ 切 tab 次数比值行（tl1685 ④，
+// 观测）。第 6 期实测教训：慢读 125→237 条升但 P95 2503→1855ms 反降——
+// 条数升/单条快=切换次数增多非单读劣化，条数单指标跨期对比会误判。
+// 比值化后：比值平而条数升=切换频次增多（非劣化）；比值升=单读/单切劣化。
+// 分母取切 tab 次数（frontend switch-tab summary 行数）：慢读的触发面以切
+// tab 附带的 ancillary effort 读为主（stage 标签即 switch-tab:ancillary
+// effort，第6期条数与 render n=290→446 同步上行互证），effort 快路径开关
+// 行数与慢读量级不相关（实测 168h 慢读 140 条 vs effort 开关 3 次）。
+func effortSlowReadRatioRow(col *logCollect) metricResult {
+	row := metricResult{
+		Bench:     "switch-cost",
+		Metric:    "effort 慢读条数÷切 tab 次数（比值观测）",
+		Source:    "desktop.log「desktop: effort read breakdown」÷「desktop: frontend switch-tab summary」",
+		Threshold: "—（观测；比值跨期对比替代条数单指标，防第6期式误判）",
+		Ref:       "tl1685 ④（第6期实测教训：125→237 条升但 P95 2503→1855ms 反降）",
+		N:         len(col.EffortReadSlow),
+	}
+	switches := len(col.SwitchTotal)
+	if switches == 0 {
+		if row.N == 0 {
+			row.Verdict = verdictPass
+			row.Note = "窗口内无慢读、也无切 tab 样本"
+		} else {
+			row.Verdict = verdictNA
+			row.Note = fmt.Sprintf("慢读 %d 条但切 tab 样本 0 条（前端未升级到 summary 打点版本），比值不可算", row.N)
+		}
+		return row
+	}
+	row.Verdict = verdictObserve
+	row.Ratio = float64(row.N) / float64(switches)
+	row.Note = fmt.Sprintf("慢读 %d 条 ÷ 切 tab %d 次 = %.2f 条/次；比值平而条数升=切换频次增多（非劣化），比值升=单读/单切劣化", row.N, switches, row.Ratio)
+	return row
 }
 
 // benchFirstResponse：M5 发消息→首响，P95 ≤ 阈值（370 未定数值验收；门值
@@ -728,6 +767,8 @@ func printResults(rs []metricResult) {
 			if r.N > 0 {
 				readout = "条 WARN 行"
 			}
+		case r.Ratio > 0:
+			readout = fmt.Sprintf("比值=%.2f 条/次（慢读 %d 条）", r.Ratio, r.N)
 		case r.N > 0:
 			readout = fmt.Sprintf("P50=%.0fms P95=%.0fms Max=%.0fms", r.P50MS, r.P95MS, r.MaxMS)
 		}
