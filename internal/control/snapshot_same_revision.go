@@ -2,6 +2,7 @@ package control
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"reasonix/internal/agent"
@@ -98,6 +99,13 @@ func (c *Controller) takeoverDivergedRevLag(trace *forkTrace, path string, saveE
 	if session == nil {
 		return false
 	}
+	// tl1748: capture the disk side BEFORE the takeover rewrite overwrites it.
+	// The capture is lock-free and best-effort — the takeover re-verifies the
+	// disk fingerprint under the save locks, so a moved disk still declines
+	// and nothing is lost; a failed capture only degrades the preserve/relay
+	// below (logged as such). On decline nothing is persisted: a declined
+	// takeover lost nothing.
+	captured := captureTakeoverDiskSide(path)
 	if err := session.SaveAdoptOverStaleDisk(path, conflict); err != nil {
 		trace.fall(forkFellTakeoverDeclined)
 		slog.Warn("controller: snapshot conflict; rev-lag takeover declined", "err", err, "mode", mode,
@@ -105,13 +113,27 @@ func (c *Controller) takeoverDivergedRevLag(trace *forkTrace, path string, saveE
 		return false
 	}
 	trace.decide(forkDecisionRewrite, forkReasonRevLagTakeover)
+	preserve := c.settleTakeoverDiskSide(trace, path, mode, session, captured, conflict)
 	appendTracedConflictDiagnostic(trace, path, mode, "diverged_takeover_committed", saveErr, "", true)
 	slog.Warn("controller: snapshot conflict; live transcript took over the dead disk writer's state", "mode", mode,
 		"base_revision", conflict.BaseRevision, "disk_revision", conflict.DiskRevision,
-		"disk_messages", conflict.ExistingMessages, "snapshot_messages", conflict.SnapshotMessages)
-	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted,
-		"the session file held a stale copy from a closed writer; the live conversation took over the file and your latest turns are preserved"))
+		"rev_lag", conflict.DiskRevision-conflict.BaseRevision,
+		"disk_messages", conflict.ExistingMessages, "snapshot_messages", conflict.SnapshotMessages,
+		"disk_only_messages", preserve.diskOnly, "disk_only_user_messages", preserve.diskOnlyUser)
+	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryAdopted, takeoverNoticeText(preserve)))
 	return true
+}
+
+// takeoverNoticeText renders the user-facing recovery notice. The generic
+// adopt wording stays for the lossless shape; a fork line with abandoned user
+// messages says what happened to them (preserved + relayed) instead of the
+// blanket "your latest turns are preserved".
+func takeoverNoticeText(preserve takeoverPreserveOutcome) string {
+	if preserve.diskOnlyUser > 0 {
+		return fmt.Sprintf("the session file held a stale copy from a closed writer; the live conversation took over the file. %d message(s) from the other version line (including %d of yours) were preserved in %s and relayed to the model",
+			preserve.diskOnly, preserve.diskOnlyUser, orDash(preserve.preserveRef))
+	}
+	return "the session file held a stale copy from a closed writer; the live conversation took over the file and your latest turns are preserved"
 }
 
 // persistSessionSnapshotIfPathFree is the non-blocking form of

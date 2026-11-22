@@ -114,6 +114,18 @@ type forkTrace struct {
 	goalKnown  bool
 	goalStatus string
 	goalEpoch  uint64
+	// tl1748: what the rev-lag takeover's rewrite did to the abandoned disk
+	// side. Set only on the committed-takeover path (settleTakeoverDiskSide);
+	// fillDiagnostic copies the counts into the conflicts.jsonl record so the
+	// "what happened to the other version line" question is answerable from
+	// the diagnostic alone.
+	takeoverDiskOnly     int
+	takeoverDiskOnlyUser int
+	takeoverPreserved    int
+	takeoverPreserveRef  string
+	takeoverPreserveErr  string
+	takeoverInjected     bool
+	takeoverInjectErr    string
 }
 
 func newForkTrace(path, mode string, saveErr error) *forkTrace {
@@ -363,6 +375,18 @@ func (t *forkTrace) fillDiagnostic(rec *snapshotConflictDiagnostic) {
 	}
 	rec.RewritePending = t.rewritePending
 	rec.Fallthrough = strings.Join(t.fell, "+")
+	// tl1748: the committed takeover's abandoned-line accounting. Empty for
+	// every other outcome — the record stays content-free (counts + bare
+	// sidecar filename, no message text, no user paths).
+	if t.takeoverDiskOnly > 0 || t.takeoverPreserveRef != "" || t.takeoverPreserveErr != "" {
+		rec.TakeoverDiskOnly = t.takeoverDiskOnly
+		rec.TakeoverDiskOnlyUser = t.takeoverDiskOnlyUser
+		rec.TakeoverPreserved = t.takeoverPreserved
+		rec.TakeoverPreserveRef = t.takeoverPreserveRef
+		rec.TakeoverPreserveErr = t.takeoverPreserveErr
+		rec.TakeoverInjected = t.takeoverInjected
+		rec.TakeoverInjectErr = t.takeoverInjectErr
+	}
 }
 
 // traceConflictEscalation logs a conflict the save path settled (or failed to
